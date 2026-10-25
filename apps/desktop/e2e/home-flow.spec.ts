@@ -11,7 +11,7 @@ import type { Locator, Page } from '@playwright/test';
 import { assertTextBudget } from '../shared/home/textbudget.js';
 import { removeTempDirs } from './proto-temp.js';
 import { animationsDone, framesPainted } from './proto-wait.js';
-import { SIZES, THEMES, fresh, launchHome, rectOf, resize, setLook, shot, skipTour } from './home-page.js';
+import { SIZES, THEMES, fresh, launchHome, rectOf, resize, setLook, shot, skipTour, SAVED } from './home-page.js';
 import type { Home } from './home-page.js';
 
 let home: Home;
@@ -88,7 +88,7 @@ test('the storyboard path: remove, save, ticks, go back; add by the picker and b
   await shelf('Skills').getByRole('button', { name: 'Remove Write a reply' }).click();
   expect(await barText()).toBe('Removed Write a reply');
   await saveButton().click();
-  await expect(bar().getByText('Saved', { exact: true })).toBeVisible();
+  await expect(bar().getByText(SAVED, { exact: true })).toBeVisible();
   await expect(bar().locator('.hm-tick')).toHaveText(['Claude Code', 'Codex', 'OpenCode']);
   expect(await budget()).toEqual([]);
   await bar().getByRole('button', { name: 'Go back' }).click();
@@ -135,7 +135,7 @@ test('the storyboard path: remove, save, ticks, go back; add by the picker and b
 
   // Save points: the points so far, newest first, then back to the first one.
   await saveButton().click();
-  await expect(bar().getByText('Saved', { exact: true })).toBeVisible();
+  await expect(bar().getByText(SAVED, { exact: true })).toBeVisible();
   await topBar('Save points').click();
   await expect(pointsDrawer()).toBeVisible();
   await expect(addDrawer()).toHaveCount(0);
@@ -393,7 +393,7 @@ test('the keyboard does all of it: open Add, add a skill by the picker, save, op
   await expect(topBar('Add')).toBeFocused();
   await tabTo(saveButton());
   await p.keyboard.press('Enter');
-  await expect(bar().getByText('Saved', { exact: true })).toBeVisible();
+  await expect(bar().getByText(SAVED, { exact: true })).toBeVisible();
   await tabTo(topBar('Save points'));
   await p.keyboard.press('Enter');
   await expect(pointsDrawer().getByRole('heading', { name: 'Save points' })).toBeFocused();
@@ -557,7 +557,7 @@ test('Choose notes: open from the Notes shelf, pick a topic, Use these notes, th
   expect(await budget()).toEqual([]);
   // Save, then Go back.
   await saveButton().click();
-  await expect(bar().getByText('Saved', { exact: true })).toBeVisible();
+  await expect(bar().getByText(SAVED, { exact: true })).toBeVisible();
   await expect(bar().locator('.hm-tick')).toHaveText(['Claude Code', 'Codex', 'OpenCode']);
   expect(await budget()).toEqual([]);
   await bar().getByRole('button', { name: 'Go back' }).click();
@@ -659,7 +659,7 @@ test('the keyboard does all of it: pick an agent, open Choose notes, pick a topi
   expect(await barText()).toBe('Added Report builder notes to Report builder');
   await tabTo(saveButton());
   await p.keyboard.press('Enter');
-  await expect(bar().getByText('Saved', { exact: true })).toBeVisible();
+  await expect(bar().getByText(SAVED, { exact: true })).toBeVisible();
   await tabTo(bar().getByRole('button', { name: 'Go back' }));
   await p.keyboard.press('Enter');
   expect(await barText()).toBe('Back to how it was');
@@ -726,7 +726,7 @@ for (const [w, h] of SIZES) for (const look of THEMES) {
     await p.mouse.move(2, h / 2);
     await shot(p, 'notes-3-after-use', w, h, look);
     await saveButton().click();
-    await expect(bar().getByText('Saved', { exact: true })).toBeVisible();
+    await expect(bar().getByText(SAVED, { exact: true })).toBeVisible();
     await shot(p, 'notes-4-saved', w, h, look);
   });
 }

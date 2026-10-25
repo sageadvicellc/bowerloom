@@ -9,7 +9,7 @@ import type { Locator, Page } from '@playwright/test';
 import { assertTextBudget } from '../shared/home/textbudget.js';
 import { removeTempDirs } from './proto-temp.js';
 import { animationsDone } from './proto-wait.js';
-import { SIZES, THEMES, fresh, launchHome, resize, setLook, shot } from './home-page.js';
+import { SIZES, THEMES, fresh, launchHome, resize, setLook, shot, SAVED } from './home-page.js';
 import type { Home } from './home-page.js';
 
 const NOTES_PAGE = '#prototype-v2/notes';
@@ -232,7 +232,7 @@ test('"Use these notes" stages ONE change: the layer closes, the shelf shows the
   await expect(shelfCards()).toHaveCount(1);
   // Save, and it is one save point; then it reads as saved.
   await bar().getByRole('button', { name: 'Save' }).click();
-  await expect(barText()).toHaveText('Saved');
+  await expect(barText()).toHaveText(SAVED);
   await expect(shelfCards()).toHaveCount(1);
 });
 

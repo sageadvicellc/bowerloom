@@ -9,7 +9,7 @@ import type { Locator, Page } from '@playwright/test';
 import { assertTextBudget } from '../shared/home/textbudget.js';
 import { removeTempDirs } from './proto-temp.js';
 import { animationsDone } from './proto-wait.js';
-import { SIZES, THEMES, fresh, launchHome, overlaps, rectOf, resize, setLook, shot } from './home-page.js';
+import { SIZES, THEMES, fresh, launchHome, overlaps, rectOf, resize, setLook, shot, SAVED } from './home-page.js';
 import type { Home } from './home-page.js';
 
 let home: Home;
@@ -100,7 +100,7 @@ test('after Save, a new change and Discard, the bar says nothing waits and not "
   await pick('Meeting assistant');
   await removeFirstSkill();
   await bar().getByRole('button', { name: 'Save', exact: true }).click();
-  expect(await barText()).toBe('Saved');
+  expect(await barText()).toBe(SAVED);
   await removeFirstSkill();
   await expect(bar().getByRole('button', { name: 'Discard changes' })).toBeVisible();
   await bar().getByRole('button', { name: 'Discard changes' }).click();
@@ -125,12 +125,12 @@ test('Find more does not make the bar forget that it just saved (review items 5 
   await pick('Meeting assistant');
   await removeFirstSkill();
   await bar().getByRole('button', { name: 'Save', exact: true }).click();
-  expect(await barText()).toBe('Saved');
+  expect(await barText()).toBe(SAVED);
   await p.getByRole('button', { name: 'Find more' }).click();
   await p.getByRole('button', { name: 'Looks right' }).click();
   await p.getByRole('button', { name: 'Yes, read them' }).click();
   await expect(p.getByRole('heading', { level: 1, name: 'Your agents' })).toBeVisible();
-  expect(await barText()).toBe('Saved');
+  expect(await barText()).toBe(SAVED);
   await expect(bar().getByRole('button', { name: 'Go back' })).toBeVisible();
 });
 

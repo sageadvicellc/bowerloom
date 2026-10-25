@@ -19,7 +19,9 @@
 }
 [data-home] .kit-button:hover { background: var(--accent-soft); border-color: var(--accent-strong); }
 [data-home] .kit-button[data-variant="primary"] { background: var(--accent); border-color: var(--accent-strong); color: var(--accent-contrast); }
-[data-home] .kit-button[data-variant="primary"]:hover { background: var(--accent-strong); }
+/* Only a button that can be pressed takes the darker fill. Its selector is heavier than the disabled rule below, so without the scope a disabled primary button
+   (Save, with nothing to save) turned dark green under the pointer and its muted text sank to 1.1 to 1. */
+[data-home] .kit-button[data-variant="primary"]:not(:disabled):hover { background: var(--accent-strong); }
 [data-home] .kit-button[data-size="small"] { min-height: 2rem; min-width: 2rem; }
 [data-home] .kit-button[data-round] { padding: 0; border-radius: var(--hm-radius-pill); width: 2.75rem; font-size: var(--hm-text-heading); font-weight: 650; }
 [data-home] .kit-button[data-round][data-size="small"] { width: 2rem; font-size: var(--hm-text-base); }
@@ -38,6 +40,7 @@
 [data-home] .kit-badge[data-tone="new"] { background: var(--good-bg); color: var(--good-fg); }
 [data-home] button.kit-badge { cursor: pointer; position: relative; z-index: 1; min-height: 2rem; }
 [data-home] button.kit-badge:hover { border-color: currentColor; }
+[data-home] button.kit-pill:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 
 /* ---- Avatar: a round tint of one graph token, with the initials in the text colour (the tint is light, so the text stays at 4.5 to 1). */
 [data-home] .kit-avatar {
@@ -107,7 +110,7 @@
 
 /* ---- Shelf */
 [data-home] .kit-shelf { display: flex; flex-direction: column; gap: var(--hm-space-3); align-items: flex-start; }
-[data-home] .kit-shelf-head { display: flex; align-items: center; gap: var(--hm-space-2); }
+[data-home] .kit-shelf-head { display: flex; flex-direction: column; align-items: flex-start; gap: var(--hm-space-1); }
 [data-home] .kit-shelf-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--hm-card-shelf-w)), 1fr)); gap: var(--hm-space-3); width: 100%; }
 [data-home] .kit-shelf-list > li { min-width: 0; display: flex; }
 

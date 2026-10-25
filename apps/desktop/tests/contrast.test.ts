@@ -117,3 +117,38 @@ for (const [name, vars, block] of [['light', homeLight, homeLightBlock], ['dark'
     for (const page of ['bg', 'surface', 'surface-2']) assert.ok(ratio(vars['hm-ring']!, mixHex('#000000', vars[page]!, alpha)) >= 3, `ring on dimmed ${page}`);
   });
 }
+
+// ---- A disabled button stays readable while the pointer rests on it (fix list item 5). The primary hover fill used to beat the disabled style, which left the
+// muted text on the dark green fill: 1.10 to 1 in the light look and 1.22 to 1 in the dark look.
+const kitCss = readFileSync(join(DESKTOP, 'renderer', 'home', 'kit', 'kit.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+const kitRules = [...kitCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(m => ({ selector: m[1]!.trim(), body: m[2]!, at: m.index! }));
+const declared = (body: string, property: string): string | undefined => new RegExp(`(?:^|;|\\s)${property}:\\s*([^;]+)`).exec(body)?.[1]?.trim();
+
+test('no hover rule that paints a fill can reach a disabled button: the primary hover is scoped to buttons that can be pressed', () => {
+  const hovers = kitRules.filter(r => /\.kit-button/.test(r.selector) && /:hover/.test(r.selector) && /background/.test(r.body));
+  assert.ok(hovers.length >= 2, 'the quiet and the primary hover rules are there');
+  const disabled = kitRules.find(r => /\.kit-button:disabled\s*$/.test(r.selector))!;
+  assert.ok(disabled !== undefined);
+  for (const rule of hovers) for (const part of rule.selector.split(',').map(p => p.trim())) {
+    if (/:not\(:disabled\)/.test(part)) continue;
+    // A rule without the scope may stay only where the disabled rule has the same weight and comes after it. The primary rule has a heavier selector, so it must be scoped.
+    assert.doesNotMatch(part, /\[data-variant="primary"\]/, `${part} would paint over a disabled button`);
+    assert.ok(disabled.at > rule.at, `${part} comes after the disabled rule, so it would win`);
+  }
+});
+
+for (const [name, vars] of [['light', homeLight], ['dark', homeDark]] as const) {
+  test(`${name} theme, home app: the text of a disabled button is 3 to 1 on its own fill, on every place a button sits, hovered or not`, () => {
+    const rule = kitRules.find(r => /\.kit-button:disabled\s*$/.test(r.selector))!;
+    const colour = /var\(--([a-z0-9-]+)\)/.exec(declared(rule.body, 'color') ?? '')![1]!, fill = declared(rule.body, 'background');
+    assert.equal(fill, 'transparent', 'a disabled button has no fill of its own: it is an outline with dashes');
+    for (const under of ['bg', 'surface', 'surface-2', 'accent-soft']) {
+      const r = ratio(vars[colour]!, vars[under]!);
+      console.log(`MEASURED ${name}: disabled text (${colour}) on ${under} is ${r.toFixed(2)} to 1`);
+      assert.ok(r >= 3, `disabled text on ${under} is ${r.toFixed(2)}`);
+    }
+    // The failure this test guards against: the muted text on the primary hover fill.
+    const broken = ratio(vars[colour]!, vars['accent-strong']!);
+    assert.ok(broken < 3, `the old result, ${broken.toFixed(2)} to 1, is what a hover fill would give`);
+  });
+}

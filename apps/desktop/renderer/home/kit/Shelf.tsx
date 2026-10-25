@@ -5,7 +5,6 @@ import { SHELF_LIMIT, visibleCount } from '../../../shared/home/cards.js';
 import type { ShelfEntry } from '../../../shared/home/cards.js';
 import { WORDS } from '../words.js';
 import { Button } from './Button.js';
-import { HelpPopover } from './HelpPopover.js';
 import { ItemCard } from './ItemCard.js';
 
 export interface ShelfProps {
@@ -15,8 +14,8 @@ export interface ShelfProps {
   onSelect(id: string): void;
   /** What the shelf says when it holds nothing. */
   emptyText: string;
-  /** A "?" next to the title, with one sentence. */
-  help?: { label: string; text: string };
+  /** One short line under the title that says what the shelf is. */
+  hint?: string;
   limit?: number;
   /** The heading level, so a shelf fits under whatever heading holds it. */
   level?: 2 | 3 | 4;
@@ -30,7 +29,7 @@ export interface ShelfProps {
   defaultExpanded?: boolean;
 }
 
-export function Shelf({ title, entries, selectedId, onSelect, emptyText, help, limit = SHELF_LIMIT, level = 3, onDragStart, onBadgePress, onRemove, freshId = null, defaultExpanded = false }: ShelfProps): ReactElement {
+export function Shelf({ title, entries, selectedId, onSelect, emptyText, hint, limit = SHELF_LIMIT, level = 3, onDragStart, onBadgePress, onRemove, freshId = null, defaultExpanded = false }: ShelfProps): ReactElement {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const headingId = useId();
   // A card that was just added is never hidden behind "Show more".
@@ -41,7 +40,7 @@ export function Shelf({ title, entries, selectedId, onSelect, emptyText, help, l
     <section className="kit-shelf" aria-labelledby={headingId}>
       <div className="kit-shelf-head">
         <Heading className="kit-heading" id={headingId}>{title}</Heading>
-        {help === undefined ? null : <HelpPopover label={help.label} text={help.text} size="small" />}
+        {hint === undefined ? null : <p className="kit-hint">{hint}</p>}
       </div>
       {entries.length === 0 ? <p className="kit-hint">{emptyText}</p> : (
         <ul className="kit-shelf-list">

@@ -44,7 +44,6 @@ import { ChooseNotes } from './notes/ChooseNotes.js';
 import { NotesShelf } from './notes/NotesShelf.js';
 import { SavePoints } from './points/SavePoints.js';
 import { ShareSheet } from './share/ShareSheet.js';
-import { Badge } from './kit/Badge.js';
 import { Button } from './kit/Button.js';
 import { Drawer } from './kit/Drawer.js';
 import { HelpPopover } from './kit/HelpPopover.js';
@@ -278,8 +277,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
       <header className="hm-bar" data-tour="bar">
         <div className="hm-brand"><KitIcon name="leaf" size={28} /><span>{WORDS.label.appName}</span></div>
         <div className="hm-preview" data-preview="">
-          <Badge badge={{ label: WORDS.label.preview, tone: 'info' }} />
-          <HelpPopover label={WORDS.label.aboutPreview} text={WORDS.popover.preview} size="small" />
+          <HelpPopover pill={WORDS.label.preview} label={WORDS.label.aboutPreview} text={WORDS.popover.preview} />
         </div>
         <span className="hm-spacer" />
         <Button icon="clock" aria-expanded={drawer === 'points'} onClick={() => toggle('points')}>{WORDS.label.savePoints}</Button>
@@ -317,7 +315,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
             <p className="kit-hint">{card === null ? WORDS.hint.panel : card.hint}</p>
           </div>
           <Shelf title={WORDS.label.skills} entries={shelves?.skills ?? []} selectedId={pickedItem} onSelect={setPickedItem} onRemove={remove} onBadgePress={entry => openCopies(entry.id)} freshId={freshOf(fresh, picked)} emptyText={WORDS.hint.emptyShelf} />
-          <Shelf title={WORDS.label.tools} entries={shelves?.tools ?? []} selectedId={pickedItem} onSelect={setPickedItem} onRemove={remove} onBadgePress={entry => openCopies(entry.id)} freshId={freshOf(fresh, picked)} emptyText={WORDS.hint.emptyShelf} help={{ label: WORDS.label.aboutTools, text: WORDS.popover.connection }} />
+          <Shelf title={WORDS.label.tools} entries={shelves?.tools ?? []} selectedId={pickedItem} onSelect={setPickedItem} onRemove={remove} onBadgePress={entry => openCopies(entry.id)} freshId={freshOf(fresh, picked)} emptyText={WORDS.hint.emptyShelf} hint={WORDS.hint.tools} />
           <NotesShelf entries={shelves?.notes ?? []} selectedId={pickedItem} onSelect={setPickedItem} onRemove={remove} freshId={freshNotes} canChoose={agent !== null} onChoose={choose} />
         </aside>
 

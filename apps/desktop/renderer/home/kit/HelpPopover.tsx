@@ -1,13 +1,16 @@
 /**
- * A "?" button that opens a small popover with one sentence. This is where a technical term may be explained (the text is marked `data-budget="popover"`).
+ * A button that opens a small popover with one sentence. This is where a technical term may be explained (the text is marked `data-budget="popover"`).
  * Escape or a click elsewhere closes it, and the focus stays on the button. An optional action sits under the sentence, such as "Show me around".
+ * The button is a round "?" by default. With `pill` it is a small pill with those words and an info mark (the "Preview" mark of the top bar), so one control
+ * both says what it is and explains itself, and a window never carries two question marks for the same thing.
  */
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Button } from './Button.js';
+import { KitIcon } from './icons.js';
 
 export interface HelpPopoverProps {
-  /** What the "?" button is called, for a screen reader. At most 5 words. */
+  /** What the button is called, for a screen reader. At most 5 words. */
   label: string;
   /** The one sentence. */
   text: string;
@@ -18,9 +21,11 @@ export interface HelpPopoverProps {
   /** Which way the popover opens from the button. */
   align?: 'start' | 'end';
   size?: 'normal' | 'small';
+  /** The words of a pill button (at most 5). Without them the button is a round "?". */
+  pill?: string;
 }
 
-export function HelpPopover({ label, text, action, defaultOpen = false, dataTour, align = 'start', size = 'normal' }: HelpPopoverProps): ReactElement {
+export function HelpPopover({ label, text, action, defaultOpen = false, dataTour, align = 'start', size = 'normal', pill }: HelpPopoverProps): ReactElement {
   const [open, setOpen] = useState(defaultOpen);
   const id = useId();
   const wrap = useRef<HTMLSpanElement>(null), trigger = useRef<HTMLButtonElement>(null);
@@ -38,7 +43,9 @@ export function HelpPopover({ label, text, action, defaultOpen = false, dataTour
   }, [open]);
   return (
     <span className="kit-help" ref={wrap} data-align={align}>
-      <Button ref={trigger} round size={size} aria-label={label} aria-expanded={open} aria-controls={id} data-tour={dataTour} onClick={() => setOpen(o => !o)}>?</Button>
+      {pill === undefined
+        ? <Button ref={trigger} round size={size} aria-label={label} aria-expanded={open} aria-controls={id} data-tour={dataTour} onClick={() => setOpen(o => !o)}>?</Button>
+        : <button ref={trigger} type="button" className="kit-badge kit-pill" data-tone="info" data-no-drag="" aria-label={label} aria-expanded={open} aria-controls={id} data-tour={dataTour} onClick={() => setOpen(o => !o)}><KitIcon name="info" size={16} /><span>{pill}</span></button>}
       {open ? (
         <div className="kit-popover" id={id} role="group" aria-label={label} data-budget="popover">
           <p>{text}</p>

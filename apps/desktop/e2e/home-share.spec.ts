@@ -83,7 +83,7 @@ test.beforeEach(async () => {
 // ---- Where Share lives.
 test('Share lives in the Save points drawer, under the list, and not in the main window', async () => {
   const p = page();
-  expect(await p.locator('header.hm-bar').getByRole('button').allTextContents()).toEqual(['?', 'Save points', 'Add', '?']);   // the first "?" is the Preview badge's help (review item 16)
+  expect(await p.locator('header.hm-bar').getByRole('button').allTextContents()).toEqual(['Preview', 'Save points', 'Add', '?']);   // the Preview pill is its own help button, so Help is the only "?" (fix list item 3)
   await expect(p.getByRole('button', { name: 'Share my agents' })).toHaveCount(0);
   await openPoints();
   await expect(section().getByRole('heading', { level: 3, name: 'Share' })).toBeVisible();

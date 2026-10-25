@@ -110,9 +110,12 @@ test('a shelf shows eight cards and then "Show more"; expanded it shows all of t
   assert.equal([...shelf(6, { limit: 4 }).matchAll(/class="kit-card"/g)].length, 4);
 });
 
-test('a shelf can wear a "?" and a heading level of its own', () => {
-  const m = shelf(1, { help: { label: 'About tools', text: 'A connection lets an agent use another program.' }, level: 4 });
-  assert.match(m, /<h4 class="kit-heading"/); assert.match(m, /aria-label="About tools"/); assert.match(m, /aria-expanded="false"/); within(m);
+test('a shelf can wear a hint line under its title and a heading level of its own, and has no "?" of its own', () => {
+  const m = shelf(1, { hint: 'Tools let an agent reach outside services.', level: 4 });
+  assert.match(m, /<h4 class="kit-heading"/);
+  assert.match(m, /<div class="kit-shelf-head"><h4[^>]*>Skills<\/h4><p class="kit-hint">Tools let an agent reach outside services\.<\/p><\/div>/);
+  // One help button per window: the shelf draws no "?" and no popover of its own.
+  assert.doesNotMatch(m, /aria-expanded|kit-help|>\?</); within(m);
 });
 
 test('a drawer is a labelled dialog with a title that can take the focus and a Close button', () => {
@@ -131,6 +134,25 @@ test('a help popover is a "?" button; opened, it holds one sentence marked as po
   const open = html(createElement(HelpPopover, { label: 'About tools', text: WORDS.popover.connection, defaultOpen: true, action: { label: 'Show me around', onAction: none } }));
   assert.match(open, /data-budget="popover"/); assert.match(open, /MCP/); assert.match(open, /aria-expanded="true"/); assert.match(open, />Show me around</); within(open);
   assert.ok(extractText(open).some(t => t.popover && /MCP/.test(t.text)));
+});
+
+test('the Preview mark is one pill button that opens its own popover, and there is no second "?" beside it', () => {
+  const closed = html(createElement(HelpPopover, { label: 'About this preview', text: WORDS.popover.preview, pill: 'Preview' }));
+  assert.match(closed, /<button[^>]*class="kit-badge kit-pill"[^>]*aria-label="About this preview"[^>]*aria-expanded="false"[^>]*>[\s\S]*<span>Preview<\/span><\/button>/);
+  assert.equal([...closed.matchAll(/<button/g)].length, 1, 'one button, not a pill and a circle'); assert.doesNotMatch(closed, />\?</); within(closed);
+  const open = html(createElement(HelpPopover, { label: 'About this preview', text: WORDS.popover.preview, pill: 'Preview', defaultOpen: true }));
+  assert.match(open, /<p>This is a preview\. Nothing is written to your computer\.<\/p>/); assert.match(open, /aria-expanded="true"/); within(open);
+});
+
+test('the shell has one "?" in the whole window: Help at the far right; Preview is a pill and Tools has a hint line', () => {
+  const m = shell();
+  assert.equal([...m.matchAll(/>\?<\/button>/g)].length, 1, 'exactly one round help button');
+  assert.match(m, /aria-label="Help"[^>]*>\?<\/button>/);
+  assert.match(m, /<button[^>]*class="kit-badge kit-pill"[^>]*aria-label="About this preview"/);
+  assert.doesNotMatch(m, /About tools/);
+  assert.match(m, /<h3 class="kit-heading"[^>]*>Tools<\/h3><p class="kit-hint">Tools let an agent reach outside services\.<\/p>/);
+  assert.ok(m.indexOf('kit-pill') < m.indexOf('aria-label="Help"'), 'Help is after the Preview pill, at the far right of the bar');
+  within(m);
 });
 
 test('the shell: a top bar, a stage with the agents, a side panel with three shelves, a Save bar, and the six tour targets', () => {

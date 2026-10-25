@@ -23,7 +23,7 @@ export interface SaveBarModel {
 }
 
 /** The words of the two modes that the bar says without a number. `renderer/home/words.ts` lists them in `WORDS`. */
-export const BAR_WORDS = Object.freeze({ saved: 'Saved', back: 'Back to how it was' });
+export const BAR_WORDS = Object.freeze({ saved: 'Saved in this preview. Your files are untouched.', back: 'Back to how it was' });
 
 const sameJson = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 const only = <T>(a: readonly T[], b: readonly T[]): number => a.filter(x => !b.includes(x)).length;

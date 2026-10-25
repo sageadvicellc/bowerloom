@@ -8,7 +8,7 @@ import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { removeTempDirs } from './proto-temp.js';
 import { animationsDone, framesPainted } from './proto-wait.js';
-import { MAP_PAGE, SIZES, THEMES, fresh, launchHome, resize, setLook, shot } from './home-page.js';
+import { MAP_PAGE, SIZES, THEMES, fresh, launchHome, resize, setLook, shot, SAVED } from './home-page.js';
 import type { Home } from './home-page.js';
 import { assertTextBudget } from '../shared/home/textbudget.js';
 
@@ -307,7 +307,7 @@ test('the first Save of a guided session says where Help lives, once; a map open
   const p = page();
   await toMap();
   await endTour();
-  const note = p.getByText('Saved. Help replays the tour any time.');
+  const note = p.getByText('Saved in this preview. Help replays the tour any time.');
   await expect(note).toHaveCount(0);
   await agentCards().nth(3).getByRole('button').click();
   await p.locator('.hm-panel .kit-remove').first().click();
@@ -318,7 +318,7 @@ test('the first Save of a guided session says where Help lives, once; a map open
   await expect(note).toHaveCount(0, { timeout: 15_000 });
   await p.locator('.hm-panel .kit-remove').first().click();
   await p.getByRole('region', { name: 'Save bar' }).getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(p.getByRole('region', { name: 'Save bar' }).getByText('Saved', { exact: true })).toBeVisible();
+  await expect(p.getByRole('region', { name: 'Save bar' }).getByText(SAVED, { exact: true })).toBeVisible();
   await p.waitForTimeout(500);
   await expect(note).toHaveCount(0);
   // A map opened by address has no note at all.
@@ -326,8 +326,8 @@ test('the first Save of a guided session says where Help lives, once; a map open
   await agentCards().nth(3).getByRole('button').click();
   await p.locator('.hm-panel .kit-remove').first().click();
   await p.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(p.getByRole('region', { name: 'Save bar' }).getByText('Saved', { exact: true })).toBeVisible();
-  await expect(p.getByText('Saved. Help replays the tour any time.')).toHaveCount(0);
+  await expect(p.getByRole('region', { name: 'Save bar' }).getByText(SAVED, { exact: true })).toBeVisible();
+  await expect(p.getByText('Saved in this preview. Help replays the tour any time.')).toHaveCount(0);
 });
 
 // ---- The keyboard alone

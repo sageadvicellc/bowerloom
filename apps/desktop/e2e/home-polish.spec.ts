@@ -206,3 +206,76 @@ test('the real page stays inside the text budget with the Show button on it', as
   await framesPainted(p);
   expect(assertTextBudget(await p.evaluate(() => document.querySelector('[data-home]')!.outerHTML))).toEqual([]);
 });
+
+// ---- 3. One help button per window.
+test('the window has one "?" (Help, at the far right); Preview is a pill that opens its own popover; Tools has a hint line instead of a "?"', async () => {
+  const p = page();
+  await resize(p, 1280, 800);
+  const round = await p.locator('button.kit-button[data-round]').evaluateAll(list => list.map(b => (b.textContent ?? '').trim()));
+  expect(round.filter(t => t === '?')).toHaveLength(1);
+  const help = bar().getByRole('button', { name: 'Help', exact: true });
+  const pill = bar().getByRole('button', { name: 'About this preview' });
+  await expect(pill).toHaveText('Preview');
+  await expect(p.getByRole('button', { name: 'About tools' })).toHaveCount(0);
+  const [pillBox, helpBox] = [(await pill.boundingBox())!, (await help.boundingBox())!];
+  expect(helpBox.x).toBeGreaterThan(pillBox.x + pillBox.width);
+  expect(helpBox.x + helpBox.width).toBeGreaterThan(1280 - 40);   // the far right of the bar
+  await pill.click();
+  const pop = p.locator('.kit-popover');
+  await expect(pop).toHaveText('This is a preview. Nothing is written to your computer.');
+  await expect(pill).toHaveAttribute('aria-expanded', 'true');
+  await p.keyboard.press('Escape');
+  await expect(pop).toHaveCount(0);
+  await expect(pill).toBeFocused();
+  // The Tools shelf says in one short line what a tool is, right under its heading.
+  const tools = panel().getByRole('region', { name: 'Tools' });
+  await expect(tools.getByText('Tools let an agent reach outside services.')).toBeVisible();
+  const [head, hint] = [(await tools.getByRole('heading', { name: 'Tools' }).boundingBox())!, (await tools.getByText('Tools let an agent reach outside services.').boundingBox())!];
+  expect(hint.y).toBeGreaterThanOrEqual(head.y + head.height - 1);
+  expect(Math.abs(hint.x - head.x)).toBeLessThan(2);
+});
+
+// ---- 4. The Save bar does not claim that a file changed.
+test('after Save the bar says it was saved in the preview, and lists the programs that would be updated, with no tick', async () => {
+  const p = page();
+  await resize(p, 1280, 800);
+  await p.locator('.kit-card[data-kind="agent"]').first().getByRole('button').click();
+  await panel().locator('.kit-card .kit-remove').first().click();
+  await p.getByRole('region', { name: 'Save bar' }).getByRole('button', { name: 'Save', exact: true }).click();
+  const saveBar = p.getByRole('region', { name: 'Save bar' });
+  await expect(saveBar.getByText('Saved in this preview. Your files are untouched.', { exact: true })).toBeVisible();
+  await expect(saveBar.getByText('Would update:')).toBeVisible();
+  await expect(saveBar.getByRole('list', { name: 'Would update' }).getByRole('listitem')).toHaveText(['Claude Code', 'Codex', 'OpenCode']);
+  expect(await saveBar.locator('.hm-tick svg').count()).toBe(0);
+  await expect(saveBar.getByRole('button', { name: 'Go back' })).toBeFocused();
+  expect(assertTextBudget(await p.evaluate(() => document.querySelector('[data-home]')!.outerHTML))).toEqual([]);
+});
+
+// ---- 5. A disabled button is readable while the pointer rests on it.
+for (const look of ['light', 'dark'] as const) {
+  test(`${look} look: the disabled Save button keeps its muted text on its own fill while the pointer rests on it (3 to 1 at least)`, async () => {
+    const p = page();
+    await resize(p, 1280, 800);
+    await p.emulateMedia({ colorScheme: look, reducedMotion: 'no-preference' });
+    await p.waitForFunction(l => document.documentElement.getAttribute('data-theme') === l, look);
+    const save = p.getByRole('region', { name: 'Save bar' }).getByRole('button', { name: 'Save', exact: true });
+    await expect(save).toBeDisabled();
+    await save.hover({ force: true });
+    await animationsDone(p);
+    const read = async (): Promise<{ text: string; fill: string; ratio: number }> => save.evaluate(el => {
+      const channels = (c: string): number[] => (c.match(/[\d.]+/g) ?? []).map(Number);
+      const lum = ([r, g, b]: number[]): number => { const f = [r!, g!, b!].map(v => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }); return 0.2126 * f[0]! + 0.7152 * f[1]! + 0.0722 * f[2]!; };
+      // The fill the text really sits on: the button's own, else the first ancestor that paints one.
+      let node: Element | null = el, fill = [0, 0, 0, 0];
+      for (; node !== null; node = node.parentElement) { const c = channels(getComputedStyle(node).backgroundColor); if ((c[3] ?? 1) > 0.99 || (c.length === 3)) { fill = [...c, 1].slice(0, 4); break; } }
+      const text = channels(getComputedStyle(el).color), a = lum(text), b = lum(fill);
+      return { text: getComputedStyle(el).color, fill: `rgb(${fill.slice(0, 3).join(', ')})`, ratio: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) };
+    });
+    const hovered = await read();
+    console.log(`MEASURED ${look}: disabled Save under the pointer, text ${hovered.text} on ${hovered.fill} = ${hovered.ratio.toFixed(2)} to 1`);
+    expect(await save.evaluate(el => el.matches(':hover'))).toBe(true);
+    expect(hovered.ratio).toBeGreaterThanOrEqual(3);
+    // The fill is the page's, not the dark green of a pressable primary button.
+    expect(await save.evaluate(el => getComputedStyle(el).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
+  });
+}

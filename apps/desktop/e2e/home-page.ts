@@ -15,6 +15,8 @@ import { tempDir } from './proto-temp.js';
 export const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const shotsDir = process.env.HOME_U0_SHOTS ?? null;
 if (shotsDir !== null) mkdirSync(shotsDir, { recursive: true });
+/** What the Save bar says after a save in the preview. */
+export const SAVED = 'Saved in this preview. Your files are untouched.';
 export const SIZES = [[1440, 900], [900, 600]] as const;
 export const THEMES = ['light', 'dark'] as const;
 

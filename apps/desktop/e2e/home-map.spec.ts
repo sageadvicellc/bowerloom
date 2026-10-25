@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { assertTextBudget, countWords } from '../shared/home/textbudget.js';
 import { removeTempDirs } from './proto-temp.js';
 import { animationsDone, framesPainted } from './proto-wait.js';
-import { SIZES, THEMES, fresh, launchHome, resize, setLook, skipTour } from './home-page.js';
+import { SIZES, THEMES, fresh, launchHome, resize, setLook, skipTour, SAVED } from './home-page.js';
 import type { Home } from './home-page.js';
 
 const NAMES = ['Inbox sorter', 'Interview notetaker', 'Meeting assistant', 'Money tracker', 'Report builder', 'Research assistant', 'Schedule keeper', 'Support writer', 'Trip organizer', 'Writing coach'];
@@ -117,10 +117,10 @@ test('Save makes a save point and shows "Saved" with three ticks; Go back undoes
   await shelf('Skills').getByRole('button', { name: 'Remove List action items' }).click();
   await expect(bar().getByText('Removed Write a reply and List action items', { exact: true })).toBeVisible();
   await bar().getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(bar().getByText('Saved', { exact: true })).toBeVisible();
+  await expect(bar().getByText(SAVED, { exact: true })).toBeVisible();
   const ticks = bar().locator('.hm-tick');
   await expect(ticks).toHaveText(['Claude Code', 'Codex', 'OpenCode']);
-  await expect(bar().getByRole('list', { name: 'Saved to' })).toBeVisible();
+  await expect(bar().getByRole('list', { name: 'Would update' })).toBeVisible();
   await expect(bar().getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
   await expect(bar().getByRole('button', { name: 'Go back' })).toBeFocused();
   expect(await shelf('Skills').locator('.kit-card-main').allTextContents()).toEqual(['Summarize a meeting']);
@@ -146,12 +146,12 @@ test('a second save, and a go back from it, return to the save point before it a
   await pick();
   await shelf('Skills').getByRole('button', { name: 'Remove Write a reply' }).click();
   await bar().getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(bar().getByText('Saved', { exact: true })).toBeVisible();
+  await expect(bar().getByText(SAVED, { exact: true })).toBeVisible();
   await shelf('Skills').getByRole('button', { name: 'Remove List action items' }).click();
   await expect(bar().getByText('Removed List action items', { exact: true })).toBeVisible();
-  await expect(bar().getByText('Saved', { exact: true })).toHaveCount(0);
+  await expect(bar().getByText(SAVED, { exact: true })).toHaveCount(0);
   await bar().getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(bar().getByText('Saved', { exact: true })).toBeVisible();
+  await expect(bar().getByText(SAVED, { exact: true })).toBeVisible();
   await bar().getByRole('button', { name: 'Go back' }).click();
   expect(await shelf('Skills').locator('.kit-card-main').allTextContents()).toEqual(['Summarize a meeting', 'List action items']);
 });
@@ -260,7 +260,7 @@ test('the keyboard does all of it: reach an agent, pick it, reach Remove, remove
   }
   expect(reached, 'Save is reachable by Tab').toBe(true);
   await p.keyboard.press('Enter');
-  await expect(bar().getByText('Saved', { exact: true })).toBeVisible();
+  await expect(bar().getByText(SAVED, { exact: true })).toBeVisible();
   await expect(bar().getByRole('button', { name: 'Go back' })).toBeFocused();
   await p.keyboard.press('Enter');
   await expect(bar().getByText('Back to how it was')).toBeVisible();
@@ -291,12 +291,15 @@ test('with reduce motion on, saving runs no animation: the ticks appear at once'
   expect(await bar().locator('.hm-tick').first().evaluate(e => { const s = getComputedStyle(e); return s.animationName === 'none' || parseFloat(s.animationDuration) === 0; })).toBe(true);
 });
 
-test('with motion on, the ticks come in over 160 ms and stop', async () => {
+test('with motion on, the chips come in together over 140 ms, with no delay between them, and stop', async () => {
   const p = page();
   await pick();
   await shelf('Skills').getByRole('button', { name: 'Remove Write a reply' }).click();
   await bar().getByRole('button', { name: 'Save', exact: true }).click();
-  expect(await bar().locator('.hm-tick').first().evaluate(e => getComputedStyle(e).animationDuration)).toBe('0.16s');
+  // The three chips share one short fade (the overlay token, 140 ms); the old 64 and 128 ms delays between them are gone.
+  expect(await bar().locator('.hm-would').evaluate(e => getComputedStyle(e).animationDuration)).toBe('0.14s');
+  expect(await bar().locator('.hm-tick').evaluateAll(list => list.map(e => getComputedStyle(e).animationDelay))).toEqual(['0s', '0s', '0s']);
+  expect(await bar().locator('.hm-would').evaluate(e => getComputedStyle(e).animationDelay)).toBe('0s');
   await animationsDone(p);
   expect(await p.evaluate(() => document.getAnimations().filter(a => a.playState === 'running').length)).toBe(0);
 });

@@ -75,10 +75,14 @@ test('the Save bar counts changes: "1 change", "2 changes", with Save and Discar
   for (const m of [one, two]) { assert.match(m, /data-mode="dirty"/); assert.doesNotMatch(m, /<button disabled/); assert.match(m, />Discard changes</); assert.doesNotMatch(m, /Go back|hm-tick/); within(m); }
 });
 
-test('after a save the bar says "Saved", shows three ticks in order, and offers Go back', () => {
+test('after a save the bar says it was saved in the preview and lists the programs a real save would update as quiet chips with no tick, and offers Go back', () => {
   const m = bar(0, 2, { kind: 'saved', at: 2, backTo: 'v1' });
-  assert.match(m, /data-mode="saved"/); assert.match(m, /<p>Saved<\/p>/); assert.match(m, /<ul class="hm-ticks" aria-label="Saved to">/);
-  assert.deepEqual([...m.matchAll(/<li class="hm-tick"><svg[\s\S]*?<\/svg>([^<]+)<\/li>/g)].map(x => x[1]), ['Claude Code', 'Codex', 'OpenCode']);
+  assert.match(m, /data-mode="saved"/); assert.match(m, /<p>Saved in this preview\. Your files are untouched\.<\/p>/);
+  assert.match(m, /<span class="hm-would-lead" id="([^"]+)">Would update:<\/span><ul class="hm-ticks" aria-labelledby="\1">/);
+  assert.deepEqual([...m.matchAll(/<li class="hm-tick">([^<]+)<\/li>/g)].map(x => x[1]), ['Claude Code', 'Codex', 'OpenCode']);
+  // The chips carry no check icon: nothing was written, so nothing is ticked off.
+  assert.doesNotMatch(/<div class="hm-would"[\s\S]*?<\/ul>/.exec(m)![0], /<svg|kit-icon/);
+  assert.doesNotMatch(m, /Saved<\/p>|>Saved</);
   assert.match(m, />Go back</); assert.match(m, /<button disabled=""[^>]*>Save<\/button>/); within(m);
 });
 

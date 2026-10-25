@@ -90,9 +90,9 @@ test('the bar is clean, dirty, saved or back, and a save or a go-back goes stale
 test('the words of the bar are plain, within the text budget, and built from WORDS', () => {
   assert.equal(changesCount(1), '1 change'); assert.equal(changesCount(2), '2 changes'); assert.equal(changesCount(12), '12 changes');
   assert.equal(barText(saveBar(0, 1, null)), 'Nothing to save yet'); assert.equal(barText(saveBar(1, 1, null)), '1 change'); assert.equal(barText(saveBar(4, 1, null)), '4 changes');
-  assert.equal(barText(saveBar(0, 2, { kind: 'saved', at: 2, backTo: 'v1' })), 'Saved'); assert.equal(barText(saveBar(0, 3, { kind: 'back', at: 3, backTo: null })), 'Back to how it was');
-  assert.equal(WORDS.label.saved, BAR_WORDS.saved); assert.equal(WORDS.label.goBack, 'Go back');
-  for (const text of ['Nothing to save yet', '1 change', '25 changes', 'Saved', 'Back to how it was', 'Go back', 'Discard changes', 'Claude Code', 'Codex', 'OpenCode']) assert.deepEqual(assertTextBudget(`<p>${text}</p>`), [], text);
+  assert.equal(barText(saveBar(0, 2, { kind: 'saved', at: 2, backTo: 'v1' })), 'Saved in this preview. Your files are untouched.'); assert.equal(barText(saveBar(0, 3, { kind: 'back', at: 3, backTo: null })), 'Back to how it was');
+  assert.equal(WORDS.hint.saved, BAR_WORDS.saved); assert.equal(WORDS.label.goBack, 'Go back');
+  for (const text of ['Nothing to save yet', '1 change', '25 changes', 'Saved in this preview. Your files are untouched.', 'Would update', 'Back to how it was', 'Go back', 'Discard changes', 'Claude Code', 'Codex', 'OpenCode']) assert.deepEqual(assertTextBudget(`<p>${text}</p>`), [], text);
 });
 
 test('the round trip: remove two things, save, and the save point holds them; go back, and everything is as it was', () => {

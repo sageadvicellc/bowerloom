@@ -40,7 +40,7 @@ test('the storyboard words are used as written', () => {
   const l = FIND_WORDS.label, h = FIND_WORDS.hint;
   assert.deepEqual([l.findMyAgents, l.looksRight, l.showDetails, l.readTitle, l.yesRead, l.notNow, l.whereILooked, l.notFound, l.findMore], ['Find my agents', 'Looks right', 'Show details', 'Read what is inside?', 'Yes, read them', 'Not now', 'Where I looked', 'Not found', 'Find more']);
   assert.equal(`${h.welcomeLineOne} ${h.welcomeLineTwo}`, 'See everything your AI agents can do, and change it in one place.');
-  assert.equal(h.closingNote, 'Saved. Help replays the tour any time.');
+  assert.equal(h.closingNote, 'Saved in this preview. Help replays the tour any time.');
   assert.ok(countWords(h.welcomeNote) <= 12);
 });
 
