@@ -7,6 +7,7 @@ import { BANNED, WORDS, agentsCount, stepAnnouncement } from '../renderer/home/w
 import { TOUR_STEPS } from '../renderer/home/tour/steps.js';
 import { LIMITS, assertTextBudget, bannedIn, countWords } from '../shared/home/textbudget.js';
 import { CARD_WORDS } from '../shared/home/cards.js';
+import { PLAIN_NOTES, PLAIN_TOOLS } from '../shared/home/plain.js';
 import { DESKTOP } from './support.js';
 
 const groups = [['label', LIMITS.label], ['hint', LIMITS.hint], ['popover', LIMITS.popover]] as const;
@@ -73,14 +74,22 @@ function readable(source: string): string[] {
 // words.ts is checked by the tests above. The store's own action names ("apply") are code, not screen words, and live in one file.
 // The data's own kind names ('mcp' is the kind of a tool in the sample data) are code too, and are let through whole.
 // The sample's ids for the tools of that kind ('tool-mcp-01') and for the saved choices of pages ('slice-folders') are code too: the plain layer is keyed by them.
+// They are listed one by one, so a screen word that only looks like an id ('slice-xyz') is still caught.
 const DATA_KINDS = new Set(['mcp']);
-const DATA_IDS = /^(?:tool-mcp|slice)-[a-z0-9]+$/;
+const DATA_IDS: ReadonlySet<string> = new Set(['tool-mcp-missing', 'tool-mcp-present', 'tool-mcp-01', 'tool-mcp-02', 'tool-mcp-03', 'slice-folders', 'slice-kinds', 'slice-seeds']);
 const EXEMPT = new Set(['words.ts', 'store-actions.ts', 'textbudget.ts']);
 
 test('no source file under renderer/home or shared/home has a banned word in a string literal or in JSX text', () => {
   const files = [...sources('renderer/home'), ...sources('shared/home')].filter(f => !EXEMPT.has(f.slice(f.lastIndexOf('/') + 1)));
   assert.ok(files.length >= 6, `${files.length} files`);
-  for (const file of files) for (const piece of readable(strip(readFileSync(file, 'utf8'))).filter(p => !DATA_KINDS.has(p) && !DATA_IDS.test(p))) assert.equal(bannedIn(piece), null, `${file}: ${piece}`);
+  for (const file of files) for (const piece of readable(strip(readFileSync(file, 'utf8'))).filter(p => !DATA_KINDS.has(p) && !DATA_IDS.has(p))) assert.equal(bannedIn(piece), null, `${file}: ${piece}`);
+});
+
+test('the ids let through the scan are exactly ones the plain layer is keyed by, and a look-alike is not let through (review item 14)', () => {
+  for (const id of DATA_IDS) assert.ok(id in PLAIN_TOOLS || id in PLAIN_NOTES, id);
+  assert.equal(DATA_IDS.size, Object.keys(PLAIN_NOTES).length + Object.keys(PLAIN_TOOLS).filter(id => id.startsWith('tool-mcp')).length);
+  assert.ok(!DATA_IDS.has('slice-xyz') && !DATA_IDS.has('tool-mcp-new'));
+  assert.deepEqual(readable(strip(`const a = 'slice-xyz';`)).filter(p => !DATA_IDS.has(p) && bannedIn(p) !== null), ['slice-xyz']);
 });
 
 test('the source scan itself catches a banned word in a literal and in JSX text', () => {

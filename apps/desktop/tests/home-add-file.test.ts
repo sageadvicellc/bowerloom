@@ -7,7 +7,8 @@ import { createStore, isDirty, reduceStore } from '../shared/proto/store.js';
 import type { Bundle, World } from '../shared/proto/types.js';
 import { FILE_KIND_ORDER, FILE_MAX_BYTES, addsNothing, capList, countOf, readSharedFile } from '../shared/home/add-file.js';
 import { importFileAction } from '../renderer/home/store-actions.js';
-import { changeCount, plainName } from '../shared/home/add-model.js';
+import { plainName } from '../shared/home/add-model.js';
+import { changeCount } from '../shared/home/savebar.js';
 import { addDemoWorld } from '../renderer/home/add/add-demo-world.js';
 import { sharedFileSample } from '../renderer/home/add/add-sample-file.js';
 
@@ -82,7 +83,7 @@ test('importing a bundle adds its items to the draft as one change that can be g
   assert.equal(told, 1);
   assert.equal(isDirty(after), true);
   assert.equal(after.committed, before.committed);
-  assert.ok(changeCount(after) >= 1);
+  assert.ok(changeCount(after.committed, after.draft) >= 1);
   assert.equal(after.undoStack.length, before.undoStack.length + 1);
   assert.equal(after.draft.items.length, before.draft.items.length + result.preview.added.length);
   store.dispatch({ type: 'undo' });

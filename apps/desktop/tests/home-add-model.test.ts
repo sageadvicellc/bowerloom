@@ -6,9 +6,13 @@ import type { StoreState } from '../shared/proto/store.js';
 import { generateWorld } from '../shared/proto/sample.js';
 import { countWords } from '../shared/home/textbudget.js';
 import {
-  ADD_TABS, agentChoices, agentHas, changeCount, clampWords, entriesFor, installAction, newAgentId, nextTab, plainName, stageAdd, stageInstall, tabOfKey,
+  ADD_TABS, agentChoices, agentHas, clampWords, entriesFor, installAction, newAgentId, nextTab, plainName, stageAdd, stageInstall, tabOfKey,
 } from '../shared/home/add-model.js';
 import type { AddEntry } from '../shared/home/add-model.js';
+import { changeCount as barCount } from '../shared/home/savebar.js';
+
+/** The Save bar's count of the changes that wait in a store state. */
+const changeCount = (state: StoreState): number => barCount(state.committed, state.draft);
 import { ownedAgents } from '../shared/home/cards.js';
 import { addDemoWorld, DEMO } from '../renderer/home/add/add-demo-world.js';
 

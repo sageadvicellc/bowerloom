@@ -8,8 +8,8 @@ import { useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { agentHint, itemBadge, ownedAgents } from '../../../shared/home/cards.js';
 import type { ShelfEntry } from '../../../shared/home/cards.js';
-import { changeCount, plainName } from '../../../shared/home/add-model.js';
-import { withStartPoint } from '../../../shared/home/savebar.js';
+import { plainName } from '../../../shared/home/add-model.js';
+import { changeCount, withStartPoint } from '../../../shared/home/savebar.js';
 import { createStore } from '../../../shared/proto/store.js';
 import { ProtoProvider, useProtoStore } from '../../proto/session.js';
 import { Button } from '../kit/Button.js';
@@ -44,7 +44,7 @@ function Page(): ReactElement {
     const badge = itemBadge(i);
     return [{ id: i.id, kind: 'skill', name: plainName(i.name), ...(badge === null ? {} : { badge }) }];
   }), [world]);
-  const waiting = changeCount(state);
+  const waiting = changeCount(state.committed, state.draft);
   const nameOfItem = (id: string): string => plainName(world.items.find(i => i.id === id)?.name ?? '');
   // When the badge is gone the card is still there: the focus goes back to it.
   const restore = (): HTMLElement | null => {

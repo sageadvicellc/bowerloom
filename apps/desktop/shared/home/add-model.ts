@@ -8,7 +8,6 @@ import type { AgentItem, HarnessItem, ToolItem, World } from '../proto/types.js'
 import { reduceStore } from '../proto/store.js';
 import type { StoreAction, StoreState } from '../proto/store.js';
 import { globalScope } from '../proto/common.js';
-import { editCount } from '../proto/plan.js';
 import { agentHint, itemBadge, ownedAgents, readableName } from './cards.js';
 import type { CardBadge } from './cards.js';
 
@@ -168,6 +167,3 @@ export function newAgentId(before: World, after: World): string | null {
   const known = new Set(before.items.map(i => i.id));
   return after.items.find(i => i.kind === 'agent' && !known.has(i.id))?.id ?? null;
 }
-
-/** How many things are staged: items and choices that differ between what was saved and the draft. One edit is one change. */
-export const changeCount = (state: StoreState): number => editCount(state.committed, state.draft);
