@@ -14,6 +14,8 @@ import { LIBRARY_CATALOG, catalogAgentPath, catalogAgentText, catalogHash, catal
 import { liveMatch } from './slicematch.js';
 import { chooseNotes } from './store-notes.js';
 import type { ChooseNotesAction } from './store-notes.js';
+import { editLibrary } from './store-library.js';
+import type { LibraryAction } from './store-library.js';
 
 /** Every action the store understands. The first group edits the draft; the second group moves between draft, committed and versions. */
 export type StoreAction =
@@ -33,6 +35,7 @@ export type StoreAction =
   | { readonly type: 'unpinSlice'; readonly sliceId: string }
   | { readonly type: 'assignSlice'; readonly agentId: string; readonly sliceId: string | null }
   | ChooseNotesAction
+  | LibraryAction
   | { readonly type: 'importBundle'; readonly bundle: Bundle }
   | { readonly type: 'undo' }
   | { readonly type: 'redo' }
@@ -264,6 +267,7 @@ function editDraft(world: World, action: StoreAction, committed: World): World {
       });
     }
     case 'chooseNotes': return chooseNotes(world, action, committed);
+    case 'removeFromLibrary': case 'addToLibrary': case 'makeOwnCopy': case 'useUpdate': return editLibrary(world, action);
     case 'importBundle': {
       // A bundle that cannot be read leaves the draft as it is.
       try { return commitImport(action.bundle, world); } catch { return world; }
