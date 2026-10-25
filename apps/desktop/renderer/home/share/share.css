@@ -1,0 +1,52 @@
+/*
+ * Share: the section at the foot of the Save points drawer and the small Share sheet. Everything starts at [data-home] and takes its colours from the shared
+ * tokens (light and dark), its sizes from home-tokens.css (text 14 px at the least) and its timing from the motion tokens, which are 0 when the person asked
+ * for less motion. The sheet sits on the same scrim as the "two different copies" dialog (add.css) and is a grid: title, a summary that stays in view, the
+ * agents (the only part that scrolls), and the buttons at the foot.
+ */
+
+/* ---- The section in the drawer */
+[data-home] .sh-section { display: flex; flex-direction: column; gap: var(--hm-space-3); margin-top: var(--hm-space-3); padding-top: var(--hm-space-5); border-top: 1px solid var(--hm-border); }
+[data-home] .sh-section-head { display: flex; flex-direction: column; gap: var(--hm-space-1); }
+[data-home] .sh-section-actions { display: flex; flex-wrap: wrap; gap: var(--hm-space-3); }
+
+/* ---- The sheet */
+[data-home] .sh-dialog {
+  box-sizing: border-box; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; width: min(32rem, 100%); max-height: 100%;
+  background: var(--surface); color: var(--text); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow-lift); overflow: hidden;
+}
+[data-home] .sh-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--hm-space-3); padding: var(--hm-space-4) var(--hm-space-5); border-bottom: 1px solid var(--border); }
+[data-home] .sh-title { display: flex; flex-direction: column; gap: var(--hm-space-1); min-width: 0; }
+[data-home] .sh-title h2 { outline-offset: 4px; width: fit-content; border-radius: var(--hm-radius-small); }
+[data-home] .sh-summary { display: flex; flex-direction: column; gap: var(--hm-space-1); padding: var(--hm-space-3) var(--hm-space-5); background: var(--surface-2); border-bottom: 1px solid var(--border); }
+[data-home] .sh-live { display: flex; flex-direction: column; gap: var(--hm-space-1); }
+[data-home] .sh-counts { margin: 0; font-size: var(--hm-text-base); font-weight: 700; color: var(--text); }
+[data-home] .sh-counts[data-empty] { font-weight: 600; }
+[data-home] .sh-left { margin: 0; font-size: var(--hm-text-base); font-weight: 600; color: var(--text); }
+[data-home] .sh-pick { display: flex; flex-direction: column; gap: var(--hm-space-2); padding: var(--hm-space-3) var(--hm-space-5); min-height: 0; overflow-y: auto; }
+[data-home] .sh-secrets { display: flex; flex-wrap: wrap; column-gap: var(--hm-space-4); row-gap: 0; }
+[data-home] .sh-pick-head { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--hm-space-3); row-gap: 0; }
+[data-home] .sh-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border: 1px solid var(--hm-border); border-radius: var(--hm-radius); background: var(--surface); }
+[data-home] .sh-rows > li + li { border-top: 1px solid var(--border); }
+[data-home] .sh-row { display: flex; align-items: center; gap: var(--hm-space-3); min-height: 2.75rem; padding: var(--hm-space-2) var(--hm-space-3); cursor: pointer; transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease); }
+[data-home] .sh-row:hover { background: var(--accent-soft); }
+[data-home] .sh-row:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: -3px; }
+[data-home] .sh-row input { flex: none; width: 1.25rem; height: 1.25rem; margin: 0; accent-color: var(--accent-strong); }
+[data-home] .sh-row-text { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--hm-space-3); min-width: 0; }
+[data-home] .sh-row-name { font-size: var(--hm-text-base); font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+[data-home] .sh-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--hm-space-2) var(--hm-space-3); padding: var(--hm-space-3) var(--hm-space-5); border-top: 1px solid var(--hm-border); background: var(--surface); }
+[data-home] .sh-made { display: flex; flex-direction: column; gap: 0; flex: 1 1 100%; min-width: 0; }
+[data-home] .sh-made-line { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--hm-space-3); }
+[data-home] .sh-made-title { display: flex; align-items: center; gap: var(--hm-space-2); outline-offset: 4px; width: fit-content; border-radius: var(--hm-radius-small); }
+[data-home] .sh-made-title .kit-icon { color: var(--accent-strong); }
+[data-home] .sh-size { margin: 0; font-size: var(--hm-text-base); font-weight: 600; }
+[data-home] .sh-foot-actions { display: flex; flex-wrap: wrap; gap: var(--hm-space-3); }
+
+@media (max-height: 640px) {
+  [data-home] .sh-head { padding: var(--hm-space-2) var(--hm-space-5); }
+  [data-home] .sh-summary { padding: var(--hm-space-2) var(--hm-space-5); }
+  [data-home] .sh-foot { padding: var(--hm-space-2) var(--hm-space-5); }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-home] .sh-row { animation: none !important; transition: none !important; }
+}

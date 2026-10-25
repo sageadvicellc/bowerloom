@@ -9,10 +9,12 @@
  * an add the agent is picked, so its shelf shows the new card, both the agent card and the new card wear the same ring for a few seconds (a line across
  * the map would cross other cards), and the Save bar says what changed. The
  * "2 different copies" badge on a shelf card or a drawer card opens the copies dialog, which sits at the top of the page. The Save points drawer lists the
- * save points with "Go back to this". The Notes shelf has a "Choose notes" button that opens the full-window Choose notes sheet for the agent that is picked; "Use these
+ * save points with "Go back to this", and under them has the Share section: "Share my agents" opens the Share sheet (a small modal sheet that makes a copy
+ * of the saved agents in memory; the prototype writes nothing), and "Open a shared file" opens the Add drawer on its "From a shared file" tab, where the copy
+ * can be opened again. The Notes shelf has a "Choose notes" button that opens the full-window Choose notes sheet for the agent that is picked; "Use these
  * notes" stages one change, picks the agent and rings the new card like an add does. With the Add or Save points drawer open the page keeps clear of it: the
  * shelves stay beside the map in a wide window and give way to the drawer in a narrow one. Escape closes the top layer only: the tour, then the copies
- * dialog, then the Choose notes sheet, then a drawer (the sheet closes a drawer when it opens, and the tour closes both when it starts).
+ * dialog or the Share sheet, then the Choose notes sheet, then a drawer (the sheet closes a drawer when it opens, and the tour closes both when it starts).
  * The Add picker and the drop targets leave out the agents that Find skipped, like the map.
  * The first minute (HomeFlow) sets four things from outside: the agents of places the person skipped in Find stay off the map (`skipped`), the tour starts by
  * itself once when `autoTour` is set, "Find more" reopens Find (`onFindMore`), and `closingNote` allows one short note after the first Save, once per session.
@@ -22,6 +24,8 @@ import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } fro
 import type { ReactElement } from 'react';
 import type { InterfaceId } from '../../shared/proto/types.js';
 import { agentCard, ownedAgents, shelvesOf } from '../../shared/home/cards.js';
+import { DEFAULT_TAB } from '../../shared/home/add-model.js';
+import type { AddTab } from '../../shared/home/add-model.js';
 import type { ShelfEntry } from '../../shared/home/cards.js';
 import { agentForTour, sortAgents, touch } from '../../shared/home/order.js';
 import type { SortMode } from '../../shared/home/order.js';
@@ -37,6 +41,7 @@ import { CopiesDialog } from './copies/CopiesDialog.js';
 import { ChooseNotes } from './notes/ChooseNotes.js';
 import { NotesShelf } from './notes/NotesShelf.js';
 import { SavePoints } from './points/SavePoints.js';
+import { ShareSheet } from './share/ShareSheet.js';
 import { Button } from './kit/Button.js';
 import { Drawer } from './kit/Drawer.js';
 import { HelpPopover } from './kit/HelpPopover.js';
@@ -103,6 +108,9 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   const [fresh, setFresh] = useState<Fresh | null>(null);
   const [note, setNote] = useState(false);
   const [choosing, setChoosing] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const [addTab, setAddTab] = useState<AddTab>(DEFAULT_TAB);
+  const [lastCopy, setLastCopy] = useState<string | undefined>(undefined);
   const [tour, tourDo] = useReducer(tourReduce, TOUR_STEPS, createTour);
   const panel = useRef<HTMLElement>(null);
   const focusAfter = useRef<FocusAfter | null>(null);
@@ -150,8 +158,8 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
     (cards[Math.min(after.index, cards.length - 1)] ?? heading)?.focus();
   });
 
-  // The tour dims the page and points at the bar, so a drawer or the Choose notes sheet that is open would only get in its way: they close when the tour starts.
-  useEffect(() => { if (tour.status === 'running') { setDrawer(null); setChoosing(false); } }, [tour.status]);
+  // The tour dims the page and points at the bar, so a drawer, the Choose notes sheet or the Share sheet that is open would only get in its way: they close when the tour starts.
+  useEffect(() => { if (tour.status === 'running') { setDrawer(null); setChoosing(false); setSharing(false); } }, [tour.status]);
   // When the Choose notes sheet closes, the focus goes back to the button that opened it. A drawer that closed to make room would otherwise take it to its own button.
   useEffect(() => {
     if (choosing || chooseFrom.current === null) return;
@@ -170,7 +178,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
     // The drawer is a dependency so that, in a window where it hides the shelves, closing it brings the new card into view.
   }, [fresh, drawer]);
 
-  const toggle = (id: DrawerId): void => setDrawer(current => (current === id ? null : id));
+  const toggle = (id: DrawerId): void => { if (id === 'add') setAddTab(DEFAULT_TAB); setDrawer(current => (current === id ? null : id)); };
   /** Opens the Choose notes sheet for the agent that is picked. A drawer that is open closes first, so Escape closes one layer at a time. */
   const choose = (): void => {
     chooseFrom.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -184,6 +192,8 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
     setTouched(current => touch(current, agentId));
     setFresh({ agentId, entryId: null, notes: true });
   };
+  /** "Open a shared file" in the Save points drawer: the Add drawer opens on its shared-file tab. */
+  const openFile = (): void => { setSharing(false); setAddTab('file'); setDrawer('add'); };
   const pick = (id: string): void => { setPicked(current => (current === id ? null : id)); setPickedItem(null); setFresh(null); tourDo('acted'); };
   /** A card went to an agent (or a ready-made agent was copied in): pick that agent, so its shelf shows the new card. */
   const added = ({ agentId, entry }: { readonly agentId: string; readonly entry: { readonly id: string; readonly kind: string } }): void => {
@@ -276,10 +286,10 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
         </aside>
 
         <Drawer open={drawer === 'add'} title={WORDS.label.addDrawer} onClose={() => setDrawer(null)} dataSlot="add">
-          <AddDrawerBody nameOf={nameOf} hintOf={plainHintOf} onOpenCopies={openCopies} line={false} onAdded={added} hideAgents={skipped} />
+          <AddDrawerBody nameOf={nameOf} hintOf={plainHintOf} onOpenCopies={openCopies} line={false} onAdded={added} initialTab={addTab} hideAgents={skipped} {...(lastCopy === undefined ? {} : { lastCopy })} />
         </Drawer>
         <Drawer open={drawer === 'points'} title={WORDS.label.savePoints} onClose={() => setDrawer(null)} dataSlot="points">
-          <SavePoints rows={pointRows} unsaved={changes > 0} onGoBack={id => goBackTo(id, false)} />
+          <SavePoints rows={pointRows} unsaved={changes > 0} onGoBack={id => goBackTo(id, false)} onShare={() => setSharing(true)} onOpenFile={openFile} />
         </Drawer>
         <ChooseNotes open={choosing} agentId={picked} onClose={() => setChoosing(false)} onChosen={chosen} />
       </div>
@@ -287,6 +297,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
       {closingNote ? <div className="hm-toast" role="status" data-open={note ? '' : undefined}>{note ? <><KitIcon name="check" size={20} /><span>{FIND_WORDS.hint.closingNote}</span></> : null}</div> : null}
       <SaveBar model={bar} ticks={ticks} onSave={save} onGoBack={goBack} onDiscard={discard} />
 
+      {sharing ? <ShareSheet world={state.committed} hidden={skipped} unsaved={changes > 0} onClose={() => setSharing(false)} onCopy={setLastCopy} onOpenFile={openFile} /> : null}
       {copiesFor === null ? null : <CopiesDialog itemId={copiesFor} nameOf={nameOf} restoreFocus={restoreCopiesFocus} onClose={() => setCopiesFor(null)} />}
 
       <TourAnnouncer state={tour} />

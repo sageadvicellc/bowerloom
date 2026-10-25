@@ -26,6 +26,8 @@ export interface FileTabProps {
   onAddFile(bundle: Bundle): void;
   /** The text of a small file to offer under "Try a sample file". The Add test page passes one; the shell does not. */
   sampleFile?: string;
+  /** The text of the copy the person just made with Share. The shell passes it so the tab can offer "Open my last copy"; the prototype writes no file, so this is how a copy comes back. */
+  lastCopy?: string;
 }
 
 function Names({ names }: { names: readonly string[] }): ReactElement {
@@ -78,7 +80,7 @@ function Preview({ preview, onAdd, onAnother }: { preview: SharedFilePreview; on
   );
 }
 
-export function FileTab({ world, nameOf, onAddFile, sampleFile }: FileTabProps): ReactElement {
+export function FileTab({ world, nameOf, onAddFile, sampleFile, lastCopy }: FileTabProps): ReactElement {
   const [step, setStep] = useState<FileStep>(FILE_IDLE);
   const [over, setOver] = useState(false);
   const input = useRef<HTMLInputElement>(null);
@@ -102,6 +104,7 @@ export function FileTab({ world, nameOf, onAddFile, sampleFile }: FileTabProps):
   };
   const openFile = (file: File | undefined): void => { if (file !== undefined) void open(() => file.text(), file.size); };
   const openSample = (): void => { if (sampleFile !== undefined) void open(() => Promise.resolve(sampleFile), sampleFile.length); };
+  const openLastCopy = (): void => { if (lastCopy !== undefined) void open(() => Promise.resolve(lastCopy), lastCopy.length); };
   const drop = (e: ReactDragEvent<HTMLDivElement>): void => { e.preventDefault(); setOver(false); openFile(e.dataTransfer.files[0]); };
   const hasFile = (e: ReactDragEvent<HTMLDivElement>): boolean => e.dataTransfer.types.includes('Files');
   const again = (): void => { counter.current += 1; setStep(FILE_IDLE); if (input.current !== null) input.current.value = ''; };
@@ -132,6 +135,7 @@ export function FileTab({ world, nameOf, onAddFile, sampleFile }: FileTabProps):
         <div className="add-actions">
           <Button variant="primary" onClick={() => input.current?.click()}>{L.chooseFile}</Button>
           {sampleFile === undefined ? null : <Button onClick={openSample}>{L.tryFile}</Button>}
+          {lastCopy === undefined ? null : <Button onClick={openLastCopy}>{L.openLastCopy}</Button>}
         </div>
         <input ref={input} type="file" accept=".json,application/json" hidden onChange={e => { openFile(e.currentTarget.files?.[0]); e.currentTarget.value = ''; }} />
       </div>

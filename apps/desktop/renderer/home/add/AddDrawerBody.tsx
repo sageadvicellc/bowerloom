@@ -42,6 +42,8 @@ export interface AddDrawerBodyProps {
   sampleFile?: string;
   /** The ids of agents to keep out of the picker and off the drop targets (the agents of a place skipped in Find). */
   hideAgents?: readonly string[];
+  /** The text of the copy the person just made with Share, offered on the shared-file tab as "Open my last copy". */
+  lastCopy?: string;
   /** False leaves the connect line out. */
   line?: boolean;
   /** Called after a card was added to an agent, or a ready-made agent was copied in (then `agentId` is the new agent). */
@@ -51,7 +53,7 @@ export interface AddDrawerBodyProps {
 interface Note { readonly text: string; readonly key: number }
 const NO_HIDDEN: readonly string[] = Object.freeze([]);
 
-export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT_TAB, onOpenCopies, sampleFile, hideAgents = NO_HIDDEN, line: withLine = true, onAdded }: AddDrawerBodyProps): ReactElement {
+export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT_TAB, onOpenCopies, sampleFile, hideAgents = NO_HIDDEN, lastCopy, line: withLine = true, onAdded }: AddDrawerBodyProps): ReactElement {
   const { state, dispatch } = useProtoStore();
   const world = state.draft;
   const [tab, setTab] = useState<AddTab>(initialTab);
@@ -145,7 +147,7 @@ export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT
         ))}
       </div>
       <div className="add-panel" role="tabpanel" id={`${base}-panel`} aria-labelledby={`${base}-tab-${tab}`} data-tab={tab}>
-        {tab === 'file' ? <FileTab world={world} nameOf={nameOf} onAddFile={bundle => dispatch(importFileAction(bundle))} {...(sampleFile === undefined ? {} : { sampleFile })} /> : (
+        {tab === 'file' ? <FileTab world={world} nameOf={nameOf} onAddFile={bundle => dispatch(importFileAction(bundle))} {...(sampleFile === undefined ? {} : { sampleFile })} {...(lastCopy === undefined ? {} : { lastCopy })} /> : (
           <>
             <p className="kit-hint">{tab === 'agents' ? H.agentsTip : H.dragTip}</p>
             {entries.length === 0 ? <p className="kit-hint">{H.nothingHere}</p> : (

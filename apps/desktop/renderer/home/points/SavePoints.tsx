@@ -1,11 +1,13 @@
 /**
  * The body of the Save points drawer: a list of the points the person has saved, newest first. Each row has its name, when it was made ("just now",
  * "2 saves ago", "when you began"), one short line about what changed, and "Go back to this" (the newest point says "You are here" instead). Going back
- * makes a new point equal to the old one, so nothing is lost and the list only grows. No sharing yet. The rows come from `savePointRows`.
+ * makes a new point equal to the old one, so nothing is lost and the list only grows. The rows come from `savePointRows`. Under the list, Share has its
+ * own section: "Share my agents" and "Open a shared file" (storyboard open question 4: Share lives in this drawer, not in the main window).
  */
 import type { ReactElement } from 'react';
 import type { SavePointRow } from '../../../shared/home/points.js';
 import { Button } from '../kit/Button.js';
+import { ShareSection } from '../share/ShareSection.js';
 import { WORDS } from '../words.js';
 import './points.css';
 
@@ -14,10 +16,15 @@ export interface SavePointsProps {
   /** True when changes wait in the draft: going back would drop them, and the drawer says so. */
   unsaved: boolean;
   onGoBack(id: string): void;
+  /** Called when the person asks to share their agents. */
+  onShare(): void;
+  /** Called when the person asks to open a shared file. */
+  onOpenFile(): void;
 }
 
-export function SavePoints({ rows, unsaved, onGoBack }: SavePointsProps): ReactElement {
-  if (rows.length === 0) return <p className="kit-hint">{WORDS.hint.savePointsEmpty}</p>;
+export function SavePoints({ rows, unsaved, onGoBack, onShare, onOpenFile }: SavePointsProps): ReactElement {
+  const share = <ShareSection onShare={onShare} onOpenFile={onOpenFile} />;
+  if (rows.length === 0) return <><p className="kit-hint">{WORDS.hint.savePointsEmpty}</p>{share}</>;
   return (
     <>
       {unsaved ? <p className="kit-hint pt-warn" role="status">{WORDS.hint.pointsDirty}</p> : null}
@@ -35,6 +42,7 @@ export function SavePoints({ rows, unsaved, onGoBack }: SavePointsProps): ReactE
           </li>
         ))}
       </ol>
+      {share}
     </>
   );
 }

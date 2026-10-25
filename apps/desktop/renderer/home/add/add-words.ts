@@ -30,6 +30,7 @@ export const ADD_WORDS = deepFreeze({
     chooseFile: 'Choose a file',
     chooseAnother: 'Choose another file',
     tryFile: 'Try a sample file',
+    openLastCopy: 'Open my last copy',
     dropArea: 'Shared file drop area',
     addThese: 'Add these',
     willAdd: 'Will be added',
