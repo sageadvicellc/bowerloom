@@ -5,6 +5,8 @@
  */
 import type { LibraryNewItem, LibrarySourceInfo } from '../proto/store-library.js';
 import type { ToolKind } from '../proto/types.js';
+import { reachLine } from './library-model.js';
+import { ACCESS_WORDS } from './plain-details.js';
 import { makeText } from './library-text.js';
 
 /** The kinds a source holds, in the order the sheet groups them. */
@@ -111,6 +113,11 @@ export function kindCounts(source: SampleSource): Readonly<Record<SourceKind, nu
 export function groupedItems(source: SampleSource): readonly { readonly kind: SourceKind; readonly items: readonly SourceItem[] }[] {
   return SOURCE_KINDS.map(kind => ({ kind, items: source.items.filter(i => i.kind === kind) })).filter(g => g.items.length > 0);
 }
+
+/** What a tool of a source reaches, in words; null for anything that is not a tool. */
+export const reachOfItem = (item: SourceItem): string | null => (item.kind === 'tool' && item.toolKind !== undefined ? reachLine(item.toolKind, item.reach) : null);
+/** How far a tool of a source can go, in words ("Can only read"); null for anything that is not a tool. */
+export const abilityOfItem = (item: SourceItem): string | null => (item.kind === 'tool' ? ACCESS_WORDS[item.access ?? 'read-only'] : null);
 
 /** True when the item runs code on its own. Such an item starts unticked. */
 export const runsCodeOf = (item: SourceItem): boolean => item.toolKind === 'hook';

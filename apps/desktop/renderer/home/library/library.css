@@ -1,0 +1,116 @@
+/*
+ * The Library page, its details, its sheet and its dialogs. Everything starts at [data-home] and takes colours, sizes, radii and timing from the shared tokens
+ * (home-tokens.css, the motion tokens): no size, colour or pill style is written here, so a new look for the kit arrives by token. Text is the kit's 14 px at the
+ * least. The list is a column of the kit's own cards, one per thing; the segmented control, the sort toggle, the details blocks, the agent picker and the
+ * dialogs reuse the classes of the map, the details panel and the Add drawer.
+ */
+
+/* ---- The stage: title, tools and the list */
+[data-home] .lb-stage-tools { display: flex; align-items: center; flex-wrap: wrap; gap: var(--hm-space-3) var(--hm-space-5); }
+/* The tabs, the search and the count stay at the top of the stage while the list scrolls under them. */
+[data-home] .lb-sticky { position: sticky; top: calc(-1 * var(--hm-space-6)); z-index: 5; display: flex; flex-direction: column; gap: var(--hm-space-2); margin: 0 calc(-1 * var(--hm-space-6)); padding: var(--hm-space-3) var(--hm-space-6); background: var(--bg); }
+[data-home] .lb-title-line { display: flex; align-items: center; gap: var(--hm-space-2); }
+[data-home] .lb-find { display: flex; align-items: center; flex-wrap: wrap; gap: var(--hm-space-3) var(--hm-space-5); }
+[data-home] .lb-search {
+  box-sizing: border-box; flex: 1 1 var(--hm-card-agent-w); min-width: var(--hm-card-small-w); max-width: calc(var(--hm-card-agent-w) * 1.75); padding: var(--hm-space-3);
+  font: inherit; font-size: var(--hm-text-base); line-height: var(--hm-leading); color: var(--text); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small);
+}
+[data-home] .lb-search::placeholder { color: var(--text-muted); opacity: 1; }
+[data-home] .lb-search:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+[data-home] .lb-count { min-width: var(--hm-card-small-w); }
+
+/* The tabs: one segmented control. The chosen tab is filled and has a real edge, as the sort toggle does. */
+[data-home] .lb-tabs { display: inline-flex; max-width: 100%; flex-wrap: wrap; border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); background: var(--surface); overflow: hidden; }
+[data-home] .lb-tab {
+  display: inline-flex; align-items: center; gap: var(--hm-space-2); padding: var(--hm-space-2) var(--hm-space-4); font: inherit; font-size: var(--hm-text-base); font-weight: 600; line-height: 1.2;
+  color: var(--text); background: transparent; border: 0; cursor: pointer; touch-action: manipulation;
+  transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
+}
+[data-home] .lb-tab + .lb-tab { border-left: 1px solid var(--hm-border); }
+[data-home] .lb-tab:hover { background: var(--accent-soft); }
+[data-home] .lb-tab[aria-selected="true"] { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent-strong); }
+[data-home] .lb-tab:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+[data-home] .lb-tab-count { font-weight: 400; color: var(--text-muted); font-size: var(--hm-text-small); }
+
+/* The list: one card for each thing, two columns when there is room. */
+[data-home] .lb-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(var(--hm-card-agent-w) * 1.5), 1fr)); gap: var(--hm-space-3); align-items: start; }
+[data-home] .lb-row { display: flex; flex-direction: column; align-items: stretch; gap: var(--hm-space-1); min-width: 0; }
+[data-home] .lb-row .kit-card { width: auto; min-width: 0; }
+/* An agent is a large card in the kit; in a list it takes the width of a row, like every other card. */
+[data-home] .lb-row .kit-card[data-size="large"] { width: auto; min-height: var(--hm-card-small-h); padding: var(--hm-space-3); }
+[data-home] .lb-used { padding: 0 var(--hm-space-3); }
+[data-home] .lb-empty { margin: 0; padding: var(--hm-space-5) 0; }
+
+/* ---- The details panel */
+[data-home] .lb-facts { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--hm-space-1) var(--hm-space-4); font-size: var(--hm-text-base); }
+[data-home] .lb-facts dt { color: var(--text-muted); font-size: var(--hm-text-small); font-weight: 600; align-self: center; }
+[data-home] .lb-facts dd { margin: 0; overflow-wrap: anywhere; }
+[data-home] .lb-lines { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--hm-space-1); font-size: var(--hm-text-base); }
+[data-home] .lb-lines li { padding-left: var(--hm-space-3); border-left: 2px solid var(--hm-border); overflow-wrap: anywhere; }
+[data-home] .lb-actions { display: flex; flex-wrap: wrap; gap: var(--hm-space-2); align-items: flex-start; }
+[data-home] .lb-say { margin: 0; font-size: var(--hm-text-base); font-weight: 600; }
+[data-home] .lb-say:empty { display: none; }
+[data-home] .lb-flags { display: flex; flex-wrap: wrap; align-items: center; gap: var(--hm-space-2); }
+[data-home] .lb-picker { width: 100%; }
+
+/* ---- A dialog: the remove question and the update view. They use the Add drawer's scrim and dialog; a small one is two cards wide. */
+[data-home] .add-dialog.lb-dialog-small { width: min(calc(var(--hm-card-agent-w) * 2), 100%); }
+[data-home] .lb-dialog-body { display: flex; flex-direction: column; gap: var(--hm-space-3); padding: var(--hm-space-5); overflow: auto; min-height: 0; }
+[data-home] .lb-dialog-body p { margin: 0; font-size: var(--hm-text-base); }
+[data-home] .lb-dialog-foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--hm-space-3); padding: var(--hm-space-3) var(--hm-space-5); border-top: 1px solid var(--border); }
+[data-home] .lb-names { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--hm-space-1); font-weight: 600; }
+
+/* ---- The web sheet: the kit's drawer stretched over the whole window, like Choose notes. */
+[data-home] .lb-layer { display: contents; }
+[data-home] .lb-layer .kit-drawer { position: fixed; inset: 0; z-index: 40; width: 100%; max-width: none; border-left: 0; box-shadow: none; }
+[data-home] .lb-layer .kit-drawer[data-phase="open"] { animation: kit-sheet-in var(--motion-home-sheet-ms, 0ms) var(--motion-home-sheet-ease, ease-out) both; }
+[data-home] .lb-layer .kit-drawer[data-phase="closing"] { animation: kit-sheet-out var(--motion-panel-close-ms, 0ms) var(--motion-panel-close-ease, ease-in) both; }
+[data-home] .lb-layer .kit-drawer-head { padding: var(--hm-space-2) var(--hm-space-5); }
+[data-home] .lb-layer .kit-drawer-body { padding: 0; gap: 0; overflow: hidden; }
+[data-home] .lb-web { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; min-height: 0; }
+[data-home] .lb-honest, [data-home] .lb-banner {
+  margin: 0; display: flex; align-items: center; gap: var(--hm-space-3); padding: var(--hm-space-3) var(--hm-space-5); font-size: var(--hm-text-base); font-weight: 600;
+  background: var(--quiet-bg); color: var(--quiet-fg); border-bottom: 1px solid var(--hm-border);
+}
+[data-home] .lb-banner { background: var(--warn-bg); color: var(--warn-fg); }
+[data-home] .lb-web-body { overflow-y: auto; padding: var(--hm-space-5); display: flex; flex-direction: column; gap: var(--hm-space-5); min-width: 0; }
+[data-home] .lb-web-body > * { max-width: calc(var(--hm-card-agent-w) * 3); }
+[data-home] .lb-section { display: flex; flex-direction: column; gap: var(--hm-space-3); min-width: 0; }
+[data-home] .lb-field-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--hm-space-3); }
+[data-home] .lb-field-row .lb-search { max-width: none; }
+[data-home] .lb-problem { margin: 0; font-size: var(--hm-text-base); font-weight: 600; color: var(--warn-fg); }
+[data-home] .lb-problem:empty { display: none; }
+[data-home] .lb-dialog-body .add-copies { padding: 0; overflow: visible; }
+[data-home] .lb-sources { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--hm-space-3); }
+[data-home] .lb-source {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--hm-space-3); padding: var(--hm-space-3) var(--hm-space-4);
+  background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow);
+}
+[data-home] .lb-source-text { display: flex; flex-direction: column; gap: var(--hm-space-1); min-width: 0; }
+[data-home] .lb-source-name { margin: 0; font-size: var(--hm-text-base); font-weight: 650; }
+[data-home] .lb-source-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--hm-space-3); }
+[data-home] .lb-source-title { display: flex; flex-direction: column; gap: var(--hm-space-1); min-width: 0; }
+[data-home] .lb-source-title h3 { outline-offset: 4px; width: fit-content; max-width: 100%; border-radius: var(--hm-radius-small); }
+[data-home] .lb-group { display: flex; flex-direction: column; gap: var(--hm-space-3); }
+[data-home] .lb-group > h4 { margin: 0; }
+[data-home] .lb-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--hm-space-2); }
+[data-home] .lb-item { display: flex; flex-direction: column; gap: var(--hm-space-2); padding: var(--hm-space-3) var(--hm-space-4); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); }
+[data-home] .lb-item[data-ticked] { background: var(--accent-soft); border-color: var(--accent-strong); }
+[data-home] .lb-item-main { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: start; gap: var(--hm-space-3); }
+[data-home] .lb-item-main input { flex: none; width: var(--hm-space-5); height: var(--hm-space-5); margin: 0; accent-color: var(--accent-strong); }
+[data-home] .lb-item-main input:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+[data-home] .lb-item-text { display: flex; flex-direction: column; gap: var(--hm-space-1); min-width: 0; }
+[data-home] .lb-item-name { font-size: var(--hm-text-base); font-weight: 650; cursor: pointer; overflow-wrap: anywhere; }
+[data-home] .lb-item-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--hm-space-1) var(--hm-space-3); }
+[data-home] .lb-item-meta .kit-hint { color: var(--text); }
+[data-home] .lb-item .dt-full { padding-left: calc(var(--hm-space-5) + var(--hm-space-3) + var(--hm-space-3)); }
+[data-home] .lb-web-foot { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: var(--hm-space-2) var(--hm-space-3); padding: var(--hm-space-2) var(--hm-space-5); border-top: 1px solid var(--hm-border); background: var(--surface); }
+[data-home] .lb-plan { margin-right: auto; display: flex; flex-direction: column; }
+[data-home] .lb-plan p { margin: 0; }
+
+@media (max-width: 760px) {
+  [data-home] .lb-list { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-home] .lb-tab { animation: none !important; transition: none !important; }
+}

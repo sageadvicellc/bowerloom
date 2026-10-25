@@ -241,14 +241,16 @@ export interface LibraryDetails {
   readonly canCopy: boolean;
 }
 
+/** What a tool reaches, in words: a host, "This computer only" for a hook, or "Nothing outside" for a saved prompt. */
+export function reachLine(toolKind: ToolItem['toolKind'], host: string | undefined): string {
+  if (toolKind === 'prompt') return LIBRARY_MODEL_WORDS.reachNothing;
+  if (toolKind === 'hook') return LIBRARY_MODEL_WORDS.reachComputer;
+  return host === undefined ? LIBRARY_MODEL_WORDS.reachUnknown : `Reaches ${host}`;
+}
+
 function reachOf(item: ToolItem): { reach: string; ability: string } {
   const facts = TOOL_FACTS[item.id], fields = fieldsOf(firstText(item));
-  const access = facts?.access ?? fields.access ?? 'read-only';
-  const host = facts?.reach ?? fields.reach;
-  const reach = item.toolKind === 'prompt' ? LIBRARY_MODEL_WORDS.reachNothing
-    : item.toolKind === 'hook' ? LIBRARY_MODEL_WORDS.reachComputer
-      : host === undefined ? LIBRARY_MODEL_WORDS.reachUnknown : `Reaches ${host}`;
-  return { reach, ability: ACCESS_WORDS[access] };
+  return { reach: reachLine(item.toolKind, facts?.reach ?? fields.reach), ability: ACCESS_WORDS[facts?.access ?? fields.access ?? 'read-only'] };
 }
 
 /** The details of one thing, or null when it is not in the world. */
