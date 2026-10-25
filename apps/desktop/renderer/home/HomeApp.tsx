@@ -5,6 +5,12 @@
  * three shelves of the panel: Skills, Tools and Notes, each card with a quiet "Remove". Removing stages a change in the draft; the Save bar counts the changes and
  * makes a save point, and "Go back" undoes it. The `data-tour` ids stay on the same things: map, agent, shelves, add, save, help (and `bar` on the top bar).
  * Every agent card carries `data-drop-agent` with the agent's id, so a drag can find the card it lands on.
+ * The Add drawer holds the Add body (plain names and hints from the plain layer; a card goes to an agent by the picker or by a drag onto an agent card). After
+ * an add the agent is picked, so its shelf shows the new card, both the agent card and the new card wear the same ring for a few seconds (a line across
+ * the map would cross other cards), and the Save bar says what changed. The
+ * "2 different copies" badge on a shelf card or a drawer card opens the copies dialog, which sits at the top of the page. The Save points drawer lists the
+ * save points with "Go back to this". With the Add or Save points drawer open the page keeps clear of it: the shelves stay beside the map in a wide window and
+ * give way to the drawer in a narrow one. Escape closes the top layer only: the tour, then the dialog, then a drawer.
  */
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
@@ -13,9 +19,16 @@ import { agentCard, ownedAgents, shelvesOf } from '../../shared/home/cards.js';
 import type { ShelfEntry } from '../../shared/home/cards.js';
 import { agentForTour, sortAgents, touch } from '../../shared/home/order.js';
 import type { SortMode } from '../../shared/home/order.js';
+import { barSentence, listChanges } from '../../shared/home/changes.js';
+import { plainHintOf, plainNameOf } from '../../shared/home/plain-names.js';
+import { savePointRows } from '../../shared/home/points.js';
 import { changeCount, saveBar } from '../../shared/home/savebar.js';
 import type { BarPhase } from '../../shared/home/savebar.js';
 import { useProtoStore } from '../proto/session.js';
+import { AddDrawerBody } from './add/AddDrawerBody.js';
+import { dropTargetFor } from './add/dom-helpers.js';
+import { CopiesDialog } from './copies/CopiesDialog.js';
+import { SavePoints } from './points/SavePoints.js';
 import { Button } from './kit/Button.js';
 import { Drawer } from './kit/Drawer.js';
 import { HelpPopover } from './kit/HelpPopover.js';
@@ -35,6 +48,11 @@ import './home.css';
 
 type DrawerId = 'add' | 'points';
 
+/** What was just added, so the page can show where it went: an agent and the card on its shelf (or the agent card itself, for a ready-made agent). */
+interface Fresh { readonly agentId: string; readonly entryId: string | null }
+/** How long the "just added" mark stays, in milliseconds. */
+const FRESH_MS = 5000;
+
 /** The programs a save reaches, in the order the ticks show them, with the words for each. */
 const SAVE_TARGETS: readonly { id: InterfaceId; name: string }[] = Object.freeze([
   { id: 'claude-code', name: WORDS.label.claudeCode },
@@ -45,6 +63,9 @@ const SAVE_TARGETS: readonly { id: InterfaceId; name: string }[] = Object.freeze
 /** Where the focus goes after a change takes the thing that had it: the card that took its place on a shelf, else the panel heading. */
 type FocusAfter = { readonly kind: ShelfEntry['kind']; readonly index: number } | 'heading';
 
+/** The id of the card to mark on the shelves: the one just added, and only while its agent is the one that is picked. */
+const freshOf = (fresh: Fresh | null, picked: string | null): string | null => (fresh !== null && fresh.entryId !== null && fresh.agentId === picked ? fresh.entryId : null);
+
 export function HomeApp(): ReactElement {
   const { state, dispatch } = useProtoStore();
   const [picked, setPicked] = useState<string | null>(null);
@@ -53,9 +74,12 @@ export function HomeApp(): ReactElement {
   const [sort, setSort] = useState<SortMode>('name');
   const [touched, setTouched] = useState<readonly string[]>([]);
   const [phase, setPhase] = useState<BarPhase | null>(null);
+  const [copiesFor, setCopiesFor] = useState<string | null>(null);
+  const [fresh, setFresh] = useState<Fresh | null>(null);
   const [tour, tourDo] = useReducer(tourReduce, TOUR_STEPS, createTour);
   const panel = useRef<HTMLElement>(null);
   const focusAfter = useRef<FocusAfter | null>(null);
+  const copiesFrom = useRef('.hm-panel');
 
   const world = state.draft;
   const owned = useMemo(() => ownedAgents(world), [world]);
@@ -64,7 +88,10 @@ export function HomeApp(): ReactElement {
   const card = agent === null ? null : agentCard(agent);
   const shelves = useMemo(() => (agent === null ? null : shelvesOf(world, agent)), [world, agent]);
   const changes = changeCount(state.committed, state.draft);
-  const bar = saveBar(changes, state.committed.versions.length, phase);
+  const said = useMemo(() => barSentence(listChanges(state.committed, state.draft), changes), [state.committed, state.draft, changes]);
+  const bar = saveBar(changes, state.committed.versions.length, phase, said);
+  const nameOf = useMemo(() => plainNameOf(world), [world]);
+  const pointRows = useMemo(() => (drawer === 'points' ? savePointRows(state.committed, nameOf) : []), [drawer, state.committed, nameOf]);
   const ticks = SAVE_TARGETS.filter(t => state.draft.interfaces.some(i => i.id === t.id && i.installed === 'installed')).map(t => t.name);
   const stepId = currentStep(tour)?.id ?? null;
 
@@ -88,8 +115,39 @@ export function HomeApp(): ReactElement {
     (cards[Math.min(after.index, cards.length - 1)] ?? heading)?.focus();
   });
 
+  // The tour dims the page and points at the bar, so a drawer that is open would only get in its way: it closes when the tour starts.
+  useEffect(() => { if (tour.status === 'running') setDrawer(null); }, [tour.status]);
+  // The mark for a card that was just added goes by itself, and the card is brought into view.
+  useEffect(() => {
+    if (fresh === null) return undefined;
+    dropTargetFor(fresh.agentId)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    if (fresh.entryId !== null) panel.current?.querySelector<HTMLElement>(`[data-entry="${CSS.escape(fresh.entryId)}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const timer = window.setTimeout(() => setFresh(null), FRESH_MS);
+    return () => window.clearTimeout(timer);
+    // The drawer is a dependency so that, in a window where it hides the shelves, closing it brings the new card into view.
+  }, [fresh, drawer]);
+
   const toggle = (id: DrawerId): void => setDrawer(current => (current === id ? null : id));
-  const pick = (id: string): void => { setPicked(current => (current === id ? null : id)); setPickedItem(null); };
+  const pick = (id: string): void => { setPicked(current => (current === id ? null : id)); setPickedItem(null); setFresh(null); };
+  /** A card went to an agent (or a ready-made agent was copied in): pick that agent, so its shelf shows the new card. */
+  const added = ({ agentId, entry }: { readonly agentId: string; readonly entry: { readonly id: string; readonly kind: string } }): void => {
+    setPicked(agentId);
+    setPickedItem(null);
+    setTouched(current => touch(current, agentId));
+    setFresh({ agentId, entryId: entry.kind === 'agent' ? null : entry.id });
+  };
+  /** When the badge is gone (a copy was kept) the card is still there: the focus goes to its name. */
+  const restoreCopiesFocus = (): HTMLElement | null => {
+    const item = copiesFor === null ? undefined : world.items.find(i => i.id === copiesFor);
+    const name = item === undefined ? '' : nameOf(item.name);
+    const cards = [...document.querySelectorAll<HTMLElement>(`${copiesFrom.current} .kit-card-main`)];
+    return cards.find(el => el.textContent === name) ?? null;
+  };
+  /** Opens the dialog for one item, and remembers whether the badge was in a drawer or on the shelves, so the focus goes back to the same place. */
+  const openCopies = (id: string): void => {
+    copiesFrom.current = document.activeElement?.closest('.kit-drawer') != null ? '.kit-drawer' : '.hm-panel';
+    setCopiesFor(id);
+  };
   const remove = (entry: ShelfEntry): void => {
     if (agent === null) return;
     const list = shelves === null ? [] : entry.kind === 'skill' ? shelves.skills : entry.kind === 'tool' ? shelves.tools : shelves.notes;
@@ -97,19 +155,23 @@ export function HomeApp(): ReactElement {
     dispatch(removeAction(agent.id, entry.kind, entry.id));
     setTouched(current => touch(current, agent.id));
     setPickedItem(null);
+    setFresh(null);
   };
   const save = (): void => {
     const savePoints = state.committed.versions.length;
-    dispatch(saveAction(changesCount(changes)));
+    dispatch(saveAction(said ?? changesCount(changes)));
     setPhase({ kind: 'saved', at: savePoints + 1, backTo: state.headVersionId });
+    setFresh(null);
   };
-  const discard = (): void => { focusAfter.current = 'heading'; dispatch(discardAction()); };
-  const goBack = (): void => {
-    if (phase === null || phase.backTo === null) return;
-    focusAfter.current = 'heading';
-    dispatch(goBackAction(phase.backTo));
+  const discard = (): void => { focusAfter.current = 'heading'; setFresh(null); dispatch(discardAction()); };
+  /** Makes the world as it was at one save point. The bar says so, and the focus stays where the person pressed. */
+  const goBackTo = (versionId: string, focus: boolean): void => {
+    if (focus) focusAfter.current = 'heading';
+    setFresh(null);
+    dispatch(goBackAction(versionId));
     setPhase({ kind: 'back', at: state.committed.versions.length + 1, backTo: null });
   };
+  const goBack = (): void => { if (phase !== null && phase.backTo !== null) goBackTo(phase.backTo, true); };
 
   return (
     <div className="hm-root" data-home="">
@@ -121,7 +183,7 @@ export function HomeApp(): ReactElement {
         <HelpPopover label={WORDS.label.help} text={WORDS.popover.help} align="end" dataTour="help" action={{ label: WORDS.label.showTour, onAction: () => tourDo('replay') }} />
       </header>
 
-      <div className="hm-body">
+      <div className="hm-body" data-drawer={drawer ?? undefined}>
         <main id="main" className="hm-stage">
           <div className="hm-stage-head">
             <div className="hm-stage-title">
@@ -135,7 +197,7 @@ export function HomeApp(): ReactElement {
               const words = agentCard(a);
               return (
                 <li key={a.id}>
-                  <ItemCard kind="agent" name={words.name} hint={words.hint} selected={a.id === picked} onSelect={() => pick(a.id)} dropAgent={a.id} {...(i === 0 ? { dataTour: 'agent' } : {})} />
+                  <ItemCard kind="agent" name={words.name} hint={words.hint} selected={a.id === picked} onSelect={() => pick(a.id)} dropAgent={a.id} fresh={fresh !== null && fresh.agentId === a.id} {...(i === 0 ? { dataTour: 'agent' } : {})} />
                 </li>
               );
             })}
@@ -147,20 +209,22 @@ export function HomeApp(): ReactElement {
             <h2 className="kit-heading" id="hm-panel-title" tabIndex={-1}>{card === null ? WORDS.label.pickAnAgent : card.name}</h2>
             <p className="kit-hint">{card === null ? WORDS.hint.panel : card.hint}</p>
           </div>
-          <Shelf title={WORDS.label.skills} entries={shelves?.skills ?? []} selectedId={pickedItem} onSelect={setPickedItem} onRemove={remove} emptyText={WORDS.hint.emptyShelf} />
-          <Shelf title={WORDS.label.tools} entries={shelves?.tools ?? []} selectedId={pickedItem} onSelect={setPickedItem} onRemove={remove} emptyText={WORDS.hint.emptyShelf} help={{ label: WORDS.label.aboutTools, text: WORDS.popover.connection }} />
-          <Shelf title={WORDS.label.notes} entries={shelves?.notes ?? []} selectedId={pickedItem} onSelect={setPickedItem} onRemove={remove} emptyText={WORDS.hint.emptyShelf} />
+          <Shelf title={WORDS.label.skills} entries={shelves?.skills ?? []} selectedId={pickedItem} onSelect={setPickedItem} onRemove={remove} onBadgePress={entry => openCopies(entry.id)} freshId={freshOf(fresh, picked)} emptyText={WORDS.hint.emptyShelf} />
+          <Shelf title={WORDS.label.tools} entries={shelves?.tools ?? []} selectedId={pickedItem} onSelect={setPickedItem} onRemove={remove} onBadgePress={entry => openCopies(entry.id)} freshId={freshOf(fresh, picked)} emptyText={WORDS.hint.emptyShelf} help={{ label: WORDS.label.aboutTools, text: WORDS.popover.connection }} />
+          <Shelf title={WORDS.label.notes} entries={shelves?.notes ?? []} selectedId={pickedItem} onSelect={setPickedItem} onRemove={remove} freshId={freshOf(fresh, picked)} emptyText={WORDS.hint.emptyShelf} />
         </aside>
 
         <Drawer open={drawer === 'add'} title={WORDS.label.addDrawer} onClose={() => setDrawer(null)} dataSlot="add">
-          <p className="kit-hint">{WORDS.hint.addEmpty}</p>
+          <AddDrawerBody nameOf={nameOf} hintOf={plainHintOf} onOpenCopies={openCopies} line={false} onAdded={added} />
         </Drawer>
         <Drawer open={drawer === 'points'} title={WORDS.label.savePoints} onClose={() => setDrawer(null)} dataSlot="points">
-          <p className="kit-hint">{WORDS.hint.savePointsEmpty}</p>
+          <SavePoints rows={pointRows} unsaved={changes > 0} onGoBack={id => goBackTo(id, false)} />
         </Drawer>
       </div>
 
       <SaveBar model={bar} ticks={ticks} onSave={save} onGoBack={goBack} onDiscard={discard} />
+
+      {copiesFor === null ? null : <CopiesDialog itemId={copiesFor} nameOf={nameOf} restoreFocus={restoreCopiesFocus} onClose={() => setCopiesFor(null)} />}
 
       <TourAnnouncer state={tour} />
       {tour.status === 'running' ? <TourOverlay state={tour} onNext={() => tourDo('next')} onBack={() => tourDo('back')} onSkip={() => tourDo('skip')} /> : null}

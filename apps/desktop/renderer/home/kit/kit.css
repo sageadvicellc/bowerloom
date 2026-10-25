@@ -84,7 +84,8 @@
 [data-home] .kit-card[data-size="small"] .kit-card-main { align-self: center; grid-row: 1; grid-column: 2; }
 [data-home] .kit-card[data-size="small"] .kit-card-hint { grid-row: 2; grid-column: 2 / -1; }
 [data-home] .kit-card[data-size="small"] .kit-card-badge { grid-row: 3; grid-column: 2 / -1; }
-/* A card narrower than 15 rem has no room for a badge beside the text column, so the badge takes the whole row. (A container query styles what is inside the card, never the card.) */
+/* The badge sits under the hint in the text column, in one column with the name and the hint. A card narrower than 15 rem has no room for that, so the badge
+   takes the whole row under the tile. A container query styles what is inside the card (the card is the container), never the card itself. */
 @container (max-width: 15rem) {
   [data-home] .kit-card[data-size="small"] .kit-card-badge { grid-column: 1 / -1; }
 }
@@ -100,6 +101,9 @@
 }
 [data-home] .kit-remove:hover { color: var(--text); background: var(--accent-soft); }
 [data-home] .kit-remove:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; color: var(--text); }
+
+/* A card that was just added: a solid ring and a soft fill, drawn for a few seconds by the page (no motion is needed to see it). */
+[data-home] .kit-card[data-fresh] { background: var(--accent-soft); border-color: var(--accent-strong); box-shadow: 0 0 0 3px var(--accent-strong), var(--hm-shadow-lift); }
 
 /* ---- Shelf */
 [data-home] .kit-shelf { display: flex; flex-direction: column; gap: var(--hm-space-3); align-items: flex-start; }

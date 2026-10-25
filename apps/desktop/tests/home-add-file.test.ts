@@ -1,12 +1,12 @@
-// "From a shared file": what opening a file would do, in counts and names, and the store that can stage it.
+// "From a shared file": what opening a file would do, in counts and names, and the store's own action that adds it.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildBundle } from '../shared/proto/bundle.js';
 import { bundleText } from '../shared/proto/export-flow.js';
-import { createStore, isDirty } from '../shared/proto/store.js';
+import { createStore, isDirty, reduceStore } from '../shared/proto/store.js';
 import type { Bundle, World } from '../shared/proto/types.js';
 import { FILE_KIND_ORDER, FILE_MAX_BYTES, addsNothing, capList, countOf, readSharedFile } from '../shared/home/add-file.js';
-import { createAddStore, stageBundle } from '../shared/home/add-store.js';
+import { importFileAction } from '../renderer/home/store-actions.js';
 import { changeCount, plainName } from '../shared/home/add-model.js';
 import { addDemoWorld } from '../renderer/home/add/add-demo-world.js';
 import { sharedFileSample } from '../renderer/home/add/add-sample-file.js';
@@ -25,10 +25,10 @@ test('a file with new skills and an agent says what will be added, in counts and
 
 test('the same file opened again says everything is already here and adds nothing', () => {
   const world = addDemoWorld();
-  const store = createAddStore(world);
+  const store = createStore(world);
   const first = readSharedFile(sharedFileSample(), store.getState().draft, plainName);
   assert.ok(first.ok);
-  store.stageBundle(first.preview.bundle);
+  store.dispatch(importFileAction(first.preview.bundle));
   const second = readSharedFile(sharedFileSample(), store.getState().draft, plainName);
   assert.ok(second.ok);
   assert.equal(addsNothing(second.preview), true);
@@ -70,14 +70,14 @@ test('reading a file changes nothing: the world is the same object afterwards', 
   assert.equal(JSON.stringify(world), before);
 });
 
-test('staging a bundle adds its items to the draft as one change that can be gone back, and saves nothing', () => {
-  const store = createAddStore(addDemoWorld());
+test('importing a bundle adds its items to the draft as one change that can be gone back, and saves nothing', () => {
+  const store = createStore(addDemoWorld());
   const result = readSharedFile(sharedFileSample(), store.getState().draft, plainName);
   assert.ok(result.ok);
   const before = store.getState();
   let told = 0;
   store.subscribe(() => { told += 1; });
-  store.stageBundle(result.preview.bundle);
+  store.dispatch(importFileAction(result.preview.bundle));
   const after = store.getState();
   assert.equal(told, 1);
   assert.equal(isDirty(after), true);
@@ -89,27 +89,18 @@ test('staging a bundle adds its items to the draft as one change that can be gon
   assert.equal(store.getState().draft, before.draft);
 });
 
-test('staging a bundle that adds nothing returns the very same state and tells nobody', () => {
-  const store = createAddStore(addDemoWorld());
+test('importing a bundle that adds nothing returns the very same state and tells nobody', () => {
+  const store = createStore(addDemoWorld());
   const result = readSharedFile(sharedFileSample(), store.getState().draft, plainName);
   assert.ok(result.ok);
-  store.stageBundle(result.preview.bundle);
+  store.dispatch(importFileAction(result.preview.bundle));
   const once = store.getState();
   let told = 0;
   store.subscribe(() => { told += 1; });
-  store.stageBundle(result.preview.bundle);
+  store.dispatch(importFileAction(result.preview.bundle));
   assert.equal(store.getState(), once);
   assert.equal(told, 0);
-  assert.equal(stageBundle(once, result.preview.bundle), once);
-});
-
-test('the wrapped store still takes every ordinary action', () => {
-  const world = addDemoWorld();
-  const store = createAddStore(world);
-  const plain = createStore(world);
-  const action = { type: 'attachSkill', agentId: 'agent-inbox', skillId: 'skill-reply' } as const;
-  store.dispatch(action); plain.dispatch(action);
-  assert.deepEqual(store.getState().draft, plain.getState().draft);
+  assert.equal(reduceStore(once, importFileAction(result.preview.bundle)), once);
 });
 
 test('what will be added is grouped by kind: skills, then agents, then tools, then notes', () => {

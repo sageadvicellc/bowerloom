@@ -7,7 +7,8 @@
  * Nothing here reads a clock or a random number, and nothing changes an input: every update builds new objects.
  * An action that would change nothing (or that names something that is not there) returns the very same state, so it leaves no step to undo.
  */
-import type { AccessClass, AgentItem, HarnessItem, OverrideMode, SkillItem, Slice, SliceRule, Version, World } from './types.js';
+import type { AccessClass, AgentItem, Bundle, HarnessItem, OverrideMode, SkillItem, Slice, SliceRule, Version, World } from './types.js';
+import { commitImport } from './bundle.js';
 import { globalScope, reachesScope, uniqueId } from './common.js';
 import { LIBRARY_CATALOG, catalogAgentPath, catalogAgentText, catalogHash, catalogItemId, catalogSkillPath } from './library-catalog.js';
 import { liveMatch } from './slicematch.js';
@@ -29,6 +30,7 @@ export type StoreAction =
   | { readonly type: 'pinSlice'; readonly sliceId: string }
   | { readonly type: 'unpinSlice'; readonly sliceId: string }
   | { readonly type: 'assignSlice'; readonly agentId: string; readonly sliceId: string | null }
+  | { readonly type: 'importBundle'; readonly bundle: Bundle }
   | { readonly type: 'undo' }
   | { readonly type: 'redo' }
   | { readonly type: 'discard' }
@@ -257,6 +259,10 @@ function editDraft(world: World, action: StoreAction): World {
         }
         return a.definition.sliceId === action.sliceId ? a : { ...a, definition: { ...a.definition, sliceId: action.sliceId } };
       });
+    }
+    case 'importBundle': {
+      // A bundle that cannot be read leaves the draft as it is.
+      try { return commitImport(action.bundle, world); } catch { return world; }
     }
     default: return world;
   }

@@ -15,7 +15,11 @@ export type BarMode = 'clean' | 'dirty' | 'saved' | 'back';
 export interface BarPhase { readonly kind: 'saved' | 'back'; readonly at: number; /** The save point "Go back" returns to, or null when there is none. */ readonly backTo: string | null }
 
 /** What the Save bar offers in its current mode. */
-export interface SaveBarModel { readonly mode: BarMode; readonly changes: number; readonly canSave: boolean; readonly canGoBack: boolean; readonly canDiscard: boolean }
+export interface SaveBarModel {
+  readonly mode: BarMode; readonly changes: number; readonly canSave: boolean; readonly canGoBack: boolean; readonly canDiscard: boolean;
+  /** What the one or two changes are, in a sentence (`barSentence`), or null when the bar says "N changes". */
+  readonly said: string | null;
+}
 
 /** The words of the two modes that the bar says without a number. `renderer/home/words.ts` lists them in `WORDS`. */
 export const BAR_WORDS = Object.freeze({ saved: 'Saved', back: 'Back to how it was' });
@@ -58,10 +62,10 @@ export function changeCount(committed: World, draft: World): number {
 }
 
 /** The mode of the bar and what its buttons may do. */
-export function saveBar(changes: number, savePoints: number, phase: BarPhase | null): SaveBarModel {
-  if (changes > 0) return { mode: 'dirty', changes, canSave: true, canGoBack: false, canDiscard: true };
-  if (phase !== null && phase.at === savePoints) return { mode: phase.kind, changes: 0, canSave: false, canGoBack: phase.kind === 'saved' && phase.backTo !== null, canDiscard: false };
-  return { mode: 'clean', changes: 0, canSave: false, canGoBack: false, canDiscard: false };
+export function saveBar(changes: number, savePoints: number, phase: BarPhase | null, said: string | null = null): SaveBarModel {
+  if (changes > 0) return { mode: 'dirty', changes, canSave: true, canGoBack: false, canDiscard: true, said };
+  if (phase !== null && phase.at === savePoints) return { mode: phase.kind, changes: 0, canSave: false, canGoBack: phase.kind === 'saved' && phase.backTo !== null, canDiscard: false, said: null };
+  return { mode: 'clean', changes: 0, canSave: false, canGoBack: false, canDiscard: false, said: null };
 }
 
 /** The first save point of a session: the world as it was found. Without it the first Save could not be gone back from. A world that has save points is left alone. */

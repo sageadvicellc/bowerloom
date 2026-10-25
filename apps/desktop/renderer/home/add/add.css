@@ -25,9 +25,6 @@
 [data-home] .add-row-card { flex: 1 1 0; min-width: var(--hm-card-small-w); }
 [data-home] .add-row[data-add-kind="agent"] .add-row-card { flex: 0 0 auto; min-width: 0; }
 [data-home] .add-row-main > .kit-button { flex: none; }
-/* The kit lays a small card out in two columns and puts its badge below, but its wide-card rule never reaches the card itself, so a card this wide would lose its name to the badge. The badge always sits below the hint here. */
-[data-home] .add-row .kit-card[data-size="small"] .kit-card-badge { grid-column: 2 / -1; grid-row: auto; }
-[data-home] .add-row .kit-card[data-size="small"] .kit-card-hint { grid-column: 2 / -1; }
 /* A hint in the drawer is shown whole (up to 12 words), so the card grows instead of cutting it at two lines. */
 [data-home] .add-row .kit-card-hint { display: block; overflow: visible; -webkit-line-clamp: unset; line-clamp: unset; }
 

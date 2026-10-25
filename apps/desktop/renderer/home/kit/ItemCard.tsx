@@ -35,14 +35,16 @@ export interface ItemCardProps {
   dropAgent?: string;
   /** The tour finds the card by this id. */
   dataTour?: string;
+  /** True for a moment after something was added to this card's place, so the person sees where it went. */
+  fresh?: boolean;
   /** For the kit gallery only: draws a state that needs the pointer or the keyboard. */
   demo?: 'hover' | 'focus';
 }
 
-export function ItemCard({ kind, name, hint, badge, selected, onSelect, onDragStart, onBadgePress, onRemove, dropAgent, dataTour, demo }: ItemCardProps): ReactElement {
+export function ItemCard({ kind, name, hint, badge, selected, onSelect, onDragStart, onBadgePress, onRemove, dropAgent, dataTour, fresh, demo }: ItemCardProps): ReactElement {
   const hintId = useId(), nameId = useId(), removeId = useId();
   return (
-    <div className="kit-card" data-kind={kind} data-size={isLarge(kind) ? 'large' : 'small'} data-selected={selected ? '' : undefined} data-removable={onRemove === undefined ? undefined : ''} data-demo={demo} data-tour={dataTour} data-drop-agent={dropAgent} onPointerDown={onDragStart}>
+    <div className="kit-card" data-kind={kind} data-size={isLarge(kind) ? 'large' : 'small'} data-selected={selected ? '' : undefined} data-removable={onRemove === undefined ? undefined : ''} data-demo={demo} data-fresh={fresh === true ? '' : undefined} data-tour={dataTour} data-drop-agent={dropAgent} onPointerDown={onDragStart}>
       {isLarge(kind) ? <Avatar name={name} /> : <span className="kit-tile" aria-hidden="true"><KitIcon name={kind} size={20} /></span>}
       <button type="button" className="kit-card-main" id={nameId} aria-pressed={selected} aria-describedby={hint === undefined ? undefined : hintId} onClick={onSelect}>{name}</button>
       {hint === undefined ? null : <p className="kit-hint kit-card-hint" id={hintId}>{hint}</p>}

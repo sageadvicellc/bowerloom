@@ -77,14 +77,14 @@ test('other kinds of change count one each: a skill added to an agent, an item r
 });
 
 test('the bar is clean, dirty, saved or back, and a save or a go-back goes stale as soon as anything else happens', () => {
-  assert.deepEqual(saveBar(0, 1, null), { mode: 'clean', changes: 0, canSave: false, canGoBack: false, canDiscard: false });
-  assert.deepEqual(saveBar(3, 1, null), { mode: 'dirty', changes: 3, canSave: true, canGoBack: false, canDiscard: true });
+  assert.deepEqual(saveBar(0, 1, null), { mode: 'clean', changes: 0, canSave: false, canGoBack: false, canDiscard: false, said: null });
+  assert.deepEqual(saveBar(3, 1, null), { mode: 'dirty', changes: 3, canSave: true, canGoBack: false, canDiscard: true, said: null });
   const saved = { kind: 'saved', at: 2, backTo: 'v1' } as const;
-  assert.deepEqual(saveBar(0, 2, saved), { mode: 'saved', changes: 0, canSave: false, canGoBack: true, canDiscard: false });
+  assert.deepEqual(saveBar(0, 2, saved), { mode: 'saved', changes: 0, canSave: false, canGoBack: true, canDiscard: false, said: null });
   assert.equal(saveBar(0, 3, saved).mode, 'clean', 'another save point came after: the old "Saved" is stale');
   assert.equal(saveBar(2, 2, saved).mode, 'dirty', 'a change after a save shows the changes');
   assert.equal(saveBar(0, 2, { kind: 'saved', at: 2, backTo: null }).canGoBack, false, 'no earlier save point, no Go back');
-  assert.deepEqual(saveBar(0, 3, { kind: 'back', at: 3, backTo: null }), { mode: 'back', changes: 0, canSave: false, canGoBack: false, canDiscard: false });
+  assert.deepEqual(saveBar(0, 3, { kind: 'back', at: 3, backTo: null }), { mode: 'back', changes: 0, canSave: false, canGoBack: false, canDiscard: false, said: null });
 });
 
 test('the words of the bar are plain, within the text budget, and built from WORDS', () => {

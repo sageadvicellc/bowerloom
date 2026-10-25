@@ -21,10 +21,10 @@ export interface SaveBarProps {
   onDiscard(): void;
 }
 
-/** What the bar says in its current mode. */
+/** What the bar says in its current mode: for one or two changes, what they are; for more, how many. */
 export function barText(model: SaveBarModel): string {
   switch (model.mode) {
-    case 'dirty': return changesCount(model.changes);
+    case 'dirty': return model.said ?? changesCount(model.changes);
     case 'saved': return WORDS.label.saved;
     case 'back': return WORDS.label.wentBack;
     case 'clean': return CARD_WORDS.saveClean;

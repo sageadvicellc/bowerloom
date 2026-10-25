@@ -12,6 +12,13 @@ html, body { height: 100%; }
 [data-home] .hm-spacer { flex: 1; }
 
 [data-home] .hm-body { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--hm-panel-w); min-height: 0; overflow: hidden; }
+/* A drawer (Add, Save points) takes its own column at the right edge. The map and the shelves keep clear of it, so an agent card stays within reach of a drag and
+   the shelf that changes stays in view. In a window too narrow for all three, the shelves give way to the drawer until it closes. */
+[data-home] .hm-body[data-drawer] { padding-right: var(--hm-drawer-w); }
+@media (max-width: 1199px) {
+  [data-home] .hm-body[data-drawer] { grid-template-columns: minmax(0, 1fr); }
+  [data-home] .hm-body[data-drawer] .hm-panel { display: none; }
+}
 [data-home] .hm-stage { overflow-y: auto; padding: var(--hm-space-6); display: flex; flex-direction: column; gap: var(--hm-space-5); min-width: 0; }
 [data-home] .hm-stage-head { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: var(--hm-space-3) var(--hm-space-5); }
 [data-home] .hm-stage-title { display: flex; flex-direction: column; gap: var(--hm-space-1); }

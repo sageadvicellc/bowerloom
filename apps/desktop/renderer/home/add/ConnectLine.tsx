@@ -13,6 +13,8 @@ import { dropTargetFor } from './dom-helpers.js';
 interface LineView { readonly key: number; readonly d: string; readonly end: { x: number; y: number }; readonly leaving: boolean }
 
 const boxOf = (el: Element): { x: number; y: number; w: number; h: number } => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
+/** True when the element takes room on the page. An element that is hidden has no box, and a line to it would end in the corner of the window. */
+const shown = (el: Element): boolean => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
 /** How many frames to wait for an agent card that is not on the page yet (a newly added agent). */
 const WAIT_FRAMES = 12;
 
@@ -35,6 +37,8 @@ export function useConnectLine(host: () => Element | null): { show(from: Element
       frame.current = 0;
       const target = dropTargetFor(agentId);
       if (target === null || !from.isConnected) { if (left > 0) frame.current = requestAnimationFrame(() => draw(left - 1)); return; }
+      // An end that is hidden has no box, and a line to it would end in the corner of the window.
+      if (!shown(from) || !shown(target)) return;
       const path = connectPath(boxOf(from), boxOf(target));
       counter.current += 1;
       setLine({ key: counter.current, d: path.d, end: path.end, leaving: false });

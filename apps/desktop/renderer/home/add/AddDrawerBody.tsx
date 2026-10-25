@@ -4,17 +4,20 @@
  * made through the store's own action, so the Save bar counts it and "Go back" undoes it. A line joins the card to the agent for a moment; with less
  * motion a plain note says the same. Ready-made agents sit under Agents, because the map shows the person's own agents only.
  *
- * To use it, put it inside a `Drawer` under a `ProtoProvider`, give each agent card on the page a `data-drop-agent="<agent id>"` element, and pass
- * `stageFile` (adds a shared file's bundle to the draft). `nameOf` turns a stored name into the words on a card.
+ * To use it, put it inside a `Drawer` under a `ProtoProvider` and give each agent card on the page a `data-drop-agent="<agent id>"` element. `nameOf` and
+ * `hintOf` turn a stored name and an id into the words on a card (the plain layer). A shared file is added with the store's own `importBundle` action.
+ * The connect line runs from the card in the drawer to the agent card; `line={false}` leaves it out (the real shell marks the agent and the new shelf card
+ * instead, because there the shelves sit between the drawer and the map and a line would cross other cards). `onAdded` tells the page which agent got
+ * something, so it can show the result.
  */
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react';
 import { createPortal } from 'react-dom';
 import { SHELF_LIMIT, visibleCount } from '../../../shared/home/cards.js';
 import { ADD_TABS, DEFAULT_TAB, addAction, agentChoices, entriesFor, installAction, newAgentId, nextTab, plainName, stageAdd, stageInstall } from '../../../shared/home/add-model.js';
-import type { AddEntry, AddTab, AgentChoice, NameOf } from '../../../shared/home/add-model.js';
-import type { Bundle } from '../../../shared/proto/types.js';
+import type { AddEntry, AddTab, AgentChoice, HintOf, NameOf } from '../../../shared/home/add-model.js';
 import { useProtoStore } from '../../proto/session.js';
+import { importFileAction } from '../store-actions.js';
 import { DragFollower } from '../kit/DragFollower.js';
 import { useCardDrag } from '../kit/drag.js';
 import { Button } from '../kit/Button.js';
@@ -30,18 +33,22 @@ const TAB_LABEL: Readonly<Record<AddTab, string>> = { skills: L.skills, tools: L
 
 export interface AddDrawerBodyProps {
   nameOf?: NameOf;
-  /** Adds what a shared file holds to the draft. */
-  stageFile(bundle: Bundle): void;
+  /** The plain hint of a card by its kind and id. Without it a card shows the item's own description. */
+  hintOf?: HintOf;
   initialTab?: AddTab;
   /** When given, the "2 different copies" badge on a card opens the dialog for that item. */
   onOpenCopies?(itemId: string): void;
   /** The text of a small shared file, offered as "Try a sample file". Only the Add test page passes it. */
   sampleFile?: string;
+  /** False leaves the connect line out. */
+  line?: boolean;
+  /** Called after a card was added to an agent, or a ready-made agent was copied in (then `agentId` is the new agent). */
+  onAdded?(info: { readonly agentId: string; readonly entry: AddEntry }): void;
 }
 
 interface Note { readonly text: string; readonly key: number }
 
-export function AddDrawerBody({ nameOf = plainName, stageFile, initialTab = DEFAULT_TAB, onOpenCopies, sampleFile }: AddDrawerBodyProps): ReactElement {
+export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT_TAB, onOpenCopies, sampleFile, line: withLine = true, onAdded }: AddDrawerBodyProps): ReactElement {
   const { state, dispatch } = useProtoStore();
   const world = state.draft;
   const [tab, setTab] = useState<AddTab>(initialTab);
@@ -53,13 +60,15 @@ export function AddDrawerBody({ nameOf = plainName, stageFile, initialTab = DEFA
   const base = useId();
   const line = useConnectLine(() => root.current?.closest('[data-home]') ?? null);
 
-  const entries = useMemo(() => entriesFor(world, tab, nameOf), [world, tab, nameOf]);
+  const entries = useMemo(() => entriesFor(world, tab, nameOf, hintOf), [world, tab, nameOf, hintOf]);
   const byId = useMemo(() => new Map(entries.map(e => [e.id, e])), [entries]);
 
   const say = (text: string): void => { noted.current += 1; setNote({ text, key: noted.current }); };
   const rowOf = (id: string): HTMLElement | null => root.current?.querySelector<HTMLElement>(`[data-add-id="${CSS.escape(id)}"]`) ?? null;
   const cardIn = (row: HTMLElement | null): Element | null => row?.querySelector('.kit-card') ?? null;
 
+  /** The line from the card to the agent it went to, unless the page leaves it out. */
+  const drawLine = (agentId: string, row: HTMLElement | null): void => { if (withLine) line.show(cardIn(row), agentId); };
   /** Adds one skill, tool or note set to one agent, and tells the person. */
   const addTo = (entry: AddEntry, agent: AgentChoice, row: HTMLElement | null): void => {
     const result = stageAdd(state, agent.id, entry);
@@ -69,7 +78,8 @@ export function AddDrawerBody({ nameOf = plainName, stageFile, initialTab = DEFA
     if (action === null) return;
     dispatch(action);
     say(addedTo(agent.name));
-    line.show(cardIn(row), agent.id);
+    drawLine(agent.id, row);
+    onAdded?.({ agentId: agent.id, entry });
   };
   /** Copies one ready-made agent into the person's own agents. */
   const install = (entry: AddEntry, row: HTMLElement | null): void => {
@@ -79,7 +89,7 @@ export function AddDrawerBody({ nameOf = plainName, stageFile, initialTab = DEFA
     const made = newAgentId(world, result.state.draft);
     dispatch(action);
     say(agentAdded(entry.name));
-    if (made !== null) line.show(cardIn(row), made);
+    if (made !== null) { drawLine(made, row); onAdded?.({ agentId: made, entry }); }
   };
 
   const drag = useCardDrag({
@@ -132,7 +142,7 @@ export function AddDrawerBody({ nameOf = plainName, stageFile, initialTab = DEFA
         ))}
       </div>
       <div className="add-panel" role="tabpanel" id={`${base}-panel`} aria-labelledby={`${base}-tab-${tab}`} data-tab={tab}>
-        {tab === 'file' ? <FileTab world={world} nameOf={nameOf} stageFile={stageFile} {...(sampleFile === undefined ? {} : { sampleFile })} /> : (
+        {tab === 'file' ? <FileTab world={world} nameOf={nameOf} onAddFile={bundle => dispatch(importFileAction(bundle))} {...(sampleFile === undefined ? {} : { sampleFile })} /> : (
           <>
             <p className="kit-hint">{tab === 'agents' ? H.agentsTip : H.dragTip}</p>
             {entries.length === 0 ? <p className="kit-hint">{H.nothingHere}</p> : (

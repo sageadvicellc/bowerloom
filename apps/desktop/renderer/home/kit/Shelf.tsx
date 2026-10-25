@@ -24,14 +24,18 @@ export interface ShelfProps {
   onBadgePress?(entry: ShelfEntry): void;
   /** Gives every card a quiet "Remove" button. */
   onRemove?(entry: ShelfEntry): void;
+  /** The id of the card that was just added, if it is on this shelf. */
+  freshId?: string | null;
   /** Starts with the long list open (the kit gallery shows both). */
   defaultExpanded?: boolean;
 }
 
-export function Shelf({ title, entries, selectedId, onSelect, emptyText, help, limit = SHELF_LIMIT, level = 3, onDragStart, onBadgePress, onRemove, defaultExpanded = false }: ShelfProps): ReactElement {
+export function Shelf({ title, entries, selectedId, onSelect, emptyText, help, limit = SHELF_LIMIT, level = 3, onDragStart, onBadgePress, onRemove, freshId = null, defaultExpanded = false }: ShelfProps): ReactElement {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const headingId = useId();
-  const shown = visibleCount(entries.length, expanded, limit);
+  // A card that was just added is never hidden behind "Show more".
+  const hiddenFresh = freshId !== null && entries.findIndex(e => e.id === freshId) >= limit;
+  const shown = visibleCount(entries.length, expanded || hiddenFresh, limit);
   const Heading = level === 2 ? 'h2' : level === 4 ? 'h4' : 'h3';
   return (
     <section className="kit-shelf" aria-labelledby={headingId}>
@@ -42,8 +46,8 @@ export function Shelf({ title, entries, selectedId, onSelect, emptyText, help, l
       {entries.length === 0 ? <p className="kit-hint">{emptyText}</p> : (
         <ul className="kit-shelf-list">
           {entries.slice(0, shown).map(entry => (
-            <li key={entry.id}>
-              <ItemCard kind={entry.kind} name={entry.name} selected={entry.id === selectedId} onSelect={() => onSelect(entry.id)}
+            <li key={entry.id} data-entry={entry.id}>
+              <ItemCard kind={entry.kind} name={entry.name} selected={entry.id === selectedId} onSelect={() => onSelect(entry.id)} fresh={entry.id === freshId}
                 {...(entry.hint === undefined ? {} : { hint: entry.hint })}
                 {...(onRemove === undefined ? {} : { onRemove: () => onRemove(entry) })}
                 {...(entry.badge === undefined ? {} : { badge: entry.badge })}
@@ -53,7 +57,7 @@ export function Shelf({ title, entries, selectedId, onSelect, emptyText, help, l
           ))}
         </ul>
       )}
-      {entries.length > limit ? <Button aria-expanded={expanded} onClick={() => setExpanded(e => !e)}>{expanded ? WORDS.label.showLess : WORDS.label.showMore}</Button> : null}
+      {entries.length > limit ? <Button aria-expanded={expanded || hiddenFresh} onClick={() => setExpanded(e => !e)}>{expanded || hiddenFresh ? WORDS.label.showLess : WORDS.label.showMore}</Button> : null}
     </section>
   );
 }

@@ -77,20 +77,26 @@ export interface AddEntry { readonly id: string; readonly kind: AddKind; readonl
 const byName = (a: AddEntry, b: AddEntry): number => a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
 const withBadge = (item: HarnessItem): { badge?: CardBadge } => { const badge = itemBadge(item); return badge === null ? {} : { badge }; };
 
-function skillEntry(item: Extract<HarnessItem, { kind: 'skill' }>, nameOf: NameOf): AddEntry {
-  return { id: item.id, kind: 'skill', name: nameOf(item.name), hint: clampWords(item.description.trim() === '' ? ADD_MODEL_WORDS.skillFallback : item.description), ready: item.library !== null, ...withBadge(item) };
+/** The plain hint of a card by its kind and id, when the screen has a plain layer. Null means "use the item's own words". */
+export type HintOf = (kind: AddKind, id: string) => string | null;
+const NO_HINTS: HintOf = () => null;
+
+function skillEntry(item: Extract<HarnessItem, { kind: 'skill' }>, nameOf: NameOf, hintOf: HintOf): AddEntry {
+  const hint = hintOf('skill', item.id) ?? clampWords(item.description.trim() === '' ? ADD_MODEL_WORDS.skillFallback : item.description);
+  return { id: item.id, kind: 'skill', name: nameOf(item.name), hint, ready: item.library !== null, ...withBadge(item) };
 }
-function toolEntry(item: ToolItem, nameOf: NameOf): AddEntry {
-  return { id: item.id, kind: 'tool', name: nameOf(item.name), hint: item.toolKind === 'mcp' ? ADD_MODEL_WORDS.toolConnection : ADD_MODEL_WORDS.toolPrompt, ready: item.library !== null, ...withBadge(item) };
+function toolEntry(item: ToolItem, nameOf: NameOf, hintOf: HintOf): AddEntry {
+  const hint = hintOf('tool', item.id) ?? (item.toolKind === 'mcp' ? ADD_MODEL_WORDS.toolConnection : ADD_MODEL_WORDS.toolPrompt);
+  return { id: item.id, kind: 'tool', name: nameOf(item.name), hint, ready: item.library !== null, ...withBadge(item) };
 }
 
 /** The cards of one tab, in name order. The shared-file tab has none. Hooks never show (they live under Advanced). */
-export function entriesFor(world: World, tab: AddTab, nameOf: NameOf = plainName): AddEntry[] {
+export function entriesFor(world: World, tab: AddTab, nameOf: NameOf = plainName, hintOf: HintOf = NO_HINTS): AddEntry[] {
   switch (tab) {
-    case 'skills': return world.items.flatMap(i => (i.kind === 'skill' ? [skillEntry(i, nameOf)] : [])).sort(byName);
-    case 'tools': return world.items.flatMap(i => (i.kind === 'tool' && i.toolKind !== 'hook' ? [toolEntry(i, nameOf)] : [])).sort(byName);
-    case 'notes': return world.slices.map((s): AddEntry => ({ id: s.id, kind: 'note', name: nameOf(s.name), hint: ADD_MODEL_WORDS.noteSet, ready: false })).sort(byName);
-    case 'agents': return world.items.flatMap(i => (i.kind === 'agent' && i.library !== null ? [{ id: i.id, kind: 'agent', name: nameOf(i.name), hint: clampWords(agentHint(i)), ready: true, ...withBadge(i) } satisfies AddEntry] : [])).sort(byName);
+    case 'skills': return world.items.flatMap(i => (i.kind === 'skill' ? [skillEntry(i, nameOf, hintOf)] : [])).sort(byName);
+    case 'tools': return world.items.flatMap(i => (i.kind === 'tool' && i.toolKind !== 'hook' ? [toolEntry(i, nameOf, hintOf)] : [])).sort(byName);
+    case 'notes': return world.slices.map((s): AddEntry => ({ id: s.id, kind: 'note', name: nameOf(s.name), hint: hintOf('note', s.id) ?? ADD_MODEL_WORDS.noteSet, ready: false })).sort(byName);
+    case 'agents': return world.items.flatMap(i => (i.kind === 'agent' && i.library !== null ? [{ id: i.id, kind: 'agent', name: nameOf(i.name), hint: hintOf('agent', i.id) ?? clampWords(agentHint(i)), ready: true, ...withBadge(i) } satisfies AddEntry] : [])).sort(byName);
     case 'file': return [];
   }
 }

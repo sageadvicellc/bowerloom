@@ -23,7 +23,7 @@ export interface FileTabProps {
   world: World;
   nameOf: NameOf;
   /** Adds what the file holds to the draft. */
-  stageFile(bundle: Bundle): void;
+  onAddFile(bundle: Bundle): void;
   /** The text of a small file to offer under "Try a sample file". The Add test page passes one; the shell does not. */
   sampleFile?: string;
 }
@@ -78,7 +78,7 @@ function Preview({ preview, onAdd, onAnother }: { preview: SharedFilePreview; on
   );
 }
 
-export function FileTab({ world, nameOf, stageFile, sampleFile }: FileTabProps): ReactElement {
+export function FileTab({ world, nameOf, onAddFile, sampleFile }: FileTabProps): ReactElement {
   const [step, setStep] = useState<FileStep>(FILE_IDLE);
   const [over, setOver] = useState(false);
   const input = useRef<HTMLInputElement>(null);
@@ -106,7 +106,7 @@ export function FileTab({ world, nameOf, stageFile, sampleFile }: FileTabProps):
   const hasFile = (e: ReactDragEvent<HTMLDivElement>): boolean => e.dataTransfer.types.includes('Files');
   const again = (): void => { counter.current += 1; setStep(FILE_IDLE); if (input.current !== null) input.current.value = ''; };
 
-  if (step.step === 'preview') return <Preview preview={step.preview} onAdd={() => { stageFile(step.preview.bundle); setStep(stepAfterAdd(step)); }} onAnother={again} />;
+  if (step.step === 'preview') return <Preview preview={step.preview} onAdd={() => { onAddFile(step.preview.bundle); setStep(stepAfterAdd(step)); }} onAnother={again} />;
   if (step.step === 'done') return (
     <div className="add-preview" data-step="done">
       <p className="add-lead" role="status"><KitIcon name="check" size={20} />{fileAdded(step.count)}</p>

@@ -1,17 +1,16 @@
 /**
  * The Add test page, at the address #prototype-v2/add. It exists so that every way of adding, and the "two different copies" dialog, can be tried and
  * tested without the shell: a grid of agent cards that take a dragged card (each carries `data-drop-agent`), a button that opens the Add drawer, the
- * count of changes waiting, "Go back", and a shelf of skills where one skill has the "2 different copies" badge. It keeps its own small world (see
- * add-demo-world.ts) in a store that can also stage a shared file. Nothing is written anywhere.
+ * count of changes waiting, "Go back" (to the first save point), and a shelf of skills where one skill has the "2 different copies" badge. It keeps its own
+ * small world (see add-demo-world.ts) in the ordinary store. Nothing is written anywhere.
  */
 import { useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { agentHint, itemBadge, ownedAgents } from '../../../shared/home/cards.js';
 import type { ShelfEntry } from '../../../shared/home/cards.js';
 import { changeCount, plainName } from '../../../shared/home/add-model.js';
-import { createAddStore } from '../../../shared/home/add-store.js';
-import type { StoreAction } from '../../../shared/proto/store.js';
-import type { AddStore } from '../../../shared/home/add-store.js';
+import { withStartPoint } from '../../../shared/home/savebar.js';
+import { createStore } from '../../../shared/proto/store.js';
 import { ProtoProvider, useProtoStore } from '../../proto/session.js';
 import { Button } from '../kit/Button.js';
 import { Drawer } from '../kit/Drawer.js';
@@ -20,6 +19,7 @@ import { ItemCard } from '../kit/ItemCard.js';
 import { Shelf } from '../kit/Shelf.js';
 import { AddDrawerBody } from './AddDrawerBody.js';
 import { CopiesDialog } from '../copies/CopiesDialog.js';
+import { goBackAction } from '../store-actions.js';
 import { addDemoWorld } from './add-demo-world.js';
 import { sharedFileSample } from './add-sample-file.js';
 import { ADD_WORDS, changesCount, keptCopy } from './add-words.js';
@@ -31,10 +31,7 @@ import './add.css';
 const L = ADD_WORDS.label, H = ADD_WORDS.hint;
 const none = (): void => undefined;
 const SAMPLE = sharedFileSample();
-/** The store's name for "Go back" is a banned screen word, and the scan of the home sources reads every string. It is built from its parts here and never shown. */
-const GO_BACK = { type: ['un', 'do'].join('') } as StoreAction;
-
-function Page({ store }: { store: AddStore }): ReactElement {
+function Page(): ReactElement {
   const { state, dispatch } = useProtoStore();
   const [drawer, setDrawer] = useState(false);
   const [copiesFor, setCopiesFor] = useState<string | null>(null);
@@ -61,7 +58,7 @@ function Page({ store }: { store: AddStore }): ReactElement {
         <div className="add-brand"><KitIcon name="leaf" size={28} /><span>{L.brand}</span></div>
         <span className="add-spacer" />
         <span className="add-count" role="status" aria-label={L.changes} data-count={waiting}>{changesCount(waiting)}</span>
-        <Button icon="clock" disabled={state.undoStack.length === 0} onClick={() => dispatch(GO_BACK)}>{L.goBack}</Button>
+        <Button icon="clock" disabled={waiting === 0} onClick={() => { const first = state.committed.versions[0]; if (first !== undefined) dispatch(goBackAction(first.id)); }}>{L.goBack}</Button>
         <Button variant="primary" icon="plus" aria-expanded={drawer} onClick={() => setDrawer(open => !open)}>{L.add}</Button>
       </header>
       <div className="add-stage-wrap">
@@ -87,7 +84,7 @@ function Page({ store }: { store: AddStore }): ReactElement {
           <p className="add-kept" role="status">{kept}</p>
         </main>
         <Drawer open={drawer} title={L.addDrawer} dataSlot="add" onClose={() => setDrawer(false)}>
-          <AddDrawerBody stageFile={bundle => store.stageBundle(bundle)} sampleFile={SAMPLE} onOpenCopies={setCopiesFor} />
+          <AddDrawerBody sampleFile={SAMPLE} onOpenCopies={setCopiesFor} />
         </Drawer>
       </div>
       {copiesFor === null ? null : (
@@ -98,6 +95,7 @@ function Page({ store }: { store: AddStore }): ReactElement {
 }
 
 export function AddHarness(): ReactElement {
-  const [store] = useState(() => createAddStore(addDemoWorld()));
-  return <ProtoProvider store={store}><Page store={store} /></ProtoProvider>;
+  // The first save point is the world as it was found, so "Go back" always has somewhere to go.
+  const [store] = useState(() => createStore(withStartPoint(addDemoWorld())));
+  return <ProtoProvider store={store}><Page /></ProtoProvider>;
 }
