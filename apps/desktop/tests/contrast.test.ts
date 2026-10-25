@@ -1,7 +1,7 @@
 // Contrast: every text and background pair in the tokens file meets WCAG AA (4.5 to 1 for text), in light and dark.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DESKTOP } from './support.js';
 
@@ -89,9 +89,32 @@ test('the home tokens only reach the home app: every selector starts at [data-ho
   for (const name of ['hm-border', 'hm-ring', 'hm-scrim-alpha', 'hm-shadow']) assert.match(homeDarkBlock, new RegExp(`--${name}:`), `${name} has a dark variant`);
 });
 
-test('the home type scale, card sizes, radii and drawer width are the agreed ones', () => {
-  for (const [name, value] of [['hm-text-base', '1rem'], ['hm-text-small', '0.875rem'], ['hm-text-heading', '1.25rem'], ['hm-text-display', '1.75rem'], ['hm-radius', '0.75rem'], ['hm-card-agent-w', '15rem'], ['hm-card-agent-h', '9.5rem'], ['hm-card-small-w', '11rem'], ['hm-card-small-h', '4.5rem']] as [string, string][]) assert.match(homeLightBlock, new RegExp(`--${name}:\\s*${value.replace('.', '\\.')};`), name);
-  assert.match(homeLightBlock, /--hm-drawer-w:\s*min\(420px, 92vw\);/);
+test('the home scale is the agreed one: about 90 percent of the first, in tokens, with 14 px as the floor for every word', () => {
+  // Type: page title 18, section heading 16, card name 15, body and hints 14. Nothing is under 14 px (0.875rem).
+  for (const [name, value] of [['hm-text-title', '1.125rem'], ['hm-text-section', '1rem'], ['hm-text-name', '0.9375rem'], ['hm-text-base', '0.875rem'], ['hm-text-small', '0.875rem'], ['hm-text-heading', '1rem'], ['hm-text-display', '1.5rem']] as [string, string][]) assert.match(homeLightBlock, new RegExp(`--${name}:\\s*${value.replace('.', '\\.')};`), name);
+  for (const name of ['hm-text-title', 'hm-text-section', 'hm-text-name', 'hm-text-base', 'hm-text-small', 'hm-text-heading', 'hm-text-display']) assert.ok(homeNumber(homeLightBlock, name) >= 0.875, `${name} is at least 14 px`);
+  // Space steps 4, 6, 10, 14, 20, 28, 44 px; radii 10 and 6 px.
+  for (const [name, value] of [['hm-space-1', '0.25rem'], ['hm-space-2', '0.375rem'], ['hm-space-3', '0.625rem'], ['hm-space-4', '0.875rem'], ['hm-space-5', '1.25rem'], ['hm-space-6', '1.75rem'], ['hm-space-7', '2.75rem'], ['hm-radius', '0.625rem'], ['hm-radius-small', '0.375rem']] as [string, string][]) assert.match(homeLightBlock, new RegExp(`--${name}:\\s*${value.replace('.', '\\.')};`), name);
+  // Controls: a button is 32 px, a sort segment 28 px, a target never under 24 px; icons 20 and 16 px; a dot is 8 px.
+  for (const [name, value] of [['hm-control-h', '2rem'], ['hm-control-h-small', '1.75rem'], ['hm-control-pad', '0.75rem'], ['hm-target-min', '1.5rem'], ['hm-icon', '1.25rem'], ['hm-icon-small', '1rem'], ['hm-dot', '0.5rem']] as [string, string][]) assert.match(homeLightBlock, new RegExp(`--${name}:\\s*${value.replace('.', '\\.')};`), name);
+  // One tile for every agent (250 by 92 px, a 24 px glyph), one row for every skill, tool and note (44 px, a 28 px tile), bars 52 and 48 px, panel about 320 px, drawer 380 px.
+  for (const [name, value] of [['hm-tile-w', '15.625rem'], ['hm-tile-h', '5.75rem'], ['hm-tile-glyph', '1.5rem'], ['hm-row-h', '2.75rem'], ['hm-row-tile', '1.75rem'], ['hm-bar-h', '3.25rem'], ['hm-savebar-h', '3rem']] as [string, string][]) assert.match(homeLightBlock, new RegExp(`--${name}:\\s*${value.replace('.', '\\.')};`), name);
+  assert.match(homeLightBlock, /--hm-drawer-w:\s*min\(380px, 92vw\);/);
+  assert.match(homeLightBlock, /--hm-panel-w:\s*clamp\(18rem, 25vw, 20rem\);/);
+  // No size of the first scale is left: the old card sizes are gone, so nothing can still read them.
+  for (const gone of ['hm-card-agent-w', 'hm-card-agent-h', 'hm-card-small-w', 'hm-card-small-h', 'hm-card-shelf-w']) assert.doesNotMatch(homeCss, new RegExp(`--${gone}`), gone);
+});
+
+test('the window width where the panel gives way to a drawer is worked out from the tokens: 570 + 317 + 380 = 1267, so the rule stops at 1266 px', () => {
+  const px = (name: string): number => homeNumber(homeLightBlock, name) * 16;
+  const stage = 2 * px('hm-space-6') + 2 * px('hm-tile-w') + px('hm-space-4');   // two tiles, the gap between them, and the stage padding
+  assert.equal(stage, 570);
+  const panelAt = (w: number): number => Math.min(320, Math.max(288, w * 0.25));
+  const drawer = 380;
+  const first = Array.from({ length: 2000 }, (_, w) => w).find(w => w - panelAt(w) - drawer >= stage)!;
+  assert.ok(first >= 1266 && first <= 1268, `three columns fit from ${first} px`);
+  const css = readFileSync(join(DESKTOP, 'renderer', 'home', 'home.css'), 'utf8');
+  assert.match(css, /@media \(min-width: 761px\) and \(max-width: 1266px\)/);
 });
 
 for (const [name, vars, block] of [['light', homeLight, homeLightBlock], ['dark', homeDark, homeDarkBlock]] as const) {
@@ -159,3 +182,71 @@ for (const [name, vars] of [['light', homeLight], ['dark', homeDark]] as const) 
     assert.ok(broken < 3, `the old result, ${broken.toFixed(2)} to 1, is what a hover fill would give`);
   });
 }
+
+// ---- A state is a small dot and short words, with no fill and no border (Wave D). The words always say it, so colour is never the only signal; the colours still pass:
+// 4.5 to 1 for the words and 3 to 1 for the dot on every surface a state can sit on (the page, a card, a quiet panel, and the tint of a selected card).
+const statusColour = (tone: string | null, dot: boolean): string => {
+  const find = (selector: RegExp): string | undefined => { const rule = kitRules.find(r => selector.test(r.selector)); return rule === undefined ? undefined : /var\(--([a-z0-9-]+)\)/.exec(declared(rule.body, dot ? 'background' : 'color') ?? '')?.[1]; };
+  const own = tone === null ? undefined : find(dot ? new RegExp(`\\.kit-status\\[data-tone="${tone}"\\] \\.kit-dot\\s*$`) : new RegExp(`\\.kit-status\\[data-tone="${tone}"\\]\\s*$`));
+  if (own !== undefined) return own;
+  if (dot) return statusColour(tone, false);
+  return /var\(--([a-z0-9-]+)\)/.exec(declared(kitRules.find(r => /\.kit-status\s*$/.test(r.selector))!.body, 'color') ?? '')![1]!;
+};
+
+for (const [name, vars] of [['light', homeLight], ['dark', homeDark]] as const) {
+  test(`${name} theme, home app: the words of a state are 4.5 to 1 and its dot 3 to 1 on the page, a card, a quiet panel and a selected card`, () => {
+    for (const tone of ['warn', 'new', 'info', null]) {
+      const words = statusColour(tone, false), dot = statusColour(tone, true);
+      for (const under of ['bg', 'surface', 'surface-2', 'accent-soft']) {
+        assert.ok(ratio(vars[words]!, vars[under]!) >= 4.5, `${tone ?? 'plain'} words (${words}) on ${under} are ${ratio(vars[words]!, vars[under]!).toFixed(2)}`);
+        assert.ok(ratio(vars[dot]!, vars[under]!) >= 3, `${tone ?? 'plain'} dot (${dot}) on ${under} is ${ratio(vars[dot]!, vars[under]!).toFixed(2)}`);
+      }
+    }
+  });
+}
+
+test('no pill is left in the home style sheets: a state has no fill, no border and no round corners, and nothing is named a badge, a chip or a pill', () => {
+  const dir = join(DESKTOP, 'renderer', 'home');
+  const files = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? files(join(d, e.name)) : e.name.endsWith('.css') ? [join(d, e.name)] : []);
+  const sheets = files(dir).map(f => ({ f: f.slice(dir.length + 1), css: readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '') }));
+  assert.ok(sheets.length >= 12);
+  for (const { f, css } of sheets) {
+    assert.doesNotMatch(css, /\.kit-badge|\.kit-chip\b|\.kit-pill|\.dt-chip\b[^{]*\{[^}]*border-radius/, `${f} still styles a pill`);
+    for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (!/border-radius:\s*var\(--hm-radius-pill\)/.test(m[2]!)) continue;
+      // The round button (one icon, a circle) and the track of a meter (a bar) are the only round corners that remain.
+      assert.match(m[1]!.trim(), /data-round|meter/, `${f}: ${m[1]!.trim()} has round corners`);
+    }
+  }
+  const status = kitRules.find(r => /\.kit-status\s*$/.test(r.selector))!;
+  assert.equal(declared(status.body, 'background'), 'none'); assert.equal(declared(status.body, 'border'), '0');
+  assert.equal(declared(status.body, 'padding'), '0'); assert.doesNotMatch(status.body, /border-radius|box-shadow/);
+  assert.match(kitCss, /\.kit-dot\s*\{[^}]*width: var\(--hm-dot\);[^}]*height: var\(--hm-dot\);[^}]*border-radius: 50%/);
+});
+
+test('every word in the home style sheets is 14 px or more: each font size is a token at 14 px or a plain size of 14 px or more', () => {
+  const dir = join(DESKTOP, 'renderer', 'home');
+  const files = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? files(join(d, e.name)) : e.name.endsWith('.css') ? [join(d, e.name)] : []);
+  let seen = 0;
+  for (const f of files(dir)) {
+    const css = readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    for (const m of css.matchAll(/font-size:\s*([^;}]+)[;}]/g)) {
+      const v = m[1]!.trim();
+      const token = /^var\(--(hm-text-[a-z]+)\)$/.exec(v);
+      const px = token !== null ? homeNumber(homeLightBlock, token[1]!) * 16 : /^clamp\(([\d.]+)rem/.test(v) ? parseFloat(/^clamp\(([\d.]+)rem/.exec(v)![1]!) * 16 : /^[\d.]+rem$/.test(v) ? parseFloat(v) * 16 : /^[\d.]+px$/.test(v) ? parseFloat(v) : v === 'inherit' ? 14 : NaN;
+      assert.ok(px >= 14, `${f.slice(dir.length + 1)}: font-size ${v}`);
+      seen += 1;
+    }
+  }
+  assert.ok(seen > 60, `${seen} font sizes checked`);
+});
+
+test('a row and a tile have one size each, from tokens: the row is --hm-row-h high, the tile --hm-tile-w by --hm-tile-h, and neither grows with its words', () => {
+  const row = kitRules.find(r => /\.kit-card\[data-size="small"\]\s*$/.test(r.selector))!, tile = kitRules.find(r => /\.kit-card\[data-size="tile"\]\s*$/.test(r.selector))!;
+  assert.equal(declared(row.body, 'height'), 'var(--hm-row-h)'); assert.equal(declared(row.body, 'width'), '100%');
+  assert.equal(declared(tile.body, 'width'), 'var(--hm-tile-w)'); assert.equal(declared(tile.body, 'height'), 'var(--hm-tile-h)');
+  assert.doesNotMatch(row.body + tile.body, /min-height|max-height|min-width/, 'a fixed size, not a size that can grow');
+  // The name, the hint and the job are one line each, clipped with an ellipsis.
+  const main = kitRules.find(r => /\.kit-card-main\s*$/.test(r.selector))!, hint = kitRules.find(r => /\.kit-card-hint\s*$/.test(r.selector))!;
+  for (const rule of [main, hint]) { assert.equal(declared(rule.body, 'white-space'), 'nowrap'); assert.equal(declared(rule.body, 'text-overflow'), 'ellipsis'); }
+});

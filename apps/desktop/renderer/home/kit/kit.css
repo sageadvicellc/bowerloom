@@ -1,18 +1,19 @@
 /*
- * The card kit. One card, one layout: an agent differs from a skill, tool or note only by its size. Every card leads with the same rounded tile and a glyph
- * of its kind. Everything is scoped to [data-home]. Rounded 12 px cards, a full 1 px border that is seen at 3 to 1, a soft shadow, no thick one-sided borders.
- * A state is never colour alone: a badge has an icon and words, a selected card is filled and has a 2 px accent border (never a check mark, which would say
- * "a choice to make"), a disabled button is dashed and says why beside it.
+ * The card kit. Two shapes and no pills. An agent is a TILE: one width and one height for every agent (--hm-tile-w, --hm-tile-h), whatever the name or the counts.
+ * A skill, tool or note is a ROW: one height (--hm-row-h) wherever it is drawn (the tray, the details panel, the Add drawer, Choose notes). Both lead with the same
+ * rounded tile and the glyph of their kind. A state ("2 different copies", "needs a key") is a small dot and short words with no fill and no border, so it is never colour
+ * alone: the words always say it. Everything is scoped to [data-home]. A 1 px edge is seen at 3 to 1, a selected card is a tint with a 2 px accent edge (never a check
+ * mark, which would say "a choice to make"), and a disabled button is dashed and says why beside it.
  * Timing comes from the motion tokens (published by applyMotionTokens), which are 0 when the person asked for less motion.
  */
 [data-home] .kit-icon { flex: none; }
-[data-home] .kit-heading { margin: 0; font-size: var(--hm-text-heading); line-height: 1.3; font-weight: 650; color: var(--text); }
+[data-home] .kit-heading { margin: 0; font-size: var(--hm-text-section); line-height: 1.3; font-weight: 600; color: var(--text); }
 [data-home] .kit-hint { margin: 0; font-size: var(--hm-text-small); line-height: 1.4; color: var(--text-muted); font-weight: 400; }
 
-/* ---- Button */
+/* ---- Button: 32 px high with 12 px of padding. The text variant (Find more) is words with an underline and no box. */
 [data-home] .kit-button {
   display: inline-flex; align-items: center; justify-content: center; gap: var(--hm-space-2);
-  min-height: 2.75rem; min-width: 2.75rem; padding: 0 var(--hm-space-4);
+  min-height: var(--hm-control-h); min-width: var(--hm-control-h); padding: 0 var(--hm-control-pad);
   font: inherit; font-size: var(--hm-text-base); font-weight: 600; line-height: 1.2; white-space: nowrap;
   border-radius: var(--hm-radius-small); border: 1px solid var(--hm-border); background: var(--surface); color: var(--text);
   cursor: pointer; touch-action: manipulation;
@@ -27,82 +28,102 @@
 /* Only a button that can be pressed takes the darker fill. Its selector is heavier than the disabled rule below, so without the scope a disabled primary button
    (Save, with nothing to save) turned dark green under the pointer and its muted text sank to 1.1 to 1. */
 [data-home] .kit-button[data-variant="primary"]:not(:disabled):hover { background: var(--accent-strong); }
-[data-home] .kit-button[data-size="small"] { min-height: 2rem; min-width: 2rem; }
-[data-home] .kit-button[data-round] { padding: 0; border-radius: var(--hm-radius-pill); width: 2.75rem; font-size: var(--hm-text-heading); font-weight: 650; }
-[data-home] .kit-button[data-round][data-size="small"] { width: 2rem; font-size: var(--hm-text-base); }
+[data-home] .kit-button[data-variant="text"] { background: transparent; border-color: transparent; text-decoration: underline; text-underline-offset: 3px; padding: 0 var(--hm-space-3); }
+[data-home] .kit-button[data-variant="text"]:hover { background: var(--accent-soft); border-color: transparent; }
+[data-home] .kit-button[data-size="small"] { padding: 0 var(--hm-space-3); }
+[data-home] .kit-button[data-round] { padding: 0; border-radius: var(--hm-radius-pill); width: var(--hm-control-h); font-size: var(--hm-text-section); font-weight: 600; }
+[data-home] .kit-button[data-round][data-size="small"] { width: var(--hm-control-h); font-size: var(--hm-text-base); }
 [data-home] .kit-button:disabled { background: transparent; border: 1px dashed var(--hm-border); color: var(--text-muted); cursor: not-allowed; }
-[data-home] .kit-button[aria-expanded="true"]:not([data-variant="primary"]) { background: var(--accent-soft); border-color: var(--accent-strong); }
+[data-home] .kit-button[aria-expanded="true"]:not([data-variant="primary"]):not([data-variant="text"]) { background: var(--accent-soft); border-color: var(--accent-strong); }
 
-/* ---- Badge */
-[data-home] .kit-badge {
-  display: inline-flex; align-items: center; gap: var(--hm-space-1); max-width: 100%;
-  padding: 0.125rem var(--hm-space-2) 0.125rem 0.375rem; min-height: 1.5rem;
-  font: inherit; font-size: var(--hm-text-small); font-weight: 600; line-height: 1.2;
-  border-radius: var(--hm-radius-pill); border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
-  background: var(--quiet-bg); color: var(--quiet-fg);
+/* ---- Status: a small dot and short words, no fill and no border. The dot is the colour of the words (3 to 1 and 4.5 to 1 on every surface, see tests/contrast.test.ts),
+   and the words always say the state, so colour is never the only signal. It sits on the baseline of the line it is in. With a press (the copies) it is a text button. */
+[data-home] .kit-status {
+  display: inline-flex; align-items: center; gap: var(--hm-space-2); max-width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: 0; border: 0; background: none;
+  font: inherit; font-size: var(--hm-text-base); font-weight: 600; line-height: 1.3; white-space: nowrap; color: var(--quiet-fg);
 }
-[data-home] .kit-badge[data-tone="warn"] { background: var(--warn-bg); color: var(--warn-fg); }
-[data-home] .kit-badge[data-tone="new"] { background: var(--good-bg); color: var(--good-fg); }
-[data-home] button.kit-badge { cursor: pointer; position: relative; z-index: 1; min-height: 2rem; }
-[data-home] button.kit-badge:hover { border-color: currentColor; }
-[data-home] button.kit-pill:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+[data-home] .kit-status[data-tone="warn"] { color: var(--warn-fg); }
+[data-home] .kit-status[data-tone="new"] { color: var(--good-fg); }
+[data-home] .kit-status[data-tone="info"] { color: var(--text-muted); }
+[data-home] .kit-dot { flex: none; width: var(--hm-dot); height: var(--hm-dot); border-radius: 50%; background: currentColor; }
+[data-home] .kit-status[data-tone="info"] .kit-dot { background: var(--accent-strong); }
+/* A button of this kind keeps the size of its words but a hit area of 24 px, taken from its own padding and balanced by a negative margin, so a row never grows. */
+[data-home] button.kit-status { cursor: pointer; position: relative; z-index: 1; touch-action: manipulation; min-height: var(--hm-target-min); padding: 0 var(--hm-space-2); margin: calc(-1 * var(--hm-space-1)) calc(-1 * var(--hm-space-2)); border-radius: var(--hm-radius-small); }
+[data-home] button.kit-status:hover { text-decoration: underline; text-underline-offset: 3px; }
+[data-home] button.kit-status:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
+/* The "Preview" mark of the top bar: plain words and a dot, a full 32 px target, an underline while its popover is open. */
+[data-home] button.kit-status.kit-help-text { min-height: var(--hm-control-h); margin: 0; padding: 0 var(--hm-space-3); color: var(--text); }
+[data-home] button.kit-status.kit-help-text[aria-expanded="true"] { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
 
-/* ---- Card */
+/* ---- Card: the edge, the tint of a selection and the arrival ring are the same for a tile and a row. */
 [data-home] .kit-card {
   position: relative; box-sizing: border-box; container-type: inline-size;
-  display: grid; align-items: center; column-gap: var(--hm-space-3); row-gap: var(--hm-space-2);
   background: var(--surface); color: var(--text);
   border: 1px solid var(--hm-border); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow);
   transition: border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), box-shadow var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), transform var(--motion-home-press-ms, 0ms) var(--motion-home-press-ease, ease-out);
 }
-/* The card is pressed when its name (the button that covers it) is pressed; the Remove button and the badge have presses of their own. */
+/* The card is pressed when its name (the button that covers it) is pressed; the Remove button and the status have presses of their own. */
 @media (prefers-reduced-motion: no-preference) {
-  [data-home] .kit-card:has(> .kit-card-main:active) { transform: scale(var(--motion-home-press-scale, 1)); }
+  [data-home] .kit-card:has(.kit-card-main:active) { transform: scale(var(--motion-home-press-scale, 1)); }
 }
-[data-home] .kit-card[data-size="large"] { width: var(--hm-card-agent-w); min-height: var(--hm-card-agent-h); padding: var(--hm-space-4); grid-template-columns: 2.75rem minmax(0, 1fr); align-content: start; align-items: start; }
-[data-home] .kit-card[data-size="small"] { width: 100%; min-width: var(--hm-card-small-w); min-height: var(--hm-card-small-h); padding: var(--hm-space-3); grid-template-columns: 2.25rem 1fr; }
 [data-home] .kit-card:hover, [data-home] .kit-card[data-demo="hover"] { border-color: var(--accent-strong); box-shadow: var(--hm-shadow-lift); }
 /* A selected card is a highlight and nothing more: a filled tint and a real 2 px accent edge. The border grows by 1 px and the padding shrinks by 1 px, so
    nothing inside the card moves. The edge is seen at 3 to 1 against the page, the neighbouring cards and the tint (tests/contrast.test.ts). */
 [data-home] .kit-card[data-selected], [data-home] .kit-card[data-owner] { background: var(--accent-soft); border-color: var(--accent-strong); border-width: 2px; box-shadow: var(--hm-shadow); }
-[data-home] .kit-card[data-size="large"][data-selected], [data-home] .kit-card[data-size="large"][data-owner] { padding: calc(var(--hm-space-4) - 1px); }
-[data-home] .kit-card[data-size="small"][data-selected], [data-home] .kit-card[data-size="small"][data-owner] { padding: calc(var(--hm-space-3) - 1px); }
+/* The tile whose tray is open keeps the 2 px accent edge, with no tint, so it is clear which agent the list belongs to. */
+[data-home] .kit-card[data-tray] { border-color: var(--accent-strong); border-width: 2px; }
 [data-home] .kit-card:has(.kit-card-main:focus-visible), [data-home] .kit-card[data-demo="focus"] { outline: 3px solid var(--focus); outline-offset: 2px; }
-[data-home] .kit-tile { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 2.25rem; height: 2.25rem; border-radius: var(--hm-radius-small); background: var(--surface-2); color: var(--accent-strong); border: 1px solid var(--hm-border); }
-[data-home] .kit-tile[data-size="large"] { width: 2.75rem; height: 2.75rem; }
-[data-home] .kit-tile[data-size="small"] { width: 1.75rem; height: 1.75rem; }
+[data-home] .kit-tile { display: inline-flex; align-items: center; justify-content: center; flex: none; width: var(--hm-row-tile); height: var(--hm-row-tile); border-radius: var(--hm-radius-small); background: var(--surface-2); color: var(--accent-strong); border: 1px solid var(--hm-border); box-sizing: border-box; }
+[data-home] .kit-tile[data-size="large"] { width: 2.25rem; height: 2.25rem; }
+[data-home] .kit-tile[data-size="small"] { width: var(--hm-tile-glyph); height: var(--hm-tile-glyph); }
 [data-home] .kit-card-main {
-  /* The name is the button, and its ::after covers the whole card, so the whole card can be pressed. */
+  /* The name is the button, and its ::after covers the whole card, so the whole card can be pressed. One line, with an ellipsis; the whole name is in the details panel. */
   all: unset; box-sizing: border-box; display: block; min-width: 0; cursor: pointer; touch-action: manipulation;
-  font-size: var(--hm-text-base); font-weight: 650; line-height: 1.3; color: var(--text); overflow-wrap: anywhere;
+  font-size: var(--hm-text-name); font-weight: 600; line-height: 1.25; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 [data-home] .kit-card-main::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
-[data-home] .kit-card[data-size="large"] .kit-card-main { align-self: center; }
-[data-home] .kit-card-hint { grid-column: 1 / -1; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
-[data-home] .kit-card-badge { grid-column: 1 / -1; justify-self: start; position: relative; z-index: 1; max-width: 100%; }
-[data-home] .kit-badge { white-space: nowrap; }
-/* A small card: the tile, the name and (on a shelf) "Remove" on the first row, the hint under them, then the badge. */
-[data-home] .kit-card[data-size="small"] { align-items: start; }
-[data-home] .kit-card[data-size="small"] .kit-tile { align-self: start; }
-[data-home] .kit-card[data-size="small"] .kit-card-main { align-self: center; grid-row: 1; grid-column: 2; }
-[data-home] .kit-card[data-size="small"] .kit-card-hint { grid-row: 2; grid-column: 2 / -1; }
-[data-home] .kit-card[data-size="small"] .kit-card-badge { grid-row: 3; grid-column: 2 / -1; }
-/* The badge sits under the hint in the text column, in one column with the name and the hint. A card narrower than 15 rem has no room for that, so the badge
-   takes the whole row under the tile. A container query styles what is inside the card (the card is the container), never the card itself. */
-@container (max-width: 15rem) {
-  [data-home] .kit-card[data-size="small"] .kit-card-badge { grid-column: 1 / -1; }
-}
-[data-home] .kit-card[data-removable] { grid-template-columns: 2.25rem minmax(0, 1fr) auto; }
-[data-home] .kit-card-remove { grid-column: 3; grid-row: 1; align-self: center; justify-self: end; position: relative; z-index: 1; }
-/* "Remove" is quiet: words only, underlined so it reads as a button, 32 px tall so it is easy to hit, and it shows the accent on hover and a ring on focus. */
+
+/* A ROW: a 28 px tile, the name over one line of hint, and the words of a state at the end of the second line. The height is one token for every row. */
+[data-home] .kit-card[data-size="small"] { display: flex; align-items: center; gap: var(--hm-space-3); width: 100%; height: var(--hm-row-h); padding: 0 var(--hm-space-3); }
+[data-home] .kit-card[data-size="small"][data-selected], [data-home] .kit-card[data-size="small"][data-owner], [data-home] .kit-card[data-size="small"][data-tray] { padding: 0 calc(var(--hm-space-3) - 1px); }
+[data-home] .kit-card-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+[data-home] .kit-card-line { display: flex; align-items: center; gap: var(--hm-space-2); min-width: 0; min-height: 1.2rem; }
+[data-home] .kit-card-line > .kit-card-main { flex: 1 1 0; }
+[data-home] .kit-card-hint { flex: 1 1 0; min-width: 0; margin: 0; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+[data-home] .kit-card-badge { flex: none; position: relative; z-index: 1; margin-left: auto; max-width: 70%; }
+[data-home] .kit-card-remove { flex: none; position: relative; z-index: 1; }
+[data-home] .kit-card-hint + .kit-card-remove { margin-left: auto; }
+/* "Remove" is quiet: words only, underlined so it reads as a button. Its hit area is 24 px tall, balanced by a negative margin so the row keeps its height. */
 [data-home] .kit-remove {
-  all: unset; box-sizing: border-box; display: inline-flex; align-items: center; min-height: 2rem; padding: 0 var(--hm-space-2);
-  font-size: var(--hm-text-small); font-weight: 600; line-height: 1.2; color: var(--text-muted); cursor: pointer; touch-action: manipulation;
+  all: unset; box-sizing: border-box; display: inline-flex; align-items: center; min-height: var(--hm-target-min); margin: calc(-1 * var(--hm-space-1)) 0; padding: 0 var(--hm-space-2);
+  font-size: var(--hm-text-base); font-weight: 600; line-height: 1.2; color: var(--text-muted); cursor: pointer; touch-action: manipulation;
   text-decoration: underline; text-underline-offset: 3px; border-radius: var(--hm-radius-small);
   transition: color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
 }
 [data-home] .kit-remove:hover { color: var(--text); background: var(--accent-soft); }
 [data-home] .kit-remove:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; color: var(--text); }
+
+/* A TILE: the agent. A 24 px glyph and the name on one line, the job on one line, then one line of counts. Nothing wraps and nothing opens inside it, so every
+   tile has the same width and the same height. The name is the button that covers the tile; the counts sit above it (z-index 1). */
+[data-home] .kit-card[data-size="tile"] {
+  display: grid; grid-template-columns: var(--hm-tile-glyph) minmax(0, 1fr); grid-template-rows: var(--hm-tile-glyph) auto minmax(0, 1fr); column-gap: var(--hm-space-3); row-gap: 2px; align-items: center; align-content: start;
+  width: var(--hm-tile-w); height: var(--hm-tile-h); padding: var(--hm-space-2) var(--hm-space-3) 0;
+}
+[data-home] .kit-card[data-size="tile"][data-selected], [data-home] .kit-card[data-size="tile"][data-owner], [data-home] .kit-card[data-size="tile"][data-tray] { padding: calc(var(--hm-space-2) - 1px) calc(var(--hm-space-3) - 1px) 0; }
+[data-home] .kit-card[data-size="tile"] .kit-card-hint { grid-column: 1 / -1; flex: none; }
+[data-home] .kit-summary { grid-column: 1 / -1; align-self: end; display: flex; align-items: center; flex-wrap: nowrap; min-width: 0; height: var(--hm-control-h-small); margin-bottom: 1px; position: relative; z-index: 1; pointer-events: none; white-space: nowrap; overflow: hidden; }
+[data-home] .kit-sep { flex: none; color: var(--text-muted); font-size: var(--hm-text-base); padding: 0 1px; pointer-events: none; }
+/* A count is a text button: the number and the kind, then a dot between counts. It keeps 28 px of height and 24 px of width at the least, and shows that it is open by an underline, not by colour. */
+[data-home] .kit-count {
+  all: unset; pointer-events: auto; box-sizing: border-box; flex: none; display: inline-flex; align-items: center; min-height: var(--hm-control-h-small); min-width: var(--hm-target-min); padding: 0 var(--hm-space-2);
+  font-size: var(--hm-text-base); font-weight: 600; line-height: 1.2; color: var(--text); border-radius: var(--hm-radius-small); cursor: pointer; touch-action: manipulation;
+  transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
+}
+[data-home] .kit-count:first-child { padding-left: 0; }
+[data-home] .kit-count:hover { background: color-mix(in srgb, var(--text) 9%, transparent); text-decoration: underline; text-underline-offset: 3px; }
+[data-home] .kit-count[aria-expanded="true"] { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; background: var(--surface); }
+[data-home] .kit-count:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
+[data-home] .kit-card[data-selected] .kit-count[aria-expanded="true"], [data-home] .kit-card[data-owner] .kit-count[aria-expanded="true"] { background: var(--surface); }
 
 /*
  * A card that was just added. Its look (a soft fill and a ring) is there at once and stays for 5 s, which the page times; the motion only says where it came from.
@@ -140,56 +161,27 @@
 @keyframes kit-ring-fade { from { box-shadow: 0 0 0 3px var(--accent-strong), var(--hm-shadow-lift); } to { box-shadow: 0 0 0 3px transparent, var(--hm-shadow); } }
 @keyframes kit-fill-fade { from { background-color: var(--accent-soft); border-color: var(--accent-strong); } to { background-color: var(--surface); border-color: var(--hm-border); } }
 
-/* ---- The agent card: the count chips and the mini accordions inside it. The large card has no row gap; each part keeps its own 8 px above it, so a list that is closed
-   (0 high) adds nothing to the card. Only the card that was opened grows: the grid of cards starts its rows at the top and never stretches a card. */
-[data-home] .kit-card[data-size="large"] { row-gap: 0; }
-[data-home] .kit-card[data-size="large"] .kit-card-hint { margin-top: var(--hm-space-2); }
-[data-home] .kit-card[data-kind="agent"] .kit-card-main { align-self: center; }
-[data-home] .kit-card[data-size="large"] .kit-card-badge { margin-top: var(--hm-space-2); }
-[data-home] .kit-chips { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: var(--hm-space-2) 6px; margin-top: var(--hm-space-3); position: relative; z-index: 1; pointer-events: none; }
-[data-home] .kit-chip {
-  pointer-events: auto; display: inline-flex; align-items: center; gap: var(--hm-space-1); min-height: 2rem; padding: 0 var(--hm-space-1) 0 var(--hm-space-3);
-  font: inherit; font-size: var(--hm-text-small); font-weight: 600; line-height: 1.2; white-space: nowrap; color: var(--text); background: var(--surface-2);
-  border: 1px solid var(--hm-border); border-radius: var(--hm-radius-pill); cursor: pointer; touch-action: manipulation;
-  transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
+/* ---- The tray: the list of one kind of one agent, directly under that tile's row of the grid and as wide as the row. It opens by letting its grid row grow from 0 to
+   its own height (the accordion token, 160 ms), pushing the later rows down; what is inside is clipped while it grows, and cannot be reached or seen while it is closed. */
+[data-home] .kit-tray { display: grid; grid-template-rows: 0fr; position: relative; transition: grid-template-rows var(--motion-home-accordion-ms, 0ms) var(--motion-home-accordion-ease, ease); }
+[data-home] .kit-tray[data-open] { grid-template-rows: 1fr; }
+[data-home] .kit-tray-inner { min-height: 0; overflow: hidden; visibility: hidden; transition: visibility 0s linear var(--motion-home-accordion-ms); }
+/* Opening shows the rows at once (the change takes the transition of the style it goes to, which is none); closing keeps them until the row has shrunk. */
+[data-home] .kit-tray[data-open] > .kit-tray-inner { visibility: visible; transition: none; }
+[data-home] .kit-tray-body { box-sizing: border-box; display: flex; flex-direction: column; align-items: flex-start; gap: var(--hm-space-2); margin-bottom: var(--hm-space-4); padding: var(--hm-space-3); background: var(--surface-2); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); }
+[data-home] .kit-tray-list { list-style: none; margin: 0; padding: 0; width: 100%; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--hm-tray-col)), 1fr)); gap: var(--hm-space-2) var(--hm-space-3); }
+[data-home] .kit-tray-list > li { min-width: 0; display: flex; }
+[data-home] .kit-tray-more {
+  all: unset; box-sizing: border-box; display: inline-flex; align-items: center; min-height: var(--hm-control-h); padding: 0 var(--hm-space-3);
+  font-size: var(--hm-text-base); font-weight: 600; color: var(--text); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; border-radius: var(--hm-radius-small); touch-action: manipulation;
 }
-[data-home] .kit-chip:hover, [data-home] .kit-chip[aria-expanded="true"] { background: var(--accent-soft); border-color: var(--accent-strong); }
-[data-home] .kit-chip:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
-[data-home] .kit-chip .kit-icon { transition: transform var(--motion-home-accordion-ms, 0ms) var(--motion-home-accordion-ease, ease); }
-[data-home] .kit-chip[aria-expanded="true"] .kit-icon { transform: rotate(180deg); }
-/* On the tint of a selected card the grey edge of a chip is under 3 to 1 in the dark look, so a chip there takes the accent edge and a plain fill. */
-[data-home] .kit-card[data-selected] .kit-chip, [data-home] .kit-card[data-owner] .kit-chip { background: var(--surface); border-color: var(--accent-strong); }
-[data-home] .kit-card[data-selected] .kit-chip[aria-expanded="true"], [data-home] .kit-card[data-owner] .kit-chip[aria-expanded="true"] { background: var(--accent-soft); }
-/* The list opens by letting its grid row grow from 0 to its own height. What is inside is clipped while it grows, and cannot be reached or seen while it is closed. */
-[data-home] .kit-acc { grid-column: 1 / -1; display: grid; grid-template-rows: 0fr; position: relative; z-index: 1; pointer-events: none; transition: grid-template-rows var(--motion-home-accordion-ms, 0ms) var(--motion-home-accordion-ease, ease); }
-[data-home] .kit-acc[data-open] { grid-template-rows: 1fr; }
-[data-home] .kit-acc-inner { min-height: 0; overflow: hidden; visibility: hidden; transition: visibility 0s linear var(--motion-home-accordion-ms); }
-/* Opening shows the lines at once (the change takes the transition of the style it goes to, which is none); closing keeps them until the row has shrunk. */
-[data-home] .kit-acc[data-open] > .kit-acc-inner { visibility: visible; transition: none; }
-[data-home] .kit-acc-list { list-style: none; margin: var(--hm-space-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-[data-home] .kit-acc-row { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--hm-space-2); }
-[data-home] .kit-acc-main {
-  all: unset; pointer-events: auto; box-sizing: border-box; display: flex; align-items: center; gap: var(--hm-space-2); flex: 1 1 auto; min-width: 0; min-height: 2rem; padding: 0 var(--hm-space-2);
-  font-size: var(--hm-text-small); font-weight: 500; line-height: 1.3; color: var(--text); border: 2px solid transparent; border-radius: var(--hm-radius-small); cursor: pointer; touch-action: manipulation;
-  transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
-}
-[data-home] .kit-acc-main .kit-icon { color: var(--accent-strong); }
-[data-home] .kit-acc-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-[data-home] .kit-acc-main:hover { background: color-mix(in srgb, var(--text) 9%, transparent); }
-[data-home] .kit-acc-main:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
-[data-home] .kit-acc-row[data-selected] .kit-acc-main { background: var(--surface); border-color: var(--accent-strong); font-weight: 650; }
-[data-home] .kit-acc-badge { pointer-events: auto; flex: 0 0 100%; padding: 0 0 var(--hm-space-1) calc(var(--hm-space-2) + 1.5rem); min-width: 0; }
-[data-home] .kit-acc-more {
-  all: unset; pointer-events: auto; box-sizing: border-box; display: inline-flex; align-items: center; min-height: 2rem; margin-top: 2px; padding: 0 var(--hm-space-2);
-  font-size: var(--hm-text-small); font-weight: 600; color: var(--text-muted); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; border-radius: var(--hm-radius-small);
-}
-[data-home] .kit-acc-more:hover { color: var(--text); background: color-mix(in srgb, var(--text) 9%, transparent); }
-[data-home] .kit-acc-more:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; color: var(--text); }
+[data-home] .kit-tray-more:hover { background: color-mix(in srgb, var(--text) 9%, transparent); }
+[data-home] .kit-tray-more:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
 
 /* ---- Shelf */
-[data-home] .kit-shelf { display: flex; flex-direction: column; gap: var(--hm-space-3); align-items: flex-start; }
+[data-home] .kit-shelf { display: flex; flex-direction: column; gap: var(--hm-space-2); align-items: flex-start; }
 [data-home] .kit-shelf-head { display: flex; flex-direction: column; align-items: flex-start; gap: var(--hm-space-1); }
-[data-home] .kit-shelf-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--hm-card-shelf-w)), 1fr)); gap: var(--hm-space-3); width: 100%; }
+[data-home] .kit-shelf-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--hm-row-w)), 1fr)); gap: var(--hm-space-2); width: 100%; }
 [data-home] .kit-shelf-list > li { min-width: 0; display: flex; }
 
 /* ---- Tooltip: the words of an icon-only button. It sits 8 px to the left of the button, in the free room of the top bar (never over the button, and never over what
@@ -211,14 +203,14 @@
 /* ---- Help popover */
 [data-home] .kit-help { position: relative; display: inline-flex; }
 [data-home] .kit-popover {
-  position: absolute; z-index: 30; top: calc(100% + var(--hm-space-2)); left: 0; width: 18rem; max-width: 80vw;
+  position: absolute; z-index: 30; top: calc(100% + var(--hm-space-2)); left: 0; width: 16.5rem; max-width: 80vw;
   display: flex; flex-direction: column; align-items: flex-start; gap: var(--hm-space-3); padding: var(--hm-space-4);
   background: var(--surface); color: var(--text); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow-lift);
   animation: kit-overlay-in var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out) both;
 }
 [data-home] .kit-popover[data-leaving] { animation: kit-overlay-out var(--motion-home-overlay-out-ms, 0ms) var(--motion-home-overlay-out-ease, ease-in) both; pointer-events: none; }
 [data-home] .kit-help[data-align="end"] .kit-popover { left: auto; right: 0; }
-[data-home] .kit-popover p { margin: 0; font-size: var(--hm-text-base); line-height: 1.5; }
+[data-home] .kit-popover p { margin: 0; font-size: var(--hm-text-base); line-height: 1.45; }
 
 /* ---- Drawer */
 [data-home] .kit-drawer {

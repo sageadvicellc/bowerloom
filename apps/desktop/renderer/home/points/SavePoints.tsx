@@ -27,7 +27,7 @@ export function SavePoints({ rows, unsaved, onGoBack, onShare, onOpenFile }: Sav
   if (rows.length === 0) return <><p className="kit-hint">{WORDS.hint.historyEmpty}</p>{share}</>;
   return (
     <>
-      {unsaved ? <p className="kit-hint pt-warn" role="status">{WORDS.hint.pointsDirty}</p> : null}
+      {unsaved ? <p className="kit-status pt-warn" data-tone="warn" role="status"><span className="kit-dot" aria-hidden="true" /><span>{WORDS.hint.pointsDirty}</span></p> : null}
       <ol className="pt-list" aria-label={WORDS.label.versionHistory}>
         {rows.map(row => (
           <li key={row.id} className="pt-row" data-point={row.id} data-current={row.current ? '' : undefined}>

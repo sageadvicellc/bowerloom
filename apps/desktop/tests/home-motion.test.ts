@@ -56,7 +56,7 @@ test('the page makes room for a drawer on the drawer\'s own clock, and the shelv
   assert.doesNotMatch(css, /\.hm-body\s*\{[^}]*transition:/);
   // The shelves give way with a fade; they are not taken out of the page in one frame.
   assert.match(css, /\.hm-panel\s*\{[^}]*transition:[^;]*opacity var\(--motion-home-shelves-ms/);
-  const narrow = /@media \(min-width: 761px\) and \(max-width: 1199px\) \{([\s\S]*?)\n\}/.exec(css);
+  const narrow = /@media \(min-width: 761px\) and \(max-width: 1266px\) \{([\s\S]*?)\n\}/.exec(css);
   assert.ok(narrow !== null, 'the narrow rules are there');
   assert.doesNotMatch(narrow[1]!, /display: none/);
   assert.match(narrow[1]!, /\.hm-panel \{[^}]*opacity: 0;[^}]*visibility: hidden/);
@@ -96,7 +96,7 @@ test('a button and a card give a small press: scale 0.98 within 100 ms, and noth
   assert.equal(off['--motion-home-press-ms'], '0ms'); assert.equal(off['--motion-home-press-scale'], '1');
   const kit = read('renderer/home/kit/kit.css');
   assert.match(kit, /\.kit-button:not\(:disabled\):active\s*\{[^}]*transform: scale\(var\(--motion-home-press-scale/);
-  assert.match(kit, /\.kit-card:has\(> \.kit-card-main:active\)\s*\{[^}]*transform: scale\(var\(--motion-home-press-scale/);
+  assert.match(kit, /\.kit-card:has\(\.kit-card-main:active\)\s*\{[^}]*transform: scale\(var\(--motion-home-press-scale/);
   assert.match(kit, /\.kit-button\s*\{[^}]*transition:[^;]*transform var\(--motion-home-press-ms/);
   assert.match(kit, /\.kit-card\s*\{[^}]*transition:[^;]*transform var\(--motion-home-press-ms/);
 });
@@ -128,15 +128,15 @@ test('the Find tile lights once: no delay between its parts, no rise, and the ba
   assert.equal('stagger' in MOTION.home.tileLight, false); assert.equal('distance' in MOTION.home.tileLight, false);
 });
 
-// ---- The mini accordions of the agent card and the tooltip of the Version history button (Wave A).
-test('a mini accordion opens and closes in 160 ms with the strong ease-out, by the height of its row, and is at once under reduce motion', () => {
+// ---- The tray under a row of agent tiles and the tooltip of the Version history button.
+test('a tray opens and closes in 160 ms with the strong ease-out, by the height of its grid row, and is at once under reduce motion', () => {
   assert.deepEqual({ ms: MOTION.home.accordion.ms, ease: MOTION.home.accordion.ease }, { ms: 160, ease: MOTION.ease.out });
   const on = published(false), off = published(true);
   assert.equal(on['--motion-home-accordion-ms'], '160ms'); assert.equal(on['--motion-home-accordion-ease'], MOTION.ease.out); assert.equal(off['--motion-home-accordion-ms'], '0ms');
   const kit = read('renderer/home/kit/kit.css');
-  assert.match(kit, /\.kit-acc\s*\{[^}]*grid-template-rows: 0fr;[^}]*transition: grid-template-rows var\(--motion-home-accordion-ms[^;]*var\(--motion-home-accordion-ease/);
-  assert.match(kit, /\.kit-acc\[data-open\]\s*\{[^}]*grid-template-rows: 1fr/);
-  assert.match(kit, /\.kit-chip \.kit-icon\s*\{[^}]*transition: transform var\(--motion-home-accordion-ms/);
+  assert.match(kit, /\.kit-tray\s*\{[^}]*grid-template-rows: 0fr;[^}]*transition: grid-template-rows var\(--motion-home-accordion-ms[^;]*var\(--motion-home-accordion-ease/);
+  assert.match(kit, /\.kit-tray\[data-open\]\s*\{[^}]*grid-template-rows: 1fr/);
+  assert.match(kit, /\.kit-tray\[data-open\] > \.kit-tray-inner\s*\{[^}]*visibility: visible/, 'a closed tray cannot be seen, an open one can');
   assert.match(kit, /@media \(prefers-reduced-motion: reduce\) \{\s*\[data-home\] \*[^}]*transition: none !important/, 'the one rule that turns every transition off');
 });
 

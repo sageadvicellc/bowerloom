@@ -152,7 +152,7 @@ test('the style sheet keeps text at 14 px or more, takes every time from the mot
   for (const m of css.matchAll(/(transition|animation)\s*:\s*([^;]+);/g)) assert.match(m[2]!, /var\(--motion-|none/, m[0]);
   for (const m of css.matchAll(/font-size\s*:\s*([^;]+);/g)) {
     const v = m[1]!.trim();
-    assert.ok(/^var\(--hm-text-(base|small|heading|display)\)$/.test(v) || (/^[\d.]+rem$/.test(v) && parseFloat(v) >= 0.875), `font-size ${v}`);
+    assert.ok(/^var\(--hm-text-(base|small|heading|display|title|section|name)\)$/.test(v) || (/^[\d.]+rem$/.test(v) && parseFloat(v) >= 0.875), `font-size ${v}`);
   }
   assert.match(css, /prefers-reduced-motion: reduce[\s\S]*animation: none !important; transition: none !important/);
   assert.doesNotMatch(css, /@keyframes/, 'the layer adds no motion of its own: it slides in with the kit drawer');

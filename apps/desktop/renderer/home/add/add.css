@@ -10,34 +10,34 @@
 [data-home] .kit-drawer-body:has(> .add-body) { padding: 0; gap: 0; overflow: hidden; }
 [data-home] .add-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 [data-home] .add-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--hm-space-5); display: flex; flex-direction: column; gap: var(--hm-space-4); }
-[data-home] .add-tabs { display: flex; flex-wrap: wrap; gap: var(--hm-space-2); }
+/* The tabs are one segmented control, 32 px high: one edge around all of them, a line between two, the open one filled. It wraps only when the drawer is too narrow for all five. */
+[data-home] .add-tabs { display: flex; flex-wrap: wrap; border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); background: var(--surface); overflow: hidden; }
 [data-home] .add-tab {
-  font: inherit; font-size: var(--hm-text-base); font-weight: 600; line-height: 1.2; min-height: 2.75rem; padding: 0 var(--hm-space-4);
-  border-radius: var(--hm-radius-pill); border: 1px solid var(--hm-border); background: var(--surface); color: var(--text); cursor: pointer; touch-action: manipulation;
+  flex: 1 1 auto; font: inherit; font-size: var(--hm-text-base); font-weight: 600; line-height: 1.2; min-height: var(--hm-control-h); padding: 0 var(--hm-space-2); box-sizing: border-box;
+  border: 0; border-left: 1px solid var(--hm-border); margin-left: -1px; border-radius: 0; background: transparent; color: var(--text); cursor: pointer; touch-action: manipulation;
   transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
 }
-[data-home] .add-tab:hover { background: var(--accent-soft); border-color: var(--accent-strong); }
-[data-home] .add-tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent-strong); color: var(--accent-contrast); font-weight: 700; }
-[data-home] .add-tab:focus-visible, [data-home] .add-lines:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+[data-home] .add-tab:first-child { border-left: 0; margin-left: 0; }
+[data-home] .add-tab:hover { background: var(--accent-soft); }
+[data-home] .add-tab[aria-selected="true"] { background: var(--accent); color: var(--accent-contrast); font-weight: 700; }
+[data-home] .add-tab:focus-visible, [data-home] .add-lines:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
 [data-home] .add-panel { display: flex; flex-direction: column; gap: var(--hm-space-4); }
 
 /* ---- Rows */
 [data-home] .add-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--hm-space-3); }
 [data-home] .add-row { display: flex; flex-direction: column; gap: var(--hm-space-2); }
 [data-home] .add-row[data-draggable] { user-select: none; -webkit-user-select: none; }
-[data-home] .add-row-main { display: flex; align-items: center; gap: var(--hm-space-3); }
-[data-home] .add-row-card { flex: 1 1 0; min-width: var(--hm-card-small-w); }
-[data-home] .add-row[data-add-kind="agent"] .add-row-card { flex: 0 0 auto; min-width: 0; }
+[data-home] .add-row-main { display: flex; align-items: center; gap: var(--hm-space-2); }
+/* A row of the drawer is the kit's row: one height, the name over one clipped line of hint, and the Add to button at the end of it. */
+[data-home] .add-row-card { flex: 1 1 0; min-width: 0; }
 [data-home] .add-row-main > .kit-button { flex: none; }
-/* A hint in the drawer is shown whole (up to 12 words), so the card grows instead of cutting it at two lines. */
-[data-home] .add-row .kit-card-hint { display: block; overflow: visible; -webkit-line-clamp: unset; line-clamp: unset; }
 
 /* ---- The picker of agents under a row */
 [data-home] .add-picker { display: flex; flex-direction: column; gap: var(--hm-space-2); padding: var(--hm-space-3); background: var(--surface-2); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); }
 [data-home] .add-picker-title { font-weight: 600; color: var(--text); }
-[data-home] .add-picker-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--hm-space-1); max-height: 15rem; overflow-y: auto; }
+[data-home] .add-picker-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--hm-space-1); max-height: 13.5rem; overflow-y: auto; }
 [data-home] .add-pick {
-  position: relative; display: flex; align-items: center; gap: var(--hm-space-3); box-sizing: border-box; min-height: 2.75rem; padding: var(--hm-space-1) var(--hm-space-3);
+  position: relative; display: flex; align-items: center; gap: var(--hm-space-3); box-sizing: border-box; min-height: var(--hm-control-h); padding: var(--hm-space-1) var(--hm-space-3);
   background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small);
   transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
 }
@@ -103,14 +103,14 @@
 [data-home] .add-dialog, [data-home] .sh-dialog { animation: kit-overlay-in var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out) both; }
 [data-home] .add-scrim[data-leaving], [data-home] .add-scrim[data-leaving] .add-dialog, [data-home] .add-scrim[data-leaving] .sh-dialog { animation: kit-overlay-out var(--motion-home-overlay-out-ms, 0ms) var(--motion-home-overlay-out-ease, ease-in) both; pointer-events: none; }
 [data-home] .add-dialog {
-  box-sizing: border-box; display: grid; grid-template-rows: auto minmax(0, 1fr); width: min(60rem, 100%); max-height: 100%;
+  box-sizing: border-box; display: grid; grid-template-rows: auto minmax(0, 1fr); width: min(54rem, 100%); max-height: 100%;
   background: var(--surface); color: var(--text); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow-lift); overflow: hidden;
 }
 [data-home] .add-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--hm-space-3); padding: var(--hm-space-4) var(--hm-space-5); border-bottom: 1px solid var(--border); }
 [data-home] .add-dialog-title { display: flex; flex-direction: column; gap: var(--hm-space-1); min-width: 0; }
 [data-home] .add-dialog-title h2 { outline-offset: 4px; width: fit-content; border-radius: var(--hm-radius-small); }
 [data-home] .add-dialog-name { margin: 0; font-size: var(--hm-text-base); font-weight: 600; overflow-wrap: anywhere; }
-[data-home] .add-copies { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--hm-space-4); padding: var(--hm-space-5); overflow: auto; min-height: 0; }
+[data-home] .add-copies { display: grid; grid-template-columns: repeat(auto-fit, minmax(14.5rem, 1fr)); gap: var(--hm-space-4); padding: var(--hm-space-5); overflow: auto; min-height: 0; }
 [data-home] .add-dialog[data-copies="2"] .add-copies { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 [data-home] .add-dialog[data-copies="3"] .add-copies { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 [data-home] .add-copy { display: flex; flex-direction: column; gap: var(--hm-space-3); min-width: 0; min-height: 0; padding: var(--hm-space-4); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); }
@@ -118,7 +118,7 @@
 [data-home] .add-copy-count { font-weight: 600; color: var(--text); }
 [data-home] .add-lines {
   list-style: none; margin: 0; padding: var(--hm-space-2); flex: 1 1 auto; min-height: 5rem; overflow: auto; display: flex; flex-direction: column; gap: 2px;
-  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--hm-radius-small); font-size: var(--hm-text-small); line-height: 1.5;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--hm-radius-small); font-size: var(--hm-text-small); line-height: 1.4;
 }
 [data-home] .add-line-row { display: flex; gap: var(--hm-space-2); padding: 2px var(--hm-space-2); border-radius: 0.25rem; overflow-wrap: anywhere; }
 [data-home] .add-line-row[data-changed] { background: var(--warn-bg); color: var(--warn-fg); font-weight: 650; }
@@ -132,7 +132,7 @@
 /* ---- The Add test page (#prototype-v2/add) */
 [data-home].add-page { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100vh; min-height: 0; }
 [data-home] .add-bar { display: flex; align-items: center; gap: var(--hm-space-3); min-height: var(--hm-bar-h); padding: var(--hm-space-2) var(--hm-space-5); background: var(--surface); border-bottom: 1px solid var(--hm-border); }
-[data-home] .add-brand { display: flex; align-items: center; gap: var(--hm-space-3); font-size: var(--hm-text-heading); font-weight: 650; color: var(--text); }
+[data-home] .add-brand { display: flex; align-items: center; gap: var(--hm-space-3); font-size: var(--hm-text-title); font-weight: 600; color: var(--text); }
 [data-home] .add-brand .kit-icon { color: var(--accent-strong); }
 [data-home] .add-spacer { flex: 1; }
 [data-home] .add-count { font-size: var(--hm-text-base); font-weight: 600; padding: 0 var(--hm-space-3); }
@@ -143,7 +143,7 @@
 [data-home] .add-stage[data-drawer] { padding-right: calc(var(--hm-drawer-w) + var(--hm-space-5)); }
 [data-home] .add-stage-head, [data-home] .add-section-block { display: flex; flex-direction: column; gap: var(--hm-space-3); }
 [data-home] .add-stage-head h1 { outline-offset: 4px; width: fit-content; max-width: 100%; border-radius: var(--hm-radius-small); }
-[data-home] .add-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, var(--hm-card-agent-w)); gap: var(--hm-space-4); justify-content: start; align-content: start; }
+[data-home] .add-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, var(--hm-tile-w)); gap: var(--hm-space-4); justify-content: start; align-content: start; }
 [data-home] .add-grid > li { display: flex; }
 [data-home] .add-kept { margin: 0; min-height: 1.5rem; font-weight: 600; }
 

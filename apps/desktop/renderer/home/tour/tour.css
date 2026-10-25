@@ -19,20 +19,20 @@
 }
 [data-home] .tour-layer[data-first] .tour-spot, [data-home] .tour-layer[data-first] .tour-pop { transition: none; }
 [data-home] .tour-pop {
-  position: absolute; left: 0; top: 0; box-sizing: border-box; width: min(23rem, calc(100vw - 1.5rem));
+  position: absolute; left: 0; top: 0; box-sizing: border-box; width: min(21rem, calc(100vw - 1.5rem));
   display: flex; flex-direction: column; gap: var(--hm-space-4); padding: var(--hm-space-5);
   background: var(--surface); color: var(--text); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow-lift);
   transition: left var(--motion-home-tour-spot-ms, 0ms) var(--motion-home-tour-spot-ease, ease), top var(--motion-home-tour-spot-ms, 0ms) var(--motion-home-tour-spot-ease, ease);
 }
-[data-home] .tour-text { margin: 0; text-wrap: balance; font-size: var(--hm-text-heading); line-height: 1.35; font-weight: 600; }
+[data-home] .tour-text { margin: 0; text-wrap: balance; font-size: var(--hm-text-section); line-height: 1.35; font-weight: 600; }
 /* A waiting step has one more line, so its popover is a little tighter and stays clear of the Save bar. */
 [data-home] .tour-layer[data-wait] .tour-pop { gap: var(--hm-space-3); padding: var(--hm-space-4) var(--hm-space-5); }
 [data-home] .tour-hint { margin: calc(var(--hm-space-2) * -1) 0 0; font-size: var(--hm-text-base); font-weight: 600; color: var(--accent-strong); }
 [data-home] .tour-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--hm-space-3); }
 [data-home] .tour-dots { display: inline-flex; align-items: center; gap: var(--hm-space-2); }
-[data-home] .tour-dot { width: 0.5rem; height: 0.5rem; border-radius: var(--hm-radius-pill); border: 1.5px solid var(--hm-border); background: transparent; }
+[data-home] .tour-dot { width: var(--hm-dot); height: var(--hm-dot); border-radius: 50%; border: 1.5px solid var(--hm-border); background: transparent; }
 [data-home] .tour-dot[data-state="done"] { background: var(--hm-border); }
-[data-home] .tour-dot[data-state="now"] { width: 1.25rem; background: var(--accent-strong); border-color: var(--accent-strong); }
+[data-home] .tour-dot[data-state="now"] { background: var(--accent-strong); border-color: var(--accent-strong); box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent-strong); margin: 0 2px; }
 [data-home] .tour-actions { display: flex; align-items: center; gap: var(--hm-space-2); }
 [data-home] .tour-actions .tour-skip { margin-right: auto; }
 @media (prefers-reduced-motion: reduce) {

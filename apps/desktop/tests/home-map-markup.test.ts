@@ -31,10 +31,10 @@ test('a card with Remove has a real button named "Remove" and then the card\'s n
   assert.doesNotMatch(plain, /kit-remove|data-removable/);
 });
 
-test('the Remove button comes after the badge and before nothing else, so the keyboard reaches the name first and Remove next', () => {
+test('the keyboard reaches the name first, then the state button of copies, then Remove; the hint is plain text before them on the second line', () => {
   const m = html(createElement(ItemCard, { kind: 'skill', name: 'X', hint: 'One.', badge: { label: '2 different copies', tone: 'warn' }, selected: true, onSelect: none, onRemove: none, onBadgePress: none }));
-  const order = ['kit-card-main', 'kit-card-hint', 'kit-remove', 'kit-badge'].map(c => m.indexOf(c));
-  assert.ok(order.every(i => i > -1) && order[2]! > order[1]!, order.join());
+  const order = ['kit-card-main', 'kit-card-hint', 'kit-status', 'kit-remove'].map(c => m.indexOf(c));
+  assert.ok(order.every(i => i > -1) && order.every((at, i) => i === 0 || at > order[i - 1]!), order.join());
 });
 
 test('an agent card can carry the id of its agent for a drag to find', () => {

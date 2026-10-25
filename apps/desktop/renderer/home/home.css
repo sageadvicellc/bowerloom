@@ -1,13 +1,14 @@
 /*
  * The shell of the home app: a top bar, a stage with a side panel, a Save bar at the bottom, and two drawers that open over the stage.
- * Scoped to [data-home]. Text is 16 px, labels never below 14 px, one heading size (20 px). Spacing is 16 to 24 px. No left rail.
+ * Scoped to [data-home]. At about 90 percent of the first scale (home-tokens.css): the page title is 18 px, a section heading 16 px, all other text 14 px, nothing smaller.
+ * The top bar is 52 px, the Save bar 48 px, the side panel about 320 px, a drawer about 380 px. No left rail.
  */
 html, body { height: 100%; }
 [data-home].hm-root { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100vh; min-height: 0; }
 [data-home] .hm-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-[data-home] .hm-bar { display: flex; align-items: center; gap: var(--hm-space-3); min-height: var(--hm-bar-h); padding: var(--hm-space-2) var(--hm-space-5); background: var(--surface); border-bottom: 1px solid var(--hm-border); }
-[data-home] .hm-brand { display: flex; align-items: center; gap: var(--hm-space-3); font-size: var(--hm-text-heading); font-weight: 650; color: var(--text); }
+[data-home] .hm-bar { display: flex; align-items: center; gap: var(--hm-space-3); min-height: var(--hm-bar-h); box-sizing: border-box; padding: var(--hm-space-2) var(--hm-space-5); background: var(--surface); border-bottom: 1px solid var(--hm-border); }
+[data-home] .hm-brand { display: flex; align-items: center; gap: var(--hm-space-3); font-size: var(--hm-text-title); font-weight: 600; color: var(--text); }
 [data-home] .hm-brand .kit-icon { color: var(--accent-strong); }
 [data-home] .hm-spacer { flex: 1; }
 [data-home] .hm-preview { display: flex; align-items: center; gap: var(--hm-space-2); margin-left: var(--hm-space-2); }
@@ -21,9 +22,11 @@ html, body { height: 100%; }
 [data-home] .hm-body[data-drawer] { padding-right: var(--hm-drawer-w); }
 [data-home] .hm-body[data-moving] { transition: padding-right var(--motion-panel-close-ms, 0ms) var(--motion-panel-close-ease, ease-in), grid-template-columns var(--motion-panel-close-ms, 0ms) var(--motion-panel-close-ease, ease-in); }
 [data-home] .hm-body[data-moving][data-drawer] { transition: padding-right var(--motion-home-drawer-ms, 0ms) var(--motion-home-drawer-ease, ease-out), grid-template-columns var(--motion-home-drawer-ms, 0ms) var(--motion-home-drawer-ease, ease-out); }
-/* In a window too narrow for all three, the shelves give way to the drawer until it closes. They fade out in 110 ms, and their column closes with the drawer's room,
+/* In a window too narrow for all three, the shelves give way to the drawer until it closes. The number is worked out, not guessed: with a drawer open the map
+   keeps room for two columns of tiles, which is 2 x 250 + 14 = 514 px and 2 x 28 = 56 px of stage padding, 570 px in all. The panel is 25 vw (317 px at this width) and the
+   drawer 380 px, and 570 + 317 + 380 = 1267. From 1267 px up all three sit side by side; below it the panel gives way. (It was 1200 px when the panel was 30 vw and the drawer 420 px.) They fade out in 110 ms, and their column closes with the drawer's room,
    while what is in them keeps its width, so nothing in them is squeezed on the way out. */
-@media (min-width: 761px) and (max-width: 1199px) {
+@media (min-width: 761px) and (max-width: 1266px) {
   [data-home] .hm-body[data-drawer] { grid-template-columns: minmax(0, 1fr) 0px; }
   [data-home] .hm-body[data-drawer] .hm-panel { opacity: 0; visibility: hidden; pointer-events: none; overflow: hidden; padding-left: 0; padding-right: 0; border-left-width: 0; }
   [data-home] .hm-panel > * { min-width: calc(var(--hm-panel-w) - 2 * var(--hm-space-5)); }
@@ -33,21 +36,24 @@ html, body { height: 100%; }
   [data-home] .hm-body[data-drawer] { grid-template-columns: minmax(0, 1fr); }
   [data-home] .hm-body[data-drawer] .hm-panel { display: none; }
 }
-[data-home] .hm-stage { overflow-y: auto; padding: var(--hm-space-6); display: flex; flex-direction: column; gap: var(--hm-space-5); min-width: 0; }
+[data-home] .hm-stage { overflow-y: auto; padding: var(--hm-space-5) var(--hm-space-6); display: flex; flex-direction: column; gap: var(--hm-space-4); min-width: 0; }
 [data-home] .hm-stage-head { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: var(--hm-space-3) var(--hm-space-5); }
 [data-home] .hm-stage-title { display: flex; flex-direction: column; gap: var(--hm-space-1); }
-[data-home] .hm-stage-head h1 { outline-offset: 4px; width: fit-content; max-width: 100%; border-radius: var(--hm-radius-small); }
-[data-home] .hm-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, var(--hm-card-agent-w)); gap: var(--hm-space-4); justify-content: start; align-content: start; align-items: start; }
-[data-home] .hm-grid > li { display: flex; }
+[data-home] .hm-stage-head h1 { font-size: var(--hm-text-title); outline-offset: 4px; width: fit-content; max-width: 100%; border-radius: var(--hm-radius-small); }
+/* The map: the same tile everywhere (one width, one height). There is no row gap, because a tray may sit between two rows: each tile keeps its own 14 px under it, and
+   a tray that is closed has no height and so adds none. A tray is one more grid item that spans the whole row and follows the last tile of its row (HomeApp). */
+[data-home] .hm-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, var(--hm-tile-w)); column-gap: var(--hm-space-4); row-gap: 0; justify-content: start; align-content: start; align-items: start; }
+[data-home] .hm-grid > li.hm-tile { display: flex; padding-bottom: var(--hm-space-4); }
+[data-home] .hm-grid > li.hm-tray-slot { grid-column: 1 / -1; min-width: 0; display: block; }
 
 [data-home] .hm-panel {
-  overflow-y: auto; padding: var(--hm-space-5); border-left: 1px solid var(--hm-border); background: var(--surface); display: flex; flex-direction: column; gap: var(--hm-space-5);
+  overflow-y: auto; padding: var(--hm-space-5); border-left: 1px solid var(--hm-border); background: var(--surface); display: flex; flex-direction: column; gap: var(--hm-space-4);
   transition: opacity var(--motion-home-shelves-ms, 0ms) var(--motion-home-shelves-ease, ease-out), visibility var(--motion-home-shelves-ms, 0ms) var(--motion-home-shelves-ease, ease-out), padding var(--motion-home-drawer-ms, 0ms) var(--motion-home-drawer-ease, ease-out);
 }
 [data-home] .hm-panel-head { display: flex; flex-direction: column; gap: var(--hm-space-1); }
 [data-home] .hm-panel-head h2 { outline-offset: 4px; width: fit-content; max-width: 100%; border-radius: var(--hm-radius-small); }
 
-[data-home] .hm-savebar { display: flex; align-items: center; justify-content: space-between; gap: var(--hm-space-4); padding: var(--hm-space-3) var(--hm-space-5); background: var(--surface); border-top: 1px solid var(--hm-border); }
+[data-home] .hm-savebar { display: flex; align-items: center; justify-content: space-between; gap: var(--hm-space-4); min-height: var(--hm-savebar-h); box-sizing: border-box; padding: var(--hm-space-2) var(--hm-space-5); background: var(--surface); border-top: 1px solid var(--hm-border); }
 [data-home] .hm-savebar p { margin: 0; font-size: var(--hm-text-base); }
 
 [data-home] .hm-empty { margin: 0; }
@@ -69,8 +75,8 @@ html, body { height: 100%; }
 /* ---- The tools beside the sort toggle, and the one closing note after the first Save. */
 [data-home] .hm-stage-tools { display: flex; align-items: center; flex-wrap: wrap; gap: var(--hm-space-3) var(--hm-space-5); }
 [data-home] .hm-toast {
-  position: fixed; z-index: 40; left: 50%; bottom: calc(var(--hm-bar-h) + var(--hm-space-5)); transform: translateX(-50%); max-width: calc(100vw - 2rem); box-sizing: border-box;
-  display: none; align-items: center; gap: var(--hm-space-3); padding: var(--hm-space-3) var(--hm-space-5);
+  position: fixed; z-index: 40; left: 50%; bottom: calc(var(--hm-savebar-h) + var(--hm-space-5)); transform: translateX(-50%); max-width: calc(100vw - 2rem); box-sizing: border-box;
+  display: none; align-items: center; gap: var(--hm-space-3); padding: var(--hm-space-2) var(--hm-space-4);
   background: var(--surface); color: var(--text); border: 1px solid var(--accent-strong); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow-lift); font-size: var(--hm-text-base); font-weight: 600;
 }
 [data-home] .hm-toast[data-open] { display: flex; animation: hm-toast-in var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out) both; }

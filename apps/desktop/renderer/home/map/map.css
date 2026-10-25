@@ -1,8 +1,9 @@
-/* The toggle that orders the map. Scoped to [data-home]. Text is 14 px or more, a button is 36 px tall, a pressed button is filled and has a 2 px accent edge (no check mark: it is a highlight, not a choice). */
-[data-home] .hm-sort { display: flex; align-items: center; gap: var(--hm-space-3); flex-wrap: wrap; }
+/* The toggle that orders the map: a quiet segmented control, 28 px high. Scoped to [data-home]. Text is 14 px, a segment keeps a 28 px by 24 px hit area at the least (its
+   padding makes it wider), and a pressed segment is filled and has a 2 px accent edge (no check mark: it is a highlight, not a choice). */
+[data-home] .hm-sort { display: flex; align-items: center; gap: var(--hm-space-2); flex-wrap: wrap; }
 [data-home] .hm-seg { display: inline-flex; border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); background: var(--surface); overflow: hidden; }
 [data-home] .hm-seg-button {
-  display: inline-flex; align-items: center; gap: var(--hm-space-1); min-height: 2.25rem; padding: 0 var(--hm-space-3);
+  display: inline-flex; align-items: center; gap: var(--hm-space-1); min-height: var(--hm-control-h-small); box-sizing: border-box; padding: 0 var(--hm-space-3);
   font: inherit; font-size: var(--hm-text-small); font-weight: 600; color: var(--text); background: transparent; border: 0; cursor: pointer; touch-action: manipulation;
   transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
 }

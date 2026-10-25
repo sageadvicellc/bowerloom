@@ -34,13 +34,13 @@ const levels = (markup: string): number[] => [...markup.matchAll(/<h([1-6])[\s>]
 const inOrder = (list: number[]): boolean => list.every((level, i) => i === 0 ? level === 1 || level === 2 : level <= list[i - 1]! + 1);
 const shell = (): string => html(createElement(ProtoProvider, { store: createStore(loadWorld()) }, createElement(HomeApp)));
 
-test('an agent card is large, with a glyph tile (no initials, no person), a name button, a hint, and nothing else', () => {
+test('a ready-made agent in a list is the same compact row as a skill: a glyph tile (no initials, no person), a name button and a hint', () => {
   const m = html(createElement(ItemCard, { kind: 'agent', name: 'Velvet Weaver', hint: 'A weaver with 3 skills and 1 tool.', selected: false, onSelect: none }));
-  assert.match(m, /data-kind="agent"/); assert.match(m, /data-size="large"/); assert.match(m, /<span class="kit-tile" data-size="large" aria-hidden="true"><svg/);
+  assert.match(m, /data-kind="agent"/); assert.match(m, /data-size="small"/); assert.match(m, /<span class="kit-tile" aria-hidden="true"><svg/);
   assert.doesNotMatch(m, /kit-avatar|data-slot/); assert.doesNotMatch(m, /aria-hidden="true">VW</, 'no initials'); assert.doesNotMatch(m, /M6 20c0-3\.3 2\.7-6 6-6s6 2\.7 6 6/, 'not the head and shoulders of a person');
   assert.match(m, /<button[^>]*class="kit-card-main"[^>]*aria-pressed="false"[^>]*>Velvet Weaver<\/button>/);
   assert.match(m, /aria-describedby="[^"]+"/); assert.match(m, /<p class="kit-hint kit-card-hint"[^>]*>A weaver with 3 skills and 1 tool\.<\/p>/);
-  assert.doesNotMatch(m, /kit-badge|kit-card-check|style=/); assert.equal(isLarge('agent'), true);
+  assert.doesNotMatch(m, /kit-status|kit-card-check|style=/); assert.equal(isLarge('agent'), false, 'the tile is the AgentCard of the map; a row is always one height');
   within(m);
 });
 
@@ -61,17 +61,19 @@ test('an agent card and a skill card share one layout: the same parts in the sam
   assert.deepEqual(a, s); assert.deepEqual(a, ['kit-tile', 'kit-card-main', 'kit-card-badge']);
 });
 
-test('a selected card says so with aria-pressed and a highlight, and has no check mark; a badge is an icon and words', () => {
+test('a selected card says so with aria-pressed and a highlight, and has no check mark; a state is a dot and words', () => {
   const m = html(createElement(ItemCard, { kind: 'skill', name: 'Weekly Review', badge: { label: '2 different copies', tone: 'warn' }, selected: true, onSelect: none }));
   assert.match(m, /aria-pressed="true"/); assert.match(m, /data-selected=""/);
   assert.doesNotMatch(m, /kit-card-check/); assert.doesNotMatch(m, /M5 12\.5l4\.5 4\.5L19 7\.5/, 'the check path is not drawn anywhere in the card');
-  assert.match(m, /<span class="kit-badge"[^>]*data-tone="warn"[^>]*><svg[\s\S]*?<\/svg><span>2 different copies<\/span><\/span>/);
+  assert.match(m, /<span class="kit-status"[^>]*data-tone="warn"[^>]*><span class="kit-dot" aria-hidden="true"><\/span><span>2 different copies<\/span><\/span>/);
+  assert.doesNotMatch(m, /kit-badge|kit-pill/, 'no pill');
   within(m);
 });
 
-test('a badge is a plain span, or a button when it can be pressed; each tone has its own icon', () => {
-  assert.match(html(createElement(Badge, { badge: { label: 'new', tone: 'new' } })), /^<span class="kit-badge"/);
-  assert.match(html(createElement(Badge, { badge: { label: '2 different copies', tone: 'warn' }, onPress: none })), /^<button type="button" class="kit-badge"/);
+test('a state is a dot and words in a plain span, or a text button when it can be pressed; every tone says its state in words', () => {
+  assert.match(html(createElement(Badge, { badge: { label: 'new', tone: 'new' } })), /^<span class="kit-status" data-tone="new" data-no-drag=""><span class="kit-dot" aria-hidden="true"><\/span><span>new<\/span><\/span>$/);
+  assert.match(html(createElement(Badge, { badge: { label: '2 different copies', tone: 'warn' }, onPress: none })), /^<button type="button" class="kit-status"/);
+  for (const tone of ['warn', 'new', 'info'] as const) assert.match(html(createElement(Badge, { badge: { label: 'Runs code', tone } })), /<span>Runs code<\/span>/, 'the words are always there, so colour is never the only signal');
   const icons = [badgeIcon({ label: 'x', tone: 'warn' }), badgeIcon({ label: 'x', tone: 'new' }), badgeIcon({ label: 'x', tone: 'info' }), badgeIcon({ label: 'needs a key', tone: 'warn' })];
   assert.deepEqual(icons, ['warning', 'sparkle', 'info', 'key']);
   assert.ok(KIT_ICON_NAMES.length >= 12);
@@ -84,10 +86,10 @@ test('a glyph tile is a hidden icon in a rounded square, in three sizes, and nev
   assert.match(html(createElement(Glyph, { name: 'agent', size: 'large' })), /data-size="large"/); assert.match(html(createElement(Glyph, { name: 'agent', size: 'small' })), /data-size="small"/);
 });
 
-test('a button is primary or quiet, round when asked, and never has a style attribute', () => {
+test('a button is primary, quiet or text, round when asked, and never has a style attribute', () => {
   const p = html(createElement(Button, { variant: 'primary', icon: 'plus' }, 'Add'));
   assert.match(p, /data-variant="primary"/); assert.match(p, /type="button"/); assert.doesNotMatch(p, /style=/);
-  assert.match(html(createElement(Button, {}, 'Go')), /data-variant="quiet"/);
+  assert.match(html(createElement(Button, {}, 'Go')), /data-variant="quiet"/); assert.match(html(createElement(Button, { variant: 'text' }, 'Find more')), /data-variant="text"/);
   assert.match(html(createElement(Button, { round: true, 'aria-label': 'Help' }, '?')), /data-round=""[^>]*>\?<|aria-label="Help"/);
   assert.match(html(createElement(Button, { disabled: true }, 'Save')), /disabled=""/);
 });
@@ -138,22 +140,23 @@ test('a help popover is a "?" button; opened, it holds one sentence marked as po
   assert.ok(extractText(open).some(t => t.popover && /MCP/.test(t.text)));
 });
 
-test('the Preview mark is one pill button that opens its own popover, and there is no second "?" beside it', () => {
+test('the Preview mark is one text button, plain words and a dot, that opens its own popover, and there is no second "?" beside it', () => {
   const closed = html(createElement(HelpPopover, { label: 'About this preview', text: WORDS.popover.preview, pill: 'Preview' }));
-  assert.match(closed, /<button[^>]*class="kit-badge kit-pill"[^>]*aria-label="About this preview"[^>]*aria-expanded="false"[^>]*>[\s\S]*<span>Preview<\/span><\/button>/);
+  assert.match(closed, /<button[^>]*class="kit-status kit-help-text"[^>]*aria-label="About this preview"[^>]*aria-expanded="false"[^>]*><span class="kit-dot" aria-hidden="true"><\/span><span>Preview<\/span><\/button>/);
+  assert.doesNotMatch(closed, /kit-badge|kit-pill|<svg/, 'no pill and no icon');
   assert.equal([...closed.matchAll(/<button/g)].length, 1, 'one button, not a pill and a circle'); assert.doesNotMatch(closed, />\?</); within(closed);
   const open = html(createElement(HelpPopover, { label: 'About this preview', text: WORDS.popover.preview, pill: 'Preview', defaultOpen: true }));
   assert.match(open, /<p>This is a preview\. Nothing is written to your computer\.<\/p>/); assert.match(open, /aria-expanded="true"/); within(open);
 });
 
-test('the shell has one "?" in the whole window: Help at the far right; Preview is a pill and Tools has a hint line', () => {
+test('the shell has one "?" in the whole window: Help at the far right; Preview is plain words with a dot and Tools has a hint line', () => {
   const m = shell();
   assert.equal([...m.matchAll(/>\?<\/button>/g)].length, 1, 'exactly one round help button');
   assert.match(m, /aria-label="Help"[^>]*>\?<\/button>/);
-  assert.match(m, /<button[^>]*class="kit-badge kit-pill"[^>]*aria-label="About this preview"/);
+  assert.match(m, /<button[^>]*class="kit-status kit-help-text"[^>]*aria-label="About this preview"/);
   assert.doesNotMatch(m, /About tools/);
   assert.match(m, /<h3 class="kit-heading"[^>]*>Tools<\/h3><p class="kit-hint">Tools let an agent reach outside services\.<\/p>/);
-  assert.ok(m.indexOf('kit-pill') < m.indexOf('aria-label="Help"'), 'Help is after the Preview pill, at the far right of the bar');
+  assert.ok(m.indexOf('kit-help-text') < m.indexOf('aria-label="Help"'), 'Help is after the Preview mark, at the far right of the bar');
   within(m);
 });
 
@@ -207,8 +210,9 @@ test('the shell shows every agent in name order, with a plain name and a hint th
 test('the kit gallery shows both looks, every card state and every part, passes the text budget, and keeps its headings in order', () => {
   const m = html(createElement(ProtoProvider, { store: createStore(loadWorld()) }, createElement(KitGallery)));
   assert.equal([...m.matchAll(/data-theme="(light|dark)"/g)].map(x => x[1]).join(), 'light,dark');
-  for (const state of ['data-demo="hover"', 'data-demo="focus"', 'data-selected=""', 'data-size="large"', 'data-size="small"', 'data-kind="tool"', 'data-kind="note"', 'data-kind="skill"']) assert.match(m, new RegExp(state), state);
-  for (const tone of ['warn', 'new', 'info']) assert.match(m, new RegExp(`kit-badge" data-tone="${tone}"`), tone);
+  for (const state of ['data-demo="hover"', 'data-demo="focus"', 'data-selected=""', 'data-size="tile"', 'data-size="small"', 'kit-tray', 'data-kind="tool"', 'data-kind="note"', 'data-kind="skill"']) assert.match(m, new RegExp(state), state);
+  for (const tone of ['warn', 'new', 'info']) assert.match(m, new RegExp(`kit-status" data-tone="${tone}"`), tone);
+  assert.doesNotMatch(m, /kit-badge|kit-pill|kit-chip/, 'no pill is left');
   assert.match(m, /disabled=""/); assert.match(m, /Show more/); assert.match(m, /kit-popover/); assert.match(m, /kit-drawer/); assert.match(m, /class="kit-tile"/); assert.doesNotMatch(m, /kit-avatar/);
   within(m);
   assert.ok(inOrder(levels(m)), levels(m).join());

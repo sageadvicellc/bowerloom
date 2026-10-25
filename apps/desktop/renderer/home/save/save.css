@@ -1,14 +1,11 @@
-/* The Save bar: what waits, the buttons, and, after a save, the programs a real save would update as quiet chips (no tick: the preview writes nothing). Scoped to [data-home]. Timing comes from the motion tokens. */
+/* The Save bar: what waits, the buttons, and, after a save, the programs a real save would update as plain words joined by dots (no tick: the preview writes nothing). Scoped to [data-home]. Timing comes from the motion tokens. */
 [data-home] .hm-savebar { flex-wrap: wrap; }
 [data-home] .hm-savebar-state { display: flex; align-items: center; flex-wrap: wrap; gap: var(--hm-space-2) var(--hm-space-4); min-width: 0; }
-[data-home] .hm-savebar-state p { font-weight: 650; }
+[data-home] .hm-savebar-state p { font-weight: 600; }
 [data-home] .hm-savebar-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--hm-space-3); margin-left: auto; }
-/* The chips come in together with one short fade: no delay between them, because a delay would only be decoration. */
+/* The words come in together with one short fade: no delay between them, because a delay would only be decoration. */
 [data-home] .hm-would { display: flex; align-items: center; flex-wrap: wrap; gap: var(--hm-space-2) var(--hm-space-3); animation: kit-overlay-in var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out) both; }
 [data-home] .hm-would-lead { font-size: var(--hm-text-small); font-weight: 600; color: var(--text-muted); }
-[data-home] .hm-ticks { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--hm-space-2) var(--hm-space-3); }
-[data-home] .hm-tick {
-  display: inline-flex; align-items: center; min-height: 1.75rem; padding: 0 var(--hm-space-3);
-  font-size: var(--hm-text-small); font-weight: 600; color: var(--quiet-fg); background: var(--quiet-bg);
-  border: 1px solid color-mix(in srgb, currentColor 40%, transparent); border-radius: var(--hm-radius-pill);
-}
+[data-home] .hm-ticks { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0 var(--hm-space-2); }
+[data-home] .hm-ticks > li + li::before { content: "\00b7"; margin-right: var(--hm-space-2); color: var(--text-muted); }
+[data-home] .hm-tick { display: inline-flex; align-items: center; font-size: var(--hm-text-small); font-weight: 600; color: var(--text); }

@@ -1,14 +1,14 @@
 /**
  * A button that opens a small popover with one sentence. This is where a technical term may be explained (the text is marked `data-budget="popover"`).
  * Escape or a click elsewhere closes it, and the focus stays on the button. An optional action sits under the sentence, such as "Show me around".
- * The button is a round "?" by default. With `pill` it is a small pill with those words and an info mark (the "Preview" mark of the top bar), so one control
- * both says what it is and explains itself, and a window never carries two question marks for the same thing.
+ * The button is a round "?" by default. With `pill` it is plain words with a small dot (the "Preview" mark of the top bar), so one control
+ * both says what it is and explains itself, and a window never carries two question marks for the same thing. It has no fill and no border, but it keeps a
+ * 32 px hit area and shows an underline when it is open.
  * The popover fades in with a 4 px rise and fades out faster than it came (the overlay tokens); under reduce motion it comes and goes at once.
  */
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Button } from './Button.js';
-import { KitIcon } from './icons.js';
 import { usePresence } from './presence.js';
 
 export interface HelpPopoverProps {
@@ -49,7 +49,7 @@ export function HelpPopover({ label, text, action, defaultOpen = false, dataTour
     <span className="kit-help" ref={wrap} data-align={align}>
       {pill === undefined
         ? <Button ref={trigger} round size={size} aria-label={label} aria-expanded={open} aria-controls={id} data-tour={dataTour} onClick={() => setOpen(o => !o)}>?</Button>
-        : <button ref={trigger} type="button" className="kit-badge kit-pill" data-tone="info" data-no-drag="" aria-label={label} aria-expanded={open} aria-controls={id} data-tour={dataTour} onClick={() => setOpen(o => !o)}><KitIcon name="info" size={16} /><span>{pill}</span></button>}
+        : <button ref={trigger} type="button" className="kit-status kit-help-text" data-tone="info" data-no-drag="" aria-label={label} aria-expanded={open} aria-controls={id} data-tour={dataTour} onClick={() => setOpen(o => !o)}><span className="kit-dot" aria-hidden="true" /><span>{pill}</span></button>}
       {shown.mounted ? (
         <div className="kit-popover" id={id} role="group" aria-label={label} data-budget="popover" data-leaving={shown.leaving ? '' : undefined}>
           <p>{text}</p>

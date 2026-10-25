@@ -151,7 +151,7 @@ test('the style sheet keeps text at 14 px or more, takes every time from the mot
   const css = readFileSync(join(DESKTOP, 'renderer/home/share/share.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
   assert.doesNotMatch(css, /(?<![-\w])\d+(\.\d+)?m?s\b(?![^;{}]*var\()/, 'a fixed time');
   for (const m of css.matchAll(/(transition|animation)\s*:\s*([^;]+);/g)) assert.match(m[2]!, /var\(--motion-|none/, m[0]);
-  for (const m of css.matchAll(/font-size\s*:\s*([^;]+);/g)) assert.match(m[1]!.trim(), /^var\(--hm-text-(base|small|heading|display)\)$/, m[0]);
+  for (const m of css.matchAll(/font-size\s*:\s*([^;]+);/g)) assert.match(m[1]!.trim(), /^var\(--hm-text-(base|small|heading|display|title|section|name)\)$/, m[0]);
   assert.match(css, /prefers-reduced-motion: reduce[\s\S]*animation: none !important; transition: none !important/);
   assert.doesNotMatch(css, /@keyframes/, 'Share adds no motion of its own');
   assert.doesNotMatch(css, /#[0-9a-fA-F]{3,8}\b|rgb\((?!\s*0 0 0)/, 'colours come from the tokens');

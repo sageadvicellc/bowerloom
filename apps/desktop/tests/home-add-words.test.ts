@@ -73,7 +73,7 @@ test('the Add style sheet takes every duration from the motion tokens, keeps tex
   for (const m of css.matchAll(/(transition|animation)\s*:\s*([^;]+);/g)) assert.match(m[2]!, /var\(--motion-|none/, m[0]);
   for (const m of css.matchAll(/font-size\s*:\s*([^;]+);/g)) {
     const v = m[1]!.trim();
-    assert.ok(/^var\(--hm-text-(base|small|heading|display)\)$/.test(v) || (/^[\d.]+rem$/.test(v) && parseFloat(v) >= 0.875), `font-size ${v}`);
+    assert.ok(/^var\(--hm-text-(base|small|heading|display|title|section|name)\)$/.test(v) || (/^[\d.]+rem$/.test(v) && parseFloat(v) >= 0.875), `font-size ${v}`);
   }
   assert.match(css, /prefers-reduced-motion: reduce[\s\S]*animation: none !important; transition: none !important/);
 });

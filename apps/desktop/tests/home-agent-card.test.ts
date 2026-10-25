@@ -1,9 +1,9 @@
-// The agent card of the map, rendered to markup: the glyph tile, the count chips, the mini accordions, and the rules that keep them reachable and honest.
+// The agent tile of the map, rendered to markup: one glyph tile, a name, a job line, and ONE line of plain count buttons. No pills, no open list inside the tile.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { AgentCard, LIST_LIMIT } from '../renderer/home/kit/AgentCard.js';
+import { AgentCard } from '../renderer/home/kit/AgentCard.js';
 import type { AgentCardProps } from '../renderer/home/kit/AgentCard.js';
 import { agentCard, ownedAgents, shelvesOf } from '../shared/home/cards.js';
 import type { ShelfEntry, Shelves } from '../shared/home/cards.js';
@@ -15,92 +15,65 @@ const agents = ownedAgents(world);
 const none = (): void => undefined;
 const html = (props: Partial<AgentCardProps> & { shelves?: Shelves } = {}): string => {
   const a = agents.find(x => x.id === 'agent-01')!, words = agentCard(a);
-  return renderToStaticMarkup(createElement(AgentCard, { name: words.name, hint: words.hint, shelves: shelvesOf(world, a), selected: false, onSelect: none, onSelectItem: none, dropAgent: a.id, ...props }));
+  return renderToStaticMarkup(createElement(AgentCard, { name: words.name, hint: words.hint, shelves: shelvesOf(world, a), selected: false, onSelect: none, dropAgent: a.id, ...props }));
 };
 const many = (kind: ShelfEntry['kind'], n: number): ShelfEntry[] => Array.from({ length: n }, (_, i) => ({ id: `${kind}-${i}`, kind, name: `Item number ${i + 1}` }));
-const tagsOf = (m: string): string[] => [...m.matchAll(/class="(kit-card-main|kit-chip|kit-acc-main|kit-acc-more|kit-badge)[ "]/g)].map(x => x[1]!);
+const counts = (m: string): string[] => [...m.matchAll(/class="kit-count"[^>]*>([^<]+)<\/button>/g)].map(x => x[1]!);
 
-test('the agent card has a glyph tile, a name, a job line, and a count chip for each kind it holds', () => {
+test('the tile has a 24 px glyph tile, a name, a job line and one line of counts, and nothing else', () => {
   const m = html();
-  assert.match(m, /^<div class="kit-card" data-kind="agent" data-size="large" data-drop-agent="agent-01">/);
-  assert.match(m, /<span class="kit-tile" data-size="large" aria-hidden="true"><svg/); assert.doesNotMatch(m, /kit-avatar/);
+  assert.match(m, /^<div class="kit-card" data-kind="agent" data-size="tile" data-drop-agent="agent-01">/);
+  assert.match(m, /<span class="kit-tile" data-size="small" aria-hidden="true"><svg/); assert.doesNotMatch(m, /kit-avatar/);
   assert.match(m, /<button type="button" class="kit-card-main"[^>]*aria-pressed="false"[^>]*>Meeting assistant<\/button>/);
   assert.match(m, /<p class="kit-hint kit-card-hint"[^>]*>Summarizes meetings and writes replies\.<\/p>/);
-  assert.deepEqual([...m.matchAll(/class="kit-chip"[^>]*><span>([^<]+)<\/span>/g)].map(x => x[1]), ['3 skills', '1 tool', '1 note set']);
-  assert.doesNotMatch(m, /kit-card-check/);
+  assert.deepEqual(counts(m), ['3 skills', '1 tool', '1 note set']);
+  assert.equal([...m.matchAll(/<div class="kit-summary"/g)].length, 1, 'one summary line');
+  assert.doesNotMatch(m, /kit-chip|kit-acc|kit-badge|kit-status|kit-tray|<ul/, 'no pills, no open list and no state inside the tile');
   assert.deepEqual(assertTextBudget(m), [], m.slice(0, 200));
 });
 
-test('a kind with nothing in it has no chip; an agent with nothing has no chip row at all', () => {
-  const some = html({ shelves: { skills: many('skill', 12), tools: [], notes: many('note', 1) } });
-  assert.deepEqual([...some.matchAll(/class="kit-chip"[^>]*><span>([^<]+)<\/span>/g)].map(x => x[1]), ['12 skills', '1 note set']);
-  assert.equal([...some.matchAll(/class="kit-acc"/g)].length, 2, 'a list for each chip, and none for the tools');
+test('the counts are joined by middle dots that a screen reader skips; a kind with nothing in it is left out; the words are singular or plural to fit', () => {
+  const m = html({ shelves: { skills: many('skill', 12), tools: many('tool', 2), notes: many('note', 1) } });
+  assert.deepEqual(counts(m), ['12 skills', '2 tools', '1 note set']);
+  assert.equal([...m.matchAll(/<span class="kit-sep" aria-hidden="true">·<\/span>/g)].length, 2, 'two dots between three counts');
+  const some = html({ shelves: { skills: many('skill', 12), tools: [], notes: many('note', 2) } });
+  assert.deepEqual(counts(some), ['12 skills', '2 note sets']);
+  assert.equal([...some.matchAll(/kit-sep/g)].length, 1);
+  assert.deepEqual(counts(html({ shelves: { skills: many('skill', 1), tools: many('tool', 1), notes: [] } })), ['1 skill', '1 tool']);
   const bare = html({ shelves: { skills: [], tools: [], notes: [] } });
-  assert.doesNotMatch(bare, /kit-chip|kit-acc|kit-chips/);
-  const singular = html({ shelves: { skills: many('skill', 1), tools: many('tool', 1), notes: [] } });
-  assert.match(singular, /<span>1 skill<\/span>/); assert.match(singular, /<span>1 tool<\/span>/);
+  assert.doesNotMatch(bare, /kit-count|kit-sep/); assert.match(bare, /class="kit-summary"/, 'an agent with nothing keeps an empty line, so its tile is the same size');
 });
 
-test('a chip is a button with aria-expanded, and aria-controls names the list it opens; the lists are closed and cannot be reached until opened', () => {
-  const m = html();
-  const chips = [...m.matchAll(/<button type="button" class="kit-chip" data-kind="(\w+)" aria-expanded="(true|false)" aria-controls="([^"]+)"/g)];
-  assert.equal(chips.length, 3); assert.ok(chips.every(c => c[2] === 'false'));
-  for (const c of chips) assert.match(m, new RegExp(`<div class="kit-acc" id="${c[3]!.replace(/[:]/g, '\\$&')}" data-kind="${c[1]}" inert="">`), `the list ${c[1]} is closed and inert`);
-  assert.match(m, /<div class="kit-chips" role="group" aria-labelledby="([^"]+)">/);
-  const group = /role="group" aria-labelledby="([^"]+)"/.exec(m)![1], name = /class="kit-card-main" id="([^"]+)"/.exec(m)![1];
-  assert.equal(group, name, 'the group is named by the card\'s own name');
+test('a count is a button with aria-expanded and aria-controls that names its tray; the open one says so', () => {
+  const closed = html();
+  const buttons = [...closed.matchAll(/<button type="button" class="kit-count" data-kind="(\w+)" aria-expanded="(true|false)" aria-controls="([^"]+)"/g)];
+  assert.equal(buttons.length, 3); assert.ok(buttons.every(b => b[2] === 'false'));
+  assert.deepEqual(buttons.map(b => b[3]), ['tray-agent-01-skill', 'tray-agent-01-tool', 'tray-agent-01-note']);
+  const open = html({ openKind: 'tool' });
+  assert.deepEqual([...open.matchAll(/class="kit-count" data-kind="(\w+)" aria-expanded="(true|false)"/g)].map(x => [x[1], x[2]]), [['skill', 'false'], ['tool', 'true'], ['note', 'false']]);
+  assert.match(open, /data-tray=""/, 'the tile whose tray is open keeps the accent edge');
+  assert.match(closed, /<div class="kit-summary" role="group" aria-labelledby="([^"]+)">/);
+  assert.equal(/role="group" aria-labelledby="([^"]+)"/.exec(closed)![1], /class="kit-card-main" id="([^"]+)"/.exec(closed)![1], 'the group is named by the tile\'s own name');
 });
 
-test('an open list shows the names of the items, one to a line, as buttons, and is not inert; several can be open at once', () => {
-  const m = html({ defaultOpen: ['skill', 'tool'] });
-  const open = [...m.matchAll(/<div class="kit-acc" id="[^"]+" data-kind="(\w+)" data-open=""( inert="")?>/g)];
-  assert.deepEqual(open.map(o => [o[1], o[2] === undefined]), [['skill', true], ['tool', true]]);
-  assert.match(m, /<div class="kit-acc" id="[^"]+" data-kind="note" inert="">/, 'the notes list stays closed');
-  assert.deepEqual([...m.matchAll(/<button type="button" class="kit-acc-main" aria-pressed="false"><svg[^>]*>[\s\S]*?<\/svg><span class="kit-acc-name">([^<]+)<\/span>/g)].map(x => x[1]).slice(0, 3), ['Summarize a meeting', 'Write a reply', 'List action items']);
-  assert.deepEqual([...m.matchAll(/class="kit-chip" data-kind="(\w+)" aria-expanded="(true|false)"/g)].map(x => [x[1], x[2]]), [['skill', 'true'], ['tool', 'true'], ['note', 'false']], 'a chip says whether its list is open');
+test('the keyboard order is the tile, then its counts', () => {
+  const order = [...html().matchAll(/<button type="button" class="(kit-card-main|kit-count)[ "]/g)].map(x => x[1]);
+  assert.deepEqual(order, ['kit-card-main', 'kit-count', 'kit-count', 'kit-count']);
 });
 
-test('the keyboard order is the card, then its chips, then the lines of its lists', () => {
-  const m = html({ defaultOpen: ['skill', 'tool', 'note'] });
-  const order = tagsOf(m);
-  assert.equal(order[0], 'kit-card-main');
-  assert.deepEqual(order.slice(1, 4), ['kit-chip', 'kit-chip', 'kit-chip']);
-  assert.ok(order.slice(4).every(t => t === 'kit-acc-main' || t === 'kit-badge' || t === 'kit-acc-more'));
-  assert.equal(order.filter(t => t === 'kit-acc-main').length, 3 + 1 + 1);
-});
-
-test('a list shows the first six lines and a "Show more" button that says what it shows more of; expanded it says "Show less"', () => {
-  const m = html({ shelves: { skills: many('skill', 9), tools: [], notes: [] }, defaultOpen: ['skill'] });
-  assert.equal(LIST_LIMIT, 6); assert.equal([...m.matchAll(/class="kit-acc-main"/g)].length, 6);
-  assert.match(m, /<button type="button" class="kit-acc-more" aria-expanded="false" aria-label="Show more skills">Show more<\/button>/);
-  const six = html({ shelves: { skills: many('skill', 6), tools: [], notes: [] }, defaultOpen: ['skill'] });
-  assert.doesNotMatch(six, /kit-acc-more/, 'six lines need no Show more');
-  assert.deepEqual(assertTextBudget(m), []);
-});
-
-test('the selected agent is highlighted (data-selected, aria-pressed); the owner of a selected item keeps the highlight and that line has its own', () => {
+test('the selected agent is highlighted (data-selected, aria-pressed); the owner of a selected item keeps the highlight', () => {
   const self = html({ selected: true });
-  assert.match(self, /data-selected=""/); assert.match(self, /aria-pressed="true"/); assert.doesNotMatch(self, /data-owner|aria-current/);
-  const owner = html({ itemId: 'skill-022', defaultOpen: ['skill'] });
+  assert.match(self, /data-selected=""/); assert.match(self, /aria-pressed="true"/); assert.doesNotMatch(self, /data-owner|aria-current|data-tray/);
+  const owner = html({ itemId: 'skill-022' });
   assert.match(owner, /data-owner=""/); assert.doesNotMatch(owner, /data-selected="" data-owner/); assert.match(owner, /aria-pressed="false" aria-current="true"/);
-  assert.match(owner, /<li class="kit-acc-row" data-line="skill-022" data-selected=""><button type="button" class="kit-acc-main" aria-pressed="true">/);
-  assert.equal([...owner.matchAll(/class="kit-acc-row" data-line="[^"]+" data-selected=""/g)].length, 1, 'one line is lit');
 });
 
-test('a line keeps its badge: "needs a key" is words, "2 different copies" is a button that opens the dialog', () => {
-  const shelves: Shelves = { skills: [{ id: 'sk', kind: 'skill', name: 'Write a weekly summary', badge: { label: '3 different copies', tone: 'warn' } }], tools: [{ id: 'tl', kind: 'tool', name: 'Read my calendar', badge: { label: 'needs a key', tone: 'warn' } }], notes: [] };
-  const m = html({ shelves, defaultOpen: ['skill', 'tool'], onBadgePress: none });
-  assert.match(m, /<button type="button" class="kit-badge" data-tone="warn" data-no-drag=""><svg[\s\S]*?<\/svg><span>3 different copies<\/span><\/button>/);
-  assert.match(m, /<span class="kit-badge" data-tone="warn" data-no-drag=""><svg[\s\S]*?<\/svg><span>needs a key<\/span><\/span>/, 'a key badge is not a button');
-  assert.doesNotMatch(html({ shelves, defaultOpen: ['skill'] }), /<button type="button" class="kit-badge"/, 'with no handler the badge is only words');
-});
-
-test('the card carries the id of its agent and the tour id, and the whole card still passes the text budget', () => {
+test('the tile carries the id of its agent and the tour id, and every sample tile passes the text budget', () => {
   const m = html({ dataTour: 'agent', fresh: true });
   assert.match(m, /data-fresh=""/); assert.match(m, /data-tour="agent"/); assert.match(m, /data-drop-agent="agent-01"/);
   for (const a of agents) {
     const words = agentCard(a);
-    const text = renderToStaticMarkup(createElement(AgentCard, { name: words.name, hint: words.hint, shelves: shelvesOf(world, a), selected: false, onSelect: none, onSelectItem: none, dropAgent: a.id, defaultOpen: ['skill', 'tool', 'note'] }));
+    const text = renderToStaticMarkup(createElement(AgentCard, { name: words.name, hint: words.hint, shelves: shelvesOf(world, a), selected: false, onSelect: none, dropAgent: a.id }));
     assert.deepEqual(assertTextBudget(text), [], a.id);
   }
 });
