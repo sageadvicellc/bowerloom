@@ -1,7 +1,8 @@
 /**
  * One row of the Add drawer: the kit's own card, the "Add to" button beside it, and, when the button is open, a small picker of agents under it. The card
  * and the button do the same thing (open the picker), so a person can use whichever they reach. A card can also be dragged onto an agent. A ready-made
- * agent has no picker: its button, "Add agent", copies it into the person's own agents at once.
+ * agent has no picker: its button, "Add agent", copies it into the person's own agents at once. An agent that already has the card says "Has it" in the picker and cannot
+ * be picked; a card that every agent has says "On all agents" as its state, and its button is off.
  */
 import { useEffect, useId, useRef } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactElement } from 'react';
@@ -76,6 +77,9 @@ export function AddRow({ entry, choices, open, onToggle, onPick, onInstall, onDr
   const row = useRef<HTMLLIElement>(null), button = useRef<HTMLButtonElement>(null);
   const nameId = useId();
   const ready = entry.kind === 'agent';
+  // Every agent has it: nothing is left to add, and the card says so instead of opening a picker that has nothing to pick.
+  const onAll = !ready && choices.length > 0 && choices.every(c => c.has);
+  const shown = entry.badge ?? (onAll ? { label: L.onAll, tone: 'info' as const } : undefined);
   const press = ready ? () => onInstall(row.current) : onToggle;
   const close = (): void => { onToggle(); button.current?.focus(); };
   return (
@@ -83,12 +87,12 @@ export function AddRow({ entry, choices, open, onToggle, onPick, onInstall, onDr
       <div className="add-row-main">
         <div className="add-row-card">
           <ItemCard kind={entry.kind} name={entry.name} hint={entry.hint} selected={!ready && open} onSelect={() => { if (!suppressClick()) press(); }}
-            {...(entry.badge === undefined ? {} : { badge: entry.badge })}
+            {...(shown === undefined ? {} : { badge: shown })}
             {...(onBadgePress === undefined || entry.badge === undefined ? {} : { onBadgePress })}
             {...(onDragStart === undefined ? {} : { onDragStart })} />
         </div>
         <span className="hm-sr" id={nameId}>{entry.name}</span>
-        <Button ref={button} {...(ready ? { icon: 'plus' as const } : { 'aria-expanded': open })} aria-labelledby={`${nameId}-do ${nameId}`} onClick={press}>
+        <Button ref={button} {...(ready ? { icon: 'plus' as const } : { 'aria-expanded': open })} disabled={onAll} aria-labelledby={`${nameId}-do ${nameId}`} onClick={press}>
           <span id={`${nameId}-do`}>{ready ? L.addAgent : L.addTo}</span>
         </Button>
       </div>

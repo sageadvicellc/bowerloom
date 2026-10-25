@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { AddDrawerBody } from '../renderer/home/add/AddDrawerBody.js';
 import { AddHarness } from '../renderer/home/add/AddHarness.js';
 import { AddRow } from '../renderer/home/add/AddRow.js';
+import type { AddEntry } from '../shared/home/add-model.js';
 import { CopiesDialog } from '../renderer/home/copies/CopiesDialog.js';
 import { addDemoWorld, DEMO } from '../renderer/home/add/add-demo-world.js';
 import { ADD_WORDS, NOTE_STAY_MS } from '../renderer/home/add/add-words.js';
@@ -79,7 +80,7 @@ test('an open row shows a labelled picker with every agent, the ones that have i
   assert.match(m, /role="group"[^>]*aria-labelledby/);
   assert.equal([...m.matchAll(/class="add-pick"/g)].length, 4);
   assert.equal([...m.matchAll(/aria-disabled="true"/g)].length, 1);
-  assert.match(m, /Already added/);
+  assert.match(m, /Has it/);
   assert.match(m, /aria-expanded="true"/);
   within(m);
 });
@@ -141,4 +142,26 @@ test('the note stays six seconds, and its "Show" button has words that say what 
   assert.equal(ADD_WORDS.label.show, 'Show');
   assert.ok(countWords(ADD_WORDS.label.showWhat) <= 5, ADD_WORDS.label.showWhat);
   assert.match(ADD_WORDS.label.showWhat, /^Show\b/, 'the spoken name starts with the words on the button');
+});
+
+// ---- Wave C: "Has it" and "On all agents".
+
+test('a card that every agent has says "On all agents" and its button is off; a card that an agent lacks says nothing and can be opened', () => {
+  const entry: AddEntry = { id: 'skill-x', kind: 'skill', name: 'Compare two options', hint: 'Puts two choices side by side.', ready: false };
+  const draw = (has: boolean[]): string => renderToStaticMarkup(createElement(AddRow, { entry, choices: has.map((h, i) => ({ id: `agent-${i}`, name: `Agent ${i}`, has: h })), open: false, onToggle: () => undefined, onPick: () => undefined, onInstall: () => undefined, suppressClick: () => false }));
+  const all = draw([true, true, true]);
+  assert.match(all, /class="kit-status"[^>]*data-tone="info"[^>]*><span class="kit-dot" aria-hidden="true"><\/span><span>On all agents<\/span>/);
+  assert.match(all, /<button[^>]*disabled=""[^>]*>[\s\S]*Add to<\/span><\/button>/);
+  const some = draw([true, false, true]);
+  assert.doesNotMatch(some, /On all agents/); assert.doesNotMatch(some, /disabled=""/);
+  assert.doesNotMatch(draw([]), /On all agents/, 'with no agent to add to, nothing is said');
+  assert.deepEqual(assertTextBudget(all), []); assert.deepEqual(assertTextBudget(some), []);
+});
+
+test('an agent that has the card reads "Has it" in the open picker and its button is marked off', () => {
+  const entry: AddEntry = { id: 'skill-x', kind: 'skill', name: 'Compare two options', hint: 'Puts two choices side by side.', ready: false };
+  const m = renderToStaticMarkup(createElement(AddRow, { entry, choices: [{ id: 'a', name: 'Agent A', has: true }, { id: 'b', name: 'Agent B', has: false }], open: true, onToggle: () => undefined, onPick: () => undefined, onInstall: () => undefined, suppressClick: () => false }));
+  assert.match(m, /<li class="add-pick" data-has=""[\s\S]*?aria-disabled="true"[\s\S]*?>Agent A<\/button><span class="kit-hint add-pick-note"[^>]*>Has it<\/span>/);
+  assert.equal([...m.matchAll(/Has it/g)].length, 1);
+  assert.deepEqual(assertTextBudget(m), []);
 });

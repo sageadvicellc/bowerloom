@@ -123,7 +123,7 @@ test('a card that an agent already has says so in the picker, and choosing it ad
   await row('skill-reply').getByRole('button', { name: /^Add to / }).click();
   const mine = p.getByRole('group', { name: 'Add to which agent?' }).getByRole('button', { name: 'Inbox sorter' });
   await expect(mine).toHaveAttribute('aria-disabled', 'true');
-  await expect(p.getByRole('group', { name: 'Add to which agent?' }).getByText('Already added')).toHaveCount(1);
+  await expect(p.getByRole('group', { name: 'Add to which agent?' }).getByText('Has it')).toHaveCount(1);
   await mine.click({ force: true });
   await expect(drawer().locator('.add-note')).toHaveText('Inbox sorter already has it.');
   await expect(count()).toHaveText('1 change');
