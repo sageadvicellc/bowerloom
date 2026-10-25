@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { World } from '../../../shared/proto/types.js';
-import { FIND_TOOLS, findPlaces, skippedAgents, toolTiles } from '../../../shared/home/find-model.js';
+import { FIND_TOOLS, findPlaces, multiProgramAgents, skippedAgents, toolTiles } from '../../../shared/home/find-model.js';
 import type { FindPlace, ToolTile } from '../../../shared/home/find-model.js';
 import { findReduce, readTotal, startFind } from '../../../shared/home/find-flow.js';
 import type { FindState } from '../../../shared/home/find-flow.js';
@@ -17,7 +17,7 @@ import { Button } from '../kit/Button.js';
 import { Glyph } from '../kit/Glyph.js';
 import { KitIcon } from '../kit/icons.js';
 import { WORDS, agentsCount } from '../words.js';
-import { FIND_WORDS, foundTitle, readProgress, readSummary, readingNow, unsavedHere } from './find-words.js';
+import { FIND_WORDS, foundTitle, multiAppLine, readProgress, readSummary, readingNow, unsavedHere } from './find-words.js';
 import './find.css';
 
 /** How long the search takes to reach each tile, in milliseconds, and how long it rests on the last tile before the places show. */
@@ -89,6 +89,7 @@ function Places({ places, state, open, onTick, onDetails, onLooksRight }: Places
 export function FindScreen({ world, committed, onLeave, onDone, skipped = [] }: FindScreenProps): ReactElement {
   const tiles = useMemo(() => toolTiles(world), [world]);
   const places = useMemo(() => findPlaces(world, committed), [world, committed]);
+  const multi = useMemo(() => multiProgramAgents(world), [world]);
   // A place whose agents have unsaved changes starts ticked, whatever was skipped before, and stays ticked: the changes must not drop off the map.
   const [state, send] = useReducer(findReduce, undefined, () => startFind(FIND_TOOLS.length, places.map(p => p.id), places.filter(p => p.unsaved > 0 || !p.agentIds.some(id => skipped.includes(id))).map(p => p.id)));
   const [details, setDetails] = useState(false);
@@ -134,7 +135,9 @@ export function FindScreen({ world, committed, onLeave, onDone, skipped = [] }: 
       <main id="main" className="fr-find">
         <div className="fr-brand fr-brand-small"><KitIcon name="leaf" size={28} /><span>{WORDS.label.appName}</span></div>
         <h1 className="fr-title" tabIndex={-1} ref={heading}>{title}</h1>
-        <p className="hm-sr" role="status">{title}</p>
+        {state.step === 'places' && multi > 0 && places.length > 0 ? <p className="fr-multi" data-multi="">{multiAppLine(multi)}</p> : null}
+        <p className="hm-sr" role="status">{state.step === 'places' && multi > 0 && places.length > 0 ? `${title}. ${multiAppLine(multi)}` : title}</p>
+        <p className="kit-hint fr-apps">{FIND_WORDS.hint.appsNote}</p>
         <Tiles tiles={tiles} lit={state.lit} />
         {state.step === 'places' ? (
           places.length === 0 ? (

@@ -52,7 +52,7 @@ for (const [group, limit] of groups) {
 
 test('the words of the layer are the ones the brief asks for', () => {
   const l = NOTES_WORDS.label;
-  assert.deepEqual([l.title, l.choose, l.use, l.cancel, l.pickByHand, l.leaveOut], ['Choose notes', 'Choose notes', 'Use these notes', 'Cancel', 'Pick by hand', 'Leave out']);
+  assert.deepEqual([l.title, l.choose, l.use, l.cancel, l.pickByHand, l.leaveOut], ['Choose notes', 'Choose notes', 'Use these notes', 'Cancel', 'Choose one by one', 'Leave out']);
   assert.equal(NOTES_WORDS.hint.intro, 'Pick the notes this agent can read.');
   assert.ok(countWords(NOTES_WORDS.hint.intro) <= 12);
   assert.equal(willRead(214, 700), 'This agent will read 214 of 700 notes');
@@ -95,7 +95,7 @@ test('the layer, opened for an agent with no notes, passes the budget, shows eig
   assert.match(m, /Pick at least one note first\./);
   assert.match(m, /<button[^>]*disabled=""[^>]*>Use these notes<\/button>/);
   assert.match(m, /<button[^>]*>Cancel<\/button>/);
-  assert.match(m, /<button[^>]*>Pick by hand<\/button>/);
+  assert.match(m, /<button[^>]*>Choose one by one<\/button>/);
   assert.equal([...m.matchAll(/aria-pressed="true"/g)].length, 0, 'no topic is on');
 });
 

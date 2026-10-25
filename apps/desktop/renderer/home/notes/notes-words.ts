@@ -19,7 +19,7 @@ export const NOTES_WORDS = deepFreeze({
     choose: 'Choose notes',
     notes: WORDS.label.notes,
     topics: 'Topics',
-    pickByHand: 'Pick by hand',
+    pickByHand: 'Choose one by one',
     allTopics: 'All topics',
     pickTopic: 'Pick a topic',
     leaveOut: 'Leave out',

@@ -113,7 +113,7 @@ for (const motion of ['no-preference', 'reduce'] as const) {
       }
       // After a copy was made, "Done" closes it the same way.
       await shareButton().click();
-      await sheet().getByRole('button', { name: 'Save a copy' }).click();
+      await sheet().getByRole('button', { name: 'Create share file' }).click();
       await sheet().getByRole('button', { name: 'Done', exact: true }).click();
       await gone(sheet());
       await focusIs(shareButton());
@@ -123,7 +123,7 @@ for (const motion of ['no-preference', 'reduce'] as const) {
       const p = page();
       await openPoints();
       await shareButton().click();
-      await sheet().getByRole('button', { name: 'Save a copy' }).click();
+      await sheet().getByRole('button', { name: 'Create share file' }).click();
       await sheet().getByRole('button', { name: 'Open a shared file' }).click();
       await expect(addDrawer().getByRole('heading', { name: 'Add' })).toBeFocused();
       await gone(sheet());

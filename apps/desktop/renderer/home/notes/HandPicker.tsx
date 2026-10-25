@@ -1,5 +1,5 @@
 /**
- * "Pick by hand": open one topic, search its notes by name, and tick single notes. A plain list with tick boxes, no graph. A note that its topic already
+ * "Choose one by one": open one topic, search its notes by name, and tick single notes. A plain list with tick boxes, no graph. A note that its topic already
  * includes shows ticked and cannot be changed here (it says why), so a tick always means one more note for the agent.
  * The list is one stop in the Tab order: the arrow keys, Home and End move between the tick boxes (Space ticks), so a keyboard user does not tab through
  * 140 boxes to leave it.

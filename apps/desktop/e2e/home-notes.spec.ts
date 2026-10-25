@@ -164,11 +164,11 @@ test('"Leave out" takes a part away from a topic that is on: the count drops, th
   expect(await count()).toBe(143 + 114);
 });
 
-test('"Pick by hand": open a topic, search, tick two notes, and they are counted; a note its topic already includes is ticked and cannot change', async () => {
+test('"Choose one by one": open a topic, search, tick two notes, and they are counted; a note its topic already includes is ticked and cannot change', async () => {
   const p = page();
   await openLayer('Report builder');
-  await layer().getByRole('button', { name: 'Pick by hand' }).click();
-  await expect(layer().getByRole('heading', { level: 3, name: 'Pick by hand' })).toBeFocused();
+  await layer().getByRole('button', { name: 'Choose one by one' }).click();
+  await expect(layer().getByRole('heading', { level: 3, name: 'Choose one by one' })).toBeFocused();
   await expect(layer().locator('.nt-pills .nt-pill')).toHaveCount(8);
   await expect(layer().getByRole('button', { name: 'Work', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await layer().getByRole('button', { name: 'Money', exact: true }).click();
@@ -190,11 +190,11 @@ test('"Pick by hand": open a topic, search, tick two notes, and they are counted
   expect(await budget()).toEqual([]);
   // Back to the topics: the ticks stay, and the words say so.
   await layer().getByRole('button', { name: 'All topics' }).click();
-  await expect(layer().getByRole('button', { name: 'Pick by hand' })).toBeFocused();
+  await expect(layer().getByRole('button', { name: 'Choose one by one' })).toBeFocused();
   await expect(layer().getByText('2 notes picked by hand.')).toBeVisible();
   await topic('Money').click();
   expect(await count()).toBe(69);
-  await layer().getByRole('button', { name: 'Pick by hand' }).click();
+  await layer().getByRole('button', { name: 'Choose one by one' }).click();
   await layer().getByRole('button', { name: /^Money/ }).click();
   const locked = rows.nth(5).getByRole('checkbox');
   await expect(locked).toBeChecked();
@@ -330,9 +330,9 @@ test('keyboard only: open the layer, switch a topic on, leave a part out, pick b
   await p.keyboard.press('Escape');
   await expect(leaveButton('Work')).toBeFocused();
   await expect(layer()).toBeVisible();
-  await reach(layer().getByRole('button', { name: 'Pick by hand' }));
+  await reach(layer().getByRole('button', { name: 'Choose one by one' }));
   await p.keyboard.press('Enter');
-  await expect(layer().getByRole('heading', { level: 3, name: 'Pick by hand' })).toBeFocused();
+  await expect(layer().getByRole('heading', { level: 3, name: 'Choose one by one' })).toBeFocused();
   await reach(layer().getByRole('button', { name: 'Money', exact: true }));
   await p.keyboard.press('Space');
   const first = layer().locator('.nt-rows li').first().getByRole('checkbox');
@@ -351,7 +351,7 @@ test('keyboard only: open the layer, switch a topic on, leave a part out, pick b
   await expect(first).toBeFocused();
   await reach(layer().getByRole('button', { name: 'Done picking' }));
   await p.keyboard.press('Enter');
-  await expect(layer().getByRole('button', { name: 'Pick by hand' })).toBeFocused();
+  await expect(layer().getByRole('button', { name: 'Choose one by one' })).toBeFocused();
   await reach(layer().getByRole('button', { name: 'Use these notes' }));
   await p.keyboard.press('Enter');
   await expect(layer()).toHaveCount(0);
@@ -369,7 +369,7 @@ test('every control shows a focus ring that is seen', async () => {
   await openLayer('Report builder');
   await topic('Work').click();
   await openLeave('Work');
-  for (const target of [layer().locator('.nt-topic .kit-card-main').first(), leaveButton('Work'), chip('Archived', 'Work'), layer().getByRole('button', { name: 'Pick by hand' }), layer().getByRole('button', { name: 'Cancel' })]) {
+  for (const target of [layer().locator('.nt-topic .kit-card-main').first(), leaveButton('Work'), chip('Archived', 'Work'), layer().getByRole('button', { name: 'Choose one by one' }), layer().getByRole('button', { name: 'Cancel' })]) {
     await target.focus();
     await p.keyboard.press('Shift+Tab'); await p.keyboard.press('Tab');
     const ring = await target.evaluate(el => {
@@ -416,7 +416,7 @@ test('the text budget holds on the real page: topics, parts left out, the hand s
   expect(await budget()).toEqual([]);
   await layer().getByRole('button', { name: 'Show more' }).click();
   expect(await budget()).toEqual([]);
-  await layer().getByRole('button', { name: 'Pick by hand' }).click();
+  await layer().getByRole('button', { name: 'Choose one by one' }).click();
   expect(await budget()).toEqual([]);
   await layer().locator('.nt-rows li').first().getByRole('checkbox').check();
   expect(await budget()).toEqual([]);
@@ -493,7 +493,7 @@ if (process.env.HOME_U0_SHOTS !== undefined) {
       await layer().getByRole('button', { name: 'Show more' }).click();
       await shot(p, 'notes-4-preview-expanded', w, h, look);
       await layer().getByRole('button', { name: 'Show less' }).click();
-      await layer().getByRole('button', { name: 'Pick by hand' }).click();
+      await layer().getByRole('button', { name: 'Choose one by one' }).click();
       await layer().getByRole('button', { name: 'Money', exact: true }).click();
       await layer().locator('.nt-rows li').nth(2).getByRole('checkbox').check();
       await layer().locator('.nt-rows li').nth(5).getByRole('checkbox').check();

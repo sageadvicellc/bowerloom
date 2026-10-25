@@ -27,6 +27,15 @@ export function toolTiles(world: World): ToolTile[] {
 }
 
 /**
+ * How many of the agents work in more than one program: the agents found in two or more of the programs that are on the computer. The tiles count an agent once for
+ * each program it works in, so their numbers add up to more than the agents found; this is the number that explains the difference.
+ */
+export function multiProgramAgents(world: World): number {
+  const on = new Set(world.interfaces.filter(i => i.installed === 'installed').map(i => i.id));
+  return ownedAgents(world).filter(a => new Set(a.foundAt.map(f => f.interface).filter(id => on.has(id))).size > 1).length;
+}
+
+/**
  * One place: a name a person knows, how many agents were found there, which agents, and the folders behind it. `unsaved` is how many of those agents have
  * changes that wait for Save (or are new and not saved yet): a place like that cannot be skipped, because its agents would drop off the map with the changes.
  */

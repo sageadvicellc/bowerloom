@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ShareSection } from '../renderer/home/share/ShareSection.js';
 import { ShareSheet } from '../renderer/home/share/ShareSheet.js';
-import { SHARE_WORDS, bringsLine, countsLine, leftOutLine, sizeLine } from '../renderer/home/share/share-words.js';
+import { SHARE_WORDS, bringsLine, countsLine, flaggedLine, leftOutLine, sizeLine } from '../renderer/home/share/share-words.js';
 import { SavePoints } from '../renderer/home/points/SavePoints.js';
 import { FileTab } from '../renderer/home/add/FileTab.js';
 import { plainName } from '../shared/home/add-model.js';
@@ -52,9 +52,10 @@ for (const [group, limit] of groups) {
 
 test('the words of Share are the ones the brief asks for, and the keys and text lines are hints of at most 12 words', () => {
   const l = SHARE_WORDS.label, h = SHARE_WORDS.hint;
-  assert.deepEqual([l.share, l.shareAgents, l.openFile, l.saveCopy, l.copyReady], ['Share', 'Share my agents', 'Open a shared file', 'Save a copy', 'Copy ready']);
+  assert.deepEqual([l.share, l.shareAgents, l.openFile, l.createFile, l.fileReady, l.lookInside, l.showText], ['Share', 'Share my agents', 'Open a shared file', 'Create share file', 'Share file ready', 'Look inside', 'Show text']);
   // Reworded after the review: the sheet no longer claims that every secret is left out, because the text of a skill or an agent goes in as written.
-  assert.equal(`${h.secretsOut} ${h.textIn} ${h.keysAsk}`, 'Keys that Bowerloom keeps are left out. Your own text is included, so read it first. Tools that need a key will ask for one.');
+  assert.equal(`${h.secretsOut} ${h.textIn} ${h.keysAsk}`, 'Passwords and keys that Bowerloom keeps are left out. Your own text is included, so read it first. Tools that need a key will ask for one.');
+  assert.equal(h.looksLikeKey, 'This text looks like it holds a key.');
   assert.ok(countWords(h.secretsOut) <= LIMITS.hint && countWords(h.textIn) <= LIMITS.hint && countWords(h.keysAsk) <= LIMITS.hint);
   assert.equal(h.nothingWritten, 'Nothing was written to your computer in this preview.');
 });
@@ -69,14 +70,24 @@ test('the words built from numbers read plainly and stay inside the budget, even
   assert.equal(countsLine({ agents: 1, skills: 1, tools: 1, noteSets: 1 }), '1 skill, 1 agent, 1 tool, 1 set of notes');
   assert.equal(countsLine({ agents: 1, skills: 0, tools: 0, noteSets: 0 }), '1 agent');
   assert.equal(countsLine({ agents: 0, skills: 0, tools: 0, noteSets: 0 }), '');
-  assert.equal(leftOutLine(2, 0), 'Left out: 2 keys');
-  assert.equal(leftOutLine(1, 0), 'Left out: 1 key');
-  assert.equal(leftOutLine(2, 1), 'Left out: 2 keys and 1 agent');
+  assert.equal(leftOutLine(2, 0), 'Left out: 2 passwords and keys');
+  assert.equal(leftOutLine(3, 0), 'Left out: 3 passwords and keys');
+  assert.equal(leftOutLine(1, 0), 'Left out: 1 password or key');
+  assert.equal(leftOutLine(2, 1), 'Left out: 2 passwords and keys and 1 agent');
+  assert.equal(leftOutLine(3, 0, 1, 1), 'Left out: 3 passwords and keys, 1 item and 1 ready-made item', 'twelve words is the most that fits');
+  assert.equal(leftOutLine(3, 1, 1, 2), 'Left out: 3 passwords and keys and 4 other things', 'when the kinds do not fit, the things that are not secrets are counted together');
+  assert.equal(leftOutLine(0, 1, 1, 1), 'Left out: 1 agent, 1 item and 1 ready-made item');
+  assert.equal(leftOutLine(999, 999, 999, 999), 'Left out: 999 passwords and keys and 2997 other things');
+  assert.equal(leftOutLine(0, 40, 40, 40), 'Left out: 40 agents, 40 items and 40 ready-made items');
+  assert.equal(leftOutLine(0, 0, 0, 1), 'Left out: 1 item');
+  assert.equal(flaggedLine(1, 0), '1 item looks like it holds a key. It is left out.');
+  assert.equal(flaggedLine(2, 0), '2 items look like they hold a key. They are left out.');
+  assert.equal(flaggedLine(1, 1), '1 item looks like it holds a key. Look inside first.');
   assert.equal(leftOutLine(0, 3), 'Left out: 3 agents');
   assert.equal(leftOutLine(0, 0), 'Left out: nothing');
   assert.deepEqual([sizeLine(10), sizeLine(1023), sizeLine(1024), sizeLine(33_800), sizeLine(1_500_000)], ['Under 1 KB', 'Under 1 KB', 'About 1 KB', 'About 33 KB', 'About 1.4 MB']);
   assert.deepEqual([bringsLine(0, 0), bringsLine(1, 0), bringsLine(5, 2), bringsLine(0, 1)], ['Nothing added yet', '1 skill', '5 skills, 2 tools', '1 tool']);
-  const built = [countsLine({ agents: 999, skills: 999, tools: 999, noteSets: 999 }), leftOutLine(999, 999), sizeLine(1e9), bringsLine(999, 999)];
+  const built = [countsLine({ agents: 999, skills: 999, tools: 999, noteSets: 999 }), leftOutLine(999, 999), leftOutLine(999, 999, 999, 999), flaggedLine(999, 1), flaggedLine(999, 0), sizeLine(1e9), bringsLine(999, 999)];
   for (const text of built) { assert.ok(countWords(text) <= LIMITS.hint, text); assert.equal(bannedIn(text), null, text); assert.deepEqual(assertTextBudget(`<p>${text}</p>`), [], text); }
 });
 
@@ -110,15 +121,17 @@ test('the sheet is a labelled modal dialog with the counts, the left-out line, t
   const plan = planShare(world, ids, []);
   assert.ok(m.includes(`>${countsLine(plan.counts)}<`), 'the counts line');
   assert.ok(m.includes(`>${leftOutLine(plan.keys, 0)}<`), 'the left-out line');
-  assert.match(m, /Keys that Bowerloom keeps are left out\./);
+  assert.match(m, /Passwords and keys that Bowerloom keeps are left out\./);
   assert.match(m, /Your own text is included, so read it first\./);
   assert.match(m, /Tools that need a key will ask for one\./);
   assert.equal([...m.matchAll(/type="checkbox"/g)].length, 10);
   assert.equal([...m.matchAll(/type="checkbox"[^>]*checked=""/g)].length, 10, 'every agent starts ticked');
-  assert.match(m, /<button[^>]*>(?:<svg.*?<\/svg>)?Save a copy<\/button>/);
-  assert.doesNotMatch(m, /disabled=""[^>]*>(?:<svg.*?<\/svg>)?Save a copy/);
+  assert.match(m, /<button[^>]*>(?:<svg.*?<\/svg>)?Create share file<\/button>/);
+  assert.doesNotMatch(m, /disabled=""[^>]*>(?:<svg.*?<\/svg>)?Create share file/);
   assert.doesNotMatch(m, /Changes you have not saved/);
-  assert.doesNotMatch(m, /Copy ready/, 'nothing is ready before Save a copy');
+  assert.doesNotMatch(m, /Share file ready/, 'nothing is ready before Create share file');
+  assert.match(m, /<button[^>]*aria-expanded="false"[^>]*>Look inside<\/button>/);
+  assert.doesNotMatch(m, /sh-look-list/, 'the list inside is closed until it is asked for');
 });
 
 test('the sheet leaves out the agents Find skipped, and says changes that wait are not in the copy', () => {
@@ -135,7 +148,7 @@ test('the sheet with no agent to share says so and cannot save', () => {
   within(m);
   assert.match(m, /There are no agents to share yet\./);
   assert.match(m, /Tick at least one agent to share\./);
-  assert.match(m, /disabled=""[^>]*>(?:<svg.*?<\/svg>)?Save a copy/);
+  assert.match(m, /disabled=""[^>]*>(?:<svg.*?<\/svg>)?Create share file/);
 });
 
 test('"From a shared file" offers "Open my last copy" only when a copy exists', () => {

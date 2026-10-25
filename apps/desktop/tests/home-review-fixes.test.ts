@@ -46,10 +46,10 @@ test('a copy says how many ready-made things travel only as a name (review item 
   assert.equal(planShare(world, [a.id], []).readyMade, 0);
   assert.equal(planShare(used, [a.id], []).readyMade, 1);
   assert.equal(planShare(used, [a.id], [a.id]).readyMade, 0, 'an agent that is left out brings nothing along');
-  assert.equal(leftOutLine(2, 0, 3), 'Left out: 2 keys and 3 ready-made items');
+  assert.equal(leftOutLine(2, 0, 3), 'Left out: 2 passwords and keys and 3 ready-made items');
   assert.equal(leftOutLine(0, 0, 1), 'Left out: 1 ready-made item');
-  assert.equal(leftOutLine(2, 1, 1), 'Left out: 2 keys, 1 agent and 1 ready-made item');
-  assert.equal(leftOutLine(2, 0), 'Left out: 2 keys');
+  assert.equal(leftOutLine(2, 1, 1), 'Left out: 2 passwords and keys, 1 agent and 1 ready-made item');
+  assert.equal(leftOutLine(2, 0), 'Left out: 2 passwords and keys');
 });
 
 // ---- Item 7: an empty file, and a plain reason for a refused one.
@@ -143,7 +143,7 @@ test('a path under its scope stays whole, and a short path outside it is not cut
 // ---- Item 9: the Share sheet says what is true about what leaves.
 test('the Share sheet does not claim that all secrets are left out; it says what is kept out and what is in (review item 9)', () => {
   const h = SHARE_WORDS.hint;
-  assert.equal(h.secretsOut, 'Keys that Bowerloom keeps are left out.');
+  assert.equal(h.secretsOut, 'Passwords and keys that Bowerloom keeps are left out.');
   assert.equal(h.textIn, 'Your own text is included, so read it first.');
   for (const text of [h.secretsOut, h.textIn, h.readyMadeOut]) { assert.ok(countWords(text) <= LIMITS.hint, text); assert.equal(bannedIn(text), null, text); }
   assert.doesNotMatch(Object.values(h).join(' '), /Secrets are left out/);

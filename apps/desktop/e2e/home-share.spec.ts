@@ -1,6 +1,6 @@
 /**
  * Share in the real window (Electron started with --prototype-v2, on the home app itself): the Share section at the foot of the Version history drawer, the Share
- * sheet (counts, what is left out, the agents to leave out, "Save a copy"), the round trip into "Open a shared file" (the same counts come back), the agents
+ * sheet (counts, what is left out, the agents to leave out, "Create share file"), the round trip into "Open a shared file" (the same counts come back), the agents
  * that Find skipped, the keyboard alone, less motion, Escape one layer at a time, text size, and the text budget on the real page at every step.
  * Set HOME_U0_SHOTS to a folder to also save screenshots at 1440 by 900 and 900 by 600, light and dark.
  */
@@ -122,8 +122,8 @@ test('the sheet says what goes in as counts, what is left out, and that secrets 
   await expect(counts()).toHaveText(countsLine(all.counts));
   await expect(counts()).toHaveText('29 skills, 10 agents, 8 tools, 3 sets of notes');
   await expect(leftOut()).toHaveText(leftOutLine(all.keys, 0, all.readyMade));
-  await expect(leftOut()).toHaveText('Left out: 3 keys and 1 ready-made item');
-  await expect(sheet().getByText('Keys that Bowerloom keeps are left out.')).toBeVisible();
+  await expect(leftOut()).toHaveText('Left out: 3 passwords and keys and 1 ready-made item');
+  await expect(sheet().getByText('Passwords and keys that Bowerloom keeps are left out.')).toBeVisible();
   await expect(sheet().getByText('Your own text is included, so read it first.')).toBeVisible();
   await expect(sheet().getByText('Tools that need a key will ask for one.')).toBeVisible();
   await expect(sheet().getByText('Changes you have not saved')).toHaveCount(0);
@@ -133,14 +133,14 @@ test('the sheet says what goes in as counts, what is left out, and that secrets 
   expect(listed).toEqual([...listed].sort((a, b) => a.localeCompare(b)));
   expect(listed).toEqual(await page().locator('.hm-grid .kit-card[data-kind="agent"] .kit-card-main').allTextContents());
   for (const box of await sheet().locator('.sh-row input').all()) await expect(box).toBeChecked();
-  await expect(sheet().getByRole('button', { name: 'Save a copy' })).toBeEnabled();
+  await expect(sheet().getByRole('button', { name: 'Create share file' })).toBeEnabled();
   const text = (await sheet().innerText()).replace(/\s+/g, ' ');
   expect(text).not.toMatch(/\/Users|\.bowerloom|\.json|SKILL\.md|export|import|harness|slice|token/i);
   expect(await budget()).toEqual([]);
   expect(await smallText()).toEqual([]);
 });
 
-test('unticking an agent takes it out and the counts and the left-out line follow; unticking every agent stops Save a copy', async () => {
+test('unticking an agent takes it out and the counts and the left-out line follow; unticking every agent stops Create share file', async () => {
   await openSheet();
   const [first] = await firstRows(1);
   const one = planShare(world, ids, [first!]);
@@ -156,7 +156,7 @@ test('unticking an agent takes it out and the counts and the left-out line follo
   for (const box of await sheet().locator('.sh-row input').all()) await box.uncheck();
   await expect(counts()).toHaveText('Tick at least one agent to share.');
   await expect(leftOut()).toHaveText('Left out: 10 agents');
-  await expect(sheet().getByRole('button', { name: 'Save a copy' })).toBeDisabled();
+  await expect(sheet().getByRole('button', { name: 'Create share file' })).toBeDisabled();
   expect(await budget()).toEqual([]);
   // Leaving agents out can leave keys out: the line is never more than the whole.
   const six = await firstRows(6);
@@ -176,18 +176,18 @@ test('changes that wait for Save are not in the copy, and the sheet says so', as
   expect(await budget()).toEqual([]);
 });
 
-test('Save a copy says Copy ready with a size, writes nothing, and Done goes back to the button that opened the sheet', async () => {
+test('Create share file says Share file ready with a size, writes nothing, and Done goes back to the button that opened the sheet', async () => {
   const p = page();
   const downloads: string[] = [];
   p.on('download', d => downloads.push(d.suggestedFilename()));
   await openSheet();
-  await sheet().getByRole('button', { name: 'Save a copy' }).click();
+  await sheet().getByRole('button', { name: 'Create share file' }).click();
   const made = sheet().locator('.sh-made');
-  await expect(made.getByRole('heading', { level: 3, name: 'Copy ready' })).toBeFocused();
+  await expect(made.getByRole('heading', { level: 3, name: 'Share file ready' })).toBeFocused();
   await expect(made.locator('.sh-size')).toHaveText(/^About \d+ KB$/);
   expect(await made.locator('.sh-size').innerText()).toBe(`About ${Math.round(all.bytes / 1024)} KB`);
   await expect(made.getByText('Nothing was written to your computer in this preview.')).toBeVisible();
-  await expect(sheet().getByRole('button', { name: 'Save a copy' })).toHaveCount(0);
+  await expect(sheet().getByRole('button', { name: 'Create share file' })).toHaveCount(0);
   expect(await budget()).toEqual([]);
   expect(await smallText()).toEqual([]);
   expect(await p.evaluate(() => [localStorage.length, sessionStorage.length, document.cookie])).toEqual([0, 0, '']);
@@ -197,8 +197,8 @@ test('Save a copy says Copy ready with a size, writes nothing, and Done goes bac
   // Changing the choice makes the copy not ready any more.
   await sheet().locator('.sh-row input').first().uncheck();
   await expect(sheet().locator('.sh-made')).toHaveCount(0);
-  await expect(sheet().getByRole('button', { name: 'Save a copy' })).toBeEnabled();
-  await sheet().getByRole('button', { name: 'Save a copy' }).click();
+  await expect(sheet().getByRole('button', { name: 'Create share file' })).toBeEnabled();
+  await sheet().getByRole('button', { name: 'Create share file' }).click();
   await sheet().getByRole('button', { name: 'Done', exact: true }).click();
   await expect(sheet()).toHaveCount(0);
   await expect(section().getByRole('button', { name: 'Share my agents' })).toBeFocused();
@@ -206,10 +206,10 @@ test('Save a copy says Copy ready with a size, writes nothing, and Done goes bac
 });
 
 // ---- The round trip.
-test('round trip: Save a copy, then Open a shared file, then Open my last copy: everything is already here', async () => {
+test('round trip: Create share file, then Open a shared file, then Open my last copy: everything is already here', async () => {
   const p = page();
   await openSheet();
-  await sheet().getByRole('button', { name: 'Save a copy' }).click();
+  await sheet().getByRole('button', { name: 'Create share file' }).click();
   await sheet().getByRole('button', { name: 'Open a shared file' }).click();
   await expect(sheet()).toHaveCount(0);
   await expect(pointsDrawer()).toHaveCount(0);
@@ -245,7 +245,7 @@ for (const left of [0, 3]) {
     const plan = planShare(world, ids, await firstRows(left));
     for (const box of (await sheet().locator('.sh-row input').all()).slice(0, left)) await box.uncheck();
     await expect(counts()).toHaveText(countsLine(plan.counts));
-    await sheet().getByRole('button', { name: 'Save a copy' }).click();
+    await sheet().getByRole('button', { name: 'Create share file' }).click();
     await expect(sheet().locator('.sh-size')).toHaveText(`About ${Math.round(plan.bytes / 1024)} KB`);
     await sheet().getByRole('button', { name: 'Open a shared file' }).click();
     // The file the other computer would get has the same text; here it is made new, so the preview is of a place that has none of it.
@@ -329,7 +329,7 @@ test('the tour closes the Share sheet when it starts', async () => {
   await expect(pointsDrawer()).toHaveCount(0);
 });
 
-test('the keyboard does all of it: open Version history, open the sheet, untick, Save a copy, Done, Open a shared file, Open my last copy', async () => {
+test('the keyboard does all of it: open Version history, open the sheet, untick, Create share file, Done, Open a shared file, Open my last copy', async () => {
   const p = page();
   await tabTo(topBar('Version history'));
   await p.keyboard.press('Enter');
@@ -346,9 +346,9 @@ test('the keyboard does all of it: open Version history, open the sheet, untick,
   await p.keyboard.press('Space');
   await expect(first).not.toBeChecked();
   await expect(leftOut()).toContainText('1 agent');
-  await tabTo(sheet().getByRole('button', { name: 'Save a copy' }));
+  await tabTo(sheet().getByRole('button', { name: 'Create share file' }));
   await p.keyboard.press('Enter');
-  await expect(sheet().getByRole('heading', { name: 'Copy ready' })).toBeFocused();
+  await expect(sheet().getByRole('heading', { name: 'Share file ready' })).toBeFocused();
   // Tab stays inside the sheet.
   for (let i = 0; i < 12; i += 1) { await p.keyboard.press('Tab'); expect(await p.evaluate(() => document.activeElement?.closest('[role="dialog"]')?.getAttribute('aria-labelledby') !== undefined)).toBe(true); }
   await tabTo(sheet().getByRole('button', { name: 'Open a shared file' }));
@@ -374,7 +374,7 @@ test('with less motion nothing animates in the Share section or the sheet', asyn
   await expect(sheet()).toBeVisible();
   await framesPainted(p);
   expect(await p.evaluate(() => document.getAnimations().length)).toBe(0);
-  await sheet().getByRole('button', { name: 'Save a copy' }).click();
+  await sheet().getByRole('button', { name: 'Create share file' }).click();
   await framesPainted(p);
   expect(await p.evaluate(() => document.getAnimations().length)).toBe(0);
   expect(await p.evaluate(() => [...document.querySelectorAll('.sh-dialog, .sh-row, .sh-foot')].map(el => getComputedStyle(el).transitionDuration))).toEqual(expect.arrayContaining(['0s']));
@@ -397,7 +397,7 @@ for (const [w, h] of SIZES) {
     console.log(`MEASURED sheet at ${w}x${h}:`, JSON.stringify(box));
     expect(box.x).toBeGreaterThanOrEqual(0); expect(box.y).toBeGreaterThanOrEqual(0);
     expect(box.x + box.w).toBeLessThanOrEqual(w); expect(box.y + box.h).toBeLessThanOrEqual(h);
-    for (const name of ['Save a copy', 'Cancel']) {
+    for (const name of ['Create share file', 'Cancel']) {
       const b = await rectOf(p, `.sh-dialog button:has-text("${name}")`);
       expect(b.y + b.h).toBeLessThanOrEqual(box.y + box.h + 0.5); expect(b.y).toBeGreaterThanOrEqual(box.y);
     }
@@ -415,7 +415,7 @@ for (const [w, h] of SIZES) {
     await lastRow.scrollIntoViewIfNeeded();
     await lastRow.getByRole('checkbox').uncheck();
     await expect(leftOut()).toContainText('1 agent');
-    await sheet().getByRole('button', { name: 'Save a copy' }).click();
+    await sheet().getByRole('button', { name: 'Create share file' }).click();
     await expect(sheet().locator('.sh-made')).toBeVisible();
     const done = await rectOf(p, '.sh-dialog button:has-text("Open a shared file")');
     expect(done.y + done.h).toBeLessThanOrEqual(h);
@@ -427,7 +427,7 @@ for (const [w, h] of SIZES) {
 
 // ---- Screenshots.
 for (const [w, h] of SIZES) for (const look of THEMES) {
-  test(`screenshots at ${w} by ${h}, ${look}: Version history with Share, the Share sheet, after Save a copy`, async () => {
+  test(`screenshots at ${w} by ${h}, ${look}: Version history with Share, the Share sheet, after Create share file`, async () => {
     test.skip(process.env.HOME_U0_SHOTS === undefined, 'Set HOME_U0_SHOTS to a folder to take screenshots.');
     const p = page();
     await setLook(p, look);
@@ -441,7 +441,7 @@ for (const [w, h] of SIZES) for (const look of THEMES) {
     await shot(p, 'share-2-sheet', w, h, look);
     await rowOf((await sheet().locator('.sh-row-name').nth(2).textContent())!).getByRole('checkbox').uncheck();
     await shot(p, 'share-3-sheet-one-left-out', w, h, look);
-    await sheet().getByRole('button', { name: 'Save a copy' }).click();
+    await sheet().getByRole('button', { name: 'Create share file' }).click();
     await expect(sheet().locator('.sh-made')).toBeVisible();
     await shot(p, 'share-4-copy-ready', w, h, look);
     await sheet().getByRole('button', { name: 'Open a shared file' }).click();

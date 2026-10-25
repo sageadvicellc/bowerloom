@@ -44,6 +44,7 @@ export const FIND_WORDS = deepFreeze({
     readOnly: 'Only the places you ticked are opened.',
     readSafe: 'Nothing is changed. Keys and passwords are never copied.',
     nothingHint: 'Nothing was found on this computer.',
+    appsNote: 'These are the apps your agents work in.',
     closingNote: 'Saved in this preview. Help replays the tour any time.',
   },
   popover: {},
@@ -51,6 +52,8 @@ export const FIND_WORDS = deepFreeze({
 
 /** "Found 10 agents" or "Found 1 agent". */
 export const foundTitle = (agents: number): string => `Found ${agentsCount(agents)}`;
+/** "7 work in more than one app." and "1 works in more than one app.": said after the total, and not at all when no agent does. */
+export const multiAppLine = (agents: number): string => `${agents} ${agents === 1 ? 'works' : 'work'} in more than one app.`;
 /** "3 places, 10 agents": what the second question is about. */
 export const readSummary = (places: number, agents: number): string => `${places} ${places === 1 ? 'place' : 'places'}, ${agentsCount(agents)}`;
 /** "Reading Your home folder". */

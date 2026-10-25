@@ -1,6 +1,6 @@
 /**
  * "Choose notes": a full-window sheet, opened from the Notes shelf, where a person picks which notes ONE agent can read. On the left, the topics (toggle
- * cards ordered by size, a "Leave out" row for each one that is on) or, after "Pick by hand", one topic's notes with tick boxes. On the right, a live
+ * cards ordered by size, a "Leave out" row for each one that is on) or, after "Choose one by one", one topic's notes with tick boxes. On the right, a live
  * preview: how many notes, a bar, the choice in plain words, and the first note titles. "Use these notes" stages one change in the draft through the
  * store (`chooseNotes`); "Cancel", Escape and "Close" stage nothing. The sheet is the kit's Drawer, stretched over the whole window.
  * The working choice lives in this component, so it starts afresh each time the layer opens, from what the agent reads now.

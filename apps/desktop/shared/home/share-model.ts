@@ -73,6 +73,21 @@ export function readyMadeIn(bundle: Bundle): number {
   return named.size;
 }
 
+/**
+ * The bundle without some of its things: skills, agents, tools and sets of notes named by id. What is left no longer points at them: an agent keeps its other skills,
+ * tools and notes. An id that is not in the bundle changes nothing.
+ */
+export function withoutItems(bundle: Bundle, left: ReadonlySet<string>): Bundle {
+  if (left.size === 0) return bundle;
+  const items = bundle.items.filter(i => !left.has(i.id)).map((i): BundleItem => {
+    if (i.kind !== 'agent') return i;
+    const { sliceId, ...rest } = i.definition;
+    const keepNotes = sliceId !== undefined && !left.has(sliceId);
+    return { ...i, definition: { ...rest, skillIds: rest.skillIds.filter(id => !left.has(id)), toolAttachments: rest.toolAttachments.filter(t => !left.has(t.toolId)), ...(keepNotes ? { sliceId } : {}) } };
+  });
+  return { ...bundle, items, toolRefs: bundle.toolRefs.filter(t => !left.has(t.toolId)), sliceRules: bundle.sliceRules.filter(s => !left.has(s.sliceId)), scopeIds: bundle.scopeIds.filter(id => items.some(i => i.scopeId === id)) };
+}
+
 /** Everything the Share sheet shows and saves for one choice of agents. */
 export interface SharePlan {
   readonly bundle: Bundle;
@@ -83,17 +98,25 @@ export interface SharePlan {
   readonly keys: number;
   /** Agents on offer that the person unticked. */
   readonly leftOutAgents: number;
+  /** Skills, tools and sets of notes that the person unticked under "Look inside". */
+  readonly leftOutItems: number;
   /** Ready-made skills and tools that the copy points to and does not hold. */
   readonly readyMade: number;
   readonly bytes: number;
 }
 
-/** The plan for the agents on offer (`offered`, as ids) without the ones in `leftOut`. A left-out id that is not on offer is ignored. */
+/**
+ * The plan for the agents on offer (`offered`, as ids) without the ones in `leftOut`. An id in `leftOut` that is a skill, a tool or a set of notes of the file leaves
+ * that one thing out too, and the agents that used it no longer point at it. An id that is neither on offer nor in the file is ignored.
+ */
 export function planShare(world: World, offered: readonly string[], leftOut: readonly string[]): SharePlan {
   const left = offered.filter(id => leftOut.includes(id));
-  const bundle = buildShare(world, offered.filter(id => !leftOut.includes(id)));
+  const whole = buildShare(world, offered.filter(id => !leftOut.includes(id)));
+  const named = new Set<string>([...whole.items.map(i => i.id), ...whole.toolRefs.map(t => t.toolId), ...whole.sliceRules.map(s => s.sliceId)]);
+  const out = new Set(leftOut.filter(id => !offered.includes(id) && named.has(id)));
+  const bundle = withoutItems(whole, out);
   const text = bundleText(bundle);
-  return { bundle, text, counts: shareCounts(bundle), keys: keysIn(bundle), leftOutAgents: left.length, readyMade: readyMadeIn(bundle), bytes: sizeBytes(text) };
+  return { bundle, text, counts: shareCounts(bundle), keys: keysIn(bundle), leftOutAgents: left.length, leftOutItems: out.size, readyMade: readyMadeIn(bundle), bytes: sizeBytes(text) };
 }
 
 /** True when the copy holds an agent, so there is something to save. */

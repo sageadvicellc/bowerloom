@@ -58,7 +58,7 @@ function Copy({ copy, onKeep }: { copy: CopyView; onKeep(): void }): ReactElemen
 export function CopiesDialog({ itemId, nameOf = plainName, leaving = false, onClose, onKept, restoreFocus }: CopiesDialogProps): ReactElement | null {
   const { state, dispatch } = useProtoStore();
   const item = state.draft.items.find(i => i.id === itemId);
-  const titleId = useId(), tipId = useId();
+  const titleId = useId(), tipId = useId(), replacedId = useId();
   const dialog = useRef<HTMLDivElement>(null), heading = useRef<HTMLHeadingElement>(null);
   const latest = useRef({ onClose, restoreFocus, leaving });
   latest.current = { onClose, restoreFocus, leaving };
@@ -86,12 +86,13 @@ export function CopiesDialog({ itemId, nameOf = plainName, leaving = false, onCl
 
   return (
     <div className="add-scrim" data-leaving={leaving ? '' : undefined} onPointerDown={e => { if (e.target === e.currentTarget && !leaving) onClose(); }}>
-      <div className="add-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={tipId} data-copies={copies.length} ref={dialog} onKeyDown={key}>
+      <div className="add-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={`${tipId} ${replacedId}`} data-copies={copies.length} ref={dialog} onKeyDown={key}>
         <header className="add-dialog-head">
           <div className="add-dialog-title">
             <h2 className="kit-heading" id={titleId} tabIndex={-1} ref={heading}>{L.differentCopies}</h2>
             <p className="add-dialog-name">{name}</p>
             <p className="kit-hint" id={tipId}>{copiesLookAlike(copies) ? H.copiesLookAlike : H.copiesTip}</p>
+            <p className="kit-hint" id={replacedId}>{H.copiesReplaced}</p>
           </div>
           <Button round icon="close" aria-label={L.close} onClick={onClose} />
         </header>

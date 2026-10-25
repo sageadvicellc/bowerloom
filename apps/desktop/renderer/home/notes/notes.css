@@ -72,7 +72,7 @@
 [data-home] .nt-chip[aria-pressed="true"] { border-style: dashed; background: var(--quiet-bg); color: var(--quiet-fg); }
 [data-home] .nt-chip[aria-pressed="true"] .nt-chip-name { text-decoration: line-through; text-decoration-thickness: 2px; }
 
-/* ---- Pick by hand */
+/* ---- Choose one by one */
 [data-home] .nt-hand { display: flex; flex-direction: column; gap: var(--hm-space-3); min-width: 0; }
 [data-home] .nt-pills { display: flex; flex-wrap: wrap; gap: var(--hm-space-2); }
 [data-home] .nt-pill {

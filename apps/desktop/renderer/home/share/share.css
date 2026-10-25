@@ -50,3 +50,20 @@
 @media (prefers-reduced-motion: reduce) {
   [data-home] .sh-row { animation: none !important; transition: none !important; }
 }
+
+/* ---- Look inside: every thing that goes in, with a tick, its kind, a plain warning when its text looks like it holds a key, and the text that travels behind "Show text". */
+[data-home] .sh-look { display: flex; flex-direction: column; gap: var(--hm-space-2); margin-top: var(--hm-space-2); }
+[data-home] .sh-look-head { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--hm-space-3); row-gap: var(--hm-space-1); }
+[data-home] .sh-look-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border: 1px solid var(--hm-border); border-radius: var(--hm-radius); background: var(--surface); }
+[data-home] .sh-look-item { display: flex; flex-direction: column; gap: var(--hm-space-1); padding: 0 var(--hm-space-3) var(--hm-space-2); }
+[data-home] .sh-look-item + .sh-look-item { border-top: 1px solid var(--border); }
+[data-home] .sh-look-line { display: flex; align-items: center; justify-content: space-between; gap: var(--hm-space-3); }
+[data-home] .sh-look-row { display: flex; align-items: center; gap: var(--hm-space-3); flex: 1 1 auto; min-width: 0; min-height: var(--hm-row-h); box-sizing: border-box; padding: var(--hm-space-2) 0; cursor: pointer; }
+[data-home] .sh-look-row:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: var(--hm-radius-small); }
+[data-home] .sh-look-row input { flex: none; width: 1.125rem; height: 1.125rem; margin: 0; accent-color: var(--accent-strong); }
+[data-home] .sh-warn { white-space: normal; }
+[data-home] .sh-warn > span:last-child { overflow: visible; text-overflow: clip; }
+[data-home] .sh-look-item .sh-warn { padding-left: calc(1.125rem + var(--hm-space-3)); }
+[data-home] .sh-text { max-height: 10rem; overflow-y: auto; box-sizing: border-box; padding: var(--hm-space-2) var(--hm-space-3); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--hm-radius-small); }
+[data-home] .sh-text p { margin: 0; font-size: var(--hm-text-base); line-height: var(--hm-leading); white-space: pre-wrap; overflow-wrap: anywhere; }
+[data-home] .sh-text:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }

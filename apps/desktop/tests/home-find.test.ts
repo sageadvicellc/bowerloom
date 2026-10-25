@@ -5,9 +5,9 @@ import { generateWorld } from '../shared/proto/sample.js';
 import type { InterfaceId, World } from '../shared/proto/types.js';
 import { ownedAgents } from '../shared/home/cards.js';
 import { withSampleCopies } from '../shared/home/sample-copies.js';
-import { FIND_TOOLS, findPlaces, skippedAgents, toolTiles, unsavedAgents } from '../shared/home/find-model.js';
+import { FIND_TOOLS, findPlaces, multiProgramAgents, skippedAgents, toolTiles, unsavedAgents } from '../shared/home/find-model.js';
 import { createStore, reduceStore } from '../shared/proto/store.js';
-import { unsavedHere } from '../renderer/home/first-run/find-words.js';
+import { multiAppLine, unsavedHere } from '../renderer/home/first-run/find-words.js';
 import { findReduce, readTotal, startFind } from '../shared/home/find-flow.js';
 import type { FindAction, FindState } from '../shared/home/find-flow.js';
 import { assertTextBudget, bannedIn, countWords } from '../shared/home/textbudget.js';
@@ -225,4 +225,31 @@ test('a place counts the agents whose draft differs from the saved world, and a 
   assert.deepEqual(unsavedHere(1), '1 agent here has changes you have not saved.');
   assert.deepEqual(unsavedHere(2), '2 agents here have changes you have not saved.');
   assert.deepEqual(assertTextBudget(`<p>${unsavedHere(12)}</p>`), []);
+});
+
+// ---- Wave C: the total and the agents that work in more than one app.
+test('the agents that work in more than one app are counted from the world: the tiles count an agent once for each app, so they add up to more than the agents found', () => {
+  const w = world();
+  const owned = ownedAgents(w);
+  const byHand = owned.filter(a => new Set(a.foundAt.map(f => f.interface)).size > 1).length;
+  assert.equal(multiProgramAgents(w), byHand);
+  assert.ok(byHand > 0 && byHand < owned.length);
+  const sum = toolTiles(w).reduce((n, t) => n + t.agents, 0);
+  const extra = owned.reduce((n, a) => n + new Set(a.foundAt.map(f => f.interface)).size - 1, 0);
+  assert.equal(sum, owned.length + extra, 'an agent in two apps is on two tiles');
+  assert.ok(extra >= byHand, 'the overlap is at least one for each agent that is in more than one app');
+});
+
+test('a program that is not on the computer does not make an agent "more than one app"', () => {
+  const w = world();
+  const off: World = { ...w, interfaces: w.interfaces.map(i => (i.id === 'codex' || i.id === 'opencode' ? { ...i, installed: 'not-installed' as const } : i)) };
+  assert.equal(multiProgramAgents(off), 0);
+  const none: World = { ...w, items: [] };
+  assert.equal(multiProgramAgents(none), 0);
+});
+
+test('the line after the total reads "7 work in more than one app." and "1 works in more than one app."', () => {
+  assert.equal(multiAppLine(7), '7 work in more than one app.');
+  assert.equal(multiAppLine(1), '1 works in more than one app.');
+  for (const n of [1, 7, 10, 999]) { assert.ok(countWords(multiAppLine(n)) <= 12); assert.equal(bannedIn(multiAppLine(n)), null); assert.deepEqual(assertTextBudget(`<p>${multiAppLine(n)}</p>`), []); }
 });
