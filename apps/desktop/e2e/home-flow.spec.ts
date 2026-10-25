@@ -165,7 +165,7 @@ test('the Save bar names one or two changes in plain words and says "N changes" 
   expect(await barText()).toBe('3 changes');
   expect(await budget()).toEqual([]);
   // A save point takes the sentence as its name.
-  await bar().getByRole('button', { name: 'Discard changes' }).click();
+  await bar().getByRole('button', { name: 'Undo all changes' }).click();
   await shelf('Skills').getByRole('button', { name: 'Remove Write a reply' }).click();
   await saveButton().click();
   await topBar('Version history').click();
@@ -207,7 +207,7 @@ test('the badge shows on a real shelf card and on the drawer card for the same s
   // The other conflict still has its badge: only the one that was resolved is gone.
   await expect(row('skill-triple').getByRole('button', { name: '3 different copies' })).toBeVisible();
   expect(await budget()).toEqual([]);
-  await bar().getByRole('button', { name: 'Discard changes' }).click();
+  await bar().getByRole('button', { name: 'Undo all changes' }).click();
   await expect(shelf('Skills').getByRole('button', { name: '2 different copies' })).toBeVisible();
 });
 
@@ -453,7 +453,7 @@ for (const [w, h] of SIZES) for (const look of THEMES) {
     await shelf('Skills').getByRole('button', { name: 'Remove Flag urgent mail' }).click();
     await barShot('2-two-removed');
     await shelf('Tools').getByText('Nothing here yet.').waitFor();
-    await bar().getByRole('button', { name: 'Discard changes' }).click();
+    await bar().getByRole('button', { name: 'Undo all changes' }).click();
     await openAdd();
     await shot(p, '1-add-open', w, h, look);
     // Mid-drag.

@@ -37,11 +37,12 @@ export type StoreAction =
   | ChooseNotesAction
   | LibraryAction
   | { readonly type: 'importBundle'; readonly bundle: Bundle }
+  | { readonly type: 'withdraw'; readonly at: readonly number[] }
   | { readonly type: 'undo' }
   | { readonly type: 'redo' }
   | { readonly type: 'discard' }
-  | { readonly type: 'apply'; readonly label: string }
-  | { readonly type: 'restore'; readonly versionId: string };
+  | { readonly type: 'apply'; readonly label: string; /** When the point was made, in words the screen read from its clock ("Today, 8:42"). The store never reads a clock. */ readonly madeAt?: string }
+  | { readonly type: 'restore'; readonly versionId: string; readonly madeAt?: string };
 
 /**
  * What the store holds. `committed` is what was applied. `draft` is committed plus the edits not yet applied; only `committed` carries
@@ -67,6 +68,21 @@ export const MAX_UNDO = 100;
 
 const snapshots = new WeakMap<World, string>();
 
+/**
+ * The edits that made each draft, oldest first, kept beside the draft world itself (not inside it, so a world stays plain data and the shape of the state does not
+ * change). A draft that is the saved world has none. `withdraw` takes edits out of this list and replays the rest, which is how one change is undone alone.
+ */
+const draftLogs = new WeakMap<World, readonly StoreAction[]>();
+
+/** What the store did to reach the draft, oldest first, or null when it cannot say (a draft that was put together by hand, not by the store). */
+export function draftActions(state: StoreState): readonly StoreAction[] | null {
+  if (state.draft === state.committed) return [];
+  const log = draftLogs.get(state.draft);
+  if (log === undefined) return null;
+  // A log that does not rebuild the draft is not trusted.
+  return snapshotOf(replayActions(state.committed, log)) === snapshotOf(state.draft) ? log : null;
+}
+
 /** The world as JSON text, without its versions. This is what a version stores. The text is kept per world object, so asking twice costs once. */
 export function snapshotOf(world: World): string {
   const known = snapshots.get(world);
@@ -89,11 +105,18 @@ function headOf(world: World): string | null {
 }
 
 const withVersions = (draft: World, versions: readonly Version[]): World => (draft.versions === versions ? draft : { ...draft, versions });
+/** When a draft is rebuilt with other versions, the new object keeps the list of edits of the old one. */
+function carryLog(from: World, to: World): World {
+  const log = draftLogs.get(from);
+  if (to !== from && log !== undefined) draftLogs.set(to, log);
+  return to;
+}
 const pushCapped = (stack: readonly World[], world: World): World[] => [...stack, world].slice(-MAX_UNDO);
 
-function nextVersion(world: World, parentId: string | null, label: string, snapshotJson: string): Version {
+function nextVersion(world: World, parentId: string | null, label: string, snapshotJson: string, madeAt?: string): Version {
   const counter = world.versions.reduce((most, v) => Math.max(most, v.counter), 0) + 1;
-  return { id: uniqueId(world.versions.map(v => v.id), `v${counter}`), parentId, counter, label, snapshotJson };
+  const made = madeAt === undefined || madeAt.trim() === '' ? {} : { madeAt: madeAt.trim() };
+  return { id: uniqueId(world.versions.map(v => v.id), `v${counter}`), parentId, counter, label, snapshotJson, ...made };
 }
 
 // --------------------------------------------------------------------------------------------------- draft edits
@@ -278,6 +301,23 @@ function editDraft(world: World, action: StoreAction, committed: World): World {
 
 // --------------------------------------------------------------------------------------------------- the reducer
 
+/** The draft that `actions` make from the saved world, in order. An edit that changes nothing at that point (its target is gone) is left out of `kept`. */
+function replay(committed: World, actions: readonly StoreAction[]): { readonly draft: World; readonly kept: readonly StoreAction[] } {
+  let draft = committed;
+  const kept: StoreAction[] = [];
+  for (const action of actions) {
+    const next = editDraft(draft, action, committed);
+    if (next === draft) continue;
+    draft = next; kept.push(action);
+  }
+  return { draft, kept };
+}
+
+/** The draft that `actions` make from the saved world. */
+export function replayActions(committed: World, actions: readonly StoreAction[]): World {
+  return replay(committed, actions).draft;
+}
+
 function restoreWorld(committed: World, versionId: string): World | null {
   const old = committed.versions.find(v => v.id === versionId);
   if (old === undefined) return null;
@@ -295,12 +335,23 @@ export function reduceStore(state: StoreState, action: StoreAction): StoreState 
     case 'undo': {
       const earlier = state.undoStack[state.undoStack.length - 1];
       if (earlier === undefined) return state;
-      return { ...state, draft: withVersions(earlier, state.committed.versions), undoStack: state.undoStack.slice(0, -1), redoStack: pushCapped(state.redoStack, state.draft) };
+      return { ...state, draft: carryLog(earlier, withVersions(earlier, state.committed.versions)), undoStack: state.undoStack.slice(0, -1), redoStack: pushCapped(state.redoStack, state.draft) };
     }
     case 'redo': {
       const later = state.redoStack[state.redoStack.length - 1];
       if (later === undefined) return state;
-      return { ...state, draft: withVersions(later, state.committed.versions), redoStack: state.redoStack.slice(0, -1), undoStack: pushCapped(state.undoStack, state.draft) };
+      return { ...state, draft: carryLog(later, withVersions(later, state.committed.versions)), redoStack: state.redoStack.slice(0, -1), undoStack: pushCapped(state.undoStack, state.draft) };
+    }
+    case 'withdraw': {
+      // Takes some of the edits that make the draft out of it and replays the others. An edit that needed a withdrawn one finds nothing to act on and drops out.
+      const log = draftActions(state);
+      if (log === null || action.at.length === 0 || action.at.some(i => !Number.isInteger(i) || i < 0 || i >= log.length)) return state;
+      const skip = new Set(action.at);
+      const { draft, kept } = replay(state.committed, log.filter((_, i) => !skip.has(i)));
+      if (snapshotOf(draft) === snapshotOf(state.draft)) return state;
+      const next = withVersions(draft, state.committed.versions);
+      if (kept.length > 0) draftLogs.set(next, kept);
+      return { ...state, draft: next, undoStack: pushCapped(state.undoStack, state.draft), redoStack: [] };
     }
     case 'discard': {
       if (!isDirty(state)) return state;
@@ -309,7 +360,7 @@ export function reduceStore(state: StoreState, action: StoreAction): StoreState 
     case 'apply': {
       if (!isDirty(state)) return state;
       const label = action.label.trim();
-      const version = nextVersion(state.committed, state.headVersionId, label === '' ? 'Applied changes' : label, snapshotOf(state.draft));
+      const version = nextVersion(state.committed, state.headVersionId, label === '' ? 'Applied changes' : label, snapshotOf(state.draft), action.madeAt);
       const committed: World = { ...state.draft, versions: [...state.committed.versions, version] };
       snapshots.set(committed, snapshotOf(state.draft));
       return { ...state, committed, draft: committed, undoStack: [], redoStack: [], headVersionId: version.id };
@@ -318,7 +369,7 @@ export function reduceStore(state: StoreState, action: StoreAction): StoreState 
       const restored = restoreWorld(state.committed, action.versionId);
       const old = state.committed.versions.find(v => v.id === action.versionId);
       if (restored === null || old === undefined) return state;
-      const version = nextVersion(state.committed, state.headVersionId, `Restored: ${old.label}`, old.snapshotJson);
+      const version = nextVersion(state.committed, state.headVersionId, `Restored: ${old.label}`, old.snapshotJson, action.madeAt);
       const committed: World = { ...restored, versions: [...state.committed.versions, version] };
       snapshots.set(committed, old.snapshotJson);
       return { committed, draft: committed, undoStack: [], redoStack: [], headVersionId: version.id };
@@ -326,6 +377,9 @@ export function reduceStore(state: StoreState, action: StoreAction): StoreState 
     default: {
       const draft = editDraft(state.draft, action, state.committed);
       if (draft === state.draft) return state;
+      // The new draft remembers the edits that made it, when the old one's edits are known.
+      const before = state.draft === state.committed ? [] : draftLogs.get(state.draft);
+      if (before !== undefined) draftLogs.set(draft, [...before, action]);
       return { ...state, draft, undoStack: pushCapped(state.undoStack, state.draft), redoStack: [] };
     }
   }

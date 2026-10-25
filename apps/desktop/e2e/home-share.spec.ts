@@ -10,6 +10,7 @@ import { assertTextBudget } from '../shared/home/textbudget.js';
 import { planShare, shareableAgents } from '../shared/home/share-model.js';
 import { withSampleCopies } from '../shared/home/sample-copies.js';
 import { generateWorld } from '../shared/proto/sample.js';
+import { withLibrarySamples } from '../shared/home/library-sample.js';
 import { countsLine, leftOutLine } from '../renderer/home/share/share-words.js';
 import { removeTempDirs } from './proto-temp.js';
 import { animationsDone, framesPainted } from './proto-wait.js';
@@ -18,7 +19,8 @@ import type { Home } from './home-page.js';
 
 let home: Home;
 const page = (): Page => home.page;
-const world = withSampleCopies(generateWorld(1));
+// The world the app opens with: the sample copies and the Library's sample pieces (one ready-made skill from outside, held by two agents).
+const world = withLibrarySamples(withSampleCopies(generateWorld(1)));
 const ids = shareableAgents(world).map(a => a.id);
 const all = planShare(world, ids, []);
 const topBar = (name: string): Locator => page().locator('header.hm-bar').getByRole('button', { name, exact: true });
@@ -84,8 +86,8 @@ test.beforeEach(async () => {
 test('Share lives in the Version history drawer, under the list, and not in the main window', async () => {
   const p = page();
   // Version history is an icon-only clock button: no text of its own, and its name is the aria-label.
-  expect(await p.locator('header.hm-bar').getByRole('button').allTextContents()).toEqual(['Preview', '', 'Add', '?']);
-  expect(await p.locator('header.hm-bar').getByRole('button').evaluateAll(list => list.map(b => b.getAttribute('aria-label')))).toEqual(['About this preview', 'Version history', null, 'Help']);   // the Preview pill is its own help button, so Help is the only "?" (fix list item 3)
+  expect(await p.locator('header.hm-bar').getByRole('button').allTextContents()).toEqual(['Preview', '', 'Share', 'Add', 'Help']);
+  expect(await p.locator('header.hm-bar').getByRole('button').evaluateAll(list => list.map(b => b.getAttribute('aria-label')))).toEqual(['About this preview', 'Version history', null, null, null]);   // the Preview pill is its own help button, so Help is the only "?" (fix list item 3)
   await expect(p.getByRole('button', { name: 'Share my agents' })).toHaveCount(0);
   await openPoints();
   await expect(section().getByRole('heading', { level: 3, name: 'Share' })).toBeVisible();
@@ -119,8 +121,8 @@ test('the sheet says what goes in as counts, what is left out, and that secrets 
   await expect(sheet().getByRole('heading', { level: 2, name: 'Share my agents' })).toBeFocused();
   await expect(counts()).toHaveText(countsLine(all.counts));
   await expect(counts()).toHaveText('29 skills, 10 agents, 8 tools, 3 sets of notes');
-  await expect(leftOut()).toHaveText(leftOutLine(all.keys, 0));
-  await expect(leftOut()).toHaveText('Left out: 3 keys');
+  await expect(leftOut()).toHaveText(leftOutLine(all.keys, 0, all.readyMade));
+  await expect(leftOut()).toHaveText('Left out: 3 keys and 1 ready-made item');
   await expect(sheet().getByText('Keys that Bowerloom keeps are left out.')).toBeVisible();
   await expect(sheet().getByText('Your own text is included, so read it first.')).toBeVisible();
   await expect(sheet().getByText('Tools that need a key will ask for one.')).toBeVisible();
@@ -145,11 +147,11 @@ test('unticking an agent takes it out and the counts and the left-out line follo
   const name = (await sheet().locator('.sh-row-name').first().textContent())!;
   await rowOf(name).getByRole('checkbox').uncheck();
   await expect(counts()).toHaveText(countsLine(one.counts));
-  await expect(leftOut()).toHaveText(leftOutLine(one.keys, 1));
+  await expect(leftOut()).toHaveText(leftOutLine(one.keys, 1, one.readyMade));
   expect(await budget()).toEqual([]);
   await rowOf(name).getByRole('checkbox').check();
   await expect(counts()).toHaveText(countsLine(all.counts));
-  await expect(leftOut()).toHaveText(leftOutLine(all.keys, 0));
+  await expect(leftOut()).toHaveText(leftOutLine(all.keys, 0, all.readyMade));
   // Every agent out.
   for (const box of await sheet().locator('.sh-row input').all()) await box.uncheck();
   await expect(counts()).toHaveText('Tick at least one agent to share.');
@@ -161,7 +163,7 @@ test('unticking an agent takes it out and the counts and the left-out line follo
   const some = planShare(world, ids, six);
   for (const box of await sheet().locator('.sh-row input').all().then(l => l.slice(6))) await box.check();
   await expect(counts()).toHaveText(countsLine(some.counts));
-  await expect(leftOut()).toHaveText(leftOutLine(some.keys, 6));
+  await expect(leftOut()).toHaveText(leftOutLine(some.keys, 6, some.readyMade));
 });
 
 test('changes that wait for Save are not in the copy, and the sheet says so', async () => {

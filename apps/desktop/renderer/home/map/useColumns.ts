@@ -11,7 +11,8 @@ export function trackCount(computed: string): number {
   return Math.max(1, tracks.length);
 }
 
-export function useColumns(ref: RefObject<HTMLElement | null>, initial = 3): number {
+/** `place` names where the grid is drawn: it changes when the grid is made again (the app moved to another page and back), so the width is read again. */
+export function useColumns(ref: RefObject<HTMLElement | null>, initial = 3, place?: unknown): number {
   const [columns, setColumns] = useState(initial);
   useLayoutEffect(() => {
     const el = ref.current;
@@ -22,7 +23,7 @@ export function useColumns(ref: RefObject<HTMLElement | null>, initial = 3): num
     const watch = new ResizeObserver(read);
     watch.observe(el);
     return () => watch.disconnect();
-  }, [ref]);
+  }, [ref, place]);
   return columns;
 }
 

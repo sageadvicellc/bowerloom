@@ -24,6 +24,9 @@ export const WORDS = deepFreeze({
     versionHistory: 'Version history',
     add: 'Add',
     help: 'Help',
+    viewAgents: 'Agents',
+    viewLibrary: 'Library',
+    viewSwitch: 'Pages',
     showTour: 'Show me around',
     preview: 'Preview',
     aboutPreview: 'About this preview',
@@ -91,7 +94,10 @@ export const WORDS = deepFreeze({
     wentBack: BAR_WORDS.back,
     goBack: 'Go back',
     goBackToThis: 'Go back to this',
-    discard: 'Discard changes',
+    discard: 'Undo all changes',
+    undo: 'Undo',
+    share: 'Share',
+    changesWaiting: 'Changes waiting',
     wouldUpdate: 'Would update',
     claudeCode: 'Claude Code',
     codex: 'Codex',
@@ -160,5 +166,7 @@ export const WORDS = deepFreeze({
 export const agentsCount = (n: number): string => `${n} ${n === 1 ? 'agent' : 'agents'}`;
 /** "1 change" or "3 changes". */
 export const changesCount = (n: number): string => `${n} ${n === 1 ? 'change' : 'changes'}`;
+/** "Removed Write a reply.", the note after Remove. */
+export const removedNote = (name: string): string => `Removed ${name}.`;
 /** "Step 2 of 6", for a screen reader. */
 export const stepAnnouncement = (index: number, total: number): string => `${WORDS.label.stepWord} ${index} of ${total}`;

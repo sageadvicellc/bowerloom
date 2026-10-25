@@ -70,19 +70,19 @@ test('picking an agent fills the three shelves; every card is the same card, wit
   await expect(panel().getByRole('heading', { level: 2, name: 'Pick an agent' })).toBeVisible();
   await expect(panel().locator('.kit-card')).toHaveCount(0);
   await pick();
-  await expect(shelf('Skills').locator('.kit-card')).toHaveCount(3);
+  await expect(shelf('Skills').locator('.kit-card')).toHaveCount(4);
   await expect(shelf('Tools').locator('.kit-card')).toHaveCount(1);
   await expect(shelf('Notes').locator('.kit-card')).toHaveCount(1);
-  expect(await shelf('Skills').locator('.kit-card-main').allTextContents()).toEqual(['Summarize a meeting', 'Write a reply', 'List action items']);
+  expect(await shelf('Skills').locator('.kit-card-main').allTextContents()).toEqual(['Summarize a meeting', 'Write a reply', 'List action items', 'Tidy my meeting notes']);
   expect(await shelf('Tools').locator('.kit-card-main').allTextContents()).toEqual(['Read my calendar']);
   expect(await shelf('Notes').locator('.kit-card-main').allTextContents()).toEqual(['Client list']);
   await expect(shelf('Tools').getByText('needs a key')).toBeVisible();
   await expect(panel().getByText('Summarizes meetings and writes replies.')).toBeVisible();
   const cards = panel().locator('.kit-card');
-  await expect(cards).toHaveCount(5);
+  await expect(cards).toHaveCount(6);
   for (const hint of await cards.locator('.kit-card-hint').allTextContents()) { expect(countWords(hint), hint).toBeGreaterThanOrEqual(3); expect(countWords(hint), hint).toBeLessThanOrEqual(12); }
-  expect(await cards.locator('.kit-card-hint').count()).toBe(5);
-  await expect(cards.getByRole('button', { name: /^Remove / })).toHaveCount(5);
+  expect(await cards.locator('.kit-card-hint').count()).toBe(6);
+  await expect(cards.getByRole('button', { name: /^Remove / })).toHaveCount(6);
   await p.mouse.move(2, 450); await animationsDone(p);
   const look = await cards.evaluateAll(list => list.map(c => { const s = getComputedStyle(c), r = c.getBoundingClientRect(), n = getComputedStyle(c.querySelector('.kit-card-main')!), h = getComputedStyle(c.querySelector('.kit-card-hint')!); return [s.borderRadius, s.borderTopWidth, s.boxShadow, n.fontSize, n.fontWeight, h.fontSize, Math.round(r.left), Math.round(r.width)].join('|'); }));
   expect(new Set(look).size, look.join('\n')).toBe(1);
@@ -98,8 +98,8 @@ test('Remove stages one change: the card goes, the bar says what it was, Save tu
   await expect(bar().getByText('Nothing to save yet')).toBeVisible();
   await pick();
   await shelf('Skills').getByRole('button', { name: 'Remove Summarize a meeting' }).click();
-  await expect(shelf('Skills').locator('.kit-card')).toHaveCount(2);
-  expect(await shelf('Skills').locator('.kit-card-main').allTextContents()).toEqual(['Write a reply', 'List action items']);
+  await expect(shelf('Skills').locator('.kit-card')).toHaveCount(3);
+  expect(await shelf('Skills').locator('.kit-card-main').allTextContents()).toEqual(['Write a reply', 'List action items', 'Tidy my meeting notes']);
   await expect(bar().getByText('Removed Summarize a meeting', { exact: true })).toBeVisible();
   await expect(bar().getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
   await expect(panel().getByText('Writes replies and lists action items.')).toBeVisible();
@@ -127,7 +127,7 @@ test('Save makes a save point and shows "Saved" with three ticks; Go back undoes
   await expect(bar().getByRole('list', { name: 'Would update' })).toBeVisible();
   await expect(bar().getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
   await expect(bar().getByRole('button', { name: 'Go back' })).toBeFocused();
-  expect(await shelf('Skills').locator('.kit-card-main').allTextContents()).toEqual(['Summarize a meeting']);
+  expect(await shelf('Skills').locator('.kit-card-main').allTextContents()).toEqual(['Summarize a meeting', 'Tidy my meeting notes']);
   // The save point is real: the Version history drawer is a placeholder in this slice, so read the store through the page's own words instead: Save is off and the bar is calm.
   await expect(bar().getByText('Nothing to save yet')).toHaveCount(0);
   expect(await budget()).toEqual([]);
@@ -136,7 +136,7 @@ test('Save makes a save point and shows "Saved" with three ticks; Go back undoes
   await expect(bar().locator('.hm-tick')).toHaveCount(0);
   await expect(bar().getByRole('button', { name: 'Go back' })).toHaveCount(0);
   await expect(bar().getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
-  expect(await shelf('Skills').locator('.kit-card-main').allTextContents()).toEqual(['Summarize a meeting', 'Write a reply', 'List action items']);
+  expect(await shelf('Skills').locator('.kit-card-main').allTextContents()).toEqual(['Summarize a meeting', 'Write a reply', 'List action items', 'Tidy my meeting notes']);
   await expect(panel().getByText('Summarizes meetings and writes replies.')).toBeVisible();
   await expect(panel().getByRole('heading', { level: 2, name: 'Meeting assistant' })).toBeFocused();
   // A new change after going back starts the count again.
@@ -157,16 +157,16 @@ test('a second save, and a go back from it, return to the save point before it a
   await bar().getByRole('button', { name: 'Save', exact: true }).click();
   await expect(bar().getByText(SAVED, { exact: true })).toBeVisible();
   await bar().getByRole('button', { name: 'Go back' }).click();
-  expect(await shelf('Skills').locator('.kit-card-main').allTextContents()).toEqual(['Summarize a meeting', 'List action items']);
+  expect(await shelf('Skills').locator('.kit-card-main').allTextContents()).toEqual(['Summarize a meeting', 'List action items', 'Tidy my meeting notes']);
 });
 
-test('Discard changes puts everything back and the bar goes calm', async () => {
+test('Undo all changes puts everything back and the bar goes calm', async () => {
   await pick();
   await shelf('Skills').getByRole('button', { name: 'Remove Write a reply' }).click();
-  await bar().getByRole('button', { name: 'Discard changes' }).click();
+  await bar().getByRole('button', { name: 'Undo all changes' }).click();
   await expect(bar().getByText('Nothing to save yet')).toBeVisible();
-  await expect(shelf('Skills').locator('.kit-card')).toHaveCount(3);
-  await expect(bar().getByRole('button', { name: 'Discard changes' })).toHaveCount(0);
+  await expect(shelf('Skills').locator('.kit-card')).toHaveCount(4);
+  await expect(bar().getByRole('button', { name: 'Undo all changes' })).toHaveCount(0);
 });
 
 test('the sort toggle orders the map by name or by recent change; an agent changed in this session comes first', async () => {
@@ -268,7 +268,7 @@ test('the keyboard does all of it: reach an agent, pick it, reach Remove, remove
   await expect(bar().getByRole('button', { name: 'Go back' })).toBeFocused();
   await p.keyboard.press('Enter');
   await expect(bar().getByText('Back to how it was')).toBeVisible();
-  await expect(shelf('Skills').locator('.kit-card')).toHaveCount(3);
+  await expect(shelf('Skills').locator('.kit-card')).toHaveCount(4);
   await expect(panel().getByRole('heading', { level: 2, name: 'Meeting assistant' })).toBeFocused();
 });
 

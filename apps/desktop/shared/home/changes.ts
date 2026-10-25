@@ -72,6 +72,9 @@ const VERB: Readonly<Record<Change['verb'], string>> = { removed: 'Removed', add
 const lower = (text: string): string => `${text.charAt(0).toLowerCase()}${text.slice(1)}`;
 const say = (c: Change, withTarget: boolean): string => `${VERB[c.verb]} ${c.what}${withTarget && c.to !== undefined ? ` to ${c.to}` : ''}`;
 
+/** One change as a sentence: "Removed Write a reply", "Added Sort my inbox to Inbox sorter". */
+export const changeSentence = (c: Change): string => say(c, true);
+
 /**
  * The sentence for a bar with one or two changes, or null when the bar should say "N changes": three or more changes, a list that does not match the
  * count, or a sentence that would pass 12 words. Two changes share one sentence: "Removed A and B", "Added A and B to C", or, when the verbs differ,

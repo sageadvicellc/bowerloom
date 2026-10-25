@@ -7,9 +7,12 @@
  * Every screen test of the home app calls `assertTextBudget` on what it renders. No DOM, no clock, no file.
  */
 
-/** The words and phrases that must never reach a screen, in lower case. A plural ("teams", "harnesses") counts too. */
+/**
+ * The words and phrases that must never reach a screen, in lower case. A plural ("teams", "harnesses") counts too.
+ * "undo" left the list on 2026-10-25: Hanna chose it for the note after Remove, for the Undo beside each change, and for "Undo all changes".
+ */
 export const BANNED: readonly string[] = Object.freeze([
-  'harness', 'global', 'project', 'scope', 'slice', 'version', 'apply', 'undo', 'scan', 'adopt', 'conflict', 'interface', 'export', 'import',
+  'harness', 'global', 'project', 'scope', 'slice', 'version', 'apply', 'scan', 'adopt', 'conflict', 'interface', 'export', 'import',
   'access class', 'helper', 'team', 'plan', 'grant', 'wire', 'ghost', 'lasso', 'mcp', 'token',
 ]);
 

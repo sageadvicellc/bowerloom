@@ -36,12 +36,14 @@ import type { AddTab } from '../../shared/home/add-model.js';
 import type { ShelfEntry } from '../../shared/home/cards.js';
 import { agentForTour, sortAgents, touch } from '../../shared/home/order.js';
 import type { SortMode } from '../../shared/home/order.js';
-import { barSentence, listChanges } from '../../shared/home/changes.js';
-import { plainHintOf, plainNameOf } from '../../shared/home/plain-names.js';
+import { libraryChangeCount, libraryChangeList } from '../../shared/home/library-changes.js';
+import { plainHintOf, plainNameOf, plainNameOfSaved } from '../../shared/home/plain-names.js';
 import { savePointRows } from '../../shared/home/points.js';
-import { changeCount, saveBar } from '../../shared/home/savebar.js';
+import { saveBar } from '../../shared/home/savebar.js';
 import type { BarPhase } from '../../shared/home/savebar.js';
+import { barSaid, placeOf } from '../../shared/home/change-undo.js';
 import { reduceStore } from '../../shared/proto/store.js';
+import type { StoreAction } from '../../shared/proto/store.js';
 import { useProtoStore } from '../proto/session.js';
 import { AddDrawerBody } from './add/AddDrawerBody.js';
 import { dropTargetFor } from './add/dom-helpers.js';
@@ -50,9 +52,15 @@ import { ChooseNotes } from './notes/ChooseNotes.js';
 import { DetailsPanel } from './details/DetailsPanel.js';
 import { SavePoints } from './points/SavePoints.js';
 import { ShareSheet } from './share/ShareSheet.js';
+import { LibraryPage } from './library/LibraryPage.js';
+import { ViewSwitch, viewPanelId, viewTabId } from './shell/ViewSwitch.js';
+import type { View } from './shell/ViewSwitch.js';
 import { Button } from './kit/Button.js';
 import { Drawer } from './kit/Drawer.js';
 import { useLeaving, usePresence } from './kit/presence.js';
+import { ShellNote } from './shell/ShellNote.js';
+import type { NoteView } from './shell/ShellNote.js';
+import { useChangeList } from './save/useChangeList.js';
 import { HelpPopover } from './kit/HelpPopover.js';
 import { KitIcon } from './kit/icons.js';
 import { AgentCard } from './kit/AgentCard.js';
@@ -67,7 +75,7 @@ import { TourAnnouncer, TourOverlay } from './tour/TourOverlay.js';
 import { TOUR_STEPS } from './tour/steps.js';
 import { closingNoteSession, createTour, currentStep, tourReduce, tourSession } from './tour/tour.js';
 import { FIND_WORDS } from './first-run/find-words.js';
-import { WORDS, agentsCount, changesCount } from './words.js';
+import { WORDS, agentsCount, changesCount, removedNote } from './words.js';
 import './home-tokens.css';
 import './kit/kit.css';
 import './home.css';
@@ -87,9 +95,6 @@ const FRESH_MS = MOTION.home.ring.holdMs;
 
 /** How long the body stays marked as moving after a drawer opens or closes: longer than the slowest of the drawer's two clocks. */
 const MOVING_MS = 320;
-
-/** How long the closing note stays, in milliseconds, before it fades. */
-const NOTE_MS = 6000;
 
 export interface HomeAppProps {
   /** The ids of agents to keep off the map (their place was unticked in Find). */
@@ -125,6 +130,7 @@ const freshOf = (fresh: Fresh | null, picked: string | null): string | null => (
 
 export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false, onFindMore, barPhase }: HomeAppProps = {}): ReactElement {
   const { state, dispatch } = useProtoStore();
+  const [view, setView] = useState<View>('agents');
   const [selected, setSelected] = useState<Selected | null>(null);
   const [drawer, setDrawer] = useState<DrawerId | null>(null);
   const [sort, setSort] = useState<SortMode>('name');
@@ -135,11 +141,11 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   // The tray that is open under the map: one at a time, the list of one kind of one agent.
   const [tray, setTray] = useState<{ readonly agentId: string; readonly kind: ShelfEntry['kind'] } | null>(null);
   const grid = useRef<HTMLUListElement>(null);
-  const columns = useColumns(grid);
+  const columns = useColumns(grid, 3, view);
   const copies = useLeaving(copiesFor);
   const [fresh, setFresh] = useState<Fresh | null>(null);
-  const [note, setNote] = useState(false);
-  const toast = usePresence(note);
+  const [note, setNote] = useState<NoteView | null>(null);
+  const noteKeys = useRef(0);
   const [choosing, setChoosing] = useState(false);
   const [sharing, setSharing] = useState(false);
   const sheet = usePresence(sharing);
@@ -161,12 +167,19 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   const shelves = useMemo(() => (agent === null ? null : shelvesOf(world, agent)), [world, agent]);
   const details = useMemo(() => detailsOf(world, agents, selected), [world, agents, selected]);
   const shelvesById = useMemo(() => new Map(agents.map(a => [a.id, shelvesOf(world, a)] as const)), [world, agents]);
-  const changes = changeCount(state.committed, state.draft);
-  const said = useMemo(() => barSentence(listChanges(state.committed, state.draft), changes), [state.committed, state.draft, changes]);
+  // One set of helpers counts and names the changes of both places, so a change made on the Library page lands in the same Save bar and the same history.
+  const changes = libraryChangeCount(state.committed, state.draft);
+  const said = useMemo(() => barSaid(libraryChangeList(state.committed, state.draft), changes), [state.committed, state.draft, changes]);
   const bar = saveBar(changes, state.committed.versions.length, phase, said);
   const nameOf = useMemo(() => plainNameOf(world), [world]);
-  const pointRows = useMemo(() => (drawer === 'points' ? savePointRows(state.committed, nameOf) : []), [drawer, state.committed, nameOf]);
+  const pointRows = useMemo(() => (drawer === 'points' ? savePointRows(state.committed, plainNameOfSaved(state.committed)) : []), [drawer, state.committed]);
   const ticks = SAVE_TARGETS.filter(t => state.draft.interfaces.some(i => i.id === t.id && i.installed === 'installed')).map(t => t.name);
+  const changeList = useChangeList(state, changes >= 2 && said === null, dispatch);
+  // The newest state, for the things that run later than the render that made them (the Undo on a note, the keys).
+  const latest = useRef(state);
+  latest.current = state;
+  // The list has an Undo for every change, so the note after Remove (which sits under the list) gives way to it.
+  useEffect(() => { if (changeList.open) setNote(null); }, [changeList.open]);
   const stepId = currentStep(tour)?.id ?? null;
   const freshNotes = fresh !== null && fresh.notes === true && fresh.agentId === picked ? (shelves?.notes[0]?.id ?? null) : null;
 
@@ -186,12 +199,25 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
     const first = agents[0];
     if (selected === null && first !== undefined) setSelected({ kind: 'agent', id: first.id });
   }, [tour.status, selected, agents]);
-  // The closing note goes by itself.
+  // Ctrl+Z (Cmd+Z on a Mac) takes back the last change and Shift+Ctrl+Z (Shift+Cmd+Z) puts it back, unless the focus is in a text field (which keeps its own undo) or a layer
+  // that holds the page (a dialog, the Share sheet, the tour) is open. The store keeps the steps; this only asks for one.
+  const keysBlocked = useRef(false);
+  keysBlocked.current = tour.status === 'running' || sharing || choosing || copiesFor !== null;
   useEffect(() => {
-    if (!note) return undefined;
-    const timer = window.setTimeout(() => setNote(false), NOTE_MS);
-    return () => window.clearTimeout(timer);
-  }, [note]);
+    const key = (e: KeyboardEvent): void => {
+      if (e.defaultPrevented || e.altKey || !(e.ctrlKey || e.metaKey)) return;
+      const k = e.key.toLowerCase();
+      const redo = (k === 'z' && e.shiftKey) || (k === 'y' && e.ctrlKey && !e.shiftKey), undo = k === 'z' && !e.shiftKey;
+      if (!undo && !redo) return;
+      const at = e.target;
+      if (at instanceof HTMLElement && (at.isContentEditable || /^(input|textarea|select)$/i.test(at.tagName))) return;
+      if (keysBlocked.current || document.querySelector('[aria-modal="true"]') !== null) return;
+      e.preventDefault();
+      dispatch({ type: undo ? 'undo' : 'redo' });
+    };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  }, [dispatch]);
   // The tour dims the page, so the person cannot click an agent. When it reaches the shelves with nothing picked, it opens one that has something to show.
   useEffect(() => {
     if (stepId !== 'details' || selected !== null) return;
@@ -232,7 +258,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   });
 
   // The tour dims the page and points at the bar, so a drawer, the Choose notes sheet or the Share sheet that is open would only get in its way: they close when the tour starts.
-  useEffect(() => { if (tour.status === 'running') { setDrawer(null); setChoosing(false); setSharing(false); } }, [tour.status]);
+  useEffect(() => { if (tour.status === 'running') { setView('agents'); setDrawer(null); setChoosing(false); setSharing(false); } }, [tour.status]);
   // The mark for a card that was just added goes by itself, and the card is brought into view.
   useEffect(() => {
     if (fresh === null) return undefined;
@@ -259,6 +285,13 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
     setSelected({ kind: 'agent', id: agentId });
     setTouched(current => touch(current, agentId));
     setFresh(current => ({ agentId, entryId: null, notes: true, phase: flip(current) }));
+  };
+  /** An agent was pressed under "Used by" on the Library page: the app moves to Agents and picks that agent, and the focus goes to its details. */
+  const openAgent = (agentId: string): void => {
+    focusAfter.current = 'heading';
+    setView('agents');
+    setSelected({ kind: 'agent', id: agentId });
+    setFresh(null);
   };
   /** "Open a shared file" in the Version history drawer: the Add drawer opens on its shared-file tab. */
   const openFile = (): void => { setSharing(false); setAddTab('file'); setDrawer('add'); };
@@ -294,20 +327,36 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
     const own = shelvesOf(world, target);
     const list = entry.kind === 'skill' ? own.skills : entry.kind === 'tool' ? own.tools : own.notes;
     focusAfter.current = selected !== null && selected.kind !== 'agent' ? 'heading' : { kind: entry.kind, index: list.findIndex(e => e.id === entry.id) };
-    dispatch(removeAction(agentId, entry.kind, entry.id));
+    const removal = removeAction(agentId, entry.kind, entry.id);
+    dispatch(removal);
     setTouched(current => touch(current, agentId));
     setSelected({ kind: 'agent', id: agentId });
     setFresh(null);
+    say('check', removedNote(entry.name), { label: WORDS.label.undo, run: () => undoRemoval(removal) });
+  };
+  /** Shows a note above the Save bar. A new note replaces the one that was there and starts its six seconds again. */
+  const say = (icon: NoteView['icon'], text: string, action?: NoteView['action']): void => {
+    noteKeys.current += 1;
+    setNote({ key: noteKeys.current, icon, text, ...(action === undefined ? {} : { action }) });
+  };
+  /** "Undo" on the note after Remove: takes that one removal out of the draft, if it is still part of it. The focus goes to the panel heading, as after any change. */
+  const undoRemoval = (removal: StoreAction): void => {
+    const current = latest.current, at = placeOf(current, removal);
+    setNote(null);
+    const action: StoreAction = { type: 'withdraw', at: [at] };
+    if (at < 0 || reduceStore(current, action) === current) return;
+    focusAfter.current = 'heading';
+    dispatch(action);
   };
   const save = (): void => {
     const savePoints = state.committed.versions.length;
     dispatch(saveAction(said ?? changesCount(changes)));
     setPhase({ kind: 'saved', at: savePoints + 1, backTo: state.headVersionId });
     setFresh(null);
-    // The first Save of a guided session says where Help lives, once.
-    if (closingNote && closingNoteSession.claimAutoStart()) setNote(true);
+    // The first Save of a guided session says so once more, in a note.
+    if (closingNote && closingNoteSession.claimAutoStart()) say('check', FIND_WORDS.hint.closingNote); else setNote(null);
   };
-  const discard = (): void => { focusAfter.current = 'heading'; setFresh(null); setPhase(null); dispatch(discardAction()); };
+  const discard = (): void => { focusAfter.current = 'heading'; setFresh(null); setPhase(null); setNote(null); dispatch(discardAction()); };
   /** Makes the world as it was at one save point. The bar says so, and the focus stays where the person pressed. */
   const goBackTo = (versionId: string, focus: boolean): void => {
     const action = goBackAction(versionId);
@@ -315,6 +364,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
     if (reduceStore(state, action) === state) return;
     if (focus) focusAfter.current = 'heading';
     setFresh(null);
+    setNote(null);
     dispatch(action);
     setPhase({ kind: 'back', at: state.committed.versions.length + 1, backTo: null });
   };
@@ -327,52 +377,64 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
         <div className="hm-preview" data-preview="">
           <HelpPopover pill={WORDS.label.preview} label={WORDS.label.aboutPreview} text={WORDS.popover.preview} />
         </div>
+        <ViewSwitch view={view} onChange={setView} />
         <span className="hm-spacer" />
-        <Tooltip text={WORDS.label.versionHistory}>
-          {aria => <Button round icon="clock" aria-label={WORDS.label.versionHistory} aria-expanded={drawer === 'points'} ref={clock} onClick={() => toggle('points')} {...aria} />}
-        </Tooltip>
+        <span className="hm-bar-pair" data-tour="share">
+          <Tooltip text={WORDS.label.versionHistory}>
+            {aria => <Button round icon="clock" aria-label={WORDS.label.versionHistory} aria-expanded={drawer === 'points'} ref={clock} onClick={() => toggle('points')} {...aria} />}
+          </Tooltip>
+          <Button icon="share" aria-haspopup="dialog" onClick={() => setSharing(true)}>{WORDS.label.share}</Button>
+        </span>
         <Button variant="primary" icon="plus" data-tour="add" aria-expanded={drawer === 'add'} ref={addButton} onClick={() => toggle('add')}>{WORDS.label.add}</Button>
-        <HelpPopover label={WORDS.label.help} text={WORDS.popover.help} align="end" dataTour="help" action={{ label: WORDS.label.showTour, onAction: () => { setSelected(null); tourDo('replay'); } }} />
+        <HelpPopover word={WORDS.label.help} label={WORDS.label.help} text={WORDS.popover.help} align="end" dataTour="help" action={{ label: WORDS.label.showTour, onAction: () => { setSelected(null); tourDo('replay'); } }} />
       </header>
 
       <div className="hm-body" ref={body} data-drawer={drawer ?? undefined}>
-        <main id="main" className="hm-stage">
-          <div className="hm-stage-head">
-            <div className="hm-stage-title">
-              <h1 className="kit-heading" tabIndex={-1}>{WORDS.label.yourAgents}</h1>
-              <p className="kit-hint">{agentsCount(agents.length)}. {WORDS.hint.stage}</p>
+        {view === 'agents' ? (
+          <div className="hm-view" id={viewPanelId('agents')} role="tabpanel" aria-labelledby={viewTabId('agents')}>
+          <main id="main" className="hm-stage">
+            <div className="hm-stage-head">
+              <div className="hm-stage-title">
+                <h1 className="kit-heading" tabIndex={-1}>{WORDS.label.yourAgents}</h1>
+                <p className="kit-hint">{agentsCount(agents.length)}. {WORDS.hint.stage}</p>
+              </div>
+              <div className="hm-stage-tools">
+                <SortToggle mode={sort} onChange={setSort} />
+                {onFindMore === undefined ? null : <Button variant="text" onClick={onFindMore}>{FIND_WORDS.label.findMore}</Button>}
+              </div>
             </div>
-            <div className="hm-stage-tools">
-              <SortToggle mode={sort} onChange={setSort} />
-              {onFindMore === undefined ? null : <Button variant="text" onClick={onFindMore}>{FIND_WORDS.label.findMore}</Button>}
-            </div>
-          </div>
-          <ul className="hm-grid" ref={grid} data-tour="map" aria-label={WORDS.label.yourAgents}>
-            {agents.flatMap((a, i) => {
-              const words = agentCard(a), shelves = shelvesById.get(a.id) ?? shelvesOf(world, a);
-              const mine = selected !== null && selected.kind !== 'agent' && selected.ownerAgentId === a.id ? selected.id : null;
-              const kindsOpen = tray !== null && tray.agentId === a.id ? tray.kind : null;
-              const tile = (
-                <li key={fresh !== null && fresh.agentId === a.id ? `${a.id}:${fresh.phase}` : a.id} className="hm-tile">
-                  <AgentCard name={words.name} hint={words.hint} shelves={shelves} selected={selected !== null && selected.kind === 'agent' && selected.id === a.id} itemId={mine} onSelect={() => pick(a.id)}
-                    openKind={kindsOpen} onToggleKind={kind => toggleTray(a.id, kind)}
-                    dropAgent={a.id} fresh={fresh !== null && fresh.agentId === a.id} {...(i === 0 ? { dataTour: 'agent' } : {})} />
-                </li>
-              );
-              const row = rowOf(i, agents.length, columns);
-              if (!row.last) return [tile];
-              const here = agents.slice(row.start, row.end + 1).map(b => {
-                const own = selected !== null && selected.kind !== 'agent' && selected.ownerAgentId === b.id ? selected.id : null;
-                return { id: b.id, name: agentCard(b).name, shelves: shelvesById.get(b.id) ?? shelvesOf(world, b), itemId: own };
-              });
-              return [tile, <li key={`tray-row-${row.start}`} className="hm-tray-slot"><AgentTrays agents={here} open={tray} onSelectItem={pickItem} onBadgePress={entry => openCopies(entry.id)} /></li>];
-            })}
-          </ul>
-        </main>
+            <ul className="hm-grid" ref={grid} data-tour="map" aria-label={WORDS.label.yourAgents}>
+              {agents.flatMap((a, i) => {
+                const words = agentCard(a), shelves = shelvesById.get(a.id) ?? shelvesOf(world, a);
+                const mine = selected !== null && selected.kind !== 'agent' && selected.ownerAgentId === a.id ? selected.id : null;
+                const kindsOpen = tray !== null && tray.agentId === a.id ? tray.kind : null;
+                const tile = (
+                  <li key={fresh !== null && fresh.agentId === a.id ? `${a.id}:${fresh.phase}` : a.id} className="hm-tile">
+                    <AgentCard name={words.name} hint={words.hint} shelves={shelves} selected={selected !== null && selected.kind === 'agent' && selected.id === a.id} itemId={mine} onSelect={() => pick(a.id)}
+                      openKind={kindsOpen} onToggleKind={kind => toggleTray(a.id, kind)}
+                      dropAgent={a.id} fresh={fresh !== null && fresh.agentId === a.id} {...(i === 0 ? { dataTour: 'agent' } : {})} />
+                  </li>
+                );
+                const row = rowOf(i, agents.length, columns);
+                if (!row.last) return [tile];
+                const here = agents.slice(row.start, row.end + 1).map(b => {
+                  const own = selected !== null && selected.kind !== 'agent' && selected.ownerAgentId === b.id ? selected.id : null;
+                  return { id: b.id, name: agentCard(b).name, shelves: shelvesById.get(b.id) ?? shelvesOf(world, b), itemId: own };
+                });
+                return [tile, <li key={`tray-row-${row.start}`} className="hm-tray-slot"><AgentTrays agents={here} open={tray} onSelectItem={pickItem} onBadgePress={entry => openCopies(entry.id)} /></li>];
+              })}
+            </ul>
+          </main>
 
-        <aside className="hm-panel" ref={panel} data-tour="details" aria-labelledby="hm-panel-title">
-          <DetailsPanel details={details} onSelect={next => { setSelected(next); tourDo('acted'); }} onRemove={remove} onBadgePress={openCopies} onChoose={choose} freshId={freshOf(fresh, picked)} freshPhase={fresh?.phase ?? 0} freshNotes={freshNotes} />
-        </aside>
+          <aside className="hm-panel" ref={panel} data-tour="details" aria-labelledby="hm-panel-title">
+            <DetailsPanel details={details} onSelect={next => { setSelected(next); tourDo('acted'); }} onRemove={remove} onBadgePress={openCopies} onChoose={choose} freshId={freshOf(fresh, picked)} freshPhase={fresh?.phase ?? 0} freshNotes={freshNotes} />
+          </aside>
+          </div>
+        ) : (
+          <div className="hm-view" id={viewPanelId('library')} role="tabpanel" aria-labelledby={viewTabId('library')}>
+            <LibraryPage shell={{ mainId: 'main' }} onOpenAgent={openAgent} />
+          </div>
+        )}
 
         <Drawer open={drawer === 'add'} title={WORDS.label.addDrawer} onClose={() => setDrawer(null)} dataSlot="add" returnTo={() => addButton.current}>
           <AddDrawerBody nameOf={nameOf} hintOf={plainHintOf} onOpenCopies={openCopies} line={false} onAdded={added} onShow={showAdded} initialTab={addTab} hideAgents={skipped} {...(lastCopy === undefined ? {} : { lastCopy })} />
@@ -383,8 +445,8 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
         <ChooseNotes open={choosing} agentId={picked} onClose={() => setChoosing(false)} onChosen={chosen} returnTo={chooseTarget} />
       </div>
 
-      {closingNote ? <div className="hm-toast" role="status" data-open={toast.mounted && !toast.leaving ? '' : undefined} data-leaving={toast.leaving ? '' : undefined}>{toast.mounted ? <><KitIcon name="check" size={20} /><span>{FIND_WORDS.hint.closingNote}</span></> : null}</div> : null}
-      <SaveBar model={bar} ticks={ticks} onSave={save} onGoBack={goBack} onDiscard={discard} />
+      <ShellNote note={note} onGone={() => setNote(null)} />
+      <SaveBar model={bar} ticks={ticks} onSave={save} onGoBack={goBack} onDiscard={discard} list={changeList} />
 
       {sheet.mounted ? <ShareSheet world={state.committed} hidden={skipped} unsaved={changes > 0} leaving={sheet.leaving} onClose={() => setSharing(false)} onCopy={setLastCopy} onOpenFile={openFile} /> : null}
       {copies.value === null ? null : <CopiesDialog itemId={copies.value} nameOf={nameOf} leaving={copies.leaving} restoreFocus={restoreCopiesFocus} onClose={() => setCopiesFor(null)} />}

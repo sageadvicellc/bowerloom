@@ -150,7 +150,7 @@ test('the Tab order follows the reading order: the top bar, then the agents, the
     names.push(await p.evaluate(() => { const el = document.activeElement as HTMLElement | null; return el === null ? '' : (el.getAttribute('aria-label') ?? el.textContent ?? '').trim(); }));
   }
   const at = (n: string): number => names.indexOf(n);
-  expect(names[0]).toBe('About this preview'); expect(at('Version history')).toBe(1);   // the Preview badge's help comes first in the bar (review item 16) expect(at('Add')).toBeGreaterThan(at('Version history')); expect(at('Help')).toBeGreaterThan(at('Add'));
+  expect(names[0]).toBe('About this preview'); expect(names[1]).toBe('Agents'); expect(at('Version history')).toBe(2); expect(at('Share')).toBe(3);   // the Preview badge's help comes first in the bar (review item 16) expect(at('Add')).toBeGreaterThan(at('Version history')); expect(at('Help')).toBeGreaterThan(at('Add'));
   expect(at('Name')).toBeGreaterThan(at('Help')); expect(at('Recently changed')).toBeGreaterThan(at('Name'));
   expect(at('Inbox sorter')).toBeGreaterThan(at('Recently changed')); expect(at('Interview notetaker')).toBeGreaterThan(at('Inbox sorter'));
 });

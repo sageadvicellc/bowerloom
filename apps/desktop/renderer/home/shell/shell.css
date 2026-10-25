@@ -1,0 +1,20 @@
+/*
+ * The parts of the shell that are not the map: the switch between Agents and Library in the top bar, and the two places it switches between.
+ * Scoped to [data-home]. Sizes come from home-tokens.css (a control is 32 px, text 14 px at the least) and timing from the motion tokens.
+ */
+[data-home] .hm-switch { display: inline-flex; align-items: stretch; margin-left: var(--hm-space-3); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); background: var(--surface); overflow: hidden; }
+[data-home] .hm-switch-tab {
+  display: inline-flex; align-items: center; justify-content: center; min-height: calc(var(--hm-control-h) - 2px); padding: 0 var(--hm-control-pad); font: inherit; font-size: var(--hm-text-base); font-weight: 600; line-height: 1.2;
+  color: var(--text); background: transparent; border: 0; cursor: pointer; touch-action: manipulation; transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
+}
+[data-home] .hm-switch-tab + .hm-switch-tab { border-left: 1px solid var(--hm-border); }
+[data-home] .hm-switch-tab:hover { background: var(--accent-soft); }
+[data-home] .hm-switch-tab[aria-selected="true"] { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent-strong); }
+[data-home] .hm-switch-tab:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+/* The clock and Share sit together in the top bar, and the tour lights them as one. */
+[data-home] .hm-bar-pair { display: inline-flex; align-items: center; gap: var(--hm-space-3); }
+/* A place of the app: it adds its stage and its panel to the body of the shell and takes no box of its own. Only the place that is shown is in the page. */
+[data-home] .hm-view { display: contents; }
+@media (prefers-reduced-motion: reduce) {
+  [data-home] .hm-switch-tab { transition: none !important; }
+}

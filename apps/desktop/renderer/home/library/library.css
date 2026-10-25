@@ -5,6 +5,9 @@
  * dialogs reuse the classes of the map, the details panel and the Add drawer.
  */
 
+/* ---- In the shell the page adds its stage and its panel to the shell's own body: the wrapper takes no box of its own. */
+[data-home] .lb-fill { display: contents; }
+
 /* ---- The stage: title, tools and the list */
 [data-home] .lb-stage-tools { display: flex; align-items: center; flex-wrap: wrap; gap: var(--hm-space-3) var(--hm-space-5); }
 /* The tabs, the search and the count stay at the top of the stage while the list scrolls under them. */
@@ -12,12 +15,12 @@
 [data-home] .lb-title-line { display: flex; align-items: center; gap: var(--hm-space-2); }
 [data-home] .lb-find { display: flex; align-items: center; flex-wrap: wrap; gap: var(--hm-space-3) var(--hm-space-5); }
 [data-home] .lb-search {
-  box-sizing: border-box; flex: 1 1 var(--hm-card-agent-w); min-width: var(--hm-card-small-w); max-width: calc(var(--hm-card-agent-w) * 1.75); padding: var(--hm-space-3);
+  box-sizing: border-box; flex: 1 1 var(--hm-tile-w); min-width: var(--hm-row-min-w); max-width: calc(var(--hm-tile-w) * 1.75); padding: var(--hm-space-3);
   font: inherit; font-size: var(--hm-text-base); line-height: var(--hm-leading); color: var(--text); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small);
 }
 [data-home] .lb-search::placeholder { color: var(--text-muted); opacity: 1; }
 [data-home] .lb-search:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
-[data-home] .lb-count { min-width: var(--hm-card-small-w); }
+[data-home] .lb-count { min-width: var(--hm-row-min-w); }
 
 /* The tabs: one segmented control. The chosen tab is filled and has a real edge, as the sort toggle does. */
 [data-home] .lb-tabs { display: inline-flex; max-width: 100%; flex-wrap: wrap; border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); background: var(--surface); overflow: hidden; }
@@ -33,11 +36,11 @@
 [data-home] .lb-tab-count { font-weight: 400; color: var(--text-muted); font-size: var(--hm-text-small); }
 
 /* The list: one card for each thing, two columns when there is room. */
-[data-home] .lb-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(var(--hm-card-agent-w) * 1.5), 1fr)); gap: var(--hm-space-3); align-items: start; }
+[data-home] .lb-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(var(--hm-tile-w) * 1.5), 1fr)); gap: var(--hm-space-3); align-items: start; }
 [data-home] .lb-row { display: flex; flex-direction: column; align-items: stretch; gap: var(--hm-space-1); min-width: 0; }
 [data-home] .lb-row .kit-card { width: auto; min-width: 0; }
 /* An agent is a large card in the kit; in a list it takes the width of a row, like every other card. */
-[data-home] .lb-row .kit-card[data-size="large"] { width: auto; min-height: var(--hm-card-small-h); padding: var(--hm-space-3); }
+[data-home] .lb-row .kit-card[data-size="large"] { width: auto; min-height: var(--hm-row-h); padding: var(--hm-space-3); }
 [data-home] .lb-used { padding: 0 var(--hm-space-3); }
 [data-home] .lb-empty { margin: 0; padding: var(--hm-space-5) 0; }
 
@@ -54,7 +57,7 @@
 [data-home] .lb-picker { width: 100%; }
 
 /* ---- A dialog: the remove question and the update view. They use the Add drawer's scrim and dialog; a small one is two cards wide. */
-[data-home] .add-dialog.lb-dialog-small { width: min(calc(var(--hm-card-agent-w) * 2), 100%); }
+[data-home] .add-dialog.lb-dialog-small { width: min(calc(var(--hm-tile-w) * 2), 100%); }
 [data-home] .lb-dialog-body { display: flex; flex-direction: column; gap: var(--hm-space-3); padding: var(--hm-space-5); overflow: auto; min-height: 0; }
 [data-home] .lb-dialog-body p { margin: 0; font-size: var(--hm-text-base); }
 [data-home] .lb-dialog-foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--hm-space-3); padding: var(--hm-space-3) var(--hm-space-5); border-top: 1px solid var(--border); }
@@ -74,7 +77,7 @@
 }
 [data-home] .lb-banner { background: var(--warn-bg); color: var(--warn-fg); }
 [data-home] .lb-web-body { overflow-y: auto; padding: var(--hm-space-5); display: flex; flex-direction: column; gap: var(--hm-space-5); min-width: 0; }
-[data-home] .lb-web-body > * { max-width: calc(var(--hm-card-agent-w) * 3); }
+[data-home] .lb-web-body > * { max-width: calc(var(--hm-tile-w) * 3); }
 [data-home] .lb-section { display: flex; flex-direction: column; gap: var(--hm-space-3); min-width: 0; }
 [data-home] .lb-field-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--hm-space-3); }
 [data-home] .lb-field-row .lb-search { max-width: none; }

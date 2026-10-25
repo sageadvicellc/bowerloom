@@ -176,7 +176,7 @@ test('selecting an agent, opening a tray and a long window do not change the siz
 // ---- Counts open a tray.
 test('a count opens a tray under its tile\'s row, as wide as the row, and pushes the later rows down; the same count closes it', async () => {
   const p = page();
-  const button = count('Interview notetaker', '3 skills');
+  const button = count('Interview notetaker', '4 skills');
   await expect(button).toHaveAttribute('aria-expanded', 'false'); await expect(button).toHaveAttribute('aria-controls', /^tray-agent-\d+-skill$/);
   const tray = await trayFor(button);
   await expect(tray).toHaveAttribute('inert', '');
@@ -192,7 +192,7 @@ test('a count opens a tray under its tile\'s row, as wide as the row, and pushes
   expect(body.w, 'as wide as the grid of the row').toBeGreaterThanOrEqual(3 * TILE.w + 2 * 14 - 2);
   const pushed = await boxOf(tile('Money tracker'));
   expect(pushed.y - money.y, 'the later rows move down by the tray').toBeGreaterThanOrEqual(body.h);
-  expect(await tray.locator('.kit-card[data-size="small"]').evaluateAll(list => list.map(c => Math.round(c.getBoundingClientRect().height)))).toEqual([ROW_H, ROW_H, ROW_H]);
+  expect(await tray.locator('.kit-card[data-size="small"]').evaluateAll(list => list.map(c => Math.round(c.getBoundingClientRect().height)))).toEqual([ROW_H, ROW_H, ROW_H, ROW_H]);
   await expect(tile('Interview notetaker')).toHaveAttribute('data-tray', '');
   await button.click();
   await expect(button).toHaveAttribute('aria-expanded', 'false'); await animationsDone(p);
@@ -202,7 +202,7 @@ test('a count opens a tray under its tile\'s row, as wide as the row, and pushes
 
 test('one tray is open at a time: opening another count closes the first, in the same row or another', async () => {
   const p = page();
-  const a = count('Meeting assistant', '3 skills'), b = count('Meeting assistant', '1 tool'), c = count('Research assistant', '3 skills');
+  const a = count('Meeting assistant', '4 skills'), b = count('Meeting assistant', '1 tool'), c = count('Research assistant', '3 skills');
   await a.click(); await expect(trays()).toHaveCount(1); await expect(a).toHaveAttribute('aria-expanded', 'true');
   await b.click(); await expect(trays()).toHaveCount(1); await expect(a).toHaveAttribute('aria-expanded', 'false'); await expect(b).toHaveAttribute('aria-expanded', 'true');
   await c.click(); await expect(trays()).toHaveCount(1); await expect(b).toHaveAttribute('aria-expanded', 'false'); await expect(c).toHaveAttribute('aria-expanded', 'true');
@@ -241,7 +241,7 @@ test('with less motion a tray is open at once, and the sizes are the same', asyn
   const p = page();
   await p.emulateMedia({ reducedMotion: 'reduce' });
   await fresh(p); await resize(p, 1280, 800); await skipTour(p);
-  const button = count('Interview notetaker', '3 skills');
+  const button = count('Interview notetaker', '4 skills');
   await button.click();
   const body = await boxOf((await trayFor(button)).locator('.kit-tray-body'));
   expect(body.h, 'the tray has its whole height in the same frame as the click').toBeGreaterThan(40);

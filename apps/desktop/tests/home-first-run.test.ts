@@ -74,10 +74,10 @@ test('Find draws three tiles that wait, the first time, and no folder path anywh
   assert.doesNotMatch(m, /\/Users|\.claude|\.codex|\.opencode/);
 });
 
-test('the map has a "Find more" button only when it is given a way to reopen Find, and the closing note area only when it is guided', () => {
+test('the map has a "Find more" button only when it is given a way to reopen Find, and the strip for notes is there but empty until a note arrives (it also holds the note after Remove)', () => {
   const store = createStore(world());
   const draw = (props: Record<string, unknown>): string => renderToStaticMarkup(createElement(ProtoProvider, { store }, createElement(HomeApp, props)));
-  assert.doesNotMatch(draw({}), /Find more/); assert.doesNotMatch(draw({}), /hm-toast/);
+  assert.doesNotMatch(draw({}), /Find more/); assert.doesNotMatch(draw({}), /data-open/); assert.match(draw({}), /<div class="hm-toast"[^>]*><\/div>/, 'the strip is empty');
   const guided = draw({ onFindMore: none, closingNote: true });
   assert.match(guided, />Find more</); assert.match(guided, /class="hm-toast"/); assert.doesNotMatch(guided, /Help replays the tour/, 'the note is empty until the first Save');
   assert.deepEqual(assertTextBudget(guided), []);

@@ -63,7 +63,7 @@ test.beforeEach(async () => {
 // ---- The agent card says what the agent can do, without a click.
 test('every agent tile shows counts for what it holds: "3 skills", "1 tool", "1 note set"; a kind with nothing in it has no count', async () => {
   const want: Record<string, string[]> = {
-    'Meeting assistant': ['3 skills', '1 tool', '1 note set'], 'Research assistant': ['3 skills', '2 tools', '1 note set'],
+    'Meeting assistant': ['4 skills', '1 tool', '1 note set'], 'Research assistant': ['3 skills', '2 tools', '1 note set'],
     'Inbox sorter': ['4 skills', '1 note set'], 'Schedule keeper': ['3 skills'],
   };
   for (const [name, chips] of Object.entries(want)) expect(await card(name).locator('.kit-count').allInnerTexts(), name).toEqual(chips);
@@ -89,7 +89,7 @@ test('a selected card, a selected line and the selected sort segment are highlig
   }), CHECK_PATH);
   expect(await checks()).toEqual({ marks: 0, legacy: 0, sortIcons: 0 });
   await expect(main('Inbox sorter')).toHaveAttribute('aria-pressed', 'true');
-  await chip('Meeting assistant', '3 skills').click();
+  await chip('Meeting assistant', '4 skills').click();
   await line('Meeting assistant', 'skill', 'Write a reply').click();
   await expect(title()).toHaveText('Write a reply');
   expect(await checks()).toEqual({ marks: 0, legacy: 0, sortIcons: 0 });
@@ -110,15 +110,15 @@ test('a selected card, a selected line and the selected sort segment are highlig
 test('a count opens a tray with names, one compact row each; one tray at a time; no tile changes size, and the later rows move down', async () => {
   const p = page();
   const before = await heights();
-  const skills = chip('Meeting assistant', '3 skills'), tools = chip('Meeting assistant', '1 tool');
+  const skills = chip('Meeting assistant', '4 skills'), tools = chip('Meeting assistant', '1 tool');
   await expect(skills).toHaveAttribute('aria-expanded', 'false');
-  await expect(lines('Meeting assistant', 'skill')).toHaveCount(3); await expect(lines('Meeting assistant', 'skill').first()).toBeHidden();
+  await expect(lines('Meeting assistant', 'skill')).toHaveCount(4); await expect(lines('Meeting assistant', 'skill').first()).toBeHidden();
   const money = (await card('Money tracker').boundingBox())!.y;
   await skills.click();
   await expect(skills).toHaveAttribute('aria-expanded', 'true');
   const id = (await skills.getAttribute('aria-controls'))!;
   await expect(p.locator(`[id="${id}"]`)).toHaveAttribute('data-open', '');
-  await expect(lines('Meeting assistant', 'skill')).toHaveText(['Summarize a meeting', 'Write a reply', 'List action items']);
+  await expect(lines('Meeting assistant', 'skill')).toHaveText(['Summarize a meeting', 'Write a reply', 'List action items', 'Tidy my meeting notes']);
   await animationsDone(p);
   expect(await heights(), 'no tile changes size').toEqual(before);
   expect((await card('Money tracker').boundingBox())!.y, 'the later row moves down by the tray').toBeGreaterThan(money + 60);
@@ -166,8 +166,8 @@ test('a tray opens and closes in 160 ms with the strong ease-out (measured), and
     };
     requestAnimationFrame(tick);
   }), { name, label });
-  const opened = await measure('Meeting assistant', '3 skills');
-  const closed = await measure('Meeting assistant', '3 skills');
+  const opened = await measure('Meeting assistant', '4 skills');
+  const closed = await measure('Meeting assistant', '4 skills');
   console.log('MEASURED accordion open:', JSON.stringify(opened), 'close:', JSON.stringify(closed));
   expect(opened.ms).toBeGreaterThanOrEqual(100); expect(opened.ms).toBeLessThanOrEqual(260); expect(opened.final).toBeGreaterThan(60);
   expect(closed.ms).toBeGreaterThanOrEqual(100); expect(closed.ms).toBeLessThanOrEqual(260); expect(closed.final).toBe(0);
@@ -175,7 +175,7 @@ test('a tray opens and closes in 160 ms with the strong ease-out (measured), and
   await p.emulateMedia({ reducedMotion: 'reduce' });
   await p.waitForFunction(() => document.documentElement.style.getPropertyValue('--motion-reduced') === '1');
   expect(await tray('Meeting assistant', 'skill').evaluate(el => getComputedStyle(el).transitionDuration)).toBe('0s');
-  await chip('Meeting assistant', '3 skills').click();
+  await chip('Meeting assistant', '4 skills').click();
   await framesPainted(p);
   expect(await p.evaluate(() => document.getAnimations().length)).toBe(0);
   await expect(lines('Meeting assistant', 'skill').first()).toBeVisible();
@@ -208,7 +208,7 @@ test('pressing the tile selects the agent and shows its details; a count selects
   await expect(main('Research assistant')).toHaveAttribute('aria-pressed', 'true'); await expect(main('Inbox sorter')).toHaveAttribute('aria-pressed', 'false');
   await expect(title()).toHaveText('Research assistant');
   // A chip only opens its list.
-  await chip('Meeting assistant', '3 skills').click();
+  await chip('Meeting assistant', '4 skills').click();
   await expect(main('Meeting assistant')).toHaveAttribute('aria-pressed', 'false'); await expect(title()).toHaveText('Research assistant');
   await expect(card('Meeting assistant')).not.toHaveAttribute('data-selected', '');
   // A line selects its item.
@@ -234,7 +234,7 @@ test('an agent\'s details: its job, where it works, and its skills, tools and no
   await expect(panel().getByText('Summarizes meetings and writes replies.')).toBeVisible();
   await expect(panel().getByRole('heading', { level: 3 })).toHaveText(['Where it works', 'Skills', 'Tools', 'Notes']);
   expect(await panel().locator('[data-programs] .dt-chip').allInnerTexts()).toEqual(['Claude Code', 'Codex', 'OpenCode']);
-  await expect(panel().locator('.kit-card')).toHaveCount(5);
+  await expect(panel().locator('.kit-card')).toHaveCount(6);
   await expect(panel().getByRole('button', { name: 'Choose notes' })).toBeVisible();
   // A card in the panel opens that item's details.
   await panel().locator('.kit-card-main', { hasText: /^Read my calendar$/ }).click();
@@ -246,7 +246,7 @@ test('an agent\'s details: its job, where it works, and its skills, tools and no
 
 test('a skill\'s details: what it does, who uses it, where it works, where it came from, the full text on request, and Remove with its way back', async () => {
   const p = page();
-  await chip('Meeting assistant', '3 skills').click();
+  await chip('Meeting assistant', '4 skills').click();
   await line('Meeting assistant', 'skill', 'Summarize a meeting').click();
   await expect(title()).toHaveText('Summarize a meeting');
   await expect(panel().getByRole('heading', { level: 3 })).toHaveText(['What it does', 'Used by', 'Where it works', 'Where it came from']);
@@ -271,9 +271,9 @@ test('a skill\'s details: what it does, who uses it, where it works, where it ca
   await panel().getByRole('button', { name: 'Remove from Meeting assistant' }).click();
   await expect(bar().getByText('Removed Summarize a meeting', { exact: true })).toBeVisible();
   await expect(title()).toHaveText('Meeting assistant'); await expect(title()).toBeFocused();
-  await expect(chip('Meeting assistant', '2 skills')).toBeVisible();
-  await bar().getByRole('button', { name: 'Discard changes' }).click();
   await expect(chip('Meeting assistant', '3 skills')).toBeVisible();
+  await bar().getByRole('button', { name: 'Undo all changes' }).click();
+  await expect(chip('Meeting assistant', '4 skills')).toBeVisible();
   await expect(bar().getByText('Nothing to save yet')).toBeVisible(); void p;
 });
 
@@ -357,7 +357,7 @@ test('a new selection starts the panel at its top, even when the one before it w
   await ensurePicked(main('Meeting assistant'));
   await panel().evaluate(el => { el.scrollTop = el.scrollHeight; });
   expect(await panel().evaluate(el => el.scrollTop)).toBeGreaterThan(50);
-  await chip('Meeting assistant', '3 skills').click();
+  await chip('Meeting assistant', '4 skills').click();
   await line('Meeting assistant', 'skill', 'Write a reply').click();
   await expect(title()).toHaveText('Write a reply');
   expect(await panel().evaluate(el => el.scrollTop)).toBe(0);
@@ -409,7 +409,7 @@ test('the keyboard shows the tooltip at once, Escape hides it first and the draw
   const p = page();
   const button = topBar('Version history');
   await p.getByRole('button', { name: 'About this preview' }).focus();
-  await p.keyboard.press('Tab');
+  await p.keyboard.press('Tab'); await p.keyboard.press('Tab');
   await expect(button).toBeFocused();
   await expect(tip()).toBeVisible({ timeout: 300 });
   await p.keyboard.press('Escape');
@@ -431,7 +431,7 @@ test('the keyboard shows the tooltip at once, Escape hides it first and the draw
 
 test('the drawer, its list and every word on screen say Version history, never save points; each item keeps "Go back to this"', async () => {
   const p = page();
-  await chip('Meeting assistant', '3 skills').click();
+  await chip('Meeting assistant', '4 skills').click();
   await line('Meeting assistant', 'skill', 'Write a reply').click();
   await panel().getByRole('button', { name: 'Remove from Meeting assistant' }).click();
   await bar().getByRole('button', { name: 'Save', exact: true }).click();
@@ -453,15 +453,15 @@ test('the keyboard order is the tile, its counts, then the rows of the tray that
   const p = page();
   const focused = async (): Promise<string> => p.evaluate(() => { const el = document.activeElement as HTMLElement | null; return el === null ? '' : (el.getAttribute('aria-label') ?? el.textContent ?? '').trim(); });
   await main('Meeting assistant').focus();
-  await p.keyboard.press('Tab'); expect(await focused()).toBe('3 skills');
+  await p.keyboard.press('Tab'); expect(await focused()).toBe('4 skills');
   await p.keyboard.press('Tab'); expect(await focused()).toBe('1 tool');
   await p.keyboard.press('Tab'); expect(await focused()).toBe('1 note set');
   // Closed lists cannot be reached: the next stop is the next card.
   await p.keyboard.press('Tab'); expect(await focused()).toBe('Money tracker');
   await p.keyboard.press('Shift+Tab'); await p.keyboard.press('Shift+Tab'); await p.keyboard.press('Shift+Tab');
-  expect(await focused()).toBe('3 skills');
+  expect(await focused()).toBe('4 skills');
   await p.keyboard.press('Enter');
-  await expect(chip('Meeting assistant', '3 skills')).toHaveAttribute('aria-expanded', 'true');
+  await expect(chip('Meeting assistant', '4 skills')).toHaveAttribute('aria-expanded', 'true');
   await p.keyboard.press('Tab'); await p.keyboard.press('Tab');
   expect(await focused()).toBe('1 note set');
   // Meeting assistant is the last tile of its row, so its tray comes right after it.
@@ -471,8 +471,8 @@ test('the keyboard order is the tile, its counts, then the rows of the tray that
   await expect(title()).toHaveText('Write a reply');
   await expect(line('Meeting assistant', 'skill', 'Write a reply')).toBeFocused();
   // Space on a chip closes it again, and the lines can no longer be reached.
-  await chip('Meeting assistant', '3 skills').focus(); await p.keyboard.press('Space');
-  await expect(chip('Meeting assistant', '3 skills')).toHaveAttribute('aria-expanded', 'false');
+  await chip('Meeting assistant', '4 skills').focus(); await p.keyboard.press('Space');
+  await expect(chip('Meeting assistant', '4 skills')).toHaveAttribute('aria-expanded', 'false');
   await expect(lines('Meeting assistant', 'skill').first()).toBeHidden();
 });
 
@@ -492,7 +492,7 @@ for (const [w, h] of SIZES_A) {
     await check('map');
     await chip('Meeting assistant', '1 note set').click(); await check('tray of notes open');
     await chip('Meeting assistant', '1 tool').click(); await check('tray of tools open');
-    await chip('Meeting assistant', '3 skills').click(); await check('tray of skills open');
+    await chip('Meeting assistant', '4 skills').click(); await check('tray of skills open');
     await line('Meeting assistant', 'skill', 'Summarize a meeting').click();
     await panel().getByRole('button', { name: 'Show the full text' }).click();
     await check('skill details');
@@ -514,7 +514,7 @@ for (const [w, h] of SIZES_A) {
       await setLook(p, look); await resize(p, w, h);
       await p.mouse.move(2, h - 4);
       await shot(p, 'map-chips-closed', w, h, look);
-      await chip('Meeting assistant', '3 skills').click();
+      await chip('Meeting assistant', '4 skills').click();
       await line('Meeting assistant', 'skill', 'Write a reply').click();
       await p.mouse.move(2, h - 4);
       await shot(p, 'card-two-chips-open', w, h, look);

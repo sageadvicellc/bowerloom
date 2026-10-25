@@ -10,8 +10,12 @@ import type { Locator, Page } from '@playwright/test';
 import { assertTextBudget } from '../shared/home/textbudget.js';
 import { removeTempDirs } from './proto-temp.js';
 import { animationsDone } from './proto-wait.js';
-import { SAVED, fresh, launchHome, resize, setLook, shot } from './home-page.js';
+import { MAP_PAGE, SAVED, ensurePicked, fresh, launchHome, resize, setLook, shot, skipTour } from './home-page.js';
 import type { Home } from './home-page.js';
+import { mkdirSync } from 'node:fs';
+
+const WC_SHOTS = process.env.HOME_WC_SHOTS ?? null;
+if (WC_SHOTS !== null) mkdirSync(WC_SHOTS, { recursive: true });
 
 const LIBRARY_PAGE = '#prototype-v2/library';
 const REVIEW = [[1280, 800], [900, 600]] as const;
@@ -262,7 +266,7 @@ test('"Remove from library": the dialog names the agents and says what happens; 
   await goTab('Agents');
   await pick('Research assistant');
   await expect(panel().locator('[data-has] li', { hasText: 'Compare two options' })).toHaveCount(0);
-  await bar().getByRole('button', { name: 'Discard changes' }).click();
+  await bar().getByRole('button', { name: 'Undo all changes' }).click();
   await goTab('Skills');
   await expect(rows()).toHaveCount(53);
   await expect(row('Compare two options')).toBeVisible();
@@ -451,7 +455,7 @@ test('"Add 7 items" stages them in the library on no agent, in one change; the s
   await expect(sheet().getByRole('button', { name: 'Add 0 items' })).toBeDisabled();
   await expect(sheet().getByText('Everything you ticked is already here.')).toBeVisible();
   await p.keyboard.press('Escape');
-  await bar().getByRole('button', { name: 'Discard changes' }).click();
+  await bar().getByRole('button', { name: 'Undo all changes' }).click();
   await goTab('Tools');
   await expect(rows()).toHaveCount(14);
 });
@@ -682,5 +686,172 @@ test('screenshots: each tab, a thing picked, the remove dialog, the update view,
     await sheet().locator('[data-item="triage-inbox"]').getByRole('button', { name: 'Show the full text' }).click();
     await sheet().locator('[data-group="tool"]').scrollIntoViewIfNeeded(); await shot(p, 'lib-10b-source-tools', w, h, look);
     await p.keyboard.press('Escape');
+  }
+});
+
+// ---- Inside the app: the Library behind the switch in the top bar, with the shell's own Save bar and version history.
+test.describe('inside the app', () => {
+  const header = (): Locator => page().locator('header.hm-bar');
+  const switchTab = (name: string): Locator => header().getByRole('tab', { name, exact: true });
+  const history = (): Locator => page().locator('[data-slot="points"]');
+  test.beforeEach(async () => {
+    await fresh(page(), MAP_PAGE);
+    await resize(page(), 1280, 800);
+    await skipTour(page());
+    await expect(page().getByRole('heading', { level: 1, name: 'Your agents' })).toBeVisible();
+  });
+
+  test('the top bar has a switch, Agents | Library, after the Preview mark: a quiet 32 px tab list, and the arrow keys move between the two', async () => {
+    const p = page();
+    const list = header().getByRole('tablist', { name: 'Pages' });
+    await expect(list.getByRole('tab')).toHaveText(['Agents', 'Library']);
+    await expect(switchTab('Agents')).toHaveAttribute('aria-selected', 'true');
+    await expect(switchTab('Library')).toHaveAttribute('aria-selected', 'false');
+    await expect(switchTab('Agents')).toHaveAttribute('tabindex', '0');
+    await expect(switchTab('Library')).toHaveAttribute('tabindex', '-1');
+    const box = (await list.boundingBox())!, preview = (await header().locator('[data-preview]').boundingBox())!, clock = (await header().getByRole('button', { name: 'Version history', exact: true }).boundingBox())!;
+    expect(Math.round(box.height)).toBe(32);
+    expect(box.x).toBeGreaterThanOrEqual(preview.x + preview.width);
+    expect(box.x + box.width).toBeLessThanOrEqual(clock.x);
+    await switchTab('Agents').focus();
+    await p.keyboard.press('ArrowRight');
+    await expect(switchTab('Library')).toHaveAttribute('aria-selected', 'true');
+    await expect(switchTab('Library')).toBeFocused();
+    await expect(p.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible();
+    await p.keyboard.press('ArrowRight');
+    await expect(switchTab('Agents')).toBeFocused();
+    await p.keyboard.press('End');
+    await expect(switchTab('Library')).toBeFocused();
+    await p.keyboard.press('Home');
+    await expect(switchTab('Agents')).toHaveAttribute('aria-selected', 'true');
+    await expect(p.getByRole('heading', { level: 1, name: 'Your agents' })).toBeVisible();
+    expect(await budget()).toEqual([]);
+  });
+
+  test('the Library page takes the place of the map inside the same top bar and Save bar; there is one main place and one details panel at a time', async () => {
+    const p = page();
+    await switchTab('Library').click();
+    await expect(p.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible();
+    await expect(p.getByRole('heading', { level: 1, name: 'Your agents' })).toHaveCount(0);
+    await expect(p.locator('main')).toHaveCount(1);
+    await expect(p.locator('aside.hm-panel')).toHaveCount(1);
+    await expect(header()).toBeVisible();
+    await expect(bar()).toBeVisible();
+    await expect(header().getByRole('button', { name: 'Add', exact: true })).toBeVisible();
+    await expect(header().getByRole('button', { name: 'Share', exact: true })).toBeVisible();
+    await expect(tab('Skills')).toHaveAttribute('aria-selected', 'true');
+    await expect(rows()).toHaveCount(53);
+    expect(await budget()).toEqual([]);
+    await switchTab('Agents').click();
+    await expect(p.locator('.hm-grid .kit-card[data-kind="agent"]')).toHaveCount(10);
+  });
+
+  test('a change made on the Library page lands in the same Save bar and the same version history, and the map shows it', async () => {
+    const p = page();
+    await switchTab('Library').click();
+    await pick('Compare two options');
+    await panel().getByRole('button', { name: 'Remove from library' }).click();
+    await dialog('remove').getByRole('button', { name: 'Remove from library' }).click();
+    await expect(barText()).toHaveText('Removed Compare two options');
+    await switchTab('Agents').click();
+    await expect(barText()).toHaveText('Removed Compare two options');
+    await expect(p.locator('.hm-grid .kit-card[data-kind="agent"]')).toHaveCount(10);
+    // A change made on the map joins it.
+    await ensurePicked(p.locator('.hm-grid').getByRole('button', { name: 'Meeting assistant', exact: true }));
+    await p.locator('aside.hm-panel').getByRole('button', { name: 'Remove Write a reply' }).click();
+    await expect(barText()).toHaveText('Removed Write a reply and Compare two options');
+    await bar().getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(bar().getByText(SAVED, { exact: true })).toBeVisible();
+    await header().getByRole('button', { name: 'Version history', exact: true }).click();
+    await expect(history()).toBeVisible();
+    await expect(history().locator('.pt-row').first().locator('.pt-name')).toHaveText('Removed Write a reply and Compare two options');
+    await expect(history().locator('.pt-row')).toHaveCount(2);
+    await p.keyboard.press('Escape');
+    await switchTab('Library').click();
+    await expect(rows()).toHaveCount(52);
+    await expect(rows().filter({ has: p.getByRole('button', { name: 'Compare two options', exact: true }) })).toHaveCount(0);
+  });
+
+  test('Undo all changes on the Library page puts back what the map removed, and the version history lists a library change', async () => {
+    const p = page();
+    await switchTab('Library').click();
+    await pick('Translate a text');
+    await panel().getByRole('button', { name: 'Remove from library' }).click();
+    await dialog('remove').getByRole('button', { name: 'Remove from library' }).click();
+    await expect(rows()).toHaveCount(52);
+    await bar().getByRole('button', { name: 'Undo all changes' }).click();
+    await expect(rows()).toHaveCount(53);
+    await expect(barText()).toHaveText('Nothing to save yet');
+    await pick('Translate a text');
+    await panel().getByRole('button', { name: 'Remove from library' }).click();
+    await dialog('remove').getByRole('button', { name: 'Remove from library' }).click();
+    await bar().getByRole('button', { name: 'Save', exact: true }).click();
+    await header().getByRole('button', { name: 'Version history', exact: true }).click();
+    await expect(history().locator('.pt-row').first()).toContainText('Removed Translate a text');
+    await expect(history().locator('.pt-row').nth(0).locator('.pt-changes')).toHaveText('Removed Translate a text');
+    await history().locator('.pt-row').nth(1).getByRole('button', { name: 'Go back to this' }).click();
+    await p.keyboard.press('Escape');
+    await expect(rows()).toHaveCount(53);
+  });
+
+  test('"Used by" on the Library page takes the person to Agents with that agent picked and the focus on its details', async () => {
+    const p = page();
+    await switchTab('Library').click();
+    await pick('Compare two options');
+    const first = panel().locator('[data-used-by] button').first();
+    const who = (await first.textContent())!.trim();
+    await first.click();
+    await expect(switchTab('Agents')).toHaveAttribute('aria-selected', 'true');
+    await expect(p.getByRole('heading', { level: 1, name: 'Your agents' })).toBeVisible();
+    await expect(p.locator('aside.hm-panel').getByRole('heading', { level: 2, name: who })).toBeFocused();
+    await expect(p.locator('.hm-grid').getByRole('button', { name: who, exact: true })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('Escape closes one layer at a time on the Library page inside the app: the sheet first, and the page stays', async () => {
+    const p = page();
+    await switchTab('Library').click();
+    await p.getByRole('button', { name: 'Add from the web' }).click();
+    await expect(sheet()).toBeVisible();
+    await p.keyboard.press('Escape');
+    await expect(sheet()).toHaveCount(0);
+    await expect(p.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible();
+    await expect(p.getByRole('button', { name: 'Add from the web' })).toBeFocused();
+    await header().getByRole('button', { name: 'Version history', exact: true }).click();
+    await expect(history()).toBeVisible();
+    await p.keyboard.press('Escape');
+    await expect(history()).toHaveCount(0);
+    await expect(p.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible();
+  });
+
+  test('"Show me around" from the Library page brings the person back to Agents for the tour', async () => {
+    const p = page();
+    await switchTab('Library').click();
+    await header().getByRole('button', { name: 'Help', exact: true }).click();
+    await p.getByRole('button', { name: 'Show me around' }).click();
+    await expect(p.getByRole('dialog', { name: 'Tour' })).toBeVisible();
+    await expect(switchTab('Agents')).toHaveAttribute('aria-selected', 'true');
+    await expect(p.getByRole('heading', { level: 1, name: 'Your agents' })).toBeVisible();
+    await p.keyboard.press('Escape');
+  });
+
+  for (const [w, h] of REVIEW) for (const look of LOOKS) {
+    test(`the Library inside the app fits ${w} by ${h}, ${look}: nothing cut off, no text under 14 px`, async () => {
+      const p = page();
+      await resize(p, w, h); await setLook(p, look);
+      await switchTab('Library').click();
+      await pick('Compare two options');
+      const m = await p.evaluate(() => {
+        const box = (sel: string) => { const r = document.querySelector(sel)!.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom }; };
+        const small = [...document.querySelectorAll('[data-home] *')].filter(el => el.childNodes.length > 0 && [...el.childNodes].some(n => n.nodeType === 3 && (n.textContent ?? '').trim() !== '') && parseFloat(getComputedStyle(el).fontSize) < 14).map(el => el.textContent?.trim().slice(0, 30));
+        return { sx: document.documentElement.scrollWidth - document.documentElement.clientWidth, stage: box('main.hm-stage'), panel: box('aside.hm-panel'), bar: box('.hm-savebar'), head: box('header.hm-bar'), small };
+      });
+      expect(m.sx).toBeLessThanOrEqual(0);
+      expect(m.stage.r).toBeLessThanOrEqual(m.panel.l + 1);
+      expect(m.panel.b).toBeLessThanOrEqual(m.bar.t + 1);
+      expect(m.stage.t).toBeGreaterThanOrEqual(m.head.b - 1);
+      expect(m.small).toEqual([]);
+      expect(await budget()).toEqual([]);
+      if (WC_SHOTS !== null) { await animationsDone(p); await p.screenshot({ path: `${WC_SHOTS}/library-in-shell-${look}-${w}x${h}.png`, scale: 'css' }); }
+    });
   }
 });

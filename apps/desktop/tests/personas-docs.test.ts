@@ -13,7 +13,7 @@ const SECTIONS = ['## Who I am', '## What I want', '## What I will not tolerate'
 const TASKS = ['First minute', 'See all my', 'Understand one', 'Take a skill away, then undo', 'Give a', 'Two versions of one skill', 'Pick notes for', 'Send my setup to someone', 'Find earlier states', 'Watch the intro again'];
 
 /** The words of each control or label in the app. A task that names one gives the answer away, so a persona has to find the control itself. */
-const UI_LABELS = ['Find my agents', 'Share my agents', 'Choose notes', 'Save points', 'Go back', 'Skip tour', 'Add drawer', 'Open a shared file', 'Show more', 'Discard changes', 'Recently changed', 'Replay the tour', 'Version history', 'Resolve two'];
+const UI_LABELS = ['Find my agents', 'Share my agents', 'Choose notes', 'Save points', 'Go back', 'Skip tour', 'Add drawer', 'Open a shared file', 'Show more', 'Discard changes', 'Undo all changes', 'Share', 'Skip to details', 'Recently changed', 'Replay the tour', 'Version history', 'Resolve two'];
 
 function tasksOf(text: string): string[] {
   const after = text.slice(text.indexOf('## Tasks to try'));

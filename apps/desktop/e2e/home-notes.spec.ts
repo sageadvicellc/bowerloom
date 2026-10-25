@@ -236,13 +236,13 @@ test('"Use these notes" stages ONE change: the layer closes, the shelf shows the
   await expect(shelfCards()).toHaveCount(1);
 });
 
-test('the Save bar counts one change, and Discard changes puts everything back', async () => {
+test('the Save bar counts one change, and Undo all changes puts everything back', async () => {
   await openLayer('Report builder');
   await topic('Work').click();
   await layer().getByRole('button', { name: 'Use these notes' }).click();
   await expect(barText()).not.toHaveText('Nothing to save yet');
-  await expect(bar().getByRole('button', { name: 'Discard changes' })).toBeVisible();
-  await bar().getByRole('button', { name: 'Discard changes' }).click();
+  await expect(bar().getByRole('button', { name: 'Undo all changes' })).toBeVisible();
+  await bar().getByRole('button', { name: 'Undo all changes' }).click();
   await expect(barText()).toHaveText('Nothing to save yet');
   await expect(shelfCards()).toHaveCount(0);
 });

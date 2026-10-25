@@ -9,3 +9,31 @@
 [data-home] .hm-ticks { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0 var(--hm-space-2); }
 [data-home] .hm-ticks > li + li::before { content: "\00b7"; margin-right: var(--hm-space-2); color: var(--text-muted); }
 [data-home] .hm-tick { display: inline-flex; align-items: center; font-size: var(--hm-text-small); font-weight: 600; color: var(--text); }
+
+/* ---- The list of changes: the words of the bar are a button from two changes on; its list opens above the bar, at the left, and never over a tile or a row of the page behind. */
+[data-home] .hm-savebar { position: relative; }
+[data-home] .hm-savebar-state > p { display: flex; align-items: center; }
+[data-home] .hm-changes-toggle {
+  display: inline-flex; align-items: center; gap: var(--hm-space-2); min-height: var(--hm-control-h); padding: 0 var(--hm-space-3); margin: 0 calc(-1 * var(--hm-space-3));
+  font: inherit; font-weight: 600; color: var(--text); background: transparent; border: 1px solid transparent; border-radius: var(--hm-radius-small); cursor: pointer; touch-action: manipulation;
+  text-decoration: underline; text-underline-offset: 3px;
+}
+[data-home] .hm-changes-toggle:hover { background: var(--accent-soft); }
+[data-home] .hm-changes-toggle:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+[data-home] .hm-changes-toggle[aria-expanded="true"] .kit-icon { transform: rotate(180deg); }
+[data-home] .hm-changes-list {
+  position: absolute; z-index: 30; left: var(--hm-space-5); bottom: calc(100% + var(--hm-space-2)); box-sizing: border-box; width: min(28rem, calc(100vw - 2 * var(--hm-space-5)));
+  max-height: min(18rem, 50vh); overflow-y: auto; padding: var(--hm-space-2) var(--hm-space-3); background: var(--surface); color: var(--text);
+  border: 1px solid var(--hm-border); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow-lift);
+  animation: kit-overlay-in var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out) both;
+}
+[data-home] .hm-changes-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+[data-home] .hm-changes-row { display: flex; align-items: center; justify-content: space-between; gap: var(--hm-space-3); padding: var(--hm-space-2) 0; }
+[data-home] .hm-changes-row + .hm-changes-row { border-top: 1px solid var(--border); }
+[data-home] .hm-changes-what { display: flex; flex-direction: column; min-width: 0; }
+[data-home] .hm-changes-what p { font-weight: 600; overflow-wrap: anywhere; }
+[data-home] .hm-changes-what .kit-hint { font-weight: 400; }
+@media (prefers-reduced-motion: reduce) {
+  [data-home] .hm-changes-list { animation: none !important; }
+  [data-home] .hm-changes-toggle .kit-icon { transition: none !important; }
+}

@@ -92,7 +92,7 @@ test('the words of the bar are plain, within the text budget, and built from WOR
   assert.equal(barText(saveBar(0, 1, null)), 'Nothing to save yet'); assert.equal(barText(saveBar(1, 1, null)), '1 change'); assert.equal(barText(saveBar(4, 1, null)), '4 changes');
   assert.equal(barText(saveBar(0, 2, { kind: 'saved', at: 2, backTo: 'v1' })), 'Saved in this preview. Your files are untouched.'); assert.equal(barText(saveBar(0, 3, { kind: 'back', at: 3, backTo: null })), 'Back to how it was');
   assert.equal(WORDS.hint.saved, BAR_WORDS.saved); assert.equal(WORDS.label.goBack, 'Go back');
-  for (const text of ['Nothing to save yet', '1 change', '25 changes', 'Saved in this preview. Your files are untouched.', 'Would update', 'Back to how it was', 'Go back', 'Discard changes', 'Claude Code', 'Codex', 'OpenCode']) assert.deepEqual(assertTextBudget(`<p>${text}</p>`), [], text);
+  for (const text of ['Nothing to save yet', '1 change', '25 changes', 'Saved in this preview. Your files are untouched.', 'Would update', 'Back to how it was', 'Go back', 'Undo all changes', 'Claude Code', 'Codex', 'OpenCode']) assert.deepEqual(assertTextBudget(`<p>${text}</p>`), [], text);
 });
 
 test('the round trip: remove two things, save, and the save point holds them; go back, and everything is as it was', () => {

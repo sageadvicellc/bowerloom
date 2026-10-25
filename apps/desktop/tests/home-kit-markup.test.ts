@@ -149,14 +149,14 @@ test('the Preview mark is one text button, plain words and a dot, that opens its
   assert.match(open, /<p>This is a preview\. Nothing is written to your computer\.<\/p>/); assert.match(open, /aria-expanded="true"/); within(open);
 });
 
-test('the shell has one "?" in the whole window: Help at the far right; Preview is plain words with a dot and Tools has a hint line', () => {
+test('the shell has no bare "?": Help is a button with its word at the far right; Preview is plain words with a dot and Tools has a hint line', () => {
   const m = shell();
-  assert.equal([...m.matchAll(/>\?<\/button>/g)].length, 1, 'exactly one round help button');
-  assert.match(m, /aria-label="Help"[^>]*>\?<\/button>/);
+  assert.equal([...m.matchAll(/>\?<\/button>/g)].length, 0, 'no bare question mark');
+  assert.match(m, /data-tour="help"[^>]*>Help<\/button>/);
   assert.match(m, /<button[^>]*class="kit-status kit-help-text"[^>]*aria-label="About this preview"/);
   assert.doesNotMatch(m, /About tools/);
   assert.match(m, /<h3 class="kit-heading"[^>]*>Tools<\/h3><p class="kit-hint">Tools let an agent reach outside services\.<\/p>/);
-  assert.ok(m.indexOf('kit-help-text') < m.indexOf('aria-label="Help"'), 'Help is after the Preview mark, at the far right of the bar');
+  assert.ok(m.indexOf('kit-help-text') < m.indexOf('data-tour="help"'), 'Help is after the Preview mark, at the far right of the bar');
   within(m);
 });
 
@@ -176,7 +176,7 @@ test('the Version history button is an icon-only clock button with a name, and a
 
 test('the shell: a top bar, a stage with the agents, a side panel with three shelves, a Save bar, and the six tour targets', () => {
   const m = shell();
-  assert.match(m, /<header class="hm-bar" data-tour="bar">/); assert.match(m, />Add</); assert.match(m, /aria-label="Help"/);
+  assert.match(m, /<header class="hm-bar" data-tour="bar">/); assert.match(m, />Add</); assert.match(m, /data-tour="help"[^>]*>Help</);
   assert.match(m, /<main id="main" class="hm-stage">/); assert.match(m, /<h1 [^>]*>Your agents<\/h1>/); assert.match(m, /10 agents/);
   assert.equal([...m.matchAll(/data-kind="agent"/g)].length, 10);
   assert.match(m, /<aside class="hm-panel" data-tour="details"/);

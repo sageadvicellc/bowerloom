@@ -101,7 +101,11 @@ export interface SliceRule { readonly folders: readonly string[]; readonly pageT
 export interface Slice { readonly id: string; readonly name: string; readonly seeds: readonly string[]; readonly rule: SliceRule; readonly pinned: boolean; readonly pinnedPageIds?: readonly string[] }
 
 /** One saved state of a harness. `counter` is a logical integer that grows with each apply, never a clock value. `parentId` is null for the first version. `snapshotJson` is the harness as JSON text. */
-export interface Version { readonly id: string; readonly parentId: string | null; readonly counter: number; readonly label: string; readonly snapshotJson: string }
+export interface Version {
+  readonly id: string; readonly parentId: string | null; readonly counter: number; readonly label: string; readonly snapshotJson: string;
+  /** When the point was made, as words the screen read from its own clock ("Today, 8:42"). The store never reads a clock; the screen passes this in. */
+  readonly madeAt?: string;
+}
 
 /** The whole sample world: everything the prototype screens read. */
 export interface World {

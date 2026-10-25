@@ -102,8 +102,8 @@ test('after Save, a new change and Discard, the bar says nothing waits and not "
   await bar().getByRole('button', { name: 'Save', exact: true }).click();
   expect(await barText()).toBe(SAVED);
   await removeFirstSkill();
-  await expect(bar().getByRole('button', { name: 'Discard changes' })).toBeVisible();
-  await bar().getByRole('button', { name: 'Discard changes' }).click();
+  await expect(bar().getByRole('button', { name: 'Undo all changes' })).toBeVisible();
+  await bar().getByRole('button', { name: 'Undo all changes' }).click();
   expect(await barText()).toBe('Nothing to save yet');
   await expect(bar().getByRole('button', { name: 'Go back' })).toHaveCount(0);
   await expect(p.locator('.hm-ticks')).toHaveCount(0);
@@ -116,7 +116,7 @@ test('after Go back, a new change and Discard, the bar does not say "Back to how
   await bar().getByRole('button', { name: 'Go back' }).click();
   expect(await barText()).toBe('Back to how it was');
   await removeFirstSkill();
-  await bar().getByRole('button', { name: 'Discard changes' }).click();
+  await bar().getByRole('button', { name: 'Undo all changes' }).click();
   expect(await barText()).toBe('Nothing to save yet');
 });
 
@@ -223,7 +223,7 @@ test('several files let go at once: the first is read, and the screen says so (r
 });
 
 // ---- Items 6 and 9: the Share sheet.
-test('the Share sheet says what is true about keys and text (review item 9); the sample has no ready-made skill, so it names none (review item 6)', async () => {
+test('the Share sheet says what is true about keys and text (review item 9); the one ready-made skill of the sample travels as a name only, and the sheet says so (review item 6)', async () => {
   const p = page();
   await topBar('Version history').click();
   await pointsDrawer().getByRole('button', { name: 'Share my agents' }).click();
@@ -231,8 +231,8 @@ test('the Share sheet says what is true about keys and text (review item 9); the
   await expect(sheet).toBeVisible();
   await expect(sheet.getByText('Keys that Bowerloom keeps are left out.')).toBeVisible();
   await expect(sheet.getByText('Your own text is included, so read it first.')).toBeVisible();
-  await expect(sheet.locator('.sh-left')).toHaveText('Left out: 3 keys');
-  await expect(sheet.getByText('Ready-made items travel as a name only.')).toHaveCount(0);
+  await expect(sheet.locator('.sh-left')).toHaveText('Left out: 3 keys and 1 ready-made item');
+  await expect(sheet.getByText('Ready-made items travel as a name only.')).toBeVisible();
   expect(await budget()).toEqual([]);
   for (const [w, h] of SIZES) for (const look of THEMES) {
     await resize(p, w, h); await setLook(p, look); await shot(p, 'share-wording', w, h, look);

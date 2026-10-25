@@ -38,6 +38,11 @@ export interface LibraryPageProps {
    * person to the map and pick the agent there.
    */
   onOpenAgent?(agentId: string): void;
+  /**
+   * True inside the shell: the page then adds its stage and its panel to the shell's own body (a wrapper that takes no box of its own) instead of making a
+   * body of its own, and its stage takes `mainId` as its id so the page has one main place at a time.
+   */
+  shell?: { readonly mainId: string | undefined };
 }
 
 const KIND_OF_ITEM: Readonly<Record<'skill' | 'agent' | 'tool', LibraryKind>> = Object.freeze({ skill: 'skill', agent: 'agent', tool: 'tool' });
@@ -49,7 +54,7 @@ interface UpdateSnapshot { readonly id: string; readonly name: string; readonly 
 /** Where the focus goes after something changed and the control that had it is gone. */
 type FocusAfter = { readonly row: number } | 'heading' | 'title';
 
-export function LibraryPage({ onOpenAgent }: LibraryPageProps = {}): ReactElement {
+export function LibraryPage({ onOpenAgent, shell }: LibraryPageProps = {}): ReactElement {
   const { state, dispatch } = useProtoStore();
   const world = state.draft;
   const [kind, setKind] = useState<LibraryKind>('skill');
@@ -151,8 +156,8 @@ export function LibraryPage({ onOpenAgent }: LibraryPageProps = {}): ReactElemen
   const removeFocus = (): HTMLElement | null => rowButton(removing.value?.id ?? null);
 
   return (
-    <div className="hm-body" ref={body} data-library="">
-      <main id="main" className="hm-stage">
+    <div className={shell === undefined ? 'hm-body' : 'lb-fill'} ref={body} data-library="">
+      <main id={shell === undefined ? 'main' : shell.mainId} className="hm-stage">
         <div className="hm-stage-head">
           <div className="hm-stage-title">
             <div className="lb-title-line">

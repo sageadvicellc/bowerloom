@@ -6,9 +6,10 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { libraryChangeCount, libraryChangeList, librarySentence } from '../../../shared/home/library-changes.js';
+import { barSaid } from '../../../shared/home/change-undo.js';
+import { libraryChangeCount, libraryChangeList } from '../../../shared/home/library-changes.js';
 import { withLibrarySamples } from '../../../shared/home/library-sample.js';
-import { plainNameOf } from '../../../shared/home/plain-names.js';
+import { plainNameOfSaved } from '../../../shared/home/plain-names.js';
 import { savePointRows } from '../../../shared/home/points.js';
 import { saveBar, withStartPoint } from '../../../shared/home/savebar.js';
 import type { BarPhase } from '../../../shared/home/savebar.js';
@@ -24,6 +25,7 @@ import { KitIcon } from '../kit/icons.js';
 import { Tooltip } from '../kit/Tooltip.js';
 import { SavePoints } from '../points/SavePoints.js';
 import { SaveBar } from '../save/SaveBar.js';
+import { useChangeList } from '../save/useChangeList.js';
 import { discardAction, goBackAction, saveAction } from '../store-actions.js';
 import { WORDS, changesCount } from '../words.js';
 import { LibraryPage } from './LibraryPage.js';
@@ -38,10 +40,10 @@ function Page(): ReactElement {
   const [history, setHistory] = useState(false);
   const clock = useRef<HTMLButtonElement>(null);
   const changes = libraryChangeCount(state.committed, state.draft);
-  const said = useMemo(() => librarySentence(libraryChangeList(state.committed, state.draft), changes), [state.committed, state.draft, changes]);
+  const said = useMemo(() => barSaid(libraryChangeList(state.committed, state.draft), changes), [state.committed, state.draft, changes]);
   const bar = saveBar(changes, state.committed.versions.length, phase, said);
-  const nameOf = useMemo(() => plainNameOf(state.draft), [state.draft]);
-  const rows = useMemo(() => (history ? savePointRows(state.committed, nameOf) : []), [history, state.committed, nameOf]);
+  const changeList = useChangeList(state, changes >= 2 && said === null, dispatch);
+  const rows = useMemo(() => (history ? savePointRows(state.committed, plainNameOfSaved(state.committed)) : []), [history, state.committed]);
 
   useEffect(() => { document.title = WORDS.label.appName; }, []);
   // A new change ends what the bar said about the last save or Go back.
@@ -75,7 +77,7 @@ function Page(): ReactElement {
       <Drawer open={history} title={WORDS.label.versionHistory} onClose={() => setHistory(false)} dataSlot="points" returnTo={() => clock.current}>
         <SavePoints rows={rows} unsaved={changes > 0} onGoBack={goBackTo} onShare={() => undefined} onOpenFile={() => undefined} />
       </Drawer>
-      <SaveBar model={bar} ticks={[]} onSave={save} onGoBack={() => { if (phase !== null && phase.backTo !== null) goBackTo(phase.backTo); }} onDiscard={() => { setPhase(null); dispatch(discardAction()); }} />
+      <SaveBar model={bar} ticks={[]} onSave={save} onGoBack={() => { if (phase !== null && phase.backTo !== null) goBackTo(phase.backTo); }} onDiscard={() => { setPhase(null); dispatch(discardAction()); }} list={changeList} />
     </div>
   );
 }

@@ -4,7 +4,7 @@
  * The top bar is 52 px, the Save bar 48 px, the side panel about 320 px, a drawer about 380 px. No left rail.
  */
 html, body { height: 100%; }
-[data-home].hm-root { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100vh; min-height: 0; }
+[data-home].hm-root { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; height: 100vh; min-height: 0; }
 [data-home] .hm-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 [data-home] .hm-bar { display: flex; align-items: center; gap: var(--hm-space-3); min-height: var(--hm-bar-h); box-sizing: border-box; padding: var(--hm-space-2) var(--hm-space-5); background: var(--surface); border-bottom: 1px solid var(--hm-border); }
@@ -75,13 +75,14 @@ html, body { height: 100%; }
 /* ---- The tools beside the sort toggle, and the one closing note after the first Save. */
 [data-home] .hm-stage-tools { display: flex; align-items: center; flex-wrap: wrap; gap: var(--hm-space-3) var(--hm-space-5); }
 [data-home] .hm-toast {
-  position: fixed; z-index: 40; left: 50%; bottom: calc(var(--hm-savebar-h) + var(--hm-space-5)); transform: translateX(-50%); max-width: calc(100vw - 2rem); box-sizing: border-box;
-  display: none; align-items: center; gap: var(--hm-space-3); padding: var(--hm-space-2) var(--hm-space-4);
-  background: var(--surface); color: var(--text); border: 1px solid var(--accent-strong); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow-lift); font-size: var(--hm-text-base); font-weight: 600;
+  /* The note has a strip of its own between the page and the Save bar, at the left, so it never lies over a tile or a row. The strip has no height while there is no note. */
+  display: none; justify-self: start; box-sizing: border-box; max-width: calc(100vw - 2 * var(--hm-space-5)); margin: var(--hm-space-2) var(--hm-space-5);
+  align-items: center; gap: var(--hm-space-3); padding: var(--hm-space-1) var(--hm-space-4);
+  background: var(--surface); color: var(--text); border: 1px solid var(--accent-strong); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow); font-size: var(--hm-text-base); font-weight: 600;
 }
 [data-home] .hm-toast[data-open] { display: flex; animation: hm-toast-in var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out) both; }
-/* It leaves with a quicker fade. The note's rise is 4 px, from the overlay tokens, and the toast keeps its own centring in the keyframes. */
+/* It leaves with a quicker fade. The note's rise is 4 px, from the overlay tokens. */
 [data-home] .hm-toast[data-leaving] { display: flex; animation: hm-toast-out var(--motion-home-overlay-out-ms, 0ms) var(--motion-home-overlay-out-ease, ease-in) both; pointer-events: none; }
 [data-home] .hm-toast .kit-icon { color: var(--accent-strong); }
-@keyframes hm-toast-in { from { opacity: 0; transform: translate(-50%, var(--motion-home-overlay-travel, 0px)); } to { opacity: 1; transform: translate(-50%, 0); } }
-@keyframes hm-toast-out { from { opacity: 1; transform: translate(-50%, 0); } to { opacity: 0; transform: translate(-50%, 0); } }
+@keyframes hm-toast-in { from { opacity: 0; transform: translateY(var(--motion-home-overlay-travel, 0px)); } to { opacity: 1; transform: none; } }
+@keyframes hm-toast-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: none; } }

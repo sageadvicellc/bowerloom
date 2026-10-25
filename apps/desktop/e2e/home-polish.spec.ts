@@ -210,11 +210,12 @@ test('the real page stays inside the text budget with the Show button on it', as
 });
 
 // ---- 3. One help button per window.
-test('the window has one "?" (Help, at the far right); Preview is plain words with a dot that opens its own popover; Tools has a hint line instead of a "?"', async () => {
+test('the window has no bare "?": Help is a button with its word, at the far right; Preview is plain words with a dot that opens its own popover; Tools has a hint line instead of a "?"', async () => {
   const p = page();
   await resize(p, 1280, 800);
   const round = await p.locator('button.kit-button[data-round]').evaluateAll(list => list.map(b => (b.textContent ?? '').trim()));
-  expect(round.filter(t => t === '?')).toHaveLength(1);
+  expect(round.filter(t => t === '?'), 'a bare question mark is gone').toHaveLength(0);
+  await expect(bar().getByRole('button', { name: 'Help', exact: true })).toHaveText('Help');
   const help = bar().getByRole('button', { name: 'Help', exact: true });
   const pill = bar().getByRole('button', { name: 'About this preview' });
   await expect(pill).toHaveText('Preview');

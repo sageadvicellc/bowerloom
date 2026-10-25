@@ -67,13 +67,13 @@ const bar = (changes: number, points: number, phase: Parameters<typeof saveBar>[
 test('the Save bar says "Nothing to save yet" with Save turned off, and offers nothing else', () => {
   const m = bar(0, 1, null);
   assert.match(m, /data-mode="clean"/); assert.match(m, /role="status"[^>]*><p>Nothing to save yet<\/p>/); assert.match(m, /<button disabled=""[^>]*>Save<\/button>/);
-  assert.doesNotMatch(m, /Go back|Discard changes|hm-tick/); within(m);
+  assert.doesNotMatch(m, /Go back|Discard changes|Undo all changes|hm-tick/); within(m);
 });
 
-test('the Save bar counts changes: "1 change", "2 changes", with Save and Discard changes on', () => {
+test('the Save bar counts changes: "1 change", "2 changes", with Save and Undo all changes on', () => {
   const one = bar(1, 1, null), two = bar(2, 1, null);
   assert.match(one, /<p>1 change<\/p>/); assert.match(two, /<p>2 changes<\/p>/);
-  for (const m of [one, two]) { assert.match(m, /data-mode="dirty"/); assert.doesNotMatch(m, /<button disabled/); assert.match(m, />Discard changes</); assert.doesNotMatch(m, /Go back|hm-tick/); within(m); }
+  for (const m of [one, two]) { assert.match(m, /data-mode="dirty"/); assert.doesNotMatch(m, /<button disabled/); assert.match(m, />Undo all changes</); assert.doesNotMatch(m, />Discard changes</); assert.doesNotMatch(m, /Go back|hm-tick/); within(m); }
 });
 
 test('after a save the bar says it was saved in the preview and lists the programs a real save would update as quiet chips with no tick, and offers Go back', () => {

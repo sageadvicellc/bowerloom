@@ -45,7 +45,7 @@ test('a label in an attribute (aria-label, title) has the same 5 word limit', ()
 });
 
 test('the banned words fail as whole words, in any case, and a longer word is fine', () => {
-  for (const word of ['harness', 'Global', 'SCOPE', 'slice', 'version', 'apply', 'undo', 'scan', 'adopt', 'conflict', 'interface', 'export', 'import', 'helper', 'team', 'plan', 'grant', 'wire', 'ghost', 'lasso', 'MCP', 'token', 'project']) {
+  for (const word of ['harness', 'Global', 'SCOPE', 'slice', 'version', 'apply', 'scan', 'adopt', 'conflict', 'interface', 'export', 'import', 'helper', 'team', 'plan', 'grant', 'wire', 'ghost', 'lasso', 'MCP', 'token', 'project']) {
     assert.equal(problems(`<p>Use the ${word} now</p>`).length, 1, word);
   }
   assert.equal(problems('<p>Many Harnesses</p><p>and teams</p>').length, 2, 'plurals count');
@@ -56,6 +56,10 @@ test('the banned words fail as whole words, in any case, and a longer word is fi
 test('the words the storyboard asks for are fine, including "This project only"', () => {
   ok('<button>This project only</button><button>Everywhere</button><p>Version history, Go back, Find, Bring in, Share, Open a shared file</p><p>Draw a loop</p><p>can only read</p>');
   assert.equal(problems('<p>The project folder</p>').length, 1, 'project alone is still banned');
+});
+
+test('"Undo" is a plain word of the screens since Hanna chose it (2026-10-25): the note after Remove, the Undo beside each change, "Undo all changes"', () => {
+  ok('<button>Undo</button><button>Undo all changes</button><p>Removed Write a reply.</p><p>Undo the later change first.</p>');
 });
 
 test('"version history" is the one phrase that lets "version" through; the word "history" alone is fine, and bare "version" stays banned', () => {
@@ -105,7 +109,7 @@ test('several problems are all reported', () => {
 });
 
 test('BANNED lists the required words, and BANNED_PATTERN is built from it', () => {
-  for (const word of ['harness', 'global', 'project', 'scope', 'slice', 'version', 'apply', 'undo', 'scan', 'adopt', 'conflict', 'interface', 'export', 'import', 'access class', 'helper', 'team', 'plan', 'grant', 'wire', 'ghost', 'lasso', 'mcp', 'token']) assert.ok(BANNED.includes(word), word);
+  for (const word of ['harness', 'global', 'project', 'scope', 'slice', 'version', 'apply', 'scan', 'adopt', 'conflict', 'interface', 'export', 'import', 'access class', 'helper', 'team', 'plan', 'grant', 'wire', 'ghost', 'lasso', 'mcp', 'token']) assert.ok(BANNED.includes(word), word);
   assert.equal(Object.isFrozen(BANNED), true);
   assert.ok(BANNED_PATTERN.test('A Harness'));
 });
