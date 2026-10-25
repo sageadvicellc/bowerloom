@@ -23,6 +23,8 @@ import { agent, makeWorld, skill } from './proto-testworld.js';
 // The same idea as in viewmodel.test.ts: no screen word may tell a person to type a command.
 const COMMAND = /\bbowerloom (ls|status|use|unuse|lock|apply|skills|skill|prompt|team|store|folder|slice|context|cache|up|help)\b|\bnpm (run|install)\b|\bgit (push|init|add|commit|remote)\b|\bcd \S|\bchmod\b|--[a-z]{3,}|terminal|command line|\$ /i;
 const BANNED_WORD = /\bhelpers?\b|\bteams?\b/i;
+// Every property that holds for --prototype also holds for --prototype-v2 (the 0.8 home app): one list, so a third flag would join it.
+const PROTOTYPE_FLAGS = [{ flag: '--prototype', hash: '#prototype', script: 'desktop:prototype' }, { flag: '--prototype-v2', hash: '#prototype-v2', script: 'desktop:prototype:v2' }] as const;
 const ids = ['setup', 'harness', 'skills', 'agents', 'knowledge', 'versions'] as const;
 const read = (file: string): string => readFileSync(join(DESKTOP, file), 'utf8');
 const strip = (text: string): string => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
@@ -107,22 +109,34 @@ test('the prototype and shared prototype source never reach the window bridge, a
   }
 });
 
-test('main.ts: the --prototype flag loads the same app address with #prototype, and the plain load line is unchanged', () => {
+test('main.ts: each prototype flag loads the same app address with its own hash, and the plain load line is unchanged', () => {
   const main = strip(read('main/main.ts'));
-  assert.match(main, /argv\.includes\('--prototype'\)/); assert.match(main, /loadURL\(indexUrl\)/); assert.match(main, /loadURL\(`\$\{indexUrl\}#prototype`\)/);
-  assert.equal(decideNavigation(`${APP_INDEX}#prototype`, APP_INDEX), 'allow-app', 'the app address with the hash is still the app\'s own page');
+  assert.match(main, /argv\.includes\('--prototype'\)/); assert.match(main, /loadURL\(indexUrl\)/);
+  for (const { flag, hash } of PROTOTYPE_FLAGS) {
+    assert.match(main, new RegExp(`argv\\.includes\\('${flag}'\\)`), flag);
+    assert.match(main, new RegExp('loadURL\\(`\\$\\{indexUrl\\}' + hash + '`\\)'), `${flag} loads ${hash}`);
+    assert.equal(decideNavigation(`${APP_INDEX}${hash}`, APP_INDEX), 'allow-app', `the app address with ${hash} is still the app's own page`);
+  }
+  assert.equal(decideNavigation(`${APP_INDEX}#prototype-v2/kit`, APP_INDEX), 'allow-app');
+  // Either flag puts the app in prototype mode, which is the one switch behind the missing preload, the refused IPC, the temp folder and the blocked links.
+  assert.match(main, /const prototypeMode = argv\.includes\('--prototype'\) \|\| prototypeV2;/);
+  assert.match(main, /const prototypeV2 = argv\.includes\('--prototype-v2'\);/);
   assert.equal([...main.matchAll(/ipcMain\.handle/g)].length, 1, 'still one guard');
   assert.match(main, /isAllowedSender\(/);
   // The guard asks first and only then runs the handler.
   const guard = main.slice(main.indexOf('const guarded'), main.indexOf("guarded('getInfo'"));
   assert.ok(guard.indexOf('isAllowedSender(') > -1 && guard.indexOf('isAllowedSender(') < guard.indexOf('handler(...'), 'the sender check comes before the handler');
   assert.match(guard, /prototypeMode/);
+  assert.equal([...main.matchAll(/!prototypeMode/g)].length, 2, 'an external link is opened only outside prototype mode, in both places');
+  assert.match(main, /webPreferences\(prototypeMode \? undefined :/);
+  assert.match(main, /if \(prototypeMode\) \{\s*const choice = chooseUserData/);
 });
 
 test('in prototype mode every IPC channel is refused, for every sender; outside it only the app\'s own page is let in', () => {
   for (const name of Object.keys(CHANNELS)) {
     assert.equal(isAllowedSender(true, APP_INDEX, APP_INDEX), false, `${name}: the app page itself`);
-    assert.equal(isAllowedSender(true, `${APP_INDEX}#prototype`, APP_INDEX), false, `${name}: the app page with the hash`);
+    for (const { hash } of PROTOTYPE_FLAGS) assert.equal(isAllowedSender(true, `${APP_INDEX}${hash}`, APP_INDEX), false, `${name}: the app page with ${hash}`);
+    assert.equal(isAllowedSender(true, `${APP_INDEX}#prototype-v2/kit`, APP_INDEX), false, `${name}: the kit gallery`);
     assert.equal(isAllowedSender(true, null, APP_INDEX), false, `${name}: no frame`);
     assert.equal(isAllowedSender(true, 'https://github.com/x', APP_INDEX), false, `${name}: elsewhere`);
   }
@@ -138,21 +152,27 @@ test('the preload surface is unchanged: it still exposes exactly the channels, s
   for (const name of Object.keys(CHANNELS)) assert.ok(smoke.includes(`'${name}'`), `the smoke spec lists ${name}`);
 });
 
-test('app.ts mounts the prototype only for the #prototype hash and leaves the normal boot path as it was', () => {
+test('app.ts mounts a prototype only for its own hash and leaves the normal boot path as it was', () => {
   const app = strip(read('renderer/app.ts'));
   assert.match(app, /location\.hash === '#prototype'/); assert.match(app, /from '\.\/proto\/mount\.js'/);
+  assert.match(app, /isHomeHash\(location\.hash\)/); assert.match(app, /from '\.\/home\/mount\.js'/);
   assert.match(app, /void reload\(\);/);
   const branch = app.slice(app.indexOf("location.hash === '#prototype'"));
-  assert.ok(branch.indexOf('mountPrototype(') > -1 && branch.indexOf('mountPrototype(') < branch.indexOf('void reload()'), 'the prototype is chosen before the normal boot');
+  const order = [branch.indexOf('mountPrototype('), branch.indexOf('mountHome('), branch.indexOf('void reload()')];
+  assert.ok(order[0]! > -1 && order[1]! > order[0]! && order[2]! > order[1]!, 'each prototype is chosen before the normal boot');
   assert.match(branch, /else/);
 });
 
-test('the launcher: --prototype is a known flag, a mode that excludes the other modes, and is passed on', () => {
+test('the launcher: each prototype flag is known, a mode that excludes the other modes, and is passed on', () => {
   const src = strip(read('tools/run.mjs'));
-  assert.match(src, /KNOWN = new Set\(\[[^\]]*'--prototype'/); assert.match(src, /MODES = new Set\(\[[^\]]*'--prototype'/); assert.match(src, /args\.includes\('--prototype'\)/); assert.match(src, /makePrototypeDataDir\(\)/); assert.match(strip(read('main/prototype-dir.mjs')), /mkdtempSync\(/);
-  for (const other of ['--sample-data', '--real-data', '--sandbox']) {
-    const r = spawnSync(process.execPath, [join(DESKTOP, 'tools', 'run.mjs'), '--prototype', other], { cwd: tmpdir(), encoding: 'utf8', timeout: 30000 });
-    assert.equal(r.status, 2, other); assert.match(r.stderr, /not more/); assert.doesNotMatch(r.stdout, /Installing|Building/);
+  assert.match(src, /PROTOTYPES = \['--prototype', '--prototype-v2'\]/); assert.match(src, /PROTOTYPES\.some\(flag => args\.includes\(flag\)\)/);
+  assert.match(src, /makePrototypeDataDir\(\)/); assert.match(strip(read('main/prototype-dir.mjs')), /mkdtempSync\(/);
+  for (const { flag } of PROTOTYPE_FLAGS) {
+    assert.match(src, new RegExp(`KNOWN = new Set\\(\\[[^\\]]*'${flag}'`), flag); assert.match(src, new RegExp(`MODES = new Set\\(\\[[^\\]]*'${flag}'`), flag);
+    for (const other of ['--sample-data', '--real-data', '--sandbox', ...PROTOTYPE_FLAGS.map(f => f.flag).filter(f => f !== flag)]) {
+      const r = spawnSync(process.execPath, [join(DESKTOP, 'tools', 'run.mjs'), flag, other], { cwd: tmpdir(), encoding: 'utf8', timeout: 30000 });
+      assert.equal(r.status, 2, `${flag} ${other}`); assert.match(r.stderr, /not more/); assert.doesNotMatch(r.stdout, /Installing|Building/);
+    }
   }
 });
 
@@ -160,7 +180,7 @@ test('the launcher gives the prototype a fresh temporary data folder, and remove
   const { electronArgs, makePrototypeDataDir, removePrototypeDataDir } = await import(`${join(DESKTOP, 'tools', 'run.mjs')}`) as {
     electronArgs(desktop: string, flags: string[], userDataDir: string | null): string[]; makePrototypeDataDir(tmp: string): string; removePrototypeDataDir(dir: string, tmp: string): string;
   };
-  assert.deepEqual(electronArgs('/d', ['--prototype'], '/tmp/x'), ['/d', '--user-data-dir=/tmp/x', '--prototype']);
+  for (const { flag } of PROTOTYPE_FLAGS) assert.deepEqual(electronArgs('/d', [flag], '/tmp/x'), ['/d', '--user-data-dir=/tmp/x', flag]);
   assert.deepEqual(electronArgs('/d', ['--sample-data'], null), ['/d', '--sample-data']);
   const tmp = tempDir(t), a = makePrototypeDataDir(tmp), b = makePrototypeDataDir(tmp);
   assert.notEqual(a, b); assert.equal(a.startsWith(tmp), true); assert.match(a, /bowerloom-prototype-/); assert.equal(lstatSync(a).isDirectory(), true);
@@ -174,9 +194,9 @@ test('the launcher gives the prototype a fresh temporary data folder, and remove
   assert.equal(removePrototypeDataDir(join(tmp, 'bowerloom-prototype-gone'), tmp), 'absent');
 });
 
-test('the root package has the desktop:prototype command', () => {
+test('the root package has a command for each prototype', () => {
   const root = JSON.parse(readFileSync(join(DESKTOP, '..', '..', 'package.json'), 'utf8')) as { scripts: Record<string, string> };
-  assert.equal(root.scripts['desktop:prototype'], 'node apps/desktop/tools/run.mjs --prototype');
+  for (const { flag, script } of PROTOTYPE_FLAGS) assert.equal(root.scripts[script], `node apps/desktop/tools/run.mjs ${flag}`, script);
 });
 
 test('the README has a short Prototype section that says nothing is written', () => {

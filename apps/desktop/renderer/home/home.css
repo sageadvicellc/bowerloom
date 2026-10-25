@@ -1,0 +1,42 @@
+/*
+ * The shell of the home app: a top bar, a stage with a side panel, a Save bar at the bottom, and two drawers that open over the stage.
+ * Scoped to [data-home]. Text is 16 px, labels never below 14 px, one heading size (20 px). Spacing is 16 to 24 px. No left rail.
+ */
+html, body { height: 100%; }
+[data-home].hm-root { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100vh; min-height: 0; }
+[data-home] .hm-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+[data-home] .hm-bar { display: flex; align-items: center; gap: var(--hm-space-3); min-height: var(--hm-bar-h); padding: var(--hm-space-2) var(--hm-space-5); background: var(--surface); border-bottom: 1px solid var(--hm-border); }
+[data-home] .hm-brand { display: flex; align-items: center; gap: var(--hm-space-3); font-size: var(--hm-text-heading); font-weight: 650; color: var(--text); }
+[data-home] .hm-brand .kit-icon { color: var(--accent-strong); }
+[data-home] .hm-spacer { flex: 1; }
+
+[data-home] .hm-body { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--hm-panel-w); min-height: 0; overflow: hidden; }
+[data-home] .hm-stage { overflow-y: auto; padding: var(--hm-space-6); display: flex; flex-direction: column; gap: var(--hm-space-5); min-width: 0; }
+[data-home] .hm-stage-head { display: flex; flex-direction: column; gap: var(--hm-space-1); }
+[data-home] .hm-stage-head h1 { outline-offset: 4px; width: fit-content; max-width: 100%; border-radius: var(--hm-radius-small); }
+[data-home] .hm-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, var(--hm-card-agent-w)); gap: var(--hm-space-4); justify-content: start; align-content: start; }
+[data-home] .hm-grid > li { display: flex; }
+
+[data-home] .hm-panel { overflow-y: auto; padding: var(--hm-space-5); border-left: 1px solid var(--hm-border); background: var(--surface); display: flex; flex-direction: column; gap: var(--hm-space-5); }
+[data-home] .hm-panel-head { display: flex; flex-direction: column; gap: var(--hm-space-1); }
+
+[data-home] .hm-savebar { display: flex; align-items: center; justify-content: space-between; gap: var(--hm-space-4); padding: var(--hm-space-3) var(--hm-space-5); background: var(--surface); border-top: 1px solid var(--hm-border); }
+[data-home] .hm-savebar p { margin: 0; font-size: var(--hm-text-base); }
+[data-home] .hm-savebar-state { display: flex; align-items: center; gap: var(--hm-space-3); }
+
+[data-home] .hm-empty { margin: 0; }
+@media (max-width: 760px) {
+  [data-home] .hm-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  [data-home] .hm-panel { border-left: 0; border-top: 1px solid var(--hm-border); max-height: 45vh; }
+}
+
+/* ---- The kit gallery: a normal page that scrolls, with the same parts in a light and a dark look side by side. */
+[data-home].hm-gallery-page { min-height: 100vh; padding: var(--hm-space-5); display: flex; flex-direction: column; gap: var(--hm-space-5); }
+[data-home] .hm-gallery-intro { display: flex; flex-direction: column; gap: var(--hm-space-1); }
+[data-home] .hm-gallery-themes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 34rem), 1fr)); gap: var(--hm-space-5); align-items: start; }
+[data-home] .hm-gallery-theme { background: var(--bg); color: var(--text); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); padding: var(--hm-space-5); display: flex; flex-direction: column; gap: var(--hm-space-5); }
+[data-home] .hm-gallery-block { display: flex; flex-direction: column; gap: var(--hm-space-3); align-items: flex-start; width: 100%; }
+[data-home] .hm-gallery-row { display: flex; flex-wrap: wrap; gap: var(--hm-space-4); align-items: flex-start; }
+[data-home] .hm-gallery-cell { display: flex; flex-direction: column; gap: var(--hm-space-2); align-items: flex-start; }
+[data-home] .hm-gallery-popover-room { min-height: 11rem; }

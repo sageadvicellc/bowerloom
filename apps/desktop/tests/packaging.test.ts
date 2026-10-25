@@ -31,7 +31,7 @@ test('the build targets are macOS (dmg and zip), Windows (nsis), and Linux (AppI
 });
 
 test('the commands: one to open the app, one for sample data, both from the repository root', () => {
-  assert.equal(root.scripts.desktop, 'node apps/desktop/tools/run.mjs --real-data'); assert.equal(root.scripts['desktop:sandbox'], 'node apps/desktop/tools/run.mjs --sandbox'); assert.equal(root.scripts['sandbox:reset'], 'npm --prefix apps/desktop run sandbox:reset'); assert.equal(pkg.scripts['sandbox:reset'], 'node tools/make-sandbox.mjs --reset'); assert.equal(root.scripts['desktop:sample'], 'node apps/desktop/tools/run.mjs --sample-data'); assert.equal(root.scripts['desktop:prototype'], 'node apps/desktop/tools/run.mjs --prototype');
+  assert.equal(root.scripts.desktop, 'node apps/desktop/tools/run.mjs --real-data'); assert.equal(root.scripts['desktop:sandbox'], 'node apps/desktop/tools/run.mjs --sandbox'); assert.equal(root.scripts['sandbox:reset'], 'npm --prefix apps/desktop run sandbox:reset'); assert.equal(pkg.scripts['sandbox:reset'], 'node tools/make-sandbox.mjs --reset'); assert.equal(root.scripts['desktop:sample'], 'node apps/desktop/tools/run.mjs --sample-data'); for (const flag of ['--prototype', '--prototype-v2']) assert.equal(root.scripts[flag === '--prototype' ? 'desktop:prototype' : 'desktop:prototype:v2'], `node apps/desktop/tools/run.mjs ${flag}`);
   for (const name of ['desktop:dev', 'desktop:build', 'desktop:test']) assert.ok(root.scripts[name], name);
 });
 

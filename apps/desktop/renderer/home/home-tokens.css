@@ -1,0 +1,42 @@
+/*
+ * Tokens of the Bowerloom 0.8 home app. Every rule starts at `[data-home]`, the root only the home app carries, so nothing in the 0.7 screens or the old
+ * prototype changes. The colours come from tokens.css (the sage accent, the surfaces, the text); this file adds the sizes and the few colours the
+ * home app needs, and gives each a dark variant. A border meets 3 to 1 against the page, a card and a quiet panel (WCAG 1.4.11); text meets 4.5 to 1
+ * (tests/contrast.test.ts checks both). A theme can be set on the root itself (`data-theme` next to `data-home`), which the kit gallery uses.
+ */
+[data-home] {
+  --hm-text-base: 1rem;
+  --hm-text-small: 0.875rem;
+  --hm-text-heading: 1.25rem;
+  --hm-text-display: 1.75rem;
+  --hm-leading: 1.5;
+  --hm-space-1: 0.25rem; --hm-space-2: 0.5rem; --hm-space-3: 0.75rem; --hm-space-4: 1rem; --hm-space-5: 1.5rem; --hm-space-6: 2rem; --hm-space-7: 3rem;
+  --hm-radius: 0.75rem; --hm-radius-small: 0.5rem; --hm-radius-pill: 999px;
+  --hm-card-agent-w: 13.75rem; --hm-card-agent-h: 8.25rem;
+  --hm-card-small-w: 11rem; --hm-card-small-h: 4.5rem;
+  --hm-drawer-w: min(420px, 92vw);
+  --hm-panel-w: clamp(20rem, 30vw, 26rem);
+  --hm-bar-h: 4rem;
+  --hm-border: #868880;
+  --hm-ring: #ffffff;
+  --hm-scrim-alpha: 0.55;
+  --hm-scrim: rgb(0 0 0 / var(--hm-scrim-alpha));
+  --hm-shadow: 0 1px 2px rgb(0 0 0 / 0.08), 0 4px 14px rgb(0 0 0 / 0.07);
+  --hm-shadow-lift: 0 2px 4px rgb(0 0 0 / 0.1), 0 10px 24px rgb(0 0 0 / 0.1);
+  --hm-shadow-drawer: -8px 0 28px rgb(0 0 0 / 0.14);
+  --hm-avatar-mix: 20%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: var(--hm-text-base);
+  line-height: var(--hm-leading);
+}
+[data-theme="dark"] [data-home], [data-home][data-theme="dark"] {
+  --hm-border: #68796e;
+  --hm-ring: #e8eee9;
+  --hm-scrim-alpha: 0.6;
+  --hm-shadow: 0 1px 2px rgb(0 0 0 / 0.5), 0 4px 14px rgb(0 0 0 / 0.35);
+  --hm-shadow-lift: 0 2px 4px rgb(0 0 0 / 0.5), 0 10px 24px rgb(0 0 0 / 0.45);
+  --hm-shadow-drawer: -8px 0 28px rgb(0 0 0 / 0.5);
+  --hm-avatar-mix: 26%;
+}

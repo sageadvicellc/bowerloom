@@ -135,3 +135,32 @@ test('the libraries add no inline style element: the bundler removes the two tha
   assert.match(read('tools/bundle.mjs'), /The style injection was not found/);
   const css = read('renderer/graph.css'); assert.match(css, /force-graph-container canvas/); assert.match(css, /float-tooltip-kap/);
 });
+
+// ---- Both prototypes (--prototype and --prototype-v2) share one list: every property of the first holds for the second.
+const PROTOTYPE_FLAGS = ['--prototype', '--prototype-v2'] as const;
+
+test('each prototype flag puts the window in the same locked mode: no preload, no IPC, no outside link, no real data folder', () => {
+  const main = strip(read('main/main.ts'));
+  for (const flag of PROTOTYPE_FLAGS) assert.match(main, new RegExp(`argv\\.includes\\('${flag}'\\)`), flag);
+  // One switch carries all four promises, so the second flag cannot have a different one.
+  assert.match(main, /const prototypeMode = argv\.includes\('--prototype'\) \|\| prototypeV2;/);
+  assert.match(main, /webPreferences\(prototypeMode \? undefined : join\(root, 'preload\.cjs'\), app\.isPackaged\)/);
+  assert.match(main, /isAllowedSender\(prototypeMode,/);
+  assert.equal([...main.matchAll(/&& !prototypeMode\) void controller\.openLink|!prototypeMode\) void controller\.openLink/g)].length, 2, 'both link paths ask prototypeMode first');
+  assert.match(main, /if \(prototypeMode\) \{\s*const choice = chooseUserData\(userDataArg\(argv\), tmpdir\(\)\)/);
+  assert.doesNotMatch(main, /prototypeV2\s*\?[^\n]*preload/, 'the second flag has no preload of its own');
+});
+
+test('the page of the home app is the app\'s own page: navigation inside it is allowed, and nothing else leaves', () => {
+  for (const hash of ['#prototype', '#prototype-v2', '#prototype-v2/kit']) assert.equal(decideNavigation(`${APP_INDEX}${hash}`, APP_INDEX), 'allow-app', hash);
+  assert.equal(decideNavigation('https://example.com/#prototype-v2', APP_INDEX), 'block');
+  const preload = strip(read('preload/preload.ts'));
+  assert.doesNotMatch(preload, /prototype/i);
+});
+
+test('the home app source never reaches the bridge, a file, the network, storage or markup from text', () => {
+  const files = [...sources('renderer/home'), ...sources('shared/home')];
+  assert.ok(files.length >= 10, `${files.length} files`);
+  const banned: [string, RegExp][] = [['window.bowerloom', /window\.bowerloom|\bbowerloom\./], ['node:', /node:/], ['fetch', /\bfetch\(|XMLHttpRequest|WebSocket/], ['localStorage', /localStorage|sessionStorage|indexedDB|document\.cookie/], ['innerHTML', /innerHTML|outerHTML|insertAdjacentHTML|dangerouslySetInnerHTML/], ['eval', /\beval\(|new Function\(/], ['Date', /\bDate\b/], ['Math.random', /Math\.random/]];
+  for (const { file, text } of files) { const code = strip(text); for (const [name, pattern] of banned) assert.doesNotMatch(code, pattern, `${file} uses ${name}`); }
+});

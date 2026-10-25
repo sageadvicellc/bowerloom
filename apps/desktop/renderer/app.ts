@@ -10,6 +10,7 @@ import { applyMotionTokens } from './motion-tokens.js';
 import { mapHost, renderMap } from './map/mount.js';
 import { disposeKnowledge, knowledgeHost } from './graph/knowledge.js';
 import { mountPrototype } from './proto/mount.js';
+import { isHomeHash, mountHome } from './home/mount.js';
 
 declare global { interface Window { bowerloom: ViewerApi } }
 // The prototype page has no bridge (main.ts leaves the preload out there), so `window.bowerloom` is missing then. This stand-in keeps the top of
@@ -419,4 +420,5 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', app
 applyMotionTokens();
 window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', () => applyMotionTokens());
 // The clickable prototype of Bowerloom 0.8 opens on the address #prototype. It keeps everything in memory and skips the normal start.
-if (location.hash === '#prototype') { applyTheme(); mountPrototype(root); } else void reload();
+// The 0.8 home app opens on #prototype-v2 (and its kit gallery on #prototype-v2/kit). It shares the in-memory sample and has no bridge either.
+if (location.hash === '#prototype') { applyTheme(); mountPrototype(root); } else if (isHomeHash(location.hash)) { applyTheme(); mountHome(root); } else void reload();

@@ -19,7 +19,9 @@ protocol.registerSchemesAsPrivileged([{ scheme: APP_SCHEME, privileges: { standa
 
 const argv = process.argv.slice(1);
 // The clickable prototype (Bowerloom 0.8): the same page with #prototype added, and no IPC at all.
-const prototypeMode = argv.includes('--prototype');
+// The home app prototype (--prototype-v2) is treated the same way: no preload, no IPC, a temporary data folder, and no external links.
+const prototypeV2 = argv.includes('--prototype-v2');
+const prototypeMode = argv.includes('--prototype') || prototypeV2;
 // The prototype writes nothing to the real app data, whoever starts it. It keeps its own temporary data folder (or the one it was given, when that
 // is one of its own), and removes it when the app quits. The launcher does the same; this keeps the promise when the app is started without it.
 // Not caught: a hard kill (SIGKILL, a crash, a power cut) leaves the folder, and the browser engine writes a few small files (Local State, Preferences)
@@ -75,7 +77,8 @@ function createWindow(): void {
   });
   window.once('ready-to-show', () => window?.show());
   window.on('closed', () => { window = null; });
-  if (prototypeMode) window.loadURL(`${indexUrl}#prototype`).catch(startupFailed);
+  if (prototypeV2) window.loadURL(`${indexUrl}#prototype-v2`).catch(startupFailed);
+  else if (prototypeMode) window.loadURL(`${indexUrl}#prototype`).catch(startupFailed);
   else window.loadURL(indexUrl).catch(startupFailed);
 }
 

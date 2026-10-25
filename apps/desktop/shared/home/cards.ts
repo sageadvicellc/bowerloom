@@ -1,0 +1,86 @@
+/**
+ * Pure helpers behind the cards of the home app: the words on a card, its one badge, the three shelves of an agent, and the Save bar. No React, no DOM.
+ * The sample data names things like files ("velvet-weaver"); a card shows them as words ("Velvet Weaver").
+ */
+import type { AgentItem, HarnessItem, ToolItem, World } from '../proto/types.js';
+
+/** A card's state badge: its words and which look it takes. */
+export interface CardBadge { readonly label: string; readonly tone: 'warn' | 'new' | 'info' }
+
+/** One card on a shelf. Skills, tools and notes all take this shape. */
+export interface ShelfEntry { readonly id: string; readonly kind: 'skill' | 'tool' | 'note'; readonly name: string; readonly badge?: CardBadge }
+
+/** The three shelves of one agent. */
+export interface Shelves { readonly skills: readonly ShelfEntry[]; readonly tools: readonly ShelfEntry[]; readonly notes: readonly ShelfEntry[] }
+
+/** How many cards a shelf shows before "Show more". */
+export const SHELF_LIMIT = 8;
+const MAX_NAME_WORDS = 5;
+
+/** The words that these helpers put on a screen. `renderer/home/words.ts` lists them in `WORDS`, so one test holds them all to the rules. */
+export const CARD_WORDS = Object.freeze({
+  needsKey: 'needs a key', isNew: 'new', saveClean: 'Nothing to save yet', saveDirty: 'You have changes to save', copiesSuffix: 'different copies',
+  agentFallbackRole: 'agent', agentEmpty: 'with nothing added yet',
+});
+
+/** A name as words: dashes and underscores become spaces, each word gets a capital, and at most 5 words stay. */
+export function itemTitle(name: string): string {
+  return name.split(/[\s_-]+/).filter(w => w !== '').slice(0, MAX_NAME_WORDS).map(w => `${w.charAt(0).toUpperCase()}${w.slice(1)}`).join(' ');
+}
+/** The title of an agent card. */
+export const agentTitle = itemTitle;
+
+const count = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`;
+
+/** One plain line for an agent card: its role and what it has. */
+export function agentHint(agent: AgentItem): string {
+  const role = agent.definition.role.trim().toLowerCase() || CARD_WORDS.agentFallbackRole;
+  const article = /^[aeiou]/.test(role) ? 'An' : 'A';
+  const skills = agent.definition.skillIds.length, tools = agent.definition.toolAttachments.length;
+  if (skills === 0 && tools === 0) return `${article} ${role} ${CARD_WORDS.agentEmpty}.`;
+  const has = [skills > 0 ? count(skills, 'skill') : null, tools > 0 ? count(tools, 'tool') : null].filter((x): x is string => x !== null);
+  return `${article} ${role} with ${has.join(' and ')}.`;
+}
+
+/** The one badge a card shows, by priority: different copies, a missing key, a newer version. Null when nothing needs saying. */
+export function itemBadge(item: HarnessItem): CardBadge | null {
+  const copies = new Set(item.foundAt.map(f => f.contentHash)).size;
+  if (copies >= 2) return { label: `${copies} ${CARD_WORDS.copiesSuffix}`, tone: 'warn' };
+  if (item.kind === 'tool' && item.toolKind === 'mcp' && item.secret !== null && item.secret.state === 'missing') return { label: CARD_WORDS.needsKey, tone: 'warn' };
+  if (item.library !== null && item.library.newerVersion !== undefined) return { label: CARD_WORDS.isNew, tone: 'new' };
+  return null;
+}
+
+/** The agents the person owns (not those that come from a library), in name order. */
+export function ownedAgents(world: World): AgentItem[] {
+  return world.items.filter((i): i is AgentItem => i.kind === 'agent' && i.library === null).sort((a, b) => agentTitle(a.name).localeCompare(agentTitle(b.name)) || a.id.localeCompare(b.id));
+}
+
+const entryOf = (item: HarnessItem, kind: ShelfEntry['kind']): ShelfEntry => {
+  const badge = itemBadge(item);
+  return { id: item.id, kind, name: itemTitle(item.name), ...(badge === null ? {} : { badge }) };
+};
+
+/** The skills, tools and notes of one agent. A hook stays out (it lives under Advanced), and an id that no longer exists is left out. */
+export function shelvesOf(world: World, agent: AgentItem): Shelves {
+  const byId = new Map(world.items.map(i => [i.id, i]));
+  const skills: ShelfEntry[] = [], tools: ShelfEntry[] = [], notes: ShelfEntry[] = [];
+  for (const id of agent.definition.skillIds) { const item = byId.get(id); if (item !== undefined && item.kind === 'skill') skills.push(entryOf(item, 'skill')); }
+  for (const attached of agent.definition.toolAttachments) {
+    const item = byId.get(attached.toolId);
+    if (item !== undefined && item.kind === 'tool' && (item as ToolItem).toolKind !== 'hook') tools.push(entryOf(item, 'tool'));
+  }
+  const slice = agent.definition.sliceId === undefined ? undefined : world.slices.find(s => s.id === agent.definition.sliceId);
+  if (slice !== undefined) notes.push({ id: slice.id, kind: 'note', name: itemTitle(slice.name) });
+  return { skills, tools, notes };
+}
+
+/** How many cards a shelf draws: all of them when expanded, else the first `limit`. */
+export function visibleCount(total: number, expanded: boolean, limit = SHELF_LIMIT): number {
+  return expanded ? total : Math.min(total, limit);
+}
+
+/** What the Save bar says and whether Save can be pressed. */
+export function saveBarModel(dirty: boolean): { text: string; canSave: boolean } {
+  return dirty ? { text: CARD_WORDS.saveDirty, canSave: true } : { text: CARD_WORDS.saveClean, canSave: false };
+}

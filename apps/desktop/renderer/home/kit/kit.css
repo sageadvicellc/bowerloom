@@ -1,0 +1,122 @@
+/*
+ * The card kit. One card, one layout: an agent differs from a skill, tool or note only by its size and its round avatar. Everything is scoped to
+ * [data-home]. Rounded 12 px cards, a full 1 px border that is seen at 3 to 1, a soft shadow, no thick one-sided borders. A state is never colour alone:
+ * a badge has an icon and words, a selected card has a check, a disabled button is dashed and says why beside it.
+ * Timing comes from the motion tokens (published by applyMotionTokens), which are 0 when the person asked for less motion.
+ */
+[data-home] .kit-icon { flex: none; }
+[data-home] .kit-heading { margin: 0; font-size: var(--hm-text-heading); line-height: 1.3; font-weight: 650; color: var(--text); }
+[data-home] .kit-hint { margin: 0; font-size: var(--hm-text-small); line-height: 1.4; color: var(--text-muted); font-weight: 400; }
+
+/* ---- Button */
+[data-home] .kit-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--hm-space-2);
+  min-height: 2.75rem; min-width: 2.75rem; padding: 0 var(--hm-space-4);
+  font: inherit; font-size: var(--hm-text-base); font-weight: 600; line-height: 1.2; white-space: nowrap;
+  border-radius: var(--hm-radius-small); border: 1px solid var(--hm-border); background: var(--surface); color: var(--text);
+  cursor: pointer; touch-action: manipulation;
+  transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), box-shadow var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
+}
+[data-home] .kit-button:hover { background: var(--accent-soft); border-color: var(--accent-strong); }
+[data-home] .kit-button[data-variant="primary"] { background: var(--accent); border-color: var(--accent-strong); color: var(--accent-contrast); }
+[data-home] .kit-button[data-variant="primary"]:hover { background: var(--accent-strong); }
+[data-home] .kit-button[data-size="small"] { min-height: 2rem; min-width: 2rem; }
+[data-home] .kit-button[data-round] { padding: 0; border-radius: var(--hm-radius-pill); width: 2.75rem; font-size: var(--hm-text-heading); font-weight: 650; }
+[data-home] .kit-button[data-round][data-size="small"] { width: 2rem; font-size: var(--hm-text-base); }
+[data-home] .kit-button:disabled { background: transparent; border: 1px dashed var(--hm-border); color: var(--text-muted); cursor: not-allowed; }
+[data-home] .kit-button[aria-expanded="true"]:not([data-variant="primary"]) { background: var(--accent-soft); border-color: var(--accent-strong); }
+
+/* ---- Badge */
+[data-home] .kit-badge {
+  display: inline-flex; align-items: center; gap: var(--hm-space-1); max-width: 100%;
+  padding: 0.125rem var(--hm-space-2) 0.125rem 0.375rem; min-height: 1.5rem;
+  font: inherit; font-size: var(--hm-text-small); font-weight: 600; line-height: 1.2;
+  border-radius: var(--hm-radius-pill); border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
+  background: var(--quiet-bg); color: var(--quiet-fg);
+}
+[data-home] .kit-badge[data-tone="warn"] { background: var(--warn-bg); color: var(--warn-fg); }
+[data-home] .kit-badge[data-tone="new"] { background: var(--good-bg); color: var(--good-fg); }
+[data-home] button.kit-badge { cursor: pointer; position: relative; z-index: 1; min-height: 2rem; }
+[data-home] button.kit-badge:hover { border-color: currentColor; }
+
+/* ---- Avatar: a round tint of one graph token, with the initials in the text colour (the tint is light, so the text stays at 4.5 to 1). */
+[data-home] .kit-avatar {
+  --av: var(--graph-1);
+  display: inline-flex; align-items: center; justify-content: center; flex: none; border-radius: 50%;
+  width: 2.75rem; height: 2.75rem; font-size: var(--hm-text-base); font-weight: 650; letter-spacing: 0.02em; color: var(--text);
+  background: color-mix(in srgb, var(--av) var(--hm-avatar-mix), var(--surface)); border: 1px solid var(--av);
+}
+[data-home] .kit-avatar[data-size="small"] { width: 1.75rem; height: 1.75rem; font-size: var(--hm-text-small); }
+[data-home] .kit-avatar[data-slot="1"] { --av: var(--graph-1); } [data-home] .kit-avatar[data-slot="2"] { --av: var(--graph-2); }
+[data-home] .kit-avatar[data-slot="3"] { --av: var(--graph-3); } [data-home] .kit-avatar[data-slot="4"] { --av: var(--graph-4); }
+[data-home] .kit-avatar[data-slot="5"] { --av: var(--graph-5); } [data-home] .kit-avatar[data-slot="6"] { --av: var(--graph-6); }
+[data-home] .kit-avatar[data-slot="7"] { --av: var(--graph-7); } [data-home] .kit-avatar[data-slot="8"] { --av: var(--graph-8); }
+
+/* ---- Card */
+[data-home] .kit-card {
+  position: relative; box-sizing: border-box; container-type: inline-size;
+  display: grid; align-items: center; column-gap: var(--hm-space-3); row-gap: var(--hm-space-2);
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--hm-border); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow);
+  transition: border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), box-shadow var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
+}
+[data-home] .kit-card[data-size="large"] { width: var(--hm-card-agent-w); min-height: var(--hm-card-agent-h); padding: var(--hm-space-4); grid-template-columns: 2.75rem 1fr; align-content: start; align-items: start; }
+[data-home] .kit-card[data-size="small"] { width: 100%; min-width: var(--hm-card-small-w); min-height: var(--hm-card-small-h); padding: var(--hm-space-3); grid-template-columns: 2.25rem 1fr; }
+[data-home] .kit-card:hover, [data-home] .kit-card[data-demo="hover"] { border-color: var(--accent-strong); box-shadow: var(--hm-shadow-lift); }
+[data-home] .kit-card[data-selected] { background: var(--accent-soft); border-color: var(--accent-strong); box-shadow: 0 0 0 1px var(--accent-strong), var(--hm-shadow); }
+[data-home] .kit-card:has(.kit-card-main:focus-visible), [data-home] .kit-card[data-demo="focus"] { outline: 3px solid var(--focus); outline-offset: 2px; }
+[data-home] .kit-tile { display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; border-radius: var(--hm-radius-small); background: var(--surface-2); color: var(--accent-strong); border: 1px solid var(--hm-border); }
+[data-home] .kit-card-main {
+  /* The name is the button, and its ::after covers the whole card, so the whole card can be pressed. */
+  all: unset; box-sizing: border-box; display: block; min-width: 0; cursor: pointer; touch-action: manipulation;
+  font-size: var(--hm-text-base); font-weight: 650; line-height: 1.3; color: var(--text); overflow-wrap: anywhere;
+}
+[data-home] .kit-card-main::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+[data-home] .kit-card[data-size="large"] .kit-card-main { align-self: center; }
+[data-home] .kit-card-hint { grid-column: 1 / -1; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+[data-home] .kit-card[data-size="small"] .kit-card-hint { grid-column: 2; }
+[data-home] .kit-card-badge { grid-column: 1 / -1; justify-self: start; position: relative; z-index: 1; max-width: 100%; }
+[data-home] .kit-badge { white-space: nowrap; }
+[data-home] .kit-card-check { position: absolute; top: var(--hm-space-2); right: var(--hm-space-2); display: inline-flex; width: 1.25rem; height: 1.25rem; align-items: center; justify-content: center; border-radius: 50%; background: var(--accent-strong); color: var(--accent-contrast); }
+[data-home] .kit-card[data-size="large"][data-selected] .kit-card-main { padding-right: var(--hm-space-4); }
+@container (min-width: 15rem) {
+  [data-home] .kit-card[data-size="small"] { grid-template-columns: 2.25rem 1fr auto; }
+  [data-home] .kit-card[data-size="small"] .kit-card-badge { grid-column: 3; grid-row: 1; }
+  [data-home] .kit-card[data-size="small"] .kit-card-hint { grid-column: 2 / -1; }
+}
+
+/* ---- Shelf */
+[data-home] .kit-shelf { display: flex; flex-direction: column; gap: var(--hm-space-3); align-items: flex-start; }
+[data-home] .kit-shelf-head { display: flex; align-items: center; gap: var(--hm-space-2); }
+[data-home] .kit-shelf-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--hm-card-small-w), 1fr)); gap: var(--hm-space-3); width: 100%; }
+[data-home] .kit-shelf-list > li { min-width: 0; display: flex; }
+
+/* ---- Help popover */
+[data-home] .kit-help { position: relative; display: inline-flex; }
+[data-home] .kit-popover {
+  position: absolute; z-index: 30; top: calc(100% + var(--hm-space-2)); left: 0; width: 18rem; max-width: 80vw;
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--hm-space-3); padding: var(--hm-space-4);
+  background: var(--surface); color: var(--text); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow-lift);
+}
+[data-home] .kit-help[data-align="end"] .kit-popover { left: auto; right: 0; }
+[data-home] .kit-popover p { margin: 0; font-size: var(--hm-text-base); line-height: 1.5; }
+
+/* ---- Drawer */
+[data-home] .kit-drawer {
+  position: absolute; z-index: 20; top: 0; right: 0; bottom: 0; width: var(--hm-drawer-w); display: flex; flex-direction: column;
+  background: var(--surface); color: var(--text); border-left: 1px solid var(--hm-border); box-shadow: var(--hm-shadow-drawer);
+}
+[data-home] .kit-drawer[data-phase="open"] { animation: kit-drawer-in var(--motion-home-drawer-ms, 0ms) var(--motion-home-drawer-ease, ease-out) both; }
+[data-home] .kit-drawer[data-phase="closing"] { animation: kit-drawer-out var(--motion-panel-close-ms, 0ms) var(--motion-panel-close-ease, ease-in) both; }
+[data-home] .kit-drawer[data-inline] { position: relative; inset: auto; width: 100%; max-width: var(--hm-drawer-w); min-height: 12rem; border: 1px solid var(--hm-border); border-radius: var(--hm-radius); animation: none; box-shadow: var(--hm-shadow); }
+[data-home] .kit-drawer-head { display: flex; align-items: center; justify-content: space-between; gap: var(--hm-space-3); padding: var(--hm-space-4) var(--hm-space-5); border-bottom: 1px solid var(--border); }
+[data-home] .kit-drawer-body { padding: var(--hm-space-5); overflow-y: auto; display: flex; flex-direction: column; gap: var(--hm-space-4); flex: 1; }
+@keyframes kit-drawer-in { from { opacity: 0; transform: translateX(var(--motion-home-drawer-travel, 0px)); } to { opacity: 1; transform: none; } }
+@keyframes kit-drawer-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(var(--motion-home-drawer-travel, 0px)); } }
+
+/* ---- The label that follows the pointer in a drag */
+[data-home] .kit-follow { position: fixed; left: 0; top: 0; z-index: 2000; pointer-events: none; padding: var(--hm-space-2) var(--hm-space-3); background: var(--surface); color: var(--text); border: 1px solid var(--accent-strong); border-radius: var(--hm-radius-small); box-shadow: var(--hm-shadow-lift); font-size: var(--hm-text-small); font-weight: 600; }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-home] *, [data-home] *::before, [data-home] *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

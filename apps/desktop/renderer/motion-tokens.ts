@@ -61,6 +61,16 @@ export const MOTION = Object.freeze({
     /** Jhey: the short settle after a drop. It uses the same ease as `ease.settle`. */
     dropSettle: { ms: 220, ease: 'cubic-bezier(0.34, 1.4, 0.64, 1)' } satisfies Transition,
   }),
+  // The 0.8 home app (storyboard: calm, quiet, fast). Emil rules the drawer and the tour: they start quick and land softly, and the spotlight moves in 160 ms.
+  // Hover reuses `map.hover` (90 ms) and the drawer closes with `panel.close`. With "reduce motion" on every duration and every distance here is 0.
+  home: Object.freeze({
+    /** The side drawer slides in from the right by `distance` pixels as it fades in. */
+    drawer: { ms: 220, ease: 'cubic-bezier(0.23, 1, 0.32, 1)', distance: 24 } satisfies Slide,
+    /** The tour's spotlight and its popover move to the next thing. */
+    tourSpot: { ms: 160, ease: 'cubic-bezier(0.23, 1, 0.32, 1)' } satisfies Transition,
+    /** The tour's dim layer fades in once, when the tour starts. */
+    tourDim: { ms: 160, ease: 'cubic-bezier(0.23, 1, 0.32, 1)' } satisfies Transition,
+  }),
   // Jakub: panels are polished, brief, and slide a short way.
   panel: Object.freeze({ slide: { ms: 220, ease: 'cubic-bezier(0.23, 1, 0.32, 1)', distance: 16 } satisfies Slide, close: { ms: 150, ease: 'cubic-bezier(0.4, 0, 1, 1)' } satisfies Transition }),
   graph: Object.freeze({
@@ -102,7 +112,10 @@ export function applyMotionTokens(root: HTMLElement = document.documentElement):
   const p = MOTION.proto;
   t('setup-reveal', p.setupReveal); set('setup-reveal-stagger', `${ms(p.setupReveal.stagger)}ms`); t('versions', p.versions); t('lasso', p.lasso); t('drop-settle', p.dropSettle);
   // One ease for the shared parts of the app (the navigation, buttons, rows, cards and tabs), which time themselves with --motion-hover-ms.
+  const hm = MOTION.home;
+  t('home-drawer', hm.drawer); t('home-tour-spot', hm.tourSpot); t('home-tour-dim', hm.tourDim);
   set('ease-out', MOTION.ease.out);
+  travel('home-drawer-travel', hm.drawer.distance);
   travel('setup-reveal-travel', p.setupReveal.distance); travel('versions-travel', p.versions.distance);
   set('reduced', prefersReducedMotion() ? '1' : '0');
 }

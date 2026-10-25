@@ -3,6 +3,7 @@
 //   npm --prefix <repo> run desktop           (your own Bowerloom)
 //   npm --prefix <repo> run desktop:sample    (made-up sample data)
 //   npm --prefix <repo> run desktop:prototype (the Bowerloom 0.8 clickable prototype: all in memory, with a temporary data folder)
+//   npm --prefix <repo> run desktop:prototype:v2 (the 0.8 home app, agents first: the same promises)
 // It installs what is missing, builds the app, and opens the window. Pass --build-only to stop before the window.
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -17,8 +18,10 @@ export { makePrototypeDataDir, removePrototypeDataDir };
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const repo = join(desktop, '..', '..');
-const KNOWN = new Set(['--sample-data', '--real-data', '--sandbox', '--prototype', '--build-only']);
-const MODES = new Set(['--sample-data', '--real-data', '--sandbox', '--prototype']);
+const KNOWN = new Set(['--sample-data', '--real-data', '--sandbox', '--prototype', '--prototype-v2', '--build-only']);
+const MODES = new Set(['--sample-data', '--real-data', '--sandbox', '--prototype', '--prototype-v2']);
+// Both prototypes start with a fresh temporary data folder and write nothing else.
+const PROTOTYPES = ['--prototype', '--prototype-v2'];
 
 /**
  * The only environment an install script gets: where to find programs and the person's home, the network settings npm
@@ -113,8 +116,8 @@ function step(text, command, argv, cwd, env) {
 function main() {
   const args = process.argv.slice(2);
   const unknown = args.filter(a => !KNOWN.has(a));
-  if (unknown.length) fail(`I do not know ${unknown.map(a => `"${a}"`).join(', ')}. Use --sample-data to open the sample, --real-data to open your own Bowerloom, --prototype to open the clickable prototype, or --build-only to only build.`, 2);
-  if (args.filter(a => MODES.has(a)).length > 1) fail('Choose one of --sample-data, --real-data, --sandbox and --prototype, not more.', 2);
+  if (unknown.length) fail(`I do not know ${unknown.map(a => `"${a}"`).join(', ')}. Use --sample-data to open the sample, --real-data to open your own Bowerloom, --prototype or --prototype-v2 to open a clickable prototype, or --build-only to only build.`, 2);
+  if (args.filter(a => MODES.has(a)).length > 1) fail('Choose one of --sample-data, --real-data, --sandbox, --prototype and --prototype-v2, not more.', 2);
 
   const npm = npmCommand();
   const clean = installEnv();
@@ -132,7 +135,7 @@ function main() {
   if (electron === null) fail('The app window is not installed. Run the command again.', 1);
   const flags = args.filter(a => MODES.has(a));
   // The prototype starts with a fresh, empty data folder and removes it when the window closes, so it leaves nothing in the real app data.
-  const dataDir = args.includes('--prototype') ? makePrototypeDataDir() : null;
+  const dataDir = PROTOTYPES.some(flag => args.includes(flag)) ? makePrototypeDataDir() : null;
   const child = spawn(electron, electronArgs(desktop, flags, dataDir), { stdio: 'inherit', env: process.env });
   superviseChild(child, { dataDir });
 }
