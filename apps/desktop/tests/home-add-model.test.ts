@@ -9,6 +9,7 @@ import {
   ADD_TABS, agentChoices, agentHas, changeCount, clampWords, entriesFor, installAction, newAgentId, nextTab, plainName, stageAdd, stageInstall, tabOfKey,
 } from '../shared/home/add-model.js';
 import type { AddEntry } from '../shared/home/add-model.js';
+import { ownedAgents } from '../shared/home/cards.js';
 import { addDemoWorld, DEMO } from '../renderer/home/add/add-demo-world.js';
 
 const start = (): StoreState => { const store = createStore(addDemoWorld()); return store.getState(); };
@@ -186,4 +187,17 @@ test('the tabs scale to the real sample world: fifty skills, many ready-made age
   assert.equal(notes.length, world.slices.length);
   for (const e of [...skills, ...agents, ...tools, ...notes]) { assert.ok(countWords(e.hint) <= 12, e.hint); assert.ok(countWords(e.name) <= 5, e.name); assert.ok(e.name.trim() !== ''); }
   assert.equal(new Set(skills.map(e => e.id)).size, skills.length);
+});
+
+test('Add does not offer an agent that was skipped in Find', () => {
+  const entry: AddEntry = { id: 'skill-017', kind: 'skill', name: 'Answer a common question', hint: '', ready: false };
+  const world = generateWorld(1);
+  const ids = ownedAgents(world).map(a => a.id);
+  const all = agentChoices(world, entry);
+  assert.equal(all.length, 10);
+  const hidden = [ids[0]!, ids[5]!];
+  const shown = agentChoices(world, entry, undefined, hidden);
+  assert.equal(shown.length, 8);
+  assert.equal(shown.some(c => hidden.includes(c.id)), false);
+  assert.deepEqual(agentChoices(world, entry, undefined, []).map(c => c.id), all.map(c => c.id));
 });

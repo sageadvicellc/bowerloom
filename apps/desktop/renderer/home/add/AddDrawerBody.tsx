@@ -40,6 +40,8 @@ export interface AddDrawerBodyProps {
   onOpenCopies?(itemId: string): void;
   /** The text of a small shared file, offered as "Try a sample file". Only the Add test page passes it. */
   sampleFile?: string;
+  /** The ids of agents to keep out of the picker and off the drop targets (the agents of a place skipped in Find). */
+  hideAgents?: readonly string[];
   /** False leaves the connect line out. */
   line?: boolean;
   /** Called after a card was added to an agent, or a ready-made agent was copied in (then `agentId` is the new agent). */
@@ -47,8 +49,9 @@ export interface AddDrawerBodyProps {
 }
 
 interface Note { readonly text: string; readonly key: number }
+const NO_HIDDEN: readonly string[] = Object.freeze([]);
 
-export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT_TAB, onOpenCopies, sampleFile, line: withLine = true, onAdded }: AddDrawerBodyProps): ReactElement {
+export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT_TAB, onOpenCopies, sampleFile, hideAgents = NO_HIDDEN, line: withLine = true, onAdded }: AddDrawerBodyProps): ReactElement {
   const { state, dispatch } = useProtoStore();
   const world = state.draft;
   const [tab, setTab] = useState<AddTab>(initialTab);
@@ -97,7 +100,7 @@ export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT
     onDrop: (id, agentId) => {
       const entry = byId.get(id);
       if (entry === undefined) return;
-      const agent = agentChoices(world, entry, nameOf).find(c => c.id === agentId);
+      const agent = agentChoices(world, entry, nameOf, hideAgents).find(c => c.id === agentId);
       if (agent !== undefined) addTo(entry, agent, rowOf(id));
     },
     onMiss: () => say(H.dropMiss),
@@ -148,7 +151,7 @@ export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT
             {entries.length === 0 ? <p className="kit-hint">{H.nothingHere}</p> : (
               <ul className="add-list">
                 {entries.slice(0, shown).map(entry => (
-                  <AddRow key={entry.id} entry={entry} choices={entry.kind === 'agent' ? [] : agentChoices(world, entry, nameOf)} open={openId === entry.id}
+                  <AddRow key={entry.id} entry={entry} choices={entry.kind === 'agent' ? [] : agentChoices(world, entry, nameOf, hideAgents)} open={openId === entry.id}
                     onToggle={() => setOpenId(current => (current === entry.id ? null : entry.id))}
                     onPick={(choice, row) => { setOpenId(null); addTo(entry, choice, row); }}
                     onInstall={row => install(entry, row)}

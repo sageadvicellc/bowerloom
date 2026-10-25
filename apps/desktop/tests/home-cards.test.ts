@@ -60,7 +60,7 @@ test('shelvesOf gives the skills, the tools and the notes of one agent, with hoo
   const shelves = shelvesOf({ ...w, slices: [{ id: 'sl', name: 'Daily notes', seeds: [], rule: { folders: [], pageTypesAndTags: { types: [], tags: [] }, linksFromSeeds: null }, pinned: false }] }, a1);
   assert.deepEqual(shelves.skills.map(e => e.name), ['Review', 'Plan']);
   assert.deepEqual(shelves.tools.map(e => [e.name, e.badge?.label ?? null]), [['Search', 'needs a key'], ['Summarize', null]], 'the hook is not shown, an unknown skill is left out');
-  assert.deepEqual(shelves.notes.map(e => e.name), ['Daily Notes']);
+  assert.deepEqual(shelves.notes.map(e => e.name), ['Daily notes']);
   assert.ok(shelves.skills.every(e => e.kind === 'skill') && shelves.tools.every(e => e.kind === 'tool') && shelves.notes.every(e => e.kind === 'note'));
   const bare = shelvesOf(w, { ...a1, definition: { ...a1.definition, skillIds: [], toolAttachments: [], sliceId: undefined as never } });
   assert.deepEqual([bare.skills, bare.tools, bare.notes], [[], [], []]);

@@ -9,8 +9,11 @@
  * an add the agent is picked, so its shelf shows the new card, both the agent card and the new card wear the same ring for a few seconds (a line across
  * the map would cross other cards), and the Save bar says what changed. The
  * "2 different copies" badge on a shelf card or a drawer card opens the copies dialog, which sits at the top of the page. The Save points drawer lists the
- * save points with "Go back to this". With the Add or Save points drawer open the page keeps clear of it: the shelves stay beside the map in a wide window and
- * give way to the drawer in a narrow one. Escape closes the top layer only: the tour, then the dialog, then a drawer.
+ * save points with "Go back to this". The Notes shelf has a "Choose notes" button that opens the full-window Choose notes sheet for the agent that is picked; "Use these
+ * notes" stages one change, picks the agent and rings the new card like an add does. With the Add or Save points drawer open the page keeps clear of it: the
+ * shelves stay beside the map in a wide window and give way to the drawer in a narrow one. Escape closes the top layer only: the tour, then the copies
+ * dialog, then the Choose notes sheet, then a drawer (the sheet closes a drawer when it opens, and the tour closes both when it starts).
+ * The Add picker and the drop targets leave out the agents that Find skipped, like the map.
  * The first minute (HomeFlow) sets four things from outside: the agents of places the person skipped in Find stay off the map (`skipped`), the tour starts by
  * itself once when `autoTour` is set, "Find more" reopens Find (`onFindMore`), and `closingNote` allows one short note after the first Save, once per session.
  * The tour's second step waits for a real click on an agent: that click is the step's action.
@@ -31,6 +34,8 @@ import { useProtoStore } from '../proto/session.js';
 import { AddDrawerBody } from './add/AddDrawerBody.js';
 import { dropTargetFor } from './add/dom-helpers.js';
 import { CopiesDialog } from './copies/CopiesDialog.js';
+import { ChooseNotes } from './notes/ChooseNotes.js';
+import { NotesShelf } from './notes/NotesShelf.js';
 import { SavePoints } from './points/SavePoints.js';
 import { Button } from './kit/Button.js';
 import { Drawer } from './kit/Drawer.js';
@@ -53,7 +58,7 @@ import './home.css';
 type DrawerId = 'add' | 'points';
 
 /** What was just added, so the page can show where it went: an agent and the card on its shelf (or the agent card itself, for a ready-made agent). */
-interface Fresh { readonly agentId: string; readonly entryId: string | null }
+interface Fresh { readonly agentId: string; readonly entryId: string | null; /** True when the new card is the agent's set of notes, whose id is not known until the choice is saved. */ readonly notes?: boolean }
 /** How long the "just added" mark stays, in milliseconds. */
 const FRESH_MS = 5000;
 
@@ -97,10 +102,12 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   const [copiesFor, setCopiesFor] = useState<string | null>(null);
   const [fresh, setFresh] = useState<Fresh | null>(null);
   const [note, setNote] = useState(false);
+  const [choosing, setChoosing] = useState(false);
   const [tour, tourDo] = useReducer(tourReduce, TOUR_STEPS, createTour);
   const panel = useRef<HTMLElement>(null);
   const focusAfter = useRef<FocusAfter | null>(null);
   const copiesFrom = useRef('.hm-panel');
+  const chooseFrom = useRef<HTMLElement | null>(null);
 
   const world = state.draft;
   const owned = useMemo(() => ownedAgents(world).filter(a => !skipped.includes(a.id)), [world, skipped]);
@@ -115,6 +122,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   const pointRows = useMemo(() => (drawer === 'points' ? savePointRows(state.committed, nameOf) : []), [drawer, state.committed, nameOf]);
   const ticks = SAVE_TARGETS.filter(t => state.draft.interfaces.some(i => i.id === t.id && i.installed === 'installed')).map(t => t.name);
   const stepId = currentStep(tour)?.id ?? null;
+  const freshNotes = fresh !== null && fresh.notes === true && fresh.agentId === picked ? (shelves?.notes[0]?.id ?? null) : null;
 
   useEffect(() => { document.title = WORDS.label.appName; }, []);
   // The tour runs by itself once in a session, when the first minute asks for it. After that only the Help button runs it.
@@ -142,19 +150,40 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
     (cards[Math.min(after.index, cards.length - 1)] ?? heading)?.focus();
   });
 
-  // The tour dims the page and points at the bar, so a drawer that is open would only get in its way: it closes when the tour starts.
-  useEffect(() => { if (tour.status === 'running') setDrawer(null); }, [tour.status]);
+  // The tour dims the page and points at the bar, so a drawer or the Choose notes sheet that is open would only get in its way: they close when the tour starts.
+  useEffect(() => { if (tour.status === 'running') { setDrawer(null); setChoosing(false); } }, [tour.status]);
+  // When the Choose notes sheet closes, the focus goes back to the button that opened it. A drawer that closed to make room would otherwise take it to its own button.
+  useEffect(() => {
+    if (choosing || chooseFrom.current === null) return;
+    const back = chooseFrom.current;
+    chooseFrom.current = null;
+    if (back.isConnected) back.focus();
+  }, [choosing]);
   // The mark for a card that was just added goes by itself, and the card is brought into view.
   useEffect(() => {
     if (fresh === null) return undefined;
     dropTargetFor(fresh.agentId)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     if (fresh.entryId !== null) panel.current?.querySelector<HTMLElement>(`[data-entry="${CSS.escape(fresh.entryId)}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    else if (fresh.notes === true) panel.current?.querySelector<HTMLElement>('[data-notes-shelf] [data-entry]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     const timer = window.setTimeout(() => setFresh(null), FRESH_MS);
     return () => window.clearTimeout(timer);
     // The drawer is a dependency so that, in a window where it hides the shelves, closing it brings the new card into view.
   }, [fresh, drawer]);
 
   const toggle = (id: DrawerId): void => setDrawer(current => (current === id ? null : id));
+  /** Opens the Choose notes sheet for the agent that is picked. A drawer that is open closes first, so Escape closes one layer at a time. */
+  const choose = (): void => {
+    chooseFrom.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setDrawer(null);
+    setChoosing(true);
+  };
+  /** "Use these notes" staged a change: pick that agent, move it up the recent order, and ring the new card on its Notes shelf, as an add does. */
+  const chosen = (agentId: string): void => {
+    setPicked(agentId);
+    setPickedItem(null);
+    setTouched(current => touch(current, agentId));
+    setFresh({ agentId, entryId: null, notes: true });
+  };
   const pick = (id: string): void => { setPicked(current => (current === id ? null : id)); setPickedItem(null); setFresh(null); tourDo('acted'); };
   /** A card went to an agent (or a ready-made agent was copied in): pick that agent, so its shelf shows the new card. */
   const added = ({ agentId, entry }: { readonly agentId: string; readonly entry: { readonly id: string; readonly kind: string } }): void => {
@@ -243,15 +272,16 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
           </div>
           <Shelf title={WORDS.label.skills} entries={shelves?.skills ?? []} selectedId={pickedItem} onSelect={setPickedItem} onRemove={remove} onBadgePress={entry => openCopies(entry.id)} freshId={freshOf(fresh, picked)} emptyText={WORDS.hint.emptyShelf} />
           <Shelf title={WORDS.label.tools} entries={shelves?.tools ?? []} selectedId={pickedItem} onSelect={setPickedItem} onRemove={remove} onBadgePress={entry => openCopies(entry.id)} freshId={freshOf(fresh, picked)} emptyText={WORDS.hint.emptyShelf} help={{ label: WORDS.label.aboutTools, text: WORDS.popover.connection }} />
-          <Shelf title={WORDS.label.notes} entries={shelves?.notes ?? []} selectedId={pickedItem} onSelect={setPickedItem} onRemove={remove} freshId={freshOf(fresh, picked)} emptyText={WORDS.hint.emptyShelf} />
+          <NotesShelf entries={shelves?.notes ?? []} selectedId={pickedItem} onSelect={setPickedItem} onRemove={remove} freshId={freshNotes} canChoose={agent !== null} onChoose={choose} />
         </aside>
 
         <Drawer open={drawer === 'add'} title={WORDS.label.addDrawer} onClose={() => setDrawer(null)} dataSlot="add">
-          <AddDrawerBody nameOf={nameOf} hintOf={plainHintOf} onOpenCopies={openCopies} line={false} onAdded={added} />
+          <AddDrawerBody nameOf={nameOf} hintOf={plainHintOf} onOpenCopies={openCopies} line={false} onAdded={added} hideAgents={skipped} />
         </Drawer>
         <Drawer open={drawer === 'points'} title={WORDS.label.savePoints} onClose={() => setDrawer(null)} dataSlot="points">
           <SavePoints rows={pointRows} unsaved={changes > 0} onGoBack={id => goBackTo(id, false)} />
         </Drawer>
+        <ChooseNotes open={choosing} agentId={picked} onClose={() => setChoosing(false)} onChosen={chosen} />
       </div>
 
       {closingNote ? <div className="hm-toast" role="status" data-open={note ? '' : undefined}>{note ? <><KitIcon name="check" size={20} /><span>{FIND_WORDS.hint.closingNote}</span></> : null}</div> : null}

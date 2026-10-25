@@ -40,7 +40,7 @@ test('that is ONE change on the Save bar, and the bar says what it is', () => {
   const s = choose(fresh(), 'agent-05', on('Clients'));
   assert.equal(changeCount(s.committed, s.draft), 1);
   assert.equal(listChanges(s.committed, s.draft).length, 1);
-  assert.equal(barSentence(listChanges(s.committed, s.draft), 1), 'Added Report Builder Notes to Report builder');
+  assert.equal(barSentence(listChanges(s.committed, s.draft), 1), 'Added Report builder notes to Report builder');
   assert.deepEqual([...absorbedSlices(s.committed, s.draft)], [sliceOf(s.draft, 'agent-05')!.id]);
 });
 
@@ -85,7 +85,7 @@ test('an agent that shares its set gets a set of its own; the other agent keeps 
   assert.equal(agent(s.draft, 'agent-04').definition.sliceId, shared);
   assert.deepEqual(s.draft.slices.find(x => x.id === shared), base.slices.find(x => x.id === shared), 'the shared set is not touched');
   assert.equal(changeCount(s.committed, s.draft), 1);
-  assert.equal(barSentence(listChanges(s.committed, s.draft), 1), 'Added Meeting Assistant Notes to Meeting assistant');
+  assert.equal(barSentence(listChanges(s.committed, s.draft), 1), 'Added Meeting assistant notes to Meeting assistant');
 });
 
 test('hand picks and left-out parts are kept in the set (seeds and folders)', () => {

@@ -36,6 +36,16 @@ export function itemTitle(name: string): string {
 /** The title of an agent card. */
 export const agentTitle = itemTitle;
 
+/**
+ * A name as a person reads it. A name that already has a space or a capital letter is left as it is ("Report builder notes"), at most 5 words; a file-style
+ * name ("velvet-weaver") becomes words. A "(imported)" mark that a shared file adds to a name reads "(from file)".
+ */
+export function readableName(name: string): string {
+  const marked = name.trim().replace(/\(imported( \d+)?\)/g, '(from file$1)');
+  if (/[\sA-Z]/.test(marked)) return marked.split(/\s+/).slice(0, MAX_NAME_WORDS).join(' ');
+  return itemTitle(marked);
+}
+
 const count = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`;
 
 /** One plain line for an agent card: its role and what it has. */
@@ -81,7 +91,7 @@ const FALLBACK_HINT: Readonly<Record<ShelfEntry['kind'], string>> = Object.freez
 /** The name and the hint of a card: the plain ones when the sample knows the id, else the item's own name and a plain line for its kind. */
 function wordsOf(kind: ShelfEntry['kind'], id: string, name: string): { name: string; hint: string } {
   const plain = plainOf(kind, id);
-  return plain === null ? { name: itemTitle(name), hint: FALLBACK_HINT[kind] } : { name: plain.name, hint: plain.hint };
+  return plain === null ? { name: readableName(name), hint: FALLBACK_HINT[kind] } : { name: plain.name, hint: plain.hint };
 }
 
 const entryOf = (item: HarnessItem, kind: ShelfEntry['kind']): ShelfEntry => {

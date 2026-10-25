@@ -5,7 +5,7 @@ import { generateWorld } from '../shared/proto/sample.js';
 import { describeRule, matchPages } from '../shared/proto/slicerule.js';
 import type { SliceRule } from '../shared/proto/types.js';
 import {
-  EMPTY_SELECTION, NO_OTHER, addsOf, clearHand, isEmpty, keptCount, makeBasis, matchedOf, previewOf, ruleLines, sameSelection, selectionFromSlice, toChoice, toggleHand, toggleKeep, toggleLeaveOut, toggleTopic, topicCount,
+  EMPTY_SELECTION, NO_OTHER, addsOf, clearHand, isEmpty, keptCount, makeBasis, matchedOf, previewOf, ruleLines, sizeOf, sameSelection, selectionFromSlice, toChoice, toggleHand, toggleKeep, toggleLeaveOut, toggleTopic, topicCount,
 } from '../shared/home/notes-model.js';
 import type { Selection } from '../shared/home/notes-model.js';
 import { countWords } from '../shared/home/textbudget.js';
@@ -20,7 +20,7 @@ test('nothing switched on picks nothing, and says so', () => {
   const { rule, seeds } = toChoice(EMPTY_SELECTION, basis);
   assert.deepEqual([rule.folders, rule.pageTypesAndTags, rule.linksFromSeeds, seeds], [[], { types: [], tags: [] }, null, []]);
   assert.equal(previewOf(EMPTY_SELECTION, basis).count, 0);
-  assert.equal(previewOf(EMPTY_SELECTION, basis).pages, 0);
+  assert.equal(previewOf(EMPTY_SELECTION, basis).size, 'none');
   assert.deepEqual(ruleLines(EMPTY_SELECTION, basis), []);
 });
 
@@ -148,9 +148,19 @@ test('the preview lists the newest topic first, then single picks', () => {
   assert.ok(notes.every(n => n.title !== ''));
 });
 
-test('the size line: about how many pages the agent keeps in mind grows with the notes and is never 0 for a non-empty choice', () => {
-  const small = previewOf(on('Travel'), basis).pages, big = previewOf(on('Work', 'Meetings', 'Research'), basis).pages, all = previewOf(basis.topics.reduce(toggleTopic, EMPTY_SELECTION), basis);
-  assert.ok(small >= 1 && big > small && all.pages >= big);
+test('the size step follows the count: none, small, medium, big, then all; 203 of 700 is a medium set, not a near-constant number', () => {
+  const size = (...names: string[]) => previewOf(on(...names), basis).size;
+  assert.equal(size(), 'none');
+  assert.equal(size('Travel'), 'small');                         // 55 of 700
+  assert.equal(size('Work', 'Meetings'), 'medium');              // 257 of 700
+  assert.equal(size('Work', 'Meetings', 'Research', 'Clients'), 'big');
+  assert.equal(previewOf(basis.topics.reduce(toggleTopic, EMPTY_SELECTION), basis).size, 'all');
+  // The edges: the step changes at 15 and at 50 percent, and never goes down as notes are added.
+  assert.deepEqual([sizeOf(0, 700), sizeOf(105, 700), sizeOf(106, 700), sizeOf(350, 700), sizeOf(351, 700), sizeOf(700, 700), sizeOf(5, 0)], ['none', 'small', 'medium', 'medium', 'big', 'all', 'none']);
+  const order = ['none', 'small', 'medium', 'big', 'all'];
+  let last = 0;
+  for (let n = 0; n <= 700; n += 7) { const at = order.indexOf(sizeOf(n, 700)); assert.ok(at >= last, `${n}`); last = at; }
+  const all = previewOf(basis.topics.reduce(toggleTopic, EMPTY_SELECTION), basis);
   assert.equal(all.count, 700);
   assert.equal(all.share, 1);
 });

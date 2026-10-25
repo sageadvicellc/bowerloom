@@ -1,12 +1,12 @@
 /**
- * The live preview: how many notes the agent will read out of all of them, a plain bar, one line about how much it keeps in mind, the choice in plain
+ * The live preview: how many notes the agent will read out of all of them, a plain bar, one plain label for how big the choice is (a small, medium or big set), the choice in plain
  * words, and the first eight note titles with "Show more". It only shows. Nothing here changes the choice.
  */
 import { useId, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { Preview } from '../../../shared/home/notes-model.js';
 import { Button } from '../kit/Button.js';
-import { NOTES_WORDS, READ_LEAD, keepsInMind, ofTotal } from './notes-words.js';
+import { NOTES_WORDS, READ_LEAD, ofTotal, sizeLine } from './notes-words.js';
 
 const L = NOTES_WORDS.label, H = NOTES_WORDS.hint;
 /** How many titles show before "Show more". */
@@ -24,7 +24,7 @@ export function PreviewPanel({ preview, lines }: { preview: Preview; lines: read
         <span className="nt-big-line"><span className="nt-num">{preview.count}</span>{' '}<span className="nt-of">{ofTotal(preview.total)}</span></span>
         </p>
         <meter className="nt-share" aria-label={L.shareBar} min={0} max={Math.max(1, preview.total)} value={preview.count} />
-        <p className="kit-hint nt-cost">{keepsInMind(preview.pages)}</p>
+        <p className="kit-hint nt-cost">{sizeLine(preview.size)}</p>
       </div>
       <div className="nt-details">
         <h3 className="kit-heading nt-sub">{L.included}</h3>

@@ -4,6 +4,7 @@
  * markup of every part to those rules. A screen takes its words from here and nowhere else. Words the shell already has (Notes, Show more, Close) come
  * from `WORDS`, so each stays one word in one place. No word here says "slice", "token" or "folder": a person picks notes, and notes sit in topics.
  */
+import type { SizeBand } from '../../../shared/home/notes-model.js';
 import { WORDS } from '../words.js';
 
 const deepFreeze = <T extends object>(value: T): T => {
@@ -59,7 +60,6 @@ export const NOTES_WORDS = deepFreeze({
 });
 
 const noun = (n: number): string => (n === 1 ? 'note' : 'notes');
-const pages = (n: number): string => (n === 1 ? 'page' : 'pages');
 
 /** "86 notes" or "1 note". */
 export const notesCount = (n: number): string => `${n} ${noun(n)}`;
@@ -73,8 +73,9 @@ export const READ_LEAD = 'This agent will read';
 export const ofTotal = (total: number): string => `of ${total} ${noun(total)}`;
 /** The whole sentence, as a screen reader hears it: "This agent will read 214 of 700 notes". */
 export const willRead = (n: number, total: number): string => `${READ_LEAD} ${n} ${ofTotal(total)}`;
-/** "Keeps about 40 pages in mind at once." The pages are a rough size, so the line says "about". */
-export const keepsInMind = (n: number): string => (n === 0 ? 'It keeps nothing in mind.' : `Keeps about ${n} ${pages(n)} in mind at once.`);
+/** The plain label under the bar: how big the choice is next to all the notes. It follows the count, and it names no figure that cannot be checked. */
+export const SIZE_LINE: Readonly<Record<SizeBand, string>> = Object.freeze({ none: 'No notes yet', small: 'A small set', medium: 'A medium set', big: 'A big set', all: 'Every note you have' });
+export const sizeLine = (band: SizeBand): string => SIZE_LINE[band];
 /** "Clients added. 86 more notes." */
 export const topicAdded = (name: string, adds: number): string => `${name} added. ${adds} more ${noun(adds)}.`;
 /** "Clients removed." */

@@ -5,7 +5,7 @@
  */
 import type { AgentItem, HarnessItem, World } from '../proto/types.js';
 import { distinctTexts } from '../proto/conflicts.js';
-import { agentCard, itemTitle } from './cards.js';
+import { agentCard, itemTitle, readableName } from './cards.js';
 import { absorbedSlices, isAbsorbedItem } from './notes-actions.js';
 import { plainOf } from './plain.js';
 import { countWords } from './textbudget.js';
@@ -24,7 +24,7 @@ const nameOfItem = (item: HarnessItem): string => {
   if (item.kind === 'skill' || item.kind === 'tool') return plainOf(item.kind, item.id)?.name ?? itemTitle(item.name);
   return itemTitle(item.name);
 };
-const noteName = (world: World, sliceId: string): string => plainOf('note', sliceId)?.name ?? itemTitle(world.slices.find(s => s.id === sliceId)?.name ?? '');
+const noteName = (world: World, sliceId: string): string => plainOf('note', sliceId)?.name ?? readableName(world.slices.find(s => s.id === sliceId)?.name ?? '');
 const skillName = (world: World, id: string): string => { const item = world.items.find(i => i.id === id); return item === undefined ? itemTitle(id) : nameOfItem(item); };
 
 function agentChanges(committed: World, draft: World, before: AgentItem, after: AgentItem): Change[] {

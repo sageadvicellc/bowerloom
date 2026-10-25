@@ -101,9 +101,13 @@ test('switching topics on and off changes the count and the preview at once', as
   await topic('Clients').click();
   expect(await count()).toBe(0);
   await expect(layer().getByRole('button', { name: 'Use these notes' })).toBeDisabled();
-  // The size line says what it keeps in mind, in pages.
+  // The size label follows the count: 114 of 700 is a medium set, and every topic together is all of them.
   await topic('Meetings').click();
-  await expect(layer().locator('.nt-cost')).toHaveText(/^Keeps about \d+ pages? in mind at once\.$/);
+  await expect(layer().locator('.nt-cost')).toHaveText('A medium set');
+  await topic('Travel').click();
+  await expect(layer().locator('.nt-cost')).toHaveText('A medium set');
+  for (const name of ['Work', 'Research', 'Clients', 'Writing', 'Money', 'Company']) await topic(name).click();
+  await expect(layer().locator('.nt-cost')).toHaveText('Every note you have');
 });
 
 test('the preview lists the first eight titles, "Show more" opens the rest, and "Show less" folds them back', async () => {
@@ -209,8 +213,8 @@ test('"Use these notes" stages ONE change: the layer closes, the shelf shows the
   await expect(layer()).toHaveCount(0);
   await expect(chooseButton()).toBeFocused();
   await expect(shelfCards()).toHaveCount(1);
-  await expect(shelfCards().first().locator('.kit-card-main')).toHaveText('Report Builder Notes');
-  await expect(barText()).toHaveText('Added Report Builder Notes to Report builder');
+  await expect(shelfCards().first().locator('.kit-card-main')).toHaveText('Report builder notes');
+  await expect(barText()).toHaveText('Added Report builder notes to Report builder');
   await expect(shelfCards().first()).toHaveAttribute('data-fresh', '');
   // Opening it again shows what was chosen.
   await chooseButton().click();
@@ -224,7 +228,7 @@ test('"Use these notes" stages ONE change: the layer closes, the shelf shows the
   // Choose differently: still one change, the same set.
   await topic('Travel').click();
   await layer().getByRole('button', { name: 'Use these notes' }).click();
-  await expect(barText()).toHaveText('Added Report Builder Notes to Report builder');
+  await expect(barText()).toHaveText('Added Report builder notes to Report builder');
   await expect(shelfCards()).toHaveCount(1);
   // Save, and it is one save point; then it reads as saved.
   await bar().getByRole('button', { name: 'Save' }).click();
@@ -279,11 +283,11 @@ test('an agent that already reads notes opens on them; "Use these notes" waits f
   await topic('Money').click();
   expect(await count()).toBe(before + 69);
   await layer().getByRole('button', { name: 'Use these notes' }).click();
-  await expect(barText()).toHaveText('Added Meeting Assistant Notes to Meeting assistant');
+  await expect(barText()).toHaveText('Added Meeting assistant notes to Meeting assistant');
   await pickAgent('Inbox sorter');
   await expect(shelfCards().first().locator('.kit-card-main')).toHaveText('Client list');
   await pickAgent('Meeting assistant');
-  await expect(shelfCards().first().locator('.kit-card-main')).toHaveText('Meeting Assistant Notes');
+  await expect(shelfCards().first().locator('.kit-card-main')).toHaveText('Meeting assistant notes');
 });
 
 test('notes that were chosen another way show as "Kept from before", and can be dropped', async () => {
@@ -352,7 +356,7 @@ test('keyboard only: open the layer, switch a topic on, leave a part out, pick b
   await p.keyboard.press('Enter');
   await expect(layer()).toHaveCount(0);
   await expect(chooseButton()).toBeFocused();
-  await expect(barText()).toHaveText('Added Report Builder Notes to Report builder');
+  await expect(barText()).toHaveText('Added Report builder notes to Report builder');
   await p.keyboard.press('Enter');
   await expect(layer()).toBeVisible();
   await p.keyboard.press('Escape');

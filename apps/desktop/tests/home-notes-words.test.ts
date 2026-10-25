@@ -13,7 +13,7 @@ import { NotesShelf } from '../renderer/home/notes/NotesShelf.js';
 import { PreviewPanel } from '../renderer/home/notes/PreviewPanel.js';
 import { NOTES_HASH } from '../renderer/home/notes/route.js';
 import {
-  NOTES_WORDS, keepsInMind, keptHint, leaveOutGroup, leaveOutOf, notesCount, ofTotal, partBackIn, partLeftOut, partOfTopic, pickedByHand, topicAdded, topicRemoved, topicTab, willRead,
+  NOTES_WORDS, SIZE_LINE, keptHint, leaveOutGroup, leaveOutOf, notesCount, ofTotal, partBackIn, partLeftOut, partOfTopic, pickedByHand, sizeLine, topicAdded, topicRemoved, topicTab, willRead,
 } from '../renderer/home/notes/notes-words.js';
 import { ProtoProvider } from '../renderer/proto/session.js';
 import { generateWorld } from '../shared/proto/sample.js';
@@ -56,7 +56,7 @@ test('the words of the layer are the ones the brief asks for', () => {
   assert.equal(NOTES_WORDS.hint.intro, 'Pick the notes this agent can read.');
   assert.ok(countWords(NOTES_WORDS.hint.intro) <= 12);
   assert.equal(willRead(214, 700), 'This agent will read 214 of 700 notes');
-  assert.equal(keepsInMind(40), 'Keeps about 40 pages in mind at once.');
+  assert.deepEqual([sizeLine('small'), sizeLine('medium'), sizeLine('big')], ['A small set', 'A medium set', 'A big set']);
   assert.equal(NOTES_HASH, '#prototype-v2/notes');
 });
 
@@ -67,13 +67,12 @@ test('the group a string sits in is the budget it is checked against, as markup'
 
 test('the words built from numbers and names stay inside the budget, even with five-word names', () => {
   const built = [
-    notesCount(0), keptHint(263), notesCount(1), notesCount(700), partOfTopic(52, 86), willRead(0, 700), willRead(1, 1), willRead(700, 700), ofTotal(1), keepsInMind(0), keepsInMind(1), keepsInMind(31),
+    notesCount(0), keptHint(263), notesCount(1), notesCount(700), partOfTopic(52, 86), willRead(0, 700), willRead(1, 1), willRead(700, 700), ofTotal(1), ...Object.values(SIZE_LINE),
     topicAdded(FIVE, 1), topicAdded('Clients', 143), topicRemoved(FIVE), partLeftOut(FIVE), partBackIn(FIVE), pickedByHand(0), pickedByHand(120), topicTab(FIVE, 12),
   ];
   for (const text of built) { assert.ok(countWords(text) <= LIMITS.hint, text); assert.equal(bannedIn(text), null, text); assert.deepEqual(assertTextBudget(`<p>${text}</p>`), [], text); }
   for (const text of [leaveOutOf('Packing lists'), leaveOutOf('One to one'), leaveOutGroup('Clients')]) assert.ok(countWords(text) <= LIMITS.label, text);
   assert.equal(notesCount(1), '1 note');
-  assert.equal(keepsInMind(1), 'Keeps about 1 page in mind at once.');
   assert.equal(topicTab('Clients', 2), 'Clients, 2 picked');
 });
 

@@ -7,7 +7,7 @@
  * Pure: no React, no DOM, no clock, no random number. Nothing here changes its input.
  */
 import type { SliceRule, Slice, WikiPage } from '../proto/types.js';
-import { estimateMapTokens, memoMatch } from '../proto/slice-preview.js';
+import { memoMatch } from '../proto/slice-preview.js';
 import { matchPages } from '../proto/slicerule.js';
 import { joinWords } from '../proto/words.js';
 import { buildTopics, partOf, plainTitles, topicOf } from './notes-topics.js';
@@ -158,17 +158,31 @@ export interface Preview {
   readonly total: number;
   /** The share of all notes, 0 to 1. */
   readonly share: number;
-  /** About how many pages of reading the agent keeps in mind at once. 0 when it reads nothing. */
-  readonly pages: number;
+  /** How big the choice is next to all the notes, in four plain steps. */
+  readonly size: SizeBand;
   readonly notes: readonly PreviewNote[];
 }
 
-/** About how many tokens one page of reading holds. The estimate in the preview is only a rough guide. */
-export const PAGE_SIZE = 500;
+/** How big a choice is, in plain steps: nothing, a small set, a medium set, a big set, or all the notes. */
+export type SizeBand = 'none' | 'small' | 'medium' | 'big' | 'all';
+
+/** The share of all notes up to which a choice is "small", and up to which it is "medium". Past the second it is "big". */
+export const SMALL_UP_TO = 0.15, MEDIUM_UP_TO = 0.5;
+
+/**
+ * The step a choice falls in, from how many notes it picks out of all of them. It follows the count, so it grows as notes are added. There is no honest
+ * number for "how much an agent keeps in mind", so the preview says a step in plain words instead of a made-up figure.
+ */
+export function sizeOf(count: number, total: number): SizeBand {
+  if (count <= 0 || total <= 0) return 'none';
+  if (count >= total) return 'all';
+  const share = count / total;
+  return share <= SMALL_UP_TO ? 'small' : share <= MEDIUM_UP_TO ? 'medium' : 'big';
+}
 
 /**
  * The preview of a selection. The notes come newest-topic first (so a click shows its effect at the top), then single picks, then the kept set.
- * `pages` is the size of the list the agent keeps in mind (a title and one line for each note), in pages of reading.
+ * `size` is the plain step of the choice (see `sizeOf`).
  */
 export function previewOf(sel: Selection, basis: Basis): Preview {
   const matched = matchedOf(sel, basis), total = basis.pages.length;
@@ -184,8 +198,7 @@ export function previewOf(sel: Selection, basis: Basis): Preview {
     const topic = topicOf(basis.topics, p);
     return { id: p.id, title: basis.titles.get(p.id) ?? p.title, place: topic === undefined ? '' : topic.name };
   });
-  const tokens = estimateMapTokens(chosen);
-  return { count: chosen.length, total, share: total === 0 ? 0 : chosen.length / total, pages: chosen.length === 0 ? 0 : Math.max(1, Math.round(tokens / PAGE_SIZE)), notes };
+  return { count: chosen.length, total, share: total === 0 ? 0 : chosen.length / total, size: sizeOf(chosen.length, total), notes };
 }
 
 const RULE_WORDS = 12;

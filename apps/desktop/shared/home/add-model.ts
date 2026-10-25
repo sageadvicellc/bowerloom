@@ -9,7 +9,7 @@ import { reduceStore } from '../proto/store.js';
 import type { StoreAction, StoreState } from '../proto/store.js';
 import { globalScope } from '../proto/common.js';
 import { editCount } from '../proto/plan.js';
-import { agentHint, itemBadge, itemTitle, ownedAgents } from './cards.js';
+import { agentHint, itemBadge, ownedAgents, readableName } from './cards.js';
 import type { CardBadge } from './cards.js';
 
 export type AddTab = 'skills' | 'tools' | 'notes' | 'agents' | 'file';
@@ -42,7 +42,6 @@ export const ADD_MODEL_WORDS = Object.freeze({
   readyMade: 'Ready-made',
 });
 
-const MAX_NAME_WORDS = 5;
 const MAX_HINT_WORDS = 12;
 
 /**
@@ -50,9 +49,7 @@ const MAX_HINT_WORDS = 12;
  * ("velvet-weaver") becomes words. A "(imported)" mark that a shared file adds to a name reads "(from file)". At most 5 words.
  */
 export function plainName(name: string): string {
-  const marked = name.trim().replace(/\(imported( \d+)?\)/g, '(from file$1)');
-  if (/[\sA-Z]/.test(marked)) return marked.split(/\s+/).slice(0, MAX_NAME_WORDS).join(' ');
-  return itemTitle(marked);
+  return readableName(name);
 }
 
 /** How a name is turned into words on a card. A screen can swap this for a layer that maps made-up names to plain ones. */
@@ -121,9 +118,12 @@ export function agentHas(world: World, agentId: string, entry: AddEntry): boolea
 /** One agent in the picker: who it is and whether it already has the thing. */
 export interface AgentChoice { readonly id: string; readonly name: string; readonly has: boolean }
 
-/** The agents a card can be added to: the ones the person owns, in name order. A ready-made agent is never a target. */
-export function agentChoices(world: World, entry: AddEntry, nameOf: NameOf = plainName): AgentChoice[] {
-  return ownedAgents(world).map(a => ({ id: a.id, name: nameOf(a.name), has: agentHas(world, a.id, entry) })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+/**
+ * The agents a card can be added to: the ones the person owns, in name order. A ready-made agent is never a target. An agent in `hidden` is left out: the
+ * map keeps off the agents of a place the person skipped in Find, so the picker must not offer an agent that the person cannot see.
+ */
+export function agentChoices(world: World, entry: AddEntry, nameOf: NameOf = plainName, hidden: readonly string[] = []): AgentChoice[] {
+  return ownedAgents(world).filter(a => !hidden.includes(a.id)).map(a => ({ id: a.id, name: nameOf(a.name), has: agentHas(world, a.id, entry) })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 }
 
 /** The store action that adds a skill, tool or note set to an agent. A tool joins with the access "can only read". Null for a ready-made agent. */
