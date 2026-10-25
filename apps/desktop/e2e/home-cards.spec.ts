@@ -58,15 +58,15 @@ test.beforeEach(async () => {
 });
 
 // ---- The agent card says what the agent can do, without a click.
-test('every agent card shows count chips for what it holds: "3 skills", "1 tool", "1 notes set"; a kind with nothing in it has no chip', async () => {
+test('every agent card shows count chips for what it holds: "3 skills", "1 tool", "1 note set"; a kind with nothing in it has no chip', async () => {
   const want: Record<string, string[]> = {
-    'Meeting assistant': ['3 skills', '1 tool', '1 notes set'], 'Research assistant': ['3 skills', '2 tools', '1 notes set'],
-    'Inbox sorter': ['4 skills', '1 notes set'], 'Schedule keeper': ['3 skills'],
+    'Meeting assistant': ['3 skills', '1 tool', '1 note set'], 'Research assistant': ['3 skills', '2 tools', '1 note set'],
+    'Inbox sorter': ['4 skills', '1 note set'], 'Schedule keeper': ['3 skills'],
   };
   for (const [name, chips] of Object.entries(want)) expect(await card(name).locator('.kit-chip').allInnerTexts(), name).toEqual(chips);
   const all = await agentCards().locator('.kit-chip').allInnerTexts();
   expect(all.length).toBeGreaterThan(20);
-  for (const text of all) { expect(text).toMatch(/^[1-9]\d* (skills?|tools?|notes sets?)$/); }
+  for (const text of all) { expect(text).toMatch(/^[1-9]\d* (skills?|tools?|note sets?)$/); }
   const facts = await agentCards().locator('.kit-chip').evaluateAll(list => list.map(c => ({ size: parseFloat(getComputedStyle(c).fontSize), h: c.getBoundingClientRect().height })));
   expect(Math.min(...facts.map(f => f.size))).toBeGreaterThanOrEqual(14); expect(Math.min(...facts.map(f => f.h))).toBeGreaterThanOrEqual(32);
   expect(await agentCards().locator('.kit-avatar').count()).toBe(0);
@@ -308,7 +308,7 @@ test('a tool\'s details: what it can reach, how far it may go, a key that is nee
 
 test('a set of notes\' details: what it covers, how many notes it can read, five titles, who reads it, Choose notes and Remove', async () => {
   const p = page();
-  await chip('Meeting assistant', '1 notes set').click();
+  await chip('Meeting assistant', '1 note set').click();
   await line('Meeting assistant', 'note', 'Client list').click();
   await expect(title()).toHaveText('Client list');
   await expect(panel().getByRole('heading', { level: 3 })).toHaveText(['What it covers', 'Some of the notes', 'Used by']);
@@ -322,7 +322,7 @@ test('a set of notes\' details: what it covers, how many notes it can read, five
   await panel().getByRole('button', { name: 'Remove from Meeting assistant' }).click();
   await expect(bar().getByText('Removed Client list', { exact: true })).toBeVisible();
   await expect(title()).toHaveText('Meeting assistant');
-  await expect(card('Meeting assistant').getByRole('button', { name: '1 notes set' })).toHaveCount(0);
+  await expect(card('Meeting assistant').getByRole('button', { name: '1 note set' })).toHaveCount(0);
   expect(await budget()).toEqual([]);
 });
 
@@ -449,7 +449,7 @@ test('the keyboard order is the card, its chips, then the lines of the lists tha
   await main('Meeting assistant').focus();
   await p.keyboard.press('Tab'); expect(await focused()).toBe('3 skills');
   await p.keyboard.press('Tab'); expect(await focused()).toBe('1 tool');
-  await p.keyboard.press('Tab'); expect(await focused()).toBe('1 notes set');
+  await p.keyboard.press('Tab'); expect(await focused()).toBe('1 note set');
   // Closed lists cannot be reached: the next stop is the next card.
   await p.keyboard.press('Tab'); expect(await focused()).toBe('Money tracker');
   await p.keyboard.press('Shift+Tab'); await p.keyboard.press('Shift+Tab'); await p.keyboard.press('Shift+Tab');
@@ -457,7 +457,7 @@ test('the keyboard order is the card, its chips, then the lines of the lists tha
   await p.keyboard.press('Enter');
   await expect(chip('Meeting assistant', '3 skills')).toHaveAttribute('aria-expanded', 'true');
   await p.keyboard.press('Tab'); await p.keyboard.press('Tab');
-  expect(await focused()).toBe('1 notes set');
+  expect(await focused()).toBe('1 note set');
   await p.keyboard.press('Tab'); expect(await focused()).toBe('Summarize a meeting');
   await p.keyboard.press('Tab'); expect(await focused()).toBe('Write a reply');
   await p.keyboard.press('Space');
@@ -483,7 +483,7 @@ for (const [w, h] of SIZES_A) {
       expect(cut, `${state}: cut off on the right`).toBe(0);
     };
     await check('map');
-    await chip('Meeting assistant', '3 skills').click(); await chip('Meeting assistant', '1 tool').click(); await chip('Meeting assistant', '1 notes set').click();
+    await chip('Meeting assistant', '3 skills').click(); await chip('Meeting assistant', '1 tool').click(); await chip('Meeting assistant', '1 note set').click();
     await check('lists open');
     await line('Meeting assistant', 'skill', 'Summarize a meeting').click();
     await panel().getByRole('button', { name: 'Show the full text' }).click();
@@ -514,7 +514,7 @@ for (const [w, h] of SIZES_A) {
       await shot(p, 'skill-details', w, h, look);
       await line('Meeting assistant', 'tool', 'Read my calendar').click(); await p.mouse.move(2, h - 4);
       await shot(p, 'tool-details', w, h, look);
-      await chip('Meeting assistant', '1 notes set').click(); await line('Meeting assistant', 'note', 'Client list').click(); await p.mouse.move(2, h - 4);
+      await chip('Meeting assistant', '1 note set').click(); await line('Meeting assistant', 'note', 'Client list').click(); await p.mouse.move(2, h - 4);
       await shot(p, 'notes-details', w, h, look);
       await main('Research assistant').click(); await p.mouse.move(2, h - 4);
       await shot(p, 'agent-details', w, h, look);

@@ -26,14 +26,14 @@ test('the agent card has a glyph tile, a name, a job line, and a count chip for 
   assert.match(m, /<span class="kit-tile" data-size="large" aria-hidden="true"><svg/); assert.doesNotMatch(m, /kit-avatar/);
   assert.match(m, /<button type="button" class="kit-card-main"[^>]*aria-pressed="false"[^>]*>Meeting assistant<\/button>/);
   assert.match(m, /<p class="kit-hint kit-card-hint"[^>]*>Summarizes meetings and writes replies\.<\/p>/);
-  assert.deepEqual([...m.matchAll(/class="kit-chip"[^>]*><span>([^<]+)<\/span>/g)].map(x => x[1]), ['3 skills', '1 tool', '1 notes set']);
+  assert.deepEqual([...m.matchAll(/class="kit-chip"[^>]*><span>([^<]+)<\/span>/g)].map(x => x[1]), ['3 skills', '1 tool', '1 note set']);
   assert.doesNotMatch(m, /kit-card-check/);
   assert.deepEqual(assertTextBudget(m), [], m.slice(0, 200));
 });
 
 test('a kind with nothing in it has no chip; an agent with nothing has no chip row at all', () => {
   const some = html({ shelves: { skills: many('skill', 12), tools: [], notes: many('note', 1) } });
-  assert.deepEqual([...some.matchAll(/class="kit-chip"[^>]*><span>([^<]+)<\/span>/g)].map(x => x[1]), ['12 skills', '1 notes set']);
+  assert.deepEqual([...some.matchAll(/class="kit-chip"[^>]*><span>([^<]+)<\/span>/g)].map(x => x[1]), ['12 skills', '1 note set']);
   assert.equal([...some.matchAll(/class="kit-acc"/g)].length, 2, 'a list for each chip, and none for the tools');
   const bare = html({ shelves: { skills: [], tools: [], notes: [] } });
   assert.doesNotMatch(bare, /kit-chip|kit-acc|kit-chips/);

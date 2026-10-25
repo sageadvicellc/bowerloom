@@ -55,16 +55,16 @@ test('the access words and the program names are the plain ones', () => {
 });
 
 // ---- The chips of an agent card.
-test('chip labels are "12 skills", "1 tool", "1 notes set", singular and plural right, at most five words', () => {
-  assert.deepEqual([chipLabel('skill', 12), chipLabel('skill', 1), chipLabel('tool', 2), chipLabel('tool', 1), chipLabel('note', 1), chipLabel('note', 2)], ['12 skills', '1 skill', '2 tools', '1 tool', '1 notes set', '2 notes sets']);
+test('chip labels are "12 skills", "1 tool", "1 note set", singular and plural right, at most five words', () => {
+  assert.deepEqual([chipLabel('skill', 12), chipLabel('skill', 1), chipLabel('tool', 2), chipLabel('tool', 1), chipLabel('note', 1), chipLabel('note', 2)], ['12 skills', '1 skill', '2 tools', '1 tool', '1 note set', '2 note sets']);
   for (const n of [0, 1, 2, 10, 123]) for (const kind of ['skill', 'tool', 'note'] as const) { assert.ok(countWords(chipLabel(kind, n)) <= 5); assert.equal(bannedIn(chipLabel(kind, n)), null); }
 });
 
 test('an agent has a chip for each kind it holds, in the order skills, tools, notes, and none for an empty kind', () => {
   const a1 = agents.find(a => a.id === 'agent-01')!;
-  assert.deepEqual(chipsOf(shelvesOf(world, a1)).map(c => [c.kind, c.label]), [['skill', '3 skills'], ['tool', '1 tool'], ['note', '1 notes set']]);
+  assert.deepEqual(chipsOf(shelvesOf(world, a1)).map(c => [c.kind, c.label]), [['skill', '3 skills'], ['tool', '1 tool'], ['note', '1 note set']]);
   const a4 = agents.find(a => a.id === 'agent-04')!;
-  assert.deepEqual(chipsOf(shelvesOf(world, a4)).map(c => c.label), ['4 skills', '1 notes set'], 'no tools, no chip');
+  assert.deepEqual(chipsOf(shelvesOf(world, a4)).map(c => c.label), ['4 skills', '1 note set'], 'no tools, no chip');
   const a7 = agents.find(a => a.id === 'agent-07')!;
   assert.deepEqual(chipsOf(shelvesOf(world, a7)).map(c => c.label), ['3 skills']);
   const bare = chipsOf({ skills: [], tools: [], notes: [] });

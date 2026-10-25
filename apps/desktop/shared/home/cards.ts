@@ -50,9 +50,9 @@ const count = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' :
 /** The three kinds an agent card counts, in the order its chips show them. */
 export const CHIP_KINDS: readonly ShelfEntry['kind'][] = Object.freeze(['skill', 'tool', 'note'] as const);
 
-/** The words on a count chip: "12 skills", "1 tool", "1 notes set". At most five words, built from a number. */
+/** The words on a count chip: "12 skills", "1 tool", "1 note set", "2 note sets" (the count takes the plural, "note" stays singular). At most five words, built from a number. */
 export function chipLabel(kind: ShelfEntry['kind'], n: number): string {
-  return kind === 'note' ? `${n} notes ${n === 1 ? 'set' : 'sets'}` : count(n, kind);
+  return kind === 'note' ? count(n, 'note set') : count(n, kind);
 }
 
 /** One count chip of an agent card: what it counts and how many. */

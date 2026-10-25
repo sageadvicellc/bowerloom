@@ -3,7 +3,7 @@
  * details panel on the right, a Save bar at the bottom, and two right-side drawers (Add, Version history) that open over the stage. There is no left rail and no routing.
  * A small "Preview" badge with its own "?" sits beside the name, always: this prototype writes nothing to the computer, and the popover says so.
  * The map is a plain grid of the person's own agents, one card each, in one order at a time (by name, or by how recently each changed). An agent card says what the agent
- * can do at a glance: its job and a count chip for each kind it holds ("3 skills", "1 tool", "1 notes set"); a chip opens a mini accordion in the card that lists the names.
+ * can do at a glance: its job and a count chip for each kind it holds ("3 skills", "1 tool", "1 note set"); a chip opens a mini accordion in the card that lists the names.
  * One thing is selected at a time (`selected`: an agent, or a skill, tool or set of notes with the agent it was opened from). A selection is only a highlight, never a
  * check mark. The details panel shows the selection, read only (see details/DetailsPanel.tsx): an agent's own Skills, Tools and Notes keep a quiet "Remove". Removing
  * stages a change in the draft; the Save bar counts the changes and makes a version of the history, and "Go back" undoes it. The `data-tour` ids are map, agent,

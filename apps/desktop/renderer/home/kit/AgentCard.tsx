@@ -1,6 +1,6 @@
 /**
  * The agent card of the map. It tells what the agent can do at a glance, without opening anything: a glyph tile, the agent's name, one line about its job, and
- * a row of count chips ("12 skills", "2 tools", "1 notes set"; a kind with nothing in it has no chip). A chip is a button that opens a mini accordion inside the
+ * a row of count chips ("12 skills", "2 tools", "1 note set"; a kind with nothing in it has no chip). A chip is a button that opens a mini accordion inside the
  * card, listing that kind's items by name, one to a line, with a small glyph of the kind. Several can be open at once. The list shows the first six and a
  * "Show more" button. Only the card that was opened grows. A line in a list is a button too: it selects that item and the details panel shows it.
  * Pressing the card anywhere else (the name, the empty parts of it) selects the agent. A line that has something to say keeps its small badge ("needs a key",
