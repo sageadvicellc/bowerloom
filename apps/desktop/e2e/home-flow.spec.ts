@@ -485,3 +485,248 @@ for (const [w, h] of SIZES) for (const look of THEMES) {
     await shot(p, '6-save-points', w, h, look);
   });
 }
+
+// ---- Choose notes in the shell (U5, wired in I3).
+const notesLayer = (): Locator => page().locator('[data-slot="notes"]');
+const chooseButton = (): Locator => panel().locator('[data-notes-shelf]').getByRole('button', { name: 'Choose notes' });
+const topicButton = (name: string): Locator => notesLayer().getByRole('button', { name, exact: true });
+const useButton = (): Locator => notesLayer().getByRole('button', { name: 'Use these notes', exact: true });
+const noteCards = (): Locator => panel().locator('[data-notes-shelf] .kit-card');
+const smallText = async (): Promise<{ text: string; size: number }[]> => page().evaluate(() => {
+  const out: { text: string; size: number }[] = [];
+  const walker = document.createTreeWalker(document.querySelector('[data-home]')!, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n !== null; n = walker.nextNode()) {
+    const text = (n.textContent ?? '').trim(); const el = n.parentElement;
+    if (text === '' || el === null || el.closest('svg, .hm-sr') !== null) continue;
+    const box = el.getBoundingClientRect();
+    if (box.width === 0 || box.height === 0) continue;
+    const size = parseFloat(getComputedStyle(el).fontSize);
+    if (size < 14) out.push({ text, size });
+  }
+  return out;
+});
+async function openChoose(agent = 'Report builder'): Promise<void> {
+  await pick(agent);
+  await chooseButton().click();
+  await expect(notesLayer()).toBeVisible();
+  await animationsDone(page());
+}
+
+test('Choose notes: open from the Notes shelf, pick a topic, Use these notes, the shelf and the Save bar update, Save, Go back', async () => {
+  const p = page();
+  await pick('Report builder');
+  await expect(shelf('Notes').getByText('Nothing here yet.')).toBeVisible();
+  await expect(chooseButton()).toBeEnabled();
+  expect(await budget()).toEqual([]);
+  await chooseButton().click();
+  await expect(notesLayer()).toBeVisible();
+  await animationsDone(p);
+  await expect(notesLayer().getByRole('heading', { level: 2, name: 'Choose notes' })).toBeFocused();
+  await expect(notesLayer().locator('.nt-agent')).toHaveText('Report builder');
+  await expect(notesLayer().locator('.nt-cost')).toHaveText('No notes yet');
+  await expect(useButton()).toBeDisabled();
+  expect(await budget()).toEqual([]);
+  expect(await smallText()).toEqual([]);
+  // Pick a topic: the count and the plain size label follow at once.
+  await topicButton('Travel').click();
+  await expect(notesLayer().locator('.nt-big')).toHaveAttribute('data-count', '55');
+  await expect(notesLayer().locator('.nt-cost')).toHaveText('A small set');
+  await topicButton('Work').click();
+  await expect(notesLayer().locator('.nt-big')).toHaveAttribute('data-count', '198');
+  await expect(notesLayer().locator('.nt-cost')).toHaveText('A medium set');
+  await topicButton('Meetings').click();
+  await topicButton('Research').click();
+  await expect(notesLayer().locator('.nt-big')).toHaveAttribute('data-count', '420');
+  await expect(notesLayer().locator('.nt-cost')).toHaveText('A big set');
+  await topicButton('Meetings').click();
+  await topicButton('Research').click();
+  await topicButton('Work').click();
+  await expect(notesLayer().locator('.nt-big')).toHaveAttribute('data-count', '55');
+  await expect(useButton()).toBeEnabled();
+  expect(await budget()).toEqual([]);
+  // Use these notes: the sheet closes, the focus goes back to the button, the agent is picked, and the new card wears the ring.
+  await useButton().click();
+  await expect(notesLayer()).toHaveCount(0);
+  await expect(chooseButton()).toBeFocused();
+  await expect(panel().getByRole('heading', { level: 2, name: 'Report builder' })).toBeVisible();
+  await expect(noteCards()).toHaveCount(1);
+  await expect(noteCards().first()).toHaveAttribute('data-fresh', '');
+  await expect(agentCard('agent-05')).toHaveAttribute('data-fresh', '');
+  expect(await barText()).toBe('Added Report builder notes to Report builder');
+  await expect(bar().getByText('1 change')).toHaveCount(0);
+  expect(await budget()).toEqual([]);
+  // Save, then Go back.
+  await saveButton().click();
+  await expect(bar().getByText('Saved', { exact: true })).toBeVisible();
+  await expect(bar().locator('.hm-tick')).toHaveText(['Claude Code', 'Codex', 'OpenCode']);
+  expect(await budget()).toEqual([]);
+  await bar().getByRole('button', { name: 'Go back' }).click();
+  expect(await barText()).toBe('Back to how it was');
+  await expect(noteCards()).toHaveCount(0);
+  await expect(shelf('Notes').getByText('Nothing here yet.')).toBeVisible();
+  expect(await budget()).toEqual([]);
+});
+
+test('Choose notes: Cancel and Escape stage nothing; the Choose notes button waits for an agent', async () => {
+  const p = page();
+  await expect(chooseButton()).toBeDisabled();
+  await openChoose();
+  await topicButton('Travel').click();
+  await notesLayer().getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(notesLayer()).toHaveCount(0);
+  await expect(chooseButton()).toBeFocused();
+  await expect(bar().getByText('Nothing to save yet')).toBeVisible();
+  await chooseButton().click();
+  await topicButton('Travel').click();
+  await p.keyboard.press('Escape');
+  await expect(notesLayer()).toHaveCount(0);
+  await expect(bar().getByText('Nothing to save yet')).toBeVisible();
+  await expect(noteCards()).toHaveCount(0);
+});
+
+test('Choose notes: an agent that reads notes already opens with its topics on, and changing it counts as one change', async () => {
+  await pick('Meeting assistant');
+  await expect(noteCards()).toHaveCount(1);
+  await chooseButton().click();
+  await expect(notesLayer()).toBeVisible();
+  await animationsDone(page());
+  expect(await notesLayer().locator('[aria-pressed="true"]').count()).toBeGreaterThan(0);
+  await expect(useButton()).toBeDisabled();
+  const on = notesLayer().locator('.nt-topic [aria-pressed="true"]').first();
+  await on.click();
+  await expect(useButton()).toBeEnabled();
+  await useButton().click();
+  await expect(notesLayer()).toHaveCount(0);
+  expect(await barText()).toBe('Added Meeting assistant notes to Meeting assistant');
+  await saveButton().click();
+  await bar().getByRole('button', { name: 'Go back' }).click();
+  await expect(noteCards()).toHaveCount(1);
+});
+
+test('Escape closes one layer at a time with the Choose notes sheet: it takes a drawer with it when it opens, then Escape closes only the sheet', async () => {
+  const p = page();
+  await pick('Report builder');
+  await openAdd();
+  await chooseButton().click();
+  await expect(notesLayer()).toBeVisible();
+  await expect(addDrawer()).toHaveCount(0);
+  await p.keyboard.press('Escape');
+  await expect(notesLayer()).toHaveCount(0);
+  await expect(addDrawer()).toHaveCount(0);
+  await expect(chooseButton()).toBeFocused();
+  // Save points is a drawer too.
+  await topBar('Save points').click();
+  await expect(pointsDrawer()).toBeVisible();
+  await chooseButton().click();
+  await expect(notesLayer()).toBeVisible();
+  await expect(pointsDrawer()).toHaveCount(0);
+  await p.keyboard.press('Escape');
+  await expect(notesLayer()).toHaveCount(0);
+  // With the sheet closed, Escape on a drawer closes the drawer, and only it.
+  await openAdd();
+  await p.keyboard.press('Escape');
+  await expect(addDrawer()).toHaveCount(0);
+});
+
+test('the tour closes the Choose notes sheet when it starts', async () => {
+  const p = page();
+  await openChoose();
+  // The sheet covers the Help button, so the tour starts the way the page would start it: through the button itself.
+  await p.evaluate(() => { document.querySelector<HTMLElement>('header.hm-bar button[data-tour="help"]')?.click(); });
+  await p.evaluate(() => { [...document.querySelectorAll<HTMLElement>('button')].find(b => b.textContent?.trim() === 'Show me around')?.click(); });
+  await expect(p.getByRole('dialog', { name: 'Tour' })).toBeVisible();
+  await expect(notesLayer()).toHaveCount(0);
+  await p.keyboard.press('Escape');
+  await expect(p.getByRole('dialog', { name: 'Tour' })).toHaveCount(0);
+});
+
+test('the keyboard does all of it: pick an agent, open Choose notes, pick a topic, Use these notes, Save, Go back', async () => {
+  const p = page();
+  await tabTo(agentButton('Report builder'));
+  await p.keyboard.press('Enter');
+  await expect(panel().getByRole('heading', { level: 2, name: 'Report builder' })).toBeVisible();
+  await tabTo(chooseButton());
+  await p.keyboard.press('Enter');
+  await expect(notesLayer().getByRole('heading', { level: 2, name: 'Choose notes' })).toBeFocused();
+  await tabTo(topicButton('Travel'));
+  await p.keyboard.press('Space');
+  await expect(topicButton('Travel')).toHaveAttribute('aria-pressed', 'true');
+  await expect(notesLayer().locator('.nt-cost')).toHaveText('A small set');
+  await tabTo(useButton());
+  await p.keyboard.press('Enter');
+  await expect(notesLayer()).toHaveCount(0);
+  await expect(chooseButton()).toBeFocused();
+  expect(await barText()).toBe('Added Report builder notes to Report builder');
+  await tabTo(saveButton());
+  await p.keyboard.press('Enter');
+  await expect(bar().getByText('Saved', { exact: true })).toBeVisible();
+  await tabTo(bar().getByRole('button', { name: 'Go back' }));
+  await p.keyboard.press('Enter');
+  expect(await barText()).toBe('Back to how it was');
+  await expect(noteCards()).toHaveCount(0);
+});
+
+test('with less motion: the Choose notes sheet does not slide, and the new card is marked without any movement', async () => {
+  const p = page();
+  await p.emulateMedia({ reducedMotion: 'reduce' });
+  await fresh(p);
+  await skipTour(p);
+  await openChoose();
+  await framesPainted(p);
+  expect(await p.evaluate(() => document.getAnimations().length)).toBe(0);
+  await topicButton('Travel').click();
+  await framesPainted(p);
+  expect(await p.evaluate(() => document.getAnimations().length)).toBe(0);
+  await useButton().click();
+  await framesPainted(p);
+  expect(await p.evaluate(() => document.getAnimations().length)).toBe(0);
+  await expect(noteCards().first()).toHaveAttribute('data-fresh', '');
+  expect(await budget()).toEqual([]);
+});
+
+for (const [w, h] of SIZES) {
+  test(`at ${w} by ${h} the Choose notes sheet fills the window and the shelf and the Save bar update after Use these notes`, async () => {
+    const p = page();
+    await resize(p, w, h);
+    await openChoose();
+    const box = await rectOf(p, '[data-slot="notes"]');
+    expect(box).toMatchObject({ x: 0, y: 0, w, h });
+    await topicButton('Travel').click();
+    expect(await smallText()).toEqual([]);
+    expect(await budget()).toEqual([]);
+    expect(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    const foot = await rectOf(p, '.nt-foot'), use = await rectOf(p, '.nt-foot .kit-button[data-variant="primary"]');
+    expect(foot.y + foot.h).toBeLessThanOrEqual(h + 0.5);
+    expect(use.y + use.h).toBeLessThanOrEqual(h + 0.5);
+    await useButton().click();
+    await expect(notesLayer()).toHaveCount(0);
+    // At 900 wide the shelves give way only to a drawer, and none is open, so the new card is in view.
+    await expect(panel()).toBeVisible();
+    await expect(noteCards().first()).toBeVisible();
+    await expect(noteCards().first()).toHaveAttribute('data-fresh', '');
+    await expect(bar()).toContainText('Added Report builder notes to Report builder');
+    expect(await smallText()).toEqual([]);
+    expect(await budget()).toEqual([]);
+  });
+}
+
+for (const [w, h] of SIZES) for (const look of THEMES) {
+  test(`screenshots at ${w} by ${h}, ${look}: Choose notes open in the shell, after Use these notes`, async () => {
+    test.skip(process.env.HOME_U0_SHOTS === undefined, 'Set HOME_U0_SHOTS to a folder to take screenshots.');
+    const p = page();
+    await setLook(p, look);
+    await resize(p, w, h);
+    await openChoose();
+    await shot(p, 'notes-1-sheet-open', w, h, look);
+    await topicButton('Travel').click();
+    await topicButton('Meetings').click();
+    await shot(p, 'notes-2-sheet-two-topics', w, h, look);
+    await useButton().click();
+    await expect(notesLayer()).toHaveCount(0);
+    await p.mouse.move(2, h / 2);
+    await shot(p, 'notes-3-after-use', w, h, look);
+    await saveButton().click();
+    await expect(bar().getByText('Saved', { exact: true })).toBeVisible();
+    await shot(p, 'notes-4-saved', w, h, look);
+  });
+}
