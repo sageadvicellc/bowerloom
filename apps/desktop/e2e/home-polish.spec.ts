@@ -9,7 +9,7 @@ import type { Locator, Page } from '@playwright/test';
 import { assertTextBudget } from '../shared/home/textbudget.js';
 import { removeTempDirs } from './proto-temp.js';
 import { animationsDone, framesPainted } from './proto-wait.js';
-import { fresh, launchHome, resize, skipTour } from './home-page.js';
+import { ensurePicked, fresh, launchHome, resize, skipTour } from './home-page.js';
 import type { Home } from './home-page.js';
 
 let home: Home;
@@ -239,7 +239,8 @@ test('the window has one "?" (Help, at the far right); Preview is a pill that op
 test('after Save the bar says it was saved in the preview, and lists the programs that would be updated, with no tick', async () => {
   const p = page();
   await resize(p, 1280, 800);
-  await p.locator('.kit-card[data-kind="agent"]').first().getByRole('button').click();
+  // The first agent is already picked when the map opens.
+  await expect(panel().locator('.kit-card .kit-remove').first()).toBeVisible();
   await panel().locator('.kit-card .kit-remove').first().click();
   await p.getByRole('region', { name: 'Save bar' }).getByRole('button', { name: 'Save', exact: true }).click();
   const saveBar = p.getByRole('region', { name: 'Save bar' });
@@ -279,3 +280,135 @@ for (const look of ['light', 'dark'] as const) {
     expect(await save.evaluate(el => getComputedStyle(el).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
   });
 }
+
+// ---- 8. The first agent is picked, so the panel is never empty on the first view; the tour's click step is still a real click.
+const heading = (): Locator => panel().getByRole('heading', { level: 2 });
+const agentButtons = (): Locator => page().locator('.hm-grid .kit-card[data-kind="agent"] .kit-card-main');
+
+test('the map opens with the first agent in the current order picked, and its shelves show what it has', async () => {
+  const p = page();
+  await resize(p, 1280, 800);
+  const first = (await agentButtons().first().textContent())!.trim();
+  await expect(agentButtons().first()).toHaveAttribute('aria-pressed', 'true');
+  await expect(heading()).toHaveText(first);
+  await expect(panel().locator('.kit-card[data-kind="skill"]').first()).toBeVisible();
+  await expect(panel().getByText('Nothing here yet.')).not.toHaveCount(3);
+  await expect(heading()).not.toHaveText('Pick an agent');
+});
+
+test('the person can still put the pick down, and it stays down', async () => {
+  const p = page();
+  await agentButtons().first().click();
+  await expect(heading()).toHaveText('Pick an agent');
+  await expect(agentButtons().first()).toHaveAttribute('aria-pressed', 'false');
+  await framesPainted(p); await framesPainted(p);
+  await expect(heading()).toHaveText('Pick an agent');
+  // Picking another agent works as before.
+  await agentButtons().nth(1).click();
+  await expect(heading()).toHaveText((await agentButtons().nth(1).textContent())!.trim());
+});
+
+test('during the tour\'s click step nothing is picked, so the click means something; skipping the tour then picks the first agent', async () => {
+  const p = page();
+  await fresh(p, undefined, { tour: true });
+  const tour = p.getByRole('dialog', { name: 'Tour' });
+  await expect(tour).toBeVisible();
+  // Step one, and step two (the click step): the panel is empty and no agent is pressed.
+  await expect(heading()).toHaveText('Pick an agent');
+  await tour.getByRole('button', { name: 'Next' }).click();
+  await expect(tour.getByText('Click an agent to see what it can do.')).toBeVisible();
+  await expect(heading()).toHaveText('Pick an agent');
+  expect(await agentButtons().evaluateAll(list => list.filter(b => b.getAttribute('aria-pressed') === 'true').length)).toBe(0);
+  await p.keyboard.press('Escape');
+  await expect(tour).toHaveCount(0);
+  await expect(agentButtons().first()).toHaveAttribute('aria-pressed', 'true');
+  await expect(heading()).toHaveText((await agentButtons().first().textContent())!.trim());
+});
+
+test('the click step is a real click: clicking an agent picks that agent and the tour goes on; after the tour the pick stays', async () => {
+  const p = page();
+  await fresh(p, undefined, { tour: true });
+  const tour = p.getByRole('dialog', { name: 'Tour' });
+  await tour.getByRole('button', { name: 'Next' }).click();
+  await expect(tour.getByRole('button', { name: 'Next' })).toHaveCount(0);
+  const second = agentButtons().nth(1);
+  await second.click();
+  await expect(second).toHaveAttribute('aria-pressed', 'true');
+  await expect(tour.getByText('Skills are what it knows how to do.')).toBeVisible();
+  for (let i = 0; i < 3; i += 1) await tour.getByRole('button', { name: 'Next' }).click();
+  await tour.getByRole('button', { name: 'Done' }).click();
+  await expect(tour).toHaveCount(0);
+  await expect(second).toHaveAttribute('aria-pressed', 'true');
+  expect(await agentButtons().evaluateAll(list => list.filter(b => b.getAttribute('aria-pressed') === 'true').length)).toBe(1);
+});
+
+test('replaying the tour from Help puts the pick down first, so the click step has something to do', async () => {
+  const p = page();
+  await expect(agentButtons().first()).toHaveAttribute('aria-pressed', 'true');
+  await p.getByRole('button', { name: 'Help', exact: true }).click();
+  await p.getByRole('button', { name: 'Show me around' }).click();
+  const tour = p.getByRole('dialog', { name: 'Tour' });
+  await expect(tour).toBeVisible();
+  await expect(heading()).toHaveText('Pick an agent');
+  await tour.getByRole('button', { name: 'Next' }).click();
+  await agentButtons().first().click();
+  await expect(agentButtons().first()).toHaveAttribute('aria-pressed', 'true');
+  await expect(tour.getByText('Skills are what it knows how to do.')).toBeVisible();
+});
+
+// ---- 6. A set of notes is named by what it holds.
+test('after Choose notes the Notes card and the Save bar name the topics and count the notes', async () => {
+  const p = page();
+  await resize(p, 1280, 800);
+  await ensurePicked(p.locator('.hm-grid').getByRole('button', { name: 'Report builder', exact: true }));
+  await panel().getByRole('button', { name: 'Choose notes' }).click();
+  const layer = p.locator('[data-slot="notes"]');
+  await expect(layer).toBeVisible();
+  await layer.getByRole('button', { name: 'Travel', exact: true }).click();
+  await layer.getByRole('button', { name: 'Meetings', exact: true }).click();
+  const total = await layer.locator('.nt-big').getAttribute('data-count');
+  await layer.getByRole('button', { name: 'Use these notes', exact: true }).click();
+  await expect(layer).toHaveCount(0);
+  const card = panel().locator('[data-notes-shelf] .kit-card');
+  await expect(card.locator('.kit-card-main')).toHaveText('Meetings and Travel notes');
+  await expect(card.locator('.kit-card-hint')).toHaveText(`${total} notes it can read.`);
+  await expect(p.getByRole('region', { name: 'Save bar' }).locator('.hm-savebar-state p')).toHaveText('Added Meetings and Travel notes to Report builder');
+  expect(assertTextBudget(await p.evaluate(() => document.querySelector('[data-home]')!.outerHTML))).toEqual([]);
+  // Three topics: the first and a count, never more than five words.
+  await panel().getByRole('button', { name: 'Choose notes' }).click();
+  await layer.getByRole('button', { name: 'Money', exact: true }).click();
+  await layer.getByRole('button', { name: 'Use these notes', exact: true }).click();
+  await expect(card.locator('.kit-card-main')).toHaveText('Meetings and 2 more notes');
+});
+
+// ---- 7. The Agents tab offers six starters that are not empty.
+test('the Agents tab lists six hand-written starters with their jobs; adding one makes an agent that has its skills', async () => {
+  const p = page();
+  await resize(p, 1280, 800);
+  await addButton().click();
+  await expect(drawer()).toBeVisible();
+  await animationsDone(p);
+  await drawer().getByRole('tab', { name: 'Agents', exact: true }).click();
+  const rows = drawer().locator('.add-row');
+  await expect(rows.locator('.kit-card-main')).toHaveText(['Budget checker', 'Email drafter', 'Note taker', 'Reading coach', 'Research reader', 'Trip planner']);
+  await expect(rows.locator('.kit-card-hint')).toHaveText([
+    'Checks your spending and flags what looks odd.', 'Drafts replies in your voice for you to check.', 'Writes up your meetings and lists who does what.',
+    'Explains hard words and sums up what you read.', 'Reads articles and tells you what matters.', 'Lays out a trip day by day and hunts for prices.',
+  ]);
+  expect((await drawer().innerText())).not.toMatch(/Cartographer|nothing added yet|Meeting helper/i);
+  expect(assertTextBudget(await p.evaluate(() => document.querySelector('[data-home]')!.outerHTML))).toEqual([]);
+  await rows.filter({ hasText: 'Note taker' }).getByRole('button', { name: /Add agent/ }).click();
+  await expect(drawer().locator('.add-note')).toHaveText('Added Note taker to your agents.');
+  await expect(p.locator('.hm-grid .kit-card[data-kind="agent"]')).toHaveCount(11);
+  const mine = p.locator('.hm-grid .kit-card[data-kind="agent"]').filter({ hasText: 'Note taker' });
+  await expect(mine).toHaveCount(1);
+  await expect(mine.locator('.kit-card-hint')).toHaveText('Summarizes meetings and lists action items.');
+  // The new agent is picked, wears the mark, and holds three real skills.
+  await expect(panel().getByRole('heading', { level: 2, name: 'Note taker' })).toBeVisible();
+  await expect(panel().getByRole('region', { name: 'Skills' }).locator('.kit-card-main')).toHaveText(['Summarize a meeting', 'List action items', 'Make a to-do list']);
+  await expect(mine).toHaveAttribute('data-fresh', '');
+  await expect(p.getByRole('region', { name: 'Save bar' }).locator('.hm-savebar-state p')).toHaveText('Added Note taker');
+  await drawer().getByRole('button', { name: 'Show what was added' }).click();
+  await expect(drawer()).toHaveCount(0);
+  await expect(mine).toBeInViewport();
+});

@@ -9,7 +9,7 @@ import type { Page } from '@playwright/test';
 import { assertTextBudget } from '../shared/home/textbudget.js';
 import { removeTempDirs } from './proto-temp.js';
 import { animationsDone, framesPainted } from './proto-wait.js';
-import { SIZES, THEMES, fresh, launchHome, resize, setLook, shot, skipTour } from './home-page.js';
+import { SIZES, THEMES, ensurePicked, fresh, launchHome, resize, setLook, shot, skipTour } from './home-page.js';
 import type { Home } from './home-page.js';
 
 let home: Home;
@@ -42,7 +42,7 @@ test('the real page stays inside the text budget: no text node over 12 words, no
   const p = page();
   const markup = await p.evaluate(() => document.querySelector('[data-home]')!.outerHTML);
   expect(assertTextBudget(markup)).toEqual([]);
-  await p.locator('.kit-card[data-kind="agent"]').first().click();
+  await ensurePicked(p.locator('.kit-card[data-kind="agent"]').first().getByRole('button'));
   await p.getByRole('button', { name: 'Add' }).first().click();
   expect(assertTextBudget(await p.evaluate(() => document.querySelector('[data-home]')!.outerHTML))).toEqual([]);
 });
@@ -71,7 +71,7 @@ test('picking an agent fills the three shelves with the same small card; picking
 
 test('a card is 12 px round with a 1 px border on every side, an agent card is about 220 by 132 and a small card at least 176 wide that holds its hint', async () => {
   const p = page();
-  await p.locator('.kit-card[data-kind="agent"]').first().getByRole('button').click();
+  await ensurePicked(p.locator('.kit-card[data-kind="agent"]').first().getByRole('button'));
   const agent = await p.locator('.kit-card[data-kind="agent"]').first().evaluate(c => { const r = c.getBoundingClientRect(), s = getComputedStyle(c); return { w: r.width, h: r.height, radius: s.borderRadius, top: s.borderTopWidth, left: s.borderLeftWidth, right: s.borderRightWidth, bottom: s.borderBottomWidth }; });
   expect(agent.w).toBeGreaterThanOrEqual(218); expect(agent.w).toBeLessThanOrEqual(222); expect(agent.h).toBeGreaterThanOrEqual(130); expect(agent.h).toBeLessThanOrEqual(150);
   expect([agent.radius, agent.top, agent.left, agent.right, agent.bottom]).toEqual(['12px', '1px', '1px', '1px', '1px']);
@@ -81,7 +81,7 @@ test('a card is 12 px round with a 1 px border on every side, an agent card is a
 
 test('no text on the page is under 14 px, and the base text, hint and heading sizes are 16, 14 and 20', async () => {
   const p = page();
-  await p.locator('.kit-card[data-kind="agent"]').first().getByRole('button').click();
+  await ensurePicked(p.locator('.kit-card[data-kind="agent"]').first().getByRole('button'));
   const sizes = await p.evaluate(() => {
     const out: { text: string; size: number; tag: string }[] = [];
     const walker = document.createTreeWalker(document.querySelector('[data-home]')!, NodeFilter.SHOW_TEXT);
@@ -222,7 +222,7 @@ for (const [w, h] of SIZES) {
     expect(stage.sideways).toBeLessThanOrEqual(0); expect(stage.inside).toBe(true); expect(stage.clipped).toBe(0);
     expect(stage.panelRight).toBeLessThanOrEqual(stage.vw + 0.5); expect(stage.barBottom).toBeLessThanOrEqual(stage.vh + 0.5);
     expect(stage.columns).toBeGreaterThanOrEqual(2);
-    await p.locator('.kit-card[data-kind="agent"]').first().getByRole('button').click();
+    await ensurePicked(p.locator('.kit-card[data-kind="agent"]').first().getByRole('button'));
     const shelfOk = await p.evaluate(() => [...document.querySelectorAll('aside.hm-panel .kit-card')].every(c => { const r = c.getBoundingClientRect(), panel = document.querySelector('aside.hm-panel')!.getBoundingClientRect(); return r.right <= panel.right + 0.5 && r.left >= panel.left; }));
     expect(shelfOk).toBe(true);
   });

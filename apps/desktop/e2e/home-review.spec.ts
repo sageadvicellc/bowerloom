@@ -9,7 +9,7 @@ import type { Locator, Page } from '@playwright/test';
 import { assertTextBudget } from '../shared/home/textbudget.js';
 import { removeTempDirs } from './proto-temp.js';
 import { animationsDone } from './proto-wait.js';
-import { SIZES, THEMES, fresh, launchHome, overlaps, rectOf, resize, setLook, shot, SAVED } from './home-page.js';
+import { SIZES, THEMES, SAVED, ensurePicked, fresh, launchHome, overlaps, rectOf, resize, setLook, shot } from './home-page.js';
 import type { Home } from './home-page.js';
 
 let home: Home;
@@ -34,7 +34,7 @@ test.beforeEach(async () => {
 });
 
 async function pick(name: string): Promise<void> {
-  await page().locator('.hm-grid').getByRole('button', { name, exact: true }).click();
+  await ensurePicked(page().locator('.hm-grid').getByRole('button', { name, exact: true }));
   await expect(panel().getByRole('heading', { level: 2, name })).toBeVisible();
 }
 async function openAdd(tabName = 'Skills'): Promise<void> {

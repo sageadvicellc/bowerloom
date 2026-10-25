@@ -147,7 +147,18 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   // A new change ends what the bar said about the last save or the last Go back: without this, discarding that change would bring the old "Saved" back.
   useEffect(() => { if (changes > 0 && phase !== null) setPhase(null); }, [changes, phase, setPhase]);
   // The tour runs by itself once in a session, when the first minute asks for it. After that only the Help button runs it.
-  useEffect(() => { if (autoTour && tourSession.claimAutoStart()) tourDo('start'); }, [autoTour]);
+  const startingTour = useRef(false), wantFirst = useRef(true);
+  useEffect(() => { if (autoTour && tourSession.claimAutoStart()) { startingTour.current = true; tourDo('start'); } }, [autoTour]);
+  // The first agent in the order shown is picked when the map first shows, and again when a tour ends or is skipped, so the shelves are never empty on the first
+  // view. Not while a tour runs (or is about to): its click step waits for the person to pick an agent, and that click must pick something. A pick the person put
+  // down stays down: this runs once for each of those moments, not whenever nothing is picked.
+  useEffect(() => {
+    if (tour.status === 'running') { startingTour.current = false; wantFirst.current = true; return; }
+    if (startingTour.current || !wantFirst.current) return;
+    wantFirst.current = false;
+    const first = agents[0];
+    if (picked === null && first !== undefined) setPicked(first.id);
+  }, [tour.status, picked, agents]);
   // The closing note goes by itself.
   useEffect(() => {
     if (!note) return undefined;
@@ -282,7 +293,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
         <span className="hm-spacer" />
         <Button icon="clock" aria-expanded={drawer === 'points'} onClick={() => toggle('points')}>{WORDS.label.savePoints}</Button>
         <Button variant="primary" icon="plus" data-tour="add" aria-expanded={drawer === 'add'} onClick={() => toggle('add')}>{WORDS.label.add}</Button>
-        <HelpPopover label={WORDS.label.help} text={WORDS.popover.help} align="end" dataTour="help" action={{ label: WORDS.label.showTour, onAction: () => tourDo('replay') }} />
+        <HelpPopover label={WORDS.label.help} text={WORDS.popover.help} align="end" dataTour="help" action={{ label: WORDS.label.showTour, onAction: () => { setPicked(null); setPickedItem(null); tourDo('replay'); } }} />
       </header>
 
       <div className="hm-body" ref={body} data-drawer={drawer ?? undefined}>

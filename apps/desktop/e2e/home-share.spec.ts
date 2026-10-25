@@ -13,7 +13,7 @@ import { generateWorld } from '../shared/proto/sample.js';
 import { countsLine, leftOutLine } from '../renderer/home/share/share-words.js';
 import { removeTempDirs } from './proto-temp.js';
 import { animationsDone, framesPainted } from './proto-wait.js';
-import { SIZES, THEMES, fresh, launchHome, rectOf, resize, setLook, shot, skipTour } from './home-page.js';
+import { SIZES, THEMES, ensurePicked, fresh, launchHome, rectOf, resize, setLook, shot, skipTour } from './home-page.js';
 import type { Home } from './home-page.js';
 
 let home: Home;
@@ -164,7 +164,7 @@ test('unticking an agent takes it out and the counts and the left-out line follo
 
 test('changes that wait for Save are not in the copy, and the sheet says so', async () => {
   const p = page();
-  await p.locator('.hm-grid').getByRole('button', { name: 'Inbox sorter', exact: true }).click();
+  await ensurePicked(p.locator('.hm-grid').getByRole('button', { name: 'Inbox sorter', exact: true }));
   await p.locator('aside.hm-panel').getByRole('region', { name: 'Skills' }).getByRole('button', { name: 'Remove Write a reply' }).click();
   await openSheet();
   await expect(sheet().getByText('Changes you have not saved are not in the copy.')).toBeVisible();
@@ -428,7 +428,7 @@ for (const [w, h] of SIZES) for (const look of THEMES) {
     const p = page();
     await setLook(p, look);
     await resize(p, w, h);
-    await p.locator('.hm-grid').getByRole('button', { name: 'Inbox sorter', exact: true }).click();
+    await ensurePicked(p.locator('.hm-grid').getByRole('button', { name: 'Inbox sorter', exact: true }));
     await openPoints();
     await shot(p, 'share-1-save-points', w, h, look);
     await section().getByRole('button', { name: 'Share my agents' }).click();

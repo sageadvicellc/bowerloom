@@ -85,8 +85,10 @@ test('a sample set of notes that was edited in place no longer wears the sample 
   const edited: World = { ...world, slices: world.slices.map(s => (s.id === 'slice-kinds' ? { ...s, rule: { ...s.rule, folders: ['cinderlow'], pageTypesAndTags: { types: [], tags: [] } } } : s)) };
   const after = shelvesOf(edited, agentTwo).notes[0]!;
   assert.equal(after.id, 'slice-kinds');
-  assert.equal(after.hint, 'Notes this agent can read.');
+  // It no longer wears the sample's hint or name. It is named by what it holds now (the Money topic), and the hint counts the notes it reads.
+  assert.notEqual(after.hint, 'Articles and guides you saved to read later.');
   assert.notEqual(after.name, 'Reading list');
+  assert.equal(after.name, 'Money notes'); assert.match(after.hint!, /^\d+ notes it can read\.$/);
   const seeded: World = { ...world, slices: world.slices.map(s => (s.id === 'slice-kinds' ? { ...s, seeds: world.wikiPages.slice(0, 1).map(p => p.id) } : s)) };
   assert.equal(shelvesOf(seeded, agentTwo).notes[0]!.hint, 'Notes this agent can read.');
 });

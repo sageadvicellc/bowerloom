@@ -40,7 +40,7 @@ test('that is ONE change on the Save bar, and the bar says what it is', () => {
   const s = choose(fresh(), 'agent-05', on('Clients'));
   assert.equal(changeCount(s.committed, s.draft), 1);
   assert.equal(listChanges(s.committed, s.draft).length, 1);
-  assert.equal(barSentence(listChanges(s.committed, s.draft), 1), 'Added Report builder notes to Report builder');
+  assert.equal(barSentence(listChanges(s.committed, s.draft), 1), 'Added Clients notes to Report builder');   // the sentence uses the name the card wears (what the set holds), not the stored name
   assert.deepEqual([...absorbedSlices(s.committed, s.draft)], [sliceOf(s.draft, 'agent-05')!.id]);
 });
 
@@ -74,7 +74,7 @@ test('an agent that reads a set nobody else reads changes that set in place', ()
   assert.deepEqual(after.rule.folders, ['cinderlow']);
   assert.equal(s.draft.slices.length, base.slices.length);
   assert.equal(changeCount(s.committed, s.draft), 1);
-  assert.deepEqual(listChanges(s.committed, s.draft), [{ verb: 'changed', what: 'Reading list' }]);
+  assert.deepEqual(listChanges(s.committed, s.draft), [{ verb: 'changed', what: 'Money notes' }]);   // the set was edited in place, so the card (and the bar) name what it holds now, not "Reading list"
 });
 
 test('an agent that shares its set gets a set of its own; the other agent keeps the old one', () => {
@@ -85,7 +85,7 @@ test('an agent that shares its set gets a set of its own; the other agent keeps 
   assert.equal(agent(s.draft, 'agent-04').definition.sliceId, shared);
   assert.deepEqual(s.draft.slices.find(x => x.id === shared), base.slices.find(x => x.id === shared), 'the shared set is not touched');
   assert.equal(changeCount(s.committed, s.draft), 1);
-  assert.equal(barSentence(listChanges(s.committed, s.draft), 1), 'Added Meeting assistant notes to Meeting assistant');
+  assert.equal(barSentence(listChanges(s.committed, s.draft), 1), 'Added Money notes to Meeting assistant');
 });
 
 test('hand picks and left-out parts are kept in the set (seeds and folders)', () => {

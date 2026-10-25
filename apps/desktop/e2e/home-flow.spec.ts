@@ -11,7 +11,7 @@ import type { Locator, Page } from '@playwright/test';
 import { assertTextBudget } from '../shared/home/textbudget.js';
 import { removeTempDirs } from './proto-temp.js';
 import { animationsDone, framesPainted } from './proto-wait.js';
-import { SIZES, THEMES, fresh, launchHome, rectOf, resize, setLook, shot, skipTour, SAVED } from './home-page.js';
+import { SIZES, THEMES, SAVED, ensurePicked, fresh, launchHome, rectOf, resize, setLook, shot, skipTour } from './home-page.js';
 import type { Home } from './home-page.js';
 
 let home: Home;
@@ -30,7 +30,7 @@ const budget = async (): Promise<string[]> => assertTextBudget(await page().eval
 const skills = async (): Promise<string[]> => shelf('Skills').locator('.kit-card-main').allTextContents();
 const barText = async (): Promise<string> => (await bar().locator('.hm-savebar-state p').innerText()).trim();
 
-async function pick(name: string): Promise<void> { await agentButton(name).click(); await expect(panel().getByRole('heading', { level: 2, name })).toBeVisible(); }
+async function pick(name: string): Promise<void> { await ensurePicked(agentButton(name)); await expect(panel().getByRole('heading', { level: 2, name })).toBeVisible(); }
 async function openAdd(tabName = 'Skills'): Promise<void> {
   if (!(await addDrawer().isVisible())) await topBar('Add').click();
   await expect(addDrawer()).toBeVisible();
@@ -372,7 +372,11 @@ test('with less motion: no slide, no line, nothing animates, and the new card is
 test('the keyboard does all of it: open Add, add a skill by the picker, save, open Save points and go back', async () => {
   const p = page();
   await skipTour(p);
+  // Inbox sorter is the first agent, so the map picked it already: Enter puts it down, and Enter again picks it.
+  await expect(panel().getByRole('heading', { level: 2, name: 'Inbox sorter' })).toBeVisible();
   await tabTo(agentButton('Inbox sorter'));
+  await p.keyboard.press('Enter');
+  await expect(panel().getByRole('heading', { level: 2, name: 'Pick an agent' })).toBeVisible();
   await p.keyboard.press('Enter');
   await expect(panel().getByRole('heading', { level: 2, name: 'Inbox sorter' })).toBeVisible();
   await tabTo(topBar('Add'));
@@ -552,7 +556,7 @@ test('Choose notes: open from the Notes shelf, pick a topic, Use these notes, th
   await expect(noteCards()).toHaveCount(1);
   await expect(noteCards().first()).toHaveAttribute('data-fresh', '');
   await expect(agentCard('agent-05')).toHaveAttribute('data-fresh', '');
-  expect(await barText()).toBe('Added Report builder notes to Report builder');
+  expect(await barText()).toBe('Added Travel notes to Report builder');
   await expect(bar().getByText('1 change')).toHaveCount(0);
   expect(await budget()).toEqual([]);
   // Save, then Go back.
@@ -569,6 +573,10 @@ test('Choose notes: open from the Notes shelf, pick a topic, Use these notes, th
 
 test('Choose notes: Cancel and Escape stage nothing; the Choose notes button waits for an agent', async () => {
   const p = page();
+  // The map picks its first agent on its own, so the button is ready; with that pick put down it waits again.
+  await expect(chooseButton()).toBeEnabled();
+  await agentButton('Inbox sorter').click();
+  await expect(panel().getByRole('heading', { level: 2, name: 'Pick an agent' })).toBeVisible();
   await expect(chooseButton()).toBeDisabled();
   await openChoose();
   await topicButton('Travel').click();
@@ -597,7 +605,7 @@ test('Choose notes: an agent that reads notes already opens with its topics on, 
   await expect(useButton()).toBeEnabled();
   await useButton().click();
   await expect(notesLayer()).toHaveCount(0);
-  expect(await barText()).toBe('Added Meeting assistant notes to Meeting assistant');
+  expect(await barText()).toBe('Added Company notes to Meeting assistant');
   await saveButton().click();
   await bar().getByRole('button', { name: 'Go back' }).click();
   await expect(noteCards()).toHaveCount(1);
@@ -656,7 +664,7 @@ test('the keyboard does all of it: pick an agent, open Choose notes, pick a topi
   await p.keyboard.press('Enter');
   await expect(notesLayer()).toHaveCount(0);
   await expect(chooseButton()).toBeFocused();
-  expect(await barText()).toBe('Added Report builder notes to Report builder');
+  expect(await barText()).toBe('Added Travel notes to Report builder');
   await tabTo(saveButton());
   await p.keyboard.press('Enter');
   await expect(bar().getByText(SAVED, { exact: true })).toBeVisible();
@@ -704,7 +712,7 @@ for (const [w, h] of SIZES) {
     await expect(panel()).toBeVisible();
     await expect(noteCards().first()).toBeVisible();
     await expect(noteCards().first()).toHaveAttribute('data-fresh', '');
-    await expect(bar()).toContainText('Added Report builder notes to Report builder');
+    await expect(bar()).toContainText('Added Travel notes to Report builder');
     expect(await smallText()).toEqual([]);
     expect(await budget()).toEqual([]);
   });

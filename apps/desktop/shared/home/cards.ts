@@ -2,9 +2,11 @@
  * Pure helpers behind the cards of the home app: the words on a card, its one badge, the three shelves of an agent, and the Save bar. No React, no DOM.
  * The sample data names things like files ("velvet-weaver"); a card shows them as words ("Velvet Weaver").
  */
-import type { AgentItem, HarnessItem, Slice, ToolItem, World } from '../proto/types.js';
+import type { AgentItem, HarnessItem, Slice, ToolItem, WikiPage, World } from '../proto/types.js';
 import { joinWords } from '../proto/words.js';
 import { isSampleNote, plainOf, skillDoes } from './plain.js';
+import { itemTitle } from './titles.js';
+import { notesLabel } from './notes-label.js';
 
 /** A card's state badge: its words and which look it takes. */
 export interface CardBadge { readonly label: string; readonly tone: 'warn' | 'new' | 'info' }
@@ -29,10 +31,7 @@ export const CARD_WORDS = Object.freeze({
   startPoint: 'How it started',
 });
 
-/** A name as words: dashes and underscores become spaces, each word gets a capital, and at most 5 words stay. */
-export function itemTitle(name: string): string {
-  return name.split(/[\s_-]+/).filter(w => w !== '').slice(0, MAX_NAME_WORDS).map(w => `${w.charAt(0).toUpperCase()}${w.slice(1)}`).join(' ');
-}
+export { itemTitle };
 /** The title of an agent card. */
 export const agentTitle = itemTitle;
 
@@ -94,9 +93,14 @@ function wordsOf(kind: ShelfEntry['kind'], id: string, name: string): { name: st
   return plain === null ? { name: readableName(name), hint: FALLBACK_HINT[kind] } : { name: plain.name, hint: plain.hint };
 }
 
-/** The words of a set of notes. The sample's plain words stay only while the set is still the sample's choice; an edited set gets its own name and the plain line for notes. */
-const noteWords = (slice: Slice): { name: string; hint: string } =>
-  (isSampleNote(slice) ? wordsOf('note', slice.id, slice.name) : { name: readableName(slice.name), hint: FALLBACK_HINT.note });
+/**
+ * The words of a set of notes. The sample's plain words stay only while the set is still the sample's choice. A set the person chose in "Choose notes" is named
+ * by what it holds ("Meetings and Travel notes", "169 notes it can read."), and a set that names no topic and no single note gets its own name and the plain line for notes.
+ */
+export function noteWords(slice: Slice, pages: readonly WikiPage[]): { name: string; hint: string } {
+  if (isSampleNote(slice)) return wordsOf('note', slice.id, slice.name);
+  return notesLabel(slice, pages) ?? { name: readableName(slice.name), hint: FALLBACK_HINT.note };
+}
 
 const entryOf = (item: HarnessItem, kind: ShelfEntry['kind']): ShelfEntry => {
   const badge = itemBadge(item);
@@ -113,7 +117,7 @@ export function shelvesOf(world: World, agent: AgentItem): Shelves {
     if (item !== undefined && item.kind === 'tool' && (item as ToolItem).toolKind !== 'hook') tools.push(entryOf(item, 'tool'));
   }
   const slice = agent.definition.sliceId === undefined ? undefined : world.slices.find(s => s.id === agent.definition.sliceId);
-  if (slice !== undefined) notes.push({ id: slice.id, kind: 'note', ...noteWords(slice) });
+  if (slice !== undefined) notes.push({ id: slice.id, kind: 'note', ...noteWords(slice, world.wikiPages) });
   return { skills, tools, notes };
 }
 

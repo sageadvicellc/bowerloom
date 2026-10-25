@@ -2,8 +2,8 @@
  * Shared set-up for the home app e2e specs (Electron started with --prototype-v2 and a temporary data folder from proto-temp.ts). One launch per spec file,
  * a viewport override to the sizes the review needs, the theme, and screenshots when HOME_U0_SHOTS names a folder (outside the repo).
  */
-import { _electron as electron } from '@playwright/test';
-import type { CDPSession, ElectronApplication, Page } from '@playwright/test';
+import { _electron as electron, expect } from '@playwright/test';
+import type { CDPSession, ElectronApplication, Locator, Page } from '@playwright/test';
 import electronPath from 'electron';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
@@ -75,6 +75,15 @@ export async function shot(page: Page, name: string, w: number, h: number, look:
   if (shotsDir === null) return;
   await animationsDone(page);
   await page.screenshot({ path: join(shotsDir, `${name}-${look}-${w}x${h}.png`), scale: 'css', fullPage });
+}
+
+/**
+ * Picks an agent by its button. The map picks the first agent in its order on its own, so a button that is already pressed is left alone: pressing a picked
+ * agent puts it down. The specs that mean "put it down" press the button themselves.
+ */
+export async function ensurePicked(button: Locator): Promise<void> {
+  if ((await button.getAttribute('aria-pressed')) !== 'true') await button.click();
+  await expect(button).toHaveAttribute('aria-pressed', 'true');
 }
 
 export interface Rect { x: number; y: number; w: number; h: number }

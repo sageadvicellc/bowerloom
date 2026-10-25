@@ -6,7 +6,7 @@
  * Pure: no React, no DOM, no clock, no random number.
  */
 import type { WikiPage } from '../proto/types.js';
-import { itemTitle } from './cards.js';
+import { itemTitle } from './titles.js';
 
 /** One part of a topic: a sub-folder. `folder` is its full path ("alderhythe/gorse"), which is also how the slice rule names it. */
 export interface TopicPart { readonly folder: string; readonly name: string; readonly count: number; /** True for pages that sit in the topic folder itself, with no sub-folder. */ readonly direct: boolean }

@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { assertTextBudget, countWords } from '../shared/home/textbudget.js';
 import { removeTempDirs } from './proto-temp.js';
 import { animationsDone, framesPainted } from './proto-wait.js';
-import { SIZES, THEMES, fresh, launchHome, resize, setLook, skipTour, SAVED } from './home-page.js';
+import { SIZES, THEMES, SAVED, ensurePicked, fresh, launchHome, resize, setLook, skipTour } from './home-page.js';
 import type { Home } from './home-page.js';
 
 const NAMES = ['Inbox sorter', 'Interview notetaker', 'Meeting assistant', 'Money tracker', 'Report builder', 'Research assistant', 'Schedule keeper', 'Support writer', 'Trip organizer', 'Writing coach'];
@@ -26,7 +26,7 @@ const shelf = (name: string): Locator => panel().getByRole('region', { name });
 const bar = (): Locator => page().getByRole('region', { name: 'Save bar' });
 const names = async (): Promise<string[]> => agentCards().locator('.kit-card-main').allTextContents();
 const budget = async (): Promise<string[]> => assertTextBudget(await page().evaluate(() => document.querySelector('[data-home]')!.outerHTML));
-const pick = async (name = 'Meeting assistant'): Promise<void> => { await agentButton(name).click(); await expect(panel().getByRole('heading', { level: 2, name })).toBeVisible(); };
+const pick = async (name = 'Meeting assistant'): Promise<void> => { await ensurePicked(agentButton(name)); await expect(panel().getByRole('heading', { level: 2, name })).toBeVisible(); };
 
 test.beforeAll(async () => { test.setTimeout(240_000); home = await launchHome(); });
 test.afterAll(async () => { try { await home.app.close(); } finally { removeTempDirs(); } });
@@ -64,6 +64,9 @@ test('every agent card carries data-drop-agent with the id of its agent, and the
 
 test('picking an agent fills the three shelves; every card is the same card, with a hint of at most 12 words and a quiet Remove', async () => {
   const p = page();
+  // The map picks its first agent on its own; with that pick put down, the panel is empty, and picking an agent fills it.
+  await expect(agentButton('Inbox sorter')).toHaveAttribute('aria-pressed', 'true');
+  await agentButton('Inbox sorter').click();
   await expect(panel().getByRole('heading', { level: 2, name: 'Pick an agent' })).toBeVisible();
   await expect(panel().locator('.kit-card')).toHaveCount(0);
   await pick();

@@ -10,6 +10,7 @@
 
 import type { Slice } from '../proto/types.js';
 import { generateWorld } from '../proto/sample.js';
+import { starterOf } from './starters.js';
 
 /** What a card says: a name and one line under it. */
 export interface Plain { readonly name: string; readonly hint: string }
@@ -138,10 +139,13 @@ export function isSampleNote(slice: Slice): boolean {
   return sampleNoteShapes().get(slice.id) === JSON.stringify([slice.rule, slice.seeds, slice.pinned]);
 }
 
-/** The plain name and hint of one thing by its sample id, or null when the id is not in the sample. */
+/** The plain name and hint of one thing by its sample id (or a starter agent's), or null when the id is not known. */
 export function plainOf(kind: PlainKind, id: string): Plain | null {
   const table = kind === 'agent' ? PLAIN_AGENTS : kind === 'skill' ? PLAIN_SKILLS : kind === 'tool' ? PLAIN_TOOLS : PLAIN_NOTES;
-  return Object.hasOwn(table, id) ? table[id]! : null;
+  if (Object.hasOwn(table, id)) return table[id]!;
+  // A starter agent of the Add drawer, or a copy of one the person added, has the starter's name and job.
+  const starter = kind === 'agent' ? starterOf(id) : undefined;
+  return starter === undefined ? null : { name: starter.name, hint: starter.job };
 }
 
 /** What a skill lets an agent do, as a short phrase ("summarizes meetings"), or null for a skill that is not in the sample. */
