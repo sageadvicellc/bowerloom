@@ -89,20 +89,20 @@ test('picking an agent fills the three shelves; every card is the same card, wit
   expect(await budget()).toEqual([]);
 });
 
-test('Remove stages one change: the card goes, the bar says "1 change", Save turns on, nothing is saved yet, and the agent hint follows its skills', async () => {
+test('Remove stages one change: the card goes, the bar says what it was, Save turns on, nothing is saved yet, and the agent hint follows its skills', async () => {
   const p = page();
   await expect(bar().getByText('Nothing to save yet')).toBeVisible();
   await pick();
   await shelf('Skills').getByRole('button', { name: 'Remove Summarize a meeting' }).click();
   await expect(shelf('Skills').locator('.kit-card')).toHaveCount(2);
   expect(await shelf('Skills').locator('.kit-card-main').allTextContents()).toEqual(['Write a reply', 'List action items']);
-  await expect(bar().getByText('1 change', { exact: true })).toBeVisible();
+  await expect(bar().getByText('Removed Summarize a meeting', { exact: true })).toBeVisible();
   await expect(bar().getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
   await expect(panel().getByText('Writes replies and lists action items.')).toBeVisible();
   await expect(agentButton('Meeting assistant').locator('xpath=ancestor::div[contains(@class,"kit-card")][1]').locator('.kit-card-hint')).toHaveText('Writes replies and lists action items.');
   await expect(p.getByRole('dialog')).toHaveCount(0);
   await shelf('Tools').getByRole('button', { name: 'Remove Read my calendar' }).click();
-  await expect(bar().getByText('2 changes', { exact: true })).toBeVisible();
+  await expect(bar().getByText('Removed Summarize a meeting and Read my calendar', { exact: true })).toBeVisible();
   await expect(shelf('Tools').locator('.kit-card')).toHaveCount(0);
   await expect(shelf('Tools').getByText('Nothing here yet.')).toBeVisible();
   await shelf('Notes').getByRole('button', { name: 'Remove Client list' }).click();
@@ -115,7 +115,7 @@ test('Save makes a save point and shows "Saved" with three ticks; Go back undoes
   await pick();
   await shelf('Skills').getByRole('button', { name: 'Remove Write a reply' }).click();
   await shelf('Skills').getByRole('button', { name: 'Remove List action items' }).click();
-  await expect(bar().getByText('2 changes', { exact: true })).toBeVisible();
+  await expect(bar().getByText('Removed Write a reply and List action items', { exact: true })).toBeVisible();
   await bar().getByRole('button', { name: 'Save', exact: true }).click();
   await expect(bar().getByText('Saved', { exact: true })).toBeVisible();
   const ticks = bar().locator('.hm-tick');
@@ -137,7 +137,7 @@ test('Save makes a save point and shows "Saved" with three ticks; Go back undoes
   await expect(panel().getByRole('heading', { level: 2, name: 'Meeting assistant' })).toBeFocused();
   // A new change after going back starts the count again.
   await shelf('Skills').getByRole('button', { name: 'Remove Write a reply' }).click();
-  await expect(bar().getByText('1 change', { exact: true })).toBeVisible();
+  await expect(bar().getByText('Removed Write a reply', { exact: true })).toBeVisible();
   expect(await budget()).toEqual([]);
   await p.mouse.move(2, 450);
 });
@@ -148,7 +148,7 @@ test('a second save, and a go back from it, return to the save point before it a
   await bar().getByRole('button', { name: 'Save', exact: true }).click();
   await expect(bar().getByText('Saved', { exact: true })).toBeVisible();
   await shelf('Skills').getByRole('button', { name: 'Remove List action items' }).click();
-  await expect(bar().getByText('1 change', { exact: true })).toBeVisible();
+  await expect(bar().getByText('Removed List action items', { exact: true })).toBeVisible();
   await expect(bar().getByText('Saved', { exact: true })).toHaveCount(0);
   await bar().getByRole('button', { name: 'Save', exact: true }).click();
   await expect(bar().getByText('Saved', { exact: true })).toBeVisible();
@@ -245,12 +245,12 @@ test('the keyboard does all of it: reach an agent, pick it, reach Remove, remove
   await expect(remove).toBeFocused();
   expect(await p.evaluate(() => { const r = document.activeElement!; return parseFloat(getComputedStyle(r).outlineWidth); }), 'the ring on Remove').toBeGreaterThanOrEqual(3);
   await p.keyboard.press('Enter');
-  await expect(bar().getByText('1 change', { exact: true })).toBeVisible();
+  await expect(bar().getByText('Removed Summarize a meeting', { exact: true })).toBeVisible();
   await expect(shelf('Skills').locator('.kit-card-main').first()).toBeFocused();
   await expect(shelf('Skills').locator('.kit-card-main').first()).toHaveText('Write a reply');
   // Space works on Remove too, and the focus moves to the next card each time.
   await p.keyboard.press('Tab'); await p.keyboard.press('Space');
-  await expect(bar().getByText('2 changes', { exact: true })).toBeVisible();
+  await expect(bar().getByText('Removed Summarize a meeting and Write a reply', { exact: true })).toBeVisible();
   // Tab on to Save: through the rest of the shelves and the "?" of Tools.
   let reached = false;
   for (let i = 0; i < 40 && !reached; i += 1) {
