@@ -463,19 +463,20 @@ test('no text is under 14 px, and the drawer and the dialog use the kit sizes', 
     return { tab: px('.add-tab'), line: px('.add-line-row'), note: px('.add-note'), card: px('.add-row .kit-card-main'), button: px('.add-row-main .kit-button') };
   });
   console.log('MEASURED font sizes (px):', JSON.stringify(measure));
-  expect(measure.tab).toBeGreaterThanOrEqual(16);
+  // Wave D: the type scale is about 90 percent of the first, so a tab is 14 px (the floor for every word), not 16.
+  expect(measure.tab).toBeGreaterThanOrEqual(14);
   expect(measure.line).toBeGreaterThanOrEqual(14);
 });
 
-test('every control is at least 44 px tall: tabs, the Add to buttons, the picker rows, the badge in the dialog, and Keep this copy', async () => {
+test('every control is at least 32 px tall: tabs, the Add to buttons, the picker rows, and Keep this copy (Wave D: 44 px became 32 px)', async () => {
   const p = page();
   await openDrawer();
   await row('skill-reply').getByRole('button', { name: /^Add to / }).click();
-  const small = await p.evaluate(() => [...document.querySelectorAll<HTMLElement>('.add-tab, .add-row-main .kit-button, .add-pick')].map(e => ({ cls: e.className, h: e.getBoundingClientRect().height })).filter(e => e.h < 43.5));
+  const small = await p.evaluate(() => [...document.querySelectorAll<HTMLElement>('.add-tab, .add-row-main .kit-button, .add-pick')].map(e => ({ cls: e.className, h: e.getBoundingClientRect().height })).filter(e => e.h < 31.5));
   expect(small, JSON.stringify(small)).toEqual([]);
   await p.keyboard.press('Escape');
   await p.getByRole('button', { name: '2 different copies' }).first().click();
-  const dialogSmall = await p.evaluate(() => [...document.querySelectorAll<HTMLElement>('.add-dialog .kit-button')].map(e => e.getBoundingClientRect()).filter(r => r.height < 43.5 || r.width < 43.5));
+  const dialogSmall = await p.evaluate(() => [...document.querySelectorAll<HTMLElement>('.add-dialog .kit-button')].map(e => e.getBoundingClientRect()).filter(r => r.height < 31.5 || r.width < 31.5));
   expect(dialogSmall).toEqual([]);
 });
 
@@ -487,7 +488,8 @@ for (const [w, h] of SIZES) {
     const drawerFit = await p.evaluate(() => {
       const d = document.querySelector('[data-slot="add"]')!.getBoundingClientRect(), body = document.querySelector('.kit-drawer-body')!;
       const rows = [...document.querySelectorAll('.add-row-main')].map(r => r.getBoundingClientRect());
-      const cards = [...document.querySelectorAll('.add-row .kit-card-main, .add-row .kit-card-hint')].map(e => ({ v: e.scrollHeight - e.clientHeight, h: e.scrollWidth - e.clientWidth }));
+      // Wave D: a name and a hint are one line each. They may be cut sideways, but only with an ellipsis; they never run over the row or grow it.
+      const cards = [...document.querySelectorAll('.add-row .kit-card-main, .add-row .kit-card-hint')].map(e => ({ v: e.scrollHeight - e.clientHeight, h: getComputedStyle(e).textOverflow === 'ellipsis' ? 0 : e.scrollWidth - e.clientWidth }));
       return { right: d.right, vw: window.innerWidth, sideways: body.scrollWidth - body.clientWidth, rowsInside: rows.every(r => r.left >= d.left && r.right <= d.right + 0.5), clipped: cards.filter(c => c.v > 1 || c.h > 1).length, doc: document.documentElement.scrollWidth - document.documentElement.clientWidth };
     });
     expect(drawerFit.right).toBeLessThanOrEqual(drawerFit.vw + 0.5);

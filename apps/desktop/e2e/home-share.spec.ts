@@ -66,9 +66,9 @@ const smallText = async (): Promise<{ text: string; size: number }[]> => page().
   }
   return out;
 });
-/** The buttons and tick boxes in `scope` that are shorter than 44 px (a tick box is judged by the row it sits in). */
+/** The buttons and tick boxes in `scope` that are shorter than 32 px (Wave D: was 44 px) (a tick box is judged by the row it sits in). */
 const shortTargets = async (scope: Locator): Promise<string[]> => scope.evaluate(root => [...root.querySelectorAll<HTMLElement>('button, [role="tab"], label.sh-row')]
-  .filter(b => b.getClientRects().length > 0 && b.getBoundingClientRect().height < 43.5 && !b.classList.contains('kit-remove') && !b.classList.contains('kit-badge') && !b.classList.contains('kit-card-main'))
+  .filter(b => b.getClientRects().length > 0 && b.getBoundingClientRect().height < 31.5 && !b.classList.contains('kit-remove') && !b.classList.contains('kit-status') && !b.classList.contains('kit-card-main'))
   .map(b => `${(b.textContent ?? b.getAttribute('aria-label') ?? '').trim()} ${Math.round(b.getBoundingClientRect().height)}`));
 
 test.beforeAll(async () => { test.setTimeout(240_000); home = await launchHome(); });
@@ -129,7 +129,7 @@ test('the sheet says what goes in as counts, what is left out, and that secrets 
   // The agents are listed by the names on the map, in the same order.
   const listed = await sheet().locator('.sh-row-name').allTextContents();
   expect(listed).toEqual([...listed].sort((a, b) => a.localeCompare(b)));
-  expect(listed).toEqual(await page().locator('.hm-grid .kit-card-main').allTextContents());
+  expect(listed).toEqual(await page().locator('.hm-grid .kit-card[data-kind="agent"] .kit-card-main').allTextContents());
   for (const box of await sheet().locator('.sh-row input').all()) await expect(box).toBeChecked();
   await expect(sheet().getByRole('button', { name: 'Save a copy' })).toBeEnabled();
   const text = (await sheet().innerText()).replace(/\s+/g, ' ');
@@ -275,7 +275,7 @@ test('agents of a place skipped in Find are not offered in Add or in Share', asy
   await p.getByRole('button', { name: 'Yes, read them' }).click();
   await expect(p.locator('.hm-grid .kit-card[data-kind="agent"]')).toHaveCount(2);
   await skipTour(p);
-  const names = await p.locator('.hm-grid .kit-card-main').allTextContents();
+  const names = await p.locator('.hm-grid .kit-card[data-kind="agent"] .kit-card-main').allTextContents();
   expect(names).toHaveLength(2);
   // Add: the picker lists the same two agents and no others.
   await topBar('Add').click();
@@ -380,7 +380,7 @@ test('with less motion nothing animates in the Share section or the sheet', asyn
 
 // ---- Layout.
 for (const [w, h] of SIZES) {
-  test(`at ${w} by ${h} the Share section and the sheet fit: nothing cut off, the buttons in view, no sideways scroll, targets 44 px`, async () => {
+  test(`at ${w} by ${h} the Share section and the sheet fit: nothing cut off, the buttons in view, no sideways scroll, targets 32 px`, async () => {
     const p = page();
     await resize(p, w, h);
     await openPoints();

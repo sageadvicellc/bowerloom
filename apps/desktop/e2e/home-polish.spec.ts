@@ -145,14 +145,15 @@ test('opening the drawer at 1440 moves the map on the drawer\'s clock: it narrow
   const rows = await frames;
   const widths = rows.map(r => r.v);
   expect(widths[0]).toBeGreaterThan(1000);
-  expect(widths[widths.length - 1]!).toBeLessThan(612);
+  // Wave D: the panel is 25 vw (320 px) and the drawer 380 px, so at 1440 the stage ends at 1440 - 320 - 380 = 740 px (it was 612 with a 384 px panel and a 420 px drawer).
+  expect(widths[widths.length - 1]!).toBeLessThan(760);
   const start = rows.findIndex(r => r.v < widths[0]! - 0.5), end = rows.findIndex(r => r.v <= widths[widths.length - 1]! + 0.5);
   const span = rows[end]!.t - rows[start]!.t;
   console.log('MEASURED stage width at 1440 as the drawer opens:', JSON.stringify(rows.slice(Math.max(0, start - 1), end + 2).map(r => [r.t, Math.round(r.v)])), 'span ms', span);
   expect(span).toBeGreaterThan(120); expect(span).toBeLessThan(330);
   const steps = widths.slice(1).map((w, i) => widths[i]! - w);
   expect(Math.max(...steps)).toBeLessThan(330);
-  expect(new Set(widths.filter(w => w < 1000 && w > 620).map(Math.round)).size).toBeGreaterThanOrEqual(4);
+  expect(new Set(widths.filter(w => w < 1000 && w > 760).map(Math.round)).size).toBeGreaterThanOrEqual(4);
 });
 
 test('closing the drawer gives the room back on the close clock, and with reduce motion the map is final at once', async () => {
@@ -165,14 +166,14 @@ test('closing the drawer gives the room back on the close clock, and with reduce
   const rows = await frames;
   const widths = rows.map(r => r.v);
   expect(widths[widths.length - 1]!).toBeGreaterThan(1000);
-  expect(new Set(widths.filter(w => w > 620 && w < 1000).map(Math.round)).size).toBeGreaterThanOrEqual(2);
+  expect(new Set(widths.filter(w => w > 760 && w < 1000).map(Math.round)).size).toBeGreaterThanOrEqual(2);
   await p.emulateMedia({ reducedMotion: 'reduce' });
   await fresh(p); await skipTour(p);
   await resize(p, 1440, 900);
   const still = sampling(300, () => document.querySelector('main.hm-stage')!.getBoundingClientRect().width);
   await addButton().click();
   const calm = await still;
-  const settled = calm.filter(r => r.v < 700);
+  const settled = calm.filter(r => r.v < 800);
   expect(settled.length).toBeGreaterThan(0);
   expect(new Set(calm.map(r => Math.round(r.v))).size).toBeLessThanOrEqual(2);
   expect(await p.evaluate(() => document.getAnimations().length)).toBe(0);
@@ -196,7 +197,8 @@ test('in a window too narrow for three columns the shelves fade out in about 110
   await expect(drawer()).toHaveCount(0);
   await expect(panel()).toBeVisible();
   await animationsDone(p);
-  expect((await panel().boundingBox())!.width).toBeGreaterThan(300);
+  // Wave D: the panel is 25 vw, at least 288 px, so at 1100 it is 288 px (it was 330 px at 30 vw).
+  expect((await panel().boundingBox())!.width).toBeGreaterThan(280);
 });
 
 test('the real page stays inside the text budget with the Show button on it', async () => {
@@ -208,7 +210,7 @@ test('the real page stays inside the text budget with the Show button on it', as
 });
 
 // ---- 3. One help button per window.
-test('the window has one "?" (Help, at the far right); Preview is a pill that opens its own popover; Tools has a hint line instead of a "?"', async () => {
+test('the window has one "?" (Help, at the far right); Preview is plain words with a dot that opens its own popover; Tools has a hint line instead of a "?"', async () => {
   const p = page();
   await resize(p, 1280, 800);
   const round = await p.locator('button.kit-button[data-round]').evaluateAll(list => list.map(b => (b.textContent ?? '').trim()));

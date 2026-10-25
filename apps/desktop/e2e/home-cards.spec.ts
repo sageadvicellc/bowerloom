@@ -1,5 +1,5 @@
 /**
- * Wave A of the 0.8 agents-first preview, in the real window (Electron started with --prototype-v2): the agent card with its count chips and mini accordions,
+ * Wave A of the 0.8 agents-first preview (kept up to date by Wave D), in the real window (Electron started with --prototype-v2): the agent tile with its counts and the tray they open,
  * selection as a highlight with no check mark, the details panel for an agent, a skill, a tool and a set of notes, the Version history button with its tooltip,
  * the keyboard path through all of it, reduce motion, the text budget at every step, and two window sizes (1280 by 800 and 900 by 600).
  * Set HOME_U0_SHOTS to a folder to also save screenshots at both sizes, light and dark.
@@ -22,7 +22,10 @@ const agentCards = (): Locator => page().locator('.hm-grid .kit-card[data-kind="
 const card = (name: string): Locator => agentCards().filter({ has: page().locator('.kit-card-main', { hasText: new RegExp(`^${name}$`) }) });
 const main = (name: string): Locator => card(name).locator('.kit-card-main');
 const chip = (name: string, label: string): Locator => card(name).getByRole('button', { name: label, exact: true });
-const lines = (name: string, kind: 'skill' | 'tool' | 'note'): Locator => card(name).locator(`.kit-acc[data-kind="${kind}"] .kit-acc-main`);
+const PLURAL = { skill: 'skills', tool: 'tools', note: 'notes' } as const;
+/** The tray of one kind of one agent (it sits under the row of the agent's tile, so it is found by its name, not inside the tile). */
+const tray = (name: string, kind: 'skill' | 'tool' | 'note'): Locator => page().locator(`.kit-tray[aria-label="${name}: ${PLURAL[kind]}"]`);
+const lines = (name: string, kind: 'skill' | 'tool' | 'note'): Locator => tray(name, kind).locator('.kit-card-main');
 const line = (name: string, kind: 'skill' | 'tool' | 'note', text: string): Locator => lines(name, kind).filter({ hasText: new RegExp(`^${text}$`) });
 const panel = (): Locator => page().locator('aside.hm-panel');
 const title = (): Locator => panel().locator('#hm-panel-title');
@@ -58,17 +61,18 @@ test.beforeEach(async () => {
 });
 
 // ---- The agent card says what the agent can do, without a click.
-test('every agent card shows count chips for what it holds: "3 skills", "1 tool", "1 note set"; a kind with nothing in it has no chip', async () => {
+test('every agent tile shows counts for what it holds: "3 skills", "1 tool", "1 note set"; a kind with nothing in it has no count', async () => {
   const want: Record<string, string[]> = {
     'Meeting assistant': ['3 skills', '1 tool', '1 note set'], 'Research assistant': ['3 skills', '2 tools', '1 note set'],
     'Inbox sorter': ['4 skills', '1 note set'], 'Schedule keeper': ['3 skills'],
   };
-  for (const [name, chips] of Object.entries(want)) expect(await card(name).locator('.kit-chip').allInnerTexts(), name).toEqual(chips);
-  const all = await agentCards().locator('.kit-chip').allInnerTexts();
+  for (const [name, chips] of Object.entries(want)) expect(await card(name).locator('.kit-count').allInnerTexts(), name).toEqual(chips);
+  const all = await agentCards().locator('.kit-count').allInnerTexts();
   expect(all.length).toBeGreaterThan(20);
   for (const text of all) { expect(text).toMatch(/^[1-9]\d* (skills?|tools?|note sets?)$/); }
-  const facts = await agentCards().locator('.kit-chip').evaluateAll(list => list.map(c => ({ size: parseFloat(getComputedStyle(c).fontSize), h: c.getBoundingClientRect().height })));
-  expect(Math.min(...facts.map(f => f.size))).toBeGreaterThanOrEqual(14); expect(Math.min(...facts.map(f => f.h))).toBeGreaterThanOrEqual(32);
+  const facts = await agentCards().locator('.kit-count').evaluateAll(list => list.map(c => ({ size: parseFloat(getComputedStyle(c).fontSize), h: c.getBoundingClientRect().height })));
+  // A count is a text button of 28 px (Wave D: it was a 32 px chip); its hit area is never under 24 px.
+  expect(Math.min(...facts.map(f => f.size))).toBeGreaterThanOrEqual(14); expect(Math.min(...facts.map(f => f.h))).toBeGreaterThanOrEqual(28);
   expect(await agentCards().locator('.kit-avatar').count()).toBe(0);
   expect(await agentCards().locator('.kit-tile').count()).toBe(10);
   expect(await agentCards().evaluateAll(list => list.map(c => (c.querySelector('.kit-tile')?.textContent ?? '').trim()))).toEqual(Array(10).fill(''));
@@ -93,7 +97,7 @@ test('a selected card, a selected line and the selected sort segment are highlig
   expect(await checks()).toEqual({ marks: 0, legacy: 0, sortIcons: 0 });
   const edge = async (loc: Locator): Promise<{ width: string; colour: string; fill: string }> => loc.evaluate(el => { const s = getComputedStyle(el); return { width: s.borderTopWidth, colour: s.borderTopColor, fill: s.backgroundColor }; });
   await p.mouse.move(2, 450); await animationsDone(p);
-  const owner = await edge(card('Meeting assistant')), plain = await edge(card('Money tracker')), row = await edge(line('Meeting assistant', 'skill', 'Write a reply'));
+  const owner = await edge(card('Meeting assistant')), plain = await edge(card('Money tracker')), row = await edge(tray('Meeting assistant', 'skill').locator('.kit-card[data-selected]'));
   expect(owner.width).toBe('2px'); expect(plain.width).toBe('1px'); expect(row.width).toBe('2px');
   expect(owner.fill).not.toBe(plain.fill); expect(owner.colour).not.toBe(plain.colour);
   console.log('MEASURED selected card edge:', JSON.stringify(owner), 'plain card:', JSON.stringify(plain), 'selected line:', JSON.stringify(row));
@@ -102,48 +106,51 @@ test('a selected card, a selected line and the selected sort segment are highlig
   await expect(p.getByRole('button', { name: 'Recently changed' })).toHaveAttribute('aria-pressed', 'true');
 });
 
-// ---- Chips and mini accordions.
-test('a chip opens a mini accordion in its own card: names only, one line each; several can be open; only that card grows', async () => {
+// ---- Counts and trays.
+test('a count opens a tray with names, one compact row each; one tray at a time; no tile changes size, and the later rows move down', async () => {
   const p = page();
   const before = await heights();
   const skills = chip('Meeting assistant', '3 skills'), tools = chip('Meeting assistant', '1 tool');
   await expect(skills).toHaveAttribute('aria-expanded', 'false');
   await expect(lines('Meeting assistant', 'skill')).toHaveCount(3); await expect(lines('Meeting assistant', 'skill').first()).toBeHidden();
+  const money = (await card('Money tracker').boundingBox())!.y;
   await skills.click();
   await expect(skills).toHaveAttribute('aria-expanded', 'true');
   const id = (await skills.getAttribute('aria-controls'))!;
   await expect(p.locator(`[id="${id}"]`)).toHaveAttribute('data-open', '');
   await expect(lines('Meeting assistant', 'skill')).toHaveText(['Summarize a meeting', 'Write a reply', 'List action items']);
   await animationsDone(p);
-  const open = await heights();
-  expect(open[2]).toBeGreaterThan(before[2]! + 60);
-  expect(open.filter((_, i) => i !== 2)).toEqual(before.filter((_, i) => i !== 2));
-  // A second list opens too, and both stay open.
+  expect(await heights(), 'no tile changes size').toEqual(before);
+  expect((await card('Money tracker').boundingBox())!.y, 'the later row moves down by the tray').toBeGreaterThan(money + 60);
+  // A second count opens its tray and the first closes: one tray at a time.
   await tools.click();
-  await expect(tools).toHaveAttribute('aria-expanded', 'true'); await expect(skills).toHaveAttribute('aria-expanded', 'true');
+  await expect(tools).toHaveAttribute('aria-expanded', 'true'); await expect(skills).toHaveAttribute('aria-expanded', 'false');
   await expect(lines('Meeting assistant', 'tool')).toHaveText(['Read my calendar']);
-  await expect(lines('Meeting assistant', 'skill').first()).toBeVisible();
-  // Every line is one line, with a small glyph and no more than its name.
-  const rows = await card('Meeting assistant').locator('.kit-acc-main').evaluateAll(list => list.map(b => ({ h: b.getBoundingClientRect().height, svg: b.querySelectorAll('svg').length, text: (b.textContent ?? '').trim(), size: parseFloat(getComputedStyle(b).fontSize) })));
-  for (const r of rows) { expect(r.h).toBeLessThan(40); expect(r.svg).toBe(1); expect(r.size).toBeGreaterThanOrEqual(14); expect(r.text.split(' ').length).toBeLessThanOrEqual(5); }
-  // Closing a list shuts it, and the card shrinks back.
-  await skills.click(); await tools.click();
+  await expect(lines('Meeting assistant', 'skill').first()).toBeHidden();
+  await expect(p.locator('.kit-tray[data-open]')).toHaveCount(1);
+  // Every row is one row of 44 px, with a glyph, the name, and no more than its name and one line of hint.
+  await skills.click(); await animationsDone(p);
+  const rows = await tray('Meeting assistant', 'skill').locator('.kit-card').evaluateAll(list => list.map(b => ({ h: b.getBoundingClientRect().height, svg: b.querySelectorAll('svg').length, text: (b.querySelector('.kit-card-main')?.textContent ?? '').trim(), size: parseFloat(getComputedStyle(b.querySelector('.kit-card-main')!).fontSize) })));
+  for (const r of rows) { expect(r.h).toBe(44); expect(r.svg).toBe(1); expect(r.size).toBeGreaterThanOrEqual(14); expect(r.text.split(' ').length).toBeLessThanOrEqual(5); }
+  // The same count closes its tray, and the later rows move back.
+  await skills.click();
   await expect(skills).toHaveAttribute('aria-expanded', 'false');
   await expect(lines('Meeting assistant', 'skill').first()).toBeHidden();
   await animationsDone(p);
   expect(await heights()).toEqual(before);
+  expect((await card('Money tracker').boundingBox())!.y).toBeCloseTo(money, 0);
   expect(await budget()).toEqual([]);
 });
 
-test('an accordion opens and closes in 160 ms with the strong ease-out (measured), and nothing runs under reduce motion', async () => {
+test('a tray opens and closes in 160 ms with the strong ease-out (measured), and nothing runs under reduce motion', async () => {
   const p = page();
-  const facts = await card('Meeting assistant').locator('.kit-acc').first().evaluate(el => { const s = getComputedStyle(el); return { duration: s.transitionDuration, ease: s.transitionTimingFunction, property: s.transitionProperty }; });
+  const facts = await tray('Meeting assistant', 'skill').evaluate(el => { const s = getComputedStyle(el); return { duration: s.transitionDuration, ease: s.transitionTimingFunction, property: s.transitionProperty }; });
   expect(facts).toEqual({ duration: '0.16s', ease: 'cubic-bezier(0.23, 1, 0.32, 1)', property: 'grid-template-rows' });
   // Measure the height of the list, frame by frame, from the press.
   const measure = async (name: string, label: string): Promise<{ ms: number; final: number }> => p.evaluate(({ name: n, label: l }) => new Promise<{ ms: number; final: number }>(resolve => {
     const cards = [...document.querySelectorAll<HTMLElement>('.hm-grid .kit-card[data-kind="agent"]')];
     const c = cards.find(x => x.querySelector('.kit-card-main')?.textContent === n)!;
-    const button = [...c.querySelectorAll<HTMLButtonElement>('.kit-chip')].find(b => b.textContent === l)!;
+    const button = [...c.querySelectorAll<HTMLButtonElement>('.kit-count')].find(b => b.textContent === l)!;
     const acc = document.getElementById(button.getAttribute('aria-controls')!)!;
     const opening = button.getAttribute('aria-expanded') === 'false';
     const t0 = performance.now(); button.click();
@@ -167,33 +174,32 @@ test('an accordion opens and closes in 160 ms with the strong ease-out (measured
   // With reduce motion nothing is timed at all.
   await p.emulateMedia({ reducedMotion: 'reduce' });
   await p.waitForFunction(() => document.documentElement.style.getPropertyValue('--motion-reduced') === '1');
-  expect(await card('Meeting assistant').locator('.kit-acc').first().evaluate(el => getComputedStyle(el).transitionDuration)).toBe('0s');
-  expect(await card('Meeting assistant').locator('.kit-chip .kit-icon').first().evaluate(el => getComputedStyle(el).transitionDuration)).toBe('0s');
+  expect(await tray('Meeting assistant', 'skill').evaluate(el => getComputedStyle(el).transitionDuration)).toBe('0s');
   await chip('Meeting assistant', '3 skills').click();
   await framesPainted(p);
   expect(await p.evaluate(() => document.getAnimations().length)).toBe(0);
   await expect(lines('Meeting assistant', 'skill').first()).toBeVisible();
-  expect(await card('Meeting assistant').locator('.kit-acc').first().evaluate(el => el.getBoundingClientRect().height)).toBeGreaterThan(60);
+  expect(await tray('Meeting assistant', 'skill').evaluate(el => el.getBoundingClientRect().height)).toBeGreaterThan(60);
 });
 
-test('a list shows six lines and "Show more"; the kit gallery draws a long one', async () => {
+test('a tray shows twelve rows and "Show more"; the kit gallery draws a long one', async () => {
   const p = page();
   await fresh(p, '#prototype-v2/kit');
-  const longCard = p.locator('[data-theme="light"][data-home] .kit-card[data-kind="agent"]').filter({ has: p.getByRole('button', { name: '9 skills', exact: true }) });
-  await expect(longCard).toHaveCount(1);
-  const rows = longCard.locator('.kit-acc[data-kind="skill"] .kit-acc-main');
-  await expect(rows).toHaveCount(6);
-  const more = longCard.getByRole('button', { name: 'Show more skills' });
+  const longTray = p.locator('[data-theme="light"][data-home] .hm-gallery-tray .kit-tray');
+  await expect(longTray).toHaveCount(1);
+  const rows = longTray.locator('.kit-card-main');
+  await expect(rows).toHaveCount(12);
+  const more = longTray.getByRole('button', { name: 'Show more skills' });
   await expect(more).toHaveText('Show more'); await expect(more).toHaveAttribute('aria-expanded', 'false');
   await more.click();
-  await expect(rows).toHaveCount(9);
-  const less = longCard.getByRole('button', { name: 'Show less skills' });
+  await expect(rows).toHaveCount(14);
+  const less = longTray.getByRole('button', { name: 'Show less skills' });
   await expect(less).toHaveText('Show less'); await less.click();
-  await expect(rows).toHaveCount(6);
+  await expect(rows).toHaveCount(12);
 });
 
 // ---- Pressing the card, a chip and a line.
-test('pressing the card selects the agent and shows its details; a chip selects nothing; a line selects its item and the agent keeps the highlight as owner', async () => {
+test('pressing the tile selects the agent and shows its details; a count selects nothing; a row selects its item and the agent keeps the highlight as owner', async () => {
   const p = page();
   await expect(title()).toHaveText('Inbox sorter');
   // The hint is part of the card: pressing it selects the agent.
@@ -211,7 +217,7 @@ test('pressing the card selects the agent and shows its details; a chip selects 
   await expect(card('Meeting assistant')).toHaveAttribute('data-owner', ''); await expect(main('Meeting assistant')).toHaveAttribute('aria-current', 'true');
   await expect(line('Meeting assistant', 'skill', 'Write a reply')).toHaveAttribute('aria-pressed', 'true');
   await expect(card('Research assistant')).not.toHaveAttribute('data-selected', ''); await expect(card('Research assistant')).not.toHaveAttribute('data-owner', '');
-  expect(await card('Meeting assistant').locator('.kit-acc-row[data-selected]').count()).toBe(1);
+  expect(await tray('Meeting assistant', 'skill').locator('.kit-card[data-selected]').count()).toBe(1);
   // Pressing the card again selects the agent; pressing it once more puts it down.
   await main('Meeting assistant').click();
   await expect(title()).toHaveText('Meeting assistant'); await expect(card('Meeting assistant')).toHaveAttribute('data-selected', '');
@@ -274,8 +280,8 @@ test('a skill\'s details: what it does, who uses it, where it works, where it ca
 test('a tool\'s details: what it can reach, how far it may go, a key that is needed or ready (never a value), who uses it, and no "Runs code" in the lists', async () => {
   const p = page();
   await chip('Meeting assistant', '1 tool').click();
-  await expect(card('Meeting assistant').locator('.kit-acc[data-kind="tool"] .kit-badge')).toHaveText('needs a key');
-  expect(await card('Meeting assistant').locator('.kit-acc[data-kind="tool"] button.kit-badge').count()).toBe(0);
+  await expect(tray('Meeting assistant', 'tool').locator('.kit-status')).toHaveText('needs a key');
+  expect(await tray('Meeting assistant', 'tool').locator('button.kit-status').count()).toBe(0);
   await line('Meeting assistant', 'tool', 'Read my calendar').click();
   await expect(title()).toHaveText('Read my calendar');
   await expect(panel().getByRole('heading', { level: 3 })).toHaveText(['What it can reach', 'How far it can go', 'Used by']);
@@ -297,9 +303,9 @@ test('a tool\'s details: what it can reach, how far it may go, a key that is nee
   await expect(panel().locator('[data-access]')).toHaveText('Can change things');
   // No tool of any list runs code (hooks stay out of the lists).
   for (const name of ['Meeting assistant', 'Research assistant', 'Writing coach', 'Report builder']) {
-    const count = await card(name).locator('.kit-chip[data-kind="tool"]').count();
+    const count = await card(name).locator('.kit-count[data-kind="tool"]').count();
     if (count === 0) continue;
-    const toolChip = card(name).locator('.kit-chip[data-kind="tool"]');
+    const toolChip = card(name).locator('.kit-count[data-kind="tool"]');
     if ((await toolChip.getAttribute('aria-expanded')) !== 'true') await toolChip.click();
     for (const row of await lines(name, 'tool').all()) { await row.click(); await expect(panel().getByText('Runs code')).toHaveCount(0); }
   }
@@ -326,10 +332,10 @@ test('a set of notes\' details: what it covers, how many notes it can read, five
   expect(await budget()).toEqual([]);
 });
 
-test('a line keeps its badges: "needs a key" is words and "2 different copies" is a button that opens the copies dialog', async () => {
+test('a row keeps its states: "needs a key" is dot and words and "2 different copies" is a text button that opens the copies dialog', async () => {
   const p = page();
   await chip('Inbox sorter', '4 skills').click();
-  const badge = card('Inbox sorter').locator('.kit-acc[data-kind="skill"] button.kit-badge');
+  const badge = tray('Inbox sorter', 'skill').locator('button.kit-status');
   await expect(badge).toHaveText('2 different copies');
   await badge.click();
   const dialog = p.getByRole('dialog');
@@ -339,7 +345,7 @@ test('a line keeps its badges: "needs a key" is words and "2 different copies" i
   await expect(badge).toBeFocused();
   // The details of that skill carry the badge too, and it opens the same dialog.
   await line('Inbox sorter', 'skill', 'Sort mail by topic').click();
-  await panel().locator('button.kit-badge').click();
+  await panel().locator('button.kit-status').click();
   await expect(dialog).toBeVisible();
   await p.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
@@ -443,7 +449,7 @@ test('the drawer, its list and every word on screen say Version history, never s
 });
 
 // ---- The keyboard does all of it.
-test('the keyboard order is the card, its chips, then the lines of the lists that are open; Enter opens a list and Enter on a line shows its details', async () => {
+test('the keyboard order is the tile, its counts, then the rows of the tray that is open (it follows the last tile of the row); Enter opens a tray and Space on a row shows its details', async () => {
   const p = page();
   const focused = async (): Promise<string> => p.evaluate(() => { const el = document.activeElement as HTMLElement | null; return el === null ? '' : (el.getAttribute('aria-label') ?? el.textContent ?? '').trim(); });
   await main('Meeting assistant').focus();
@@ -458,6 +464,7 @@ test('the keyboard order is the card, its chips, then the lines of the lists tha
   await expect(chip('Meeting assistant', '3 skills')).toHaveAttribute('aria-expanded', 'true');
   await p.keyboard.press('Tab'); await p.keyboard.press('Tab');
   expect(await focused()).toBe('1 note set');
+  // Meeting assistant is the last tile of its row, so its tray comes right after it.
   await p.keyboard.press('Tab'); expect(await focused()).toBe('Summarize a meeting');
   await p.keyboard.press('Tab'); expect(await focused()).toBe('Write a reply');
   await p.keyboard.press('Space');
@@ -471,7 +478,7 @@ test('the keyboard order is the card, its chips, then the lines of the lists tha
 
 // ---- Two sizes: the text budget at every step, nothing cut off, nothing under 14 px.
 for (const [w, h] of SIZES_A) {
-  test(`at ${w} by ${h}: the map, an open list, a skill, a tool, a set of notes and the drawer all fit, pass the text budget and have no text under 14 px`, async () => {
+  test(`at ${w} by ${h}: the map, an open tray, a skill, a tool, a set of notes and the drawer all fit, pass the text budget and have no text under 14 px`, async () => {
     const p = page();
     await resize(p, w, h);
     const check = async (state: string): Promise<void> => {
@@ -479,21 +486,22 @@ for (const [w, h] of SIZES_A) {
       expect(await budget(), state).toEqual([]);
       expect(await smallText(), state).toEqual([]);
       expect(await overflowX(), `${state}: sideways scroll`).toBeLessThanOrEqual(0);
-      const cut = await p.evaluate(() => [...document.querySelectorAll<HTMLElement>('.kit-card, .kit-chip, .kit-acc-main')].filter(el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.right > window.innerWidth + 1; }).length);
+      const cut = await p.evaluate(() => [...document.querySelectorAll<HTMLElement>('.kit-card, .kit-count')].filter(el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.right > window.innerWidth + 1; }).length);
       expect(cut, `${state}: cut off on the right`).toBe(0);
     };
     await check('map');
-    await chip('Meeting assistant', '3 skills').click(); await chip('Meeting assistant', '1 tool').click(); await chip('Meeting assistant', '1 note set').click();
-    await check('lists open');
+    await chip('Meeting assistant', '1 note set').click(); await check('tray of notes open');
+    await chip('Meeting assistant', '1 tool').click(); await check('tray of tools open');
+    await chip('Meeting assistant', '3 skills').click(); await check('tray of skills open');
     await line('Meeting assistant', 'skill', 'Summarize a meeting').click();
     await panel().getByRole('button', { name: 'Show the full text' }).click();
     await check('skill details');
-    await line('Meeting assistant', 'tool', 'Read my calendar').click(); await check('tool details');
-    await line('Meeting assistant', 'note', 'Client list').click(); await check('notes details');
+    await chip('Meeting assistant', '1 tool').click(); await line('Meeting assistant', 'tool', 'Read my calendar').click(); await check('tool details');
+    await chip('Meeting assistant', '1 note set').click(); await line('Meeting assistant', 'note', 'Client list').click(); await check('notes details');
     await main('Meeting assistant').click(); await check('agent details');
     await topBar('Version history').click(); await expect(p.getByRole('dialog', { name: 'Version history' })).toBeVisible(); await check('version history');
-    // The cards still line up: no card is wider than the grid, and the chips of a card stay inside it.
-    const inside = await agentCards().evaluateAll(list => list.every(c => [...c.querySelectorAll('.kit-chip, .kit-acc-main')].every(k => { const a = k.getBoundingClientRect(), b = c.getBoundingClientRect(); return a.width === 0 || (a.left >= b.left - 1 && a.right <= b.right + 1); })));
+    // The tiles still line up: no tile is wider than the grid, and the counts of a tile stay inside it.
+    const inside = await agentCards().evaluateAll(list => list.every(c => [...c.querySelectorAll('.kit-count')].every(k => { const a = k.getBoundingClientRect(), b = c.getBoundingClientRect(); return a.width === 0 || (a.left >= b.left - 1 && a.right <= b.right + 1); })));
     expect(inside).toBe(true);
   });
 }
@@ -501,18 +509,18 @@ for (const [w, h] of SIZES_A) {
 // ---- Screenshots, when HOME_U0_SHOTS names a folder.
 for (const [w, h] of SIZES_A) {
   for (const look of THEMES) {
-    test(`screenshots at ${w} by ${h}, ${look}: chips closed, two chips open, skill, tool, notes and agent details, the tooltip, Version history, Find, Welcome`, async () => {
+    test(`screenshots at ${w} by ${h}, ${look}: trays closed, a tray open, skill, tool, notes and agent details, the tooltip, Version history, Find, Welcome`, async () => {
       const p = page();
       await setLook(p, look); await resize(p, w, h);
       await p.mouse.move(2, h - 4);
       await shot(p, 'map-chips-closed', w, h, look);
-      await chip('Meeting assistant', '3 skills').click(); await chip('Meeting assistant', '1 tool').click();
+      await chip('Meeting assistant', '3 skills').click();
       await line('Meeting assistant', 'skill', 'Write a reply').click();
       await p.mouse.move(2, h - 4);
       await shot(p, 'card-two-chips-open', w, h, look);
       await panel().getByRole('button', { name: 'Show the full text' }).click();
       await shot(p, 'skill-details', w, h, look);
-      await line('Meeting assistant', 'tool', 'Read my calendar').click(); await p.mouse.move(2, h - 4);
+      await chip('Meeting assistant', '1 tool').click(); await line('Meeting assistant', 'tool', 'Read my calendar').click(); await p.mouse.move(2, h - 4);
       await shot(p, 'tool-details', w, h, look);
       await chip('Meeting assistant', '1 note set').click(); await line('Meeting assistant', 'note', 'Client list').click(); await p.mouse.move(2, h - 4);
       await shot(p, 'notes-details', w, h, look);

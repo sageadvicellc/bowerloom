@@ -464,13 +464,13 @@ for (const [w, h] of SIZES) {
     await expect(layer().getByRole('button', { name: 'Show more' })).toBeInViewport();
   });
 
-  test(`at ${w} by ${h}: the controls are easy to hit (36 px or more) and the cards are the kit's own`, async () => {
+  test(`at ${w} by ${h}: the controls are easy to hit (32 px or more; Wave D: was 36 px) and the cards are the kit's own`, async () => {
     await resize(page(), w, h);
     await openLayer('Report builder');
     await topic('Work').click();
     const sizes = await page().evaluate(() => [...document.querySelectorAll('[data-slot="notes"] button, [data-slot="notes"] .kit-card, [data-slot="notes"] input')].filter(el => (el as HTMLElement).offsetParent !== null).map(el => { const r = el.getBoundingClientRect(); return { name: (el.textContent ?? el.getAttribute('aria-label') ?? '').trim().slice(0, 30), w: r.width, h: r.height, tag: el.tagName, card: el.classList.contains('kit-card-main') }; }));
-    for (const s of sizes.filter(x => x.tag === 'BUTTON' && !x.card)) expect(s.h, s.name).toBeGreaterThanOrEqual(35.5);
-    for (const s of sizes.filter(x => x.tag === 'DIV')) expect(s.h, s.name).toBeGreaterThanOrEqual(35.5);
+    for (const s of sizes.filter(x => x.tag === 'BUTTON' && !x.card)) expect(s.h, s.name).toBeGreaterThanOrEqual(31.5);
+    for (const s of sizes.filter(x => x.tag === 'DIV')) expect(s.h, s.name).toBeGreaterThanOrEqual(43.5);
     await expect(layer().locator('.nt-topic .kit-card')).toHaveCount(8);
     await expect(layer().locator('.nt-topic .kit-card[data-kind="note"][data-size="small"]')).toHaveCount(8);
   });

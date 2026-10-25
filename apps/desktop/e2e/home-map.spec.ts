@@ -88,7 +88,8 @@ test('picking an agent fills the three shelves; every card is the same card, wit
   expect(new Set(look).size, look.join('\n')).toBe(1);
   const remove = await cards.first().getByRole('button', { name: /^Remove / }).evaluate(b => { const s = getComputedStyle(b), r = b.getBoundingClientRect(); return { size: parseFloat(s.fontSize), h: r.height, w: r.width }; });
   console.log('MEASURED Remove button:', JSON.stringify(remove));
-  expect(remove.size).toBeGreaterThanOrEqual(14); expect(remove.h).toBeGreaterThanOrEqual(32);
+  // Wave D: Remove is a text button with a 24 px hit area (it was 32 px), and its words are 14 px.
+  expect(remove.size).toBeGreaterThanOrEqual(14); expect(remove.h).toBeGreaterThanOrEqual(24);
   expect(await budget()).toEqual([]);
 });
 
@@ -308,14 +309,15 @@ test('with motion on, the chips come in together over 140 ms, with no delay betw
 });
 
 for (const [w, h] of SIZES) {
-  test(`at ${w} by ${h} nothing is cropped in any state: no sideways scroll, the cards inside the panel, hints whole, the bar in view`, async () => {
+  test(`at ${w} by ${h} nothing is cropped in any state: no sideways scroll, the cards inside the panel, nothing cut without an ellipsis, the bar in view`, async () => {
     const p = page();
     await resize(p, w, h);
     const measure = async (state: string): Promise<void> => {
       const m = await p.evaluate(() => {
         const doc = document.documentElement, pn = document.querySelector('aside.hm-panel')!.getBoundingClientRect(), sb = document.querySelector('.hm-savebar')!.getBoundingClientRect();
         const cards = [...document.querySelectorAll('aside.hm-panel .kit-card')];
-        const clipped = [...document.querySelectorAll('.kit-card-main, .kit-card-hint, .kit-remove, .hm-seg-button, .hm-tick')].filter(e => e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1).map(e => e.textContent);
+        // Wave D: a name and a hint are one line and may be cut sideways, but only with an ellipsis; nothing else is cut at all.
+        const clipped = [...document.querySelectorAll('.kit-card-main, .kit-card-hint, .kit-remove, .hm-seg-button, .hm-tick')].filter(e => e.scrollHeight > e.clientHeight + 1 || (e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).textOverflow !== 'ellipsis')).map(e => e.textContent);
         const inside = cards.every(c => { const r = c.getBoundingClientRect(); return r.left >= pn.left && r.right <= pn.right + 0.5; });
         const barKids = [...document.querySelectorAll('.hm-savebar > *, .hm-savebar button, .hm-savebar li')].every(e => { const r = e.getBoundingClientRect(); return r.right <= window.innerWidth + 0.5 && r.left >= 0; });
         const stage = document.querySelector('.hm-stage-head')!.getBoundingClientRect();

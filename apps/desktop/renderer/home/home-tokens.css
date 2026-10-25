@@ -24,7 +24,7 @@
   /* The agent tile: one width and one height for every agent, whatever the name or the counts. */
   --hm-tile-w: 15.625rem; --hm-tile-h: 5.75rem; --hm-tile-glyph: 1.5rem;
   /* The row of a skill, tool or note: one height everywhere (tray, panel, Add drawer, Choose notes). The tile that leads it is 28 px and holds a 20 px icon. */
-  --hm-row-h: 2.75rem; --hm-row-tile: 1.75rem; --hm-row-w: 15rem;
+  --hm-row-h: 2.75rem; --hm-row-tile: 1.75rem; --hm-row-w: 15rem; --hm-row-min-w: 11rem;
   --hm-tray-col: 14rem;
   --hm-drawer-w: min(380px, 92vw);
   --hm-panel-w: clamp(18rem, 25vw, 20rem);

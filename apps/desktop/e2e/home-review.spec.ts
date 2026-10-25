@@ -298,7 +298,7 @@ test('after a drop with the mouse, Enter on a card from the keyboard still press
 // ---- Item 16: the honest label.
 test('a "Preview" badge with its own help sits in the top bar and says nothing is written (review item 16)', async () => {
   const p = page();
-  const badge = p.locator('header.hm-bar [data-preview] .kit-badge');
+  const badge = p.locator('header.hm-bar [data-preview] .kit-status');
   await expect(badge).toHaveText('Preview');
   await expect(badge).toBeVisible();
   const about = p.locator('header.hm-bar').getByRole('button', { name: 'About this preview', exact: true });

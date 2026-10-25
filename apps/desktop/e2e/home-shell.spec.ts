@@ -69,20 +69,20 @@ test('picking an agent fills the three shelves with the same small card; picking
   await expect(panel.getByRole('heading', { level: 2 })).toHaveText('Pick an agent');
 });
 
-test('a card is 12 px round with a 1 px border on every side, an agent card is about 240 wide and 130 to 200 tall and a small card at least 176 wide that holds its hint', async () => {
+test('a card is 10 px round with a 1 px border on every side, an agent tile is 250 by 92 and a row is at least 176 wide and 44 tall (Wave D: 12 px, 240 wide, 130 to 200 tall, 70 to 125 tall)', async () => {
   const p = page();
   await ensurePicked(p.locator('.kit-card[data-kind="agent"]').first().locator('.kit-card-main'));
   // The first agent is the one that is picked, and a picked card has a 2 px edge; the card beside it is a plain one, with the 1 px edge on every side.
   const picked = await p.locator('.kit-card[data-kind="agent"]').first().evaluate(c => { const s = getComputedStyle(c); return [s.borderRadius, s.borderTopWidth, s.borderLeftWidth, s.borderRightWidth, s.borderBottomWidth]; });
-  expect(picked).toEqual(['12px', '2px', '2px', '2px', '2px']);
+  expect(picked).toEqual(['10px', '2px', '2px', '2px', '2px']);
   const agent = await p.locator('.kit-card[data-kind="agent"]').nth(1).evaluate(c => { const r = c.getBoundingClientRect(), s = getComputedStyle(c); return { w: r.width, h: r.height, radius: s.borderRadius, top: s.borderTopWidth, left: s.borderLeftWidth, right: s.borderRightWidth, bottom: s.borderBottomWidth }; });
-  expect(agent.w).toBeGreaterThanOrEqual(238); expect(agent.w).toBeLessThanOrEqual(242); expect(agent.h).toBeGreaterThanOrEqual(130); expect(agent.h).toBeLessThanOrEqual(200);   // 15 rem wide since Wave A, and as tall as its chips need
-  expect([agent.radius, agent.top, agent.left, agent.right, agent.bottom]).toEqual(['12px', '1px', '1px', '1px', '1px']);
+  expect(agent.w).toBe(250); expect(agent.h).toBe(92);   // one tile, whatever the agent holds (Wave D)
+  expect([agent.radius, agent.top, agent.left, agent.right, agent.bottom]).toEqual(['10px', '1px', '1px', '1px', '1px']);
   const small = await p.locator('.kit-card[data-size="small"]').first().evaluate(c => { const r = c.getBoundingClientRect(); return { w: r.width, h: r.height }; });
-  expect(small.w).toBeGreaterThanOrEqual(176); expect(small.h).toBeGreaterThanOrEqual(70); expect(small.h).toBeLessThanOrEqual(125);
+  expect(small.w).toBeGreaterThanOrEqual(176); expect(small.h).toBe(44);
 });
 
-test('no text on the page is under 14 px, and the base text, hint and heading sizes are 16, 14 and 20', async () => {
+test('no text on the page is under 14 px, and the card name, hint, page title, section heading, button and body sizes are 15, 14, 18, 16, 14 and 14 (Wave D: 16, 14, 20, 20, 16 and 16)', async () => {
   const p = page();
   await ensurePicked(p.locator('.kit-card[data-kind="agent"]').first().locator('.kit-card-main'));
   const sizes = await p.evaluate(() => {
@@ -102,7 +102,7 @@ test('no text on the page is under 14 px, and the base text, hint and heading si
     return { label: px('.kit-card-main'), hint: px('.kit-hint'), heading: px('h1.kit-heading'), h2: px('h2.kit-heading'), h3: px('h3.kit-heading'), button: px('.hm-savebar .kit-button, .kit-drawer .kit-button, .hm-stage-tools .kit-button'), body: px('.hm-savebar p') };
   });
   console.log('MEASURED font sizes (px):', JSON.stringify(measure));
-  expect(measure).toMatchObject({ label: 16, hint: 14, heading: 20, h2: 20, h3: 20, button: 16, body: 16 });
+  expect(measure).toMatchObject({ label: 15, hint: 14, heading: 18, h2: 16, h3: 16, button: 14, body: 14 });
 });
 
 test('the Add and Version history drawers take the focus, close with Escape and the Close button, return the focus, and only one is open', async () => {
@@ -114,7 +114,7 @@ test('the Add and Version history drawers take the focus, close with Escape and 
   await expect(drawer.getByRole('heading', { level: 2, name: 'Add' })).toBeFocused();
   await expect(add).toHaveAttribute('aria-expanded', 'true');
   const box = (await drawer.boundingBox())!;
-  expect(box.width).toBeLessThanOrEqual(420.5); expect(box.x + box.width).toBeGreaterThan(1439);
+  expect(box.width).toBeLessThanOrEqual(380.5); expect(box.x + box.width).toBeGreaterThan(1439);
   await animationsDone(p);
   await p.keyboard.press('Escape');
   await expect(drawer).toHaveCount(0);
@@ -162,10 +162,10 @@ test('the card kit gallery renders every part in a light and a dark look', async
   await expect(p.locator('[data-theme="light"][data-home]')).toHaveCount(1); await expect(p.locator('[data-theme="dark"][data-home]')).toHaveCount(1);
   for (const look of ['light', 'dark']) {
     const scope = p.locator(`[data-theme="${look}"][data-home]`);
-    await expect(scope.locator('.kit-card[data-size="large"]')).toHaveCount(5 + 4);   // the four agent cards with count chips came with Wave A
-    await expect(scope.locator('.kit-card[data-size="small"]')).toHaveCount(8 + 3 + 8);
+    await expect(scope.locator('.kit-card[data-size="tile"]')).toHaveCount(5);   // the five agent tiles of Wave D
+    await expect(scope.locator('.kit-card[data-size="small"]')).toHaveCount(5 + 8 + 3 + 8 + 12);   // 5 ready-made agents, 8 cards, 3 and 8 on shelves, and the 12 rows of the open tray
     await expect(scope.locator('.kit-card[data-selected]').first()).toBeVisible();
-    await expect(scope.locator('.kit-badge[data-tone="warn"]').first()).toBeVisible(); await expect(scope.locator('.kit-badge[data-tone="new"]').first()).toBeVisible();
+    await expect(scope.locator('.kit-status[data-tone="warn"]').first()).toBeVisible(); await expect(scope.locator('.kit-status[data-tone="new"]').first()).toBeVisible();
     await expect(scope.locator('.kit-avatar')).toHaveCount(0);
     await expect(scope.locator('.hm-gallery-block:has(h3:text-is("Tiles")) .kit-tile')).toHaveCount(6);
     await expect(scope.getByRole('button', { name: 'Show more', exact: true })).toBeVisible();
@@ -180,12 +180,12 @@ test('the card kit gallery renders every part in a light and a dark look', async
   expect(lum(colours[0]![0]!)).toBeGreaterThan(200); expect(lum(colours[1]![0]!)).toBeLessThan(60); expect(lum(colours[1]![1]!)).toBeGreaterThan(200);
   expect(assertTextBudget(await p.evaluate(() => document.querySelector('[data-home]')!.outerHTML))).toEqual([]);
   expect(await p.evaluate(() => typeof (window as unknown as { bowerloom?: unknown }).bowerloom)).toBe('undefined');
-  // A badge stays on one line and inside its card, even in the narrowest small card; a name is never cut to dots.
-  const fit = await p.evaluate(() => [...document.querySelectorAll('.kit-card .kit-badge')].map(b => { const c = b.closest('.kit-card')!.getBoundingClientRect(), r = b.getBoundingClientRect(); return { h: r.height, inside: r.right <= c.right && r.left >= c.left }; }));
+  // A state stays on one line and inside its card, even in the narrowest small card; a name is never cut to dots.
+  const fit = await p.evaluate(() => [...document.querySelectorAll('.kit-card .kit-status')].map(b => { const c = b.closest('.kit-card')!.getBoundingClientRect(), r = b.getBoundingClientRect(); return { h: r.height, inside: r.right <= c.right && r.left >= c.left }; }));
   expect(fit.length).toBeGreaterThan(4); expect(fit.every(f => f.h < 36 && f.inside), JSON.stringify(fit)).toBe(true);
   const cut = await p.evaluate(() => [...document.querySelectorAll('.kit-card-main')].filter(e => e.scrollHeight > e.clientHeight + 1).length);
   expect(cut).toBe(0);
-  const badge = await p.locator('.kit-badge').first().evaluate(e => parseFloat(getComputedStyle(e).fontSize));
+  const badge = await p.locator('.kit-status').first().evaluate(e => parseFloat(getComputedStyle(e).fontSize));
   console.log('MEASURED badge font size (px):', badge);
   expect(badge).toBeGreaterThanOrEqual(14);
 });
@@ -219,8 +219,9 @@ for (const [w, h] of SIZES) {
     await resize(p, w, h);
     const stage = await p.evaluate(() => {
       const doc = document.documentElement, stageEl = document.querySelector('main.hm-stage')!.getBoundingClientRect();
-      const cards = [...document.querySelectorAll('.hm-grid .kit-card')].map(c => c.getBoundingClientRect());
-      const texts = [...document.querySelectorAll('.kit-card-main, .kit-card-hint')].map(e => ({ over: e.scrollHeight - e.clientHeight, w: e.scrollWidth - e.clientWidth }));
+      const cards = [...document.querySelectorAll('.hm-grid .kit-card[data-kind="agent"]')].map(c => c.getBoundingClientRect());
+      // Wave D: a name and a hint are one line and may be cut sideways, but only with an ellipsis.
+      const texts = [...document.querySelectorAll('.kit-card-main, .kit-card-hint')].map(e => ({ over: e.scrollHeight - e.clientHeight, w: getComputedStyle(e).textOverflow === 'ellipsis' ? 0 : e.scrollWidth - e.clientWidth }));
       const panel = document.querySelector('aside.hm-panel')!.getBoundingClientRect(), bar = document.querySelector('.hm-savebar')!.getBoundingClientRect(), top = document.querySelector('.hm-bar')!.getBoundingClientRect();
       return { sideways: doc.scrollWidth - doc.clientWidth, inside: cards.every(c => c.left >= stageEl.left && c.right <= stageEl.right + 0.5), clipped: texts.filter(t => t.over > 1 || t.w > 1).length, panelRight: panel.right, barBottom: bar.bottom, vw: window.innerWidth, vh: window.innerHeight, topH: top.height, columns: new Set(cards.map(c => Math.round(c.left))).size };
     });

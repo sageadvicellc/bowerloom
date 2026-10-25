@@ -245,7 +245,8 @@ test('a row and a tile have one size each, from tokens: the row is --hm-row-h hi
   const row = kitRules.find(r => /\.kit-card\[data-size="small"\]\s*$/.test(r.selector))!, tile = kitRules.find(r => /\.kit-card\[data-size="tile"\]\s*$/.test(r.selector))!;
   assert.equal(declared(row.body, 'height'), 'var(--hm-row-h)'); assert.equal(declared(row.body, 'width'), '100%');
   assert.equal(declared(tile.body, 'width'), 'var(--hm-tile-w)'); assert.equal(declared(tile.body, 'height'), 'var(--hm-tile-h)');
-  assert.doesNotMatch(row.body + tile.body, /min-height|max-height|min-width/, 'a fixed size, not a size that can grow');
+  assert.doesNotMatch(row.body + tile.body, /min-height|max-height/, 'a fixed height, not a height that can grow');
+  assert.equal(declared(row.body, 'min-width'), 'var(--hm-row-min-w)', 'a row never gets narrower than 176 px, whatever holds it'); assert.doesNotMatch(tile.body, /min-width/);
   // The name, the hint and the job are one line each, clipped with an ellipsis.
   const main = kitRules.find(r => /\.kit-card-main\s*$/.test(r.selector))!, hint = kitRules.find(r => /\.kit-card-hint\s*$/.test(r.selector))!;
   for (const rule of [main, hint]) { assert.equal(declared(rule.body, 'white-space'), 'nowrap'); assert.equal(declared(rule.body, 'text-overflow'), 'ellipsis'); }

@@ -211,41 +211,34 @@ test('the badge shows on a real shelf card and on the drawer card for the same s
   await expect(shelf('Skills').getByRole('button', { name: '2 different copies' })).toBeVisible();
 });
 
-// ---- One column at 15 rem and wider.
-test('a card 15 rem wide or more with a badge lays out in one column: name, hint and badge share one left edge, with the badge under the hint', async () => {
+// ---- A row with a state (Wave D: the row is one height, so the state takes the place of the hint).
+test('a row with a state is one 44 px row: the name has the whole first line, and the state sits at the right end of the second line, before Remove, in place of the hint', async () => {
   await pick('Inbox sorter');
-  const geometry = async (): Promise<{ width: number; name: number; hint: number; badge: number; tile: number; hintBottom: number; badgeTop: number; nameRight: number; remove: number }> => shelf('Skills').locator('[data-entry="skill-014"]').evaluate(li => {
+  const geometry = async (scope: Locator): Promise<{ height: number; width: number; name: number; nameBottom: number; tile: number; stateTop: number; stateLeft: number; stateRight: number; cardRight: number; hint: number; remove: number }> => scope.evaluate(li => {
     const card = li.querySelector('.kit-card')!, r = (sel: string): DOMRect => card.querySelector(sel)!.getBoundingClientRect();
-    return { width: card.getBoundingClientRect().width, name: r('.kit-card-main').left, hint: r('.kit-card-hint').left, badge: r('.kit-badge').left, tile: r('.kit-tile').left, hintBottom: r('.kit-card-hint').bottom, badgeTop: r('.kit-badge').top, nameRight: r('.kit-card-main').right, remove: r('.kit-remove').left };
+    const hint = card.querySelector('.kit-card-hint');
+    return { height: card.getBoundingClientRect().height, width: card.getBoundingClientRect().width, name: r('.kit-card-main').left, nameBottom: r('.kit-card-main').bottom, tile: r('.kit-tile').left, stateTop: r('.kit-status').top, stateLeft: r('.kit-status').left, stateRight: r('.kit-status').right, cardRight: card.getBoundingClientRect().right, hint: hint === null ? 0 : hint.getBoundingClientRect().width, remove: card.querySelector('.kit-remove') === null ? -1 : r('.kit-remove').left };
   });
-  const wide = await geometry();
-  console.log('MEASURED wide card:', JSON.stringify(wide));
-  expect(wide.width).toBeGreaterThanOrEqual(240);
-  expect(Math.abs(wide.badge - wide.name)).toBeLessThanOrEqual(1);
-  expect(Math.abs(wide.hint - wide.name)).toBeLessThanOrEqual(1);
-  expect(wide.badge).toBeGreaterThan(wide.tile + 20);
-  expect(wide.badgeTop).toBeGreaterThanOrEqual(wide.hintBottom - 1);
-  expect(wide.nameRight).toBeLessThanOrEqual(wide.remove);
-  // Under 15 rem (of room inside the card) the badge has no text column to sit in, and takes the whole row under the tile.
+  const wide = await geometry(shelf('Skills').locator('[data-entry="skill-014"]'));
+  console.log('MEASURED row with a state:', JSON.stringify(wide));
+  expect(wide.height).toBe(44);
+  expect(wide.name).toBeGreaterThan(wide.tile + 20);
+  expect(wide.stateTop, 'the state is on the second line').toBeGreaterThanOrEqual(wide.nameBottom - 2);
+  expect(wide.hint, 'the hint gives way to the state').toBe(0);
+  expect(wide.stateRight, 'the state comes before Remove').toBeLessThanOrEqual(wide.remove + 1);
+  // A narrow row keeps its height and keeps the state inside it: the words end in an ellipsis rather than leave the row.
   await shelf('Skills').locator('[data-entry="skill-014"]').evaluate(li => { (li as HTMLElement).style.width = '12rem'; (li as HTMLElement).style.flex = 'none'; });
   await framesPainted(page());
-  const narrow = await geometry();
-  console.log('MEASURED narrow card:', JSON.stringify(narrow));
-  expect(narrow.width).toBeLessThan(240);
-  expect(Math.abs(narrow.badge - narrow.tile)).toBeLessThanOrEqual(1);
-  expect(narrow.badge).toBeLessThan(narrow.name);
-  // The drawer card has the same layout (the old override in add.css is gone).
+  const narrow = await geometry(shelf('Skills').locator('[data-entry="skill-014"]'));
+  console.log('MEASURED narrow row:', JSON.stringify(narrow));
+  expect(narrow.width).toBeLessThan(240); expect(narrow.height).toBe(44); expect(narrow.stateRight).toBeLessThanOrEqual(narrow.cardRight);
+  // The drawer row is the same row.
   await shelf('Skills').locator('[data-entry="skill-014"]').evaluate(li => { (li as HTMLElement).style.width = ''; (li as HTMLElement).style.flex = ''; });
   await openAdd();
   await addDrawer().getByRole('button', { name: 'Show more' }).click();
-  const inDrawer = await row('skill-014').locator('.kit-card').evaluate(card => {
-    const r = (sel: string): DOMRect => card.querySelector(sel)!.getBoundingClientRect();
-    return { width: card.getBoundingClientRect().width, name: r('.kit-card-main').left, hint: r('.kit-card-hint').left, badge: r('.kit-badge').left, hintBottom: r('.kit-card-hint').bottom, badgeTop: r('.kit-badge').top };
-  });
-  console.log('MEASURED drawer card:', JSON.stringify(inDrawer));
-  expect(inDrawer.width).toBeGreaterThanOrEqual(240);
-  expect(Math.abs(inDrawer.badge - inDrawer.name)).toBeLessThanOrEqual(1);
-  expect(inDrawer.badgeTop).toBeGreaterThanOrEqual(inDrawer.hintBottom - 1);
+  const inDrawer = await geometry(row('skill-014'));
+  console.log('MEASURED drawer row:', JSON.stringify(inDrawer));
+  expect(inDrawer.height).toBe(44); expect(inDrawer.stateTop).toBeGreaterThanOrEqual(inDrawer.nameBottom - 2); expect(inDrawer.stateRight).toBeLessThanOrEqual(inDrawer.cardRight);
 });
 
 // ---- Layout.
@@ -413,7 +406,7 @@ test('the keyboard does all of it: open Add, add a skill by the picker, save, op
 });
 
 // ---- Text.
-test('no text is under 14 px in the Add drawer, the dialog, the Version history drawer or the bar, and every button is 44 px tall or more', async () => {
+test('no text is under 14 px in the Add drawer, the dialog, the Version history drawer or the bar, and every button is 32 px tall or more (Wave D: it was 44 px)', async () => {
   const p = page();
   await pick('Inbox sorter');
   await shelf('Skills').getByRole('button', { name: 'Remove Write a reply' }).click();
@@ -430,7 +423,7 @@ test('no text is under 14 px in the Add drawer, the dialog, the Version history 
     return out;
   });
   const tall = async (scope: Locator): Promise<string[]> => scope.evaluate(root => [...root.querySelectorAll<HTMLElement>('button, [role="tab"]')]
-    .filter(b => b.getClientRects().length > 0 && b.getBoundingClientRect().height < 44 && !b.classList.contains('kit-remove') && !b.classList.contains('kit-badge') && !b.classList.contains('kit-card-main'))
+    .filter(b => b.getClientRects().length > 0 && b.getBoundingClientRect().height < 31.5 && !b.classList.contains('kit-remove') && !b.classList.contains('kit-status') && !b.classList.contains('kit-card-main'))
     .map(b => `${(b.textContent ?? b.getAttribute('aria-label') ?? '').trim()} ${Math.round(b.getBoundingClientRect().height)}`));
   await openAdd();
   expect(await small()).toEqual([]);

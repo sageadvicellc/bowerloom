@@ -121,7 +121,8 @@
 
 /* ---- The Notes shelf: its button sits on the title row */
 [data-home] .nt-shelf { position: relative; width: 100%; }
-[data-home] .nt-shelf-action { position: absolute; top: calc(-1 * var(--hm-space-1)); right: 0; }
+[data-home] .nt-shelf .kit-shelf-head { min-height: var(--hm-control-h); justify-content: center; }
+[data-home] .nt-shelf-action { position: absolute; top: 0; right: 0; }
 
 @media (max-width: 760px) {
   [data-home] .nt-cols { grid-template-columns: minmax(0, 1fr); overflow-y: auto; align-content: start; }

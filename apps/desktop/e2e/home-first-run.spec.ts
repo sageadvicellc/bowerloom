@@ -358,10 +358,10 @@ test('the whole first minute works with the keyboard alone', async () => {
   // Step two: the focus is on the first lit agent, Tab walks the agents (any of them will do), Shift+Tab from the first reaches the popover, and Enter on an agent is the click.
   await expect(dialog().getByText('2 of 6')).toBeVisible();
   await expect(agentCards().first().locator('.kit-card-main')).toBeFocused();
-  // Tab goes through the card's own count chips (the first agent has two) before it reaches the next agent.
-  const chips = await agentCards().first().locator('.kit-chip').count();
+  // Tab goes through the card's own counts (the first agent has two) before it reaches the next agent.
+  const chips = await agentCards().first().locator('.kit-count').count();
   expect(chips).toBe(2);
-  for (let i = 0; i < chips; i += 1) { await p.keyboard.press('Tab'); await expect(agentCards().first().locator('.kit-chip').nth(i)).toBeFocused(); }
+  for (let i = 0; i < chips; i += 1) { await p.keyboard.press('Tab'); await expect(agentCards().first().locator('.kit-count').nth(i)).toBeFocused(); }
   await p.keyboard.press('Tab');
   await expect(agentCards().nth(1).locator('.kit-card-main')).toBeFocused();
   for (let i = 0; i < chips + 1; i += 1) await p.keyboard.press('Shift+Tab');
