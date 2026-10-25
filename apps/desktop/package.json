@@ -20,7 +20,8 @@
     "build": "npm run bundle && electron-builder --mac --publish never",
     "sample:make": "node tools/make-sample.mjs",
     "verify:fuses": "node tools/check-fuses.mjs",
-    "sandbox:reset": "node tools/make-sandbox.mjs --reset"
+    "sandbox:reset": "node tools/make-sandbox.mjs --reset",
+    "personas:serve": "node tools/personas/drive.mjs serve"
   },
   "dependencies": {
     "@xyflow/react": "12.12.0",
