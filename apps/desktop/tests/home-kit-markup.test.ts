@@ -221,21 +221,24 @@ test('the kit gallery shows both looks, every card state and every part, passes 
 
 test('the tour popover: one sentence, the step, Back and Next, Skip tour; the last step says Done; the first has no Back', () => {
   const first = html(createElement(TourOverlay, { state: startTour(createTour(TOUR_STEPS)), onNext: none, onBack: none, onSkip: none }));
-  assert.match(first, /role="dialog" aria-label="Tour"/); assert.match(first, /These are your AI agents, from every tool\./); assert.match(first, />1 of 6</);
-  assert.match(first, />Next</); assert.match(first, />Skip tour</); assert.doesNotMatch(first, />Back</); assert.equal([...first.matchAll(/class="tour-dot"/g)].length, 6);
+  assert.match(first, /role="dialog" aria-label="Tour"/); assert.match(first, /These are your AI agents, from every tool\./); assert.match(first, />1 of 7</);
+  assert.match(first, />Next</); assert.match(first, />Skip tour</); assert.doesNotMatch(first, />Back</); assert.equal([...first.matchAll(/class="tour-dot"/g)].length, 7);
   assert.match(first, /data-state="now"/);
   within(first);
   let t = startTour(createTour(TOUR_STEPS));
-  for (let i = 0; i < 5; i += 1) t = stepNext(t);
+  for (let i = 0; i < 6; i += 1) t = stepNext(t);
   const last = html(createElement(TourOverlay, { state: t, onNext: none, onBack: none, onSkip: none }));
-  assert.match(last, />Done</); assert.doesNotMatch(last, />Next</); assert.match(last, />Back</); assert.match(last, />6 of 6</); assert.match(last, /Replay this tour any time\./);
+  assert.match(last, />Done</); assert.doesNotMatch(last, />Next</); assert.match(last, />Back</); assert.match(last, />7 of 7</); assert.match(last, /data-variant="text"[^>]*>Back</); assert.match(last, /Replay this tour any time\./);
   within(last);
+  const waits = html(createElement(TourOverlay, { state: stepNext(startTour(createTour(TOUR_STEPS))), onNext: none, onBack: none, onSkip: none }));
+  assert.match(waits, /Click an agent, or select one and press Enter\./); assert.match(waits, />Next</, 'the step that waits keeps its Next button'); assert.match(waits, /data-variant="primary"[^>]*>Next</);
+  assert.ok(waits.indexOf('>Back<') < waits.indexOf('>Next<'), 'Back is a quiet text button before Next, and Next stays last');
   assert.equal(html(createElement(TourOverlay, { state: createTour(TOUR_STEPS), onNext: none, onBack: none, onSkip: none })), '', 'an idle tour draws nothing');
 });
 
 test('the tour announcer says the step and the sentence in a polite live region, and nothing when the tour is not running', () => {
   const running = html(createElement(TourAnnouncer, { state: stepNext(startTour(createTour(TOUR_STEPS))) }));
-  assert.match(running, /role="status" aria-live="polite"/); assert.match(running, /Step 2 of 6/); assert.match(running, /Click an agent to see what it can do\./); within(running);
+  assert.match(running, /role="status" aria-live="polite"/); assert.match(running, /Step 2 of 7/); assert.match(running, /Click an agent to see what it can do\./); within(running);
   const idle = html(createElement(TourAnnouncer, { state: createTour(TOUR_STEPS) }));
   assert.match(idle, /aria-live="polite"/); assert.doesNotMatch(idle, /Step/);
 });

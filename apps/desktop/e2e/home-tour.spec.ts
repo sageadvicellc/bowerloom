@@ -1,5 +1,5 @@
 /**
- * The guided tour of the 0.8 home app, in the real window (Electron started with --prototype-v2). It runs once on first mount, walks six steps with the
+ * The guided tour of the 0.8 home app, in the real window (Electron started with --prototype-v2). It runs once on first mount, walks seven steps with the
  * keyboard (Next, Back, Escape), lights each target with a hole that contains it, keeps the popover off the target, moves the focus in and gives it back,
  * announces each step, works with reduce motion, survives a missing target and a resize, does not run twice in one session, and replays from Help.
  * Set HOME_U0_SHOTS to a folder to also save tour step 2 at 1440 by 900 and 900 by 600, light and dark.
@@ -16,7 +16,8 @@ const STEPS = [
   { target: 'agent', text: 'Click an agent to see what it can do.' },
   { target: 'details', text: 'Skills are what it knows how to do.' },
   { target: 'add', text: 'Add skills, tools, and notes here.' },
-  { target: 'save', text: 'Changes wait here until you press Save.' },
+  { target: 'save', text: 'This bar shows your changes. Press Save to keep them.' },
+  { target: 'share', text: 'Share your agents or go back in time here.' },
   { target: 'help', text: 'Replay this tour any time.' },
 ] as const;
 
@@ -59,11 +60,11 @@ test('the tour starts by itself on first mount, on step one, with its sentence, 
   const p = page();
   await expect(dialog()).toBeVisible();
   await expect(dialog().getByText(STEPS[0].text)).toBeVisible();
-  await expect(dialog().getByText('1 of 6')).toBeVisible();
+  await expect(dialog().getByText('1 of 7')).toBeVisible();
   await expect(dialog().getByRole('button', { name: 'Next' })).toBeFocused();
   await expect(dialog().getByRole('button', { name: 'Back' })).toHaveCount(0);
   await expect(dialog().getByRole('button', { name: 'Skip tour' })).toBeVisible();
-  expect(await p.locator('.tour-dot').count()).toBe(6);
+  expect(await p.locator('.tour-dot').count()).toBe(7);
   expect(await p.evaluate(() => typeof (window as unknown as { bowerloom?: unknown }).bowerloom)).toBe('undefined');
 });
 
@@ -73,15 +74,15 @@ test('the keyboard walks every step with Next and Back; each step lights its tar
   for (let i = 0; i < STEPS.length; i += 1) {
     const step = STEPS[i]!;
     await expect(dialog().getByText(step.text)).toBeVisible();
-    await expect(dialog().getByText(`${i + 1} of 6`)).toBeVisible();
+    await expect(dialog().getByText(`${i + 1} of 7`)).toBeVisible();
     const m = await measureStep(step.target);
     expect(contains(m.hole, m.target.w > m.vw || m.target.h > m.vh ? { ...m.target, w: Math.min(m.target.w, m.vw - m.target.x), h: Math.min(m.target.h, m.vh - m.target.y) } : m.target, 2), `step ${i + 1}: the hole holds the target ${JSON.stringify(m)}`).toBe(true);
     expect(overlaps(m.pop, m.target), `step ${i + 1}: the popover covers the target ${JSON.stringify(m)}`).toBe(false);
     expect(overlaps(m.pop, m.hole), `step ${i + 1}: the popover covers the lit hole`).toBe(false);
     expect(m.pop.x).toBeGreaterThanOrEqual(0); expect(m.pop.y).toBeGreaterThanOrEqual(0); expect(m.pop.x + m.pop.w).toBeLessThanOrEqual(m.vw); expect(m.pop.y + m.pop.h).toBeLessThanOrEqual(m.vh);
     if (step.target === 'agent') {
-      // Step two waits for the person: no Next, the focus is on the lit agent, and Enter on it is the click that moves the tour on.
-      await expect(dialog().getByRole('button', { name: 'Next' })).toHaveCount(0);
+      // Step two waits for the person: Next is in its place all the same, the focus is on the lit agent, and Enter on it is the click that moves the tour on.
+      await expect(dialog().getByRole('button', { name: 'Next' })).toBeEnabled();
       await expect(p.locator('.kit-card[data-kind="agent"]').first().locator('.kit-card-main')).toBeFocused();
       await p.keyboard.press('Enter');
     } else if (i < STEPS.length - 1) { await expect(dialog().getByRole('button', { name: 'Next' })).toBeFocused(); await p.keyboard.press('Enter'); }
@@ -91,10 +92,10 @@ test('the keyboard walks every step with Next and Back; each step lights its tar
   await p.keyboard.press('Shift+Tab');
   await expect(dialog().getByRole('button', { name: 'Back' })).toBeFocused();
   await p.keyboard.press('Enter');
-  await expect(dialog().getByText(STEPS[4].text)).toBeVisible();
-  await expect(dialog().getByText('5 of 6')).toBeVisible();
-  await p.keyboard.press('Tab'); await p.keyboard.press('Enter');
   await expect(dialog().getByText(STEPS[5].text)).toBeVisible();
+  await expect(dialog().getByText('6 of 7')).toBeVisible();
+  await p.keyboard.press('Tab'); await p.keyboard.press('Enter');
+  await expect(dialog().getByText(STEPS[6].text)).toBeVisible();
   await p.keyboard.press('Enter');
   await expect(dialog()).toHaveCount(0);
   await expect(p.locator('.tour-layer')).toHaveCount(0);
@@ -104,7 +105,7 @@ test('Escape skips the tour from any step, and the focus goes back to the first 
   const p = page();
   await expect(dialog()).toBeVisible();
   await p.keyboard.press('Enter'); await p.keyboard.press('Enter');
-  await expect(dialog().getByText('3 of 6')).toBeVisible();
+  await expect(dialog().getByText('3 of 7')).toBeVisible();
   await p.keyboard.press('Escape');
   await expect(dialog()).toHaveCount(0);
   await expect(p.getByRole('heading', { level: 1, name: 'Your agents' })).toBeFocused();
@@ -133,9 +134,9 @@ test('each step is announced in a polite live region: the step and the sentence'
   await expect(dialog()).toBeVisible();
   const live = p.locator('.hm-sr[role="status"]');
   await expect(live).toHaveAttribute('aria-live', 'polite');
-  await expect(live).toHaveText(`Step 1 of 6 ${STEPS[0].text}`);
+  await expect(live).toHaveText(`Step 1 of 7 ${STEPS[0].text}`);
   await p.keyboard.press('Enter');
-  await expect(live).toHaveText(`Step 2 of 6 ${STEPS[1].text}`);
+  await expect(live).toHaveText(`Step 2 of 7 ${STEPS[1].text}`);
   await p.keyboard.press('Escape');
   await expect(live).toHaveText('');
 });
@@ -159,7 +160,7 @@ test('the tour does not run twice in one session, and replays from Help with "Sh
   await p.getByRole('button', { name: 'Show me around' }).click();
   await expect(dialog()).toBeVisible();
   await expect(dialog().getByText(STEPS[0].text)).toBeVisible();
-  await expect(dialog().getByText('1 of 6')).toBeVisible();
+  await expect(dialog().getByText('1 of 7')).toBeVisible();
   await p.keyboard.press('Escape');
   await expect(dialog()).toHaveCount(0);
   await expect(help).toBeFocused();

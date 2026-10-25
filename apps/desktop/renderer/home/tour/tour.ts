@@ -10,7 +10,11 @@
  * `area` names a larger thing (by its `data-tour` id) that is lit and open to clicks while the step waits, so "any agent" is true: the target is where the
  * focus goes, and the area is what the hole is cut around.
  */
-export interface TourStep { readonly id: string; readonly target: string; readonly text: string; readonly wait?: boolean; readonly hint?: string; readonly area?: string }
+export interface TourStep {
+  readonly id: string; readonly target: string; readonly text: string; readonly wait?: boolean; readonly hint?: string; readonly area?: string;
+  /** A CSS selector for things the card must not cover either (step three keeps off the agent that is picked, which is what its text describes). */
+  readonly avoid?: string;
+}
 
 export type TourStatus = 'idle' | 'running' | 'skipped' | 'finished';
 
@@ -107,11 +111,12 @@ export function spotlightBox(target: Box, viewport: Size, pad = 6): Box {
 }
 
 /**
- * Where the popover goes. Below the target (its left edges lined up) when there is room, else above, to the right, to the left. When the target is so large that none of those
+ * Where the popover goes. Below the target (its left edges lined up) when there is room, else above, to the right, to the left. With boxes to `avoid` (things the card
+ * must not cover but that are not the target), a place beside the target also tries the heights that clear those boxes. When the target is so large that none of those
  * fits (the map can fill the stage), a free corner of the screen, and failing that the strip beside it with a narrower popover (`minW`). With no target it is centered. It always stays inside the screen, and it covers the
  * target only when the target leaves no free place at all (then the place that covers least).
  */
-export function placePopover(target: Box | null, pop: Size, viewport: Size, gap = 12, margin = 12, minW?: number): Placement {
+export function placePopover(target: Box | null, pop: Size, viewport: Size, gap = 12, margin = 12, minW?: number, avoid: readonly Box[] = []): Placement {
   const centered: Placement = { x: Math.round((viewport.w - pop.w) / 2), y: Math.round((viewport.h - pop.h) / 2), side: 'center' };
   if (target === null) return centered;
   const maxX = viewport.w - margin - pop.w, maxY = viewport.h - margin - pop.h;
@@ -122,7 +127,15 @@ export function placePopover(target: Box | null, pop: Size, viewport: Size, gap 
     { x: target.x + target.w + gap, y: down, side: 'right' },
     { x: target.x - gap - pop.w, y: down, side: 'left' },
   ];
-  const fits = (p: Placement): boolean => p.x >= margin && p.y >= margin && p.x <= maxX && p.y <= maxY && !intersects({ x: p.x, y: p.y, w: pop.w, h: pop.h }, target);
+  // Beside the target but higher or lower: level with its top or its bottom, or just above or below each box that is to be left uncovered.
+  if (avoid.length > 0) {
+    const heights = [target.y, target.y + target.h - pop.h, ...avoid.flatMap(a => [a.y + a.h + gap, a.y - gap - pop.h])].map(y => clamp(y, margin, maxY));
+    for (const side of ['left', 'right'] as const) for (const y of heights) candidates.push({ x: side === 'left' ? target.x - gap - pop.w : target.x + target.w + gap, y, side });
+  }
+  const fits = (p: Placement): boolean => {
+    const box = { x: p.x, y: p.y, w: pop.w, h: pop.h };
+    return p.x >= margin && p.y >= margin && p.x <= maxX && p.y <= maxY && !intersects(box, target) && !avoid.some(a => intersects(box, a));
+  };
   const free = candidates.find(fits);
   if (free !== undefined) return { ...free, x: Math.round(free.x), y: Math.round(free.y) };
   // A very large target (the map beside a side panel on a small window) leaves a strip that is too narrow for the full popover: use the strip.

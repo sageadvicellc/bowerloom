@@ -45,7 +45,7 @@ export const FIND_WORDS = deepFreeze({
     readSafe: 'Nothing is changed. Keys and passwords are never copied.',
     nothingHint: 'Nothing was found on this computer.',
     appsNote: 'These are the apps your agents work in.',
-    closingNote: 'Saved in this preview. Help replays the tour any time.',
+    closingNote: 'Saved in this preview. Your files are untouched.',
   },
   popover: {},
 });

@@ -302,7 +302,7 @@ const SCREENS: readonly Screen[] = [
   { name: 'welcome', go: async p => { await fresh(p, undefined, { welcome: true }); await expect(p.getByRole('button', { name: 'Find my agents' })).toBeVisible(); await animationsDone(p); } },
   { name: 'version-history', go: async p => { await fresh(p); await skipTour(p); await topBar('Version history').click(); await expect(p.locator('[data-slot="points"]')).toBeVisible(); await animationsDone(p); } },
   { name: 'tour-1', go: async p => { await fresh(p, undefined, { tour: true }); await expect(p.getByRole('dialog', { name: 'Tour' })).toBeVisible(); await animationsDone(p); } },
-  { name: 'tour-3', go: async p => { await fresh(p, undefined, { tour: true }); await expect(p.getByRole('dialog', { name: 'Tour' })).toBeVisible(); await p.getByRole('button', { name: 'Next' }).click(); await tiles().first().locator('.kit-card-main').click(); await expect(p.getByRole('dialog', { name: 'Tour' }).getByText('3 of 6')).toBeVisible(); await animationsDone(p); } },
+  { name: 'tour-3', go: async p => { await fresh(p, undefined, { tour: true }); await expect(p.getByRole('dialog', { name: 'Tour' })).toBeVisible(); await p.getByRole('button', { name: 'Next' }).click(); await tiles().first().locator('.kit-card-main').click(); await expect(p.getByRole('dialog', { name: 'Tour' }).getByText('3 of 7')).toBeVisible(); await animationsDone(p); } },
 ];
 
 for (const [w, h] of SIZES_D) {

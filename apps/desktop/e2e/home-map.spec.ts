@@ -186,7 +186,7 @@ test('the sort toggle orders the map by name or by recent change; an agent chang
   expect(await budget()).toEqual([]);
 });
 
-test('the tour still works: step 3 shows the shelves with content, the six steps run, and Help replays them', async () => {
+test('the tour still works: step 3 shows the shelves with content, the seven steps run, and Help replays them', async () => {
   const p = page();
   await fresh(p, undefined, { tour: true });
   const dialog = p.getByRole('dialog', { name: 'Tour' });
@@ -202,13 +202,13 @@ test('the tour still works: step 3 shows the shelves with content, the six steps
   expect(await panel().locator('.kit-card').count()).toBeGreaterThanOrEqual(3);
   await expect(panel().getByRole('heading', { level: 2, name: 'Inbox sorter' })).toBeVisible();
   expect(await budget()).toEqual([]);
-  for (let i = 0; i < 4; i += 1) await p.keyboard.press('Enter');
+  for (let i = 0; i < 5; i += 1) await p.keyboard.press('Enter');
   await expect(dialog).toHaveCount(0);
   await expect(panel().locator('.kit-card').first()).toBeVisible();
   await p.getByRole('button', { name: 'Help' }).click();
   await p.getByRole('button', { name: 'Show me around' }).click();
   await expect(dialog.getByText('These are your AI agents, from every tool.')).toBeVisible();
-  await expect(dialog.getByText('1 of 6')).toBeVisible();
+  await expect(dialog.getByText('1 of 7')).toBeVisible();
 });
 
 test('the text budget holds on the real page in every state, nothing is under 14 px, and no file path shows', async () => {

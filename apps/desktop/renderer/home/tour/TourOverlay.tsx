@@ -1,9 +1,10 @@
 /**
  * The guided tour on screen. It dims the page, cuts a lit hole around the element marked `data-tour="<id>"`, and shows one small popover next to it
- * with one sentence, "Back", "Next" ("Done" on the last step), "Skip tour", and the step dots with "2 of 6". Escape skips. The focus moves into the popover and
+ * with one sentence, "Skip tour", a quiet "Back", "Next" ("Done" on the last step), and the step dots with "2 of 7". "Next" is always the same button in the same place at the right
+ * edge, on every step, also on the one that waits for a click: pressing it there only moves on without the click. Escape skips. The focus moves into the popover and
  * goes back to what had it when the tour ends. The popover never covers its target. A target that is not on the page leaves a centered popover and the
  * tour carries on. It follows the target when the window is resized or scrolled. All the arithmetic is in tour.ts.
- * A step that waits for the person (step 2, "Click an agent") has no Next button and shows its hint instead. The lit target is then a real hole in the layer, so
+ * A step that waits for the person (step 2, "Click an agent") shows its hint under the sentence, and the click (or Enter on the agent) is what moves on. The lit target is then a real hole in the layer, so
  * a real click reaches it: four blocks surround the hole and the rest of the layer lets the click through. The focus goes to the target, and Tab cycles between
  * the target and the popover's buttons.
  */
@@ -72,6 +73,7 @@ export function TourOverlay({ state, onNext, onBack, onSkip }: TourOverlayProps)
   const callbacks = useRef({ onSkip });
   callbacks.current = { onSkip };
   const targetId = step?.target ?? null;
+  const avoidSel = step?.avoid ?? null;
   /** The thing the hole is cut around: the step's area while it waits (every agent is lit), else its target. */
   const litId = (waiting ? step?.area : undefined) ?? targetId;
   // What the window-level key handler and the focus guard need to know right now.
@@ -100,11 +102,13 @@ export function TourOverlay({ state, onNext, onBack, onSkip }: TourOverlayProps)
       around.forEach((b, i) => { const el = edges.current[i]; if (el) { el.style.left = `${b.x}px`; el.style.top = `${b.y}px`; el.style.width = `${b.w}px`; el.style.height = `${b.h}px`; } });
       if (lit !== null) { spotEl.style.left = `${lit.x}px`; spotEl.style.top = `${lit.y}px`; spotEl.style.width = `${lit.w}px`; spotEl.style.height = `${lit.h}px`; }
       popEl.style.width = '';
-      let at = placePopover(lit, { w: popEl.offsetWidth, h: popEl.offsetHeight }, { w: vw, h: vh }, 12, 12, MIN_WIDTH);
+      // Things the card must also keep off (the agent that is picked, at the step that describes it), as boxes cut to the screen.
+      const avoid = avoidSel === null ? [] : [...document.querySelectorAll(avoidSel)].map(el => rectOf(el)).filter((b): b is Box => b !== null).map(b => onScreen(b, vw, vh)).filter((b): b is Box => b !== null);
+      let at = placePopover(lit, { w: popEl.offsetWidth, h: popEl.offsetHeight }, { w: vw, h: vh }, 12, 12, MIN_WIDTH, avoid);
       if (at.w !== undefined) {
         // Narrower popover: set the width, then place again with the height it now has.
         popEl.style.width = `${at.w}px`;
-        at = placePopover(lit, { w: at.w, h: popEl.offsetHeight }, { w: vw, h: vh }, 12, 12);
+        at = placePopover(lit, { w: at.w, h: popEl.offsetHeight }, { w: vw, h: vh }, 12, 12, undefined, avoid);
       }
       popEl.style.left = `${at.x}px`; popEl.style.top = `${at.y}px`;
       popEl.setAttribute('data-side', at.side);
@@ -122,7 +126,7 @@ export function TourOverlay({ state, onNext, onBack, onSkip }: TourOverlayProps)
       window.removeEventListener('resize', soon); window.removeEventListener('scroll', soon, true);
       watcher?.disconnect(); if (frame !== 0) cancelAnimationFrame(frame); cancelAnimationFrame(settled);
     };
-  }, [litId]);
+  }, [litId, avoidSel]);
 
   // Focus: into the popover now, back to where it was when the tour ends. Escape skips; Tab stays inside.
   useEffect(() => {
@@ -200,8 +204,8 @@ export function TourOverlay({ state, onNext, onBack, onSkip }: TourOverlayProps)
         </div>
         <div className="tour-actions">
           <span className="tour-skip"><Button onClick={onSkip}>{WORDS.label.tourSkip}</Button></span>
-          {isFirst(state) ? null : <Button onClick={onBack}>{WORDS.label.tourBack}</Button>}
-          {waiting ? null : <Button variant="primary" ref={next} onClick={onNext}>{last ? WORDS.label.tourDone : WORDS.label.tourNext}</Button>}
+          {isFirst(state) ? null : <Button variant="text" onClick={onBack}>{WORDS.label.tourBack}</Button>}
+          <Button variant="primary" ref={next} onClick={onNext}>{last ? WORDS.label.tourDone : WORDS.label.tourNext}</Button>
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-// The guided tour engine: the pure state machine, the once-per-session switch, the six steps, and where the popover sits.
+// The guided tour engine: the pure state machine, the once-per-session switch, the seven steps, and where the popover sits.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTour, createTourSession, currentStep, intersects, isFirst, isLast, placePopover, progressText, tourReduce, replayTour, skipTour, startTour, stepBack, stepNext, spotlightBox } from '../renderer/home/tour/tour.js';
@@ -68,15 +68,16 @@ test('the session runs the tour on its own once, and only once', () => {
   assert.equal(createTourSession().claimAutoStart(), true, 'another session starts fresh');
 });
 
-test('the six steps are the storyboard steps, in order, one sentence of at most 12 words each', () => {
-  assert.deepEqual(TOUR_STEPS.map(s => s.target), ['map', 'agent', 'details', 'add', 'save', 'help']);
-  assert.deepEqual([...TOUR_TARGETS], ['map', 'agent', 'details', 'add', 'save', 'help']);
+test('the seven steps are the storyboard steps and "Share and history", in order, one sentence of at most 12 words each', () => {
+  assert.deepEqual(TOUR_STEPS.map(s => s.target), ['map', 'agent', 'details', 'add', 'save', 'share', 'help']);
+  assert.deepEqual(TOUR_STEPS.map(s => s.id), ['map', 'agent', 'details', 'add', 'save', 'share', 'help'], 'the ids of the six old steps are kept');
+  assert.deepEqual([...TOUR_TARGETS], ['map', 'agent', 'details', 'add', 'save', 'share', 'help']);
   assert.deepEqual(TOUR_STEPS.map(s => s.text), [
     'These are your AI agents, from every tool.', 'Click an agent to see what it can do.', 'Skills are what it knows how to do.',
-    'Add skills, tools, and notes here.', 'Changes wait here until you press Save.', 'Replay this tour any time.',
+    'Add skills, tools, and notes here.', 'This bar shows your changes. Press Save to keep them.', 'Share your agents or go back in time here.', 'Replay this tour any time.',
   ]);
-  for (const s of TOUR_STEPS) { assert.ok(countWords(s.text) <= 12, s.text); assert.equal((s.text.match(/[.!?]/g) ?? []).length, 1, 'one sentence'); assert.deepEqual(assertTextBudget(`<p>${s.text}</p>`), []); }
-  assert.equal(new Set(TOUR_STEPS.map(s => s.id)).size, 6);
+  for (const s of TOUR_STEPS) { assert.ok(countWords(s.text) <= 12, s.text); assert.equal((s.text.match(/[.!?]/g) ?? []).length, s.id === 'save' ? 2 : 1, s.id === 'save' ? 'Hanna set the bar step as two short sentences (2026-10-25)' : 'one sentence'); assert.deepEqual(assertTextBudget(`<p>${s.text}</p>`), []); }
+  assert.equal(new Set(TOUR_STEPS.map(s => s.id)).size, 7);
   assert.equal(Object.isFrozen(TOUR_STEPS), true);
 });
 
@@ -214,10 +215,37 @@ test('the reducer has an "acted" action that does the same', () => {
   assert.equal(tourReduce(first, 'acted'), first);
 });
 
-test('the real tour waits at step two for a click on an agent, with the hint "Click any agent." and no other step waits', () => {
-  assert.deepEqual(TOUR_STEPS.map(s => s.wait === true), [false, true, false, false, false, false]);
+test('the real tour waits at step two for a click on an agent, with a hint that also names the keyboard, and no other step waits', () => {
+  assert.deepEqual(TOUR_STEPS.map(s => s.wait === true), [false, true, false, false, false, false, false]);
   const step = TOUR_STEPS[1]!;
-  assert.equal(step.target, 'agent'); assert.equal(step.hint, 'Click any agent.');
+  assert.equal(step.target, 'agent'); assert.equal(step.hint, 'Click an agent, or select one and press Enter.');
   assert.ok(countWords(step.hint ?? '') <= 12); assert.deepEqual(assertTextBudget(`<p>${step.hint}</p>`), []);
   assert.ok(TOUR_STEPS.filter(s => s.wait !== true).every(s => s.hint === undefined));
+});
+
+// ---- Wave C: a card that keeps off more than its target.
+test('a card keeps off the boxes it is asked to avoid, and every place it takes is inside the screen', () => {
+  const small = { w: 900, h: 600 }, card = { w: 336, h: 150 };
+  const panel = { x: 612, y: 52, w: 288, h: 500 }, picked = { x: 28, y: 150, w: 250, h: 92 };
+  const plain = placePopover(panel, card, small, 12, 12, 280);
+  assert.equal(intersects({ x: plain.x, y: plain.y, w: card.w, h: card.h }, picked), true, 'without the box to avoid, the card lands on the tile (the finding)');
+  const p = placePopover(panel, card, small, 12, 12, 280, [picked]);
+  const b = { x: p.x, y: p.y, w: p.w ?? card.w, h: card.h };
+  assert.equal(intersects(b, panel), false); assert.equal(intersects(b, picked), false); assert.equal(inside(b, small), true);
+  const big = { w: 1280, h: 800 };
+  const wide = placePopover({ x: 960, y: 52, w: 320, h: 700 }, card, big, 12, 12, 280, [{ x: 28, y: 140, w: 250, h: 92 }]);
+  const wb = { x: wide.x, y: wide.y, w: wide.w ?? card.w, h: card.h };
+  assert.equal(intersects(wb, { x: 960, y: 52, w: 320, h: 700 }), false); assert.equal(intersects(wb, { x: 28, y: 140, w: 250, h: 92 }), false); assert.equal(inside(wb, big), true);
+  assert.deepEqual(placePopover(panel, card, small, 12, 12, 280, []), plain, 'no boxes to avoid: the same place as before');
+});
+
+test('with no free place around a target, the avoid boxes never push the card off the screen', () => {
+  const v = { w: 400, h: 300 };
+  const p = placePopover({ x: 0, y: 0, w: 400, h: 300 }, { w: 300, h: 120 }, v, 12, 12, undefined, [{ x: 50, y: 50, w: 100, h: 100 }]);
+  assert.equal(inside({ x: p.x, y: p.y, w: 300, h: 120 }, v), true);
+});
+
+test('only the third step keeps its card off an agent, and it names the picked tile', () => {
+  assert.deepEqual(TOUR_STEPS.filter(s => s.avoid !== undefined).map(s => s.id), ['details']);
+  assert.match(TOUR_STEPS[2]!.avoid ?? '', /data-selected/);
 });

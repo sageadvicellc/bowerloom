@@ -25,8 +25,8 @@
   transition: left var(--motion-home-tour-spot-ms, 0ms) var(--motion-home-tour-spot-ease, ease), top var(--motion-home-tour-spot-ms, 0ms) var(--motion-home-tour-spot-ease, ease);
 }
 [data-home] .tour-text { margin: 0; text-wrap: balance; font-size: var(--hm-text-section); line-height: 1.35; font-weight: 600; }
-/* A waiting step has one more line, so its popover is a little tighter and stays clear of the Save bar. */
-[data-home] .tour-layer[data-wait] .tour-pop { gap: var(--hm-space-3); padding: var(--hm-space-4) var(--hm-space-5); }
+/* A waiting step has one more line, so its lines sit a little closer; its padding is the same, so Next is in the very same place on every step. */
+[data-home] .tour-layer[data-wait] .tour-pop { gap: var(--hm-space-3); }
 [data-home] .tour-hint { margin: calc(var(--hm-space-2) * -1) 0 0; font-size: var(--hm-text-base); font-weight: 600; color: var(--accent-strong); }
 [data-home] .tour-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--hm-space-3); }
 [data-home] .tour-dots { display: inline-flex; align-items: center; gap: var(--hm-space-2); }
@@ -35,6 +35,8 @@
 [data-home] .tour-dot[data-state="now"] { background: var(--accent-strong); border-color: var(--accent-strong); box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent-strong); margin: 0 2px; }
 [data-home] .tour-actions { display: flex; align-items: center; gap: var(--hm-space-2); }
 [data-home] .tour-actions .tour-skip { margin-right: auto; }
+/* Next (and Done) is the one primary button: always at the right edge, always the same width, so it never moves from step to step. */
+[data-home] .tour-actions .kit-button[data-variant="primary"] { min-width: 5rem; }
 @media (prefers-reduced-motion: reduce) {
   [data-home] .tour-spot, [data-home] .tour-pop { transition: none !important; }
 }

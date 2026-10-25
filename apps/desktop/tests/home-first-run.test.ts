@@ -40,7 +40,8 @@ test('the storyboard words are used as written', () => {
   const l = FIND_WORDS.label, h = FIND_WORDS.hint;
   assert.deepEqual([l.findMyAgents, l.looksRight, l.showDetails, l.readTitle, l.yesRead, l.notNow, l.whereILooked, l.notFound, l.findMore], ['Find my agents', 'Looks right', 'Show details', 'Read what is inside?', 'Yes, read them', 'Not now', 'Where I looked', 'Not found', 'Find more']);
   assert.equal(`${h.welcomeLineOne} ${h.welcomeLineTwo}`, 'See everything your AI agents can do, and change it in one place.');
-  assert.equal(h.closingNote, 'Saved in this preview. Help replays the tour any time.');
+  assert.equal(h.closingNote, 'Saved in this preview. Your files are untouched.', 'the note after the first Save says only that it was saved');
+  assert.doesNotMatch(h.closingNote, /tour|Help/i);
   assert.ok(countWords(h.welcomeNote) <= 12);
 });
 
@@ -79,7 +80,7 @@ test('the map has a "Find more" button only when it is given a way to reopen Fin
   const draw = (props: Record<string, unknown>): string => renderToStaticMarkup(createElement(ProtoProvider, { store }, createElement(HomeApp, props)));
   assert.doesNotMatch(draw({}), /Find more/); assert.doesNotMatch(draw({}), /data-open/); assert.match(draw({}), /<div class="hm-toast"[^>]*><\/div>/, 'the strip is empty');
   const guided = draw({ onFindMore: none, closingNote: true });
-  assert.match(guided, />Find more</); assert.match(guided, /class="hm-toast"/); assert.doesNotMatch(guided, /Help replays the tour/, 'the note is empty until the first Save');
+  assert.match(guided, />Find more</); assert.match(guided, /class="hm-toast"/); assert.doesNotMatch(guided, /untouched/, 'the note is empty until the first Save');
   assert.deepEqual(assertTextBudget(guided), []);
 });
 

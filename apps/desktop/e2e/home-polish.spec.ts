@@ -333,12 +333,12 @@ test('the click step is a real click: clicking an agent picks that agent and the
   await fresh(p, undefined, { tour: true });
   const tour = p.getByRole('dialog', { name: 'Tour' });
   await tour.getByRole('button', { name: 'Next' }).click();
-  await expect(tour.getByRole('button', { name: 'Next' })).toHaveCount(0);
+  await expect(tour.getByText('2 of 7')).toBeVisible();
   const second = agentButtons().nth(1);
   await second.click();
   await expect(second).toHaveAttribute('aria-pressed', 'true');
   await expect(tour.getByText('Skills are what it knows how to do.')).toBeVisible();
-  for (let i = 0; i < 3; i += 1) await tour.getByRole('button', { name: 'Next' }).click();
+  for (let i = 0; i < 4; i += 1) await tour.getByRole('button', { name: 'Next' }).click();
   await tour.getByRole('button', { name: 'Done' }).click();
   await expect(tour).toHaveCount(0);
   await expect(second).toHaveAttribute('aria-pressed', 'true');
@@ -632,7 +632,7 @@ test('the closing note fades in, stays six seconds and fades out; the first Save
   await panel().locator('.kit-remove').first().click();
   await p.getByRole('region', { name: 'Save bar' }).getByRole('button', { name: 'Save', exact: true }).click();
   const toast = p.locator('.hm-toast');
-  await expect(toast).toHaveText('Saved in this preview. Help replays the tour any time.');
+  await expect(toast).toHaveText('Saved in this preview. Your files are untouched.');
   expect(await toast.evaluate(el => [getComputedStyle(el).animationName, getComputedStyle(el).animationDuration])).toEqual(['hm-toast-in', '0.14s']);
   await p.waitForFunction(() => (window as unknown as { __toast: Record<string, number> }).__toast.gone !== undefined, null, { timeout: 12_000 });
   const t = await p.evaluate(() => (window as unknown as { __toast: Record<string, number> }).__toast);
