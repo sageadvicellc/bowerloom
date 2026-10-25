@@ -142,18 +142,39 @@ export function keptCount(sel: Selection, basis: Basis): number {
 /** How many notes a topic switches on, with this selection's parts left out. */
 export const topicCount = (sel: Selection, topic: Topic): number => includedParts(sel, topic).reduce((n, p) => n + p.count, 0);
 
-/** What an agent reads now, as a person counts it: each topic that is on with how many of its notes, and how many more notes the rest of the choice picks. */
-export interface Already { readonly topics: readonly { readonly name: string; readonly count: number }[]; readonly before: number; readonly total: number }
+/**
+ * What a selection includes, as a person counts it: each topic that is on with how many of its notes, the single notes picked by hand that no topic already
+ * holds, and the notes that the rest of the choice picks (kinds, labels and links of an older choice). The parts are a partition of the notes the preview
+ * counts, so they always add up to `total`, exactly.
+ */
+export interface Already {
+  readonly topics: readonly { readonly name: string; readonly count: number }[];
+  /** Notes ticked one by one that no topic on the list holds. */
+  readonly hand: number;
+  /** Notes that only the older handles (kinds, labels, links) pick. */
+  readonly before: number;
+  readonly total: number;
+}
 
 /**
- * The notes already included by a selection (the one the sheet starts from): the topics that are on with their counts, and the notes that no topic accounts for
- * (single notes, kinds, labels and links of an older choice). The two always add up to the number the preview shows, because the second is what is left of it.
+ * The notes included by a selection, split into the topics that are on, the notes picked by hand, and what is left (the older handles). It is worked out from the
+ * selection as it is now, so it follows every change; the three parts and the topics always add up to the number the preview shows, because the last part is
+ * what is left of it and a note is counted once, in the first place that holds it.
  */
 export function alreadyOf(sel: Selection, basis: Basis): Already {
-  const total = matchedOf(sel, basis).size;
+  const matched = matchedOf(sel, basis), total = matched.size;
   const topics = basis.topics.filter(t => sel.on.includes(t.id)).map(t => ({ name: t.name, count: topicCount(sel, t) })).filter(t => t.count > 0);
   const named = topics.reduce((n, t) => n + t.count, 0);
-  return { topics, before: Math.max(0, total - named), total };
+  // A note ticked by hand counts under its topic when that topic holds it (it is not counted twice), and by hand when no topic on the list does.
+  const held = new Set<string>();
+  for (const page of basis.pages) {
+    const topic = topicOf(basis.topics, page);
+    if (topic === undefined || !sel.on.includes(topic.id)) continue;
+    const part = partOf(topic, page);
+    if (part !== undefined && !sel.leftOut.includes(part.folder)) held.add(page.id);
+  }
+  const hand = sel.hand.filter(id => matched.has(id) && !held.has(id)).length;
+  return { topics, hand, before: Math.max(0, total - named - hand), total };
 }
 
 /** The notes a topic adds on top of everything else the selection picks: what the person would lose by switching it off. */

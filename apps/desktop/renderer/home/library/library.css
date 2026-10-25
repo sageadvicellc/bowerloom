@@ -83,8 +83,12 @@
   background: var(--quiet-bg); color: var(--quiet-fg); border-bottom: 1px solid var(--hm-border);
 }
 [data-home] .lb-banner { background: var(--warn-bg); color: var(--warn-fg); }
+/* The note above the column lines up with the column: its room at the sides is the room the column leaves. */
+[data-home] .lb-honest { padding-inline: max(var(--hm-space-5), calc((100% - var(--hm-sheet-w)) / 2)); }
 [data-home] .lb-web-body { overflow-y: auto; padding: var(--hm-space-5); display: flex; flex-direction: column; gap: var(--hm-space-5); min-width: 0; }
-[data-home] .lb-web-body > * { max-width: calc(var(--hm-tile-w) * 3); }
+/* The column of the sheet is centred and wide (about 760 px), so it never hugs the left edge of a wide window; the notes above and the buttons below line up with it. */
+[data-home] .lb-web-body { align-items: center; }
+[data-home] .lb-web-body > * { width: 100%; max-width: var(--hm-sheet-w); box-sizing: border-box; }
 [data-home] .lb-section { display: flex; flex-direction: column; gap: var(--hm-space-3); min-width: 0; }
 [data-home] .lb-field-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--hm-space-3); }
 [data-home] .lb-field-row .lb-search { max-width: none; }
@@ -113,8 +117,13 @@
 [data-home] .lb-item-name { font-size: var(--hm-text-base); font-weight: 650; cursor: pointer; overflow-wrap: anywhere; }
 [data-home] .lb-item-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--hm-space-1) var(--hm-space-3); }
 [data-home] .lb-item-meta .kit-hint { color: var(--text); }
+/* The facts that need care: an amber dot and the words (bold for code that runs and for what can change things, normal for a key). */
+[data-home] .lb-flags-list { display: flex; flex-direction: column; gap: var(--hm-space-1); }
+[data-home] .lb-flag { margin: 0; display: flex; align-items: baseline; gap: var(--hm-space-2); font-size: var(--hm-text-base); font-weight: 400; color: var(--text); }
+[data-home] .lb-flag-dot { align-self: center; background: var(--hm-amber); }
+[data-home] .lb-flag[data-strong] .lb-flag-name { font-weight: 700; }
 [data-home] .lb-item .dt-full { padding-left: calc(var(--hm-space-5) + var(--hm-space-3) + var(--hm-space-3)); }
-[data-home] .lb-web-foot { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: var(--hm-space-2) var(--hm-space-3); padding: var(--hm-space-2) var(--hm-space-5); border-top: 1px solid var(--hm-border); background: var(--surface); }
+[data-home] .lb-web-foot { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: var(--hm-space-2) var(--hm-space-3); padding: var(--hm-space-2) max(var(--hm-space-5), calc((100% - var(--hm-sheet-w)) / 2)); border-top: 1px solid var(--hm-border); background: var(--surface); }
 [data-home] .lb-summary { margin-right: auto; display: flex; flex-direction: column; }
 [data-home] .lb-summary p { margin: 0; }
 

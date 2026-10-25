@@ -403,7 +403,7 @@ test('opening a starter source shows what it holds by kind, with the banner, the
   await expect(triage.locator('[data-field="release"]')).toHaveText('v2.1');
   const chat = sheet().locator('[data-item="send-chat"]');
   await expect(chat.locator('[data-reach]')).toHaveText('Reaches chat.example.com');
-  await expect(chat.locator('[data-ability]')).toHaveText('Can change things');
+  await expect(chat.locator('[data-flag="changes"] .lb-flag-name')).toHaveText('Can change things');
   await expect(chat.getByText('Needs a key')).toBeVisible();
   const hook = sheet().locator('[data-item="tidy-files"]');
   await expect(hook.getByText('Runs code')).toBeVisible();

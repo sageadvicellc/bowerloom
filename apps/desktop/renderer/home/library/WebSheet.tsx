@@ -15,12 +15,12 @@ import {
 import type { SampleSource, SourceItem } from '../../../shared/home/library-sources.js';
 import type { StoreAction } from '../../../shared/proto/store.js';
 import { useProtoStore } from '../../proto/session.js';
-import { Badge } from '../kit/Badge.js';
 import { Button } from '../kit/Button.js';
 import { Drawer } from '../kit/Drawer.js';
 import { Glyph } from '../kit/Glyph.js';
 import { HelpPopover } from '../kit/HelpPopover.js';
 import { KitIcon } from '../kit/icons.js';
+import { ACCESS_WORDS } from '../../../shared/home/plain-details.js';
 import { LIBRARY_WORDS, addItems, alreadyHere, groupHeading, madeByLine, openSource, sourceCounts, tickName, willBeCopies } from './library-words.js';
 import './library.css';
 
@@ -166,6 +166,16 @@ function SourceView({ source, ticked, onToggle, headingRef, onBack }: { source: 
   );
 }
 
+/** One fact about an item that needs care: an amber dot, its name (bold when `strong`), and one plain sentence. The words always say it, so the colour is never the only signal. */
+function FlagLine({ id, strong, name, says }: { id: string; strong: boolean; name: string; says: string }): ReactElement {
+  return (
+    <p className="lb-flag" data-flag={id} data-strong={strong ? '' : undefined}>
+      <span className="kit-dot lb-flag-dot" aria-hidden="true" />
+      <span><span className="lb-flag-name">{name}</span>: {says}</span>
+    </p>
+  );
+}
+
 function ItemRow({ item, on, onToggle }: { item: SourceItem; on: boolean; onToggle(): void }): ReactElement {
   const [open, setOpen] = useState(false);
   const boxId = useId(), hintId = useId(), textId = useId();
@@ -182,10 +192,17 @@ function ItemRow({ item, on, onToggle }: { item: SourceItem; on: boolean; onTogg
             <p className="kit-hint"><span data-budget="content" data-field="author">{madeByLine(item.author)}</span></p>
             <p className="kit-hint">{L.release} <span data-budget="content" data-field="release">{item.release}</span></p>
             {reach === null ? null : <p className="kit-hint" data-reach="">{reach}</p>}
-            {ability === null ? null : <p className="kit-hint" data-ability="">{ability}</p>}
-            {runsCodeOf(item) ? <Badge badge={{ label: L.runsCode, tone: 'warn' }} /> : null}
-            {needsKeyOf(item) ? <Badge badge={{ label: L.needsKey, tone: 'warn' }} /> : null}
+            {ability === null || ability === ACCESS_WORDS['read-write'] ? null : <p className="kit-hint" data-ability="">{ability}</p>}
           </div>
+          {/* A fact that needs care has weight: a bold name and an amber dot for what runs code and what can change things, the same dot and the normal weight for a key,
+              and under each one plain sentence that says what it means. */}
+          {runsCodeOf(item) || ability === ACCESS_WORDS['read-write'] || needsKeyOf(item) ? (
+            <div className="lb-flags-list" data-flag-list="">
+              {runsCodeOf(item) ? <FlagLine id="runs" strong name={L.runsCode} says={H.saysRunsCode} /> : null}
+              {ability === ACCESS_WORDS['read-write'] ? <FlagLine id="changes" strong name={L.canChange} says={H.saysChanges} /> : null}
+              {needsKeyOf(item) ? <FlagLine id="key" strong={false} name={L.needsKey} says={H.saysNeedsKey} /> : null}
+            </div>
+          ) : null}
         </div>
       </div>
       <div className="dt-full">

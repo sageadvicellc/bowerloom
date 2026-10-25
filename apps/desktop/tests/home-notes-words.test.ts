@@ -169,15 +169,28 @@ test('the sources of the layer use no inline style, no raw colour and no word of
 // ---- Wave C
 import { alreadyLine } from '../renderer/home/notes/notes-words.js';
 
-test('the line of what is already included lists up to three topics with their counts, then "N more", then what is from before; it never passes twelve words', () => {
+test('the line of what is already included lists the topics with their counts, then the notes picked by hand, then what is from before; it never passes twelve words and its numbers add up', () => {
   assert.equal(alreadyLine([{ name: 'Meetings', count: 114 }, { name: 'Travel', count: 52 }], 52), 'Already included: Meetings (114), Travel (52) and 52 from before.');
   assert.equal(alreadyLine([{ name: 'Meetings', count: 114 }], 0), 'Already included: Meetings (114).');
   assert.equal(alreadyLine([{ name: 'Clients', count: 86 }, { name: 'Company', count: 18 }], 0), 'Already included: Clients (86) and Company (18).');
+  assert.equal(alreadyLine([{ name: 'Clients', count: 86 }, { name: 'Company', count: 18 }], 0, 2), 'Already included: Clients (86), Company (18) and 2 picked by hand.');
   assert.equal(alreadyLine([], 263), 'Already included: 263 from before.');
-  assert.equal(alreadyLine([{ name: 'A', count: 1 }, { name: 'B', count: 2 }, { name: 'C', count: 3 }, { name: 'D', count: 4 }, { name: 'E', count: 5 }], 6), 'Already included: A (1), B (2), 3 more and 6 from before.', 'twelve words is the most, so the third topic is counted in the rest');
-  assert.equal(alreadyLine([{ name: 'A', count: 1 }, { name: 'B', count: 2 }, { name: 'C', count: 3 }, { name: 'D', count: 4 }], 0), 'Already included: A (1), B (2), C (3) and 1 more.');
-  for (const n of [0, 1, 4, 9]) for (const before of [0, 5, 999]) {
-    const text = alreadyLine(Array.from({ length: n }, (_, i) => ({ name: `Topic number ${i + 1}`, count: 100 + i })), before);
+  assert.equal(alreadyLine([], 0, 3), 'Already included: 3 picked by hand.');
+  assert.equal(alreadyLine([{ name: 'A', count: 1 }, { name: 'B', count: 2 }, { name: 'C', count: 3 }, { name: 'D', count: 4 }], 0), 'Already included: A (1), B (2), C (3) and D (4).');
+  // When the full list is too long the smallest topics are counted together, and the numbers still add up.
+  const five = [{ name: 'A', count: 1 }, { name: 'B', count: 2 }, { name: 'C', count: 3 }, { name: 'D', count: 4 }, { name: 'E', count: 5 }];
+  const sum = (text: string): number => [...text.matchAll(/\((\d+)\)|\b(\d+) (?:picked by hand|from before|notes in all)/g)].reduce((n, m) => n + Number(m[1] ?? m[2]), 0);
+  for (const [before, hand] of [[6, 0], [0, 2], [6, 2], [0, 0]] as const) {
+    const text = alreadyLine(five, before, hand);
+    assert.ok(countWords(text) <= 12, text);
+    assert.equal(sum(text), 15 + before + hand, text);
+  }
+  for (const n of [0, 1, 4, 9]) for (const before of [0, 5, 999]) for (const hand of [0, 2, 40]) {
+    const list = Array.from({ length: n }, (_, i) => ({ name: `Topic number ${i + 1}`, count: 100 + i }));
+    const text = alreadyLine(list, before, hand);
     assert.ok(countWords(text) <= 12, text); assert.deepEqual(assertTextBudget(`<p>${text}</p>`), [], text); assert.equal(bannedIn(text), null, text);
+    const whole = list.reduce((s, t) => s + t.count, before + hand);
+    assert.equal(sum(text), whole, text);
   }
 });
+

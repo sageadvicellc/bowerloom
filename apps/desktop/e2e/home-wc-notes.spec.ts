@@ -37,7 +37,7 @@ async function openFor(agent: string): Promise<void> {
 }
 async function useNotes(): Promise<void> { await layer().getByRole('button', { name: 'Use these notes' }).click(); await expect(layer()).toHaveCount(0); }
 /** Every number in the line, as a list: "Already included: Meetings (114), Travel (52) and 52 from before." is 114, 52, 52. */
-const numbersOf = (text: string): number[] => [...text.matchAll(/\((\d+)\)|\b(\d+) from before/g)].map(m => Number(m[1] ?? m[2]));
+const numbersOf = (text: string): number[] => [...text.matchAll(/\((\d+)\)|\b(\d+) (?:from before|picked by hand)/g)].map(m => Number(m[1] ?? m[2]));
 const shot = async (name: string, w: number, h: number, look: string): Promise<void> => { if (SHOTS === null) return; await animationsDone(page()); await page().screenshot({ path: join(SHOTS, `${name}-${look}-${w}x${h}.png`), scale: 'css' }); };
 
 test.beforeAll(async () => { test.setTimeout(240_000); home = await launchHome(); });
@@ -73,23 +73,24 @@ test('an agent that reads notes chosen another way shows the "Kept from before" 
   await layer().getByRole('button', { name: 'Cancel' }).click();
   await openFor('Writing coach');
   await expect(layer().locator('[data-topic="kept"]')).toBeVisible();
-  await expect(already()).toHaveText(/^Already included: \d+ from before\.$/);
-  expect(numbersOf(await already().innerText())[0]).toBe(await total());
+  // The three notes ticked one by one are counted by hand, the links that start from them are from before, and the two add up to the preview.
+  await expect(already()).toHaveText(/^Already included: 3 picked by hand and \d+ from before\.$/);
+  expect(numbersOf(await already().innerText()).reduce((a, b) => a + b, 0)).toBe(await total());
 });
 
 test('after a topic is added to a choice that was made another way, the line lists the topic and what is from before, and the numbers still add up', async () => {
   await openFor('Writing coach');
-  const before = numbersOf(await already().innerText())[0]!;
+  const before = numbersOf(await already().innerText()).reduce((a, b) => a + b, 0);
   await topic('Travel').click();
   await useNotes();
   await panel().getByRole('button', { name: 'Choose notes' }).click();
   await expect(layer()).toBeVisible();
   await animationsDone(page());
   const line = await already().innerText();
-  expect(line).toMatch(/^Already included: Travel \(\d+\) and \d+ from before\.$/);
-  const [travel, rest] = numbersOf(line) as [number, number];
-  expect(travel + rest).toBe(await total());
-  expect(rest).toBeLessThanOrEqual(before);
+  expect(line).toMatch(/^Already included: Travel \(\d+\), 3 picked by hand and \d+ from before\.$/);
+  const [travel, hand, rest] = numbersOf(line) as [number, number, number];
+  expect(travel + hand + rest).toBe(await total());
+  expect(hand + rest).toBeLessThanOrEqual(before);
   expect(await budget()).toEqual([]);
 });
 

@@ -79,10 +79,10 @@ export function TopicGrid({ basis, selection, onTopic, onPart, onKeep }: TopicGr
       {basis.topics.map(topic => {
         const on = selection.on.includes(topic.id), shown = topicCount(selection, topic);
         return (
-          <li key={topic.id} className="nt-topic" data-topic={topic.id} data-on={on ? '' : undefined}>
+          <li key={topic.id} className="nt-topic" data-topic={topic.id} data-on={on ? '' : undefined} data-leave={on && topic.parts.length > 1 ? '' : undefined}>
             <ItemCard kind="note" name={topic.name} hint={shown === topic.count ? notesCount(topic.count) : partOfTopic(shown, topic.count)} selected={on} onSelect={() => onTopic(topic)} />
             <meter className="nt-size" aria-hidden="true" min={0} max={biggest} value={topic.count} />
-            {topic.parts.length > 1 ? (on ? <LeaveOut topic={topic} selection={selection} onPart={onPart} /> : <div className="nt-leave nt-leave-reserved" aria-hidden="true" />) : null}
+            {topic.parts.length > 1 && on ? <LeaveOut topic={topic} selection={selection} onPart={onPart} /> : null}
           </li>
         );
       })}

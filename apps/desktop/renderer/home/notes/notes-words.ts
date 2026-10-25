@@ -65,12 +65,26 @@ const noun = (n: number): string => (n === 1 ? 'note' : 'notes');
 
 /** "86 notes" or "1 note". */
 export const notesCount = (n: number): string => `${n} ${noun(n)}`;
-/** "Already included: Meetings (114), Travel (52) and 52 from before." The topics the agent reads now with their note counts (three at most, then "2 more"), and the notes of the older choice. */
-export function alreadyLine(topics: readonly { readonly name: string; readonly count: number }[], before: number): string {
-  const tail = [...(topics.length > 3 ? [`${topics.length - 3} more`] : []), ...(before > 0 ? [`${before} from before`] : [])];
-  const line = (list: readonly { readonly name: string; readonly count: number }[], rest: readonly string[]): string => `Already included: ${joinWords([...list.map(t => `${t.name} (${t.count})`), ...rest])}.`;
-  const options = [line(topics.slice(0, 3), tail), line(topics.slice(0, 2), [`${Math.max(1, topics.length - 2)} more`, ...(before > 0 ? [`${before} from before`] : [])]), line([], [notesCount(topics.reduce((n, t) => n + t.count, before))])];
-  return options.find(text => countWords(text) <= 12) ?? options[2]!;
+/**
+ * What a selection already includes, in one line of at most 12 words: "Already included: Clients (86), Company (18) and 2 picked by hand." The numbers are the parts
+ * of the preview's total, so they add up to it. When the full list is too long, the smallest topics are counted together ("3 other topics (200)"), then every topic
+ * ("5 topics (300)"), and last of all the whole total, so the line always fits and its numbers always add up.
+ */
+export function alreadyLine(topics: readonly { readonly name: string; readonly count: number }[], before: number, hand = 0): string {
+  const tail = [...(hand > 0 ? [pickedByHand(hand)] : []), ...(before > 0 ? [`${before} from before`] : [])];
+  const say = (names: readonly string[]): string => `Already included: ${joinWords([...names, ...tail])}.`;
+  const named = topics.map(t => `${t.name} (${t.count})`);
+  const options: string[] = [say(named)];
+  // The smallest topics merge first: keep the biggest ones by name and count the rest together.
+  const bySize = [...topics].sort((a, b) => b.count - a.count);
+  for (let keep = Math.min(bySize.length - 1, 3); keep >= 1; keep -= 1) {
+    const rest = bySize.slice(keep), kept = new Set(bySize.slice(0, keep));
+    const listed = topics.filter(t => kept.has(t)).map(t => `${t.name} (${t.count})`);
+    options.push(say([...listed, `${rest.length} other ${rest.length === 1 ? 'topic' : 'topics'} (${rest.reduce((n, t) => n + t.count, 0)})`]));
+  }
+  if (topics.length > 1) options.push(say([`${topics.length} topics (${topics.reduce((n, t) => n + t.count, 0)})`]));
+  options.push(`Already included: ${notesCount(topics.reduce((n, t) => n + t.count, hand + before))} in all.`);
+  return options.find(text => countWords(text) <= 12) ?? options[options.length - 1]!;
 }
 /** "263 notes chosen another way", the hint of the card for notes kept from before. */
 export const keptHint = (n: number): string => `${notesCount(n)} chosen another way`;

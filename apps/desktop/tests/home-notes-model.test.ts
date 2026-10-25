@@ -186,20 +186,48 @@ test('what is already included is the topics that are on with their counts, and 
   assert.equal(a.topics.reduce((n, t) => n + t.count, a.before), a.total);
 });
 
-test('notes picked one by one or by kind are "from before": what no topic accounts for, so the numbers always add up', () => {
+test('notes picked one by one are counted by hand, the older handles are "from before", and the parts always add up to the preview', () => {
   const note = world.wikiPages.find(p => p.folder.startsWith('tarnwick'))!;
   const sel: Selection = { ...on('Travel'), hand: [note.id] };
   const a = alreadyOf(sel, basis);
   assert.equal(a.topics.length, 1);
-  assert.equal(a.before, 1);
-  assert.equal(a.topics.reduce((n, t) => n + t.count, a.before), previewOf(sel, basis).count);
+  assert.equal(a.hand, 1);
+  assert.equal(a.before, 0);
+  assert.equal(a.topics.reduce((n, t) => n + t.count, a.hand + a.before), previewOf(sel, basis).count);
+  // A note that a topic on already holds is counted once, under its topic.
+  const inTravel = world.wikiPages.find(p => p.folder.startsWith('marrowdeep'))!;
+  const both = alreadyOf({ ...on('Travel'), hand: [inTravel.id, note.id] }, basis);
+  assert.equal(both.hand, 1, 'only the note that no topic holds counts by hand');
+  assert.equal(both.topics.reduce((n, t) => n + t.count, both.hand + both.before), previewOf({ ...on('Travel'), hand: [inTravel.id, note.id] }, basis).count);
+  // A note in a part that was left out of its topic is not held by the topic: it counts by hand.
+  const travel = topic('Travel'), part = travel.parts[0]!, left = world.wikiPages.find(p => p.folder === part.folder)!;
+  const out = alreadyOf({ ...toggleLeaveOut(on('Travel'), part.folder), hand: [left.id] }, basis);
+  assert.equal(out.hand, 1);
   // A choice made by kind and label only has no topic at all.
   const slice = { id: 'slice-kinds', name: 'x', seeds: [], rule: { folders: [], pageTypesAndTags: { types: ['guide'], tags: ['fennel', 'quartz'] }, linksFromSeeds: null }, pinned: false };
   const kept = alreadyOf(selectionFromSlice(slice, makeBasis(world.wikiPages, slice)), makeBasis(world.wikiPages, slice));
   assert.deepEqual(kept.topics, []);
+  assert.equal(kept.hand, 0);
   assert.equal(kept.before, kept.total);
   assert.ok(kept.total > 0);
-  assert.deepEqual(alreadyOf(EMPTY_SELECTION, basis), { topics: [], before: 0, total: 0 });
+  assert.deepEqual(alreadyOf(EMPTY_SELECTION, basis), { topics: [], hand: 0, before: 0, total: 0 });
+});
+
+test('every selection of topics, parts and single notes is split into parts that add up to the preview, exactly', () => {
+  const clients = topic('Clients'), company = topic('Company'), work = topic('Work');
+  const some = world.wikiPages.filter((_, i) => i % 97 === 0).map(p => p.id);
+  const picks: Selection[] = [
+    EMPTY_SELECTION, on('Clients'), on('Clients', 'Company'), on('Clients', 'Company', 'Work'), { ...on('Clients', 'Company'), hand: some.slice(0, 2) },
+    { ...on('Work'), hand: some }, { ...EMPTY_SELECTION, hand: some },
+    { ...toggleLeaveOut(on('Clients', 'Company'), clients.parts[0]!.folder), hand: some.slice(0, 2) },
+    toggleLeaveOut(toggleLeaveOut(on('Work'), work.parts[0]!.folder), work.parts[1]!.folder), toggleLeaveOut(on('Company'), company.parts[0]!.folder),
+  ];
+  for (const sel of picks) {
+    const a = alreadyOf(sel, basis), p = previewOf(sel, basis);
+    assert.equal(a.total, p.count);
+    assert.equal(a.topics.reduce((n, t) => n + t.count, a.hand + a.before), p.count, JSON.stringify(sel));
+    assert.ok(a.hand >= 0 && a.before >= 0);
+  }
 });
 
 test('a topic with parts left out counts only the parts that are in', () => {

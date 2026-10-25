@@ -123,6 +123,9 @@ for (const [name, vars, block] of [['light', homeLight, homeLightBlock], ['dark'
     // A selected or hovered card, and an open "?" button, are drawn with the accent edge instead.
     for (const against of ['bg', 'surface', 'accent-soft']) assert.ok(ratio(vars['accent-strong']!, vars[against]!) >= 3, `accent-strong on ${against} is ${ratio(vars['accent-strong']!, vars[against]!).toFixed(2)}`);
   });
+  test(`${name} theme, home app: the amber dot of a fact that needs care is 3 to 1 on the page, a card and a ticked card`, () => {
+    for (const against of ['bg', 'surface', 'accent-soft']) assert.ok(ratio(vars['hm-amber']!, vars[against]!) >= 3, `hm-amber on ${against} is ${ratio(vars['hm-amber']!, vars[against]!).toFixed(2)}`);
+  });
   test(`${name} theme, home app: every text pair still meets 4.5 to 1 and the focus ring 3 to 1`, () => {
     for (const [fg, bg] of PAIRS) assert.ok(ratio(vars[fg]!, vars[bg]!) >= 4.5, `${fg} on ${bg} is ${ratio(vars[fg]!, vars[bg]!).toFixed(2)}`);
     for (const bg of ['bg', 'surface', 'accent-soft']) assert.ok(ratio(vars.focus!, vars[bg]!) >= 3, `focus on ${bg}`);

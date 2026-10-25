@@ -66,10 +66,10 @@ function ChooseNotesBody({ agent, onClose, onChosen }: { agent: AgentItem; onClo
   const [say, setSay] = useState('');
   const handButton = useRef<HTMLButtonElement>(null), handHeading = useRef<HTMLHeadingElement>(null), topicsHeading = useRef<HTMLHeadingElement>(null), moved = useRef(false);
   const name = agentCard(agent).name;
-  // What the agent reads before any change is made, said first, so the total in the preview is no surprise.
-  const already = useMemo(() => alreadyOf(start, basis), [start, basis]);
 
   const preview = useMemo(() => previewOf(sel, basis), [sel, basis]);
+  // What is included, said above the topics: it follows every switch, and its numbers add up to the total in the preview.
+  const already = useMemo(() => alreadyOf(sel, basis), [sel, basis]);
   const lines = useMemo(() => ruleLines(sel, basis), [sel, basis]);
   const changed = !sameSelection(sel, start), choice = useMemo(() => toChoice(sel, basis), [sel, basis]);
   // The button waits for a choice that would really change what the agent reads: leaving out every part of a topic picks nothing, and the store would refuse it.
@@ -111,7 +111,8 @@ function ChooseNotesBody({ agent, onClose, onChosen }: { agent: AgentItem; onClo
 
       <div className="nt-cols">
         <div className="nt-left" data-step={step}>
-          {already.total === 0 ? null : <p className="nt-already" data-already="">{alreadyLine(already.topics, already.before)}</p>}
+          {/* The line has its room even when it has nothing to say, so switching the first topic on moves nothing. */}
+          {already.total === 0 ? <p className="nt-already" aria-hidden="true" data-already-room="" /> : <p className="nt-already" data-already="">{alreadyLine(already.topics, already.before, already.hand)}</p>}
           {step === 'topics' ? (
             <>
               <div className="nt-left-head">

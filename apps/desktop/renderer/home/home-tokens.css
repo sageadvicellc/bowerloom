@@ -30,6 +30,9 @@
   --hm-panel-w: clamp(18rem, 25vw, 20rem);
   --hm-bar-h: 3.25rem; --hm-savebar-h: 3rem;
   --hm-border: #868880;
+  --hm-amber: #b36b00;
+  /* The width of the column of the "Add from the web" sheet: about 760 px. */
+  --hm-sheet-w: 47.5rem;
   --hm-ring: #ffffff;
   --hm-scrim-alpha: 0.55;
   --hm-scrim: rgb(0 0 0 / var(--hm-scrim-alpha));
@@ -44,6 +47,7 @@
 }
 [data-theme="dark"] [data-home], [data-home][data-theme="dark"] {
   --hm-border: #68796e;
+  --hm-amber: #f0b13a;
   --hm-ring: #e8eee9;
   --hm-scrim-alpha: 0.6;
   --hm-shadow: 0 1px 2px rgb(0 0 0 / 0.5), 0 4px 14px rgb(0 0 0 / 0.35);

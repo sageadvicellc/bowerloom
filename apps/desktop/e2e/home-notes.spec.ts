@@ -184,7 +184,7 @@ test('"Choose one by one": open a topic, search, tick two notes, and they are co
   await search.fill('invoices');
   await rows.nth(0).getByRole('checkbox').check();
   await rows.nth(1).getByRole('checkbox').check();
-  await expect(layer().getByText('2 picked by hand')).toBeVisible();
+  await expect(layer().getByText('2 picked by hand', { exact: true })).toBeVisible();
   expect(await count()).toBe(2);
   await expect(layer().getByRole('button', { name: 'Money, 2 picked' })).toBeVisible();
   expect(await budget()).toEqual([]);

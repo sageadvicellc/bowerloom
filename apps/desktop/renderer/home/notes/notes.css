@@ -43,7 +43,10 @@
 
 /* "Leave out": a quiet button under a topic that is on, and a panel over the cards below it with one button for each part. */
 [data-home] .nt-topic { position: relative; }
-[data-home] .nt-leave { align-self: flex-start; }
+/* The button lies over the right end of its card (the card keeps that room free), and its panel over what is under the card, so a topic that is on takes no more room than
+   one that is off: no card moves when a topic is switched on, and no row of the grid has a gap that is only there for a button. */
+[data-home] .nt-leave { position: absolute; z-index: 2; top: calc((var(--hm-row-h) - var(--hm-control-h)) / 2); right: var(--hm-space-3); }
+[data-home] .nt-topic[data-leave] .kit-card[data-size="small"] { padding-right: calc(var(--hm-control-h) * 3 + var(--hm-space-3)); }
 [data-home] .nt-leave-button {
   display: inline-flex; align-items: center; gap: var(--hm-space-2); min-height: var(--hm-control-h); padding: 0 var(--hm-space-3);
   font: inherit; font-size: var(--hm-text-small); font-weight: 600; color: var(--text); background: transparent;
@@ -56,7 +59,7 @@
 [data-home] .nt-leave-n { display: inline-flex; align-items: center; font-weight: 700; color: var(--text); }
 [data-home] .nt-leave-n::before { content: "\00b7"; margin-right: var(--hm-space-1); }
 [data-home] .nt-leave-panel {
-  position: absolute; z-index: 30; left: 0; top: calc(100% + var(--hm-space-1)); width: max(100%, 14rem); max-width: 18rem; box-sizing: border-box; padding: var(--hm-space-3);
+  position: absolute; z-index: 30; right: 0; top: calc(var(--hm-row-h) + var(--hm-space-4)); width: max(100%, 14rem); max-width: 18rem; box-sizing: border-box; padding: var(--hm-space-3);
   background: var(--surface); color: var(--text); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow-lift);
 }
 [data-home] .nt-chips { display: flex; flex-wrap: wrap; gap: var(--hm-space-2); }
@@ -133,6 +136,5 @@
   [data-home] .nt-chip, [data-home] .nt-pill, [data-home] .nt-row { animation: none !important; transition: none !important; }
 }
 
-/* ---- What the agent reads before any change, and the room kept for "Leave out": a topic with parts keeps the height of its row whether it is on or not, so switching it on moves nothing. */
-[data-home] .nt-already { margin: 0; font-size: var(--hm-text-base); font-weight: 600; color: var(--text); }
-[data-home] .nt-leave-reserved { height: var(--hm-control-h); }
+/* ---- What the agent reads before any change. A topic that is on takes no more room than one that is off, so switching it on moves nothing. */
+[data-home] .nt-already { margin: 0; min-height: calc(var(--hm-text-base) * var(--hm-leading)); font-size: var(--hm-text-base); font-weight: 600; color: var(--text); }
