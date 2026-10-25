@@ -13,7 +13,8 @@ import type { NameOf } from '../../../shared/home/add-model.js';
 import { useProtoStore } from '../../proto/session.js';
 import { Button } from '../kit/Button.js';
 import { ADD_WORDS, copyNumber, foundIn, linesChanged } from '../add/add-words.js';
-import { inertAround, trapTab } from '../add/dom-helpers.js';
+import { trapTab } from '../add/dom-helpers.js';
+import { useModalLayer } from '../add/modal-layer.js';
 import '../add/add.css';
 
 const L = ADD_WORDS.label, H = ADD_WORDS.hint;
@@ -62,19 +63,9 @@ export function CopiesDialog({ itemId, nameOf = plainName, leaving = false, onCl
   const latest = useRef({ onClose, restoreFocus, leaving });
   latest.current = { onClose, restoreFocus, leaving };
 
-  // Focus goes to the title, the rest of the page goes inert, and both are undone when the dialog leaves.
-  useEffect(() => {
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const dialogEl = dialog.current;
-    const undo = dialogEl === null ? (): void => undefined : inertAround(dialogEl);
-    heading.current?.focus();
-    return () => {
-      undo();
-      // The badge that opened the dialog gets the focus back; when the pick took the badge away, the caller names where the focus goes.
-      const back = opener !== null && opener.isConnected ? opener : latest.current.restoreFocus?.() ?? null;
-      if (back !== null && back.isConnected) back.focus();
-    };
-  }, []);
+  // Focus goes to the title and the rest of the page goes inert. When the dialog leaves, the page is reachable again and the focus goes back to the badge that opened it;
+  // when the pick took the badge away, the caller names where the focus goes. A layer that replaces this one keeps the focus it took (see add/modal-layer.ts).
+  useModalLayer(dialog, heading, leaving, () => latest.current.restoreFocus?.() ?? null);
 
   // Escape closes this dialog and nothing under it, wherever the focus is: a click on plain text inside the dialog leaves the focus on the page, and a key
   // handler on the dialog would never hear it. A listener on the window, in the capture phase, hears it first and stops it there.

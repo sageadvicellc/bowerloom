@@ -11,6 +11,7 @@ import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react';
 import { WORDS, stepAnnouncement } from '../words.js';
 import { Button } from '../kit/Button.js';
+import { currentControl, focusFirst, mainHeading } from '../kit/focus.js';
 import { currentStep, hintOf, isFirst, isLast, isWaiting, placePopover, progressText, spotlightBox } from './tour.js';
 import type { Box, TourState } from './tour.js';
 import './tour.css';
@@ -125,7 +126,7 @@ export function TourOverlay({ state, onNext, onBack, onSkip }: TourOverlayProps)
 
   // Focus: into the popover now, back to where it was when the tour ends. Escape skips; Tab stays inside.
   useEffect(() => {
-    const before = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+    const before = currentControl();
     next.current?.focus();
     const key = (e: KeyboardEvent): void => {
       if (e.key === 'Tab' && mode.current.waiting) { cycle(e); return; }
@@ -155,8 +156,9 @@ export function TourOverlay({ state, onNext, onBack, onSkip }: TourOverlayProps)
     return () => {
       window.removeEventListener('keydown', key, true);
       document.removeEventListener('focusin', focusin);
-      const back = before !== null && before.isConnected ? before : document.querySelector<HTMLElement>('main h1');
-      back?.focus();
+      // Back to what had the focus. If that is gone (a drawer or a sheet the tour closed, a popover that closed), to the Help button the tour is started from, unless it
+      // started by itself with nothing to go back to: then to the main heading (the last place of kit/focus.ts).
+      focusFirst([before, before === null ? null : findTarget('help'), mainHeading()]);
     };
   }, []);
 

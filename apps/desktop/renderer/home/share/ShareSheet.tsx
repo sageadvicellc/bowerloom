@@ -14,7 +14,8 @@ import { agentCard, shelvesOf } from '../../../shared/home/cards.js';
 import { canSave, planShare, shareableAgents, toggleLeftOut } from '../../../shared/home/share-model.js';
 import { Button } from '../kit/Button.js';
 import { KitIcon } from '../kit/icons.js';
-import { inertAround, trapTab } from '../add/dom-helpers.js';
+import { trapTab } from '../add/dom-helpers.js';
+import { useModalLayer } from '../add/modal-layer.js';
 import '../add/add.css';
 import './share.css';
 import { SHARE_WORDS, bringsLine, countsLine, leftOutLine, sizeLine } from './share-words.js';
@@ -50,14 +51,9 @@ export function ShareSheet({ world, hidden, unsaved, leaving = false, onClose, o
   const latest = useRef(onClose), going = useRef(leaving);
   latest.current = onClose; going.current = leaving;
 
-  // Focus goes to the title, the rest of the page goes inert, and both are undone when the sheet leaves.
-  useEffect(() => {
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const el = dialog.current;
-    const undo = el === null ? (): void => undefined : inertAround(el);
-    heading.current?.focus();
-    return () => { undo(); if (opener !== null && opener.isConnected) opener.focus(); };
-  }, []);
+  // Focus goes to the title and the rest of the page goes inert. When the sheet leaves, the page is reachable again and the focus goes back to the button that opened
+  // it, unless a layer that replaces this one ("Open a shared file") has taken the focus already (see add/modal-layer.ts).
+  useModalLayer(dialog, heading, leaving);
   // A copy that was made stops being "ready" the moment the choice changes, and the focus moves to the line that says it is ready.
   useEffect(() => { if (made !== null) ready.current?.focus(); }, [made]);
 

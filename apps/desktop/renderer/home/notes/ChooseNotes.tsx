@@ -35,14 +35,16 @@ export interface ChooseNotesProps {
   onClose(): void;
   /** Called once, after the choice was staged, with the agent's id. */
   onChosen?(agentId: string): void;
+  /** Where the focus goes when the sheet closes and the control that opened it is gone. */
+  returnTo?(): HTMLElement | null;
 }
 
-export function ChooseNotes({ open, agentId, onClose, onChosen }: ChooseNotesProps): ReactElement {
+export function ChooseNotes({ open, agentId, onClose, onChosen, returnTo }: ChooseNotesProps): ReactElement {
   const { state } = useProtoStore();
   const agent = agentId === null ? undefined : state.draft.items.find((i): i is AgentItem => i.kind === 'agent' && i.id === agentId && i.library === null);
   return (
     <div className="nt-layer" data-notes-layer="">
-      <Drawer open={open && agent !== undefined} title={L.title} onClose={onClose} dataSlot="notes">
+      <Drawer open={open && agent !== undefined} title={L.title} onClose={onClose} dataSlot="notes" {...(returnTo === undefined ? {} : { returnTo })}>
         {agent === undefined ? null : <ChooseNotesBody key={agent.id} agent={agent} onClose={onClose} {...(onChosen === undefined ? {} : { onChosen })} />}
       </Drawer>
     </div>

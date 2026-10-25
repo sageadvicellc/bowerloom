@@ -142,7 +142,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   const body = useRef<HTMLDivElement>(null);
   const focusAfter = useRef<FocusAfter | null>(null);
   const copiesFrom = useRef('.hm-panel');
-  const chooseFrom = useRef<HTMLElement | null>(null);
+  const clock = useRef<HTMLButtonElement>(null), addButton = useRef<HTMLButtonElement>(null);
 
   const world = state.draft;
   const owned = useMemo(() => ownedAgents(world).filter(a => !skipped.includes(a.id)), [world, skipped]);
@@ -224,13 +224,6 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
 
   // The tour dims the page and points at the bar, so a drawer, the Choose notes sheet or the Share sheet that is open would only get in its way: they close when the tour starts.
   useEffect(() => { if (tour.status === 'running') { setDrawer(null); setChoosing(false); setSharing(false); } }, [tour.status]);
-  // When the Choose notes sheet closes, the focus goes back to the button that opened it. A drawer that closed to make room would otherwise take it to its own button.
-  useEffect(() => {
-    if (choosing || chooseFrom.current === null) return;
-    const back = chooseFrom.current;
-    chooseFrom.current = null;
-    if (back.isConnected) back.focus();
-  }, [choosing]);
   // The mark for a card that was just added goes by itself, and the card is brought into view.
   useEffect(() => {
     if (fresh === null) return undefined;
@@ -245,10 +238,11 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   const toggle = (id: DrawerId): void => { if (id === 'add') setAddTab(DEFAULT_TAB); setDrawer(current => (current === id ? null : id)); };
   /** Opens the Choose notes sheet for the agent that is picked. A drawer that is open closes first, so Escape closes one layer at a time. */
   const choose = (): void => {
-    chooseFrom.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setDrawer(null);
     setChoosing(true);
   };
+  /** Where the focus goes when the Choose notes sheet closes and the button that opened it is gone: the button on the Notes shelf, else the panel heading. */
+  const chooseTarget = (): HTMLElement | null => panel.current?.querySelector<HTMLElement>('[data-notes-shelf] .nt-shelf-action button') ?? panel.current?.querySelector<HTMLElement>('#hm-panel-title') ?? null;
   /** "Use these notes" staged a change: pick that agent, move it up the recent order, and ring the new card on its Notes shelf, as an add does. */
   const chosen = (agentId: string): void => {
     setSelected({ kind: 'agent', id: agentId });
@@ -324,9 +318,9 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
         </div>
         <span className="hm-spacer" />
         <Tooltip text={WORDS.label.versionHistory}>
-          {aria => <Button round icon="clock" aria-label={WORDS.label.versionHistory} aria-expanded={drawer === 'points'} onClick={() => toggle('points')} {...aria} />}
+          {aria => <Button round icon="clock" aria-label={WORDS.label.versionHistory} aria-expanded={drawer === 'points'} ref={clock} onClick={() => toggle('points')} {...aria} />}
         </Tooltip>
-        <Button variant="primary" icon="plus" data-tour="add" aria-expanded={drawer === 'add'} onClick={() => toggle('add')}>{WORDS.label.add}</Button>
+        <Button variant="primary" icon="plus" data-tour="add" aria-expanded={drawer === 'add'} ref={addButton} onClick={() => toggle('add')}>{WORDS.label.add}</Button>
         <HelpPopover label={WORDS.label.help} text={WORDS.popover.help} align="end" dataTour="help" action={{ label: WORDS.label.showTour, onAction: () => { setSelected(null); tourDo('replay'); } }} />
       </header>
 
@@ -360,13 +354,13 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
           <DetailsPanel details={details} onSelect={next => { setSelected(next); tourDo('acted'); }} onRemove={remove} onBadgePress={openCopies} onChoose={choose} freshId={freshOf(fresh, picked)} freshPhase={fresh?.phase ?? 0} freshNotes={freshNotes} />
         </aside>
 
-        <Drawer open={drawer === 'add'} title={WORDS.label.addDrawer} onClose={() => setDrawer(null)} dataSlot="add">
+        <Drawer open={drawer === 'add'} title={WORDS.label.addDrawer} onClose={() => setDrawer(null)} dataSlot="add" returnTo={() => addButton.current}>
           <AddDrawerBody nameOf={nameOf} hintOf={plainHintOf} onOpenCopies={openCopies} line={false} onAdded={added} onShow={showAdded} initialTab={addTab} hideAgents={skipped} {...(lastCopy === undefined ? {} : { lastCopy })} />
         </Drawer>
-        <Drawer open={drawer === 'points'} title={WORDS.label.versionHistory} onClose={() => setDrawer(null)} dataSlot="points">
+        <Drawer open={drawer === 'points'} title={WORDS.label.versionHistory} onClose={() => setDrawer(null)} dataSlot="points" returnTo={() => clock.current}>
           <SavePoints rows={pointRows} unsaved={changes > 0} onGoBack={id => goBackTo(id, false)} onShare={() => setSharing(true)} onOpenFile={openFile} />
         </Drawer>
-        <ChooseNotes open={choosing} agentId={picked} onClose={() => setChoosing(false)} onChosen={chosen} />
+        <ChooseNotes open={choosing} agentId={picked} onClose={() => setChoosing(false)} onChosen={chosen} returnTo={chooseTarget} />
       </div>
 
       {closingNote ? <div className="hm-toast" role="status" data-open={toast.mounted && !toast.leaving ? '' : undefined} data-leaving={toast.leaving ? '' : undefined}>{toast.mounted ? <><KitIcon name="check" size={20} /><span>{FIND_WORDS.hint.closingNote}</span></> : null}</div> : null}
