@@ -23,7 +23,8 @@ import { adapterOf, isKnownInterface, secretNameOf } from './adapters.js';
 import { parseFrontmatter } from './frontmatter.js';
 import { tallyWords, topicsOf } from './place.js';
 import type { NoteEntry, PlaceRead, StampedRecord } from './place.js';
-import { cleanLine, cut } from './redact.js';
+import { cleanLine, cleanPath, cut } from './redact.js';
+import { REAL_LIMITS } from './types.js';
 import type { RealApp, RealCounts, RealKind, RealOther, RealResult } from './types.js';
 
 export interface BuildOptions {
@@ -33,7 +34,7 @@ export interface BuildOptions {
 }
 
 /** What the main process counted while it read. */
-export interface BatchTally { readonly tooBig: number; readonly binary: number; readonly unreadable: number; readonly linksOutside: number; readonly stoppedEarly: boolean; readonly truncated: boolean }
+export interface BatchTally { readonly tooBig: number; readonly binary: number; readonly unreadable: number; readonly linksOutside: number; readonly stoppedEarly: boolean; readonly truncated: boolean; readonly overBytes?: boolean }
 
 const INTERFACE_ORDER: readonly InterfaceId[] = ['claude-code', 'codex', 'opencode'];
 const ENFORCEMENT: Readonly<Record<InterfaceId, InterfaceInfo['enforcement']>> = { 'claude-code': 'blocks reads', codex: 'advisory only', opencode: 'advisory only' };
@@ -47,7 +48,20 @@ export const GLOBAL_SCOPE: Scope = Object.freeze({ id: 'global', kind: 'global',
 export const sameName = (name: string): string => name.toLowerCase().replace(/[^a-z0-9]+/g, '');
 
 const shortHash = (text: string, n = 10): string => hashText(text).slice(0, n);
-const joinPath = (place: string, rel: string): string => (place.endsWith('/') ? `${place}${rel}` : `${place}/${rel}`);
+const joinPath = (place: string, rel: string): string => cleanPath(place.endsWith('/') ? `${place}${rel}` : `${place}/${rel}`);
+
+/**
+ * How much text goes to the page. One text is cut at `excerptChars`; once `resultTextChars` have gone in all, each further text is cut at `minExcerptChars`. A cut text ends with a
+ * mark that says how long it was, so two copies that differ only past the cut still differ. The result is therefore at most `resultTextChars` plus `minExcerptChars` for each item.
+ */
+interface TextBudget { left: number; cut: number }
+function excerpt(text: string, budget: TextBudget): string {
+  const room = Math.min(REAL_LIMITS.excerptChars, Math.max(REAL_LIMITS.minExcerptChars, budget.left));
+  const out = text.length <= room ? text : `${text.slice(0, room)}\n… [cut: ${text.length} characters in all]`;
+  if (out !== text) budget.cut += 1;
+  budget.left -= out.length;
+  return out;
+}
 const orderOf = (app: RealApp): number => { const at = INTERFACE_ORDER.indexOf(app as InterfaceId); return at < 0 ? INTERFACE_ORDER.length : at; };
 const kindAbbr = (kind: RealKind): string => (kind === 'skill' ? 'skill' : kind === 'agent' ? 'agent' : 'tool');
 
@@ -59,19 +73,20 @@ interface Placed { readonly foundAt: FoundAt[]; readonly days: number[]; readonl
  * Where the members of one group were found. Only the three interfaces of the world get a `foundAt` (the first file of each, in interface order); the rest are `extra`.
  * With `fold` set, a group that has no interface of the world is placed under the names of the other programs anyway (a cast; the types need a new id first).
  */
-function placeMembers(members: readonly Located[], nowMs: number, fold: boolean): Placed {
+function placeMembers(members: readonly Located[], nowMs: number, fold: boolean, texts: TextBudget): Placed {
   const foundAt: FoundAt[] = [], days: number[] = [], extra: Located[] = [], seen = new Set<InterfaceId>();
-  const textOf = (m: Located): string => (m.rec.text !== '' ? m.rec.text : (m.rec.description !== '' ? m.rec.description : m.rec.name));
+  const textOf = (m: Located): string => excerpt(m.rec.text !== '' ? m.rec.text : (m.rec.description !== '' ? m.rec.description : m.rec.name), texts);
   for (const m of members) {
     if (!isKnownInterface(m.rec.app)) { extra.push(m); continue; }
     const face = m.rec.app;
     if (seen.has(face)) continue;
     seen.add(face);
-    foundAt.push({ interface: face, path: joinPath(m.read.place.path, m.rec.relPath), contentHash: hashText(textOf(m)), text: textOf(m) });
+    const text = textOf(m);
+    foundAt.push({ interface: face, path: joinPath(m.read.place.path, m.rec.relPath), contentHash: hashText(text), text });
     days.push(m.rec.mtimeMs > 0 ? Math.max(0, Math.floor((nowMs - m.rec.mtimeMs) / DAY_MS)) : 0);
   }
   if (foundAt.length > 0 || !fold) return { foundAt, days, extra, folded: false };
-  return { foundAt: extra.map(m => ({ interface: m.rec.app as unknown as InterfaceId, path: joinPath(m.read.place.path, m.rec.relPath), contentHash: hashText(textOf(m)), text: textOf(m) })), days: extra.map(() => 0), extra: [], folded: true };
+  return { foundAt: extra.map(m => { const text = textOf(m); return { interface: m.rec.app as unknown as InterfaceId, path: joinPath(m.read.place.path, m.rec.relPath), contentHash: hashText(text), text }; }), days: extra.map(() => 0), extra: [], folded: true };
 }
 
 const accessOf = (toolNames: readonly string[]): AccessClass => {
@@ -86,13 +101,14 @@ const bodyOf = (m: Located): string => {
 
 /** Builds the result of step two from the places that were read. */
 export function buildRealResult(reads: readonly PlaceRead[], tally: BatchTally, options: BuildOptions): RealResult {
+  const texts: TextBudget = { left: REAL_LIMITS.resultTextChars, cut: 0 };
   const scopes: Scope[] = [GLOBAL_SCOPE];
   const scopeOf = new Map<string, string>();
   for (const r of reads) {
     if (r.place.kind === 'home') { scopeOf.set(r.place.id, GLOBAL_SCOPE.id); continue; }
     const id = `scope-real-${shortHash(r.place.id, 8)}`;
     scopeOf.set(r.place.id, id);
-    scopes.push({ id, kind: 'project', name: cleanLine(r.place.label).slice(0, 60), parentId: GLOBAL_SCOPE.id, path: r.place.path });
+    scopes.push({ id, kind: 'project', name: cleanLine(r.place.label).slice(0, 60), parentId: GLOBAL_SCOPE.id, path: cleanPath(r.place.path) });
   }
 
   // Group the records: one group is one item.
@@ -120,7 +136,7 @@ export function buildRealResult(reads: readonly PlaceRead[], tally: BatchTally, 
   const toOther = (m: Located): RealOther => ({ app: adapterOf(m.rec.app).label, kind: m.rec.kind, name: m.rec.name, hint: cut(m.rec.description, 120), place: m.read.place.label });
 
   for (const { members } of ordered) {
-    const first = members[0]!, placed = placeMembers(members, options.nowMs, options.foldExtraApps === true);
+    const first = members[0]!, placed = placeMembers(members, options.nowMs, options.foldExtraApps === true, texts);
     if (placed.foundAt.length === 0) { others.push(toOther(members[0]!)); continue; }
     for (const m of placed.extra) others.push(toOther(m));
     const id = idFor(first), rec = first.rec, base = { id, name: rec.name, scopeId: first.scopeId, foundAt: placed.foundAt, library: null } as const;
@@ -159,7 +175,7 @@ export function buildRealResult(reads: readonly PlaceRead[], tally: BatchTally, 
       }
     }
     const toolAttachments: ToolAttachment[] = [...attach].map(([toolId, names]) => ({ toolId, access: accessOf(names) }));
-    const body = bodyOf(first), describe = members.map(m => m.rec.description).find(d => d !== '') ?? '';
+    const body = excerpt(bodyOf(first), texts), describe = members.map(m => m.rec.description).find(d => d !== '') ?? '';
     const modelFrom = members.find(m => m.rec.meta.model !== undefined && isKnownInterface(m.rec.app));
     const extras = modelFrom === undefined ? [] : [{ interface: modelFrom.rec.app as InterfaceId, badge: `${INTERFACE_WORDS[modelFrom.rec.app as InterfaceId]} only`, key: 'model', value: modelFrom.rec.meta.model! }];
     agents.push({
@@ -205,7 +221,8 @@ export function buildRealResult(reads: readonly PlaceRead[], tally: BatchTally, 
     ...(sum > 0 ? [`Could not read ${sum} ${sum === 1 ? 'thing' : 'things'}.`] : []),
     ...(partlyRead > 0 ? [`${partlyRead} ${partlyRead === 1 ? 'file has a header' : 'files have headers'} that could not be fully understood, so ${partlyRead === 1 ? 'it is' : 'they are'} listed by file name.`] : []),
     ...(notesLeftOut > 0 ? [`${notesLeftOut} notes pages are not shown.`] : []),
+    ...(texts.cut > 0 ? [`${texts.cut} long ${texts.cut === 1 ? 'text was' : 'texts were'} shortened.`] : []),
     ...tallyWords({ ...tally, tooBig: 0, binary: 0, unreadable: 0, linksOutside: 0 }),
   ];
-  return { world, others, counts, ages, stoppedEarly: tally.stoppedEarly, couldNotRead: sum, partlyRead, notes, readOnly: true };
+  return { world, others, counts, ages, stoppedEarly: tally.stoppedEarly, couldNotRead: sum, partlyRead, textsCut: texts.cut, notes, readOnly: true };
 }

@@ -39,7 +39,7 @@ export const REAL_WORDS = deepFreeze({
     readOnly: 'Only the places you ticked are opened.',
     readSafe: 'Nothing is changed. Keys and passwords are never copied.',
     nothingHint: 'No tool folders were found. You can add a folder.',
-    stoppedEarly: 'It stopped early to stay within its time limit.',
+    stoppedEarly: 'It stopped early to stay within its limits.',
     pickedNothing: 'No folder was chosen.',
     noBridge: 'This window cannot look at your setup.',
     again: 'Something went wrong. Nothing was changed. You can try again.',

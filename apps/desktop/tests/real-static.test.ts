@@ -28,7 +28,7 @@ test('the reader is made of the files we expect', () => {
 });
 
 // What a file may import. `node:fs` only for these read calls (and the types of what they return).
-const FS_READ = new Set(['lstatSync', 'readdirSync', 'readFileSync', 'realpathSync', 'statSync', 'Dirent', 'Stats']);
+const FS_READ = new Set(['lstatSync', 'readdirSync', 'readFileSync', 'realpathSync', 'statSync', 'Dirent', 'Stats', 'openSync', 'closeSync', 'fstatSync', 'readSync', 'opendirSync', 'constants']);
 const MAY_IMPORT = (file: string): RegExp => (file.startsWith('main/') ? /^(\.{1,2}\/|node:fs$|node:path$)/ : file.startsWith('preload/') ? /^(\.{1,2}\/|electron$)/ : /^\.{1,2}\//);
 
 test('the reader imports only what it needs: relative files, node:path, node:fs for the read calls below, and (in the bridge) electron', () => {
@@ -43,7 +43,7 @@ test('the reader imports only what it needs: relative files, node:path, node:fs 
 });
 
 test('no file of the reader calls anything that writes, deletes, renames, links, changes a mode, starts a process, or reaches the network', () => {
-  const calls = /(?<![\w$.])(writeFile\w*|appendFile\w*|mkdir\w*|mkdtemp\w*|rm\w*|rmdir\w*|unlink\w*|rename\w*|copyFile\w*|cp\w*|chmod\w*|chown\w*|lchown|lchmod|link\w*|symlink\w*|truncate\w*|utimes\w*|futimes\w*|createWriteStream|open\w*|write\w*|fsync\w*|spawn\w*|exec\w*|fork|fetch|setInterval)\s*\(/;
+  const calls = /(?<![\w$.])(writeFile\w*|appendFile\w*|mkdir\w*|mkdtemp\w*|rm\w*|rmdir\w*|unlink\w*|rename\w*|copyFile\w*|cp\w*|chmod\w*|chown\w*|lchown|lchmod|link\w*|symlink\w*|truncate\w*|utimes\w*|futimes\w*|createWriteStream|open(?!Sync\b|dirSync\b)\w*|write\w*|fsync\w*|spawn\w*|exec\w*|fork|fetch|setInterval)\s*\(/;
   const methods = /\.(write\w*|appendFile\w*|mkdir\w*|rm\w*|unlink\w*|rename\w*|copyFile\w*|chmod\w*|symlink\w*|truncate\w*|send\w*|openExternal|showItemInFolder|exec\w*|spawn\w*)\s*\(/;
   const words = /child_process|worker_threads|cluster|node:net|node:http|node:https|node:http2|node:dgram|node:dns|node:tls|node:vm|node:inspector|XMLHttpRequest|WebSocket|EventSource|sendBeacon|\bfetch\b|globalThis|\beval\b|new Function|process\./;
   for (const file of ALL) {

@@ -2,8 +2,9 @@
  * The three calls of the real-setup reader, answered in the main process. This is the only place the page's calls arrive for real mode. Each call:
  *  - is answered only for the app's own page, in its main frame (`isAllowedRealSender`), before anything else happens;
  *  - takes no argument, or one list of place ids, which must be ids the scanner listed itself;
- *  - hands back plain data (see shared/real/types.ts), never a path outside the `details` field of a place, never a file's text for a place that was not selected, and
- *    never a key value.
+ *  - hands back plain data (see shared/real/types.ts): the only paths are the `details.path` of a place in step one, and the `foundAt.path` of each item and the
+ *    `path` of each scope in step two, all written with `~` for the home folder and cleaned of control characters; never a file's text for a place that was not selected,
+ *    and never a key value.
  * There is no write, no command, no network and no generic channel here. The handler takes its tools as arguments, so a test can run it with a fake and no Electron.
  */
 import { REAL_CHANNELS } from '../shared/real/types.js';
@@ -47,9 +48,10 @@ export function registerRealIpc(deps: RealIpcDeps): Scanner {
   };
   guarded(REAL_CHANNELS.discoverPlaces, 0, (): Promise<RealDiscovery> => scanner.discover());
   guarded(REAL_CHANNELS.pickFolder, 0, async (): Promise<RealPicked> => {
-    const folder = await deps.chooseFolder();
-    if (folder === null) return { cancelled: true, places: [], stoppedEarly: false, couldNotRead: 0, notes: [], readOnly: true };
-    return { ...(await scanner.addFolder(folder)), cancelled: false };
+    // The chooser window opens inside the scanner's one-call-at-a-time guard, so no other call can start while it is open.
+    const found = await scanner.pick(deps.chooseFolder);
+    if (found === null) return { cancelled: true, places: [], stoppedEarly: false, couldNotRead: 0, notes: [], readOnly: true };
+    return { ...found, cancelled: false };
   });
   guarded(REAL_CHANNELS.readSelected, 1, async ([ids]): Promise<RealResult> => {
     const batch = await scanner.read(ids);

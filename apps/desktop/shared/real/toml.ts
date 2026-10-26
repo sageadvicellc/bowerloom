@@ -120,8 +120,9 @@ export function parseToml(text: string): TomlTable[] {
       continue;
     }
     if (raw.startsWith('[') || raw.startsWith('{')) {
-      let guard = 0;
-      while (balance(raw) > 0 && i + 1 < lines.length && guard < 2000) { i += 1; guard += 1; raw += ` ${stripComment(lines[i]!).trim()}`; }
+      // The depth is counted line by line and added up: the text joined so far is not counted again for every new line (that would be quadratic in the size of the value).
+      let guard = 0, depth = balance(raw);
+      while (depth > 0 && i + 1 < lines.length && guard < 2000) { i += 1; guard += 1; const piece = stripComment(lines[i]!).trim(); raw += ` ${piece}`; depth += balance(piece); }
     }
     tables[tables.length - 1]!.values.set(key, valueOf(raw));
   }

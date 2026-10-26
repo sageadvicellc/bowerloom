@@ -15,9 +15,10 @@ import { cleanLine, cleanPath, cut, safeText } from '../shared/real/redact.js';
 import { hashText } from '../shared/proto/sample.js';
 import { REAL_LIMITS } from '../shared/real/types.js';
 import type { RealApp, RealDiscovery, RealPlace, RealPlaceKind } from '../shared/real/types.js';
-import { addTally, couldNotRead, listDir, makeBudget, newTally, peekNames, readHead, readText, realFolderFollowing, resolveInside, shortPath, walkFiles } from './real-fs.js';
+import { addTally, couldNotRead, isThere, listDir, makeBudget, mustStop, newTally, readHead, readText, realFolderFollowing, resolveInside, shortPath, walkFiles } from './real-fs.js';
 import type { Budget, Tally } from './real-fs.js';
 import { textOf, listOf } from '../shared/real/yaml.js';
+import { isPlainName } from './safe.js';
 
 /** Folders that are never entered while hunting for notes or work folders: dependencies, caches, build output, and the system's media folders. */
 export const SKIP_DIRS: ReadonlySet<string> = new Set([
@@ -33,7 +34,13 @@ export interface PlaceInternal {
   readonly id: string;
   readonly kind: RealPlaceKind;
   readonly label: string;
+  /** The folder as the person knows it (a path that may pass through a shortcut). It is for the label, the id and the path shown. */
   readonly root: string;
+  /**
+   * The real location of the folder, found when the place was discovered. Every later read must stay inside it, and it must still be where it was: a folder swapped
+   * for a shortcut after discovery is not followed.
+   */
+  readonly realRoot: string;
   readonly folders: readonly FolderPart[];
   readonly files: readonly FilePart[];
 }
@@ -56,12 +63,13 @@ const yieldToLoop = (): Promise<void> => new Promise(resolve => { setImmediate(r
 /** The places under the home folder: one for each program that has a folder or a file there. */
 export function findHomePlaces(home: string): PlaceInternal[] {
   const out: PlaceInternal[] = [];
+  const realRoot = realFolderFollowing(home) ?? home;
   for (const adapter of ADAPTERS) {
     const folders: FolderPart[] = [], files: FilePart[] = [];
     for (const name of adapter.homeFolders) { const real = realFolderFollowing(join(home, name)); if (real !== null) folders.push({ app: adapter.id, name, abs: real }); }
-    for (const f of adapter.homeFiles) { const abs = join(home, f.path); if (peekNames(dirname(abs)).includes(basename(abs))) files.push({ app: adapter.id, name: f.path, abs, config: f.config }); }
+    for (const f of adapter.homeFiles) { const abs = join(home, f.path); if (isThere(abs)) files.push({ app: adapter.id, name: f.path, abs, config: f.config }); }
     if (folders.length === 0 && files.length === 0) continue;
-    out.push({ id: placeId('home', home, [adapter.id]), kind: 'home', label: `${adapter.label} at home`, root: home, folders, files });
+    out.push({ id: placeId('home', home, [adapter.id]), kind: 'home', label: `${adapter.label} at home`, root: home, realRoot, folders, files });
   }
   return out;
 }
@@ -77,52 +85,55 @@ export function findPlacesUnder(dir: string, home: string, budget: Budget, tally
   const found: PlaceInternal[] = [];
   const seen = new Set<string>([rootReal]);
   let entries = 0, stop = false;
-  const partsOf = (abs: string, list: ReturnType<typeof listDir>): { folders: FolderPart[]; files: FilePart[] } => {
+  // `real` is where the folder really is; the parts found in it are named from there.
+  const partsOf = (real: string, list: ReturnType<typeof listDir>): { folders: FolderPart[]; files: FilePart[] } => {
     const folders: FolderPart[] = [], files: FilePart[] = [];
     for (const e of list) {
       const folderApp = ALL_PROJECT_FOLDERS.get(e.name), fileApp = ALL_PROJECT_FILES.get(e.name);
       if (folderApp !== undefined) {
-        const child = join(abs, e.name);
-        let real: string | null = null;
-        if (e.isDirectory()) real = child;
-        else if (e.isSymbolicLink()) { const r = resolveInside(child, rootReal, tally); real = r !== null && r.stat.isDirectory() ? r.real : null; }
-        if (real !== null) folders.push({ app: folderApp, name: e.name, abs: real });
-      } else if (fileApp !== undefined && (e.isFile() || e.isSymbolicLink())) files.push({ app: fileApp.app, name: e.name, abs: join(abs, e.name), config: fileApp.config });
+        const child = join(real, e.name);
+        let found2: string | null = null;
+        if (e.isDirectory()) found2 = child;
+        else if (e.isSymbolicLink()) { const r = resolveInside(child, rootReal, tally); found2 = r !== null && r.stat.isDirectory() ? r.real : null; }
+        if (found2 !== null) folders.push({ app: folderApp, name: e.name, abs: found2 });
+      } else if (fileApp !== undefined && (e.isFile() || e.isSymbolicLink())) files.push({ app: fileApp.app, name: e.name, abs: join(real, e.name), config: fileApp.config });
     }
     return { folders, files };
   };
-  const visit = (abs: string, depth: number): void => {
+  const visit = (real: string, display: string, depth: number): void => {
     if (stop) return;
     if (budget.expired()) { tally.stoppedEarly = true; stop = true; return; }
-    const list = listDir(abs, tally);
+    const list = listDir(real, tally, REAL_LIMITS.discoveryEntries - entries + 1);
     const isRoot = depth === 0;
-    const atHome = homeReal !== null && abs === homeReal;
-    const { folders, files } = atHome ? { folders: [], files: [] } : partsOf(abs, list);
+    const atHome = homeReal !== null && real === homeReal;
+    const { folders, files } = atHome ? { folders: [], files: [] } : partsOf(real, list);
     if (isRoot || folders.length > 0 || files.length > 0) {
       if (found.length >= REAL_LIMITS.places) { tally.truncated = true; stop = true; return; }
       const kind: RealPlaceKind = isRoot ? 'picked' : 'project';
-      found.push({ id: placeId(kind, abs, [...folders, ...files].map(p => p.app)), kind, label: labelOfFolder(abs), root: abs, folders, files });
+      found.push({ id: placeId(kind, display, [...folders, ...files].map(p => p.app)), kind, label: labelOfFolder(display), root: display, realRoot: real, folders, files });
     }
     for (const e of list) {
       if (stop) return;
+      if (budget.expired()) { tally.stoppedEarly = true; stop = true; return; }
       entries += 1;
       if (entries > REAL_LIMITS.discoveryEntries) { tally.truncated = true; stop = true; return; }
+      if (!isPlainName(e.name)) { tally.unreadable += 1; continue; }
       if (e.name.startsWith('.') || SKIP_DIRS.has(e.name) || ALL_PROJECT_FOLDERS.has(e.name)) continue;
-      const child = join(abs, e.name);
-      let real = child, isDir = e.isDirectory();
+      const child = join(real, e.name);
+      let childReal = child, isDir = e.isDirectory();
       if (e.isSymbolicLink()) {
         const r = resolveInside(child, rootReal, tally);
         if (r === null || !r.stat.isDirectory()) continue;
-        real = r.real; isDir = true;
+        childReal = r.real; isDir = true;
       }
       if (!isDir) continue;
       if (depth + 1 > REAL_LIMITS.depth) { tally.truncated = true; continue; }
-      if (seen.has(real)) continue;
-      seen.add(real);
-      visit(child, depth + 1);
+      if (seen.has(childReal)) continue;
+      seen.add(childReal);
+      visit(childReal, join(display, e.name), depth + 1);
     }
   };
-  visit(rootReal, 0);
+  visit(rootReal, rootReal, 0);
   // Two work folders with one name are told apart by the folder that holds them.
   const names = new Map<string, number>();
   for (const p of found) names.set(p.label, (names.get(p.label) ?? 0) + 1);
@@ -157,7 +168,10 @@ export function readPlace(place: PlaceInternal, home: string, withText: boolean,
   const tally = newTally();
   const records: StampedRecord[] = [], notes: NoteEntry[] = [];
   let partlyRead = 0, filesLeft = REAL_LIMITS.filesPerPlace, notesLeftOut = 0;
-  for (const folder of place.folders) {
+  // Every read in this function is held to the real folder that was recorded when the place was discovered (`place.realRoot`, or the real tool folder).
+  folders: for (const folder of place.folders) {
+    if (mustStop(budget, tally)) break;
+    if (realFolderFollowing(folder.abs) !== folder.abs) { tally.unreadable += 1; continue; }
     const adapter = adapterOf(folder.app);
     const files = walkFiles(folder.abs, folder.abs, {
       maxDepth: REAL_LIMITS.depth, maxFiles: filesLeft, maxEntries: REAL_LIMITS.discoveryEntries, skipDirs: new Set(adapter.skipInside), skipHidden: false,
@@ -165,11 +179,12 @@ export function readPlace(place: PlaceInternal, home: string, withText: boolean,
     }, budget, tally);
     filesLeft -= files.length;
     for (const f of files) {
+      if (mustStop(budget, tally)) break folders;
       const role = classify(folder.app, f.rel);
       if (role === null) continue;
       const relPath = `${folder.name}/${f.rel}`;
-      if (role.what === 'note') { notes.push(noteOf(f.rel.replace(/^profiles\/[^/]+\//, ''), f.size, f.mtimeMs, withText ? readHead(f.abs, folder.abs, tally) : null)); continue; }
-      const text = role.what === 'config' || withText ? readText(f.abs, folder.abs, tally) : null;
+      if (role.what === 'note') { notes.push(noteOf(f.rel.replace(/^profiles\/[^/]+\//, ''), f.size, f.mtimeMs, withText ? readHead(f.abs, folder.abs, tally, budget) : null)); continue; }
+      const text = role.what === 'config' || withText ? readText(f.abs, folder.abs, tally, budget) : null;
       if ((role.what === 'config' || withText) && text === null) continue;
       const result = recordsOfFile(folder.app, role, relPath, f.rel, text);
       if (result.unreadable) tally.unreadable += 1;
@@ -178,23 +193,30 @@ export function readPlace(place: PlaceInternal, home: string, withText: boolean,
     }
   }
   for (const file of place.files) {
+    if (mustStop(budget, tally)) break;
     const role = { what: 'config', config: file.config } as const;
-    const text = readText(file.abs, dirname(file.abs), tally);
+    const text = readText(file.abs, place.realRoot, tally, budget);
     if (text === null) continue;
     const result = recordsOfFile(file.app, role, file.name, file.name, text);
     if (result.unreadable) tally.unreadable += 1;
     records.push(...stamp(result.records, 0));
   }
-  if (place.kind !== 'home') {
-    const rootReal = realFolderFollowing(place.root);
-    if (rootReal !== null) {
-      const walked = walkFiles(place.root, rootReal, {
+  if (place.kind !== 'home' && !mustStop(budget, tally)) {
+    const rootReal = place.realRoot;
+    if (realFolderFollowing(rootReal) !== rootReal) tally.unreadable += 1;
+    else {
+      const walked = walkFiles(rootReal, rootReal, {
         maxDepth: REAL_LIMITS.depth, maxFiles: REAL_LIMITS.filesPerPlace, maxEntries: REAL_LIMITS.discoveryEntries, skipDirs: new Set([...SKIP_DIRS, ...ALL_PROJECT_FOLDERS.keys()]), skipHidden: true,
         accept: rel => MARKDOWN.test(rel), boundary: hasMarker,
       }, budget, tally);
       const shown = withText ? walked.slice(0, REAL_LIMITS.pagesPerPlace) : walked;
-      notesLeftOut = walked.length - shown.length;
-      for (const f of shown) notes.push(noteOf(f.rel, f.size, f.mtimeMs, withText ? readHead(f.abs, rootReal, tally) : null));
+      let added = 0;
+      for (const f of shown) {
+        if (withText && mustStop(budget, tally)) break;
+        notes.push(noteOf(f.rel, f.size, f.mtimeMs, withText ? readHead(f.abs, rootReal, tally, budget) : null));
+        added += 1;
+      }
+      notesLeftOut = walked.length - added;
     }
   }
   const apps = [...new Set([...place.folders.map(p => p.app), ...place.files.map(p => p.app)])];
@@ -227,8 +249,11 @@ export interface ScannerDeps { readonly home: string; readonly now?: () => numbe
 export interface Batch { readonly reads: readonly PlaceRead[]; readonly tally: Tally }
 
 export interface Scanner {
+  /** Looks again at the home folder. Folders the person picked earlier stay listed and can still be read. */
   discover(): Promise<RealDiscovery>;
   addFolder(dir: string): Promise<RealDiscovery>;
+  /** Asks `choose` for a folder (the chooser window) and adds it, all inside one call, so no other call can start while the chooser is open. Null when the person closed it. */
+  pick(choose: () => Promise<string | null>): Promise<RealDiscovery | null>;
   read(ids: unknown): Promise<Batch>;
   /** The ids handed out so far. */
   knownIds(): readonly string[];
@@ -246,7 +271,7 @@ export function createScanner(deps: ScannerDeps): Scanner {
   const describe = async (places: readonly PlaceInternal[], budget: Budget, tally: Tally): Promise<RealPlace[]> => {
     const out: RealPlace[] = [];
     for (const p of places) {
-      if (budget.expired()) { tally.stoppedEarly = true; break; }
+      if (mustStop(budget, tally)) break;
       const s = summarise(p, home, budget);
       addTally(tally, s.tally);
       out.push(s.place);
@@ -256,24 +281,30 @@ export function createScanner(deps: ScannerDeps): Scanner {
   };
   const answer = (places: RealPlace[], tally: Tally): RealDiscovery => ({
     places, stoppedEarly: tally.stoppedEarly, couldNotRead: couldNotRead(tally), readOnly: true,
-    notes: [...(tally.truncated ? ['Some folders were big, so only part of them was looked at.'] : []), ...(tally.stoppedEarly ? ['It stopped early to stay within its time limit.'] : [])],
+    notes: [...(tally.truncated ? ['Some folders were big, so only part of them was looked at.'] : []), ...(tally.overBytes ? ['It stopped early to stay within its size limit.'] : tally.stoppedEarly ? ['It stopped early to stay within its time limit.'] : [])],
   });
+  const addFolderNow = async (dir: unknown): Promise<RealDiscovery> => {
+    if (typeof dir !== 'string' || dir === '' || dir.includes('\u0000')) throw new RealRefusal('BAD_ARGUMENT', 'That is not a folder.');
+    if (realFolderFollowing(dir) === null) throw new RealRefusal('BAD_ARGUMENT', 'That folder is not there any more.');
+    const budget = makeBudget(now), tally = newTally();
+    const places = findPlacesUnder(dir, home, budget, tally).filter(p => known.has(p.id) || known.size < REAL_LIMITS.places);
+    for (const p of places) known.set(p.id, p);
+    return answer(await describe(places, budget, tally), tally);
+  };
   return {
     knownIds: () => [...known.keys()],
     discover: () => guard(async () => {
-      known.clear();
+      // Only the places under the home folder are listed again. A folder the person picked keeps its place in the list, so a second look does not undo the pick.
+      for (const [id, place] of known) if (place.kind === 'home') known.delete(id);
       const budget = makeBudget(now), tally = newTally();
       const places = findHomePlaces(home);
       for (const p of places) known.set(p.id, p);
       return answer(await describe(places, budget, tally), tally);
     }),
-    addFolder: dir => guard(async () => {
-      if (typeof dir !== 'string' || dir === '' || dir.includes('\u0000')) throw new RealRefusal('BAD_ARGUMENT', 'That is not a folder.');
-      if (realFolderFollowing(dir) === null) throw new RealRefusal('BAD_ARGUMENT', 'That folder is not there any more.');
-      const budget = makeBudget(now), tally = newTally();
-      const places = findPlacesUnder(dir, home, budget, tally).filter(p => known.has(p.id) || known.size < REAL_LIMITS.places);
-      for (const p of places) known.set(p.id, p);
-      return answer(await describe(places, budget, tally), tally);
+    addFolder: dir => guard(() => addFolderNow(dir)),
+    pick: choose => guard(async () => {
+      const dir = await choose();
+      return dir === null ? null : addFolderNow(dir);
     }),
     read: ids => guard(async () => {
       if (!Array.isArray(ids) || ids.length === 0 || ids.length > REAL_LIMITS.places) throw new RealRefusal(ids instanceof Array && ids.length > REAL_LIMITS.places ? 'TOO_MANY' : 'BAD_ARGUMENT', 'Choose at least one place.');
@@ -286,7 +317,7 @@ export function createScanner(deps: ScannerDeps): Scanner {
       }
       const budget = makeBudget(now), tally = newTally(), reads: PlaceRead[] = [];
       for (const p of chosen) {
-        if (budget.expired()) { tally.stoppedEarly = true; break; }
+        if (mustStop(budget, tally)) break;
         const r = readPlace(p, home, true, budget);
         addTally(tally, r.tally as Tally);
         reads.push(r);

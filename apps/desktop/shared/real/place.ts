@@ -34,7 +34,7 @@ export interface PlaceRead {
   readonly partlyRead: number;
   /** The tool folders and files found, by name. */
   readonly folders: readonly string[];
-  readonly tally: Readonly<{ tooBig: number; binary: number; unreadable: number; linksOutside: number; stoppedEarly: boolean; truncated: boolean }>;
+  readonly tally: Readonly<{ tooBig: number; binary: number; unreadable: number; linksOutside: number; stoppedEarly: boolean; truncated: boolean; overBytes?: boolean }>;
 }
 
 export const emptyCounts = (): RealCounts => ({ agents: 0, skills: 0, tools: 0, hooks: 0, notes: 0 });
@@ -68,6 +68,7 @@ export function tallyWords(t: PlaceRead['tally']): string[] {
   if (t.binary > 0) out.push(`${plural(t.binary, 'file that is', 'files that are')} not text ${t.binary === 1 ? 'was' : 'were'} skipped.`);
   if (t.unreadable > 0) out.push(`${plural(t.unreadable, 'thing', 'things')} could not be opened.`);
   if (t.truncated) out.push('This folder is big, so only part of it was looked at.');
-  if (t.stoppedEarly) out.push('It stopped early to stay within its time limit.');
+  if (t.overBytes === true) out.push('It stopped early to stay within its size limit.');
+  else if (t.stoppedEarly) out.push('It stopped early to stay within its time limit.');
   return out;
 }

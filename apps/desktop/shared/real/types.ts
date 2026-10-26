@@ -34,6 +34,18 @@ export const REAL_LIMITS = Object.freeze({
   pagesPerPlace: 2000,
   /** The most characters of a note's title and summary. */
   noteChars: 120,
+  /** The most bytes one call reads from all files together. At the cap the call stops early and says so. */
+  totalBytes: 20 * 1024 * 1024,
+  /** The most files (read for their text) and notes pages (read for their head) one call hands on. At the cap the call stops early and says so. */
+  itemsPerCall: 10000,
+  /** The most characters of one text that go to the page. A longer text is cut and marked. */
+  excerptChars: 20000,
+  /** The most characters of text, in all, that go to the page before every further text is cut to `minExcerptChars`. */
+  resultTextChars: 4000000,
+  /** The least of a text that still goes to the page after `resultTextChars` is spent. */
+  minExcerptChars: 1000,
+  /** The most connections or hooks one config file may give. */
+  recordsPerFile: 500,
 });
 
 /** The counts of one place or of a whole result. `tools` are connections and saved prompts; `hooks` run code and are counted apart. */
@@ -81,6 +93,8 @@ export interface RealResult {
   readonly couldNotRead: number;
   /** Files that were read but had a front matter block that could not be understood; they are listed with a name made from the file. */
   readonly partlyRead: number;
+  /** Texts that were longer than the page is given and were cut (each ends with a mark that says so). */
+  readonly textsCut: number;
   readonly notes: readonly string[];
   readonly readOnly: true;
 }

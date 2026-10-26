@@ -191,5 +191,5 @@ test('names with odd characters are skipped and counted, never thrown', async t 
 
 test('the scanner as typed has the three calls and nothing that writes', () => {
   const s: Scanner = createScanner({ home: '/nonexistent-home-for-a-type-check' });
-  assert.deepEqual(Object.keys(s).sort(), ['addFolder', 'discover', 'knownIds', 'read']);
+  assert.deepEqual(Object.keys(s).sort(), ['addFolder', 'discover', 'knownIds', 'pick', 'read']);
 });

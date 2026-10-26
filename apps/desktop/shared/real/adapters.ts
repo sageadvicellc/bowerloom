@@ -225,7 +225,7 @@ function serverRecord(app: RealApp, name: string, relPath: string, spec: ServerS
 function serversOf(app: RealApp, relPath: string, servers: unknown): RawRecord[] {
   if (servers === null || typeof servers !== 'object' || Array.isArray(servers)) return [];
   const out: RawRecord[] = [];
-  for (const [name, raw] of Object.entries(servers as Record<string, unknown>)) {
+  for (const [name, raw] of Object.entries(servers as Record<string, unknown>).slice(0, REAL_LIMITS.recordsPerFile)) {
     if (name === '__proto__' || raw === null || typeof raw !== 'object') continue;
     const s = raw as Record<string, unknown>;
     out.push(serverRecord(app, name, relPath, { command: s.command, url: s.url, env: s.env ?? s.environment, headers: s.headers ?? s.http_headers }));
@@ -236,9 +236,9 @@ function serversOf(app: RealApp, relPath: string, servers: unknown): RawRecord[]
 function hooksOfClaude(app: RealApp, relPath: string, hooks: unknown): RawRecord[] {
   if (hooks === null || typeof hooks !== 'object' || Array.isArray(hooks)) return [];
   const out: RawRecord[] = [];
-  for (const [event, groups] of Object.entries(hooks as Record<string, unknown>)) {
+  for (const [event, groups] of Object.entries(hooks as Record<string, unknown>).slice(0, REAL_LIMITS.recordsPerFile)) {
     if (!Array.isArray(groups) || !ENV_NAME.test(event)) continue;
-    for (const group of groups) {
+    for (const group of groups.slice(0, REAL_LIMITS.recordsPerFile)) {
       const g = (group !== null && typeof group === 'object' ? group : {}) as Record<string, unknown>;
       const matcher = typeof g.matcher === 'string' ? safeText(g.matcher, 40) : '';
       const kinds = Array.isArray(g.hooks) ? g.hooks.map(h => (h !== null && typeof h === 'object' && typeof (h as Record<string, unknown>).type === 'string' ? safeText(String((h as Record<string, unknown>).type), 20) : 'command')) : ['command'];
@@ -271,7 +271,7 @@ function fromOpenCode(app: RealApp, relPath: string, json: unknown): RawRecord[]
   const j = json as Record<string, unknown>, out = serversOf(app, relPath, j.mcp);
   const agents = j.agent, commands = j.command;
   if (agents !== null && typeof agents === 'object' && !Array.isArray(agents)) {
-    for (const [name, raw] of Object.entries(agents as Record<string, unknown>)) {
+    for (const [name, raw] of Object.entries(agents as Record<string, unknown>).slice(0, REAL_LIMITS.recordsPerFile)) {
       if (name === '__proto__' || raw === null || typeof raw !== 'object') continue;
       const a = raw as Record<string, unknown>, description = typeof a.description === 'string' ? cleanLine(scrubText(a.description)) : '';
       out.push(record(app, 'agent', nameChars(name), description, relPath, scrubText(JSON.stringify({ name, description, mode: typeof a.mode === 'string' ? a.mode : undefined, model: typeof a.model === 'string' ? a.model : undefined })), false, {
@@ -280,7 +280,7 @@ function fromOpenCode(app: RealApp, relPath: string, json: unknown): RawRecord[]
     }
   }
   if (commands !== null && typeof commands === 'object' && !Array.isArray(commands)) {
-    for (const [name, raw] of Object.entries(commands as Record<string, unknown>)) {
+    for (const [name, raw] of Object.entries(commands as Record<string, unknown>).slice(0, REAL_LIMITS.recordsPerFile)) {
       if (name === '__proto__' || raw === null || typeof raw !== 'object') continue;
       const c = raw as Record<string, unknown>, description = typeof c.description === 'string' ? c.description : '';
       out.push(record(app, 'prompt', nameChars(name), description, relPath, scrubText(typeof c.template === 'string' ? c.template : description), false));
@@ -308,7 +308,7 @@ function fromCodexToml(app: RealApp, relPath: string, text: string): RawRecord[]
     } else if (sub === 'env') for (const k of t.values.keys()) e.env.add(k);
     else if (sub === 'http_headers' || sub === 'env_http_headers') for (const k of t.values.keys()) e.headers.add(k);
   }
-  for (const [name, e] of server) out.push(serverRecord(app, name, relPath, { command: e.command, url: e.url, env: Object.fromEntries([...e.env].map(k => [k, 1])), headers: Object.fromEntries([...e.headers].map(k => [k, 1])), bearerEnv: e.bearer }));
+  for (const [name, e] of [...server].slice(0, REAL_LIMITS.recordsPerFile)) out.push(serverRecord(app, name, relPath, { command: e.command, url: e.url, env: Object.fromEntries([...e.env].map(k => [k, 1])), headers: Object.fromEntries([...e.headers].map(k => [k, 1])), bearerEnv: e.bearer }));
   const notify = tables[0]?.values.get('notify');
   if (notify !== undefined && notify.t === 'arr') out.push(record(app, 'hook', 'Notify', '', relPath, JSON.stringify({ event: 'notify', kinds: ['command'] }), false, { event: 'notify', runs: ['command'] }));
   return out;
@@ -318,7 +318,7 @@ function fromHermesYaml(app: RealApp, relPath: string, text: string): RawRecord[
   const yaml = parseYaml(text), servers = yaml.mcp_servers ?? yaml.mcpServers;
   if (!isMap(servers)) return [];
   const out: RawRecord[] = [];
-  for (const [name, raw] of Object.entries(servers)) {
+  for (const [name, raw] of Object.entries(servers).slice(0, REAL_LIMITS.recordsPerFile)) {
     if (!isMap(raw)) continue;
     const command = textOf(raw.command), url = textOf(raw.url);
     out.push(serverRecord(app, name, relPath, { command, url, env: namesToObject(raw.env), headers: namesToObject(raw.headers) }));
