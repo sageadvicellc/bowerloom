@@ -30,7 +30,9 @@ export interface ScanPlace {
   readonly library: boolean;
 }
 
-const FOLDER: Readonly<Record<InterfaceId, string>> = { 'claude-code': '.claude', codex: '.codex', opencode: '.opencode' };
+const FOLDER: Readonly<Record<InterfaceId, string>> = { 'claude-code': '.claude', codex: '.codex', opencode: '.opencode', hermes: '.hermes', bowerloom: '.bowerloom' };
+/** The group of a program: the three programs of the sample have a group of their own; any other program (Hermes, Bowerloom) is shown with the project folders. The scan only ever sees the sample world. */
+const groupOfProgram = (face: InterfaceId): PlaceGroupId => (face === 'claude-code' || face === 'codex' || face === 'opencode' ? face : 'projects');
 const GROUP_OF_FOLDER: Readonly<Record<string, PlaceGroupId>> = { '.claude': 'claude-code', '.codex': 'codex', '.opencode': 'opencode', '.bowerloom': 'older', '.bowerloom-store': 'older' };
 const labelOfGroup = (id: PlaceGroupId): string => PLACE_GROUPS.find(g => g.id === id)!.label;
 
@@ -45,12 +47,12 @@ function whereIs(item: HarnessItem, found: FoundAt, scopes: ReadonlyMap<string, 
   if (cache >= 0 && parts.length > cache + 2) {
     const path = parts.slice(0, cache + 3).join('/');
     const source = world.libraries.find(l => l.id === parts[cache + 1]);
-    return { path, group: found.interface, label: `Library cache: ${source === undefined ? parts[cache + 1]! : source.name} ${parts[cache + 2]!}`, library: true };
+    return { path, group: groupOfProgram(found.interface), label: `Library cache: ${source === undefined ? parts[cache + 1]! : source.name} ${parts[cache + 2]!}`, library: true };
   }
   const at = parts.findIndex(p => Object.hasOwn(GROUP_OF_FOLDER, p));
   const folder = at >= 0 ? parts[at]! : FOLDER[found.interface];
   const path = at >= 0 ? parts.slice(0, at + 1).join('/') : `${parts.slice(0, -1).join('/')}/${folder}`;
-  const inherent = Object.hasOwn(GROUP_OF_FOLDER, folder) ? GROUP_OF_FOLDER[folder]! : found.interface;
+  const inherent = Object.hasOwn(GROUP_OF_FOLDER, folder) ? GROUP_OF_FOLDER[folder]! : groupOfProgram(found.interface);
   const group: PlaceGroupId = inherent === 'older' ? 'older' : owner !== undefined && owner.kind === 'project' ? 'projects' : inherent;
   return { path, group, label: `${ownerName}: ${folder}`, library: false };
 }

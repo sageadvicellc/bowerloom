@@ -55,7 +55,7 @@ export function registerRealIpc(deps: RealIpcDeps): Scanner {
   });
   guarded(REAL_CHANNELS.readSelected, 1, async ([ids]): Promise<RealResult> => {
     const batch = await scanner.read(ids);
-    return buildRealResult(batch.reads, batch.tally, { nowMs: now() });
+    return buildRealResult(batch.reads, batch.tally, { nowMs: now(), foldExtraApps: true });
   });
   return scanner;
 }

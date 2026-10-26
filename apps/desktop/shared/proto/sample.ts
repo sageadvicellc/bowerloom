@@ -51,7 +51,7 @@ export const CASE_IDS = {
 const PAGE_COUNT = 700, LINKED_PAGES = PAGE_COUNT - Math.round(PAGE_COUNT * 2 / 3), LIBRARY_AGENTS = 120, OWNED_AGENTS = 10, GLOBAL_SKILLS = 44, PROJECT_SKILLS = 8;
 const ROOT = '/Users/sample/Studio', CACHE = '/Users/sample/.cache/evergreen-kit/2.3.0';
 const INTERFACES: readonly InterfaceId[] = ['claude-code', 'codex', 'opencode'];
-const FOLDER: Record<InterfaceId, string> = { 'claude-code': '.claude', codex: '.codex', opencode: '.opencode' };
+const FOLDER: Record<InterfaceId, string> = { 'claude-code': '.claude', codex: '.codex', opencode: '.opencode', hermes: '.hermes', bowerloom: '.bowerloom' };
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 
 const cap = (word: string): string => word.slice(0, 1).toUpperCase() + word.slice(1);
@@ -280,7 +280,7 @@ export function validateWorld(world: World): string[] {
 
   const scopes = new Map(world.scopes.map(s => [s.id, s])), items = new Map(world.items.map(i => [i.id, i]));
   const pageIds = new Set(world.wikiPages.map(p => p.id)), sliceIds = new Set(world.slices.map(s => s.id)), libraries = new Map(world.libraries.map(l => [l.id, l]));
-  const faces = new Set<string>(INTERFACES);
+  const faces = new Set<string>(Object.keys(INTERFACE_WORDS));
 
   if (world.scopes.filter(s => s.kind === 'global').length !== 1) problems.push('there must be exactly one global scope');
   for (const s of world.scopes) {

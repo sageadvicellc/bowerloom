@@ -34,7 +34,7 @@ test('places come in the group order, and every group is one of the five', () =>
 });
 
 test('the counts match an independent count of the foundAt paths', () => {
-  const folder = { 'claude-code': '.claude', codex: '.codex', opencode: '.opencode' } as const;
+  const folder = { 'claude-code': '.claude', codex: '.codex', opencode: '.opencode', hermes: '.hermes', bowerloom: '.bowerloom' } as const;
   const expectedPlace = (path: string, face: keyof typeof folder): string => {
     const cache = path.match(/^(.*\/\.cache\/[^/]+\/[^/]+)\//);
     if (cache) return cache[1]!;

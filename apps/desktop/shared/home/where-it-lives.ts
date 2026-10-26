@@ -5,6 +5,7 @@
  * each program, the first place it was found there. Pure: no React, no DOM.
  */
 import type { HarnessItem, InterfaceId, World } from '../proto/types.js';
+import { realPlacesOf } from '../real/plain-fallback.js';
 import { PROGRAM_NAMES, PROGRAM_ORDER } from './plain-details.js';
 
 /** One program that holds the thing, and where. */
@@ -32,7 +33,7 @@ export function samplePath(path: string, storedName: string, plainName: string):
   return tilde.endsWith(named) ? `${tilde.slice(0, tilde.length - named.length)}/${slug}${file}` : tilde;
 }
 
-const FOLDER: Readonly<Record<InterfaceId, string>> = Object.freeze({ 'claude-code': '.claude', codex: '.codex', opencode: '.opencode' });
+const FOLDER: Readonly<Record<InterfaceId, string>> = Object.freeze({ 'claude-code': '.claude', codex: '.codex', opencode: '.opencode', hermes: '.hermes', bowerloom: '.bowerloom' });
 const HOME_FOLDER = '~/Studio';
 
 /**
@@ -49,6 +50,9 @@ function keptPath(item: HarnessItem, face: InterfaceId, slug: string): string {
 
 /** The places of an item, one for each program that holds it, in the order the details show the programs. */
 export function placesOfItem(item: HarnessItem, plainName: string): Place[] {
+  // An item from the person's own setup has its real paths (the home folder written "~"), never a sample path.
+  const real = realPlacesOf(item);
+  if (real !== null) return real;
   const out: Place[] = [];
   for (const program of PROGRAM_ORDER) {
     const found = item.foundAt.find(f => f.interface === program);

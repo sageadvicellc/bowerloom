@@ -93,12 +93,13 @@ test('programs the world has no room for are listed apart, with a name and a hin
   assert.equal(r.world.items.some(i => i.name === 'tidy-up'), false);
 });
 
-test('with foldExtraApps the other programs enter the world under their own names (a cast the types still refuse)', async t => {
+test('with foldExtraApps the other programs enter the world under their own names, and the world is valid with them', async t => {
   const r = await readAll(fixture(t), true);
   assert.deepEqual(r.others, []);
   const tidy = named(r.world, 'skill', 'tidy-up');
-  assert.equal(tidy.foundAt[0]!.interface as string, 'hermes');
-  assert.ok(validateWorld(r.world).some(p => /unknown interface|found in unknown interface/.test(p)), 'the world says plainly that its types have no room for them yet');
+  assert.equal(tidy.foundAt[0]!.interface, 'hermes');
+  assert.deepEqual(validateWorld(r.world), [], 'Hermes is a program of the world now: the world has room for it');
+  assert.deepEqual(r.world.interfaces.map(i => [i.id, i.installed]), [['claude-code', 'installed'], ['codex', 'installed'], ['opencode', 'installed'], ['hermes', 'installed']]);
 });
 
 test('ids are stable between two reads, unique, and never look like a sample id', async t => {

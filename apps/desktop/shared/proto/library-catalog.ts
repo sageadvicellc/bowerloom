@@ -79,7 +79,7 @@ export const FOLDER_CANDIDATES: readonly FolderCandidate[] = Object.freeze([
 /** The id an item of a catalog library gets in the world. */
 export const catalogItemId = (libraryId: string, key: string): string => `${libraryId}-${key}`;
 
-const FOLDER: Readonly<Record<InterfaceId, string>> = { 'claude-code': 'claude-code', codex: 'codex', opencode: 'opencode' };
+const FOLDER: Readonly<Record<InterfaceId, string>> = { 'claude-code': 'claude-code', codex: 'codex', opencode: 'opencode', hermes: 'hermes', bowerloom: 'bowerloom' };
 
 /** Where the cache of one interface holds a skill of the library. Invented. */
 export const catalogSkillPath = (lib: CatalogLibrary, skill: CatalogSkill, face: InterfaceId): string => `${lib.cacheRoot}/${FOLDER[face]}/skills/${skill.name}/SKILL.md`;

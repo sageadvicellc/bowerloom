@@ -136,7 +136,7 @@ test('journey 5: pick a slice, read the preview, build rules, lasso on the graph
   await expect(page.getByText(/links? leaves? this slice\. They are drawn as dashed lines on the graph\./)).toBeVisible();
   await expect(page.getByText(/^The agent gets a map of \d+ pages: a title and one line for each\./)).toBeVisible();
   for (const i of world.interfaces) {
-    const label = `${{ 'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode' }[i.id]}: ${i.enforcement}`;
+    const label = `${{ 'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode', hermes: 'Hermes', bowerloom: 'Bowerloom' }[i.id]}: ${i.enforcement}`;
     await expect(page.locator('.kn-badge', { hasText: label })).toBeVisible();
   }
   await expect(page.getByText('The agent cannot read pages outside this slice.')).toBeVisible();

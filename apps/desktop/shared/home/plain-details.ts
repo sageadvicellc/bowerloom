@@ -16,8 +16,8 @@ export type SourceId = keyof typeof SOURCE_WORDS;
 export const ACCESS_WORDS: Readonly<Record<AccessClass, string>> = Object.freeze({ 'read-only': 'Can only read', 'read-write': 'Can change things' });
 
 /** The programs an item can work in, as a person names them, in the order the details show them. */
-export const PROGRAM_ORDER: readonly InterfaceId[] = Object.freeze(['claude-code', 'codex', 'opencode'] as const);
-export const PROGRAM_NAMES: Readonly<Record<InterfaceId, string>> = Object.freeze({ 'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode' });
+export const PROGRAM_ORDER: readonly InterfaceId[] = Object.freeze(['claude-code', 'codex', 'opencode', 'hermes', 'bowerloom'] as const);
+export const PROGRAM_NAMES: Readonly<Record<InterfaceId, string>> = Object.freeze({ 'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode', hermes: 'Hermes', bowerloom: 'Bowerloom' });
 
 type Row = readonly [id: string, source: SourceId, ...lines: string[]];
 

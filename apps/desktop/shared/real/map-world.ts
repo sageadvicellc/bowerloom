@@ -8,8 +8,9 @@
  *    kind, and a name once it is lowercased and stripped of everything but letters and digits. If the texts differ, the item has two different copies, which is the
  *    "different copies" case the screens already know.
  *  - Items from the home folder are in the `global` scope. Each work folder or picked folder is its own scope under it.
- *  - A program the world has no room for yet (Hermes, Bowerloom's own folder) is not an interface of the world. Its things are listed in `others` (name and hint), unless
- *    `foldExtraApps` is set, which puts them in the world under the nearest interface name they have no room for (a cast; the types need a new id first).
+ *  - The world has three programs of its own (Claude Code, Codex, OpenCode). A program beyond them (Hermes, Bowerloom's own folder) has things listed in `others`
+ *    (name and hint) unless `foldExtraApps` is set. With it set, those programs are programs of the world too: each thing found in one gets a `foundAt` under the program's
+ *    own name (`hermes`, `bowerloom`), whether or not the same thing is also in one of the three, and the program is listed in `interfaces` as installed.
  *  - Names are the front matter name, else the file or folder name. A hint is the description, else the first sentence of the text, cut by the plain layer.
  *  - Notes pages become wiki pages (title, folder, tags, a short summary; never the page text). Each place with notes gets one set of notes for the whole place, and one
  *    for each of its biggest top folders.
@@ -37,7 +38,10 @@ export interface BuildOptions {
 export interface BatchTally { readonly tooBig: number; readonly binary: number; readonly unreadable: number; readonly linksOutside: number; readonly stoppedEarly: boolean; readonly truncated: boolean; readonly overBytes?: boolean }
 
 const INTERFACE_ORDER: readonly InterfaceId[] = ['claude-code', 'codex', 'opencode'];
-const ENFORCEMENT: Readonly<Record<InterfaceId, InterfaceInfo['enforcement']>> = { 'claude-code': 'blocks reads', codex: 'advisory only', opencode: 'advisory only' };
+/** The programs beyond the three, in the order the world lists them when `foldExtraApps` is set. */
+const EXTRA_ORDER: readonly InterfaceId[] = ['hermes', 'bowerloom'];
+const ALL_ORDER: readonly InterfaceId[] = [...INTERFACE_ORDER, ...EXTRA_ORDER];
+const ENFORCEMENT: Readonly<Record<InterfaceId, InterfaceInfo['enforcement']>> = { 'claude-code': 'blocks reads', codex: 'advisory only', opencode: 'advisory only', hermes: 'advisory only', bowerloom: 'advisory only' };
 const DAY_MS = 86_400_000;
 const TOPIC_SLICES = 12;
 const TOPIC_MIN_PAGES = 3;
@@ -62,31 +66,30 @@ function excerpt(text: string, budget: TextBudget): string {
   budget.left -= out.length;
   return out;
 }
-const orderOf = (app: RealApp): number => { const at = INTERFACE_ORDER.indexOf(app as InterfaceId); return at < 0 ? INTERFACE_ORDER.length : at; };
+const orderOf = (app: RealApp): number => { const at = ALL_ORDER.indexOf(app); return at < 0 ? ALL_ORDER.length : at; };
 const kindAbbr = (kind: RealKind): string => (kind === 'skill' ? 'skill' : kind === 'agent' ? 'agent' : 'tool');
 
 interface Located { readonly rec: StampedRecord; readonly read: PlaceRead; readonly scopeId: string }
 
-interface Placed { readonly foundAt: FoundAt[]; readonly days: number[]; readonly extra: Located[]; readonly folded: boolean }
+interface Placed { readonly foundAt: FoundAt[]; readonly days: number[]; readonly extra: Located[] }
 
 /**
- * Where the members of one group were found. Only the three interfaces of the world get a `foundAt` (the first file of each, in interface order); the rest are `extra`.
- * With `fold` set, a group that has no interface of the world is placed under the names of the other programs anyway (a cast; the types need a new id first).
+ * Where the members of one group were found. The first file of each program of the three is a `foundAt`, in interface order; a member in any other program is `extra`.
+ * With `fold` set, the other programs get a `foundAt` too (the first file of each), after the three, and nothing is `extra`.
  */
 function placeMembers(members: readonly Located[], nowMs: number, fold: boolean, texts: TextBudget): Placed {
   const foundAt: FoundAt[] = [], days: number[] = [], extra: Located[] = [], seen = new Set<InterfaceId>();
   const textOf = (m: Located): string => excerpt(m.rec.text !== '' ? m.rec.text : (m.rec.description !== '' ? m.rec.description : m.rec.name), texts);
   for (const m of members) {
-    if (!isKnownInterface(m.rec.app)) { extra.push(m); continue; }
-    const face = m.rec.app;
+    if (!isKnownInterface(m.rec.app) && !fold) { extra.push(m); continue; }
+    const face: InterfaceId = m.rec.app;
     if (seen.has(face)) continue;
     seen.add(face);
     const text = textOf(m);
     foundAt.push({ interface: face, path: joinPath(m.read.place.path, m.rec.relPath), contentHash: hashText(text), text });
     days.push(m.rec.mtimeMs > 0 ? Math.max(0, Math.floor((nowMs - m.rec.mtimeMs) / DAY_MS)) : 0);
   }
-  if (foundAt.length > 0 || !fold) return { foundAt, days, extra, folded: false };
-  return { foundAt: extra.map(m => { const text = textOf(m); return { interface: m.rec.app as unknown as InterfaceId, path: joinPath(m.read.place.path, m.rec.relPath), contentHash: hashText(text), text }; }), days: extra.map(() => 0), extra: [], folded: true };
+  return { foundAt, days, extra };
 }
 
 const accessOf = (toolNames: readonly string[]): AccessClass => {
@@ -176,8 +179,8 @@ export function buildRealResult(reads: readonly PlaceRead[], tally: BatchTally, 
     }
     const toolAttachments: ToolAttachment[] = [...attach].map(([toolId, names]) => ({ toolId, access: accessOf(names) }));
     const body = excerpt(bodyOf(first), texts), describe = members.map(m => m.rec.description).find(d => d !== '') ?? '';
-    const modelFrom = members.find(m => m.rec.meta.model !== undefined && isKnownInterface(m.rec.app));
-    const extras = modelFrom === undefined ? [] : [{ interface: modelFrom.rec.app as InterfaceId, badge: `${INTERFACE_WORDS[modelFrom.rec.app as InterfaceId]} only`, key: 'model', value: modelFrom.rec.meta.model! }];
+    const modelFrom = members.find(m => m.rec.meta.model !== undefined && placed.foundAt.some(f => f.interface === m.rec.app));
+    const extras = modelFrom === undefined ? [] : [{ interface: modelFrom.rec.app, badge: `${INTERFACE_WORDS[modelFrom.rec.app]} only`, key: 'model', value: modelFrom.rec.meta.model! }];
     agents.push({
       id, kind: 'agent', name: rec.name, scopeId: first.scopeId, foundAt: placed.foundAt, library: null, extras,
       definition: { name: rec.name, role: members.map(m => m.rec.meta.role).find(r => r !== undefined) ?? cut(describe, 60), instructions: body !== '' ? body : describe, skillIds, toolAttachments },
@@ -208,7 +211,8 @@ export function buildRealResult(reads: readonly PlaceRead[], tally: BatchTally, 
   }
 
   const apps = new Set<RealApp>(reads.flatMap(r => r.place.apps));
-  const interfaces: InterfaceInfo[] = INTERFACE_ORDER.map(id => ({ id, installed: apps.has(id) ? 'installed' : 'unknown', notice: null, enforcement: ENFORCEMENT[id] }));
+  const interfaces: InterfaceInfo[] = (options.foldExtraApps === true ? ALL_ORDER.filter(id => INTERFACE_ORDER.includes(id) || apps.has(id)) : INTERFACE_ORDER)
+    .map(id => ({ id, installed: apps.has(id) ? 'installed' : 'unknown', notice: null, enforcement: ENFORCEMENT[id] }));
   const byName = <T extends { name: string; id: string }>(list: T[]): T[] => [...list].sort((a, b) => a.name.localeCompare(b.name) || (a.id < b.id ? -1 : 1));
   const world: World = { interfaces, items: [...byName(skills), ...byName(agents), ...byName(tools), ...sliceItems], scopes, overrides: [], wikiPages, slices, versions: [], libraries: [] };
 

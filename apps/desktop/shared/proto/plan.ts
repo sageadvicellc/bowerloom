@@ -25,6 +25,9 @@ const LAYOUT: Record<InterfaceId, { skill(n: string): string; agent(n: string): 
   'claude-code': { skill: n => `.claude/skills/${n}/SKILL.md`, agent: n => `.claude/agents/${n}.md`, mcp: n => `.claude/mcp/${n}.json`, prompt: n => `.claude/commands/${n}.md` },
   codex: { skill: n => `.agents/skills/${n}/SKILL.md`, agent: n => `.codex/agents/${n}.md`, mcp: n => `.codex/mcp/${n}.json`, prompt: n => `.codex/prompts/${n}.md` },
   opencode: { skill: n => `.opencode/skill/${n}.md`, agent: n => `.opencode/agent/${n}.md`, mcp: n => `.opencode/mcp/${n}.json`, prompt: n => `.opencode/command/${n}.md` },
+  // Hermes and Bowerloom are programs the real-setup reader finds. This plan only ever writes to the three programs in ORDER (the sample world's), so these two rows are never used.
+  hermes: { skill: n => `.hermes/skills/${n}/SKILL.md`, agent: n => `.hermes/profiles/${n}/SOUL.md`, mcp: n => `.hermes/mcp/${n}.json`, prompt: n => `.hermes/commands/${n}.md` },
+  bowerloom: { skill: n => `.bowerloom/skills/${n}/SKILL.md`, agent: n => `.bowerloom/agents/${n}.md`, mcp: n => `.bowerloom/mcp/${n}.json`, prompt: n => `.bowerloom/commands/${n}.md` },
 };
 
 interface Rendered { readonly interface: InterfaceId; readonly path: string; readonly content: string }

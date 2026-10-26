@@ -10,7 +10,7 @@ export function joinWords(items: readonly string[], last = 'and'): string {
 }
 
 /** The one table of interface names as a person says them. */
-export const INTERFACE_WORDS: Readonly<Record<InterfaceId, string>> = Object.freeze({ 'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode' });
+export const INTERFACE_WORDS: Readonly<Record<InterfaceId, string>> = Object.freeze({ 'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode', hermes: 'Hermes', bowerloom: 'Bowerloom' });
 
 /** The interface's name as a person says it. */
 export const interfaceName = (id: InterfaceId): string => INTERFACE_WORDS[id];

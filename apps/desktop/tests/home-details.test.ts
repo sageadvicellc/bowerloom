@@ -50,7 +50,7 @@ test('the sample skills\' own text is made-up words (so it is replaced), and no 
 
 test('the access words and the program names are the plain ones', () => {
   assert.deepEqual(ACCESS_WORDS, { 'read-only': 'Can only read', 'read-write': 'Can change things' });
-  assert.deepEqual(PROGRAM_NAMES, { 'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode' });
+  assert.deepEqual(PROGRAM_NAMES, { 'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode', hermes: 'Hermes', bowerloom: 'Bowerloom' });
   for (const text of [...Object.values(ACCESS_WORDS), ...Object.values(SOURCE_WORDS)]) { assert.deepEqual(assertTextBudget(`<p>${text}</p>`), [], text); assert.ok(countWords(text) <= LIMITS.label); }
 });
 

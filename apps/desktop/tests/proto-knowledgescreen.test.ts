@@ -63,7 +63,7 @@ test('the preview says the numbers in plain words, with the estimate called roug
 test('each interface gets a badge with its enforcement and one sentence on what it means', () => {
   const text = textOf(draw());
   for (const i of world.interfaces) {
-    const name = { 'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode' }[i.id];
+    const name = { 'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode', hermes: 'Hermes', bowerloom: 'Bowerloom' }[i.id];
     assert.ok(text.includes(`${name}: ${i.enforcement}`), `${name}: ${i.enforcement}`);
   }
   assert.ok(text.includes('Claude Code: blocks reads')); assert.ok(text.includes('Codex: advisory only'));

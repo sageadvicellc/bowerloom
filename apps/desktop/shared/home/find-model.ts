@@ -7,6 +7,7 @@
 import type { AgentItem, InterfaceId, World } from '../proto/types.js';
 import { placeIdOf } from '../proto/scan-places.js';
 import { agentCard, itemTitle, ownedAgents } from './cards.js';
+import { PROGRAM_NAMES } from './plain-details.js';
 
 /** The three programs, in tile order, with their names. */
 export const FIND_TOOLS: readonly { readonly id: InterfaceId; readonly name: string }[] = Object.freeze([
@@ -73,9 +74,8 @@ export function skippedAgents(places: readonly FindPlace[], ticked: readonly str
   return places.filter(p => !ticked.includes(p.id)).flatMap(p => [...p.agentIds]);
 }
 
-/** The names of the apps a person knows. An app the table does not know is named by its own id as words ("hermes" is "Hermes"). */
-const APP_NAMES: Readonly<Record<string, string>> = Object.freeze({ 'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode', hermes: 'Hermes' });
-export const appLabel = (id: string): string => APP_NAMES[id] ?? itemTitle(id);
+/** The names of the apps a person knows (the program table of the details). An app the table does not know is named by its own id as words ("some-app" is "Some App"). */
+export const appLabel = (id: string): string => (Object.hasOwn(PROGRAM_NAMES, id) ? PROGRAM_NAMES[id as keyof typeof PROGRAM_NAMES] : itemTitle(id));
 
 /** One row of the list: an agent as the map names it, its job in one line, the apps it works with (in the order Claude Code, Codex, OpenCode, then any other by name), and whether its changes wait for Save. */
 export interface FindAgent { readonly id: string; readonly name: string; readonly hint: string; readonly apps: readonly string[]; readonly unsaved: boolean }

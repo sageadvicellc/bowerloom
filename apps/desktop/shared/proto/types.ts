@@ -4,8 +4,11 @@
  * There is no clock value and no class. A version is ordered by a logical counter, never by time.
  */
 
-/** The programs a person talks to. One adapter each in the real app. */
-export type InterfaceId = 'claude-code' | 'codex' | 'opencode';
+/**
+ * The programs a person talks to. One adapter each in the real app. The first three are the programs of the sample world; `hermes` and `bowerloom` are programs
+ * the real-setup reader finds on a person's computer (renderer/home/real). They never appear in the sample world.
+ */
+export type InterfaceId = 'claude-code' | 'codex' | 'opencode' | 'hermes' | 'bowerloom';
 
 /** Whether an interface was found on this computer. `unknown` means the prototype has not looked. */
 export type InstalledState = 'installed' | 'not-installed' | 'unknown';
