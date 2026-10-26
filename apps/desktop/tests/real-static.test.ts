@@ -323,7 +323,8 @@ test('the launcher: the real flag is known, excludes every other mode, needs a r
     assert.equal(r.status, 2, `HOME=${home}`); assert.match(r.stderr, /needs a home folder/); assert.doesNotMatch(r.stdout, /Installing|Building/, 'nothing is built, nothing is read');
   }
   const mod = await import(`${join(DESKTOP, 'tools', 'run.mjs')}`) as { REAL_PROMISE: string; REAL_FLAG: string; realHome(env: Record<string, string>, exists: (p: string) => boolean): string | null; electronArgs(d: string, f: string[], u: string | null): string[] };
-  assert.equal(mod.REAL_PROMISE, 'Reads: names, descriptions, structure and key names. Writes: nothing.');
+  assert.equal(mod.REAL_PROMISE, 'Reads: names, descriptions, structure and key names. Writes: no changes to your files. The app keeps its own temporary files and deletes them when it closes.');
+  assert.doesNotMatch(mod.REAL_PROMISE, /Writes: nothing/, 'the promise does not claim that nothing is written: the app keeps a temporary profile folder, which it removes when it closes');
   assert.equal(mod.REAL_FLAG, '--prototype-real');
   if (process.platform !== 'win32') assert.equal(mod.realHome({ HOME: '/Users/x' }, () => true), '/Users/x');
   assert.equal(mod.realHome({ HOME: '/Users/x' }, () => false), null); assert.equal(mod.realHome({}, () => true), null); assert.equal(mod.realHome({ HOME: 'x' }, () => true), null);

@@ -55,6 +55,7 @@ export function RealView({ state, details, busyPick, onAction }: { state: RealSt
       <main id="main" className="rl-main">
         <h1 className="rl-title" tabIndex={-1} data-focus="">{title}</h1>
         <p className="rl-readonly" data-readonly="">{REAL_WORDS.hint.readOnlyNote}</p>
+        <p className="rl-readonly" data-temp="">{REAL_WORDS.hint.tempNote}</p>
         {state.step === 'start' ? (
           <section className="rl-section">
             <p className="rl-hint">{REAL_WORDS.hint.intro}</p>

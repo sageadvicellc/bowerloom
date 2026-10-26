@@ -91,6 +91,9 @@ test('every screen is within the text budget, says Read-only, and keeps the path
   for (const [name, markup] of screens) {
     assert.deepEqual(assertTextBudget(markup), [], name);
     assert.match(markup, /Read-only/, `${name} says Read-only`);
+    assert.match(markup, /Your files are not changed\./, `${name} says the files are not changed`);
+    assert.match(markup, /temporary files/, `${name} says the app keeps temporary files`);
+    assert.doesNotMatch(markup, /Nothing is changed or saved/, `${name} does not claim that nothing is saved`);
     assert.doesNotMatch(markup, /innerHTML|dangerouslySetInnerHTML/, name);
   }
   assert.doesNotMatch(screens.find(([n]) => n === 'places')![1], /~\/a|~\/work/, 'no path before Show details');

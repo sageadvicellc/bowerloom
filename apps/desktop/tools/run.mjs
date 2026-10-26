@@ -26,7 +26,7 @@ const PROTOTYPES = ['--prototype', '--prototype-v2'];
 // The real-setup preview has the same lock (a fresh temporary data folder, nothing written to the real app data) and adds a read-only bridge. It needs a real home folder.
 export const REAL_FLAG = '--prototype-real';
 /** What the real-setup preview says on the terminal before it opens its window. Tests hold this to shared/real/types.ts. */
-export const REAL_PROMISE = 'Reads: names, descriptions, structure and key names. Writes: nothing.';
+export const REAL_PROMISE = 'Reads: names, descriptions, structure and key names. Writes: no changes to your files. The app keeps its own temporary files and deletes them when it closes.';
 
 /** The home folder the real-setup preview will read, or null when HOME is not set to a folder that exists. Only the home variable is looked at. */
 export function realHome(env = process.env, exists = path => existsSync(path)) {
