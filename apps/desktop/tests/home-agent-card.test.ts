@@ -1,11 +1,11 @@
-// The agent tile of the map, rendered to markup: one glyph tile, a name, a job line, and ONE line of plain count buttons. No pills, no open list inside the tile.
+// The agent tile of the map, rendered to markup: an accent edge, an apps line, a name, a job line, a thin bar of what it holds, and ONE line of plain count buttons. No avatar, no pills, no menu, no open list inside the tile.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { AgentCard } from '../renderer/home/kit/AgentCard.js';
 import type { AgentCardProps } from '../renderer/home/kit/AgentCard.js';
-import { agentCard, ownedAgents, shelvesOf } from '../shared/home/cards.js';
+import { AGENT_ACCENTS, agentAccent, agentCard, ownedAgents, shelvesOf } from '../shared/home/cards.js';
 import type { ShelfEntry, Shelves } from '../shared/home/cards.js';
 import { generateWorld } from '../shared/proto/sample.js';
 import { assertTextBudget } from '../shared/home/textbudget.js';
@@ -20,16 +20,52 @@ const html = (props: Partial<AgentCardProps> & { shelves?: Shelves } = {}): stri
 const many = (kind: ShelfEntry['kind'], n: number): ShelfEntry[] => Array.from({ length: n }, (_, i) => ({ id: `${kind}-${i}`, kind, name: `Item number ${i + 1}` }));
 const counts = (m: string): string[] => [...m.matchAll(/class="kit-count"[^>]*>([^<]+)<\/button>/g)].map(x => x[1]!);
 
-test('the tile has a 24 px glyph tile, a name, a job line and one line of counts, and nothing else', () => {
+test('the tile has a name, a job line, a bar of what it holds and one line of counts, and nothing else: no avatar, no glyph tile, no menu', () => {
   const m = html();
-  assert.match(m, /^<div class="kit-card" data-kind="agent" data-size="tile" data-drop-agent="agent-01">/);
-  assert.match(m, /<span class="kit-tile" data-size="small" aria-hidden="true"><svg/); assert.doesNotMatch(m, /kit-avatar/);
+  assert.match(m, /^<div class="kit-card" data-kind="agent" data-size="tile" data-accent="(blue|green|orange|red)" data-drop-agent="agent-01">/);
+  assert.doesNotMatch(m, /kit-tile|kit-avatar|kit-icon|aria-haspopup|ellipsis/, 'no avatar, no icon and no menu button');
+  assert.deepEqual([...m.matchAll(/<svg class="([^"]+)"/g)].map(x => x[1]), ['kit-hold-svg'], 'the only drawing is the bar');
   assert.match(m, /<button type="button" class="kit-card-main"[^>]*aria-pressed="false"[^>]*>Meeting assistant<\/button>/);
   assert.match(m, /<p class="kit-hint kit-card-hint"[^>]*>Summarizes meetings and writes replies\.<\/p>/);
   assert.deepEqual(counts(m), ['3 skills', '1 tool', '1 note set']);
   assert.equal([...m.matchAll(/<div class="kit-summary"/g)].length, 1, 'one summary line');
   assert.doesNotMatch(m, /kit-chip|kit-acc|kit-badge|kit-status|kit-tray|<ul/, 'no pills, no open list and no state inside the tile');
   assert.deepEqual(assertTextBudget(m), [], m.slice(0, 200));
+});
+
+test('the accent is the same for the same id and is one of four; the tile carries it as data-accent', () => {
+  assert.equal(html({ dropAgent: 'agent-01' }).match(/data-accent="(\w+)"/)![1], agentAccent('agent-01'));
+  const seen = new Set(agents.map(a => html({ dropAgent: a.id }).match(/data-accent="(\w+)"/)![1]));
+  assert.ok([...seen].every(x => (AGENT_ACCENTS as readonly string[]).includes(x!)));
+});
+
+test('the bar of what it holds is hidden from a screen reader, has one part for each kind with something in it, and is empty for an agent with nothing', () => {
+  const m = html({ shelves: { skills: many('skill', 12), tools: many('tool', 2), notes: many('note', 1) } });
+  assert.match(m, /<div class="kit-hold" aria-hidden="true">/);
+  assert.deepEqual([...m.matchAll(/class="kit-hold-part" data-kind="(\w+)" x="([\d.]+)" y="0" width="([\d.]+)"/g)].map(x => [x[1], Math.round(Number(x[2])), Math.round(Number(x[3]))]), [['skill', 0, 80], ['tool', 80, 13], ['note', 93, 7]]);
+  assert.doesNotMatch(m, /style=/, 'no inline style');
+  const some = html({ shelves: { skills: many('skill', 3), tools: [], notes: many('note', 1) } });
+  assert.deepEqual([...some.matchAll(/kit-hold-part" data-kind="(\w+)"/g)].map(x => x[1]), ['skill', 'note']);
+  const bare = html({ shelves: { skills: [], tools: [], notes: [] } });
+  assert.match(bare, /<div class="kit-hold" aria-hidden="true"><\/div>/, 'an empty bar'); assert.doesNotMatch(bare, /kit-hold-part/);
+});
+
+test('the apps line shows the apps as plain words joined by hidden dots, names the line for a screen reader, is part of the name\'s description, and is left out when the agent has no apps', () => {
+  const m = html({ apps: ['Claude Code', 'Codex'] });
+  assert.match(m, /<span class="kit-card-apps" id="([^"]+)" role="list" aria-label="Works with" title="Claude Code, Codex" data-budget="tooltip"><span class="kit-card-app" role="listitem">Claude Code<\/span><span class="kit-card-app-dot" aria-hidden="true"><\/span><span class="kit-card-app" role="listitem">Codex<\/span><\/span>/);
+  const appsId = /class="kit-card-apps" id="([^"]+)"/.exec(m)![1]!;
+  assert.match(m, new RegExp(`class="kit-card-main"[^>]*aria-describedby="[^"]* ${appsId}"`));
+  assert.equal([...m.matchAll(/kit-card-app-dot/g)].length, 1, 'one dot between two apps');
+  assert.doesNotMatch(html(), /kit-card-apps/, 'no data, no line');
+  // Too many names for one line: the first app and "+2", the whole list as hover text and as the name of the "+2" for a screen reader.
+  const long = html({ apps: ['Claude Code', 'Codex', 'OpenCode'] });
+  assert.match(long, /title="Claude Code, Codex, OpenCode"/);
+  assert.match(long, />Claude Code<\/span>.*<span class="kit-card-app" role="listitem" aria-label="Codex, OpenCode">\+2<\/span>/);
+  assert.doesNotMatch(long, />Codex<\/span>/);
+  assert.deepEqual(assertTextBudget(m), []);
+  // An odd or long app name is text, never markup.
+  const odd = html({ apps: ['<b>x</b> & "y"'] });
+  assert.doesNotMatch(odd, /<b>/); assert.match(odd, /&lt;b&gt;x&lt;\/b&gt; &amp; &quot;y&quot;/);
 });
 
 test('the counts are joined by middle dots that a screen reader skips; a kind with nothing in it is left out; the words are singular or plural to fit', () => {

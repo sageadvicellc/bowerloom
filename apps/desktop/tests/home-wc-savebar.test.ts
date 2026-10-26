@@ -92,6 +92,6 @@ test('the navigation holds Agents and Library as items: one stop in the Tab orde
   assert.match(html, /data-nav-key="agents"[^>]*>(?:<svg[\s\S]*?<\/svg>)<span class="hm-nav-label">Agents</); assert.match(html, /data-nav-key="library"[^>]*aria-expanded="true"/);
   for (const name of ['Skills', 'Agents', 'Tools', 'Notes']) assert.match(html, new RegExp(`data-sub=""[^>]*>(?:<svg[\\s\\S]*?</svg>)<span class="hm-nav-label">${name}<`));
   const agents = side({ view: 'agents' });
-  assert.match(agents, /data-nav-key="agents"[^>]*aria-current="page"|aria-current="page"[^>]*data-nav-key="agents"/); assert.doesNotMatch(agents, /data-sub=""/, 'the four pages show only on the Library');
+  assert.match(agents, /data-nav-key="agents"[^>]*aria-current="page"|aria-current="page"[^>]*data-nav-key="agents"/); assert.match(agents, /data-nav-key="library"[^>]*aria-expanded="false"/, 'the four pages are folded away until the Library opens');
   assert.doesNotMatch(agents, /✓|check/i, 'no check mark');
 });

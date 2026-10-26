@@ -85,7 +85,7 @@ test('the map shows as many columns as the stage holds: with the navigation and 
   expect(1280 - right).toBeLessThanOrEqual(250);
   // The tiles are the same size in every column, and the grid fits the stage.
   const sizes = await tiles().evaluateAll(list => [...new Set(list.map(el => `${Math.round(el.getBoundingClientRect().width)}x${Math.round(el.getBoundingClientRect().height)}`))]);
-  expect(sizes).toEqual(['250x92']);
+  expect(sizes).toEqual(['250x124']);
   expect(await p.evaluate(() => document.querySelector('main.hm-stage')!.scrollWidth <= document.querySelector('main.hm-stage')!.clientWidth + 1)).toBe(true);
   await atEverySize(p, 'map-three-columns', async () => undefined);
   await toggle().click();
@@ -142,7 +142,7 @@ test('a tile keeps its job on one line, and the whole job is its tooltip and is 
   const full = (await job.textContent())!;
   await expect(job).toHaveAttribute('title', full);
   expect(await job.evaluate(el => Math.round(el.getBoundingClientRect().height))).toBeLessThanOrEqual(24);
-  expect(await tiles().evaluateAll(list => [...new Set(list.map(el => Math.round(el.getBoundingClientRect().height)))])).toEqual([92]);
+  expect(await tiles().evaluateAll(list => [...new Set(list.map(el => Math.round(el.getBoundingClientRect().height)))])).toEqual([124]);
   await ensurePicked(agentButton('Meeting assistant'));
   await expect(panel().getByText(full, { exact: true })).toBeVisible();
   expect(await budget()).toEqual([]);

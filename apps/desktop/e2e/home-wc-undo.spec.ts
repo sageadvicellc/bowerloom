@@ -52,7 +52,7 @@ test.beforeEach(async () => {
 test('the navigation has Add, Share, Version history and Help with their words, no bare question mark, and as a rail Version history is an icon with a tooltip', async () => {
   const p = page();
   const buttons = await header().getByRole('button').evaluateAll(els => els.map(el => (el.getAttribute('aria-label') ?? el.textContent ?? '').trim()));
-  expect(buttons).toEqual(['Hide navigation', 'Add', 'Agents', 'Library', 'Find more', 'Share', 'Version history', 'Help', 'About this preview']);
+  expect(buttons).toEqual(['Hide navigation', 'Add', 'Workspace', 'Agents', 'Library', 'More', 'Find more', 'Share', 'Version history', 'Help', 'About this preview']);
   await expect(header().getByRole('button', { name: 'Share', exact: true })).toHaveText('Share');
   await expect(header().getByRole('button', { name: 'Help', exact: true })).toHaveText('Help');
   expect(await header().evaluate(el => el.textContent)).not.toContain('?');

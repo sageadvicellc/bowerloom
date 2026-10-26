@@ -95,6 +95,8 @@ export const MOTION = Object.freeze({
      * ease-out in both directions (a list that closes is not asked to leave slowly). The chevron on the chip turns in the same time. With reduce motion the list opens at once.
      */
     accordion: { ms: 160, ease: 'cubic-bezier(0.23, 1, 0.32, 1)' } satisfies Transition,
+    /** The navigation: a folder or a section opens and closes by the height of its grid row, the hover highlight glides from item to item, and the branch chevron turns, all in `ms`. */
+    nav: { ms: 250, ease: 'cubic-bezier(0.23, 1, 0.32, 1)' } satisfies Transition,
     /** Jakub: the full-window Choose notes sheet fades in while it rises `distance` pixels. It leaves with the panel close time. */
     sheet: { ms: 180, ease: 'cubic-bezier(0.23, 1, 0.32, 1)', distance: 8 } satisfies Slide,
   }),
@@ -150,6 +152,7 @@ export function applyMotionTokens(root: HTMLElement = document.documentElement):
   set('home-press-ms', `${ms(hm.press.ms)}ms`); set('home-press-ease', hm.press.ease); set('home-press-scale', String(prefersReducedMotion() ? 1 : hm.press.scale));
   t('home-sheet', hm.sheet); travel('home-sheet-travel', hm.sheet.distance);
   t('home-accordion', hm.accordion);
+  t('home-nav', hm.nav);
   set('ease-out', MOTION.ease.out);
   travel('home-drawer-travel', hm.drawer.distance);
   travel('setup-reveal-travel', p.setupReveal.distance); travel('versions-travel', p.versions.distance);

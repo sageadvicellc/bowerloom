@@ -705,7 +705,8 @@ test.describe('inside the app', () => {
 
   test('the navigation has two places, Agents and Library, as items below Add: 32 px high, the page you are on marked with aria-current, one Tab stop, and the arrow keys and Enter move between them', async () => {
     const p = page();
-    await expect(header().locator('[data-nav-item]')).toHaveText(['Add', 'Agents', 'Library', 'Find more', 'Share', 'Version history', 'Help']);
+    // The two section headers are items too; the Library's pages are folded away until it opens.
+    await expect(header().locator('[data-nav-item]:visible')).toHaveText(['Add', 'Workspace', 'Agents', 'Library', 'More', 'Find more', 'Share', 'Version history', 'Help']);
     await expect(switchTab('Agents')).toHaveAttribute('aria-current', 'page');
     await expect(switchTab('Library')).not.toHaveAttribute('aria-current', 'page');
     await expect(switchTab('Agents')).toHaveAttribute('tabindex', '0');

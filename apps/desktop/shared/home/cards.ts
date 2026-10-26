@@ -65,6 +65,40 @@ export function chipsOf(shelves: Shelves): Chip[] {
   return CHIP_KINDS.filter(kind => lists[kind].length > 0).map(kind => ({ kind, count: lists[kind].length, label: chipLabel(kind, lists[kind].length) }));
 }
 
+/** The four identity colours of an agent tile. The tile wears one of them as a thin top edge and as the fill of its "what it holds" bar; the colours are tokens (`--hm-ac-*`). */
+export const AGENT_ACCENTS = Object.freeze(['blue', 'green', 'orange', 'red'] as const);
+export type AgentAccent = (typeof AGENT_ACCENTS)[number];
+
+/** The accent of an agent: the same for the same id on every visit, chosen by a hash of the id (32-bit FNV-1a), so the colour never depends on order or on the other agents. */
+export function agentAccent(id: string): AgentAccent {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < id.length; i++) { hash ^= id.charCodeAt(i); hash = Math.imul(hash, 0x01000193) >>> 0; }
+  return AGENT_ACCENTS[hash % AGENT_ACCENTS.length]!;
+}
+
+/** One part of the "what it holds" bar: a kind, how many it has, and its share of everything the agent holds (0 to 1). */
+export interface HoldSegment { readonly kind: ShelfEntry['kind']; readonly count: number; readonly share: number }
+
+/** The parts of the bar, in the order of the count buttons (skills, tools, notes). A kind with nothing in it has no part, and an agent that holds nothing has none at all (an empty bar). */
+export function holdSegments(shelves: Shelves): HoldSegment[] {
+  const chips = chipsOf(shelves), total = chips.reduce((sum, c) => sum + c.count, 0);
+  return chips.map(c => ({ kind: c.kind, count: c.count, share: c.count / total }));
+}
+
+/** The least width of a part of the bar, in hundredths of the bar, so an agent with 1 note among 300 skills still shows its note. */
+export const HOLD_MIN = 4;
+
+/**
+ * The widths of the parts of the bar, in hundredths of the bar (they add up to 100). A part keeps its true share unless that is under HOLD_MIN, which it is raised to; the other
+ * parts give up the difference in proportion. An agent that holds nothing has no parts, so no widths.
+ */
+export function holdWidths(parts: readonly HoldSegment[]): number[] {
+  if (parts.length === 0) return [];
+  const small = parts.filter(p => p.share * 100 < HOLD_MIN).length, rest = parts.reduce((sum, p) => sum + (p.share * 100 < HOLD_MIN ? 0 : p.share * 100), 0);
+  const room = 100 - small * HOLD_MIN;
+  return parts.map(p => (p.share * 100 < HOLD_MIN ? HOLD_MIN : rest === 0 ? room / (parts.length - small || 1) : (p.share * 100 * room) / rest));
+}
+
 /** One plain line for an agent card: its role and what it has. */
 export function agentHint(agent: AgentItem): string {
   const role = agent.definition.role.trim().toLowerCase() || CARD_WORDS.agentFallbackRole;

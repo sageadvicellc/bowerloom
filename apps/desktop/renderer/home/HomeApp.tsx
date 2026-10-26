@@ -77,6 +77,7 @@ import { ShellNote } from './shell/ShellNote.js';
 import type { NoteView } from './shell/ShellNote.js';
 import { useChangeList } from './save/useChangeList.js';
 import { AgentCard } from './kit/AgentCard.js';
+import { findAgents } from '../../shared/home/find-model.js';
 import { AgentTrays } from './map/AgentTrays.js';
 import { rowOf, useColumns } from './map/useColumns.js';
 import { SaveBar } from './save/SaveBar.js';
@@ -211,6 +212,8 @@ export function HomeApp({ skipped: skippedProp = NONE, onSkippedChange, autoTour
   const toolFacts = useMemo(() => (details !== null && details.kind === 'tool' ? toolTrust(world, details.id) : null), [world, details]);
   // Where the picked agent, skill or tool is kept in each program: sample paths, for "Show where it lives".
   const places = useMemo(() => (details === null ? [] : placesOf(world, details.kind, details.id, details.name)), [world, details]);
+  /** The apps each agent works with, for the header line of its tile (the same names and order as the list of the Find screen). */
+  const appsById = useMemo(() => new Map(findAgents(world).map(f => [f.id, f.apps] as const)), [world]);
   const shelvesById = useMemo(() => new Map(agents.map(a => [a.id, shelvesOf(world, a)] as const)), [world, agents]);
   const tabId = stopId !== null && agents.some(a => a.id === stopId) ? stopId : agent?.id ?? agents[0]?.id ?? null;
   // One set of helpers counts and names the changes of both places, so a change made on the Library page lands in the same Save bar and the same history.
@@ -561,7 +564,7 @@ export function HomeApp({ skipped: skippedProp = NONE, onSkippedChange, autoTour
                   const kindsOpen = tray !== null && tray.agentId === a.id ? tray.kind : null;
                   const tile = (
                     <li key={fresh !== null && fresh.agentId === a.id ? `${a.id}:${fresh.phase}` : a.id} className="hm-tile">
-                      <AgentCard name={words.name} hint={words.hint} shelves={shelves} selected={selected !== null && selected.kind === 'agent' && selected.id === a.id} itemId={mine} onSelect={() => pick(a.id)}
+                      <AgentCard name={words.name} hint={words.hint} shelves={shelves} apps={appsById.get(a.id) ?? []} selected={selected !== null && selected.kind === 'agent' && selected.id === a.id} itemId={mine} onSelect={() => pick(a.id)}
                         openKind={kindsOpen} onToggleKind={kind => toggleTray(a.id, kind)} tabStop={a.id === tabId} onSpace={() => spaceOn(a.id, shelves)}
                         dropAgent={a.id} fresh={fresh !== null && fresh.agentId === a.id} {...(i === 0 ? { dataTour: 'agent' } : {})} />
                     </li>

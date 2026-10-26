@@ -1,6 +1,6 @@
 /**
  * The guided tour on screen. It dims the page, cuts a lit hole around the element marked `data-tour="<id>"`, and shows one small popover next to it
- * with one sentence, "Skip tour", a quiet "Back", "Next" ("Done" on the last step), and the step dots with "2 of 7". "Next" is always the same button in the same place at the right
+ * with one sentence, "Skip tour", a quiet "Back", "Next" ("Done" on the last step), and a compact stepper (a circle for each step; the current one is larger and says "Step 2 of 7"). "Next" is always the same button in the same place at the right
  * edge, on every step, also on the one that waits for a click: pressing it there only moves on without the click. Escape skips. The focus moves into the popover and
  * goes back to what had it when the tour ends. The popover never covers its target. A target that is not on the page leaves a centered popover and the
  * tour carries on. It follows the target when the window is resized or scrolled. All the arithmetic is in tour.ts.
@@ -12,6 +12,7 @@ import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react';
 import { WORDS, stepAnnouncement } from '../words.js';
 import { Button } from '../kit/Button.js';
+import { Stepper } from '../kit/Stepper.js';
 import { currentControl, focusFirst, mainHeading } from '../kit/focus.js';
 import { currentStep, hintOf, isFirst, isLast, isWaiting, placePopover, progressText, sentenceOf, spotlightBox } from './tour.js';
 import type { Box, TourState } from './tour.js';
@@ -48,6 +49,12 @@ function onScreen(b: Box, vw: number, vh: number): Box | null {
   const x = Math.max(0, b.x), y = Math.max(0, b.y), right = Math.min(vw, b.x + b.w), bottom = Math.min(vh, b.y + b.h);
   return right > x && bottom > y ? { x, y, w: right - x, h: bottom - y } : null;
 }
+
+/** The short name of each step of the tour, for the stepper. A step with no name here is called by its number. */
+const TOUR_LABELS: Readonly<Record<string, string>> = Object.freeze({
+  map: WORDS.label.tourMap, agent: WORDS.label.tourAgent, details: WORDS.label.tourDetails, add: WORDS.label.tourAdd, save: WORDS.label.tourSave, share: WORDS.label.tourShare, help: WORDS.label.tourHelp,
+});
+const tourLabel = (id: string): string => TOUR_LABELS[id] ?? id;
 
 /** The narrowest the popover may be made, in pixels, to fit beside a very large target. */
 const MIN_WIDTH = 256;
@@ -197,10 +204,7 @@ export function TourOverlay({ state, onNext, onBack, onSkip, picked = false }: T
         <p className="tour-text">{sentenceOf(step, picked)}</p>
         {hint === null ? null : <p className="tour-hint">{hint}</p>}
         <div className="tour-meta">
-          <span className="tour-dots" aria-hidden="true">
-            {state.steps.map((s, i) => <span key={s.id} className="tour-dot" data-state={i < state.index ? 'done' : i === state.index ? 'now' : 'next'} />)}
-          </span>
-          <span className="kit-hint">{progressText(state)}</span>
+          <Stepper compact steps={state.steps.map(s => tourLabel(s.id))} current={state.index} label={WORDS.label.tourSteps} currentText={progressText(state)} />
         </div>
         <div className="tour-actions">
           <span className="tour-skip"><Button onClick={onSkip}>{WORDS.label.tourSkip}</Button></span>

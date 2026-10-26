@@ -70,14 +70,14 @@ test('picking an agent fills the three shelves with the same small card; picking
   await expect(panel.getByRole('heading', { level: 2 })).toHaveText('Pick an agent');
 });
 
-test('a card is 10 px round with a 1 px border on every side, an agent tile is 250 by 92 and a row is at least 176 wide and 44 tall (Wave D: 12 px, 240 wide, 130 to 200 tall, 70 to 125 tall)', async () => {
+test('a card is 10 px round with a 1 px border on every side, an agent tile is 250 by 124 (the redesigned tile; it was 92) and a row is at least 176 wide and 44 tall (Wave D: 12 px, 240 wide, 130 to 200 tall, 70 to 125 tall)', async () => {
   const p = page();
   await ensurePicked(p.locator('.kit-card[data-kind="agent"]').first().locator('.kit-card-main'));
   // The first agent is the one that is picked, and a picked card has a 2 px edge; the card beside it is a plain one, with the 1 px edge on every side.
   const picked = await p.locator('.kit-card[data-kind="agent"]').first().evaluate(c => { const s = getComputedStyle(c); return [s.borderRadius, s.borderTopWidth, s.borderLeftWidth, s.borderRightWidth, s.borderBottomWidth]; });
   expect(picked).toEqual(['10px', '2px', '2px', '2px', '2px']);
   const agent = await p.locator('.kit-card[data-kind="agent"]').nth(1).evaluate(c => { const r = c.getBoundingClientRect(), s = getComputedStyle(c); return { w: r.width, h: r.height, radius: s.borderRadius, top: s.borderTopWidth, left: s.borderLeftWidth, right: s.borderRightWidth, bottom: s.borderBottomWidth }; });
-  expect(agent.w).toBe(250); expect(agent.h).toBe(92);   // one tile, whatever the agent holds (Wave D)
+  expect(agent.w).toBe(250); expect(agent.h).toBe(124);   // one tile, whatever the agent holds (Wave D)
   expect([agent.radius, agent.top, agent.left, agent.right, agent.bottom]).toEqual(['10px', '1px', '1px', '1px', '1px']);
   const small = await p.locator('.kit-card[data-size="small"]').first().evaluate(c => { const r = c.getBoundingClientRect(); return { w: r.width, h: r.height }; });
   expect(small.w).toBeGreaterThanOrEqual(176); expect(small.h).toBe(44);

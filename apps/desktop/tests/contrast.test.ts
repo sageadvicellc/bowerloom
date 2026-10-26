@@ -97,8 +97,8 @@ test('the home scale is the agreed one: about 90 percent of the first, in tokens
   for (const [name, value] of [['hm-space-1', '0.25rem'], ['hm-space-2', '0.375rem'], ['hm-space-3', '0.625rem'], ['hm-space-4', '0.875rem'], ['hm-space-5', '1.25rem'], ['hm-space-6', '1.75rem'], ['hm-space-7', '2.75rem'], ['hm-radius', '0.625rem'], ['hm-radius-small', '0.375rem']] as [string, string][]) assert.match(homeLightBlock, new RegExp(`--${name}:\\s*${value.replace('.', '\\.')};`), name);
   // Controls: a button is 32 px, a sort segment 28 px, a target never under 24 px; icons 20 and 16 px; a dot is 8 px.
   for (const [name, value] of [['hm-control-h', '2rem'], ['hm-control-h-small', '1.75rem'], ['hm-control-pad', '0.75rem'], ['hm-target-min', '1.5rem'], ['hm-icon', '1.25rem'], ['hm-icon-small', '1rem'], ['hm-dot', '0.5rem']] as [string, string][]) assert.match(homeLightBlock, new RegExp(`--${name}:\\s*${value.replace('.', '\\.')};`), name);
-  // One tile for every agent (250 by 92 px, a 24 px glyph), one row for every skill, tool and note (44 px, a 28 px tile), bars 52 and 48 px, panel about 320 px, drawer 380 px.
-  for (const [name, value] of [['hm-tile-w', '15.625rem'], ['hm-tile-h', '5.75rem'], ['hm-tile-glyph', '1.5rem'], ['hm-row-h', '2.75rem'], ['hm-row-tile', '1.75rem'], ['hm-bar-h', '3.25rem'], ['hm-savebar-h', '3rem']] as [string, string][]) assert.match(homeLightBlock, new RegExp(`--${name}:\\s*${value.replace('.', '\\.')};`), name);
+  // One tile for every agent (250 by 124 px), one row for every skill, tool and note (44 px, a 28 px tile), bars 52 and 48 px, panel about 320 px, drawer 380 px.
+  for (const [name, value] of [['hm-tile-w', '15.625rem'], ['hm-tile-h', '7.75rem'], ['hm-tile-glyph', '1.5rem'], ['hm-row-h', '2.75rem'], ['hm-row-tile', '1.75rem'], ['hm-bar-h', '3.25rem'], ['hm-savebar-h', '3rem']] as [string, string][]) assert.match(homeLightBlock, new RegExp(`--${name}:\\s*${value.replace('.', '\\.')};`), name);
   assert.match(homeLightBlock, /--hm-drawer-w:\s*min\(380px, 92vw\);/);
   assert.match(homeLightBlock, /--hm-panel-w:\s*clamp\(17rem, 25vw, 20rem\);/);
   assert.match(homeLightBlock, /--hm-nav-w:\s*14\.5rem;/); assert.match(homeLightBlock, /--hm-nav-rail-w:\s*3rem;/);   // the navigation: 232 px open, 48 px as a rail
@@ -168,6 +168,15 @@ for (const [name, vars, block] of [['light', homeLight, homeLightBlock], ['dark'
     for (const against of ['surface', 'surface-2']) assert.ok(ratio(vars['hm-border']!, vars[against]!) >= 3, `hm-border on ${against} is ${ratio(vars['hm-border']!, vars[against]!).toFixed(2)}`);
     assert.ok(ratio(vars['accent-strong']!, vars['accent-soft']!) >= 3, 'the accent edge on the tint of a selected card');
     for (const on of ['surface', 'accent-soft']) assert.ok(ratio(vars.text!, vars[on]!) >= 4.5 && ratio(vars['text-muted']!, vars[on]!) >= 4.5, `chip and row text on ${on}`);
+  });
+  test(`${name} theme, home app: each of the four identity colours of an agent tile (its top edge and its bar) is 3 to 1 on the page, a card, a quiet panel and a selected card`, () => {
+    for (const accent of ['blue', 'green', 'orange', 'red']) {
+      assert.match(block, new RegExp(`--hm-ac-${accent}:`), `${accent} is a token with this look's own value`);
+      for (const against of ['bg', 'surface', 'surface-2', 'accent-soft']) assert.ok(ratio(vars[`hm-ac-${accent}`]!, vars[against]!) >= 3, `hm-ac-${accent} on ${against} is ${ratio(vars[`hm-ac-${accent}`]!, vars[against]!).toFixed(2)}`);
+    }
+    // The accent is never behind words (it is an edge and a bar), so the text of a tile keeps the contrast of its card.
+    assert.doesNotMatch(homeKitCss, /\.kit-card\[data-size="tile"\]\s*\{[^}]*background(-color)?:\s*var\(--ac\)/, 'the tile itself is not filled with its accent');
+    for (const [fg, bg] of [['text', 'surface'], ['text', 'accent-soft'], ['text-muted', 'surface'], ['text-muted', 'accent-soft']] as const) assert.ok(ratio(vars[fg]!, vars[bg]!) >= 4.5, `${fg} on ${bg}`);
   });
   test(`${name} theme, home app: the ring around the lit target is 3 to 1 against the dimmed page`, () => {
     const alpha = homeNumber(block, 'hm-scrim-alpha');

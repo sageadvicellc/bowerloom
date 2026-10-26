@@ -85,9 +85,9 @@ test.beforeEach(async () => {
 // ---- Where Share lives.
 test('Share lives in the Version history drawer, under the list, and not in the main window', async () => {
   const p = page();
-  // The navigation holds the toggle (an icon with its name in the aria-label), seven items with their words, and the Preview pill, which is its own help button.
-  expect(await p.locator('nav.hm-nav').getByRole('button').allTextContents()).toEqual(['', 'Add', 'Agents', 'Library', 'Find more', 'Share', 'Version history', 'Help', 'Preview']);
-  expect(await p.locator('nav.hm-nav').getByRole('button').evaluateAll(list => list.map(b => b.getAttribute('aria-label')))).toEqual(['Hide navigation', null, null, null, null, null, null, null, 'About this preview']);   // Help is the only "?" (fix list item 3)
+  // The navigation holds the toggle (an icon with its name in the aria-label), nine items with their words (two of them section headers), and the Preview pill, which is its own help button.
+  expect(await p.locator('nav.hm-nav').getByRole('button').allTextContents()).toEqual(['', 'Add', 'Workspace', 'Agents', 'Library', 'More', 'Find more', 'Share', 'Version history', 'Help', 'Preview']);
+  expect(await p.locator('nav.hm-nav').getByRole('button').evaluateAll(list => list.map(b => b.getAttribute('aria-label')))).toEqual(['Hide navigation', null, null, null, null, null, null, null, null, null, 'About this preview']);   // Help is the only "?" (fix list item 3)
   await expect(p.getByRole('button', { name: 'Share my agents' })).toHaveCount(0);
   await openPoints();
   await expect(section().getByRole('heading', { level: 3, name: 'Share' })).toBeVisible();

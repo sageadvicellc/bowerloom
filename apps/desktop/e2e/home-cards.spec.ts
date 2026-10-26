@@ -74,8 +74,10 @@ test('every agent tile shows counts for what it holds: "3 skills", "1 tool", "1 
   // A count is a text button of 28 px (Wave D: it was a 32 px chip); its hit area is never under 24 px.
   expect(Math.min(...facts.map(f => f.size))).toBeGreaterThanOrEqual(14); expect(Math.min(...facts.map(f => f.h))).toBeGreaterThanOrEqual(28);
   expect(await agentCards().locator('.kit-avatar').count()).toBe(0);
-  expect(await agentCards().locator('.kit-tile').count()).toBe(10);
-  expect(await agentCards().evaluateAll(list => list.map(c => (c.querySelector('.kit-tile')?.textContent ?? '').trim()))).toEqual(Array(10).fill(''));
+  // The redesigned tile has no glyph tile and no letters: an accent edge, the name, the job, a bar of what it holds, and the counts.
+  expect(await agentCards().locator('.kit-tile').count()).toBe(0);
+  expect(await agentCards().locator('.kit-hold').count()).toBe(10);
+  expect(await agentCards().locator('[aria-haspopup]').count()).toBe(0);
   expect(await budget()).toEqual([]); expect(await smallText()).toEqual([]);
 });
 

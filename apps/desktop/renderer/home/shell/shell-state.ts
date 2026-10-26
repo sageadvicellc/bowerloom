@@ -64,3 +64,45 @@ export function roveTarget(key: string, index: number, count: number): number | 
     default: return null;
   }
 }
+
+/** The height of a navigation item and the gap between two, in pixels. They are `--hm-control-h` (2rem) and the 2 px gap of the lists; the branch lines are drawn from them. */
+export const NAV_ITEM_H = 32;
+export const NAV_ITEM_GAP = 2;
+
+/** What the branch line of a folder draws: the height of the whole list, the straight trunk, and one curved elbow for each child. All are SVG path text. */
+export interface BranchGeometry { readonly height: number; readonly trunk: string; readonly elbows: readonly string[] }
+
+/**
+ * The branch of a folder with `count` children. The trunk is a thin vertical line at x 0.5 that stops 5 px above the last child's middle; each child has an elbow
+ * (a quarter curve of 5 px, then a short flat line to x 11.5) that leaves the trunk 5 px above the child's middle. With no children there is nothing to draw.
+ */
+export function branchGeometry(count: number, itemH: number = NAV_ITEM_H, gap: number = NAV_ITEM_GAP): BranchGeometry {
+  if (!Number.isFinite(count) || count < 1) return Object.freeze({ height: 0, trunk: '', elbows: Object.freeze([]) });
+  const n = Math.floor(count);
+  const mid = (i: number): number => i * (itemH + gap) + itemH / 2;
+  const last = mid(n - 1);
+  const elbows = Array.from({ length: n }, (_, i) => `M0.5 ${mid(i) - 5} Q0.5 ${mid(i)} 5.5 ${mid(i)} H11.5`);
+  return Object.freeze({ height: n * itemH + (n - 1) * gap, trunk: `M0.5 0 V${last - 5}`, elbows: Object.freeze(elbows) });
+}
+
+/** A box on the screen, in pixels. */
+export interface RectLike { readonly left: number; readonly top: number; readonly width: number; readonly height: number }
+
+/** Where the soft hover highlight sits: the box of the item under the pointer, measured from the top-left corner of the navigation that holds the highlight. */
+export function glideBox(item: RectLike, host: RectLike): RectLike {
+  return { left: item.left - host.left, top: item.top - host.top, width: item.width, height: item.height };
+}
+
+/**
+ * What an arrow key does on a row that opens and closes (a section header or a folder), or on a child of a folder:
+ * Right opens a closed row and steps into an open one, Left closes an open row and steps out of a child to its folder. Null for any other case.
+ */
+export type FoldMove = 'open' | 'close' | 'in' | 'out';
+export function foldMove(key: string, open: boolean, isFold: boolean, isChild: boolean): FoldMove | null {
+  if (key === 'ArrowRight' && isFold) return open ? 'in' : 'open';
+  if (key === 'ArrowLeft') {
+    if (isFold && open) return 'close';
+    if (isChild) return 'out';
+  }
+  return null;
+}

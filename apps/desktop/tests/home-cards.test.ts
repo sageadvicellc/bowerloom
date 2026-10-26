@@ -1,7 +1,7 @@
 // The pure helpers behind the cards of the home app: names, hints, badges, the shelves of one agent, and the Save bar.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { agentHint, agentTitle, itemBadge, itemTitle, ownedAgents, saveBarModel, shelvesOf, visibleCount, SHELF_LIMIT } from '../shared/home/cards.js';
+import { AGENT_ACCENTS, agentAccent, agentHint, agentTitle, holdSegments, holdWidths, HOLD_MIN, itemBadge, itemTitle, ownedAgents, saveBarModel, shelvesOf, visibleCount, SHELF_LIMIT } from '../shared/home/cards.js';
 import { CASE_IDS, generateWorld } from '../shared/proto/sample.js';
 import type { AgentItem, HarnessItem, World } from '../shared/proto/types.js';
 import { agent, found, makeWorld, mcp, skill } from './proto-testworld.js';
@@ -91,4 +91,34 @@ test('a sample set of notes that was edited in place no longer wears the sample 
   assert.equal(after.name, 'Money notes'); assert.match(after.hint!, /^\d+ notes it can read\.$/);
   const seeded: World = { ...world, slices: world.slices.map(s => (s.id === 'slice-kinds' ? { ...s, seeds: world.wikiPages.slice(0, 1).map(p => p.id) } : s)) };
   assert.equal(shelvesOf(seeded, agentTwo).notes[0]!.hint, 'Notes this agent can read.');
+});
+
+test('agentAccent picks one of four colours from the id alone: the same every time, and several colours across the sample agents', () => {
+  assert.deepEqual([...AGENT_ACCENTS], ['blue', 'green', 'orange', 'red']);
+  const ids = ownedAgents(world).map(a => a.id);
+  for (const id of ids) { assert.ok((AGENT_ACCENTS as readonly string[]).includes(agentAccent(id))); assert.equal(agentAccent(id), agentAccent(id)); }
+  assert.equal(agentAccent('agent-01'), agentAccent('agent-01'));
+  assert.ok(new Set(ids.map(agentAccent)).size >= 3, 'the sample uses most of the four');
+  assert.ok((AGENT_ACCENTS as readonly string[]).includes(agentAccent('')), 'an empty id still has an accent');
+  assert.ok((AGENT_ACCENTS as readonly string[]).includes(agentAccent('Zoë – long/odd id ☃'.repeat(20))));
+});
+
+test('holdSegments splits the bar by the counts, in the order skills, tools, notes, leaves out an empty kind, and is empty for an agent with nothing', () => {
+  const entries = (kind: 'skill' | 'tool' | 'note', n: number) => Array.from({ length: n }, (_, i) => ({ id: `${kind}-${i}`, kind, name: `Item ${i}` }));
+  const parts = holdSegments({ skills: entries('skill', 6), tools: entries('tool', 2), notes: entries('note', 2) });
+  assert.deepEqual(parts.map(p => [p.kind, p.count]), [['skill', 6], ['tool', 2], ['note', 2]]);
+  assert.deepEqual(parts.map(p => p.share), [0.6, 0.2, 0.2]);
+  assert.equal(parts.reduce((sum, p) => sum + p.share, 0), 1);
+  assert.deepEqual(holdSegments({ skills: entries('skill', 1), tools: [], notes: entries('note', 3) }).map(p => p.kind), ['skill', 'note']);
+  assert.deepEqual(holdSegments({ skills: [], tools: [], notes: [] }), []);
+});
+
+test('holdWidths add up to 100, keep the true shares when every part is big enough, and lift a tiny part to the least width by taking from the others', () => {
+  const part = (kind: 'skill' | 'tool' | 'note', count: number, total: number) => ({ kind, count, share: count / total });
+  assert.deepEqual(holdWidths([]), []);
+  assert.deepEqual(holdWidths([part('skill', 1, 1)]), [100]);
+  assert.deepEqual(holdWidths([part('skill', 6, 10), part('tool', 2, 10), part('note', 2, 10)]).map(Math.round), [60, 20, 20]);
+  const lopsided = holdWidths([part('skill', 300, 301), part('note', 1, 301)]);
+  assert.equal(lopsided[1], HOLD_MIN); assert.ok(Math.abs(lopsided.reduce((a, b) => a + b, 0) - 100) < 1e-9);
+  assert.ok(lopsided.every(w => w >= HOLD_MIN));
 });

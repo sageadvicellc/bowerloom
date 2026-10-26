@@ -41,7 +41,7 @@ test('the map is one plain grid of ten agents in name order: no groups, no group
   const p = page();
   expect(await names()).toEqual(NAMES);
   await expect(p.locator('.hm-grid')).toHaveCount(1);
-  await expect(p.locator('[class*="group"], [data-kind="group"], [data-group]')).toHaveCount(0);
+  await expect(p.locator('main.hm-stage').locator('[class*="group"], [data-kind="group"], [data-group]')).toHaveCount(0);
   const columns = await agentCards().evaluateAll(cards => new Set(cards.map(c => Math.round(c.getBoundingClientRect().left))).size);
   expect(columns).toBeGreaterThanOrEqual(2);
   const hints = await agentCards().locator('.kit-card-hint').allTextContents();

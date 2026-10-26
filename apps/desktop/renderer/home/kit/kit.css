@@ -1,7 +1,7 @@
 /*
  * The card kit. Two shapes and no pills. An agent is a TILE: one width and one height for every agent (--hm-tile-w, --hm-tile-h), whatever the name or the counts.
- * A skill, tool or note is a ROW: one height (--hm-row-h) wherever it is drawn (the tray, the details panel, the Add drawer, Choose notes). Both lead with the same
- * rounded tile and the glyph of their kind. A state ("2 different copies", "needs a key") is a small dot and short words with no fill and no border, so it is never colour
+ * A skill, tool or note is a ROW: one height (--hm-row-h) wherever it is drawn (the tray, the details panel, the Add drawer, Choose notes). A row leads with a
+ * rounded tile and the glyph of its kind; a tile leads with a thin edge in its accent colour. A state ("2 different copies", "needs a key") is a small dot and short words with no fill and no border, so it is never colour
  * alone: the words always say it. Everything is scoped to [data-home]. A 1 px edge is seen at 3 to 1, a selected card is a tint with a 2 px accent edge (never a check
  * mark, which would say "a choice to make"), and a disabled button is dashed and says why beside it.
  * Timing comes from the motion tokens (published by applyMotionTokens), which are 0 when the person asked for less motion.
@@ -119,15 +119,37 @@
 [data-home] .kit-card-remove { flex: none; position: relative; z-index: 1; margin-right: calc(-1 * var(--hm-space-2)); }
 /* A row that has a state says the state in place of the hint: the two together would leave the hint a few letters. The hint is in the details panel. */
 [data-home] .kit-card-hint:has(~ .kit-card-badge) { display: none; }
-/* A TILE: the agent. A 24 px glyph and the name on one line, the job on one line, then one line of counts. Nothing wraps and nothing opens inside it, so every
-   tile has the same width and the same height. The name is the button that covers the tile; the counts sit above it (z-index 1). */
+/* A TILE: the agent. Five fixed lines from the top: the apps it works with, the name, the job, a thin bar of what it holds, then one line of counts. Each child names its
+   own grid row, so a tile with no apps keeps the room of that line and the names of a row of tiles stay level. Nothing wraps and nothing opens inside it, so every tile has the
+   same width and the same height. The name is the button that covers the tile; the counts sit above it (z-index 1). The accent (one of four, by a hash of the agent's id) is the
+   thin edge at the top and the fill of the bar; it is never behind any words, so the text contrast is that of the card. */
 [data-home] .kit-card[data-size="tile"] {
-  display: grid; grid-template-columns: var(--hm-tile-glyph) minmax(0, 1fr); grid-template-rows: var(--hm-tile-glyph) auto minmax(0, 1fr); column-gap: var(--hm-space-3); row-gap: 2px; align-items: center; align-content: start;
-  width: var(--hm-tile-w); height: var(--hm-tile-h); padding: var(--hm-space-2) var(--hm-space-3) 0;
+  --ac: var(--hm-ac-blue);
+  display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 1.25rem auto auto var(--hm-dot) minmax(0, 1fr); row-gap: 2px; align-items: center; align-content: start;
+  width: var(--hm-tile-w); height: var(--hm-tile-h); padding: calc(var(--hm-space-3) + 1px) var(--hm-space-3) 0;
 }
-[data-home] .kit-card[data-size="tile"][data-selected], [data-home] .kit-card[data-size="tile"][data-owner], [data-home] .kit-card[data-size="tile"][data-tray] { padding: calc(var(--hm-space-2) - 1px) calc(var(--hm-space-3) - 1px) 0; }
-[data-home] .kit-card[data-size="tile"] .kit-card-hint { grid-column: 1 / -1; flex: none; }
-[data-home] .kit-summary { grid-column: 1 / -1; align-self: end; display: flex; align-items: center; flex-wrap: nowrap; min-width: 0; height: var(--hm-control-h-small); margin-bottom: 1px; position: relative; z-index: 1; pointer-events: none; white-space: nowrap; overflow: clip; overflow-clip-margin: 4px; }
+[data-home] .kit-card[data-accent="green"] { --ac: var(--hm-ac-green); }
+[data-home] .kit-card[data-accent="orange"] { --ac: var(--hm-ac-orange); }
+[data-home] .kit-card[data-accent="red"] { --ac: var(--hm-ac-red); }
+[data-home] .kit-card[data-size="tile"][data-selected], [data-home] .kit-card[data-size="tile"][data-owner], [data-home] .kit-card[data-size="tile"][data-tray] { padding: var(--hm-space-3) calc(var(--hm-space-3) - 1px) 0; }
+[data-home] .kit-card[data-size="tile"]::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--ac); border-radius: calc(var(--hm-radius) - 1px) calc(var(--hm-radius) - 1px) 0 0; pointer-events: none; }
+[data-home] .kit-card[data-size="tile"] > .kit-card-apps { grid-row: 1; }
+[data-home] .kit-card[data-size="tile"] > .kit-card-main { grid-row: 2; }
+[data-home] .kit-card[data-size="tile"] .kit-card-hint { grid-row: 3; flex: none; }
+[data-home] .kit-card[data-size="tile"] > .kit-hold { grid-row: 4; }
+/* The apps: plain words joined by small dots, in one line that ends in an ellipsis. Not a button, so it takes no press: the name button under it covers the tile. */
+[data-home] .kit-card-apps { display: flex; align-items: center; gap: var(--hm-space-2); min-width: 0; overflow: hidden; white-space: nowrap; font-size: var(--hm-text-small); line-height: 1.4; font-weight: 500; color: var(--text-muted); pointer-events: none; }
+[data-home] .kit-card-app { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+[data-home] .kit-card-app:only-child, [data-home] .kit-card-app:first-child { flex-shrink: 0; max-width: 100%; }
+[data-home] .kit-card-app-dot { flex: none; width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
+/* What it holds: one thin bar split into skills, tools and notes by their counts. The parts are three tints of the accent, darkest first, in the order of the counts below, and a
+   hairline of the card between them; the words for it are the counts, so the bar is decoration. An agent with nothing shows the empty track. */
+[data-home] .kit-hold { height: var(--hm-dot); margin-top: var(--hm-space-2); box-sizing: border-box; border: 1px solid var(--hm-border); border-radius: 2px; background: var(--surface-2); overflow: hidden; }
+[data-home] .kit-hold-svg { display: block; width: 100%; height: 100%; }
+[data-home] .kit-hold-part { fill: var(--ac); stroke: var(--surface-2); stroke-width: 2px; vector-effect: non-scaling-stroke; }
+[data-home] .kit-hold-part[data-kind="tool"] { fill: color-mix(in srgb, var(--ac) 68%, var(--surface-2)); }
+[data-home] .kit-hold-part[data-kind="note"] { fill: color-mix(in srgb, var(--ac) 42%, var(--surface-2)); }
+[data-home] .kit-summary { grid-row: 5; align-self: end; display: flex; align-items: center; flex-wrap: nowrap; min-width: 0; height: var(--hm-control-h-small); margin-bottom: 1px; position: relative; z-index: 1; pointer-events: none; white-space: nowrap; overflow: clip; overflow-clip-margin: 4px; }
 [data-home] .kit-sep { flex: none; color: var(--text-muted); font-size: var(--hm-text-base); padding: 0 1px; pointer-events: none; }
 /* A count is a text button: the number and the kind, then a dot between counts. It keeps 28 px of height and 24 px of width at the least, and shows that it is open by an underline, not by colour. */
 [data-home] .kit-count {

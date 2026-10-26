@@ -13,7 +13,7 @@ import { THEMES, fresh, launchHome, resize, setLook, shot, skipTour } from './ho
 import type { Home } from './home-page.js';
 
 const SIZES_D = [[1280, 800], [900, 600]] as const;
-const TILE = { w: 250, h: 92 }, ROW_H = 44;
+const TILE = { w: 250, h: 124 }, ROW_H = 44;
 
 let home: Home;
 const page = (): Page => home.page;

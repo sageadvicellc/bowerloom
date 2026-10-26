@@ -22,7 +22,7 @@
   --hm-control-h: 2rem; --hm-control-h-small: 1.75rem; --hm-control-pad: 0.75rem; --hm-target-min: 1.5rem;
   --hm-icon: 1.25rem; --hm-icon-small: 1rem; --hm-dot: 0.5rem;
   /* The agent tile: one width and one height for every agent, whatever the name or the counts. */
-  --hm-tile-w: 15.625rem; --hm-tile-h: 5.75rem; --hm-tile-glyph: 1.5rem;
+  --hm-tile-w: 15.625rem; --hm-tile-h: 7.75rem; --hm-tile-glyph: 1.5rem;
   /* The row of a skill, tool or note: one height everywhere (tray, panel, Add drawer, Choose notes). The tile that leads it is 28 px and holds a 20 px icon. */
   --hm-row-h: 2.75rem; --hm-row-tile: 1.75rem; --hm-row-w: 15rem; --hm-row-min-w: 11rem;
   --hm-tray-col: 14rem;
@@ -33,6 +33,8 @@
   --hm-bar-h: 3.25rem; --hm-savebar-h: 3rem;
   --hm-border: #868880;
   --hm-amber: #b36b00;
+  /* The four identity colours of an agent tile (a thin top edge and the fill of its bar; never behind words). Each is 3 to 1 or more on the page, a card, a quiet panel and a selected card. */
+  --hm-ac-blue: #2f62b8; --hm-ac-green: #2e7d32; --hm-ac-orange: #b85a00; --hm-ac-red: #c0392b;
   /* The width of the column of the "Add from the web" sheet: about 760 px. */
   --hm-sheet-w: 47.5rem;
   --hm-ring: #ffffff;
@@ -50,6 +52,7 @@
 [data-theme="dark"] [data-home], [data-home][data-theme="dark"] {
   --hm-border: #68796e;
   --hm-amber: #f0b13a;
+  --hm-ac-blue: #7aa7f0; --hm-ac-green: #7bc47f; --hm-ac-orange: #f0a050; --hm-ac-red: #f08a80;
   --hm-ring: #e8eee9;
   --hm-scrim-alpha: 0.6;
   --hm-shadow: 0 1px 2px rgb(0 0 0 / 0.5), 0 4px 14px rgb(0 0 0 / 0.35);

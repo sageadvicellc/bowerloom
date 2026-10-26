@@ -48,11 +48,12 @@ test('at 1280 by 800 there are three columns: a 232 px navigation, the middle, a
   expect(await budget()).toEqual([]);
 });
 
-test('the navigation lists, from the top: Add, Agents, Library; then Find more, Share, Version history, Help and the Preview mark at the foot', async () => {
+test('the navigation lists, from the top: Add; the section Workspace with Agents and Library; the section More with Find more, Share and Version history; Help and the Preview mark at the foot', async () => {
   const p = page();
-  const labels = await nav().locator('[data-nav-item]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()));
-  expect(labels).toEqual(['Add', 'Agents', 'Library', 'Find more', 'Share', 'Version history', 'Help']);
-  const ys = await nav().locator('[data-nav-item]').evaluateAll(els => els.map(e => e.getBoundingClientRect().top));
+  // The Library's four pages are folded away on the Agents page, so they are not on show (they are in the page, but unseen and not reachable).
+  const labels = await nav().locator('[data-nav-item]:visible').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()));
+  expect(labels).toEqual(['Add', 'Workspace', 'Agents', 'Library', 'More', 'Find more', 'Share', 'Version history', 'Help']);
+  const ys = await nav().locator('[data-nav-item]:visible').evaluateAll(els => els.map(e => e.getBoundingClientRect().top));
   expect([...ys].sort((a, b) => a - b)).toEqual(ys);
   // The toggle is the very first thing at the top left, with the mark and the name beside it; the lower group is pinned to the foot, with the Preview mark last.
   const toggle = await rectOf(p, 'nav.hm-nav [data-nav-toggle]'), brand = await rectOf(p, 'nav.hm-nav .hm-brand');
@@ -166,9 +167,9 @@ test('the landmarks are one navigation, one main place and one complementary col
   // The page you are on is marked with aria-current, and nothing else is.
   await expect(item('Agents')).toHaveAttribute('aria-current', 'page');
   await expect(nav().locator('[aria-current="page"]')).toHaveCount(1);
-  // A tint and a 2 px edge, and no check mark.
-  const look = await item('Agents').evaluate(el => { const s = getComputedStyle(el); return { bg: s.backgroundColor, shadow: s.boxShadow }; });
-  expect(look.bg).not.toBe('rgba(0, 0, 0, 0)'); expect(look.shadow).toMatch(/inset/); expect(look.shadow).toMatch(/2px/);
+  // A soft fill and a medium weight (the branching look has no edge), and no check mark.
+  const look = await item('Agents').evaluate(el => { const s = getComputedStyle(el); return { bg: s.backgroundColor, weight: s.fontWeight }; });
+  expect(look.bg).not.toBe('rgba(0, 0, 0, 0)'); expect(look.weight).toBe('500');
   expect(await nav().locator('svg path[d*="M5 12.5l4.5 4.5L19 7.5"]').count()).toBe(0);
 });
 
@@ -178,7 +179,9 @@ test('the navigation is one Tab stop; Up and Down move through its items, Home a
   await navToggle().focus();
   await p.keyboard.press('Tab');
   await expect(item('Agents')).toBeFocused();   // the stop is the page you are on
-  const order = ['Add', 'Agents', 'Library', 'Find more', 'Share', 'Version history', 'Help'];
+  // The two section headers are items too; the folded Library pages are skipped.
+  const order = ['Add', 'Workspace', 'Agents', 'Library', 'More', 'Find more', 'Share', 'Version history', 'Help'];
+  await p.keyboard.press('ArrowUp'); await expect(item('Workspace')).toBeFocused();
   await p.keyboard.press('ArrowUp'); await expect(item('Add')).toBeFocused();
   await p.keyboard.press('ArrowUp'); await expect(item('Add')).toBeFocused();   // it stops at the top
   for (const name of order.slice(1)) { await p.keyboard.press('ArrowDown'); await expect(item(name)).toBeFocused(); }
@@ -189,7 +192,7 @@ test('the navigation is one Tab stop; Up and Down move through its items, Home a
   await p.keyboard.press('Tab'); await expect(p.getByRole('button', { name: 'About this preview' })).toBeFocused();
   await p.keyboard.press('Shift+Tab'); await expect(item('Help')).toBeFocused();
   // Enter presses the focused item: Library opens its pages.
-  await p.keyboard.press('ArrowUp'); await p.keyboard.press('ArrowUp'); await p.keyboard.press('ArrowUp'); await p.keyboard.press('ArrowUp');
+  for (let i = 0; i < 5; i += 1) await p.keyboard.press('ArrowUp');   // History, Share, Find more, More, Library
   await expect(item('Library')).toBeFocused();
   await p.keyboard.press('Enter');
   await expect(p.getByRole('heading', { level: 1 })).toHaveText('Library');
@@ -199,7 +202,8 @@ test('the navigation is one Tab stop; Up and Down move through its items, Home a
 // ---- 6. Library inside the navigation.
 test('Library opens in place into Skills, Agents, Tools and Notes; each opens the Library on that tab, and the tab you are on is marked', async () => {
   const p = page();
-  await expect(nav().locator('.hm-nav-sub')).toHaveCount(0);
+  // Folded on the Agents page: the pages are drawn but unseen, and the folder says it is closed.
+  await expect(item('Library')).toHaveAttribute('aria-expanded', 'false'); await expect(nav().locator('.hm-nav-sub')).toBeHidden();
   await item('Library').click();
   await expect(p.getByRole('heading', { level: 1 })).toHaveText('Library');
   await expect(item('Library')).toHaveAttribute('aria-expanded', 'true');
@@ -217,7 +221,7 @@ test('Library opens in place into Skills, Agents, Tools and Notes; each opens th
   await p.getByRole('tab', { name: /^Notes/ }).click();
   await expect(sub.getByRole('button', { name: 'Notes', exact: true })).toHaveAttribute('aria-current', 'page');
   // Library again folds its pages, Agents goes back to the map.
-  await item('Library').click(); await expect(nav().locator('.hm-nav-sub')).toHaveCount(0);
+  await item('Library').click(); await expect(item('Library')).toHaveAttribute('aria-expanded', 'false'); await expect(nav().locator('.hm-nav-sub')).toBeHidden();
   await item('Agents').click();
   await expect(p.getByRole('heading', { level: 1 })).toHaveText('Agents'); await expect(item('Agents')).toHaveAttribute('aria-current', 'page');
   expect(await budget()).toEqual([]);

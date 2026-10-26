@@ -251,8 +251,8 @@ test('the kit gallery shows both looks, every card state and every part, passes 
 test('the tour popover: one sentence, the step, Back and Next, Skip tour; the last step says Done; the first has no Back', () => {
   const first = html(createElement(TourOverlay, { state: startTour(createTour(TOUR_STEPS)), onNext: none, onBack: none, onSkip: none }));
   assert.match(first, /role="dialog" aria-label="Tour"/); assert.match(first, /These are your AI agents, from every tool\./); assert.match(first, />Step 1 of 7</);
-  assert.match(first, />Next</); assert.match(first, />Skip tour</); assert.doesNotMatch(first, />Back</); assert.equal([...first.matchAll(/class="tour-dot"/g)].length, 7);
-  assert.match(first, /data-state="now"/);
+  assert.match(first, />Next</); assert.match(first, />Skip tour</); assert.doesNotMatch(first, />Back</); assert.equal([...first.matchAll(/class="kit-step"/g)].length, 7, 'one circle for each step');
+  assert.match(first, /data-state="now" aria-current="step"/); assert.match(first, /<ol class="kit-stepper" aria-label="Tour steps" data-compact="">/);
   within(first);
   let t = startTour(createTour(TOUR_STEPS));
   for (let i = 0; i < 6; i += 1) t = stepNext(t);

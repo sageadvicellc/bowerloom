@@ -11,6 +11,8 @@ import type { ReactElement } from 'react';
 import type { RealBridge, RealPlace, RealResult } from '../../../shared/real/types.js';
 import { Button } from '../kit/Button.js';
 import { IconButton } from '../kit/IconButton.js';
+import { Stepper } from '../kit/Stepper.js';
+import { FIND_STEP_WORDS, stageOfReal } from '../first-run/find-steps.js';
 import { FIND_WORDS } from '../first-run/find-words.js';
 import { codeOf, getBridge } from './bridge.js';
 import { agentsTicked, realReduce, selectedIds, startState } from './flow.js';
@@ -100,6 +102,7 @@ export function RealScan({ variant, onWorld, onLeave, bridge }: RealScanProps): 
   const moving = state.step === 'looking' || state.step === 'start' || state.step === 'reading';
   return (
     <div className="fr-flow rs-flow" data-variant={variant} data-step={state.step} data-real-scan="">
+      {variant === 'page' ? <Stepper steps={FIND_STEP_WORDS} current={stageOfReal(state.step, state.retry)} label={FIND_WORDS.label.findSteps} doneWord={FIND_WORDS.label.stepDone} /> : null}
       <Title className={variant === 'page' ? 'fr-title' : 'kit-heading fr-title'} tabIndex={-1} ref={heading}>{title}</Title>
       <p className="hm-sr" role="status">{title}</p>
       <p className="kit-hint" data-readonly="">{REAL_WORDS.hint.readOnlyNote}</p>

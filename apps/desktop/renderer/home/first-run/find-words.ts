@@ -35,6 +35,11 @@ export const FIND_WORDS = deepFreeze({
     close: 'Close',
     findMore: 'Find more',
     progress: 'Reading progress',
+    findSteps: 'Find steps',
+    stepLook: 'Look',
+    stepChoose: 'Choose',
+    stepRead: 'Read',
+    stepDone: 'done',
   },
   /** One line under a label, or one line of text: at most 12 words. */
   hint: {

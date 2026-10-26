@@ -18,7 +18,9 @@ import type { FindState } from '../../../shared/home/find-flow.js';
 import { prefersReducedMotion } from '../../motion-tokens.js';
 import { Button } from '../kit/Button.js';
 import { IconButton } from '../kit/IconButton.js';
+import { Stepper } from '../kit/Stepper.js';
 import { FIND_WORDS, foundTitle, readProgress, readSummary, readingNow, unsavedAgent } from './find-words.js';
+import { FIND_STEP_WORDS, stageOfFind } from './find-steps.js';
 import './find.css';
 
 /** How long the search takes to reach each step, in milliseconds, how long it rests before the list shows, and how long the whole reading takes. */
@@ -115,6 +117,7 @@ export function FindScan({ variant, world, committed, onLeave, onDone, skipped =
   const Title = variant === 'page' ? 'h1' : 'h3', Sub = variant === 'page' ? 'h2' : 'h4';
   const body = (
     <>
+      {variant === 'page' ? <Stepper steps={FIND_STEP_WORDS} current={stageOfFind(state.step, read)} label={FIND_WORDS.label.findSteps} doneWord={FIND_WORDS.label.stepDone} /> : null}
       <Title className={variant === 'page' ? 'fr-title' : 'kit-heading fr-title'} tabIndex={-1} ref={heading}>{title}</Title>
       <p className="hm-sr" role="status">{title}</p>
       {state.step === 'looking' ? (

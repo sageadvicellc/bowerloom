@@ -29,10 +29,6 @@
 [data-home] .tour-layer[data-wait] .tour-pop { gap: var(--hm-space-3); }
 [data-home] .tour-hint { margin: calc(var(--hm-space-2) * -1) 0 0; font-size: var(--hm-text-base); font-weight: 600; color: var(--accent-strong); }
 [data-home] .tour-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--hm-space-3); }
-[data-home] .tour-dots { display: inline-flex; align-items: center; gap: var(--hm-space-2); }
-[data-home] .tour-dot { width: var(--hm-dot); height: var(--hm-dot); border-radius: 50%; border: 1.5px solid var(--hm-border); background: transparent; }
-[data-home] .tour-dot[data-state="done"] { background: var(--hm-border); }
-[data-home] .tour-dot[data-state="now"] { background: var(--accent-strong); border-color: var(--accent-strong); box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent-strong); margin: 0 2px; }
 [data-home] .tour-actions { display: flex; align-items: center; gap: var(--hm-space-2); }
 [data-home] .tour-actions .tour-skip { margin-right: auto; }
 /* Next (and Done) is the one primary button: always at the right edge, always the same width, so it never moves from step to step. */

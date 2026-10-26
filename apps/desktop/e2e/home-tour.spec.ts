@@ -64,7 +64,7 @@ test('the tour starts by itself on first mount, on step one, with its sentence, 
   await expect(dialog().getByRole('button', { name: 'Next' })).toBeFocused();
   await expect(dialog().getByRole('button', { name: 'Back' })).toHaveCount(0);
   await expect(dialog().getByRole('button', { name: 'Skip tour' })).toBeVisible();
-  expect(await p.locator('.tour-dot').count()).toBe(7);
+  expect(await p.locator('.kit-step').count()).toBe(7);
   expect(await p.evaluate(() => typeof (window as unknown as { bowerloom?: unknown }).bowerloom)).toBe('undefined');
 });
 

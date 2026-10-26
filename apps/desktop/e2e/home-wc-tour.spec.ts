@@ -72,7 +72,7 @@ async function nextPlace(): Promise<{ right: number; bottom: number; w: number; 
 test('the tour has seven steps, in order, each with its sentence and its target lit', async () => {
   const p = page();
   await expect(dialog()).toBeVisible();
-  expect(await p.locator('.tour-dot').count()).toBe(7);
+  expect(await p.locator('.kit-step').count()).toBe(7);
   for (let i = 0; i < STEPS.length; i += 1) {
     await stepText(i);
     const hole = await rectOf(p, '.tour-spot'), target = await visibleTarget(STEPS[i]!.target);

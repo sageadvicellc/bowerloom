@@ -10,15 +10,38 @@
 [data-home] .hm-nav-top { display: flex; align-items: center; gap: var(--hm-space-2); min-height: var(--hm-bar-h); box-sizing: border-box; padding: 0 var(--hm-space-3); flex: none; }
 [data-home] .hm-brand { display: flex; align-items: center; gap: var(--hm-space-3); min-width: 0; font-size: var(--hm-text-section); font-weight: 600; color: var(--text); }
 [data-home] .hm-brand .kit-icon { color: var(--accent-strong); }
-[data-home] .hm-nav-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--hm-space-2) var(--hm-space-3); }
+[data-home] .hm-nav-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--hm-space-2) var(--hm-space-3); display: flex; flex-direction: column; gap: var(--hm-space-3); }
 [data-home] .hm-nav-low { flex: none; padding: var(--hm-space-2) var(--hm-space-3) var(--hm-space-3); border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: var(--hm-space-2); }
 [data-home] .hm-nav-list, [data-home] .hm-nav-sub { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-[data-home] .hm-nav-sub { margin-top: 2px; }
 [data-home] .hm-nav-pair { display: flex; flex-direction: column; gap: 2px; border-radius: var(--hm-radius-small); }
 [data-home] .hm-nav-list .kit-tip, [data-home] .hm-nav-list .kit-help { display: flex; width: 100%; }
+/* A group is a small muted header and the list under it. */
+[data-home] .hm-nav-group { display: flex; flex-direction: column; gap: 2px; }
+[data-home] .hm-nav-section {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--hm-space-2); width: 100%; min-height: var(--hm-control-h); box-sizing: border-box; padding: 0 var(--hm-space-3);
+  font: inherit; font-size: var(--hm-text-base); font-weight: 500; line-height: 1.2; text-align: left; color: var(--text-muted);
+  background: transparent; border: 0; border-radius: var(--hm-radius-small); cursor: pointer; touch-action: manipulation;
+}
+[data-home] .hm-nav-section:hover { color: var(--text); }
+[data-home] .hm-nav-section:focus-visible, [data-home] .hm-nav-item:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+/* The chevron of a header or a folder: down when open, turned to the right when closed. */
+[data-home] .hm-nav-chev { display: inline-flex; flex: none; margin-left: auto; transition: transform var(--motion-home-nav-ms, 0ms) var(--motion-home-nav-ease, ease); transform: rotate(-90deg); }
+[data-home] .hm-nav-chev[data-unfolded] { transform: none; }
+[data-home] .hm-nav-chev .kit-icon { color: var(--text-muted); }
+/* A part of the list that folds: its grid row goes from 0fr to 1fr, so it opens by its own height. Closed, it cannot be seen or reached. */
+[data-home] .hm-fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--motion-home-nav-ms, 0ms) var(--motion-home-nav-ease, ease); }
+[data-home] .hm-fold[data-unfolded] { grid-template-rows: 1fr; }
+[data-home] .hm-fold-inner { min-height: 0; overflow: hidden; visibility: hidden; transition: visibility var(--motion-home-nav-ms, 0ms) var(--motion-home-nav-ease, linear); }
+[data-home] .hm-fold[data-unfolded] > .hm-fold-inner { visibility: visible; }
+/* The hover highlight: one soft box, placed by the sidebar under the pointer, that glides from item to item. It sits behind the items. */
+[data-home] .hm-nav-glide {
+  position: absolute; left: 0; top: 0; z-index: 0; width: 0; height: 0; border-radius: var(--hm-radius-small); background: var(--surface-2); opacity: 0; pointer-events: none;
+  transition: transform var(--motion-home-nav-ms, 0ms) var(--motion-home-nav-ease, ease), width var(--motion-home-nav-ms, 0ms) var(--motion-home-nav-ease, ease), height var(--motion-home-nav-ms, 0ms) var(--motion-home-nav-ease, ease), opacity var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
+}
+[data-home] .hm-nav-glide[data-on] { opacity: 1; }
 [data-home] .hm-nav-item {
-  display: flex; align-items: center; gap: var(--hm-space-3); width: 100%; min-height: var(--hm-control-h); box-sizing: border-box; padding: 0 var(--hm-space-3);
-  font: inherit; font-size: var(--hm-text-base); font-weight: 600; line-height: 1.2; text-align: left; white-space: nowrap; color: var(--text);
+  position: relative; z-index: 1; display: flex; align-items: center; gap: var(--hm-space-3); width: 100%; min-height: var(--hm-control-h); box-sizing: border-box; padding: 0 var(--hm-space-3);
+  font: inherit; font-size: var(--hm-text-base); font-weight: 400; line-height: 1.2; text-align: left; white-space: nowrap; color: var(--text);
   background: transparent; border: 0; border-radius: var(--hm-radius-small); cursor: pointer; touch-action: manipulation;
   transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), transform var(--motion-home-press-ms, 0ms) var(--motion-home-press-ease, ease-out);
 }
@@ -27,19 +50,18 @@
   [data-home] .hm-nav-item:not([aria-disabled]):active { transform: scale(var(--motion-home-press-scale, 1)); }
 }
 [data-home] .hm-nav-item .kit-icon { flex: none; color: var(--text-muted); }
-[data-home] .hm-nav-item:hover { background: var(--accent-soft); }
-[data-home] .hm-nav-item:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
-/* The place you are on: a tint and a 2 px edge at the left, never a check mark. */
-[data-home] .hm-nav-item[aria-current="page"] { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent-strong); }
+/* The place you are on: a soft fill and a medium weight, never a check mark. */
+[data-home] .hm-nav-item[aria-current="page"] { background: var(--accent-soft); font-weight: 500; }
 [data-home] .hm-nav-item[aria-current="page"] .kit-icon { color: var(--accent-strong); }
-[data-home] .hm-nav-item[aria-expanded="true"]:not([aria-current]) { background: var(--accent-soft); }
+[data-home] .hm-nav-item[aria-expanded="true"]:not([aria-current]):not([data-fold]) { background: var(--accent-soft); }
 /* Add is the one primary item. */
-[data-home] .hm-nav-item[data-primary] { background: var(--accent); color: var(--accent-contrast); border: 1px solid var(--accent-strong); margin-bottom: var(--hm-space-2); }
+[data-home] .hm-nav-item[data-primary] { background: var(--accent); color: var(--accent-contrast); border: 1px solid var(--accent-strong); font-weight: 600; }
 [data-home] .hm-nav-item[data-primary] .kit-icon { color: inherit; }
 [data-home] .hm-nav-item[data-primary]:hover { background: var(--accent-strong); }
 [data-home] .hm-nav-item[data-primary][aria-expanded="true"] { background: var(--accent-strong); }
-[data-home] .hm-nav-sub .hm-nav-item { padding-left: var(--hm-space-6); font-weight: 400; }
-[data-home] .hm-nav-sub .hm-nav-item[aria-current="page"] { font-weight: 600; }
+/* The children of a folder hang off a thin branch line under the folder's icon, 12 px wide, with an elbow into each child. */
+[data-home] .hm-nav-sub { position: relative; margin: 0 0 0 calc(var(--hm-space-3) + 10px - 0.5px); padding-left: 12px; }
+[data-home] .hm-branch { position: absolute; left: 0; top: 0; pointer-events: none; color: var(--border); }
 [data-home] .hm-preview { display: flex; align-items: center; }
 [data-home] .hm-preview .kit-help { width: auto; }
 
@@ -48,6 +70,11 @@
 [data-home] .hm-nav[data-mode="rail"] .hm-brand { display: none; }
 [data-home] .hm-nav[data-mode="rail"] .hm-nav-body { overflow: visible; padding: var(--hm-space-2); }
 [data-home] .hm-nav[data-mode="rail"] .hm-nav-low { padding: var(--hm-space-2); }
+[data-home] .hm-nav[data-mode="rail"] .hm-nav-section, [data-home] .hm-nav[data-mode="rail"] .hm-nav-chev, [data-home] .hm-nav[data-mode="rail"] .hm-branch { display: none; }
+[data-home] .hm-nav[data-mode="rail"] .hm-nav-sub { margin: 0; padding-left: 0; }
+[data-home] .hm-nav[data-mode="rail"] .hm-nav-group { gap: 0; }
+/* In a rail the fold must not clip the tooltips, so it clips nothing; a closed folder is still unseen. */
+[data-home] .hm-nav[data-mode="rail"] .hm-fold-inner { overflow: visible; }
 [data-home] .hm-nav[data-mode="rail"] .hm-nav-item { justify-content: center; padding: 0; }
 [data-home] .hm-nav[data-mode="rail"] .hm-nav-label, [data-home] .hm-nav[data-mode="rail"] .kit-help-text > span:not(.kit-dot) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 [data-home] .hm-nav[data-mode="rail"] .hm-preview { justify-content: center; }
@@ -73,5 +100,5 @@
 /* A place of the app: it adds its stage and its panel to the body of the shell and takes no box of its own. Only the place that is shown is in the page. */
 [data-home] .hm-view { display: contents; }
 @media (prefers-reduced-motion: reduce) {
-  [data-home] .hm-nav-item { transition: none !important; }
+  [data-home] .hm-nav-item, [data-home] .hm-nav-chev, [data-home] .hm-fold, [data-home] .hm-fold-inner, [data-home] .hm-nav-glide { transition: none !important; }
 }
