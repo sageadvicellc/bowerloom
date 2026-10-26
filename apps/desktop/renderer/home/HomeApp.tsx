@@ -55,6 +55,8 @@ import { ChooseNotes } from './notes/ChooseNotes.js';
 import { DetailsPanel } from './details/DetailsPanel.js';
 import { SavePoints } from './points/SavePoints.js';
 import { ShareSheet } from './share/ShareSheet.js';
+import { HowItWorks } from './trust/HowItWorks.js';
+import { HOW_WORDS } from './trust/how-words.js';
 import { LibraryPage } from './library/LibraryPage.js';
 import { ViewSwitch, viewPanelId, viewTabId } from './shell/ViewSwitch.js';
 import type { View } from './shell/ViewSwitch.js';
@@ -156,6 +158,8 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   const [choosing, setChoosing] = useState(false);
   const [sharing, setSharing] = useState(false);
   const sheet = usePresence(sharing);
+  const [howOpen, setHowOpen] = useState(false);
+  const how = usePresence(howOpen);
   const [addTab, setAddTab] = useState<AddTab>(DEFAULT_TAB);
   const [lastCopy, setLastCopy] = useState<string | undefined>(undefined);
   const [tour, tourDo] = useReducer(tourReduce, TOUR_STEPS, createTour);
@@ -220,7 +224,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   // Ctrl+Z (Cmd+Z on a Mac) takes back the last change and Shift+Ctrl+Z (Shift+Cmd+Z) puts it back, unless the focus is in a text field (which keeps its own undo) or a layer
   // that holds the page (a dialog, the Share sheet, the tour) is open. The store keeps the steps; this only asks for one.
   const keysBlocked = useRef(false);
-  keysBlocked.current = tour.status === 'running' || sharing || choosing || copiesFor !== null;
+  keysBlocked.current = tour.status === 'running' || sharing || howOpen || choosing || copiesFor !== null;
   useEffect(() => {
     const key = (e: KeyboardEvent): void => {
       if (e.defaultPrevented || e.altKey || !(e.ctrlKey || e.metaKey)) return;
@@ -434,7 +438,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
       <header className="hm-bar" data-tour="bar">
         <div className="hm-brand"><KitIcon name="leaf" size={24} /><span>{WORDS.label.appName}</span></div>
         <div className="hm-preview" data-preview="">
-          <HelpPopover pill={WORDS.label.preview} label={WORDS.label.aboutPreview} text={WORDS.popover.preview} />
+          <HelpPopover pill={WORDS.label.preview} label={WORDS.label.aboutPreview} text={WORDS.popover.preview} action={{ label: HOW_WORDS.label.link, onAction: () => setHowOpen(true), quiet: true }} />
         </div>
         <ViewSwitch view={view} onChange={setView} />
         <span className="hm-spacer" />
@@ -509,6 +513,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
       <SaveBar model={bar} ticks={ticks} onSave={save} onGoBack={goBack} onDiscard={discard} list={changeList} />
 
       {sheet.mounted ? <ShareSheet world={state.committed} hidden={skipped} unsaved={changes > 0} leaving={sheet.leaving} onClose={() => setSharing(false)} onCopy={setLastCopy} onOpenFile={openFile} /> : null}
+      {how.mounted ? <HowItWorks leaving={how.leaving} onClose={() => setHowOpen(false)} /> : null}
       {copies.value === null ? null : <CopiesDialog itemId={copies.value} nameOf={nameOf} leaving={copies.leaving} restoreFocus={restoreCopiesFocus} onClose={() => setCopiesFor(null)} />}
 
       <TourAnnouncer state={tour} picked={tourPicked} />

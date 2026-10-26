@@ -46,8 +46,9 @@ test('the Preview popover says what the preview sends, stores and writes, in at 
   const p = page();
   await header().getByRole('button', { name: 'About this preview' }).click();
   const pop = p.locator('.kit-popover');
-  await expect(pop).toHaveText('This is a preview. It sends nothing, stores nothing, and writes nothing to your computer.');
-  expect(countWords(await pop.innerText())).toBeLessThanOrEqual(25);
+  await expect(pop.locator('p')).toHaveText('This is a preview. It sends nothing, stores nothing, and writes nothing to your computer.');
+  expect(countWords(await pop.locator('p').innerText())).toBeLessThanOrEqual(25);
+  await expect(pop.getByRole('button')).toHaveText(['How it will work']);
   expect(await budget()).toEqual([]);
   for (const [w, h] of REVIEW) for (const look of LOOKS) { await resize(p, w, h); await setLook(p, look); await shot('trust-preview', w, h, look); }
 });

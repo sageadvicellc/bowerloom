@@ -225,7 +225,8 @@ test('the window has no bare "?": Help is a button with its word, at the far rig
   expect(helpBox.x + helpBox.width).toBeGreaterThan(1280 - 40);   // the far right of the bar
   await pill.click();
   const pop = p.locator('.kit-popover');
-  await expect(pop).toHaveText('This is a preview. It sends nothing, stores nothing, and writes nothing to your computer.');
+  await expect(pop.locator('p')).toHaveText('This is a preview. It sends nothing, stores nothing, and writes nothing to your computer.');
+  await expect(pop.getByRole('button')).toHaveText(['How it will work']);
   await expect(pill).toHaveAttribute('aria-expanded', 'true');
   await p.keyboard.press('Escape');
   await expect(pop).toHaveCount(0);

@@ -16,7 +16,8 @@ export interface HelpPopoverProps {
   label: string;
   /** The one sentence. */
   text: string;
-  action?: { label: string; onAction(): void };
+  /** An action under the sentence. It is the one primary button by default; `quiet` makes it a link (words with an underline), for an action that is only more to read. */
+  action?: { label: string; onAction(): void; quiet?: boolean };
   defaultOpen?: boolean;
   /** The tour finds the button by this id. */
   dataTour?: string;
@@ -57,7 +58,7 @@ export function HelpPopover({ label, text, action, defaultOpen = false, dataTour
       {shown.mounted ? (
         <div className="kit-popover" id={id} role="group" aria-label={label} data-budget="popover" data-leaving={shown.leaving ? '' : undefined}>
           <p>{text}</p>
-          {action === undefined ? null : <Button variant="primary" onClick={() => { setOpen(false); trigger.current?.focus(); action.onAction(); }}>{action.label}</Button>}
+          {action === undefined ? null : <Button variant={action.quiet === true ? 'text' : 'primary'} onClick={() => { setOpen(false); trigger.current?.focus(); action.onAction(); }}>{action.label}</Button>}
         </div>
       ) : null}
     </span>
