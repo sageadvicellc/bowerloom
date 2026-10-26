@@ -155,6 +155,27 @@ test('the window is real mode: the real address, only the real bridge, no normal
   expect(facts.csp).toBe("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'");
 });
 
+test('the Skip link keeps real mode: Tab to it, Enter, and the page is the same real page, still read only, with the focus on the main region', async () => {
+  await page.evaluate(() => { (document.activeElement as HTMLElement | null)?.blur(); });
+  await page.keyboard.press('Tab');
+  expect(await page.evaluate(() => document.activeElement?.className)).toBe('skip');
+  await page.keyboard.press('Enter');
+  expect(await page.evaluate(() => location.hash), 'the address').toBe('#prototype-v2/real');
+  await expect(page.locator('[data-screen="welcome"]')).toBeVisible();
+  await expect(page.locator('.fr-note')).toHaveText(BAR);
+  expect(await page.evaluate(() => document.activeElement?.id), 'the focus').toBe('main');
+  // The sample world is not there under any name, and the bridge is still the real one.
+  for (const name of SAMPLE_NAMES) expect(await text(), `the sample name ${name}`).not.toContain(name);
+  expect(await page.evaluate(() => typeof (window as unknown as { bowerloomReal?: unknown }).bowerloomReal)).toBe('object');
+  // Even when the address is changed by hand to something that is not a real page, the window stays in real mode.
+  await page.evaluate(() => { location.hash = '#main'; });
+  await page.waitForTimeout(200);
+  await expect(page.locator('[data-screen="welcome"]')).toBeVisible();
+  await expect(page.locator('.fr-note')).toHaveText(BAR);
+  await page.evaluate(() => { location.hash = '#prototype-v2/real'; });
+  await everyStep('after the Skip link');
+});
+
 // ---------------------------------------------------------------------------------------------------- the first minute
 
 test('Welcome, then the first question: where it looked, with counts and no path until "Show details"', async () => {

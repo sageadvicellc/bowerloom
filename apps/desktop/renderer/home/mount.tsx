@@ -22,7 +22,7 @@ import { HomeFlow } from './HomeFlow.js';
 import { KitGallery } from './KitGallery.js';
 import { NOTES_HASH, NotesHarness } from './notes/route.js';
 import { LIBRARY_HASH, LibraryHarness } from './library/route.js';
-import { REAL_HARNESS_HASH, REAL_HASH } from '../../shared/real/types.js';
+import { latchRealPage, realPageOf, wireSkipLink } from './route-latch.js';
 import { RealHarness } from './real/RealHarness.js';
 import { RealRoot } from './real/RealRoot.js';
 
@@ -41,14 +41,11 @@ export function pageOf(hash: string): HomePage | null {
 /** True when the address belongs to the home app. */
 export const isHomeHash = (hash: string): boolean => hash === '#prototype-v2' || hash.startsWith('#prototype-v2/');
 
-/** The pages of real mode, which build no sample world at all. */
-type RealPage = 'real' | 'bare';
-const realPageOf = (hash: string): RealPage | null => (hash === REAL_HASH ? 'real' : hash === REAL_HARNESS_HASH ? 'bare' : null);
-
 function HomeRoot(): ReactElement {
-  const [real, setReal] = useState<RealPage | null>(() => realPageOf(location.hash));
+  const [real, setReal] = useState(() => realPageOf(location.hash));
   useEffect(() => {
-    const change = (): void => setReal(realPageOf(location.hash));
+    // Once the window is on a real page it stays in real mode: an address that is not a real page (the skip link's #main) changes nothing.
+    const change = (): void => setReal(current => latchRealPage(current, location.hash));
     window.addEventListener('hashchange', change);
     return () => window.removeEventListener('hashchange', change);
   }, []);
@@ -76,5 +73,6 @@ function SampleRoot(): ReactElement {
 }
 
 export function mountHome(root: HTMLElement): void {
+  wireSkipLink(document);
   createRoot(root).render(<ErrorBoundary><HomeRoot /></ErrorBoundary>);
 }
