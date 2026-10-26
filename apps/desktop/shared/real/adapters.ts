@@ -35,6 +35,8 @@ export interface RecordMeta {
   readonly event?: string;
   readonly matcher?: string;
   readonly runs?: readonly string[];
+  /** The instruction text of an agent, without its front matter. Step two only. */
+  readonly body?: string;
 }
 
 /** One thing found in one file. `text` is empty in step one, and in step two holds the file text (for a skill, an agent or a prompt) or a safe summary (for a connection or a hook). */
@@ -42,6 +44,8 @@ export interface RawRecord {
   readonly kind: RealKind;
   readonly app: RealApp;
   readonly name: string;
+  /** The name the path gives it (the skill folder, the file name, the entry key): what two programs' copies of one thing share even when their front matter names differ. */
+  readonly slug: string;
   readonly description: string;
   /** Relative to the place folder, with `/`. */
   readonly relPath: string;
@@ -68,6 +72,7 @@ export interface AppAdapter {
 
 const SKILL_FOLDER = /^skills?\/(?:.+\/)?SKILL\.md$/i;
 const SKILL_FLAT = /^skills?\/[^/]+\.md$/i;
+const BODY_CHARS = 20000;
 const NOT_A_THING = /^(readme|license|licence|changelog|contributing)(\..*)?$/i;
 
 export const ADAPTERS: readonly AppAdapter[] = Object.freeze([
@@ -148,8 +153,8 @@ export function nameFromPath(app: RealApp, what: FileRole['what'], rel: string):
   return nameChars(stem(file));
 }
 
-function record(app: RealApp, kind: RealKind, name: string, description: string, relPath: string, text: string, partial: boolean, meta: RecordMeta = {}): RawRecord {
-  return { kind, app, name: name === '' ? 'Unnamed' : name, description: cut(cleanLine(scrubText(description)), REAL_LIMITS.hintChars), relPath, text, partial, meta };
+function record(app: RealApp, kind: RealKind, name: string, description: string, relPath: string, text: string, partial: boolean, meta: RecordMeta = {}, slug = name): RawRecord {
+  return { kind, app, name: name === '' ? 'Unnamed' : name, slug: slug === '' ? 'unnamed' : slug, description: cut(cleanLine(scrubText(description)), REAL_LIMITS.hintChars), relPath, text, partial, meta };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------- files
@@ -168,8 +173,8 @@ export function recordsOfFile(app: RealApp, role: FileRole, relPath: string, rel
     if (role.what === 'note') return { records: [], partial: false, unreadable: false };
     const base = nameFromPath(app, role.what, rel);
     const kind: RealKind = role.what === 'plugin' ? 'hook' : role.what === 'profile' ? 'agent' : role.what;
-    if (text === null) return { records: [record(app, kind, base, '', relPath, '', false, kind === 'hook' ? { event: 'plug-in' } : {})], partial: false, unreadable: false };
-    if (role.what === 'plugin') return { records: [record(app, 'hook', base, '', relPath, JSON.stringify({ kind: 'plug-in', file: base }), false, { event: 'plug-in' })], partial: false, unreadable: false };
+    if (text === null) return { records: [record(app, kind, base, '', relPath, '', false, kind === 'hook' ? { event: 'plug-in' } : {}, base)], partial: false, unreadable: false };
+    if (role.what === 'plugin') return { records: [record(app, 'hook', base, '', relPath, JSON.stringify({ event: 'plug-in', kinds: ['command'], file: base }), false, { event: 'plug-in' }, base)], partial: false, unreadable: false };
     if (role.what === 'agent' && /\.toml$/i.test(relPath)) return { records: [fromTomlAgent(app, base, relPath, text)], partial: false, unreadable: false };
     const front = parseFrontmatter(text);
     const name = nameChars(textOf(front.data.name)) || base;
@@ -180,8 +185,9 @@ export function recordsOfFile(app: RealApp, role: FileRole, relPath: string, rel
       ...(listOf(front.data.skills).length === 0 ? {} : { skills: listOf(front.data.skills).map(nameChars).slice(0, 60) }),
       ...(listOf(front.data.tools).length === 0 ? {} : { toolNames: listOf(front.data.tools).map(nameChars).slice(0, 80) }),
       ...(role.what === 'agent' && description !== '' ? { role: cut(cleanLine(description), 60) } : {}),
+      ...(role.what === 'agent' ? { body: scrubText(front.body).slice(0, BODY_CHARS) } : {}),
     };
-    return { records: [record(app, kind, name, description, relPath, scrubText(text), partial, meta)], partial, unreadable: false };
+    return { records: [record(app, kind, name, description, relPath, scrubText(text), partial, meta, base)], partial, unreadable: false };
   } catch { return { records: [], partial: false, unreadable: true }; }
 }
 
@@ -189,7 +195,7 @@ function fromTomlAgent(app: RealApp, base: string, relPath: string, text: string
   const root = parseToml(text)[0];
   const name = nameChars(tomlText(root, 'name')) || base, description = tomlText(root, 'description') || firstSentence(tomlText(root, 'developer_instructions'));
   const model = nameChars(tomlText(root, 'model'));
-  return record(app, 'agent', name, description, relPath, scrubText(text), false, { ...(model === '' ? {} : { model }), ...(description === '' ? {} : { role: cut(cleanLine(description), 60) }) });
+  return record(app, 'agent', name, description, relPath, scrubText(text), false, { ...(model === '' ? {} : { model }), ...(description === '' ? {} : { role: cut(cleanLine(description), 60) }), body: scrubText(tomlText(root, 'developer_instructions')).slice(0, BODY_CHARS) }, base);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------- connections and hooks
@@ -265,7 +271,7 @@ function fromOpenCode(app: RealApp, relPath: string, json: unknown): RawRecord[]
       if (name === '__proto__' || raw === null || typeof raw !== 'object') continue;
       const a = raw as Record<string, unknown>, description = typeof a.description === 'string' ? a.description : '';
       out.push(record(app, 'agent', nameChars(name), description, relPath, scrubText(JSON.stringify({ name, description, mode: typeof a.mode === 'string' ? a.mode : undefined, model: typeof a.model === 'string' ? a.model : undefined })), false, {
-        ...(description === '' ? {} : { role: cut(cleanLine(description), 60) }), ...(typeof a.model === 'string' ? { model: nameChars(a.model) } : {}), toolNames: keyNames(a.tools),
+        ...(description === '' ? {} : { role: cut(cleanLine(description), 60) }), ...(typeof a.model === 'string' ? { model: nameChars(a.model) } : {}), toolNames: keyNames(a.tools), ...(typeof a.prompt === 'string' ? { body: scrubText(a.prompt).slice(0, BODY_CHARS) } : {}),
       }));
     }
   }

@@ -56,7 +56,7 @@ export function buildFixture(): Fixture {
   put(join(claude, 'skills', 'locked', 'SKILL.md'), '---\nname: Locked\n---\n');
   chmodSync(join(claude, 'skills', 'locked'), 0o000);
   put(join(claude, 'agents', 'reviewer.md'), '---\nname: reviewer\ndescription: Reads a change and says what is risky.\nmodel: sonnet\nskills: [write-reply, check-totals]\ntools: Read, Grep, mcp__tracker__search\n---\nYou review changes.\n');
-  put(join(claude, 'agents', 'helper.md'), '---\nname: helper\ndescription: Does small jobs.\n---\nHelp.\n');
+  put(join(claude, 'agents', 'tidier.md'), '---\nname: tidier\ndescription: Does small jobs.\n---\nHelp.\n');
   symlinkSync(join(outside, 'outside-agent.md'), join(claude, 'agents', 'outside-agent.md'));
   put(join(claude, 'commands', 'ship.md'), '---\ndescription: Run the checks and ship.\n---\nRun the checks.\n');
   put(join(claude, 'settings.json'), JSON.stringify({ hooks: { PostToolUse: [{ matcher: 'Edit|Write', hooks: [{ type: 'command', command: `./format.sh ${FAKE_SECRET}` }] }] }, env: { SOME_VALUE: FAKE_SECRET } }));
@@ -93,7 +93,7 @@ export function buildFixture(): Fixture {
   put(join(hermes, 'sessions', 's1.json'), `{"k":"${FAKE_SECRET}"}`);
 
   // A folder of projects, as a person would pick it.
-  put(join(work, 'alpha', '.claude', 'skills', 'alpha-skill', 'SKILL.md'), '---\nname: Alpha skill\ndescription: Only for the alpha project.\n---\nAlpha.\n');
+  put(join(work, 'alpha', '.claude', 'skills', 'alpha-skill', 'SKILL.md'), '---\nname: Alpha skill\ndescription: Only for the alpha folder.\n---\nAlpha.\n');
   put(join(work, 'alpha', '.claude', 'skills', 'check-totals', 'SKILL.md'), SHARED_A);
   put(join(work, 'alpha', '.mcp.json'), JSON.stringify({ mcpServers: { alphadb: { command: 'alphadb', env: { ALPHA_PASSWORD: FAKE_SECRET } } } }));
   put(join(work, 'alpha', 'notes', 'plan.md'), '---\ntitle: Alpha plan\ntags: [alpha, planning]\n---\nThe plan for alpha. More text.\n');

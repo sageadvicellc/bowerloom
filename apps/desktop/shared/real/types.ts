@@ -75,6 +75,8 @@ export interface RealResult {
   readonly world: World;
   readonly others: readonly RealOther[];
   readonly counts: RealCounts;
+  /** For each item id, how many whole days ago each of its `foundAt` files was last changed, in the order of `foundAt`. Whole days, rounded down; never negative. */
+  readonly ages: Readonly<Record<string, readonly number[]>>;
   readonly stoppedEarly: boolean;
   readonly couldNotRead: number;
   /** Files that were read but had a front matter block that could not be understood; they are listed with a name made from the file. */

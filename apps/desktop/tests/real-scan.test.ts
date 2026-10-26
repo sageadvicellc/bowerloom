@@ -96,7 +96,7 @@ test('step two reads text only for the places that were chosen, and hides what l
   assert.equal(batch.reads.length, 2);
   const [c, a] = batch.reads;
   const names = c!.records.map(r => `${r.kind}:${r.name}`).sort();
-  assert.deepEqual(names, ['agent:helper', 'agent:reviewer', 'hook:PostToolUse: Edit|Write', 'mcp:remote', 'mcp:tracker', 'prompt:ship', 'skill:Check the totals', 'skill:Tidy notes', 'skill:Write a reply', 'skill:Broken one'].sort());
+  assert.deepEqual(names, ['agent:tidier', 'agent:reviewer', 'hook:PostToolUse: Edit|Write', 'mcp:remote', 'mcp:tracker', 'prompt:ship', 'skill:Check the totals', 'skill:Tidy notes', 'skill:Write a reply', 'skill:Broken one'].sort());
   assert.equal(c!.partlyRead, 1, 'the broken front matter is counted as partly read');
   assert.equal(c!.tally.tooBig, 1); assert.equal(c!.tally.binary, 1);
   assert.deepEqual(a!.records.map(r => `${r.kind}:${r.name}`).sort(), ['mcp:alphadb', 'skill:Alpha skill', 'skill:Check the totals']);
