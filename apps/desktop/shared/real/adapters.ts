@@ -89,6 +89,21 @@ export const ADAPTERS: readonly AppAdapter[] = Object.freeze([
 ]);
 
 export const adapterOf = (app: RealApp): AppAdapter => ADAPTERS.find(a => a.id === app)!;
+
+/**
+ * Claude Code keeps the agents that plug-ins bring in `plugins/cache/<source>/<plug-in>/<version>/agents/`. They are plain markdown files like any other agent, so the
+ * reader enters that one branch of `plugins/` and nothing else in it (no clones, no data, no other part of a plug-in).
+ */
+export function walkEnter(app: RealApp, rel: string): boolean {
+  return app === 'claude-code' && (rel === 'plugins' || rel === 'plugins/cache');
+}
+export function walkPrune(app: RealApp, rel: string): boolean {
+  if (app !== 'claude-code') return false;
+  const p = rel.split('/');
+  if (p[0] !== 'plugins') return false;
+  if (p.length === 2) return p[1] !== 'cache';
+  return p.length === 6 && p[5] !== 'agents';
+}
 export const appLabel = (app: RealApp): string => adapterOf(app).label;
 
 /** Whether the world of the home screens has room for this program (it is one of its three interfaces). */
@@ -102,7 +117,7 @@ export function classify(app: RealApp, rel: string): FileRole | null {
   const name = parts(rel).pop() ?? '';
   if (app === 'claude-code') {
     if (SKILL_FOLDER.test(rel) || (SKILL_FLAT.test(rel) && !NOT_A_THING.test(name))) return { what: 'skill' };
-    if (/^agents\/(?:.+\/)?[^/]+\.md$/i.test(rel) && !NOT_A_THING.test(name)) return { what: 'agent' };
+    if (/^(?:plugins\/cache\/[^/]+\/[^/]+\/[^/]+\/)?agents\/(?:.+\/)?[^/]+\.md$/i.test(rel) && !NOT_A_THING.test(name)) return { what: 'agent' };
     if (/^commands\/(?:.+\/)?[^/]+\.md$/i.test(rel) && !NOT_A_THING.test(name)) return { what: 'prompt' };
     if (rel === 'settings.json' || rel === 'settings.local.json') return { what: 'config', config: 'claude-settings' };
     return null;

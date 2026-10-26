@@ -210,6 +210,10 @@ export interface WalkOptions {
   /** Whether a folder whose name starts with a dot is skipped. */
   readonly skipHidden: boolean;
   readonly accept: (rel: string) => boolean;
+  /** A folder (its path below the root) that is entered although its name is in `skipDirs`. */
+  readonly enter?: (rel: string) => boolean;
+  /** A folder (its path below the root) that is never entered, and does not count as cut short. */
+  readonly prune?: (rel: string) => boolean;
   /** Called with the names in a folder below the top: true means the folder is another place, so it is not entered. */
   readonly boundary?: (names: readonly string[]) => boolean;
 }
@@ -243,8 +247,9 @@ export function walkFiles(rootAbs: string, rootReal: string, opts: WalkOptions, 
         isDir = r.stat.isDirectory(); isFile = r.stat.isFile(); real = r.real; size = r.stat.size; mtimeMs = r.stat.mtimeMs;
       }
       if (isDir) {
+        if (opts.prune !== undefined && opts.prune(childRel)) continue;
         if (depth + 1 > opts.maxDepth) { tally.truncated = true; continue; }
-        if (opts.skipDirs.has(name) || (opts.skipHidden && name.startsWith('.'))) continue;
+        if ((opts.skipDirs.has(name) && !(opts.enter !== undefined && opts.enter(childRel))) || (opts.skipHidden && name.startsWith('.'))) continue;
         if (real === '') { try { real = realpathSync(abs); } catch { tally.unreadable += 1; continue; } }
         if (seen.has(real)) continue;
         seen.add(real);

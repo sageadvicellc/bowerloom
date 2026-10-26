@@ -6,7 +6,7 @@
  * given and from the folders the person picks. The place ids it hands out are the only ones `read` accepts.
  */
 import { basename, dirname, join } from 'node:path';
-import { ADAPTERS, adapterOf, appLabel, classify, recordsOfFile } from '../shared/real/adapters.js';
+import { ADAPTERS, adapterOf, appLabel, classify, recordsOfFile, walkEnter, walkPrune } from '../shared/real/adapters.js';
 import type { ConfigKind } from '../shared/real/adapters.js';
 import { firstHeading, firstSentence, parseFrontmatter } from '../shared/real/frontmatter.js';
 import { countsOf, tallyWords, topicsOf } from '../shared/real/place.js';
@@ -175,7 +175,7 @@ export function readPlace(place: PlaceInternal, home: string, withText: boolean,
     const adapter = adapterOf(folder.app);
     const files = walkFiles(folder.abs, folder.abs, {
       maxDepth: REAL_LIMITS.depth, maxFiles: filesLeft, maxEntries: REAL_LIMITS.discoveryEntries, skipDirs: new Set(adapter.skipInside), skipHidden: false,
-      accept: rel => classify(folder.app, rel) !== null,
+      accept: rel => classify(folder.app, rel) !== null, enter: rel => walkEnter(folder.app, rel), prune: rel => walkPrune(folder.app, rel),
     }, budget, tally);
     filesLeft -= files.length;
     for (const f of files) {
