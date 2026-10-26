@@ -36,7 +36,7 @@
 /* An icon button: a 32 px square with one icon, no border until the pointer is on it, as the desktop apps draw theirs. */
 [data-home] .kit-button[data-icon-only] { padding: 0; width: var(--hm-control-h); border-color: transparent; background: transparent; color: var(--text); }
 [data-home] .kit-button[data-icon-only]:hover { background: var(--accent-soft); border-color: transparent; }
-[data-home] .kit-button[data-icon-only][aria-expanded="true"], [data-home] .kit-button[data-icon-only][aria-pressed="true"] { background: var(--accent-soft); border-color: transparent; }
+[data-home] .kit-button[data-icon-only][aria-haspopup][aria-expanded="true"], [data-home] .kit-button[data-icon-only][aria-pressed="true"] { background: var(--accent-soft); border-color: transparent; }
 [data-home] .kit-button[data-icon-only][data-variant="primary"] { background: var(--accent); border-color: var(--accent-strong); color: var(--accent-contrast); }
 [data-home] .kit-button[data-icon-only]:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
 /* A control that would change the setup, in the read-only look: it stays in its place and in the Tab order, says why in its tooltip, and does nothing. */
@@ -208,26 +208,25 @@
 [data-home] .kit-shelf-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--hm-row-w)), 1fr)); gap: var(--hm-space-2); width: 100%; }
 [data-home] .kit-shelf-list > li { min-width: 0; display: flex; }
 
-/* ---- Tooltip: the words of an icon-only button, or the reason a button is held back. It is drawn at a fixed place on the window (Tooltip.tsx sets the offsets), 10 px clear of
-   the button on the side asked for, so no scrolling list or clipped row can cut it off. It takes no pointer, and is 14 px or more. It fades in with a 4 px slide from the
-   button over the overlay time and out faster; with reduce motion the times are 0 and it simply appears. Ink on paper, so it is 4.5 to 1 in both looks. */
+/* ---- Tooltip: the words of an icon-only button, or the reason a button is held back. It sits 10 px clear of the button on the side asked for (left by default, in the free
+   room beside a button at the right of a bar), takes no pointer, and is 14 px or more. It fades in with a 4 px slide from the button over the overlay time and out faster;
+   with reduce motion the times are 0 and it simply appears. Ink on paper, so it is 4.5 to 1 in both looks. */
 [data-home] .kit-tip { position: relative; display: inline-flex; }
 [data-home] .kit-tip-text {
-  position: fixed; z-index: 3000; top: 0; right: 0; padding: var(--hm-space-2) var(--hm-space-3); max-width: min(20rem, calc(100vw - 2 * var(--hm-space-4)));
+  position: absolute; z-index: 35; top: 50%; right: calc(100% + 10px); padding: var(--hm-space-2) var(--hm-space-3);
   background: var(--text); color: var(--bg); border-radius: var(--hm-radius-small); box-shadow: var(--hm-shadow-lift);
   font-size: var(--hm-text-small); font-weight: 600; line-height: 1.3; white-space: nowrap; pointer-events: none;
   opacity: 0; visibility: hidden; transform: translate(var(--motion-home-overlay-travel, 0px), -50%);
   transition: visibility 0s linear var(--motion-home-overlay-out-ms, 0ms), opacity var(--motion-home-overlay-out-ms, 0ms) var(--motion-home-overlay-out-ease, ease-in);
 }
-[data-home] .kit-tip-text[data-side="right"] { transform: translate(calc(-1 * var(--motion-home-overlay-travel, 0px)), -50%); }
-[data-home] .kit-tip-text[data-side="below"], [data-home] .kit-tip-text[data-side="below-end"] { transform: translate(0, calc(-1 * var(--motion-home-overlay-travel, 0px))); }
+[data-home] .kit-tip-text[data-side="right"] { right: auto; left: calc(100% + 10px); transform: translate(calc(-1 * var(--motion-home-overlay-travel, 0px)), -50%); }
+[data-home] .kit-tip-text[data-side="below"], [data-home] .kit-tip-text[data-side="below-end"] { top: calc(100% + 10px); right: auto; left: 0; transform: translate(0, calc(-1 * var(--motion-home-overlay-travel, 0px))); }
+[data-home] .kit-tip-text[data-side="below-end"] { left: auto; right: 0; }
 [data-home] .kit-tip-text[data-open] {
   opacity: 1; visibility: visible; transform: translate(0, -50%);
   transition: opacity var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out), transform var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out);
 }
 [data-home] .kit-tip-text[data-side="below"][data-open], [data-home] .kit-tip-text[data-side="below-end"][data-open] { transform: none; }
-/* The tooltip of a held-back button may run to a sentence: it wraps at the width above. */
-[data-home] .kit-tip-text[data-long] { white-space: normal; }
 
 /* ---- Help popover */
 [data-home] .kit-help { position: relative; display: inline-flex; }
@@ -239,6 +238,7 @@
 }
 [data-home] .kit-popover[data-leaving] { animation: kit-overlay-out var(--motion-home-overlay-out-ms, 0ms) var(--motion-home-overlay-out-ease, ease-in) both; pointer-events: none; }
 [data-home] .kit-help[data-align="end"] .kit-popover { left: auto; right: 0; }
+[data-home] .kit-help[data-place="above"] .kit-popover { top: auto; bottom: calc(100% + var(--hm-space-2)); }
 [data-home] .kit-popover p { margin: 0; font-size: var(--hm-text-base); line-height: 1.45; }
 
 /* ---- Drawer */

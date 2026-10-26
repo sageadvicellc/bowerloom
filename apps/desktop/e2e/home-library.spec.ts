@@ -10,7 +10,7 @@ import type { Locator, Page } from '@playwright/test';
 import { assertTextBudget } from '../shared/home/textbudget.js';
 import { removeTempDirs } from './proto-temp.js';
 import { animationsDone } from './proto-wait.js';
-import { MAP_PAGE, SAVED, ensurePicked, fresh, launchHome, resize, setLook, shot, skipTour } from './home-page.js';
+import { MAP_PAGE, SAVED, chooseSort, ensurePicked, expectSort, fresh, launchHome, openSort, resize, setLook, shot, skipTour } from './home-page.js';
 import type { Home } from './home-page.js';
 import { mkdirSync } from 'node:fs';
 
@@ -64,8 +64,8 @@ test('the page has the title, four tabs with their counts, a search, two orders 
   await expect(tab('Skills')).toHaveAttribute('aria-selected', 'true');
   await expect(countLine()).toHaveText('53 skills');
   await expect(search()).toBeVisible();
-  await expect(p.getByRole('button', { name: 'Name', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await expect(p.getByRole('button', { name: 'Recently added' })).toHaveAttribute('aria-pressed', 'false');
+  await expectSort(p, 'Name');
+  await expect((await openSort(p)).getByRole('menuitemradio', { name: 'Recently added' })).toHaveAttribute('aria-checked', 'false'); await p.keyboard.press('Escape');
   await expect(p.getByRole('button', { name: 'Add from the web' })).toBeVisible();
   await expect(title()).toHaveText('Pick something');
   await expect(barText()).toHaveText('Nothing to save yet');
@@ -130,8 +130,8 @@ test('the two orders: by name (alphabetical) and recently added (newest first, a
   const p = page();
   const byName = await names();
   expect(byName).toEqual([...byName].sort((a, b) => a.localeCompare(b)));
-  await p.getByRole('button', { name: 'Recently added' }).click();
-  await expect(p.getByRole('button', { name: 'Recently added' })).toHaveAttribute('aria-pressed', 'true');
+  await chooseSort(p, 'Recently added');
+  await expectSort(p, 'Recently added');
   const byAdded = await names();
   expect(byAdded).not.toEqual(byName);
   expect([...byAdded].sort()).toEqual([...byName].sort());
@@ -433,7 +433,7 @@ test('"Add 7 items" stages them in the library on no agent, in one change; the s
   await expect(sheet()).toHaveCount(0);
   await expect(p.getByRole('button', { name: 'Add from the web' })).toBeFocused();
   await expect(countLine()).toHaveText('Added 7 items to your library.');
-  await expect(p.getByRole('button', { name: 'Recently added' })).toHaveAttribute('aria-pressed', 'true');
+  await expectSort(p, 'Recently added');
   await expect(barText()).not.toHaveText('Nothing to save yet');
   await expect(rows()).toHaveCount(55);
   await expect(row('Triage my inbox').getByText('Not used yet')).toBeVisible();
@@ -533,11 +533,11 @@ test('keyboard only: tabs by arrows, the list in one stop, arrows between rows, 
   await p.keyboard.type('compare');
   await expect(rows()).toHaveCount(2);
   await p.keyboard.press('Tab');
-  await expect(p.getByRole('button', { name: 'Name', exact: true })).toBeFocused();
+  await expect(p.getByRole('button', { name: 'Sort', exact: true })).toBeFocused();
   await search().fill('');
   await search().focus();
-  // Tab from the search goes through the three sort buttons and the filter to the list, which is one stop
-  for (let i = 0; i < 4; i += 1) await p.keyboard.press('Tab');
+  // Tab from the search goes through the sort icon and the filter to the list, which is one stop
+  for (let i = 0; i < 2; i += 1) await p.keyboard.press('Tab');
   await expect(p.getByRole('button', { name: /^Not used yet \d+$/ })).toBeFocused();
   await p.keyboard.press('Tab');
   expect(await page().evaluate(() => document.activeElement?.classList.contains('kit-card-main'))).toBe(true);
@@ -692,40 +692,40 @@ test('screenshots: each tab, a thing picked, the remove dialog, the update view,
 
 // ---- Inside the app: the Library behind the switch in the top bar, with the shell's own Save bar and version history.
 test.describe('inside the app', () => {
-  const header = (): Locator => page().locator('header.hm-bar');
-  const switchTab = (name: string): Locator => header().getByRole('tab', { name, exact: true });
+  const header = (): Locator => page().locator('nav.hm-nav');
+  /** An item of the navigation; the first one, because with the Library open its page "Agents" has a namesake in the Library's own pages. */
+  const switchTab = (name: string): Locator => header().getByRole('button', { name, exact: true }).first();
   const history = (): Locator => page().locator('[data-slot="points"]');
   test.beforeEach(async () => {
     await fresh(page(), MAP_PAGE);
     await resize(page(), 1280, 800);
     await skipTour(page());
-    await expect(page().getByRole('heading', { level: 1, name: 'Your agents' })).toBeVisible();
+    await expect(page().getByRole('heading', { level: 1, name: 'Agents', exact: true })).toBeVisible();
   });
 
-  test('the top bar has a switch, Agents | Library, after the Preview mark: a quiet 32 px tab list, and the arrow keys move between the two', async () => {
+  test('the navigation has two places, Agents and Library, as items below Add: 32 px high, the page you are on marked with aria-current, one Tab stop, and the arrow keys and Enter move between them', async () => {
     const p = page();
-    const list = header().getByRole('tablist', { name: 'Pages' });
-    await expect(list.getByRole('tab')).toHaveText(['Agents', 'Library']);
-    await expect(switchTab('Agents')).toHaveAttribute('aria-selected', 'true');
-    await expect(switchTab('Library')).toHaveAttribute('aria-selected', 'false');
+    await expect(header().locator('[data-nav-item]')).toHaveText(['Add', 'Agents', 'Library', 'Find more', 'Share', 'Version history', 'Help']);
+    await expect(switchTab('Agents')).toHaveAttribute('aria-current', 'page');
+    await expect(switchTab('Library')).not.toHaveAttribute('aria-current', 'page');
     await expect(switchTab('Agents')).toHaveAttribute('tabindex', '0');
     await expect(switchTab('Library')).toHaveAttribute('tabindex', '-1');
-    const box = (await list.boundingBox())!, preview = (await header().locator('[data-preview]').boundingBox())!, clock = (await header().getByRole('button', { name: 'Version history', exact: true }).boundingBox())!;
-    expect(Math.round(box.height)).toBe(32);
-    expect(box.x).toBeGreaterThanOrEqual(preview.x + preview.width);
-    expect(box.x + box.width).toBeLessThanOrEqual(clock.x);
+    const agents = (await switchTab('Agents').boundingBox())!, library = (await switchTab('Library').boundingBox())!, add = (await switchTab('Add').boundingBox())!;
+    expect(Math.round(agents.height)).toBe(32); expect(Math.round(library.height)).toBe(32);
+    expect(agents.y).toBeGreaterThan(add.y + add.height - 1); expect(library.y).toBeGreaterThan(agents.y + agents.height - 1);
     await switchTab('Agents').focus();
-    await p.keyboard.press('ArrowRight');
-    await expect(switchTab('Library')).toHaveAttribute('aria-selected', 'true');
+    await p.keyboard.press('ArrowDown');
+    await expect(switchTab('Library')).toBeFocused();
+    await expect(switchTab('Agents')).toHaveAttribute('aria-current', 'page');   // the arrows only move; Enter chooses
+    await p.keyboard.press('Enter');
     await expect(switchTab('Library')).toBeFocused();
     await expect(p.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible();
-    await p.keyboard.press('ArrowRight');
+    await expect(header().locator('[aria-current="page"]')).toHaveCount(1);
+    await p.keyboard.press('ArrowUp');
     await expect(switchTab('Agents')).toBeFocused();
-    await p.keyboard.press('End');
-    await expect(switchTab('Library')).toBeFocused();
-    await p.keyboard.press('Home');
-    await expect(switchTab('Agents')).toHaveAttribute('aria-selected', 'true');
-    await expect(p.getByRole('heading', { level: 1, name: 'Your agents' })).toBeVisible();
+    await p.keyboard.press('Enter');
+    await expect(p.getByRole('heading', { level: 1, name: 'Agents', exact: true })).toBeVisible();
+    await expect(switchTab('Agents')).toHaveAttribute('aria-current', 'page');
     expect(await budget()).toEqual([]);
   });
 
@@ -733,7 +733,7 @@ test.describe('inside the app', () => {
     const p = page();
     await switchTab('Library').click();
     await expect(p.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible();
-    await expect(p.getByRole('heading', { level: 1, name: 'Your agents' })).toHaveCount(0);
+    await expect(p.getByRole('heading', { level: 1, name: 'Agents', exact: true })).toHaveCount(0);
     await expect(p.locator('main')).toHaveCount(1);
     await expect(p.locator('aside.hm-panel')).toHaveCount(1);
     await expect(header()).toBeVisible();
@@ -803,8 +803,8 @@ test.describe('inside the app', () => {
     const first = panel().locator('[data-used-by] button').first();
     const who = (await first.textContent())!.trim();
     await first.click();
-    await expect(switchTab('Agents')).toHaveAttribute('aria-selected', 'true');
-    await expect(p.getByRole('heading', { level: 1, name: 'Your agents' })).toBeVisible();
+    await expect(switchTab('Agents')).toHaveAttribute('aria-current', 'page');
+    await expect(p.getByRole('heading', { level: 1, name: 'Agents', exact: true })).toBeVisible();
     await expect(p.locator('aside.hm-panel').getByRole('heading', { level: 2, name: who })).toBeFocused();
     await expect(p.locator('.hm-grid').getByRole('button', { name: who, exact: true })).toHaveAttribute('aria-pressed', 'true');
   });
@@ -831,8 +831,8 @@ test.describe('inside the app', () => {
     await header().getByRole('button', { name: 'Help', exact: true }).click();
     await p.getByRole('button', { name: 'Show me around' }).click();
     await expect(p.getByRole('dialog', { name: 'Tour' })).toBeVisible();
-    await expect(switchTab('Agents')).toHaveAttribute('aria-selected', 'true');
-    await expect(p.getByRole('heading', { level: 1, name: 'Your agents' })).toBeVisible();
+    await expect(switchTab('Agents')).toHaveAttribute('aria-current', 'page');
+    await expect(p.getByRole('heading', { level: 1, name: 'Agents', exact: true })).toBeVisible();
     await p.keyboard.press('Escape');
   });
 
@@ -845,7 +845,7 @@ test.describe('inside the app', () => {
       const m = await p.evaluate(() => {
         const box = (sel: string) => { const r = document.querySelector(sel)!.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom }; };
         const small = [...document.querySelectorAll('[data-home] *')].filter(el => el.childNodes.length > 0 && [...el.childNodes].some(n => n.nodeType === 3 && (n.textContent ?? '').trim() !== '') && parseFloat(getComputedStyle(el).fontSize) < 14).map(el => el.textContent?.trim().slice(0, 30));
-        return { sx: document.documentElement.scrollWidth - document.documentElement.clientWidth, stage: box('main.hm-stage'), panel: box('aside.hm-panel'), bar: box('.hm-savebar'), head: box('header.hm-bar'), small };
+        return { sx: document.documentElement.scrollWidth - document.documentElement.clientWidth, stage: box('main.hm-stage'), panel: box('aside.hm-panel'), bar: box('.hm-savebar'), head: box('.hm-topbar'), small };
       });
       expect(m.sx).toBeLessThanOrEqual(0);
       expect(m.stage.r).toBeLessThanOrEqual(m.panel.l + 1);

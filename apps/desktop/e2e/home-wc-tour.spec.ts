@@ -182,18 +182,19 @@ test('step five tells the truth when seen: the bar shows the changes, and Save k
   expect(await p.evaluate(() => document.querySelector('[role="dialog"][aria-label="Tour"]')!.textContent)).not.toContain('until you press');
 });
 
-test('step six lights the clock and Share together and says what they are for', async () => {
+test('step six lights Share and Version history together and says what they are for', async () => {
   const p = page();
   for (let i = 0; i < 5; i += 1) await next().click();
   await stepText(5);
   const hole = await rectOf(p, '.tour-spot');
-  const clock = (await p.locator('header.hm-bar').getByRole('button', { name: 'Version history', exact: true }).boundingBox())!, share = (await p.locator('header.hm-bar').getByRole('button', { name: 'Share', exact: true }).boundingBox())!;
+  const clock = (await p.locator('nav.hm-nav').getByRole('button', { name: 'Version history', exact: true }).boundingBox())!, share = (await p.locator('nav.hm-nav').getByRole('button', { name: 'Share', exact: true }).boundingBox())!;
   for (const b of [clock, share]) {
     expect(hole.x).toBeLessThanOrEqual(b.x + 1); expect(hole.x + hole.w).toBeGreaterThanOrEqual(b.x + b.width - 1);
     expect(hole.y).toBeLessThanOrEqual(b.y + 1); expect(hole.y + hole.h).toBeGreaterThanOrEqual(b.y + b.height - 1);
   }
-  const add = (await p.locator('header.hm-bar').getByRole('button', { name: 'Add', exact: true }).boundingBox())!;
-  expect(add.x).toBeGreaterThanOrEqual(hole.x + hole.w - 1);
+  // Add is the item at the top of the navigation, not part of the lit pair: it sits above the hole.
+  const add = (await p.locator('nav.hm-nav').getByRole('button', { name: 'Add', exact: true }).boundingBox())!;
+  expect(add.y + add.height).toBeLessThanOrEqual(hole.y + 1);
   expect(await p.locator('[data-tour~="share"]').count()).toBe(1);
 });
 

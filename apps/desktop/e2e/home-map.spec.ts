@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { assertTextBudget, countWords } from '../shared/home/textbudget.js';
 import { removeTempDirs } from './proto-temp.js';
 import { animationsDone, framesPainted } from './proto-wait.js';
-import { SIZES, THEMES, SAVED, ensurePicked, fresh, launchHome, resize, setLook, skipTour } from './home-page.js';
+import { SAVED, SIZES, THEMES, chooseSort, ensurePicked, fresh, launchHome, resize, setLook, skipTour } from './home-page.js';
 import type { Home } from './home-page.js';
 
 const NAMES = ['Inbox sorter', 'Interview notetaker', 'Meeting assistant', 'Money tracker', 'Report builder', 'Research assistant', 'Schedule keeper', 'Support writer', 'Trip organizer', 'Writing coach'];
@@ -169,18 +169,27 @@ test('Undo all changes puts everything back and the bar goes calm', async () => 
   await expect(bar().getByRole('button', { name: 'Undo all changes' })).toHaveCount(0);
 });
 
-test('the sort toggle orders the map by name or by recent change; an agent changed in this session comes first', async () => {
+test('the sort icon opens a menu that orders the map by name or by recent change; an agent changed in this session comes first', async () => {
   const p = page();
-  const toggle = p.getByRole('group', { name: 'Order of the agents' });
-  await expect(toggle.getByRole('button', { name: 'Name' })).toHaveAttribute('aria-pressed', 'true');
-  await expect(toggle.getByRole('button', { name: 'Recently changed' })).toHaveAttribute('aria-pressed', 'false');
-  await toggle.getByRole('button', { name: 'Recently changed' }).click();
-  await expect(toggle.getByRole('button', { name: 'Recently changed' })).toHaveAttribute('aria-pressed', 'true');
+  const sort = p.getByRole('button', { name: 'Sort', exact: true });
+  const menu = p.getByRole('menu', { name: 'Order of the agents' });
+  await expect(sort).toHaveAttribute('aria-haspopup', 'menu'); await expect(sort).toHaveAttribute('aria-expanded', 'false'); await expect(menu).toHaveCount(0);
+  expect((await sort.innerText()).trim()).toBe('');
+  await sort.click();
+  await expect(sort).toHaveAttribute('aria-expanded', 'true');
+  await expect(menu.getByRole('menuitemradio')).toHaveText(['Name', 'Recently changed']);
+  await expect(menu.getByRole('menuitemradio', { name: 'Name' })).toHaveAttribute('aria-checked', 'true');
+  await expect(menu.getByRole('menuitemradio', { name: 'Recently changed' })).toHaveAttribute('aria-checked', 'false');
+  await menu.getByRole('menuitemradio', { name: 'Recently changed' }).click();
+  await expect(menu).toHaveCount(0); await expect(sort).toBeFocused();
+  await sort.click();
+  await expect(menu.getByRole('menuitemradio', { name: 'Recently changed' })).toHaveAttribute('aria-checked', 'true');
+  await p.keyboard.press('Escape'); await expect(menu).toHaveCount(0);
   expect(await names()).toEqual(BY_RECENT);
   await pick('Writing coach');
   await shelf('Skills').getByRole('button', { name: 'Remove Improve a draft' }).click();
   expect((await names())[0]).toBe('Writing coach');
-  await toggle.getByRole('button', { name: 'Name' }).click();
+  await sort.click(); await menu.getByRole('menuitemradio', { name: 'Name' }).click();
   expect(await names()).toEqual(NAMES);
   await expect(panel().getByRole('heading', { level: 2, name: 'Writing coach' })).toBeVisible();
   expect(await budget()).toEqual([]);
@@ -227,7 +236,7 @@ test('the text budget holds on the real page in every state, nothing is under 14
     expect(await budget(), state).toEqual([]);
     const small = (await sizes()).filter(s => s.size < 14);
     expect(small, `${state}: ${JSON.stringify(small)}`).toEqual([]);
-    expect(await p.locator('[data-home]').innerText(), state).not.toMatch(/\/Users\/|\.(md|json|toml|sh)\b|harness|conflict|version/i);
+    expect((await p.locator('[data-home]').innerText()).replace(/version history/gi, ''), state).not.toMatch(/\/Users\/|\.(md|json|toml|sh)\b|harness|conflict|version/i);   // "Version history" is the one phrase that may say it
   };
   await check('start');
   await pick(); await check('picked');
@@ -235,7 +244,7 @@ test('the text budget holds on the real page in every state, nothing is under 14
   await bar().getByRole('button', { name: 'Save', exact: true }).click();
   await expect(bar().locator('.hm-tick')).toHaveCount(3); await check('saved');
   await bar().getByRole('button', { name: 'Go back' }).click(); await check('went back');
-  await p.getByRole('button', { name: 'Recently changed' }).click(); await check('recent order');
+  await chooseSort(p, 'Recently changed'); await check('recent order');
 });
 
 test('the keyboard does all of it: reach an agent, pick it, reach Remove, remove, reach Save, save, go back', async () => {
@@ -272,14 +281,25 @@ test('the keyboard does all of it: reach an agent, pick it, reach Remove, remove
   await expect(panel().getByRole('heading', { level: 2, name: 'Meeting assistant' })).toBeFocused();
 });
 
-test('the sort toggle works by keyboard, and its buttons show a ring', async () => {
+test('the sort menu works by keyboard: Down Arrow opens it on the item in use, the arrows move, Enter chooses and closes, Escape closes, and the items show a ring', async () => {
   const p = page();
-  await p.getByRole('button', { name: 'Name', exact: true }).focus();
-  await p.keyboard.press('Tab');
-  await expect(p.getByRole('button', { name: 'Recently changed' })).toBeFocused();
-  await p.keyboard.press('Enter');
-  expect(await names()).toEqual(BY_RECENT);
+  const sort = p.getByRole('button', { name: 'Sort', exact: true });
+  await sort.focus();
+  await p.keyboard.press('ArrowDown');
+  await expect(p.getByRole('menuitemradio', { name: 'Name' })).toBeFocused();
   expect(await p.evaluate(() => parseFloat(getComputedStyle(document.activeElement!).outlineWidth))).toBeGreaterThanOrEqual(3);
+  await p.keyboard.press('ArrowDown');
+  await expect(p.getByRole('menuitemradio', { name: 'Recently changed' })).toBeFocused();
+  await p.keyboard.press('ArrowDown');
+  await expect(p.getByRole('menuitemradio', { name: 'Recently changed' })).toBeFocused();   // it stops at the end
+  await p.keyboard.press('Home'); await expect(p.getByRole('menuitemradio', { name: 'Name' })).toBeFocused();
+  await p.keyboard.press('End'); await p.keyboard.press('Enter');
+  await expect(p.getByRole('menu')).toHaveCount(0); await expect(sort).toBeFocused();
+  expect(await names()).toEqual(BY_RECENT);
+  // Enter opens it too, Escape puts it away and keeps the focus on the icon.
+  await p.keyboard.press('Enter'); await expect(p.getByRole('menuitemradio', { name: 'Recently changed' })).toBeFocused();
+  await p.keyboard.press('Escape'); await expect(p.getByRole('menu')).toHaveCount(0); await expect(sort).toBeFocused();
+  expect(await names()).toEqual(BY_RECENT);
 });
 
 test('with reduce motion on, saving runs no animation: the ticks appear at once', async () => {

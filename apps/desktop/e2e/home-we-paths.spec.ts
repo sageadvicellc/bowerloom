@@ -105,7 +105,7 @@ test('the path can always be selected by hand, and when the window will not let 
 
 test('the Library page has the same disclosure for an agent, a skill and a tool, and none for a set of notes', async () => {
   const p = page();
-  await page().locator('header.hm-bar').getByRole('tab', { name: 'Library' }).click();
+  await page().locator('nav.hm-nav').getByRole('button', { name: 'Library', exact: true }).click();
   for (const [tab, name] of [['Skills', 'Compare two options'], ['Agents', 'Inbox sorter'], ['Tools', 'Search the web']] as const) {
     await p.getByRole('tab', { name: new RegExp(`^${tab} \\d+$`) }).click();
     await p.locator('.lb-list').getByRole('button', { name, exact: true }).click();

@@ -8,7 +8,7 @@
  * control that opened it, or, if that is gone (a removed row), to the row that took its place.
  */
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { ReactElement } from 'react';
+import type { ReactElement, Ref } from 'react';
 import { agentSplit, agentSplitLine, libraryCounts, libraryDetails, listLibrary, notUsedCount, removePlan, agentsFor } from '../../../shared/home/library-model.js';
 import { selectedFirst } from '../../../shared/home/add-model.js';
 import { placesOf } from '../../../shared/home/where-it-lives.js';
@@ -25,7 +25,7 @@ import { useLeaving } from '../kit/presence.js';
 import { LibraryDetails } from './LibraryDetails.js';
 import { LibraryFilter } from './LibraryFilter.js';
 import { LibraryList } from './LibraryList.js';
-import { LibrarySortToggle } from './LibrarySortToggle.js';
+import { LibrarySortMenu } from './LibrarySortMenu.js';
 import { LibraryTabs, tabId } from './LibraryTabs.js';
 import { RemoveDialog } from './RemoveDialog.js';
 import { UpdateDialog } from './UpdateDialog.js';
@@ -34,6 +34,19 @@ import { LIBRARY_WORDS, addedItems, addedTo, countLine, removedLine } from './li
 import './library.css';
 
 const L = LIBRARY_WORDS.label, H = LIBRARY_WORDS.hint;
+
+/**
+ * What the shell gives the page when the page is drawn inside the app: the id of its main place, the kind it shows (the navigation chooses it, so it is the shell's state),
+ * and whether the "Add from the web" sheet is open (its button sits in the top row of the shell).
+ */
+export interface LibraryShell {
+  readonly mainId: string | undefined;
+  readonly kind: LibraryKind;
+  onKind(kind: LibraryKind): void;
+  readonly webOpen: boolean;
+  onWebOpen(open: boolean): void;
+  readonly webButton: Ref<HTMLButtonElement>;
+}
 
 export interface LibraryPageProps {
   /**
@@ -45,7 +58,7 @@ export interface LibraryPageProps {
    * True inside the shell: the page then adds its stage and its panel to the shell's own body (a wrapper that takes no box of its own) instead of making a
    * body of its own, and its stage takes `mainId` as its id so the page has one main place at a time.
    */
-  shell?: { readonly mainId: string | undefined };
+  shell?: LibraryShell;
   /** The id of the agent that is picked on the map: the picker of "Add to an agent" lists it first and marks it "Selected". */
   selectedAgent?: string | null;
 }
@@ -62,7 +75,9 @@ type FocusAfter = { readonly row: number } | 'heading' | 'title';
 export function LibraryPage({ onOpenAgent, shell, selectedAgent = null }: LibraryPageProps = {}): ReactElement {
   const { state, dispatch } = useProtoStore();
   const world = state.draft;
-  const [kind, setKind] = useState<LibraryKind>('skill');
+  const [ownKind, setOwnKind] = useState<LibraryKind>('skill');
+  const kind = shell === undefined ? ownKind : shell.kind;
+  const setKind = shell === undefined ? setOwnKind : shell.onKind;
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<LibrarySort>('name');
   const [unusedOnly, setUnusedOnly] = useState(false);
@@ -70,14 +85,17 @@ export function LibraryPage({ onOpenAgent, shell, selectedAgent = null }: Librar
   const [removeFor, setRemoveFor] = useState<RemoveSnapshot | null>(null);
   const [updateFor, setUpdateFor] = useState<UpdateSnapshot | null>(null);
   const [copiesFor, setCopiesFor] = useState<string | null>(null);
-  const [webOpen, setWebOpen] = useState(false);
+  const [ownWebOpen, setOwnWebOpen] = useState(false);
+  const webOpen = shell === undefined ? ownWebOpen : shell.webOpen;
+  const setWebOpen = shell === undefined ? setOwnWebOpen : shell.onWebOpen;
   const [say, setSay] = useState('');
   const [note, setNote] = useState('');
   // The edit that the note is about: the note goes when the draft no longer holds it (Ctrl+Z, an Undo in the list, Go back).
   const [noteEdit, setNoteEdit] = useState<object | null>(null);
   const removing = useLeaving(removeFor), updating = useLeaving(updateFor), copies = useLeaving(copiesFor);
   const panelId = useId();
-  const panel = useRef<HTMLElement>(null), body = useRef<HTMLDivElement>(null), webButton = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLElement>(null), body = useRef<HTMLDivElement>(null), ownWebButton = useRef<HTMLButtonElement>(null);
+  const webButton = shell === undefined ? ownWebButton : shell.webButton;
   const focusAfter = useRef<FocusAfter | null>(null);
 
   const counts = useMemo(() => libraryCounts(world), [world]);
@@ -102,10 +120,11 @@ export function LibraryPage({ onOpenAgent, shell, selectedAgent = null }: Librar
     const after = focusAfter.current;
     if (after === null) return;
     focusAfter.current = null;
-    if (after === 'title') { body.current?.querySelector<HTMLElement>('main h1')?.focus(); return; }
+    const heading = (): HTMLElement | null => document.querySelector<HTMLElement>('.hm-topbar h1') ?? body.current?.querySelector<HTMLElement>('main h1') ?? null;
+    if (after === 'title') { heading()?.focus(); return; }
     if (after === 'heading') { panel.current?.querySelector<HTMLElement>('#lb-panel-title')?.focus(); return; }
     const buttons = body.current?.querySelectorAll<HTMLElement>('.lb-list .kit-card-main') ?? [];
-    (buttons[Math.min(after.row, buttons.length - 1)] ?? body.current?.querySelector<HTMLElement>('main h1'))?.focus();
+    (buttons[Math.min(after.row, buttons.length - 1)] ?? heading())?.focus();
   });
 
   const clearSays = (): void => { setSay(''); setNote(''); setNoteEdit(null); };
@@ -173,23 +192,25 @@ export function LibraryPage({ onOpenAgent, shell, selectedAgent = null }: Librar
   return (
     <div className={shell === undefined ? 'hm-body' : 'lb-fill'} ref={body} data-library="">
       <main id={shell === undefined ? 'main' : shell.mainId} className="hm-stage">
-        <div className="hm-stage-head">
-          <div className="hm-stage-title">
-            <div className="lb-title-line">
-              <h1 className="kit-heading" tabIndex={-1}>{L.title}</h1>
+        {shell === undefined ? (
+          <div className="hm-stage-head">
+            <div className="hm-stage-title">
+              <div className="lb-title-line">
+                <h1 className="kit-heading" tabIndex={-1}>{L.title}</h1>
+              </div>
+              <p className="kit-hint lb-tip">{H.pageTip}</p>
             </div>
-            <p className="kit-hint lb-tip">{H.pageTip}</p>
+            <div className="hm-stage-tools">
+              <Button variant="primary" icon="plus" ref={ownWebButton} onClick={() => setWebOpen(true)}>{L.addFromWeb}</Button>
+            </div>
           </div>
-          <div className="hm-stage-tools">
-            <Button variant="primary" icon="plus" ref={webButton} onClick={() => setWebOpen(true)}>{L.addFromWeb}</Button>
-          </div>
-        </div>
+        ) : <p className="kit-hint lb-tip">{H.pageTip}</p>}
         <div className="lb-sticky">
           <div className="lb-find">
             <LibraryTabs kind={kind} counts={counts} onChange={changeKind} panelId={panelId} />
             <input className="lb-search" type="search" autoComplete="off" spellCheck={false} aria-label={L.search} placeholder={L.searchPlaceholder} value={query} onChange={e => { setQuery(e.target.value); }} />
             <div className="lb-order">
-              <LibrarySortToggle mode={order} onChange={setSort} withUsed={usable} />
+              <LibrarySortMenu mode={order} onChange={setSort} withUsed={usable} />
               {usable ? <LibraryFilter on={unusedOnly} count={unused} onChange={setUnusedOnly} /> : null}
             </div>
           </div>
@@ -201,12 +222,12 @@ export function LibraryPage({ onOpenAgent, shell, selectedAgent = null }: Librar
         </div>
       </main>
 
-      <aside className="hm-panel" ref={panel} aria-labelledby="lb-panel-title">
+      <aside className="hm-panel" ref={panel} id={shell === undefined ? undefined : 'hm-panel'} aria-labelledby="lb-panel-title">
         <LibraryDetails key={`${kind}:${selectedId ?? ''}`} details={details} choices={choices} say={say} onPickAgent={pickAgent} onOpenAgent={openAgent}
           onRemove={askRemove} onCopy={makeCopy} onUpdate={askUpdate} onBadgePress={() => setCopiesFor(selectedId)} places={places} />
       </aside>
 
-      <WebSheet open={webOpen} onClose={() => setWebOpen(false)} onAdded={added} returnTo={() => webButton.current} />
+      <WebSheet open={webOpen} onClose={() => setWebOpen(false)} onAdded={added} returnTo={() => (webButton !== null && typeof webButton === 'object' && 'current' in webButton ? webButton.current : null)} />
 
       {removing.value === null ? null : (
         <RemoveDialog name={removing.value.name} line={removing.value.line} agents={removing.value.agents} leaving={removing.leaving} onClose={() => setRemoveFor(null)} onConfirm={confirmRemove} restoreFocus={removeFocus} />

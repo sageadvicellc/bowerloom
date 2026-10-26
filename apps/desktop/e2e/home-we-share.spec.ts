@@ -26,7 +26,7 @@ let home: Home;
 const page = (): Page => home.page;
 const sheet = (): Locator => page().getByRole('dialog', { name: 'Share my agents' });
 const budget = async (): Promise<string[]> => assertTextBudget(await page().evaluate(() => document.querySelector('[data-home]')!.outerHTML));
-const header = (): Locator => page().locator('header.hm-bar');
+const header = (): Locator => page().locator('nav.hm-nav');
 async function openSheet(): Promise<void> { await header().getByRole('button', { name: 'Share', exact: true }).click(); await expect(sheet()).toBeVisible(); await animationsDone(page()); }
 
 test.beforeAll(async () => { test.setTimeout(300_000); home = await launchHome(); });

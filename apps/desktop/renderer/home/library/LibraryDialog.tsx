@@ -5,7 +5,7 @@
  */
 import { useEffect, useId, useRef } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactElement, ReactNode } from 'react';
-import { Button } from '../kit/Button.js';
+import { IconButton } from '../kit/IconButton.js';
 import { trapTab } from '../add/dom-helpers.js';
 import { useModalLayer } from '../add/modal-layer.js';
 import { LIBRARY_WORDS } from './library-words.js';
@@ -57,7 +57,7 @@ export function LibraryDialog({ title, name, leaving, size, describedBy, onClose
             <h2 className="kit-heading" id={titleId} tabIndex={-1} ref={heading}>{title}</h2>
             <p className="add-dialog-name">{name}</p>
           </div>
-          <Button round icon="close" aria-label={LIBRARY_WORDS.label.close} onClick={onClose} />
+          <IconButton icon="close" label={LIBRARY_WORDS.label.close} onClick={onClose} />
         </header>
         {children}
       </div>

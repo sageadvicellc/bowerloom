@@ -89,3 +89,43 @@ export async function ensurePicked(button: Locator): Promise<void> {
 export interface Rect { x: number; y: number; w: number; h: number }
 export const rectOf = async (page: Page, selector: string): Promise<Rect> => page.locator(selector).first().evaluate(el => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
 export const overlaps = (a: Rect, b: Rect): boolean => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+/**
+ * Reaches an item of the left navigation by the keyboard alone: Tab until the one stop of the items has the focus, then Home and the arrow keys. The items are one stop, so
+ * Tab alone never reaches Add, Share or Version history.
+ */
+export async function keyToNav(page: Page, name: string): Promise<void> {
+  const nav = page.locator('nav.hm-nav');
+  const target = nav.getByRole('button', { name, exact: true });
+  for (let i = 0; i < 80; i += 1) {
+    if (await nav.locator('[data-nav-item]:focus').count() > 0) break;
+    await page.keyboard.press('Tab');
+  }
+  if (await nav.locator('[data-nav-item]:focus').count() === 0) throw new Error('Tab never reached the navigation.');
+  await page.keyboard.press('Home');
+  for (let i = 0; i < 12; i += 1) {
+    if (await target.evaluate(el => el === document.activeElement)) return;
+    await page.keyboard.press('ArrowDown');
+  }
+  throw new Error(`The arrow keys did not reach "${name}" in the navigation.`);
+}
+
+/** Opens the sort menu (the icon named Sort), and gives the menu. Escape puts it away again. */
+export async function openSort(page: Page): Promise<Locator> {
+  const sort = page.getByRole('button', { name: 'Sort', exact: true });
+  if (await sort.getAttribute('aria-expanded') !== 'true') await sort.click();
+  return page.getByRole('menu');
+}
+/** Chooses a way of putting things in order from the sort menu; the menu closes and the focus goes back to the icon. */
+export async function chooseSort(page: Page, name: string): Promise<void> {
+  const menu = await openSort(page);
+  await menu.getByRole('menuitemradio', { name, exact: true }).click();
+}
+/** Checks which way of ordering is in use (the checked item of the sort menu), then puts the menu away. */
+export async function expectSort(page: Page, name: string): Promise<void> {
+  const menu = await openSort(page);
+  await expect(menu.getByRole('menuitemradio', { name, exact: true })).toHaveAttribute('aria-checked', 'true');
+  await expect(menu.locator('[aria-checked="true"]')).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+}

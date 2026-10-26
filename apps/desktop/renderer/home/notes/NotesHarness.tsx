@@ -71,7 +71,7 @@ function Page(): ReactElement {
   const remove = (entry: { readonly kind: 'skill' | 'tool' | 'note'; readonly id: string }): void => { if (agent !== null) { dispatch(removeAction(agent.id, entry.kind, entry.id)); setPickedItem(null); } };
 
   return (
-    <div className="hm-root nt-page" data-home="">
+    <div className="hm-root hm-flat nt-page" data-home="">
       <header className="hm-bar">
         <div className="hm-brand"><KitIcon name="leaf" size={28} /><span>{WORDS.label.appName}</span></div>
       </header>

@@ -31,7 +31,7 @@ const budget = async (): Promise<string[]> => assertTextBudget(await page().eval
 async function toFind(): Promise<void> { await page().getByRole('button', { name: 'Find my agents' }).click(); await expect(find()).toBeVisible(); }
 async function toPlaces(): Promise<void> { await toFind(); await expect(page().getByRole('button', { name: 'Looks right' })).toBeVisible(); }
 async function toConfirm(): Promise<void> { await toPlaces(); await page().getByRole('button', { name: 'Looks right' }).click(); await expect(page().getByRole('heading', { level: 1, name: 'Read what is inside?' })).toBeVisible(); }
-async function toMap(): Promise<void> { await toConfirm(); await page().getByRole('button', { name: 'Yes, read them' }).click(); await expect(page().getByRole('heading', { level: 1, name: 'Your agents' })).toBeVisible(); }
+async function toMap(): Promise<void> { await toConfirm(); await page().getByRole('button', { name: 'Yes, read them' }).click(); await expect(page().getByRole('heading', { level: 1, name: 'Agents', exact: true })).toBeVisible(); }
 /** Every piece of visible text on the page is 14 px or more. */
 const smallText = async (): Promise<string[]> => page().evaluate(() => {
   const out: string[] = [];
@@ -71,7 +71,7 @@ test('Welcome comes back on every launch, and the map address skips it and the t
   await fresh(p, undefined, { welcome: true });
   await expect(p.locator('[data-screen="welcome"]')).toBeVisible();
   await fresh(p);
-  await expect(p.getByRole('heading', { level: 1, name: 'Your agents' })).toBeVisible();
+  await expect(p.getByRole('heading', { level: 1, name: 'Agents', exact: true })).toBeVisible();
   await expect(p.locator('[data-screen="welcome"]')).toHaveCount(0);
   await framesPainted(p);
   await expect(dialog()).toHaveCount(0);
@@ -167,7 +167,7 @@ test('after "Yes, read them" a brief reading shows, then the map, and the tour s
   await p.getByRole('button', { name: 'Yes, read them' }).click();
   await expect(p.getByRole('heading', { level: 1, name: 'Reading your agents' })).toBeVisible();
   await expect(p.getByRole('progressbar', { name: 'Reading progress' })).toBeVisible();
-  await expect(p.getByRole('heading', { level: 1, name: 'Your agents' })).toBeVisible();
+  await expect(p.getByRole('heading', { level: 1, name: 'Agents', exact: true })).toBeVisible();
   await expect(agentCards()).toHaveCount(10);
   await expect(dialog()).toBeVisible();
   await expect(dialog().getByText('These are your AI agents, from every tool.')).toBeVisible();
@@ -190,7 +190,7 @@ test('step two waits for a real click on an agent: a plain hint that also names 
   await expect(p.locator('.hm-panel h2')).toHaveText('Pick an agent');
   // A click outside the lit agent does nothing.
   await p.mouse.click(5, 450);
-  await p.locator('.hm-sort').click({ force: true, position: { x: 4, y: 4 } });
+  await p.getByRole('button', { name: 'Sort', exact: true }).click({ force: true, position: { x: 4, y: 4 } });
   await expect(dialog().getByText('2 of 7')).toBeVisible();
   // A real click on the lit agent is the step's action.
   const first = agentCards().first();
@@ -249,7 +249,7 @@ test('the tour does not start again after Find more, and Help replays it', async
   await expect(p.getByRole('button', { name: 'Looks right' })).toBeVisible();
   await p.getByRole('button', { name: 'Looks right' }).click();
   await p.getByRole('button', { name: 'Yes, read them' }).click();
-  await expect(p.getByRole('heading', { level: 1, name: 'Your agents' })).toBeVisible();
+  await expect(p.getByRole('heading', { level: 1, name: 'Agents', exact: true })).toBeVisible();
   await framesPainted(p);
   await expect(dialog()).toHaveCount(0);
   await p.getByRole('button', { name: 'Help' }).click();
@@ -264,7 +264,7 @@ test('an unticked place is skipped: its agents stay off the map, and Find more k
   await p.getByRole('checkbox', { name: /Your home folder/ }).uncheck();
   await p.getByRole('button', { name: 'Looks right' }).click();
   await p.getByRole('button', { name: 'Yes, read them' }).click();
-  await expect(p.getByRole('heading', { level: 1, name: 'Your agents' })).toBeVisible();
+  await expect(p.getByRole('heading', { level: 1, name: 'Agents', exact: true })).toBeVisible();
   await expect(agentCards()).toHaveCount(2);
   await expect(p.getByText('2 agents.')).toBeVisible();
   await endTour();
@@ -285,7 +285,7 @@ test('"Not now" in Find more goes back to the map as it was', async () => {
   await p.getByRole('button', { name: 'Find more' }).click();
   await p.getByRole('button', { name: 'Looks right' }).click();
   await p.getByRole('button', { name: 'Not now' }).click();
-  await expect(p.getByRole('heading', { level: 1, name: 'Your agents' })).toBeVisible();
+  await expect(p.getByRole('heading', { level: 1, name: 'Agents', exact: true })).toBeVisible();
   await expect(agentCards()).toHaveCount(10);
 });
 
@@ -401,7 +401,7 @@ test('with reduce motion on, the tiles just appear lit and nothing animates', as
   expect(await p.evaluate(() => getComputedStyle(document.querySelector('.fr-tile')!).transitionDuration)).toBe('0s');
   await p.getByRole('button', { name: 'Looks right' }).click();
   await p.getByRole('button', { name: 'Yes, read them' }).click();
-  await expect(p.getByRole('heading', { level: 1, name: 'Your agents' })).toBeVisible();
+  await expect(p.getByRole('heading', { level: 1, name: 'Agents', exact: true })).toBeVisible();
   await expect(dialog()).toBeVisible();
 });
 

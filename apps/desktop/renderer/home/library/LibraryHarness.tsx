@@ -62,7 +62,7 @@ function Page(): ReactElement {
   };
 
   return (
-    <div className="hm-root lb-page" data-home="">
+    <div className="hm-root hm-flat lb-page" data-home="">
       <header className="hm-bar">
         <div className="hm-brand"><KitIcon name="leaf" size={28} /><span>{WORDS.label.appName}</span></div>
         <div className="hm-preview" data-preview="">

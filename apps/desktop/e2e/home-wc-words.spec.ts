@@ -35,7 +35,7 @@ const MULTI = ownedAgents(world).filter(a => new Set(a.foundAt.map(f => f.interf
 
 let home: Home;
 const page = (): Page => home.page;
-const header = (): Locator => page().locator('header.hm-bar');
+const header = (): Locator => page().locator('nav.hm-nav');
 const bar = (): Locator => page().getByRole('region', { name: 'Save bar' });
 const panel = (): Locator => page().locator('aside.hm-panel');
 const sheet = (): Locator => page().getByRole('dialog', { name: 'Share my agents' });

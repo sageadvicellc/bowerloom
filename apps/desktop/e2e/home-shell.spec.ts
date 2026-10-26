@@ -24,15 +24,16 @@ test.beforeEach(async () => {
   await skipTour(page());
 });
 
-test('it opens on the agents: a top bar, a grid of ten agent cards, a side panel, a Save bar, and no left rail and no bridge', async () => {
+test('it opens on the agents: a left navigation, a top row, a grid of ten agent cards, a details panel, a Save bar, and no bridge', async () => {
   const p = page();
-  await expect(p.getByRole('heading', { level: 1, name: 'Your agents' })).toBeVisible();
+  await expect(p.getByRole('heading', { level: 1, name: 'Agents', exact: true })).toBeVisible();
   expect(await p.title()).toBe('Bowerloom');
   expect(await p.evaluate(() => typeof (window as unknown as { bowerloom?: unknown }).bowerloom)).toBe('undefined');
   await expect(p.locator('.kit-card[data-kind="agent"]')).toHaveCount(10);
-  await expect(p.locator('nav, .sidebar')).toHaveCount(0);
-  const bar = p.locator('header.hm-bar');
-  for (const name of ['Version history', 'Add', 'Help']) await expect(bar.getByRole('button', { name })).toBeVisible();
+  // Three columns, as in a desktop app: one navigation landmark at the left, the main place, and the details (complementary) at the right.
+  await expect(p.getByRole('navigation')).toHaveCount(1); await expect(p.getByRole('main')).toHaveCount(1); await expect(p.getByRole('complementary')).toHaveCount(1);
+  const bar = p.locator('nav.hm-nav');
+  for (const name of ['Version history', 'Add', 'Help', 'Share', 'Find more', 'Agents', 'Library']) await expect(bar.getByRole('button', { name, exact: true })).toBeVisible();
   await expect(p.getByRole('region', { name: 'Save bar' }).getByRole('button', { name: 'Save' })).toBeDisabled();
   await expect(p.getByText('Nothing to save yet')).toBeVisible();
   for (const id of ['bar', 'map', 'agent', 'details', 'add', 'save', 'help']) await expect(p.locator(`[data-tour~="${id}"]`)).toHaveCount(1);
@@ -107,7 +108,7 @@ test('no text on the page is under 14 px, and the card name, hint, page title, s
 
 test('the Add and Version history drawers take the focus, close with Escape and the Close button, return the focus, and only one is open', async () => {
   const p = page();
-  const add = p.locator('header.hm-bar').getByRole('button', { name: 'Add' }), points = p.locator('header.hm-bar').getByRole('button', { name: 'Version history' });
+  const add = p.locator('nav.hm-nav').getByRole('button', { name: 'Add' }), points = p.locator('nav.hm-nav').getByRole('button', { name: 'Version history' });
   await add.focus(); await p.keyboard.press('Enter');
   const drawer = p.getByRole('dialog', { name: 'Add' });
   await expect(drawer).toBeVisible();
@@ -141,7 +142,7 @@ test('the "?" Help button opens one sentence and Show me around; Escape closes i
   await expect(help).toBeFocused();
 });
 
-test('the Tab order follows the reading order: the top bar, then the agents, then the shelves, then Save', async () => {
+test('the Tab order follows the reading order: the navigation (its toggle, its one stop, the Preview mark), the top row, then the agents, then the shelves, then Save', async () => {
   const p = page();
   await p.locator('a.skip').focus();
   const names: string[] = [];
@@ -150,10 +151,11 @@ test('the Tab order follows the reading order: the top bar, then the agents, the
     names.push(await p.evaluate(() => { const el = document.activeElement as HTMLElement | null; return el === null ? '' : (el.getAttribute('aria-label') ?? el.textContent ?? '').trim(); }));
   }
   const at = (n: string): number => names.indexOf(n);
-  expect(names[0]).toBe('Skip to details'); expect(names[1]).toBe('About this preview'); expect(names[2]).toBe('Agents'); expect(at('Version history')).toBe(3); expect(at('Share')).toBe(4);   // the Preview badge's help comes first in the bar (review item 16) expect(at('Add')).toBeGreaterThan(at('Version history')); expect(at('Help')).toBeGreaterThan(at('Add'));
-  expect(at('Name')).toBeGreaterThan(at('Help')); expect(at('Recently changed')).toBeGreaterThan(at('Name'));
+  // The navigation is the toggle, ONE stop for all its items (the arrow keys move inside it), and the Preview mark; then the top row (Sort, the details toggle).
+  expect(names.slice(0, 6)).toEqual(['Skip to details', 'Hide navigation', 'Agents', 'About this preview', 'Sort', 'Hide details']);
+  for (const word of ['Add', 'Share', 'Version history', 'Help', 'Find more', 'Library']) expect(names.includes(word), `${word} is reached by the arrow keys, not by Tab`).toBe(false);
   // The agents are one stop (the arrow keys reach the others): the tile that is picked, its counts, then the details panel.
-  expect(at('Inbox sorter')).toBeGreaterThan(at('Recently changed')); expect(at('Interview notetaker')).toBe(-1);
+  expect(at('Inbox sorter')).toBeGreaterThan(at('Hide details')); expect(at('Interview notetaker')).toBe(-1);
   expect(at('4 skills')).toBe(at('Inbox sorter') + 1); expect(at('Write a short summary')).toBeGreaterThan(at('1 note set'));
 });
 
@@ -197,7 +199,7 @@ test('with reduce motion on, the drawer and the cards run no animation and no tr
   await p.emulateMedia({ reducedMotion: 'reduce' });
   await fresh(p);
   await skipTour(p);
-  await p.locator('header.hm-bar').getByRole('button', { name: 'Add' }).click();
+  await p.locator('nav.hm-nav').getByRole('button', { name: 'Add' }).click();
   await expect(p.getByRole('dialog', { name: 'Add' })).toBeVisible();
   await framesPainted(p);
   expect(await p.evaluate(() => document.getAnimations().length)).toBe(0);
@@ -224,7 +226,7 @@ for (const [w, h] of SIZES) {
       const cards = [...document.querySelectorAll('.hm-grid .kit-card[data-kind="agent"]')].map(c => c.getBoundingClientRect());
       // Wave D: a name and a hint are one line and may be cut sideways, but only with an ellipsis.
       const texts = [...document.querySelectorAll('.kit-card-main, .kit-card-hint')].map(e => ({ over: e.scrollHeight - e.clientHeight, w: getComputedStyle(e).textOverflow === 'ellipsis' ? 0 : e.scrollWidth - e.clientWidth }));
-      const panel = document.querySelector('aside.hm-panel')!.getBoundingClientRect(), bar = document.querySelector('.hm-savebar')!.getBoundingClientRect(), top = document.querySelector('.hm-bar')!.getBoundingClientRect();
+      const panel = document.querySelector('aside.hm-panel')!.getBoundingClientRect(), bar = document.querySelector('.hm-savebar')!.getBoundingClientRect(), top = document.querySelector('.hm-topbar')!.getBoundingClientRect();
       return { sideways: doc.scrollWidth - doc.clientWidth, inside: cards.every(c => c.left >= stageEl.left && c.right <= stageEl.right + 0.5), clipped: texts.filter(t => t.over > 1 || t.w > 1).length, panelRight: panel.right, barBottom: bar.bottom, vw: window.innerWidth, vh: window.innerHeight, topH: top.height, columns: new Set(cards.map(c => Math.round(c.left))).size };
     });
     expect(stage.sideways).toBeLessThanOrEqual(0); expect(stage.inside).toBe(true); expect(stage.clipped).toBe(0);
@@ -247,7 +249,7 @@ if (shotsDirSet()) {
       await p.locator('.kit-card[data-kind="agent"]').nth(8).locator('.kit-card-main').click();
       await shot(p, 'shell-picked', w, h, look);
       await p.locator('.kit-card[data-kind="agent"]').nth(8).locator('.kit-card-main').click();
-      await p.locator('header.hm-bar').getByRole('button', { name: 'Add' }).click();
+      await p.locator('nav.hm-nav').getByRole('button', { name: 'Add' }).click();
       await expect(p.getByRole('dialog', { name: 'Add' })).toBeVisible();
       await shot(p, 'add-drawer', w, h, look);
       await p.keyboard.press('Escape');

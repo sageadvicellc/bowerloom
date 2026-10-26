@@ -50,7 +50,7 @@ function onScreen(b: Box, vw: number, vh: number): Box | null {
 }
 
 /** The narrowest the popover may be made, in pixels, to fit beside a very large target. */
-const MIN_WIDTH = 280;
+const MIN_WIDTH = 256;
 
 /** What a screen reader hears at each step. It stays on the page, so a change is spoken. */
 export function TourAnnouncer({ state, picked = false }: { state: TourState; picked?: boolean }): ReactElement {

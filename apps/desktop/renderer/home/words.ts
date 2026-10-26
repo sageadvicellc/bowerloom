@@ -27,6 +27,13 @@ export const WORDS = deepFreeze({
     skipToDetails: 'Skip to details',
     hideDetails: 'Hide details',
     showDetails: 'Show details',
+    hideNav: 'Hide navigation',
+    showNav: 'Show navigation',
+    mainMenu: 'Main menu',
+    libraryPages: 'Library pages',
+    sort: 'Sort',
+    readOnly: 'Read-only',
+    aboutReadOnly: 'About read-only mode',
     reaches: 'Reaches',
     madeBy: 'Made by',
     release: 'Release',
@@ -163,6 +170,10 @@ export const WORDS = deepFreeze({
     noUsers: DETAIL_WORDS.noUsers,
     noPrograms: DETAIL_WORDS.noPrograms,
     copyBlocked: 'Copying is blocked here. Select the path and copy it.',
+    /** Why a control that would change the setup does nothing in read-only mode: its tooltip. */
+    readOnlyWhy: 'Read-only: your setup is not changed.',
+    /** The Save bar in read-only mode. */
+    readOnlyBar: 'Read-only. Nothing here changes your setup.',
   },
   /** The text behind a "?" button: at most 25 words, and the only place a technical term may appear. */
   popover: {
@@ -170,6 +181,9 @@ export const WORDS = deepFreeze({
     preview: 'This is a preview. It sends nothing, stores nothing, and writes nothing to your computer.',
     versionHistory: 'Version history lists the copies of your agents that you can go back to.',
     connection: 'A connection lets an agent use another program. Its technical name is MCP.',
+    /** The "Read-only" mark: when the setup on show is the person's own, and when it is the made-up sample. */
+    readOnlyReal: 'You are looking at your setup. Nothing here changes it.',
+    readOnlySample: 'Read-only preview.',
   },
 });
 

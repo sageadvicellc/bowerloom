@@ -9,7 +9,11 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Button } from './Button.js';
+import { KitIcon } from './icons.js';
+import type { KitIconName } from './icons.js';
 import { usePresence } from './presence.js';
+import { Tooltip } from './Tooltip.js';
+import type { TipSide } from './Tooltip.js';
 
 export interface HelpPopoverProps {
   /** What the button is called, for a screen reader. At most 5 words. */
@@ -28,9 +32,15 @@ export interface HelpPopoverProps {
   pill?: string;
   /** The word on a plain button ("Help"). It takes the place of the round "?". */
   word?: string;
+  /** Draws the word button as an item of the left navigation: an icon, the word, and a Tab stop of the navigation's own (`tabIndex`), found by the arrow keys through `data-nav-item`. */
+  item?: { readonly icon: KitIconName; readonly navKey: string; readonly tabIndex: number };
+  /** Which way the popover opens: under the button (default) or over it, for a button at the foot of the window. */
+  place?: 'below' | 'above';
+  /** A tooltip for the button, for when its words are hidden (the icon rail). `off` leaves it out without moving the button. */
+  tip?: { readonly text: string; readonly side: TipSide; readonly off: boolean };
 }
 
-export function HelpPopover({ label, text, action, defaultOpen = false, dataTour, align = 'start', size = 'normal', pill, word }: HelpPopoverProps): ReactElement {
+export function HelpPopover({ label, text, action, defaultOpen = false, dataTour, align = 'start', size = 'normal', pill, word, item, place = 'below', tip }: HelpPopoverProps): ReactElement {
   const [open, setOpen] = useState(defaultOpen);
   const id = useId();
   const wrap = useRef<HTMLSpanElement>(null), trigger = useRef<HTMLButtonElement>(null);
@@ -48,13 +58,17 @@ export function HelpPopover({ label, text, action, defaultOpen = false, dataTour
     window.addEventListener('keydown', key, true); window.addEventListener('pointerdown', away);
     return () => { window.removeEventListener('keydown', key, true); window.removeEventListener('pointerdown', away); };
   }, [open]);
+  const toggle = (): void => setOpen(o => !o);
+  const trigger_ = (aria: { readonly 'aria-describedby'?: string }): ReactElement => (pill === undefined
+    ? word === undefined
+      ? <Button ref={trigger} round size={size} aria-label={label} aria-expanded={open} aria-controls={id} data-tour={dataTour} onClick={toggle} {...aria}>?</Button>
+      : item === undefined
+        ? <Button ref={trigger} size={size} aria-expanded={open} aria-controls={id} data-tour={dataTour} onClick={toggle} {...aria}>{word}</Button>
+        : <button ref={trigger} type="button" className="hm-nav-item" data-nav-item="" data-nav-key={item.navKey} tabIndex={item.tabIndex} aria-expanded={open} aria-controls={id} data-tour={dataTour} onClick={toggle} {...aria}><KitIcon name={item.icon} size={20} /><span className="hm-nav-label">{word}</span></button>
+    : <button ref={trigger} type="button" className="kit-status kit-help-text" data-tone="info" data-no-drag="" aria-label={label} aria-expanded={open} aria-controls={id} data-tour={dataTour} onClick={toggle} {...aria}><span className="kit-dot" aria-hidden="true" /><span>{pill}</span></button>);
   return (
-    <span className="kit-help" ref={wrap} data-align={align}>
-      {pill === undefined
-        ? word === undefined
-          ? <Button ref={trigger} round size={size} aria-label={label} aria-expanded={open} aria-controls={id} data-tour={dataTour} onClick={() => setOpen(o => !o)}>?</Button>
-          : <Button ref={trigger} size={size} aria-expanded={open} aria-controls={id} data-tour={dataTour} onClick={() => setOpen(o => !o)}>{word}</Button>
-        : <button ref={trigger} type="button" className="kit-status kit-help-text" data-tone="info" data-no-drag="" aria-label={label} aria-expanded={open} aria-controls={id} data-tour={dataTour} onClick={() => setOpen(o => !o)}><span className="kit-dot" aria-hidden="true" /><span>{pill}</span></button>}
+    <span className="kit-help" ref={wrap} data-align={align} data-place={place === 'above' ? 'above' : undefined}>
+      {tip === undefined ? trigger_({}) : <Tooltip text={tip.text} side={tip.side} off={tip.off}>{aria => trigger_(aria)}</Tooltip>}
       {shown.mounted ? (
         <div className="kit-popover" id={id} role="group" aria-label={label} data-budget="popover" data-leaving={shown.leaving ? '' : undefined}>
           <p>{text}</p>

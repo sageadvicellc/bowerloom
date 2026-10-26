@@ -5,7 +5,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ItemCard } from '../renderer/home/kit/ItemCard.js';
 import { Shelf } from '../renderer/home/kit/Shelf.js';
-import { SortToggle } from '../renderer/home/map/SortToggle.js';
+import { SortList, SortMenu } from '../renderer/home/kit/SortMenu.js';
 import { SaveBar } from '../renderer/home/save/SaveBar.js';
 import { HomeApp } from '../renderer/home/HomeApp.js';
 import { ProtoProvider } from '../renderer/proto/session.js';
@@ -51,12 +51,17 @@ test('a shelf gives every card its hint and its Remove button when asked to', ()
   assert.doesNotMatch(html(createElement(Shelf, { title: 'Skills', entries, selectedId: null, onSelect: none, emptyText: 'Nothing here yet.' })), /kit-remove/);
 });
 
-test('the sort toggle is one group of two buttons; the one in use is pressed, and no button has an icon or a check', () => {
-  const byName = html(createElement(SortToggle, { mode: 'name', onChange: none }));
-  assert.match(byName, /role="group" aria-label="Order of the agents"/);
-  assert.match(byName, /aria-pressed="true" data-sort="name"[^>]*>Name</); assert.match(byName, /aria-pressed="false" data-sort="recent"[^>]*>Recently changed</);
-  const recent = html(createElement(SortToggle, { mode: 'recent', onChange: none }));
-  assert.match(recent, /aria-pressed="false" data-sort="name"/); assert.match(recent, /aria-pressed="true" data-sort="recent"[^>]*>Recently changed</);
+const CHOICES = [{ mode: 'name', label: 'Name' }, { mode: 'recent', label: 'Recently changed' }] as const;
+
+test('the sort control is one icon button named Sort that opens a menu; the menu is a list of two radio items, the one in use is checked, and no item has an icon or a tick', () => {
+  const closed = html(createElement(SortMenu, { mode: 'name', choices: CHOICES, onChange: none, label: 'Sort', menuLabel: 'Order of the agents' }));
+  assert.match(closed, /aria-label="Sort"/); assert.match(closed, /aria-haspopup="menu"/); assert.match(closed, /aria-expanded="false"/); assert.doesNotMatch(closed, /role="menu"/, 'the menu is not in the page until it is opened');
+  assert.equal([...closed.matchAll(/<svg/g)].length, 1, 'the icon button holds one icon'); within(closed);
+  const byName = html(createElement(SortList, { id: 'm', mode: 'name', choices: CHOICES, label: 'Order of the agents', onPick: none }));
+  assert.match(byName, /role="menu" aria-label="Order of the agents"/);
+  assert.match(byName, /role="menuitemradio"[^>]*aria-checked="true"[^>]*data-sort="name"[^>]*>Name</); assert.match(byName, /role="menuitemradio"[^>]*aria-checked="false"[^>]*data-sort="recent"[^>]*>Recently changed</);
+  const recent = html(createElement(SortList, { id: 'm', mode: 'recent', choices: CHOICES, label: 'Order of the agents', onPick: none }));
+  assert.match(recent, /aria-checked="false"[^>]*data-sort="name"/); assert.match(recent, /aria-checked="true"[^>]*data-sort="recent"[^>]*>Recently changed</);
   assert.doesNotMatch(byName, /<svg/); assert.doesNotMatch(recent, /<svg/);
   within(byName); within(recent);
 });
@@ -100,12 +105,12 @@ test('every agent card on the map carries the id of its agent, once each', () =>
   const m = html(createElement(ProtoProvider, { store: createStore(loadWorld()) }, createElement(HomeApp)));
   const ids = [...m.matchAll(/data-drop-agent="([^"]+)"/g)].map(x => x[1]!);
   assert.equal(ids.length, 10); assert.equal(new Set(ids).size, 10); assert.ok(ids.every(id => /^agent-\d\d$/.test(id)), ids.join());
-  assert.match(m, /class="hm-sort"/); assert.doesNotMatch(m, /class="hm-group|data-kind="group"/);
+  assert.match(m, /data-sort-button=""/); assert.doesNotMatch(m, /class="hm-group|data-kind="group"/);
 });
 
-test('the window starts with a link to the details, before the top bar, and exactly one tile of the grid is in the Tab order', () => {
+test('the window starts with a link to the details, before the navigation, and exactly one tile of the grid is in the Tab order', () => {
   const m = html(createElement(ProtoProvider, { store: createStore(loadWorld()) }, createElement(HomeApp)));
-  assert.match(m, /<div class="hm-root" data-home=""><a class="hm-skip" href="#hm-panel-title">Skip to details<\/a><header/);
+  assert.match(m, /<div class="hm-root" data-home="" data-nav="open"><a class="hm-skip" href="#hm-panel-title">Skip to details<\/a><nav class="hm-nav"/);
   const tiles = m.slice(m.indexOf('class="hm-grid"'), m.indexOf('</main>'));
   assert.equal([...tiles.matchAll(/class="kit-card-main"[^>]*tabindex="0"/g)].length, 1, 'one tile is the stop');
   assert.equal([...tiles.matchAll(/class="kit-card-main"[^>]*tabindex="-1"/g)].length, 9, 'the other nine are reached by the arrow keys');

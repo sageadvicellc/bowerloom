@@ -6,7 +6,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { SaveBar } from '../renderer/home/save/SaveBar.js';
 import type { ChangeListView } from '../renderer/home/save/SaveBar.js';
 import { ShellNote } from '../renderer/home/shell/ShellNote.js';
-import { ViewSwitch } from '../renderer/home/shell/ViewSwitch.js';
+import { Sidebar } from '../renderer/home/shell/Sidebar.js';
+import type { SidebarProps } from '../renderer/home/shell/Sidebar.js';
 import { HelpPopover } from '../renderer/home/kit/HelpPopover.js';
 import { UNDO_WORDS } from '../shared/home/change-undo.js';
 import type { ChangeEntry } from '../shared/home/change-undo.js';
@@ -21,6 +22,12 @@ const entries: ChangeEntry[] = [
 const list = (open: boolean): ChangeListView => ({ open, setOpen: () => undefined, entries, undo: () => undefined });
 const bar = (changes: number, open: boolean, said: string | null = null): string =>
   renderToStaticMarkup(createElement(SaveBar, { model: saveBar(changes, 1, null, said), ticks: [], onSave: () => undefined, onGoBack: () => undefined, onDiscard: () => undefined, list: list(open) }));
+
+const noop = (): void => undefined;
+const side = (over: Partial<SidebarProps>): string => renderToStaticMarkup(createElement(Sidebar, {
+  mode: 'open', overlay: false, view: 'agents', libraryKind: 'skill', libraryOpen: true, addOpen: false, historyOpen: false, findOpen: false, readOnly: false, real: false,
+  onToggle: noop, onAgents: noop, onLibrary: noop, onAdd: noop, onFind: noop, onShare: noop, onHistory: noop, onTour: noop, onHow: noop, ...over,
+}));
 
 test('one or two changes show their sentence as plain text; when the bar says "N changes" the words are a button that says whether its list is open', () => {
   const one = bar(1, false, 'Removed Write a reply');
@@ -57,9 +64,9 @@ test('the bar offers Undo all changes where it used to offer Discard changes, an
   assert.doesNotMatch(renderToStaticMarkup(createElement(SaveBar, { model: saveBar(0, 1, null), ticks: [], onSave: () => undefined, onGoBack: () => undefined, onDiscard: () => undefined, list: list(true) })), /data-changes-list/);
 });
 
-test('the bar, its list, the note after Remove, the switch and the Help button obey the text budget', () => {
+test('the bar, its list, the note after Remove, the navigation and the Help button obey the text budget', () => {
   const note = renderToStaticMarkup(createElement(ShellNote, { note: { key: 1, icon: 'check', text: removedNote('Write a reply'), action: { label: WORDS.label.undo, run: () => undefined } }, onGone: () => undefined }));
-  const sw = renderToStaticMarkup(createElement(ViewSwitch, { view: 'agents', onChange: () => undefined }));
+  const sw = side({});
   const help = renderToStaticMarkup(createElement(HelpPopover, { word: WORDS.label.help, label: WORDS.label.help, text: WORDS.popover.help }));
   for (const html of [bar(3, true), bar(2, true, 'Removed A and B'), bar(2, true), sw, help]) assert.deepEqual(assertTextBudget(html), [], html.slice(0, 80));
   // The note is empty until a note is shown (a note is held by the hook that fades it), so its markup is the live region alone.
@@ -75,11 +82,16 @@ test('the Help button is a button with the word Help on it, not a bare question 
   assert.match(old, />\?</);
 });
 
-test('the switch is a tab list with one tab in the Tab order, named Agents and Library', () => {
-  const html = renderToStaticMarkup(createElement(ViewSwitch, { view: 'library', onChange: () => undefined }));
-  assert.match(html, /role="tablist"/);
-  assert.equal((html.match(/role="tab"/g) ?? []).length, 2);
-  assert.equal((html.match(/tabindex="0"/g) ?? []).length, 1);
-  assert.match(html, /aria-selected="true"[^>]*data-view="library"|data-view="library"[^>]*aria-selected="true"/);
-  assert.match(html, />Agents</); assert.match(html, />Library</);
+test('the navigation holds Agents and Library as items: one stop in the Tab order, the page you are on says so with aria-current, and Library opens into its four pages', () => {
+  const html = side({ view: 'library', libraryKind: 'tool' });
+  assert.match(html, /<nav[^>]*aria-label="Main menu"/);
+  const items = [...html.matchAll(/<button[^>]*data-nav-item=""[^>]*>/g)].map(m => m[0]);
+  assert.equal(items.filter(b => /tabindex="0"/.test(b)).length, 1, 'one item is in the Tab order');
+  assert.equal(items.filter(b => /aria-current="page"/.test(b)).length, 1, 'one page is current');
+  assert.match(items.find(b => /aria-current="page"/.test(b))!, /data-nav-key="lib-tool"/);
+  assert.match(html, /data-nav-key="agents"[^>]*>(?:<svg[\s\S]*?<\/svg>)<span class="hm-nav-label">Agents</); assert.match(html, /data-nav-key="library"[^>]*aria-expanded="true"/);
+  for (const name of ['Skills', 'Agents', 'Tools', 'Notes']) assert.match(html, new RegExp(`data-sub=""[^>]*>(?:<svg[\\s\\S]*?</svg>)<span class="hm-nav-label">${name}<`));
+  const agents = side({ view: 'agents' });
+  assert.match(agents, /data-nav-key="agents"[^>]*aria-current="page"|aria-current="page"[^>]*data-nav-key="agents"/); assert.doesNotMatch(agents, /data-sub=""/, 'the four pages show only on the Library');
+  assert.doesNotMatch(agents, /✓|check/i, 'no check mark');
 });

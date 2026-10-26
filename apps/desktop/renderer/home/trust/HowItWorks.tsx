@@ -7,6 +7,7 @@
 import { useEffect, useId, useRef } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react';
 import { Button } from '../kit/Button.js';
+import { IconButton } from '../kit/IconButton.js';
 import { trapTab } from '../add/dom-helpers.js';
 import { useModalLayer } from '../add/modal-layer.js';
 import '../add/add.css';
@@ -50,7 +51,7 @@ export function HowItWorks({ leaving = false, onClose }: HowItWorksProps): React
             <h2 className="kit-heading" id={titleId} tabIndex={-1} ref={heading}>{L.title}</h2>
             <p className="kit-hint">{H.intro}</p>
           </div>
-          <Button round icon="close" aria-label={L.close} onClick={onClose} />
+          <IconButton icon="close" label={L.close} onClick={onClose} />
         </header>
         <div className="hw-body">
           <section className="hw-section" aria-labelledby={decidedId} data-decided="">

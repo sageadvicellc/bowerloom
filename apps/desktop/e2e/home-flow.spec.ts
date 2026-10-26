@@ -11,7 +11,7 @@ import type { Locator, Page } from '@playwright/test';
 import { assertTextBudget } from '../shared/home/textbudget.js';
 import { removeTempDirs } from './proto-temp.js';
 import { animationsDone, framesPainted } from './proto-wait.js';
-import { SIZES, THEMES, SAVED, ensurePicked, fresh, launchHome, rectOf, resize, setLook, shot, skipTour } from './home-page.js';
+import { SIZES, THEMES, SAVED, ensurePicked, fresh, keyToNav, launchHome, rectOf, resize, setLook, shot, skipTour } from './home-page.js';
 import type { Home } from './home-page.js';
 
 let home: Home;
@@ -24,7 +24,7 @@ const bar = (): Locator => page().getByRole('region', { name: 'Save bar' });
 const addDrawer = (): Locator => page().locator('[data-slot="add"]');
 const pointsDrawer = (): Locator => page().locator('[data-slot="points"]');
 const row = (id: string): Locator => addDrawer().locator(`.add-row[data-add-id="${id}"]`);
-const topBar = (name: string): Locator => page().locator('header.hm-bar').getByRole('button', { name, exact: true });
+const topBar = (name: string): Locator => page().locator('nav.hm-nav').getByRole('button', { name, exact: true });
 const saveButton = (): Locator => bar().getByRole('button', { name: 'Save', exact: true });
 const budget = async (): Promise<string[]> => assertTextBudget(await page().evaluate(() => document.querySelector('[data-home]')!.outerHTML));
 const skills = async (): Promise<string[]> => shelf('Skills').locator('.kit-card-main').allTextContents();
@@ -289,7 +289,7 @@ test('the tour step for the Add button lights the button, and Escape ends the to
   await expect(tour).toContainText('Add skills, tools, and notes here.');
   await animationsDone(p);
   const spot = await rectOf(p, '.tour-spot');
-  const add = await rectOf(p, 'header.hm-bar [data-tour="add"]');
+  const add = await rectOf(p, 'nav.hm-nav [data-tour="add"]');
   expect(spot.x).toBeLessThanOrEqual(add.x); expect(spot.y).toBeLessThanOrEqual(add.y);
   expect(spot.x + spot.w).toBeGreaterThanOrEqual(add.x + add.w); expect(spot.y + spot.h).toBeGreaterThanOrEqual(add.y + add.h);
   await expect(addDrawer()).toHaveCount(0);
@@ -375,7 +375,7 @@ test('the keyboard does all of it: open Add, add a skill by the picker, save, op
   await expect(panel().getByRole('heading', { level: 2, name: 'Pick an agent' })).toBeVisible();
   await p.keyboard.press('Enter');
   await expect(panel().getByRole('heading', { level: 2, name: 'Inbox sorter' })).toBeVisible();
-  await tabTo(topBar('Add'));
+  await keyToNav(p, 'Add');
   await p.keyboard.press('Enter');
   await expect(addDrawer()).toBeVisible();
   await expect(addDrawer().getByRole('heading', { name: 'Add' })).toBeFocused();
@@ -394,7 +394,7 @@ test('the keyboard does all of it: open Add, add a skill by the picker, save, op
   await tabTo(saveButton());
   await p.keyboard.press('Enter');
   await expect(bar().getByText(SAVED, { exact: true })).toBeVisible();
-  await tabTo(topBar('Version history'));
+  await keyToNav(p, 'Version history');
   await p.keyboard.press('Enter');
   await expect(pointsDrawer().getByRole('heading', { name: 'Version history' })).toBeFocused();
   const first = pointsDrawer().getByRole('button', { name: 'Go back to this' });
@@ -636,7 +636,7 @@ test('the tour closes the Choose notes sheet when it starts', async () => {
   const p = page();
   await openChoose();
   // The sheet covers the Help button, so the tour starts the way the page would start it: through the button itself.
-  await p.evaluate(() => { document.querySelector<HTMLElement>('header.hm-bar button[data-tour="help"]')?.click(); });
+  await p.evaluate(() => { document.querySelector<HTMLElement>('nav.hm-nav button[data-tour="help"]')?.click(); });
   await p.evaluate(() => { [...document.querySelectorAll<HTMLElement>('button')].find(b => b.textContent?.trim() === 'Show me around')?.click(); });
   await expect(p.getByRole('dialog', { name: 'Tour' })).toBeVisible();
   await expect(notesLayer()).toHaveCount(0);

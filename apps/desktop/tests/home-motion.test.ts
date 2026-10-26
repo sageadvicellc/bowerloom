@@ -56,7 +56,7 @@ test('the page makes room for a drawer on the drawer\'s own clock, and the shelv
   assert.doesNotMatch(css, /\.hm-body\s*\{[^}]*transition:/);
   // The shelves give way with a fade; they are not taken out of the page in one frame.
   assert.match(css, /\.hm-panel\s*\{[^}]*transition:[^;]*opacity var\(--motion-home-shelves-ms/);
-  const narrow = /@media \(min-width: 761px\) and \(max-width: 1266px\) \{([\s\S]*?)\n\}/.exec(css);
+  const narrow = /@container hmcol \(min-width: 761px\) and \(max-width: 989px\) \{([\s\S]*?)\n\}/.exec(css);
   assert.ok(narrow !== null, 'the narrow rules are there');
   assert.doesNotMatch(narrow[1]!, /display: none/);
   assert.match(narrow[1]!, /\.hm-panel \{[^}]*opacity: 0;[^}]*visibility: hidden/);

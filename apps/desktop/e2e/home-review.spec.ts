@@ -14,7 +14,7 @@ import type { Home } from './home-page.js';
 
 let home: Home;
 const page = (): Page => home.page;
-const topBar = (name: string): Locator => page().locator('header.hm-bar').getByRole('button', { name, exact: true });
+const topBar = (name: string): Locator => page().locator('nav.hm-nav').getByRole('button', { name, exact: true });
 const addDrawer = (): Locator => page().locator('[data-slot="add"]');
 const pointsDrawer = (): Locator => page().locator('[data-slot="points"]');
 const bar = (): Locator => page().getByRole('region', { name: 'Save bar' });
@@ -129,7 +129,7 @@ test('Find more does not make the bar forget that it just saved (review items 5 
   await p.getByRole('button', { name: 'Find more' }).click();
   await p.getByRole('button', { name: 'Looks right' }).click();
   await p.getByRole('button', { name: 'Yes, read them' }).click();
-  await expect(p.getByRole('heading', { level: 1, name: 'Your agents' })).toBeVisible();
+  await expect(p.getByRole('heading', { level: 1, name: 'Agents', exact: true })).toBeVisible();
   expect(await barText()).toBe(SAVED);
   await expect(bar().getByRole('button', { name: 'Go back' })).toBeVisible();
 });
@@ -296,28 +296,29 @@ test('after a drop with the mouse, Enter on a card from the keyboard still press
 });
 
 // ---- Item 16: the honest label.
-test('a "Preview" badge with its own help sits in the top bar and says nothing is written (review item 16)', async () => {
+test('a "Preview" badge with its own help sits at the foot of the navigation and says nothing is written (review item 16)', async () => {
   const p = page();
-  const badge = p.locator('header.hm-bar [data-preview] .kit-status');
+  const badge = p.locator('nav.hm-nav [data-preview] .kit-status');
   await expect(badge).toHaveText('Preview');
   await expect(badge).toBeVisible();
-  const about = p.locator('header.hm-bar').getByRole('button', { name: 'About this preview', exact: true });
+  const about = p.locator('nav.hm-nav').getByRole('button', { name: 'About this preview', exact: true });
   await about.click();
   await expect(p.getByRole('group', { name: 'About this preview' })).toContainText('This is a preview. It sends nothing, stores nothing, and writes nothing to your computer.');
   expect(await budget()).toEqual([]);
   for (const [w, h] of SIZES) for (const look of THEMES) {
     await resize(p, w, h); await setLook(p, look);
     await expect(badge).toBeVisible();
-    const pop = await rectOf(p, 'header.hm-bar [data-preview] .kit-popover');
+    const pop = await rectOf(p, 'nav.hm-nav [data-preview] .kit-popover');
     expect(pop.x).toBeGreaterThanOrEqual(0);
     expect(pop.x + pop.w).toBeLessThanOrEqual(w);
     await shot(p, 'preview-badge', w, h, look);
   }
   await p.keyboard.press('Escape');
   await resize(p, 900, 600);
-  const b = await rectOf(p, 'header.hm-bar [data-preview]');
-  for (const name of ['Version history', 'Add', 'Help']) expect(overlaps(b, await rectOf(p, `header.hm-bar button[aria-label="${name}"], header.hm-bar button:has-text("${name}")`)), name).toBe(false);
-  const header = await rectOf(p, 'header.hm-bar');
+  const b = await rectOf(p, 'nav.hm-nav [data-preview]');
+  for (const name of ['Version history', 'Add', 'Help']) expect(overlaps(b, await rectOf(p, `nav.hm-nav button[aria-label="${name}"], nav.hm-nav button:has-text("${name}")`)), name).toBe(false);
+  const header = await rectOf(p, 'nav.hm-nav');
   expect(b.x + b.w).toBeLessThanOrEqual(header.w);
-  expect(header.h).toBeLessThan(90);
+  expect(b.y + b.h).toBeLessThanOrEqual(header.y + header.h);   // inside the navigation, at its foot
+  expect(b.y).toBeGreaterThan(header.h - 90);
 });

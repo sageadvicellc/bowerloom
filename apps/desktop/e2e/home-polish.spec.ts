@@ -32,7 +32,7 @@ test.beforeEach(async () => {
 });
 
 // ---- Helpers.
-const bar = (): Locator => page().locator('header.hm-bar');
+const bar = (): Locator => page().locator('nav.hm-nav');
 const addButton = (): Locator => bar().getByRole('button', { name: 'Add', exact: true });
 const drawer = (): Locator => page().locator('[data-slot="add"]');
 const panel = (): Locator => page().locator('aside.hm-panel');
@@ -144,16 +144,16 @@ test('opening the drawer at 1440 moves the map on the drawer\'s clock: it narrow
   await addButton().click();
   const rows = await frames;
   const widths = rows.map(r => r.v);
-  expect(widths[0]).toBeGreaterThan(1000);
-  // Wave D: the panel is 25 vw (320 px) and the drawer 380 px, so at 1440 the stage ends at 1440 - 320 - 380 = 740 px (it was 612 with a 384 px panel and a 420 px drawer).
-  expect(widths[widths.length - 1]!).toBeLessThan(760);
+  expect(widths[0]).toBeGreaterThan(850);
+  // Wave F: the navigation is 232 px, the panel 320 px and the drawer 380 px, so at 1440 the stage ends at 1440 - 232 - 320 - 380 = 508 px (it was 740 px before the navigation).
+  expect(widths[widths.length - 1]!).toBeLessThan(520);
   const start = rows.findIndex(r => r.v < widths[0]! - 0.5), end = rows.findIndex(r => r.v <= widths[widths.length - 1]! + 0.5);
   const span = rows[end]!.t - rows[start]!.t;
   console.log('MEASURED stage width at 1440 as the drawer opens:', JSON.stringify(rows.slice(Math.max(0, start - 1), end + 2).map(r => [r.t, Math.round(r.v)])), 'span ms', span);
   expect(span).toBeGreaterThan(120); expect(span).toBeLessThan(330);
   const steps = widths.slice(1).map((w, i) => widths[i]! - w);
   expect(Math.max(...steps)).toBeLessThan(330);
-  expect(new Set(widths.filter(w => w < 1000 && w > 760).map(Math.round)).size).toBeGreaterThanOrEqual(4);
+  expect(new Set(widths.filter(w => w < 880 && w > 520).map(Math.round)).size).toBeGreaterThanOrEqual(4);
 });
 
 test('closing the drawer gives the room back on the close clock, and with reduce motion the map is final at once', async () => {
@@ -165,15 +165,15 @@ test('closing the drawer gives the room back on the close clock, and with reduce
   await p.keyboard.press('Escape');
   const rows = await frames;
   const widths = rows.map(r => r.v);
-  expect(widths[widths.length - 1]!).toBeGreaterThan(1000);
-  expect(new Set(widths.filter(w => w > 760 && w < 1000).map(Math.round)).size).toBeGreaterThanOrEqual(2);
+  expect(widths[widths.length - 1]!).toBeGreaterThan(850);
+  expect(new Set(widths.filter(w => w > 520 && w < 880).map(Math.round)).size).toBeGreaterThanOrEqual(2);
   await p.emulateMedia({ reducedMotion: 'reduce' });
   await fresh(p); await skipTour(p);
   await resize(p, 1440, 900);
   const still = sampling(300, () => document.querySelector('main.hm-stage')!.getBoundingClientRect().width);
   await addButton().click();
   const calm = await still;
-  const settled = calm.filter(r => r.v < 800);
+  const settled = calm.filter(r => r.v < 600);
   expect(settled.length).toBeGreaterThan(0);
   expect(new Set(calm.map(r => Math.round(r.v))).size).toBeLessThanOrEqual(2);
   expect(await p.evaluate(() => document.getAnimations().length)).toBe(0);
@@ -197,8 +197,8 @@ test('in a window too narrow for three columns the shelves fade out in about 110
   await expect(drawer()).toHaveCount(0);
   await expect(panel()).toBeVisible();
   await animationsDone(p);
-  // Wave D: the panel is 25 vw, at least 288 px, so at 1100 it is 288 px (it was 330 px at 30 vw).
-  expect((await panel().boundingBox())!.width).toBeGreaterThan(280);
+  // Wave F: the panel is 25 vw, at least 272 px (17 rem), so at 1100 it is 275 px.
+  expect((await panel().boundingBox())!.width).toBeGreaterThan(270);
 });
 
 test('the real page stays inside the text budget with the Show button on it', async () => {
@@ -210,7 +210,7 @@ test('the real page stays inside the text budget with the Show button on it', as
 });
 
 // ---- 3. One help button per window.
-test('the window has no bare "?": Help is a button with its word, at the far right; Preview is plain words with a dot that opens its own popover; Tools has a hint line instead of a "?"', async () => {
+test('the window has no bare "?": Help is an item with its word in the navigation; Preview is plain words with a dot at the foot of it that opens its own popover; Tools has a hint line instead of a "?"', async () => {
   const p = page();
   await resize(p, 1280, 800);
   const round = await p.locator('button.kit-button[data-round]').evaluateAll(list => list.map(b => (b.textContent ?? '').trim()));
@@ -221,8 +221,8 @@ test('the window has no bare "?": Help is a button with its word, at the far rig
   await expect(pill).toHaveText('Preview');
   await expect(p.getByRole('button', { name: 'About tools' })).toHaveCount(0);
   const [pillBox, helpBox] = [(await pill.boundingBox())!, (await help.boundingBox())!];
-  expect(helpBox.x).toBeGreaterThan(pillBox.x + pillBox.width);
-  expect(helpBox.x + helpBox.width).toBeGreaterThan(1280 - 40);   // the far right of the bar
+  expect(pillBox.y).toBeGreaterThan(helpBox.y + helpBox.height - 1);   // the Preview mark is under Help
+  expect(pillBox.y + pillBox.height).toBeGreaterThan(800 - 60);   // at the foot of the navigation
   await pill.click();
   const pop = p.locator('.kit-popover');
   await expect(pop.locator('p')).toHaveText('This is a preview. It sends nothing, stores nothing, and writes nothing to your computer.');
@@ -564,7 +564,7 @@ test('a press shrinks a button and a card to 0.98 within 100 ms; a disabled butt
   const box = (await add.boundingBox())!;
   await p.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await p.mouse.down();
-  await p.waitForFunction(() => new DOMMatrix(getComputedStyle(document.querySelector('header.hm-bar [data-tour="add"]')!).transform).a < 0.99, null, { timeout: 500 });
+  await p.waitForFunction(() => new DOMMatrix(getComputedStyle(document.querySelector('nav.hm-nav [data-tour="add"]')!).transform).a < 0.99, null, { timeout: 500 });
   await animationsDone(p);
   expect(await add.evaluate(el => getComputedStyle(el).transform)).toBe('matrix(0.98, 0, 0, 0.98, 0, 0)');
   expect(await add.evaluate(el => getComputedStyle(el).transitionDuration.includes('0.1s'))).toBe(true);
@@ -609,7 +609,7 @@ test('the Find screen: a tile lights with no part waiting, and the reading bar g
   expect(Math.max(...scales)).toBeGreaterThan(0.6);
   // The bar keeps its layout width the whole time: only a transform moves.
   expect(new Set(rows.map(r => Math.round(r.w / 10))).size).toBe(1);
-  await expect(p.getByRole('heading', { level: 1, name: 'Your agents' })).toBeVisible({ timeout: 10_000 });
+  await expect(p.getByRole('heading', { level: 1, name: 'Agents', exact: true })).toBeVisible({ timeout: 10_000 });
 });
 
 test('the closing note fades in, stays six seconds and fades out; the first Save of a guided session shows it', async () => {

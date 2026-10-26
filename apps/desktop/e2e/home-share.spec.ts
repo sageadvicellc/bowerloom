@@ -14,7 +14,7 @@ import { withLibrarySamples } from '../shared/home/library-sample.js';
 import { countsLine, leftOutLine } from '../renderer/home/share/share-words.js';
 import { removeTempDirs } from './proto-temp.js';
 import { animationsDone, framesPainted } from './proto-wait.js';
-import { SIZES, THEMES, ensurePicked, fresh, launchHome, rectOf, resize, setLook, shot, skipTour } from './home-page.js';
+import { SIZES, THEMES, ensurePicked, fresh, keyToNav, launchHome, rectOf, resize, setLook, shot, skipTour } from './home-page.js';
 import type { Home } from './home-page.js';
 
 let home: Home;
@@ -23,7 +23,7 @@ const page = (): Page => home.page;
 const world = withLibrarySamples(withSampleCopies(generateWorld(1)));
 const ids = shareableAgents(world).map(a => a.id);
 const all = planShare(world, ids, []);
-const topBar = (name: string): Locator => page().locator('header.hm-bar').getByRole('button', { name, exact: true });
+const topBar = (name: string): Locator => page().locator('nav.hm-nav').getByRole('button', { name, exact: true });
 const addDrawer = (): Locator => page().locator('[data-slot="add"]');
 const pointsDrawer = (): Locator => page().locator('[data-slot="points"]');
 const sheet = (): Locator => page().getByRole('dialog', { name: 'Share my agents' });
@@ -85,9 +85,9 @@ test.beforeEach(async () => {
 // ---- Where Share lives.
 test('Share lives in the Version history drawer, under the list, and not in the main window', async () => {
   const p = page();
-  // Version history is an icon-only clock button: no text of its own, and its name is the aria-label.
-  expect(await p.locator('header.hm-bar').getByRole('button').allTextContents()).toEqual(['Preview', '', 'Share', 'Add', 'Help']);
-  expect(await p.locator('header.hm-bar').getByRole('button').evaluateAll(list => list.map(b => b.getAttribute('aria-label')))).toEqual(['About this preview', 'Version history', null, null, null]);   // the Preview pill is its own help button, so Help is the only "?" (fix list item 3)
+  // The navigation holds the toggle (an icon with its name in the aria-label), seven items with their words, and the Preview pill, which is its own help button.
+  expect(await p.locator('nav.hm-nav').getByRole('button').allTextContents()).toEqual(['', 'Add', 'Agents', 'Library', 'Find more', 'Share', 'Version history', 'Help', 'Preview']);
+  expect(await p.locator('nav.hm-nav').getByRole('button').evaluateAll(list => list.map(b => b.getAttribute('aria-label')))).toEqual(['Hide navigation', null, null, null, null, null, null, null, 'About this preview']);   // Help is the only "?" (fix list item 3)
   await expect(p.getByRole('button', { name: 'Share my agents' })).toHaveCount(0);
   await openPoints();
   await expect(section().getByRole('heading', { level: 3, name: 'Share' })).toBeVisible();
@@ -313,8 +313,8 @@ test('Escape closes one layer at a time: the Share sheet, then the Version histo
   await expect(topBar('Version history')).toBeFocused();
   // Close and the scrim close the sheet too, and the page behind it is out of reach while it is open.
   await openSheet();
-  await expect(p.locator('header.hm-bar')).toHaveAttribute('inert', '');
-  await expect(p.locator('.hm-body')).toHaveAttribute('inert', '');
+  await expect(p.locator('nav.hm-nav')).toHaveAttribute('inert', '');
+  await expect(p.locator('.hm-col')).toHaveAttribute('inert', '');
   await sheet().getByRole('button', { name: 'Close' }).click();
   await expect(sheet()).toHaveCount(0);
   await expect(pointsDrawer()).toBeVisible();
@@ -324,7 +324,7 @@ test('the tour closes the Share sheet when it starts', async () => {
   const p = page();
   await openSheet();
   // The sheet covers the Help button and makes it unreachable, so the tour is started the way the page would start it: a click on the button itself.
-  await p.evaluate(() => { document.querySelector<HTMLElement>('header.hm-bar button[data-tour="help"]')?.click(); });
+  await p.evaluate(() => { document.querySelector<HTMLElement>('nav.hm-nav button[data-tour="help"]')?.click(); });
   await p.evaluate(() => { [...document.querySelectorAll<HTMLElement>('button')].find(b => b.textContent?.trim() === 'Show me around')?.click(); });
   await expect(p.getByRole('dialog', { name: 'Tour' })).toBeVisible();
   await expect(sheet()).toHaveCount(0);
@@ -333,7 +333,7 @@ test('the tour closes the Share sheet when it starts', async () => {
 
 test('the keyboard does all of it: open Version history, open the sheet, untick, Create share file, Done, Open a shared file, Open my last copy', async () => {
   const p = page();
-  await tabTo(topBar('Version history'));
+  await keyToNav(p, 'Version history');
   await p.keyboard.press('Enter');
   await expect(pointsDrawer().getByRole('heading', { name: 'Version history' })).toBeFocused();
   await tabTo(section().getByRole('button', { name: 'Share my agents' }));

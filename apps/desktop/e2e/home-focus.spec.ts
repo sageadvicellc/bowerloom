@@ -14,7 +14,7 @@ import type { Home } from './home-page.js';
 
 let home: Home;
 const page = (): Page => home.page;
-const topBar = (name: string): Locator => page().locator('header.hm-bar').getByRole('button', { name, exact: true });
+const topBar = (name: string): Locator => page().locator('nav.hm-nav').getByRole('button', { name, exact: true });
 const addDrawer = (): Locator => page().locator('[data-slot="add"]');
 const pointsDrawer = (): Locator => page().locator('[data-slot="points"]');
 const notesLayer = (): Locator => page().locator('[data-slot="notes"]');
@@ -26,7 +26,7 @@ const shareButton = (): Locator => pointsDrawer().getByRole('button', { name: 'S
 const chooseButton = (): Locator => panel().locator('[data-notes-shelf]').getByRole('button', { name: 'Choose notes' });
 const panelBadge = (): Locator => panel().getByRole('button', { name: '2 different copies' });
 const agentButton = (name: string): Locator => page().locator('.hm-grid').getByRole('button', { name, exact: true });
-const mainHeading = (): Locator => page().locator('main h1');
+const mainHeading = (): Locator => page().locator('.hm-topbar h1');
 
 /** True when the focus is on a real control or heading and not on the page itself (where the next Tab would start from the top). */
 const focusIsOnPage = async (): Promise<boolean> => page().evaluate(() => document.activeElement !== null && document.activeElement !== document.body && document.activeElement !== document.documentElement);
@@ -240,7 +240,7 @@ for (const motion of ['no-preference', 'reduce'] as const) {
     test('tour ending after it closed a drawer: the focus goes to the Help button, not to the top of the page', async () => {
       const p = page();
       await openAdd();
-      await p.evaluate(() => { document.querySelector<HTMLElement>('header.hm-bar button[data-tour="help"]')?.click(); });
+      await p.evaluate(() => { document.querySelector<HTMLElement>('nav.hm-nav button[data-tour="help"]')?.click(); });
       await p.evaluate(() => { [...document.querySelectorAll<HTMLElement>('button')].find(b => b.textContent?.trim() === 'Show me around')?.click(); });
       await expect(tourDialog()).toBeVisible();
       await gone(addDrawer());

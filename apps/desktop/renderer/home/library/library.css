@@ -11,7 +11,7 @@
 /* ---- The stage: title, tools and the list */
 [data-home] .lb-stage-tools { display: flex; align-items: center; flex-wrap: wrap; gap: var(--hm-space-3) var(--hm-space-5); }
 /* The tabs, the search and the count stay at the top of the stage while the list scrolls under them. */
-[data-home] .lb-sticky { position: sticky; top: calc(-1 * var(--hm-space-6)); z-index: 5; display: flex; flex-direction: column; gap: var(--hm-space-2); margin: 0 calc(-1 * var(--hm-space-6)); padding: var(--hm-space-3) var(--hm-space-6); background: var(--bg); }
+[data-home] .lb-sticky { position: sticky; top: calc(-1 * var(--hm-space-5)); z-index: 5; display: flex; flex-direction: column; gap: var(--hm-space-2); margin: 0 calc(-1 * var(--hm-space-5)); padding: var(--hm-space-3) var(--hm-space-5); background: var(--bg); }
 [data-home] .lb-title-line { display: flex; align-items: center; gap: var(--hm-space-2); }
 [data-home] .lb-find { display: flex; align-items: center; flex-wrap: wrap; gap: var(--hm-space-3) var(--hm-space-5); }
 [data-home] .lb-order { display: flex; align-items: center; flex-wrap: wrap; gap: var(--hm-space-3) var(--hm-space-5); }

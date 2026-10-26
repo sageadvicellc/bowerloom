@@ -113,7 +113,7 @@ test('Undo all changes and Go back leave no note about a change that is gone', a
 
 test('on the Library page the note after Remove goes with Ctrl+Z, and the count line says what is there now', async () => {
   const p = page();
-  await page().locator('header.hm-bar').getByRole('tab', { name: 'Library' }).click();
+  await page().locator('nav.hm-nav').getByRole('button', { name: 'Library', exact: true }).click();
   await expect(p.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible();
   await p.getByRole('button', { name: 'Compare two options', exact: true }).click();
   await p.getByRole('button', { name: 'Remove from library' }).click();

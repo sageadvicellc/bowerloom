@@ -9,7 +9,7 @@ import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { assertTextBudget } from '../shared/home/textbudget.js';
 import { removeTempDirs } from './proto-temp.js';
-import { MAP_PAGE, fresh, launchHome, resize, skipTour } from './home-page.js';
+import { MAP_PAGE, chooseSort, expectSort, fresh, launchHome, openSort, resize, skipTour } from './home-page.js';
 import type { Home } from './home-page.js';
 import { atEverySize } from './home-we-shots.js';
 
@@ -48,9 +48,11 @@ test('"Not used yet" is a quiet switch beside the sort with the number of things
   await expect(row('Compare two options')).toHaveCount(0);
   for (const text of await rows().locator('[data-used] .lb-used-note').allTextContents()) expect(text.trim()).toBe('Not used yet');
   // It sits in the same line as the sort, and the sort has its third button.
-  const toggleBox = await filter().boundingBox(), sortBox = await p.getByRole('button', { name: 'Name', exact: true }).boundingBox();
+  const toggleBox = await filter().boundingBox(), sortBox = await p.getByRole('button', { name: 'Sort', exact: true }).boundingBox();
   expect(Math.abs((toggleBox!.y + toggleBox!.height / 2) - (sortBox!.y + sortBox!.height / 2))).toBeLessThan(6);
-  await expect(p.getByRole('button', { name: 'Most used' })).toBeVisible();
+  const menu = await openSort(p);
+  await expect(menu.getByRole('menuitemradio')).toHaveText(['Name', 'Recently added', 'Most used']);
+  await p.keyboard.press('Escape');
   // Together with a search, and off again.
   await p.getByRole('searchbox', { name: 'Search the library' }).fill('translate');
   await expect(rows()).toHaveCount(1);
@@ -63,8 +65,8 @@ test('"Not used yet" is a quiet switch beside the sort with the number of things
 
 test('"Most used" puts the skills that most agents hold first', async () => {
   const p = page();
-  await p.getByRole('button', { name: 'Most used' }).click();
-  await expect(p.getByRole('button', { name: 'Most used' })).toHaveAttribute('aria-pressed', 'true');
+  await chooseSort(p, 'Most used');
+  await expectSort(p, 'Most used');
   const counts = (await rows().locator('[data-used] .lb-used-note').allTextContents()).map(t => Number(/Used by (\d+)/.exec(t)?.[1] ?? 0));
   expect(counts[0]).toBeGreaterThanOrEqual(3);
   expect([...counts].sort((a, b) => b - a)).toEqual(counts);
@@ -134,7 +136,8 @@ test('the Agents tab explains its count: Yours and Ready-made, and a one-line no
   expect(ready).toBe(6);
   // There is no filter and no "Most used" on the agents, which nobody uses.
   await expect(filter()).toHaveCount(0);
-  await expect(p.getByRole('button', { name: 'Most used' })).toHaveCount(0);
+  await expect((await openSort(p)).getByRole('menuitemradio', { name: 'Most used' })).toHaveCount(0);
+  await p.keyboard.press('Escape');
   await tab('Skills').click();
   await expect(p.locator('[data-agents-note]')).toHaveCount(0);
   expect(await budget()).toEqual([]);

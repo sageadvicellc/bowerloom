@@ -100,36 +100,42 @@ test('the home scale is the agreed one: about 90 percent of the first, in tokens
   // One tile for every agent (250 by 92 px, a 24 px glyph), one row for every skill, tool and note (44 px, a 28 px tile), bars 52 and 48 px, panel about 320 px, drawer 380 px.
   for (const [name, value] of [['hm-tile-w', '15.625rem'], ['hm-tile-h', '5.75rem'], ['hm-tile-glyph', '1.5rem'], ['hm-row-h', '2.75rem'], ['hm-row-tile', '1.75rem'], ['hm-bar-h', '3.25rem'], ['hm-savebar-h', '3rem']] as [string, string][]) assert.match(homeLightBlock, new RegExp(`--${name}:\\s*${value.replace('.', '\\.')};`), name);
   assert.match(homeLightBlock, /--hm-drawer-w:\s*min\(380px, 92vw\);/);
-  assert.match(homeLightBlock, /--hm-panel-w:\s*clamp\(18rem, 25vw, 20rem\);/);
+  assert.match(homeLightBlock, /--hm-panel-w:\s*clamp\(17rem, 25vw, 20rem\);/);
+  assert.match(homeLightBlock, /--hm-nav-w:\s*14\.5rem;/); assert.match(homeLightBlock, /--hm-nav-rail-w:\s*3rem;/);   // the navigation: 232 px open, 48 px as a rail
   // No size of the first scale is left: the old card sizes are gone, so nothing can still read them.
   for (const gone of ['hm-card-agent-w', 'hm-card-agent-h', 'hm-card-small-w', 'hm-card-small-h', 'hm-card-shelf-w']) assert.doesNotMatch(homeCss, new RegExp(`--${gone}`), gone);
 });
 
-test('the window width where the panel gives way to a drawer is worked out from the tokens: 570 + 317 + 380 = 1267, so the rule stops at 1266 px', () => {
+test('the width where the panel gives way to a drawer is worked out from the tokens: 290 + 320 + 380 = 990 px of the middle and right columns, so the rule stops at 989 px', () => {
   const px = (name: string): number => homeNumber(homeLightBlock, name) * 16;
-  const stage = 2 * px('hm-space-6') + 2 * px('hm-tile-w') + px('hm-space-4');   // two tiles, the gap between them, and the stage padding
-  assert.equal(stage, 570);
-  const panelAt = (w: number): number => Math.min(320, Math.max(288, w * 0.25));
-  const drawer = 380;
-  const first = Array.from({ length: 2000 }, (_, w) => w).find(w => w - panelAt(w) - drawer >= stage)!;
-  assert.ok(first >= 1266 && first <= 1268, `three columns fit from ${first} px`);
+  const stage = 2 * px('hm-space-5') + px('hm-tile-w');   // one tile and the stage padding: a drag can still land on an agent
+  assert.equal(stage, 290);
+  const panel = 320, drawer = 380;
+  const first = Array.from({ length: 2000 }, (_, w) => w).find(w => w - panel - drawer >= stage)!;
+  assert.equal(first, 990, `three columns fit from ${first} px of columns`);
   const css = readFileSync(join(DESKTOP, 'renderer', 'home', 'home.css'), 'utf8');
-  assert.match(css, /@media \(min-width: 761px\) and \(max-width: 1266px\)/);
+  // The width asked is the width of the middle and right columns (a container), because the navigation takes 232 or 48 px of the window.
+  assert.match(css, /@container hmcol \(min-width: 761px\) and \(max-width: 989px\)/);
+  assert.match(css, /container: hmcol \/ inline-size/);
+  assert.equal(first + 232, 1222, 'with the navigation open the three columns and the drawer need a 1222 px window');
 });
 
-test('the columns of the map are worked out from the tokens: four columns need 1098 px of stage, so four show from 1418 px with the panel open and from 1098 px with it put away', () => {
+test('the columns of the map are worked out from the tokens: four columns need 1082 px of stage, so four show from 1634 px with the navigation and the panel open, and from 1082 px of columns with the panel put away', () => {
   const px = (name: string): number => homeNumber(homeLightBlock, name) * 16;
-  const stageFor = (columns: number): number => 2 * px('hm-space-6') + columns * px('hm-tile-w') + (columns - 1) * px('hm-space-4');
-  assert.deepEqual([1, 2, 3, 4].map(stageFor), [306, 570, 834, 1098]);
-  const panelAt = (w: number): number => Math.min(320, Math.max(288, w * 0.25));
-  const columnsOf = (stage: number): number => Math.max(1, Math.floor((stage - 2 * px('hm-space-6') + px('hm-space-4')) / (px('hm-tile-w') + px('hm-space-4'))));
+  const stageFor = (columns: number): number => 2 * px('hm-space-5') + columns * px('hm-tile-w') + (columns - 1) * px('hm-space-4');
+  assert.deepEqual([1, 2, 3, 4].map(stageFor), [290, 554, 818, 1082]);
+  const nav = { open: 14.5 * 16, rail: 3 * 16 };
+  const panelAt = (w: number): number => Math.min(320, Math.max(272, w * 0.25));
+  const columnsOf = (stage: number): number => Math.max(1, Math.floor((stage - 2 * px('hm-space-5') + px('hm-space-4')) / (px('hm-tile-w') + px('hm-space-4'))));
   const widths = Array.from({ length: 2400 }, (_, w) => w);
-  const open = (n: number): number => widths.find(w => columnsOf(w - panelAt(w)) >= n)!;
-  const away = (n: number): number => widths.find(w => columnsOf(w) >= n)!;
-  assert.equal(open(4), 1418, 'with the panel open the fourth column comes at 1418 px');
-  assert.equal(away(4), 1098, 'with the panel put away it comes at 1098 px');
-  assert.equal(columnsOf(1280 - panelAt(1280)), 3, 'at 1280 with the panel open the stage holds three');
-  assert.equal(columnsOf(1280), 4, 'at 1280 with the panel put away it holds four');
+  const open = (n: number, navWidth: number): number => widths.find(w => columnsOf(w - navWidth - panelAt(w)) >= n)!;
+  const away = (n: number, navWidth: number): number => widths.find(w => columnsOf(w - navWidth) >= n)!;
+  assert.equal(open(4, nav.open), 1634, 'with the navigation and the panel open the fourth column comes at 1634 px');
+  assert.equal(open(4, nav.rail), 1450, 'with the navigation put away to its rail it comes at 1450 px');
+  assert.equal(away(4, nav.open), 1314, 'with the panel put away it comes at 1314 px');
+  assert.equal(columnsOf(1280 - nav.open - panelAt(1280)), 2, 'at 1280 with both open the stage holds two');
+  assert.equal(columnsOf(1280 - nav.open), 3, 'at 1280 with the panel put away it holds three');
+  assert.equal(columnsOf(900 - nav.rail - panelAt(900)), 2, 'at the smallest window (900) the rail and the panel leave room for two');
   const css = readFileSync(join(DESKTOP, 'renderer', 'home', 'home.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
   assert.match(css, /grid-template-columns: repeat\(auto-fill, var\(--hm-tile-w\)\)/, 'the browser adds a column whenever the stage holds one more tile');
   assert.match(css, /\.hm-body\[data-details="closed"\] \{ grid-template-columns: minmax\(0, 1fr\); \}/);

@@ -68,30 +68,38 @@ test('a state is never cut: "2 different copies" fits, or the narrow card says "
   await atEverySize(p, 'copies-state-narrow', async () => { await ensurePicked(agentButton('Inbox sorter')); });
 });
 
-test('the map shows four columns where the stage holds four: at 1440 with the panel, at 1280 when the panel is put away, and three otherwise', async () => {
+test('the map shows as many columns as the stage holds: with the navigation and the panel open two at 1280 and three at 1440, four at 1634 (the navigation takes 232 px), and one more when the panel is put away', async () => {
   const p = page();
   await resize(p, 1280, 800);
-  await expect(toggle()).toHaveText('Hide details');
+  await expect(toggle()).toHaveAttribute('aria-label', 'Hide details');
   await expect(toggle()).toHaveAttribute('aria-expanded', 'true');
-  await expect.poll(columns, { message: 'columns' }).toBe(3);
+  await expect.poll(columns, { message: 'columns' }).toBe(2);
   await toggle().click();
-  await expect(toggle()).toHaveText('Show details');
+  await expect(toggle()).toHaveAttribute('aria-label', 'Show details');
   await expect(toggle()).toHaveAttribute('aria-expanded', 'false');
   await expect(panel()).toBeHidden();
   await animationsDone(p);
-  await expect.poll(columns, { message: 'columns' }).toBe(4);
-  // The right strip is no longer empty: the fourth column reaches towards the edge of the window.
+  await expect.poll(columns, { message: 'columns' }).toBe(3);
+  // The right strip is no longer empty: the third column reaches towards the edge of the window.
   const right = await tiles().evaluateAll(list => Math.max(...list.map(el => el.getBoundingClientRect().right)));
-  expect(1280 - right).toBeLessThan(250);
+  expect(1280 - right).toBeLessThanOrEqual(250);
   // The tiles are the same size in every column, and the grid fits the stage.
   const sizes = await tiles().evaluateAll(list => [...new Set(list.map(el => `${Math.round(el.getBoundingClientRect().width)}x${Math.round(el.getBoundingClientRect().height)}`))]);
   expect(sizes).toEqual(['250x92']);
   expect(await p.evaluate(() => document.querySelector('main.hm-stage')!.scrollWidth <= document.querySelector('main.hm-stage')!.clientWidth + 1)).toBe(true);
-  await atEverySize(p, 'map-four-columns', async () => undefined);
+  await atEverySize(p, 'map-three-columns', async () => undefined);
   await toggle().click();
   await expect(panel()).toBeVisible();
-  await expect.poll(columns, { message: 'columns' }).toBe(3);
+  await expect.poll(columns, { message: 'columns' }).toBe(2);
   await resize(p, 1440, 900);
+  await expect.poll(columns, { message: 'columns' }).toBe(3);
+  await resize(p, 1634, 900);
+  await expect.poll(columns, { message: 'columns' }).toBe(4);
+  await resize(p, 1633, 900);
+  await expect.poll(columns, { message: 'columns' }).toBe(3);
+  // With the navigation put away to its rail, four columns come at 1450.
+  await p.locator('[data-nav-toggle]:visible').click();
+  await resize(p, 1450, 900);
   await expect.poll(columns, { message: 'columns' }).toBe(4);
   await resize(p, 900, 600);
   await expect.poll(columns, { message: 'columns' }).toBe(2);
@@ -108,7 +116,7 @@ test('putting the details away is a choice that the tour, "Skip to details" and 
   await p.getByRole('button', { name: 'Show me around' }).click();
   await expect(p.getByRole('dialog', { name: 'Tour' })).toBeVisible();
   await expect(panel()).toBeVisible();
-  await expect(toggle()).toHaveText('Hide details');
+  await expect(toggle()).toHaveAttribute('aria-label', 'Hide details');
   await p.keyboard.press('Escape');
   // Skip to details opens it and puts the focus on its heading.
   await toggle().click();
@@ -158,7 +166,7 @@ test('the picker lists the agent that is picked first and says "Selected": in th
   // Another agent picked, another one first.
   await p.keyboard.press('Escape');
   await ensurePicked(agentButton('Trip organizer'));
-  await p.getByRole('tab', { name: 'Library' }).click();
+  await p.getByRole('button', { name: 'Library', exact: true }).click();
   await p.getByRole('button', { name: 'Translate a text', exact: true }).click();
   await p.getByRole('button', { name: 'Add to an agent' }).click();
   const group = p.getByRole('group', { name: 'Add to which agent?' });

@@ -99,7 +99,7 @@ test('it is a modal dialog: Tab stays inside, Escape and Done and Close and the 
   const inside = (): Promise<boolean> => p.evaluate(() => document.activeElement?.closest('[data-how]') !== null);
   for (let i = 0; i < 6; i += 1) { await p.keyboard.press('Tab'); expect(await inside()).toBe(true); }
   for (let i = 0; i < 6; i += 1) { await p.keyboard.press('Shift+Tab'); expect(await inside()).toBe(true); }
-  expect(await p.locator('header.hm-bar').evaluate(el => el.closest('[inert]') !== null || el.hasAttribute('inert'))).toBe(true);
+  expect(await p.locator('nav.hm-nav').evaluate(el => el.closest('[inert]') !== null || el.hasAttribute('inert'))).toBe(true);
   await p.keyboard.press('Escape');
   await expect(dialog()).toHaveCount(0);
   await expect(preview()).toBeFocused();

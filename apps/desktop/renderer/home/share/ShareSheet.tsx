@@ -18,6 +18,7 @@ import { LOOK_KIND_WORDS, flaggedIds, lookItems } from '../../../shared/home/sha
 import type { LookItem } from '../../../shared/home/share-look.js';
 import { buildShare, canSave, planShare, shareableAgents, toggleLeftOut } from '../../../shared/home/share-model.js';
 import { Button } from '../kit/Button.js';
+import { IconButton } from '../kit/IconButton.js';
 import { KitIcon } from '../kit/icons.js';
 import { trapTab } from '../add/dom-helpers.js';
 import { useModalLayer } from '../add/modal-layer.js';
@@ -122,7 +123,7 @@ export function ShareSheet({ world, hidden, unsaved, leaving = false, onClose, o
             <p className="kit-hint" data-file-is="">{H.fileIs}</p>
             <p className="kit-hint" data-where-saved="">{H.whereSaved}</p>
           </div>
-          <Button round icon="close" aria-label={L.close} onClick={onClose} />
+          <IconButton icon="close" label={L.close} onClick={onClose} />
         </header>
 
         <section className="sh-summary" aria-labelledby={`${listId}-goes`}>

@@ -19,9 +19,9 @@ export function focusIsLost(layer: Element | null | undefined = null): boolean {
   return at === null || at === document.body || at === document.documentElement || (layer !== null && layer !== undefined && layer.contains(at));
 }
 
-/** The heading of the main window: the last stable place for the focus. */
+/** The heading of the main window: the last stable place for the focus. In the shell it is the title in the top row of the middle column; a screen with a main place of its own has it there. */
 export function mainHeading(): HTMLElement | null {
-  return document.querySelector<HTMLElement>('main h1');
+  return document.querySelector<HTMLElement>('.hm-topbar h1, main h1');
 }
 
 /** Puts the focus on the first control of the list that can take it, and returns it, or null when none can. */

@@ -5,7 +5,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { IconButton } from '../renderer/home/kit/IconButton.js';
 import { KIT_ICON_NAMES } from '../renderer/home/kit/icons.js';
-import { TIP_GAP, placeTip } from '../renderer/home/kit/Tooltip.js';
+import { Tooltip } from '../renderer/home/kit/Tooltip.js';
 import { EditButton, EditIconButton, READ_ONLY_REASON, ReadOnlyFlag, ReadOnlyScope, guardedStore, useReadOnly } from '../renderer/home/read-only.js';
 import { createStore } from '../shared/proto/store.js';
 import { ownedAgents, shelvesOf } from '../shared/home/cards.js';
@@ -38,13 +38,11 @@ test('every icon in the kit has paths to draw, and the new ones are there', () =
   for (const name of ['sidebar-left', 'sidebar-right', 'search', 'trash', 'undo', 'copy', 'chevron-up', 'sort', 'library', 'help', 'globe', 'select-all', 'clear', 'lock'] as const) assert.ok(KIT_ICON_NAMES.includes(name), name);
 });
 
-test('the tooltip is placed 10 px clear of the button on each side, by arithmetic on its box', () => {
-  const box = { left: 100, right: 132, top: 50, bottom: 82 }, view = { w: 1000, h: 700 };
-  assert.deepEqual(placeTip(box, 'left', view), { top: 66, right: 1000 - 100 + TIP_GAP });
-  assert.deepEqual(placeTip(box, 'right', view), { top: 66, left: 132 + TIP_GAP });
-  assert.deepEqual(placeTip(box, 'below', view), { top: 82 + TIP_GAP, left: 100 });
-  assert.deepEqual(placeTip(box, 'below-end', view), { top: 82 + TIP_GAP, right: 1000 - 132 });
-  assert.equal(TIP_GAP, 10);
+test('a tooltip that is off leaves out its words and its description, and keeps the button where it was', () => {
+  const draw = (off: boolean): string => renderToStaticMarkup(createElement(Tooltip, { text: 'Agents', side: 'right', off, children: aria => createElement('button', { type: 'button', ...aria }, 'Agents') }));
+  const on = draw(false), away = draw(true);
+  assert.match(on, /aria-describedby/); assert.match(on, /role="tooltip"/); assert.match(on, /data-side="right"/);
+  assert.doesNotMatch(away, /aria-describedby|role="tooltip"/); assert.match(away, /^<span class="kit-tip"><button type="button">Agents<\/button><\/span>$/);
 });
 
 // ---- Read only.

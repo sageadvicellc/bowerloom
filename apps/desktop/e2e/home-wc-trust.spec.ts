@@ -21,7 +21,7 @@ const LOOKS = ['light', 'dark'] as const;
 
 let home: Home;
 const page = (): Page => home.page;
-const header = (): Locator => page().locator('header.hm-bar');
+const header = (): Locator => page().locator('nav.hm-nav');
 const panel = (): Locator => page().locator('aside.hm-panel');
 const bar = (): Locator => page().getByRole('region', { name: 'Save bar' });
 const history = (): Locator => page().locator('[data-slot="points"]');

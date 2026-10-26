@@ -70,12 +70,12 @@ for (const [w, h] of [[900, 600], [1100, 700], [1280, 800]] as const) {
   });
 }
 
-test('below 1000 px the "Would update" words are dropped and the sentence and buttons stay; from 1000 px they are there, still on one line', async () => {
+test('below 1000 px of the middle and right columns the "Would update" words are dropped and the sentence and buttons stay; from 1000 px (a 1232 px window with the navigation open) they are there, still on one line', async () => {
   const p = page();
   await shelf('Skills').getByRole('button', { name: 'Remove Summarize a meeting' }).click();
   await bar().getByRole('button', { name: 'Save', exact: true }).click();
   await expect(bar().getByText(SAVED, { exact: true })).toBeVisible();
-  for (const [w, h, shown] of [[1280, 800, true], [1000, 700, true], [999, 700, false], [900, 600, false]] as const) {
+  for (const [w, h, shown] of [[1280, 800, true], [1232, 700, true], [1231, 700, false], [1000, 700, false], [900, 600, false]] as const) {
     await resize(p, w, h);
     const would = bar().locator('.hm-would');
     if (shown) { await expect(would).toBeVisible(); await expect(bar().locator('.hm-tick')).toHaveText(['Claude Code', 'Codex', 'OpenCode']); } else await expect(would).toBeHidden();
@@ -98,7 +98,7 @@ test('the note after Remove sits above the Save bar at the left in a strip of it
   await animationsDone(p);
   const n = await rectOf(p, '.hm-toast[data-note]'), b = await rectOf(p, '.hm-savebar'), stage = await rectOf(p, 'main.hm-stage');
   expect(n.y + n.h).toBeLessThanOrEqual(b.y + 1);
-  expect(n.x).toBeLessThan(60);
+  expect(n.x - (await rectOf(p, '.hm-savebar')).x).toBeLessThan(60);   // at the left of the middle column, where the Save bar starts
   expect(stage.y + stage.h, 'the page above ends where the note starts').toBeLessThanOrEqual(n.y + 1);
   // What of a tile can be seen: its box cut to the page that scrolls it.
   for (const t of await p.locator('.hm-grid .kit-card').all()) {

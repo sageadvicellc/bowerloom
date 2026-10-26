@@ -30,7 +30,7 @@ const line = (name: string, kind: 'skill' | 'tool' | 'note', text: string): Loca
 const panel = (): Locator => page().locator('aside.hm-panel');
 const title = (): Locator => panel().locator('#hm-panel-title');
 const bar = (): Locator => page().getByRole('region', { name: 'Save bar' });
-const topBar = (name: string): Locator => page().locator('header.hm-bar').getByRole('button', { name, exact: true });
+const topBar = (name: string): Locator => page().locator('nav.hm-nav').getByRole('button', { name, exact: true });
 const tip = (): Locator => page().getByRole('tooltip');
 const budget = async (): Promise<string[]> => assertTextBudget(await page().evaluate(() => document.querySelector('[data-home]')!.outerHTML));
 const overflowX = async (): Promise<number> => page().evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
@@ -80,12 +80,12 @@ test('every agent tile shows counts for what it holds: "3 skills", "1 tool", "1 
 });
 
 // ---- Selection is a highlight, not a check.
-test('a selected card, a selected line and the selected sort segment are highlights: no check mark anywhere, and the edge is 2 px', async () => {
+test('a selected card, a selected line and the chosen sort item are highlights: no check mark anywhere, and the edge is 2 px', async () => {
   const p = page();
   const checks = async (): Promise<{ marks: number; legacy: number; sortIcons: number }> => p.evaluate(path => ({
-    marks: document.querySelectorAll(`.kit-card svg path[d="${path}"], .hm-seg svg path[d="${path}"]`).length,
+    marks: document.querySelectorAll(`.kit-card svg path[d="${path}"], .hm-menu-list svg path[d="${path}"]`).length,
     legacy: document.querySelectorAll('.kit-card-check').length,
-    sortIcons: document.querySelectorAll('.hm-seg svg').length,
+    sortIcons: document.querySelectorAll('.hm-menu-list svg').length,
   }), CHECK_PATH);
   expect(await checks()).toEqual({ marks: 0, legacy: 0, sortIcons: 0 });
   await expect(main('Inbox sorter')).toHaveAttribute('aria-pressed', 'true');
@@ -93,7 +93,9 @@ test('a selected card, a selected line and the selected sort segment are highlig
   await line('Meeting assistant', 'skill', 'Write a reply').click();
   await expect(title()).toHaveText('Write a reply');
   expect(await checks()).toEqual({ marks: 0, legacy: 0, sortIcons: 0 });
-  await p.getByRole('button', { name: 'Recently changed' }).click();
+  await p.getByRole('button', { name: 'Sort', exact: true }).click();
+  expect(await checks()).toEqual({ marks: 0, legacy: 0, sortIcons: 0 });
+  await p.getByRole('menuitemradio', { name: 'Recently changed' }).click();
   expect(await checks()).toEqual({ marks: 0, legacy: 0, sortIcons: 0 });
   const edge = async (loc: Locator): Promise<{ width: string; colour: string; fill: string }> => loc.evaluate(el => { const s = getComputedStyle(el); return { width: s.borderTopWidth, colour: s.borderTopColor, fill: s.backgroundColor }; });
   await p.mouse.move(2, 450); await animationsDone(p);
@@ -101,9 +103,15 @@ test('a selected card, a selected line and the selected sort segment are highlig
   expect(owner.width).toBe('2px'); expect(plain.width).toBe('1px'); expect(row.width).toBe('2px');
   expect(owner.fill).not.toBe(plain.fill); expect(owner.colour).not.toBe(plain.colour);
   console.log('MEASURED selected card edge:', JSON.stringify(owner), 'plain card:', JSON.stringify(plain), 'selected line:', JSON.stringify(row));
-  const seg = await edge(p.getByRole('button', { name: 'Recently changed' }));
-  expect(seg.fill).not.toBe(await edge(p.getByRole('button', { name: 'Name' })).then(e => e.fill));
-  await expect(p.getByRole('button', { name: 'Recently changed' })).toHaveAttribute('aria-pressed', 'true');
+  await p.getByRole('button', { name: 'Sort', exact: true }).click();
+  const seg = await edge(p.getByRole('menuitemradio', { name: 'Recently changed' }));
+  expect(seg.fill).not.toBe(await edge(p.getByRole('menuitemradio', { name: 'Name' })).then(e => e.fill));
+  await expect(p.getByRole('menuitemradio', { name: 'Recently changed' })).toHaveAttribute('aria-checked', 'true');
+  // The chosen item has the 2 px accent edge (an inset ring), the other has none, and there is no tick.
+  const ring = async (name: string): Promise<string> => p.getByRole('menuitemradio', { name }).evaluate(el => getComputedStyle(el).boxShadow);
+  expect(await ring('Recently changed')).toMatch(/inset/); expect(await ring('Recently changed')).toMatch(/2px/); expect(await ring('Name')).toBe('none');
+  expect(await checks()).toEqual({ marks: 0, legacy: 0, sortIcons: 0 });
+  await p.keyboard.press('Escape');
 });
 
 // ---- Counts and trays.
@@ -113,7 +121,7 @@ test('a count opens a tray with names, one compact row each; one tray at a time;
   const skills = chip('Meeting assistant', '4 skills'), tools = chip('Meeting assistant', '1 tool');
   await expect(skills).toHaveAttribute('aria-expanded', 'false');
   await expect(lines('Meeting assistant', 'skill')).toHaveCount(4); await expect(lines('Meeting assistant', 'skill').first()).toBeHidden();
-  const money = (await card('Money tracker').boundingBox())!.y;
+  const later = (await card('Report builder').boundingBox())!.y;
   await skills.click();
   await expect(skills).toHaveAttribute('aria-expanded', 'true');
   const id = (await skills.getAttribute('aria-controls'))!;
@@ -121,7 +129,7 @@ test('a count opens a tray with names, one compact row each; one tray at a time;
   await expect(lines('Meeting assistant', 'skill')).toHaveText(['Summarize a meeting', 'Write a reply', 'List action items', 'Tidy my meeting notes']);
   await animationsDone(p);
   expect(await heights(), 'no tile changes size').toEqual(before);
-  expect((await card('Money tracker').boundingBox())!.y, 'the later row moves down by the tray').toBeGreaterThan(money + 60);
+  expect((await card('Report builder').boundingBox())!.y, 'the later row moves down by the tray').toBeGreaterThan(later + 60);
   // A second count opens its tray and the first closes: one tray at a time.
   await tools.click();
   await expect(tools).toHaveAttribute('aria-expanded', 'true'); await expect(skills).toHaveAttribute('aria-expanded', 'false');
@@ -138,7 +146,7 @@ test('a count opens a tray with names, one compact row each; one tray at a time;
   await expect(lines('Meeting assistant', 'skill').first()).toBeHidden();
   await animationsDone(p);
   expect(await heights()).toEqual(before);
-  expect((await card('Money tracker').boundingBox())!.y).toBeCloseTo(money, 0);
+  expect((await card('Report builder').boundingBox())!.y).toBeCloseTo(later, 0);
   expect(await budget()).toEqual([]);
 });
 
@@ -366,12 +374,12 @@ test('a new selection starts the panel at its top, even when the one before it w
   await expect(panel().getByRole('button', { name: 'Back to agent' })).toBeInViewport();
 });
 
-// ---- Version history.
-test('the Version history button is an icon-only clock with a tooltip: 400 ms on hover, at once on focus, Escape hides it, and it never covers its button', async () => {
+// ---- Icon buttons and their tooltips (the Version history item has its words in the navigation; the toggle of the details is an icon only).
+test('the details toggle is an icon-only button with a tooltip: 400 ms on hover, at once on focus, Escape hides it, and it never covers its button', async () => {
   const p = page();
-  const button = topBar('Version history');
+  const button = p.locator('[data-details-toggle]');
   await expect(button).toBeVisible(); expect(await button.innerText()).toBe('');
-  await expect(button).toHaveAttribute('aria-label', 'Version history');
+  await expect(button).toHaveAttribute('aria-label', 'Hide details');
   expect(await button.locator('svg').count()).toBe(1);
   const tooltipId = (await button.getAttribute('aria-describedby'))!;
   expect(await p.evaluate(id => document.getElementById(id)?.getAttribute('role'), tooltipId)).toBe('tooltip');
@@ -384,48 +392,57 @@ test('the Version history button is an icon-only clock with a tooltip: 400 ms on
   const waited = Date.now() - t0;
   console.log('MEASURED tooltip delay on hover (ms, includes the move of the pointer):', waited);
   expect(waited).toBeGreaterThanOrEqual(350); expect(waited).toBeLessThan(1000);
-  await expect(tip()).toHaveText('Version history');
+  await expect(tip()).toHaveText(/^Hide details \((?:Ctrl\+Shift\+B|⇧⌘B)\)$/);
   const b = await button.boundingBox(), t = await tip().boundingBox();
-  // It sits beside the button, in the free room of the bar: never over the button, and never over the page under the bar.
-  expect(t!.x + t!.width).toBeLessThanOrEqual(b!.x - 4); expect(t!.y).toBeGreaterThanOrEqual(0); expect(t!.y + t!.height).toBeLessThanOrEqual(64);
-  expect(t!.y + t!.height / 2).toBeCloseTo(b!.y + b!.height / 2, 0);
+  // It sits under the button at the top right, lined up with its right edge: never over the button, and always inside the window.
+  expect(t!.y).toBeGreaterThanOrEqual(b!.y + b!.height + 4); expect(t!.x + t!.width).toBeLessThanOrEqual(1280 + 0.5); expect(t!.x).toBeGreaterThanOrEqual(0);
+  expect(Math.abs((t!.x + t!.width) - (b!.x + b!.width))).toBeLessThanOrEqual(1);
   expect(await tip().evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(14);
   expect(await tip().evaluate(el => getComputedStyle(el).pointerEvents)).toBe('none');
   // Escape hides it, and nothing else happens.
   await p.keyboard.press('Escape');
-  await expect(tip()).toBeHidden(); await expect(p.getByRole('dialog')).toHaveCount(0);
+  await expect(tip()).toBeHidden(); await expect(p.getByRole('dialog')).toHaveCount(0); await expect(panel()).toBeVisible();
   // Leaving and coming back shows it again; leaving hides it.
   await p.mouse.move(2, 450); await p.mouse.move(2, 460);
   await button.hover(); await expect(tip()).toBeVisible({ timeout: 2000 });
   await p.mouse.move(2, 450);
   await expect(tip()).toBeHidden();
-  // A press hides it and opens the drawer, and it stays hidden while the pointer is still there.
+  // A press hides it and does its work, and it stays hidden while the pointer is still there.
   await button.hover(); await expect(tip()).toBeVisible({ timeout: 2000 });
   await button.click();
-  await expect(p.getByRole('dialog', { name: 'Version history' })).toBeVisible();
+  await expect(panel()).toBeHidden();
   await expect(tip()).toBeHidden();
   expect(await budget()).toEqual([]);
 });
 
 test('the keyboard shows the tooltip at once, Escape hides it first and the drawer next, and the tooltip fades with no motion under reduce motion', async () => {
   const p = page();
-  const button = topBar('Version history');
-  await p.getByRole('button', { name: 'About this preview' }).focus();
-  await p.keyboard.press('Tab'); await p.keyboard.press('Tab');
-  await expect(button).toBeFocused();
+  const toggle = p.locator('[data-details-toggle]');
+  await p.getByRole('button', { name: 'Sort', exact: true }).focus();
+  await p.keyboard.press('Escape'); await expect(tip()).toBeHidden();   // the tooltip of the button before it, put away
+  await p.keyboard.press('Tab');
+  await expect(toggle).toBeFocused();
   await expect(tip()).toBeVisible({ timeout: 300 });
   await p.keyboard.press('Escape');
   await expect(tip()).toBeHidden();
   await p.keyboard.press('Enter');
+  await expect(panel()).toBeHidden(); await expect(tip()).toBeHidden(); await expect(toggle).toBeFocused();
+  await p.keyboard.press('Enter'); await expect(panel()).toBeVisible();
+  // A drawer: the tooltip of its Close icon goes first, the drawer next, and the focus goes back to the item that opened it.
+  await topBar('Version history').click();
   const drawer = p.getByRole('dialog', { name: 'Version history' });
-  await expect(drawer).toBeVisible(); await expect(tip()).toBeHidden();
-  await expect(drawer.getByRole('heading', { name: 'Version history' })).toBeFocused();
+  await expect(drawer).toBeVisible(); await expect(drawer.getByRole('heading', { name: 'Version history' })).toBeFocused();
+  await p.keyboard.press('Tab');
+  await expect(drawer.getByRole('button', { name: 'Close' })).toBeFocused(); await expect(tip()).toBeVisible({ timeout: 300 });
+  await expect(tip()).toHaveText('Close');
   await p.keyboard.press('Escape');
-  await expect(drawer).toHaveCount(0); await expect(button).toBeFocused();
+  await expect(tip()).toBeHidden(); await expect(drawer).toBeVisible();
+  await p.keyboard.press('Escape');
+  await expect(drawer).toHaveCount(0); await expect(topBar('Version history')).toBeFocused();
   // Reduce motion: the tooltip has no transition at all.
   await p.emulateMedia({ reducedMotion: 'reduce' });
   await p.waitForFunction(() => document.documentElement.style.getPropertyValue('--motion-reduced') === '1');
-  await p.keyboard.press('Shift+Tab'); await p.keyboard.press('Tab');
+  await toggle.focus(); await p.keyboard.press('Shift+Tab'); await p.keyboard.press('Tab');
   await expect(tip()).toBeVisible({ timeout: 300 });
   const facts = await tip().evaluate(el => ({ durations: getComputedStyle(el).transitionDuration.split(', '), opacity: getComputedStyle(el).opacity }));
   expect(facts.durations.every(d => d === '0s')).toBe(true); expect(facts.opacity).toBe('1');
@@ -528,7 +545,7 @@ for (const [w, h] of SIZES_A) {
       await shot(p, 'notes-details', w, h, look);
       await main('Research assistant').click(); await p.mouse.move(2, h - 4);
       await shot(p, 'agent-details', w, h, look);
-      await topBar('Version history').hover(); await expect(tip()).toBeVisible({ timeout: 2000 });
+      await p.locator('[data-details-toggle]').hover(); await expect(tip()).toBeVisible({ timeout: 2000 });
       await shot(p, 'tooltip', w, h, look);
       await p.mouse.move(2, h - 4);
       await topBar('Version history').click();

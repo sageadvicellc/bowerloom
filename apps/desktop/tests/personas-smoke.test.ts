@@ -110,15 +110,15 @@ test('serve, look, goto map, click the first agent, look again, stop: the snapsh
   const map = drive('look');
   assert.equal(map.status, 0, map.stderr);
   const lines = map.stdout.split('\n');
-  // The agent cards follow the "Find more" button: the first button after it is the first agent.
-  const findMore = lines.findIndex(l => /^\s*\[\d+\] button "Find more"/.test(l));
+  // The agent cards follow the details toggle, the last button of the top row: the first button after it is the first agent.
+  const findMore = lines.findIndex(l => /^\s*\[\d+\] button "Hide details"/.test(l));
   assert.ok(findMore > 0, `the map shows agent cards:\n${map.stdout}`);
   const firstAgentLine = lines.slice(findMore + 1).find(l => /^\s*\[\d+\] button "/.test(l));
-  assert.ok(firstAgentLine !== undefined, `an agent card follows "Find more":\n${map.stdout}`);
+  assert.ok(firstAgentLine !== undefined, `an agent card follows "Hide details":\n${map.stdout}`);
   const firstAgent = /^\s*\[(\d+)\] button "([^"]+)"/.exec(firstAgentLine!);
   assert.ok(firstAgent !== null, firstAgentLine);
   const before = map.stdout.replace(/^SCREENSHOT: .*$/m, '');
-  assert.match(before, /heading 1: Your agents/);
+  assert.match(before, /heading 1: Agents/);
 
   const click = drive('click', firstAgent![1]!);
   assert.equal(click.status, 0, click.stderr);
@@ -142,7 +142,7 @@ test('serve, look, goto map, click the first agent, look again, stop: the snapsh
 
   // The transcript has every command and result.
   const transcript = readFileSync(join(out, 'transcript.txt'), 'utf8');
-  for (const needle of ['> look', '> goto map', `> click ${oldFind![1]}`, `> click ${firstAgent![1]}`, '> evaluate document.body.innerHTML', '> log the smoke test was here', 'heading 1: Your agents']) assert.ok(transcript.includes(needle), needle);
+  for (const needle of ['> look', '> goto map', `> click ${oldFind![1]}`, `> click ${firstAgent![1]}`, '> evaluate document.body.innerHTML', '> log the smoke test was here', 'heading 1: Agents']) assert.ok(transcript.includes(needle), needle);
   assert.ok(transcript.indexOf('> goto map') < transcript.indexOf(`> click ${firstAgent![1]}`));
   assert.doesNotMatch(transcript, /<\/?[a-z][^>]*>/i);
 

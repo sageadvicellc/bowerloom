@@ -12,7 +12,7 @@ export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
   iconOnly?: boolean;
   /** A button with less padding, for a "?" or a "Back" that sits in a line of text. It is still 32 px high, so it is easy to hit. */
   size?: 'normal' | 'small';
-  ref?: Ref<HTMLButtonElement>;
+  ref?: Ref<HTMLButtonElement> | undefined;
 }
 
 export function Button({ variant = 'quiet', icon, round = false, iconOnly = false, size = 'normal', type = 'button', children, ...rest }: ButtonProps): ReactElement {

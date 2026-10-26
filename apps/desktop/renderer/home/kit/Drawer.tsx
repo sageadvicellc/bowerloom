@@ -8,7 +8,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { MOTION, ms } from '../../motion-tokens.js';
 import { WORDS } from '../words.js';
-import { Button } from './Button.js';
+import { IconButton } from './IconButton.js';
 import { drawerStep } from './drawer-phase.js';
 import { currentControl, giveBackFocus } from './focus.js';
 import type { DrawerPhase } from './drawer-phase.js';
@@ -76,7 +76,7 @@ export function Drawer({ open, title, onClose, children, dataSlot, inline = fals
     <aside className="kit-drawer" ref={root} role="dialog" aria-modal="false" aria-labelledby={titleId} data-phase={shown} data-inline={inline ? '' : undefined} data-slot={dataSlot}>
       <header className="kit-drawer-head">
         <Heading className="kit-heading" id={titleId} ref={heading} tabIndex={-1}>{title}</Heading>
-        <Button round icon="close" aria-label={WORDS.label.close} onClick={onClose} />
+        <IconButton icon="close" label={WORDS.label.close} onClick={onClose} />
       </header>
       <div className="kit-drawer-body">{children}</div>
     </aside>

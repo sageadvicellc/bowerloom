@@ -108,7 +108,7 @@ test('Escape skips the tour from any step, and the focus goes back to the first 
   await expect(dialog().getByText('3 of 7')).toBeVisible();
   await p.keyboard.press('Escape');
   await expect(dialog()).toHaveCount(0);
-  await expect(p.getByRole('heading', { level: 1, name: 'Your agents' })).toBeFocused();
+  await expect(p.getByRole('heading', { level: 1, name: 'Agents', exact: true })).toBeFocused();
 });
 
 test('the spotlight moves in 160 ms and stops, and the dim blocks the page behind it', async () => {
@@ -150,7 +150,7 @@ test('the tour does not run twice in one session, and replays from Help with "Sh
   await p.evaluate(() => { location.hash = '#prototype-v2/kit'; });
   await expect(p.getByRole('heading', { level: 1, name: 'Card kit' })).toBeVisible();
   await p.evaluate(() => { location.hash = '#prototype-v2/map/tour'; });
-  await expect(p.getByRole('heading', { level: 1, name: 'Your agents' })).toBeVisible();
+  await expect(p.getByRole('heading', { level: 1, name: 'Agents', exact: true })).toBeVisible();
   await framesPainted(p);
   await expect(dialog()).toHaveCount(0);
   // Nothing was written anywhere to remember it.

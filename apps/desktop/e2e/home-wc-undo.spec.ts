@@ -21,7 +21,7 @@ const LOOKS = ['light', 'dark'] as const;
 
 let home: Home;
 const page = (): Page => home.page;
-const header = (): Locator => page().locator('header.hm-bar');
+const header = (): Locator => page().locator('nav.hm-nav');
 const bar = (): Locator => page().getByRole('region', { name: 'Save bar' });
 const barWords = (): Locator => bar().locator('.hm-savebar-state > p');
 const changeList = (): Locator => page().locator('[data-changes-list]');
@@ -49,19 +49,20 @@ test.beforeEach(async () => {
   await skipTour(page());
 });
 
-test('the top bar has a Share button with its word next to Add, a clock with a tooltip, and Help as a word, not a bare question mark', async () => {
+test('the navigation has Add, Share, Version history and Help with their words, no bare question mark, and as a rail Version history is an icon with a tooltip', async () => {
   const p = page();
   const buttons = await header().getByRole('button').evaluateAll(els => els.map(el => (el.getAttribute('aria-label') ?? el.textContent ?? '').trim()));
-  expect(buttons).toEqual(['About this preview', 'Version history', 'Share', 'Add', 'Help']);
+  expect(buttons).toEqual(['Hide navigation', 'Add', 'Agents', 'Library', 'Find more', 'Share', 'Version history', 'Help', 'About this preview']);
   await expect(header().getByRole('button', { name: 'Share', exact: true })).toHaveText('Share');
   await expect(header().getByRole('button', { name: 'Help', exact: true })).toHaveText('Help');
   expect(await header().evaluate(el => el.textContent)).not.toContain('?');
   const rects = await header().getByRole('button').evaluateAll(els => els.map(el => { const r = el.getBoundingClientRect(); return { h: r.height, w: r.width }; }));
   for (const r of rects) { expect(r.h).toBeGreaterThanOrEqual(32); expect(r.w).toBeGreaterThanOrEqual(32); }
-  // The clock keeps its tooltip.
+  // Put away to the rail, the clock keeps its tooltip (the words are not on show there).
+  await p.locator('[data-nav-toggle]:visible').click();
   const clock = header().getByRole('button', { name: 'Version history', exact: true });
-  await clock.focus(); await p.keyboard.press('Shift+Tab'); await p.keyboard.press('Tab');
-  await expect(p.getByRole('tooltip')).toHaveText('Version history');
+  await clock.focus(); await p.keyboard.press('ArrowUp'); await p.keyboard.press('ArrowDown');
+  await expect(p.getByRole('tooltip').filter({ hasText: 'Version history' })).toBeVisible();
   await p.keyboard.press('Escape');
   // Share is also still in the version history.
   await clock.click();
@@ -210,7 +211,7 @@ test('Escape closes the list and keeps the focus on the button; a press elsewher
   await expect(toggle()).toBeFocused();
   await toggle().click();
   await expect(changeList()).toBeVisible();
-  await p.locator('main.hm-stage h1').click();
+  await p.locator('.hm-topbar h1').click();
   await expect(changeList()).toHaveCount(0);
   // With the Version history drawer open, Escape closes the list first and the drawer next.
   await header().getByRole('button', { name: 'Version history', exact: true }).click();
@@ -305,7 +306,7 @@ test('Ctrl+Z does nothing while the focus is in a text field, while a dialog is 
 
 test('on the Library page the same bar counts the change, the list has its Undo, and a change another one needs says so in plain words', async () => {
   const p = page();
-  await header().getByRole('tab', { name: 'Library' }).click();
+  await header().getByRole('button', { name: 'Library', exact: true }).click();
   await expect(p.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible();
   await p.getByRole('button', { name: 'Compare two options', exact: true }).click();
   await p.getByRole('button', { name: 'Remove from library' }).click();
@@ -334,7 +335,7 @@ test('on the Library page the same bar counts the change, the list has its Undo,
 
 test('a change that a later one needs cannot be undone alone: its Undo is off and the row says the later change goes first', async () => {
   const p = page();
-  await header().getByRole('tab', { name: 'Library' }).click();
+  await header().getByRole('button', { name: 'Library', exact: true }).click();
   await p.getByRole('button', { name: 'Add from the web' }).click();
   const sheet = p.locator('[data-slot="web"]');
   await expect(sheet).toBeVisible(); await animationsDone(p);
@@ -377,7 +378,7 @@ for (const [w, h] of REVIEW) for (const look of LOOKS) {
     const m = await p.evaluate(() => {
       const r = (sel: string) => { const b = document.querySelector(sel)!.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
       const small = [...document.querySelectorAll('[data-home] *')].filter(el => [...el.childNodes].some(n => n.nodeType === 3 && (n.textContent ?? '').trim() !== '') && parseFloat(getComputedStyle(el).fontSize) < 14).map(el => el.textContent?.trim().slice(0, 30));
-      return { list: r('[data-changes-list]'), bar: r('.hm-savebar'), header: r('header.hm-bar'), sx: document.documentElement.scrollWidth - document.documentElement.clientWidth, small, headerOverflow: (document.querySelector('header.hm-bar') as HTMLElement).scrollWidth - (document.querySelector('header.hm-bar') as HTMLElement).clientWidth };
+      return { list: r('[data-changes-list]'), bar: r('.hm-savebar'), header: r('.hm-topbar'), sx: document.documentElement.scrollWidth - document.documentElement.clientWidth, small, headerOverflow: (document.querySelector('.hm-topbar') as HTMLElement).scrollWidth - (document.querySelector('.hm-topbar') as HTMLElement).clientWidth };
     });
     expect(m.small).toEqual([]);
     expect(m.sx).toBeLessThanOrEqual(0);

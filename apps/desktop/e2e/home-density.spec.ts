@@ -22,7 +22,7 @@ const tile = (name: string): Locator => tiles().filter({ has: page().locator('.k
 const count = (name: string, label: string): Locator => tile(name).getByRole('button', { name: label, exact: true });
 const trays = (): Locator => page().locator('.kit-tray[data-open]');
 const panel = (): Locator => page().locator('aside.hm-panel');
-const topBar = (name: string): Locator => page().locator('header.hm-bar').getByRole('button', { name, exact: true });
+const topBar = (name: string): Locator => page().locator('nav.hm-nav').getByRole('button', { name, exact: true });
 
 interface Box { x: number; y: number; w: number; h: number }
 const boxOf = async (el: Locator): Promise<Box> => el.evaluate(e => { const r = e.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
@@ -176,6 +176,8 @@ test('selecting an agent, opening a tray and a long window do not change the siz
 // ---- Counts open a tray.
 test('a count opens a tray under its tile\'s row, as wide as the row, and pushes the later rows down; the same count closes it', async () => {
   const p = page();
+  // The navigation takes 232 px, so the map holds three columns from 1440 px (it held three at 1280 before).
+  await resize(p, 1440, 900);
   const button = count('Interview notetaker', '4 skills');
   await expect(button).toHaveAttribute('aria-expanded', 'false'); await expect(button).toHaveAttribute('aria-controls', /^tray-agent-\d+-skill$/);
   const tray = await trayFor(button);

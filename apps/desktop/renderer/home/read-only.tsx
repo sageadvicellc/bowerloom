@@ -16,9 +16,10 @@ import { IconButton } from './kit/IconButton.js';
 import type { IconButtonProps } from './kit/IconButton.js';
 import { Tooltip } from './kit/Tooltip.js';
 import type { TipSide } from './kit/Tooltip.js';
+import { WORDS } from './words.js';
 
 /** The reason every held-back control gives, in its tooltip. */
-export const READ_ONLY_REASON = 'Read-only: your setup is not changed.';
+export const READ_ONLY_REASON: string = WORDS.hint.readOnlyWhy;
 
 /** Where the setup came from: the made-up sample, or the person's own files. */
 export type DataSource = 'sample' | 'real';

@@ -17,6 +17,7 @@ import { HelpPopover } from '../renderer/home/kit/HelpPopover.js';
 import { KIT_ICON_NAMES, KitIcon } from '../renderer/home/kit/icons.js';
 import { ItemCard, isLarge } from '../renderer/home/kit/ItemCard.js';
 import { Shelf } from '../renderer/home/kit/Shelf.js';
+import { Sidebar } from '../renderer/home/shell/Sidebar.js';
 import { HomeApp } from '../renderer/home/HomeApp.js';
 import { KitGallery } from '../renderer/home/KitGallery.js';
 import { TourAnnouncer, TourOverlay } from '../renderer/home/tour/TourOverlay.js';
@@ -153,48 +154,68 @@ test('the Preview mark is one text button, plain words and a dot, that opens its
   assert.match(open, /<p>This is a preview\. It sends nothing, stores nothing, and writes nothing to your computer\.<\/p>/); assert.match(open, /aria-expanded="true"/); within(open);
 });
 
-test('the shell has no bare "?": Help is a button with its word at the far right; Preview is plain words with a dot and Tools has a hint line', () => {
+test('the shell has no bare "?": Help is an item of the navigation with its word; Preview is plain words with a dot at the foot of it, and Tools has a hint line', () => {
   const m = shell();
   assert.equal([...m.matchAll(/>\?<\/button>/g)].length, 0, 'no bare question mark');
-  assert.match(m, /data-tour="help"[^>]*>Help<\/button>/);
+  assert.match(m, /data-tour="help"[^>]*>(?:<svg[\s\S]*?<\/svg>)<span class="hm-nav-label">Help<\/span><\/button>/);
   assert.match(m, /<button[^>]*class="kit-status kit-help-text"[^>]*aria-label="About this preview"/);
   assert.doesNotMatch(m, /About tools/);
   assert.match(m, /<h3 class="kit-heading"[^>]*>Tools<\/h3><p class="kit-hint">Tools let an agent reach outside services\.<\/p>/);
-  assert.ok(m.indexOf('kit-help-text') < m.indexOf('data-tour="help"'), 'Help is after the Preview mark, at the far right of the bar');
+  assert.ok(m.indexOf('kit-help-text') > m.indexOf('data-tour="help"'), 'the Preview mark is after Help, at the foot of the navigation');
   within(m);
 });
 
-test('the Version history button is an icon-only clock button with a name, and a tooltip that describes it', () => {
-  const m = shell();
-  const button = /<button[^>]*aria-label="Version history"[^>]*>/.exec(m);
-  assert.ok(button !== null, 'a button named Version history');
-  assert.match(button![0], /data-round=""/); assert.match(button![0], /aria-expanded="false"/);
+test('Version history is an item of the navigation with its words; as a rail it is an icon with a name and a tooltip that describes it', () => {
+  const open = shell();
+  assert.match(open, /data-nav-key="history"[^>]*aria-expanded="false"[^>]*>(?:<svg[\s\S]*?<\/svg>)<span class="hm-nav-label">Version history<\/span>/);
+  assert.doesNotMatch(open, /Save points/i);
+  const rail = renderToStaticMarkup(createElement(Sidebar, {
+    mode: 'rail', overlay: false, view: 'agents', libraryKind: 'skill', libraryOpen: true, addOpen: false, historyOpen: false, findOpen: false, readOnly: false, real: false,
+    onToggle: none, onAgents: none, onLibrary: none, onAdd: none, onFind: none, onShare: none, onHistory: none, onTour: none, onHow: none,
+  }));
+  const button = /<button[^>]*data-nav-key="history"[^>]*>/.exec(rail);
+  assert.ok(button !== null, 'a button for Version history in the rail');
   const described = /aria-describedby="([^"]+)"/.exec(button![0]);
   assert.ok(described !== null, 'described by the tooltip');
-  assert.match(m, new RegExp(`<span class="kit-tip-text" role="tooltip" id="${described![1]!.replace(/[:]/g, '\\$&')}">Version history</span>`));
-  assert.match(m, /<span class="kit-tip"><button[^>]*aria-label="Version history"[^>]*><svg[^>]*>[\s\S]*?<\/svg><\/button>/, 'the button holds the clock and no words');
-  assert.doesNotMatch(m, /data-open=""[^>]*role="tooltip"|role="tooltip"[^>]*data-open/, 'the tooltip is closed when the page is drawn');
-  assert.doesNotMatch(m, /Save points/i);
+  assert.match(rail, new RegExp(`<span class="kit-tip-text" role="tooltip" id="${described![1]!.replace(/[:]/g, '\\$&')}" data-side="right">Version history</span>`));
+  assert.doesNotMatch(rail, /data-open=""[^>]*role="tooltip"|role="tooltip"[^>]*data-open/, 'the tooltip is closed when the page is drawn');
+  assert.deepEqual(assertTextBudget(rail), []);
+  assert.doesNotMatch(open, /role="tooltip"[^>]*>Version history/, 'with its words on show the item needs no tooltip');
+});
+
+test('the details toggle is an icon-only button at the right of the top row, with its name, its shortcut in the tooltip, and aria-expanded and aria-controls', () => {
+  const m = shell();
+  const button = /<button[^>]*data-details-toggle=""[^>]*>/.exec(m);
+  assert.ok(button !== null, 'a details toggle');
+  assert.match(button![0], /aria-label="Hide details"/); assert.match(button![0], /aria-expanded="true"/); assert.match(button![0], /aria-controls="hm-panel"/); assert.match(button![0], /aria-keyshortcuts="Control\+Shift\+B Meta\+Shift\+B"/);
+  assert.match(m, /data-side="below-end">Hide details \((?:Ctrl\+Shift\+B|⇧⌘B)\)</, 'the shortcut is in the tooltip, as this keyboard names it');
+  assert.match(m, /<button[^>]*data-details-toggle=""[^>]*><svg[\s\S]*?<\/svg><\/button>/, 'the button holds the icon and no words');
+  const nav = /<button[^>]*data-nav-toggle=""[^>]*>/.exec(m);
+  assert.ok(nav !== null, 'a navigation toggle'); assert.match(nav![0], /aria-label="Hide navigation"/); assert.match(nav![0], /aria-expanded="true"/); assert.match(nav![0], /aria-controls="hm-nav"/);
+  assert.ok(m.indexOf('data-nav-toggle') < m.indexOf('data-details-toggle'), 'the navigation toggle is first, at the top left; the details toggle last, at the top right');
   within(m);
 });
 
-test('the shell: a top bar, a stage with the agents, a side panel with three shelves, a Save bar, and the six tour targets', () => {
+test('the shell: a navigation, a top row with the title, a stage with the agents, a details panel with three shelves, a Save bar, and the seven tour targets', () => {
   const m = shell();
-  assert.match(m, /<header class="hm-bar" data-tour="bar">/); assert.match(m, />Add</); assert.match(m, /data-tour="help"[^>]*>Help</);
-  assert.match(m, /<main id="main" class="hm-stage">/); assert.match(m, /<h1 [^>]*>Your agents<\/h1>/); assert.match(m, /10 agents/);
+  assert.match(m, /<nav class="hm-nav" id="hm-nav" aria-label="Main menu" data-tour="bar"/); assert.match(m, /data-tour="add"[^>]*>(?:<svg[\s\S]*?<\/svg>)<span class="hm-nav-label">Add</);
+  assert.match(m, /<header class="hm-topbar">[\s\S]*<h1 class="kit-heading" tabindex="-1">Agents<\/h1>/);
+  assert.match(m, /<main id="main" class="hm-stage">/); assert.match(m, /10 agents/);
   assert.equal([...m.matchAll(/data-kind="agent"/g)].length, 10);
   assert.match(m, /<aside class="hm-panel" data-tour="details"/);
   for (const t of ['Skills', 'Tools', 'Notes']) assert.match(m, new RegExp(`<h3 class="kit-heading"[^>]*>${t}</h3>`));
   assert.match(m, /<section class="hm-savebar" data-tour="save" data-mode="clean" aria-label="Save bar">/); assert.match(m, /Nothing to save yet/);
   assert.match(m, /<button disabled=""[^>]*data-variant="primary"[^>]*>Save<\/button>/);
-  for (const id of ['map', 'agent', 'details', 'add', 'save', 'help', 'bar']) assert.match(m, new RegExp(`data-tour="${id}"`), id);
+  for (const id of ['map', 'agent', 'details', 'add', 'save', 'share', 'help', 'bar']) assert.match(m, new RegExp(`data-tour="${id}"`), id);
   assert.equal([...m.matchAll(/data-tour="agent"/g)].length, 1, 'one agent card is the tour target');
   assert.doesNotMatch(m, /style=|<script|onclick/i);
 });
 
-test('the shell has no left rail, no paragraph, headings in order, and passes the text budget', () => {
+test('the shell is three columns, a navigation, the main place and the details, with no segmented switch; headings are in order and it passes the text budget', () => {
   const m = shell();
-  assert.doesNotMatch(m, /<nav|sidebar|class="shell"/);
+  assert.equal([...m.matchAll(/<nav /g)].length, 1, 'one navigation landmark'); assert.equal([...m.matchAll(/<main /g)].length, 1, 'one main place'); assert.equal([...m.matchAll(/<aside class="hm-panel"/g)].length, 1, 'one details column');
+  assert.doesNotMatch(m, /role="tablist"|hm-switch|class="shell"/, 'the navigation is not a row of tabs');
+  assert.ok(m.indexOf('<nav ') < m.indexOf('<main ') && m.indexOf('<main ') < m.indexOf('<aside class="hm-panel"'), 'left, middle, right');
   within(m);
   assert.deepEqual(levels(m).slice(0, 3), [1, 2, 3]); assert.ok(inOrder(levels(m)), levels(m).join());
   const agentCards = [...m.matchAll(/<button type="button" class="kit-card-main"[^>]*>([^<]+)<\/button>/g)].map(x => x[1]!);

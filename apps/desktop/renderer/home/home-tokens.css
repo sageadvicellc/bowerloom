@@ -27,7 +27,9 @@
   --hm-row-h: 2.75rem; --hm-row-tile: 1.75rem; --hm-row-w: 15rem; --hm-row-min-w: 11rem;
   --hm-tray-col: 14rem;
   --hm-drawer-w: min(380px, 92vw);
-  --hm-panel-w: clamp(18rem, 25vw, 20rem);
+  --hm-panel-w: clamp(17rem, 25vw, 20rem);
+  /* The left navigation: 232 px open, an icon rail of 48 px when put away. */
+  --hm-nav-w: 14.5rem; --hm-nav-rail-w: 3rem;
   --hm-bar-h: 3.25rem; --hm-savebar-h: 3rem;
   --hm-border: #868880;
   --hm-amber: #b36b00;

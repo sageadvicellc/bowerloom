@@ -35,7 +35,7 @@ test.beforeEach(async () => {
   await fresh(page());
   await resize(page(), 1280, 800);
   await skipTour(page());
-  await page().locator('header.hm-bar').getByRole('button', { name: 'Add', exact: true }).click();
+  await page().locator('nav.hm-nav').getByRole('button', { name: 'Add', exact: true }).click();
   await expect(drawer()).toBeVisible();
   await animationsDone(page());
 });
@@ -109,7 +109,7 @@ test('the note after Remove and the note after the first Save never lie over a r
   await p.keyboard.press('Escape');
   await p.locator('.hm-grid').getByRole('button', { name: 'Meeting assistant', exact: true }).click();
   await p.locator('aside.hm-panel').getByRole('button', { name: 'Remove Write a reply' }).click();
-  await p.locator('header.hm-bar').getByRole('button', { name: 'Add', exact: true }).click();
+  await p.locator('nav.hm-nav').getByRole('button', { name: 'Add', exact: true }).click();
   await expect(drawer()).toBeVisible(); await animationsDone(p);
   const toast = p.locator('.hm-toast[data-note]');
   await expect(toast).toBeVisible();

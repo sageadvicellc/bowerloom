@@ -12,6 +12,7 @@ import { plainName } from '../../../shared/home/add-model.js';
 import type { NameOf } from '../../../shared/home/add-model.js';
 import { useProtoStore } from '../../proto/session.js';
 import { Button } from '../kit/Button.js';
+import { IconButton } from '../kit/IconButton.js';
 import { ADD_WORDS, copyNumber, foundIn, linesChanged, newerIs } from '../add/add-words.js';
 import { trapTab } from '../add/dom-helpers.js';
 import { useModalLayer } from '../add/modal-layer.js';
@@ -95,7 +96,7 @@ export function CopiesDialog({ itemId, nameOf = plainName, leaving = false, onCl
             {newer === null ? null : <p className="kit-hint" data-newer="">{newerIs(newer)}</p>}
             <p className="kit-hint" id={replacedId}>{H.copiesReplaced}</p>
           </div>
-          <Button round icon="close" aria-label={L.close} onClick={onClose} />
+          <IconButton icon="close" label={L.close} onClick={onClose} />
         </header>
         <div className="add-copies">
           {copies.map(c => <Copy key={c.index} copy={c} onKeep={() => keep(c)} />)}
