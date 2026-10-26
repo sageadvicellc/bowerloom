@@ -11,7 +11,7 @@ import type { ConfigKind } from '../shared/real/adapters.js';
 import { firstHeading, firstSentence, parseFrontmatter } from '../shared/real/frontmatter.js';
 import { countsOf, tallyWords, topicsOf } from '../shared/real/place.js';
 import type { NoteEntry, PlaceRead, StampedRecord } from '../shared/real/place.js';
-import { cleanLine, cut } from '../shared/real/redact.js';
+import { cleanLine, cleanPath, cut, safeText } from '../shared/real/redact.js';
 import { hashText } from '../shared/proto/sample.js';
 import { REAL_LIMITS } from '../shared/real/types.js';
 import type { RealApp, RealDiscovery, RealPlace, RealPlaceKind } from '../shared/real/types.js';
@@ -48,7 +48,7 @@ const ALL_PROJECT_FILES: ReadonlyMap<string, { app: RealApp; config: ConfigKind 
 const hasMarker = (names: readonly string[]): boolean => names.some(n => ALL_PROJECT_FOLDERS.has(n) || ALL_PROJECT_FILES.has(n));
 
 const placeId = (kind: RealPlaceKind, root: string, apps: readonly string[]): string => `place-${hashText(`${kind}\u0000${root}\u0000${apps.join(',')}`).slice(0, 12)}`;
-const labelOfFolder = (root: string): string => cleanLine(basename(root)).slice(0, 60) || 'This folder';
+const labelOfFolder = (root: string): string => safeText(basename(root), 60) || 'This folder';
 const yieldToLoop = (): Promise<void> => new Promise(resolve => { setImmediate(resolve); });
 
 // ---------------------------------------------------------------------------------------------------------------------- finding places
@@ -137,14 +137,16 @@ function stamp(records: readonly ReturnType<typeof recordsOfFile>['records'][num
   return records.map(r => ({ ...r, mtimeMs }));
 }
 
-function noteOf(rel: string, bytes: number, mtimeMs: number, head: string | null): NoteEntry {
-  const slash = rel.lastIndexOf('/'), folder = slash < 0 ? '' : rel.slice(0, slash), file = rel.slice(slash + 1).replace(/\.[^.]+$/, '');
-  if (head === null) return { rel, folder, title: cleanLine(file).slice(0, REAL_LIMITS.noteChars), summary: '', tags: [], type: '', bytes: Math.max(1, bytes), mtimeMs };
+function noteOf(rawRel: string, bytes: number, mtimeMs: number, head: string | null): NoteEntry {
+  const rel = cleanPath(rawRel), slash = rel.lastIndexOf('/'), folder = slash < 0 ? '' : rel.slice(0, slash), file = rel.slice(slash + 1).replace(/\.[^.]+$/, '');
+  // Everything a note hands to the page is scrubbed first: a title or a summary can hold a key as easily as a skill can.
+  const plain = (text: string, max: number): string => safeText(text, max);
+  if (head === null) return { rel, folder, title: plain(file, REAL_LIMITS.noteChars), summary: '', tags: [], type: '', bytes: Math.max(1, bytes), mtimeMs };
   const front = parseFrontmatter(head);
   const title = textOf(front.data.title) || firstHeading(front.body) || file;
   const summary = textOf(front.data.description) || textOf(front.data.summary) || firstSentence(front.body, REAL_LIMITS.noteChars);
-  const tags = listOf(front.data.tags).map(t => cleanLine(t).slice(0, 30)).filter(t => t !== '').slice(0, 3);
-  return { rel, folder, title: cut(cleanLine(title), REAL_LIMITS.noteChars), summary: cut(cleanLine(summary), REAL_LIMITS.noteChars), tags, type: cleanLine(textOf(front.data.type)).slice(0, 30), bytes: Math.max(1, bytes), mtimeMs };
+  const tags = listOf(front.data.tags).map(t => plain(t, 30)).filter(t => t !== '').slice(0, 3);
+  return { rel, folder, title: cut(plain(title, 4 * REAL_LIMITS.noteChars), REAL_LIMITS.noteChars), summary: cut(plain(summary, 4 * REAL_LIMITS.noteChars), REAL_LIMITS.noteChars), tags, type: plain(textOf(front.data.type), 30), bytes: Math.max(1, bytes), mtimeMs };
 }
 
 /**

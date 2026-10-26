@@ -7,7 +7,7 @@
  * login), and the NAMES of environment variables and headers. A value never leaves the parser. Tests grep every result for a made-up key value.
  */
 import { firstSentence, parseFrontmatter, parseJsonLoose } from './frontmatter.js';
-import { cleanLine, commandName, cut, hostOf, keyNames, looksSecretName, scrubText } from './redact.js';
+import { HIDDEN, cleanLine, cleanPath, commandName, cut, hostOf, keyName, keyNames, looksSecretName, safeText, scrubText } from './redact.js';
 import { parseToml, tomlText } from './toml.js';
 import { isList, isMap, listOf, parseYaml, textOf } from './yaml.js';
 import type { YamlValue } from './yaml.js';
@@ -138,7 +138,8 @@ export function classify(app: RealApp, rel: string): FileRole | null {
 
 // ---------------------------------------------------------------------------------------------------------------------- names
 
-const nameChars = (text: string): string => cleanLine(text).slice(0, 80);
+/** A name shown to the person: scrubbed, one line, at most 80 characters. A name can hold a pasted key as easily as a description can. */
+const nameChars = (text: string): string => safeText(text, 80);
 
 /** The name a path gives a thing: the skill's folder, the file's name, a command's folder prefix. */
 export function nameFromPath(app: RealApp, what: FileRole['what'], rel: string): string {
@@ -154,7 +155,8 @@ export function nameFromPath(app: RealApp, what: FileRole['what'], rel: string):
 }
 
 function record(app: RealApp, kind: RealKind, name: string, description: string, relPath: string, text: string, partial: boolean, meta: RecordMeta = {}, slug = name): RawRecord {
-  return { kind, app, name: name === '' ? 'Unnamed' : name, slug: slug === '' ? 'unnamed' : slug, description: cut(cleanLine(scrubText(description)), REAL_LIMITS.hintChars), relPath, text, partial, meta };
+  const plainName = nameChars(name), plainSlug = nameChars(slug);
+  return { kind, app, name: plainName === '' ? 'Unnamed' : plainName, slug: plainSlug === '' ? 'unnamed' : plainSlug, description: cut(safeText(description, 4 * REAL_LIMITS.hintChars), REAL_LIMITS.hintChars), relPath: cleanPath(relPath), text, partial, meta };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------- files
@@ -178,13 +180,13 @@ export function recordsOfFile(app: RealApp, role: FileRole, relPath: string, rel
     if (role.what === 'agent' && /\.toml$/i.test(relPath)) return { records: [fromTomlAgent(app, base, relPath, text)], partial: false, unreadable: false };
     const front = parseFrontmatter(text);
     const name = nameChars(textOf(front.data.name)) || base;
-    const description = textOf(front.data.description) || firstSentence(front.body);
+    const description = cleanLine(scrubText(textOf(front.data.description) || firstSentence(front.body)));
     const partial = front.state === 'bad';
     const meta: RecordMeta = {
       ...(textOf(front.data.model) === '' ? {} : { model: nameChars(textOf(front.data.model)) }),
       ...(listOf(front.data.skills).length === 0 ? {} : { skills: listOf(front.data.skills).map(nameChars).slice(0, 60) }),
       ...(listOf(front.data.tools).length === 0 ? {} : { toolNames: listOf(front.data.tools).map(nameChars).slice(0, 80) }),
-      ...(role.what === 'agent' && description !== '' ? { role: cut(cleanLine(description), 60) } : {}),
+      ...(role.what === 'agent' && description !== '' ? { role: cut(description, 60) } : {}),
       ...(role.what === 'agent' ? { body: scrubText(front.body).slice(0, BODY_CHARS) } : {}),
     };
     return { records: [record(app, kind, name, description, relPath, scrubText(text), partial, meta, base)], partial, unreadable: false };
@@ -193,9 +195,9 @@ export function recordsOfFile(app: RealApp, role: FileRole, relPath: string, rel
 
 function fromTomlAgent(app: RealApp, base: string, relPath: string, text: string): RawRecord {
   const root = parseToml(text)[0];
-  const name = nameChars(tomlText(root, 'name')) || base, description = tomlText(root, 'description') || firstSentence(tomlText(root, 'developer_instructions'));
+  const name = nameChars(tomlText(root, 'name')) || base, description = cleanLine(scrubText(tomlText(root, 'description') || firstSentence(tomlText(root, 'developer_instructions'))));
   const model = nameChars(tomlText(root, 'model'));
-  return record(app, 'agent', name, description, relPath, scrubText(text), false, { ...(model === '' ? {} : { model }), ...(description === '' ? {} : { role: cut(cleanLine(description), 60) }), body: scrubText(tomlText(root, 'developer_instructions')).slice(0, BODY_CHARS) }, base);
+  return record(app, 'agent', name, description, relPath, scrubText(text), false, { ...(model === '' ? {} : { model }), ...(description === '' ? {} : { role: cut(description, 60) }), body: scrubText(tomlText(root, 'developer_instructions')).slice(0, BODY_CHARS) }, base);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------- connections and hooks
@@ -203,13 +205,15 @@ function fromTomlAgent(app: RealApp, base: string, relPath: string, text: string
 interface ServerSpec { readonly command?: unknown; readonly url?: unknown; readonly env?: unknown; readonly headers?: unknown; readonly bearerEnv?: unknown }
 
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+const BEARER_NAME = /^[A-Z_][A-Z0-9_]{0,39}$/;
 
 function serverRecord(app: RealApp, name: string, relPath: string, spec: ServerSpec): RawRecord {
   const first = Array.isArray(spec.command) ? spec.command[0] : spec.command;
   const command = typeof first === 'string' ? commandName(first) : '';
   const host = typeof spec.url === 'string' ? hostOf(spec.url) : '';
   const envNames = new Set(keyNames(spec.env));
-  if (typeof spec.bearerEnv === 'string' && ENV_NAME.test(spec.bearerEnv)) envNames.add(spec.bearerEnv);
+  // The variable that holds a bearer token is named in capitals by habit. Anything else may be the token itself, pasted where the name should be.
+  if (typeof spec.bearerEnv === 'string' && ENV_NAME.test(spec.bearerEnv)) envNames.add(BEARER_NAME.test(spec.bearerEnv) ? keyName(spec.bearerEnv) : HIDDEN);
   const headerNames = keyNames(spec.headers);
   const description = host !== '' ? `Connects to ${host}.` : command !== '' ? `Starts ${command} on this computer.` : '';
   const summary = { server: nameChars(name), ...(command === '' ? {} : { command }), ...(host === '' ? {} : { host }), ...(envNames.size === 0 ? {} : { env: [...envNames].sort() }), ...(headerNames.length === 0 ? {} : { headers: headerNames }) };
@@ -236,8 +240,8 @@ function hooksOfClaude(app: RealApp, relPath: string, hooks: unknown): RawRecord
     if (!Array.isArray(groups) || !ENV_NAME.test(event)) continue;
     for (const group of groups) {
       const g = (group !== null && typeof group === 'object' ? group : {}) as Record<string, unknown>;
-      const matcher = typeof g.matcher === 'string' ? cleanLine(g.matcher).slice(0, 40) : '';
-      const kinds = Array.isArray(g.hooks) ? g.hooks.map(h => (h !== null && typeof h === 'object' && typeof (h as Record<string, unknown>).type === 'string' ? String((h as Record<string, unknown>).type).slice(0, 20) : 'command')) : ['command'];
+      const matcher = typeof g.matcher === 'string' ? safeText(g.matcher, 40) : '';
+      const kinds = Array.isArray(g.hooks) ? g.hooks.map(h => (h !== null && typeof h === 'object' && typeof (h as Record<string, unknown>).type === 'string' ? safeText(String((h as Record<string, unknown>).type), 20) : 'command')) : ['command'];
       out.push(record(app, 'hook', matcher === '' ? event : `${event}: ${matcher}`, '', relPath, JSON.stringify({ event, ...(matcher === '' ? {} : { matcher }), kinds }), false, { event, ...(matcher === '' ? {} : { matcher }), runs: kinds }));
     }
   }
@@ -269,9 +273,9 @@ function fromOpenCode(app: RealApp, relPath: string, json: unknown): RawRecord[]
   if (agents !== null && typeof agents === 'object' && !Array.isArray(agents)) {
     for (const [name, raw] of Object.entries(agents as Record<string, unknown>)) {
       if (name === '__proto__' || raw === null || typeof raw !== 'object') continue;
-      const a = raw as Record<string, unknown>, description = typeof a.description === 'string' ? a.description : '';
+      const a = raw as Record<string, unknown>, description = typeof a.description === 'string' ? cleanLine(scrubText(a.description)) : '';
       out.push(record(app, 'agent', nameChars(name), description, relPath, scrubText(JSON.stringify({ name, description, mode: typeof a.mode === 'string' ? a.mode : undefined, model: typeof a.model === 'string' ? a.model : undefined })), false, {
-        ...(description === '' ? {} : { role: cut(cleanLine(description), 60) }), ...(typeof a.model === 'string' ? { model: nameChars(a.model) } : {}), toolNames: keyNames(a.tools), ...(typeof a.prompt === 'string' ? { body: scrubText(a.prompt).slice(0, BODY_CHARS) } : {}),
+        ...(description === '' ? {} : { role: cut(description, 60) }), ...(typeof a.model === 'string' ? { model: nameChars(a.model) } : {}), toolNames: keyNames(a.tools), ...(typeof a.prompt === 'string' ? { body: scrubText(a.prompt).slice(0, BODY_CHARS) } : {}),
       }));
     }
   }
