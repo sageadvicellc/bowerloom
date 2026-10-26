@@ -8,6 +8,7 @@ import type { CardBadge, ShelfEntry } from '../../shared/home/cards.js';
 import { AgentCard } from './kit/AgentCard.js';
 import { Badge } from './kit/Badge.js';
 import { Button } from './kit/Button.js';
+import { IconButton } from './kit/IconButton.js';
 import { Drawer } from './kit/Drawer.js';
 import { Glyph } from './kit/Glyph.js';
 import { HelpPopover } from './kit/HelpPopover.js';
@@ -74,7 +75,7 @@ function Look({ theme, title }: { theme: 'light' | 'dark'; title: string }): Rea
       </Block>
       <Block title={L.galleryButtons}>
         <Cell caption={L.galleryPrimary}><Button variant="primary" icon="plus">{L.add}</Button></Cell>
-        <Cell caption={L.galleryQuiet}><Button round icon="clock" aria-label={L.versionHistory} /></Cell>
+        <Cell caption={L.galleryQuiet}><IconButton icon="clock" label={L.versionHistory} /></Cell>
         <Cell caption={L.galleryDisabled}><Button variant="primary" disabled>{L.save}</Button></Cell>
         <Cell caption={L.help}><Button round aria-label={L.help}>?</Button></Cell>
       </Block>

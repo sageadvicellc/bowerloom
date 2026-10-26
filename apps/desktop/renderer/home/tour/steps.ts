@@ -1,5 +1,5 @@
 /**
- * The seven steps of the tour: the six of the storyboard (section 9) and "Share and history", which lights the clock and the Share button together. Each lights one thing,
+ * The seven steps of the tour: the six of the storyboard (section 9) and "Share and history", which lights Share and Version history together. Each lights one thing,
  * found by its `data-tour` id, and says one sentence of at most 10 words. Later waves keep these ids on the same things: map, agent, details (the panel that was the
  * shelves), add, save, share, help. The third step lights the details panel of the agent that was picked, whose Skills come first, so "Skills are what it knows how to do"
  * is true of what is lit, and its card keeps off that agent. The fifth says only what the bar does, so it is true whether or not a change waits.

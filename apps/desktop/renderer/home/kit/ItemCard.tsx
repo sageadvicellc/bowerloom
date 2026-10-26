@@ -59,7 +59,7 @@ export function ItemCard({ kind, name, hint, badge, selected, onSelect, onDragSt
       </div>
       {onRemove === undefined ? null : (
         <span className="kit-card-remove">
-          <EditIconButton icon="remove" label={WORDS.label.remove} id={removeId} aria-labelledby={`${removeId} ${nameId}`} data-remove="" data-no-drag="" onClick={onRemove} />
+          <EditIconButton icon="remove" label={WORDS.label.remove} side="below-end" id={removeId} aria-labelledby={`${removeId} ${nameId}`} data-remove="" data-no-drag="" onClick={onRemove} />
         </span>
       )}
     </div>

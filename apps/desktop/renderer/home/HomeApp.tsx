@@ -1,28 +1,32 @@
 /**
- * The home app shell: a top bar (the name with the leaf, the clock button "Version history" with its tooltip, "Add", and the "?" Help button), a stage with the map, a
- * details panel on the right, a Save bar at the bottom, and two right-side drawers (Add, Version history) that open over the stage. There is no left rail and no routing.
- * "Preview", plain words with a small dot and its own "?" popover, sits beside the name, always: this prototype writes nothing to the computer, and the popover says so.
+ * The home app shell, drawn as a desktop app in three columns (the kind that Claude and ChatGPT have): the LEFT NAVIGATION (shell/Sidebar.tsx: the collapse icon, the mark and name,
+ * Add, Agents, Library with its four pages, then Find more, Share, Version history, Help and the Preview mark, which reads "Read-only" in read-only mode), the MIDDLE column (a slim top
+ * row with the page title and its icon buttons, then the stage with the map or the Library page), and the DETAILS column at the right (put away with its own icon at the top right).
+ * Ctrl or Cmd + B puts the navigation away (a 48 px rail; under 900 px it is a drawer over the page), and with Shift the details. Both are kept in memory only. The Save bar sits under the
+ * middle and the right column, and two drawers (Add, Version history) open over the right edge of the stage.
+ * "Preview", plain words with a small dot and its own popover, sits at the foot of the navigation, always: this prototype writes nothing to the computer, and the popover says so.
  * The map is a plain grid of the person's own agents, one tile each (every tile has the same width and the same height), in one order at a time (by name, or by how
- * recently each changed). A tile says what the agent can do at a glance: its job and one line of counts ("3 skills · 1 tool · 1 note set"). A count is a text button that
+ * recently each changed: the sort icon opens a menu). A tile says what the agent can do at a glance: its job and one line of counts ("3 skills · 1 tool · 1 note set"). A count is a text button that
  * opens a tray under the tile's row of the grid, as wide as the row, with that kind's items as compact rows; the later rows move down, one tray is open at a time, and the
  * same count again closes it. The grid does not know how many columns it has, so HomeApp reads them (useColumns) to put the tray after the last tile of the row.
  * One thing is selected at a time (`selected`: an agent, or a skill, tool or set of notes with the agent it was opened from). A selection is only a highlight, never a
- * check mark. The details panel shows the selection, read only (see details/DetailsPanel.tsx): an agent's own Skills, Tools and Notes keep a quiet "Remove". Removing
+ * check mark. The details column shows the selection, read only (see details/DetailsPanel.tsx): an agent's own Skills, Tools and Notes keep an icon Remove. Removing
  * stages a change in the draft; the Save bar counts the changes and makes a version of the history, and "Go back" undoes it. The `data-tour` ids are map, agent,
- * details (the panel), add, save, help (and `bar` on the top bar). Every agent card carries `data-drop-agent` with the agent's id, so a drag can find the card it lands on.
+ * details (the column), add, save, share (Share and Version history together) and help (and `bar` on the navigation). Every agent card carries `data-drop-agent` with the agent's id, so a drag can find the card it lands on.
  * The Add drawer holds the Add body (plain names and hints from the plain layer; a card goes to an agent by the picker or by a drag onto an agent card). After
- * an add the agent is selected, so its panel shows the new card; both the agent card and the new card wear the same ring for a few seconds (a line across
+ * an add the agent is selected, so its details show the new card; both the agent card and the new card wear the same ring for a few seconds (a line across
  * the map would cross other cards), and the Save bar says what changed. The
- * "2 different copies" state on a row of a tray, a row of the panel, the details of a skill or a row of a drawer opens the copies dialog, which sits at the top of the
+ * "2 different copies" state on a row of a tray, a row of the details, the details of a skill or a row of a drawer opens the copies dialog, which sits at the top of the
  * page. The Version history drawer lists the earlier copies with "Go back to this", and under them has the Share section: "Share my agents" opens the Share sheet (a
  * small modal sheet that makes a copy of the saved agents in memory; the prototype writes nothing), and "Open a shared file" opens the Add drawer on its "From a shared
  * file" tab, where the copy can be opened again. The Notes section of an agent has a "Choose notes" button that opens the full-window Choose notes sheet for the agent
  * that is selected; "Use these notes" stages one change, selects the agent and rings the new card like an add does. With the Add or Version history drawer open the page
- * keeps clear of it: the panel stays beside the map in a wide window and gives way to the drawer in a narrow one. Escape closes the top layer only: the tooltip, the tour,
- * then the copies dialog or the Share sheet, then the Choose notes sheet, then a drawer (the sheet closes a drawer when it opens, and the tour closes both when it starts).
+ * keeps clear of it: the details stay beside the map while the middle and right columns are 990 px wide or more, and give way to the drawer in a narrower window. Escape closes the top layer only: the tooltip, then a
+ * popover or a menu, the tour, then the copies dialog or the Share sheet, then the Choose notes sheet, then a drawer, then the Find more panel or the navigation drawer (the sheet closes a drawer when it opens, and the tour closes both when it starts).
  * The Add picker and the drop targets leave out the agents that Find skipped, like the map.
- * The first minute (HomeFlow) sets four things from outside: the agents of places the person skipped in Find stay off the map (`skipped`), the tour starts by
- * itself once when `autoTour` is set, "Find more" reopens Find (`onFindMore`), and `closingNote` allows one short note after the first Save, once per session.
+ * The first minute (HomeFlow) sets four things from outside: the agents skipped in Find stay off the map (`skipped`; "Find more" in the navigation opens the same scan as a panel in the
+ * right column, and hands the new list back through `onSkippedChange`), the tour starts by itself once when `autoTour` is set, and `closingNote` allows one short note after the first Save,
+ * once per session. Read-only mode (read-only.tsx) holds back every control that would change the setup, and `dataSource` says whether the setup is the person's own.
  * The tour's second step waits for a real click on an agent: that click is the step's action.
  */
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';

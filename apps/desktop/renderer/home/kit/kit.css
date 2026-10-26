@@ -41,7 +41,9 @@
 [data-home] .kit-button[data-icon-only]:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
 /* A control that would change the setup, in the read-only look: it stays in its place and in the Tab order, says why in its tooltip, and does nothing. */
 [data-home] .kit-button[aria-disabled="true"] { background: transparent; border: 1px dashed var(--hm-border); color: var(--text-muted); cursor: not-allowed; }
-[data-home] .kit-button[data-icon-only][aria-disabled="true"] { border-color: transparent; }
+[data-home] .kit-button[data-icon-only][aria-disabled="true"] { border-color: transparent; color: var(--text-muted); }
+/* A held-back icon is plainly dimmer, so it reads as "not now" before the pointer reaches it (its tooltip says why). */
+[data-home] .kit-button[data-icon-only][aria-disabled="true"] .kit-icon { opacity: 0.55; }
 [data-home] .kit-button[aria-disabled="true"]:hover { background: transparent; border-color: var(--hm-border); }
 [data-home] .kit-button[data-icon-only][aria-disabled="true"]:hover { border-color: transparent; }
 [data-home] .kit-button:disabled { background: transparent; border: 1px dashed var(--hm-border); color: var(--text-muted); cursor: not-allowed; }

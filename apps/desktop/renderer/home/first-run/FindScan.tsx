@@ -95,7 +95,8 @@ export function FindScan({ variant, world, committed, onLeave, onDone, skipped =
   }, [state.step, state.ticked, ids, onLeave, onDone]);
   // A new question puts the focus on its main button, so Enter goes on and the keyboard needs no search.
   useEffect(() => {
-    if (state.step === 'places' || state.step === 'confirm') primary.current?.querySelector<HTMLElement>('button:not([disabled])')?.focus({ preventScroll: true });
+    // The main button of the question (the primary one), not the first control in it: the Back arrow comes first.
+    if (state.step === 'places' || state.step === 'confirm') (primary.current?.querySelector<HTMLElement>('button[data-variant="primary"]:not([disabled])') ?? primary.current?.querySelector<HTMLElement>('button:not([disabled])'))?.focus({ preventScroll: true });
     if (state.step === 'reading') heading.current?.focus({ preventScroll: true });
   }, [state.step]);
 
@@ -158,9 +159,9 @@ export function FindScan({ variant, world, committed, onLeave, onDone, skipped =
           <p className="kit-hint">{FIND_WORDS.hint.readOnly}</p>
           <p className="kit-hint">{FIND_WORDS.hint.readSafe}</p>
           <div className="fr-actions" ref={primary}>
+            <IconButton icon="back" label={FIND_WORDS.label.back} side="below" onClick={() => send({ type: 'back' })} />
             <Button variant="primary" onClick={() => send({ type: 'yes' })}>{FIND_WORDS.label.yesRead}</Button>
             <Button onClick={() => send({ type: 'notNow' })}>{FIND_WORDS.label.notNow}</Button>
-            <IconButton icon="back" label={FIND_WORDS.label.back} side="below" onClick={() => send({ type: 'back' })} />
           </div>
         </section>
       ) : null}
