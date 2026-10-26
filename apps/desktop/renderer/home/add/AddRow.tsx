@@ -11,6 +11,7 @@ import { Button } from '../kit/Button.js';
 import { Glyph } from '../kit/Glyph.js';
 import { ItemCard } from '../kit/ItemCard.js';
 import { ADD_WORDS } from './add-words.js';
+import { EditButton, useReadOnly } from '../read-only.js';
 
 const L = ADD_WORDS.label;
 
@@ -82,7 +83,9 @@ export function AddRow({ entry, choices, open, onToggle, onPick, onInstall, onDr
   // Every agent has it: nothing is left to add, and the card says so instead of opening a picker that has nothing to pick.
   const onAll = !ready && choices.length > 0 && choices.every(c => c.has);
   const shown = entry.badge ?? (onAll ? { label: L.onAll, tone: 'info' as const } : undefined);
-  const press = ready ? () => onInstall(row.current) : onToggle;
+  const readOnly = useReadOnly();
+  // Read only, nothing here adds anything: the card and its button do nothing (the button says why).
+  const press = readOnly ? () => undefined : ready ? () => onInstall(row.current) : onToggle;
   const close = (): void => { onToggle(); button.current?.focus(); };
   return (
     <li className="add-row" ref={row} data-add-id={entry.id} data-add-kind={entry.kind} data-draggable={onDragStart === undefined ? undefined : ''}>
@@ -94,9 +97,9 @@ export function AddRow({ entry, choices, open, onToggle, onPick, onInstall, onDr
             {...(onDragStart === undefined ? {} : { onDragStart })} />
         </div>
         <span className="hm-sr" id={nameId}>{entry.name}</span>
-        <Button ref={button} {...(ready ? { icon: 'plus' as const } : { 'aria-expanded': open })} disabled={onAll} aria-labelledby={`${nameId}-do ${nameId}`} onClick={press}>
+        <EditButton ref={button} {...(ready ? { icon: 'plus' as const } : { 'aria-expanded': open })} disabled={onAll} aria-labelledby={`${nameId}-do ${nameId}`} onClick={press}>
           <span id={`${nameId}-do`}>{ready ? L.addAgent : L.addTo}</span>
-        </Button>
+        </EditButton>
       </div>
       {source === undefined ? null : <p className="kit-hint add-row-source" data-source="" data-budget="content">{source}</p>}
       {!ready && open ? <AgentPicker entry={entry} choices={choices} onPick={c => { onPick(c, row.current); button.current?.focus(); }} onClose={close} /> : null}

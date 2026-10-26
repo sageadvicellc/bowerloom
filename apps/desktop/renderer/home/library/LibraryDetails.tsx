@@ -19,6 +19,7 @@ import { AgentPicker } from './AgentPicker.js';
 import { LIBRARY_WORDS } from './library-words.js';
 import '../details/details.css';
 import './library.css';
+import { EditButton } from '../read-only.js';
 
 const L = LIBRARY_WORDS.label, H = LIBRARY_WORDS.hint;
 
@@ -78,10 +79,10 @@ export function LibraryDetails({ details, choices, say, onPickAgent, onOpenAgent
       <Head kind={d.kind} name={d.name} line={KIND_WORD[d.kind]} />
       <Block title={d.kind === 'note' ? L.whatItCovers : L.whatItDoes}><p>{d.kind === 'note' && d.notes !== null ? d.notes.topics : d.hint}</p></Block>
       <div className="lb-actions" role="group" aria-label={d.name}>
-        {d.canAdd ? <Button icon="plus" id={addButtonId} aria-expanded={picking} onClick={() => setPicking(p => !p)}>{L.addToAgent}</Button> : null}
-        {d.canCopy ? <Button onClick={onCopy}>{L.makeCopy}</Button> : null}
+        {d.canAdd ? <EditButton icon="plus" id={addButtonId} aria-expanded={picking} onClick={() => setPicking(p => !p)}>{L.addToAgent}</EditButton> : null}
+        {d.canCopy ? <EditButton onClick={onCopy}>{L.makeCopy}</EditButton> : null}
         {d.update !== null ? <Button icon="sparkle" onClick={onUpdate}>{L.update}</Button> : null}
-        <Button onClick={onRemove}>{L.removeFromLibrary}</Button>
+        <EditButton onClick={onRemove}>{L.removeFromLibrary}</EditButton>
       </div>
       {d.kind === 'tool' && !d.canAdd ? <p className="kit-hint">{H.hookNoAdd}</p> : null}
       {picking ? <AgentPicker choices={choices} onPick={c => { setPicking(false); onPickAgent(c.id); requestAnimationFrame(() => document.getElementById(addButtonId)?.focus()); }} onClose={() => { setPicking(false); requestAnimationFrame(() => document.getElementById(addButtonId)?.focus()); }} /> : null}

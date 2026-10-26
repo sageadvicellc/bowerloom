@@ -24,6 +24,7 @@ import { ACCESS_WORDS } from '../../../shared/home/plain-details.js';
 import { LIBRARY_WORDS, addItems, alreadyHere, groupHeading, madeByLine, openSource, sourceCounts, tickName, willBeCopies } from './library-words.js';
 import './library.css';
 import { IconButton } from '../kit/IconButton.js';
+import { EditButton } from '../read-only.js';
 
 const L = LIBRARY_WORDS.label, H = LIBRARY_WORDS.hint;
 
@@ -121,7 +122,7 @@ function WebBody({ onClose, onAdded }: { onClose(): void; onAdded: WebSheetProps
             {plan.copies.length > 0 ? <p className="kit-hint">{willBeCopies(plan.copies.length)}</p> : null}
           </div>
           <Button onClick={onClose}>{L.cancel}</Button>
-          <Button variant="primary" disabled={plan.adds.length === 0} onClick={add}>{addItems(plan.adds.length)}</Button>
+          <EditButton variant="primary" disabled={plan.adds.length === 0} onClick={add}>{addItems(plan.adds.length)}</EditButton>
         </div>
       ) : <div />}
     </div>

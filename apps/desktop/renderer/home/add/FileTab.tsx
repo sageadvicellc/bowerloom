@@ -13,6 +13,7 @@ import { Button } from '../kit/Button.js';
 import { KitIcon } from '../kit/icons.js';
 import type { KitIconName } from '../kit/icons.js';
 import { ADD_WORDS, fileAdded, keysNeeded, kindCount, kindWord, moreCount, pointsToMissing } from './add-words.js';
+import { EditButton } from '../read-only.js';
 
 const L = ADD_WORDS.label, H = ADD_WORDS.hint;
 const ICON: Readonly<Record<FileThingKind, KitIconName>> = { skill: 'skill', agent: 'agent', tool: 'tool', note: 'note' };
@@ -80,7 +81,7 @@ function Preview({ preview, firstOnly, onAdd, onAnother }: { preview: SharedFile
       ) : null}
       {preview.missing > 0 ? <p className="kit-hint add-missing">{pointsToMissing(preview.missing)}</p> : null}
       <div className="add-actions">
-        {nothing ? null : <Button variant="primary" icon="plus" onClick={onAdd}>{L.addThese}</Button>}
+        {nothing ? null : <EditButton variant="primary" icon="plus" onClick={onAdd}>{L.addThese}</EditButton>}
         <Button onClick={onAnother}>{L.chooseAnother}</Button>
       </div>
     </div>

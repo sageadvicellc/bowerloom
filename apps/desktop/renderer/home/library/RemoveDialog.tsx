@@ -9,6 +9,7 @@ import type { AgentRef } from '../../../shared/home/details.js';
 import { Button } from '../kit/Button.js';
 import { LibraryDialog } from './LibraryDialog.js';
 import { LIBRARY_WORDS } from './library-words.js';
+import { EditButton } from '../read-only.js';
 
 const L = LIBRARY_WORDS.label, H = LIBRARY_WORDS.hint;
 
@@ -33,7 +34,7 @@ export function RemoveDialog({ name, line, agents, leaving, onClose, onConfirm, 
       </div>
       <div className="lb-dialog-foot">
         <Button onClick={onClose}>{L.cancel}</Button>
-        <Button variant="primary" onClick={onConfirm}>{L.removeFromLibrary}</Button>
+        <EditButton variant="primary" onClick={onConfirm}>{L.removeFromLibrary}</EditButton>
       </div>
     </LibraryDialog>
   );

@@ -17,6 +17,7 @@ import { ADD_WORDS, copyNumber, foundIn, linesChanged, newerIs } from '../add/ad
 import { trapTab } from '../add/dom-helpers.js';
 import { useModalLayer } from '../add/modal-layer.js';
 import '../add/add.css';
+import { EditButton } from '../read-only.js';
 
 const L = ADD_WORDS.label, H = ADD_WORDS.hint;
 
@@ -51,7 +52,7 @@ function Copy({ copy, onKeep }: { copy: CopyView; onKeep(): void }): ReactElemen
           </li>
         ))}
       </ol>
-      <Button variant="primary" icon="check" aria-labelledby={`${keepId} ${titleId}`} onClick={onKeep}><span id={keepId}>{L.keepThis}</span></Button>
+      <EditButton variant="primary" icon="check" aria-labelledby={`${keepId} ${titleId}`} onClick={onKeep}><span id={keepId}>{L.keepThis}</span></EditButton>
     </section>
   );
 }

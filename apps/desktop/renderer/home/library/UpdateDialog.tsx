@@ -11,6 +11,7 @@ import { Button } from '../kit/Button.js';
 import { LibraryDialog } from './LibraryDialog.js';
 import { LIBRARY_WORDS, changedLines } from './library-words.js';
 import '../add/add.css';
+import { EditButton } from '../read-only.js';
 
 const L = LIBRARY_WORDS.label, H = LIBRARY_WORDS.hint;
 
@@ -61,7 +62,7 @@ export function UpdateDialog({ name, info, leaving, onClose, onConfirm, restoreF
       </div>
       <div className="lb-dialog-foot">
         <Button onClick={onClose}>{L.cancel}</Button>
-        <Button variant="primary" icon="check" onClick={onConfirm}>{L.useUpdate}</Button>
+        <EditButton variant="primary" icon="check" onClick={onConfirm}>{L.useUpdate}</EditButton>
       </div>
     </LibraryDialog>
   );

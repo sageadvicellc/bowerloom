@@ -10,6 +10,7 @@ import { Button } from '../kit/Button.js';
 import { ShareSection } from '../share/ShareSection.js';
 import { WORDS } from '../words.js';
 import './points.css';
+import { EditButton } from '../read-only.js';
 
 export interface SavePointsProps {
   rows: readonly SavePointRow[];
@@ -49,7 +50,7 @@ export function SavePoints({ rows, unsaved, which = null, onGoBack, onShare, onO
             </div>
             {row.current
               ? <p className="kit-hint pt-here">{WORDS.hint.pointHere}</p>
-              : <Button icon="clock" aria-labelledby={`pt-do-${row.id} pt-name-${row.id}`} onClick={() => onGoBack(row.id)}><span id={`pt-do-${row.id}`}>{WORDS.label.goBackToThis}</span></Button>}
+              : <EditButton icon="clock" aria-labelledby={`pt-do-${row.id} pt-name-${row.id}`} onClick={() => onGoBack(row.id)}><span id={`pt-do-${row.id}`}>{WORDS.label.goBackToThis}</span></EditButton>}
           </li>
         ))}
       </ol>

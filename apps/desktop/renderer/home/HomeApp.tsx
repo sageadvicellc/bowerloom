@@ -259,13 +259,13 @@ export function HomeApp({ skipped: skippedProp = NONE, onSkippedChange, autoTour
       if (!undo && !redo) return;
       const at = e.target;
       if (at instanceof HTMLElement && (at.isContentEditable || /^(input|textarea|select)$/i.test(at.tagName))) return;
-      if (keysBlocked.current || document.querySelector('[aria-modal="true"]') !== null) return;
+      if (readOnly || keysBlocked.current || document.querySelector('[aria-modal="true"]') !== null) return;
       e.preventDefault();
       dispatch({ type: undo ? 'undo' : 'redo' });
     };
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
-  }, [dispatch]);
+  }, [dispatch, readOnly]);
   /** The toggle of the left navigation: put it away or bring it back; under 900 px it opens or closes the drawer over the page. The focus stays on a toggle that is still there. */
   const toggleNav = (): void => {
     if (navMode === 'hidden') {

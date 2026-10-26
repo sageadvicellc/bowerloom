@@ -26,6 +26,7 @@ import { WORDS } from '../words.js';
 import { WhereItLives } from './WhereItLives.js';
 import './details.css';
 import { IconButton } from '../kit/IconButton.js';
+import { EditButton } from '../read-only.js';
 
 const L = WORDS.label, H = WORDS.hint;
 
@@ -89,7 +90,7 @@ function Back({ owner, onSelect }: { owner: AgentRef | null; onSelect(selected: 
 }
 
 function Remove({ owner, entry, onRemove }: { owner: AgentRef | null; entry: ShelfEntry; onRemove(agentId: string, entry: ShelfEntry): void }): ReactElement | null {
-  return owner === null ? null : <div className="dt-actions"><Button onClick={() => onRemove(owner.id, entry)}>{removeFromLabel(owner.name)}</Button></div>;
+  return owner === null ? null : <div className="dt-actions"><EditButton onClick={() => onRemove(owner.id, entry)}>{removeFromLabel(owner.name)}</EditButton></div>;
 }
 
 export function AgentBody({ details, onSelect, onRemove, onBadgePress, onChoose, freshId = null, freshPhase = 0, freshNotes = null, places = [] }: DetailsPanelProps & { details: AgentDetails | null }): ReactElement {

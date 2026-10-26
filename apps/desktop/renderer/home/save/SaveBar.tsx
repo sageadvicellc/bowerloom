@@ -13,7 +13,7 @@ import { CARD_WORDS } from '../../../shared/home/cards.js';
 import type { ChangeEntry } from '../../../shared/home/change-undo.js';
 import type { SaveBarModel } from '../../../shared/home/savebar.js';
 import { Button } from '../kit/Button.js';
-import { EditIconButton } from '../read-only.js';
+import { EditButton, EditIconButton, useReadOnly } from '../read-only.js';
 import { KitIcon } from '../kit/icons.js';
 import { WORDS, changesCount } from '../words.js';
 import './save.css';
@@ -84,7 +84,8 @@ export function SaveBar({ model, ticks, onSave, onGoBack, onDiscard, list }: Sav
     refocus.current = false;
     (toggle.current ?? save.current)?.focus();
   });
-  const text = barText(model);
+  const readOnly = useReadOnly();
+  const text = readOnly ? WORDS.hint.readOnlyBar : barText(model);
   return (
     <section className="hm-savebar" data-tour="save" data-mode={model.mode} aria-label={WORDS.label.saveBar} ref={wrap}>
       <div className="hm-savebar-state" role="status">
@@ -110,9 +111,9 @@ export function SaveBar({ model, ticks, onSave, onGoBack, onDiscard, list }: Sav
         </div>
       ) : null}
       <div className="hm-savebar-actions">
-        {model.canDiscard ? <Button onClick={onDiscard}>{WORDS.label.discard}</Button> : null}
-        {model.canGoBack ? <Button icon="clock" ref={goBack} onClick={onGoBack}>{WORDS.label.goBack}</Button> : null}
-        <Button variant="primary" ref={save} disabled={!model.canSave} onClick={onSave}>{WORDS.label.save}</Button>
+        {model.canDiscard ? <EditButton onClick={onDiscard}>{WORDS.label.discard}</EditButton> : null}
+        {model.canGoBack ? <EditButton icon="clock" ref={goBack} onClick={onGoBack}>{WORDS.label.goBack}</EditButton> : null}
+        <EditButton variant="primary" ref={save} disabled={!model.canSave} side="above-end" onClick={onSave}>{WORDS.label.save}</EditButton>
       </div>
     </section>
   );

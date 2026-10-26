@@ -31,6 +31,7 @@ import { MOTION, ms } from '../../motion-tokens.js';
 import { ADD_WORDS, NOTE_STAY_MS, addedTo, agentAdded, alreadyOn } from './add-words.js';
 import './add.css';
 import { IconButton } from '../kit/IconButton.js';
+import { useReadOnly } from '../read-only.js';
 
 const L = ADD_WORDS.label, H = ADD_WORDS.hint;
 const TAB_LABEL: Readonly<Record<AddTab, string>> = { skills: L.skills, tools: L.tools, notes: L.notes, agents: L.agents, file: L.file };
@@ -73,6 +74,7 @@ function sourceLine(world: Parameters<typeof entryOf>[0], entry: AddEntry): stri
 
 export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT_TAB, onOpenCopies, sampleFile, hideAgents = NO_HIDDEN, lastCopy, selectedAgent = null, line: withLine = true, onAdded, onShow }: AddDrawerBodyProps): ReactElement {
   const { state, dispatch } = useProtoStore();
+  const readOnly = useReadOnly();
   const world = state.draft;
   const [tab, setTab] = useState<AddTab>(initialTab);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -189,7 +191,7 @@ export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT
                       onPick={(choice, row) => { setOpenId(null); addTo(entry, choice, row); }}
                       onInstall={row => install(entry, row)}
                       suppressClick={drag.suppressClick}
-                      {...(entry.kind === 'agent' ? {} : { onDragStart: (e: Parameters<typeof drag.start>[0]) => drag.start(e, entry.id, entry.name) })}
+                      {...(entry.kind === 'agent' || readOnly ? {} : { onDragStart: (e: Parameters<typeof drag.start>[0]) => drag.start(e, entry.id, entry.name) })}
                       {...(onOpenCopies === undefined ? {} : { onBadgePress: () => onOpenCopies(entry.id) })}
                       {...(sourceLine(world, entry) === undefined ? {} : { source: sourceLine(world, entry)! })} />
                   ))}

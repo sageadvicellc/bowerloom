@@ -25,6 +25,7 @@ import { TopicGrid } from './TopicGrid.js';
 import { NOTES_WORDS, alreadyLine, partBackIn, partLeftOut, topicAdded, topicRemoved } from './notes-words.js';
 import './notes.css';
 import { IconButton } from '../kit/IconButton.js';
+import { EditButton } from '../read-only.js';
 
 const L = NOTES_WORDS.label, H = NOTES_WORDS.hint;
 
@@ -150,7 +151,7 @@ function ChooseNotesBody({ agent, onClose, onChosen }: { agent: AgentItem; onClo
       <div className="nt-foot">
         <p className="kit-hint nt-why">{ready ? H.ready : empty ? H.needOne : H.unchanged}</p>
         <Button onClick={onClose}>{L.cancel}</Button>
-        <Button variant="primary" disabled={!ready} onClick={use}>{L.use}</Button>
+        <EditButton variant="primary" disabled={!ready} onClick={use}>{L.use}</EditButton>
       </div>
     </div>
   );

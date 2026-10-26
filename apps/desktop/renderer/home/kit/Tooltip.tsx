@@ -10,8 +10,8 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { MOTION } from '../../motion-tokens.js';
 
-/** Which side of the button the tooltip sits on. `below-end` lines its right edge up with the button's, for a button at the right edge of the window. */
-export type TipSide = 'left' | 'right' | 'below' | 'below-end';
+/** Which side of the button the tooltip sits on. `below-end` lines its right edge up with the button's, for a button at the right edge of the window; `above-end` does the same over the button, for one at the foot of the window. */
+export type TipSide = 'left' | 'right' | 'below' | 'below-end' | 'above-end';
 
 export interface TooltipProps {
   /** The words in the tooltip. They are the button's name, in as few words as will do. */

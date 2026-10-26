@@ -1,5 +1,5 @@
 /**
- * Puts the 0.8 home app into the page. Called once, when the page address starts with #prototype-v2. The address picks the page: #prototype-v2 is the app (Welcome first), #prototype-v2/map is the map alone, #prototype-v2/map/tour is the map with the tour,
+ * Puts the 0.8 home app into the page. Called once, when the page address starts with #prototype-v2. The address picks the page: #prototype-v2 is the app (Welcome first), #prototype-v2/map is the map alone, #prototype-v2/map/tour is the map with the tour, #prototype-v2/readonly and #prototype-v2/map/readonly are the same two pages in read-only mode,
  * #prototype-v2/kit is the kit gallery, #prototype-v2/add is the Add test page, #prototype-v2/notes is the Choose notes test page, #prototype-v2/library is the Library test page (the app itself also holds the Library, behind the switch in its top bar). It uses the same in-memory store and seeded sample world as the old prototype (plus one skill with a second copy, see sample-copies.ts, and six starter agents in place of the generated ready-made ones, see starters.ts), so nothing is written anywhere.
  */
 import { useEffect, useState } from 'react';
@@ -12,6 +12,8 @@ import { withSampleCopies } from '../../shared/home/sample-copies.js';
 import { withStarterAgents } from '../../shared/home/starters.js';
 import { ErrorBoundary } from '../proto/error-boundary.js';
 import { ProtoProvider } from '../proto/session.js';
+import { ReadOnlyScope } from './read-only.js';
+import { startOf } from '../../shared/home/route.js';
 import { loadWorld } from '../proto/world.js';
 import { AddHarness } from './add/AddHarness.js';
 import { isAppHash } from '../../shared/home/route.js';
@@ -38,6 +40,8 @@ export const isHomeHash = (hash: string): boolean => hash === '#prototype-v2' ||
 function HomeRoot(): ReactElement {
   const [store] = useState(() => createStore(withStartPoint(withLibrarySamples(withStarterAgents(withSampleCopies(loadWorld()))))));
   const [page, setPage] = useState<HomePage>(() => pageOf(location.hash) ?? 'app');
+  // The address can ask for read only (#prototype-v2/readonly, #prototype-v2/map/readonly): the scope holds back every control that would change the setup.
+  const [readOnly] = useState(() => startOf(location.hash).readOnly);
   useEffect(() => {
     const change = (): void => { const next = pageOf(location.hash); if (next !== null) setPage(next); };
     window.addEventListener('hashchange', change);
@@ -46,7 +50,8 @@ function HomeRoot(): ReactElement {
   if (page === 'add') return <AddHarness />;
   if (page === 'notes') return <NotesHarness />;
   if (page === 'library') return <LibraryHarness />;
-  return <ProtoProvider store={store}>{page === 'kit' ? <KitGallery /> : <HomeFlow />}</ProtoProvider>;
+  if (page === 'kit') return <ProtoProvider store={store}><KitGallery /></ProtoProvider>;
+  return <ReadOnlyScope readOnly={readOnly} store={store}><HomeFlow /></ReadOnlyScope>;
 }
 
 export function mountHome(root: HTMLElement): void {
