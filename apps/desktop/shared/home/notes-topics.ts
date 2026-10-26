@@ -27,10 +27,10 @@ const TABLE: Readonly<Record<string, { readonly name: string; readonly parts: Pa
   marrowdeep: { name: 'Travel', parts: { ostler: 'Trips', kestrel: 'Places', pennon: 'Packing lists' } },
 });
 
-/** The words that name a page by its kind, in the plain titles. */
-const KIND_WORDS: Readonly<Record<string, string>> = Object.freeze({
-  concept: 'overview', guide: 'how-to', record: 'record', recipe: 'checklist', survey: 'summary', sketch: 'draft',
-});
+/** The words that name a page by its kind, in the plain titles. A Map, because a page's type is the person's own word and can be constructor or __proto__. */
+const KIND_WORDS: ReadonlyMap<string, string> = new Map([
+  ['concept', 'overview'], ['guide', 'how-to'], ['record', 'record'], ['recipe', 'checklist'], ['survey', 'summary'], ['sketch', 'draft'],
+]);
 
 /** What the lone part of loose pages is called. */
 export const OTHER_NOTES = 'Other notes';
@@ -95,7 +95,7 @@ export function plainTitles(pages: readonly WikiPage[], topics: readonly Topic[]
     const topic = topicOf(topics, p), part = topic === undefined ? undefined : partOf(topic, p);
     // A part name that two topics use ("Archived") is said with its topic, so two titles never match.
     const place = part === undefined ? (topic === undefined ? OTHER_NOTES : topic.name) : (shared.get(part.name) ?? 0) > 1 && topic !== undefined ? `${topic.name} ${part.name.toLowerCase()}` : part.name;
-    const kind = KIND_WORDS[p.type] ?? p.type;
+    const kind = KIND_WORDS.get(p.type) ?? p.type;
     const n = (seen.get(key(p)) ?? 0) + 1;
     seen.set(key(p), n);
     out.set(p.id, `${place} ${kind}${(totals.get(key(p)) ?? 0) > 1 ? ` ${n}` : ''}`);

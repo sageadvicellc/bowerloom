@@ -105,6 +105,10 @@ export const UPDATES: Readonly<Record<string, UpdateText>> = Object.freeze({
   [UPDATE_ITEM_ID]: Object.freeze({ release: OPEN_SOURCE.newer, author: UPDATE_AUTHOR, hint: 'Cleans up rough meeting notes into clear points and open questions.', lines: NEW_LINES }),
 });
 
+/** The facts of a tool or the waiting update of an item, by its id. An id is only ever a key of the table when the table holds it, so an id such as constructor answers nothing. */
+export const toolFactsOf = (id: string): ToolFacts | undefined => (Object.hasOwn(TOOL_FACTS, id) ? TOOL_FACTS[id] : undefined);
+export const updateTextOf = (id: string): UpdateText | undefined => (Object.hasOwn(UPDATES, id) ? UPDATES[id] : undefined);
+
 /** The days back at which the pre-installed item was added (a sample date, early in the year). */
 export const UPDATE_ITEM_DAYS_BACK = 190;
 /** The agents that hold the item with the update waiting. */
@@ -137,7 +141,7 @@ const readsOnly = (name: string): boolean => READ_VERBS.some(verb => name === ve
  * class, so "Read my calendar" could say it changes things for one agent; a name and its access must agree, so this puts them in line. The plain name is the one a person reads.
  */
 export function withReadingTools(world: World): World {
-  const reading = new Set(world.items.flatMap(i => (i.kind === 'tool' && readsOnly(TOOL_FACTS[i.id]?.name ?? plainOf('tool', i.id)?.name ?? '') ? [i.id] : [])));
+  const reading = new Set(world.items.flatMap(i => (i.kind === 'tool' && readsOnly(toolFactsOf(i.id)?.name ?? plainOf('tool', i.id)?.name ?? '') ? [i.id] : [])));
   let changed = false;
   const items = world.items.map((i): HarnessItem => {
     if (i.kind !== 'agent' || !i.definition.toolAttachments.some(t => reading.has(t.toolId) && t.access !== 'read-only')) return i;
@@ -162,7 +166,7 @@ export function withLibrarySamples(world: World): World {
     foundAt: [{ interface: 'claude-code', path: 'web/open-skills/claude-code/tidy-notes.md', contentHash: hashText(text), text }],
   };
   const items = world.items.map((i): HarnessItem => {
-    if (i.kind === 'tool' && i.toolKind === 'hook' && TOOL_FACTS[i.id]?.name !== undefined) return { ...i, name: TOOL_FACTS[i.id]!.name! };
+    if (i.kind === 'tool' && i.toolKind === 'hook' && toolFactsOf(i.id)?.name !== undefined) return { ...i, name: toolFactsOf(i.id)!.name! };
     if (i.kind === 'agent' && UPDATE_HOLDERS.includes(i.id) && i.library === null) {
       const agent: AgentItem = { ...i, definition: { ...i.definition, skillIds: [...i.definition.skillIds, UPDATE_ITEM_ID] } };
       return agent;

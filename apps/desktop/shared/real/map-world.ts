@@ -51,7 +51,8 @@ export const GLOBAL_SCOPE: Scope = Object.freeze({ id: 'global', kind: 'global',
 /** A name reduced to its letters and digits, to tell whether two names are the same thing. */
 export const sameName = (name: string): string => name.toLowerCase().replace(/[^a-z0-9]+/g, '');
 
-const shortHash = (text: string, n = 10): string => hashText(text).slice(0, n);
+/** The first `n` hex digits of the fingerprint of a text. All 16 by default: an id must not meet another by chance, and a crafted pair of files must not be able to make it. */
+const shortHash = (text: string, n = 16): string => hashText(text).slice(0, n);
 const joinPath = (place: string, rel: string): string => cleanPath(place.endsWith('/') ? `${place}${rel}` : `${place}/${rel}`);
 
 /**
@@ -109,7 +110,7 @@ export function buildRealResult(reads: readonly PlaceRead[], tally: BatchTally, 
   const scopeOf = new Map<string, string>();
   for (const r of reads) {
     if (r.place.kind === 'home') { scopeOf.set(r.place.id, GLOBAL_SCOPE.id); continue; }
-    const id = `scope-real-${shortHash(r.place.id, 8)}`;
+    const id = `scope-real-${shortHash(r.place.id)}`;
     scopeOf.set(r.place.id, id);
     scopes.push({ id, kind: 'project', name: cleanLine(r.place.label).slice(0, 60), parentId: GLOBAL_SCOPE.id, path: cleanPath(r.place.path) });
   }
@@ -191,9 +192,9 @@ export function buildRealResult(reads: readonly PlaceRead[], tally: BatchTally, 
   const wikiPages: WikiPage[] = [], slices: Slice[] = [], sliceItems: ContextSliceItem[] = [];
   for (const read of reads) {
     if (read.notes.length === 0) continue;
-    const label = cleanLine(read.place.label).replace(/\//g, '-').slice(0, 60) || 'Notes', scopeId = scopeOf.get(read.place.id) ?? GLOBAL_SCOPE.id, key = shortHash(read.place.id, 8);
+    const label = cleanLine(read.place.label).replace(/\//g, '-').slice(0, 60) || 'Notes', scopeId = scopeOf.get(read.place.id) ?? GLOBAL_SCOPE.id, key = shortHash(read.place.id);
     const pages = read.notes.map((n: NoteEntry): WikiPage => ({
-      id: `real-page-${shortHash(`${read.place.id}\u0000${n.rel}`, 12)}`, title: n.title === '' ? n.rel : n.title, folder: n.folder === '' ? label : `${label}/${n.folder}`,
+      id: `real-page-${shortHash(`${read.place.id}\u0000${n.rel}`)}`, title: n.title === '' ? n.rel : n.title, folder: n.folder === '' ? label : `${label}/${n.folder}`,
       type: n.type === '' ? 'note' : n.type, tags: [...n.tags], summary: n.summary, bytes: n.bytes, links: [], joinedSinceVisit: false,
     }));
     const seen = new Set<string>();
@@ -206,7 +207,7 @@ export function buildRealResult(reads: readonly PlaceRead[], tally: BatchTally, 
     addSlice(`real-notes-${key}`, `${label} notes`, label);
     for (const topic of topicsOf(read.notes, TOPIC_SLICES)) {
       if (topic.count < TOPIC_MIN_PAGES || topic.name === 'Top level') continue;
-      addSlice(`real-notes-${key}-${shortHash(topic.name, 6)}`, `${cut(topic.name, 40)} notes`, `${label}/${topic.name}`);
+      addSlice(`real-notes-${key}-${shortHash(topic.name)}`, `${cut(topic.name, 40)} notes`, `${label}/${topic.name}`);
     }
   }
 

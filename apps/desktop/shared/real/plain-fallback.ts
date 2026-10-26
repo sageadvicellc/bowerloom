@@ -77,7 +77,7 @@ export function realPlainOf(item: HarnessItem): RealPlain {
   }
   if (item.kind === 'context-slice') return { name: readableOf(item.name), hint: 'Notes an agent can read.', access: null, where };
   if (item.toolKind === 'hook') {
-    const { event, matcher } = hookFacts(item), known = HOOK_WHEN[event];
+    const { event, matcher } = hookFacts(item), known = Object.hasOwn(HOOK_WHEN, event) ? HOOK_WHEN[event] : undefined;
     const name = known === undefined ? readableOf(item.name) : readableOf(`${known[1]}${matcher === '' ? '' : ` (${matcher.replace(/[|*]+/g, ' ').trim()})`}`);
     return { name: name.split(' ').slice(0, NAME_WORDS).join(' '), hint: cutWords(known === undefined ? 'Runs a program on its own.' : `Runs a program ${known[0]}.`, HINT_WORDS), access: 'Runs code', where };
   }

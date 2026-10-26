@@ -16,7 +16,7 @@ import type { AgentRef } from './details.js';
 import { plainNameOf } from './plain-names.js';
 import { ACCESS_WORDS, SOURCE_WORDS, skillTextOf } from './plain-details.js';
 import { plainOf } from './plain.js';
-import { READY_MADE_AUTHOR, TOOL_FACTS, UPDATES, UPDATE_ITEM_DAYS_BACK, UPDATE_ITEM_ID, dayText, sampleAuthor, sampleDaysBack, sampleRelease } from './library-sample.js';
+import { READY_MADE_AUTHOR, UPDATE_ITEM_DAYS_BACK, UPDATE_ITEM_ID, dayText, sampleAuthor, sampleDaysBack, sampleRelease, toolFactsOf, updateTextOf } from './library-sample.js';
 import { bodyOf, fieldsOf, makeText } from './library-text.js';
 import { daysAgoText, isRealId, realDaysBackOf, realHostOf } from '../real/plain-fallback.js';
 
@@ -74,7 +74,7 @@ export function lookOf(world: World, entry: Entry): { name: string; hint: string
     return plain === null ? { name: readableName(item.name), hint: clampWords(own ?? CARD_WORDS.skillFallback) } : plain;
   }
   if (item.kind === 'tool') {
-    const facts = TOOL_FACTS[item.id];
+    const facts = toolFactsOf(item.id);
     if (plain !== null) return plain;
     return { name: facts?.name ?? readableName(item.name), hint: clampWords(facts?.hint ?? described ?? CARD_WORDS.toolFallback) };
   }
@@ -92,7 +92,7 @@ export function textLinesOf(entry: Entry): string[] {
   if (entry.kind === 'note') return [];
   const item = entry.item;
   if (item.kind === 'skill') { const known = skillTextOf(item.id); return known !== null && known.lines.length > 0 ? [...known.lines] : bodyOf(firstText(item)); }
-  if (item.kind === 'tool') { const facts = TOOL_FACTS[item.id]; return facts !== undefined ? [...facts.lines] : bodyOf(firstText(item)); }
+  if (item.kind === 'tool') { const facts = toolFactsOf(item.id); return facts !== undefined ? [...facts.lines] : bodyOf(firstText(item)); }
   if (item.kind === 'agent') { const own = item.definition.instructions.trim(); return own === '' ? bodyOf(firstText(item)) : [own]; }
   return [];
 }
@@ -276,7 +276,7 @@ export interface UpdateInfo { readonly from: string; readonly to: string; readon
 /** The update waiting for an item, or null when none is waiting or the preview has no text for it. */
 export function updateOf(world: World, entry: Entry): UpdateInfo | null {
   if (entry.kind === 'note') return null;
-  const ref = entry.item.library, waiting = UPDATES[entry.id];
+  const ref = entry.item.library, waiting = updateTextOf(entry.id);
   if (ref === null || ref.newerVersion === undefined || waiting === undefined || waiting.release !== ref.newerVersion) return null;
   return { from: ref.pinnedVersion, to: ref.newerVersion, oldLines: textLinesOf(entry), newLines: waiting.lines, text: makeText({ description: waiting.hint, author: waiting.author, release: waiting.release }, waiting.lines), description: waiting.hint };
 }
@@ -324,7 +324,7 @@ function realReachOf(world: World, item: ToolItem): { reach: string; ability: st
 }
 
 function reachOf(item: ToolItem): { reach: string; ability: string } {
-  const facts = TOOL_FACTS[item.id], fields = fieldsOf(firstText(item));
+  const facts = toolFactsOf(item.id), fields = fieldsOf(firstText(item));
   return { reach: reachLine(item.toolKind, facts?.reach ?? fields.reach), ability: ACCESS_WORDS[facts?.access ?? fields.access ?? 'read-only'] };
 }
 
@@ -397,7 +397,7 @@ export function copyDraft(world: World, kind: LibraryKind, id: string): { name: 
   const entry = entryOf(world, kind, id);
   if (entry === undefined || entry.kind === 'note') return null;
   const look = lookOf(world, entry), item = entry.item, lines = textLinesOf(entry);
-  const tool = item.kind === 'tool' ? reachOf(item) : null, facts = item.kind === 'tool' ? TOOL_FACTS[item.id] : undefined, fields = fieldsOf(firstText(item));
+  const tool = item.kind === 'tool' ? reachOf(item) : null, facts = item.kind === 'tool' ? toolFactsOf(item.id) : undefined, fields = fieldsOf(firstText(item));
   const access = facts?.access ?? fields.access;
   const host = facts?.reach ?? fields.reach;
   const text = makeText({ description: look.hint, ...(tool === null || host === undefined ? {} : { reach: host }), ...(tool === null || access === undefined ? {} : { access }) }, lines.length === 0 ? [look.hint] : lines);

@@ -35,6 +35,10 @@ export function samplePath(path: string, storedName: string, plainName: string):
 
 const FOLDER: Readonly<Record<InterfaceId, string>> = Object.freeze({ 'claude-code': '.claude', codex: '.codex', opencode: '.opencode', hermes: '.hermes', bowerloom: '.bowerloom' });
 const HOME_FOLDER = '~/Studio';
+/** The file that holds a program's connections. A table with a key for every program, so a program added to the list fails the typecheck until it has its file. */
+const CONNECTIONS_FILE: Readonly<Record<InterfaceId, string>> = Object.freeze({
+  'claude-code': '.claude/connections.json', codex: '.codex/config.toml', opencode: 'opencode.json', hermes: '.hermes/config.yaml', bowerloom: '.bowerloom/connections.json',
+});
 
 /**
  * Where a thing that has no path of its own in the sample (one added from the web or kept as a copy in this preview, or a ready-made agent) would be kept in a program,
@@ -43,7 +47,7 @@ const HOME_FOLDER = '~/Studio';
 function keptPath(item: HarnessItem, face: InterfaceId, slug: string): string {
   const dir = item.kind === 'skill' ? 'skills' : item.kind === 'agent' ? 'agents' : item.kind === 'tool' && item.toolKind === 'prompt' ? (face === 'codex' ? 'prompts' : 'commands') : '';
   if (item.library !== null) return `~/.cache/evergreen-kit/${item.library.pinnedVersion}/${dir === '' ? 'tools' : dir}/${slug}.md`;
-  if (item.kind === 'tool' && item.toolKind === 'mcp') return face === 'claude-code' ? `${HOME_FOLDER}/.claude/connections.json` : face === 'codex' ? `${HOME_FOLDER}/.codex/config.toml` : `${HOME_FOLDER}/opencode.json`;
+  if (item.kind === 'tool' && item.toolKind === 'mcp') return `${HOME_FOLDER}/${CONNECTIONS_FILE[face]}`;
   if (item.kind === 'tool' && item.toolKind === 'hook') return `${HOME_FOLDER}/${FOLDER[face]}/settings.json`;
   return `${HOME_FOLDER}/${FOLDER[face]}/${dir}/${slug}.${item.kind === 'agent' && face === 'codex' ? 'toml' : 'md'}`;
 }

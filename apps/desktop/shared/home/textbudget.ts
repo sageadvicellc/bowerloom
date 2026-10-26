@@ -70,7 +70,8 @@ function decode(text: string): string {
   return text.replace(/&(?:#x([0-9a-f]+)|#(\d+)|([a-z]+));/gi, (all, hex: string | undefined, dec: string | undefined, name: string | undefined) => {
     if (hex !== undefined) return String.fromCodePoint(parseInt(hex, 16));
     if (dec !== undefined) return String.fromCodePoint(parseInt(dec, 10));
-    return ENTITIES[(name ?? '').toLowerCase()] ?? all;
+    const key = (name ?? '').toLowerCase();
+    return Object.hasOwn(ENTITIES, key) ? ENTITIES[key]! : all;
   });
 }
 const tidy = (text: string): string => decode(text).replace(/\s+/g, ' ').trim();

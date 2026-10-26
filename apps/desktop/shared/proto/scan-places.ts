@@ -31,8 +31,9 @@ export interface ScanPlace {
 }
 
 const FOLDER: Readonly<Record<InterfaceId, string>> = { 'claude-code': '.claude', codex: '.codex', opencode: '.opencode', hermes: '.hermes', bowerloom: '.bowerloom' };
-/** The group of a program: the three programs of the sample have a group of their own; any other program (Hermes, Bowerloom) is shown with the project folders. The scan only ever sees the sample world. */
-const groupOfProgram = (face: InterfaceId): PlaceGroupId => (face === 'claude-code' || face === 'codex' || face === 'opencode' ? face : 'projects');
+/** The group of a program: the three programs of the sample have a group of their own; any other program (Hermes, Bowerloom) is shown with the project folders. The scan only ever sees the sample world. A table with a key for every program, so a program added to the list fails the typecheck until it has its group. */
+const GROUP_OF_PROGRAM: Readonly<Record<InterfaceId, PlaceGroupId>> = { 'claude-code': 'claude-code', codex: 'codex', opencode: 'opencode', hermes: 'projects', bowerloom: 'projects' };
+const groupOfProgram = (face: InterfaceId): PlaceGroupId => GROUP_OF_PROGRAM[face];
 const GROUP_OF_FOLDER: Readonly<Record<string, PlaceGroupId>> = { '.claude': 'claude-code', '.codex': 'codex', '.opencode': 'opencode', '.bowerloom': 'older', '.bowerloom-store': 'older' };
 const labelOfGroup = (id: PlaceGroupId): string => PLACE_GROUPS.find(g => g.id === id)!.label;
 

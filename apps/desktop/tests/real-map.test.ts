@@ -109,7 +109,7 @@ test('ids are stable between two reads, unique, and never look like a sample id'
   assert.deepEqual(a.world.wikiPages.map(p => p.id), b.world.wikiPages.map(p => p.id));
   const ids = [...a.world.items.map(i => i.id), ...a.world.slices.map(s => s.id), ...a.world.scopes.filter(s => s.kind === 'project').map(s => s.id)];
   assert.equal(new Set(ids).size, ids.length);
-  for (const id of a.world.items.map(i => i.id).filter(id => !id.startsWith('item-'))) assert.match(id, /^real-(skill|agent|tool)-[0-9a-f]{10}(-\d+)?$/);
+  for (const id of a.world.items.map(i => i.id).filter(id => !id.startsWith('item-'))) assert.match(id, /^real-(skill|agent|tool)-[0-9a-f]{16}(-\d+)?$/);
   assert.ok(ids.every(isRealId));
 });
 
