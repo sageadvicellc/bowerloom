@@ -80,7 +80,7 @@ test('search also finds the words of a status', async () => {
   await expect(rows()).toHaveCount(1);
   await expect(row('Read my calendar')).toBeVisible();
   await search.fill('runs code');
-  await expect(row('Check files after editing')).toBeVisible();
+  await expect(row('Run a check after editing')).toBeVisible();
   await tab('Skills').click();
   await search.fill('copies');
   await expect(row('Sort mail by topic')).toBeVisible();
@@ -110,7 +110,7 @@ test('a row that is not used keeps its hint, has the height of every other row, 
   expect(Math.abs(yA.x - (await idle.boundingBox())!.x - (yB.x - (await busy.boundingBox())!.x))).toBeLessThan(2);
   // A hook has a state of its own words and is not counted as unused.
   await tab('Tools').click();
-  await expect(row('Check files after editing').locator('[data-used]')).toContainText('Runs on its own');
+  await expect(row('Run a check after editing').locator('[data-used]')).toContainText('Runs on its own');
   await expect(p.locator('.lb-list').getByText('Runs code').first()).toBeVisible();
 });
 

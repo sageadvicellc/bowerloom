@@ -54,10 +54,17 @@ export function shareCounts(bundle: Bundle): ShareCounts {
 }
 
 /**
- * How many different keys the tools in the copy need. The copy holds the name of each key and never its value, so these are the keys it leaves out. Two
- * tools that name the same key need it once, which is how a person adds it (and how "Open a shared file" counts it).
+ * The keys the tools in the copy need, as names (never a value), in name order. The copy holds the name of each key and never its value, so these are the keys it
+ * leaves out. Two tools that name the same key need it once, which is how a person adds it (and how "Open a shared file" counts it).
  */
-export const keysIn = (bundle: Bundle): number => new Set(bundle.toolRefs.flatMap(t => (t.secret === null ? [] : [`${t.secret.kind}\u0000${t.secret.name}`]))).size;
+export function keyNamesIn(bundle: Bundle): string[] {
+  const seen = new Map<string, string>();
+  for (const t of bundle.toolRefs) if (t.secret !== null) seen.set(`${t.secret.kind}\u0000${t.secret.name}`, t.secret.name);
+  return [...seen.values()].sort((a, b) => a.localeCompare(b));
+}
+
+/** How many different keys the tools in the copy need: the length of `keyNamesIn`. */
+export const keysIn = (bundle: Bundle): number => keyNamesIn(bundle).length;
 
 /** The size of a copy in bytes. */
 export const sizeBytes = (text: string): number => new TextEncoder().encode(text).length;
@@ -96,6 +103,8 @@ export interface SharePlan {
   readonly counts: ShareCounts;
   /** Keys the copy leaves out. */
   readonly keys: number;
+  /** The names of those keys (never a value), in name order. */
+  readonly keyNames: readonly string[];
   /** Agents on offer that the person unticked. */
   readonly leftOutAgents: number;
   /** Skills, tools and sets of notes that the person unticked under "Look inside". */
@@ -116,7 +125,7 @@ export function planShare(world: World, offered: readonly string[], leftOut: rea
   const out = new Set(leftOut.filter(id => !offered.includes(id) && named.has(id)));
   const bundle = withoutItems(whole, out);
   const text = bundleText(bundle);
-  return { bundle, text, counts: shareCounts(bundle), keys: keysIn(bundle), leftOutAgents: left.length, leftOutItems: out.size, readyMade: readyMadeIn(bundle), bytes: sizeBytes(text) };
+  return { bundle, text, counts: shareCounts(bundle), keys: keysIn(bundle), keyNames: keyNamesIn(bundle), leftOutAgents: left.length, leftOutItems: out.size, readyMade: readyMadeIn(bundle), bytes: sizeBytes(text) };
 }
 
 /** True when the copy holds an agent, so there is something to save. */

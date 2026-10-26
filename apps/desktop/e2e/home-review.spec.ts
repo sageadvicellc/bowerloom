@@ -231,7 +231,7 @@ test('the Share sheet says what is true about keys and text (review item 9); the
   await expect(sheet).toBeVisible();
   await expect(sheet.getByText('Passwords and keys that Bowerloom keeps are left out.')).toBeVisible();
   await expect(sheet.getByText('Your own text is included, so read it first.')).toBeVisible();
-  await expect(sheet.locator('.sh-left')).toHaveText('Left out: 3 passwords and keys and 1 ready-made item');
+  await expect(sheet.locator('.sh-left')).toHaveText('Left out: CALENDAR_KEY, SEARCH_KEY, WORKSPACE_KEY and 1 ready-made item');
   await expect(sheet.getByText('Ready-made items travel as a name only.')).toBeVisible();
   expect(await budget()).toEqual([]);
   for (const [w, h] of SIZES) for (const look of THEMES) {

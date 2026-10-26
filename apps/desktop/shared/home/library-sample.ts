@@ -9,6 +9,7 @@ import type { AgentItem, HarnessItem, World } from '../proto/types.js';
 import { globalScope } from '../proto/common.js';
 import { hashText } from '../proto/sample.js';
 import { makeText } from './library-text.js';
+import { plainOf } from './plain.js';
 
 /** What the Library says about one sample tool. A name and a hint are given only where the plain layer (plain.ts) has none. */
 export interface ToolFacts {
@@ -24,7 +25,7 @@ const T = (x: ToolFacts): ToolFacts => Object.freeze({ ...x, lines: Object.freez
 
 /** The plain facts of the 14 sample tools, by id. */
 export const TOOL_FACTS: Readonly<Record<string, ToolFacts>> = Object.freeze({
-  'tool-mcp-missing': T({ reach: 'calendar.example.com', access: 'read-write', lines: ['Connects to calendar.example.com.', 'Reads your events and can add new ones.', 'Needs a key before it works.'] }),
+  'tool-mcp-missing': T({ reach: 'calendar.example.com', access: 'read-only', lines: ['Connects to calendar.example.com.', 'Reads your events and finds the free times.', 'Only reads. It never changes your calendar.', 'Needs a key before it works.'] }),
   'tool-mcp-present': T({ reach: 'search.example.com', access: 'read-only', lines: ['Connects to search.example.com.', 'Looks things up and brings back the results.', 'Only reads. It never changes anything.'] }),
   'tool-mcp-01': T({ reach: 'files.example.com', access: 'read-only', lines: ['Connects to files.example.com.', 'Opens one spending sheet and reads its rows.', 'Only reads. It never changes the sheet.'] }),
   'tool-mcp-02': T({ reach: 'docs.example.com', access: 'read-only', lines: ['Connects to docs.example.com.', 'Reads the documents your colleagues share with you.', 'Only reads. It never changes them.'] }),
@@ -35,7 +36,7 @@ export const TOOL_FACTS: Readonly<Record<string, ToolFacts>> = Object.freeze({
   'tool-prompt-04': T({ access: 'read-only', lines: ['Ask for three ideas for a title.', 'Make each one different from the others.'] }),
   'tool-prompt-05': T({ access: 'read-only', lines: ['Ask for a short post for your followers.', 'Keep it friendly and under fifty words.'] }),
   'tool-prompt-06': T({ access: 'read-only', lines: ['Ask for the outline of a report.', 'Give each part a heading and one line.'] }),
-  'tool-hook-guard': T({ name: 'Check files after editing', hint: 'Runs a small check each time a file is edited.', reach: 'This computer only', access: 'read-write',
+  'tool-hook-guard': T({ name: 'Run a check after editing', hint: 'Runs a small check each time a file is edited.', reach: 'This computer only', access: 'read-write',
     lines: ['Runs a small script on this computer.', 'The script checks the file you just edited.', 'It runs on its own, with no question asked.'] }),
   'tool-hook-02': T({ name: 'Tidy notes after editing', hint: 'Cleans up a note each time you edit it.', reach: 'This computer only', access: 'read-write',
     lines: ['Runs a small script on this computer.', 'The script tidies the note you just edited.', 'It runs on its own, with no question asked.'] }),
@@ -109,6 +110,43 @@ export const UPDATE_ITEM_DAYS_BACK = 190;
 /** The agents that hold the item with the update waiting. */
 const UPDATE_HOLDERS: readonly string[] = Object.freeze(['agent-01', 'agent-08']);
 
+/** The names of the keys of the sample servers, in plain words: the generated ones read like passwords ("QUIET_TOKEN"). They are names only, never a value. The two servers of the workspace share one key, which is how a person adds it once. */
+export const PLAIN_KEY_NAMES: Readonly<Record<string, string>> = Object.freeze({ 'tool-mcp-missing': 'CALENDAR_KEY', 'tool-mcp-present': 'SEARCH_KEY', 'tool-mcp-02': 'WORKSPACE_KEY', 'tool-mcp-03': 'WORKSPACE_KEY' });
+
+/**
+ * The world with plain names for the keys of the sample servers. The name is also in the text of the server's file, so the text changes with it. A server that
+ * has no key, or whose key already has the plain name, is left as it is; a world that has none of the servers comes back as it is.
+ */
+export function withPlainKeys(world: World): World {
+  if (!world.items.some(i => i.kind === 'tool' && i.toolKind === 'mcp' && i.secret !== null && Object.hasOwn(PLAIN_KEY_NAMES, i.id) && i.secret.name !== PLAIN_KEY_NAMES[i.id])) return world;
+  const items = world.items.map((i): HarnessItem => {
+    if (i.kind !== 'tool' || i.toolKind !== 'mcp' || i.secret === null || !Object.hasOwn(PLAIN_KEY_NAMES, i.id) || i.secret.name === PLAIN_KEY_NAMES[i.id]) return i;
+    const was = i.secret.name, name = PLAIN_KEY_NAMES[i.id]!;
+    const foundAt = i.foundAt.map(f => { const text = f.text.split(`"${was}"`).join(`"${name}"`); return { ...f, text, contentHash: hashText(text) }; });
+    return { ...i, secret: { ...i.secret, name }, foundAt };
+  });
+  return { ...world, items };
+}
+
+/** The first words that say a tool only reads. A tool whose plain name starts with one of them can only read, wherever its access is shown. */
+export const READ_VERBS: readonly string[] = Object.freeze(['Read', 'Search', 'Look', 'Check']);
+const readsOnly = (name: string): boolean => READ_VERBS.some(verb => name === verb || name.startsWith(`${verb} `));
+
+/**
+ * The world with the access of every tool that says it only reads set to "can only read" on every agent that holds it. The sample gives each attachment a random access
+ * class, so "Read my calendar" could say it changes things for one agent; a name and its access must agree, so this puts them in line. The plain name is the one a person reads.
+ */
+export function withReadingTools(world: World): World {
+  const reading = new Set(world.items.flatMap(i => (i.kind === 'tool' && readsOnly(TOOL_FACTS[i.id]?.name ?? plainOf('tool', i.id)?.name ?? '') ? [i.id] : [])));
+  let changed = false;
+  const items = world.items.map((i): HarnessItem => {
+    if (i.kind !== 'agent' || !i.definition.toolAttachments.some(t => reading.has(t.toolId) && t.access !== 'read-only')) return i;
+    changed = true;
+    return { ...i, definition: { ...i.definition, toolAttachments: i.definition.toolAttachments.map(t => (reading.has(t.toolId) ? { ...t, access: 'read-only' as const } : t)) } };
+  });
+  return changed ? { ...world, items } : world;
+}
+
 /**
  * The home app's world with the Library's sample pieces: plain names for the three hooks, the "Open skills library" with a newer release waiting, and one
  * skill from it that two agents hold. A world that has no global harness, or that already has the item, comes back as it is.
@@ -116,6 +154,7 @@ const UPDATE_HOLDERS: readonly string[] = Object.freeze(['agent-01', 'agent-08']
 export function withLibrarySamples(world: World): World {
   const home = globalScope(world);
   if (home === undefined || world.items.some(i => i.id === UPDATE_ITEM_ID)) return world;
+  world = withReadingTools(withPlainKeys(world));
   const text = makeText({ description: UPDATE_HINT, author: UPDATE_AUTHOR, release: OPEN_SOURCE.installed }, OLD_LINES);
   const item: HarnessItem = {
     id: UPDATE_ITEM_ID, kind: 'skill', name: 'Tidy my meeting notes', scopeId: home.id, description: UPDATE_HINT,

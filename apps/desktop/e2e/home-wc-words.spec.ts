@@ -103,7 +103,8 @@ test('the Share sheet has "Create share file" as its main button, and says "pass
   await openSheet();
   await expect(sheet().getByRole('button', { name: 'Create share file' })).toBeEnabled();
   await expect(sheet().getByRole('button', { name: 'Save a copy' })).toHaveCount(0);
-  await expect(sheet().locator('.sh-left')).toHaveText(`Left out: ${all.keys} passwords and keys and 1 ready-made item`);
+  // Wave E: the keys are named (by the names of their variables), so the count in words is not on the sheet while the names fit.
+  await expect(sheet().locator('.sh-left')).toHaveText(`Left out: ${all.keyNames.join(', ')} and 1 ready-made item`);
   await expect(sheet().getByText('Passwords and keys that Bowerloom keeps are left out.')).toBeVisible();
   const text = await sheet().innerText();
   // "keys" never stands alone in the sheet: it always comes after "passwords and".

@@ -77,12 +77,19 @@ export const changeSentence = (c: Change): string => say(c, true);
 
 /**
  * The sentence for a bar with one or two changes, or null when the bar should say "N changes": three or more changes, a list that does not match the
- * count, or a sentence that would pass 12 words. Two changes share one sentence: "Removed A and B", "Added A and B to C", or, when the verbs differ,
+ * count, or a sentence that would pass 12 words. Two things added to two different agents say "to 2 agents" when the two names do not fit. Two changes share one sentence: "Removed A and B", "Added A and B to C", or, when the verbs differ,
  * "Removed A and added B to C". A long sentence loses its "to <agent>" first; then two adds to different agents read "Added A and B".
  */
 export function barSentence(changes: readonly Change[], count: number): string | null {
   if (count < 1 || count > BAR_NAMES || changes.length !== count) return null;
   const [a, b] = changes;
+  // Two things added to two different agents: the full sentence is too long, and dropping the agents would say "Added A and B" with no word about where. It says how many agents.
+  if (a !== undefined && b !== undefined && a.verb === 'added' && b.verb === 'added' && a.to !== undefined && b.to !== undefined && a.to !== b.to) {
+    const text = `${VERB[a.verb]} ${a.what} and ${b.what} to 2 agents`;
+    const full = `${say(a, true)} and ${lower(say(b, true))}`;
+    if (countWords(full) <= BAR_LIMIT) return full;
+    if (countWords(text) <= BAR_LIMIT) return text;
+  }
   for (const withTarget of [true, false]) {
     const to = (c: Change): string => (withTarget && c.to !== undefined ? ` to ${c.to}` : '');
     const text = a === undefined ? '' : b === undefined ? say(a, withTarget)

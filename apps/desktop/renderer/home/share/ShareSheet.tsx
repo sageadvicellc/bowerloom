@@ -105,6 +105,11 @@ export function ShareSheet({ world, hidden, unsaved, leaving = false, onClose, o
   const key = (e: ReactKeyboardEvent<HTMLDivElement>): void => { if (dialog.current !== null) trapTab(e, dialog.current); };
   const tick = (id: string): void => { setLeft(current => toggleLeftOut(current, id)); setMade(null); };
   const toggleText = (id: string): void => setShown(current => toggleLeftOut(current, id));
+  /** "Show what is in it": opens Look inside and takes the focus to its list, so what travels is read before the file is sent. */
+  const showInside = (): void => {
+    setLooking(true);
+    requestAnimationFrame(() => { const list = document.getElementById(lookId); list?.scrollIntoView({ block: 'nearest' }); list?.focus({ preventScroll: true }); });
+  };
   const save = (): void => { if (!canSave(plan)) return; onCopy(plan.text); setMade({ bytes: plan.bytes }); };
   const empty = !canSave(plan);
 
@@ -114,7 +119,8 @@ export function ShareSheet({ world, hidden, unsaved, leaving = false, onClose, o
         <header className="sh-head">
           <div className="sh-title">
             <h2 className="kit-heading" id={titleId} tabIndex={-1} ref={heading}>{L.sheetTitle}</h2>
-            <p className="kit-hint">{H.shareTip}</p>
+            <p className="kit-hint" data-file-is="">{H.fileIs}</p>
+            <p className="kit-hint" data-where-saved="">{H.whereSaved}</p>
           </div>
           <Button round icon="close" aria-label={L.close} onClick={onClose} />
         </header>
@@ -123,7 +129,7 @@ export function ShareSheet({ world, hidden, unsaved, leaving = false, onClose, o
           <h3 className="kit-heading" id={`${listId}-goes`}>{L.goesIn}</h3>
           <div aria-live="polite" className="sh-live">
             <p className="sh-counts" data-empty={empty ? '' : undefined}>{empty ? H.nothingPicked : countsLine(plan.counts)}</p>
-            <p className="sh-left">{leftOutLine(plan.keys, plan.leftOutAgents, plan.readyMade, plan.leftOutItems)}</p>
+            <p className="sh-left">{leftOutLine(plan.keys, plan.leftOutAgents, plan.readyMade, plan.leftOutItems, plan.keyNames)}</p>
           </div>
           <div className="sh-secrets">
             <p className="kit-hint">{H.secretsOut}</p>
@@ -159,7 +165,7 @@ export function ShareSheet({ world, hidden, unsaved, leaving = false, onClose, o
                 <p className="kit-hint">{H.lookTip}</p>
               </div>
               {looking ? (
-                <ul className="sh-look-list" id={lookId} aria-label={L.lookInside}>
+                <ul className="sh-look-list" id={lookId} aria-label={L.lookInside} tabIndex={-1}>
                   {inside.map(item => <LookRow key={item.id} item={item} ticked={!left.includes(item.id)} open={shown.includes(item.id)} onTick={() => tick(item.id)} onToggle={() => toggleText(item.id)} />)}
                 </ul>
               ) : null}
@@ -180,7 +186,9 @@ export function ShareSheet({ world, hidden, unsaved, leaving = false, onClose, o
                   <h3 className="kit-heading sh-made-title" tabIndex={-1} ref={ready}><KitIcon name="check" size={20} />{L.fileReady}</h3>
                   <p className="sh-size">{sizeLine(made.bytes)}</p>
                 </div>
+                <p className="kit-hint" data-where-saved="">{H.whereSaved}</p>
                 <p className="kit-hint">{H.nothingWritten}</p>
+                <span className="sh-show"><Button variant="text" aria-expanded={looking} aria-controls={lookId} onClick={showInside}>{L.showWhatIsIn}</Button></span>
               </div>
               <div className="sh-foot-actions">
                 <Button variant="primary" onClick={onClose}>{L.done}</Button>

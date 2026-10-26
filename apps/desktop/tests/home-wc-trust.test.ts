@@ -33,7 +33,8 @@ test('a skill from outside has its maker and release from the Library facts; a s
 });
 
 test('a tool has the host it reaches (or "This computer only", or nothing outside) and "Can only read" or "Can change things"', () => {
-  assert.deepEqual(toolTrust(world, 'tool-mcp-missing'), { reaches: 'calendar.example.com', can: 'Can change things' });
+  assert.deepEqual(toolTrust(world, 'tool-mcp-missing'), { reaches: 'calendar.example.com', can: 'Can only read' }, 'a tool named Read says it can only read');
+  assert.equal(toolTrust(world, 'tool-hook-guard')?.can, 'Can change things', 'a tool that runs code can change things');
   assert.deepEqual(toolTrust(world, 'tool-mcp-present'), { reaches: 'search.example.com', can: 'Can only read' });
   assert.equal(toolTrust(world, 'tool-hook-guard')?.reaches, 'This computer only');
   assert.match(toolTrust(world, 'tool-prompt-01')?.reaches ?? '', /^Nothing outside/);
@@ -51,7 +52,7 @@ test('the details panel draws the maker and release of a skill and the reach of 
   assert.match(skill, /<dt>Made by<\/dt><dd[^>]*data-field="author"[^>]*>Priya Raman<\/dd><dt>Release<\/dt><dd[^>]*data-field="release"[^>]*>v1\.2<\/dd>/);
   assert.deepEqual(assertTextBudget(skill), []);
   const tool = draw('tool', 'tool-mcp-missing', 'agent-01');
-  assert.match(tool, /<h3 class="dt-sub"[^>]*>Reaches<\/h3><p data-reaches=""[^>]*>calendar\.example\.com<\/p><p class="kit-hint" data-can="">Can change things<\/p>/);
+  assert.match(tool, /<h3 class="dt-sub"[^>]*>Reaches<\/h3><p data-reaches=""[^>]*>calendar\.example\.com<\/p><p class="kit-hint" data-can="">Can only read<\/p>/);
   assert.deepEqual(assertTextBudget(tool), []);
   const own = world.items.find(i => i.kind === 'skill' && i.library === null && agents.some(a => a.definition.skillIds.includes(i.id)))!;
   const mine = draw('skill', own.id, agents.find(a => a.definition.skillIds.includes(own.id))!.id);

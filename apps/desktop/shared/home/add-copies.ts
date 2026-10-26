@@ -9,6 +9,7 @@ import type { StoreAction } from '../proto/store.js';
 import { conflictCopies, distinctTexts } from '../proto/conflicts.js';
 import { diffLines } from '../proto/setup-diff.js';
 import type { DiffLine } from '../proto/setup-diff.js';
+import { sampleCopyDays } from './sample-copies.js';
 
 /** True when the item has two or more different texts. */
 export const hasCopies = (item: HarnessItem): boolean => distinctTexts(item) >= 2;
@@ -18,6 +19,8 @@ export interface CopyView {
   readonly index: number;
   readonly number: number;
   readonly place: string;
+  /** How many days ago the newest place of this copy was changed, or null when no place says. */
+  readonly daysAgo: number | null;
   readonly lines: readonly DiffLine[];
   /** Lines this copy has that the other copy does not. */
   readonly changed: number;
@@ -29,8 +32,16 @@ export function copiesOf(item: HarnessItem): CopyView[] {
   return copies.map((copy, at): CopyView => {
     const other = copies[at === 0 ? 1 : 0]!;
     const diff = diffLines(other.text, copy.text);
-    return { index: copy.index, number: at + 1, place: copy.interfaceNames, lines: diff.lines, changed: diff.changed };
+    const dates = sampleCopyDays(item), days = dates === null ? [] : item.foundAt.flatMap((f, place) => (f.contentHash === copy.hash ? [dates[place]!] : []));
+    return { index: copy.index, number: at + 1, place: copy.interfaceNames, daysAgo: days.length === 0 ? null : Math.min(...days), lines: diff.lines, changed: diff.changed };
   });
+}
+
+/** The number of the copy that was changed last, or null when the copies do not all say when they changed, or the newest two changed on the same day. */
+export function newerCopy(views: readonly CopyView[]): number | null {
+  if (views.length < 2 || views.some(v => v.daysAgo === null)) return null;
+  const least = Math.min(...views.map(v => v.daysAgo!)), newest = views.filter(v => v.daysAgo === least);
+  return newest.length === 1 ? newest[0]!.number : null;
 }
 
 /** The store action that keeps one copy and drops the others from the draft. */

@@ -121,8 +121,10 @@ test('the sheet says what goes in as counts, what is left out, and that secrets 
   await expect(sheet().getByRole('heading', { level: 2, name: 'Share my agents' })).toBeFocused();
   await expect(counts()).toHaveText(countsLine(all.counts));
   await expect(counts()).toHaveText('29 skills, 10 agents, 8 tools, 3 sets of notes');
-  await expect(leftOut()).toHaveText(leftOutLine(all.keys, 0, all.readyMade));
-  await expect(leftOut()).toHaveText('Left out: 3 passwords and keys and 1 ready-made item');
+  await expect(leftOut()).toHaveText(leftOutLine(all.keys, 0, all.readyMade, 0, all.keyNames));
+  // The keys are named, by the names of their variables (never a value): the words are "Left out: A_KEY, B_KEY, C_KEY and 1 ready-made item".
+  expect(all.keyNames).toHaveLength(3);
+  await expect(leftOut()).toHaveText(`Left out: ${all.keyNames.join(', ')} and 1 ready-made item`);
   await expect(sheet().getByText('Passwords and keys that Bowerloom keeps are left out.')).toBeVisible();
   await expect(sheet().getByText('Your own text is included, so read it first.')).toBeVisible();
   await expect(sheet().getByText('Tools that need a key will ask for one.')).toBeVisible();
@@ -147,11 +149,11 @@ test('unticking an agent takes it out and the counts and the left-out line follo
   const name = (await sheet().locator('.sh-row-name').first().textContent())!;
   await rowOf(name).getByRole('checkbox').uncheck();
   await expect(counts()).toHaveText(countsLine(one.counts));
-  await expect(leftOut()).toHaveText(leftOutLine(one.keys, 1, one.readyMade));
+  await expect(leftOut()).toHaveText(leftOutLine(one.keys, 1, one.readyMade, 0, one.keyNames));
   expect(await budget()).toEqual([]);
   await rowOf(name).getByRole('checkbox').check();
   await expect(counts()).toHaveText(countsLine(all.counts));
-  await expect(leftOut()).toHaveText(leftOutLine(all.keys, 0, all.readyMade));
+  await expect(leftOut()).toHaveText(leftOutLine(all.keys, 0, all.readyMade, 0, all.keyNames));
   // Every agent out.
   for (const box of await sheet().locator('.sh-row input').all()) await box.uncheck();
   await expect(counts()).toHaveText('Tick at least one agent to share.');
@@ -163,7 +165,7 @@ test('unticking an agent takes it out and the counts and the left-out line follo
   const some = planShare(world, ids, six);
   for (const box of await sheet().locator('.sh-row input').all().then(l => l.slice(6))) await box.check();
   await expect(counts()).toHaveText(countsLine(some.counts));
-  await expect(leftOut()).toHaveText(leftOutLine(some.keys, 6, some.readyMade));
+  await expect(leftOut()).toHaveText(leftOutLine(some.keys, 6, some.readyMade, 0, some.keyNames));
 });
 
 test('changes that wait for Save are not in the copy, and the sheet says so', async () => {

@@ -124,7 +124,7 @@ test('two changes are joined in one short sentence; three or more say "N changes
   assert.equal(sentence(bothAdded), 'Added Find a file and Rename my files to Inbox sorter');
   const meeting = agentByPlain(s.draft, 'Meeting assistant');
   const apart = act(s, addAction(inbox.id, { id: 'skill-017', kind: 'skill', name: '', hint: '', ready: false })!, addAction(meeting.id, { id: 'skill-019', kind: 'skill', name: '', hint: '', ready: false })!);
-  assert.equal(sentence(apart), 'Added Check a link and Answer a common question', 'two adds to two agents: the long form passes 12 words, so the short one is said');
+  assert.equal(sentence(apart), 'Added Check a link and Answer a common question to 2 agents', 'two adds to two agents: the long form passes 12 words, so the short one is said, and it still says where (Wave E: it used to drop the agents)');
   const three = act(two, removeAction(inbox.id, 'skill', 'skill-006'));
   assert.equal(sentence(three), null, 'from three on the bar says "3 changes"');
   const long = act(s, removeAction(inbox.id, 'skill', 'skill-036'), addAction(inbox.id, { id: 'skill-012', kind: 'skill', name: '', hint: '', ready: false })!);

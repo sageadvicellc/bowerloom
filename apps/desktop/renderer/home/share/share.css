@@ -41,6 +41,8 @@
 [data-home] .sh-made-title .kit-icon { color: var(--accent-strong); }
 [data-home] .sh-size { margin: 0; font-size: var(--hm-text-base); font-weight: 600; }
 [data-home] .sh-foot-actions { display: flex; flex-wrap: wrap; gap: var(--hm-space-3); }
+/* "Show what is in it": a text link under the honest line, as quiet as the line, a full 32 px target. */
+[data-home] .sh-show { align-self: flex-start; margin-left: calc(-1 * var(--hm-space-3)); }
 
 @media (max-height: 640px) {
   [data-home] .sh-head { padding: var(--hm-space-2) var(--hm-space-5); }
@@ -61,6 +63,7 @@
 [data-home] .sh-look-row { display: flex; align-items: center; gap: var(--hm-space-3); flex: 1 1 auto; min-width: 0; min-height: var(--hm-row-h); box-sizing: border-box; padding: var(--hm-space-2) 0; cursor: pointer; }
 [data-home] .sh-look-row:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: var(--hm-radius-small); }
 [data-home] .sh-look-row input { flex: none; width: 1.125rem; height: 1.125rem; margin: 0; accent-color: var(--accent-strong); }
+[data-home] .sh-look-list:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 [data-home] .sh-warn { white-space: normal; }
 [data-home] .sh-warn > span:last-child { overflow: visible; text-overflow: clip; }
 [data-home] .sh-look-item .sh-warn { padding-left: calc(1.125rem + var(--hm-space-3)); }

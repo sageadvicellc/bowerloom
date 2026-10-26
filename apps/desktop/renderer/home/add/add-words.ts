@@ -102,7 +102,11 @@ export const agentAdded = (name: string): string => `Added ${name} to your agent
 /** "Copy 2". */
 export const copyNumber = (n: number): string => `Copy ${n}`;
 /** "Found in Claude Code and Codex". */
-export const foundIn = (place: string): string => `Found in ${place}`;
+export const foundIn = (place: string, daysAgo: number | null = null): string => (daysAgo === null ? `Found in ${place}` : `Found in ${place}, ${changedAgo(daysAgo)}`);
+/** "changed today", "changed 1 day ago", "changed 3 days ago". */
+export const changedAgo = (days: number): string => (days <= 0 ? 'changed today' : `changed ${days} ${days === 1 ? 'day' : 'days'} ago`);
+/** "Copy 1 is the newer one." */
+export const newerIs = (n: number): string => `${copyNumber(n)} is the newer one.`;
 /** "3 lines changed", "1 line changed" or "No lines changed". */
 export const linesChanged = (n: number): string => (n === 0 ? 'No lines changed' : `${plural(n, 'line', 'lines')} changed`);
 /** "Kept Copy 2 of Weekly review." */

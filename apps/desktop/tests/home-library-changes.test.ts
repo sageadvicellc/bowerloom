@@ -37,7 +37,7 @@ test('removing a set of notes reads as its plain name, not the made-up name of i
 
 test('removing a hook reads as its plain name', () => {
   const s = act(start(), removeFromLibraryAction('tool-hook-guard'));
-  assert.equal(said(s).sentence, 'Removed Check files after editing');
+  assert.equal(said(s).sentence, 'Removed Run a check after editing');
 });
 
 test('adding to an agent reads "Added <name> to <agent>"', () => {
@@ -83,8 +83,8 @@ test('nothing waiting counts as nothing, and a sentence never passes twelve word
 
 test('the version history names a removal by what the row showed', () => {
   let s = act(start(), removeFromLibraryAction('tool-hook-guard'));
-  s = reduceStore(s, { type: 'apply', label: 'Removed Check files after editing' });
+  s = reduceStore(s, { type: 'apply', label: 'Removed Run a check after editing' });
   const rows = savePointRows(s.committed, plainNameOf(s.committed));
-  assert.equal(rows[0]!.name, 'Removed Check files after editing');
-  assert.equal(rows[0]!.changes, 'Removed Check files after editing');
+  assert.equal(rows[0]!.name, 'Removed Run a check after editing');
+  assert.equal(rows[0]!.changes, 'Removed Run a check after editing');
 });

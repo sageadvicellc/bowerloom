@@ -11,6 +11,7 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 're
 import type { ReactElement } from 'react';
 import { agentSplit, agentSplitLine, libraryCounts, libraryDetails, listLibrary, notUsedCount, removePlan, agentsFor } from '../../../shared/home/library-model.js';
 import { selectedFirst } from '../../../shared/home/add-model.js';
+import { placesOf } from '../../../shared/home/where-it-lives.js';
 import type { LibraryKind, LibrarySort, UpdateInfo } from '../../../shared/home/library-model.js';
 import type { AgentRef } from '../../../shared/home/details.js';
 import { addToAgentAction, makeOwnCopyAction, removeFromLibraryAction, useUpdateAction } from '../../../shared/home/library-actions.js';
@@ -88,6 +89,7 @@ export function LibraryPage({ onOpenAgent, shell, selectedAgent = null }: Librar
   const details = useMemo(() => (selectedId === null ? null : libraryDetails(world, kind, selectedId)), [world, kind, selectedId]);
   const choices = useMemo(() => (selectedId === null ? [] : selectedFirst(agentsFor(world, kind, selectedId), selectedAgent)), [world, kind, selectedId, selectedAgent]);
   const nameOf = useMemo(() => plainNameOf(world), [world]);
+  const places = useMemo(() => (details === null ? [] : placesOf(world, details.kind, details.id, details.name)), [world, details]);
   const searching = query.trim() !== '' || filtering;
 
   useEffect(() => { document.title = 'Bowerloom'; }, []);
@@ -201,7 +203,7 @@ export function LibraryPage({ onOpenAgent, shell, selectedAgent = null }: Librar
 
       <aside className="hm-panel" ref={panel} aria-labelledby="lb-panel-title">
         <LibraryDetails key={`${kind}:${selectedId ?? ''}`} details={details} choices={choices} say={say} onPickAgent={pickAgent} onOpenAgent={openAgent}
-          onRemove={askRemove} onCopy={makeCopy} onUpdate={askUpdate} onBadgePress={() => setCopiesFor(selectedId)} />
+          onRemove={askRemove} onCopy={makeCopy} onUpdate={askUpdate} onBadgePress={() => setCopiesFor(selectedId)} places={places} />
       </aside>
 
       <WebSheet open={webOpen} onClose={() => setWebOpen(false)} onAdded={added} returnTo={() => webButton.current} />

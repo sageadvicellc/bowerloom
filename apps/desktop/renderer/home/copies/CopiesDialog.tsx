@@ -6,13 +6,13 @@
  */
 import { useEffect, useId, useRef } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react';
-import { copiesLookAlike, copiesOf, hasCopies, keepCopyAction } from '../../../shared/home/add-copies.js';
+import { copiesLookAlike, copiesOf, hasCopies, keepCopyAction, newerCopy } from '../../../shared/home/add-copies.js';
 import type { CopyView } from '../../../shared/home/add-copies.js';
 import { plainName } from '../../../shared/home/add-model.js';
 import type { NameOf } from '../../../shared/home/add-model.js';
 import { useProtoStore } from '../../proto/session.js';
 import { Button } from '../kit/Button.js';
-import { ADD_WORDS, copyNumber, foundIn, linesChanged } from '../add/add-words.js';
+import { ADD_WORDS, copyNumber, foundIn, linesChanged, newerIs } from '../add/add-words.js';
 import { trapTab } from '../add/dom-helpers.js';
 import { useModalLayer } from '../add/modal-layer.js';
 import '../add/add.css';
@@ -38,7 +38,7 @@ function Copy({ copy, onKeep }: { copy: CopyView; onKeep(): void }): ReactElemen
     <section className="add-copy" aria-labelledby={titleId} data-copy={copy.number}>
       <div className="add-copy-head">
         <h3 className="kit-heading" id={titleId}>{copyNumber(copy.number)}</h3>
-        <p className="kit-hint">{foundIn(copy.place)}</p>
+        <p className="kit-hint" data-found="">{foundIn(copy.place, copy.daysAgo)}</p>
         <p className="kit-hint add-copy-count">{linesChanged(copy.changed)}</p>
       </div>
       <ol className="add-lines" aria-labelledby={titleId} tabIndex={0}>
@@ -80,7 +80,7 @@ export function CopiesDialog({ itemId, nameOf = plainName, leaving = false, onCl
   }, []);
 
   if (item === undefined || !hasCopies(item)) return null;
-  const copies = copiesOf(item), name = nameOf(item.name);
+  const copies = copiesOf(item), name = nameOf(item.name), newer = newerCopy(copies);
   const key = (e: ReactKeyboardEvent<HTMLDivElement>): void => { if (dialog.current !== null) trapTab(e, dialog.current); };
   const keep = (copy: CopyView): void => { dispatch(keepCopyAction(item.id, copy)); onKept?.(copy, name); onClose(); };
 
@@ -92,6 +92,7 @@ export function CopiesDialog({ itemId, nameOf = plainName, leaving = false, onCl
             <h2 className="kit-heading" id={titleId} tabIndex={-1} ref={heading}>{L.differentCopies}</h2>
             <p className="add-dialog-name">{name}</p>
             <p className="kit-hint" id={tipId}>{copiesLookAlike(copies) ? H.copiesLookAlike : H.copiesTip}</p>
+            {newer === null ? null : <p className="kit-hint" data-newer="">{newerIs(newer)}</p>}
             <p className="kit-hint" id={replacedId}>{H.copiesReplaced}</p>
           </div>
           <Button round icon="close" aria-label={L.close} onClick={onClose} />

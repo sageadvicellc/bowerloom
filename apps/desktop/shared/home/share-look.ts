@@ -63,7 +63,8 @@ export function lookItems(bundle: Bundle, nameOf: (name: string) => string, page
   };
   for (const i of bundle.items) if (i.kind === 'agent') make(i.id, 'agent', nameOf(i.name), [i.definition.instructions, ...i.foundAt.map(f => f.text)]);
   for (const i of bundle.items) if (i.kind === 'skill') make(i.id, 'skill', nameOf(i.name), [i.description, ...i.foundAt.map(f => f.text)]);
-  for (const t of bundle.toolRefs) make(t.toolId, 'tool', nameOf(t.name), [`${t.name}`, t.secret === null ? '' : `Key name: ${t.secret.name}`]);
+  // A tool's text is its plain name and the name of its key (never a value): the stored name of a sample tool is a made-up word pair that reads like a password.
+  for (const t of bundle.toolRefs) make(t.toolId, 'tool', nameOf(t.name), [nameOf(t.name), t.secret === null ? '' : `Key name: ${t.secret.name}`]);
   for (const s of bundle.sliceRules) {
     const hops = s.rule.linksFromSeeds === null ? [] : [`Links: ${s.rule.linksFromSeeds.hops === 1 ? 'one step' : 'two steps'} from the notes picked one by one`];
     make(s.sliceId, 'note', nameOf(s.name), [[...s.rule.folders.map(f => `Topic: ${topic(f)}`), ...s.rule.pageTypesAndTags.types.map(t => `Kind: ${t}`), ...s.rule.pageTypesAndTags.tags.map(t => `Label: ${t}`), ...hops].join('\n')]);

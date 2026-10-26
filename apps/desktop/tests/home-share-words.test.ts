@@ -120,7 +120,7 @@ test('the sheet is a labelled modal dialog with the counts, the left-out line, t
   assert.match(m, /<h2 class="kit-heading"[^>]*>Share my agents<\/h2>/);
   const plan = planShare(world, ids, []);
   assert.ok(m.includes(`>${countsLine(plan.counts)}<`), 'the counts line');
-  assert.ok(m.includes(`>${leftOutLine(plan.keys, 0)}<`), 'the left-out line');
+  assert.ok(m.includes(`>${leftOutLine(plan.keys, 0, 0, 0, plan.keyNames)}<`), 'the left-out line');
   assert.match(m, /Passwords and keys that Bowerloom keeps are left out\./);
   assert.match(m, /Your own text is included, so read it first\./);
   assert.match(m, /Tools that need a key will ask for one\./);
@@ -175,4 +175,32 @@ test('the sources of Share use no inline style and none of the specification wor
     const text = readFileSync(join(DESKTOP, 'renderer/home/share', name), 'utf8');
     assert.doesNotMatch(text, /style=\{|dangerouslySetInnerHTML/, name);
   }
+});
+
+// ---- Wave E, group F: the keys are named, the sheet says where the file goes, and the file that was made says so again.
+test('the left-out line names the keys by their names, with a comma between them; a line that cannot fit them says how many', () => {
+  assert.equal(leftOutLine(3, 0, 0, 0, ['CALENDAR_KEY', 'SEARCH_KEY', 'WORKSPACE_KEY']), 'Left out: CALENDAR_KEY, SEARCH_KEY, WORKSPACE_KEY');
+  assert.equal(leftOutLine(1, 0, 0, 0, ['SEARCH_KEY']), 'Left out: SEARCH_KEY');
+  assert.equal(leftOutLine(2, 1, 0, 0, ['A_KEY', 'B_KEY']), 'Left out: A_KEY, B_KEY and 1 agent');
+  assert.equal(leftOutLine(0, 0), 'Left out: nothing');
+  // names that do not match the count, or too many of them, fall back to the count
+  assert.equal(leftOutLine(3, 0, 0, 0, ['A_KEY']), 'Left out: 3 passwords and keys');
+  const many = Array.from({ length: 12 }, (_, i) => `KEY_NUMBER_${i + 1}`);
+  assert.equal(leftOutLine(12, 0, 0, 0, many), 'Left out: 12 passwords and keys');
+  for (const n of [0, 1, 3, 6, 11, 12, 30]) for (const agents of [0, 2]) {
+    const names = Array.from({ length: n }, (_, i) => `KEY_${i + 1}`);
+    const text = leftOutLine(n, agents, 1, 1, names);
+    assert.ok(countWords(text) <= 12, text); assert.deepEqual(assertTextBudget(`<p>${text}</p>`), [], text);
+  }
+});
+
+test('the sheet says in two lines that it makes one file and that the real app asks where to save it; the made file says it again and offers to show what is in it', () => {
+  const h = SHARE_WORDS.hint, l = SHARE_WORDS.label;
+  assert.equal(h.fileIs, 'One file you can send.');
+  assert.equal(h.whereSaved, 'In the real app you choose where it is saved.');
+  assert.equal(l.showWhatIsIn, 'Show what is in it');
+  for (const text of [h.fileIs, h.whereSaved]) assert.ok(countWords(text) <= 12, text);
+  const m = sheet();
+  assert.match(m, /<p class="kit-hint" data-file-is="">One file you can send\.<\/p><p class="kit-hint" data-where-saved="">In the real app you choose where it is saved\.<\/p>/);
+  within(m);
 });

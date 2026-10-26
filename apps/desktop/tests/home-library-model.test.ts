@@ -153,13 +153,13 @@ test('details of the item with an update: its source, author and release come fr
 test('details of a tool: what it reaches (an example host), how far it can go, and the flags', () => {
   const w = world();
   const cal = libraryDetails(w, 'tool', 'tool-mcp-missing')!;
-  assert.deepEqual([cal.name, cal.reach, cal.ability, cal.needsKey, cal.runsCode, cal.canAdd], ['Read my calendar', 'Reaches calendar.example.com', 'Can change things', true, false, true]);
+  assert.deepEqual([cal.name, cal.reach, cal.ability, cal.needsKey, cal.runsCode, cal.canAdd], ['Read my calendar', 'Reaches calendar.example.com', 'Can only read', true, false, true]);
   const search = libraryDetails(w, 'tool', 'tool-mcp-present')!;
   assert.deepEqual([search.reach, search.ability, search.needsKey, search.keyReady], ['Reaches search.example.com', 'Can only read', false, true]);
   const prompt = libraryDetails(w, 'tool', 'tool-prompt-01')!;
   assert.equal(prompt.reach, 'Nothing outside. It only sends a saved prompt.');
   const hook = libraryDetails(w, 'tool', 'tool-hook-guard')!;
-  assert.deepEqual([hook.name, hook.runsCode, hook.canAdd, hook.reach, hook.ability], ['Check files after editing', true, false, 'This computer only', 'Can change things']);
+  assert.deepEqual([hook.name, hook.runsCode, hook.canAdd, hook.reach, hook.ability], ['Run a check after editing', true, false, 'This computer only', 'Can change things']);
   for (const t of libraryRows(w, 'tool')) {
     const full = libraryDetails(w, 'tool', t.id)!;
     assert.ok(full.reach !== null && full.ability !== null && full.text.length >= 2, t.id);

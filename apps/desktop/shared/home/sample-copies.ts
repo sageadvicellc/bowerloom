@@ -4,7 +4,7 @@
  * second copy, in plain lines, so the badge shows on a shelf and the copies dialog has something real to open. It is deterministic: no clock, no random
  * number. A world that already has such a skill, or that lacks the skill, comes back as it is.
  */
-import type { SkillItem, World } from '../proto/types.js';
+import type { HarnessItem, SkillItem, World } from '../proto/types.js';
 import { distinctTexts } from '../proto/conflicts.js';
 import { hashText } from '../proto/sample.js';
 import { ownedAgents } from './cards.js';
@@ -14,6 +14,20 @@ export const SAMPLE_COPY_SKILL = 'skill-014';
 
 const COPY_A = ['Read the new mail.', 'Group it by topic.', 'Put the newest group first.'].join('\n');
 const COPY_B = ['Read the new mail.', 'Group it by topic and by sender.', 'Put the newest group first.', 'Keep it to ten groups at most.'].join('\n');
+
+/** How many days ago each place of an item with copies was changed, by the order the places were found: the first is the newest. Sample dates, so the dialog can say which copy is newer. */
+export const SAMPLE_COPY_DAYS: readonly number[] = Object.freeze([3, 9, 17, 30]);
+
+/** An id that was made in this preview (added from the web, copied, a saved choice of pages): it has no sample date, because it has no history yet. */
+const MADE_HERE = /^web-|-mine(?:-\d+)?$|-copy(?:-\d+)?$|^slice-\d+$/;
+
+/**
+ * How many days ago each place of an item was changed, in the order of its `foundAt`, or null for an item made in this preview. The dates are invented for the sample
+ * (the real app would read them from the files), and they live here, beside the sample copies, not in the data of the world.
+ */
+export function sampleCopyDays(item: Pick<HarnessItem, 'id' | 'foundAt'>): readonly number[] | null {
+  return MADE_HERE.test(item.id) ? null : item.foundAt.map((_, at) => SAMPLE_COPY_DAYS[at % SAMPLE_COPY_DAYS.length]!);
+}
 
 const heldByAnAgent = (world: World, id: string): boolean => ownedAgents(world).some(a => a.definition.skillIds.includes(id));
 

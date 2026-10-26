@@ -21,7 +21,9 @@ import { Glyph } from '../kit/Glyph.js';
 import { Shelf } from '../kit/Shelf.js';
 import { NOTES_WORDS } from '../notes/notes-words.js';
 import { NotesShelf } from '../notes/NotesShelf.js';
+import type { Place } from '../../../shared/home/where-it-lives.js';
 import { WORDS } from '../words.js';
+import { WhereItLives } from './WhereItLives.js';
 import './details.css';
 
 const L = WORDS.label, H = WORDS.hint;
@@ -43,6 +45,8 @@ export interface DetailsPanelProps {
   /** Who made the skill that is shown and which release it is (a skill from outside), and what the tool that is shown reaches. */
   skillTrust?: SkillTrust | null;
   toolTrust?: ToolTrust | null;
+  /** Where the agent, skill or tool is kept in each program (sample paths), for "Show where it lives". */
+  places?: readonly Place[];
 }
 
 /** A block with a small heading. */
@@ -87,7 +91,7 @@ function Remove({ owner, entry, onRemove }: { owner: AgentRef | null; entry: She
   return owner === null ? null : <div className="dt-actions"><Button onClick={() => onRemove(owner.id, entry)}>{removeFromLabel(owner.name)}</Button></div>;
 }
 
-export function AgentBody({ details, onSelect, onRemove, onBadgePress, onChoose, freshId = null, freshPhase = 0, freshNotes = null }: DetailsPanelProps & { details: AgentDetails | null }): ReactElement {
+export function AgentBody({ details, onSelect, onRemove, onBadgePress, onChoose, freshId = null, freshPhase = 0, freshNotes = null, places = [] }: DetailsPanelProps & { details: AgentDetails | null }): ReactElement {
   const shelves = details?.shelves;
   const pick = (entry: ShelfEntry): void => { if (details !== null) onSelect({ kind: entry.kind, id: entry.id, ownerAgentId: details.id }); };
   const take = (entry: ShelfEntry): void => { if (details !== null) onRemove(details.id, entry); };
@@ -98,11 +102,13 @@ export function AgentBody({ details, onSelect, onRemove, onBadgePress, onChoose,
       <Shelf title={L.skills} entries={shelves?.skills ?? []} selectedId={null} onSelect={id => { const e = shelves?.skills.find(x => x.id === id); if (e !== undefined) pick(e); }} onRemove={take} onBadgePress={entry => onBadgePress(entry.id)} freshId={freshId} freshPhase={freshPhase} emptyText={H.emptyShelf} />
       <Shelf title={L.tools} entries={shelves?.tools ?? []} selectedId={null} onSelect={id => { const e = shelves?.tools.find(x => x.id === id); if (e !== undefined) pick(e); }} onRemove={take} onBadgePress={entry => onBadgePress(entry.id)} freshId={freshId} freshPhase={freshPhase} emptyText={H.emptyShelf} hint={H.tools} />
       <NotesShelf entries={shelves?.notes ?? []} selectedId={null} onSelect={id => { const e = shelves?.notes.find(x => x.id === id); if (e !== undefined) pick(e); }} onRemove={take} freshId={freshNotes} freshPhase={freshPhase} canChoose={details !== null} onChoose={onChoose} />
+      {/* Last, so the shelves (and the first Remove) are not pushed down by a stop of the keyboard that most people do not need. */}
+      {details === null ? null : <WhereItLives key={details.id} places={places} />}
     </>
   );
 }
 
-function SkillBody({ details, onSelect, onRemove, onBadgePress, textOpen = false, skillTrust = null }: DetailsPanelProps & { details: SkillDetails }): ReactElement {
+function SkillBody({ details, onSelect, onRemove, onBadgePress, textOpen = false, skillTrust = null, places = [] }: DetailsPanelProps & { details: SkillDetails }): ReactElement {
   const [open, setOpen] = useState(textOpen);
   const textId = useId();
   return (
@@ -111,7 +117,7 @@ function SkillBody({ details, onSelect, onRemove, onBadgePress, textOpen = false
       <Head kind={L.kindSkill} glyph="skill" name={details.name} line="" />
       <Block title={L.whatItDoes}><p>{details.hint}</p></Block>
       <UsedBy agents={details.usedBy} onSelect={onSelect} />
-      <Block title={L.whereItWorks}><Programs works={details.works} /></Block>
+      <Block title={L.whereItWorks}><Programs works={details.works} /><WhereItLives key={details.id} places={places} /></Block>
       <Block title={L.whereItCameFrom}>
         <p>{details.source}</p>
         {skillTrust === null ? null : (
@@ -131,7 +137,7 @@ function SkillBody({ details, onSelect, onRemove, onBadgePress, textOpen = false
   );
 }
 
-function ToolBody({ details, onSelect, onRemove, toolTrust = null }: DetailsPanelProps & { details: ToolDetails }): ReactElement {
+function ToolBody({ details, onSelect, onRemove, toolTrust = null, places = [] }: DetailsPanelProps & { details: ToolDetails }): ReactElement {
   return (
     <>
       <Back owner={details.owner} onSelect={onSelect} />
@@ -143,6 +149,7 @@ function ToolBody({ details, onSelect, onRemove, toolTrust = null }: DetailsPane
       {details.keyReady ? <p className="dt-key" data-key="ready">{H.keyReady}</p> : null}
       {details.runsCode ? <div className="dt-badge"><Badge badge={{ label: L.runsCode, tone: 'warn' }} /></div> : null}
       <UsedBy agents={details.usedBy} onSelect={onSelect} />
+      <WhereItLives key={details.id} places={places} />
       <Remove owner={details.owner} entry={{ id: details.id, kind: 'tool', name: details.name }} onRemove={onRemove} />
     </>
   );

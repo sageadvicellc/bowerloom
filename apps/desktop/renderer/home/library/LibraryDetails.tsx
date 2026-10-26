@@ -13,6 +13,8 @@ import type { LibraryDetails as Details } from '../../../shared/home/library-mod
 import { Badge } from '../kit/Badge.js';
 import { Button } from '../kit/Button.js';
 import { Glyph } from '../kit/Glyph.js';
+import type { Place } from '../../../shared/home/where-it-lives.js';
+import { WhereItLives } from '../details/WhereItLives.js';
 import { AgentPicker } from './AgentPicker.js';
 import { LIBRARY_WORDS } from './library-words.js';
 import '../details/details.css';
@@ -36,6 +38,8 @@ export interface LibraryDetailsProps {
   onCopy(): void;
   onUpdate(): void;
   onBadgePress(): void;
+  /** Where the thing is kept in each program (sample paths), for "Show where it lives". Empty for a set of notes. */
+  places?: readonly Place[];
 }
 
 function Block({ title, children }: { title: string; children: ReactNode }): ReactElement {
@@ -55,7 +59,7 @@ function Head({ kind, name, line }: { kind: string; name: string; line: string }
   );
 }
 
-export function LibraryDetails({ details, choices, say, onPickAgent, onOpenAgent, onRemove, onCopy, onUpdate, onBadgePress }: LibraryDetailsProps): ReactElement {
+export function LibraryDetails({ details, choices, say, onPickAgent, onOpenAgent, onRemove, onCopy, onUpdate, onBadgePress, places = [] }: LibraryDetailsProps): ReactElement {
   const [picking, setPicking] = useState(false);
   const [open, setOpen] = useState(false);
   const textId = useId();
@@ -124,6 +128,7 @@ export function LibraryDetails({ details, choices, say, onPickAgent, onOpenAgent
       ) : (
         <Block title={L.whereItWorks}>
           {d.works.length === 0 ? <p className="kit-hint">{H.noPrograms}</p> : <ul className="dt-chips" data-programs="">{d.works.map(name => <li key={name} className="dt-chip">{name}</li>)}</ul>}
+          <WhereItLives key={`${d.kind}:${d.id}`} places={places} />
         </Block>
       )}
 

@@ -90,7 +90,7 @@ test('each tab lists everything of its kind, including what no agent uses, with 
   await goTab('Tools');
   await expect(rows()).toHaveCount(14);
   await expect(row('Read my calendar').getByText('needs a key')).toBeVisible();
-  await expect(row('Check files after editing').getByText('Runs code')).toBeVisible();
+  await expect(row('Run a check after editing').getByText('Runs code')).toBeVisible();
   await expect(row('Write a meeting agenda').getByText('Not used yet')).toBeVisible();
   expect(await budget()).toEqual([]);
   await goTab('Notes');
@@ -172,13 +172,14 @@ test('a tool says what it can reach (an example host) and how far it can go, and
   await goTab('Tools');
   await pick('Read my calendar');
   await expect(panel().locator('[data-reach]')).toHaveText('Reaches calendar.example.com');
-  await expect(panel().locator('[data-ability]')).toHaveText('Can change things');
+  // Wave E: a tool named "Read ..." can only read, wherever its access is shown.
+  await expect(panel().locator('[data-ability]')).toHaveText('Can only read');
   await expect(panel().locator('[data-flags]').getByText('Needs a key')).toBeVisible();
   await expect(panel().getByText('Add this key when asked.')).toBeVisible();
   await pick('Search the web');
   await expect(panel().locator('[data-ability]')).toHaveText('Can only read');
   await expect(panel().getByText('Its key is ready.')).toBeVisible();
-  await pick('Check files after editing');
+  await pick('Run a check after editing');
   await expect(panel().locator('[data-flags]').getByText('Runs code')).toBeVisible();
   await expect(panel().getByRole('button', { name: 'Add to an agent' })).toHaveCount(0);
   await expect(panel().getByText('It runs on its own, so it joins no agent.')).toBeVisible();

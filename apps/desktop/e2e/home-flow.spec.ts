@@ -116,7 +116,8 @@ test('the storyboard path: remove, save, ticks, go back; add by the picker and b
   await expect(panel().getByRole('heading', { level: 2, name: 'Meeting assistant' })).toBeVisible();
   expect(await skills()).toContain('Check a link');
   await expect(shelf('Skills').locator('[data-entry="skill-019"] .kit-card')).toHaveAttribute('data-fresh', '');
-  expect(await barText()).toBe('Added Check a link and Answer a common question');
+  // Two adds to two agents say where: "to 2 agents" (Wave E; the agents used to be dropped from the sentence).
+  expect(await barText()).toBe('Added Check a link and Answer a common question to 2 agents');
   expect(await budget()).toEqual([]);
 
   // Two different copies: the badge on the shelf opens the dialog, Keep this copy clears the badge, and it counts as one more change.

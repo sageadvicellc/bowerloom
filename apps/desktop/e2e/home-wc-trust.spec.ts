@@ -58,7 +58,8 @@ test('a tool says what it reaches and whether it can only read or can change thi
   const block = panel().locator('section', { has: page().getByRole('heading', { level: 3, name: 'Reaches' }) });
   await expect(block).toBeVisible();
   await expect(block.locator('[data-reaches]')).toHaveText('calendar.example.com');
-  await expect(block.locator('[data-can]')).toHaveText('Can change things');
+  // Wave E: a tool named "Read ..." can only read, wherever it is shown (it said it could change things).
+  await expect(block.locator('[data-can]')).toHaveText('Can only read');
   await panel().getByRole('button', { name: 'Back to agent' }).click();
   await panel().getByRole('button', { name: 'Remove from Meeting assistant' }).count();
   // A tool that only reads, and a saved prompt, which reaches nothing outside.

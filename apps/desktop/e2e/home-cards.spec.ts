@@ -287,7 +287,8 @@ test('a tool\'s details: what it can reach, how far it may go, a key that is nee
   await expect(panel().getByRole('heading', { level: 3 })).toHaveText(['What it can reach', 'Reaches', 'How far it can go', 'Used by']);
   await expect(panel().locator('[data-reaches]')).toHaveText('calendar.example.com');
   await expect(panel().getByText('Looks at your calendar to find the right times.')).toBeVisible();
-  await expect(panel().locator('[data-access]')).toHaveText('Can change things');
+  // Wave E: a tool named "Read ..." can only read, wherever its access is shown.
+  await expect(panel().locator('[data-access]')).toHaveText('Can only read');
   await expect(panel().locator('[data-key="missing"]')).toContainText('needs a key'); await expect(panel().locator('[data-key="missing"]')).toContainText('Add this key when asked.');
   expect(await panel().innerText()).not.toMatch(/[A-Z]{3,}_[A-Z_]+|secret|token/i);
   await expect(panel().getByText('Runs code')).toHaveCount(0);

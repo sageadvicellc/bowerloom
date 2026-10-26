@@ -41,6 +41,10 @@ export const WORDS = deepFreeze({
     skills: 'Skills',
     tools: 'Tools',
     notes: 'Notes',
+    showWhere: 'Show where it lives',
+    hideWhere: 'Hide where it lives',
+    copyPath: 'Copy path',
+    copied: 'Copied',
     showMore: 'Show more',
     showLess: 'Show less',
     save: 'Save',
@@ -158,6 +162,7 @@ export const WORDS = deepFreeze({
     noNotes: DETAIL_WORDS.noNotes,
     noUsers: DETAIL_WORDS.noUsers,
     noPrograms: DETAIL_WORDS.noPrograms,
+    copyBlocked: 'Copying is blocked here. Select the path and copy it.',
   },
   /** The text behind a "?" button: at most 25 words, and the only place a technical term may appear. */
   popover: {
