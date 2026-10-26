@@ -94,7 +94,8 @@ test('a long text is scrubbed in pieces, and a secret near a piece end is still 
 const AWS_STYLE = 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY';
 const HEX_BLOB = 'a3f5c9d1e7b2a4f6c8d0e2b4a6f8c0d2e4b6a8f0';
 const B64_BLOB = 'Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6QUJDREVG';
-const SLACK = ['https://hooks.sl', 'ack.com/services/T0FAKE123/B0FAKE456/abcdEFGHijklMNOPqrstUVWX'].join('');
+// Built from parts, so the source holds no whole webhook address for a push scanner to flag.
+const SLACK = ['https://hooks.' + 'slack.com', 'services', 'T0FAKE123', 'B0FAKE456', 'abcdEFGHijklMNOPqrstUVWX'].join('/');
 const JWT = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmYWtlIn0.c2lnbmF0dXJlLWZha2U';
 
 /** Each text and the pieces of it that must not come out. */
