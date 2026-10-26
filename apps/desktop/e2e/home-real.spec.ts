@@ -25,7 +25,7 @@ const dialogs: string[] = [];
 
 test.beforeAll(async () => {
   const built = spawnSync(process.execPath, [join(desktop, 'tools', 'bundle.mjs')], { cwd: desktop, encoding: 'utf8' });
-  if (built.status !== 0 || !existsSync(join(desktop, 'dist', 'renderer', 'real.js'))) throw new Error(`The bundle did not build.\n${built.stdout}\n${built.stderr}`);
+  if (built.status !== 0 || !existsSync(join(desktop, 'dist', 'renderer', 'app.js'))) throw new Error(`The bundle did not build.\n${built.stdout}\n${built.stderr}`);
   fixture = buildFixture();
   before = fingerprint(fixture.root);
   const userData = tempDir('bowerloom-prototype-e2e-');
@@ -38,6 +38,9 @@ test.beforeAll(async () => {
   await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [folder] })) as unknown as typeof dialog.showOpenDialog; }, fixture.work);
   page = await app.firstWindow();
   page.on('dialog', d => { dialogs.push(d.message()); void d.dismiss(); });
+  await page.waitForLoadState('domcontentloaded');
+  // The real address opens the shell now (see home-real-shell.spec.ts). This spec drives the reader's own bare list, which the same page shows at its test address.
+  await page.evaluate(() => { location.hash = '#prototype-v2/real-harness'; location.reload(); });
   await page.waitForLoadState('domcontentloaded');
   await page.waitForSelector('[data-real]');
 });
@@ -52,7 +55,7 @@ const bodyText = (): Promise<string> => page.locator('body').innerText();
 const step = (name: string) => page.locator(`[data-real][data-step="${name}"]`);
 
 test('the page opens in real mode: the address, the window, the title, and the Read-only reminder', async () => {
-  expect(await page.evaluate(() => location.hash)).toBe('#prototype-v2/real');
+  expect(await page.evaluate(() => location.hash)).toBe('#prototype-v2/real-harness');
   expect(await page.title()).toBe('Bowerloom');
   const size = await page.evaluate(() => [window.innerWidth, window.innerHeight]);
   expect(size[0]).toBeGreaterThanOrEqual(1200);

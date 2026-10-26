@@ -46,9 +46,21 @@ A clickable prototype of Bowerloom 0.8, with six screens: setup, harness, skills
 npm --prefix "<repo>" run desktop:prototype
 ```
 
-## Real setup preview
+## The 0.8 home app: a sample world, or your own setup
 
-`npm --prefix "<repo>" run desktop:prototype:real` opens the 0.8 preview on your own setup. It needs a real `HOME`. It looks at your tool folders (Claude Code, Codex, OpenCode, Hermes) and at folders you pick, in two steps: places and counts first, then names and descriptions of what you ticked. Terminal line: "Reads: names, descriptions, structure and key names. Writes: nothing." It keeps the prototype's lock (temporary data folder, no network, no outside links) and adds one bridge with three read-only calls. `desktop:prototype:v2` stays the sample world.
+Two commands open the same app. Use `npm --prefix "<repo>" run desktop:prototype:v2` for a made-up sample world. It reads nothing from your computer. Use `npm --prefix "<repo>" run desktop:prototype:real` for your own setup, read only. It needs a real home folder (the `HOME` variable).
+
+What real mode reads, in plain English:
+
+1. It looks in the tool folders of your home folder: Claude Code, Codex, OpenCode and Hermes. You can also pick a folder, and it finds the projects inside it.
+2. Question one shows the places it found with counts, and no file names. Question two, "Read what is inside?", reads only the places you ticked.
+3. It reads names, descriptions, structure and the names of keys. It never keeps a key value.
+4. You then choose which agents go on the map. "Find more" does the same again in the right column and adds to what you have.
+5. Every control that would change your setup is shown and held back, with the reason. Nothing is saved, and the Library's web sources are samples.
+6. The app writes no changes to your files. It keeps its own temporary files and deletes them when it closes.
+7. If the real address is opened by the other command, it says "Real mode needs the real launch command."
+
+The tests run real mode on a made-up home folder (`tests/fixtures-real`), never on yours.
 
 ## Where the viewer may write
 
