@@ -1,14 +1,14 @@
 // The reader of a real setup, run against a made-up home folder (tests/fixtures-real/build.ts). Nothing here reads a real folder.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
-import { lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { RealRefusal, createScanner, findHomePlaces } from '../main/real-scan.js';
 import type { Scanner } from '../main/real-scan.js';
 import { REAL_LIMITS } from '../shared/real/types.js';
 import type { RealDiscovery, RealPlace } from '../shared/real/types.js';
 import { FAKE_SECRET, FAKE_TOKEN_IN_TEXT, buildFixture } from './fixtures-real/build.js';
+import { fingerprint } from './fixtures-real/fingerprint.js';
 import { tempDir } from './support.js';
 import type { TestContext } from 'node:test';
 
@@ -16,20 +16,6 @@ function fixture(t: TestContext): ReturnType<typeof buildFixture> {
   const f = buildFixture();
   t.after(() => f.cleanup());
   return f;
-}
-
-/** A fingerprint of a whole folder: every name, kind, size, change time and file content. If a read changed anything, this changes. */
-function fingerprint(dir: string): string {
-  const hash = createHash('sha256');
-  const walk = (d: string): void => {
-    for (const name of readdirSync(d).sort()) {
-      const p = join(d, name), s = lstatSync(p);
-      hash.update(`${p}|${s.isDirectory() ? 'd' : s.isSymbolicLink() ? 'l' : 'f'}|${s.size}|${s.mtimeMs}|${(s.mode & 0o777).toString(8)}\n`);
-      if (s.isDirectory()) { if ((s.mode & 0o400) !== 0) walk(p); } else if (s.isFile()) hash.update(readFileSync(p));
-    }
-  };
-  walk(dir);
-  return hash.digest('hex');
 }
 
 const byLabel = (d: RealDiscovery, label: string): RealPlace => { const p = d.places.find(x => x.label === label); assert.ok(p, `a place called ${label}: ${d.places.map(x => x.label).join(' | ')}`); return p; };

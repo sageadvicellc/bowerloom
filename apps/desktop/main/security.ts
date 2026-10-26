@@ -88,6 +88,14 @@ export function isAllowedSender(prototypeMode: boolean, frameUrl: string | null,
 }
 
 /**
+ * Real mode (--prototype-real) only: whether the page that sent a call to the real-setup reader may be answered. The answer is yes only in real mode, and only for the app's
+ * own page (any hash). `isAllowedSender` is not changed: in every prototype mode it still refuses every channel of the normal bridge. `frameUrl` is null when there is no sender frame.
+ */
+export function isAllowedRealSender(realMode: boolean, frameUrl: string | null, appIndexUrl: string): boolean {
+  return realMode && frameUrl !== null && decideNavigation(frameUrl, appIndexUrl) === 'allow-app';
+}
+
+/**
  * A request the session may let through: a file under the app's own `dist` folder (compared as a resolved path plus a separator,
  * so a folder next to it with a longer name is not let through), and nothing on the network.
  */

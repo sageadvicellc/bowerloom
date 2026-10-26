@@ -119,7 +119,7 @@ test('main.ts: each prototype flag loads the same app address with its own hash,
   }
   assert.equal(decideNavigation(`${APP_INDEX}#prototype-v2/kit`, APP_INDEX), 'allow-app');
   // Either flag puts the app in prototype mode, which is the one switch behind the missing preload, the refused IPC, the temp folder and the blocked links.
-  assert.match(main, /const prototypeMode = argv\.includes\('--prototype'\) \|\| prototypeV2;/);
+  assert.match(main, /const prototypeMode = argv\.includes\('--prototype'\) \|\| prototypeV2 \|\| prototypeReal;/);
   assert.match(main, /const prototypeV2 = argv\.includes\('--prototype-v2'\);/);
   assert.equal([...main.matchAll(/ipcMain\.handle/g)].length, 1, 'still one guard');
   assert.match(main, /isAllowedSender\(/);

@@ -46,6 +46,10 @@ A clickable prototype of Bowerloom 0.8, with six screens: setup, harness, skills
 npm --prefix "<repo>" run desktop:prototype
 ```
 
+## Real setup preview
+
+`npm --prefix "<repo>" run desktop:prototype:real` opens the 0.8 preview on your own setup. It needs a real `HOME`. It looks at your tool folders (Claude Code, Codex, OpenCode, Hermes) and at folders you pick, in two steps: places and counts first, then names and descriptions of what you ticked. Terminal line: "Reads: names, descriptions, structure and key names. Writes: nothing." It keeps the prototype's lock (temporary data folder, no network, no outside links) and adds one bridge with three read-only calls. `desktop:prototype:v2` stays the sample world.
+
 ## Where the viewer may write
 
 The viewer writes in only two places. One is its own folder (its settings, and later your sketches). The other is the **sandbox**, a folder made only for trying things. It never writes in your real folders. A short piece of code, the write boundary, checks every place before anything is written there. It refuses a path with "..", a path through a shortcut (a link), a path outside the allowed folders, your home folder, any folder that holds your home folder, any of your real folders, and any folder that does not carry the mark the viewer puts in the sandbox. The list of allowed folders is fixed in the program. The settings file cannot change it, and neither can anything in the window.

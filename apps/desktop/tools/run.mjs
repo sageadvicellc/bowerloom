@@ -4,11 +4,12 @@
 //   npm --prefix <repo> run desktop:sample    (made-up sample data)
 //   npm --prefix <repo> run desktop:prototype (the Bowerloom 0.8 clickable prototype: all in memory, with a temporary data folder)
 //   npm --prefix <repo> run desktop:prototype:v2 (the 0.8 home app, agents first: the same promises)
+//   npm --prefix <repo> run desktop:prototype:real (the 0.8 preview on YOUR setup: it reads your tool folders and changes nothing; needs a real HOME)
 // It installs what is missing, builds the app, and opens the window. Pass --build-only to stop before the window.
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { constants } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makePrototypeDataDir, removeAndReport, removePrototypeDataDir } from '../main/prototype-dir.mjs';
 
@@ -18,10 +19,20 @@ export { makePrototypeDataDir, removePrototypeDataDir };
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const repo = join(desktop, '..', '..');
-const KNOWN = new Set(['--sample-data', '--real-data', '--sandbox', '--prototype', '--prototype-v2', '--build-only']);
-const MODES = new Set(['--sample-data', '--real-data', '--sandbox', '--prototype', '--prototype-v2']);
+const KNOWN = new Set(['--sample-data', '--real-data', '--sandbox', '--prototype', '--prototype-v2', '--prototype-real', '--build-only']);
+const MODES = new Set(['--sample-data', '--real-data', '--sandbox', '--prototype', '--prototype-v2', '--prototype-real']);
 // Both prototypes start with a fresh temporary data folder and write nothing else.
 const PROTOTYPES = ['--prototype', '--prototype-v2'];
+// The real-setup preview has the same lock (a fresh temporary data folder, nothing written to the real app data) and adds a read-only bridge. It needs a real home folder.
+export const REAL_FLAG = '--prototype-real';
+/** What the real-setup preview says on the terminal before it opens its window. Tests hold this to shared/real/types.ts. */
+export const REAL_PROMISE = 'Reads: names, descriptions, structure and key names. Writes: nothing.';
+
+/** The home folder the real-setup preview will read, or null when HOME is not set to a folder that exists. Only the home variable is looked at. */
+export function realHome(env = process.env, exists = path => existsSync(path)) {
+  const home = process.platform === 'win32' ? env.USERPROFILE : env.HOME;
+  return typeof home === 'string' && isAbsolute(home) && home.length > 1 && !home.includes('\0') && exists(home) ? home : null;
+}
 
 /**
  * The only environment an install script gets: where to find programs and the person's home, the network settings npm
@@ -116,8 +127,9 @@ function step(text, command, argv, cwd, env) {
 function main() {
   const args = process.argv.slice(2);
   const unknown = args.filter(a => !KNOWN.has(a));
-  if (unknown.length) fail(`I do not know ${unknown.map(a => `"${a}"`).join(', ')}. Use --sample-data to open the sample, --real-data to open your own Bowerloom, --prototype or --prototype-v2 to open a clickable prototype, or --build-only to only build.`, 2);
-  if (args.filter(a => MODES.has(a)).length > 1) fail('Choose one of --sample-data, --real-data, --sandbox, --prototype and --prototype-v2, not more.', 2);
+  if (unknown.length) fail(`I do not know ${unknown.map(a => `"${a}"`).join(', ')}. Use --sample-data to open the sample, --real-data to open your own Bowerloom, --prototype or --prototype-v2 to open a clickable prototype, --prototype-real to open the preview on your own setup (read-only), or --build-only to only build.`, 2);
+  if (args.filter(a => MODES.has(a)).length > 1) fail('Choose one of --sample-data, --real-data, --sandbox, --prototype, --prototype-v2 and --prototype-real, not more.', 2);
+  if (args.includes(REAL_FLAG) && realHome() === null) fail('The real setup preview needs a home folder, and HOME is not set to a folder that exists. Nothing was read.', 2);
 
   const npm = npmCommand();
   const clean = installEnv();
@@ -135,7 +147,8 @@ function main() {
   if (electron === null) fail('The app window is not installed. Run the command again.', 1);
   const flags = args.filter(a => MODES.has(a));
   // The prototype starts with a fresh, empty data folder and removes it when the window closes, so it leaves nothing in the real app data.
-  const dataDir = PROTOTYPES.some(flag => args.includes(flag)) ? makePrototypeDataDir() : null;
+  const dataDir = PROTOTYPES.some(flag => args.includes(flag)) || args.includes(REAL_FLAG) ? makePrototypeDataDir() : null;
+  if (args.includes(REAL_FLAG)) console.log(`\n${REAL_PROMISE}\nHome folder: ${realHome()}`);
   const child = spawn(electron, electronArgs(desktop, flags, dataDir), { stdio: 'inherit', env: process.env });
   superviseChild(child, { dataDir });
 }
