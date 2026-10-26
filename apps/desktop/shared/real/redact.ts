@@ -23,10 +23,7 @@ export const SCRUB_CHUNK = 64 * 1024;
 const BREAK_WINDOW = 4096;
 
 const isSpaceCode = (c: number): boolean => c === 32 || (c >= 9 && c <= 13) || c === 0xa0 || c === 0x2028 || c === 0x2029 || c === 0xfeff;
-const isQuoteCode = (c: number): boolean => c === 34 || c === 39 || c === 96;
-const isNameCode = (c: number): boolean => (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c === 46 || c === 45;
 const isTokenCode = (c: number): boolean => (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c === 45;
-const isLetterCode = (c: number): boolean => (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
 
 /** For each index, where the run of token characters (`[A-Za-z0-9_-]`) that starts there ends. One backward pass; every later question is a lookup. */
 function runEnds(text: string): Uint32Array {
@@ -51,11 +48,12 @@ const PREFIX_START = /(?<![A-Za-z0-9_])(?:sk-|sk_live_|sk_test_|gh[pousr]_|githu
 
 /** Tokens that start with a known mark. The length of the run after the mark is looked up, never scanned for again. */
 function hidePrefixed(text: string): string {
-  PREFIX_START.lastIndex = 0;
-  let out = '', from = 0, ends: Uint32Array | null = null;
-  for (let m = PREFIX_START.exec(text); m !== null; m = PREFIX_START.exec(text)) {
+  let out = '', resume = 0, ends: Uint32Array | null = null;
+  for (const m of text.matchAll(PREFIX_START)) {
+    const mark = m[0], at = m.index;
+    if (at < resume) continue;
     ends ??= runEnds(text);
-    const mark = m[0], at = m.index, q = at + mark.length, e = ends[q]!;
+    const q = at + mark.length, e = ends[q]!;
     let stop = -1;
     if (mark === 'AKIA') { if (/^[0-9A-Z]{16}/.test(text.slice(q, q + 16))) stop = q + 16; }
     else if (mark === 'eyJ') {
@@ -68,18 +66,25 @@ function hidePrefixed(text: string): string {
       const need = mark === 'sk-' ? 12 : mark === 'github_pat_' ? 20 : mark === 'AIza' ? 30 : mark === 'npm_' ? 20 : mark.startsWith('xox') ? 10 : mark.startsWith('sk_') ? 8 : 16;
       if (e - q >= need) stop = e;
     }
-    if (stop < 0) { PREFIX_START.lastIndex = at + 1; continue; }
-    out += text.slice(from, at) + HIDDEN; from = stop; PREFIX_START.lastIndex = stop;
+    if (stop < 0) continue;
+    out += text.slice(resume, at) + HIDDEN; resume = stop;
   }
-  return from === 0 && out === '' ? text : out + text.slice(from);
+  return resume === 0 ? text : out + text.slice(resume);
 }
 
-const KEYWORD = /(?:api[_-]?key|access[_-]?key|secret[_-]?key|private[_-]?key|auth[_-]?token|passw(?:or)?d|pwd|passphrase|secret|token|credentials?|key|authorization)/gi;
+// The words that name a secret, in small letters, in capitals and with a first capital. `apiKey` is found at its `Key`, after a small letter. `monkey` and `turkey` are not names of keys.
+const SECRET_WORDS = ['api_key', 'api-key', 'apikey', 'access_key', 'access-key', 'accesskey', 'secret_key', 'secret-key', 'secretkey', 'private_key', 'private-key', 'privatekey', 'auth_token', 'auth-token', 'authtoken',
+  'password', 'passwd', 'pwd', 'passphrase', 'secret', 'token', 'credentials', 'credential', 'key'];
+const capital = (w: string): string => w[0]!.toUpperCase() + w.slice(1);
+const longestFirst = (list: readonly string[]): string[] => [...new Set(list)].sort((a, b) => b.length - a.length);
+const KEY_START = `(?:(?<![A-Za-z])(?:${longestFirst(SECRET_WORDS.flatMap(w => [w, w.toUpperCase(), capital(w)])).join('|')})|(?<=[a-z])(?:${longestFirst(SECRET_WORDS.map(capital)).join('|')}))`;
 /** A name that only points at where a value lives: `bearer_token_env_var`, `key_file`. Its value is a name or a path, not a secret. */
 const POINTER_NAME = /[_.-](?:env|env_var|envvar|var|name|file|path|header)$/i;
 const NOT_A_SECRET = new Set(['true', 'false', 'null', 'none', 'nil', 'undefined', 'string', 'number', 'required', 'optional']);
-const TAIL_MAX = 128;
-const QUOTED_MAX = 256;
+// A name, then up to 128 more name characters, then `:` or `=` (with up to 8 spaces round it), then the value: in double quotes or single quotes (up to 256 characters), or up to the next space.
+const VALUE = String.raw`(?:"(?<dq>[^"\n]{0,256})"|'(?<sq>[^'\n]{0,256})'|(?<q>["']?)`;
+const ASSIGNED = new RegExp(String.raw`(?<pre>(?<name>${KEY_START}[A-Za-z0-9_.-]{0,128})["'` + '`' + String.raw`]?[ \t]{0,8}[:=](?![=~])[ \t]{0,8})` + VALUE + String.raw`(?!\[hidden key\])(?<bare>[^\s"'` + '`' + String.raw`]+))`, 'g');
+const AUTH = new RegExp(String.raw`(?<pre>(?<![A-Za-z])(?:[Aa]uthorization|AUTHORIZATION)["'` + '`' + String.raw`]?[ \t]{0,8}[:=][ \t]{0,8}(?![A-Za-z][\w-]{0,23} \[hidden key\]))` + VALUE + String.raw`(?:(?<scheme>[A-Za-z][\w-]{0,23}) (?=[^\s"'` + '`' + String.raw`]))?(?!\[hidden key\])(?<bare>[^\s"'` + '`' + String.raw`]+))`, 'g');
 
 /**
  * A reference to a value kept somewhere else: `$API_KEY`, `${api_key}`, `<YOUR_KEY>`, `{{ secrets.X }}`, `%API_KEY%`. It is not a value, so it stays. A `$` that
@@ -89,63 +94,37 @@ export function isReference(raw: string): boolean {
   return /^\$[A-Z_][A-Z0-9_]*$/.test(raw) || /^\$\{[A-Za-z_][\w.:-]{0,63}\}$/.test(raw) || /^<[^<>\s]{1,60}>$/.test(raw) || raw.startsWith('{{') || /^%[A-Za-z_][A-Za-z0-9_]{0,63}%$/.test(raw);
 }
 
+/** Whether a value is a value at all: not empty, not just marks, not already hidden, not a reference, not a plain word like `true`. */
+function isValue(raw: string, trimmed: string): boolean {
+  return trimmed !== '' && /[A-Za-z0-9]/.test(trimmed) && !trimmed.startsWith(HIDDEN) && !isReference(trimmed) && !isReference(raw) && !NOT_A_SECRET.has(trimmed.toLowerCase());
+}
+
+/** The value without the marks that close a sentence or a list, and those marks. */
+function trimEnd(raw: string): [string, string] {
+  let end = raw.length;
+  while (end > 0 && /[.,;)\]}>]/.test(raw[end - 1]!)) end -= 1;
+  return [raw.slice(0, end), raw.slice(end)];
+}
+
+interface Parts { readonly pre: string; readonly name?: string; readonly dq?: string; readonly sq?: string; readonly q?: string; readonly bare?: string; readonly scheme?: string }
+
+/** One match of ASSIGNED or AUTH: the name stays and the value goes, unless the value is a reference or a plain word. */
+function hideValue(all: string, g: Parts): string {
+  if (g.name !== undefined && POINTER_NAME.test(g.name)) return all;
+  if (g.dq !== undefined) return isValue(g.dq, g.dq) ? `${g.pre}"${HIDDEN}"` : all;
+  if (g.sq !== undefined) return isValue(g.sq, g.sq) ? `${g.pre}'${HIDDEN}'` : all;
+  const raw = g.bare ?? '', [value, tail] = trimEnd(raw);
+  return isValue(raw, value) ? `${g.pre}${g.q ?? ''}${g.scheme === undefined ? '' : `${g.scheme} `}${HIDDEN}${tail}` : all;
+}
+
 /**
  * `name = value`, `name: "value with spaces"`, `"name": "value"`, `?name=value`, `Authorization: Scheme value`. The name stays; the value goes. A value can start with any
- * character and be any length. The keyword is found first, the name is looked past by at most 128 characters, and a quoted value is searched for at most 256.
+ * character and be any length. The word is found first (at the start of a name), the name is looked past by at most 128 characters, and a quoted value is searched for at
+ * most 256, so no part of the text is scanned again and again.
  */
-function hideAssigned(text: string): string {
-  KEYWORD.lastIndex = 0;
-  let out = '', from = 0;
-  for (let m = KEYWORD.exec(text); m !== null; m = KEYWORD.exec(text)) {
-    const at = m.index, word = m[0], endWord = at + word.length;
-    const prev = at === 0 ? 0 : text.charCodeAt(at - 1);
-    // The keyword starts a word of the name: after a separator, at the start, or at a capital after a small letter (`apiKey`). `monkey` and `turkey` are not names of keys.
-    const startsWord = at === 0 || !isLetterCode(prev) || (prev >= 97 && text.charCodeAt(at) <= 90);
-    if (!startsWord) { KEYWORD.lastIndex = at + 1; continue; }
-    let j = endWord;
-    const limit = Math.min(text.length, endWord + TAIL_MAX);
-    while (j < limit && isNameCode(text.charCodeAt(j))) j += 1;
-    if (POINTER_NAME.test(text.slice(at, j))) { KEYWORD.lastIndex = Math.max(j, at + 1); continue; }
-    let k = j;
-    if (isQuoteCode(text.charCodeAt(k))) k += 1;
-    let spaces = 0;
-    while ((text.charCodeAt(k) === 32 || text.charCodeAt(k) === 9) && spaces < 8) { k += 1; spaces += 1; }
-    const sep = text.charCodeAt(k);
-    if (sep !== 58 && sep !== 61) { KEYWORD.lastIndex = Math.max(j, at + 1); continue; }
-    k += 1;
-    if (sep === 61 && (text.charCodeAt(k) === 61 || text.charCodeAt(k) === 126)) { KEYWORD.lastIndex = k; continue; }
-    spaces = 0;
-    while ((text.charCodeAt(k) === 32 || text.charCodeAt(k) === 9) && spaces < 8) { k += 1; spaces += 1; }
-    let vStart = k, vEnd = k, quoted = false;
-    const open = text.charCodeAt(k);
-    if (isQuoteCode(open)) {
-      let c = k + 1;
-      const far = Math.min(text.length, k + 1 + QUOTED_MAX);
-      while (c < far && text.charCodeAt(c) !== open && text.charCodeAt(c) !== 10) c += 1;
-      if (c < far && text.charCodeAt(c) === open) { vStart = k + 1; vEnd = c; quoted = true; } else vStart = k + 1;
-    }
-    let rawEnd = vEnd;
-    if (!quoted) {
-      const isAuth = word.toLowerCase() === 'authorization';
-      const wordEnd = (from: number): number => { let e = from; while (e < text.length && !isSpaceCode(text.charCodeAt(e)) && !isQuoteCode(text.charCodeAt(e))) e += 1; return e; };
-      let e = wordEnd(vStart);
-      // `Authorization: Scheme credential`: the scheme is a word and stays; the credential, the next word, goes. One word alone is the credential.
-      if (isAuth && text.charCodeAt(e) === 32 && /^[A-Za-z][\w-]{0,23}$/.test(text.slice(vStart, e))) {
-        const next = wordEnd(e + 1);
-        if (next > e + 1) { vStart = e + 1; e = next; }
-      }
-      vEnd = e; rawEnd = e;
-      while (vEnd > vStart && /[.,;)\]}>]/.test(text[vEnd - 1]!)) vEnd -= 1;
-    }
-    // `${NAME}` ends in a brace: a reference is judged on the whole word, before the closing marks are cut off.
-    const word2 = text.slice(vStart, rawEnd), value = text.slice(vStart, vEnd);
-    const done = value === '' || !/[A-Za-z0-9]/.test(value) || text.startsWith(HIDDEN, vStart) || isReference(value) || isReference(word2) || isReference(word2.replace(/[.,;)\]]+$/, '')) || NOT_A_SECRET.has(value.toLowerCase());
-    if (done) { KEYWORD.lastIndex = Math.max(rawEnd, at + 1); continue; }
-    out += text.slice(from, vStart) + HIDDEN; from = vEnd;
-    KEYWORD.lastIndex = Math.max(vEnd, at + 1);
-  }
-  return from === 0 && out === '' ? text : out + text.slice(from);
-}
+const hideAssigned = (text: string): string => text
+  .replace(AUTH, (all, ...rest) => hideValue(all, rest[rest.length - 1] as Parts))
+  .replace(ASSIGNED, (all, ...rest) => hideValue(all, rest[rest.length - 1] as Parts));
 
 /** `Bearer abc...` and `Basic abc...` outside a header line. The credential must look like one: a digit or a mark inside, or a long run. */
 const BEARER = /\b(Bearer|Basic)[ \t]{1,8}([A-Za-z0-9._~+/=-]{12,})/g;

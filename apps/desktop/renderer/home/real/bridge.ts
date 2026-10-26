@@ -1,12 +1,12 @@
 /**
  * Where the page gets its three calls. The bridge is `bowerloomReal`, put there by the real-mode preload and nowhere else; in any other mode it is missing and the
- * loader says so in plain words. It is read from the global object by name, so no screen holds a reference to Electron or to the normal bridge.
+ * loader says so in plain words. It is read from the window by name, so no screen holds a reference to Electron or to the normal bridge.
  */
 import type { RealBridge } from '../../../shared/real/types.js';
 
 /** The real-mode bridge, or null when this window has none. */
 export function getBridge(): RealBridge | null {
-  const found = (globalThis as { bowerloomReal?: RealBridge }).bowerloomReal;
+  const found = typeof window === 'undefined' ? undefined : (window as unknown as { bowerloomReal?: RealBridge }).bowerloomReal;
   return found !== undefined && typeof found.discoverPlaces === 'function' && typeof found.pickFolder === 'function' && typeof found.readSelected === 'function' ? found : null;
 }
 

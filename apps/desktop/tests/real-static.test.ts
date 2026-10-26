@@ -3,14 +3,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { APP_INDEX, decideNavigation, isAllowedRealSender, isAllowedSender } from '../main/security.js';
 import { registerRealIpc, usableHome } from '../main/real-ipc.js';
 import type { RealEvent } from '../main/real-ipc.js';
 import { REAL_CALLS, REAL_CHANNELS, REAL_HARNESS_HASH, REAL_HASH } from '../shared/real/types.js';
 import { CHANNELS } from '../shared/channels.js';
-import { DESKTOP } from './support.js';
+import { DESKTOP, tempDir } from './support.js';
+import { bundleOf, checkEntries, importsOf, problemsOfBuilt, problemsOfLibraryBundle, tokenize } from './fixtures-real/static-check.js';
+import type { Policy } from './fixtures-real/static-check.js';
 import { buildFixture } from './fixtures-real/build.js';
 
 const read = (file: string): string => readFileSync(join(DESKTOP, file), 'utf8');
@@ -19,7 +21,6 @@ const names = (dir: string, pattern: RegExp): string[] => readdirSync(join(DESKT
 
 /** The files that make up the reader on the main and bridge side. */
 const MAIN_FILES = names('main', /^real-.*\.ts$/), PRELOAD_FILES = names('preload', /^real-.*\.ts$/), SHARED_FILES = names('shared/real', /\.ts$/);
-const ALL = [...MAIN_FILES, ...PRELOAD_FILES, ...SHARED_FILES];
 
 test('the reader is made of the files we expect', () => {
   assert.deepEqual(MAIN_FILES, ['main/real-fs.ts', 'main/real-ipc.ts', 'main/real-scan.ts']);
@@ -27,40 +28,139 @@ test('the reader is made of the files we expect', () => {
   assert.ok(SHARED_FILES.length >= 8, SHARED_FILES.join(','));
 });
 
-// What a file may import. `node:fs` only for these read calls (and the types of what they return).
-const FS_READ = new Set(['lstatSync', 'readdirSync', 'readFileSync', 'realpathSync', 'statSync', 'Dirent', 'Stats', 'openSync', 'closeSync', 'fstatSync', 'readSync', 'opendirSync', 'constants']);
-const MAY_IMPORT = (file: string): RegExp => (file.startsWith('main/') ? /^(\.{1,2}\/|node:fs$|node:path$)/ : file.startsWith('preload/') ? /^(\.{1,2}\/|electron$)/ : /^\.{1,2}\//);
+// ---- what the reader may import and call. The checker is in tests/fixtures-real/static-check.ts: it asks esbuild for the whole import graph (every relative import followed,
+// however deep), reads each file of it as plain JavaScript with a real tokenizer, and refuses a file, an import or a name that is not on the lists below.
 
-test('the reader imports only what it needs: relative files, node:path, node:fs for the read calls below, and (in the bridge) electron', () => {
-  for (const file of ALL) {
-    const code = strip(read(file));
-    for (const m of code.matchAll(/(?:^|\n)\s*(?:import|export)\s+(?:type\s+)?([^'"\n]*?)\s*from\s*['"]([^'"]+)['"]/g)) {
-      assert.match(m[2]!, MAY_IMPORT(file), `${file} imports ${m[2]}`);
-      if (m[2] === 'node:fs') for (const piece of m[1]!.replace(/[{}]/g, '').split(',').map(x => x.trim().replace(/^type\s+/, '')).filter(Boolean)) assert.ok(FS_READ.has(piece), `${file} imports ${piece} from node:fs`);
+const FS_READ = ['lstatSync', 'readdirSync', 'readFileSync', 'realpathSync', 'statSync', 'openSync', 'closeSync', 'fstatSync', 'readSync', 'opendirSync', 'constants'];
+const SHARED_REAL = (rel: string): boolean => /^shared\/real\/[\w-]+\.ts$/.test(rel);
+
+const MAIN_ENTRIES = ['main/real-ipc.ts', 'main/real-scan.ts', 'main/real-fs.ts'];
+const MAIN_POLICY: Policy = {
+  allowFile: rel => SHARED_REAL(rel) || /^main\/real-[\w-]+\.ts$/.test(rel) || ['main/safe.ts', 'main/security.ts', 'shared/proto/sample.ts', 'shared/proto/types.ts', 'shared/proto/rng.ts', 'shared/proto/words.ts', 'shared/proto/slicerule.ts'].includes(rel),
+  // main/security.ts re-exports the temporary-folder helpers of the other modes from main/prototype-dir.mjs. The reader imports none of them, so the bundler drops that file;
+  // the check holds it to contributing no code at all.
+  deadOk: { 'main/prototype-dir.mjs': 'security.ts re-exports the helpers of the other modes; the reader uses none and the bundle holds none of it' },
+  modules: { 'node:fs': FS_READ, 'node:path': '*', 'node:url': ['fileURLToPath'] },
+};
+const PRELOAD_POLICY: Policy = {
+  allowFile: rel => SHARED_REAL(rel) || /^preload\/real-[\w-]+\.ts$/.test(rel),
+  deadOk: {},
+  modules: { electron: ['contextBridge', 'ipcRenderer'] },
+};
+const RENDERER_ENTRIES = ['renderer/home/real/entry.tsx', 'renderer/home/real/mountReal.tsx'];
+const RENDERER_POLICY: Policy = {
+  allowFile: rel => SHARED_REAL(rel) || /^renderer\/home\/real\/[\w-]+\.(?:tsx?|css)$/.test(rel)
+    || ['renderer/proto/error-boundary.tsx', 'shared/proto/words.ts', 'shared/proto/slicerule.ts', 'shared/home/textbudget.ts', 'shared/home/plain-details.ts', 'shared/home/titles.ts', 'shared/proto/types.ts'].includes(rel),
+  deadOk: {},
+  modules: { react: '*', 'react/jsx-runtime': '*', 'react-dom/client': '*' },
+  extraNames: /^(?:innerHTML|outerHTML|insertAdjacentHTML|dangerouslySetInnerHTML|localStorage|sessionStorage|indexedDB)$/,
+  tolerate: { 'shared/home/textbudget.ts': { names: /^exec$/, strings: /^link$/, why: 'a regular expression\'s exec, and the word "link" in a list of words the screens may not use; both are text, not calls' } },
+  extraPaths: ['window.bowerloom'],
+};
+
+test('the main-process reader and everything it imports, however deep, import only the allowed files and modules and use no name that writes, runs a program, or reaches the network', () => {
+  assert.deepEqual(checkEntries(MAIN_ENTRIES, DESKTOP, MAIN_POLICY), []);
+});
+
+test('the check sees the whole graph: the files the handler imports are all in it, and the file it must not use contributes nothing', () => {
+  const graph = bundleOf(MAIN_ENTRIES, DESKTOP);
+  const seen = new Map(graph.files.map(f => [f.abs.slice(DESKTOP.length + 1), f.bytes]));
+  for (const file of ['main/real-ipc.ts', 'main/real-scan.ts', 'main/real-fs.ts', 'main/safe.ts', 'main/security.ts', 'shared/real/redact.ts', 'shared/real/adapters.ts', 'shared/real/map-world.ts', 'shared/real/toml.ts', 'shared/proto/sample.ts']) assert.ok((seen.get(file) ?? 0) > 0, `${file} is in the graph and in the bundle`);
+  assert.equal(seen.get('main/prototype-dir.mjs'), 0, 'the temporary-folder helpers are reached through main/security.ts and put no code in the bundle');
+  assert.ok(graph.files.every(f => f.js !== ''), 'every file of the graph was read as JavaScript');
+});
+
+test('the tokenizer finds the same imports that esbuild finds, in every file of the real graphs', () => {
+  for (const [entries, format, platform] of [[MAIN_ENTRIES, 'esm', 'node'], [['preload/real-preload.ts'], 'cjs', 'node'], [RENDERER_ENTRIES, 'esm', 'browser']] as const) {
+    for (const file of bundleOf(entries, DESKTOP, format, platform).files) {
+      const mine = new Set(importsOf(tokenize(file.js)).map(i => i.from).filter(from => !from.startsWith('.')));
+      assert.deepEqual([...mine].sort(), [...new Set(file.externals)].sort(), file.abs);
+      assert.ok(file.kinds.every(kind => kind === 'import-statement' || kind === 'import-rule' || kind === 'require-call'), `${file.abs} has only static imports: ${file.kinds.join(',')}`);
     }
-    assert.doesNotMatch(code, /\brequire\s*\(|\bimport\s*\(/, `${file}: no require, no dynamic import`);
   }
 });
 
-test('no file of the reader calls anything that writes, deletes, renames, links, changes a mode, starts a process, or reaches the network', () => {
-  const calls = /(?<![\w$.])(writeFile\w*|appendFile\w*|mkdir\w*|mkdtemp\w*|rm\w*|rmdir\w*|unlink\w*|rename\w*|copyFile\w*|cp\w*|chmod\w*|chown\w*|lchown|lchmod|link\w*|symlink\w*|truncate\w*|utimes\w*|futimes\w*|createWriteStream|open(?!Sync\b|dirSync\b)\w*|write\w*|fsync\w*|spawn\w*|exec\w*|fork|fetch|setInterval)\s*\(/;
-  const methods = /\.(write\w*|appendFile\w*|mkdir\w*|rm\w*|unlink\w*|rename\w*|copyFile\w*|chmod\w*|symlink\w*|truncate\w*|send\w*|openExternal|showItemInFolder|exec\w*|spawn\w*)\s*\(/;
-  const words = /child_process|worker_threads|cluster|node:net|node:http|node:https|node:http2|node:dgram|node:dns|node:tls|node:vm|node:inspector|XMLHttpRequest|WebSocket|EventSource|sendBeacon|\bfetch\b|globalThis|\beval\b|new Function|process\./;
-  for (const file of ALL) {
-    // The text of a pattern in a string or a regular expression is not a call: only code is looked at (strings and regular expression bodies are blanked).
-    const code = strip(read(file)).replace(/'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g, '""').replace(/(?<=[(,=:?&|!]\s*)\/(?:[^/\\\n]|\\.)+\/[gimsuy]*/g, '/x/');
-    assert.doesNotMatch(code, calls, `${file} calls ${(code.match(calls) ?? [])[0] ?? ''}`);
-    assert.doesNotMatch(code, methods, `${file} calls ${(code.match(methods) ?? [])[0] ?? ''}`);
-    assert.doesNotMatch(code, words, `${file} uses ${(code.match(words) ?? [])[0] ?? ''}`);
-  }
+test('the bridge and everything it imports use only electron\'s contextBridge and ipcRenderer, and no banned name', () => {
+  assert.deepEqual(checkEntries(['preload/real-preload.ts'], DESKTOP, PRELOAD_POLICY, 'cjs'), []);
 });
 
-test('the scan itself catches what it should (so a pass means something)', () => {
-  const calls = /(?<![\w$.])(writeFile\w*|rm\w*|spawn\w*|exec\w*|open\w*)\s*\(/;
-  for (const bad of ['writeFileSync(x, y)', 'rmSync(p)', 'spawn("a")', 'execFile(a)', 'openSync(p, "w")', 'await rm(p)']) assert.match(bad, calls, bad);
-  for (const ok of ['readFileSync(p)', 'x.test(y)', 'const rmx = 1', 'format(a)']) assert.doesNotMatch(ok, calls, ok);
-  const methods = /\.(write\w*|rm\w*|send\w*|exec\w*)\s*\(/;
-  for (const bad of ['fs.writeFileSync(a)', 'win.webContents.send(c)', 'fs.promises.rm(p)', 'cp.execSync(c)']) assert.match(bad, methods, bad);
+test('the real page script and everything it imports use only react, no markup from text, no storage, no network, and not the normal bridge', () => {
+  assert.deepEqual(checkEntries(RENDERER_ENTRIES, DESKTOP, RENDERER_POLICY, 'esm', 'browser'), []);
+});
+
+// The built files. The real handler is bundled into dist/main.mjs together with the normal controller and the rest of the main process, so that file holds code the reader's
+// rules do not apply to; it cannot be scanned the same way. The module boundary is held instead: the source check above covers every file the real handler imports, and the two
+// files below are the whole of what the real mode loads besides main.mjs.
+const BUILT_PRELOAD_ENTRY = 'preload/real-preload.ts', BUILT_PAGE_ENTRY = 'renderer/home/real/entry.tsx';
+
+test('the built bridge (preload-real.cjs) holds no banned name, and calls require only for electron', () => {
+  const inMemory = bundleOf([BUILT_PRELOAD_ENTRY], DESKTOP, 'cjs', 'node', 'external').outputs[0]!;
+  assert.deepEqual(problemsOfBuilt('preload-real.cjs (built now)', inMemory, PRELOAD_POLICY, ['electron']), []);
+  const onDisk = join(DESKTOP, 'dist', 'preload-real.cjs');
+  if (existsSync(onDisk)) assert.deepEqual(problemsOfBuilt('dist/preload-real.cjs', readFileSync(onDisk, 'utf8'), PRELOAD_POLICY, ['electron']), []);
+});
+
+test('the built page script (real.js) opens no channel out of the page and runs no text as code, and holds only react beyond the reader\'s own files', () => {
+  const built = bundleOf([BUILT_PAGE_ENTRY], DESKTOP, 'iife', 'browser', 'bundle');
+  assert.deepEqual(problemsOfLibraryBundle('real.js (built now)', built.outputs[0]!), []);
+  const packages = new Set(built.inputs.filter(f => f.includes('node_modules/')).map(f => /node_modules\/((?:@[^/]+\/)?[^/]+)/.exec(f.slice(f.lastIndexOf('node_modules/')))![1]!));
+  assert.deepEqual([...packages].sort(), ['react', 'react-dom', 'scheduler']);
+  const onDisk = join(DESKTOP, 'dist', 'renderer', 'real.js');
+  if (existsSync(onDisk)) assert.deepEqual(problemsOfLibraryBundle('dist/renderer/real.js', readFileSync(onDisk, 'utf8')), []);
+});
+
+// ---- the checker itself, shown to fail on bad files
+
+test('the tokenizer knows strings, comments, templates and regular expressions, so text inside one cannot hide a call or make one up', () => {
+  const ids = (src: string): string[] => tokenize(src).filter(t => t.type === 'id').map(t => t.text);
+  assert.deepEqual(ids('const a = "/*"; wf(1); const b = "*/";'), ['const', 'a', 'wf', 'const', 'b'], 'a comment marker inside a string hides nothing');
+  assert.deepEqual(ids('// writeFileSync(x)\nx(); /* rmSync */ y();'), ['x', 'y'], 'a comment is not code');
+  assert.deepEqual(ids('f("writeFileSync", \'rm\', `exec`)'), ['f'], 'a string is not code');
+  assert.deepEqual(ids('const t = `a ${b + `c ${d}`} e ${rmSync(f)}`;'), ['const', 't', 'b', 'd', 'rmSync', 'f'], 'code inside a template substitution is code');
+  assert.deepEqual(ids('x = /\\/\\*/.test(y) ? 1 : z / 2 / w; q();'), ['x', 'test', 'y', 'z', 'w', 'q'], 'a regular expression is not a comment, and a division is not a regular expression');
+  assert.deepEqual(ids('a\n/ b / c'), ['a', 'b', 'c']);
+  assert.deepEqual(importsOf(tokenize('import {\n  a,\n  b as c,\n} from "node:fs";\nimport d, * as e from "x";\nimport "y";\nexport * from "z";\nexport { q } from "w";\nexport { local };\nexport const k = 1;\nimport("dyn");')).map(i => [i.from, ...i.members]),
+    [['node:fs', 'a', 'b'], ['x', 'default', '*'], ['y'], ['z', '*'], ['w', 'q']]);
+});
+
+test('the checker rejects bad files: a multi-line aliased writer import, a relative import to a writer (used or not), Function, constructor.constructor, eval, a comment marker in a string, a dynamic import, require, process.binding, a process, the network, a namespace import, and other open flags', t => {
+  const dir = tempDir(t), put = (name: string, text: string): string => { const file = join(dir, name); writeFileSync(file, text); return file; };
+  const good = put('good.ts', "import { readFileSync } from 'node:fs';\nimport { join } from 'node:path';\nexport const read = (d: string): string => readFileSync(join(d, 'a'), 'utf8');\n// writeFileSync is only named in this comment\nexport const text = 'rm -rf /*';\n");
+  put('writer.ts', "import { writeFileSync } from 'node:fs';\nexport const save = (p: string): void => writeFileSync(p, 'x');\n");
+  const bad: Record<string, [string, RegExp]> = {
+    multi: ["import {\n  readFileSync,\n  writeFileSync as wf\n} from 'node:fs';\nexport const x = (): string => { wf('/tmp/x', 'y'); return readFileSync('/tmp/x', 'utf8'); };\n", /imports writeFileSync from node:fs/],
+    rel: ["import { save } from './writer.js';\nexport const y = (): void => save('/tmp/x');\n", /writer\.ts: is imported by the reader but is not on the list/],
+    relUnused: ["import { save } from './writer.js';\nexport const z = (): number => 1;\nexport { save };\n", /writer\.ts: is imported by the reader but is not on the list/],
+    fn: ["export const f = (): unknown => Function('return 1')();\n", /uses Function/],
+    newFn: ["export const f = (): unknown => new Function('return 1')();\n", /uses Function/],
+    ctor: ["export const g = (): unknown => ([] as unknown as { constructor: { constructor: (s: string) => () => unknown } }).constructor.constructor('return 1')();\n", /uses constructor\.constructor/],
+    ctorString: ["export const g2 = (o: Record<string, unknown>): unknown => o['constructor'];\n", /names a banned thing/],
+    evil: ["export const h = (): unknown => eval('1');\n", /uses eval/],
+    hidden: ["const a = '/*';\nimport { writeFileSync as wf } from 'node:fs';\nexport const i = (): void => wf('/tmp/x', 'y');\nconst b = '*/';\nexport { a, b };\n", /imports writeFileSync from node:fs/],
+    regex: ["import { rmSync } from 'node:fs';\nexport const j = /\\/\\*/.test('x') ? 1 : 2;\nexport const j2 = (): void => rmSync('/tmp/x');\n", /imports rmSync from node:fs|uses rmSync/],
+    dyn: ["export const k = async (): Promise<unknown> => import('node:fs');\n", /uses a dynamic import/],
+    req: ["declare const require: (id: string) => unknown;\nexport const l = require('node:fs');\n", /uses require/],
+    bind: ["export const m = (process as unknown as { binding(n: string): unknown }).binding('fs');\n", /uses process|uses binding/],
+    child: ["import { spawn } from 'node:child_process';\nexport const n = spawn;\n", /imports node:child_process, which the reader may not use/],
+    net: ["export const o = (): Promise<unknown> => fetch('https://example.test');\n", /uses fetch/],
+    ns: ["import * as fs from 'node:fs';\nexport const p = fs;\n", /imports \* from node:fs/],
+    flags: ["import { openSync } from 'node:fs';\nexport const q = (): number => openSync('/tmp/x', 'w');\n", /openSync with flags other than OPEN_READ/],
+    flagBuilt: ["import { constants } from 'node:fs';\nexport const OPEN_READ = constants.O_RDONLY | constants.O_WRONLY;\n", /open flag O_WRONLY/],
+    named: ["export const r = (fs: Record<string, unknown>): unknown => fs['writeFileSync'];\n", /names a banned thing/],
+    tpl: ["export const s = `a ${eval('1')} b`;\n", /uses eval/],
+    socket: ["export const u = (): unknown => new WebSocket('wss://x.test');\n", /uses WebSocket/],
+  };
+  const files = Object.fromEntries(Object.entries(bad).map(([name, [text]]) => [name, put(`${name}.ts`, text)]));
+  const policy: Policy = {
+    allowFile: rel => rel !== join(dir, 'writer.ts') && rel.startsWith(dir), deadOk: {},
+    modules: { 'node:fs': ['lstatSync', 'readFileSync', 'openSync', 'constants'], 'node:path': '*' },
+  };
+  const problems = checkEntries([good, ...Object.values(files)], DESKTOP, policy);
+  assert.deepEqual(problems.filter(x => x.startsWith(good)), [], 'the good file is not refused');
+  for (const [name, [, expected]] of Object.entries(bad)) {
+    const mine = problems.filter(x => x.startsWith(files[name]!) || (name.startsWith('rel') && x.includes('writer.ts')));
+    assert.ok(mine.some(x => expected.test(x)), `${name} was not refused as expected: ${mine.join(' | ') || 'no problem found'}`);
+  }
 });
 
 test('the handler file names the three channels and answers the app page only, before it does anything else', () => {
