@@ -100,7 +100,10 @@ test('every screen is within the text budget, says Read-only, and keeps the path
   assert.match(screens.find(([n]) => n === 'details')![1], /~\/a/);
   assert.match(screens.find(([n]) => n === 'places')![1], /Could not read 3 things\./);
   assert.match(screens.find(([n]) => n === 'places')![1], /stopped early/);
-  assert.match(screens.find(([n]) => n === 'confirm')![1], /Keys and passwords are never copied\./);
+  const confirm = screens.find(([n]) => n === 'confirm')![1];
+  assert.match(confirm, /It reads the text of what you tick\./);
+  assert.match(confirm, /Known key and password shapes are hidden, but check anything private\./);
+  assert.doesNotMatch(confirm, /never copied|never/i, 'the page does not promise that no key is copied: the hiding is by known shape');
 });
 
 test('text from a file is drawn as text: a markup string in a folder name comes out escaped', () => {

@@ -54,7 +54,7 @@ What real mode reads, in plain English:
 
 1. It looks in the tool folders of your home folder: Claude Code, Codex, OpenCode and Hermes. You can also pick a folder, and it finds the projects inside it.
 2. Question one shows the places it found with counts, and no file names. Question two, "Read what is inside?", reads only the places you ticked.
-3. It reads names, descriptions, structure and the names of keys. It never keeps a key value.
+3. It reads names, descriptions, structure and the names of keys, plus the text of the skills and agents you tick. Known key and password shapes are hidden. That check goes by shape, so look at anything private before you share it.
 4. You then choose which agents go on the map. "Find more" does the same again in the right column and adds to what you have.
 5. Every control that would change your setup is shown and held back, with the reason. Nothing is saved, and the Library's web sources are samples.
 6. The app writes no changes to your files. It keeps its own temporary files and deletes them when it closes.

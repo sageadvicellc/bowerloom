@@ -111,6 +111,13 @@ export interface Policy {
   /** Sequences of identifiers (joined with `.`) that are refused, e.g. `window.bowerloom`. */
   readonly extraPaths?: readonly string[];
   /**
+   * A page policy. The files are code for the browser window: the names that write files, start programs or read the process are the ordinary words of a page (`copyText`, `requestAnimationFrame`),
+   * so they are not refused. What is refused is the page's own list: the channels out of the page and the ways to run text as code (`LIBRARY_BANNED`), and `extraNames`, `extraPaths` and `extraStrings`.
+   */
+  readonly page?: boolean;
+  /** Strings that are also refused in a page policy, such as the name of a bridge as text (`window['bowerloomReal']`). */
+  readonly extraStrings?: RegExp;
+  /**
    * Names and strings tolerated in one named file, with the reason. For a helper that the reader imports but does not own, whose own code uses a name for something else
    * (a regular expression's `.exec`). A file here is still held to every other rule.
    */
@@ -165,6 +172,9 @@ export function importsOf(tokens: readonly Token[]): Import[] {
 export function problemsOfSource(rel: string, js: string, policy: Policy): string[] {
   const tokens = tokenize(js), problems: string[] = [];
   const allowed = policy.tolerate?.[rel];
+  const page = policy.page === true;
+  const bannedId = (text: string): boolean => (page ? LIBRARY_BANNED.test(text) : BANNED_NAME.test(text) || BANNED_EXACT.test(text)) || (policy.extraNames?.test(text) ?? false);
+  const bannedText = (text: string): boolean => (page ? false : bannedString(text)) || (policy.extraStrings?.test(text) ?? false);
   const say = (what: string): void => { problems.push(`${rel}: ${what}`); };
   for (const imp of importsOf(tokens)) {
     if (imp.from.startsWith('.')) continue; // a relative import is held by the file list, not the module list
@@ -182,12 +192,12 @@ export function problemsOfSource(rel: string, js: string, policy: Policy): strin
     const t = tokens[i]!, prev = tokens[i - 1], next = tokens[i + 1];
     if (t.type === 'id') {
       if (t.text === 'import' && next?.text === '(') say('uses a dynamic import');
-      else if ((BANNED_NAME.test(t.text) || BANNED_EXACT.test(t.text) || (policy.extraNames?.test(t.text) ?? false)) && !(allowed?.names?.test(t.text) ?? false)) say(`uses ${t.text}`);
+      else if (bannedId(t.text) && !(allowed?.names?.test(t.text) ?? false)) say(`uses ${t.text}`);
       else if (t.text === 'constructor' && prev?.text === '.' && tokens[i - 2]?.text === 'constructor') say('uses constructor.constructor');
       else if (t.text === 'constructor' && next?.text === '.' && tokens[i + 2]?.text === 'constructor') say('uses constructor.constructor');
       else if (t.text.startsWith('O_') && !allowedFlag(t.text)) say(`uses the open flag ${t.text}`);
       if (policy.extraPaths !== undefined && next?.text === '.' && tokens[i + 2]?.type === 'id' && policy.extraPaths.includes(`${t.text}.${tokens[i + 2]!.text}`)) say(`uses ${t.text}.${tokens[i + 2]!.text}`);
-    } else if ((t.type === 'str' || t.type === 'tpl') && bannedString(t.text) && !(prev?.text === 'from' || (prev?.text === 'import' && t.type === 'str')) && !(allowed?.strings?.test(t.text) ?? false)) {
+    } else if ((t.type === 'str' || t.type === 'tpl') && bannedText(t.text) && !(prev?.text === 'from' || (prev?.text === 'import' && t.type === 'str')) && !(allowed?.strings?.test(t.text) ?? false)) {
       say(`has the text "${t.text.slice(0, 40)}", which names a banned thing`);
     }
     // Every `openSync(path, flags)` passes the one flags constant, and nothing else.
@@ -298,3 +308,32 @@ export function problemsOfLibraryBundle(rel: string, text: string): string[] {
 }
 
 export const readSource = (desktop: string, file: string): string => readFileSync(resolve(desktop, file), 'utf8');
+
+/** What a library may use, by name, in the shipped page script: how many times the name appears as code (`ids`) and as text (`strings`), and why. */
+export interface BundleAllowance { readonly ids: number; readonly strings: number; readonly why: string }
+/** The names that are sinks or channels. A name here that appears in the shipped script must be on the list of known uses, with its exact count. */
+export const SINK_NAMES = /^(?:innerHTML|outerHTML|dangerouslySetInnerHTML|insertAdjacentHTML|fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|eval|Function|importScripts|Worker|SharedWorker|localStorage|sessionStorage|indexedDB|openDatabase|bowerloomReal)$/;
+/** The same kind of thing written as an object and a member. */
+export const SINK_PATHS: readonly string[] = ['document.write', 'document.writeln', 'window.open', 'self.open', 'top.open', 'globalThis.open', 'window.bowerloom'];
+
+/**
+ * The whole page script that ships, read for the sinks and channels above. The script holds React and the libraries of the map, which use a few of these names for their own
+ * business; each use is on `known`, by name and exact count, with its reason. Anything else, or a different count, is a problem: a new use has to be looked at and added by hand.
+ */
+export function problemsOfShippedBundle(rel: string, text: string, known: Readonly<Record<string, BundleAllowance>>): string[] {
+  const tokens = tokenize(text), ids = new Map<string, number>(), strings = new Map<string, number>();
+  const bump = (map: Map<string, number>, key: string): void => { map.set(key, (map.get(key) ?? 0) + 1); };
+  for (let i = 0; i < tokens.length; i += 1) {
+    const t = tokens[i]!;
+    if (t.type === 'id' && SINK_NAMES.test(t.text)) bump(ids, t.text);
+    if (t.type === 'str' && SINK_NAMES.test(t.text)) bump(strings, t.text);
+    if (t.type === 'id' && tokens[i + 1]?.text === '.' && tokens[i + 2]?.type === 'id' && SINK_PATHS.includes(`${t.text}.${tokens[i + 2]!.text}`)) bump(ids, `${t.text}.${tokens[i + 2]!.text}`);
+  }
+  const problems: string[] = [];
+  for (const key of new Set([...ids.keys(), ...strings.keys(), ...Object.keys(known)])) {
+    const now = { ids: ids.get(key) ?? 0, strings: strings.get(key) ?? 0 }, was = Object.hasOwn(known, key) ? known[key]! : null;
+    if (was === null) problems.push(`${rel}: uses ${key} (${now.ids} as code, ${now.strings} as text), which is not on the list of known library uses`);
+    else if (was.ids !== now.ids || was.strings !== now.strings) problems.push(`${rel}: ${key} is used ${now.ids} times as code and ${now.strings} as text; the list of known uses says ${was.ids} and ${was.strings} (${was.why})`);
+  }
+  return problems;
+}

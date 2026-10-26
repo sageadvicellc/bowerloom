@@ -85,7 +85,8 @@ export function RealView({ state, details, busyPick, onAction }: { state: RealSt
           <section className="rl-section" aria-label={REAL_WORDS.label.readTitle}>
             <p className="rl-summary">{readSummary(state.ticked.length, agentsTicked(state))}</p>
             <p className="rl-hint">{REAL_WORDS.hint.readOnly}</p>
-            <p className="rl-hint">{REAL_WORDS.hint.readSafe}</p>
+            <p className="rl-hint">{REAL_WORDS.hint.readText}</p>
+            <p className="rl-hint">{REAL_WORDS.hint.readHidden}</p>
             <div className="rl-actions" data-pinned="">
               <Btn primary onClick={() => onAction('yes')}>{REAL_WORDS.label.yesRead}</Btn>
               <Btn onClick={() => onAction('notNow')}>{REAL_WORDS.label.notNow}</Btn>

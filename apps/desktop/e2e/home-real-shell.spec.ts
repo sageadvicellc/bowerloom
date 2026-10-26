@@ -225,7 +225,9 @@ test('the second question: "Read what is inside?", and only "Yes, read them" ope
   await page.getByRole('button', { name: 'Looks right' }).click();
   await expect(scan.getByRole('heading', { level: 1 })).toHaveText('Read what is inside?');
   await expect(scan.locator('.fr-summary')).toHaveText('5 places, 6 agents');
-  await expect(scan).toContainText('Keys and passwords are never copied.');
+  await expect(scan).toContainText('It reads the text of what you tick.');
+  await expect(scan).toContainText('Known key and password shapes are hidden, but check anything private.');
+  await expect(scan).not.toContainText('never copied');
   await expect(page.getByRole('button', { name: 'Yes, read them' })).toBeFocused();
   await everyStep('second question');
   await shot('4-second-question');

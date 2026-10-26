@@ -11,8 +11,8 @@ import type { RealEvent } from '../main/real-ipc.js';
 import { REAL_CALLS, REAL_CHANNELS, REAL_HARNESS_HASH, REAL_HASH } from '../shared/real/types.js';
 import { CHANNELS } from '../shared/channels.js';
 import { DESKTOP, tempDir } from './support.js';
-import { bundleOf, checkEntries, importsOf, problemsOfBuilt, problemsOfLibraryBundle, tokenize } from './fixtures-real/static-check.js';
-import type { Policy } from './fixtures-real/static-check.js';
+import { bundleOf, checkEntries, importsOf, problemsOfBuilt, problemsOfLibraryBundle, problemsOfShippedBundle, tokenize } from './fixtures-real/static-check.js';
+import type { BundleAllowance, Policy } from './fixtures-real/static-check.js';
 import { buildFixture } from './fixtures-real/build.js';
 
 const read = (file: string): string => readFileSync(join(DESKTOP, file), 'utf8');
@@ -59,6 +59,21 @@ const RENDERER_POLICY: Policy = {
   extraPaths: ['window.bowerloom'],
 };
 
+// The shell. Real mode runs the whole 0.8 shell in the window (dist/renderer/app.js: mount.tsx, RealRoot.tsx and everything they import, which is the sample screens too), so the reader's
+// own page files are not the only code that sees the person's setup. The shell is held to the rules of a page: no markup built from text, no channel out of the page, no text run as
+// code, no storage, no new window, and the real bridge named in one file only. The names that write files or start programs are the ordinary words of a page, so they are not on this list.
+const SHELL_ENTRIES = ['renderer/home/mount.tsx', 'renderer/home/real/mountReal.tsx', 'renderer/home/real/RealRoot.tsx', 'renderer/home/real/RealScan.tsx', 'renderer/home/real/RealFind.tsx', 'renderer/home/real/RealFlow.tsx'];
+const SHELL_POLICY: Policy = {
+  page: true,
+  allowFile: rel => /^(?:renderer\/home|renderer\/proto|shared\/home|shared\/proto|shared\/real)\/[\w./-]+\.(?:tsx?|css)$/.test(rel) || ['renderer/clock.ts', 'renderer/motion-tokens.ts', 'shared/clock-words.ts'].includes(rel),
+  deadOk: {},
+  modules: { react: '*', 'react/jsx-runtime': '*', 'react-dom': '*', 'react-dom/client': '*' },
+  extraNames: /^(?:innerHTML|outerHTML|insertAdjacentHTML|dangerouslySetInnerHTML|localStorage|sessionStorage|indexedDB|openDatabase|bowerloomReal)$/,
+  extraStrings: /^(?:innerHTML|outerHTML|insertAdjacentHTML|dangerouslySetInnerHTML|localStorage|sessionStorage|indexedDB|bowerloomReal)$/,
+  extraPaths: ['window.bowerloom', 'window.open', 'self.open', 'top.open', 'globalThis.open', 'document.write', 'document.writeln'],
+  tolerate: { 'renderer/home/real/bridge.ts': { names: /^bowerloomReal$/, strings: /^bowerloomReal$/, why: 'the one file that names the real bridge, read from the window by name' } },
+};
+
 test('the main-process reader and everything it imports, however deep, import only the allowed files and modules and use no name that writes, runs a program, or reaches the network', () => {
   assert.deepEqual(checkEntries(MAIN_ENTRIES, DESKTOP, MAIN_POLICY), []);
 });
@@ -72,13 +87,24 @@ test('the check sees the whole graph: the files the handler imports are all in i
 });
 
 test('the tokenizer finds the same imports that esbuild finds, in every file of the real graphs', () => {
-  for (const [entries, format, platform] of [[MAIN_ENTRIES, 'esm', 'node'], [['preload/real-preload.ts'], 'cjs', 'node'], [RENDERER_ENTRIES, 'esm', 'browser']] as const) {
+  for (const [entries, format, platform] of [[MAIN_ENTRIES, 'esm', 'node'], [['preload/real-preload.ts'], 'cjs', 'node'], [RENDERER_ENTRIES, 'esm', 'browser'], [SHELL_ENTRIES, 'esm', 'browser']] as const) {
     for (const file of bundleOf(entries, DESKTOP, format, platform).files) {
       const mine = new Set(importsOf(tokenize(file.js)).map(i => i.from).filter(from => !from.startsWith('.')));
       assert.deepEqual([...mine].sort(), [...new Set(file.externals)].sort(), file.abs);
       assert.ok(file.kinds.every(kind => kind === 'import-statement' || kind === 'import-rule' || kind === 'require-call'), `${file.abs} has only static imports: ${file.kinds.join(',')}`);
     }
   }
+});
+
+test('the whole shell that real mode runs (the real root, its screens, and every screen they import) builds no markup from text, opens no channel out of the page, runs no text as code, uses no storage or new window, and names the real bridge in bridge.ts only', () => {
+  assert.deepEqual(checkEntries(SHELL_ENTRIES, DESKTOP, SHELL_POLICY, 'esm', 'browser'), []);
+});
+
+test('the shell check covers the files that ship: the real shell files and the whole shell are in its graph', () => {
+  const seen = new Set(bundleOf(SHELL_ENTRIES, DESKTOP, 'esm', 'browser').files.map(f => f.abs.slice(DESKTOP.length + 1)));
+  for (const file of ['renderer/home/mount.tsx', 'renderer/home/real/RealRoot.tsx', 'renderer/home/real/RealScan.tsx', 'renderer/home/real/RealFind.tsx', 'renderer/home/real/RealFlow.tsx', 'renderer/home/real/bridge.ts', 'renderer/home/HomeFlow.tsx', 'renderer/home/HomeApp.tsx', 'renderer/home/library/LibraryPage.tsx', 'renderer/home/share/ShareSheet.tsx']) assert.ok(seen.has(file), `${file} is in the graph`);
+  // The files that real mode loads are the ones the page entry imports: if the page entry stops importing mount.tsx, this list is stale.
+  assert.match(read('renderer/app.ts'), /from '\.\/home\/mount\.js'/);
 });
 
 test('the bridge and everything it imports use only electron\'s contextBridge and ipcRenderer, and no banned name', () => {
@@ -101,7 +127,25 @@ test('the built bridge (preload-real.cjs) holds no banned name, and calls requir
   if (existsSync(onDisk)) assert.deepEqual(problemsOfBuilt('dist/preload-real.cjs', readFileSync(onDisk, 'utf8'), PRELOAD_POLICY, ['electron']), []);
 });
 
-test('the reader\'s screens, built as one script, open no channel out of the page and run no text as code, and hold only react beyond the reader\'s own files', () => {
+// The page script that ships is dist/renderer/app.js: tools/bundle.mjs builds renderer/app.ts (the whole shell, the sample screens and the old viewer, with React and the map libraries) as one
+// script. It is built here in memory the same way and read for every sink and channel by name. A library uses a few of these names for its own business; each is listed with its exact count
+// and its reason, so a new use, or a library update that adds one, fails here until a person has looked at it.
+const KNOWN_LIBRARY_USES: Readonly<Record<string, BundleAllowance>> = {
+  innerHTML: { ids: 11, strings: 2, why: 'react-dom sets and clears it for its own nodes and for the dangerouslySetInnerHTML prop that no file of ours uses; d3-selection has selection.html(), which nothing of ours calls' },
+  dangerouslySetInnerHTML: { ids: 4, strings: 11, why: 'react-dom handles the prop by name; the source check above refuses the name in every file of ours' },
+  Function: { ids: 5, strings: 0, why: 'four are `instanceof Function` tests in libraries, and one is lodash\'s `Function("return this")()` fallback for the global object, which the page policy (no unsafe-eval) would refuse to run' },
+  bowerloomReal: { ids: 1, strings: 0, why: 'renderer/home/real/bridge.ts, the one file that reads the real bridge from the window; the source check above refuses the name anywhere else' },
+  'window.bowerloom': { ids: 1, strings: 0, why: 'renderer/app.ts reads the normal bridge, which is missing in a prototype window, and falls back to a stub' },
+};
+
+test('the page script that ships (the whole shell, built as it is for dist/renderer/app.js) uses no sink or channel beyond the listed library uses, each at its exact count', () => {
+  assert.match(read('tools/bundle.mjs'), /entryPoints: \[join\(here, 'renderer\/app\.ts'\)\], outfile: join\(here, 'dist\/renderer\/app\.js'\), format: 'iife', platform: 'browser'/, 'the shipped script is built from renderer/app.ts');
+  const built = bundleOf(['renderer/app.ts'], DESKTOP, 'iife', 'browser', 'bundle');
+  assert.ok(built.inputs.some(f => f.endsWith('renderer/home/real/RealRoot.tsx')) && built.inputs.some(f => f.endsWith('renderer/home/mount.tsx')), 'the shipped script holds the real shell');
+  assert.deepEqual(problemsOfShippedBundle('renderer/app.ts (built now)', built.outputs[0]!, KNOWN_LIBRARY_USES), []);
+});
+
+test('the reader\'s own loader page (mountReal), built alone as one script, opens no channel out of the page and runs no text as code, and holds only react beyond the reader\'s own files', () => {
   const built = bundleOf([BUILT_PAGE_ENTRY], DESKTOP, 'iife', 'browser', 'bundle');
   assert.deepEqual(problemsOfLibraryBundle('the reader\'s screens (built now)', built.outputs[0]!), []);
   const packages = new Set(built.inputs.filter(f => f.includes('node_modules/')).map(f => /node_modules\/((?:@[^/]+\/)?[^/]+)/.exec(f.slice(f.lastIndexOf('node_modules/')))![1]!));
@@ -163,6 +207,65 @@ test('the checker rejects bad files: a multi-line aliased writer import, a relat
     const mine = problems.filter(x => x.startsWith(files[name]!) || (name.startsWith('rel') && x.includes('writer.ts')));
     assert.ok(mine.some(x => expected.test(x)), `${name} was not refused as expected: ${mine.join(' | ') || 'no problem found'}`);
   }
+});
+
+test('the shell policy rejects bad page files: markup from text, a channel out of the page, text run as code, storage, a new window, and the real bridge named outside bridge.ts; the ordinary words of a page pass', t => {
+  const dir = tempDir(t), put = (name: string, text: string): string => { const file = join(dir, name); writeFileSync(file, text); return file; };
+  const good = put('good.tsx', "import { useState } from 'react';\nexport const copyText = (s: string): string => { const f = (): number => requestAnimationFrame(() => undefined); void f; return useState(s)[0] + String(link(s)) + write(s) + exec(s); };\nconst link = (s: string): number => s.length, write = (s: string): string => s, exec = (s: string): string => s;\n");
+  const bad: Record<string, [string, RegExp]> = {
+    inner: ["export const a = (el: HTMLElement, text: string): void => { el.innerHTML = text; };\n", /uses innerHTML/],
+    outer: ["export const a2 = (el: HTMLElement, text: string): void => { el.outerHTML = text; };\n", /uses outerHTML/],
+    adjacent: ["export const a3 = (el: HTMLElement, text: string): void => { el.insertAdjacentHTML('beforeend', text); };\n", /uses insertAdjacentHTML/],
+    dangerous: ["import { createElement } from 'react';\nexport const b = (html: string) => createElement('div', { dangerouslySetInnerHTML: { __html: html } });\n", /uses dangerouslySetInnerHTML/],
+    write: ["export const c = (html: string): void => { document.write(html); };\n", /uses document\.write/],
+    fetch: ["export const d = (): Promise<unknown> => fetch('https://example.test/');\n", /uses fetch/],
+    xhr: ["export const d2 = (): unknown => new XMLHttpRequest();\n", /uses XMLHttpRequest/],
+    socket: ["export const d3 = (): unknown => new WebSocket('wss://example.test');\n", /uses WebSocket/],
+    beacon: ["export const d4 = (): boolean => navigator.sendBeacon('https://example.test', 'x');\n", /uses sendBeacon/],
+    evil: ["export const e = (text: string): unknown => eval(text);\n", /uses eval/],
+    fn: ["export const e2 = (text: string): unknown => new Function(text)();\n", /uses Function/],
+    storage: ["export const f = (): void => { localStorage.setItem('a', 'b'); };\n", /uses localStorage/],
+    session: ["export const f2 = (): string | null => sessionStorage.getItem('a');\n", /uses sessionStorage/],
+    open: ["export const g = (): unknown => window.open('https://example.test');\n", /uses window\.open/],
+    bridge: ["export const h = (): unknown => (window as unknown as { bowerloomReal?: unknown }).bowerloomReal;\n", /uses bowerloomReal/],
+    bridgeText: ["export const h2 = (): unknown => (window as unknown as Record<string, unknown>)['bowerloomReal'];\n", /names a banned thing|has the text "bowerloomReal"/],
+    normal: ["export const i = (): unknown => (window as unknown as { bowerloom?: unknown }).bowerloom;\n", /uses window\.bowerloom/],
+  };
+  const files = Object.fromEntries(Object.entries(bad).map(([name, [text]]) => [name, put(`${name}.tsx`, text)]));
+  const policy: Policy = { ...SHELL_POLICY, allowFile: rel => rel.startsWith(dir), tolerate: {} };
+  const problems = checkEntries([good, ...Object.values(files)], DESKTOP, policy, 'esm', 'browser');
+  assert.deepEqual(problems.filter(x => x.startsWith(good)), [], 'the ordinary words of a page (link, write, exec, requestAnimationFrame) are not refused');
+  for (const [name, [, expected]] of Object.entries(bad)) {
+    const mine = problems.filter(x => x.startsWith(files[name]!));
+    assert.ok(mine.some(x => expected.test(x)), `${name} was not refused as expected: ${mine.join(' | ') || 'no problem found'}`);
+  }
+  // The one file that may name the real bridge is the one the policy tolerates, and only for that name.
+  const bridgeOnly = checkEntries([files['bridge']!, files['inner']!], DESKTOP, { ...policy, tolerate: { [files['bridge']!]: { names: /^bowerloomReal$/, strings: /^bowerloomReal$/, why: 'test' } } }, 'esm', 'browser');
+  assert.equal(bridgeOnly.some(x => x.startsWith(files['bridge']!)), false, 'the tolerated file may name the bridge');
+  assert.equal(bridgeOnly.some(x => x.startsWith(files['inner']!) && /innerHTML/.test(x)), true, 'and is not excused from anything else');
+});
+
+test('the shipped-script check fails on a sink that is not listed, on a listed one at another count, and on a listed one that vanished; it passes the exact list', () => {
+  const known: Record<string, BundleAllowance> = { innerHTML: { ids: 2, strings: 1, why: 'a library' }, Function: { ids: 1, strings: 0, why: 'a library' } };
+  const lib = "var a = el.innerHTML; el.innerHTML = ''; var k = 'innerHTML'; var t = x instanceof Function;";
+  assert.deepEqual(problemsOfShippedBundle('lib', lib, known), []);
+  assert.deepEqual(problemsOfShippedBundle('lib', "var s = 'eval(innerHTML)'; // fetch, WebSocket and window.open in a string or a comment are not code\n" + lib, known), [], 'text inside a string or a comment is not a use');
+  const has = (text: string, expected: RegExp): void => assert.ok(problemsOfShippedBundle('lib', text, known).some(x => expected.test(x)), `${expected} for ${text}`);
+  has(`${lib} fetch('https://example.test');`, /uses fetch .*not on the list/);
+  has(`${lib} new XMLHttpRequest();`, /uses XMLHttpRequest/);
+  has(`${lib} new WebSocket('wss://x');`, /uses WebSocket/);
+  has(`${lib} navigator.sendBeacon('u', 'd');`, /uses sendBeacon/);
+  has(`${lib} eval(t);`, /uses eval/);
+  has(`${lib} el.outerHTML = t;`, /uses outerHTML/);
+  has(`${lib} el.insertAdjacentHTML('beforeend', t);`, /uses insertAdjacentHTML/);
+  has(`${lib} document.write(t);`, /uses document\.write/);
+  has(`${lib} window.open('u');`, /uses window\.open/);
+  has(`${lib} localStorage.setItem('a', 'b');`, /uses localStorage/);
+  has(`${lib} window.bowerloomReal.pickFolder();`, /uses bowerloomReal/);
+  has(`${lib} el.innerHTML = t;`, /innerHTML is used 3 times as code and 1 as text; the list of known uses says 2 and 1/);
+  has(`${lib} var y = new Function(t);`, /Function is used 2 times/);
+  has("var a = el.innerHTML; var k = 'innerHTML'; var t = x instanceof Function;", /innerHTML is used 1 times as code/);
+  has('var z = 1;', /innerHTML is used 0 times as code and 0 as text/);
 });
 
 test('the handler file names the three channels and answers the app page only, before it does anything else', () => {
@@ -342,7 +445,8 @@ test('the launcher: the real flag is known, excludes every other mode, needs a r
     assert.equal(r.status, 2, `HOME=${home}`); assert.match(r.stderr, /needs a home folder/); assert.doesNotMatch(r.stdout, /Installing|Building/, 'nothing is built, nothing is read');
   }
   const mod = await import(`${join(DESKTOP, 'tools', 'run.mjs')}`) as { REAL_PROMISE: string; REAL_FLAG: string; realHome(env: Record<string, string>, exists: (p: string) => boolean): string | null; electronArgs(d: string, f: string[], u: string | null): string[] };
-  assert.equal(mod.REAL_PROMISE, 'Reads: names, descriptions, structure and key names. Writes: no changes to your files. The app keeps its own temporary files and deletes them when it closes.');
+  assert.equal(mod.REAL_PROMISE, 'Reads: names, descriptions, structure and key names, plus the text of the skills and agents you tick. Known key and password shapes are hidden. Writes: no changes to your files. The app keeps its own temporary files and deletes them when it closes.');
+  assert.doesNotMatch(mod.REAL_PROMISE, /never|no key/i, 'the promise says the text of ticked files is read, and that hiding keys is by known shape');
   assert.doesNotMatch(mod.REAL_PROMISE, /Writes: nothing/, 'the promise does not claim that nothing is written: the app keeps a temporary profile folder, which it removes when it closes');
   assert.equal(mod.REAL_FLAG, '--prototype-real');
   if (process.platform !== 'win32') assert.equal(mod.realHome({ HOME: '/Users/x' }, () => true), '/Users/x');

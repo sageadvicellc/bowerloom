@@ -122,7 +122,9 @@ test('step two: untick a place, confirm with "Yes, read them", and only then is 
   await expect(step('confirm')).toBeVisible();
   await expect(page.locator('h1')).toHaveText('Read what is inside?');
   await expect(page.locator('.rl-summary')).toContainText('5 places');
-  await expect(page.locator('body')).toContainText('Keys and passwords are never copied.');
+  await expect(page.locator('body')).toContainText('It reads the text of what you tick.');
+  await expect(page.locator('body')).toContainText('Known key and password shapes are hidden, but check anything private.');
+  await expect(page.locator('body')).not.toContainText('never copied');
   if (shots !== null) await page.screenshot({ path: join(shots, 'real-2-confirm-light.png') });
   await page.getByRole('button', { name: 'Yes, read them' }).click();
   await expect(step('list')).toBeVisible();

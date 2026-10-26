@@ -134,7 +134,8 @@ export function RealScan({ variant, onWorld, onLeave, bridge }: RealScanProps): 
         <section className="fr-section fr-confirm" aria-label={REAL_WORDS.label.readTitle}>
           <p className="fr-summary">{readSummary(state.ticked.length, agentsTicked(state))}</p>
           <p className="kit-hint">{REAL_WORDS.hint.readOnly}</p>
-          <p className="kit-hint">{REAL_WORDS.hint.readSafe}</p>
+          <p className="kit-hint">{REAL_WORDS.hint.readText}</p>
+          <p className="kit-hint">{REAL_WORDS.hint.readHidden}</p>
           <div className="fr-actions" ref={primary}>
             <IconButton icon="back" label={REAL_WORDS.label.back} side="below" onClick={() => send({ type: 'back' })} />
             <Button variant="primary" onClick={() => send({ type: 'yes' })}>{REAL_WORDS.label.yesRead}</Button>
