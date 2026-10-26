@@ -193,15 +193,22 @@ import { isAppHash, startOf } from '../shared/home/route.js';
 import { MOTION } from '../renderer/motion-tokens.js';
 
 test('the address picks the start: Welcome, the map, or the map with the tour', () => {
-  assert.deepEqual(startOf('#prototype-v2'), { screen: 'welcome', guided: false });
-  assert.deepEqual(startOf('#prototype-v2/'), { screen: 'welcome', guided: false });
-  assert.deepEqual(startOf('#prototype-v2/map'), { screen: 'map', guided: false });
-  assert.deepEqual(startOf('#prototype-v2/map/tour'), { screen: 'map', guided: true });
-  assert.deepEqual(startOf(''), { screen: 'welcome', guided: false });
+  assert.deepEqual(startOf('#prototype-v2'), { screen: 'welcome', guided: false, readOnly: false });
+  assert.deepEqual(startOf('#prototype-v2/'), { screen: 'welcome', guided: false, readOnly: false });
+  assert.deepEqual(startOf('#prototype-v2/map'), { screen: 'map', guided: false, readOnly: false });
+  assert.deepEqual(startOf('#prototype-v2/map/tour'), { screen: 'map', guided: true, readOnly: false });
+  assert.deepEqual(startOf(''), { screen: 'welcome', guided: false, readOnly: false });
+});
+
+test('the read-only addresses open Welcome and the map with read only set, and nothing else sets it', () => {
+  assert.deepEqual(startOf('#prototype-v2/readonly'), { screen: 'welcome', guided: false, readOnly: true });
+  assert.deepEqual(startOf('#prototype-v2/map/readonly'), { screen: 'map', guided: false, readOnly: true });
+  for (const h of ['#prototype-v2', '#prototype-v2/', '#prototype-v2/map', '#prototype-v2/map/tour', '#prototype-v2/kit', '#prototype-v2/map/readonly/x', '#prototype-v2/readonly/', '']) assert.equal(startOf(h).readOnly, false, h);
+  assert.equal(Object.isFrozen(startOf('#prototype-v2/map/readonly')), true);
 });
 
 test('the app answers its own addresses and leaves the gallery and the Add page to their pages', () => {
-  for (const h of ['#prototype-v2', '#prototype-v2/', '#prototype-v2/map', '#prototype-v2/map/tour']) assert.equal(isAppHash(h), true, h);
+  for (const h of ['#prototype-v2', '#prototype-v2/', '#prototype-v2/map', '#prototype-v2/map/tour', '#prototype-v2/readonly', '#prototype-v2/map/readonly']) assert.equal(isAppHash(h), true, h);
   for (const h of ['#prototype-v2/kit', '#prototype-v2/add', '#main', '#prototype', '']) assert.equal(isAppHash(h), false, h);
 });
 

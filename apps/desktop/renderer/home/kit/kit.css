@@ -33,6 +33,17 @@
 [data-home] .kit-button[data-size="small"] { padding: 0 var(--hm-space-3); }
 [data-home] .kit-button[data-round] { padding: 0; border-radius: var(--hm-radius-pill); width: var(--hm-control-h); font-size: var(--hm-text-section); font-weight: 600; }
 [data-home] .kit-button[data-round][data-size="small"] { width: var(--hm-control-h); font-size: var(--hm-text-base); }
+/* An icon button: a 32 px square with one icon, no border until the pointer is on it, as the desktop apps draw theirs. */
+[data-home] .kit-button[data-icon-only] { padding: 0; width: var(--hm-control-h); border-color: transparent; background: transparent; color: var(--text); }
+[data-home] .kit-button[data-icon-only]:hover { background: var(--accent-soft); border-color: transparent; }
+[data-home] .kit-button[data-icon-only][aria-expanded="true"], [data-home] .kit-button[data-icon-only][aria-pressed="true"] { background: var(--accent-soft); border-color: transparent; }
+[data-home] .kit-button[data-icon-only][data-variant="primary"] { background: var(--accent); border-color: var(--accent-strong); color: var(--accent-contrast); }
+[data-home] .kit-button[data-icon-only]:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
+/* A control that would change the setup, in the read-only look: it stays in its place and in the Tab order, says why in its tooltip, and does nothing. */
+[data-home] .kit-button[aria-disabled="true"] { background: transparent; border: 1px dashed var(--hm-border); color: var(--text-muted); cursor: not-allowed; }
+[data-home] .kit-button[data-icon-only][aria-disabled="true"] { border-color: transparent; }
+[data-home] .kit-button[aria-disabled="true"]:hover { background: transparent; border-color: var(--hm-border); }
+[data-home] .kit-button[data-icon-only][aria-disabled="true"]:hover { border-color: transparent; }
 [data-home] .kit-button:disabled { background: transparent; border: 1px dashed var(--hm-border); color: var(--text-muted); cursor: not-allowed; }
 [data-home] .kit-button[aria-expanded="true"]:not([data-variant="primary"]):not([data-variant="text"]) { background: var(--accent-soft); border-color: var(--accent-strong); }
 
@@ -197,21 +208,26 @@
 [data-home] .kit-shelf-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--hm-row-w)), 1fr)); gap: var(--hm-space-2); width: 100%; }
 [data-home] .kit-shelf-list > li { min-width: 0; display: flex; }
 
-/* ---- Tooltip: the words of an icon-only button. It sits 10 px to the left of the button, in the free room of the top bar (never over the button, and never over what
-   the page shows under the bar), takes no pointer, and is 14 px or more. It fades in with a 4 px slide from the button over the overlay time and out faster; with reduce
-   motion the times are 0 and it simply appears. Ink on paper, so it is 4.5 to 1 in both looks. */
+/* ---- Tooltip: the words of an icon-only button, or the reason a button is held back. It is drawn at a fixed place on the window (Tooltip.tsx sets the offsets), 10 px clear of
+   the button on the side asked for, so no scrolling list or clipped row can cut it off. It takes no pointer, and is 14 px or more. It fades in with a 4 px slide from the
+   button over the overlay time and out faster; with reduce motion the times are 0 and it simply appears. Ink on paper, so it is 4.5 to 1 in both looks. */
 [data-home] .kit-tip { position: relative; display: inline-flex; }
 [data-home] .kit-tip-text {
-  position: absolute; z-index: 35; top: 50%; right: calc(100% + var(--hm-space-3)); padding: var(--hm-space-2) var(--hm-space-3);
+  position: fixed; z-index: 3000; top: 0; right: 0; padding: var(--hm-space-2) var(--hm-space-3); max-width: min(20rem, calc(100vw - 2 * var(--hm-space-4)));
   background: var(--text); color: var(--bg); border-radius: var(--hm-radius-small); box-shadow: var(--hm-shadow-lift);
   font-size: var(--hm-text-small); font-weight: 600; line-height: 1.3; white-space: nowrap; pointer-events: none;
   opacity: 0; visibility: hidden; transform: translate(var(--motion-home-overlay-travel, 0px), -50%);
   transition: visibility 0s linear var(--motion-home-overlay-out-ms, 0ms), opacity var(--motion-home-overlay-out-ms, 0ms) var(--motion-home-overlay-out-ease, ease-in);
 }
+[data-home] .kit-tip-text[data-side="right"] { transform: translate(calc(-1 * var(--motion-home-overlay-travel, 0px)), -50%); }
+[data-home] .kit-tip-text[data-side="below"], [data-home] .kit-tip-text[data-side="below-end"] { transform: translate(0, calc(-1 * var(--motion-home-overlay-travel, 0px))); }
 [data-home] .kit-tip-text[data-open] {
   opacity: 1; visibility: visible; transform: translate(0, -50%);
   transition: opacity var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out), transform var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out);
 }
+[data-home] .kit-tip-text[data-side="below"][data-open], [data-home] .kit-tip-text[data-side="below-end"][data-open] { transform: none; }
+/* The tooltip of a held-back button may run to a sentence: it wraps at the width above. */
+[data-home] .kit-tip-text[data-long] { white-space: normal; }
 
 /* ---- Help popover */
 [data-home] .kit-help { position: relative; display: inline-flex; }

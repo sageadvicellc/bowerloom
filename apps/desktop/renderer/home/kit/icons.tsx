@@ -1,7 +1,8 @@
 /** The small outline icons of the card kit, drawn here as paths: no emoji, no outside icon set. They are decoration; the words beside them say the same thing. */
 import type { ReactElement } from 'react';
 
-export type KitIconName = 'agent' | 'skill' | 'tool' | 'note' | 'plus' | 'clock' | 'check' | 'warning' | 'sparkle' | 'key' | 'info' | 'close' | 'leaf' | 'chevron' | 'program' | 'share' | 'back';
+export type KitIconName = 'agent' | 'skill' | 'tool' | 'note' | 'plus' | 'clock' | 'check' | 'warning' | 'sparkle' | 'key' | 'info' | 'close' | 'leaf' | 'chevron' | 'program' | 'share' | 'back'
+  | 'sidebar-left' | 'sidebar-right' | 'search' | 'trash' | 'undo' | 'copy' | 'chevron-up' | 'sort' | 'library' | 'help' | 'globe' | 'select-all' | 'clear' | 'lock';
 
 const PATHS: Readonly<Record<KitIconName, readonly string[]>> = {
   // Three nodes joined to one another: something that works with others. It is not a person, so an agent does not borrow the look of a human profile.
@@ -31,6 +32,24 @@ const PATHS: Readonly<Record<KitIconName, readonly string[]>> = {
   program: ['M4 5.5h16v13H4z', 'M7.5 10l2.5 2-2.5 2', 'M12.5 14.5h4'],
   // An arrow leaving a tray: send a copy to someone.
   share: ['M12 15V4', 'M8 7.5l4-4 4 4', 'M6 11H5v9h14v-9h-1'],
+  // The panel glyphs of a desktop app: a window with a bar at its left edge (the navigation) or at its right edge (the details).
+  'sidebar-left': ['M4 5.5h16v13H4z', 'M9.5 5.5v13'],
+  'sidebar-right': ['M4 5.5h16v13H4z', 'M14.5 5.5v13'],
+  search: ['M11 4.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13z', 'M16 16l4.5 4.5'],
+  trash: ['M5 7h14', 'M10 4h4', 'M7 7l1 13h8l1-13', 'M10 11v6', 'M14 11v6'],
+  undo: ['M9 14 4 9l5-5', 'M4 9h10.5a5.5 5.5 0 0 1 0 11H11'],
+  copy: ['M9 9h11v11H9z', 'M15 9V4H4v11h5'],
+  'chevron-up': ['M7 14l5-5 5 5'],
+  // Two arrows, one down and one up: put in order.
+  sort: ['M7 5v14', 'M4 16l3 3 3-3', 'M17 19V5', 'M14 8l3-3 3 3'],
+  // Three books on a shelf.
+  library: ['M4 5h4v14H4z', 'M10 5h4v14h-4z', 'M15.5 6.5l3.5-1 2 12.5-3.5 1z'],
+  help: ['M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17z', 'M9.7 9.6a2.4 2.4 0 1 1 3.4 2.2c-.7.4-1.1.9-1.1 1.8', 'M12 16.8v.1'],
+  globe: ['M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17z', 'M3.5 12h17', 'M12 3.5c2.4 2.5 3.5 5.3 3.5 8.5s-1.1 6-3.5 8.5c-2.4-2.5-3.5-5.3-3.5-8.5s1.1-6 3.5-8.5z'],
+  // Ticks beside lines: every line chosen.
+  'select-all': ['M4 7l2 2 3.5-3.5', 'M4 16l2 2 3.5-3.5', 'M13 7.5h7', 'M13 16.5h7'],
+  clear: ['M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17z', 'M9.2 9.2l5.6 5.6', 'M14.8 9.2l-5.6 5.6'],
+  lock: ['M6 11h12v9H6z', 'M8.5 11V8a3.5 3.5 0 0 1 7 0v3'],
 };
 
 export const KIT_ICON_NAMES: readonly KitIconName[] = Object.keys(PATHS) as KitIconName[];
