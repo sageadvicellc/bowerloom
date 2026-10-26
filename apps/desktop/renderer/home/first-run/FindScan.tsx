@@ -31,6 +31,11 @@ export interface FindScanProps {
   committed?: World | undefined;
   /** The agents skipped the last time, so Find more starts with the same ticks. */
   skipped?: readonly string[];
+  /**
+   * True when the contents were already read, so the list shows at once and "Show on the map" ends the flow with no second question (real mode: the reader of the person's own
+   * setup asked both of its questions before the world existed, see real/RealScan.tsx). The list, the ticks and the tags are the same.
+   */
+  read?: boolean;
   /** "Not now": the screen says it was asked; where that goes is the page's business. */
   onLeave(): void;
   /** Called once, when the reading ends, with the agents the person did not tick. */
@@ -58,13 +63,16 @@ function Row({ agent, on, onTick }: { agent: FindAgent; on: boolean; onTick(id: 
   );
 }
 
-export function FindScan({ variant, world, committed, onLeave, onDone, skipped = [] }: FindScanProps): ReactElement {
+export function FindScan({ variant, world, committed, onLeave, onDone, skipped = [], read = false }: FindScanProps): ReactElement {
   const agents = useMemo(() => findAgents(world, committed), [world, committed]);
   const places = useMemo(() => findPlaces(world, committed), [world, committed]);
   const locked = useMemo(() => lockedAgents(agents), [agents]);
   const ids = useMemo(() => agents.map(a => a.id), [agents]);
   // An agent with changes that wait starts ticked, whatever was skipped before, and stays ticked: the changes must not drop off the map.
-  const [state, send] = useReducer(findReduce, undefined, () => startFind(FIND_TOOLS.length, ids, ids.filter(id => locked.includes(id) || !skipped.includes(id))));
+  const [state, send] = useReducer(findReduce, undefined, () => {
+    const start = startFind(FIND_TOOLS.length, ids, ids.filter(id => locked.includes(id) || !skipped.includes(id)));
+    return read ? findReduce(start, { type: 'lightAll' }) : start;
+  });
   const [details, setDetails] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null), primary = useRef<HTMLDivElement>(null);
   const listId = useId();
@@ -146,7 +154,7 @@ export function FindScan({ variant, world, committed, onLeave, onDone, skipped =
               </section>
             ) : null}
             <div className="fr-actions" data-pinned="" ref={primary}>
-              <Button variant="primary" disabled={state.ticked.length === 0} onClick={() => send({ type: 'looksRight' })}>{FIND_WORDS.label.looksRight}</Button>
+              <Button variant="primary" disabled={state.ticked.length === 0} onClick={() => send({ type: read ? 'choose' : 'looksRight' })}>{read ? FIND_WORDS.label.showOnMap : FIND_WORDS.label.looksRight}</Button>
               <Button aria-expanded={details} aria-controls={listId} onClick={() => setDetails(d => !d)}>{details ? FIND_WORDS.label.hideDetails : FIND_WORDS.label.showDetails}</Button>
               {state.ticked.length === 0 ? <p className="kit-hint">{FIND_WORDS.hint.pickOne}</p> : null}
             </div>

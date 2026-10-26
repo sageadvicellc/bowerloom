@@ -9,6 +9,8 @@ import type { ReactElement } from 'react';
 import type { World } from '../../../shared/proto/types.js';
 import { IconButton } from '../kit/IconButton.js';
 import { WORDS } from '../words.js';
+import { RealFind } from '../real/RealFind.js';
+import { useRealFlow } from '../real/RealFlow.js';
 import { FindScan } from './FindScan.js';
 import { FIND_WORDS } from './find-words.js';
 import './find.css';
@@ -24,6 +26,7 @@ export interface FindPanelProps {
 
 export function FindPanel({ world, committed, skipped, onClose, onDone }: FindPanelProps): ReactElement {
   const title = useRef<HTMLHeadingElement>(null);
+  const real = useRealFlow() !== null;
   useEffect(() => { title.current?.focus({ preventScroll: true }); }, []);
   return (
     <aside className="hm-panel" id="hm-panel" data-find="" aria-labelledby="fr-panel-title">
@@ -31,7 +34,7 @@ export function FindPanel({ world, committed, skipped, onClose, onDone }: FindPa
         <h2 className="kit-heading" id="fr-panel-title" tabIndex={-1} ref={title}>{FIND_WORDS.label.findMore}</h2>
         <IconButton icon="close" label={WORDS.label.close} side="left" data-find-close="" onClick={onClose} />
       </div>
-      <FindScan variant="panel" world={world} committed={committed} skipped={skipped} onLeave={onClose} onDone={onDone} />
+      {real ? <RealFind variant="panel" world={world} committed={committed} skipped={skipped} onLeave={onClose} onDone={onDone} /> : <FindScan variant="panel" world={world} committed={committed} skipped={skipped} onLeave={onClose} onDone={onDone} />}
     </aside>
   );
 }

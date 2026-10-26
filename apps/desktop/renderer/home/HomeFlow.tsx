@@ -40,7 +40,7 @@ export function HomeFlow({ dataSource = 'sample' }: { dataSource?: DataSource } 
     setTourNow(true); setGuided(true);
   }, []);
 
-  if (screen === 'welcome') return <Welcome onFind={() => setScreen(current => screenAfter(current, 'find'))} />;
+  if (screen === 'welcome') return <Welcome real={dataSource === 'real'} onFind={() => setScreen(current => screenAfter(current, 'find'))} />;
   if (screen === 'find') return <FindScreen world={state.draft} committed={state.committed} skipped={skipped} onLeave={leave} onDone={done} />;
   return <HomeApp barPhase={{ phase, set: setPhase }} skipped={skipped} onSkippedChange={setSkipped} autoTour={tourNow} closingNote={guided} dataSource={dataSource} />;
 }

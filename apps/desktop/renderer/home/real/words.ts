@@ -17,6 +17,7 @@ export const REAL_WORDS = deepFreeze({
     readTitle: 'Read what is inside?',
     readingTitle: 'Reading your setup',
     nothingTitle: 'Nothing found yet',
+    errorTitle: 'That did not work',
     whereILooked: 'Where I looked',
     places: 'Places to read',
     showDetails: 'Show details',
@@ -43,6 +44,8 @@ export const REAL_WORDS = deepFreeze({
     stoppedEarly: 'It stopped early to stay within its limits.',
     pickedNothing: 'No folder was chosen.',
     noBridge: 'This window cannot look at your setup.',
+    needsCommand: 'Real mode needs the real launch command.',
+    startWith: 'Close this window and start the app with:',
     again: 'Something went wrong. Nothing was changed. You can try again.',
     busy: 'Another look is still running. Try again in a moment.',
     unlisted: 'That place is no longer listed. Look again.',
@@ -53,6 +56,9 @@ export const REAL_WORDS = deepFreeze({
   },
   popover: {},
 });
+
+/** The command that starts real mode. */
+export const REAL_COMMAND = 'npm run desktop:prototype:real';
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 

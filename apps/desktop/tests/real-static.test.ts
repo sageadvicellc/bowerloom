@@ -47,7 +47,8 @@ const PRELOAD_POLICY: Policy = {
   deadOk: {},
   modules: { electron: ['contextBridge', 'ipcRenderer'] },
 };
-const RENDERER_ENTRIES = ['renderer/home/real/entry.tsx', 'renderer/home/real/mountReal.tsx'];
+// entry.tsx (the script of the temporary real.html page, which only called mountRealHarness) is gone: the shell mounts real mode from index.html. mountReal.tsx is the root of the reader's screens.
+const RENDERER_ENTRIES = ['renderer/home/real/mountReal.tsx'];
 const RENDERER_POLICY: Policy = {
   allowFile: rel => SHARED_REAL(rel) || /^renderer\/home\/real\/[\w-]+\.(?:tsx?|css)$/.test(rel)
     || ['renderer/proto/error-boundary.tsx', 'shared/proto/words.ts', 'shared/proto/slicerule.ts', 'shared/home/textbudget.ts', 'shared/home/plain-details.ts', 'shared/home/titles.ts', 'shared/proto/types.ts'].includes(rel),
@@ -91,7 +92,7 @@ test('the real page script and everything it imports use only react, no markup f
 // The built files. The real handler is bundled into dist/main.mjs together with the normal controller and the rest of the main process, so that file holds code the reader's
 // rules do not apply to; it cannot be scanned the same way. The module boundary is held instead: the source check above covers every file the real handler imports, and the two
 // files below are the whole of what the real mode loads besides main.mjs.
-const BUILT_PRELOAD_ENTRY = 'preload/real-preload.ts', BUILT_PAGE_ENTRY = 'renderer/home/real/entry.tsx';
+const BUILT_PRELOAD_ENTRY = 'preload/real-preload.ts', BUILT_PAGE_ENTRY = 'renderer/home/real/mountReal.tsx';
 
 test('the built bridge (preload-real.cjs) holds no banned name, and calls require only for electron', () => {
   const inMemory = bundleOf([BUILT_PRELOAD_ENTRY], DESKTOP, 'cjs', 'node', 'external').outputs[0]!;
@@ -100,13 +101,13 @@ test('the built bridge (preload-real.cjs) holds no banned name, and calls requir
   if (existsSync(onDisk)) assert.deepEqual(problemsOfBuilt('dist/preload-real.cjs', readFileSync(onDisk, 'utf8'), PRELOAD_POLICY, ['electron']), []);
 });
 
-test('the built page script (real.js) opens no channel out of the page and runs no text as code, and holds only react beyond the reader\'s own files', () => {
+test('the reader\'s screens, built as one script, open no channel out of the page and run no text as code, and hold only react beyond the reader\'s own files', () => {
   const built = bundleOf([BUILT_PAGE_ENTRY], DESKTOP, 'iife', 'browser', 'bundle');
-  assert.deepEqual(problemsOfLibraryBundle('real.js (built now)', built.outputs[0]!), []);
+  assert.deepEqual(problemsOfLibraryBundle('the reader\'s screens (built now)', built.outputs[0]!), []);
   const packages = new Set(built.inputs.filter(f => f.includes('node_modules/')).map(f => /node_modules\/((?:@[^/]+\/)?[^/]+)/.exec(f.slice(f.lastIndexOf('node_modules/')))![1]!));
   assert.deepEqual([...packages].sort(), ['react', 'react-dom', 'scheduler']);
-  const onDisk = join(DESKTOP, 'dist', 'renderer', 'real.js');
-  if (existsSync(onDisk)) assert.deepEqual(problemsOfLibraryBundle('dist/renderer/real.js', readFileSync(onDisk, 'utf8')), []);
+  // There is no second page and no second script any more: a built folder from before holds neither.
+  for (const gone of ['real.js', 'real.html']) assert.equal(existsSync(join(DESKTOP, 'dist', 'renderer', gone)), false, `${gone} is not built`);
 });
 
 // ---- the checker itself, shown to fail on bad files
@@ -298,14 +299,31 @@ test('main.ts: the real flag is one more prototype mode (temp data folder, stric
   assert.equal([...main.matchAll(/ipcMain\.handle/g)].length, 1, 'main.ts still has one guard of its own');
   assert.equal([...main.matchAll(/!prototypeMode/g)].length, 2, 'an outside link is opened only outside prototype mode, in both places');
   assert.match(main, /The real setup reader needs a home folder/);
-  assert.match(main, /prototypeReal && asked === join\(rendererDir, 'index\.html'\) \? join\(rendererDir, 'real\.html'\) : asked/);
+  assert.doesNotMatch(main, /real\.html/, 'real mode serves the same page as every other mode');
+  assert.match(main, /const url = new URL\(request\.url\), file = url\.host === APP_HOST \? resolveAppFile\(rendererDir, url\.pathname\) : null;/, 'one line picks the file, for every mode');
 });
 
-test('the real page has the same policy as the normal one, and a script of its own', () => {
-  const real = read('renderer/home/real/real.html'), normal = read('renderer/index.html');
-  assert.equal(/Content-Security-Policy" content="([^"]+)"/.exec(real)![1], /Content-Security-Policy" content="([^"]+)"/.exec(normal)![1]);
-  assert.doesNotMatch(real, /<style|onclick|onload|javascript:/i);
-  assert.deepEqual([...real.matchAll(/<script[^>]*src="([^"]+)"/g)].map(m => m[1]), ['real.js']);
+/** The policy of every page of the app, word for word: real mode loads the same page, so this is the policy of real mode too. */
+const PAGE_POLICY = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'";
+
+test('real mode loads the one page of the app, and that page has the strict policy it always had', () => {
+  const page = read('renderer/index.html');
+  assert.equal(/Content-Security-Policy" content="([^"]+)"/.exec(page)![1], PAGE_POLICY);
+  assert.doesNotMatch(page, /<style|onclick|onload|javascript:/i);
+  assert.deepEqual([...page.matchAll(/<script[^>]*src="([^"]+)"/g)].map(m => m[1]), ['app.js']);
+  assert.equal(existsSync(join(DESKTOP, 'renderer', 'home', 'real', 'real.html')), false, 'no second page is left in the source');
+  // The window of real mode gets the one page at the real address, and only the real bridge (checked in the main.ts test above).
+  assert.equal(decideNavigation(`${APP_INDEX}${REAL_HASH}`, APP_INDEX), 'allow-app');
+});
+
+test('the real bridge is read in one file of the page, and the screens of real mode never call anything but its three calls', () => {
+  const users = names('renderer/home', /\.tsx?$/).concat(names('renderer/home/real', /\.tsx?$/), names('renderer/home/first-run', /\.tsx?$/), names('renderer/home/shell', /\.tsx?$/));
+  const naming = users.filter(file => /bowerloomReal/.test(strip(read(file))));
+  assert.deepEqual(naming, ['renderer/home/real/bridge.ts'], 'only bridge.ts reads window.bowerloomReal');
+  for (const file of ['renderer/home/real/RealScan.tsx', 'renderer/home/real/RealRoot.tsx', 'renderer/home/real/RealFind.tsx', 'renderer/home/real/RealFlow.tsx']) {
+    const calls = [...strip(read(file)).matchAll(/\b(?:calls|bridge)\.(\w+)\(/g)].map(m => m[1]!);
+    assert.ok(calls.every(name => (REAL_CALLS as readonly string[]).includes(name)), `${file}: ${calls.join(',')}`);
+  }
 });
 
 test('the launcher: the real flag is known, excludes every other mode, needs a real home folder, and says what it reads before the window opens', async () => {

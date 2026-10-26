@@ -18,3 +18,9 @@ export const TOUR_STEPS: readonly TourStep[] = Object.freeze([
   { id: 'share', target: 'share', text: 'Share your agents or go back in time here.' },
   { id: 'help', target: 'help', text: 'Replay this tour any time.' },
 ].map(step => Object.freeze(step)));
+
+/**
+ * The same seven steps for a setup that is only looked at (real mode): the bar step says what the bar is there, since there is nothing to save. Every other step is the same
+ * sentence, and none names an agent, a skill or a place, so the tour is true of any setup.
+ */
+export const TOUR_STEPS_READ_ONLY: readonly TourStep[] = Object.freeze(TOUR_STEPS.map(step => (step.id === 'save' ? Object.freeze({ ...step, text: 'This bar is read-only. Nothing here changes your setup.' }) : step)));

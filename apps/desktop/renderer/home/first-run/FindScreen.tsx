@@ -7,6 +7,8 @@ import type { ReactElement } from 'react';
 import type { World } from '../../../shared/proto/types.js';
 import { KitIcon } from '../kit/icons.js';
 import { WORDS } from '../words.js';
+import { RealFind } from '../real/RealFind.js';
+import { useRealFlow } from '../real/RealFlow.js';
 import { FindScan } from './FindScan.js';
 import './find.css';
 
@@ -23,11 +25,13 @@ export interface FindScreenProps {
 }
 
 export function FindScreen({ world, committed, onLeave, onDone, skipped = [] }: FindScreenProps): ReactElement {
+  // In real mode (the person's own setup) the scan is the reader's: two questions, then the same list.
+  const real = useRealFlow() !== null;
   return (
     <div className="fr-root" data-home="" data-screen="find">
       <main id="main" className="fr-find">
         <div className="fr-brand fr-brand-small"><KitIcon name="leaf" size={28} /><span>{WORDS.label.appName}</span></div>
-        <FindScan variant="page" world={world} committed={committed} skipped={skipped} onLeave={onLeave} onDone={onDone} />
+        {real ? <RealFind variant="page" world={world} committed={committed} skipped={skipped} onLeave={onLeave} onDone={onDone} /> : <FindScan variant="page" world={world} committed={committed} skipped={skipped} onLeave={onLeave} onDone={onDone} />}
       </main>
     </div>
   );

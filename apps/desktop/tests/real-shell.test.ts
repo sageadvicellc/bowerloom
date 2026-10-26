@@ -2,11 +2,12 @@
 // the merge of two reads (Find more), and a sweep that no screen model says a sample word or an invented line about a setup read from files. Everything runs on a made-up home folder.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { TestContext } from 'node:test';
 import { createScanner } from '../main/real-scan.js';
+import { DESKTOP } from './support.js';
 import { agentCard, noteWords, ownedAgents, shelvesOf, wordsOf } from '../shared/home/cards.js';
 import { detailsOf } from '../shared/home/details.js';
 import { appLabel, findAgents, findPlaces } from '../shared/home/find-model.js';
@@ -303,4 +304,19 @@ test('the budget takes out the person\'s own words and still holds ours: a name 
   assert.ok(assertTextBudget('<main><h2>Graft helper</h2><p>The scan is done.</p></main>', { own }).some(p => /scan/.test(p)), 'our own banned word is still found');
   assert.ok(assertTextBudget('<main><h2>Graft helper and then a good many more words</h2></main>', { own }).some(p => /heading/.test(p)), 'our own words around a name are still counted');
   assert.deepEqual(assertTextBudget('<main><p>Plain words.</p></main>', { own: [] }), []);
+});
+
+// ---------------------------------------------------------------------------------------------------- real mode builds nothing from the sample
+
+test('the screens of real mode never build or ask for the sample world: no generated world, no sample copies, no starters, no library samples, no start point', () => {
+  const dir = join(DESKTOP, 'renderer', 'home', 'real');
+  const banned = /\b(loadWorld|generateWorld|withSampleCopies|withStarterAgents|withLibrarySamples|withStartPoint|withPlainKeys|withReadingTools|seedSample|addDemoWorld)\b/;
+  const files = readdirSync(dir).filter(f => /\.tsx?$/.test(f));
+  assert.ok(files.includes('RealRoot.tsx') && files.includes('RealScan.tsx') && files.includes('RealFind.tsx'));
+  for (const file of files) assert.doesNotMatch(readFileSync(join(dir, file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, ''), banned, file);
+  // The sample is built in one place only, the root of the sample pages, which real mode does not reach.
+  const mount = readFileSync(join(DESKTOP, 'renderer', 'home', 'mount.tsx'), 'utf8');
+  const sampleRoot = mount.slice(mount.indexOf('function SampleRoot'));
+  assert.match(sampleRoot, /loadWorld\(\)/);
+  assert.doesNotMatch(mount.slice(mount.indexOf('function HomeRoot'), mount.indexOf('function SampleRoot')), /loadWorld|withStarterAgents|withLibrarySamples|withSampleCopies/);
 });

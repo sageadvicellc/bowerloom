@@ -2,7 +2,7 @@
  * A bare page for trying the real-setup reader without the shell: the loader first, and when it hands over the world, a plain list of what was found. It draws
  * names and hints only, as text. It is the page `#prototype-v2/real-harness` opens, and the one the end-to-end run drives.
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { World } from '../../../shared/proto/types.js';
 import { clearRealResult, realPlainOf, registerRealResult } from '../../../shared/real/plain-fallback.js';
@@ -34,6 +34,7 @@ function List({ world, kind, title }: { world: World; kind: 'agent' | 'skill' | 
 
 export function RealHarness(): ReactElement {
   const [result, setResult] = useState<RealResult | null>(null);
+  useEffect(() => { document.title = 'Bowerloom'; }, []);
   const onWorld = useCallback((_world: World, r: RealResult): void => { clearRealResult(); registerRealResult(r); setResult(r); }, []);
   if (result === null) return <RealLoader onWorld={onWorld} />;
   return (

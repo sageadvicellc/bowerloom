@@ -1,5 +1,6 @@
 /**
  * Puts the 0.8 home app into the page. Called once, when the page address starts with #prototype-v2. The address picks the page: #prototype-v2 is the app (Welcome first), #prototype-v2/map is the map alone, #prototype-v2/map/tour is the map with the tour, #prototype-v2/readonly and #prototype-v2/map/readonly are the same two pages in read-only mode,
+ * #prototype-v2/real is the app on the person's own setup (read only, see real/RealRoot.tsx: it needs the real launch command and never builds the sample world), #prototype-v2/real-harness is the bare list that the reader's own test drives,
  * #prototype-v2/kit is the kit gallery, #prototype-v2/add is the Add test page, #prototype-v2/notes is the Choose notes test page, #prototype-v2/library is the Library test page (the app itself also holds the Library, behind the switch in its top bar). It uses the same in-memory store and seeded sample world as the old prototype (plus one skill with a second copy, see sample-copies.ts, and six starter agents in place of the generated ready-made ones, see starters.ts), so nothing is written anywhere.
  */
 import { useEffect, useState } from 'react';
@@ -21,6 +22,9 @@ import { HomeFlow } from './HomeFlow.js';
 import { KitGallery } from './KitGallery.js';
 import { NOTES_HASH, NotesHarness } from './notes/route.js';
 import { LIBRARY_HASH, LibraryHarness } from './library/route.js';
+import { REAL_HARNESS_HASH, REAL_HASH } from '../../shared/real/types.js';
+import { RealHarness } from './real/RealHarness.js';
+import { RealRoot } from './real/RealRoot.js';
 
 export type HomePage = 'app' | 'kit' | 'add' | 'notes' | 'library';
 
@@ -37,7 +41,24 @@ export function pageOf(hash: string): HomePage | null {
 /** True when the address belongs to the home app. */
 export const isHomeHash = (hash: string): boolean => hash === '#prototype-v2' || hash.startsWith('#prototype-v2/');
 
+/** The pages of real mode, which build no sample world at all. */
+type RealPage = 'real' | 'bare';
+const realPageOf = (hash: string): RealPage | null => (hash === REAL_HASH ? 'real' : hash === REAL_HARNESS_HASH ? 'bare' : null);
+
 function HomeRoot(): ReactElement {
+  const [real, setReal] = useState<RealPage | null>(() => realPageOf(location.hash));
+  useEffect(() => {
+    const change = (): void => setReal(realPageOf(location.hash));
+    window.addEventListener('hashchange', change);
+    return () => window.removeEventListener('hashchange', change);
+  }, []);
+  // Real mode never reaches the sample: the sample world is built only inside SampleRoot.
+  if (real === 'real') return <RealRoot />;
+  if (real === 'bare') return <RealHarness />;
+  return <SampleRoot />;
+}
+
+function SampleRoot(): ReactElement {
   const [store] = useState(() => createStore(withStartPoint(withLibrarySamples(withStarterAgents(withSampleCopies(loadWorld()))))));
   const [page, setPage] = useState<HomePage>(() => pageOf(location.hash) ?? 'app');
   // The address can ask for read only (#prototype-v2/readonly, #prototype-v2/map/readonly): the scope holds back every control that would change the setup.

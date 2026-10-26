@@ -148,6 +148,8 @@ export const WORDS = deepFreeze({
     tools: 'Tools let an agent reach outside services.',
     addEmpty: 'Skills, tools, and notes will show here.',
     historyEmpty: 'No history yet.',
+    /** Version history when the setup is only looked at, so nothing was ever saved. */
+    historyReadOnly: 'No history in read-only mode.',
     pointsDirty: 'Changes you have not saved will go away.',
     pointHere: 'You are here.',
     saveClean: CARD_WORDS.saveClean,
@@ -184,6 +186,8 @@ export const WORDS = deepFreeze({
     /** The "Read-only" mark: when the setup on show is the person's own, and when it is the made-up sample. */
     readOnlyReal: 'You are looking at your setup. Nothing here changes it.',
     readOnlySample: 'Read-only preview.',
+    /** The honest line about the app's own temporary files, said after `readOnlyReal` when the setup on show is the person's own. */
+    readOnlyTemp: 'The app keeps its own temporary files until you close it.',
   },
 });
 

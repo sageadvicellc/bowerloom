@@ -28,6 +28,7 @@ export const FIND_WORDS = deepFreeze({
     showDetails: 'Show details',
     hideDetails: 'Hide details',
     looksRight: 'Looks right',
+    showOnMap: 'Show on the map',
     yesRead: 'Yes, read them',
     notNow: 'Not now',
     back: 'Back',
@@ -39,7 +40,11 @@ export const FIND_WORDS = deepFreeze({
   hint: {
     welcomeLineOne: 'See everything your AI agents can do,',
     welcomeLineTwo: 'and change it in one place.',
+    /** The second line when the setup on show is the person's own: it is only looked at, so nothing is changed. */
+    welcomeLineTwoReal: 'all in one place.',
     welcomeNote: 'Nothing is changed until you press Save.',
+    /** The same line when the setup on show is the person's own: it is read only, so there is no Save. */
+    welcomeNoteReal: 'Read-only. Nothing here changes your setup.',
     pickAgents: 'Untick an agent to skip it.',
     pickOne: 'Tick at least one agent.',
     readOnly: 'Only the agents you ticked are opened.',

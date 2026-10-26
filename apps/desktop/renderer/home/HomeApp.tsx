@@ -83,7 +83,7 @@ import { SaveBar } from './save/SaveBar.js';
 import { MOTION } from '../motion-tokens.js';
 import { discardAction, goBackAction, removeAction, saveAction } from './store-actions.js';
 import { TourAnnouncer, TourOverlay } from './tour/TourOverlay.js';
-import { TOUR_STEPS } from './tour/steps.js';
+import { TOUR_STEPS, TOUR_STEPS_READ_ONLY } from './tour/steps.js';
 import { closingNoteSession, createTour, currentStep, tourReduce, tourSession } from './tour/tour.js';
 import { FIND_WORDS } from './first-run/find-words.js';
 import { FindPanel } from './first-run/FindPanel.js';
@@ -190,7 +190,7 @@ export function HomeApp({ skipped: skippedProp = NONE, onSkippedChange, autoTour
   const how = usePresence(howOpen);
   const [addTab, setAddTab] = useState<AddTab>(DEFAULT_TAB);
   const [lastCopy, setLastCopy] = useState<string | undefined>(undefined);
-  const [tour, tourDo] = useReducer(tourReduce, TOUR_STEPS, createTour);
+  const [tour, tourDo] = useReducer(tourReduce, dataSource === 'real' ? TOUR_STEPS_READ_ONLY : TOUR_STEPS, createTour);
   const panel = useRef<HTMLElement>(null);
   const body = useRef<HTMLDivElement>(null);
   const focusAfter = useRef<FocusAfter | null>(null);

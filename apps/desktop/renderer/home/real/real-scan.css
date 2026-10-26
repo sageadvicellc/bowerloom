@@ -1,0 +1,12 @@
+/*
+ * The real-setup scan inside the shell (RealScan.tsx). It borrows the Find screen's classes (find.css) for the rows, the tags, the buttons and the bar, so a person meets one thing
+ * twice. What is added here: the bar while the reader works has no count to fill, so its fill slides back and forth, and stays still under reduce motion. Text is 14 px or more.
+ */
+[data-home] .rs-flow .fr-progress-fill { transform: none; width: 40%; right: auto; }
+[data-home] .rs-flow .fr-progress-fill[data-full] { width: 100%; }
+[data-home] .rs-flow .fr-progress-fill[data-moving] { animation: rs-slide 1.2s ease-in-out infinite alternate; }
+@keyframes rs-slide { from { transform: translateX(0); } to { transform: translateX(150%); } }
+@media (prefers-reduced-motion: reduce) { [data-home] .rs-flow .fr-progress-fill[data-moving] { animation: none; } }
+[data-home] .rs-places .fr-agent-name { overflow-wrap: anywhere; }
+[data-home] .rs-places .fr-agent-job { white-space: normal; }
+[data-home] .rs-place .fr-paths li { overflow-wrap: anywhere; }

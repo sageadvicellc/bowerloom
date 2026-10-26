@@ -135,7 +135,7 @@ export function Sidebar(p: SidebarProps): ReactElement {
         </ul>
         <div className="hm-preview" data-preview="">
           <HelpPopover pill={p.readOnly ? WORDS.label.readOnly : WORDS.label.preview} label={p.readOnly ? WORDS.label.aboutReadOnly : WORDS.label.aboutPreview} place="above"
-            text={p.readOnly ? (p.real ? WORDS.popover.readOnlyReal : WORDS.popover.readOnlySample) : WORDS.popover.preview}
+            text={p.readOnly ? (p.real ? `${WORDS.popover.readOnlyReal} ${WORDS.popover.readOnlyTemp}` : WORDS.popover.readOnlySample) : WORDS.popover.preview}
             tip={{ text: p.readOnly ? WORDS.label.readOnly : WORDS.label.preview, side: 'right', off: !rail }} action={{ label: HOW_WORDS.label.link, onAction: p.onHow, quiet: true }} />
         </div>
       </div>

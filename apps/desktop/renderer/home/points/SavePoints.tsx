@@ -10,7 +10,7 @@ import { Button } from '../kit/Button.js';
 import { ShareSection } from '../share/ShareSection.js';
 import { WORDS } from '../words.js';
 import './points.css';
-import { EditButton } from '../read-only.js';
+import { EditButton, useReadOnly } from '../read-only.js';
 
 export interface SavePointsProps {
   rows: readonly SavePointRow[];
@@ -29,8 +29,10 @@ export interface SavePointsProps {
 const namesChange = (name: string): boolean => /^(Removed|Added|Changed|Kept)\b/.test(name);
 
 export function SavePoints({ rows, unsaved, which = null, onGoBack, onShare, onOpenFile }: SavePointsProps): ReactElement {
+  const readOnly = useReadOnly();
   const share = <ShareSection onShare={onShare} onOpenFile={onOpenFile} />;
-  if (rows.length === 0) return <><p className="kit-hint">{WORDS.hint.historyEmpty}</p>{share}</>;
+  // A setup that is only looked at has no history: nothing was ever saved.
+  if (rows.length === 0) return <><p className="kit-hint" data-history-empty="">{readOnly ? WORDS.hint.historyReadOnly : WORDS.hint.historyEmpty}</p>{share}</>;
   return (
     <>
       {unsaved ? (

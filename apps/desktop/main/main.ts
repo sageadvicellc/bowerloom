@@ -128,9 +128,8 @@ app.on('web-contents-created', (_event, contents) => hardenContents(contents));
 app.whenReady().then(async () => {
   // The page is served by the app itself, from its own renderer folder only.
   protocol.handle(APP_SCHEME, async request => {
-    const url = new URL(request.url), asked = url.host === APP_HOST ? resolveAppFile(rendererDir, url.pathname) : null;
-    // Real mode serves its own page at the app address (the same CSP, its own script); every other mode serves the page it always did.
-    const file = prototypeReal && asked === join(rendererDir, 'index.html') ? join(rendererDir, 'real.html') : asked;
+    // Every mode serves the same page, index.html, with the same policy. Real mode differs only in the address (#prototype-v2/real) and in the bridge its window gets.
+    const url = new URL(request.url), file = url.host === APP_HOST ? resolveAppFile(rendererDir, url.pathname) : null;
     const type = file === null ? undefined : TYPES[file.slice(file.lastIndexOf('.'))];
     if (file === null || type === undefined) return new Response('Not found', { status: 404 });
     try { return new Response(await readFile(file), { headers: { 'content-type': type } }); } catch { return new Response('Not found', { status: 404 }); }
