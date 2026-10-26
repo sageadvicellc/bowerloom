@@ -16,7 +16,9 @@ let home: Home;
 const page = (): Page => home.page;
 const dialog = (): Locator => page().getByRole('dialog', { name: 'Tour' });
 const find = (): Locator => page().locator('[data-screen="find"]');
-const tile = (n: number): Locator => page().locator('.fr-tile').nth(n);
+const rows = (): Locator => page().locator('.fr-agent');
+const panelFind = (): Locator => page().locator('aside.hm-panel[data-find]');
+const findItem = (): Locator => page().locator('nav.hm-nav').getByRole('button', { name: 'Find more', exact: true });
 const agentCards = (): Locator => page().locator('.hm-grid .kit-card[data-kind="agent"]');
 
 test.beforeAll(async () => { test.setTimeout(240_000); home = await launchHome(); });
@@ -79,28 +81,26 @@ test('Welcome comes back on every launch, and the map address skips it and the t
 });
 
 // ---- 2. Find
-test('the tiles light one by one, each with a count that matches the map, and the places show with their counts', async () => {
+test('the search shows its progress step by step, then one list of agents, with no tile for an app and no count for one; the list matches the map', async () => {
   const p = page();
   await p.getByRole('button', { name: 'Find my agents' }).click();
   await expect(find()).toBeVisible();
   await expect(p.getByRole('heading', { level: 1, name: 'Looking for your agents' })).toBeVisible();
-  await expect(p.locator('.fr-tile')).toHaveCount(3);
-  await expect(p.locator('.fr-tile-name')).toHaveText(['Claude Code', 'Codex', 'OpenCode']);
-  // Not lit yet, or lit one at a time: a later tile is never lit before an earlier one.
-  const seen: string[][] = [];
+  await expect(p.locator('.fr-tile')).toHaveCount(0);
+  // The progress goes 0, 1, 2, 3 in turn and never back.
+  const seen: number[] = [];
   for (let i = 0; i < 400; i += 1) {
-    const states = await p.locator('.fr-tile').evaluateAll(els => els.map(e => e.getAttribute('data-state') ?? ''));
-    if (seen.length === 0 || seen[seen.length - 1]!.join() !== states.join()) seen.push(states);
-    if (states.every(s => s !== 'waiting')) break;
+    const now = await p.locator('[data-searching]').getAttribute('aria-valuenow', { timeout: 200 }).catch(() => null);
+    if (now === null) break;
+    const n = Number(now);
+    if (seen.length === 0 || seen[seen.length - 1] !== n) seen.push(n);
     await p.waitForTimeout(40);
   }
   expect(seen.length, JSON.stringify(seen)).toBeGreaterThanOrEqual(3);
-  for (const states of seen) { const firstWaiting = states.indexOf('waiting'); if (firstWaiting >= 0) expect(states.slice(firstWaiting).every(s => s === 'waiting'), JSON.stringify(states)).toBe(true); }
-  await expect(p.locator('.fr-tile-status')).toHaveText(['9 agents', '4 agents', '4 agents']);
+  expect(seen).toEqual([...seen].sort((a, b) => a - b));
   await expect(p.getByRole('heading', { level: 1, name: 'Found 10 agents' })).toBeVisible();
-  await expect(p.getByRole('heading', { level: 2, name: 'Where I looked' })).toBeVisible();
-  await expect(p.locator('.fr-place-name')).toHaveText(['Your home folder', 'Client site', 'Holiday trips']);
-  await expect(p.locator('.fr-place-count')).toHaveText(['8 agents', '1 agent', '1 agent']);
+  await expect(rows()).toHaveCount(10);
+  await expect(p.locator('.fr-agent-name').first()).toHaveText('Inbox sorter');
   await expect(p.getByRole('button', { name: 'Looks right' })).toBeFocused();
   expect(await budget()).toEqual([]);
   expect(await smallText()).toEqual([]);
@@ -128,35 +128,35 @@ test('"Looks right" asks "Read what is inside?" and nothing is read until "Yes, 
   await expect(p.getByRole('button', { name: 'Yes, read them' })).toBeFocused();
   await expect(p.getByRole('button', { name: 'Not now' })).toBeVisible();
   await expect(p.getByText('Nothing is changed. Keys and passwords are never copied.')).toBeVisible();
-  await expect(p.getByText('3 places, 10 agents')).toBeVisible();
+  await expect(p.getByText('10 agents', { exact: true })).toBeVisible();
   await expect(p.locator('.hm-grid')).toHaveCount(0);
   await expect(p.locator('progress')).toHaveCount(0);
   expect(await budget()).toEqual([]);
   expect(await smallText()).toEqual([]);
 });
 
-test('"Not now" reads nothing and goes back to Welcome; "Back" returns to the places with the ticks kept', async () => {
+test('"Not now" reads nothing and goes back to Welcome; "Back" returns to the list with the ticks kept', async () => {
   const p = page();
   await toPlaces();
-  await p.getByRole('checkbox', { name: /Client site/ }).uncheck();
+  await p.getByRole('checkbox', { name: 'Money tracker' }).uncheck();
   await p.getByRole('button', { name: 'Looks right' }).click();
-  await expect(p.getByText('2 places, 9 agents')).toBeVisible();
+  await expect(p.getByText('9 agents', { exact: true })).toBeVisible();
   await p.getByRole('button', { name: 'Back' }).click();
-  await expect(p.getByRole('heading', { level: 2, name: 'Where I looked' })).toBeVisible();
-  await expect(p.getByRole('checkbox', { name: /Client site/ })).not.toBeChecked();
+  await expect(p.getByRole('heading', { level: 1, name: 'Found 10 agents' })).toBeVisible();
+  await expect(p.getByRole('checkbox', { name: 'Money tracker' })).not.toBeChecked();
   await p.getByRole('button', { name: 'Looks right' }).click();
   await p.getByRole('button', { name: 'Not now' }).click();
   await expect(p.locator('[data-screen="welcome"]')).toBeVisible();
   await expect(p.locator('.hm-grid')).toHaveCount(0);
 });
 
-test('"Looks right" cannot be pressed with every place unticked, and says why', async () => {
+test('"Looks right" cannot be pressed with every agent unticked, and says why', async () => {
   const p = page();
   await toPlaces();
-  for (const name of ['Your home folder', 'Client site', 'Holiday trips']) await p.getByRole('checkbox', { name: new RegExp(name) }).uncheck();
+  await p.getByRole('button', { name: 'Clear', exact: true }).click();
   await expect(p.getByRole('button', { name: 'Looks right' })).toBeDisabled();
-  await expect(p.getByText('Tick at least one place.')).toBeVisible();
-  await p.getByRole('checkbox', { name: /Holiday trips/ }).check();
+  await expect(p.getByText('Tick at least one agent.')).toBeVisible();
+  await p.getByRole('checkbox', { name: 'Trip organizer' }).check();
   await expect(p.getByRole('button', { name: 'Looks right' })).toBeEnabled();
 });
 
@@ -243,8 +243,9 @@ test('the tour does not start again after Find more, and Help replays it', async
   const p = page();
   await toMap();
   await endTour();
-  await p.getByRole('button', { name: 'Find more' }).click();
-  await expect(find()).toBeVisible();
+  await findItem().click();
+  await expect(panelFind()).toBeVisible();
+  await expect(find()).toHaveCount(0);   // a panel in the right column, not the full page
   await expect(p.locator('[data-screen="welcome"]')).toHaveCount(0);
   await expect(p.getByRole('button', { name: 'Looks right' })).toBeVisible();
   await p.getByRole('button', { name: 'Looks right' }).click();
@@ -257,25 +258,25 @@ test('the tour does not start again after Find more, and Help replays it', async
   await expect(dialog().getByText('1 of 7')).toBeVisible();
 });
 
-// ---- Skipped places
-test('an unticked place is skipped: its agents stay off the map, and Find more keeps the choice and can bring them back', async () => {
+// ---- Skipped agents
+test('an unticked agent is skipped: it stays off the map, and Find more keeps the choice and can bring it back', async () => {
   const p = page();
   await toPlaces();
-  await p.getByRole('checkbox', { name: /Your home folder/ }).uncheck();
+  for (const name of ['Inbox sorter', 'Interview notetaker', 'Meeting assistant']) await p.getByRole('checkbox', { name }).uncheck();
   await p.getByRole('button', { name: 'Looks right' }).click();
   await p.getByRole('button', { name: 'Yes, read them' }).click();
   await expect(p.getByRole('heading', { level: 1, name: 'Agents', exact: true })).toBeVisible();
-  await expect(agentCards()).toHaveCount(2);
-  await expect(p.getByText('2 agents.')).toBeVisible();
+  await expect(agentCards()).toHaveCount(7);
+  await expect(p.getByText('7 agents.')).toBeVisible();
   await endTour();
-  await p.getByRole('button', { name: 'Find more' }).click();
+  await findItem().click();
   await expect(p.getByRole('button', { name: 'Looks right' })).toBeVisible();
-  await expect(p.getByRole('checkbox', { name: /Your home folder/ })).not.toBeChecked();
-  await expect(p.getByRole('checkbox', { name: /Client site/ })).toBeChecked();
-  await p.getByRole('checkbox', { name: /Your home folder/ }).check();
+  await expect(panelFind().getByRole('checkbox', { name: 'Inbox sorter' })).not.toBeChecked();
+  await expect(panelFind().getByRole('checkbox', { name: 'Money tracker' })).toBeChecked();
+  await panelFind().getByRole('checkbox', { name: 'Inbox sorter' }).check();
   await p.getByRole('button', { name: 'Looks right' }).click();
   await p.getByRole('button', { name: 'Yes, read them' }).click();
-  await expect(agentCards()).toHaveCount(10);
+  await expect(agentCards()).toHaveCount(8);
 });
 
 test('"Not now" in Find more goes back to the map as it was', async () => {
@@ -336,13 +337,13 @@ test('the whole first minute works with the keyboard alone', async () => {
   await expect(p.getByRole('button', { name: 'Find my agents' })).toBeFocused();
   await p.keyboard.press('Enter');
   await expect(p.getByRole('button', { name: 'Looks right' })).toBeFocused();
-  // Tab reaches a tick, Space unticks it, Space ticks it again.
+  // Tab reaches a tick (the last agent of the list), Space unticks it, Space ticks it again.
   await p.keyboard.press('Shift+Tab');
-  await expect(p.getByRole('checkbox', { name: /Holiday trips/ })).toBeFocused();
+  await expect(p.getByRole('checkbox', { name: 'Writing coach' })).toBeFocused();
   await p.keyboard.press('Space');
-  await expect(p.getByRole('checkbox', { name: /Holiday trips/ })).not.toBeChecked();
+  await expect(p.getByRole('checkbox', { name: 'Writing coach' })).not.toBeChecked();
   await p.keyboard.press('Space');
-  await expect(p.getByRole('checkbox', { name: /Holiday trips/ })).toBeChecked();
+  await expect(p.getByRole('checkbox', { name: 'Writing coach' })).toBeChecked();
   await p.keyboard.press('Tab');
   await expect(p.getByRole('button', { name: 'Looks right' })).toBeFocused();
   await p.keyboard.press('Tab');
@@ -388,37 +389,29 @@ test('Escape at the waiting step skips the tour', async () => {
 });
 
 // ---- Reduce motion
-test('with reduce motion on, the tiles just appear lit and nothing animates', async () => {
+test('with reduce motion on, the list just appears and nothing animates', async () => {
   const p = page();
   await p.emulateMedia({ reducedMotion: 'reduce' });
   await fresh(p, undefined, { welcome: true });
   await p.getByRole('button', { name: 'Find my agents' }).click();
   await expect(p.getByRole('button', { name: 'Looks right' })).toBeVisible();
-  await expect(p.locator('.fr-tile[data-state="found"]')).toHaveCount(3);
+  await expect(rows()).toHaveCount(10);
   await framesPainted(p);
   expect(await p.evaluate(() => document.getAnimations().length)).toBe(0);
-  expect(await p.evaluate(() => [...document.querySelectorAll('.fr-tile, .fr-tile *')].every(e => getComputedStyle(e).animationName === 'none'))).toBe(true);
-  expect(await p.evaluate(() => getComputedStyle(document.querySelector('.fr-tile')!).transitionDuration)).toBe('0s');
+  expect(await p.evaluate(() => [...document.querySelectorAll('.fr-agent, .fr-agent *')].every(e => getComputedStyle(e).animationName === 'none'))).toBe(true);
   await p.getByRole('button', { name: 'Looks right' }).click();
   await p.getByRole('button', { name: 'Yes, read them' }).click();
   await expect(p.getByRole('heading', { level: 1, name: 'Agents', exact: true })).toBeVisible();
   await expect(dialog()).toBeVisible();
 });
 
-test('with motion on, a tile lights with one short eased-out change, its parts do not wait for each other, and nothing loops', async () => {
+test('with motion on, the search bar grows with one short eased-out change and nothing loops', async () => {
   const p = page();
   await toFind();
-  await expect(tile(0)).toHaveAttribute('data-state', 'found');
-  const facts = await p.evaluate(() => {
-    const read = (sel: string): { animation: string; delay: string; duration: string; ease: string; property: string } => { const s = getComputedStyle(document.querySelector(sel)!); return { animation: s.animationName, delay: s.transitionDelay, duration: s.transitionDuration, ease: s.transitionTimingFunction, property: s.transitionProperty }; };
-    return { tile: read('.fr-tile[data-state="found"]'), glyph: read('.fr-tile[data-state="found"] .kit-tile'), name: read('.fr-tile[data-state="found"] .fr-tile-name'), status: read('.fr-tile[data-state="found"] .fr-tile-status') };
-  });
-  // The tile itself changes fill, edge and colour over 240 ms with the strong ease-out; its picture comes to full strength over the same time.
-  expect(facts.tile.duration.split(', ').every(d => d === '0.24s')).toBe(true);
-  expect(facts.tile.ease.replaceAll('cubic-bezier(0.23, 1, 0.32, 1)', 'strong').split(', ').every(e => e === 'strong')).toBe(true);
-  expect(facts.glyph).toMatchObject({ animation: 'none', delay: '0s', duration: '0.24s', property: 'opacity' });
-  // The name and the status have no animation and no delay of their own: the old 80 ms steps and the 6 px rise are gone.
-  for (const part of [facts.name, facts.status]) expect(part).toMatchObject({ animation: 'none', delay: '0s' });
+  const facts = await p.evaluate(() => { const s = getComputedStyle(document.querySelector('.fr-progress-fill')!); return { animation: s.animationName, delay: s.transitionDelay, duration: s.transitionDuration, ease: s.transitionTimingFunction, property: s.transitionProperty }; });
+  // The fill grows by scaleX over 240 ms with the strong ease-out, with no delay and no animation of its own.
+  expect(facts).toMatchObject({ animation: 'none', delay: '0s', duration: '0.24s', property: 'transform' });
+  expect(facts.ease.replaceAll('cubic-bezier(0.23, 1, 0.32, 1)', 'strong')).toBe('strong');
   await expect(p.getByRole('button', { name: 'Looks right' })).toBeVisible();
   await animationsDone(p);
   expect(await p.evaluate(() => document.getAnimations().filter(a => a.effect?.getComputedTiming().iterations === Infinity).length)).toBe(0);
@@ -436,10 +429,9 @@ for (const [w, h] of SIZES) for (const look of THEMES) {
     expect(await overflowX()).toBeLessThanOrEqual(0);
     expect(await smallText()).toEqual([]); expect(await budget()).toEqual([]);
     await shot(p, 'u3-1-welcome', w, h, look);
-    // Find, in the middle of the search: the second tile is lit and the third is not.
+    // Find, in the middle of the search: the bar is a third of the way, and has settled.
     await p.getByRole('button', { name: 'Find my agents' }).click();
-    // The middle of the search: the first tile is lit and has settled, the second is not lit yet.
-    await p.waitForFunction(() => { const t = document.querySelectorAll('.fr-tile'); return t[0]?.getAttribute('data-state') === 'found' && t[1]?.getAttribute('data-state') === 'waiting' && document.getAnimations().every(a => a.playState !== 'running'); });
+    await p.waitForFunction(() => document.querySelector('[data-searching]')?.getAttribute('aria-valuenow') === '1' && document.getAnimations().every(a => a.playState !== 'running'));
     await shot(p, 'u3-2-find-mid', w, h, look);
     await expect(p.getByRole('button', { name: 'Looks right' })).toBeVisible();
     await animationsDone(p);

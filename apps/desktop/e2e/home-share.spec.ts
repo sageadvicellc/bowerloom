@@ -269,12 +269,13 @@ for (const left of [0, 3]) {
 }
 
 // ---- Agents that Find skipped.
-test('agents of a place skipped in Find are not offered in Add or in Share', async () => {
+test('agents that Find skipped are not offered in Add or in Share', async () => {
   const p = page();
   await fresh(p, undefined, { welcome: true });
   await resize(p, 1440, 900);
   await p.getByRole('button', { name: 'Find my agents' }).click();
-  await p.getByRole('checkbox', { name: /Your home folder/ }).uncheck();
+  await p.getByRole('button', { name: 'Clear', exact: true }).click();
+  await p.getByRole('checkbox', { name: 'Money tracker' }).check(); await p.getByRole('checkbox', { name: 'Trip organizer' }).check();
   await p.getByRole('button', { name: 'Looks right' }).click();
   await p.getByRole('button', { name: 'Yes, read them' }).click();
   await expect(p.locator('.hm-grid .kit-card[data-kind="agent"]')).toHaveCount(2);

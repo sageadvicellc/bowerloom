@@ -82,6 +82,7 @@ import { TourAnnouncer, TourOverlay } from './tour/TourOverlay.js';
 import { TOUR_STEPS } from './tour/steps.js';
 import { closingNoteSession, createTour, currentStep, tourReduce, tourSession } from './tour/tour.js';
 import { FIND_WORDS } from './first-run/find-words.js';
+import { FindPanel } from './first-run/FindPanel.js';
 import { WORDS, agentsCount, changesCount, removedNote } from './words.js';
 import './home-tokens.css';
 import './kit/kit.css';
@@ -104,14 +105,14 @@ const FRESH_MS = MOTION.home.ring.holdMs;
 const MOVING_MS = 320;
 
 export interface HomeAppProps {
-  /** The ids of agents to keep off the map (their place was unticked in Find). */
+  /** The ids of agents to keep off the map (they were unticked in Find). */
   skipped?: readonly string[];
+  /** Called with the new list when "Find more" skips or brings back agents. Without it the map keeps the list itself, starting from `skipped`. */
+  onSkippedChange?(skipped: readonly string[]): void;
   /** Start the tour by itself, once in a session. */
   autoTour?: boolean;
   /** Allow the closing note after the first Save. */
   closingNote?: boolean;
-  /** Reopen Find. Without it the map has no "Find more" button. */
-  onFindMore?(): void;
   /**
    * What the Save bar last did ("Saved", "Back to how it was"), kept outside the map so it survives a visit to Find. Without it the map keeps its own.
    */
@@ -140,7 +141,7 @@ const flip = (current: Fresh | null): 0 | 1 => (current !== null && current.phas
 
 const freshOf = (fresh: Fresh | null, picked: string | null): string | null => (fresh !== null && fresh.entryId !== null && fresh.agentId === picked ? fresh.entryId : null);
 
-export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false, onFindMore, barPhase, dataSource = 'sample' }: HomeAppProps = {}): ReactElement {
+export function HomeApp({ skipped: skippedProp = NONE, onSkippedChange, autoTour = false, closingNote = false, barPhase, dataSource = 'sample' }: HomeAppProps = {}): ReactElement {
   const readOnly = useReadOnly();
   const { state, dispatch } = useProtoStore();
   const [view, setView] = useState<View>('agents');
@@ -155,6 +156,11 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   const navMode = navModeOf(width, navChosen);
   const navShown = navMode === 'open' || (navMode === 'hidden' && overlay);
   // The Library page the navigation opens on, and whether its four pages show under "Library".
+  // Find more: the same scan as the first one, as a panel in the right column. It is the person's to open and close; the agents it skips are kept here (or by the page that holds the map).
+  const [findOpen, setFindOpen] = useState(false);
+  const [ownSkipped, setOwnSkipped] = useState<readonly string[]>(skippedProp);
+  const skipped = onSkippedChange === undefined ? ownSkipped : skippedProp;
+  const setSkipped = onSkippedChange ?? setOwnSkipped;
   const [libraryKind, setLibraryKind] = useState<LibraryKind>('skill');
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [webOpen, setWebOpen] = useState(false);
@@ -242,7 +248,8 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   }, [tour.status, selected, agents]);
   // Ctrl+Z (Cmd+Z on a Mac) takes back the last change and Shift+Ctrl+Z (Shift+Cmd+Z) puts it back, unless the focus is in a text field (which keeps its own undo) or a layer
   // that holds the page (a dialog, the Share sheet, the tour) is open. The store keeps the steps; this only asks for one.
-  const keysBlocked = useRef(false);
+  const keysBlocked = useRef(false), drawerOpen = useRef(false);
+  drawerOpen.current = drawer !== null;
   keysBlocked.current = tour.status === 'running' || sharing || howOpen || choosing || copiesFor !== null;
   useEffect(() => {
     const key = (e: KeyboardEvent): void => {
@@ -285,6 +292,20 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
   }, []);
+  /** Opens the Find more panel in the right column: the page is the map (the panel holds the agents), the details column is shown, and the focus goes into the panel. */
+  const openFind = (): void => { setView('agents'); setDetailsOpen(true); setDrawer(null); setFindOpen(true); };
+  /** Takes the panel away and puts the focus back on its item of the navigation. */
+  const closeFind = (): void => { setFindOpen(false); requestAnimationFrame(() => findButton.current?.focus()); };
+  // Escape closes Find more, from anywhere on the page, when no layer above it (a tooltip, a popover, a drawer, a dialog, the tour) has handled the key.
+  useEffect(() => {
+    if (!findOpen) return undefined;
+    const key = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape' || e.defaultPrevented || keysBlocked.current || drawerOpen.current || document.querySelector('[aria-modal="true"]') !== null) return;
+      e.preventDefault(); closeFind();
+    };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  }, [findOpen]);
   // The navigation drawer (under 900 px) closes with Escape, and the focus goes back to its toggle. A layer above it (a tooltip, a popover) has handled the key first.
   useEffect(() => {
     if (!overlay) return undefined;
@@ -343,7 +364,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   });
 
   // The tour dims the page and points at the bar, so a drawer, the Choose notes sheet or the Share sheet that is open would only get in its way: they close when the tour starts.
-  useEffect(() => { if (tour.status === 'running') { setView('agents'); setDrawer(null); setChoosing(false); setSharing(false); setDetailsOpen(true); setOverlay(false); } }, [tour.status]);
+  useEffect(() => { if (tour.status === 'running') { setView('agents'); setDrawer(null); setChoosing(false); setSharing(false); setDetailsOpen(true); setOverlay(false); setFindOpen(false); } }, [tour.status]);
   // The mark for a card that was just added goes by itself, and the card is brought into view.
   useEffect(() => {
     if (fresh === null) return undefined;
@@ -504,9 +525,9 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   return (
     <div className="hm-root" data-home="" data-nav={navMode}>
       <a className="hm-skip" href="#hm-panel-title" onClick={skipToDetails}>{WORDS.label.skipToDetails}</a>
-      <Sidebar mode={navMode} overlay={navMode === 'hidden' && overlay} view={view} libraryKind={libraryKind} libraryOpen={libraryOpen} addOpen={drawer === 'add'} historyOpen={drawer === 'points'} findOpen={false}
+      <Sidebar mode={navMode} overlay={navMode === 'hidden' && overlay} view={view} libraryKind={libraryKind} libraryOpen={libraryOpen} addOpen={drawer === 'add'} historyOpen={drawer === 'points'} findOpen={findOpen}
         readOnly={readOnly} real={dataSource === 'real'} toggleRef={navToggle} addRef={addButton} historyRef={clock} findRef={findButton}
-        onToggle={toggleNav} onAgents={act(goAgents)} onLibrary={kind => { setOverlay(false); goLibrary(kind); }} onAdd={act(() => toggle('add'))} onFind={act(() => onFindMore?.())}
+        onToggle={toggleNav} onAgents={act(goAgents)} onLibrary={kind => { setOverlay(false); goLibrary(kind); }} onAdd={act(() => toggle('add'))} onFind={act(() => { if (findOpen) closeFind(); else openFind(); })}
         onShare={act(() => setSharing(true))} onHistory={act(() => toggle('points'))} onTour={() => { setSelected(null); tourDo('replay'); }} onHow={() => setHowOpen(true)} />
       {navMode === 'hidden' && overlay ? <div className="hm-nav-scrim" data-nav-scrim="" aria-hidden="true" onClick={() => { setOverlay(false); requestAnimationFrame(() => topToggle.current?.focus()); }} /> : null}
 
@@ -552,9 +573,13 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
               </ul>
             </main>
 
-            <aside className="hm-panel" ref={panel} data-tour="details" id="hm-panel" aria-labelledby="hm-panel-title">
-              <DetailsPanel details={details} onSelect={next => { setSelected(next); tourDo('acted'); }} onRemove={remove} onBadgePress={openCopies} onChoose={choose} freshId={freshOf(fresh, picked)} freshPhase={fresh?.phase ?? 0} freshNotes={freshNotes} skillTrust={skillFacts} toolTrust={toolFacts} places={places} />
-            </aside>
+            {findOpen ? (
+              <FindPanel world={state.draft} committed={state.committed} skipped={skipped} onClose={closeFind} onDone={ids => { setSkipped(ids); closeFind(); }} />
+            ) : (
+              <aside className="hm-panel" ref={panel} data-tour="details" id="hm-panel" aria-labelledby="hm-panel-title">
+                <DetailsPanel details={details} onSelect={next => { setSelected(next); tourDo('acted'); }} onRemove={remove} onBadgePress={openCopies} onChoose={choose} freshId={freshOf(fresh, picked)} freshPhase={fresh?.phase ?? 0} freshNotes={freshNotes} skillTrust={skillFacts} toolTrust={toolFacts} places={places} />
+              </aside>
+            )}
             </div>
           ) : (
             <div className="hm-view" id="hm-view-library">

@@ -38,7 +38,7 @@ for (const [group, limit] of groups) {
 
 test('the storyboard words are used as written', () => {
   const l = FIND_WORDS.label, h = FIND_WORDS.hint;
-  assert.deepEqual([l.findMyAgents, l.looksRight, l.showDetails, l.readTitle, l.yesRead, l.notNow, l.whereILooked, l.notFound, l.findMore], ['Find my agents', 'Looks right', 'Show details', 'Read what is inside?', 'Yes, read them', 'Not now', 'Where I looked', 'Not found', 'Find more']);
+  assert.deepEqual([l.findMyAgents, l.looksRight, l.showDetails, l.readTitle, l.yesRead, l.notNow, l.whereILooked, l.selectAll, l.findMore], ['Find my agents', 'Looks right', 'Show details', 'Read what is inside?', 'Yes, read them', 'Not now', 'Where I looked', 'Select all', 'Find more']);
   assert.equal(`${h.welcomeLineOne} ${h.welcomeLineTwo}`, 'See everything your AI agents can do, and change it in one place.');
   assert.equal(h.closingNote, 'Saved in this preview. Your files are untouched.', 'the note after the first Save says only that it was saved');
   assert.doesNotMatch(h.closingNote, /tour|Help/i);
@@ -49,10 +49,10 @@ test('no Welcome or Find word is a file path', () => {
   for (const group of ['label', 'hint'] as const) for (const text of Object.values(FIND_WORDS[group])) assert.doesNotMatch(text, /[/\\]|\.claude|\.codex|\.opencode/, text);
 });
 
-test('the words built from numbers and names stay inside the budget, even with a five-word place', () => {
-  const built = [foundTitle(0), foundTitle(1), foundTitle(10), readSummary(1, 1), readSummary(3, 10), readingNow('Your home folder'), readingNow('One two three four five'), readProgress(2, 3)];
+test('the words built from numbers and names stay inside the budget, even with a five-word agent name', () => {
+  const built = [foundTitle(0), foundTitle(1), foundTitle(10), readSummary(1), readSummary(10), readingNow('Meeting assistant'), readingNow('One two three four five'), readProgress(2, 3)];
   for (const text of built) { assert.deepEqual(assertTextBudget(`<p>${text}</p>`), [], text); assert.equal(bannedIn(text), null, text); }
-  assert.equal(foundTitle(10), 'Found 10 agents'); assert.equal(foundTitle(1), 'Found 1 agent'); assert.equal(readSummary(3, 10), '3 places, 10 agents');
+  assert.equal(foundTitle(10), 'Found 10 agents'); assert.equal(foundTitle(1), 'Found 1 agent'); assert.equal(readSummary(10), '10 agents');
   assert.ok(countWords(foundTitle(10)) <= LIMITS.label, 'it is a heading');
 });
 
@@ -65,12 +65,12 @@ test('Welcome renders the logo, two lines of one sentence, one button and one qu
   assert.doesNotMatch(m, /harness/i);
 });
 
-test('Find draws three tiles that wait, the first time, and no folder path anywhere', () => {
+test('Find draws a search that waits, the first time, with no tile for an app and no folder path anywhere', () => {
   const store = createStore(world());
   const m = renderToStaticMarkup(createElement(ProtoProvider, { store }, createElement(FindScreen, { world: store.getState().draft, onLeave: none, onDone: none })));
   assert.deepEqual(assertTextBudget(m), []);
-  assert.equal([...m.matchAll(/class="fr-tile"/g)].length, 3);
-  assert.deepEqual([...m.matchAll(/data-state="(\w+)"/g)].map(x => x[1]), ['waiting', 'waiting', 'waiting']);
+  assert.equal([...m.matchAll(/class="fr-tile"/g)].length, 0);
+  assert.match(m, /role="progressbar"[^>]*aria-valuenow="0"/);
   assert.match(m, /Looking for your agents/);
   assert.doesNotMatch(m, /\/Users|\.claude|\.codex|\.opencode/);
 });

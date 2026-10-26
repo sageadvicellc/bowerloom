@@ -135,7 +135,7 @@ test('Find more does not make the bar forget that it just saved (review items 5 
 });
 
 // ---- Item 12: Find more with agents that have changes.
-test('a place whose agents have changes that wait stays ticked, and the screen says why (review item 12)', async () => {
+test('an agent that has changes that wait stays ticked in Find more, and the panel says why (review item 12)', async () => {
   const p = page();
   await pick('Meeting assistant');
   await removeFirstSkill();
@@ -143,8 +143,9 @@ test('a place whose agents have changes that wait stays ticked, and the screen s
   await expect(p.getByRole('button', { name: 'Looks right' })).toBeVisible();
   const note = p.locator('.fr-unsaved');
   await expect(note).toHaveCount(1);
-  await expect(note).toHaveText(/^\d+ agents? here (has|have) changes you have not saved\.$/);
+  await expect(note).toHaveText('This agent has changes you have not saved.');
   const box = note.locator('xpath=ancestor::li[1]').getByRole('checkbox');
+  await expect(note.locator('xpath=ancestor::aside[1]')).toHaveAttribute('data-find', '');   // in the right column, not on a page
   await expect(box).toBeChecked();
   await expect(box).toBeDisabled();
   expect(await budget()).toEqual([]);

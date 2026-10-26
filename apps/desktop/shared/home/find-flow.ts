@@ -1,5 +1,5 @@
 /**
- * The Find flow of the first minute, as a pure machine: the tiles light one by one, the places show, the person ticks the ones to read, and a second
+ * The Find flow of the first minute, as a pure machine: the search lights step by step, the list shows (a tick is an agent; the machine only knows ids), the person ticks the ones to read, and a second
  * question comes before anything is read ("Read what is inside?"). Nothing is read before the person says yes to that question. No React, no DOM, no clock:
  * the screen decides when each step happens (a timer, or at once under reduce motion) and sends the matching action.
  *
@@ -24,6 +24,8 @@ export interface FindState {
 export type FindAction =
   | { readonly type: 'light' } | { readonly type: 'lightAll' } | { readonly type: 'settle' }
   | { readonly type: 'toggle'; readonly id: string }
+  /** Ticks every id, or unticks every id except those in `keep` (the ones that cannot be skipped). Only on the list step. */
+  | { readonly type: 'selectAll' } | { readonly type: 'clear'; readonly keep: readonly string[] }
   | { readonly type: 'looksRight' } | { readonly type: 'back' } | { readonly type: 'yes' } | { readonly type: 'notNow' }
   | { readonly type: 'read' } | { readonly type: 'readAll' };
 
@@ -48,6 +50,8 @@ export function findReduce(s: FindState, action: FindAction): FindState {
       const on = s.ticked.includes(action.id);
       return make(s, { ticked: Object.freeze(s.places.filter(id => (id === action.id ? !on : s.ticked.includes(id)))) });
     }
+    case 'selectAll': return s.step === 'places' ? make(s, { ticked: Object.freeze([...s.places]) }) : s;
+    case 'clear': return s.step === 'places' ? make(s, { ticked: Object.freeze(s.places.filter(id => action.keep.includes(id))) }) : s;
     case 'looksRight': return s.step === 'places' && s.ticked.length > 0 ? make(s, { step: 'confirm', read: 0 }) : s;
     case 'back': return s.step === 'confirm' ? make(s, { step: 'places' }) : s;
     case 'yes': return s.step === 'confirm' ? make(s, { step: 'reading', read: 0 }) : s;

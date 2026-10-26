@@ -16,13 +16,15 @@ export const FIND_WORDS = deepFreeze({
   label: {
     findMyAgents: 'Find my agents',
     lookingTitle: 'Looking for your agents',
+    searching: 'Search progress',
+    selectAll: 'Select all',
+    clearAll: 'Clear',
+    agentsFound: 'Agents found',
+    worksWith: 'Works with',
     readTitle: 'Read what is inside?',
     readingTitle: 'Reading your agents',
     nothingTitle: 'No agents found',
     whereILooked: 'Where I looked',
-    toolsFound: 'Tools found',
-    looking: 'Looking',
-    notFound: 'Not found',
     showDetails: 'Show details',
     hideDetails: 'Hide details',
     looksRight: 'Looks right',
@@ -32,19 +34,17 @@ export const FIND_WORDS = deepFreeze({
     close: 'Close',
     findMore: 'Find more',
     progress: 'Reading progress',
-    places: 'Places to read',
   },
   /** One line under a label, or one line of text: at most 12 words. */
   hint: {
     welcomeLineOne: 'See everything your AI agents can do,',
     welcomeLineTwo: 'and change it in one place.',
     welcomeNote: 'Nothing is changed until you press Save.',
-    placesHint: 'Untick a place to skip it.',
-    pickOne: 'Tick at least one place.',
-    readOnly: 'Only the places you ticked are opened.',
+    pickAgents: 'Untick an agent to skip it.',
+    pickOne: 'Tick at least one agent.',
+    readOnly: 'Only the agents you ticked are opened.',
     readSafe: 'Nothing is changed. Keys and passwords are never copied.',
     nothingHint: 'Nothing was found on this computer.',
-    appsNote: 'These are the apps your agents work in.',
     closingNote: 'Saved in this preview. Your files are untouched.',
   },
   popover: {},
@@ -52,13 +52,11 @@ export const FIND_WORDS = deepFreeze({
 
 /** "Found 10 agents" or "Found 1 agent". */
 export const foundTitle = (agents: number): string => `Found ${agentsCount(agents)}`;
-/** "7 work in more than one app." and "1 works in more than one app.": said after the total, and not at all when no agent does. */
-export const multiAppLine = (agents: number): string => `${agents} ${agents === 1 ? 'works' : 'work'} in more than one app.`;
-/** "3 places, 10 agents": what the second question is about. */
-export const readSummary = (places: number, agents: number): string => `${places} ${places === 1 ? 'place' : 'places'}, ${agentsCount(agents)}`;
-/** "Reading Your home folder". */
-export const readingNow = (place: string): string => `Reading ${place}`;
+/** "10 agents": what the second question is about. */
+export const readSummary = (agents: number): string => agentsCount(agents);
+/** "Reading Meeting assistant". */
+export const readingNow = (agent: string): string => `Reading ${agent}`;
 /** "2 of 3". */
 export const readProgress = (done: number, total: number): string => `${done} of ${total}`;
-/** "1 agent here has changes you have not saved." or "2 agents here have changes you have not saved." */
-export const unsavedHere = (n: number): string => `${n} ${n === 1 ? 'agent here has' : 'agents here have'} changes you have not saved.`;
+/** The line under an agent whose changes wait for Save: it cannot be skipped. */
+export const unsavedAgent = (): string => 'This agent has changes you have not saved.';

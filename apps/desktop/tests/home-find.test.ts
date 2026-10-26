@@ -7,7 +7,7 @@ import { ownedAgents } from '../shared/home/cards.js';
 import { withSampleCopies } from '../shared/home/sample-copies.js';
 import { FIND_TOOLS, findPlaces, multiProgramAgents, skippedAgents, toolTiles, unsavedAgents } from '../shared/home/find-model.js';
 import { createStore, reduceStore } from '../shared/proto/store.js';
-import { multiAppLine, unsavedHere } from '../renderer/home/first-run/find-words.js';
+import { unsavedAgent } from '../renderer/home/first-run/find-words.js';
 import { findReduce, readTotal, startFind } from '../shared/home/find-flow.js';
 import type { FindAction, FindState } from '../shared/home/find-flow.js';
 import { assertTextBudget, bannedIn, countWords } from '../shared/home/textbudget.js';
@@ -229,9 +229,9 @@ test('a place counts the agents whose draft differs from the saved world, and a 
   assert.equal(findPlaces(draft, world).find(p => p.agentIds.includes(owned[0]!.id))!.unsaved, 1);
   assert.equal(findPlaces(world).reduce((n, p) => n + p.unsaved, 0), 0);
   assert.equal(unsavedAgents(world, world).size, 0);
-  assert.deepEqual(unsavedHere(1), '1 agent here has changes you have not saved.');
-  assert.deepEqual(unsavedHere(2), '2 agents here have changes you have not saved.');
-  assert.deepEqual(assertTextBudget(`<p>${unsavedHere(12)}</p>`), []);
+  // The line under such an agent in the list (the places no longer carry it, the agents do).
+  assert.deepEqual(unsavedAgent(), 'This agent has changes you have not saved.');
+  assert.deepEqual(assertTextBudget(`<p>${unsavedAgent()}</p>`), []);
 });
 
 // ---- Wave C: the total and the agents that work in more than one app.
@@ -255,8 +255,4 @@ test('a program that is not on the computer does not make an agent "more than on
   assert.equal(multiProgramAgents(none), 0);
 });
 
-test('the line after the total reads "7 work in more than one app." and "1 works in more than one app."', () => {
-  assert.equal(multiAppLine(7), '7 work in more than one app.');
-  assert.equal(multiAppLine(1), '1 works in more than one app.');
-  for (const n of [1, 7, 10, 999]) { assert.ok(countWords(multiAppLine(n)) <= 12); assert.equal(bannedIn(multiAppLine(n)), null); assert.deepEqual(assertTextBudget(`<p>${multiAppLine(n)}</p>`), []); }
-});
+// Wave F: Hanna dropped "N work in more than one app" and the note about the apps (the first scan shows agents with tags, no counts per app): the words are gone (tests/home-find-agents.test.ts).

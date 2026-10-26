@@ -113,7 +113,7 @@ test('a tour that ends does not pick an agent for a person who picked none', asy
   await expect(p.locator('.hm-grid .kit-card[data-selected]')).toHaveCount(0);
 });
 
-test('"These are the apps your agents work in." shows on the results of Find and on no other screen of Find', async () => {
+test('no screen of Find carries a note about the apps: the apps are flat tags on the agents (Hanna dropped "These are the apps your agents work in.")', async () => {
   const p = page();
   await fresh(p, undefined, { welcome: true });
   const note = p.locator('[data-apps-note]');
@@ -121,13 +121,15 @@ test('"These are the apps your agents work in." shows on the results of Find and
   await expect(p.getByRole('heading', { level: 1, name: 'Looking for your agents' })).toBeVisible();
   await expect(note).toHaveCount(0);
   await expect(p.getByRole('heading', { level: 1, name: /^Found \d+ agents$/ })).toBeVisible({ timeout: 15_000 });
-  await expect(note).toHaveText('These are the apps your agents work in.');
+  await expect(note).toHaveCount(0);
+  await expect(p.getByText('These are the apps your agents work in.')).toHaveCount(0);
+  await expect(p.locator('.fr-tag').first()).toBeVisible();
   await p.getByRole('button', { name: 'Looks right' }).click();
   await expect(p.getByRole('heading', { level: 1, name: 'Read what is inside?' })).toBeVisible();
   await expect(note).toHaveCount(0);
-  await expect(p.getByText('These are the apps your agents work in.')).toHaveCount(0);
   await p.getByRole('button', { name: 'Back' }).click();
-  await expect(note).toHaveText('These are the apps your agents work in.');
+  await expect(note).toHaveCount(0);
+  await expect(p.getByText('These are the apps your agents work in.')).toHaveCount(0);
   expect(await budget()).toEqual([]);
 });
 

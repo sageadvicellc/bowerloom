@@ -592,7 +592,7 @@ test('a press shrinks a button and a card to 0.98 within 100 ms; a disabled butt
   await p.mouse.move(2, 450); await p.mouse.up();
 });
 
-test('the Find screen: a tile lights with no part waiting, and the reading bar grows by scaleX from its left edge', async () => {
+test('the Find screen: the reading bar grows by scaleX from its left edge', async () => {
   const p = page();
   await fresh(p, undefined, { welcome: true });
   await p.getByRole('button', { name: 'Find my agents' }).click();

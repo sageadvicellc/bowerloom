@@ -24,35 +24,10 @@
 [data-home] .fr-find { width: 100%; max-width: 46rem; margin: 0 auto; box-sizing: border-box; padding: var(--hm-space-6) var(--hm-space-5); display: flex; flex-direction: column; gap: var(--hm-space-5); }
 [data-home] .fr-title { margin: 0; font-size: var(--hm-text-display); line-height: 1.15; font-weight: 600; outline-offset: 6px; border-radius: var(--hm-radius-small); width: fit-content; max-width: 100%; }
 
-[data-home] .fr-tiles { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--hm-space-4); }
-[data-home] .fr-tile {
-  display: flex; flex-direction: column; align-items: flex-start; gap: var(--hm-space-3); box-sizing: border-box; min-height: 8.5rem; padding: var(--hm-space-4);
-  background: transparent; color: var(--text-muted); border: 1.5px dashed var(--hm-border); border-radius: var(--hm-radius);
-  transition: background-color var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease), border-color var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease), color var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease);
-}
-[data-home] .fr-tile .kit-tile { opacity: 0.55; transition: opacity var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease); }
-[data-home] .fr-tile-name { font-size: var(--hm-text-name); font-weight: 600; line-height: 1.25; }
-[data-home] .fr-tile-status { margin-top: auto; font-size: var(--hm-text-base); line-height: 1.2; }
-[data-home] .fr-count { font-size: 1.5rem; font-weight: 600; line-height: 1; color: var(--text); margin-right: var(--hm-space-1); }
-/* Lit: the tile is solid and filled, and its picture comes to full strength. It is one change, over the tile's 240 ms, and nothing waits for anything else. */
-[data-home] .fr-tile[data-state="found"] { background: var(--surface); border: 1.5px solid var(--accent-strong); color: var(--text); box-shadow: var(--hm-shadow); }
-[data-home] .fr-tile[data-state="found"] .kit-tile { opacity: 1; }
-/* Not found: the tile is lit too (the search got there) but stays dashed and quiet, with the words doing the work. */
-[data-home] .fr-tile[data-state="missing"] { background: var(--surface-2); color: var(--text-muted); }
-[data-home] .fr-tile[data-state="missing"] .fr-tile-status { color: var(--text); font-weight: 600; }
-
 [data-home] .fr-section { display: flex; flex-direction: column; gap: var(--hm-space-4); }
-[data-home] .fr-section-head { display: flex; flex-direction: column; gap: var(--hm-space-1); }
-[data-home] .fr-places { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border: 1px solid var(--hm-border); border-radius: var(--hm-radius); background: var(--surface); overflow: hidden; }
-[data-home] .fr-place + .fr-place { border-top: 1px solid var(--hm-border); }
-[data-home] .fr-place-row { display: flex; align-items: center; gap: var(--hm-space-4); min-height: 3rem; padding: var(--hm-space-2) var(--hm-space-4); cursor: pointer; touch-action: manipulation; }
-[data-home] .fr-place-row:hover { background: var(--accent-soft); }
-[data-home] .fr-place-row:has(.fr-check:focus-visible) { outline: 3px solid var(--focus); outline-offset: -3px; }
 [data-home] .fr-check { flex: none; width: 1.25rem; height: 1.25rem; margin: 0; accent-color: var(--accent-strong); cursor: pointer; }
 [data-home] .fr-place-name { flex: 1; min-width: 0; font-size: var(--hm-text-base); font-weight: 600; }
-[data-home] .fr-place:not([data-on]) .fr-place-name { color: var(--text-muted); font-weight: 400; text-decoration: line-through; text-decoration-thickness: 1px; }
-[data-home] .kit-hint.fr-unsaved { margin: 0; padding: 0 var(--hm-space-4) var(--hm-space-3); color: var(--text); }
-[data-home] .fr-place-row:has(.fr-check[aria-disabled="true"]), [data-home] .fr-check[aria-disabled="true"] { cursor: default; }
+[data-home] .fr-check[aria-disabled="true"], [data-home] .fr-agent-row:has(.fr-check[aria-disabled="true"]) { cursor: default; }
 [data-home] .fr-place-count { flex: none; font-size: var(--hm-text-base); color: var(--text-muted); font-variant-numeric: tabular-nums; }
 [data-home] .fr-paths { list-style: none; margin: 0; padding: 0 var(--hm-space-4) var(--hm-space-3) calc(var(--hm-space-4) * 2 + 1.25rem); display: flex; flex-direction: column; gap: var(--hm-space-1); }
 [data-home] .fr-paths code { font-family: var(--font-mono); font-size: var(--hm-text-small); color: var(--text-muted); overflow-wrap: anywhere; }
@@ -68,19 +43,41 @@
 [data-home] .fr-progress-fill { position: absolute; inset: 0; background: var(--accent-strong); border-radius: var(--hm-radius-small); transform-origin: left; transition: transform var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease); }
 [data-home] .fr-of { margin-left: var(--hm-space-2); font-variant-numeric: tabular-nums; }
 
-@media (max-width: 640px) {
-  [data-home] .fr-tiles { grid-template-columns: minmax(0, 1fr); }
-  [data-home] .fr-tile { min-height: 0; flex-direction: row; align-items: center; flex-wrap: wrap; }
-  [data-home] .fr-tile-status { margin: 0 0 0 auto; }
-}
 @media (max-height: 700px) {
   [data-home] .fr-find { padding-top: var(--hm-space-4); padding-bottom: 0; gap: var(--hm-space-4); }
   [data-home] .fr-title { font-size: var(--hm-text-display); }
-  [data-home] .fr-tile { min-height: 0; gap: var(--hm-space-2); padding: var(--hm-space-3) var(--hm-space-4); }
-  [data-home] .fr-count { font-size: 1.5rem; }
-  [data-home] .fr-place-row { min-height: 3rem; }
 }
 
-/* ---- The line under the total ("7 work in more than one app.") and the one-line note above the three programs. */
-[data-home] .fr-multi { margin: calc(-1 * var(--hm-space-3)) 0 0; font-size: var(--hm-text-section); font-weight: 600; line-height: 1.3; color: var(--text); }
-[data-home] .fr-apps { margin: 0; }
+/* ---- The list of agents (Wave F): one row for each agent, with flat tags for the apps it works in. No tiles for the apps and no counts for them. */
+[data-home] .fr-flow { display: flex; flex-direction: column; gap: var(--hm-space-5); min-width: 0; }
+[data-home] .fr-list-head { display: flex; align-items: center; justify-content: space-between; gap: var(--hm-space-3); }
+[data-home] .fr-bulk { display: inline-flex; align-items: center; gap: var(--hm-space-1); flex: none; }
+[data-home] .fr-agents { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border: 1px solid var(--hm-border); border-radius: var(--hm-radius); background: var(--surface); }
+[data-home] .fr-agents > .fr-agent:first-child .fr-agent-row { border-top-left-radius: calc(var(--hm-radius) - 1px); border-top-right-radius: calc(var(--hm-radius) - 1px); }
+[data-home] .fr-agents > .fr-agent:last-child .fr-agent-row { border-bottom-left-radius: calc(var(--hm-radius) - 1px); border-bottom-right-radius: calc(var(--hm-radius) - 1px); }
+[data-home] .fr-agent + .fr-agent { border-top: 1px solid var(--hm-border); }
+[data-home] .fr-agent-row { display: flex; align-items: flex-start; gap: var(--hm-space-4); min-height: 3rem; padding: var(--hm-space-3) var(--hm-space-4); cursor: pointer; touch-action: manipulation; }
+[data-home] .fr-agent-row:hover { background: var(--accent-soft); }
+[data-home] .fr-agent-row:has(.fr-check:focus-visible) { outline: 3px solid var(--focus); outline-offset: -3px; }
+[data-home] .fr-agent .fr-check { margin-top: 0.125rem; }
+[data-home] .fr-agent-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+[data-home] .fr-agent-name { font-size: var(--hm-text-name); font-weight: 600; line-height: 1.25; }
+[data-home] .fr-agent:not([data-on]) .fr-agent-name { color: var(--text-muted); font-weight: 400; text-decoration: line-through; text-decoration-thickness: 1px; }
+[data-home] .fr-agent-job { display: block; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The tags: flat, outlined 1 px, 22 px tall, no fill, 14 px text. One for each app the agent works with. */
+[data-home] .fr-tags { display: flex; flex-wrap: wrap; gap: var(--hm-space-2); margin-top: var(--hm-space-1); }
+[data-home] .fr-tag { display: inline-flex; align-items: center; box-sizing: border-box; height: 1.375rem; padding: 0 var(--hm-space-3); font-size: var(--hm-text-base); font-weight: 400; line-height: 1; white-space: nowrap; color: var(--text); background: transparent; border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); box-shadow: none; }
+[data-home] .fr-agent .kit-hint.fr-unsaved { padding: 0 var(--hm-space-4) var(--hm-space-3) calc(var(--hm-space-4) * 2 + 1.25rem); }
+[data-home] .fr-where { display: flex; flex-direction: column; gap: var(--hm-space-3); }
+[data-home] .fr-place-line { margin: 0; display: flex; justify-content: space-between; gap: var(--hm-space-3); }
+[data-home] .fr-places { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--hm-space-3); }
+[data-home] .fr-where .fr-paths { padding: var(--hm-space-1) 0 0; }
+
+/* ---- Find more in the right column: a panel of the shell, titled "Find more", with a Close icon at its top right. */
+[data-home] .hm-panel[data-find] { gap: var(--hm-space-4); }
+[data-home] .fr-panel-head { display: flex; align-items: center; justify-content: space-between; gap: var(--hm-space-3); }
+[data-home] .fr-panel-head h2 { outline-offset: 4px; border-radius: var(--hm-radius-small); }
+[data-home] .fr-flow[data-variant="panel"] { gap: var(--hm-space-4); }
+[data-home] .fr-flow[data-variant="panel"] .fr-title { font-size: var(--hm-text-section); margin: 0; }
+[data-home] .fr-flow[data-variant="panel"] .fr-actions[data-pinned] { position: sticky; bottom: calc(-1 * var(--hm-space-5)); background: var(--surface); padding-bottom: var(--hm-space-3); border-top: 1px solid var(--border); }
+[data-home] .fr-flow[data-variant="panel"] .fr-confirm { padding: var(--hm-space-4); box-shadow: none; }

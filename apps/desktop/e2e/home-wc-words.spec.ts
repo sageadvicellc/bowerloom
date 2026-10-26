@@ -1,5 +1,5 @@
 /**
- * Wave C, group 3, in the real window: Find says the total and how many agents work in more than one app (worked out from the world) with a one-line note about the apps;
+ * Wave C, group 3, in the real window: Find says the total of agents and nothing more about the apps (Wave F: the apps are tags on the agents, not counts);
  * "Choose one by one" for "Pick by hand"; "passwords and keys" wherever keys were named alone; the Share sheet's "Create share file" and "Look inside" (every skill, agent, tool
  * and set of notes by name, the text that travels behind "Show text", and a plain warning with the item unticked when that text looks like it holds a key); and the copies
  * dialog that says what happens to the other copy. Set HOME_WC_SHOTS to a folder to also save screenshots at 1280 by 800 and 900 by 600, light and dark.
@@ -9,7 +9,6 @@ import type { Locator, Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { assertTextBudget } from '../shared/home/textbudget.js';
-import { toolTiles } from '../shared/home/find-model.js';
 import { ownedAgents } from '../shared/home/cards.js';
 import { withLibrarySamples } from '../shared/home/library-sample.js';
 import { planShare, shareableAgents } from '../shared/home/share-model.js';
@@ -62,25 +61,19 @@ async function openSheet(): Promise<void> {
   await animationsDone(page());
 }
 
-test('Find says "Found 10 agents", how many of them work in more than one app, and what the three tiles are', async () => {
+test('Find says "Found 10 agents" and nothing more about the apps: no line about agents in more than one app, no note about the apps, no tile for an app', async () => {
   const p = page();
   await openFind();
-  const tiles = toolTiles(world);
-  const sum = tiles.reduce((n, t) => n + t.agents, 0);
-  // The tiles count an agent once for each app it works in, so they add up to more than the agents. The line says how many agents are in more than one app.
-  expect(sum).toBeGreaterThan(10);
+  // Hanna dropped "N work in more than one app" and the note; an agent shows the apps it works with as tags, and the count line is the total only.
   expect(MULTI).toBeGreaterThan(0);
   await expect(p.getByRole('heading', { level: 1 })).toHaveText('Found 10 agents');
-  await expect(p.locator('[data-multi]')).toHaveText(`${MULTI} work in more than one app.`);
-  await expect(p.locator('.fr-apps')).toHaveText('These are the apps your agents work in.');
-  await expect(p.locator('.hm-sr[role="status"]')).toHaveText(`Found 10 agents. ${MULTI} work in more than one app.`);
-  const statuses = await p.locator('.fr-tile-status').allInnerTexts();
-  expect(statuses.map(s => s.replace(/\s+/g, ' ').trim())).toEqual(tiles.map(t => `${t.agents} ${t.agents === 1 ? 'agent' : 'agents'}`));
-  // The note sits above the three tiles, and the line right under the total.
-  const [title, multi, note, tilesBox] = [(await p.getByRole('heading', { level: 1 }).boundingBox())!, (await p.locator('[data-multi]').boundingBox())!, (await p.locator('.fr-apps').boundingBox())!, (await p.locator('.fr-tiles').boundingBox())!];
-  expect(multi.y).toBeGreaterThanOrEqual(title.y + title.height - 2);
-  expect(note.y).toBeGreaterThanOrEqual(multi.y + multi.height - 2);
-  expect(tilesBox.y).toBeGreaterThanOrEqual(note.y + note.height - 2);
+  await expect(p.locator('[data-multi], .fr-apps, [data-apps-note], .fr-tile, .fr-tiles')).toHaveCount(0);
+  await expect(p.locator('.hm-sr[role="status"]')).toHaveText('Found 10 agents');
+  const text = (await p.locator('[data-home]').innerText()).replace(/\s+/g, ' ');
+  expect(text).not.toMatch(/more than one app|These are the apps/);
+  // The tags are what says which apps: the agents that are in more than one app carry more than one tag.
+  const perAgent = await p.locator('.fr-agent').evaluateAll(list => list.map(el => el.querySelectorAll('.fr-tag').length));
+  expect(perAgent.filter(n => n > 1).length).toBe(MULTI);
   expect(await budget()).toEqual([]);
   for (const [w, h] of REVIEW) for (const look of LOOKS) { await resize(p, w, h); await setLook(p, look); await shot('find-counts', w, h, look); }
 });

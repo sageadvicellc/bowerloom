@@ -1,12 +1,12 @@
 /**
- * What the Find screen shows, worked out from the world: one tile for each of the three programs with the number of agents found for it, and the places
- * the agents were found in, in plain words ("Your home folder", "Client site"). The real folders of each place are kept apart, for "Show details" only.
- * The counts are the agents the person owns (the ones the map shows), so they match the map. Ready-made agents from a library are not counted: they
- * live in the Add drawer. Pure: no clock, no random number, no file is read. The world is never changed.
+ * What the Find screen shows, worked out from the world: ONE list of the agents the person owns (the ones the map shows), each with a flat tag for every app it works
+ * with, and the places the agents were found in, in plain words ("Your home folder", "Client site"), whose real folders are kept apart for "Show details" only. The old
+ * tile for each of the three programs (`toolTiles`, `multiProgramAgents`) is no longer drawn: the first scan shows agents, not apps. Ready-made agents from a library are not
+ * listed: they live in the Add drawer. Pure: no clock, no random number, no file is read. The world is never changed.
  */
 import type { AgentItem, InterfaceId, World } from '../proto/types.js';
 import { placeIdOf } from '../proto/scan-places.js';
-import { itemTitle, ownedAgents } from './cards.js';
+import { agentCard, itemTitle, ownedAgents } from './cards.js';
 
 /** The three programs, in tile order, with their names. */
 export const FIND_TOOLS: readonly { readonly id: InterfaceId; readonly name: string }[] = Object.freeze([
@@ -72,3 +72,28 @@ export function findPlaces(world: World, committed: World = world): FindPlace[] 
 export function skippedAgents(places: readonly FindPlace[], ticked: readonly string[]): string[] {
   return places.filter(p => !ticked.includes(p.id)).flatMap(p => [...p.agentIds]);
 }
+
+/** The names of the apps a person knows. An app the table does not know is named by its own id as words ("hermes" is "Hermes"). */
+const APP_NAMES: Readonly<Record<string, string>> = Object.freeze({ 'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode', hermes: 'Hermes' });
+export const appLabel = (id: string): string => APP_NAMES[id] ?? itemTitle(id);
+
+/** One row of the list: an agent as the map names it, its job in one line, the apps it works with (in the order Claude Code, Codex, OpenCode, then any other by name), and whether its changes wait for Save. */
+export interface FindAgent { readonly id: string; readonly name: string; readonly hint: string; readonly apps: readonly string[]; readonly unsaved: boolean }
+
+/**
+ * The agents of the list, in name order. An app is listed for an agent when one of its files is in that app and the app is on the computer. `committed` is the saved world, to tell which agents
+ * have changes that wait: such an agent cannot be skipped, because it would drop off the map with its changes.
+ */
+export function findAgents(world: World, committed: World = world): FindAgent[] {
+  const waiting = unsavedAgents(committed, world);
+  const on = new Set<string>(world.interfaces.filter(i => i.installed === 'installed').map(i => i.id));
+  const order = (id: string): number => { const at = FIND_TOOLS.findIndex(t => t.id === id); return at < 0 ? FIND_TOOLS.length : at; };
+  return ownedAgents(world).map(a => {
+    const apps = [...new Set(a.foundAt.map(f => f.interface as string).filter(id => on.has(id)))].sort((x, y) => order(x) - order(y) || x.localeCompare(y));
+    const card = agentCard(a);
+    return { id: a.id, name: card.name, hint: card.hint, apps: apps.map(appLabel), unsaved: waiting.has(a.id) };
+  }).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** The ids of the agents that cannot be unticked, because their changes wait for Save. */
+export const lockedAgents = (list: readonly FindAgent[]): string[] => list.filter(a => a.unsaved).map(a => a.id);
