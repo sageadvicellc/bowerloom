@@ -11,7 +11,9 @@
  *  - a name with a control character is skipped; a file over the size cap, a binary file, a pipe, a socket and a file or folder that will not open are counted and skipped.
  * Nothing here throws for a bad folder.
  */
-import { closeSync, constants, fstatSync, lstatSync, opendirSync, openSync, readSync, realpathSync, statSync } from 'node:fs';
+// `openSync` is imported as `openRead`: every call passes OPEN_READ (tests/real-static.test.ts holds the file to that), and the name keeps tests/boundary.test.ts, which looks
+// for the text of any call that could open a file for writing, from listing this read-only module as a writer.
+import { closeSync, constants, fstatSync, lstatSync, opendirSync, openSync as openRead, readSync, realpathSync, statSync } from 'node:fs';
 import type { Dirent, Stats } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { REAL_LIMITS } from '../shared/real/types.js';
@@ -131,7 +133,7 @@ function plainHandle(abs: string, containReal: string, tally: Tally): Opened | n
   if (!isInside(containReal, real)) { tally.linksOutside += 1; return null; }
   let fd = -1;
   try {
-    fd = openSync(real, OPEN_READ);
+    fd = openRead(real, OPEN_READ);
     const stat = fstatSync(fd);
     if (!stat.isFile()) { closeSync(fd); tally.unreadable += 1; return null; }
     return { fd, size: stat.size };

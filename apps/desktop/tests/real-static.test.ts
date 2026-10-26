@@ -145,6 +145,7 @@ test('the checker rejects bad files: a multi-line aliased writer import, a relat
     net: ["export const o = (): Promise<unknown> => fetch('https://example.test');\n", /uses fetch/],
     ns: ["import * as fs from 'node:fs';\nexport const p = fs;\n", /imports \* from node:fs/],
     flags: ["import { openSync } from 'node:fs';\nexport const q = (): number => openSync('/tmp/x', 'w');\n", /openSync with flags other than OPEN_READ/],
+    flagsAlias: ["import { openSync as openIt } from 'node:fs';\nexport const q2 = (): number => openIt('/tmp/x', 'w');\n", /openIt with flags other than OPEN_READ/],
     flagBuilt: ["import { constants } from 'node:fs';\nexport const OPEN_READ = constants.O_RDONLY | constants.O_WRONLY;\n", /open flag O_WRONLY/],
     named: ["export const r = (fs: Record<string, unknown>): unknown => fs['writeFileSync'];\n", /names a banned thing/],
     tpl: ["export const s = `a ${eval('1')} b`;\n", /uses eval/],

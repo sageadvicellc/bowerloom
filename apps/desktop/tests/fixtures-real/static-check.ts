@@ -127,7 +127,7 @@ const OPEN_FLAGS = new Set(['O_RDONLY', 'O_NONBLOCK', 'O_NOFOLLOW']);
 /** Strings that name a banned thing: `fs['writeFileSync']`, `import('node:child_process')`. */
 const bannedString = (text: string): boolean => BANNED_NAME.test(text) || BANNED_EXACT.test(text) || text === 'constructor' || /^(?:node:)?(?:child_process|worker_threads|cluster|net|http|https|http2|dgram|dns|tls|vm|inspector|fs\/promises|repl)$/.test(text);
 
-interface Import { readonly from: string; readonly members: readonly string[]; readonly pos: number }
+interface Import { readonly from: string; readonly members: readonly string[]; readonly pos: number; /** `[member, local name]` for each `member as local`. */ readonly renamed?: readonly (readonly [string, string])[] }
 
 /**
  * The `import ... from` and `export ... from` lines of one file, read from its tokens, however many lines they take. A dynamic `import(` is not one of them; a local
@@ -143,7 +143,7 @@ export function importsOf(tokens: readonly Token[]): Import[] {
     if (t.text === 'import' && next.type === 'str') { found.push({ from: next.text, members: [], pos: t.pos }); continue; }
     if (t.text === 'export' && next.text !== '{' && next.text !== '*') continue;
     // The clause runs up to the `from` that is followed by a string.
-    const members: string[] = [];
+    const members: string[] = [], renamed: (readonly [string, string])[] = [];
     let j = i + 1, inBraces = false, from: string | null = null;
     for (; j < tokens.length; j += 1) {
       const u = tokens[j]!;
@@ -153,10 +153,10 @@ export function importsOf(tokens: readonly Token[]): Import[] {
       if (u.type === 'id' && u.text === 'from' && !inBraces && tokens[j + 1]?.type === 'str') { from = tokens[j + 1]!.text; break; }
       if (u.type === 'punct' && u.text === '*') { members.push('*'); continue; }
       if (u.type !== 'id' || u.text === 'as') continue;
-      if (tokens[j - 1]?.text === 'as' && tokens[j - 1]?.type === 'id') continue;
+      if (tokens[j - 1]?.text === 'as' && tokens[j - 1]?.type === 'id') { const member = tokens[j - 2]; if (member !== undefined && member.type === 'id') renamed.push([member.text, u.text]); continue; }
       members.push(inBraces ? u.text : t.text === 'import' ? 'default' : u.text);
     }
-    if (from !== null) found.push({ from, members, pos: t.pos });
+    if (from !== null) found.push({ from, members, pos: t.pos, renamed });
   }
   return found;
 }
@@ -175,6 +175,9 @@ export function problemsOfSource(rel: string, js: string, policy: Policy): strin
     for (const member of imp.members) if (!rule.includes(member)) say(`imports ${member} from ${imp.from}`);
   }
   const allowedFlag = (text: string): boolean => OPEN_FLAGS.has(text);
+  // `openSync` may be imported under another name; a call under that name is held to the same rule.
+  const openers = new Set(['openSync']);
+  for (const imp of importsOf(tokens)) for (const [member, local] of imp.renamed ?? []) if (member === 'openSync') openers.add(local);
   for (let i = 0; i < tokens.length; i += 1) {
     const t = tokens[i]!, prev = tokens[i - 1], next = tokens[i + 1];
     if (t.type === 'id') {
@@ -188,9 +191,9 @@ export function problemsOfSource(rel: string, js: string, policy: Policy): strin
       say(`has the text "${t.text.slice(0, 40)}", which names a banned thing`);
     }
     // Every `openSync(path, flags)` passes the one flags constant, and nothing else.
-    if (t.type === 'id' && t.text === 'openSync' && next?.text === '(' && prev?.text !== 'function') {
+    if (t.type === 'id' && openers.has(t.text) && next?.text === '(' && prev?.text !== 'function') {
       const args = argumentsOf(tokens, i + 1);
-      if (args.length !== 2 || args[1]!.length !== 1 || !/^OPEN_READ\d*$/.test(args[1]![0]!.text)) say('calls openSync with flags other than OPEN_READ');
+      if (args.length !== 2 || args[1]!.length !== 1 || !/^OPEN_READ\d*$/.test(args[1]![0]!.text)) say(`calls ${t.text} with flags other than OPEN_READ`);
     }
     if (t.type === 'id' && /^OPEN_READ\d*$/.test(t.text) && next?.text === '=' && prev?.text !== '.') {
       const declared: string[] = [];
