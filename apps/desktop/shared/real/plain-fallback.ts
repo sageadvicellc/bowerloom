@@ -93,7 +93,9 @@ export function realPlainOf(item: HarnessItem): RealPlain {
 /** The plain words of a set of notes: its name, and how many pages it holds. */
 export function realPlainOfSlice(slice: Slice, pages: readonly WikiPage[]): RealPlain {
   const n = matchPages(slice.rule, slice.seeds, pages).size;
-  return { name: readableOf(slice.name), hint: n === 0 ? 'No notes yet.' : `${n} ${n === 1 ? 'note' : 'notes'} it can read.`, access: null, where: [] };
+  // The set for one topic of a place has the rule "place/topic": it is named by both, so a topic called "notes" is not "Notes notes".
+  const folder = slice.rule.folders[0] ?? '', at = folder.indexOf('/');
+  return { name: readableOf(at > 0 ? `${folder.slice(at + 1)} in ${folder.slice(0, at)}` : slice.name), hint: n === 0 ? 'No notes yet.' : `${n} ${n === 1 ? 'note' : 'notes'} it can read.`, access: null, where: [] };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------- the registry
@@ -141,6 +143,22 @@ export function realCopyDaysOf(item: Pick<HarnessItem, 'id'>): readonly number[]
 export function realPlacesOf(item: HarnessItem): { app: string; path: string }[] | null {
   if (!isRealId(item.id)) return null;
   return PROGRAM_ORDER.flatMap((p: InterfaceId) => { const f = item.foundAt.find(x => x.interface === p); return f === undefined ? [] : [{ app: PROGRAM_NAMES[p], path: f.path }]; });
+}
+
+/** How many days ago the newest file of a real item was changed, or null for an item that is not from a real setup (or whose files have no age). */
+export function realDaysBackOf(id: string): number | null {
+  const days = agesById[id];
+  return days === undefined || days.length === 0 ? null : Math.min(...days);
+}
+
+/** "Today", "1 day ago", "12 days ago": a count of whole days in words. */
+export const daysAgoText = (days: number): string => (days <= 0 ? 'Today' : days === 1 ? '1 day ago' : `${days} days ago`);
+
+/** The host a real connection reaches (a web address's host, no path, no login), or null when it starts a program on this computer or the item says nothing. */
+export function realHostOf(item: HarnessItem): string | null {
+  if (item.kind !== 'tool' || item.toolKind !== 'mcp') return null;
+  const { host } = serverFacts(item);
+  return host === '' ? null : host;
 }
 
 /** Whether the words are within the text budget of the screens. For tests. */

@@ -7,6 +7,7 @@
 import type { HarnessItem, SkillItem, World } from '../proto/types.js';
 import { distinctTexts } from '../proto/conflicts.js';
 import { hashText } from '../proto/sample.js';
+import { realCopyDaysOf } from '../real/plain-fallback.js';
 import { ownedAgents } from './cards.js';
 
 /** The sample skill that gets the second copy: "Sort mail by topic", held by the Inbox sorter. */
@@ -26,6 +27,9 @@ const MADE_HERE = /^web-|-mine(?:-\d+)?$|-copy(?:-\d+)?$|^slice-\d+$/;
  * (the real app would read them from the files), and they live here, beside the sample copies, not in the data of the world.
  */
 export function sampleCopyDays(item: Pick<HarnessItem, 'id' | 'foundAt'>): readonly number[] | null {
+  // An item from the person's own setup has the real ages of its files, read when the setup was read.
+  const real = realCopyDaysOf(item);
+  if (real !== null) return real;
   return MADE_HERE.test(item.id) ? null : item.foundAt.map((_, at) => SAMPLE_COPY_DAYS[at % SAMPLE_COPY_DAYS.length]!);
 }
 

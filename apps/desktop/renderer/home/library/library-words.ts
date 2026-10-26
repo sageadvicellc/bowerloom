@@ -51,6 +51,7 @@ export const LIBRARY_WORDS = deepFreeze({
     madeBy: 'Made by',
     release: 'Release',
     added: 'Added',
+    changed: 'Last changed',
     showFullText: WORDS.label.showFullText,
     hideFullText: WORDS.label.hideFullText,
     fullText: WORDS.label.fullText,

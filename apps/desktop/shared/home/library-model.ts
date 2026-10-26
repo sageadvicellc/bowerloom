@@ -18,6 +18,7 @@ import { ACCESS_WORDS, SOURCE_WORDS, skillTextOf } from './plain-details.js';
 import { plainOf } from './plain.js';
 import { READY_MADE_AUTHOR, TOOL_FACTS, UPDATES, UPDATE_ITEM_DAYS_BACK, UPDATE_ITEM_ID, dayText, sampleAuthor, sampleDaysBack, sampleRelease } from './library-sample.js';
 import { bodyOf, fieldsOf, makeText } from './library-text.js';
+import { daysAgoText, isRealId, realDaysBackOf, realHostOf } from '../real/plain-fallback.js';
 
 export type LibraryKind = 'skill' | 'agent' | 'tool' | 'note';
 /** The tabs, in the order they show. */
@@ -31,6 +32,8 @@ export const LIBRARY_MODEL_WORDS = Object.freeze({
   runsOnItsOwn: 'Runs on its own', nothingAdded: 'Nothing added yet', yours: 'Yours', readyMadeNote: 'Ready-made agents come with Bowerloom.',
   reachNothing: 'Nothing outside. It only sends a saved prompt.', reachComputer: 'This computer only', reachUnknown: 'It does not say what it reaches.',
   noAgents: 'No agent uses it yet.', noText: 'There is no text to show.', fallbackAgent: 'An agent you can use.',
+  /** The place a thing from the person's own setup was found in, when it sits in no folder of a project: the home folder. */
+  yourNotes: 'Your notes',
 });
 
 /** One thing in the library: an item, or (for notes) one saved choice of pages. */
@@ -112,18 +115,35 @@ export function usedByOf(world: World, kind: LibraryKind, id: string): AgentRef[
 // ---------------------------------------------------------------------------------------------------- where it came from
 
 /** Where a thing came from, in words. `outside` is true for anything the person did not make: only those can be copied. */
-export interface Origin { readonly source: string; readonly author: string; readonly release: string | null; readonly added: string; readonly outside: boolean }
+export interface Origin {
+  readonly source: string; readonly author: string; readonly release: string | null; readonly added: string; readonly outside: boolean;
+  /** True for a thing from the person's own setup: `added` then says when its file last changed, because the files do not say when they were added. */
+  readonly changed?: boolean;
+}
 
 const JUST_NOW = /^web-|-mine(?:-\d+)?$|-copy(?:-\d+)?$|^slice-\d+$/;
 
 /** How many days back from the 24th of October a thing was added, or -1 when it was added in this preview (it is newer than any sample date). */
 export function daysBackOf(id: string): number {
+  // A thing from the person's own setup: the age of its newest file, as it was read. One that has no age sorts as new.
+  if (isRealId(id)) return realDaysBackOf(id) ?? 0;
   if (id === UPDATE_ITEM_ID) return UPDATE_ITEM_DAYS_BACK;
   return JUST_NOW.test(id) ? -1 : sampleDaysBack(id);
 }
 
+/** The name of the place a thing from the person's own setup was found in: the folder of its scope ("Your home folder", "alpha"). */
+function placeNameOf(world: World, entry: Entry): string {
+  const scopeId = entry.kind === 'note' ? world.items.find(i => 'sliceId' in i && i.sliceId === entry.id)?.scopeId : entry.item.scopeId;
+  return world.scopes.find(s => s.id === scopeId)?.name ?? LIBRARY_MODEL_WORDS.yourNotes;
+}
+
 /** The source, author, release tag and date added of an item. A note set is always the person's own. */
 export function originOf(world: World, entry: Entry): Origin {
+  // A thing from the person's own setup shows only what its files give: the place it was found in, and when its file last changed. No maker, no release, no invented date.
+  if (isRealId(entry.id)) {
+    const days = realDaysBackOf(entry.id);
+    return { source: placeNameOf(world, entry), author: LIBRARY_MODEL_WORDS.notStated, release: null, added: days === null ? LIBRARY_MODEL_WORDS.notStated : daysAgoText(days), outside: false, changed: true };
+  }
   const days = daysBackOf(entry.id), added = days < 0 ? LIBRARY_MODEL_WORDS.addedJustNow : dayText(days);
   if (entry.kind === 'note') return { source: LIBRARY_MODEL_WORDS.madeByYou, author: LIBRARY_MODEL_WORDS.madeByYou, release: null, added, outside: false };
   const item = entry.item, fields = fieldsOf(firstText(item));
@@ -291,6 +311,18 @@ export function reachLine(toolKind: ToolItem['toolKind'], host: string | undefin
   return host === undefined ? LIBRARY_MODEL_WORDS.reachUnknown : `Reaches ${host}`;
 }
 
+/**
+ * What a tool from the person's own setup reaches and may do. Its host is read from its file when it has one; a program started on this computer, or a hook, does not say what it
+ * reaches. How far it may go is what the agents that hold it were given; a tool no agent holds does not say.
+ */
+function realReachOf(world: World, item: ToolItem): { reach: string; ability: string } {
+  const host = realHostOf(item) ?? undefined;
+  const reach = item.toolKind === 'hook' ? LIBRARY_MODEL_WORDS.reachUnknown : reachLine(item.toolKind, host);
+  const given = ownedAgents(world).flatMap(a => a.definition.toolAttachments.filter(t => t.toolId === item.id));
+  const ability = given.length === 0 ? LIBRARY_MODEL_WORDS.notStated : ACCESS_WORDS[given.some(t => t.access === 'read-write') ? 'read-write' : 'read-only'];
+  return { reach, ability };
+}
+
 function reachOf(item: ToolItem): { reach: string; ability: string } {
   const facts = TOOL_FACTS[item.id], fields = fieldsOf(firstText(item));
   return { reach: reachLine(item.toolKind, facts?.reach ?? fields.reach), ability: ACCESS_WORDS[facts?.access ?? fields.access ?? 'read-only'] };
@@ -309,8 +341,9 @@ export function libraryDetails(world: World, kind: LibraryKind, id: string): Lib
   }
   const item = entry.item, texts = distinctTexts(item), copies = texts >= 2 ? texts : 0, works = programsOf(item.foundAt);
   if (item.kind === 'tool') {
-    const { reach, ability } = reachOf(item), secret = item.toolKind === 'mcp' ? item.secret : null;
-    return { ...base, works, reach, ability, runsCode: item.toolKind === 'hook', needsKey: secret !== null && secret.state === 'missing', keyReady: secret !== null && secret.state === 'present', copies, has: null, notes: null,
+    const real = isRealId(item.id), { reach, ability } = real ? realReachOf(world, item) : reachOf(item), secret = item.toolKind === 'mcp' ? item.secret : null;
+    // Whether a key is set is known only for the sample. A setup read from files lists the key's name and never its value, so it claims nothing about the key.
+    return { ...base, works, reach, ability, runsCode: item.toolKind === 'hook', needsKey: !real && secret !== null && secret.state === 'missing', keyReady: !real && secret !== null && secret.state === 'present', copies, has: null, notes: null,
       canAdd: item.toolKind !== 'hook', canCopy: origin.outside };
   }
   const has = item.kind === 'agent' ? namesOfAgent(world, item) : null;

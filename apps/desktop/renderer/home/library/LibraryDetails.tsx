@@ -138,7 +138,7 @@ export function LibraryDetails({ details, choices, say, onPickAgent, onOpenAgent
           <dt>{L.source}</dt><dd>{d.origin.source}</dd>
           {d.origin.outside ? <><dt>{L.madeBy}</dt><dd data-budget="content" data-field="author">{d.origin.author}</dd></> : null}
           {d.origin.release === null ? null : <><dt>{L.release}</dt><dd data-budget="content" data-field="release">{d.origin.release}</dd></>}
-          <dt>{L.added}</dt><dd data-field="added">{d.origin.added}</dd>
+          <dt>{d.origin.changed === true ? L.changed : L.added}</dt><dd data-field="added">{d.origin.added}</dd>
         </dl>
         {d.canCopy ? <p className="kit-hint">{H.copyTip}</p> : null}
       </Block>

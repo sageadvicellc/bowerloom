@@ -134,13 +134,30 @@ export function extractText(markup: string): TextPiece[] { return walk(markup).p
 
 const quote = (text: string): string => `"${text.length > 48 ? `${text.slice(0, 45)}...` : text}"`;
 
+/** What a check may be told besides the markup. */
+export interface BudgetOptions {
+  /**
+   * The person's own words on a screen that shows their own setup: the names and the one-line jobs that were read from their files ("Graft helper", which holds a banned word the
+   * screen's own words may never use). Each is taken out of the text before it is counted and looked for banned words, so what is left is only our wording, and that is held to the
+   * whole budget. Compared as written; the longest goes first, so a name that holds another is taken out whole. Used by the end-to-end run of real mode, whose data is made up.
+   */
+  readonly own?: readonly string[];
+}
+
+function ownWords(list: readonly string[]): (text: string) => string {
+  const words = [...new Set(list.filter(w => w.trim() !== ''))].sort((a, b) => b.length - a.length);
+  return text => (words.length === 0 ? text : words.reduce((rest, w) => rest.split(w).join(' '), text).replace(/\s+/g, ' ').trim());
+}
+
 /**
  * Checks rendered markup against the budget and answers every problem as one plain sentence. An empty list means the markup is within budget.
  * Text nodes: at most 12 words (25 in a popover, and in a `data-budget="paragraph"`). Headings and buttons, and attribute labels: at most 5 words (25 in a popover).
  * The banned words fail anywhere; "MCP" passes inside a popover. Content (`data-budget="content"`) has no word limit and still has the banned words.
  */
-export function assertTextBudget(markup: string): string[] {
-  const { pieces, boxes } = walk(markup);
+export function assertTextBudget(markup: string, options: BudgetOptions = {}): string[] {
+  const walked = walk(markup);
+  const own = ownWords(options.own ?? []);
+  const pieces = walked.pieces.map(p => ({ ...p, text: own(p.text) })).filter(p => p.text !== ''), boxes = walked.boxes.map(b => ({ ...b, text: own(b.text) }));
   const problems: string[] = [];
   for (const p of pieces) {
     const words = countWords(p.text), limit = p.kind === 'label' ? (p.popover ? LIMITS.popover : p.tooltip === true ? LIMITS.hint : LIMITS.label) : (p.popover ? LIMITS.popover : p.paragraph === true ? LIMITS.paragraph : LIMITS.hint);

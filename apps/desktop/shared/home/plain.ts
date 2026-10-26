@@ -10,6 +10,7 @@
 
 import type { Slice } from '../proto/types.js';
 import { generateWorld } from '../proto/sample.js';
+import { realPlainById, realRecencyOf } from '../real/plain-fallback.js';
 import { starterOf } from './starters.js';
 
 /** What a card says: a name and one line under it. */
@@ -143,6 +144,9 @@ export function isSampleNote(slice: Slice): boolean {
 export function plainOf(kind: PlainKind, id: string): Plain | null {
   const table = kind === 'agent' ? PLAIN_AGENTS : kind === 'skill' ? PLAIN_SKILLS : kind === 'tool' ? PLAIN_TOOLS : PLAIN_NOTES;
   if (Object.hasOwn(table, id)) return table[id]!;
+  // A thing from the person's own setup (renderer/home/real) has the plain words that were worked out from its file when the setup was read.
+  const real = realPlainById(kind, id);
+  if (real !== null) return real;
   // A starter agent of the Add drawer, or a copy of one the person added, has the starter's name and job.
   const starter = kind === 'agent' ? starterOf(id) : undefined;
   return starter === undefined ? null : { name: starter.name, hint: starter.job };
@@ -155,5 +159,5 @@ export function skillDoes(id: string): string | null {
 
 /** The "Recently changed" rank of a sample agent (0 is newest). An agent that is not in the sample comes last. */
 export function agentRecency(id: string): number {
-  return Object.hasOwn(PLAIN_AGENTS, id) ? PLAIN_AGENTS[id]!.recency : Number.MAX_SAFE_INTEGER;
+  return realRecencyOf(id) ?? (Object.hasOwn(PLAIN_AGENTS, id) ? PLAIN_AGENTS[id]!.recency : Number.MAX_SAFE_INTEGER);
 }

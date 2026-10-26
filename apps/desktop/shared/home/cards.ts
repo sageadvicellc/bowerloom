@@ -4,6 +4,7 @@
  */
 import type { AgentItem, HarnessItem, Slice, ToolItem, WikiPage, World } from '../proto/types.js';
 import { joinWords } from '../proto/words.js';
+import { isRealId, realPlainById } from '../real/plain-fallback.js';
 import { isSampleNote, plainOf, skillDoes } from './plain.js';
 import { itemTitle } from './titles.js';
 import { notesLabel } from './notes-label.js';
@@ -90,6 +91,8 @@ export function itemBadge(item: HarnessItem): CardBadge | null {
 export function agentCard(agent: AgentItem): { name: string; hint: string } {
   const plain = plainOf('agent', agent.id);
   if (plain === null) return { name: agentTitle(agent.name), hint: agentHint(agent) };
+  // An agent from the person's own setup says what its own file says, not what its skills do.
+  if (isRealId(agent.id)) return { name: plain.name, hint: plain.hint };
   if (agent.definition.skillIds.length === 0) return { name: plain.name, hint: CARD_WORDS.agentNoSkills };
   const does = agent.definition.skillIds.flatMap(id => skillDoes(id) ?? []).slice(0, MAX_DOES);
   if (does.length === 0) return { name: plain.name, hint: plain.hint };
@@ -115,6 +118,9 @@ export function wordsOf(kind: ShelfEntry['kind'], id: string, name: string): { n
  * by what it holds ("Meetings and Travel notes", "169 notes it can read."), and a set that names no topic and no single note gets its own name and the plain line for notes.
  */
 export function noteWords(slice: Slice, pages: readonly WikiPage[]): { name: string; hint: string } {
+  // A set of notes from the person's own setup: its name, and how many notes it holds, worked out when the setup was read.
+  const real = realPlainById('note', slice.id);
+  if (real !== null) return real;
   if (isSampleNote(slice)) return wordsOf('note', slice.id, slice.name);
   return notesLabel(slice, pages) ?? { name: readableName(slice.name), hint: FALLBACK_HINT.note };
 }

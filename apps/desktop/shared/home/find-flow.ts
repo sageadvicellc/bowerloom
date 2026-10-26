@@ -27,6 +27,8 @@ export type FindAction =
   /** Ticks every id, or unticks every id except those in `keep` (the ones that cannot be skipped). Only on the list step. */
   | { readonly type: 'selectAll' } | { readonly type: 'clear'; readonly keep: readonly string[] }
   | { readonly type: 'looksRight' } | { readonly type: 'back' } | { readonly type: 'yes' } | { readonly type: 'notNow' }
+  /** The list step ends at once, with at least one agent ticked: used when the contents were already read (the setup of a real person), so no second question is asked. */
+  | { readonly type: 'choose' }
   | { readonly type: 'read' } | { readonly type: 'readAll' };
 
 const make = (s: FindState, change: Partial<FindState>): FindState => Object.freeze({ ...s, ...change });
@@ -52,6 +54,7 @@ export function findReduce(s: FindState, action: FindAction): FindState {
     }
     case 'selectAll': return s.step === 'places' ? make(s, { ticked: Object.freeze([...s.places]) }) : s;
     case 'clear': return s.step === 'places' ? make(s, { ticked: Object.freeze(s.places.filter(id => action.keep.includes(id))) }) : s;
+    case 'choose': return s.step === 'places' && s.ticked.length > 0 ? make(s, { step: 'done', read: s.ticked.length }) : s;
     case 'looksRight': return s.step === 'places' && s.ticked.length > 0 ? make(s, { step: 'confirm', read: 0 }) : s;
     case 'back': return s.step === 'confirm' ? make(s, { step: 'places' }) : s;
     case 'yes': return s.step === 'confirm' ? make(s, { step: 'reading', read: 0 }) : s;

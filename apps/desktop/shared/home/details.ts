@@ -9,6 +9,7 @@ import { agentCard, itemBadge, noteWords, shelvesOf, wordsOf } from './cards.js'
 import type { CardBadge, Shelves } from './cards.js';
 import { buildTopics, plainTitles } from './notes-topics.js';
 import { notesLabel } from './notes-label.js';
+import { isRealId } from '../real/plain-fallback.js';
 import { ACCESS_WORDS, PROGRAM_NAMES, PROGRAM_ORDER, SOURCE_WORDS, skillTextOf } from './plain-details.js';
 import type { SkillText } from './plain-details.js';
 
@@ -23,6 +24,7 @@ export const agentOfSelected = (selected: Selected | null): string | null => (se
 /** The words the details panel adds to the ones of the cards. `renderer/home/words.ts` lists them in `WORDS`, so one test holds them all to the rules. */
 export const DETAIL_WORDS = Object.freeze({
   noText: 'There is no text to show.', keyReady: 'Its key is ready.', needsKeyLine: 'Add this key when asked.', noNotes: 'No notes yet.', noUsers: 'No agent uses it yet.', noPrograms: 'Not in any program yet.',
+  notStated: 'Not stated',
   kindSkill: 'Skill', kindTool: 'Tool', kindNotes: 'Notes',
 });
 
@@ -69,6 +71,8 @@ export function bodyLines(text: string): string[] {
 
 function skillText(item: SkillItem, world: World): SkillText {
   const known = skillTextOf(item.id);
+  // A skill from the person's own setup says where it was found (the folder of its place), and does not say who made it: its file does not.
+  if (isRealId(item.id)) return { source: world.scopes.find(s => s.id === item.scopeId)?.name ?? DETAIL_WORDS.notStated, lines: bodyLines(item.foundAt[0]?.text ?? '') };
   const source = known?.source ?? (item.library === null ? SOURCE_WORDS.you : world.libraries.find(l => l.id === item.library!.library)?.name ?? item.library.library);
   // A sample skill has plain text written for it. A skill the person added brings its own text, and that is shown as it is.
   return { source, lines: known?.lines ?? bodyLines(item.foundAt[0]?.text ?? '') };
@@ -80,6 +84,8 @@ function accessOf(tool: ToolItem, owner: AgentItem | undefined, agents: readonly
   const own = owner === undefined ? undefined : attached(owner);
   if (own !== undefined) return ACCESS_WORDS[own.access];
   const any = agents.map(attached).filter(a => a !== undefined);
+  // A tool from the person's own setup that no agent holds does not say how far it goes.
+  if (any.length === 0 && isRealId(tool.id)) return DETAIL_WORDS.notStated;
   return ACCESS_WORDS[any.some(a => a.access === 'read-write') ? 'read-write' : 'read-only'];
 }
 
@@ -112,7 +118,7 @@ export function detailsOf(world: World, agents: readonly AgentItem[], selected: 
     const secret = item.toolKind === 'mcp' ? item.secret : null;
     return {
       kind: 'tool', id: item.id, ...wordsOf('tool', item.id, item.name), owner, usedBy: agents.filter(a => a.definition.toolAttachments.some(t => t.toolId === item.id)).map(refOf),
-      access: accessOf(item, ownerItem, agents), badge: itemBadge(item), needsKey: secret !== null && secret.state === 'missing', keyReady: secret !== null && secret.state === 'present', runsCode: item.toolKind === 'hook',
+      access: accessOf(item, ownerItem, agents), badge: itemBadge(item), needsKey: !isRealId(item.id) && secret !== null && secret.state === 'missing', keyReady: !isRealId(item.id) && secret !== null && secret.state === 'present', runsCode: item.toolKind === 'hook',
     };
   }
   const slice = world.slices.find(s => s.id === selected.id);
@@ -124,7 +130,7 @@ export function detailsOf(world: World, agents: readonly AgentItem[], selected: 
   return {
     kind: 'note', id: slice.id, ...words, owner, usedBy: agents.filter(a => a.definition.sliceId === slice.id).map(refOf),
     topics: notesLabel(slice, pages)?.name ?? words.name, count, countLine: count === 0 ? DETAIL_WORDS.noNotes : `${count} ${count === 1 ? 'note' : 'notes'} it can read.`,
-    titles: pages.filter(p => matched.has(p.id)).slice(0, NOTE_TITLES).map(p => titles.get(p.id) ?? p.title),
+    titles: pages.filter(p => matched.has(p.id)).slice(0, NOTE_TITLES).map(p => (isRealId(p.id) ? p.title : titles.get(p.id) ?? p.title)),
   };
 }
 
