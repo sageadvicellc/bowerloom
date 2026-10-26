@@ -1,0 +1,217 @@
+/*
+ * The look of the harness-first preview. Every rule starts at [data-home], so nothing in the other screens changes. The colours, sizes and motion come from the home app's tokens
+ * (home/home-tokens.css, tokens.css): a text is 14 px or more, a button 32 px (24 px at the least), a state is a dot and words (never a pill), a selected item is a tint with a 2 px accent edge
+ * (never a tick). The shell itself (the navigation, the top row, the columns) is the home app's (home/home.css, home/shell/shell.css).
+ */
+
+/* ---- The first three screens: one centered column, no navigation. */
+[data-home].hx-first { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--text); }
+[data-home] .hx-first-main { display: flex; flex-direction: column; align-items: center; gap: var(--hm-space-4); max-width: 42rem; padding: var(--hm-space-6); text-align: center; }
+
+/* ---- Words and small parts. */
+[data-home] .hx-title { white-space: nowrap; }
+[data-home] .hx-count { font-size: var(--hm-text-name); color: var(--text-muted); white-space: nowrap; }
+[data-home] .hx-title-state { margin-left: var(--hm-space-1); }
+[data-home] .hx-text { margin: 0; font-size: var(--hm-text-base); line-height: 1.45; overflow-wrap: anywhere; }
+[data-home] .hx-muted { color: var(--text-muted); }
+[data-home] .hx-hint { margin: 0; }
+[data-home] .hx-h3 { margin: 0 0 var(--hm-space-3); font-size: var(--hm-text-section); font-weight: 600; line-height: 1.3; }
+[data-home] .hx-block { display: flex; flex-direction: column; }
+[data-home] .hx-block-state { margin-top: calc(-1 * var(--hm-space-1)); }
+[data-home] .hx-path { overflow-wrap: anywhere; }
+[data-home] .hx-note { margin-top: calc(-1 * var(--hm-space-1)); }
+[data-home] .hx-inline-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--hm-space-2) var(--hm-space-4); }
+[data-home] .hx-actions { display: flex; flex-direction: column; gap: var(--hm-space-3); }
+[data-home] .hx-actions .kit-button { width: 100%; }
+[data-home] .hx-help { display: flex; flex-direction: column; gap: var(--hm-space-4); max-width: 34rem; }
+[data-home] .hx-help-line { margin: 0; font-size: var(--hm-text-name); line-height: 1.5; }
+
+/* A state: a small dot and the words. The dot's colour is the state's; the words always say it. Each dot meets 3 to 1 on the page, a card and a selected card. */
+[data-home] .hx-state { display: inline-flex; align-items: center; gap: var(--hm-space-2); min-width: 0; font-size: var(--hm-text-base); line-height: 1.3; color: var(--text); }
+[data-home] .hx-state > span:not(.hx-dot) { min-width: 0; overflow-wrap: anywhere; }
+[data-home] .hx-dot { flex: none; width: var(--hm-dot); height: var(--hm-dot); border-radius: 50%; background: var(--accent); }
+[data-home] .hx-state[data-tone="warn"] .hx-dot, [data-home] .hx-dot[data-tone="warn"] { background: var(--hm-amber); }
+[data-home] .hx-state[data-tone="bad"] .hx-dot, [data-home] .hx-dot[data-tone="bad"] { background: var(--hm-ac-red); }
+[data-home] .hx-state[data-tone="quiet"] .hx-dot, [data-home] .hx-dot[data-tone="quiet"] { background: var(--hx-quiet); }
+[data-home] .hx-state[data-tone="good"] .hx-dot, [data-home] .hx-dot[data-tone="good"] { background: var(--accent); }
+[data-home] { --hx-quiet: #737870; }
+[data-theme="dark"] [data-home], [data-home][data-theme="dark"] { --hx-quiet: #9aa59d; }
+
+/* The tile that leads a row: a rounded square in the soft accent with the icon of its kind. */
+[data-home] .hx-tile { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 1.75rem; height: 1.75rem; border-radius: var(--hm-radius-small); background: var(--accent-soft); color: var(--accent-strong); }
+[data-home] .hx-tile[data-size="large"] { width: 2.25rem; height: 2.25rem; border-radius: var(--hm-radius); }
+[data-home] .hx-tile[data-size="small"] { width: var(--hm-tile-glyph); height: var(--hm-tile-glyph); }
+[data-home] .hx-tile-bare { background: transparent; color: var(--text); }
+
+/* ---- The stage and the details column. */
+[data-home] .hx-stage { gap: var(--hm-space-4); }
+[data-home] .hx-stage[data-flush] { padding: 0; gap: 0; overflow: hidden; position: relative; display: flex; flex-direction: column; }
+[data-home] .hx-panel { gap: var(--hm-space-4); }
+[data-home] .hx-dhead { display: flex; align-items: center; gap: var(--hm-space-3); }
+[data-home] .hx-dhead-text { display: flex; flex-direction: column; min-width: 0; }
+[data-home] .hx-dtitle { margin: 0; font-size: var(--hm-text-title); line-height: 1.25; outline-offset: 4px; width: fit-content; max-width: 100%; border-radius: var(--hm-radius-small); overflow-wrap: anywhere; }
+[data-home] .hx-dsub { font-size: var(--hm-text-base); color: var(--text-muted); }
+
+/* A bordered line in the details: a name and a state, or a tile, a name and its kind. */
+[data-home] .hx-box-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--hm-space-2); }
+[data-home] .hx-box { position: relative; display: flex; align-items: center; justify-content: space-between; gap: var(--hm-space-3); min-height: 2.75rem; box-sizing: border-box; padding: var(--hm-space-2) var(--hm-space-3); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); }
+[data-home] .hx-box-name { font-weight: 600; font-size: var(--hm-text-base); }
+[data-home] .hx-box-press { justify-content: flex-start; }
+[data-home] .hx-box-press:hover { border-color: var(--accent-strong); background: var(--accent-soft); }
+[data-home] .hx-box-main { all: unset; box-sizing: border-box; flex: 1 1 auto; min-width: 0; font-size: var(--hm-text-base); font-weight: 600; cursor: pointer; touch-action: manipulation; overflow-wrap: anywhere; }
+[data-home] .hx-box-main::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+[data-home] .hx-box:has(.hx-box-main:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
+[data-home] .hx-box-kind { flex: none; position: relative; color: var(--text-muted); font-size: var(--hm-text-base); }
+[data-home] .hx-excerpt { margin: 0; padding: var(--hm-space-4); background: var(--surface-2); border-radius: var(--hm-radius); font: inherit; font-size: var(--hm-text-base); line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* ---- A row of a list: the harnesses and the Library. The name is the button that covers the row, so the whole row can be pressed. */
+[data-home] .hx-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--hm-space-3); }
+[data-home] .hx-row { position: relative; display: flex; align-items: center; gap: var(--hm-space-3); box-sizing: border-box; min-height: 4.125rem; padding: var(--hm-space-3) var(--hm-space-4) var(--hm-space-3) calc(var(--hm-space-4) - 1px); background: var(--surface); color: var(--text); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); transition: border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease); }
+[data-home] .hx-row:hover { border-color: var(--accent-strong); }
+[data-home] .hx-row[data-selected] { background: var(--accent-soft); border-color: var(--accent-strong); box-shadow: inset 0 0 0 1px var(--accent-strong); }
+[data-home] .hx-row-part { min-height: 3.75rem; }
+[data-home] .hx-row-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+[data-home] .hx-row-main { all: unset; box-sizing: border-box; display: block; min-width: 0; font-size: var(--hm-text-name); font-weight: 600; line-height: 1.3; color: var(--text); cursor: pointer; touch-action: manipulation; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-home] .hx-row-main::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+[data-home] .hx-row:has(.hx-row-main:focus-visible), [data-home] .hx-lrow:has(.hx-row-main:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
+[data-home] .hx-row-meta { font-size: var(--hm-text-base); color: var(--text-muted); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-home] .hx-row-state { flex: none; position: relative; }
+[data-home] .hx-row-action { position: relative; z-index: 1; flex: none; margin-right: calc(-1 * var(--hm-space-2)); }
+[data-home] .hx-row-side { flex: none; position: relative; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; }
+[data-home] .hx-row-source { font-size: var(--hm-text-base); color: var(--text-muted); }
+
+/* ---- The Library: tabs, the search box and the sort menu. */
+[data-home] .hx-tabs { display: flex; flex-wrap: wrap; gap: var(--hm-space-2); }
+[data-home] .hx-tab { display: inline-flex; align-items: center; gap: var(--hm-space-2); min-height: var(--hm-control-h); box-sizing: border-box; padding: 0 var(--hm-space-4); font: inherit; font-size: var(--hm-text-base); font-weight: 600; color: var(--text); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); cursor: pointer; touch-action: manipulation; }
+[data-home] .hx-tab:hover { background: var(--accent-soft); }
+[data-home] .hx-tab[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-strong); box-shadow: inset 0 0 0 1px var(--accent-strong); }
+[data-home] .hx-tab:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
+[data-home] .hx-tab-count { font-weight: 400; color: var(--text-muted); }
+[data-home] .hx-searchrow { display: flex; align-items: center; gap: var(--hm-space-3); }
+[data-home] .hx-searchrow .hx-search { flex: 1 1 auto; }
+[data-home] .hx-search { display: flex; align-items: center; gap: var(--hm-space-2); min-height: 2.25rem; box-sizing: border-box; padding: 0 var(--hm-space-3); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); color: var(--text-muted); }
+[data-home] .hx-search:focus-within { outline: 3px solid var(--focus); outline-offset: 1px; }
+[data-home] .hx-search input { flex: 1 1 auto; min-width: 0; min-height: 2rem; font: inherit; font-size: var(--hm-text-base); color: var(--text); background: transparent; border: 0; outline: none; }
+[data-home] .hx-search input::placeholder { color: var(--text-muted); opacity: 1; }
+[data-home] .hx-findbar { flex: none; margin: var(--hm-space-3) var(--hm-space-4) 0; }
+[data-home] .hx-stage:not([data-flush]) > .hx-findbar { margin: 0; }
+[data-home] .hx-pick { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--hm-space-2); }
+[data-home] .hx-pick-row { display: flex; align-items: center; gap: var(--hm-space-3); min-height: 3rem; box-sizing: border-box; padding: var(--hm-space-2) var(--hm-space-3); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); }
+[data-home] .hx-pick-name { flex: 1 1 auto; font-weight: 600; font-size: var(--hm-text-name); }
+
+/* ---- The view switch: two icon buttons in one frame; the one in use is a tint. */
+[data-home] .hx-seg { display: inline-flex; align-items: center; gap: 2px; padding: 1px; border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); }
+[data-home] .hx-seg .kit-button[data-icon-only] { border-radius: calc(var(--hm-radius-small) - 2px); }
+
+/* ---- The empty harness. */
+[data-home] .hx-empty { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--hm-space-3); text-align: center; padding: var(--hm-space-6); color: var(--accent-strong); }
+[data-home] .hx-empty-title { margin: var(--hm-space-3) 0 0; font-size: var(--hm-text-title); font-weight: 600; color: var(--text); }
+[data-home] .hx-empty .hx-text { color: var(--text-muted); }
+[data-home] .hx-empty-actions { display: flex; flex-wrap: wrap; gap: var(--hm-space-3); justify-content: center; margin-top: var(--hm-space-2); }
+
+/* ---- The graph. A node is a card placed at its own point of the graph; the world is moved and scaled as one piece. */
+[data-home] .hx-canvas { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; background: var(--bg); cursor: grab; touch-action: none; user-select: none; }
+[data-home] .hx-canvas:active { cursor: grabbing; }
+[data-home] .hx-world { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; will-change: transform; }
+[data-home] .hx-edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+[data-home] .hx-edge { fill: none; stroke: color-mix(in srgb, var(--text-muted) 55%, var(--bg)); stroke-width: 1.5; transition: stroke var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), opacity var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease); }
+[data-home] .hx-edge[data-faded] { opacity: 0.45; }
+[data-home] .hx-edge[data-on] { stroke: var(--accent-strong); stroke-width: 2.5; opacity: 1; }
+[data-home] .hx-edge[data-missing] { stroke: var(--hm-amber); stroke-dasharray: 6 5; opacity: 1; }
+[data-home] .hx-node {
+  position: absolute; box-sizing: border-box; display: flex; align-items: center; gap: var(--hm-space-3); padding: 0 var(--hm-space-4) 0 calc(var(--hm-space-4) - 1px);
+  background: var(--surface); color: var(--text); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); cursor: grab; touch-action: none; user-select: none;
+  transition: opacity var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
+}
+[data-home] .hx-node:hover { border-color: var(--accent-strong); }
+[data-home] .hx-node[data-selected] { background: var(--accent-soft); border-color: var(--accent-strong); box-shadow: inset 0 0 0 1px var(--accent-strong); }
+[data-home] .hx-node[data-faded] { opacity: 0.5; }
+[data-home] .hx-node[data-missing] { background: var(--surface); border: 1.5px dashed var(--hm-amber); }
+[data-home] .hx-node[data-missing] .hx-tile { background: transparent; color: var(--hm-amber); }
+[data-home] .hx-node[data-candidate] { border-color: var(--accent-strong); box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 4px var(--accent-strong); cursor: pointer; }
+[data-home] .hx-node[data-dragging] { z-index: 3; cursor: grabbing; box-shadow: var(--hm-shadow-lift); }
+[data-home] .hx-node:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+[data-home] .hx-node-text { display: flex; flex-direction: column; min-width: 0; }
+[data-home] .hx-node-name { font-size: var(--hm-text-name); font-weight: 600; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+[data-home] .hx-node-sum { font-size: var(--hm-text-base); color: var(--text-muted); line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+[data-home] .hx-node-new { position: absolute; top: var(--hm-space-3); right: var(--hm-space-3); width: var(--hm-dot); height: var(--hm-dot); border-radius: 50%; background: var(--accent); }
+/* The handle: a small circle on the right edge of the selected agent. Press it, then press a part, to link them. Its hit area is larger than the circle. */
+[data-home] .hx-handle { position: absolute; right: -8px; top: 50%; width: 14px; height: 14px; margin-top: -7px; padding: 0; box-sizing: border-box; background: var(--surface); border: 2px solid var(--accent-strong); border-radius: 50%; cursor: pointer; touch-action: manipulation; }
+[data-home] .hx-handle::before { content: ""; position: absolute; inset: -6px; }
+[data-home] .hx-handle[aria-pressed="true"] { background: var(--accent-strong); }
+[data-home] .hx-handle:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+[data-home] .hx-fix { position: absolute; }
+[data-home] .hx-linkbar { position: absolute; top: var(--hm-space-4); left: 50%; transform: translateX(-50%); z-index: 5; display: flex; align-items: center; gap: var(--hm-space-3); padding: var(--hm-space-1) var(--hm-space-3) var(--hm-space-1) var(--hm-space-4); background: var(--surface); border: 1px solid var(--accent-strong); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow); font-size: var(--hm-text-base); font-weight: 600; cursor: default; }
+[data-home] .hx-zoom { position: absolute; top: var(--hm-space-4); right: var(--hm-space-4); z-index: 4; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); cursor: default; }
+[data-home] .hx-map { position: absolute; left: var(--hm-space-4); bottom: var(--hm-space-4); z-index: 4; box-sizing: border-box; background: var(--surface-2); border: 2px solid var(--accent-strong); border-radius: var(--hm-radius-small); overflow: hidden; cursor: pointer; }
+[data-home] .hx-map svg { display: block; }
+[data-home] .hx-map-bar { fill: color-mix(in srgb, var(--text-muted) 40%, var(--surface-2)); }
+[data-home] .hx-map-bar[data-selected] { fill: var(--accent-strong); }
+[data-home] .hx-map-window { fill: none; stroke: var(--accent-strong); stroke-width: 1; }
+[data-home] .hx-legend { position: absolute; left: calc(var(--hm-space-4) + 140px + var(--hm-space-4)); bottom: var(--hm-space-3); z-index: 4; display: flex; flex-wrap: wrap; align-items: center; gap: var(--hm-space-2) var(--hm-space-5); margin: 0; padding: 0; list-style: none; font-size: var(--hm-text-base); color: var(--text-muted); cursor: default; }
+[data-home] .hx-legend li { display: inline-flex; align-items: center; gap: var(--hm-space-2); }
+[data-home] .hx-legend-dot { width: var(--hm-dot); height: var(--hm-dot); border-radius: 50%; background: var(--accent); }
+[data-home] .hx-legend-dash { width: 1rem; height: 0.625rem; box-sizing: border-box; border: 1.5px dashed var(--hm-amber); border-radius: 3px; }
+
+/* ---- The list view of the builder. */
+[data-home] .hx-list { display: flex; flex-direction: column; gap: var(--hm-space-4); }
+[data-home] .hx-group { display: flex; flex-direction: column; gap: var(--hm-space-2); }
+[data-home] .hx-group-head { margin: 0; font-size: var(--hm-text-title); font-weight: 600; line-height: 1.3; }
+[data-home] .hx-group-count { font-weight: 600; }
+[data-home] .hx-lrows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--hm-space-2); }
+[data-home] .hx-lrow { position: relative; display: flex; align-items: center; gap: var(--hm-space-3); min-height: 2.5rem; box-sizing: border-box; padding: var(--hm-space-1) var(--hm-space-3); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); transition: border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), opacity var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease); }
+[data-home] .hx-lrow:hover { border-color: var(--accent-strong); }
+[data-home] .hx-lrow[data-selected] { background: var(--accent-soft); border-color: var(--accent-strong); box-shadow: inset 0 0 0 1px var(--accent-strong); }
+[data-home] .hx-lrow[data-faded] { opacity: 0.5; }
+[data-home] .hx-lrow[data-missing] { border: 1.5px dashed var(--hm-amber); }
+[data-home] .hx-lrow .hx-row-main { flex: 0 1 auto; }
+[data-home] .hx-lrow-sum { margin-left: auto; position: relative; min-width: 0; font-size: var(--hm-text-base); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+[data-home] .hx-lrow-new { position: relative; display: inline-flex; align-items: center; gap: var(--hm-space-2); flex: none; font-size: var(--hm-text-base); }
+[data-home] .hx-lrow-fix { position: relative; z-index: 1; flex: none; }
+
+/* ---- The Add part drawer. */
+[data-home] .hx-drows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--hm-space-2); }
+[data-home] .hx-drow { display: flex; align-items: center; gap: var(--hm-space-3); min-height: var(--hm-row-h); box-sizing: border-box; padding: var(--hm-space-2) var(--hm-space-3); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); }
+[data-home] .hx-drow-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+[data-home] .hx-drow-name { font-weight: 600; font-size: var(--hm-text-base); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-home] .hx-drow-sum { font-size: var(--hm-text-base); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- The File view. */
+[data-home] .hx-file { display: flex; flex-direction: column; gap: var(--hm-space-3); }
+[data-home] .hx-usedby { display: flex; align-items: center; flex-wrap: wrap; gap: var(--hm-space-3); font-size: var(--hm-text-base); }
+[data-home] .hx-file-cols { display: grid; grid-template-columns: minmax(15rem, 18.75rem) minmax(0, 1fr); gap: var(--hm-space-4); align-items: start; margin-top: var(--hm-space-1); }
+@container hmcol (max-width: 760px) { [data-home] .hx-file-cols { grid-template-columns: minmax(0, 1fr); } }
+[data-home] .hx-card { box-sizing: border-box; padding: var(--hm-space-4); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); }
+[data-home] .hx-card-raw { background: var(--surface-2); border-color: transparent; }
+[data-home] .hx-card-title { margin: 0 0 var(--hm-space-3); font-size: var(--hm-text-section); font-weight: 600; }
+[data-home] .hx-fields { margin: 0; display: flex; flex-direction: column; gap: var(--hm-space-3); }
+[data-home] .hx-field dt { font-size: var(--hm-text-base); color: var(--text-muted); }
+[data-home] .hx-field dd { margin: var(--hm-space-1) 0 0; padding: var(--hm-space-2) var(--hm-space-3); background: var(--surface-2); border-radius: var(--hm-radius-small); font-size: var(--hm-text-base); line-height: 1.45; overflow-wrap: anywhere; }
+[data-home] .hx-raw { margin: 0; font: inherit; font-size: var(--hm-text-base); line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* ---- A sheet: a centered panel over a scrim. */
+[data-home] .hx-scrim { position: fixed; inset: 0; z-index: 70; display: flex; align-items: flex-start; justify-content: center; box-sizing: border-box; padding: var(--hm-space-6) var(--hm-space-4); background: var(--hm-scrim); animation: kit-fade-in var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out) both; }
+[data-home] .hx-scrim[data-leaving] { animation: kit-sheet-out var(--motion-home-overlay-out-ms, 0ms) var(--motion-home-overlay-out-ease, ease-in) both; pointer-events: none; }
+[data-home] .hx-sheet { display: flex; flex-direction: column; box-sizing: border-box; max-height: 100%; background: var(--surface); color: var(--text); border-radius: 0.75rem; box-shadow: var(--hm-shadow-lift); animation: kit-sheet-in var(--motion-home-sheet-in-ms, var(--motion-home-overlay-in-ms, 0ms)) var(--motion-home-overlay-in-ease, ease-out) both; }
+[data-home] .hx-sheet[data-tall] { height: min(43.75rem, 100%); }
+[data-home] .hx-sheet-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--hm-space-3); padding: var(--hm-space-5) var(--hm-space-5) var(--hm-space-2) var(--hm-space-5); }
+[data-home] .hx-sheet-title { margin: 0; font-size: var(--hm-text-title); font-weight: 600; line-height: 1.3; outline-offset: 4px; border-radius: var(--hm-radius-small); }
+[data-home] .hx-sheet-sub { flex: none; padding: 0 var(--hm-space-5); }
+[data-home] .hx-sheet-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--hm-space-3) var(--hm-space-5); display: flex; flex-direction: column; gap: var(--hm-space-3); }
+[data-home] .hx-sheet-foot { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--hm-space-4); padding: var(--hm-space-4) var(--hm-space-5) var(--hm-space-5); }
+[data-home] .hx-sheet-note { margin: 0; max-width: 28rem; font-size: var(--hm-text-base); line-height: 1.4; color: var(--text-muted); }
+[data-home] .hx-sheet-actions { display: flex; gap: var(--hm-space-2); flex: none; margin-left: auto; }
+[data-home] .hx-fix-body { display: flex; flex-direction: column; gap: var(--hm-space-3); }
+
+/* ---- The note at the foot of the window ("Installed. Undo"). */
+[data-home] .hx-toast-slot { position: fixed; left: 50%; bottom: var(--hm-space-5); z-index: 80; transform: translateX(-50%); pointer-events: none; max-width: calc(100vw - 2 * var(--hm-space-5)); }
+[data-home] .hx-toast { pointer-events: auto; display: flex; align-items: center; gap: var(--hm-space-3); padding: var(--hm-space-1) var(--hm-space-2) var(--hm-space-1) var(--hm-space-4); background: var(--surface); color: var(--text); border: 1px solid var(--accent-strong); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow-lift); font-size: var(--hm-text-base); font-weight: 600; animation: kit-overlay-in var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out) both; }
+
+/* ---- The Preview mark's popover is a little wider than a help popover, and holds a short list. */
+[data-home] .hx-preview-pop { width: 19rem; }
+[data-home] .hx-pop-head { margin: var(--hm-space-1) 0 0; font-size: var(--hm-text-base); font-weight: 600; }
+[data-home] .hx-pop-list { margin: 0; padding-left: var(--hm-space-5); font-size: var(--hm-text-base); line-height: 1.45; }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-home] .hx-row, [data-home] .hx-node, [data-home] .hx-edge, [data-home] .hx-lrow { transition: none !important; }
+}

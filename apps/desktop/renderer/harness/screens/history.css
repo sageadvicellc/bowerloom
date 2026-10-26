@@ -1,0 +1,13 @@
+/*
+ * Version history (S11). Every rule starts at [data-home]. One row for each change: a clock tile, the change in words, the line under it, and Undo at the right. Text is 14 px or more.
+ */
+[data-home] .hxh-days { display: flex; flex-direction: column; gap: var(--hm-space-4); }
+[data-home] .hxh-day { display: flex; flex-direction: column; gap: var(--hm-space-3); }
+[data-home] .hxh-day-head { margin: 0; font-size: var(--hm-text-section); font-weight: 600; line-height: 1.3; }
+[data-home] .hxh-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.8125rem; }
+[data-home] .hxh-row { cursor: default; outline-offset: 2px; min-height: 4.375rem; }
+[data-home] .hxh-row .hx-row-text { gap: 4px; }
+[data-home] .hxh-row[data-undone] .hx-row-main, [data-home] .hxh-row[data-undone] .hx-row-meta { color: var(--text-muted); }
+[data-home] .hxh-text { display: block; font-size: var(--hm-text-name); font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+[data-home] .hxh-row .hx-row-meta { white-space: normal; }
+[data-home] .hxh-row:hover { border-color: var(--hm-border); }

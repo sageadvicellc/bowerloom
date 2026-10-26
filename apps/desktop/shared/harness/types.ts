@@ -1,0 +1,170 @@
+/**
+ * The data of the harness-first preview (`--prototype-v3`). Plain data only: no React, no clock, no file. Everything is in memory, so nothing is written anywhere.
+ * A harness is a saved list of parts (agents, skills, tools, context). It is installed into a project, once for each interface (Claude Code, Codex, OpenCode, Hermes).
+ */
+
+export type PartKind = 'agent' | 'skill' | 'tool' | 'context';
+export const PART_KINDS: readonly PartKind[] = Object.freeze(['agent', 'skill', 'tool', 'context']);
+
+export type InterfaceId = 'claude-code' | 'codex' | 'opencode' | 'hermes';
+export const INTERFACE_IDS: readonly InterfaceId[] = Object.freeze(['claude-code', 'codex', 'opencode', 'hermes']);
+
+/** The state of one harness in one project for one interface. */
+export type InstallState = 'installed' | 'out-of-date' | 'conflict' | 'not-installed';
+
+/** How an interface was found on this computer. */
+export type InterfaceHealth = 'ready' | 'problem' | 'not-found';
+
+/** A day and a time of day, as the person reads them. The store never reads a clock: the page hands it a stamp. */
+export interface Stamp { readonly daysAgo: number; readonly time: string }
+
+/** One part of a harness: an agent, a skill, a tool or a piece of context. */
+export interface Part {
+  readonly id: string;
+  readonly kind: PartKind;
+  readonly name: string;
+  /** A few words, drawn on the node of the graph: "Finds sources." */
+  readonly summary: string;
+  /** One sentence, drawn in the details and the Library: "Finds sources and summarizes articles." */
+  readonly description: string;
+  /** Where the file lives, for example `agents/researcher.md`. */
+  readonly path: string;
+  /** The label shown beside it: "Made by you", "Caveman plug-in" or "Open skills library". */
+  readonly source: string;
+  /** The scan source it came from (`ScanSource.id`). */
+  readonly origin: string;
+  readonly version?: string;
+  /** The first lines of the file, as text. Always drawn as plain text. */
+  readonly fileText: string;
+  /** The interfaces that cannot use this part. */
+  readonly cannotUse: readonly InterfaceId[];
+  /** False for a part that a harness holds but the Library tabs do not list. */
+  readonly inLibrary: boolean;
+}
+
+/** An agent uses a skill, a tool or a piece of context. The link is kept in the harness manifest, never in the agent's file. */
+export interface Link { readonly from: string; readonly to: string }
+
+/** A part an agent names that the harness does not hold. */
+export interface MissingRef { readonly id: string; readonly kind: PartKind; readonly name: string }
+
+export interface Point { readonly x: number; readonly y: number }
+
+export interface Harness {
+  readonly id: string;
+  readonly name: string;
+  readonly summary: string;
+  readonly partIds: readonly string[];
+  readonly links: readonly Link[];
+  /** Where each node sits in the builder's graph, saved in the manifest. A node with no entry gets the default place (layout.ts). */
+  readonly positions: Readonly<Record<string, Point>>;
+  readonly missing: readonly MissingRef[];
+  /** Parts added since the harness was made. They show a dot. */
+  readonly newPartIds: readonly string[];
+}
+
+export interface Project { readonly id: string; readonly name: string; readonly path: string }
+
+/** One harness in one project. A state is recorded only for the interfaces that were looked at. */
+export interface Install {
+  readonly projectId: string;
+  readonly harnessId: string;
+  readonly states: Readonly<Partial<Record<InterfaceId, InstallState>>>;
+}
+
+export interface Interface {
+  readonly id: InterfaceId;
+  readonly name: string;
+  /** "Found at ~/.claude". */
+  readonly foundAt: string;
+  readonly health: InterfaceHealth;
+  /** "Ready", "Config file has a problem" or "Not found". */
+  readonly healthWords: string;
+  /** Whether Bowerloom offers it in the install and start sheets. */
+  readonly on: boolean;
+  /** The files Bowerloom writes for it. */
+  readonly writes: readonly string[];
+  /** What this interface cannot use, as one sentence. */
+  readonly cannotUseNote: string;
+}
+
+export type RunStatus = 'running' | 'done' | 'closed';
+export type Rating = 'better' | 'same' | 'worse';
+
+export interface Run {
+  readonly id: string;
+  readonly harnessId: string;
+  readonly projectId: string;
+  readonly interfaceId: InterfaceId;
+  readonly instruction: string;
+  readonly started: Stamp;
+  readonly status: RunStatus;
+  /** Runs of one instruction that were started together share a group, for Compare. Null for a run on its own. */
+  readonly groupId: string | null;
+  readonly rating: Rating | null;
+  readonly notes: string;
+}
+
+/** One step back: the inverse of a change. Applying the steps of an entry puts back what the change replaced. */
+export type UndoStep =
+  | { readonly op: 'restore-install'; readonly projectId: string; readonly harnessId: string; readonly before: Install | null }
+  | { readonly op: 'delete-harness'; readonly harnessId: string }
+  | { readonly op: 'remove-link'; readonly harnessId: string; readonly link: Link }
+  | { readonly op: 'add-link'; readonly harnessId: string; readonly link: Link }
+  | { readonly op: 'remove-part'; readonly harnessId: string; readonly partId: string }
+  | { readonly op: 'add-part'; readonly harnessId: string; readonly partId: string; readonly links: readonly Link[]; readonly position: Point | null; readonly wasNew: boolean }
+  | { readonly op: 'restore-missing'; readonly harnessId: string; readonly missing: readonly MissingRef[]; readonly links: readonly Link[] }
+  | { readonly op: 'set-interface'; readonly interfaceId: InterfaceId; readonly on: boolean };
+
+export interface HistoryEntry {
+  readonly id: string;
+  readonly text: string;
+  readonly stamp: Stamp;
+  readonly person: string;
+  readonly computer: string;
+  /** How many files the change wrote. 0 for a change to a manifest only. */
+  readonly filesWritten: number;
+  /** For a change to a manifest: whether it was made or changed. */
+  readonly manifest: 'created' | 'changed' | null;
+  /** The steps that undo it, or null when it cannot be undone. */
+  readonly undo: readonly UndoStep[] | null;
+  readonly undone: boolean;
+}
+
+/** A place that was found by the first scan. */
+export interface ScanSource {
+  readonly id: string;
+  readonly name: string;
+  readonly interfaceName: string;
+  readonly harnessName: string;
+  readonly partIds: readonly string[];
+}
+
+export interface HarnessState {
+  readonly parts: readonly Part[];
+  readonly harnesses: readonly Harness[];
+  readonly projects: readonly Project[];
+  readonly installs: readonly Install[];
+  readonly interfaces: readonly Interface[];
+  readonly runs: readonly Run[];
+  /** Newest first. */
+  readonly history: readonly HistoryEntry[];
+  readonly sources: readonly ScanSource[];
+  /** The sources the person kept ticked in the first scan. */
+  readonly chosenSourceIds: readonly string[];
+  /** A counter for the ids of new things, so the store needs no random number and no clock. */
+  readonly nextId: number;
+}
+
+export type FileState = 'new' | 'update' | 'conflict' | 'same';
+export interface PlannedFile { readonly path: string; readonly state: FileState }
+export interface InstallPlan {
+  readonly manifest: PlannedFile;
+  readonly groups: readonly { readonly interfaceId: InterfaceId; readonly files: readonly PlannedFile[] }[];
+  readonly counts: { readonly new: number; readonly update: number; readonly conflict: number; readonly total: number };
+  readonly conflicts: readonly PlannedFile[];
+}
+
+/** How the person settles a file that already exists: keep theirs, use the harness copy, or keep both. */
+export type ConflictChoice = 'keep-mine' | 'use-harness' | 'keep-both';
+export const CONFLICT_CHOICES: readonly ConflictChoice[] = Object.freeze(['keep-mine', 'use-harness', 'keep-both']);

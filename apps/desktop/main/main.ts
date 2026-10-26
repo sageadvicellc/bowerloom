@@ -27,7 +27,9 @@ const argv = process.argv.slice(1);
 const prototypeV2 = argv.includes('--prototype-v2');
 // The read-only reader of a real setup (--prototype-real) keeps every prototype lock below and adds one thing: a preload with three named calls (main/real-ipc.ts).
 const prototypeReal = argv.includes('--prototype-real');
-const prototypeMode = argv.includes('--prototype') || prototypeV2 || prototypeReal;
+// The harness-first preview (--prototype-v3) keeps the same locks as --prototype-v2: no preload, no IPC, a temporary data folder, no outside link, and nothing written.
+const prototypeV3 = argv.includes('--prototype-v3');
+const prototypeMode = argv.includes('--prototype') || prototypeV2 || prototypeReal || prototypeV3;
 // The prototype writes nothing to the real app data, whoever starts it. It keeps its own temporary data folder (or the one it was given, when that
 // is one of its own), and removes it when the app quits. The launcher does the same; this keeps the promise when the app is started without it.
 // Not caught: a hard kill (SIGKILL, a crash, a power cut) leaves the folder, and the browser engine writes a few small files (Local State, Preferences)
@@ -76,16 +78,17 @@ function startupFailed(error: unknown): void {
 
 function createWindow(): void {
   window = new BrowserWindow({
-    ...windowOptions(prototypeV2 || prototypeReal), useContentSize: true, show: false,
+    ...windowOptions(prototypeV2 || prototypeReal || prototypeV3), useContentSize: true, show: false,
     backgroundColor: '#f6f5f0',
     // The prototype page gets no bridge at all: no preload, so no `window.bowerloom`, and nothing to call even if a channel were open.
     webPreferences: prototypeReal ? webPreferences(join(root, 'preload-real.cjs'), app.isPackaged) : webPreferences(prototypeMode ? undefined : join(root, 'preload.cjs'), app.isPackaged),
   });
   window.once('ready-to-show', () => window?.show());
   // The home app prototype is called "Bowerloom" from the first moment: the page title it loads with ("Bowerloom Viewer") never reaches the title bar.
-  if (prototypeV2 || prototypeReal) window.on('page-title-updated', event => event.preventDefault());
+  if (prototypeV2 || prototypeReal || prototypeV3) window.on('page-title-updated', event => event.preventDefault());
   window.on('closed', () => { window = null; });
   if (prototypeReal) window.webContents.loadURL(`${indexUrl}${REAL_HASH}`).catch(startupFailed);
+  else if (prototypeV3) window.loadURL(`${indexUrl}#prototype-v3`).catch(startupFailed);
   else if (prototypeV2) window.loadURL(`${indexUrl}#prototype-v2`).catch(startupFailed);
   else if (prototypeMode) window.loadURL(`${indexUrl}#prototype`).catch(startupFailed);
   else window.loadURL(indexUrl).catch(startupFailed);

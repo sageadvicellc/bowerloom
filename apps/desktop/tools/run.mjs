@@ -4,6 +4,7 @@
 //   npm --prefix <repo> run desktop:sample    (made-up sample data)
 //   npm --prefix <repo> run desktop:prototype (the Bowerloom 0.8 clickable prototype: all in memory, with a temporary data folder)
 //   npm --prefix <repo> run desktop:prototype:v2 (the 0.8 home app, agents first: the same promises)
+//   npm --prefix <repo> run desktop:prototype:v3 (the 0.8 harness-first preview: sample data, nothing written, the same promises)
 //   npm --prefix <repo> run desktop:prototype:real (the 0.8 preview on YOUR setup: it reads your tool folders and changes nothing; needs a real HOME)
 // It installs what is missing, builds the app, and opens the window. Pass --build-only to stop before the window.
 import { spawn, spawnSync } from 'node:child_process';
@@ -19,10 +20,10 @@ export { makePrototypeDataDir, removePrototypeDataDir };
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const repo = join(desktop, '..', '..');
-const KNOWN = new Set(['--sample-data', '--real-data', '--sandbox', '--prototype', '--prototype-v2', '--prototype-real', '--build-only']);
-const MODES = new Set(['--sample-data', '--real-data', '--sandbox', '--prototype', '--prototype-v2', '--prototype-real']);
-// Both prototypes start with a fresh temporary data folder and write nothing else.
-const PROTOTYPES = ['--prototype', '--prototype-v2'];
+const KNOWN = new Set(['--sample-data', '--real-data', '--sandbox', '--prototype', '--prototype-v2', '--prototype-v3', '--prototype-real', '--build-only']);
+const MODES = new Set(['--sample-data', '--real-data', '--sandbox', '--prototype', '--prototype-v2', '--prototype-v3', '--prototype-real']);
+// The prototypes start with a fresh temporary data folder and write nothing else.
+const PROTOTYPES = ['--prototype', '--prototype-v2', '--prototype-v3'];
 // The real-setup preview has the same lock (a fresh temporary data folder, nothing written to the real app data) and adds a read-only bridge. It needs a real home folder.
 export const REAL_FLAG = '--prototype-real';
 /** What the real-setup preview says on the terminal before it opens its window. Tests hold this to shared/real/types.ts. */
@@ -127,8 +128,8 @@ function step(text, command, argv, cwd, env) {
 function main() {
   const args = process.argv.slice(2);
   const unknown = args.filter(a => !KNOWN.has(a));
-  if (unknown.length) fail(`I do not know ${unknown.map(a => `"${a}"`).join(', ')}. Use --sample-data to open the sample, --real-data to open your own Bowerloom, --prototype or --prototype-v2 to open a clickable prototype, --prototype-real to open the preview on your own setup (read-only), or --build-only to only build.`, 2);
-  if (args.filter(a => MODES.has(a)).length > 1) fail('Choose one of --sample-data, --real-data, --sandbox, --prototype, --prototype-v2 and --prototype-real, not more.', 2);
+  if (unknown.length) fail(`I do not know ${unknown.map(a => `"${a}"`).join(', ')}. Use --sample-data to open the sample, --real-data to open your own Bowerloom, --prototype, --prototype-v2 or --prototype-v3 to open a clickable prototype, --prototype-real to open the preview on your own setup (read-only), or --build-only to only build.`, 2);
+  if (args.filter(a => MODES.has(a)).length > 1) fail('Choose one of --sample-data, --real-data, --sandbox, --prototype, --prototype-v2, --prototype-v3 and --prototype-real, not more.', 2);
   if (args.includes(REAL_FLAG) && realHome() === null) fail('The real setup preview needs a home folder, and HOME is not set to a folder that exists. Nothing was read.', 2);
 
   const npm = npmCommand();

@@ -1,0 +1,96 @@
+/**
+ * The addresses of the harness-first preview. The page address is the router: `#prototype-v3/builder/harness-weekly-report-crew/list` is the builder, in its list view.
+ * Pure: a route is plain data, and `parseRoute` and `formatRoute` go both ways. An address that is not the preview's own (the skip link's `#main`) parses to null, which leaves the page as it is.
+ */
+import type { PartKind } from './types.js';
+import { PART_KINDS } from './types.js';
+
+export const BASE = '#prototype-v3';
+
+export type BuilderView = 'graph' | 'list';
+
+export type Route =
+  | { readonly name: 'welcome' }
+  | { readonly name: 'choose' }
+  | { readonly name: 'read' }
+  | { readonly name: 'harnesses'; readonly id?: string }
+  | { readonly name: 'builder'; readonly id: string; readonly view: BuilderView }
+  | { readonly name: 'file'; readonly partId: string }
+  | { readonly name: 'library'; readonly kind: PartKind; readonly partId?: string }
+  | { readonly name: 'projects'; readonly id?: string }
+  | { readonly name: 'runs'; readonly id?: string }
+  | { readonly name: 'compare'; readonly group: string }
+  | { readonly name: 'interfaces'; readonly id?: string }
+  | { readonly name: 'history' }
+  | { readonly name: 'help' };
+
+export type RouteName = Route['name'];
+
+/** True for an address that belongs to the preview. */
+export const isHarnessHash = (hash: string): boolean => hash === BASE || hash.startsWith(`${BASE}/`);
+
+/** The three screens before the app: they have no navigation. */
+export const FIRST_RUN: readonly RouteName[] = Object.freeze(['welcome', 'choose', 'read']);
+export const isFirstRun = (route: Route): boolean => FIRST_RUN.includes(route.name);
+
+const clean = (value: string | undefined): string | undefined => {
+  if (value === undefined || value === '') return undefined;
+  try { const text = decodeURIComponent(value); return /^[A-Za-z0-9._-]{1,120}$/.test(text) ? text : undefined; } catch { return undefined; }
+};
+const isKind = (value: string | undefined): value is PartKind => value !== undefined && (PART_KINDS as readonly string[]).includes(value);
+
+/** The route an address names, or null when the address is not the preview's own. An unknown page under the preview's address is the Harness list. */
+export function parseRoute(hash: string): Route | null {
+  if (!isHarnessHash(hash)) return null;
+  const [name, a, b] = hash.slice(BASE.length).split('/').filter((part, i) => i > 0 || part !== '');
+  const id = clean(a);
+  switch (name) {
+    case undefined: case '': return { name: 'welcome' };
+    case 'choose': return { name: 'choose' };
+    case 'read': return { name: 'read' };
+    case 'harnesses': return id === undefined ? { name: 'harnesses' } : { name: 'harnesses', id };
+    case 'builder': return id === undefined ? { name: 'harnesses' } : { name: 'builder', id, view: b === 'list' ? 'list' : 'graph' };
+    case 'file': return id === undefined ? { name: 'harnesses' } : { name: 'file', partId: id };
+    case 'library': {
+      const kind = isKind(a) ? a : 'skill', partId = clean(b);
+      return partId === undefined ? { name: 'library', kind } : { name: 'library', kind, partId };
+    }
+    case 'projects': return id === undefined ? { name: 'projects' } : { name: 'projects', id };
+    case 'runs': return id === undefined ? { name: 'runs' } : { name: 'runs', id };
+    case 'compare': return id === undefined ? { name: 'runs' } : { name: 'compare', group: id };
+    case 'interfaces': return id === undefined ? { name: 'interfaces' } : { name: 'interfaces', id };
+    case 'history': return { name: 'history' };
+    case 'help': return { name: 'help' };
+    default: return { name: 'harnesses' };
+  }
+}
+
+const seg = (value: string): string => encodeURIComponent(value);
+
+/** The address of a route. */
+export function formatRoute(route: Route): string {
+  switch (route.name) {
+    case 'welcome': return BASE;
+    case 'choose': case 'read': case 'history': case 'help': return `${BASE}/${route.name}`;
+    case 'harnesses': case 'projects': case 'runs': case 'interfaces': return route.id === undefined ? `${BASE}/${route.name}` : `${BASE}/${route.name}/${seg(route.id)}`;
+    case 'builder': return `${BASE}/builder/${seg(route.id)}/${route.view}`;
+    case 'file': return `${BASE}/file/${seg(route.partId)}`;
+    case 'library': return route.partId === undefined ? `${BASE}/library/${route.kind}` : `${BASE}/library/${route.kind}/${seg(route.partId)}`;
+    case 'compare': return `${BASE}/compare/${seg(route.group)}`;
+  }
+}
+
+/** Which item of the navigation a route belongs to. The builder and the file view belong to the place they were opened from. */
+export type NavKey = 'harnesses' | 'library' | 'library-agent' | 'library-skill' | 'library-tool' | 'library-context' | 'projects' | 'runs' | 'interfaces' | 'history' | 'help';
+export function navKeyOf(route: Route): NavKey | null {
+  switch (route.name) {
+    case 'harnesses': case 'builder': return 'harnesses';
+    case 'file': case 'library': return route.name === 'library' ? `library-${route.kind}` : 'library';
+    case 'projects': return 'projects';
+    case 'runs': case 'compare': return 'runs';
+    case 'interfaces': return 'interfaces';
+    case 'history': return 'history';
+    case 'help': return 'help';
+    default: return null;
+  }
+}

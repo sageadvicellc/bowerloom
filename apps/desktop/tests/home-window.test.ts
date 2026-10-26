@@ -30,6 +30,6 @@ test('the smallest window is the same for both, and 1280 is past the width where
 
 test('main.ts builds the window from these options and keeps the title the prototype set while the page loads', () => {
   const main = readFileSync(join(DESKTOP, 'main', 'main.ts'), 'utf8');
-  assert.match(main, /windowOptions\(prototypeV2 \|\| prototypeReal\)/);
+  assert.match(main, /windowOptions\(prototypeV2 \|\| prototypeReal \|\| prototypeV3\)/);
   assert.match(main, /page-title-updated/);
 });

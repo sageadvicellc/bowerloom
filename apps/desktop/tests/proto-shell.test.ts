@@ -24,7 +24,7 @@ import { agent, makeWorld, skill } from './proto-testworld.js';
 const COMMAND = /\bbowerloom (ls|status|use|unuse|lock|apply|skills|skill|prompt|team|store|folder|slice|context|cache|up|help)\b|\bnpm (run|install)\b|\bgit (push|init|add|commit|remote)\b|\bcd \S|\bchmod\b|--[a-z]{3,}|terminal|command line|\$ /i;
 const BANNED_WORD = /\bhelpers?\b|\bteams?\b/i;
 // Every property that holds for --prototype also holds for --prototype-v2 (the 0.8 home app): one list, so a third flag would join it.
-const PROTOTYPE_FLAGS = [{ flag: '--prototype', hash: '#prototype', script: 'desktop:prototype' }, { flag: '--prototype-v2', hash: '#prototype-v2', script: 'desktop:prototype:v2' }] as const;
+const PROTOTYPE_FLAGS = [{ flag: '--prototype', hash: '#prototype', script: 'desktop:prototype' }, { flag: '--prototype-v2', hash: '#prototype-v2', script: 'desktop:prototype:v2' }, { flag: '--prototype-v3', hash: '#prototype-v3', script: 'desktop:prototype:v3' }] as const;
 const ids = ['setup', 'harness', 'skills', 'agents', 'knowledge', 'versions'] as const;
 const read = (file: string): string => readFileSync(join(DESKTOP, file), 'utf8');
 const strip = (text: string): string => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
@@ -119,7 +119,7 @@ test('main.ts: each prototype flag loads the same app address with its own hash,
   }
   assert.equal(decideNavigation(`${APP_INDEX}#prototype-v2/kit`, APP_INDEX), 'allow-app');
   // Either flag puts the app in prototype mode, which is the one switch behind the missing preload, the refused IPC, the temp folder and the blocked links.
-  assert.match(main, /const prototypeMode = argv\.includes\('--prototype'\) \|\| prototypeV2 \|\| prototypeReal;/);
+  assert.match(main, /const prototypeMode = argv\.includes\('--prototype'\) \|\| prototypeV2 \|\| prototypeReal \|\| prototypeV3;/);
   assert.match(main, /const prototypeV2 = argv\.includes\('--prototype-v2'\);/);
   assert.equal([...main.matchAll(/ipcMain\.handle/g)].length, 1, 'still one guard');
   assert.match(main, /isAllowedSender\(/);
@@ -165,7 +165,7 @@ test('app.ts mounts a prototype only for its own hash and leaves the normal boot
 
 test('the launcher: each prototype flag is known, a mode that excludes the other modes, and is passed on', () => {
   const src = strip(read('tools/run.mjs'));
-  assert.match(src, /PROTOTYPES = \['--prototype', '--prototype-v2'\]/); assert.match(src, /PROTOTYPES\.some\(flag => args\.includes\(flag\)\)/);
+  assert.match(src, /PROTOTYPES = \['--prototype', '--prototype-v2', '--prototype-v3'\]/); assert.match(src, /PROTOTYPES\.some\(flag => args\.includes\(flag\)\)/);
   assert.match(src, /makePrototypeDataDir\(\)/); assert.match(strip(read('main/prototype-dir.mjs')), /mkdtempSync\(/);
   for (const { flag } of PROTOTYPE_FLAGS) {
     assert.match(src, new RegExp(`KNOWN = new Set\\(\\[[^\\]]*'${flag}'`), flag); assert.match(src, new RegExp(`MODES = new Set\\(\\[[^\\]]*'${flag}'`), flag);

@@ -1,0 +1,100 @@
+/**
+ * What the screens share besides the harness world: which sheets are open (the install sheet and the start sheet are opened from several screens), the harness picked in the list,
+ * the toast ("Installed. Undo"), and the shell (the details column and the navigation). All of it lives in memory.
+ *
+ * The next builders plug in here: `openInstall({ projectId, harnessId, step })` opens the install sheet at a step, `openStart({ harnessId, projectId })` opens the start sheet,
+ * `showToast(text, action)` shows a note with one action, and `pickedHarnessId` is the harness the Harness list has selected.
+ */
+import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import type { ReactElement, ReactNode } from 'react';
+import type { InterfaceId } from '../../shared/harness/types.js';
+
+export type InstallStep = 'project' | 'interfaces' | 'review';
+
+export interface InstallState {
+  readonly open: boolean; readonly projectId: string | null; readonly harnessId: string | null; readonly step: InstallStep;
+  /** The interfaces the sheet opens with ticked, or null for the default ones. */
+  readonly interfaceIds: readonly InterfaceId[] | null;
+}
+export interface StartState { readonly open: boolean; readonly harnessId: string | null; readonly projectId: string | null }
+export interface ToastState { readonly id: number; readonly text: string; readonly action: { readonly label: string; readonly run: () => void } | null }
+
+export interface Ui {
+  readonly install: InstallState;
+  /**
+   * Opens the install sheet. A step that is left out is the first step with something still to choose: "project" with no project, else "interfaces".
+   * `interfaceIds` are the interfaces to tick (the Start sheet passes the ones the person ticked); left out, the sheet ticks the default ones.
+   */
+  openInstall(request?: { projectId?: string | null; harnessId?: string | null; step?: InstallStep; interfaceIds?: readonly InterfaceId[] | null }): void;
+  setInstallStep(step: InstallStep): void;
+  closeInstall(): void;
+  readonly start: StartState;
+  openStart(request: { harnessId: string; projectId?: string | null }): void;
+  closeStart(): void;
+  /** The harness the Harness list has selected, or null. */
+  readonly pickedHarnessId: string | null;
+  pickHarness(id: string | null): void;
+  readonly toast: ToastState | null;
+  /** Shows a note at the foot of the window for a few seconds, with one optional action. The time stops while the pointer or the focus is on it. */
+  showToast(text: string, action?: { label: string; run: () => void }): void;
+  hideToast(): void;
+  /** Stops the note's timer (true) or starts it again from the full time (false). The note calls it for hover and focus. */
+  holdToast(held: boolean): void;
+  /** The number of sheets that are open, so the shell knows a layer holds the page. */
+  readonly layers: number;
+  pushLayer(): () => void;
+}
+
+const Context = createContext<Ui | null>(null);
+
+export const TOAST_MS = 8000;
+
+export function UiProvider({ children }: { children?: ReactNode }): ReactElement {
+  const [install, setInstall] = useState<InstallState>({ open: false, projectId: null, harnessId: null, step: 'project', interfaceIds: null });
+  const [start, setStart] = useState<StartState>({ open: false, harnessId: null, projectId: null });
+  const [picked, setPicked] = useState<string | null>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
+  const [layers, setLayers] = useState(0);
+  const counter = useRef(0), timer = useRef<number | null>(null), held = useRef(false), shown = useRef(false);
+
+  const stopTimer = useCallback((): void => { if (timer.current !== null) { window.clearTimeout(timer.current); timer.current = null; } }, []);
+  const startTimer = useCallback((): void => {
+    stopTimer();
+    if (held.current) return;
+    timer.current = window.setTimeout(() => { timer.current = null; shown.current = false; setToast(null); }, TOAST_MS);
+  }, [stopTimer]);
+  const hideToast = useCallback((): void => { stopTimer(); shown.current = false; setToast(null); }, [stopTimer]);
+  const showToast = useCallback((text: string, action?: { label: string; run: () => void }): void => {
+    counter.current += 1;
+    shown.current = true;
+    setToast({ id: counter.current, text, action: action === undefined ? null : { label: action.label, run: action.run } });
+    startTimer();
+  }, [startTimer]);
+  const holdToast = useCallback((on: boolean): void => {
+    held.current = on;
+    if (on) stopTimer(); else if (shown.current) startTimer();
+  }, [stopTimer, startTimer]);
+  const pushLayer = useCallback((): (() => void) => { setLayers(n => n + 1); return () => setLayers(n => Math.max(0, n - 1)); }, []);
+
+  const ui = useMemo<Ui>(() => ({
+    install,
+    openInstall: (request = {}) => setInstall(current => {
+      const projectId = request.projectId === undefined ? current.projectId : request.projectId, harnessId = request.harnessId === undefined ? current.harnessId : request.harnessId;
+      return { open: true, projectId, harnessId, step: request.step ?? (projectId === null ? 'project' : 'interfaces'), interfaceIds: request.interfaceIds ?? null };
+    }),
+    setInstallStep: step => setInstall(current => ({ ...current, step })),
+    closeInstall: () => setInstall(current => ({ ...current, open: false })),
+    start,
+    openStart: request => setStart({ open: true, harnessId: request.harnessId, projectId: request.projectId ?? null }),
+    closeStart: () => setStart(current => ({ ...current, open: false })),
+    pickedHarnessId: picked, pickHarness: setPicked,
+    toast, showToast, hideToast, holdToast, layers, pushLayer,
+  }), [install, start, picked, toast, showToast, hideToast, holdToast, layers, pushLayer]);
+  return <Context value={ui}>{children}</Context>;
+}
+
+export function useUi(): Ui {
+  const ui = useContext(Context);
+  if (ui === null) throw new Error('The preview state is missing. Draw the screen inside UiProvider.');
+  return ui;
+}

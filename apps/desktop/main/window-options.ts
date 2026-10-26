@@ -1,6 +1,6 @@
 /**
  * The size, the smallest size and the title of the window, as plain data so a test can read them without Electron.
- * The home app prototype (--prototype-v2) opens at 1280 by 800: the shelves hide under 1200 px wide while a drawer is open (renderer/home/home.css), and the old
+ * The home app prototype (--prototype-v2) and the harness-first preview (--prototype-v3) open at 1280 by 800: the shelves hide under 1200 px wide while a drawer is open (renderer/home/home.css), and the old
  * 1100 by 760 put them out of sight after every add. Every other launch keeps the size it always had.
  */
 

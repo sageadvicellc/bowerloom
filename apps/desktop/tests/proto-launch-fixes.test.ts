@@ -180,9 +180,9 @@ test('main.ts shows an error box and exits when the start fails or the page does
   assert.match(main, /dialog\.showErrorBox\(/); assert.match(main, /Bowerloom prototype could not start/); assert.match(main, /app\.exit\(1\)/);
   assert.match(main, /process\.stderr\.write\(/);
   assert.match(main, /app\.whenReady\(\)\.then\(async[\s\S]*\}\)\.catch\(startupFailed\)/, 'whenReady has a catch');
-  // Every load has a catch: the plain window, --prototype and --prototype-v2.
+  // Every load has a catch: the plain window, --prototype, --prototype-v2 and --prototype-v3.
   const loads = [...main.matchAll(/window\.loadURL\(/g)].length;
-  assert.equal(loads, 3, 'three loads');
+  assert.equal(loads, 4, 'four loads');
   assert.equal([...main.matchAll(/window\.loadURL\([^;]*\)\.catch\(startupFailed\)/g)].length, loads, 'every loadURL call has a catch');
   assert.doesNotMatch(main, /void window\.loadURL/);
   assert.match(main, /removeAndReport\(/, 'the quit clean-up says when it could not remove the folder');

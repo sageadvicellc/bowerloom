@@ -393,7 +393,7 @@ test('the built bridge, run with a fake Electron, exposes exactly three frozen f
 test('main.ts: the real flag is one more prototype mode (temp data folder, strict CSP, no outside link), with one preload of its own and a page of its own', () => {
   const main = strip(read('main/main.ts'));
   assert.match(main, /const prototypeReal = argv\.includes\('--prototype-real'\);/);
-  assert.match(main, /const prototypeMode = argv\.includes\('--prototype'\) \|\| prototypeV2 \|\| prototypeReal;/);
+  assert.match(main, /const prototypeMode = argv\.includes\('--prototype'\) \|\| prototypeV2 \|\| prototypeReal \|\| prototypeV3;/);
   assert.match(main, /prototypeReal \? webPreferences\(join\(root, 'preload-real\.cjs'\), app\.isPackaged\) : webPreferences\(prototypeMode \? undefined : join\(root, 'preload\.cjs'\), app\.isPackaged\)/);
   assert.equal([...main.matchAll(/preload-real\.cjs/g)].length, 1, 'the real bridge is named once');
   assert.equal([...main.matchAll(/registerRealIpc\(/g)].length, 1);
@@ -436,7 +436,7 @@ test('the launcher: the real flag is known, excludes every other mode, needs a r
     const r = spawnSync(process.execPath, [join(DESKTOP, 'tools', 'run.mjs'), ...args], { env: { PATH: process.env.PATH ?? '', ...env }, encoding: 'utf8', timeout: 30000 });
     return { status: r.status, stdout: r.stdout, stderr: r.stderr };
   };
-  for (const other of ['--sample-data', '--real-data', '--sandbox', '--prototype', '--prototype-v2']) {
+  for (const other of ['--sample-data', '--real-data', '--sandbox', '--prototype', '--prototype-v2', '--prototype-v3']) {
     const r = run(['--prototype-real', other], { HOME: '/tmp' });
     assert.equal(r.status, 2, other); assert.match(r.stderr, /not more/); assert.doesNotMatch(r.stdout, /Installing|Building/);
   }
