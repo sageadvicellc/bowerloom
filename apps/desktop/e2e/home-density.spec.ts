@@ -74,7 +74,7 @@ const badStates = async (): Promise<string[]> => page().evaluate(() => {
 /** Targets under the size they must have: 24 px square for any control (a tick box is judged by its row), 32 px high for a button, a tab or a toggle of words. */
 const smallTargets = async (): Promise<string[]> => page().evaluate(() => {
   const out: string[] = [];
-  const thirtyTwo = '.kit-button, .add-tab, .nt-pill, .nt-chip, .nt-leave-button, .kit-tray-more, .nt-search';
+  const thirtyTwo = '.kit-button, .add-tab, .nt-pill, .nt-chip, .nt-leave-button, [data-more], .nt-search';
   for (const el of document.querySelectorAll<HTMLElement>('[data-home] button, [data-home] [role="tab"], [data-home] input, [data-home] a[href]')) {
     const r = el.getBoundingClientRect(), s = getComputedStyle(el);
     if (r.width === 0 || r.height === 0 || s.visibility === 'hidden' || el.closest('.hm-sr, [inert]') !== null) continue;
@@ -103,7 +103,7 @@ const clippedWithoutDots = async (): Promise<string[]> => page().evaluate(() => 
 
 /** In a row that has a state and a Remove, the words of the state end before Remove begins (the two share the second line of a narrow row). */
 const statesOverRemove = async (): Promise<string[]> => page().evaluate(() => [...document.querySelectorAll('.kit-card')].flatMap(card => {
-  const words = card.querySelector('.kit-status > span:last-child'), remove = card.querySelector('.kit-remove');
+  const words = card.querySelector('.kit-status > span:last-child'), remove = card.querySelector('[data-remove]');
   if (words === null || remove === null || words.getBoundingClientRect().width === 0 || getComputedStyle(words).visibility === 'hidden') return [];
   const w = words.getBoundingClientRect(), r = remove.getBoundingClientRect();
   return w.right > r.left + 0.5 ? [`${words.textContent} runs into Remove by ${(w.right - r.left).toFixed(1)} px`] : [];
@@ -234,7 +234,7 @@ test('a tray shows 12 rows and "Show more" after that; the counts are Tab stops 
   await expect(button).toHaveAttribute('aria-expanded', 'true');
   const tray = await trayFor(button);
   expect(await tray.locator('.kit-card-main').count()).toBe(5);
-  expect(await tray.locator('.kit-tray-more').count()).toBe(0);
+  expect(await tray.locator('[data-more]').count()).toBe(0);
   // The counts of the tile that has the keyboard are Tab stops (the counts of the other tiles are reached by the arrow keys).
   expect(await tile('Writing coach').locator('.kit-count').evaluateAll(list => list.every(b => b.tagName === 'BUTTON' && b.getAttribute('tabindex') === '0'))).toBe(true);
   expect(await tile('Money tracker').locator('.kit-count').evaluateAll(list => list.every(b => b.getAttribute('tabindex') === '-1'))).toBe(true);

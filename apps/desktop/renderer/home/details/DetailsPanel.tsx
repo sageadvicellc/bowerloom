@@ -25,6 +25,7 @@ import type { Place } from '../../../shared/home/where-it-lives.js';
 import { WORDS } from '../words.js';
 import { WhereItLives } from './WhereItLives.js';
 import './details.css';
+import { IconButton } from '../kit/IconButton.js';
 
 const L = WORDS.label, H = WORDS.hint;
 
@@ -84,7 +85,7 @@ function Head({ kind, glyph, name, line }: { kind: string; glyph: 'agent' | 'ski
 }
 
 function Back({ owner, onSelect }: { owner: AgentRef | null; onSelect(selected: Selected): void }): ReactElement | null {
-  return owner === null ? null : <div className="dt-back"><Button icon="back" size="small" onClick={() => onSelect({ kind: 'agent', id: owner.id })}>{L.backToAgent}</Button></div>;
+  return owner === null ? null : <div className="dt-back"><IconButton icon="back" label={L.backToAgent} side="right" data-back="" onClick={() => onSelect({ kind: 'agent', id: owner.id })} /></div>;
 }
 
 function Remove({ owner, entry, onRemove }: { owner: AgentRef | null; entry: ShelfEntry; onRemove(agentId: string, entry: ShelfEntry): void }): ReactElement | null {

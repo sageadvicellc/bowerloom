@@ -12,6 +12,7 @@ import { CARD_WORDS } from '../../../shared/home/cards.js';
 import type { ShelfEntry } from '../../../shared/home/cards.js';
 import { WORDS } from '../words.js';
 import { ItemCard } from './ItemCard.js';
+import { IconButton } from './IconButton.js';
 
 /** How many rows a tray shows before "Show more". */
 export const TRAY_LIMIT = 12;
@@ -53,7 +54,7 @@ export function Tray({ agentId, agentName, kind, entries, open, itemId = null, o
             ))}
           </ul>
           {entries.length > TRAY_LIMIT ? (
-            <button type="button" className="kit-tray-more" aria-expanded={more} aria-label={`${more ? WORDS.label.showLess : WORDS.label.showMore} ${PLURAL[kind]}`} onClick={() => setMore(m => !m)}>{more ? WORDS.label.showLess : WORDS.label.showMore}</button>
+            <IconButton icon={more ? 'chevron-up' : 'chevron'} label={`${more ? WORDS.label.showLess : WORDS.label.showMore} ${PLURAL[kind]}`} tip={more ? WORDS.label.showLess : WORDS.label.showMore} side="right" aria-expanded={more} data-more="" onClick={() => setMore(m => !m)} />
           ) : null}
         </div>
       </div>

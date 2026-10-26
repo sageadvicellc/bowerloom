@@ -110,12 +110,16 @@ test('a shelf has a title, cards that are all the same card, and an empty senten
   assert.match(empty, /<p class="kit-hint">Nothing here yet\.<\/p>/); assert.doesNotMatch(empty, /kit-card|<ul/); within(empty);
 });
 
-test('a shelf shows eight cards and then "Show more"; expanded it shows all of them and "Show less"', () => {
+test('a shelf shows eight cards and then a Show more icon button; expanded it shows all of them and Show less', () => {
   assert.equal([...shelf(8).matchAll(/class="kit-card"/g)].length, 8); assert.doesNotMatch(shelf(8), /Show more/);
   const nine = shelf(9);
-  assert.equal([...nine.matchAll(/class="kit-card"/g)].length, 8); assert.match(nine, /<button[^>]*aria-expanded="false"[^>]*>Show more<\/button>/); within(nine);
+  assert.equal([...nine.matchAll(/class="kit-card"/g)].length, 8);
+  const more = /<button[^>]*data-more=""[^>]*>/.exec(nine)![0];
+  assert.match(more, /aria-label="Show more"/); assert.match(more, /aria-expanded="false"/); assert.match(nine, /role="tooltip"[^>]*>Show more<\/span>/); within(nine);
   const all = shelf(20, { defaultExpanded: true });
-  assert.equal([...all.matchAll(/class="kit-card"/g)].length, 20); assert.match(all, /aria-expanded="true"[^>]*>Show less</);
+  assert.equal([...all.matchAll(/class="kit-card"/g)].length, 20);
+  const less = /<button[^>]*data-more=""[^>]*>/.exec(all)![0];
+  assert.match(less, /aria-label="Show less"/); assert.match(less, /aria-expanded="true"/); assert.match(all, /role="tooltip"[^>]*>Show less<\/span>/);
   assert.equal([...shelf(6, { limit: 4 }).matchAll(/class="kit-card"/g)].length, 4);
 });
 

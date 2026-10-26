@@ -9,6 +9,7 @@ import { useId } from 'react';
 import type { PointerEvent as ReactPointerEvent, ReactElement } from 'react';
 import type { CardBadge } from '../../../shared/home/cards.js';
 import { WORDS } from '../words.js';
+import { EditIconButton } from '../read-only.js';
 import { Badge } from './Badge.js';
 import { Glyph } from './Glyph.js';
 
@@ -49,18 +50,18 @@ export function ItemCard({ kind, name, hint, badge, selected, onSelect, onDragSt
         <div className="kit-card-line">
           <button type="button" className="kit-card-main" id={nameId} aria-pressed={selected} aria-describedby={hint === undefined ? undefined : hintId} onClick={onSelect}>{name}</button>
         </div>
-        {hint === undefined && badge === undefined && onRemove === undefined ? null : (
+        {hint === undefined && badge === undefined ? null : (
           <div className="kit-card-line">
             {hint === undefined ? <span className="kit-card-hint" /> : <p className="kit-hint kit-card-hint" id={hintId}>{hint}</p>}
             {badge === undefined ? null : <span className="kit-card-badge"><Badge badge={badge} {...(onBadgePress === undefined ? {} : { onPress: onBadgePress })} /></span>}
-            {onRemove === undefined ? null : (
-              <span className="kit-card-remove">
-                <button type="button" className="kit-remove" id={removeId} aria-labelledby={`${removeId} ${nameId}`} data-no-drag="" onClick={onRemove}>{WORDS.label.remove}</button>
-              </span>
-            )}
           </div>
         )}
       </div>
+      {onRemove === undefined ? null : (
+        <span className="kit-card-remove">
+          <EditIconButton icon="remove" label={WORDS.label.remove} id={removeId} aria-labelledby={`${removeId} ${nameId}`} data-remove="" data-no-drag="" onClick={onRemove} />
+        </span>
+      )}
     </div>
   );
 }

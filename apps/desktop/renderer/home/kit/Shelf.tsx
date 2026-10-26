@@ -4,7 +4,7 @@ import type { PointerEvent as ReactPointerEvent, ReactElement } from 'react';
 import { SHELF_LIMIT, visibleCount } from '../../../shared/home/cards.js';
 import type { ShelfEntry } from '../../../shared/home/cards.js';
 import { WORDS } from '../words.js';
-import { Button } from './Button.js';
+import { IconButton } from './IconButton.js';
 import { ItemCard } from './ItemCard.js';
 
 export interface ShelfProps {
@@ -58,7 +58,7 @@ export function Shelf({ title, entries, selectedId, onSelect, emptyText, hint, l
           ))}
         </ul>
       )}
-      {entries.length > limit ? <Button aria-expanded={expanded || hiddenFresh} onClick={() => setExpanded(e => !e)}>{expanded || hiddenFresh ? WORDS.label.showLess : WORDS.label.showMore}</Button> : null}
+      {entries.length > limit ? <IconButton icon={expanded || hiddenFresh ? 'chevron-up' : 'chevron'} label={expanded || hiddenFresh ? WORDS.label.showLess : WORDS.label.showMore} side="right" aria-expanded={expanded || hiddenFresh} data-more="" onClick={() => setExpanded(e => !e)} /> : null}
     </section>
   );
 }

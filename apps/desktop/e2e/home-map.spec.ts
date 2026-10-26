@@ -337,7 +337,7 @@ for (const [w, h] of SIZES) {
         const doc = document.documentElement, pn = document.querySelector('aside.hm-panel')!.getBoundingClientRect(), sb = document.querySelector('.hm-savebar')!.getBoundingClientRect();
         const cards = [...document.querySelectorAll('aside.hm-panel .kit-card')];
         // Wave D: a name and a hint are one line and may be cut sideways, but only with an ellipsis; nothing else is cut at all.
-        const clipped = [...document.querySelectorAll('.kit-card-main, .kit-card-hint, .kit-remove, .hm-seg-button, .hm-tick')].filter(e => e.scrollHeight > e.clientHeight + 1 || (e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).textOverflow !== 'ellipsis')).map(e => e.textContent);
+        const clipped = [...document.querySelectorAll('.kit-card-main, .kit-card-hint, [data-remove], .hm-seg-button, .hm-tick')].filter(e => e.scrollHeight > e.clientHeight + 1 || (e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).textOverflow !== 'ellipsis')).map(e => e.textContent);
         const inside = cards.every(c => { const r = c.getBoundingClientRect(); return r.left >= pn.left && r.right <= pn.right + 0.5; });
         const barKids = [...document.querySelectorAll('.hm-savebar > *, .hm-savebar button, .hm-savebar li')].every(e => { const r = e.getBoundingClientRect(); return r.right <= window.innerWidth + 0.5 && r.left >= 0; });
         const stage = document.querySelector('.hm-stage-head')!.getBoundingClientRect();

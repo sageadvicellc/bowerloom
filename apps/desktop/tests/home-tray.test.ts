@@ -34,8 +34,10 @@ test('a tray shows 12 rows and a "Show more" button that says what it shows more
   assert.equal(TRAY_LIMIT, 12);
   const m = html({ open: true, entries: many('skill', 15) });
   assert.equal([...m.matchAll(/data-line=/g)].length, 12);
-  assert.match(m, /<button type="button" class="kit-tray-more" aria-expanded="false" aria-label="Show more skills">Show more<\/button>/);
-  assert.doesNotMatch(html({ open: true, entries: many('skill', 12) }), /kit-tray-more/, 'twelve rows need no Show more');
+  const more = /<button[^>]*data-more=""[^>]*>/.exec(m);
+  assert.ok(more !== null, 'a Show more icon button'); assert.match(more![0], /aria-label="Show more skills"/); assert.match(more![0], /aria-expanded="false"/);
+  assert.match(m, /<button[^>]*data-more=""[^>]*><svg[\s\S]*?<\/svg><\/button>/, 'an icon and no words'); assert.match(m, /role="tooltip"[^>]*>Show more<\/span>/, 'the tooltip says Show more');
+  assert.doesNotMatch(html({ open: true, entries: many('skill', 12) }), /data-more/, 'twelve rows need no Show more');
 });
 
 test('a state keeps its words, and the state of copies is a text button only when the page can open the dialog', () => {

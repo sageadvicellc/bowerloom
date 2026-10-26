@@ -35,7 +35,7 @@ test('an agent: the title, its job, where it works, and its three shelves with R
   assert.deepEqual(headings(m), ['Where it works', 'Skills', 'Tools', 'Notes']);
   assert.match(m, /id="hm-panel-title" tabindex="-1">Meeting assistant<\/h2>/); assert.match(m, /Summarizes meetings and writes replies\./);
   assert.deepEqual([...m.matchAll(/class="dt-chip">([^<]+)</g)].map(x => x[1]), ['Claude Code', 'Codex', 'OpenCode']);
-  assert.equal([...m.matchAll(/class="kit-card"/g)].length, 3 + 1 + 1); assert.equal([...m.matchAll(/class="kit-remove"/g)].length, 5);
+  assert.equal([...m.matchAll(/class="kit-card"/g)].length, 3 + 1 + 1); assert.equal([...m.matchAll(/data-remove=""/g)].length, 5);
   assert.match(m, />Choose notes</); assert.doesNotMatch(m, /kit-card-check|Back to agent/); within(m);
 });
 

@@ -24,6 +24,7 @@ import { PreviewPanel } from './PreviewPanel.js';
 import { TopicGrid } from './TopicGrid.js';
 import { NOTES_WORDS, alreadyLine, partBackIn, partLeftOut, topicAdded, topicRemoved } from './notes-words.js';
 import './notes.css';
+import { IconButton } from '../kit/IconButton.js';
 
 const L = NOTES_WORDS.label, H = NOTES_WORDS.hint;
 
@@ -131,7 +132,7 @@ function ChooseNotesBody({ agent, onClose, onChosen }: { agent: AgentItem; onClo
                   <h3 className="kit-heading" tabIndex={-1} ref={handHeading}>{L.pickByHand}</h3>
                   <p className="kit-hint">{H.byHand}</p>
                 </div>
-                <span className="nt-back"><Button icon="chevron" onClick={() => go('topics')}>{L.allTopics}</Button></span>
+                <span className="nt-back"><IconButton icon="back" label={L.allTopics} side="left" data-back="" onClick={() => go('topics')} /></span>
               </div>
               <HandPicker basis={basis} selection={sel} topicId={handTopic} onTopic={setHandTopic} onTick={id => setSel(toggleHand(sel, id))} />
               <div className="nt-hand-foot">

@@ -70,7 +70,7 @@ const smallText = async (): Promise<{ text: string; size: number }[]> => page().
 });
 /** The buttons and tick boxes in `scope` that are shorter than 32 px (Wave D: was 44 px) (a tick box is judged by the row it sits in). */
 const shortTargets = async (scope: Locator): Promise<string[]> => scope.evaluate(root => [...root.querySelectorAll<HTMLElement>('button, [role="tab"], label.sh-row')]
-  .filter(b => b.getClientRects().length > 0 && b.getBoundingClientRect().height < 31.5 && !b.classList.contains('kit-remove') && !b.classList.contains('kit-status') && !b.classList.contains('kit-card-main'))
+  .filter(b => b.getClientRects().length > 0 && b.getBoundingClientRect().height < 31.5 && !b.hasAttribute('data-remove') && !b.classList.contains('kit-status') && !b.classList.contains('kit-card-main'))
   .map(b => `${(b.textContent ?? b.getAttribute('aria-label') ?? '').trim()} ${Math.round(b.getBoundingClientRect().height)}`));
 
 test.beforeAll(async () => { test.setTimeout(240_000); home = await launchHome(); });

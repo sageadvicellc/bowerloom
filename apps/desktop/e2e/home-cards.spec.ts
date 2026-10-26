@@ -190,7 +190,7 @@ test('a tray opens and closes in 160 ms with the strong ease-out (measured), and
   expect(await tray('Meeting assistant', 'skill').evaluate(el => el.getBoundingClientRect().height)).toBeGreaterThan(60);
 });
 
-test('a tray shows twelve rows and "Show more"; the kit gallery draws a long one', async () => {
+test('a tray shows twelve rows and a Show more icon; the kit gallery draws a long one', async () => {
   const p = page();
   await fresh(p, '#prototype-v2/kit');
   const longTray = p.locator('[data-theme="light"][data-home] .hm-gallery-tray .kit-tray');
@@ -198,11 +198,12 @@ test('a tray shows twelve rows and "Show more"; the kit gallery draws a long one
   const rows = longTray.locator('.kit-card-main');
   await expect(rows).toHaveCount(12);
   const more = longTray.getByRole('button', { name: 'Show more skills' });
-  await expect(more).toHaveText('Show more'); await expect(more).toHaveAttribute('aria-expanded', 'false');
+  expect((await more.innerText()).trim()).toBe(''); expect(await more.locator('svg').count()).toBe(1);   // an icon with a name, not words
+  await expect(more).toHaveAttribute('aria-expanded', 'false');
   await more.click();
   await expect(rows).toHaveCount(14);
   const less = longTray.getByRole('button', { name: 'Show less skills' });
-  await expect(less).toHaveText('Show less'); await less.click();
+  expect((await less.innerText()).trim()).toBe(''); await expect(less).toHaveAttribute('aria-expanded', 'true'); await less.click();
   await expect(rows).toHaveCount(12);
 });
 

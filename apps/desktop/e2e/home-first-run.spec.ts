@@ -295,7 +295,7 @@ test('Find more keeps an unsaved change in the draft', async () => {
   await toMap();
   await endTour();
   await agentCards().nth(3).locator('.kit-card-main').click();
-  await p.locator('.hm-panel .kit-remove').first().click();
+  await p.locator('.hm-panel [data-remove]').first().click();
   await expect(p.getByRole('region', { name: 'Save bar' }).getByText(/Removed/)).toBeVisible();
   await p.getByRole('button', { name: 'Find more' }).click();
   await p.getByRole('button', { name: 'Looks right' }).click();
@@ -311,13 +311,13 @@ test('the first Save of a guided session says it was saved in a note, once; a ma
   const note = p.locator('.hm-toast[data-note]');
   await expect(note).toBeHidden();
   await agentCards().nth(3).locator('.kit-card-main').click();
-  await p.locator('.hm-panel .kit-remove').first().click();
+  await p.locator('.hm-panel [data-remove]').first().click();
   await p.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(note).toHaveText(SAVED);
   expect(await budget()).toEqual([]);
   // It goes by itself, and the second Save is quiet.
   await expect(note).toBeHidden({ timeout: 15_000 });
-  await p.locator('.hm-panel .kit-remove').first().click();
+  await p.locator('.hm-panel [data-remove]').first().click();
   await p.getByRole('region', { name: 'Save bar' }).getByRole('button', { name: 'Save', exact: true }).click();
   await expect(p.getByRole('region', { name: 'Save bar' }).getByText(SAVED, { exact: true })).toBeVisible();
   await p.waitForTimeout(500);
@@ -325,7 +325,7 @@ test('the first Save of a guided session says it was saved in a note, once; a ma
   // A map opened by address has no note at all.
   await fresh(p);
   await agentCards().nth(3).locator('.kit-card-main').click();
-  await p.locator('.hm-panel .kit-remove').first().click();
+  await p.locator('.hm-panel [data-remove]').first().click();
   await p.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(p.getByRole('region', { name: 'Save bar' }).getByText(SAVED, { exact: true })).toBeVisible();
   await expect(p.locator('.hm-toast[data-note]')).toBeHidden();

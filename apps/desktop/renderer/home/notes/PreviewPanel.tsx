@@ -7,6 +7,7 @@ import type { ReactElement } from 'react';
 import type { Preview } from '../../../shared/home/notes-model.js';
 import { Button } from '../kit/Button.js';
 import { NOTES_WORDS, READ_LEAD, ofTotal, sizeLine } from './notes-words.js';
+import { IconButton } from '../kit/IconButton.js';
 
 const L = NOTES_WORDS.label, H = NOTES_WORDS.hint;
 /** How many titles show before "Show more". */
@@ -33,7 +34,7 @@ export function PreviewPanel({ preview, lines }: { preview: Preview; lines: read
         <>
         <h3 className="kit-heading nt-sub">{L.someNotes}</h3>
         <ul className="nt-titles" id={listId} data-expanded={expanded ? '' : undefined}>{shown.map(n => <li key={n.id}>{n.title}</li>)}</ul>
-        {preview.notes.length > FIRST_TITLES ? <Button aria-expanded={expanded} aria-controls={listId} onClick={() => setExpanded(e => !e)}>{expanded ? L.showLess : L.showMore}</Button> : null}
+        {preview.notes.length > FIRST_TITLES ? <IconButton icon={expanded ? 'chevron-up' : 'chevron'} label={expanded ? L.showLess : L.showMore} side="right" aria-expanded={expanded} aria-controls={listId} data-more="" onClick={() => setExpanded(e => !e)} /> : null}
         </>
         )}
       </div>

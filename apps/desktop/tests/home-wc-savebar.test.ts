@@ -49,8 +49,8 @@ test('the open list has one row and one Undo for each change; a change that cann
   assert.match(html, /aria-expanded="true"/);
   assert.match(html, /role="group"[^>]*aria-label="Changes waiting"/);
   assert.equal((html.match(/class="hm-changes-row"/g) ?? []).length, 2);
-  assert.equal((html.match(/>Undo<\/button>/g) ?? []).length, 2);
-  assert.equal((html.match(/<button[^>]*disabled=""[^>]*>Undo<\/button>/g) ?? []).length, 1);
+  assert.equal((html.match(/<button[^>]*data-undo=""[^>]*>/g) ?? []).filter(b => /aria-label="Undo"/.test(b)).length, 2);
+  assert.equal((html.match(/<button[^>]*disabled=""[^>]*data-undo=""[^>]*>|<button[^>]*data-undo=""[^>]*disabled=""[^>]*>/g) ?? []).length, 1);
   assert.match(html, /Undo the later change first\./);
   assert.match(html, /Removed Write a reply/);
 });

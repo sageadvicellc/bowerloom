@@ -220,7 +220,7 @@ test('a row with a state is one 44 px row: the name has the whole first line, an
   const geometry = async (scope: Locator): Promise<{ height: number; width: number; name: number; nameBottom: number; tile: number; stateTop: number; stateLeft: number; stateRight: number; cardRight: number; hint: number; remove: number }> => scope.evaluate(li => {
     const card = li.querySelector('.kit-card')!, r = (sel: string): DOMRect => card.querySelector(sel)!.getBoundingClientRect();
     const hint = card.querySelector('.kit-card-hint');
-    return { height: card.getBoundingClientRect().height, width: card.getBoundingClientRect().width, name: r('.kit-card-main').left, nameBottom: r('.kit-card-main').bottom, tile: r('.kit-tile').left, stateTop: r('.kit-status').top, stateLeft: r('.kit-status').left, stateRight: r('.kit-status').right, cardRight: card.getBoundingClientRect().right, hint: hint === null ? 0 : hint.getBoundingClientRect().width, remove: card.querySelector('.kit-remove') === null ? -1 : r('.kit-remove').left };
+    return { height: card.getBoundingClientRect().height, width: card.getBoundingClientRect().width, name: r('.kit-card-main').left, nameBottom: r('.kit-card-main').bottom, tile: r('.kit-tile').left, stateTop: r('.kit-status').top, stateLeft: r('.kit-status').left, stateRight: r('.kit-status').right, cardRight: card.getBoundingClientRect().right, hint: hint === null ? 0 : hint.getBoundingClientRect().width, remove: card.querySelector('[data-remove]') === null ? -1 : r('[data-remove]').left };
   });
   const wide = await geometry(shelf('Skills').locator('[data-entry="skill-014"]'));
   console.log('MEASURED row with a state:', JSON.stringify(wide));
@@ -426,7 +426,7 @@ test('no text is under 14 px in the Add drawer, the dialog, the Version history 
     return out;
   });
   const tall = async (scope: Locator): Promise<string[]> => scope.evaluate(root => [...root.querySelectorAll<HTMLElement>('button, [role="tab"]')]
-    .filter(b => b.getClientRects().length > 0 && b.getBoundingClientRect().height < 31.5 && !b.classList.contains('kit-remove') && !b.classList.contains('kit-status') && !b.classList.contains('kit-card-main'))
+    .filter(b => b.getClientRects().length > 0 && b.getBoundingClientRect().height < 31.5 && !b.hasAttribute('data-remove') && !b.classList.contains('kit-status') && !b.classList.contains('kit-card-main'))
     .map(b => `${(b.textContent ?? b.getAttribute('aria-label') ?? '').trim()} ${Math.round(b.getBoundingClientRect().height)}`));
   await openAdd();
   expect(await small()).toEqual([]);

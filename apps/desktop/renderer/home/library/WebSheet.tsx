@@ -23,6 +23,7 @@ import { KitIcon } from '../kit/icons.js';
 import { ACCESS_WORDS } from '../../../shared/home/plain-details.js';
 import { LIBRARY_WORDS, addItems, alreadyHere, groupHeading, madeByLine, openSource, sourceCounts, tickName, willBeCopies } from './library-words.js';
 import './library.css';
+import { IconButton } from '../kit/IconButton.js';
 
 const L = LIBRARY_WORDS.label, H = LIBRARY_WORDS.hint;
 
@@ -152,7 +153,7 @@ function SourceView({ source, ticked, onToggle, headingRef, onBack }: { source: 
           <p className="kit-hint">{source.blurb}</p>
           <p className="kit-hint" data-address=""><span data-budget="content">{addressOf(source)}</span></p>
         </div>
-        <Button icon="back" onClick={onBack}>{L.backToSources}</Button>
+        <IconButton icon="back" label={L.backToSources} side="left" data-back="" onClick={onBack} />
       </div>
       {groupedItems(source).map(group => (
         <section key={group.kind} className="lb-group" aria-labelledby={`lb-group-${group.kind}`} data-group={group.kind}>

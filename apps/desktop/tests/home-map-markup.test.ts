@@ -19,21 +19,26 @@ const html = (element: Parameters<typeof renderToStaticMarkup>[0]): string => re
 const none = (): void => undefined;
 const within = (markup: string): void => assert.deepEqual(assertTextBudget(markup), [], markup.slice(0, 200));
 
-test('a card with Remove has a real button named "Remove" and then the card\'s name, and a card without it has none', () => {
+test('a card with Remove has a real icon button named "Remove" and then the card\'s name, and a card without it has none', () => {
   const m = html(createElement(ItemCard, { kind: 'skill', name: 'Summarize a meeting', hint: 'Turns a long meeting into a few clear points.', selected: false, onSelect: none, onRemove: none }));
   assert.match(m, /data-removable=""/);
-  const remove = /<button type="button" class="kit-remove" id="([^"]+)" aria-labelledby="\1 ([^"]+)" data-no-drag="">Remove<\/button>/.exec(m);
-  assert.ok(remove !== null, m);
+  const tag = /<button[^>]*data-remove=""[^>]*>/.exec(m);
+  assert.ok(tag !== null, m);
+  const remove = /id="([^"]+)"[^>]*aria-labelledby="\1 ([^"]+)"/.exec(tag![0]);
+  assert.ok(remove !== null, tag![0]);
+  assert.match(tag![0], /aria-label="Remove"/); assert.match(tag![0], /data-no-drag=""/); assert.match(tag![0], /data-icon-only=""/);
   assert.match(m, new RegExp(`<button type="button" class="kit-card-main" id="${remove![2]}"`), 'the second name in aria-labelledby is the card\'s own name');
-  assert.doesNotMatch(m, /aria-label=/, 'the name is built with aria-labelledby, so no label is longer than 5 words');
+  assert.match(m, /<button[^>]*data-remove=""[^>]*><svg[\s\S]*?<\/svg><\/button>/, 'the button holds an icon and no words');
+  assert.match(m, /role="tooltip"[^>]*>Remove<\/span>/, 'a tooltip says Remove');
+  assert.ok([...m.matchAll(/aria-label="([^"]*)"/g)].every(x => x[1]!.split(' ').length <= 5), 'no label is longer than 5 words');
   within(m);
   const plain = html(createElement(ItemCard, { kind: 'skill', name: 'Summarize a meeting', selected: false, onSelect: none }));
-  assert.doesNotMatch(plain, /kit-remove|data-removable/);
+  assert.doesNotMatch(plain, /data-remove|data-removable/);
 });
 
 test('the keyboard reaches the name first, then the state button of copies, then Remove; the hint is plain text before them on the second line', () => {
   const m = html(createElement(ItemCard, { kind: 'skill', name: 'X', hint: 'One.', badge: { label: '2 different copies', tone: 'warn' }, selected: true, onSelect: none, onRemove: none, onBadgePress: none }));
-  const order = ['kit-card-main', 'kit-card-hint', 'kit-status', 'kit-remove'].map(c => m.indexOf(c));
+  const order = ['kit-card-main', 'kit-card-hint', 'kit-status', 'data-remove'].map(c => m.indexOf(c));
   assert.ok(order.every(i => i > -1) && order.every((at, i) => i === 0 || at > order[i - 1]!), order.join());
 });
 
@@ -46,9 +51,9 @@ test('an agent card can carry the id of its agent for a drag to find', () => {
 test('a shelf gives every card its hint and its Remove button when asked to', () => {
   const entries: ShelfEntry[] = [{ id: 'a', kind: 'skill', name: 'Write a reply', hint: 'Drafts a reply in your voice for you to check.' }, { id: 'b', kind: 'skill', name: 'Set a reminder', hint: 'Reminds you before something is due.' }];
   const m = html(createElement(Shelf, { title: 'Skills', entries, selectedId: null, onSelect: none, onRemove: none, emptyText: 'Nothing here yet.' }));
-  assert.equal([...m.matchAll(/class="kit-remove"/g)].length, 2); assert.equal([...m.matchAll(/class="kit-hint kit-card-hint"/g)].length, 2);
+  assert.equal([...m.matchAll(/data-remove=""/g)].length, 2); assert.equal([...m.matchAll(/class="kit-hint kit-card-hint"/g)].length, 2);
   assert.match(m, /Drafts a reply in your voice/); within(m);
-  assert.doesNotMatch(html(createElement(Shelf, { title: 'Skills', entries, selectedId: null, onSelect: none, emptyText: 'Nothing here yet.' })), /kit-remove/);
+  assert.doesNotMatch(html(createElement(Shelf, { title: 'Skills', entries, selectedId: null, onSelect: none, emptyText: 'Nothing here yet.' })), /data-remove/);
 });
 
 const CHOICES = [{ mode: 'name', label: 'Name' }, { mode: 'recent', label: 'Recently changed' }] as const;

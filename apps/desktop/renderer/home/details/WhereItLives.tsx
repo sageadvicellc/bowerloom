@@ -11,6 +11,7 @@ import { Button } from '../kit/Button.js';
 import { copyText, selectText } from '../kit/clipboard.js';
 import { WORDS } from '../words.js';
 import './details.css';
+import { IconButton } from '../kit/IconButton.js';
 
 const L = WORDS.label, H = WORDS.hint;
 
@@ -47,7 +48,7 @@ export function WhereItLives({ places }: { places: readonly Place[] }): ReactEle
               <p className="kit-hint dt-place-app">{place.app}</p>
               <code className="dt-path" data-budget="content" tabIndex={0} ref={el => { if (el === null) paths.current.delete(place.path); else paths.current.set(place.path, el); }}>{breakable(place.path)}</code>
               <div className="dt-place-actions">
-                <Button size="small" aria-label={`${L.copyPath}, ${place.app}`} onClick={() => { void copy(place); }}>{L.copyPath}</Button>
+                <IconButton icon="copy" label={`${L.copyPath}, ${place.app}`} tip={L.copyPath} side="left" data-copy="" onClick={() => { void copy(place); }} />
                 <span className="dt-copied" role="status">{done !== null && done.path === place.path && done.ok ? L.copied : ''}</span>
               </div>
             </li>

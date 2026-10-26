@@ -43,7 +43,7 @@ async function openAdd(tabName = 'Skills'): Promise<void> {
   await animationsDone(page());
   await addDrawer().getByRole('tab', { name: tabName, exact: true }).click();
 }
-async function removeFirstSkill(): Promise<void> { await panel().locator('.kit-card[data-kind="skill"] .kit-remove').first().click(); }
+async function removeFirstSkill(): Promise<void> { await panel().locator('.kit-card[data-kind="skill"] [data-remove]').first().click(); }
 
 // ---- Item 2: Escape reaches only the top layer, wherever the focus is.
 test('Escape closes the copies dialog and not the Add drawer under it, even after a click on plain text in the dialog (review item 2)', async () => {

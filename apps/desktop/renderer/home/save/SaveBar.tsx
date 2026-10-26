@@ -13,6 +13,7 @@ import { CARD_WORDS } from '../../../shared/home/cards.js';
 import type { ChangeEntry } from '../../../shared/home/change-undo.js';
 import type { SaveBarModel } from '../../../shared/home/savebar.js';
 import { Button } from '../kit/Button.js';
+import { EditIconButton } from '../read-only.js';
 import { KitIcon } from '../kit/icons.js';
 import { WORDS, changesCount } from '../words.js';
 import './save.css';
@@ -51,7 +52,7 @@ function Rows({ entries, onUndo }: { entries: readonly ChangeEntry[]; onUndo(ent
             <p id={`${base}-${i}`}>{entry.text}</p>
             {entry.reason === null ? null : <p className="kit-hint">{entry.reason}</p>}
           </div>
-          <Button size="small" disabled={entry.undo === null} aria-describedby={`${base}-${i}`} onClick={() => onUndo(entry)}>{WORDS.label.undo}</Button>
+          <EditIconButton icon="undo" label={WORDS.label.undo} side="left" disabled={entry.undo === null} aria-describedby={`${base}-${i}`} data-undo="" onClick={() => onUndo(entry)} />
         </li>
       ))}
     </ul>

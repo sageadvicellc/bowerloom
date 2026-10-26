@@ -30,6 +30,7 @@ import { DROP_ATTRIBUTE, dropAgentOf } from './dom-helpers.js';
 import { MOTION, ms } from '../../motion-tokens.js';
 import { ADD_WORDS, NOTE_STAY_MS, addedTo, agentAdded, alreadyOn } from './add-words.js';
 import './add.css';
+import { IconButton } from '../kit/IconButton.js';
 
 const L = ADD_WORDS.label, H = ADD_WORDS.hint;
 const TAB_LABEL: Readonly<Record<AddTab, string>> = { skills: L.skills, tools: L.tools, notes: L.notes, agents: L.agents, file: L.file };
@@ -194,7 +195,7 @@ export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT
                   ))}
                 </ul>
               )}
-              {entries.length > SHELF_LIMIT ? <Button aria-expanded={expanded} onClick={toggleMore}>{expanded ? L.showLess : L.showMore}</Button> : null}
+              {entries.length > SHELF_LIMIT ? <IconButton icon={expanded ? 'chevron-up' : 'chevron'} label={expanded ? L.showLess : L.showMore} side="right" aria-expanded={expanded} data-more="" onClick={toggleMore} /> : null}
             </>
           )}
         </div>

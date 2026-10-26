@@ -24,7 +24,7 @@ export interface IconButtonProps extends Omit<ButtonProps, 'icon' | 'children' |
 export function IconButton({ icon, label, tip, side = 'left', variant = 'quiet', ...rest }: IconButtonProps): ReactElement {
   return (
     <Tooltip text={tip ?? label} side={side}>
-      {aria => <Button {...rest} variant={variant} icon={icon} iconOnly aria-label={label} {...aria} />}
+      {aria => <Button {...rest} variant={variant} icon={icon} iconOnly aria-label={label} aria-describedby={[aria['aria-describedby'], rest['aria-describedby']].filter(Boolean).join(' ')} />}
     </Tooltip>
   );
 }

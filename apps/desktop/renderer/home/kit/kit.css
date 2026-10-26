@@ -113,20 +113,10 @@
 [data-home] .kit-card-line > .kit-card-main { flex: 1 1 0; }
 [data-home] .kit-card-hint { flex: 1 1 0; min-width: 0; margin: 0; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 [data-home] .kit-card-badge { flex: 0 1 auto; min-width: 0; position: relative; z-index: 1; margin-left: auto; max-width: 100%; }
-[data-home] .kit-card-remove { flex: none; position: relative; z-index: 1; }
-[data-home] .kit-card-hint + .kit-card-remove { margin-left: auto; }
+/* "Remove" is an icon button (a circle with a minus) at the end of the card, centred on it: the name and the hint keep the rest of the width. It sits above the name button that covers the card. */
+[data-home] .kit-card-remove { flex: none; position: relative; z-index: 1; margin-right: calc(-1 * var(--hm-space-2)); }
 /* A row that has a state says the state in place of the hint: the two together would leave the hint a few letters. The hint is in the details panel. */
 [data-home] .kit-card-hint:has(~ .kit-card-badge) { display: none; }
-/* "Remove" is quiet: words only, underlined so it reads as a button. Its hit area is 24 px tall, balanced by a negative margin so the row keeps its height. */
-[data-home] .kit-remove {
-  all: unset; box-sizing: border-box; display: inline-flex; align-items: center; min-height: var(--hm-target-min); margin: calc(-1 * var(--hm-space-1)) 0; padding: 0 var(--hm-space-1);
-  font-size: var(--hm-text-base); font-weight: 600; line-height: 1.2; color: var(--text-muted); cursor: pointer; touch-action: manipulation;
-  text-decoration: underline; text-underline-offset: 3px; border-radius: var(--hm-radius-small);
-  transition: color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
-}
-[data-home] .kit-remove:hover { color: var(--text); background: var(--accent-soft); }
-[data-home] .kit-remove:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; color: var(--text); }
-
 /* A TILE: the agent. A 24 px glyph and the name on one line, the job on one line, then one line of counts. Nothing wraps and nothing opens inside it, so every
    tile has the same width and the same height. The name is the button that covers the tile; the counts sit above it (z-index 1). */
 [data-home] .kit-card[data-size="tile"] {
@@ -195,13 +185,6 @@
 [data-home] .kit-tray-body { box-sizing: border-box; display: flex; flex-direction: column; align-items: flex-start; gap: var(--hm-space-2); margin-bottom: var(--hm-space-4); padding: var(--hm-space-3); background: var(--surface-2); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); }
 [data-home] .kit-tray-list { list-style: none; margin: 0; padding: 0; width: 100%; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--hm-tray-col)), 1fr)); gap: var(--hm-space-2) var(--hm-space-3); }
 [data-home] .kit-tray-list > li { min-width: 0; display: flex; }
-[data-home] .kit-tray-more {
-  all: unset; box-sizing: border-box; display: inline-flex; align-items: center; min-height: var(--hm-control-h); padding: 0 var(--hm-space-3);
-  font-size: var(--hm-text-base); font-weight: 600; color: var(--text); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; border-radius: var(--hm-radius-small); touch-action: manipulation;
-}
-[data-home] .kit-tray-more:hover { background: color-mix(in srgb, var(--text) 9%, transparent); }
-[data-home] .kit-tray-more:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
-
 /* ---- Shelf */
 [data-home] .kit-shelf { display: flex; flex-direction: column; gap: var(--hm-space-2); align-items: flex-start; }
 [data-home] .kit-shelf-head { display: flex; flex-direction: column; align-items: flex-start; gap: var(--hm-space-1); }

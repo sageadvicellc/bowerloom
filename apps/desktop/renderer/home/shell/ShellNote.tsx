@@ -5,7 +5,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { Button } from '../kit/Button.js';
+import { EditIconButton } from '../read-only.js';
 import { KitIcon } from '../kit/icons.js';
 import type { KitIconName } from '../kit/icons.js';
 import { useLeaving } from '../kit/presence.js';
@@ -44,7 +44,7 @@ export function ShellNote({ note, onGone }: { note: NoteView | null; onGone(): v
         <>
           <KitIcon name={view.icon} size={20} />
           <span>{view.text}</span>
-          {view.action === undefined ? null : <Button size="small" onClick={view.action.run}>{view.action.label}</Button>}
+          {view.action === undefined ? null : <EditIconButton icon="undo" label={view.action.label} side="right" data-undo="" onClick={view.action.run} />}
         </>
       )}
     </div>

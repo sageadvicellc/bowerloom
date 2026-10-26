@@ -2,7 +2,7 @@
 import type { ReactElement } from 'react';
 
 export type KitIconName = 'agent' | 'skill' | 'tool' | 'note' | 'plus' | 'clock' | 'check' | 'warning' | 'sparkle' | 'key' | 'info' | 'close' | 'leaf' | 'chevron' | 'program' | 'share' | 'back'
-  | 'sidebar-left' | 'sidebar-right' | 'search' | 'trash' | 'undo' | 'copy' | 'chevron-up' | 'sort' | 'library' | 'help' | 'globe' | 'select-all' | 'clear' | 'lock';
+  | 'remove' | 'sidebar-left' | 'sidebar-right' | 'search' | 'trash' | 'undo' | 'copy' | 'chevron-up' | 'sort' | 'library' | 'help' | 'globe' | 'select-all' | 'clear' | 'lock';
 
 const PATHS: Readonly<Record<KitIconName, readonly string[]>> = {
   // Three nodes joined to one another: something that works with others. It is not a person, so an agent does not borrow the look of a human profile.
@@ -33,6 +33,8 @@ const PATHS: Readonly<Record<KitIconName, readonly string[]>> = {
   // An arrow leaving a tray: send a copy to someone.
   share: ['M12 15V4', 'M8 7.5l4-4 4 4', 'M6 11H5v9h14v-9h-1'],
   // The panel glyphs of a desktop app: a window with a bar at its left edge (the navigation) or at its right edge (the details).
+  // A circle with a minus: take this off the agent (the thing itself is not deleted).
+  remove: ['M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17z', 'M8 12h8'],
   'sidebar-left': ['M4 5.5h16v13H4z', 'M9.5 5.5v13'],
   'sidebar-right': ['M4 5.5h16v13H4z', 'M14.5 5.5v13'],
   search: ['M11 4.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13z', 'M16 16l4.5 4.5'],

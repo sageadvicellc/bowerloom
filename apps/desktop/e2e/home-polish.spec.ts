@@ -244,8 +244,8 @@ test('after Save the bar says it was saved in the preview, and lists the program
   const p = page();
   await resize(p, 1280, 800);
   // The first agent is already picked when the map opens.
-  await expect(panel().locator('.kit-card .kit-remove').first()).toBeVisible();
-  await panel().locator('.kit-card .kit-remove').first().click();
+  await expect(panel().locator('.kit-card [data-remove]').first()).toBeVisible();
+  await panel().locator('.kit-card [data-remove]').first().click();
   await p.getByRole('region', { name: 'Save bar' }).getByRole('button', { name: 'Save', exact: true }).click();
   const saveBar = p.getByRole('region', { name: 'Save bar' });
   await expect(saveBar.getByText('Saved in this preview. Your files are untouched.', { exact: true })).toBeVisible();
@@ -633,7 +633,7 @@ test('the closing note fades in, stays six seconds and fades out; the first Save
   });
   // The tour was skipped without a pick, so the person picks an agent first (the tour does not pick one for them).
   await p.locator('.hm-grid .kit-card[data-kind="agent"] .kit-card-main').first().click();
-  await panel().locator('.kit-remove').first().click();
+  await panel().locator('[data-remove]').first().click();
   await p.getByRole('region', { name: 'Save bar' }).getByRole('button', { name: 'Save', exact: true }).click();
   const toast = p.locator('.hm-toast');
   await expect(toast).toHaveText('Saved in this preview. Your files are untouched.');
