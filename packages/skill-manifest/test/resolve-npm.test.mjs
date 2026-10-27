@@ -7,7 +7,7 @@ import { NPM_FILES } from './fixtures/record.mjs';
 import { resolveNpm, resolveNpmVerified } from '../../../dist/packages/skill-manifest/src/resolve-npm.js';
 import { parseSkillSpec } from '../../../dist/packages/skill-manifest/src/spec.js';
 import { toNpmRequest } from '../../../dist/packages/skill-manifest/src/requests.js';
-import { parseManifest, serializeManifest } from '../../../dist/packages/skill-manifest/src/schema.js';
+import { parseManifest, serializeManifest, MANIFEST_LIMITS } from '../../../dist/packages/skill-manifest/src/schema.js';
 import { planNpmAcquisition, verifyNpmPayload } from '../../../dist/packages/skill-sources/src/npm.js';
 import { observeSkillCacheRoot } from '../../../dist/packages/skill-sources/src/cache.js';
 
@@ -36,8 +36,8 @@ test('the TanStack-shaped package resolves one skill, with the LICENSE from the 
   const observed = await verifyNpmPayload(plan, npmMetadataBytes(), npmArchiveBytes(), signal(), () => {});
   assert.equal(observed.skill.name, 'synthetic-db-collections'); assert.equal(observed.files.length, 4);
   // The entry is a valid manifest entry.
-  const m = parseManifest(Buffer.from(JSON.stringify({ format: 'bowerloom/skills/v1beta1', harnesses: ['claude', 'codex'], skills: [{ id: 'collections', ...resolved }] })));
-  assert.equal(parseManifest(Buffer.from(serializeManifest(m))).skills[0].id, 'collections');
+  const m = parseManifest(Buffer.from(JSON.stringify({ format: 'bowerloom/skills/v1beta1', harnesses: ['claude', 'codex'], skills: [{ id: 'collections', ...resolved }] })), MANIFEST_LIMITS);
+  assert.equal(parseManifest(Buffer.from(serializeManifest(m, MANIFEST_LIMITS)), MANIFEST_LIMITS).skills[0].id, 'collections');
 });
 
 test('a second skill of the same multi-skill package resolves on its own, with only its own files', async () => {

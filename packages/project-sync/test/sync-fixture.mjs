@@ -19,7 +19,7 @@ import { syncBuiltinESMExports } from 'node:module';
 import { discoverProject } from '../../../dist/packages/project-context/src/index.js';
 import { observeSkillCacheRoot, openNpmCacheOperation } from '../../../dist/packages/skill-sources/src/cache.js';
 import { NpmAcquisitionError, planNpmAcquisition } from '../../../dist/packages/skill-sources/src/npm.js';
-import { serializeManifest, validateManifest } from '../../../dist/packages/skill-manifest/src/schema.js';
+import { serializeManifest, validateManifest, MANIFEST_LIMITS } from '../../../dist/packages/skill-manifest/src/schema.js';
 import { entryRequest, cacheOperationId } from '../../../dist/packages/project-sync/src/cache-index.js';
 
 export const hash = b => createHash('sha256').update(b).digest('hex');
@@ -97,7 +97,7 @@ export function syncProject(t, prefix = '.bowerloom-sync-', { stateRoot: shared 
 /** Writes `.bowerloom/skills.json` in canonical form. */
 export function writeManifest(f, entries, harnesses = ['claude', 'codex']) {
   const file = path.join(f.projectDir, '.bowerloom/skills.json');
-  fs.writeFileSync(file, serializeManifest(validateManifest({ format: 'bowerloom/skills/v1beta1', harnesses, skills: entries })), { mode: 0o644 }); fs.chmodSync(file, 0o644);
+  fs.writeFileSync(file, serializeManifest(validateManifest({ format: 'bowerloom/skills/v1beta1', harnesses, skills: entries }, MANIFEST_LIMITS), MANIFEST_LIMITS), { mode: 0o644 }); fs.chmodSync(file, 0o644);
 }
 /** An authored local skill at .bowerloom/skills/<id>/. */
 export function localSkill(f, id, files = { 'SKILL.md': `---\nname: ${id}\ndescription: Authored fixture.\n---\nUse the house style.\n`, 'references/notes.md': '# Notes\nOne.\n' }) {

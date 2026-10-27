@@ -6,7 +6,7 @@
  */
 import { join } from 'node:path';
 import { directory, exists, names, path as managedPath } from '../../managed-skills/src/observed.js';
-import { MARKER_V2, readPending } from '../../managed-skills/src/v2-observed.js';
+import { MARKER_V2, itemId, readPending } from '../../managed-skills/src/v2-observed.js';
 import { planManagedItemRecovery, recoverManagedItemHeld } from '../../managed-skills/src/v2-transaction.js';
 import type { ManagedItemReceipt, RecoveryAction, RecoveryPlanV2 } from '../../managed-skills/src/v2-types.js';
 import { withProjectLock } from '../../project-context/src/index.js';
@@ -15,8 +15,8 @@ import { checkProjectAncestry } from './plan.js';
 import { outward, syncError } from './refusal.js';
 
 export interface RecoverInput { project: ProjectContext; stateRoot: string; item: string; action: RecoveryAction | null }
-/** Skill ids, and `prompt-<name>` for a prompt, as the private state folders are named. */
-export const ITEM_ID = /^(?:prompt-)?[a-z0-9]+(?:-[a-z0-9]+)*$/;
+/** Skill ids, `prompt-<name>` for a prompt, `agent_<role>` for an agent, and `slice_<id>` for a slice, as the private state folders are named. */
+export const ITEM_ID = /^(?:prompt-|agent_|slice_)?[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export const RECOVERY_ACTIONS: readonly RecoveryAction[] = Object.freeze(['resume', 'abandon', 'rollback']);
 
 function operationOf(input: RecoverInput): { stateDir: string; operationKey: string } {
@@ -28,7 +28,7 @@ function operationOf(input: RecoverInput): { stateDir: string; operationKey: str
   try { directory(stateDir, true); } catch { throw syncError('SKILLS_STATE_UNSAFE'); }
   if (exists(join(dir, MARKER_V2))) {
     let pending; try { pending = readPending(dir); } catch { throw syncError('MANAGED_SKILL_RECOVERY_REQUIRED', 'Its marker, .bowerloom/managed-pending.json, cannot be read. Check it by hand.'); }
-    const owner = pending.item.kind === 'prompt' ? 'prompt-' + pending.item.id : pending.item.id;
+    const owner = itemId(pending.item);
     if (pending.stateDir !== stateDir) throw syncError('MANAGED_SKILL_RECOVERY_REQUIRED', `It belongs to ${owner}. Run bowerloom skills recover plan --item ${owner}.`);
     return { stateDir, operationKey: pending.operationKey };
   }

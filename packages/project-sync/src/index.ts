@@ -1,5 +1,5 @@
 /** `skills sync`, `skills recover --item` and `skills migrate` (build plan 01, M5), and `apply` (M6), for the Bowerloom 0.7.0 beta. */
-export { planSync, observeSync, SYNC_PLAN_FORMAT, MIN_FREE_BYTES, SYNC_ITEM_LIMIT } from './plan.js';
+export { planSync, observeSync, cacheLayout, storeStateNested, SYNC_PLAN_FORMAT, MIN_FREE_BYTES, SYNC_ITEM_LIMIT } from './plan.js';
 export type { SyncInput, SyncPlan, SyncItem, ItemState, ItemAction } from './plan.js';
 export { applySync, SYNC_RESULT_FORMAT } from './apply.js';
 export type { SyncResult } from './apply.js';
@@ -15,3 +15,25 @@ export type { MigrateInput, MigratePlan } from './migrate.js';
 export { planProjectApply, applyProjectApply, observeApply, APPLY_PLAN_FORMAT, APPLY_RESULT_FORMAT, APPLY_POINTER, applyPointer } from './apply-project.js';
 export type { ApplyInput, ApplyPlan, ApplyResult, ApplyItemRef } from './apply-project.js';
 export type { PromptItem, PromptState } from './prompts.js';
+export type { AgentItem, AgentState } from './agents.js';
+// Spec 06: the resolver, the config and lock changes, team adopt, and the store cache.
+export { resolveProject, readStoreDefinitions } from './resolve.js';
+export type { Resolved, ResolvedItem, StoreView, LockState } from './resolve.js';
+export { planConfigChange, applyConfigChange, planLockUpdate, applyLockUpdate, lockUpdateIsNoop, localItemRows, initialConfig, CONFIG_CHANGE_FORMAT, CONFIG_CHANGE_RESULT_FORMAT, LOCK_UPDATE_FORMAT, LOCK_UPDATE_RESULT_FORMAT } from './change.js';
+export type { ConfigChangePlan, ConfigChangeResult, LockUpdatePlan, LockUpdateResult, LockChange } from './change.js';
+export { planAdopt, applyAdopt, ADOPT_PLAN_FORMAT, ADOPT_RESULT_FORMAT, ADOPT_MISSING_NEXT } from './adopt.js';
+export type { AdoptPlan, AdoptResult } from './adopt.js';
+export { fetchStoreGit, writeStoreCache, readStoreCache, storeCacheKey, pruneName, PRUNE_NAME } from './store-git.js';
+export type { StoreFetch, StorePlanBinding } from './plan.js';
+export type { SliceItem, SliceState } from './slices.js';
+export { measureContext, showSlice, MEASURE_FORMAT, SHOW_FORMAT } from './context-measure.js';
+export type { MeasureAgent, MeasureInput, MeasureResult, ShowInput, ShowResult } from './context-measure.js';
+// Spec 08: receipt clean.
+export { planReceiptClean, applyReceiptClean, RECEIPT_CLEAN_PLAN_FORMAT, RECEIPT_CLEAN_RESULT_FORMAT } from './receipt-clean.js';
+export type { ReceiptCleanPlan, ReceiptCleanResult, ReceiptCleanInput, ReceiptCleanHooks } from './receipt-clean.js';
+// Spec 08: store migrate.
+export { planStoreMigrate, applyStoreMigrate, checkMigrateSelectors, migrateIsNoop, STORE_MIGRATE_PLAN_FORMAT, STORE_MIGRATE_RESULT_FORMAT, NEW_IN_STORE } from './migrate-store.js';
+export type { StoreMigratePlan, StoreMigrateResult, MigrateItem, MigrateInput as StoreMigrateInput, MigrateHooks, MigrateDeps } from './migrate-store.js';
+// Spec 09: cache list and cache prune.
+export { listCache, planCachePrune, applyCachePrune, referenceSets, checkSelectors, cacheUsage, lineName, CACHE_LIST_FORMAT, CACHE_PRUNE_PLAN_FORMAT, CACHE_PRUNE_RESULT_FORMAT, CACHE_LIST_LIMIT, CACHE_USAGE } from './cache-admin.js';
+export type { CacheEntry, CacheList, CachePrunePlan, CachePruneResult, CachePruneSelectors, CacheAdminInput, CachePruneInput, CacheAdminHooks, CacheScope, PickedEntry, SkippedEntry, PruneInterrupt, ReferenceSets, PartialReason, Unreadable, UnlistedName } from './cache-admin.js';

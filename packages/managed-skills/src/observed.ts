@@ -44,6 +44,18 @@ export function path(value: unknown): asserts value is string {
   check(typeof value === 'string' && isAbsolute(value) && resolve(value) === value && value !== '/' && value === value.normalize('NFC') && Buffer.byteLength(value) <= 2048 && !/[\p{Cc}\p{Cf}\\]/u.test(value));
   check(!value.toLowerCase().split('/').some(p => ['.git', '.ssh', '.config', '.codex', '.claude', '.agents', 'node_modules', 'library'].includes(p)) && !/^\/(?:etc|usr|bin|sbin|system|private\/etc|private\/var\/root)(?:\/|$)/i.test(value));
 }
+/**
+ * True when `target`, or a folder above it, is the same folder as `ancestor`, compared by device and inode and never by text:
+ * a case alias or a link names the same folder. A part of `target` that is not there is skipped. `ancestor` absent: false.
+ */
+export function sameOrInside(target: string, ancestor: string): boolean {
+  let wanted: fs.BigIntStats;
+  try { wanted = fs.statSync(ancestor, { bigint: true }); } catch (e) { const c = (e as NodeJS.ErrnoException).code; if (c === 'ENOENT' || c === 'ENOTDIR') return false; throw e; }
+  for (let current = target; ; current = dirname(current)) {
+    try { const s = fs.statSync(current, { bigint: true }); if (s.dev === wanted.dev && s.ino === wanted.ino) return true; } catch (e) { const c = (e as NodeJS.ErrnoException).code; if (c !== 'ENOENT' && c !== 'ENOTDIR') throw e; }
+    if (dirname(current) === current) return false;
+  }
+}
 export function identity(s: fs.BigIntStats): Identity { return { device: String(s.dev), inode: String(s.ino), birthtimeNs: String(s.birthtimeNs), uid: Number(s.uid), mode: Number(s.mode) & 0o7777 }; }
 export function directory(p: string, privateMode = false): Identity {
   const s = fs.lstatSync(p, { bigint: true }), id = identity(s); check(s.isDirectory() && !s.isSymbolicLink());

@@ -5,13 +5,15 @@ section: "Guides"
 order: 7.7
 ---
 
-Three commands create files inside `.bowerloom`: `team create`, `skill create`, and `prompt create`. Agents use them most. Each one finds the project, shows a plan, and writes after you approve that exact plan. They write inside `.bowerloom` only. They start no workers and run nothing. You and your agents own the files they make and can edit them.
+Three commands create files inside `.bowerloom`: `team create`, `skill create`, and `prompt create`. Agents use them most. Each one finds the project, shows a plan, and writes after you approve that exact plan. They write inside `.bowerloom` only, or inside your store with `--global`. They start no workers and run nothing. You and your agents own the files they make and can edit them.
 
 ## Before you start
 
-Install Bowerloom and run `bowerloom up --team <name> --goal <goal>` once, so the project holds `.bowerloom`. See [Install Bowerloom](/docs/start/). Keep the project out of iCloud Drive. A project in a cloud-synced folder refuses with `PROJECT_IN_CLOUD_FOLDER`.
+Install Bowerloom and run `bowerloom up --team <name> --goal <goal>` once, so the project holds `.bowerloom` or `bowerloom.json`. See [Install Bowerloom](/docs/start/). Keep the project out of iCloud Drive. A project in a cloud-synced folder refuses with `PROJECT_IN_CLOUD_FOLDER`.
 
 Every command takes `--approve <revision>` and `--json`. Without `--approve`, a terminal asks before it writes. Without a terminal, or with `--json`, the command prints the plan and its revision and exits 3. [Approvals and exit codes](/docs/cli/#approvals-and-exit-codes) explains the flow.
+
+A team folder can also hold an `agents/` folder of Claude Code subagent files that you place by hand. `bowerloom apply` copies them to `.claude/agents`. See [Project agents for Claude Code](/docs/guides/agents/).
 
 If you delete a created prompt or team, `status` and `up` hold it and name it. Run `bowerloom prompt create <id>` to restore a registered prompt that was deleted. Restore a deleted team from version control.
 
@@ -91,6 +93,14 @@ bowerloom apply
 
 A skill goes to `.claude/skills` and `.agents/skills`. A prompt becomes the Claude Code command `.claude/commands/weekly-update.md` and the Codex skill `.agents/skills/prompt-weekly-update`. `apply` never edits `AGENTS.md` or `CLAUDE.md`. It prints a line for you to add. See [Apply the skills](/docs/guides/add-skills/#apply-the-skills).
 
+### Create a context slice
+
+```sh
+bowerloom slice create wiki --root wiki
+```
+
+A slice selects files from one folder, and `apply` turns it into a short list of paths that an agent loads at start. The file lands in `.bowerloom/slices/wiki.yaml`. See [Context slices for agents](/docs/guides/context-slices/). An id that starts with `slice-` is reserved, so `skill create` and `prompt create` refuse it.
+
 ### If a command refuses
 
 - `TEAM_EXISTS`, `SKILL_EXISTS`, and `PROMPT_EXISTS` mean the id is taken. Run `bowerloom ls teams`, `ls skills`, or `ls prompts`, and choose another id.
@@ -103,6 +113,26 @@ A skill goes to `.claude/skills` and `.agents/skills`. A prompt becomes the Clau
 - `AUTHORING_UNREGISTERED` means Bowerloom keeps track only of what `create` made.
 
 [Errors](/docs/reference/errors/#project-and-approval-refusals) lists the other project refusals.
+
+## Create an item in your store
+
+Add `--global` to create an item in your store, `~/.bowerloom`, and not in a project. It works from any folder. The first `--global` write makes the store, and the plan says so first. The store holds definitions only. A project picks store items with `bowerloom use`.
+
+```sh
+bowerloom team create research-desk --profile research --global
+bowerloom skill create house-style --global
+bowerloom prompt create weekly-update --global
+```
+
+Each command shows the plan and its revision. Run it again with `--approve <revision>` to write. A team in the store is built from a fixed store brief and the profile you choose, and it does not read a project brief. `--team <team>` on a skill or prompt names a team in the store. `bowerloom ls --global` lists what the store holds. A store that Bowerloom did not make refuses with `STORE_INVALID`.
+
+To move items that a project already defines into your store, run `bowerloom store migrate`. See [Move your items to the store](/docs/guides/existing-project/#move-your-items-to-the-store).
+
+## Pick an item from your store
+
+A project lists what it installs in `bowerloom.json`. `bowerloom use skill <id>` picks a store skill, and `bowerloom use team <id>` picks a store team with the store skills and prompts that name it. `bowerloom unuse` drops an item and keeps any copy in place. `bowerloom team adopt <id>` copies a store team into the project, so you can change it there.
+
+In a shared project, `use` checks that a teammate can fetch the item: the store must be a git repository with a github.com remote, and the item must be pushed. `bowerloom store status` shows the commands that set this up. Without a token, GitHub allows about 60 requests an hour, and each item takes about 4 plus one per file. A git-ignored file, a `.DS_Store`, `core.autocrlf`, or a git filter can change the bytes and make that check fail.
 
 ## Limits in this beta
 

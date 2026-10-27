@@ -134,7 +134,7 @@ Installation, runtime enrollment, backend setup, and connected actions need thei
 ## Current capabilities
 
 <!-- release:support:start -->
-Open beta · 0.7.0-beta.2
+Open beta · 0.7.0-beta.3
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
 
@@ -158,7 +158,7 @@ Running a team needs separate runtime permissions and controls. The setup comman
 Keep your project out of iCloud Drive folders. Project commands such as `bowerloom up`, `ls`, `status`, `apply`, and `skills sync` refuse a project under `~/Documents` or `~/Desktop` when Desktop and Documents sync is on, and under the `~/Library` cloud folders, with `PROJECT_IN_CLOUD_FOLDER`. The older forms that take an explicit path do not run this check. See the [beta limits](https://bowerloom.ai/docs/guides/add-skills/#current-beta-limits).
 
 - No worker starts. `up` ends at `prepared, workers held`.
-- Skills come from public sources only. Only MIT and Apache-2.0 skills install.
+- Pinned skills come from public sources only. A store in a private GitHub repository needs `BOWERLOOM_GITHUB_TOKEN`. Only MIT and Apache-2.0 skills install.
 - `bowerloom revise` refuses once a project holds content added after setup. The fix comes in a later 0.7 release.
 - The portable install supports Claude Code and Codex. Native discovery of the installed files has not been observed.
 
@@ -174,7 +174,7 @@ bowerloom --version
 bowerloom --help
 ```
 
-Updates are not automatic. To update, run `npm install -g bowerloom@beta` again. Do not use `npm update -g bowerloom` for this: for a global package, npm updates to the `latest` tag, not to `beta`, and it can downgrade a beta install. If your agent runs in a sandbox that blocks writes outside the project, run the install in your own terminal. A colleague who was given a `bowerloom-0.7.0-beta.2.tgz` file can still install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.7.0-beta.2.tgz`.
+Updates are not automatic. To update, run `npm install -g bowerloom@beta` again. Do not use `npm update -g bowerloom` for this: for a global package, npm updates to the `latest` tag, not to `beta`, and it can downgrade a beta install. If your agent runs in a sandbox that blocks writes outside the project, run the install in your own terminal. A colleague who was given a `bowerloom-0.7.0-beta.3.tgz` file can still install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.7.0-beta.3.tgz`.
 
 If npm refuses with a permission error, do not use `sudo`. Set a user prefix for global packages instead. The [install guide](https://bowerloom.ai/docs/start/) shows the steps.
 

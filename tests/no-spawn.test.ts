@@ -134,10 +134,20 @@ test('the up chain and apply run in process with zero child_process calls', asyn
     const revision = revisionIn(out);
     out = ''; assert.equal(await runCreateCommand([...args, '--approve', revision], dir, testHome, write, quietIo), 0);
   }
+  // A team agent, placed by hand in first-team: apply copies it to .claude/agents with no process and no network call (spec 01a).
+  mkdirSync(join(dir, '.bowerloom/teams/first-team/agents'), { recursive: true });
+  writeFileSync(join(dir, '.bowerloom/teams/first-team/agents/scribe.md'), '---\nname: scribe\ndescription: Writes things down.\n---\nTake notes.\n', { mode: 0o644 });
+  // A context slice and an agent that names it (spec 05): apply writes the index and the guarded copy, still with no process and no network call.
+  mkdirSync(join(dir, 'wiki')); writeFileSync(join(dir, 'wiki/a.md'), '# Alpha\nbody\n', { mode: 0o644 });
+  out = ''; assert.equal(await runCreateCommand(['slice', 'create', 'wiki', '--root', 'wiki'], dir, testHome, write, quietIo), 3);
+  { const revision = revisionIn(out); out = ''; assert.equal(await runCreateCommand(['slice', 'create', 'wiki', '--root', 'wiki', '--approve', revision], dir, testHome, write, quietIo), 0); }
+  writeFileSync(join(dir, '.bowerloom/teams/first-team/agents/reader.md'), '---\nname: reader\ndescription: Reads the wiki.\nskills: [slice-wiki]\n---\nAnswer from the wiki.\n', { mode: 0o644 });
   assert.equal(await step(up), 3); assert.match(out, /^Next step: sync\./m);
   assert.equal(await step([...up, '--approve', revisionIn(out)]), 3); assert.match(out, /^Next step: apply\./m);
   await held([...up, '--approve', revisionIn(out)]);
   assert.ok(existsSync(join(dir, '.claude/commands/weekly-update.md')));
+  assert.match(readFileSync(join(dir, '.claude/skills/slice-wiki/SKILL.md'), 'utf8'), /- `wiki\/a\.md`: Alpha\n$/); assert.match(readFileSync(join(dir, '.claude/agents/reader.md'), 'utf8'), /command: bowerloom-guard/);
+  assert.equal(readFileSync(join(dir, '.claude/agents/scribe.md'), 'utf8'), readFileSync(join(dir, '.bowerloom/teams/first-team/agents/scribe.md'), 'utf8'));
   out = ''; assert.equal(await runApplyCommand(['apply'], dir, testHome, write, quietIo, env), 0); assert.match(out, /Nothing to change\./);
   out = ''; assert.equal(await runApplyCommand(['apply', '--harness', 'claude', '--json'], dir, testHome, write, quietIo, env), 0);
   assert.deepEqual(spawned, []); assert.deepEqual(network, []);

@@ -12,12 +12,12 @@ test('the contracts module is types only and has no runtime surface', async () =
 });
 
 test('ProjectContext carries the sync plan project binding and is read only', () => {
-  const project: ProjectContext = { dir: '/synthetic/project', identity: id('2'), ancestry: [{ path: '/', identity: id('1') }, { path: '/synthetic', identity: id('3') }], bowerloomIdentity: id('4'), projectId: 'a'.repeat(32) };
+  const project: ProjectContext = { dir: '/synthetic/project', identity: id('2'), ancestry: [{ path: '/', identity: id('1') }, { path: '/synthetic', identity: id('3') }], bowerloomIdentity: id('4'), configPresent: false, projectId: 'a'.repeat(32) };
   // @ts-expect-error A project binding cannot be reassigned.
   project.dir = '/elsewhere';
   // @ts-expect-error The ancestry list cannot grow.
   project.ancestry.push({ path: '/x', identity: id('5') });
-  assert.deepEqual(Object.keys(project), ['dir', 'identity', 'ancestry', 'bowerloomIdentity', 'projectId']);
+  assert.deepEqual(Object.keys(project), ['dir', 'identity', 'ancestry', 'bowerloomIdentity', 'configPresent', 'projectId']);
 });
 
 test('a held project lock cannot be forged from a literal', () => {

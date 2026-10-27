@@ -16,6 +16,8 @@ Start with your current project and the workflow you want to organize. [Map its 
 | Use an optional separate workspace | [Prepare a separate workspace](/docs/guides/new-workspace/) |
 | Pin, sync, and apply skills from npm or GitHub | [Add third-party skills](/docs/guides/add-skills/) |
 | Create a team, a skill, or a prompt | [Create teams, skills, and prompts](/docs/guides/create-items/) |
+| Share a project that uses your store | [Where your items come from](/docs/guides/item-sources/) |
+| Give each agent its part of a knowledge base | [Context slices for agents](/docs/guides/context-slices/) |
 | Change an installed goal or profile | [Revise an installed setup](/docs/revision/) |
 | Resolve an interrupted revision | [Recover a revision](/docs/guides/recover-revision/) |
 | Request a registered-work stop | [Stop registered work](/docs/stop/) |

@@ -20,7 +20,7 @@ import { MARKER_V2 } from '../../managed-skills/src/v2-observed.js';
 import { LEGACY_NAMESPACE, legacyPresent } from '../../managed-skills/src/migrate.js';
 import type { Harness, ItemSource, ManagedItemReceipt, ManagedItemRequest } from '../../managed-skills/src/v2-types.js';
 import { readManifestState } from '../../skill-manifest/src/add.js';
-import { parseManifest } from '../../skill-manifest/src/schema.js';
+import { MANIFEST_LIMITS, parseManifest } from '../../skill-manifest/src/schema.js';
 import { pinOf } from '../../skill-manifest/src/check.js';
 import type { PinnedEntry } from '../../skill-manifest/src/schema.js';
 import { withProjectLock } from '../../project-context/src/index.js';
@@ -31,14 +31,16 @@ import { managedPort } from './deps.js';
 import type { ManagedPort, SyncDeps } from './deps.js';
 import { MIN_FREE_BYTES, beforePins, byPath, checkProjectAncestry, itemSurfaces, pendingRefusal, stateLayout, union } from './plan.js';
 import type { SyncItem } from './plan.js';
-import { cacheRoots, checkChild, createPrivateFolders, fetchPin, selectorFor } from './apply.js';
-import { outward, syncError } from './refusal.js';
+import { FETCHED_NOTHING, cacheRoots, checkChild, createPrivateFolders, fetchPin, recoveryInFlow, selectorFor } from './apply.js';
+import { oneLine } from '../../contracts/src/index.js';
+import { command, outward, shellPath, syncError, withStep } from './refusal.js';
+import type { FetchFlow } from './refusal.js';
 
 export const MIGRATE_PLAN_FORMAT = 'bowerloom/skills-migrate-plan/v1beta1' as const;
 export interface MigrateInput { project: ProjectContext; stateRoot: string; legacyStateDir: string }
 export interface MigratePlan {
   format: typeof MIGRATE_PLAN_FORMAT;
-  project: { dir: string; identity: DirectoryIdentity; ancestry: readonly PinnedDirectory[]; bowerloomIdentity: DirectoryIdentity };
+  project: { dir: string; identity: DirectoryIdentity; ancestry: readonly PinnedDirectory[]; bowerloomIdentity: DirectoryIdentity | null };
   manifest: { sha256: string; bytes: number };
   legacy: { stateDir: string; operationKey: string; receiptRevision: string; harness: Harness; catalogSha256: string };
   /** Where the pinned bytes come from: this machine's skills cache ('project-cache', its name from earlier betas), the cache the v1 install read, or a fetch in phase A. */
@@ -73,7 +75,7 @@ async function observeMigrate(input: MigrateInput): Promise<MigrateObserved> {
   if (seen.status !== 'committed' || seen.receipt === null || seen.operationKey === null) throw syncError('SKILLS_MIGRATE_STATE_INVALID');
   const catalogBytes = raw(join(dir, LEGACY_NAMESPACE, 'catalog.json'), 262144, false).bytes;
   const catalog = strictJson(new TextDecoder('utf-8', { fatal: true }).decode(catalogBytes), 262144) as { source: Record<string, unknown>; skill: { id: string; name: string; sourceRoot: string }; inventory: unknown; license: unknown; references: unknown; harness: Harness };
-  const state = readManifestState(dir), manifest = state.file ? parseManifest(state.file.bytes) : null;
+  const state = readManifestState(dir), manifest = state.file ? parseManifest(state.file.bytes, MANIFEST_LIMITS) : null;
   const entry = manifest?.skills.find(e => e.id === catalog.skill.id && e.source.kind !== 'local') as PinnedEntry | undefined;
   const pinned = entry ? entryRequest(entry) : null;
   const pretend = { source: catalog.source, skill: catalog.skill, inventory: catalog.inventory, license: catalog.license, references: catalog.references } as unknown as AcquiredSkillCacheReceipt;
@@ -99,6 +101,7 @@ async function observeMigrate(input: MigrateInput): Promise<MigrateObserved> {
     cacheOperationId: bytesFrom === 'legacy-cache' ? null : cache.operationId, cache: bytesFrom === 'legacy-cache' ? null : cache,
     expected: { files: byPath(pinned.request.files.map(f => ({ path: f.path, sha256: f.sha256, bytes: f.bytes }))), surfaces: surfaces.map(s => ({ id: s.id, path: s.path.slice(dir.length + 1) })) },
     before: beforePins(surfaces, dir), previousReceiptRevision: null, history: 0, hold: null,
+    origin: 'project', via: [], resolvedFrom: 'project', lockPin: null, storeCache: null,
   };
   const fetch = bytesFrom === 'fetch', create = [...layout.missing.filter(p => p !== layout.cacheRoot || fetch)];
   const stateDir = join(layout.itemsRoot, id); if (!exists(stateDir)) create.push(stateDir);
@@ -115,27 +118,49 @@ async function observeMigrate(input: MigrateInput): Promise<MigrateObserved> {
   return { plan: freezeSkillData({ ...body, revision: revisionOf(body) }) as MigratePlan, pinned };
 }
 
-/** `skills migrate plan`. Reads only. */
-export async function planMigrate(input: MigrateInput): Promise<MigratePlan> {
-  try { return (await observeMigrate(input)).plan; } catch (e) { throw outward(e); }
+/**
+ * Round 8 of the reviews of PR 101: the flow of skills migrate. Its plan binds its cache operation and folders (variant A
+ * of round 7), so each step plans again with this command. A path with a space is quoted for a shell.
+ */
+export function migrateFlow(input: MigrateInput): FetchFlow {
+  // Round 10: a path that no command can carry gets words that name the command, never a placeholder in a command.
+  const state = shellPath(input.legacyStateDir);
+  // Round 11: the words name the folder, on one line (oneLine), with no < or >.
+  const replan = state !== null ? command(`bowerloom skills migrate plan --state ${state}`) : `bowerloom skills migrate plan with --state and the path of the earlier state folder (${oneLine(input.legacyStateDir)})`;
+  return { rerun: replan, replan };
+}
+/**
+ * `skills migrate plan`. Reads only. `use` is 'apply' when the plan is made for skills migrate apply: a refusal then
+ * names the plan command, because the same --approve no longer matches once the step was followed.
+ */
+export async function planMigrate(input: MigrateInput, use: 'plan' | 'apply' = 'plan'): Promise<MigratePlan> {
+  try { return (await observeMigrate(input)).plan; } catch (e) { throw outward(use === 'apply' ? recoveryInFlow(e, migrateFlow(input)) : e); }
 }
 
 /** `skills migrate apply`: the same locked phases as sync, for the one migrate child. */
 export async function applyMigrate(input: MigrateInput, revision: string, deps: SyncDeps): Promise<ManagedItemReceipt> {
   if (typeof revision !== 'string' || !/^[a-f0-9]{64}$/.test(revision)) throw syncError('STALE_APPROVAL');
   const managed: ManagedPort = deps.managed ?? managedPort;
+  // Round 8 of the reviews of PR 101: every refusal of the run names the plan command of migrateFlow.
+  const flow = migrateFlow(input), replan = flow.replan!;
   try {
     return await withProjectLock(input.project.dir, new AbortController().signal, async held => {
-      const { plan, pinned } = await observeMigrate(input);
+      let observed: MigrateObserved;
+      try { observed = await observeMigrate(input); } catch (error) { throw recoveryInFlow(error, flow); }
+      const { plan, pinned } = observed;
       if (plan.revision !== revision) throw syncError('STALE_APPROVAL');
-      if (deps.signal.aborted) throw syncError('SKILLS_SYNC_INTERRUPTED', 'Nothing was changed.');
-      createPrivateFolders(plan, held, plan.project.dir);
+      // Round 14 of the reviews of PR 101: fix is the plan command, only when it was built as one (not the words).
+      if (deps.signal.aborted) throw withStep(syncError('SKILLS_SYNC_INTERRUPTED', `Nothing was changed. Run ${replan} to see a new plan.`), `Run ${replan} to see a new plan.`, replan);
+      // Round 9 of the reviews of PR 101: a folder failure names the plan command too.
+      createPrivateFolders(plan, held, plan.project.dir, 'all', new Map(), FETCHED_NOTHING, flow);
       const item = plan.item;
       let source: ItemSource;
       if (plan.bytesFrom === 'legacy-cache') source = { kind: 'cache', selector: plan.legacySelector! };
       else {
         let found = item.cache!;
-        if (plan.bytesFrom === 'fetch') found = (await fetchPin(item, pinned, cacheRoots(plan.privateState), plan.network.hosts, deps)).lookup;
+        if (plan.bytesFrom === 'fetch') {
+          found = (await fetchPin(item, pinned, cacheRoots(plan.privateState), plan.network.hosts, deps, flow)).lookup;
+        }
         source = { kind: 'cache', selector: await selectorFor(item, pinned, found) };
       }
       const req: ManagedItemRequest = {

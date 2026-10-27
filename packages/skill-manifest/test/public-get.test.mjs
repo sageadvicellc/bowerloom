@@ -99,8 +99,8 @@ test('private, loopback, link-local, special-use and IPv6 answers are refused be
   const transport = createPublicTransport(); await assert.rejects(transport.get(URL_NPM, 1024, signal()), code('SKILLS_ADD_NETWORK')); transport.close();
 });
 
-test('a 3xx is never followed, and other statuses refuse; a 404 is not found', async t => {
-  for (const [response, expected] of [[{ status: 301, headers: ['Location', 'https://evil.example/', 'Content-Length', '0'] }, 'SKILLS_ADD_NETWORK'], [{ status: 302, headers: ['Location', 'https://registry.npmjs.org/y'] }, 'SKILLS_ADD_NETWORK'], [{ status: 307 }, 'SKILLS_ADD_NETWORK'], [{ status: 308 }, 'SKILLS_ADD_NETWORK'], [{ status: 200, headers: ['Location', 'https://registry.npmjs.org/y', 'Content-Length', '11'] }, 'SKILLS_ADD_NETWORK'], [{ status: 401 }, 'SKILLS_ADD_NETWORK'], [{ status: 500 }, 'SKILLS_ADD_NETWORK'], [{ status: 404 }, 'SKILLS_ADD_NOT_FOUND'], [{ status: 422 }, 'SKILLS_ADD_NOT_FOUND']]) {
+test('a 3xx is never followed, and other statuses refuse; a 401 or a 5xx from api.github.com names its status (review F3); a 404 is not found', async t => {
+  for (const [response, expected] of [[{ status: 301, headers: ['Location', 'https://evil.example/', 'Content-Length', '0'] }, 'SKILLS_ADD_NETWORK'], [{ status: 302, headers: ['Location', 'https://registry.npmjs.org/y'] }, 'SKILLS_ADD_NETWORK'], [{ status: 307 }, 'SKILLS_ADD_NETWORK'], [{ status: 308 }, 'SKILLS_ADD_NETWORK'], [{ status: 200, headers: ['Location', 'https://registry.npmjs.org/y', 'Content-Length', '11'] }, 'SKILLS_ADD_NETWORK'], [{ status: 401 }, 'GITHUB_REQUEST_FAILED'], [{ status: 500 }, 'GITHUB_REQUEST_FAILED'], [{ status: 404 }, 'SKILLS_ADD_NOT_FOUND'], [{ status: 422 }, 'SKILLS_ADD_NOT_FOUND']]) {
     const n = network(t, () => response), transport = createPublicTransport();
     await assert.rejects(transport.get(URL_GIT, 1024, signal()), code(expected), JSON.stringify(response)); assert.equal(n.calls.length, 1); transport.close(); t.mock.restoreAll();
   }

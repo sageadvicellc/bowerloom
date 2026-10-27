@@ -111,7 +111,7 @@ test('--replace moves an npm skill to a new version: the plan shows the old and 
   assert.deepEqual(skills(p.manifest).map(s => [s.id, s.source.version]), [['synthetic-db-collections', '0.0.2']]);
   // skills add kept the new pin's bytes, so the update reads them from the machine cache.
   const sync = run(p.dir, ['skills', 'sync'], p.serve); assert.equal(sync.status, 3, sync.stderr);
-  assert.match(sync.stdout, /^ {2}synthetic-db-collections +update to @synthetic\/db-skills@0\.0\.2:skills\/synthetic-db\/collections, from this machine's cache$/m);
+  assert.match(sync.stdout, /^ {2}synthetic-db-collections +update to @synthetic\/db-skills@0\.0\.2:skills\/synthetic-db\/collections, from this machine's cache {2}\[project\]$/m);
   approve(p, ['skills', 'sync'], p.serve);
   assert.match(readFileSync(installed, 'utf8'), /Version two\./);
   const again = run(p.dir, ['skills', 'sync', '--offline'], p.deny); assert.equal(again.status, 0, again.stderr); assert.match(again.stdout, /Nothing to change\.\n$/);
@@ -177,12 +177,13 @@ test('a --replace approval is stale after a concurrent edit of skills.json; noth
 test('help skills names --replace, and the plain words of SKILLS_ADD_EXISTS point to it', t => {
   const home = folder(t), deny = network(home, false), env = { HOME: home, ...deny.env };
   const topic = run(home, ['help', 'skills'], env); assert.equal(topic.status, 0, topic.stderr);
-  assert.match(topic.stdout, /^ {2}bowerloom skills add npm:<package>@<version>:<path> \[--id <id>\] \[--team <team>\]\.\.\. \[--replace\] \[--approve <revision>\] \[--json\]$/m);
-  assert.match(topic.stdout, /^ {2}bowerloom skills add github:<owner>\/<repo>@<40-char-commit>:<path> \[--id <id>\] \[--team <team>\]\.\.\. \[--replace\] \[--approve <revision>\] \[--json\]$/m);
+  assert.match(topic.stdout, /^ {2}bowerloom skills add npm:<package>@<version>:<path> \[--id <id>\] \[--team <team>\]\.\.\. \[--replace\] \[--global\] \[--approve <revision>\] \[--json\]$/m);
+  assert.match(topic.stdout, /^ {2}bowerloom skills add github:<owner>\/<repo>@<40-char-commit>:<path> \[--id <id>\] \[--team <team>\]\.\.\. \[--replace\] \[--global\] \[--approve <revision>\] \[--json\]$/m);
   assert.match(topic.stdout, /^--replace moves an existing id to another version or commit of the same package or repository\./m);
   const words = renderRefusal('SKILLS_ADD_EXISTS', 'message');
-  assert.match(words, /\nNext: bowerloom skills add <source> --id <id> --replace\n$/);
-  assert.match(renderRefusal('SKILLS_ADD_SOURCE_CHANGED', 'message'), /\nNext: bowerloom skills check\n$/);
+  // Round 1 of the reviews of PR 101: the words of the errors.md rows.
+  assert.match(words, /\nNext: To move that id to another version or commit, add --replace: bowerloom skills add <source> --id <id> --replace\.\n$/);
+  assert.match(renderRefusal('SKILLS_ADD_SOURCE_CHANGED', 'message'), /\nNext: Add the other source under a new id\.\n$/);
   assert.match(renderRefusal('SKILLS_ADD_REPLACE_MISSING', 'message'), /\nNext: bowerloom skills check\n$/);
   assert.deepEqual(deny.calls(), []);
 });

@@ -13,11 +13,21 @@ import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { DefinitionError } from '../../contracts/src/index.js';
 import { refuse } from './refusal.js';
+/** The project layer's fixed refusal for `code`, for a caller that detects the same fault itself. */
+export { refuse as projectRefusal } from './refusal.js';
 import { checkProjectPathWith, discoverProjectWith } from './discovery.js';
+import { inspectStoreWith, openStoreWith, pathInsideStore as pathInsideStoreWith } from './store.js';
+import type { StoreContext, StoreInspection } from './store.js';
 import type { HeldProjectLock, ProjectContext } from './types.js';
 
 export type { DirectoryIdentity, HeldProjectLock, OwnedEntryKind, OwnerName, OwnerVerdict, OwnerVerifier, PinnedDirectory, PlannedChange, ProjectContext } from './types.js';
-export { projectId, verifyProjectPins } from './discovery.js';
+export { ADOPT_MARKER_CHANNEL, adoptCreatedMarker, checkConfigFile, projectId, readConfigBytes, verifyProjectPins } from './discovery.js';
+export type { StoreContext, StoreInspection } from './store.js';
+export { STORE_CREATE_LINE, assertNotInStore, storeRootOf, verifyStorePins, withStoreForWrite } from './store.js';
+export { STORE_GITIGNORE, STORE_GITIGNORE_LINES, ensureStoreGitignore, storeGitignoreState, storeGitignoreStatus, takeStoreGitignoreFailure } from './store-gitignore.js';
+export type { StoreGitignoreState, StoreGitignoreStatus } from './store-gitignore.js';
+export { FOLDER_FORMAT, GRANT_FORMAT, checkRegisteredFolder, applyFolderAdd, applyFolderAllow, applyFolderDeny, planFolderAllow, planFolderDeny, renderFolderAllowReview, renderFolderDenyReview, applyFolderRemove, isFolderName, listFolders, planFolderAdd, planFolderRemove, readFolderRecord, renderFolderAddReview, renderFolderRemoveReview, resolveRegisteredFolder, resolveRegisteredRoot } from './registered-folders.js';
+export type { FolderAddPlan, FolderAllowPlan, FolderDenyPlan, FolderHooks, GrantProject, RootAccess, FolderList, FolderListing, FolderRecord, FolderRemovePlan, ResolvedRoot, RootHold } from './registered-folders.js';
 
 const hex = (value: string): string => createHash('sha256').update(value).digest('hex');
 
@@ -38,6 +48,13 @@ export function privateStateRoot(env: NodeJS.ProcessEnv, home: string): string {
  * No attribute is read and no process starts.
  */
 export function checkProjectPath(path: string, home: string): void { checkProjectPathWith(path, home); }
+
+/** The store at `<home>/.bowerloom`: `absent`, `foreign`, or `store` with a pinned context. Throws only STORE_* or USAGE. Takes no test hooks. */
+export function inspectStore(home: string = homedir()): StoreInspection { return inspectStoreWith(home); }
+/** The pinned store. STORE_NOT_FOUND when there is none and STORE_INVALID when the folder is not a store. Takes no test hooks. */
+export function openStore(home: string = homedir()): StoreContext { return openStoreWith(home); }
+/** True for a path at or below the store of HOME or of the account home. Takes no test hooks. */
+export function pathInsideStore(path: string, home: string = homedir()): boolean { return pathInsideStoreWith(path, home); }
 
 /**
  * Finds the project the way git finds `.git`: the nearest parent folder that holds a real, owned, non-symlinked,
@@ -75,6 +92,32 @@ export function slotStillNames(project: string, slot: LockSlot): boolean {
 /** The local port of a project's lock slot. See `lockSlot`. */
 export const lockPort = (project: string): number => lockSlot(project).port;
 
+/**
+ * Track 11 of beta.3, item 5, and PR 102 round 2, item 1: how many more binds a writer tries after a holder let go
+ * between its refused bind and the banner read. With several commands on one project, other commands can take the slot
+ * and let go again between two binds of this one. A slot that still refuses every read after these binds is a
+ * collision: a holder that lets go does not take the port back each time.
+ * Measured on macOS (11 cores), 4 processes taking one project's lock 150 times each, 600 tries a round, holds of 0 to
+ * 3 ms; "load" is 11 busy processes:
+ * - 1 rebind, no pause (an earlier harness, each process taking the lock once): 4 processes, 21 of 1200.
+ * - 3 rebinds, no pause: idle 0 of 3600; under load 14 of 3600, in 4 of 6 rounds. Each was a run of let-gos
+ *   (ECONNRESET or ECONNREFUSED, no byte) while other writers took and released the slot.
+ * - 6 rebinds, pause 1 to 5 ms: under load 2 of 7200.
+ * - 8 rebinds, pause from 1 to 5 ms doubling to at most 80 ms (rebindPause): idle 0 of 3600; under load 0 of 18000
+ *   in 30 rounds.
+ * A real squatter stays a prompt collision. One that answers with bytes refuses after one probe, and one that stays
+ * silent after the 1 s banner timeout. One that refuses or ends every connection refuses after LOCK_REBINDS + 1 quick
+ * probes and the pauses between them, at most 5 + 10 + 20 + 40 + 4 x 80 = 395 ms.
+ */
+export const LOCK_REBINDS = 8;
+/**
+ * PR 102 round 2, item 1: every lock user waits at random before it binds again: 1 to 5 ms before the first rebind,
+ * and up to twice as long before each next one, at most REBIND_PAUSE_MAX_MS. Under full CPU load a holder can let go
+ * while this writer's probe still sits in its accept queue (ECONNRESET with no byte). Without a pause the writers that
+ * lost to it bind again at the same moment, and one of them can lose every round. `attempt` counts from 0.
+ */
+export const REBIND_PAUSE_MAX_MS = 80;
+export const rebindPause = (attempt: number): Promise<void> => new Promise(resolve => setTimeout(resolve, 1 + Math.floor(Math.random() * Math.min(5 * 2 ** attempt, REBIND_PAUSE_MAX_MS))));
 /** How long a refused writer waits for the slot holder's banner. Only a writer that could not bind ever waits. */
 export const LOCK_BANNER_TIMEOUT_MS = 1000;
 /**
@@ -89,24 +132,46 @@ export function lockServer(slot: LockSlot): Server {
  * closes within the timeout. 'gone' when the connection is refused before any byte: nobody listens any more, so the
  * holder let go. Anything else, including silence or extra bytes, is 'other'.
  * It reads at most one banner length plus one byte and never writes.
+ * Track 11 of beta.3, item 5: `silentRetries` probes again after a silent answer. A process that probes its own slot
+ * passes 1: its own busy event loop can run the probe's timer before the read, and then the probe is silent.
  */
-export async function lockHolder(slot: LockSlot, timeoutMs = LOCK_BANNER_TIMEOUT_MS): Promise<'this' | 'other' | 'gone'> {
-  const holder = await probeLockHolder(slot, timeoutMs);
-  return holder === 'silent' || holder === 'reset' ? 'other' : holder;
+export async function lockHolder(slot: LockSlot, timeoutMs = LOCK_BANNER_TIMEOUT_MS, silentRetries = 0): Promise<'this' | 'other' | 'gone'> {
+  let holder = await probeLockHolder(slot, timeoutMs);
+  for (let retry = 0; holder === 'silent' && retry < silentRetries; retry++) holder = await probeLockHolder(slot, timeoutMs);
+  return holder === 'silent' || holder === 'reset' || holder === 'closed' ? 'other' : holder;
 }
 /**
- * `lockHolder` with two more verdicts. 'silent' when the connection stays open and sends no byte before the timeout.
+ * Track 11 of beta.3, item 5: a probe timer that fires more than PROBE_LATE_MS after it was due gets PROBE_GRACE_MS more,
+ * up to PROBE_GRACES times, so the probe reads what came in while its own event loop was busy. A holder that stays
+ * silent while this event loop is free is silent after the timeout, as before.
+ */
+const PROBE_LATE_MS = 100, PROBE_GRACE_MS = 100, PROBE_GRACES = 10;
+/**
+ * `lockHolder` with three more verdicts. 'silent' when the connection stays open and sends no byte before the timeout.
  * 'reset' when the connection is reset before any byte. A Bowerloom holder whose event loop is busy, such as one
  * unpacking a large archive, answers 'silent', and 'reset' when it exits before it reads the connection. A program
  * that squats the port can answer either way. Only `withCacheLock` waits on them, and only up to a limit.
+ * 'closed' (track 11 of beta.3, item 5, and PR 102 round 1) when the connection ends cleanly before any byte. No
+ * Bowerloom lock holder closes without its banner while it holds the slot, so it is a holder that let go, or a program
+ * that accepts and ends every connection. Both locks bind again on it, at most LOCK_REBINDS times in a row, and then
+ * refuse it as a collision: `slotRefusal` through `mayBindAgain`, `withCacheLock` through its own count.
  */
-function probeLockHolder(slot: LockSlot, timeoutMs: number): Promise<'this' | 'other' | 'gone' | 'silent' | 'reset'> {
+type ProbeVerdict = 'this' | 'other' | 'gone' | 'silent' | 'reset' | 'closed';
+function probeLockHolder(slot: LockSlot, timeoutMs: number): Promise<ProbeVerdict> {
   return new Promise(resolveHolder => {
-    const want = Buffer.from(slot.banner), chunks: Buffer[] = []; let size = 0, done = false;
+    const want = Buffer.from(slot.banner), chunks: Buffer[] = []; let size = 0, done = false, graces = 0, due = performance.now() + timeoutMs;
     const socket = net.connect({ host: '127.0.0.1', port: slot.port });
-    const finish = (verdict: 'this' | 'other' | 'gone' | 'silent' | 'reset') => { if (done) return; done = true; clearTimeout(timer); socket.destroy(); resolveHolder(verdict); };
-    const settle = () => finish(Buffer.concat(chunks, size).equals(want) ? 'this' : 'other');
-    const timer = setTimeout(() => finish(size === 0 ? 'silent' : 'other'), timeoutMs);
+    const finish = (verdict: ProbeVerdict) => { if (done) return; done = true; clearTimeout(timer); socket.destroy(); resolveHolder(verdict); };
+    const settle = () => finish(size === 0 ? 'closed' : Buffer.concat(chunks, size).equals(want) ? 'this' : 'other');
+    // Track 11 of beta.3, item 5: after a busy spell, Node runs a due timer before it reads the sockets. A timer that
+    // fires late means this process's own event loop was busy, so the banner, or the close after it, may be waiting
+    // unread: read it first.
+    const expire = (): void => {
+      const now = performance.now();
+      if (now - due > PROBE_LATE_MS && graces++ < PROBE_GRACES) { due = now + PROBE_GRACE_MS; timer = setTimeout(expire, PROBE_GRACE_MS); return; }
+      finish(size === 0 ? 'silent' : 'other');
+    };
+    let timer = setTimeout(expire, timeoutMs);
     socket.on('data', (chunk: Buffer) => { chunks.push(chunk); size += chunk.length; if (size > want.length) finish('other'); });
     socket.on('end', settle); socket.on('close', settle);
     socket.on('error', (error: NodeJS.ErrnoException) => finish(size !== 0 ? 'other' : error.code === 'ECONNREFUSED' ? 'gone' : error.code === 'ECONNRESET' ? 'reset' : 'other'));
@@ -126,14 +191,15 @@ export function reportSlotCollision(slot: LockSlot): number {
 /**
  * After EADDRINUSE: 'locked' when this project's own lock holds the slot, 'collision' for anything else. A collision
  * is reported on the diagnostics channel. Neither verdict lets the caller proceed.
- * With `mayBindAgain`, a holder that let go before the banner read ('gone', or a reset before any byte) gives 'free': the caller binds once more,
- * and that bind alone decides. Without it, 'gone' is a collision, so a caller binds again at most once.
+ * With `mayBindAgain`, a holder that let go before the banner read ('gone', or a reset or close before any byte) gives
+ * 'free': the caller binds once more, and that bind alone decides. Without it, 'gone' is a collision. A caller passes
+ * `attempt < LOCK_REBINDS`, so it binds again at most LOCK_REBINDS times.
  */
 export async function slotRefusal(slot: LockSlot, mayBindAgain = false): Promise<'locked' | 'collision' | 'free'> {
   const holder = await probeLockHolder(slot, LOCK_BANNER_TIMEOUT_MS);
   if (holder === 'this') return 'locked';
-  // A reset before any byte is a holder that exited before it read the connection: it let go, like 'gone'.
-  if ((holder === 'gone' || holder === 'reset') && mayBindAgain) return 'free';
+  // A reset or close before any byte is a holder that let go before it answered, like 'gone'.
+  if ((holder === 'gone' || holder === 'reset' || holder === 'closed') && mayBindAgain) return 'free';
   reportSlotCollision(slot); return 'collision';
 }
 /** PROJECT_LOCK_SLOT_COLLISION. The message names the port, and the error carries it as `port` for the plain-words line. */
@@ -159,7 +225,7 @@ function closeServer(server: Server): Promise<void> {
 
 /**
  * Holds the project lock while `work` runs. A holder that let go between the refused bind and its banner read gets one
- * more bind. The token is valid only inside `work`, and only while its path still names
+ * more bind, up to LOCK_REBINDS times. The token is valid only inside `work`, and only while its path still names
  * the folder it locked (the token's `key`): a folder replaced at that path ends it. Only EADDRINUSE means the slot is
  * taken: PROJECT_LOCKED when the holder sends this project's banner, PROJECT_LOCK_SLOT_COLLISION (naming the port) for
  * anything else. Any other listen error is PROJECT_LOCK_UNAVAILABLE. A signal that aborts while the lock
@@ -177,9 +243,9 @@ export async function withProjectLock<T>(root: string, signal: AbortSignal, work
     const outcome = await bind(server);
     if (outcome.ok) break;
     if (outcome.code !== 'EADDRINUSE') throw refuse('PROJECT_LOCK_UNAVAILABLE');
-    // A holder that let go before its banner was read gets one more bind, with a fresh listener.
-    const verdict = await slotRefusal(slot, attempt === 0);
-    if (verdict === 'free') { server = lockServer(slot); continue; }
+    // A holder that let go before its banner was read gets one more bind, with a fresh listener, up to LOCK_REBINDS.
+    const verdict = await slotRefusal(slot, attempt < LOCK_REBINDS);
+    if (verdict === 'free') { await rebindPause(attempt); server = lockServer(slot); continue; }
     throw verdict === 'locked' ? refuse('PROJECT_LOCKED') : slotCollision(slot.port);
   }
   // The folder may have been replaced between the key and the bind: then this port locks nothing. Release and refuse.
@@ -228,12 +294,27 @@ function cacheSlotCollision(port: number): DefinitionError & { readonly port: nu
  * A holder that stays silent, or resets the connection before any byte, is waited for too, because a Bowerloom holder
  * in another process cannot answer while its event loop is busy, and resets when it exits first. Past `silentMs`
  * (CACHE_LOCK_SILENT_LIMIT_MS) of nothing else, it counts as another program.
+ * A refused connection ('gone') or one that ends cleanly before any byte ('closed') is a holder that let go, so the
+ * writer binds again. More than LOCK_REBINDS such answers since this lock last answered count as another program (PR
+ * 102 rounds 1 and 2): one that accepts and ends every connection, or keeps the port bound and refuses every
+ * connection, refuses in well under a second. Silence and resets count against `silentMs`, which runs from the first
+ * answer of the current holder that was not this lock's; a 'gone', a holder that let go, starts it again (round 3),
+ * so two busy holders in turn are each waited out. Since `letGos` keeps counting, a program that mixes the answers
+ * still refuses, after at most about (LOCK_REBINDS + 1) x `silentMs`. Each wait pauses CACHE_LOCK_POLL_MS before the
+ * next bind, except after the first 'gone' in a row.
  * A slot held by anything else refuses PROJECT_LOCK_SLOT_COLLISION, naming the port. Readers take no lock.
  */
+/** Round 3 of the reviews of PR 99, L-e: the cache lock refuses in its own words, not the project lock's. */
+const cacheLockRefusal = (lost = false): DefinitionError => new DefinitionError('PROJECT_LOCK_UNAVAILABLE', lost ? 'Bowerloom lost the skills cache lock. Try again.' : 'Bowerloom could not take the skills cache lock. Try again.');
 export async function withCacheLock<T>(cacheRoot: string, signal: AbortSignal, work: (held: HeldCacheLock) => Promise<T>, options: { waitMs?: number; silentMs?: number } = {}): Promise<T> {
-  const slot = cacheLockSlot(cacheRoot), deadline = options.waitMs === undefined ? Infinity : Date.now() + options.waitMs;
+  let first: LockSlot; try { first = cacheLockSlot(cacheRoot); } catch (error) { if ((error as { code?: unknown }).code === 'PROJECT_LOCK_UNAVAILABLE') throw cacheLockRefusal(); throw error; }
+  const slot = first, deadline = options.waitMs === undefined ? Infinity : Date.now() + options.waitMs;
   const silentLimit = options.silentMs ?? CACHE_LOCK_SILENT_LIMIT_MS;
-  let silentSince: number | undefined;
+  // PR 102 rounds 2 and 3: one record of the wait. `letGos` counts the answers of a holder that let go ('gone' and
+  // 'closed') since this lock last answered. `waitingSince` is when the current holder's first other answer came: a
+  // 'gone' starts it again, so each holder gets the full silent limit. `goneInRow` lets the
+  // first 'gone' in a row bind again at once.
+  let waitingSince: number | undefined, letGos = 0, goneInRow = 0;
   const bind = (listener: Server) => new Promise<{ ok: true } | { ok: false; code: string | undefined }>(settle => {
     listener.once('error', error => settle({ ok: false, code: (error as NodeJS.ErrnoException).code }));
     listener.listen({ host: '127.0.0.1', port: slot.port, exclusive: true }, () => settle({ ok: true }));
@@ -245,18 +326,22 @@ export async function withCacheLock<T>(cacheRoot: string, signal: AbortSignal, w
     server = lockServer(slot);
     const outcome = await bind(server);
     if (outcome.ok) break;
-    if (outcome.code !== 'EADDRINUSE') throw refuse('PROJECT_LOCK_UNAVAILABLE');
+    if (outcome.code !== 'EADDRINUSE') throw cacheLockRefusal();
     const holder = await probeLockHolder(slot, LOCK_BANNER_TIMEOUT_MS);
-    if (holder === 'silent' || holder === 'reset') silentSince ??= Date.now(); else silentSince = undefined;
-    if (holder === 'other' || (silentSince !== undefined && Date.now() - silentSince >= silentLimit)) { reportSlotCollision(slot); throw cacheSlotCollision(slot.port); }
+    if (holder === 'this') { waitingSince = undefined; letGos = 0; } else if (holder === 'gone') waitingSince = undefined; else waitingSince ??= Date.now();
+    if (holder === 'gone' || holder === 'closed') letGos++;
+    goneInRow = holder === 'gone' ? goneInRow + 1 : 0;
+    if (holder === 'other' || letGos > LOCK_REBINDS || (waitingSince !== undefined && Date.now() - waitingSince >= silentLimit)) { reportSlotCollision(slot); throw cacheSlotCollision(slot.port); }
     if (Date.now() >= deadline) throw new DefinitionError('PROJECT_LOCK_UNAVAILABLE', 'Another Bowerloom command held the skills cache lock for too long. Try again.');
-    if (holder === 'this') await pause();
+    // Every wait pauses, so no answer makes a tight loop. Only the first 'gone' in a row, a holder that just let go,
+    // gets the next bind at once.
+    if (!(holder === 'gone' && goneInRow === 1)) await pause();
   }
   const stillNames = (): boolean => { try { return cacheLockSlot(cacheRoot).key === slot.key; } catch { return false; } };
-  if (!stillNames() || signal.aborted) { await closeServer(server); throw signal.aborted ? abortError() : refuse('PROJECT_LOCK_UNAVAILABLE'); }
+  if (!stillNames() || signal.aborted) { await closeServer(server); throw signal.aborted ? abortError() : cacheLockRefusal(); }
   let released = false, failure: unknown, failed = false, result: T | undefined;
   try {
-    const held: HeldCacheLock = Object.freeze({ root: cacheRoot, key: slot.key, assertHeld(): void { if (released || !stillNames()) throw refuse('PROJECT_LOCK_UNAVAILABLE'); } });
+    const held: HeldCacheLock = Object.freeze({ root: cacheRoot, key: slot.key, assertHeld(): void { if (released || !stillNames()) throw cacheLockRefusal(true); } });
     result = await work(held);
   } catch (error) { failed = true; failure = error; }
   released = true;

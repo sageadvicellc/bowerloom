@@ -1,5 +1,7 @@
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
+import { atApproval } from '../../../packages/project-config/src/refusal.js';
 import type { PlannedChange } from '../../../packages/project-context/src/types.js';
+import { takeStoreGitignoreFailure } from '../../../packages/project-context/src/store-gitignore.js';
 import { newCommandJson, plainText } from './human.js';
 
 export interface ApprovalIo { readonly interactive: boolean; ask(question: string): Promise<string> }
@@ -28,7 +30,7 @@ export function parseApprovalFlags(args: readonly string[]): { approve?: string;
 }
 
 // Flags of the CLI that take no value. Any other `--flag` without `=` takes the next word as its value.
-const NO_VALUE = new Set(['--json', '--synthetic', '--demo', '--pro', '--5x', '--20x', '--help', '--version', '--offline', '--replace']);
+const NO_VALUE = new Set(['--json', '--synthetic', '--demo', '--pro', '--5x', '--20x', '--help', '--version', '--offline', '--replace', '--global']);
 const takesValue = (word: string | undefined): boolean => word !== undefined && word.startsWith('--') && !word.includes('=') && !NO_VALUE.has(word);
 /**
  * True when a command line passes `--yes` or `-y` as a flag. `--yes` and `--yes=...` count anywhere. `-y` counts only in a
@@ -39,8 +41,14 @@ export function namesYesFlag(args: readonly string[]): boolean {
 }
 
 const shorten = (revision: string): string => `${revision.slice(0, 4)}…${revision.slice(-4)}`;
-const stale = (): DefinitionError => new DefinitionError('STALE_APPROVAL', 'The plan changed after it was approved. Nothing was applied. Run the command again to see the new plan.');
+const STALE_MESSAGE = 'The plan changed after it was approved. Nothing was applied. Run the command again to see the new plan.';
+const stale = (note?: string | null): DefinitionError => new DefinitionError('STALE_APPROVAL', note ? `${STALE_MESSAGE} ${note}` : STALE_MESSAGE);
 
+/**
+ * Round 5 of the reviews of PR 101: a store fault met on a run with --approve, when the plan is made again, says what to do
+ * if the item also changed: then the same --approve is stale. Any other error is returned as it is.
+ */
+export const approvalFault = (error: unknown, approve: string | undefined): unknown => approve !== undefined ? atApproval(error) : error;
 /**
  * Plans, then applies only what was approved.
  * - With a matching `--approve`: applies once and never asks.
@@ -48,18 +56,24 @@ const stale = (): DefinitionError => new DefinitionError('STALE_APPROVAL', 'The 
  * - Otherwise: prints the plan and its revision and returns exit code 3 (APPROVAL_REQUIRED). Nothing is written.
  */
 export async function runWithApproval<P>(change: PlannedChange<P>, flags: ApprovalFlags, io: ApprovalIo): Promise<{ output: string; exitCode: 0 | 3 }> {
-  const plan = await change.plan(), revision = change.revision(plan);
+  let plan: P; try { plan = await change.plan(); } catch (error) { throw approvalFault(error, flags.approve); }
+  const revision = change.revision(plan);
   if (!REVISION.test(revision)) throw new DefinitionError('IO_ERROR', 'The plan has no valid revision, so nothing was applied.');
   const applied = async (value: string): Promise<{ output: string; exitCode: 0 }> => {
-    const result = await change.apply(value);
-    return { output: flags.json ? newCommandJson({ applied: true, revision: value, result }) : `Applied plan ${value}.\n`, exitCode: 0 };
+    takeStoreGitignoreFailure();
+    // Round 6 of the reviews of PR 101: a fault the apply-time re-plan finds gets the approval note too.
+    let result: unknown; try { result = await change.apply(value); } catch (error) { throw approvalFault(error, flags.approve); }
+    // Round 2 of the reviews of PR 100, M3: a store write that could not add its .gitignore lines says so, once.
+    const failure = takeStoreGitignoreFailure();
+    const warning = failure === null ? null : `Note: the store was written, but ~/.bowerloom/.gitignore was not (${failure.code}). Run bowerloom store status.`;
+    return { output: flags.json ? newCommandJson({ applied: true, revision: value, result, ...(warning !== null ? { warnings: [warning] } : {}) }) : `Applied plan ${value}.\n${warning !== null ? `${warning}\n` : ''}`, exitCode: 0 };
   };
-  if (flags.approve !== undefined) { if (flags.approve !== revision) throw stale(); return applied(revision); }
+  if (flags.approve !== undefined) { if (flags.approve !== revision) throw stale(change.staleNote?.(plan)); return applied(revision); }
   if (io.interactive && !flags.json) {
     const answer = await io.ask(`${plainText(change.review(plan), true)}\nApply plan ${shorten(revision)}? [y/N] `);
     if (!/^y(?:es)?$/i.test(answer.trim())) throw new DefinitionError('APPROVAL_DECLINED', 'You declined the plan. Nothing was changed.');
-    const again = change.revision(await change.plan());
-    if (again !== revision) throw stale();
+    const next = await change.plan(), again = change.revision(next);
+    if (again !== revision) throw stale(change.staleNote?.(next));
     return applied(revision);
   }
   return {

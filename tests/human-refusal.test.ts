@@ -4,8 +4,11 @@ import { DefinitionError } from '../packages/contracts/src/index.js';
 import { RecipeError } from '../packages/recipes/src/types.js';
 import { BrokerError } from '../packages/broker/src/index.js';
 import { exitCodeFor, newCommandJson, newCommandRefusal, plainText, renderRefusal, reportFailure } from '../apps/cli/src/human.js';
-import { SYNC_REFUSAL_CODES } from '../packages/project-sync/src/refusal.js';
+import { SYNC_REFUSAL_CODES, command, partialRefusal, syncError } from '../packages/project-sync/src/refusal.js';
+import type { SyncCode } from '../packages/project-sync/src/refusal.js';
 import { AUTHORING_REFUSAL_CODES } from '../packages/project-authoring/src/index.js';
+import { readFileSync } from 'node:fs';
+import { CONFIG_REFUSAL_CODES } from '../packages/project-config/src/index.js';
 
 // Review finding 5: the next step for a folder with no project is the up command, not plumbing.
 const INIT_NEXT = 'bowerloom up --team <name> --goal <goal>';
@@ -25,10 +28,41 @@ const M1: ReadonlyArray<readonly [string, string, string]> = [
   ['PROJECT_LOCKED', 'Two commands must not change one project at the same time, so nothing was changed.', 'bowerloom status'],
   ['PROJECT_LOCK_UNAVAILABLE', 'The lock uses a local port, and this computer would not give it out.', 'bowerloom status'],
   ['PROJECT_LOCK_SLOT_COLLISION', 'The lock uses a local port. Another program listens on it, or another Bowerloom command is too busy to answer.', 'lsof -nP -iTCP:<port> -sTCP:LISTEN'],
+  // Spec 03, the store foundation: the store and the project config.
+  ['STORE_NOT_FOUND', 'The first --global create or skills add makes the store.', 'bowerloom skill create <name> --global'],
+  ['STORE_INVALID', 'If ~/.bowerloom holds no store.json that Bowerloom wrote, Bowerloom does not use it and never takes over the folder.', 'bowerloom store status'],
+  ['STORE_UNSAFE', 'Bowerloom will not trust a store that other people or links can change.', 'ls -ld ~/.bowerloom'],
+  ['STORE_UNREADABLE', 'A folder that cannot be read cannot be checked, so Bowerloom does not use it.', 'ls -ld ~ ~/.bowerloom'],
+  ['STORE_IN_CLOUD_FOLDER', 'Cloud sync changes file times and moves files, which breaks the checks that keep the store safe.', 'Move the home folder setup out of iCloud. The store must stay at ~/.bowerloom.'],
+  // Round 1 of the reviews of PR 101: the words of the errors.md row.
+  ['STORE_NOT_A_PROJECT', 'The store holds definitions only, so a folder inside it cannot be a project.', 'Run the command in a project folder outside ~/.bowerloom.'],
+  // Spec 04, store writes.
+  ['STORE_STATE_NESTED', 'Bowerloom keeps the cache outside the store, so a store inside the state folder, or the reverse, is refused.', 'Set XDG_STATE_HOME to a folder outside ~/.bowerloom.'],
+  ['STORE_LOCKED', 'Two commands must not change the store at the same time, so nothing was changed.', 'When the other command is done, run this one again.'],
+  ['MANIFEST_LIMIT', 'This beta keeps skills.json small: 128 skills and 1 MiB at most.', 'bowerloom skills check'],
+  ['STORE_WRITE_FAILED', 'Bowerloom failed to write to the store. The disk refused the write, and the message names the system error, such as ENOSPC.', 'df -h ~ && ls -ld ~/.bowerloom'],
+  ['CONFIG_INVALID', 'Bowerloom reads bowerloom.json strictly, so a hand edit can break it.', 'git diff bowerloom.json'],
+  ['CONFIG_UNSAFE', 'Bowerloom will not trust a bowerloom.json that other people or links can change.', 'ls -l bowerloom.json'],
+  ['PROJECT_FOLDER_UNSAFE', 'Bowerloom will not trust a project folder that other people can change.', 'ls -ld .'],
+  ['CONFIG_UNREADABLE', 'A file that cannot be read cannot be checked, so Bowerloom does not use it.', 'ls -l bowerloom.json'],
+  ['CONFIG_LIMIT', 'This beta keeps bowerloom.json small: 128 skills, 128 prompts, and 32 teams at most.', 'bowerloom status'],
+  ['CONFIG_DUPLICATE_ID', 'Each item is listed once, from one source.', 'git diff bowerloom.json'],
+  // Spec 05, Part B: registered folders.
+  ['FOLDER_NAME_INVALID', 'The name becomes a file name in your store.', 'bowerloom help context'],
+  ['FOLDER_EXISTS', 'Each registered folder needs its own name.', 'bowerloom folder list'],
+  ['FOLDER_NOT_FOUND', 'Only a registered folder can be used or removed.', 'bowerloom folder list'],
+  ['FOLDER_UNSAFE', 'Bowerloom reads only folders that you own and that no other user can change.', 'ls -ld <folder>'],
+  ['FOLDER_IN_CLOUD', 'Cloud sync changes file times and moves files, which breaks the checks that keep a folder safe.', 'mv <folder> ~/Projects/'],
+  ['FOLDER_INVALID', 'Bowerloom reads folder records strictly, so a hand edit can break one.', 'bowerloom folder list'],
+  ['FOLDER_NOT_ALLOWED', 'A registered folder is shared with the projects you allow, one by one.', 'bowerloom folder allow <folder-name>'],
 ];
 
 test('renderRefusal prints the fixed plain words of each M1 refusal code, with the code kept visible', () => {
   for (const [code, sentence, next] of M1) assert.equal(renderRefusal(code, 'The message.'), text(code, 'The message.', sentence, next), code);
+});
+
+test('a store MANIFEST_LIMIT points at skills check --global', () => {
+  assert.equal(renderRefusal('MANIFEST_LIMIT', 'm', { hint: 'store-limit' }), text('MANIFEST_LIMIT', 'm', 'This beta keeps the store skills.json small: 256 skills and 4 MiB at most.', 'bowerloom skills check --global'));
 });
 
 test('renderRefusal gives approval and held words only to a refusal a new command raised', () => {
@@ -63,7 +97,8 @@ test('plainText escapes C0, C1, DEL and bidi controls and keeps everything else'
 
 test('plainText also escapes every other format character and the line and paragraph separators (review M1F 2)', () => {
   // Zero-width space, joiners, word joiner and invisible operators, the byte order mark, soft hyphen, U+2028, U+2029.
-  assert.equal(plainText('a\u200bb\u200cc\u200dd\u2060e\u2061f\u2064g\ufeffh\u00adi\u2028j\u2029k'), 'a\\u200bb\\u200cc\\u200dd\\u2060e\\u2061f\\u2064g\\ufeffh\\u00adi\\u2028j\\u2029k');
+  // Round 11 of the reviews of PR 101 (variant A): ZWNJ and ZWJ print as they are; every other format character is escaped.
+  assert.equal(plainText('a\u200bb\u200cc\u200dd\u2060e\u2061f\u2064g\ufeffh\u00adi\u2028j\u2029k'), 'a\\u200bb\u200cc\u200dd\\u2060e\\u2061f\\u2064g\\ufeffh\\u00adi\\u2028j\\u2029k');
   // A tag character sits outside the basic plane: both halves are written, so nothing is lost or left half-printed.
   assert.equal(plainText('x\u{e0041}y'), 'x\\udb40\\udc41y');
   assert.equal(plainText('one\ntwo\u2028three', true), 'one\ntwo\\u2028three', 'multiline keeps only the newline');
@@ -165,7 +200,114 @@ test('every sync, apply and create refusal code has its own plain words and next
 test('the declined, usage and offline refusals do not repeat themselves', () => {
   const declined = renderRefusal('APPROVAL_DECLINED', 'You declined the plan. Nothing was changed.');
   assert.equal(declined.match(/nothing was changed/gi)?.length, 1, declined);
-  const offline = renderRefusal('SKILLS_OFFLINE', 'A pinned skill is not in this machine\'s cache yet. Nothing in the project changed. --offline was set. The skill is charts. Run bowerloom skills sync without --offline.');
+  const offline = renderRefusal('SKILLS_OFFLINE', 'This run could not get bytes that it needs. Nothing in the project changed. --offline was set. The skill is charts. Run bowerloom skills sync without --offline.');
   assert.equal(offline.match(/nothing (?:in the project )?(?:was )?changed/gi)?.length, 1, offline);
   assert.equal(renderRefusal('USAGE', 'Use bowerloom up --team <name> --goal <goal>.').includes('did not match'), false);
+});
+
+// Spec 01a, section 10.8 item 10: the nine agent codes each have a row in the errors reference.
+test('every agent refusal and hold code has a row in the errors reference', () => {
+  const page = readFileSync(new URL('../../apps/docs/src/content/docs/reference/errors.md', import.meta.url), 'utf8');
+  const codes = ['AGENT_INVALID', 'AGENT_KEY_UNKNOWN', 'AGENT_NAME_MISMATCH', 'AGENT_LIMIT', 'APPLY_AGENT_DUPLICATE', 'APPLY_AGENTS_FOLDER_UNSAFE', 'AGENT_TARGET_OCCUPIED', 'AGENT_GRANT_REVIEW_REQUIRED', 'AGENT_TEAM_UNREGISTERED'];
+  for (const code of codes) assert.match(page, new RegExp(`^\\| \`${code}\` \\|`, 'm'), code);
+  for (const code of codes) assert.ok([...SYNC_REFUSAL_CODES, ...AUTHORING_REFUSAL_CODES].includes(code as never), code);
+});
+
+// Spec 07, section 5: the two token codes, and the new next step of STORE_REMOTE_PRIVATE. Each has a row in the errors reference.
+test('spec 07: GITHUB_TOKEN_INVALID, STORE_REMOTE_AUTH_FAILED, and the new STORE_REMOTE_PRIVATE next step', async () => {
+  const rows: ReadonlyArray<readonly [string, string, string]> = [
+    // Review R2 of PR 97 (option C): each sentence says why, and does not repeat the message.
+    ['GITHUB_TOKEN_INVALID', "Bowerloom checks the token's shape before any network call and never shows the value.", 'Set it to a token with letters, digits, _ or -, 20 to 255 characters.'],
+    ['STORE_REMOTE_AUTH_FAILED', 'GitHub answers the same way for a token that cannot read the repository and for a repository that does not exist.', 'Check that the token can read the repository, and that the repository name is right.'],
+    // Review F1 of PR 97.
+    ['GITHUB_TOKEN_SSO_REQUIRED', 'An organization that uses single sign-on refuses a token until it is authorized for that organization.', "Authorize the token for the organization on GitHub, under the token's settings, then run the command again."],
+  ];
+  for (const [code, sentence, next] of rows) assert.equal(renderRefusal(code, 'The message.'), text(code, 'The message.', sentence, next), code);
+  assert.match(renderRefusal('STORE_REMOTE_PRIVATE', 'm.'), /\nNext: Set BOWERLOOM_GITHUB_TOKEN to a GitHub token that can read the repository, or make the repository public\.\n$/);
+  const page = readFileSync(new URL('../../apps/docs/src/content/docs/reference/errors.md', import.meta.url), 'utf8');
+  for (const code of ['GITHUB_TOKEN_INVALID', 'STORE_REMOTE_AUTH_FAILED', 'STORE_REMOTE_PRIVATE', 'GITHUB_TOKEN_SSO_REQUIRED']) assert.match(page, new RegExp(`^\\| \`${code}\` \\|`, 'm'), code);
+  // The errors reference row of each new code says what the terminal sentence says (review R2).
+  for (const [code, sentence] of rows) assert.ok(page.split('\n').some(l => l.startsWith(`| \`${code}\` |`) && l.replace(/`/g, '').includes(sentence.replace(/`/g, ''))), code);
+  // Review F6 and F5: the request-failed next step names the token, and the STALE_APPROVAL row says a token change stales a plan.
+  // Round 3: a pinned third-party skill never sends the token, so the step names the token for the store repository only.
+  // Round 1 of the reviews of PR 101, B13: the step says to check access, and names the token for a private store.
+  assert.match(renderRefusal('GITHUB_REQUEST_FAILED', 'm.'), /\nNext: Run the command again later\. If the status is 401 or 403, check that you can read the repository\. For a private store repository, set BOWERLOOM_GITHUB_TOKEN\.\n$/);
+  // Round 3: GITHUB_RATE_LIMITED also covers a 403 whose message names a rate limit, in its message, its words, and its row.
+  const { manifestRefusal } = await import('../packages/skill-manifest/src/refusal.js');
+  assert.equal(manifestRefusal('GITHUB_RATE_LIMITED').message, 'api.github.com answered 429, or 403 with no requests left or with a message that names a rate limit.');
+  const rateSentence = 'GitHub allows about 60 requests an hour without a token and about 5,000 with one. It also limits bursts of requests, and a 403 answer can say so.';
+  assert.match(renderRefusal('GITHUB_RATE_LIMITED', 'm.'), new RegExp(`^Refused \\(GITHUB_RATE_LIMITED\\): m\\.\\n${rateSentence.replace(/[.,]/g, '\\$&')}\\n`));
+  assert.ok(page.split('\n').some(l => l.startsWith('| `GITHUB_RATE_LIMITED` |') && l.includes(rateSentence)));
+  assert.match(page, /^\| `STALE_APPROVAL` \|.*BOWERLOOM_GITHUB_TOKEN.*\|$/m);
+  assert.match(page, /^\| `GITHUB_REQUEST_FAILED` \|.*For a private store repository, set `BOWERLOOM_GITHUB_TOKEN`\. \|$/m);
+  assert.match(page, /^\| `STORE_REMOTE_PRIVATE` \|.*Set `BOWERLOOM_GITHUB_TOKEN` to a GitHub token that can read the repository, or make the repository public\. \|$/m);
+  // The JSON envelope of a pipe keeps the fixed message of each code.
+  assert.equal(reportFailure(new DefinitionError('GITHUB_TOKEN_INVALID', rows[0]![1]), false).text, `${JSON.stringify({ error: { code: 'GITHUB_TOKEN_INVALID', message: rows[0]![1] } })}\n`);
+});
+
+// Spec 08, section 5: the six store migrate codes. Review C2 of PR 98 (Hanna's choice C on #97): each sentence says why,
+// and does not repeat the message. Each has a row in the errors reference whose meaning is that sentence.
+test('spec 08: the MIGRATE_* codes have their words and a row in the errors reference', () => {
+  const rows: ReadonlyArray<readonly [string, string, string]> = [
+    ['MIGRATE_ITEM_NOT_FOUND', 'store migrate moves only items that this project defines in .bowerloom, with their files in place.', 'bowerloom ls'],
+    ['MIGRATE_ITEM_UNSUPPORTED', 'A store item holds only md, txt, json, yaml, yml, csv, and license files, within the size limits.', 'bowerloom help store'],
+    ['MIGRATE_ID_EXISTS', 'Bowerloom never overwrites a store item, so an item with the same id and other bytes cannot move.', 'Rename the project item, or remove the store item yourself.'],
+    ['MIGRATE_RESERVED', 'Setup made these items for this project, so they stay in it.', 'bowerloom store migrate --all skips them.'],
+    ['MIGRATE_TEAM_MISSING', 'The store keeps the team tag, so that team must be in the store.', 'Add --team <name> to move that team too.'],
+    ['MIGRATE_LIMIT', 'This beta keeps the store record small: 512 items and 1 MiB at most.', 'Remove items from the store, or move fewer items.'],
+  ];
+  for (const [code, sentence, next] of rows) assert.equal(renderRefusal(code, 'The message.'), text(code, 'The message.', sentence, next), code);
+  const page = readFileSync(new URL('../../apps/docs/src/content/docs/reference/errors.md', import.meta.url), 'utf8');
+  for (const [code, sentence] of rows) assert.ok(page.split('\n').some(l => l.startsWith(`| \`${code}\` | ${sentence.replace('store migrate', '`store migrate`').replace('.bowerloom', '`.bowerloom`')} |`)), code);
+  for (const code of rows.map(r => r[0])) assert.ok((CONFIG_REFUSAL_CODES as readonly string[]).includes(code), code);
+  // A refusal that carries its own next step names it: the store record whose files are gone.
+  assert.match(renderRefusal('MIGRATE_ID_EXISTS', 'm.', { next: 'bowerloom receipt clean --global' }), /\nNext: bowerloom receipt clean --global\n$/);
+});
+
+// Spec 09, section 5, with review M4 of PR 99 (Hanna's choice C on #97): each sentence says why, and the errors row
+// says the same words. The fixed message of the code stays the message of section 5.
+test('spec 09: the CACHE_* codes have their words, their fixed messages, and the same words in the errors reference', () => {
+  const rows: ReadonlyArray<readonly [string, string, string, string]> = [
+    ['CACHE_ENTRY_NOT_FOUND', 'cache prune --entry deletes only an entry that cache list shows, so the text must start one of its ids.', 'bowerloom cache list', 'No cache entry starts with that text.'],
+    ['CACHE_ENTRY_BUSY', 'Bowerloom never deletes an entry while another command holds it. An owner lock older than a day does not count.', 'When the other command is done, run this one again.', 'Another Bowerloom command is using that cache entry.'],
+    ['CACHE_PRUNE_FAILED', 'Bowerloom deletes only private folders of this user, one at a time, and stops at the first one it cannot delete.', 'bowerloom cache list, then run the command again without --approve', 'Bowerloom failed to delete a cache entry. Entries it deleted before that stay deleted.'],
+  ];
+  for (const [code, sentence, next, message] of rows) {
+    assert.equal(renderRefusal(code, 'The message.'), text(code, 'The message.', sentence, next), code);
+    assert.equal(syncError(code as SyncCode).message, message, code);
+  }
+  assert.equal(syncError('CACHE_PRUNE_FAILED', 'Deleted 2 of 5 entries.').message, 'Bowerloom failed to delete a cache entry. Entries it deleted before that stay deleted. Deleted 2 of 5 entries.');
+  const page = readFileSync(new URL('../../apps/docs/src/content/docs/reference/errors.md', import.meta.url), 'utf8');
+  const tick = (words: string): string => words.replace('cache prune --entry', '`cache prune --entry`').replace('cache list', '`cache list`');
+  for (const [code, sentence] of rows) assert.ok(page.split('\n').some(l => l.startsWith(`| \`${code}\` | ${tick(sentence)} |`)), code);
+});
+
+// Second security review of PR 98, M1 and L2: a refusal after a partial write never says that nothing was applied or
+// changed. Its words say the run stopped part way, its Next line is the exact command that finishes it, and the JSON
+// envelope carries partial: true and that command as next.
+test('a partial refusal: its own sentence, the rerun command as Next, and partial: true in JSON', () => {
+  // Round 13: a runnable rerun is built as a command, as rerunOf builds it.
+  const rerun = command('bowerloom store migrate --prompt brief');
+  const cases: Array<readonly [unknown, string]> = [
+    [new DefinitionError('STALE_APPROVAL', 'The plan changed after it was approved. Nothing was applied. Run the command again to see the new plan.'), 'STALE_APPROVAL'],
+    [new DefinitionError('PROJECT_LOCKED', 'Another Bowerloom command is changing this project.'), 'PROJECT_LOCKED'],
+    [new DefinitionError('STORE_LOCKED', 'Another Bowerloom command is changing the store.'), 'STORE_LOCKED'],
+    [Object.assign(new Error('i/o error'), { code: 'EIO' }), 'IO_ERROR'],
+  ];
+  for (const [error, code] of cases) {
+    const partial = partialRefusal(error, ['prompt brief, copied to the store'], rerun) as DefinitionError;
+    assert.equal(partial.code, code);
+    const text = reportFailure(partial, true).text;
+    assert.doesNotMatch(text, /nothing was (?:applied|changed)/i, code);
+    assert.match(text, new RegExp(`^Refused \\(${code}\\): [^\\n]*Already written: prompt brief, copied to the store\\.[^\\n]*\\nThe run stopped part way; the message lists what was written\\.\\nNext: Run bowerloom store migrate --prompt brief\\.\\n$`), code);
+    const json = JSON.parse(reportFailure(partial, false).text) as { error: { code: string; next?: string; partial?: boolean } };
+    assert.equal(json.error.code, code); assert.equal(json.error.next, `Run ${rerun}.`); assert.equal((json.error as { fix?: string }).fix, rerun); assert.equal(json.error.partial, true);
+    assert.equal(reportFailure(partial, false).exitCode, 1);
+  }
+  // L2: the system code of an error that is not a refusal is kept as the cause.
+  assert.equal((partialRefusal(Object.assign(new Error('x'), { code: 'EXDEV' }), ['bowerloom.json'], rerun) as { cause?: unknown }).cause, 'EXDEV');
+  // Before any write, the error is returned as it is, and its envelope has no partial key.
+  const untouched = new DefinitionError('STALE_APPROVAL', 'm.');
+  assert.equal(partialRefusal(untouched, [], rerun), untouched);
+  assert.equal('partial' in (JSON.parse(reportFailure(untouched, false).text) as { error: object }).error, false);
 });

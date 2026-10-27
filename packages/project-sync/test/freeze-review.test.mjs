@@ -23,10 +23,10 @@ const cases = [
   ['both', '---\ndescription: d\nallowed-tools: Bash\n---\nNow: !`date`\n', ['allowed-tools', 'shell-lines']],
   ['allowed-tools outside the frontmatter is text', 'allowed-tools: none here\n', []],
   ['an exclamation in prose is text', 'Ship it!\nGreat work! `code` here.\n', []],
-  // F' review SEC 1: a YAML alias makes the frontmatter unreadable to the bounded parser, so every frontmatter notice shows.
-  ['an alias, then an explicit allowed-tools key', '---\na: &x 1\nb: *x\n? allowed-tools\n: Bash\n---\nText\n', ['allowed-tools', 'hooks']],
-  ['an alias, then an escaped allowed-tools key', '---\na: &x 1\nb: *x\n"allowed\\x2dtools": Bash\n---\nText\n', ['allowed-tools', 'hooks']],
-  ['a merge key from an anchored map', '---\nbase: &b {allowed-tools: Bash}\n<<: *b\n---\nText\n', ['allowed-tools', 'hooks']],
+  // F' review SEC 1, and the second review of PR 94 (M1): a YAML alias or merge key names every notice.
+  ['an alias, then an explicit allowed-tools key', '---\na: &x 1\nb: *x\n? allowed-tools\n: Bash\n---\nText\n', ['allowed-tools', 'hooks', 'shell-lines']],
+  ['an alias, then an escaped allowed-tools key', '---\na: &x 1\nb: *x\n"allowed\\x2dtools": Bash\n---\nText\n', ['allowed-tools', 'hooks', 'shell-lines']],
+  ['a merge key from an anchored map', '---\nbase: &b {allowed-tools: Bash}\n<<: *b\n---\nText\n', ['allowed-tools', 'hooks', 'shell-lines']],
   ['frontmatter that is not a map', '---\n- a\n- b\n---\nText\n', ['allowed-tools', 'hooks']],
   // F' review SEC 2 (Claude Code skills docs): hooks keep running for the session; a ```! fence runs shell commands.
   ['a hooks key', '---\ndescription: d\nhooks:\n  PreToolUse: []\n---\nText\n', ['hooks']],

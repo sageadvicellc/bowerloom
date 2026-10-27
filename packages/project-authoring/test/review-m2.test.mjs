@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { planStartup, applyStartup, inspectStartup } from '../../../dist/packages/startup/src/index.js';
 import { withProjectLock } from '../../../dist/packages/project-context/src/index.js';
 import { planCreate, applyCreate, authoringVerifier, manifestVerifier } from '../../../dist/packages/project-authoring/src/index.js';
-import { serializeManifest, validateManifest } from '../../../dist/packages/skill-manifest/src/schema.js';
+import { serializeManifest, validateManifest, MANIFEST_LIMITS } from '../../../dist/packages/skill-manifest/src/schema.js';
 
 const signal = () => new AbortController().signal;
 async function project(t) {
@@ -80,7 +80,7 @@ test('finding 4: a plan that goes stale after the first write says so, and the n
     fs.renameSync = function (from, to) {
       const out = rename.call(this, from, to);
       // Another writer changes skills.json just after the skill folder landed.
-      if (String(to).endsWith('.bowerloom/skills/voice')) fs.writeFileSync(manifest, serializeManifest(validateManifest({ format: 'bowerloom/skills/v1beta1', harnesses: ['claude', 'codex'], skills: [{ id: 'other', source: { kind: 'local', path: 'skills/other' } }] })), { mode: 0o644 });
+      if (String(to).endsWith('.bowerloom/skills/voice')) fs.writeFileSync(manifest, serializeManifest(validateManifest({ format: 'bowerloom/skills/v1beta1', harnesses: ['claude', 'codex'], skills: [{ id: 'other', source: { kind: 'local', path: 'skills/other' } }] }, MANIFEST_LIMITS), MANIFEST_LIMITS), { mode: 0o644 });
       return out;
     };
     try { await applyCreate(input, plan.revision, held); return null; } catch (e) { return e; } finally { fs.renameSync = rename; }

@@ -50,11 +50,11 @@ test('each create command exits 3 without approval and writes nothing; --approve
     assert.equal(tree(p.dir), before, args.join(' '));
     // --json: the full plan, still exit 3, still no write.
     const json = run(sub, [...args, '--json'], p.home); assert.equal(json.status, 3, json.stderr);
-    const body = JSON.parse(json.stdout); assert.equal(body.code, 'APPROVAL_REQUIRED'); assert.equal(body.revision, revision); assert.equal(body.plan.format, 'bowerloom/authoring-plan/v1beta1');
+    const body = JSON.parse(json.stdout); assert.equal(body.code, 'APPROVAL_REQUIRED'); assert.equal(body.revision, revision); assert.equal(body.plan.format, 'bowerloom/authoring-plan/v1beta2');
     assert.equal(tree(p.dir), before);
     const applied = run(sub, [...args, '--approve', revision], p.home);
     assert.equal(applied.status, 0, applied.stderr); assert.equal(applied.stdout, `Applied plan ${revision}.\n`);
-    const ls = JSON.parse(run(p.dir, ['ls', listed[0], '--json'], p.home).stdout); assert.ok(ls[listed[0]].includes(listed[1]), JSON.stringify(ls));
+    const ls = JSON.parse(run(p.dir, ['ls', listed[0], '--json'], p.home).stdout); assert.ok(ls[listed[0]].some((x: { id: string }) => x.id === listed[1]), JSON.stringify(ls));
     const again = run(sub, [...args, '--approve', revision], p.home); assert.equal(again.status, 1); assert.match(errorCode(again.stderr), /_EXISTS$/);
   }
   const status = run(p.dir, ['status', '--json'], p.home); assert.equal(status.status, 0, status.stderr);
