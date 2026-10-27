@@ -28,6 +28,10 @@
 [data-home] .hxr-notes { width: min(100%, 40rem); box-sizing: border-box; padding: var(--hm-space-3) var(--hm-space-4); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); background: var(--surface-2); text-align: left; }
 [data-home] .hxr-notes ul { margin: 0; padding-left: var(--hm-space-5); font-size: var(--hm-text-base); line-height: 1.5; color: var(--text); overflow-wrap: anywhere; }
 [data-home] .hxr-notes .hxr-notes-more { list-style: none; margin-left: calc(-1 * var(--hm-space-5)); padding-top: var(--hm-space-2); }
+[data-home] .hxr-place-notes { padding-top: var(--hm-space-2); font-size: var(--hm-text-base); line-height: 1.5; color: var(--text); overflow-wrap: anywhere; }
+[data-home] .hxr-place-notes p { margin: 0 0 var(--hm-space-2); color: var(--text-muted); }
+[data-home] .hxr-place-notes ul { margin: 0; padding-left: var(--hm-space-5); }
+[data-home] .hxr-place-name { font-weight: 600; }
 [data-home] .hxr-count { margin: 0; font-size: var(--hm-text-base); line-height: 1.4; color: var(--text-muted); }
 
 @media (prefers-reduced-motion: reduce) {

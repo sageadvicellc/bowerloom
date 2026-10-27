@@ -8,11 +8,12 @@
  *  - the links come from the skills and connections an agent names, and stay on the source (`ScanSource.links`): no automatic link is made;
  *  - nothing the person made in Bowerloom exists yet, so there is no harness, install, run or history;
  *  - nothing is claimed about which program a part works in (the reader cannot prove it): every part has no limit (`cannotUse` is empty) and the screens say "Not checked";
- *  - the file text is scrubbed a second time (it is cheap) and cut to its first 60 lines. It is only ever drawn as plain text.
+ *  - the file text is scrubbed a second time (it is cheap) and cut to its first 60 lines (a display choice that its file page says, not a problem to count). It is only ever drawn as plain text.
  */
 import type { HarnessItem, Scope, WikiPage, World } from '../proto/types.js';
 import { hashText } from '../proto/sample.js';
 import { adapterOf } from '../real/adapters.js';
+import { tallyWords } from '../real/place.js';
 import { cleanLine, cut, scrubText } from '../real/redact.js';
 import type { RealPlace, RealResult } from '../real/types.js';
 import { createSampleWorld } from './sample.js';
@@ -250,17 +251,12 @@ const projectsOf = (places: readonly RealPlace[]): Project[] => places.filter(p 
 
 // ---- The state
 
-/** The mark the reader puts at the end of a text it cut (shared/real/map-world.ts). */
-const READER_CUT = /\n… \[cut: \d+ characters in all\]$/;
-/** The text a part's file view was made from, before it was cut to lines. */
-function textShownBy(item: HarnessItem | undefined): string {
-  if (item === undefined || item.kind === 'context-slice') return '';
-  const face = faceOf(item), first = (face === null ? undefined : foundIn(item, face)) ?? item.foundAt[0];
-  return first?.text ?? '';
-}
-
 /** The notes the reader writes for facts the Read screen already counts in its own words (things it could not read, texts cut, stopped early). They are left out here so each fact shows once. */
 const COUNTED_NOTE = [/^Could not read \d+ things?\.$/, /^\d+ long texts? (?:was|were) shortened\.$/, /^It stopped early to stay within its (?:size|time) limit\.$/];
+/** The reader's sentence for a place that hit its file or depth limit, taken from the reader itself. The Read screen says it once, with the limits, and each place's details say which place it was. */
+export const PARTLY_READ_NOTE = tallyWords({ tooBig: 0, binary: 0, unreadable: 0, linksOutside: 0, stoppedEarly: false, truncated: true })[0]!;
+/** A stopped-early line is for the whole read, not for one place. */
+const STOPPED_NOTE = COUNTED_NOTE[2]!;
 
 /** The id of a source: the whole hash of its key. A second key with the same hash gets a number after it, so no two sources share an id. */
 export function sourceIdFor(key: string, used: ReadonlySet<string>): string {
@@ -275,7 +271,7 @@ export function sourceIdFor(key: string, used: ReadonlySet<string>): string {
  * and their home places say where each program was found. The sample's interface table gives the files each program would be written to.
  */
 export function realToHarnessState(result: RealResult, places: readonly RealPlace[]): HarnessState {
-  const world = result.world, notes = result.notes.filter(n => !COUNTED_NOTE.some(r => r.test(n)));
+  const world = result.world, notes = result.notes.filter(n => n !== PARTLY_READ_NOTE && !COUNTED_NOTE.some(r => r.test(n)));
   // Place each item in a source. An item that only Bowerloom's own folder holds is left out.
   const placed: { item: HarnessItem; where: Where }[] = [];
   let leftOutBowerloom = 0, leftOutUnknown = 0;
@@ -313,11 +309,11 @@ export function realToHarnessState(result: RealResult, places: readonly RealPlac
   if (leftOutBowerloom > 0) own.push(`${thingsWord(leftOutBowerloom)} in a Bowerloom folder ${leftOutBowerloom === 1 ? 'is' : 'are'} not shown.`);
   if (leftOutUnknown > 0) own.push(`${thingsWord(leftOutUnknown)} in a program Bowerloom does not know ${leftOutUnknown === 1 ? 'is' : 'are'} not shown.`);
   if (sets.length > keptSets.size) { const n = sets.length - keptSets.size; own.push(`${n} ${n === 1 ? 'set' : 'sets'} of notes ${n === 1 ? 'is' : 'are'} not shown.`); }
-  // A text cut to its first lines is cut short too. One the reader had already cut is counted once (the reader's own mark is at the end of the text).
-  const itemById = new Map(world.items.map(i => [i.id, i] as const));
-  const linesCut = parts.filter(p => p.fileText.endsWith(`\n${FILE_CUT_LINE}`) && !READER_CUT.test(textShownBy(itemById.get(p.id)))).length;
+  // What the reader said about each place that was read, from the first look at it. A text cut to 60 lines for the preview is not a problem and is not counted: its file page says so.
+  const placeNotes = places.map(p => ({ name: p.label, notes: p.details.notes.filter(n => !STOPPED_NOTE.test(n)) })).filter(p => p.notes.length > 0);
+  const onlyPartRead = result.notes.includes(PARTLY_READ_NOTE) || placeNotes.some(p => p.notes.includes(PARTLY_READ_NOTE));
   return {
     parts, harnesses: [], projects: projectsOf(places), installs: [], interfaces: interfacesOf(result, places), runs: [], history: [], sources, chosenSourceIds: sources.map(s => s.id),
-    nextId: 100, real: { couldNotRead: result.couldNotRead, stoppedEarly: result.stoppedEarly, notes: [...own, ...notes], textsCut: result.textsCut + linesCut },
+    nextId: 100, real: { couldNotRead: result.couldNotRead, stoppedEarly: result.stoppedEarly, notes: [...own, ...notes], textsCut: result.textsCut, ...(onlyPartRead ? { onlyPartRead } : {}), ...(placeNotes.length > 0 ? { places: placeNotes } : {}) },
   };
 }

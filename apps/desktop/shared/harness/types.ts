@@ -151,8 +151,15 @@ export interface RealNotes {
   readonly stoppedEarly: boolean;
   /** Plain lines about what went wrong or was left out. */
   readonly notes: readonly string[];
-  /** Texts that were longer than the page is given and were cut. */
+  /** Texts the reader itself cut because they were too long (not the 60-line preview cut, which is shown on each file's page). */
   readonly textsCut: number;
+  /** True when a place was only partly read because it hit the reader's file or depth limit. Absent when not. */
+  readonly onlyPartRead?: boolean;
+  /**
+   * The reader's own notes for each place that was read and has one (files over 2 MB, files that are not text, things that could not be opened, shortcuts that lead outside, only part of it looked at).
+   * They come from the first look at each folder (`RealPlace.details.notes`), so their counts can differ a little from the totals above, which are from the full read. Absent when no place has a note.
+   */
+  readonly places?: readonly { readonly name: string; readonly notes: readonly string[] }[];
 }
 
 export interface HarnessState {

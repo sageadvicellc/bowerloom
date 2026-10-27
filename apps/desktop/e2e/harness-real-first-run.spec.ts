@@ -165,9 +165,10 @@ test('"Yes, read them" reads the ticked folders and opens the Read list: a count
   await expect(p.getByText('Hermes at home')).toHaveCount(0);
   // Each fact of the read shows once: the reader's own copy of a counted line is not drawn beside ours.
   const notes = p.locator('[data-read-notes]');
-  await expect(notes.getByText(/^Could not read \d+ things?\.$/), 'the count line, once').toHaveCount(1);
+  await expect(notes.getByText(/^(?:Everything was read, except )?\d+ things? (?:that )?could not be opened or (?:was|were) skipped\.$/), 'the count line, once').toHaveCount(1);
   await expect(notes.locator('[data-could-not]')).toHaveCount(1);
-  await expect(notes.getByText(/Could not read/), 'no second copy of it').toHaveCount(1);
+  await expect(notes.getByText(/could not be opened/), 'no second copy of it').toHaveCount(1);
+  await expect(notes.getByText(/Could not read/), 'the reader\'s own bare line is not drawn').toHaveCount(0);
   const lines = (await notes.locator('li').allInnerTexts()).map(t => t.trim());
   expect(new Set(lines).size, lines.join(' | ')).toBe(lines.length);
   expect(lines.filter(t => /shortened|cut short/.test(t)).length, lines.join(' | ')).toBeLessThanOrEqual(1);

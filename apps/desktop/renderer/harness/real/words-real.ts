@@ -4,6 +4,8 @@
  * A file path or a name from a file is never a word here: it is the person's own text, drawn as text.
  */
 import type { RealNotes } from '../../../shared/harness/types.js';
+import { REAL_LIMITS } from '../../../shared/real/types.js';
+import { PARTLY_READ_NOTE } from '../../../shared/harness/real-map.js';
 import { REAL_WORDS, countsLine, couldNotReadLine, foundPlaces, readSummary } from '../../home/real/words.js';
 
 const deepFreeze = <T extends object>(value: T): T => {
@@ -59,6 +61,8 @@ export const REAL = deepFreeze({
     consentThree: REAL_WORDS.hint.readHidden,
     consentFour: 'Your files are not changed.',
     consentLinks: 'Linked folders are followed to where they point.',
+    nextStep: 'Pick a smaller folder to read all of it.',
+    detailsFrom: 'These notes are from the first look at each folder.',
     replaceLine: 'Reading again starts this preview over. It changes nothing on your computer.',
   },
   paragraph: {
@@ -91,3 +95,16 @@ export const nothingReadLine = (real: RealNotes | null): string => (real !== nul
 export const moreNotes = (n: number): string => `and ${plural(n, 'more note', 'more notes')}.`;
 /** "3 folders ticked.": the line over the folders the person is asked about. */
 export const foldersLine = (n: number): string => `${plural(n, 'folder', 'folders')} ticked.`;
+
+/**
+ * The summary line for what could not be read. When the whole read finished, it says so first: "Everything was read, except 11 things that could not be opened or were skipped."
+ * When the read was partial or stopped early, it does not say "everything".
+ */
+export const skippedLine = (n: number, whole: boolean): string => {
+  const things = n === 1 ? '1 thing' : `${n} things`, was = n === 1 ? 'was' : 'were';
+  return whole ? `Everything was read, except ${things} that could not be opened or ${was} skipped.` : `${things} could not be opened or ${was} skipped.`;
+};
+/** The limits of the reader, from its own constants, so a very big folder is explained and the numbers cannot drift. */
+export const limitsLine = (): string => `Bowerloom looks at up to ${REAL_LIMITS.filesPerPlace.toLocaleString('en-US')} files and ${REAL_LIMITS.depth} folders deep in each folder, so a very big folder is only partly read.`;
+/** Whether a note says a folder was only partly read: the reader's sentence for one place, or its sentence for a list of places. */
+export const isPartlyNote = (note: string): boolean => note === PARTLY_READ_NOTE || /^Some folders were big, so only part of them was looked at\.$/.test(note);

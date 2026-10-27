@@ -260,7 +260,10 @@ test('the real field carries what the reader counted and said', async t => {
   const { read, state } = await fixtureState(t);
   assert.equal(state.real!.couldNotRead, read.result.couldNotRead); assert.ok(state.real!.couldNotRead > 0, 'the fixture has files that cannot be read');
   assert.equal(state.real!.stoppedEarly, read.result.stoppedEarly); assert.equal(state.real!.textsCut, read.result.textsCut);
-  for (const note of read.result.notes.filter(n => !COUNTED_NOTE.some(r => r.test(n)))) assert.ok(state.real!.notes.includes(note), note);
+  const partly = 'This folder is big, so only part of it was looked at.';
+  for (const note of read.result.notes.filter(n => n !== partly && !COUNTED_NOTE.some(r => r.test(n)))) assert.ok(state.real!.notes.includes(note), note);
+  assert.equal(state.real!.onlyPartRead === true, read.result.notes.includes(partly), 'the big-folder sentence became a flag, not a repeated note');
+  assert.ok(!state.real!.notes.includes(partly));
 });
 
 test('nothing found gives an empty state that the screens can draw', () => {
@@ -407,7 +410,7 @@ test('the fixed words of the mapping obey the preview\'s rules: no banned word, 
 // ---- Notes the Read screen counts itself
 
 test('the three facts the Read screen counts itself (things it could not read, texts cut, stopped early) are not also notes, and every other note stays', () => {
-  const kept = ['This folder is big, so only part of it was looked at.', '2 files are not text and were skipped.'];
+  const kept = ['2 files are not text and were skipped.', 'Keep me.'];
   for (const [n, limit] of [[1, 'size'], [3, 'time']] as const) {
     const cutLine = n === 1 ? '1 long text was shortened.' : '3 long texts were shortened.', readLine = n === 1 ? 'Could not read 1 thing.' : 'Could not read 3 things.';
     const result = { ...emptyResult(), couldNotRead: n, textsCut: n, stoppedEarly: true, notes: [readLine, kept[0]!, cutLine, `It stopped early to stay within its ${limit} limit.`, kept[1]!] };
@@ -562,7 +565,7 @@ test('a text cut to 60 lines ends with a plain line that says so; a text of 60 l
   assert.equal(exact.split('\n').length, 60); assert.doesNotMatch(exact, /Only the first/);
 });
 
-test('texts cut to 60 lines are counted in textsCut, once, even when the reader had already cut them', async t => {
+test('a text cut to 60 lines for the preview is not counted in textsCut: only a cut the reader made is', async t => {
   const home = tempDir(t, 'bowerloom-v3-lines-');
   const body = (n: number): string => Array.from({ length: n }, (_, i) => `line ${i}`).join('\n');
   put(join(home, '.claude', 'skills', 'long', 'SKILL.md'), `---\nname: Long\ndescription: Long one.\n---\n${body(100)}\n`);
@@ -571,9 +574,26 @@ test('texts cut to 60 lines are counted in textsCut, once, even when the reader 
   const read = await readHome(home);
   assert.equal(read.result.textsCut, 1, 'the reader cut the huge text at 20000 characters');
   const state = realToHarnessState(read.result, read.places);
-  assert.equal(state.real!.textsCut, 2, 'the reader cut one, the 60 lines cut the other, and the huge one is not counted twice');
-  assert.match(partNamed(state, 'skill', 'Long').fileText, /Only the first 60 lines are shown\.$/);
+  assert.equal(state.real!.textsCut, 1, 'the 60-line preview cut is a display choice, not a problem');
+  assert.match(partNamed(state, 'skill', 'Long').fileText, /Only the first 60 lines are shown\.$/, 'the file page still says it');
   assert.doesNotMatch(partNamed(state, 'skill', 'Short').fileText, /Only the first/);
+  const quiet = realToHarnessState({ ...emptyResult(), textsCut: 0 }, []);
+  assert.equal(quiet.real!.textsCut, 0);
+});
+
+test('the per-place notes of the folders that were read reach the Read screen, once, with the place name', () => {
+  const big = 'This folder is big, so only part of it was looked at.';
+  const place = (id: string, label: string, notes: string[]): RealPlace => ({ id, label, kind: 'project', apps: [], appLabel: 'Notes', counts: { agents: 0, skills: 0, tools: 0, hooks: 0, notes: 1 }, empty: false, details: { path: `~/${label}`, folders: [], topics: [], notes } });
+  const places = [place('a', 'Alpha', ['2 files over 2 MB were skipped.', big, 'It stopped early to stay within its time limit.']), place('b', 'Beta', []), place('c', 'Gamma', ['1 thing could not be opened.'])];
+  const state = realToHarnessState({ ...emptyResult(), couldNotRead: 3, notes: ['Could not read 3 things.', big, 'It stopped early to stay within its time limit.', 'Keep me.'] }, places);
+  assert.deepEqual(state.real!.places, [
+    { name: 'Alpha', notes: ['2 files over 2 MB were skipped.', big] },
+    { name: 'Gamma', notes: ['1 thing could not be opened.'] },
+  ], 'places with no note are left out, and a stopped-early line is the summary\'s, not a place\'s');
+  assert.equal(state.real!.onlyPartRead, true);
+  assert.deepEqual(state.real!.notes, ['Keep me.'], 'the "big folder" sentence is said by the summary and the place, not again as a note');
+  const none = realToHarnessState(emptyResult(), places.slice(1, 2));
+  assert.equal(none.real!.places, undefined); assert.equal(none.real!.onlyPartRead, undefined);
 });
 
 test('an item found only in a program the preview does not know is counted and worded apart from a Bowerloom folder', () => {

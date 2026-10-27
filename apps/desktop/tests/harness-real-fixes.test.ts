@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { REAL_LIMITS } from '../shared/real/types.js';
 import type { RealDiscovery, RealPlace, RealResult } from '../shared/real/types.js';
 import type { RealNotes } from '../shared/harness/types.js';
 import { createSampleWorld } from '../shared/harness/sample.js';
@@ -14,8 +15,9 @@ import { firstState, reduceChoose } from '../renderer/harness/real/state.js';
 import type { ChooseAction, ChooseState } from '../renderer/harness/real/state.js';
 import { chooseKind } from '../renderer/harness/real/mode.js';
 import { NoBridge, NothingFound } from '../renderer/harness/real/Nothing.js';
-import { NOTES_SHOWN, ReadNotes, visibleNotes } from '../renderer/harness/real/ReadNotes.js';
-import { REAL, nothingReadLine } from '../renderer/harness/real/words-real.js';
+import { ChooseLines, NOTES_SHOWN, PlaceNotes, ReadNotes, visibleNotes } from '../renderer/harness/real/ReadNotes.js';
+import { PlaceRow } from '../renderer/harness/real/PlaceRow.js';
+import { REAL, limitsLine, nothingReadLine, skippedLine } from '../renderer/harness/real/words-real.js';
 import { reasonWords } from '../renderer/home/real/words.js';
 import { crashLine } from '../renderer/proto/error-boundary.js';
 import { makeOnce, makeSources } from '../renderer/harness/screens/read-make.js';
@@ -92,13 +94,13 @@ const noop = (): void => undefined;
 
 test('the nothing-found screen after a read says could-not-read, stopped-early and the notes, and words itself for a read that stopped early', () => {
   const html = markup(createElement(NothingFound, { nothingRead: true, readNotes: NOTES, busy: false, onAdd: noop, onSample: noop }));
-  assert.match(html, /Could not read 3 things\./); assert.ok(html.includes(REAL.hint.stoppedEarly)); assert.match(html, /2 things in a Bowerloom folder are not shown\./);
+  assert.ok(html.includes(skippedLine(3, false))); assert.doesNotMatch(html, /Could not read/); assert.ok(html.includes(REAL.hint.stoppedEarly)); assert.match(html, /2 things in a Bowerloom folder are not shown\./);
   assert.ok(html.includes(nothingReadLine(NOTES)), 'the headline line');
   assert.notEqual(nothingReadLine(NOTES), REAL.hint.nothingRead); assert.ok(nothingReadLine(NOTES).includes('stopped early'));
   const quiet: RealNotes = { couldNotRead: 0, stoppedEarly: false, notes: [], textsCut: 0 };
   assert.equal(nothingReadLine(quiet), REAL.hint.nothingRead); assert.equal(nothingReadLine(null), REAL.hint.nothingRead);
   const plain = markup(createElement(NothingFound, { nothingRead: true, readNotes: quiet, busy: false, onAdd: noop, onSample: noop }));
-  assert.doesNotMatch(plain, /Could not read|data-read-notes/);
+  assert.doesNotMatch(plain, /could not be opened|data-read-notes/);
   assert.ok(markup(createElement(NothingFound, { nothingRead: false, readNotes: null, busy: false, onAdd: noop, onSample: noop })).includes(REAL.hint.noFolders));
 });
 
@@ -188,4 +190,40 @@ test('making a harness runs once for a double click, says "Nothing was made." wh
 test('the new fixed words obey the limits and the banned-word list', () => {
   for (const text of [REAL.label.showAllNotes, REAL.label.showFewerNotes, REAL.label.aboutFolders]) { assert.ok(countWords(text) <= LIMITS.label, text); assert.equal(bannedHere(text), null, text); }
   for (const text of [REAL.hint.alreadyListed, REAL.hint.addedAway, REAL.hint.nothingStopped, FLOW.hint.nothingMade]) { assert.ok(countWords(text) <= LIMITS.hint, text); assert.equal(bannedHere(text), null, text); }
+});
+
+// ---- 5: the summary and its details
+
+const BIG = 'This folder is big, so only part of it was looked at.';
+const placeNotes = [{ name: 'Alpha', notes: ['2 files over 2 MB were skipped.', BIG] }, { name: 'Gamma', notes: ['1 thing could not be opened.'] }];
+
+test('the Read summary is calm, says what the limits are from the reader\'s own constants, and hides the places behind "Show details"', () => {
+  assert.equal(skippedLine(11, true), 'Everything was read, except 11 things that could not be opened or were skipped.');
+  assert.equal(skippedLine(1, true), 'Everything was read, except 1 thing that could not be opened or was skipped.');
+  assert.equal(skippedLine(11, false), '11 things could not be opened or were skipped.');
+  assert.equal(limitsLine(), `Bowerloom looks at up to ${REAL_LIMITS.filesPerPlace.toLocaleString('en-US')} files and ${REAL_LIMITS.depth} folders deep in each folder, so a very big folder is only partly read.`);
+  const whole = markup(createElement(ReadNotes, { real: { couldNotRead: 11, stoppedEarly: false, notes: [], textsCut: 0 } }));
+  assert.ok(whole.includes(skippedLine(11, true))); assert.doesNotMatch(whole, /Show details|Could not read|5,000/, 'no places, no toggle, no limits line');
+  const partial = markup(createElement(ReadNotes, { real: { couldNotRead: 11, stoppedEarly: false, notes: [], textsCut: 171, onlyPartRead: true, places: placeNotes } }));
+  assert.ok(partial.includes(skippedLine(11, false))); assert.ok(partial.includes(limitsLine())); assert.ok(partial.includes('171 texts were cut short.'));
+  assert.equal(partial.split(limitsLine()).length, 2, 'the limits show once'); assert.equal(partial.split(BIG).length, 1, 'the sentence is not repeated as a bare line');
+  assert.match(partial, />Show details</); assert.match(partial, /aria-expanded="false"/); assert.doesNotMatch(partial, /Alpha|Gamma|Pick a smaller folder/, 'the places are behind the toggle');
+});
+
+test('the details name each place with its own notes, and a place that was partly read gets one plain next step', () => {
+  const html = markup(createElement(PlaceNotes, { places: placeNotes }));
+  assert.match(html, /Alpha/); assert.match(html, /Gamma/); assert.match(html, /2 files over 2 MB were skipped\./); assert.match(html, /1 thing could not be opened\./); assert.ok(html.includes(BIG));
+  assert.equal(html.split(REAL.hint.nextStep).length, 2, 'the step shows once, for Alpha only');
+  assert.ok(html.indexOf(REAL.hint.nextStep) > html.indexOf('Alpha') && html.indexOf(REAL.hint.nextStep) < html.indexOf('Gamma'));
+  assert.equal(REAL.hint.nextStep, 'Pick a smaller folder to read all of it.');
+  assert.ok(html.includes(REAL.hint.detailsFrom));
+});
+
+test('the Choose list gives the same calm lines, with the limits in place of the bare sentence, and the place details carry the next step', () => {
+  const html = markup(createElement(ChooseLines, { couldNotRead: 11, stoppedEarly: false, notes: ['Some folders were big, so only part of them was looked at.', 'Other note.'] }));
+  assert.ok(html.includes(skippedLine(11, false))); assert.ok(html.includes(limitsLine())); assert.doesNotMatch(html, /Some folders were big|Could not read/); assert.match(html, /Other note\./);
+  const quiet = markup(createElement(ChooseLines, { couldNotRead: 0, stoppedEarly: false, notes: [] }));
+  assert.doesNotMatch(quiet, /could not be opened|Bowerloom looks/);
+  const row = (open: boolean): string => markup(createElement(PlaceRow, { place: place('a', { details: { path: '~/a', folders: [], topics: [], notes: [BIG] } }), on: true, open, onTick: noop }));
+  assert.ok(row(true).includes(REAL.hint.nextStep)); assert.ok(!row(false).includes(REAL.hint.nextStep));
 });

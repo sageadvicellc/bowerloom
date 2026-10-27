@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { DESIGN_WORDS, HARNESS_BANNED, LIMITS, bannedHere, countWords } from '../shared/harness/words.js';
 import { BANNED, bannedIn } from '../shared/home/textbudget.js';
 import { KIND_NAME, KIND_PLURAL, WORDS, addName, addTo, addToWords, fixName, fromWords, harnessListHint, installTitle, linkFromWords, missingKind, namedBy, nodeName, partsCount, projectsHint, startName, tabWords, willUse } from '../renderer/harness/words.js';
-import { REAL, countsLine, couldNotReadLine, foldersLine, foundInLine, foundPlaces, modelBadgeLine, moreNotes, nothingReadLine, readCountLine, readSummary, textsCutLine } from '../renderer/harness/real/words-real.js';
+import { REAL, countsLine, couldNotReadLine, foldersLine, foundInLine, foundPlaces, modelBadgeLine, moreNotes, nothingReadLine, limitsLine, readCountLine, readSummary, skippedLine, textsCutLine } from '../renderer/harness/real/words-real.js';
 import { reasonWords } from '../renderer/home/real/words.js';
 import { SAMPLE_IDS, createSampleWorld } from '../shared/harness/sample.js';
 import * as status from '../shared/harness/status.js';
@@ -110,6 +110,7 @@ test('the words the real screens build from a number or a code obey the same rul
   const built = [foundPlaces(1), foundPlaces(4), countsLine({ agents: 2, skills: 6, tools: 3, hooks: 1, notes: 6 }), readSummary(3, 14), couldNotReadLine(2), textsCutLine(1), textsCutLine(5), moreNotes(1), moreNotes(4), foldersLine(1), foldersLine(3), nothingReadLine(null), nothingReadLine({ couldNotRead: 0, stoppedEarly: true, notes: [], textsCut: 0 }),
     readCountLine(1, 1), readCountLine(12, 180), foundInLine('Your Claude Code folder'), foundInLine('Caveman plug-in'), modelBadgeLine('Claude Code only'), ...['BUSY', 'NOT_ALLOWED', 'UNKNOWN_PLACE', 'NO_BRIDGE', 'FAILED'].map(reasonWords)];
   for (const text of built) { assert.equal(bannedHere(text), null, text); assert.ok(countWords(text) <= LIMITS.hint, text); }
+  for (const text of [skippedLine(1, true), skippedLine(11, true), skippedLine(1, false), skippedLine(11, false), limitsLine(), REAL.hint.nextStep, REAL.hint.detailsFrom]) { assert.equal(bannedHere(text), null, text); assert.ok(countWords(text) <= LIMITS.paragraph, text); }
   assert.equal(foundInLine('Your Claude Code folder'), 'Found in your Claude Code folder'); assert.equal(foundInLine('Caveman plug-in'), 'Found in Caveman plug-in'); assert.equal(REAL.label.notChecked, 'Not checked');
   assert.equal(textsCutLine(1), '1 text was cut short.'); assert.equal(textsCutLine(5), '5 texts were cut short.');
   assert.equal(readCountLine(1, 1), '1 source, 1 part in all.'); assert.equal(foldersLine(3), '3 folders ticked.'); assert.equal(moreNotes(4), 'and 4 more notes.');

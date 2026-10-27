@@ -6,7 +6,7 @@ import type { ReactElement } from 'react';
 import type { RealPlace } from '../../../shared/real/types.js';
 import { KIND_WORDS } from '../../home/real/words.js';
 import { StateDot } from '../parts/controls.js';
-import { REAL, countsLine } from './words-real.js';
+import { REAL, countsLine, isPartlyNote } from './words-real.js';
 import './real.css';
 
 export function PlaceRow({ place, on, open, onTick }: { place: RealPlace; on: boolean; open: boolean; onTick(): void }): ReactElement {
@@ -27,6 +27,7 @@ export function PlaceRow({ place, on, open, onTick }: { place: RealPlace; on: bo
           {place.details.folders.length === 0 ? null : <li>{REAL.label.toolFolders}: <code data-budget="content">{place.details.folders.join(', ')}</code></li>}
           {place.details.topics.length === 0 ? null : <li>{REAL.label.topics}: <span data-budget="content">{place.details.topics.map(t => `${t.name} (${t.count})`).join(', ')}</span></li>}
           {place.details.notes.map(note => <li key={note}>{note}</li>)}
+          {place.details.notes.some(isPartlyNote) ? <li data-next-step="">{REAL.hint.nextStep}</li> : null}
         </ul>
       ) : null}
     </li>

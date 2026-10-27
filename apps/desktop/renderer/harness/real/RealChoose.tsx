@@ -21,12 +21,12 @@ import '../screens/first-run.css';
 import { Consent } from './Consent.js';
 import { NoBridge, NothingFound, ReadFailed } from './Nothing.js';
 import { PlaceRow } from './PlaceRow.js';
-import { NoteItems } from './ReadNotes.js';
+import { ChooseLines } from './ReadNotes.js';
 import { ReadProgress } from './Progress.js';
 import { runRead } from './read-run.js';
 import { ReplaceConfirm } from './ReplaceConfirm.js';
 import { firstState, reduceChoose } from './state.js';
-import { REAL, couldNotReadLine, foundPlaces } from './words-real.js';
+import { REAL, foundPlaces } from './words-real.js';
 import './real.css';
 
 /** The Choose screen of a real launch whose bridge is missing or partial: the plain error, and no sample. */
@@ -117,9 +117,7 @@ export function RealChoose({ bridge }: { bridge: RealBridge }): ReactElement {
       {state.step === 'places' ? (
         <div className="hxr-notes-row">
           <p className="hxf-status" role="status">{state.ticked.length === 0 && !empty ? REAL.hint.pickOne : state.alreadyListed ? REAL.hint.alreadyListed : state.addedAway ? REAL.hint.addedAway : state.pickedNothing ? REAL.hint.pickedNothing : ''}</p>
-          {state.couldNotRead > 0 ? <p className="hxf-status" data-could-not="">{couldNotReadLine(state.couldNotRead)}</p> : null}
-          {state.stoppedEarly ? <p className="hxf-status" data-stopped="">{REAL.hint.stoppedEarly}</p> : null}
-          {state.notes.length > 0 ? <section className="hxr-notes" aria-label={REAL.label.aboutFolders} data-place-notes=""><ul><NoteItems notes={state.notes} /></ul></section> : null}
+          <ChooseLines couldNotRead={state.couldNotRead} stoppedEarly={state.stoppedEarly} notes={state.notes} />
         </div>
       ) : null}
       {state.step === 'confirm' ? <Consent places={ticked} replaces={holds} onYes={() => send({ type: 'yes' })} onBack={holds ? leave : () => send({ type: 'notNow' })} /> : null}
