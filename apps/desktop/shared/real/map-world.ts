@@ -35,7 +35,7 @@ export interface BuildOptions {
 }
 
 /** What the main process counted while it read. */
-export interface BatchTally { readonly tooBig: number; readonly binary: number; readonly unreadable: number; readonly linksOutside: number; readonly stoppedEarly: boolean; readonly truncated: boolean; readonly overBytes?: boolean }
+export interface BatchTally { readonly tooBig: number; readonly binary: number; readonly unreadable: number; readonly linksOutside: number; readonly brokenLinks?: number; readonly stoppedEarly: boolean; readonly truncated: boolean; readonly overBytes?: boolean }
 
 const INTERFACE_ORDER: readonly InterfaceId[] = ['claude-code', 'codex', 'opencode'];
 /** The programs beyond the three, in the order the world lists them when `foldExtraApps` is set. */
@@ -220,14 +220,14 @@ export function buildRealResult(reads: readonly PlaceRead[], tally: BatchTally, 
   const counts: RealCounts = {
     agents: agents.length, skills: skills.length, tools: tools.filter(t => t.toolKind !== 'hook').length, hooks: tools.filter(t => t.toolKind === 'hook').length, notes: wikiPages.length,
   };
-  const sum = tally.tooBig + tally.binary + tally.unreadable + tally.linksOutside;
+  const sum = tally.tooBig + tally.binary + tally.unreadable + tally.linksOutside + (tally.brokenLinks ?? 0);
   const partlyRead = reads.reduce((n, r) => n + r.partlyRead, 0), notesLeftOut = reads.reduce((n, r) => n + r.notesLeftOut, 0);
   const notes: string[] = [
     ...(sum > 0 ? [`Could not read ${sum} ${sum === 1 ? 'thing' : 'things'}.`] : []),
     ...(partlyRead > 0 ? [`${partlyRead} ${partlyRead === 1 ? 'file has a header' : 'files have headers'} that could not be fully understood, so ${partlyRead === 1 ? 'it is' : 'they are'} listed by file name.`] : []),
     ...(notesLeftOut > 0 ? [`${notesLeftOut} notes pages are not shown.`] : []),
     ...(texts.cut > 0 ? [`${texts.cut} long ${texts.cut === 1 ? 'text was' : 'texts were'} shortened.`] : []),
-    ...tallyWords({ ...tally, tooBig: 0, binary: 0, unreadable: 0, linksOutside: 0 }),
+    ...tallyWords({ ...tally, tooBig: 0, binary: 0, unreadable: 0, linksOutside: 0, brokenLinks: 0 }),
   ];
   return { world, others, counts, ages, stoppedEarly: tally.stoppedEarly, couldNotRead: sum, partlyRead, textsCut: texts.cut, notes, readOnly: true };
 }

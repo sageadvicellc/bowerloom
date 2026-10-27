@@ -30,8 +30,8 @@ export function NoteItems({ notes }: { notes: readonly string[] }): ReactElement
   );
 }
 
-/** Each place with the reader's notes about it, and one plain next step under a place that was only partly read. */
-export function PlaceNotes({ places }: { places: readonly { readonly name: string; readonly notes: readonly string[] }[] }): ReactElement {
+/** Each place with the reader's notes about it, and one plain next step under a work or picked folder that was only partly read (never under a tool home: a smaller folder cannot be picked for it). */
+export function PlaceNotes({ places }: { places: NonNullable<RealNotes['places']> }): ReactElement {
   return (
     <div className="hxr-place-notes" data-place-details="">
       <p>{REAL.hint.detailsFrom}</p>
@@ -41,7 +41,7 @@ export function PlaceNotes({ places }: { places: readonly { readonly name: strin
             <span className="hxr-place-name" data-budget="content">{p.name}</span>
             <ul>
               {p.notes.map(note => <li key={note}>{note}</li>)}
-              {p.notes.some(isPartlyNote) ? <li data-next-step="">{REAL.hint.nextStep}</li> : null}
+              {p.notes.some(isPartlyNote) && p.toolHome !== true ? <li data-next-step="">{REAL.hint.nextStep}</li> : null}
             </ul>
           </li>
         ))}

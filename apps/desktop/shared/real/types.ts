@@ -48,6 +48,12 @@ export const REAL_LIMITS = Object.freeze({
   recordsPerFile: 500,
 });
 
+/** The kinds of thing the reader counts as not read, each of which can carry a few sample names. */
+export type ProblemKind = 'tooBig' | 'binary' | 'unreadable' | 'linksOutside' | 'brokenLinks';
+/** The most sample names kept for each kind, and the longest one (a name is a path below the folder, scrubbed and cut). */
+export const SAMPLE_LIMIT = 5;
+export const SAMPLE_CHARS = 80;
+
 /** The counts of one place or of a whole result. `tools` are connections and saved prompts; `hooks` run code and are counted apart. */
 export interface RealCounts { readonly agents: number; readonly skills: number; readonly tools: number; readonly hooks: number; readonly notes: number }
 

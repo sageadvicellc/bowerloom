@@ -15,7 +15,7 @@ import { cleanLine, cleanPath, cut, safeText } from '../shared/real/redact.js';
 import { hashText } from '../shared/proto/sample.js';
 import { REAL_LIMITS } from '../shared/real/types.js';
 import type { RealApp, RealDiscovery, RealPlace, RealPlaceKind } from '../shared/real/types.js';
-import { addTally, couldNotRead, isThere, listDir, makeBudget, mustStop, newTally, readHead, readText, realFolderFollowing, resolveInside, shortPath, walkFiles } from './real-fs.js';
+import { addTally, couldNotRead, isThere, listDir, makeBudget, miss, mustStop, newTally, readHead, readText, realFolderFollowing, resolveInside, shortPath, walkFiles } from './real-fs.js';
 import type { Budget, Tally } from './real-fs.js';
 import { textOf, listOf } from '../shared/real/yaml.js';
 import { isPlainName } from './safe.js';
@@ -49,6 +49,15 @@ export class RealRefusal extends Error {
   readonly code: 'BAD_ARGUMENT' | 'UNKNOWN_PLACE' | 'TOO_MANY' | 'BUSY' | 'NO_HOME';
   constructor(code: RealRefusal['code'], message: string) { super(message); this.code = code; }
 }
+
+const holdsSkillFile = (names: readonly string[]): boolean => names.some(n => n.toLowerCase() === 'skill.md');
+/** A folder below a program's folder that sits under a skills root: `skills/..` or `skill/..`, or the same inside a Hermes profile (`profiles/<name>/skills/..`). Nothing else is a skill's home. */
+const UNDER_SKILLS_ROOT = /^(?:profiles\/[^/]+\/)?skills?\/[^/]+(?:\/[^/]+)*$/i;
+/**
+ * A folder that holds a SKILL.md, below a skills root, is one skill: its subfolders are its own references and assets, and are not entered. A SKILL.md anywhere else (a Hermes
+ * profile folder, a namespace folder of agents) marks nothing, so the folders below it are read as usual. The plug-in store is the exception (it is read for agents only).
+ */
+export const isSkillFolder = (names: readonly string[], rel: string): boolean => !rel.startsWith('plugins/') && UNDER_SKILLS_ROOT.test(rel) && holdsSkillFile(names);
 
 const ALL_PROJECT_FOLDERS: ReadonlyMap<string, RealApp> = new Map(ADAPTERS.flatMap(a => a.projectFolders.map(f => [f, a.id] as const)));
 const ALL_PROJECT_FILES: ReadonlyMap<string, { app: RealApp; config: ConfigKind }> = new Map(ADAPTERS.flatMap(a => a.projectFiles.map(f => [f.name, { app: a.id, config: f.config }] as const)));
@@ -103,7 +112,7 @@ export function findPlacesUnder(dir: string, home: string, budget: Budget, tally
   const visit = (real: string, display: string, depth: number): void => {
     if (stop) return;
     if (budget.expired()) { tally.stoppedEarly = true; stop = true; return; }
-    const list = listDir(real, tally, REAL_LIMITS.discoveryEntries - entries + 1);
+    const list = listDir(real, tally, REAL_LIMITS.discoveryEntries - entries + 1, rootReal);
     const isRoot = depth === 0;
     const atHome = homeReal !== null && real === homeReal;
     const { folders, files } = atHome ? { folders: [], files: [] } : partsOf(real, list);
@@ -117,7 +126,7 @@ export function findPlacesUnder(dir: string, home: string, budget: Budget, tally
       if (budget.expired()) { tally.stoppedEarly = true; stop = true; return; }
       entries += 1;
       if (entries > REAL_LIMITS.discoveryEntries) { tally.truncated = true; stop = true; return; }
-      if (!isPlainName(e.name)) { tally.unreadable += 1; continue; }
+      if (!isPlainName(e.name)) { miss(tally, 'unreadable', rootReal, join(real, e.name)); continue; }
       if (e.name.startsWith('.') || SKIP_DIRS.has(e.name) || ALL_PROJECT_FOLDERS.has(e.name)) continue;
       const child = join(real, e.name);
       let childReal = child, isDir = e.isDirectory();
@@ -173,9 +182,11 @@ export function readPlace(place: PlaceInternal, home: string, withText: boolean,
     if (mustStop(budget, tally)) break;
     if (realFolderFollowing(folder.abs) !== folder.abs) { tally.unreadable += 1; continue; }
     const adapter = adapterOf(folder.app);
+    // Only the top-level folders that can hold something are entered (`walkRoots`), and a skill folder is a leaf. What is left out on purpose never marks the place as partly read.
     const files = walkFiles(folder.abs, folder.abs, {
       maxDepth: REAL_LIMITS.depth, maxFiles: filesLeft, maxEntries: REAL_LIMITS.discoveryEntries, skipDirs: new Set(adapter.skipInside), skipHidden: false,
       accept: rel => classify(folder.app, rel) !== null, enter: rel => walkEnter(folder.app, rel), prune: rel => walkPrune(folder.app, rel),
+      ...(adapter.walkRoots === undefined ? {} : { rootDirs: new Set(adapter.walkRoots) }), leafWhen: isSkillFolder, nestedWhen: holdsSkillFile,
     }, budget, tally);
     filesLeft -= files.length;
     for (const f of files) {
@@ -187,7 +198,7 @@ export function readPlace(place: PlaceInternal, home: string, withText: boolean,
       const text = role.what === 'config' || withText ? readText(f.abs, folder.abs, tally, budget) : null;
       if ((role.what === 'config' || withText) && text === null) continue;
       const result = recordsOfFile(folder.app, role, relPath, f.rel, text);
-      if (result.unreadable) tally.unreadable += 1;
+      if (result.unreadable) miss(tally, 'unreadable', folder.abs, f.abs);
       if (result.partial) partlyRead += 1;
       records.push(...stamp(result.records, f.mtimeMs));
     }
@@ -198,7 +209,7 @@ export function readPlace(place: PlaceInternal, home: string, withText: boolean,
     const text = readText(file.abs, place.realRoot, tally, budget);
     if (text === null) continue;
     const result = recordsOfFile(file.app, role, file.name, file.name, text);
-    if (result.unreadable) tally.unreadable += 1;
+    if (result.unreadable) miss(tally, 'unreadable', place.realRoot, file.abs);
     records.push(...stamp(result.records, 0));
   }
   if (place.kind !== 'home' && !mustStop(budget, tally)) {

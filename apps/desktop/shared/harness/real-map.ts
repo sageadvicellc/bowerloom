@@ -310,7 +310,7 @@ export function realToHarnessState(result: RealResult, places: readonly RealPlac
   if (leftOutUnknown > 0) own.push(`${thingsWord(leftOutUnknown)} in a program Bowerloom does not know ${leftOutUnknown === 1 ? 'is' : 'are'} not shown.`);
   if (sets.length > keptSets.size) { const n = sets.length - keptSets.size; own.push(`${n} ${n === 1 ? 'set' : 'sets'} of notes ${n === 1 ? 'is' : 'are'} not shown.`); }
   // What the reader said about each place that was read, from the first look at it. A text cut to 60 lines for the preview is not a problem and is not counted: its file page says so.
-  const placeNotes = places.map(p => ({ name: p.label, notes: p.details.notes.filter(n => !STOPPED_NOTE.test(n)) })).filter(p => p.notes.length > 0);
+  const placeNotes = places.map(p => ({ name: p.label, notes: p.details.notes.filter(n => !STOPPED_NOTE.test(n)), ...(p.kind === 'home' ? { toolHome: true } : {}) })).filter(p => p.notes.length > 0);
   const onlyPartRead = result.notes.includes(PARTLY_READ_NOTE) || placeNotes.some(p => p.notes.includes(PARTLY_READ_NOTE));
   return {
     parts, harnesses: [], projects: projectsOf(places), installs: [], interfaces: interfacesOf(result, places), runs: [], history: [], sources, chosenSourceIds: sources.map(s => s.id),

@@ -158,8 +158,9 @@ export interface RealNotes {
   /**
    * The reader's own notes for each place that was read and has one (files over 2 MB, files that are not text, things that could not be opened, shortcuts that lead outside, only part of it looked at).
    * They come from the first look at each folder (`RealPlace.details.notes`), so their counts can differ a little from the totals above, which are from the full read. Absent when no place has a note.
+   * `toolHome` is true for a program's own folder at home: a smaller folder cannot be picked for it, so the page does not suggest one.
    */
-  readonly places?: readonly { readonly name: string; readonly notes: readonly string[] }[];
+  readonly places?: readonly { readonly name: string; readonly notes: readonly string[]; readonly toolHome?: boolean }[];
 }
 
 export interface HarnessState {

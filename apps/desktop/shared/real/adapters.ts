@@ -68,6 +68,12 @@ export interface AppAdapter {
   readonly projectFiles: readonly { readonly name: string; readonly config: ConfigKind }[];
   /** Folder names inside a tool folder that are never entered: logs, caches, plug-in stores and the like. */
   readonly skipInside: readonly string[];
+  /**
+   * The top-level folders of the program's own folder that the reader may enter, in lower case (the names are compared without regard to case). Every path `classify` accepts below
+   * the top starts in one of them, so a folder left out holds nothing the reader wants: scratch space, clones of plug-ins, copies of work folders, logs. Files at the top
+   * (settings, config) are not folders and are still tried. Absent: no allowlist, only `skipInside`.
+   */
+  readonly walkRoots?: readonly string[];
 }
 
 const SKILL_FOLDER = /^skills?\/(?:.+\/)?SKILL\.md$/i;
@@ -77,13 +83,17 @@ const NOT_A_THING = /^(readme|license|licence|changelog|contributing)(\..*)?$/i;
 
 export const ADAPTERS: readonly AppAdapter[] = Object.freeze([
   { id: 'claude-code', label: 'Claude Code', homeFolders: ['.claude'], homeFiles: [{ path: '.claude.json', config: 'claude-json' }], projectFolders: ['.claude'], projectFiles: [{ name: '.mcp.json', config: 'mcp-json' }],
-    skipInside: ['projects', 'plugins', 'todos', 'shell-snapshots', 'statsig', 'file-history', 'ide', 'telemetry', 'cache', 'paste-cache', 'session-env', 'debug', 'backups', 'downloads', 'sessions', 'logs', 'history', 'node_modules', '.git'] },
+    skipInside: ['projects', 'plugins', 'todos', 'shell-snapshots', 'statsig', 'file-history', 'ide', 'telemetry', 'cache', 'paste-cache', 'session-env', 'debug', 'backups', 'downloads', 'sessions', 'logs', 'history', 'node_modules', '.git'],
+    walkRoots: ['agents', 'skills', 'skill', 'commands', 'plugins'] },
   { id: 'codex', label: 'Codex', homeFolders: ['.codex', '.agents'], homeFiles: [], projectFolders: ['.codex', '.agents'], projectFiles: [],
-    skipInside: ['sessions', 'log', 'logs', 'history', 'cache', 'tmp', 'archived_sessions', 'shell_snapshots', 'node_modules', '.git'] },
+    skipInside: ['sessions', 'log', 'logs', 'history', 'cache', 'tmp', 'archived_sessions', 'shell_snapshots', 'node_modules', '.git'],
+    walkRoots: ['agents', 'skills', 'skill', 'prompts'] },
   { id: 'opencode', label: 'OpenCode', homeFolders: ['.config/opencode'], homeFiles: [], projectFolders: ['.opencode'], projectFiles: [{ name: 'opencode.json', config: 'opencode-json' }, { name: 'opencode.jsonc', config: 'opencode-json' }],
-    skipInside: ['node_modules', 'cache', 'log', 'logs', 'snapshot', 'storage', '.git'] },
+    skipInside: ['node_modules', 'cache', 'log', 'logs', 'snapshot', 'storage', '.git'],
+    walkRoots: ['agent', 'agents', 'command', 'commands', 'plugin', 'plugins', 'skill', 'skills'] },
   { id: 'hermes', label: 'Hermes', homeFolders: ['.hermes'], homeFiles: [], projectFolders: [], projectFiles: [],
-    skipInside: ['sessions', 'logs', 'log', 'cache', 'node_modules', 'checkpoints', 'audio_cache', 'image_cache', 'history', '.git', 'venv', '.venv', 'hermes-agent'] },
+    skipInside: ['sessions', 'logs', 'log', 'cache', 'node_modules', 'checkpoints', 'audio_cache', 'image_cache', 'history', '.git', 'venv', '.venv', 'hermes-agent'],
+    walkRoots: ['memories', 'profiles', 'skills'] },
   { id: 'bowerloom', label: 'Bowerloom', homeFolders: [], homeFiles: [], projectFolders: ['.bowerloom'], projectFiles: [],
     skipInside: ['managed', 'cache', 'node_modules', '.git'] },
 ]);
