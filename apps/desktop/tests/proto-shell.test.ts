@@ -114,12 +114,14 @@ test('main.ts: each prototype flag loads the same app address with its own hash,
   assert.match(main, /argv\.includes\('--prototype'\)/); assert.match(main, /loadURL\(indexUrl\)/);
   for (const { flag, hash } of PROTOTYPE_FLAGS) {
     assert.match(main, new RegExp(`argv\\.includes\\('${flag}'\\)`), flag);
-    assert.match(main, new RegExp('loadURL\\(`\\$\\{indexUrl\\}' + hash + '`\\)'), `${flag} loads ${hash}`);
+    // The harness-first flag shares its line with the real flag, which opens its own address (#prototype-v3-real); the sample flag still opens #prototype-v3.
+    if (flag === '--prototype-v3') assert.match(main, /loadURL\(`\$\{indexUrl\}\$\{prototypeV3Real \? '#prototype-v3-real' : '#prototype-v3'\}`\)/, `${flag} loads ${hash}`);
+    else assert.match(main, new RegExp('loadURL\\(`\\$\\{indexUrl\\}' + hash + '`\\)'), `${flag} loads ${hash}`);
     assert.equal(decideNavigation(`${APP_INDEX}${hash}`, APP_INDEX), 'allow-app', `the app address with ${hash} is still the app's own page`);
   }
   assert.equal(decideNavigation(`${APP_INDEX}#prototype-v2/kit`, APP_INDEX), 'allow-app');
   // Either flag puts the app in prototype mode, which is the one switch behind the missing preload, the refused IPC, the temp folder and the blocked links.
-  assert.match(main, /const prototypeMode = argv\.includes\('--prototype'\) \|\| prototypeV2 \|\| prototypeReal \|\| prototypeV3;/);
+  assert.match(main, /const prototypeMode = argv\.includes\('--prototype'\) \|\| prototypeV2 \|\| prototypeReal \|\| prototypeV3 \|\| prototypeV3Real;/);
   assert.match(main, /const prototypeV2 = argv\.includes\('--prototype-v2'\);/);
   assert.equal([...main.matchAll(/ipcMain\.handle/g)].length, 1, 'still one guard');
   assert.match(main, /isAllowedSender\(/);

@@ -1,7 +1,7 @@
 // The addresses of the harness-first preview, and the geometry of its graph: pure functions, tested without a window.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BASE, formatRoute, isFirstRun, isHarnessHash, navKeyOf, parseRoute } from '../shared/harness/route.js';
+import { BASE, REAL_BASE, baseOf, formatRoute, isFirstRun, isHarnessHash, isRealHash, navKeyOf, parseRoute } from '../shared/harness/route.js';
 import type { Route } from '../shared/harness/route.js';
 import { SAMPLE_IDS, createSampleWorld } from '../shared/harness/sample.js';
 import { addPart, setNodePosition } from '../shared/harness/store.js';
@@ -18,6 +18,17 @@ test('every route formats to an address and parses back to the same route', () =
   ];
   for (const route of routes) { const hash = formatRoute(route); assert.ok(hash.startsWith(BASE), hash); assert.deepEqual(parseRoute(hash), route, hash); }
   assert.equal(formatRoute({ name: 'welcome' }), '#prototype-v3');
+  for (const route of routes) { const hash = formatRoute(route, REAL_BASE); assert.ok(hash.startsWith(REAL_BASE), hash); assert.deepEqual(parseRoute(hash), route, hash); }
+});
+
+test('the real launch has its own address: both are the preview\'s own, only the real one is real, and the base is kept when the page moves', () => {
+  assert.equal(REAL_BASE, '#prototype-v3-real');
+  for (const hash of ['#prototype-v3-real', '#prototype-v3-real/choose', '#prototype-v3-real/builder/harness-a/list']) { assert.equal(isHarnessHash(hash), true, hash); assert.equal(isRealHash(hash), true, hash); assert.equal(baseOf(hash), REAL_BASE, hash); }
+  for (const hash of ['#prototype-v3', '#prototype-v3/choose', '']) { assert.equal(isRealHash(hash), false, hash); assert.equal(baseOf(hash), BASE, hash); }
+  for (const hash of ['#prototype-v3-realx', '#prototype-v3-real2/choose', '#prototype-v3-rea', '#prototype-v3-real-x']) { assert.equal(parseRoute(hash), null, hash); assert.equal(isHarnessHash(hash), false, hash); assert.equal(isRealHash(hash), false, hash); }
+  assert.deepEqual(parseRoute('#prototype-v3-real'), { name: 'welcome' }); assert.deepEqual(parseRoute('#prototype-v3-real/choose'), { name: 'choose' });
+  assert.deepEqual(parseRoute('#prototype-v3-real/nothing-here'), { name: 'harnesses' });
+  assert.equal(formatRoute({ name: 'read' }, REAL_BASE), '#prototype-v3-real/read'); assert.equal(formatRoute({ name: 'welcome' }, REAL_BASE), '#prototype-v3-real');
 });
 
 test('an address that is not the preview\'s own parses to null, and an unknown page under it is the Harness list', () => {

@@ -41,6 +41,7 @@ export const FLOW = deepFreeze({
     removeNote: 'This does not delete your files. It removes only what Bowerloom wrote.',
     yourFileNone: 'Not in this preview.', historyHint: 'Newest first. Undo puts back what the change replaced.',
     lookedAgain: 'Looked again. Nothing changed.', noneOffered: 'No interface is switched on. Turn one on in Interfaces.',
+    nothingMade: 'Nothing was made.',
     pickInterface: 'Pick at least one interface.', undoFirst: 'Undo the newer change first', noProject: 'That project is not here.',
   },
   /** A short paragraph: at most 25 words each. */

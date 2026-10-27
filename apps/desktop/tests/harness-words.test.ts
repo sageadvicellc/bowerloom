@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import { DESIGN_WORDS, HARNESS_BANNED, LIMITS, bannedHere, countWords } from '../shared/harness/words.js';
 import { BANNED, bannedIn } from '../shared/home/textbudget.js';
 import { KIND_NAME, KIND_PLURAL, WORDS, addName, addTo, addToWords, fixName, fromWords, harnessListHint, installTitle, linkFromWords, missingKind, namedBy, nodeName, partsCount, projectsHint, startName, tabWords, willUse } from '../renderer/harness/words.js';
+import { REAL, countsLine, couldNotReadLine, foldersLine, foundInLine, foundPlaces, modelBadgeLine, moreNotes, nothingReadLine, readCountLine, readSummary, textsCutLine } from '../renderer/harness/real/words-real.js';
+import { reasonWords } from '../renderer/home/real/words.js';
 import { SAMPLE_IDS, createSampleWorld } from '../shared/harness/sample.js';
 import * as status from '../shared/harness/status.js';
 import { buildInstallPlan, installButtonWords, planSummary } from '../shared/harness/files.js';
@@ -73,7 +75,42 @@ test('no source file of the preview has a banned word in a string literal or in 
     for (const m of code.matchAll(/'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"|`((?:[^`\\]|\\.)*)`/g)) pieces.push((m[1] ?? m[2] ?? m[3] ?? '').replace(/\$\{[^}]*\}/g, ' '));
     for (const m of code.matchAll(/>([^<>{}=;()]*[A-Za-z][^<>{}=;()]*)</g)) pieces.push(m[1]!);
     // The sample's own text (the files that people read) is checked on the data; ids, paths and CSS class names are code.
-    if (file.endsWith('/sample.ts')) continue;
+    // real-map.ts names the reader's own kinds in code (a data tag is not a word on screen); the words it makes are checked in tests/harness-real-map.test.ts.
+    if (file.endsWith('/sample.ts') || file.endsWith('/real-map.ts')) continue;
     for (const piece of pieces) assert.equal(bannedHere(piece), null, `${file}: ${piece}`);
   }
+});
+
+test('the real words (the preview on the person\'s own folders) are frozen, within the limits, and have no banned word', () => {
+  assert.equal(Object.isFrozen(REAL), true); assert.equal(Object.isFrozen(REAL.label), true); assert.equal(Object.isFrozen(REAL.notInPreview), true);
+  assert.throws(() => { (REAL.label as Record<string, string>).useSample = 'x'; }, TypeError);
+  for (const [group, limit] of [['label', LIMITS.label], ['hint', LIMITS.hint], ['paragraph', LIMITS.paragraph]] as const) {
+    const entries = Object.entries(REAL[group]);
+    assert.ok(entries.length >= 4, group);
+    for (const [key, text] of entries) { assert.ok(countWords(text) <= limit, `${group}.${key}: ${text}`); assert.equal(bannedHere(text), null, `${group}.${key}`); assert.equal(text, text.trim(), `${group}.${key}`); }
+  }
+  for (const line of REAL.notInPreview) { assert.ok(countWords(line) <= LIMITS.popover, line); assert.equal(bannedHere(line), null, line); }
+  assert.deepEqual(REAL.notInPreview, ['Install', 'Start', 'Compare', 'Runs']);
+  assert.equal(REAL.label.previewNot, WORDS.label.previewNot, 'the popover heading is the same in both modes');
+});
+
+test('the real words say what the design asks for, word for word', () => {
+  assert.equal(REAL.label.consentTitle, 'Read what is inside?');
+  assert.deepEqual([REAL.label.yesRead, REAL.label.notNow, REAL.label.addFolder, REAL.label.useSample, REAL.label.tryAgain, REAL.label.nothingTitle], ['Yes, read them', 'Not now', 'Add a folder', 'Use the sample', 'Try again', 'Nothing found yet']);
+  assert.equal(REAL.paragraph.previewAbout, 'This preview reads your own folders. It changes none of them and writes nothing.');
+  assert.equal(couldNotReadLine(3), 'Could not read 3 things.'); assert.equal(couldNotReadLine(1), 'Could not read 1 thing.');
+  assert.equal(REAL.hint.stoppedEarly, 'It stopped early to stay within its limits.'); assert.equal(REAL.hint.consentOne, 'It reads text only in the folders you ticked.');
+  assert.equal(REAL.hint.replaceLine, 'Reading again starts this preview over. It changes nothing on your computer.'); assert.equal(REAL.label.cancel, 'Cancel');
+  assert.match(REAL.paragraph.chooseLine, /opened settings files and read names and structure\. It reads text only in folders you keep ticked\./, 'the Choose line says what is opened before the tick and what only after it');
+  assert.doesNotMatch(REAL.paragraph.chooseLine, /opens only the folders you keep ticked/);
+  assert.match(REAL.paragraph.consentNotes, /whole folder/); assert.match(REAL.paragraph.consentNotes, /first lines of up to 2000/); assert.match(REAL.hint.consentLinks, /Linked folders are followed/);
+});
+
+test('the words the real screens build from a number or a code obey the same rules', () => {
+  const built = [foundPlaces(1), foundPlaces(4), countsLine({ agents: 2, skills: 6, tools: 3, hooks: 1, notes: 6 }), readSummary(3, 14), couldNotReadLine(2), textsCutLine(1), textsCutLine(5), moreNotes(1), moreNotes(4), foldersLine(1), foldersLine(3), nothingReadLine(null), nothingReadLine({ couldNotRead: 0, stoppedEarly: true, notes: [], textsCut: 0 }),
+    readCountLine(1, 1), readCountLine(12, 180), foundInLine('Your Claude Code folder'), foundInLine('Caveman plug-in'), modelBadgeLine('Claude Code only'), ...['BUSY', 'NOT_ALLOWED', 'UNKNOWN_PLACE', 'NO_BRIDGE', 'FAILED'].map(reasonWords)];
+  for (const text of built) { assert.equal(bannedHere(text), null, text); assert.ok(countWords(text) <= LIMITS.hint, text); }
+  assert.equal(foundInLine('Your Claude Code folder'), 'Found in your Claude Code folder'); assert.equal(foundInLine('Caveman plug-in'), 'Found in Caveman plug-in'); assert.equal(REAL.label.notChecked, 'Not checked');
+  assert.equal(textsCutLine(1), '1 text was cut short.'); assert.equal(textsCutLine(5), '5 texts were cut short.');
+  assert.equal(readCountLine(1, 1), '1 source, 1 part in all.'); assert.equal(foldersLine(3), '3 folders ticked.'); assert.equal(moreNotes(4), 'and 4 more notes.');
 });

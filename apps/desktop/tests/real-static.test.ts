@@ -65,7 +65,7 @@ const RENDERER_POLICY: Policy = {
 const SHELL_ENTRIES = ['renderer/home/mount.tsx', 'renderer/home/real/mountReal.tsx', 'renderer/home/real/RealRoot.tsx', 'renderer/home/real/RealScan.tsx', 'renderer/home/real/RealFind.tsx', 'renderer/home/real/RealFlow.tsx'];
 const SHELL_POLICY: Policy = {
   page: true,
-  allowFile: rel => /^(?:renderer\/home|renderer\/proto|shared\/home|shared\/proto|shared\/real)\/[\w./-]+\.(?:tsx?|css)$/.test(rel) || ['renderer/clock.ts', 'renderer/motion-tokens.ts', 'shared/clock-words.ts'].includes(rel),
+  allowFile: rel => /^(?:renderer\/home|renderer\/proto|renderer\/harness\/real|shared\/home|shared\/proto|shared\/real)\/[\w./-]+\.(?:tsx?|css)$/.test(rel) || ['renderer/clock.ts', 'renderer/motion-tokens.ts', 'shared/clock-words.ts'].includes(rel),
   deadOk: {},
   modules: { react: '*', 'react/jsx-runtime': '*', 'react-dom': '*', 'react-dom/client': '*' },
   extraNames: /^(?:innerHTML|outerHTML|insertAdjacentHTML|dangerouslySetInnerHTML|localStorage|sessionStorage|indexedDB|openDatabase|bowerloomReal)$/,
@@ -393,11 +393,11 @@ test('the built bridge, run with a fake Electron, exposes exactly three frozen f
 test('main.ts: the real flag is one more prototype mode (temp data folder, strict CSP, no outside link), with one preload of its own and a page of its own', () => {
   const main = strip(read('main/main.ts'));
   assert.match(main, /const prototypeReal = argv\.includes\('--prototype-real'\);/);
-  assert.match(main, /const prototypeMode = argv\.includes\('--prototype'\) \|\| prototypeV2 \|\| prototypeReal \|\| prototypeV3;/);
-  assert.match(main, /prototypeReal \? webPreferences\(join\(root, 'preload-real\.cjs'\), app\.isPackaged\) : webPreferences\(prototypeMode \? undefined : join\(root, 'preload\.cjs'\), app\.isPackaged\)/);
+  assert.match(main, /const prototypeMode = argv\.includes\('--prototype'\) \|\| prototypeV2 \|\| prototypeReal \|\| prototypeV3 \|\| prototypeV3Real;/);
+  assert.match(main, /prototypeReal \|\| prototypeV3Real \? webPreferences\(join\(root, 'preload-real\.cjs'\), app\.isPackaged\) : webPreferences\(prototypeMode \? undefined : join\(root, 'preload\.cjs'\), app\.isPackaged\)/);
   assert.equal([...main.matchAll(/preload-real\.cjs/g)].length, 1, 'the real bridge is named once');
   assert.equal([...main.matchAll(/registerRealIpc\(/g)].length, 1);
-  assert.match(main, /if \(prototypeReal\) \{[\s\S]*?registerRealIpc\(/, 'the handlers exist only in real mode');
+  assert.match(main, /if \(prototypeReal \|\| prototypeV3Real\) \{[\s\S]*?registerRealIpc\(/, 'the handlers exist only in the two real modes');
   assert.match(main, /loadURL\(`\$\{indexUrl\}\$\{REAL_HASH\}`\)\.catch\(startupFailed\)/);
   assert.equal([...main.matchAll(/ipcMain\.handle/g)].length, 1, 'main.ts still has one guard of its own');
   assert.equal([...main.matchAll(/!prototypeMode/g)].length, 2, 'an outside link is opened only outside prototype mode, in both places');
@@ -452,8 +452,14 @@ test('the launcher: the real flag is known, excludes every other mode, needs a r
   if (process.platform !== 'win32') assert.equal(mod.realHome({ HOME: '/Users/x' }, () => true), '/Users/x');
   assert.equal(mod.realHome({ HOME: '/Users/x' }, () => false), null); assert.equal(mod.realHome({}, () => true), null); assert.equal(mod.realHome({ HOME: 'x' }, () => true), null);
   assert.deepEqual(mod.electronArgs('/d', ['--prototype-real'], '/tmp/bowerloom-prototype-x'), ['/d', '--user-data-dir=/tmp/bowerloom-prototype-x', '--prototype-real']);
-  assert.match(src, /PROTOTYPES\.some\(flag => args\.includes\(flag\)\) \|\| args\.includes\(REAL_FLAG\) \? makePrototypeDataDir\(\) : null/, 'the real preview gets a fresh temporary data folder too');
-  assert.match(src, /console\.log\(`\\n\$\{REAL_PROMISE\}/);
+  assert.match(src, /PROTOTYPES\.some\(flag => args\.includes\(flag\)\) \|\| REAL_FLAGS\.some\(flag => args\.includes\(flag\)\) \? makePrototypeDataDir\(\) : null/, 'the real preview gets a fresh temporary data folder too');
+  assert.match(src, /const promise = args\.includes\('--prototype-v3-real'\) \? REAL_V3_PROMISE : REAL_PROMISE;/, 'the harness-first flag prints its own promise, the other real flag prints the pinned one');
+  assert.match(src, /console\.log\(`\\n\$\{promise\}/);
+  const v3 = (mod as unknown as { REAL_V3_PROMISE: string }).REAL_V3_PROMISE;
+  assert.equal(v3, 'Reads: names, descriptions, structure and config key names of the folders it lists, plus the text of the skills, agents and saved prompts, and the first lines of notes pages, in the folders you tick. Known key and password shapes are hidden. Writes: no changes to your files. The app keeps its own temporary files and deletes them when it closes.');
+  for (const fact of [/skills/, /agents/, /saved prompts/, /first lines of notes pages/, /config key names/, /Known key and password shapes are hidden/, /no changes to your files/, /deletes them when it closes/]) assert.match(v3, fact, String(fact));
+  assert.doesNotMatch(v3, /agents you tick/, 'the ticks of the harness-first preview are on folders, not on skills and agents');
+  assert.doesNotMatch(v3, /never|no key|Writes: nothing/i);
   const root = JSON.parse(read('../../package.json')) as { scripts: Record<string, string> };
   assert.equal(root.scripts['desktop:prototype:real'], 'node apps/desktop/tools/run.mjs --prototype-real');
   assert.equal(root.scripts['desktop:prototype:v2'], 'node apps/desktop/tools/run.mjs --prototype-v2', 'the sample world keeps its own command');

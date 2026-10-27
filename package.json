@@ -62,6 +62,7 @@
     "desktop:prototype:v2": "node apps/desktop/tools/run.mjs --prototype-v2",
     "desktop:prototype:v3": "node apps/desktop/tools/run.mjs --prototype-v3",
     "desktop:prototype:real": "node apps/desktop/tools/run.mjs --prototype-real",
+    "desktop:prototype:v3:real": "node apps/desktop/tools/run.mjs --prototype-v3-real",
     "sandbox:reset": "npm --prefix apps/desktop run sandbox:reset"
   },
   "devDependencies": {

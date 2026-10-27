@@ -62,14 +62,21 @@ export function chooseSources(state: HarnessState, sourceIds: readonly string[])
   return { ...state, chosenSourceIds: sourceIds.filter(id => known.has(id)) };
 }
 
-/** Makes a harness from one scanned source: it holds every part of that source, and each agent is linked to some of the others. Returns the new id, or null for an unknown source. */
+/**
+ * Makes a harness from one scanned source: it holds every part of that source. The links are the ones the source carries (real mode), else each agent is linked to some of the others (the sample).
+ * A real link to a part outside the source adds that part to the harness; a link to a part the state does not hold is dropped. Returns the new id, or null for an unknown source.
+ */
 export function createHarnessFromSource(state: HarnessState, sourceId: string, stamp: Stamp): { state: HarnessState; harnessId: string | null } {
   const source = state.sources.find(s => s.id === sourceId);
   if (source === undefined) return { state, harnessId: null };
   const { id, state: s1 } = take(state, 'harness');
   const parts = source.partIds.map(pid => partById(s1, pid)).filter((p): p is NonNullable<typeof p> => p !== undefined);
   const agentIds = parts.filter(p => p.kind === 'agent').map(p => p.id), otherIds = parts.filter(p => p.kind !== 'agent').map(p => p.id);
-  const harness: Harness = { id, name: uniqueName(s1, source.harnessName), summary: `Made from ${source.name}.`, partIds: parts.map(p => p.id), links: autoLinks(agentIds, otherIds), positions: {}, missing: [], newPartIds: [] };
+  const held = new Set(parts.map(p => p.id));
+  const links = source.links === undefined ? autoLinks(agentIds, otherIds) : source.links.filter(l => held.has(l.from) && (held.has(l.to) || partById(s1, l.to) !== undefined));
+  // Known limit: a link to a part of another source pulls that part into this harness without a word to the person (the harness then holds parts the source does not).
+  const pulled = [...new Set(links.map(l => l.to).filter(to => !held.has(to)))];
+  const harness: Harness = { id, name: uniqueName(s1, source.harnessName), summary: `Made from ${source.name}.`, partIds: [...parts.map(p => p.id), ...pulled], links, positions: {}, missing: [], newPartIds: [] };
   const next = record({ ...s1, harnesses: [...s1.harnesses, harness] }, stamp, { text: `Made ${harness.name} from a scan`, manifest: 'created', undo: [{ op: 'delete-harness', harnessId: id }] });
   return { state: next, harnessId: id };
 }
@@ -442,6 +449,11 @@ export interface HarnessStore {
   setInterfaceOn(interfaceId: InterfaceId, on: boolean): void;
   /** Undoes a change. Returns why nothing changed (a few lowercase words), or null when it was undone. */
   undo(entryId: string): string | null;
+  /**
+   * Replaces the whole state (the real read, or the sample again). The history goes with the old state, every run timer is cancelled, and the subscribers are told.
+   * The counter of new ids never goes down: an id that the old state used (an undo note may still name it) is not made again.
+   */
+  loadWorld(state: HarnessState): void;
   /** Cancels every timer. */
   dispose(): void;
 }
@@ -453,13 +465,16 @@ export function createHarnessStore(options: StoreOptions): HarnessStore {
   const after = options.finishAfterMs ?? RUN_FINISH_MS;
   const listeners = new Set<() => void>();
   const timers = new Set<Cancel>();
-  const commit = (next: HarnessState): void => { if (next === state) return; state = next; for (const l of [...listeners]) l(); };
+  // One listener that throws must not stop the rest from hearing: each call is guarded, and the error is written for the person who runs the app.
+  const notify = (): void => { for (const l of [...listeners]) { try { l(); } catch (error) { console.error('A listener of the harness store threw.', error); } } };
+  const commit = (next: HarnessState): void => { if (next === state) return; state = next; notify(); };
   const finishLater = (runId: string): void => {
     let cancel: Cancel = () => undefined;
     cancel = schedule(() => { timers.delete(cancel); commit(finishRun(state, runId)); }, after);
     timers.add(cancel);
   };
-  if (options.finishRunning === true) for (const run of state.runs) if (run.status === 'running') finishLater(run.id);
+  const finishRunningOf = (from: HarnessState): void => { if (options.finishRunning === true) for (const run of from.runs) if (run.status === 'running') finishLater(run.id); };
+  finishRunningOf(state);
   return {
     getState: () => state,
     subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
@@ -481,6 +496,13 @@ export function createHarnessStore(options: StoreOptions): HarnessStore {
     rateRun(runId, rating, notes) { commit(rateRun(state, runId, rating, notes)); },
     setInterfaceOn(interfaceId, on) { commit(setInterfaceOn(state, interfaceId, on, now())); },
     undo(entryId) { const r = tryUndo(state, entryId, now()); commit(r.state); return r.reason; },
+    loadWorld(next) {
+      for (const cancel of timers) cancel();
+      timers.clear();
+      state = next.nextId < state.nextId ? { ...next, nextId: state.nextId } : next;
+      finishRunningOf(state);
+      notify();
+    },
     dispose() { for (const cancel of timers) cancel(); timers.clear(); },
   };
 }

@@ -1,15 +1,19 @@
 /**
- * The "Preview" mark at the foot of the navigation: plain words and a dot. Its popover says that this is a preview on sample data, that nothing is written to the disk, that the full app
+ * The "Preview" mark at the foot of the navigation: plain words and a dot. Its popover says that this is a preview on sample data (or, on the person's own folders, that it reads them, changes none and writes nothing), that nothing is written to the disk, that the full app
  * opens the interface when you press Start, and lists what is not in this preview. Escape or a press elsewhere closes it and the focus stays on the mark.
  */
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { usePresence } from '../../home/kit/presence.js';
 import { Tooltip } from '../../home/kit/Tooltip.js';
+import { useHarnessState } from '../session.js';
+import { REAL } from '../real/words-real.js';
 import { WORDS } from '../words.js';
 
 export function PreviewMark({ rail }: { rail: boolean }): ReactElement {
   const [open, setOpen] = useState(false);
+  // On the person's own folders the state holds what the reader said; the sample (and the sample opened from real mode) holds nothing there.
+  const real = useHarnessState().real !== undefined;
   const id = useId();
   const wrap = useRef<HTMLSpanElement>(null), trigger = useRef<HTMLButtonElement>(null);
   const shown = usePresence(open);
@@ -34,10 +38,10 @@ export function PreviewMark({ rail }: { rail: boolean }): ReactElement {
       </Tooltip>
       {shown.mounted ? (
         <div className="kit-popover hx-preview-pop" id={id} role="group" aria-label={WORDS.label.aboutPreview} data-budget="popover" data-leaving={shown.leaving ? '' : undefined}>
-          <p>{WORDS.paragraph.previewAbout}</p>
+          <p>{real ? REAL.paragraph.previewAbout : WORDS.paragraph.previewAbout}</p>
           <p>{WORDS.paragraph.previewFull}</p>
           <h3 className="hx-pop-head">{WORDS.label.previewNot}</h3>
-          <ul className="hx-pop-list">{WORDS.notInPreview.map(line => <li key={line}>{line}</li>)}</ul>
+          <ul className="hx-pop-list" data-real={real ? '' : undefined}>{(real ? REAL.notInPreview : WORDS.notInPreview).map(line => <li key={line}>{line}</li>)}</ul>
         </div>
       ) : null}
     </span>

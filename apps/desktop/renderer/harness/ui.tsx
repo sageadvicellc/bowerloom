@@ -2,12 +2,18 @@
  * What the screens share besides the harness world: which sheets are open (the install sheet and the start sheet are opened from several screens), the harness picked in the list,
  * the toast ("Installed. Undo"), and the shell (the details column and the navigation). All of it lives in memory.
  *
+ * On the person's own folders (the state holds `real`) `openInstall` and `openStart` show the note "Not in this preview." and open nothing.
  * The next builders plug in here: `openInstall({ projectId, harnessId, step })` opens the install sheet at a step, `openStart({ harnessId, projectId })` opens the start sheet,
  * `showToast(text, action)` shows a note with one action, and `pickedHarnessId` is the harness the Harness list has selected.
  */
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
-import type { InterfaceId } from '../../shared/harness/types.js';
+import { parseRoute } from '../../shared/harness/route.js';
+import { routeGone } from '../../shared/harness/status.js';
+import type { HarnessState, InterfaceId } from '../../shared/harness/types.js';
+import { go } from './router.js';
+import { useHarnessStore } from './session.js';
+import { WORDS } from './words.js';
 
 export type InstallStep = 'project' | 'interfaces' | 'review';
 
@@ -34,6 +40,11 @@ export interface Ui {
   /** The harness the Harness list has selected, or null. */
   readonly pickedHarnessId: string | null;
   pickHarness(id: string | null): void;
+  /**
+   * Replaces the whole world (a real read, or the sample again) and clears what pointed into the old one: the picked harness, the note with its old Undo, the open sheets,
+   * and an open address that names a harness, part, project or run the new world does not hold (it goes to the Harnesses list).
+   */
+  replaceWorld(next: HarnessState): void;
   readonly toast: ToastState | null;
   /** Shows a note at the foot of the window for a few seconds, with one optional action. The time stops while the pointer or the focus is on it. */
   showToast(text: string, action?: { label: string; run: () => void }): void;
@@ -50,6 +61,7 @@ const Context = createContext<Ui | null>(null);
 export const TOAST_MS = 8000;
 
 export function UiProvider({ children }: { children?: ReactNode }): ReactElement {
+  const harnessStore = useHarnessStore();
   const [install, setInstall] = useState<InstallState>({ open: false, projectId: null, harnessId: null, step: 'project', interfaceIds: null });
   const [start, setStart] = useState<StartState>({ open: false, harnessId: null, projectId: null });
   const [picked, setPicked] = useState<string | null>(null);
@@ -78,18 +90,32 @@ export function UiProvider({ children }: { children?: ReactNode }): ReactElement
 
   const ui = useMemo<Ui>(() => ({
     install,
-    openInstall: (request = {}) => setInstall(current => {
-      const projectId = request.projectId === undefined ? current.projectId : request.projectId, harnessId = request.harnessId === undefined ? current.harnessId : request.harnessId;
-      return { open: true, projectId, harnessId, step: request.step ?? (projectId === null ? 'project' : 'interfaces'), interfaceIds: request.interfaceIds ?? null };
-    }),
+    openInstall: (request = {}) => {
+      // On the person's own folders nothing can be installed in this preview: a note says so and no sheet opens.
+      if (harnessStore.getState().real !== undefined) { showToast(WORDS.hint.previewOnly); return; }
+      setInstall(current => {
+        const projectId = request.projectId === undefined ? current.projectId : request.projectId, harnessId = request.harnessId === undefined ? current.harnessId : request.harnessId;
+        return { open: true, projectId, harnessId, step: request.step ?? (projectId === null ? 'project' : 'interfaces'), interfaceIds: request.interfaceIds ?? null };
+      });
+    },
     setInstallStep: step => setInstall(current => ({ ...current, step })),
     closeInstall: () => setInstall(current => ({ ...current, open: false })),
     start,
-    openStart: request => setStart({ open: true, harnessId: request.harnessId, projectId: request.projectId ?? null }),
+    openStart: request => {
+      if (harnessStore.getState().real !== undefined) { showToast(WORDS.hint.previewOnly); return; }
+      setStart({ open: true, harnessId: request.harnessId, projectId: request.projectId ?? null });
+    },
     closeStart: () => setStart(current => ({ ...current, open: false })),
     pickedHarnessId: picked, pickHarness: setPicked,
+    replaceWorld: next => {
+      harnessStore.loadWorld(next);
+      setPicked(null); hideToast();
+      setInstall(current => ({ ...current, open: false, projectId: null, harnessId: null })); setStart(current => ({ ...current, open: false, projectId: null, harnessId: null }));
+      const route = parseRoute(location.hash);
+      if (route !== null && routeGone(harnessStore.getState(), route)) go({ name: 'harnesses' });
+    },
     toast, showToast, hideToast, holdToast, layers, pushLayer,
-  }), [install, start, picked, toast, showToast, hideToast, holdToast, layers, pushLayer]);
+  }), [install, start, picked, toast, showToast, hideToast, holdToast, layers, pushLayer, harnessStore]);
   return <Context value={ui}>{children}</Context>;
 }
 

@@ -6,6 +6,7 @@
  */
 import type { Harness, HarnessState, Install, InstallState, Interface, InterfaceId, Part, PartKind } from './types.js';
 import { PART_KINDS } from './types.js';
+import type { Route } from './route.js';
 
 export type Tone = 'good' | 'warn' | 'bad' | 'quiet';
 
@@ -53,6 +54,24 @@ export function usedByAgents(state: HarnessState, harness: Harness, partId: stri
 
 /** The harnesses that hold a part. */
 export const harnessesHolding = (state: HarnessState, partId: string): Harness[] => state.harnesses.filter(h => h.partIds.includes(partId));
+
+/**
+ * True when an address names something this state does not hold: a harness, a part, a project, a run, a group of runs or an interface that is not there. The screens that name
+ * nothing (Harnesses, Library, Runs, History...) are never gone. A new state replaces the old one, so the address of an old harness must not stay open.
+ */
+export function routeGone(state: HarnessState, route: Route): boolean {
+  switch (route.name) {
+    case 'harnesses': return route.id !== undefined && harnessById(state, route.id) === undefined;
+    case 'builder': return harnessById(state, route.id) === undefined;
+    case 'file': return partById(state, route.partId) === undefined;
+    case 'library': return route.partId !== undefined && partById(state, route.partId) === undefined;
+    case 'projects': return route.id !== undefined && projectById(state, route.id) === undefined;
+    case 'runs': return route.id !== undefined && !state.runs.some(r => r.id === route.id);
+    case 'compare': return !state.runs.some(r => r.groupId === route.group);
+    case 'interfaces': return route.id !== undefined && !state.interfaces.some(i => i.id === route.id);
+    default: return false;
+  }
+}
 
 // ---- Counts and their words
 

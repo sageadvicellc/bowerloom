@@ -10,6 +10,7 @@ import { go } from '../router.js';
 import { useHarnessState } from '../session.js';
 import { HButton, StateDot } from '../parts/controls.js';
 import { WORDS } from '../words.js';
+import { NotChecked } from '../real/NotChecked.js';
 
 export function FileView({ partId }: { partId: string }): ReactElement {
   const state = useHarnessState();
@@ -29,7 +30,7 @@ export function FileView({ partId }: { partId: string }): ReactElement {
       <div className="hx-file">
         <p className="hx-text hx-muted hx-path">{part.path}</p>
         <p className="hx-text hx-muted" data-budget="paragraph">{WORDS.paragraph.fileNote}</p>
-        <div className="hx-usedby"><strong>{WORDS.label.usedBy}</strong><ul className="hx-inline-list">{worksIn(state, part).map(i => <li key={i.id}><StateDot tone="good">{i.name}</StateDot></li>)}</ul></div>
+        <div className="hx-usedby"><strong>{WORDS.label.usedBy}</strong>{state.real === undefined ? <ul className="hx-inline-list">{worksIn(state, part).map(i => <li key={i.id}><StateDot tone="good">{i.name}</StateDot></li>)}</ul> : <NotChecked part={part} />}</div>
         <div className="hx-file-cols">
           <section className="hx-card" aria-labelledby="hx-fm">
             <h2 className="hx-card-title" id="hx-fm">{WORDS.label.frontMatter}</h2>

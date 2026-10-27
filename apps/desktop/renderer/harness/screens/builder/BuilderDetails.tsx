@@ -12,6 +12,7 @@ import { DetailsHead } from '../../Screen.js';
 import { KIND_ICON, Tile } from '../../icons.js';
 import { HButton, StateDot } from '../../parts/controls.js';
 import { KIND_NAME, WORDS, missingKind, namedBy } from '../../words.js';
+import { NotChecked } from '../../real/NotChecked.js';
 
 export interface BuilderDetailsProps {
   state: HarnessState;
@@ -36,7 +37,7 @@ function PartDetails({ state, harness, part, linkingId, onSelect, onViewFile, on
       <p className="hx-text">{part.description}</p>
       <section className="hx-block" aria-labelledby="hx-works-in">
         <h3 className="hx-h3" id="hx-works-in">{WORDS.label.worksIn}</h3>
-        <ul className="hx-inline-list">{worksIn(state, part).map(i => <li key={i.id}><StateDot tone="good">{i.name}</StateDot></li>)}</ul>
+        {state.real === undefined ? <ul className="hx-inline-list">{worksIn(state, part).map(i => <li key={i.id}><StateDot tone="good">{i.name}</StateDot></li>)}</ul> : <NotChecked part={part} />}
       </section>
       <section className="hx-block" aria-labelledby="hx-file">
         <h3 className="hx-h3" id="hx-file">{WORDS.label.file}</h3>

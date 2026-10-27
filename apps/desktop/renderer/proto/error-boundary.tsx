@@ -7,9 +7,14 @@ import type { ErrorInfo, ReactElement, ReactNode } from 'react';
 
 export const CRASH_TITLE = 'Something went wrong. Nothing was saved.';
 
+/** What a reload does, in words that are true for the launch: the sample starts again from the sample data; a launch on the person's own folders starts again and changed none of them. */
+export const crashLine = (real: boolean): string => (real
+  ? 'The prototype stopped drawing this window. Reload to start again. Your folders were not changed.'
+  : 'The prototype stopped drawing this window. Reload to start again from the sample data.');
+
 interface State { readonly error: Error | null }
 
-export class ErrorBoundary extends Component<{ children?: ReactNode }, State> {
+export class ErrorBoundary extends Component<{ children?: ReactNode; real?: boolean }, State> {
   override state: State = { error: null };
 
   static getDerivedStateFromError(error: unknown): State {
@@ -26,7 +31,7 @@ export class ErrorBoundary extends Component<{ children?: ReactNode }, State> {
     return (
       <div className="page" role="alert">
         <h1 tabIndex={-1}>{CRASH_TITLE}</h1>
-        <p>The prototype stopped drawing this window. Reload to start again from the sample data.</p>
+        <p>{crashLine(this.props.real === true)}</p>
         <p><button type="button" className="btn" onClick={() => window.location.reload()}>Reload</button></p>
         <p className="small muted">{error.message}</p>
       </div>

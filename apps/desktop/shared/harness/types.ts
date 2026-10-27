@@ -38,6 +38,8 @@ export interface Part {
   readonly fileText: string;
   /** The interfaces that cannot use this part. */
   readonly cannotUse: readonly InterfaceId[];
+  /** Real mode: what the reader said about the model setting of an agent, for example "Claude Code only". */
+  readonly badge?: string;
   /** False for a part that a harness holds but the Library tabs do not list. */
   readonly inLibrary: boolean;
 }
@@ -138,6 +140,19 @@ export interface ScanSource {
   readonly interfaceName: string;
   readonly harnessName: string;
   readonly partIds: readonly string[];
+  /** The links the files themselves name (real mode): an agent to the skills and connections it uses. Absent in the sample, where a harness made from the source gets one automatic link for each part. */
+  readonly links?: readonly Link[];
+}
+
+/** What the reader of the person's own folders reports, kept beside the world (real mode only). */
+export interface RealNotes {
+  /** Things that were skipped: a file too big, a shortcut that leads away, a folder that would not open. */
+  readonly couldNotRead: number;
+  readonly stoppedEarly: boolean;
+  /** Plain lines about what went wrong or was left out. */
+  readonly notes: readonly string[];
+  /** Texts that were longer than the page is given and were cut. */
+  readonly textsCut: number;
 }
 
 export interface HarnessState {
@@ -154,6 +169,8 @@ export interface HarnessState {
   readonly chosenSourceIds: readonly string[];
   /** A counter for the ids of new things, so the store needs no random number and no clock. */
   readonly nextId: number;
+  /** Set only when the world was read from the person's own folders (`--prototype-v3-real`). */
+  readonly real?: RealNotes;
 }
 
 export type FileState = 'new' | 'update' | 'conflict' | 'same';

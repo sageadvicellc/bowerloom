@@ -6,6 +6,8 @@ import type { PartKind } from './types.js';
 import { PART_KINDS } from './types.js';
 
 export const BASE = '#prototype-v3';
+/** The address of the launch on the person's own folders (`--prototype-v3-real`). The page is told its mode by this address, never by whether a bridge is there. */
+export const REAL_BASE = '#prototype-v3-real';
 
 export type BuilderView = 'graph' | 'list';
 
@@ -26,8 +28,13 @@ export type Route =
 
 export type RouteName = Route['name'];
 
-/** True for an address that belongs to the preview. */
-export const isHarnessHash = (hash: string): boolean => hash === BASE || hash.startsWith(`${BASE}/`);
+const under = (hash: string, base: string): boolean => hash === base || hash.startsWith(`${base}/`);
+/** True for an address that belongs to the preview, in either launch. */
+export const isHarnessHash = (hash: string): boolean => under(hash, BASE) || under(hash, REAL_BASE);
+/** True for the address of the launch on the person's own folders. */
+export const isRealHash = (hash: string): boolean => under(hash, REAL_BASE);
+/** The base an address was opened on: the page keeps it when it moves, so a reload opens the same launch. */
+export const baseOf = (hash: string): string => (isRealHash(hash) ? REAL_BASE : BASE);
 
 /** The three screens before the app: they have no navigation. */
 export const FIRST_RUN: readonly RouteName[] = Object.freeze(['welcome', 'choose', 'read']);
@@ -42,7 +49,7 @@ const isKind = (value: string | undefined): value is PartKind => value !== undef
 /** The route an address names, or null when the address is not the preview's own. An unknown page under the preview's address is the Harness list. */
 export function parseRoute(hash: string): Route | null {
   if (!isHarnessHash(hash)) return null;
-  const [name, a, b] = hash.slice(BASE.length).split('/').filter((part, i) => i > 0 || part !== '');
+  const [name, a, b] = hash.slice(baseOf(hash).length).split('/').filter((part, i) => i > 0 || part !== '');
   const id = clean(a);
   switch (name) {
     case undefined: case '': return { name: 'welcome' };
@@ -67,16 +74,16 @@ export function parseRoute(hash: string): Route | null {
 
 const seg = (value: string): string => encodeURIComponent(value);
 
-/** The address of a route. */
-export function formatRoute(route: Route): string {
+/** The address of a route, on the base the page was opened on. */
+export function formatRoute(route: Route, base: string = BASE): string {
   switch (route.name) {
-    case 'welcome': return BASE;
-    case 'choose': case 'read': case 'history': case 'help': return `${BASE}/${route.name}`;
-    case 'harnesses': case 'projects': case 'runs': case 'interfaces': return route.id === undefined ? `${BASE}/${route.name}` : `${BASE}/${route.name}/${seg(route.id)}`;
-    case 'builder': return `${BASE}/builder/${seg(route.id)}/${route.view}`;
-    case 'file': return `${BASE}/file/${seg(route.partId)}`;
-    case 'library': return route.partId === undefined ? `${BASE}/library/${route.kind}` : `${BASE}/library/${route.kind}/${seg(route.partId)}`;
-    case 'compare': return `${BASE}/compare/${seg(route.group)}`;
+    case 'welcome': return base;
+    case 'choose': case 'read': case 'history': case 'help': return `${base}/${route.name}`;
+    case 'harnesses': case 'projects': case 'runs': case 'interfaces': return route.id === undefined ? `${base}/${route.name}` : `${base}/${route.name}/${seg(route.id)}`;
+    case 'builder': return `${base}/builder/${seg(route.id)}/${route.view}`;
+    case 'file': return `${base}/file/${seg(route.partId)}`;
+    case 'library': return route.partId === undefined ? `${base}/library/${route.kind}` : `${base}/library/${route.kind}/${seg(route.partId)}`;
+    case 'compare': return `${base}/compare/${seg(route.group)}`;
   }
 }
 

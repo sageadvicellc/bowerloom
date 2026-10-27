@@ -1,15 +1,21 @@
 /**
  * S1.3, Read sources. The sources that were kept, each with "Make a harness from this", and two buttons under the list: "Make all 4" and "Not now". Making a harness (`store.createHarnessFromSource`)
  * opens the app on it. "Make all 4" makes one from each. "Not now" opens the app on the sample. Nothing is read or written: the harness is made from the sample world, in memory.
+ * On the person's own folders (the state holds `real`) the list can be long: a count line and the reader's notes come first, and the list scrolls in its own box.
  */
 import { useEffect, useRef } from 'react';
 import type { ReactElement } from 'react';
 import { HButton } from '../parts/controls.js';
+import { Toast } from '../parts/Toast.js';
 import { FirstRunFrame } from '../parts/FirstRunFrame.js';
 import { go } from '../router.js';
 import { useHarnessState, useHarnessStore } from '../session.js';
+import { useUi } from '../ui.js';
 import { FLOW, makeAll, readTitle } from '../words-flow.js';
 import { FirstHead, SourceVia, sourceCountsWords } from './first-run-parts.js';
+import { makeOnce, makeSources } from './read-make.js';
+import { ReadNotes } from '../real/ReadNotes.js';
+import { readCountLine } from '../real/words-real.js';
 import './first-run.css';
 
 export function ReadSources(): ReactElement {
@@ -17,18 +23,20 @@ export function ReadSources(): ReactElement {
   const kept = state.sources.filter(s => state.chosenSourceIds.includes(s.id));
   const primary = useRef<HTMLButtonElement>(null);
   useEffect(() => { primary.current?.focus({ preventScroll: true }); }, []);
-  const makeOne = (id: string): void => { const made = store.createHarnessFromSource(id); go(made === null ? { name: 'harnesses' } : { name: 'harnesses', id: made }); };
-  const makeEvery = (): void => {
-    let first: string | null = null;
-    for (const source of kept) { const made = store.createHarnessFromSource(source.id); if (first === null) first = made; }
-    go(first === null ? { name: 'harnesses' } : { name: 'harnesses', id: first });
-  };
+  const ui = useUi(), making = useRef(false);
+  // A second press while the first is still going does nothing; a make that gave nothing says so and leaves the screen as it is.
+  const made = (id: string): void => go({ name: 'harnesses', id });
+  const none = (): void => ui.showToast(FLOW.hint.nothingMade);
+  const makeOne = (id: string): void => makeOnce(making, () => makeSources(store, [id]), made, none);
+  const makeEvery = (): void => makeOnce(making, () => makeSources(store, kept.map(s => s.id)), made, none);
   return (
     <FirstRunFrame slot="read">
       <FirstHead current={2} />
       <h1 className="hxf-title" tabIndex={-1}>{readTitle(kept.length)}</h1>
       <p className="hxf-line">{FLOW.paragraph.readLine}</p>
-      <ul className="hxf-cards" aria-label={FLOW.label.sources}>
+      {state.real === undefined ? null : <p className="hxr-count" data-count="">{readCountLine(kept.length, kept.reduce((n, s) => n + s.partIds.length, 0))}</p>}
+      {state.real === undefined ? null : <ReadNotes real={state.real} />}
+      <ul className={state.real === undefined ? 'hxf-cards' : 'hxf-cards hxr-scroll'} aria-label={FLOW.label.sources}>
         {kept.map(source => (
           <li key={source.id} className="hxf-card" data-source={source.id}>
             <div className="hxf-card-row">
@@ -46,6 +54,9 @@ export function ReadSources(): ReactElement {
         {kept.length === 0 ? null : <HButton ref={primary} variant="primary" onClick={makeEvery}>{makeAll(kept.length)}</HButton>}
         <HButton onClick={() => go({ name: 'harnesses' })}>{FLOW.label.notNow}</HButton>
       </div>
+      {/* The first screens have no shell, so this one holds its own layer for "Nothing was made." */}
+      <div id="hx-layer" />
+      <Toast />
     </FirstRunFrame>
   );
 }

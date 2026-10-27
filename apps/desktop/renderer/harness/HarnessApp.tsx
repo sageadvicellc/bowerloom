@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { createSampleWorld } from '../../shared/harness/sample.js';
+import type { RealBridge } from '../../shared/real/types.js';
 import { createHarnessStore } from '../../shared/harness/store.js';
 import type { HarnessStore } from '../../shared/harness/store.js';
 import { isFirstRun } from '../../shared/harness/route.js';
@@ -19,6 +20,9 @@ import { Toast } from './parts/Toast.js';
 import { Welcome } from './screens/Welcome.js';
 import { ChooseSources } from './screens/ChooseSources.js';
 import { ReadSources } from './screens/ReadSources.js';
+import { NoBridgeScreen, RealChoose } from './real/RealChoose.js';
+import { chooseKind } from './real/mode.js';
+import { blankRealState } from './real/blank.js';
 import { HarnessList } from './screens/HarnessList.js';
 import { Builder } from './screens/Builder.js';
 import { FileView } from './screens/FileView.js';
@@ -34,10 +38,14 @@ import { StartSheet } from './sheets/StartSheet.js';
 import { WORDS } from './words.js';
 
 /** The screen a route names. */
-function Screens({ route }: { route: Route }): ReactElement {
+function Screens({ route, bridge, realMode }: { route: Route; bridge: RealBridge | null; realMode: boolean }): ReactElement {
   switch (route.name) {
     case 'welcome': return <Welcome />;
-    case 'choose': return <ChooseSources />;
+    case 'choose': {
+      // The mode is the page address's, not the bridge's: a real launch with no bridge says so, and is never the sample.
+      const choose = chooseKind(realMode, bridge);
+      return choose.kind === 'real' ? <RealChoose bridge={choose.bridge} /> : choose.kind === 'no-bridge' ? <NoBridgeScreen /> : <ChooseSources />;
+    }
     case 'read': return <ReadSources />;
     case 'harnesses': return <HarnessList id={route.id ?? null} />;
     case 'builder': return <Builder key={route.id} id={route.id} view={route.view} />;
@@ -63,16 +71,21 @@ function Overlays(): ReactElement {
   );
 }
 
-function Routes(): ReactElement {
+function Routes({ bridge, realMode }: { bridge: RealBridge | null; realMode: boolean }): ReactElement {
   const route = useRoute();
   useEffect(() => { document.title = WORDS.label.appName; }, [route]);
-  if (isFirstRun(route)) return <Screens route={route} />;
-  return <Shell route={route} overlays={<Overlays />}><Screens route={route} /></Shell>;
+  if (isFirstRun(route)) return <Screens route={route} bridge={bridge} realMode={realMode} />;
+  return <Shell route={route} overlays={<Overlays />}><Screens route={route} bridge={bridge} realMode={realMode} /></Shell>;
 }
 
-export function HarnessApp({ store: given }: { store?: HarnessStore }): ReactElement {
+/**
+ * `realMode` is true for the launch on the person's own folders (`--prototype-v3-real`, the address `#prototype-v3-real`); `real` is its read-only bridge, null when the window has none or a partial one.
+ * In real mode Choose reads the person's folders and the world starts empty; with no bridge Choose shows the no-bridge error, and never the sample. Without `realMode`, a bridge makes it real (a caller that gives only the bridge).
+ */
+export function HarnessApp({ store: given, real = null, realMode = real !== null }: { store?: HarnessStore; real?: RealBridge | null; realMode?: boolean }): ReactElement {
   // The world is made once, from the sample, dated from the clock now (the runs started 12 minutes ago). Runs that are running at the start finish by themselves after about 15 seconds.
-  const [store] = useState(() => given ?? createHarnessStore({ initial: createSampleWorld(realNow()), now: realNow, finishRunning: true }));
+  // On the person's own folders it starts empty, and the first read replaces it.
+  const [store] = useState(() => given ?? createHarnessStore({ initial: realMode ? blankRealState(realNow()) : createSampleWorld(realNow()), now: realNow, finishRunning: true }));
   useEffect(() => () => store.dispose(), [store]);
-  return <HarnessProvider store={store}><UiProvider><Routes /></UiProvider></HarnessProvider>;
+  return <HarnessProvider store={store}><UiProvider><Routes bridge={real} realMode={realMode} /></UiProvider></HarnessProvider>;
 }

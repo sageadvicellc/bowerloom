@@ -54,6 +54,21 @@ test('Welcome says what the design says, has no navigation, and "Find my files" 
   await expect(p.getByRole('heading', { level: 1, name: 'Found 4 sources' })).toBeVisible();
 });
 
+test('the sample window has no bridge at all: no page global, no preload on the window, no preload script on the session', async () => {
+  const p = page();
+  const globals = await p.evaluate(() => [typeof (window as unknown as { bowerloomReal?: unknown }).bowerloomReal, typeof (window as unknown as { bowerloom?: unknown }).bowerloom]);
+  expect(globals).toEqual(['undefined', 'undefined']);
+  const main = await h.app.evaluate(({ BrowserWindow, session }) => {
+    const windows = BrowserWindow.getAllWindows(), contents = windows[0]!.webContents as unknown as { getLastWebPreferences?: () => { preload?: string } };
+    return { windows: windows.length, hasApi: typeof contents.getLastWebPreferences === 'function', preload: contents.getLastWebPreferences?.().preload ?? null, sessionPreloads: session.defaultSession.getPreloads(), sessionScripts: session.defaultSession.getPreloadScripts().length };
+  });
+  expect(main.windows).toBe(1);
+  expect(main.hasApi, 'the window can report the settings it was made with').toBe(true);
+  expect(main.preload).toBeNull();
+  expect(main.sessionPreloads).toEqual([]);
+  expect(main.sessionScripts).toBe(0);
+});
+
 test('Choose sources looks for a moment (a bar that fills), then shows four ticked sources with their counts', async () => {
   const p = page();
   await p.emulateMedia({ reducedMotion: 'no-preference' });
