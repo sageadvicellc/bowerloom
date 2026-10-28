@@ -6,7 +6,7 @@ import path from 'node:path';
 import { applyTeamAdoption, loadTeam, planTeamAdoption } from '../../../dist/packages/team/src/index.js';
 import { CREW_RELAY, CREW_YAML, cleanup, emptyTarget, makeCrew, snapshot } from './fixture.mjs';
 
-const ACK = ['owner-permissions'];
+const ACK = ['owner-permissions', 'budget-reserve', 'required-capabilities', 'paid-fallback'];
 
 test.after(cleanup);
 

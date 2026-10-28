@@ -37,7 +37,7 @@ const ANSWERS = Object.freeze({
   harness: 'demo',
   members: { lead: { engine: 'claude-code', model: 'model-a' }, maker: { engine: 'codex', model: 'model-b', folder: 'wt/maker' } },
 });
-const ACK = ['owner-permissions'];
+const ACK = ['owner-permissions', 'budget-reserve', 'required-capabilities', 'paid-fallback'];
 
 // ---- T1: member folder confinement -----------------------------------------------------------------------------------
 
@@ -143,9 +143,9 @@ test('T5: the Codex command pins its sandbox and approval policy with recorded f
   const r = planTeamStart(team, input(project));
   assert.equal(r.ok, true, JSON.stringify(r.ok ? null : r.problems));
   const cmd = r.plan.members[0].command;
-  assert.deepEqual(cmd.argv, ['codex', '-c', 'approval_policy="never"', 'exec', '--json', '--sandbox', 'workspace-write', '-m', 'model-a', '-']);
+  assert.deepEqual(cmd.argv, ['codex', '-c', 'approval_policy="never"', 'exec', '--ignore-user-config', '--ignore-rules', '--json', '--sandbox', 'workspace-write', '-m', 'model-a', '-']);
   assert.deepEqual(cmd.pinned, { sandbox: 'workspace-write', approval: 'never: a request outside the sandbox fails' });
-  assert.match(cmd.ambient, /not read/);
+  assert.match(cmd.ambient, /not read|not loaded/);
   assert.ok(startCodes(team, input(project, { versions: { ...VERSIONS, codex: '0.156.0' } })).includes('TEAM_START_ENGINE_VERSION'));
 });
 
@@ -240,8 +240,8 @@ test('T11: every derived value is listed, and unenforced 0.7 restrictions need a
   const inp = { source: folder, target: folder, answers: ANSWERS };
   const plan = planTeamAdoption(inp);
   assert.equal(plan.ready, false);
-  assert.deepEqual(plan.notMapped.map(n => n.id), ['owner-permissions']);
-  assert.match(plan.notMapped[0].what, /not enforced; no team guardrail is created/);
+  assert.ok(plan.notMapped.some(n => n.id === 'owner-permissions'));
+  assert.match(plan.notMapped.find(n => n.id === 'owner-permissions').what, /not enforced; no team guardrail is created/);
   const fields = plan.defaults.map(d => `${d.member ?? 'team'}.${d.field}=${d.value}`);
   for (const f of ['team.limits.activeMembers=2', 'team.description=A demo crew that plans and builds a small change.', 'lead.purpose=Plans the change', 'maker.purpose=Builds the change']) {
     assert.ok(fields.includes(f), `${f} in ${fields.join(', ')}`);

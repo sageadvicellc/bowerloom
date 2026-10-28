@@ -4,6 +4,7 @@
  * was withheld. A capped problem list ends with a line that says how many more there are.
  */
 import { scanSecrets, type Problem } from '../../harness-definition/src/index.js';
+import { BAD_TEXT, BAD_TEXT_ALL } from './text.js';
 import { TEAM_LIMITS } from './words.js';
 
 /** A problem, with the cause of a failed file operation when there was one. */
@@ -15,7 +16,7 @@ const WITHHELD = 'A value in this message looks like a secret, so the message wa
 
 /** True when a text holds a value that the secret scan finds, or a control or format character. */
 export function unsafeText(text: string): boolean {
-  if (/[\p{Cc}\p{Cf}]/u.test(text.replace(/\n/g, ''))) return true;
+  if (BAD_TEXT.test(text.replace(/\n/g, ''))) return true;
   return scanSecrets([{ path: 'message.txt', bytes: Buffer.from(text, 'utf8') }]).length > 0;
 }
 
@@ -26,7 +27,7 @@ export function shown(text: string): string | null {
 
 /** Plain text: control and format characters removed, and spaces collapsed. */
 export function plain(text: string): string {
-  return text.replace(/[\p{Cc}\p{Cf}]/gu, ' ').replace(/\s+/g, ' ').trim();
+  return text.replace(BAD_TEXT_ALL, ' ').replace(/\s+/g, ' ').trim();
 }
 
 /** Each problem with its message and path checked, capped at the problem limit with a line that counts the rest. */

@@ -26,7 +26,7 @@ Decision 7 keeps the relay bus out of 0.8. Nothing in this package opens a socke
 - `routes` in `team.json` points at the relay map. Its only value is `"maps/relay.json"`. A map with no pointer is refused, so a map is never ignored without notice.
 - The loader also reads the 0.7 entries `team.yaml`, `agents/`, `prompts/`, `skills/`, `assets/`, and `maps/vines.json`. It scans them, and the revision covers them. Any other name is refused, so a typo is not lost.
 - A file name must be plain: letters, digits, and `. _ @ : -`, at most 64 characters, and no secret shape. Another name is refused and never shown (`TEAM_FILE_NAME`).
-- Every file is read through the projection's safe reader: no link, one link, owned by you, at most 1 MiB. The folder holds at most 1024 files, and at most 8 folders deep.
+- Every file is read through the projection's safe reader: no link, one link, owned by you, at most 1 MiB. The folder holds at most 1024 files and 32 MiB, and at most 8 folders deep.
 - A missing folder (`TEAM_FILE_MISSING`), a folder you cannot read (`TEAM_FILE_UNREADABLE`), and a link (`TEAM_FILE_UNSAFE`) are told apart.
 
 ## team.json
@@ -54,7 +54,7 @@ Rules:
 
 - A member uses the team harness unless it names its own (decision 10).
 - `model` is one model name. It starts with a letter or digit, then holds up to 255 letters, digits, or `. _ : / @ + -`. So it is never read as a flag. A 0.7 class word (`economy`, `standard`, `reasoning`) is refused (decision 5).
-- One-line text refuses control characters, C1 characters, and format characters (Unicode Cf).
+- One-line text refuses these characters: control characters, C1 characters, format characters (Unicode Cf), surrogates, private-use characters, U+2028, U+2029, and the variation selectors U+FE00 to U+FE0F and U+E0100 to U+E01EF.
 - `folder` is `.`, a path inside the project, or `../<name>`, one folder beside the project. Nothing deeper is allowed beside the project.
 - A `reports_to` chain must reach `human`. A loop is refused.
 - An `x-<name>` key keeps other content, at the top and in a member. An `x-<engine>` key is refused, because a team holds no engine-specific syntax. A team guardrail rule or sandbox holds no `x-` key at all (`TEAM_GUARDRAIL_BLOCK`). Projection writes an engine block as it stands.
@@ -72,8 +72,13 @@ Rules:
 
 - **Bypass and widening.** The scan reads every key and string of every team file, `x-` blocks too.
   - The bypass words are found anywhere in a string, with case and punctuation removed: `bypassPermissions`, `--dangerously-skip-permissions`, and `--dangerously-bypass-approvals-and-sandbox`.
-  - These flags and words are found as one token: `--yolo`, `--auto`, `--full-auto`, `--auto-approve`, `--allow-all`, `--trust-all-tools`, `danger-full-access`, and `acceptEdits`.
-  - These pairs are found in text, as a key and its value, and as two neighbouring strings of a list: `approval_policy never`, `--ask-for-approval never`, `--permission-mode auto`, `defaultMode acceptEdits`, and `--sandbox danger-full-access`.
+  - These flags and words are found as one token: `--yolo`, `--auto`, `--full-auto`, `--auto-approve`, `--allow-all`, `--dangerously-allow-all`, `--trust-all-tools`, `--no-sandbox`, `--enable-auto-mode`, `yolo`, `danger-full-access`, and `acceptEdits`. `--allowedTools Bash` and `Bash(*)` are found too.
+  - These pairs are found: `approval_policy never`, `-a never`, `--ask-for-approval never`, `--approval-mode yolo`, `--permission-mode auto`, `defaultMode acceptEdits`, `--sandbox danger-full-access`, and `network_access true`.
+  - A pair is found in these places:
+    - in text, and as a key with its value or any value below it
+    - as sibling values of one object, and as neighbouring strings of a list
+  - The words of a pair can be split across strings.
+  - Before the match, `\uXXXX` escapes and `%XX` codes are decoded, and zero-width characters count as spaces.
   - Prose such as "we accept edits" is two tokens, and is not a flag.
 - **No argv from an `x-` block.** No later consumer can build a command line, or any engine argument, from an `x-` block of a team. The scan cannot list every widening form.
 - **Secrets.** The scan is the contract's `scanSecrets`, over every file the loader reads. File names are scanned too.
@@ -97,15 +102,25 @@ Rules:
   - `limits.activeMembers`, from the 0.7 `maxActiveWorkers`
 - Each answer is checked at once, even while other questions are open. An answered folder goes through the same confinement as the start plan.
 - `role`, `prompt`, `skills`, `modelClass`, and `permissions` of each owner stay in the member's `x-crew-v0.7` block. The tasks, with their outputs and acceptance, and the other 0.7 fields stay in the team's `x-crew-v0.7` block.
-- `plan.notMapped` says that the owner permissions and scope are kept in `x-crew-v0.7`, are not enforced, and become no team guardrail.
-- `plan.notCarried` lists each entry adoption does not copy, with why: a name outside the 0.7 entries, a link, a name that is not plain, a file it cannot read, or a folder too deep.
+- `plan.notMapped` lists the 0.7 fields that keep no meaning. Each stays in `x-crew-v0.7`:
+  - the owner permissions and scope, which are not enforced and become no team guardrail
+  - `budget.reservePercent`, `requiredCapabilities`, and `budget.paidFallback`
+- `plan.notCarried` lists each entry adoption does not copy, with why:
+  - a name outside the 0.7 entries, or a 0.8 `team.json` or `x-crew-v0.7/`
+  - a link, or a name that is not plain
+  - a file it cannot read, or a folder too deep
+
+  The copy of a folder is one level deeper, so a source folder deeper than 7 is not copied.
+- If `.bowerloom` or `.bowerloom/teams` in the project is a link, the plan refuses (`TEAM_ADOPT_TARGET_LINK`).
+- The folder after adoption must fit the loader's caps: 1024 files and 32 MiB (`TEAM_TOO_LARGE`).
+- If the target holds a `team.json` or `x-crew-v0.7/` from an adoption that stopped part way, `TEAM_ADOPT_EXISTS` names it and says to remove it by hand.
 - The plan is ready only after `acknowledged` names every `notCarried` and `notMapped` id.
 - In place, an entry in `notCarried` stays in the folder and stops the team from loading. So the plan refuses (`TEAM_ADOPT_IN_PLACE_BLOCKED`).
 - In place, the folder keeps two copies of each 0.7 entry: the original, and the copy under `x-crew-v0.7/`.
 
 `applyTeamAdoption(input, revision)` plans again. If the revision is the same and the plan is ready, it writes. It creates files only, never replaces one, and writes `team.json` last:
 
-- `x-crew-v0.7/team.yaml` and every 0.7 entry under `x-crew-v0.7/`, byte for byte.
+- `x-crew-v0.7/team.yaml` and every 0.7 entry under `x-crew-v0.7/`, byte for byte. A copy keeps the execute bit of its 0.7 file.
 - `maps/relay.json`, a copy, or a new map after a rename. If the target is the source folder, the 0.7 map is already there.
 - `team.json`.
 
@@ -120,7 +135,7 @@ On any failure it removes what it wrote:
 - A file or folder that cleanup cannot remove is listed as `TEAM_ADOPT_LEFT_BEHIND`, with its path.
 - If nothing was left behind, the message says that adoption removed its files. Otherwise it does not say so.
 
-Adoption takes no project lock and keeps no journal.
+Adoption records each folder it makes at once, so cleanup removes it too. Adoption takes no project lock and keeps no journal.
 
 ## The start plan
 
@@ -133,16 +148,23 @@ Adoption takes no project lock and keeps no journal.
 
 `plan.report` has one delivery line per member per mode that the member's engine offers, each with its result word. The chosen mode is marked (check 14). `plan.omitted` lists the members that a subset plan leaves out. A person approves `plan.revision`. `startsAuthorized` is always false.
 
-**Trust.** `planTeamStart` trusts its caller for the harness entries and the engine versions. It must never be driven by a message from a relay.
+**Trust.** `planTeamStart` trusts its caller for the harness entries and the engine versions. It must never be driven by a message from a relay. A folder can change between the plan and the start. So a launcher must run `confineFolder` again on each member folder, just before it starts the member.
 
 - **No bus.** `plan.relay` says `bus: "absent"`, `sockets: 0`, and `processes: 0`, and lists each route as moved by a person (check 13). Each delivery line is `absent`, and names the mode and the result word that the section 6 table gives with a bus.
 - **Folders.** Each folder is checked on disk from the real project folder down.
   - A link at any part is refused (`TEAM_FOLDER_LINK`).
-  - These are refused as `TEAM_FOLDER_OUTSIDE`: the home folder, a folder that holds it, and a folder in a user engine config folder. Examples are `~/.claude`, `~/.codex`, `~/.config`, `~/.pi`, and `~/.dsh`.
+  - These are refused as `TEAM_FOLDER_OUTSIDE`:
+    - the home folder, and a folder that holds it
+    - a folder in one of the engine config folders: `~/.claude`, `~/.codex`, `~/.config`, `~/.pi`, `~/.dsh`, `~/.opencode`, `~/.agents`, `~/.bowerloom`, `~/.deepseek`, `~/.local/share`, `~/.gemini`, `~/.cursor`
+    - a folder in one of the key and system folders: `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/Library`
+    - a folder in, or holding, the folder that `XDG_CONFIG_HOME`, `CODEX_HOME`, or `CLAUDE_CONFIG_DIR` names. The plan reads these names from `env`, and never shows their values.
+  - The project's `.git`, `.claude`, `.codex`, and `.bowerloom`, and the folders in them, are refused as `TEAM_FOLDER_RESERVED`.
+  - Paths are compared by their native real path, in Unicode NFC, with letter case folded. So `~/.CLAUDE` is `~/.claude`.
   - A missing folder (`TEAM_START_FOLDER`) and a folder you cannot read (`TEAM_FOLDER_UNREADABLE`) are told apart.
 - **Commands.** Every flag comes from a record: the Claude Code and Codex adapters in this repository, the project-sync writer, or the research notes. Each command pins the sandbox and the approval behaviour. `command.pinned` says how, and `command.ambient` names the engine config that still loads unread.
   - Claude Code does not start unattended yet (`TEAM_START_UNPINNED`). User-level Claude Code config loads and can allow requests that the harness does not. No record names the value form of `--setting-sources` that leaves them out, and the step 5 live check records the flag. The table keeps the recorded command for that day: `claude --print --model <model> --output-format json --permission-mode dontAsk --permission-prompts none --settings {"crossSessionInbound":"<inbox>","sandbox":{"enabled":true,"allowUnsandboxedCommands":false}}`, version 2.1.259 or later.
-  - Codex, version 0.157.0 or later: `codex -c approval_policy="never" exec --json --sandbox workspace-write -m <model> -`. In `codex exec`, no request can ask a person. So `never` makes a request outside the sandbox fail.
+  - Codex, version 0.157.0 or later: `codex -c approval_policy="never" exec --ignore-user-config --ignore-rules --json --sandbox workspace-write -m <model> -`. In `codex exec`, no request can ask a person. So `never` makes a request outside the sandbox fail. The two ignore flags keep the user config file and rules files out.
+  - No record says that `--ignore-rules` keeps the project's `.codex/rules/bowerloom.rules`, where the shell guardrails are projected. So if a member's Codex guardrails write a rule there, its unattended start is refused (`TEAM_START_UNPINNED`). The step 5 live check records what `--ignore-rules` covers.
   - A harness can ask for no sandbox. An unattended run is still sandboxed, and this can block work that needs the network.
   - A manual member has no command.
 - **Environment names.** The `${NAME}` references in the member harness's MCP servers and hooks for that engine, and the names Bowerloom sets, such as `OPENCODE_SERVER_PASSWORD`. Never a value.
@@ -176,4 +198,4 @@ A `manual` member starts with a person present, who sees each approval. So the a
 
 - Team guardrails reuse `checkGuardrails` and `Checker` from `harness-definition/src/schema.ts`, which the contract index does not export.
 - The relay map reuses the 0.7 schema check in `authoring/src/contracts.ts`.
-- The safe file reads and writes reuse `project-sync/src/portable-files.ts`.
+- The safe file reads and writes reuse `project-sync/src/portable-files.ts`, and its folder maker.

@@ -48,6 +48,11 @@ export interface StartInput {
   readonly members?: readonly string[];
   /** The home folder, for folder confinement (ruling T1). Default: the user's home folder. */
   readonly home?: string;
+  /**
+   * The environment to read `XDG_CONFIG_HOME`, `CODEX_HOME`, and `CLAUDE_CONFIG_DIR` from (ruling V10). Only those names
+   * are read, and their values are never shown. Default: this process's environment.
+   */
+  readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
 export interface StartCommand {
@@ -187,7 +192,7 @@ function planMember(team: Team, m: TeamMember, input: StartInput, projectDir: st
   const version = Object.hasOwn(input.versions ?? {}, m.engine) ? input.versions[m.engine] : undefined;
   if (!isVersion(version)) fail('TEAM_START_ENGINE_VERSION', `No version of ${m.engine} is recorded for the member ${who}. The plan names the version of each engine.`);
 
-  const place = confineFolder(projectDir, m.folder, { mustExist: true, ...(input.home !== undefined ? { home: input.home } : {}) });
+  const place = confineFolder(projectDir, m.folder, { mustExist: true, ...(input.home !== undefined ? { home: input.home } : {}), ...(input.env !== undefined ? { env: input.env } : {}) });
   if (!place.ok) fail(place.code, `The folder of the member ${who} ${place.message}.`);
   const folder = place.ok ? place.abs : resolve(projectDir, m.folder);
 
@@ -222,6 +227,13 @@ function planMember(team: Team, m: TeamMember, input: StartInput, projectDir: st
     const asks = approvalNeeds(m.engine, rules, harnessEntries?.rules ?? []);
     if (asks.length) {
       fail('TEAM_START_APPROVAL_UNREACHABLE', `The member ${who} runs unattended on ${m.engine} and needs approvals that no person can give there: ${asks.join('; ')}. An unattended run brings no approval to a person in 0.8 (decision 9). Start the member manual, or remove the ask.`);
+    }
+    if (m.engine === 'codex' && m.start === 'headless' && row.supported && row.argv.includes('--ignore-rules')) {
+      // --ignore-rules keeps user rules files out. No record says whether it also drops the project's
+      // .codex/rules/bowerloom.rules, where the shell guardrails are projected. So a member whose Codex form writes a
+      // rule there does not start unattended (verification ruling V4, read fail-closed).
+      const prefix = [rules, harnessEntries?.rules ?? []].flatMap(r => (translateGuardrails('codex', { rules: r, sandbox: [] }).form as { prefixRules?: readonly unknown[] }).prefixRules ?? []);
+      if (prefix.length) fail('TEAM_START_UNPINNED', `The member ${who} runs codex exec with --ignore-rules, and its guardrails write ${prefix.length} rule${prefix.length === 1 ? '' : 's'} to .codex/rules/bowerloom.rules. No record says that --ignore-rules keeps a project rules file, so the rules could be dropped. Start it manual until the step 5 live check records what --ignore-rules covers.`);
     }
     if (m.engine === 'codex' && m.start === 'headless' && (harnessEntries?.mcp ?? []).some(s => appliesTo(s, 'codex'))) {
       fail('TEAM_START_APPROVAL_UNREACHABLE', `The member ${who} runs codex exec with MCP servers. Codex cancels MCP calls under codex exec even with approval_policy "never", and only a bypass worked (open issue 24135). Start the member manual, or give its harness no MCP server for Codex.`);

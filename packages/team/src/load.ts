@@ -60,6 +60,7 @@ export function loadTeam(folder: string, options: TeamOptions = {}): TeamLoadRes
 /** Reads a team folder: checked names, real folders, and a bound on files and depth. */
 export class TeamReader {
   private count = 0;
+  private bytes = 0;
   constructor(readonly root: string, readonly problems: Problem[]) {}
 
   /** The plain names in a folder, in byte order. A name that is not plain is a problem and is skipped. */
@@ -91,6 +92,8 @@ export class TeamReader {
     try {
       const r = readAbs(abs, rel);
       if (!r) throw new ReadFault('TEAM_FILE_MISSING', rel, `${rel} went away while it was read.`);
+      this.bytes += r.bytes.length;
+      if (this.bytes > TEAM_LIMITS.totalBytes) throw new ReadFault('TEAM_TOO_LARGE', rel, `The team folder holds more than ${TEAM_LIMITS.totalBytes} bytes.`);
       return { path: rel, bytes: r.bytes };
     } catch (error) {
       if (!(error instanceof PortableRefusal)) throw error;

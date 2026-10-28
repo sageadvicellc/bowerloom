@@ -31,6 +31,7 @@ import { confineFolder } from './folders.js';
 import { loadTeam, plainName } from './load.js';
 import { finish, plain, shown, type TeamProblem } from './messages.js';
 import { normalizeFolder } from './scan.js';
+import { BAD_TEXT } from './text.js';
 import { MODEL_NAME } from './schema.js';
 import type { TeamFile } from './types.js';
 import { scanFiles, validateTeam } from './validate.js';
@@ -70,6 +71,8 @@ export interface AdoptionInput {
   readonly acknowledged?: readonly string[];
   /** The home folder, for folder confinement (ruling T1). Default: the user's home folder. */
   readonly home?: string;
+  /** The environment to read the config folder names from (ruling V10). Only those names are read, never shown. */
+  readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
 /** A question for a person. A plan is not ready while one is open. */
@@ -105,6 +108,8 @@ export interface AdoptionWrite {
   readonly from?: string;
   readonly sha256: string;
   readonly bytes: number;
+  /** True when the 0.7 file has an execute bit. The copy keeps it (ruling V11). */
+  readonly executable: boolean;
 }
 export interface AdoptionPlan {
   readonly ready: boolean;
@@ -129,9 +134,13 @@ export interface AdoptionPlan {
 export type AdoptionApplyResult =
   | { readonly ok: true; readonly written: readonly string[] }
   | { readonly ok: false; readonly problems: readonly TeamProblem[] };
-/** Test hooks. `beforeApply` runs after the revision check; `afterWrite` runs after each file is written. */
+/**
+ * Test hooks. `beforeApply` runs after the revision check, `afterMkdir` right after each folder is made and recorded,
+ * and `afterWrite` after each file is written.
+ */
 export interface AdoptionHooks {
   readonly beforeApply?: () => void;
+  readonly afterMkdir?: (path: string) => void;
   readonly afterWrite?: (path: string) => void;
 }
 
@@ -148,7 +157,13 @@ const PERMISSIONS_NOTICE: AdoptionNotice = {
   what: 'owner permissions and scope are kept in x-crew-v0.7, not enforced; no team guardrail is created',
   reason: 'The 0.7 permissions and scope are path and command effects with no neutral guardrail form. Add team guardrails by hand if the team needs them.',
 };
-const fits = (text: string) => text !== '' && [...text].length <= 1024 && !/[\p{Cc}\p{Cf}]/u.test(text);
+/** 0.7 fields with no 0.8 meaning (ruling V8). Each is kept in the team's x-crew-v0.7 block. */
+const RECORD_ONLY: readonly AdoptionNotice[] = [
+  { id: 'budget-reserve', what: 'budget.reservePercent is kept in x-crew-v0.7; 0.8 keeps no capacity reserve', reason: 'A 0.8 team caps active members, messages, and cost (section 7). It has no reserve.' },
+  { id: 'required-capabilities', what: 'requiredCapabilities is kept in x-crew-v0.7, not checked', reason: 'The 0.8 team names no capabilities. Each member\'s harness and guardrails decide what it can do.' },
+  { id: 'paid-fallback', what: 'budget.paidFallback is kept in x-crew-v0.7; no cost cap is set from it', reason: 'A 0.8 team has limits.costUsd, which adoption does not set. Set it by hand if the team needs a cap.' },
+];
+const fits = (text: string) => text !== '' && [...text].length <= 1024 && !BAD_TEXT.test(text);
 const errno = (e: unknown) => (e as NodeJS.ErrnoException).code;
 type Add = (code: string, message: string, path?: string) => void;
 
@@ -156,7 +171,7 @@ interface SourceRead {
   readonly yaml: Buffer | null;
   readonly relay: Buffer | null;
   /** 0.7 entries to copy under x-crew-v0.7, by their path in the source. */
-  readonly carried: readonly { readonly rel: string; readonly bytes: Buffer }[];
+  readonly carried: readonly { readonly rel: string; readonly bytes: Buffer; readonly executable: boolean }[];
   readonly notCarried: readonly AdoptionNotice[];
 }
 interface Built { readonly plan: AdoptionPlan; readonly bytes: ReadonlyMap<string, Buffer>; readonly source: string; readonly target: string }
@@ -194,6 +209,11 @@ function build(input: AdoptionInput): Built {
     return finishPlan();
   }
   const project = dirname(dirname(dirname(target)));
+  for (const rel of ['.bowerloom', '.bowerloom/teams']) {
+    let st: fs.Stats | null = null;
+    try { st = fs.lstatSync(join(project, rel)); } catch { /* absent: the target check reports it */ }
+    if (st && (st.isSymbolicLink() || !st.isDirectory())) add('TEAM_ADOPT_TARGET_LINK', `${rel} in the project is a link or not a folder. Adoption writes only through real folders (ruling V9).`, rel);
+  }
   const same = sameFolder(source, target);
 
   // The 0.7 folder.
@@ -224,9 +244,11 @@ function build(input: AdoptionInput): Built {
   // Answers (ruling T17): every answered field is checked now.
   const answers: AdoptionAnswers = input.answers && typeof input.answers === 'object' ? input.answers : {};
   const memberAnswers: Readonly<Record<string, MemberAnswer>> = answers.members && typeof answers.members === 'object' ? answers.members : {};
-  checkAnswers(answers, memberAnswers, crew, project, input.home, add);
+  checkAnswers(answers, memberAnswers, crew, project, { ...(input.home !== undefined ? { home: input.home } : {}), ...(input.env !== undefined ? { env: input.env } : {}) }, add);
+  if (ownerRestrictions(crew)) notMapped.push(PERMISSIONS_NOTICE);
+  notMapped.push(...RECORD_ONLY);
   for (const id of acknowledged) {
-    if (![...notCarried, ...(ownerRestrictions(crew) ? [PERMISSIONS_NOTICE] : [])].some(n => n.id === id)) {
+    if (![...notCarried, ...notMapped].some(n => n.id === id)) {
       add('TEAM_ADOPT_ANSWER', `acknowledged names ${safeName(id)}, which is not a notCarried or notMapped item of this plan.`, 'acknowledged');
     }
   }
@@ -243,14 +265,15 @@ function build(input: AdoptionInput): Built {
     else defaults.push({ member: null, field: 'description', value: shown(description) ?? '(a value not shown)', reason: 'The 0.7 description, on one line.' });
   }
   defaults.push({ member: null, field: 'limits.activeMembers', value: String(crew.budget.maxActiveWorkers), reason: 'The 0.7 budget.maxActiveWorkers.' });
-  if (ownerRestrictions(crew)) notMapped.push(PERMISSIONS_NOTICE);
 
   const idOf = new Map<string, string>();
   const members: Record<string, JsonValue>[] = [];
   for (const owner of crew.owners) {
     const a: MemberAnswer = memberAnswers[owner.id] ?? {};
     const name = safeName(owner.id);
-    const role = shown(plain(owner.role).slice(0, 120));
+    // Ruling V2: scan the whole role before it is cut, so a secret across the cut is never shown in part.
+    const fullRole = shown(plain(owner.role));
+    const role = fullRole === null ? null : fullRole.slice(0, 120);
     const about = role ? ` (${role})` : '';
     idOf.set(owner.id, a.id ?? owner.id);
     if (a.id === undefined && !isId(owner.id)) {
@@ -268,7 +291,7 @@ function build(input: AdoptionInput): Built {
       if (given === undefined) { chosen[field] = value; defaults.push({ member: owner.id, field, value, reason }); } else chosen[field] = given;
     }
     if (a.folder === undefined) {
-      const place = confineFolder(project, '.', { mustExist: false, ...(input.home !== undefined ? { home: input.home } : {}) });
+      const place = confineFolder(project, '.', { mustExist: false, ...(input.home !== undefined ? { home: input.home } : {}), ...(input.env !== undefined ? { env: input.env } : {}) });
       if (!place.ok) add(place.code, `The default folder of ${name}, the project folder, ${place.message}. Answer a folder for it.`, 'answers');
     }
     const purpose = a.purpose ?? plain(owner.role);
@@ -314,12 +337,12 @@ function build(input: AdoptionInput): Built {
     [CREW_BLOCK]: { format, id: crew.id, description: crewDescription, ...rest },
   };
   const teamBytes = Buffer.from(JSON.stringify(teamJson, null, 2) + '\n', 'utf8');
-  const write = (path: string, data: Buffer, kind: 'new' | 'copy', from?: string) => {
+  const write = (path: string, data: Buffer, kind: 'new' | 'copy', from?: string, executable = false) => {
     bytes.set(path, data);
-    writes.push({ path, kind, ...(from !== undefined ? { from } : {}), sha256: sha(data), bytes: data.length });
+    writes.push({ path, kind, ...(from !== undefined ? { from } : {}), sha256: sha(data), bytes: data.length, executable });
   };
   write(`${CREW_BLOCK}/team.yaml`, yaml, 'copy', 'team.yaml');
-  for (const c of read.carried) write(`${CREW_BLOCK}/${c.rel}`, c.bytes, 'copy', c.rel);
+  for (const c of read.carried) write(`${CREW_BLOCK}/${c.rel}`, c.bytes, 'copy', c.rel, c.executable);
   if (relay && newRelay) { write(`${CREW_BLOCK}/${RELAY_MAP_PATH}`, relay, 'copy', RELAY_MAP_PATH); write(RELAY_MAP_PATH, newRelay, 'new'); }
   else if (relay && !same) write(RELAY_MAP_PATH, relay, 'copy', RELAY_MAP_PATH);
   write('team.json', teamBytes, 'new');
@@ -327,6 +350,13 @@ function build(input: AdoptionInput): Built {
   // What the target folder holds after apply, as the loader reads it (ruling T10).
   const files: DefinitionFile[] = writes.map(w => ({ path: w.path, bytes: bytes.get(w.path)! }));
   if (same) files.push(...sourceFiles);
+  // The same caps as the loader, on what the folder holds after apply, so a ready plan never fails verify (ruling V11).
+  const total = files.reduce((n, f) => n + f.bytes.length, 0);
+  if (files.length > TEAM_LIMITS.files || total > TEAM_LIMITS.totalBytes) {
+    add('TEAM_TOO_LARGE', `After adoption the team folder would hold ${files.length} files and ${total} bytes. The loader reads at most ${TEAM_LIMITS.files} files and ${TEAM_LIMITS.totalBytes} bytes.`, '.');
+    writes.splice(0);
+    return finishPlan();
+  }
   const checked = validateTeam(files, { folderName: basename(target) });
   if (checked.ok) { team = checked.team.file; teamRevision = checked.team.revision; } else { problems.push(...checked.problems); writes.splice(0); }
   return finishPlan();
@@ -344,7 +374,7 @@ function parseRelay(relay: Buffer): { participants: string[]; routes: { fromOwne
 }
 
 /** Checks each answered field at once, with the codes the loader uses (ruling T17). */
-function checkAnswers(answers: AdoptionAnswers, members: Readonly<Record<string, MemberAnswer>>, crew: CrewDefinition, project: string, home: string | undefined, add: Add): void {
+function checkAnswers(answers: AdoptionAnswers, members: Readonly<Record<string, MemberAnswer>>, crew: CrewDefinition, project: string, where: { readonly home?: string; readonly env?: Readonly<Record<string, string | undefined>> }, add: Add): void {
   const at = 'answers';
   if (typeof answers !== 'object' || Object.keys(answers).some(k => !ANSWER_KEYS.includes(k))) add('TEAM_ADOPT_ANSWER', `The answers hold a field that is not known. The fields are ${ANSWER_KEYS.join(', ')}.`, at);
   if (answers.id !== undefined && !isId(answers.id)) add('TEAM_INVALID_ID', 'The answered team id must be lowercase letters, digits, and single hyphens.', at);
@@ -370,7 +400,7 @@ function checkAnswers(answers: AdoptionAnswers, members: Readonly<Record<string,
     if (a.folder !== undefined) {
       if (normalizeFolder(a.folder) === null) add('TEAM_FOLDER_INVALID', `The folder for ${who} must be inside the project, or exactly one level beside it as ../<name>.`, at);
       else {
-        const place = confineFolder(project, a.folder, { mustExist: false, ...(home !== undefined ? { home } : {}) });
+        const place = confineFolder(project, a.folder, { mustExist: false, ...where });
         if (!place.ok) add(place.code, `The folder for ${who} ${place.message}.`, at);
       }
     }
@@ -387,7 +417,7 @@ function checkAnswers(answers: AdoptionAnswers, members: Readonly<Record<string,
  * `notCarried` with its reason (ruling T9).
  */
 function readSource(source: string, add: Add): SourceRead {
-  const carried: { rel: string; bytes: Buffer }[] = [];
+  const carried: { rel: string; bytes: Buffer; executable: boolean }[] = [];
   const notCarried: AdoptionNotice[] = [];
   const skip = (path: string, reason: string) => { notCarried.push({ id: `carry:${path}`, path, reason }); };
   let count = 0;
@@ -418,14 +448,15 @@ function readSource(source: string, add: Add): SourceRead {
     try { st = fs.lstatSync(join(source, rel)); } catch (e) { skip(rel, `It cannot be read (${errno(e) ?? 'unknown error'}).`); return; }
     if (st.isSymbolicLink()) { skip(rel, 'It is a link. Adoption copies plain files only.'); return; }
     if (st.isDirectory()) {
-      if (depth > TEAM_LIMITS.keptDepth) { skip(rel, `It is deeper than ${TEAM_LIMITS.keptDepth} folders.`); return; }
+      // The copy under x-crew-v0.7 is one folder deeper, and the loader reads at most keptDepth (ruling V3).
+      if (depth > TEAM_LIMITS.keptDepth - 1) { skip(rel, `It is deeper than ${TEAM_LIMITS.keptDepth - 1} folders, and its copy under ${CREW_BLOCK} would pass the limit of ${TEAM_LIMITS.keptDepth}.`); return; }
       for (const n of list(rel)) walk(`${rel}/${n}`, depth + 1);
       return;
     }
     if (!st.isFile()) { skip(rel, 'It is not a plain file.'); return; }
     if (++count > TEAM_LIMITS.files) { skip(rel, `The 0.7 folder holds more than ${TEAM_LIMITS.files} files.`); return; }
     const b = readFile(rel);
-    if (b) carried.push({ rel, bytes: b });
+    if (b) carried.push({ rel, bytes: b, executable: (st.mode & 0o111) !== 0 });
   };
 
   try {
@@ -454,7 +485,7 @@ function readSource(source: string, add: Add): SourceRead {
         else skip(rel, 'It is not a 0.7 map. maps/ holds relay.json and vines.json.');
       }
     } else if ((TEAM_LEGACY_NAMES as readonly string[]).includes(name)) walk(name, 1);
-    else if (name === 'team.json' || name === CREW_BLOCK) continue;
+    else if (name === 'team.json' || name === CREW_BLOCK) skip(name, `It is a 0.8 ${name === 'team.json' ? 'file' : 'folder'}, not a 0.7 entry. Adoption does not copy it. It may be left by an earlier adoption.`);
     else skip(name, 'It is not an entry of a 0.7 team folder.');
   }
   return { yaml, relay, carried, notCarried };
@@ -482,7 +513,11 @@ function targetCheck(target: string, same: boolean, add: Add): void {
   const taken = ['team.json', CREW_BLOCK, ...(same ? [] : [RELAY_MAP_PATH])].filter(rel => {
     try { fs.lstatSync(join(target, rel)); return true; } catch { return false; }
   });
-  if (taken.length) add('TEAM_ADOPT_EXISTS', `The target folder already holds ${taken.join(', ')}. Adoption creates files only and never replaces one.`, taken[0]);
+  if (taken.length) {
+    const team = plainName(basename(target)) ? basename(target) : '(the team folder)';
+    const where = taken.map(t => `.bowerloom/teams/${team}/${t}`).join(', ');
+    add('TEAM_ADOPT_EXISTS', `The target folder already holds ${taken.join(', ')}. Adoption creates files only and never replaces one. If an earlier adoption stopped part way, remove ${where} by hand, then plan again.`, taken[0]);
+  }
 }
 
 class AdoptionFault extends Error {
@@ -512,9 +547,9 @@ export function applyTeamAdoption(input: AdoptionInput, revision: string, hooks:
     for (const w of plan.writes) {
       label = w.path;
       const rel = `${name}/${w.path}`;
-      for (const dir of checkAncestors(root, rel)) { makeDir(root, dir); created.push(dir); }
+      for (const dir of checkAncestors(root, rel)) makeDir(root, dir, made => { created.push(made); hooks.afterMkdir?.(made); });
       const abs = join(root, rel);
-      writeAbs(abs, built.bytes.get(w.path)!, 0o644, { exclusive: true, label: w.path, onPlaced: () => { written.push({ abs, rel: w.path }); } });
+      writeAbs(abs, built.bytes.get(w.path)!, w.executable ? 0o755 : 0o644, { exclusive: true, label: w.path, onPlaced: () => { written.push({ abs, rel: w.path }); } });
       hooks.afterWrite?.(w.path);
     }
     for (const o of plan.originals) {

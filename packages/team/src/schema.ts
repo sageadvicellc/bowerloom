@@ -11,6 +11,7 @@ import {
   ENGINE_IDS, isEngineId, isId, parseStrictJson, safeName, type JsonValue, type Problem,
 } from '../../harness-definition/src/index.js';
 import { normalizeFolder } from './scan.js';
+import { BAD_TEXT } from './text.js';
 import type { Extensions, MemberFile, TeamFile, TeamGuardrails, TeamLimits } from './types.js';
 import {
   INBOX_MODES, MODEL_CLASSES, RELAY_MAP_PATH, START_MODES, TEAM_FORMAT, TEAM_LIMITS, type InboxMode, type StartMode,
@@ -44,9 +45,9 @@ function keys(p: Problems, value: JsonValue | undefined, where: string, required
   return ok ? { obj: value, extensions } : undefined;
 }
 
-/** One line of text: no control character (C0, DEL, or C1) and no format character (Unicode Cf), ruling T6. */
+/** One line of text, with none of the characters of `BAD_TEXT` (rulings T6 and V5). */
 function oneLine(p: Problems, value: JsonValue | undefined, where: string, max = 1024): string | undefined {
-  if (typeof value !== 'string' || value.trim() === '' || [...value].length > max || /[\p{Cc}\p{Cf}]/u.test(value)) {
+  if (typeof value !== 'string' || value.trim() === '' || [...value].length > max || BAD_TEXT.test(value)) {
     return p.add('TEAM_INVALID_FIELD', `${where} must be one line of 1 to ${max} characters with no control or format characters.`);
   }
   return value;

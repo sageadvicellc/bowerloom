@@ -49,6 +49,7 @@ export const TEAM_LIMITS = Object.freeze({
   windowSeconds: 86_400,
   costUsd: 100_000,
   files: 1024,
+  totalBytes: 32 * 1024 * 1024,
   keptDepth: 8,
   problems: 200,
 });
