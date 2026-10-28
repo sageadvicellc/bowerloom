@@ -26,6 +26,7 @@ import type { PlannedChange, ProjectContext } from '../../../packages/project-co
 import { parseSkillSpec } from '../../../packages/skill-manifest/src/spec.js';
 import type { SkillSpec } from '../../../packages/skill-manifest/src/spec.js';
 import { MANIFEST_LIMITS, STORE_MANIFEST_LIMITS, isEntryId, isId, parseManifest } from '../../../packages/skill-manifest/src/schema.js';
+import { ENGINE_NAMES } from '../../../packages/skill-manifest/src/engine.js';
 import type { Entry, GitSource, NpmSource, PinnedContent, PinnedEntry } from '../../../packages/skill-manifest/src/schema.js';
 import { applyManifestChange, planManifestChange, readManifestState, replaceTarget, storeTarget } from '../../../packages/skill-manifest/src/add.js';
 import type { ManifestChange, ManifestChangePlan, ManifestChangeReceipt } from '../../../packages/skill-manifest/src/add.js';
@@ -40,7 +41,7 @@ import { syncError } from '../../../packages/project-sync/src/refusal.js';
 import { readAuthoringState } from '../../../packages/project-authoring/src/state.js';
 import type { SeedResult } from '../../../packages/project-sync/src/seed.js';
 import { manifestRefusal } from '../../../packages/skill-manifest/src/refusal.js';
-import { configRefusal, readConfig, serializeConfig, writeGuardedFile } from '../../../packages/project-config/src/index.js';
+import { configRefusal, invalidConfigRefusal, readConfig, serializeConfigFrom, writeGuardedFile } from '../../../packages/project-config/src/index.js';
 import { createBowerloomFolder } from '../../../packages/project-config/src/folder.js';
 import type { HeldProjectLock } from '../../../packages/project-context/src/types.js';
 import { createHash } from 'node:crypto';
@@ -312,11 +313,10 @@ function runCheck(words: readonly string[], cwd: string, home: string, write: (t
     verifyProjectPins(project);
   }
   if (json) { write(newCommandJson(check)); return 0; }
-  // Review freeze finding 10: the harness names every other command uses, and one column for the ids.
+  // Review freeze finding 10: the engine names every other command uses, and one column for the ids.
   const count = check.skills.length, width = Math.max(0, ...check.skills.map(s => s.id.length));
-  const harness: Readonly<Record<string, string>> = { claude: 'Claude Code', codex: 'Codex' };
   write([
-    `skills.json${global ? ' (store)' : ''} is valid: ${count} ${count === 1 ? 'skill' : 'skills'}, for ${check.harnesses.map(h => harness[h] ?? h).join(' and ')}.`,
+    `skills.json${global ? ' (store)' : ''} is valid: ${count} ${count === 1 ? 'skill' : 'skills'}, for ${check.engines.map(h => ENGINE_NAMES[h]).join(' and ')}.`,
     ...check.skills.map(s => `  ${s.id.padEnd(width)}  ${s.kind} ${s.pin}${s.teams ? `  (teams: ${s.teams.join(', ')})` : ''}`),
     '',
   ].join('\n'));
@@ -329,7 +329,7 @@ function runCheck(words: readonly string[], cwd: string, home: string, write: (t
  */
 function checkConfigMode(project: ProjectContext, home: string, json: boolean, write: (text: string) => void): number {
   const read = readConfig(project);
-  if (read.state !== 'valid') throw configRefusal(read.state === 'invalid' ? read.code : 'CONFIG_INVALID');
+  if (read.state !== 'valid') throw read.state === 'invalid' ? invalidConfigRefusal(read) : configRefusal('CONFIG_INVALID');
   const state = readManifestState(project.dir, { allowAbsent: true });
   const own = state.file ? checkManifest(project.dir) : null;
   const rows = (own?.skills ?? []).map(s => ({ ...s, source: 'project' }));
@@ -345,12 +345,12 @@ function checkConfigMode(project: ProjectContext, home: string, json: boolean, w
     }
   }
   rows.sort((a, b) => Buffer.compare(Buffer.from(a.id), Buffer.from(b.id)));
-  const harnesses = [...read.config.harnesses];
-  const check = { format: own?.format ?? 'bowerloom/skills-manifest-check/v1beta2', valid: true, harnesses, skills: rows };
+  const engines = [...read.config.engines];
+  const check = { format: own?.format ?? 'bowerloom/skills-manifest-check/v1beta3', valid: true, engines, skills: rows };
   if (json) { write(newCommandJson(check)); return 0; }
-  const width = Math.max(0, ...rows.map(s => s.id.length)), harness: Readonly<Record<string, string>> = { claude: 'Claude Code', codex: 'Codex' };
+  const width = Math.max(0, ...rows.map(s => s.id.length));
   write([
-    rows.length ? `skills.json is valid: ${rows.length} ${rows.length === 1 ? 'skill' : 'skills'}, for ${harnesses.map(h => harness[h] ?? h).join(' and ')}.` : 'skills.json is valid: 0 skills',
+    rows.length ? `skills.json is valid: ${rows.length} ${rows.length === 1 ? 'skill' : 'skills'}, for ${engines.map(h => ENGINE_NAMES[h]).join(' and ')}.` : 'skills.json is valid: 0 skills',
     ...rows.map(s => `  ${s.id.padEnd(width)}  ${s.kind} ${s.pin}${s.teams ? `  (teams: ${s.teams.join(', ')})` : ''}  [${s.source}]`), '',
   ].join('\n'));
   return 0;
@@ -361,11 +361,11 @@ const sha256Hex = (v: string): string => createHash('sha256').update(v).digest('
 /** The config step of `skills add` (3.8 item 9): `{ id, source: "project" }`, with the duplicate and limit refusals. Null when already listed. */
 function configAddStep(project: ProjectContext, id: string): ConfigStep | null {
   const read = readConfig(project);
-  if (read.state !== 'valid') throw configRefusal(read.state === 'invalid' ? read.code : 'CONFIG_INVALID');
+  if (read.state !== 'valid') throw read.state === 'invalid' ? invalidConfigRefusal(read) : configRefusal('CONFIG_INVALID');
   const now = read.config.skills.find(e => e.id === id);
   if (now?.source === 'store') throw configRefusal('CONFIG_DUPLICATE_ID', `bowerloom.json lists skill ${id} twice: once from store and once from project.`);
   if (now) return null;
-  const text = serializeConfig({ ...read.config, skills: [...read.config.skills, { id, source: 'project' as const }].sort((a, b) => Buffer.compare(Buffer.from(a.id), Buffer.from(b.id))) });
+  const text = serializeConfigFrom(read.config, { ...read.config, skills: [...read.config.skills, { id, source: 'project' as const }].sort((a, b) => Buffer.compare(Buffer.from(a.id), Buffer.from(b.id))) });
   return { before: { sha256: read.sha256, bytes: read.bytes }, after: { sha256: sha256Hex(text), bytes: Buffer.byteLength(text) }, text };
 }
 

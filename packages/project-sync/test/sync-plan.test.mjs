@@ -22,7 +22,7 @@ test('a first plan classifies needs-fetch, cached and local, binds every input a
   assert.equal(plan.format, SYNC_PLAN_FORMAT); assert.equal(plan.writesAuthorized, false); assert.equal(plan.executionAuthorized, false);
   assert.match(plan.revision, /^[a-f0-9]{64}$/);
   const { revision, ...body } = plan; assert.equal(revisionOf(syncBinding(body)), revision);
-  assert.deepEqual(plan.harnesses, ['claude', 'codex']); assert.equal(plan.team, null); assert.equal(plan.offline, false);
+  assert.deepEqual(plan.engines, ['claude-code', 'codex']); assert.equal(plan.team, null); assert.equal(plan.offline, false);
   assert.equal(plan.project.dir, f.projectDir); assert.deepEqual(plan.project.identity, f.project().identity);
   assert.equal(plan.manifest.sha256.length, 64); assert.equal(plan.manifest.bytes, fs.statSync(path.join(f.projectDir, '.bowerloom/skills.json')).size);
   assert.equal(plan.privateState.root, f.privateRoot); assert.equal(plan.privateState.cacheRoot, f.cacheRoot); assert.equal(plan.privateState.itemsRoot, f.itemsRoot);
@@ -65,17 +65,17 @@ test('after a sync every skill is up to date; then each change gets its own stat
   assert.deepEqual([changed.delta.state, changed.delta.action], ['orphaned', 'none']);
 });
 
-test('a harness added in skills.json updates the skill; a harness removed is kept and reported', async t => {
+test('an engine added in skills.json updates the skill; an engine removed is kept and reported', async t => {
   const f = syncProject(t); localSkill(f, 'house-style'); writeManifest(f, [localEntry('house-style')], ['codex']);
   await sync(f, noAcquirer()); assert.equal(exists(f, '.claude/skills/house-style'), false); assert.equal(exists(f, '.agents/skills/house-style/SKILL.md'), true);
   writeManifest(f, [localEntry('house-style')], ['claude', 'codex']);
   const added = (await planSync(f.input())).items[0];
-  assert.deepEqual([added.state, added.action, added.harnesses], ['harnesses-changed', 'update', ['claude', 'codex']]);
+  assert.deepEqual([added.state, added.action, added.engines], ['engines-changed', 'update', ['claude-code', 'codex']]);
   await applySync(f.input(), (await planSync(f.input())).revision, deps(noAcquirer()));
   assert.equal(exists(f, '.claude/skills/house-style/SKILL.md'), true);
   writeManifest(f, [localEntry('house-style')], ['codex']);
   const removed = (await planSync(f.input())).items[0];
-  assert.deepEqual([removed.state, removed.action, removed.harnesses], ['harnesses-changed', 'none', ['claude', 'codex']]);
+  assert.deepEqual([removed.state, removed.action, removed.engines], ['engines-changed', 'none', ['claude-code', 'codex']]);
 });
 
 test('editing skills.json after the plan gives STALE_APPROVAL and writes nothing anywhere', async t => {

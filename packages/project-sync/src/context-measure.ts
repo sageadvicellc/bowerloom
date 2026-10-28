@@ -70,7 +70,7 @@ export async function showSlice(input: ShowInput): Promise<ShowResult> {
   const dir = input.project.dir;
   if (!registeredSlices(dir).includes(input.slice)) throw syncError('CONTEXT_SLICE_NOT_FOUND');
   const home = input.home ?? homedir();
-  const plan = await planProjectApply({ project: input.project, stateRoot: input.stateRoot, harnesses: ['claude'], team: null, agentsOnly: true, home, ...(input.sliceTree ? { sliceTree: input.sliceTree } : {}) });
+  const plan = await planProjectApply({ project: input.project, stateRoot: input.stateRoot, engines: ['claude-code'], team: null, agentsOnly: true, home, ...(input.sliceTree ? { sliceTree: input.sliceTree } : {}) });
   const item = plan.slices.find(s => s.id === input.slice)!;
   const tree = (input.sliceTree ?? readSliceTree)(dir, input.slice, { kind: 'project' }, () => {}, registeredLookup(home, input.project.projectId, input.project.identity.birthtimeNs, input.stateRoot));
   const def = tree.definition, text = tree.index, root = item.root !== null ? (item.root.kind === 'registered' ? relative(dir, item.root.dir) : item.root.path) : def === null ? null : def.root.path;
@@ -179,7 +179,7 @@ export async function measureContext(input: MeasureInput): Promise<MeasureResult
   }
   if (input.team) { chosen = chosen.filter(e => e.team === input.team); heldEntries = heldEntries.filter(e => e.team === input.team); }
   const held = heldEntries.map(e => ({ role: e.role, team: e.team, code: e.hold!.code, next: e.hold!.next })).sort((a, b) => cmp(a.role, b.role) || cmp(a.team, b.team));
-  const plan = await planProjectApply({ project: input.project, stateRoot: input.stateRoot, harnesses: ['claude'], team: null, agentsOnly: true, home });
+  const plan = await planProjectApply({ project: input.project, stateRoot: input.stateRoot, engines: ['claude-code'], team: null, agentsOnly: true, home });
   const planned = (e: (typeof chosen)[number]) => { const item = plan.agents.find(a => a.id === e.role && a.team === e.team); if (item === undefined) throw new Error(`context measure: the plan holds no item for agent ${e.role}`); return item; };
   const sliceOf = (id: string): SliceItem | undefined => plan.slices.find(s => s.id === id && s.state !== 'orphaned');
 

@@ -16,7 +16,7 @@ import { runLsCommand } from '../../../dist/apps/cli/src/ls.js';
 const network = denyNetwork();
 after(() => assert.deepEqual(network, []));
 const front = text => parse(text.split('\n---\n')[0].replace(/^---\n/, ''));
-const input = f => f.input(['claude', 'codex'], { home: f.home });
+const input = f => f.input(['claude-code', 'codex'], { home: f.home });
 const lead = p => p.agents.find(a => a.id === 'lead');
 
 test('a project with bowerloom.json, a slice and a guarded agent plans and applies both, as a project without it does', async t => {

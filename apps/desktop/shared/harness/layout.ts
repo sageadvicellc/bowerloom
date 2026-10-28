@@ -83,11 +83,14 @@ export function brightIds(edges: readonly GraphEdge[], selectedId: string | null
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 
 /** The view that shows the whole graph in a window of `width` by `height`, never larger than life, with `pad` around it. */
-export function fitView(bounds: Bounds, width: number, height: number, pad = 16): View {
-  const w = bounds.right - bounds.left, h = bounds.bottom - bounds.top;
-  if (w <= 0 || h <= 0 || width <= 0 || height <= 0) return { x: 0, y: 0, k: 1 };
-  const k = clamp(Math.min((width - 2 * pad) / w, (height - 2 * pad) / h, 1), ZOOM_MIN, 1);
-  return { x: (width - w * k) / 2 - bounds.left * k, y: (height - h * k) / 2 - bounds.top * k, k };
+/** The height kept free at the foot of the stage for the legend line, so a fitted graph never sits under it (Goal 2, the 900 by 600 window). */
+export const FIT_FOOT = 44;
+
+export function fitView(bounds: Bounds, width: number, height: number, pad = 16, foot = 0): View {
+  const w = bounds.right - bounds.left, h = bounds.bottom - bounds.top, room = height - foot;
+  if (w <= 0 || h <= 0 || width <= 0 || room <= 0) return { x: 0, y: 0, k: 1 };
+  const k = clamp(Math.min((width - 2 * pad) / w, (room - 2 * pad) / h, 1), ZOOM_MIN, 1);
+  return { x: (width - w * k) / 2 - bounds.left * k, y: (room - h * k) / 2 - bounds.top * k, k };
 }
 
 /** Zooms by `factor` about the screen point (cx, cy), which stays where it is. */

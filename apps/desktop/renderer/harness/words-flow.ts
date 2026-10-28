@@ -85,7 +85,7 @@ export const reviewLine = (summary: string, projectPath: string): string => `${s
 export const installAction = (harness: string, project: string): string => `Install ${harness} in ${project}`;
 /** "Use Codex": the name of a switch. */
 export const interfaceSwitch = (name: string): string => `Use ${name}`;
-/** "4 interfaces. Bowerloom installs only for the ones that are switched on." */
+/** "3 interfaces. Bowerloom installs only for the ones that are switched on." */
 export const interfacesHint = (n: number): string => `${n} ${n === 1 ? 'interface' : 'interfaces'}. Bowerloom installs only for the ones that are switched on.`;
 /** "Undo Installed Weekly report crew in bowerloom": the name of a button. */
 export const undoName = (text: string): string => `Undo ${text}`;

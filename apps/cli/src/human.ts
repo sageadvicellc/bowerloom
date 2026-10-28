@@ -1,4 +1,5 @@
 import { canonicalJson, DefinitionError, oneLine, shellArg } from '../../../packages/contracts/src/index.js';
+import { ENGINE_IDS } from '../../../packages/skill-manifest/src/engine.js';
 
 /**
  * The first screen a person sees, and the plain-words refusals. Output only: nothing here reads or writes a file.
@@ -206,7 +207,7 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'skills check reads .bowerloom/skills.json and checks every pin, offline. It writes nothing.',
     'skills check --global checks the pins in the store.', '',
     '  bowerloom skills sync [--offline] [--team <team>] [--frozen] [--max-github-requests <n>] [--approve <revision>] [--json]',
-    'skills sync installs every skill in skills.json for Claude Code and Codex (the harnesses skills.json names):',
+    'skills sync installs every skill in skills.json for Claude Code and Codex (the engines skills.json names):',
     'into .bowerloom/managed, .claude/skills and .agents/skills. Those copies stay on this machine; commit skills.json.',
     'It fetches only pins that are not in the private cache yet, and checks every byte against its pin first.',
     '--offline refuses before any change if a pin still needs fetching. --team syncs only that team\'s skills.',
@@ -501,6 +502,8 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   MANIFEST_PIN_NOT_EXACT: { sentence: 'A pin that can move would install different files on different machines.', next: 'bowerloom help skills' },
   MANIFEST_LICENSE_UNSUPPORTED: { sentence: 'This beta installs MIT and Apache-2.0 skills only.', next: 'bowerloom help skills' },
   MANIFEST_DUPLICATE_ID: { sentence: 'Each skill needs its own id.', next: 'git diff .bowerloom/skills.json' },
+  // Step 0 of 0.8: an engine the code knows by name, but cannot write files for yet.
+  ENGINE_NO_WRITER: { sentence: 'Bowerloom writes files for Claude Code and Codex only, for now.', next: 'name claude-code or codex' },
   MANIFEST_LIMIT: { sentence: 'This beta keeps skills.json small: 128 skills and 1 MiB at most.', next: 'bowerloom skills check' },
   SKILLS_ADD_SPEC_INVALID: { sentence: 'The source names a package or repository, an exact pin, and the skill folder.', next: 'bowerloom help skills' },
   SKILLS_ADD_EXISTS: { sentence: 'skills.json already holds a skill with this id or this source.', next: 'To move that id to another version or commit, add --replace: bowerloom skills add <source> --id <id> --replace.' },
@@ -591,7 +594,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   SKILLS_STATE_STRAY_ENTRY: { sentence: 'Bowerloom keeps only its own operation folders there, and changes nothing it did not make.', next: 'move the named entry out of the private state folder with mv' },
   SKILLS_RECOVER_NOTHING: { sentence: 'Nothing of this item is unfinished.', next: 'bowerloom status' },
   SKILLS_MIGRATE_NOTHING: { sentence: 'The project has no .bowerloom-skills folder.', next: 'bowerloom skills sync' },
-  SKILLS_MIGRATE_STATE_INVALID: { sentence: 'Migrate needs the private state folder the earlier install was made with.', next: 'bowerloom help skills' },
+  SKILLS_MIGRATE_STATE_INVALID: { sentence: 'Migrate needs the private state folder the earlier install was made with, and an earlier install in the project (.bowerloom-skills) that is not damaged.', next: 'bowerloom help skills' },
   SKILLS_MIGRATE_NOT_IN_MANIFEST: { sentence: 'skills.json must pin the installed skill before it can be migrated.', next: 'bowerloom skills check' },
   MANAGED_SKILL_LEGACY_PRESENT: { sentence: 'Skills from an earlier Bowerloom must be migrated before sync can manage this project.', next: 'bowerloom skills migrate plan --state <earlier-state-folder>' },
   MANAGED_SKILL_RECOVERY_REQUIRED: { sentence: 'A change was interrupted inside one skill, and Bowerloom changes nothing else until it is recovered.', next: 'bowerloom skills recover plan --item <id>' },
@@ -620,6 +623,8 @@ const GENERIC: Words = { sentence: 'Nothing more is known about this refusal bey
 export interface RefusalDetail {
   /** The local port of a lock slot collision, when the error names one. */
   readonly port?: number;
+  /** The engine an ENGINE_NO_WRITER refusal names. Only a known engine id is kept. */
+  readonly engine?: string;
   /** True only for an error from newCommandRefusal. */
   readonly raisedByNewCommand?: boolean;
   /** A fixed hint name the error carries, for words that are more exact than its code alone. */
@@ -647,6 +652,7 @@ function wordsFor(code: string, detail: RefusalDetail): Words {
   if (code === 'MANIFEST_UNSAFE' && detail.hint === LEFTOVER_TEMP_LINK) {
     return { sentence: 'An interrupted write left a second link to skills.json, the temporary file .bowerloom/.skills.json.*.tmp. Check that both name the same file, then remove the temporary one.', next: 'ls -li .bowerloom/skills.json .bowerloom/.skills.json.*.tmp' };
   }
+  if (code === 'ENGINE_NO_WRITER' && typeof detail.engine === 'string' && ENGINE_IDS.includes(detail.engine as never)) return { sentence: `Bowerloom has no writer for ${detail.engine} yet. It writes files for Claude Code and Codex only, for now.`, next: 'name claude-code or codex' };
   if ((code === 'PROJECT_LOCK_SLOT_COLLISION' || code === 'MANAGED_SKILL_LOCK_SLOT_COLLISION') && validPort(detail.port)) {
     return { sentence: `The lock uses local port ${detail.port}. Another program listens on it, or another Bowerloom command is too busy to answer.`, next: `lsof -nP -iTCP:${detail.port} -sTCP:LISTEN` };
   }
@@ -678,7 +684,8 @@ export function reportFailure(error: unknown, tty: boolean): { text: string; exi
   const next = error instanceof DefinitionError && 'next' in error && typeof (error as { next?: unknown }).next === 'string' ? oneLine((error as { next: string }).next) : undefined;
   // Round 5 of the reviews of PR 99, L-1: a fix is the bare command of a refusal, in its own JSON field.
   const fix = error instanceof DefinitionError && 'fix' in error && typeof (error as { fix?: unknown }).fix === 'string' ? oneLine((error as { fix: string }).fix) : undefined;
-  const detail: RefusalDetail = { raisedByNewCommand: marked(error), ...(validPort(port) ? { port } : {}), ...(hint === LEFTOVER_TEMP_LINK || hint === STORE_LIMIT || hint === PARTIAL ? { hint } : {}), ...(next !== undefined ? { next } : {}) };
+  const engine = error instanceof DefinitionError && 'engine' in error ? (error as { engine?: unknown }).engine : undefined;
+  const detail: RefusalDetail = { raisedByNewCommand: marked(error), ...(validPort(port) ? { port } : {}), ...(typeof engine === 'string' ? { engine } : {}), ...(hint === LEFTOVER_TEMP_LINK || hint === STORE_LIMIT || hint === PARTIAL ? { hint } : {}), ...(next !== undefined ? { next } : {}) };
   const exitCode = exitCodeFor(marked(error) ? error : safe) as Exclude<ExitCode, 0>;
   // An error that carries its own next step gives it to agents too, as `next`; every other envelope is unchanged.
   return { text: tty ? renderRefusal(safe.code, safe.message, detail) : `${JSON.stringify({ error: { code: safe.code, message: safe.message, ...(next !== undefined ? { next } : {}), ...(fix !== undefined ? { fix } : {}), ...(hint === PARTIAL ? { partial: true } : {}) } })}\n`, exitCode };

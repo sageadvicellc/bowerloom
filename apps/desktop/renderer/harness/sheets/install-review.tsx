@@ -9,7 +9,7 @@ import { planSummary } from '../../../shared/harness/files.js';
 import { CHOICE_WORDS, choiceFor, choiceHint } from '../../../shared/harness/install-flow.js';
 import { partsOf, interfaceById } from '../../../shared/harness/status.js';
 import { slugOf } from '../../../shared/harness/sample.js';
-import { CONFLICT_CHOICES } from '../../../shared/harness/types.js';
+import { CONFLICT_CHOICES, hasWriter, noWriterWords } from '../../../shared/harness/types.js';
 import type { ConflictChoice, Harness, HarnessState, InstallPlan, PlannedFile, Project } from '../../../shared/harness/types.js';
 import { HButton, StateDot } from '../parts/controls.js';
 import { HIcon } from '../icons.js';
@@ -95,6 +95,7 @@ export function ReviewStep({ state, harness, project, plan, picked, confirmed, i
         {plan.groups.map(group => (
           <div key={group.interfaceId} data-group={group.interfaceId}>
             <h3 className="hxi-head"><HIcon name="monitor" size={18} /><span>{interfaceById(state, group.interfaceId)?.name ?? group.interfaceId}</span></h3>
+            {!hasWriter(group.interfaceId) && <p className="hx-text">{noWriterWords(interfaceById(state, group.interfaceId)?.name ?? group.interfaceId)}</p>}
             <ul className="hxi-files" aria-label={interfaceById(state, group.interfaceId)?.name ?? group.interfaceId}>{group.files.map(f => <FileRow key={f.path} file={f} />)}</ul>
           </div>
         ))}

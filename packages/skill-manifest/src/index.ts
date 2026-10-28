@@ -1,6 +1,8 @@
 /** The skills manifest of the Bowerloom 0.7.0 beta (build plan 01, M3): `.bowerloom/skills.json`, `skills add` and `skills check`. */
-export { MANIFEST_FORMAT, MANIFEST_FILE, MANIFEST_LIMITS, STORE_MANIFEST_LIMITS, HARNESSES, parseManifest, serializeManifest, validateManifest, validateEntry, isExactVersion, isCommit, isEntryId } from './schema.js';
-export type { ManifestLimits, Manifest, Entry, NpmEntry, GitEntry, LocalEntry, PinnedEntry, PinnedContent, NpmSource, GitSource, LocalSource, Harness } from './schema.js';
+export { MANIFEST_FORMAT, MANIFEST_FILE, MANIFEST_LIMITS, STORE_MANIFEST_LIMITS, parseManifest, serializeManifest, validateManifest, validateEntry, isExactVersion, isCommit, isEntryId } from './schema.js';
+export type { ManifestLimits, Manifest, Entry, NpmEntry, GitEntry, LocalEntry, PinnedEntry, PinnedContent, NpmSource, GitSource, LocalSource } from './schema.js';
+export { ENGINE_IDS, ENGINE_NAMES, WRITER_ENGINE_IDS, DEFAULT_ENGINES, EngineWriterRefusal, isEngine, isWriterEngine, isEngineWriterRefusal, parseEngineId, engineFromOldId, oldIdOf, oldIdOfWriter, writerEngines, sameForm, toStoredId } from './engine.js';
+export type { Engine, WriterEngine, OldEngineId } from './engine.js';
 export { toNpmRequest, toGitRequest } from './requests.js';
 export { parseSkillSpec } from './spec.js';
 export type { SkillSpec, NpmSpec, GitSpec } from './spec.js';

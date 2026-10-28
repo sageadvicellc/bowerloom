@@ -1,7 +1,7 @@
 {
   "format": "bowerloom/skills/v1beta1",
-  "harnesses": [
-    "claude",
+  "engines": [
+    "claude-code",
     "codex"
   ],
   "skills": [

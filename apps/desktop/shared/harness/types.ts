@@ -1,13 +1,20 @@
 /**
  * The data of the harness-first preview (`--prototype-v3`). Plain data only: no React, no clock, no file. Everything is in memory, so nothing is written anywhere.
- * A harness is a saved list of parts (agents, skills, tools, context). It is installed into a project, once for each interface (Claude Code, Codex, OpenCode, Hermes).
+ * A harness is a saved list of parts (agents, skills, tools, context). It is installed into a project, once for each interface (Claude Code, Codex, OpenCode).
  */
 
 export type PartKind = 'agent' | 'skill' | 'tool' | 'context';
 export const PART_KINDS: readonly PartKind[] = Object.freeze(['agent', 'skill', 'tool', 'context']);
 
-export type InterfaceId = 'claude-code' | 'codex' | 'opencode' | 'hermes';
-export const INTERFACE_IDS: readonly InterfaceId[] = Object.freeze(['claude-code', 'codex', 'opencode', 'hermes']);
+/** The first engine set of the preview. Hermes is not an engine of 0.8, so it is not in it. */
+export type InterfaceId = 'claude-code' | 'codex' | 'opencode';
+export const INTERFACE_IDS: readonly InterfaceId[] = Object.freeze(['claude-code', 'codex', 'opencode']);
+
+/** The interfaces that Bowerloom can write files for. OpenCode has no writer yet, so the preview shows its files as not written yet. */
+export const WRITER_INTERFACE_IDS: readonly InterfaceId[] = Object.freeze(['claude-code', 'codex']);
+export const hasWriter = (id: InterfaceId): boolean => WRITER_INTERFACE_IDS.includes(id);
+/** What a screen says in place of the files of an interface that has no writer. */
+export const noWriterWords = (name: string): string => `Not written yet. Bowerloom has no writer for ${name}, so it creates no ${name} files.`;
 
 /** The state of one harness in one project for one interface. */
 export type InstallState = 'installed' | 'out-of-date' | 'conflict' | 'not-installed';

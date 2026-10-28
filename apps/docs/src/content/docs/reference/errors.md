@@ -24,7 +24,7 @@ Keep your project out of iCloud Drive folders. Project commands such as `bowerlo
 | `contextImported` | False in the setup results documented here |
 | `hostedAgentCreated` | False in the setup results documented here |
 
-`bowerloom status` in a project folder reports `ready`, `drifted`, or `revision-pending` in `Setup:`. With `--json` it prints format `bowerloom/project-status/v1beta2` and reports `format`, `markers`, `setup`, `config`, `specReady`, `runtimeReady`, `executionAuthorized`, `revision`, `drift`, and `owned`. `runtimeReady` and `executionAuthorized` are false. A `bowerloom.json` that does not match its format adds the drift kind `config-invalid`, with the refusal code. Read [CLI reference](/docs/cli/#project-commands).
+`bowerloom status` in a project folder reports `ready`, `drifted`, or `revision-pending` in `Setup:`. With `--json` it prints format `bowerloom/project-status/v1beta3` and reports `format`, `markers`, `setup`, `config`, `specReady`, `runtimeReady`, `executionAuthorized`, `revision`, `drift`, and `owned`. `runtimeReady` and `executionAuthorized` are false. A `bowerloom.json` that does not match its format adds the drift kind `config-invalid`, with the refusal code. Read [CLI reference](/docs/cli/#project-commands).
 
 `ready-for-review` requires human review. It does not mean that a team runs or has execution permission.
 
@@ -179,6 +179,7 @@ These codes come from `bowerloom cache prune`. It also raises `STALE_APPROVAL`, 
 | `MANIFEST_PIN_NOT_EXACT` | A pin that can move would install different files on different machines. | Run `bowerloom help skills`. |
 | `MANIFEST_LICENSE_UNSUPPORTED` | This beta installs MIT and Apache-2.0 skills only. | Choose another skill, or run `bowerloom help skills`. |
 | `MANIFEST_DUPLICATE_ID` | Each skill needs its own id. | Run `git diff .bowerloom/skills.json`. |
+| `ENGINE_NO_WRITER` | Bowerloom writes files for Claude Code and Codex only, for now. The command or the file named another engine, such as opencode, pi, or deepseek-harness. The message names it. | Name `claude-code` or `codex`. |
 | `MANIFEST_LIMIT` | This beta keeps `skills.json` small: 128 skills and 1 MiB at most. That counts local and pinned skills together. The store `skills.json` holds at most 256 skills and 4 MiB. | Run `bowerloom skills check`. |
 | `SKILLS_ADD_SPEC_INVALID` | The source names a package or repository, an exact pin, and the skill folder. | Run `bowerloom help skills`. |
 | `SKILLS_ADD_EXISTS` | `skills.json` already holds a skill with this id or this source. | To move that id to another version or commit, add `--replace`: `bowerloom skills add <source> --id <id> --replace`. |
@@ -201,7 +202,7 @@ These codes come from `bowerloom cache prune`. It also raises `STALE_APPROVAL`, 
 | `SKILLS_STATE_STRAY_ENTRY` | The private state folder holds an entry Bowerloom did not make. Bowerloom keeps only its own operation folders there, and changes nothing it did not make. | Move the named entry out of the private state folder with `mv`. |
 | `SKILLS_RECOVER_NOTHING` | Nothing of this item is unfinished. | Run `bowerloom status`. |
 | `SKILLS_MIGRATE_NOTHING` | The project has no `.bowerloom-skills` folder. | Run `bowerloom skills sync`. |
-| `SKILLS_MIGRATE_STATE_INVALID` | Migrate needs the private state folder the earlier install was made with. | Run `bowerloom help skills`. |
+| `SKILLS_MIGRATE_STATE_INVALID` | Migrate needs the private state folder the earlier install was made with, and an earlier install in the project (`.bowerloom-skills`) that is not damaged. | Run `bowerloom help skills`. |
 | `SKILLS_MIGRATE_NOT_IN_MANIFEST` | `skills.json` must pin the installed skill before it can be migrated. | Run `bowerloom skills check`. |
 | `MANAGED_SKILL_LEGACY_PRESENT` | Skills from an earlier Bowerloom must be migrated before sync can manage this project. | Run `bowerloom skills migrate plan --state <earlier-state-folder>`. |
 | `MANAGED_SKILL_RECOVERY_REQUIRED` | A change was interrupted inside one skill, and Bowerloom changes nothing else until it is recovered. | Run `bowerloom skills recover plan --item <id>`. |

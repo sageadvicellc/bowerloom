@@ -35,7 +35,6 @@ test('the Start sheet opens on the first project that holds the harness, with tw
   await expect(s).toContainText('Installed in this project.');
   await expect(s).toContainText('Out of date. You review the update before it runs.');
   await expect(s).toContainText('Switched off. Turn it on in Interfaces.');
-  await expect(s).toContainText('Not found on this computer.');
   await expect(s.getByRole('status')).toContainText('Compare is on. Bowerloom opens 2 runs with the same instruction in one folder, so run them one at a time if they write files.');
   await expect(s.getByRole('textbox', { name: 'Instruction' })).toHaveValue('Write a weekly report from the notes in Meetings. Check that every claim has a source.');
   await expect(s).toContainText('Bowerloom opens each interface with your instruction. It never reads the chat.');

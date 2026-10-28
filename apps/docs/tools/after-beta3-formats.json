@@ -1,0 +1,9 @@
+[
+  "bowerloom/project-apply-plan/v1beta3",
+  "bowerloom/project-apply-result/v1beta3",
+  "bowerloom/project-status/v1beta3",
+  "bowerloom/skills-manifest-check/v1beta3",
+  "bowerloom/skills-migrate-plan/v1beta2",
+  "bowerloom/skills-sync-plan/v1beta3",
+  "bowerloom/up-held/v1beta2"
+]

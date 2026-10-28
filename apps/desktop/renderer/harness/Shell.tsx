@@ -92,7 +92,7 @@ export function Shell({ route, children, overlays }: { route: Route; children?: 
 
   return (
     <Context value={value}>
-      <div className="hm-root" data-home="" data-nav={mode}>
+      <div className="hm-root" data-home="" data-shell="harness" data-nav={mode}>
         <Navigation mode={mode} overlay={mode === 'hidden' && overlay} current={navKeyOf(route)} onToggle={toggleNav}
           onNewHarness={() => { const id = store.createHarness(); go({ name: 'builder', id, view: 'graph' }); }}
           onHarnesses={() => go({ name: 'harnesses' })} onLibrary={kind => go({ name: 'library', kind: kind ?? 'skill' })} onProjects={() => go({ name: 'projects' })} onRuns={() => go({ name: 'runs' })}

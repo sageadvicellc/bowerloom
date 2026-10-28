@@ -52,7 +52,7 @@ Two commands open the same app. Use `npm --prefix "<repo>" run desktop:prototype
 
 What real mode reads, in plain English:
 
-1. It looks in the tool folders of your home folder: Claude Code, Codex, OpenCode and Hermes. You can also pick a folder, and it finds the projects inside it.
+1. It looks in the tool folders of your home folder: Claude Code, Codex and OpenCode. It also notices a Hermes folder, but Hermes is not an engine of Bowerloom 0.8, so the harness preview does not show what is in it. It says how many things it left out. You can also pick a folder, and it finds the projects inside it.
 2. Question one shows the places it found with counts, and no file names. Question two, "Read what is inside?", reads only the places you ticked.
 3. It reads names, descriptions, structure and the names of keys, plus the text of the skills and agents you tick. Known key and password shapes are hidden. That check goes by shape, so look at anything private before you share it.
 4. You then choose which agents go on the map. "Find more" does the same again in the right column and adds to what you have.
@@ -61,6 +61,15 @@ What real mode reads, in plain English:
 7. If the real address is opened by the other command, it says "Real mode needs the real launch command."
 
 The tests run real mode on a made-up home folder (`tests/fixtures-real`), never on yours.
+
+## Make a harness from a folder, and install it (harness-first view)
+
+The harness-first view (`desktop:prototype:v3` for the sample, `desktop:prototype:v3:real` for your own folders) has two sheets on the Projects screen. In the sample they run on made-up folders and write nothing.
+
+- **From a folder** makes a harness from the files your interfaces already use. It shows what it found and where, the copies that differ (you pick one), the rules that differ by interface, and everything it leaves out, with the reason. Before it writes, you read and tick each approval (a hook or a server that runs a command, a secret it replaced) and each acknowledgement (a rule it does not carry). It writes only into the folder's `.bowerloom` folder.
+- **Install from a folder** writes the folder's harness into each interface's own files. First it lists any rule that an interface carries weaker than the harness asks, and you tick each one. Then it shows, for each interface and each part, a dot and a word (Exact, Translated, Weakened, Absent) with the reason, what waits for your trust, and every command and file of code it will write, in full. When the folder has both AGENTS.md and a CLAUDE.md that differ, it shows which interface reads which, with Accept AGENTS.md as the default. You approve the plan by its number, and only then can you write. Undo opens the removal plan, which you approve the same way. A run that stopped part way gets a recovery plan.
+
+On your own folders the main process does the work with Bowerloom's own packages. It plans without writing, and writes only the plan you approved: it plans again and stops if anything changed. The window gets plain words and paths inside the folder, never your full paths. Bowerloom keeps its records in its private state folder (`$XDG_STATE_HOME/bowerloom`, else `~/.local/state/bowerloom`), under `desktop/`.
 
 ## Where the viewer may write
 

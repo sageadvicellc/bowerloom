@@ -20,3 +20,5 @@
 [data-home] .hc-saved { margin: 0; flex: 1 1 18rem; min-width: 0; font-size: var(--hm-text-base); line-height: 1.4; color: var(--text-muted); }
 [data-home] .hc-foot-actions { display: flex; gap: var(--hm-space-3); margin-left: auto; }
 [data-home] .hc-saved[data-saved] { color: var(--text); }
+/* Goal 2: the picked rating still answers the pointer. */
+[data-home] .hc-rate[aria-pressed="true"]:not([aria-disabled="true"]):hover { box-shadow: inset 0 0 0 1px var(--accent-strong); }

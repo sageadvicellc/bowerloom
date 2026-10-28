@@ -22,3 +22,6 @@
 @media (prefers-reduced-motion: reduce) {
   [data-home] .hxn-track, [data-home] .hxn-thumb { transition: none !important; }
 }
+/* Goal 2: the switch answers the pointer with a soft fill, as a quiet button does. */
+[data-home] .hxn-switch:not(:disabled):hover { background: var(--accent-soft); }
+[data-home] .hxn-switch:not(:disabled):hover .hxn-track { border-color: var(--accent-strong); }

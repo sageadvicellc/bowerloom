@@ -72,7 +72,7 @@ test('skills sync: exit 3 shows the plan and writes nothing; --approve installs 
   const revision = revisionIn(shown.stdout);
   assert.ok(shown.stdout.endsWith(`Approval required. Run the same command again with --approve ${revision}\n`));
   const json = run(p.dir, ['skills', 'sync', '--json'], p.serve); assert.equal(json.status, 3);
-  const body = JSON.parse(json.stdout); assert.equal(body.code, 'APPROVAL_REQUIRED'); assert.equal(body.revision, revision); assert.equal(body.plan.format, 'bowerloom/skills-sync-plan/v1beta2');
+  const body = JSON.parse(json.stdout); assert.equal(body.code, 'APPROVAL_REQUIRED'); assert.equal(body.revision, revision); assert.equal(body.plan.format, 'bowerloom/skills-sync-plan/v1beta3');
   assert.equal(tree(p.dir), before); assert.equal(p.served().length, served, 'planning reads no network');
   const applied = run(p.dir, ['skills', 'sync', '--approve', revision], p.serve);
   assert.equal(applied.status, 0, applied.stderr); assert.match(applied.stdout, new RegExp(`^Applied plan ${revision}\\.$`, 'm'));

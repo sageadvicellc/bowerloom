@@ -11,8 +11,9 @@ import { canonicalJson } from '../../contracts/src/index.js';
 import { isHeldProjectLock } from '../../project-context/src/index.js';
 import type { HeldProjectLock } from '../../project-context/src/types.js';
 import { manifestRefusal, refuse, requireLimit, requireManifest } from './refusal.js';
-import { HARNESSES, MANIFEST_FILE, MANIFEST_FORMAT, MANIFEST_LIMITS, STORE_MANIFEST_LIMITS, isEntryId, isId, parseManifest, serializeManifest, validateEntry, validateManifest } from './schema.js';
+import { MANIFEST_FILE, MANIFEST_FORMAT, MANIFEST_LIMITS, STORE_MANIFEST_LIMITS, isEntryId, isId, parseManifest, serializeManifest, validateEntry, validateManifest } from './schema.js';
 import type { Entry, Manifest, ManifestLimits } from './schema.js';
+import { DEFAULT_ENGINES, engineField, sameForm } from './engine.js';
 
 export const MANIFEST_CHANGE_FORMAT = 'bowerloom/skills-manifest-change/v1beta2' as const;
 export const MANIFEST_PATH = `.bowerloom/${MANIFEST_FILE}` as const;
@@ -59,15 +60,26 @@ export interface ManifestChangePlan {
 export type ManifestChange = { add: Entry } | { replace: Entry } | { remove: string };
 export type ManifestChangeReceipt = { manifest: string; sha256: string; bytes: number } & ({ added: string } | { replaced: string } | { removed: string });
 
-/** Adds a local skill entry to a manifest, or starts one for both harnesses. Pure: the input is not changed. */
+/**
+ * A manifest like `base` (the same engines, in the same form of file) with these skills. With no base it starts a new
+ * manifest for Claude Code and Codex in the current form.
+ */
+const manifestWith = (base: Manifest | null, skills: Entry[], limits: ManifestLimits): Manifest => {
+  const manifest = validateManifest({ format: MANIFEST_FORMAT, ...engineField(base?.engines ?? DEFAULT_ENGINES, base ?? {}), skills }, limits);
+  // The form of the file is kept. A manifest that came out in the other form is a bug, and it is refused rather than written.
+  requireManifest(sameForm(base, manifest), 'MANIFEST_INVALID');
+  return manifest;
+};
+
+/** Adds a local skill entry to a manifest, or starts one for both engines. Pure: the input is not changed. */
 export function addLocalEntry(m: Manifest | null, id: string, teams: string[], limits: ManifestLimits): Manifest {
   requireManifest(isEntryId(id) && !id.startsWith('slice-'), 'MANIFEST_INVALID');
   requireManifest(Array.isArray(teams) && teams.every(isId) && new Set(teams).size === teams.length, 'MANIFEST_INVALID');
-  const base = m === null ? { format: MANIFEST_FORMAT, harnesses: [...HARNESSES], skills: [] as Entry[] } : validateManifest(JSON.parse(serializeManifest(m, limits)), limits);
+  const base = m === null ? manifestWith(null, [], limits) : validateManifest(JSON.parse(serializeManifest(m, limits)), limits);
   requireManifest(!base.skills.some(s => s.id === id), 'MANIFEST_DUPLICATE_ID');
   requireLimit(base.skills.length < limits.skills, limits);
   const entry: Entry = { id, ...(teams.length ? { teams: [...teams] } : {}), source: { kind: 'local', path: `skills/${id}` } };
-  return validateManifest({ format: base.format, harnesses: [...base.harnesses], skills: [...base.skills, entry] }, limits);
+  return manifestWith(base, [...base.skills, entry], limits);
 }
 
 // The temporary name applyManifestChange writes through. A kill between its link and its unlink leaves a second link.
@@ -148,7 +160,7 @@ export function manifestAfter(current: Manifest | null, change: ManifestChange, 
     const from = current?.skills.find(s => s.id === id);
     requireManifest(from, 'SKILLS_ADD_REPLACE_MISSING');
     requireManifest(from.source.kind === 'local', 'MANIFEST_INVALID');
-    const manifest = validateManifest({ format: MANIFEST_FORMAT, harnesses: [...current!.harnesses], skills: current!.skills.filter(s => s.id !== id) }, limits);
+    const manifest = manifestWith(current, current!.skills.filter(s => s.id !== id), limits);
     return { manifest, text: serializeManifest(manifest, limits), change: { remove: from } };
   }
   const replacing = 'replace' in change;
@@ -167,7 +179,7 @@ export function manifestAfter(current: Manifest | null, change: ManifestChange, 
     requireLimit((current?.skills.length ?? 0) < limits.skills, limits);
     skills = [...(current?.skills ?? []), entry];
   }
-  const manifest = validateManifest({ format: MANIFEST_FORMAT, harnesses: [...(current?.harnesses ?? HARNESSES)], skills }, limits);
+  const manifest = manifestWith(current, skills, limits);
   const written = manifest.skills.find(s => s.id === entry.id)!;
   return { manifest, text: serializeManifest(manifest, limits), change: from ? { replace: { from, to: written } } : { add: written } };
 }

@@ -10,10 +10,10 @@ import { harnessById, installOf, partsOf } from './status.js';
 export const manifestPathOf = (harness: Harness): string => `.bowerloom/harnesses/${slugOf(harness.name)}.json`;
 
 const AGENT_FILE: Readonly<Record<InterfaceId, (slug: string) => string>> = {
-  'claude-code': s => `.claude/agents/${s}.md`, codex: s => `.codex/agents/${s}.toml`, opencode: s => `.opencode/agents/${s}.md`, hermes: s => `.hermes/agents/${s}.md`,
+  'claude-code': s => `.claude/agents/${s}.md`, codex: s => `.codex/agents/${s}.toml`, opencode: s => `.opencode/agents/${s}.md`,
 };
 const SKILL_FILE: Readonly<Record<InterfaceId, (slug: string) => string>> = {
-  'claude-code': s => `.claude/skills/${s}/SKILL.md`, codex: s => `.agents/skills/${s}/SKILL.md`, opencode: s => `.opencode/skills/${s}/SKILL.md`, hermes: s => `.hermes/skills/${s}/SKILL.md`,
+  'claude-code': s => `.claude/skills/${s}/SKILL.md`, codex: s => `.agents/skills/${s}/SKILL.md`, opencode: s => `.opencode/skills/${s}/SKILL.md`,
 };
 export const agentFileOf = (interfaceId: InterfaceId, slug: string): string => AGENT_FILE[interfaceId](slug);
 export const skillFileOf = (interfaceId: InterfaceId, slug: string): string => SKILL_FILE[interfaceId](slug);

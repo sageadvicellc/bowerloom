@@ -5,7 +5,7 @@
  *
  * The plan, `bowerloom/skills-sync-plan/v1beta1`, binds every input that a child approval binds: the project and
  * its own private folders, the manifest sha256, each pin's content key, the hosts the run may contact, the expected
- * material and surfaces per item, the before-pins of every item surface, each previous receipt and the harness set.
+ * material and surfaces per item, the before-pins of every item surface, each previous receipt and the engine set.
  * Its revision is the one approval that stands in for every child approval of the run.
  *
  * The skills cache is shared by every project on the machine (Hanna, global skill cache), so another project may fill
@@ -24,11 +24,14 @@ import { MANAGED_ROOT, MARKER_V2, catalogItem, currentV2, ignoreState, itemId, l
 import { readLocalSkill } from '../../managed-skills/src/local-source.js';
 import { legacyPresent } from '../../managed-skills/src/migrate.js';
 import type { Identity } from '../../managed-skills/src/observed-types.js';
-import type { Harness, InventoryRow, ItemClosure, ManagedItemReceipt, ManagedItemRequest, SurfaceId, SurfaceKind } from '../../managed-skills/src/v2-types.js';
+import type { InventoryRow, ItemClosure, ManagedItemReceipt, ManagedItemRequest, SurfaceId, SurfaceKind } from '../../managed-skills/src/v2-types.js';
 import { isId } from '../../skill-manifest/src/schema.js';
 import type { Entry, Manifest, PinnedEntry } from '../../skill-manifest/src/schema.js';
 import type { AuthoredPin } from '../../skill-manifest/src/resolve-store-git.js';
 import { manifestRefusal } from '../../skill-manifest/src/refusal.js';
+import { WRITER_ENGINE_IDS, writerEngines } from '../../skill-manifest/src/engine.js';
+import type { WriterEngine } from '../../skill-manifest/src/engine.js';
+import { fromWire, toWire } from './wire.js';
 import { pinOf } from '../../skill-manifest/src/check.js';
 import { verifyProjectPins } from '../../project-context/src/index.js';
 import type { StoreContext } from '../../project-context/src/index.js';
@@ -48,7 +51,7 @@ import { declaredAllowedTools } from './notices.js';
 import { projectRefusal } from '../../project-context/src/index.js';
 import { configRefusal } from '../../project-config/src/refusal.js';
 
-export const SYNC_PLAN_FORMAT = 'bowerloom/skills-sync-plan/v1beta2' as const;
+export const SYNC_PLAN_FORMAT = 'bowerloom/skills-sync-plan/v1beta3' as const;
 /** The free space each child keeps beyond its own bytes, the managed-skills minimum; also the cache reserve. */
 export const MIN_FREE_BYTES = 33554432;
 /** At most this many items in one plan: 128 manifest skills and 128 orphans. */
@@ -62,10 +65,10 @@ export interface SyncInput {
   /** `--frozen`: only what bowerloom.lock.json records, and the store is not read (spec 06, 3.16). */
   frozen?: boolean;
   /**
-   * Set only by `bowerloom apply` (M6): the harnesses it adds copies for, in place of the skills.json set. A copy for a
-   * harness outside this set is kept as it is and never reported as one to remove. Absent for `skills sync`.
+   * Set only by `bowerloom apply` (M6): the engines it adds copies for, in place of the skills.json set. A copy for an
+   * engine outside this set is kept as it is and never reported as one to remove. Absent for `skills sync`.
    */
-  apply?: { harnesses: Harness[] };
+  apply?: { engines: WriterEngine[] };
   /** `--max-github-requests`: the GitHub requests this run may make, 1 to 5000. Default 1000 (second review L2). */
   maxGithubRequests?: number;
   /**
@@ -74,7 +77,7 @@ export interface SyncInput {
    */
   githubToken?: TokenSource;
 }
-export type ItemState = 'up-to-date' | 'needs-fetch' | 'cached' | 'drift' | 'pin-changed' | 'harnesses-changed' | 'orphaned' | 'local';
+export type ItemState = 'up-to-date' | 'needs-fetch' | 'cached' | 'drift' | 'pin-changed' | 'engines-changed' | 'orphaned' | 'local';
 export type ItemAction = 'none' | 'install' | 'update' | 'hold';
 export interface ItemSurface { id: SurfaceId; path: string }
 export interface SyncItem {
@@ -84,8 +87,8 @@ export interface SyncItem {
   /** The pin in one line, as `skills check` prints it: `<package>@<version>:<path>`, `<owner>/<repo>@<commit>:<path>` or the local path. */
   pin: string | null;
   state: ItemState; action: ItemAction;
-  /** The child request's harnesses: the installed set plus the skills.json set. A harness is never dropped. */
-  harnesses: Harness[];
+  /** The child request's engines: the installed set plus the skills.json set. An engine is never dropped. */
+  engines: WriterEngine[];
   /** The pin's content key (cache-index.ts), bound. `cacheOperationId` and `cache` say where it is now: shown, not bound. */
   requestDigest: string | null; cacheOperationId: string | null; cache: CacheLookup | null;
   /** Paths relative to the project. `files` is the material of every copy: the pinned inventory, or the authored one. */
@@ -121,7 +124,7 @@ export interface SyncPlan {
   lock: { sha256: string; bytes: number } | null;
   /** The live store this plan reads items from. Null in legacy and frozen mode, and when no selected item comes from it. */
   store: StorePlanBinding | null;
-  harnesses: Harness[]; team: string | null; offline: boolean;
+  engines: WriterEngine[]; team: string | null; offline: boolean;
   privateState: { root: string; projectId: string; cacheRoot: string; storeCacheRoot: string; itemsRoot: string; create: string[]; pins: { path: string; identity: Identity }[] };
   managed: { ignore: 'absent' | 'exact' };
   items: SyncItem[];
@@ -269,15 +272,15 @@ export function cacheLayout(stateRoot: string): { root: null; cacheRoot: string;
   } catch (e) { if (e instanceof Error && 'code' in e && e.code === 'SKILLS_STATE_UNSAFE') throw e; throw syncError('SKILLS_STATE_UNSAFE'); }
 }
 
-/** The item surfaces of a skill for these harnesses, as the managed planner places them. */
-export function itemSurfaces(project: string, id: string, name: string, harnesses: Harness[]): { id: SurfaceId; kind: SurfaceKind; path: string }[] {
-  const req = { projectDir: project, item: { kind: 'skill', id }, harnesses } as unknown as ManagedItemRequest;
+/** The item surfaces of a skill for these engines, as the managed planner places them. */
+export function itemSurfaces(project: string, id: string, name: string, engines: readonly WriterEngine[]): { id: SurfaceId; kind: SurfaceKind; path: string }[] {
+  const req = { projectDir: project, item: { kind: 'skill', id }, harnesses: toWire(engines) } as unknown as ManagedItemRequest;
   return locateV2(req, { name } as ItemClosure, { ignore: false, legacy: false }).filter(ownSurface);
 }
 export function beforePins(surfaces: { id: SurfaceId; kind: SurfaceKind; path: string }[], project: string): SyncItem['before'] {
   return surfaces.map(s => { let digest: string | null; try { digest = revisionOf(stablePins(surfaceV2(s.id, s.kind, s.path).pins)); } catch { digest = null; } return { id: s.id, path: relative(project, s.path), stablePinsDigest: digest }; });
 }
-export const union = (a: readonly Harness[], b: readonly Harness[]): Harness[] => (['claude', 'codex'] as Harness[]).filter(h => a.includes(h) || b.includes(h));
+export const union = (a: readonly WriterEngine[], b: readonly WriterEngine[]): WriterEngine[] => WRITER_ENGINE_IDS.filter(h => a.includes(h) || b.includes(h));
 export const byPath = (rows: InventoryRow[]): InventoryRow[] => [...rows].sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)));
 
 export interface CatalogView { source: Record<string, unknown>; skill: { name?: unknown; sourceRoot?: unknown } | null; inventory: unknown }
@@ -322,7 +325,7 @@ export const driftNext = (paths: string[], source: string | null = null) => sour
   ? `Undo your edits in ${paths.join(', ')} (to keep them, put them in ${source}, the source of the copies), then run bowerloom skills sync. Sync never overwrites a changed copy.`
   : `Undo your edits in ${paths.join(', ')} (or copy them into a skill of your own with bowerloom skill create <name>), then run bowerloom skills sync. Sync never overwrites a changed copy.`;
 
-interface ItemContext { input: SyncInput; manifest: Manifest; layout: StateLayout; ignore: 'absent' | 'exact'; target: Harness[]; storeDir: string | null; notes: string[]; offline: boolean }
+interface ItemContext { input: SyncInput; manifest: Manifest; layout: StateLayout; ignore: 'absent' | 'exact'; target: WriterEngine[]; storeDir: string | null; notes: string[]; offline: boolean }
 /** The hold of an item whose store cache entry failed verification in a run that cannot fetch (review F5). */
 const faultHold = (code: string): { code: string; next: string } => ({ code, next: 'Run bowerloom apply --frozen, or bowerloom skills sync.' });
 /** The paths of the item surfaces that differ from the closest committed receipt: what a person changed. */
@@ -355,7 +358,7 @@ function classify(entry: Entry, ctx: ItemContext, r: ResolvedItem): Classified {
   const pinned = kind === 'local' ? null : entryRequest(entry as PinnedEntry);
   const authoredLock = kind === 'local' && r.resolvedFrom === 'lock' && r.lockPin !== null;
   let hold: SyncItem['hold'] = null, heldCode: string | null = null, state: ItemState = 'drift', action: ItemAction = 'hold', previous: ManagedItemReceipt | null = null;
-  let harnesses = [...ctx.target], allowedTools: string | undefined, storeCache: SyncItem['storeCache'] = null, notices: PromptNotice[] | null | undefined, fault: { code: string; key: string } | null = null;
+  let engines = [...ctx.target], allowedTools: string | undefined, storeCache: SyncItem['storeCache'] = null, notices: PromptNotice[] | null | undefined, fault: { code: string; key: string } | null = null;
   // The material every copy gets: the pinned inventory, what the authored folder holds now, or the rows of the lock.
   let files: InventoryRow[] = [];
   if (pinned) files = byPath(pinned.request.files.map(f => ({ path: f.path, sha256: f.sha256, bytes: f.bytes })));
@@ -398,20 +401,21 @@ function classify(entry: Entry, ctx: ItemContext, r: ResolvedItem): Classified {
   } else {
     try { previous = currentV2(dir, stateDir, { kind: 'skill', id }); } catch (e) { previous = null; heldCode = managedCode(e); }
     if (previous !== null) {
-      harnesses = union(previous.harnesses, ctx.target);
-      const c = readCatalog(catalog), add = harnesses.length > previous.harnesses.length, drop = !ctx.input.apply && previous.harnesses.some(h => !ctx.manifest.harnesses.includes(h));
+      const was = fromWire(previous.harnesses, `The receipt of ${id}`);
+      engines = union(was, ctx.target);
+      const c = readCatalog(catalog), add = engines.length > was.length, drop = !ctx.input.apply && was.some(h => !ctx.manifest.engines.includes(h));
       if (!sameOrigin(entry, c)) hold ??= { code: 'MANAGED_SKILL_REFUSED', next: `skills.json now names another source for ${id}. A skill keeps its source: restore the old entry, or add the new source under another id with --id.` };
       else if (!samePin(entry, c)) { state = 'pin-changed'; action = 'update'; }
       else if (!sameValue(c.inventory, files)) {
         // The same immutable pin with other file hashes: skills.json contradicts what was installed from that pin.
         if (pinned) throw syncError('SKILLS_SYNC_CONTENT_MISMATCH', `skills.json lists other file hashes for the same pin of ${id}.`);
         state = 'local'; action = 'update';
-      } else if (add) { state = 'harnesses-changed'; action = 'update'; }
-      else if (drop) { state = 'harnesses-changed'; action = 'none'; }
+      } else if (add) { state = 'engines-changed'; action = 'update'; }
+      else if (drop) { state = 'engines-changed'; action = 'none'; }
       else { state = 'up-to-date'; action = 'none'; }
     }
   }
-  const surfaces = itemSurfaces(dir, id, name, harnesses), before = beforePins(surfaces, dir);
+  const surfaces = itemSurfaces(dir, id, name, engines), before = beforePins(surfaces, dir);
   if (heldCode !== null && hold === null) {
     const changed = heldCode === 'MANAGED_SKILL_LOCAL_DRIFT' ? driftedPaths(dir, stateDir, id) : [];
     hold = { code: heldCode, next: heldCode === 'MANAGED_SKILL_LOCAL_DRIFT' ? driftNext(changed.length ? changed : before.map(b => b.path), kind !== 'local' ? null : r.origin === 'project' ? `.bowerloom/skills/${id}` : storeWhere(r)) : heldCode === 'MANAGED_SKILL_PATH_OCCUPIED'
@@ -431,7 +435,7 @@ function classify(entry: Entry, ctx: ItemContext, r: ResolvedItem): Classified {
   return {
     pinned,
     item: {
-      id, kind, pin: pinOf(entry), state, action, harnesses, requestDigest: pinned?.digest ?? (authoredLock ? r.lockPin!.hash : null), cacheOperationId: null, cache: null,
+      id, kind, pin: pinOf(entry), state, action, engines, requestDigest: pinned?.digest ?? (authoredLock ? r.lockPin!.hash : null), cacheOperationId: null, cache: null,
       expected: { files, surfaces: surfaces.map(s => ({ id: s.id, path: relative(dir, s.path) })) }, before,
       previousReceiptRevision: previous?.revision ?? null, history: ops.length, hold,
       ...(tools !== undefined ? { allowedTools: tools } : {}),
@@ -442,7 +446,7 @@ function classify(entry: Entry, ctx: ItemContext, r: ResolvedItem): Classified {
 }
 /** An item the resolver holds (CONFIG_ITEM_MISSING, STORE_ITEM_MISSING): no definition, so nothing to classify. */
 function heldItem(r: ResolvedItem): SyncItem {
-  return { id: r.id, kind: null, pin: null, state: 'drift', action: 'hold', harnesses: [], requestDigest: null, cacheOperationId: null, cache: null, expected: { files: [], surfaces: [] }, before: [], previousReceiptRevision: null, history: 0, hold: r.hold, origin: r.origin, via: [...r.via], resolvedFrom: r.resolvedFrom, lockPin: null, storeCache: null };
+  return { id: r.id, kind: null, pin: null, state: 'drift', action: 'hold', engines: [], requestDigest: null, cacheOperationId: null, cache: null, expected: { files: [], surfaces: [] }, before: [], previousReceiptRevision: null, history: 0, hold: r.hold, origin: r.origin, via: [...r.via], resolvedFrom: r.resolvedFrom, lockPin: null, storeCache: null };
 }
 
 /**
@@ -476,7 +480,7 @@ export function holdSharedPlaces(items: SyncItem[]): void {
 function orphan(project: string, itemsRoot: string, id: string): SyncItem {
   let previous: ManagedItemReceipt | null = null;
   try { previous = currentV2(project, join(itemsRoot, id), { kind: 'skill', id }); } catch { previous = null; }
-  return { id, kind: null, pin: null, state: 'orphaned', action: 'none', harnesses: previous ? [...previous.harnesses] : [], requestDigest: null, cacheOperationId: null, cache: null, expected: { files: [], surfaces: [] }, before: [], previousReceiptRevision: previous?.revision ?? null, history: 0, hold: null, origin: null, via: [], resolvedFrom: 'project', lockPin: null, storeCache: null };
+  return { id, kind: null, pin: null, state: 'orphaned', action: 'none', engines: previous ? fromWire(previous.harnesses, `The receipt of ${id}`) : [], requestDigest: null, cacheOperationId: null, cache: null, expected: { files: [], surfaces: [] }, before: [], previousReceiptRevision: previous?.revision ?? null, history: 0, hold: null, origin: null, via: [], resolvedFrom: 'project', lockPin: null, storeCache: null };
 }
 
 /** True for a folder of this project's own private state: its root and anything below it. Others are shared. */
@@ -540,7 +544,8 @@ export async function observeSync(input: SyncInput, given?: Resolved): Promise<O
     if (exists(join(dir, '.bowerloom-revision.json'))) throw syncError('REVISION_PENDING');
     let ignore: 'absent' | 'exact';
     try { ignore = ignoreState(dir); } catch (e) { throw syncError(managedCode(e), 'The file .bowerloom/managed/.gitignore must hold exactly one line, a single *.'); }
-    const target = input.apply ? [...input.apply.harnesses] : [...manifest.harnesses] as Harness[];
+    // An engine with no writer is refused here, before anything is planned. The skills.json list decides for a sync; the command decides for an apply.
+    const target = writerEngines(input.apply ? input.apply.engines : manifest.engines);
     const layout = stateLayout(input), storeDir = resolved.store.context?.dir ?? null;
     // When sync and apply read the live store, the private state and the store must not be inside one another.
     if (resolved.store.context !== null && storeStateNested(resolved.store.context, resolved.store.context.dir, input.stateRoot, layout.pins)) throw projectRefusal('STORE_STATE_NESTED');
@@ -610,7 +615,7 @@ export async function observeSync(input: SyncInput, given?: Resolved): Promise<O
       bowerloomFolder: project.bowerloomIdentity === null ? 'create' as const : 'present' as const, frozen,
       manifest: resolved.projectManifest, config: resolved.config, lock: resolved.lock.sha256 !== null ? { sha256: resolved.lock.sha256, bytes: resolved.lock.bytes! } : null,
       store: storeBinding(resolved, fromStore),
-      harnesses: target, team: input.team, offline: input.offline,
+      engines: target, team: input.team, offline: input.offline,
       privateState: { root: layout.root, projectId: project.projectId, cacheRoot: layout.cacheRoot, storeCacheRoot: layout.storeCacheRoot, itemsRoot: layout.itemsRoot, create, pins: layout.pins },
       managed: { ignore }, items, storeFetch, notes: [...resolved.notes, ...ctx.notes, ...(frozen ? [FROZEN_LINE] : [])],
       // Review L2: the GitHub requests of the authored items of this run, whether or not the store cache holds them now.

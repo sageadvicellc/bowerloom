@@ -215,6 +215,23 @@ test('internal routine and skills manifests are exact exceptions and present man
  }finally{Object.assign(fs,original);syncBuiltinESMExports();}
 });
 
+// Bowerloom 0.8, step 2: skill-manifest takes its engine ids from the harness definition core, so the core is a runtime
+// module of the CLI. It has no package.json of its own.
+test('0.8 harness-definition is an allowlisted runtime module with an optional manifest',()=>{
+ assert.ok(MODULES.includes('harness-definition'));
+ const record=collect({repoDir:repo}).record;
+ assert.equal(record.sourceManifests.some(m=>m.path==='packages/harness-definition/package.json'),false);
+});
+
+// Bowerloom 0.8, step 3: the locked-in writers of project-sync take their translations from the fidelity package, so
+// fidelity is a runtime module of the CLI too. It has no package.json of its own.
+test('0.8 fidelity is an allowlisted runtime module with an optional manifest',()=>{
+ assert.ok(MODULES.includes('fidelity'));
+ const record=collect({repoDir:repo}).record;
+ assert.equal(record.sourceManifests.some(m=>m.path==='packages/fidelity/package.json'),false);
+ assert.ok(record.sourceFiles.some(f=>f.path==='packages/fidelity/src/locked-hooks.ts'));
+});
+
 // Beta 0.7.0 Day 0: the project-layer packages are runtime modules with optional internal manifests.
 test('beta 0.7.0 project packages are allowlisted modules whose manifests are optional but validated when present',()=>{
  const added=['project-context','project-config','project-authoring','skill-manifest','project-sync','context-slices'];

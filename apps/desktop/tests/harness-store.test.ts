@@ -9,11 +9,13 @@ import {
 import type { Schedule } from '../shared/harness/store.js';
 import { buildInstallPlan, defaultChoices, installButtonWords, keepBothName, planSummary } from '../shared/harness/files.js';
 import { harnessById, installOf, kindCounts, partsWords, projectStatus, harnessStatus } from '../shared/harness/status.js';
-import type { Stamp } from '../shared/harness/types.js';
+import type { HarnessState, InterfaceId, Stamp } from '../shared/harness/types.js';
 
 const { weekly, caveman, inbox, research, bowerloom, garden, archive, notes } = SAMPLE_IDS;
 const NOW: Stamp = { daysAgo: 0, time: '11:00' };
 const world = createSampleWorld;
+// Hermes is no engine of 0.8, so the sample world has no interface that is not found. This makes one, to keep the not-found rules under test.
+const notFound = (s: HarnessState, id: InterfaceId): HarnessState => ({ ...s, interfaces: s.interfaces.map(i => (i.id === id ? { ...i, health: 'not-found' as const, healthWords: 'Not found', on: false } : i)) });
 const weeklyOf = (s: ReturnType<typeof world>) => harnessById(s, weekly)!;
 
 test('every reducer leaves the state it was given untouched', () => {
@@ -48,13 +50,13 @@ test('createHarnessFromSource: the harness holds the parts of that source, every
   assert.equal(nothing.harnessId, null); assert.equal(nothing.state, s);
 });
 
-test('all four scan sources make four harnesses; chooseSources keeps only real ids', () => {
+test('all three scan sources make three harnesses; chooseSources keeps only real ids', () => {
   let s = world();
-  assert.deepEqual(s.chosenSourceIds, ['src-caveman', 'src-claude', 'src-codex', 'src-hermes']);
+  assert.deepEqual(s.chosenSourceIds, ['src-caveman', 'src-claude', 'src-codex']);
   s = chooseSources(s, ['src-codex', 'src-nope', 'src-hermes']);
-  assert.deepEqual(s.chosenSourceIds, ['src-codex', 'src-hermes']);
-  for (const id of ['src-caveman', 'src-claude', 'src-codex', 'src-hermes']) s = createHarnessFromSource(s, id, NOW).state;
-  assert.equal(s.harnesses.length, 8);
+  assert.deepEqual(s.chosenSourceIds, ['src-codex'], 'Hermes is no source of the sample: its id is not real');
+  for (const id of ['src-caveman', 'src-claude', 'src-codex']) s = createHarnessFromSource(s, id, NOW).state;
+  assert.equal(s.harnesses.length, 7);
 });
 
 test('addPart adds the part, marks it new, records a manifest change, and refuses a part that is held or unknown', () => {
@@ -188,8 +190,9 @@ test('install refuses what cannot be installed: unknown project, unknown harness
   assert.equal(install(s, { projectId: 'project-nope', harnessId: weekly, interfaceIds: ['codex'] }, NOW), s);
   assert.equal(install(s, { projectId: archive, harnessId: 'harness-nope', interfaceIds: ['codex'] }, NOW), s);
   assert.equal(install(s, { projectId: archive, harnessId: inbox, interfaceIds: [] }, NOW), s);
-  assert.equal(install(s, { projectId: archive, harnessId: inbox, interfaceIds: ['hermes'] }, NOW), s);
-  const mixed = install(s, { projectId: archive, harnessId: inbox, interfaceIds: ['hermes', 'codex', 'codex'] }, NOW);
+  const gone = notFound(s, 'opencode');
+  assert.equal(install(gone, { projectId: archive, harnessId: inbox, interfaceIds: ['opencode'] }, NOW), gone);
+  const mixed = install(gone, { projectId: archive, harnessId: inbox, interfaceIds: ['opencode', 'codex', 'codex'] }, NOW);
   assert.deepEqual(installOf(mixed, archive, inbox)!.states, { codex: 'installed' });
 });
 
@@ -231,7 +234,7 @@ test('startRuns: one run for each interface, a shared group for two or more, new
   assert.equal(r.state.runs.length, s.runs.length + 2);
   const one = startRuns(s, { harnessId: weekly, projectId: bowerloom, interfaceIds: ['claude-code'], instruction: 'Go.' }, NOW);
   assert.equal(one.state.runs[0]!.groupId, null);
-  for (const bad of [{ instruction: '   ' }, { interfaceIds: [] as const }, { interfaceIds: ['hermes'] as const }, { harnessId: 'harness-nope' }, { projectId: 'project-nope' }]) {
+  for (const bad of [{ instruction: '   ' }, { interfaceIds: [] as const }, { interfaceIds: ['opencode'] as const }, { harnessId: 'harness-nope' }, { projectId: 'project-nope' }]) {
     const out = startRuns(s, { harnessId: weekly, projectId: bowerloom, interfaceIds: ['codex'], instruction: 'Go.', ...bad }, NOW);
     assert.equal(out.state, s); assert.deepEqual(out.runIds, []);
   }
@@ -258,7 +261,8 @@ test('setInterfaceOn switches an interface, records it, undoes it, and never swi
   const off = setInterfaceOn(s, 'codex', false, NOW);
   assert.equal(off.interfaces.find(i => i.id === 'codex')!.on, false); assert.equal(off.history[0]!.text, 'Turned off Codex');
   assert.equal(setInterfaceOn(off, 'codex', false, NOW), off);
-  assert.equal(setInterfaceOn(s, 'hermes', true, NOW), s);
+  const gone = notFound(s, 'opencode');
+  assert.equal(setInterfaceOn(gone, 'opencode', true, NOW), gone, 'an interface that is not found cannot be switched on');
   const opencode = setInterfaceOn(s, 'opencode', true, NOW);
   assert.equal(opencode.interfaces.find(i => i.id === 'opencode')!.on, true);
   assert.equal(undoEntry(off, off.history[0]!.id, NOW).interfaces.find(i => i.id === 'codex')!.on, true);
@@ -348,7 +352,7 @@ test('install and startRuns say why they changed nothing: unknown or empty harne
   const bad = [
     [{ projectId: archive, harnessId: 'harness-nope', interfaceIds: ['codex'] }, 'that harness is not here'], [{ projectId: 'project-nope', harnessId: inbox, interfaceIds: ['codex'] }, 'that project is not here'],
     [{ projectId: archive, harnessId: empty.harnessId, interfaceIds: ['codex'] }, 'that harness is empty'], [{ projectId: archive, harnessId: inbox, interfaceIds: [] }, 'no interface is picked'],
-    [{ projectId: archive, harnessId: inbox, interfaceIds: ['hermes'] }, 'no interface that is switched on and found is picked'], [{ projectId: archive, harnessId: inbox, interfaceIds: ['opencode'] }, 'no interface that is switched on and found is picked'],
+    [{ projectId: archive, harnessId: inbox, interfaceIds: ['opencode'] }, 'no interface that is switched on and found is picked'],
   ] as const;
   for (const [request, why] of bad) {
     assert.equal(installProblem(empty.state, request), why, why); assert.equal(install(empty.state, request, NOW), empty.state, why);
@@ -389,7 +393,7 @@ test('the store object: it hands the reducers a stamp, tells subscribers, and ig
   store.addPart(caveman, 'tool-web-search'); assert.equal(calls, 1, 'no change, no call');
   const id = store.createHarness(); assert.ok(harnessById(store.getState(), id));
   store.chooseSources(['src-codex']); store.setNodePosition(id, 'x', { x: 1, y: 1 });
-  const made = store.createHarnessFromSource('src-hermes'); assert.ok(made !== null && harnessById(store.getState(), made));
+  const made = store.createHarnessFromSource('src-claude'); assert.ok(made !== null && harnessById(store.getState(), made));
   store.removePart(caveman, 'tool-web-search'); store.addLink(weekly, 'agent-researcher', 'skill-format-report'); store.removeLink(weekly, 'agent-researcher', 'skill-format-report');
   store.install({ projectId: archive, harnessId: inbox, interfaceIds: ['codex'] }); store.update({ projectId: garden, harnessId: caveman }); store.setInterfaceOn('opencode', true);
   store.fixMissingPart(weekly, 'missing-translate'); store.undo(store.getState().history[0]!.id);

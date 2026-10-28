@@ -1,6 +1,6 @@
 /**
- * The sample world of the harness-first preview. Every number and name comes from the design pictures: 4 harnesses, 5 projects, 4 interfaces, and a Library of
- * 13 agents, 49 skills, 2 tools and 3 pieces of context. "Weekly report crew" holds 3 agents, 5 skills (Translate is missing), 2 tools and 2 context, 11 parts.
+ * The sample world of the harness-first preview. Every number and name comes from the design pictures: 4 harnesses, 5 projects, 3 interfaces, and a Library of
+ * 12 agents, 41 skills, 2 tools and 3 pieces of context. "Weekly report crew" holds 3 agents, 5 skills (Translate is missing), 2 tools and 2 context, 11 parts.
  * No status is written down here. Each one is computed from the install data (status.ts), so every screen says the same thing.
  * A few parts are held by a harness and are not listed in the Library tabs (`inLibrary: false`): the pictures give some harnesses more tools and context than the Library lists.
  */
@@ -9,7 +9,7 @@ import type { Harness, HarnessState, HistoryEntry, Install, Interface, Interface
 
 export const slugOf = (name: string): string => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
-const ORIGIN = { caveman: 'src-caveman', claude: 'src-claude', codex: 'src-codex', hermes: 'src-hermes', notes: 'src-notes' } as const;
+const ORIGIN = { caveman: 'src-caveman', claude: 'src-claude', codex: 'src-codex', notes: 'src-notes' } as const;
 const BY_YOU = 'Made by you', CAVEMAN = 'Caveman plug-in', OPEN = 'Open skills library';
 
 type Row = readonly [name: string, summary: string, description: string, source?: string, version?: string];
@@ -46,7 +46,7 @@ const researcher: Part = {
   ].join('\n'),
 };
 
-// ---- Agents: 13 in all (4 Caveman, 6 from the Claude Code folder, 2 from the Codex folder, 1 from the Hermes profile).
+// ---- Agents: 12 in all (4 Caveman, 6 from the Claude Code folder, 2 from the Codex folder).
 const AGENTS: readonly Part[] = [
   make('agent', ['Planner', 'Splits up work.', 'Splits a job into steps and hands each one on.'], ORIGIN.claude),
   researcher,
@@ -60,10 +60,9 @@ const AGENTS: readonly Part[] = [
   make('agent', ['Quick fixer', 'Fixes small things.', 'Fixes a small problem and says what it did.', CAVEMAN], ORIGIN.caveman),
   make('agent', ['Translator', 'Translates text.', 'Translates a text and keeps its tone.'], ORIGIN.codex),
   make('agent', ['Scheduler', 'Plans calls.', 'Finds a time for a call and writes the invite.'], ORIGIN.codex),
-  make('agent', ['Note taker', 'Takes notes.', 'Takes notes in a meeting and lists the next steps.'], ORIGIN.hermes),
 ];
 
-// ---- Skills: 49 in all (14 Caveman, 22 from the Claude Code folder, 5 from the Codex folder, 8 from the Hermes profile).
+// ---- Skills: 41 in all (14 Caveman, 22 from the Claude Code folder, 5 from the Codex folder).
 const SKILLS_CLAUDE: readonly Part[] = ([
   ['Draft outline', 'Plans sections.', 'Plans the sections of a report.', OPEN],
   ['Summarize sources', 'Sums up pages.', 'Gives the gist of a page.', CAVEMAN],
@@ -101,15 +100,9 @@ const SKILLS_CODEX: readonly Part[] = ([
   ['Translate', 'Translates text.', 'Translates a text and keeps its tone.'], ['Schedule a call', 'Schedules calls.', 'Finds a time that suits everyone.'],
   ['Convert a date', 'Converts dates.', 'Converts a date to another format.'], ['Count words', 'Counts words.', 'Counts the words of a text.'], ['Fix a typo', 'Fixes typos.', 'Fixes a typo and says where.'],
 ] as readonly Row[]).map(row => make('skill', row, ORIGIN.codex));
-const SKILLS_HERMES: readonly Part[] = ([
-  ['Morning brief', 'Morning brief.', 'Writes a short brief for the morning.'], ['Weather note', 'Weather note.', 'Adds the weather to a note.'], ['Read the news', 'Reads the news.', 'Reads the news and picks the top items.'],
-  ['Keep a journal', 'Keeps a journal.', 'Adds a line to your journal.'], ['Set a reminder', 'Sets reminders.', 'Sets a reminder for later.'], ['Log a task', 'Logs tasks.', 'Adds a task to your list.'],
-  ['Look up a word', 'Looks up words.', 'Looks up the meaning of a word.'], ['Plan a day', 'Plans a day.', 'Plans the day in blocks.'],
-] as readonly Row[]).map(row => make('skill', row, ORIGIN.hermes));
-
 // ---- Tools (2 in the Library) and context (3 in the Library), and the two that only a harness holds.
 const TOOLS: readonly Part[] = [
-  make('tool', ['Spreadsheet', 'Reads sheets.', 'Reads the cells of a spreadsheet.'], ORIGIN.claude, { cannotUse: ['codex', 'opencode', 'hermes'] }),
+  make('tool', ['Spreadsheet', 'Reads sheets.', 'Reads the cells of a spreadsheet.'], ORIGIN.claude, { cannotUse: ['codex', 'opencode'] }),
   make('tool', ['Web search', 'Searches online.', 'Searches the web and returns the top pages.'], ORIGIN.claude),
 ];
 const CONTEXT: readonly Part[] = [
@@ -122,7 +115,7 @@ const NOT_LISTED: readonly Part[] = [
   make('context', ['Source rules', 'Rules for sources.', 'What counts as a good source.'], ORIGIN.notes, { inLibrary: false }),
 ];
 
-const PARTS: readonly Part[] = [...AGENTS, ...SKILLS_CLAUDE, ...SKILLS_CAVEMAN, ...SKILLS_CODEX, ...SKILLS_HERMES, ...TOOLS, ...CONTEXT, ...NOT_LISTED];
+const PARTS: readonly Part[] = [...AGENTS, ...SKILLS_CLAUDE, ...SKILLS_CAVEMAN, ...SKILLS_CODEX, ...TOOLS, ...CONTEXT, ...NOT_LISTED];
 const id = (kind: PartKind, name: string): string => `${kind}-${slugOf(name)}`;
 const ids = (kind: PartKind, names: readonly string[]): string[] => names.map(name => id(kind, name));
 
@@ -182,7 +175,6 @@ const INTERFACES: readonly Interface[] = [
   { id: 'claude-code', name: 'Claude Code', foundAt: 'Found at ~/.claude', health: 'ready', healthWords: 'Ready', on: true, writes: ['.claude/agents/<name>.md', '.claude/skills/<name>/SKILL.md'], cannotUseNote: 'Nothing. It uses every kind of part.' },
   { id: 'codex', name: 'Codex', foundAt: 'Found at ~/.codex and ~/.agents', health: 'ready', healthWords: 'Ready', on: true, writes: ['.codex/agents/<name>.toml', '.agents/skills/<name>/SKILL.md'], cannotUseNote: 'Tools that only Claude Code supports. The install sheet names each one.' },
   { id: 'opencode', name: 'OpenCode', foundAt: 'Found at ~/.config/opencode', health: 'problem', healthWords: 'Config file has a problem', on: false, writes: ['.opencode/agents/<name>.md', '.opencode/skills/<name>/SKILL.md'], cannotUseNote: 'Tools that only Claude Code supports. The install sheet names each one.' },
-  { id: 'hermes', name: 'Hermes', foundAt: 'Not found on this computer', health: 'not-found', healthWords: 'Not found', on: false, writes: ['.hermes/agents/<name>.md', '.hermes/skills/<name>/SKILL.md'], cannotUseNote: 'Tools that only Claude Code supports. The install sheet names each one.' },
 ];
 
 export const SAMPLE_INSTRUCTION = 'Write a weekly report from the notes in Meetings. Check that every claim has a source.';
@@ -228,7 +220,6 @@ const SOURCES: readonly ScanSource[] = [
   { id: ORIGIN.caveman, name: 'Caveman (plug-in)', interfaceName: 'Claude Code', harnessName: 'Caveman plug-in', partIds: PARTS.filter(p => p.origin === ORIGIN.caveman).map(p => p.id) },
   { id: ORIGIN.claude, name: 'Your Claude Code folder', interfaceName: 'Claude Code', harnessName: 'Claude Code folder', partIds: PARTS.filter(p => p.origin === ORIGIN.claude).map(p => p.id) },
   { id: ORIGIN.codex, name: 'Your Codex folder', interfaceName: 'Codex', harnessName: 'Codex folder', partIds: PARTS.filter(p => p.origin === ORIGIN.codex).map(p => p.id) },
-  { id: ORIGIN.hermes, name: 'Hermes profile: pixel', interfaceName: 'Hermes', harnessName: 'Hermes pixel', partIds: PARTS.filter(p => p.origin === ORIGIN.hermes).map(p => p.id) },
 ];
 
 /**

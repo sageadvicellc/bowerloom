@@ -22,9 +22,9 @@ import { checkProjectPath, discoverProject, privateStateRoot, withProjectLock } 
 import type { PlannedChange, ProjectContext } from '../../../packages/project-context/src/types.js';
 import { LIMITS, readGuarded } from '../../../packages/project-authoring/src/files.js';
 import { readAuthoringState } from '../../../packages/project-authoring/src/state.js';
-import { applySync, planProjectApply, applyProjectApply, planSync, productionAcquirer } from '../../../packages/project-sync/src/index.js';
+import { applySync, planProjectApply, applyProjectApply, planSync, productionAcquirer, requireDeclaredWriters } from '../../../packages/project-sync/src/index.js';
 import type { Acquirer, ApplyPlan, SyncPlan } from '../../../packages/project-sync/src/index.js';
-import type { Harness } from '../../../packages/managed-skills/src/v2-types.js';
+import type { WriterEngine } from '../../../packages/skill-manifest/src/engine.js';
 import { lstatSync } from 'node:fs';
 import { inspectStore } from '../../../packages/project-context/src/index.js';
 import { readConfig, refusalWithNext } from '../../../packages/project-config/src/index.js';
@@ -54,7 +54,7 @@ export interface UpContext {
   /** The --team value: first-team's id or display name, a created team's id, or a new team's id. */
   team: string;
   goal: string | null; name: string | null;
-  harnesses: Harness[]; acquirer: Acquirer;
+  engines: WriterEngine[]; acquirer: Acquirer;
   /** `--allow-agent <role>:<hash>` allowances, passed to the apply step. */
   allow?: readonly string[];
   /** The terminal, when the person may take an allowance. */
@@ -170,14 +170,14 @@ export async function nextUpStep(ctx: UpContext): Promise<UpNext> {
       return { step: 'sync', team, change: wrap('sync', team, change, () => `Next step: sync. Install the skills of team ${team.name} on this machine.`) };
     }
   }
-  const applyInput = () => ({ project, stateRoot, home: ctx.home, harnesses: ctx.harnesses, team: team.id, allow: ctx.allow ?? [] }), applyPlan = await planProjectApply(applyInput());
+  const applyInput = () => ({ project, stateRoot, home: ctx.home, engines: ctx.engines, team: team.id, allow: ctx.allow ?? [] }), applyPlan = await planProjectApply(applyInput());
   if ((ctx.allow ?? []).length && ctx.io && ctx.write) await confirmAllowances(applyPlan, ctx.io, ctx.write);
   if (applyPlan.actionable) {
     const lock = new AbortController(), change: PlannedChange<ApplyPlan> = {
       plan: () => planProjectApply(applyInput()), revision: p => p.revision, review: p => renderApplyReview(p, ctx.terminal === true),
       apply: revision => applyProjectApply(applyInput(), revision, lock.signal),
     };
-    return { step: 'apply', team, change: wrap('apply', team, change, () => `Next step: apply. Put the skills, prompts, agents, and context slices of team ${team.name} in place for ${harnessWords(ctx.harnesses)}.`) };
+    return { step: 'apply', team, change: wrap('apply', team, change, () => `Next step: apply. Put the skills, prompts, agents, and context slices of team ${team.name} in place for ${harnessWords(ctx.engines)}.`) };
   }
   held.push(...planHolds(applyPlan.skills?.items ?? [], applyPlan.prompts, applyPlan.agents, applyPlan.slices));
   return { step: 'held', team, change: null, held: uniqueHolds(held) };
@@ -194,15 +194,15 @@ const teamWords = (team: UpTeam): string => team.name === team.id ? team.id : `$
 function held(ctx: UpContext, next: UpNext, json: boolean, write: (text: string) => void): never {
   const team = next.team, items = next.held ?? [], count = `${items.length} ${items.length === 1 ? 'item' : 'items'}`;
   write(json
-    ? newCommandJson({ format: 'bowerloom/up-held/v1beta1', step: 'held', status: 'prepared, workers held', team, harnesses: ctx.harnesses, held: items, startHere: START_HERE, workersStarted: false, executionAuthorized: false })
+    ? newCommandJson({ format: 'bowerloom/up-held/v1beta2', step: 'held', status: 'prepared, workers held', team, engines: ctx.engines, held: items, startHere: START_HERE, workersStarted: false, executionAuthorized: false })
     : plainText((items.length ? [
       `prepared, ${count} held`,
-      `  Team: ${teamWords(team)}, for ${harnessWords(ctx.harnesses)}. Workers stay held.`,
+      `  Team: ${teamWords(team)}, for ${harnessWords(ctx.engines)}. Workers stay held.`,
       ...items.flatMap(i => [`  Held: ${i.kind} ${i.id} (${i.code})`, `    Next: ${plainText(i.next)}`]),
       `  Then read ${START_HERE}. This beta starts no worker; worker launch comes after the startup gate.`, '',
     ] : [
       'prepared, workers held',
-      `  Team: ${teamWords(team)}, with skills, prompts, agents, and context slices in place for ${harnessWords(ctx.harnesses)}.`,
+      `  Team: ${teamWords(team)}, with skills, prompts, agents, and context slices in place for ${harnessWords(ctx.engines)}.`,
       `  Next: read ${START_HERE}. This beta starts no worker; worker launch comes after the startup gate.`, '',
     ]).join('\n'), true));
   throw newCommandRefusal('WORKERS_HELD', `prepared, workers held. Read ${START_HERE}. No worker was started.`);
@@ -248,8 +248,11 @@ function afterApplied(step: UpStep, error: unknown): unknown {
 export async function runUpCommand(args: readonly string[], cwd: string, home: string, write: (text: string) => void, io: ApprovalIo = terminalIo(), env: NodeJS.ProcessEnv = process.env, acquirer: Acquirer = productionAcquirer): Promise<number> {
   const parsed = parseUpArgs(args), approval = parseApprovalFlags(parsed.rest);
   if (approval.rest.length) usage();
-  const ctx: UpContext = { cwd, home, env, team: parsed.team, goal: parsed.goal, name: parsed.name, harnesses: ['claude', 'codex'], acquirer, allow: parsed.allow, terminal: io.interactive && !approval.json, io, write };
+  const ctx: UpContext = { cwd, home, env, team: parsed.team, goal: parsed.goal, name: parsed.name, engines: ['claude-code', 'codex'], acquirer, allow: parsed.allow, terminal: io.interactive && !approval.json, io, write };
   if (parsed.allow.length) requireTerminal(io, approval.json);
+  // A project whose files list an engine with no writer is refused by name before any step, so no step is applied and then refused.
+  const found = (() => { try { return discoverProject(cwd, home); } catch { return null; } })();
+  if (found !== null) requireDeclaredWriters(found);
   const json = approval.json ? ['--json'] : [];
   let next = await nextUpStep(ctx);
   // Spec 06, 3.19: one note for a missing or disagreeing lock.

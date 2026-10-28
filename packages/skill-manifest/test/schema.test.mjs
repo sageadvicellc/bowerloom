@@ -33,7 +33,7 @@ const parsing = mutate => { const m = sample(); mutate(m); return () => parseMan
 test('the canonical sample parses, and serialize after parse gives the same bytes', () => {
   const text = canonical(sample()), m = parseManifest(Buffer.from(text), MANIFEST_LIMITS);
   assert.equal(MANIFEST_FORMAT, 'bowerloom/skills/v1beta1');
-  assert.equal(m.skills.length, 3); assert.deepEqual(m.harnesses, ['claude', 'codex']);
+  assert.equal(m.skills.length, 3); assert.deepEqual(m.engines, ['claude-code', 'codex']);
   assert.equal(serializeManifest(m, MANIFEST_LIMITS), text);
   assert.equal(serializeManifest(parseManifest(Buffer.from(serializeManifest(m, MANIFEST_LIMITS)), MANIFEST_LIMITS), MANIFEST_LIMITS), text);
   assert.ok(Object.isFrozen(m) && Object.isFrozen(m.skills[1].files[0]));
@@ -71,9 +71,9 @@ test('duplicate keys, unknown keys, bad encodings and wrong shapes are invalid',
   assert.throws(() => parseManifest('not a buffer', MANIFEST_LIMITS), code('MANIFEST_INVALID'));
 });
 
-test('harnesses are a sorted, unique, non-empty subset of claude and codex', () => {
+test('harnesses of an old file are a sorted, unique, non-empty subset of claude and codex', () => {
   for (const harnesses of [[], ['codex', 'claude'], ['claude', 'claude'], ['cursor'], 'claude']) assert.throws(parsing(m => { m.harnesses = harnesses; }), code('MANIFEST_INVALID'), JSON.stringify(harnesses));
-  for (const harnesses of [['claude'], ['codex']]) assert.equal(parseManifest(bytes({ ...sample(), harnesses }), MANIFEST_LIMITS).harnesses.length, 1);
+  for (const harnesses of [['claude'], ['codex']]) assert.equal(parseManifest(bytes({ ...sample(), harnesses }), MANIFEST_LIMITS).engines.length, 1);
 });
 
 test('ids are unique, well formed, at most 64 characters, and not reserved', () => {

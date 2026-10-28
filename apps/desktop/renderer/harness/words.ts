@@ -57,7 +57,7 @@ export const WORDS = deepFreeze({
     helpFour: 'Bowerloom only reads until you press Install. You can undo an install in Version history.',
   },
   /** The list of the Preview mark's popover: each line at most 25 words. */
-  notInPreview: ['The confirm sheet for a community skill', 'The layouts for a 900 by 600 window', 'Real files', 'Real runs'],
+  notInPreview: ['The confirm sheet for a community skill', 'Real files', 'Real runs'],
 } as const);
 
 /** The names of the kinds, for a title and a detail line. */

@@ -102,7 +102,7 @@ test('without a terminal, skills add plans, prints the review and revision, exit
   const applied = run(p.dir, ['skills', 'add', NPM_SPEC, '--approve', revision], p.serve);
   assert.equal(applied.status, 0, applied.stderr); assert.equal(applied.stdout, `Applied plan ${revision}.\nCache: kept the checked bytes in ${join(p.home, '.local/state/bowerloom/cache')}.\n`);
   const manifest = JSON.parse(readFileSync(p.manifest, 'utf8'));
-  assert.deepEqual(manifest.skills.map((s: { id: string }) => s.id), ['synthetic-db-collections']); assert.deepEqual(manifest.harnesses, ['claude', 'codex']);
+  assert.deepEqual(manifest.skills.map((s: { id: string }) => s.id), ['synthetic-db-collections']); assert.deepEqual(manifest.engines, ['claude-code', 'codex']); assert.equal(manifest.harnesses, undefined);
   assert.equal(readFileSync(p.manifest, 'utf8'), JSON.stringify(manifest, null, 2) + '\n');
   const again = run(p.dir, ['skills', 'add', NPM_SPEC], p.serve); assert.equal(again.status, 1); assert.equal(errorCode(again.stderr), 'SKILLS_ADD_EXISTS');
   assert.equal(p.served.calls().filter(c => c.name !== 'https.request' && c.name !== 'dns.promises.lookup').length, 0);

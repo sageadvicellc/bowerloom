@@ -76,7 +76,7 @@ test('the three choices are named and explained in one line each; Keep both says
   assert.equal(settledWords(CHOICE_WORDS['keep-both']), 'Settled. Keep both.');
 });
 
-test('the interface step: the design ticks Claude Code and Codex, and says why OpenCode and Hermes cannot be ticked', () => {
+test('the interface step: the design ticks Claude Code and Codex, and says why OpenCode cannot be ticked', () => {
   const w = world(), h = harnessById(w, weekly)!;
   assert.deepEqual(defaultInterfaces(w, bowerloom, weekly), ['claude-code', 'codex']);
   assert.deepEqual(defaultInterfaces(w, archive, inbox), ['claude-code', 'codex'], 'nothing installed yet: every ready interface');
@@ -86,8 +86,7 @@ test('the interface step: the design ticks Claude Code and Codex, and says why O
   assert.deepEqual(line('claude-code'), { words: 'Found. Uses all 11 parts.', tone: 'good' });
   assert.deepEqual(line('codex'), { words: 'Found. Cannot use 1 tool: Spreadsheet.', tone: 'warn' });
   assert.deepEqual(line('opencode'), { words: 'Found. Its config file has a problem, so it is off.', tone: 'warn' });
-  assert.deepEqual(line('hermes'), { words: 'Not found on this computer.', tone: 'quiet' });
-  assert.deepEqual([...w.interfaces].map(selectable), [true, true, false, false]);
+  assert.deepEqual([...w.interfaces].map(selectable), [true, true, false]);
 });
 
 test('the Interfaces switches change what the install sheet offers', () => {

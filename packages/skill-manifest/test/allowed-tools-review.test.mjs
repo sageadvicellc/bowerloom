@@ -23,7 +23,7 @@ test('the review of a replace shows the new allowed-tools too', () => {
   assert.ok(text.includes(LINE));
 });
 test('the skills sync item lines show allowed-tools when the skill carries it', () => {
-  const item = tools => ({ id: 'collections', kind: 'npm', pin: 'pkg@1.0.0:skills/x', state: 'needs-fetch', action: 'install', cache: null, allowedTools: tools, harnesses: ['claude'], hold: null });
+  const item = tools => ({ id: 'collections', kind: 'npm', pin: 'pkg@1.0.0:skills/x', state: 'needs-fetch', action: 'install', cache: null, allowedTools: tools, engines: ['claude-code'], hold: null });
   assert.ok(itemLine(item('Bash(npx:*) Bash(npm:*)'), 12).some(l => l.trim() === LINE));
   assert.ok(!itemLine(item(undefined), 12).some(l => l.includes('Allowed tools')));
 });

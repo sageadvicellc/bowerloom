@@ -179,7 +179,7 @@ export const storePairs = (config: ProjectConfig): string[] => LOCK_LISTS.flatMa
 /**
  * Agreement of a lock with a config: the (kind, id) pairs of the lock equal those of the config's store entries.
  * `added` lists the pairs the config adds (it has them, the lock does not); `removed` the pairs only the lock has.
- * `via`, project entries and `harnesses` are not compared.
+ * `via`, project entries and `engines` are not compared.
  */
 export function lockAgrees(lock: ProjectLock, config: ProjectConfig): { agrees: boolean; added: string[]; removed: string[] } {
   const inLock = new Set(lockPairs(lock)), inConfig = new Set(storePairs(config));

@@ -68,7 +68,7 @@ function approveNet(cwd, args, extra) {
   if (applied.status !== 0) throw new Error(`apply ${args.join(' ')}: ${applied.status} ${applied.stderr}${applied.stdout.slice(0, 300)}`);
 }
 const put = (path, text, mode) => writeSandboxFile(path, text, mode);
-const config = () => `${JSON.stringify({ format: 'bowerloom/project/v1beta1', harnesses: ['claude', 'codex'], skills: [], prompts: [], teams: [] }, null, 2)}\n`;
+const config = () => `${JSON.stringify({ format: 'bowerloom/project/v1beta1', engines: ['claude-code', 'codex'], skills: [], prompts: [], teams: [] }, null, 2)}\n`;
 const mk = dir => { assertWritable(join(dir, 'x')); mkdirSync(dir, { recursive: true, mode: 0o755 }); return dir; };
 const up = (dir, team) => approve(dir, ['up', '--team', team, '--goal', 'Prepare a fictional onboarding kit for an independent design studio.']);
 

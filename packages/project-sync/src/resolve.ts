@@ -19,10 +19,12 @@ import { readAuthoringState } from '../../project-authoring/src/state.js';
 import type { AuthoredItem } from '../../project-authoring/src/state.js';
 import { readManifestState, storeTarget } from '../../skill-manifest/src/add.js';
 import { MANIFEST_FORMAT, MANIFEST_LIMITS, STORE_MANIFEST_LIMITS, compare, parseManifest, serializeEntry } from '../../skill-manifest/src/schema.js';
-import type { Entry, Harness, Manifest, PinnedEntry } from '../../skill-manifest/src/schema.js';
+import type { Entry, Manifest, PinnedEntry } from '../../skill-manifest/src/schema.js';
+import { DEFAULT_ENGINES } from '../../skill-manifest/src/engine.js';
+import type { Engine } from '../../skill-manifest/src/engine.js';
 import type { AuthoredPin } from '../../skill-manifest/src/resolve-store-git.js';
 import { configRefusal, lockMismatch } from '../../project-config/src/refusal.js';
-import { readConfig } from '../../project-config/src/config.js';
+import { invalidConfigRefusal, readConfig } from '../../project-config/src/config.js';
 import type { ConfigEntry, ProjectConfig } from '../../project-config/src/schema.js';
 import { LOCK_FILE, lockAgrees, lockItem, readLock } from '../../project-config/src/lock.js';
 import type { LockItem, ProjectLock } from '../../project-config/src/lock.js';
@@ -44,7 +46,7 @@ export interface ResolvedItem {
 export interface Resolved {
   mode: 'config' | 'legacy'; frozen: boolean; config: { sha256: string; bytes: number } | null;
   lock: { state: LockState; sha256: string | null; bytes: number | null; code: string | null };
-  harnesses: Harness[]; manifest: Manifest | null; projectManifest: { sha256: string; bytes: number } | null;
+  engines: Engine[]; manifest: Manifest | null; projectManifest: { sha256: string; bytes: number } | null;
   skills: ResolvedItem[]; prompts: ResolvedItem[]; teams: ResolvedItem[]; store: StoreView;
   unselected: { skills: string[]; prompts: string[]; teams: string[] }; notes: string[];
   /** The parsed config and lock, for callers that change them (change.ts). Null when absent or unreadable. */
@@ -63,7 +65,6 @@ export interface ResolveInput {
 }
 
 const KINDS = [['skills', 'skill'], ['prompts', 'prompt'], ['teams', 'team']] as const;
-const HARNESSES: Harness[] = ['claude', 'codex'];
 const byteOrder = (a: string, b: string): number => Buffer.compare(Buffer.from(a), Buffer.from(b));
 const lstatOrNull = (path: string) => { try { return lstatSync(path); } catch { return null; } };
 const realFolder = (path: string): boolean => { const s = lstatOrNull(path); return s !== null && s.isDirectory() && !s.isSymbolicLink(); };
@@ -192,7 +193,7 @@ function legacy(input: ResolveInput, lockSeen: boolean): Resolved {
   const teams = [...defs.teams.keys()].sort(byteOrder).map(id => item('team', id, [], null));
   return {
     mode: 'legacy', frozen: input.frozen, config: null, lock: { state: lockSeen ? 'orphan' : 'not-used', sha256: null, bytes: null, code: null },
-    harnesses: defs.manifest ? [...defs.manifest.harnesses] : [...HARNESSES], manifest: defs.manifest, projectManifest: defs.read,
+    engines: defs.manifest ? [...defs.manifest.engines] : [...DEFAULT_ENGINES], manifest: defs.manifest, projectManifest: defs.read,
     skills, prompts, teams, store: { state: 'not-needed', context: null, skills: null, authoring: null },
     unselected: { skills: [], prompts: [], teams: [] }, notes: [], configValue: null, lockValue: null, shared: false, stale: [], storeCode: null,
   };
@@ -208,7 +209,7 @@ export function resolveProject(input: ResolveInput): Resolved {
     if (frozen) throw configRefusal('LOCK_CONFIG_MISSING');
     return legacy(input, lockSeen);
   }
-  if (read.state === 'invalid') throw configRefusal(read.code);
+  if (read.state === 'invalid') throw invalidConfigRefusal(read);
   const config = read.config, needStore = KINDS.some(([name]) => config[name].some(e => e.source === 'store'));
   // The lock: a frozen run refuses any problem with it here, before any other read.
   let lock: ProjectLock | null = null, lockInfo: Resolved['lock'] = { state: 'not-used', sha256: null, bytes: null, code: null };
@@ -281,10 +282,11 @@ export function resolveProject(input: ResolveInput): Resolved {
     prompts: [...defs.prompts.keys()].filter(id => !listed('prompts').has(id)).sort(byteOrder),
     teams: [...defs.teams.keys()].filter(id => !listed('teams').has(id)).sort(byteOrder),
   };
-  const manifest: Manifest = { format: MANIFEST_FORMAT, harnesses: [...config.harnesses], skills: skills.filter(i => i.entry !== null).map(i => i.entry!).sort((a, b) => byteOrder(a.id, b.id)) };
+  // The manifest of a config project is never written, but it keeps the form of the config it came from, so it cannot be mistaken for the other form.
+  const manifest: Manifest = { format: MANIFEST_FORMAT, engines: [...config.engines], ...(config.oldForm ? { oldForm: true as const } : {}), skills: skills.filter(i => i.entry !== null).map(i => i.entry!).sort((a, b) => byteOrder(a.id, b.id)) };
   return {
     mode: 'config', frozen, config: { sha256: read.sha256, bytes: read.bytes }, lock: lockInfo,
-    harnesses: [...config.harnesses], manifest, projectManifest: defs.read,
+    engines: [...config.engines], manifest, projectManifest: defs.read,
     skills, prompts, teams, store: storeView, unselected, notes, configValue: config, lockValue: lock, shared, stale, storeCode,
   };
 }

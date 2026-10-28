@@ -8,7 +8,7 @@ Only Hanna, through `hannasage`, reviews and merges the assembled feature into `
 
 Prefer coda-crew for coordination and h4n-n4 for workers. Use sagehanna as the fallback. Never use hannasage for agent activity.
 
-Hanna approved the alpha build on October 1, 2026. Read docs/transition/alpha-build-approval.md for the active scope and defaults. Implement and peer-review within that scope. Preserve the stopped old team, existing history, and private business material. Keep at most two workers active and preserve 5 percent of reported subscription capacity for this campaign. Hanna revised this limit on October 1, 2026. Stop at 95 percent used or alpha demo and review readiness. Preserve held allowances and active lead, worker, and review headroom. Product examples retain their 25 percent reserve.
+Hanna approved the alpha build on October 1, 2026. Read docs/transition/alpha-build-approval.md for the active scope and defaults. Implement and peer-review within that scope. Preserve the stopped old team, existing history, and private business material. Preserve 5 percent of reported subscription capacity for this campaign. Hanna revised this limit on October 1, 2026. Hanna lifted the worker limit on October 28, 2026. Use as many workers as the lanes allow. Stop at 95 percent used or alpha demo and review readiness. Preserve held allowances and active lead, worker, and review headroom. Product examples retain their 25 percent reserve.
 
 Measure disk space before large operations. Preserve 12 GiB of host free space. Stop operations that threaten the reserve. Existing worktrees and Docker data need founder authorization before removal.
 

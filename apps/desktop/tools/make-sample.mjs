@@ -29,7 +29,7 @@ function approve(cwd, args, extra = {}) {
   if (applied.status !== 0) throw new Error(`apply ${args.join(' ')}: ${applied.stderr}${applied.stdout.slice(0, 300)}`);
 }
 const put = (path, text) => { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, text); };
-const config = (skills = []) => `${JSON.stringify({ format: 'bowerloom/project/v1beta1', harnesses: ['claude', 'codex'], skills, prompts: [], teams: [] }, null, 2)}\n`;
+const config = (skills = []) => `${JSON.stringify({ format: 'bowerloom/project/v1beta1', engines: ['claude-code', 'codex'], skills, prompts: [], teams: [] }, null, 2)}\n`;
 
 // The store: yours (local), and one skill pinned to npm.
 approve(home, ['team', 'create', 'research-desk', '--global', '--profile', 'research']);
