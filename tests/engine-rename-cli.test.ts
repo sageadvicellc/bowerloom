@@ -94,7 +94,7 @@ test('H1. apply with no --harness refuses a skills.json that names an engine wit
 test('H1. status names the refusal in the plan line and does not call the project ready', t => {
   const p = project(t); writeFileSync(p.manifest, PI, { mode: 0o644 }); chmodSync(p.manifest, 0o644);
   const words = run(p.dir, ['status'], p.env); assert.equal(words.status, 0, words.stderr);
-  assert.match(words.stdout, /plan unavailable \(ENGINE_NO_WRITER\)/); assert.match(words.stdout, /Setup: drifted/);
+  assert.match(words.stdout, /plan unavailable \(ENGINE_NO_WRITER: pi\)/); assert.match(words.stdout, /Setup: drifted/);
 });
 
 test('H1. up --team refuses by name before any step, so no step is applied and then refused', t => {
@@ -125,4 +125,43 @@ test('CR4. the words of the refusal name the engine', () => {
   assert.match(words[1]!, /\bpi\b/, words.join(' | '));
   const shown = reportFailure(error, true).text.split('\n'); assert.match(shown[1]!, /\bpi\b/); assert.match(shown[0]!, /ENGINE_NO_WRITER/);
   assert.doesNotMatch(renderRefusal(error.code, error.message, { engine: 'x\u001b[31m' as never }), /\u001b/);
+});
+
+// ---- Last round: M2 (read errors), bowerloom.json detail, context commands.
+test('M2. a catalog that cannot be read (not a syntax error) is refused by file, not left to escape uncoded', t => {
+  const p = project(t), catalog = join(p.dir, '.bowerloom', 'managed', 'catalog', 'house-style.json');
+  mkdirSync(catalog, { recursive: true });
+  const ctx = discoverProject(p.dir, p.home);
+  assert.throws(() => copyPlaces(ctx, 'skill', 'house-style'), (e: { code?: string; message: string }) => e.code === 'MANAGED_SKILL_REFUSED' && e.message.includes('.bowerloom/managed/catalog/house-style.json') && /EISDIR/.test(e.message));
+});
+
+test('bowerloom.json with a bad engine id: the refusal names the id, in the JSON and the words', t => {
+  const p = project(t);
+  writeFileSync(join(p.dir, 'bowerloom.json'), `${JSON.stringify({ format: 'bowerloom/project/v1beta1', harnesses: ['pi'], skills: [], prompts: [], teams: [] }, null, 2)}\n`, { mode: 0o644 });
+  const r = run(p.dir, ['skills', 'check', '--json'], p.env);
+  assert.notEqual(r.status, 0); const e = errorOf(r.stderr);
+  assert.equal(e.code, 'CONFIG_INVALID'); assert.match(e.message, /"pi"/);
+  // Without a terminal the refusal is the JSON envelope, which escapes the quotes; with one, renderRefusal prints the same message.
+  const plain = run(p.dir, ['skills', 'check'], p.env); assert.ok(plain.stderr.includes('names \\"pi\\"'), plain.stderr);
+  assert.match(renderRefusal(e.code, e.message), /names "pi"/);
+});
+
+test('item 4. context measure and context show run when a file lists an engine with no writer, and say so in one note on stderr', t => {
+  const p = project(t); writeFileSync(p.manifest, PI, { mode: 0o644 }); chmodSync(p.manifest, 0o644);
+  const measure = run(p.dir, ['context', 'measure', '--json'], p.env);
+  assert.equal(measure.status, 0, measure.stderr); assert.doesNotThrow(() => JSON.parse(measure.stdout));
+  const notes = measure.stderr.split('\n').filter(l => l.startsWith('Note:'));
+  assert.equal(notes.length, 1); assert.match(notes[0]!, /\bpi\b/); assert.match(notes[0]!, /no writer/);
+  const show = run(p.dir, ['context', 'show', 'nope', '--json'], p.env);
+  assert.notEqual(show.status, 0); assert.doesNotMatch(show.stderr, /ENGINE_NO_WRITER/); assert.match(show.stderr, /Note: .*\bpi\b/);
+  const explain = run(p.dir, ['context', 'guard', '--agent', 'nobody', '--explain', 'x.md'], p.env);
+  assert.doesNotMatch(explain.stderr + explain.stdout, /ENGINE_NO_WRITER/); assert.match(explain.stderr + explain.stdout, /Note: .*\bpi\b/);
+});
+
+test('item 4. a file with two engines that have no writer gets one note for each', t => {
+  const p = project(t); writeFileSync(p.manifest, `${JSON.stringify({ format: 'bowerloom/skills/v1beta1', engines: ['claude-code', 'opencode', 'pi'], skills: LOCAL }, null, 2)}\n`, { mode: 0o644 }); chmodSync(p.manifest, 0o644);
+  const measure = run(p.dir, ['context', 'measure', '--json'], p.env);
+  assert.equal(measure.status, 0, measure.stderr);
+  const notes = measure.stderr.split('\n').filter(l => l.startsWith('Note:'));
+  assert.equal(notes.length, 2); assert.match(notes[0]!, /opencode/); assert.match(notes[1]!, /\bpi\b/);
 });

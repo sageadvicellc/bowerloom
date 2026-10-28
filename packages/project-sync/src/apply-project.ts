@@ -18,7 +18,7 @@ import { MANAGED_ROOT, MARKER_V2, catalogItem, ignoreState } from '../../managed
 import { legacyPresent } from '../../managed-skills/src/migrate.js';
 import { temporary } from '../../managed-skills/src/observed.js';
 import type { ManagedItemRequest } from '../../managed-skills/src/v2-types.js';
-import { ENGINE_IDS, isEngine, writerEngines } from '../../skill-manifest/src/engine.js';
+import { ENGINE_IDS, isEngine, isWriterEngine, writerEngines } from '../../skill-manifest/src/engine.js';
 import type { Engine, WriterEngine } from '../../skill-manifest/src/engine.js';
 import type { Identity } from '../../managed-skills/src/observed-types.js';
 import { readManifestState } from '../../skill-manifest/src/add.js';
@@ -177,8 +177,7 @@ function engineSet(value: unknown): WriterEngine[] {
 }
 /**
  * The engines that the project's own files name: bowerloom.json, or skills.json in a project that has none. Null when no
- * file can be read here. A plan that reads no definitions (agents only) still refuses a file that names an engine with no
- * writer; any other trouble with the files is left to the commands that read them.
+ * file can be read here. Any trouble with the files is left to the commands that read them.
  */
 function declaredEngines(project: ProjectContext): readonly Engine[] | null {
   try {
@@ -189,6 +188,10 @@ function declaredEngines(project: ProjectContext): readonly Engine[] | null {
   return null;
 }
 
+/** The engines the project's files list that Bowerloom has no writer for, in the order of the list. Reads only; never refuses. */
+export function nonWriterEngines(project: ProjectContext): Engine[] {
+  return (declaredEngines(project) ?? []).filter(engine => !isWriterEngine(engine));
+}
 /** Refuses by name when the project's files list an engine with no writer. Reads only. Used by commands that start before any plan, such as `up`. */
 export function requireDeclaredWriters(project: ProjectContext): void {
   const declared = declaredEngines(project);
@@ -234,8 +237,9 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
     const layout = stateLayout(input);
     const resolved = agentsOnly ? null : resolveProject({ project, home, frozen });
     // A file that names an engine with no writer is refused by name, whatever engines the command asked for. Nothing is skipped.
-    const declared = resolved !== null ? resolved.engines : declaredEngines(project);
-    if (declared !== null) writerEngines(declared);
+    // A plan of agents only is the exception: it writes nothing and reads Claude Code agents only, so it runs, and the
+    // commands that call it print a note for each such engine (`nonWriterEngines`).
+    if (resolved !== null) writerEngines(resolved.engines);
     if (resolved !== null) requireReadableLock(resolved);
     // Skills: the sync planner, for the chosen engines. Offline unless frozen: a plain apply never fetches.
     let skills: SyncPlan | null = null, entries: ReadonlyMap<string, Entry> = new Map();

@@ -22,7 +22,8 @@ test('H1. apply refuses a skills.json that lists an engine with no writer, whate
     const f = syncProject(t); localSkill(f, 'house-style'); manifestFile(f, ['claude-code', engine].sort());
     const before = exactTree(f.base);
     await assert.rejects(planProjectApply(applyInput(f)), refused(engine), engine);
-    await assert.rejects(planProjectApply(applyInput(f, { agentsOnly: true })), refused(engine), `${engine}, agents only`);
+    // A plan of agents only writes nothing and reads Claude Code agents only, so it runs. The commands that call it print the note.
+    assert.deepEqual((await planProjectApply(applyInput(f, { agentsOnly: true }))).engines, ['claude-code'], `${engine}, agents only`);
     assert.deepEqual(exactTree(f.base), before);
   }
 });
@@ -37,7 +38,7 @@ test('H1. apply and sync refuse a config-mode bowerloom.json that lists an engin
 test('L1. the viewer names the refusal and shows nothing as planned', async t => {
   const f = syncProject(t); localSkill(f, 'house-style'); manifestFile(f, ['claude-code', 'opencode']);
   const view = await readProjectPlan(f.project(), { HOME: f.home }, f.home);
-  assert.equal(view.unavailable, 'ENGINE_NO_WRITER'); assert.deepEqual(view.skills, []);
+  assert.equal(view.unavailable, 'ENGINE_NO_WRITER'); assert.equal(view.unavailableEngine, 'opencode'); assert.deepEqual(view.skills, []);
 });
 
 test('CR3. an engine with no writer is refused before the order of the list is checked; a bad order of writers is still a usage error', async t => {

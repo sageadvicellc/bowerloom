@@ -74,3 +74,15 @@ test('I2. a config rebuilt without the form of the file it came from is refused 
   assert.throws(() => serializeConfigFrom(fresh, { ...fresh, oldForm: true }), code('CONFIG_INVALID'));
   assert.equal(JSON.parse(serializeConfigFrom(null, flipped)).engines.length, 2, 'a file that does not exist yet takes the form it is given');
 });
+
+test('readConfig carries the detail of a bad engine list, and nothing for a plain failure', t => {
+  const base = fs.realpathSync(fs.mkdtempSync(path.join(fs.realpathSync(os.homedir()), '.bowerloom-engines-'))); fs.chmodSync(base, 0o700); t.after(() => fs.rmSync(base, { recursive: true, force: true }));
+  const home = path.join(base, 'home'), dir = path.join(base, 'project'); fs.mkdirSync(home, { mode: 0o700 }); fs.mkdirSync(dir, { mode: 0o755 });
+  const file = path.join(dir, CONFIG_FILE);
+  fs.writeFileSync(file, text({ format: 'bowerloom/project/v1beta1', harnesses: ['pi'], ...BODY }), { mode: 0o644 }); fs.chmodSync(file, 0o644);
+  const bad = readConfig(discoverProject(dir, home));
+  assert.equal(bad.state, 'invalid'); assert.equal(bad.code, 'CONFIG_INVALID'); assert.match(bad.detail, /"pi"/);
+  fs.writeFileSync(file, '{"format":"nope"}\n');
+  const plain = readConfig(discoverProject(dir, home));
+  assert.equal(plain.state, 'invalid'); assert.equal('detail' in plain, false);
+});

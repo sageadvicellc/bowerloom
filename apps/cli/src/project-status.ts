@@ -20,6 +20,7 @@ import { noticeWords, sliceNoteLines } from './apply.js';
 import type { SliceItem } from '../../../packages/project-sync/src/index.js';
 import { editedPrompts, missingItems, planHolds, uniqueHolds } from './held.js';
 import type { HeldItem } from './held.js';
+import { isEngine } from '../../../packages/skill-manifest/src/engine.js';
 
 /**
  * The registered owners of paths inside `.bowerloom/` (build plan 01, section 2): authoring, the skills.json manifest,
@@ -120,6 +121,9 @@ export async function runProjectStatus(args: readonly string[], cwd: string, hom
     // The refusal is named. Some already show as drift lines, so they leave the setup as it is; any other makes it drifted.
     const code = (error as { code?: unknown } | null)?.code;
     unavailable = typeof code === 'string' && /^[A-Z_]{1,100}$/.test(code) ? code : 'IO_ERROR';
+    // A refusal for an engine with no writer names the engine.
+    const engine = (error as { engine?: unknown } | null)?.engine;
+    if (unavailable === 'ENGINE_NO_WRITER' && isEngine(engine)) unavailable = `${unavailable}: ${engine}`;
     drifted = !EXPECTED_PLAN_REFUSALS.includes(String(code));
     // The agents are planned on their own, so their holds still show.
     try { const only = await planProjectApply({ ...base, agentsOnly: true }); agents = only.agents; held = uniqueHolds([...held, ...planHolds([], [], only.agents, only.slices)]); stale = sliceLines(only.slices, project.dir); } catch { /* Nothing more to show. */ }

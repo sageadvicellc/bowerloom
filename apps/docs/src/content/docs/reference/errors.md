@@ -202,7 +202,7 @@ These codes come from `bowerloom cache prune`. It also raises `STALE_APPROVAL`, 
 | `SKILLS_STATE_STRAY_ENTRY` | The private state folder holds an entry Bowerloom did not make. Bowerloom keeps only its own operation folders there, and changes nothing it did not make. | Move the named entry out of the private state folder with `mv`. |
 | `SKILLS_RECOVER_NOTHING` | Nothing of this item is unfinished. | Run `bowerloom status`. |
 | `SKILLS_MIGRATE_NOTHING` | The project has no `.bowerloom-skills` folder. | Run `bowerloom skills sync`. |
-| `SKILLS_MIGRATE_STATE_INVALID` | Migrate needs the private state folder the earlier install was made with. | Run `bowerloom help skills`. |
+| `SKILLS_MIGRATE_STATE_INVALID` | Migrate needs the private state folder the earlier install was made with, and an earlier install in the project (`.bowerloom-skills`) that is not damaged. | Run `bowerloom help skills`. |
 | `SKILLS_MIGRATE_NOT_IN_MANIFEST` | `skills.json` must pin the installed skill before it can be migrated. | Run `bowerloom skills check`. |
 | `MANAGED_SKILL_LEGACY_PRESENT` | Skills from an earlier Bowerloom must be migrated before sync can manage this project. | Run `bowerloom skills migrate plan --state <earlier-state-folder>`. |
 | `MANAGED_SKILL_RECOVERY_REQUIRED` | A change was interrupted inside one skill, and Bowerloom changes nothing else until it is recovered. | Run `bowerloom skills recover plan --item <id>`. |
