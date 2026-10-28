@@ -37,3 +37,15 @@ export type { StoreMigratePlan, StoreMigrateResult, MigrateItem, MigrateInput as
 // Spec 09: cache list and cache prune.
 export { listCache, planCachePrune, applyCachePrune, referenceSets, checkSelectors, cacheUsage, lineName, CACHE_LIST_FORMAT, CACHE_PRUNE_PLAN_FORMAT, CACHE_PRUNE_RESULT_FORMAT, CACHE_LIST_LIMIT, CACHE_USAGE } from './cache-admin.js';
 export type { CacheEntry, CacheList, CachePrunePlan, CachePruneResult, CachePruneSelectors, CacheAdminInput, CachePruneInput, CacheAdminHooks, CacheScope, PickedEntry, SkippedEntry, PruneInterrupt, ReferenceSets, PartialReason, Unreadable, UnlistedName } from './cache-admin.js';
+// Bowerloom 0.8, step 2: the portable projection (portable parts spec).
+export {
+  COMMAND_METADATA, FOLLOW_TEXT, HIDDEN_FILE, INSTRUCTIONS_LIMIT, PORTABLE_PLAN_FORMAT, PORTABLE_RECEIPT_FORMAT, PORTABLE_RECOVERY_FORMAT,
+  PORTABLE_REFUSAL_CODES, PORTABLE_REMOVAL_FORMAT, PortableRefusal, RECONCILE_ACTIONS, SKILL_ROOTS, applyPortable, applyPortableRecovery,
+  applyPortableRemoval, atImports, followsAgents, instructionDrift, planPortable, planPortableRecovery, planPortableRemoval, portableDrift,
+  readPortableReceipt,
+} from './portable.js';
+export type {
+  ChangeAction, Deferred, FileAfter, FileState, FilterLeak, InstructionDrift, PlannedChange, PortableApplyResult, PortableCode, PortableEngine,
+  PortableHooks, PortableInput, PortablePlan, PortableReceipt, PortableRecoveryPlan, PortableRemovalPlan, PortableRemovalResult, ReceiptFile,
+  ReconcileAction, SkillRoot,
+} from './portable.js';
