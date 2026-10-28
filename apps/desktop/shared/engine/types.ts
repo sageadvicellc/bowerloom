@@ -144,15 +144,20 @@ export interface AdoptWritten { readonly written: readonly string[] }
 /** One approval as the window sends it: the key and the hash of what the person read. */
 export interface AdoptApproval { readonly key: string; readonly hash: string }
 
+/** The recovery of a stopped run in the `.bowerloom` folder: an adoption that stopped part way, or a Merge that did (decision D4A). */
 export interface AdoptRecoveryView {
+  /** `adoption`: the stopped run made a new harness; recovery removes its files. `merge`: the stopped run was a Merge; recovery puts the files back. */
+  readonly kind: 'adoption' | 'merge';
   readonly journal: 'ok' | 'damaged';
   readonly check: readonly string[];
   readonly remove: readonly string[];
+  /** Files that go back to the bytes the stopped Merge replaced. Empty for an adoption. */
+  readonly restore: readonly string[];
   readonly kept: readonly { readonly path: string; readonly reason: 'changed' | 'unsafe' }[];
   readonly dirs: readonly string[];
   readonly revision: string;
 }
-export interface AdoptRecovered { readonly removed: readonly string[]; readonly kept: readonly string[]; readonly leftFolders: readonly string[] }
+export interface AdoptRecovered { readonly removed: readonly string[]; readonly restored: readonly string[]; readonly kept: readonly string[]; readonly leftFolders: readonly string[] }
 
 // ---- the projection -------------------------------------------------------------------------------------------------------
 
@@ -190,7 +195,8 @@ export interface InstructionDriftView {
   readonly actions: readonly Reconcile[];
   readonly defaultAction: 'accept-agents';
 }
-export interface DriftLineView { readonly path: string; readonly reason: 'changed' | 'missing' | 'unsafe' }
+/** `mode`: the bytes are the ones Bowerloom wrote and only the file mode changed (decision D5A). */
+export interface DriftLineView { readonly path: string; readonly reason: 'changed' | 'missing' | 'unsafe' | 'mode' }
 export interface ApprovedView {
   readonly part: string; readonly entry: string; readonly field: string | null; readonly engine: EngineId; readonly result: 'weakened' | 'absent'; readonly who: string; readonly when: string; readonly reason: string;
   /** True for an approval recorded by an earlier install and reused for the unchanged entry; false for one ticked in this sheet. */
@@ -240,15 +246,42 @@ export interface ProjectWritten { readonly noop: boolean; readonly written: read
 
 export interface RemovalView { readonly changes: readonly ChangeView[]; readonly removeDirs: readonly string[]; readonly revision: string }
 export interface Removed { readonly restored: readonly string[]; readonly deleted: readonly string[]; readonly leftBehind: readonly string[] }
+/** The two answers to a mode drift line: put the recorded mode back, or let the record take the new mode (decision D5A). */
+export type ModeChoice = 'restoreMode' | 'recordMode';
+/**
+ * What a recovery plan settles when no run is unfinished: paths whose person's version stays (`keep`), and mode drift paths whose mode goes back or is
+ * recorded. Each path is relative to the folder, as a drift line names it. A path is named in one list at most.
+ */
+export interface RecoveryChoices { readonly keep: readonly string[]; readonly restoreMode: readonly string[]; readonly recordMode: readonly string[] }
 export interface RecoveryView {
   readonly kind: 'apply' | 'remove' | null;
-  readonly action: 'complete' | 'rollback' | 'keep';
+  readonly action: 'complete' | 'rollback' | 'keep' | 'mode';
   readonly steps: readonly { readonly path: string; readonly now: 'present' | 'missing' | 'unsafe'; readonly decision: 'undo' | 'none' | 'keep' }[];
   readonly keep: readonly string[];
+  /** The mode drift paths and what happens to each, with the modes written as four octal digits (`0644`). Empty unless the action is `mode`. */
+  readonly modes: readonly { readonly path: string; readonly choice: ModeChoice; readonly now: string; readonly recorded: string }[];
   readonly notice: string | null;
   readonly revision: string;
 }
 export interface Recovered { readonly leftBehind: readonly string[] }
+
+/**
+ * The Merge plan (decision D4A): the text of CLAUDE.md moves into the harness instructions, under its own heading. It edits only `.bowerloom`; the install
+ * that follows uses Accept AGENTS.md, so CLAUDE.md becomes `@AGENTS.md` then, and a removal puts it back.
+ */
+export interface MergeView {
+  readonly folder: string;
+  /** The whole text of CLAUDE.md that moves, as the plan read it. */
+  readonly claude: string;
+  /** The heading the text goes under. */
+  readonly heading: string;
+  /** True when harness.json gains the instructions part. */
+  readonly addsPart: boolean;
+  /** The files written, relative to the folder, in write order. */
+  readonly files: readonly { readonly path: string; readonly action: 'create' | 'update' }[];
+  readonly revision: string;
+}
+export interface MergeWritten { readonly written: readonly string[] }
 
 // ---- the calls ------------------------------------------------------------------------------------------------------------
 
@@ -270,20 +303,25 @@ export interface EngineBridge {
   runProjection(folderId: string, revision: string, input: ProjectInput): Promise<Answer<ProjectWritten>>;
   planRemoval(folderId: string): Promise<Answer<RemovalView>>;
   runRemoval(folderId: string, revision: string): Promise<Answer<Removed>>;
-  planRecovery(folderId: string, keep: readonly string[]): Promise<Answer<RecoveryView>>;
-  runRecovery(folderId: string, revision: string, keep: readonly string[]): Promise<Answer<Recovered>>;
+  /** `choices` is a keep list (the form of earlier steps) or the full choices with the mode answers. */
+  planRecovery(folderId: string, choices: readonly string[] | RecoveryChoices): Promise<Answer<RecoveryView>>;
+  runRecovery(folderId: string, revision: string, choices: readonly string[] | RecoveryChoices): Promise<Answer<Recovered>>;
+  /** Plans Merge: CLAUDE.md into the harness instructions. Reads only. */
+  planMerge(folderId: string): Promise<Answer<MergeView>>;
+  /** Writes the Merge plan shown last, after main's own dialog. */
+  runMerge(folderId: string, revision: string): Promise<Answer<MergeWritten>>;
 }
 
 /** The names of the calls, in one list, so the bridge, the handler and the tests agree. */
 export const ENGINE_CALLS = Object.freeze([
   'folders', 'chooseFolder', 'planAdoption', 'runAdoption', 'planAdoptionRecovery', 'runAdoptionRecovery',
-  'planProjection', 'runProjection', 'planRemoval', 'runRemoval', 'planRecovery', 'runRecovery',
+  'planProjection', 'runProjection', 'planRemoval', 'runRemoval', 'planRecovery', 'runRecovery', 'planMerge', 'runMerge',
 ] as const);
 export type EngineCall = (typeof ENGINE_CALLS)[number];
 /** How many arguments each call takes. A call with another count is refused before anything runs. */
 export const ENGINE_ARITY: Readonly<Record<EngineCall, number>> = Object.freeze({
   folders: 0, chooseFolder: 0, planAdoption: 2, runAdoption: 4, planAdoptionRecovery: 1, runAdoptionRecovery: 2,
-  planProjection: 2, runProjection: 3, planRemoval: 1, runRemoval: 2, planRecovery: 2, runRecovery: 3,
+  planProjection: 2, runProjection: 3, planRemoval: 1, runRemoval: 2, planRecovery: 2, runRecovery: 3, planMerge: 1, runMerge: 2,
 });
 /** One channel per call, apart from every other channel of the app. */
 export const ENGINE_CHANNELS: Readonly<Record<EngineCall, string>> = Object.freeze(Object.fromEntries(ENGINE_CALLS.map(c => [c, `bowerloom-engine:${c}`])) as Record<EngineCall, string>);

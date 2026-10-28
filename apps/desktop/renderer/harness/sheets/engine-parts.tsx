@@ -6,10 +6,10 @@
 import { useEffect, useId, useRef } from 'react';
 import type { ReactElement, ReactNode, Ref } from 'react';
 import { ENGINE_NAMES } from '../../../shared/engine/types.js';
-import type { FolderInfo, PlaceView, Refusal, ResultWord } from '../../../shared/engine/types.js';
+import type { DriftLineView, FolderInfo, ModeChoice, PlaceView, Refusal, ResultWord } from '../../../shared/engine/types.js';
 import { HButton, StateDot } from '../parts/controls.js';
 import { Tile } from '../icons.js';
-import { DRIFT_WORDS, ENGINE_WORDS, RESULT_TONE, RESULT_WORDS, engineList } from '../words-engine.js';
+import { DRIFT_TONE, DRIFT_WORDS, ENGINE_WORDS, MODE_CHOICE_WORDS, RESULT_TONE, RESULT_WORDS, engineList, modeActionName } from '../words-engine.js';
 import './engine.css';
 
 const W = ENGINE_WORDS;
@@ -112,7 +112,30 @@ export function TickRow({ checked, name, label, onChange, children, slot, disabl
  * A refusal of Bowerloom, in its own words: what stopped it and the paths it names. Never just "Something went wrong". When a new one appears (`focusId`
  * changes), it takes the focus and scrolls into view, so a person who pressed a button at the foot hears and sees it (U9).
  */
-export function RefusalNote({ refusal, focusId = 0, children }: { refusal: Refusal; focusId?: number; children?: ReactNode }): ReactElement {
+/**
+ * The files Bowerloom wrote that changed since, each with why. A line where only the mode changed offers its two actions, Restore mode and Keep new mode
+ * (decision D5A), when the sheet can plan them (`onMode`); each one plans a recovery that the person approves like any other.
+ */
+export function DriftLines({ lines, label, onMode, held = false }: { lines: readonly DriftLineView[]; label?: string; onMode?: ((path: string, choice: ModeChoice) => void) | undefined; held?: boolean }): ReactElement {
+  return (
+    <ul className="hxe-paths" aria-label={label}>
+      {lines.map(d => (
+        <li key={d.path} className="hxe-drift-line" data-drift-line={d.path} data-reason={d.reason}>
+          <span><StateDot tone={DRIFT_TONE[d.reason]}>{DRIFT_WORDS[d.reason]}</StateDot> <span className="hxe-mono">{d.path}</span></span>
+          {d.reason !== 'mode' || onMode === undefined ? null : (
+            <span className="hxe-line-actions">
+              {(['restoreMode', 'recordMode'] as const).map(choice => (
+                <HButton key={choice} size="small" disabled={held} aria-label={modeActionName(choice, d.path)} data-mode-action={choice} onClick={() => onMode(d.path, choice)}>{MODE_CHOICE_WORDS[choice]}</HButton>
+              ))}
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function RefusalNote({ refusal, focusId = 0, children, onMode }: { refusal: Refusal; focusId?: number; children?: ReactNode; onMode?: ((path: string, choice: ModeChoice) => void) | undefined }): ReactElement {
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (focusId === 0 || box.current === null) return;
@@ -124,9 +147,7 @@ export function RefusalNote({ refusal, focusId = 0, children }: { refusal: Refus
       <p className="hxe-refusal-title"><StateDot tone="bad">{W.label.refusal}</StateDot><span className="hxe-code">{refusal.code}</span></p>
       <p className="hxe-text">{refusal.message}</p>
       {refusal.paths.length === 0 ? null : <ul className="hxe-paths">{refusal.paths.map(p => <li key={p} className="hxe-mono">{p}</li>)}</ul>}
-      {refusal.drift === undefined || refusal.drift.length === 0 ? null : (
-        <ul className="hxe-paths" aria-label={W.label.driftLines}>{refusal.drift.map(d => <li key={d.path}><StateDot tone={d.reason === 'changed' ? 'warn' : 'bad'}>{DRIFT_WORDS[d.reason]}</StateDot> <span className="hxe-mono">{d.path}</span></li>)}</ul>
-      )}
+      {refusal.drift === undefined || refusal.drift.length === 0 ? null : <DriftLines lines={refusal.drift} label={W.label.driftLines} onMode={onMode} />}
       {children === undefined || children === null ? null : <div className="hxe-actions">{children}</div>}
     </div>
   );
