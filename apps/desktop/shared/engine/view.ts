@@ -123,8 +123,12 @@ export function lossByEngine(loss: readonly LossView[], engineList: readonly { r
   });
 }
 
-function changeView(c: { path: string; action: ChangeView['action']; engines: readonly string[] }, s: Scrub): ChangeView {
-  return { path: s(c.path), action: c.action, engines: engines(c.engines) };
+/** A restore whose original is the state the path holds now writes nothing: the file was taken over, and the view calls it `keep`. */
+type PlanChange = { path: string; action: Exclude<ChangeView['action'], 'keep'>; engines: readonly string[]; before?: { sha256: string; mode: number } | null; original?: { sha256: string; mode: number } | null };
+export const keepsFile = (c: PlanChange): boolean =>
+  c.action === 'restore' && c.original != null && c.before != null && c.original.sha256 === c.before.sha256 && c.original.mode === c.before.mode;
+function changeView(c: PlanChange, s: Scrub): ChangeView {
+  return { path: s(c.path), action: keepsFile(c) ? 'keep' : c.action, engines: engines(c.engines) };
 }
 
 /** The projection plan as the install sheet shows it. `driftLines` are the files Bowerloom wrote earlier that changed since. */
@@ -149,6 +153,7 @@ export function projectView(plan: PortablePlan, folder: string, driftLines: read
     driftLines: driftLines.map(d => ({ path: s(d.path), reason: d.reason })),
     approved: plan.approved.map(a => ({ part: a.part, entry: s(a.entry), field: a.field === undefined ? null : s(a.field), engine: a.engine as EngineId, result: a.result, who: s(a.who), when: a.when, reason: s(a.reason), earlier: earlier(a) })),
     changes: plan.changes.map(c => changeView(c, s)),
+    takenOver: plan.takenOver.map(x => ({ path: s(x.path), entry: x.entry === undefined ? null : s(x.entry) })),
     offers: plan.offers.map(o => ({ action: o.action, reason: s(o.reason) })),
     ignored: plan.ignored.map(i => ({ option: i.option, reason: s(i.reason) })),
     pendingTrust: plan.pendingTrust.map(s),

@@ -78,8 +78,10 @@ export interface PortableRemovalPlan {
 }
 export interface PortableRemovalResult {
   readonly planRevision: string;
-  /** The files put back as they were. One whose original is its current state, as a file taken over, is not written. */
+  /** The files put back as they were. */
   readonly restored: readonly string[];
+  /** The files whose original is their current state, as a file taken over: they stay as they are, unwritten. */
+  readonly kept: readonly string[];
   readonly deleted: readonly string[];
   readonly leftBehind: readonly LeftBehind[];
 }
@@ -395,7 +397,10 @@ export async function applyPortableRemovalWith(input: { readonly projectDir: str
       hooks.at?.('after-finish');
     });
     const leftBehind = removeDirs(ctx, plan.removeDirs);
-    return { planRevision: plan.revision, restored: plan.changes.filter(c => c.action === 'restore').map(c => c.path), deleted: plan.changes.filter(c => c.action === 'delete').map(c => c.path), leftBehind };
+    return {
+      planRevision: plan.revision, restored: plan.changes.filter(c => c.action === 'restore' && !stays(c)).map(c => c.path), kept: plan.changes.filter(stays).map(c => c.path),
+      deleted: plan.changes.filter(c => c.action === 'delete').map(c => c.path), leftBehind,
+    };
   });
 }
 

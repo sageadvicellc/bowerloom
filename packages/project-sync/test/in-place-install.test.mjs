@@ -21,7 +21,10 @@ const code = expected => e => { if (e?.code !== expected) throw new Error(`expec
 
 function chmodTree(p) { try { const st = fs.lstatSync(p); if (st.isDirectory() && !st.isSymbolicLink()) { fs.chmodSync(p, 0o700); for (const n of fs.readdirSync(p)) chmodTree(path.join(p, n)); } } catch { /* gone */ } }
 
-/** A Claude Code folder whose engine files hold exactly what the projection writes back, plus one unmanaged key. */
+/**
+ * A Claude Code folder as a person writes it: a server with no `type`, an agent in plain YAML, plus one unmanaged key. Its
+ * engine files mean exactly what the projection writes back.
+ */
 const CLAUDE = {
   'AGENTS.md': '# Rules\n\nStanding fact: tests run with npm.\n',
   '.claude/skills/review/SKILL.md': '---\nname: review\ndescription: Reviews a change before merge.\n---\n\nUse review with care.\n',
@@ -32,6 +35,12 @@ const CLAUDE = {
     hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'npm run lint', timeout: 10 }] }] },
     outputStyle: 'Explanatory',
   }),
+  '.mcp.json': json({ mcpServers: { docs: { command: 'npx', args: ['-y', 'example-docs-mcp'] } } }),
+  '.claude/agents/reader.md': '---\nname: reader\ndescription: A careful reader.\n---\n\nRead the files and report.\n',
+};
+/** The same folder in the exact bytes the projection writes: `"type": "stdio"` and JSON-quoted frontmatter. */
+const CLAUDE_EXACT = {
+  ...CLAUDE,
   '.mcp.json': json({ mcpServers: { docs: { type: 'stdio', command: 'npx', args: ['-y', 'example-docs-mcp'] } } }),
   '.claude/agents/reader.md': '---\nname: "reader"\ndescription: "A careful reader."\n---\n\nRead the files and report.\n',
 };
@@ -135,7 +144,7 @@ test('check 1: removal after an in-place install leaves every original file byte
   await install(a.input);
   const { plan, result } = await remove(a.input);
   assert.deepEqual(actions(plan), CLAUDE_PATHS.map(p => [p, 'restore']), 'each original is the current state');
-  assert.deepEqual([result.restored, result.deleted], [CLAUDE_PATHS, []]);
+  assert.deepEqual([result.restored, result.kept, result.deleted], [[], CLAUDE_PATHS, []]);
   assert.deepEqual(snapshot(a.dir), before, 'removal writes nothing and deletes nothing');
   assert.equal(readPortableReceipt(a.input), null);
 });
@@ -249,4 +258,87 @@ test('check 1 and check 4: a Codex TOML table with one differing value, or an ex
     });
     assert.throws(() => planPortable(a.input), e => code('PORTABLE_CONFLICT')(e) && e.paths.some(p => p.startsWith('.codex/config.toml: mcp_servers.docs')));
   }
+});
+
+// ---- round 2: meaning, not only bytes; the .env read deny ------------------------------------------------------------------
+
+test('check 1: the exact projected forms ("type": "stdio", JSON-quoted frontmatter) are taken over too', async t => {
+  const a = await adoptInPlace(t, CLAUDE_EXACT, CLAUDE_ENGINES);
+  const before = snapshot(a.dir);
+  const { plan } = await install(a.input);
+  assert.deepEqual(actions(plan), CLAUDE_PATHS.map(p => [p, 'take-over']));
+  assert.deepEqual(snapshot(a.dir), before);
+});
+
+test('check 1: a server with no type is taken over as stdio, and an agent in plain YAML as its JSON-quoted form; their bytes stay', async t => {
+  const a = await adoptInPlace(t, CLAUDE, CLAUDE_ENGINES);
+  const mcp = fs.readFileSync(path.join(a.dir, '.mcp.json')), agent = fs.readFileSync(path.join(a.dir, '.claude/agents/reader.md'));
+  const { plan } = await install(a.input);
+  const of = p => plan.changes.find(c => c.path === p);
+  assert.equal(of('.mcp.json').after.sha256, sha(mcp), 'the plan holds the person\'s .mcp.json bytes');
+  assert.equal(of('.claude/agents/reader.md').after.sha256, sha(agent), 'the plan holds the person\'s agent bytes');
+  assert.ok(plan.takenOver.some(x => x.path === '.mcp.json' && x.entry === 'mcpServers.docs'));
+  assert.deepEqual(fs.readFileSync(path.join(a.dir, '.mcp.json')), mcp);
+  assert.deepEqual(fs.readFileSync(path.join(a.dir, '.claude/agents/reader.md')), agent);
+  // A second install keeps them: the plan is a no-op, not a rewrite into the projected form.
+  assert.equal(planPortable(a.input).noop, true);
+});
+
+test('check 1: a Pi server with no type is taken over as stdio', async t => {
+  const files = { 'AGENTS.md': '# Rules\n', '.pi/mcp.json': json({ mcpServers: { docs: { command: 'npx', args: ['-y', 'example-docs-mcp'] } } }) };
+  const a = await adoptInPlace(t, files, [{ id: 'pi', version: '1.4.0' }]);
+  const before = snapshot(a.dir);
+  const { plan } = await install(a.input);
+  assert.deepEqual(actions(plan), [['.pi/mcp.json', 'take-over'], ['AGENTS.md', 'take-over']]);
+  assert.deepEqual(snapshot(a.dir), before);
+});
+
+test('check 1: a server with no type whose other values differ, or a URL server with no type, still refuses PORTABLE_CONFLICT', async t => {
+  for (const docs of [{ command: 'npx', args: ['-y', 'other-docs-mcp'] }, { url: 'https://mcp.example.test/mcp' }]) {
+    const a = await adoptInPlace(t, CLAUDE, CLAUDE_ENGINES, dir => fs.writeFileSync(path.join(dir, '.mcp.json'), json({ mcpServers: { docs } })));
+    assert.throws(() => planPortable(a.input), e => code('PORTABLE_CONFLICT')(e) && e.paths.includes('.mcp.json: mcpServers.docs'), JSON.stringify(docs));
+  }
+});
+
+test('check 1: an agent in plain YAML whose parsed values differ, or that a YAML 1.1 reader reads otherwise, still refuses PORTABLE_PATH_OCCUPIED', async t => {
+  const edits = [
+    text => text.replace('A careful reader.', 'A careless reader.'),
+    text => text.replace('Read the files and report.', 'Read the files.'),
+    text => text.replace('name: reader', 'name: reader\nmodel: model-a'),
+  ];
+  for (const edit of edits) {
+    const a = await adoptInPlace(t, CLAUDE, CLAUDE_ENGINES, dir => { const at = path.join(dir, '.claude/agents/reader.md'); fs.writeFileSync(at, edit(fs.readFileSync(at, 'utf8'))); });
+    assert.throws(() => planPortable(a.input), e => code('PORTABLE_PATH_OCCUPIED')(e) && e.paths.includes('.claude/agents/reader.md'));
+  }
+  // "yes" is text to a YAML 1.2 reader and true to a YAML 1.1 reader, so the plain form does not surely mean the quoted one.
+  const yes = await adoptInPlace(t, { ...CLAUDE, '.claude/agents/reader.md': '---\nname: reader\ndescription: yes\n---\n\nRead the files and report.\n' }, CLAUDE_ENGINES);
+  assert.throws(() => planPortable(yes.input), e => code('PORTABLE_PATH_OCCUPIED')(e) && e.paths.includes('.claude/agents/reader.md'));
+});
+
+test('check 4: a lone .env read deny is merged: the plan shows a replace, every existing byte stays, and removal restores the file byte for byte', async t => {
+  // The neutral rule "deny read .env" reaches Claude Code as Read, Edit, and Write denies (fidelity's Claude Code writer),
+  // so a change to the file is blocked too. The person's settings.json holds Read only, a subset of the planned set.
+  const files = { ...CLAUDE, '.claude/settings.json': json({ permissions: { deny: ['Read(./.env)'] }, outputStyle: 'Explanatory' }) };
+  const a = await adoptInPlace(t, files, CLAUDE_ENGINES, dir => {
+    // A deny the person adds after adoption is not in the plan: it stays, and so does its place.
+    const at = path.join(dir, '.claude/settings.json');
+    fs.writeFileSync(at, fs.readFileSync(at, 'utf8').replace('"Read(./.env)"', '"Read(./.env)",\n      "Bash(git push:*)"'));
+  });
+  const settings = path.join(a.dir, '.claude/settings.json');
+  const pre = fs.readFileSync(settings, 'utf8');
+  const { plan } = await install(a.input);
+  const change = plan.changes.find(c => c.path === '.claude/settings.json');
+  assert.equal(change.action, 'replace', 'the plan the person approves shows the write');
+  assert.deepEqual(change.original, { sha256: sha(pre), mode: 0o644 });
+  assert.deepEqual(plan.takenOver.filter(x => x.path === '.claude/settings.json').map(x => x.entry), ['permissions.deny[0]']);
+  const now = fs.readFileSync(settings, 'utf8');
+  assert.deepEqual(JSON.parse(now).permissions.deny, ['Read(./.env)', 'Bash(git push:*)', 'Edit(./.env)', 'Write(./.env)']);
+  // One insertion: the person's bytes before it and after it are unchanged.
+  let head = 0; while (head < pre.length && pre[head] === now[head]) head++;
+  let tail = 0; while (tail < pre.length - head && pre[pre.length - 1 - tail] === now[now.length - 1 - tail]) tail++;
+  assert.equal(head + tail, pre.length, 'every existing byte stays');
+  assert.equal(now.slice(head, now.length - tail), ',\n      "Edit(./.env)",\n      "Write(./.env)"');
+  await remove(a.input);
+  assert.equal(fs.readFileSync(settings, 'utf8'), pre, 'removal restores the pre-install bytes');
+  assert.equal(fs.statSync(settings).mode & 0o777, 0o644);
 });

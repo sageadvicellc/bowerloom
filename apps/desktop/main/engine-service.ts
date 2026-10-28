@@ -41,7 +41,7 @@ import type {
   AdoptApproval, AdoptChoices, AdoptRecovered, AdoptRecoveryView, AdoptView, AdoptWritten, Answer, ApproveLineView, EngineId, FolderInfo, MergeView, MergeWritten,
   ProjectAnswer, ProjectInput, ProjectWritten, Recovered, RecoveryChoices, RecoveryView, Refusal, RemovalView, Removed,
 } from '../shared/engine/types.js';
-import { adoptRecoveryView, adoptionView, approveKey, approveLine, mergeRecoveryView, mergeView, projectView, recoveryView, removalView } from '../shared/engine/view.js';
+import { adoptRecoveryView, adoptionView, approveKey, approveLine, keepsFile, mergeRecoveryView, mergeView, projectView, recoveryView, removalView } from '../shared/engine/view.js';
 import { ASK, ShownPlans, approvalText, cancelled, canonical, hashOf, notTheShownPlan } from './engine-consent.js';
 import type { Ask } from './engine-consent.js';
 
@@ -352,7 +352,8 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
       let drift: ReturnType<typeof portableDrift> = [];
       try { drift = portableDrift({ projectDir: f.dir, stateDir: f.portableState }); } catch { drift = []; }
       const view = projectView(plan, f.label, drift, f.scrub, a => !mine.has(approveKey(a, a.entryHash)));
-      const changing = plan.changes.filter(c => c.action !== 'unchanged').length;
+      // A file taken over is recorded, not written, so the dialog does not count it.
+      const changing = plan.changes.filter(c => c.action !== 'unchanged' && c.action !== 'take-over' && !keepsFile(c)).length;
       // Main asks before every write that changes anything on disk. Only a no-op plan writes nothing at all; a plan that changes no file of the folder
       // still writes Bowerloom's record (the receipt and its pending marker), so it asks too, in words that say so (W1).
       const ask = plan.noop ? null : changing === 0 ? ASK.record(f.label, plan.revision) : ASK.projection(f.label, changing, plan.revision);
@@ -475,14 +476,18 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
           const recorded = r.receipt?.approvals ?? readPortableReceipt({ projectDir: f.dir, stateDir: f.portableState })?.approvals ?? [];
           dropApprovalDrafts(f.dirs, f.dir, recorded);
         } catch { /* the drafts stay; see above */ }
-        return { noop: r.noop, written: plan.changes.filter(c => c.action !== 'unchanged').map(c => f.scrub(c.path)), leftBehind: r.leftBehind.map(l => f.scrub(l.path)) };
+        const writes = plan.changes.filter(c => c.action !== 'unchanged' && c.action !== 'take-over' && !keepsFile(c));
+        return {
+          noop: r.noop, written: writes.map(c => f.scrub(c.path)), takenOver: plan.changes.filter(c => c.action === 'take-over').map(c => f.scrub(c.path)),
+          leftBehind: r.leftBehind.map(l => f.scrub(l.path)),
+        };
       });
     }),
     planRemoval: id => serial(async () => {
       const f = folderOf(id);
       return planned(f, 'removal', () => {
         const plan = planPortableRemoval({ projectDir: f.dir, stateDir: f.portableState });
-        const restores = plan.changes.filter(c => c.action === 'restore').length, deletes = plan.changes.filter(c => c.action === 'delete').length;
+        const restores = plan.changes.filter(c => c.action === 'restore' && !keepsFile(c)).length, deletes = plan.changes.filter(c => c.action === 'delete').length;
         return { value: removalView(plan, f.scrub), revision: plan.revision, choices: null, ask: ASK.removal(f.label, deletes, restores, plan.revision) };
       });
     }),
@@ -493,7 +498,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
         made.delete(f.id); shown.delete(f.id);
         // Nothing is installed now, so no draft of this folder stands for anything (D3A). The removal itself is done; a draft that stays is never wrong.
         try { dropApprovalDrafts(f.dirs, f.dir); } catch { /* the drafts stay; see above */ }
-        return { restored: r.restored.map(f.scrub), deleted: r.deleted.map(f.scrub), leftBehind: r.leftBehind.map(l => f.scrub(l.path)) };
+        return { restored: r.restored.map(f.scrub), kept: r.kept.map(f.scrub), deleted: r.deleted.map(f.scrub), leftBehind: r.leftBehind.map(l => f.scrub(l.path)) };
       });
     }),
     planRecovery: (id, choices) => serial(async () => {

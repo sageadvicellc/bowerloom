@@ -13,7 +13,7 @@
  */
 import { useRef } from 'react';
 import type { KeyboardEvent, ReactElement } from 'react';
-import { ENGINE_NAMES } from '../../../shared/engine/types.js';
+import { ENGINE_NAMES, writesFile } from '../../../shared/engine/types.js';
 import type { ApproveLineView, ChangeView, MergeView, ModeChoice, ProjectView, Reconcile, RecoveryView, RemovalView } from '../../../shared/engine/types.js';
 import { shortRevision } from '../../../shared/engine/gates.js';
 import { StateDot } from '../parts/controls.js';
@@ -135,7 +135,7 @@ export interface PlanReviewProps {
 
 /** The plan below the drift report. The sheet draws the drift report itself, so it stays in place, with the focus, while a new plan is made (U4, U9). */
 export function PlanReview({ plan, writeClaudeMd, approvedRevision, held, onWriteClaude, onApprove, onMode }: PlanReviewProps): ReactElement {
-  const changing = plan.changes.filter(c => c.action !== 'unchanged');
+  const changing = plan.changes.filter(writesFile);
   return (
     <>
       <p className="hxi-sum">{plan.noop ? W.hint.sameAsNow : changesLine(changing.length, plan.folder)}</p>

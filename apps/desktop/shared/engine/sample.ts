@@ -12,6 +12,7 @@ import type {
   AdoptChoices, AdoptRecovered, AdoptRecoveryView, AdoptView, AdoptWritten, Answer, ApproveLineView, ChangeView, EngineBridge, EngineId, FolderInfo, LossView,
   MergeView, MergeWritten, ProjectAnswer, ProjectInput, ProjectView, ProjectWritten, Recovered, RecoveryChoices, RecoveryView, Refusal, RemovalView, Removed,
 } from './types.js';
+import { writesFile } from './types.js';
 import { approveKey, lossByEngine, unmappedHashBody } from './view.js';
 
 /** The packages' own words for the refusals the sample can give (packages/adoption/src/refusal.ts, packages/project-sync/src/portable-files.ts). */
@@ -243,6 +244,7 @@ function projectFixture(input: ProjectInput, projected: boolean, written: string
     ignored: [],
     pendingTrust: [],
     filterLeaks: [],
+    takenOver: [],
     noop,
     revision,
   };
@@ -328,7 +330,7 @@ export function createSampleEngine(): EngineBridge {
       if (a.value.kind !== 'plan' || a.value.plan.revision !== revision) return refuse('ADOPTION_STALE_APPROVAL');
       const plan = a.value.plan;
       f.projected = true; f.written = JSON.stringify({ ...input, approve: [...input.approve].sort() });
-      return ok({ noop: plan.noop, written: plan.changes.filter(c => c.action !== 'unchanged').map(c => c.path), leftBehind: [] });
+      return ok({ noop: plan.noop, written: plan.changes.filter(writesFile).map(c => c.path), takenOver: plan.changes.filter(c => c.action === 'take-over').map(c => c.path), leftBehind: [] });
     })()),
     planRemoval: id => settle(((): Answer<RemovalView> => {
       const f = get(id);
@@ -344,7 +346,7 @@ export function createSampleEngine(): EngineBridge {
       if (!f.projected) return refuse('PORTABLE_NOTHING_PROJECTED');
       if (revision !== sampleRevision(`removal ${f.written}`)) return refuse('ADOPTION_STALE_APPROVAL');
       f.projected = false; f.written = null;
-      return ok({ restored: ['CLAUDE.md'], deleted: ['.claude/settings.json', '.codex/rules/bowerloom.rules', 'AGENTS.md'], leftBehind: [] });
+      return ok({ restored: ['CLAUDE.md'], kept: [], deleted: ['.claude/settings.json', '.codex/rules/bowerloom.rules', 'AGENTS.md'], leftBehind: [] });
     })()),
     planRecovery: (id, choices) => settle(((): Answer<RecoveryView> => {
       const f = get(id), c = choicesOf(choices);

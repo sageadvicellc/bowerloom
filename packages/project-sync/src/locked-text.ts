@@ -131,9 +131,13 @@ export function locateJson(text: string): JNode | null {
 
 // ---- JSON: edit -----------------------------------------------------------------------------------------------------------
 
-/** Add members to the object at `path`, or items to the array at `path`. Missing objects on the way are created. */
+/**
+ * Add members to the object at `path`, or items to the array at `path`. Missing objects on the way are created. `same`
+ * says when a member the file holds means the planned value, where two forms mean the same to the engine; the default is
+ * equal JSON values.
+ */
 export type JsonOp =
-  | { readonly kind: 'members'; readonly path: readonly string[]; readonly members: readonly (readonly [string, Out])[] }
+  | { readonly kind: 'members'; readonly path: readonly string[]; readonly members: readonly (readonly [string, Out])[]; readonly same?: (held: unknown, planned: unknown) => boolean }
   | { readonly kind: 'items'; readonly path: readonly string[]; readonly items: readonly Out[] };
 
 /**
@@ -192,7 +196,7 @@ export function editJson(base: string | null, ops: readonly JsonOp[]): EditResul
       for (const [k, v] of op.members) {
         const had = node.members.find(x => x.key === k);
         if (!had) { add.push([k, v]); continue; }
-        if (!sameValue(JSON.parse(text.slice(had.value.start, had.value.end)), plain(v))) conflicts.push([...op.path, k].join('.'));
+        if (!(op.same ?? sameValue)(JSON.parse(text.slice(had.value.start, had.value.end)), plain(v))) conflicts.push([...op.path, k].join('.'));
         else kept.push([...op.path, k].join('.'));
       }
       if (add.length) insertMembers(node, depth, add);

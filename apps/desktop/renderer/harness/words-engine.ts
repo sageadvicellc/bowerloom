@@ -91,8 +91,8 @@ export const partName = (part: string | null): string => (part === null ? 'Other
 export const GATE_WORDS: Readonly<Record<Gate, string>> = Object.freeze({ none: ENGINE_WORDS.hint.listedOnly, acknowledge: ENGINE_WORDS.hint.needsAck, block: ENGINE_WORDS.hint.mustFix });
 export const GATE_TONE: Readonly<Record<Gate, Tone>> = Object.freeze({ none: 'quiet', acknowledge: 'warn', block: 'bad' });
 
-export const CHANGE_WORDS: Readonly<Record<ChangeView['action'], string>> = Object.freeze({ create: 'New', replace: 'Replaces yours', update: 'Update', unchanged: 'Same', restore: 'Puts yours back', delete: 'Deletes' });
-export const CHANGE_TONE: Readonly<Record<ChangeView['action'], Tone>> = Object.freeze({ create: 'good', replace: 'warn', update: 'good', unchanged: 'quiet', restore: 'good', delete: 'warn' });
+export const CHANGE_WORDS: Readonly<Record<ChangeView['action'], string>> = Object.freeze({ create: 'New', replace: 'Replaces yours', 'take-over': 'Yours already, kept', update: 'Update', unchanged: 'Same', restore: 'Puts yours back', keep: 'Yours, left as is', delete: 'Deletes' });
+export const CHANGE_TONE: Readonly<Record<ChangeView['action'], Tone>> = Object.freeze({ create: 'good', replace: 'warn', 'take-over': 'quiet', update: 'good', unchanged: 'quiet', restore: 'good', keep: 'quiet', delete: 'warn' });
 
 export const RECOVERY_ACTION_WORDS: Readonly<Record<RecoveryView['action'], string>> = Object.freeze({ complete: 'Finish the stopped run', rollback: 'Take the stopped run back', keep: 'Keep your versions', mode: 'Settle the file modes' });
 export const RECOVERY_DECISION_WORDS: Readonly<Record<'undo' | 'none' | 'keep', string>> = Object.freeze({ undo: 'Undo', none: 'Nothing to do', keep: 'Keep yours' });

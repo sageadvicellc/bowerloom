@@ -17,7 +17,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Stepper } from '../../home/kit/Stepper.js';
 import { projectCanWrite, untickedLines } from '../../../shared/engine/gates.js';
-import { ENGINE_NAMES } from '../../../shared/engine/types.js';
+import { ENGINE_NAMES, writesFile } from '../../../shared/engine/types.js';
 import type { EngineId, FolderInfo, MergeView, ModeChoice, ProjectAnswer, ProjectInput, ProjectView, Reconcile, RecoveryChoices, RecoveryView, RemovalView } from '../../../shared/engine/types.js';
 import { Sheet } from '../parts/Sheet.js';
 import { HButton, StateDot } from '../parts/controls.js';
@@ -200,7 +200,7 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
   } else if (mode === 'install' && reconcile === 'merge') {
     actions = <><HButton disabled={held} onClick={() => back('interfaces')}>{W.label.back}</HButton><HButton variant="primary" data-write="" disabled={busy || merge === null || approved !== merge.revision} onClick={write}>{W.label.mergeIt}</HButton></>;
   } else if (mode === 'install') {
-    actions = <><HButton disabled={held} onClick={() => back('interfaces')}>{W.label.back}</HButton><HButton variant="primary" data-write="" disabled={busy || !projectCanWrite(plan, approved)} onClick={write}>{plan === null ? W.label.writeFiles : plan.noop ? W.label.nothingToChange : writeFilesWords(plan.changes.filter(c => c.action !== 'unchanged').length)}</HButton></>;
+    actions = <><HButton disabled={held} onClick={() => back('interfaces')}>{W.label.back}</HButton><HButton variant="primary" data-write="" disabled={busy || !projectCanWrite(plan, approved)} onClick={write}>{plan === null ? W.label.writeFiles : plan.noop ? W.label.nothingToChange : writeFilesWords(plan.changes.filter(writesFile).length)}</HButton></>;
   } else {
     const rev = mode === 'remove' ? removal?.revision : recovery?.revision;
     const empty = mode === 'remove' && removal !== null && removal.changes.length === 0;

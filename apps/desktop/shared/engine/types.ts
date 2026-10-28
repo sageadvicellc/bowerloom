@@ -202,7 +202,16 @@ export interface ApprovedView {
   /** True for an approval recorded by an earlier install and reused for the unchanged entry; false for one ticked in this sheet. */
   readonly earlier: boolean;
 }
-export interface ChangeView { readonly path: string; readonly action: 'create' | 'replace' | 'update' | 'unchanged' | 'restore' | 'delete'; readonly engines: readonly EngineId[] }
+/**
+ * One path of a plan. `take-over`: the person's file already holds what Bowerloom would write (or means the same to the engine), so the install records it
+ * and writes nothing. `keep`: a removal leaves a taken-over file as it is, unwritten. The others write or delete the file.
+ */
+export interface ChangeView { readonly path: string; readonly action: 'create' | 'replace' | 'take-over' | 'update' | 'unchanged' | 'restore' | 'keep' | 'delete'; readonly engines: readonly EngineId[] }
+/** The actions that write nothing in the folder. Main counts files for its dialog without them. */
+export const WRITES_NOTHING: readonly ChangeView['action'][] = Object.freeze(['unchanged', 'take-over', 'keep']);
+export const writesFile = (c: { readonly action: ChangeView['action'] }): boolean => !WRITES_NOTHING.includes(c.action);
+/** A person's file, or one entry of a file, that an install takes over unchanged. `entry` is null for a whole file. */
+export interface TakenOverView { readonly path: string; readonly entry: string | null }
 export interface ProjectView {
   readonly folder: string;
   readonly harness: string;
@@ -217,6 +226,8 @@ export interface ProjectView {
   readonly driftLines: readonly DriftLineView[];
   readonly approved: readonly ApprovedView[];
   readonly changes: readonly ChangeView[];
+  /** The person's files and entries this install takes over unchanged, in path order. */
+  readonly takenOver: readonly TakenOverView[];
   readonly offers: readonly { readonly action: 'write-claude-md'; readonly reason: string }[];
   readonly ignored: readonly { readonly option: string; readonly reason: string }[];
   readonly pendingTrust: readonly string[];
@@ -242,10 +253,12 @@ export interface ProjectInput {
   /** The keys of the lines the person approved in this sheet. */
   readonly approve: readonly string[];
 }
-export interface ProjectWritten { readonly noop: boolean; readonly written: readonly string[]; readonly leftBehind: readonly string[] }
+/** `written`: the files the install wrote. `takenOver`: the person's files it recorded and did not write. */
+export interface ProjectWritten { readonly noop: boolean; readonly written: readonly string[]; readonly takenOver: readonly string[]; readonly leftBehind: readonly string[] }
 
 export interface RemovalView { readonly changes: readonly ChangeView[]; readonly removeDirs: readonly string[]; readonly revision: string }
-export interface Removed { readonly restored: readonly string[]; readonly deleted: readonly string[]; readonly leftBehind: readonly string[] }
+/** `kept`: files the install took over, which the removal leaves as they are. */
+export interface Removed { readonly restored: readonly string[]; readonly kept: readonly string[]; readonly deleted: readonly string[]; readonly leftBehind: readonly string[] }
 /** The two answers to a mode drift line: put the recorded mode back, or let the record take the new mode (decision D5A). */
 export type ModeChoice = 'restoreMode' | 'recordMode';
 /**
