@@ -34,6 +34,11 @@ const MESSAGES = {
   PORTABLE_NOTHING_PROJECTED: 'This project has no projection receipt, so there is nothing to remove.',
   PORTABLE_RECOVER_NOTHING: 'No projection or removal of this project is unfinished, and no path to keep was named.',
   PORTABLE_USAGE: 'The projection input is not valid.',
+  PORTABLE_ENGINE_VERSION: 'The recorded engine version is not the one Bowerloom writes for. OpenCode must be 1.18.30 and DeepSeek Harness the tag 0.2.2-alpha.2; a person rechecks the format before another version. Nothing was projected.',
+  PORTABLE_CONFLICT: 'A file Bowerloom would add entries to already holds an entry of the same name, or a setting that would change what the entries mean, and Bowerloom never edits a person\'s entries. Nothing was projected.',
+  PORTABLE_ENV_DEFAULT: 'An entry holds ${NAME:-x} or a like default form. No engine is documented to expand it, so Bowerloom never copies it as literal text. Write ${NAME}. Nothing was projected.',
+  PORTABLE_TARGET_INVALID: 'A file Bowerloom would add entries to is not valid strict JSON, valid TOML, or UTF-8 text, so Bowerloom cannot keep its bytes as they are. Nothing was projected.',
+  PORTABLE_ORDER_UNSAFE: 'An OpenCode permission key or pattern is a whole number such as 1. OpenCode reads its file into a JavaScript object, which moves such a key to the front, so the last-match order would change. Nothing was projected.',
 } as const;
 export type PortableCode = keyof typeof MESSAGES;
 export const PORTABLE_REFUSAL_CODES: readonly PortableCode[] = Object.freeze(Object.keys(MESSAGES) as PortableCode[]);
@@ -65,20 +70,43 @@ const code = (e: unknown): string | undefined => (e as NodeJS.ErrnoException | n
 export const SKILL_ROOT_DIRS = ['.claude/skills', '.agents/skills'] as const;
 const SEGMENT = /^[^/\\\0\p{Cc}]+$/u;
 const goodSegment = (s: string): boolean => SEGMENT.test(s) && s !== '.' && s !== '..' && !s.startsWith('.') && Buffer.byteLength(s) <= 255;
+
 /**
- * True for a path the projection may write: exactly `AGENTS.md` or `CLAUDE.md`, or a file of a skill folder under
- * `.claude/skills/<id>/` or `.agents/skills/<id>/`, with a valid id and no empty, `.`, `..`, hidden, or absolute segment.
+ * The files of the locked-in parts (step 3): files Bowerloom adds entries to, and files it owns whole. Nothing else.
+ * A subagent file is named by a subagent id.
+ */
+export const LOCKED_FILES = Object.freeze([
+  '.mcp.json', '.claude/settings.json', '.codex/config.toml', '.codex/hooks.json', '.codex/rules/bowerloom.rules', 'opencode.json',
+  '.opencode/plugins/bowerloom-hooks.js', '.pi/mcp.json', '.dsh/bowerloom.patch.yml',
+] as const);
+export const SUBAGENT_DIRS = Object.freeze({ '.claude/agents': '.md', '.codex/agents': '.toml', '.opencode/agents': '.md' } as const);
+/** The folders the locked-in parts may create. */
+export const LOCKED_DIRS = Object.freeze(['.codex', '.codex/rules', '.opencode', '.opencode/plugins', '.pi', '.dsh', ...Object.keys(SUBAGENT_DIRS)]);
+
+/**
+ * True for a path the projection may write: exactly `AGENTS.md` or `CLAUDE.md`, a file of a skill folder under
+ * `.claude/skills/<id>/` or `.agents/skills/<id>/`, with a valid id and no empty, `.`, `..`, hidden, or absolute segment,
+ * one of the locked-in files, or a subagent file `<id>.md` or `<id>.toml` directly in its engine's folder.
  */
 export function isProjectedPath(rel: unknown): rel is string {
   if (rel === 'AGENTS.md' || rel === 'CLAUDE.md') return true;
   if (typeof rel !== 'string' || rel.length > 1024) return false;
+  if ((LOCKED_FILES as readonly string[]).includes(rel)) return true;
   const parts = rel.split('/');
+  if (parts.length === 3) {
+    const ext = (SUBAGENT_DIRS as Record<string, string>)[`${parts[0]}/${parts[1]}`];
+    if (ext !== undefined && parts[2]!.endsWith(ext) && isId(parts[2]!.slice(0, -ext.length))) return true;
+  }
   return parts.length >= 4 && (parts[0] === '.claude' || parts[0] === '.agents') && parts[1] === 'skills' && isId(parts[2]) && parts.slice(3).every(goodSegment);
 }
-/** True for a folder the projection may create: `.claude`, `.agents`, a skill root, or a folder inside a skill folder. */
+/**
+ * True for a folder the projection may create: `.claude`, `.agents`, a skill root, a folder inside a skill folder, or a
+ * folder of the locked-in parts.
+ */
 export function isProjectedDir(rel: unknown): rel is string {
   if (rel === '.claude' || rel === '.agents' || rel === '.claude/skills' || rel === '.agents/skills') return true;
   if (typeof rel !== 'string' || rel.length > 1024) return false;
+  if (LOCKED_DIRS.includes(rel)) return true;
   const parts = rel.split('/');
   return parts.length >= 3 && (parts[0] === '.claude' || parts[0] === '.agents') && parts[1] === 'skills' && isId(parts[2]) && parts.slice(3).every(goodSegment);
 }

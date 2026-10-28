@@ -205,17 +205,19 @@ test('the skill engine filter in harness.json keeps a skill out of other engines
   assert.ok(plan.changes.some(c => c.path === '.claude/skills/deploy/SKILL.md'));
 });
 
-test('ENGINE_NO_WRITER is lifted for portable parts only: locked-in parts still refuse for opencode, pi, and deepseek-harness', async t => {
-  for (const engine of ['opencode', 'pi', 'deepseek-harness']) {
-    const p = project(t, { engines: [{ id: engine, version: '1.0.0' }] });
+test('step 3 lifts ENGINE_NO_WRITER: every engine gets its locked-in parts, and OpenCode and DeepSeek Harness need their pinned version', async t => {
+  const docs = { parts: { mcp: 'mcp.json' }, files: { 'mcp.json': json({ servers: [{ name: 'docs', transport: 'stdio', command: 'docs-mcp' }] }) } };
+  for (const [engine, version] of [['opencode', '1.18.30'], ['pi', '1.0.0'], ['deepseek-harness', '0.2.2-alpha.2']]) {
+    const p = project(t, { engines: [{ id: engine, version }] });
     const { result } = await project_(p.input());
-    assert.deepEqual(result.receipt.engines, [{ id: engine, version: '1.0.0' }], engine);
-    const locked = project(t, { engines: [{ id: engine }], parts: { mcp: 'mcp.json' }, files: { 'mcp.json': json({ servers: [{ name: 'docs', transport: 'stdio', command: 'docs-mcp' }] }) } });
-    assert.throws(() => planPortable(locked.input()), e => e.code === 'ENGINE_NO_WRITER' && e.message === `no writer for engine ${engine} yet`, engine);
+    assert.deepEqual(result.receipt.engines, [{ id: engine, version }], engine);
+    const locked = project(t, { engines: [{ id: engine, version }], ...docs });
+    assert.deepEqual(planPortable(locked.input()).deferred, [], engine);
   }
-  // Claude Code and Codex keep their own writers for locked-in parts: the portable plan lists those entries as deferred.
-  const both = project(t, { engines: [{ id: 'claude-code' }, { id: 'codex' }], parts: { mcp: 'mcp.json' }, files: { 'mcp.json': json({ servers: [{ name: 'docs', transport: 'stdio', command: 'docs-mcp' }] }) } });
-  assert.deepEqual(planPortable(both.input()).deferred, [{ engine: 'claude-code', part: 'mcp', id: 'docs' }, { engine: 'codex', part: 'mcp', id: 'docs' }]);
+  // Checks 6 and 13: another recorded version of OpenCode or DeepSeek Harness is refused, portable parts or not.
+  for (const engine of ['opencode', 'deepseek-harness']) assert.throws(() => planPortable(project(t, { engines: [{ id: engine, version: '1.0.0' }] }).input()), code('PORTABLE_ENGINE_VERSION'), engine);
+  const both = project(t, { engines: [{ id: 'claude-code' }, { id: 'codex' }], ...docs });
+  assert.deepEqual(planPortable(both.input()).deferred, []);
 });
 
 test('an engine that harness.json does not list is refused', t => {

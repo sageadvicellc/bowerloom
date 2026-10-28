@@ -6,14 +6,16 @@
  */
 import fs from 'node:fs';
 import { dirname, isAbsolute, join, normalize } from 'node:path';
-import { isEngineId } from '../../harness-definition/src/index.js';
-import type { EngineId } from '../../harness-definition/src/index.js';
+import { isEngineId, parseFidelityApproval } from '../../harness-definition/src/index.js';
+import type { EngineId, FidelityApproval } from '../../harness-definition/src/index.js';
 import {
   isProjectedDir, isProjectedPath, readAbs, refuse, revisionOf, sha, sweepFolderTemps, uid, writeAbs,
 } from './portable-files.js';
 import type { FileAfter, FileState } from './portable-files.js';
 
-export const PORTABLE_RECEIPT_FORMAT = 'bowerloom/portable-projection-receipt/v1beta2' as const;
+export const PORTABLE_RECEIPT_FORMAT = 'bowerloom/portable-projection-receipt/v1beta3' as const;
+/** The receipt of step 2. It reads as a receipt with no approvals; the next apply writes the current format. */
+export const PORTABLE_RECEIPT_FORMAT_V2 = 'bowerloom/portable-projection-receipt/v1beta2' as const;
 export const PENDING_FORMAT = 'bowerloom/portable-pending/v1beta2' as const;
 const RECEIPT = 'receipt.json', PENDING = 'pending.json', BLOBS = 'blobs';
 
@@ -35,6 +37,8 @@ export interface PortableReceipt {
   readonly sources: readonly ReceiptSource[];
   /** Folders the projection created, relative to the project, parents first. Removal deletes each that is empty. */
   readonly createdDirs: readonly string[];
+  /** The recorded approvals of weakened or absent enforced entries that this projection carries (section 2). */
+  readonly approvals: readonly FidelityApproval[];
   readonly planRevision: string;
   readonly revision: string;
 }
@@ -137,8 +141,9 @@ export function readReceipt(stateDir: string, projectDir: string): PortableRecei
   const raw = readJson(stateDir, RECEIPT);
   if (raw === null) return null;
   const n = RECEIPT;
-  const o = closed(raw, ['format', 'projectDir', 'definition', 'engines', 'files', 'sources', 'createdDirs', 'planRevision', 'revision'], n);
-  if (o.format !== PORTABLE_RECEIPT_FORMAT) bad(n);
+  const legacy = isObj(raw) && raw.format === PORTABLE_RECEIPT_FORMAT_V2;
+  const o = closed(raw, ['format', 'projectDir', 'definition', 'engines', 'files', 'sources', 'createdDirs', ...(legacy ? [] : ['approvals']), 'planRevision', 'revision'], n);
+  if (o.format !== PORTABLE_RECEIPT_FORMAT && !legacy) bad(n);
   const d = closed(o.definition, ['folder', 'harness', 'revision'], n);
   const definition = { folder: text(d.folder, n), harness: text(d.harness, n, 64), revision: text(d.revision, n, 128) };
   const eng = list(o.engines, n, x => {
@@ -159,11 +164,13 @@ export function readReceipt(stateDir: string, projectDir: string): PortableRecei
   });
   const createdDirs = list(o.createdDirs, n, x => projectedDir(x, n));
   unique(createdDirs, n);
+  // An approval is checked with the shape check of the contract: unknown fields, a bad hash, or a time in the future refuse.
+  const approvals = legacy ? [] : list(o.approvals, n, x => { const r = parseFidelityApproval(x); if (!r.ok) bad(n); return (r as { approval: FidelityApproval }).approval; }, 10_000);
   if (typeof o.planRevision !== 'string' || !HEX.test(o.planRevision) || typeof o.revision !== 'string' || typeof o.projectDir !== 'string') bad(n);
   const { revision, ...body } = o;
   if (revision !== revisionOf(body)) bad(n);
   if (o.projectDir !== projectDir) refuse('PORTABLE_STATE_FOREIGN');
-  return { format: PORTABLE_RECEIPT_FORMAT, projectDir, definition, engines: eng, files, sources, createdDirs, planRevision: o.planRevision as string, revision: revision as string };
+  return { format: PORTABLE_RECEIPT_FORMAT, projectDir, definition, engines: eng, files, sources, createdDirs, approvals, planRevision: o.planRevision as string, revision: revision as string };
 }
 
 /** The pending marker, checked against its strict shape and its project (rulings P1 and P15). */

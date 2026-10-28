@@ -289,7 +289,7 @@ test('P12: recovery sweeps writer temporaries beside journaled paths, and a fail
 
 // ---- P14: the loss report covers every listed part -------------------------------------------------------------------------
 
-test('P14: every listed part gets a line per engine: locked-in parts absent, empty parts exact, a filtered tool-guidance skill absent', async t => {
+test('P14: every listed part gets a line per engine: locked-in parts from their writers, empty parts exact, a filtered tool-guidance skill absent', async t => {
   const p = project(t, {
     engines: [{ id: 'claude-code' }, { id: 'codex' }],
     parts: { mcp: 'mcp.json', hooks: 'hooks.json', 'tool-guidance': ['instructions/AGENTS.md#Tool guidance', 'skills/review'] },
@@ -299,7 +299,8 @@ test('P14: every listed part gets a line per engine: locked-in parts absent, emp
   const plan = planPortable(p.input());
   for (const engine of ['claude-code', 'codex']) {
     const line = (part, entry) => plan.loss.find(l => l.part === part && l.entry === entry && l.engine === engine);
-    assert.equal(line('mcp', 'docs').result, 'absent'); assert.equal(line('mcp', 'docs').reason, LOCKED_IN_REASON);
+    // Step 3: the MCP writers carry the server, so the line is no longer the absent line of step 2.
+    assert.equal(line('mcp', 'docs').result, engine === 'claude-code' ? 'exact' : 'translated'); assert.notEqual(line('mcp', 'docs').reason, LOCKED_IN_REASON);
     assert.equal(line('hooks', NOTHING).result, 'exact'); assert.match(line('hooks', NOTHING).reason, /Nothing to project/);
   }
   const guidance = plan.loss.find(l => l.part === 'tool-guidance' && l.entry === 'skills/review' && l.engine === 'claude-code');

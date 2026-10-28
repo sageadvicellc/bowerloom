@@ -31,9 +31,8 @@ import {
   readPending, readReceipt, saveBlob, unlinkRecord, writeRecord,
 } from './portable-state.js';
 import type { Pending, PortableReceipt, Step } from './portable-state.js';
-import { FOLLOW_TEXT, loadForProjection, planPortable } from './portable.js';
+import { planWithBytes } from './portable.js';
 import type { PlannedChange, PortableInput, PortablePlan, PortableReport } from './portable.js';
-import type { Definition } from '../../harness-definition/src/index.js';
 
 export const PORTABLE_REMOVAL_FORMAT = 'bowerloom/portable-removal-plan/v1beta2' as const;
 export const PORTABLE_RECOVERY_FORMAT = 'bowerloom/portable-recovery-plan/v1beta2' as const;
@@ -110,6 +109,7 @@ export interface DriftLine { readonly path: string; readonly reason: 'changed' |
 
 const reportOf = (p: PortablePlan): PortableReport => ({
   loss: p.loss, partial: p.partial, notice: p.notice, deferred: p.deferred, filterLeaks: p.filterLeaks, pendingTrust: p.pendingTrust, ignored: p.ignored, offers: p.offers,
+  trust: p.trust, review: p.review, approved: p.approved,
 });
 const hex = (r: unknown): r is string => typeof r === 'string' && /^[a-f0-9]{64}$/.test(r);
 const isCrash = (e: unknown): boolean => (e as { crash?: unknown } | null)?.crash === true;
@@ -243,16 +243,6 @@ function after(ctx: Ctx, work: () => void): void {
 
 // ---- apply ---------------------------------------------------------------------------------------------------------------
 
-/** The bytes a projected path gets: `AGENTS.md`, `CLAUDE.md`, or a file of a skill folder. */
-function bytesFor(def: Definition, path: string): Uint8Array {
-  if (path === 'AGENTS.md') return Buffer.from(def.instructions ?? '');
-  if (path === 'CLAUDE.md') return Buffer.from(FOLLOW_TEXT);
-  const m = /^\.(?:claude|agents)\/skills\/([^/]+)\/(.+)$/.exec(path);
-  const f = m && def.files.find(x => x.path === `skills/${m[1]}/${m[2]}`);
-  if (!f) throw syncError('STALE_APPROVAL');
-  return f.bytes;
-}
-
 /**
  * Applies the projection whose revision a person approved. A plan with nothing to do writes nothing, not even the
  * receipt. The result carries the receipt and the whole report (ruling P20).
@@ -265,17 +255,18 @@ export async function applyPortableWith(input: PortableInput, revision: string, 
   if (!hex(revision)) throw syncError('STALE_APPROVAL');
   checkPaths(input?.projectDir, input?.stateDir);
   return withProjectLock(input.projectDir, signal, async held => {
-    const plan = planPortable(input);
+    const { plan, bytes: planned } = planWithBytes(input);
     if (plan.revision !== revision) throw syncError('STALE_APPROVAL');
     const { projectDir, stateDir } = plan, ctx: Ctx = { projectDir, stateDir, held, hooks };
     const previous = readReceipt(stateDir, projectDir);
     if (plan.noop) return { noop: true, planRevision: plan.revision, receipt: previous, report: reportOf(plan), leftBehind: [] };
     ensureState(stateDir);
-    const def = loadForProjection(input.definitionFolder);
     const work: Work[] = [];
     for (const c of plan.changes) {
       if (c.action === 'unchanged') continue;
-      const bytes = c.after !== null ? bytesFor(def, c.path) : c.original === null ? null : blob(stateDir, c.original, c.path);
+      const target = planned.get(c.path);
+      if (c.after !== null && target === undefined) throw syncError('STALE_APPROVAL');
+      const bytes = c.after !== null ? target! : c.original === null ? null : blob(stateDir, c.original, c.path);
       if (bytes !== null && c.after !== null && sha(bytes) !== c.after.sha256) throw syncError('STALE_APPROVAL');
       work.push({ step: { path: c.path, from: c.before, to: c.after ? { sha256: c.after.sha256, mode: c.after.mode } : c.original }, bytes });
     }
@@ -289,7 +280,7 @@ export async function applyPortableWith(input: PortableInput, revision: string, 
       const removed = new Set(plan.createdDirs.filter(d => !files.some(f => f.path.startsWith(d + '/')) && !leftBehind.some(l => l.path === d)));
       const body = {
         format: PORTABLE_RECEIPT_FORMAT, projectDir, definition: plan.definition, engines: plan.engines, files, sources: plan.sources,
-        createdDirs: plan.createdDirs.filter(d => !removed.has(d)), planRevision: plan.revision,
+        createdDirs: plan.createdDirs.filter(d => !removed.has(d)), approvals: plan.approved, planRevision: plan.revision,
       };
       receipt = { ...body, revision: revisionOf(body) };
       live(ctx);

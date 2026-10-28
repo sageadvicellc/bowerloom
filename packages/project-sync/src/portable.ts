@@ -3,27 +3,30 @@
  *
  * It writes the portable parts of one harness definition into the project paths of the engines it projects to: the
  * system prompt as `AGENTS.md`, skills as folders under `.claude/skills` and `.agents/skills`, and tool guidance,
- * memory, and commands inside those two. Locked-in parts (MCP servers, subagents, hooks, guardrails, and scripts) are
- * not written here: the plan reports them `absent` and says the projection is partial. For an engine that has no
- * locked-in writer, a definition that holds one refuses with ENGINE_NO_WRITER.
+ * memory, and commands inside those two. Step 3 adds the locked-in parts (MCP servers, subagents, hooks, guardrails, and
+ * the sandbox) to the same plan, through locked.ts. Scripts and engine-private files are still not projected: the plan
+ * reports them `absent` and says the projection is partial. Every loss line goes through the fidelity check, so an
+ * enforced entry that is weakened or absent is refused unless a recorded approval matches it.
  *
  * This file plans. portable-run.ts applies, removes, and recovers; portable-files.ts and portable-state.ts hold the
- * file and state layers. README.md in this package states what stays in the state folder.
+ * file and state layers; locked.ts and locked-text.ts plan the locked-in files. README.md in this package states what
+ * stays in the state folder.
  */
 import fs from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { canonicalJson } from '../../contracts/src/index.js';
 import { ENGINE_IDS, PART_KEYS, appliesTo, checkFidelity, isEngineId, loadDefinition, selectForEngine } from '../../harness-definition/src/index.js';
-import type { Definition, EngineId, LossLine, PartKey, SkillEntry } from '../../harness-definition/src/index.js';
-import { EngineWriterRefusal, isWriterEngine } from '../../skill-manifest/src/engine.js';
+import type { Definition, EngineId, FidelityApproval, LossLine, PartKey, SkillEntry } from '../../harness-definition/src/index.js';
+import { LOCKED_PARTS, planLocked } from './locked.js';
+import type { CodexTrust, LockedPart, ReviewItem, TrustLine } from './locked.js';
 import {
-  byBytes, caseClashes, checkAncestors, readAbs, refuse, revisionOf, sameState, sha, stateOrUnsafe,
+  PortableRefusal, byBytes, caseClashes, checkAncestors, readAbs, refuse, revisionOf, sameState, sha, stateOrUnsafe,
 } from './portable-files.js';
 import type { FileAfter, FileState } from './portable-files.js';
 import { checkPaths, pendingExists, readReceipt, blob } from './portable-state.js';
 import type { PortableEngine, PortableReceipt, ReceiptFile, ReceiptSource } from './portable-state.js';
 
-export const PORTABLE_PLAN_FORMAT = 'bowerloom/portable-projection-plan/v1beta2' as const;
+export const PORTABLE_PLAN_FORMAT = 'bowerloom/portable-projection-plan/v1beta3' as const;
 
 // ---- engine facts (portable parts spec, sections 4.1 and 4.2) ----------------------------------------------------------
 
@@ -69,10 +72,10 @@ export const INSTRUCTIONS_LIMIT = 32 * 1024;
 export const CLAUDE_CODE_READS_AGENTS = '2.1.277';
 /** The entry of a loss line for a listed part with nothing to project. */
 export const NOTHING = '(none)';
-/** The reason of a locked-in line (ruling P14). */
-export const LOCKED_IN_REASON = 'Not projected in this step; the locked-in writers come in step 3.';
+/** The reason of a line for a part that is not projected yet: scripts, engine-private files, and skill private blocks. */
+export const LOCKED_IN_REASON = 'Not projected in this step: scripts, engine-private files, and the private blocks of skills stay in the definition.';
 /** What a partial plan says (ruling P14). */
-export const PARTIAL_NOTICE = 'This projection is partial: it writes the portable parts only. Every line marked absent is not projected in this step.';
+export const PARTIAL_NOTICE = 'This projection is partial: some parts are absent in some engines. Every line marked absent says why.';
 
 // ---- @path imports (section 4.1, rule 2; ruling P25) ---------------------------------------------------------------------
 
@@ -170,6 +173,13 @@ export interface PortableInput {
   readonly piTrustSaved?: boolean;
   /** Accept the offer to write `CLAUDE.md` as `@AGENTS.md` when Claude Code would not read `AGENTS.md` (ruling P23). */
   readonly writeClaudeMd?: boolean;
+  /**
+   * Recorded approvals (`FidelityApproval` records) of enforced entries that are weakened or absent in an engine. The
+   * plan uses those that match a line, and the receipt records them. Default: none.
+   */
+  readonly approvals?: readonly unknown[];
+  /** A person's statement that both Codex trust steps are done. Default: none, so Codex files are `pending trust`. */
+  readonly codexTrust?: CodexTrust;
 }
 
 /** The drift report of a tree with both `AGENTS.md` and a `CLAUDE.md` that does not follow it (section 4.1, rule 5). */
@@ -200,7 +210,7 @@ export interface PlannedChange {
   readonly engines: readonly EngineId[];
 }
 
-/** A part that this projection does not write. */
+/** A part that this projection does not write: scripts, engine-private files, and private blocks of skills. */
 export interface Deferred {
   readonly engine: EngineId;
   readonly part: 'subagents' | 'guardrails' | 'hooks' | 'mcp' | 'scripts' | 'engine-private' | 'skill-private';
@@ -209,7 +219,7 @@ export interface Deferred {
 /** A skill that a projected engine loads although its engine filter leaves that engine out (ruling P19). */
 export interface FilterLeak { readonly skill: string; readonly path: string; readonly engines: readonly EngineId[] }
 /** An input choice that did not apply, and why (ruling P16). */
-export interface Ignored { readonly option: 'reconcile' | 'writeClaudeMd' | 'piTrustSaved'; readonly value: string | boolean; readonly reason: string }
+export interface Ignored { readonly option: 'reconcile' | 'writeClaudeMd' | 'piTrustSaved' | 'codexTrust'; readonly value: string | boolean; readonly reason: string }
 /** An action the plan offers but does not take unless the input asks (ruling P23). */
 export interface Offer { readonly action: 'write-claude-md'; readonly reason: string }
 
@@ -225,6 +235,12 @@ export interface PortableReport {
   readonly pendingTrust: readonly string[];
   readonly ignored: readonly Ignored[];
   readonly offers: readonly Offer[];
+  /** Whether each engine loads a written locked-in file now, or after a person's trust step (checks 8 and 14). */
+  readonly trust: readonly TrustLine[];
+  /** Code a person reads before Bowerloom writes it: the OpenCode hook plugin (decision 3). */
+  readonly review: readonly ReviewItem[];
+  /** The recorded approvals that cover a line of this plan. The receipt records them. */
+  readonly approved: readonly FidelityApproval[];
 }
 
 export interface PortablePlan extends PortableReport {
@@ -311,8 +327,13 @@ const isDir = (projectDir: string, rel: string): boolean => {
 
 // ---- the plan ----------------------------------------------------------------------------------------------------------
 
-/** Plans the projection. Reads only. A refusal is a PortableRefusal, or an EngineWriterRefusal for a locked-in part. */
+/** Plans the projection. Reads only. A refusal is a PortableRefusal. */
 export function planPortable(input: PortableInput): PortablePlan {
+  return planWithBytes(input).plan;
+}
+
+/** The plan and the bytes of every path it writes. Apply takes the bytes from here, so plan and write never differ. */
+export function planWithBytes(input: PortableInput): { readonly plan: PortablePlan; readonly bytes: ReadonlyMap<string, Uint8Array> } {
   if (input === null || typeof input !== 'object') return refuse('PORTABLE_USAGE');
   checkPaths(input.projectDir, input.stateDir);
   const { projectDir, stateDir } = input;
@@ -333,20 +354,19 @@ export function planPortable(input: PortableInput): PortablePlan {
     if (Buffer.byteLength(instructions) > INSTRUCTIONS_LIMIT) refuse('PORTABLE_INSTRUCTIONS_TOO_LARGE');
   }
 
-  // Locked-in parts. An engine with no writer for them refuses; the others report them absent.
+  // Parts that are not projected yet. The locked-in parts are planned below, by locked.ts.
   const deferred: Deferred[] = [];
   const views = new Map(ids.map(id => [id, selectForEngine(def, id)] as const));
   for (const [engine, view] of views) {
-    const locked: Deferred[] = [
-      ...view.subagents.map(e => ({ engine, part: 'subagents' as const, id: e.id })),
-      ...[...view.rules, ...view.sandbox].map(e => ({ engine, part: 'guardrails' as const, id: e.id })),
-      ...view.hooks.map(e => ({ engine, part: 'hooks' as const, id: e.id })),
-      ...view.mcp.map(e => ({ engine, part: 'mcp' as const, id: e.id })),
-    ];
-    if (locked.length && !isWriterEngine(engine)) throw new EngineWriterRefusal(engine);
-    deferred.push(...locked, ...def.scripts.map(id => ({ engine, part: 'scripts' as const, id })), ...view.enginePrivate.map(id => ({ engine, part: 'engine-private' as const, id })));
+    deferred.push(...def.scripts.map(id => ({ engine, part: 'scripts' as const, id })), ...view.enginePrivate.map(id => ({ engine, part: 'engine-private' as const, id })));
     for (const s of view.skills) if (s.privateBlocks[engine] !== undefined) deferred.push({ engine, part: 'skill-private', id: s.id });
   }
+  if (input.codexTrust !== undefined && (input.codexTrust === null || typeof input.codexTrust !== 'object' || typeof input.codexTrust.folderTrusted !== 'boolean'
+    || !Array.isArray(input.codexTrust.reviewedHooks) || input.codexTrust.reviewedHooks.some(h => typeof h !== 'string'))) refuse('PORTABLE_USAGE');
+  if (input.approvals !== undefined && !Array.isArray(input.approvals)) refuse('PORTABLE_USAGE');
+  const locked = planLocked({
+    projectDir, stateDir, def, engines, views, owned, piTrustSaved: input.piTrustSaved === true, codexTrust: input.codexTrust ?? null,
+  });
 
   // The targets: AGENTS.md, the skill folders, and CLAUDE.md when a person accepts AGENTS.md or the offer of P23.
   const targets = new Map<string, Target>();
@@ -355,6 +375,7 @@ export function planPortable(input: PortableInput): PortablePlan {
     if (t) t.engines.add(engine); else targets.set(path, { bytes, mode, engines: new Set([engine]) });
   };
   if (instructions !== undefined) for (const id of ids) add('AGENTS.md', Buffer.from(instructions), 0o644, id);
+  for (const [path, t] of locked.targets) add(path, t.bytes, t.mode, t.engine);
   const files = new Map(def.files.map(f => [f.path, f]));
   const skillsById = new Map<string, SkillEntry>();
   for (const [engine, view] of views) for (const s of view.skills) {
@@ -406,6 +427,7 @@ export function planPortable(input: PortableInput): PortablePlan {
     }
   }
   if (input.piTrustSaved !== undefined && !ids.includes('pi')) ignored.push({ option: 'piTrustSaved', value: input.piTrustSaved, reason: 'The projection does not include Pi.' });
+  if (input.codexTrust !== undefined && !ids.includes('codex')) ignored.push({ option: 'codexTrust', value: input.codexTrust.folderTrusted, reason: 'The projection does not include Codex.' });
 
   // Case clashes, among the targets and against the files on disk (ruling P6).
   const folded = new Map<string, string>(), clashes: string[] = [], listing = new Map<string, string[] | null>();
@@ -459,7 +481,7 @@ export function planPortable(input: PortableInput): PortablePlan {
     }
   }
 
-  const loss = lossReport(def, engines, views, claudeLine, filterLeaks, input.piTrustSaved === true);
+  const { loss, approved } = lossReport(def, engines, views, claudeLine, filterLeaks, input.piTrustSaved === true, locked.lines, input.approvals ?? []);
   const pendingTrust = ids.includes('pi') && input.piTrustSaved !== true ? views.get('pi')!.skills.map(s => s.id) : [];
   const partial = loss.some(l => l.result === 'absent') || deferred.length > 0;
 
@@ -472,29 +494,32 @@ export function planPortable(input: PortableInput): PortablePlan {
   const receiptFiles = receiptFilesOf(changes);
   const existing = (previous?.createdDirs ?? []).filter(d => isDir(projectDir, d));
   const createdDirs = [...new Set([...existing, ...createDirs])].sort(byBytes);
-  const sameReceipt = previous !== null && canonicalJson({ d: previous.definition, e: previous.engines, f: previous.files, s: previous.sources, c: existing })
-    === canonicalJson({ d: definition, e: engines, f: receiptFiles, s: sources, c: createdDirs });
+  const sameReceipt = previous !== null && canonicalJson({ d: previous.definition, e: previous.engines, f: previous.files, s: previous.sources, c: existing, a: previous.approvals })
+    === canonicalJson({ d: definition, e: engines, f: receiptFiles, s: sources, c: createdDirs, a: approved });
   const noop = changes.every(c => c.action === 'unchanged') && sameReceipt;
   const body = {
     format: PORTABLE_PLAN_FORMAT, projectDir, stateDir, definition, engines, changes, createDirs: [...createDirs].sort(byBytes), createdDirs, sources,
     drift, reconcile, loss, partial, notice: partial ? PARTIAL_NOTICE : null, deferred, filterLeaks, pendingTrust, ignored, offers,
-    previousReceipt: previous?.revision ?? null, noop, writesAuthorized: false as const,
+    trust: locked.trust, review: locked.review, approved, previousReceipt: previous?.revision ?? null, noop, writesAuthorized: false as const,
   };
-  return { ...body, revision: revisionOf(body) };
+  const bytes = new Map([...targets].map(([path, t]) => [path, t.bytes] as const));
+  return { plan: { ...body, revision: revisionOf(body) }, bytes };
 }
 
-/** The portable parts of the loss report, the ones this lane passes to the fidelity check (ruling P14). */
-const PORTABLE_PARTS: readonly PartKey[] = ['system-prompt', 'memory', 'tool-guidance', 'skills'];
+/** The parts of the loss report that go through the fidelity check (ruling P14, and step 3 for the locked-in parts). */
+const CHECKED_PARTS: readonly PartKey[] = ['system-prompt', 'memory', 'tool-guidance', 'skills', ...LOCKED_PARTS];
 
 /**
  * The loss report (section 6; ruling P14): every part the harness lists gets lines for every engine being projected.
- * An empty part gets one `exact` line, entry `(none)`. Locked-in parts are `absent`. The portable lines must pass the
- * fidelity check; the locked-in lines are not passed, so an enforced locked-in entry does not block this projection.
+ * An empty part gets one `exact` line, entry `(none)`. The locked-in parts get the lines of their translations. Every
+ * line of an entry goes through the fidelity check with the recorded approvals: an enforced entry that is weakened or
+ * absent with no matching approval refuses PORTABLE_FIDELITY, and the refusal carries the refused lines (`refused`).
  */
 function lossReport(
   def: Definition, engines: readonly PortableEngine[], views: ReadonlyMap<EngineId, ReturnType<typeof selectForEngine>>,
   claudeLine: { result: 'exact' | 'weakened'; reason: string } | null, leaks: readonly FilterLeak[], trustSaved: boolean,
-): LossLine[] {
+  locked: ReadonlyMap<EngineId, ReadonlyMap<LockedPart, readonly LossLine[]>>, approvals: readonly unknown[],
+): { loss: LossLine[]; approved: FidelityApproval[] } {
   const loss: LossLine[] = [], leakLines = new Set<LossLine>();
   const parts = def.harness.parts as Record<string, unknown>;
   const listed = PART_KEYS.filter(k => parts[k] !== undefined);
@@ -532,9 +557,12 @@ function lossReport(
       } else if (part === 'plugins') {
         if (def.sources.length === 0) none(part, engine);
         for (const s of def.sources) loss.push({ part, entry: s.name, engine, result: 'translated', reason: 'A plugin is unpacked into its items. The receipt records the source, marketplace, and version of each borrowed skill.' });
+      } else if ((LOCKED_PARTS as readonly PartKey[]).includes(part)) {
+        const lines = locked.get(engine)?.get(part as LockedPart) ?? [];
+        if (lines.length === 0) none(part, engine);
+        loss.push(...lines);
       } else {
-        const entries: readonly { id: string }[] = part === 'subagents' ? view.subagents : part === 'guardrails' ? [...view.rules, ...view.sandbox]
-          : part === 'hooks' ? view.hooks : part === 'mcp' ? view.mcp : part === 'scripts' ? def.scripts.map(id => ({ id })) : [];
+        const entries: readonly { id: string }[] = part === 'scripts' ? def.scripts.map(id => ({ id })) : [];
         if (entries.length === 0) none(part, engine);
         for (const e of entries) loss.push({ part, entry: e.id, engine, result: 'absent', reason: LOCKED_IN_REASON });
       }
@@ -543,9 +571,20 @@ function lossReport(
     // of the definition, `scripts`, under their own path and the field `engine-private`.
     for (const file of view.enginePrivate) loss.push({ part: 'scripts', entry: `engines/${engine}/${file}`, field: 'engine-private', engine, result: 'absent', reason: LOCKED_IN_REASON });
   }
-  const empty = { subagents: [], rules: [], sandbox: [], hooks: [], mcp: [] };
-  const portable = loss.filter(l => PORTABLE_PARTS.includes(l.part) && l.entry !== NOTHING && !leakLines.has(l));
-  const verdict = checkFidelity({ entries: { ...empty, skills: listed.includes('skills') ? def.entries.skills : [] }, engines: engines.map(e => e.id) }, portable, []);
-  if (!verdict.ok) refuse('PORTABLE_FIDELITY', verdict.problems.map(p => p.code));
-  return loss;
+  const has = (part: PartKey): boolean => listed.includes(part);
+  const e = def.entries;
+  const entries = {
+    skills: has('skills') ? e.skills : [], subagents: has('subagents') ? e.subagents : [], rules: has('guardrails') ? e.rules : [],
+    sandbox: has('guardrails') ? e.sandbox : [], hooks: has('hooks') ? e.hooks : [], mcp: has('mcp') ? e.mcp : [],
+  };
+  const checked = loss.filter(l => CHECKED_PARTS.includes(l.part) && l.entry !== NOTHING && !leakLines.has(l));
+  const verdict = checkFidelity({ entries, engines: engines.map(x => x.id) }, checked, approvals);
+  if (verdict.problems.length) refuse('PORTABLE_FIDELITY', [...new Set(verdict.problems.map(p => p.code))], verdict.problems);
+  if (verdict.refused.length) {
+    const paths = verdict.refused.map(l => `${l.part}/${l.entry}${l.field ? `.${l.field}` : ''} in ${l.engine} (${l.result})`);
+    throw Object.assign(new PortableRefusal('PORTABLE_FIDELITY', paths), { refused: verdict.refused });
+  }
+  const approved: FidelityApproval[] = [];
+  for (const a of verdict.approved) if (!approved.includes(a.approval)) approved.push(a.approval);
+  return { loss, approved };
 }
