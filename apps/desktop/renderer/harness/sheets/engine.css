@@ -49,6 +49,8 @@
   transition: border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease); }
 [data-home] .hxe-tick:hover { border-color: var(--accent-strong); }
 [data-home] .hxe-tick[data-on] { background: var(--accent-soft); border-color: var(--accent-strong); box-shadow: inset 0 0 0 1px var(--accent-strong); }
+/* A ticked box still answers the pointer: its edge grows, as a selected row's does (harness.css). */
+[data-home] .hxe-tick[data-on]:hover { box-shadow: inset 0 0 0 2px var(--accent-strong); }
 [data-home] .hxe-tick:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
 [data-home] .hxe-tick-body { display: flex; flex-direction: column; gap: var(--hm-space-1); min-width: 0; }
 [data-home] .hxe-tick-body:empty { display: none; }

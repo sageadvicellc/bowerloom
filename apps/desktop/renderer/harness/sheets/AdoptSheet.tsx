@@ -2,7 +2,7 @@
  * "New harness from a folder": adoption, in steps. 1. The folder. 2. Review: what Bowerloom found, the copies to pick between, and what it leaves out.
  * 3. Confirm: the words and the exact text of every approval and the words of every acknowledgement, each ticked by the person. 4. Done: what was written.
  * - A new folder starts clean: no picks, acknowledgements, ticks, plan, recovery or refusal of the last one (U2).
- * - A pick or an acknowledgement plans again; the old plan leaves the screen while it runs (U4). A tick names the hash of what was read, so a changed item is
+ * - A pick, an acknowledgement or a "Use for every engine" tick plans again; the old plan leaves the screen while it runs (U4). A tick names the hash of what was read, so a changed item is
  *   unticked (U3).
  * - "Write N files" sends the revision on screen and exactly the ticked approvals, in the write lane; while it runs every choice is held (U1). Main asks
  *   the person once more in its own dialog, then writes; the Done step lists each file (U5).
@@ -11,8 +11,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Stepper } from '../../home/kit/Stepper.js';
-import { adoptCanWrite, approvalsToSend, shortRevision } from '../../../shared/engine/gates.js';
-import type { AdoptChoices, AdoptRecoveryView, AdoptView, FolderInfo } from '../../../shared/engine/types.js';
+import { adoptCanWrite, approvalsToSend, shortRevision, toggleEveryEngine } from '../../../shared/engine/gates.js';
+import type { AdoptChoices, AdoptRecoveryView, AdoptView, EveryEnginePart, FolderInfo } from '../../../shared/engine/types.js';
 import { Sheet } from '../parts/Sheet.js';
 import { HButton, StateDot } from '../parts/controls.js';
 import { useEngine } from '../engine.js';
@@ -26,7 +26,8 @@ import { useHeldFocus } from './use-held-focus.js';
 const W = ENGINE_WORDS;
 type Step = 'folder' | 'review' | 'confirm' | 'recover' | 'done';
 type Done = { kind: 'made'; written: readonly string[] } | { kind: 'recover'; removed: readonly string[]; restored: readonly string[]; kept: readonly string[]; leftFolders: readonly string[] };
-const NO_CHOICES: AdoptChoices = { picks: {}, acknowledged: [] };
+/** A new folder starts with nothing picked, acknowledged or ticked, and no part used for every engine (D8B: off by default). */
+const NO_CHOICES: AdoptChoices = { picks: {}, acknowledged: [], everyEngine: [] };
 const BODY_NAME: Readonly<Record<Step, string>> = { folder: W.label.bodyFolder, review: W.label.bodyReview, confirm: W.label.bodyConfirm, recover: W.label.bodyReview, done: W.label.bodyResult };
 
 export function AdoptSheet({ open, folderId, onClose }: { open: boolean; folderId: string | null; onClose(): void }): ReactElement | null {
@@ -105,6 +106,7 @@ export function AdoptSheet({ open, folderId, onClose }: { open: boolean; folderI
   };
   const change = (nextChoices: AdoptChoices): void => { if (held) return; setChoices(nextChoices); if (folder !== undefined) plan(folder.id, nextChoices); };
   const pickVariant = (conflict: string, variant: string): void => change({ ...choices, picks: { ...choices.picks, [conflict]: variant } });
+  const everyEngine = (part: EveryEnginePart, on: boolean): void => change(toggleEveryEngine(choices, part, on));
   const acknowledge = (id: string, hash: string, on: boolean): void => change({ ...choices, acknowledged: on ? [...choices.acknowledged.filter(a => a.id !== id), { id, hash }] : choices.acknowledged.filter(a => a.id !== id) });
   const tick = (key: string, on: boolean): void => { if (!held) setTicked(t => (on ? [...new Set([...t, key])] : t.filter(x => x !== key))); };
   const back = (to: Step): void => { if (held) return; call.clear(); setStep(to); };
@@ -145,7 +147,7 @@ export function AdoptSheet({ open, folderId, onClose }: { open: boolean; folderI
         <div className="hxe-body" role="region" ref={body} tabIndex={-1} aria-label={BODY_NAME[step]} aria-busy={busy}>
           {busy ? <Busy words={call.busy!} /> : null}
           {refusal}
-          {step === 'review' && view !== null ? <AdoptReview view={view} held={held} onPick={pickVariant} /> : null}
+          {step === 'review' && view !== null ? <AdoptReview view={view} held={held} onPick={pickVariant} onEveryEngine={everyEngine} /> : null}
           {step === 'confirm' && view !== null ? <AdoptConfirm view={view} ticked={ticked} held={held} onTick={tick} onAcknowledge={acknowledge} onPick={pickVariant} /> : null}
           {step === 'recover' && recovery !== null ? (
             <>

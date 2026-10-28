@@ -2,7 +2,8 @@
  * What still stands between a plan and its write, as plain data. The sheets draw their "waiting for" lines and enable their write button from here, and the
  * same rules are held by the packages, which plan again and refuse when anything is missing. A sheet never passes an approval the person did not tick.
  */
-import type { AdoptApproval, AdoptView, ProjectAnswer, ProjectView } from './types.js';
+import { EVERY_ENGINE_PARTS } from './types.js';
+import type { AdoptApproval, AdoptChoices, AdoptView, EveryEnginePart, ProjectAnswer, ProjectView } from './types.js';
 
 /** A tick on an adopt approval names the approval and the hash of what the person read, so a change to any of it clears the tick (U3, SM1). */
 export const tickOf = (a: { readonly key: string; readonly hash: string }): string => `${a.key}\u001f${a.hash}`;
@@ -32,6 +33,24 @@ export function adoptWaits(view: AdoptView, ticked: readonly string[]): AdoptWai
 
 /** True when the adopt sheet may write: nothing waits, and the plan itself says it is ready. */
 export const adoptCanWrite = (view: AdoptView, ticked: readonly string[]): boolean => view.ready && adoptWaits(view, ticked).length === 0;
+
+/** One "Use for every engine" tick of the adopt sheet (D8B): its part, whether the plan has it, how many items it widens, and the items it never widens. */
+export interface EveryEngineRow { readonly part: EveryEnginePart; readonly checked: boolean; readonly count: number; readonly kept: readonly { readonly id: string; readonly reason: string }[] }
+
+/** The ticks in the order of the parts, from the plan on screen: a tick shows what the plan has, never what was sent. */
+export function everyEngineRows(view: AdoptView): EveryEngineRow[] {
+  return EVERY_ENGINE_PARTS.flatMap(part => {
+    const e = view.everyEngine.find(x => x.part === part);
+    return e === undefined ? [] : [{ part, checked: e.chosen, count: e.widens, kept: e.notWidened }];
+  });
+}
+
+/** The choices with one part ticked or not, in the order of the parts. The choices given are never changed. */
+export function toggleEveryEngine(choices: AdoptChoices, part: EveryEnginePart, on: boolean): AdoptChoices {
+  const now = new Set(choices.everyEngine ?? []);
+  if (on) now.add(part); else now.delete(part);
+  return { ...choices, everyEngine: EVERY_ENGINE_PARTS.filter(p => now.has(p)) };
+}
 
 /** The approvals to send with a write: exactly the plan's own, each ticked by the person for the content on screen, in the plan's order. */
 export function approvalsToSend(view: AdoptView, ticked: readonly string[]): AdoptApproval[] {

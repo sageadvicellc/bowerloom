@@ -34,7 +34,7 @@ export const ENGINE_WORDS = deepFreeze({
     stepResult: 'Done', bodyFolder: 'Pick a folder', bodyReview: 'Review the plan', bodyConfirm: 'Confirm each one', bodyResult: 'What Bowerloom did', bodyInterfaces: 'Pick the interfaces',
     writeFiles: 'Write files', undoneFiles: 'Taken back', engineFound: 'Found here', engineNamed: 'Named, not found', shape: 'Read as',
     mergeIt: 'Merge into the harness', mergeText: 'CLAUDE.md text to move', restoreMode: 'Restore mode', recordMode: 'Keep new mode', modes: 'File modes',
-    modeRestored: 'Mode put back', modeRecorded: 'New mode kept',
+    modeRestored: 'Mode put back', modeRecorded: 'New mode kept', everyEngine: 'Use for every engine', everyEngineTitle: 'For every engine',
   },
   hint: {
     pickFolder: 'Pick the folder Bowerloom reads.', samplePick: 'Sample folders. Nothing is read or written.', readOnly: 'Bowerloom only reads until you approve.',
@@ -74,6 +74,7 @@ export const ENGINE_WORDS = deepFreeze({
     notReady: 'Not ready: Bowerloom\'s plan is not ready though nothing waits on you. Plan again to check.',
     mergeIntro: 'Merge adds the text of CLAUDE.md to the harness instructions, under its own heading. CLAUDE.md itself does not change yet.',
     modeIntro: 'Only the file mode changed after Bowerloom wrote these files. Put the recorded mode back, or keep the new one.',
+    everyEngineIntro: 'Each item reaches only the engines whose files held it. Tick a part to use its items for every engine.',
   },
 } as const);
 
@@ -164,6 +165,14 @@ export const approveItemName = (part: string, id: string): string => `Approve ${
 export const acknowledgeName = (where: string): string => `Acknowledge ${where}`;
 /** "Writes 7 files into the .bowerloom folder." */
 export const writesIntoLine = (n: number): string => `Writes ${plural(n, 'file', 'files')} into the .bowerloom folder.`;
+/** "1 item reaches only some engines.", "2 items now reach every engine.": the count beside a "Use for every engine" tick (D8B). */
+export function everyEngineWords(n: number, chosen: boolean): string {
+  if (n === 0) return 'Nothing here to widen.';
+  const one = n === 1;
+  return chosen ? `${plural(n, 'item', 'items')} now ${one ? 'reaches' : 'reach'} every engine.` : `${plural(n, 'item', 'items')} ${one ? 'reaches' : 'reach'} only some engines.`;
+}
+/** "2 items keep their engines, because they differ." (D8B: a tick never merges a difference.) */
+export const notWidenedWords = (n: number): string => (n === 1 ? '1 item keeps its engines, because it differs.' : `${n} items keep their engines, because they differ.`);
 /** "Still waiting for: 2 approvals". */
 export const stillWaiting = (words: string): string => `${ENGINE_WORDS.label.waiting}: ${words}`;
 /** "Reconcile: There is no CLAUDE.md…" for a choice that did not count. */

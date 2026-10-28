@@ -84,6 +84,53 @@ test('New harness from a folder: pick a copy, read every approval and acknowledg
   await expect(installSheet(p).locator('[data-folder="sample-inbox-tools"]')).toHaveAttribute('aria-pressed', 'true');
 });
 
+test('Decision D8B: "Use for every engine" is one tick per part, off by default, with its count; a tick plans again, and the write needs that plan', async () => {
+  const p = page();
+  await p.getByRole('button', { name: 'From a folder', exact: true }).click();
+  const s = adoptSheet(p);
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  const section = s.locator('[data-section="every-engine"]');
+  await expect(section).toContainText('0 of 3 ticked');
+  const boxes = section.getByRole('checkbox');
+  await expect(boxes).toHaveCount(3);
+  for (const b of await boxes.all()) await expect(b).not.toBeChecked();
+  const hooks = section.locator('[data-tick="every-engine/hooks"]');
+  await expect(hooks).toContainText('1 item reaches only some engines.');
+  await expect(section.locator('[data-tick="every-engine/mcp"]')).toContainText('1 item reaches only some engines.');
+  // The rules that differ keep their engines, each with the reason.
+  const guardrails = section.locator('[data-tick="every-engine/guardrails"]');
+  await expect(guardrails).toContainText('2 items keep their engines, because they differ.');
+  await expect(guardrails.locator('[data-not-widened="ask-shell-17a2d0c4"]')).toContainText('differs between engines');
+  const hook = s.locator('[data-item="hooks/pre-tool-use-9c03e1f2"]');
+  await expect(hook).toContainText('Claude Code');
+  await s.getByRole('checkbox', { name: 'Use for every engine: Hooks' }).check();
+  await expect(section).toContainText('1 of 3 ticked');
+  await expect(hooks).toContainText('1 item now reaches every engine.');
+  await expect(hooks.getByRole('checkbox')).toBeChecked();
+  await expect(hook).toContainText('Every interface');
+  await expect(hook).toContainText('Used for every engine');
+  // By keyboard: Space ticks the servers box too, and the plan follows.
+  await s.getByRole('checkbox', { name: 'Use for every engine: Servers' }).focus();
+  await p.keyboard.press('Space');
+  await expect(section).toContainText('2 of 3 ticked');
+  await expect(s.locator('[data-item="mcp/search"]')).toContainText('Every interface');
+  await shot(p, 'E2c-adopt-every-engine');
+  // Taking a tick back plans again without it.
+  await s.getByRole('checkbox', { name: 'Use for every engine: Servers' }).uncheck();
+  await expect(section).toContainText('1 of 3 ticked');
+  await expect(s.locator('[data-item="mcp/search"]')).toContainText('Claude Code');
+  // The rest of the flow is unchanged: pick, acknowledge, approve, write; the hook's approval shows the text with no engine filter.
+  await s.locator('[data-conflict="system-prompt/AGENTS.md"]').getByRole('radio', { name: /^AGENTS\.md/ }).click();
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  const approvals = s.locator('[data-section="approvals"] [data-tick]');
+  await expect(approvals.nth(0)).not.toContainText('"engines"');
+  for (const box of await s.locator('[data-section="acknowledgements"] input').all()) await box.check();
+  for (const box of await s.locator('[data-section="approvals"] input').all()) await box.check();
+  await expect(s.locator('[data-waiting]')).toHaveText('Ready to write.');
+  await s.getByRole('button', { name: 'Write 7 files', exact: true }).click();
+  await expect(s.locator('[data-done]')).toContainText('.bowerloom/hooks.json');
+});
+
 /** Opens the install sheet on weekly-report and goes to the review of all three interfaces. */
 async function openInstallReview(p: Page): Promise<Locator> {
   await p.getByRole('button', { name: 'Install from a folder', exact: true }).click();

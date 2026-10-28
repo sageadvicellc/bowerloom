@@ -9,10 +9,10 @@
  *  - `garden` holds an install that stopped part way: only a recovery plan can run.
  */
 import type {
-  AdoptChoices, AdoptRecovered, AdoptRecoveryView, AdoptView, AdoptWritten, Answer, ApproveLineView, ChangeView, EngineBridge, EngineId, FolderInfo, LossView,
+  AdoptChoices, AdoptRecovered, AdoptRecoveryView, AdoptView, AdoptWritten, Answer, ApproveLineView, ChangeView, EngineBridge, EngineId, EveryEnginePart, FolderInfo, LossView,
   MergeView, MergeWritten, ProjectAnswer, ProjectInput, ProjectView, ProjectWritten, Recovered, RecoveryChoices, RecoveryView, Refusal, RemovalView, Removed,
 } from './types.js';
-import { writesFile } from './types.js';
+import { EVERY_ENGINE_PARTS, writesFile } from './types.js';
 import { approveKey, lossByEngine, unmappedHashBody } from './view.js';
 
 /** The packages' own words for the refusals the sample can give (packages/adoption/src/refusal.ts, packages/project-sync/src/portable-files.ts). */
@@ -116,6 +116,7 @@ function adoptFixture(): AdoptView {
       picked: null,
     }],
     differences: [{ action: 'shell', pattern: 'git push *', rules: [{ id: 'ask-shell-17a2d0c4', effect: 'ask', engines: ['claude-code'] }, { id: 'deny-shell-60f3e9b1', effect: 'deny', engines: ['codex'] }] }],
+    everyEngine: [],
     unmapped: ([
       { id: '.claude/settings.json#/permissions/defaultMode', path: '.claude/settings.json', pointer: '/permissions/defaultMode', part: 'guardrails', reason: 'Permission modes do not translate between engines (locked-in parts spec, section 8.3 rule 12). Bowerloom writes the engine default.', gate: 'acknowledge', acknowledged: false },
       { id: '.codex/config.toml#/approval_policy', path: '.codex/config.toml', pointer: '/approval_policy', part: 'guardrails', reason: 'An approval policy is an engine mode with no neutral form. It can make Codex ask less, so a person acknowledges that it is not carried.', gate: 'acknowledge', acknowledged: false },
@@ -146,11 +147,30 @@ function withApprovals(v: AdoptView): AdoptView {
   return {
     ...v,
     approvals: v.items.filter(i => i.needsApproval.length > 0).map(i => {
-      const body = { key: i.key, part: i.part, id: i.id, reasons: i.needsApproval, places: i.places, secrets: v.secrets.filter(s => s.key === i.key), text: SAMPLE_TEXT[i.key] ?? [] };
+      // An item used for every engine has no engine filter in its file text (D8B), so its text, and the hash a tick names, change with it.
+      const text = (SAMPLE_TEXT[i.key] ?? []).map(t => (i.engines !== null ? t : { ...t, text: JSON.stringify({ ...JSON.parse(t.text) as Record<string, unknown>, engines: undefined }, null, 2) }));
+      const body = { key: i.key, part: i.part, id: i.id, reasons: i.needsApproval, places: i.places, secrets: v.secrets.filter(s => s.key === i.key), text };
       return { ...body, hash: sampleRevision(JSON.stringify(body)), blocked: null };
     }),
   };
 }
+/**
+ * "Use for every engine" on the sample plan, as the package does it (D8B): each ticked part's items lose their engine filter, except a rule of a
+ * difference, which keeps its engines and is listed with the package's reason. Every part is counted, ticked or not.
+ */
+function withEveryEngine(v: AdoptView, chosen: readonly EveryEnginePart[]): AdoptView {
+  const differing = v.differences.flatMap(d => d.rules.map(r => r.id));
+  const reason = 'Not widened: its effect differs between engines, so each engine keeps its own rule.';
+  const everyEngine = EVERY_ENGINE_PARTS.map(part => ({
+    part, chosen: chosen.includes(part),
+    widens: v.items.filter(i => i.part === part && i.engines !== null && !differing.includes(i.id)).length,
+    notWidened: part === 'guardrails' ? differing.map(id => ({ id, reason })) : [],
+  }));
+  const items = v.items.map(i => (chosen.includes(i.part as EveryEnginePart) && i.engines !== null && !differing.includes(i.id)
+    ? { ...i, engines: null, notes: [...i.notes, `Used for every engine, as a person chose for ${i.part}. Before, only ${i.engines.join(', ')} read it.`] } : i));
+  return { ...v, items, everyEngine };
+}
+
 /** The entry of each sample line to approve, as the harness holds it (W7). */
 const SAMPLE_ENTRY: Readonly<Record<string, string>> = Object.freeze({
   'guardrails/no-force-push': JSON.stringify({ id: 'no-force-push', action: 'shell', pattern: 'git push --force *', effect: 'deny', strength: 'enforced' }, null, 2),
@@ -253,7 +273,7 @@ function projectFixture(input: ProjectInput, projected: boolean, written: string
 /** The fixtures as plain data, for the tests and for the sample bridge. */
 export function sampleEngineFixtures(): { adopt: AdoptView; approveLines: ApproveLineView[]; project(input: ProjectInput): ProjectView } {
   return {
-    adopt: withApprovals(adoptFixture()),
+    adopt: withApprovals(withEveryEngine(adoptFixture(), [])),
     approveLines: APPROVE.map(l => ({ ...l, key: sampleKey(l), approvable: true, text: SAMPLE_ENTRY[`${l.part}/${l.entry}`] ?? '' })),
     project: input => projectFixture(input, false, null),
   };
@@ -280,11 +300,11 @@ export function createSampleEngine(): EngineBridge {
   const settle = async <T>(value: T): Promise<T> => value;
 
   function adoptPlan(choices: AdoptChoices): AdoptView {
-    const base = withApprovals(adoptFixture());
+    const base = withApprovals(withEveryEngine(adoptFixture(), choices.everyEngine ?? []));
     const conflicts = base.conflicts.map(c => ({ ...c, picked: c.variants.some(v => v.key === choices.picks[c.key]) ? choices.picks[c.key]! : null }));
     const unmapped = base.unmapped.map(u => ({ ...u, acknowledged: u.gate === 'acknowledge' && choices.acknowledged.some(a => a.id === u.id && a.hash === u.hash) }));
     const ready = conflicts.every(c => c.picked !== null) && unmapped.every(u => u.gate === 'none' || u.acknowledged);
-    return { ...base, conflicts, unmapped, ready, revision: sampleRevision(`adopt ${JSON.stringify(conflicts.map(c => c.picked))} ${JSON.stringify(unmapped.map(u => u.acknowledged))}`) };
+    return { ...base, conflicts, unmapped, ready, revision: sampleRevision(`adopt ${JSON.stringify(conflicts.map(c => c.picked))} ${JSON.stringify(unmapped.map(u => u.acknowledged))} ${JSON.stringify(base.everyEngine.map(e => e.chosen))}`) };
   }
   function projectAnswer(f: SampleFolder, input: ProjectInput): Answer<ProjectAnswer> {
     if (f.stopped) return refuse('PORTABLE_RECOVERY_REQUIRED');

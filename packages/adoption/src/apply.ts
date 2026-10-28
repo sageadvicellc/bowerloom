@@ -1,7 +1,8 @@
 /**
  * Apply writes the plan a person approved, by copy, into the `.bowerloom` folder. It plans again under the project
- * lock and writes only when the revision is the same, every conflict has a choice, every gated unmapped entry is
- * acknowledged, nothing blocks, and every item that needs approval is in `approvals` (ruling A7).
+ * lock, with the same input (its `everyEngine` choice included, decision D8B), and writes only when the revision is the
+ * same, every conflict has a choice, every gated unmapped entry is acknowledged, nothing blocks, and every item that
+ * needs approval is in `approvals` (ruling A7).
  *
  * Every write goes through the portable projection's write layer: each folder above the path is checked just before the
  * write, and each file is linked into place, so a file that appeared since the plan is never overwritten. Apply creates

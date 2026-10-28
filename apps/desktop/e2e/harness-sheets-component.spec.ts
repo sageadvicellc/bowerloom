@@ -90,7 +90,7 @@ test('H2, U2: a new folder starts clean: no picks, no acknowledgements, no ticks
   await s.getByRole('button', { name: 'Next', exact: true }).click();
   const forB = await waiting(p, 'planAdoption');
   expect(forB.args[0]).toBe('folder-2');
-  expect(forB.args[1]).toEqual({ picks: {}, acknowledged: [] });
+  expect(forB.args[1]).toEqual({ picks: {}, acknowledged: [], everyEngine: [] });
   await expect(s.locator('[data-section]')).toHaveCount(0);
 });
 
@@ -285,7 +285,7 @@ test('W9: a new folder in the adopt sheet starts with no ticks and no acknowledg
   await s.locator('[data-folder="folder-2"]').click();
   await s.getByRole('button', { name: 'Next', exact: true }).click();
   const forB = await waiting(p, 'planAdoption');
-  expect(forB.args[1]).toEqual({ picks: {}, acknowledged: [] });
+  expect(forB.args[1]).toEqual({ picks: {}, acknowledged: [], everyEngine: [] });
   await answer(p, forB.id, ok(v));
   await s.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(s.locator('[data-section="approvals"] input')).toHaveCount(3);
