@@ -19,7 +19,7 @@ export { parseStrictJson, readFrontmatter } from './json.js';
 export type { FrontmatterResult, StrictJsonCode, StrictJsonResult } from './json.js';
 export { isDefinitionFolder, loadDefinition } from './load.js';
 export { isPermissionKey } from './schema.js';
-export { REVISION_PREFIX, canonicalBytes, computeRevision } from './revision.js';
+export { REVISION_PREFIX, canonicalBytes, computeRevision, skillContentHash } from './revision.js';
 export { INCOMPLETE_RULES, isReferenceOnly, isSafeName, isSecretKey, safeName, scanSecrets } from './secrets.js';
 export type { SecretFinding } from './secrets.js';
 export { entriesOf, resolveLayers } from './layers.js';

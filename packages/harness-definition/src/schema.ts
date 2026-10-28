@@ -222,7 +222,7 @@ function checkOverrides(c: Checker, value: JsonValue | undefined): LayerOverride
 const SKILL_FIELDS = ['name', 'description', 'license', 'compatibility', 'metadata'] as const;
 
 /** Portable skill frontmatter: the open core fields only. Any other key is refused, `x-` keys among them. */
-export function checkSkill(c: Checker, folder: string, data: Obj, body: string, files: readonly string[]): SkillEntry | undefined {
+export function checkSkill(c: Checker, folder: string, data: Obj, body: string, files: readonly string[], contentHash: string): SkillEntry | undefined {
   const k = keys(c, data, 'The skill frontmatter', ['name', 'description'], SKILL_FIELDS.slice(2), false, 'SKILL_UNKNOWN_FIELD');
   if (!k) return undefined;
   const { obj } = k;
@@ -230,7 +230,7 @@ export function checkSkill(c: Checker, folder: string, data: Obj, body: string, 
   if (obj.name !== folder) return c.fail('SKILL_NAME_MISMATCH', 'The skill name must equal its folder name.');
   const description = text(c, obj.description, 'The skill description', 1024);
   let ok = description !== undefined;
-  const entry: { -readonly [K in keyof SkillEntry]: SkillEntry[K] } = { id: folder, name: folder, description: description ?? '', body, files, privateBlocks: {} };
+  const entry: { -readonly [K in keyof SkillEntry]: SkillEntry[K] } = { id: folder, name: folder, description: description ?? '', body, files, contentHash, privateBlocks: {} };
   for (const f of ['license', 'compatibility'] as const) {
     if (!Object.hasOwn(obj, f)) continue;
     const v = text(c, obj[f], `The skill ${f}`, 500);

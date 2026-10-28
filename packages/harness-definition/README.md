@@ -84,7 +84,9 @@ The revision is a SHA-256 hash over the canonical files:
 - The five machine JSON files are hashed in canonical form.
 - Markdown files outside `scripts/` and `engines/` have their line endings changed to LF.
 - Every other file is hashed as raw bytes.
-- The execute bit counts. A file system with no execute bit, such as one on Windows, reads every file as not executable.
+- File modes do not count. The projection receipt records the mode of each file it writes, so it catches mode drift.
+
+A skill entry carries `contentHash`, a hash of every file in its folder. So when any file of the skill changes, its `entryHash` changes too, and any approval for it no longer applies.
 
 ## Secret scan
 

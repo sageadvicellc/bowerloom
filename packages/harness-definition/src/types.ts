@@ -67,7 +67,7 @@ interface Private {
 
 /**
  * `skills/<id>/SKILL.md` with the open core fields only. The engine filter and private blocks come from the skill's
- * settings in `harness.json`. Only `SKILL.md` text is in the entry: the entry hash does not cover the other files.
+ * settings in `harness.json`. `contentHash` covers every file of the skill folder, so the entry hash does too.
  */
 export interface SkillEntry extends Filterable, Private {
   readonly id: string;
@@ -80,6 +80,8 @@ export interface SkillEntry extends Filterable, Private {
   readonly body: string;
   /** Every file of the skill folder, relative to it, in byte order. */
   readonly files: readonly string[];
+  /** The hash of every file of the skill folder, with the canonical rules of the revision. */
+  readonly contentHash: string;
 }
 
 /** `agents/<id>.md`. */
@@ -177,7 +179,7 @@ export interface PartEntries {
 export interface DefinitionFile {
   readonly path: string;
   readonly bytes: Uint8Array;
-  /** True when the file has an execute bit. Absent means false. The revision counts it. */
+  /** True when the file has an execute bit. Absent means false. The revision does not count it; the receipt does. */
   readonly executable?: boolean;
 }
 

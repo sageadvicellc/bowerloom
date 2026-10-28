@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { canonicalBytes, computeRevision, loadDefinition } from '../../../dist/packages/harness-definition/src/index.js';
+import { canonicalBytes, computeRevision, entryHash, fidelityApprovalMatches, loadDefinition } from '../../../dist/packages/harness-definition/src/index.js';
 import { cleanup, fullFiles, harness, makeDefinition } from './fixture.mjs';
 
 test.after(cleanup);
@@ -47,17 +47,35 @@ test('C7: scripts and engine-private files are hashed as raw bytes', () => {
   assert.notEqual(revisionOf(fullFiles({ 'scripts/notes.md': 'a\r\n' })), revisionOf(fullFiles({ 'scripts/notes.md': 'a\n' })));
 });
 
-test('C7 and S10: the executable bit is part of the revision', () => {
+test('check 6: a chmod does not change the revision; the receipt records modes instead', () => {
   const dir = makeDefinition(fullFiles());
   const before = loadDefinition(dir).definition;
   assert.equal(before.files.find(f => f.path === 'scripts/lint.sh').executable, false);
   fs.chmodSync(path.join(dir, 'scripts', 'lint.sh'), 0o755);
   const after = loadDefinition(dir).definition;
   assert.equal(after.files.find(f => f.path === 'scripts/lint.sh').executable, true);
-  assert.notEqual(after.revision, before.revision);
+  assert.equal(after.revision, before.revision);
   const files = [{ path: 'scripts/a.sh', bytes: Buffer.from('x\n') }];
-  assert.equal(computeRevision(files), computeRevision([{ ...files[0], executable: false }]));
-  assert.notEqual(computeRevision(files), computeRevision([{ ...files[0], executable: true }]));
+  assert.equal(computeRevision(files), computeRevision([{ ...files[0], executable: true }]));
+});
+
+test('decision 6: a skill entry hash covers every file of the skill folder', () => {
+  const base = fullFiles({ 'skills/review/scripts/run.sh': '#!/bin/sh\necho one\n' });
+  const a = loadDefinition(makeDefinition(base)).definition.entries.skills.find(s => s.id === 'review');
+  const same = loadDefinition(makeDefinition(base)).definition.entries.skills.find(s => s.id === 'review');
+  const changed = loadDefinition(makeDefinition({ ...base, 'skills/review/scripts/run.sh': '#!/bin/sh\necho two\n' })).definition.entries.skills.find(s => s.id === 'review');
+  assert.match(a.contentHash, /^sha256:[0-9a-f]{64}$/);
+  assert.equal(entryHash(a), entryHash(same));
+  assert.notEqual(a.contentHash, changed.contentHash);
+  assert.notEqual(entryHash(a), entryHash(changed));
+  // Markdown line endings follow the revision rules: CRLF in SKILL.md does not count, in a skill script it does.
+  const crlf = loadDefinition(makeDefinition({ ...base, 'skills/review/SKILL.md': base['skills/review/SKILL.md'].replace(/\n/g, '\r\n') })).definition.entries.skills.find(s => s.id === 'review');
+  assert.equal(crlf.contentHash, a.contentHash);
+  // An approval of the old skill no longer matches.
+  const approval = { part: 'skills', entry: 'review', engine: 'codex', result: 'absent', entryHash: entryHash(a), who: 'Hanna Sage', when: '2026-10-28T14:00:00Z', reason: 'Reviewed.' };
+  const line = { part: 'skills', entry: 'review', engine: 'codex', result: 'absent', reason: 'x' };
+  assert.equal(fidelityApprovalMatches(approval, line, a), true);
+  assert.equal(fidelityApprovalMatches(approval, line, changed), false);
 });
 
 test('silent 12: canonicalBytes refuses a machine JSON file that is not strict JSON', () => {
@@ -135,6 +153,6 @@ test('check 6: another process with another locale, time zone, and working folde
 });
 
 // Computed by hand from the framing in src/revision.ts, outside that module:
-// sha256("bowerloom/harness-revision/v2\n" + for each file "<path>\n<x or ->\n<length>\n<canonical bytes>\n"), with
-// harness.json as {"format":"bowerloom/harness/v1beta1","id":"demo"} and AGENTS.md as "# Demo\n", neither executable.
-const PINNED = 'sha256:2bc306f6195b7bad2e666f1db56ff7ba3dbd80bd14e0abe117f5a5fa6308c11c';
+// sha256("bowerloom/harness-revision/v3\n" + for each file "<path>\n<length>\n<canonical bytes>\n"), with
+// harness.json as {"format":"bowerloom/harness/v1beta1","id":"demo"} and AGENTS.md as "# Demo\n".
+const PINNED = 'sha256:e68f780d5b4fbd80599f9901eee29ff1c4eabb438fee09682ead2eb51dad1431';

@@ -18,7 +18,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { decodeText, parseStrictJson, readFrontmatter, toLf } from './json.js';
-import { computeRevision } from './revision.js';
+import { computeRevision, skillContentHash } from './revision.js';
 import {
   Checker, checkGuardrails, checkHarness, checkHooks, checkMcp, checkSkill, checkSources, checkSubagent,
 } from './schema.js';
@@ -292,7 +292,8 @@ function readSkills(r: Reader): SkillEntry[] {
     const fm = readFrontmatter(t);
     if (!fm.ok) { r.fail(fm.code, skillPath, fm.message); continue; }
     const c = new Checker(skillPath);
-    const entry = checkSkill(c, name, { ...fm.data }, fm.body, files);
+    const content = skillContentHash(name, files.map(f => ({ path: `${rel}/${f}`, bytes: r.files.get(`${rel}/${f}`)!.bytes })));
+    const entry = checkSkill(c, name, { ...fm.data }, fm.body, files, content);
     r.merge(c);
     if (entry) out.push(entry);
   }
