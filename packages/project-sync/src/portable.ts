@@ -31,7 +31,7 @@ import type { FileAfter, FileState } from './portable-files.js';
 import { checkPaths, pendingExists, readReceipt, blob, stateExists } from './portable-state.js';
 import type { PortableEngine, PortableReceipt, ReceiptFile, ReceiptSource } from './portable-state.js';
 
-export const PORTABLE_PLAN_FORMAT = 'bowerloom/portable-projection-plan/v1beta3' as const;
+export const PORTABLE_PLAN_FORMAT = 'bowerloom/portable-projection-plan/v1beta4' as const;
 
 // ---- engine facts (portable parts spec, sections 4.1 and 4.2) ----------------------------------------------------------
 
@@ -241,14 +241,17 @@ export interface InstructionDrift {
   readonly defaultAction: 'accept-agents';
 }
 
-export type ChangeAction = 'create' | 'replace' | 'update' | 'unchanged' | 'restore' | 'delete';
+export type ChangeAction = 'create' | 'replace' | 'take-over' | 'update' | 'unchanged' | 'restore' | 'delete';
 export interface PlannedChange {
   /** Relative to the project folder, with `/`. */
   readonly path: string;
   /**
-   * `create`: no file was there. `replace`: a file Bowerloom did not write is saved and replaced. `update`: a file
-   * Bowerloom wrote changes. `unchanged`: it stays. `restore`: Bowerloom no longer projects it and puts back the file it
-   * replaced. `delete`: Bowerloom no longer projects it and nothing was there before.
+   * `create`: no file was there. `replace`: a file Bowerloom did not write is saved and replaced. `take-over`: a file
+   * Bowerloom did not write already holds the planned bytes and mode, so nothing is written; the receipt records it with
+   * its original equal to its current state (definition spec, check 1, on an adopted folder). `update`: a file Bowerloom
+   * wrote changes. `unchanged`: it stays. `restore`: Bowerloom no longer projects it and puts back the file it replaced;
+   * when that file has the bytes and mode the path holds now, as for a file taken over, nothing is written. `delete`:
+   * Bowerloom no longer projects it and nothing was there before.
    */
   readonly action: ChangeAction;
   readonly before: FileState | null;
@@ -269,6 +272,11 @@ export interface Deferred {
 export interface FilterLeak { readonly skill: string; readonly path: string; readonly engines: readonly EngineId[] }
 /** An input choice that did not apply, and why (ruling P16). */
 export interface Ignored { readonly option: 'reconcile' | 'writeClaudeMd' | 'piTrustSaved' | 'codexTrust'; readonly value: string | boolean; readonly reason: string }
+/**
+ * A person's file, or one entry of a file Bowerloom adds entries to, that already holds exactly what Bowerloom would
+ * write: Bowerloom records it and writes nothing for it. `entry` is absent for a whole file.
+ */
+export interface TakenOver { readonly path: string; readonly entry?: string }
 /** An action the plan offers but does not take unless the input asks (ruling P23). */
 export interface Offer { readonly action: 'write-claude-md'; readonly reason: string }
 
@@ -290,6 +298,8 @@ export interface PortableReport {
   readonly review: readonly ReviewItem[];
   /** The recorded approvals that cover a line of this plan. The receipt records them. */
   readonly approved: readonly FidelityApproval[];
+  /** The files and entries a person made that this plan takes over unchanged, in path order. */
+  readonly takenOver: readonly TakenOver[];
 }
 
 export interface PortablePlan extends PortableReport {
@@ -414,6 +424,38 @@ interface Target { bytes: Uint8Array; mode: number; engines: Set<EngineId> }
 export function receiptFilesOf(changes: readonly PlannedChange[]): ReceiptFile[] {
   return changes.filter(c => c.after !== null).map(c => ({ path: c.path, ...c.after!, engines: c.engines, original: c.original }));
 }
+/**
+ * Whether a skill folder a person made already holds exactly the files the plan writes there, each with the planned
+ * bytes and mode, and nothing else. `differ` names the files whose bytes or mode differ when the folder holds the same
+ * file names; it is null when the names differ or the folder holds a link or anything but plain files and folders.
+ */
+function sameFolder(projectDir: string, folder: string, targets: ReadonlyMap<string, Target>): { readonly same: boolean; readonly differ: readonly string[] | null } {
+  const found: string[] = [];
+  const walk = (rel: string, depth: number): boolean => {
+    if (depth > DEFINITION_LIMITS.depth) return false;
+    let names: string[];
+    try { names = fs.readdirSync(join(projectDir, rel)); } catch { return false; }
+    for (const n of names) {
+      const r = `${rel}/${n}`;
+      let st: fs.Stats;
+      try { st = fs.lstatSync(join(projectDir, r)); } catch { return false; }
+      if (st.isDirectory() && !st.isSymbolicLink()) { if (!walk(r, depth + 1)) return false; continue; }
+      if (!st.isFile() || found.length >= DEFINITION_LIMITS.files) return false;
+      found.push(r);
+    }
+    return true;
+  };
+  const planned = [...targets.keys()].filter(p => p.startsWith(folder + '/')).sort(byBytes);
+  if (!walk(folder, 1) || found.length !== planned.length || !found.sort(byBytes).every((p, i) => p === planned[i])) return { same: false, differ: null };
+  const differ: string[] = [];
+  for (const p of planned) {
+    const now = stateOrUnsafe(projectDir, p), t = targets.get(p)!;
+    if (now === 'unsafe') return { same: false, differ: null };
+    if (!sameState(now, { sha256: sha(t.bytes), mode: t.mode })) differ.push(p);
+  }
+  return { same: differ.length === 0, differ };
+}
+
 const isDir = (projectDir: string, rel: string): boolean => {
   try { if (checkAncestors(projectDir, rel + '/x').length) return false; const st = fs.lstatSync(join(projectDir, rel)); return st.isDirectory() && !st.isSymbolicLink(); } catch { return false; }
 };
@@ -532,23 +574,29 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
   }
   if (clashes.length) refuse('PORTABLE_CASE_CLASH', [...new Set(clashes)]);
 
-  // Skill folders that Bowerloom did not project are never written into. A folder that a 0.7 managed copy holds is taken
+  // Skill folders that Bowerloom did not project are never written into. A folder that already holds exactly the planned
+  // files, bytes, and modes, and nothing else, is taken over unchanged: a folder adopted in place (definition spec, check
+  // 1). One whose files differ is refused, naming each differing file. A folder that a 0.7 managed copy holds is taken
   // only when sources.json records that the skill was adopted from that copy, and the folder still holds exactly it:
   // its files are then replaced, with their originals saved, so removal restores the 0.7 copy (step 3 contract).
-  const occupied: string[] = [], managed: string[] = [];
+  const occupied: string[] = [], managed: string[] = [], legacy: string[] = [];
   const folders = new Set([...targets.keys()].filter(p => p.startsWith('.claude/skills/') || p.startsWith('.agents/skills/')).map(p => p.split('/').slice(0, 3).join('/')));
   for (const folder of [...folders].sort(byBytes)) {
     if ([...owned.keys()].some(p => p.startsWith(folder + '/'))) continue;
     if (checkAncestors(projectDir, folder + '/x').length) continue;
     const holder = managedHolder(projectDir, folder);
-    if (holder === null) { occupied.push(folder); continue; }
+    if (holder === null) {
+      const held = sameFolder(projectDir, folder, targets);
+      if (!held.same) occupied.push(...(held.differ ?? [folder]));
+      continue;
+    }
     const name = folder.split('/')[2]!;
     const record = def.adopted.find(a => a.part === 'skills' && a.id === name);
     const held = record ? folderContent(projectDir, folder) : null;
     // Review item K2: a cloned repository can forge the marker and the record, so the real canonical copy is read too.
     const canonical = record ? canonicalHash(projectDir, record) : null;
     if (record && held && canonical !== null && held.sha256 === record.adoptedFrom.sha256 && canonical === record.adoptedFrom.sha256
-      && held.files.every(f => targets.has(`${folder}/${f}`))) continue;
+      && held.files.every(f => targets.has(`${folder}/${f}`))) { legacy.push(folder + '/'); continue; }
     managed.push(`${folder} (0.7 item ${holder})`);
   }
   if (managed.length) refuse('PORTABLE_MANAGED_COPY', managed);
@@ -572,7 +620,9 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
     const rec = recordedModes.get(path), want = sha(target.bytes);
     const keepMode = mine !== undefined && rec !== undefined && rec.sha256 === want && mine.sha256 === want && mine.mode === rec.recorded && target.mode === rec.planned;
     const after: FileAfter = { sha256: want, mode: keepMode ? mine.mode : target.mode, bytes: target.bytes.length };
-    const action: ChangeAction = mine ? (sameState(now, after) ? 'unchanged' : 'update') : now === null ? 'create' : 'replace';
+    // A 0.7 managed copy keeps the step 3 contract, a replace, even where its bytes are already the planned ones.
+    const takeOver = now !== null && sameState(now, after) && !legacy.some(f => path.startsWith(f));
+    const action: ChangeAction = mine ? (sameState(now, after) ? 'unchanged' : 'update') : now === null ? 'create' : takeOver ? 'take-over' : 'replace';
     if (mine?.original) blob(stateDir, mine.original, path);
     changes.push({ path, action, before: now, after, original: mine ? mine.original : now, engines: ENGINE_IDS.filter(e => target.engines.has(e)) });
   }
@@ -607,10 +657,14 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
   const sameReceipt = previous !== null && canonicalJson({ d: previous.definition, e: previous.engines, f: previous.files, s: previous.sources, c: existing, a: previous.approvals })
     === canonicalJson({ d: definition, e: engines, f: receiptFiles, s: sources, c: createdDirs, a: approved });
   const noop = changes.every(c => c.action === 'unchanged') && sameReceipt;
+  const takenOver: TakenOver[] = [
+    ...changes.filter(c => c.action === 'take-over').map((c): TakenOver => ({ path: c.path })),
+    ...locked.takenOver.filter(x => targets.has(x.path)).map(x => ({ path: x.path, entry: x.entry })),
+  ].sort((a, b) => byBytes(a.path, b.path) || byBytes(a.entry ?? '', b.entry ?? ''));
   const body = {
     format: PORTABLE_PLAN_FORMAT, projectDir, stateDir, definition, engines, changes, createDirs: [...createDirs].sort(byBytes), createdDirs, sources,
     drift, reconcile, loss, partial, notice: partial ? PARTIAL_NOTICE : null, deferred, filterLeaks, pendingTrust, ignored, offers,
-    trust: locked.trust, review: locked.review, approved, previousReceipt: previous?.revision ?? null, noop, writesAuthorized: false as const,
+    trust: locked.trust, review: locked.review, approved, takenOver, previousReceipt: previous?.revision ?? null, noop, writesAuthorized: false as const,
   };
   const bytes = new Map([...targets].map(([path, t]) => [path, t.bytes] as const));
   return { plan: { ...body, revision: revisionOf(body) }, bytes };

@@ -78,6 +78,7 @@ export interface PortableRemovalPlan {
 }
 export interface PortableRemovalResult {
   readonly planRevision: string;
+  /** The files put back as they were. One whose original is its current state, as a file taken over, is not written. */
   readonly restored: readonly string[];
   readonly deleted: readonly string[];
   readonly leftBehind: readonly LeftBehind[];
@@ -130,8 +131,10 @@ export interface DriftLine { readonly path: string; readonly reason: 'changed' |
 
 const reportOf = (p: PortablePlan): PortableReport => ({
   loss: p.loss, partial: p.partial, notice: p.notice, deferred: p.deferred, filterLeaks: p.filterLeaks, pendingTrust: p.pendingTrust, ignored: p.ignored, offers: p.offers,
-  trust: p.trust, review: p.review, approved: p.approved,
+  trust: p.trust, review: p.review, approved: p.approved, takenOver: p.takenOver,
 });
+/** A restore whose original is the state the path holds now: nothing to write (a file Bowerloom took over). */
+const stays = (c: PlannedChange): boolean => c.action === 'restore' && c.original !== null && sameState(c.before, c.original);
 const hex = (r: unknown): r is string => typeof r === 'string' && /^[a-f0-9]{64}$/.test(r);
 const isCrash = (e: unknown): boolean => (e as { crash?: unknown } | null)?.crash === true;
 
@@ -282,9 +285,18 @@ export async function applyPortableWith(input: PortableInput, revision: string, 
     const previous = readReceipt(stateDir, projectDir);
     if (plan.noop) return { noop: true, planRevision: plan.revision, receipt: previous, report: reportOf(plan), leftBehind: [] };
     ensureState(stateDir);
+    // A file taken over is not written. Its bytes are saved as its original, which the receipt names, so a later update
+    // can restore them and a later plan can read them. The plan just read it under the lock; a change since is drift.
+    for (const c of plan.changes) {
+      if (c.action !== 'take-over') continue;
+      live(ctx);
+      const cur = readProject(projectDir, c.path);
+      if (cur === null || !sameState(cur.state, c.before)) refuse('PORTABLE_DRIFT', [c.path]);
+      saveBlob(stateDir, cur!.bytes);
+    }
     const work: Work[] = [];
     for (const c of plan.changes) {
-      if (c.action === 'unchanged') continue;
+      if (c.action === 'unchanged' || c.action === 'take-over' || stays(c)) continue;
       const target = planned.get(c.path);
       if (c.after !== null && target === undefined) throw syncError('STALE_APPROVAL');
       const bytes = c.after !== null ? target! : c.original === null ? null : blob(stateDir, c.original, c.path);
@@ -367,7 +379,9 @@ export async function applyPortableRemovalWith(input: { readonly projectDir: str
     const plan = planPortableRemoval(input);
     if (plan.revision !== revision) throw syncError('STALE_APPROVAL');
     const { projectDir, stateDir } = plan, ctx: Ctx = { projectDir, stateDir, held, hooks };
-    const work: Work[] = plan.changes.map(c => ({ step: { path: c.path, from: c.before, to: c.original }, bytes: c.original === null ? null : blob(stateDir, c.original, c.path) }));
+    // A file whose original is its current state, as a file taken over, stays as it is: no step of the journal.
+    const work: Work[] = plan.changes.filter(c => !stays(c))
+      .map(c => ({ step: { path: c.path, from: c.before, to: c.original }, bytes: c.original === null ? null : blob(stateDir, c.original, c.path) }));
     // The marker of a removal holds the folders to remove, so a removal finished by recovery removes them too.
     execute(ctx, { format: PENDING_FORMAT, projectDir, kind: 'remove', planRevision: plan.revision, steps: work.map(w => w.step), dirs: plan.removeDirs }, work, []);
     hooks.at?.('after-steps');

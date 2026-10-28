@@ -13,6 +13,9 @@
  *   same bytes.
  * - A file Bowerloom owns whole is rendered. A file at one of those paths that Bowerloom did not write is never
  *   overwritten.
+ * - A person's file or entry that already holds exactly what Bowerloom would write, as after adoption in place, is
+ *   taken over: nothing is written for it, and the receipt records the file with its original equal to its current
+ *   state (definition spec, check 1). Anything that differs is still refused.
  */
 import {
   JsExpression, codexJustification, openCodeSubstitution, translateGuardrails, translateHooks, translateMcp, translateSubagents, type CodexForm, type HookForm,
@@ -21,7 +24,7 @@ import {
 import type { ClaudeCodeForm } from '../../fidelity/src/index.js';
 import { entryHash } from '../../harness-definition/src/index.js';
 import type { Definition, EngineId, EngineView, LossLine } from '../../harness-definition/src/index.js';
-import { readProject, refuse, stateOrUnsafe } from './portable-files.js';
+import { readProject, refuse, sha, stateOrUnsafe } from './portable-files.js';
 import { blob } from './portable-state.js';
 import type { PortableEngine, ReceiptFile } from './portable-state.js';
 import {
@@ -113,6 +116,11 @@ export interface LockedPlan {
   readonly review: readonly ReviewItem[];
   /** A sentence about the engine version, added to every line of that engine (rulings B7 and B18). */
   readonly notes: ReadonlyMap<EngineId, string>;
+  /**
+   * The entries of a person's file, one Bowerloom has not written yet, that already hold exactly what Bowerloom would
+   * add: the edit leaves them as they are, and the receipt takes the file over (definition spec, check 1).
+   */
+  readonly takenOver: readonly { readonly path: string; readonly entry: string }[];
 }
 
 const hasLocked = (v: EngineView): boolean => v.subagents.length + v.rules.length + v.sandbox.length + v.hooks.length + v.mcp.length > 0;
@@ -203,17 +211,23 @@ export function planLocked(ctx: LockedContext): LockedPlan {
   const lines = new Map<EngineId, Map<LockedPart, LossLine[]>>();
   const trust: TrustLine[] = [], review: ReviewItem[] = [];
   const conflicts: string[] = [], invalid: string[] = [], envDefaults: string[] = [], occupied: string[] = [], orderUnsafe: string[] = [], unsafeValues: string[] = [];
+  const takenOver: { path: string; entry: string }[] = [];
 
   const put = (path: string, value: string, engine: EngineId, mode = 0o644): void => { targets.set(path, { bytes: Buffer.from(value), mode, engine }); };
   const merged = (path: string, result: EditResult, engine: EngineId, mode: number): void => {
-    if (result.ok) put(path, result.text, engine, mode);
-    else if (result.reason === 'invalid') invalid.push(path);
+    if (result.ok) {
+      put(path, result.text, engine, mode);
+      if (!ctx.owned.has(path)) takenOver.push(...result.kept.map(entry => ({ path, entry })));
+    } else if (result.reason === 'invalid') invalid.push(path);
     else conflicts.push(...result.at.map(k => `${path}: ${k}`));
   };
-  /** A file Bowerloom owns whole: never written over a file that a person made (ruling B20). */
+  /**
+   * A file Bowerloom owns whole: never written over a file that a person made (ruling B20). A person's file that already
+   * holds exactly the bytes and mode Bowerloom would write is taken over instead (definition spec, check 1).
+   */
   const owned = (path: string, value: string, engine: EngineId): void => {
     const now = stateOrUnsafe(ctx.projectDir, path);
-    if (now !== null && now !== 'unsafe' && !ctx.owned.has(path)) occupied.push(path);
+    if (now !== null && now !== 'unsafe' && !ctx.owned.has(path) && !(now.sha256 === sha(value) && now.mode === 0o644)) occupied.push(path);
     put(path, value, engine);
   };
   const jsonFile = (path: string, ops: readonly JsonOp[], engine: EngineId): void => {
@@ -433,7 +447,7 @@ export function planLocked(ctx: LockedContext): LockedPlan {
   const key = (a: { readonly path: string; readonly part?: string; readonly entry?: string; readonly kind?: string }): string => `${a.path}\u0000${a.kind ?? ''}\u0000${a.part ?? ''}\u0000${a.entry ?? ''}`;
   trust.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
   review.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
-  return { targets, lines, trust, review, notes };
+  return { targets, lines, trust, review, notes, takenOver };
 }
 
 const objectOf = (f: McpServerForm): Out => ('value' in f ? f.value : null) as Out;
