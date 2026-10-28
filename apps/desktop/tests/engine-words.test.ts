@@ -5,6 +5,7 @@ import { LIMITS, bannedHere, countWords } from '../shared/harness/words.js';
 import {
   CHANGE_WORDS, DRIFT_WORDS, ENGINE_WORDS, GATE_WORDS, RESULT_TONE, RESULT_WORDS, approveLineName, approvePlanWords, changesLine, conflictWords, countsWords, engineHeading,
   engineList, hiddenWords, partName, readLine, removeFilesWords, removedWords, tickedWords, waitingWords, writeFilesWords, wroteAdoption, wroteInstall,
+  acknowledgeName, approveItemName, engineDetails, ignoredWords, recoveryKindWords, stillWaiting, writesIntoLine,
 } from '../renderer/harness/words-engine.js';
 
 test('the table is frozen; a label has at most 5 words, a hint 12, a paragraph 25, and none holds a banned word', () => {
@@ -39,4 +40,8 @@ test('the words built from a number or a name read right and obey the rules', ()
   assert.equal(engineHeading('Codex', '0.157.0'), 'Codex, version 0.157.0');
   const built = [writeFilesWords(2), removeFilesWords(2), readLine(2, '~/p'), changesLine(2, '~/p'), approvePlanWords('ab'), conflictWords('x', 3), tickedWords(1, 3), wroteAdoption(7), wroteInstall(10), removedWords(3, 1), approveLineName('guardrails', 'no-force-push', 'Codex'), hiddenWords('Pi', 'CLAUDE.md')];
   for (const text of built) { assert.equal(bannedHere(text), null, text); assert.ok(countWords(text) <= LIMITS.hint, text); }
+  assert.equal(writesIntoLine(7), 'Writes 7 files into the .bowerloom folder.');
+  assert.equal(stillWaiting('2 approvals'), 'Still waiting for: 2 approvals');
+  assert.equal(engineDetails('Codex', '0.157.0', 'gpt-5'), 'Codex, version 0.157.0, model gpt-5'); assert.equal(engineDetails('Pi', null, null), 'Pi');
+  for (const text of [approveItemName('mcp', 'mail'), acknowledgeName('.codex/config.toml#/approval_policy'), writesIntoLine(1), recoveryKindWords('apply' as const), recoveryKindWords('remove' as const), recoveryKindWords(null), ignoredWords('reconcile', 'There is no CLAUDE.md.')]) assert.equal(bannedHere(text), null, text);
 });

@@ -27,6 +27,7 @@
     "renderer/**/*.tsx", "renderer/**/*.d.ts",
     "shared/**/*.ts",
     "tests/**/*.ts",
+    "tests/component/**/*.tsx",
     "playwright.config.ts",
     "e2e/**/*.ts"
   ]

@@ -2,7 +2,10 @@
  * What still stands between a plan and its write, as plain data. The sheets draw their "waiting for" lines and enable their write button from here, and the
  * same rules are held by the packages, which plan again and refuse when anything is missing. A sheet never passes an approval the person did not tick.
  */
-import type { AdoptView, ProjectAnswer, ProjectView } from './types.js';
+import type { AdoptApproval, AdoptView, ProjectAnswer, ProjectView } from './types.js';
+
+/** A tick on an adopt approval names the approval and the hash of what the person read, so a change to any of it clears the tick (U3, SM1). */
+export const tickOf = (a: { readonly key: string; readonly hash: string }): string => `${a.key}\u001f${a.hash}`;
 
 export type AdoptWait =
   | { readonly kind: 'conflict'; readonly key: string }
@@ -20,16 +23,16 @@ export function adoptWaits(view: AdoptView, ticked: readonly string[]): AdoptWai
     else if (u.gate === 'acknowledge' && !u.acknowledged) waits.push({ kind: 'acknowledge', id: u.id });
   }
   for (const p of view.problems) waits.push({ kind: 'problem', code: p.code });
-  for (const a of view.approvals) if (!ticked.includes(a.key)) waits.push({ kind: 'approval', key: a.key });
+  for (const a of view.approvals) if (!ticked.includes(tickOf(a))) waits.push({ kind: 'approval', key: a.key });
   return waits;
 }
 
 /** True when the adopt sheet may write: nothing waits, and the plan itself says it is ready. */
 export const adoptCanWrite = (view: AdoptView, ticked: readonly string[]): boolean => view.ready && adoptWaits(view, ticked).length === 0;
 
-/** The approvals to send with a write: exactly the plan's own, each ticked by the person, in the plan's order. Anything else is never sent. */
-export function approvalsToSend(view: AdoptView, ticked: readonly string[]): string[] {
-  return view.approvals.map(a => a.key).filter(key => ticked.includes(key));
+/** The approvals to send with a write: exactly the plan's own, each ticked by the person for the content on screen, in the plan's order. */
+export function approvalsToSend(view: AdoptView, ticked: readonly string[]): AdoptApproval[] {
+  return view.approvals.filter(a => ticked.includes(tickOf(a))).map(a => ({ key: a.key, hash: a.hash }));
 }
 
 /** The approve lines that are not ticked yet. Empty: the sheet may plan again with the approvals. */

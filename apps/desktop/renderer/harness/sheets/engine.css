@@ -37,6 +37,8 @@
 [data-home] .hxe-notice { margin: 0; padding: var(--hm-space-2) var(--hm-space-3); background: var(--surface-2); border-radius: var(--hm-radius-small); }
 [data-home] .hxe-variants, [data-home] .hxe-reconcile { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: var(--hm-space-3); }
 [data-home] .hxi-choice[data-off] { cursor: not-allowed; color: var(--text-muted); }
+/* A picked choice still answers the pointer: a stronger edge, colour only. */
+[data-home] .hxi-choice[aria-checked="true"]:not([data-off]):not([aria-disabled="true"]):hover { box-shadow: inset 0 0 0 2px var(--accent-strong); }
 [data-home] .hxi-choice[data-off]:hover { border-color: var(--hm-border); }
 
 /* A tick box with its words: the item above, the box and what ticking means below. Ticked: the accent edge, never a tick drawn by the app. */
@@ -53,7 +55,9 @@
 [data-home] .hxe-code-block { margin: 0; padding: var(--hm-space-3); background: var(--surface-2); color: var(--text); border-radius: var(--hm-radius-small); font-family: var(--font-mono); font-size: var(--hm-text-base); line-height: 1.5;
   white-space: pre-wrap; overflow-wrap: anywhere; max-height: 22rem; overflow: auto; }
 [data-home] .hxe-code-block:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
-[data-home] .hxe-env { display: grid; grid-template-columns: max-content 1fr; gap: 2px var(--hm-space-3); margin: 0; font-size: var(--hm-text-base); }
+/* A long environment name wraps inside its column instead of pushing the value out of the sheet (U13). */
+[data-home] .hxe-env { display: grid; grid-template-columns: fit-content(40%) minmax(0, 1fr); gap: 2px var(--hm-space-3); margin: 0; font-size: var(--hm-text-base); }
+[data-home] .hxe-env dt { min-width: 0; overflow-wrap: anywhere; }
 [data-home] .hxe-env > div { display: contents; }
 [data-home] .hxe-env dd { margin: 0; overflow-wrap: anywhere; }
 

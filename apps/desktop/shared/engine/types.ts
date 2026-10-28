@@ -95,6 +95,8 @@ export interface AdoptUnmappedView {
   readonly reason: string;
   readonly gate: Gate;
   readonly acknowledged: boolean;
+  /** A hash of what the person reads about this entry (its id, place, part, reason and gate). An acknowledgement names it (U3). */
+  readonly hash: string;
 }
 export interface AdoptSecretView { readonly path: string; readonly pointer: string; readonly reference: string; readonly key: string }
 /** One approval adoption needs: the item, every reason a person reads, and the secrets it replaced. */
@@ -105,6 +107,10 @@ export interface AdoptApprovalView {
   readonly reasons: readonly string[];
   readonly places: readonly PlaceView[];
   readonly secrets: readonly AdoptSecretView[];
+  /** The exact text the approval covers, from the planned definition files: the hook or server entry, the skill, the agent (U7). */
+  readonly text: readonly { readonly path: string; readonly text: string }[];
+  /** A hash of everything above. A tick names it, so a change to any of it clears the tick (U3). */
+  readonly hash: string;
 }
 export interface AdoptView {
   readonly folder: string;
@@ -129,10 +135,12 @@ export interface AdoptView {
 export interface AdoptChoices {
   /** The picked variant key of each conflict, by conflict key. */
   readonly picks: Readonly<Record<string, string>>;
-  /** The ids of gated unmapped entries the person acknowledged. */
-  readonly acknowledged: readonly string[];
+  /** The gated unmapped entries the person acknowledged, each by id and by the hash of what the person read. */
+  readonly acknowledged: readonly { readonly id: string; readonly hash: string }[];
 }
 export interface AdoptWritten { readonly written: readonly string[] }
+/** One approval as the window sends it: the key and the hash of what the person read. */
+export interface AdoptApproval { readonly key: string; readonly hash: string }
 
 export interface AdoptRecoveryView {
   readonly journal: 'ok' | 'damaged';
@@ -181,7 +189,11 @@ export interface InstructionDriftView {
   readonly defaultAction: 'accept-agents';
 }
 export interface DriftLineView { readonly path: string; readonly reason: 'changed' | 'missing' | 'unsafe' }
-export interface ApprovedView { readonly part: string; readonly entry: string; readonly field: string | null; readonly engine: EngineId; readonly result: 'weakened' | 'absent'; readonly who: string; readonly when: string; readonly reason: string }
+export interface ApprovedView {
+  readonly part: string; readonly entry: string; readonly field: string | null; readonly engine: EngineId; readonly result: 'weakened' | 'absent'; readonly who: string; readonly when: string; readonly reason: string;
+  /** True for an approval recorded by an earlier install and reused for the unchanged entry; false for one ticked in this sheet. */
+  readonly earlier: boolean;
+}
 export interface ChangeView { readonly path: string; readonly action: 'create' | 'replace' | 'update' | 'unchanged' | 'restore' | 'delete'; readonly engines: readonly EngineId[] }
 export interface ProjectView {
   readonly folder: string;
@@ -205,7 +217,12 @@ export interface ProjectView {
   readonly revision: string;
 }
 /** A weakened or absent enforced line that needs a person's approval before the plan can be made. `key` names it in `ProjectInput.approve`. */
-export interface ApproveLineView extends LossView { readonly key: string }
+export interface ApproveLineView extends LossView {
+  /** The line and the hash of its entry: a changed entry is a new key, so an earlier tick never covers it (U15). */
+  readonly key: string;
+  /** False for a line whose entry the definition does not hold: it is shown, and it offers no tick (SL3). */
+  readonly approvable: boolean;
+}
 /** The answer to a projection plan: the plan, or the lines a person must approve first. */
 export type ProjectAnswer = { readonly kind: 'plan'; readonly plan: ProjectView } | { readonly kind: 'approve'; readonly lines: readonly ApproveLineView[]; readonly approvedSoFar: readonly string[] };
 export interface ProjectInput {
@@ -215,7 +232,7 @@ export interface ProjectInput {
   /** The keys of the lines the person approved in this sheet. */
   readonly approve: readonly string[];
 }
-export interface ProjectWritten { readonly noop: boolean; readonly written: readonly string[] }
+export interface ProjectWritten { readonly noop: boolean; readonly written: readonly string[]; readonly leftBehind: readonly string[] }
 
 export interface RemovalView { readonly changes: readonly ChangeView[]; readonly removeDirs: readonly string[]; readonly revision: string }
 export interface Removed { readonly restored: readonly string[]; readonly deleted: readonly string[]; readonly leftBehind: readonly string[] }
@@ -241,7 +258,8 @@ export interface EngineBridge {
   /** Opens the system folder chooser. Null when the person closed it. The sample has no chooser and answers null. */
   chooseFolder(): Promise<Answer<FolderInfo> | null>;
   planAdoption(folderId: string, choices: AdoptChoices): Promise<Answer<AdoptView>>;
-  runAdoption(folderId: string, revision: string, choices: AdoptChoices, approvals: readonly string[]): Promise<Answer<AdoptWritten>>;
+  /** `approvals` are the plan's own approvals the person ticked, each with the hash of what they read. */
+  runAdoption(folderId: string, revision: string, choices: AdoptChoices, approvals: readonly AdoptApproval[]): Promise<Answer<AdoptWritten>>;
   planAdoptionRecovery(folderId: string): Promise<Answer<AdoptRecoveryView>>;
   runAdoptionRecovery(folderId: string, revision: string): Promise<Answer<AdoptRecovered>>;
   planProjection(folderId: string, input: ProjectInput): Promise<Answer<ProjectAnswer>>;
@@ -266,4 +284,7 @@ export const ENGINE_ARITY: Readonly<Record<EngineCall, number>> = Object.freeze(
 /** One channel per call, apart from every other channel of the app. */
 export const ENGINE_CHANNELS: Readonly<Record<EngineCall, string>> = Object.freeze(Object.fromEntries(ENGINE_CALLS.map(c => [c, `bowerloom-engine:${c}`])) as Record<EngineCall, string>);
 /** The short codes a call can be refused with before it runs. */
-export const ENGINE_CALL_REFUSALS = Object.freeze(['NOT_ALLOWED', 'BAD_ARGUMENT', 'UNKNOWN_FOLDER', 'BUSY', 'FAILED'] as const);
+export const ENGINE_CALL_REFUSALS = Object.freeze(['NOT_ALLOWED', 'BAD_ARGUMENT', 'UNKNOWN_FOLDER', 'FAILED'] as const);
+/** Refusals of main itself, with words, before a package runs: the write is not the plan main showed last (U16), or the person said no in main's own dialog. */
+export const NOT_THE_PLAN_SHOWN = 'NOT_THE_PLAN_SHOWN';
+export const CANCELLED = 'CANCELLED';

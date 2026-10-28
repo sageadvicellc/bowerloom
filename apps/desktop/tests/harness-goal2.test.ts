@@ -21,15 +21,12 @@ test('a fitted graph leaves the foot of the stage to the legend, so no part sits
   assert.deepEqual(fitView(bounds, 560, 548), fitView(bounds, 560, 548, 16, 0));
 });
 
-test('every new control of the sheets has a hover style and a focus style, and none of them moves', () => {
+// The hover and focus of every control of the sheets are measured in the window, not read from the style sheets: e2e/harness-small.spec.ts opens each
+// sheet at 900 by 600, walks it with Tab and checks an outline on each control, and hovers each button and tick box (U14).
+test('the sheet styles move nothing: colour only, and none with reduced motion', () => {
   const engine = css('renderer/harness/sheets/engine.css');
-  for (const rule of ['.hxe-tick:hover', '.hxe-tick:has(input:focus-visible)', '.hxe-code-block:focus-visible', '.hxe-body:focus-visible']) assert.ok(engine.includes(rule), rule);
   assert.doesNotMatch(engine, /transition:[^;]*transform|animation:/, 'colour only; nothing travels');
-  assert.match(engine, /prefers-reduced-motion: reduce/);
-  const harness = css('renderer/harness/harness.css');
-  for (const rule of ['.hx-row[data-selected]:hover', '.hx-tab[aria-pressed="true"]:hover', '.hx-lrow[data-missing]:hover', '[aria-pressed="true"]:hover']) assert.ok(harness.includes(rule), rule);
-  assert.match(css('renderer/harness/screens/interfaces.css'), /\.hxn-switch:not\(:disabled\):hover/);
-  assert.match(css('renderer/harness/screens/compare.css'), /\.hc-rate\[aria-pressed="true"\]:not\(\[aria-disabled="true"\]\):hover/);
+  assert.match(engine, /@media \(prefers-reduced-motion: reduce\) \{\s*\[data-home\] \.hxe-tick \{ transition: none !important; \}/);
 });
 
 test('the sage leaf stands in the rail as well as in the open navigation; its name stays for a screen reader', () => {

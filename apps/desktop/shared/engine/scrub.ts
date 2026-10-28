@@ -4,22 +4,34 @@
  * the file really holds. Absolute paths of the person's folders become `~` for the home folder and the folder's label for the project.
  */
 
-/** Characters that would hide or reorder text on a screen. Tab and line feed stay: code needs them. */
-const HIDDEN_CHARS = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f­؜ᅟᅠ឴឵᠎​-‏‪-‮⁠-⁤⁦-⁯ㅤ︀-️﻿ﾠ￹-￻]/g;
+/**
+ * Characters that would hide, fake or reorder text on a screen (U17): controls, direction marks, zero-width and joining marks, the combining grapheme joiner,
+ * Hangul fillers, Mongolian variation selectors, the braille blank, line and paragraph separators, every space that is not a plain space, the variation
+ * selectors and their supplement, and the tag characters. Tab and line feed stay: code needs them. The `u` flag reads astral characters as one.
+ */
+const HIDDEN_CHARS = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u00a0\u00ad\u034f\u061c\u115f\u1160\u1680\u17b4\u17b5\u180b-\u180e\u2000-\u200f\u2028-\u202f\u205f-\u2064\u2066-\u206f\u2800\u3000\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff9-\ufffb\u{e0000}-\u{e007f}\u{e0100}-\u{e01ef}]/gu;
 
 const mark = (ch: string): string => `[U+${ch.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}]`;
 
-/** The text with every hiding character written out as a visible mark. */
+/** The scripts a word may mix to fake another word. A word with letters of two of them is marked. */
+const SCRIPTS: readonly (readonly [string, RegExp])[] = [
+  ['Latin', /\p{Script=Latin}/u], ['Cyrillic', /\p{Script=Cyrillic}/u], ['Greek', /\p{Script=Greek}/u], ['Armenian', /\p{Script=Armenian}/u],
+  ['Georgian', /\p{Script=Georgian}/u], ['Cherokee', /\p{Script=Cherokee}/u], ['Hebrew', /\p{Script=Hebrew}/u], ['Arabic', /\p{Script=Arabic}/u],
+];
+const WORD = /[\p{L}\p{M}\p{N}_-]+/gu;
+const scriptsOf = (word: string): string[] => SCRIPTS.filter(([, re]) => [...word].some(ch => re.test(ch))).map(([name]) => name);
+
+/** The text with every hiding character written out as a visible mark, and each word that mixes scripts marked before it. */
 export function visible(text: string): string {
-  return text.replace(HIDDEN_CHARS, mark);
+  return text.replace(HIDDEN_CHARS, mark).replace(WORD, word => {
+    const scripts = scriptsOf(word);
+    return scripts.length > 1 ? `[mixed scripts: ${scripts.join('+')}]${word}` : word;
+  });
 }
 
-/** True when the text holds a character that `visible` writes out. */
+/** True when the text holds a character that `visible` writes out, or a word that mixes scripts. */
 export function hasHidden(text: string): boolean {
-  HIDDEN_CHARS.lastIndex = 0;
-  const found = HIDDEN_CHARS.test(text);
-  HIDDEN_CHARS.lastIndex = 0;
-  return found;
+  return visible(text) !== text;
 }
 
 export interface Scrub {

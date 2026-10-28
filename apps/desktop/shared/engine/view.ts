@@ -19,8 +19,21 @@ function place(p: Place, s: Scrub): PlaceView {
   return { path: s(p.path), pointer: p.pointer === undefined ? null : s(p.pointer), engines: engines(p.engines), shape: s(p.shape), shapeVersion: p.shapeVersion === null ? null : s(p.shapeVersion) };
 }
 
-/** The adoption plan as the adopt sheet shows it. Every approval carries its item's reasons in full, so the sheet never shows a key without its words. */
-export function adoptionView(plan: AdoptionPlan, folder: string, s: Scrub): AdoptView {
+/** What the main process adds to an adoption view: a hash function, and the exact text each approval covers, from the planned definition files. */
+export interface AdoptExtras {
+  readonly hashOf: (value: unknown) => string;
+  readonly textOf: (key: string) => readonly { readonly path: string; readonly text: string }[];
+}
+
+/** The hash of an unmapped entry: what the person reads about it, never whether it is acknowledged. */
+export const unmappedHashBody = (u: { id: string; path: string; pointer: string | null; part: string | null; reason: string; gate: string }): unknown =>
+  ({ id: u.id, path: u.path, pointer: u.pointer, part: u.part, reason: u.reason, gate: u.gate });
+
+/**
+ * The adoption plan as the adopt sheet shows it. Every approval carries its item's reasons, places, secrets and the exact text it covers, and a hash of all
+ * of that, so a tick names what the person read (U3, U7).
+ */
+export function adoptionView(plan: AdoptionPlan, folder: string, s: Scrub, extras: AdoptExtras): AdoptView {
   const secrets: AdoptSecretView[] = plan.secrets.map(x => ({ path: s(x.path), pointer: s(x.pointer), reference: s(x.reference), key: `${x.part}/${x.id}` }));
   const items = plan.items.map(i => ({
     key: `${i.part}/${i.id}`, part: i.part as AdoptPart, id: s(i.id), places: i.places.map(p => place(p, s)), engines: i.engines === null ? null : engines(i.engines),
@@ -29,9 +42,11 @@ export function adoptionView(plan: AdoptionPlan, folder: string, s: Scrub): Adop
   const approvals: AdoptApprovalView[] = plan.approvalsRequired.map(key => {
     const item = items.find(i => i.key === key);
     // An approval the plan asks for always names one of its items. If it ever does not, the sheet still shows the key and says so, and the write stays blocked by the package.
-    return item === undefined
-      ? { key, part: key.split('/')[0] as AdoptPart, id: s(key.slice(key.indexOf('/') + 1)), reasons: ['The plan asks for this approval and lists no item for it.'], places: [], secrets: [] }
-      : { key, part: item.part, id: item.id, reasons: item.needsApproval, places: item.places, secrets: secrets.filter(x => x.key === key) };
+    const text = extras.textOf(key).map(t => ({ path: s(t.path), text: s(t.text) }));
+    const body = item === undefined
+      ? { key, part: key.split('/')[0] as AdoptPart, id: s(key.slice(key.indexOf('/') + 1)), reasons: ['The plan asks for this approval and lists no item for it.'], places: [], secrets: [], text }
+      : { key, part: item.part, id: item.id, reasons: item.needsApproval, places: item.places, secrets: secrets.filter(x => x.key === key), text };
+    return { ...body, hash: extras.hashOf(body) };
   });
   return {
     folder,
@@ -45,7 +60,10 @@ export function adoptionView(plan: AdoptionPlan, folder: string, s: Scrub): Adop
       picked: c.choice !== null && 'pick' in c.choice ? c.choice.pick : null,
     })),
     differences: plan.differences.map(d => ({ action: d.action, pattern: s(d.pattern), rules: d.rules.map(r => ({ id: s(r.id), effect: r.effect, engines: engines(r.engines) })) })),
-    unmapped: plan.unmapped.map(u => ({ id: u.id, path: s(u.path), pointer: u.pointer === undefined ? null : s(u.pointer), part: u.part, reason: s(u.reason), gate: u.gate, acknowledged: u.acknowledged })),
+    unmapped: plan.unmapped.map(u => {
+      const shown = { id: u.id, path: s(u.path), pointer: u.pointer === undefined ? null : s(u.pointer), part: u.part, reason: s(u.reason), gate: u.gate };
+      return { ...shown, acknowledged: u.acknowledged, hash: extras.hashOf(unmappedHashBody(shown)) };
+    }),
     secrets,
     managed: plan.managed.map(m => ({ catalog: s(m.catalog), id: s(m.id), skill: m.skill === null ? null : s(m.skill), reason: s(m.reason) })),
     warnings: plan.warnings.map(s),
@@ -92,7 +110,7 @@ function changeView(c: { path: string; action: ChangeView['action']; engines: re
 }
 
 /** The projection plan as the install sheet shows it. `driftLines` are the files Bowerloom wrote earlier that changed since. */
-export function projectView(plan: PortablePlan, folder: string, driftLines: readonly DriftLine[], s: Scrub): ProjectView {
+export function projectView(plan: PortablePlan, folder: string, driftLines: readonly DriftLine[], s: Scrub, earlier: (approval: PortablePlan['approved'][number]) => boolean = () => false): ProjectView {
   const loss = plan.loss.map(l => lossView(l, s));
   return {
     folder,
@@ -111,7 +129,7 @@ export function projectView(plan: PortablePlan, folder: string, driftLines: read
     },
     reconcile: plan.reconcile,
     driftLines: driftLines.map(d => ({ path: s(d.path), reason: d.reason })),
-    approved: plan.approved.map(a => ({ part: a.part, entry: s(a.entry), field: a.field === undefined ? null : s(a.field), engine: a.engine as EngineId, result: a.result, who: s(a.who), when: a.when, reason: s(a.reason) })),
+    approved: plan.approved.map(a => ({ part: a.part, entry: s(a.entry), field: a.field === undefined ? null : s(a.field), engine: a.engine as EngineId, result: a.result, who: s(a.who), when: a.when, reason: s(a.reason), earlier: earlier(a) })),
     changes: plan.changes.map(c => changeView(c, s)),
     offers: plan.offers.map(o => ({ action: o.action, reason: s(o.reason) })),
     ignored: plan.ignored.map(i => ({ option: i.option, reason: s(i.reason) })),
@@ -122,9 +140,12 @@ export function projectView(plan: PortablePlan, folder: string, driftLines: read
   };
 }
 
-/** The refused lines of a fidelity refusal, each with the key a person's approval names. */
-export function approveLines(refused: readonly { part: string; entry: string; field?: string; engine: string; result: string; reason: string }[], s: Scrub): ApproveLineView[] {
-  return refused.map(l => ({ ...lossView(l, s), key: lineKey(l) }));
+/** The key of a line a person approves: the line and the hash of its entry, so a changed entry never matches an earlier tick (U15). */
+export const approveKey = (line: Parameters<typeof lineKey>[0], entryHash: string | null): string => `${lineKey(line)}\u001f${entryHash ?? 'no-entry'}`;
+
+/** One refused line as the window shows it. A line with no entry hash cannot be approved, and says so by `approvable` (SL3). */
+export function approveLine(l: { part: string; entry: string; field?: string; engine: string; result: string; reason: string }, entryHash: string | null, s: Scrub): ApproveLineView {
+  return { ...lossView(l, s), key: approveKey(l, entryHash), approvable: entryHash !== null };
 }
 
 export function removalView(plan: PortableRemovalPlan, s: Scrub): RemovalView {

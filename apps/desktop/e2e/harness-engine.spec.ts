@@ -70,14 +70,16 @@ test('New harness from a folder: pick a copy, read every approval and acknowledg
   await expect(s.locator('[data-section="approvals"]')).toContainText('2 of 3 ticked');
   await expect(write).toBeDisabled();
   await approvals.nth(2).getByRole('checkbox').check();
-  await expect(s.locator('[data-waiting]')).toContainText('Nothing is waiting.');
+  await expect(s.locator('[data-waiting]')).toHaveText('Ready to write.');
   await expect(write).toBeEnabled();
   await shot(p, 'E4-adopt-ready');
   await write.click();
-  await expect(adoptSheet(p)).toHaveCount(0);
-  await expect(p.locator('[data-toast]')).toContainText('Wrote 7 files into the .bowerloom folder.');
-  // The note offers the next step: install the new harness.
-  await p.locator('[data-toast]').getByRole('button', { name: 'Install it', exact: true }).click();
+  // Done lists every file written (U5), and offers the next step: install the new harness.
+  const done = s.locator('[data-done]');
+  await expect(done).toBeVisible();
+  for (const f of ['.bowerloom/harness.json', '.bowerloom/instructions/AGENTS.md', '.bowerloom/mcp.json']) await expect(done).toContainText(f);
+  await shot(p, 'E4b-adopt-done');
+  await s.getByRole('button', { name: 'Install it', exact: true }).click();
   await expect(installSheet(p)).toBeVisible();
   await expect(installSheet(p).locator('[data-folder="sample-inbox-tools"]')).toHaveAttribute('aria-pressed', 'true');
 });
@@ -146,17 +148,20 @@ test('Install: approve each weaker rule first, then read every result word, the 
   await drift.getByRole('radio', { name: /Keep both/ }).click();
   await expect(drift.getByRole('radio', { name: /Keep both/ })).toHaveAttribute('aria-checked', 'true');
   await expect(s.locator('[data-file="CLAUDE.md"]')).toHaveCount(0);
-  await expect(s.getByText('The plan changed. Approve it again.')).toBeVisible();
+  // The new plan comes with no approval: the box is unticked, and Write waits for a new tick (U4).
+  await expect(approve).not.toBeChecked();
   await expect(s.getByRole('button', { name: 'Write 9 files', exact: true })).toBeDisabled();
   await drift.getByRole('radio', { name: /Keep both/ }).press('ArrowLeft');
   await expect(drift.getByRole('radio', { name: /Accept AGENTS\.md/ })).toHaveAttribute('aria-checked', 'true');
   await expect(drift.getByRole('radio', { name: /Accept AGENTS\.md/ })).toBeFocused();
   await approve.check();
   await write.click();
-  await expect(installSheet(p)).toHaveCount(0);
-  await expect(p.locator('[data-toast]')).toContainText('Installed. 10 files written.');
+  const done = s.locator('[data-done]');
+  await expect(done).toBeVisible();
+  for (const f of ['AGENTS.md', 'CLAUDE.md', '.opencode/plugins/bowerloom-hooks.js']) await expect(done).toContainText(f);
+  await shot(p, 'E8b-install-done');
   // Undo is a removal plan the person approves too.
-  await p.locator('[data-toast]').getByRole('button', { name: 'Undo', exact: true }).click();
+  await s.getByRole('button', { name: 'Undo', exact: true }).click();
   const r = installSheet(p, 'Remove what Bowerloom wrote');
   await expect(r).toBeVisible();
   await expect(r.locator('[data-file="CLAUDE.md"]')).toContainText('Puts yours back');
@@ -166,7 +171,9 @@ test('Install: approve each weaker rule first, then read every result word, the 
   await shot(p, 'E9-removal');
   await r.locator('[data-approve-plan] input').check();
   await remove.click();
-  await expect(p.locator('[data-toast]')).toContainText('Removed. 3 files deleted, 1 put back.');
+  const removed = r.locator('[data-done]');
+  await expect(removed.locator('[data-section="result-Removed"] .hxi-file')).toHaveText(['.claude/settings.json', '.codex/rules/bowerloom.rules', 'AGENTS.md']);
+  await expect(removed.locator('[data-section="result-Put back"] .hxi-file')).toHaveText(['CLAUDE.md']);
 });
 
 test('a stopped folder: the plan refuses in its own words and offers the recovery plan, which runs after its approval', async () => {
@@ -184,10 +191,12 @@ test('a stopped folder: the plan refuses in its own words and offers the recover
   await expect(finish).toBeDisabled();
   await r.locator('[data-approve-plan] input').check();
   await finish.click();
-  await expect(p.locator('[data-toast]')).toContainText('Finish a stopped install');
+  // Done names each step taken back, not only the title of the sheet.
+  await expect(r.locator('[data-section="result-Taken back"] .hxi-file')).toHaveText(['AGENTS.md', '.claude/settings.json']);
+  await shot(p, 'E10b-recovery-done');
 });
 
-test('the sheets work by keyboard at 900 by 600: every control is reachable, shows a focus ring, and nothing sticks out of the sheet', async () => {
+test('the install sheet opens by keyboard at 900 by 600 and nothing sticks out of it (every control and its ring: harness-small.spec.ts)', async () => {
   const p = page();
   await p.setViewportSize({ width: 900, height: 600 });
   await p.getByRole('button', { name: 'Install from a folder', exact: true }).focus();
@@ -203,20 +212,5 @@ test('the sheets work by keyboard at 900 by 600: every control is reachable, sho
   expect(box.x).toBeGreaterThanOrEqual(0); expect(box.x + box.width).toBeLessThanOrEqual(900); expect(box.y + box.height).toBeLessThanOrEqual(600);
   const wide = await s.evaluate(el => [...el.querySelectorAll<HTMLElement>('*')].filter(x => { const r = x.getBoundingClientRect(); const o = el.getBoundingClientRect(); return r.width > 0 && (r.right > o.right + 1 || r.left < o.left - 1); }).map(x => x.className));
   expect(wide).toEqual([]);
-  // Tab through the whole sheet: each control it lands on draws a visible focus ring.
-  const rings: string[] = [];
-  for (let i = 0; i < 30; i += 1) {
-    await p.keyboard.press('Tab');
-    const ring = await p.evaluate(() => {
-      const el = document.activeElement as HTMLElement | null;
-      if (el === null) return 'none';
-      const own = getComputedStyle(el), host = el.closest('.hxe-tick, .hxi-card');
-      const width = parseFloat(own.outlineWidth) || (host === null ? 0 : parseFloat(getComputedStyle(host).outlineWidth));
-      const shadow = own.boxShadow !== 'none';
-      return width >= 2 || shadow ? 'ok' : `${el.tagName}.${el.className}`;
-    });
-    rings.push(ring);
-  }
-  expect(rings.filter(r => r !== 'ok')).toEqual([]);
   await shot(p, 'E11-install-900x600');
 });

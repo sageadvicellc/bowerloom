@@ -11,7 +11,7 @@ import type {
   AdoptChoices, AdoptRecovered, AdoptRecoveryView, AdoptView, AdoptWritten, Answer, ApproveLineView, ChangeView, EngineBridge, EngineId, FolderInfo, LossView,
   ProjectAnswer, ProjectInput, ProjectView, ProjectWritten, Recovered, RecoveryView, Refusal, RemovalView, Removed,
 } from './types.js';
-import { lossByEngine, lineKey } from './view.js';
+import { approveKey, lossByEngine, unmappedHashBody } from './view.js';
 
 /** The packages' own words for the refusals the sample can give (packages/adoption/src/refusal.ts, packages/project-sync/src/portable-files.ts). */
 export const SAMPLE_MESSAGES = Object.freeze({
@@ -113,13 +113,13 @@ function adoptFixture(): AdoptView {
       picked: null,
     }],
     differences: [{ action: 'shell', pattern: 'git push *', rules: [{ id: 'ask-shell-17a2d0c4', effect: 'ask', engines: ['claude-code'] }, { id: 'deny-shell-60f3e9b1', effect: 'deny', engines: ['codex'] }] }],
-    unmapped: [
+    unmapped: ([
       { id: '.claude/settings.json#/permissions/defaultMode', path: '.claude/settings.json', pointer: '/permissions/defaultMode', part: 'guardrails', reason: 'Permission modes do not translate between engines (locked-in parts spec, section 8.3 rule 12). Bowerloom writes the engine default.', gate: 'acknowledge', acknowledged: false },
       { id: '.codex/config.toml#/approval_policy', path: '.codex/config.toml', pointer: '/approval_policy', part: 'guardrails', reason: 'An approval policy is an engine mode with no neutral form. It can make Codex ask less, so a person acknowledges that it is not carried.', gate: 'acknowledge', acknowledged: false },
       { id: '.claude/skills/sort-mail/SKILL.md#/allowed-tools', path: '.claude/skills/sort-mail/SKILL.md', pointer: '/allowed-tools', part: 'skills', reason: 'A grant scoped to the skill has no neutral form. Without it the engine asks more often.', gate: 'none', acknowledged: false },
-    ],
+    ] as const).map(u => ({ ...u, hash: sampleRevision(JSON.stringify(unmappedHashBody(u))) })),
     secrets: [{ path: '.mcp.json', pointer: '/mcpServers/search/env/SEARCH_KEY', reference: '${SEARCH_KEY}', key: 'mcp/search' }],
-    managed: [],
+    managed: [{ catalog: '.bowerloom/managed/catalog/tidy-notes.json', id: 'tidy-notes', skill: 'tidy-notes', reason: 'A 0.7 managed copy from npm. Its source is recorded as claimed: Bowerloom did not check it.' }],
     warnings: [],
     files: [
       { path: 'guardrails.json', bytes: 512 }, { path: 'harness.json', bytes: 702 }, { path: 'hooks.json', bytes: 241 }, { path: 'instructions/AGENTS.md', bytes: 1880 },
@@ -132,12 +132,24 @@ function adoptFixture(): AdoptView {
   };
 }
 
+/** The exact text each sample approval covers, as the planned definition files would hold it (U7). */
+const SAMPLE_TEXT: Readonly<Record<string, readonly { path: string; text: string }[]>> = Object.freeze({
+  'hooks/pre-tool-use-9c03e1f2': [{ path: '.bowerloom/hooks.json', text: JSON.stringify({ id: 'pre-tool-use-9c03e1f2', event: 'PreToolUse', matcher: 'Bash', command: '${PROJECT_DIR}/scripts/check-shell.sh', strength: 'enforced', engines: ['claude-code'] }, null, 2) }],
+  'mcp/mail': [{ path: '.bowerloom/mcp.json', text: JSON.stringify({ name: 'mail', transport: 'stdio', command: 'npx', args: ['-y', 'mail-server@1.4.2', '--inbox', 'work'] }, null, 2) }],
+  'mcp/search': [{ path: '.bowerloom/mcp.json', text: JSON.stringify({ name: 'search', transport: 'http', url: 'https://search.example/mcp', env: { SEARCH_KEY: '${SEARCH_KEY}' }, engines: ['claude-code'] }, null, 2) }],
+});
+
 function withApprovals(v: AdoptView): AdoptView {
   return {
     ...v,
-    approvals: v.items.filter(i => i.needsApproval.length > 0).map(i => ({ key: i.key, part: i.part, id: i.id, reasons: i.needsApproval, places: i.places, secrets: v.secrets.filter(s => s.key === i.key) })),
+    approvals: v.items.filter(i => i.needsApproval.length > 0).map(i => {
+      const body = { key: i.key, part: i.part, id: i.id, reasons: i.needsApproval, places: i.places, secrets: v.secrets.filter(s => s.key === i.key), text: SAMPLE_TEXT[i.key] ?? [] };
+      return { ...body, hash: sampleRevision(JSON.stringify(body)) };
+    }),
   };
 }
+/** A sample line's key: the line and a made-up hash of its entry, as main makes it (U15). */
+const sampleKey = (l: LossView): string => approveKey(l, `sha256:${sampleRevision(`${l.part}/${l.entry}`)}`);
 
 const line = (engine: EngineId, part: string, entry: string, result: LossView['result'], reason: string, field: string | null = null): LossView => ({ engine, part, entry, field, result, reason });
 
@@ -204,7 +216,7 @@ function projectFixture(input: ProjectInput, projected: boolean, written: string
       { path: '.claude/settings.json', engine: 'claude-code' as const, kind: 'command' as const, part: 'hooks', entry: 'check-shell', text: '"${CLAUDE_PROJECT_DIR}"/scripts/check-shell.sh', env: [] },
       { path: '.codex/hooks.json', engine: 'codex' as const, kind: 'command' as const, part: 'hooks', entry: 'check-shell', text: '"$(git rev-parse --show-toplevel)"/scripts/check-shell.sh', env: [] },
       { path: '.codex/rules/bowerloom.rules', engine: 'codex' as const, kind: 'code' as const, part: null, entry: null, text: RULES, env: [] },
-      { path: '.mcp.json', engine: 'claude-code' as const, kind: 'command' as const, part: 'mcp', entry: 'files', text: '["npx","-y","files-server@2.1.0"]', env: [{ name: 'ROOT', value: null }, { name: 'LOG_LEVEL', value: 'warn' }] },
+      { path: '.mcp.json', engine: 'claude-code' as const, kind: 'command' as const, part: 'mcp', entry: 'files', text: '["npx","-y","files-server@2.1.0"]', env: [{ name: 'ROOT', value: null }, { name: 'LOG_LEVEL', value: 'warn' }, { name: 'FILES_SERVER_CACHE_DIRECTORY_FOR_THE_WEEKLY_REPORT_PROJECT_AND_ITS_DRAFTS', value: '/tmp/files-server-cache/weekly-report/drafts/and/a/long/path/that/keeps/going' }] },
       { path: '.opencode/plugins/bowerloom-hooks.js', engine: 'opencode' as const, kind: 'code' as const, part: null, entry: null, text: PLUGIN, env: [] },
       { path: 'opencode.json', engine: 'opencode' as const, kind: 'command' as const, part: 'mcp', entry: 'files', text: '["npx","-y","files-server@2.1.0"]', env: [{ name: 'ROOT', value: null }, { name: 'LOG_LEVEL', value: 'warn' }] },
     ].filter(r => engines.includes(r.engine)),
@@ -218,7 +230,7 @@ function projectFixture(input: ProjectInput, projected: boolean, written: string
     },
     reconcile: projected ? null : input.reconcile,
     driftLines: [],
-    approved: APPROVE.filter(l => engines.includes(l.engine)).map(l => ({ part: l.part, entry: l.entry, field: l.field, engine: l.engine, result: 'weakened' as const, who: 'you', when: '2026-10-28T09:00:00Z', reason: `Approved in the Bowerloom app after reading this line: ${l.reason}` })),
+    approved: APPROVE.filter(l => engines.includes(l.engine)).map(l => ({ part: l.part, entry: l.entry, field: l.field, engine: l.engine, result: 'weakened' as const, who: 'you', when: '2026-10-28T09:00:00Z', reason: `Approved in the Bowerloom app after reading this line: ${l.reason}`, earlier: false })),
     changes,
     offers: [],
     ignored: [],
@@ -233,7 +245,7 @@ function projectFixture(input: ProjectInput, projected: boolean, written: string
 export function sampleEngineFixtures(): { adopt: AdoptView; approveLines: ApproveLineView[]; project(input: ProjectInput): ProjectView } {
   return {
     adopt: withApprovals(adoptFixture()),
-    approveLines: APPROVE.map(l => ({ ...l, key: lineKey(l) })),
+    approveLines: APPROVE.map(l => ({ ...l, key: sampleKey(l), approvable: true })),
     project: input => projectFixture(input, false, null),
   };
 }
@@ -256,7 +268,7 @@ export function createSampleEngine(): EngineBridge {
   function adoptPlan(choices: AdoptChoices): AdoptView {
     const base = withApprovals(adoptFixture());
     const conflicts = base.conflicts.map(c => ({ ...c, picked: c.variants.some(v => v.key === choices.picks[c.key]) ? choices.picks[c.key]! : null }));
-    const unmapped = base.unmapped.map(u => ({ ...u, acknowledged: u.gate === 'acknowledge' && choices.acknowledged.includes(u.id) }));
+    const unmapped = base.unmapped.map(u => ({ ...u, acknowledged: u.gate === 'acknowledge' && choices.acknowledged.some(a => a.id === u.id && a.hash === u.hash) }));
     const ready = conflicts.every(c => c.picked !== null) && unmapped.every(u => u.gate === 'none' || u.acknowledged);
     return { ...base, conflicts, unmapped, ready, revision: sampleRevision(`adopt ${JSON.stringify(conflicts.map(c => c.picked))} ${JSON.stringify(unmapped.map(u => u.acknowledged))}`) };
   }
@@ -264,7 +276,7 @@ export function createSampleEngine(): EngineBridge {
     if (f.stopped) return refuse('PORTABLE_RECOVERY_REQUIRED');
     if (!f.info.hasDefinition && !f.adopted) return refuse('PORTABLE_DEFINITION_INVALID', ['harness.json']);
     if (input.reconcile === 'merge' && !f.projected) return refuse('PORTABLE_MERGE_NOT_BUILT');
-    const needed = APPROVE.filter(l => input.engines.includes(l.engine)).map(l => ({ ...l, key: lineKey(l) }));
+    const needed = APPROVE.filter(l => input.engines.includes(l.engine)).map(l => ({ ...l, key: sampleKey(l), approvable: true }));
     if (!f.projected && needed.some(l => !input.approve.includes(l.key))) return ok({ kind: 'approve', lines: needed, approvedSoFar: input.approve.filter(k => needed.some(l => l.key === k)) });
     return ok({ kind: 'plan', plan: projectFixture(input, f.projected, f.written) });
   }
@@ -285,7 +297,7 @@ export function createSampleEngine(): EngineBridge {
       if (plan.revision !== revision) return refuse('ADOPTION_STALE_APPROVAL');
       if (plan.conflicts.some(c => c.picked === null)) return refuse('ADOPTION_CHOICE_REQUIRED');
       if (plan.unmapped.some(u => u.gate === 'acknowledge' && !u.acknowledged)) return refuse('ADOPTION_ACKNOWLEDGEMENT_REQUIRED');
-      if (plan.approvals.some(a => !approvals.includes(a.key))) return refuse('ADOPTION_APPROVAL_REQUIRED');
+      if (plan.approvals.some(a => !approvals.some(x => x.key === a.key && x.hash === a.hash))) return refuse('ADOPTION_APPROVAL_REQUIRED');
       f.adopted = true;
       return ok({ written: plan.files.map(file => `.bowerloom/${file.path}`) });
     })()),
@@ -298,7 +310,7 @@ export function createSampleEngine(): EngineBridge {
       if (a.value.kind !== 'plan' || a.value.plan.revision !== revision) return refuse('ADOPTION_STALE_APPROVAL');
       const plan = a.value.plan;
       f.projected = true; f.written = JSON.stringify({ ...input, approve: [...input.approve].sort() });
-      return ok({ noop: plan.noop, written: plan.changes.filter(c => c.action !== 'unchanged').map(c => c.path) });
+      return ok({ noop: plan.noop, written: plan.changes.filter(c => c.action !== 'unchanged').map(c => c.path), leftBehind: [] });
     })()),
     planRemoval: id => settle(((): Answer<RemovalView> => {
       const f = get(id);

@@ -16,6 +16,29 @@ const page = (): Page => h.page;
 test.beforeAll(async () => { test.setTimeout(300_000); h = await launchHarness(); });
 test.afterAll(async () => { try { await h.app.close(); } finally { removeTempDirs(); } });
 
+/** The sheets of the adopt and install flows, each at its longest step, opened on the Projects screen. */
+const SHEETS: readonly (readonly [string, (p: Page) => Promise<void>])[] = [
+  ['adopt-confirm', async p => {
+    await p.getByRole('button', { name: 'From a folder', exact: true }).click();
+    const s = p.getByRole('dialog');
+    await s.getByRole('button', { name: 'Next', exact: true }).click();
+    await s.locator('[data-conflict]').getByRole('radio').first().click();
+    await expect(s.locator('[data-conflict]')).toContainText('Using');
+    await s.getByRole('button', { name: 'Next', exact: true }).click();
+    await expect(s.locator('[data-section="approvals"]')).toBeVisible();
+  }],
+  ['install-plan', async p => {
+    await p.getByRole('button', { name: 'Install from a folder', exact: true }).click();
+    const s = p.getByRole('dialog');
+    await s.getByRole('button', { name: 'Next', exact: true }).click();
+    await expect(s.locator('[data-engine="codex"] input')).toBeChecked();
+    await s.getByRole('button', { name: 'Next', exact: true }).click();
+    for (const b of await s.locator('[data-section="approve-lines"] input').all()) await b.check();
+    await s.getByRole('button', { name: 'Plan with these approvals', exact: true }).click();
+    await expect(s.locator('[data-section="loss"]')).toBeVisible();
+  }],
+];
+
 const SCREENS: readonly (readonly [string, string])[] = [
   ['welcome', '#prototype-v3'], ['choose', '#prototype-v3/choose'], ['read', '#prototype-v3/read'], ['harnesses', '#prototype-v3/harnesses'],
   ['builder-graph', `#prototype-v3/builder/${WEEKLY}/graph`], ['builder-list', `#prototype-v3/builder/${WEEKLY}/list`], ['library', '#prototype-v3/library/skill'],
@@ -55,8 +78,68 @@ for (const scheme of ['light', 'dark'] as const) {
       }
       await shot(p, `G2-${name}-900x600-${scheme}`);
     }
+    // The sheets: nothing sticks out of a sheet, long names wrap, and the sheet fits the window (U13).
+    for (const [name, openSheet] of SHEETS) {
+      await fresh(p, '#prototype-v3/projects');
+      await openSheet(p);
+      const sheet = p.getByRole('dialog');
+      const box = (await sheet.boundingBox())!;
+      expect(box.x + box.width, `${name}: inside the window`).toBeLessThanOrEqual(900);
+      expect(box.y + box.height, `${name}: inside the window`).toBeLessThanOrEqual(600);
+      const wide = await sheet.evaluate(el => {
+        const o = el.getBoundingClientRect();
+        return [...el.querySelectorAll<HTMLElement>('*')].filter(x => {
+          const r = x.getBoundingClientRect();
+          if (r.width === 0 || (r.right <= o.right + 1 && r.left >= o.left - 1)) return false;
+          for (let up = x.parentElement; up !== null && up !== el; up = up.parentElement) if (/(auto|scroll|hidden|clip)/.test(getComputedStyle(up).overflowX)) return false;
+          return true;
+        }).map(x => `${x.tagName.toLowerCase()}.${String(x.className).split(' ')[0]} ${x.textContent?.slice(0, 40) ?? ''}`);
+      });
+      expect(wide, `${name}: nothing sticks out of the sheet`).toEqual([]);
+      const env = sheet.locator('.hxe-env');
+      if (await env.count() > 0) {
+        const cut = await env.first().evaluate(el => [...el.querySelectorAll<HTMLElement>('dt, dd')].filter(x => x.scrollWidth > x.clientWidth + 1).length);
+        expect(cut, `${name}: long environment names wrap`).toBe(0);
+      }
+      await shot(p, `G2-sheet-${name}-900x600-${scheme}`);
+    }
   });
 }
+
+/** The visible controls of a container, by a key the focus walk can match. */
+const controlsOf = (p: Page, root: string): Promise<string[]> => p.evaluate(sel => {
+  const host = document.querySelector(sel);
+  if (host === null) return [];
+  return [...host.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), [tabindex="0"]')].filter(el => el.getClientRects().length > 0 && el.closest('[inert]') === null && (el.getAttribute('tabindex') ?? '0') !== '-1').map(el => el.dataset.focusKey ?? `${el.tagName}|${el.getAttribute('aria-label') ?? el.textContent?.trim().slice(0, 40) ?? ''}`);
+}, root);
+
+test('every control of each sheet is reached by Tab, and each one draws an outline of 2 px or more, at 900 by 600', async () => {
+  const p = page();
+  await p.setViewportSize({ width: 900, height: 600 });
+  await p.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });
+  for (const [name, openSheet] of SHEETS) {
+    await fresh(p, '#prototype-v3/projects');
+    await openSheet(p);
+    const wanted = await controlsOf(p, '[role="dialog"]');
+    expect(wanted.length, `${name}: the sheet has controls`).toBeGreaterThan(5);
+    const reached = new Map<string, boolean>();
+    for (let i = 0; i < wanted.length + 5; i += 1) {
+      await p.keyboard.press('Tab');
+      const at = await p.evaluate(() => {
+        const el = document.activeElement as HTMLElement | null;
+        if (el === null || el.closest('[role="dialog"]') === null) return null;
+        const key = `${el.tagName}|${el.getAttribute('aria-label') ?? el.textContent?.trim().slice(0, 40) ?? ''}`;
+        // The ring is an outline, on the control or on the card that holds it; a box shadow is not counted.
+        const ringOf = (x: Element | null): boolean => { if (x === null) return false; const st = getComputedStyle(x); return st.outlineStyle !== 'none' && parseFloat(st.outlineWidth) >= 2; };
+        return { key, ring: ringOf(el) || ringOf(el.closest('.hxe-tick, .hxi-card')) };
+      });
+      if (at !== null) reached.set(at.key, at.ring);
+    }
+    const missed = wanted.filter(k => !reached.has(k));
+    expect(missed, `${name}: every control is reached`).toEqual([]);
+    expect([...reached].filter(([, ring]) => !ring).map(([k]) => k), `${name}: every control shows an outline`).toEqual([]);
+  }
+});
 
 test('every control of every screen draws a focus ring when the keyboard reaches it, at 900 by 600', async () => {
   const p = page();
@@ -111,6 +194,21 @@ test('every button of every screen changes when the pointer is on it', async () 
       await b.hover({ force: true, timeout: 2000 }).catch(() => undefined);
       const after = await look();
       if (before === after) still.push(`${name}: ${await b.evaluate(el => `${el.className} ${el.getAttribute('aria-label') ?? el.textContent?.slice(0, 30) ?? ''}`)}`);
+    }
+  }
+  // The controls of the sheets: buttons, radios and the cards of the tick boxes.
+  for (const [name, openSheet] of SHEETS) {
+    await fresh(p, '#prototype-v3/projects');
+    await openSheet(p);
+    const sheet = p.getByRole('dialog');
+    const rest = await sheet.locator('.hx-sheet-title').boundingBox();
+    for (const b of (await sheet.locator('button:visible:not([disabled]):not([aria-disabled="true"]), .hxe-tick').all()).slice(0, 40)) {
+      await b.scrollIntoViewIfNeeded().catch(() => undefined);
+      await p.mouse.move(rest!.x + 2, rest!.y + rest!.height / 2);
+      const look = (): Promise<string> => b.evaluate(el => { const s2 = getComputedStyle(el); return [s2.backgroundColor, s2.borderColor, s2.color, s2.boxShadow, s2.textDecorationLine].join('|'); });
+      const before = await look();
+      await b.hover({ force: true, timeout: 2000 }).catch(() => undefined);
+      if (before === await look()) still.push(`${name}: ${await b.evaluate(el => `${el.className} ${el.getAttribute('aria-label') ?? el.textContent?.slice(0, 30) ?? ''}`)}`);
     }
   }
   expect(still).toEqual([]);

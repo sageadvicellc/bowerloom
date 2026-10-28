@@ -16,9 +16,11 @@ const WHEN = new Date('2026-10-28T12:00:00Z');
 function setup(t: test.TestContext): { home: string; service: EngineService; pick(dir: string | null): void } {
   const home = homeFolder(tempDir(t, 'bowerloom-engine-'));
   let next: string | null = null;
-  const service = createEngineService({ home, stateRoot: join(home, '.local', 'state', 'bowerloom'), chooseFolder: async () => next, who: 'tester', now: () => WHEN });
+  const service = createEngineService({ home, stateRoot: join(home, '.local', 'state', 'bowerloom'), chooseFolder: async () => next, confirm: async () => true, who: 'tester', now: () => WHEN });
   return { home, service, pick: dir => { next = dir; } };
 }
+/** The approvals of an adoption view as the window sends them: each key with the hash of what the person read. */
+const all = (view: AdoptView): { key: string; hash: string }[] => view.approvals.map(a => ({ key: a.key, hash: a.hash }));
 const value = <T>(a: Answer<T> | null): T => { assert.ok(a !== null, 'an answer'); if (!a.ok) assert.fail(`refused: ${a.refusal.code} ${a.refusal.message}`); return a.value; };
 const absoluteIn = (data: unknown, path: string): boolean => JSON.stringify(data).includes(path);
 async function choose(service: EngineService, pick: (d: string | null) => void, dir: string): Promise<FolderInfo> { pick(dir); return value(await service.chooseFolder()); }
@@ -72,8 +74,10 @@ test('the adoption plan shows items, places, the conflict, unmapped entries with
   assert.deepEqual(filesOf(dir), before, 'planning wrote nothing');
 });
 
-async function readyAdoption(service: EngineService, id: string): Promise<{ view: AdoptView; choices: { picks: Record<string, string>; acknowledged: string[] } }> {
-  const choices = { picks: { 'system-prompt/AGENTS.md': 'AGENTS.md' }, acknowledged: ['.claude/settings.json#/permissions/defaultMode'] };
+async function readyAdoption(service: EngineService, id: string): Promise<{ view: AdoptView; choices: { picks: Record<string, string>; acknowledged: { id: string; hash: string }[] } }> {
+  const first = value(await service.planAdoption(id, { picks: {}, acknowledged: [] }));
+  const ack = first.unmapped.find(u => u.id === '.claude/settings.json#/permissions/defaultMode')!;
+  const choices = { picks: { 'system-prompt/AGENTS.md': 'AGENTS.md' }, acknowledged: [{ id: ack.id, hash: ack.hash }] };
   return { view: value(await service.planAdoption(id, choices)), choices };
 }
 
@@ -85,13 +89,13 @@ test('adoption writes only with every approval ticked and the approved revision,
   assert.equal(view.ready, true);
   assert.equal(view.conflicts[0]!.picked, 'AGENTS.md');
   // One approval missing: refused with words, nothing written.
-  const short = await service.runAdoption(folder.id, view.revision, choices, ['mcp/files']);
-  assert.ok(!short.ok); assert.equal(short.refusal.code, 'ADOPTION_APPROVAL_REQUIRED');
+  const short = await service.runAdoption(folder.id, view.revision, choices, all(view).filter(a => a.key === 'mcp/files'));
+  assert.ok(!short.ok); assert.equal(short.refusal.code, 'NOT_THE_PLAN_SHOWN');
   assert.deepEqual(filesOf(dir), before);
   // A stale revision: refused.
-  const stale = await service.runAdoption(folder.id, '0'.repeat(64), choices, view.approvals.map(a => a.key));
-  assert.ok(!stale.ok); assert.equal(stale.refusal.code, 'ADOPTION_STALE_APPROVAL');
-  const done = value(await service.runAdoption(folder.id, view.revision, choices, view.approvals.map(a => a.key)));
+  const stale = await service.runAdoption(folder.id, '0'.repeat(64), choices, all(view));
+  assert.ok(!stale.ok); assert.equal(stale.refusal.code, 'NOT_THE_PLAN_SHOWN');
+  const done = value(await service.runAdoption(folder.id, view.revision, choices, all(view)));
   assert.ok(done.written.includes('.bowerloom/harness.json'));
   const after = filesOf(dir);
   for (const [path, hash] of Object.entries(before)) assert.equal(after[path], hash, `${path} keeps its bytes`);
@@ -177,7 +181,7 @@ test('the install writes with the approved revision, then shows drift with reaso
   assert.equal((await service.folders())[0]!.projected, true);
   // The approvals were recorded in the receipt: a new session plans with them and asks for nothing.
   let next: string | null = dir;
-  const again = createEngineService({ home, stateRoot: join(home, '.local', 'state', 'bowerloom'), chooseFolder: async () => next, who: 'tester', now: () => WHEN });
+  const again = createEngineService({ home, stateRoot: join(home, '.local', 'state', 'bowerloom'), chooseFolder: async () => next, confirm: async () => true, who: 'tester', now: () => WHEN });
   const id = value(await again.chooseFolder()).id; next = null;
   const second = value(await again.planProjection(id, INPUT));
   assert.equal(second.kind, 'plan');

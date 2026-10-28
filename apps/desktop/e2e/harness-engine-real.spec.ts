@@ -62,8 +62,17 @@ test('New harness from a folder writes .bowerloom only after the pick, each ackn
   await approvals.nth(1).getByRole('checkbox').check();
   await expect(write).toBeEnabled();
   await shot(p, 'R2-real-adopt-confirm');
+  // Main asks once more in its own words; a "Cancel" writes nothing and says so.
+  await h.confirm(false);
   await write.click();
-  await expect(p.locator('[data-toast]')).toContainText(/Wrote \d+ files into the \.bowerloom folder\./);
+  await expect(s.getByRole('alert')).toContainText('Nothing was written. The confirmation was closed without a yes.');
+  expect(filesOf(dir), 'a no writes nothing').toEqual(before);
+  const asked = await h.asked();
+  expect(asked.at(-1)!.message).toMatch(/^Write \d+ files into ~\/Projects\/adopt-me\/\.bowerloom\?$/);
+  expect(asked.at(-1)!.detail).toMatch(/^From plan [a-f0-9]{8}\./);
+  await h.confirm(true);
+  await write.click();
+  await expect(s.locator('[data-done]')).toContainText('.bowerloom/harness.json');
   expect(existsSync(join(dir, '.bowerloom', 'harness.json'))).toBe(true);
   const after = filesOf(dir);
   for (const [path, hash] of Object.entries(before)) expect(after[path], path).toBe(hash);
@@ -96,15 +105,15 @@ test('Install a folder\'s harness: approve the weaker rules, read the plan, appr
   await expect(write).toBeDisabled();
   await s.locator('[data-approve-plan] input').check();
   await write.click();
-  await expect(p.locator('[data-toast]')).toContainText(/Installed\. \d+ files written\./);
+  await expect(s.locator('[data-done]')).toContainText('.codex/rules/bowerloom.rules');
   expect(readFileSync(join(dir, 'CLAUDE.md'), 'utf8')).toBe('@AGENTS.md\n');
   expect(existsSync(join(dir, '.codex', 'rules', 'bowerloom.rules'))).toBe(true);
   expect(existsSync(join(home, '.local', 'state', 'bowerloom', 'desktop'))).toBe(true);
-  await p.locator('[data-toast]').getByRole('button', { name: 'Undo', exact: true }).click();
+  await s.getByRole('button', { name: 'Undo', exact: true }).click();
   const r = p.getByRole('dialog', { name: 'Remove what Bowerloom wrote' });
   await expect(r.locator('[data-file="CLAUDE.md"]')).toContainText('Puts yours back');
   await r.locator('[data-approve-plan] input').check();
   await r.getByRole('button', { name: /^Remove \d+ files?$/ }).click();
-  await expect(p.locator('[data-toast]')).toContainText(/^Removed\./);
+  await expect(r.locator('[data-section="result-Put back"]')).toContainText('CLAUDE.md');
   expect(filesOf(dir), 'the folder is as it was').toEqual(before);
 });

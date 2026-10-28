@@ -25,7 +25,7 @@ contextBridge.exposeInMainWorld('bowerloomReal', Object.freeze(api));
 
 /** The engine calls refuse with one short code, never Electron's long sentence. */
 const engineRefusal = (error: unknown): Error => {
-  const found = String(error instanceof Error ? error.message : error).match(/\b(NOT_ALLOWED|BAD_ARGUMENT|UNKNOWN_FOLDER|BUSY)\b/);
+  const found = String(error instanceof Error ? error.message : error).match(/\b(NOT_ALLOWED|BAD_ARGUMENT|UNKNOWN_FOLDER)\b/);
   return new Error(found === null ? 'FAILED' : found[1]);
 };
 const engine: Record<string, unknown> = { mode: 'real' };

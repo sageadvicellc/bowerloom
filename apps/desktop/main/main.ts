@@ -35,7 +35,9 @@ const prototypeV3 = argv.includes('--prototype-v3');
 // It also answers the adopt and install sheets (main/engine-ipc.ts): those read only until a person approves a plan, and then write through the packages.
 const prototypeV3Real = argv.includes('--prototype-v3-real');
 const prototypeMode = argv.includes('--prototype') || prototypeV2 || prototypeReal || prototypeV3 || prototypeV3Real;
-// The prototype writes nothing to the real app data, whoever starts it. It keeps its own temporary data folder (or the one it was given, when that
+// The prototype writes nothing to the real app data, whoever starts it. (The adopt and install sheets of --prototype-v3-real are the one exception, and
+// not in app data: after a person approves a plan and says yes in main's own dialog, they write in the folder the person chose and in Bowerloom's private
+// state folder, through the packages; see main/engine-service.ts.) It keeps its own temporary data folder (or the one it was given, when that
 // is one of its own), and removes it when the app quits. The launcher does the same; this keeps the promise when the app is started without it.
 // Not caught: a hard kill (SIGKILL, a crash, a power cut) leaves the folder, and the browser engine writes a few small files (Local State, Preferences)
 // after the quit event, so a start without the launcher can leave those four files. The launcher removes the folder again once the app has exited.
@@ -182,6 +184,12 @@ app.whenReady().then(async () => {
     if (prototypeV3Real) {
       registerEngineIpc({
         ipc: ipcMain, appIndexUrl: indexUrl, home, stateRoot: engineStateRoot(home), who: userInfo().username || 'this Mac',
+        // Main's own question before every write (U16): words main builds from its record of the plan; the window cannot word or skip it.
+        confirm: async ask => {
+          const options: Electron.MessageBoxOptions = { type: 'question', title: ask.title, message: ask.message, detail: ask.detail, buttons: ['Cancel', 'Write'], defaultId: 0, cancelId: 0, noLink: true };
+          const result = window === null ? await dialog.showMessageBox(options) : await dialog.showMessageBox(window, options);
+          return result.response === 1;
+        },
         chooseFolder: async () => {
           const options: Electron.OpenDialogOptions = { title: 'Choose a project folder', buttonLabel: 'Choose this folder', properties: ['openDirectory'] };
           const result = window === null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(window, options);

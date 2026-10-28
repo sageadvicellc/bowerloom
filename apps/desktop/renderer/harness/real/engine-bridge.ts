@@ -14,6 +14,6 @@ export function getEngineBridge(): EngineBridge | null {
 
 /** The short code of an error from a call ('BAD_ARGUMENT', 'UNKNOWN_FOLDER', ...), or 'FAILED'. */
 export function engineCodeOf(error: unknown): string {
-  const found = String(error instanceof Error ? error.message : error).match(/\b(NOT_ALLOWED|BAD_ARGUMENT|UNKNOWN_FOLDER|BUSY)\b/);
+  const found = String(error instanceof Error ? error.message : error).match(/\b(NOT_ALLOWED|BAD_ARGUMENT|UNKNOWN_FOLDER)\b/);
   return found === null ? 'FAILED' : found[1]!;
 }

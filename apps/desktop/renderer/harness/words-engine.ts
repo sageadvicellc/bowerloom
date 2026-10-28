@@ -4,7 +4,7 @@
  * most 25, and no banned word, so "adopt", "apply", "import" and "MCP" never reach the screen. tests/engine-words.test.ts holds the table and the builders to it.
  * The words that come from a plan (a reason, a rule, a path) are shown as the packages wrote them.
  */
-import type { ChangeView, EngineId, Gate, ResultWord } from '../../shared/engine/types.js';
+import type { ChangeView, EngineId, Gate, RecoveryView, ResultWord } from '../../shared/engine/types.js';
 import type { Tone } from '../../shared/harness/status.js';
 
 const deepFreeze = <T extends object>(value: T): T => {
@@ -28,6 +28,11 @@ export const ENGINE_WORDS = deepFreeze({
     planRemoval: 'Plan a removal', planRecovery: 'Plan a recovery', keepMine: 'Keep my versions', folderGone: 'Folders it removes',
     nothingToChange: 'Nothing to change', finish: 'Finish', engineChoices: 'Interfaces to install for', resultDetails: 'Lines',
     planning: 'Planning', writing: 'Writing', refusal: 'Bowerloom stopped', installIt: 'Install it', acknowledged: 'Acknowledged', becomes: 'becomes', newFile: 'New',
+    planAgain: 'Plan again', result: 'What Bowerloom did', writtenFiles: 'Written', removedFiles: 'Removed', restoredFiles: 'Put back', keptFiles: 'Kept as they are',
+    leftBehind: 'Left behind', leftFolders: 'Folders left', undo: 'Undo', converted: 'Older Bowerloom copies', filterLeaks: 'Skills read past their filter',
+    pendingTrust: 'Skills that wait for trust', checkByHand: 'Files to check by hand', foldersRemoved: 'Folders it removes when empty', exactText: 'The exact text',
+    stepResult: 'Done', bodyFolder: 'Pick a folder', bodyReview: 'Review the plan', bodyConfirm: 'Confirm each one', bodyResult: 'What Bowerloom did', bodyInterfaces: 'Pick the interfaces',
+    writeFiles: 'Write files', undoneFiles: 'Taken back', engineFound: 'Found here', engineNamed: 'Named, not found', shape: 'Read as',
   },
   hint: {
     pickFolder: 'Pick the folder Bowerloom reads.', samplePick: 'Sample folders. Nothing is read or written.', readOnly: 'Bowerloom only reads until you approve.',
@@ -43,6 +48,12 @@ export const ENGINE_WORDS = deepFreeze({
     sampleNote: 'Sample. Nothing is written to your disk.',
     keptChanged: 'Changed since. It stays.', keptUnsafe: 'Not safe to read. It stays.',
     noBridge: 'This window cannot reach Bowerloom. Start it with the real launch command.',
+    agentsPresent: 'AGENTS.md is in the folder.', agentsPlanned: 'This install writes AGENTS.md.', approvedEarlier: 'approved earlier, unchanged since', approvedNow: 'approved now',
+    readyToWrite: 'Ready to write.', notReady: 'Not ready: the plan cannot be written yet. Review lists why.',
+    nothingFound: 'Bowerloom found nothing to carry over in this folder.', noEngines: 'This harness lists no interface. Add one to harness.json.',
+    nothingToRemove: 'Nothing to remove. Bowerloom wrote nothing here.', nothingChanged: 'Nothing changed. The folder already matched the plan.',
+    noText: 'Bowerloom has no file text for this approval.', cannotApprove: 'This line cannot be approved here. Change the harness first.',
+    leftBehindWhy: 'Bowerloom could not remove these. Check them by hand.', keptWhy: 'These changed since, so Bowerloom left them.',
   },
   paragraph: {
     adoptIntro: 'Bowerloom reads the files your interfaces use and proposes a harness. It writes only into .bowerloom, and only after you approve.',
@@ -54,6 +65,7 @@ export const ENGINE_WORDS = deepFreeze({
     removeIntro: 'Bowerloom puts back each file it replaced and deletes the files it made. Your own changes elsewhere stay.',
     recoverIntro: 'An earlier run stopped part way. This plan finishes it or takes it back. Nothing else runs until it is done.',
     keepIntro: 'You changed these files after Bowerloom wrote them. Keep your versions, or put Bowerloom\'s back.',
+    resultIntro: 'Bowerloom wrote only what the plan you approved listed. Each file is below.',
   },
 } as const);
 
@@ -133,3 +145,19 @@ export const engineHeading = (name: string, version: string | null): string => (
 export const approveLineName = (part: string, entry: string, engine: string): string => `Approve ${partName(part)} ${entry} in ${engine}`;
 /** The engine names of a list of ids. */
 export const engineNames = (ids: readonly EngineId[], names: Readonly<Record<EngineId, string>>): string[] => ids.map(id => names[id]);
+
+/** "Approve Servers mail": the name of an adopt approval's tick box, with its item (U8). */
+export const approveItemName = (part: string, id: string): string => `Approve ${partName(part)} ${id}`;
+/** "Acknowledge .claude/settings.json#/permissions/defaultMode" (U8). */
+export const acknowledgeName = (where: string): string => `Acknowledge ${where}`;
+/** "Writes 7 files into the .bowerloom folder." */
+export const writesIntoLine = (n: number): string => `Writes ${plural(n, 'file', 'files')} into the .bowerloom folder.`;
+/** "Still waiting for: 2 approvals". */
+export const stillWaiting = (words: string): string => `${ENGINE_WORDS.label.waiting}: ${words}`;
+/** "Reconcile: There is no CLAUDE.md…" for a choice that did not count. */
+export const ignoredWords = (option: string, reason: string): string => `${option}: ${reason}`;
+/** "A stopped install" or "A stopped removal", for the kind of a stopped run. */
+const KIND_WORDS = Object.freeze({ apply: 'A stopped install', remove: 'A stopped removal' });
+export const recoveryKindWords = (kind: RecoveryView['kind']): string => (kind === null ? 'No run stopped; only kept paths' : KIND_WORDS[kind]);
+/** "Claude Code, version 2.1.310, model sonnet". */
+export const engineDetails = (name: string, version: string | null, model: string | null): string => [name, version === null ? null : `version ${version}`, model === null ? null : `model ${model}`].filter(Boolean).join(', ');

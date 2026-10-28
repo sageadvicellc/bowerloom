@@ -21,7 +21,17 @@ function shape(v: unknown, at = ''): string[] {
   if (v === null || typeof v !== 'object') return [at];
   return Object.keys(v).sort().flatMap(k => shape((v as Record<string, unknown>)[k], `${at}.${k}`));
 }
-const keysOnly = (paths: string[]): Set<string> => new Set(paths.map(p => p.replace(/\[\]/g, '')));
+/**
+ * The two shapes are the same when every key path of one is a key path of the other. An array that is empty on one side says nothing about its items,
+ * so the items' paths under it are left out of the comparison on both sides, and only the array itself must be there.
+ */
+function sameShape(real: unknown, sample: unknown): string[] {
+  const a = shape(real), b = shape(sample);
+  const empty = [...a, ...b].filter(p => p.endsWith('[]')).map(p => p.slice(0, -2));
+  const cut = (p: string): string => { for (const e of empty) if (p === `${e}[]` || p.startsWith(`${e}[].`)) return `${e}[]`; return p; };
+  const left = new Set(a.map(cut)), right = new Set(b.map(cut));
+  return [...[...left].filter(p => !right.has(p)).map(p => `only in the plan: ${p}`), ...[...right].filter(p => !left.has(p)).map(p => `only in the sample: ${p}`)];
+}
 
 test('the sample\'s words for each refusal are the packages\' own words', () => {
   for (const [code, words] of Object.entries(SAMPLE_MESSAGES)) {
@@ -33,17 +43,20 @@ test('the sample\'s words for each refusal are the packages\' own words', () => 
 test('the sample plans have every field of the plans the packages make from a synthetic folder', async t => {
   const home = homeFolder(tempDir(t, 'bowerloom-engine-sample-'));
   let next: string | null = engineFolder(home);
-  const service = createEngineService({ home, stateRoot: join(home, '.local', 'state', 'bowerloom'), chooseFolder: async () => next, who: 't' });
+  const service = createEngineService({ home, stateRoot: join(home, '.local', 'state', 'bowerloom'), chooseFolder: async () => next, confirm: async () => true, who: 't' });
   const a = value(await service.chooseFolder());
   const real = value(await service.planAdoption(a.id, { picks: {}, acknowledged: [] }));
   const sample = sampleEngineFixtures().adopt;
-  for (const key of keysOnly(shape(real))) assert.ok([...keysOnly(shape(sample))].some(k => k === key || k.startsWith(`${key}.`) || key.startsWith(`${k}.`) || key.endsWith('.pointer')), `adopt ${key}`);
+  assert.deepEqual(sameShape(real, sample), []);
+  // The check can fail: a field the plan lacks, and a field the sample lacks, are both named.
+  assert.deepEqual(sameShape(real, { ...sample, extra: 1 }), ['only in the sample: .extra']);
+  const { managed: _m, ...noManaged } = sample;
+  assert.deepEqual(sameShape(real, noManaged), ['only in the plan: .managed[]']);
   next = definedFolder(home);
   const d = value(await service.chooseFolder());
   const ask = value(await service.planProjection(d.id, { ...INPUT, engines: ['claude-code', 'codex'] })) as Extract<ProjectAnswer, { kind: 'approve' }>;
   const plan = (value(await service.planProjection(d.id, { ...INPUT, engines: ['claude-code', 'codex'], approve: ask.lines.map(l => l.key) })) as Extract<ProjectAnswer, { kind: 'plan' }>).plan;
-  const mine = keysOnly(shape(sampleEngineFixtures().project(INPUT)));
-  for (const key of keysOnly(shape(plan))) assert.ok([...mine].some(k => k === key || k.startsWith(`${key}.`) || key.startsWith(`${k}.`)), `project ${key}`);
+  assert.deepEqual(sameShape(plan, sampleEngineFixtures().project(INPUT)), []);
   assert.deepEqual(Object.keys(sampleEngineFixtures().approveLines[0]!).sort(), Object.keys(ask.lines[0]!).sort());
 });
 
@@ -56,15 +69,16 @@ test('sample adoption: picks, acknowledgements and approvals gate the write exac
   assert.equal(plan.ready, false);
   assert.deepEqual(plan.approvals.map(x => x.key), ['hooks/pre-tool-use-9c03e1f2', 'mcp/mail', 'mcp/search']);
   assert.deepEqual(plan.approvals.find(x => x.key === 'mcp/search')!.secrets.map(s => s.reference), ['${SEARCH_KEY}']);
-  const choices = { picks: { 'system-prompt/AGENTS.md': 'AGENTS.md' }, acknowledged: plan.unmapped.filter(u => u.gate === 'acknowledge').map(u => u.id) };
+  const choices = { picks: { 'system-prompt/AGENTS.md': 'AGENTS.md' }, acknowledged: plan.unmapped.filter(u => u.gate === 'acknowledge').map(u => ({ id: u.id, hash: u.hash })) };
   plan = value(await e.planAdoption(id, choices));
   assert.equal(plan.ready, true);
   assert.equal(plan.conflicts[0]!.picked, 'AGENTS.md');
-  const short = await e.runAdoption(id, plan.revision, choices, ['mcp/mail']);
+  const toSend = plan.approvals.map(x => ({ key: x.key, hash: x.hash }));
+  const short = await e.runAdoption(id, plan.revision, choices, toSend.filter(x => x.key === 'mcp/mail'));
   assert.ok(!short.ok); assert.equal(short.refusal.code, 'ADOPTION_APPROVAL_REQUIRED');
-  const stale = await e.runAdoption(id, '0'.repeat(64), choices, plan.approvals.map(x => x.key));
+  const stale = await e.runAdoption(id, '0'.repeat(64), choices, toSend);
   assert.ok(!stale.ok); assert.equal(stale.refusal.code, 'ADOPTION_STALE_APPROVAL');
-  const done = value(await e.runAdoption(id, plan.revision, choices, plan.approvals.map(x => x.key)));
+  const done = value(await e.runAdoption(id, plan.revision, choices, toSend));
   assert.ok(done.written.includes('.bowerloom/harness.json'));
   const info = (await e.folders()).find(f => f.id === id)!;
   assert.equal(info.hasDefinition, true);
