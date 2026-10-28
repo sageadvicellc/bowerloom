@@ -267,12 +267,17 @@ test('step 3 contract: sources.json records a claimed source and a skill adopted
   // The record is strict: shape, kind, a relative path with no .. segment, and a sha256 hash.
   const bad = (adoptedFrom, extra = {}) => json({ sources: [], adopted: [{ part: 'skills', id: 'review', adoptedFrom, ...extra }] });
   for (const path of ['../review', '/abs/review', 'a/../b', 'a/./b', 'a//b', '', 'a\\b', 'a/b/', '.']) refused({ ...base, 'sources.json': bad({ ...from, path }) }, 'INVALID_FIELD');
+  // Review item K2: the path is the canonical copy of the record's own skill, in one of the two 0.7 forms.
+  for (const path of ['skills/review', '.bowerloom/managed/skills/deploy', '.bowerloom/managed/skills/review/x', '.bowerloom-skills/skills/deploy', '.claude/skills/review']) {
+    refused({ ...base, 'sources.json': bad({ ...from, path }) }, 'INVALID_FIELD');
+  }
+  ok({ ...base, 'sources.json': bad({ ...from, path: '.bowerloom-skills/skills/review' }) });
   for (const sha256 of ['A'.repeat(64), 'a'.repeat(63), 'sha256:' + 'a'.repeat(64), 7]) refused({ ...base, 'sources.json': bad({ ...from, sha256 }) }, 'INVALID_FIELD');
   refused({ ...base, 'sources.json': bad({ ...from, kind: '0.7-authored' }) }, 'INVALID_FIELD');
   refused({ ...base, 'sources.json': bad({ ...from, extra: 1 }) }, 'UNKNOWN_FIELD');
   refused({ ...base, 'sources.json': bad(from, { note: 'x' }) }, 'UNKNOWN_FIELD');
   refused({ ...base, 'sources.json': json({ sources: [], adopted: [{ part: 'subagents', id: 'reader', adoptedFrom: from }] }) }, 'INVALID_FIELD');
-  refused({ ...base, 'sources.json': json({ sources: [], adopted: [{ part: 'skills', id: 'absent', adoptedFrom: from }] }) }, 'SOURCE_ITEM_MISSING');
+  refused({ ...base, 'sources.json': json({ sources: [], adopted: [{ part: 'skills', id: 'absent', adoptedFrom: { ...from, path: '.bowerloom/managed/skills/absent' } }] }) }, 'SOURCE_ITEM_MISSING');
   refused({ ...base, 'sources.json': json({ sources: [], adopted: [...adopted, ...adopted] }) }, 'DUPLICATE_ID');
   refused({ ...base, 'sources.json': json({ sources: [], adopted: {} }) }, 'INVALID_FIELD');
 });

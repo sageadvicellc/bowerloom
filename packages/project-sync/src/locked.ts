@@ -49,6 +49,15 @@ export const CODEX_PROFILE_BASE = ':workspace';
 /** The DeepSeek Harness patch file Bowerloom owns. The person passes it with `--patch`. */
 export const DSH_PATCH = '.dsh/bowerloom.patch.yml';
 export const OPENCODE_PLUGIN = '.opencode/plugins/bowerloom-hooks.js';
+/**
+ * The keys of a Claude Code sandbox's x-claude-code block that Bowerloom writes (review item K3): keys the research notes
+ * document as ones that only restrict the sandbox or change nothing. The notes (engines-B-locked-in.md, citing the
+ * Claude Code sandboxing page; spec-verification.md L28) name `enabled`, and the capability model names
+ * `allowUnsandboxedCommands`; Bowerloom writes both itself. The filesystem and network keys they name are
+ * permission-like, so no private block holds them. No other key is documented yet, so the list is empty until the live
+ * check of step 5 adds keys with their source.
+ */
+export const CLAUDE_SANDBOX_BLOCK_KEYS: readonly string[] = Object.freeze([]);
 export const CODEX_RULES = '.codex/rules/bowerloom.rules';
 
 export type LockedPart = 'subagents' | 'guardrails' | 'hooks' | 'mcp';
@@ -250,15 +259,23 @@ export function planLocked(ctx: LockedContext): LockedPlan {
         if (targets.has('.mcp.json')) trust.push({ engine, path: '.mcp.json', state: 'pending trust', reason: 'Claude Code asks the person to approve each project server in .mcp.json before it runs.' });
         const ops: JsonOp[] = [];
         for (const effect of ['allow', 'ask', 'deny'] as const) if (form.permissions[effect].length) ops.push({ kind: 'items', path: ['permissions', effect], items: [...form.permissions[effect]] });
-        // Ruling B11: the sandbox also forbids commands that would leave it. The sandbox's x-claude-code block follows,
-        // unchanged, except a key that Bowerloom writes itself.
+        // Ruling B11: the sandbox also forbids commands that would leave it. Review item K3: a key of the sandbox's
+        // x-claude-code block is written only when CLAUDE_SANDBOX_BLOCK_KEYS lists it; every other key gets an absent line.
         if (form.sandbox) {
           const members: [string, Out][] = [['enabled', true], ['allowUnsandboxedCommands', false]];
           const box = view.sandbox[0], block = box ? g.privateBlocks[box.id] : undefined;
-          if (box && isObject(block)) {
-            const keys = Object.keys(block).filter(k => !members.some(([m]) => m === k));
-            for (const k of keys) members.push([k, block[k] as Out]);
-            carried.set(box.id, keys);
+          if (box && block !== undefined) {
+            const keys = isObject(block) ? Object.keys(block) : [];
+            const kept = keys.filter(k => CLAUDE_SANDBOX_BLOCK_KEYS.includes(k) && !members.some(([m]) => m === k));
+            for (const k of kept) members.push([k, (block as Record<string, unknown>)[k] as Out]);
+            carried.set(box.id, kept);
+            const left = isObject(block) ? keys.filter(k => !kept.includes(k)) : null;
+            if (left === null || left.length) {
+              guardLines.push({
+                part: 'guardrails', entry: box.id, field: `x-${engine}`, engine, result: 'absent',
+                reason: `${left ? `These keys of the x-${engine} block are not written: ${left.join(', ')}.` : `The x-${engine} block is not an object, so it is not written.`} Bowerloom writes a sandbox key from the block only when the research notes document it as one that only restricts or changes nothing, and they document none yet; the sandbox keys they name, enabled and allowUnsandboxedCommands, Bowerloom writes itself.`,
+              });
+            }
           }
           ops.push({ kind: 'members', path: ['sandbox'], members });
         }
@@ -404,7 +421,7 @@ export function planLocked(ctx: LockedContext): LockedPlan {
     // Once a person saved trust in Pi, a Pi line no longer says the file is pending trust.
     const mcpLines = engine === 'pi' && ctx.piTrustSaved ? m.lines.map(l => ({ ...l, reason: l.reason.replace(/ Pending trust: [^.]*\./, ' A person saved trust for this project, so Pi loads it.') })) : [...m.lines];
     lines.set(engine, new Map<LockedPart, LossLine[]>([
-      ['guardrails', guardLines.map(l => ({ ...l, reason: l.reason + note(l.entry) }))], ['mcp', mcpLines], ['subagents', [...s.lines]], ['hooks', hookLines],
+      ['guardrails', guardLines.map(l => (l.field !== undefined ? l : { ...l, reason: l.reason + note(l.entry) }))], ['mcp', mcpLines], ['subagents', [...s.lines]], ['hooks', hookLines],
     ]));
   }
   if (envDefaults.length) refuse('PORTABLE_ENV_DEFAULT', [...new Set(envDefaults)]);

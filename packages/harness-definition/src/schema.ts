@@ -450,6 +450,11 @@ export function isRelativeProjectPath(p: unknown): p is string {
     && p.split('/').every(seg => seg !== '' && seg !== '.' && seg !== '..');
 }
 
+/** The canonical copy paths a 0.7 managed skill can have, relative to the project: the catalog form and the v1 form. */
+export function adoptedPaths(id: string): readonly string[] {
+  return [`.bowerloom/managed/skills/${id}`, `.bowerloom-skills/skills/${id}`];
+}
+
 /**
  * `sources.json`: borrowed sources, each pinned, with `claimed: true` when a 0.7 catalog only claims it; and `adopted`,
  * the skills adoption converted from 0.7 managed copies, each with its `adoptedFrom` record (step 3 contract).
@@ -490,7 +495,9 @@ export function checkSources(c: Checker, value: JsonValue): { sources: SourceRec
       const f = keys(c, a.obj.adoptedFrom, `${where}.adoptedFrom`, ['kind', 'path', 'sha256'], [], false);
       if (!f) return undefined;
       const kind = f.obj.kind === '0.7-managed' ? '0.7-managed' as const : c.fail('INVALID_FIELD', `${where}.adoptedFrom.kind must be 0.7-managed.`);
-      const path = isRelativeProjectPath(f.obj.path) ? f.obj.path : c.fail('INVALID_FIELD', `${where}.adoptedFrom.path must be a path relative to the project, with no empty, . or .. segment.`);
+      // Review item K2: the canonical copy of this very skill, in one of the two 0.7 forms, and nothing else.
+      const path = id !== undefined && isRelativeProjectPath(f.obj.path) && adoptedPaths(id).includes(f.obj.path) ? f.obj.path
+        : c.fail('INVALID_FIELD', `${where}.adoptedFrom.path must be .bowerloom/managed/skills/<id> or .bowerloom-skills/skills/<id>, with the record's own id.`);
       const sha256 = typeof f.obj.sha256 === 'string' && /^[0-9a-f]{64}$/.test(f.obj.sha256) ? f.obj.sha256 : c.fail('INVALID_FIELD', `${where}.adoptedFrom.sha256 must be 64 lowercase hex digits.`);
       if (part === undefined || id === undefined || kind === undefined || path === undefined || sha256 === undefined) return undefined;
       return { part, id, adoptedFrom: { kind, path, sha256 } };

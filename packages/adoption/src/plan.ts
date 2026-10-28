@@ -18,7 +18,7 @@ import { basename, dirname, isAbsolute, join } from 'node:path';
 import { stringify } from 'yaml';
 import { canonicalJson } from '../../contracts/src/index.js';
 import {
-  ENGINE_IDS, GUARDRAIL_ACTIONS, HARNESS_FORMAT, LEGACY_NAMES, REVISION_PREFIX, isEngineId, isId, isServerName, loadDefinition, scanSecrets,
+  ENGINE_IDS, GUARDRAIL_ACTIONS, HARNESS_FORMAT, LEGACY_NAMES, REVISION_PREFIX, adoptedPaths, isEngineId, isId, isServerName, loadDefinition, scanSecrets,
   skillContentHash,
 } from '../../harness-definition/src/index.js';
 import type { AdoptedFrom, EngineId, GuardrailAction, JsonValue, Problem } from '../../harness-definition/src/index.js';
@@ -304,7 +304,7 @@ function group(cands: readonly Candidate[], harness: readonly EngineId[], choice
     const differ = sorted.filter(c => bytesOf(c) !== bytesOf(lead));
     if (differ.length) notes.push(`The copies at ${[lead, ...differ].map(c => c.place.path).join(' and ')} mean the same but differ in bytes. The definition takes the bytes of ${lead.place.path}.`);
     const source = v.cands.find((c): c is Extract<Candidate, { part: 'skills' }> => c.part === 'skills' && c.source !== undefined)?.source;
-    const adoptedFrom = adoptedFromOf(sorted);
+    const adoptedFrom = adoptedFromOf(sorted, id);
     const secrets = v.cands.flatMap(c => c.secrets);
     const extraNeeds: string[] = [];
     // Ruling A7: a reference that took the place of a literal secret sends the person's own value.
@@ -418,8 +418,10 @@ function managedOf(list: readonly ManagedConversion[], kept: readonly Kept[], co
  * The durable record of a skill converted from a 0.7 managed copy (step 3 contract): the first managed copy in path
  * order, with the hex of its skill content hash. The portable projection compares an engine folder with that hash.
  */
-function adoptedFromOf(sorted: readonly Candidate[]): AdoptedFrom | undefined {
-  const c = sorted.find((x): x is Extract<Candidate, { part: 'skills' }> => x.part === 'skills' && x.place.kind === 'managed-0.7');
+function adoptedFromOf(sorted: readonly Candidate[], id: string): AdoptedFrom | undefined {
+  // The contract takes only the canonical copy of this very skill (review item K2): a copy kept under another id has no record.
+  const paths = adoptedPaths(id);
+  const c = sorted.find((x): x is Extract<Candidate, { part: 'skills' }> => x.part === 'skills' && x.place.kind === 'managed-0.7' && paths.includes(x.place.path));
   if (!c) return undefined;
   const rows = [{ path: 'skills/x/SKILL.md', bytes: c.skill.raw }, ...c.skill.files.map(f => ({ path: `skills/x/${f.path}`, bytes: f.bytes }))];
   return { kind: '0.7-managed', path: c.place.path, sha256: skillContentHash('x', rows).slice(REVISION_PREFIX.length) };

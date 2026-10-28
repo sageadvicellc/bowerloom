@@ -81,7 +81,8 @@ test('Codex round trip: Codex tool names in a hook matcher adopt as Claude Code 
     '.codex/rules/bowerloom.rules': 'prefix_rule(\n    pattern = ["git", "push"],\n    decision = "forbidden",\n    justification = "Bowerloom guardrail deny-shell-6a69d046",\n)\nprefix_rule(pattern = ["rm"], decision = "prompt", justification = "Ask first.")\n',
   });
   const { def } = await adopt(p, [{ id: 'codex' }]);
-  assert.deepEqual(def.entries.hooks.map(h => [h.command, h.matcher]).sort(), [['echo one', 'Bash'], ['echo three', 'apply_patch'], ['echo two', 'Agent']]);
+  // Review item K1: apply_patch is the Codex edit tool, so it stands for every Claude Code edit tool.
+  assert.deepEqual(def.entries.hooks.map(h => [h.command, h.matcher]).sort(), [['echo one', 'Bash'], ['echo three', 'Edit|Write|MultiEdit|NotebookEdit'], ['echo two', 'Agent']]);
   assert.deepEqual(def.entries.rules.map(r => [r.pattern, r.privateBlocks]).sort(), [['git push *', {}], ['rm *', { codex: { justification: 'Ask first.' } }]]);
 });
 

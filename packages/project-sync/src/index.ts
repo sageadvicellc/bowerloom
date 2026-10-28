@@ -54,7 +54,7 @@ export {
 export type { DriftLine, PortableApplyResult, PortableRecoveryPlan, PortableRecoveryResult, PortableRemovalPlan, PortableRemovalResult, RecoveryInput } from './portable-run.js';
 export { PORTABLE_REFUSAL_CODES, PortableRefusal } from './portable-files.js';
 export type { FileAfter, FileState, LeftBehind, LeftReason, PortableCode } from './portable-files.js';
-export { PORTABLE_RECEIPT_FORMAT, PORTABLE_RECEIPT_FORMAT_V2 } from './portable-state.js';
+export { PORTABLE_RECEIPT_FORMAT, PORTABLE_RECEIPT_FORMAT_V2, PORTABLE_RECEIPT_FORMAT_V3 } from './portable-state.js';
 // Bowerloom 0.8, step 3, lane B: the locked-in writers inside the same plan.
 export { CODEX_PROFILE, CODEX_PROFILE_BASE, DSH_PATCH, LOCKED_PARTS, OPENCODE_PLUGIN, PINNED_VERSIONS, renderPlugin } from './locked.js';
 export type { CodexTrust, LockedPart, ReviewItem, TrustLine } from './locked.js';
