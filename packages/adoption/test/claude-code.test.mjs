@@ -5,15 +5,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadDefinition, selectForEngine } from '../../../dist/packages/harness-definition/src/index.js';
 import { applyAdoption, planAdoption } from '../../../dist/packages/adoption/src/index.js';
-import { agent, item, json, project, skill } from './fixture.mjs';
+import { agent, gated, item, json, project, skill } from './fixture.mjs';
 
 const CC = [{ id: 'claude-code' }];
 const reasonAt = (plan, path, pointer) => plan.unmapped.find(u => u.path === path && (pointer === undefined || u.pointer === pointer))?.reason;
 async function adopt(p, extra = {}) {
-  const plan = planAdoption(p.input({ engines: CC, ...extra }));
+  // Gated entries are acknowledged here; gates.test.mjs tests the acknowledgement itself.
+  const first = planAdoption(p.input({ engines: CC, ...extra }));
+  const input = p.input({ engines: CC, ...extra, acknowledged: gated(first) });
+  const plan = planAdoption(input);
   assert.deepEqual(plan.problems, []);
   assert.equal(plan.ready, true, JSON.stringify(plan.conflicts));
-  await applyAdoption(p.input({ engines: CC, ...extra }), plan.revision);
+  await applyAdoption(input, plan.revision, plan.approvalsRequired);
   const r = loadDefinition(p.def); assert.equal(r.ok, true, JSON.stringify(r.problems));
   return { plan, def: r.definition };
 }
@@ -35,14 +38,16 @@ test('permission rules become guardrail rules; a rule outside the neutral langua
     ['edit', '.env', 'deny', 'enforced'],
     ['mcp', 'docs/search', 'ask', 'enforced'],
     ['read', './secrets/**', 'deny', 'enforced'],
-    ['read', './src/**', 'allow', 'advisory'],
     ['shell', 'git push *', 'ask', 'enforced'],
     ['shell', 'npm run test:*', 'allow', 'advisory'],
     ['skill', 'deploy', 'deny', 'enforced'],
     ['subagent', 'planner', 'deny', 'enforced'],
     ['web', '*', 'deny', 'enforced'],
-    ['web', 'docs.example.test', 'allow', 'advisory'],
   ]);
+  // Ruling A2: the read deny with an absolute path and the WebSearch deny are lost, so the read and web allows go too.
+  assert.match(reasonAt(plan, '.claude/settings.json', '/permissions/allow/1'), /a deny of this action could not be carried/);
+  assert.match(reasonAt(plan, '.claude/settings.json', '/permissions/allow/2'), /a deny of this action could not be carried/);
+  assert.deepEqual(plan.unmapped.filter(u => u.gate === 'acknowledge').map(u => u.pointer), ['/permissions/deny/1', '/permissions/deny/6']);
   assert.match(reasonAt(plan, '.claude/settings.json', '/permissions/deny/1'), /absolute/);
   assert.match(reasonAt(plan, '.claude/settings.json', '/permissions/deny/6'), /web search alone/);
   assert.match(reasonAt(plan, '.claude/settings.json', '/permissions/allow/3'), /no form for this tool/);
@@ -143,15 +148,15 @@ test('agent files become subagents: tools to classes, narrowed when a class is n
   assert.match(reasonAt(plan, '.claude/agents/empty.md'), /instructions/);
 });
 
-test('a skill: allowed-tools becomes allow rules that need approval (ruling R5); engine-only keys go to harness.json', async t => {
+test('a skill: allowed-tools is listed, not adopted (ruling A6); engine-only keys go to harness.json', async t => {
   const p = project(t, {
     '.claude/skills/deploy/SKILL.md': skill('deploy', 'allowed-tools: Bash(git add:*), Read\nwhen_to_use: Before a release.\ndisable-model-invocation: true\nhooks:\n  PreToolUse: []\n'),
   });
   const { plan, def } = await adopt(p);
   const s = def.entries.skills[0];
   assert.deepEqual(s.privateBlocks, { 'claude-code': { when_to_use: 'Before a release.', 'disable-model-invocation': true } });
-  assert.deepEqual(def.entries.rules.map(r => [r.action, r.pattern, r.effect]).sort(), [['read', '**', 'allow'], ['shell', 'git add:*', 'allow']]);
-  assert.ok(plan.items.filter(i => i.part === 'guardrails').every(i => i.needsApproval.some(n => /wider/.test(n))));
+  assert.deepEqual(def.entries.rules, []);
+  assert.match(reasonAt(plan, '.claude/skills/deploy/SKILL.md', '/allowed-tools'), /skill-scoped grant/);
   assert.match(reasonAt(plan, '.claude/skills/deploy/SKILL.md', '/hooks'), /permission-like/);
   const text = Buffer.from(def.files.find(f => f.path === 'skills/deploy/SKILL.md').bytes).toString();
   assert.equal(text, '---\nname: deploy\ndescription: Reviews a change before merge.\n---\n\nUse deploy with care.\n');

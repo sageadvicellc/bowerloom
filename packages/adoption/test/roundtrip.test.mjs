@@ -62,7 +62,7 @@ for (const [engine, files] of Object.entries(ENGINE_FILES)) {
     const input = a.input({ engines: [{ id: engine }] });
     const plan = planAdoption(input);
     assert.equal(plan.ready, true, JSON.stringify({ conflicts: plan.conflicts, problems: plan.problems }));
-    await applyAdoption(input, plan.revision);
+    await applyAdoption(input, plan.revision, plan.approvalsRequired);
 
     const b = path.join(a.base, 'fresh');
     fs.mkdirSync(b, { mode: 0o755 });
@@ -80,7 +80,8 @@ for (const [engine, files] of Object.entries(ENGINE_FILES)) {
 test('check 1: an engine-private block of a skill stays unchanged in the definition, for its own engine only', async t => {
   const a = project(t, ENGINE_FILES['claude-code']);
   const input = a.input({ engines: [{ id: 'claude-code' }, { id: 'codex' }] });
-  await applyAdoption(input, planAdoption(input).revision);
+  const plan = planAdoption(input);
+  await applyAdoption(input, plan.revision, plan.approvalsRequired);
   const def = loadDefinition(a.def).definition;
   assert.deepEqual(def.harness.skills.review.privateBlocks, { 'claude-code': { when_to_use: 'Before a merge.' } });
   assert.deepEqual(selectForEngine(def, 'codex').skills.find(s => s.id === 'review'), undefined, 'the skill lives where Claude Code reads it only');
@@ -98,7 +99,7 @@ test('check 9, adoption half: an entry with an unknown field keeps it unchanged 
   });
   const input = a.input({ engines: [{ id: 'claude-code' }, { id: 'codex' }] });
   const plan = planAdoption(input);
-  await applyAdoption(input, plan.revision);
+  await applyAdoption(input, plan.revision, plan.approvalsRequired);
   const def = loadDefinition(a.def).definition;
   const claude = selectForEngine(def, 'claude-code'), codex = selectForEngine(def, 'codex');
   assert.deepEqual(claude.subagents[0].privateBlocks, { 'claude-code': { color: 'blue', background: true, nested: { depth: 2 } } });

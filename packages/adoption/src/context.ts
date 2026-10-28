@@ -1,5 +1,5 @@
 /** What every engine reader gets: the project reader, the engines of the harness, and the lists it adds to. */
-import type { EngineId } from '../../harness-definition/src/index.js';
+import type { EngineId, GuardrailAction } from '../../harness-definition/src/index.js';
 import type { ProjectReader } from './files.js';
 import type { Candidate, ManagedConversion, Place } from './model.js';
 
@@ -23,7 +23,13 @@ export interface Context {
   readonly managed: ManagedConversion[];
   /** Explicit models found in engine settings, by engine. */
   readonly models: Partial<Record<EngineId, { model: string; path: string }>>;
+  /** Deny or ask rules, by engine and action, that could not be carried (ruling A2). `*` is every action. */
+  readonly lost: { readonly engine: EngineId; readonly action: LostAction }[];
 }
+
+export type LostAction = GuardrailAction | '*';
+/** Records that a deny or ask of one action from one engine could not be carried. */
+export function lose(ctx: Context, engine: EngineId, action: LostAction): void { ctx.lost.push({ engine, action }); }
 
 /** The engines of the harness that read a place. */
 export const reading = (ctx: Context, engines: readonly EngineId[]): EngineId[] => ctx.engines.filter(e => engines.includes(e));

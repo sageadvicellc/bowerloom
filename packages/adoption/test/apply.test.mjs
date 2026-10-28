@@ -16,7 +16,7 @@ test('a file that appears where apply writes is never overwritten; apply removes
   const before = snapshot(p.dir);
   const plan = planAdoption(p.input({ engines: TWO }));
   const target = '.bowerloom/skills/review/SKILL.md';
-  await assert.rejects(applyAdoptionWith(p.input({ engines: TWO }), plan.revision, new AbortController().signal, {
+  await assert.rejects(applyAdoptionWith(p.input({ engines: TWO }), plan.revision, plan.approvalsRequired, new AbortController().signal, {
     beforeWrite: rel => { if (rel === target) fs.writeFileSync(path.join(p.dir, rel), 'a person wrote this\n'); },
   }), code('ADOPTION_STALE_APPROVAL'));
   assert.equal(fs.readFileSync(path.join(p.dir, target), 'utf8'), 'a person wrote this\n');
@@ -31,7 +31,7 @@ test('a folder swapped for a link before a write is refused, not followed; apply
   const outside = path.join(p.base, 'outside');
   fs.mkdirSync(outside);
   const plan = planAdoption(p.input({ engines: TWO }));
-  await assert.rejects(applyAdoptionWith(p.input({ engines: TWO }), plan.revision, new AbortController().signal, {
+  await assert.rejects(applyAdoptionWith(p.input({ engines: TWO }), plan.revision, plan.approvalsRequired, new AbortController().signal, {
     beforeWrite: rel => {
       if (rel !== '.bowerloom/skills/review/SKILL.md') return;
       const dir = path.join(p.dir, '.bowerloom/skills/review');
@@ -47,6 +47,6 @@ test('an aborted signal stops apply before it writes', async t => {
   const plan = planAdoption(p.input({ engines: TWO }));
   const ac = new AbortController();
   ac.abort();
-  await assert.rejects(applyAdoptionWith(p.input({ engines: TWO }), plan.revision, ac.signal, {}), e => typeof e?.code === 'string');
+  await assert.rejects(applyAdoptionWith(p.input({ engines: TWO }), plan.revision, plan.approvalsRequired, ac.signal, {}), e => typeof e?.code === 'string');
   assert.equal(fs.existsSync(p.def), false);
 });

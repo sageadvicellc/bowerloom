@@ -4,14 +4,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadDefinition } from '../../../dist/packages/harness-definition/src/index.js';
 import { DSH_PINNED_TAG, applyAdoption, planAdoption } from '../../../dist/packages/adoption/src/index.js';
-import { code, item, json, project, skill } from './fixture.mjs';
+import { code, gated, item, json, project, skill } from './fixture.mjs';
 
 const reasonAt = (plan, path, pointer) => plan.unmapped.find(u => u.path === path && (pointer === undefined || u.pointer === pointer))?.reason;
 async function adopt(p, engines, extra = {}) {
-  const plan = planAdoption(p.input({ engines, ...extra }));
+  // Gated entries are acknowledged here; gates.test.mjs tests the acknowledgement itself.
+  const first = planAdoption(p.input({ engines, ...extra }));
+  const input = p.input({ engines, ...extra, acknowledged: gated(first) });
+  const plan = planAdoption(input);
   assert.deepEqual(plan.problems, []);
   assert.equal(plan.ready, true, JSON.stringify(plan.conflicts));
-  await applyAdoption(p.input({ engines, ...extra }), plan.revision);
+  await applyAdoption(input, plan.revision, plan.approvalsRequired);
   const r = loadDefinition(p.def); assert.equal(r.ok, true, JSON.stringify(r.problems));
   return { plan, def: r.definition };
 }
@@ -89,9 +92,7 @@ test('Codex rules files: forbidden and prompt become deny and ask, allow stays a
       '    decision = "prompt",',
       ')',
       'prefix_rule(pattern = ["ls"])',
-      'prefix_rule(pattern = ["rm", "-rf *"], decision = "forbidden")',
     ].join('\n'),
-    '.codex/rules/odd.rules': 'load("x")\n',
   });
   const { plan, def } = await adopt(p, [{ id: 'codex' }]);
   assert.deepEqual(def.entries.rules.map(r => [r.pattern, r.effect, r.strength]).sort(), [
@@ -100,8 +101,19 @@ test('Codex rules files: forbidden and prompt become deny and ask, allow stays a
   const deny = def.entries.rules.find(r => r.effect === 'deny');
   assert.deepEqual(deny.privateBlocks, { codex: { justification: 'No pushes.' } });
   assert.match(item(plan, 'guardrails', def.entries.rules.find(r => r.effect === 'allow').id).notes.join(' '), /outside the sandbox/);
-  assert.match(reasonAt(plan, '.codex/rules/default.rules', '/3'), /token/);
+});
+
+test('Codex rules files: a deny with a token that has no neutral form, or a file that is not prefix_rule calls, is gated and drops the shell allows', async t => {
+  const p = project(t, {
+    '.codex/rules/default.rules': 'prefix_rule(pattern = ["ls"])\nprefix_rule(pattern = ["rm", "-rf *"], decision = "forbidden")\n',
+    '.codex/rules/odd.rules': 'load("x")\n',
+  });
+  const { plan, def } = await adopt(p, [{ id: 'codex' }]);
+  assert.deepEqual(def.entries.rules, []);
+  assert.match(reasonAt(plan, '.codex/rules/default.rules', '/1'), /token/);
+  assert.equal(plan.unmapped.find(u => u.path === '.codex/rules/default.rules' && u.pointer === '/1').gate, 'acknowledge');
   assert.match(reasonAt(plan, '.codex/rules/odd.rules'), /prefix_rule/);
+  assert.match(reasonAt(plan, '.codex/rules/default.rules', '/0'), /a deny of this action could not be carried/);
 });
 
 test('Codex agent files become subagents; feature switches are a tool limit the neutral list cannot carry', async t => {
@@ -144,7 +156,7 @@ test('OpenCode 1.x: permission keys, MCP entries, and agents; last match wins is
   assert.deepEqual(def.entries.rules.map(r => [r.action, r.pattern, r.effect]).sort(), [
     ['edit', '**', 'ask'], ['shell', '*', 'ask'], ['shell', 'git push *', 'deny'], ['shell', 'git status', 'allow'], ['skill', '*', 'allow'], ['subagent', 'planner', 'deny'], ['web', '*', 'deny'],
   ]);
-  assert.match(reasonAt(plan, 'opencode.json', '/permission/read/docs~1*'), /across folders/);
+  assert.match(reasonAt(plan, 'opencode.json', '/permission/read/#0'), /across folders/);
   assert.match(plan.warnings.join('\n'), /last match/);
   const docs = def.entries.mcp.find(s => s.name === 'docs');
   assert.deepEqual([docs.command, docs.args, docs.env], ['npx', ['-y', 'example-docs-mcp'], { DOCS_TOKEN: '${DOCS_TOKEN}' }]);

@@ -6,12 +6,15 @@
  * of one scalar type (they may span lines and end with a comma), arrays of inline tables, and inline tables.
  *
  * Refused: multi-line strings, dates and times, hex, octal, binary, underscores in numbers, `inf` and `nan`, mixed
- * arrays, a key or table defined twice, and the key `__proto__`. A refusal names its kind and never repeats the input.
+ * arrays, a key or table defined twice, and the key `__proto__`. Nesting deeper than 64 is TOML_TOO_DEEP, refused before
+ * it recurses further. A refusal names its kind and never repeats the input.
  * Adoption lists a refused file with the reason; it never guesses at a form it does not read.
  */
 import type { JsonValue } from '../../harness-definition/src/index.js';
 
-export type TomlCode = 'TOML_UNSUPPORTED' | 'TOML_DUPLICATE';
+export type TomlCode = 'TOML_UNSUPPORTED' | 'TOML_DUPLICATE' | 'TOML_TOO_DEEP';
+/** The deepest nesting of keys, arrays, and inline tables the subset reads (ruling A5). */
+export const TOML_MAX_DEPTH = 64;
 export type TomlResult = { readonly ok: true; readonly value: { readonly [key: string]: JsonValue } } | { readonly ok: false; readonly code: TomlCode; readonly line: number };
 
 type Table = Record<string, JsonValue>;
@@ -40,6 +43,7 @@ class Parser {
 
   lineAt(at: number): number { return this.s.slice(0, at).split('\n').length; }
   private fail(code: TomlCode = 'TOML_UNSUPPORTED'): never { throw new TomlFault(code, this.i); }
+  private deep(depth: number): void { if (depth > TOML_MAX_DEPTH) this.fail('TOML_TOO_DEEP'); }
   private peek(): string { return this.s[this.i] ?? ''; }
   private spaces(): void { while (this.peek() === ' ' || this.peek() === '\t') this.i++; }
   private comment(): void { if (this.peek() === '#') { while (this.i < this.s.length && this.peek() !== '\n') { if (/[\0-\x08\x0a-\x1f\x7f]/.test(this.peek()) && this.peek() !== '\n') this.fail(); this.i++; } } }
@@ -77,6 +81,7 @@ class Parser {
     this.i += array ? 2 : 1;
     this.spaces();
     const keys = this.key();
+    this.deep(keys.length);
     this.spaces();
     if (!this.s.startsWith(array ? ']]' : ']', this.i)) this.fail();
     this.i += array ? 2 : 1;
@@ -112,8 +117,10 @@ class Parser {
     return v;
   }
 
-  private pair(t: Table): void {
+  private pair(t: Table, depth = 0): void {
+    this.deep(depth);
     const keys = this.key();
+    this.deep(depth + keys.length);
     this.spaces();
     if (this.peek() !== '=') this.fail();
     this.i++;
@@ -122,7 +129,7 @@ class Parser {
     for (const k of keys.slice(0, -1)) target = this.descend(target, k, true);
     const last = keys.at(-1)!;
     if (Object.hasOwn(target, last)) this.fail('TOML_DUPLICATE');
-    target[last] = this.value();
+    target[last] = this.value(depth + keys.length);
   }
 
   private key(): string[] {
@@ -140,18 +147,20 @@ class Parser {
       }
       if (k === '__proto__') this.fail();
       keys.push(k);
+      if (keys.length > TOML_MAX_DEPTH) this.fail('TOML_TOO_DEEP');
       this.spaces();
       if (this.peek() !== '.') return keys;
       this.i++;
     }
   }
 
-  private value(): JsonValue {
+  private value(depth: number): JsonValue {
+    this.deep(depth);
     const c = this.peek();
     if (c === '"') { if (this.s.startsWith('"""', this.i)) this.fail(); return this.basic(); }
     if (c === "'") { if (this.s.startsWith("'''", this.i)) this.fail(); return this.literal(); }
-    if (c === '[') return this.array();
-    if (c === '{') return this.inline();
+    if (c === '[') return this.array(depth + 1);
+    if (c === '{') return this.inline(depth + 1);
     const m = /^(?:true|false|[+-]?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)(?=[ \t\r\n,\]}#]|$)/.exec(this.s.slice(this.i, this.i + 64));
     if (!m) this.fail();
     this.i += m[0].length;
@@ -196,13 +205,14 @@ class Parser {
     return v;
   }
 
-  private array(): JsonValue[] {
+  private array(depth: number): JsonValue[] {
+    this.deep(depth);
     this.i++;
     const out: JsonValue[] = [];
     for (;;) {
       this.gap();
       if (this.peek() === ']') { this.i++; break; }
-      out.push(this.value());
+      out.push(this.value(depth));
       this.gap();
       if (this.peek() === ',') { this.i++; continue; }
       if (this.peek() === ']') { this.i++; break; }
@@ -216,13 +226,14 @@ class Parser {
     return out;
   }
 
-  private inline(): Table {
+  private inline(depth: number): Table {
+    this.deep(depth);
     this.i++;
     const t = Object.create(null) as Table;
     this.spaces();
     if (this.peek() === '}') { this.i++; this.sealed.add(t); return t; }
     for (;;) {
-      this.pair(t);
+      this.pair(t, depth);
       this.spaces();
       if (this.peek() === ',') { this.i++; this.spaces(); continue; }
       if (this.peek() === '}') { this.i++; break; }

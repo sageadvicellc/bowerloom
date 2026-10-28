@@ -3,13 +3,13 @@
  * `.claude/settings.json` (permissions, hooks, sandbox, model, and other keys), `.mcp.json`, and `.claude/agents/*.md`.
  * `.claude/settings.local.json` is local scope and is listed, not adopted (locked-in parts spec, decision 5).
  */
-import { TOOL_CLASSES, isId, isPermissionKey, readFrontmatter } from '../../harness-definition/src/index.js';
+import { TOOL_CLASSES, isId, isPermissionKey, isSafeName, readFrontmatter } from '../../harness-definition/src/index.js';
 import type { GuardrailEffect, JsonValue, ToolClass } from '../../harness-definition/src/index.js';
-import { claudeRule } from './claude-rules.js';
-import { place, type Context } from './context.js';
+import { claudeAction, claudeRule } from './claude-rules.js';
+import { lose, place, type Context, type LostAction } from './context.js';
 import { toLf, utf8 } from './files.js';
 import { textSecretRule } from './secrets.js';
-import { PERMISSION_REASON, blockOf, isObj, leftovers, oneLine, privateKeys, ptr, readHooks, readJson, readMcpServers } from './shared.js';
+import { PERMISSION_REASON, blockOf, isObj, kp, leftovers, oneLine, privateKeys, readHooks, readJson, readMcpServers } from './shared.js';
 import type { Obj } from './shared.js';
 
 const ENGINE = 'claude-code' as const;
@@ -17,17 +17,25 @@ const SETTINGS = '.claude/settings.json';
 
 export const claudeProjectDir = (command: string): string => command.replace(/\$\{CLAUDE_PROJECT_DIR\}|\$CLAUDE_PROJECT_DIR(?![A-Za-z0-9_])/g, '${PROJECT_DIR}');
 
-/** Rules of `permissions.allow`, `ask`, and `deny`, with a place pointer for each. */
+/**
+ * Rules of `permissions.allow`, `ask`, and `deny`, with a place pointer for each. A deny or ask that cannot be mapped
+ * needs acknowledgement, and the allows of its action are dropped (rulings A2 and A17).
+ */
 export function readClaudeRules(ctx: Context, permissions: Obj, path: string, base: string, shape: string): void {
   for (const effect of ['allow', 'ask', 'deny'] as const satisfies readonly GuardrailEffect[]) {
     const list = permissions[effect];
     if (list === undefined) continue;
-    if (!Array.isArray(list)) { ctx.r.miss(path, 'guardrails', `permissions.${effect} is not a list of rules.`, `${base}/${effect}`); continue; }
+    const strict = effect !== 'allow';
+    const lost = (reason: string, pointer: string, action: LostAction): void => {
+      ctx.r.miss(path, 'guardrails', reason, pointer, strict ? 'acknowledge' : 'none');
+      if (strict) lose(ctx, ENGINE, action);
+    };
+    if (!Array.isArray(list)) { lost(`permissions.${effect} is not a list of rules.`, `${base}/${effect}`, '*'); continue; }
     list.forEach((text, i) => {
       const pointer = `${base}/${effect}/${i}`;
-      if (typeof text !== 'string') { ctx.r.miss(path, 'guardrails', 'This rule is not text.', pointer); return; }
+      if (typeof text !== 'string') { lost('This rule is not text.', pointer, '*'); return; }
       const got = claudeRule(text, effect);
-      if ('reason' in got) { ctx.r.miss(path, 'guardrails', got.reason, pointer); return; }
+      if ('reason' in got) { lost(got.reason, pointer, claudeAction(text)); return; }
       ctx.cands.push({ part: 'guardrails', id: '', rule: got.rule, place: place(path, [ENGINE], shape, ENGINE, { pointer }), blocks: {}, secrets: [], needsApproval: [], notes: got.note ? [got.note] : [] });
     });
   }
@@ -36,17 +44,17 @@ export function readClaudeRules(ctx: Context, permissions: Obj, path: string, ba
 const MODES_REASON = 'Permission modes do not translate between engines (locked-in parts spec, section 8.3 rule 12). Bowerloom writes the engine default.';
 
 function readSettings(ctx: Context): void {
-  const s = readJson(ctx, SETTINGS, 'guardrails');
+  const s = readJson(ctx, SETTINGS, 'guardrails', false, { engine: ENGINE, action: '*' });
   if (!s) return;
   const shape = 'Claude Code settings.json';
   const rest: Obj = {};
   for (const [key, value] of Object.entries(s)) {
     if (key === 'permissions') {
-      if (!isObj(value)) { ctx.r.miss(SETTINGS, 'guardrails', 'permissions is not an object.', '/permissions'); continue; }
+      if (!isObj(value)) { ctx.r.miss(SETTINGS, 'guardrails', 'permissions is not an object.', '/permissions', 'acknowledge'); lose(ctx, ENGINE, '*'); continue; }
       readClaudeRules(ctx, value, SETTINGS, '/permissions', shape);
       for (const k of Object.keys(value)) {
         if (k === 'allow' || k === 'ask' || k === 'deny') continue;
-        ctx.r.miss(SETTINGS, 'guardrails', k === 'defaultMode' ? MODES_REASON : PERMISSION_REASON, `/permissions${ptr(k)}`);
+        ctx.r.miss(SETTINGS, 'guardrails', k === 'defaultMode' ? MODES_REASON : PERMISSION_REASON, `/permissions${kp(value, k)}`);
       }
     } else if (key === 'hooks') readHooks(ctx, value, { path: SETTINGS, base: '/hooks', engine: ENGINE, shape, rewrite: claudeProjectDir });
     else if (key === 'sandbox') readSandbox(ctx, value);
@@ -58,15 +66,19 @@ function readSettings(ctx: Context): void {
   leftovers(ctx, ENGINE, SETTINGS, rest, 'settings.json', shape);
 }
 
-/** `sandbox.enabled: true` is a requirement for a file and a network sandbox. Claude Code's sandbox covers Bash commands. */
+/**
+ * `sandbox.enabled: true` is a requirement for a file and a network sandbox. Claude Code's sandbox covers Bash commands.
+ * Every sandbox value that is not carried is listed on its own and needs acknowledgement (rulings A17 and A18).
+ */
 function readSandbox(ctx: Context, value: JsonValue): void {
-  if (!isObj(value)) { ctx.r.miss(SETTINGS, 'guardrails', 'sandbox is not an object.', '/sandbox'); return; }
-  const rest = privateKeys(ctx, Object.fromEntries(Object.entries(value).filter(([k]) => k !== 'enabled')), SETTINGS, '/sandbox', 'guardrails');
+  if (!isObj(value)) { ctx.r.miss(SETTINGS, 'guardrails', 'sandbox is not an object.', '/sandbox', 'acknowledge'); return; }
+  const others = Object.fromEntries(Object.entries(value).filter(([k]) => k !== 'enabled'));
   if (value.enabled !== true) {
-    if (value.enabled !== undefined && value.enabled !== false) ctx.r.miss(SETTINGS, 'guardrails', 'sandbox.enabled is not true or false.', '/sandbox/enabled');
-    if (Object.keys(rest).length) ctx.r.miss(SETTINGS, 'guardrails', 'The sandbox is not enabled, so its other settings have no requirement to belong to.', '/sandbox');
+    if (value.enabled !== undefined && value.enabled !== false) ctx.r.miss(SETTINGS, 'guardrails', 'sandbox.enabled is not true or false, so no sandbox is required.', '/sandbox/enabled', 'acknowledge');
+    for (const k of Object.keys(others)) ctx.r.miss(SETTINGS, 'guardrails', 'The sandbox is not enabled, so this sandbox value has no requirement to belong to. It is not adopted.', `/sandbox${kp(others, k)}`, 'acknowledge');
     return;
   }
+  const rest = privateKeys(ctx, others, SETTINGS, '/sandbox', 'guardrails', 'acknowledge');
   const { blocks, secrets } = blockOf([ENGINE], rest, SETTINGS, '/sandbox', 'sandbox');
   ctx.cands.push({
     part: 'guardrails', id: 'sandbox', sandbox: { files: true, network: true }, place: place(SETTINGS, [ENGINE], 'Claude Code settings.json', ENGINE, { pointer: '/sandbox' }),
@@ -79,7 +91,7 @@ function readMcp(ctx: Context): void {
   if (!s) return;
   for (const [key, value] of Object.entries(s)) {
     if (key === 'mcpServers') readMcpServers(ctx, value, { path: '.mcp.json', base: '/mcpServers', engines: [ENGINE], owner: ENGINE, shape: 'Claude Code .mcp.json' });
-    else ctx.r.miss('.mcp.json', 'mcp', 'Adoption reads only mcpServers in .mcp.json.', ptr(key));
+    else ctx.r.miss('.mcp.json', 'mcp', 'Adoption reads only mcpServers in .mcp.json.', kp(s, key));
   }
 }
 
@@ -89,28 +101,46 @@ function readMcp(ctx: Context): void {
 const CLASS_TOOLS: Readonly<Record<(typeof TOOL_CLASSES)[number], readonly string[]>> = {
   read: ['Read'], search: ['Grep', 'Glob'], edit: ['Edit'], write: ['Write'], shell: ['Bash'], web: ['WebFetch', 'WebSearch'], task: ['Agent', 'Task'], skill: ['Skill'],
 };
-const classOf = (tool: string): (typeof TOOL_CLASSES)[number] | null => TOOL_CLASSES.find(c => CLASS_TOOLS[c].includes(tool)) ?? null;
+const EXTRA_TOOLS: Readonly<Record<string, (typeof TOOL_CLASSES)[number]>> = { MultiEdit: 'edit', NotebookEdit: 'edit', LS: 'search' };
+const classOf = (tool: string): (typeof TOOL_CLASSES)[number] | null => TOOL_CLASSES.find(c => CLASS_TOOLS[c].includes(tool)) ?? EXTRA_TOOLS[tool] ?? null;
 
 /**
- * A Claude Code tool list as neutral tool classes. A class is kept only when the list allows every tool of it, so the
- * limit never widens; a dropped tool makes it narrower, and the note says so. `Agent` and `Task` are one tool.
+ * A Claude Code tool list as neutral tool classes. The limit never widens (ruling A3):
+ * - A class is kept only when the allow list allows every tool of it; a dropped tool makes the limit narrower.
+ * - A disallowed tool removes its whole class, with or without a specifier, so `Bash(rm:*)` removes `shell`.
+ * - A disallowed `mcp__srv` or `mcp__srv__x` removes the server `mcp:srv`.
+ * - A disallowed tool with no neutral class is noted: the neutral tool list never grants it.
+ * Every narrowing is noted. `Agent` and `Task` are one tool.
  */
 export function toolClasses(allow: readonly string[] | null, deny: readonly string[]): { tools: ToolClass[]; narrowed: string[] } {
   const narrowed: string[] = [];
-  const allowed = (tool: string): boolean => (allow === null || allow.includes(tool) || (tool === 'Task' && allow.includes('Agent')) || (tool === 'Agent' && allow.includes('Task'))) && !deny.includes(tool);
+  const baseOf = (t: string): string => t.replace(/\(.*$/s, '').trim();
+  const show = (t: string): string => isSafeName(t) ? t : 'a tool whose name is not shown';
+  const deniedClasses = new Set<string>(), deniedServers = new Set<string>();
+  for (const d of deny) {
+    const m = /^mcp__([A-Za-z0-9][A-Za-z0-9_-]{0,63}?)(?:__.*)?$/s.exec(d);
+    if (m) { deniedServers.add(m[1]!); continue; }
+    const base = baseOf(d), c = classOf(base);
+    if (c === null) { narrowed.push(`${show(base)} names no neutral class, so the neutral tool list never grants it`); continue; }
+    deniedClasses.add(c);
+    if (base !== d) narrowed.push(`a disallowed ${show(base)} entry with a specifier removes the whole ${c} class`);
+  }
+  const allowed = (tool: string): boolean => allow === null || allow.includes(tool) || (tool === 'Task' && allow.includes('Agent')) || (tool === 'Agent' && allow.includes('Task'));
   const tools: ToolClass[] = [];
   for (const c of TOOL_CLASSES) {
-    const all = CLASS_TOOLS[c].filter(t => t !== 'Task').every(allowed);
-    if (all) tools.push(c);
-    else if (CLASS_TOOLS[c].some(t => allow?.includes(t))) narrowed.push(`${c} (not every tool of the class is allowed)`);
+    if (deniedClasses.has(c)) continue;
+    if (CLASS_TOOLS[c].filter(t => t !== 'Task').every(allowed)) tools.push(c);
+    else if (CLASS_TOOLS[c].some(t => allow?.some(a => baseOf(a) === t))) narrowed.push(`${c} (not every tool of the class is allowed)`);
   }
   for (const t of allow ?? []) {
     const m = /^mcp__([A-Za-z0-9][A-Za-z0-9_-]{0,63}?)(__\*)?$/.exec(t);
-    if (m && !deny.some(d => d === t || d.startsWith(`mcp__${m[1]}__`))) tools.push(`mcp:${m[1]}`);
-    else if (t.startsWith('mcp__')) narrowed.push(`${t} (one MCP tool has no neutral class; the server is left out)`);
-    else if (classOf(t) === null) narrowed.push(`${t} (no neutral class)`);
+    if (m) {
+      if (deniedServers.has(m[1]!)) narrowed.push(`mcp:${show(m[1]!)} (a disallowed entry names the server, so it is left out)`);
+      else tools.push(`mcp:${m[1]}`);
+    } else if (t.startsWith('mcp__')) narrowed.push('one MCP tool has no neutral class, so its server is left out');
+    else if (classOf(baseOf(t)) === null) narrowed.push(`${show(baseOf(t))} (no neutral class)`);
   }
-  if (allow === null && deny.some(d => d.startsWith('mcp__'))) narrowed.push('MCP tools (a deny list of MCP tools has no neutral form; every MCP server is left out)');
+  if (allow === null && deniedServers.size) narrowed.push('MCP tools (a deny list of MCP tools has no neutral form; every MCP server is left out)');
   return { tools: [...new Set(tools)], narrowed };
 }
 
@@ -125,7 +155,6 @@ function readAgents(ctx: Context): void {
   const root = '.claude/agents';
   const listed = r.list(root, 'subagents');
   if (listed === null) return;
-  r.consumed.add(root);
   for (const { name, kind } of listed) {
     const rel = `${root}/${name}`;
     if (kind !== 'file' || !name.endsWith('.md')) continue;
@@ -164,7 +193,7 @@ function readAgents(ctx: Context): void {
     }
     for (const [k, v] of Object.entries(d)) {
       if (['name', 'description', 'tools', 'disallowedTools', 'skills', 'model'].includes(k)) continue;
-      if (isPermissionKey(k)) { r.miss(rel, 'subagents', PERMISSION_REASON, ptr(k)); continue; }
+      if (isPermissionKey(k)) { r.miss(rel, 'subagents', PERMISSION_REASON, kp(d, k)); continue; }
       extra[k] = v;
     }
     const { blocks, secrets } = blockOf(ctx.engines.includes(ENGINE) ? [ENGINE] : [], privateKeys(ctx, extra, rel, '', 'subagents'), rel, '', d.name);
@@ -173,6 +202,7 @@ function readAgents(ctx: Context): void {
       models, place: place(rel, [ENGINE], 'Claude Code agent file', ENGINE), blocks, secrets, needsApproval: [], notes,
     });
   }
+  r.rest(root, listed, 'subagents');
 }
 
 export function readClaudeCode(ctx: Context): void {

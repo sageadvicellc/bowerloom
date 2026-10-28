@@ -34,8 +34,8 @@ test('MCP env, headers, arguments, private blocks, and leftover settings: each l
     ['.mcp.json', '/mcpServers/docs/oauth/clientSecret', '${DOCS_OAUTH_CLIENT_SECRET}', 'mcp', 'docs'],
     ['.mcp.json', '/mcpServers/remote/headers/Authorization', '${REMOTE_AUTHORIZATION}', 'mcp', 'remote'],
   ]);
-  for (const id of ['docs', 'remote']) assert.ok(item(plan, 'mcp', id).needsApproval.some(n => /secret was replaced/.test(n)), id);
-  await applyAdoption(p.input({ engines: CC }), plan.revision);
+  for (const id of ['docs', 'remote']) assert.ok(item(plan, 'mcp', id).needsApproval.some(n => /^Your own value of [A-Z_]+ will be sent to this server\.$/.test(n)), id);
+  await applyAdoption(p.input({ engines: CC }), plan.revision, plan.approvalsRequired);
   const r = loadDefinition(p.def);
   assert.equal(r.ok, true, JSON.stringify(r.problems));
   assert.deepEqual(scanSecrets(r.definition.files), []);

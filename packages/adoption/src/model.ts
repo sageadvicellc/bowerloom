@@ -20,12 +20,27 @@ export interface Place {
   readonly shapeVersion: string | null;
 }
 
-/** Something adoption does not carry into the definition, with the reason. */
-export interface Unmapped {
+/**
+ * What an unmapped entry asks of a person. `none`: it is listed. `acknowledge`: it could hold a deny, an ask, or a
+ * sandbox value, so the plan is not ready until a person acknowledges it by id (ruling A17). `block`: the plan cannot
+ * be ready until a person changes the source, such as an `@path` import to inline (ruling A15).
+ */
+export type Gate = 'none' | 'acknowledge' | 'block';
+
+/** Something adoption does not carry into the definition, as a reader lists it. */
+export interface Missed {
   readonly path: string;
   readonly pointer?: string;
   readonly part: UnmappedPart;
   readonly reason: string;
+  readonly gate: Gate;
+}
+
+/** Something adoption does not carry into the definition, with the reason, an id, and what it asks of a person. */
+export interface Unmapped extends Missed {
+  /** The path, then `#` and the pointer when there is one; a later entry with the same place gets `~2`, `~3`. */
+  readonly id: string;
+  readonly acknowledged: boolean;
 }
 
 /** A literal secret that adoption replaced with a reference. It never holds the value. */
@@ -72,7 +87,13 @@ export interface SubagentShape {
   readonly skills?: readonly string[];
 }
 /** A borrowed item's source for `sources.json`: npm or git sources of 0.7 managed copies. */
-export interface SourceShape { readonly name: string; readonly marketplace: string; readonly version: string }
+export interface SourceShape {
+  readonly name: string;
+  readonly marketplace: string;
+  readonly version: string;
+  /** True: the 0.7 catalog claims this source, and Bowerloom did not check it (ruling A8). */
+  readonly claimed?: true;
+}
 
 interface CandidateBase {
   readonly place: Place;
@@ -179,9 +200,14 @@ export interface AdoptionPlan {
   readonly warnings: readonly string[];
   /** The files apply writes into the `.bowerloom` folder, in byte order. */
   readonly files: readonly PlannedFile[];
+  /** The keys (`<part>/<id>`) of every item that needs approval. Apply takes the confirmed ones (ruling A7). */
+  readonly approvalsRequired: readonly string[];
   /** What the loader says about the planned definition. Empty when it loads. */
   readonly problems: readonly Problem[];
-  /** True when apply can write: no conflict waits for a choice and the definition loads. */
+  /**
+   * True when apply can write: no conflict waits for a choice, every gated unmapped entry is acknowledged, nothing
+   * blocks, and the definition loads. Apply also needs every approval in `approvalsRequired`.
+   */
   readonly ready: boolean;
   readonly writesAuthorized: false;
   readonly revision: string;

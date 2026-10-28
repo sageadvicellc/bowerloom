@@ -29,7 +29,7 @@ test('check 7: old skills.json and bowerloom.json read through the old-form mapp
   assert.deepEqual(plan.read.filter(r => r.path.endsWith('.json')).map(r => [r.path, r.sha256]), [
     ['.bowerloom/bowerloom.json', sha(OLD_CONFIG)], ['.bowerloom/skills.json', sha(OLD_MANIFEST)],
   ]);
-  await applyAdoption(p.input(), plan.revision);
+  await applyAdoption(p.input(), plan.revision, plan.approvalsRequired);
   const after = snapshot(p.dir);
   unchanged(before, after, () => true);
   assert.equal(fs.readFileSync(path.join(p.def, 'skills.json'), 'utf8'), OLD_MANIFEST);
@@ -89,13 +89,13 @@ test('a 0.7 managed copy becomes a definition skill with its source recorded; no
   assert.equal(plan.ready, true);
   const tidy = item(plan, 'skills', 'tidy');
   assert.deepEqual(tidy.places.map(x => [x.path, x.kind]), [['.agents/skills/tidy', 'engine'], ['.bowerloom/managed/skills/tidy', 'managed-0.7'], ['.claude/skills/tidy', 'engine']]);
-  assert.deepEqual(tidy.source, { name: 'example-tidy-skill', marketplace: 'https://registry.npmjs.org', version: '1.2.3' });
+  assert.deepEqual(tidy.source, { name: 'example-tidy-skill', marketplace: 'https://registry.npmjs.org', version: '1.2.3', claimed: true });
   assert.deepEqual(plan.managed, [{
     catalog: '.bowerloom/managed/catalog/tidy.json', kind: 'skill', id: 'tidy', skill: 'tidy',
-    source: { name: 'example-tidy-skill', marketplace: 'https://registry.npmjs.org', version: '1.2.3' },
+    source: { name: 'example-tidy-skill', marketplace: 'https://registry.npmjs.org', version: '1.2.3', claimed: true },
     copies: ['.agents/skills/tidy', '.bowerloom/managed/skills/tidy', '.claude/skills/tidy'], reason: 'Converted into the definition skill tidy.',
   }]);
-  await applyAdoption(p.input({ engines: [{ id: 'claude-code' }, { id: 'codex' }] }), plan.revision);
+  await applyAdoption(p.input({ engines: [{ id: 'claude-code' }, { id: 'codex' }] }), plan.revision, plan.approvalsRequired);
   unchanged(before, snapshot(p.dir), () => true);
   const r = loadDefinition(p.def);
   assert.equal(r.ok, true, JSON.stringify(r.problems));
@@ -119,7 +119,7 @@ test('a git source is recorded by repository and commit; a local source is recor
   const git = { kind: 'git', host: 'github.com', repository: 'example/skills', commit: 'a'.repeat(40), tree: 'b'.repeat(40) };
   const p = project(t, { '.bowerloom/managed/catalog/tidy.json': catalog({ source: git, harnesses: ['claude'] }), '.bowerloom/managed/skills/tidy/SKILL.md': TIDY });
   const plan = planAdoption(p.input({ engines: [{ id: 'claude-code' }] }));
-  assert.deepEqual(item(plan, 'skills', 'tidy').source, { name: 'example/skills', marketplace: 'github.com', version: 'a'.repeat(40) });
+  assert.deepEqual(item(plan, 'skills', 'tidy').source, { name: 'example/skills', marketplace: 'github.com', version: 'a'.repeat(40), claimed: true });
   const q = project(t, { '.bowerloom/managed/catalog/tidy.json': catalog({ source: { kind: 'local', path: 'skills/tidy' }, harnesses: ['claude'] }), '.bowerloom/managed/skills/tidy/SKILL.md': TIDY });
   const local = planAdoption(q.input({ engines: [{ id: 'claude-code' }] }));
   assert.equal(item(local, 'skills', 'tidy').source, undefined);
@@ -136,7 +136,7 @@ test('the 0.7 v1 namespace .bowerloom-skills converts the same way and stays in 
   const plan = planAdoption(p.input({ engines: [{ id: 'claude-code' }] }));
   assert.equal(plan.managed[0].skill, 'tidy');
   assert.deepEqual(item(plan, 'skills', 'tidy').places.map(x => x.path), ['.bowerloom-skills/skills/tidy', '.claude/skills/tidy']);
-  await applyAdoption(p.input({ engines: [{ id: 'claude-code' }] }), plan.revision);
+  await applyAdoption(p.input({ engines: [{ id: 'claude-code' }] }), plan.revision, plan.approvalsRequired);
   unchanged(before, snapshot(p.dir), () => true);
 });
 

@@ -18,31 +18,38 @@ import { basename, dirname, isAbsolute, join } from 'node:path';
 import { stringify } from 'yaml';
 import { canonicalJson } from '../../contracts/src/index.js';
 import {
-  ENGINE_IDS, HARNESS_FORMAT, LEGACY_NAMES, isEngineId, isId, isServerName, loadDefinition,
+  ENGINE_IDS, GUARDRAIL_ACTIONS, HARNESS_FORMAT, LEGACY_NAMES, isEngineId, isId, isServerName, loadDefinition,
 } from '../../harness-definition/src/index.js';
-import type { EngineId, JsonValue, Problem } from '../../harness-definition/src/index.js';
+import type { EngineId, GuardrailAction, JsonValue, Problem } from '../../harness-definition/src/index.js';
+import { atImports } from '../../project-sync/src/portable.js';
 import { byBytes, revisionOf, sha } from '../../project-sync/src/portable-files.js';
 import { DEFAULT_ENGINES } from '../../skill-manifest/src/engine.js';
-import { DSH_PINNED_TAG, READER_VERSIONS, type Context } from './context.js';
+import { DSH_PINNED_TAG, READER_VERSIONS, type Context, type LostAction } from './context.js';
 import { ENGINE_READERS, detectEngines, sweep } from './engines.js';
 import { ProjectReader } from './files.js';
+import { checkState, readJournal } from './journal.js';
 import { readLegacy } from './legacy.js';
 import {
-  ADOPTION_PLAN_FORMAT, type AdoptionChoice, type AdoptionPlan, type Candidate, type Conflict, type Difference, type ItemPart,
+  ADOPTION_PLAN_FORMAT, type AdoptionChoice, type AdoptionPlan, type Candidate, type Conflict, type Difference, type ItemPart, type Missed,
   type ManagedConversion, type Place, type PlanEngine, type PlanItem, type PlannedFile, type SecretLine, type SourceShape, type Unmapped,
 } from './model.js';
-import { readInstructions, readSkillPlaces } from './portable-readers.js';
+import { listNestedInstructions, readInstructions, readSkillPlaces } from './portable-readers.js';
+import { RISK_APPROVAL, riskOf } from './shared.js';
 import { refuse } from './refusal.js';
 import { skillMarkdown } from './skills.js';
 
 export interface AdoptionInput {
   /** The real absolute path of the project folder. */
   readonly projectDir: string;
+  /** The private state folder of adoption, outside the project. Apply keeps its journal there (ruling A11). */
+  readonly stateDir: string;
   /** The engines of the harness. Default: the engines whose files the project holds, else the 0.7 default. */
   readonly engines?: readonly { readonly id: EngineId; readonly version?: string; readonly model?: string }[];
   readonly harness?: { readonly id?: string; readonly description?: string };
   /** A choice for each conflict, by conflict key. */
   readonly choices?: Readonly<Record<string, AdoptionChoice>>;
+  /** The ids of gated unmapped entries a person acknowledges (ruling A17). */
+  readonly acknowledged?: readonly string[];
 }
 
 /** A plan with the bytes of each planned file, for apply. */
@@ -58,7 +65,8 @@ const CONTROL = /[\0-\x08\x0a-\x1f\x7f]/;
 export function planAdoption(input: AdoptionInput): AdoptionPlan { return planWithBytes(input).plan; }
 
 export function planWithBytes(input: AdoptionInput): PlanWithBytes {
-  const { projectDir, wanted, harnessId, description, choices } = checkInput(input);
+  const { projectDir, stateDir, wanted, harnessId, description, choices, acknowledged } = checkInput(input);
+  if (readJournal(stateDir, projectDir) !== null) refuse('ADOPTION_RECOVERY_REQUIRED');
   const definitionFolder = join(projectDir, '.bowerloom');
   const r = new ProjectReader(projectDir);
   const authored = checkDefinitionFolder(r);
@@ -77,45 +85,52 @@ export function planWithBytes(input: AdoptionInput): PlanWithBytes {
   for (const w of wanted ?? []) if (w.version !== undefined) versions[w.id] = w.version;
   if (engines.includes('deepseek-harness')) versions['deepseek-harness'] = DSH_PINNED_TAG;
 
-  const ctx: Context = { r, engines, versions, cands: [], warnings, managed: [], models: {} };
+  const ctx: Context = { r, engines, versions, cands: [], warnings, managed: [], models: {}, lost: [] };
   readInstructions(ctx);
   readSkillPlaces(ctx);
   readLegacy.skills(ctx, authored);
   readLegacy.managed(ctx);
   for (const read of ENGINE_READERS) read(ctx);
+  listNestedInstructions(ctx);
   sweep(ctx);
 
   // Ids that come from content, so identical entries merge and others never clash.
-  const cands = ctx.cands.map(withId);
-  const unmapped: Unmapped[] = [...r.unmapped];
-  const { items, conflicts, kept } = group(cands, engines, choices, unmapped);
-  const differences = differencesOf(kept);
+  const cands = dropAllows(ctx).map(withId);
+  const missed: Missed[] = r.unmapped;
+  const { items, conflicts, kept } = group(cands, engines, choices, missed);
+  const differences = differencesOf(kept, engines);
+  importsOf(kept, projectDir, missed);
 
   // Explicit models of each engine: the input wins; an engine file gives one otherwise.
   const models: Partial<Record<EngineId, string>> = {};
   for (const e of engines) {
     const w = wanted?.find(x => x.id === e)?.model;
-    if (w !== undefined) models[e] = w;
-    else if (ctx.models[e]) models[e] = ctx.models[e].model;
+    if (w !== undefined) {
+      models[e] = w;
+      const file = ctx.models[e];
+      if (file && file.model !== w) warnings.push(`The input model for ${e} overrides the model in ${file.path}.`);
+    } else if (ctx.models[e]) models[e] = ctx.models[e].model;
   }
   const planEngines: PlanEngine[] = engines.map(id => ({
     id, version: versions[id] ?? null, model: models[id] ?? null, detected: detected.has(id) || legacyEngines.has(id),
     shapes: shapesOf(id, cands),
   }));
 
-  const built = buildFiles({ harnessId, description, engines: planEngines, items: kept, unmapped, warnings });
+  const built = buildFiles({ harnessId, description, engines: planEngines, items: kept, unmapped: missed, warnings });
   const files: PlannedFile[] = [...built.entries()].sort(([a], [b]) => byBytes(a, b))
     .map(([path, f]) => ({ path, sha256: sha(f.bytes), bytes: f.bytes.length, mode: f.mode }));
-  const ready0 = conflicts.every(c => c.choice !== null);
+  const unmapped = finalUnmapped(missed, acknowledged);
+  const ready0 = conflicts.every(c => c.choice !== null) && unmapped.every(u => u.gate === 'none' || (u.gate === 'acknowledge' && u.acknowledged));
   const validated = validate(built, kept);
+  const approvalsRequired = items.filter(i => i.needsApproval.length > 0).map(i => `${i.part}/${i.id}`).sort(byBytes);
   const secrets: SecretLine[] = kept.flatMap(k => k.secrets.map(s => ({ ...s, part: k.item.part, id: k.item.id })))
     .sort((a, b) => byBytes(`${a.path}#${a.pointer}`, `${b.path}#${b.pointer}`));
 
   const body = {
     format: ADOPTION_PLAN_FORMAT, projectDir, definitionFolder, harness: { id: harnessId, description }, engines: planEngines,
     read: [...r.read.entries()].sort(([a], [b]) => byBytes(a, b)).map(([path, sha256]) => ({ path, sha256 })),
-    items, conflicts, differences, unmapped: dedupeUnmapped(unmapped), secrets, managed: managedOf(ctx.managed, kept, conflicts), warnings,
-    files, problems: validated.problems, ready: ready0 && validated.problems.length === 0, writesAuthorized: false as const,
+    items, conflicts, differences, unmapped, secrets, managed: managedOf(ctx.managed, kept, conflicts), warnings,
+    files, approvalsRequired, problems: validated.problems, ready: ready0 && validated.problems.length === 0, writesAuthorized: false as const,
   };
   const plan: AdoptionPlan = { ...body, revision: revisionOf(body) };
   return { plan, bytes: built, definitionRevision: validated.revision };
@@ -125,13 +140,17 @@ export function planWithBytes(input: AdoptionInput): PlanWithBytes {
 
 function checkInput(input: AdoptionInput) {
   if (input === null || typeof input !== 'object') return refuse('ADOPTION_USAGE');
-  const allowed = new Set(['projectDir', 'engines', 'harness', 'choices']);
+  const allowed = new Set(['projectDir', 'stateDir', 'engines', 'harness', 'choices', 'acknowledged']);
   if (Object.keys(input).some(k => !allowed.has(k))) refuse('ADOPTION_USAGE');
   const { projectDir } = input;
   if (typeof projectDir !== 'string' || !isAbsolute(projectDir) || projectDir.includes('\0')) refuse('ADOPTION_USAGE');
   let real: string, st: fs.Stats;
   try { real = fs.realpathSync(projectDir); st = fs.lstatSync(projectDir); } catch { return refuse('ADOPTION_PROJECT_UNSAFE'); }
   if (real !== projectDir || !st.isDirectory() || st.uid !== process.getuid?.()) refuse('ADOPTION_PROJECT_UNSAFE');
+  checkState(projectDir, input.stateDir);
+  const stateDir: string = input.stateDir;
+  const acknowledged = input.acknowledged ?? [];
+  if (!Array.isArray(acknowledged) || acknowledged.some(a => typeof a !== 'string')) refuse('ADOPTION_USAGE');
   let wanted: { id: EngineId; version?: string; model?: string }[] | undefined;
   if (input.engines !== undefined) {
     if (!Array.isArray(input.engines) || input.engines.length === 0) refuse('ADOPTION_USAGE');
@@ -155,7 +174,7 @@ function checkInput(input: AdoptionInput) {
   const description = h?.description ?? 'Adopted from the engine files of this project.';
   const choices = input.choices ?? {};
   if (choices === null || typeof choices !== 'object' || Array.isArray(choices)) refuse('ADOPTION_USAGE');
-  return { projectDir, wanted, harnessId, description, choices };
+  return { projectDir, stateDir, wanted, harnessId, description, choices, acknowledged };
 }
 
 /**
@@ -207,11 +226,23 @@ export interface Kept {
 }
 interface Variant { key: string; cands: Candidate[]; places: Place[]; blocks: Partial<Record<EngineId, JsonValue>>; models: Partial<Record<EngineId, string>>; sha256: string; fixed: boolean }
 
+/**
+ * The private blocks and models of candidates that are the same item, or null when they cannot be one item. For each
+ * engine, every copy that engine reads must give it the same block and the same model, or none (ruling A19): a copy
+ * with a block and one without, read by one engine, mean different things to that engine.
+ */
 function mergeable(cands: readonly Candidate[]): { blocks: Partial<Record<EngineId, JsonValue>>; models: Partial<Record<EngineId, string>> } | null {
   const blocks: Partial<Record<EngineId, JsonValue>> = {}, models: Partial<Record<EngineId, string>> = {};
-  for (const c of cands) {
-    for (const [e, b] of Object.entries(c.blocks) as [EngineId, JsonValue][]) { if (blocks[e] !== undefined && canonicalJson(blocks[e]) !== canonicalJson(b)) return null; blocks[e] = b; }
-    for (const [e, m] of Object.entries(modelsOf(c)) as [EngineId, string][]) { if (models[e] !== undefined && models[e] !== m) return null; models[e] = m; }
+  const engines = new Set<EngineId>(cands.flatMap(c => [...c.place.engines, ...Object.keys(c.blocks) as EngineId[], ...Object.keys(modelsOf(c)) as EngineId[]]));
+  for (const e of engines) {
+    const readers = cands.filter(c => c.place.engines.includes(e) || c.blocks[e] !== undefined || modelsOf(c)[e] !== undefined);
+    const bs = new Set(readers.map(c => c.blocks[e] === undefined ? '' : canonicalJson(c.blocks[e])));
+    const ms = new Set(readers.map(c => modelsOf(c)[e] ?? ''));
+    if (bs.size > 1 || ms.size > 1) return null;
+    const b = readers.find(c => c.blocks[e] !== undefined)?.blocks[e];
+    const m = readers.map(c => modelsOf(c)[e]).find(x => x !== undefined);
+    if (b !== undefined) blocks[e] = b;
+    if (m !== undefined) models[e] = m;
   }
   return { blocks, models };
 }
@@ -246,7 +277,7 @@ function engineFilter(places: readonly Place[], harness: readonly EngineId[]): E
   return list.length === harness.length ? null : list;
 }
 
-function group(cands: readonly Candidate[], harness: readonly EngineId[], choices: Readonly<Record<string, AdoptionChoice>>, unmapped: Unmapped[]) {
+function group(cands: readonly Candidate[], harness: readonly EngineId[], choices: Readonly<Record<string, AdoptionChoice>>, unmapped: Missed[]) {
   const groups = new Map<string, Candidate[]>();
   for (const c of cands) { const k = `${c.part}/${c.id}`; groups.set(k, [...(groups.get(k) ?? []), c]); }
   const conflicts: Conflict[] = [];
@@ -258,15 +289,28 @@ function group(cands: readonly Candidate[], harness: readonly EngineId[], choice
   for (const k of keys) { const [part, ...rest] = k.split('/'); use(part as ItemPart, rest.join('/')); }
 
   const keep = (v: Variant, id: string, engines: EngineId[] | null, extraNotes: readonly string[] = []): void => {
-    const lead = v.cands.slice().sort((a, b) => comparePlaces(a.place, b.place))[0]!;
+    const sorted = v.cands.slice().sort((a, b) => comparePlaces(a.place, b.place));
+    const lead = sorted[0]!;
     const needs = [...new Set(v.cands.flatMap(c => c.needsApproval))];
     const notes = [...new Set([...v.cands.flatMap(c => c.notes), ...extraNotes])];
+    // Ruling A19: copies that mean the same but differ in bytes are named; the definition takes the first one.
+    const differ = sorted.filter(c => bytesOf(c) !== bytesOf(lead));
+    if (differ.length) notes.push(`The copies at ${[lead, ...differ].map(c => c.place.path).join(' and ')} mean the same but differ in bytes. The definition takes the bytes of ${lead.place.path}.`);
     const source = v.cands.find((c): c is Extract<Candidate, { part: 'skills' }> => c.part === 'skills' && c.source !== undefined)?.source;
     const secrets = v.cands.flatMap(c => c.secrets);
+    const extraNeeds: string[] = [];
+    // Ruling A7: a reference that took the place of a literal secret sends the person's own value.
+    for (const ref of [...new Set(secrets.map(x => x.reference.replace(/^\$\{|\}$/g, '')))].sort(byBytes)) {
+      extraNeeds.push(lead.part === 'mcp' ? `Your own value of ${ref} will be sent to this server.` : `Your own value of ${ref} will be used by this engine setting.`);
+    }
+    // Ruling A9: a private block that holds a command, a URL, or a credential helper.
+    const risky = Object.values(v.blocks).some(b => b !== undefined && riskOf(b)) || (lead.part === 'engine-private' && riskOf(lead.value));
+    if (risky) extraNeeds.push(RISK_APPROVAL);
+    // Ruling A14: text that only some engines read reaches every engine after projection.
+    if (lead.part === 'system-prompt' && engines !== null) extraNeeds.push(`Only ${engines.join(', ')} read this text today; after projection every listed engine reads this text.`);
     const item: PlanItem = {
       part: lead.part, id, places: v.places, engines, privateBlocks: ENGINE_IDS.filter(e => v.blocks[e] !== undefined),
-      needsApproval: [...needs, ...(secrets.length ? ['A literal secret was replaced with a ${NAME} reference. A person checks that the engine sets that variable.'] : [])],
-      notes, ...(source ? { source } : {}),
+      needsApproval: [...needs, ...extraNeeds], notes, ...(source ? { source } : {}),
     };
     kept.push({ item, lead, blocks: v.blocks, models: v.models, secrets, fixed: v.fixed });
   };
@@ -293,7 +337,7 @@ function group(cands: readonly Candidate[], harness: readonly EngineId[], choice
 
 function applyChoice(
   c: Conflict, choice: AdoptionChoice, variants: readonly Variant[], harness: readonly EngineId[], taken: Map<ItemPart, Set<string>>,
-  keep: (v: Variant, id: string, engines: EngineId[] | null, notes?: readonly string[]) => void, unmapped: Unmapped[],
+  keep: (v: Variant, id: string, engines: EngineId[] | null, notes?: readonly string[]) => void, unmapped: Missed[],
 ): void {
   const bad = (): never => refuse('ADOPTION_CHOICE_INVALID', [c.key]);
   if (choice === null || typeof choice !== 'object' || Object.keys(choice).length !== 1) bad();
@@ -301,7 +345,7 @@ function applyChoice(
     const v = variants.find(x => x.key === choice.pick) ?? bad();
     if (variants.some(x => x.fixed && x !== v)) bad();
     keep(v, c.id, engineFilter(variants.flatMap(x => x.places), harness), [`A person picked ${v.key} over the other variants.`]);
-    for (const other of variants) if (other !== v) for (const p of other.places) unmapped.push({ path: p.path, ...(p.pointer !== undefined ? { pointer: p.pointer } : {}), part: c.part, reason: `Not adopted: a person picked ${v.key} for ${c.key}.` });
+    for (const other of variants) if (other !== v) for (const p of other.places) unmapped.push({ path: p.path, ...(p.pointer !== undefined ? { pointer: p.pointer } : {}), part: c.part, reason: `Not adopted: a person picked ${v.key} for ${c.key}.`, gate: 'none' });
     return;
   }
   if (!('rename' in choice) || !c.options.includes('rename')) return bad();
@@ -322,7 +366,7 @@ function applyChoice(
   });
 }
 
-function differencesOf(kept: readonly Kept[]): Difference[] {
+function differencesOf(kept: readonly Kept[], harness: readonly EngineId[]): Difference[] {
   const byPattern = new Map<string, Kept[]>();
   for (const k of kept) {
     if (k.lead.part !== 'guardrails' || !('rule' in k.lead)) continue;
@@ -334,7 +378,7 @@ function differencesOf(kept: readonly Kept[]): Difference[] {
     const effects = new Set(list.map(k => (k.lead as Extract<Candidate, { rule: unknown }>).rule.effect));
     if (effects.size < 2) continue;
     const [action, pattern] = key.split('\n') as [Difference['action'], string];
-    out.push({ action, pattern, rules: list.map(k => ({ id: k.item.id, effect: (k.lead as Extract<Candidate, { rule: unknown }>).rule.effect, engines: k.item.engines ?? [] })) });
+    out.push({ action, pattern, rules: list.map(k => ({ id: k.item.id, effect: (k.lead as Extract<Candidate, { rule: unknown }>).rule.effect, engines: k.item.engines ?? [...harness] })) });
   }
   return out;
 }
@@ -362,15 +406,86 @@ function managedOf(list: readonly ManagedConversion[], kept: readonly Kept[], co
   }).sort((a, b) => byBytes(a.catalog, b.catalog) || byBytes(a.id, b.id));
 }
 
-function dedupeUnmapped(list: readonly Unmapped[]): Unmapped[] {
-  const seen = new Set<string>(), out: Unmapped[] = [];
-  for (const u of list) { const k = canonicalJson(u); if (!seen.has(k)) { seen.add(k); out.push(u); } }
-  return out.sort((a, b) => byBytes(a.path, b.path) || byBytes(a.pointer ?? '', b.pointer ?? '') || byBytes(a.reason, b.reason));
+/** The bytes a candidate brings: the file it was read from, so two copies with one meaning can be told apart. */
+function bytesOf(c: Candidate): string {
+  if (c.part === 'system-prompt') return sha(c.raw);
+  if (c.part === 'skills') return sha(canonicalJson({ main: sha(c.skill.raw), files: c.skill.files.map(f => [f.path, sha(f.bytes)]) }));
+  return '';
+}
+
+const DROPPED: Readonly<Record<LostAction, readonly GuardrailAction[]>> = {
+  '*': GUARDRAIL_ACTIONS, read: ['read', 'edit', 'write'], edit: ['edit', 'write'], write: ['edit', 'write'],
+  shell: ['shell'], web: ['web'], mcp: ['mcp'], subagent: ['subagent'], skill: ['skill'],
+};
+
+/**
+ * Ruling A2: when a deny or ask of an action from one engine cannot be carried, every allow of that action from that
+ * engine is dropped too, and listed. A read deny also limits changes, so it drops edit and write allows as well.
+ */
+function dropAllows(ctx: Context): Candidate[] {
+  if (ctx.lost.length === 0) return ctx.cands;
+  const lost = new Map<EngineId, Set<GuardrailAction>>();
+  const seen = new Set<string>();
+  for (const { engine, action } of ctx.lost) {
+    const set = lost.get(engine) ?? new Set();
+    for (const a of DROPPED[action]) set.add(a);
+    lost.set(engine, set);
+    const key = `${engine}\n${action}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    ctx.warnings.push(`${engine}: a deny or ask of ${action === '*' ? 'some action' : action} could not be carried, so every allow of ${DROPPED[action].join(', ')} from ${engine} is dropped.`);
+  }
+  return ctx.cands.filter(c => {
+    if (c.part !== 'guardrails' || !('rule' in c) || c.rule.effect !== 'allow') return true;
+    if (!c.place.engines.some(e => lost.get(e)?.has(c.rule.action))) return true;
+    ctx.r.miss(c.place.path, 'guardrails', 'Not adopted: a deny of this action could not be carried, so its allow is dropped too.', c.place.pointer);
+    return false;
+  });
+}
+
+/** Ruling A15: each `@path` import in the adopted instructions blocks the plan. The person inlines it first. */
+function importsOf(kept: readonly Kept[], projectDir: string, missed: Missed[]): void {
+  const prompt = kept.find(k => k.lead.part === 'system-prompt');
+  if (!prompt || prompt.lead.part !== 'system-prompt') return;
+  const exists = (name: string): boolean => { try { fs.lstatSync(join(projectDir, name)); return true; } catch { return false; } };
+  for (const imp of atImports(prompt.lead.text, exists)) {
+    missed.push({ path: prompt.lead.place.path, pointer: `/lines/${imp.line}`, part: 'system-prompt', gate: 'block', reason: 'This @path import is expanded only by Claude Code, and the portable projection refuses it. Inline the imported text first.' });
+  }
+}
+
+/** The most unmapped entries a plan lists; the rest are counted. Gated entries are always listed (ruling A5). */
+export const UNMAPPED_LIMIT = 1000;
+
+/**
+ * The unmapped list: deduplicated, in path order, each with an id, and the acknowledgements applied. An acknowledgement
+ * that names no gated entry is refused.
+ */
+function finalUnmapped(missed: readonly Missed[], acknowledged: readonly string[]): Unmapped[] {
+  const seen = new Set<string>(), list: Missed[] = [];
+  for (const u of missed) { const k = canonicalJson(u); if (!seen.has(k)) { seen.add(k); list.push(u); } }
+  list.sort((a, b) => byBytes(a.path, b.path) || byBytes(a.pointer ?? '', b.pointer ?? '') || byBytes(a.reason, b.reason));
+  const counts = new Map<string, number>();
+  const ids = list.map(u => {
+    const base = u.pointer !== undefined ? `${u.path}#${u.pointer}` : u.path;
+    const n = (counts.get(base) ?? 0) + 1;
+    counts.set(base, n);
+    return n === 1 ? base : `${base}~${n}`;
+  });
+  const acks = new Set(acknowledged);
+  const gatedIds = new Set(list.flatMap((u, i) => u.gate === 'acknowledge' ? [ids[i]!] : []));
+  for (const a of acks) if (!gatedIds.has(a)) refuse('ADOPTION_CHOICE_INVALID', [a.slice(0, 120)]);
+  const all: Unmapped[] = list.map((u, i) => ({ ...u, id: ids[i]!, acknowledged: u.gate === 'acknowledge' && acks.has(ids[i]!) }));
+  const gated = all.filter(u => u.gate !== 'none');
+  if (gated.length > UNMAPPED_LIMIT) refuse('ADOPTION_TOO_LARGE', ['the unmapped list']);
+  if (all.length <= UNMAPPED_LIMIT) return all;
+  let room = UNMAPPED_LIMIT - gated.length;
+  const shown = all.filter(u => u.gate !== 'none' || room-- > 0);
+  return [...shown, { id: '(more)', path: '.', part: null, reason: `${all.length - shown.length} more entries are not listed.`, gate: 'none', acknowledged: false }];
 }
 
 // ---- files -------------------------------------------------------------------------------------------------------------
 
-interface BuildInput { harnessId: string; description: string; engines: readonly PlanEngine[]; items: readonly Kept[]; unmapped: Unmapped[]; warnings: string[] }
+interface BuildInput { harnessId: string; description: string; engines: readonly PlanEngine[]; items: readonly Kept[]; unmapped: Missed[]; warnings: string[] }
 
 function xBlocks(blocks: Partial<Record<EngineId, JsonValue>>): Record<string, JsonValue> {
   return Object.fromEntries(ENGINE_IDS.filter(e => blocks[e] !== undefined).map(e => [`x-${e}`, blocks[e]!]));
@@ -434,7 +549,7 @@ function buildFiles(b: BuildInput): Map<string, { bytes: Uint8Array; mode: numbe
     const s = k.item.source;
     if (!s) continue;
     const key = `${s.marketplace}\n${s.name}`, at = sources.get(key);
-    if (at && at.source.version !== s.version) { b.unmapped.push({ path: k.item.places[0]!.path, part: 'plugins', reason: `The source of ${k.item.id} names another pinned version of a package that another skill names too. sources.json holds one version per package, so this source is not recorded.` }); continue; }
+    if (at && at.source.version !== s.version) { b.unmapped.push({ path: k.item.places[0]!.path, part: 'plugins', reason: `The source of ${k.item.id} names another pinned version of a package that another skill names too. sources.json holds one version per package, so this source is not recorded.`, gate: 'none' }); continue; }
     if (at) at.items.push({ part: 'skills', id: k.item.id }); else sources.set(key, { source: s, items: [{ part: 'skills', id: k.item.id }] });
   }
   if (sources.size) {

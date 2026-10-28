@@ -12,7 +12,7 @@ import { parseEngineId } from '../../skill-manifest/src/engine.js';
 import type { SourceShape } from './model.js';
 import { isObj, oneLine, readJson } from './shared.js';
 import type { Obj } from './shared.js';
-import { place, type Context } from './context.js';
+import { lose, place, type Context } from './context.js';
 import type { ProjectReader } from './files.js';
 import { refuse } from './refusal.js';
 import { readSkillFolder } from './skills.js';
@@ -61,19 +61,33 @@ function sourceOf(value: JsonValue | undefined): { source: SourceShape | null; r
   return { source: null, reason: `Its 0.7 source is ${kind}, not a marketplace package, so sources.json records nothing; the plan records the managed copy.` };
 }
 
-const oldEngines = (ctx: Context, list: unknown): EngineId[] => {
+/**
+ * The engines a 0.7 record names, through step 0's mapping, kept to the engines of the harness. Null when the record
+ * names none, which means no restriction. An empty list means it names engines, none of them in the harness: the copy
+ * is then not converted, never widened to every engine (ruling A12).
+ */
+const oldEngines = (ctx: Context, list: unknown): EngineId[] | null => {
+  if (list === undefined || list === null) return null;
   const ids = (Array.isArray(list) ? list : [list]).map(x => parseEngineId(x)).filter((x): x is EngineId => x !== undefined);
   return ctx.engines.filter(e => ids.includes(e));
 };
+
+/** A copy path from a catalog: relative, with no empty, `.`, or `..` segment (ruling A8). */
+const relativePath = (p: unknown): p is string => typeof p === 'string' && p.length > 0 && p.length <= 512 && !p.startsWith('/') && !p.includes('\\') && !/[\0-\x1f\x7f]/.test(p)
+  && p.split('/').every(seg => seg !== '' && seg !== '.' && seg !== '..');
+
+export const CLAIMED_APPROVAL = 'The source comes from what the 0.7 catalog claims. Bowerloom did not check it, and sources.json cannot mark it as claimed until the definition contract takes that field. A person checks it.';
 
 /**
  * 0.7 managed copies: `.bowerloom/managed/catalog/<item>.json` with the canonical copy in `.bowerloom/managed/skills/<id>`,
  * and the v1 namespace `.bowerloom-skills/` with `catalog.json` and `skills/<id>`. A skill copy becomes a candidate whose
  * place is the canonical copy; the engine copies are read by the skill readers and merge with it when they are the same.
- * Other kinds (prompt, agent, slice) are listed: their engine copies are read by the engine readers.
+ * Other kinds (prompt, agent, slice) are listed: their engine copies are read by the engine readers. Every other entry
+ * of these folders is listed (ruling A1).
  */
 function managed(ctx: Context): void {
   const { r } = ctx;
+  const named = new Set<string>();
   const listed = r.list('.bowerloom/managed/catalog', 'legacy');
   for (const { name, kind } of listed ?? []) {
     const rel = `.bowerloom/managed/catalog/${name}`;
@@ -84,38 +98,71 @@ function managed(ctx: Context): void {
       r.miss(rel, 'legacy', 'This catalog is not a 0.7 managed catalog adoption can read, so its copy is not converted. It stays unchanged.'); continue;
     }
     const itemKind = c.item.kind, id = c.item.id;
-    if (itemKind !== 'skill') {
-      ctx.managed.push({ catalog: rel, kind: /^[a-z]{1,16}$/.test(itemKind) ? itemKind : 'unknown', id, skill: null, source: null, copies: surfacePaths(c), reason: 'This 0.7 item is not a skill. Its engine copies are read by the engine readers like any engine file.' });
+    if (itemKind === 'skill') named.add(id);
+    const surfaces = surfacePaths(c);
+    if (surfaces === null) {
+      r.miss(rel, 'legacy', 'A copy path in this catalog is not a relative path inside the project: it is absolute or holds an empty, . or .. segment. The copy is not converted.');
+      ctx.managed.push({ catalog: rel, kind: /^[a-z]{1,16}$/.test(itemKind) ? itemKind : 'unknown', id, skill: null, source: null, copies: [], reason: 'A copy path in the catalog is not a relative path inside the project.' });
       continue;
     }
-    convert(ctx, rel, id, `.bowerloom/managed/skills/${id}`, c.source, oldEngines(ctx, c.harnesses), surfacePaths(c));
+    if (itemKind !== 'skill') {
+      ctx.managed.push({ catalog: rel, kind: /^[a-z]{1,16}$/.test(itemKind) ? itemKind : 'unknown', id, skill: null, source: null, copies: surfaces, reason: 'This 0.7 item is not a skill. Its engine copies are read by the engine readers like any engine file.' });
+      continue;
+    }
+    convert(ctx, rel, id, `.bowerloom/managed/skills/${id}`, c.source, oldEngines(ctx, c.harnesses), surfaces);
+  }
+  if (listed) r.rest('.bowerloom/managed/catalog', listed, 'legacy');
+  const copies = r.list('.bowerloom/managed/skills', 'legacy');
+  if (copies) for (const { name } of copies) if (named.has(name)) r.consumed.add(`.bowerloom/managed/skills/${name}`);
+  if (copies) for (const { name } of copies) {
+    const rel = `.bowerloom/managed/skills/${name}`;
+    if (!r.consumed.has(rel)) { r.consumed.add(rel); r.miss(rel, 'legacy', 'No 0.7 catalog names this managed copy, so it is not converted. It stays unchanged.'); }
   }
   if (r.kind('.bowerloom-skills') !== null) {
-    r.consumed.add('.bowerloom-skills');
+    const top = r.list('.bowerloom-skills', 'legacy');
     const c = readJson(ctx, '.bowerloom-skills/catalog.json', 'legacy');
     if (c && c.format === 'bowerloom/observed-managed-skill-catalog/v1beta1') {
-      for (const { name, kind } of r.list('.bowerloom-skills/skills', 'legacy') ?? []) {
+      const skills = r.list('.bowerloom-skills/skills', 'legacy');
+      for (const { name, kind } of skills ?? []) {
         if (kind !== 'dir' || !isId(name)) continue;
         convert(ctx, '.bowerloom-skills/catalog.json', name, `.bowerloom-skills/skills/${name}`, c.source, oldEngines(ctx, c.harness), []);
       }
+      if (skills) r.rest('.bowerloom-skills/skills', skills, 'legacy');
     } else if (c) r.miss('.bowerloom-skills/catalog.json', 'legacy', 'This catalog is not a 0.7 v1 managed catalog adoption can read, so its copy is not converted. It stays unchanged.');
+    if (top) r.rest('.bowerloom-skills', top, 'legacy');
   }
 }
 
-function surfacePaths(c: Obj): string[] {
+/** The copy paths of a catalog, or null when one is not a relative path inside the project. */
+function surfacePaths(c: Obj): string[] | null {
   if (!Array.isArray(c.surfaces)) return [];
-  return c.surfaces.flatMap(s => isObj(s) && typeof s.path === 'string' && s.id !== 'catalog' && s.id !== 'ignore' && /^[A-Za-z0-9._/-]{1,512}$/.test(s.path) ? [s.path] : []);
+  const out: string[] = [];
+  for (const s of c.surfaces) {
+    if (!isObj(s) || s.id === 'catalog' || s.id === 'ignore') continue;
+    if (!relativePath(s.path)) return null;
+    out.push(s.path);
+  }
+  return out;
 }
 
-function convert(ctx: Context, catalog: string, id: string, canonical: string, source: JsonValue | undefined, engines: EngineId[], copies: string[]): void {
+function convert(ctx: Context, catalog: string, id: string, canonical: string, source: JsonValue | undefined, engines: EngineId[] | null, copies: string[]): void {
   const { r } = ctx;
   const s = sourceOf(source);
-  const record = { catalog, kind: 'skill', id, skill: null, source: s.source, copies, reason: s.reason };
+  const claimed: SourceShape | null = s.source ? { ...s.source, claimed: true } : null;
+  const record = { catalog, kind: 'skill', id, skill: null, source: claimed, copies, reason: s.reason };
   if (r.kind(canonical) !== 'dir') { r.miss(catalog, 'legacy', 'The canonical copy of this 0.7 item is missing, so it is not converted.'); ctx.managed.push({ ...record, reason: 'The canonical copy is missing.' }); return; }
-  const got = readSkillFolder(r, canonical, place(canonical, engines, '0.7 managed copy', null, { kind: 'managed-0.7' }), engines, s.source ? { source: s.source } : {});
+  if (engines !== null && engines.length === 0) {
+    r.consumed.add(canonical);
+    r.miss(canonical, 'legacy', 'The 0.7 item names no engine of this harness, so it is not widened to every engine. It is not converted.');
+    ctx.managed.push({ ...record, reason: 'The 0.7 item names no engine of this harness.' });
+    return;
+  }
+  const reach = engines ?? [];
+  const got = readSkillFolder(r, canonical, place(canonical, reach, '0.7 managed copy', null, { kind: 'managed-0.7' }), reach, claimed ? { source: claimed } : {});
   r.consumed.add(canonical);
   if (!got || 'fault' in got) { ctx.managed.push({ ...record, reason: 'The canonical copy cannot be adopted; the unmapped list says why.' }); return; }
-  ctx.cands.push(got.skill, ...got.rules);
+  ctx.cands.push(claimed ? { ...got.skill, needsApproval: [...got.skill.needsApproval, CLAIMED_APPROVAL] } : got.skill, ...got.rules);
+  for (const a of got.lost) for (const e of reach) lose(ctx, e, a);
   ctx.managed.push({ ...record, id, copies: [...new Set([...copies, canonical])] });
 }
 

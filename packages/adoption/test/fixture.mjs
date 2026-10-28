@@ -24,7 +24,8 @@ export function project(t, files = {}) {
   const dir = path.join(base, 'project');
   fs.mkdirSync(dir, { mode: 0o755 });
   write(dir, files);
-  return { base, dir, def: path.join(dir, '.bowerloom'), input: (extra = {}) => ({ projectDir: dir, ...extra }) };
+  const stateDir = path.join(base, 'state', 'adoption');
+  return { base, dir, def: path.join(dir, '.bowerloom'), stateDir, input: (extra = {}) => ({ projectDir: dir, stateDir, ...extra }) };
 }
 export function write(dir, files) {
   for (const [rel, value] of Object.entries(files)) {
@@ -55,3 +56,6 @@ export const originals = (snap, written) => Object.fromEntries(Object.entries(sn
 export const read = (dir, rel) => fs.readFileSync(path.join(dir, rel), 'utf8');
 export const item = (plan, part, id) => plan.items.find(i => i.part === part && i.id === id);
 export const unmappedAt = (plan, p) => plan.unmapped.filter(u => u.path === p || u.path.startsWith(p + '/'));
+
+/** The ids of every unmapped entry that waits for an acknowledgement. */
+export const gated = plan => plan.unmapped.filter(u => u.gate === 'acknowledge').map(u => u.id);

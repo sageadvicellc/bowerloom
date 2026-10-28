@@ -67,7 +67,7 @@ export function scrubTree(value: JsonValue, hint: string, pointer = '', key = ''
       });
     }
     if (v !== null && typeof v === 'object') {
-      return Object.fromEntries(Object.entries(v).map(([kk, x]) => [kk, walk(x, `${at}/${isSafeName(kk) ? kk.replace(/~/g, '~0').replace(/\//g, '~1') : '*'}`, kk, [...names, isSafeName(kk) ? kk : 'KEY'])]));
+      return Object.fromEntries(Object.entries(v).map(([kk, x], i) => [kk, walk(x, `${at}/${isSafeName(kk) ? kk : `#${i}`}`, kk, [...names, isSafeName(kk) ? kk : 'KEY'])]));
     }
     return v;
   };

@@ -10,17 +10,25 @@ import { openCodeFromConfig } from '../../fidelity/src/index.js';
 import { GUARDRAIL_EFFECTS, isId, isPermissionKey, readFrontmatter, safeName } from '../../harness-definition/src/index.js';
 import type { GuardrailAction, GuardrailEffect, JsonValue } from '../../harness-definition/src/index.js';
 import { patternProblem } from '../../fidelity/src/index.js';
-import { place, type Context } from './context.js';
+import { lose, place, type Context, type LostAction } from './context.js';
 import { toLf, utf8 } from './files.js';
 import type { Candidate } from './model.js';
 import { refuse } from './refusal.js';
 import { textSecretRule } from './secrets.js';
-import { PERMISSION_REASON, addServer, blockOf, isObj, leftovers, oneLine, privateKeys, ptr, readJson } from './shared.js';
+import { PERMISSION_REASON, addServer, blockOf, isObj, leftovers, kp, oneLine, privateKeys, readJson } from './shared.js';
 import type { Obj } from './shared.js';
 
 const ENGINE = 'opencode' as const;
 const ACTIONS: Readonly<Record<string, GuardrailAction>> = { bash: 'shell', read: 'read', edit: 'edit', webfetch: 'web', task: 'subagent', skill: 'skill' };
 const RANK: Readonly<Record<GuardrailEffect, number>> = { allow: 0, ask: 1, deny: 2 };
+/** The neutral action an OpenCode permission key limits, for a deny or ask that cannot be carried (ruling A2). */
+const LOST: Readonly<Record<string, LostAction>> = {
+  '*': '*', bash: 'shell', read: 'read', grep: 'read', glob: 'read', list: 'read', external_directory: 'read', edit: 'edit', webfetch: 'web', websearch: 'web', task: 'subagent', skill: 'skill',
+};
+function lostOf(ctx: Context, key: string): void {
+  const action = LOST[key] ?? (/^[A-Za-z0-9-]+_/.test(key) ? 'mcp' : undefined);
+  if (action !== undefined) lose(ctx, ENGINE, action);
+}
 const isEffect = (v: unknown): v is GuardrailEffect => typeof v === 'string' && (GUARDRAIL_EFFECTS as readonly string[]).includes(v);
 
 /** True when the 1.x reader does not apply: a `shell` key or a list of rules is the 2.x shape. */
@@ -31,37 +39,47 @@ export function isOpenCode2Shape(permission: JsonValue): boolean {
 function readPermission(ctx: Context, value: JsonValue, path: string, shape: string): void {
   const { r } = ctx;
   if (isOpenCode2Shape(value)) refuse('ADOPTION_OPENCODE_VERSION', [path]);
-  if (!isObj(value)) { r.miss(path, 'guardrails', 'permission is not an object of keys.', '/permission'); return; }
+  if (!isObj(value)) { r.miss(path, 'guardrails', 'permission is not an object of keys.', '/permission', 'acknowledge'); lose(ctx, ENGINE, '*'); return; }
   const valid: Obj = {};
   for (const [k, v] of Object.entries(value)) {
     if (isEffect(v) || (isObj(v) && Object.values(v).every(isEffect))) valid[k] = v;
-    else r.miss(path, 'guardrails', 'This permission key is not an action word or an object of patterns and action words.', `/permission${ptr(k)}`);
+    else {
+      // It could be a deny or an ask that cannot be read, so it needs acknowledgement, and its action loses its allows.
+      r.miss(path, 'guardrails', 'This permission key is not an action word or an object of patterns and action words.', `/permission${kp(value, k)}`, 'acknowledge');
+      lostOf(ctx, k);
+    }
   }
   for (const { key, rules } of openCodeFromConfig(valid as Parameters<typeof openCodeFromConfig>[0])) {
-    const base = `/permission${ptr(key)}`;
+    const base = `/permission${kp(value, key)}`;
     const action = ACTIONS[key];
     if (action === undefined) {
-      r.miss(path, 'guardrails', key === '*' ? 'A rule for every permission has no neutral form: the neutral rules name an action. The projection writes Bowerloom\'s own default for OpenCode.' : 'The neutral guardrail actions have no form for this OpenCode permission.', base);
+      const strict = rules.some(x => x.action !== 'allow');
+      r.miss(path, 'guardrails', key === '*' ? 'A rule for every permission has no neutral form: the neutral rules name an action. The projection writes Bowerloom\'s own default for OpenCode.' : 'The neutral guardrail actions have no form for this OpenCode permission.', base, strict ? 'acknowledge' : 'none');
+      if (strict) lostOf(ctx, key);
       continue;
     }
     const single = typeof valid[key] === 'string';
     const kept: { pattern: string; effect: GuardrailEffect; index: number }[] = [];
     rules.forEach((rule, index) => {
-      const pointer = single ? base : `${base}${ptr(rule.pattern)}`;
+      const pointer = single ? base : `${base}${kp(value[key] as Obj, rule.pattern)}`;
       const effect = rule.action, strength = effect === 'allow' ? 'advisory' as const : 'enforced' as const;
       let pattern = rule.pattern;
       const notes: string[] = [];
+      const miss = (reason: string): void => {
+        r.miss(path, 'guardrails', reason, pointer, effect === 'allow' ? 'none' : 'acknowledge');
+        if (effect !== 'allow') lose(ctx, ENGINE, action);
+      };
       if (action === 'read' || action === 'edit') {
-        if (pattern !== '*') { r.miss(path, 'guardrails', 'OpenCode reads * across folders, and the neutral path language does not. Adoption does not guess a translation of this path rule.', pointer); return; }
+        if (pattern !== '*') { miss('OpenCode reads * across folders, and the neutral path language does not. Adoption does not guess a translation of this path rule.'); return; }
         pattern = '**';
       } else if (action === 'web') {
-        if (!single) { r.miss(path, 'guardrails', 'OpenCode 1.x takes one action for webfetch, so a pattern here has no meaning adoption can carry.', pointer); return; }
-        if (effect === 'allow') { r.miss(path, 'guardrails', 'The neutral web pattern * also allows web search, which is wider than a webfetch allow.', pointer); return; }
+        if (!single) { miss('OpenCode 1.x takes one action for webfetch, so a pattern here has no meaning adoption can carry.'); return; }
+        if (effect === 'allow') { miss('The neutral web pattern * also allows web search, which is wider than a webfetch allow.'); return; }
         notes.push('The web pattern * also covers web search, so this blocks more than the source.');
-      } else if (pattern.includes('?')) { r.miss(path, 'guardrails', 'OpenCode reads ? as one character, and the neutral pattern reads it as itself, so the rule has no exact neutral form.', pointer); return; }
+      } else if (pattern.includes('?')) { miss('OpenCode reads ? as one character, and the neutral pattern reads it as itself, so the rule has no exact neutral form.'); return; }
       const shaped = { action, pattern, effect, strength };
       const problem = patternProblem(shaped);
-      if (problem) { r.miss(path, 'guardrails', problem, pointer); return; }
+      if (problem) { miss(problem); return; }
       kept.push({ pattern, effect, index });
       ctx.cands.push({ part: 'guardrails', id: '', rule: shaped, place: place(path, [ENGINE], shape, ENGINE, { pointer }), blocks: {}, secrets: [], needsApproval: [], notes } satisfies Candidate);
     });
@@ -91,7 +109,7 @@ function refs(v: Obj): Obj | null {
 function readMcp(ctx: Context, value: JsonValue, path: string, shape: string): void {
   if (!isObj(value)) { ctx.r.miss(path, 'mcp', 'mcp is not an object of servers.', '/mcp'); return; }
   for (const [name, s] of Object.entries(value)) {
-    const base = `/mcp${ptr(name)}`;
+    const base = `/mcp${kp(value, name)}`;
     if (!isObj(s) || (s.type !== 'local' && s.type !== 'remote')) { ctx.r.miss(path, 'mcp', 'This server is not an object with type local or remote.', base); continue; }
     const env = s.environment === undefined ? undefined : isObj(s.environment) ? refs(s.environment) : null;
     const headers = s.headers === undefined ? undefined : isObj(s.headers) ? refs(s.headers) : null;
@@ -126,7 +144,7 @@ function addAgent(ctx: Context, id: string, d: Obj, body: string, path: string, 
   const extra: Obj = {};
   for (const [k, v] of Object.entries(d)) {
     if (['description', 'model', 'prompt'].includes(k)) continue;
-    if (isPermissionKey(k)) { r.miss(path, 'subagents', PERMISSION_REASON, `${base}${ptr(k)}`); continue; }
+    if (isPermissionKey(k)) { r.miss(path, 'subagents', PERMISSION_REASON, `${base}${kp(d, k)}`); continue; }
     extra[k] = v;
   }
   const { blocks, secrets } = blockOf([ENGINE], privateKeys(ctx, extra, path, base, 'subagents'), path, base, id);
@@ -140,7 +158,7 @@ function readConfig(ctx: Context): void {
   const path = ctx.r.kind('opencode.json') !== null ? 'opencode.json' : ctx.r.kind('opencode.jsonc') !== null ? 'opencode.jsonc' : null;
   if (path === null) return;
   if (path === 'opencode.json' && ctx.r.kind('opencode.jsonc') !== null) { ctx.r.consumed.add('opencode.jsonc'); ctx.r.miss('opencode.jsonc', null, 'opencode.json is read; adoption reads one OpenCode settings file.'); }
-  const c = readJson(ctx, path, 'guardrails', path.endsWith('c'));
+  const c = readJson(ctx, path, 'guardrails', path.endsWith('c'), { engine: ENGINE, action: '*' });
   if (!c) return;
   const shape = `OpenCode 1.x ${path}`;
   const rest: Obj = {};
@@ -150,7 +168,7 @@ function readConfig(ctx: Context): void {
     else if (key === 'agent') {
       if (!isObj(value)) { ctx.r.miss(path, 'subagents', 'agent is not an object.', '/agent'); continue; }
       for (const [id, a] of Object.entries(value)) {
-        const base = `/agent${ptr(id)}`;
+        const base = `/agent${kp(value, id)}`;
         if (!isObj(a)) { ctx.r.miss(path, 'subagents', 'This agent is not an object.', base); continue; }
         if (a.prompt !== undefined && (typeof a.prompt !== 'string' || /\{file:/.test(a.prompt))) { ctx.r.miss(path, 'subagents', 'The prompt is not inline text: a {file:...} prompt is a path that adoption does not follow.', `${base}/prompt`); continue; }
         if (typeof a.prompt === 'string' && textSecretRule('agents/x.md', Buffer.from(a.prompt))) { ctx.r.miss(path, 'subagents', 'The prompt holds a value that looks like a secret.', `${base}/prompt`); continue; }
@@ -171,7 +189,6 @@ function readAgentFiles(ctx: Context): void {
   const root = '.opencode/agents';
   const listed = r.list(root, 'subagents');
   if (listed === null) return;
-  r.consumed.add(root);
   for (const { name, kind } of listed) {
     const rel = `${root}/${name}`;
     if (kind !== 'file' || !name.endsWith('.md')) continue;
@@ -184,6 +201,7 @@ function readAgentFiles(ctx: Context): void {
     if (!fm.ok) { r.miss(rel, 'subagents', fm.message); continue; }
     addAgent(ctx, name.slice(0, -3), { ...fm.data }, toLf(fm.body), rel, '', 'OpenCode agent file');
   }
+  r.rest(root, listed, 'subagents');
 }
 
 export function readOpenCode(ctx: Context): void {

@@ -3,41 +3,45 @@
  * `hooks.json` and `[hooks]`), MCP server entries, and the leftover keys of a settings file, which become an
  * engine-private file under `engines/<engine>/`.
  */
-import { DEFINITION_LIMITS, isPermissionKey, isServerName, parseStrictJson } from '../../harness-definition/src/index.js';
+import { DEFINITION_LIMITS, isPermissionKey, isSafeName, isServerName, parseStrictJson } from '../../harness-definition/src/index.js';
 import { utf8 } from './files.js';
 import type { EngineId, EnvValue, JsonValue, McpTransport } from '../../harness-definition/src/index.js';
-import { place, type Context } from './context.js';
-import type { Blocks, Place } from './model.js';
+import { lose, place, type Context, type LostAction } from './context.js';
+import type { Blocks, Gate, Place } from './model.js';
 import { referenceName, scrubTree, secretRule, withoutSecret } from './secrets.js';
 
 export type Obj = Record<string, JsonValue>;
 export const isObj = (v: unknown): v is Obj => v !== null && typeof v === 'object' && !Array.isArray(v);
-export const ptr = (...parts: readonly (string | number)[]): string => parts.map(p => `/${String(p).replace(/~/g, '~0').replace(/\//g, '~1')}`).join('');
+/**
+ * One pointer segment for a key of an object: `/<key>` when the key is a safe name, else `/#<index>`, so a pointer never
+ * shows a key that could be a secret (ruling A10).
+ */
+export const kp = (obj: object, key: string): string => isSafeName(key) ? `/${key}` : `/#${Object.keys(obj).indexOf(key)}`;
 const CONTROL = /[\0-\x08\x0a-\x1f\x7f]/;
 export const oneLine = (v: unknown, max = 4096): v is string => typeof v === 'string' && v.trim() !== '' && v.length <= max && !CONTROL.test(v);
 
 export const PERMISSION_REASON = 'This key is permission-like, and a private block holds no permission-like key. It has no neutral form, so it is not adopted.';
 export const HOOK_APPROVAL = 'A hook runs a command. A person reads the command before Bowerloom writes it into an engine.';
 export const STDIO_APPROVAL = 'An MCP server that uses stdio runs a command. A person reads the command before Bowerloom writes it into an engine.';
-export const REFERENCE_APPROVAL = 'This MCP server holds a ${NAME} reference, so it could send that secret anywhere. A person checks where it goes.';
+export const REFERENCE_APPROVAL = 'This MCP server holds a ${NAME} reference in its command, arguments, URL, environment, or headers, so it could send that value anywhere. A person checks where it goes.';
 
 /** Splits the keys of an object into a private block and permission-like keys, which are listed as unmapped. */
-export function privateKeys(ctx: Context, value: Obj, path: string, base: string, part: Parameters<Context['r']['miss']>[1]): Obj {
+export function privateKeys(ctx: Context, value: Obj, path: string, base: string, part: Parameters<Context['r']['miss']>[1], gate: Gate = 'none'): Obj {
   const out: Obj = {};
   const strip = (v: JsonValue, at: string): JsonValue | undefined => {
     if (Array.isArray(v)) return v.map((x, i) => strip(x, `${at}/${i}`) ?? null);
     if (!isObj(v)) return v;
     const o: Obj = {};
     for (const [k, x] of Object.entries(v)) {
-      if (isPermissionKey(k)) { ctx.r.miss(path, part, PERMISSION_REASON, `${at}${ptr(k)}`); continue; }
-      const s = strip(x, `${at}${ptr(k)}`);
+      if (isPermissionKey(k)) { ctx.r.miss(path, part, PERMISSION_REASON, `${at}${kp(v, k)}`, gate); continue; }
+      const s = strip(x, `${at}${kp(v, k)}`);
       if (s !== undefined) o[k] = s;
     }
     return o;
   };
   for (const [k, v] of Object.entries(value)) {
-    if (isPermissionKey(k)) { ctx.r.miss(path, part, PERMISSION_REASON, `${base}${ptr(k)}`); continue; }
-    const s = strip(v, `${base}${ptr(k)}`);
+    if (isPermissionKey(k)) { ctx.r.miss(path, part, PERMISSION_REASON, `${base}${kp(value, k)}`, gate); continue; }
+    const s = strip(v, `${base}${kp(value, k)}`);
     if (s !== undefined) out[k] = s;
   }
   return out;
@@ -81,7 +85,7 @@ export function readHooks(ctx: Context, value: JsonValue, at: { path: string; ba
   if (!ctx.engines.includes(at.engine)) return;
   if (!isObj(value)) { r.miss(at.path, 'hooks', 'The hooks are not an object of events, so they are not adopted.', at.base); return; }
   for (const [event, groups] of Object.entries(value)) {
-    const ep = `${at.base}${ptr(event)}`;
+    const ep = `${at.base}${kp(value, event)}`;
     if (!/^[A-Za-z][A-Za-z0-9]{0,63}$/.test(event) || !Array.isArray(groups)) { r.miss(at.path, 'hooks', 'This is not an event name with a list of hook groups.', ep); continue; }
     groups.forEach((group, gi) => {
       const gp = `${ep}/${gi}`;
@@ -170,11 +174,11 @@ export function addServer(ctx: Context, s: ServerInput): void {
     if (!isObj(v)) return miss(`The ${field} is not a map of text.`);
     const out: Record<string, EnvValue> = {};
     for (const [k, x] of Object.entries(v)) {
-      if (typeof x !== 'string') return miss(`A value of ${field} is not text.`, `${s.base}/${field}${ptr(k)}`);
-      if (!PORTABLE_REF.test(x)) return miss(`A value of ${field} uses a $ form other than \${NAME}, such as \${NAME:-x} or $NAME. It is not portable, and Bowerloom never copies it as literal text.`, `${s.base}/${field}${ptr(k)}`);
+      if (typeof x !== 'string') return miss(`A value of ${field} is not text.`, `${s.base}/${field}${kp(v, k)}`);
+      if (!PORTABLE_REF.test(x)) return miss(`A value of ${field} uses a $ form other than \${NAME}, such as \${NAME:-x} or $NAME. It is not portable, and Bowerloom never copies it as literal text.`, `${s.base}/${field}${kp(v, k)}`);
       const name = field === 'env' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(k) ? k : referenceName(s.name, k);
       const got = withoutSecret(k, x, name);
-      if (got.replaced) secrets.push({ path: s.path, pointer: `${s.base}/${field}${ptr(k)}`, reference: `\${${name}}` });
+      if (got.replaced) secrets.push({ path: s.path, pointer: `${s.base}/${field}${kp(v, k)}`, reference: `\${${name}}` });
       out[k] = got.value;
     }
     server[field] = out;
@@ -186,7 +190,8 @@ export function addServer(ctx: Context, s: ServerInput): void {
   if (s.enabled !== undefined) { if (typeof s.enabled === 'boolean') server.enabled = s.enabled; else miss('enabled is not true or false, so the server is adopted without it.', `${s.base}/enabled`); }
   const extra = privateKeys(ctx, s.extra, s.path, s.base, 'mcp');
   const { blocks, secrets: blockSecrets } = blockOf([s.owner].filter(e => engines.includes(e)), extra, s.path, s.base, s.name);
-  const refs = [...Object.values(server.env ?? {}), ...Object.values(server.headers ?? {})].some(v => typeof v === 'string' && v.includes('${'));
+  // Ruling A7: a reference anywhere the server reads it, its command, arguments, URL, environment, or headers.
+  const refs = [server.command, server.url, ...(server.args ?? []), ...Object.values(server.env ?? {}), ...Object.values(server.headers ?? {})].some(v => typeof v === 'string' && v.includes('${'));
   const p: Place = place(s.path, engines, s.shape, s.owner, { pointer: s.base });
   ctx.cands.push({
     part: 'mcp', id: s.name, server, place: p, blocks, secrets: [...secrets, ...blockSecrets], notes: [...(s.notes ?? [])],
@@ -198,7 +203,7 @@ export function addServer(ctx: Context, s: ServerInput): void {
 export function readMcpServers(ctx: Context, value: JsonValue, at: { path: string; base: string; engines: readonly EngineId[]; owner: EngineId; shape: string }): void {
   if (!isObj(value)) { ctx.r.miss(at.path, 'mcp', 'mcpServers is not an object of servers.', at.base); return; }
   for (const [name, cfg] of Object.entries(value)) {
-    const base = `${at.base}${ptr(name)}`;
+    const base = `${at.base}${kp(value, name)}`;
     if (!isObj(cfg)) { ctx.r.miss(at.path, 'mcp', 'This server is not an object.', base); continue; }
     const type = cfg.type ?? (cfg.url !== undefined && cfg.command === undefined ? 'http' : 'stdio');
     const transport = type === 'streamable-http' ? 'http' : type;
@@ -248,12 +253,41 @@ export function stripJsonc(text: string): string | null {
 }
 
 /** Reads a JSON (or JSONC) file of an engine. Null after listing it as unmapped when it is not a JSON object. */
-export function readJson(ctx: Context, path: string, part: Parameters<Context['r']['miss']>[1], jsonc = false): Obj | null {
-  const f = ctx.r.file(path, part);
-  if (!f) return null;
+export function readJson(ctx: Context, path: string, part: Parameters<Context['r']['miss']>[1], jsonc = false, guard?: { engine: EngineId; action: LostAction }): Obj | null {
+  const gate: Gate = guard ? 'acknowledge' : 'none';
+  const f = ctx.r.file(path, part, gate);
+  if (!f) { if (guard && ctx.r.unmapped.some(u => u.path === path)) lose(ctx, guard.engine, guard.action); return null; }
   const text = utf8(f.bytes);
   const source = text === null ? null : jsonc ? stripJsonc(text) : text;
   const parsed = source === null ? null : parseStrictJson(source);
-  if (!parsed || !parsed.ok || !isObj(parsed.value)) { ctx.r.miss(path, part, `This file is not a ${jsonc ? 'JSONC' : 'strict JSON'} object adoption can read: comments${jsonc ? ' are fine, but' : ','} duplicate keys and values that are not JSON are refused. It is not adopted.`); return null; }
+  if (!parsed || !parsed.ok || !isObj(parsed.value)) {
+    ctx.r.miss(path, part, `This file is not a ${jsonc ? 'JSONC' : 'strict JSON'} object adoption can read: comments${jsonc ? ' are fine, but' : ','} duplicate keys and values that are not JSON are refused. It is not adopted.`, undefined, gate);
+    if (guard) lose(ctx, guard.engine, guard.action);
+    return null;
+  }
   return parsed.value;
+}
+
+// ---- private blocks that run or reach something (ruling A9) ------------------------------------------------------------
+
+export const RISK_APPROVAL = 'This private block holds a command, a URL, or a credential helper. The engine runs or contacts it, so a person reads it before Bowerloom writes it.';
+/** Words of a key that name a command, a place the engine reaches, or a credential helper. */
+const RISK_WORDS = new Set([
+  'url', 'urls', 'uri', 'endpoint', 'host', 'base', 'command', 'cmd', 'exec', 'run', 'script', 'program', 'binary', 'bin',
+  'path', 'refresh', 'export', 'notify', 'helper', 'auth', 'oauth', 'credential', 'credentials', 'login', 'token', 'marketplace',
+  'marketplaces', 'plugin', 'plugins', 'provider', 'providers', 'server', 'servers', 'source', 'sources', 'repo', 'repository',
+  'hook', 'hooks', 'launch', 'shell', 'socket', 'proxy',
+]);
+const riskyKey = (key: string): boolean => key.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase().split(/[^a-z0-9]+/).some(w => RISK_WORDS.has(w));
+const riskyText = (v: string): boolean => /^[a-z][a-z0-9+.-]*:\/\//i.test(v) || /^(?:\/|\.\.?\/|~\/)/.test(v) || v.includes('$(') || v.includes('`');
+
+/**
+ * True when a private block holds a command, a URL, or a credential helper: a key named for one, or a value that looks
+ * like a URL, a path, or a command substitution. The contract's list of permission-like words does not cover these yet.
+ */
+export function riskOf(value: JsonValue): boolean {
+  if (typeof value === 'string') return riskyText(value);
+  if (Array.isArray(value)) return value.some(riskOf);
+  if (isObj(value)) return Object.entries(value).some(([k, v]) => riskyKey(k) || riskOf(v));
+  return false;
 }

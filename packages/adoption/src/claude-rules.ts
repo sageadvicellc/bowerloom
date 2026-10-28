@@ -88,3 +88,13 @@ export function toolList(value: unknown): string[] | null {
   if (current) out.push(current);
   return depth === 0 && out.length ? out : null;
 }
+
+/** The neutral action a Claude Code rule names, for a rule that could not be mapped; `*` when it names none. */
+export function claudeAction(text: string): import('./context.js').LostAction {
+  if (text.startsWith('mcp__')) return 'mcp';
+  const tool = /^([A-Za-z]+)/.exec(text)?.[1] ?? '';
+  const map: Readonly<Record<string, import('./context.js').LostAction>> = {
+    Bash: 'shell', Read: 'read', Edit: 'edit', Write: 'write', MultiEdit: 'edit', NotebookEdit: 'edit', WebFetch: 'web', WebSearch: 'web', Agent: 'subagent', Task: 'subagent', Skill: 'skill',
+  };
+  return map[tool] ?? '*';
+}

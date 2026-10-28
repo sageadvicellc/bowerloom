@@ -53,8 +53,8 @@ test('apply writes the approved plan by copy; the definition loads and the origi
   });
   const before = snapshot(p.dir);
   const plan = planAdoption(p.input({ engines: TWO }));
-  const result = await applyAdoption(p.input({ engines: TWO }), plan.revision);
-  assert.deepEqual(result.written, plan.files.map(f => f.path));
+  const result = await applyAdoption(p.input({ engines: TWO }), plan.revision, plan.approvalsRequired);
+  assert.deepEqual(result.written, [...plan.files.map(f => f.path).filter(f => f !== 'harness.json'), 'harness.json'], 'harness.json is written last');
   const after = snapshot(p.dir);
   for (const [k, v] of Object.entries(before)) assert.equal(after[k], v, `${k} changed`);
   const def = loaded(p.def);
@@ -70,8 +70,8 @@ test('apply refuses a revision that is not the current plan, and writes nothing'
   const p = project(t, { 'AGENTS.md': INSTRUCTIONS });
   const plan = planAdoption(p.input({ engines: TWO }));
   fs.writeFileSync(path.join(p.dir, 'AGENTS.md'), INSTRUCTIONS + 'More.\n');
-  await assert.rejects(applyAdoption(p.input({ engines: TWO }), plan.revision), code('ADOPTION_STALE_APPROVAL'));
-  await assert.rejects(applyAdoption(p.input({ engines: TWO }), 'not-a-revision'), code('ADOPTION_STALE_APPROVAL'));
+  await assert.rejects(applyAdoption(p.input({ engines: TWO }), plan.revision, plan.approvalsRequired), code('ADOPTION_STALE_APPROVAL'));
+  await assert.rejects(applyAdoption(p.input({ engines: TWO }), 'not-a-revision', []), code('ADOPTION_STALE_APPROVAL'));
   assert.equal(fs.existsSync(p.def), false);
 });
 
@@ -132,7 +132,7 @@ test('same name, different content: both appear side by side and apply waits for
   assert.deepEqual(c.variants.map(v => v.key), ['.agents/skills/review', '.claude/skills/review'], 'variants in path order, not import order');
   assert.deepEqual(c.options, ['pick', 'rename']);
   assert.equal(c.choice, null);
-  await assert.rejects(applyAdoption(p.input({ engines: TWO }), plan.revision), code('ADOPTION_CHOICE_REQUIRED'));
+  await assert.rejects(applyAdoption(p.input({ engines: TWO }), plan.revision, plan.approvalsRequired), code('ADOPTION_CHOICE_REQUIRED'));
   assert.equal(fs.existsSync(p.def), false);
 
   // Pick one: it applies to every engine that had a variant. The other variant is listed as not adopted.
@@ -148,7 +148,7 @@ test('same name, different content: both appear side by side and apply waits for
   assert.equal(both.ready, true);
   assert.deepEqual(item(both, 'skills', 'review').engines, ['claude-code']);
   assert.deepEqual(item(both, 'skills', 'review-codex').engines, ['codex']);
-  await applyAdoption(input, both.revision);
+  await applyAdoption(input, both.revision, both.approvalsRequired);
   const def = loaded(p.def);
   assert.deepEqual(def.entries.skills.map(s => [s.id, s.name, s.body.trim()]), [['review', 'review', 'Claude version.'], ['review-codex', 'review-codex', 'Codex version.']]);
 });

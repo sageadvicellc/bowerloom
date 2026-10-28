@@ -6,7 +6,7 @@
  * its project files are instructions and skills only; the sweep lists any other file in `.dsh`.
  */
 import type { Context } from './context.js';
-import { isObj, leftovers, ptr, readJson, readMcpServers } from './shared.js';
+import { isObj, kp, leftovers, readJson, readMcpServers } from './shared.js';
 
 const ENGINE = 'pi' as const;
 
@@ -15,7 +15,7 @@ export function readPi(ctx: Context): void {
   const mcp = readJson(ctx, '.pi/mcp.json', 'mcp');
   if (mcp) for (const [k, v] of Object.entries(mcp)) {
     if (k === 'mcpServers') readMcpServers(ctx, v, { path: '.pi/mcp.json', base: '/mcpServers', engines: [ENGINE], owner: ENGINE, shape: 'Pi mcp.json' });
-    else ctx.r.miss('.pi/mcp.json', 'mcp', 'Adoption reads only mcpServers in mcp.json.', ptr(k));
+    else ctx.r.miss('.pi/mcp.json', 'mcp', 'Adoption reads only mcpServers in mcp.json.', kp(mcp, k));
   }
   const settings = readJson(ctx, '.pi/settings.json', 'engine-private');
   if (settings) {

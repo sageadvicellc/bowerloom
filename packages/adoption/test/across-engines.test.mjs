@@ -34,7 +34,7 @@ test('the same MCP server that differs between engines is shown side by side; ke
   const input = p.input({ engines: CC_OC, choices: { 'mcp/docs': { rename: { 'opencode.json#/mcp/docs': 'docs-opencode' } } } });
   const both = planAdoption(input);
   assert.deepEqual([item(both, 'mcp', 'docs').engines, item(both, 'mcp', 'docs-opencode').engines], [['claude-code'], ['opencode']]);
-  await applyAdoption(input, both.revision);
+  await applyAdoption(input, both.revision, both.approvalsRequired);
   const def = loadDefinition(p.def).definition;
   assert.deepEqual(def.entries.mcp.map(s => [s.name, s.args, s.engines]), [['docs', ['-y', 'example-docs-mcp@1'], ['claude-code']], ['docs-opencode', ['-y', 'example-docs-mcp@2'], ['opencode']]]);
 });
@@ -52,7 +52,7 @@ test('a rule whose effect differs between engines: both are kept, each for its e
   const push = plan.items.filter(i => i.part === 'guardrails' && i.places.some(x => x.pointer?.includes('git push')  || x.pointer === '/permissions/ask/0'));
   assert.equal(push.length, 1, 'the identical ask rule from both engines is one item');
   assert.equal(push[0].engines, null);
-  await applyAdoption(p.input({ engines: CC_OC }), plan.revision);
+  await applyAdoption(p.input({ engines: CC_OC }), plan.revision, plan.approvalsRequired);
   const def = loadDefinition(p.def).definition;
   assert.deepEqual(def.entries.rules.map(r => [r.pattern, r.effect, r.engines ?? null]).sort(), [['git push *', 'ask', null], ['rm -rf *', 'ask', ['opencode']], ['rm -rf *', 'deny', ['claude-code']]]);
 });

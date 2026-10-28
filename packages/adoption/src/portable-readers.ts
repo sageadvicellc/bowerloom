@@ -2,8 +2,10 @@
  * The portable parts as engines keep them (portable parts spec, sections 4.1 and 4.2): instruction files and skill
  * folders. Each place records the engines that read it.
  */
+import fs from 'node:fs';
+import { join } from 'node:path';
 import type { EngineId } from '../../harness-definition/src/index.js';
-import { place, reading, type Context } from './context.js';
+import { lose, place, reading, type Context } from './context.js';
 import { toLf, utf8 } from './files.js';
 import { textSecretRule } from './secrets.js';
 import { readSkillFolder } from './skills.js';
@@ -73,7 +75,43 @@ export function readSkillPlaces(ctx: Context): void {
       if (engines.length === 0) { r.consumed.add(rel); r.miss(rel, 'skills', 'No engine of this harness reads this folder, so it is not adopted.'); continue; }
       const got = readSkillFolder(r, rel, place(rel, engines, sp.shape, sp.owner), engines);
       r.consumed.add(rel);
-      if (got && 'skill' in got) ctx.cands.push(got.skill, ...got.rules);
+      if (got && 'skill' in got) { ctx.cands.push(got.skill, ...got.rules); for (const a of got.lost) for (const e of engines) lose(ctx, e, a); }
     }
   }
+}
+
+const NESTED_NAMES = new Set(['AGENTS.md', 'AGENTS.override.md', 'AGENTS.local.md', 'CLAUDE.md', 'CLAUDE.local.md']);
+/** Folders the search for nested instruction files does not enter: version control, dependencies, and Bowerloom's own. */
+const NOT_SEARCHED = new Set(['.git', 'node_modules', '.bowerloom', '.bowerloom-skills']);
+/** The most folder entries the search reads, so a large tree cannot stall a plan. */
+export const NESTED_SEARCH_ENTRIES = 50_000;
+
+/**
+ * Lists every instruction file below the project root (ruling A15). Engines load such a file on demand or not at all,
+ * and the definition holds one instructions file at the root, so none is adopted. The search does not enter `.git`,
+ * `node_modules`, or Bowerloom's folders, and does not follow links. A search that stops at its limit says so.
+ */
+export function listNestedInstructions(ctx: Context): void {
+  const { r } = ctx;
+  let entries = 0, stopped = false, deep = false;
+  const walk = (rel: string, depth: number): void => {
+    if (stopped) return;
+    if (depth > 16) { deep = true; return; }
+    let names: string[];
+    try { names = fs.readdirSync(rel === '' ? r.projectDir : join(r.projectDir, rel)).sort(); } catch { return; }
+    entries += names.length;
+    if (entries > NESTED_SEARCH_ENTRIES) { stopped = true; return; }
+    for (const name of names) {
+      const child = rel === '' ? name : `${rel}/${name}`;
+      let st: fs.Stats;
+      try { st = fs.lstatSync(join(r.projectDir, child)); } catch { continue; }
+      if (st.isDirectory() && !st.isSymbolicLink()) { if (!(rel === '' && NOT_SEARCHED.has(name))) walk(child, depth + 1); continue; }
+      if (rel === '' || !NESTED_NAMES.has(name) || child === '.claude/CLAUDE.md' || r.consumed.has(child)) continue;
+      r.consumed.add(child);
+      r.miss(child, 'system-prompt', 'A nested instruction file is not adopted: engines load it on demand or not at all, and the definition holds one instructions file at the project root. Move its text there by hand if it matters.');
+    }
+  };
+  walk('', 0);
+  if (stopped) ctx.warnings.push(`The search for nested instruction files stopped after ${NESTED_SEARCH_ENTRIES} folder entries, so a nested AGENTS.md or CLAUDE.md beyond that is not listed.`);
+  if (deep) ctx.warnings.push('The search for nested instruction files does not go deeper than 16 folders, so a nested AGENTS.md or CLAUDE.md below that is not listed.');
 }
