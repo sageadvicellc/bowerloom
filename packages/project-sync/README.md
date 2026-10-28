@@ -68,11 +68,15 @@ The same plan writes MCP servers, subagents, hooks, guardrails, and the sandbox.
 - **Claude Code settings.** A person's `disableAllHooks` or `permissions.defaultMode`, in `.claude/settings.json` or
   `.claude/settings.local.json`, makes the hook lines `weakened`. Every hook line says that user and managed settings
   are not read. A
-  sandbox requirement writes `enabled: true` and `allowUnsandboxedCommands: false`, then the keys of the sandbox's
-  `x-claude-code` block, unchanged. A key Bowerloom writes itself is not taken from the block, and the line names it.
-- **Guardrail private blocks.** Only two have a place: the Claude Code sandbox block above, and a `justification` in a
-  Codex rule's `x-codex` block, which becomes the justification of its prefix rule. The line of any other guardrail
-  entry with a private block names the keys that are not written.
+  sandbox requirement writes `enabled: true` and `allowUnsandboxedCommands: false`. A key of the sandbox's
+  `x-claude-code` block is written only when `CLAUDE_SANDBOX_BLOCK_KEYS` lists it: a key the research notes document
+  as one that only restricts or changes nothing. The list is empty until the live check of step 5. Every other key gets
+  an `absent` line with the field `x-claude-code`, which needs an approval, since the sandbox is enforced.
+- **Guardrail private blocks.** A `justification` in a Codex rule's `x-codex` block becomes the justification of its
+  prefix rule, when it is one line with no control, format, or separator character; the line says the text comes from
+  the definition. The line of any other guardrail entry with a private block names the keys that are not written.
+- **Receipt format.** The receipt is `v1beta4`: a source record carries `claimed: true` when the 0.7 catalog only
+  claims the source. A `v1beta3` or `v1beta2` receipt still reads, and the next apply writes `v1beta4`.
 - **DeepSeek Harness.** MCP servers are `@deepseek-ai/dsh-mcp-client` rows, read from that package's README at the
   pinned tag. A sandbox requirement is `absent` in the fidelity translation itself.
 - **The no-link fallback.** Where the file system has no link(), a new file is created with O_EXCL. A write that fails
@@ -81,9 +85,16 @@ The same plan writes MCP servers, subagents, hooks, guardrails, and the sandbox.
 ### A folder that a 0.7 managed copy holds
 
 A skill folder that a 0.7 skills sync manages refuses `PORTABLE_MANAGED_COPY`, unless adoption converted that copy.
-Then `sources.json` records the skill in `adopted`, with the hex of the copy's skill content hash. When the folder
-still holds exactly that content, and every file in it is one the projection writes, the plan replaces its files and
-saves the originals. Removal then restores the 0.7 copy. A folder that changed since adoption is refused as before.
+Then `sources.json` records the skill in `adopted`, with the hex of the copy's skill content hash. A cloned project can
+forge both the record and the marker files, so the plan also reads the canonical copy the record names
+(`.bowerloom/managed/skills/<id>` or `.bowerloom-skills/skills/<id>`) and its catalog, which must parse as a JSON
+object. Only when the canonical copy, the record, and the folder have the same hash, and every file in the folder is
+one the projection writes, does the plan replace the files and save the originals. Removal then restores the 0.7 copy.
+Anything else is refused as before.
+
+The hash means equal after normalisation, not byte for byte: Markdown line endings become LF, file modes do not count,
+and an empty folder does not count. A file that differs only in those ways is still replaced, and its original bytes
+and mode are saved and restored.
 
 ### What the private state folder keeps
 

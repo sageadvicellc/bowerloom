@@ -13,7 +13,9 @@ import {
 } from './portable-files.js';
 import type { FileAfter, FileState } from './portable-files.js';
 
-export const PORTABLE_RECEIPT_FORMAT = 'bowerloom/portable-projection-receipt/v1beta3' as const;
+export const PORTABLE_RECEIPT_FORMAT = 'bowerloom/portable-projection-receipt/v1beta4' as const;
+/** The receipt of step 3 before review item K5: its sources hold no `claimed`. It still reads; the next apply writes v1beta4. */
+export const PORTABLE_RECEIPT_FORMAT_V3 = 'bowerloom/portable-projection-receipt/v1beta3' as const;
 /** The receipt of step 2. It reads as a receipt with no approvals; the next apply writes the current format. */
 export const PORTABLE_RECEIPT_FORMAT_V2 = 'bowerloom/portable-projection-receipt/v1beta2' as const;
 export const PENDING_FORMAT = 'bowerloom/portable-pending/v1beta2' as const;
@@ -26,7 +28,8 @@ export interface ReceiptFile extends FileAfter {
   readonly original: FileState | null;
 }
 /** A borrowed skill and where it came from (ruling P18). */
-export interface ReceiptSource { readonly skill: string; readonly name: string; readonly marketplace: string; readonly version: string }
+/** A borrowed skill's source. `claimed` is true when a 0.7 catalog only claims the source (review item K5). */
+export interface ReceiptSource { readonly skill: string; readonly name: string; readonly marketplace: string; readonly version: string; readonly claimed?: true }
 export interface PortableReceipt {
   readonly format: typeof PORTABLE_RECEIPT_FORMAT;
   readonly projectDir: string;
@@ -142,8 +145,9 @@ export function readReceipt(stateDir: string, projectDir: string): PortableRecei
   if (raw === null) return null;
   const n = RECEIPT;
   const legacy = isObj(raw) && raw.format === PORTABLE_RECEIPT_FORMAT_V2;
+  const older = legacy || (isObj(raw) && raw.format === PORTABLE_RECEIPT_FORMAT_V3);
   const o = closed(raw, ['format', 'projectDir', 'definition', 'engines', 'files', 'sources', 'createdDirs', ...(legacy ? [] : ['approvals']), 'planRevision', 'revision'], n);
-  if (o.format !== PORTABLE_RECEIPT_FORMAT && !legacy) bad(n);
+  if (o.format !== PORTABLE_RECEIPT_FORMAT && !older) bad(n);
   const d = closed(o.definition, ['folder', 'harness', 'revision'], n);
   const definition = { folder: text(d.folder, n), harness: text(d.harness, n, 64), revision: text(d.revision, n, 128) };
   const eng = list(o.engines, n, x => {
@@ -159,8 +163,10 @@ export function readReceipt(stateDir: string, projectDir: string): PortableRecei
   });
   unique(files.map(f => f.path), n);
   const sources = list(o.sources, n, x => {
-    const s = closed(x, ['skill', 'name', 'marketplace', 'version'], n);
-    return { skill: text(s.skill, n, 64), name: text(s.name, n, 256), marketplace: text(s.marketplace, n, 256), version: text(s.version, n, 256) };
+    const s = closed(x, ['skill', 'name', 'marketplace', 'version', ...(older ? [] : ['claimed'])], n);
+    if (Object.hasOwn(s, 'claimed') && s.claimed !== true) bad(n);
+    const source: ReceiptSource = { skill: text(s.skill, n, 64), name: text(s.name, n, 256), marketplace: text(s.marketplace, n, 256), version: text(s.version, n, 256), ...(s.claimed === true ? { claimed: true as const } : {}) };
+    return source;
   });
   const createdDirs = list(o.createdDirs, n, x => projectedDir(x, n));
   unique(createdDirs, n);

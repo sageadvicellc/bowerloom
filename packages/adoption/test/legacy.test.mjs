@@ -124,6 +124,18 @@ test('a managed copy that drifted from its projection is shown side by side, not
   assert.match(plan.managed[0].reason, /conflict/);
 });
 
+test('review item K2: a managed copy kept under another id gets no adoptedFrom record, since the record names the copy of its own id', t => {
+  const p = project(t, {
+    '.bowerloom/managed/catalog/tidy.json': catalog({ harnesses: ['claude'] }),
+    '.bowerloom/managed/skills/tidy/SKILL.md': TIDY,
+    '.claude/skills/tidy/SKILL.md': TIDY.replace('Tidy the imports.', 'Tidy the imports, edited by hand.'),
+  });
+  const plan = planAdoption(p.input({ engines: [{ id: 'claude-code' }], choices: { 'skills/tidy': { rename: { '.bowerloom/managed/skills/tidy': 'tidy-old' } } } }));
+  assert.deepEqual(plan.problems, []);
+  assert.equal(item(plan, 'skills', 'tidy-old').adoptedFrom, undefined);
+  assert.equal(item(plan, 'skills', 'tidy').adoptedFrom, undefined);
+});
+
 test('a git source is recorded by repository and commit; a local source records only the conversion', async t => {
   const git = { kind: 'git', host: 'github.com', repository: 'example/skills', commit: 'a'.repeat(40), tree: 'b'.repeat(40) };
   const p = project(t, { '.bowerloom/managed/catalog/tidy.json': catalog({ source: git, harnesses: ['claude'] }), '.bowerloom/managed/skills/tidy/SKILL.md': TIDY });

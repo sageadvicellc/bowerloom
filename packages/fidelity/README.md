@@ -77,7 +77,7 @@ Matching is on the text as written, so some forms escape a rule. `KNOWN_ESCAPES`
 
 - The forms are in memory. The OpenCode form is ordered lists, so a pattern such as `"1"` keeps its place. Write the 1.x shape for 1.x.
 - `privateBlocks` holds the block of each entry that wrote something. Carry it unchanged. `excludedPrivateBlocks` lists the blocks of entries that wrote nothing, with the reason.
-- A Codex prefix rule takes its `justification` from the rule's `x-codex` block when that is one line of text (`codexJustification`); otherwise it names the rule, `Bowerloom guardrail <id>`.
+- A Codex prefix rule takes its `justification` from the rule's `x-codex` block when that is one line of text with no control, format (Cf), line, or paragraph separator character (`codexJustification`), and the line says the text comes from the definition. Otherwise it names the rule, `Bowerloom guardrail <id>`.
 - A DeepSeek Harness sandbox requirement is `absent`: at the pinned tag a mode covers file effects only, a session can switch it, and no patch row that sets it is confirmed.
 - The Codex filesystem table binds only commands that run in the sandbox.
 
@@ -116,6 +116,7 @@ with one loss line or more per entry. They write nothing; `packages/project-sync
   `weakened`: an override
   adds the limit as advisory text. Pi and DeepSeek Harness are `absent`.
 - **Hooks.** The matcher is Claude Code tool names joined by `|`; any other character is `absent` everywhere. Claude
-  Code is `exact`. Codex is `translated` when advisory and `weakened` when enforced. OpenCode is a generated plugin for
+  Code is `exact`, but a tool-event matcher that names no Claude Code tool is `absent` and writes no hook, and one that
+  names some unknown tools writes the known ones and is `weakened`. Codex is `translated` when advisory and `weakened` when enforced. OpenCode is a generated plugin for
   tool before and after, session start, and compaction: `translated` when advisory, `weakened` when enforced, because
   the plugin fails open. Pi and DeepSeek Harness are `absent`.

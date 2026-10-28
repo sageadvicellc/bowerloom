@@ -46,7 +46,7 @@ test('a forged receipt that names a path outside the list is refused', async t =
 test('MCP servers go to .mcp.json, .codex/config.toml, opencode.json, .pi/mcp.json, and .dsh/bowerloom.patch.yml', async t => {
   const p = lockedProject(t);
   const { plan, result } = await projectNow(p.input());
-  assert.equal(PORTABLE_RECEIPT_FORMAT, 'bowerloom/portable-projection-receipt/v1beta3');
+  assert.equal(PORTABLE_RECEIPT_FORMAT, 'bowerloom/portable-projection-receipt/v1beta4');
   assert.deepEqual(JSON.parse(read(p, '.mcp.json')).mcpServers.docs, { type: 'stdio', command: 'docs-mcp', args: ['--root', '.'], env: { DOCS_TOKEN: '${DOCS_TOKEN}' } });
   assert.match(read(p, '.codex/config.toml'), /\[mcp_servers\.docs\]\ncommand = "docs-mcp"\nargs = \["--root", "\."\]\nenv_vars = \["DOCS_TOKEN"\]\n/);
   assert.deepEqual(JSON.parse(read(p, 'opencode.json')).mcp.docs, { type: 'local', command: ['docs-mcp', '--root', '.'], environment: { DOCS_TOKEN: '{env:DOCS_TOKEN}' } });

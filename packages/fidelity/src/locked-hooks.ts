@@ -56,6 +56,8 @@ const TOOL_NAMES: Readonly<Record<string, { readonly codex: readonly string[] | 
   Skill: { codex: null, opencode: ['skill'] },
 });
 const MCP_TOOL = /^mcp__([A-Za-z0-9]+(?:_[A-Za-z0-9]+)*)__([A-Za-z0-9_]+)$/;
+/** True when a name is a Claude Code tool name: one the map knows, or an MCP tool or server name. */
+const isClaudeTool = (name: string): boolean => Object.hasOwn(TOOL_NAMES, name) || MCP_TOOL.test(name) || /^mcp__[A-Za-z0-9]+(?:_[A-Za-z0-9]+)*$/.test(name);
 function counterpart(name: string, engine: 'codex' | 'opencode'): readonly string[] | null {
   const mcp = MCP_TOOL.exec(name);
   if (mcp) return engine === 'codex' ? [name] : [`${mcp[1]}_${mcp[2]}`];
@@ -120,11 +122,16 @@ export function translateHooks(engine: EngineId, hooks: readonly HookEntry[]): H
     switch (engine) {
       case 'claude-code': {
         if (!CLAUDE_CODE_HOOK_EVENTS.has(h.event)) { out.line(h.id, 'absent', `Claude Code has no ${h.event} event.`); break; }
+        // Review item K1: a matcher that names no Claude Code tool never fires, so it is absent, never exact.
+        const known = list && toolEvent ? list.filter(isClaudeTool) : list;
+        const unknown = list && toolEvent ? list.filter(n => !isClaudeTool(n)) : [];
+        if (list && known!.length === 0) { out.line(h.id, 'absent', `Claude Code has no tool named ${list.join(', ')}, so the hook would never run. Bowerloom writes no hook for it.`); break; }
         const handler: [string, JsonValue][] = [['type', 'command'], ['command', rewrite(h.command, engine)]];
         if (seconds !== undefined) handler.push(['timeout', seconds]);
         const note = privateNote(h, engine, handler);
-        out.line(h.id, rounded || note ? 'translated' : 'exact', `Claude Code runs the command on ${h.event} from .claude/settings.json; \${PROJECT_DIR} becomes \${CLAUDE_PROJECT_DIR}.${rounded}${note}`);
-        forms.push({ engine, entry: h.id, event: h.event, ...(list ? { matcher: list.join('|') } : {}), handler: Object.fromEntries(handler) });
+        const gap = unknown.length ? ` Claude Code has no tool named ${unknown.join(', ')}, so the hook does not run for those names.` : '';
+        out.line(h.id, gap ? 'weakened' : rounded || note ? 'translated' : 'exact', `Claude Code runs the command on ${h.event} from .claude/settings.json; \${PROJECT_DIR} becomes \${CLAUDE_PROJECT_DIR}.${gap}${rounded}${note}`);
+        forms.push({ engine, entry: h.id, event: h.event, ...(known ? { matcher: known.join('|') } : {}), handler: Object.fromEntries(handler) });
         break;
       }
       case 'codex': {
