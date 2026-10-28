@@ -31,7 +31,7 @@ test('WORDS is frozen all the way down; a label has at most 5 words, a hint 12, 
     for (const [key, text] of entries) { assert.ok(countWords(text) <= limit, `${group}.${key}: ${text}`); assert.equal(bannedHere(text), null, `${group}.${key}`); assert.equal(text, text.trim(), `${group}.${key}`); }
   }
   for (const line of WORDS.notInPreview) { assert.ok(countWords(line) <= LIMITS.popover, line); assert.equal(bannedHere(line), null, line); }
-  assert.deepEqual(WORDS.notInPreview, ['The confirm sheet for a community skill', 'The layouts for a 900 by 600 window', 'Real files', 'Real runs']);
+  assert.deepEqual(WORDS.notInPreview, ['The confirm sheet for a community skill', 'Real files', 'Real runs']);
 });
 
 test('the words copied from the design are exactly as written in the pictures', () => {
@@ -90,14 +90,14 @@ test('the real words (the preview on the person\'s own folders) are frozen, with
     for (const [key, text] of entries) { assert.ok(countWords(text) <= limit, `${group}.${key}: ${text}`); assert.equal(bannedHere(text), null, `${group}.${key}`); assert.equal(text, text.trim(), `${group}.${key}`); }
   }
   for (const line of REAL.notInPreview) { assert.ok(countWords(line) <= LIMITS.popover, line); assert.equal(bannedHere(line), null, line); }
-  assert.deepEqual(REAL.notInPreview, ['Install', 'Start', 'Compare', 'Runs']);
+  assert.deepEqual(REAL.notInPreview, ['Assign to project', 'Start', 'Compare', 'Runs']);
   assert.equal(REAL.label.previewNot, WORDS.label.previewNot, 'the popover heading is the same in both modes');
 });
 
 test('the real words say what the design asks for, word for word', () => {
   assert.equal(REAL.label.consentTitle, 'Read what is inside?');
   assert.deepEqual([REAL.label.yesRead, REAL.label.notNow, REAL.label.addFolder, REAL.label.useSample, REAL.label.tryAgain, REAL.label.nothingTitle], ['Yes, read them', 'Not now', 'Add a folder', 'Use the sample', 'Try again', 'Nothing found yet']);
-  assert.equal(REAL.paragraph.previewAbout, 'This preview reads your own folders. It changes none of them and writes nothing.');
+  assert.equal(REAL.paragraph.previewAbout, 'This preview reads your own folders. It writes only after you approve a plan in Projects.');
   assert.equal(couldNotReadLine(3), 'Could not read 3 things.'); assert.equal(couldNotReadLine(1), 'Could not read 1 thing.');
   assert.equal(REAL.hint.stoppedEarly, 'It stopped early to stay within its limits.'); assert.equal(REAL.hint.consentOne, 'It reads text only in the folders you ticked.');
   assert.equal(REAL.hint.replaceLine, 'Reading again starts this preview over. It changes nothing on your computer.'); assert.equal(REAL.label.cancel, 'Cancel');

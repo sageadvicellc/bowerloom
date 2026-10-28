@@ -18,6 +18,7 @@ import { Tile } from '../icons.js';
 import { WORDS, projectsHint } from '../words.js';
 import { FLOW, actionFor, actionName, installFor, nothingChanged, removedWords, reviewFor, savedAs, updateFor } from '../words-flow.js';
 import { undoNow } from '../undo-note.js';
+import { ENGINE_WORDS } from '../words-engine.js';
 import './projects.css';
 
 /** The install of a project with the worst state, or undefined when the project has none. */
@@ -139,7 +140,11 @@ export function Projects({ id }: { id: string | null }): ReactElement {
   }
   return (
     <Screen slot="projects" title={WORDS.label.projects}
-      tools={<HIconButton icon="plus" label={FLOW.label.addFolder} tip={FLOW.hint.notInPreview} side="below" aria-disabled="true" onClick={e => { e.preventDefault(); ui.showToast(FLOW.hint.notInPreview); }} />}
+      tools={<>
+        <HButton icon="folder" data-open-adopt="" onClick={() => ui.openAdopt()}>{ENGINE_WORDS.label.fromFolder}</HButton>
+        <HButton icon="harness" data-open-project="" onClick={() => ui.openProject()}>{ENGINE_WORDS.label.installFolder}</HButton>
+        <HIconButton icon="plus" label={FLOW.label.addFolder} tip={FLOW.hint.notInPreview} side="below-end" aria-disabled="true" onClick={e => { e.preventDefault(); ui.showToast(FLOW.hint.notInPreview); }} />
+      </>}
       details={selected === undefined ? undefined : <Details state={state} project={selected} />}>
       <p className="kit-hint hx-hint">{projectsHint(state.projects.length)}</p>
       <ul className="hxp-rows" aria-label={FLOW.label.projectRows}>

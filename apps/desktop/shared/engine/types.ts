@@ -1,0 +1,269 @@
+/**
+ * The plain data the harness-first window gets about adoption and the projection, and the calls it may make. The main process runs the packages
+ * (packages/adoption, packages/project-sync) and hands back only these shapes: no absolute path of the person's folders, no file bytes, and no function.
+ * The sample launch answers the same calls from synthetic fixtures in memory (shared/engine/sample.ts) and writes nothing.
+ */
+
+/** The engines of Bowerloom 0.8, in the order the packages list them. */
+export const ENGINE_IDS = Object.freeze(['claude-code', 'codex', 'opencode', 'pi', 'deepseek-harness'] as const);
+export type EngineId = (typeof ENGINE_IDS)[number];
+export const isEngineId = (value: unknown): value is EngineId => typeof value === 'string' && (ENGINE_IDS as readonly string[]).includes(value);
+
+/** How each engine is named on a screen. */
+export const ENGINE_NAMES: Readonly<Record<EngineId, string>> = Object.freeze({
+  'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode', pi: 'Pi', 'deepseek-harness': 'DeepSeek Harness',
+});
+
+/** The result words of the fidelity check, from best to worst. */
+export const RESULTS = Object.freeze(['exact', 'translated', 'weakened', 'absent'] as const);
+export type ResultWord = (typeof RESULTS)[number];
+
+/** The three ways to settle a CLAUDE.md that does not follow AGENTS.md. Accept AGENTS.md is the default. */
+export const RECONCILE = Object.freeze(['accept-agents', 'merge', 'keep-both'] as const);
+export type Reconcile = (typeof RECONCILE)[number];
+
+/** A refusal of a package, as plain words. `paths` are relative to the project or written with `~`. */
+export interface Refusal {
+  readonly code: string;
+  readonly message: string;
+  readonly paths: readonly string[];
+  /** For a refusal because files Bowerloom wrote changed since: each one, with why. */
+  readonly drift?: readonly DriftLineView[];
+}
+/** Every call answers this way, so a refusal reaches the window with its words and is never lost in an error. */
+export type Answer<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly refusal: Refusal };
+
+/** A folder the person chose, by the id the main process gave it. */
+export interface FolderInfo {
+  readonly id: string;
+  /** The folder, written with `~` for the home folder. */
+  readonly label: string;
+  readonly name: string;
+  /** True when the folder holds `.bowerloom/harness.json`. */
+  readonly hasDefinition: boolean;
+  /** The engines harness.json lists, when it loads. */
+  readonly engines: readonly EngineId[];
+  /** Why the definition does not load, or null. */
+  readonly problem: string | null;
+  /** True when Bowerloom has a receipt of an earlier install here. */
+  readonly projected: boolean;
+  /** True when an install, a removal or an adoption stopped part way. */
+  readonly unfinished: { readonly projection: boolean; readonly adoption: boolean };
+}
+
+// ---- adoption -----------------------------------------------------------------------------------------------------------
+
+export type AdoptPart = 'system-prompt' | 'skills' | 'subagents' | 'guardrails' | 'hooks' | 'mcp' | 'engine-private';
+export type Gate = 'none' | 'acknowledge' | 'block';
+
+export interface PlaceView {
+  readonly path: string;
+  readonly pointer: string | null;
+  readonly engines: readonly EngineId[];
+  readonly shape: string;
+  readonly shapeVersion: string | null;
+}
+export interface AdoptItemView {
+  /** `<part>/<id>`, the key an approval names. */
+  readonly key: string;
+  readonly part: AdoptPart;
+  readonly id: string;
+  readonly places: readonly PlaceView[];
+  /** null: every engine of the harness. */
+  readonly engines: readonly EngineId[] | null;
+  readonly needsApproval: readonly string[];
+  readonly notes: readonly string[];
+}
+export interface AdoptConflictView {
+  readonly key: string;
+  readonly part: AdoptPart;
+  readonly id: string;
+  readonly variants: readonly { readonly key: string; readonly places: readonly PlaceView[] }[];
+  /** The variant the person picked, or null. */
+  readonly picked: string | null;
+}
+export interface AdoptDifferenceView {
+  readonly action: string;
+  readonly pattern: string;
+  readonly rules: readonly { readonly id: string; readonly effect: string; readonly engines: readonly EngineId[] }[];
+}
+export interface AdoptUnmappedView {
+  readonly id: string;
+  readonly path: string;
+  readonly pointer: string | null;
+  readonly part: string | null;
+  readonly reason: string;
+  readonly gate: Gate;
+  readonly acknowledged: boolean;
+}
+export interface AdoptSecretView { readonly path: string; readonly pointer: string; readonly reference: string; readonly key: string }
+/** One approval adoption needs: the item, every reason a person reads, and the secrets it replaced. */
+export interface AdoptApprovalView {
+  readonly key: string;
+  readonly part: AdoptPart;
+  readonly id: string;
+  readonly reasons: readonly string[];
+  readonly places: readonly PlaceView[];
+  readonly secrets: readonly AdoptSecretView[];
+}
+export interface AdoptView {
+  readonly folder: string;
+  readonly harness: { readonly id: string; readonly description: string };
+  readonly engines: readonly { readonly id: EngineId; readonly version: string | null; readonly model: string | null; readonly detected: boolean }[];
+  readonly read: number;
+  readonly items: readonly AdoptItemView[];
+  readonly conflicts: readonly AdoptConflictView[];
+  readonly differences: readonly AdoptDifferenceView[];
+  readonly unmapped: readonly AdoptUnmappedView[];
+  readonly secrets: readonly AdoptSecretView[];
+  readonly managed: readonly { readonly catalog: string; readonly id: string; readonly skill: string | null; readonly reason: string }[];
+  readonly warnings: readonly string[];
+  /** The files written into `.bowerloom`, relative to it. */
+  readonly files: readonly { readonly path: string; readonly bytes: number }[];
+  readonly approvals: readonly AdoptApprovalView[];
+  readonly problems: readonly { readonly code: string; readonly path: string; readonly message: string }[];
+  readonly ready: boolean;
+  readonly revision: string;
+}
+/** What the person chose in the adopt sheet. Sent with every plan, so the plan the window shows is the plan that will be written. */
+export interface AdoptChoices {
+  /** The picked variant key of each conflict, by conflict key. */
+  readonly picks: Readonly<Record<string, string>>;
+  /** The ids of gated unmapped entries the person acknowledged. */
+  readonly acknowledged: readonly string[];
+}
+export interface AdoptWritten { readonly written: readonly string[] }
+
+export interface AdoptRecoveryView {
+  readonly journal: 'ok' | 'damaged';
+  readonly check: readonly string[];
+  readonly remove: readonly string[];
+  readonly kept: readonly { readonly path: string; readonly reason: 'changed' | 'unsafe' }[];
+  readonly dirs: readonly string[];
+  readonly revision: string;
+}
+export interface AdoptRecovered { readonly removed: readonly string[]; readonly kept: readonly string[]; readonly leftFolders: readonly string[] }
+
+// ---- the projection -------------------------------------------------------------------------------------------------------
+
+export interface LossView {
+  readonly part: string;
+  readonly entry: string;
+  readonly field: string | null;
+  readonly engine: EngineId;
+  readonly result: ResultWord;
+  readonly reason: string;
+}
+/** One engine's lines, part by part, in the order the plan lists them. */
+export interface EngineLossView {
+  readonly engine: EngineId;
+  readonly version: string | null;
+  readonly parts: readonly { readonly part: string; readonly lines: readonly LossView[] }[];
+  readonly counts: Readonly<Record<ResultWord, number>>;
+}
+export interface TrustView { readonly engine: EngineId; readonly path: string; readonly entry: string | null; readonly state: 'pending trust' | 'trusted'; readonly reason: string }
+export interface ReviewView {
+  readonly path: string;
+  readonly engine: EngineId;
+  readonly kind: 'code' | 'command';
+  readonly part: string | null;
+  readonly entry: string | null;
+  /** The whole text: a command with its arguments, or the whole file of code. Never cut. */
+  readonly text: string;
+  /** Each environment name the command gets, with its value, or null for a value read from a variable when it runs. */
+  readonly env: readonly { readonly name: string; readonly value: string | null }[];
+}
+export interface InstructionDriftView {
+  /** `present`: the folder holds AGENTS.md. `planned`: the install writes it. */
+  readonly agents: 'present' | 'planned';
+  readonly engines: readonly { readonly engine: EngineId; readonly hidden: 'AGENTS.md' | 'CLAUDE.md' | null; readonly rule: string }[];
+  readonly actions: readonly Reconcile[];
+  readonly defaultAction: 'accept-agents';
+}
+export interface DriftLineView { readonly path: string; readonly reason: 'changed' | 'missing' | 'unsafe' }
+export interface ApprovedView { readonly part: string; readonly entry: string; readonly field: string | null; readonly engine: EngineId; readonly result: 'weakened' | 'absent'; readonly who: string; readonly when: string; readonly reason: string }
+export interface ChangeView { readonly path: string; readonly action: 'create' | 'replace' | 'update' | 'unchanged' | 'restore' | 'delete'; readonly engines: readonly EngineId[] }
+export interface ProjectView {
+  readonly folder: string;
+  readonly harness: string;
+  readonly engines: readonly EngineLossView[];
+  readonly partial: boolean;
+  readonly notice: string | null;
+  readonly trust: readonly TrustView[];
+  readonly review: readonly ReviewView[];
+  readonly drift: InstructionDriftView | null;
+  readonly reconcile: Reconcile | null;
+  /** Files Bowerloom wrote earlier that changed or went since, with why. */
+  readonly driftLines: readonly DriftLineView[];
+  readonly approved: readonly ApprovedView[];
+  readonly changes: readonly ChangeView[];
+  readonly offers: readonly { readonly action: 'write-claude-md'; readonly reason: string }[];
+  readonly ignored: readonly { readonly option: string; readonly reason: string }[];
+  readonly pendingTrust: readonly string[];
+  readonly filterLeaks: readonly { readonly skill: string; readonly path: string; readonly engines: readonly EngineId[] }[];
+  readonly noop: boolean;
+  readonly revision: string;
+}
+/** A weakened or absent enforced line that needs a person's approval before the plan can be made. `key` names it in `ProjectInput.approve`. */
+export interface ApproveLineView extends LossView { readonly key: string }
+/** The answer to a projection plan: the plan, or the lines a person must approve first. */
+export type ProjectAnswer = { readonly kind: 'plan'; readonly plan: ProjectView } | { readonly kind: 'approve'; readonly lines: readonly ApproveLineView[]; readonly approvedSoFar: readonly string[] };
+export interface ProjectInput {
+  readonly engines: readonly EngineId[];
+  readonly reconcile: Reconcile;
+  readonly writeClaudeMd: boolean;
+  /** The keys of the lines the person approved in this sheet. */
+  readonly approve: readonly string[];
+}
+export interface ProjectWritten { readonly noop: boolean; readonly written: readonly string[] }
+
+export interface RemovalView { readonly changes: readonly ChangeView[]; readonly removeDirs: readonly string[]; readonly revision: string }
+export interface Removed { readonly restored: readonly string[]; readonly deleted: readonly string[]; readonly leftBehind: readonly string[] }
+export interface RecoveryView {
+  readonly kind: 'apply' | 'remove' | null;
+  readonly action: 'complete' | 'rollback' | 'keep';
+  readonly steps: readonly { readonly path: string; readonly now: 'present' | 'missing' | 'unsafe'; readonly decision: 'undo' | 'none' | 'keep' }[];
+  readonly keep: readonly string[];
+  readonly notice: string | null;
+  readonly revision: string;
+}
+export interface Recovered { readonly leftBehind: readonly string[] }
+
+// ---- the calls ------------------------------------------------------------------------------------------------------------
+
+/**
+ * The calls the window may make. Every write takes the revision of a plan the person approved, and the main process plans again and writes only when it is
+ * the same. In the sample, the same calls run on synthetic folders in memory and write nothing.
+ */
+export interface EngineBridge {
+  readonly mode: 'sample' | 'real';
+  folders(): Promise<readonly FolderInfo[]>;
+  /** Opens the system folder chooser. Null when the person closed it. The sample has no chooser and answers null. */
+  chooseFolder(): Promise<Answer<FolderInfo> | null>;
+  planAdoption(folderId: string, choices: AdoptChoices): Promise<Answer<AdoptView>>;
+  runAdoption(folderId: string, revision: string, choices: AdoptChoices, approvals: readonly string[]): Promise<Answer<AdoptWritten>>;
+  planAdoptionRecovery(folderId: string): Promise<Answer<AdoptRecoveryView>>;
+  runAdoptionRecovery(folderId: string, revision: string): Promise<Answer<AdoptRecovered>>;
+  planProjection(folderId: string, input: ProjectInput): Promise<Answer<ProjectAnswer>>;
+  runProjection(folderId: string, revision: string, input: ProjectInput): Promise<Answer<ProjectWritten>>;
+  planRemoval(folderId: string): Promise<Answer<RemovalView>>;
+  runRemoval(folderId: string, revision: string): Promise<Answer<Removed>>;
+  planRecovery(folderId: string, keep: readonly string[]): Promise<Answer<RecoveryView>>;
+  runRecovery(folderId: string, revision: string, keep: readonly string[]): Promise<Answer<Recovered>>;
+}
+
+/** The names of the calls, in one list, so the bridge, the handler and the tests agree. */
+export const ENGINE_CALLS = Object.freeze([
+  'folders', 'chooseFolder', 'planAdoption', 'runAdoption', 'planAdoptionRecovery', 'runAdoptionRecovery',
+  'planProjection', 'runProjection', 'planRemoval', 'runRemoval', 'planRecovery', 'runRecovery',
+] as const);
+export type EngineCall = (typeof ENGINE_CALLS)[number];
+/** How many arguments each call takes. A call with another count is refused before anything runs. */
+export const ENGINE_ARITY: Readonly<Record<EngineCall, number>> = Object.freeze({
+  folders: 0, chooseFolder: 0, planAdoption: 2, runAdoption: 4, planAdoptionRecovery: 1, runAdoptionRecovery: 2,
+  planProjection: 2, runProjection: 3, planRemoval: 1, runRemoval: 2, planRecovery: 2, runRecovery: 3,
+});
+/** One channel per call, apart from every other channel of the app. */
+export const ENGINE_CHANNELS: Readonly<Record<EngineCall, string>> = Object.freeze(Object.fromEntries(ENGINE_CALLS.map(c => [c, `bowerloom-engine:${c}`])) as Record<EngineCall, string>);
+/** The short codes a call can be refused with before it runs. */
+export const ENGINE_CALL_REFUSALS = Object.freeze(['NOT_ALLOWED', 'BAD_ARGUMENT', 'UNKNOWN_FOLDER', 'BUSY', 'FAILED'] as const);

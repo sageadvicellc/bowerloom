@@ -62,6 +62,15 @@ What real mode reads, in plain English:
 
 The tests run real mode on a made-up home folder (`tests/fixtures-real`), never on yours.
 
+## Make a harness from a folder, and install it (harness-first view)
+
+The harness-first view (`desktop:prototype:v3` for the sample, `desktop:prototype:v3:real` for your own folders) has two sheets on the Projects screen. In the sample they run on made-up folders and write nothing.
+
+- **From a folder** makes a harness from the files your interfaces already use. It shows what it found and where, the copies that differ (you pick one), the rules that differ by interface, and everything it leaves out, with the reason. Before it writes, you read and tick each approval (a hook or a server that runs a command, a secret it replaced) and each acknowledgement (a rule it does not carry). It writes only into the folder's `.bowerloom` folder.
+- **Install from a folder** writes the folder's harness into each interface's own files. First it lists any rule that an interface carries weaker than the harness asks, and you tick each one. Then it shows, for each interface and each part, a dot and a word (Exact, Translated, Weakened, Absent) with the reason, what waits for your trust, and every command and file of code it will write, in full. When the folder has both AGENTS.md and a CLAUDE.md that differ, it shows which interface reads which, with Accept AGENTS.md as the default. You approve the plan by its number, and only then can you write. Undo opens the removal plan, which you approve the same way. A run that stopped part way gets a recovery plan.
+
+On your own folders the main process does the work with Bowerloom's own packages. It plans without writing, and writes only the plan you approved: it plans again and stops if anything changed. The window gets plain words and paths inside the folder, never your full paths. Bowerloom keeps its records in its private state folder (`$XDG_STATE_HOME/bowerloom`, else `~/.local/state/bowerloom`), under `desktop/`.
+
 ## Where the viewer may write
 
 The viewer writes in only two places. One is its own folder (its settings, and later your sketches). The other is the **sandbox**, a folder made only for trying things. It never writes in your real folders. A short piece of code, the write boundary, checks every place before anything is written there. It refuses a path with "..", a path through a shortcut (a link), a path outside the allowed folders, your home folder, any folder that holds your home folder, any of your real folders, and any folder that does not carry the mark the viewer puts in the sandbox. The list of allowed folders is fixed in the program. The settings file cannot change it, and neither can anything in the window.

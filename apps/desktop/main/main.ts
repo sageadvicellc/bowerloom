@@ -1,7 +1,7 @@
 /** Electron entry. Opens one window onto the viewer page and answers its named calls. */
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, protocol, session, shell } from 'electron';
 import { readFile } from 'node:fs/promises';
-import { homedir, tmpdir } from 'node:os';
+import { homedir, tmpdir, userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CHANNELS } from '../shared/channels.js';
@@ -12,6 +12,8 @@ import { createController } from './controller.js';
 import type { Controller } from './controller.js';
 import { realFolderFollowing } from './real-fs.js';
 import { registerRealIpc, usableHome } from './real-ipc.js';
+import { registerEngineIpc } from './engine-ipc.js';
+import { engineStateRoot } from './engine-state.js';
 import { windowOptions } from './window-options.js';
 import { APP_HOST, APP_INDEX, APP_SCHEME, allowRequest, chooseUserData, decideNavigation, isAllowedSender, makePrototypeDataDir, removeAndReport, resolveAppFile, userDataArg, webPreferences } from './security.js';
 
@@ -29,7 +31,8 @@ const prototypeV2 = argv.includes('--prototype-v2');
 const prototypeReal = argv.includes('--prototype-real');
 // The harness-first preview (--prototype-v3) keeps the same locks as --prototype-v2: no preload, no IPC, a temporary data folder, no outside link, and nothing written.
 const prototypeV3 = argv.includes('--prototype-v3');
-// The harness-first preview on the person's own folders (--prototype-v3-real) has the same locks and the same read-only bridge as --prototype-real, and opens the harness-first page.
+// The harness-first preview on the person's own folders (--prototype-v3-real) has the same locks and the same bridge as --prototype-real, and opens the harness-first page.
+// It also answers the adopt and install sheets (main/engine-ipc.ts): those read only until a person approves a plan, and then write through the packages.
 const prototypeV3Real = argv.includes('--prototype-v3-real');
 const prototypeMode = argv.includes('--prototype') || prototypeV2 || prototypeReal || prototypeV3 || prototypeV3Real;
 // The prototype writes nothing to the real app data, whoever starts it. It keeps its own temporary data folder (or the one it was given, when that
@@ -175,6 +178,17 @@ app.whenReady().then(async () => {
         return result.canceled || result.filePaths[0] === undefined ? null : result.filePaths[0];
       },
     });
+    // The adopt and install sheets of the harness-first window. They plan read-only, and write only through the packages, with the revision of a plan the person approved.
+    if (prototypeV3Real) {
+      registerEngineIpc({
+        ipc: ipcMain, appIndexUrl: indexUrl, home, stateRoot: engineStateRoot(home), who: userInfo().username || 'this Mac',
+        chooseFolder: async () => {
+          const options: Electron.OpenDialogOptions = { title: 'Choose a project folder', buttonLabel: 'Choose this folder', properties: ['openDirectory'] };
+          const result = window === null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(window, options);
+          return result.canceled || result.filePaths[0] === undefined ? null : result.filePaths[0];
+        },
+      });
+    }
   }
   registerIpc();
   createWindow();

@@ -104,9 +104,11 @@ test('the page never builds markup from text: no innerHTML, no eval, no document
   for (const { file, text } of [...sources('renderer'), ...sources('shared')]) assert.doesNotMatch(strip(text), /innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval\(|new Function\(|setAttribute\(\s*['"]on|srcdoc|dangerouslySetInnerHTML/, file);
 });
 
-test('process.env is read in exactly three places (the token state, the settings of the run, and the sandbox folder constant), and the token value never leaves its module', () => {
+test('process.env is read in exactly four places (the token state, the settings of the run, the sandbox folder constant, and the state folder of the install sheets), and the token value never leaves its module', () => {
   const users = sources('main').filter(({ text }) => /process\.env/.test(strip(text))).map(f => f.file).sort();
-  assert.deepEqual(users, ['main/boundary.ts', 'main/controller.ts', 'main/token.ts']);
+  assert.deepEqual(users, ['main/boundary.ts', 'main/controller.ts', 'main/engine-state.ts', 'main/token.ts']);
+  // The install sheets read one variable, XDG_STATE_HOME, and nothing else of the environment.
+  assert.deepEqual([...strip(read('main/engine-state.ts')).matchAll(/process\.env(\.\w+)?/g)].map(m => m[0]), ['process.env.XDG_STATE_HOME']);
   const token = read('main/token.ts');
   assert.match(token, /return GithubToken\.status\(only\)/);
   assert.doesNotMatch(token, /fromEnv|reveal|\.value|console\./);
@@ -164,4 +166,17 @@ test('the home app source never reaches the bridge, a file, the network, storage
   assert.ok(files.length >= 10, `${files.length} files`);
   const banned: [string, RegExp][] = [['window.bowerloom', /window\.bowerloom|\bbowerloom\./], ['node:', /node:/], ['fetch', /\bfetch\(|XMLHttpRequest|WebSocket/], ['localStorage', /localStorage|sessionStorage|indexedDB|document\.cookie/], ['innerHTML', /innerHTML|outerHTML|insertAdjacentHTML|dangerouslySetInnerHTML/], ['eval', /\beval\(|new Function\(/], ['Date', /\bDate\b/], ['Math.random', /Math\.random/]];
   for (const { file, text } of files) { const code = strip(text); for (const [name, pattern] of banned) assert.doesNotMatch(code, pattern, `${file} uses ${name}`); }
+});
+
+test('only main/engine-service.ts calls the packages\' writes of adoption and the projection, each with a revision the person approved; no window or shared code names them', () => {
+  const writes = /\b(applyAdoption|applyAdoptionRecovery|applyPortable|applyPortableRemoval|applyPortableRecovery)\b/;
+  const callers = sources('main').filter(({ text }) => writes.test(strip(text))).map(f => f.file);
+  assert.deepEqual(callers, ['main/engine-service.ts']);
+  for (const { file, text } of [...sources('renderer'), ...sources('shared'), ...sources('preload')]) assert.doesNotMatch(strip(text), writes, file);
+  const service = strip(read('main/engine-service.ts'));
+  for (const call of ['applyAdoption(adoptInput(f, c), rev, list)', 'applyPortable(io, rev)', 'applyPortableRemoval({ projectDir: f.dir, stateDir: f.portableState }, rev)', 'applyAdoptionRecovery({ projectDir: f.dir, stateDir: f.adoptState }, rev)']) assert.ok(service.includes(call), call);
+  assert.equal([...service.matchAll(/revisionArg\(revision\)/g)].length, 5, 'each of the five writes checks its revision first');
+  assert.doesNotMatch(service, /\b(writeFileSync|writeFile|mkdirSync|rmSync|unlinkSync|renameSync)\b/, 'the service itself writes no file');
+  // The engine calls are registered for the harness-first window on the person's own folders only.
+  assert.match(strip(read('main/main.ts')), /if \(prototypeV3Real\) \{\s*registerEngineIpc\(/);
 });

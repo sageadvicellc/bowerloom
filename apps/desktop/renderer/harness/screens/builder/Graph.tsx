@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactElement } from 'react';
-import { ZOOM_STEP, brightIds, centerOnMiniMap, edgePath, fitView, graphOf, miniMap, zoomAt } from '../../../../shared/harness/layout.js';
+import { FIT_FOOT, ZOOM_STEP, brightIds, centerOnMiniMap, edgePath, fitView, graphOf, miniMap, zoomAt } from '../../../../shared/harness/layout.js';
 import type { GraphNode, View } from '../../../../shared/harness/layout.js';
 import type { Harness, HarnessState, Point } from '../../../../shared/harness/types.js';
 import { HIcon, KIND_ICON } from '../../icons.js';
@@ -52,7 +52,7 @@ export function Graph({ state, harness, selectedId, linkingId, matchIds, onSelec
     const read = (): void => {
       const box = el.getBoundingClientRect();
       setSize({ w: box.width, h: box.height });
-      if (!fitted.current && box.width > 0 && box.height > 0) { fitted.current = true; setView(fitView(latest.current.graph.bounds, box.width, box.height)); }
+      if (!fitted.current && box.width > 0 && box.height > 0) { fitted.current = true; setView(fitView(latest.current.graph.bounds, box.width, box.height, 16, FIT_FOOT)); }
     };
     read();
     const observer = new ResizeObserver(read);
@@ -159,7 +159,7 @@ export function Graph({ state, harness, selectedId, linkingId, matchIds, onSelec
     onMove(node.id, { x: node.x + delta[0]!, y: node.y + delta[1]! });
   };
 
-  const fit = useCallback((): void => setView(fitView(latest.current.graph.bounds, latest.current.size.w, latest.current.size.h)), []);
+  const fit = useCallback((): void => setView(fitView(latest.current.graph.bounds, latest.current.size.w, latest.current.size.h, 16, FIT_FOOT)), []);
   const centre = (): { x: number; y: number } => ({ x: latest.current.size.w / 2, y: latest.current.size.h / 2 });
   const map = useMemo(() => miniMap(graph, view, size.w, size.h, MAP.w, MAP.h), [graph, view, size]);
   const linkAgent = linkingId === null ? undefined : nodeById.get(linkingId);

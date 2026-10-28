@@ -69,11 +69,11 @@ export const REAL = deepFreeze({
     chooseLine: 'To count what each folder holds, Bowerloom opened settings files and read names and structure. It reads text only in folders you keep ticked.',
     consentNotes: 'It looks through the whole folder for notes pages. It reads the first lines of up to 2000 of them.',
     readLine: 'A harness is a saved list of agents and skills. Bowerloom stores it as one small file in the project you install it to.',
-    previewAbout: 'This preview reads your own folders. It changes none of them and writes nothing.',
+    previewAbout: 'This preview reads your own folders. It writes only after you approve a plan in Projects.',
     previewFull: 'In the full app, Start opens the interface for you.',
   },
   /** The list of the Preview mark's popover in this mode: what the person cannot do yet. */
-  notInPreview: ['Install', 'Start', 'Compare', 'Runs'],
+  notInPreview: ['Assign to project', 'Start', 'Compare', 'Runs'],
 } as const);
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;

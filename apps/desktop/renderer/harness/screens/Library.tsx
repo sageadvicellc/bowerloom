@@ -122,7 +122,7 @@ export function Library({ kind, partId }: { kind: PartKind; partId: string | nul
   }
   return (
     <Screen slot="library" title={WORDS.label.library}
-      tools={<HIconButton icon="plus" label={WORDS.label.add} tip={WORDS.hint.previewOnly} side="below" aria-disabled="true" onClick={e => { e.preventDefault(); ui.showToast(WORDS.hint.previewOnly); }} />}
+      tools={<HIconButton icon="plus" label={WORDS.label.add} tip={WORDS.hint.previewOnly} side="below-end" aria-disabled="true" onClick={e => { e.preventDefault(); ui.showToast(WORDS.hint.previewOnly); }} />}
       details={selected === undefined ? undefined : <Details state={state} part={selected} onAdd={() => setPicking({ open: true, part: selected })} />}>
       <div className="hx-tabs" role="group" aria-label={WORDS.label.libraryPages}>
         {PART_KINDS.map(k => <button key={k} type="button" className="hx-tab" aria-pressed={k === kind} onClick={() => open(k)}>{KIND_PLURAL[k]} <span className="hx-tab-count">{counts[k]}</span></button>)}

@@ -14,12 +14,12 @@ import { tempDir } from './proto-temp.js';
 
 export interface RealHarness { app: ElectronApplication; page: Page; pick(folder: string | null): Promise<void>; dialogs: string[] }
 
-/** Builds the bundle fresh from the source in this folder, starts the app with --prototype-v3-real on the given HOME and waits for the first window. */
-export async function launchReal(home: string): Promise<RealHarness> {
+/** Builds the bundle fresh from the source in this folder, starts the app with --prototype-v3-real on the given HOME (and any other variable given, such as XDG_STATE_HOME) and waits for the first window. */
+export async function launchReal(home: string, env: Record<string, string> = {}): Promise<RealHarness> {
   const built = spawnSync(process.execPath, [join(desktop, 'tools', 'bundle.mjs')], { cwd: desktop, encoding: 'utf8' });
   if (built.status !== 0 || !existsSync(join(desktop, 'dist', 'main.mjs'))) throw new Error(`The bundle did not build.\n${built.stdout}\n${built.stderr}`);
   const userData = tempDir('bowerloom-prototype-e2e-');
-  const app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--prototype-v3-real', `--user-data-dir=${userData}`], env: { ...process.env, HOME: home, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
+  const app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--prototype-v3-real', `--user-data-dir=${userData}`], env: { ...process.env, HOME: home, ELECTRON_DISABLE_SECURITY_WARNINGS: '1', ...env } });
   await app.evaluate(({ dialog }) => {
     (globalThis as unknown as { __pick: string | null }).__pick = null;
     dialog.showOpenDialog = (async () => { const pick = (globalThis as unknown as { __pick: string | null }).__pick; return pick === null ? { canceled: true, filePaths: [] } : { canceled: false, filePaths: [pick] }; }) as unknown as typeof dialog.showOpenDialog;
