@@ -197,3 +197,43 @@ test('S1: a line over the limit fails closed, and a 1 MiB file scans fast', () =
   const r = loadDefinition(makeDefinition(fullFiles({ 'scripts/one.txt': 'b'.repeat(1024 * 1024 - 1) })));
   assert.ok(codes(r).includes('SECRET_SCAN_INCOMPLETE'));
 });
+
+// ---- Fix round 2: verification review -------------------------------------------------------------------------------
+
+test('M1: secret names with no separators, with digits, or bare are found', () => {
+  for (const key of ['GITHUBTOKEN', 'DBPASSWORD', 'AUTHTOKEN', 'CLIENTSECRET', 'MYSECRET', 'PASSWORD1', 'TOKEN2', 'API_KEY_2', 'PW', 'key']) {
+    assert.equal(scanJson('engines/codex/a.json', { [key]: literal }).length, 1, key);
+  }
+  for (const key of ['token_url', 'max_tokens', 'maxtokens', 'public_key', 'tokenizer', 'secretary', 'keychain', 'author']) {
+    assert.deepEqual(scanJson('engines/codex/a.json', { [key]: literal }), [], key);
+  }
+});
+
+test('M2: shapes are found after any punctuation inside a token', () => {
+  const aws = 'AK' + 'IA' + 'ABCD2345'.repeat(2);
+  const gh = 'gh' + 'p_' + 'A1b2'.repeat(9);
+  for (const line of [`id-${aws}`, `x-${gh}`, `cfg.${gh}`, `"key":"${gh}"`]) {
+    assert.equal(scanSecrets([{ path: 'scripts/a.sh', bytes: Buffer.from(line + '\n') }]).length, 1, line);
+  }
+  const telegram = 'https://api.telegram.org/bot' + '123456789:' + 'AAH' + 'x1Y2z3'.repeat(5) + 'ab' + '/getMe';
+  assert.equal(scanSecrets([{ path: 'scripts/a.sh', bytes: Buffer.from(`curl ${telegram}\n`) }]).length, 1);
+  assert.equal(scanSecrets([{ path: 'scripts/a.sh', bytes: Buffer.from('connect redis://:' + 'hunter2pw' + '@cache.example.com:6379\n') }]).length, 1);
+  assert.equal(scanSecrets([{ path: 'scripts/a.sh', bytes: Buffer.from('connect redis://:${REDIS_PASSWORD}@cache.example.com:6379\n') }]).length, 0);
+});
+
+test('L4: YAML files are scanned through their values', () => {
+  const yaml = 'servers:\n  db:\n    credentials:\n      value: "' + literal + '"\nnote: "gh\\u0070_' + 'A1b2'.repeat(9) + '"\n';
+  const findings = scanSecrets([{ path: 'engines/codex/config.yaml', bytes: Buffer.from(yaml) }]);
+  assert.ok(findings.some(f => f.pointer === '/servers/db/credentials/value'), JSON.stringify(findings));
+  assert.ok(findings.some(f => f.pointer === '/note'), JSON.stringify(findings));
+});
+
+test('L4: a bearer header, curl -u, and signature query strings are found', () => {
+  const found = line => scanSecrets([{ path: 'scripts/a.sh', bytes: Buffer.from(line + '\n') }]).length;
+  assert.equal(found("curl -H 'Authorization: Bearer abc123def456'"), 1);
+  assert.equal(found('curl -u admin:hunter2 https://x.example.com'), 1);
+  assert.equal(found('curl --user admin:hunter2 https://x.example.com'), 1);
+  assert.equal(found('curl https://x.example.com/f?sig=abc123&se=2026'), 1);
+  assert.equal(found('curl https://x.example.com/f?key=abc123'), 1);
+  assert.equal(found("curl -H 'Authorization: Bearer ${TOKEN}' -u admin:$PASS https://x.example.com/f?page=2"), 0);
+});

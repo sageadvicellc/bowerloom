@@ -29,7 +29,9 @@ A lower layer, such as a cloned project, is less trusted than the user store abo
 - No approval can let a lower layer hide or replace a `deny` rule, an `ask` rule, or a sandbox requirement.
 - A lower layer can add hooks, MCP servers, and subagents. Some of these get `needsApproval` on the resolved entry, with the layer they came from:
   - Every hook, because it runs a command.
+  - Every MCP server that uses `stdio`, because it runs a command too.
   - Every server or subagent that holds a `${NAME}` or keychain reference.
+  - Every entry with an `x-<engine>` block.
   The projection plan must show these entries to a person before Bowerloom writes anything.
 - A child layer's engines can only narrow the engines of its parent.
 
@@ -42,7 +44,9 @@ There are two approval records. Each record has four shared fields:
 - `reason`: why the person approved.
 - `entryHash`: the hash of the approved entry. `entryHash(entry)` computes it.
 
-When the entry changes, the approval no longer applies.
+When the entry changes, the approval no longer applies. The entry hash also counts execute bits: a skill lists its executable files, and each script in `scriptEntries` has its own bit. So a `chmod +x` makes an approval of that skill or script void.
+
+A `LayerApproval` also names `folder`, the `.bowerloom` folder of the layer that makes the change. So an approval for one project never applies to another. For `replace`, it also names `targetHash`, the hash of the item it replaces.
 
 - `FidelityApproval` lets Bowerloom project an `enforced` entry that is `weakened` or `absent` in one engine.
 - `LayerApproval` lets a lower layer make one of the widening changes listed above.
@@ -69,6 +73,7 @@ Strength comes from the definition (`strengthOf`). A loss line holds no strength
 - An engine-only skill key goes in the skill's entry in the `skills` map of `harness.json`, inside an `x-<engine>` block. The skill engine filter also goes there, as `engines`.
 - A private block holds no permission-like key at any depth. Examples: `permissions`, `allowed-tools`, `sandbox_mode`, `approval_policy`, `tools`, `hooks`, `mcpServers`. `isPermissionKey` holds the rule. Adopt Claude Code's `allowed-tools` as a guardrail entry, never as a private block.
 - An engine that `harness.json` does not list cannot be the target of an engine filter, a private block, a model, or an `engines/<id>/` folder.
+- The denylist of private-block keys cannot be complete. So the projection lanes treat every private block as untrusted. They run the fidelity check on what they project from a private block, as they do for neutral entries.
 
 ## For the projection lanes
 
@@ -90,4 +95,11 @@ A skill entry carries `contentHash`, a hash of every file in its folder. So when
 
 ## Secret scan
 
-The scan is linear. It fails closed: a text line over 4096 characters, and a `.json` file that is not strict JSON, give `SECRET_SCAN_INCOMPLETE`. A finding never holds the value it found.
+The scan is linear. A finding never holds the value it found.
+
+The scan fails closed. Each of these gives `SECRET_SCAN_INCOMPLETE`, and the loader refuses the definition:
+
+- A text line over 4096 characters.
+- A `.json` file that is not strict JSON.
+
+A hook command has the same 4096-character limit, so the scan always reads all of it. If a YAML file does not parse, the scan reads it line by line.

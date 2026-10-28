@@ -30,7 +30,11 @@ function layers(specs) {
 const resolved = (chain, options) => { const r = resolveLayers(chain, options); assert.equal(r.ok, true, JSON.stringify(r.ok ? null : r.problems)); return r.resolved; };
 const refusedCodes = (chain, options) => { const r = resolveLayers(chain, options); assert.equal(r.ok, false, 'expected a refusal'); return r.problems.map(p => p.code); };
 const rule = (id, effect, pattern = id, extra = {}) => ({ id, action: 'shell', pattern, effect, strength: 'enforced', ...extra });
-const approval = (part, entry, change, item, extra = {}) => ({ part, entry, change, entryHash: entryHash(item), who: 'Hanna Sage', when: '2026-10-28T14:00:00Z', reason: 'Reviewed.', ...extra });
+/** A layer approval for a change that `by` makes. `target` is the replaced item, for replace. */
+const approval = (by, part, entry, change, item, target, extra = {}) => ({
+  part, entry, change, folder: by.folder, entryHash: entryHash(item), ...(target ? { targetHash: entryHash(target) } : {}),
+  who: 'Hanna Sage', when: '2026-10-28T14:00:00Z', reason: 'Reviewed.', ...extra,
+});
 const find = (def, key, id) => def.entries[key].find(e => e.id === id);
 
 test('additive parts combine across layers, and inherited items are marked', () => {
@@ -93,7 +97,7 @@ test('check 5: a child layer cannot hide or replace a deny rule from a higher la
   assert.deepEqual(refusedCodes([l.user, l.project]), ['GUARDRAIL_LOCKED']);
   assert.deepEqual(refusedCodes([l.user, l.sibling]), ['GUARDRAIL_LOCKED']);
   // No approval opens the lock.
-  const opened = approval('guardrails', 'no-push', 'hide', find(l.user, 'rules', 'no-push'));
+  const opened = approval(l.project, 'guardrails', 'no-push', 'hide', find(l.user, 'rules', 'no-push'));
   assert.deepEqual(refusedCodes([l.user, l.project], { approvals: [opened], now: NOW }), ['GUARDRAIL_LOCKED']);
 });
 
@@ -125,11 +129,11 @@ test('R1: a lower layer cannot add an allow rule without an approval bound to th
   const { user, project } = layers({ user: { rules: [rule('no-push', 'deny')] }, project: { rules: [rule('git', 'allow', 'git *', { strength: 'advisory' })] } });
   assert.deepEqual(refusedCodes([user, project]), ['LAYER_WIDENS']);
   const item = find(project, 'rules', 'git');
-  const r = resolved([user, project], { approvals: [approval('guardrails', 'git', 'add-allow', item)], now: NOW });
+  const r = resolved([user, project], { approvals: [approval(project, 'guardrails', 'git', 'add-allow', item)], now: NOW });
   assert.deepEqual(r.rules.map(p => p.item.id), ['no-push', 'git']);
   assert.equal(r.approved.length, 1);
   // An approval of another version of the rule is void.
-  const other = approval('guardrails', 'git', 'add-allow', { ...item, pattern: 'git status' });
+  const other = approval(project, 'guardrails', 'git', 'add-allow', { ...item, pattern: 'git status' });
   assert.deepEqual(refusedCodes([user, project], { approvals: [other], now: NOW }), ['LAYER_WIDENS']);
   // The top layer may add allow rules.
   assert.equal(resolveLayers([project]).ok, true);
@@ -143,7 +147,7 @@ test('R1: a lower layer can restrict an allow rule but not replace it with anoth
   });
   assert.equal(resolved([l.user, l.project]).rules[0].item.effect, 'deny');
   assert.deepEqual(refusedCodes([l.user, l.sibling]), ['LAYER_WIDENS']);
-  const ok = resolved([l.user, l.sibling], { approvals: [approval('guardrails', 'git', 'replace', find(l.sibling, 'rules', 'git'))], now: NOW });
+  const ok = resolved([l.user, l.sibling], { approvals: [approval(l.sibling, 'guardrails', 'git', 'replace', find(l.sibling, 'rules', 'git'), find(l.user, 'rules', 'git'))], now: NOW });
   assert.equal(ok.rules[0].item.pattern, 'git push *');
 });
 
@@ -160,16 +164,16 @@ test('R1: a lower layer cannot hide or replace a hook, an MCP server, or a subag
   assert.deepEqual(refusedCodes([l.user, l.project]), ['LAYER_WIDENS', 'LAYER_WIDENS', 'LAYER_WIDENS']);
   assert.deepEqual(refusedCodes([l.user, l.sibling]), ['LAYER_WIDENS', 'LAYER_WIDENS', 'LAYER_WIDENS']);
   const approvals = [
-    approval('subagents', 'r', 'replace', find(l.project, 'subagents', 'r')),
-    approval('hooks', 'h', 'replace', find(l.project, 'hooks', 'h')),
-    approval('mcp', 's', 'replace', find(l.project, 'mcp', 's')),
+    approval(l.project, 'subagents', 'r', 'replace', find(l.project, 'subagents', 'r'), find(l.user, 'subagents', 'r')),
+    approval(l.project, 'hooks', 'h', 'replace', find(l.project, 'hooks', 'h'), find(l.user, 'hooks', 'h')),
+    approval(l.project, 'mcp', 's', 'replace', find(l.project, 'mcp', 's'), find(l.user, 'mcp', 's')),
   ];
   const r = resolved([l.user, l.project], { approvals, now: NOW });
   assert.deepEqual(r.subagents[0].item.tools, ['read', 'shell']);
   const hides = [
-    approval('subagents', 'r', 'hide', find(l.user, 'subagents', 'r')),
-    approval('hooks', 'h', 'hide', find(l.user, 'hooks', 'h')),
-    approval('mcp', 's', 'hide', find(l.user, 'mcp', 's')),
+    approval(l.sibling, 'subagents', 'r', 'hide', find(l.user, 'subagents', 'r')),
+    approval(l.sibling, 'hooks', 'h', 'hide', find(l.user, 'hooks', 'h')),
+    approval(l.sibling, 'mcp', 's', 'hide', find(l.user, 'mcp', 's')),
   ];
   assert.equal(resolved([l.user, l.sibling], { approvals: hides, now: NOW }).hooks.length, 0);
 });
@@ -182,17 +186,22 @@ test('R2: items a lower layer adds that hold references or commands need approva
       mcp: [
         { name: 'ref', transport: 'http', url: 'https://b.example.com', headers: { Authorization: 'Bearer ${ANTHROPIC_API_KEY}' } },
         { name: 'kc', transport: 'stdio', command: 'run', env: { K: { keychain: 'k' } } },
-        { name: 'plain', transport: 'stdio', command: 'run' },
+        { name: 'plain', transport: 'http', url: 'https://c.example.com' },
+        { name: 'local', transport: 'stdio', command: 'run' },
       ],
     },
   });
   const r = resolved([l.user, l.project]);
-  const flag = (list, id) => list.find(p => p.item.id === id).needsApproval;
+  const flag = (list, id) => { const n = list.find(p => p.item.id === id).needsApproval; return n && { layer: n.layer, reason: n.reason }; };
+  const reasons = (list, id) => list.find(p => p.item.id === id).needsApproval?.reasons;
   assert.equal(flag(r.hooks, 'up'), undefined);
   assert.equal(flag(r.mcp, 'top'), undefined);
   assert.deepEqual(flag(r.hooks, 'down'), { layer: 1, reason: 'hook-command' });
   assert.deepEqual(flag(r.mcp, 'ref'), { layer: 1, reason: 'secret-reference' });
-  assert.deepEqual(flag(r.mcp, 'kc'), { layer: 1, reason: 'secret-reference' });
+  // M4: a stdio server runs a command, like a hook.
+  assert.deepEqual(flag(r.mcp, 'kc'), { layer: 1, reason: 'server-command' });
+  assert.deepEqual(reasons(r.mcp, 'kc'), ['server-command', 'secret-reference']);
+  assert.deepEqual(flag(r.mcp, 'local'), { layer: 1, reason: 'server-command' });
   assert.equal(flag(r.mcp, 'plain'), undefined);
 });
 
@@ -252,4 +261,32 @@ test('silent 5: references must resolve after layers, for each engine', () => {
 test('layer resolution is the same on every call', () => {
   const { user, project } = layers({ user: { skills: { a: 'A.' }, rules: [rule('d', 'deny')] }, project: { skills: { b: 'B.' } } });
   assert.deepEqual(resolved([user, project]), resolved([user, project]));
+});
+
+test('M3: every private block on an entry from a lower layer needs approval', () => {
+  const l = layers({
+    user: { rules: [rule('top', 'deny', 'top', { 'x-claude-code': { note: 'a' } })] },
+    project: { rules: [rule('mine', 'deny', 'mine', { 'x-claude-code': { note: 'b' } })], skills: { s: 'S.' }, skillSettings: { s: { 'x-codex': { note: 'c' } } } },
+  });
+  const r = resolved([l.user, l.project]);
+  assert.equal(r.rules.find(p => p.item.id === 'top').needsApproval, undefined);
+  assert.deepEqual(r.rules.find(p => p.item.id === 'mine').needsApproval, { layer: 1, reason: 'private-block', reasons: ['private-block'] });
+  assert.deepEqual(r.skills.find(p => p.item.id === 's').needsApproval.reasons, ['private-block']);
+});
+
+test('L1: a layer approval binds the layer folder, and for replace the replaced item', () => {
+  const root = tempRoot();
+  const user = layer(root, 'home', { rules: [rule('git', 'allow', 'git *')] });
+  const a = layer(root, 'work/a', { rules: [rule('git', 'allow', 'git push *')], overrides: [{ part: 'guardrails', id: 'git', action: 'replace' }] });
+  const b = layer(root, 'work/b', { rules: [rule('git', 'allow', 'git push *')], overrides: [{ part: 'guardrails', id: 'git', action: 'replace' }] });
+  const forA = approval(a, 'guardrails', 'git', 'replace', find(a, 'rules', 'git'), find(user, 'rules', 'git'));
+  assert.equal(resolveLayers([user, a], { approvals: [forA], now: NOW }).ok, true);
+  assert.deepEqual(refusedCodes([user, b], { approvals: [forA], now: NOW }), ['LAYER_WIDENS']);
+  // Another replaced item voids it.
+  const otherTarget = approval(a, 'guardrails', 'git', 'replace', find(a, 'rules', 'git'), { ...find(user, 'rules', 'git'), pattern: 'git status' });
+  assert.deepEqual(refusedCodes([user, a], { approvals: [otherTarget], now: NOW }), ['LAYER_WIDENS']);
+  // A replace approval with no target hash, or a relative folder, is not a valid record.
+  const { targetHash: _, ...noTarget } = forA;
+  assert.ok(refusedCodes([user, a], { approvals: [noTarget], now: NOW }).includes('APPROVAL_INVALID'));
+  assert.ok(refusedCodes([user, a], { approvals: [{ ...forA, folder: 'work/a/.bowerloom' }], now: NOW }).includes('APPROVAL_INVALID'));
 });

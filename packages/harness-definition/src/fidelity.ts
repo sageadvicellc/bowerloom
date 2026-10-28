@@ -10,6 +10,7 @@
  *   the record types, their checks, and pure matchers only.
  */
 import { createHash } from 'node:crypto';
+import path from 'node:path';
 import { canonicalJson } from '../../contracts/src/index.js';
 import { isRecord } from './json.js';
 import { appliesTo } from './select.js';
@@ -63,12 +64,17 @@ export interface FidelityApproval extends ApprovalRecord {
 /**
  * A person's recorded approval for a lower layer to widen what a higher layer set (lead ruling R1): add an `allow` rule,
  * or hide or replace a hook, an MCP server, a subagent, or an `allow` rule with another `allow` rule. `entryHash` is the
- * hash of the lower layer's entry for `add-allow` and `replace`, and of the hidden entry for `hide`.
+ * hash of the lower layer's entry for `add-allow` and `replace`, and of the hidden entry for `hide`. `folder` is the
+ * `.bowerloom` folder of the layer that makes the change, so an approval for one project never matches another.
+ * `targetHash`, for `replace` only, is the hash of the replaced item.
  */
 export interface LayerApproval extends ApprovalRecord {
   readonly part: OverridablePart;
   readonly entry: string;
   readonly change: 'add-allow' | 'hide' | 'replace';
+  /** The absolute path of the `.bowerloom` folder of the layer that makes the change. */
+  readonly folder: string;
+  readonly targetHash?: string;
 }
 
 export interface ApprovalOptions {
@@ -124,12 +130,21 @@ export function parseFidelityApproval(value: unknown, options: ApprovalOptions =
 export function parseLayerApproval(value: unknown, options: ApprovalOptions = {}): ParseResult<'approval', LayerApproval> {
   const problems: Problem[] = [];
   const bad = (message: string) => { problems.push({ code: 'APPROVAL_INVALID', path: 'approval', message }); };
-  const v = record(value, ['part', 'entry', 'change', 'entryHash', 'who', 'when', 'reason'], options.now ?? new Date(), bad);
+  const v = record(value, ['part', 'entry', 'change', 'folder', 'entryHash', 'targetHash', 'who', 'when', 'reason'], options.now ?? new Date(), bad);
   if (!v) return { ok: false, problems };
   if (!(OVERRIDABLE_PARTS as readonly unknown[]).includes(v.part)) bad(`part must be one of ${OVERRIDABLE_PARTS.join(', ')}.`);
   if (!['add-allow', 'hide', 'replace'].includes(v.change as string)) bad('change must be add-allow, hide, or replace.');
+  if (typeof v.folder !== 'string' || !path.isAbsolute(v.folder) || v.folder.length > 4096) bad('folder must be the absolute path of the layer\'s .bowerloom folder.');
+  if (v.change === 'replace' ? typeof v.targetHash !== 'string' || !HASH.test(v.targetHash) : Object.hasOwn(v, 'targetHash')) bad('targetHash is the sha256 hash of the replaced item, for replace only.');
   if (problems.length) return { ok: false, problems };
-  return { ok: true, approval: { part: v.part as OverridablePart, entry: v.entry as string, change: v.change as LayerApproval['change'], entryHash: v.entryHash as string, who: v.who as string, when: v.when as string, reason: v.reason as string } };
+  return {
+    ok: true,
+    approval: {
+      part: v.part as OverridablePart, entry: v.entry as string, change: v.change as LayerApproval['change'], folder: v.folder as string,
+      entryHash: v.entryHash as string, ...(v.change === 'replace' ? { targetHash: v.targetHash as string } : {}),
+      who: v.who as string, when: v.when as string, reason: v.reason as string,
+    },
+  };
 }
 
 /** True when an approval covers a line about this entry. */
@@ -137,9 +152,14 @@ export function fidelityApprovalMatches(approval: FidelityApproval, line: LossLi
   return approval.part === line.part && approval.entry === line.entry && approval.engine === line.engine
     && (approval.field ?? null) === (line.field ?? null) && approval.result === line.result && approval.entryHash === entryHash(entry);
 }
-/** True when an approval covers this layer change of this entry. */
-export function layerApprovalMatches(approval: LayerApproval, part: OverridablePart, change: LayerApproval['change'], entry: { readonly id: string }): boolean {
-  return approval.part === part && approval.entry === entry.id && approval.change === change && approval.entryHash === entryHash(entry);
+/**
+ * True when an approval covers this change of this entry by the layer in `folder`. For `replace`, `target` is the
+ * replaced item, and the approval must name its hash.
+ */
+export function layerApprovalMatches(approval: LayerApproval, part: OverridablePart, change: LayerApproval['change'], entry: { readonly id: string }, folder: string, target?: object): boolean {
+  if (approval.part !== part || approval.entry !== entry.id || approval.change !== change || approval.entryHash !== entryHash(entry)) return false;
+  if (path.resolve(approval.folder) !== path.resolve(folder)) return false;
+  return change !== 'replace' || (target !== undefined && approval.targetHash === entryHash(target));
 }
 
 /**
