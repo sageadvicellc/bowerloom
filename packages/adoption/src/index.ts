@@ -8,9 +8,9 @@ export { applyAdoption } from './apply.js';
 export { applyAdoptionRecovery, planAdoptionRecovery, JOURNAL, JOURNAL_FORMAT, RECOVERY_PLAN_FORMAT } from './journal.js';
 export type { AdoptionRecoveryPlan, AdoptionRecoveryResult, RecoveryInput } from './journal.js';
 export type { AdoptionResult } from './apply.js';
-export { ADOPTION_PLAN_FORMAT } from './model.js';
+export { ADOPTION_PLAN_FORMAT, EVERY_ENGINE_PARTS } from './model.js';
 export type {
-  AdoptionChoice, AdoptionPlan, Conflict, Difference, Gate, ItemPart, ManagedConversion, Missed, Place, PlanEngine, PlanItem, PlannedFile, SecretLine,
+  AdoptionChoice, AdoptionPlan, Conflict, Difference, EveryEngine, EveryEnginePart, Gate, ItemPart, ManagedConversion, Missed, Place, PlanEngine, PlanItem, PlannedFile, SecretLine,
   SourceShape, Unmapped, UnmappedPart,
 } from './model.js';
 export { ADOPTION_REFUSAL_CODES, AdoptionRefusal } from './refusal.js';

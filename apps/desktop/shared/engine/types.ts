@@ -114,6 +114,16 @@ export interface AdoptApprovalView {
   /** Why this approval cannot be given here, or null. An approval with no text to show is a block, never a tick (W4). */
   readonly blocked: string | null;
 }
+/** The parts that take "Use for every engine" (decision D8B), in the order the sheet shows them. */
+export type EveryEnginePart = 'guardrails' | 'hooks' | 'mcp';
+export const EVERY_ENGINE_PARTS: readonly EveryEnginePart[] = Object.freeze(['guardrails', 'hooks', 'mcp'] as const);
+/** "Use for every engine" for one part: whether it is ticked, how many items it widens, and the items it never widens, each with why (D8B). */
+export interface AdoptEveryEngineView {
+  readonly part: EveryEnginePart;
+  readonly chosen: boolean;
+  readonly widens: number;
+  readonly notWidened: readonly { readonly id: string; readonly reason: string }[];
+}
 export interface AdoptView {
   readonly folder: string;
   readonly harness: { readonly id: string; readonly description: string };
@@ -122,6 +132,8 @@ export interface AdoptView {
   readonly items: readonly AdoptItemView[];
   readonly conflicts: readonly AdoptConflictView[];
   readonly differences: readonly AdoptDifferenceView[];
+  /** One row per part, guardrails, hooks and servers, in that order (D8B). */
+  readonly everyEngine: readonly AdoptEveryEngineView[];
   readonly unmapped: readonly AdoptUnmappedView[];
   readonly secrets: readonly AdoptSecretView[];
   readonly managed: readonly { readonly catalog: string; readonly id: string; readonly skill: string | null; readonly reason: string }[];
@@ -139,6 +151,8 @@ export interface AdoptChoices {
   readonly picks: Readonly<Record<string, string>>;
   /** The gated unmapped entries the person acknowledged, each by id and by the hash of what the person read. */
   readonly acknowledged: readonly { readonly id: string; readonly hash: string }[];
+  /** The parts ticked "Use for every engine" (D8B). None when left out. */
+  readonly everyEngine?: readonly EveryEnginePart[];
 }
 export interface AdoptWritten { readonly written: readonly string[] }
 /** One approval as the window sends it: the key and the hash of what the person read. */

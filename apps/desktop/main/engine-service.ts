@@ -36,9 +36,9 @@ import type { Definition, FidelityApproval } from '../../../packages/harness-def
 import { checkProjectPath } from '../../../packages/project-context/src/index.js';
 import { labelOf, makeScrub, visible } from '../shared/engine/scrub.js';
 import type { Scrub } from '../shared/engine/scrub.js';
-import { ENGINE_IDS, RECONCILE, isEngineId } from '../shared/engine/types.js';
+import { ENGINE_IDS, EVERY_ENGINE_PARTS, RECONCILE, isEngineId } from '../shared/engine/types.js';
 import type {
-  AdoptApproval, AdoptChoices, AdoptRecovered, AdoptRecoveryView, AdoptView, AdoptWritten, Answer, ApproveLineView, EngineId, FolderInfo, MergeView, MergeWritten,
+  AdoptApproval, AdoptChoices, AdoptRecovered, AdoptRecoveryView, AdoptView, AdoptWritten, Answer, ApproveLineView, EngineId, EveryEnginePart, FolderInfo, MergeView, MergeWritten,
   ProjectAnswer, ProjectInput, ProjectWritten, Recovered, RecoveryChoices, RecoveryView, Refusal, RemovalView, Removed,
 } from '../shared/engine/types.js';
 import { adoptRecoveryView, adoptionView, approveKey, approveLine, keepsFile, mergeRecoveryView, mergeView, projectView, recoveryView, removalView } from '../shared/engine/view.js';
@@ -93,16 +93,19 @@ const hashed = (v: unknown, max = 2000): { key: string; hash: string }[] => {
   });
 };
 
-export function checkChoices(v: unknown): AdoptChoices {
+export function checkChoices(v: unknown): AdoptChoices & { readonly everyEngine: readonly EveryEnginePart[] } {
   if (v === null || typeof v !== 'object' || Array.isArray(v)) return bad();
   const o = v as Record<string, unknown>;
-  if (Object.keys(o).some(k => k !== 'picks' && k !== 'acknowledged')) return bad();
+  if (Object.keys(o).some(k => k !== 'picks' && k !== 'acknowledged' && k !== 'everyEngine')) return bad();
+  // Decision D8B: each part at most once, kept in the order of the parts, so the plan and its write name the same choice.
+  const every = o.everyEngine === undefined ? [] : o.everyEngine;
+  if (!Array.isArray(every) || every.some(p => !(EVERY_ENGINE_PARTS as readonly unknown[]).includes(p)) || new Set(every).size !== every.length) return bad();
   const picks = o.picks;
   if (picks === null || typeof picks !== 'object' || Array.isArray(picks)) return bad();
   const entries = Object.entries(picks as Record<string, unknown>);
   if (entries.length > 2000 || entries.some(([k, x]) => !safeString(k, 1024) || !safeString(x, 1024))) return bad();
   if (Array.isArray(o.acknowledged) && o.acknowledged.some(a => a === null || typeof a !== 'object' || !('id' in (a as object)))) return bad();
-  return { picks: Object.fromEntries(entries) as Record<string, string>, acknowledged: hashed(o.acknowledged).map(a => ({ id: a.key, hash: a.hash })) };
+  return { picks: Object.fromEntries(entries) as Record<string, string>, acknowledged: hashed(o.acknowledged).map(a => ({ id: a.key, hash: a.hash })), everyEngine: EVERY_ENGINE_PARTS.filter(p => every.includes(p)) };
 }
 
 export function checkApprovals(v: unknown): AdoptApproval[] {
@@ -263,19 +266,20 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     return { id: f.id, label: f.label, name: f.scrub(basename(f.dir)), hasDefinition, engines, problem, projected, unfinished: { projection, adoption } };
   }
 
-  const adoptInput = (f: Folder, picks: AdoptChoices['picks'], acknowledged: readonly string[]): AdoptionInput => ({
+  const adoptInput = (f: Folder, picks: AdoptChoices['picks'], acknowledged: readonly string[], everyEngine: readonly EveryEnginePart[]): AdoptionInput => ({
     projectDir: f.dir, stateDir: f.adoptState,
     choices: Object.fromEntries(Object.entries(picks).map(([k, pick]) => [k, { pick }])),
     acknowledged,
+    ...(everyEngine.length ? { everyEngine } : {}),
   });
 
   /**
    * The adoption plan for these choices. An acknowledgement counts only when its hash is the hash of the entry as the plan shows it now (U3); one that
    * does not match is dropped, and the plan is made again without it.
    */
-  function adoptionNow(f: Folder, c: AdoptChoices): { plan: AdoptionPlan; view: AdoptView; acknowledged: AdoptChoices['acknowledged'] } {
+  function adoptionNow(f: Folder, c: ReturnType<typeof checkChoices>): { plan: AdoptionPlan; view: AdoptView; acknowledged: AdoptChoices['acknowledged'] } {
     const make = (acks: readonly string[]): { plan: AdoptionPlan; view: AdoptView } => {
-      const { plan, bytes } = planAdoptionWithBytes(adoptInput(f, c.picks, acks));
+      const { plan, bytes } = planAdoptionWithBytes(adoptInput(f, c.picks, acks, c.everyEngine));
       return { plan, view: adoptionView(plan, f.label, f.scrub, { hashOf, textOf: key => approvalText(key, bytes) }) };
     };
     const wanted = c.acknowledged.map(a => a.id);
@@ -419,16 +423,16 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
       return planned(f, 'adoption', () => {
         const { plan, view, acknowledged } = adoptionNow(f, c);
         // The record keeps what the write must repeat: the picks, the acknowledgements that counted, and each approval with its hash.
-        return { value: view, revision: plan.revision, choices: { picks: c.picks, acknowledged: sortById(acknowledged), approvals: byKey(view.approvals.filter(a => a.blocked === null).map(a => ({ key: a.key, hash: a.hash }))) }, ask: ASK.adoption(f.label, plan.files.length, plan.revision) };
+        return { value: view, revision: plan.revision, choices: { picks: c.picks, acknowledged: sortById(acknowledged), approvals: byKey(view.approvals.filter(a => a.blocked === null).map(a => ({ key: a.key, hash: a.hash }))), everyEngine: c.everyEngine }, ask: ASK.adoption(f.label, plan.files.length, plan.revision) };
       });
     }),
     runAdoption: (id, revision, choices, approvals) => serial(async () => {
       const f = folderOf(id), rev = revisionArg(revision), c = checkChoices(choices), list = checkApprovals(approvals);
       // The plan shown last was made with the acknowledgements that counted, each by id and hash; the write must name them, and every approval with its
       // hash, exactly. An acknowledgement or an approval of content the person did not read never matches.
-      const shownPicks = { picks: c.picks, acknowledged: sortById(c.acknowledged), approvals: byKey(list) };
+      const shownPicks = { picks: c.picks, acknowledged: sortById(c.acknowledged), approvals: byKey(list), everyEngine: c.everyEngine };
       return written(f, 'adoption', rev, shownPicks, async () => {
-        const r = await applyAdoption(adoptInput(f, c.picks, c.acknowledged.map(a => a.id)), rev, list.map(a => a.key));
+        const r = await applyAdoption(adoptInput(f, c.picks, c.acknowledged.map(a => a.id), c.everyEngine), rev, list.map(a => a.key));
         return { written: r.written.map(p => f.scrub(`.bowerloom/${p}`)) };
       });
     }),

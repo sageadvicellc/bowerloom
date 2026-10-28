@@ -183,6 +183,21 @@ export interface PlanEngine {
   readonly shapes: readonly { readonly path: string; readonly shape: string; readonly shapeVersion: string | null }[];
 }
 
+/** The parts that take "Use for every engine" (decision D8B), in the order a plan lists them. */
+export const EVERY_ENGINE_PARTS = ['guardrails', 'hooks', 'mcp'] as const;
+export type EveryEnginePart = (typeof EVERY_ENGINE_PARTS)[number];
+
+/** "Use for every engine" for one part (decision D8B). */
+export interface EveryEngine {
+  readonly part: EveryEnginePart;
+  /** True when the input chose it for this part. */
+  readonly chosen: boolean;
+  /** The items of this part whose engine filter the choice removes: the ones it widened when chosen, else the ones it would widen. */
+  readonly widens: number;
+  /** The items of this part with an engine filter that the choice never removes, each with the reason: they differ between engines. */
+  readonly notWidened: readonly { readonly id: string; readonly reason: string }[];
+}
+
 export const ADOPTION_PLAN_FORMAT = 'bowerloom/adoption-plan/v1beta1' as const;
 
 export interface AdoptionPlan {
@@ -196,6 +211,8 @@ export interface AdoptionPlan {
   readonly items: readonly PlanItem[];
   readonly conflicts: readonly Conflict[];
   readonly differences: readonly Difference[];
+  /** "Use for every engine" for guardrails, hooks, and MCP servers, in that order (decision D8B). */
+  readonly everyEngine: readonly EveryEngine[];
   readonly unmapped: readonly Unmapped[];
   readonly secrets: readonly SecretLine[];
   readonly managed: readonly ManagedConversion[];

@@ -20,7 +20,8 @@ import { isAbsolute, join } from 'node:path';
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import { applyAdoption, applyAdoptionRecovery, planAdoption, planAdoptionRecovery } from '../../../packages/adoption/src/index.js';
 import type { AdoptionInput } from '../../../packages/adoption/src/index.js';
-import type { AdoptionChoice, AdoptionPlan } from '../../../packages/adoption/src/model.js';
+import { EVERY_ENGINE_PARTS } from '../../../packages/adoption/src/model.js';
+import type { AdoptionChoice, AdoptionPlan, EveryEnginePart } from '../../../packages/adoption/src/model.js';
 import type { AdoptionRecoveryPlan } from '../../../packages/adoption/src/journal.js';
 import { readJournal } from '../../../packages/adoption/src/journal.js';
 import {
@@ -54,7 +55,7 @@ type Verb = (typeof VERBS)[number];
 export const HARNESS_HELP = [
   'Bowerloom harness: adopt a project into a 0.8 harness definition, and install it to engines', '', 'Usage:',
   '  bowerloom harness status [--dir <absolute-folder>] [--json]',
-  '  bowerloom harness adopt [--engine <id>[@<version>]]... [--pick <conflict>=<variant>]... [--rename <conflict>:<variant>=<id>]... [--acknowledge <id>]... [--confirm <part/id>]... [--approve <revision>] [--json]',
+  '  bowerloom harness adopt [--engine <id>[@<version>]]... [--pick <conflict>=<variant>]... [--rename <conflict>:<variant>=<id>]... [--acknowledge <id>]... [--every-engine guardrails|hooks|mcp]... [--confirm <part/id>]... [--approve <revision>] [--json]',
   '  bowerloom harness install [--engine <id>]... [--reconcile accept-agents|merge|keep-both] [--write-claude-md] [--pi-trust-saved] [--approve <revision>] [--json]',
   '  bowerloom harness accept <line-key> [--json]',
   '  bowerloom harness merge [--approve <revision>] [--json]',
@@ -63,6 +64,8 @@ export const HARNESS_HELP = [
   '  bowerloom harness recover [--adoption] [--keep <path>]... [--restore-mode <path>]... [--record-mode <path>]... [--approve <revision>] [--json]', '',
   'Every command takes --dir <absolute-folder>; the default is the working folder.',
   'Adopt reads the engine files of the folder and writes only .bowerloom. It changes no engine file.',
+  'An adopted item applies to the engines whose files held it. --every-engine <part> makes every guardrail, hook, or MCP server',
+  'apply to every engine of the harness; an item that differs between engines keeps its engines, and the plan says why.',
   'Install writes the engine files from .bowerloom. A rule an engine carries more weakly than the harness says is refused;',
   'each refused line has a key, and harness accept <key> approves that line. Then install again.',
   'Merge moves the text of CLAUDE.md into .bowerloom/instructions/AGENTS.md. Install then makes CLAUDE.md read AGENTS.md.',
@@ -188,6 +191,14 @@ function renderAdoption(p: AdoptionPlan): string {
   for (const c of p.conflicts) out.push(`Conflict ${c.key}: ${c.choice === null ? 'pick one with --pick' : 'chosen'} ${c.key}=<variant>. Variants: ${c.variants.map(v => v.key).join(', ')}.`);
   for (const u of p.unmapped) out.push(`Not adopted: ${u.id}: ${u.reason}${u.gate === 'acknowledge' && !u.acknowledged ? ` Add --acknowledge ${u.id}.` : u.gate === 'block' ? ' Change the source first.' : ''}`);
   for (const s of p.secrets) out.push(`Secret value replaced by a reference: ${s.path} ${s.pointer} -> ${s.reference}`);
+  // Decision D8B: what "Use for every engine" widens for each part, chosen or not.
+  for (const e of p.everyEngine) {
+    if (!e.chosen && e.widens === 0 && e.notWidened.length === 0) continue;
+    const one = e.widens === 1;
+    out.push(e.chosen ? `Every engine, ${e.part}: ${count(e.widens, 'item')} now ${one ? 'applies' : 'apply'} to every engine.`
+      : `Every engine, ${e.part}: ${count(e.widens, 'item')} ${one ? 'applies' : 'apply'} to some engines only. Add --every-engine ${e.part} to use ${one ? 'it' : 'them'} for every engine.`);
+    for (const n of e.notWidened) out.push(`  ${e.part}/${n.id}: ${n.reason}`);
+  }
   if (p.approvalsRequired.length) out.push(`Confirm each of these when you apply: ${p.approvalsRequired.map(k => `--confirm ${k}`).join(' ')}`);
   for (const w of p.warnings) out.push(`Note: ${w}`);
   for (const pr of p.problems) out.push(`Problem: ${pr.path} (${pr.code}) ${pr.message}`);
@@ -300,9 +311,13 @@ function adoptionInput(c: Ctx, f: Flags): AdoptionInput {
   }
   for (const [key, rename] of Object.entries(renames)) choices[key] = { rename };
   const acknowledged = [...new Set(all(f, '--acknowledge'))];
+  const everyEngine = all(f, '--every-engine');
+  if (everyEngine.some(p => !(EVERY_ENGINE_PARTS as readonly string[]).includes(p))) usage(`--every-engine takes one of ${EVERY_ENGINE_PARTS.join(', ')}.`);
+  if (new Set(everyEngine).size !== everyEngine.length) usage('Name each part once.');
   return {
     projectDir: c.dir, stateDir: c.dirs.adoption,
     ...(engines.length ? { engines } : {}), ...(Object.keys(choices).length ? { choices } : {}), ...(acknowledged.length ? { acknowledged } : {}),
+    ...(everyEngine.length ? { everyEngine: everyEngine as EveryEnginePart[] } : {}),
   };
 }
 
@@ -484,7 +499,7 @@ async function approved<P>(change: PlannedChange<P>, approval: { approve?: strin
 
 const SPECS: Readonly<Record<Verb, FlagSpec & { readonly writes: boolean }>> = {
   status: { writes: false },
-  adopt: { writes: true, many: ['--engine', '--pick', '--rename', '--acknowledge', '--confirm'] },
+  adopt: { writes: true, many: ['--engine', '--pick', '--rename', '--acknowledge', '--every-engine', '--confirm'] },
   install: { writes: true, many: ['--engine'], one: ['--reconcile'], bool: ['--write-claude-md', '--pi-trust-saved'] },
   accept: { writes: false, positional: 1 },
   merge: { writes: true },

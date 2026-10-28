@@ -1,5 +1,5 @@
 /**
- * The two review steps of "New harness from a folder" (adoption). Review shows the engines with what Bowerloom knows of each, every item with the places it
+ * The two review steps of "New harness from a folder" (adoption). Review shows the engines with what Bowerloom knows of each, a "Use for every engine" tick per part (D8B), every item with the places it
  * was found and the form it was read as, the copies that differ (the person picks one), the rules that differ by interface, every entry that is not carried
  * over with its part, reason and what it asks, the secrets replaced, the older Bowerloom copies converted, and the files it writes.
  * Confirm shows the full words and the exact text of every approval, and the words of every acknowledgement, each with its own tick box, and repeats the
@@ -12,11 +12,12 @@
 import { useRef } from 'react';
 import type { KeyboardEvent, ReactElement } from 'react';
 import { ENGINE_NAMES } from '../../../shared/engine/types.js';
-import type { AdoptConflictView, AdoptView } from '../../../shared/engine/types.js';
-import { adoptWaits, tickOf } from '../../../shared/engine/gates.js';
+import type { AdoptConflictView, AdoptView, EveryEnginePart } from '../../../shared/engine/types.js';
+import { adoptWaits, everyEngineRows, tickOf } from '../../../shared/engine/gates.js';
 import { StateDot } from '../parts/controls.js';
 import {
-  ENGINE_WORDS, GATE_TONE, GATE_WORDS, conflictWords, engineDetails, engineList, partName, readLine, stillWaiting, tickedWords, usingWords, waitingWords, writesIntoLine,
+  ENGINE_WORDS, GATE_TONE, GATE_WORDS, conflictWords, engineDetails, engineList, everyEngineWords, notWidenedWords, partName, readLine, stillWaiting, tickedWords, usingWords,
+  waitingWords, writesIntoLine,
 } from '../words-engine.js';
 import { CodeText, Places, Section, TickRow } from './engine-parts.js';
 
@@ -62,12 +63,39 @@ function Conflicts({ view, held, onPick }: { view: AdoptView; held: boolean; onP
   );
 }
 
+/**
+ * "Use for every engine", one tick per part (D8B), off until the person ticks it. Each shows how many items it widens and which keep their engines. A tick
+ * shows what the plan on screen has; ticking plans again with it. A harness of one engine has nothing to widen, so it shows no ticks.
+ */
+function EveryEngine({ view, held, onEveryEngine }: { view: AdoptView; held: boolean; onEveryEngine(part: EveryEnginePart, on: boolean): void }): ReactElement | null {
+  if (view.engines.length < 2) return null;
+  const rows = everyEngineRows(view);
+  return (
+    <Section title={W.label.everyEngineTitle} count={tickedWords(rows.filter(r => r.checked).length, rows.length)} slot="every-engine">
+      <p className="hxe-text hxe-muted">{W.paragraph.everyEngineIntro}</p>
+      <ul className="hxe-ticks">
+        {rows.map(r => (
+          <TickRow key={r.part} slot={`every-engine/${r.part}`} checked={r.checked} disabled={held} label={W.label.everyEngine} name={partName(r.part)} onChange={on => onEveryEngine(r.part, on)}>
+            <p className="hxe-row-title"><span className="hxe-sub">{partName(r.part)}</span><span className="hxe-muted" data-count={r.count}>{everyEngineWords(r.count, r.checked)}</span></p>
+            {r.kept.length === 0 ? null : (
+              <>
+                <p className="hxe-text">{notWidenedWords(r.kept.length)}</p>
+                <ul className="hxe-places">{r.kept.map(k => <li key={k.id} data-not-widened={k.id}><span className="hxe-name">{k.id}</span> <span className="hxe-muted">{k.reason}</span></li>)}</ul>
+              </>
+            )}
+          </TickRow>
+        ))}
+      </ul>
+    </Section>
+  );
+}
+
 function Problems({ view }: { view: AdoptView }): ReactElement | null {
   if (view.problems.length === 0) return null;
   return <Section title={W.label.problems} count={String(view.problems.length)} slot="problems">{view.problems.map(p => <p key={`${p.code}${p.path}`} className="hxe-text"><StateDot tone="bad">{p.code}</StateDot> <span className="hxe-mono">{p.path}</span> {p.message}</p>)}</Section>;
 }
 
-export function AdoptReview({ view, held, onPick }: { view: AdoptView; held: boolean; onPick(conflict: string, variant: string): void }): ReactElement {
+export function AdoptReview({ view, held, onPick, onEveryEngine }: { view: AdoptView; held: boolean; onPick(conflict: string, variant: string): void; onEveryEngine(part: EveryEnginePart, on: boolean): void }): ReactElement {
   const byPart = [...new Set(view.items.map(i => i.part))];
   return (
     <>
@@ -78,6 +106,7 @@ export function AdoptReview({ view, held, onPick }: { view: AdoptView; held: boo
       </ul>
       <Problems view={view} />
       <Conflicts view={view} held={held} onPick={onPick} />
+      <EveryEngine view={view} held={held} onEveryEngine={onEveryEngine} />
       <Section title={W.label.found} count={String(view.items.length)} slot="items">
         {view.items.length === 0 ? <p className="hxe-text hxe-muted">{W.hint.nothingFound}</p> : null}
         {byPart.map(part => (

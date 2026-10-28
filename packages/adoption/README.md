@@ -56,6 +56,7 @@ A skill's `allowed-tools` is listed, not adopted: a grant scoped to the skill ha
 
 - Identity is meaning: the neutral content first, then the private blocks. Identical items merge into one item that lists every place. If the copies differ in bytes, a note names them. Two copies that one engine reads, one with a private block and one without, are a conflict.
 - An item's engine filter is the engines that read its places. With every engine of the harness, it has no filter.
+- Decision D8B: `everyEngine` in the input (`guardrails`, `hooks`, `mcp`, each at most once) removes the filter from every item of that part, so it applies to every engine of the harness. A rule of a difference, or an item kept under its own id because it differs between places, keeps its filter. The plan's `everyEngine` lists, per part, whether it was chosen, how many items it widens, and each item not widened with the reason. The choice is part of the plan revision. CLI: `bowerloom harness adopt --every-engine <part>`.
 - Items with the same part and id that differ are a conflict. Variants are in path order. A person picks one (`{ pick }`) or keeps them under distinct ids (`{ rename }`). The instructions and the sandbox take `pick` only.
 - Guardrail rules for one action and pattern with different effects in different engines are both kept, each for its engines, and listed in `differences`.
 

@@ -64,6 +64,7 @@ export function adoptionView(plan: AdoptionPlan, folder: string, s: Scrub, extra
       picked: c.choice !== null && 'pick' in c.choice ? c.choice.pick : null,
     })),
     differences: plan.differences.map(d => ({ action: d.action, pattern: s(d.pattern), rules: d.rules.map(r => ({ id: s(r.id), effect: r.effect, engines: engines(r.engines) })) })),
+    everyEngine: plan.everyEngine.map(e => ({ part: e.part, chosen: e.chosen, widens: e.widens, notWidened: e.notWidened.map(n => ({ id: s(n.id), reason: s(n.reason) })) })),
     unmapped: plan.unmapped.map(u => {
       const shown = { id: u.id, path: s(u.path), pointer: u.pointer === undefined ? null : s(u.pointer), part: u.part, reason: s(u.reason), gate: u.gate };
       return { ...shown, acknowledged: u.acknowledged, hash: extras.hashOf(unmappedHashBody(shown)) };
