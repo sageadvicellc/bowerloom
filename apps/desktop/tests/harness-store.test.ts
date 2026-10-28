@@ -50,13 +50,13 @@ test('createHarnessFromSource: the harness holds the parts of that source, every
   assert.equal(nothing.harnessId, null); assert.equal(nothing.state, s);
 });
 
-test('all four scan sources make four harnesses; chooseSources keeps only real ids', () => {
+test('all three scan sources make three harnesses; chooseSources keeps only real ids', () => {
   let s = world();
-  assert.deepEqual(s.chosenSourceIds, ['src-caveman', 'src-claude', 'src-codex', 'src-hermes']);
+  assert.deepEqual(s.chosenSourceIds, ['src-caveman', 'src-claude', 'src-codex']);
   s = chooseSources(s, ['src-codex', 'src-nope', 'src-hermes']);
-  assert.deepEqual(s.chosenSourceIds, ['src-codex', 'src-hermes']);
-  for (const id of ['src-caveman', 'src-claude', 'src-codex', 'src-hermes']) s = createHarnessFromSource(s, id, NOW).state;
-  assert.equal(s.harnesses.length, 8);
+  assert.deepEqual(s.chosenSourceIds, ['src-codex'], 'Hermes is no source of the sample: its id is not real');
+  for (const id of ['src-caveman', 'src-claude', 'src-codex']) s = createHarnessFromSource(s, id, NOW).state;
+  assert.equal(s.harnesses.length, 7);
 });
 
 test('addPart adds the part, marks it new, records a manifest change, and refuses a part that is held or unknown', () => {
@@ -393,7 +393,7 @@ test('the store object: it hands the reducers a stamp, tells subscribers, and ig
   store.addPart(caveman, 'tool-web-search'); assert.equal(calls, 1, 'no change, no call');
   const id = store.createHarness(); assert.ok(harnessById(store.getState(), id));
   store.chooseSources(['src-codex']); store.setNodePosition(id, 'x', { x: 1, y: 1 });
-  const made = store.createHarnessFromSource('src-hermes'); assert.ok(made !== null && harnessById(store.getState(), made));
+  const made = store.createHarnessFromSource('src-claude'); assert.ok(made !== null && harnessById(store.getState(), made));
   store.removePart(caveman, 'tool-web-search'); store.addLink(weekly, 'agent-researcher', 'skill-format-report'); store.removeLink(weekly, 'agent-researcher', 'skill-format-report');
   store.install({ projectId: archive, harnessId: inbox, interfaceIds: ['codex'] }); store.update({ projectId: garden, harnessId: caveman }); store.setInterfaceOn('opencode', true);
   store.fixMissingPart(weekly, 'missing-translate'); store.undo(store.getState().history[0]!.id);

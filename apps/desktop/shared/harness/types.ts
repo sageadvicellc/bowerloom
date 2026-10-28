@@ -10,6 +10,12 @@ export const PART_KINDS: readonly PartKind[] = Object.freeze(['agent', 'skill', 
 export type InterfaceId = 'claude-code' | 'codex' | 'opencode';
 export const INTERFACE_IDS: readonly InterfaceId[] = Object.freeze(['claude-code', 'codex', 'opencode']);
 
+/** The interfaces that Bowerloom can write files for. OpenCode has no writer yet, so the preview shows its files as not written yet. */
+export const WRITER_INTERFACE_IDS: readonly InterfaceId[] = Object.freeze(['claude-code', 'codex']);
+export const hasWriter = (id: InterfaceId): boolean => WRITER_INTERFACE_IDS.includes(id);
+/** What a screen says in place of the files of an interface that has no writer. */
+export const noWriterWords = (name: string): string => `Not written yet. Bowerloom has no writer for ${name}, so it creates no ${name} files.`;
+
 /** The state of one harness in one project for one interface. */
 export type InstallState = 'installed' | 'out-of-date' | 'conflict' | 'not-installed';
 

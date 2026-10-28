@@ -63,16 +63,20 @@ test('the state starts from nothing the person made: no harness, install, run or
 
 test('every item the reader found is one part with the same id, and the kinds follow the item', async t => {
   const { read, state } = await fixtureState(t);
-  // Hermes is no engine of 0.8, so what only a Hermes or a Bowerloom folder holds is left out (two tests check the notes). Every other item is one part.
-  const all = read.result.world.items, items = all.filter(i => state.parts.some(p => p.id === i.id));
-  for (const item of all.filter(i => !items.includes(i))) assert.ok(item.foundAt.every(f => (f.interface as string) === 'hermes' || (f.interface as string) === 'bowerloom'), item.name);
-  assert.ok(all.some(i => i.foundAt.every(f => (f.interface as string) === 'hermes') && !items.includes(i)), 'the fixture holds items that only Hermes has');
-  assert.equal(state.parts.length, items.length);
+  // Hermes is no engine of 0.8, so what only a Hermes or a Bowerloom folder holds is not a part. The notes count exactly what is left out, so nothing goes missing without a word.
+  const all = read.result.world.items, items = all.filter(i => state.parts.some(p => p.id === i.id)), left = all.filter(i => !items.includes(i));
+  for (const item of left) assert.ok(item.foundAt.every(f => (f.interface as string) === 'hermes' || (f.interface as string) === 'bowerloom'), item.name);
+  const noted = state.real!.notes.reduce((sum, n) => sum + Number(/^(\d+) things? in (?:a Bowerloom folder|a Hermes folder|a program Bowerloom does not know) (?:is|are) not shown\.$/.exec(n)?.[1] ?? 0), 0);
+  assert.equal(noted, left.length, state.real!.notes.join(' | '));
+  assert.equal(state.parts.length, all.length - noted);
   assert.deepEqual([...state.parts.map(p => p.id)].sort(), items.map(i => i.id).sort(), 'the part ids are the item ids, so they are stable');
   assert.equal(new Set(state.parts.map(p => p.id)).size, state.parts.length);
   const kindOf = { skill: 'skill', agent: 'agent', tool: 'tool', 'context-slice': 'context' } as const;
   for (const item of items) assert.equal(state.parts.find(p => p.id === item.id)!.kind, kindOf[item.kind], item.name);
-  for (const [part, item] of [['agent', 'agent'], ['skill', 'skill'], ['tool', 'tool']] as const) assert.equal(state.parts.filter(p => p.kind === part).length, items.filter(i => i.kind === item).length, part);
+  const leftOf = (kind: HarnessItem['kind']): number => left.filter(i => i.kind === kind).length;
+  assert.equal(state.parts.filter(p => p.kind === 'agent').length, read.result.counts.agents - leftOf('agent'));
+  assert.equal(state.parts.filter(p => p.kind === 'skill').length, read.result.counts.skills - leftOf('skill'));
+  assert.equal(state.parts.filter(p => p.kind === 'tool').length, read.result.counts.tools + read.result.counts.hooks - leftOf('tool'));
   assert.ok(state.parts.filter(p => p.kind === 'context').length > 0, 'notes give context parts');
   assert.ok(state.parts.every(p => p.inLibrary));
 });
@@ -292,7 +296,29 @@ test('what only a Hermes folder holds is left out of the harness state, and the 
   assert.ok(only.length > 0, 'the fixture holds a Hermes folder');
   for (const item of only) assert.equal(state.parts.some(p => p.id === item.id), false, item.name);
   assert.equal(state.interfaces.some(i => (i.id as string) === 'hermes'), false, 'Hermes is not an engine of the preview');
-  assert.ok(state.real!.notes.some(n => /does not know/.test(n)), state.real!.notes.join(' | '));
+  assert.ok(state.real!.notes.some(n => /^3 things in a Hermes folder are not shown\.$/.test(n)), state.real!.notes.join(' | '));
+});
+
+test('M3. a copy in a Hermes folder of a part that is shown is counted and named; a Hermes folder with nothing to show gets a note', async t => {
+  const home = tempDir(t, 'bowerloom-v3-map-');
+  put(join(home, '.claude', 'skills', 'shared', 'SKILL.md'), skillFile('Shared', 'Both programs have this.'));
+  put(join(home, '.hermes', 'skills', 'general', 'shared', 'SKILL.md'), skillFile('Shared', 'Both programs have this.'));
+  put(join(home, '.hermes', 'skills', 'general', 'only-here', 'SKILL.md'), skillFile('Only here', 'Only Hermes has this.'));
+  const state = realToHarnessState((await readHome(home)).result, (await readHome(home)).places);
+  assert.ok(state.parts.some(p => p.name === 'Shared')); assert.equal(state.parts.some(p => p.name === 'Only here'), false);
+  const notes = state.real!.notes.join(' | ');
+  assert.match(notes, /1 thing in a Hermes folder is not shown\./, notes);
+  assert.match(notes, /1 cop(?:y|ies) in a Hermes folder (?:is|are) not shown\./, notes);
+  assert.equal(state.parts.find(p => p.name === 'Shared')!.fileText.length > 0, true);
+
+  const empty = tempDir(t, 'bowerloom-v3-map-');
+  put(join(empty, '.claude', 'agents', 'mine.md'), skillFile('mine', 'My own agent.'));
+  put(join(empty, '.hermes', 'sessions', 's1.json'), '{}');
+  const quiet = realToHarnessState((await readHome(empty)).result, (await readHome(empty)).places);
+  assert.ok(quiet.real!.notes.some(n => /Hermes folder/.test(n) && /nothing/.test(n)), quiet.real!.notes.join(' | '));
+  const none = tempDir(t, 'bowerloom-v3-map-');
+  put(join(none, '.claude', 'agents', 'mine.md'), skillFile('mine', 'My own agent.'));
+  assert.equal(realToHarnessState((await readHome(none)).result, (await readHome(none)).places).real!.notes.some(n => /Hermes/.test(n)), false, 'no Hermes folder, no note');
 });
 
 // ---- Secrets and plain text

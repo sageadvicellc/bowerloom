@@ -5,6 +5,7 @@
 import { useState } from 'react';
 import type { ReactElement } from 'react';
 import { interfaceStatus } from '../../../shared/harness/status.js';
+import { hasWriter, noWriterWords } from '../../../shared/harness/types.js';
 import type { Interface } from '../../../shared/harness/types.js';
 import { Screen } from '../Screen.js';
 import { go } from '../router.js';
@@ -48,7 +49,9 @@ function Details({ iface, tone, looked, onLook }: { iface: Interface; tone: Retu
       </div>
       <section className="hx-block" aria-labelledby="hxn-writes">
         <h3 className="hx-h3" id="hxn-writes">{FLOW.label.whatWrites}</h3>
-        <ul className="hx-box-list">{iface.writes.map(path => <li key={path} className="hx-box"><span className="hxn-path">{path}</span></li>)}</ul>
+        {hasWriter(iface.id)
+          ? <ul className="hx-box-list">{iface.writes.map(path => <li key={path} className="hx-box"><span className="hxn-path">{path}</span></li>)}</ul>
+          : <p className="hx-text">{noWriterWords(iface.name)}</p>}
       </section>
       <section className="hx-block" aria-labelledby="hxn-cannot">
         <h3 className="hx-h3" id="hxn-cannot">{FLOW.label.cannotUse}</h3>

@@ -52,7 +52,7 @@ Two commands open the same app. Use `npm --prefix "<repo>" run desktop:prototype
 
 What real mode reads, in plain English:
 
-1. It looks in the tool folders of your home folder: Claude Code, Codex, OpenCode and Hermes. You can also pick a folder, and it finds the projects inside it.
+1. It looks in the tool folders of your home folder: Claude Code, Codex and OpenCode. It also notices a Hermes folder, but Hermes is not an engine of Bowerloom 0.8, so the harness preview does not show what is in it. It says how many things it left out. You can also pick a folder, and it finds the projects inside it.
 2. Question one shows the places it found with counts, and no file names. Question two, "Read what is inside?", reads only the places you ticked.
 3. It reads names, descriptions, structure and the names of keys, plus the text of the skills and agents you tick. Known key and password shapes are hidden. That check goes by shape, so look at anything private before you share it.
 4. You then choose which agents go on the map. "Find more" does the same again in the right column and adds to what you have.

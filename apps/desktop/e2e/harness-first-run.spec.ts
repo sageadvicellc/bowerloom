@@ -1,6 +1,6 @@
 /**
- * The first three screens of the harness-first preview in the real window (Electron started with --prototype-v3): Welcome, Choose sources (a short look first, then four sources with ticks),
- * Read sources, and then the app. "Make a harness from this", "Make all 4" and "Not now" each open the app. Text is 14 px or more and a button is 32 px.
+ * The first three screens of the harness-first preview in the real window (Electron started with --prototype-v3): Welcome, Choose sources (a short look first, then three sources with ticks),
+ * Read sources, and then the app. "Make a harness from this", "Make all 3" and "Not now" each open the app. Text is 14 px or more and a button is 32 px.
  */
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
@@ -32,7 +32,7 @@ async function measure(p: Page): Promise<{ smallest: number; buttons: number[] }
 async function toRead(p: Page): Promise<void> {
   await p.getByRole('button', { name: 'Find my files', exact: true }).click();
   await p.getByRole('button', { name: 'Looks right', exact: true }).click();
-  await expect(p.getByRole('heading', { level: 1, name: 'Read 4 sources. Make a harness from each.' })).toBeVisible();
+  await expect(p.getByRole('heading', { level: 1, name: 'Read 3 sources. Make a harness from each.' })).toBeVisible();
 }
 
 test('Welcome says what the design says, has no navigation, and "Find my files" has the focus and goes to Choose', async () => {
@@ -51,7 +51,7 @@ test('Welcome says what the design says, has no navigation, and "Find my files" 
   expect(m.buttons).toEqual([32]);
   await shot(p, 'S1.1-welcome');
   await p.keyboard.press('Enter');
-  await expect(p.getByRole('heading', { level: 1, name: 'Found 4 sources' })).toBeVisible();
+  await expect(p.getByRole('heading', { level: 1, name: 'Found 3 sources' })).toBeVisible();
 });
 
 test('the sample window has no bridge at all: no page global, no preload on the window, no preload script on the session', async () => {
@@ -69,17 +69,17 @@ test('the sample window has no bridge at all: no page global, no preload on the 
   expect(main.sessionScripts).toBe(0);
 });
 
-test('Choose sources looks for a moment (a bar that fills), then shows four ticked sources with their counts', async () => {
+test('Choose sources looks for a moment (a bar that fills), then shows three ticked sources with their counts', async () => {
   const p = page();
   await p.emulateMedia({ reducedMotion: 'no-preference' });
   await p.getByRole('button', { name: 'Find my files', exact: true }).click();
   await expect(p.getByRole('heading', { level: 1, name: 'Looking for your files' })).toBeVisible();
   await expect(p.getByRole('progressbar', { name: 'Search progress' })).toBeVisible();
   await expect(p.getByRole('list', { name: 'Sources' })).toHaveCount(0);
-  await expect(p.getByRole('heading', { level: 1, name: 'Found 4 sources' })).toBeVisible({ timeout: 4000 });
+  await expect(p.getByRole('heading', { level: 1, name: 'Found 3 sources' })).toBeVisible({ timeout: 4000 });
   await p.emulateMedia({ reducedMotion: 'reduce' });
   const cards = p.locator('.hxf-card');
-  await expect(cards).toHaveCount(4);
+  await expect(cards).toHaveCount(3);
   await expect(cards.nth(0)).toContainText('Caveman (plug-in)');
   await expect(cards.nth(0)).toContainText('4 agents · 14 skills');
   await expect(cards.nth(0)).toContainText('Claude Code');
@@ -87,9 +87,8 @@ test('Choose sources looks for a moment (a bar that fills), then shows four tick
   await expect(cards.nth(1)).toContainText('6 agents · 22 skills · 2 tools');
   await expect(cards.nth(2)).toContainText('2 agents · 5 skills');
   await expect(cards.nth(2)).toContainText('Codex');
-  await expect(cards.nth(3)).toContainText('Hermes profile: pixel');
-  await expect(cards.nth(3)).toContainText('1 agent · 8 skills');
-  await expect(p.getByRole('checkbox')).toHaveCount(4);
+  await expect(p.getByText('Hermes')).toHaveCount(0);
+  await expect(p.getByRole('checkbox')).toHaveCount(3);
   for (const box of await p.getByRole('checkbox').all()) await expect(box).toBeChecked();
   await expect(p.getByText('Untick a source to skip it. Bowerloom reads the names and text of the files you keep. The text stays on this computer.')).toBeVisible();
   await expect(p.getByRole('button', { name: 'Looks right', exact: true })).toBeFocused();
@@ -102,26 +101,26 @@ test('Choose sources looks for a moment (a bar that fills), then shows four tick
 test('Show details lists the parts of each source in plain words, Add a folder says it is not in the preview, and an unticked source is skipped', async () => {
   const p = page();
   await p.getByRole('button', { name: 'Find my files', exact: true }).click();
-  await expect(p.getByRole('heading', { level: 1, name: 'Found 4 sources' })).toBeVisible();
+  await expect(p.getByRole('heading', { level: 1, name: 'Found 3 sources' })).toBeVisible();
   await p.getByRole('button', { name: 'Show details', exact: true }).click();
-  await expect(p.locator('.hxf-card-names')).toHaveCount(4);
+  await expect(p.locator('.hxf-card-names')).toHaveCount(3);
   await expect(p.getByRole('button', { name: 'Hide details', exact: true })).toHaveAttribute('aria-expanded', 'true');
   await p.getByRole('button', { name: 'Hide details', exact: true }).click();
   await expect(p.locator('.hxf-card-names')).toHaveCount(0);
   await p.getByRole('button', { name: 'Add a folder', exact: true }).click();
   await expect(p.getByRole('status')).toHaveText('Not in this preview.');
-  await p.getByRole('checkbox').nth(3).uncheck();
+  await p.getByRole('checkbox').nth(2).uncheck();
   await p.getByRole('button', { name: 'Looks right', exact: true }).click();
-  await expect(p.getByRole('heading', { level: 1, name: 'Read 3 sources. Make a harness from each.' })).toBeVisible();
-  await expect(p.locator('.hxf-card')).toHaveCount(3);
-  await expect(p.getByText('Hermes profile: pixel')).toHaveCount(0);
-  await expect(p.getByRole('button', { name: 'Make all 3', exact: true })).toBeVisible();
+  await expect(p.getByRole('heading', { level: 1, name: 'Read 2 sources. Make a harness from each.' })).toBeVisible();
+  await expect(p.locator('.hxf-card')).toHaveCount(2);
+  await expect(p.getByText('Your Codex folder')).toHaveCount(0);
+  await expect(p.getByRole('button', { name: 'Make all 2', exact: true })).toBeVisible();
 });
 
 test('"Looks right" waits for at least one tick', async () => {
   const p = page();
   await p.getByRole('button', { name: 'Find my files', exact: true }).click();
-  await expect(p.getByRole('heading', { level: 1, name: 'Found 4 sources' })).toBeVisible();
+  await expect(p.getByRole('heading', { level: 1, name: 'Found 3 sources' })).toBeVisible();
   for (const box of await p.getByRole('checkbox').all()) await box.uncheck();
   await expect(p.getByRole('button', { name: 'Looks right', exact: true })).toBeDisabled();
   await expect(p.getByRole('status')).toHaveText('Tick at least one source.');
@@ -129,13 +128,13 @@ test('"Looks right" waits for at least one tick', async () => {
   await expect(p.getByRole('button', { name: 'Looks right', exact: true })).toBeEnabled();
 });
 
-test('Read sources shows the four sources; "Make a harness from this" makes one harness from that source and opens the app on it', async () => {
+test('Read sources shows the three sources; "Make a harness from this" makes one harness from that source and opens the app on it', async () => {
   const p = page();
   await toRead(p);
   await expect(p.getByText('A harness is a saved list of agents and skills. Bowerloom stores it as one small file in the project you install it to.')).toBeVisible();
-  await expect(p.locator('.hxf-card')).toHaveCount(4);
-  await expect(p.getByRole('button', { name: 'Make a harness from this', exact: true })).toHaveCount(4);
-  await expect(p.getByRole('button', { name: 'Make all 4', exact: true })).toBeVisible();
+  await expect(p.locator('.hxf-card')).toHaveCount(3);
+  await expect(p.getByRole('button', { name: 'Make a harness from this', exact: true })).toHaveCount(3);
+  await expect(p.getByRole('button', { name: 'Make all 3', exact: true })).toBeVisible();
   await expect(p.getByRole('button', { name: 'Not now', exact: true })).toBeVisible();
   const m = await measure(p);
   expect(m.smallest).toBeGreaterThanOrEqual(14);
@@ -150,12 +149,12 @@ test('Read sources shows the four sources; "Make a harness from this" makes one 
   await expect(p.locator('.hxh-row').first()).toContainText('Made Codex folder from a scan');
 });
 
-test('"Make all 4" makes four harnesses, "Not now" opens the app on the sample', async () => {
+test('"Make all 3" makes three harnesses, "Not now" opens the app on the sample', async () => {
   const p = page();
   await toRead(p);
-  await p.getByRole('button', { name: 'Make all 4', exact: true }).click();
+  await p.getByRole('button', { name: 'Make all 3', exact: true }).click();
   await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
-  await expect(p.locator('.hx-row-harness')).toHaveCount(8);
+  await expect(p.locator('.hx-row-harness')).toHaveCount(7);
   await expect(p.getByRole('navigation')).toBeVisible();
   await fresh(p, WELCOME);
   await toRead(p);

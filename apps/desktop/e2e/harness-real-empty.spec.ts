@@ -66,9 +66,9 @@ test('"Use the sample" opens the sample sources; the Preview mark then says it i
   const p = page();
   await p.getByRole('button', { name: 'Find my files', exact: true }).click();
   await p.getByRole('button', { name: 'Use the sample', exact: true }).click();
-  await expect(p.getByRole('heading', { level: 1, name: 'Read 4 sources. Make a harness from each.' })).toBeVisible();
+  await expect(p.getByRole('heading', { level: 1, name: 'Read 3 sources. Make a harness from each.' })).toBeVisible();
   await expect(p.locator('[data-count]')).toHaveCount(0);
-  await p.getByRole('button', { name: 'Make all 4', exact: true }).click();
+  await p.getByRole('button', { name: 'Make all 3', exact: true }).click();
   await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
   await p.getByRole('button', { name: 'About this preview', exact: true }).click();
   await expect(p.locator('.hx-preview-pop')).toContainText('This is a preview. It runs on sample data. Nothing is written to your disk.');
@@ -79,8 +79,8 @@ test('"Use the sample" asks first once harnesses exist: "Cancel" and "Not now" k
   await p.getByRole('button', { name: 'Find my files', exact: true }).click();
   await p.getByRole('button', { name: 'Use the sample', exact: true }).click();
   await expect(p.locator('[data-replace-confirm]'), 'a first run replaces nothing, so it does not ask').toHaveCount(0);
-  await p.getByRole('button', { name: 'Make all 4', exact: true }).click();
-  await expect(p.locator('.hx-row-harness')).toHaveCount(8);
+  await p.getByRole('button', { name: 'Make all 3', exact: true }).click();
+  await expect(p.locator('.hx-row-harness')).toHaveCount(7);
   await p.evaluate(() => { location.hash = '#prototype-v3/choose'; });
   await expect(p.getByRole('heading', { level: 1, name: 'Nothing found yet' })).toBeVisible();
   await p.getByRole('button', { name: 'Use the sample', exact: true }).click();
@@ -92,11 +92,11 @@ test('"Use the sample" asks first once harnesses exist: "Cancel" and "Not now" k
   await expect(p.getByRole('heading', { level: 1, name: 'Nothing found yet' })).toBeVisible();
   await p.getByRole('button', { name: 'Not now', exact: true }).click();
   await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
-  await expect(p.locator('.hx-row-harness')).toHaveCount(8);
+  await expect(p.locator('.hx-row-harness')).toHaveCount(7);
   await p.evaluate(() => { location.hash = '#prototype-v3/choose'; });
   await p.getByRole('button', { name: 'Use the sample', exact: true }).click();
   await p.locator('[data-replace-confirm]').getByRole('button', { name: 'Use the sample', exact: true }).click();
-  await expect(p.getByRole('heading', { level: 1, name: 'Read 4 sources. Make a harness from each.' })).toBeVisible();
+  await expect(p.getByRole('heading', { level: 1, name: 'Read 3 sources. Make a harness from each.' })).toBeVisible();
   await p.getByRole('button', { name: 'Not now', exact: true }).click();
   await expect(p.locator('.hx-row-harness')).toHaveCount(4);
 });

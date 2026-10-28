@@ -201,7 +201,11 @@ const FACE_ORDER: readonly string[] = [...INTERFACE_IDS, 'notes'];
 interface Where { readonly key: string; readonly name: string; readonly label: string; readonly interfaceName: string; readonly harnessName: string; readonly order: readonly [number, number, string] }
 
 /** Why an item with no program the preview knows is left out: only Bowerloom's own folder holds it, or it is in a program the preview has no room for. */
-const leftOutWhy = (item: HarnessItem): 'bowerloom' | 'unknown' => (item.foundAt.every(f => (f.interface as string) === 'bowerloom') ? 'bowerloom' : 'unknown');
+const leftOutWhy = (item: HarnessItem): 'bowerloom' | 'hermes' | 'unknown' => {
+  const faces = item.foundAt.map(f => f.interface as string);
+  if (faces.every(f => f === 'bowerloom')) return 'bowerloom';
+  return faces.every(f => f === 'hermes' || f === 'bowerloom') && faces.includes('hermes') ? 'hermes' : 'unknown';
+};
 const thingsWord = (n: number): string => `${n} ${n === 1 ? 'thing' : 'things'}`;
 
 /** Which source an item belongs to: its scope, the first program it was found in, and the plug-in it came from. Null for an item with no program the preview knows (see `leftOutWhy`). */
@@ -274,11 +278,12 @@ export function realToHarnessState(result: RealResult, places: readonly RealPlac
   const world = result.world, notes = result.notes.filter(n => n !== PARTLY_READ_NOTE && !COUNTED_NOTE.some(r => r.test(n)));
   // Place each item in a source. An item that only Bowerloom's own folder holds is left out.
   const placed: { item: HarnessItem; where: Where }[] = [];
-  let leftOutBowerloom = 0, leftOutUnknown = 0;
+  let leftOutBowerloom = 0, leftOutHermes = 0, leftOutUnknown = 0, hermesCopies = 0;
   for (const item of world.items) {
     const where = whereIs(item, world.scopes);
-    if (where !== null) placed.push({ item, where });
+    if (where !== null) { placed.push({ item, where }); if (item.foundAt.some(f => (f.interface as string) === 'hermes')) hermesCopies += 1; }
     else if (leftOutWhy(item) === 'bowerloom') leftOutBowerloom += 1;
+    else if (leftOutWhy(item) === 'hermes') leftOutHermes += 1;
     else leftOutUnknown += 1;
   }
   // Notes: keep the largest sets, up to the limit. The page titles of every set are listed once, and the sizes come from that list.
@@ -307,6 +312,10 @@ export function realToHarnessState(result: RealResult, places: readonly RealPlac
   // The notes this file writes come first: the screen shows the first few and hides the rest, and these say what is missing from the list.
   const own: string[] = [];
   if (leftOutBowerloom > 0) own.push(`${thingsWord(leftOutBowerloom)} in a Bowerloom folder ${leftOutBowerloom === 1 ? 'is' : 'are'} not shown.`);
+  // Hermes is no engine of 0.8. What only a Hermes folder holds is left out, and so are the Hermes copies of things that are shown. Both are counted by name.
+  if (leftOutHermes > 0) own.push(`${thingsWord(leftOutHermes)} in a Hermes folder ${leftOutHermes === 1 ? 'is' : 'are'} not shown.`);
+  if (hermesCopies > 0) own.push(`${hermesCopies} ${hermesCopies === 1 ? 'copy' : 'copies'} in a Hermes folder ${hermesCopies === 1 ? 'is' : 'are'} not shown.`);
+  if (leftOutHermes === 0 && hermesCopies === 0 && places.some(p => p.kind === 'home' && p.apps.includes('Hermes'))) own.push('A Hermes folder is there, and Bowerloom shows nothing from it.');
   if (leftOutUnknown > 0) own.push(`${thingsWord(leftOutUnknown)} in a program Bowerloom does not know ${leftOutUnknown === 1 ? 'is' : 'are'} not shown.`);
   if (sets.length > keptSets.size) { const n = sets.length - keptSets.size; own.push(`${n} ${n === 1 ? 'set' : 'sets'} of notes ${n === 1 ? 'is' : 'are'} not shown.`); }
   // What the reader said about each place that was read, from the first look at it. A text cut to 60 lines for the preview is not a problem and is not counted: its file page says so.

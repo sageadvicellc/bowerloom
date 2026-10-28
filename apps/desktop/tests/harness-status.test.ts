@@ -18,9 +18,9 @@ const w = createSampleWorld();
 // Hermes is no engine of 0.8, so the sample world has no interface that is not found. This makes one, to keep the not-found words under test.
 const notFound = (s: HarnessState, id: InterfaceId): HarnessState => ({ ...s, interfaces: s.interfaces.map(i => (i.id === id ? { ...i, health: 'not-found' as const, healthWords: 'Not found', on: false } : i)) });
 
-test('the sample world has the numbers of the design: 4 harnesses, 5 projects, 3 interfaces, a Library of 13, 49, 2 and 3', () => {
+test('the sample world has the numbers of the design: 4 harnesses, 5 projects, 3 interfaces, a Library of 12, 41, 2 and 3', () => {
   assert.equal(w.harnesses.length, 4); assert.equal(w.projects.length, 5); assert.equal(w.interfaces.length, 3);
-  assert.deepEqual(libraryCounts(w), { agent: 13, skill: 49, tool: 2, context: 3 });
+  assert.deepEqual(libraryCounts(w), { agent: 12, skill: 41, tool: 2, context: 3 });
   assert.deepEqual(w.harnesses.map(h => h.name), ['Weekly report crew', 'Caveman pack', 'Inbox helper', 'Research desk']);
   assert.deepEqual(w.projects.map(p => p.name), ['bowerloom', 'site-redesign', 'notes', 'garden', 'archive']);
   assert.deepEqual(w.interfaces.map(i => i.name), ['Claude Code', 'Codex', 'OpenCode']);
@@ -46,7 +46,7 @@ test('every part that a harness holds, links or the Library lists exists', () =>
     for (const l of h.links) { assert.ok(h.partIds.includes(l.from), `${h.name}: ${l.from}`); assert.ok(known.has(l.to), `${h.name}: ${l.to}`); }
   }
   assert.ok(w.sources.every(s => s.partIds.every(id => partById(w, id))));
-  assert.deepEqual(w.sources.map(s => s.partIds.length), [18, 30, 7, 9]);
+  assert.deepEqual(w.sources.map(s => s.partIds.length), [18, 30, 7]);
 });
 
 test('worst state wins: conflict, then out of date, then installed, then not installed', () => {
