@@ -60,8 +60,11 @@ export const START_TABLE: Readonly<Record<EngineId, Readonly<Record<Unattended, 
       environment: [],
       minVersion: '2.1.259',
       source: 'packages/claude-adapter (--print, --model, --permission-mode dontAsk, --permission-prompts none, --settings); research note engines-G, sections 3 and 5 (--permission-prompts since 2.1.259, crossSessionInbound); packages/project-sync locked writer (sandbox enabled, allowUnsandboxedCommands false)',
-      pinned: { sandbox: 'enabled, no unsandboxed commands', approval: 'dontAsk with no permission prompts: a request no rule allows is denied' },
-      ambient: 'User-level Claude Code settings still load, and this plan does not read them: a user permission rule can allow a request without a person.',
+      // The command pins the sandbox and the permission mode, but user-level settings still load, and no record names
+      // the value form of --setting-sources that would leave them out. So the row pins nothing until the step 5 live
+      // check records the flag (lead ruling on open point 1).
+      pinned: null,
+      ambient: 'user-level settings load and can allow requests the harness does not; the step 5 live check records the flag',
     },
     server: { supported: false, code: 'TEAM_START_MODE_UNSUPPORTED', reason: 'Claude Code has no server mode (section 6).' },
   },

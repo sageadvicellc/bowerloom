@@ -9,7 +9,7 @@ import { syncBuiltinESMExports } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RESULTS, entryHash } from '../../../dist/packages/harness-definition/src/index.js';
-import { DELIVERY_TABLE, loadTeam, namesBypass, planTeamStart } from '../../../dist/packages/team/src/index.js';
+import { DELIVERY_TABLE, START_TABLE, atLeast, loadTeam, namesBypass, planTeamStart } from '../../../dist/packages/team/src/index.js';
 import { NOW, approval, cleanup, json, makeTeam, member, relayMap, route, rule, teamFile, tempDir } from './fixture.mjs';
 
 test.after(cleanup);
@@ -21,8 +21,11 @@ function harness(id = 'demo', { engines = ALL, rules = [], mcp = [], hooks = [] 
 }
 const loadedRule = (id, extra) => ({ ...rule(id, extra), privateBlocks: {} });
 
+/** The demo team with its Claude Code lead started by a person: an unattended Claude Code start is refused (T5). */
+const startTeam = (extra = {}) => teamFile({ members: [member('lead', { start: 'manual' }), member('maker', { engine: 'codex', model: 'model-b', folder: 'wt/maker', reports_to: 'lead' })], ...extra });
+
 /** Loads a team and returns it with its project folder. Member folders are created. */
-function setup(team = teamFile(), files = {}, folders = ['wt/maker']) {
+function setup(team = startTeam(), files = {}, folders = ['wt/maker']) {
   const { project, folder } = makeTeam({ 'team.json': json(team), ...files }, { folders });
   const r = loadTeam(folder);
   assert.equal(r.ok, true, JSON.stringify(r.ok ? null : r.problems));
@@ -57,29 +60,28 @@ test('the plan lists each member: folder, engine and version, command, environme
   assert.equal(maker.folder, path.join(project, 'wt', 'maker'));
   assert.deepEqual([lead.engine, lead.version, maker.engine, maker.version], ['claude-code', '2.1.310', 'codex', '0.157.0']);
   assert.deepEqual(lead.harness, { id: 'demo', revision: `sha256:${'a'.repeat(64)}`, from: 'team' });
-  assert.deepEqual(lead.command.argv, [
-    'claude', '--print', '--model', 'model-a', '--output-format', 'json', '--permission-mode', 'dontAsk', '--permission-prompts', 'none',
-    '--settings', '{"crossSessionInbound":"accept","sandbox":{"enabled":true,"allowUnsandboxedCommands":false}}',
-  ]);
-  assert.equal(lead.command.cwd, project);
-  assert.equal(lead.command.stdin, 'message');
+  assert.equal(lead.command, null, 'a manual member has no command');
+  assert.equal(maker.command.cwd, path.join(project, 'wt', 'maker'));
+  assert.equal(maker.command.stdin, 'message');
   assert.deepEqual(maker.command.argv, ['codex', '-c', 'approval_policy="never"', 'exec', '--json', '--sandbox', 'workspace-write', '-m', 'model-b', '-']);
   for (const m of plan.members) {
     assert.ok(Array.isArray(m.environment));
-    assert.ok(!namesBypass(m.command.argv.join(' ')), 'no command holds a bypass flag');
+    if (m.command) assert.ok(!namesBypass(m.command.argv.join(' ')), 'no command holds a bypass flag');
     assert.ok(DELIVERY_TABLE[m.engine].modes.includes(m.delivery.mode));
   }
   assert.equal(lead.billing.source, 'subscription');
   assert.equal(maker.billing.source, 'not-recorded');
 });
 
-test('the inbox word of a Claude Code member becomes its crossSessionInbound setting', () => {
-  const { project, team } = setup(solo('claude-code', { inbox: 'refuse' }), {}, []);
-  assert.equal(JSON.parse(planned(team, input(project)).members[0].command.argv.at(-1)).crossSessionInbound, 'refuse');
+test('the recorded Claude Code command carries the inbox word as its crossSessionInbound setting', () => {
+  // The row stays recorded for when the --setting-sources form is on record; the plan does not use it yet (T5).
+  const row = START_TABLE['claude-code'].headless;
+  assert.equal(row.pinned, null);
+  assert.equal(JSON.parse(row.model('model-a', 'refuse').at(-1)).crossSessionInbound, 'refuse');
 });
 
 test('the environment lists names from the member harness, never values', () => {
-  const { project, team } = setup(solo('claude-code'), {}, []);
+  const { project, team } = setup(solo('claude-code', { start: 'manual' }), {}, []);
   const mcp = [{ id: 'docs', name: 'docs', transport: 'stdio', command: 'docs-server', args: ['--url', '${DEMO_URL}'], env: { DEMO_TOKEN: '${DEMO_TOKEN}', MODE: 'plain', KEY: { keychain: 'demo-entry' } }, privateBlocks: {} }];
   const hooks = [{ id: 'check', event: 'PreToolUse', command: '${PROJECT_DIR}/scripts/check ${DEMO_HOOK_VAR}', strength: 'advisory', privateBlocks: {} }];
   const plan = planned(team, input(project, { harnesses: { demo: harness('demo', { mcp, hooks }) } }));
@@ -140,7 +142,7 @@ test('check 14: every delivery mode in the start plan appears in the loss report
 });
 
 test('check 14: a member that refuses messages has an absent delivery line that says so', () => {
-  const { project, team } = setup(solo('claude-code', { inbox: 'refuse' }), {}, []);
+  const { project, team } = setup(solo('claude-code', { inbox: 'refuse', start: 'manual' }), {}, []);
   for (const line of planned(team, input(project)).report) {
     assert.equal(line.result, 'absent');
     assert.match(line.reason, /refuses/);
@@ -152,7 +154,7 @@ test('check 14: a member that refuses messages has an absent delivery line that 
 const SPAWNERS = ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork'];
 
 test('check 13: a relay map with no bus starts no socket and no process', t => {
-  const team = teamFile({ routes: 'maps/relay.json' });
+  const team = startTeam({ routes: 'maps/relay.json' });
   const { project, folder } = makeTeam({ 'team.json': json(team), 'maps/relay.json': json(relayMap(['lead', 'maker'], [route('lead', 'maker')])) }, { folders: ['wt/maker'] });
   const calls = [];
   const spy = (object, names, label) => {
@@ -218,10 +220,10 @@ test('decision 9: an ask rule in the member harness counts too; deny and allow r
     const one = setup(solo(engine), {}, []);
     refusedStart(one.team, input(one.project, { harnesses: { demo: harness('demo', { rules: [loadedRule('ask-push', { effect: 'ask' })] }) } }), 'TEAM_START_APPROVAL_UNREACHABLE');
   }
-  const { project, team } = setup(solo('claude-code'), {}, []);
+  const { project, team } = setup(solo('codex'), {}, []);
   planned(team, input(project, { harnesses: { demo: harness('demo', { rules: [loadedRule('no-push'), loadedRule('read-docs', { action: 'read', pattern: 'docs/**', effect: 'allow', strength: 'advisory' })] }) } }));
   // An ask rule for another engine does not apply.
-  planned(team, input(project, { harnesses: { demo: harness('demo', { rules: [loadedRule('ask-codex', { effect: 'ask', engines: ['codex'] })] }) } }));
+  planned(team, input(project, { harnesses: { demo: harness('demo', { rules: [loadedRule('ask-claude', { effect: 'ask', engines: ['claude-code'] })] }) } }));
 });
 
 test('decision 9: Codex exec with an MCP server is refused (open issue 24135)', () => {
@@ -256,13 +258,16 @@ test('a server start is refused where 0.8 has no server to start or nothing to d
 
 // ---- other refusals ---------------------------------------------------------------------------------------------------------------
 
-test('engine versions: each is recorded, and Claude Code is new enough for --permission-prompts', () => {
+test('engine versions: each is recorded, and a command needs a version at least its minimum', () => {
   const { project, team } = setup();
   refusedStart(team, input(project, { versions: { 'claude-code': '2.1.310' } }), 'TEAM_START_ENGINE_VERSION');
-  refusedStart(team, input(project, { versions: { ...VERSIONS, 'claude-code': '2.1.200' } }), 'TEAM_START_ENGINE_VERSION');
-  refusedStart(team, input(project, { versions: { ...VERSIONS, 'claude-code': '2.1.259-beta.1' } }), 'TEAM_START_ENGINE_VERSION');
   refusedStart(team, input(project, { versions: { ...VERSIONS, codex: 'latest' } }), 'TEAM_START_ENGINE_VERSION');
-  planned(team, input(project, { versions: { ...VERSIONS, 'claude-code': '2.1.259' } }));
+  refusedStart(team, input(project, { versions: { ...VERSIONS, codex: '0.157.0-beta.1' } }), 'TEAM_START_ENGINE_VERSION');
+  planned(team, input(project, { versions: { ...VERSIONS, codex: '0.157.0' } }));
+  // A prerelease counts as older than its release.
+  assert.equal(atLeast('2.1.259-beta.1', '2.1.259'), false);
+  assert.equal(atLeast('2.1.200', '2.1.259'), false);
+  assert.equal(atLeast('2.1.259', '2.1.259'), true);
 });
 
 test('harnesses: each member harness is given and lists the member engine', () => {

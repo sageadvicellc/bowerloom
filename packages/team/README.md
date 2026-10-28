@@ -101,6 +101,7 @@ Rules:
 - `plan.notCarried` lists each entry adoption does not copy, with why: a name outside the 0.7 entries, a link, a name that is not plain, a file it cannot read, or a folder too deep.
 - The plan is ready only after `acknowledged` names every `notCarried` and `notMapped` id.
 - In place, an entry in `notCarried` stays in the folder and stops the team from loading. So the plan refuses (`TEAM_ADOPT_IN_PLACE_BLOCKED`).
+- In place, the folder keeps two copies of each 0.7 entry: the original, and the copy under `x-crew-v0.7/`.
 
 `applyTeamAdoption(input, revision)` plans again. If the revision is the same and the plan is ready, it writes. It creates files only, never replaces one, and writes `team.json` last:
 
@@ -140,8 +141,9 @@ Adoption takes no project lock and keeps no journal.
   - These are refused as `TEAM_FOLDER_OUTSIDE`: the home folder, a folder that holds it, and a folder in a user engine config folder. Examples are `~/.claude`, `~/.codex`, `~/.config`, `~/.pi`, and `~/.dsh`.
   - A missing folder (`TEAM_START_FOLDER`) and a folder you cannot read (`TEAM_FOLDER_UNREADABLE`) are told apart.
 - **Commands.** Every flag comes from a record: the Claude Code and Codex adapters in this repository, the project-sync writer, or the research notes. Each command pins the sandbox and the approval behaviour. `command.pinned` says how, and `command.ambient` names the engine config that still loads unread.
-  - Claude Code, version 2.1.259 or later: `claude --print --model <model> --output-format json --permission-mode dontAsk --permission-prompts none --settings {"crossSessionInbound":"<inbox>","sandbox":{"enabled":true,"allowUnsandboxedCommands":false}}`.
+  - Claude Code does not start unattended yet (`TEAM_START_UNPINNED`). User-level Claude Code config loads and can allow requests that the harness does not. No record names the value form of `--setting-sources` that leaves them out, and the step 5 live check records the flag. The table keeps the recorded command for that day: `claude --print --model <model> --output-format json --permission-mode dontAsk --permission-prompts none --settings {"crossSessionInbound":"<inbox>","sandbox":{"enabled":true,"allowUnsandboxedCommands":false}}`, version 2.1.259 or later.
   - Codex, version 0.157.0 or later: `codex -c approval_policy="never" exec --json --sandbox workspace-write -m <model> -`. In `codex exec`, no request can ask a person. So `never` makes a request outside the sandbox fail.
+  - A harness can ask for no sandbox. An unattended run is still sandboxed, and this can block work that needs the network.
   - A manual member has no command.
 - **Environment names.** The `${NAME}` references in the member harness's MCP servers and hooks for that engine, and the names Bowerloom sets, such as `OPENCODE_SERVER_PASSWORD`. Never a value.
 
@@ -153,7 +155,7 @@ The start is refused in these cases:
 | OpenCode unattended: its projected default is `ask` | `TEAM_START_APPROVAL_UNREACHABLE` |
 | Codex `exec` with an MCP server for Codex (open issue 24135) | `TEAM_START_APPROVAL_UNREACHABLE` |
 | No record names the model flag (OpenCode, Pi), or DeepSeek Harness headless | `TEAM_START_UNDOCUMENTED` |
-| No recorded flag pins the sandbox and approvals: ambient engine config not checked | `TEAM_START_UNPINNED` |
+| No recorded flag pins the sandbox and approvals: ambient engine config not checked. This includes Claude Code, until the step 5 live check records `--setting-sources` | `TEAM_START_UNPINNED` |
 | A server start on Claude Code, Codex, Pi, or DeepSeek Harness | `TEAM_START_MODE_UNSUPPORTED` |
 | An engine version is missing, not semver, or older than the command needs | `TEAM_START_ENGINE_VERSION` |
 | A member harness is not given, or does not list the member engine | `TEAM_START_HARNESS_MISSING`, `TEAM_START_HARNESS_ENGINE` |

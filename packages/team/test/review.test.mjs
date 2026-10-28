@@ -149,12 +149,16 @@ test('T5: the Codex command pins its sandbox and approval policy with recorded f
   assert.ok(startCodes(team, input(project, { versions: { ...VERSIONS, codex: '0.156.0' } })).includes('TEAM_START_ENGINE_VERSION'));
 });
 
-test('T5: the Claude Code command pins its sandbox in --settings', () => {
+test('T5: an unattended Claude Code start is refused until the --setting-sources form is on record', () => {
   const { project, team } = setup(solo('claude-code'));
-  const cmd = planTeamStart(team, input(project)).plan.members[0].command;
-  assert.equal(cmd.argv.at(-1), '{"crossSessionInbound":"accept","sandbox":{"enabled":true,"allowUnsandboxedCommands":false}}');
-  assert.deepEqual(cmd.pinned, { sandbox: 'enabled, no unsandboxed commands', approval: 'dontAsk with no permission prompts: a request no rule allows is denied' });
-  assert.ok(!namesBypass(cmd.argv.join(' ')));
+  const r = planTeamStart(team, input(project));
+  assert.equal(r.ok, false);
+  const unpinned = r.problems.filter(p => p.code === 'TEAM_START_UNPINNED');
+  assert.equal(unpinned.length, 1, JSON.stringify(r.problems));
+  assert.ok(unpinned[0].message.includes('user-level settings load and can allow requests the harness does not; the step 5 live check records the flag'));
+  // A manual Claude Code member starts: a person is present.
+  const manual = setup(solo('claude-code', { start: 'manual' }));
+  assert.equal(planTeamStart(manual.team, input(manual.project)).ok, true);
 });
 
 // ---- T6: model and one-line text --------------------------------------------------------------------------------------------
@@ -328,7 +332,7 @@ test('T17: an answer fault is reported while other questions are open', () => {
 // ---- T18: start plan members ------------------------------------------------------------------------------------------------
 
 test('T18: an empty member list is refused, and a subset plan lists the members it leaves out', () => {
-  const { project, team } = setup(teamFile(), ['wt/maker']);
+  const { project, team } = setup(teamFile({ members: [member('lead', { start: 'manual' }), member('maker', { engine: 'codex', folder: 'wt/maker' })] }), ['wt/maker']);
   assert.ok(startCodes(team, input(project, { members: [] })).includes('TEAM_START_USAGE'));
   const r = planTeamStart(team, input(project, { members: ['maker'] }));
   assert.deepEqual(r.plan.omitted, ['lead']);
@@ -427,7 +431,7 @@ test('T21: limits.activeMembers comes from the 0.7 maxActiveWorkers', () => {
 });
 
 test('T21: environment names come only from MCP servers and hooks for the member engine', () => {
-  const { project, team } = setup(solo('claude-code'));
+  const { project, team } = setup(solo('claude-code', { start: 'manual' }));
   const mcp = [
     { id: 'a', name: 'a', transport: 'stdio', command: 'a', env: { X: '${FOR_CLAUDE}' }, privateBlocks: {} },
     { id: 'b', name: 'b', transport: 'stdio', command: 'b', env: { Y: '${FOR_CODEX}' }, engines: ['codex'], privateBlocks: {} },
