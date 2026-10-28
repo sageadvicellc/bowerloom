@@ -24,10 +24,11 @@ import type { AdoptedRecord, Definition, EngineId, FidelityApproval, LossLine, L
 import { LOCKED_PARTS, planLocked } from './locked.js';
 import type { CodexTrust, LockedPart, ReviewItem, TrustLine } from './locked.js';
 import {
-  PortableRefusal, byBytes, caseClashes, checkAncestors, readAbs, readProject, refuse, revisionOf, sameState, sha, stateOrUnsafe,
+  GROUP_OR_WORLD_WRITE, PortableRefusal, byBytes, caseClashes, checkAncestors, driftReason, isProjectedPath, readAbs, readProject, refuse, revisionOf, sameState, sha,
+  stateOrUnsafe, writeAbs,
 } from './portable-files.js';
 import type { FileAfter, FileState } from './portable-files.js';
-import { checkPaths, pendingExists, readReceipt, blob } from './portable-state.js';
+import { checkPaths, pendingExists, readReceipt, blob, stateExists } from './portable-state.js';
 import type { PortableEngine, PortableReceipt, ReceiptFile, ReceiptSource } from './portable-state.js';
 
 export const PORTABLE_PLAN_FORMAT = 'bowerloom/portable-projection-plan/v1beta3' as const;
@@ -158,6 +159,50 @@ export function versionAtLeast(version: string | null, floor: string): boolean |
   const f = floor.split('.').map(Number), v = m.slice(1, 4).map(Number);
   for (let i = 0; i < 3; i++) if (v[i]! !== f[i]!) return v[i]! > f[i]!;
   return true;
+}
+
+// ---- recorded modes (decision D5A) ---------------------------------------------------------------------------------------
+
+/**
+ * The modes a person recorded with `recordMode`, in `modes.json` of the state folder. Each entry names the content and
+ * the mode the projection had planned when the mode was recorded. While the receipt still holds that content at the
+ * recorded mode, and the plan still wants that content at that planned mode, install keeps the recorded mode: no chmod
+ * back and no change. A new planned content or mode follows the normal rules. Removal deletes the file.
+ */
+export const RECORDED_MODES_FORMAT = 'bowerloom/portable-recorded-modes/v1beta1' as const;
+export const RECORDED_MODES = 'modes.json';
+export interface RecordedMode { readonly path: string; readonly sha256: string; readonly planned: number; readonly recorded: number }
+export interface RecordedModes { readonly format: typeof RECORDED_MODES_FORMAT; readonly projectDir: string; readonly files: readonly RecordedMode[] }
+
+const okMode = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 0o777;
+/** The recorded modes, checked against their strict shape and project. A recorded mode never holds group or world write. */
+export function readRecordedModes(stateDir: string, projectDir: string): ReadonlyMap<string, RecordedMode> {
+  if (!stateExists(stateDir)) return new Map();
+  const got = readAbs(join(stateDir, RECORDED_MODES), RECORDED_MODES);
+  if (got === null) return new Map();
+  if ((got.state.mode & 0o077) !== 0) refuse('PORTABLE_STATE_UNSAFE');
+  const bad = (): never => refuse('PORTABLE_STATE_INVALID', [RECORDED_MODES]);
+  let v: unknown;
+  try { v = JSON.parse(got.bytes.toString('utf8')); } catch { return bad(); }
+  const closed = (o: unknown, keys: readonly string[]): o is Record<string, unknown> => typeof o === 'object' && o !== null && !Array.isArray(o) && Object.keys(o).length === keys.length && keys.every(k => Object.hasOwn(o, k));
+  if (!closed(v, ['format', 'projectDir', 'files']) || v.format !== RECORDED_MODES_FORMAT || !Array.isArray(v.files) || v.files.length > 100_000) return bad();
+  if (v.projectDir !== projectDir) refuse('PORTABLE_STATE_FOREIGN');
+  const out = new Map<string, RecordedMode>();
+  for (const f of v.files as unknown[]) {
+    if (!closed(f, ['path', 'sha256', 'planned', 'recorded']) || !isProjectedPath(f.path) || typeof f.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(f.sha256)
+      || !okMode(f.planned) || !okMode(f.recorded) || (f.recorded & GROUP_OR_WORLD_WRITE) !== 0 || out.has(f.path)) return bad();
+    out.set(f.path, { path: f.path, sha256: f.sha256, planned: f.planned, recorded: f.recorded });
+  }
+  return out;
+}
+/** Writes the recorded modes, mode 0600, in path order. The state folder must exist. */
+export function writeRecordedModes(stateDir: string, projectDir: string, files: readonly RecordedMode[]): void {
+  const body: RecordedModes = { format: RECORDED_MODES_FORMAT, projectDir, files: [...files].sort((a, b) => byBytes(a.path, b.path)) };
+  writeAbs(join(stateDir, RECORDED_MODES), Buffer.from(JSON.stringify(body, null, 2) + '\n'), 0o600);
+}
+/** Deletes the recorded modes. */
+export function clearRecordedModes(stateDir: string): void {
+  try { fs.unlinkSync(join(stateDir, RECORDED_MODES)); } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; }
 }
 
 // ---- types -------------------------------------------------------------------------------------------------------------
@@ -393,6 +438,7 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
   const ignored: Ignored[] = [], offers: Offer[] = [];
   const previous = readReceipt(stateDir, projectDir);
   const owned = new Map((previous?.files ?? []).map(f => [f.path, f]));
+  const recordedModes = readRecordedModes(stateDir, projectDir);
 
   // Section 4.1: the system prompt. No @path import, and at most 32 KiB.
   const instructions = def.instructions;
@@ -515,14 +561,17 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
     const target = targets.get(path), mine = owned.get(path);
     const now = stateOrUnsafe(projectDir, path);
     if (now === 'unsafe') { if (!mine) refuse('PORTABLE_PATH_UNSAFE', [path]); drifted.push(`${path} (unsafe)`); continue; }
-    if (mine && !sameState(now, mine)) { drifted.push(`${path} (${now === null ? 'missing' : 'changed'})`); continue; }
+    if (mine && !sameState(now, mine)) { drifted.push(`${path} (${driftReason(now, mine)})`); continue; }
     if (target) for (const d of checkAncestors(projectDir, path)) createDirs.add(d);
     if (!target) {
       if (mine!.original) blob(stateDir, mine!.original, path);
       changes.push({ path, action: mine!.original ? 'restore' : 'delete', before: now, after: null, original: mine!.original, engines: [] });
       continue;
     }
-    const after: FileAfter = { sha256: sha(target.bytes), mode: target.mode, bytes: target.bytes.length };
+    // Decision D5A: a recorded mode stays while the plan still wants the content and mode it was recorded against.
+    const rec = recordedModes.get(path), want = sha(target.bytes);
+    const keepMode = mine !== undefined && rec !== undefined && rec.sha256 === want && mine.sha256 === want && mine.mode === rec.recorded && target.mode === rec.planned;
+    const after: FileAfter = { sha256: want, mode: keepMode ? mine.mode : target.mode, bytes: target.bytes.length };
     const action: ChangeAction = mine ? (sameState(now, after) ? 'unchanged' : 'update') : now === null ? 'create' : 'replace';
     if (mine?.original) blob(stateDir, mine.original, path);
     changes.push({ path, action, before: now, after, original: mine ? mine.original : now, engines: ENGINE_IDS.filter(e => target.engines.has(e)) });
