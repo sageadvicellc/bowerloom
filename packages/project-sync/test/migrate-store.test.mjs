@@ -122,7 +122,7 @@ test('2, 3 and 4. apply copies each item with its bytes, records the written one
   // 3. Nothing in .bowerloom changed, byte for byte.
   assert.deepEqual(snapshot(bl(w)), before);
   // 4. bowerloom.json: every project item, with the chosen ones from the store, in the exact serialization.
-  const expected = serializeConfig({ format: 'bowerloom/project/v1beta1', harnesses: ['claude', 'codex'], skills: [{ id: 'charts', source: 'store' }, { id: 'house-style', source: 'store' }], prompts: [{ id: 'brief', source: 'store' }], teams: [{ id: 'research', source: 'store' }] });
+  const expected = serializeConfig({ format: 'bowerloom/project/v1beta1', engines: ['claude-code', 'codex'], skills: [{ id: 'charts', source: 'store' }, { id: 'house-style', source: 'store' }], prompts: [{ id: 'brief', source: 'store' }], teams: [{ id: 'research', source: 'store' }] });
   assert.equal(fs.readFileSync(path.join(w.projectDir, 'bowerloom.json'), 'utf8'), expected);
   assert.equal(p.config.created, true); assert.equal(p.config.text, expected);
   assert.equal(fs.existsSync(path.join(w.projectDir, 'bowerloom.lock.json')), false);
@@ -134,7 +134,7 @@ test('2, 3 and 4. apply copies each item with its bytes, records the written one
 test('4b. a selection of one item lists every project item in the new bowerloom.json and flips only that one', async t => {
   const w = await fourItems(t);
   await migrate(w, { prompts: ['brief'] });
-  assert.deepEqual(configOf(w), { format: 'bowerloom/project/v1beta1', harnesses: ['claude', 'codex'], skills: [{ id: 'charts', source: 'project' }, { id: 'house-style', source: 'project' }], prompts: [{ id: 'brief', source: 'store' }], teams: [{ id: 'research', source: 'project' }] });
+  assert.deepEqual(configOf(w), { format: 'bowerloom/project/v1beta1', engines: ['claude-code', 'codex'], skills: [{ id: 'charts', source: 'project' }, { id: 'house-style', source: 'project' }], prompts: [{ id: 'brief', source: 'store' }], teams: [{ id: 'research', source: 'project' }] });
   assert.deepEqual(fs.readdirSync(w.store).sort(), ['.gitignore', 'authoring', 'prompts', 'store.json']);
 });
 
@@ -145,7 +145,7 @@ test('5. an existing bowerloom.json: chosen items flip, a named unlisted item is
   assert.deepEqual(pairs(all), ['skill house-style', 'prompt brief', 'team research']);
   assert.deepEqual(all.skipped, [{ kind: 'skill', id: 'charts', line: 'not listed in bowerloom.json, so it stays as it is.' }]);
   await migrate(w, { skills: ['charts'], prompts: ['brief'] });
-  assert.deepEqual(configOf(w), { format: 'bowerloom/project/v1beta1', harnesses: ['claude', 'codex'], skills: [{ id: 'charts', source: 'store' }, { id: 'house-style', source: 'project' }], prompts: [{ id: 'brief', source: 'store' }], teams: [{ id: 'research', source: 'project' }] });
+  assert.deepEqual(configOf(w), { format: 'bowerloom/project/v1beta1', engines: ['claude-code', 'codex'], skills: [{ id: 'charts', source: 'store' }, { id: 'house-style', source: 'project' }], prompts: [{ id: 'brief', source: 'store' }], teams: [{ id: 'research', source: 'project' }] });
 });
 
 test('6. tags: a team that is not in the store refuses MIGRATE_TEAM_MISSING; with the team selected it passes; first-team refuses or stays', async t => {

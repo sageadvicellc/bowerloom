@@ -12,17 +12,19 @@ import { revisionOf } from '../../skill-sources/src/validation.js';
 import { LIMITS, OP_TEMP, directory, exists, names, stablePins } from '../../managed-skills/src/observed.js';
 import { readLocalPrompt } from '../../managed-skills/src/local-source.js';
 import { catalogPath, currentV2, ownSurface } from '../../managed-skills/src/v2-observed.js';
-import type { Harness, InventoryRow, ItemRef, ManagedItemPlan, ManagedItemReceipt, ManagedItemRequest, UpToDateV2 } from '../../managed-skills/src/v2-types.js';
+import type { InventoryRow, ItemRef, ManagedItemPlan, ManagedItemReceipt, ManagedItemRequest, UpToDateV2 } from '../../managed-skills/src/v2-types.js';
 import { readAuthoringState } from '../../project-authoring/src/state.js';
 import type { ItemSurface, SyncItem } from './plan.js';
 import { MIN_FREE_BYTES, beforePins, driftNext, driftedPaths, historyNext, readCatalog, recoverNext, strayHold, union } from './plan.js';
 import { managedCode, syncError } from './refusal.js';
+import type { WriterEngine } from '../../skill-manifest/src/engine.js';
+import { fromWire, toWire } from './wire.js';
 import { faultNote, probeStoreCache } from './store-git.js';
 import type { AuthoredPin } from '../../skill-manifest/src/resolve-store-git.js';
 import { locateV2 } from '../../managed-skills/src/v2-observed.js';
 import type { ItemClosure } from '../../managed-skills/src/v2-types.js';
 
-export type PromptState = 'new' | 'edited' | 'harnesses-changed' | 'up-to-date' | 'drift' | 'orphaned';
+export type PromptState = 'new' | 'edited' | 'engines-changed' | 'up-to-date' | 'drift' | 'orphaned';
 export { promptNotices } from './notices.js';
 export type { PromptNotice } from './notices.js';
 import { promptNotices } from './notices.js';
@@ -35,8 +37,8 @@ export interface PromptItem {
   /** The teams the prompt is limited to; empty means every team. */
   teams: string[];
   state: PromptState; action: SyncItem['action'];
-  /** The installed harnesses plus the requested ones. A harness is never dropped. */
-  harnesses: Harness[];
+  /** The installed engines plus the requested ones. An engine is never dropped. */
+  engines: WriterEngine[];
   /** Paths relative to the project. `files` is the authored prompt's inventory. */
   expected: { files: InventoryRow[]; surfaces: ItemSurface[] };
   before: SyncItem['before'];
@@ -79,9 +81,9 @@ export function registeredPrompts(project: string): { id: string; teams: string[
   return (state.receipt?.value.items ?? []).filter(i => i.kind === 'prompt').map(i => ({ id: i.id, teams: [...i.teams] })).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 }
 
-/** The item surfaces of a prompt for these harnesses, as the managed planner places them. */
-export function promptSurfaces(project: string, id: string, harnesses: Harness[]): { id: ItemSurface['id']; kind: 'directory' | 'file'; path: string }[] {
-  const req = { projectDir: project, item: { kind: 'prompt', id }, harnesses } as unknown as ManagedItemRequest;
+/** The item surfaces of a prompt for these engines, as the managed planner places them. */
+export function promptSurfaces(project: string, id: string, engines: readonly WriterEngine[]): { id: ItemSurface['id']; kind: 'directory' | 'file'; path: string }[] {
+  const req = { projectDir: project, item: { kind: 'prompt', id }, harnesses: toWire(engines) } as unknown as ManagedItemRequest;
   return locateV2(req, { name: id } as ItemClosure, { ignore: false, legacy: false }).filter(ownSurface);
 }
 
@@ -113,16 +115,16 @@ function promptFolder(id: string, src: PromptSource): { dir: string | null; faul
   return probe;
 }
 /** A prompt the resolver holds (CONFIG_ITEM_MISSING, STORE_ITEM_MISSING): no definition to read, and the copies stay. */
-export function heldPrompt(project: string, id: string, teams: string[], target: Harness[], hold: { code: string; next: string }, r: Pick<PromptSource, 'origin' | 'via' | 'resolvedFrom'>): PromptItem {
+export function heldPrompt(project: string, id: string, teams: string[], target: WriterEngine[], hold: { code: string; next: string }, r: Pick<PromptSource, 'origin' | 'via' | 'resolvedFrom'>): PromptItem {
   const surfaces = promptSurfaces(project, id, target);
   return {
-    id, itemId: 'prompt-' + id, teams, state: 'drift', action: 'hold', harnesses: [...target],
+    id, itemId: 'prompt-' + id, teams, state: 'drift', action: 'hold', engines: [...target],
     expected: { files: [], surfaces: surfaces.map(s => ({ id: s.id, path: relative(project, s.path) })) }, before: beforePins(surfaces, project),
     previousReceiptRevision: null, history: 0, hold, notices: [], origin: r.origin, via: [...r.via], resolvedFrom: r.resolvedFrom, lockPin: null, storeCache: null,
   };
 }
 /** Classifies one prompt: a registered project prompt, or, in a config project, a store prompt live or from the lock. Reads only. */
-export function classifyPrompt(project: string, itemsRoot: string, id: string, teams: string[], target: Harness[], src?: PromptSource): PromptItem {
+export function classifyPrompt(project: string, itemsRoot: string, id: string, teams: string[], target: WriterEngine[], src?: PromptSource): PromptItem {
   let files: InventoryRow[], notices: PromptNotice[] | null, storeCache: PromptItem['storeCache'] = null, fault: { code: string } | null = null;
   const fromStore = src !== undefined && src.origin === 'store', where = fromStore ? (src.resolvedFrom === 'store' ? `~/.bowerloom/prompts/${id}.md` : `the store at ${src.lockPin!.remote.slice('https://'.length)}`) : `.bowerloom/prompts/${id}.md`;
   const tag = src === undefined ? PROJECT_SOURCE : { origin: src.origin, via: [...src.via], resolvedFrom: src.resolvedFrom, lockPin: src.resolvedFrom === 'lock' ? src.lockPin : null, storeCache: null };
@@ -142,7 +144,7 @@ export function classifyPrompt(project: string, itemsRoot: string, id: string, t
   }
   const ref: ItemRef = { kind: 'prompt', id }, itemId = 'prompt-' + id, stateDir = join(itemsRoot, itemId);
   let hold: PromptItem['hold'] = null, heldCode: string | null = null, state: PromptState = 'drift', action: SyncItem['action'] = 'hold', previous: ManagedItemReceipt | null = null;
-  let harnesses = [...target];
+  let engines = [...target];
   let ops: string[] = [];
   if (exists(stateDir)) {
     try { directory(stateDir, true); } catch { throw syncError('SKILLS_STATE_UNSAFE'); }
@@ -158,13 +160,14 @@ export function classifyPrompt(project: string, itemsRoot: string, id: string, t
     try { previous = currentV2(project, stateDir, ref); } catch (e) { previous = null; heldCode = managedCode(e); }
     if (heldCode === 'MANAGED_SKILL_PATH_OCCUPIED') throw collision([relative(project, catalog)], id);
     if (previous !== null) {
-      harnesses = union(previous.harnesses, target);
+      const was = fromWire(previous.harnesses);
+      engines = union(was, target);
       if (!same(readCatalog(catalog).inventory, files)) { state = 'edited'; action = 'update'; }
-      else if (harnesses.length > previous.harnesses.length) { state = 'harnesses-changed'; action = 'update'; }
+      else if (engines.length > was.length) { state = 'engines-changed'; action = 'update'; }
       else { state = 'up-to-date'; action = 'none'; }
     }
   }
-  const surfaces = promptSurfaces(project, id, harnesses), before = beforePins(surfaces, project);
+  const surfaces = promptSurfaces(project, id, engines), before = beforePins(surfaces, project);
   if (heldCode !== null && hold === null) {
     const changed = heldCode === 'MANAGED_SKILL_LOCAL_DRIFT' ? driftedPaths(project, stateDir, ref.id) : [];
     hold = { code: heldCode, next: heldCode === 'MANAGED_SKILL_LOCAL_DRIFT' ? driftNext(changed.length ? changed : before.map(b => b.path), fromStore && src.resolvedFrom === 'lock' ? null : where).replace('bowerloom skills sync', 'bowerloom apply').replace('Sync never', 'Apply never') : `Run bowerloom status to see what changed in the copies of prompt ${id}.` };
@@ -179,7 +182,7 @@ export function classifyPrompt(project: string, itemsRoot: string, id: string, t
   if (fault !== null && src?.offline === true && hold === null && (action === 'install' || action === 'update')) hold = { code: fault.code, next: 'Run bowerloom apply --frozen.' };
   if (hold !== null) action = 'hold';
   return {
-    id, itemId, teams, state, action, harnesses,
+    id, itemId, teams, state, action, engines,
     expected: { files, surfaces: surfaces.map(s => ({ id: s.id, path: relative(project, s.path) })) }, before,
     previousReceiptRevision: previous?.revision ?? null, history: ops.length, hold, notices, ...tag, storeCache,
   };
@@ -189,7 +192,7 @@ export function classifyPrompt(project: string, itemsRoot: string, id: string, t
 export function orphanPrompt(project: string, itemsRoot: string, id: string): PromptItem {
   let previous: ManagedItemReceipt | null = null;
   try { previous = currentV2(project, join(itemsRoot, 'prompt-' + id), { kind: 'prompt', id }); } catch { previous = null; }
-  return { id, itemId: 'prompt-' + id, teams: [], state: 'orphaned', action: 'none', harnesses: previous ? [...previous.harnesses] : [], expected: { files: [], surfaces: [] }, before: [], previousReceiptRevision: previous?.revision ?? null, history: 0, hold: null, notices: [], origin: null, via: [], resolvedFrom: 'project', lockPin: null, storeCache: null };
+  return { id, itemId: 'prompt-' + id, teams: [], state: 'orphaned', action: 'none', engines: previous ? fromWire(previous.harnesses) : [], expected: { files: [], surfaces: [] }, before: [], previousReceiptRevision: previous?.revision ?? null, history: 0, hold: null, notices: [], origin: null, via: [], resolvedFrom: 'project', lockPin: null, storeCache: null };
 }
 
 /** The child request of one prompt. Every field comes from the plan this run computed; `storeDir` is the store folder of a store prompt. */
@@ -197,7 +200,7 @@ export function promptRequest(project: string, itemsRoot: string, item: PromptIt
   if ((item.origin === 'store') !== (storeDir !== null)) throw stale();
   return {
     operation: item.action === 'install' ? 'install' : 'update', projectDir: project, stateDir: join(itemsRoot, item.itemId),
-    item: { kind: 'prompt', id: item.id }, harnesses: [...item.harnesses], source: storeDir !== null ? { kind: 'store-prompt', name: item.id, storeDir } : { kind: 'prompt', name: item.id },
+    item: { kind: 'prompt', id: item.id }, harnesses: toWire(item.engines), source: storeDir !== null ? { kind: 'store-prompt', name: item.id, storeDir } : { kind: 'prompt', name: item.id },
     expectedPreviousRevision: item.previousReceiptRevision, minFreeBytes: MIN_FREE_BYTES, legacy: null,
   };
 }

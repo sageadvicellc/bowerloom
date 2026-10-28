@@ -20,6 +20,8 @@ import type { PinnedEntry } from '../../../packages/skill-manifest/src/schema.js
 import { runWithApproval, parseApprovalFlags } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
 import { plainText } from './human.js';
+import { fromWire } from '../../../packages/project-sync/src/wire.js';
+import type { OldEngineId, WriterEngine } from '../../../packages/skill-manifest/src/engine.js';
 import { terminalIo } from './manifest.js';
 import { credentialsLines, githubTokenReader, maxRequestsFlag, TOKEN_TAIL } from './sync.js';
 import type { Credentials } from '../../../packages/project-sync/src/store-git.js';
@@ -62,9 +64,10 @@ export function copyPlaces(project: ProjectContext, kind: Kind, id: string): str
   if (kind === 'team') return [];
   const catalog = join(project.dir, '.bowerloom', 'managed', 'catalog', `${kind === 'prompt' ? 'prompt-' : ''}${id}.json`);
   if (!existsSync(catalog)) return [];
-  let name = id, harnesses: ('claude' | 'codex')[] = ['claude', 'codex'];
-  try { const c = JSON.parse(readFileSync(catalog, 'utf8')) as { skill?: { name?: unknown } | null; harnesses?: unknown }; if (typeof c.skill?.name === 'string') name = c.skill.name; if (Array.isArray(c.harnesses)) harnesses = c.harnesses as ('claude' | 'codex')[]; } catch { /* The default places. */ }
-  const surfaces = kind === 'skill' ? itemSurfaces(project.dir, id, name, harnesses) : promptSurfaces(project.dir, id, harnesses);
+  let name = id, engines: WriterEngine[] = ['claude-code', 'codex'];
+  // The catalog is a stored record of a managed copy: it names its engines the old way (`harnesses`, with `claude`).
+  try { const c = JSON.parse(readFileSync(catalog, 'utf8')) as { skill?: { name?: unknown } | null; harnesses?: unknown }; if (typeof c.skill?.name === 'string') name = c.skill.name; if (Array.isArray(c.harnesses)) engines = fromWire(c.harnesses as OldEngineId[]); } catch { /* The default places. */ }
+  const surfaces = kind === 'skill' ? itemSurfaces(project.dir, id, name, engines) : promptSurfaces(project.dir, id, engines);
   return surfaces.filter(s => s.id !== 'catalog').map(s => relative(project.dir, s.path));
 }
 const list = (items: readonly string[]): string => items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`;

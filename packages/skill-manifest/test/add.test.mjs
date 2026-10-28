@@ -25,9 +25,9 @@ function project(t) {
 }
 const locked = (dir, work) => withProjectLock(dir, new AbortController().signal, async held => work(held));
 
-test('addLocalEntry is pure: it starts a manifest for both harnesses and returns a new one each time', () => {
+test('addLocalEntry is pure: it starts a manifest for both engines and returns a new one each time', () => {
   const first = addLocalEntry(null, 'house-style', [], MANIFEST_LIMITS);
-  assert.deepEqual(JSON.parse(serializeManifest(first, MANIFEST_LIMITS)), { format: 'bowerloom/skills/v1beta1', harnesses: ['claude', 'codex'], skills: [{ id: 'house-style', source: { kind: 'local', path: 'skills/house-style' } }] });
+  assert.deepEqual(JSON.parse(serializeManifest(first, MANIFEST_LIMITS)), { format: 'bowerloom/skills/v1beta1', engines: ['claude-code', 'codex'], skills: [{ id: 'house-style', source: { kind: 'local', path: 'skills/house-style' } }] });
   const second = addLocalEntry(first, 'brand-voice', ['writers', 'first-team'], MANIFEST_LIMITS);
   assert.equal(first.skills.length, 1); assert.ok(Object.isFrozen(second));
   assert.deepEqual(second.skills.map(s => s.id), ['brand-voice', 'house-style']); assert.deepEqual(second.skills[0].teams, ['first-team', 'writers']);
@@ -39,7 +39,7 @@ test('addLocalEntry is pure: it starts a manifest for both harnesses and returns
   let full = null; for (let i = 0; i < 128; i++) full = addLocalEntry(full, `s-${i}`, [], MANIFEST_LIMITS);
   assert.equal(full.skills.length, 128);
   assert.throws(() => addLocalEntry(full, 's-128', [], MANIFEST_LIMITS), code('MANIFEST_LIMIT'));
-  assert.throws(() => addLocalEntry({ format: 'forged', harnesses: [], skills: [] }, 'x', [], MANIFEST_LIMITS), code('MANIFEST_INVALID'));
+  assert.throws(() => addLocalEntry({ format: 'forged', engines: [], skills: [] }, 'x', [], MANIFEST_LIMITS), code('MANIFEST_INVALID'));
 });
 
 test('a plan for a project with no skills.json binds a null before, the new bytes, and writes nothing', t => {
@@ -131,7 +131,7 @@ test('checkManifest reports a valid file, and refuses an absent or invalid one w
   fs.writeFileSync(p.file, serializeManifest(parseManifest(Buffer.from(JSON.stringify({ format: 'bowerloom/skills/v1beta1', harnesses: ['codex'], skills: [npmEntry(), gitEntry(), { id: 'house-style', source: { kind: 'local', path: 'skills/house-style' } }] })), MANIFEST_LIMITS), MANIFEST_LIMITS));
   const check = checkManifest(p.dir);
   assert.equal(check.format, 'bowerloom/skills-manifest-check/v1beta2'); assert.equal(check.scope, 'project'); assert.equal(check.valid, true);
-  assert.equal(check.sha256, sha(fs.readFileSync(p.file))); assert.deepEqual(check.harnesses, ['codex']);
+  assert.equal(check.sha256, sha(fs.readFileSync(p.file))); assert.deepEqual(check.engines, ['codex']);
   assert.deepEqual(check.skills, [
     { id: 'house-style', kind: 'local', pin: 'skills/house-style', teams: null, source: 'project' },
     { id: 'synthetic-db-collections', kind: 'npm', pin: '@synthetic/db-skills@0.0.1:skills/synthetic-db/collections', teams: null, source: 'project' },

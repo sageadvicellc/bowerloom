@@ -28,7 +28,7 @@ export async function readProjectPlan(project: ProjectContext, env: NodeJS.Proce
   if (project.bowerloomIdentity === null) return empty;
   let held: HeldItem[] = [];
   try { held = missingItems(project, null); } catch { held = []; }
-  const base = { project, stateRoot: privateStateRoot(env, home), home, harnesses: ['claude' as const, 'codex' as const], team: null };
+  const base = { project, stateRoot: privateStateRoot(env, home), home, engines: ['claude-code' as const, 'codex' as const], team: null };
   try {
     const plan = await planProjectApply(base);
     return { agents: plan.agents, prompts: plan.prompts, skills: plan.skills?.items ?? [], slices: plan.slices, held: uniqueHolds([...held, ...planHolds(plan.skills?.items ?? [], plan.prompts, plan.agents, plan.slices)]), unavailable: null };

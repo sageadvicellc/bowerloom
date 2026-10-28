@@ -9,11 +9,13 @@ import {
 import type { Schedule } from '../shared/harness/store.js';
 import { buildInstallPlan, defaultChoices, installButtonWords, keepBothName, planSummary } from '../shared/harness/files.js';
 import { harnessById, installOf, kindCounts, partsWords, projectStatus, harnessStatus } from '../shared/harness/status.js';
-import type { Stamp } from '../shared/harness/types.js';
+import type { HarnessState, InterfaceId, Stamp } from '../shared/harness/types.js';
 
 const { weekly, caveman, inbox, research, bowerloom, garden, archive, notes } = SAMPLE_IDS;
 const NOW: Stamp = { daysAgo: 0, time: '11:00' };
 const world = createSampleWorld;
+// Hermes is no engine of 0.8, so the sample world has no interface that is not found. This makes one, to keep the not-found rules under test.
+const notFound = (s: HarnessState, id: InterfaceId): HarnessState => ({ ...s, interfaces: s.interfaces.map(i => (i.id === id ? { ...i, health: 'not-found' as const, healthWords: 'Not found', on: false } : i)) });
 const weeklyOf = (s: ReturnType<typeof world>) => harnessById(s, weekly)!;
 
 test('every reducer leaves the state it was given untouched', () => {
@@ -188,8 +190,9 @@ test('install refuses what cannot be installed: unknown project, unknown harness
   assert.equal(install(s, { projectId: 'project-nope', harnessId: weekly, interfaceIds: ['codex'] }, NOW), s);
   assert.equal(install(s, { projectId: archive, harnessId: 'harness-nope', interfaceIds: ['codex'] }, NOW), s);
   assert.equal(install(s, { projectId: archive, harnessId: inbox, interfaceIds: [] }, NOW), s);
-  assert.equal(install(s, { projectId: archive, harnessId: inbox, interfaceIds: ['hermes'] }, NOW), s);
-  const mixed = install(s, { projectId: archive, harnessId: inbox, interfaceIds: ['hermes', 'codex', 'codex'] }, NOW);
+  const gone = notFound(s, 'opencode');
+  assert.equal(install(gone, { projectId: archive, harnessId: inbox, interfaceIds: ['opencode'] }, NOW), gone);
+  const mixed = install(gone, { projectId: archive, harnessId: inbox, interfaceIds: ['opencode', 'codex', 'codex'] }, NOW);
   assert.deepEqual(installOf(mixed, archive, inbox)!.states, { codex: 'installed' });
 });
 
@@ -231,7 +234,7 @@ test('startRuns: one run for each interface, a shared group for two or more, new
   assert.equal(r.state.runs.length, s.runs.length + 2);
   const one = startRuns(s, { harnessId: weekly, projectId: bowerloom, interfaceIds: ['claude-code'], instruction: 'Go.' }, NOW);
   assert.equal(one.state.runs[0]!.groupId, null);
-  for (const bad of [{ instruction: '   ' }, { interfaceIds: [] as const }, { interfaceIds: ['hermes'] as const }, { harnessId: 'harness-nope' }, { projectId: 'project-nope' }]) {
+  for (const bad of [{ instruction: '   ' }, { interfaceIds: [] as const }, { interfaceIds: ['opencode'] as const }, { harnessId: 'harness-nope' }, { projectId: 'project-nope' }]) {
     const out = startRuns(s, { harnessId: weekly, projectId: bowerloom, interfaceIds: ['codex'], instruction: 'Go.', ...bad }, NOW);
     assert.equal(out.state, s); assert.deepEqual(out.runIds, []);
   }
@@ -258,7 +261,8 @@ test('setInterfaceOn switches an interface, records it, undoes it, and never swi
   const off = setInterfaceOn(s, 'codex', false, NOW);
   assert.equal(off.interfaces.find(i => i.id === 'codex')!.on, false); assert.equal(off.history[0]!.text, 'Turned off Codex');
   assert.equal(setInterfaceOn(off, 'codex', false, NOW), off);
-  assert.equal(setInterfaceOn(s, 'hermes', true, NOW), s);
+  const gone = notFound(s, 'opencode');
+  assert.equal(setInterfaceOn(gone, 'opencode', true, NOW), gone, 'an interface that is not found cannot be switched on');
   const opencode = setInterfaceOn(s, 'opencode', true, NOW);
   assert.equal(opencode.interfaces.find(i => i.id === 'opencode')!.on, true);
   assert.equal(undoEntry(off, off.history[0]!.id, NOW).interfaces.find(i => i.id === 'codex')!.on, true);
@@ -348,7 +352,7 @@ test('install and startRuns say why they changed nothing: unknown or empty harne
   const bad = [
     [{ projectId: archive, harnessId: 'harness-nope', interfaceIds: ['codex'] }, 'that harness is not here'], [{ projectId: 'project-nope', harnessId: inbox, interfaceIds: ['codex'] }, 'that project is not here'],
     [{ projectId: archive, harnessId: empty.harnessId, interfaceIds: ['codex'] }, 'that harness is empty'], [{ projectId: archive, harnessId: inbox, interfaceIds: [] }, 'no interface is picked'],
-    [{ projectId: archive, harnessId: inbox, interfaceIds: ['hermes'] }, 'no interface that is switched on and found is picked'], [{ projectId: archive, harnessId: inbox, interfaceIds: ['opencode'] }, 'no interface that is switched on and found is picked'],
+    [{ projectId: archive, harnessId: inbox, interfaceIds: ['opencode'] }, 'no interface that is switched on and found is picked'],
   ] as const;
   for (const [request, why] of bad) {
     assert.equal(installProblem(empty.state, request), why, why); assert.equal(install(empty.state, request, NOW), empty.state, why);

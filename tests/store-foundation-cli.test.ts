@@ -146,9 +146,9 @@ test('10. status --json in a config-only project', t => {
   const j = JSON.parse(run1.stdout);
   assert.equal(j.format, 'bowerloom/project-status/v1beta2'); assert.deepEqual(j.markers, { folder: false, config: true }); assert.equal(j.setup, 'none'); assert.equal(j.status, 'ready');
   assert.equal(j.specReady, false); assert.equal(j.revision, null); assert.deepEqual(j.drift, []); assert.deepEqual(j.owned, []); assert.equal(j.runtimeReady, false); assert.equal(j.executionAuthorized, false);
-  assert.deepEqual(Object.keys(j.config), ['bytes', 'code', 'counts', 'harnesses', 'items', 'lock', 'path', 'sha256', 'state', 'store', 'storeCode', 'unselected']);
+  assert.deepEqual(Object.keys(j.config), ['bytes', 'code', 'counts', 'engines', 'items', 'lock', 'path', 'sha256', 'state', 'store', 'storeCode', 'unselected']);
   const { store, storeCode, items, unselected, lock, ...base } = j.config;
-  assert.deepEqual({ ...base, sha256: 'x' }, { path: 'bowerloom.json', sha256: 'x', bytes: readFileSync(join(dir, 'bowerloom.json')).length, state: 'valid', code: null, harnesses: ['claude', 'codex'], counts: { skills: 1, prompts: 0, teams: 1 } });
+  assert.deepEqual({ ...base, sha256: 'x' }, { path: 'bowerloom.json', sha256: 'x', bytes: readFileSync(join(dir, 'bowerloom.json')).length, state: 'valid', code: null, engines: ['claude-code', 'codex'], counts: { skills: 1, prompts: 0, teams: 1 } });
   // Spec 06, 3.20 and 4.6: no store yet, both store items missing, and no lock in a project that is not shared.
   assert.deepEqual({ store, storeCode, unselected }, { store: 'absent', storeCode: null, unselected: { skills: [], prompts: [], teams: [] } });
   assert.deepEqual(items, [{ kind: 'skill', id: 'house-style', source: 'store', via: [], state: 'missing' }, { kind: 'team', id: 'research', source: 'store', via: [], state: 'missing' }]);
@@ -163,7 +163,7 @@ test('11. status in a config-only project with an invalid config prints drift co
   const j = JSON.parse(run(dir, ['status', '--json'], w.env).stdout);
   assert.equal(j.status, 'drifted'); assert.deepEqual(j.drift, [{ path: 'bowerloom.json', kind: 'config-invalid', code: 'CONFIG_INVALID' }]);
   const { store: _s, storeCode: _c, items: _i, unselected: _u, lock: _l, ...invalidBase } = j.config;
-  assert.deepEqual({ ...invalidBase, sha256: 'x', bytes: 0 }, { path: 'bowerloom.json', sha256: 'x', bytes: 0, state: 'invalid', code: 'CONFIG_INVALID', harnesses: [], counts: { skills: 0, prompts: 0, teams: 0 } });
+  assert.deepEqual({ ...invalidBase, sha256: 'x', bytes: 0 }, { path: 'bowerloom.json', sha256: 'x', bytes: 0, state: 'invalid', code: 'CONFIG_INVALID', engines: [], counts: { skills: 0, prompts: 0, teams: 0 } });
   const r = run(dir, ['status'], w.env);
   assert.equal(r.status, 0); assert.match(r.stdout, /Config: bowerloom\.json \(invalid, CONFIG_INVALID\)\nLock: not-used\nSetup: drifted \(no startup setup/); assert.match(r.stdout, /\n  config-invalid: bowerloom\.json \(CONFIG_INVALID\)\n/);
   const big = configProject(w, { ...CONFIG, skills: Array.from({ length: 129 }, (_, i) => ({ id: `s-${String(i).padStart(4, '0')}`, source: 'project' })) }, 'big');

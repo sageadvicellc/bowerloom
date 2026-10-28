@@ -10,18 +10,20 @@ import {
 } from '../shared/harness/status.js';
 import { dayGroupOf, entryMeta, groupByDay, minutesOpen, startedWords, stampAtWords, stampWords } from '../shared/harness/time.js';
 import { excerptOf, fieldValue, parseFrontMatter } from '../shared/harness/frontmatter.js';
-import type { Stamp } from '../shared/harness/types.js';
+import type { HarnessState, InterfaceId, Stamp } from '../shared/harness/types.js';
 
 const { weekly, caveman, inbox, research, bowerloom, siteRedesign, notes, garden, archive } = SAMPLE_IDS;
 const NOW: Stamp = { daysAgo: 0, time: '11:00' };
 const w = createSampleWorld();
+// Hermes is no engine of 0.8, so the sample world has no interface that is not found. This makes one, to keep the not-found words under test.
+const notFound = (s: HarnessState, id: InterfaceId): HarnessState => ({ ...s, interfaces: s.interfaces.map(i => (i.id === id ? { ...i, health: 'not-found' as const, healthWords: 'Not found', on: false } : i)) });
 
-test('the sample world has the numbers of the design: 4 harnesses, 5 projects, 4 interfaces, a Library of 13, 49, 2 and 3', () => {
-  assert.equal(w.harnesses.length, 4); assert.equal(w.projects.length, 5); assert.equal(w.interfaces.length, 4);
+test('the sample world has the numbers of the design: 4 harnesses, 5 projects, 3 interfaces, a Library of 13, 49, 2 and 3', () => {
+  assert.equal(w.harnesses.length, 4); assert.equal(w.projects.length, 5); assert.equal(w.interfaces.length, 3);
   assert.deepEqual(libraryCounts(w), { agent: 13, skill: 49, tool: 2, context: 3 });
   assert.deepEqual(w.harnesses.map(h => h.name), ['Weekly report crew', 'Caveman pack', 'Inbox helper', 'Research desk']);
   assert.deepEqual(w.projects.map(p => p.name), ['bowerloom', 'site-redesign', 'notes', 'garden', 'archive']);
-  assert.deepEqual(w.interfaces.map(i => i.name), ['Claude Code', 'Codex', 'OpenCode', 'Hermes']);
+  assert.deepEqual(w.interfaces.map(i => i.name), ['Claude Code', 'Codex', 'OpenCode']);
   assert.equal(new Set(w.parts.map(p => p.id)).size, w.parts.length, 'every part id is its own');
 });
 
@@ -105,7 +107,7 @@ test('statuses agree after a change: the harness row, the project row, the detai
 test('interface status: its health, and the worst install state across every project', () => {
   assert.deepEqual(interfaceStatus(w, 'claude-code'), { health: 'ready', words: 'Ready', tone: 'good', install: 'out-of-date' });
   assert.deepEqual(interfaceStatus(w, 'opencode'), { health: 'problem', words: 'Config file has a problem', tone: 'warn', install: 'not-installed' });
-  assert.deepEqual(interfaceStatus(w, 'hermes'), { health: 'not-found', words: 'Not found', tone: 'quiet', install: null });
+  assert.deepEqual(interfaceStatus(notFound(w, 'opencode'), 'opencode'), { health: 'not-found', words: 'Not found', tone: 'quiet', install: 'not-installed' });
 });
 
 test('interfaces: what is offered, where a harness runs, and where a part works', () => {
@@ -117,15 +119,15 @@ test('interfaces: what is offered, where a harness runs, and where a part works'
 });
 
 test('the install sheet says what each interface does with the harness, in the design\'s own words', () => {
-  const h = harnessById(w, weekly)!, line = (id: 'claude-code' | 'codex' | 'opencode' | 'hermes') => installInterfaceLine(w, h, interfaceById(w, id)!);
+  const h = harnessById(w, weekly)!, line = (id: InterfaceId, s: HarnessState = w) => installInterfaceLine(s, h, interfaceById(s, id)!);
   assert.equal(line('claude-code'), 'Found. Uses all 11 parts.'); assert.equal(line('codex'), 'Found. Cannot use 1 tool: Spreadsheet.');
-  assert.equal(line('opencode'), 'Found. Its config file has a problem, so it is off.'); assert.equal(line('hermes'), 'Not found on this computer.');
+  assert.equal(line('opencode'), 'Found. Its config file has a problem, so it is off.'); assert.equal(line('opencode', notFound(w, 'opencode')), 'Not found on this computer.');
 });
 
 test('the start sheet: each interface says how it stands in the project, and out-of-date or missing installs are named', () => {
-  const line = (id: 'claude-code' | 'codex' | 'opencode' | 'hermes') => startInterfaceLine(w, bowerloom, weekly, interfaceById(w, id)!).words;
+  const line = (id: InterfaceId, s: HarnessState = w) => startInterfaceLine(s, bowerloom, weekly, interfaceById(s, id)!).words;
   assert.equal(line('claude-code'), 'Installed in this project.'); assert.equal(line('codex'), 'Out of date. You review the update before it runs.');
-  assert.equal(line('opencode'), 'Not installed. Install, then start.'); assert.equal(line('hermes'), 'Not found on this computer.');
+  assert.equal(line('opencode'), 'Not installed. Install, then start.'); assert.equal(line('opencode', notFound(w, 'opencode')), 'Not found on this computer.');
   assert.equal(startInterfaceLine(w, notes, research, interfaceById(w, 'codex')!).state, 'conflict');
   assert.deepEqual(startNeeds(w, bowerloom, weekly, ['claude-code', 'codex']), ['codex']); assert.deepEqual(startNeeds(w, bowerloom, weekly, ['claude-code']), []);
   assert.deepEqual(startNeeds(w, archive, inbox, ['claude-code']), ['claude-code']);

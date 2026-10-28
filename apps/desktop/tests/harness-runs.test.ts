@@ -11,11 +11,13 @@ import { compareNotice, offeredInterfaces, startButtonWords, startInterfaceLine,
 import { bannedHere, LIMITS, countWords } from '../shared/harness/words.js';
 import { RUN_WORDS, bringName, compareTitle, firstSentence, stillRunning } from '../renderer/harness/runs-words.js';
 import { minutesOpen, stampWords } from '../shared/harness/time.js';
-import type { Stamp } from '../shared/harness/types.js';
+import type { HarnessState, InterfaceId, Stamp } from '../shared/harness/types.js';
 
 const { weekly, bowerloom, research } = SAMPLE_IDS;
 const NOW: Stamp = { daysAgo: 0, time: '11:00' };
 const world = createSampleWorld;
+// Hermes is no engine of 0.8, so the sample world has no interface that is not found. This makes one, to keep the not-found rules under test.
+const notFound = (s: HarnessState, id: InterfaceId): HarnessState => ({ ...s, interfaces: s.interfaces.map(i => (i.id === id ? { ...i, health: 'not-found' as const, healthWords: 'Not found', on: false } : i)) });
 
 /** A clock the test turns by hand: a timer runs only when `tick` reaches its time. */
 function fakeClock(): { schedule: Schedule; tick(ms: number): void; pending(): number } {
@@ -55,7 +57,7 @@ test('startRuns makes one run for each interface, running, in one group when the
   const one = startRuns(world(), { harnessId: weekly, projectId: bowerloom, interfaceIds: ['claude-code'], instruction: 'Write it.' }, NOW);
   assert.equal(one.runIds.length, 1); assert.equal(runById(one.state, one.runIds[0]!)!.groupId, null); assert.equal(compareGroupOf(one.state, runById(one.state, one.runIds[0]!)!), null);
   assert.deepEqual(startRuns(world(), { harnessId: weekly, projectId: bowerloom, interfaceIds: ['claude-code'], instruction: '   ' }, NOW).runIds, [], 'an empty instruction starts nothing');
-  assert.deepEqual(startRuns(world(), { harnessId: weekly, projectId: bowerloom, interfaceIds: ['hermes'], instruction: 'Go.' }, NOW).runIds, [], 'an interface that is not found starts nothing');
+  assert.deepEqual(startRuns(notFound(world(), 'opencode'), { harnessId: weekly, projectId: bowerloom, interfaceIds: ['opencode'], instruction: 'Go.' }, NOW).runIds, [], 'an interface that is not found starts nothing');
 });
 
 test('a run finishes by itself after 15 seconds, on a clock the test turns', () => {
@@ -155,8 +157,10 @@ test('minutesOpen counts across midnight and across days instead of stopping at 
 test('the Start sheet: which interfaces are offered, what each says, and which need an install first', () => {
   const s = world();
   assert.deepEqual(offeredInterfaces(s).map(i => i.id), ['claude-code', 'codex'], 'an interface that is off or not found is not offered');
-  assert.deepEqual(['claude-code', 'codex', 'opencode', 'hermes'].map(id => startInterfaceLine(s, bowerloom, weekly, s.interfaces.find(i => i.id === id)!).words),
-    ['Installed in this project.', 'Out of date. You review the update before it runs.', 'Not installed. Install, then start.', 'Not found on this computer.']);
+  assert.deepEqual(['claude-code', 'codex', 'opencode'].map(id => startInterfaceLine(s, bowerloom, weekly, s.interfaces.find(i => i.id === id)!).words),
+    ['Installed in this project.', 'Out of date. You review the update before it runs.', 'Not installed. Install, then start.']);
+  const gone = notFound(s, 'opencode');
+  assert.equal(startInterfaceLine(gone, bowerloom, weekly, gone.interfaces.find(i => i.id === 'opencode')!).words, 'Not found on this computer.');
   assert.deepEqual(startNeeds(s, bowerloom, weekly, ['claude-code']), []);
   assert.deepEqual(startNeeds(s, bowerloom, weekly, ['claude-code', 'codex']), ['codex'], 'out of date opens the install review first');
   assert.deepEqual(startNeeds(s, SAMPLE_IDS.notes, weekly, ['claude-code']), ['claude-code'], 'not installed in this project');

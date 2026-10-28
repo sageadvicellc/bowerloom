@@ -2,7 +2,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
-import { projectionFor, type Harness, type AdapterVersion } from './harness-projection.js';
+import { projectionFor, type AdapterVersion } from './harness-projection.js';
+import { EngineWriterRefusal, isEngine } from '../../skill-manifest/src/engine.js';
+import type { OldEngineId } from '../../skill-manifest/src/engine.js';
 
 export const SCHEMA_VERSION = 'bowerloom/v1alpha1' as const;
 export const ADAPTER_VERSION = 'codex/local-skills/v1alpha1' as const;
@@ -24,7 +26,7 @@ export interface BundleValidation { schemaVersion: typeof SCHEMA_VERSION; manife
 export interface InstallationInput { bundleDir: string; selected: string[]; harness: string; targetDir: string }
 export interface Projection extends FileDigest { partId: string; targetPath: string }
 export interface InstallationPlan {
-  schemaVersion: typeof SCHEMA_VERSION; adapterVersion: AdapterVersion; harness: Harness; targetDir: string;
+  schemaVersion: typeof SCHEMA_VERSION; adapterVersion: AdapterVersion; harness: OldEngineId; targetDir: string;
   selected: string[]; dependencies: string[]; parts: string[]; bundleRevision: string; manifestSha256: string;
   files: Projection[]; generatedFiles: string[]; controlScope: 'installer-only'; executionAuthorized: false; revision: string;
 }
@@ -146,6 +148,8 @@ function targetPath(input: InstallationInput): string {
 }
 function makePlan(input: InstallationInput, validation: BundleValidation): InstallationPlan {
   const adapter = projectionFor(input.harness);
+  // An engine that is known and has no writer is refused by name. An id nobody knows keeps its own refusal.
+  if (!adapter && isEngine(input.harness)) throw new EngineWriterRefusal(input.harness);
   if (!adapter) fail('UNSUPPORTED_HARNESS');
   const selected = strings(input.selected, LIMITS.parts).sort(); if (!selected.length) fail('SELECTION_REQUIRED');
   const targetDir = targetPath(input), byId = new Map(validation.manifest.parts.map(part => [part.id, part])), closure = new Set<string>();

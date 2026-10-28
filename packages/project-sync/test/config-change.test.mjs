@@ -37,12 +37,12 @@ test('1 and 2. the first use creates bowerloom.json with the project items and t
   const { plan: p, result } = await change(w, 'use', 'skill', 'house-style');
   assert.equal(p.created, true); assert.equal(p.listed, 2); assert.deepEqual(p.adds, [{ kind: 'skill', id: 'house-style', source: 'store', via: [] }]);
   assert.equal(p.lock, null); assert.deepEqual(p.network.hosts, []);
-  assert.deepEqual(readJson(w, 'bowerloom.json'), { format: 'bowerloom/project/v1beta1', harnesses: ['codex'], skills: [{ id: 'house-style', source: 'store' }, { id: 'local-tool', source: 'project' }], prompts: [], teams: [{ id: 'first-team', source: 'project' }] });
+  assert.deepEqual(readJson(w, 'bowerloom.json'), { format: 'bowerloom/project/v1beta1', engines: ['codex'], skills: [{ id: 'house-style', source: 'store' }, { id: 'local-tool', source: 'project' }], prompts: [], teams: [{ id: 'first-team', source: 'project' }] });
   assert.equal(result.created, true); assert.equal(has(w, 'bowerloom.lock.json'), false);
-  // A project with no skills.json gets both harnesses; use and unuse write only bowerloom.json.
+  // A project with no skills.json gets both engines; use and unuse write only bowerloom.json.
   const bare = configWorld(t, { folder: true }); await storeItem(bare, 'prompt', 'weekly-update');
   await change(bare, 'use', 'prompt', 'weekly-update');
-  assert.deepEqual(readJson(bare, 'bowerloom.json').harnesses, ['claude', 'codex']);
+  assert.deepEqual(readJson(bare, 'bowerloom.json').engines, ['claude-code', 'codex']);
   const configOnly = configWorld(t); writeConfig(configOnly, {}); await storeItem(configOnly, 'skill', 'house-style');
   await change(configOnly, 'use', 'skill', 'house-style'); await change(configOnly, 'unuse', 'skill', 'house-style');
   assert.deepEqual(fs.readdirSync(configOnly.projectDir).sort(), ['bowerloom.json']);
@@ -66,7 +66,7 @@ test('3 and 4. team expansion adds tagged items with via, merges via, promotes a
   await change(w, 'unuse', 'team', 'ops');
   assert.deepEqual(readJson(w, 'bowerloom.json').skills, [{ id: 'a-skill', source: 'store' }, { id: 'b-skill', source: 'store', via: ['research'] }]);
   await change(w, 'unuse', 'team', 'research');
-  assert.deepEqual(readJson(w, 'bowerloom.json'), { format: 'bowerloom/project/v1beta1', harnesses: ['claude', 'codex'], skills: [{ id: 'a-skill', source: 'store' }], prompts: [{ id: 'brief', source: 'store' }], teams: [] });
+  assert.deepEqual(readJson(w, 'bowerloom.json'), { format: 'bowerloom/project/v1beta1', engines: ['claude-code', 'codex'], skills: [{ id: 'a-skill', source: 'store' }], prompts: [{ id: 'brief', source: 'store' }], teams: [] });
   // A tagged id listed from the project refuses the whole plan.
   localSkill({ projectDir: w.projectDir }, 'b-skill'); writeManifest({ projectDir: w.projectDir }, [{ id: 'b-skill', source: { kind: 'local', path: 'skills/b-skill' } }]);
   await change(w, 'use', 'skill', 'b-skill', { source: 'project' });
@@ -162,7 +162,7 @@ test('12 and 17. a change between plan and apply gives STALE_APPROVAL: the confi
   const w = configWorld(t, { folder: true }), npm = npmPackage('tanstack-db');
   await storeItem(w, 'skill', 'house-style'); storePin(w, npm.entry); writeConfig(w, {}); writeLock(w, {});
   const run = async (mutate, extra = {}) => { const p = await plan(w, 'use', 'skill', 'tanstack-db', extra); mutate(); await assert.rejects(withProjectLock(w.projectDir, new AbortController().signal, async held => applyConfigChange(p, p.revision, held, ctx(w), w.home)), code('STALE_APPROVAL')); };
-  await run(() => writeConfig(w, { harnesses: ['codex'] })); writeConfig(w, {});
+  await run(() => writeConfig(w, { engines: ['codex'] })); writeConfig(w, {});
   await run(() => fs.appendFileSync(path.join(w.projectDir, 'bowerloom.lock.json'), ' ')); writeLock(w, {});
   await run(() => storePin(w, npmPackage('zzz').entry));
 });

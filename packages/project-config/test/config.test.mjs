@@ -10,7 +10,7 @@ import { discoverProject } from '../../../dist/packages/project-context/src/inde
 
 const code = expected => error => error?.code === expected;
 const EXAMPLE = {
-  format: 'bowerloom/project/v1beta1', harnesses: ['claude', 'codex'],
+  format: 'bowerloom/project/v1beta1', engines: ['claude-code', 'codex'],
   skills: [{ id: 'house-style', source: 'store' }, { id: 'local-tool', source: 'project' }, { id: 'team-notes', source: 'store', via: ['research'] }],
   prompts: [{ id: 'weekly-update', source: 'store' }],
   teams: [{ id: 'first-team', source: 'project' }, { id: 'research', source: 'store' }],
@@ -46,9 +46,9 @@ test('4. an unknown key, a missing key, a wrong format, a duplicate key, a BOM a
   const base = JSON.stringify(EXAMPLE);
   for (const [name, bytes] of Object.entries({
     'unknown key': Buffer.from(JSON.stringify({ ...EXAMPLE, extra: 1 })),
-    'missing key': Buffer.from(JSON.stringify({ format: EXAMPLE.format, harnesses: ['claude'], skills: [], prompts: [] })),
+    'missing key': Buffer.from(JSON.stringify({ format: EXAMPLE.format, engines: ['claude-code'], skills: [], prompts: [] })),
     'wrong format': Buffer.from(JSON.stringify(make({ format: 'bowerloom/project/v2' }))),
-    'duplicate key': Buffer.from(base.replace('"harnesses"', '"skills":[],"harnesses"')),
+    'duplicate key': Buffer.from(base.replace('"engines"', '"skills":[],"engines"')),
     'bom': Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(base)]),
     'invalid utf-8': Buffer.concat([Buffer.from('{"format":"'), Buffer.from([0xff]), Buffer.from('"}')]),
     'not json': Buffer.from('nope'), 'array': Buffer.from('[]'), 'null': Buffer.from('null'), 'empty': Buffer.alloc(0),
@@ -64,9 +64,10 @@ test('4. an unknown key, a missing key, a wrong format, a duplicate key, a BOM a
   assert.throws(() => parseConfig('{}'), code('CONFIG_INVALID'), 'not a buffer');
 });
 
-test('5. harnesses empty, unsorted, repeated or with gemini give CONFIG_INVALID', () => {
-  for (const harnesses of [[], ['codex', 'claude'], ['claude', 'claude'], ['gemini'], ['claude', 'codex', 'claude'], 'claude', [1]]) assert.throws(() => parse(make({ harnesses })), code('CONFIG_INVALID'), JSON.stringify(harnesses));
-  assert.deepEqual(parse(make({ harnesses: ['codex'] })).harnesses, ['codex']);
+test('5. engines empty, unsorted, repeated or with gemini give CONFIG_INVALID', () => {
+  for (const engines of [[], ['codex', 'claude-code'], ['claude-code', 'claude-code'], ['gemini'], ['claude-code', 'codex', 'claude-code'], 'claude-code', [1], ['claude'], ['hermes']]) assert.throws(() => parse(make({ engines })), code('CONFIG_INVALID'), JSON.stringify(engines));
+  assert.deepEqual(parse(make({ engines: ['codex'] })).engines, ['codex']);
+  assert.deepEqual(parse(make({ engines: ['claude-code', 'codex', 'deepseek-harness', 'opencode', 'pi'] })).engines, ['claude-code', 'codex', 'deepseek-harness', 'opencode', 'pi']);
 });
 
 test('6. a list not sorted by id gives CONFIG_INVALID', () => {

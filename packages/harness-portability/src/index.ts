@@ -5,8 +5,14 @@ import { createHash } from 'node:crypto';
 import { parseDocument, isMap, isScalar } from 'yaml';
 import { strictJson } from '../../codex-adapter/src/safe.js';
 import { canonicalJson } from '../../contracts/src/index.js';
+import { EngineWriterRefusal, isWriterEngine, parseEngineId } from '../../skill-manifest/src/engine.js';
+import type { OldEngineId } from '../../skill-manifest/src/engine.js';
 
-export type Harness = 'codex' | 'claude';
+/**
+ * The engine of an import or a projection, as the stored plans and the neutral file spell it: `claude` for Claude Code, `codex`.
+ * The formats of this package are hashed and kept, so they keep these ids. The command line also takes `claude-code`.
+ */
+export type Engine = OldEngineId;
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh';
 export interface NeutralConfig {
   format: 'bowerloom/harness-preferences/v1beta1';
@@ -14,7 +20,7 @@ export interface NeutralConfig {
   nativeModels: { codex?: 'gpt-6.1-sol' | 'o3'; claude?: 'opus' | 'sonnet' | 'fable' };
   executionAuthorized: false;
 }
-export interface ImportInput { harness: Harness; file: string; synthetic: true }
+export interface ImportInput { harness: Engine; file: string; synthetic: true }
 export interface ProjectionInput extends ImportInput { neutral: NeutralConfig }
 export interface Finding { field: string; code: string }
 export interface ImportReport {
@@ -56,13 +62,16 @@ function record(value: unknown, keys: string[]): Record<string, unknown> {
 }
 function input(value: ImportInput | ProjectionInput, projection = false): ImportInput {
   const v = record(value, projection ? ['harness','file','synthetic','neutral'] : ['harness','file','synthetic']);
+  // An engine that is known and has no writer is refused by name, never read as an input that is merely wrong.
+  const named = parseEngineId(v.harness);
+  if (named !== undefined && !isWriterEngine(named)) throw new EngineWriterRefusal(named);
   if (!['codex','claude'].includes(v.harness as string) || v.synthetic !== true || typeof v.file !== 'string') fail('SYNTHETIC_INPUT_REQUIRED');
   const file = v.file as string;
   if (!isAbsolute(file) || resolve(file) !== file || file !== file.normalize('NFC') || Buffer.byteLength(file) > 2048 || /[\p{Cc}\p{Cf}]/u.test(file)) fail('INPUT_PATH');
   const parts = file.normalize('NFC').toLowerCase().split('/');
   if (parts.some(p => ['.codex','.claude','.ssh','.config','library','.git'].includes(p) || p.includes('nmaahc-sm')) || /^\/(?:etc|var\/root|usr|bin|sbin|system)(?:\/|$)/i.test(file) || /\.(?:jsonl|sqlite|db)$/i.test(file) || ['.claude.json','auth.json','.credentials.json','managed-settings.json'].includes(parts.at(-1)!)) fail('PROTECTED_PATH');
   if (v.harness === 'codex' ? !file.endsWith('.toml') : !file.endsWith('.json')) fail('CONFIG_EXTENSION');
-  return { harness: v.harness as Harness, file, synthetic: true };
+  return { harness: v.harness as Engine, file, synthetic: true };
 }
 function neutralConfig(value: unknown): NeutralConfig {
   const v = record(value,['format','preferences','nativeModels','executionAuthorized']);
@@ -153,7 +162,7 @@ const sensitiveKey=/(?:^|\.)(?:env|headers|http_headers|apiKeyHelper|auth|author
 const sensitiveText=/(?:https?:\/\/|wss?:\/\/|Bearer\s+|sk-[A-Za-z0-9_-]+|(?:api[_-]?key|password|secret|token)\s*[:=]|\/Users\/|\/home\/)/i;
 const benign:Record<string,readonly unknown[]>={approval_policy:['on-request','never'],sandbox_mode:['read-only','workspace-write','danger-full-access'],web_search:['disabled','cached','live'],personality:['friendly','pragmatic','none'],'permissions.defaultMode':['manual','plan','auto','acceptEdits','bypassPermissions','dontAsk']};
 function strings(value:unknown):string[]{if(typeof value==='string')return [value];if(Array.isArray(value))return value.flatMap(strings);return [];}
-function analyze(harness:Harness,parsed:Parsed):{neutral:NeutralConfig;report:ImportReport} {
+function analyze(harness:Engine,parsed:Parsed):{neutral:NeutralConfig;report:ImportReport} {
   const neutral:NeutralConfig={format:'bowerloom/harness-preferences/v1beta1',preferences:{},nativeModels:{},executionAuthorized:false},report=blankReport();
   const effort=harness==='codex'?'model_reasoning_effort':'effortLevel';
   for(const entry of parsed.entries) {

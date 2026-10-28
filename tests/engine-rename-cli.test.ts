@@ -1,0 +1,74 @@
+// Step 0 of Bowerloom 0.8, run as a person or an agent runs it: the engine rename at the command line.
+// Old skills.json and bowerloom.json files read and stay byte for byte unchanged; a file the CLI creates uses the new
+// names; an engine with no writer is refused with a typed refusal.
+import test from './support/lock-slot-retry.js';
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import type { TestContext } from 'node:test';
+
+const cli = fileURLToPath(new URL('../apps/cli/src/main.js', import.meta.url));
+const preload = pathToFileURL(fileURLToPath(new URL('./support/fake-network.js', import.meta.url))).href;
+
+function folder(t: TestContext) { const root = realpathSync(mkdtempSync(join(tmpdir(), 'bowerloom-engine-cli-'))); t.after(() => rmSync(root, { recursive: true, force: true })); return root; }
+function run(cwd: string, args: string[], env: Record<string, string>) {
+  const r = spawnSync(process.execPath, ['--import', preload, cli, ...args], { cwd, encoding: 'utf8', timeout: 60000, env: { ...process.env, ...env } });
+  assert.equal(r.error, undefined); return r;
+}
+/** A project made by the real init, with the network denied. */
+function project(t: TestContext) {
+  const home = folder(t), dir = join(home, 'studio'); mkdirSync(dir);
+  const log = join(home, 'network.log'), plan = join(home, 'network.json'); writeFileSync(plan, JSON.stringify({ log })); writeFileSync(log, '');
+  const env = { HOME: home, XDG_STATE_HOME: join(home, 'state'), TEST_FAKE_NETWORK_PLAN: plan };
+  const args = ['--mode', 'existing', '--target', dir, '--name', 'Studio handbook', '--goal', 'Prepare a fictional onboarding kit for an independent design studio.'];
+  const planned = run(home, ['init', 'plan', ...args, '--json'], env); assert.equal(planned.status, 0, planned.stderr);
+  const applied = run(home, ['init', 'apply', ...args, '--approve', JSON.parse(planned.stdout).revision], env); assert.equal(applied.status, 0, applied.stderr);
+  return { home, dir, env, manifest: join(dir, '.bowerloom', 'skills.json') };
+}
+const LOCAL = [{ id: 'house-style', source: { kind: 'local', path: 'skills/house-style' } }];
+const OLD = `${JSON.stringify({ format: 'bowerloom/skills/v1beta1', harnesses: ['claude', 'codex'], skills: LOCAL }, null, 2)}\n`;
+const errorOf = (stderr: string) => (JSON.parse(stderr) as { error: { code: string; message: string } }).error;
+
+test('skills check reads an old skills.json, reports engines, and leaves the file byte for byte unchanged', t => {
+  const p = project(t); writeFileSync(p.manifest, OLD, { mode: 0o644 }); chmodSync(p.manifest, 0o644);
+  const before = readFileSync(p.manifest), stat = statSync(p.manifest);
+  const json = run(p.dir, ['skills', 'check', '--json'], p.env); assert.equal(json.status, 0, json.stderr);
+  const check = JSON.parse(json.stdout) as { engines: string[]; harnesses?: unknown };
+  assert.deepEqual(check.engines, ['claude-code', 'codex']); assert.equal(check.harnesses, undefined);
+  const words = run(p.dir, ['skills', 'check'], p.env); assert.equal(words.status, 0, words.stderr); assert.match(words.stdout, /for Claude Code and Codex/);
+  assert.deepEqual(readFileSync(p.manifest), before); assert.equal(statSync(p.manifest).mtimeMs, stat.mtimeMs);
+});
+
+test('apply names its engines with the new ids, takes the old id claude, and leaves an old skills.json unchanged', t => {
+  const p = project(t); writeFileSync(p.manifest, OLD, { mode: 0o644 }); chmodSync(p.manifest, 0o644);
+  const before = readFileSync(p.manifest);
+  for (const flag of ['claude-code', 'claude']) {
+    const plan = run(p.dir, ['apply', '--harness', flag, '--json'], p.env); assert.equal(plan.status, 0, plan.stdout + plan.stderr);
+    const out = JSON.parse(plan.stdout) as { plan: { engines: string[]; harnesses?: unknown } };
+    assert.deepEqual(out.plan.engines, ['claude-code'], flag); assert.equal(out.plan.harnesses, undefined);
+  }
+  assert.deepEqual(readFileSync(p.manifest), before);
+});
+
+test('apply refuses an engine with no writer, by name, before it reads the project', t => {
+  const p = project(t);
+  for (const engine of ['opencode', 'pi', 'deepseek-harness']) {
+    const r = run(p.dir, ['apply', '--harness', engine, '--json'], p.env);
+    assert.notEqual(r.status, 0, engine); assert.equal(r.stdout, '');
+    assert.deepEqual(errorOf(r.stderr), { code: 'ENGINE_NO_WRITER', message: `no writer for engine ${engine} yet` }, engine);
+  }
+  const unknown = run(p.dir, ['apply', '--harness', 'hermes'], p.env); assert.notEqual(unknown.status, 0); assert.equal(errorOf(unknown.stderr).code, 'USAGE');
+});
+
+test('skills sync refuses a skills.json that names an engine with no writer, and leaves the file unchanged', t => {
+  const p = project(t); writeFileSync(p.manifest, `${JSON.stringify({ format: 'bowerloom/skills/v1beta1', engines: ['claude-code', 'pi'], skills: LOCAL }, null, 2)}\n`, { mode: 0o644 }); chmodSync(p.manifest, 0o644);
+  const before = readFileSync(p.manifest);
+  for (const args of [['skills', 'sync', '--json']]) {
+    const r = run(p.dir, args, p.env);
+    assert.notEqual(r.status, 0, args.join(' ')); assert.deepEqual(errorOf(r.stderr), { code: 'ENGINE_NO_WRITER', message: 'no writer for engine pi yet' }, args.join(' '));
+  }
+  assert.deepEqual(readFileSync(p.manifest), before);
+});

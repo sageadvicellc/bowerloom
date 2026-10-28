@@ -26,6 +26,7 @@ import type { PlannedChange, ProjectContext } from '../../../packages/project-co
 import { parseSkillSpec } from '../../../packages/skill-manifest/src/spec.js';
 import type { SkillSpec } from '../../../packages/skill-manifest/src/spec.js';
 import { MANIFEST_LIMITS, STORE_MANIFEST_LIMITS, isEntryId, isId, parseManifest } from '../../../packages/skill-manifest/src/schema.js';
+import { ENGINE_NAMES } from '../../../packages/skill-manifest/src/engine.js';
 import type { Entry, GitSource, NpmSource, PinnedContent, PinnedEntry } from '../../../packages/skill-manifest/src/schema.js';
 import { applyManifestChange, planManifestChange, readManifestState, replaceTarget, storeTarget } from '../../../packages/skill-manifest/src/add.js';
 import type { ManifestChange, ManifestChangePlan, ManifestChangeReceipt } from '../../../packages/skill-manifest/src/add.js';
@@ -312,11 +313,10 @@ function runCheck(words: readonly string[], cwd: string, home: string, write: (t
     verifyProjectPins(project);
   }
   if (json) { write(newCommandJson(check)); return 0; }
-  // Review freeze finding 10: the harness names every other command uses, and one column for the ids.
+  // Review freeze finding 10: the engine names every other command uses, and one column for the ids.
   const count = check.skills.length, width = Math.max(0, ...check.skills.map(s => s.id.length));
-  const harness: Readonly<Record<string, string>> = { claude: 'Claude Code', codex: 'Codex' };
   write([
-    `skills.json${global ? ' (store)' : ''} is valid: ${count} ${count === 1 ? 'skill' : 'skills'}, for ${check.harnesses.map(h => harness[h] ?? h).join(' and ')}.`,
+    `skills.json${global ? ' (store)' : ''} is valid: ${count} ${count === 1 ? 'skill' : 'skills'}, for ${check.engines.map(h => ENGINE_NAMES[h]).join(' and ')}.`,
     ...check.skills.map(s => `  ${s.id.padEnd(width)}  ${s.kind} ${s.pin}${s.teams ? `  (teams: ${s.teams.join(', ')})` : ''}`),
     '',
   ].join('\n'));
@@ -345,12 +345,12 @@ function checkConfigMode(project: ProjectContext, home: string, json: boolean, w
     }
   }
   rows.sort((a, b) => Buffer.compare(Buffer.from(a.id), Buffer.from(b.id)));
-  const harnesses = [...read.config.harnesses];
-  const check = { format: own?.format ?? 'bowerloom/skills-manifest-check/v1beta2', valid: true, harnesses, skills: rows };
+  const engines = [...read.config.engines];
+  const check = { format: own?.format ?? 'bowerloom/skills-manifest-check/v1beta2', valid: true, engines, skills: rows };
   if (json) { write(newCommandJson(check)); return 0; }
-  const width = Math.max(0, ...rows.map(s => s.id.length)), harness: Readonly<Record<string, string>> = { claude: 'Claude Code', codex: 'Codex' };
+  const width = Math.max(0, ...rows.map(s => s.id.length));
   write([
-    rows.length ? `skills.json is valid: ${rows.length} ${rows.length === 1 ? 'skill' : 'skills'}, for ${harnesses.map(h => harness[h] ?? h).join(' and ')}.` : 'skills.json is valid: 0 skills',
+    rows.length ? `skills.json is valid: ${rows.length} ${rows.length === 1 ? 'skill' : 'skills'}, for ${engines.map(h => ENGINE_NAMES[h]).join(' and ')}.` : 'skills.json is valid: 0 skills',
     ...rows.map(s => `  ${s.id.padEnd(width)}  ${s.kind} ${s.pin}${s.teams ? `  (teams: ${s.teams.join(', ')})` : ''}  [${s.source}]`), '',
   ].join('\n'));
   return 0;

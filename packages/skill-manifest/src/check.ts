@@ -6,11 +6,12 @@ import { MANIFEST_PATH, STORE_MANIFEST_PATH, readManifestState } from './add.js'
 import type { ManifestTarget } from './add.js';
 import { requireManifest } from './refusal.js';
 import { MANIFEST_LIMITS, parseManifest } from './schema.js';
-import type { Entry, Harness } from './schema.js';
+import type { Entry } from './schema.js';
+import type { Engine } from './engine.js';
 
 export const MANIFEST_CHECK_FORMAT = 'bowerloom/skills-manifest-check/v1beta2' as const;
 export interface ManifestCheckItem { id: string; kind: 'npm' | 'git' | 'local'; pin: string; teams: string[] | null; source: 'project' | 'store' }
-export interface ManifestCheck { format: typeof MANIFEST_CHECK_FORMAT; manifest: string; scope: 'project' | 'store'; valid: true; sha256: string; bytes: number; harnesses: Harness[]; skills: ManifestCheckItem[] }
+export interface ManifestCheck { format: typeof MANIFEST_CHECK_FORMAT; manifest: string; scope: 'project' | 'store'; valid: true; sha256: string; bytes: number; engines: Engine[]; skills: ManifestCheckItem[] }
 
 /** The pin of an entry in one line: `<package>@<version>:<path>`, `<owner>/<repo>@<commit>:<path>`, or the local path. */
 export function pinOf(e: Entry): string {
@@ -26,7 +27,7 @@ export function checkManifest(location: string | ManifestTarget): ManifestCheck 
   requireManifest(state.file !== null, 'MANIFEST_NOT_FOUND');
   const m = parseManifest(state.file.bytes, target?.limits ?? MANIFEST_LIMITS);
   return {
-    format: MANIFEST_CHECK_FORMAT, manifest: store ? STORE_MANIFEST_PATH : MANIFEST_PATH, scope: store ? 'store' : 'project', valid: true, sha256: state.file.sha256, bytes: state.file.bytes.length, harnesses: [...m.harnesses],
+    format: MANIFEST_CHECK_FORMAT, manifest: store ? STORE_MANIFEST_PATH : MANIFEST_PATH, scope: store ? 'store' : 'project', valid: true, sha256: state.file.sha256, bytes: state.file.bytes.length, engines: [...m.engines],
     skills: m.skills.map(e => ({ id: e.id, kind: e.source.kind, pin: pinOf(e), teams: e.teams ? [...e.teams] : null, source: store ? 'store' : 'project' })),
   };
 }

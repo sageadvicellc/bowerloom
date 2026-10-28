@@ -5,6 +5,7 @@ import { canonicalJson } from '../../contracts/src/index.js';
 import { strictJson } from '../../codex-adapter/src/safe.js';
 import { HarnessPortabilityError, planHarnessProjection } from './index.js';
 import type { ProjectionInput, ProjectionPlan, SourceBinding } from './index.js';
+import { EngineWriterRefusal, isWriterEngine, parseEngineId } from '../../skill-manifest/src/engine.js';
 
 type Identity = SourceBinding['identity'];
 type Target = { sha256:string;identity:Identity;mode:number };
@@ -63,7 +64,7 @@ function parsed(value:string):unknown{try{return strictJson(read(value,MAX,true)
 function disjoint(file:string,state:string):void{check(file!==state&&!file.startsWith(state+'/')&&!state.startsWith(file+'/'),'MANAGED_OVERLAP');}
 function bindings(plan:ManagedProjectionPlan):void{check(same(directory(dirname(plan.input.file)),plan.binding.targetParent)&&same(directory(dirname(plan.input.stateDir)),plan.binding.stateParent),'ANCESTOR_CHANGED');check(fs.realpathSync(plan.input.file)===plan.input.file,'MANAGED_SYMLINK');}
 function targetMatches(file:string,wanted:Target):void{check(same(read(file,65536).target,wanted),'TARGET_DRIFT');}
-function projectionInput(value:ManagedProjectionInput):ProjectionInput{exact(value,['harness','file','synthetic','neutral','stateDir']);path(value.stateDir);path(value.file);check(value.synthetic===true&&['codex','claude'].includes(value.harness)&&(value.harness==='codex'?value.file.endsWith('.toml'):value.file.endsWith('.json')),'SYNTHETIC_INPUT_REQUIRED');disjoint(value.file,value.stateDir);return{harness:value.harness,file:value.file,synthetic:value.synthetic,neutral:value.neutral};}
+function projectionInput(value:ManagedProjectionInput):ProjectionInput{exact(value,['harness','file','synthetic','neutral','stateDir']);path(value.stateDir);path(value.file);const named=parseEngineId(value.harness);if(named!==undefined&&!isWriterEngine(named))throw new EngineWriterRefusal(named);check(value.synthetic===true&&['codex','claude'].includes(value.harness)&&(value.harness==='codex'?value.file.endsWith('.toml'):value.file.endsWith('.json')),'SYNTHETIC_INPUT_REQUIRED');disjoint(value.file,value.stateDir);return{harness:value.harness,file:value.file,synthetic:value.synthetic,neutral:value.neutral};}
 function bodyHash(value:Record<string,unknown>):void{const{revision,...body}=value;approved(revision as string);check(hash(canonicalJson(body))===revision,'JOURNAL_REVISION');}
 export async function planManagedProjection(value:ManagedProjectionInput):Promise<ManagedProjectionPlan>{
   const selected=projectionInput(value);newPath(value.stateDir);const projection=await planHarnessProjection(selected);check(projection.status==='review-required'&&projection.proposedText!==null,'PROJECTION_NOT_ACTIONABLE');

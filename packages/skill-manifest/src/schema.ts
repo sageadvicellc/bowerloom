@@ -12,6 +12,8 @@ import type { SkillLicense } from '../../skill-sources/src/types.js';
 import { refuse, requireLimit, requireManifest } from './refusal.js';
 import { toNpmRequest, toGitRequest, probeBinding } from './requests.js';
 import { LICENSE_NAME } from './content.js';
+import { OLD_ENGINES_KEY, decodeEngines, engineField, engineKeyOf } from './engine.js';
+import type { Engine } from './engine.js';
 
 export const MANIFEST_FORMAT = 'bowerloom/skills/v1beta1' as const;
 export const MANIFEST_FILE = 'skills.json' as const;
@@ -20,8 +22,6 @@ export interface ManifestLimits { bytes: number; skills: number; teams: number; 
 export const MANIFEST_LIMITS = Object.freeze({ bytes: 1048576, skills: 128, teams: 32, idLength: 64 });
 /** The store holds more than a project: 256 skills and 4 MiB (store writes spec, 4.2). */
 export const STORE_MANIFEST_LIMITS: ManifestLimits = Object.freeze({ bytes: 4194304, skills: 256, teams: 32, idLength: 64 });
-export type Harness = 'claude' | 'codex';
-export const HARNESSES: readonly Harness[] = Object.freeze(['claude', 'codex'] as Harness[]);
 export const NPM_REGISTRY = 'https://registry.npmjs.org' as const;
 export const GIT_HOST = 'github.com' as const;
 
@@ -37,7 +37,11 @@ export type GitEntry = { id: string; teams?: string[] } & PinnedContent<GitSourc
 export type PinnedEntry = NpmEntry | GitEntry;
 export interface LocalEntry { id: string; teams?: string[]; source: LocalSource }
 export type Entry = PinnedEntry | LocalEntry;
-export interface Manifest { format: typeof MANIFEST_FORMAT; harnesses: Harness[]; skills: Entry[] }
+/**
+ * `oldForm` is set on a manifest read from a file that names its engines the old way (`harnesses`, with `claude`).
+ * serializeManifest then writes the same form, so a write-back never changes the spelling of a file Bowerloom did not create.
+ */
+export interface Manifest { format: typeof MANIFEST_FORMAT; engines: Engine[]; skills: Entry[]; oldForm?: true }
 
 const ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const OID = /^[a-f0-9]{40}$/;
@@ -145,16 +149,20 @@ export function validateEntry(value: unknown): Entry {
 
 /** Checks a whole manifest value and returns it normalized and frozen. Entries are sorted by id. */
 export function validateManifest(value: unknown, limits: ManifestLimits): Manifest {
-  const v = record(value, ['format', 'harnesses', 'skills']);
+  // The engine list is `engines` (current ids) or `harnesses` (the old name, with `claude`), never both and never neither.
+  const key = value !== null && typeof value === 'object' && !Array.isArray(value) ? engineKeyOf(value as Record<string, unknown>) : null;
+  requireManifest(key !== null, 'MANIFEST_INVALID');
+  const oldForm = key === OLD_ENGINES_KEY;
+  const v = record(value, ['format', key, 'skills']);
   requireManifest(v.format === MANIFEST_FORMAT, 'MANIFEST_INVALID');
-  const h = v.harnesses;
-  requireManifest(Array.isArray(h) && h.length > 0 && h.every(x => (HARNESSES as readonly unknown[]).includes(x)) && h.every((x, i) => i === 0 || compare(h[i - 1] as string, x as string) < 0), 'MANIFEST_INVALID');
+  const engines = decodeEngines(v[key], oldForm);
+  requireManifest(engines !== null, 'MANIFEST_INVALID');
   requireManifest(Array.isArray(v.skills), 'MANIFEST_INVALID');
   requireLimit(v.skills.length <= limits.skills, limits);
   const skills = (v.skills as unknown[]).map(validateEntry);
   requireManifest(new Set(skills.map(s => s.id)).size === skills.length, 'MANIFEST_DUPLICATE_ID');
   skills.sort((a, b) => compare(a.id, b.id));
-  return freezeSkillData({ format: MANIFEST_FORMAT, harnesses: [...h] as Harness[], skills });
+  return freezeSkillData({ format: MANIFEST_FORMAT, engines, skills, ...(oldForm ? { oldForm: true as const } : {}) });
 }
 
 /** Strict parse: at most 1 MiB of UTF-8 with no byte order mark, no duplicate or unknown keys. */
@@ -186,8 +194,9 @@ export function serializeEntry(e: Entry) {
 }
 /** Canonical bytes: fixed key order, entries sorted by id, 2-space indent and a final newline. The result is checked. */
 export function serializeManifest(m: Manifest, limits: ManifestLimits): string {
-  requireManifest(m !== null && typeof m === 'object' && Array.isArray(m.skills) && Array.isArray(m.harnesses), 'MANIFEST_INVALID');
-  const text = `${JSON.stringify({ format: m.format, harnesses: [...m.harnesses], skills: [...m.skills].sort((a, b) => compare(a.id, b.id)).map(serializeEntry) }, null, 2)}\n`;
+  requireManifest(m !== null && typeof m === 'object' && Array.isArray(m.skills) && Array.isArray(m.engines), 'MANIFEST_INVALID');
+  // The form of the file is kept: an old manifest is written with `harnesses` and `claude`, a new one with `engines` and `claude-code`.
+  const text = `${JSON.stringify({ format: m.format, ...engineField(m.engines, m), skills: [...m.skills].sort((a, b) => compare(a.id, b.id)).map(serializeEntry) }, null, 2)}\n`;
   parseManifest(Buffer.from(text), limits);
   return text;
 }

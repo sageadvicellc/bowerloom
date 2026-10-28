@@ -18,6 +18,7 @@ import { GITHUB_REQUEST_LIMIT } from '../../../packages/project-sync/src/store-g
 import type { Credentials } from '../../../packages/project-sync/src/store-git.js';
 import { TOKEN_STALE_NOTE } from '../../../packages/project-sync/src/store-git.js';
 import { GithubToken } from '../../../packages/skill-manifest/src/github-token.js';
+import { ENGINE_NAMES, isEngine } from '../../../packages/skill-manifest/src/engine.js';
 import { itemId } from '../../../packages/managed-skills/src/v2-observed.js';
 import type { RecoveryAction, RecoveryPlanV2 } from '../../../packages/managed-skills/src/v2-types.js';
 import { approvalFault, parseApprovalFlags, runWithApproval } from './confirm.js';
@@ -35,8 +36,7 @@ export function maxRequestsFlag(value: string | undefined, message: string): num
 }
 const RECOVER_USAGE = 'Use bowerloom skills recover plan|apply --item <id> [--action resume|rollback|abandon], with optional --approve <revision> (apply only) and --json.';
 const MIGRATE_USAGE = 'Use bowerloom skills migrate plan|apply --state <earlier-state-folder>, with optional --approve <revision> (apply only) and --json.';
-const HARNESS_NAMES: Readonly<Record<string, string>> = { claude: 'Claude Code', codex: 'Codex' };
-export const harnessWords = (h: readonly string[]) => h.map(x => HARNESS_NAMES[x] ?? x).join(' and ');
+export const harnessWords = (h: readonly string[]) => h.map(x => (isEngine(x) ? ENGINE_NAMES[x] : x)).join(' and ');
 
 /** Takes the named value flags out of the words; the rest goes to the approval wrapper. */
 function takeFlags(words: readonly string[], valued: readonly string[], plain: readonly string[], message: string): { values: Map<string, string>; flags: Set<string>; rest: string[] } {
@@ -126,7 +126,7 @@ function itemLineBase(item: SyncItem, width: number): string[] {
     case 'orphaned': return [`  ${id} kept: no longer in skills.json, and sync removes nothing`];
     case 'local': return [`  ${id} ${item.action} ${item.origin === 'store' ? (item.resolvedFrom === 'lock' ? `a skill from the store at ${item.lockPin!.remote.slice('https://'.length)}` : `your skill in ~/.bowerloom/skills/${item.id}`) : `your skill in .bowerloom/skills/${item.id}`}`];
     case 'pin-changed': return [`  ${id} update to ${pin}${how}`];
-    case 'harnesses-changed': return [item.action === 'update' ? `  ${id} add ${harnessWords(item.harnesses)} copies` : `  ${id} kept for ${harnessWords(item.harnesses)}: removing a harness is not supported yet`];
+    case 'engines-changed': return [item.action === 'update' ? `  ${id} add ${harnessWords(item.engines)} copies` : `  ${id} kept for ${harnessWords(item.engines)}: removing an engine is not supported yet`];
     default:
       // An authored skill from the lock: its places, and whether it is on this machine yet (3.16).
       if (item.lockPin) return [`  ${id} install skill: ${item.expected.surfaces.filter(s => s.id === 'projection-claude' || s.id === 'projection-codex').map(s => s.path).join(' and ')}${item.storeCache === 'missing' ? ' (not on this machine yet; Bowerloom shows what it can do after the fetch)' : ''}`];
@@ -140,7 +140,7 @@ export function renderSyncReview(plan: SyncPlan, maxSet = false): string {
   const width = Math.max(0, ...plan.items.map(x => x.id.length), ...plan.storeFetch.map(f => f.id.length)) + 1;
   return [
     ...(plan.bowerloomFolder === 'create' && plan.items.some(i => i.action === 'install' || i.action === 'update') ? [FOLDER_FOR_COPIES] : []),
-    `${config ? 'Sync skills' : 'Sync skills from .bowerloom/skills.json'} for ${harnessWords(plan.harnesses)}${plan.team ? `, team ${plan.team}` : ''}${plan.offline ? ', offline' : ''}`,
+    `${config ? 'Sync skills' : 'Sync skills from .bowerloom/skills.json'} for ${harnessWords(plan.engines)}${plan.team ? `, team ${plan.team}` : ''}${plan.offline ? ', offline' : ''}`,
     ...(plan.items.length ? plan.items.flatMap(i => itemLine(i, width)) : [config ? '  Nothing is selected to sync yet.' : '  skills.json names no skill for this sync.']),
     ...plan.storeFetch.map(f => `  ${f.id.padEnd(width)} fetch ${f.kind} into the store cache [store, from the lock: ${f.lockPin.remote.slice('https://'.length)}]`),
     ...plan.notes,
@@ -255,7 +255,7 @@ function renderMigrateReview(plan: MigratePlan): string {
   return [
     `Migrate skill ${plan.item.id} from the earlier install in .bowerloom-skills to .bowerloom/managed`,
     `  Pin: ${plan.item.pin}`,
-    `  Copies for: ${harnessWords(plan.item.harnesses)}`,
+    `  Copies for: ${harnessWords(plan.item.engines)}`,
     `  Bytes from: ${plan.bytesFrom === 'project-cache' ? "this machine's skills cache" : plan.bytesFrom === 'legacy-cache' ? 'the cache the earlier install read' : `a fetch from ${plan.network.hosts.join(' and ')}`}`,
     '  .bowerloom-skills moves into a private backup. A rollback puts it back exactly.',
     `  The earlier state folder ${plan.legacy.stateDir} is read, never written.`,

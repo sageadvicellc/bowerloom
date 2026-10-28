@@ -1,13 +1,14 @@
 /**
  * The data of the harness-first preview (`--prototype-v3`). Plain data only: no React, no clock, no file. Everything is in memory, so nothing is written anywhere.
- * A harness is a saved list of parts (agents, skills, tools, context). It is installed into a project, once for each interface (Claude Code, Codex, OpenCode, Hermes).
+ * A harness is a saved list of parts (agents, skills, tools, context). It is installed into a project, once for each interface (Claude Code, Codex, OpenCode).
  */
 
 export type PartKind = 'agent' | 'skill' | 'tool' | 'context';
 export const PART_KINDS: readonly PartKind[] = Object.freeze(['agent', 'skill', 'tool', 'context']);
 
-export type InterfaceId = 'claude-code' | 'codex' | 'opencode' | 'hermes';
-export const INTERFACE_IDS: readonly InterfaceId[] = Object.freeze(['claude-code', 'codex', 'opencode', 'hermes']);
+/** The first engine set of the preview. Hermes is not an engine of 0.8, so it is not in it. */
+export type InterfaceId = 'claude-code' | 'codex' | 'opencode';
+export const INTERFACE_IDS: readonly InterfaceId[] = Object.freeze(['claude-code', 'codex', 'opencode']);
 
 /** The state of one harness in one project for one interface. */
 export type InstallState = 'installed' | 'out-of-date' | 'conflict' | 'not-installed';

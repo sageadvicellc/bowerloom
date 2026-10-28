@@ -194,10 +194,10 @@ test('12. readLock: a missing file is absent; a link, a folder, two hard links, 
   assert.throws(() => readLock(p.context()), code('LOCK_INVALID'));
 });
 
-test('13. lockAgrees compares the (kind, id) pairs of the store entries only, ignoring via, project entries and harnesses', () => {
+test('13. lockAgrees compares the (kind, id) pairs of the store entries only, ignoring via, project entries and engines', () => {
   const lock = parse(example());
   const config = parseConfig(Buffer.from(JSON.stringify({
-    format: 'bowerloom/project/v1beta1', harnesses: ['codex'],
+    format: 'bowerloom/project/v1beta1', engines: ['codex'],
     skills: [{ id: 'house-style', source: 'store', via: ['research'] }, { id: 'local-tool', source: 'project' }, { id: 'tanstack-db', source: 'store' }, { id: 'verification-loop', source: 'store' }],
     prompts: [{ id: 'weekly-update', source: 'store' }], teams: [{ id: 'first-team', source: 'project' }, { id: 'research', source: 'store' }],
   })));
@@ -257,7 +257,7 @@ test('lists are sorted by id in byte order with one item per id, and ids follow 
 
 test('T6. lockAgrees reports a lock item the config does not list as removed', () => {
   const lock = parse(example());
-  const config = parseConfig(Buffer.from(JSON.stringify({ format: 'bowerloom/project/v1beta1', harnesses: ['claude', 'codex'],
+  const config = parseConfig(Buffer.from(JSON.stringify({ format: 'bowerloom/project/v1beta1', engines: ['claude-code', 'codex'],
     skills: [{ id: 'house-style', source: 'store' }, { id: 'tanstack-db', source: 'store' }], prompts: [{ id: 'weekly-update', source: 'store' }], teams: [{ id: 'research', source: 'store' }] })));
   assert.deepEqual(lockAgrees(lock, config), { agrees: false, added: [], removed: ['skill verification-loop'] });
 });

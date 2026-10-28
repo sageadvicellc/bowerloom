@@ -38,6 +38,7 @@ import type { Entry, PinnedEntry } from '../../skill-manifest/src/schema.js';
 import { ALL_IDS_USED_NEXT, entryRequest, lookupCache, receiptMatches } from './cache-index.js';
 import type { CacheLookup, CacheRoots, PinnedRequest } from './cache-index.js';
 import { managedPort } from './deps.js';
+import { toWire } from './wire.js';
 import type { ManagedPort, SyncDeps } from './deps.js';
 import { HOSTS, MIN_FREE_BYTES, isActionable, observeSync } from './plan.js';
 import type { SyncInput, SyncItem, SyncPlan } from './plan.js';
@@ -332,7 +333,7 @@ export { storeText };
 export function childRequest(plan: SyncPlan, item: SyncItem, source: ItemSource): ManagedItemRequest {
   return {
     operation: item.action === 'install' ? 'install' : 'update', projectDir: plan.project.dir, stateDir: join(plan.privateState.itemsRoot, item.id),
-    item: { kind: 'skill', id: item.id }, harnesses: [...item.harnesses], source, expectedPreviousRevision: item.previousReceiptRevision, minFreeBytes: MIN_FREE_BYTES, legacy: null,
+    item: { kind: 'skill', id: item.id }, harnesses: toWire(item.engines), source, expectedPreviousRevision: item.previousReceiptRevision, minFreeBytes: MIN_FREE_BYTES, legacy: null,
   };
 }
 const rel = (dir: string, p: string): string => p.startsWith(dir + '/') ? p.slice(dir.length + 1) : p;

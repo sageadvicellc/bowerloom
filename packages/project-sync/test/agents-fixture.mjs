@@ -23,7 +23,7 @@ export async function agentProject(t, prefix = '.bowerloom-agents-') {
   const startup = { mode: 'existing', targetDir: projectDir, brief: { projectName: 'Studio handbook', goal: 'Prepare a fictional onboarding kit for an independent design studio.', profile: 'founder' } };
   await applyStartup(startup, (await planStartup(startup)).revision);
   const stateRoot = path.join(base, 'state', 'bowerloom'), project = () => discoverProject(projectDir, home);
-  const input = (harnesses = ['claude', 'codex'], extra = {}) => ({ project: project(), stateRoot, harnesses, team: null, home, ...extra });
+  const input = (engines = ['claude-code', 'codex'], extra = {}) => ({ project: project(), stateRoot, engines, team: null, home, ...extra });
   const itemsRoot = path.join(stateRoot, project().projectId, 'items');
   return { home, base, projectDir, stateRoot, project, input, itemsRoot, bowerloom: path.join(projectDir, '.bowerloom') };
 }
@@ -55,10 +55,10 @@ export function claudeAgent(f, name, text, mode = 0o644) {
 }
 export const target = (f, role) => path.join(f.projectDir, '.claude/agents', role + '.md');
 
-export const plan = (f, harnesses, extra) => planProjectApply(f.input(harnesses, extra));
-export async function applied(f, harnesses, extra, deps) {
-  const p = await plan(f, harnesses, extra);
-  return { plan: p, result: await applyProjectApply(f.input(harnesses, extra), p.revision, signal(), deps) };
+export const plan = (f, engines, extra) => planProjectApply(f.input(engines, extra));
+export async function applied(f, engines, extra, deps) {
+  const p = await plan(f, engines, extra);
+  return { plan: p, result: await applyProjectApply(f.input(engines, extra), p.revision, signal(), deps) };
 }
 export const review = p => renderApplyReview(p);
 export const byId = list => Object.fromEntries(list.map(i => [i.id, i]));

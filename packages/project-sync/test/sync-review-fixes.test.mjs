@@ -30,7 +30,7 @@ test('finding 1: a private state root inside the project, or one that holds it, 
   const before = exactTree(f.base);
   for (const stateRoot of roots) {
     await assert.rejects(planSync({ ...f.input(), stateRoot: path.resolve(stateRoot) }), code('SKILLS_STATE_UNSAFE'), stateRoot);
-    await assert.rejects(planProjectApply({ project: f.project(), stateRoot: path.resolve(stateRoot), harnesses: ['claude', 'codex'], team: null }), code('SKILLS_STATE_UNSAFE'), stateRoot);
+    await assert.rejects(planProjectApply({ project: f.project(), stateRoot: path.resolve(stateRoot), engines: ['claude-code', 'codex'], team: null }), code('SKILLS_STATE_UNSAFE'), stateRoot);
   }
   assert.equal(exactTree(f.base), before);
   t.diagnostic(aliased ? 'the case alias was checked' : 'this volume is case-sensitive: no case alias to check');
@@ -134,7 +134,7 @@ test('a project folder, or a folder above it, that others can change refuses SKI
     const project = discoverProject(projectDir, f.home);
     const named = e => e?.code === 'SKILLS_PROJECT_UNSAFE' && e.message.includes(holder);
     await assert.rejects(planSync({ project, stateRoot: f.stateRoot, team: null, offline: false }), named, label);
-    await assert.rejects(planProjectApply({ project, stateRoot: f.stateRoot, harnesses: ['claude', 'codex'], team: null }), named, label);
+    await assert.rejects(planProjectApply({ project, stateRoot: f.stateRoot, engines: ['claude-code', 'codex'], team: null }), named, label);
     fs.chmodSync(holder, 0o755);
   }
 });

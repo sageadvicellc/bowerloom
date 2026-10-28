@@ -1,5 +1,5 @@
 /**
- * The sample world of the harness-first preview. Every number and name comes from the design pictures: 4 harnesses, 5 projects, 4 interfaces, and a Library of
+ * The sample world of the harness-first preview. Every number and name comes from the design pictures: 4 harnesses, 5 projects, 3 interfaces, and a Library of
  * 13 agents, 49 skills, 2 tools and 3 pieces of context. "Weekly report crew" holds 3 agents, 5 skills (Translate is missing), 2 tools and 2 context, 11 parts.
  * No status is written down here. Each one is computed from the install data (status.ts), so every screen says the same thing.
  * A few parts are held by a harness and are not listed in the Library tabs (`inLibrary: false`): the pictures give some harnesses more tools and context than the Library lists.
@@ -109,7 +109,7 @@ const SKILLS_HERMES: readonly Part[] = ([
 
 // ---- Tools (2 in the Library) and context (3 in the Library), and the two that only a harness holds.
 const TOOLS: readonly Part[] = [
-  make('tool', ['Spreadsheet', 'Reads sheets.', 'Reads the cells of a spreadsheet.'], ORIGIN.claude, { cannotUse: ['codex', 'opencode', 'hermes'] }),
+  make('tool', ['Spreadsheet', 'Reads sheets.', 'Reads the cells of a spreadsheet.'], ORIGIN.claude, { cannotUse: ['codex', 'opencode'] }),
   make('tool', ['Web search', 'Searches online.', 'Searches the web and returns the top pages.'], ORIGIN.claude),
 ];
 const CONTEXT: readonly Part[] = [
@@ -182,7 +182,6 @@ const INTERFACES: readonly Interface[] = [
   { id: 'claude-code', name: 'Claude Code', foundAt: 'Found at ~/.claude', health: 'ready', healthWords: 'Ready', on: true, writes: ['.claude/agents/<name>.md', '.claude/skills/<name>/SKILL.md'], cannotUseNote: 'Nothing. It uses every kind of part.' },
   { id: 'codex', name: 'Codex', foundAt: 'Found at ~/.codex and ~/.agents', health: 'ready', healthWords: 'Ready', on: true, writes: ['.codex/agents/<name>.toml', '.agents/skills/<name>/SKILL.md'], cannotUseNote: 'Tools that only Claude Code supports. The install sheet names each one.' },
   { id: 'opencode', name: 'OpenCode', foundAt: 'Found at ~/.config/opencode', health: 'problem', healthWords: 'Config file has a problem', on: false, writes: ['.opencode/agents/<name>.md', '.opencode/skills/<name>/SKILL.md'], cannotUseNote: 'Tools that only Claude Code supports. The install sheet names each one.' },
-  { id: 'hermes', name: 'Hermes', foundAt: 'Not found on this computer', health: 'not-found', healthWords: 'Not found', on: false, writes: ['.hermes/agents/<name>.md', '.hermes/skills/<name>/SKILL.md'], cannotUseNote: 'Tools that only Claude Code supports. The install sheet names each one.' },
 ];
 
 export const SAMPLE_INSTRUCTION = 'Write a weekly report from the notes in Meetings. Check that every claim has a source.';

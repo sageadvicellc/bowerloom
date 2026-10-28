@@ -12,6 +12,7 @@ import { planCreate, applyCreate } from '../../../dist/packages/project-authorin
 import { serializeConfig, serializeLock, LOCK_FORMAT } from '../../../dist/packages/project-config/src/index.js';
 import { STORE_MANIFEST_LIMITS, parseManifest, serializeManifest, validateManifest } from '../../../dist/packages/skill-manifest/src/schema.js';
 import { authoredRows } from '../../../dist/packages/skill-manifest/src/resolve-store-git.js';
+import { engineField } from '../../../dist/packages/skill-manifest/src/engine.js';
 
 export const sha = b => createHash('sha256').update(b).digest('hex');
 export const STORE_REMOTE = 'https://github.com/sageadvicellc/store';
@@ -36,8 +37,8 @@ export function configWorld(t, { folder = false, prefix = '.bowerloom-config-' }
   return w;
 }
 /** Writes bowerloom.json in canonical form. Entries are { id, source, via? }. */
-export function writeConfig(w, { skills = [], prompts = [], teams = [], harnesses = ['claude', 'codex'] } = {}) {
-  const text = serializeConfig({ format: 'bowerloom/project/v1beta1', harnesses, skills, prompts, teams });
+export function writeConfig(w, { skills = [], prompts = [], teams = [], engines = ['claude-code', 'codex'] } = {}) {
+  const text = serializeConfig({ format: 'bowerloom/project/v1beta1', engines, skills, prompts, teams });
   fs.writeFileSync(path.join(w.projectDir, 'bowerloom.json'), text, { mode: 0o644 }); fs.chmodSync(path.join(w.projectDir, 'bowerloom.json'), 0o644);
   return text;
 }
@@ -56,8 +57,8 @@ export async function storeItem(w, kind, id, { teams = [], profile } = {}) {
 /** Adds a pinned entry to the store skills.json (the store must exist). */
 export function storePin(w, entry) {
   const file = path.join(w.store, 'skills.json');
-  const current = fs.existsSync(file) ? parseManifest(fs.readFileSync(file), STORE_MANIFEST_LIMITS) : { format: 'bowerloom/skills/v1beta1', harnesses: ['claude', 'codex'], skills: [] };
-  const next = validateManifest({ format: current.format, harnesses: [...current.harnesses], skills: [...current.skills.filter(s => s.id !== entry.id), entry] }, STORE_MANIFEST_LIMITS);
+  const current = fs.existsSync(file) ? parseManifest(fs.readFileSync(file), STORE_MANIFEST_LIMITS) : { format: 'bowerloom/skills/v1beta1', engines: ['claude-code', 'codex'], skills: [] };
+  const next = validateManifest({ format: current.format, ...engineField(current.engines, current), skills: [...current.skills.filter(s => s.id !== entry.id), entry] }, STORE_MANIFEST_LIMITS);
   fs.writeFileSync(file, serializeManifest(next, STORE_MANIFEST_LIMITS), { mode: 0o600 });
 }
 /** Rewrites one file of a store item, keeping its mode. */

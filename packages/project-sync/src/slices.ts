@@ -38,7 +38,7 @@ export interface SliceItem {
   itemId: string;
   state: SliceState;
   action: 'install' | 'update' | 'none' | 'hold';
-  harnesses: ['claude'];
+  engines: ['claude-code'];
   definition: { path: string; sha256: string; bytes: number } | null;
   root: { kind: 'project'; path: string; dir: string; identity: DirectoryIdentity }
     | { kind: 'registered'; name: string; path: string; dir: string; identity: DirectoryIdentity; recordSha256: string; holdsProject: boolean } | null;
@@ -157,7 +157,7 @@ function readTree(read: SliceTreeHook, project: string, id: string, registered?:
 function heldItem(project: string, id: string, extra: Partial<SliceItem>, hold: { code: string; next: string }): SliceItem {
   const surfaces = sliceSurfaces(project, id);
   return {
-    id, itemId: 'slice_' + id, state: 'held', action: 'hold', harnesses: ['claude'], definition: null, root: null, copies: null, guard: null, members: [], covered: [],
+    id, itemId: 'slice_' + id, state: 'held', action: 'hold', engines: ['claude-code'], definition: null, root: null, copies: null, guard: null, members: [], covered: [],
     changes: { ...NO_CHANGES }, notes: { ...NO_NOTES, unparsed: [], emptyPatterns: [], oversize: [] }, agents: [], installed: false,
     expected: { files: [], surfaces: surfaces.map(s => ({ id: s.id, path: relative(project, s.path) })), source: null }, before: beforePins(surfaces, project),
     previousReceiptRevision: null, history: 0, hold, ...extra,

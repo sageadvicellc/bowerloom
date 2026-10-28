@@ -1,5 +1,5 @@
 /**
- * S10, Interfaces. The four interfaces with their health and a switch. The switch changes whether the interface is offered in the install and start sheets (`store.setInterfaceOn`, which adds a history entry
+ * S10, Interfaces. The three interfaces with their health and a switch. The switch changes whether the interface is offered in the install and start sheets (`store.setInterfaceOn`, which adds a history entry
  * the person can undo). An interface that was not found cannot be switched on. Picking a row fills the details column: what Bowerloom writes for it, what it cannot use, and "Look again".
  */
 import { useState } from 'react';

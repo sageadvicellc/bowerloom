@@ -206,7 +206,7 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'skills check reads .bowerloom/skills.json and checks every pin, offline. It writes nothing.',
     'skills check --global checks the pins in the store.', '',
     '  bowerloom skills sync [--offline] [--team <team>] [--frozen] [--max-github-requests <n>] [--approve <revision>] [--json]',
-    'skills sync installs every skill in skills.json for Claude Code and Codex (the harnesses skills.json names):',
+    'skills sync installs every skill in skills.json for Claude Code and Codex (the engines skills.json names):',
     'into .bowerloom/managed, .claude/skills and .agents/skills. Those copies stay on this machine; commit skills.json.',
     'It fetches only pins that are not in the private cache yet, and checks every byte against its pin first.',
     '--offline refuses before any change if a pin still needs fetching. --team syncs only that team\'s skills.',
@@ -501,6 +501,8 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   MANIFEST_PIN_NOT_EXACT: { sentence: 'A pin that can move would install different files on different machines.', next: 'bowerloom help skills' },
   MANIFEST_LICENSE_UNSUPPORTED: { sentence: 'This beta installs MIT and Apache-2.0 skills only.', next: 'bowerloom help skills' },
   MANIFEST_DUPLICATE_ID: { sentence: 'Each skill needs its own id.', next: 'git diff .bowerloom/skills.json' },
+  // Step 0 of 0.8: an engine the code knows by name, but cannot write files for yet.
+  ENGINE_NO_WRITER: { sentence: 'Bowerloom writes files for Claude Code and Codex only, for now.', next: 'name claude-code or codex' },
   MANIFEST_LIMIT: { sentence: 'This beta keeps skills.json small: 128 skills and 1 MiB at most.', next: 'bowerloom skills check' },
   SKILLS_ADD_SPEC_INVALID: { sentence: 'The source names a package or repository, an exact pin, and the skill folder.', next: 'bowerloom help skills' },
   SKILLS_ADD_EXISTS: { sentence: 'skills.json already holds a skill with this id or this source.', next: 'To move that id to another version or commit, add --replace: bowerloom skills add <source> --id <id> --replace.' },

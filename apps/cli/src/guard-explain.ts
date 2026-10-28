@@ -14,7 +14,7 @@ import type { GuardIo, ParsedGuard } from './guard-run.js';
 
 export async function runExplain(parsed: Extract<ParsedGuard, { form: 'explain' }>, io: GuardIo): Promise<0 | 2> {
   const project = discoverProject(io.cwd, io.home), stateRoot = privateStateRoot(io.env, io.home);
-  const plan = await planProjectApply({ project, stateRoot, harnesses: ['claude'], team: null, agentsOnly: true, home: io.home });
+  const plan = await planProjectApply({ project, stateRoot, engines: ['claude-code'], team: null, agentsOnly: true, home: io.home });
   const agent = plan.agents.find(a => a.id === parsed.role && a.state !== 'orphaned');
   if (agent === undefined) throw syncError('CONTEXT_AGENT_NOT_FOUND');
   const slices = parsed.slices.length ? parsed.slices : agent.context.guard ?? [];

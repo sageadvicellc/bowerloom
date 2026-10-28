@@ -85,7 +85,7 @@ test('2, 3 and 4. the local skills.json entry goes, a pinned one stays; project 
   assert.deepEqual(plan.manifest.steps.map(s => s.id), ['notes'], 'only the local entry is removed');
   assert.deepEqual(plan.config.removes, [{ kind: 'skill', id: 'notes' }, { kind: 'prompt', id: 'brief' }, { kind: 'team', id: 'research' }]);
   assert.deepEqual(manifestIds(w), ['keeper']);
-  assert.deepEqual(configOf(w), { format: 'bowerloom/project/v1beta1', harnesses: ['claude', 'codex'], skills: [{ id: 'keeper', source: 'project' }, { id: 'shared', source: 'store', via: ['ops'] }], prompts: [], teams: [{ id: 'ops', source: 'store' }] });
+  assert.deepEqual(configOf(w), { format: 'bowerloom/project/v1beta1', engines: ['claude-code', 'codex'], skills: [{ id: 'keeper', source: 'project' }, { id: 'shared', source: 'store', via: ['ops'] }], prompts: [], teams: [{ id: 'ops', source: 'store' }] });
   const left = readAuthoringState(bl(w)).receipt.value;
   assert.deepEqual(left.items.map(i => `${i.kind} ${i.id}`), []);
   assert.equal(fs.readFileSync(bl(w, 'authoring/receipt.json'), 'utf8'), recordText(receiptOf([])));

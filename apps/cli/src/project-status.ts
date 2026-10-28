@@ -111,7 +111,7 @@ export async function runProjectStatus(args: readonly string[], cwd: string, hom
   // cannot be made, the folder line stays.
   const editedFiles = (path: string): string[] => { if (path !== '.bowerloom/prompts' && path !== '.bowerloom/slices') return [path]; const files = editedPrompts(project, path === '.bowerloom/slices' ? 'slice' : 'prompt'); return files === null || files.length === 0 ? [path] : files; };
   let held: HeldItem[] = project.bowerloomIdentity === null ? [] : missingItems(project, null), unavailable: string | null = null, drifted = false, agents: readonly AgentItem[] = [], stale: string[] = [];
-  const base = { project, stateRoot: privateStateRoot(env, home), home, harnesses: ['claude' as const, 'codex' as const], team: null };
+  const base = { project, stateRoot: privateStateRoot(env, home), home, engines: ['claude-code' as const, 'codex' as const], team: null };
   if (project.bowerloomIdentity !== null) try {
     const plan = await planProjectApply(base);
     agents = plan.agents; held = uniqueHolds([...held, ...planHolds(plan.skills?.items ?? [], plan.prompts, plan.agents, plan.slices)]);
