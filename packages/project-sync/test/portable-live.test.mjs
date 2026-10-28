@@ -13,6 +13,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { applyPortable, planPortable } from '../../../dist/packages/project-sync/src/index.js';
 import { ENGINE_IDS } from '../../../dist/packages/harness-definition/src/index.js';
+import { recorded, shapeOf } from '../../../tools/step5/live/lib.mjs';
 
 const LIVE = process.env.BOWERLOOM_LIVE_ENGINES === '1';
 const commandOf = engine => {
@@ -52,15 +53,22 @@ for (const engine of ENGINE_IDS) {
   test(`check 1 (live): a tree with only AGENTS.md loads its instructions in ${engine}`, { skip: skip(engine) }, async t => {
     const { dir } = await projected(t, engine);
     assert.equal(fs.existsSync(path.join(dir, 'CLAUDE.md')), false);
-    assert.match(ask(engine, dir, 'What is the instruction word? Answer with the word only.'), new RegExp(`${MARK}-instructions`));
+    // Blueprint check g1. The result line records the version from BOWERLOOM_LIVE_<ENGINE>_VERSION and the command shape.
+    await recorded({ check: 'g1', engine }, async () => {
+      assert.match(ask(engine, dir, 'What is the instruction word? Answer with the word only.'), new RegExp(`${MARK}-instructions`));
+      return { result: 'pass', observed: 'the instruction word came back from AGENTS.md alone', evidence: 'No CLAUDE.md existed in the project.', shape: shapeOf(commandOf(engine)) };
+    });
   });
 }
 
 test('check 10 (live): a Pi project skill is reported pending trust until a person saves trust', { skip: skip('pi') }, async t => {
   const { dir, plan } = await projected(t, 'pi');
   assert.deepEqual(plan.pendingTrust, ['live-check']);
-  // Before trust is saved, a non-interactive Pi run skips project .agents/skills.
-  assert.doesNotMatch(ask('pi', dir, 'Use the live-check skill. What is the live check word?'), new RegExp(`${MARK}-skill`));
+  // Before trust is saved, a non-interactive Pi run skips project .agents/skills. Blueprint check g3.
+  await recorded({ check: 'g3', engine: 'pi' }, async () => {
+    assert.doesNotMatch(ask('pi', dir, 'Use the live-check skill. What is the live check word?'), new RegExp(`${MARK}-skill`));
+    return { result: 'pass', observed: 'the project skill was skipped before trust was saved', evidence: 'The plan listed live-check as pending trust.', shape: shapeOf(commandOf('pi')) };
+  });
   // Saving trust is a person's step in Pi. Once the tester has saved it, set BOWERLOOM_LIVE_PI_TRUSTED=1 and run again.
   if (process.env.BOWERLOOM_LIVE_PI_TRUSTED === '1') {
     assert.deepEqual(planPortable({ projectDir: dir, definitionFolder: path.join(dir, '.bowerloom'), stateDir: plan.stateDir, piTrustSaved: true }).pendingTrust, []);
@@ -73,5 +81,9 @@ test('check 11 (live): OpenCode gets the skill in .claude/skills and .agents/ski
   const out = ask('opencode', dir, 'List the names of the skills you can use, one per line, and nothing else.');
   const count = out.split('\n').filter(line => line.includes('live-check')).length;
   t.diagnostic(`OpenCode listed live-check ${count} time(s).`);
-  assert.ok(count >= 1, 'OpenCode loads the skill');
+  // Blueprint check g2: the count settles Spec P decision 1 (warn about the duplicate name or not).
+  await recorded({ check: 'g2', engine: 'opencode' }, async () => {
+    assert.ok(count >= 1, 'OpenCode loads the skill');
+    return { result: 'pass', observed: `OpenCode listed live-check ${count} time(s) with the skill in both roots`, evidence: 'The skill file existed in .claude/skills and .agents/skills.', shape: shapeOf(commandOf('opencode')) };
+  });
 });
