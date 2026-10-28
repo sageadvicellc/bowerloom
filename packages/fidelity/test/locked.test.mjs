@@ -196,7 +196,8 @@ test('subagents: Pi and DeepSeek Harness have none in core, so a subagent with n
 test('subagents: every tool class outside the limit is denied in OpenCode, for every limit (property)', () => {
   const classes = ['read', 'search', 'edit', 'write', 'shell', 'web', 'task', 'skill'];
   const keysOf = { read: ['read'], search: ['grep', 'glob', 'list'], edit: ['edit'], write: ['edit'], shell: ['bash'], web: ['webfetch', 'websearch'], task: ['task'], skill: ['skill'] };
-  for (let mask = 0; mask < 1 << classes.length; mask++) {
+  // An empty limit writes no agent (ruling D3), so the property starts at one class.
+  for (let mask = 1; mask < 1 << classes.length; mask++) {
     const tools = classes.filter((_, i) => mask & (1 << i));
     const t = translateSubagents('opencode', [agent('x', { tools })]);
     const permission = Object.fromEntries(Object.fromEntries(t.subagents[0].frontmatter).permission.pairs);

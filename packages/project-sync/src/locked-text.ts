@@ -245,168 +245,10 @@ export const tomlLines = (entries: readonly (readonly [string, Out])[]): string 
 
 // ---- TOML: scan -----------------------------------------------------------------------------------------------------------
 
-/** What a TOML text defines: table headers, array-of-table headers, key paths, and the tables that dotted keys create. */
-export interface TomlDefined {
-  readonly headers: readonly (readonly string[])[];
-  readonly arrays: readonly (readonly string[])[];
-  readonly values: readonly (readonly string[])[];
-  readonly dotted: readonly (readonly string[])[];
-}
-
-/** A bare TOML value: a boolean, an integer, a float, or a date or time. */
-const SCALAR = new RegExp('^(?:true|false|[+-]?(?:inf|nan)|0x[0-9A-Fa-f](?:_?[0-9A-Fa-f])*|0o[0-7](?:_?[0-7])*|0b[01](?:_?[01])*'
-  + '|[+-]?(?:0|[1-9](?:_?\\d)*)(?:\\.\\d(?:_?\\d)*)?(?:[eE][+-]?\\d(?:_?\\d)*)?'
-  + '|\\d{4}-\\d{2}-\\d{2}(?:[Tt]\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d+)?)?(?:[Zz]|[+-]\\d{2}:\\d{2})?)?|\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d+)?)?)$');
-
-/**
- * Scans a TOML text. Null when it is not valid enough to be sure what it defines: a syntax error, a key or table defined
- * twice, or a table or key under a key that already holds a value (ruling B5). Keys of an array of tables are scoped
- * to their element.
- */
-export function scanToml(text: string): TomlDefined | null {
-  const headers: string[][] = [], arrays: string[][] = [], values: string[][] = [], dotted: string[][] = [];
-  let i = 0, table: string[] = [];
-  // The element of each array of tables, so its keys and sub-tables are its own.
-  const elements = new Map<string, number>();
-  const scoped = (k: string[]): string[] => {
-    let best: string[] | null = null;
-    for (const a of arrays) if (a.length < k.length && a.every((x, j) => x === k[j]) && (best === null || a.length > best.length)) best = a;
-    if (best === null) return k;
-    return [...scoped(best), `\u0000${elements.get(JSON.stringify(best))}`, ...k.slice(best.length)];
-  };
-  const at = (s: string): boolean => text.startsWith(s, i);
-  const fail = (): never => { throw new SyntaxError('not TOML'); };
-  const blank = (): void => { while (i < text.length && (text[i] === ' ' || text[i] === '\t')) i++; };
-  const comment = (): void => { if (text[i] === '#') while (i < text.length && text[i] !== '\n') i++; };
-  const eol = (): void => {
-    blank(); comment();
-    if (i === text.length) return;
-    if (at('\r\n')) i += 2; else if (text[i] === '\n') i++; else fail();
-  };
-  const basic = (): string => {
-    i++;
-    let out = '';
-    while (i < text.length && text[i] !== '"') {
-      if (text[i] === '\n') fail();
-      if (text[i] === '\\') {
-        const m = /^\\(?:[btnfr"\\]|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8})/.exec(text.slice(i, i + 10));
-        if (!m) fail();
-        const e = m![0];
-        if (e[1] === 'u' || e[1] === 'U') {
-          const cp = parseInt(e.slice(2), 16);
-          if (cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) fail();
-          out += String.fromCodePoint(cp);
-        } else out += JSON.parse(`"${e}"`) as string;
-        i += e.length; continue;
-      }
-      out += text[i]; i++;
-    }
-    if (text[i] !== '"') fail();
-    i++;
-    return out;
-  };
-  const literal = (): string => {
-    const end = text.indexOf("'", i + 1);
-    if (end < 0 || text.slice(i + 1, end).includes('\n')) fail();
-    const out = text.slice(i + 1, end);
-    i = end + 1;
-    return out;
-  };
-  const key = (): string[] => {
-    const parts: string[] = [];
-    for (;;) {
-      blank();
-      if (text[i] === '"') parts.push(basic());
-      else if (text[i] === "'") parts.push(literal());
-      else { const m = /^[A-Za-z0-9_-]+/.exec(text.slice(i)); if (!m) fail(); parts.push(m![0]); i += m![0].length; }
-      blank();
-      if (text[i] === '.') { i++; continue; }
-      return parts;
-    }
-  };
-  const ws = (): void => { for (;;) { blank(); comment(); if (at('\r\n')) i += 2; else if (text[i] === '\n') i++; else return; } };
-  const value = (): void => {
-    blank();
-    if (at('"""') || at("'''")) {
-      const q = text.slice(i, i + 3);
-      i += 3;
-      for (;;) {
-        if (i >= text.length) fail();
-        if (q === '"""' && text[i] === '\\') { i += 2; continue; }
-        if (at(q)) { i += 3; while (text[i] === q[0] && at(q[0]!)) i++; return; }
-        i++;
-      }
-    }
-    if (text[i] === '"') { basic(); return; }
-    if (text[i] === "'") { literal(); return; }
-    if (text[i] === '[') {
-      i++;
-      for (;;) {
-        ws();
-        if (text[i] === ']') { i++; return; }
-        value(); ws();
-        if (text[i] === ',') { i++; continue; }
-        if (text[i] === ']') { i++; return; }
-        fail();
-      }
-    }
-    if (text[i] === '{') {
-      i++;
-      for (;;) {
-        ws();
-        if (text[i] === '}') { i++; return; }
-        key(); blank();
-        if (text[i] !== '=') fail();
-        i++; value(); ws();
-        if (text[i] === ',') { i++; continue; }
-        if (text[i] === '}') { i++; return; }
-        fail();
-      }
-    }
-    const m = /^[^\s,\]}#]+/.exec(text.slice(i));
-    if (!m || !SCALAR.test(m[0])) fail();
-    i += m![0].length;
-  };
-  try {
-    if (text.charCodeAt(0) === 0xfeff) i = 1;
-    while (i < text.length) {
-      blank();
-      if (i >= text.length) break;
-      if (text[i] === '#' || text[i] === '\n' || at('\r\n')) { eol(); continue; }
-      if (at('[[')) {
-        i += 2; const k = key(); if (!at(']]')) fail(); i += 2;
-        arrays.push(k);
-        const n = (elements.get(JSON.stringify(k)) ?? -1) + 1;
-        elements.set(JSON.stringify(k), n);
-        table = [...scoped(k), `\u0000${n}`]; eol(); continue;
-      }
-      if (text[i] === '[') { i++; const k = scoped(key()); if (text[i] !== ']') fail(); i++; headers.push(k); table = k; eol(); continue; }
-      const k = key();
-      if (text[i] !== '=') fail();
-      i++;
-      value();
-      values.push([...table, ...k]);
-      for (let n = 1; n < k.length; n++) dotted.push([...table, ...k.slice(0, n)]);
-      eol();
-    }
-  } catch { return null; }
-  if (!wellDefined(headers, arrays, values, dotted)) return null;
-  return { headers, arrays, values, dotted };
-}
-
-/** True when no key or table is defined twice, and nothing is defined under a key that holds a value. */
-function wellDefined(headers: readonly string[][], arrays: readonly string[][], values: readonly string[][], dotted: readonly string[][]): boolean {
-  const id = (p: readonly string[]): string => JSON.stringify(p);
-  const seen = new Set<string>();
-  for (const p of [...headers, ...values]) { if (seen.has(id(p))) return false; seen.add(id(p)); }
-  const arrayIds = new Set(arrays.map(id)), dottedIds = new Set(dotted.map(id));
-  for (const p of [...headers, ...values]) if (arrayIds.has(id(p))) return false;
-  for (const h of headers) if (dottedIds.has(id(h))) return false;
-  for (const v of values) {
-    for (const p of [...headers, ...values, ...arrays, ...dotted]) if (p.length > v.length && v.every((x, j) => x === p[j])) return false;
-  }
-  return true;
-}
+// The scanner is the strict TOML 1.0 parser of toml-scan.ts (ruling D1).
+import { scanToml, type TomlDefined } from './toml-scan.js';
+export { scanToml, validScalar } from './toml-scan.js';
+export type { TomlDefined } from './toml-scan.js';
 
 const same = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((x, i) => x === b[i]);
 const startsWith = (a: readonly string[], prefix: readonly string[]): boolean => prefix.length <= a.length && prefix.every((x, i) => x === a[i]);
@@ -449,13 +291,13 @@ export function editToml(base: string | null, root: readonly (readonly [string, 
     ...tables.flatMap(t => tomlTableConflicts(d, t.path)),
   ];
   if (conflicts.length) return { ok: false, reason: 'conflict', at: [...new Set(conflicts)] };
-  const bom = text.charCodeAt(0) === 0xfeff ? '\ufeff' : '';
-  const body = text.slice(bom.length);
+  // A byte order mark is not TOML 1.0, so the scan above has refused one already.
+  const body = text;
   const head = root.length ? `${TOML_KEYS_OPEN}${tomlLines(root)}${TOML_KEYS_CLOSE}${body.length ? '\n' : ''}` : '';
   const tail = tables.length
     ? `${body.length && !body.endsWith('\n') ? '\n' : ''}${body.length || head.length ? '\n' : ''}${TOML_TABLES_OPEN}${tables.map(t => `[${t.path.map(tomlKey).join('.')}]\n${tomlLines(t.entries)}`).join('\n')}${TOML_TABLES_CLOSE}`
     : '';
-  const out = `${bom}${head}${body}${tail}`;
+  const out = `${head}${body}${tail}`;
   if (scanToml(out) === null) return { ok: false, reason: 'invalid' };
   return { ok: true, text: out };
 }

@@ -106,7 +106,9 @@ with one loss line or more per entry. They write nothing; `packages/project-sync
 - **MCP fields** that do not fit the transport (headers on a command server, env on a URL server) get an `absent`
   field line and are never written. A string bound for `opencode.json` with `{env:` or `{file:`, and a DeepSeek Harness
   private block shaped like a `!!js` expression, are problems that refuse the server.
-- **Subagents.** A tool limit is enforced. Claude Code carries it `exact` as `tools`; an empty limit writes no file.
+- **Subagents.** A tool limit is enforced. Claude Code carries it `exact` as `tools`. An empty limit writes no file in
+  Claude Code or OpenCode. In OpenCode, `{env:` or `{file:` in the description, the model, or the private block refuses
+  the subagent.
   OpenCode carries it as `deny` keys only (a `PermissionPairs` marker), including `codesearch`, `lsp`, `todowrite`, and
   `todoread`, and is `weakened`, because a deny list cannot cover tools added later. Codex is `weakened`: an override
   adds the limit as advisory text. Pi and DeepSeek Harness are `absent`.

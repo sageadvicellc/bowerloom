@@ -90,12 +90,10 @@ test('B5: a person\'s TOML that defines a key or a table twice does not parse, a
   for (const text of ['a = 1\nb = "x"\n[t]\nc = 2026-10-28T10:00:00Z\nd = 1_000\ne = 0x1f\nf = -inf\ng = 1.5e3\n', '[[x]]\n[[x]]\n', 'a.b = 1\na.c = 2\n']) assert.notEqual(scanToml(text), null, text);
 });
 
-test('B5, B17: a TOML file with a byte order mark keeps it first; the merged result parses', () => {
-  const r = editToml('\ufeffmodel = "x"\n', [], [{ path: ['mcp_servers', 'docs'], entries: [['command', 'y']] }]);
-  assert.equal(r.ok, true); assert.ok(r.text.startsWith('\ufeffmodel = "x"\n')); assert.notEqual(scanToml(r.text), null);
-  // Managed top-level keys go after the mark, never before it.
-  const k = editToml('\ufeffmodel = "x"\n', [['k', 'v']], []);
-  assert.ok(k.text.startsWith('\ufeff# Bowerloom')); assert.equal(k.text.indexOf('\ufeff', 1), -1); assert.notEqual(scanToml(k.text), null);
+test('B5, D1: a TOML file with a byte order mark is not TOML 1.0, so Bowerloom refuses to merge into it', () => {
+  assert.deepEqual(editToml('\ufeffmodel = "x"\n', [], [{ path: ['mcp_servers', 'docs'], entries: [['command', 'y']] }]), { ok: false, reason: 'invalid' });
+  assert.deepEqual(editToml('\ufeffmodel = "x"\n', [['k', 'v']], []), { ok: false, reason: 'invalid' });
+  assert.equal(editToml('model = "x"\n', [['k', 'v']], []).text.startsWith('# Bowerloom'), true);
 });
 
 // ---- B6: the Codex profile is held back -------------------------------------------------------------------------------------

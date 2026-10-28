@@ -36,17 +36,19 @@ The same plan writes MCP servers, subagents, hooks, guardrails, and the sandbox.
 - **Conflicts are refused.** A managed name that the file already holds with other content, a TOML table, key, or
   inline table that a managed table would meet, an OpenCode `permission` the person keeps, an `opencode.jsonc`, and a
   `.opencode/opencode.json` or `.opencode/opencode.jsonc` all refuse `PORTABLE_CONFLICT`. A file that is not strict
-  JSON, TOML (a key or table defined twice counts), or UTF-8, or that has no bytes, refuses `PORTABLE_TARGET_INVALID`.
+  JSON, TOML 1.0, or UTF-8, or that has no bytes, refuses `PORTABLE_TARGET_INVALID`. `src/toml-scan.ts` parses the
+  whole TOML file and fails closed: a value it cannot check fully, or a byte order mark, refuses the merge. Its verdicts
+  match Python's `tomllib` on the cases in `test/toml-cases.json`.
   A file that a person made at a path Bowerloom owns whole (a subagent, `.codex/rules/bowerloom.rules`, the OpenCode
   plugin, the DeepSeek Harness patch) refuses `PORTABLE_PATH_OCCUPIED`.
 - **Versions.** The gate applies to an engine that gets locked-in parts. OpenCode must be 1.18.30 and DeepSeek Harness
-  0.2.2-alpha.2, recorded; Claude Code, Codex, and Pi must be at least 2.1.310, 0.157.0, and 1.4.0. Anything else
-  refuses `PORTABLE_ENGINE_VERSION`. A newer or unrecorded Claude Code, Codex, or Pi version, and a portable-only
+  0.2.2-alpha.2, recorded; Claude Code, Codex, and Pi must be at least 2.1.310, 0.157.0, and 1.4.0 by semver, so a
+  prerelease of those is older. A version that is not semver, or anything else, refuses `PORTABLE_ENGINE_VERSION`. A newer or unrecorded Claude Code, Codex, or Pi version, and a portable-only
   projection for another OpenCode or DeepSeek Harness version, get a note on every line of that engine.
 - **`${NAME:-x}`** and its like forms in MCP env, headers, command, args, or url, or in a hook command, refuse
   `PORTABLE_ENV_DEFAULT`. Subagent text and guardrail patterns are not scanned.
 - **Values that would change meaning** refuse `PORTABLE_UNSAFE_VALUE`: `{env:` or `{file:` in a string bound for
-  `opencode.json`, and a DeepSeek Harness private block that holds an object shaped like a `!!js` expression. Only a
+  `opencode.json` or into the frontmatter of an OpenCode agent file, and a DeepSeek Harness private block that holds an object shaped like a `!!js` expression. Only a
   `JsExpression`, which Bowerloom builds for a `${NAME}` reference, is written as `!!js`.
 - **Fidelity.** Every loss line of an entry goes through `checkFidelity` with `input.approvals`. An enforced entry that
   is weakened or absent with no matching approval refuses `PORTABLE_FIDELITY`; the refusal carries `refused`. The plan
@@ -54,13 +56,17 @@ The same plan writes MCP servers, subagents, hooks, guardrails, and the sandbox.
 - **Trust.** `plan.trust` says whether each engine loads a file now. Codex project files are `pending trust` until
   `input.codexTrust.folderTrusted`; each Codex hook also until its entry hash is in `reviewedHooks`. `.pi/mcp.json` is
   `pending trust` until `piTrustSaved`.
-- **What a person reads.** `plan.review` lists every executable value: each MCP command with its arguments and each
-  Claude Code and Codex hook command, by file, and the OpenCode plugin and the DeepSeek Harness patch in full. The plan
+- **What a person reads.** `plan.review` lists every executable value: each MCP command with its arguments and its
+  environment (`env`: each name with its value, or null for a value that holds a `${NAME}` reference), each Claude Code
+  and Codex hook command, by file, and in full the OpenCode plugin, the DeepSeek Harness patch, and
+  `.codex/rules/bowerloom.rules`. The plan
   revision covers it. Claude Code project servers in `.mcp.json` are `pending trust`, because Claude Code asks first.
 - **The Codex profile is held back** (`CODEX_PROFILE_ENABLED` is false). Bowerloom writes no `default_permissions` and
   no `[permissions.bowerloom]` until the live check of step 5 confirms their syntax. Codex path rules and sandbox
   requirements are `weakened` until then. `codexProfile` keeps the code.
-- **Claude Code settings.** A person's `disableAllHooks` or `permissions.defaultMode` makes the hook lines `weakened`. A
+- **Claude Code settings.** A person's `disableAllHooks` or `permissions.defaultMode`, in `.claude/settings.json` or
+  `.claude/settings.local.json`, makes the hook lines `weakened`. Every hook line says that user and managed settings
+  are not read. A
   sandbox requirement writes `enabled: true` and `allowUnsandboxedCommands: false`.
 - **DeepSeek Harness.** MCP servers are `@deepseek-ai/dsh-mcp-client` rows, read from that package's README at the
   pinned tag. A sandbox requirement is `absent` in the fidelity translation itself.

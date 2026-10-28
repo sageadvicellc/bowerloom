@@ -76,6 +76,11 @@ export interface ReviewItem {
   readonly part?: LockedPart;
   readonly entry?: string;
   readonly text: string;
+  /**
+   * For a server command: each environment name the server gets, with its value, or null when the value holds a
+   * `${NAME}` reference that the engine reads at run time (ruling D7). A value such as NODE_OPTIONS can run code too.
+   */
+  readonly env?: Readonly<Record<string, string | null>>;
 }
 
 /** A person's statement that both Codex trust steps are done: the folder, and each hook by the hash of its entry. */
@@ -102,11 +107,26 @@ export interface LockedPlan {
 }
 
 const hasLocked = (v: EngineView): boolean => v.subagents.length + v.rules.length + v.sandbox.length + v.hooks.length + v.mcp.length > 0;
-/** -1, 0, or 1 by major, minor, and patch; null for a version that is not major.minor.patch. */
-function compareVersion(a: string, b: string): number | null {
-  const m = /^(\d+)\.(\d+)\.(\d+)/.exec(a), n = /^(\d+)\.(\d+)\.(\d+)/.exec(b);
+/** A semantic version: major, minor, patch, and prerelease identifiers. Build metadata does not count. */
+const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+/**
+ * -1, 0, or 1 by semver precedence (ruling D6): a prerelease comes before its release, so 2.1.310-rc.1 is older than
+ * 2.1.310. Null for a version that is not semver.
+ */
+export function compareVersion(a: string, b: string): number | null {
+  const m = SEMVER.exec(a), n = SEMVER.exec(b);
   if (!m || !n) return null;
   for (let i = 1; i <= 3; i++) if (Number(m[i]) !== Number(n[i])) return Number(m[i]) > Number(n[i]) ? 1 : -1;
+  if (m[4] === undefined || n[4] === undefined) return m[4] === n[4] ? 0 : m[4] === undefined ? 1 : -1;
+  const x = m[4].split('.'), y = n[4].split('.');
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    if (x[i] === undefined) return -1;
+    if (y[i] === undefined) return 1;
+    const nx = /^\d+$/.test(x[i]!), ny = /^\d+$/.test(y[i]!);
+    if (nx && ny) { if (Number(x[i]) !== Number(y[i])) return Number(x[i]) > Number(y[i]) ? 1 : -1; continue; }
+    if (nx !== ny) return nx ? -1 : 1;
+    if (x[i] !== y[i]) return x[i]! > y[i]! ? 1 : -1;
+  }
   return 0;
 }
 
@@ -194,7 +214,13 @@ export function planLocked(ctx: LockedContext): LockedPlan {
   };
   const commands = (path: string, engine: EngineId, servers: readonly McpServerForm[]): void => {
     if (!targets.has(path)) return;
-    for (const f of servers) { const c = serverCommand(f); if (c) review.push({ path, engine, kind: 'command', part: 'mcp', entry: f.name, text: shown(c) }); }
+    for (const f of servers) {
+      const c = serverCommand(f);
+      if (!c) continue;
+      const source = ctx.views.get(engine)!.mcp.find(x => x.name === f.name)?.env ?? {};
+      const env = Object.fromEntries(Object.entries(source).map(([k, v]) => [k, typeof v === 'string' && !/\$\{[A-Za-z_][A-Za-z0-9_]*\}/.test(v) ? v : null]));
+      review.push({ path, engine, kind: 'command', part: 'mcp', entry: f.name, text: shown(c), ...(Object.keys(env).length ? { env } : {}) });
+    }
   };
   const hookCommands = (path: string, engine: EngineId, hooks: readonly HookForm[]): void => {
     if (!targets.has(path)) return;
@@ -225,13 +251,19 @@ export function planLocked(ctx: LockedContext): LockedPlan {
         // Ruling B11: the sandbox also forbids commands that would leave it.
         if (form.sandbox) ops.push({ kind: 'members', path: ['sandbox'], members: [['enabled', true], ['allowUnsandboxedCommands', false]] });
         ops.push(...hookOps(h.hooks));
-        // Ruling B11: a person's settings can turn every hook off, or set a permission mode.
-        const settings = parsed(base(ctx, '.claude/settings.json').text);
-        const off = settings !== null && settings.disableAllHooks !== undefined && settings.disableAllHooks !== false
-          ? ' The person\'s .claude/settings.json sets disableAllHooks, so Claude Code runs no hook.' : '';
-        const mode = settings !== null && isObject(settings.permissions) && settings.permissions.defaultMode !== undefined
-          ? ' The person\'s .claude/settings.json sets permissions.defaultMode, which Bowerloom does not change; how that mode meets the hook is unverified until the live check of step 5.' : '';
-        if (off || mode) for (const [i, l] of hookLines.entries()) if (l.result !== 'absent') hookLines[i] = { ...l, result: 'weakened', reason: `${l.reason}${off}${mode}` };
+        // Rulings B11 and D2: a person's project settings, shared or local, can turn every hook off or set a mode.
+        const found: string[] = [];
+        for (const [file, text] of [['.claude/settings.json', base(ctx, '.claude/settings.json').text], ['.claude/settings.local.json', readProject(ctx.projectDir, '.claude/settings.local.json')?.bytes.toString('utf8') ?? null]] as const) {
+          const settings = parsed(text);
+          if (settings === null) continue;
+          if (settings.disableAllHooks !== undefined && settings.disableAllHooks !== false) found.push(` The person's ${file} sets disableAllHooks, so Claude Code runs no hook.`);
+          if (isObject(settings.permissions) && settings.permissions.defaultMode !== undefined) found.push(` The person's ${file} sets permissions.defaultMode, which Bowerloom does not change; how that mode meets the hook is unverified until the live check of step 5.`);
+        }
+        const unread = ' Claude Code also reads user and managed settings; user and managed settings are not read, so a hook they turn off is not reported.';
+        for (const [i, l] of hookLines.entries()) {
+          if (l.result === 'absent') continue;
+          hookLines[i] = found.length ? { ...l, result: 'weakened', reason: `${l.reason}${found.join('')}${unread}` } : { ...l, reason: `${l.reason}${unread}` };
+        }
         jsonFile('.claude/settings.json', ops, engine);
         hookCommands('.claude/settings.json', engine, h.hooks);
         for (const a of s.subagents) owned(`.claude/agents/${a.id}.md`, renderAgent(a), engine);
@@ -272,7 +304,12 @@ export function planLocked(ctx: LockedContext): LockedPlan {
           merged('.codex/config.toml', editToml(b.text, root, tables, forbid), engine, b.mode);
         }
         commands('.codex/config.toml', engine, m.servers);
-        if (form.prefixRules.length) owned(CODEX_RULES, renderRules(form), engine);
+        if (form.prefixRules.length) {
+          const rules = renderRules(form);
+          owned(CODEX_RULES, rules, engine);
+          // Ruling D7: the rules file decides what Codex runs, so a person reads it whole.
+          review.push({ path: CODEX_RULES, engine, kind: 'code', text: rules });
+        }
         jsonFile('.codex/hooks.json', hookOps(h.hooks), engine);
         hookCommands('.codex/hooks.json', engine, h.hooks);
         for (const a of s.subagents) owned(`.codex/agents/${a.id}.toml`, tomlLines((a as Extract<SubagentForm, { engine: 'codex' }>).table), engine);

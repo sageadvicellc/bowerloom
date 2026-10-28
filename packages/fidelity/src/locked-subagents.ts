@@ -13,7 +13,7 @@
  * - A skill list preloads in Claude Code. In Codex and OpenCode the skills stay discoverable but are not preloaded.
  */
 import type { EngineId, JsonValue, LossLine, SubagentEntry, ToolClass } from '../../harness-definition/src/index.js';
-import { Lines, PermissionPairs, addPrivate, privateLine, type LockedProblem } from './locked-common.js';
+import { Lines, PermissionPairs, addPrivate, openCodeSubstitution, privateLine, stringsOf, type LockedProblem } from './locked-common.js';
 
 export type SubagentForm =
   | { readonly engine: 'claude-code' | 'opencode'; readonly id: string; readonly frontmatter: readonly (readonly [string, JsonValue | PermissionPairs])[]; readonly body: string }
@@ -103,6 +103,17 @@ export function translateSubagents(engine: EngineId, subagents: readonly Subagen
         break;
       }
       case 'opencode': {
+        // Ruling D5: OpenCode replaces {env:...} and {file:...} in the frontmatter it reads. The body is not scanned.
+        if (stringsOf([a.description, a.model?.opencode ?? null, a.privateBlocks.opencode ?? null]).some(openCodeSubstitution)) {
+          out.problem(a.id, 'OPENCODE_SUBSTITUTION', 'OpenCode replaces {env:...} and {file:...} in an agent file, so a frontmatter value that holds one as literal text would change meaning. Bowerloom refuses the subagent.');
+          break;
+        }
+        // Ruling D3: as in Claude Code, an empty tool limit writes no agent file.
+        if (a.tools !== undefined && a.tools.length === 0) {
+          out.line(a.id, 'absent', 'An empty tool limit gives OpenCode nothing to deny by name: a deny list cannot shut every tool, including ones added later.', 'tools');
+          out.line(a.id, 'absent', 'The subagent is not written: Bowerloom has no OpenCode form for a subagent with no tools.');
+          break;
+        }
         const front: [string, JsonValue | PermissionPairs][] = [['description', a.description], ['mode', 'subagent']];
         if (a.model?.opencode !== undefined) front.push(['model', a.model.opencode]);
         modelLine();
