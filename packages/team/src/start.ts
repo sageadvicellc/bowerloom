@@ -14,7 +14,6 @@
  * - a start whose model flag no record names, and DeepSeek Harness headless, are undocumented.
  * A `manual` member is started by a person, who sees each approval.
  */
-import fs from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { canonicalJson } from '../../contracts/src/index.js';
 import { translateGuardrails, projectGuardrails } from '../../fidelity/src/index.js';
@@ -24,6 +23,8 @@ import {
 } from '../../harness-definition/src/index.js';
 import { sha } from '../../project-sync/src/portable-files.js';
 import { DELIVERY_TABLE, START_TABLE, atLeast, billingOf, isVersion, type Billing } from './engines.js';
+import { confineFolder } from './folders.js';
+import { finish } from './messages.js';
 import type { Team, TeamLimits, TeamMember } from './types.js';
 import { RELAY_MAP_PATH, START_PLAN_FORMAT, type DeliveryMode, type InboxMode, type StartMode } from './words.js';
 
@@ -43,8 +44,10 @@ export interface StartInput {
   /** Recorded fidelity approvals for team guardrails. */
   readonly approvals?: readonly unknown[];
   readonly now?: Date;
-  /** The members to start. Default: every member. */
+  /** The members to start. Default: every member. An empty list is refused. */
   readonly members?: readonly string[];
+  /** The home folder, for folder confinement (ruling T1). Default: the user's home folder. */
+  readonly home?: string;
 }
 
 export interface StartCommand {
@@ -53,6 +56,10 @@ export interface StartCommand {
   readonly stdin: 'message' | 'none';
   /** Where the command and its flags come from. */
   readonly source: string;
+  /** How the command pins the sandbox and the approval behaviour (ruling T5). */
+  readonly pinned: { readonly sandbox: string; readonly approval: string };
+  /** What ambient engine config still loads, which the plan does not read. */
+  readonly ambient: string;
 }
 export interface Delivery {
   readonly mode: DeliveryMode;
@@ -86,6 +93,8 @@ export interface DeliveryLine {
   readonly engine: EngineId;
   readonly subject: 'delivery';
   readonly mode: DeliveryMode;
+  /** True for the mode Bowerloom picks: the strongest the engine offers. */
+  readonly chosen: boolean;
   readonly result: Result;
   readonly reason: string;
 }
@@ -103,6 +112,9 @@ export interface StartPlan {
   readonly relay: RelaySummary;
   readonly limits: TeamLimits;
   readonly members: readonly StartMember[];
+  /** The members of the team that this plan does not start. */
+  readonly omitted: readonly string[];
+  /** One line per member per delivery mode its engine offers (ruling T20). */
   readonly report: readonly DeliveryLine[];
   readonly startsAuthorized: false;
   readonly revision: string;
@@ -120,14 +132,14 @@ export function planTeamStart(team: Team, input: StartInput): StartPlanResult {
   const add = (code: string, message: string, path = 'team.json') => { problems.push({ code, path, message }); };
   if (typeof input?.projectDir !== 'string' || !isAbsolute(input.projectDir)) {
     add('TEAM_START_USAGE', 'projectDir must be the absolute path of the project.', '.');
-    return { ok: false, problems };
+    return { ok: false, problems: finish(problems) };
   }
   const projectDir = resolve(input.projectDir);
   const ids = new Set(team.members.map(m => m.id));
   const wanted = input.members ?? team.members.map(m => m.id);
-  if (!Array.isArray(wanted) || new Set(wanted).size !== wanted.length || wanted.some(id => !ids.has(id))) {
-    add('TEAM_START_USAGE', 'members must list distinct member ids of this team.', '.');
-    return { ok: false, problems };
+  if (!Array.isArray(wanted) || wanted.length === 0 || new Set(wanted).size !== wanted.length || wanted.some(id => !ids.has(id))) {
+    add('TEAM_START_USAGE', 'members must list one or more distinct member ids of this team.', '.');
+    return { ok: false, problems: finish(problems) };
   }
   const selected = team.members.filter(m => wanted.includes(m.id));
   if (selected.length > team.file.limits.activeMembers) {
@@ -139,9 +151,12 @@ export function planTeamStart(team: Team, input: StartInput): StartPlanResult {
     const member = planMember(team, m, input, projectDir, add);
     if (member) members.push(member);
   }
-  if (problems.length) return { ok: false, problems };
+  if (problems.length) return { ok: false, problems: finish(problems) };
 
-  const report: DeliveryLine[] = members.map(m => ({ member: m.id, engine: m.engine, subject: 'delivery', ...m.delivery }));
+  const report: DeliveryLine[] = members.flatMap(m => DELIVERY_TABLE[m.engine].modes.map(mode => ({
+    member: m.id, engine: m.engine, subject: 'delivery' as const, mode, chosen: mode === m.delivery.mode, result: 'absent' as const,
+    reason: deliveryReason(m.engine, mode, m.inbox),
+  })));
   const relay: RelaySummary = {
     map: team.relay ? RELAY_MAP_PATH : null, bus: 'absent', sockets: 0, processes: 0, reason: NO_BUS,
     routes: (team.relay?.routes ?? []).map(r => ({
@@ -150,7 +165,8 @@ export function planTeamStart(team: Team, input: StartInput): StartPlanResult {
     })),
   };
   const body = {
-    format: START_PLAN_FORMAT, team: { id: team.file.id, revision: team.revision }, relay, limits: team.file.limits, members, report,
+    format: START_PLAN_FORMAT, team: { id: team.file.id, revision: team.revision }, relay, limits: team.file.limits, members,
+    omitted: team.members.filter(m => !wanted.includes(m.id)).map(m => m.id), report,
     startsAuthorized: false as const,
   };
   return { ok: true, plan: { ...body, revision: `sha256:${sha(canonicalJson(body))}` } };
@@ -171,11 +187,9 @@ function planMember(team: Team, m: TeamMember, input: StartInput, projectDir: st
   const version = Object.hasOwn(input.versions ?? {}, m.engine) ? input.versions[m.engine] : undefined;
   if (!isVersion(version)) fail('TEAM_START_ENGINE_VERSION', `No version of ${m.engine} is recorded for the member ${who}. The plan names the version of each engine.`);
 
-  const folder = resolve(projectDir, m.folder);
-  try {
-    const st = fs.lstatSync(folder);
-    if (st.isSymbolicLink() || !st.isDirectory()) fail('TEAM_START_FOLDER', `The folder of the member ${who} is a link or not a folder.`);
-  } catch { fail('TEAM_START_FOLDER', `The folder of the member ${who} does not exist. Create the worktree first.`); }
+  const place = confineFolder(projectDir, m.folder, { mustExist: true, ...(input.home !== undefined ? { home: input.home } : {}) });
+  if (!place.ok) fail(place.code, `The folder of the member ${who} ${place.message}.`);
+  const folder = place.ok ? place.abs : resolve(projectDir, m.folder);
 
   // Check 6 again, with the plan's approvals.
   const { rules, sandbox } = team.file.guardrails;
@@ -201,8 +215,9 @@ function planMember(team: Team, m: TeamMember, input: StartInput, projectDir: st
       if (row.minVersion && isVersion(version) && !atLeast(version, row.minVersion)) {
         fail('TEAM_START_ENGINE_VERSION', `The command for the member ${who} uses flags of ${m.engine} ${row.minVersion} or later, and the recorded version is older.`);
       }
+      if (row.pinned === null) fail('TEAM_START_UNPINNED', `The command for the member ${who} cannot pin the sandbox and approval behaviour of ${m.engine} with a recorded flag: ${row.ambient}. Start it manual (ruling T5).`);
       for (const name of row.environment) environment.add(name);
-      if (row.model !== null) command = { argv: [...row.argv, ...row.model(m.model, m.inbox)], cwd: folder, stdin: row.stdin, source: row.source };
+      if (row.model !== null && row.pinned !== null) command = { argv: [...row.argv, ...row.model(m.model, m.inbox)], cwd: folder, stdin: row.stdin, source: row.source, pinned: row.pinned, ambient: row.ambient };
     }
     const asks = approvalNeeds(m.engine, rules, harnessEntries?.rules ?? []);
     if (asks.length) {
@@ -214,20 +229,22 @@ function planMember(team: Team, m: TeamMember, input: StartInput, projectDir: st
   }
   if (failed || !harness || !isVersion(version)) return undefined;
 
-  const row = DELIVERY_TABLE[m.engine];
-  const mode = row.modes[0]!;
-  const refuses = m.inbox === 'refuse' ? 'The member refuses messages. ' : '';
+  const mode = DELIVERY_TABLE[m.engine].modes[0]!;
   return {
     id: m.id, purpose: m.purpose, engine: m.engine, version, model: m.model,
     harness: { id: m.harness, revision: harness.revision, from: m.harnessFrom },
     folder, start: m.start, inbox: m.inbox, reports_to: m.reports_to, command,
     environment: [...environment].sort(),
-    delivery: {
-      mode, result: 'absent',
-      reason: `${refuses}Bowerloom 0.8 has no relay bus (decision 7), so no message reaches the member. With the bus, ${mode} would be ${row.result} for ${m.engine}: ${row.note}. A person moves the files of each route by hand.`,
-    },
+    delivery: { mode, result: 'absent', reason: deliveryReason(m.engine, mode, m.inbox) },
     billing: billingOf(m.engine), guardrails: guardrailLines,
   };
+}
+
+/** Why a delivery mode is absent in 0.8, and the word the section 6 table gives it with a bus. */
+function deliveryReason(engine: EngineId, mode: DeliveryMode, inbox: InboxMode): string {
+  const row = DELIVERY_TABLE[engine];
+  const refuses = inbox === 'refuse' ? 'The member refuses messages. ' : '';
+  return `${refuses}Bowerloom 0.8 has no relay bus (decision 7), so no message reaches the member. With the bus, ${mode} would be ${row.result} for ${engine}: ${row.note}. A person moves the files of each route by hand.`;
 }
 
 /**

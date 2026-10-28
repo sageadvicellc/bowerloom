@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RESULTS, entryHash } from '../../../dist/packages/harness-definition/src/index.js';
 import { DELIVERY_TABLE, loadTeam, namesBypass, planTeamStart } from '../../../dist/packages/team/src/index.js';
-import { NOW, approval, cleanup, json, makeTeam, member, relayMap, route, rule, teamFile } from './fixture.mjs';
+import { NOW, approval, cleanup, json, makeTeam, member, relayMap, route, rule, teamFile, tempDir } from './fixture.mjs';
 
 test.after(cleanup);
 
@@ -28,7 +28,8 @@ function setup(team = teamFile(), files = {}, folders = ['wt/maker']) {
   assert.equal(r.ok, true, JSON.stringify(r.ok ? null : r.problems));
   return { project, team: r.team };
 }
-const input = (project, extra = {}) => ({ projectDir: project, versions: VERSIONS, harnesses: { demo: harness() }, ...extra });
+const HOME = tempDir('bowerloom-team-home-');
+const input = (project, extra = {}) => ({ projectDir: project, versions: VERSIONS, harnesses: { demo: harness() }, home: HOME, ...extra });
 const planned = (team, inp) => {
   const r = planTeamStart(team, inp);
   assert.equal(r.ok, true, JSON.stringify(r.ok ? null : r.problems));
@@ -58,11 +59,11 @@ test('the plan lists each member: folder, engine and version, command, environme
   assert.deepEqual(lead.harness, { id: 'demo', revision: `sha256:${'a'.repeat(64)}`, from: 'team' });
   assert.deepEqual(lead.command.argv, [
     'claude', '--print', '--model', 'model-a', '--output-format', 'json', '--permission-mode', 'dontAsk', '--permission-prompts', 'none',
-    '--settings', '{"crossSessionInbound":"accept"}',
+    '--settings', '{"crossSessionInbound":"accept","sandbox":{"enabled":true,"allowUnsandboxedCommands":false}}',
   ]);
   assert.equal(lead.command.cwd, project);
   assert.equal(lead.command.stdin, 'message');
-  assert.deepEqual(maker.command.argv, ['codex', 'exec', '--json', '-m', 'model-b', '-']);
+  assert.deepEqual(maker.command.argv, ['codex', '-c', 'approval_policy="never"', 'exec', '--json', '--sandbox', 'workspace-write', '-m', 'model-b', '-']);
   for (const m of plan.members) {
     assert.ok(Array.isArray(m.environment));
     assert.ok(!namesBypass(m.command.argv.join(' ')), 'no command holds a bypass flag');
@@ -74,7 +75,7 @@ test('the plan lists each member: folder, engine and version, command, environme
 
 test('the inbox word of a Claude Code member becomes its crossSessionInbound setting', () => {
   const { project, team } = setup(solo('claude-code', { inbox: 'refuse' }), {}, []);
-  assert.equal(planned(team, input(project)).members[0].command.argv.at(-1), '{"crossSessionInbound":"refuse"}');
+  assert.equal(JSON.parse(planned(team, input(project)).members[0].command.argv.at(-1)).crossSessionInbound, 'refuse');
 });
 
 test('the environment lists names from the member harness, never values', () => {
@@ -110,15 +111,20 @@ test('check 14: every delivery mode in the start plan appears in the loss report
   });
   const { project, team: loaded } = setup(team, {}, ALL.map((_, i) => `wt/m${i}`));
   const plan = planned(loaded, input(project));
-  assert.equal(plan.report.length, plan.members.length);
+  // T20: one line per member per mode its engine offers; the chosen mode is marked.
+  assert.equal(plan.report.length, plan.members.reduce((n, m) => n + DELIVERY_TABLE[m.engine].modes.length, 0));
   for (const m of plan.members) {
     const lines = plan.report.filter(l => l.member === m.id && l.subject === 'delivery');
-    assert.equal(lines.length, 1, `one delivery line for ${m.id}`);
-    assert.equal(lines[0].mode, m.delivery.mode);
-    assert.equal(lines[0].result, m.delivery.result);
-    assert.equal(lines[0].engine, m.engine);
-    assert.ok(RESULTS.includes(lines[0].result));
-    assert.ok(lines[0].reason.length > 0);
+    assert.deepEqual(lines.map(l => l.mode), [...DELIVERY_TABLE[m.engine].modes], `every mode of ${m.engine}`);
+    const chosen = lines.filter(l => l.chosen);
+    assert.equal(chosen.length, 1, `one chosen mode for ${m.id}`);
+    assert.equal(chosen[0].mode, m.delivery.mode);
+    assert.equal(chosen[0].result, m.delivery.result);
+    for (const line of lines) {
+      assert.equal(line.engine, m.engine);
+      assert.ok(RESULTS.includes(line.result));
+      assert.ok(line.reason.includes(line.mode) && line.reason.includes(DELIVERY_TABLE[m.engine].result));
+    }
   }
   // The strongest mode of the section 6 table, and the word it would have with a bus.
   assert.deepEqual(plan.members.map(m => [m.engine, m.delivery.mode]), [
@@ -135,9 +141,10 @@ test('check 14: every delivery mode in the start plan appears in the loss report
 
 test('check 14: a member that refuses messages has an absent delivery line that says so', () => {
   const { project, team } = setup(solo('claude-code', { inbox: 'refuse' }), {}, []);
-  const line = planned(team, input(project)).report[0];
-  assert.equal(line.result, 'absent');
-  assert.match(line.reason, /refuses/);
+  for (const line of planned(team, input(project)).report) {
+    assert.equal(line.result, 'absent');
+    assert.match(line.reason, /refuses/);
+  }
 });
 
 // ---- check 13: a relay map with no bus starts no socket and no process --------------------------------------------------------

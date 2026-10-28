@@ -44,12 +44,15 @@ function keys(p: Problems, value: JsonValue | undefined, where: string, required
   return ok ? { obj: value, extensions } : undefined;
 }
 
+/** One line of text: no control character (C0, DEL, or C1) and no format character (Unicode Cf), ruling T6. */
 function oneLine(p: Problems, value: JsonValue | undefined, where: string, max = 1024): string | undefined {
-  if (typeof value !== 'string' || value.trim() === '' || [...value].length > max || /[\0-\x1f\x7f]/.test(value)) {
-    return p.add('TEAM_INVALID_FIELD', `${where} must be one line of 1 to ${max} characters with no control characters.`);
+  if (typeof value !== 'string' || value.trim() === '' || [...value].length > max || /[\p{Cc}\p{Cf}]/u.test(value)) {
+    return p.add('TEAM_INVALID_FIELD', `${where} must be one line of 1 to ${max} characters with no control or format characters.`);
   }
   return value;
 }
+/** A model name: it starts with a letter or digit, so it is never read as a flag (ruling T6). */
+export const MODEL_NAME = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$/;
 function word<T extends string>(p: Problems, value: JsonValue | undefined, words: readonly T[], where: string): T | undefined {
   return typeof value === 'string' && (words as readonly string[]).includes(value) ? value as T : p.add('TEAM_INVALID_FIELD', `${where} must be ${list(words)}.`);
 }
@@ -69,8 +72,9 @@ function checkMember(p: Problems, value: JsonValue, i: number): MemberFile | und
   const purpose = oneLine(p, o.purpose, `${where}.purpose`);
   const engine = isEngineId(o.engine) ? o.engine : p.add('TEAM_UNKNOWN_ENGINE', `${where}.engine must be an engine id: ${list(ENGINE_IDS)}.`);
   const harness = Object.hasOwn(o, 'harness') ? id(p, o.harness, `${where}.harness`) : null;
-  let model = oneLine(p, o.model, `${where}.model`, 256);
-  if (model !== undefined && (MODEL_CLASSES as readonly string[]).includes(model.trim().toLowerCase())) {
+  let model = typeof o.model === 'string' && MODEL_NAME.test(o.model) ? o.model
+    : p.add('TEAM_INVALID_FIELD', `${where}.model must be one model name: a letter or digit, then up to 255 letters, digits, or . _ : / @ + -.`);
+  if (model !== undefined && (MODEL_CLASSES as readonly string[]).includes(model.toLowerCase())) {
     model = p.add('TEAM_MODEL_CLASS', `${where}.model is a 0.7 model class, not a model. Name one explicit model for the engine (decision 5).`);
   }
   const folder = normalizeFolder(o.folder) === null
@@ -106,6 +110,15 @@ function checkLimits(p: Problems, value: JsonValue | undefined): TeamLimits | un
 
 function checkTeamGuardrails(p: Problems, value: JsonValue | undefined): TeamGuardrails | undefined {
   if (value === undefined) return { rules: [], sandbox: [] };
+  // Ruling T2: a team guardrail carries no x- block. Projection would write an engine block as it stands.
+  if (isObj(value)) {
+    const entries = [...(Array.isArray(value.rules) ? value.rules.map((r, i) => [`guardrails.rules[${i}]`, r] as const) : []), ...(value.sandbox !== undefined ? [['guardrails.sandbox', value.sandbox] as const] : [])];
+    let blocked = false;
+    for (const [where, entry] of entries) {
+      if (isObj(entry) && Object.keys(entry).some(k => k.startsWith('x-'))) { p.add('TEAM_GUARDRAIL_BLOCK', `${where} has an x- block. A team guardrail carries no x- block: projection would write an engine block as it stands.`); blocked = true; }
+    }
+    if (blocked) return undefined;
+  }
   const c = new Checker(p.path);
   const g = checkGuardrails(c, value);
   for (const problem of c.problems) p.add('TEAM_GUARDRAILS_INVALID', `guardrails: ${problem.message.replace(/^guardrails\.json:? ?/, '')}`);

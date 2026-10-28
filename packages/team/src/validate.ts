@@ -12,10 +12,11 @@ import {
   INCOMPLETE_RULES, computeRevision, parseStrictJson, safeName, scanSecrets, type DefinitionFile, type Problem,
 } from '../../harness-definition/src/index.js';
 import { decodeText as decodeTextOrNull } from '../../harness-definition/src/json.js';
-import { bypassPointers, folderKey, namesBypass, normalizeFolder } from './scan.js';
+import { finish } from './messages.js';
+import { bypassPointers, folderKey, namesWidening, normalizeFolder } from './scan.js';
 import { Problems, checkRelayMap, checkTeamFile } from './schema.js';
 import type { RelayMap, Team, TeamFile, TeamLoadResult, TeamMember, TeamOptions } from './types.js';
-import { HUMAN, RELAY_MAP_PATH, TEAM_LIMITS } from './words.js';
+import { HUMAN, RELAY_MAP_PATH } from './words.js';
 
 export interface ValidateOptions extends TeamOptions {
   /** The name of the team folder. When given, the team id must equal it (section 9). */
@@ -65,7 +66,7 @@ export function validateTeam(files: readonly DefinitionFile[], options: Validate
   return { ok: true, team };
 }
 
-const fail = (problems: readonly Problem[]): TeamLoadResult => ({ ok: false, problems: problems.slice(0, TEAM_LIMITS.problems) });
+const fail = (problems: readonly Problem[]): TeamLoadResult => ({ ok: false, problems: finish(problems) });
 
 /** The secret and bypass problems of a set of files (section 4.3, rules 4 and 6). Adoption scans 0.7 files with it. */
 export function scanFiles(files: readonly DefinitionFile[]): Problem[] {
@@ -92,9 +93,9 @@ function bypasses(p: Problems, files: readonly DefinitionFile[]): void {
   for (const f of files) {
     const text = decodeTextOrNull(f.bytes) ?? Buffer.from(f.bytes).toString('latin1');
     const parsed = f.path.endsWith('.json') ? parseStrictJson(text) : null;
-    const pointers = parsed?.ok ? bypassPointers(parsed.value) : namesBypass(text) ? [''] : [];
+    const pointers = parsed?.ok ? bypassPointers(parsed.value) : namesWidening(text) ? [''] : [];
     if (pointers.length) {
-      p.add('TEAM_BYPASS', `${f.path} names a bypass flag or bypassPermissions${pointers[0] ? ` at ${pointers.slice(0, 5).join(', ')}` : ''}. A member never uses a bypass (section 4.3, rule 4).`, f.path);
+      p.add('TEAM_BYPASS', `${f.path} names a bypass or widening form${pointers[0] ? ` at ${pointers.slice(0, 5).join(', ')}` : ''}. A member never uses a bypass (section 4.3, rule 4).`, f.path);
     }
   }
 }

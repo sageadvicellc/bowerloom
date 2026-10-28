@@ -11,14 +11,14 @@ export type { DeliveryMode, InboxMode, StartMode } from './words.js';
 export type {
   Extensions, MemberFile, RelayMap, RelayRoute, Team, TeamFile, TeamGuardrails, TeamLimits, TeamLoadResult, TeamMember, TeamOptions,
 } from './types.js';
-export { bypassPointers, folderKey, namesBypass, normalizeFolder } from './scan.js';
+export { bypassPointers, folderKey, namesBypass, namesWidening, normalizeFolder } from './scan.js';
 export { validateTeam } from './validate.js';
 export type { ValidateOptions } from './validate.js';
 export { loadTeam } from './load.js';
 export { scanFiles } from './validate.js';
 export { applyTeamAdoption, planTeamAdoption } from './adopt.js';
 export type {
-  AdoptionAnswers, AdoptionApplyResult, AdoptionDefault, AdoptionHooks, AdoptionInput, AdoptionPlan, AdoptionQuestion, AdoptionWrite,
+  AdoptionAnswers, AdoptionApplyResult, AdoptionDefault, AdoptionHooks, AdoptionInput, AdoptionNotice, AdoptionPlan, AdoptionQuestion, AdoptionWrite,
   MemberAnswer,
 } from './adopt.js';
 export { DELIVERY_TABLE, START_TABLE, atLeast, billingOf, isVersion } from './engines.js';
@@ -27,3 +27,7 @@ export { planTeamStart } from './start.js';
 export type {
   Delivery, DeliveryLine, RelaySummary, StartCommand, StartHarness, StartInput, StartMember, StartPlan, StartPlanResult,
 } from './start.js';
+export { ENGINE_CONFIG_DIRS, confineFolder } from './folders.js';
+export type { FolderCheck, FolderCode } from './folders.js';
+export type { TeamProblem } from './messages.js';
+export { plainName } from './load.js';

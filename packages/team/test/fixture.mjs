@@ -186,11 +186,21 @@ tasks:
 export const CREW_RELAY = json(relayMap(['lead', 'maker'], [route('lead', 'maker')]));
 
 /** A 0.7 team folder in a project's `.bowerloom/teams/<id>/`. */
-export function makeCrew({ id = 'demo-crew', yaml = CREW_YAML, relay = CREW_RELAY } = {}) {
-  const files = { 'team.yaml': yaml, 'prompts/lead.md': 'Plan it.\n', 'prompts/maker.md': 'Build it.\n' };
+export function makeCrew({ id = 'demo-crew', yaml = CREW_YAML, relay = CREW_RELAY, extra = {} } = {}) {
+  const files = { 'team.yaml': yaml, 'prompts/lead.md': 'Plan it.\n', 'prompts/maker.md': 'Build it.\n', ...extra };
   if (relay !== null) files['maps/relay.json'] = relay;
   return makeTeam(files, { id });
 }
+
+/** The team folder path of a fresh project that holds no team yet: `<project>/.bowerloom/teams/<id>`. */
+export function emptyTarget(id = 'demo-crew') {
+  const project = tempDir();
+  fs.mkdirSync(path.join(project, '.bowerloom', 'teams'), { recursive: true });
+  return { project, target: path.join(project, '.bowerloom', 'teams', id) };
+}
+
+/** A synthetic token in the shape of a forge token. Not a real credential. */
+export const FAKE_TOKEN = 'ghp_' + 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8';
 
 /** Every file below a folder, relative, with its bytes, in byte order of path. */
 export function snapshot(dir) {

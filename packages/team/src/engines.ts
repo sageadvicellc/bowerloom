@@ -36,6 +36,13 @@ export type StartRow =
     /** The lowest version whose flags the command uses. */
     readonly minVersion?: string;
     readonly source: string;
+    /**
+     * How the command pins the sandbox and the approval behaviour, or null when no recorded flag pins them. A start
+     * whose command pins neither is refused: ambient engine config would decide (ruling T5).
+     */
+    readonly pinned: { readonly sandbox: string; readonly approval: string } | null;
+    /** What ambient engine config still loads, which the plan does not read. */
+    readonly ambient: string;
   }
   | { readonly supported: false; readonly code: 'TEAM_START_MODE_UNSUPPORTED' | 'TEAM_START_UNDOCUMENTED'; readonly reason: string };
 
@@ -47,23 +54,28 @@ export const START_TABLE: Readonly<Record<EngineId, Readonly<Record<Unattended, 
       argv: ['claude', '--print'],
       model: (model, inbox) => [
         '--model', model, '--output-format', 'json', '--permission-mode', 'dontAsk', '--permission-prompts', 'none',
-        '--settings', JSON.stringify({ crossSessionInbound: inbox }),
+        '--settings', JSON.stringify({ crossSessionInbound: inbox, sandbox: { enabled: true, allowUnsandboxedCommands: false } }),
       ],
       stdin: 'message',
       environment: [],
       minVersion: '2.1.259',
-      source: 'packages/claude-adapter (--print, --model, --permission-mode dontAsk, --permission-prompts none); research note engines-G, sections 3 and 5 (--permission-prompts since 2.1.259, crossSessionInbound)',
+      source: 'packages/claude-adapter (--print, --model, --permission-mode dontAsk, --permission-prompts none, --settings); research note engines-G, sections 3 and 5 (--permission-prompts since 2.1.259, crossSessionInbound); packages/project-sync locked writer (sandbox enabled, allowUnsandboxedCommands false)',
+      pinned: { sandbox: 'enabled, no unsandboxed commands', approval: 'dontAsk with no permission prompts: a request no rule allows is denied' },
+      ambient: 'User-level Claude Code settings still load, and this plan does not read them: a user permission rule can allow a request without a person.',
     },
     server: { supported: false, code: 'TEAM_START_MODE_UNSUPPORTED', reason: 'Claude Code has no server mode (section 6).' },
   },
   codex: {
     headless: {
       supported: true,
-      argv: ['codex', 'exec', '--json'],
+      argv: ['codex', '-c', 'approval_policy="never"', 'exec', '--json', '--sandbox', 'workspace-write'],
       model: model => ['-m', model, '-'],
       stdin: 'message',
       environment: [],
-      source: 'packages/codex-adapter (exec, --json, -m, and - for the message on standard input); research note engines-E, section 1',
+      minVersion: '0.157.0',
+      source: 'packages/codex-adapter for Codex 0.157.0 (-c approval_policy="never", exec, --json, -m, and - for the message on standard input); research note engines-E, section 2 (--sandbox workspace-write)',
+      pinned: { sandbox: 'workspace-write', approval: 'never: a request outside the sandbox fails' },
+      ambient: 'User-level Codex config, such as its MCP servers, still loads, and this plan does not read it.',
     },
     server: { supported: false, code: 'TEAM_START_MODE_UNSUPPORTED', reason: 'Codex has no server mode of its own. Its app server is experimental, and Bowerloom 0.8 has no client to drive it (section 6, note 3).' },
   },
@@ -75,6 +87,8 @@ export const START_TABLE: Readonly<Record<EngineId, Readonly<Record<Unattended, 
       stdin: 'none',
       environment: [],
       source: 'research note engines-E, section 1 (opencode run --format json); open issue 38723 (a run with an open standard input can hang)',
+      pinned: null,
+      ambient: 'ambient engine config not checked',
     },
     server: {
       supported: true,
@@ -83,6 +97,8 @@ export const START_TABLE: Readonly<Record<EngineId, Readonly<Record<Unattended, 
       stdin: 'none',
       environment: ['OPENCODE_SERVER_PASSWORD'],
       source: 'section 6, note 4 (opencode serve listens on 127.0.0.1, and Bowerloom sets OPENCODE_SERVER_PASSWORD)',
+      pinned: null,
+      ambient: 'ambient engine config not checked',
     },
   },
   pi: {
@@ -93,6 +109,8 @@ export const START_TABLE: Readonly<Record<EngineId, Readonly<Record<Unattended, 
       stdin: 'message',
       environment: [],
       source: 'research note engines-E, section 1 (pi -p, --mode json)',
+      pinned: null,
+      ambient: 'ambient engine config not checked',
     },
     server: { supported: false, code: 'TEAM_START_MODE_UNSUPPORTED', reason: 'pi --mode rpc speaks JSON lines on standard input and output. Bowerloom 0.8 has no relay bus or client to hold it (decision 7).' },
   },
