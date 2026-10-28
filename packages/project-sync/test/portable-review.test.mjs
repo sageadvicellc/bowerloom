@@ -509,7 +509,7 @@ test('P28: an original is carried across an update and restored by removal', asy
   assert.equal(fs.readFileSync(path.join(p.dir, 'AGENTS.md'), 'utf8'), 'The person\'s rules.\n');
 });
 
-test('P28: a changed execute bit is an update; mode-only drift blocks removal', async t => {
+test('P28: a changed execute bit is an update; mode-only drift blocks removal (reason mode since decision D5A)', async t => {
   const p = project(t);
   await projectNow(p.input());
   fs.chmodSync(path.join(p.def, 'skills/review/references/notes.md'), 0o755);
@@ -517,7 +517,7 @@ test('P28: a changed execute bit is an update; mode-only drift blocks removal', 
   assert.equal(plan.changes.find(c => c.path === '.agents/skills/review/references/notes.md').action, 'update');
   assert.equal(fs.statSync(path.join(p.dir, '.agents/skills/review/references/notes.md')).mode & 0o777, 0o755);
   fs.chmodSync(path.join(p.dir, 'AGENTS.md'), 0o600);
-  assert.throws(() => planPortableRemoval(p.input()), e => e.code === 'PORTABLE_DRIFT' && /AGENTS\.md \(changed\)/.test(e.message));
+  assert.throws(() => planPortableRemoval(p.input()), e => e.code === 'PORTABLE_DRIFT' && /AGENTS\.md \(mode\)/.test(e.message));
 });
 
 test('P28: switching the engine subset between runs moves the skill to the new engine\'s folder', async t => {
