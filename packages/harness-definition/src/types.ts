@@ -82,6 +82,11 @@ export interface SkillEntry extends Filterable, Private {
   readonly files: readonly string[];
   /** The hash of every file of the skill folder, with the canonical rules of the revision. */
   readonly contentHash: string;
+  /**
+   * The files of the skill folder with an execute bit, relative to it. The revision leaves modes out, so it is the same
+   * on every machine; the entry hash counts them, so a chmod voids an approval kept in the local app data folder.
+   */
+  readonly executable: readonly string[];
 }
 
 /** `agents/<id>.md`. */
@@ -175,6 +180,14 @@ export interface PartEntries {
   readonly mcp: readonly McpServer[];
 }
 
+/** One file under `scripts/`, with what an approval of it binds: its content and its execute bit. */
+export interface ScriptEntry {
+  /** The path relative to `scripts/`. */
+  readonly id: string;
+  readonly contentHash: string;
+  readonly executable: boolean;
+}
+
 /** One file of a definition, by its path relative to the `.bowerloom` folder, with `/` separators. */
 export interface DefinitionFile {
   readonly path: string;
@@ -194,6 +207,8 @@ export interface Definition {
   readonly sources: readonly SourceRecord[];
   /** Files under `scripts/`, relative to it. */
   readonly scripts: readonly string[];
+  /** The same files as entries, for `entryHash`: content hash and execute bit. A chmod changes the entry hash. */
+  readonly scriptEntries: readonly ScriptEntry[];
   /** Files under `engines/<engine>/`, relative to that folder. */
   readonly enginePrivate: Readonly<Partial<Record<EngineId, readonly string[]>>>;
   /** Every definition file, in byte order of path. Legacy files in the folder are not among them. */

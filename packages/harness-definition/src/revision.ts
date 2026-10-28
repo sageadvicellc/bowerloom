@@ -57,6 +57,11 @@ export function skillContentHash(id: string, files: readonly DefinitionFile[]): 
   }));
 }
 
+/** The hash of one file's canonical bytes. */
+export function fileContentHash(file: DefinitionFile): string {
+  return REVISION_PREFIX + createHash('sha256').update(canonicalBytes(file)).digest('hex');
+}
+
 function hashRows(domain: string, input: readonly { path: string; bytes: Buffer }[]): string {
   const rows = input.map(r => ({ path: Buffer.from(r.path.normalize('NFC'), 'utf8'), bytes: r.bytes }));
   rows.sort((a, b) => Buffer.compare(a.path, b.path));

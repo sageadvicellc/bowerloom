@@ -38,9 +38,15 @@ export interface Placed<T> {
   /** True when the item comes from a layer above the last one in the chain. */
   readonly inherited: boolean;
   readonly replaces?: { readonly layer: number };
-  /** Set on an item a lower layer added that runs a command or holds a secret reference (lead ruling R2). */
-  readonly needsApproval?: { readonly layer: number; readonly reason: 'hook-command' | 'secret-reference' };
+  /**
+   * Set on an item a lower layer holds that runs a command, holds a secret reference, or carries a private block (lead
+   * ruling R2). `reason` is the first of `reasons`.
+   */
+  readonly needsApproval?: { readonly layer: number; readonly reason: TrustReason; readonly reasons: readonly TrustReason[] };
 }
+
+/** Why an item from a lower layer needs a person's approval in the projection plan. */
+export type TrustReason = 'hook-command' | 'server-command' | 'secret-reference' | 'private-block';
 
 export interface HiddenItem {
   readonly part: OverridablePart;
@@ -126,9 +132,9 @@ export function resolveLayers(chain: readonly LayerInput[], options: ResolveOpti
   chain.forEach((layer, index) => {
     const fail = (code: string, message: string) => problems.push({ code, path: 'harness.json', message: `Layer ${index}: ${message}`, layer: index });
     /** True when the change is allowed: in the top layer, or with a matching approval. */
-    const widen = (part: OverridablePart, change: LayerApproval['change'], entry: Entry, message: string): boolean => {
+    const widen = (part: OverridablePart, change: LayerApproval['change'], entry: Entry, message: string, target?: Entry): boolean => {
       if (index === 0) return true;
-      const approval = approvals.find(a => layerApprovalMatches(a, part, change, entry));
+      const approval = approvals.find(a => layerApprovalMatches(a, part, change, entry, layer.folder, target));
       if (approval) { approved.push({ layer: index, part, id: entry.id, change, approval }); return true; }
       fail('LAYER_WIDENS', `${message} A lower layer can only restrict what a higher layer set, unless a person approved this exact entry.`);
       return false;
@@ -160,7 +166,7 @@ export function resolveLayers(chain: readonly LayerInput[], options: ResolveOpti
         } else {
           if (!mine) { fail('REPLACE_WITHOUT_ITEM', `the replace override names ${part}/${o.id}, and the layer holds no item with that id.`); continue; }
           const widens = GUARDED.has(part) || (part === 'guardrails' && (mine as GuardrailRule).effect === 'allow');
-          if (widens && !widen(part, 'replace', mine, `the layer replaces ${part}/${o.id} of layer ${target.layer}.`)) continue;
+          if (widens && !widen(part, 'replace', mine, `the layer replaces ${part}/${o.id} of layer ${target.layer}.`, target.item)) continue;
           current[at] = { item: mine, layer: index, replaces: { layer: target.layer } };
         }
       }
@@ -185,12 +191,12 @@ export function resolveLayers(chain: readonly LayerInput[], options: ResolveOpti
   if (problems.length) return { ok: false, problems };
 
   const last = chain.length - 1;
-  const place = <T>(part: OverridablePart | null, list: Mutable<Entry>[] | Mutable<T>[]): Placed<T>[] => (list as Mutable<T>[]).map(p => {
-    const flag = p.layer > 0 && part !== null ? trustFlag(part, p.item as Entry) : null;
+  const place = <T>(part: OverridablePart | 'sandbox', list: Mutable<Entry>[] | Mutable<T>[]): Placed<T>[] => (list as Mutable<T>[]).map(p => {
+    const reasons = p.layer > 0 ? trustReasons(part, p.item as Entry) : [];
     return {
       item: p.item, layer: p.layer, inherited: p.layer < last,
       ...(p.replaces ? { replaces: { layer: p.replaces.layer } } : {}),
-      ...(flag ? { needsApproval: { layer: p.layer, reason: flag } } : {}),
+      ...(reasons.length ? { needsApproval: { layer: p.layer, reason: reasons[0]!, reasons } } : {}),
     };
   });
   const lastHarness = chain[last]!.harness;
@@ -199,7 +205,7 @@ export function resolveLayers(chain: readonly LayerInput[], options: ResolveOpti
     skills: place<SkillEntry>('skills', sets.get('skills')!),
     subagents: place<SubagentEntry>('subagents', sets.get('subagents')!),
     rules: place<GuardrailRule>('guardrails', sets.get('guardrails')!),
-    sandbox: place<SandboxRequirement>(null, sandbox),
+    sandbox: place<SandboxRequirement>('sandbox', sandbox),
     hooks: place<HookEntry>('hooks', sets.get('hooks')!),
     mcp: place<McpServer>('mcp', sets.get('mcp')!),
     hidden, approved,
@@ -217,17 +223,25 @@ export function entriesOf(resolved: ResolvedHarness): PartEntries {
   };
 }
 
-/** Why an item from a lower layer needs a person's approval in the plan, or null. */
-function trustFlag(part: OverridablePart, item: Entry): 'hook-command' | 'secret-reference' | null {
-  if (part === 'hooks') return 'hook-command';
-  if (part !== 'mcp' && part !== 'subagents') return null;
+/**
+ * Why an item from a lower layer needs a person's approval in the plan: a hook runs a command; a stdio MCP server runs
+ * a command; a server or subagent with a `${NAME}` or keychain reference could send the secret anywhere; and every
+ * private block is untrusted, because no neutral check reads it.
+ */
+function trustReasons(part: OverridablePart | 'sandbox', item: Entry): TrustReason[] {
+  const out: TrustReason[] = [];
+  if (part === 'hooks') out.push('hook-command');
+  if (part === 'mcp' && (item as McpServer).transport === 'stdio') out.push('server-command');
   const holds = (v: unknown): boolean => {
     if (typeof v === 'string') return /\$\{[A-Za-z_][A-Za-z0-9_]*\}/.test(v);
     if (Array.isArray(v)) return v.some(holds);
     if (v !== null && typeof v === 'object') return Object.hasOwn(v, 'keychain') || Object.values(v).some(holds);
     return false;
   };
-  return holds(item) ? 'secret-reference' : null;
+  if ((part === 'mcp' || part === 'subagents') && holds(item)) out.push('secret-reference');
+  const blocks = (item as { privateBlocks?: Record<string, unknown> }).privateBlocks;
+  if (blocks && Object.keys(blocks).length > 0) out.push('private-block');
+  return out;
 }
 
 /** The shape of a layer input that did not come from the loader: overrides, engines, rule words, and unique ids. */

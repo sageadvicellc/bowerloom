@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  ENGINE_IDS, HARNESS_FORMAT, isDefinitionFolder, isEngineId, loadDefinition, parseStrictJson,
+  ENGINE_IDS, HARNESS_FORMAT, isDefinitionFolder, isEngineId, jsonValueFault, loadDefinition, parseStrictJson,
 } from '../../../dist/packages/harness-definition/src/index.js';
 import { FULL_PARTS, agent, cleanup, codes, fullFiles, harness, json, makeDefinition, skill } from './fixture.mjs';
 
@@ -409,7 +409,7 @@ test('S6: engine-private blocks cannot carry permission-like keys or non-portabl
   }
   const rule = { id: 'r', action: 'shell', pattern: 'ls', effect: 'deny', strength: 'enforced' };
   refused({ ...base, 'guardrails.json': json({ rules: [{ ...rule, 'x-claude-code': { permissions: { allow: ['Bash(*)'] } } }] }) }, 'PRIVATE_BLOCK_PERMISSION');
-  refused({ ...base, 'mcp.json': json({ servers: [{ name: 's', transport: 'stdio', command: 'run', 'x-codex': { env_vars: ['${A:-x}'] } }] }) }, 'ENV_REFERENCE');
+  refused({ ...base, 'mcp.json': json({ servers: [{ name: 's', transport: 'stdio', command: 'run', 'x-codex': { note: ['${A:-x}'] } }] }) }, 'ENV_REFERENCE');
 });
 
 test('S7: problem messages never echo a value or an unsafe key', () => {
@@ -437,4 +437,47 @@ test('silent 16: a tool-guidance heading inside fenced code does not count', () 
 test('silent 14: frontmatter messages name the real fault', () => {
   const [p] = refused({ ...fullFiles(), 'agents/reader.md': '---\n- a list\n---\nbody\n' }, 'FRONTMATTER_INVALID');
   assert.match(p.message, /mapping/);
+});
+
+// ---- Fix round 2: verification review -------------------------------------------------------------------------------
+
+test('M3: the private-block denylist covers config that grants, runs, or reaches', () => {
+  const base = fullFiles();
+  for (const key of ['writable_roots', 'network_access', 'shell_environment_policy', 'servers', 'statusLine', 'apiKeyHelper', 'command', 'env', 'args', 'mode', 'executable', 'script']) {
+    refused({ ...base, 'agents/reader.md': agent('reader', `x-claude-code:\n  ${key}: x\n`) }, 'PRIVATE_BLOCK_PERMISSION');
+  }
+  ok({ ...base, 'agents/reader.md': agent('reader', 'x-claude-code:\n  color: blue\n  effort: high\n') });
+});
+
+test('L2: a file swapped between the check and the open is refused', () => {
+  const dir = makeDefinition(fullFiles());
+  const target = path.join(dir, 'scripts', 'lint.sh');
+  const spare = path.join(path.dirname(dir), 'spare.sh');
+  fs.writeFileSync(spare, '#!/bin/sh\nexit 0\n');
+  const original = fs.openSync;
+  fs.openSync = function (p, ...rest) {
+    if (p === target) { fs.openSync = original; fs.renameSync(spare, target); }
+    return original.call(this, p, ...rest);
+  };
+  try {
+    const r = loadDefinition(dir);
+    assert.ok(codes(r).includes('FILE_CHANGED'), JSON.stringify(r.problems));
+  } finally { fs.openSync = original; }
+});
+
+test('L3: a hook command fits in one scanned line', () => {
+  const hook = { id: 'h', event: 'PreToolUse', strength: 'enforced' };
+  refused({ ...fullFiles(), 'hooks.json': json({ hooks: [{ ...hook, command: 'x'.repeat(4097) }] }) }, 'INVALID_FIELD');
+  ok({ ...fullFiles(), 'hooks.json': json({ hooks: [{ ...hook, command: 'echo ' + 'x'.repeat(4000) }] }) });
+});
+
+test('L5: a value that is not JSON has its own wording', () => {
+  const [inf] = refused({ ...fullFiles(), 'agents/reader.md': '---\nname: reader\ndescription: x\nx-codex:\n  a: .inf\n---\nbody\n' }, 'FRONTMATTER_INVALID');
+  assert.match(inf.message, /not a JSON value/);
+  assert.doesNotMatch(inf.message, /__proto__/);
+  const [proto] = refused({ ...fullFiles(), 'agents/reader.md': '---\nname: reader\ndescription: x\nx-codex:\n  __proto__: 1\n---\nbody\n' }, 'FRONTMATTER_INVALID');
+  assert.match(proto.message, /__proto__/);
+  assert.equal(jsonValueFault(Infinity), 'NOT_JSON_VALUE');
+  assert.equal(jsonValueFault(JSON.parse('{"__proto__": 1}')), 'UNSAFE_KEY');
+  assert.equal(jsonValueFault({ a: [1, 'x', null] }), null);
 });

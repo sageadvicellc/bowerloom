@@ -18,7 +18,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { decodeText, parseStrictJson, readFrontmatter, toLf } from './json.js';
-import { computeRevision, skillContentHash } from './revision.js';
+import { computeRevision, fileContentHash, skillContentHash } from './revision.js';
 import {
   Checker, checkGuardrails, checkHarness, checkHooks, checkMcp, checkSkill, checkSources, checkSubagent,
 } from './schema.js';
@@ -79,14 +79,20 @@ class Reader {
     if (this.canonical.has(key)) { this.fail('DUPLICATE_PATH', rel, 'Two files have this name in different Unicode forms.'); return undefined; }
     this.canonical.add(key);
     if (this.files.size >= DEFINITION_LIMITS.files) { this.fail('TOO_LARGE', rel, `A definition holds at most ${DEFINITION_LIMITS.files} files.`); return undefined; }
+    const abs = path.join(this.root, rel);
+    let seen: fs.Stats;
+    try { seen = fs.lstatSync(abs); } catch (error) { this.unreadable(rel, error); return undefined; }
+    if (seen.isSymbolicLink()) { this.fail('SYMLINK', rel, 'A definition cannot hold a symbolic link.'); return undefined; }
     let fd: number;
-    try { fd = fs.openSync(path.join(this.root, rel), fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK); } catch (error) {
+    try { fd = fs.openSync(abs, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK); } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ELOOP') this.fail('SYMLINK', rel, 'A definition cannot hold a symbolic link.');
       else this.unreadable(rel, error);
       return undefined;
     }
     try {
       const st = fs.fstatSync(fd);
+      // The file opened must be the file checked: a swap between the two is refused.
+      if (st.dev !== seen.dev || st.ino !== seen.ino) { this.fail('FILE_CHANGED', rel, 'This file was replaced while it was read.'); return undefined; }
       if (!st.isFile()) { this.fail('UNEXPECTED_FILE', rel, 'This must be a regular file.'); return undefined; }
       if (st.nlink !== 1) { this.fail('HARDLINK', rel, 'A definition cannot hold a file with more than one hard link.'); return undefined; }
       if (st.size > DEFINITION_LIMITS.fileBytes) { this.fail('TOO_LARGE', rel, 'A definition file holds at most 1 MiB.'); return undefined; }
@@ -167,6 +173,7 @@ class Reader {
       DUPLICATE_JSON_KEY: 'repeats a key', INVALID_JSON: 'is not strict JSON: comments, trailing commas, and single quotes are not allowed',
       JSON_BOUND: 'is too large', JSON_COMPLEXITY: 'is nested too deeply', NONFINITE_JSON: 'holds a number that is not finite',
       INVALID_UNICODE: 'holds text that is not valid Unicode', UNSAFE_KEY: 'uses the key __proto__',
+      NOT_JSON_VALUE: 'holds a value that is not a JSON value',
     };
     this.fail(parsed.code, rel, `This file ${why[parsed.code] ?? 'is not strict JSON'}.`);
     return undefined;
@@ -230,9 +237,13 @@ export function loadDefinition(folder: string): LoadResult {
   }
 
   if (r.problems.length || !harness) return fail(r.problems);
+  const scriptEntries = scripts.map(p => {
+    const f = r.files.get(`scripts/${p}`)!;
+    return { id: p, contentHash: fileContentHash({ path: `scripts/${p}`, bytes: f.bytes }), executable: f.executable };
+  });
   const definition: Definition = {
-    folder: root, harness, ...(instructions !== undefined ? { instructions } : {}), entries, sources, scripts, enginePrivate,
-    files, revision: computeRevision(files),
+    folder: root, harness, ...(instructions !== undefined ? { instructions } : {}), entries, sources, scripts, scriptEntries,
+    enginePrivate, files, revision: computeRevision(files),
   };
   return { ok: true, definition };
 }
@@ -293,7 +304,8 @@ function readSkills(r: Reader): SkillEntry[] {
     if (!fm.ok) { r.fail(fm.code, skillPath, fm.message); continue; }
     const c = new Checker(skillPath);
     const content = skillContentHash(name, files.map(f => ({ path: `${rel}/${f}`, bytes: r.files.get(`${rel}/${f}`)!.bytes })));
-    const entry = checkSkill(c, name, { ...fm.data }, fm.body, files, content);
+    const executable = files.filter(f => r.files.get(`${rel}/${f}`)!.executable);
+    const entry = checkSkill(c, name, { ...fm.data }, fm.body, files, content, executable);
     r.merge(c);
     if (entry) out.push(entry);
   }

@@ -10,7 +10,8 @@ import type { JsonValue } from './types.js';
 import { DEFINITION_LIMITS } from './words.js';
 
 export type StrictJsonCode =
-  | 'DUPLICATE_JSON_KEY' | 'INVALID_JSON' | 'JSON_BOUND' | 'JSON_COMPLEXITY' | 'NONFINITE_JSON' | 'INVALID_UNICODE' | 'UNSAFE_KEY';
+  | 'DUPLICATE_JSON_KEY' | 'INVALID_JSON' | 'JSON_BOUND' | 'JSON_COMPLEXITY' | 'NONFINITE_JSON' | 'INVALID_UNICODE' | 'UNSAFE_KEY'
+  | 'NOT_JSON_VALUE';
 export type StrictJsonResult = { readonly ok: true; readonly value: JsonValue } | { readonly ok: false; readonly code: StrictJsonCode };
 
 /** Parses strict JSON. A refusal names its kind and never repeats the input. */
@@ -20,8 +21,31 @@ export function parseStrictJson(text: string): StrictJsonResult {
     if (error instanceof AdapterError) return { ok: false, code: error.code as StrictJsonCode };
     throw error;
   }
-  const value = toJsonValue(raw);
-  return value === undefined ? { ok: false, code: 'UNSAFE_KEY' } : { ok: true, value };
+  const fault = jsonValueFault(raw);
+  if (fault) return { ok: false, code: fault };
+  return { ok: true, value: toJsonValue(raw)! };
+}
+
+/**
+ * Why a value is not JSON, or null when it is. `UNSAFE_KEY`: an object has the key `__proto__`. `NOT_JSON_VALUE`: a
+ * number that is not finite, a value of another type, a class instance, or nesting deeper than 48.
+ */
+export function jsonValueFault(value: unknown, depth = 0): 'UNSAFE_KEY' | 'NOT_JSON_VALUE' | null {
+  if (depth > 48) return 'NOT_JSON_VALUE';
+  if (value === null || typeof value === 'boolean' || typeof value === 'string') return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? null : 'NOT_JSON_VALUE';
+  if (Array.isArray(value)) { for (const item of value) { const f = jsonValueFault(item, depth + 1); if (f) return f; } return null; }
+  if (typeof value === 'object') {
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) return 'NOT_JSON_VALUE';
+    for (const key of Object.keys(value)) {
+      if (key === '__proto__') return 'UNSAFE_KEY';
+      const f = jsonValueFault((value as Record<string, unknown>)[key], depth + 1);
+      if (f) return f;
+    }
+    return null;
+  }
+  return 'NOT_JSON_VALUE';
 }
 
 /**
@@ -86,8 +110,11 @@ export function readFrontmatter(text: string): FrontmatterResult {
   let raw: unknown;
   try { raw = doc.toJS({ maxAliasCount: 0 }); } catch { return invalid('The frontmatter uses an alias, or a value that YAML cannot convert.'); }
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return invalid('The frontmatter must be one YAML mapping.');
+  const fault = jsonValueFault(raw);
+  if (fault === 'UNSAFE_KEY') return invalid('The frontmatter uses the key __proto__, which is not allowed.');
+  if (fault) return invalid('The frontmatter holds a value that is not a JSON value, such as .inf or .nan.');
   const data = toJsonValue(raw);
-  if (!isRecord(data)) return invalid('The frontmatter holds a value that is not JSON, or the key __proto__.');
+  if (!isRecord(data)) return invalid('The frontmatter must be one YAML mapping.');
   return { ok: true, data, body: split.rest };
 }
 function invalid(message: string): FrontmatterResult { return { ok: false, code: 'FRONTMATTER_INVALID', message }; }

@@ -156,3 +156,24 @@ test('check 6: another process with another locale, time zone, and working folde
 // sha256("bowerloom/harness-revision/v3\n" + for each file "<path>\n<length>\n<canonical bytes>\n"), with
 // harness.json as {"format":"bowerloom/harness/v1beta1","id":"demo"} and AGENTS.md as "# Demo\n".
 const PINNED = 'sha256:e68f780d5b4fbd80599f9901eee29ff1c4eabb438fee09682ead2eb51dad1431';
+
+test('M5: the execute bit is in the entry hash, so a chmod voids an approval, and stays out of the revision', () => {
+  const base = fullFiles({ 'skills/review/scripts/run.sh': '#!/bin/sh\n' });
+  const dir = makeDefinition(base);
+  const before = loadDefinition(dir).definition;
+  const skillBefore = before.entries.skills.find(s => s.id === 'review');
+  const scriptBefore = before.scriptEntries.find(s => s.id === 'lint.sh');
+  assert.deepEqual(skillBefore.executable, []);
+  assert.equal(scriptBefore.executable, false);
+  fs.chmodSync(path.join(dir, 'skills', 'review', 'scripts', 'run.sh'), 0o755);
+  fs.chmodSync(path.join(dir, 'scripts', 'lint.sh'), 0o755);
+  const after = loadDefinition(dir).definition;
+  const skillAfter = after.entries.skills.find(s => s.id === 'review');
+  const scriptAfter = after.scriptEntries.find(s => s.id === 'lint.sh');
+  assert.deepEqual(skillAfter.executable, ['scripts/run.sh']);
+  assert.equal(scriptAfter.executable, true);
+  assert.equal(after.revision, before.revision);
+  assert.notEqual(entryHash(skillAfter), entryHash(skillBefore));
+  assert.notEqual(entryHash(scriptAfter), entryHash(scriptBefore));
+  assert.equal(scriptAfter.contentHash, scriptBefore.contentHash);
+});
