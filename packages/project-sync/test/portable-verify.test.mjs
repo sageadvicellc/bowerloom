@@ -212,7 +212,8 @@ test('V12: an engine-private file gets an absent loss line for its engine', t =>
   const p = project(t, { engines: [{ id: 'claude-code' }, { id: 'codex' }], files: { 'engines/codex/config-extra.toml': '[features]\nx = true\n' } });
   const plan = planPortable(p.input());
   const lines = plan.loss.filter(l => l.entry === 'engines/codex/config-extra.toml');
-  assert.deepEqual(lines.map(l => [l.engine, l.result, l.reason]), [['codex', 'absent', LOCKED_IN_REASON]]);
+  assert.deepEqual(lines.map(l => [l.part, l.field, l.engine, l.result, l.reason]), [['engine-private', undefined, 'codex', 'absent', LOCKED_IN_REASON]]);
+  assert.equal(plan.loss.some(l => l.part === 'scripts' && l.entry.startsWith('engines/')), false, 'no line of an engine file uses the part scripts');
   assert.equal(plan.partial, true);
 });
 

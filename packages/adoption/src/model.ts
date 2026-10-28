@@ -1,6 +1,6 @@
 /** The shapes of an adoption plan, and of the candidates the engine readers give the planner. */
 import type {
-  EngineId, GuardrailAction, GuardrailEffect, JsonValue, McpTransport, EnvValue, Problem, Strength, ToolClass,
+  AdoptedFrom, EngineId, GuardrailAction, GuardrailEffect, JsonValue, McpTransport, EnvValue, Problem, Strength, ToolClass,
 } from '../../harness-definition/src/index.js';
 
 /** The parts of a plan item. `engine-private` is a file under `engines/<engine>/`. */
@@ -128,6 +128,8 @@ export interface PlanItem {
   readonly notes: readonly string[];
   /** The 0.7 source recorded in `sources.json`, for a converted managed copy. */
   readonly source?: SourceShape;
+  /** For a skill converted from a 0.7 managed copy: the copy and its content hash, recorded in `sources.json`. */
+  readonly adoptedFrom?: AdoptedFrom;
 }
 
 /** How a person resolves a conflict: pick one variant, or keep variants under distinct ids. */

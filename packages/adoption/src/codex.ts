@@ -16,6 +16,19 @@ import { parseTomlSubset } from './toml.js';
 const ENGINE = 'codex' as const;
 const CONFIG = '.codex/config.toml';
 export const codexProjectDir = (command: string): string => command.replace(/\$\(git rev-parse --show-toplevel\)/g, '${PROJECT_DIR}');
+/**
+ * Codex tool names that name one Claude Code tool each, as the hook writer maps them (fidelity, locked-hooks.ts):
+ * `exec_command` is Bash and `spawn_agent` is Agent. `apply_patch` stands for Edit, MultiEdit, Write, and NotebookEdit
+ * at once, so it is kept as written.
+ */
+const CODEX_TOOL_NAMES: Readonly<Record<string, string>> = { exec_command: 'Bash', spawn_agent: 'Agent' };
+/** A hook matcher that lists tool names, with Codex names turned into Claude Code names and repeats removed. */
+export function codexMatcher(matcher: string): string {
+  if (!/^[A-Za-z0-9_]+(?:\|[A-Za-z0-9_]+)*$/.test(matcher)) return matcher;
+  return [...new Set(matcher.split('|').map(n => CODEX_TOOL_NAMES[n] ?? n))].join('|');
+}
+/** The justification the rules writer gives a rule with none of its own. Adoption does not keep it. */
+const BOWERLOOM_JUSTIFICATION = /^Bowerloom guardrail [a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MODES_REASON = 'Approval policies and permission modes do not translate between engines (locked-in parts spec, section 8.3 rule 12). Bowerloom writes the engine default.';
 
 function toml(ctx: Context, path: string, part: Parameters<Context['r']['miss']>[1], guard?: LostAction): Obj | null {
@@ -42,7 +55,7 @@ function readConfig(ctx: Context): void {
   const rest: Obj = {};
   for (const [key, value] of Object.entries(c)) {
     if (key === 'mcp_servers') readServers(ctx, value);
-    else if (key === 'hooks') readHooks(ctx, value, { path: CONFIG, base: '/hooks', engine: ENGINE, shape, rewrite: codexProjectDir });
+    else if (key === 'hooks') readHooks(ctx, value, { path: CONFIG, base: '/hooks', engine: ENGINE, shape, rewrite: codexProjectDir, matcher: codexMatcher });
     else if (key === 'sandbox_mode' || key === 'sandbox_workspace_write') continue;
     else if (key === 'approval_policy') ctx.r.miss(CONFIG, 'guardrails', MODES_REASON, kp(c, key), 'acknowledge');
     else if (key === 'default_permissions' || key === 'permissions') {
@@ -164,7 +177,7 @@ function readHooksFile(ctx: Context): void {
   const h = readJson(ctx, '.codex/hooks.json', 'hooks');
   if (!h) return;
   for (const [k, v] of Object.entries(h)) {
-    if (k === 'hooks') readHooks(ctx, v, { path: '.codex/hooks.json', base: '/hooks', engine: ENGINE, shape: 'Codex hooks.json', rewrite: codexProjectDir });
+    if (k === 'hooks') readHooks(ctx, v, { path: '.codex/hooks.json', base: '/hooks', engine: ENGINE, shape: 'Codex hooks.json', rewrite: codexProjectDir, matcher: codexMatcher });
     else ctx.r.miss('.codex/hooks.json', 'hooks', 'Adoption reads only hooks in hooks.json.', kp(h, k));
   }
 }
@@ -322,6 +335,8 @@ function readRules(ctx: Context): void {
       for (const s of slots as string[][]) prefixes = prefixes.flatMap(p => s.map(x => [...p, x]));
       const extra: Obj = {};
       for (const k of ['justification', 'match', 'not_match'] as const) if (call[k] !== undefined) extra[k] = call[k] as JsonValue;
+      // The justification Bowerloom writes for a rule with none of its own names the rule; it is not the person's text.
+      if (typeof extra.justification === 'string' && BOWERLOOM_JUSTIFICATION.test(extra.justification)) delete extra.justification;
       const { blocks, secrets } = blockOf([ENGINE], extra, rel, pointer, 'rule');
       for (const p of prefixes) ctx.cands.push({
         part: 'guardrails', id: '', rule: { action: 'shell', pattern: `${p.join(' ')} *`, effect, strength: effect === 'allow' ? 'advisory' : 'enforced' },

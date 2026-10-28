@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  RESULTS, STRENGTHS, checkFidelity, entryHash, loadDefinition, needsApproval, parseFidelityApproval, strengthOf,
+  LOSS_PARTS, PART_KEYS, RESULTS, STRENGTHS, checkFidelity, entryHash, loadDefinition, needsApproval, parseFidelityApproval, strengthOf,
 } from '../../../dist/packages/harness-definition/src/index.js';
 import { NOW, cleanup, harness, json, makeDefinition } from './fixture.mjs';
 
@@ -144,6 +144,17 @@ test('R8: the caller cannot state the strength, name an unknown entry, or an eng
   for (const bad of [lost('guardrails', 'no-push', 'pi', 'portable'), lost('teams', 'x', 'pi', 'absent'), lost('guardrails', '', 'pi', 'absent')]) {
     assert.ok(codes([bad]).includes('LOSS_LINE_INVALID'), JSON.stringify(bad));
   }
+});
+
+test('step 3 contract: a file under engines/<engine>/ has its own loss-line part, engine-private', () => {
+  assert.deepEqual([...LOSS_PARTS], [...PART_KEYS, 'engine-private']);
+  const src = source();
+  const line = { part: 'engine-private', entry: 'engines/codex/config.json', engine: 'codex', result: 'absent', reason: 'Not projected in this step.' };
+  const v = judge(src, [line]);
+  assert.deepEqual(v.problems, []);
+  assert.equal(v.ok, true, 'an engine-private file is advisory, so an absent line needs no approval');
+  assert.ok(checkFidelity(src, report(src, [{ ...line, engine: 'opencode' }]), [], { now: NOW }).problems.some(p => p.code === 'LOSS_LINE_INVALID'));
+  assert.equal(strengthOf('engine-private', {}), 'advisory');
 });
 
 test('every loss is reported: a loss with no reason is a problem', () => {

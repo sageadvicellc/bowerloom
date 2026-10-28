@@ -24,7 +24,7 @@ import {
 } from './schema.js';
 import { INCOMPLETE_RULES, safeName, scanSecrets } from './secrets.js';
 import type {
-  Definition, DefinitionFile, HarnessFile, JsonValue, LoadResult, PartEntries, Problem, SkillEntry, SourceRecord, SubagentEntry,
+  AdoptedRecord, Definition, DefinitionFile, HarnessFile, JsonValue, LoadResult, PartEntries, Problem, SkillEntry, SourceRecord, SubagentEntry,
 } from './types.js';
 import { DEFINITION_LIMITS, ENGINE_IDS, LEGACY_NAMES, PART_LOCATIONS, isEngineId, isId } from './words.js';
 import type { EngineId, PartKey } from './words.js';
@@ -217,7 +217,7 @@ export function loadDefinition(folder: string): LoadResult {
   const guardrails = readJsonPart(r, present, 'guardrails.json', checkGuardrails) ?? { rules: [], sandbox: [] };
   const hooks = readJsonPart(r, present, 'hooks.json', checkHooks) ?? [];
   const mcp = readJsonPart(r, present, 'mcp.json', checkMcp) ?? [];
-  const sources = readJsonPart(r, present, 'sources.json', checkSources) ?? [];
+  const { sources, adopted } = readJsonPart(r, present, 'sources.json', checkSources) ?? { sources: [], adopted: [] };
 
   const skills = harness ? applySkillSettings(r, harness, rawSkills) : rawSkills;
   const entries: PartEntries = { skills, subagents, rules: guardrails.rules, sandbox: guardrails.sandbox, hooks, mcp };
@@ -225,7 +225,7 @@ export function loadDefinition(folder: string): LoadResult {
     checkPointers(r, harness, present, instructions, entries);
     checkEnginesListed(r, harness, entries, enginePrivate);
   }
-  checkSourceItems(r, sources, entries);
+  checkSourceItems(r, sources, adopted, entries);
 
   const files: DefinitionFile[] = [...r.files.entries()].sort(([a], [b]) => byBytes(a, b)).map(([p, f]) => ({ path: p, bytes: f.bytes, executable: f.executable }));
   const incomplete = new Set<string>(INCOMPLETE_RULES);
@@ -242,7 +242,7 @@ export function loadDefinition(folder: string): LoadResult {
     return { id: p, contentHash: fileContentHash({ path: `scripts/${p}`, bytes: f.bytes }), executable: f.executable };
   });
   const definition: Definition = {
-    folder: root, harness, ...(instructions !== undefined ? { instructions } : {}), entries, sources, scripts, scriptEntries,
+    folder: root, harness, ...(instructions !== undefined ? { instructions } : {}), entries, sources, adopted, scripts, scriptEntries,
     enginePrivate, files, revision: computeRevision(files),
   };
   return { ok: true, definition };
@@ -429,11 +429,14 @@ function checkEnginesListed(r: Reader, harness: HarnessFile, entries: PartEntrie
   }
 }
 
-function checkSourceItems(r: Reader, sources: readonly SourceRecord[], entries: PartEntries): void {
+function checkSourceItems(r: Reader, sources: readonly SourceRecord[], adopted: readonly AdoptedRecord[], entries: PartEntries): void {
   const ids: Record<string, readonly { id: string }[]> = {
     skills: entries.skills, subagents: entries.subagents, guardrails: [...entries.rules, ...entries.sandbox], hooks: entries.hooks, mcp: entries.mcp,
   };
   sources.forEach((s, i) => s.items.forEach((item, j) => {
     if (!ids[item.part]!.some(e => e.id === item.id)) r.fail('SOURCE_ITEM_MISSING', 'sources.json', `sources[${i}].items[${j}] names an item of ${item.part} that this layer does not hold.`);
   }));
+  adopted.forEach((a, i) => {
+    if (!entries.skills.some(e => e.id === a.id)) r.fail('SOURCE_ITEM_MISSING', 'sources.json', `adopted[${i}] names a skill that this layer does not hold.`);
+  });
 }

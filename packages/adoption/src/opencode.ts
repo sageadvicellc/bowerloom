@@ -6,7 +6,7 @@
  * OpenCode reads the last matching rule of a key; the neutral rules have a fixed precedence. A later, less strict rule
  * that can overlap an earlier one is kept, and the plan warns that the definition then blocks more on the overlap.
  */
-import { openCodeFromConfig } from '../../fidelity/src/index.js';
+import { OPENCODE_AGENT_MODES, openCodeFromConfig } from '../../fidelity/src/index.js';
 import { GUARDRAIL_EFFECTS, isId, isPermissionKey, readFrontmatter, safeName } from '../../harness-definition/src/index.js';
 import type { GuardrailAction, GuardrailEffect, JsonValue } from '../../harness-definition/src/index.js';
 import { patternProblem } from '../../fidelity/src/index.js';
@@ -133,6 +133,7 @@ function readMcp(ctx: Context, value: JsonValue, path: string, shape: string): v
 }
 
 const LIMIT_REASON = 'This agent sets a tool limit (tools or permission) that the neutral tool list cannot carry exactly. Without it the subagent would be wider than the source, so it is not adopted.';
+const MODE_REASON = 'The agent mode is not primary, subagent, or all, the modes of OpenCode 1.x, so it is not adopted.';
 
 function addAgent(ctx: Context, id: string, d: Obj, body: string, path: string, base: string, shape: string): void {
   const { r } = ctx;
@@ -145,6 +146,7 @@ function addAgent(ctx: Context, id: string, d: Obj, body: string, path: string, 
   const extra: Obj = {};
   for (const [k, v] of Object.entries(d)) {
     if (['description', 'model', 'prompt'].includes(k)) continue;
+    if (k === 'mode' && !OPENCODE_AGENT_MODES.includes(v as string)) { r.miss(path, 'subagents', MODE_REASON, `${base}/mode`); continue; }
     if (isPermissionKey(k)) { r.miss(path, 'subagents', PERMISSION_REASON, `${base}${kp(d, k)}`); continue; }
     extra[k] = v;
   }

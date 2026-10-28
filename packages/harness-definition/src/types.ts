@@ -167,7 +167,26 @@ export interface SourceRecord {
   readonly name: string;
   readonly marketplace: string;
   readonly version: string;
+  /** True when a 0.7 catalog only claims this source and Bowerloom did not check it. Absent otherwise. */
+  readonly claimed?: true;
   readonly items: readonly { readonly part: OverridablePart; readonly id: string }[];
+}
+
+/**
+ * Where a skill came from when adoption converted it from a 0.7 managed copy. `path` is the canonical copy, relative to
+ * the project folder. `sha256` is the hex of the skill content hash of that copy (`skillContentHash`, without its
+ * `sha256:` prefix), so the portable projection can tell whether a 0.7 folder still holds exactly that copy.
+ */
+export interface AdoptedFrom {
+  readonly kind: '0.7-managed';
+  readonly path: string;
+  readonly sha256: string;
+}
+/** The durable record in `sources.json` of a skill converted from a 0.7 managed copy. */
+export interface AdoptedRecord {
+  readonly part: 'skills';
+  readonly id: string;
+  readonly adoptedFrom: AdoptedFrom;
 }
 
 /** The entries of every part that holds entries. */
@@ -205,6 +224,8 @@ export interface Definition {
   readonly instructions?: string;
   readonly entries: PartEntries;
   readonly sources: readonly SourceRecord[];
+  /** The skills converted from 0.7 managed copies, from `sources.json`. Empty when it records none. */
+  readonly adopted: readonly AdoptedRecord[];
   /** Files under `scripts/`, relative to it. */
   readonly scripts: readonly string[];
   /** The same files as entries, for `entryHash`: content hash and execute bit. A chmod changes the entry hash. */

@@ -4,14 +4,14 @@
  * README.md in this package states the trust boundary and the rules for the later lanes.
  */
 export {
-  DEFINITION_LIMITS, ENGINE_IDS, GUARDRAIL_ACTIONS, GUARDRAIL_EFFECTS, HARNESS_FORMAT, LEGACY_NAMES, MCP_TRANSPORTS,
+  DEFINITION_LIMITS, ENGINE_IDS, GUARDRAIL_ACTIONS, GUARDRAIL_EFFECTS, HARNESS_FORMAT, LEGACY_NAMES, LOSS_PARTS, MCP_TRANSPORTS,
   OVERRIDABLE_PARTS, PART_KEYS, PART_KINDS, PART_LOCATIONS, RESULTS, STRENGTHS, TOOL_CLASSES, isEngineId, isId, isServerName,
 } from './words.js';
 export type {
-  EngineId, GuardrailAction, GuardrailEffect, McpTransport, OverridablePart, PartKey, PartKind, Result, Strength, ToolClass,
+  EngineId, GuardrailAction, GuardrailEffect, LossPart, McpTransport, OverridablePart, PartKey, PartKind, Result, Strength, ToolClass,
 } from './words.js';
 export type {
-  Definition, DefinitionFile, EngineTarget, EnvValue, Filterable, GuardrailRule, HarnessFile, HookEntry, JsonValue,
+  AdoptedFrom, AdoptedRecord, Definition, DefinitionFile, EngineTarget, EnvValue, Filterable, GuardrailRule, HarnessFile, HookEntry, JsonValue,
   LayerOverride, LoadResult, McpServer, PartEntries, PartPointers, PrivateBlocks, Problem, SandboxRequirement, SecretRef,
   ScriptEntry, SkillEntry, SkillSettings, SourceRecord, SubagentEntry,
 } from './types.js';
