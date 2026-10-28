@@ -7,6 +7,7 @@ import { privateStateRoot } from '../../../packages/project-context/src/index.js
 import type { ProjectContext } from '../../../packages/project-context/src/types.js';
 import { planProjectApply } from '../../../packages/project-sync/src/index.js';
 import type { AgentItem, PromptItem, SliceItem, SyncItem } from '../../../packages/project-sync/src/index.js';
+import { isEngine } from '../../../packages/skill-manifest/src/engine.js';
 import { missingItems, planHolds, uniqueHolds } from './held.js';
 import type { HeldItem } from './held.js';
 
@@ -20,6 +21,8 @@ export interface ProjectPlanView {
   held: readonly HeldItem[];
   /** The code of the refusal that made the full plan unavailable, or null. The agents are planned alone then. */
   unavailable: string | null;
+  /** For ENGINE_NO_WRITER: the engine the project lists that Bowerloom has no writer for. `unavailable` stays the plain code. */
+  unavailableEngine?: string;
 }
 
 /** Plans a project the way `status` does and returns the plan. A refusal gives `unavailable`, never a throw. */
@@ -35,9 +38,10 @@ export async function readProjectPlan(project: ProjectContext, env: NodeJS.Proce
   } catch (error) {
     const code = (error as { code?: unknown } | null)?.code;
     const unavailable = typeof code === 'string' && /^[A-Z_]{1,100}$/.test(code) ? code : 'IO_ERROR';
+    const engine = (error as { engine?: unknown } | null)?.engine, named = unavailable === 'ENGINE_NO_WRITER' && isEngine(engine) ? { unavailableEngine: engine } : {};
     try {
       const only = await planProjectApply({ ...base, agentsOnly: true });
-      return { ...empty, agents: only.agents, slices: only.slices, held: uniqueHolds([...held, ...planHolds([], [], only.agents, only.slices)]), unavailable };
-    } catch { return { ...empty, held, unavailable }; }
+      return { ...empty, agents: only.agents, slices: only.slices, held: uniqueHolds([...held, ...planHolds([], [], only.agents, only.slices)]), unavailable, ...named };
+    } catch { return { ...empty, held, unavailable, ...named }; }
   }
 }

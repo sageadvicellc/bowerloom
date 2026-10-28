@@ -21,6 +21,7 @@ import { runWithApproval, parseApprovalFlags } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
 import { plainText } from './human.js';
 import { fromWire } from '../../../packages/project-sync/src/wire.js';
+import { syncError } from '../../../packages/project-sync/src/refusal.js';
 import type { OldEngineId, WriterEngine } from '../../../packages/skill-manifest/src/engine.js';
 import { terminalIo } from './manifest.js';
 import { credentialsLines, githubTokenReader, maxRequestsFlag, TOKEN_TAIL } from './sync.js';
@@ -68,7 +69,12 @@ export function copyPlaces(project: ProjectContext, kind: Kind, id: string): str
   // The catalog is a stored record of a managed copy: it names its engines the old way (`harnesses`, with `claude`).
   // A catalog that is not JSON gives the default places. A catalog that names an engine it cannot is refused, by file.
   const c = ((): { skill?: { name?: unknown } | null; harnesses?: unknown } | null => {
-    try { return JSON.parse(readFileSync(catalog, 'utf8')) as { skill?: { name?: unknown } | null; harnesses?: unknown } | null; } catch (error) { if (error instanceof SyntaxError) return null; throw error; }
+    try { return JSON.parse(readFileSync(catalog, 'utf8')) as { skill?: { name?: unknown } | null; harnesses?: unknown } | null; } catch (error) {
+      if (error instanceof SyntaxError) return null;
+      // Any other read error (EACCES, EISDIR) is a refusal that names the file, never an uncoded error.
+      const errno = (error as { code?: unknown } | null)?.code;
+      throw syncError('MANAGED_SKILL_REFUSED', `The catalog ${relative(project.dir, catalog)} cannot be read${typeof errno === 'string' && /^E[A-Z]{2,20}$/.test(errno) ? ` (${errno})` : ''}. Nothing was changed.`);
+    }
   })();
   if (c !== null && typeof c === 'object') {
     if (typeof c.skill?.name === 'string') name = c.skill.name;

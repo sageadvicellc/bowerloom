@@ -41,7 +41,7 @@ import { syncError } from '../../../packages/project-sync/src/refusal.js';
 import { readAuthoringState } from '../../../packages/project-authoring/src/state.js';
 import type { SeedResult } from '../../../packages/project-sync/src/seed.js';
 import { manifestRefusal } from '../../../packages/skill-manifest/src/refusal.js';
-import { configRefusal, readConfig, serializeConfigFrom, writeGuardedFile } from '../../../packages/project-config/src/index.js';
+import { configRefusal, invalidConfigRefusal, readConfig, serializeConfigFrom, writeGuardedFile } from '../../../packages/project-config/src/index.js';
 import { createBowerloomFolder } from '../../../packages/project-config/src/folder.js';
 import type { HeldProjectLock } from '../../../packages/project-context/src/types.js';
 import { createHash } from 'node:crypto';
@@ -329,7 +329,7 @@ function runCheck(words: readonly string[], cwd: string, home: string, write: (t
  */
 function checkConfigMode(project: ProjectContext, home: string, json: boolean, write: (text: string) => void): number {
   const read = readConfig(project);
-  if (read.state !== 'valid') throw configRefusal(read.state === 'invalid' ? read.code : 'CONFIG_INVALID');
+  if (read.state !== 'valid') throw read.state === 'invalid' ? invalidConfigRefusal(read) : configRefusal('CONFIG_INVALID');
   const state = readManifestState(project.dir, { allowAbsent: true });
   const own = state.file ? checkManifest(project.dir) : null;
   const rows = (own?.skills ?? []).map(s => ({ ...s, source: 'project' }));
@@ -361,7 +361,7 @@ const sha256Hex = (v: string): string => createHash('sha256').update(v).digest('
 /** The config step of `skills add` (3.8 item 9): `{ id, source: "project" }`, with the duplicate and limit refusals. Null when already listed. */
 function configAddStep(project: ProjectContext, id: string): ConfigStep | null {
   const read = readConfig(project);
-  if (read.state !== 'valid') throw configRefusal(read.state === 'invalid' ? read.code : 'CONFIG_INVALID');
+  if (read.state !== 'valid') throw read.state === 'invalid' ? invalidConfigRefusal(read) : configRefusal('CONFIG_INVALID');
   const now = read.config.skills.find(e => e.id === id);
   if (now?.source === 'store') throw configRefusal('CONFIG_DUPLICATE_ID', `bowerloom.json lists skill ${id} twice: once from store and once from project.`);
   if (now) return null;

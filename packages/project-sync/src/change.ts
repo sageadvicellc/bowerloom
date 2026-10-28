@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 import { DefinitionError, PLAIN_ID, canonicalJson } from '../../contracts/src/index.js';
 import { inspectStore, isHeldProjectLock, projectRefusal, adoptCreatedMarker, verifyProjectPins } from '../../project-context/src/index.js';
 import type { HeldProjectLock, ProjectContext } from '../../project-context/src/types.js';
-import { readConfig } from '../../project-config/src/config.js';
+import { invalidConfigRefusal, readConfig } from '../../project-config/src/config.js';
 import { CONFIG_FORMAT, parseConfig, serializeConfigFrom } from '../../project-config/src/schema.js';
 import type { ConfigEntry, ProjectConfig } from '../../project-config/src/schema.js';
 import { atApproval, configRefusal, honestShared, notShareable, notSharedYet, refusalWithNext } from '../../project-config/src/refusal.js';
@@ -245,7 +245,7 @@ export async function planConfigChange(input: ChangeInput): Promise<ConfigChange
   const maxRequests = requestLimit(input.maxGithubRequests);
   verifyProjectPins(project);
   const read = readConfig(project);
-  if (read.state === 'invalid') throw configRefusal(read.code);
+  if (read.state === 'invalid') throw invalidConfigRefusal(read);
   if (read.state === 'absent' && project.configPresent) throw projectRefusal('PROJECT_UNSAFE');
   // Decision 1 on #80 (variant A): `team adopt` of a team that is not listed creates bowerloom.json too, as `use` does.
   if (read.state === 'absent' && op !== 'use' && op !== 'adopt') throw configRefusal('CONFIG_ITEM_NOT_SELECTED');
@@ -415,7 +415,7 @@ export async function planLockUpdate(input: LockUpdateInput): Promise<LockUpdate
   verifyProjectPins(project);
   const read = readConfig(project);
   if (read.state === 'absent') throw configRefusal('CONFIG_ITEM_NOT_SELECTED');
-  if (read.state === 'invalid') throw configRefusal(read.code);
+  if (read.state === 'invalid') throw invalidConfigRefusal(read);
   const config = read.config, wanted = storeEntries(config);
   let current: { lock: ProjectLock | null; read: Read | null }, rebuilt = false;
   try { current = lockFor(project); }

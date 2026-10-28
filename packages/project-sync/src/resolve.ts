@@ -24,7 +24,7 @@ import { DEFAULT_ENGINES } from '../../skill-manifest/src/engine.js';
 import type { Engine } from '../../skill-manifest/src/engine.js';
 import type { AuthoredPin } from '../../skill-manifest/src/resolve-store-git.js';
 import { configRefusal, lockMismatch } from '../../project-config/src/refusal.js';
-import { readConfig } from '../../project-config/src/config.js';
+import { invalidConfigRefusal, readConfig } from '../../project-config/src/config.js';
 import type { ConfigEntry, ProjectConfig } from '../../project-config/src/schema.js';
 import { LOCK_FILE, lockAgrees, lockItem, readLock } from '../../project-config/src/lock.js';
 import type { LockItem, ProjectLock } from '../../project-config/src/lock.js';
@@ -209,7 +209,7 @@ export function resolveProject(input: ResolveInput): Resolved {
     if (frozen) throw configRefusal('LOCK_CONFIG_MISSING');
     return legacy(input, lockSeen);
   }
-  if (read.state === 'invalid') throw configRefusal(read.code);
+  if (read.state === 'invalid') throw invalidConfigRefusal(read);
   const config = read.config, needStore = KINDS.some(([name]) => config[name].some(e => e.source === 'store'));
   // The lock: a frozen run refuses any problem with it here, before any other read.
   let lock: ProjectLock | null = null, lockInfo: Resolved['lock'] = { state: 'not-used', sha256: null, bytes: null, code: null };

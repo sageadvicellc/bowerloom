@@ -56,5 +56,6 @@ test('L2 and M4. an engine id that is not claude or codex in the earlier install
   const r = run(p, ['skills', 'migrate', 'plan', '--state', v1State, '--json']);
   assert.notEqual(r.status, 0, r.stdout);
   const e = errorOf(r.stderr);
-  assert.match(e.code, /^[A-Z_]+$/); assert.doesNotMatch(r.stderr, /TypeError/);
+  assert.equal(e.code, 'SKILLS_MIGRATE_STATE_INVALID'); assert.doesNotMatch(r.stderr, /TypeError/);
+  assert.match(e.message, /\.bowerloom-skills/, 'the fixed words cover a damaged earlier install in the project');
 });
