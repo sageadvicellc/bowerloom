@@ -56,17 +56,23 @@ function keys(c: Checker, value: JsonValue | undefined, where: string, required:
   return ok ? { obj: value, blocks } : undefined;
 }
 
-/** Words of a key that make it permission-like: it would grant, ask, trust, sandbox, hook, or reach tools. */
+/**
+ * Words of a key that make it permission-like: it would grant, ask, trust, sandbox, hook, reach tools or servers, run a
+ * command, set the environment, or widen what the engine can write or reach.
+ */
 const PERMISSION_WORDS = new Set([
   'permission', 'permissions', 'allow', 'allowed', 'allowlist', 'deny', 'denied', 'denylist', 'disallowed', 'ask',
   'sandbox', 'approval', 'approvals', 'approve', 'autoapprove', 'trust', 'trusted', 'bypass', 'dangerously', 'yolo',
-  'tools', 'hook', 'hooks', 'mcp',
+  'tools', 'hook', 'hooks', 'mcp', 'server', 'servers', 'writable', 'network', 'shell', 'environment', 'env', 'command',
+  'commands', 'cmd', 'exec', 'executable', 'args', 'argv', 'mode', 'script', 'scripts', 'helper', 'policy', 'profile',
 ]);
+const PERMISSION_PHRASES = ['full_auto', 'status_line'];
 const keyWords = (key: string) => key.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
 /** True when a key of a private block is permission-like, such as `permissions`, `allowed-tools`, or `sandbox_mode`. */
 export function isPermissionKey(key: string): boolean {
   const w = keyWords(key);
-  return w.some(x => PERMISSION_WORDS.has(x)) || w.join('_').includes('full_auto');
+  const joined = w.join('_');
+  return w.some(x => PERMISSION_WORDS.has(x)) || PERMISSION_PHRASES.some(p => joined.includes(p));
 }
 const BAD_REFERENCE = /\$\{(?![A-Za-z_][A-Za-z0-9_]*\})/;
 
@@ -222,7 +228,7 @@ function checkOverrides(c: Checker, value: JsonValue | undefined): LayerOverride
 const SKILL_FIELDS = ['name', 'description', 'license', 'compatibility', 'metadata'] as const;
 
 /** Portable skill frontmatter: the open core fields only. Any other key is refused, `x-` keys among them. */
-export function checkSkill(c: Checker, folder: string, data: Obj, body: string, files: readonly string[], contentHash: string): SkillEntry | undefined {
+export function checkSkill(c: Checker, folder: string, data: Obj, body: string, files: readonly string[], contentHash: string, executable: readonly string[]): SkillEntry | undefined {
   const k = keys(c, data, 'The skill frontmatter', ['name', 'description'], SKILL_FIELDS.slice(2), false, 'SKILL_UNKNOWN_FIELD');
   if (!k) return undefined;
   const { obj } = k;
@@ -230,7 +236,7 @@ export function checkSkill(c: Checker, folder: string, data: Obj, body: string, 
   if (obj.name !== folder) return c.fail('SKILL_NAME_MISMATCH', 'The skill name must equal its folder name.');
   const description = text(c, obj.description, 'The skill description', 1024);
   let ok = description !== undefined;
-  const entry: { -readonly [K in keyof SkillEntry]: SkillEntry[K] } = { id: folder, name: folder, description: description ?? '', body, files, contentHash, privateBlocks: {} };
+  const entry: { -readonly [K in keyof SkillEntry]: SkillEntry[K] } = { id: folder, name: folder, description: description ?? '', body, files, contentHash, executable, privateBlocks: {} };
   for (const f of ['license', 'compatibility'] as const) {
     if (!Object.hasOwn(obj, f)) continue;
     const v = text(c, obj[f], `The skill ${f}`, 500);
@@ -333,7 +339,8 @@ export function checkHooks(c: Checker, value: JsonValue): HookEntry[] | undefine
     if (!h) return undefined;
     const id = isId(h.obj.id) ? h.obj.id : c.fail('INVALID_ID', `${where}.id must be lowercase letters, digits, and single hyphens.`);
     const event = typeof h.obj.event === 'string' && /^[A-Za-z][A-Za-z0-9]{0,63}$/.test(h.obj.event) ? h.obj.event : c.fail('INVALID_FIELD', `${where}.event must be an event name such as PreToolUse.`);
-    const command = oneLine(c, h.obj.command, `${where}.command`, 8192);
+    // At most one scanned line (DEFINITION_LIMITS.lineChars), so the secret scan reads all of it.
+    const command = oneLine(c, h.obj.command, `${where}.command`, DEFINITION_LIMITS.lineChars);
     const strength = word(c, h.obj.strength, STRENGTHS, `${where}.strength`);
     const matcher = Object.hasOwn(h.obj, 'matcher') ? oneLine(c, h.obj.matcher, `${where}.matcher`) : null;
     const timeout = Object.hasOwn(h.obj, 'timeout') ? positiveMs(c, h.obj.timeout, `${where}.timeout`) : null;

@@ -13,17 +13,17 @@ export type {
 export type {
   Definition, DefinitionFile, EngineTarget, EnvValue, Filterable, GuardrailRule, HarnessFile, HookEntry, JsonValue,
   LayerOverride, LoadResult, McpServer, PartEntries, PartPointers, PrivateBlocks, Problem, SandboxRequirement, SecretRef,
-  SkillEntry, SkillSettings, SourceRecord, SubagentEntry,
+  ScriptEntry, SkillEntry, SkillSettings, SourceRecord, SubagentEntry,
 } from './types.js';
-export { parseStrictJson, readFrontmatter } from './json.js';
+export { jsonValueFault, parseStrictJson, readFrontmatter } from './json.js';
 export type { FrontmatterResult, StrictJsonCode, StrictJsonResult } from './json.js';
 export { isDefinitionFolder, loadDefinition } from './load.js';
 export { isPermissionKey } from './schema.js';
-export { REVISION_PREFIX, canonicalBytes, computeRevision, skillContentHash } from './revision.js';
+export { REVISION_PREFIX, canonicalBytes, computeRevision, fileContentHash, skillContentHash } from './revision.js';
 export { INCOMPLETE_RULES, isReferenceOnly, isSafeName, isSecretKey, safeName, scanSecrets } from './secrets.js';
 export type { SecretFinding } from './secrets.js';
 export { entriesOf, resolveLayers } from './layers.js';
-export type { ApprovedChange, HiddenItem, LayerInput, Placed, ResolveOptions, ResolveResult, ResolvedHarness } from './layers.js';
+export type { ApprovedChange, HiddenItem, LayerInput, Placed, ResolveOptions, ResolveResult, ResolvedHarness, TrustReason } from './layers.js';
 export { appliesTo, selectForEngine } from './select.js';
 export type { EngineView, Excluded, ExcludedPart, ViewSource } from './select.js';
 export {

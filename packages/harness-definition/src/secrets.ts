@@ -18,7 +18,8 @@
  * - A `.json` file that is not strict JSON is an `unparseable-json` finding, and its lines are scanned as text.
  * A finding names the file, the line or the JSON pointer, and the rule. It never holds the value it found.
  */
-import { decodeText, isRecord, parseStrictJson, readFrontmatter } from './json.js';
+import { parseDocument } from 'yaml';
+import { decodeText, isRecord, jsonValueFault, parseStrictJson, readFrontmatter, toJsonValue } from './json.js';
 import type { DefinitionFile, JsonValue } from './types.js';
 import { DEFINITION_LIMITS } from './words.js';
 
@@ -34,28 +35,33 @@ export interface SecretFinding {
 /** Rules that mean the scan could not finish. The loader reports them as SECRET_SCAN_INCOMPLETE. */
 export const INCOMPLETE_RULES = Object.freeze(['line-too-long', 'token-too-long', 'unparseable-json'] as const);
 
-/** Shapes, each anchored at the start of a token. The third item asks for a digit in the match. */
+/**
+ * Shapes. Each is sticky: it is tried at the start of every alphanumeric run in a token, so `id-AKIA...`,
+ * `x-ghp_...`, and `cfg.ghp_...` are found. Every repeat is bounded, so a try reads a bounded part of the token. The
+ * third item asks for a digit in the match.
+ */
 const SHAPES: readonly (readonly [string, RegExp, boolean])[] = [
-  ['aws-access-key', /^(?:AKIA|ASIA|AGPA|AIDA|AROA|ANPA|ANVA|AIPA)[0-9A-Z]{16}(?![0-9A-Z])/, false],
-  ['github-token', /^gh[pousr]_[A-Za-z0-9]{36}/, false],
-  ['github-token', /^github_pat_[A-Za-z0-9_]{22}/, false],
-  ['gitlab-token', /^glpat-[A-Za-z0-9_-]{20}/, false],
-  ['anthropic-key', /^sk-ant-[A-Za-z0-9_-]{20}/, true],
-  ['openai-key', /^sk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{20}/, true],
-  ['slack-token', /^xox[abposr]-[A-Za-z0-9-]{10}/, false],
-  ['google-api-key', /^AIza[0-9A-Za-z_-]{35}/, false],
-  ['stripe-key', /^[sr]k_live_[0-9A-Za-z]{16}/, false],
-  ['npm-token', /^npm_[A-Za-z0-9]{36}/, false],
-  ['huggingface-token', /^hf_[A-Za-z0-9]{34}/, false],
-  ['supabase-token', /^sbp_[a-f0-9]{40}/, false],
-  ['notion-token', /^(?:ntn_[A-Za-z0-9]{40}|secret_[A-Za-z0-9]{43})/, true],
-  ['twilio-key', /^SK[0-9a-fA-F]{32}(?![0-9a-fA-F])/, false],
-  ['telegram-token', /^[0-9]{8,10}:[A-Za-z0-9_-]{35}/, false],
-  ['discord-token', /^[MNO][A-Za-z0-9_-]{23,27}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27}/, false],
-  ['jwt', /^eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8}/, false],
-  ['webhook-url', /^https?:\/\/(?:(?:canary\.|ptb\.)?discord(?:app)?\.com\/api\/webhooks\/[0-9]+\/[A-Za-z0-9_-]{20}|hooks\.slack\.com\/services\/[A-Za-z0-9]+\/[A-Za-z0-9]+\/[A-Za-z0-9]{8})/, false],
-  // A password inside a URL. A `${NAME}` password is a reference and passes.
-  ['url-credentials', /^[a-z][a-z0-9+.-]{0,30}:\/\/[^:/@$]{1,256}:[^@/$]{1,256}@/i, false],
+  ['aws-access-key', /(?:AKIA|ASIA|AGPA|AIDA|AROA|ANPA|ANVA|AIPA)[0-9A-Z]{16}(?![0-9A-Z])/y, false],
+  ['github-token', /gh[pousr]_[A-Za-z0-9]{36}/y, false],
+  ['github-token', /github_pat_[A-Za-z0-9_]{22}/y, false],
+  ['gitlab-token', /glpat-[A-Za-z0-9_-]{20}/y, false],
+  ['anthropic-key', /sk-ant-[A-Za-z0-9_-]{20}/y, true],
+  ['openai-key', /sk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{20}/y, true],
+  ['slack-token', /xox[abposr]-[A-Za-z0-9-]{10}/y, false],
+  ['google-api-key', /AIza[0-9A-Za-z_-]{35}/y, false],
+  ['stripe-key', /[sr]k_live_[0-9A-Za-z]{16}/y, false],
+  ['npm-token', /npm_[A-Za-z0-9]{36}/y, false],
+  ['huggingface-token', /hf_[A-Za-z0-9]{34}/y, false],
+  ['supabase-token', /sbp_[a-f0-9]{40}/y, false],
+  ['notion-token', /(?:ntn_[A-Za-z0-9]{40}|secret_[A-Za-z0-9]{43})/y, true],
+  ['twilio-key', /SK[0-9a-fA-F]{32}(?![0-9a-fA-F])/y, false],
+  // Also the bot URL form: https://api.telegram.org/bot<token>/getMe.
+  ['telegram-token', /(?:bot)?[0-9]{8,10}:[A-Za-z0-9_-]{35}/y, false],
+  ['discord-token', /[MNO][A-Za-z0-9_-]{23,27}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27}/y, false],
+  ['jwt', /eyJ[A-Za-z0-9_-]{8,512}\.eyJ[A-Za-z0-9_-]{8,4096}\.[A-Za-z0-9_-]{8}/y, false],
+  ['webhook-url', /https?:\/\/(?:(?:canary\.|ptb\.)?discord(?:app)?\.com\/api\/webhooks\/[0-9]{1,24}\/[A-Za-z0-9_-]{20}|hooks\.slack\.com\/services\/[A-Za-z0-9]{1,24}\/[A-Za-z0-9]{1,24}\/[A-Za-z0-9]{8})/y, false],
+  // A password inside a URL; the user may be empty (redis://:pw@host). A `${NAME}` password is a reference and passes.
+  ['url-credentials', /[a-z][a-z0-9+.-]{0,30}:\/\/[^:/@$]{0,256}:[^@/$]{1,256}@/iy, false],
 ];
 const PRIVATE_KEY = /-----BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY/;
 const SPLIT = /[\s"'`,;()[\]<>|\\]+/;
@@ -98,16 +104,30 @@ function words(key: string): string[] {
   return key.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
 }
 
-/** True when a key names a secret: `API_KEY`, `apiKey`, `STRIPE_SECRET_KEY`, `DB_PASS`, `Authorization`, `tokens`. */
+/** Secret words found inside a name with no separators: `GITHUBTOKEN`, `DBPASSWORD`, `MYSECRET`. */
+const SECRET_SUBSTRINGS = ['password', 'passwd', 'passphrase', 'secret', 'token', 'apikey', 'credential', 'privatekey', 'accesskey', 'bearer'];
+/** Words that hold a secret word and describe something else. They are removed before the substring test. */
+const NOT_SECRET_SUBSTRINGS = /tokeniz(?:er|ers|ed|e|ation)|secretar(?:y|ies)/g;
+
+/**
+ * True when a key names a secret: `API_KEY`, `apiKey`, `STRIPE_SECRET_KEY`, `DB_PASS`, `Authorization`, `tokens`,
+ * `GITHUBTOKEN`, `PASSWORD1`, `PW`, and a bare `key`. Trailing digits do not count. Names that describe a secret
+ * rather than hold one pass: `token_url`, `max_tokens`, `public_key`, `apiKeyHelper`, `tokenizer`.
+ */
 export function isSecretKey(key: string): boolean {
   if (key.length > 128) return false;
-  const w = words(key);
+  const all = words(key);
+  const w = all.map(x => x.replace(/[0-9]+$/, '')).filter(Boolean);
   const last = w.at(-1);
   if (last === undefined || QUALIFIERS.has(last) || (w.length > 1 && COUNT_FIRST.has(w[0]!))) return false;
-  if (w.some(x => SECRET_WORDS.has(x))) return true;
-  if (!LAST_ONLY.has(last)) return false;
-  if (last === 'key' || last === 'keys') return w.length > 1 && !KEY_BENIGN_BEFORE.has(w.at(-2)!);
-  return true;
+  if (/^(?:max|min|num|total)/.test(w.join(''))) return false;
+  if (w.some(x => SECRET_WORDS.has(x) || x === 'pw')) return true;
+  if (LAST_ONLY.has(last)) {
+    if (last !== 'key' && last !== 'keys') return true;
+    if (w.length === 1 || !KEY_BENIGN_BEFORE.has(w.at(-2)!)) return true;
+  }
+  const joined = w.join('').replace(NOT_SECRET_SUBSTRINGS, '');
+  return SECRET_SUBSTRINGS.some(x => joined.includes(x));
 }
 
 const REFERENCE = /\$\{[A-Za-z_][A-Za-z0-9_]*\}/g;
@@ -128,36 +148,67 @@ function credentialLike(v: string): boolean {
   return (v.length >= 8 && /[0-9]/.test(v) && /[A-Za-z]/.test(v)) || (v.length >= 12 && /[a-z]/.test(v) && /[A-Z]/.test(v.slice(1)));
 }
 
-/** The shape rule a token matches, or null. Tests the token and its pieces between `=`, `&`, `?`, `:`, `@`, and `/`. */
+const ALNUM = /[A-Za-z0-9]/;
+/** The shape rule a token matches, or null. Tries every shape at the start of every alphanumeric run. */
 function shapeOf(token: string): string | null {
-  const candidates = new Set<string>([token, ...token.split(/[=&?]/), ...token.split(/[=&?:@/]/)]);
-  for (const raw of candidates) {
-    const c = raw.replace(/^[^A-Za-z0-9]+/, '');
-    if (c.length < 8) continue;
-    for (const [rule, re, digit] of SHAPES) { const m = re.exec(c); if (m && (!digit || /[0-9]/.test(m[0]))) return rule; }
+  for (let i = 0; i + 8 <= token.length; i++) {
+    if (!ALNUM.test(token[i]!) || (i > 0 && ALNUM.test(token[i - 1]!))) continue;
+    for (const [rule, re, digit] of SHAPES) {
+      re.lastIndex = i;
+      const m = re.exec(token);
+      if (m && (!digit || /[0-9]/.test(m[0]))) return rule;
+    }
   }
   return null;
 }
 
 const PAIR = /^(-{0,2}[A-Za-z_][A-Za-z0-9_.-]{0,127})([=:])(.*)$/;
+/** Query keys that carry a secret in a URL: `?sig=`, `?signature=`, and the cloud signature names. */
+const QUERY_SECRET = /^(?:sig|signature|x-amz-signature|x-goog-signature|x-amz-security-token)$/i;
+const SCHEME_WORD = /^(?:bearer|basic|token)$/i;
+
+/**
+ * The value a name is given at token `i`: the next token, or the one after it when the next is a scheme word, as in
+ * `Authorization: Bearer <value>`. A value after a scheme word is a header, never prose.
+ */
+function valueAt(tokens: readonly string[], i: number): { value: string; header: boolean } | undefined {
+  const next = tokens[i];
+  if (next === undefined) return undefined;
+  if (SCHEME_WORD.test(next) && tokens[i + 1] !== undefined) return { value: tokens[i + 1]!, header: true };
+  return { value: next, header: false };
+}
+
 /** True when the tokens of one line assign a literal to a secret-named name. */
 function assigns(tokens: readonly string[], prose: boolean): boolean {
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i]!;
-    const next = tokens[i + 1];
-    if ((t === '=' || t === ':') && i > 0 && next !== undefined) {
-      if (isSecretKey(tokens[i - 1]!.replace(/^-+/, '')) && literal(next, t === ':' && prose)) return true;
+    if ((t === '=' || t === ':') && i > 0) {
+      const v = valueAt(tokens, i + 1);
+      if (v && isSecretKey(tokens[i - 1]!.replace(/^-+/, '')) && literal(v.value, t === ':' && prose && !v.header)) return true;
+      continue;
+    }
+    // `curl -u user:password`: a password after the colon.
+    if ((t === '-u' || t === '--user') && tokens[i + 1] !== undefined) {
+      const pair = tokens[i + 1]!;
+      const colon = pair.indexOf(':');
+      if (colon >= 0 && literal(pair.slice(colon + 1), false)) return true;
       continue;
     }
     if (/^--?[A-Za-z]/.test(t) && !/[=:]/.test(t)) {
+      const next = tokens[i + 1];
       if (isSecretKey(t.replace(/^-+/, '')) && next !== undefined && !next.startsWith('-') && literal(next, false)) return true;
       continue;
     }
-    for (const piece of t.split(/[?&]/)) {
-      const m = PAIR.exec(piece);
-      if (!m || !isSecretKey(m[1]!.replace(/^-+/, ''))) continue;
-      const proseHere = m[2] === ':' && prose;
-      if (m[3] !== '' ? literal(m[3]!, proseHere) : next !== undefined && literal(next, proseHere)) return true;
+    const pieces = t.split(/[?&]/);
+    for (let p = 0; p < pieces.length; p++) {
+      const m = PAIR.exec(pieces[p]!);
+      if (!m) continue;
+      const name = m[1]!.replace(/^-+/, '');
+      const inQuery = p > 0 && m[2] === '=';
+      if (!isSecretKey(name) && !(inQuery && QUERY_SECRET.test(name))) continue;
+      if (m[3] !== '') { if (literal(m[3]!, m[2] === ':' && prose)) return true; continue; }
+      const v = valueAt(tokens, i + 1);
+      if (v && literal(v.value, m[2] === ':' && prose && !v.header)) return true;
     }
   }
   return false;
@@ -189,6 +240,7 @@ export function scanSecrets(files: readonly DefinitionFile[]): SecretFinding[] {
     let parsed = true;
     if (isJson) { const r = parseStrictJson(text); if (r.ok) value = r.value; else { parsed = false; findings.push({ path: file.path, rule: 'unparseable-json' }); } }
     else if (file.path.endsWith('.md')) { const fm = readFrontmatter(text); if (fm.ok) value = fm.data; }
+    else if (/\.ya?ml$/i.test(file.path)) value = yamlValue(text);
     // A parsed JSON file is scanned through its values, which covers every string and undoes every escape.
     if (!(isJson && parsed)) {
       const prose = PROSE.test(file.path);
@@ -200,6 +252,19 @@ export function scanSecrets(files: readonly DefinitionFile[]): SecretFinding[] {
     if (value !== undefined) fields(value, '', file.path, findings, false);
   }
   return findings;
+}
+
+/**
+ * The value of a YAML file, or undefined when it does not parse to JSON values. A YAML file that does not parse is
+ * still scanned line by line; YAML allows forms such as anchors that strict parsing refuses, so it is not refused.
+ */
+function yamlValue(text: string): JsonValue | undefined {
+  try {
+    const doc = parseDocument(text, { uniqueKeys: false });
+    if (doc.errors.length) return undefined;
+    const raw: unknown = doc.toJS({ maxAliasCount: 100 });
+    return jsonValueFault(raw) === null ? toJsonValue(raw) : undefined;
+  } catch { return undefined; }
 }
 
 function scanBinary(file: DefinitionFile, findings: SecretFinding[]): void {
