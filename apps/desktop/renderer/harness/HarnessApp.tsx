@@ -35,6 +35,11 @@ import { History } from './screens/History.js';
 import { Help } from './screens/Help.js';
 import { InstallSheet } from './sheets/InstallSheet.js';
 import { StartSheet } from './sheets/StartSheet.js';
+import { AdoptSheet } from './sheets/AdoptSheet.js';
+import { ProjectSheet } from './sheets/ProjectSheet.js';
+import { EngineProvider } from './engine.js';
+import { createSampleEngine } from '../../shared/engine/sample.js';
+import type { EngineBridge } from '../../shared/engine/types.js';
 import { WORDS } from './words.js';
 
 /** The screen a route names. */
@@ -66,6 +71,8 @@ function Overlays(): ReactElement {
     <>
       <InstallSheet open={ui.install.open} projectId={ui.install.projectId} harnessId={ui.install.harnessId} step={ui.install.step} interfaceIds={ui.install.interfaceIds} onStep={ui.setInstallStep} onClose={ui.closeInstall} />
       <StartSheet open={ui.start.open} harnessId={ui.start.harnessId} projectId={ui.start.projectId} onClose={ui.closeStart} />
+      <AdoptSheet open={ui.adopt.open} folderId={ui.adopt.folderId} onClose={ui.closeAdopt} />
+      <ProjectSheet open={ui.projectSheet.open} folderId={ui.projectSheet.folderId} mode={ui.projectSheet.mode} keep={ui.projectSheet.keep} onClose={ui.closeProject} />
       <Toast />
     </>
   );
@@ -82,10 +89,12 @@ function Routes({ bridge, realMode }: { bridge: RealBridge | null; realMode: boo
  * `realMode` is true for the launch on the person's own folders (`--prototype-v3-real`, the address `#prototype-v3-real`); `real` is its read-only bridge, null when the window has none or a partial one.
  * In real mode Choose reads the person's folders and the world starts empty; with no bridge Choose shows the no-bridge error, and never the sample. Without `realMode`, a bridge makes it real (a caller that gives only the bridge).
  */
-export function HarnessApp({ store: given, real = null, realMode = real !== null }: { store?: HarnessStore; real?: RealBridge | null; realMode?: boolean }): ReactElement {
+export function HarnessApp({ store: given, real = null, realMode = real !== null, engine: givenEngine }: { store?: HarnessStore; real?: RealBridge | null; realMode?: boolean; engine?: EngineBridge | null | undefined }): ReactElement {
   // The world is made once, from the sample, dated from the clock now (the runs started 12 minutes ago). Runs that are running at the start finish by themselves after about 15 seconds.
   // On the person's own folders it starts empty, and the first read replaces it.
   const [store] = useState(() => given ?? createHarnessStore({ initial: realMode ? blankRealState(realNow()) : createSampleWorld(realNow()), now: realNow, finishRunning: true }));
   useEffect(() => () => store.dispose(), [store]);
-  return <HarnessProvider store={store}><UiProvider><Routes bridge={real} realMode={realMode} /></UiProvider></HarnessProvider>;
+  // The adopt and install sheets: the sample answers in memory and writes nothing; real mode uses the window's engine bridge, or none (the sheets then say so).
+  const [engine] = useState<EngineBridge | null>(() => (givenEngine !== undefined ? givenEngine : realMode ? null : createSampleEngine()));
+  return <HarnessProvider store={store}><EngineProvider engine={engine}><UiProvider><Routes bridge={real} realMode={realMode} /></UiProvider></EngineProvider></HarnessProvider>;
 }

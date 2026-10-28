@@ -215,3 +215,19 @@
 @media (prefers-reduced-motion: reduce) {
   [data-home] .hx-row, [data-home] .hx-node, [data-home] .hx-edge, [data-home] .hx-lrow { transition: none !important; }
 }
+
+/*
+ * Goal 2: every control answers the pointer, also when it is already on. A pressed toggle, a selected row, the current tab and a picked rating keep their fill
+ * and gain a stronger edge under the pointer. Colour only, in the hover time of the motion tokens; nothing moves (Emil: frequent actions get no travel).
+ */
+[data-home][data-shell="harness"] .kit-button[aria-expanded="true"]:not([data-variant="primary"]):not([data-variant="text"]):hover, [data-home][data-shell="harness"] .kit-button[data-icon-only][aria-pressed="true"]:hover { border-color: var(--accent-strong); box-shadow: inset 0 0 0 1px var(--accent-strong); }
+[data-home] .hx-row[data-selected]:hover, [data-home] .hx-lrow[data-selected]:hover, [data-home] .hx-node[data-selected]:hover, [data-home] .hx-tab[aria-pressed="true"]:hover { box-shadow: inset 0 0 0 2px var(--accent-strong); }
+/* A missing part keeps its dashed amber edge and still answers the pointer. */
+[data-home] .hx-lrow[data-missing]:hover, [data-home] .hx-node[data-missing]:hover { border-color: var(--accent-strong); }
+/*
+ * Goal 2: the sage leaf stays at the top of the navigation in its rail too (the harness-first shell only, [data-shell="harness"]; the home app keeps its own rail). The rail is 48 px, so the leaf stands under the toggle on its own line, and the
+ * name stays in the page for a screen reader. The leaf is the practice's fixed mark; its size and colour are the navigation's own (temporary tokens).
+ */
+[data-home][data-shell="harness"] .hm-nav[data-mode="rail"] .hm-nav-top { flex-direction: column; justify-content: center; gap: var(--hm-space-1); padding: var(--hm-space-2) var(--hm-space-2) var(--hm-space-1); }
+[data-home][data-shell="harness"] .hm-nav[data-mode="rail"] .hm-brand { display: flex; justify-content: center; }
+[data-home][data-shell="harness"] .hm-nav[data-mode="rail"] .hm-brand > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

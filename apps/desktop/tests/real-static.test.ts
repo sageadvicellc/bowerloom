@@ -9,6 +9,8 @@ import { APP_INDEX, decideNavigation, isAllowedRealSender, isAllowedSender } fro
 import { registerRealIpc, usableHome } from '../main/real-ipc.js';
 import type { RealEvent } from '../main/real-ipc.js';
 import { REAL_CALLS, REAL_CHANNELS, REAL_HARNESS_HASH, REAL_HASH } from '../shared/real/types.js';
+import { ENGINE_CALLS, ENGINE_CHANNELS } from '../shared/engine/types.js';
+import type { EngineCall } from '../shared/engine/types.js';
 import { CHANNELS } from '../shared/channels.js';
 import { DESKTOP, tempDir } from './support.js';
 import { bundleOf, checkEntries, importsOf, problemsOfBuilt, problemsOfLibraryBundle, problemsOfShippedBundle, tokenize } from './fixtures-real/static-check.js';
@@ -43,7 +45,8 @@ const MAIN_POLICY: Policy = {
   modules: { 'node:fs': FS_READ, 'node:path': '*', 'node:url': ['fileURLToPath'] },
 };
 const PRELOAD_POLICY: Policy = {
-  allowFile: rel => SHARED_REAL(rel) || /^preload\/real-[\w-]+\.ts$/.test(rel),
+  // The bridge also names the calls of the adopt and install sheets (shared/engine/types.ts): names and channels only, no code that runs.
+  allowFile: rel => SHARED_REAL(rel) || /^preload\/real-[\w-]+\.ts$/.test(rel) || rel === 'shared/engine/types.ts',
   deadOk: {},
   modules: { electron: ['contextBridge', 'ipcRenderer'] },
 };
@@ -350,18 +353,20 @@ test('usableHome accepts an absolute folder only', () => {
 
 // ---- the bridge: exactly three functions
 
-test('the bridge file exposes one object with exactly three functions, each sending on its own channel, and nothing generic', () => {
+test('the bridge file exposes the reader\'s object with exactly three functions and the sheets\' object with one function per engine call, each sending on its own channel, and nothing generic', () => {
   const code = strip(read('preload/real-preload.ts')).replace(/^import .*$/gm, '');
-  assert.equal([...code.matchAll(/exposeInMainWorld\(/g)].length, 1);
+  assert.equal([...code.matchAll(/exposeInMainWorld\(/g)].length, 2);
+  assert.match(code, /exposeInMainWorld\('bowerloomEngine', Object\.freeze\(engine as unknown as EngineBridge\)\)/);
+  assert.match(code, /for \(const call of ENGINE_CALLS\) engine\[call\] = \(\.\.\.args: unknown\[\]\) => ipcRenderer\.invoke\(ENGINE_CHANNELS\[call\], \.\.\.args\)/);
   assert.match(code, /exposeInMainWorld\('bowerloomReal', Object\.freeze\(api\)\)/);
   const start = code.indexOf('const api: RealBridge = {'), body = code.slice(start, code.indexOf('\n};', start));
   for (const call of REAL_CALLS) assert.match(body, new RegExp(`${call}: .*ipcRenderer\\.invoke\\(REAL_CHANNELS\\.${call}`), call);
   assert.equal([...body.matchAll(/^ {2}(\w+):/gm)].length, 3, 'three properties');
-  assert.deepEqual([...code.matchAll(/ipcRenderer\.(\w+)/g)].map(m => m[1]), ['invoke', 'invoke', 'invoke']);
+  assert.deepEqual([...code.matchAll(/ipcRenderer\.(\w+)/g)].map(m => m[1]), ['invoke', 'invoke', 'invoke', 'invoke']);
   assert.doesNotMatch(code, /ipcRenderer\s*[,}]|exposeInMainWorld\('[^']+',\s*ipcRenderer|require\(|process\.|\.on\(|\.send\w*\(|webFrame|shell|clipboard|remote/);
 });
 
-test('the built bridge, run with a fake Electron, exposes exactly three frozen functions that send one message each and turn a refusal into a short code', async () => {
+test('the built bridge, run with a fake Electron, exposes the reader\'s three frozen functions and the sheets\' twelve, each sending one message and turning a refusal into a short code', async () => {
   // The bridge is built in a child process (the bundler is not bundled into the tests), in memory, from the source, with Electron left out.
   const script = "import { build } from 'esbuild'; const o = await build({ entryPoints: ['preload/real-preload.ts'], bundle: true, write: false, format: 'cjs', platform: 'node', external: ['electron'], logLevel: 'silent' }); process.stdout.write(o.outputFiles[0].text);";
   const built = spawnSync(process.execPath, ['--input-type=module', '-e', script], { cwd: DESKTOP, encoding: 'utf8', timeout: 60000 });
@@ -369,9 +374,10 @@ test('the built bridge, run with a fake Electron, exposes exactly three frozen f
   const code = built.stdout;
   const sent: [string, unknown[]][] = [];
   let exposed: { name: string; api: Record<string, (...a: unknown[]) => Promise<unknown>> } | null = null;
+  const all = new Map<string, Record<string, unknown>>();
   let fail: Error | null = null;
   const electron = {
-    contextBridge: { exposeInMainWorld: (name: string, api: never) => { exposed = { name, api }; } },
+    contextBridge: { exposeInMainWorld: (name: string, api: never) => { all.set(name, api); if (exposed === null) exposed = { name, api }; } },
     ipcRenderer: { invoke: (channel: string, ...args: unknown[]) => { sent.push([channel, args]); return fail === null ? Promise.resolve('ok') : Promise.reject(fail); } },
   };
   new Function('require', 'module', 'exports', code)((id: string) => { assert.equal(id, 'electron'); return electron; }, { exports: {} }, {});
@@ -386,6 +392,19 @@ test('the built bridge, run with a fake Electron, exposes exactly three frozen f
   await assert.rejects(api.readSelected!(['a']), (e: Error) => e.message === 'UNKNOWN_PLACE');
   fail = new Error('C:\\secret\\path exploded');
   await assert.rejects(api.discoverPlaces!(), (e: Error) => e.message === 'FAILED');
+  // The sheets' object: one frozen function per engine call, each on its own channel, and the mode word.
+  const engine = all.get('bowerloomEngine') as Record<string, unknown> & Record<EngineCall, (...a: unknown[]) => Promise<unknown>>;
+  assert.ok(engine !== undefined);
+  assert.equal(Object.isFrozen(engine), true);
+  assert.deepEqual(Object.keys(engine).sort(), ['mode', ...ENGINE_CALLS].sort());
+  assert.equal(engine.mode, 'real');
+  fail = null; sent.length = 0;
+  for (const call of ENGINE_CALLS) await engine[call]('folder-1');
+  assert.deepEqual(sent, ENGINE_CALLS.map(call => [ENGINE_CHANNELS[call], ['folder-1']]));
+  fail = new Error("Error invoking remote method 'bowerloom-engine:planRemoval': Error: UNKNOWN_FOLDER");
+  await assert.rejects(engine.planRemoval('folder-1'), (e: Error) => e.message === 'UNKNOWN_FOLDER');
+  fail = new Error('/Users/someone/secret exploded');
+  await assert.rejects(engine.folders(), (e: Error) => e.message === 'FAILED');
 });
 
 // ---- main.ts and the launcher: the same lock as every prototype

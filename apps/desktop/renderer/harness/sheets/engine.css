@@ -1,0 +1,71 @@
+/*
+ * The adopt and install sheets (renderer/harness/sheets/AdoptSheet.tsx, ProjectSheet.tsx). Every rule starts at [data-home] and uses the preview's tokens only:
+ * the brand's version 2 is in progress, so no colour or size here is new. Text is 14 px or more and every control is 32 px or more.
+ * Motion (design-motion-principles, Create mode, the weighting Hanna confirmed on 2026-10-24: Emil leads busy actions): ticking, hovering and picking are frequent,
+ * so they change colour only, in the hover time of the motion tokens, and nothing travels. The sheet itself keeps the sheet motion of Sheet.tsx. With "reduce
+ * motion" on, nothing here moves at all. The busy line has a still dot, never a looping one.
+ */
+[data-home] .hx-sheet[data-slot="make-harness"], [data-home] .hx-sheet[data-slot="project"] { margin-top: 1.375rem; max-height: calc(100% - 1.375rem); }
+[data-home] .hx-sheet[data-slot="make-harness"][data-tall], [data-home] .hx-sheet[data-slot="project"][data-tall] { height: min(46rem, calc(100% - 1.375rem)); }
+[data-home] .hxe-body { display: flex; flex-direction: column; gap: var(--hm-space-3); outline: none; }
+[data-home] .hxe-body:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; border-radius: var(--hm-radius-small); }
+[data-home] .hxe-folders { margin-bottom: var(--hm-space-3); }
+[data-home] .hxe-actions { display: flex; flex-wrap: wrap; gap: var(--hm-space-2); margin-top: var(--hm-space-3); }
+
+[data-home] .hxe-section { display: flex; flex-direction: column; gap: var(--hm-space-2); padding-top: var(--hm-space-3); border-top: 1px solid var(--border); }
+[data-home] .hxe-head { display: flex; align-items: baseline; gap: var(--hm-space-2); margin: 0; font-size: var(--hm-text-section); font-weight: 600; line-height: 1.3; }
+[data-home] .hxe-count { font-size: var(--hm-text-base); font-weight: 500; color: var(--text-muted); }
+[data-home] .hxe-sub { margin: var(--hm-space-2) 0 var(--hm-space-1); font-size: var(--hm-text-base); font-weight: 600; color: var(--text-muted); }
+[data-home] .hxe-text { margin: 0; font-size: var(--hm-text-base); line-height: 1.5; overflow-wrap: anywhere; }
+[data-home] .hxe-muted { color: var(--text-muted); }
+[data-home] .hxe-name { font-weight: 600; overflow-wrap: anywhere; }
+[data-home] .hxe-mono, [data-home] .hxe-code { font-family: var(--font-mono); font-size: var(--hm-text-base); overflow-wrap: anywhere; }
+[data-home] .hxe-code { color: var(--text-muted); }
+[data-home] .hxe-default { font-weight: 500; color: var(--text-muted); }
+
+[data-home] .hxe-rows, [data-home] .hxe-ticks, [data-home] .hxe-places, [data-home] .hxe-paths { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--hm-space-2); }
+[data-home] .hxe-places, [data-home] .hxe-paths { gap: 2px; font-size: var(--hm-text-base); line-height: 1.45; }
+[data-home] .hxe-row { display: flex; flex-direction: column; gap: var(--hm-space-1); box-sizing: border-box; padding: var(--hm-space-2) var(--hm-space-3); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); min-width: 0; }
+[data-home] .hxe-row-title { display: flex; flex-wrap: wrap; align-items: center; gap: var(--hm-space-1) var(--hm-space-3); margin: 0; font-size: var(--hm-text-base); line-height: 1.4; }
+[data-home] .hxe-group + .hxe-group { margin-top: var(--hm-space-1); }
+[data-home] .hxe-engine { display: flex; flex-direction: column; gap: var(--hm-space-1); padding: var(--hm-space-3); background: var(--surface-2); border-radius: var(--hm-radius); }
+[data-home] .hxe-engine + .hxe-engine { margin-top: var(--hm-space-2); }
+[data-home] .hxe-engine-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--hm-space-2); margin: 0; font-size: var(--hm-text-name); font-weight: 600; }
+[data-home] .hxe-line[data-result="weakened"], [data-home] .hxe-line[data-result="absent"] { border-left-width: 3px; }
+[data-home] .hxe-line[data-result="weakened"] { border-left-color: var(--hm-amber); }
+[data-home] .hxe-line[data-result="absent"] { border-left-color: var(--hm-ac-red); }
+[data-home] .hxe-notice { margin: 0; padding: var(--hm-space-2) var(--hm-space-3); background: var(--surface-2); border-radius: var(--hm-radius-small); }
+[data-home] .hxe-variants, [data-home] .hxe-reconcile { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: var(--hm-space-3); }
+[data-home] .hxi-choice[data-off] { cursor: not-allowed; color: var(--text-muted); }
+/* A picked choice still answers the pointer: a stronger edge, colour only. */
+[data-home] .hxi-choice[aria-checked="true"]:not([data-off]):not([aria-disabled="true"]):hover { box-shadow: inset 0 0 0 2px var(--accent-strong); }
+[data-home] .hxi-choice[data-off]:hover { border-color: var(--hm-border); }
+
+/* A tick box with its words: the item above, the box and what ticking means below. Ticked: the accent edge, never a tick drawn by the app. */
+[data-home] .hxe-tick { display: flex; flex-direction: column; gap: var(--hm-space-2); box-sizing: border-box; padding: var(--hm-space-3); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small);
+  transition: border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease); }
+[data-home] .hxe-tick:hover { border-color: var(--accent-strong); }
+[data-home] .hxe-tick[data-on] { background: var(--accent-soft); border-color: var(--accent-strong); box-shadow: inset 0 0 0 1px var(--accent-strong); }
+[data-home] .hxe-tick:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
+[data-home] .hxe-tick-body { display: flex; flex-direction: column; gap: var(--hm-space-1); min-width: 0; }
+[data-home] .hxe-tick-body:empty { display: none; }
+[data-home] .hxe-tick-label { display: flex; align-items: center; gap: var(--hm-space-2); min-height: 2rem; font-size: var(--hm-text-base); font-weight: 600; cursor: pointer; }
+[data-home] .hxe-approve .hxe-tick { border-width: 2px; }
+
+[data-home] .hxe-code-block { margin: 0; padding: var(--hm-space-3); background: var(--surface-2); color: var(--text); border-radius: var(--hm-radius-small); font-family: var(--font-mono); font-size: var(--hm-text-base); line-height: 1.5;
+  white-space: pre-wrap; overflow-wrap: anywhere; max-height: 22rem; overflow: auto; }
+[data-home] .hxe-code-block:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+/* A long environment name wraps inside its column instead of pushing the value out of the sheet (U13). */
+[data-home] .hxe-env { display: grid; grid-template-columns: fit-content(40%) minmax(0, 1fr); gap: 2px var(--hm-space-3); margin: 0; font-size: var(--hm-text-base); }
+[data-home] .hxe-env dt { min-width: 0; overflow-wrap: anywhere; }
+[data-home] .hxe-env > div { display: contents; }
+[data-home] .hxe-env dd { margin: 0; overflow-wrap: anywhere; }
+
+[data-home] .hxe-refusal { display: flex; flex-direction: column; gap: var(--hm-space-2); padding: var(--hm-space-3) var(--hm-space-4); background: var(--surface-2); border: 1px solid var(--hm-ac-red); border-radius: var(--hm-radius); }
+[data-home] .hxe-refusal-title { display: flex; flex-wrap: wrap; align-items: center; gap: var(--hm-space-3); margin: 0; font-weight: 600; }
+[data-home] .hxe-busy { display: flex; align-items: center; gap: var(--hm-space-2); margin: 0; font-size: var(--hm-text-base); color: var(--text-muted); }
+[data-home] .hxe-busy-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--accent); }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-home] .hxe-tick { transition: none !important; }
+}

@@ -238,9 +238,9 @@ test('Install and Start are not in this preview: a note says so and no sheet ope
   for (const program of ['Claude Code', 'Codex', 'OpenCode', 'Hermes']) await expect(runsIn, program).not.toContainText(program);
   await p.getByRole('button', { name: 'About this preview', exact: true }).click();
   const pop = p.locator('.hx-preview-pop');
-  await expect(pop).toContainText('This preview reads your own folders. It changes none of them and writes nothing.');
+  await expect(pop).toContainText('This preview reads your own folders. It writes only after you approve a plan in Projects.');
   await expect(pop).toContainText('Not in this preview');
-  await expect(pop.locator('li')).toHaveText(['Install', 'Start', 'Compare', 'Runs']);
+  await expect(pop.locator('li')).toHaveText(['Assign to project', 'Start', 'Compare', 'Runs']);
   await everyStep('preview', false);
   await shot(p, 'real-6-preview');
   await p.keyboard.press('Escape');
