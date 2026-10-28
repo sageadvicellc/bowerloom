@@ -49,7 +49,8 @@ export const ENGINE_WORDS = deepFreeze({
     keptChanged: 'Changed since. It stays.', keptUnsafe: 'Not safe to read. It stays.',
     noBridge: 'This window cannot reach Bowerloom. Start it with the real launch command.',
     agentsPresent: 'AGENTS.md is in the folder.', agentsPlanned: 'This install writes AGENTS.md.', approvedEarlier: 'approved earlier, unchanged since', approvedNow: 'approved now',
-    readyToWrite: 'Ready to write.', notReady: 'Not ready: the plan cannot be written yet. Review lists why.',
+    readyToWrite: 'Ready to write.',
+    journalOk: 'The stopped run\'s record is whole.', journalDamaged: 'The stopped run\'s record is damaged. Check these files by hand.',
     nothingFound: 'Bowerloom found nothing to carry over in this folder.', noEngines: 'This harness lists no interface. Add one to harness.json.',
     nothingToRemove: 'Nothing to remove. Bowerloom wrote nothing here.', nothingChanged: 'Nothing changed. The folder already matched the plan.',
     noText: 'Bowerloom has no file text for this approval.', cannotApprove: 'This line cannot be approved here. Change the harness first.',
@@ -66,6 +67,7 @@ export const ENGINE_WORDS = deepFreeze({
     recoverIntro: 'An earlier run stopped part way. This plan finishes it or takes it back. Nothing else runs until it is done.',
     keepIntro: 'You changed these files after Bowerloom wrote them. Keep your versions, or put Bowerloom\'s back.',
     resultIntro: 'Bowerloom wrote only what the plan you approved listed. Each file is below.',
+    notReady: 'Not ready: Bowerloom\'s plan is not ready though nothing waits on you. Plan again to check.',
   },
 } as const);
 
@@ -132,10 +134,11 @@ export const wroteInstall = (n: number): string => `Installed. ${plural(n, 'file
 /** "Removed. 3 files deleted, 1 put back." */
 export const removedWords = (deleted: number, restored: number): string => `Removed. ${plural(deleted, 'file', 'files')} deleted, ${restored} put back.`;
 /** "1 conflict, 2 acknowledgements, 3 approvals". */
-export function waitingWords(counts: { conflict: number; acknowledge: number; block: number; problem: number; approval: number }): string {
+export function waitingWords(counts: { conflict: number; acknowledge: number; block: number; problem: number; approval: number; unreadable?: number }): string {
   const parts = [
     counts.conflict ? plural(counts.conflict, 'copy to pick', 'copies to pick') : '', counts.acknowledge ? plural(counts.acknowledge, 'acknowledgement', 'acknowledgements') : '',
-    counts.approval ? plural(counts.approval, 'approval', 'approvals') : '', counts.block ? plural(counts.block, 'file to change', 'files to change') : '', counts.problem ? plural(counts.problem, 'problem', 'problems') : '',
+    counts.approval ? plural(counts.approval, 'approval', 'approvals') : '', counts.block ? plural(counts.block, 'file to change', 'files to change') : '',
+    counts.unreadable ? plural(counts.unreadable, 'approval with no text', 'approvals with no text') : '', counts.problem ? plural(counts.problem, 'problem', 'problems') : '',
   ].filter(Boolean);
   return parts.length === 0 ? ENGINE_WORDS.hint.nothingWaits : parts.join(', ');
 }

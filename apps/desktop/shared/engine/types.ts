@@ -111,6 +111,8 @@ export interface AdoptApprovalView {
   readonly text: readonly { readonly path: string; readonly text: string }[];
   /** A hash of everything above. A tick names it, so a change to any of it clears the tick (U3). */
   readonly hash: string;
+  /** Why this approval cannot be given here, or null. An approval with no text to show is a block, never a tick (W4). */
+  readonly blocked: string | null;
 }
 export interface AdoptView {
   readonly folder: string;
@@ -222,6 +224,8 @@ export interface ApproveLineView extends LossView {
   readonly key: string;
   /** False for a line whose entry the definition does not hold: it is shown, and it offers no tick (SL3). */
   readonly approvable: boolean;
+  /** The entry's own text in the harness, as the approval binds it (W7). Empty when the harness does not hold the entry. */
+  readonly text: string;
 }
 /** The answer to a projection plan: the plan, or the lines a person must approve first. */
 export type ProjectAnswer = { readonly kind: 'plan'; readonly plan: ProjectView } | { readonly kind: 'approve'; readonly lines: readonly ApproveLineView[]; readonly approvedSoFar: readonly string[] };

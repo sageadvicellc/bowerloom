@@ -19,6 +19,9 @@ function place(p: Place, s: Scrub): PlaceView {
   return { path: s(p.path), pointer: p.pointer === undefined ? null : s(p.pointer), engines: engines(p.engines), shape: s(p.shape), shapeVersion: p.shapeVersion === null ? null : s(p.shapeVersion) };
 }
 
+/** The reason of an approval that has no text to show (W4): a person never approves what they cannot read. */
+export const NO_TEXT = 'Bowerloom cannot show the text this approval covers, so it cannot be approved here. Plan again, or change the file.';
+
 /** What the main process adds to an adoption view: a hash function, and the exact text each approval covers, from the planned definition files. */
 export interface AdoptExtras {
   readonly hashOf: (value: unknown) => string;
@@ -46,7 +49,7 @@ export function adoptionView(plan: AdoptionPlan, folder: string, s: Scrub, extra
     const body = item === undefined
       ? { key, part: key.split('/')[0] as AdoptPart, id: s(key.slice(key.indexOf('/') + 1)), reasons: ['The plan asks for this approval and lists no item for it.'], places: [], secrets: [], text }
       : { key, part: item.part, id: item.id, reasons: item.needsApproval, places: item.places, secrets: secrets.filter(x => x.key === key), text };
-    return { ...body, hash: extras.hashOf(body) };
+    return { ...body, hash: extras.hashOf(body), blocked: text.length === 0 ? NO_TEXT : null };
   });
   return {
     folder,
@@ -144,8 +147,8 @@ export function projectView(plan: PortablePlan, folder: string, driftLines: read
 export const approveKey = (line: Parameters<typeof lineKey>[0], entryHash: string | null): string => `${lineKey(line)}\u001f${entryHash ?? 'no-entry'}`;
 
 /** One refused line as the window shows it. A line with no entry hash cannot be approved, and says so by `approvable` (SL3). */
-export function approveLine(l: { part: string; entry: string; field?: string; engine: string; result: string; reason: string }, entryHash: string | null, s: Scrub): ApproveLineView {
-  return { ...lossView(l, s), key: approveKey(l, entryHash), approvable: entryHash !== null };
+export function approveLine(l: { part: string; entry: string; field?: string; engine: string; result: string; reason: string }, entryHash: string | null, s: Scrub, text = ''): ApproveLineView {
+  return { ...lossView(l, s), key: approveKey(l, entryHash), approvable: entryHash !== null, text: s(text) };
 }
 
 export function removalView(plan: PortableRemovalPlan, s: Scrub): RemovalView {

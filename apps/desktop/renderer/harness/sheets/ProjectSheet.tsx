@@ -115,13 +115,15 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
     if (folder === undefined || held) return;
     resetPlans(); setMode(m); setKeep(k); setStep('review'); planOther(folder.id, m, k);
   };
-  const pick = (id: string): void => { if (held || id === picked) return; setPicked(id); setEngines(folders.find(f => f.id === id)?.engines ?? []); resetPlans(); };
+  /** The choices of one folder: its drift action and its CLAUDE.md offer go with it (W3). */
+  const resetChoices = (): void => { setReconcile('accept-agents'); setWriteClaudeMd(false); };
+  const pick = (id: string): void => { if (held || id === picked) return; setPicked(id); setEngines(folders.find(f => f.id === id)?.engines ?? []); resetChoices(); resetPlans(); };
   const choose = (): void => {
     if (engine === null || held) return;
     void call.plan(W.label.chooseFolder, () => chooseFolderCall(engine), got => {
       if (got === null) return;
       setFolders(got.list);
-      if (!folderLine(got.info, 'install').off) { setPicked(got.info.id); setEngines(got.info.engines); resetPlans(); }
+      if (!folderLine(got.info, 'install').off) { setPicked(got.info.id); setEngines(got.info.engines); resetChoices(); resetPlans(); }
     });
   };
   const next = (): void => {
@@ -189,7 +191,7 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
 
   return (
     <Sheet open={open} title={title} onClose={() => { if (!held) onClose(); }} width={880} tall dataSlot="project" head={head} note={engine?.mode === 'sample' ? W.hint.sampleNote : W.hint.readOnly} actions={actions}>
-      <div className="hxe-body" ref={body} tabIndex={-1} aria-label={BODY_NAME[step]} aria-busy={busy}>
+      <div className="hxe-body" role="region" ref={body} tabIndex={-1} aria-label={BODY_NAME[step]} aria-busy={busy}>
         {step === 'folder' ? (
           <FolderStep sheet="install" folders={folders} picked={picked} sample={engine?.mode === 'sample'} noBridge={engine === null} busy={busy} introRef={intro} onPick={pick} onChoose={choose} extra={folderExtra}>{refusal}</FolderStep>
         ) : null}

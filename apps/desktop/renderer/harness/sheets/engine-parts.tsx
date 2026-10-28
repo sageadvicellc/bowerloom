@@ -139,7 +139,7 @@ export function Busy({ words }: { words: string }): ReactElement {
 
 /** A command or a file of code, in full, with its own scroll. Never cut. */
 export function CodeText({ text, label }: { text: string; label: string }): ReactElement {
-  return <pre className="hxe-code-block" tabIndex={0} aria-label={label}>{text}</pre>;
+  return <pre className="hxe-code-block" role="region" tabIndex={0} aria-label={label}>{text}</pre>;
 }
 
 export function ResultDot({ result }: { result: ResultWord }): ReactElement {

@@ -38,6 +38,7 @@ export function ApproveLines({ lines, ticked, held, onTick }: { lines: readonly 
             <>
               <p className="hxe-row-title"><span className="hxe-sub">{ENGINE_NAMES[l.engine]} · {partName(l.part)}</span><span className="hxe-name">{entryName(l.entry, l.field)}</span><ResultDot result={l.result} /></p>
               <p className="hxe-text">{l.reason}</p>
+              {l.text === '' ? null : <CodeText text={l.text} label={`${partName(l.part)} ${entryName(l.entry, l.field)}`} />}
             </>
           );
           // A line whose entry the harness does not hold is shown, and offers no tick (SL3).

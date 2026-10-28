@@ -70,7 +70,14 @@ export function AdoptSheet({ open, folderId, onClose }: { open: boolean; folderI
   const folder = folders.find(f => f.id === picked);
   const plan = (id: string, next: AdoptChoices): void => {
     if (engine === null) return;
-    const run = (): void => { setView(null); void call.plan(W.label.planning, () => engine.planAdoption(id, next), v => setView(v)); };
+    const run = (): void => {
+      setView(null);
+      void call.plan(W.label.planning, () => engine.planAdoption(id, next), v => {
+        setView(v);
+        // The acknowledgements that count are the plan's own: one whose entry left the plan, or changed, leaves the choices too (W5).
+        setChoices(c => ({ ...c, acknowledged: v.unmapped.filter(u => u.acknowledged).map(u => ({ id: u.id, hash: u.hash })) }));
+      });
+    };
     setLastPlan(() => run);
     run();
   };
@@ -131,11 +138,11 @@ export function AdoptSheet({ open, folderId, onClose }: { open: boolean; folderI
     <Sheet open={open} title={step === 'recover' ? W.label.recoverAdoptTitle : W.label.adoptTitle} onClose={() => { if (!held) onClose(); }} width={840} tall dataSlot="make-harness" head={head}
       note={engine?.mode === 'sample' ? W.hint.sampleNote : W.hint.readOnly} actions={actions}>
       {step === 'folder' ? (
-        <div className="hxe-body" ref={body} tabIndex={-1} aria-label={BODY_NAME.folder}>
+        <div className="hxe-body" role="region" ref={body} tabIndex={-1} aria-label={BODY_NAME.folder}>
           <FolderStep sheet="make" folders={folders} picked={picked} sample={engine?.mode === 'sample'} noBridge={engine === null} busy={busy} introRef={intro} onPick={pick} onChoose={choose}>{refusal}</FolderStep>
         </div>
       ) : (
-        <div className="hxe-body" ref={body} tabIndex={-1} aria-label={BODY_NAME[step]} aria-busy={busy}>
+        <div className="hxe-body" role="region" ref={body} tabIndex={-1} aria-label={BODY_NAME[step]} aria-busy={busy}>
           {busy ? <Busy words={call.busy!} /> : null}
           {refusal}
           {step === 'review' && view !== null ? <AdoptReview view={view} held={held} onPick={pickVariant} /> : null}
@@ -143,6 +150,7 @@ export function AdoptSheet({ open, folderId, onClose }: { open: boolean; folderI
           {step === 'recover' && recovery !== null ? (
             <>
               <p className="hxi-sum">{W.paragraph.recoverIntro}</p>
+              <p className="hxe-notice"><StateDot tone={recovery.journal === 'ok' ? 'quiet' : 'bad'}><span data-journal="">{recovery.journal === 'ok' ? W.hint.journalOk : W.hint.journalDamaged}</span></StateDot></p>
               {recovery.check.length === 0 ? null : <Section title={W.label.checkByHand} count={String(recovery.check.length)} slot="check"><ul className="hxe-places">{recovery.check.map(p => <li key={p} className="hxe-mono">{p}</li>)}</ul></Section>}
               <Section title={W.label.changes} count={String(recovery.remove.length + recovery.kept.length)} slot="remove">
                 <ul className="hxi-files">{recovery.remove.map(p => <li key={p} className="hxi-file" data-file={p}><span className="hxi-file-path">{p}</span><StateDot tone={CHANGE_TONE.delete}>{CHANGE_WORDS.delete}</StateDot></li>)}</ul>

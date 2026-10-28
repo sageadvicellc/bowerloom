@@ -25,7 +25,7 @@ import { pendingExists } from '../../../packages/project-sync/src/portable-state
 import { entryHash, loadDefinition } from '../../../packages/harness-definition/src/index.js';
 import type { Definition, FidelityApproval } from '../../../packages/harness-definition/src/index.js';
 import { checkProjectPath } from '../../../packages/project-context/src/index.js';
-import { labelOf, makeScrub } from '../shared/engine/scrub.js';
+import { labelOf, makeScrub, visible } from '../shared/engine/scrub.js';
 import type { Scrub } from '../shared/engine/scrub.js';
 import { ENGINE_IDS, RECONCILE, isEngineId } from '../shared/engine/types.js';
 import type {
@@ -66,6 +66,9 @@ const safeString = (v: unknown, max = 4096): v is string => typeof v === 'string
 const bad = (): never => { throw new EngineCallRefusal('BAD_ARGUMENT'); };
 const stringList = (v: unknown, max = 2000): string[] => (Array.isArray(v) && v.length <= max && v.every(x => safeString(x)) ? [...v as string[]] : bad());
 const revisionArg = (v: unknown): string => (typeof v === 'string' && HEX64.test(v) ? v : bad());
+/** Lists compared without their order: the window may send them in another order than the plan listed them. */
+const sortById = <T extends { id: string }>(list: readonly T[]): T[] => [...list].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+const byKey = <T extends { key: string }>(list: readonly T[]): T[] => [...list].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 /** An ISO time with whole seconds, never later than the clock, as the approval records want it. */
 const isoSeconds = (d: Date): string => new Date(Math.floor(d.getTime() / 1000) * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z');
 const hashed = (v: unknown, max = 2000): { key: string; hash: string }[] => {
@@ -120,7 +123,7 @@ export function refusalOf(error: unknown, s: Scrub): Refusal {
  */
 export function shownLine(raw: RawLine, entry: object | undefined, s: Scrub): Shown {
   const hash = entry === undefined ? null : entryHash(entry);
-  return { line: approveLine(raw, hash, s), raw, hash };
+  return { line: approveLine(raw, hash, s, entry === undefined ? '' : JSON.stringify(entry, null, 2)), raw, hash };
 }
 
 export interface EngineService {
@@ -189,7 +192,8 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
   function register(dir: string): Folder {
     for (const f of byId.values()) if (f.dir === dir) return f;
     count += 1;
-    const id = `folder-${count}`, label = labelOf(dir, homes.find(h => dir === h || dir.startsWith(`${h}/`)) ?? deps.home);
+    // The label reaches the window and main's own dialog, so a hidden character in a folder name is written out first (W2).
+    const id = `folder-${count}`, label = visible(labelOf(dir, homes.find(h => dir === h || dir.startsWith(`${h}/`)) ?? deps.home));
     const key = createHash('sha256').update(dir).digest('hex').slice(0, 32);
     const base = join(deps.stateRoot, 'desktop', key);
     const scrub = makeScrub([{ path: dir, as: label }, ...homes.map(path => ({ path, as: '~' })), { path: base, as: '(the private state folder)' }]);
@@ -291,7 +295,10 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
       try { drift = portableDrift({ projectDir: f.dir, stateDir: f.portableState }); } catch { drift = []; }
       const view = projectView(plan, f.label, drift, f.scrub, a => !mine.has(approveKey(a, a.entryHash)));
       const changing = plan.changes.filter(c => c.action !== 'unchanged').length;
-      return { value: { kind: 'plan', plan: view }, revision: plan.revision, choices: input, ask: changing === 0 ? null : ASK.projection(f.label, changing, plan.revision) };
+      // Main asks before every write that changes anything on disk. Only a no-op plan writes nothing at all; a plan that changes no file of the folder
+      // still writes Bowerloom's record (the receipt and its pending marker), so it asks too, in words that say so (W1).
+      const ask = plan.noop ? null : changing === 0 ? ASK.record(f.label, plan.revision) : ASK.projection(f.label, changing, plan.revision);
+      return { value: { kind: 'plan', plan: view }, revision: plan.revision, choices: input, ask };
     } catch (error) {
       const refused = (error as { code?: unknown; refused?: unknown } | null);
       if (refused?.code !== 'PORTABLE_FIDELITY' || !Array.isArray(refused.refused)) throw error;
@@ -335,14 +342,14 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
       return planned(f, 'adoption', () => {
         const { plan, view, acknowledged } = adoptionNow(f, c);
         // The record keeps what the write must repeat: the picks, the acknowledgements that counted, and each approval with its hash.
-        return { value: view, revision: plan.revision, choices: { picks: c.picks, acknowledged, approvals: view.approvals.map(a => ({ key: a.key, hash: a.hash })) }, ask: ASK.adoption(f.label, plan.files.length, plan.revision) };
+        return { value: view, revision: plan.revision, choices: { picks: c.picks, acknowledged: sortById(acknowledged), approvals: byKey(view.approvals.filter(a => a.blocked === null).map(a => ({ key: a.key, hash: a.hash }))) }, ask: ASK.adoption(f.label, plan.files.length, plan.revision) };
       });
     }),
     runAdoption: (id, revision, choices, approvals) => serial(async () => {
       const f = folderOf(id), rev = revisionArg(revision), c = checkChoices(choices), list = checkApprovals(approvals);
       // The plan shown last was made with the acknowledgements that counted, each by id and hash; the write must name them, and every approval with its
       // hash, exactly. An acknowledgement or an approval of content the person did not read never matches.
-      const shownPicks = { picks: c.picks, acknowledged: c.acknowledged, approvals: list };
+      const shownPicks = { picks: c.picks, acknowledged: sortById(c.acknowledged), approvals: byKey(list) };
       return written(f, 'adoption', rev, shownPicks, async () => {
         const r = await applyAdoption(adoptInput(f, c.picks, c.acknowledged.map(a => a.id)), rev, list.map(a => a.key));
         return { written: r.written.map(p => f.scrub(`.bowerloom/${p}`)) };

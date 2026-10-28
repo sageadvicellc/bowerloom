@@ -173,12 +173,9 @@ test('only main/engine-service.ts calls the packages\' writes of adoption and th
   const callers = sources('main').filter(({ text }) => writes.test(strip(text))).map(f => f.file);
   assert.deepEqual(callers, ['main/engine-service.ts']);
   for (const { file, text } of [...sources('renderer'), ...sources('shared'), ...sources('preload')]) assert.doesNotMatch(strip(text), writes, file);
+  // How each write is held (the plan shown last, the same choices, main's own question, a "no" writes nothing) is tested by behaviour, on real folders:
+  // tests/engine-consent.test.ts and tests/engine-consent2.test.ts. Here only the module boundary is held: one file calls the writes, and it writes no file itself.
   const service = strip(read('main/engine-service.ts'));
-  for (const call of ['applyAdoption(adoptInput(f, c.picks, c.acknowledged.map(a => a.id)), rev, list.map(a => a.key))', 'applyPortable(io, rev)', 'applyPortableRemoval({ projectDir: f.dir, stateDir: f.portableState }, rev)', 'applyAdoptionRecovery({ projectDir: f.dir, stateDir: f.adoptState }, rev)']) assert.ok(service.includes(call), call);
-  assert.equal([...service.matchAll(/revisionArg\(revision\)/g)].length, 5, 'each of the five writes checks its revision first');
-  // Each write goes through `written`: the plan shown last, with the same choices, and main's own question first (U16).
-  assert.equal([...service.matchAll(/return written\(f, '(adoption|adoption-recovery|projection|removal|recovery)'/g)].length, 5);
-  assert.match(service, /if \(shownPlan\.ask !== null && !\(await deps\.confirm\(shownPlan\.ask\)\)\) return cancelled\(\);/);
   assert.doesNotMatch(service, /\b(writeFileSync|writeFile|mkdirSync|rmSync|unlinkSync|renameSync)\b/, 'the service itself writes no file');
   // The engine calls are registered for the harness-first window on the person's own folders only.
   assert.match(strip(read('main/main.ts')), /if \(prototypeV3Real\) \{\s*registerEngineIpc\(/);

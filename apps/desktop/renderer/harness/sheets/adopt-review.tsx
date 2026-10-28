@@ -152,9 +152,11 @@ export function AdoptConfirm({ view, ticked, held, onTick, onAcknowledge, onPick
   const waits = adoptWaits(view, ticked);
   const count = (kind: (typeof waits)[number]['kind']): number => waits.filter(w => w.kind === kind).length;
   const acks = view.unmapped.filter(u => u.gate === 'acknowledge'), blocks = view.unmapped.filter(u => u.gate === 'block');
+  // A block is a file to change, or an approval with no text to show (W4); each is named apart.
+  const unreadable = waits.filter(w => w.kind === 'block' && view.approvals.some(a => a.key === w.id)).length;
   const status = waits.length > 0
-    ? stillWaiting(waitingWords({ conflict: count('conflict'), acknowledge: count('acknowledge'), block: count('block'), problem: count('problem'), approval: count('approval') }))
-    : view.ready ? W.hint.readyToWrite : W.hint.notReady;
+    ? stillWaiting(waitingWords({ conflict: count('conflict'), acknowledge: count('acknowledge'), block: count('block') - unreadable, unreadable, problem: count('problem'), approval: count('approval') }))
+    : view.ready ? W.hint.readyToWrite : W.paragraph.notReady;
   return (
     <>
       <p className="hxi-sum"><StateDot tone={waits.length === 0 && view.ready ? 'good' : 'warn'}><span data-waiting="">{status}</span></StateDot></p>
@@ -167,10 +169,18 @@ export function AdoptConfirm({ view, ticked, held, onTick, onAcknowledge, onPick
         </Section>
       )}
       {view.approvals.length === 0 ? null : (
-        <Section title={W.label.approveEach} count={tickedWords(view.approvals.filter(a => ticked.includes(tickOf(a))).length, view.approvals.length)} slot="approvals">
+        <Section title={W.label.approveEach} count={tickedWords(view.approvals.filter(a => a.blocked === null && ticked.includes(tickOf(a))).length, view.approvals.filter(a => a.blocked === null).length)} slot="approvals">
           <p className="hxe-text hxe-muted">{W.paragraph.approvalsIntro}</p>
           <ul className="hxe-ticks">
-            {view.approvals.map(a => (
+            {view.approvals.map(a => (a.blocked !== null ? (
+              // An approval with no text to show is a block with its reason, never a tick (W4).
+              <li key={a.key} className="hxe-row" data-blocked={a.key}>
+                <p className="hxe-row-title"><span className="hxe-sub">{partName(a.part)}</span><span className="hxe-name">{a.id}</span></p>
+                {a.reasons.map(r => <p key={r} className="hxe-text">{r}</p>)}
+                <Places places={a.places} />
+                <p className="hxe-text"><StateDot tone="bad">{a.blocked}</StateDot></p>
+              </li>
+            ) : (
               <TickRow key={a.key} slot={a.key} checked={ticked.includes(tickOf(a))} disabled={held} label={W.hint.tickToApprove} name={`${partName(a.part)} ${a.id}`} onChange={on => onTick(tickOf(a), on)}>
                 <p className="hxe-row-title"><span className="hxe-sub">{partName(a.part)}</span><span className="hxe-name">{a.id}</span></p>
                 {a.reasons.map(r => <p key={r} className="hxe-text">{r}</p>)}
@@ -180,7 +190,7 @@ export function AdoptConfirm({ view, ticked, held, onTick, onAcknowledge, onPick
                 {a.text.length === 0 ? <p className="hxe-text hxe-muted">{W.hint.noText}</p> : a.text.map(t => <CodeText key={`${t.path}${t.text}`} text={t.text} label={`${t.path} ${a.id}`} />)}
                 {a.text.length === 0 ? null : <p className="hxe-text hxe-muted">{a.text.map(t => t.path).join(', ')}</p>}
               </TickRow>
-            ))}
+            )))}
           </ul>
         </Section>
       )}

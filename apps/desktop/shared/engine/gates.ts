@@ -23,7 +23,10 @@ export function adoptWaits(view: AdoptView, ticked: readonly string[]): AdoptWai
     else if (u.gate === 'acknowledge' && !u.acknowledged) waits.push({ kind: 'acknowledge', id: u.id });
   }
   for (const p of view.problems) waits.push({ kind: 'problem', code: p.code });
-  for (const a of view.approvals) if (!ticked.includes(tickOf(a))) waits.push({ kind: 'approval', key: a.key });
+  for (const a of view.approvals) {
+    if (a.blocked !== null) waits.push({ kind: 'block', id: a.key });
+    else if (!ticked.includes(tickOf(a))) waits.push({ kind: 'approval', key: a.key });
+  }
   return waits;
 }
 
@@ -32,7 +35,7 @@ export const adoptCanWrite = (view: AdoptView, ticked: readonly string[]): boole
 
 /** The approvals to send with a write: exactly the plan's own, each ticked by the person for the content on screen, in the plan's order. */
 export function approvalsToSend(view: AdoptView, ticked: readonly string[]): AdoptApproval[] {
-  return view.approvals.filter(a => ticked.includes(tickOf(a))).map(a => ({ key: a.key, hash: a.hash }));
+  return view.approvals.filter(a => a.blocked === null && ticked.includes(tickOf(a))).map(a => ({ key: a.key, hash: a.hash }));
 }
 
 /** The approve lines that are not ticked yet. Empty: the sheet may plan again with the approvals. */

@@ -144,10 +144,15 @@ function withApprovals(v: AdoptView): AdoptView {
     ...v,
     approvals: v.items.filter(i => i.needsApproval.length > 0).map(i => {
       const body = { key: i.key, part: i.part, id: i.id, reasons: i.needsApproval, places: i.places, secrets: v.secrets.filter(s => s.key === i.key), text: SAMPLE_TEXT[i.key] ?? [] };
-      return { ...body, hash: sampleRevision(JSON.stringify(body)) };
+      return { ...body, hash: sampleRevision(JSON.stringify(body)), blocked: null };
     }),
   };
 }
+/** The entry of each sample line to approve, as the harness holds it (W7). */
+const SAMPLE_ENTRY: Readonly<Record<string, string>> = Object.freeze({
+  'guardrails/no-force-push': JSON.stringify({ id: 'no-force-push', action: 'shell', pattern: 'git push --force *', effect: 'deny', strength: 'enforced' }, null, 2),
+  'hooks/check-shell': JSON.stringify({ id: 'check-shell', event: 'PreToolUse', matcher: 'Bash', command: '${PROJECT_DIR}/scripts/check-shell.sh', strength: 'enforced' }, null, 2),
+});
 /** A sample line's key: the line and a made-up hash of its entry, as main makes it (U15). */
 const sampleKey = (l: LossView): string => approveKey(l, `sha256:${sampleRevision(`${l.part}/${l.entry}`)}`);
 
@@ -245,7 +250,7 @@ function projectFixture(input: ProjectInput, projected: boolean, written: string
 export function sampleEngineFixtures(): { adopt: AdoptView; approveLines: ApproveLineView[]; project(input: ProjectInput): ProjectView } {
   return {
     adopt: withApprovals(adoptFixture()),
-    approveLines: APPROVE.map(l => ({ ...l, key: sampleKey(l), approvable: true })),
+    approveLines: APPROVE.map(l => ({ ...l, key: sampleKey(l), approvable: true, text: SAMPLE_ENTRY[`${l.part}/${l.entry}`] ?? '' })),
     project: input => projectFixture(input, false, null),
   };
 }
@@ -276,7 +281,7 @@ export function createSampleEngine(): EngineBridge {
     if (f.stopped) return refuse('PORTABLE_RECOVERY_REQUIRED');
     if (!f.info.hasDefinition && !f.adopted) return refuse('PORTABLE_DEFINITION_INVALID', ['harness.json']);
     if (input.reconcile === 'merge' && !f.projected) return refuse('PORTABLE_MERGE_NOT_BUILT');
-    const needed = APPROVE.filter(l => input.engines.includes(l.engine)).map(l => ({ ...l, key: sampleKey(l), approvable: true }));
+    const needed = APPROVE.filter(l => input.engines.includes(l.engine)).map(l => ({ ...l, key: sampleKey(l), approvable: true, text: SAMPLE_ENTRY[`${l.part}/${l.entry}`] ?? '' }));
     if (!f.projected && needed.some(l => !input.approve.includes(l.key))) return ok({ kind: 'approve', lines: needed, approvedSoFar: input.approve.filter(k => needed.some(l => l.key === k)) });
     return ok({ kind: 'plan', plan: projectFixture(input, f.projected, f.written) });
   }

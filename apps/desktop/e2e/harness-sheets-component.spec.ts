@@ -121,6 +121,7 @@ test('H1, U1, U5: while a write runs, a plan cannot start and every choice is he
   await adoptReview(p, ready(fx.adopt));
   const s = sheet(p);
   await s.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(s.locator('[data-section="approvals"] input')).not.toHaveCount(0);
   for (const b of await s.locator('[data-section="approvals"] input').all()) await b.check();
   await s.getByRole('button', { name: /^Write \d+ files$/ }).click();
   const write = await waiting(p, 'runAdoption');
@@ -173,6 +174,7 @@ test('SM2, U15: a re-plan that names a changed entry with a new key asks again, 
   await expect(s.locator('[data-engine="codex"] input')).toBeChecked();
   await s.getByRole('button', { name: 'Next', exact: true }).click();
   await answer(p, (await waiting(p, 'planProjection')).id, ok({ kind: 'approve', lines: fx.approveLines, approvedSoFar: [] }));
+  await expect(s.locator('[data-section="approve-lines"] input')).toHaveCount(3);
   for (const b of await s.locator('[data-section="approve-lines"] input').all()) await b.check();
   await s.getByRole('button', { name: 'Plan with these approvals', exact: true }).click();
   const second = await waiting(p, 'planProjection');
@@ -208,6 +210,7 @@ test('U12: Confirm repeats the problems and the files, says "Ready to write." wh
   await adoptReview(p, ready(fx.adopt));
   const s = sheet(p);
   await s.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(s.locator('[data-section="approvals"] input')).not.toHaveCount(0);
   for (const b of await s.locator('[data-section="approvals"] input').all()) await b.check();
   await expect(s.locator('[data-waiting]')).toHaveText('Ready to write.');
   await expect(s.locator('[data-waiting]')).not.toContainText('Still waiting for: Nothing');
@@ -220,4 +223,141 @@ test('U12: Confirm repeats the problems and the files, says "Ready to write." wh
   await s.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(s.locator('[data-section="problems"]')).toContainText('The planned harness does not load.');
   await expect(s.locator('[data-waiting]')).toContainText('1 problem');
+});
+
+// ---- verification round: W3 to W9 and the U12 leftover
+
+const D2 = folder('folder-4', 'second', { hasDefinition: true, engines: ['claude-code', 'codex', 'opencode'] });
+const INPUT3: ProjectInput = { engines: ['claude-code', 'codex', 'opencode'], reconcile: 'accept-agents', writeClaudeMd: false, approve: [] };
+
+async function installReview(p: Page, folders: FolderInfo[]): Promise<ReturnType<typeof sheet>> {
+  await auto(p, 'folders', folders);
+  await p.getByRole('button', { name: 'Install from a folder', exact: true }).click();
+  const s = sheet(p, 'Install a folder\'s harness');
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(s.locator('[data-engine="codex"] input')).toBeChecked();
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  return s;
+}
+
+test('W3, W9: a new folder in the install sheet starts with Accept AGENTS.md, no CLAUDE.md offer ticked, and no ticks of the last folder', async () => {
+  const p = await open();
+  const s = await installReview(p, [D, D2]);
+  await answer(p, (await waiting(p, 'planProjection')).id, ok({ kind: 'approve', lines: fx.approveLines, approvedSoFar: [] }));
+  await s.locator('[data-section="approve-lines"] input').first().check();
+  await s.locator('[data-section="approve-lines"] input').nth(1).check();
+  await s.locator('[data-section="approve-lines"] input').nth(2).check();
+  await s.getByRole('button', { name: 'Plan with these approvals', exact: true }).click();
+  const withOffer = { ...fx.project(INPUT3), offers: [{ action: 'write-claude-md' as const, reason: 'Claude Code does not read AGENTS.md here.' }] };
+  await answer(p, (await waiting(p, 'planProjection')).id, ok({ kind: 'plan', plan: withOffer }));
+  await s.locator('[data-section="drift"]').getByRole('radio', { name: /Keep both/ }).click();
+  await answer(p, (await waiting(p, 'planProjection')).id, ok({ kind: 'plan', plan: { ...withOffer, reconcile: 'keep-both' } }));
+  await s.locator('[data-tick="write-claude"] input').click();
+  const third = await waiting(p, 'planProjection');
+  expect((third.args[1] as ProjectInput).writeClaudeMd).toBe(true);
+  await answer(p, third.id, ok({ kind: 'plan', plan: withOffer }));
+  // Back to the folders, and a new folder.
+  await s.getByRole('button', { name: 'Back', exact: true }).click();
+  await s.getByRole('button', { name: 'Back', exact: true }).click();
+  await s.locator('[data-folder="folder-4"]').click();
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(s.locator('[data-engine="codex"] input')).toBeChecked();
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  const fresh = await waiting(p, 'planProjection');
+  expect(fresh.args[0]).toBe('folder-4');
+  expect(fresh.args[1]).toEqual(INPUT3);
+  await answer(p, fresh.id, ok({ kind: 'approve', lines: fx.approveLines, approvedSoFar: [] }));
+  await expect(s.locator('[data-section="approve-lines"] input')).toHaveCount(3);
+  for (const b of await s.locator('[data-section="approve-lines"] input').all()) await expect(b).not.toBeChecked();
+});
+
+test('W9: a new folder in the adopt sheet starts with no ticks and no acknowledgements', async () => {
+  const p = await open();
+  const v = ready(fx.adopt);
+  await adoptReview(p, v);
+  const s = sheet(p);
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(s.locator('[data-section="approvals"] input')).not.toHaveCount(0);
+  for (const b of await s.locator('[data-section="approvals"] input').all()) await b.check();
+  await s.getByRole('button', { name: 'Back', exact: true }).click();
+  await s.getByRole('button', { name: 'Back', exact: true }).click();
+  await s.locator('[data-folder="folder-2"]').click();
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  const forB = await waiting(p, 'planAdoption');
+  expect(forB.args[1]).toEqual({ picks: {}, acknowledged: [] });
+  await answer(p, forB.id, ok(v));
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(s.locator('[data-section="approvals"] input')).toHaveCount(3);
+  for (const b of await s.locator('[data-section="approvals"] input').all()) await expect(b).not.toBeChecked();
+});
+
+test('W5: an acknowledged entry that leaves the plan leaves the choices too, so the sheet is not stuck', async () => {
+  const p = await open();
+  const v = fx.adopt;
+  await adoptReview(p, v);
+  const s = sheet(p);
+  await s.locator('[data-conflict]').getByRole('radio').first().click();
+  const picked = { ...v, conflicts: v.conflicts.map(c => ({ ...c, picked: c.variants[0]!.key })) };
+  await answer(p, (await waiting(p, 'planAdoption')).id, ok(picked));
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  await s.locator('[data-section="acknowledgements"] input').first().click();
+  const ackCall = await waiting(p, 'planAdoption');
+  const acked = (ackCall.args[1] as { acknowledged: { id: string }[] }).acknowledged.map(a => a.id);
+  expect(acked).toEqual([v.unmapped[0]!.id]);
+  // The answer no longer lists that entry; the other is acknowledged by the plan itself.
+  const gone: AdoptView = { ...picked, unmapped: picked.unmapped.filter(u => u.id !== v.unmapped[0]!.id).map(u => ({ ...u, acknowledged: u.gate === 'acknowledge' })), ready: true };
+  await answer(p, ackCall.id, ok(gone));
+  await expect(s.locator('[data-section="approvals"] input')).not.toHaveCount(0);
+  for (const b of await s.locator('[data-section="approvals"] input').all()) await b.check();
+  await s.getByRole('button', { name: /^Write \d+ files$/ }).click();
+  const run = await waiting(p, 'runAdoption');
+  const sent = (run.args[2] as { acknowledged: { id: string }[] }).acknowledged.map(a => a.id);
+  expect(sent).toEqual(gone.unmapped.filter(u => u.acknowledged).map(u => u.id));
+});
+
+test('W4, W7: an approval with no text is a block with its reason and no tick; an install line shows its entry\'s text', async () => {
+  const p = await open();
+  const v = ready(fx.adopt);
+  const blocked: AdoptView = { ...v, approvals: v.approvals.map(a => (a.key === 'mcp/mail' ? { ...a, text: [], blocked: 'Bowerloom cannot show the text this approval covers, so it cannot be approved here. Plan again, or change the file.' } : a)) };
+  await adoptReview(p, blocked);
+  const s = sheet(p);
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  const mail = s.locator('[data-blocked="mcp/mail"]');
+  await expect(mail).toContainText('cannot be approved here');
+  await expect(mail.locator('input')).toHaveCount(0);
+  await expect(s.locator('[data-waiting]')).toContainText('1 approval with no text');
+  await p.close();
+  const q = await open();
+  const t = await installReview(q, [D]);
+  await answer(q, (await waiting(q, 'planProjection')).id, ok({ kind: 'approve', lines: fx.approveLines, approvedSoFar: [] }));
+  await expect(t.locator('[data-section="approve-lines"] [data-tick]').first().locator('pre')).toContainText('"pattern": "git push --force *"');
+});
+
+test('W6, W8: each step\'s body and each block of code is a named region; a recovery says whether the record of the stopped run is whole', async () => {
+  const p = await open();
+  await auto(p, 'folders', [folder('folder-5', 'half', { unfinished: { projection: false, adoption: true } })]);
+  await p.getByRole('button', { name: 'From a folder', exact: true }).click();
+  const s = sheet(p);
+  await expect(s.getByRole('region', { name: 'Pick a folder' })).toBeVisible();
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  await answer(p, (await waiting(p, 'planAdoptionRecovery')).id, ok({ journal: 'damaged', check: ['.bowerloom/harness.json'], remove: [], kept: [], dirs: [], revision: 'a'.repeat(64) }));
+  const r = sheet(p, 'Finish a stopped harness');
+  await expect(r.getByRole('region', { name: 'Review the plan' })).toBeVisible();
+  await expect(r.locator('[data-journal]')).toHaveText("The stopped run's record is damaged. Check these files by hand.");
+  await p.close();
+  const q = await open();
+  const t = await installReview(q, [D]);
+  await answer(q, (await waiting(q, 'planProjection')).id, ok({ kind: 'plan', plan: fx.project(INPUT3) }));
+  await expect(t.getByRole('region', { name: /\.opencode\/plugins\/bowerloom-hooks\.js/ })).toBeVisible();
+});
+
+test('U12: a plan that is not ready with nothing waiting names why', async () => {
+  const p = await open();
+  await adoptReview(p, { ...ready(fx.adopt), ready: false });
+  const s = sheet(p);
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(s.locator('[data-section="approvals"] input')).not.toHaveCount(0);
+  for (const b of await s.locator('[data-section="approvals"] input').all()) await b.check();
+  await expect(s.locator('[data-waiting]')).toHaveText('Not ready: Bowerloom\'s plan is not ready though nothing waits on you. Plan again to check.');
+  await expect(s.getByRole('button', { name: /^Write/ })).toBeDisabled();
 });
