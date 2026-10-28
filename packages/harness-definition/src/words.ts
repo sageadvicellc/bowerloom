@@ -64,14 +64,30 @@ export type GuardrailEffect = (typeof GUARDRAIL_EFFECTS)[number];
 export const MCP_TRANSPORTS = Object.freeze(['stdio', 'http', 'sse', 'ws'] as const);
 export type McpTransport = (typeof MCP_TRANSPORTS)[number];
 
-/** Bounds on a definition folder. */
+/** Bounds on a definition folder. A scan line over `lineChars` is not scanned: it is a refusal. */
 export const DEFINITION_LIMITS = Object.freeze({
   files: 4096,
   fileBytes: 1024 * 1024,
   totalBytes: 32 * 1024 * 1024,
   frontmatterBytes: 64 * 1024,
   entries: 1024,
+  folderEntries: 4096,
+  depth: 16,
+  problems: 200,
+  lineChars: 4096,
 });
+
+/**
+ * Names that a 0.7 layer or store keeps in its `.bowerloom` folder. A 0.8 loader neither reads nor changes them
+ * (definition spec, section 8, rule 6). Any other top-level name that section 8 does not define is refused.
+ * The list is a snapshot of 0.7.0-beta.3; a name 0.7 adds later must join it.
+ */
+export const LEGACY_NAMES = Object.freeze([
+  'skills.json', 'bowerloom.json', 'manifest.json', 'team.yaml', 'brief.json', 'installation-receipt.json', 'startup.json',
+  'store.json', 'journal.json', 'managed-pending.json', 'START-HERE.md', 'milestones.md', 'optional-controls.md',
+  'startup-review.md', 'working-agreement.md', 'folders', 'authoring', 'managed', 'prompts', 'teams', 'slices',
+  'store-cache', '.gitignore', '.git', '.bowerloom-revision.json',
+] as const);
 
 /** A lowercase name with single hyphens, up to 64 characters: harness, skill, subagent, rule, and hook ids. */
 export function isId(value: unknown): value is string {

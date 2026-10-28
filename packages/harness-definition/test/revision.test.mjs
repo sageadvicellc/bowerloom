@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { computeRevision, loadDefinition } from '../../../dist/packages/harness-definition/src/index.js';
+import { canonicalBytes, computeRevision, loadDefinition } from '../../../dist/packages/harness-definition/src/index.js';
 import { cleanup, fullFiles, harness, makeDefinition } from './fixture.mjs';
 
 test.after(cleanup);
@@ -18,7 +18,7 @@ const revisionOf = files => {
   assert.equal(r.ok, true, JSON.stringify(r.ok ? null : r.problems));
   return r.definition.revision;
 };
-const crlf = files => Object.fromEntries(Object.entries(files).map(([k, v]) => [k, typeof v === 'string' && !k.endsWith('.json') ? v.replace(/\n/g, '\r\n') : v]));
+const crlf = files => Object.fromEntries(Object.entries(files).map(([k, v]) => [k, typeof v === 'string' && k.endsWith('.md') ? v.replace(/\n/g, '\r\n') : v]));
 
 test('check 6: two loads of the same folder give the same revision', () => {
   const dir = makeDefinition(fullFiles());
@@ -33,10 +33,36 @@ test('check 6: the revision does not depend on the folder location or the order 
   assert.equal(revisionOf(files), revisionOf(reversed));
 });
 
-test('check 6: CRLF and LF line endings give the same revision', () => {
+test('check 6: CRLF and LF line endings give the same revision for Markdown parts', () => {
   assert.equal(revisionOf(fullFiles()), revisionOf(crlf(fullFiles())));
-  const cr = Object.fromEntries(Object.entries(fullFiles()).map(([k, v]) => [k, k === 'scripts/lint.sh' ? v.replace(/\n/g, '\r') : v]));
+  const cr = Object.fromEntries(Object.entries(fullFiles()).map(([k, v]) => [k, k === 'instructions/AGENTS.md' ? v.replace(/\n/g, '\r') : v]));
   assert.equal(revisionOf(fullFiles()), revisionOf(cr));
+});
+
+test('C7: scripts and engine-private files are hashed as raw bytes', () => {
+  const base = revisionOf(fullFiles());
+  assert.notEqual(revisionOf(fullFiles({ 'scripts/lint.sh': '#!/bin/sh\r\nexit 0\r\n' })), base);
+  assert.notEqual(revisionOf(fullFiles({ 'engines/codex/config-extra.toml': '[features]\r\nweb_search = true\r\n' })), base);
+  // A Markdown file under scripts/ is a script file: raw bytes too.
+  assert.notEqual(revisionOf(fullFiles({ 'scripts/notes.md': 'a\r\n' })), revisionOf(fullFiles({ 'scripts/notes.md': 'a\n' })));
+});
+
+test('C7 and S10: the executable bit is part of the revision', () => {
+  const dir = makeDefinition(fullFiles());
+  const before = loadDefinition(dir).definition;
+  assert.equal(before.files.find(f => f.path === 'scripts/lint.sh').executable, false);
+  fs.chmodSync(path.join(dir, 'scripts', 'lint.sh'), 0o755);
+  const after = loadDefinition(dir).definition;
+  assert.equal(after.files.find(f => f.path === 'scripts/lint.sh').executable, true);
+  assert.notEqual(after.revision, before.revision);
+  const files = [{ path: 'scripts/a.sh', bytes: Buffer.from('x\n') }];
+  assert.equal(computeRevision(files), computeRevision([{ ...files[0], executable: false }]));
+  assert.notEqual(computeRevision(files), computeRevision([{ ...files[0], executable: true }]));
+});
+
+test('silent 12: canonicalBytes refuses a machine JSON file that is not strict JSON', () => {
+  assert.throws(() => canonicalBytes({ path: 'harness.json', bytes: Buffer.from('{"a": 1,}') }), /strict JSON/);
+  assert.throws(() => computeRevision([{ path: 'hooks.json', bytes: Buffer.from('// x\n{}') }]), /strict JSON/);
 });
 
 test('check 6: machine JSON files are hashed in canonical form', () => {
@@ -109,6 +135,6 @@ test('check 6: another process with another locale, time zone, and working folde
 });
 
 // Computed by hand from the framing in src/revision.ts, outside that module:
-// sha256("bowerloom/harness-revision/v1\n" + for each file "<path>\n<length>\n<canonical bytes>\n"), with
-// harness.json as {"format":"bowerloom/harness/v1beta1","id":"demo"} and AGENTS.md as "# Demo\n".
-const PINNED = 'sha256:8b8bc99795b52d5154f69d8e8c6347bb26e4891728f0e114966869101fbf42e9';
+// sha256("bowerloom/harness-revision/v2\n" + for each file "<path>\n<x or ->\n<length>\n<canonical bytes>\n"), with
+// harness.json as {"format":"bowerloom/harness/v1beta1","id":"demo"} and AGENTS.md as "# Demo\n", neither executable.
+const PINNED = 'sha256:2bc306f6195b7bad2e666f1db56ff7ba3dbd80bd14e0abe117f5a5fa6308c11c';

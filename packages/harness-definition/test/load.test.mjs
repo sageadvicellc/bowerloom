@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  ENGINE_IDS, HARNESS_FORMAT, isEngineId, loadDefinition, parseStrictJson,
+  ENGINE_IDS, HARNESS_FORMAT, isDefinitionFolder, isEngineId, loadDefinition, parseStrictJson,
 } from '../../../dist/packages/harness-definition/src/index.js';
 import { FULL_PARTS, agent, cleanup, codes, fullFiles, harness, json, makeDefinition, skill } from './fixture.mjs';
 
@@ -89,6 +89,8 @@ test('a definition with every part loads into neutral entries', () => {
     ['ask-rm', 'shell', 'ask', 'enforced'],
   ]);
   assert.equal(d.entries.sandbox.length, 1);
+  assert.equal(d.entries.sandbox[0].id, 'box');
+  assert.equal(d.entries.sandbox[0].strength, 'enforced');
   assert.equal(d.entries.sandbox[0].files, true);
   assert.deepEqual(d.entries.hooks.map(h => h.id), ['lint-on-edit', 'codex-only']);
   assert.equal(d.entries.hooks[0].timeout, 30000);
@@ -104,9 +106,9 @@ test('a definition with every part loads into neutral entries', () => {
 test('engine-private x-blocks pass through untouched', () => {
   const d = ok(fullFiles());
   const reader = d.entries.subagents.find(s => s.id === 'reader');
-  assert.deepEqual(reader.privateBlocks, { 'claude-code': { color: 'blue', permissionMode: 'plan' } });
+  assert.deepEqual(reader.privateBlocks, { 'claude-code': { color: 'blue', effort: 'high' } });
   const writer = d.entries.subagents.find(s => s.id === 'writer');
-  assert.deepEqual(writer.privateBlocks, { codex: { sandbox_mode: 'workspace-write', nested: { depth: 0.5 } } });
+  assert.deepEqual(writer.privateBlocks, { codex: { reasoning_effort: 'medium', nested: { depth: 0.5 } } });
   const askRm = d.entries.rules.find(r => r.id === 'ask-rm');
   assert.deepEqual(askRm.privateBlocks, { 'claude-code': { note: 'kept' } });
   assert.deepEqual(d.entries.rules[0].privateBlocks, {});
@@ -215,7 +217,11 @@ test('guardrails, hooks, and MCP servers: shapes are checked and unknown fields 
   refused({ ...base, 'guardrails.json': json({ rules: [rule, rule] }) }, 'DUPLICATE_ID');
   refused({ ...base, 'guardrails.json': json({ rules: [{ ...rule, engines: [] }] }) }, 'INVALID_FIELD');
   refused({ ...base, 'guardrails.json': json({ rules: [{ ...rule, engines: ['hermes'] }] }) }, 'UNKNOWN_ENGINE');
-  refused({ ...base, 'guardrails.json': json({ rules: [], sandbox: { files: false, network: false } }) }, 'INVALID_FIELD');
+  refused({ ...base, 'guardrails.json': json({ rules: [], sandbox: { id: 'box', files: false, network: false } }) }, 'INVALID_FIELD');
+  refused({ ...base, 'guardrails.json': json({ rules: [], sandbox: { files: true, network: true } }) }, 'INVALID_FIELD');
+  refused({ ...base, 'guardrails.json': json({ rules: [], sandbox: { id: 'box', files: true, network: true, strength: 'advisory' } }) }, 'INVALID_FIELD');
+  refused({ ...base, 'guardrails.json': json({ rules: [{ ...rule, id: 'box' }], sandbox: { id: 'box', files: true, network: true } }) }, 'DUPLICATE_ID');
+  ok({ ...base, 'guardrails.json': json({ rules: [], sandbox: { id: 'box', files: true, network: false, strength: 'enforced' } }) });
   refused({ ...base, 'guardrails.json': json({ rules: [], extra: 1 }) }, 'UNKNOWN_FIELD');
 
   const hook = { id: 'h', event: 'PreToolUse', command: 'true', strength: 'enforced' };
@@ -292,4 +298,143 @@ test('a subagent or skill with broken frontmatter names the fault', () => {
   refused({ ...fullFiles(), 'agents/reader.md': '---\nname: !!binary aGVsbG8=\ndescription: x\n---\nbody\n' }, 'FRONTMATTER_INVALID');
   refused({ ...fullFiles(), 'agents/reader.md': agent('reader', 'model: {}\n') }, 'INVALID_FIELD');
   refused({ ...fullFiles(), 'agents/reader.md': agent('reader', 'model:\n  codex: ""\n') }, 'INVALID_FIELD');
+});
+
+// ---- Fix round 1: reviews of 0320e24 -------------------------------------------------------------------------------
+
+test('R3: a .bowerloom folder is a 0.8 definition only when it holds harness.json', () => {
+  assert.equal(isDefinitionFolder(makeDefinition(fullFiles())), true);
+  assert.equal(isDefinitionFolder(makeDefinition({ 'skills.json': '{}' })), false);
+  assert.equal(isDefinitionFolder('/nonexistent-bowerloom-definition-folder'), false);
+});
+
+test('silent 2: a file or folder that cannot be read is a problem, not a throw', () => {
+  const dir = makeDefinition(fullFiles());
+  fs.chmodSync(path.join(dir, 'scripts', 'lint.sh'), 0o000);
+  let r = loadDefinition(dir);
+  assert.ok(codes(r).includes('UNREADABLE'), JSON.stringify(r.problems));
+  const dir2 = makeDefinition(fullFiles());
+  fs.chmodSync(path.join(dir2, 'skills', 'review'), 0o000);
+  r = loadDefinition(dir2);
+  assert.ok(codes(r).includes('UNREADABLE'), JSON.stringify(r.problems));
+  assert.ok(r.problems.every(p => !p.message.includes(dir2)), 'a message names the relative path only');
+});
+
+test('silent 11: only a missing folder is FOLDER_MISSING', () => {
+  assert.deepEqual(codes(loadDefinition('/etc/hosts/inside')), ['UNREADABLE']);
+});
+
+test('silent 3: every top-level entry is a section 8 name or a known 0.7 name', () => {
+  refused({ ...fullFiles(), 'guardrail.json': json({ rules: [] }) }, 'UNEXPECTED_FILE');
+  refused({ ...fullFiles(), 'notes.txt': 'x\n' }, 'UNEXPECTED_FILE');
+  refused({ ...fullFiles(), '.env': 'A=1\n' }, 'UNEXPECTED_FILE');
+  ok({
+    ...fullFiles(), 'skills.json': '{}', 'bowerloom.json': '{}', 'manifest.json': '{}', 'team.yaml': 'a: 1\n',
+    'installation-receipt.json': '{}', 'brief.json': '{}', 'startup.json': '{}', 'store.json': '{}', 'START-HERE.md': '# x\n',
+    'authoring/receipt.json': '{}', 'managed/x.json': '{}', 'prompts/p.md': 'x\n', 'teams/t/team.yaml': 'a: 1\n',
+    '.gitignore': 'x\n', '.git/HEAD': 'ref\n', '.DS_Store': 'x',
+  });
+  const dir = makeDefinition(fullFiles());
+  fs.symlinkSync('/etc', path.join(dir, 'extra'));
+  assert.ok(codes(loadDefinition(dir)).includes('SYMLINK'));
+  const dir2 = makeDefinition(fullFiles());
+  fs.symlinkSync(path.join(dir2, 'harness.json'), path.join(dir2, 'skills.json'));
+  assert.ok(codes(loadDefinition(dir2)).includes('SYMLINK'), 'a legacy name that is a link is refused too');
+});
+
+test('silent 4 and C8: .DS_Store is skipped only as a file, and only an empty .gitkeep is allowed', () => {
+  refused({ ...fullFiles(), 'skills/.DS_Store/payload.sh': 'x\n' }, 'UNEXPECTED_FILE');
+  ok({ ...fullFiles(), 'scripts/.gitkeep': '', 'skills/review/assets/.gitkeep': '' });
+  refused({ ...fullFiles(), 'scripts/.gitkeep': 'not empty\n' }, 'UNEXPECTED_FILE');
+  refused({ ...fullFiles(), 'scripts/.hidden': '' }, 'UNEXPECTED_FILE');
+});
+
+test('S4: a hard link is refused', () => {
+  const dir = makeDefinition(fullFiles());
+  fs.linkSync(path.join(dir, 'scripts', 'lint.sh'), path.join(dir, 'scripts', 'twin.sh'));
+  assert.ok(codes(loadDefinition(dir)).includes('HARDLINK'));
+});
+
+test('C2 and S4: the size is checked before the read, so a 2 GiB sparse file is refused at once', () => {
+  const dir = makeDefinition(fullFiles());
+  const fd = fs.openSync(path.join(dir, 'scripts', 'sparse.bin'), 'w');
+  fs.ftruncateSync(fd, 2 * 1024 * 1024 * 1024);
+  fs.closeSync(fd);
+  const started = process.hrtime.bigint();
+  const r = loadDefinition(dir);
+  const ms = Number(process.hrtime.bigint() - started) / 1e6;
+  assert.ok(codes(r).includes('TOO_LARGE'));
+  assert.ok(ms < 2000, `took ${ms} ms`);
+});
+
+test('C2: folders deeper than the limit are refused', () => {
+  const deep = Array.from({ length: 20 }, (_, i) => `d${i}`).join('/');
+  refused({ ...fullFiles(), [`scripts/${deep}/x.sh`]: 'x\n' }, 'TOO_DEEP');
+});
+
+test('S10: the problem list is capped', () => {
+  const files = fullFiles();
+  for (let i = 0; i < 300; i++) files[`skills/s${i}/notes.md`] = 'x\n';
+  const r = loadDefinition(makeDefinition(files));
+  assert.equal(r.ok, false);
+  assert.ok(r.problems.length <= 201, String(r.problems.length));
+  assert.equal(r.problems.at(-1).code, 'TOO_MANY_PROBLEMS');
+});
+
+test('R4: an engine the harness does not list cannot be targeted', () => {
+  const base = fullFiles();
+  const rule = { id: 'r', action: 'shell', pattern: 'ls', effect: 'deny', strength: 'enforced' };
+  refused({ ...base, 'guardrails.json': json({ rules: [{ ...rule, engines: ['opencode'] }] }) }, 'ENGINE_NOT_LISTED');
+  refused({ ...base, 'guardrails.json': json({ rules: [{ ...rule, 'x-pi': { a: 1 } }] }) }, 'ENGINE_NOT_LISTED');
+  refused({ ...base, 'agents/reader.md': agent('reader', 'model:\n  opencode: m\n') }, 'ENGINE_NOT_LISTED');
+  refused({ ...base, 'engines/opencode/opencode.json': '{}' }, 'ENGINE_NOT_LISTED');
+  refused({ ...base, 'harness.json': harness({ parts: FULL_PARTS, skills: { deploy: { engines: ['pi'] } } }) }, 'ENGINE_NOT_LISTED');
+});
+
+test('R5: harness.json carries the skill engine filter and engine-only skill keys', () => {
+  const d = ok({ ...fullFiles(), 'harness.json': harness({ parts: FULL_PARTS, skills: { deploy: { engines: ['claude-code'], 'x-claude-code': { 'disable-model-invocation': true } } } }) });
+  const deploy = d.entries.skills.find(s => s.id === 'deploy');
+  assert.deepEqual(deploy.engines, ['claude-code']);
+  assert.deepEqual(deploy.privateBlocks, { 'claude-code': { 'disable-model-invocation': true } });
+  assert.deepEqual(d.entries.skills.find(s => s.id === 'review').privateBlocks, {});
+  refused({ ...fullFiles(), 'harness.json': harness({ parts: FULL_PARTS, skills: { absent: { engines: ['codex'] } } }) }, 'SKILL_SETTINGS_UNKNOWN');
+  refused({ ...fullFiles(), 'harness.json': harness({ parts: FULL_PARTS, skills: { deploy: { color: 'x' } } }) }, 'UNKNOWN_FIELD');
+  refused({ ...fullFiles(), 'harness.json': harness({ parts: FULL_PARTS, skills: { deploy: { 'x-claude-code': { 'allowed-tools': 'Bash' } } } }) }, 'PRIVATE_BLOCK_PERMISSION');
+});
+
+test('S6: engine-private blocks cannot carry permission-like keys or non-portable references', () => {
+  const base = fullFiles();
+  for (const key of ['permissions', 'permissionMode', 'sandbox_mode', 'approval_policy', 'allowed-tools', 'disallowedTools', 'tools', 'trust_level', 'hooks', 'mcpServers', 'dangerouslySkipPermissions']) {
+    refused({ ...base, 'agents/reader.md': agent('reader', `x-claude-code:\n  nested:\n    ${key}: x\n`) }, 'PRIVATE_BLOCK_PERMISSION');
+  }
+  const rule = { id: 'r', action: 'shell', pattern: 'ls', effect: 'deny', strength: 'enforced' };
+  refused({ ...base, 'guardrails.json': json({ rules: [{ ...rule, 'x-claude-code': { permissions: { allow: ['Bash(*)'] } } }] }) }, 'PRIVATE_BLOCK_PERMISSION');
+  refused({ ...base, 'mcp.json': json({ servers: [{ name: 's', transport: 'stdio', command: 'run', 'x-codex': { env_vars: ['${A:-x}'] } }] }) }, 'ENV_REFERENCE');
+});
+
+test('S7: problem messages never echo a value or an unsafe key', () => {
+  const token = 'gh' + 'p_' + 'A1b2'.repeat(9);
+  const rule = { id: 'r', action: 'shell', pattern: 'ls', effect: 'deny', strength: 'enforced' };
+  const problems = refused({ ...fullFiles(), 'guardrails.json': json({ rules: [{ ...rule, [token]: 1, effect: token }] }) }, 'UNKNOWN_FIELD');
+  assert.ok(!JSON.stringify(problems).includes('A1b2A1b2'));
+  const p2 = refused({ ...fullFiles(), 'harness.json': harness({ engines: [{ id: 'secret-engine-name' }] }) }, 'UNKNOWN_ENGINE');
+  assert.ok(!JSON.stringify(p2).includes('secret-engine-name'));
+  const p3 = refused({ ...fullFiles(), 'skills/deploy/SKILL.md': skill('deploy', 'Deploys.').replace('name: deploy', 'name: other-name-xyz') }, 'SKILL_NAME_MISMATCH');
+  assert.ok(!JSON.stringify(p3).includes('other-name-xyz'));
+});
+
+test('silent 13: sources cannot repeat a source or claim one item twice', () => {
+  const src = { name: 'kit', marketplace: 'market', version: '1.0.0', items: [{ part: 'skills', id: 'review' }] };
+  refused({ ...fullFiles(), 'sources.json': json({ sources: [src, { ...src, items: [{ part: 'skills', id: 'deploy' }] }] }) }, 'DUPLICATE_ID');
+  refused({ ...fullFiles(), 'sources.json': json({ sources: [src, { ...src, name: 'other' }] }) }, 'DUPLICATE_ID');
+});
+
+test('silent 16: a tool-guidance heading inside fenced code does not count', () => {
+  const files = fullFiles({ 'instructions/AGENTS.md': '# Demo\n\n```md\n## Tool guidance\n```\n' });
+  refused(files, 'PART_POINTER');
+});
+
+test('silent 14: frontmatter messages name the real fault', () => {
+  const [p] = refused({ ...fullFiles(), 'agents/reader.md': '---\n- a list\n---\nbody\n' }, 'FRONTMATTER_INVALID');
+  assert.match(p.message, /mapping/);
 });

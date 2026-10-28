@@ -1,13 +1,20 @@
 /**
  * Field checks for each definition file. Each check adds problems and returns the entry, or undefined when the entry
  * has a fault. Unknown fields are refused everywhere. An `x-<engine>` key is an engine-private block: it is kept
- * unchanged on subagents, guardrail rules, the sandbox, hooks, and MCP servers, and refused in portable skill
- * frontmatter (portable parts spec, decision 2) and in `harness.json`.
+ * unchanged on subagents, guardrail rules, the sandbox, hooks, MCP servers, and skill settings in `harness.json`, and
+ * refused in portable skill frontmatter (portable parts spec, decision 2) and at the top of `harness.json`.
+ *
+ * A private block holds no permission-like key, at any depth (security review S6): permissions belong in
+ * `guardrails.json`, where layers and the fidelity check see them. A string in a private block uses no `${...}` form
+ * other than `${NAME}`.
+ *
+ * Messages never repeat a value. A key appears only when `safeName` finds it plain (security review S7).
  */
 import { isRecord } from './json.js';
+import { safeName } from './secrets.js';
 import type {
   EngineTarget, EnvValue, GuardrailRule, HarnessFile, HookEntry, JsonValue, LayerOverride, McpServer, PartPointers,
-  PrivateBlocks, Problem, SandboxRequirement, SkillEntry, SourceRecord, SubagentEntry,
+  PrivateBlocks, Problem, SandboxRequirement, SkillEntry, SkillSettings, SourceRecord, SubagentEntry,
 } from './types.js';
 import {
   DEFINITION_LIMITS, ENGINE_IDS, GUARDRAIL_ACTIONS, GUARDRAIL_EFFECTS, HARNESS_FORMAT, MCP_TRANSPORTS, OVERRIDABLE_PARTS,
@@ -38,13 +45,48 @@ function keys(c: Checker, value: JsonValue | undefined, where: string, required:
     if (required.includes(key) || optional.includes(key)) continue;
     const m = PRIVATE_KEY.exec(key);
     if (m && allowPrivate) {
-      if (isEngineId(m[1])) { blocks[m[1]] = value[key]!; continue; }
-      c.fail('UNKNOWN_ENGINE', `${where} has the block ${key}, and ${m[1]} is not an engine. The engines are ${list(ENGINE_IDS)}.`); ok = false; continue;
+      if (!isEngineId(m[1])) { c.fail('UNKNOWN_ENGINE', `${where} has the private block ${safeName(key)}, for an engine that does not exist. The engines are ${list(ENGINE_IDS)}.`); ok = false; continue; }
+      if (!privateBlock(c, value[key]!, `${where}: x-${m[1]}`)) { ok = false; continue; }
+      blocks[m[1]] = value[key]!;
+      continue;
     }
-    c.fail(unknownCode, `${where} has the field ${key}, which the definition does not know.`); ok = false;
+    c.fail(unknownCode, `${where} has the unknown field ${safeName(key)}.`); ok = false;
   }
   for (const key of required) if (!Object.hasOwn(value, key)) { c.fail('INVALID_FIELD', `${where} is missing the field ${key}.`); ok = false; }
   return ok ? { obj: value, blocks } : undefined;
+}
+
+/** Words of a key that make it permission-like: it would grant, ask, trust, sandbox, hook, or reach tools. */
+const PERMISSION_WORDS = new Set([
+  'permission', 'permissions', 'allow', 'allowed', 'allowlist', 'deny', 'denied', 'denylist', 'disallowed', 'ask',
+  'sandbox', 'approval', 'approvals', 'approve', 'autoapprove', 'trust', 'trusted', 'bypass', 'dangerously', 'yolo',
+  'tools', 'hook', 'hooks', 'mcp',
+]);
+const keyWords = (key: string) => key.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+/** True when a key of a private block is permission-like, such as `permissions`, `allowed-tools`, or `sandbox_mode`. */
+export function isPermissionKey(key: string): boolean {
+  const w = keyWords(key);
+  return w.some(x => PERMISSION_WORDS.has(x)) || w.join('_').includes('full_auto');
+}
+const BAD_REFERENCE = /\$\{(?![A-Za-z_][A-Za-z0-9_]*\})/;
+
+/** Checks one private block at every depth. */
+function privateBlock(c: Checker, value: JsonValue, where: string): boolean {
+  let ok = true;
+  const walk = (v: JsonValue): void => {
+    if (typeof v === 'string') {
+      if (ok && BAD_REFERENCE.test(v)) { ok = false; c.fail('ENV_REFERENCE', `${where} holds a \${...} form other than \${NAME}. Defaults such as \${NAME:-x} are not portable.`); }
+      return;
+    }
+    if (Array.isArray(v)) { v.forEach(walk); return; }
+    if (!isRecord(v)) return;
+    for (const [key, inner] of Object.entries(v)) {
+      if (isPermissionKey(key)) { ok = false; c.fail('PRIVATE_BLOCK_PERMISSION', `${where} has the permission-like key ${safeName(key)}. Permissions belong in guardrails.json, where layers and the fidelity check see them.`); continue; }
+      walk(inner);
+    }
+  };
+  walk(value);
+  return ok;
 }
 
 function text(c: Checker, value: JsonValue | undefined, where: string, max = 1024): string | undefined {
@@ -74,20 +116,21 @@ function engineFilter(c: Checker, obj: Obj, where: string): readonly EngineId[] 
   if (!Object.hasOwn(obj, 'engines')) return null;
   const items = array(c, obj.engines, `${where}: engines`, 1);
   if (!items) return undefined;
-  for (const item of items) if (!isEngineId(item)) return c.fail('UNKNOWN_ENGINE', `${where}: engines lists ${JSON.stringify(item)}, which is not an engine. The engines are ${list(ENGINE_IDS)}.`);
+  for (const [i, item] of items.entries()) if (!isEngineId(item)) return c.fail('UNKNOWN_ENGINE', `${where}: engines[${i}] is not an engine id. The engines are ${list(ENGINE_IDS)}.`);
   if (new Set(items).size !== items.length) return c.fail('INVALID_FIELD', `${where}: engines lists an engine twice.`);
   return items as EngineId[];
 }
 
+/** Refuses two items with one key. The message shows the key only when it is a checked id. */
 function unique<T>(c: Checker, items: readonly T[], id: (item: T) => string, what: string): void {
   const seen = new Set<string>();
-  for (const item of items) { const k = id(item); if (seen.has(k)) c.fail('DUPLICATE_ID', `Two ${what} have the id ${k}.`); seen.add(k); }
+  items.forEach((item, i) => { const k = id(item); if (seen.has(k)) c.fail('DUPLICATE_ID', `${what}[${i}] repeats the key ${safeName(k)} of an earlier item.`); seen.add(k); });
 }
 
 // ---- harness.json --------------------------------------------------------------------------------------------------
 
 export function checkHarness(c: Checker, value: JsonValue): HarnessFile | undefined {
-  const k = keys(c, value, 'harness.json', ['format', 'id', 'description', 'engines', 'parts'], ['overrides'], false);
+  const k = keys(c, value, 'harness.json', ['format', 'id', 'description', 'engines', 'parts'], ['overrides', 'skills'], false);
   if (!k) return undefined;
   const { obj } = k;
   if (obj.format !== HARNESS_FORMAT) return c.fail('FORMAT_UNSUPPORTED', `The format must be ${HARNESS_FORMAT}.`);
@@ -96,8 +139,24 @@ export function checkHarness(c: Checker, value: JsonValue): HarnessFile | undefi
   const engines = checkEngines(c, obj.engines);
   const parts = checkPointers(c, obj.parts);
   const overrides = Object.hasOwn(obj, 'overrides') ? checkOverrides(c, obj.overrides) : [];
-  if (id === undefined || description === undefined || !engines || !parts || !overrides) return undefined;
-  return { format: HARNESS_FORMAT, id, description, engines, parts, overrides };
+  const skills = Object.hasOwn(obj, 'skills') ? checkSkillSettings(c, obj.skills) : {};
+  if (id === undefined || description === undefined || !engines || !parts || !overrides || !skills) return undefined;
+  return { format: HARNESS_FORMAT, id, description, engines, parts, overrides, skills };
+}
+
+/** `skills` in harness.json: the engine filter and engine-only keys of each skill (lead ruling R5). */
+function checkSkillSettings(c: Checker, value: JsonValue | undefined): Record<string, SkillSettings> | undefined {
+  if (!isRecord(value)) return c.fail('INVALID_FIELD', 'skills must map skill ids to settings.');
+  const out: Record<string, SkillSettings> = {};
+  let ok = true;
+  for (const [id, settings] of Object.entries(value)) {
+    if (!isId(id)) { ok = false; c.fail('INVALID_ID', `skills has the key ${safeName(id)}, which is not a skill id.`); continue; }
+    const k = keys(c, settings, `skills.${id}`, [], ['engines'], true);
+    const filter = k ? engineFilter(c, k.obj, `skills.${id}`) : undefined;
+    if (!k || filter === undefined) { ok = false; continue; }
+    out[id] = { ...(filter ? { engines: filter } : {}), privateBlocks: k.blocks };
+  }
+  return ok ? out : undefined;
 }
 
 function checkEngines(c: Checker, value: JsonValue | undefined): EngineTarget[] | undefined {
@@ -108,7 +167,7 @@ function checkEngines(c: Checker, value: JsonValue | undefined): EngineTarget[] 
   items.forEach((item, i) => {
     const k = keys(c, item, `engines[${i}]`, ['id'], ['version', 'model'], false);
     if (!k) { ok = false; return; }
-    if (!isEngineId(k.obj.id)) { ok = false; c.fail('UNKNOWN_ENGINE', `engines[${i}] names ${JSON.stringify(k.obj.id)}, which is not an engine. The engines are ${list(ENGINE_IDS)}.`); return; }
+    if (!isEngineId(k.obj.id)) { ok = false; c.fail('UNKNOWN_ENGINE', `engines[${i}].id is not an engine id. The engines are ${list(ENGINE_IDS)}.`); return; }
     const entry: { id: EngineId; version?: string; model?: string } = { id: k.obj.id };
     for (const f of ['version', 'model'] as const) {
       if (!Object.hasOwn(k.obj, f)) continue;
@@ -168,10 +227,10 @@ export function checkSkill(c: Checker, folder: string, data: Obj, body: string, 
   if (!k) return undefined;
   const { obj } = k;
   if (typeof obj.name !== 'string') return c.fail('INVALID_FIELD', 'The skill name must be text.');
-  if (obj.name !== folder) return c.fail('SKILL_NAME_MISMATCH', `The skill name ${JSON.stringify(obj.name)} must equal its folder name ${folder}.`);
+  if (obj.name !== folder) return c.fail('SKILL_NAME_MISMATCH', 'The skill name must equal its folder name.');
   const description = text(c, obj.description, 'The skill description', 1024);
   let ok = description !== undefined;
-  const entry: { -readonly [K in keyof SkillEntry]: SkillEntry[K] } = { id: folder, name: folder, description: description ?? '', body, files };
+  const entry: { -readonly [K in keyof SkillEntry]: SkillEntry[K] } = { id: folder, name: folder, description: description ?? '', body, files, privateBlocks: {} };
   for (const f of ['license', 'compatibility'] as const) {
     if (!Object.hasOwn(obj, f)) continue;
     const v = text(c, obj[f], `The skill ${f}`, 500);
@@ -192,7 +251,7 @@ export function checkSubagent(c: Checker, stem: string, data: Obj, body: string)
   if (!k) return undefined;
   const { obj, blocks } = k;
   if (typeof obj.name !== 'string') return c.fail('INVALID_FIELD', 'The subagent name must be text.');
-  if (obj.name !== stem) return c.fail('SUBAGENT_NAME_MISMATCH', `The subagent name ${JSON.stringify(obj.name)} must equal its file name ${stem}.md.`);
+  if (obj.name !== stem) return c.fail('SUBAGENT_NAME_MISMATCH', 'The subagent name must equal its file name, without .md.');
   const description = text(c, obj.description, 'The subagent description', 1024);
   let ok = description !== undefined;
   if (body.trim() === '') { ok = false; c.fail('INVALID_FIELD', 'The subagent needs instructions in the body.'); }
@@ -203,7 +262,7 @@ export function checkSubagent(c: Checker, stem: string, data: Obj, body: string)
     else {
       const model: Partial<Record<EngineId, string>> = {};
       for (const [engine, name] of Object.entries(m)) {
-        if (!isEngineId(engine)) { ok = false; c.fail('UNKNOWN_ENGINE', `The subagent model names ${JSON.stringify(engine)}, which is not an engine.`); continue; }
+        if (!isEngineId(engine)) { ok = false; c.fail('UNKNOWN_ENGINE', `The subagent model has the key ${safeName(engine)}, which is not an engine id.`); continue; }
         const v = oneLine(c, name, `The model for ${engine}`, 256);
         if (v === undefined) ok = false; else model[engine] = v;
       }
@@ -248,16 +307,19 @@ export function checkGuardrails(c: Checker, value: JsonValue): { rules: Guardrai
   });
   let sandbox: SandboxRequirement[] | undefined = [];
   if (Object.hasOwn(k.obj, 'sandbox')) {
-    const s = keys(c, k.obj.sandbox, 'sandbox', ['files', 'network'], ['engines'], true);
+    const s = keys(c, k.obj.sandbox, 'sandbox', ['id', 'files', 'network'], ['strength', 'engines'], true);
     const filter = s ? engineFilter(c, s.obj, 'sandbox') : undefined;
-    if (!s || filter === undefined) sandbox = undefined;
+    const id = s && (isId(s.obj.id) ? s.obj.id : c.fail('INVALID_ID', 'sandbox.id must be lowercase letters, digits, and single hyphens.'));
+    if (!s || filter === undefined || id === undefined) sandbox = undefined;
+    else if (Object.hasOwn(s.obj, 'strength') && s.obj.strength !== 'enforced') sandbox = c.fail('INVALID_FIELD', 'sandbox.strength can only be enforced: a sandbox requirement is always enforced.');
     else if (typeof s.obj.files !== 'boolean' || typeof s.obj.network !== 'boolean' || (!s.obj.files && !s.obj.network)) {
       sandbox = c.fail('INVALID_FIELD', 'sandbox.files and sandbox.network must be true or false, and at least one must be true.');
-    } else sandbox = [{ files: s.obj.files, network: s.obj.network, ...(filter ? { engines: filter } : {}), privateBlocks: s.blocks }];
+    } else sandbox = [{ id, strength: 'enforced', files: s.obj.files, network: s.obj.network, ...(filter ? { engines: filter } : {}), privateBlocks: s.blocks }];
   }
   if (!rules || !sandbox) return undefined;
   const before = c.problems.length;
-  unique(c, rules, r => r.id, 'rules');
+  // The sandbox shares the id namespace of the rules.
+  unique(c, [...rules, ...sandbox], r => r.id, 'rules');
   return c.problems.length === before ? { rules, sandbox } : undefined;
 }
 
@@ -372,7 +434,7 @@ export function checkSources(c: Checker, value: JsonValue): SourceRecord[] | und
   const k = keys(c, value, 'sources.json', ['sources'], [], false);
   const items = k && array(c, k.obj.sources, 'sources');
   if (!items) return undefined;
-  return entries(items, (item, i) => {
+  const sources = entries(items, (item, i) => {
     const where = `sources[${i}]`;
     const s = keys(c, item, where, ['name', 'marketplace', 'version', 'items'], [], false);
     if (!s) return undefined;
@@ -390,6 +452,11 @@ export function checkSources(c: Checker, value: JsonValue): SourceRecord[] | und
     if (name === undefined || marketplace === undefined || version === undefined || !refs) return undefined;
     return { name, marketplace, version, items: refs as { part: OverridablePart; id: string }[] };
   });
+  if (!sources) return undefined;
+  const before = c.problems.length;
+  unique(c, sources, s => `${s.marketplace}\n${s.name}`, 'sources');
+  unique(c, sources.flatMap(s => s.items), item => `${item.part}/${item.id}`, 'source items');
+  return c.problems.length === before ? sources : undefined;
 }
 
 /** Maps every item; undefined when any item had a fault. */

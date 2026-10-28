@@ -33,6 +33,15 @@ export interface LayerOverride {
   readonly action: 'hide' | 'replace';
 }
 
+/**
+ * Per-skill settings in `harness.json` (lead ruling R5): the engine filter and engine-only skill keys. `SKILL.md`
+ * frontmatter stays the open core fields only. A private block holds no permission-like key, so `allowed-tools` is
+ * not here: adoption turns it into a guardrail entry.
+ */
+export interface SkillSettings extends Filterable {
+  readonly privateBlocks: PrivateBlocks;
+}
+
 /** `harness.json`. Sources live in `sources.json`, the file the `plugins` pointer names. */
 export interface HarnessFile {
   readonly format: string;
@@ -41,6 +50,8 @@ export interface HarnessFile {
   readonly engines: readonly EngineTarget[];
   readonly parts: PartPointers;
   readonly overrides: readonly LayerOverride[];
+  /** Settings by skill id. Each id names a skill of this layer. */
+  readonly skills: Readonly<Record<string, SkillSettings>>;
 }
 
 /** Engine-private blocks, from the `x-<engine>` keys of an entry, kept unchanged. */
@@ -54,8 +65,11 @@ interface Private {
   readonly privateBlocks: PrivateBlocks;
 }
 
-/** `skills/<id>/SKILL.md` with the open core fields only. */
-export interface SkillEntry {
+/**
+ * `skills/<id>/SKILL.md` with the open core fields only. The engine filter and private blocks come from the skill's
+ * settings in `harness.json`. Only `SKILL.md` text is in the entry: the entry hash does not cover the other files.
+ */
+export interface SkillEntry extends Filterable, Private {
   readonly id: string;
   readonly name: string;
   readonly description: string;
@@ -80,7 +94,10 @@ export interface SubagentEntry extends Filterable, Private {
   readonly skills?: readonly string[];
 }
 
-/** A rule of `guardrails.json`. */
+/**
+ * A rule of `guardrails.json`. The order of rules carries no precedence: `deny` beats `ask`, and `ask` beats `allow`,
+ * whatever the order. A projection lane for a last-match-wins engine sorts them itself.
+ */
 export interface GuardrailRule extends Filterable, Private {
   readonly id: string;
   readonly action: GuardrailAction;
@@ -89,13 +106,21 @@ export interface GuardrailRule extends Filterable, Private {
   readonly strength: Strength;
 }
 
-/** The `sandbox` of `guardrails.json`: a requirement for a file sandbox, a network sandbox, or both. */
+/**
+ * The `sandbox` of `guardrails.json`: a requirement for a file sandbox, a network sandbox, or both. Its id shares the
+ * namespace of the rules. It is always `enforced`, and no lower layer can hide or replace it.
+ */
 export interface SandboxRequirement extends Filterable, Private {
+  readonly id: string;
+  readonly strength: 'enforced';
   readonly files: boolean;
   readonly network: boolean;
 }
 
-/** A command hook of `hooks.json`. `timeout` is in milliseconds. */
+/**
+ * A command hook of `hooks.json`. `timeout` is in milliseconds. Trust boundary: a hook that a lower layer adds runs a
+ * command from that folder, so its resolved entry carries `needsApproval` (lead ruling R2).
+ */
 export interface HookEntry extends Filterable, Private {
   readonly id: string;
   readonly event: string;
@@ -112,7 +137,11 @@ export interface SecretRef {
 /** A literal with no secret, a string with `${NAME}` references, or a keychain reference. */
 export type EnvValue = string | SecretRef;
 
-/** A server of `mcp.json`. `id` equals `name`. `timeout` is in milliseconds. */
+/**
+ * A server of `mcp.json`. `id` equals `name`. `timeout` is in milliseconds. Trust boundary: a server that a lower layer
+ * adds with a `${NAME}` or keychain reference could send that secret anywhere, so its resolved entry carries
+ * `needsApproval` (lead ruling R2).
+ */
 export interface McpServer extends Filterable, Private {
   readonly id: string;
   readonly name: string;
@@ -148,6 +177,8 @@ export interface PartEntries {
 export interface DefinitionFile {
   readonly path: string;
   readonly bytes: Uint8Array;
+  /** True when the file has an execute bit. Absent means false. The revision counts it. */
+  readonly executable?: boolean;
 }
 
 /** A loaded definition folder. */

@@ -57,17 +57,17 @@ export function fullFiles(overrides = {}) {
       '  - review',
       'x-claude-code:',
       '  color: blue',
-      '  permissionMode: plan',
+      '  effort: high',
       '',
     ].join('\n')),
-    'agents/writer.md': agent('writer', 'engines:\n  - codex\nx-codex:\n  sandbox_mode: workspace-write\n  nested:\n    depth: 0.5\n'),
+    'agents/writer.md': agent('writer', 'engines:\n  - codex\nx-codex:\n  reasoning_effort: medium\n  nested:\n    depth: 0.5\n'),
     'guardrails.json': json({
       rules: [
         { id: 'no-push-main', action: 'shell', pattern: 'git push * main', effect: 'deny', strength: 'enforced' },
         { id: 'git-any', action: 'shell', pattern: 'git *', effect: 'allow', strength: 'advisory' },
         { id: 'ask-rm', action: 'shell', pattern: 'rm *', effect: 'ask', strength: 'enforced', engines: ['claude-code'], 'x-claude-code': { note: 'kept' } },
       ],
-      sandbox: { files: true, network: true },
+      sandbox: { id: 'box', files: true, network: true },
     }),
     'hooks.json': json({
       hooks: [
@@ -90,10 +90,18 @@ export function fullFiles(overrides = {}) {
 
 const made = [];
 
-/** Writes files under a new temporary layer folder and returns the path of its `.bowerloom` folder. */
-export function makeDefinition(files, name = 'layer') {
+/** A new temporary folder, removed by cleanup. */
+export function tempRoot() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bowerloom-hd-'));
   made.push(root);
+  return root;
+}
+
+/**
+ * Writes files under a layer folder and returns the path of its `.bowerloom` folder. `name` is the layer folder,
+ * relative to `root`; nested names such as `home/project/sub` make nested layers.
+ */
+export function makeDefinition(files, name = 'layer', root = tempRoot()) {
   const dir = path.join(root, name, '.bowerloom');
   fs.mkdirSync(dir, { recursive: true });
   for (const [rel, content] of Object.entries(files)) {
@@ -106,8 +114,17 @@ export function makeDefinition(files, name = 'layer') {
 }
 
 export function cleanup() {
-  while (made.length) fs.rmSync(made.pop(), { recursive: true, force: true });
+  while (made.length) {
+    const root = made.pop();
+    // A test may leave a folder without permissions; give them back before removal.
+    const restore = dir => { try { fs.chmodSync(dir, 0o700); for (const e of fs.readdirSync(dir, { withFileTypes: true })) if (e.isDirectory()) restore(path.join(dir, e.name)); } catch {} };
+    restore(root);
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 }
+
+/** A fixed clock for approvals. */
+export const NOW = new Date('2026-10-28T15:00:00Z');
 
 export function codes(result) {
   return result.ok ? [] : result.problems.map(p => p.code);

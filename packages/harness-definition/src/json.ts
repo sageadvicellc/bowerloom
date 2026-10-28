@@ -84,9 +84,10 @@ export function readFrontmatter(text: string): FrontmatterResult {
   if (doc.errors.length) return invalid('The frontmatter is not valid YAML, or repeats a key.');
   if (doc.warnings.length) return invalid('The frontmatter holds a tag or a value that YAML cannot resolve.');
   let raw: unknown;
-  try { raw = doc.toJS({ maxAliasCount: 0 }); } catch { return invalid('The frontmatter uses an alias, which is not allowed.'); }
+  try { raw = doc.toJS({ maxAliasCount: 0 }); } catch { return invalid('The frontmatter uses an alias, or a value that YAML cannot convert.'); }
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return invalid('The frontmatter must be one YAML mapping.');
   const data = toJsonValue(raw);
-  if (!isRecord(data)) return invalid('The frontmatter must be one mapping of JSON values.');
+  if (!isRecord(data)) return invalid('The frontmatter holds a value that is not JSON, or the key __proto__.');
   return { ok: true, data, body: split.rest };
 }
 function invalid(message: string): FrontmatterResult { return { ok: false, code: 'FRONTMATTER_INVALID', message }; }
