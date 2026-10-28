@@ -4,10 +4,11 @@
  * Every text goes through the folder's scrubber (shared/engine/scrub.ts). Nothing is cut: a command or a file of code is shown in full.
  */
 import type { AdoptionPlan, AdoptionRecoveryPlan, Place } from '../../../../packages/adoption/src/index.js';
+import type { InstructionMergePlan, InstructionMergeRecoveryPlan } from '../../../../packages/adoption/src/merge.js';
 import type { DriftLine, PortablePlan, PortableRecoveryPlan, PortableRemovalPlan } from '../../../../packages/project-sync/src/index.js';
 import { ENGINE_IDS, RESULTS, isEngineId } from './types.js';
 import type {
-  AdoptApprovalView, AdoptPart, AdoptRecoveryView, AdoptSecretView, AdoptView, ApproveLineView, ChangeView, EngineId, EngineLossView, LossView, PlaceView,
+  AdoptApprovalView, AdoptPart, AdoptRecoveryView, AdoptSecretView, AdoptView, ApproveLineView, ChangeView, EngineId, EngineLossView, LossView, MergeView, PlaceView,
   ProjectView, RecoveryView, RemovalView, ResultWord,
 } from './types.js';
 import type { Scrub } from './scrub.js';
@@ -79,7 +80,21 @@ export function adoptionView(plan: AdoptionPlan, folder: string, s: Scrub, extra
 }
 
 export function adoptRecoveryView(plan: AdoptionRecoveryPlan, s: Scrub): AdoptRecoveryView {
-  return { journal: plan.journal, check: plan.check.map(s), remove: plan.remove.map(s), kept: plan.kept.map(k => ({ path: s(k.path), reason: k.reason })), dirs: plan.dirs.map(s), revision: plan.revision };
+  return { kind: 'adoption', journal: plan.journal, check: plan.check.map(s), remove: plan.remove.map(s), restore: [], kept: plan.kept.map(k => ({ path: s(k.path), reason: k.reason })), dirs: plan.dirs.map(s), revision: plan.revision };
+}
+
+/** The recovery of a stopped Merge, in the same view: a file the Merge created is removed, a file it replaced goes back to its bytes. */
+export function mergeRecoveryView(plan: InstructionMergeRecoveryPlan, s: Scrub): AdoptRecoveryView {
+  return {
+    kind: 'merge', journal: plan.journal, check: plan.check.map(s),
+    remove: plan.restore.filter(r => r.action === 'delete').map(r => s(r.path)), restore: plan.restore.filter(r => r.action === 'restore').map(r => s(r.path)),
+    kept: plan.kept.map(k => ({ path: s(k.path), reason: k.reason })), dirs: plan.dirs.map(s), revision: plan.revision,
+  };
+}
+
+/** The Merge plan as the install sheet shows it, with the text of CLAUDE.md the plan read (`claude`, empty when it could not be shown). */
+export function mergeView(plan: InstructionMergePlan, folder: string, claude: string, s: Scrub): MergeView {
+  return { folder, claude: s(claude), heading: plan.heading, addsPart: plan.addsPart, files: plan.files.map(f => ({ path: s(f.path), action: f.action })), revision: plan.revision };
 }
 
 // ---- the projection -------------------------------------------------------------------------------------------------------
@@ -155,10 +170,14 @@ export function removalView(plan: PortableRemovalPlan, s: Scrub): RemovalView {
   return { changes: plan.changes.map(c => changeView(c, s)), removeDirs: plan.removeDirs.map(s), revision: plan.revision };
 }
 
+/** A file mode as four octal digits: `0644`. */
+export const modeWords = (mode: number): string => `0${(mode & 0o777).toString(8).padStart(3, '0')}`;
+
 export function recoveryView(plan: PortableRecoveryPlan, s: Scrub): RecoveryView {
   return {
     kind: plan.kind, action: plan.action,
     steps: plan.steps.map(x => ({ path: s(x.path), now: x.now === 'unsafe' ? 'unsafe' : x.now === null ? 'missing' : 'present', decision: x.decision })),
-    keep: plan.keep.map(s), notice: plan.notice === null ? null : s(plan.notice), revision: plan.revision,
+    keep: plan.keep.map(s), modes: plan.modes.map(m => ({ path: s(m.path), choice: m.choice, now: modeWords(m.now.mode), recorded: modeWords(m.recorded.mode) })),
+    notice: plan.notice === null ? null : s(plan.notice), revision: plan.revision,
   };
 }

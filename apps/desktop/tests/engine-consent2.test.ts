@@ -3,13 +3,13 @@
 // entry's own text; and a "no" writes nothing for a removal, a recovery and the recovery of a stopped adoption.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { applyAdoptionWith } from '../../../packages/adoption/src/apply.js';
 import { planAdoption } from '../../../packages/adoption/src/index.js';
 import { applyPortableWith } from '../../../packages/project-sync/src/portable-run.js';
 import { planPortable } from '../../../packages/project-sync/src/index.js';
+import { harnessStateDirs } from '../../../packages/project-sync/src/harness-state.js';
 import { createEngineService } from '../main/engine-service.js';
 import type { EngineService } from '../main/engine-service.js';
 import { approvalText } from '../main/engine-consent.js';
@@ -31,7 +31,8 @@ function setup(t: test.TestContext): { home: string; stateRoot: string; asked: A
   const make = (next: () => string | null): EngineService => createEngineService({ home, stateRoot, chooseFolder: async () => next(), confirm: async q => { asked.push(q); return answer.yes; }, who: 'tester', now: () => WHEN });
   return { home, stateRoot, asked, answer, make };
 }
-const stateOf = (stateRoot: string, dir: string, kind: 'adoption' | 'portable'): string => join(stateRoot, 'desktop', createHash('sha256').update(dir).digest('hex').slice(0, 32), kind);
+/** The private state folders of a folder: the shared layout of the app and the command line (step 5, decision 7B). */
+const stateOf = (stateRoot: string, dir: string, kind: 'adoption' | 'portable'): string => harnessStateDirs(stateRoot, dir)[kind];
 async function installed(service: EngineService, id: string): Promise<ProjectInput> {
   const ask = value(await service.planProjection(id, INPUT)) as Extract<ProjectAnswer, { kind: 'approve' }>;
   const input = { ...INPUT, approve: ask.lines.map(l => l.key) };

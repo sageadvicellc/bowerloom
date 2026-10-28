@@ -366,7 +366,7 @@ test('the bridge file exposes the reader\'s object with exactly three functions 
   assert.doesNotMatch(code, /ipcRenderer\s*[,}]|exposeInMainWorld\('[^']+',\s*ipcRenderer|require\(|process\.|\.on\(|\.send\w*\(|webFrame|shell|clipboard|remote/);
 });
 
-test('the built bridge, run with a fake Electron, exposes the reader\'s three frozen functions and the sheets\' twelve, each sending one message and turning a refusal into a short code', async () => {
+test('the built bridge, run with a fake Electron, exposes the reader\'s three frozen functions and the sheets\' fourteen, each sending one message and turning a refusal into a short code', async () => {
   // The bridge is built in a child process (the bundler is not bundled into the tests), in memory, from the source, with Electron left out.
   const script = "import { build } from 'esbuild'; const o = await build({ entryPoints: ['preload/real-preload.ts'], bundle: true, write: false, format: 'cjs', platform: 'node', external: ['electron'], logLevel: 'silent' }); process.stdout.write(o.outputFiles[0].text);";
   const built = spawnSync(process.execPath, ['--input-type=module', '-e', script], { cwd: DESKTOP, encoding: 'utf8', timeout: 60000 });

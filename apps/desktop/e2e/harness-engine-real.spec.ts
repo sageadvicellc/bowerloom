@@ -5,7 +5,7 @@
  */
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { chmodSync, existsSync, readFileSync, realpathSync } from 'node:fs';
+import { chmodSync, existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { definedFolder, engineFolder, filesOf } from '../tests/helpers-engine/folders.js';
 import { launchReal } from './harness-real-page.js';
@@ -108,7 +108,10 @@ test('Install a folder\'s harness: approve the weaker rules, read the plan, appr
   await expect(s.locator('[data-done]')).toContainText('.codex/rules/bowerloom.rules');
   expect(readFileSync(join(dir, 'CLAUDE.md'), 'utf8')).toBe('@AGENTS.md\n');
   expect(existsSync(join(dir, '.codex', 'rules', 'bowerloom.rules'))).toBe(true);
-  expect(existsSync(join(home, '.local', 'state', 'bowerloom', 'desktop'))).toBe(true);
+  // The record is in the layout the command line shares (decision 7B): <state root>/<project id>/harness/portable, and no desktop/ folder.
+  const root = join(home, '.local', 'state', 'bowerloom');
+  expect(existsSync(join(root, 'desktop'))).toBe(false);
+  expect(readdirSync(root).filter(id => existsSync(join(root, id, 'harness', 'portable', 'receipt.json')))).toHaveLength(1);
   await s.getByRole('button', { name: 'Undo', exact: true }).click();
   const r = p.getByRole('dialog', { name: 'Remove what Bowerloom wrote' });
   await expect(r.locator('[data-file="CLAUDE.md"]')).toContainText('Puts yours back');
@@ -116,4 +119,92 @@ test('Install a folder\'s harness: approve the weaker rules, read the plan, appr
   await r.getByRole('button', { name: /^Remove \d+ files?$/ }).click();
   await expect(r.locator('[data-section="result-Put back"]')).toContainText('CLAUDE.md');
   expect(filesOf(dir), 'the folder is as it was').toEqual(before);
+});
+
+test('Merge on a real folder: its own plan, main asks before the harness changes, then the install accepts AGENTS.md', async () => {
+  const p = page(), dir = definedFolder(home, 'merge-me');
+  const instructions = join(dir, '.bowerloom', 'instructions', 'AGENTS.md'), original = readFileSync(instructions, 'utf8');
+  await p.getByRole('button', { name: 'Install from a folder', exact: true }).click();
+  const s = p.getByRole('dialog', { name: 'Install a folder\'s harness' });
+  await h.pick(dir);
+  await s.getByRole('button', { name: 'Choose a folder', exact: true }).click();
+  await expect(s.locator('.hxi-card', { hasText: 'merge-me' })).toHaveAttribute('aria-pressed', 'true');
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  for (const line of await s.locator('[data-section="approve-lines"] input').all()) await line.check();
+  await s.getByRole('button', { name: 'Plan with these approvals', exact: true }).click();
+  await s.locator('[data-section="drift"]').getByRole('radio', { name: /Merge/ }).click();
+  const plan = s.locator('[data-section="merge"]');
+  await expect(plan.locator('pre')).toHaveText('# Demo for Claude\n\nUse pnpm.\n');
+  await expect(plan.locator('[data-file=".bowerloom/instructions/AGENTS.md"]')).toContainText('Update');
+  await expect(s).not.toContainText(home);
+  await s.locator('[data-approve-plan] input').check();
+  await h.confirm(false);
+  await s.getByRole('button', { name: 'Merge into the harness', exact: true }).click();
+  await expect(s.getByRole('alert')).toContainText('Nothing was written.');
+  expect(readFileSync(instructions, 'utf8'), 'a no writes nothing').toBe(original);
+  expect((await h.asked()).at(-1)!.message).toBe('Write 1 file into ~/Projects/merge-me/.bowerloom?');
+  await h.confirm(true);
+  await s.getByRole('button', { name: 'Plan again', exact: true }).click();
+  await s.locator('[data-approve-plan] input').check();
+  await s.getByRole('button', { name: 'Merge into the harness', exact: true }).click();
+  await expect(s.locator('[data-merged]')).toBeVisible();
+  expect(readFileSync(instructions, 'utf8')).toContain('## From CLAUDE.md');
+  await expect(s.locator('[data-section="drift"]').getByRole('radio', { name: /Accept AGENTS\.md/ })).toHaveAttribute('aria-checked', 'true');
+  await shot(p, 'R4-real-merged');
+  await s.locator('[data-approve-plan] input').check();
+  await s.getByRole('button', { name: /^Write \d+ files$/ }).click();
+  await expect(s.locator('[data-done]')).toContainText('CLAUDE.md');
+  expect(readFileSync(join(dir, 'CLAUDE.md'), 'utf8')).toBe('@AGENTS.md\n');
+  expect(readFileSync(join(dir, 'AGENTS.md'), 'utf8')).toContain('Use pnpm.');
+});
+
+test('a mode drift line in the real window: both actions fit 900 by 600, answer the pointer and the keyboard, and Restore mode puts the mode back', async () => {
+  const p = page(), dir = definedFolder(home, 'mode-me');
+  await p.setViewportSize({ width: 900, height: 600 });
+  await p.getByRole('button', { name: 'Install from a folder', exact: true }).click();
+  const s = p.getByRole('dialog', { name: 'Install a folder\'s harness' });
+  await h.pick(dir);
+  await s.getByRole('button', { name: 'Choose a folder', exact: true }).click();
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  for (const line of await s.locator('[data-section="approve-lines"] input').all()) await line.check();
+  await s.getByRole('button', { name: 'Plan with these approvals', exact: true }).click();
+  await s.locator('[data-approve-plan] input').check();
+  await s.getByRole('button', { name: /^Write \d+ files$/ }).click();
+  await expect(s.locator('[data-done]')).toBeVisible();
+  const target = join(dir, 'AGENTS.md'), recorded = statSync(target).mode & 0o777;
+  chmodSync(target, 0o700);
+  // The footer's Close; the sheet's corner has its own.
+  await s.getByRole('button', { name: 'Close', exact: true }).last().click();
+  await p.getByRole('button', { name: 'Install from a folder', exact: true }).click();
+  await s.locator('.hxi-card', { hasText: 'mode-me' }).click();
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  const note = s.getByRole('alert');
+  await expect(note).toContainText('PORTABLE_DRIFT');
+  await expect(note.locator('[data-drift-line="AGENTS.md"]')).toContainText('Mode changed since');
+  const restore = note.getByRole('button', { name: 'Restore mode: AGENTS.md', exact: true }), keepNew = note.getByRole('button', { name: 'Keep new mode: AGENTS.md', exact: true });
+  const sheetBox = (await s.boundingBox())!;
+  for (const b of [restore, keepNew]) { const box = (await b.boundingBox())!; expect(box.x + box.width).toBeLessThanOrEqual(sheetBox.x + sheetBox.width); expect(box.height).toBeGreaterThanOrEqual(32); }
+  // The pointer changes the button, as on every kit button.
+  const look = (): Promise<string> => keepNew.evaluate(el => { const st = getComputedStyle(el); return `${st.backgroundColor}|${st.borderColor}|${st.color}`; });
+  const still = await look();
+  await keepNew.hover();
+  await expect.poll(look).not.toBe(still);
+  // The keyboard reaches it, with a ring of 2 px or more.
+  await restore.focus();
+  await p.keyboard.press('Tab');
+  await expect(keepNew).toBeFocused();
+  expect(await keepNew.evaluate(el => { const st = getComputedStyle(el); return st.outlineStyle !== 'none' && parseFloat(st.outlineWidth) >= 2; })).toBe(true);
+  await shot(p, 'R5-real-mode-line');
+  await restore.click();
+  const r = p.getByRole('dialog', { name: 'Finish a stopped install' });
+  await expect(r.locator('[data-mode="AGENTS.md"]')).toContainText(`Now 0700. Bowerloom wrote 0${recorded.toString(8)}.`);
+  await r.locator('[data-approve-plan] input').check();
+  await r.getByRole('button', { name: 'Finish', exact: true }).click();
+  await expect(r.locator('[data-section="result-Mode put back"]')).toContainText('AGENTS.md');
+  expect((await h.asked()).at(-1)!.message).toBe('Restore or keep 1 file mode in ~/Projects/mode-me?');
+  expect(statSync(target).mode & 0o777).toBe(recorded);
+  await p.setViewportSize({ width: 1280, height: 800 });
 });

@@ -3,6 +3,7 @@
  * when the test says (tests/component/sheets-page.tsx). They cover a write racing a plan (H1), a new folder starting clean (H2), a tick bound to the
  * content read (H3), a failed re-plan leaving no old plan to approve (H4), a changed entry asked again (SM2), the result step after each write (U5),
  * a refusal taking the focus (U9), Plan again (U10), a failed folder list, no bridge, and a chooser that throws (U11), and the words of Confirm (U12).
+ * Step 5: the two actions of a mode drift line and the plain refusal of Keep new mode (D5A), and the recovery of a stopped Merge (D4A).
  */
 import { _electron as electron, expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
@@ -340,7 +341,7 @@ test('W6, W8: each step\'s body and each block of code is a named region; a reco
   const s = sheet(p);
   await expect(s.getByRole('region', { name: 'Pick a folder' })).toBeVisible();
   await s.getByRole('button', { name: 'Next', exact: true }).click();
-  await answer(p, (await waiting(p, 'planAdoptionRecovery')).id, ok({ journal: 'damaged', check: ['.bowerloom/harness.json'], remove: [], kept: [], dirs: [], revision: 'a'.repeat(64) }));
+  await answer(p, (await waiting(p, 'planAdoptionRecovery')).id, ok({ kind: 'adoption', journal: 'damaged', check: ['.bowerloom/harness.json'], remove: [], restore: [], kept: [], dirs: [], revision: 'a'.repeat(64) }));
   const r = sheet(p, 'Finish a stopped harness');
   await expect(r.getByRole('region', { name: 'Review the plan' })).toBeVisible();
   await expect(r.locator('[data-journal]')).toHaveText("The stopped run's record is damaged. Check these files by hand.");
@@ -360,4 +361,72 @@ test('U12: a plan that is not ready with nothing waiting names why', async () =>
   for (const b of await s.locator('[data-section="approvals"] input').all()) await b.check();
   await expect(s.locator('[data-waiting]')).toHaveText('Not ready: Bowerloom\'s plan is not ready though nothing waits on you. Plan again to check.');
   await expect(s.getByRole('button', { name: /^Write/ })).toBeDisabled();
+});
+
+// ---- step 5: mode drift lines (D5A) and the recovery of a stopped Merge (D4A)
+
+test('D5A: a mode line offers Restore mode and Keep new mode; Keep new mode for an open mode is refused plainly; Restore mode plans, asks, and runs', async () => {
+  const p = await open();
+  await p.setViewportSize({ width: 900, height: 600 });
+  const s = await installReview(p, [D]);
+  const drift = { ok: false, refusal: { code: 'PORTABLE_DRIFT', message: 'A file Bowerloom projected changed since. Nothing more was changed.', paths: [], drift: [{ path: 'AGENTS.md', reason: 'mode' }, { path: '.claude/settings.json', reason: 'changed' }] } };
+  await answer(p, (await waiting(p, 'planProjection')).id, drift);
+  const note = s.getByRole('alert');
+  await expect(note.locator('[data-drift-line="AGENTS.md"]')).toContainText('Mode changed since');
+  await expect(note.locator('[data-drift-line=".claude/settings.json"]')).toContainText('Changed since');
+  await expect(note.locator('[data-drift-line=".claude/settings.json"] button')).toHaveCount(0);
+  const restore = note.getByRole('button', { name: 'Restore mode: AGENTS.md', exact: true });
+  const keepNew = note.getByRole('button', { name: 'Keep new mode: AGENTS.md', exact: true });
+  await expect(restore).toBeVisible(); await expect(keepNew).toBeVisible();
+  // Each one fits the 900 by 600 sheet and is 32 px high. Their focus ring and hover are held in the real window (harness-engine-real.spec.ts).
+  const sheetBox = (await s.boundingBox())!;
+  for (const b of [restore, keepNew]) {
+    const box = (await b.boundingBox())!;
+    expect(box.x + box.width).toBeLessThanOrEqual(sheetBox.x + sheetBox.width);
+    expect(box.height).toBeGreaterThanOrEqual(32);
+  }
+  await shot(p, 'C1-mode-line');
+  await keepNew.click();
+  const record = await waiting(p, 'planRecovery');
+  expect(record.args[1]).toEqual({ keep: [], restoreMode: [], recordMode: ['AGENTS.md'] });
+  await answer(p, record.id, { ok: false, refusal: { code: 'PORTABLE_MODE_UNSAFE', message: 'The new mode of a projected file lets the group or others write it, so the receipt does not take it. Restore the recorded mode, or narrow the mode first. Nothing was changed.', paths: ['AGENTS.md'] } });
+  const r = sheet(p, 'Finish a stopped install');
+  await expect(r.getByRole('alert')).toContainText('lets the group or others write it');
+  await expect(r.getByRole('alert')).toContainText('PORTABLE_MODE_UNSAFE');
+  await r.getByRole('button', { name: 'Back', exact: true }).click();
+  const d = sheet(p, 'Install a folder\'s harness');
+  await d.getByRole('button', { name: 'Next', exact: true }).click();
+  await d.getByRole('button', { name: 'Next', exact: true }).click();
+  await answer(p, (await waiting(p, 'planProjection')).id, drift);
+  await s.getByRole('alert').getByRole('button', { name: 'Restore mode: AGENTS.md', exact: true }).click();
+  const back = await waiting(p, 'planRecovery');
+  expect(back.args[1]).toEqual({ keep: [], restoreMode: ['AGENTS.md'], recordMode: [] });
+  const plan = { kind: null, action: 'mode', steps: [], keep: [], modes: [{ path: 'AGENTS.md', choice: 'restoreMode', now: '0700', recorded: '0644' }], notice: null, revision: 'b'.repeat(64) };
+  await answer(p, back.id, ok(plan));
+  const modes = r.locator('[data-section="modes"]');
+  await expect(modes.locator('[data-mode="AGENTS.md"]')).toContainText('Restore mode');
+  await expect(modes.locator('[data-mode="AGENTS.md"]')).toContainText('Now 0700. Bowerloom wrote 0644.');
+  const finish = r.getByRole('button', { name: 'Finish', exact: true });
+  await expect(finish).toBeDisabled();
+  await r.locator('[data-approve-plan] input').check();
+  await finish.click();
+  const run = await waiting(p, 'runRecovery');
+  expect(run.args).toEqual(['folder-3', 'b'.repeat(64), { keep: [], restoreMode: ['AGENTS.md'], recordMode: [] }]);
+  await answer(p, run.id, ok({ leftBehind: [] }));
+  await expect(r.locator('[data-section="result-Mode put back"] .hxi-file')).toHaveText(['AGENTS.md']);
+});
+
+test('D4A: a stopped Merge is put back through the recovery of a stopped harness, which lists each file it puts back', async () => {
+  const p = await open();
+  await auto(p, 'folders', [folder('folder-6', 'merged', { hasDefinition: true, engines: ['claude-code'], unfinished: { projection: false, adoption: true } })]);
+  await p.getByRole('button', { name: 'From a folder', exact: true }).click();
+  const s = sheet(p);
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  await answer(p, (await waiting(p, 'planAdoptionRecovery')).id, ok({ kind: 'merge', journal: 'ok', check: [], remove: [], restore: ['.bowerloom/instructions/AGENTS.md'], kept: [], dirs: [], revision: 'c'.repeat(64) }));
+  const r = sheet(p, 'Finish a stopped harness');
+  await expect(r.locator('[data-file=".bowerloom/instructions/AGENTS.md"]')).toContainText('Puts yours back');
+  await r.locator('[data-approve-plan] input').check();
+  await r.getByRole('button', { name: 'Finish', exact: true }).click();
+  await answer(p, (await waiting(p, 'runAdoptionRecovery')).id, ok({ removed: [], restored: ['.bowerloom/instructions/AGENTS.md'], kept: [], leftFolders: [] }));
+  await expect(sheet(p).locator('[data-section="result-Put back"] .hxi-file')).toHaveText(['.bowerloom/instructions/AGENTS.md']);
 });

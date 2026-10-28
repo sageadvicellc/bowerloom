@@ -4,7 +4,7 @@
  * most 25, and no banned word, so "adopt", "apply", "import" and "MCP" never reach the screen. tests/engine-words.test.ts holds the table and the builders to it.
  * The words that come from a plan (a reason, a rule, a path) are shown as the packages wrote them.
  */
-import type { ChangeView, EngineId, Gate, RecoveryView, ResultWord } from '../../shared/engine/types.js';
+import type { ChangeView, DriftLineView, EngineId, Gate, ModeChoice, RecoveryView, ResultWord } from '../../shared/engine/types.js';
 import type { Tone } from '../../shared/harness/status.js';
 
 const deepFreeze = <T extends object>(value: T): T => {
@@ -33,6 +33,8 @@ export const ENGINE_WORDS = deepFreeze({
     pendingTrust: 'Skills that wait for trust', checkByHand: 'Files to check by hand', foldersRemoved: 'Folders it removes when empty', exactText: 'The exact text',
     stepResult: 'Done', bodyFolder: 'Pick a folder', bodyReview: 'Review the plan', bodyConfirm: 'Confirm each one', bodyResult: 'What Bowerloom did', bodyInterfaces: 'Pick the interfaces',
     writeFiles: 'Write files', undoneFiles: 'Taken back', engineFound: 'Found here', engineNamed: 'Named, not found', shape: 'Read as',
+    mergeIt: 'Merge into the harness', mergeText: 'CLAUDE.md text to move', restoreMode: 'Restore mode', recordMode: 'Keep new mode', modes: 'File modes',
+    modeRestored: 'Mode put back', modeRecorded: 'New mode kept',
   },
   hint: {
     pickFolder: 'Pick the folder Bowerloom reads.', samplePick: 'Sample folders. Nothing is read or written.', readOnly: 'Bowerloom only reads until you approve.',
@@ -42,7 +44,7 @@ export const ENGINE_WORDS = deepFreeze({
     allTicked: 'Every one is ticked.', nothingWaits: 'Nothing is waiting.', listedOnly: 'Listed only.', needsAck: 'Needs your acknowledgement.', mustFix: 'Change the file first.',
     shownInFull: 'Shown in full. Read it before you approve.', pendingTrust: 'Pending trust', trusted: 'Trusted',
     fromVariable: 'read from a variable when it runs', noLines: 'Nothing to install for this interface.', defaultChoice: 'The default',
-    mergeNotBuilt: 'Not built yet. Pick another way.', approveChanged: 'The plan changed. Approve it again.', pickInterface: 'Pick at least one interface.',
+    approveChanged: 'The plan changed. Approve it again.', pickInterface: 'Pick at least one interface.',
     sameAsNow: 'The folder already matches. Nothing is written.', removeNote: 'Bowerloom puts back what it replaced and deletes only its own files.',
     acceptAgentsText: 'CLAUDE.md becomes one line: @AGENTS.md.', mergeText: 'Moves CLAUDE.md into the harness.', keepBothText: 'CLAUDE.md stays. Claude Code keeps reading it.',
     sampleNote: 'Sample. Nothing is written to your disk.',
@@ -55,6 +57,8 @@ export const ENGINE_WORDS = deepFreeze({
     nothingToRemove: 'Nothing to remove. Bowerloom wrote nothing here.', nothingChanged: 'Nothing changed. The folder already matched the plan.',
     noText: 'Bowerloom has no file text for this approval.', cannotApprove: 'This line cannot be approved here. Change the harness first.',
     leftBehindWhy: 'Bowerloom could not remove these. Check them by hand.', keptWhy: 'These changed since, so Bowerloom left them.',
+    merged: 'Merged. The harness now holds the CLAUDE.md text.', mergeThen: 'Next, the install uses Accept AGENTS.md.',
+    addsPart: 'harness.json gains the instructions part.', noClaudeText: 'Bowerloom cannot show this text. Plan again.',
   },
   paragraph: {
     adoptIntro: 'Bowerloom reads the files your interfaces use and proposes a harness. It writes only into .bowerloom, and only after you approve.',
@@ -68,6 +72,8 @@ export const ENGINE_WORDS = deepFreeze({
     keepIntro: 'You changed these files after Bowerloom wrote them. Keep your versions, or put Bowerloom\'s back.',
     resultIntro: 'Bowerloom wrote only what the plan you approved listed. Each file is below.',
     notReady: 'Not ready: Bowerloom\'s plan is not ready though nothing waits on you. Plan again to check.',
+    mergeIntro: 'Merge adds the text of CLAUDE.md to the harness instructions, under its own heading. CLAUDE.md itself does not change yet.',
+    modeIntro: 'Only the file mode changed after Bowerloom wrote these files. Put the recorded mode back, or keep the new one.',
   },
 } as const);
 
@@ -88,12 +94,15 @@ export const GATE_TONE: Readonly<Record<Gate, Tone>> = Object.freeze({ none: 'qu
 export const CHANGE_WORDS: Readonly<Record<ChangeView['action'], string>> = Object.freeze({ create: 'New', replace: 'Replaces yours', update: 'Update', unchanged: 'Same', restore: 'Puts yours back', delete: 'Deletes' });
 export const CHANGE_TONE: Readonly<Record<ChangeView['action'], Tone>> = Object.freeze({ create: 'good', replace: 'warn', update: 'good', unchanged: 'quiet', restore: 'good', delete: 'warn' });
 
-export const RECOVERY_ACTION_WORDS: Readonly<Record<'complete' | 'rollback' | 'keep', string>> = Object.freeze({ complete: 'Finish the stopped run', rollback: 'Take the stopped run back', keep: 'Keep your versions' });
+export const RECOVERY_ACTION_WORDS: Readonly<Record<RecoveryView['action'], string>> = Object.freeze({ complete: 'Finish the stopped run', rollback: 'Take the stopped run back', keep: 'Keep your versions', mode: 'Settle the file modes' });
 export const RECOVERY_DECISION_WORDS: Readonly<Record<'undo' | 'none' | 'keep', string>> = Object.freeze({ undo: 'Undo', none: 'Nothing to do', keep: 'Keep yours' });
 export const RECOVERY_NOW_WORDS: Readonly<Record<'present' | 'missing' | 'unsafe', string>> = Object.freeze({ present: 'There now', missing: 'Gone', unsafe: 'Not safe to read' });
 export const TRUST_WORDS: Readonly<Record<'pending trust' | 'trusted', string>> = Object.freeze({ 'pending trust': 'Pending trust', trusted: 'Trusted' });
 
-export const DRIFT_WORDS: Readonly<Record<'changed' | 'missing' | 'unsafe', string>> = Object.freeze({ changed: 'Changed since', missing: 'Gone since', unsafe: 'Not safe to read' });
+export const DRIFT_WORDS: Readonly<Record<DriftLineView['reason'], string>> = Object.freeze({ changed: 'Changed since', missing: 'Gone since', unsafe: 'Not safe to read', mode: 'Mode changed since' });
+export const DRIFT_TONE: Readonly<Record<DriftLineView['reason'], Tone>> = Object.freeze({ changed: 'warn', missing: 'bad', unsafe: 'bad', mode: 'warn' });
+/** The two actions of a mode drift line (decision D5A). */
+export const MODE_CHOICE_WORDS: Readonly<Record<ModeChoice, string>> = Object.freeze({ restoreMode: ENGINE_WORDS.label.restoreMode, recordMode: ENGINE_WORDS.label.recordMode });
 
 // ---- words built from a name or a number
 
@@ -162,5 +171,11 @@ export const ignoredWords = (option: string, reason: string): string => `${optio
 /** "A stopped install" or "A stopped removal", for the kind of a stopped run. */
 const KIND_WORDS = Object.freeze({ apply: 'A stopped install', remove: 'A stopped removal' });
 export const recoveryKindWords = (kind: RecoveryView['kind']): string => (kind === null ? 'No run stopped; only kept paths' : KIND_WORDS[kind]);
+/** "Now 0700. Bowerloom wrote 0644." for one mode drift path. */
+export const modeLine = (now: string, recorded: string): string => `Now ${now}. Bowerloom wrote ${recorded}.`;
+/** "Restore mode: AGENTS.md", the name of one action of a mode line, so no two buttons sound the same (U8). */
+export const modeActionName = (choice: ModeChoice, path: string): string => `${MODE_CHOICE_WORDS[choice]}: ${path}`;
+/** "It goes under the heading From CLAUDE.md." */
+export const headingLine = (heading: string): string => `It goes under the heading ${heading}.`;
 /** "Claude Code, version 2.1.310, model sonnet". */
 export const engineDetails = (name: string, version: string | null, model: string | null): string => [name, version === null ? null : `version ${version}`, model === null ? null : `model ${model}`].filter(Boolean).join(', ');
