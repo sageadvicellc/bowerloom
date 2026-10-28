@@ -161,3 +161,12 @@ test('I2. a rebuilt manifest cannot flip the form of the file on write', () => {
   const rebuilt = JSON.parse(JSON.stringify(parse(OLD)));
   assert.equal(rebuilt.oldForm, true, 'a copy made the usual way keeps the form');
 });
+
+// Step 2 of 0.8: one engine id list. skill-manifest re-exports the list of the harness definition core and declares none.
+test('step 2: ENGINE_IDS is the harness definition list itself, not a copy', async () => {
+  const core = await import('../../../dist/packages/harness-definition/src/index.js');
+  assert.equal(ENGINE_IDS, core.ENGINE_IDS);
+  assert.equal(isEngine('pi'), true); assert.equal(isEngine('claude'), false);
+  const source = fs.readFileSync(new URL('../src/engine.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /export const ENGINE_IDS\s*=/, 'engine.ts declares no engine list of its own');
+});

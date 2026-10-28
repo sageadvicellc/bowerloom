@@ -2,8 +2,10 @@
  * The engines of Bowerloom 0.8, in one place. An engine is the coding tool a person works in. A harness is the
  * definition a person writes; it is a different thing and has its own words elsewhere.
  *
- * This file holds the canonical list and type, the mapping from the spelling of old files, and the typed refusal for an
- * engine that has no writer yet. A later step moves it to a core package, so every other file imports from here.
+ * The canonical list and type live in the harness definition core (`packages/harness-definition`, words.ts). This file
+ * re-exports them and adds the mapping from the spelling of old files, and the typed refusal for an engine that has no
+ * writer yet. It imports words.ts, a leaf module, and not the package index: the index reaches this file again through
+ * skill-sources and portable, so importing the index would make an import cycle.
  *
  * Old files (`skills.json`, `bowerloom.json`, and the receipts and catalogs of managed copies) name the engines in a field
  * called `harnesses`, and call Claude Code `claude`. Reading such a file maps to the current names and never changes the
@@ -11,11 +13,13 @@
  * and `claude-code`.
  */
 import { DefinitionError } from '../../contracts/src/index.js';
+import { ENGINE_IDS, isEngineId } from '../../harness-definition/src/words.js';
+import type { EngineId } from '../../harness-definition/src/words.js';
 
-/** Every engine id, in the order of the 0.8 harness definition (section 11). */
-export const ENGINE_IDS = Object.freeze(['claude-code', 'codex', 'opencode', 'pi', 'deepseek-harness'] as const);
-export type Engine = (typeof ENGINE_IDS)[number];
-export const isEngine = (value: unknown): value is Engine => typeof value === 'string' && (ENGINE_IDS as readonly string[]).includes(value);
+/** Every engine id, in the order of the 0.8 harness definition (section 11). The core's list itself, not a copy. */
+export { ENGINE_IDS };
+export type Engine = EngineId;
+export const isEngine: (value: unknown) => value is Engine = isEngineId;
 
 /** How a person reads each engine id. */
 export const ENGINE_NAMES: Readonly<Record<Engine, string>> = Object.freeze({

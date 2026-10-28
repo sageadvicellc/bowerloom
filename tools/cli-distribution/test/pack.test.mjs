@@ -215,6 +215,14 @@ test('internal routine and skills manifests are exact exceptions and present man
  }finally{Object.assign(fs,original);syncBuiltinESMExports();}
 });
 
+// Bowerloom 0.8, step 2: skill-manifest takes its engine ids from the harness definition core, so the core is a runtime
+// module of the CLI. It has no package.json of its own.
+test('0.8 harness-definition is an allowlisted runtime module with an optional manifest',()=>{
+ assert.ok(MODULES.includes('harness-definition'));
+ const record=collect({repoDir:repo}).record;
+ assert.equal(record.sourceManifests.some(m=>m.path==='packages/harness-definition/package.json'),false);
+});
+
 // Beta 0.7.0 Day 0: the project-layer packages are runtime modules with optional internal manifests.
 test('beta 0.7.0 project packages are allowlisted modules whose manifests are optional but validated when present',()=>{
  const added=['project-context','project-config','project-authoring','skill-manifest','project-sync','context-slices'];
