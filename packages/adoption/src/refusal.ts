@@ -24,6 +24,8 @@ const MESSAGES = {
   ADOPTION_AT_IMPORT: 'The instructions use an @path import, which the portable projection refuses. Inline the imported text first. Nothing was written.',
   ADOPTION_TOO_LARGE: 'The project holds more than adoption reads in one run: the limits match the definition loader (files, bytes, entries per folder, folder depth). Nothing was read past the limit.',
   ADOPTION_ABORTED: 'The run was stopped. Adoption removed what it wrote.',
+  ADOPTION_MERGE_NOTHING: 'There is nothing to merge: the project has no CLAUDE.md, its CLAUDE.md is empty or already follows AGENTS.md, or the definition\'s instructions already hold its text. Nothing was changed.',
+  ADOPTION_INSTRUCTIONS_TOO_LARGE: 'The merged instructions would be larger than 32 KiB, where Codex stops loading instructions. Shorten CLAUDE.md or the definition\'s instructions first. Nothing was written.',
 } as const;
 export type AdoptionCode = keyof typeof MESSAGES;
 export const ADOPTION_REFUSAL_CODES: readonly AdoptionCode[] = Object.freeze(Object.keys(MESSAGES) as AdoptionCode[]);
