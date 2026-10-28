@@ -19,7 +19,7 @@ import { legacyPresent } from '../../managed-skills/src/migrate.js';
 import { temporary } from '../../managed-skills/src/observed.js';
 import type { ManagedItemRequest } from '../../managed-skills/src/v2-types.js';
 import { ENGINE_IDS, isEngine, writerEngines } from '../../skill-manifest/src/engine.js';
-import type { WriterEngine } from '../../skill-manifest/src/engine.js';
+import type { Engine, WriterEngine } from '../../skill-manifest/src/engine.js';
 import type { Identity } from '../../managed-skills/src/observed-types.js';
 import { readManifestState } from '../../skill-manifest/src/add.js';
 import { MANIFEST_LIMITS, isId, parseManifest } from '../../skill-manifest/src/schema.js';
@@ -169,8 +169,30 @@ function plainSkillIds(dir: string): Set<string> {
 
 /** The engines of an apply: sorted, unique, not empty, each an engine id. An engine with no writer is refused by name, never skipped. */
 function engineSet(value: unknown): WriterEngine[] {
-  if (!Array.isArray(value) || value.length < 1 || value.length > ENGINE_IDS.length || !value.every((h, i) => isEngine(h) && (i === 0 || value[i - 1] < h))) return usage();
-  return writerEngines(value);
+  if (!Array.isArray(value) || value.length < 1 || value.length > ENGINE_IDS.length || !value.every(isEngine)) return usage();
+  // The refusal comes first, so a list with an engine that has no writer is named whatever its order. Then the order is checked.
+  const writers = writerEngines(value);
+  if (!value.every((h, i) => i === 0 || value[i - 1]! < h)) return usage();
+  return writers;
+}
+/**
+ * The engines that the project's own files name: bowerloom.json, or skills.json in a project that has none. Null when no
+ * file can be read here. A plan that reads no definitions (agents only) still refuses a file that names an engine with no
+ * writer; any other trouble with the files is left to the commands that read them.
+ */
+function declaredEngines(project: ProjectContext): readonly Engine[] | null {
+  try {
+    const config = readConfig(project);
+    if (config.state === 'valid') return config.config.engines;
+    if (config.state === 'absent') { const state = readManifestState(project.dir); if (state.file !== null) return parseManifest(state.file.bytes, MANIFEST_LIMITS).engines; }
+  } catch { /* The commands that read the files report their trouble. */ }
+  return null;
+}
+
+/** Refuses by name when the project's files list an engine with no writer. Reads only. Used by commands that start before any plan, such as `up`. */
+export function requireDeclaredWriters(project: ProjectContext): void {
+  const declared = declaredEngines(project);
+  if (declared !== null) writerEngines(declared);
 }
 
 /** No item may take a place another item takes, and no new copy may land on something Bowerloom did not install. */
@@ -211,6 +233,9 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
     if (!agentsOnly) try { ignore = ignoreState(dir); } catch (e) { throw syncError(managedCode(e), 'The file .bowerloom/managed/.gitignore must hold exactly one line, a single *.'); }
     const layout = stateLayout(input);
     const resolved = agentsOnly ? null : resolveProject({ project, home, frozen });
+    // A file that names an engine with no writer is refused by name, whatever engines the command asked for. Nothing is skipped.
+    const declared = resolved !== null ? resolved.engines : declaredEngines(project);
+    if (declared !== null) writerEngines(declared);
     if (resolved !== null) requireReadableLock(resolved);
     // Skills: the sync planner, for the chosen engines. Offline unless frozen: a plain apply never fetches.
     let skills: SyncPlan | null = null, entries: ReadonlyMap<string, Entry> = new Map();

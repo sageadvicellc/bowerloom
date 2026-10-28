@@ -22,7 +22,7 @@ import { checkProjectPath, discoverProject, privateStateRoot, withProjectLock } 
 import type { PlannedChange, ProjectContext } from '../../../packages/project-context/src/types.js';
 import { LIMITS, readGuarded } from '../../../packages/project-authoring/src/files.js';
 import { readAuthoringState } from '../../../packages/project-authoring/src/state.js';
-import { applySync, planProjectApply, applyProjectApply, planSync, productionAcquirer } from '../../../packages/project-sync/src/index.js';
+import { applySync, planProjectApply, applyProjectApply, planSync, productionAcquirer, requireDeclaredWriters } from '../../../packages/project-sync/src/index.js';
 import type { Acquirer, ApplyPlan, SyncPlan } from '../../../packages/project-sync/src/index.js';
 import type { WriterEngine } from '../../../packages/skill-manifest/src/engine.js';
 import { lstatSync } from 'node:fs';
@@ -250,6 +250,9 @@ export async function runUpCommand(args: readonly string[], cwd: string, home: s
   if (approval.rest.length) usage();
   const ctx: UpContext = { cwd, home, env, team: parsed.team, goal: parsed.goal, name: parsed.name, engines: ['claude-code', 'codex'], acquirer, allow: parsed.allow, terminal: io.interactive && !approval.json, io, write };
   if (parsed.allow.length) requireTerminal(io, approval.json);
+  // A project whose files list an engine with no writer is refused by name before any step, so no step is applied and then refused.
+  const found = (() => { try { return discoverProject(cwd, home); } catch { return null; } })();
+  if (found !== null) requireDeclaredWriters(found);
   const json = approval.json ? ['--json'] : [];
   let next = await nextUpStep(ctx);
   // Spec 06, 3.19: one note for a missing or disagreeing lock.

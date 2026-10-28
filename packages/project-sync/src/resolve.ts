@@ -282,7 +282,8 @@ export function resolveProject(input: ResolveInput): Resolved {
     prompts: [...defs.prompts.keys()].filter(id => !listed('prompts').has(id)).sort(byteOrder),
     teams: [...defs.teams.keys()].filter(id => !listed('teams').has(id)).sort(byteOrder),
   };
-  const manifest: Manifest = { format: MANIFEST_FORMAT, engines: [...config.engines], skills: skills.filter(i => i.entry !== null).map(i => i.entry!).sort((a, b) => byteOrder(a.id, b.id)) };
+  // The manifest of a config project is never written, but it keeps the form of the config it came from, so it cannot be mistaken for the other form.
+  const manifest: Manifest = { format: MANIFEST_FORMAT, engines: [...config.engines], ...(config.oldForm ? { oldForm: true as const } : {}), skills: skills.filter(i => i.entry !== null).map(i => i.entry!).sort((a, b) => byteOrder(a.id, b.id)) };
   return {
     mode: 'config', frozen, config: { sha256: read.sha256, bytes: read.bytes }, lock: lockInfo,
     engines: [...config.engines], manifest, projectManifest: defs.read,

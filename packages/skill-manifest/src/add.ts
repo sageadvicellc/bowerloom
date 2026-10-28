@@ -13,7 +13,7 @@ import type { HeldProjectLock } from '../../project-context/src/types.js';
 import { manifestRefusal, refuse, requireLimit, requireManifest } from './refusal.js';
 import { MANIFEST_FILE, MANIFEST_FORMAT, MANIFEST_LIMITS, STORE_MANIFEST_LIMITS, isEntryId, isId, parseManifest, serializeManifest, validateEntry, validateManifest } from './schema.js';
 import type { Entry, Manifest, ManifestLimits } from './schema.js';
-import { DEFAULT_ENGINES, engineField } from './engine.js';
+import { DEFAULT_ENGINES, engineField, sameForm } from './engine.js';
 
 export const MANIFEST_CHANGE_FORMAT = 'bowerloom/skills-manifest-change/v1beta2' as const;
 export const MANIFEST_PATH = `.bowerloom/${MANIFEST_FILE}` as const;
@@ -64,8 +64,12 @@ export type ManifestChangeReceipt = { manifest: string; sha256: string; bytes: n
  * A manifest like `base` (the same engines, in the same form of file) with these skills. With no base it starts a new
  * manifest for Claude Code and Codex in the current form.
  */
-const manifestWith = (base: Manifest | null, skills: Entry[], limits: ManifestLimits): Manifest =>
-  validateManifest({ format: MANIFEST_FORMAT, ...engineField(base?.engines ?? DEFAULT_ENGINES, base ?? {}), skills }, limits);
+const manifestWith = (base: Manifest | null, skills: Entry[], limits: ManifestLimits): Manifest => {
+  const manifest = validateManifest({ format: MANIFEST_FORMAT, ...engineField(base?.engines ?? DEFAULT_ENGINES, base ?? {}), skills }, limits);
+  // The form of the file is kept. A manifest that came out in the other form is a bug, and it is refused rather than written.
+  requireManifest(sameForm(base, manifest), 'MANIFEST_INVALID');
+  return manifest;
+};
 
 /** Adds a local skill entry to a manifest, or starts one for both engines. Pure: the input is not changed. */
 export function addLocalEntry(m: Manifest | null, id: string, teams: string[], limits: ManifestLimits): Manifest {

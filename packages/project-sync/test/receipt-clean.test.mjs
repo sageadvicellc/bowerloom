@@ -6,7 +6,7 @@ import { after } from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { denyNetwork, npmPackage, writeManifest } from './sync-fixture.mjs';
-import { configWorld, writeConfig, writeLock, storeItem, storePin, sha, code } from './config-fixture.mjs';
+import { configWorld, writeConfig, writeLock, storeItem, storePin, sha, code, engineKeys } from './config-fixture.mjs';
 import { planReceiptClean, applyReceiptClean, RECEIPT_CLEAN_PLAN_FORMAT, RECEIPT_CLEAN_RESULT_FORMAT } from '../../../dist/packages/project-sync/src/index.js';
 import { discoverProject, inspectStore, withProjectLock, withStoreForWrite } from '../../../dist/packages/project-context/src/index.js';
 import { planCreate, applyCreate } from '../../../dist/packages/project-authoring/src/index.js';
@@ -38,8 +38,8 @@ async function cleanStore(w, hooks) {
   return { plan, result };
 }
 /** A project with bowerloom.json and a created skill, prompt, team and slice, and one more skill that stays. */
-async function fullProject(t) {
-  const w = configWorld(t, { folder: true }); writeConfig(w, {});
+async function fullProject(t, { oldForm = false } = {}) {
+  const w = configWorld(t, { folder: true }); writeConfig(w, { oldForm });
   await projectItem(w, 'team', 'research');
   await projectItem(w, 'skill', 'notes'); await projectItem(w, 'skill', 'keeper');
   await projectItem(w, 'prompt', 'brief'); await projectItem(w, 'slice', 'wiki');
@@ -70,13 +70,13 @@ test('1. project scope: a gone skill, prompt, team and slice are selected; prese
   assert.equal(planReceiptClean(projectScope(w)).revision, plan.revision, 'the same state gives the same revision');
 });
 
-test('2, 3 and 4. the local skills.json entry goes, a pinned one stays; project config entries go and via stays; the receipt is the exact record', async t => {
-  const w = await fullProject(t);
+for (const oldForm of [false, true]) test(`2, 3 and 4. the local skills.json entry goes, a pinned one stays; project config entries go and via stays; the receipt is the exact record (${oldForm ? 'old' : 'current'} form of bowerloom.json)`, async t => {
+  const w = await fullProject(t, { oldForm });
   // A store team keeps a via list, which receipt clean never changes.
   await storeItem(w, 'team', 'ops'); await storeItem(w, 'skill', 'shared', { teams: ['ops'] });
   const config = configOf(w); config.teams.push({ id: 'ops', source: 'store' }); config.teams.sort((a, b) => a.id < b.id ? -1 : 1);
   config.skills.push({ id: 'shared', source: 'store', via: ['ops'] }); config.skills.sort((a, b) => a.id < b.id ? -1 : 1);
-  writeConfig(w, config);
+  writeConfig(w, { ...config, oldForm });
   // Skill keeper's skills.json entry becomes pinned: its config entry and its pinned entry stay when its folder goes.
   const pinned = npmPackage('keeper').entry;
   writeManifest({ projectDir: w.projectDir }, parseManifest(fs.readFileSync(bl(w, 'skills.json')), MANIFEST_LIMITS).skills.map(s => s.id === 'keeper' ? pinned : s));
@@ -85,7 +85,7 @@ test('2, 3 and 4. the local skills.json entry goes, a pinned one stays; project 
   assert.deepEqual(plan.manifest.steps.map(s => s.id), ['notes'], 'only the local entry is removed');
   assert.deepEqual(plan.config.removes, [{ kind: 'skill', id: 'notes' }, { kind: 'prompt', id: 'brief' }, { kind: 'team', id: 'research' }]);
   assert.deepEqual(manifestIds(w), ['keeper']);
-  assert.deepEqual(configOf(w), { format: 'bowerloom/project/v1beta1', engines: ['claude-code', 'codex'], skills: [{ id: 'keeper', source: 'project' }, { id: 'shared', source: 'store', via: ['ops'] }], prompts: [], teams: [{ id: 'ops', source: 'store' }] });
+  assert.deepEqual(configOf(w), { format: 'bowerloom/project/v1beta1', ...engineKeys(oldForm), skills: [{ id: 'keeper', source: 'project' }, { id: 'shared', source: 'store', via: ['ops'] }], prompts: [], teams: [{ id: 'ops', source: 'store' }] });
   const left = readAuthoringState(bl(w)).receipt.value;
   assert.deepEqual(left.items.map(i => `${i.kind} ${i.id}`), []);
   assert.equal(fs.readFileSync(bl(w, 'authoring/receipt.json'), 'utf8'), recordText(receiptOf([])));

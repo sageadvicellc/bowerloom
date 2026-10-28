@@ -5,9 +5,9 @@
 import { AdapterError, strictJson } from '../../codex-adapter/src/safe.js';
 import { SkillSourceError, captureSkillData } from '../../skill-sources/src/validation.js';
 import { strictUtf8 } from '../../skill-sources/src/cache.js';
-import { OLD_ENGINES_KEY, decodeEngines, engineField, engineKeyOf } from '../../skill-manifest/src/engine.js';
+import { OLD_ENGINES_KEY, decodeEngines, engineField, engineKeyOf, engineListProblem, sameForm } from '../../skill-manifest/src/engine.js';
 import type { Engine } from '../../skill-manifest/src/engine.js';
-import { refuse } from './refusal.js';
+import { configRefusal, refuse } from './refusal.js';
 
 export const CONFIG_FILE = 'bowerloom.json' as const;
 export const CONFIG_FORMAT = 'bowerloom/project/v1beta1' as const;
@@ -62,8 +62,9 @@ export function validateConfig(value: unknown): ProjectConfig {
   // 2. format.
   invalid(value.format === CONFIG_FORMAT);
   // 3. engines: at least one, sorted, no repeats. An old file takes claude and codex only.
-  const engines = decodeEngines(value[engineKey!], oldForm);
-  invalid(engines !== null);
+  const problem = engineListProblem(value[engineKey!], oldForm);
+  if (problem !== null) throw configRefusal('CONFIG_INVALID', problem);
+  const engines = decodeEngines(value[engineKey!], oldForm)!;
   // 4. The list lengths.
   for (const [name] of LISTS) invalid(Array.isArray(value[name]));
   for (const [name] of LISTS) if ((value[name] as unknown[]).length > CONFIG_LIMITS[name]) refuse('CONFIG_LIMIT');
@@ -110,4 +111,14 @@ export function serializeConfig(config: ProjectConfig): string {
   const text = `${JSON.stringify({ format: config.format, ...engineField(config.engines, config), skills: config.skills.map(entryOut), prompts: config.prompts.map(entryOut), teams: config.teams.map(entryOut) }, null, 2)}\n`;
   parseConfig(Buffer.from(text));
   return text;
+}
+
+/**
+ * The bytes of a config that replaces `before` (null when the file does not exist yet). The form of the file is kept: a
+ * config rebuilt without the `oldForm` mark of an old file, or with a mark the file never had, is refused, so no write
+ * can change the spelling of a file that Bowerloom did not create.
+ */
+export function serializeConfigFrom(before: ProjectConfig | null, next: ProjectConfig): string {
+  if (!sameForm(before, next)) refuse('CONFIG_INVALID');
+  return serializeConfig(next);
 }

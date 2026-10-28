@@ -66,7 +66,14 @@ export function copyPlaces(project: ProjectContext, kind: Kind, id: string): str
   if (!existsSync(catalog)) return [];
   let name = id, engines: WriterEngine[] = ['claude-code', 'codex'];
   // The catalog is a stored record of a managed copy: it names its engines the old way (`harnesses`, with `claude`).
-  try { const c = JSON.parse(readFileSync(catalog, 'utf8')) as { skill?: { name?: unknown } | null; harnesses?: unknown }; if (typeof c.skill?.name === 'string') name = c.skill.name; if (Array.isArray(c.harnesses)) engines = fromWire(c.harnesses as OldEngineId[]); } catch { /* The default places. */ }
+  // A catalog that is not JSON gives the default places. A catalog that names an engine it cannot is refused, by file.
+  const c = ((): { skill?: { name?: unknown } | null; harnesses?: unknown } | null => {
+    try { return JSON.parse(readFileSync(catalog, 'utf8')) as { skill?: { name?: unknown } | null; harnesses?: unknown } | null; } catch (error) { if (error instanceof SyntaxError) return null; throw error; }
+  })();
+  if (c !== null && typeof c === 'object') {
+    if (typeof c.skill?.name === 'string') name = c.skill.name;
+    if (Array.isArray(c.harnesses)) engines = fromWire(c.harnesses as OldEngineId[], `The catalog ${relative(project.dir, catalog)}`);
+  }
   const surfaces = kind === 'skill' ? itemSurfaces(project.dir, id, name, engines) : promptSurfaces(project.dir, id, engines);
   return surfaces.filter(s => s.id !== 'catalog').map(s => relative(project.dir, s.path));
 }

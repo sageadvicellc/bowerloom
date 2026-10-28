@@ -36,9 +36,12 @@ export function configWorld(t, { folder = false, prefix = '.bowerloom-config-' }
   };
   return w;
 }
+/** The engine field a config file of this form holds, for a test that compares a whole file. */
+export const engineKeys = (oldForm, engines = ['claude-code', 'codex']) => (oldForm ? { harnesses: engines.map(e => (e === 'claude-code' ? 'claude' : e)) } : { engines });
 /** Writes bowerloom.json in canonical form. Entries are { id, source, via? }. */
-export function writeConfig(w, { skills = [], prompts = [], teams = [], engines = ['claude-code', 'codex'] } = {}) {
-  const text = serializeConfig({ format: 'bowerloom/project/v1beta1', engines, skills, prompts, teams });
+export function writeConfig(w, { skills = [], prompts = [], teams = [], engines = ['claude-code', 'codex'], oldForm = false } = {}) {
+  // `oldForm` writes the file the way Bowerloom 0.7 did: `harnesses`, with `claude`.
+  const text = serializeConfig({ format: 'bowerloom/project/v1beta1', engines, skills, prompts, teams, ...(oldForm ? { oldForm: true } : {}) });
   fs.writeFileSync(path.join(w.projectDir, 'bowerloom.json'), text, { mode: 0o644 }); fs.chmodSync(path.join(w.projectDir, 'bowerloom.json'), 0o644);
   return text;
 }

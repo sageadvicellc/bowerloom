@@ -10,7 +10,7 @@ import { DefinitionError, PLAIN_ID, canonicalJson } from '../../contracts/src/in
 import { inspectStore, isHeldProjectLock, projectRefusal, adoptCreatedMarker, verifyProjectPins } from '../../project-context/src/index.js';
 import type { HeldProjectLock, ProjectContext } from '../../project-context/src/types.js';
 import { readConfig } from '../../project-config/src/config.js';
-import { CONFIG_FORMAT, parseConfig, serializeConfig } from '../../project-config/src/schema.js';
+import { CONFIG_FORMAT, parseConfig, serializeConfigFrom } from '../../project-config/src/schema.js';
 import type { ConfigEntry, ProjectConfig } from '../../project-config/src/schema.js';
 import { atApproval, configRefusal, honestShared, notShareable, notSharedYet, refusalWithNext } from '../../project-config/src/refusal.js';
 import { LOCK_FILE, LOCK_FORMAT, LOCK_LISTS, lockItem, lockSourceLabel, readLock, serializeLock } from '../../project-config/src/lock.js';
@@ -304,7 +304,8 @@ export async function planConfigChange(input: ChangeInput): Promise<ConfigChange
       if (!e.via.length) { delete e.via; direct.push({ kind: k, id: e.id, via: [id] }); }
     }
   }
-  const text = serializeConfig(next);
+  // `before` is the config as the file holds it (or a new one), so the form of the file is kept.
+  const text = serializeConfigFrom(read.state === 'valid' ? before : null, next);
   // The lock: kept up to date in a shared project and in a project with a lock (3.9, 3.13).
   const current = lockFor(project), sharedState = isSharedProject(project), shared = sharedState.shared;
   // Review C4: a lock is created only when the new config has a store entry; an existing lock is always kept up to date.

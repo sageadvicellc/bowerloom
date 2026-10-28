@@ -4,7 +4,7 @@
 import test from './support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -71,4 +71,58 @@ test('skills sync refuses a skills.json that names an engine with no writer, and
     assert.notEqual(r.status, 0, args.join(' ')); assert.deepEqual(errorOf(r.stderr), { code: 'ENGINE_NO_WRITER', message: 'no writer for engine pi yet' }, args.join(' '));
   }
   assert.deepEqual(readFileSync(p.manifest), before);
+});
+
+// ---- Review of e1bbce9: L1, H1, M2, CR4 and the status line.
+import { discoverProject } from '../packages/project-context/src/index.js';
+import { EngineWriterRefusal } from '../packages/skill-manifest/src/engine.js';
+import { copyPlaces } from '../apps/cli/src/use.js';
+import { renderRefusal, reportFailure } from '../apps/cli/src/human.js';
+
+const PI = `${JSON.stringify({ format: 'bowerloom/skills/v1beta1', engines: ['claude-code', 'pi'], skills: LOCAL }, null, 2)}\n`;
+
+test('H1. apply with no --harness refuses a skills.json that names an engine with no writer', t => {
+  const p = project(t); writeFileSync(p.manifest, PI, { mode: 0o644 }); chmodSync(p.manifest, 0o644);
+  const before = readFileSync(p.manifest);
+  for (const args of [['apply', '--json'], ['apply', '--harness', 'codex', '--json']]) {
+    const r = run(p.dir, args, p.env);
+    assert.notEqual(r.status, 0, args.join(' ')); assert.deepEqual(errorOf(r.stderr), { code: 'ENGINE_NO_WRITER', message: 'no writer for engine pi yet' }, args.join(' '));
+  }
+  assert.deepEqual(readFileSync(p.manifest), before);
+});
+
+test('H1. status names the refusal in the plan line and does not call the project ready', t => {
+  const p = project(t); writeFileSync(p.manifest, PI, { mode: 0o644 }); chmodSync(p.manifest, 0o644);
+  const words = run(p.dir, ['status'], p.env); assert.equal(words.status, 0, words.stderr);
+  assert.match(words.stdout, /plan unavailable \(ENGINE_NO_WRITER\)/); assert.match(words.stdout, /Setup: drifted/);
+});
+
+test('H1. up --team refuses by name before any step, so no step is applied and then refused', t => {
+  const p = project(t), up = ['up', '--team', 'studio-crew', '--goal', 'Prepare a fictional onboarding kit for an independent design studio.'];
+  writeFileSync(p.manifest, PI, { mode: 0o644 }); chmodSync(p.manifest, 0o644);
+  const listing = () => JSON.stringify(readdirSync(p.dir, { recursive: true }).map(String).sort()), before = listing();
+  const r = run(p.dir, up, p.env);
+  assert.equal(r.status, 1, r.stdout + r.stderr); assert.deepEqual(errorOf(r.stderr), { code: 'ENGINE_NO_WRITER', message: 'no writer for engine pi yet' });
+  assert.equal(listing(), before, 'no step was applied');
+  assert.deepEqual(readFileSync(p.manifest, 'utf8'), PI);
+});
+
+test('M2. a catalog that names an engine it cannot is refused by file; a catalog that is not JSON gives the default places', t => {
+  const p = project(t), catalog = join(p.dir, '.bowerloom', 'managed', 'catalog', 'house-style.json');
+  mkdirSync(join(p.dir, '.bowerloom', 'managed', 'catalog'), { recursive: true });
+  const ctx = discoverProject(p.dir, p.home);
+  writeFileSync(catalog, JSON.stringify({ skill: { name: 'house-style' }, harnesses: ['hermes'] }));
+  assert.throws(() => copyPlaces(ctx, 'skill', 'house-style'), (e: { code?: string; message: string }) => e.code === 'MANAGED_SKILL_REFUSED' && e.message.includes('.bowerloom/managed/catalog/house-style.json') && e.message.includes('"hermes"'));
+  writeFileSync(catalog, '{not json');
+  assert.ok(copyPlaces(ctx, 'skill', 'house-style').length > 0, 'the default places');
+  writeFileSync(catalog, JSON.stringify({ skill: { name: 'house-style' }, harnesses: ['claude'] }));
+  assert.deepEqual(copyPlaces(ctx, 'skill', 'house-style'), ['.bowerloom/managed/skills/house-style', '.claude/skills/house-style']);
+});
+
+test('CR4. the words of the refusal name the engine', () => {
+  const error = new EngineWriterRefusal('pi');
+  const words = renderRefusal(error.code, error.message, { engine: 'pi' }).split('\n');
+  assert.match(words[1]!, /\bpi\b/, words.join(' | '));
+  const shown = reportFailure(error, true).text.split('\n'); assert.match(shown[1]!, /\bpi\b/); assert.match(shown[0]!, /ENGINE_NO_WRITER/);
+  assert.doesNotMatch(renderRefusal(error.code, error.message, { engine: 'x\u001b[31m' as never }), /\u001b/);
 });

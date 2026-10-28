@@ -42,8 +42,13 @@ const CURRENT_TO_OLD: Readonly<Record<WriterEngine, OldEngineId>> = Object.freez
 export const engineFromOldId = (value: unknown): WriterEngine | undefined => typeof value === 'string' && Object.hasOwn(OLD_TO_CURRENT, value) ? OLD_TO_CURRENT[value as OldEngineId] : undefined;
 /** The old id of an engine that had one. Used to write a file that already exists in the old form. */
 export const oldIdOfWriter = (engine: WriterEngine): OldEngineId => CURRENT_TO_OLD[engine];
-/** The old id of an engine that had one, or the id itself for an engine that is new in 0.8. */
-export const oldIdOf = (engine: Engine): string => isWriterEngine(engine) ? CURRENT_TO_OLD[engine] : engine;
+/** The old id of an engine. An engine that is new in 0.8 has none, so asking for one is the writer refusal. */
+export const oldIdOf = (engine: Engine): OldEngineId => {
+  if (!isWriterEngine(engine)) throw new EngineWriterRefusal(engine);
+  return CURRENT_TO_OLD[engine];
+};
+/** What an API that stores the old ids takes from a caller: `claude-code` is mapped to the stored `claude`, anything else is left as it is. */
+export const toStoredId = (value: unknown): unknown => (value === 'claude-code' ? 'claude' : value);
 /** An id as a person or an old file may spell it: a current id, or an old one. */
 export const parseEngineId = (value: unknown): Engine | undefined => isEngine(value) ? value : engineFromOldId(value);
 
@@ -71,20 +76,36 @@ export function engineKeyOf(value: Record<string, unknown>): typeof ENGINES_KEY 
 }
 /**
  * The engines of a parsed list: not empty, no more than `max`, unique and in byte order. An old list may hold `claude`
- * and `codex` only. A current list holds current ids only. Null when the list is not valid.
+ * and `codex` only. A current list holds current ids only. Null when the list is not valid (`engineListProblem` says why).
  */
 export function decodeEngines(list: unknown, oldForm: boolean, max: number = ENGINE_IDS.length): Engine[] | null {
-  if (!Array.isArray(list) || list.length === 0 || list.length > max) return null;
-  const out: Engine[] = [];
+  if (engineListProblem(list, oldForm, max) !== null) return null;
+  return (list as unknown[]).map(item => (oldForm ? engineFromOldId(item) : item) as Engine);
+}
+/**
+ * The field of a file for these engines, in the form of the file: `{ engines }`, or `{ harnesses }` with old ids. The ids
+ * are written in byte order, because the readers want that order and ENGINE_IDS is not in it.
+ */
+export function engineField(engines: readonly Engine[], form: EngineForm): { engines: string[] } | { harnesses: string[] } {
+  const byBytes = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+  return form.oldForm === true ? { harnesses: engines.map(oldIdOf).sort(byBytes) } : { engines: [...engines].sort(byBytes) };
+}
+/** True when two parsed files have the same form: both old, or both current. A file that does not exist yet (null) takes any form. */
+export const sameForm = (before: EngineForm | null, after: EngineForm): boolean => before === null || (before.oldForm === true) === (after.oldForm === true);
+
+const PLAIN_ID = /^[a-z][a-z0-9-]{0,31}$/;
+/**
+ * Why an engine list is not valid, in words that may name the first id that is wrong. An id is named only when it is short
+ * plain text, so a file can never put its own text into a message. Null when the list is valid.
+ */
+export function engineListProblem(list: unknown, oldForm: boolean, max: number = ENGINE_IDS.length): string | null {
+  if (!Array.isArray(list)) return 'The engine list must be a list.';
+  if (list.length === 0) return 'The engine list must name at least one engine.';
+  if (list.length > max) return `The engine list names more than ${max} engines.`;
   for (let i = 0; i < list.length; i++) {
     const item: unknown = list[i], engine = oldForm ? engineFromOldId(item) : (isEngine(item) ? item : undefined);
-    // The order is the byte order of the ids as the file spells them.
-    if (engine === undefined || (i > 0 && !((list[i - 1] as string) < (item as string)))) return null;
-    out.push(engine);
+    if (engine === undefined) return typeof item === 'string' && PLAIN_ID.test(item) ? `The engine list names "${item}", which ${oldForm ? 'the old form (harnesses) does not take: it takes claude and codex' : 'is not an engine id'}.` : 'The engine list names an id that is not an engine id.';
+    if (i > 0 && !((list[i - 1] as string) < (item as string))) return 'The engine list must be sorted with no repeats.';
   }
-  return out;
-}
-/** The field of a file for these engines, in the form of the file: `{ engines }`, or `{ harnesses }` with old ids. */
-export function engineField(engines: readonly Engine[], form: EngineForm): { engines: string[] } | { harnesses: string[] } {
-  return form.oldForm === true ? { harnesses: engines.map(oldIdOf) } : { engines: [...engines] };
+  return null;
 }

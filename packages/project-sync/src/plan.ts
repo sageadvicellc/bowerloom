@@ -401,7 +401,7 @@ function classify(entry: Entry, ctx: ItemContext, r: ResolvedItem): Classified {
   } else {
     try { previous = currentV2(dir, stateDir, { kind: 'skill', id }); } catch (e) { previous = null; heldCode = managedCode(e); }
     if (previous !== null) {
-      const was = fromWire(previous.harnesses);
+      const was = fromWire(previous.harnesses, `The receipt of ${id}`);
       engines = union(was, ctx.target);
       const c = readCatalog(catalog), add = engines.length > was.length, drop = !ctx.input.apply && was.some(h => !ctx.manifest.engines.includes(h));
       if (!sameOrigin(entry, c)) hold ??= { code: 'MANAGED_SKILL_REFUSED', next: `skills.json now names another source for ${id}. A skill keeps its source: restore the old entry, or add the new source under another id with --id.` };
@@ -480,7 +480,7 @@ export function holdSharedPlaces(items: SyncItem[]): void {
 function orphan(project: string, itemsRoot: string, id: string): SyncItem {
   let previous: ManagedItemReceipt | null = null;
   try { previous = currentV2(project, join(itemsRoot, id), { kind: 'skill', id }); } catch { previous = null; }
-  return { id, kind: null, pin: null, state: 'orphaned', action: 'none', engines: previous ? fromWire(previous.harnesses) : [], requestDigest: null, cacheOperationId: null, cache: null, expected: { files: [], surfaces: [] }, before: [], previousReceiptRevision: previous?.revision ?? null, history: 0, hold: null, origin: null, via: [], resolvedFrom: 'project', lockPin: null, storeCache: null };
+  return { id, kind: null, pin: null, state: 'orphaned', action: 'none', engines: previous ? fromWire(previous.harnesses, `The receipt of ${id}`) : [], requestDigest: null, cacheOperationId: null, cache: null, expected: { files: [], surfaces: [] }, before: [], previousReceiptRevision: previous?.revision ?? null, history: 0, hold: null, origin: null, via: [], resolvedFrom: 'project', lockPin: null, storeCache: null };
 }
 
 /** True for a folder of this project's own private state: its root and anything below it. Others are shared. */

@@ -18,7 +18,7 @@ import { compileCrew } from '../../crew/src/index.js';
 import { isHeldProjectLock, verifyStorePins } from '../../project-context/src/index.js';
 import type { StoreContext } from '../../project-context/src/index.js';
 import { storeBrief } from '../../project-config/src/brief.js';
-import { CONFIG_FILE, parseConfig, serializeConfig } from '../../project-config/src/schema.js';
+import { CONFIG_FILE, parseConfig, serializeConfigFrom } from '../../project-config/src/schema.js';
 import { configRefusal } from '../../project-config/src/refusal.js';
 import { writeGuardedFile } from '../../project-config/src/write.js';
 import { createBowerloomFolder } from '../../project-config/src/folder.js';
@@ -186,7 +186,7 @@ function configStep(dir: string, kind: ItemKind, id: string, after?: string): Cr
   if (now?.source === 'store') throw configRefusal('CONFIG_DUPLICATE_ID', `bowerloom.json lists ${kind} ${id} twice: once from store and once from project.`);
   const next = { ...config, skills: [...config.skills], prompts: [...config.prompts], teams: [...config.teams] };
   if (!now) { const target = kind === 'team' ? next.teams : kind === 'skill' ? next.skills : next.prompts; target.push({ id, source: 'project' }); target.sort((a, b) => Buffer.compare(Buffer.from(a.id), Buffer.from(b.id))); }
-  const text = serializeConfig(next);
+  const text = serializeConfigFrom(config, next);
   return { before, after: { sha256: sha256(text), bytes: Buffer.byteLength(text) }, text };
 }
 /** The scope's limits and manifest target. The store keeps `skills.json` directly in its folder. */

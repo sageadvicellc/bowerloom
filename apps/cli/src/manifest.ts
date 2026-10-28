@@ -41,7 +41,7 @@ import { syncError } from '../../../packages/project-sync/src/refusal.js';
 import { readAuthoringState } from '../../../packages/project-authoring/src/state.js';
 import type { SeedResult } from '../../../packages/project-sync/src/seed.js';
 import { manifestRefusal } from '../../../packages/skill-manifest/src/refusal.js';
-import { configRefusal, readConfig, serializeConfig, writeGuardedFile } from '../../../packages/project-config/src/index.js';
+import { configRefusal, readConfig, serializeConfigFrom, writeGuardedFile } from '../../../packages/project-config/src/index.js';
 import { createBowerloomFolder } from '../../../packages/project-config/src/folder.js';
 import type { HeldProjectLock } from '../../../packages/project-context/src/types.js';
 import { createHash } from 'node:crypto';
@@ -365,7 +365,7 @@ function configAddStep(project: ProjectContext, id: string): ConfigStep | null {
   const now = read.config.skills.find(e => e.id === id);
   if (now?.source === 'store') throw configRefusal('CONFIG_DUPLICATE_ID', `bowerloom.json lists skill ${id} twice: once from store and once from project.`);
   if (now) return null;
-  const text = serializeConfig({ ...read.config, skills: [...read.config.skills, { id, source: 'project' as const }].sort((a, b) => Buffer.compare(Buffer.from(a.id), Buffer.from(b.id))) });
+  const text = serializeConfigFrom(read.config, { ...read.config, skills: [...read.config.skills, { id, source: 'project' as const }].sort((a, b) => Buffer.compare(Buffer.from(a.id), Buffer.from(b.id))) });
   return { before: { sha256: read.sha256, bytes: read.bytes }, after: { sha256: sha256Hex(text), bytes: Buffer.byteLength(text) }, text };
 }
 

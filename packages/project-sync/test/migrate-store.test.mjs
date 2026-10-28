@@ -7,7 +7,7 @@ import { after } from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { denyNetwork, npmPackage, writeManifest, localSkill } from './sync-fixture.mjs';
-import { configWorld, writeConfig, writeLock, storeItem, storePin, sha, code, pushStore, storeTransport, STORE_COMMIT } from './config-fixture.mjs';
+import { configWorld, writeConfig, writeLock, storeItem, storePin, sha, code, pushStore, storeTransport, STORE_COMMIT, engineKeys } from './config-fixture.mjs';
 import { planStoreMigrate, applyStoreMigrate, planLockUpdate, applyLockUpdate, STORE_MIGRATE_PLAN_FORMAT, STORE_MIGRATE_RESULT_FORMAT } from '../../../dist/packages/project-sync/src/index.js';
 import { discoverProject, withProjectLock, withStoreForWrite } from '../../../dist/packages/project-context/src/index.js';
 import { planCreate, applyCreate } from '../../../dist/packages/project-authoring/src/index.js';
@@ -138,14 +138,14 @@ test('4b. a selection of one item lists every project item in the new bowerloom.
   assert.deepEqual(fs.readdirSync(w.store).sort(), ['.gitignore', 'authoring', 'prompts', 'store.json']);
 });
 
-test('5. an existing bowerloom.json: chosen items flip, a named unlisted item is added, others stay; --all leaves an unlisted item with its line', async t => {
+for (const oldForm of [false, true]) test(`5. an existing bowerloom.json (${oldForm ? 'old' : 'current'} form): chosen items flip, a named unlisted item is added, others stay; --all leaves an unlisted item with its line`, async t => {
   const w = await fourItems(t, { config: true });
-  writeConfig(w, { skills: [{ id: 'house-style', source: 'project' }], prompts: [{ id: 'brief', source: 'project' }], teams: [{ id: 'research', source: 'project' }] });
+  writeConfig(w, { skills: [{ id: 'house-style', source: 'project' }], prompts: [{ id: 'brief', source: 'project' }], teams: [{ id: 'research', source: 'project' }], oldForm });
   const all = await plan(w, { all: true });
   assert.deepEqual(pairs(all), ['skill house-style', 'prompt brief', 'team research']);
   assert.deepEqual(all.skipped, [{ kind: 'skill', id: 'charts', line: 'not listed in bowerloom.json, so it stays as it is.' }]);
   await migrate(w, { skills: ['charts'], prompts: ['brief'] });
-  assert.deepEqual(configOf(w), { format: 'bowerloom/project/v1beta1', engines: ['claude-code', 'codex'], skills: [{ id: 'charts', source: 'store' }, { id: 'house-style', source: 'project' }], prompts: [{ id: 'brief', source: 'store' }], teams: [{ id: 'research', source: 'project' }] });
+  assert.deepEqual(configOf(w), { format: 'bowerloom/project/v1beta1', ...engineKeys(oldForm), skills: [{ id: 'charts', source: 'store' }, { id: 'house-style', source: 'project' }], prompts: [{ id: 'brief', source: 'store' }], teams: [{ id: 'research', source: 'project' }] });
 });
 
 test('6. tags: a team that is not in the store refuses MIGRATE_TEAM_MISSING; with the team selected it passes; first-team refuses or stays', async t => {

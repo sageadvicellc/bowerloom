@@ -1,4 +1,5 @@
 import { canonicalJson, DefinitionError, oneLine, shellArg } from '../../../packages/contracts/src/index.js';
+import { ENGINE_IDS } from '../../../packages/skill-manifest/src/engine.js';
 
 /**
  * The first screen a person sees, and the plain-words refusals. Output only: nothing here reads or writes a file.
@@ -622,6 +623,8 @@ const GENERIC: Words = { sentence: 'Nothing more is known about this refusal bey
 export interface RefusalDetail {
   /** The local port of a lock slot collision, when the error names one. */
   readonly port?: number;
+  /** The engine an ENGINE_NO_WRITER refusal names. Only a known engine id is kept. */
+  readonly engine?: string;
   /** True only for an error from newCommandRefusal. */
   readonly raisedByNewCommand?: boolean;
   /** A fixed hint name the error carries, for words that are more exact than its code alone. */
@@ -649,6 +652,7 @@ function wordsFor(code: string, detail: RefusalDetail): Words {
   if (code === 'MANIFEST_UNSAFE' && detail.hint === LEFTOVER_TEMP_LINK) {
     return { sentence: 'An interrupted write left a second link to skills.json, the temporary file .bowerloom/.skills.json.*.tmp. Check that both name the same file, then remove the temporary one.', next: 'ls -li .bowerloom/skills.json .bowerloom/.skills.json.*.tmp' };
   }
+  if (code === 'ENGINE_NO_WRITER' && typeof detail.engine === 'string' && ENGINE_IDS.includes(detail.engine as never)) return { sentence: `Bowerloom has no writer for ${detail.engine} yet. It writes files for Claude Code and Codex only, for now.`, next: 'name claude-code or codex' };
   if ((code === 'PROJECT_LOCK_SLOT_COLLISION' || code === 'MANAGED_SKILL_LOCK_SLOT_COLLISION') && validPort(detail.port)) {
     return { sentence: `The lock uses local port ${detail.port}. Another program listens on it, or another Bowerloom command is too busy to answer.`, next: `lsof -nP -iTCP:${detail.port} -sTCP:LISTEN` };
   }
@@ -680,7 +684,8 @@ export function reportFailure(error: unknown, tty: boolean): { text: string; exi
   const next = error instanceof DefinitionError && 'next' in error && typeof (error as { next?: unknown }).next === 'string' ? oneLine((error as { next: string }).next) : undefined;
   // Round 5 of the reviews of PR 99, L-1: a fix is the bare command of a refusal, in its own JSON field.
   const fix = error instanceof DefinitionError && 'fix' in error && typeof (error as { fix?: unknown }).fix === 'string' ? oneLine((error as { fix: string }).fix) : undefined;
-  const detail: RefusalDetail = { raisedByNewCommand: marked(error), ...(validPort(port) ? { port } : {}), ...(hint === LEFTOVER_TEMP_LINK || hint === STORE_LIMIT || hint === PARTIAL ? { hint } : {}), ...(next !== undefined ? { next } : {}) };
+  const engine = error instanceof DefinitionError && 'engine' in error ? (error as { engine?: unknown }).engine : undefined;
+  const detail: RefusalDetail = { raisedByNewCommand: marked(error), ...(validPort(port) ? { port } : {}), ...(typeof engine === 'string' ? { engine } : {}), ...(hint === LEFTOVER_TEMP_LINK || hint === STORE_LIMIT || hint === PARTIAL ? { hint } : {}), ...(next !== undefined ? { next } : {}) };
   const exitCode = exitCodeFor(marked(error) ? error : safe) as Exclude<ExitCode, 0>;
   // An error that carries its own next step gives it to agents too, as `next`; every other envelope is unchanged.
   return { text: tty ? renderRefusal(safe.code, safe.message, detail) : `${JSON.stringify({ error: { code: safe.code, message: safe.message, ...(next !== undefined ? { next } : {}), ...(fix !== undefined ? { fix } : {}), ...(hint === PARTIAL ? { partial: true } : {}) } })}\n`, exitCode };

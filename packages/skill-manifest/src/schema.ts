@@ -9,10 +9,10 @@ import { strictUtf8 } from '../../skill-sources/src/cache.js';
 import { planNpmAcquisition } from '../../skill-sources/src/npm.js';
 import { planGitAcquisition } from '../../skill-sources/src/git.js';
 import type { SkillLicense } from '../../skill-sources/src/types.js';
-import { refuse, requireLimit, requireManifest } from './refusal.js';
+import { engineListRefusal, refuse, requireLimit, requireManifest } from './refusal.js';
 import { toNpmRequest, toGitRequest, probeBinding } from './requests.js';
 import { LICENSE_NAME } from './content.js';
-import { OLD_ENGINES_KEY, decodeEngines, engineField, engineKeyOf } from './engine.js';
+import { OLD_ENGINES_KEY, decodeEngines, engineField, engineKeyOf, engineListProblem } from './engine.js';
 import type { Engine } from './engine.js';
 
 export const MANIFEST_FORMAT = 'bowerloom/skills/v1beta1' as const;
@@ -155,8 +155,9 @@ export function validateManifest(value: unknown, limits: ManifestLimits): Manife
   const oldForm = key === OLD_ENGINES_KEY;
   const v = record(value, ['format', key, 'skills']);
   requireManifest(v.format === MANIFEST_FORMAT, 'MANIFEST_INVALID');
-  const engines = decodeEngines(v[key], oldForm);
-  requireManifest(engines !== null, 'MANIFEST_INVALID');
+  const problem = engineListProblem(v[key], oldForm);
+  if (problem !== null) throw engineListRefusal(problem);
+  const engines = decodeEngines(v[key], oldForm)!;
   requireManifest(Array.isArray(v.skills), 'MANIFEST_INVALID');
   requireLimit(v.skills.length <= limits.skills, limits);
   const skills = (v.skills as unknown[]).map(validateEntry);

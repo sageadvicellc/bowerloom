@@ -53,3 +53,24 @@ test('reading an old bowerloom.json from a project never changes it, byte for by
   assert.equal(read.sha256, createHash('sha256').update(before).digest('hex'));
   assert.deepEqual(fs.readFileSync(file), before); assert.equal(fs.statSync(file).mtimeMs, stat.mtimeMs); assert.equal(fs.statSync(file).ino, stat.ino);
 });
+
+// ---- Review of e1bbce9: L5 and I2.
+import { serializeConfigFrom } from '../../../dist/packages/project-config/src/index.js';
+
+test('L5. a refused engine list names the first id it does not take', () => {
+  const refusal = (key, list) => { try { parse(text({ format: 'bowerloom/project/v1beta1', [key]: list, ...BODY })); } catch (error) { return error; } assert.fail('expected a refusal'); };
+  assert.equal(refusal('harnesses', ['pi']).code, 'CONFIG_INVALID'); assert.match(refusal('harnesses', ['pi']).message, /"pi"/);
+  assert.match(refusal('engines', ['claude']).message, /"claude"/);
+  assert.match(refusal('engines', ['codex', 'claude-code']).message, /sorted/);
+  assert.doesNotMatch(refusal('engines', ['x\u001b[31m']).message, /\u001b/);
+});
+
+test('I2. a config rebuilt without the form of the file it came from is refused on write', () => {
+  const before = parse(OLD), next = { ...before, skills: [{ id: 'a-skill', source: 'project' }, ...before.skills] };
+  assert.equal(JSON.parse(serializeConfigFrom(before, next)).harnesses.length, 2, 'a copy made the usual way keeps the old form');
+  const flipped = { ...next }; delete flipped.oldForm;
+  assert.throws(() => serializeConfigFrom(before, flipped), code('CONFIG_INVALID'));
+  const fresh = parse(NEW);
+  assert.throws(() => serializeConfigFrom(fresh, { ...fresh, oldForm: true }), code('CONFIG_INVALID'));
+  assert.equal(JSON.parse(serializeConfigFrom(null, flipped)).engines.length, 2, 'a file that does not exist yet takes the form it is given');
+});

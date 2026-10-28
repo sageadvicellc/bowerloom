@@ -98,7 +98,7 @@ async function observeMigrate(input: MigrateInput): Promise<MigrateObserved> {
       if (receiptMatches(pinned, closure.receipt)) { bytesFrom = 'legacy-cache'; legacySelector = { root: selector.root, operationId: selector.operationId, expectedSnapshotRevision: selector.expectedSnapshotRevision, expectedReceiptRevision: selector.expectedReceiptRevision }; }
     } catch { /* That cache is gone or changed: fetch instead. */ }
   }
-  const engines = union(writerEngines(manifest.engines), fromWire([catalog.harness])), surfaces = itemSurfaces(dir, id, entry.skill.name, engines);
+  const engines = union(writerEngines(manifest.engines), fromWire([catalog.harness], `The catalog of ${id} in .bowerloom-skills`, 'SKILLS_MIGRATE_STATE_INVALID')), surfaces = itemSurfaces(dir, id, entry.skill.name, engines);
   const item: SyncItem = {
     id, kind: entry.source.kind, pin: pinOf(entry), state: bytesFrom === 'fetch' ? 'needs-fetch' : 'cached', action: 'install', engines, requestDigest: pinned.digest,
     cacheOperationId: bytesFrom === 'legacy-cache' ? null : cache.operationId, cache: bytesFrom === 'legacy-cache' ? null : cache,

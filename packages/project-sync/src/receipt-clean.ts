@@ -20,7 +20,7 @@ import { AUTHORING_FOLDER, itemPath, readAuthoringState, receiptOf, recordText }
 import type { AuthoredItem, ItemKind } from '../../project-authoring/src/state.js';
 import { writeReceiptRecord } from '../../project-authoring/src/receipt-write.js';
 import { readConfig } from '../../project-config/src/config.js';
-import { CONFIG_FILE, serializeConfig } from '../../project-config/src/schema.js';
+import { CONFIG_FILE, serializeConfigFrom } from '../../project-config/src/schema.js';
 import type { ProjectConfig } from '../../project-config/src/schema.js';
 import { configRefusal } from '../../project-config/src/refusal.js';
 import { writeGuardedFile } from '../../project-config/src/write.js';
@@ -135,7 +135,7 @@ export function planReceiptClean(input: ReceiptCleanInput): ReceiptCleanPlan {
         if (kind === 'skill' && current?.skills.some(s => s.id === item.id)) continue;
         list.splice(at, 1); removes.push({ kind, id: item.id });
       }
-      if (removes.length) { const text = serializeConfig(next); config = { before: { sha256: got.sha256, bytes: got.bytes }, after: { sha256: sha(text), bytes: Buffer.byteLength(text) }, text, removes }; }
+      if (removes.length) { const text = serializeConfigFrom(got.config, next); config = { before: { sha256: got.sha256, bytes: got.bytes }, after: { sha256: sha(text), bytes: Buffer.byteLength(text) }, text, removes }; }
     }
   }
   const keep: AuthoredItem[] = receiptItems.filter(i => !selected.includes(i));

@@ -160,7 +160,7 @@ export function classifyPrompt(project: string, itemsRoot: string, id: string, t
     try { previous = currentV2(project, stateDir, ref); } catch (e) { previous = null; heldCode = managedCode(e); }
     if (heldCode === 'MANAGED_SKILL_PATH_OCCUPIED') throw collision([relative(project, catalog)], id);
     if (previous !== null) {
-      const was = fromWire(previous.harnesses);
+      const was = fromWire(previous.harnesses, `The receipt of prompt ${id}`);
       engines = union(was, target);
       if (!same(readCatalog(catalog).inventory, files)) { state = 'edited'; action = 'update'; }
       else if (engines.length > was.length) { state = 'engines-changed'; action = 'update'; }
@@ -192,7 +192,7 @@ export function classifyPrompt(project: string, itemsRoot: string, id: string, t
 export function orphanPrompt(project: string, itemsRoot: string, id: string): PromptItem {
   let previous: ManagedItemReceipt | null = null;
   try { previous = currentV2(project, join(itemsRoot, 'prompt-' + id), { kind: 'prompt', id }); } catch { previous = null; }
-  return { id, itemId: 'prompt-' + id, teams: [], state: 'orphaned', action: 'none', engines: previous ? fromWire(previous.harnesses) : [], expected: { files: [], surfaces: [] }, before: [], previousReceiptRevision: previous?.revision ?? null, history: 0, hold: null, notices: [], origin: null, via: [], resolvedFrom: 'project', lockPin: null, storeCache: null };
+  return { id, itemId: 'prompt-' + id, teams: [], state: 'orphaned', action: 'none', engines: previous ? fromWire(previous.harnesses, `The receipt of prompt ${id}`) : [], expected: { files: [], surfaces: [] }, before: [], previousReceiptRevision: previous?.revision ?? null, history: 0, hold: null, notices: [], origin: null, via: [], resolvedFrom: 'project', lockPin: null, storeCache: null };
 }
 
 /** The child request of one prompt. Every field comes from the plan this run computed; `storeDir` is the store folder of a store prompt. */

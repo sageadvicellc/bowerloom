@@ -45,7 +45,7 @@ test('the canonical engine list holds the five ids of the 0.8 definition, once, 
 test('the old ids map to the new ones, and only claude and codex ever existed', () => {
   assert.equal(engineFromOldId('claude'), 'claude-code'); assert.equal(engineFromOldId('codex'), 'codex');
   for (const id of ['claude-code', 'opencode', 'pi', 'deepseek-harness', 'hermes', '', null]) assert.equal(engineFromOldId(id), undefined, String(id));
-  assert.equal(oldIdOf('claude-code'), 'claude'); assert.equal(oldIdOf('codex'), 'codex'); assert.equal(oldIdOf('pi'), 'pi');
+  assert.equal(oldIdOf('claude-code'), 'claude'); assert.equal(oldIdOf('codex'), 'codex'); assert.throws(() => oldIdOf('pi'), code('ENGINE_NO_WRITER'));
   assert.equal(parseEngineId('claude'), 'claude-code'); assert.equal(parseEngineId('claude-code'), 'claude-code'); assert.equal(parseEngineId('pi'), 'pi'); assert.equal(parseEngineId('hermes'), undefined);
 });
 
@@ -123,4 +123,41 @@ test('removing an entry from an old skills.json keeps the old form', async t => 
   const plan = planManifestChange(p.dir, { remove: 'brand-voice' });
   await locked(p.dir, held => applyManifestChange(plan, plan.revision, held));
   assert.equal(fs.readFileSync(p.file, 'utf8'), OLD_CLAUDE_ONLY);
+});
+
+// ---- Review of e1bbce9: L5, L7, CR5 and I2.
+import { oldIdOf as oldIdOfEngine, sameForm, engineField } from '../../../dist/packages/skill-manifest/src/engine.js';
+
+test('L5. a refused engine list names the first id it does not take, when the id is safe to print', () => {
+  const refusal = (key, list) => { try { parse(text({ format: 'bowerloom/skills/v1beta1', [key]: list, skills: LOCAL })); } catch (error) { return error; } assert.fail('expected a refusal'); };
+  const old = refusal('harnesses', ['pi']);
+  assert.equal(old.code, 'MANIFEST_INVALID'); assert.match(old.message, /"pi"/);
+  assert.match(refusal('engines', ['claude']).message, /"claude"/);
+  assert.match(refusal('engines', ['claude-code', 'hermes']).message, /"hermes"/);
+  assert.match(refusal('engines', ['codex', 'claude-code']).message, /sorted/);
+  assert.match(refusal('engines', []).message, /at least one/);
+  const odd = refusal('engines', ['x\u0000y\u001b[31m']);
+  assert.equal(odd.code, 'MANIFEST_INVALID'); assert.doesNotMatch(odd.message, /\u0000|\u001b/, 'an id that is not plain text is never printed');
+});
+
+test('L7. the engines are written in byte order, whatever order the list is in, and read back', () => {
+  const inListOrder = { format: 'bowerloom/skills/v1beta1', engines: [...ENGINE_IDS], skills: [] };
+  const written = serializeManifest(inListOrder, MANIFEST_LIMITS);
+  assert.deepEqual(JSON.parse(written).engines, ['claude-code', 'codex', 'deepseek-harness', 'opencode', 'pi']);
+  assert.deepEqual([...parse(written).engines].sort(), [...ENGINE_IDS].sort());
+  assert.deepEqual(engineField(['codex', 'claude-code'], {}).engines, ['claude-code', 'codex']);
+  assert.deepEqual(engineField(['codex', 'claude-code'], { oldForm: true }).harnesses, ['claude', 'codex']);
+});
+
+test('CR5. an engine with no old id has no old spelling: asking for one is the writer refusal', () => {
+  assert.equal(oldIdOfEngine('claude-code'), 'claude'); assert.equal(oldIdOfEngine('codex'), 'codex');
+  for (const id of ['opencode', 'pi', 'deepseek-harness']) assert.throws(() => oldIdOfEngine(id), error => error instanceof EngineWriterRefusal && error.engine === id, id);
+  assert.throws(() => engineField(['claude-code', 'pi'], { oldForm: true }), error => error?.code === 'ENGINE_NO_WRITER', 'an old file cannot be given an engine it cannot name');
+});
+
+test('I2. a rebuilt manifest cannot flip the form of the file on write', () => {
+  assert.equal(sameForm(parse(OLD), parse(OLD)), true); assert.equal(sameForm(parse(NEW), parse(NEW)), true); assert.equal(sameForm(null, parse(NEW)), true);
+  assert.equal(sameForm(parse(OLD), parse(NEW)), false); assert.equal(sameForm(parse(NEW), parse(OLD)), false);
+  const rebuilt = JSON.parse(JSON.stringify(parse(OLD)));
+  assert.equal(rebuilt.oldForm, true, 'a copy made the usual way keeps the form');
 });
