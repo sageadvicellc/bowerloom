@@ -60,3 +60,9 @@ export { CODEX_PROFILE, CODEX_PROFILE_BASE, DSH_PATCH, LOCKED_PARTS, OPENCODE_PL
 export type { CodexTrust, LockedPart, ReviewItem, TrustLine } from './locked.js';
 export { LOCKED_DIRS, LOCKED_FILES, SUBAGENT_DIRS } from './portable-files.js';
 export type { PortableEngine, PortableReceipt, ReceiptFile, ReceiptSource } from './portable-state.js';
+// Bowerloom 0.8, step 5, lane A: the shared state layout and the approval drafts. The test hook entry point
+// settleLegacyStateWith is not exported here.
+export { HARNESS_MOVED_FORMAT, HARNESS_STATE_REFUSAL_CODES, HarnessStateRefusal, harnessStateDirs, settleLegacyState } from './harness-state.js';
+export type { HarnessStateCode, HarnessStateDirs, LegacySettle } from './harness-state.js';
+export { APPROVAL_DRAFTS_FORMAT, addApprovalDraft, dropApprovalDrafts, readApprovalDrafts } from './harness-approvals.js';
+export type { AddApprovalDraftOptions, ApprovalDraftInput, ReadApprovalDraftsOptions } from './harness-approvals.js';
