@@ -71,6 +71,20 @@ test('Codex config.toml: MCP servers, disabled tools as deny rules, the sandbox,
   assert.equal(plan.engines[0].shapes.some(s => s.path === '.codex/config.toml' && s.shapeVersion === '0.157.0'), true);
 });
 
+test('Codex round trip: Codex tool names in a hook matcher adopt as Claude Code names; Bowerloom\'s own justification is not kept', async t => {
+  const p = project(t, {
+    '.codex/hooks.json': json({ hooks: { PreToolUse: [
+      { matcher: 'Bash|exec_command', hooks: [{ type: 'command', command: 'echo one' }] },
+      { matcher: 'spawn_agent', hooks: [{ type: 'command', command: 'echo two' }] },
+      { matcher: 'apply_patch', hooks: [{ type: 'command', command: 'echo three' }] },
+    ] } }),
+    '.codex/rules/bowerloom.rules': 'prefix_rule(\n    pattern = ["git", "push"],\n    decision = "forbidden",\n    justification = "Bowerloom guardrail deny-shell-6a69d046",\n)\nprefix_rule(pattern = ["rm"], decision = "prompt", justification = "Ask first.")\n',
+  });
+  const { def } = await adopt(p, [{ id: 'codex' }]);
+  assert.deepEqual(def.entries.hooks.map(h => [h.command, h.matcher]).sort(), [['echo one', 'Bash'], ['echo three', 'apply_patch'], ['echo two', 'Agent']]);
+  assert.deepEqual(def.entries.rules.map(r => [r.pattern, r.privateBlocks]).sort(), [['git push *', {}], ['rm *', { codex: { justification: 'Ask first.' } }]]);
+});
+
 test('Codex: network access in the workspace sandbox leaves only a file sandbox; danger-full-access leaves none', async t => {
   const a = project(t, { '.codex/config.toml': 'sandbox_mode = "workspace-write"\n[sandbox_workspace_write]\nnetwork_access = true\nwritable_roots = ["/tmp/x"]\n' });
   const { plan, def } = await adopt(a, [{ id: 'codex' }]);

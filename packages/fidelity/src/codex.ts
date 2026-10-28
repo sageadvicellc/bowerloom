@@ -11,7 +11,7 @@
  * - Codex has no rule target for web, skill, or subagent rules: they are `absent`.
  * - An MCP deny disables the tool, or the whole server, in the server's Codex entry.
  */
-import type { GuardrailRule, SandboxRequirement } from '../../harness-definition/src/index.js';
+import type { GuardrailRule, JsonValue, SandboxRequirement } from '../../harness-definition/src/index.js';
 import { codexDecide, codexFilesystemDecide, codexShellArgv, type CodexFilesystemEntry, type CodexPrefixRule } from './codex-shell.js';
 import type { Decision } from './decision.js';
 import { escapeSentence } from './escapes.js';
@@ -87,6 +87,13 @@ function filesystemEntries(rule: GuardrailRule): { entries: CodexFilesystemEntry
   return { entries, more };
 }
 
+/** The justification an x-codex block of a rule names, when it is one line of text. Codex shows it to the person. */
+export function codexJustification(block: JsonValue | undefined): string | undefined {
+  if (block === null || typeof block !== 'object' || Array.isArray(block)) return undefined;
+  const j = (block as Record<string, JsonValue>).justification;
+  return typeof j === 'string' && j.trim() !== '' && j.length <= 1024 && !/[\0-\x1f\x7f]/.test(j) ? j : undefined;
+}
+
 export function translateCodex(rules: readonly GuardrailRule[], sandbox: readonly SandboxRequirement[], out: Collector): Translation<CodexForm> {
   const prefixRules: (CodexPrefixRule & { decision: 'prompt' | 'forbidden' })[] = [];
   const filesystem: CodexFilesystemEntry[] = [];
@@ -109,7 +116,9 @@ export function translateCodex(rules: readonly GuardrailRule[], sandbox: readonl
         if (prefix === null) { out.line(rule, 'absent', `Codex rules hold literal argv tokens only, and ${p} has no literal prefix. ${escapes}`); break; }
         const decision = rule.effect === 'deny' ? 'forbidden' : 'prompt';
         out.wrote(rule.id, `rules[${prefixRules.length}]`);
-        prefixRules.push({ pattern: prefix.tokens, decision, justification: `Bowerloom guardrail ${rule.id}` });
+        // The step 3 round trip: a justification that a person wrote rides in the rule's x-codex block and comes back.
+        const own = codexJustification(rule.privateBlocks.codex);
+        prefixRules.push({ pattern: prefix.tokens, decision, justification: own ?? `Bowerloom guardrail ${rule.id}` });
         const shown = prefix.tokens.join(' ');
         const more = prefix.same ? '' : ` The rule covers every command that starts with ${shown}, so it blocks more than ${p}.`;
         // Ruling R14: Codex checks a script with a glob, ~, $, a redirect, quotes around a variable, or a trailing & as

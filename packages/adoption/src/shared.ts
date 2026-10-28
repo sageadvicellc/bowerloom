@@ -81,9 +81,10 @@ const HANDLER = new Set(['type', 'command', 'timeout']);
 /**
  * Hooks in the Claude Code form: `{ <event>: [ { matcher, hooks: [ { type: "command", command, timeout } ] } ] }`.
  * The timeout is in seconds and becomes milliseconds. `rewrite` turns the engine's project folder form into
- * `${PROJECT_DIR}` (locked-in parts spec, section 7.3 rule 6).
+ * `${PROJECT_DIR}` (locked-in parts spec, section 7.3 rule 6). `matcher`, when given, turns the engine's tool names
+ * into the Claude Code names a neutral matcher uses.
  */
-export function readHooks(ctx: Context, value: JsonValue, at: { path: string; base: string; engine: EngineId; shape: string; rewrite: (command: string) => string }): void {
+export function readHooks(ctx: Context, value: JsonValue, at: { path: string; base: string; engine: EngineId; shape: string; rewrite: (command: string) => string; matcher?: (matcher: string) => string }): void {
   const { r } = ctx;
   if (!ctx.engines.includes(at.engine)) return;
   if (!isObj(value)) { r.miss(at.path, 'hooks', 'The hooks are not an object of events, so they are not adopted.', at.base); return; }
@@ -115,7 +116,7 @@ export function readHooks(ctx: Context, value: JsonValue, at: { path: string; ba
         const { blocks, secrets } = blockOf([at.engine], extra, at.path, hp, `${event}_hook`);
         ctx.cands.push({
           part: 'hooks', id: '', place: place(at.path, [at.engine], at.shape, at.engine, { pointer: hp }), blocks, secrets,
-          hook: { event, ...(typeof matcher === 'string' && matcher !== '' ? { matcher } : {}), command: at.rewrite(h.command), ...(timeout !== undefined ? { timeout } : {}), strength: BLOCKING.has(event) ? 'enforced' : 'advisory' },
+          hook: { event, ...(typeof matcher === 'string' && matcher !== '' ? { matcher: at.matcher ? at.matcher(matcher) : matcher } : {}), command: at.rewrite(h.command), ...(timeout !== undefined ? { timeout } : {}), strength: BLOCKING.has(event) ? 'enforced' : 'advisory' },
           needsApproval: [HOOK_APPROVAL],
           notes: BLOCKING.has(event) ? ['The event can block an action, so the hook is enforced.'] : ['The event cannot block an action, so the hook is advisory.'],
         });

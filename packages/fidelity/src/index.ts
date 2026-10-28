@@ -20,7 +20,7 @@ export {
   codexScriptCommands, codexShellArgv, codexSplits,
 } from './codex-shell.js';
 export type { CodexDecisionWord, CodexFilesystemEntry, CodexMatchOptions, CodexPrefixRule } from './codex-shell.js';
-export { CODEX_DEFAULT, codexPrefix } from './codex.js';
+export { CODEX_DEFAULT, codexJustification, codexPrefix } from './codex.js';
 export type { CodexForm, CodexMcpDisable } from './codex.js';
 export {
   OPENCODE_DEFAULT, openCodeDecide, openCodeFromConfig, openCodePathPatterns, openCodeRequest, openCodeShellSubjects, openCodeWildcard,

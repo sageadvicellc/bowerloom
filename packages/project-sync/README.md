@@ -68,7 +68,11 @@ The same plan writes MCP servers, subagents, hooks, guardrails, and the sandbox.
 - **Claude Code settings.** A person's `disableAllHooks` or `permissions.defaultMode`, in `.claude/settings.json` or
   `.claude/settings.local.json`, makes the hook lines `weakened`. Every hook line says that user and managed settings
   are not read. A
-  sandbox requirement writes `enabled: true` and `allowUnsandboxedCommands: false`.
+  sandbox requirement writes `enabled: true` and `allowUnsandboxedCommands: false`, then the keys of the sandbox's
+  `x-claude-code` block, unchanged. A key Bowerloom writes itself is not taken from the block, and the line names it.
+- **Guardrail private blocks.** Only two have a place: the Claude Code sandbox block above, and a `justification` in a
+  Codex rule's `x-codex` block, which becomes the justification of its prefix rule. The line of any other guardrail
+  entry with a private block names the keys that are not written.
 - **DeepSeek Harness.** MCP servers are `@deepseek-ai/dsh-mcp-client` rows, read from that package's README at the
   pinned tag. A sandbox requirement is `absent` in the fidelity translation itself.
 - **The no-link fallback.** Where the file system has no link(), a new file is created with O_EXCL. A write that fails

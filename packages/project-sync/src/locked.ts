@@ -15,7 +15,7 @@
  *   overwritten.
  */
 import {
-  JsExpression, openCodeSubstitution, translateGuardrails, translateHooks, translateMcp, translateSubagents, type CodexForm, type HookForm,
+  JsExpression, codexJustification, openCodeSubstitution, translateGuardrails, translateHooks, translateMcp, translateSubagents, type CodexForm, type HookForm,
   type McpServerForm, type OpenCodeForm, type SubagentForm,
 } from '../../fidelity/src/index.js';
 import type { ClaudeCodeForm } from '../../fidelity/src/index.js';
@@ -230,6 +230,8 @@ export function planLocked(ctx: LockedContext): LockedPlan {
   for (const { id: engine } of ctx.engines) {
     const view = ctx.views.get(engine)!;
     const g = translateGuardrails(engine, { rules: view.rules, sandbox: view.sandbox });
+    // The keys of a guardrail entry's private block that the writer carries, by entry (checks 1 and 9 of step 3).
+    const carried = new Map<string, readonly string[]>();
     const m = translateMcp(engine, view.mcp);
     const s = translateSubagents(engine, view.subagents, { servers: view.mcp.map(x => x.name) });
     const h = translateHooks(engine, view.hooks);
@@ -248,8 +250,18 @@ export function planLocked(ctx: LockedContext): LockedPlan {
         if (targets.has('.mcp.json')) trust.push({ engine, path: '.mcp.json', state: 'pending trust', reason: 'Claude Code asks the person to approve each project server in .mcp.json before it runs.' });
         const ops: JsonOp[] = [];
         for (const effect of ['allow', 'ask', 'deny'] as const) if (form.permissions[effect].length) ops.push({ kind: 'items', path: ['permissions', effect], items: [...form.permissions[effect]] });
-        // Ruling B11: the sandbox also forbids commands that would leave it.
-        if (form.sandbox) ops.push({ kind: 'members', path: ['sandbox'], members: [['enabled', true], ['allowUnsandboxedCommands', false]] });
+        // Ruling B11: the sandbox also forbids commands that would leave it. The sandbox's x-claude-code block follows,
+        // unchanged, except a key that Bowerloom writes itself.
+        if (form.sandbox) {
+          const members: [string, Out][] = [['enabled', true], ['allowUnsandboxedCommands', false]];
+          const box = view.sandbox[0], block = box ? g.privateBlocks[box.id] : undefined;
+          if (box && isObject(block)) {
+            const keys = Object.keys(block).filter(k => !members.some(([m]) => m === k));
+            for (const k of keys) members.push([k, block[k] as Out]);
+            carried.set(box.id, keys);
+          }
+          ops.push({ kind: 'members', path: ['sandbox'], members });
+        }
         ops.push(...hookOps(h.hooks));
         // Rulings B11 and D2: a person's project settings, shared or local, can turn every hook off or set a mode.
         const found: string[] = [];
@@ -304,6 +316,11 @@ export function planLocked(ctx: LockedContext): LockedPlan {
           merged('.codex/config.toml', editToml(b.text, root, tables, forbid), engine, b.mode);
         }
         commands('.codex/config.toml', engine, m.servers);
+        // A justification in a rule's x-codex block is written into its prefix rule (fidelity's codexJustification).
+        for (const w of g.written) if (w.where.startsWith('rules[')) {
+          const block = g.privateBlocks[w.source];
+          if (codexJustification(block) !== undefined) carried.set(w.source, ['justification']);
+        }
         if (form.prefixRules.length) {
           const rules = renderRules(form);
           owned(CODEX_RULES, rules, engine);
@@ -368,9 +385,19 @@ export function planLocked(ctx: LockedContext): LockedPlan {
       }
     }
 
-    // A private block of a guardrail entry has no place in a permission rule list: the line says so.
+    // A private block of a guardrail entry has no place in a permission rule list, except the keys the writer carries:
+    // the Claude Code sandbox block, and the justification of a Codex prefix rule. The line names what is not written.
     const note = (entry: string): string => {
-      const kept = g.privateBlocks[entry] !== undefined ? ` The x-${engine} block has no place in the ${engine} permission rules and is not written.` : '';
+      const block = g.privateBlocks[entry];
+      let kept = '';
+      if (block !== undefined) {
+        const done = carried.get(entry) ?? [];
+        const rest = isObject(block) ? Object.keys(block).filter(k => !done.includes(k)) : [];
+        if (done.length) kept += ` The x-${engine} keys ${done.join(', ')} are written unchanged.`;
+        if (rest.length || !isObject(block)) kept += done.length || isObject(block)
+          ? ` These x-${engine} keys have no place in the ${engine} form, or Bowerloom writes them itself, and are not written: ${rest.join(', ')}.`
+          : ` The x-${engine} block has no place in the ${engine} permission rules and is not written.`;
+      }
       const left = g.excludedPrivateBlocks.find(x => x.entry === entry);
       return kept + (left ? ` ${left.reason}` : '');
     };

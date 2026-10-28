@@ -77,6 +77,7 @@ Matching is on the text as written, so some forms escape a rule. `KNOWN_ESCAPES`
 
 - The forms are in memory. The OpenCode form is ordered lists, so a pattern such as `"1"` keeps its place. Write the 1.x shape for 1.x.
 - `privateBlocks` holds the block of each entry that wrote something. Carry it unchanged. `excludedPrivateBlocks` lists the blocks of entries that wrote nothing, with the reason.
+- A Codex prefix rule takes its `justification` from the rule's `x-codex` block when that is one line of text (`codexJustification`); otherwise it names the rule, `Bowerloom guardrail <id>`.
 - A DeepSeek Harness sandbox requirement is `absent`: at the pinned tag a mode covers file effects only, a session can switch it, and no patch row that sets it is confirmed.
 - The Codex filesystem table binds only commands that run in the sandbox.
 
@@ -110,7 +111,9 @@ with one loss line or more per entry. They write nothing; `packages/project-sync
   Claude Code or OpenCode. In OpenCode, `{env:` or `{file:` in the description, the model, or the private block refuses
   the subagent.
   OpenCode carries it as `deny` keys only (a `PermissionPairs` marker), including `codesearch`, `lsp`, `todowrite`, and
-  `todoread`, and is `weakened`, because a deny list cannot cover tools added later. Codex is `weakened`: an override
+  `todoread`, and is `weakened`, because a deny list cannot cover tools added later. An OpenCode agent's `mode` comes
+  from its `x-opencode` block when that names `primary`, `subagent`, or `all`; otherwise it is `subagent`. Codex is
+  `weakened`: an override
   adds the limit as advisory text. Pi and DeepSeek Harness are `absent`.
 - **Hooks.** The matcher is Claude Code tool names joined by `|`; any other character is `absent` everywhere. Claude
   Code is `exact`. Codex is `translated` when advisory and `weakened` when enforced. OpenCode is a generated plugin for

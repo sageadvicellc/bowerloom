@@ -75,3 +75,15 @@ A literal secret in an MCP `env`, header, argument, private block, or leftover s
 - A neutral hook command uses `${PROJECT_DIR}`. Claude Code's `$CLAUDE_PROJECT_DIR` and Codex's `$(git rev-parse --show-toplevel)` are rewritten to it.
 - A hook on `PreToolUse`, `UserPromptSubmit`, or `PermissionRequest` is `enforced`. Other hooks are `advisory`.
 - A Codex `allow` rule becomes a neutral `allow`. The note says Codex ran it outside the sandbox.
+- A Codex rule's `justification`, `match`, and `not_match` go into its `x-codex` block. A justification of the form `Bowerloom guardrail <id>` is the one the rules writer gives a rule with none of its own, so it is not kept.
+- In a Codex hook matcher, `exec_command` becomes `Bash` and `spawn_agent` becomes `Agent`, the names the hook writer maps them from. `apply_patch` stands for several Claude Code tools, so it is kept as written.
+
+## The round trip (checks 1 and 9)
+
+`test/roundtrip.test.mjs` adopts each engine's files, projects the definition with the full projection into a fresh project, and adopts that project again. MCP servers, subagents, hooks, and the sandbox come back as the same entries, with the same private blocks. Guardrails are compared by the decision the engine makes from the source file and from the projected file. These differences are expected, each with the result of its loss line:
+
+- Every engine: the engine-private file of leftover settings (`engines/<engine>/...`) is not projected in this step: `absent`.
+- Claude Code: a web deny also covers subdomains, so the projection blocks more: `weakened`. The sandbox also gets `allowUnsandboxedCommands: false` (ruling B11), which adoption lists as permission-like: the sandbox line stays `exact`.
+- Codex: the sandbox requirement and its `x-codex` block are not written until the step 5 live check confirms the permission profile (ruling B6): `weakened`.
+- OpenCode: Bowerloom writes `"*": { "*": "ask" }` first, so a request the source left to OpenCode's own default (allow) asks. A shell deny is written with `*` for its spaces, and the web deny `*` also covers web search, so both block more: `translated`.
+- DeepSeek Harness keeps MCP servers, hooks, and permissions outside the project, so there is nothing to carry. Pi carries MCP servers only.
