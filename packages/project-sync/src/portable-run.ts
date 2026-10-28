@@ -34,7 +34,7 @@ import {
   readPending, readReceipt, saveBlob, unlinkRecord, writeRecord,
 } from './portable-state.js';
 import type { Pending, PortableReceipt, Step } from './portable-state.js';
-import { planWithBytes } from './portable.js';
+import { clearRecordedModes, planWithBytes, readRecordedModes, writeRecordedModes } from './portable.js';
 import type { PlannedChange, PortableInput, PortablePlan, PortableReport } from './portable.js';
 
 export const PORTABLE_REMOVAL_FORMAT = 'bowerloom/portable-removal-plan/v1beta2' as const;
@@ -373,6 +373,7 @@ export async function applyPortableRemovalWith(input: { readonly projectDir: str
     hooks.at?.('after-steps');
     after(ctx, () => {
       unlinkRecord(stateDir, 'receipt.json');
+      clearRecordedModes(stateDir);
       hooks.at?.('after-receipt');
       live(ctx);
       cleanBlobs(stateDir, new Set());
@@ -485,6 +486,11 @@ function settleModes(ctx: Ctx, plan: PortableRecoveryPlan, receipt: PortableRece
   const { projectDir, stateDir, hooks } = ctx;
   const restore = plan.modes.filter(m => m.choice === 'restoreMode');
   const record = new Map(plan.modes.filter(m => m.choice === 'recordMode').map(m => [m.path, m.now.mode] as const));
+  // The recorded modes go first, so a crash before the receipt leaves an entry that no receipt matches: harmless.
+  const rewrite = (): PortableReceipt | null => {
+    if (record.size) noteRecordedModes(stateDir, projectDir, receipt, record);
+    return dropFromReceipt(stateDir, receipt, plan.keep, record);
+  };
   if (restore.length) {
     ensureState(stateDir);
     const work: Work[] = restore.map(m => {
@@ -495,7 +501,7 @@ function settleModes(ctx: Ctx, plan: PortableRecoveryPlan, receipt: PortableRece
     execute(ctx, { format: PENDING_FORMAT, projectDir, kind: 'apply', planRevision: plan.revision, steps: work.map(w => w.step), dirs: [] }, work, []);
     hooks.at?.('after-steps');
     after(ctx, () => {
-      const next = dropFromReceipt(stateDir, receipt, plan.keep, record);
+      const next = rewrite();
       hooks.at?.('after-receipt');
       cleanBlobs(stateDir, originalsOf(next));
       unlinkRecord(stateDir, 'pending.json'); syncDir(stateDir);
@@ -503,10 +509,27 @@ function settleModes(ctx: Ctx, plan: PortableRecoveryPlan, receipt: PortableRece
     });
   } else {
     live(ctx);
-    const next = dropFromReceipt(stateDir, receipt, plan.keep, record);
+    const next = rewrite();
     cleanBlobs(stateDir, originalsOf(next));
   }
   return { ...plan, leftBehind: [] };
+}
+
+/**
+ * Notes each recorded mode with the content and the mode the projection planned for it, so a later install keeps it
+ * while the plan is the same. The planned mode is the receipt's mode, unless an earlier note for the same content
+ * already holds it.
+ */
+function noteRecordedModes(stateDir: string, projectDir: string, receipt: PortableReceipt | null, record: ReadonlyMap<string, number>): void {
+  const notes = new Map(readRecordedModes(stateDir, projectDir));
+  for (const [path, mode] of record) {
+    const f = receipt?.files.find(x => x.path === path);
+    if (!f) continue;
+    const prior = notes.get(path);
+    const planned = prior && prior.sha256 === f.sha256 && prior.recorded === f.mode ? prior.planned : f.mode;
+    notes.set(path, { path, sha256: f.sha256, planned, recorded: mode });
+  }
+  writeRecordedModes(stateDir, projectDir, [...notes.values()]);
 }
 
 /** Applies the approved recovery under the project lock. */
@@ -540,7 +563,7 @@ export async function applyPortableRecoveryWith(input: RecoveryInput, revision: 
     const p = pending!;
     if (plan.action === 'complete') {
       live(ctx);
-      if (p.kind === 'remove') { unlinkRecord(stateDir, 'receipt.json'); receipt = null; }
+      if (p.kind === 'remove') { unlinkRecord(stateDir, 'receipt.json'); clearRecordedModes(stateDir); receipt = null; }
       cleanBlobs(stateDir, originalsOf(receipt));
       unlinkRecord(stateDir, 'pending.json'); syncDir(stateDir);
       const r = receipt as PortableReceipt | null;
