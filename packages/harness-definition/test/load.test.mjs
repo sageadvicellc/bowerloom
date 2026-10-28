@@ -252,6 +252,31 @@ test('sources: a borrowed item records a pinned version and must exist', () => {
   refused({ ...base, 'sources.json': json({ sources: [{ ...src, marketplace: '' }] }) }, 'INVALID_FIELD');
 });
 
+test('step 3 contract: sources.json records a claimed source and a skill adopted from a 0.7 managed copy', () => {
+  const base = fullFiles();
+  const src = { name: 'kit', marketplace: 'market', version: '1.0.0', items: [{ part: 'skills', id: 'review' }] };
+  const from = { kind: '0.7-managed', path: '.bowerloom/managed/skills/review', sha256: 'a'.repeat(64) };
+  const adopted = [{ part: 'skills', id: 'review', adoptedFrom: from }];
+  const d = ok({ ...base, 'sources.json': json({ sources: [{ ...src, claimed: true }], adopted }) });
+  assert.deepEqual(d.sources, [{ ...src, claimed: true }]);
+  assert.deepEqual(d.adopted, adopted);
+  assert.deepEqual(ok(base).adopted, [], 'a definition with no record has an empty list');
+  assert.equal(ok(base).sources[0].claimed, undefined);
+  // claimed is true or absent.
+  for (const claimed of [false, 'yes', 1]) refused({ ...base, 'sources.json': json({ sources: [{ ...src, claimed }] }) }, 'INVALID_FIELD');
+  // The record is strict: shape, kind, a relative path with no .. segment, and a sha256 hash.
+  const bad = (adoptedFrom, extra = {}) => json({ sources: [], adopted: [{ part: 'skills', id: 'review', adoptedFrom, ...extra }] });
+  for (const path of ['../review', '/abs/review', 'a/../b', 'a/./b', 'a//b', '', 'a\\b', 'a/b/', '.']) refused({ ...base, 'sources.json': bad({ ...from, path }) }, 'INVALID_FIELD');
+  for (const sha256 of ['A'.repeat(64), 'a'.repeat(63), 'sha256:' + 'a'.repeat(64), 7]) refused({ ...base, 'sources.json': bad({ ...from, sha256 }) }, 'INVALID_FIELD');
+  refused({ ...base, 'sources.json': bad({ ...from, kind: '0.7-authored' }) }, 'INVALID_FIELD');
+  refused({ ...base, 'sources.json': bad({ ...from, extra: 1 }) }, 'UNKNOWN_FIELD');
+  refused({ ...base, 'sources.json': bad(from, { note: 'x' }) }, 'UNKNOWN_FIELD');
+  refused({ ...base, 'sources.json': json({ sources: [], adopted: [{ part: 'subagents', id: 'reader', adoptedFrom: from }] }) }, 'INVALID_FIELD');
+  refused({ ...base, 'sources.json': json({ sources: [], adopted: [{ part: 'skills', id: 'absent', adoptedFrom: from }] }) }, 'SOURCE_ITEM_MISSING');
+  refused({ ...base, 'sources.json': json({ sources: [], adopted: [...adopted, ...adopted] }) }, 'DUPLICATE_ID');
+  refused({ ...base, 'sources.json': json({ sources: [], adopted: {} }) }, 'INVALID_FIELD');
+});
+
 test('overrides in harness.json are checked for shape', () => {
   refused({ 'harness.json': harness({ overrides: [{ part: 'skills', id: 'a', action: 'remove' }] }) }, 'INVALID_FIELD');
   refused({ 'harness.json': harness({ overrides: [{ part: 'instructions', id: 'a', action: 'hide' }] }) }, 'INVALID_FIELD');

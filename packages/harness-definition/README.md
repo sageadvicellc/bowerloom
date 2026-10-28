@@ -85,6 +85,12 @@ Strength comes from the definition (`strengthOf`). A loss line holds no strength
 - `resolved.hidden` lists each hidden item. Some engines read parent folders themselves. For example, Claude Code reads user and project skills. In such an engine a hidden item can still load, so the lane reports it.
 - `selectForEngine(...).excluded` lists the entries that the engine filter left out, and the private blocks of other engines that the view removed.
 
+## sources.json
+
+`sources` lists borrowed sources, each with a pinned version. `claimed: true` marks a source that a 0.7 catalog only claims, which Bowerloom did not check.
+
+`adopted` lists the skills that adoption converted from 0.7 managed copies. Each record is `{ part: "skills", id, adoptedFrom: { kind: "0.7-managed", path, sha256 } }`. `path` is the canonical copy, relative to the project, with no `..` segment. `sha256` is the hex of the copy's skill content hash (`skillContentHash` without its `sha256:` prefix). The loader checks both strictly. `definition.adopted` holds the records.
+
 ## Revision
 
 The revision is a SHA-256 hash over the canonical files:

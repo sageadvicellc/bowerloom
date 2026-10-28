@@ -11,7 +11,7 @@ export type {
   EngineId, GuardrailAction, GuardrailEffect, LossPart, McpTransport, OverridablePart, PartKey, PartKind, Result, Strength, ToolClass,
 } from './words.js';
 export type {
-  Definition, DefinitionFile, EngineTarget, EnvValue, Filterable, GuardrailRule, HarnessFile, HookEntry, JsonValue,
+  AdoptedFrom, AdoptedRecord, Definition, DefinitionFile, EngineTarget, EnvValue, Filterable, GuardrailRule, HarnessFile, HookEntry, JsonValue,
   LayerOverride, LoadResult, McpServer, PartEntries, PartPointers, PrivateBlocks, Problem, SandboxRequirement, SecretRef,
   ScriptEntry, SkillEntry, SkillSettings, SourceRecord, SubagentEntry,
 } from './types.js';

@@ -5,7 +5,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { loadDefinition } from '../../../dist/packages/harness-definition/src/index.js';
+import { loadDefinition, skillContentHash } from '../../../dist/packages/harness-definition/src/index.js';
+import { applyPortable, applyPortableRemoval, planPortable, planPortableRemoval } from '../../../dist/packages/project-sync/src/index.js';
 import { applyAdoption, planAdoption } from '../../../dist/packages/adoption/src/index.js';
 import { code, item, json, project, sha, skill, snapshot } from './fixture.mjs';
 
@@ -68,6 +69,8 @@ test('an empty .gitkeep in .bowerloom/skills is metadata, as the loader reads it
 });
 
 const TIDY = skill('tidy', '', 'Tidy the imports.\n', 'Tidies imports.');
+/** The hex of the skill content hash of a folder that holds TIDY as SKILL.md only. */
+const TIDY_HASH = skillContentHash('tidy', [{ path: 'skills/tidy/SKILL.md', bytes: Buffer.from(TIDY) }]).slice('sha256:'.length);
 const catalog = (extra = {}) => json({
   format: 'bowerloom/managed-catalog/v1beta2', policy: 'bowerloom/managed-items/v1beta2', item: { kind: 'skill', id: 'tidy' },
   source: { kind: 'npm', registry: 'https://registry.npmjs.org', package: 'example-tidy-skill', version: '1.2.3' },
@@ -99,8 +102,13 @@ test('a 0.7 managed copy becomes a definition skill with its source recorded; no
   unchanged(before, snapshot(p.dir), () => true);
   const r = loadDefinition(p.def);
   assert.equal(r.ok, true, JSON.stringify(r.problems));
-  // C6: a source the 0.7 catalog only claims stays in the plan until the contract can mark it as claimed.
-  assert.deepEqual(r.definition.sources, []);
+  // Step 3 contract: the claimed source and the durable record of the conversion are in sources.json.
+  assert.deepEqual(r.definition.sources, [{ name: 'example-tidy-skill', marketplace: 'https://registry.npmjs.org', version: '1.2.3', claimed: true, items: [{ part: 'skills', id: 'tidy' }] }]);
+  const from = { kind: '0.7-managed', path: '.bowerloom/managed/skills/tidy', sha256: TIDY_HASH };
+  assert.deepEqual(r.definition.adopted, [{ part: 'skills', id: 'tidy', adoptedFrom: from }]);
+  assert.deepEqual(tidy.adoptedFrom, from);
+  assert.equal(r.definition.entries.skills[0].contentHash, `sha256:${TIDY_HASH}`, 'an unchanged copy has the content hash of the definition skill');
+  assert.equal(r.definition.harness.parts.plugins, 'sources.json');
 });
 
 test('a managed copy that drifted from its projection is shown side by side, not picked', t => {
@@ -116,7 +124,7 @@ test('a managed copy that drifted from its projection is shown side by side, not
   assert.match(plan.managed[0].reason, /conflict/);
 });
 
-test('a git source is recorded by repository and commit; a local source is recorded in the plan only', t => {
+test('a git source is recorded by repository and commit; a local source records only the conversion', async t => {
   const git = { kind: 'git', host: 'github.com', repository: 'example/skills', commit: 'a'.repeat(40), tree: 'b'.repeat(40) };
   const p = project(t, { '.bowerloom/managed/catalog/tidy.json': catalog({ source: git, harnesses: ['claude'] }), '.bowerloom/managed/skills/tidy/SKILL.md': TIDY });
   const plan = planAdoption(p.input({ engines: [{ id: 'claude-code' }] }));
@@ -125,6 +133,11 @@ test('a git source is recorded by repository and commit; a local source is recor
   const local = planAdoption(q.input({ engines: [{ id: 'claude-code' }] }));
   assert.equal(item(local, 'skills', 'tidy').source, undefined);
   assert.match(local.managed[0].reason, /local/);
+  // A local source records no source, but the conversion itself is still recorded.
+  assert.deepEqual(item(local, 'skills', 'tidy').adoptedFrom, { kind: '0.7-managed', path: '.bowerloom/managed/skills/tidy', sha256: TIDY_HASH });
+  await applyAdoption(q.input({ engines: [{ id: 'claude-code' }] }), local.revision, local.approvalsRequired);
+  const d = loadDefinition(q.def).definition;
+  assert.deepEqual([d.sources, d.adopted.map(a => a.id)], [[], ['tidy']]);
 });
 
 test('the 0.7 v1 namespace .bowerloom-skills converts the same way and stays in place', async t => {
@@ -137,8 +150,67 @@ test('the 0.7 v1 namespace .bowerloom-skills converts the same way and stays in 
   const plan = planAdoption(p.input({ engines: [{ id: 'claude-code' }] }));
   assert.equal(plan.managed[0].skill, 'tidy');
   assert.deepEqual(item(plan, 'skills', 'tidy').places.map(x => x.path), ['.bowerloom-skills/skills/tidy', '.claude/skills/tidy']);
+  assert.deepEqual(item(plan, 'skills', 'tidy').adoptedFrom, { kind: '0.7-managed', path: '.bowerloom-skills/skills/tidy', sha256: TIDY_HASH });
   await applyAdoption(p.input({ engines: [{ id: 'claude-code' }] }), plan.revision, plan.approvalsRequired);
   unchanged(before, snapshot(p.dir), () => true);
 });
 
-test.todo('project-sync lane: after adoption, the portable projection takes a skill folder whose 0.7 managed copy the definition records (plan.managed), instead of refusing PORTABLE_MANAGED_COPY');
+/** A project with one 0.7 managed copy of tidy, projected to Claude Code and Codex, adopted. */
+async function adoptedTidy(t, extra = {}) {
+  const p = project(t, {
+    '.bowerloom/managed/catalog/tidy.json': catalog(),
+    '.bowerloom/managed/skills/tidy/SKILL.md': TIDY,
+    '.claude/skills/tidy/SKILL.md': TIDY,
+    '.agents/skills/tidy/SKILL.md': TIDY,
+    ...extra,
+  });
+  const input = p.input({ engines: [{ id: 'claude-code' }, { id: 'codex' }] });
+  const plan = planAdoption(input);
+  await applyAdoption(input, plan.revision, plan.approvalsRequired);
+  const portable = { projectDir: p.dir, definitionFolder: p.def, stateDir: path.join(p.base, 'state', 'portable') };
+  return { p, portable };
+}
+
+test('after adoption, the portable projection takes a folder held by a 0.7 managed copy that sources.json records, as a replace; removal restores the 0.7 copy', async t => {
+  const { p, portable } = await adoptedTidy(t);
+  const before = snapshot(p.dir);
+  const plan = planPortable(portable);
+  const skillChanges = plan.changes.filter(c => c.path.endsWith('tidy/SKILL.md'));
+  assert.deepEqual(skillChanges.map(c => [c.path, c.action, c.original?.sha256]), [
+    ['.agents/skills/tidy/SKILL.md', 'replace', sha(TIDY)], ['.claude/skills/tidy/SKILL.md', 'replace', sha(TIDY)],
+  ]);
+  await applyPortable(portable, plan.revision);
+  const removal = planPortableRemoval(portable);
+  assert.deepEqual(removal.changes.filter(c => c.path.endsWith('tidy/SKILL.md')).map(c => c.action), ['restore', 'restore']);
+  await applyPortableRemoval(portable, removal.revision);
+  for (const rel of ['.claude/skills/tidy/SKILL.md', '.agents/skills/tidy/SKILL.md', '.bowerloom/managed/skills/tidy/SKILL.md']) {
+    assert.equal(fs.readFileSync(path.join(p.dir, rel), 'utf8'), TIDY, rel);
+    assert.equal(snapshot(p.dir)[rel].split(' ')[0], before[rel].split(' ')[0], rel);
+  }
+});
+
+test('a 0.7 managed folder whose content no longer matches sources.json keeps PORTABLE_MANAGED_COPY', async t => {
+  const { p, portable } = await adoptedTidy(t);
+  fs.writeFileSync(path.join(p.dir, '.claude/skills/tidy/SKILL.md'), TIDY.replace('Tidy the imports.', 'Tidy the imports, edited after adoption.'));
+  assert.throws(() => planPortable(portable), e => e.code === 'PORTABLE_MANAGED_COPY' && e.message.includes('.claude/skills/tidy'));
+  // A file added to the copy changes its hash too.
+  const q = await adoptedTidy(t);
+  fs.writeFileSync(path.join(q.p.dir, '.agents/skills/tidy/extra.md'), 'Extra.\n');
+  assert.throws(() => planPortable(q.portable), e => e.code === 'PORTABLE_MANAGED_COPY' && e.message.includes('.agents/skills/tidy'));
+});
+
+test('a matching 0.7 folder that holds a file the definition skill no longer has keeps PORTABLE_MANAGED_COPY', async t => {
+  const { p, portable } = await adoptedTidy(t, {
+    '.bowerloom/managed/skills/tidy/notes.md': 'Notes.\n', '.claude/skills/tidy/notes.md': 'Notes.\n', '.agents/skills/tidy/notes.md': 'Notes.\n',
+  });
+  fs.rmSync(path.join(p.def, 'skills/tidy/notes.md'));
+  assert.throws(() => planPortable(portable), e => e.code === 'PORTABLE_MANAGED_COPY');
+});
+
+test('without the sources.json record, a folder held by a 0.7 managed copy keeps PORTABLE_MANAGED_COPY', async t => {
+  const { p, portable } = await adoptedTidy(t);
+  const file = path.join(p.def, 'sources.json');
+  const value = JSON.parse(fs.readFileSync(file, 'utf8'));
+  fs.writeFileSync(file, json({ sources: value.sources }));
+  assert.throws(() => planPortable(portable), e => e.code === 'PORTABLE_MANAGED_COPY');
+});

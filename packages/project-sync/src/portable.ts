@@ -15,12 +15,14 @@
 import fs from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { canonicalJson } from '../../contracts/src/index.js';
-import { ENGINE_IDS, PART_KEYS, appliesTo, checkFidelity, isEngineId, loadDefinition, selectForEngine } from '../../harness-definition/src/index.js';
+import {
+  DEFINITION_LIMITS, ENGINE_IDS, PART_KEYS, REVISION_PREFIX, appliesTo, checkFidelity, isEngineId, loadDefinition, selectForEngine, skillContentHash,
+} from '../../harness-definition/src/index.js';
 import type { Definition, EngineId, FidelityApproval, LossLine, LossPart, PartKey, SkillEntry } from '../../harness-definition/src/index.js';
 import { LOCKED_PARTS, planLocked } from './locked.js';
 import type { CodexTrust, LockedPart, ReviewItem, TrustLine } from './locked.js';
 import {
-  PortableRefusal, byBytes, caseClashes, checkAncestors, readAbs, refuse, revisionOf, sameState, sha, stateOrUnsafe,
+  PortableRefusal, byBytes, caseClashes, checkAncestors, readAbs, readProject, refuse, revisionOf, sameState, sha, stateOrUnsafe,
 } from './portable-files.js';
 import type { FileAfter, FileState } from './portable-files.js';
 import { checkPaths, pendingExists, readReceipt, blob } from './portable-state.js';
@@ -316,6 +318,33 @@ function managedHolder(projectDir: string, folder: string): string | null {
   return has('.bowerloom-skills') && has(`.bowerloom-skills/skills/${name}`) ? name : null;
 }
 
+/**
+ * The files of a skill folder and the hex of their skill content hash, as `sources.json` records it for a 0.7 managed
+ * copy. Null when the folder holds anything but plain files and folders, or more than the loader reads.
+ */
+function folderContent(projectDir: string, folder: string): { readonly files: readonly string[]; readonly sha256: string } | null {
+  const files: { path: string; bytes: Uint8Array }[] = [];
+  const walk = (rel: string, depth: number): boolean => {
+    if (depth > DEFINITION_LIMITS.depth) return false;
+    let names: string[];
+    try { names = fs.readdirSync(join(projectDir, folder, rel)); } catch { return false; }
+    for (const n of names) {
+      const r = rel ? `${rel}/${n}` : n;
+      let st: fs.Stats;
+      try { st = fs.lstatSync(join(projectDir, folder, r)); } catch { return false; }
+      if (st.isDirectory() && !st.isSymbolicLink()) { if (!walk(r, depth + 1)) return false; continue; }
+      if (!st.isFile() || files.length >= DEFINITION_LIMITS.files) return false;
+      let got: ReturnType<typeof readProject>;
+      try { got = readProject(projectDir, `${folder}/${r}`); } catch { return false; }
+      if (!got) return false;
+      files.push({ path: `skills/x/${r}`, bytes: got.bytes });
+    }
+    return true;
+  };
+  if (!walk('', 1)) return null;
+  return { files: files.map(f => f.path.slice('skills/x/'.length)), sha256: skillContentHash('x', files).slice(REVISION_PREFIX.length) };
+}
+
 interface Target { bytes: Uint8Array; mode: number; engines: Set<EngineId> }
 
 export function receiptFilesOf(changes: readonly PlannedChange[]): ReceiptFile[] {
@@ -438,14 +467,21 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
   }
   if (clashes.length) refuse('PORTABLE_CASE_CLASH', [...new Set(clashes)]);
 
-  // Skill folders that Bowerloom did not project are never written into.
+  // Skill folders that Bowerloom did not project are never written into. A folder that a 0.7 managed copy holds is taken
+  // only when sources.json records that the skill was adopted from that copy, and the folder still holds exactly it:
+  // its files are then replaced, with their originals saved, so removal restores the 0.7 copy (step 3 contract).
   const occupied: string[] = [], managed: string[] = [];
   const folders = new Set([...targets.keys()].filter(p => p.startsWith('.claude/skills/') || p.startsWith('.agents/skills/')).map(p => p.split('/').slice(0, 3).join('/')));
   for (const folder of [...folders].sort(byBytes)) {
     if ([...owned.keys()].some(p => p.startsWith(folder + '/'))) continue;
     if (checkAncestors(projectDir, folder + '/x').length) continue;
     const holder = managedHolder(projectDir, folder);
-    if (holder !== null) managed.push(`${folder} (0.7 item ${holder})`); else occupied.push(folder);
+    if (holder === null) { occupied.push(folder); continue; }
+    const name = folder.split('/')[2]!;
+    const record = def.adopted.find(a => a.part === 'skills' && a.id === name);
+    const held = record ? folderContent(projectDir, folder) : null;
+    if (record && held && held.sha256 === record.adoptedFrom.sha256 && held.files.every(f => targets.has(`${folder}/${f}`))) continue;
+    managed.push(`${folder} (0.7 item ${holder})`);
   }
   if (managed.length) refuse('PORTABLE_MANAGED_COPY', managed);
   if (occupied.length) refuse('PORTABLE_PATH_OCCUPIED', occupied);

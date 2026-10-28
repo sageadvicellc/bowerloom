@@ -13,7 +13,7 @@
 import { isRecord } from './json.js';
 import { safeName } from './secrets.js';
 import type {
-  EngineTarget, EnvValue, GuardrailRule, HarnessFile, HookEntry, JsonValue, LayerOverride, McpServer, PartPointers,
+  AdoptedRecord, EngineTarget, EnvValue, GuardrailRule, HarnessFile, HookEntry, JsonValue, LayerOverride, McpServer, PartPointers,
   PrivateBlocks, Problem, SandboxRequirement, SkillEntry, SkillSettings, SourceRecord, SubagentEntry,
 } from './types.js';
 import {
@@ -444,18 +444,29 @@ function pinned(version: string): boolean {
   return !/[\^~*<>=|\s]/.test(version) && !/^(?:latest|next|main|master|head)$/i.test(version) && !/(?:^|\.)x(?:\.|$)/i.test(version);
 }
 
-export function checkSources(c: Checker, value: JsonValue): SourceRecord[] | undefined {
-  const k = keys(c, value, 'sources.json', ['sources'], [], false);
+/** A path relative to the project folder: `/` separators, no empty, `.`, or `..` segment, and no control character. */
+export function isRelativeProjectPath(p: unknown): p is string {
+  return typeof p === 'string' && p.length > 0 && p.length <= 512 && !p.startsWith('/') && !p.includes('\\') && !/[\0-\x1f\x7f]/.test(p)
+    && p.split('/').every(seg => seg !== '' && seg !== '.' && seg !== '..');
+}
+
+/**
+ * `sources.json`: borrowed sources, each pinned, with `claimed: true` when a 0.7 catalog only claims it; and `adopted`,
+ * the skills adoption converted from 0.7 managed copies, each with its `adoptedFrom` record (step 3 contract).
+ */
+export function checkSources(c: Checker, value: JsonValue): { sources: SourceRecord[]; adopted: AdoptedRecord[] } | undefined {
+  const k = keys(c, value, 'sources.json', ['sources'], ['adopted'], false);
   const items = k && array(c, k.obj.sources, 'sources');
   if (!items) return undefined;
   const sources = entries(items, (item, i) => {
     const where = `sources[${i}]`;
-    const s = keys(c, item, where, ['name', 'marketplace', 'version', 'items'], [], false);
+    const s = keys(c, item, where, ['name', 'marketplace', 'version', 'items'], ['claimed'], false);
     if (!s) return undefined;
     const name = oneLine(c, s.obj.name, `${where}.name`, 256);
     const marketplace = oneLine(c, s.obj.marketplace, `${where}.marketplace`, 256);
     let version = oneLine(c, s.obj.version, `${where}.version`, 256);
     if (version !== undefined && !pinned(version)) version = c.fail('SOURCE_NOT_PINNED', `${where}.version must be one pinned version, not a range or a moving tag.`);
+    const claimed: true | null | undefined = Object.hasOwn(s.obj, 'claimed') ? (s.obj.claimed === true ? true : c.fail('INVALID_FIELD', `${where}.claimed must be true when present: the 0.7 catalog only claims this source.`)) : null;
     const list = array(c, s.obj.items, `${where}.items`, 1);
     const refs = list && entries(list, (ref, j) => {
       const r = keys(c, ref, `${where}.items[${j}]`, ['part', 'id'], [], false);
@@ -463,14 +474,34 @@ export function checkSources(c: Checker, value: JsonValue): SourceRecord[] | und
       if (!r || !part) return undefined;
       return typeof r.obj.id === 'string' && r.obj.id !== '' ? { part, id: r.obj.id } : c.fail('INVALID_ID', `${where}.items[${j}].id must be an id.`);
     });
-    if (name === undefined || marketplace === undefined || version === undefined || !refs) return undefined;
-    return { name, marketplace, version, items: refs as { part: OverridablePart; id: string }[] };
+    if (name === undefined || marketplace === undefined || version === undefined || claimed === undefined || !refs) return undefined;
+    const record: SourceRecord = { name, marketplace, version, ...(claimed === true ? { claimed } : {}), items: refs as { part: OverridablePart; id: string }[] };
+    return record;
   });
-  if (!sources) return undefined;
+  let adopted: AdoptedRecord[] | undefined = [];
+  if (Object.hasOwn(k.obj, 'adopted')) {
+    const list = array(c, k.obj.adopted, 'adopted');
+    adopted = list && entries(list, (item, i) => {
+      const where = `adopted[${i}]`;
+      const a = keys(c, item, where, ['part', 'id', 'adoptedFrom'], [], false);
+      if (!a) return undefined;
+      const part = a.obj.part === 'skills' ? 'skills' as const : c.fail('INVALID_FIELD', `${where}.part must be skills: only skills come from 0.7 managed copies.`);
+      const id = isId(a.obj.id) ? a.obj.id : c.fail('INVALID_ID', `${where}.id must be a skill id.`);
+      const f = keys(c, a.obj.adoptedFrom, `${where}.adoptedFrom`, ['kind', 'path', 'sha256'], [], false);
+      if (!f) return undefined;
+      const kind = f.obj.kind === '0.7-managed' ? '0.7-managed' as const : c.fail('INVALID_FIELD', `${where}.adoptedFrom.kind must be 0.7-managed.`);
+      const path = isRelativeProjectPath(f.obj.path) ? f.obj.path : c.fail('INVALID_FIELD', `${where}.adoptedFrom.path must be a path relative to the project, with no empty, . or .. segment.`);
+      const sha256 = typeof f.obj.sha256 === 'string' && /^[0-9a-f]{64}$/.test(f.obj.sha256) ? f.obj.sha256 : c.fail('INVALID_FIELD', `${where}.adoptedFrom.sha256 must be 64 lowercase hex digits.`);
+      if (part === undefined || id === undefined || kind === undefined || path === undefined || sha256 === undefined) return undefined;
+      return { part, id, adoptedFrom: { kind, path, sha256 } };
+    });
+  }
+  if (!sources || !adopted) return undefined;
   const before = c.problems.length;
   unique(c, sources, s => `${s.marketplace}\n${s.name}`, 'sources');
   unique(c, sources.flatMap(s => s.items), item => `${item.part}/${item.id}`, 'source items');
-  return c.problems.length === before ? sources : undefined;
+  unique(c, adopted, a => a.id, 'adopted');
+  return c.problems.length === before ? { sources, adopted } : undefined;
 }
 
 /** Maps every item; undefined when any item had a fault. */

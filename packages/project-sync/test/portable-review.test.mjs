@@ -8,7 +8,7 @@ import {
   planPortable, planPortableRecovery, planPortableRemoval, portableDrift, readPortableReceipt,
 } from '../../../dist/packages/project-sync/src/index.js';
 import { applyPortableRemovalWith, applyPortableWith } from '../../../dist/packages/project-sync/src/portable-run.js';
-import { ENGINE_IDS } from '../../../dist/packages/harness-definition/src/index.js';
+import { ENGINE_IDS, skillContentHash } from '../../../dist/packages/harness-definition/src/index.js';
 import {
   INSTRUCTIONS, assert, code, crashAt, forge, isCaseSensitive, json, project, projectNow, sha, skill, snapshot,
 } from './portable-fixture.mjs';
@@ -445,6 +445,27 @@ test('P27: a skill folder held by a 0.7 managed copy gets its own refusal that n
   fs.mkdirSync(path.join(p.def, 'managed/catalog'), { recursive: true });
   fs.writeFileSync(path.join(p.def, 'managed/catalog/review.json'), '{}\n');
   assert.throws(() => planPortable(p.input()), e => e.code === 'PORTABLE_MANAGED_COPY' && /0\.7 item review/.test(e.message) && /Adoption \(step 3\)/.test(e.message));
+});
+
+test('step 3 contract: a folder a 0.7 managed copy holds is replaced only when sources.json records it with the same content hash', async t => {
+  const old = skill('review', 'license: MIT\n').replace('Use review', 'An older review');
+  const hashOf = files => skillContentHash('x', Object.entries(files).map(([rel, text]) => ({ path: `skills/x/${rel}`, bytes: Buffer.from(text) }))).slice('sha256:'.length);
+  const make = record => {
+    const p = project(t, { engines: [{ id: 'claude-code' }], parts: { plugins: 'sources.json' }, files: { 'sources.json': json({ sources: [], adopted: [{ part: 'skills', id: 'review', adoptedFrom: { kind: '0.7-managed', path: '.bowerloom/managed/skills/review', sha256: record } }] }) } });
+    for (const [rel, text] of [['.claude/skills/review/SKILL.md', old], ['.bowerloom/managed/catalog/review.json', '{}\n']]) { fs.mkdirSync(path.dirname(path.join(p.dir, rel)), { recursive: true }); fs.writeFileSync(path.join(p.dir, rel), text); }
+    return p;
+  };
+  const p = make(hashOf({ 'SKILL.md': old }));
+  const plan = planPortable(p.input());
+  assert.deepEqual(plan.changes.filter(c => c.path.startsWith('.claude/skills/review/')).map(c => [c.path, c.action]), [
+    ['.claude/skills/review/SKILL.md', 'replace'], ['.claude/skills/review/references/notes.md', 'create'],
+  ]);
+  await applyPortable(p.input(), plan.revision);
+  await remove(p);
+  assert.equal(fs.readFileSync(path.join(p.dir, '.claude/skills/review/SKILL.md'), 'utf8'), old);
+  assert.equal(fs.existsSync(path.join(p.dir, '.claude/skills/review/references')), false);
+  const q = make(hashOf({ 'SKILL.md': old + 'changed\n' }));
+  assert.throws(() => planPortable(q.input()), e => e.code === 'PORTABLE_MANAGED_COPY');
 });
 
 // ---- P28: the remaining gaps -------------------------------------------------------------------------------------------------------

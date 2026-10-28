@@ -74,6 +74,13 @@ The same plan writes MCP servers, subagents, hooks, guardrails, and the sandbox.
 - **The no-link fallback.** Where the file system has no link(), a new file is created with O_EXCL. A write that fails
   after that removes the file it created, so no truncated file stays behind.
 
+### A folder that a 0.7 managed copy holds
+
+A skill folder that a 0.7 skills sync manages refuses `PORTABLE_MANAGED_COPY`, unless adoption converted that copy.
+Then `sources.json` records the skill in `adopted`, with the hex of the copy's skill content hash. When the folder
+still holds exactly that content, and every file in it is one the projection writes, the plan replaces its files and
+saves the originals. Removal then restores the 0.7 copy. A folder that changed since adoption is refused as before.
+
 ### What the private state folder keeps
 
 The state folder holds `receipt.json`, `pending.json` while a run is unfinished, and `blobs/`, the saved bytes of files.

@@ -67,11 +67,11 @@ A literal secret in an MCP `env`, header, argument, private block, or leftover s
 
 - `skills.json` and `bowerloom.json` are read through step 0's mapping of `harnesses` and `claude`. They stay byte for byte unchanged.
 - A 0.7 skill in `.bowerloom/skills` is already where the definition keeps it. Adoption cannot change it, so one that the definition cannot carry refuses with `ADOPTION_LEGACY_SKILL`.
-- A 0.7 managed copy (`.bowerloom/managed/...` or `.bowerloom-skills/...`) becomes a definition skill. An npm or git source is recorded in the plan only, marked `claimed: true`. It goes to `sources.json` once the contract can mark it as claimed. `plan.managed` lists each copy and the skill it became. A catalog copy path that is not relative is refused. A 0.7 restriction that names no engine of the harness is not converted. No 0.7 file is deleted.
+- A 0.7 managed copy (`.bowerloom/managed/...` or `.bowerloom-skills/...`) becomes a definition skill. `sources.json` records the conversion in `adopted`: the skill id and `adoptedFrom: { kind: "0.7-managed", path, sha256 }`, where `path` is the canonical copy and `sha256` is the hex of its skill content hash. An npm or git source goes into `sources` with `claimed: true`, because the 0.7 catalog only claims it. `plan.managed` lists each copy and the skill it became, and the plan item carries `adoptedFrom`. A catalog copy path that is not relative is refused. A 0.7 restriction that names no engine of the harness is not converted. No 0.7 file is deleted.
 
 ## For the projection lanes
 
-- `plan.managed` names each converted copy and its engine copies. The portable projection still refuses `PORTABLE_MANAGED_COPY` for those folders until it reads this record.
+- `plan.managed` names each converted copy and its engine copies. The portable projection takes an engine folder that a 0.7 managed copy holds when `sources.json` records the skill in `adopted` and the folder still has that content hash: it replaces the files and saves the originals, so removal restores the 0.7 copy. Any other such folder still refuses `PORTABLE_MANAGED_COPY`.
 - A neutral hook command uses `${PROJECT_DIR}`. Claude Code's `$CLAUDE_PROJECT_DIR` and Codex's `$(git rev-parse --show-toplevel)` are rewritten to it.
 - A hook on `PreToolUse`, `UserPromptSubmit`, or `PermissionRequest` is `enforced`. Other hooks are `advisory`.
 - A Codex `allow` rule becomes a neutral `allow`. The note says Codex ran it outside the sandbox.
