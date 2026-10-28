@@ -50,6 +50,8 @@ export interface PortableHooks {
   readonly afterMkdir?: (path: string) => void;
   /** Stands in for link(), to reach the fallback of a file system without it. */
   readonly link?: (from: string, to: string) => void;
+  /** Runs after the no-link fallback creates a path and before it writes the bytes. */
+  readonly afterCreate?: (path: string) => void;
 }
 
 export interface PortableApplyResult {
@@ -156,7 +158,7 @@ function put(ctx: Ctx, step: Step, bytes: Uint8Array | null, onCommit: () => voi
     const again = readProject(projectDir, rel);
     if (!sameState(again?.state ?? null, step.from)) drift(again?.state);
   };
-  writeAbs(abs, bytes, step.to!.mode, { exclusive: step.from === null, recheck, label: rel, onPlaced: onCommit, ...(hooks.link ? { link: hooks.link } : {}) });
+  writeAbs(abs, bytes, step.to!.mode, { exclusive: step.from === null, recheck, label: rel, onPlaced: onCommit, ...(hooks.link ? { link: hooks.link } : {}), ...(hooks.afterCreate ? { afterCreate: () => hooks.afterCreate!(rel) } : {}) });
 }
 
 /**

@@ -5,12 +5,19 @@
  */
 import type { EngineId, JsonValue, LossLine, PartKey, Result } from '../../harness-definition/src/index.js';
 
-/** A problem that refuses the projection of one entry. `ENV_DEFAULT`: the entry holds `${NAME:-x}` or a like form. */
+/**
+ * A problem that refuses the projection of one entry:
+ * - `ENV_DEFAULT`: a field the scan reads holds `${NAME:-x}` or a like form;
+ * - `PRIVATE_JS`: a DeepSeek Harness private block holds an object shaped like a `!!js` expression;
+ * - `OPENCODE_SUBSTITUTION`: a string bound for `opencode.json` holds `{env:` or `{file:`, which OpenCode replaces.
+ */
 export interface LockedProblem {
   readonly part: PartKey;
   readonly entry: string;
-  readonly code: 'ENV_DEFAULT';
+  readonly code: 'ENV_DEFAULT' | 'PRIVATE_JS' | 'OPENCODE_SUBSTITUTION';
 }
+/** True when OpenCode would replace part of the text when it reads its file (ruling B4). */
+export const openCodeSubstitution = (text: string): boolean => /\{(?:env|file):/.test(text);
 
 /**
  * True when the text holds a shell default or check form: `${NAME:-x}`, `${NAME-x}`, `${NAME:=x}`, `${NAME:?x}`,
@@ -29,8 +36,8 @@ export function stringsOf(value: unknown, out: string[] = []): string[] {
   return out;
 }
 
-/** True when any string of the entry holds a default form. */
-export const holdsEnvDefault = (entry: object): boolean => stringsOf(entry).some(envDefaultIn);
+/** True when any string of the values holds a default form. The callers pass the fields the scan reads (ruling B15). */
+export const holdsEnvDefault = (...values: unknown[]): boolean => values.some(v => stringsOf(v).some(envDefaultIn));
 
 /** The `${NAME}` references of a text, and whether the text is exactly one of them. */
 export function references(text: string): { readonly names: readonly string[]; readonly whole: string | null } {
@@ -62,8 +69,12 @@ export class Lines {
   }
   /** Records an ENV_DEFAULT problem and its absent line. */
   envDefault(entry: string): void {
-    this.problems.push({ part: this.part, entry, code: 'ENV_DEFAULT' });
-    this.line(entry, 'absent', 'The entry holds ${NAME:-x} or a like default form. No engine is documented to expand it, so Bowerloom never copies it as literal text and refuses the entry. Write ${NAME}, or set the value in the definition.');
+    this.problem(entry, 'ENV_DEFAULT', 'The entry holds ${NAME:-x} or a like default form. No engine is documented to expand it, so Bowerloom never copies it as literal text and refuses the entry. Write ${NAME}, or set the value in the definition.');
+  }
+  /** Records a problem that refuses the entry, and its absent line. */
+  problem(entry: string, code: LockedProblem['code'], reason: string): void {
+    this.problems.push({ part: this.part, entry, code });
+    this.line(entry, 'absent', reason);
   }
 }
 
@@ -87,4 +98,13 @@ const containsNull = (v: JsonValue): boolean => v === null || (Array.isArray(v) 
 /** The line of an engine-private block that was not carried whole. */
 export function privateLine(out: Lines, entry: string, dropped: readonly string[], where: string): void {
   if (dropped.length) out.line(entry, 'absent', `The x-${out.engine} block names keys that Bowerloom writes itself, or a null that ${where} cannot hold, so these keys are not written: ${dropped.join(', ')}.`, `x-${out.engine}`);
+}
+
+/** A JavaScript expression that DeepSeek Harness evaluates (YAML tag `!!js`). Only Bowerloom makes one: data never does. */
+export class JsExpression {
+  constructor(readonly js: string) {}
+}
+/** The ordered keys of an OpenCode agent permission, each with its action. A marker, so plain data never looks like one. */
+export class PermissionPairs {
+  constructor(readonly pairs: readonly (readonly [string, string])[]) {}
 }

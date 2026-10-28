@@ -45,9 +45,9 @@ const TOOL_NAMES: Readonly<Record<string, { readonly codex: readonly string[] | 
   Grep: { codex: null, opencode: ['grep'] },
   Glob: { codex: null, opencode: ['glob'] },
   LS: { codex: null, opencode: ['list'] },
-  Edit: { codex: ['apply_patch'], opencode: ['edit'] },
-  MultiEdit: { codex: ['apply_patch'], opencode: ['edit'] },
-  Write: { codex: ['apply_patch'], opencode: ['write'] },
+  Edit: { codex: ['apply_patch'], opencode: ['edit', 'apply_patch'] },
+  MultiEdit: { codex: ['apply_patch'], opencode: ['edit', 'apply_patch'] },
+  Write: { codex: ['apply_patch'], opencode: ['write', 'apply_patch'] },
   NotebookEdit: { codex: ['apply_patch'], opencode: null },
   WebFetch: { codex: null, opencode: ['webfetch'] },
   WebSearch: { codex: null, opencode: ['websearch'] },
@@ -109,7 +109,7 @@ export function translateHooks(engine: EngineId, hooks: readonly HookEntry[]): H
   const out = new Lines('hooks', engine);
   const forms: HookForm[] = [];
   for (const h of hooks) {
-    if (holdsEnvDefault(h)) { out.envDefault(h.id); continue; }
+    if (holdsEnvDefault(h.command)) { out.envDefault(h.id); continue; }
     if (engine === 'pi') { out.line(h.id, 'absent', 'Pi has no declarative hook file: hooks are TypeScript extensions, and Bowerloom generates none in 0.8.'); continue; }
     if (engine === 'deepseek-harness') { out.line(h.id, 'absent', 'DeepSeek Harness runs hooks only through an experimental bridge that a person mounts as a plugin row. Bowerloom writes no hook files for it in 0.8.'); continue; }
     const list = names(h.matcher);
@@ -161,7 +161,13 @@ export function translateHooks(engine: EngineId, hooks: readonly HookEntry[]): H
         const ignored = list && !toolEvent ? ` OpenCode's ${hook} has no matcher, so the plugin runs the hook for every ${hook} and ignores ${list.join('|')}.` : '';
         const gap = missing.length ? ` OpenCode has no tool name for ${missing.join(', ')}, so the hook does not run for those tools.` : '';
         const note = privateNote(h, engine, null);
-        out.line(h.id, missing.length ? 'weakened' : 'translated', `OpenCode runs the command from the generated plugin .opencode/plugins/bowerloom-hooks.js on ${hook}. The plugin passes the hook input as JSON on standard input and throws on exit 2 or a deny decision; \${PROJECT_DIR} becomes the project folder of the plugin context. The plugin is code that a person reads in the plan before Bowerloom writes it.${ignored}${gap}${note}`);
+        // Ruling B19: the input the plugin reads, such as output.args after a tool runs, is unverified until step 5.
+        const unverified = ' The input shapes the plugin reads, such as the tool arguments after a call, are unverified until the live check of step 5.';
+        // Ruling B8: an enforced hook is weakened.
+        const enforced = h.strength === 'enforced'
+          ? ' The plugin fails open: a hook that runs past its timeout, or ends with an exit code other than 2, lets the call continue. Its tool mapping covers the tools the research notes name, and whether it runs inside subagents is unverified.'
+          : '';
+        out.line(h.id, missing.length || enforced ? 'weakened' : 'translated', `OpenCode runs the command from the generated plugin .opencode/plugins/bowerloom-hooks.js on ${hook}. The plugin passes the hook input as JSON on standard input and throws on exit 2 or a deny decision; \${PROJECT_DIR} becomes the project folder of the plugin context. The plugin is code that a person reads in the plan before Bowerloom writes it.${ignored}${gap}${note}${enforced}${unverified}`);
         forms.push({ engine, entry: h.id, event: h.event, hook, tools, command: rewrite(h.command, engine), timeoutMs: h.timeout ?? DEFAULT_HOOK_TIMEOUT_MS, enforced: h.strength === 'enforced' });
         break;
       }

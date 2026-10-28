@@ -104,12 +104,12 @@ test('check 5: ${NAME:-x} is refused, never copied as literal text into any proj
 
 // ---- versions: checks 6 and 13 ---------------------------------------------------------------------------------------------
 
-test('check 6: a projection for any recorded OpenCode version other than 1.18.30 is refused', t => {
+test('check 6: a projection of locked-in parts for any recorded OpenCode version other than 1.18.30 is refused; a portable-only one proceeds (B18)', t => {
   for (const version of ['1.18.29', '2.0.0', '1.0.0']) {
     const p = lockedProject(t, { engines: [{ id: 'opencode', version }] });
     assert.throws(() => planPortable(p.input()), e => e.code === 'PORTABLE_ENGINE_VERSION' && e.message.includes(`opencode ${version}`), version);
     const portableOnly = lockedProject(t, { engines: [{ id: 'opencode', version }], mcp: null, parts: { mcp: undefined } });
-    assert.throws(() => planPortable(portableOnly.input()), code('PORTABLE_ENGINE_VERSION'), version);
+    assert.match(planPortable(portableOnly.input()).loss[0].reason, /OpenCode 1\.18\.30 only/, version);
   }
   const unknown = lockedProject(t, { engines: [{ id: 'opencode' }] });
   assert.throws(() => planPortable(unknown.input()), code('PORTABLE_ENGINE_VERSION'), 'an unknown version cannot pick the 1.x shape for locked-in parts');
@@ -160,11 +160,11 @@ test('check 3: a read-only subagent is exact in Claude Code, deny keys in OpenCo
   const p = lockedProject(t, { engines: engines('claude-code', 'codex', 'opencode'), mcp: null, parts: { mcp: undefined }, agents: { reader } });
   const e = refusal(() => planPortable(p.input()));
   assert.equal(e.code, 'PORTABLE_FIDELITY');
-  assert.deepEqual(e.refused.map(l => [l.part, l.entry, l.engine, l.field, l.result]), [['subagents', 'reader', 'codex', 'tools', 'weakened']]);
+  assert.deepEqual(e.refused.map(l => [l.part, l.entry, l.engine, l.field, l.result]), [['subagents', 'reader', 'codex', 'tools', 'weakened'], ['subagents', 'reader', 'opencode', 'tools', 'weakened']]);
   const approvals = approveAll(p, e);
   const { plan, result } = await projectNow(p.input({ approvals }));
   assert.equal(line(plan, 'subagents', 'reader', 'claude-code', 'tools').result, 'exact');
-  assert.equal(line(plan, 'subagents', 'reader', 'opencode', 'tools').result, 'translated');
+  assert.equal(line(plan, 'subagents', 'reader', 'opencode', 'tools').result, 'weakened');
   assert.match(read(p, '.claude/agents/reader.md'), /^---\nname: "reader"\ndescription: "The reader subagent\."\ntools: "Read, Grep, Glob"\nmodel: "sonnet"\n---\n\nAct as reader\.\n$/);
   assert.match(read(p, '.opencode/agents/reader.md'), /permission:\n {2}"edit": "deny"\n/);
   assert.equal(/"(allow|ask)"/.test(read(p, '.opencode/agents/reader.md')), false);
@@ -210,7 +210,10 @@ test('check 8: a Codex hook is weakened when enforced and pending trust until th
   assert.equal(hookTrust(planPortable(p.input({ approvals, codexTrust: { folderTrusted: true, reviewedHooks: [] } }))).state, 'pending trust');
   assert.equal(hookTrust(planPortable(p.input({ approvals, codexTrust: { folderTrusted: false, reviewedHooks: [hash] } }))).state, 'pending trust');
   assert.equal(hookTrust(planPortable(p.input({ approvals, codexTrust: { folderTrusted: true, reviewedHooks: [hash] } }))).state, 'trusted');
-  assert.equal(planPortable(p.input({ approvals, codexTrust: { folderTrusted: true, reviewedHooks: [hash] } })).trust.find(l => l.path === '.codex/config.toml')?.state ?? 'trusted', 'trusted');
+  // B17: the trust line of the folder is there, and it is trusted only once the folder is.
+  const folderLine = trusted => planPortable(p.input({ approvals, codexTrust: { folderTrusted: trusted, reviewedHooks: [hash] } })).trust.find(l => l.path === '.codex/config.toml');
+  assert.equal(folderLine(true).state, 'trusted');
+  assert.equal(folderLine(false).state, 'pending trust');
 });
 
 test('check 8: a Codex hook review binds the definition entry, private blocks of other engines included', async t => {
@@ -251,7 +254,7 @@ test('check 12: a harness that lists pi or deepseek-harness with an enforced gua
 
 test('OpenCode hooks: a generated plugin that the plan shows as code; it throws on exit 2 and lets exit 0 through', async t => {
   const p = lockedProject(t, { engines: engines('opencode'), mcp: null, parts: { mcp: undefined }, hooks: [{ ...GUARD, command: 'cat > "${PROJECT_DIR}/seen.json"; echo "no rm here" >&2; exit 2' }, { id: 'ok', event: 'PreToolUse', matcher: 'Read', command: 'exit 0', strength: 'advisory' }] });
-  const { plan } = await projectNow(p.input());
+  const { plan } = await projectNow(p.input({ approvals: approvalsFor(p) }));
   const review = plan.review.find(r => r.path === '.opencode/plugins/bowerloom-hooks.js');
   assert.equal(review.kind, 'code'); assert.equal(review.engine, 'opencode');
   assert.equal(review.text, read(p, '.opencode/plugins/bowerloom-hooks.js'));
@@ -271,7 +274,7 @@ test('OpenCode hooks: a generated plugin that the plan shows as code; it throws 
   assert.equal(calls.length, 2, 'the glob call matches no hook');
   // A deny decision on standard output blocks as exit 2 does.
   const q = lockedProject(t, { engines: engines('opencode'), mcp: null, parts: { mcp: undefined }, hooks: [{ ...GUARD, command: 'echo \'{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"denied by json"}}\'' }] });
-  await projectNow(q.input());
+  await projectNow(q.input({ approvals: approvalsFor(q) }));
   const copy2 = path.join(q.base, 'plugin-copy.mjs');
   fs.copyFileSync(path.join(q.dir, '.opencode/plugins/bowerloom-hooks.js'), copy2);
   const hooks2 = await (await import(pathToFileURL(copy2).href)).BowerloomHooks({ directory: q.dir, $: bunShell([]) });
@@ -314,27 +317,21 @@ test('guardrails: Claude Code permissions merge into a settings file a person ke
   await projectNow(p.input({ approvals: approvalsFor(p) }));
   const s = JSON.parse(read(p, '.claude/settings.json'));
   assert.equal(s.permissions.deny[0], 'Bash(rm -rf *)'); assert.ok(s.permissions.deny.includes('Bash(git push * main)'));
-  assert.ok(s.permissions.allow.includes('Bash(git *)')); assert.deepEqual(s.sandbox, { enabled: true }); assert.equal(s.model, 'x');
+  assert.ok(s.permissions.allow.includes('Bash(git *)')); assert.deepEqual(s.sandbox, { enabled: true, allowUnsandboxedCommands: false }); assert.equal(s.model, 'x');
   assert.ok(read(p, '.claude/settings.json').startsWith('{\n  "permissions": {\n    "deny": ["Bash(rm -rf *)"'), 'the person\'s bytes stay in place');
   await removal(p);
   assert.equal(read(p, '.claude/settings.json'), mine);
 });
 
-test('guardrails: Codex gets forbidden prefix rules, a permission profile, and no allow rule at all', async t => {
+test('guardrails: Codex gets forbidden prefix rules and no allow rule at all; the permission profile is held back (B6)', async t => {
   const p = lockedProject(t, { engines: engines('codex'), mcp: null, parts: { mcp: undefined }, rules: RULES });
   const { plan } = await projectNow(p.input({ approvals: approvalsFor(p) }));
   const rules = read(p, '.codex/rules/bowerloom.rules');
   assert.match(rules, /prefix_rule\(\n {4}pattern = \["git", "push"\],\n {4}decision = "forbidden",/);
   assert.equal(/decision = "allow"/.test(rules), false);
-  const toml = read(p, '.codex/config.toml');
-  assert.match(toml, /^# Bowerloom/); assert.match(toml, /\ndefault_permissions = "bowerloom"\n/);
-  assert.match(toml, /\[permissions\.bowerloom\]\nextends = ":workspace"\n/);
-  assert.match(toml, /\[permissions\.bowerloom\.filesystem\.":workspace_roots"\]\n".env" = "deny"\n/);
-  assert.deepEqual(plan.trust.filter(x => x.engine === 'codex').map(x => [x.path, x.state]), [['.codex/config.toml', 'pending trust'], ['.codex/rules/bowerloom.rules', 'pending trust']]);
-  // A setting that the profile cannot override is a conflict, never edited.
-  const q = lockedProject(t, { engines: engines('codex'), mcp: null, parts: { mcp: undefined }, rules: RULES });
-  put(q, '.codex/config.toml', 'sandbox_mode = "danger-full-access"\n');
-  assert.throws(() => planPortable(q.input()), e2 => e2.code === 'PORTABLE_CONFLICT' && /sandbox_mode/.test(e2.message));
+  assert.equal(exists(p, '.codex/config.toml'), false, 'no profile and no default_permissions');
+  assert.equal(line(plan, 'guardrails', 'no-env', 'codex').result, 'weakened');
+  assert.deepEqual(plan.trust.filter(x => x.engine === 'codex').map(x => [x.path, x.state]), [['.codex/rules/bowerloom.rules', 'pending trust']]);
 });
 
 test('guardrails: an MCP deny in Codex disables the tool in the managed server entry; a server the projection does not write is weakened', async t => {
@@ -443,9 +440,9 @@ test('a crash in the middle of a removal is recovered: the next removal restores
   assert.deepEqual(snapshot(p.dir), before);
 });
 
-test('check 5: a guardrail pattern that holds ${NAME:-x} is refused too', t => {
+test('B15: the default scan does not read guardrail patterns', t => {
   const p = lockedProject(t, { engines: engines('claude-code'), mcp: null, parts: { mcp: undefined }, rules: [{ id: 'odd', action: 'shell', pattern: 'echo ${X:-y}', effect: 'deny', strength: 'enforced' }] });
-  assert.throws(() => planPortable(p.input()), e => e.code === 'PORTABLE_ENV_DEFAULT' && e.message.includes('guardrails/odd'));
+  assert.doesNotThrow(() => planPortable(p.input({ approvals: approvalsFor(p) })));
 });
 
 test('drift: a person who edits a merged file after projection stops the next plan and the removal', async t => {

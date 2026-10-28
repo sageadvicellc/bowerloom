@@ -9,6 +9,7 @@
  *   key, or inline table is a conflict, never a merge. Managed keys go into one block at the top of the file and managed
  *   tables into one block at the end.
  */
+import { JsExpression, PermissionPairs } from '../../fidelity/src/index.js';
 
 // ---- values -------------------------------------------------------------------------------------------------------------
 
@@ -252,10 +253,27 @@ export interface TomlDefined {
   readonly dotted: readonly (readonly string[])[];
 }
 
-/** Scans a TOML text. Null when it is not valid enough to be sure what it defines. */
+/** A bare TOML value: a boolean, an integer, a float, or a date or time. */
+const SCALAR = new RegExp('^(?:true|false|[+-]?(?:inf|nan)|0x[0-9A-Fa-f](?:_?[0-9A-Fa-f])*|0o[0-7](?:_?[0-7])*|0b[01](?:_?[01])*'
+  + '|[+-]?(?:0|[1-9](?:_?\\d)*)(?:\\.\\d(?:_?\\d)*)?(?:[eE][+-]?\\d(?:_?\\d)*)?'
+  + '|\\d{4}-\\d{2}-\\d{2}(?:[Tt]\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d+)?)?(?:[Zz]|[+-]\\d{2}:\\d{2})?)?|\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d+)?)?)$');
+
+/**
+ * Scans a TOML text. Null when it is not valid enough to be sure what it defines: a syntax error, a key or table defined
+ * twice, or a table or key under a key that already holds a value (ruling B5). Keys of an array of tables are scoped
+ * to their element.
+ */
 export function scanToml(text: string): TomlDefined | null {
   const headers: string[][] = [], arrays: string[][] = [], values: string[][] = [], dotted: string[][] = [];
   let i = 0, table: string[] = [];
+  // The element of each array of tables, so its keys and sub-tables are its own.
+  const elements = new Map<string, number>();
+  const scoped = (k: string[]): string[] => {
+    let best: string[] | null = null;
+    for (const a of arrays) if (a.length < k.length && a.every((x, j) => x === k[j]) && (best === null || a.length > best.length)) best = a;
+    if (best === null) return k;
+    return [...scoped(best), `\u0000${elements.get(JSON.stringify(best))}`, ...k.slice(best.length)];
+  };
   const at = (s: string): boolean => text.startsWith(s, i);
   const fail = (): never => { throw new SyntaxError('not TOML'); };
   const blank = (): void => { while (i < text.length && (text[i] === ' ' || text[i] === '\t')) i++; };
@@ -270,7 +288,17 @@ export function scanToml(text: string): TomlDefined | null {
     let out = '';
     while (i < text.length && text[i] !== '"') {
       if (text[i] === '\n') fail();
-      if (text[i] === '\\') { const m = /^\\(?:[btnfr"\\]|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8})/.exec(text.slice(i, i + 10)); if (!m) fail(); out += JSON.parse(`"${m![0].startsWith('\\U') ? '' : m![0]}"`) as string; i += m![0].length; continue; }
+      if (text[i] === '\\') {
+        const m = /^\\(?:[btnfr"\\]|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8})/.exec(text.slice(i, i + 10));
+        if (!m) fail();
+        const e = m![0];
+        if (e[1] === 'u' || e[1] === 'U') {
+          const cp = parseInt(e.slice(2), 16);
+          if (cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) fail();
+          out += String.fromCodePoint(cp);
+        } else out += JSON.parse(`"${e}"`) as string;
+        i += e.length; continue;
+      }
       out += text[i]; i++;
     }
     if (text[i] !== '"') fail();
@@ -336,7 +364,7 @@ export function scanToml(text: string): TomlDefined | null {
       }
     }
     const m = /^[^\s,\]}#]+/.exec(text.slice(i));
-    if (!m) fail();
+    if (!m || !SCALAR.test(m[0])) fail();
     i += m![0].length;
   };
   try {
@@ -345,8 +373,14 @@ export function scanToml(text: string): TomlDefined | null {
       blank();
       if (i >= text.length) break;
       if (text[i] === '#' || text[i] === '\n' || at('\r\n')) { eol(); continue; }
-      if (at('[[')) { i += 2; const k = key(); if (!at(']]')) fail(); i += 2; arrays.push(k); table = k; eol(); continue; }
-      if (text[i] === '[') { i++; const k = key(); if (text[i] !== ']') fail(); i++; headers.push(k); table = k; eol(); continue; }
+      if (at('[[')) {
+        i += 2; const k = key(); if (!at(']]')) fail(); i += 2;
+        arrays.push(k);
+        const n = (elements.get(JSON.stringify(k)) ?? -1) + 1;
+        elements.set(JSON.stringify(k), n);
+        table = [...scoped(k), `\u0000${n}`]; eol(); continue;
+      }
+      if (text[i] === '[') { i++; const k = scoped(key()); if (text[i] !== ']') fail(); i++; headers.push(k); table = k; eol(); continue; }
       const k = key();
       if (text[i] !== '=') fail();
       i++;
@@ -356,7 +390,22 @@ export function scanToml(text: string): TomlDefined | null {
       eol();
     }
   } catch { return null; }
+  if (!wellDefined(headers, arrays, values, dotted)) return null;
   return { headers, arrays, values, dotted };
+}
+
+/** True when no key or table is defined twice, and nothing is defined under a key that holds a value. */
+function wellDefined(headers: readonly string[][], arrays: readonly string[][], values: readonly string[][], dotted: readonly string[][]): boolean {
+  const id = (p: readonly string[]): string => JSON.stringify(p);
+  const seen = new Set<string>();
+  for (const p of [...headers, ...values]) { if (seen.has(id(p))) return false; seen.add(id(p)); }
+  const arrayIds = new Set(arrays.map(id)), dottedIds = new Set(dotted.map(id));
+  for (const p of [...headers, ...values]) if (arrayIds.has(id(p))) return false;
+  for (const h of headers) if (dottedIds.has(id(h))) return false;
+  for (const v of values) {
+    for (const p of [...headers, ...values, ...arrays, ...dotted]) if (p.length > v.length && v.every((x, j) => x === p[j])) return false;
+  }
+  return true;
 }
 
 const same = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((x, i) => x === b[i]);
@@ -390,6 +439,8 @@ export interface TomlTable { readonly path: readonly string[]; readonly entries:
  * stay as they are, in order. `forbid` names top-level keys whose presence makes the managed content meaningless.
  */
 export function editToml(base: string | null, root: readonly (readonly [string, Out])[], tables: readonly TomlTable[], forbid: readonly string[] = []): EditResult {
+  // Ruling B20: a person's file with no bytes is refused, as an empty JSON file is.
+  if (base === '') return { ok: false, reason: 'invalid' };
   const text = base ?? '';
   const d = scanToml(text);
   if (d === null) return { ok: false, reason: 'invalid' };
@@ -411,10 +462,11 @@ export function editToml(base: string | null, root: readonly (readonly [string, 
 
 // ---- YAML and frontmatter -------------------------------------------------------------------------------------------------
 
-/** A value that DeepSeek Harness evaluates as JavaScript, written with the tag `!!js`. */
-export interface Js { readonly js: string }
-export type YamlOut = null | boolean | number | string | Js | readonly YamlOut[] | { readonly [key: string]: YamlOut };
-const isJs = (v: unknown): v is Js => v !== null && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 1 && typeof (v as Js).js === 'string';
+/** A YAML value. Only a `JsExpression`, which Bowerloom alone makes, is written with the tag `!!js` (ruling B2). */
+export type YamlOut = null | boolean | number | string | JsExpression | readonly YamlOut[] | { readonly [key: string]: YamlOut };
+const isJs = (v: unknown): v is JsExpression => v instanceof JsExpression;
+/** True when a value holds a `JsExpression` at any depth. */
+export const holdsJs = (v: unknown): boolean => isJs(v) || (Array.isArray(v) ? v.some(holdsJs) : v !== null && typeof v === 'object' ? Object.values(v).some(holdsJs) : false);
 
 /** A YAML flow value: JSON, which is YAML, and `!!js "<expression>"` for an expression. */
 export function yamlFlow(v: YamlOut): string {
@@ -435,11 +487,14 @@ export function yamlBlock(map: { readonly [key: string]: YamlOut }, indent: numb
 }
 
 const fmKey = (k: string): string => (/^[A-Za-z][A-Za-z0-9_-]*$/.test(k) ? k : JSON.stringify(k));
-/** Markdown with YAML frontmatter. Keys are plain, values are JSON; a list of pairs is a nested block mapping. */
+/**
+ * Markdown with YAML frontmatter. Keys are plain, values are JSON. A `PermissionPairs` marker is a nested block mapping,
+ * or `{}` when it is empty (ruling B16); any other value, a list of pairs too, is written as data.
+ */
 export function frontmatter(entries: readonly (readonly [string, unknown])[], body: string): string {
   const lines = entries.map(([k, v]) => {
-    if (Array.isArray(v) && v.length > 0 && v.every(x => Array.isArray(x) && x.length === 2 && typeof x[0] === 'string')) {
-      return `${fmKey(k)}:\n${(v as [string, unknown][]).map(([a, b]) => `  ${JSON.stringify(a)}: ${JSON.stringify(b)}\n`).join('')}`;
+    if (v instanceof PermissionPairs) {
+      return v.pairs.length ? `${fmKey(k)}:\n${v.pairs.map(([a, b]) => `  ${JSON.stringify(a)}: ${JSON.stringify(b)}\n`).join('')}` : `${fmKey(k)}: {}\n`;
     }
     return `${fmKey(k)}: ${JSON.stringify(v)}\n`;
   });

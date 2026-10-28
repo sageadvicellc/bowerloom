@@ -34,10 +34,11 @@ const MESSAGES = {
   PORTABLE_NOTHING_PROJECTED: 'This project has no projection receipt, so there is nothing to remove.',
   PORTABLE_RECOVER_NOTHING: 'No projection or removal of this project is unfinished, and no path to keep was named.',
   PORTABLE_USAGE: 'The projection input is not valid.',
-  PORTABLE_ENGINE_VERSION: 'The recorded engine version is not the one Bowerloom writes for. OpenCode must be 1.18.30 and DeepSeek Harness the tag 0.2.2-alpha.2; a person rechecks the format before another version. Nothing was projected.',
+  PORTABLE_ENGINE_VERSION: 'The recorded engine version is not one Bowerloom writes locked-in parts for. OpenCode must be 1.18.30 and DeepSeek Harness the tag 0.2.2-alpha.2; Claude Code, Codex, and Pi must be at least 2.1.310, 0.157.0, and 1.4.0. A person rechecks the format before another version. Nothing was projected.',
   PORTABLE_CONFLICT: 'A file Bowerloom would add entries to already holds an entry of the same name, or a setting that would change what the entries mean, and Bowerloom never edits a person\'s entries. Nothing was projected.',
   PORTABLE_ENV_DEFAULT: 'An entry holds ${NAME:-x} or a like default form. No engine is documented to expand it, so Bowerloom never copies it as literal text. Write ${NAME}. Nothing was projected.',
   PORTABLE_TARGET_INVALID: 'A file Bowerloom would add entries to is not valid strict JSON, valid TOML, or UTF-8 text, so Bowerloom cannot keep its bytes as they are. Nothing was projected.',
+  PORTABLE_UNSAFE_VALUE: 'A value would change meaning in the engine file: an OpenCode string holds {env: or {file:, which OpenCode replaces, or a DeepSeek Harness private block holds an object shaped like a !!js expression. Nothing was projected.',
   PORTABLE_ORDER_UNSAFE: 'An OpenCode permission key or pattern is a whole number such as 1. OpenCode reads its file into a JavaScript object, which moves such a key to the front, so the last-match order would change. Nothing was projected.',
 } as const;
 export type PortableCode = keyof typeof MESSAGES;
@@ -183,6 +184,8 @@ export interface WriteOptions {
   readonly onPlaced?: () => void;
   /** The link call. Tests pass one that fails, to reach the fallback. */
   readonly link?: (from: string, to: string) => void;
+  /** Runs right after the no-link fallback creates the name, before it writes. Tests throw from it. */
+  readonly afterCreate?: () => void;
 }
 const NO_LINK = new Set(['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'EXDEV', 'ENOSYS']);
 
@@ -192,7 +195,7 @@ const NO_LINK = new Set(['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'EXDEV', 'ENOSYS']);
  * link(), it creates the name with O_EXCL instead (review item V6). Otherwise the temporary is renamed over the target.
  */
 export function writeAbs(abs: string, bytes: Uint8Array, mode: number, options: WriteOptions = {}): void {
-  const { exclusive = false, recheck = () => {}, label = abs, onPlaced = () => {}, link = fs.linkSync } = options;
+  const { exclusive = false, recheck = () => {}, label = abs, onPlaced = () => {}, link = fs.linkSync, afterCreate = () => {} } = options;
   const temp = join(dirname(abs), tempName(abs.slice(dirname(abs).length + 1)));
   const fd = fs.openSync(temp, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o600);
   try {
@@ -202,19 +205,26 @@ export function writeAbs(abs: string, bytes: Uint8Array, mode: number, options: 
       try { link(temp, abs); onPlaced(); } catch (e) {
         if (code(e) === 'EEXIST') refuse('PORTABLE_DRIFT', [label]);
         if (!NO_LINK.has(code(e) ?? '')) throw e;
-        createExclusive(abs, bytes, mode, label); onPlaced();
+        createExclusive(abs, bytes, mode, label, afterCreate); onPlaced();
       }
     } else { fs.renameSync(temp, abs); onPlaced(); }
     syncDir(dirname(abs));
   } finally { try { fs.unlinkSync(temp); } catch { /* renamed, or already gone */ } }
 }
-function createExclusive(abs: string, bytes: Uint8Array, mode: number, label: string): void {
+function createExclusive(abs: string, bytes: Uint8Array, mode: number, label: string, afterCreate: () => void): void {
   let fd: number;
   try { fd = fs.openSync(abs, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o600); } catch (e) {
     if (code(e) === 'EEXIST') refuse('PORTABLE_DRIFT', [label]);
     throw e;
   }
-  try { let at = 0; while (at < bytes.length) at += fs.writeSync(fd, bytes, at); fs.fchmodSync(fd, mode & 0o777); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+  // Ruling B21: a write that fails after the create removes the file it created, so no truncated file stays behind
+  // untracked. It unlinks the name only while the name still holds the file this call opened.
+  try {
+    afterCreate(); let at = 0; while (at < bytes.length) at += fs.writeSync(fd, bytes, at); fs.fchmodSync(fd, mode & 0o777); fs.fsyncSync(fd);
+  } catch (e) {
+    try { const mine = fs.fstatSync(fd), now = fs.lstatSync(abs); if (now.ino === mine.ino && now.dev === mine.dev) fs.unlinkSync(abs); } catch { /* the name is gone, or not ours */ }
+    throw e;
+  } finally { fs.closeSync(fd); }
 }
 
 /** The device and inode of a folder, read without following a link. Refuses PORTABLE_PATH_UNSAFE for anything but a real folder. */

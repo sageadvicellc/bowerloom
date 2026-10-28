@@ -58,7 +58,7 @@ When an engine cannot carry a rule exactly:
 | Skill, subagent deny or ask | weakened: no vector | absent | exact | absent | absent |
 | Skill, subagent allow | exact, or absent with a wildcard | absent | exact | absent | absent |
 | MCP deny or ask | cites CC27; `mcp__*` weakened | translated to disabled tools | exact, or tightened | absent | absent |
-| Sandbox | exact | exact | absent | absent | translated |
+| Sandbox | exact | exact | absent | absent | absent |
 
 Each engine form also records its default for a request that no rule matches (`defaults`). For OpenCode, whose own default is allow, Bowerloom writes `"*": { "*": "ask" }` as the first key. Pi has no place for a default, so its default stays allow. The defaults of Claude Code and DeepSeek Harness stay recorded as `default`: the research notes do not say what their modes decide, and the live check of step 5 records them.
 
@@ -77,7 +77,7 @@ Matching is on the text as written, so some forms escape a rule. `KNOWN_ESCAPES`
 
 - The forms are in memory. The OpenCode form is ordered lists, so a pattern such as `"1"` keeps its place. Write the 1.x shape for 1.x.
 - `privateBlocks` holds the block of each entry that wrote something. Carry it unchanged. `excludedPrivateBlocks` lists the blocks of entries that wrote nothing, with the reason.
-- The DeepSeek Harness sandbox form names what the requirement asks for. The writer picks the mode for the pinned tag.
+- A DeepSeek Harness sandbox requirement is `absent`: at the pinned tag a mode covers file effects only, a session can switch it, and no patch row that sets it is confirmed.
 - The Codex filesystem table binds only commands that run in the sandbox.
 
 ## The rulesync oracle
@@ -102,9 +102,15 @@ with one loss line or more per entry. They write nothing; `packages/project-sync
   `sse` and `ws` are `absent` outside Claude Code. A keychain reference is never written: the server is `absent`. Codex
   documents no expansion, so a reference becomes `env_vars`, `bearer_token_env_var`, or `env_http_headers`, or the
   server is `absent`. DeepSeek Harness rows follow the `dsh-mcp-client` README at the pinned tag.
-- **Subagents.** A tool limit is enforced. Claude Code carries it `exact` as `tools`. OpenCode carries it as `deny` keys
-  only, `translated`; with an `mcp:<server>` class it is `weakened`, because a server outside the definition keeps its
-  tools. Codex is `weakened`: an override adds the limit as advisory text. Pi and DeepSeek Harness are `absent`.
+- **`${NAME:-x}`** is scanned in MCP env, headers, command, args, and url, and in hook commands. Subagent text is not.
+- **MCP fields** that do not fit the transport (headers on a command server, env on a URL server) get an `absent`
+  field line and are never written. A string bound for `opencode.json` with `{env:` or `{file:`, and a DeepSeek Harness
+  private block shaped like a `!!js` expression, are problems that refuse the server.
+- **Subagents.** A tool limit is enforced. Claude Code carries it `exact` as `tools`; an empty limit writes no file.
+  OpenCode carries it as `deny` keys only (a `PermissionPairs` marker), including `codesearch`, `lsp`, `todowrite`, and
+  `todoread`, and is `weakened`, because a deny list cannot cover tools added later. Codex is `weakened`: an override
+  adds the limit as advisory text. Pi and DeepSeek Harness are `absent`.
 - **Hooks.** The matcher is Claude Code tool names joined by `|`; any other character is `absent` everywhere. Claude
-  Code is `exact`. Codex is `translated` when advisory and `weakened` when enforced. OpenCode is a generated plugin,
-  `translated`, for tool before and after, session start, and compaction. Pi and DeepSeek Harness are `absent`.
+  Code is `exact`. Codex is `translated` when advisory and `weakened` when enforced. OpenCode is a generated plugin for
+  tool before and after, session start, and compaction: `translated` when advisory, `weakened` when enforced, because
+  the plugin fails open. Pi and DeepSeek Harness are `absent`.

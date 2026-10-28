@@ -207,15 +207,18 @@ test('the skill engine filter in harness.json keeps a skill out of other engines
 
 test('step 3 lifts ENGINE_NO_WRITER: every engine gets its locked-in parts, and OpenCode and DeepSeek Harness need their pinned version', async t => {
   const docs = { parts: { mcp: 'mcp.json' }, files: { 'mcp.json': json({ servers: [{ name: 'docs', transport: 'stdio', command: 'docs-mcp' }] }) } };
-  for (const [engine, version] of [['opencode', '1.18.30'], ['pi', '1.0.0'], ['deepseek-harness', '0.2.2-alpha.2']]) {
+  for (const [engine, version] of [['opencode', '1.18.30'], ['pi', '1.4.0'], ['deepseek-harness', '0.2.2-alpha.2']]) {
     const p = project(t, { engines: [{ id: engine, version }] });
     const { result } = await project_(p.input());
     assert.deepEqual(result.receipt.engines, [{ id: engine, version }], engine);
     const locked = project(t, { engines: [{ id: engine, version }], ...docs });
     assert.deepEqual(planPortable(locked.input()).deferred, [], engine);
   }
-  // Checks 6 and 13: another recorded version of OpenCode or DeepSeek Harness is refused, portable parts or not.
-  for (const engine of ['opencode', 'deepseek-harness']) assert.throws(() => planPortable(project(t, { engines: [{ id: engine, version: '1.0.0' }] }).input()), code('PORTABLE_ENGINE_VERSION'), engine);
+  // Checks 6 and 13: another recorded version of OpenCode or DeepSeek Harness is refused for locked-in parts only (B18).
+  for (const engine of ['opencode', 'deepseek-harness']) {
+    assert.throws(() => planPortable(project(t, { engines: [{ id: engine, version: '1.0.0' }], ...docs }).input()), code('PORTABLE_ENGINE_VERSION'), engine);
+    assert.match(planPortable(project(t, { engines: [{ id: engine, version: '1.0.0' }] }).input()).loss[0].reason, / only\. This projection writes none/, engine);
+  }
   const both = project(t, { engines: [{ id: 'claude-code' }, { id: 'codex' }], ...docs });
   assert.deepEqual(planPortable(both.input()).deferred, []);
 });

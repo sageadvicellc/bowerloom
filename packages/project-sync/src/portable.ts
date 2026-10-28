@@ -481,7 +481,10 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
     }
   }
 
-  const { loss, approved } = lossReport(def, engines, views, claudeLine, filterLeaks, input.piTrustSaved === true, locked.lines, input.approvals ?? []);
+  const report = lossReport(def, engines, views, claudeLine, filterLeaks, input.piTrustSaved === true, locked.lines, input.approvals ?? []);
+  const approved = report.approved;
+  // Rulings B7 and B18: a sentence about the engine version goes on every line of that engine.
+  const loss = report.loss.map(l => (locked.notes.has(l.engine) ? { ...l, reason: l.reason + locked.notes.get(l.engine)! } : l));
   const pendingTrust = ids.includes('pi') && input.piTrustSaved !== true ? views.get('pi')!.skills.map(s => s.id) : [];
   const partial = loss.some(l => l.result === 'absent') || deferred.length > 0;
 

@@ -14,10 +14,8 @@
  * - A keychain reference is never written into an engine file: the server is absent.
  */
 import type { EngineId, EnvValue, JsonValue, McpServer } from '../../harness-definition/src/index.js';
-import { Lines, addPrivate, holdsEnvDefault, privateLine, referenceParts, references, type LockedProblem } from './locked-common.js';
+import { JsExpression, Lines, addPrivate, holdsEnvDefault, openCodeSubstitution, privateLine, referenceParts, references, stringsOf, type LockedProblem } from './locked-common.js';
 
-/** A JavaScript expression that DeepSeek Harness evaluates, written with the YAML tag `!!js`. */
-export interface JsExpression { readonly js: string }
 /** A value of a DeepSeek Harness row: JSON, or a `!!js` expression at any depth. */
 export type DshValue = string | number | boolean | null | JsExpression | readonly DshValue[] | { readonly [key: string]: DshValue };
 export interface DshRow { readonly id: string; readonly name: string; readonly config: { readonly [key: string]: DshValue } }
@@ -41,17 +39,51 @@ const isKeychain = (v: EnvValue): boolean => typeof v !== 'string';
 const textOf = (map: Readonly<Record<string, EnvValue>> | undefined): Record<string, string> => Object.fromEntries(Object.entries(map ?? {}).map(([k, v]) => [k, v as string]));
 const hasRef = (s: string | undefined): boolean => s !== undefined && references(s).names.length > 0;
 const plainFields = (s: McpServer): string[] => [s.command, ...(s.args ?? []), s.url].filter((x): x is string => x !== undefined);
+/** True when a value holds an object with the one text key `js`: the shape a `!!js` expression had before ruling B2. */
+const jsLookalike = (v: unknown): boolean => {
+  if (Array.isArray(v)) return v.some(jsLookalike);
+  if (v === null || typeof v !== 'object') return false;
+  const keys = Object.keys(v);
+  return (keys.length === 1 && keys[0] === 'js' && typeof (v as { js: unknown }).js === 'string') || Object.values(v).some(jsLookalike);
+};
+
+/**
+ * The fields a transport takes (ruling B14): a command server takes no headers, and a URL server takes no environment.
+ * A field that does not fit gets an `absent` field line and is never written.
+ */
+function fitTransport(s: McpServer, out: Lines, engine: string): McpServer {
+  const stdio = s.transport === 'stdio';
+  if (stdio && s.headers !== undefined) out.line(s.id, 'absent', `${engine} takes no headers for a server that runs a command, so the headers are not written.`, 'headers');
+  if (!stdio && s.env !== undefined) out.line(s.id, 'absent', `${engine} takes no environment for a server it reaches by URL, so env is not written.`, 'env');
+  const { headers, env, ...rest } = s;
+  return { ...rest, ...(stdio ? (env !== undefined ? { env } : {}) : (headers !== undefined ? { headers } : {})) };
+}
+const NAMES: Readonly<Record<EngineId, string>> = { 'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode', pi: 'Pi', 'deepseek-harness': 'DeepSeek Harness' };
 
 /** Translates the servers that apply to one engine. */
 export function translateMcp(engine: EngineId, servers: readonly McpServer[]): McpTranslation {
   const out = new Lines('mcp', engine);
-  const forms: McpServerForm[] = [];
-  for (const s of servers) {
-    if (holdsEnvDefault(s)) { out.envDefault(s.id); continue; }
-    if ([...Object.values(s.env ?? {}), ...Object.values(s.headers ?? {})].some(isKeychain)) {
-      out.line(s.id, 'absent', 'The server holds a keychain reference. Bowerloom never writes a keychain value into an engine file, and no engine reads the keychain itself, so the server is not written.');
+  const forms: McpServer[] = [];
+  const result: McpServerForm[] = [];
+  for (const source of servers) {
+    // Ruling B15: the scan reads the fields that reach an engine as values.
+    if (holdsEnvDefault(source.command, source.args, source.url, source.env, source.headers)) { out.envDefault(source.id); continue; }
+    if ([...Object.values(source.env ?? {}), ...Object.values(source.headers ?? {})].some(isKeychain)) {
+      out.line(source.id, 'absent', 'The server holds a keychain reference. Bowerloom never writes a keychain value into an engine file, and no engine reads the keychain itself, so the server is not written.');
       continue;
     }
+    if (engine === 'opencode' && stringsOf({ ...source, privateBlocks: { opencode: source.privateBlocks.opencode ?? null } }).some(openCodeSubstitution)) {
+      out.problem(source.id, 'OPENCODE_SUBSTITUTION', 'OpenCode replaces {env:...} and {file:...} anywhere in opencode.json, so a value that holds one as literal text would change meaning. Bowerloom refuses the server.');
+      continue;
+    }
+    if (engine === 'deepseek-harness' && jsLookalike(source.privateBlocks['deepseek-harness'])) {
+      out.problem(source.id, 'PRIVATE_JS', 'The x-deepseek-harness block holds an object with the one key js. Bowerloom writes !!js only for the references it builds itself, so it refuses the block rather than guess.');
+      continue;
+    }
+    forms.push(source);
+  }
+  for (const source of forms) {
+    const s = fitTransport(source, out, NAMES[engine]);
     const form = (() => {
       switch (engine) {
         case 'claude-code': case 'pi': return claudeShape(engine, s, out);
@@ -60,9 +92,9 @@ export function translateMcp(engine: EngineId, servers: readonly McpServer[]): M
         case 'deepseek-harness': return dsh(s, out);
       }
     })();
-    if (form) forms.push(form);
+    if (form) result.push(form);
   }
-  return { engine, servers: forms, lines: out.lines, problems: out.problems };
+  return { engine, servers: result, lines: out.lines, problems: out.problems };
 }
 
 function claudeShape(engine: 'claude-code' | 'pi', s: McpServer, out: Lines): McpServerForm | null {
@@ -83,7 +115,10 @@ function claudeShape(engine: 'claude-code' | 'pi', s: McpServer, out: Lines): Mc
   }
   const { dropped } = addPrivate(value, s.privateBlocks[engine]);
   privateLine(out, s.id, dropped, file);
-  out.line(s.id, 'exact', `${name} reads the server in ${file} with the same fields.${engine === 'pi' ? ' Pending trust: Pi skips files under .pi/ in non-interactive runs until a person saves trust.' : ''}`);
+  const trust = engine === 'pi'
+    ? ' Pending trust: Pi skips files under .pi/ in non-interactive runs until a person saves trust.'
+    : ' Pending trust: Claude Code asks the person to approve a project server in .mcp.json before it runs.';
+  out.line(s.id, 'exact', `${name} reads the server in ${file} with the same fields.${trust}`);
   return { engine, name: s.name, value: Object.fromEntries(value) };
 }
 
@@ -134,8 +169,6 @@ const openCodeMap = (m: Readonly<Record<string, EnvValue>>): Record<string, stri
 
 function openCode(s: McpServer, out: Lines): McpServerForm | null {
   if (s.transport === 'sse' || s.transport === 'ws') { out.line(s.id, 'absent', `OpenCode has local and remote servers only, so a ${s.transport} server is not written.`); return null; }
-  const all = [...plainFields(s), ...Object.values(textOf(s.env)), ...Object.values(textOf(s.headers))];
-  if (all.some(v => /\{(?:env|file):/.test(v))) { out.line(s.id, 'absent', 'OpenCode replaces {env:...} and {file:...} anywhere in its file, so a value that holds one as literal text would change meaning. The server is not written.'); return null; }
   const value: [string, JsonValue][] = [];
   if (s.transport === 'stdio') {
     value.push(['type', 'local'], ['command', [s.command!, ...(s.args ?? [])].map(openCodeText)]);
@@ -156,9 +189,9 @@ function openCode(s: McpServer, out: Lines): McpServerForm | null {
 function dshText(v: string): DshValue {
   const r = references(v);
   if (r.names.length === 0) return v;
-  if (r.whole !== null) return { js: `process.env.${r.whole}` };
+  if (r.whole !== null) return new JsExpression(`process.env.${r.whole}`);
   const body = referenceParts(v).map(p => 'name' in p ? `\${process.env.${p.name}}` : p.literal.replace(/[\\`$]/g, c => `\\${c}`)).join('');
-  return { js: `\`${body}\`` };
+  return new JsExpression(`\`${body}\``);
 }
 const dshMap = (m: Readonly<Record<string, EnvValue>>): Record<string, DshValue> => Object.fromEntries(Object.entries(textOf(m)).map(([k, v]) => [k, dshText(v)]));
 

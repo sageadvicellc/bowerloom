@@ -26,18 +26,18 @@ export {
   OPENCODE_DEFAULT, openCodeDecide, openCodeFromConfig, openCodePathPatterns, openCodeRequest, openCodeShellSubjects, openCodeWildcard,
 } from './opencode.js';
 export type { OpenCodeForm, OpenCodeKey, OpenCodePermission, OpenCodeRequest, OpenCodeRule, WildcardOptions } from './opencode.js';
-export { NO_RULES_DEFAULTS } from './no-rules.js';
+export { DSH_SANDBOX_REASON, NO_RULES_DEFAULTS } from './no-rules.js';
 export type { NoRulesForm } from './no-rules.js';
 export { NOT_WRITTEN } from './translation.js';
 export type { EngineDefault, SandboxForm, Translation, Written } from './translation.js';
 export { engineDecision, judgeGuardrails, projectGuardrails, translateGuardrails } from './project.js';
 export type { EngineForm, GuardrailEntries, GuardrailProjection, GuardrailSource, GuardrailTranslation } from './project.js';
 // Step 3, lane B: the translations of MCP servers, subagents, and hooks (locked-in parts spec, sections 5 to 7).
-export { addPrivate, envDefaultIn, holdsEnvDefault, referenceParts, references, stringsOf } from './locked-common.js';
+export { JsExpression, PermissionPairs, addPrivate, envDefaultIn, openCodeSubstitution, holdsEnvDefault, referenceParts, references, stringsOf } from './locked-common.js';
 export type { LockedProblem } from './locked-common.js';
 export { DSH_MCP_PLUGIN, translateMcp } from './locked-mcp.js';
-export type { DshRow, DshValue, JsExpression, McpServerForm, McpTranslation } from './locked-mcp.js';
-export { CLAUDE_CODE_TOOLS, OPENCODE_TOOL_KEYS, translateSubagents } from './locked-subagents.js';
+export type { DshRow, DshValue, McpServerForm, McpTranslation } from './locked-mcp.js';
+export { CLAUDE_CODE_TOOLS, OPENCODE_TOOL_KEYS, OPENCODE_UNCLASSED_KEYS, translateSubagents } from './locked-subagents.js';
 export type { SubagentContext, SubagentForm, SubagentTranslation } from './locked-subagents.js';
 export {
   CLAUDE_CODE_HOOK_EVENTS, CODEX_HOOK_EVENTS, DEFAULT_HOOK_TIMEOUT_MS, OPENCODE_HOOK_EVENTS, PROJECT_DIR, PROJECT_DIR_FORMS, translateHooks,

@@ -13,10 +13,10 @@
  * - A skill list preloads in Claude Code. In Codex and OpenCode the skills stay discoverable but are not preloaded.
  */
 import type { EngineId, JsonValue, LossLine, SubagentEntry, ToolClass } from '../../harness-definition/src/index.js';
-import { Lines, addPrivate, holdsEnvDefault, privateLine, type LockedProblem } from './locked-common.js';
+import { Lines, PermissionPairs, addPrivate, privateLine, type LockedProblem } from './locked-common.js';
 
 export type SubagentForm =
-  | { readonly engine: 'claude-code' | 'opencode'; readonly id: string; readonly frontmatter: readonly (readonly [string, JsonValue | readonly (readonly [string, string])[]])[]; readonly body: string }
+  | { readonly engine: 'claude-code' | 'opencode'; readonly id: string; readonly frontmatter: readonly (readonly [string, JsonValue | PermissionPairs])[]; readonly body: string }
   | { readonly engine: 'codex'; readonly id: string; readonly table: readonly (readonly [string, JsonValue])[] };
 
 export interface SubagentTranslation {
@@ -36,11 +36,17 @@ export const CLAUDE_CODE_TOOLS: Readonly<Record<string, readonly string[]>> = Ob
   read: ['Read'], search: ['Grep', 'Glob'], edit: ['Edit', 'NotebookEdit'], write: ['Write'], shell: ['Bash'], web: ['WebFetch', 'WebSearch'],
   task: ['Agent'], skill: ['Skill'],
 });
-/** OpenCode 1.x permission keys for each neutral tool class. `edit` and `write` share one key. */
+/**
+ * OpenCode 1.18.30 permission keys for each neutral tool class (ruling B9). `edit` and `write` share one key, which
+ * also covers apply_patch. `codesearch`, `lsp`, `todowrite`, and `todoread` fit no class, so a tool limit always
+ * denies them.
+ */
 export const OPENCODE_TOOL_KEYS: Readonly<Record<string, readonly string[]>> = Object.freeze({
   read: ['read'], search: ['grep', 'glob', 'list'], edit: ['edit'], write: ['edit'], shell: ['bash'], web: ['webfetch', 'websearch'],
   task: ['task'], skill: ['skill'],
 });
+/** OpenCode tool keys that no neutral class allows. */
+export const OPENCODE_UNCLASSED_KEYS: readonly string[] = Object.freeze(['codesearch', 'lsp', 'todowrite', 'todoread']);
 const CLASSES = ['read', 'search', 'edit', 'write', 'shell', 'web', 'task', 'skill'] as const;
 const servers = (tools: readonly ToolClass[]): string[] => tools.filter(t => t.startsWith('mcp:')).map(t => t.slice(4));
 
@@ -48,7 +54,6 @@ export function translateSubagents(engine: EngineId, subagents: readonly Subagen
   const out = new Lines('subagents', engine);
   const forms: SubagentForm[] = [];
   for (const a of subagents) {
-    if (holdsEnvDefault(a)) { out.envDefault(a.id); continue; }
     const modelLine = (): void => {
       if (a.model !== undefined && a.model[engine] === undefined) out.line(a.id, 'absent', `The definition names no model for ${engine}, and Bowerloom never translates a model name, so the engine's own default model applies.`, 'model');
     };
@@ -56,8 +61,12 @@ export function translateSubagents(engine: EngineId, subagents: readonly Subagen
       case 'claude-code': {
         const front: [string, JsonValue][] = [['name', a.name], ['description', a.description]];
         if (a.tools !== undefined) {
-          if (a.tools.length === 0) out.line(a.id, 'absent', 'An empty tool limit has no documented Claude Code form, and leaving tools out would give the subagent every tool. Not written.', 'tools');
-          else {
+          if (a.tools.length === 0) {
+            // Ruling B3: with no tools key the subagent would get every tool, so no file is written.
+            out.line(a.id, 'absent', 'An empty tool limit has no documented Claude Code form, and leaving tools out would give the subagent every tool.', 'tools');
+            out.line(a.id, 'absent', 'The subagent is not written: Claude Code has no form for a subagent with no tools.');
+            break;
+          } else {
             const names = [...new Set(a.tools.flatMap(t => t.startsWith('mcp:') ? [`mcp__${t.slice(4)}`] : CLAUDE_CODE_TOOLS[t]!))];
             front.push(['tools', names.join(', ')]);
             const mcp = servers(a.tools);
@@ -94,21 +103,21 @@ export function translateSubagents(engine: EngineId, subagents: readonly Subagen
         break;
       }
       case 'opencode': {
-        const front: [string, JsonValue | (readonly [string, string])[]][] = [['description', a.description], ['mode', 'subagent']];
+        const front: [string, JsonValue | PermissionPairs][] = [['description', a.description], ['mode', 'subagent']];
         if (a.model?.opencode !== undefined) front.push(['model', a.model.opencode]);
         modelLine();
         if (a.tools !== undefined) {
           const outside = CLASSES.filter(c => !a.tools!.includes(c));
-          const keys = [...new Set(outside.flatMap(c => OPENCODE_TOOL_KEYS[c]!))];
+          const keys = [...new Set([...outside.flatMap(c => OPENCODE_TOOL_KEYS[c]!), ...OPENCODE_UNCLASSED_KEYS])];
           const listed = servers(a.tools);
           const deny: [string, string][] = keys.map(k => [k, 'deny']);
           if (listed.length === 0) deny.push(['*_*', 'deny']);
           else for (const s of (context.servers ?? []).filter(s => !listed.includes(s))) deny.push([`${s}_*`, 'deny']);
-          front.push(['permission', deny]);
+          front.push(['permission', new PermissionPairs(deny)]);
           const shared = a.tools.includes('edit') !== a.tools.includes('write') ? ' OpenCode has one edit key for edits and writes, so it is denied: the subagent gets less than the limit.' : '';
-          const why = `OpenCode carries the limit as deny keys of the agent's permission: ${deny.map(([k]) => k).join(', ') || 'none'}. Tool names differ from the neutral classes, and no key allows anything.${shared} Tools that plugins add are not covered.`;
+          const why = `OpenCode carries the limit as deny keys of the agent's permission: ${deny.map(([k]) => k).join(', ')}. Tool names differ from the neutral classes, and no key allows anything.${shared} A deny list cannot cover tools that OpenCode or a plugin adds later, so the limit is weakened.`;
           if (listed.length) out.line(a.id, 'weakened', `${why} The limit names MCP servers, so only the other servers of the definition are denied; a server outside the definition keeps its tools.`, 'tools');
-          else out.line(a.id, 'translated', `${why} Every MCP tool is denied with *_*.`, 'tools');
+          else out.line(a.id, 'weakened', `${why} Every MCP tool is denied with *_*.`, 'tools');
         }
         if (a.skills !== undefined) out.line(a.id, 'translated', 'OpenCode documents no skill list per agent. The skills stay discoverable but are not preloaded.', 'skills');
         const { dropped } = addPrivate(front as [string, JsonValue][], a.privateBlocks.opencode);

@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ENGINE_IDS, checkFidelity, entryHash } from '../../../dist/packages/harness-definition/src/index.js';
 import {
-  CODEX_HOOK_EVENTS, OPENCODE_HOOK_EVENTS, envDefaultIn, translateHooks, translateMcp, translateSubagents,
+  JsExpression, CODEX_HOOK_EVENTS, OPENCODE_HOOK_EVENTS, envDefaultIn, translateHooks, translateMcp, translateSubagents,
 } from '../../../dist/packages/fidelity/src/index.js';
 
 const server = (name, extra = {}) => ({ id: name, name, transport: 'stdio', command: 'docs-mcp', privateBlocks: {}, ...extra });
@@ -26,7 +26,7 @@ test('check 5: envDefaultIn finds every shell default form and nothing else', ()
   for (const text of ['${HOME}', '$HOME', 'plain', '${A}${B}', 'cost: $5', '{env:X}']) assert.equal(envDefaultIn(text), false, text);
 });
 
-test('check 5: an MCP server, a hook, or a subagent that holds ${NAME:-x} gives a problem and no form, in every engine', () => {
+test('check 5: an MCP server or a hook that holds ${NAME:-x} gives a problem and no form, in every engine; subagent prose is not scanned (B15)', () => {
   for (const engine of ENGINE_IDS) {
     const m = translateMcp(engine, [server('docs', { args: ['--root', '${ROOT:-.}'] })]);
     assert.deepEqual(m.problems, [{ part: 'mcp', entry: 'docs', code: 'ENV_DEFAULT' }], engine);
@@ -35,8 +35,7 @@ test('check 5: an MCP server, a hook, or a subagent that holds ${NAME:-x} gives 
     assert.deepEqual(h.problems, [{ part: 'hooks', entry: 'guard', code: 'ENV_DEFAULT' }], engine);
     assert.equal(h.hooks.length, 0, engine);
     const s = translateSubagents(engine, [agent('helper', { body: 'Use ${DIR:-.} as the root.\n' })]);
-    assert.deepEqual(s.problems, [{ part: 'subagents', entry: 'helper', code: 'ENV_DEFAULT' }], engine);
-    assert.equal(s.subagents.length, 0, engine);
+    assert.deepEqual(s.problems, [], engine);
   }
 });
 
@@ -109,15 +108,15 @@ test('MCP in DeepSeek Harness: one dsh-mcp-client row per server, !!js for a ref
   ]);
   const docs = t.servers.find(s => s.name === 'docs').row;
   assert.equal(docs.name, '@deepseek-ai/dsh-mcp-client'); assert.equal(docs.id, 'bowerloom-mcp-docs');
-  assert.deepEqual(docs.config.env, { TOKEN: { js: 'process.env.TOKEN' }, MODE: 'read', MIXED: { js: '`a-${process.env.B}`' } });
+  assert.deepEqual(docs.config.env, { TOKEN: new JsExpression('process.env.TOKEN'), MODE: 'read', MIXED: new JsExpression('`a-${process.env.B}`') });
   assert.equal(docs.config.transport, 'stdio'); assert.equal(docs.config.toolCallTimeoutMs, 30000);
   const web = t.servers.find(s => s.name === 'web').row.config;
-  assert.equal(web.transport, 'streamable-http'); assert.deepEqual(web.headers, { Authorization: { js: '`Bearer ${process.env.WEB_TOKEN}`' } });
+  assert.equal(web.transport, 'streamable-http'); assert.deepEqual(web.headers, { Authorization: new JsExpression('`Bearer ${process.env.WEB_TOKEN}`') });
   assert.equal(entryLine(t, 'a'.repeat(33)).result, 'absent'); assert.equal(entryLine(t, 'old').result, 'absent');
   assert.match(entryLine(t, 'docs').reason, /--patch/);
   // A literal part that holds a backtick, a backslash, or a $ is escaped for the template literal.
   const esc = translateMcp('deepseek-harness', [server('esc', { env: { A: '`x\\$${B}' } })]);
-  assert.deepEqual(esc.servers[0].row.config.env.A, { js: '`\\`x\\\\\\$${process.env.B}`' });
+  assert.deepEqual(esc.servers[0].row.config.env.A, new JsExpression('`\\`x\\\\\\$${process.env.B}`'));
 });
 
 test('MCP: a keychain reference is never written; a disabled server is reported, not dropped silently', () => {
@@ -149,19 +148,19 @@ test('check 3: a read-only subagent is exact in Claude Code', () => {
   assert.equal(entryLine(t, 'reader').result, 'exact'); assert.equal(fieldLine(t, 'reader', 'tools').result, 'exact');
 });
 
-test('check 3: a read-only subagent is translated with deny keys in OpenCode, and no key allows anything', () => {
+test('check 3: a read-only subagent is carried with deny keys in OpenCode, weakened since B9, and no key allows anything', () => {
   const t = translateSubagents('opencode', [readOnly]);
   const f = Object.fromEntries(t.subagents[0].frontmatter);
   assert.equal(f.mode, 'subagent'); assert.equal(f.model, 'provider/model-a'); assert.equal(f.name, undefined);
-  const permission = Object.fromEntries(f.permission);
+  const permission = Object.fromEntries(f.permission.pairs);
   for (const key of ['edit', 'bash', 'webfetch', 'websearch', 'task', 'skill', '*_*']) assert.equal(permission[key], 'deny', key);
   for (const key of ['read', 'grep', 'glob', 'list']) assert.equal(permission[key], undefined, key);
   assert.equal(Object.values(permission).includes('allow'), false);
-  assert.equal(fieldLine(t, 'reader', 'tools').result, 'translated');
+  assert.equal(fieldLine(t, 'reader', 'tools').result, 'weakened');
   assert.equal(fieldLine(t, 'reader', 'skills').result, 'translated');
   // A server the limit names keeps its tools; the other servers of the definition are denied by name.
   const mcp = translateSubagents('opencode', [agent('mcp-user', { tools: ['read', 'mcp:docs'] })], { servers: ['docs', 'web'] });
-  const p2 = Object.fromEntries(Object.fromEntries(mcp.subagents[0].frontmatter).permission);
+  const p2 = Object.fromEntries(Object.fromEntries(mcp.subagents[0].frontmatter).permission.pairs);
   assert.equal(p2.web_ ?? p2['web_*'], 'deny'); assert.equal(p2['docs_*'], undefined); assert.equal(p2['*_*'], undefined);
   assert.equal(fieldLine(mcp, 'mcp-user', 'tools').result, 'weakened');
 });
@@ -176,9 +175,10 @@ test('check 3: a read-only subagent in Codex is weakened, so it is refused witho
   assert.equal(fieldLine(t, 'reader', 'model').result, 'absent');
   const report = ENGINE_IDS.flatMap(e => translateSubagents(e, [readOnly]).lines);
   const refused = judge({ subagents: [readOnly] }, report);
-  assert.deepEqual(refused.refused.map(l => [l.engine, l.field ?? null, l.result]).sort(), [['codex', 'tools', 'weakened'], ['deepseek-harness', null, 'absent'], ['pi', null, 'absent']]);
+  assert.deepEqual(refused.refused.map(l => [l.engine, l.field ?? null, l.result]).sort(), [['codex', 'tools', 'weakened'], ['deepseek-harness', null, 'absent'], ['opencode', 'tools', 'weakened'], ['pi', null, 'absent']]);
   const ok = judge({ subagents: [readOnly] }, report, [
-    approval('subagents', readOnly, 'codex', 'weakened', { field: 'tools' }), approval('subagents', readOnly, 'pi', 'absent'), approval('subagents', readOnly, 'deepseek-harness', 'absent'),
+    approval('subagents', readOnly, 'codex', 'weakened', { field: 'tools' }), approval('subagents', readOnly, 'opencode', 'weakened', { field: 'tools' }),
+    approval('subagents', readOnly, 'pi', 'absent'), approval('subagents', readOnly, 'deepseek-harness', 'absent'),
   ]);
   assert.equal(ok.ok, true);
 });
@@ -199,7 +199,7 @@ test('subagents: every tool class outside the limit is denied in OpenCode, for e
   for (let mask = 0; mask < 1 << classes.length; mask++) {
     const tools = classes.filter((_, i) => mask & (1 << i));
     const t = translateSubagents('opencode', [agent('x', { tools })]);
-    const permission = Object.fromEntries(Object.fromEntries(t.subagents[0].frontmatter).permission);
+    const permission = Object.fromEntries(Object.fromEntries(t.subagents[0].frontmatter).permission.pairs);
     for (const c of classes.filter(c => !tools.includes(c))) for (const key of keysOf[c]) assert.equal(permission[key], 'deny', `${tools} ${key}`);
     assert.equal(Object.values(permission).some(v => v !== 'deny'), false);
   }
@@ -262,9 +262,9 @@ test('hooks in OpenCode: tool hooks map to the plugin events, with OpenCode tool
   assert.deepEqual(OPENCODE_HOOK_EVENTS, { PreToolUse: 'tool.execute.before', PostToolUse: 'tool.execute.after', SessionStart: 'session.created', PreCompact: 'experimental.session.compacting', PostCompact: 'session.compacted' });
   const t = translateHooks('opencode', [hook('guard', { matcher: 'Bash|Edit|mcp__docs__search' }), hook('stop', { event: 'Stop', matcher: undefined, strength: 'advisory' })]);
   const g = t.hooks.find(h => h.entry === 'guard');
-  assert.equal(g.hook, 'tool.execute.before'); assert.deepEqual(g.tools, { bash: 'Bash', edit: 'Edit', docs_search: 'mcp__docs__search' });
+  assert.equal(g.hook, 'tool.execute.before'); assert.deepEqual(g.tools, { bash: 'Bash', edit: 'Edit', apply_patch: 'Edit', docs_search: 'mcp__docs__search' });
   assert.equal(g.command, '${BOWERLOOM_PROJECT_DIR}/scripts/check.sh'); assert.equal(g.timeoutMs, 600000);
-  assert.equal(entryLine(t, 'guard').result, 'translated');
+  assert.equal(entryLine(t, 'guard').result, 'weakened', 'B8: an enforced OpenCode hook is weakened');
   assert.equal(entryLine(t, 'stop').result, 'absent');
 });
 
