@@ -15,6 +15,7 @@ import {
   PortableRefusal, byBytes, checkAncestors, readAbs, readProject, removeEmptyDirs, revisionOf, writeAbs,
 } from '../../project-sync/src/portable-files.js';
 import { checkPaths, stateExists } from '../../project-sync/src/portable-state.js';
+import { LEGACY_NAMES } from '../../harness-definition/src/index.js';
 import { refuse } from './refusal.js';
 
 export const JOURNAL = 'adoption-pending.json';
@@ -49,17 +50,20 @@ export function checkState(projectDir: string, stateDir: unknown): asserts state
   }
 }
 
-/** The journal, checked, or null when there is none. */
-export function readJournal(stateDir: string, projectDir: string): Journal | null {
+/** A journal that does not parse or does not fit its shape (item C8). */
+export interface DamagedJournal { readonly damaged: true }
+
+/** The journal, checked; `{ damaged: true }` when it is there but cannot be trusted; null when there is none. */
+export function readJournal(stateDir: string, projectDir: string): Journal | DamagedJournal | null {
   let exists: boolean;
   try { exists = stateExists(stateDir); } catch { return refuse('ADOPTION_STATE_UNSAFE'); }
   if (!exists) return null;
   let got: ReturnType<typeof readAbs>;
-  try { got = readAbs(join(stateDir, JOURNAL), JOURNAL); } catch { return refuse('ADOPTION_STATE_INVALID'); }
+  try { got = readAbs(join(stateDir, JOURNAL), JOURNAL); } catch { return refuse('ADOPTION_STATE_UNSAFE'); }
   if (got === null) return null;
   if ((got.state.mode & 0o077) !== 0) refuse('ADOPTION_STATE_UNSAFE');
   let v: unknown;
-  try { v = JSON.parse(got.bytes.toString('utf8')); } catch { return refuse('ADOPTION_STATE_INVALID'); }
+  try { v = JSON.parse(got.bytes.toString('utf8')); } catch { return { damaged: true }; }
   const o = v as Record<string, unknown>;
   const keys = ['format', 'projectDir', 'planRevision', 'files', 'dirs'];
   const ok = typeof v === 'object' && v !== null && !Array.isArray(v) && Object.keys(o).length === keys.length && keys.every(k => Object.hasOwn(o, k))
@@ -69,9 +73,9 @@ export function readJournal(stateDir: string, projectDir: string): Journal | nul
       return typeof f === 'object' && f !== null && Object.keys(r).length === 2 && insideDefinition(r.path) && typeof r.sha256 === 'string' && HEX.test(r.sha256);
     })
     && Array.isArray(o.dirs) && o.dirs.length <= 8192 && o.dirs.every(d => insideDefinition(d, true));
-  if (!ok) refuse('ADOPTION_STATE_INVALID');
+  if (!ok) return { damaged: true };
   const paths = (o.files as { path: string }[]).map(f => f.path);
-  if (new Set(paths).size !== paths.length) refuse('ADOPTION_STATE_INVALID');
+  if (new Set(paths).size !== paths.length) return { damaged: true };
   return v as Journal;
 }
 
@@ -92,7 +96,15 @@ export interface RecoveryInput { readonly projectDir: string; readonly stateDir:
 export interface AdoptionRecoveryPlan {
   readonly format: typeof RECOVERY_PLAN_FORMAT;
   readonly projectDir: string;
-  readonly planRevision: string;
+  /**
+   * `ok`: recovery removes the journaled files that still hold adoption's bytes. `damaged`: the journal cannot be
+   * trusted, so recovery only clears it, and `check` lists the files a person checks by hand (item C8).
+   */
+  readonly journal: 'ok' | 'damaged';
+  /** For a damaged journal: every file under `.bowerloom` whose top-level name is not a 0.7 name. */
+  readonly check: readonly string[];
+  /** The journaled plan revision, or null for a damaged journal. */
+  readonly planRevision: string | null;
   /** Journaled files that still hold the bytes adoption wrote. Recovery removes them. */
   readonly remove: readonly string[];
   /** Journaled files that changed since, or cannot be read safely. Recovery leaves them. */
@@ -123,6 +135,10 @@ export function planAdoptionRecovery(input: RecoveryInput): AdoptionRecoveryPlan
   const { projectDir, stateDir } = checkRecoveryInput(input);
   const journal = readJournal(stateDir, projectDir);
   if (journal === null) return refuse('ADOPTION_RECOVER_NOTHING');
+  if ('damaged' in journal) {
+    const body = { format: RECOVERY_PLAN_FORMAT, projectDir, journal: 'damaged' as const, check: definitionFiles(projectDir), planRevision: null, remove: [], kept: [], dirs: [], writesAuthorized: false as const };
+    return { ...body, revision: revisionOf(body) };
+  }
   const remove: string[] = [], kept: { path: string; reason: 'changed' | 'unsafe' }[] = [];
   for (const f of [...journal.files].sort((a, b) => byBytes(a.path, b.path))) {
     let now: ReturnType<typeof readProject>;
@@ -130,7 +146,7 @@ export function planAdoptionRecovery(input: RecoveryInput): AdoptionRecoveryPlan
     if (now === null) continue;
     if (now.state.sha256 === f.sha256) remove.push(f.path); else kept.push({ path: f.path, reason: 'changed' });
   }
-  const body = { format: RECOVERY_PLAN_FORMAT, projectDir, planRevision: journal.planRevision, remove, kept, dirs: [...journal.dirs], writesAuthorized: false as const };
+  const body = { format: RECOVERY_PLAN_FORMAT, projectDir, journal: 'ok' as const, check: [], planRevision: journal.planRevision, remove, kept, dirs: [...journal.dirs], writesAuthorized: false as const };
   return { ...body, revision: revisionOf(body) };
 }
 
@@ -141,7 +157,8 @@ export async function applyAdoptionRecovery(input: RecoveryInput, revision: stri
   return withProjectLock(projectDir, signal, async () => {
     const plan = planAdoptionRecovery({ projectDir, stateDir });
     if (plan.revision !== revision) refuse('ADOPTION_STALE_APPROVAL');
-    const journal = readJournal(stateDir, projectDir)!;
+    if (plan.journal === 'damaged') { removeJournal(stateDir); return { removed: [], kept: [], leftFolders: [] }; }
+    const journal = readJournal(stateDir, projectDir) as Journal;
     const want = new Map(journal.files.map(f => [f.path, f.sha256]));
     const removed: string[] = [];
     for (const rel of plan.remove) {
@@ -156,4 +173,27 @@ export async function applyAdoptionRecovery(input: RecoveryInput, revision: stri
     removeJournal(stateDir);
     return { removed, kept: plan.kept, leftFolders };
   });
+}
+
+/**
+ * Every file under `.bowerloom` whose top-level name is not a 0.7 name, in byte order: what a damaged journal may have
+ * written. Links are listed as paths and not followed. At most 4096 entries are listed.
+ */
+function definitionFiles(projectDir: string): string[] {
+  const out: string[] = [];
+  const legacy = new Set<string>(LEGACY_NAMES);
+  const walk = (rel: string, depth: number): void => {
+    if (out.length >= 4096 || depth > 16) return;
+    let names: string[];
+    try { names = fs.readdirSync(join(projectDir, rel)).sort(byBytes); } catch { return; }
+    for (const name of names) {
+      if (depth === 1 && legacy.has(name)) continue;
+      const child = `${rel}/${name}`;
+      let st: fs.Stats;
+      try { st = fs.lstatSync(join(projectDir, child)); } catch { continue; }
+      if (st.isDirectory() && !st.isSymbolicLink()) walk(child, depth + 1); else out.push(child);
+    }
+  };
+  try { if (fs.lstatSync(join(projectDir, '.bowerloom')).isDirectory()) walk('.bowerloom', 1); } catch { /* no folder */ }
+  return out.slice(0, 4096);
 }

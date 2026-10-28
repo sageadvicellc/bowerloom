@@ -8,17 +8,19 @@ Specs: `2026-10-27-bowerloom-harness-definition.md`, sections 8, 10, 11, 12, and
 
 - `planAdoption(input)` reads the project and returns the plan: every item with its places, conflicts, differences, unmapped entries, replaced secrets, 0.7 managed copies, the exact files, the approvals it needs, and the loader's problems. It writes nothing. The input names a private state folder outside the project (`stateDir`).
 - `applyAdoption(input, revision, approvals)` plans again under the project lock. If the revision is the same and `approvals` confirms every id in `approvalsRequired`, it writes. It creates files only, through the portable projection's write layer, and writes `harness.json` last. After the writes the definition must load with `loadDefinition` and have the planned revision. On any failure it removes what it wrote.
-- `planAdoptionRecovery` and `applyAdoptionRecovery` finish a run that stopped part way. Before the first write, apply keeps a journal of the planned files in the state folder. While a journal is there, every plan refuses `ADOPTION_RECOVERY_REQUIRED`. Recovery removes exactly the journaled files that still hold the bytes adoption wrote.
+- `planAdoptionRecovery` and `applyAdoptionRecovery` finish a run that stopped part way. Before the first write, apply keeps a journal of the planned files in the state folder. While a journal is there, every plan refuses `ADOPTION_RECOVERY_REQUIRED`. Recovery removes exactly the journaled files that still hold the bytes adoption wrote. If the journal does not parse, or does not fit its shape, recovery only clears it and lists the files under `.bowerloom` to check by hand.
 
 If no conflict waits for a choice, every gated unmapped entry is acknowledged, nothing blocks, and the planned definition loads, the plan is `ready`.
 
 ## What a person confirms
 
 - **Approvals** (`approvalsRequired`, passed to apply): hooks and stdio MCP servers, because they run a command. Also an MCP server with a `${NAME}` anywhere, a replaced secret ("your own value of NAME will be sent to this server"), and a private block that holds a command, a URL, or a credential helper. Also instructions that only some engines read today, and a 0.7 source the catalog only claims.
-- **Acknowledgements** (`acknowledged` in the input, by unmapped id): every deny, ask, or sandbox value that is not carried. This includes an entry of a rules folder that is not read, which could hold one.
+- **Acknowledgements** (`acknowledged` in the input, by unmapped id): every deny, ask, or sandbox value that is not carried. This includes an entry of a rules folder that is not read, and a dropped key that restricts, such as `defaultMode` or a Codex agent's `approval_policy`. A nested search that stopped early needs one too.
 - **Blocks**: an `@path` import in the adopted instructions. The person inlines it first.
 
-When a deny or ask of an action cannot be carried, every allow of that action from that engine is dropped too, and the plan warns. A read deny also drops edit and write allows.
+When a deny or ask of an action cannot be carried, every allow of that action from that engine is dropped too, and the plan warns. A read deny also drops edit and write allows. The allows of other actions stay.
+
+A key name, server name, tool name, pattern, or model shaped like a secret is never copied: its entry is not adopted, and it is listed by place, never by name.
 
 ## Limits
 
@@ -46,9 +48,9 @@ The readers follow the forms of Claude Code 2.1.310, Codex 0.157.0, OpenCode 1.1
 | `.mcp.json`, Codex `mcp_servers`, OpenCode `mcp`, `.pi/mcp.json` | MCP servers |
 | Other settings keys | `engines/<engine>/<file>.json` |
 
-A field with no neutral form goes into the entry's `x-<engine>` block. A permission-like key cannot go there (`isPermissionKey`), so it is listed as unmapped with the reason. Anything else that cannot be mapped is listed with the reason. Every entry of a folder a reader consumes is taken or listed, and a sweep lists every other file in an engine folder. Nested `AGENTS.md` and `CLAUDE.md` files are listed; the search skips `.git` and `node_modules`.
+A field with no neutral form goes into the entry's `x-<engine>` block. A permission-like key cannot go there (`isPermissionKey`), so it is listed as unmapped with the reason. Anything else that cannot be mapped is listed with the reason. Every entry of a folder a reader consumes is taken or listed, and a sweep lists every other file in an engine folder. Nested `AGENTS.md` and `CLAUDE.md` files are listed. The search skips `.git` and `node_modules` at every depth, and counts toward the read budget.
 
-A skill's `allowed-tools` is listed, not adopted: a grant scoped to the skill has no neutral form, and without it the engine asks more often. A Codex MCP server with `enabled_tools` is not adopted. A subagent tool limit only ever narrows.
+A skill's `allowed-tools` is listed, not adopted: a grant scoped to the skill has no neutral form, and without it the engine asks more often. A Codex MCP server with `enabled_tools` is not adopted, nor is a Codex agent with the read-only sandbox. A subagent tool limit only ever narrows. An MCP deny removes an allowed server by its whole name, a tool of it, or a glob that matches it.
 
 ## Merging and conflicts
 
@@ -65,7 +67,7 @@ A literal secret in an MCP `env`, header, argument, private block, or leftover s
 
 - `skills.json` and `bowerloom.json` are read through step 0's mapping of `harnesses` and `claude`. They stay byte for byte unchanged.
 - A 0.7 skill in `.bowerloom/skills` is already where the definition keeps it. Adoption cannot change it, so one that the definition cannot carry refuses with `ADOPTION_LEGACY_SKILL`.
-- A 0.7 managed copy (`.bowerloom/managed/...` or `.bowerloom-skills/...`) becomes a definition skill. An npm or git source is recorded in `sources.json`, and the plan marks it `claimed: true`. The contract does not take that field in `sources.json` yet. `plan.managed` lists each copy and the skill it became. A catalog copy path that is not relative is refused. A 0.7 restriction that names no engine of the harness is not converted. No 0.7 file is deleted.
+- A 0.7 managed copy (`.bowerloom/managed/...` or `.bowerloom-skills/...`) becomes a definition skill. An npm or git source is recorded in the plan only, marked `claimed: true`. It goes to `sources.json` once the contract can mark it as claimed. `plan.managed` lists each copy and the skill it became. A catalog copy path that is not relative is refused. A 0.7 restriction that names no engine of the harness is not converted. No 0.7 file is deleted.
 
 ## For the projection lanes
 

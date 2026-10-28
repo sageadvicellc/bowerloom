@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import type { EngineId } from '../../harness-definition/src/index.js';
 import { lose, place, reading, type Context } from './context.js';
 import { toLf, utf8 } from './files.js';
+import { READ_BUDGET } from './files.js';
 import { textSecretRule } from './secrets.js';
 import { readSkillFolder } from './skills.js';
 
@@ -81,37 +82,45 @@ export function readSkillPlaces(ctx: Context): void {
 }
 
 const NESTED_NAMES = new Set(['AGENTS.md', 'AGENTS.override.md', 'AGENTS.local.md', 'CLAUDE.md', 'CLAUDE.local.md']);
-/** Folders the search for nested instruction files does not enter: version control, dependencies, and Bowerloom's own. */
-const NOT_SEARCHED = new Set(['.git', 'node_modules', '.bowerloom', '.bowerloom-skills']);
-/** The most folder entries the search reads, so a large tree cannot stall a plan. */
-export const NESTED_SEARCH_ENTRIES = 50_000;
+/** Folders the search never enters, at any depth: version control and dependencies. */
+const NEVER_SEARCHED = new Set(['.git', 'node_modules']);
+/** Bowerloom's own folders at the project root, which the search does not enter either. */
+const ROOT_SKIPPED = new Set(['.bowerloom', '.bowerloom-skills']);
 
 /**
  * Lists every instruction file below the project root (ruling A15). Engines load such a file on demand or not at all,
- * and the definition holds one instructions file at the root, so none is adopted. The search does not enter `.git`,
- * `node_modules`, or Bowerloom's folders, and does not follow links. A search that stops at its limit says so.
+ * and the definition holds one instructions file at the root, so none is adopted. The search never enters `.git` or
+ * `node_modules`, at any depth, nor Bowerloom's folders, and does not follow links. Its folder entries count toward the
+ * read budget of the run; a search that stops at the budget or at the folder depth limit is listed, and needs
+ * acknowledgement, so the plan is not ready until a person accepts that some files were not looked at (item C5).
  */
 export function listNestedInstructions(ctx: Context): void {
   const { r } = ctx;
-  let entries = 0, stopped = false, deep = false;
+  let stopped = false;
+  const stop = (rel: string, why: string): void => {
+    if (stopped) return;
+    stopped = true;
+    r.miss(rel === '' ? '.' : rel, 'system-prompt', `The search for nested instruction files stopped here: ${why}. A nested AGENTS.md or CLAUDE.md past this point is not listed.`, undefined, 'acknowledge');
+  };
   const walk = (rel: string, depth: number): void => {
     if (stopped) return;
-    if (depth > 16) { deep = true; return; }
+    if (depth > READ_BUDGET.depth) { stop(rel, `it is more than ${READ_BUDGET.depth} folders deep`); return; }
     let names: string[];
     try { names = fs.readdirSync(rel === '' ? r.projectDir : join(r.projectDir, rel)).sort(); } catch { return; }
-    entries += names.length;
-    if (entries > NESTED_SEARCH_ENTRIES) { stopped = true; return; }
+    if (!r.count(names.length)) { stop(rel, 'the run reached its read budget of folder entries'); return; }
     for (const name of names) {
+      if (stopped) return;
       const child = rel === '' ? name : `${rel}/${name}`;
       let st: fs.Stats;
       try { st = fs.lstatSync(join(r.projectDir, child)); } catch { continue; }
-      if (st.isDirectory() && !st.isSymbolicLink()) { if (!(rel === '' && NOT_SEARCHED.has(name))) walk(child, depth + 1); continue; }
+      if (st.isDirectory() && !st.isSymbolicLink()) {
+        if (!NEVER_SEARCHED.has(name) && !(rel === '' && ROOT_SKIPPED.has(name))) walk(child, depth + 1);
+        continue;
+      }
       if (rel === '' || !NESTED_NAMES.has(name) || child === '.claude/CLAUDE.md' || r.consumed.has(child)) continue;
       r.consumed.add(child);
       r.miss(child, 'system-prompt', 'A nested instruction file is not adopted: engines load it on demand or not at all, and the definition holds one instructions file at the project root. Move its text there by hand if it matters.');
     }
   };
   walk('', 0);
-  if (stopped) ctx.warnings.push(`The search for nested instruction files stopped after ${NESTED_SEARCH_ENTRIES} folder entries, so a nested AGENTS.md or CLAUDE.md beyond that is not listed.`);
-  if (deep) ctx.warnings.push('The search for nested instruction files does not go deeper than 16 folders, so a nested AGENTS.md or CLAUDE.md below that is not listed.');
 }

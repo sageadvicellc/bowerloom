@@ -118,7 +118,7 @@ test('Codex rules files: a deny with a token that has no neutral form, or a file
 
 test('Codex agent files become subagents; feature switches are a tool limit the neutral list cannot carry', async t => {
   const p = project(t, {
-    '.codex/agents/reviewer.toml': 'name = "reviewer"\ndescription = "Reviews a change."\ndeveloper_instructions = "Read the diff and report."\nmodel = "model-b"\nmodel_reasoning_effort = "low"\nsandbox_mode = "read-only"\n',
+    '.codex/agents/reviewer.toml': 'name = "reviewer"\ndescription = "Reviews a change."\ndeveloper_instructions = "Read the diff and report."\nmodel = "model-b"\nmodel_reasoning_effort = "low"\nsandbox_mode = "workspace-write"\n',
     '.codex/agents/locked.toml': 'name = "locked"\ndescription = "No shell."\ndeveloper_instructions = "Read only."\n[features]\nshell_tool = false\n',
   });
   const { plan, def } = await adopt(p, [{ id: 'codex' }]);

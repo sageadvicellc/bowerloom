@@ -18,13 +18,13 @@ import { basename, dirname, isAbsolute, join } from 'node:path';
 import { stringify } from 'yaml';
 import { canonicalJson } from '../../contracts/src/index.js';
 import {
-  ENGINE_IDS, GUARDRAIL_ACTIONS, HARNESS_FORMAT, LEGACY_NAMES, isEngineId, isId, isServerName, loadDefinition,
+  ENGINE_IDS, GUARDRAIL_ACTIONS, HARNESS_FORMAT, LEGACY_NAMES, isEngineId, isId, isServerName, loadDefinition, scanSecrets,
 } from '../../harness-definition/src/index.js';
 import type { EngineId, GuardrailAction, JsonValue, Problem } from '../../harness-definition/src/index.js';
 import { atImports } from '../../project-sync/src/portable.js';
 import { byBytes, revisionOf, sha } from '../../project-sync/src/portable-files.js';
 import { DEFAULT_ENGINES } from '../../skill-manifest/src/engine.js';
-import { DSH_PINNED_TAG, READER_VERSIONS, type Context, type LostAction } from './context.js';
+import { DSH_PINNED_TAG, READER_VERSIONS, lose, type Context, type LostAction } from './context.js';
 import { ENGINE_READERS, detectEngines, sweep } from './engines.js';
 import { ProjectReader } from './files.js';
 import { checkState, readJournal } from './journal.js';
@@ -35,6 +35,7 @@ import {
 } from './model.js';
 import { listNestedInstructions, readInstructions, readSkillPlaces } from './portable-readers.js';
 import { RISK_APPROVAL, riskOf } from './shared.js';
+import { secretName } from './secrets.js';
 import { refuse } from './refusal.js';
 import { skillMarkdown } from './skills.js';
 
@@ -91,11 +92,12 @@ export function planWithBytes(input: AdoptionInput): PlanWithBytes {
   readLegacy.skills(ctx, authored);
   readLegacy.managed(ctx);
   for (const read of ENGINE_READERS) read(ctx);
-  listNestedInstructions(ctx);
   sweep(ctx);
+  // The nested search runs last, so the engine readers get the read budget first (item C5).
+  listNestedInstructions(ctx);
 
   // Ids that come from content, so identical entries merge and others never clash.
-  const cands = dropAllows(ctx).map(withId);
+  const cands = dropAllows({ ...ctx, cands: withoutSecrets(ctx, ctx.cands) }).map(withId);
   const missed: Missed[] = r.unmapped;
   const { items, conflicts, kept } = group(cands, engines, choices, missed);
   const differences = differencesOf(kept, engines);
@@ -109,7 +111,11 @@ export function planWithBytes(input: AdoptionInput): PlanWithBytes {
       models[e] = w;
       const file = ctx.models[e];
       if (file && file.model !== w) warnings.push(`The input model for ${e} overrides the model in ${file.path}.`);
-    } else if (ctx.models[e]) models[e] = ctx.models[e].model;
+    } else if (ctx.models[e]) {
+      // Item C7: a model name shaped like a secret is listed by place, never copied.
+      if (secretName(ctx.models[e].model)) r.miss(ctx.models[e].path, null, 'The model name looks like a secret, so it is not adopted. It is listed by place, never by name.', '/model');
+      else models[e] = ctx.models[e].model;
+    }
   }
   const planEngines: PlanEngine[] = engines.map(id => ({
     id, version: versions[id] ?? null, model: models[id] ?? null, detected: detected.has(id) || legacyEngines.has(id),
@@ -435,12 +441,32 @@ function dropAllows(ctx: Context): Candidate[] {
     seen.add(key);
     ctx.warnings.push(`${engine}: a deny or ask of ${action === '*' ? 'some action' : action} could not be carried, so every allow of ${DROPPED[action].join(', ')} from ${engine} is dropped.`);
   }
+  // Review item C4: say once that a lost deny drops only the allows of its own action.
+  ctx.warnings.push('The allows of other actions stay: a deny that could not be carried drops only the allows of its own action, from its own engine.');
   return ctx.cands.filter(c => {
     if (c.part !== 'guardrails' || !('rule' in c) || c.rule.effect !== 'allow') return true;
     if (!c.place.engines.some(e => lost.get(e)?.has(c.rule.action))) return true;
     ctx.r.miss(c.place.path, 'guardrails', 'Not adopted: a deny of this action could not be carried, so its allow is dropped too.', c.place.pointer);
     return false;
   });
+}
+
+/**
+ * Item C7, the backstop: an entry whose id, neutral content, private blocks, or models still hold a secret shape is not
+ * adopted. It is listed by place. A deny, an ask, or a sandbox needs acknowledgement, and a lost deny or ask drops the
+ * allows of its action. Skills and instructions are scanned as files by their readers.
+ */
+function withoutSecrets(ctx: Context, cands: readonly Candidate[]): Candidate[] {
+  const out: Candidate[] = [];
+  for (const c of cands) {
+    if (c.part === 'skills' || c.part === 'system-prompt') { out.push(c); continue; }
+    const bytes = Buffer.from(JSON.stringify({ id: c.id, n: neutralOf(c), b: c.blocks, m: modelsOf(c) }));
+    if (scanSecrets([{ path: 'entry.json', bytes }]).length === 0) { out.push(c); continue; }
+    const strict = c.part === 'guardrails' && ('sandbox' in c || c.rule.effect !== 'allow');
+    ctx.r.miss(c.place.path, c.part, 'This entry holds a name or a value that looks like a secret, so it is not adopted. It is listed by place, never by name.', c.place.pointer, strict ? 'acknowledge' : 'none');
+    if (strict && 'rule' in c) for (const e of c.place.engines) lose(ctx, e, c.rule.action);
+  }
+  return out;
 }
 
 /** Ruling A15: each `@path` import in the adopted instructions blocks the plan. The person inlines it first. */
@@ -543,11 +569,12 @@ function buildFiles(b: BuildInput): Map<string, { bytes: Uint8Array; mode: numbe
 
   for (const k of by('engine-private')) if (k.lead.part === 'engine-private') out.set(k.item.id, { bytes: json(k.lead.value), mode: 0o644 });
 
-  // sources.json: the npm and git sources of converted 0.7 managed copies, one record per package.
+  // sources.json: borrowed sources, one record per package. A source a 0.7 catalog only claims stays in the plan until
+  // the definition contract can mark it as claimed (item C6), so no claimed source is written.
   const sources = new Map<string, { source: SourceShape; items: { part: 'skills'; id: string }[] }>();
   for (const k of skills) {
     const s = k.item.source;
-    if (!s) continue;
+    if (!s || s.claimed) continue;
     const key = `${s.marketplace}\n${s.name}`, at = sources.get(key);
     if (at && at.source.version !== s.version) { b.unmapped.push({ path: k.item.places[0]!.path, part: 'plugins', reason: `The source of ${k.item.id} names another pinned version of a package that another skill names too. sources.json holds one version per package, so this source is not recorded.`, gate: 'none' }); continue; }
     if (at) at.items.push({ part: 'skills', id: k.item.id }); else sources.set(key, { source: s, items: [{ part: 'skills', id: k.item.id }] });

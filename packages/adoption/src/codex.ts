@@ -10,7 +10,7 @@ import type { Gate } from './model.js';
 import { utf8 } from './files.js';
 import { PERMISSION_REASON, addServer, blockOf, isObj, leftovers, oneLine, kp, privateKeys, readHooks, readJson } from './shared.js';
 import type { Obj } from './shared.js';
-import { textSecretRule } from './secrets.js';
+import { secretName, textSecretRule } from './secrets.js';
 import { parseTomlSubset } from './toml.js';
 
 const ENGINE = 'codex' as const;
@@ -44,7 +44,7 @@ function readConfig(ctx: Context): void {
     if (key === 'mcp_servers') readServers(ctx, value);
     else if (key === 'hooks') readHooks(ctx, value, { path: CONFIG, base: '/hooks', engine: ENGINE, shape, rewrite: codexProjectDir });
     else if (key === 'sandbox_mode' || key === 'sandbox_workspace_write') continue;
-    else if (key === 'approval_policy') ctx.r.miss(CONFIG, 'guardrails', MODES_REASON, kp(c, key));
+    else if (key === 'approval_policy') ctx.r.miss(CONFIG, 'guardrails', MODES_REASON, kp(c, key), 'acknowledge');
     else if (key === 'default_permissions' || key === 'permissions') {
       // A permission profile can deny paths, so it needs acknowledgement, and the allows it could limit are dropped.
       ctx.r.miss(CONFIG, 'guardrails', 'Permission profiles have no neutral form beyond the sandbox requirement, so they are not adopted.', kp(c, key), 'acknowledge');
@@ -82,7 +82,9 @@ function readSandbox(ctx: Context, c: Obj): void {
     else {
       if (table.network_access === true) network = false;
       else if (table.network_access !== undefined && table.network_access !== false) drop('network_access is not true or false, so the network stays sandboxed.', '/sandbox_workspace_write/network_access');
-      extra = privateKeys(ctx, Object.fromEntries(Object.entries(table).filter(([k]) => k !== 'network_access')), CONFIG, '/sandbox_workspace_write', 'guardrails', 'acknowledge');
+      const found = { secret: false };
+      extra = privateKeys(ctx, Object.fromEntries(Object.entries(table).filter(([k]) => k !== 'network_access')), CONFIG, '/sandbox_workspace_write', 'guardrails', 'acknowledge', found);
+      if (found.secret) { drop('The sandbox table holds a key name that looks like a secret, so the sandbox requirement is not adopted.', '/sandbox_workspace_write'); return; }
     }
   }
   const { blocks, secrets } = blockOf([ENGINE], extra, CONFIG, '/sandbox_workspace_write', 'sandbox');
@@ -108,7 +110,7 @@ function readServers(ctx: Context, value: JsonValue): void {
     const base = `/mcp_servers${kp(value, name)}`;
     if (!isObj(s)) { ctx.r.miss(CONFIG, 'mcp', 'This server is not a table.', base); continue; }
     const disabled = s.disabled_tools;
-    const disabledOk = disabled === undefined || (Array.isArray(disabled) && disabled.every(t => typeof t === 'string' && /^[A-Za-z0-9_*-]+$/.test(t)));
+    const disabledOk = disabled === undefined || (Array.isArray(disabled) && disabled.every(t => typeof t === 'string' && /^[A-Za-z0-9_*-]+$/.test(t) && !secretName(t)));
     const dropped = (): void => {
       if (disabled === undefined || !disabledOk || (disabled as string[]).length === 0) return;
       const names = (disabled as string[]).map(t => safeName(t)).join(', ');
@@ -182,6 +184,8 @@ function readAgents(ctx: Context): void {
     if (textSecretRule('agent.toml', f.bytes)) { r.miss(rel, 'subagents', 'This file holds a value that looks like a secret. Adoption never copies a secret value.'); continue; }
     const a = toml(ctx, rel, 'subagents');
     if (!a) continue;
+    // Review item C3: a read-only agent is a tool limit, like the feature switches; without it the agent would be wider.
+    if (a.sandbox_mode === 'read-only') { r.miss(rel, 'subagents', 'The agent asks for the read-only sandbox, a tool limit the neutral tool list cannot carry exactly. Without it the subagent would be wider than the source, so it is not adopted.'); continue; }
     if (a.features !== undefined) { r.miss(rel, 'subagents', 'The feature switches are a tool limit that the neutral tool list cannot carry exactly. Without them the subagent would be wider than the source, so it is not adopted.'); continue; }
     if (!isId(a.name)) { r.miss(rel, 'subagents', 'The agent has no name that is a valid id.'); continue; }
     if (!(typeof a.description === 'string' && a.description.trim() !== '' && [...a.description].length <= 1024)) { r.miss(rel, 'subagents', 'The agent has no description of 1 to 1,024 characters.'); continue; }
@@ -189,14 +193,17 @@ function readAgents(ctx: Context): void {
     const extra: Obj = {};
     for (const [k, v] of Object.entries(a)) {
       if (['name', 'description', 'developer_instructions', 'model'].includes(k)) continue;
-      if (k === 'sandbox_mode' || k === 'approval_policy' || k === 'mcp_servers' || k === 'model_provider') { r.miss(rel, 'subagents', AGENT_NOT_PER_SUBAGENT, kp(a, k)); continue; }
+      if (k === 'sandbox_mode' || k === 'approval_policy' || k === 'mcp_servers' || k === 'model_provider') { r.miss(rel, 'subagents', AGENT_NOT_PER_SUBAGENT, kp(a, k), k === 'sandbox_mode' || k === 'approval_policy' ? 'acknowledge' : 'none'); continue; }
       if (isPermissionKey(k)) { r.miss(rel, 'subagents', PERMISSION_REASON, kp(a, k)); continue; }
       extra[k] = v;
     }
     const models: { codex?: string } = {};
     if (a.model !== undefined) { if (oneLine(a.model, 256)) models.codex = a.model; else r.miss(rel, 'subagents', 'The model is not one line of text.', '/model'); }
     const body = a.developer_instructions.replace(/\r\n?/g, '\n');
-    const { blocks, secrets } = blockOf([ENGINE], privateKeys(ctx, extra, rel, '', 'subagents'), rel, '', a.name);
+    const found = { secret: false };
+    const kept = privateKeys(ctx, extra, rel, '', 'subagents', 'none', found);
+    if (found.secret) continue;
+    const { blocks, secrets } = blockOf([ENGINE], kept, rel, '', a.name);
     ctx.cands.push({
       part: 'subagents', id: a.name, subagent: { description: a.description, body: body.endsWith('\n') ? body : `${body}\n` }, models,
       place: place(rel, [ENGINE], 'Codex agent file', ENGINE), blocks, secrets, needsApproval: [], notes: ['developer_instructions becomes the body.'],
@@ -304,6 +311,7 @@ function readRules(ctx: Context): void {
       const pattern = call.pattern;
       if (!Array.isArray(pattern) || pattern.length === 0) { miss('The pattern is not a list of tokens.'); return; }
       const slots = pattern.map(p => typeof p === 'string' ? [p] : Array.isArray(p) && p.every(x => typeof x === 'string') ? p as string[] : null);
+      if (slots.some(s => s?.some(x => secretName(x)))) { miss('A pattern token looks like a secret, so the rule is not adopted.'); return; }
       if (slots.some(s => s === null || s.length === 0 || s.some(x => !PLAIN_TOKEN.test(x)))) {
         miss('A pattern token holds a space, a wildcard, or a quote. Codex reads * as a literal, and the neutral shell pattern reads it as a wildcard, so the token has no exact neutral form.'); return;
       }

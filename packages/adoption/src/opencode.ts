@@ -14,7 +14,7 @@ import { lose, place, type Context, type LostAction } from './context.js';
 import { toLf, utf8 } from './files.js';
 import type { Candidate } from './model.js';
 import { refuse } from './refusal.js';
-import { textSecretRule } from './secrets.js';
+import { secretName, textSecretRule } from './secrets.js';
 import { PERMISSION_REASON, addServer, blockOf, isObj, leftovers, kp, oneLine, privateKeys, readJson } from './shared.js';
 import type { Obj } from './shared.js';
 
@@ -69,6 +69,7 @@ function readPermission(ctx: Context, value: JsonValue, path: string, shape: str
         r.miss(path, 'guardrails', reason, pointer, effect === 'allow' ? 'none' : 'acknowledge');
         if (effect !== 'allow') lose(ctx, ENGINE, action);
       };
+      if (secretName(pattern)) { miss('The pattern looks like a secret, so the rule is not adopted.'); return; }
       if (action === 'read' || action === 'edit') {
         if (pattern !== '*') { miss('OpenCode reads * across folders, and the neutral path language does not. Adoption does not guess a translation of this path rule.'); return; }
         pattern = '**';
@@ -147,7 +148,10 @@ function addAgent(ctx: Context, id: string, d: Obj, body: string, path: string, 
     if (isPermissionKey(k)) { r.miss(path, 'subagents', PERMISSION_REASON, `${base}${kp(d, k)}`); continue; }
     extra[k] = v;
   }
-  const { blocks, secrets } = blockOf([ENGINE], privateKeys(ctx, extra, path, base, 'subagents'), path, base, id);
+  const found = { secret: false };
+  const kept = privateKeys(ctx, extra, path, base, 'subagents', 'none', found);
+  if (found.secret) return;
+  const { blocks, secrets } = blockOf([ENGINE], kept, path, base, id);
   ctx.cands.push({
     part: 'subagents', id, subagent: { description: d.description, body }, models, blocks, secrets, needsApproval: [], notes: [],
     place: place(path, [ENGINE], shape, ENGINE, base ? { pointer: base } : {}),

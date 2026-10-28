@@ -73,3 +73,8 @@ export function scrubTree(value: JsonValue, hint: string, pointer = '', key = ''
   };
   return { value: walk(value, pointer, key, []), replaced };
 }
+
+/** True when a name (a key, a server name, a tool name, a pattern) holds a secret shape, read as a key or as text. */
+export function secretName(name: string): boolean {
+  return scanSecrets([{ path: 'name.json', bytes: Buffer.from(JSON.stringify({ [name]: null })) }]).length > 0 || secretRule('name', name) !== null;
+}

@@ -99,7 +99,8 @@ test('a 0.7 managed copy becomes a definition skill with its source recorded; no
   unchanged(before, snapshot(p.dir), () => true);
   const r = loadDefinition(p.def);
   assert.equal(r.ok, true, JSON.stringify(r.problems));
-  assert.deepEqual(r.definition.sources, [{ name: 'example-tidy-skill', marketplace: 'https://registry.npmjs.org', version: '1.2.3', items: [{ part: 'skills', id: 'tidy' }] }]);
+  // C6: a source the 0.7 catalog only claims stays in the plan until the contract can mark it as claimed.
+  assert.deepEqual(r.definition.sources, []);
 });
 
 test('a managed copy that drifted from its projection is shown side by side, not picked', t => {

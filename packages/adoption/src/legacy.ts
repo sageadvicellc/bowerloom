@@ -76,7 +76,7 @@ const oldEngines = (ctx: Context, list: unknown): EngineId[] | null => {
 const relativePath = (p: unknown): p is string => typeof p === 'string' && p.length > 0 && p.length <= 512 && !p.startsWith('/') && !p.includes('\\') && !/[\0-\x1f\x7f]/.test(p)
   && p.split('/').every(seg => seg !== '' && seg !== '.' && seg !== '..');
 
-export const CLAIMED_APPROVAL = 'The source comes from what the 0.7 catalog claims. Bowerloom did not check it, and sources.json cannot mark it as claimed until the definition contract takes that field. A person checks it.';
+export const CLAIMED_APPROVAL = 'The source comes from what the 0.7 catalog claims, and Bowerloom did not check it. It is recorded in this plan only: sources.json gets it once the definition contract can mark it as claimed. A person checks it.';
 
 /**
  * 0.7 managed copies: `.bowerloom/managed/catalog/<item>.json` with the canonical copy in `.bowerloom/managed/skills/<id>`,
@@ -161,8 +161,12 @@ function convert(ctx: Context, catalog: string, id: string, canonical: string, s
   const got = readSkillFolder(r, canonical, place(canonical, reach, '0.7 managed copy', null, { kind: 'managed-0.7' }), reach, claimed ? { source: claimed } : {});
   r.consumed.add(canonical);
   if (!got || 'fault' in got) { ctx.managed.push({ ...record, reason: 'The canonical copy cannot be adopted; the unmapped list says why.' }); return; }
-  ctx.cands.push(claimed ? { ...got.skill, needsApproval: [...got.skill.needsApproval, CLAIMED_APPROVAL] } : got.skill, ...got.rules);
-  for (const a of got.lost) for (const e of reach) lose(ctx, e, a);
+  // Review item C1: a copy the catalog does not restrict reaches every engine of the harness, so its deny rules apply to
+  // each of them, and a deny it loses drops their allows.
+  const engines_ = engines ?? [...ctx.engines];
+  const rules = got.rules.map(c => ({ ...c, place: { ...c.place, engines: engines_ } }));
+  ctx.cands.push(claimed ? { ...got.skill, needsApproval: [...got.skill.needsApproval, CLAIMED_APPROVAL] } : got.skill, ...rules);
+  for (const a of got.lost) for (const e of engines_) lose(ctx, e, a);
   ctx.managed.push({ ...record, id, copies: [...new Set([...copies, canonical])] });
 }
 

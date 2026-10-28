@@ -17,7 +17,6 @@ const MESSAGES = {
   ADOPTION_PATH_UNSAFE: 'A path adoption would write is a link, is not yours, or sits in a folder that is not where adoption expects it. Adoption removed what it wrote.',
   ADOPTION_PARTIAL: 'Adoption stopped part way and could not remove every file it wrote. The journal stays in the state folder, so plan a recovery. The paths listed are left over.',
   ADOPTION_STATE_UNSAFE: 'The state folder must be a normalized absolute path outside the project, and a private folder of yours (mode 0700) when it exists.',
-  ADOPTION_STATE_INVALID: 'The adoption journal in the state folder is damaged, names another project, or names a path outside .bowerloom. Nothing was changed.',
   ADOPTION_RECOVERY_REQUIRED: 'An earlier adoption stopped part way, and its journal is in the state folder. Plan and approve a recovery first. Nothing was changed.',
   ADOPTION_RECOVER_NOTHING: 'No adoption of this project is unfinished, so there is nothing to recover.',
   ADOPTION_APPROVAL_REQUIRED: 'Items need a person\'s approval, and the approvals given do not confirm every one. Nothing was written.',

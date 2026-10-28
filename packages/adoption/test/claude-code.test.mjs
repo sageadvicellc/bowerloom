@@ -47,7 +47,7 @@ test('permission rules become guardrail rules; a rule outside the neutral langua
   // Ruling A2: the read deny with an absolute path and the WebSearch deny are lost, so the read and web allows go too.
   assert.match(reasonAt(plan, '.claude/settings.json', '/permissions/allow/1'), /a deny of this action could not be carried/);
   assert.match(reasonAt(plan, '.claude/settings.json', '/permissions/allow/2'), /a deny of this action could not be carried/);
-  assert.deepEqual(plan.unmapped.filter(u => u.gate === 'acknowledge').map(u => u.pointer), ['/permissions/deny/1', '/permissions/deny/6']);
+  assert.deepEqual(plan.unmapped.filter(u => u.gate === 'acknowledge').map(u => u.pointer), ['/permissions/defaultMode', '/permissions/deny/1', '/permissions/deny/6']);
   assert.match(reasonAt(plan, '.claude/settings.json', '/permissions/deny/1'), /absolute/);
   assert.match(reasonAt(plan, '.claude/settings.json', '/permissions/deny/6'), /web search alone/);
   assert.match(reasonAt(plan, '.claude/settings.json', '/permissions/allow/3'), /no form for this tool/);

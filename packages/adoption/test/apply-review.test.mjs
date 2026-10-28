@@ -44,14 +44,15 @@ test('A11: after a crash, the plan asks for recovery; recovery removes exactly t
   assert.throws(() => planAdoptionRecovery({ projectDir: p.dir, stateDir: p.stateDir }), code('ADOPTION_RECOVER_NOTHING'));
 });
 
-test('A11: a journal that names another project or holds a path outside .bowerloom is refused', async t => {
+test('A11, C8: a journal that names another project or holds a path outside .bowerloom is damaged: recovery clears it only', async t => {
   const p = project(t, files);
   fs.mkdirSync(p.stateDir, { recursive: true, mode: 0o700 });
   const journal = path.join(p.stateDir, 'adoption-pending.json');
   fs.writeFileSync(journal, json({ format: 'bowerloom/adoption-pending/v1beta1', projectDir: p.dir, planRevision: 'a'.repeat(64), files: [{ path: '../AGENTS.md', sha256: 'b'.repeat(64) }], dirs: [] }), { mode: 0o600 });
-  assert.throws(() => planAdoptionRecovery({ projectDir: p.dir, stateDir: p.stateDir }), code('ADOPTION_STATE_INVALID'));
+  assert.deepEqual(planAdoptionRecovery({ projectDir: p.dir, stateDir: p.stateDir }).journal, 'damaged');
   fs.writeFileSync(journal, json({ format: 'bowerloom/adoption-pending/v1beta1', projectDir: '/elsewhere', planRevision: 'a'.repeat(64), files: [], dirs: [] }), { mode: 0o600 });
-  assert.throws(() => planAdoptionRecovery({ projectDir: p.dir, stateDir: p.stateDir }), code('ADOPTION_STATE_INVALID'));
+  const damaged = planAdoptionRecovery({ projectDir: p.dir, stateDir: p.stateDir });
+  assert.deepEqual([damaged.journal, damaged.remove], ['damaged', []]);
 });
 
 test('A16: when apply cannot remove what it wrote, ADOPTION_PARTIAL carries the code of the error that stopped it', async t => {

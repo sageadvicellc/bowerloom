@@ -8,7 +8,7 @@ import { utf8 } from './files.js';
 import type { EngineId, EnvValue, JsonValue, McpTransport } from '../../harness-definition/src/index.js';
 import { lose, place, type Context, type LostAction } from './context.js';
 import type { Blocks, Gate, Place } from './model.js';
-import { referenceName, scrubTree, secretRule, withoutSecret } from './secrets.js';
+import { referenceName, scrubTree, secretName, secretRule, withoutSecret } from './secrets.js';
 
 export type Obj = Record<string, JsonValue>;
 export const isObj = (v: unknown): v is Obj => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -21,18 +21,20 @@ const CONTROL = /[\0-\x08\x0a-\x1f\x7f]/;
 export const oneLine = (v: unknown, max = 4096): v is string => typeof v === 'string' && v.trim() !== '' && v.length <= max && !CONTROL.test(v);
 
 export const PERMISSION_REASON = 'This key is permission-like, and a private block holds no permission-like key. It has no neutral form, so it is not adopted.';
+export const SECRET_NAME_REASON = 'This name looks like a secret, so the entry is not adopted. It is listed by place, never by name.';
 export const HOOK_APPROVAL = 'A hook runs a command. A person reads the command before Bowerloom writes it into an engine.';
 export const STDIO_APPROVAL = 'An MCP server that uses stdio runs a command. A person reads the command before Bowerloom writes it into an engine.';
 export const REFERENCE_APPROVAL = 'This MCP server holds a ${NAME} reference in its command, arguments, URL, environment, or headers, so it could send that value anywhere. A person checks where it goes.';
 
 /** Splits the keys of an object into a private block and permission-like keys, which are listed as unmapped. */
-export function privateKeys(ctx: Context, value: Obj, path: string, base: string, part: Parameters<Context['r']['miss']>[1], gate: Gate = 'none'): Obj {
+export function privateKeys(ctx: Context, value: Obj, path: string, base: string, part: Parameters<Context['r']['miss']>[1], gate: Gate = 'none', found?: { secret: boolean }): Obj {
   const out: Obj = {};
   const strip = (v: JsonValue, at: string): JsonValue | undefined => {
     if (Array.isArray(v)) return v.map((x, i) => strip(x, `${at}/${i}`) ?? null);
     if (!isObj(v)) return v;
     const o: Obj = {};
     for (const [k, x] of Object.entries(v)) {
+      if (secretName(k)) { ctx.r.miss(path, part, SECRET_NAME_REASON, `${at}${kp(v, k)}`, gate); if (found) found.secret = true; continue; }
       if (isPermissionKey(k)) { ctx.r.miss(path, part, PERMISSION_REASON, `${at}${kp(v, k)}`, gate); continue; }
       const s = strip(x, `${at}${kp(v, k)}`);
       if (s !== undefined) o[k] = s;
@@ -40,6 +42,7 @@ export function privateKeys(ctx: Context, value: Obj, path: string, base: string
     return o;
   };
   for (const [k, v] of Object.entries(value)) {
+    if (secretName(k)) { ctx.r.miss(path, part, SECRET_NAME_REASON, `${base}${kp(value, k)}`, gate); if (found) found.secret = true; continue; }
     if (isPermissionKey(k)) { ctx.r.miss(path, part, PERMISSION_REASON, `${base}${kp(value, k)}`, gate); continue; }
     const s = strip(v, `${base}${kp(value, k)}`);
     if (s !== undefined) out[k] = s;
@@ -92,7 +95,9 @@ export function readHooks(ctx: Context, value: JsonValue, at: { path: string; ba
       if (!isObj(group) || !Array.isArray(group.hooks)) { r.miss(at.path, 'hooks', 'A hook group needs a list of hooks.', gp); return; }
       const matcher = group.matcher;
       if (matcher !== undefined && matcher !== '' && !oneLine(matcher, 1024)) { r.miss(at.path, 'hooks', 'The matcher is not one line of text.', `${gp}/matcher`); return; }
-      const groupExtra = privateKeys(ctx, Object.fromEntries(Object.entries(group).filter(([k]) => k !== 'matcher' && k !== 'hooks')), at.path, gp, 'hooks');
+      const groupFound = { secret: false };
+      const groupExtra = privateKeys(ctx, Object.fromEntries(Object.entries(group).filter(([k]) => k !== 'matcher' && k !== 'hooks')), at.path, gp, 'hooks', 'none', groupFound);
+      if (groupFound.secret) return;
       group.hooks.forEach((h, hi) => {
         const hp = `${gp}/hooks/${hi}`;
         if (!isObj(h) || h.type !== 'command') { r.miss(at.path, 'hooks', 'Only command hooks are portable. Other handler types are absent in the other engines (locked-in parts spec, section 7.3 rule 1).', hp); return; }
@@ -104,7 +109,9 @@ export function readHooks(ctx: Context, value: JsonValue, at: { path: string; ba
           if (!Number.isSafeInteger(ms) || ms <= 0 || ms > 86_400_000) { r.miss(at.path, 'hooks', 'The timeout is not a number of seconds above 0 and at most one day, so the hook is adopted without it.', `${hp}/timeout`); }
           else timeout = ms;
         }
-        const extra = { ...groupExtra, ...privateKeys(ctx, Object.fromEntries(Object.entries(h).filter(([k]) => !HANDLER.has(k))), at.path, hp, 'hooks') };
+        const handlerFound = { secret: false };
+        const extra = { ...groupExtra, ...privateKeys(ctx, Object.fromEntries(Object.entries(h).filter(([k]) => !HANDLER.has(k))), at.path, hp, 'hooks', 'none', handlerFound) };
+        if (handlerFound.secret) return;
         const { blocks, secrets } = blockOf([at.engine], extra, at.path, hp, `${event}_hook`);
         ctx.cands.push({
           part: 'hooks', id: '', place: place(at.path, [at.engine], at.shape, at.engine, { pointer: hp }), blocks, secrets,
@@ -147,6 +154,7 @@ export function addServer(ctx: Context, s: ServerInput): void {
   const engines = s.engines.filter(e => ctx.engines.includes(e));
   if (engines.length === 0) return;
   const miss = (reason: string, pointer = s.base): void => r.miss(s.path, 'mcp', reason, pointer);
+  if (secretName(s.name)) return miss(SECRET_NAME_REASON);
   if (!isServerName(s.name)) return miss('The server name is not letters, digits, _ and -, up to 64 characters.');
   const secrets: { path: string; pointer: string; reference: string }[] = [];
   const server: { -readonly [K in keyof import('./model.js').ServerShape]: import('./model.js').ServerShape[K] } = { transport: s.transport };
@@ -174,6 +182,7 @@ export function addServer(ctx: Context, s: ServerInput): void {
     if (!isObj(v)) return miss(`The ${field} is not a map of text.`);
     const out: Record<string, EnvValue> = {};
     for (const [k, x] of Object.entries(v)) {
+      if (secretName(k)) return miss(SECRET_NAME_REASON, `${s.base}/${field}${kp(v, k)}`);
       if (typeof x !== 'string') return miss(`A value of ${field} is not text.`, `${s.base}/${field}${kp(v, k)}`);
       if (!PORTABLE_REF.test(x)) return miss(`A value of ${field} uses a $ form other than \${NAME}, such as \${NAME:-x} or $NAME. It is not portable, and Bowerloom never copies it as literal text.`, `${s.base}/${field}${kp(v, k)}`);
       const name = field === 'env' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(k) ? k : referenceName(s.name, k);
@@ -188,7 +197,9 @@ export function addServer(ctx: Context, s: ServerInput): void {
     else miss('The timeout is not a whole number of milliseconds above 0 and at most one day, so the server is adopted without it.', `${s.base}/timeout`);
   }
   if (s.enabled !== undefined) { if (typeof s.enabled === 'boolean') server.enabled = s.enabled; else miss('enabled is not true or false, so the server is adopted without it.', `${s.base}/enabled`); }
-  const extra = privateKeys(ctx, s.extra, s.path, s.base, 'mcp');
+  const found = { secret: false };
+  const extra = privateKeys(ctx, s.extra, s.path, s.base, 'mcp', 'none', found);
+  if (found.secret) return;
   const { blocks, secrets: blockSecrets } = blockOf([s.owner].filter(e => engines.includes(e)), extra, s.path, s.base, s.name);
   // Ruling A7: a reference anywhere the server reads it, its command, arguments, URL, environment, or headers.
   const refs = [server.command, server.url, ...(server.args ?? []), ...Object.values(server.env ?? {}), ...Object.values(server.headers ?? {})].some(v => typeof v === 'string' && v.includes('${'));

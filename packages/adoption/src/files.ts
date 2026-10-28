@@ -77,6 +77,13 @@ export class ProjectReader {
     return { bytes: got.bytes, sha256: got.state.sha256, executable: (got.state.mode & 0o111) !== 0 };
   }
 
+  /** Counts folder entries a search outside the readers listed. False, with nothing counted, when they would pass the budget. */
+  count(n: number): boolean {
+    if (this.entries + n > READ_BUDGET.entries) return false;
+    this.entries += n;
+    return true;
+  }
+
   /** The names of a folder, counted against the budget. */
   private names(rel: string): string[] | null {
     let names: string[];

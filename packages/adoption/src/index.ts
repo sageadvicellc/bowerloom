@@ -19,6 +19,5 @@ export { DSH_PINNED_TAG, READER_VERSIONS } from './context.js';
 export { SKILL_PLACES } from './portable-readers.js';
 export { UNMAPPED_LIMIT } from './plan.js';
 export { READ_BUDGET } from './files.js';
-export { NESTED_SEARCH_ENTRIES } from './portable-readers.js';
 export { TOML_MAX_DEPTH, parseTomlSubset } from './toml.js';
 export type { TomlCode, TomlResult } from './toml.js';
