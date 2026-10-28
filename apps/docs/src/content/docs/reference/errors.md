@@ -293,6 +293,65 @@ For example, a wrong approval printed this line on standard error in the test ru
 {"error":{"code":"SKILLS_REFUSED","message":"The skills command stopped (MANAGED_SKILL_STALE_APPROVAL). Inspect the exact local cache and operation records before another action; no native execution authority is granted."}}
 ```
 
+## Harness refusals
+
+The `bowerloom harness` commands adopt a folder into a 0.8 harness and install it for each engine. An engine is an agent application, such as Claude Code or Codex. Each refusal prints the code, the message, a plain sentence, and a `Next:` line. A message that names paths lists them after the sentence. A refusal that ends part way, such as `ADOPTION_PARTIAL` and `PORTABLE_PARTIAL`, keeps its record so that `bowerloom harness recover` can finish or undo the run.
+
+| Code | Meaning | Next action |
+| --- | --- | --- |
+| `ADOPTION_USAGE` | Bowerloom checks every adoption option before it writes, and one of them is not valid. | `bowerloom help harness` |
+| `ADOPTION_PROJECT_UNSAFE` | Adoption reads only a real folder that you own, with no link in its path. | `cd <real-project-folder>` |
+| `ADOPTION_DEFINED` | This folder already has a 0.8 harness, and adoption writes a new one only. | `bowerloom harness install` |
+| `ADOPTION_FOLDER_OCCUPIED` | The `.bowerloom` folder holds a name that adoption does not know, so adoption cannot read the folder whole. | Move that name out of `.bowerloom`, then run `bowerloom harness adopt` again. |
+| `ADOPTION_LEGACY_SKILL` | A 0.7 skill holds a field that a 0.8 harness cannot carry, and adoption never edits a skill in place. | Edit the skill to remove the field, then run `bowerloom harness adopt` again. |
+| `ADOPTION_OPENCODE_VERSION` | Adoption reads OpenCode files of version 1.18.30 only. | Check the OpenCode version, then run `bowerloom harness adopt` again. |
+| `ADOPTION_DSH_TAG` | Adoption reads DeepSeek Harness at tag 0.2.2-alpha.2 only, until a person rechecks the format. | Check the tag of DeepSeek Harness, then run `bowerloom harness adopt` again. |
+| `ADOPTION_CHOICE_INVALID` | A choice names a conflict or a variant that the plan does not have, or gives a name that is not a valid id. | Run `bowerloom harness adopt` with no choices to see the conflicts, then pass `--pick` or `--rename` for them. |
+| `ADOPTION_CHOICE_REQUIRED` | Two items share a name and differ, and adoption does not pick one for you. | Add `--pick <conflict>=<variant>` or `--rename <conflict>:<variant>=<id>` for each conflict. |
+| `ADOPTION_DEFINITION_INVALID` | The harness that adoption would write does not load, so adoption writes nothing. | `bowerloom harness adopt --json` |
+| `ADOPTION_STALE_APPROVAL` | A file changed after you approved the plan, and Bowerloom writes only the plan you saw. | run the same command again, without `--approve`, to see the new plan |
+| `ADOPTION_PATH_UNSAFE` | Adoption will not write through a link, over a file that is not yours, or into a folder it does not expect. | `ls -la .bowerloom` |
+| `ADOPTION_PARTIAL` | Adoption stopped part way and could not remove every file it wrote. The message lists the files left over. | `bowerloom harness recover --adoption` |
+| `ADOPTION_STATE_UNSAFE` | Bowerloom keeps its record of a harness in a private folder that only you can change, outside the project. | check the private state folder: `$XDG_STATE_HOME/bowerloom` when `XDG_STATE_HOME` is set, else `~/.local/state/bowerloom` |
+| `ADOPTION_RECOVERY_REQUIRED` | An earlier adoption stopped part way, and Bowerloom changes nothing else until it is recovered. | `bowerloom harness recover --adoption` |
+| `ADOPTION_RECOVER_NOTHING` | No adoption of this folder is unfinished. | `bowerloom harness status` |
+| `ADOPTION_APPROVAL_REQUIRED` | Some items need your confirmation, and you did not confirm every one. | Add `--confirm <part/id>` for each item the message lists. |
+| `ADOPTION_ACKNOWLEDGEMENT_REQUIRED` | Adoption did not read some entries, and one of them could hold a deny, an ask, or a sandbox value that limits access. | Add `--acknowledge <id>` for each entry the message lists. |
+| `ADOPTION_AT_IMPORT` | The instructions use an `@path` import. Only Claude Code expands one, so the other engines read it as text. | Replace the `@path` line with the text it imports, then run the command again. |
+| `ADOPTION_TOO_LARGE` | The folder holds more files, bytes, entries, or levels than adoption reads in one run. | Remove files that the harness does not need, or adopt a smaller folder. |
+| `ADOPTION_ABORTED` | A stop request ended the run, and adoption removed every file it had written. | run the same command again |
+| `ADOPTION_MERGE_NOTHING` | Merge has no work: the folder has no `CLAUDE.md`, its `CLAUDE.md` is empty or already follows `AGENTS.md`, or the harness instructions already hold its text. | `bowerloom harness status` |
+| `ADOPTION_INSTRUCTIONS_TOO_LARGE` | The merged instructions would pass 32 KiB, where Codex stops loading instructions. | Shorten `CLAUDE.md` or `.bowerloom/instructions/AGENTS.md`, then run `bowerloom harness merge` again. |
+| `PORTABLE_DEFINITION_INVALID` | The harness does not load, so Bowerloom installs nothing. | `bowerloom harness status` |
+| `PORTABLE_AT_IMPORT` | `AGENTS.md` uses an `@path` import. Only Claude Code expands one, so Codex and OpenCode read it as text. | Replace the `@path` line in `.bowerloom/instructions/AGENTS.md` with the text it imports. |
+| `PORTABLE_INSTRUCTIONS_TOO_LARGE` | `AGENTS.md` passes 32 KiB, where Codex stops loading instructions. | Shorten `.bowerloom/instructions/AGENTS.md`, then run the command again. |
+| `PORTABLE_ENGINE_NOT_LISTED` | You named an engine that `harness.json` does not list. | Pass `--engine` with an engine that `harness.json` lists. |
+| `PORTABLE_MERGE_NOT_BUILT` | Install never edits the harness, and Merge changes the instructions in it. | `bowerloom harness merge`, then `bowerloom harness install --reconcile accept-agents` |
+| `PORTABLE_PATH_UNSAFE` | A path is a link, is not a plain file or folder of yours, or is larger than 1 MiB. | Check each path the message names with `ls -la`. |
+| `PORTABLE_PATH_OCCUPIED` | A target holds files that Bowerloom did not write, and Bowerloom never overwrites them. | Move those files aside, then run the command again. |
+| `PORTABLE_MANAGED_COPY` | A 0.7 skills sync manages that skill copy, so install cannot write it. | `bowerloom harness adopt` |
+| `PORTABLE_CASE_CLASH` | Two paths differ only in letter case, and many file systems treat them as one. | Rename one of the two paths the message lists. |
+| `PORTABLE_DRIFT` | A file that Bowerloom wrote, or was about to replace, changed since the plan. | `bowerloom harness drift` |
+| `PORTABLE_STATE_UNSAFE` | Bowerloom keeps its record of an install in a private folder that only you can change, outside the project. | check the private state folder: `$XDG_STATE_HOME/bowerloom` when `XDG_STATE_HOME` is set, else `~/.local/state/bowerloom` |
+| `PORTABLE_STATE_INVALID` | A record in the private state folder is damaged, or a saved copy that it needs is gone. | `bowerloom harness recover`. If the message lists paths with no saved copy, add `--keep <path>` for each. |
+| `PORTABLE_STATE_FOREIGN` | The private state folder holds the record of another folder, and Bowerloom never uses it for this one. | Run the command from the folder that made the record. |
+| `PORTABLE_RECOVERY_REQUIRED` | An earlier install or removal stopped part way, and Bowerloom changes nothing else until it is recovered. | `bowerloom harness recover` |
+| `PORTABLE_PARTIAL` | The run stopped part way, and some files are not as planned. The message lists them. | `bowerloom harness recover` |
+| `PORTABLE_LOCK_LOST` | Bowerloom lost the project lock during the run, so it stopped and touched nothing more. | `bowerloom harness recover` |
+| `PORTABLE_FIDELITY` | An engine would carry an entry more weakly than the harness says, and nothing records that you accept the loss. | For each line the message lists that you accept, run `bowerloom harness accept <line-key>`, then plan again. |
+| `PORTABLE_NOTHING_PROJECTED` | No install is recorded for this folder, so there is nothing to remove. | `bowerloom harness status` |
+| `PORTABLE_RECOVER_NOTHING` | No install or removal is unfinished, and you named no path to keep or restore. | `bowerloom harness drift` |
+| `PORTABLE_USAGE` | Bowerloom checks every install option before it writes, and one of them is not valid. | `bowerloom help harness` |
+| `PORTABLE_ENGINE_VERSION` | Bowerloom writes engine files only for versions it has checked. | Set the engine version in `harness.json` to a version the message names, then run the command again. |
+| `PORTABLE_CONFLICT` | A file that Bowerloom would add entries to holds an entry of the same name, or a setting that changes what the entries mean. Bowerloom never edits your entries. | Rename one of the two entries, then run the command again. |
+| `PORTABLE_ENV_DEFAULT` | No engine is documented to expand a default such as `${NAME:-x}`, so Bowerloom never copies it as text. | Write `${NAME}` with no default, then run the command again. |
+| `PORTABLE_TARGET_INVALID` | A file that Bowerloom would add entries to is not valid JSON, TOML, or UTF-8 text, so Bowerloom cannot keep its bytes as they are. | Fix the file the message names, then run the command again. |
+| `PORTABLE_UNSAFE_VALUE` | A value would change meaning in the engine file, because the engine replaces it or reads it as code. | Edit the value the message names, then run the command again. |
+| `PORTABLE_MODE_UNSAFE` | A mode that lets the group or others write a file is never recorded. | `bowerloom harness recover --restore-mode <path>`, or run `chmod go-w <path>` first and then `--record-mode <path>`. |
+| `PORTABLE_ORDER_UNSAFE` | OpenCode moves a whole-number key to the front of its object, so the order of its last-match rules would change. | Rename the key or pattern so that it is not a whole number. |
+| `HARNESS_STATE_TWO_RECORDS` | Two private records exist for this folder, one from the earlier app and one shared, and Bowerloom does not pick one. | Move the record you do not want aside in the private state folder: `$XDG_STATE_HOME/bowerloom` when `XDG_STATE_HOME` is set, else `~/.local/state/bowerloom`. Then run the command again. |
+| `HARNESS_APPROVAL_STALE` | The entry that this approval names changed, or is gone, since the line was shown. | Plan again with `bowerloom harness install`, then run `bowerloom harness accept <line-key>` for the new line. |
+
 ## Stop results
 
 | Result | Meaning | Next action |
