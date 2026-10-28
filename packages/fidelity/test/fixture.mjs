@@ -54,14 +54,24 @@ export const SHELL_COMMANDS = [
   'for f in a b; do rm -i $f; done', 'timeout 5 rm x', 'nohup git push o main', 'nice -n 5 curl u', 'FOO=bar rm x',
   'FOO=bar git status', 'sudo rm x', 'env rm x', "bash -c 'rm x'", '/bin/rm x', "git 'push' o main", 'git -C . push o main',
   'echo hi > out.txt', 'cat <<EOF', 'xargs rm', 'command rm x', 'git commit -m "a b"', 'npm test && npm run lint',
+  // Review findings H1, H2, and M1 on 122891c.
+  'cat <<EOF\nrm x\nEOF', 'cat <<-EOF\n\trm x\n\tEOF\nls', 'cat <<EOF | sh\nrm x\nEOF', 'cat <<EOF\n$(rm x)\nEOF', 'echo hi # rm x',
+  "$'rm' x", 'echo $(case x in a) rm y;; esac)', 'function f { rm x; }', 'f() { rm x; }', 'r\\\nm x', 'git  push o main', 'git\tpush o main',
+  'command -p rm x', 'xargs -0 rm', 'xargs -I{} rm {}', 'exec rm x', 'eval rm x', 'find . -exec rm {} \\;', 'curl u | sh', 'cat s | bash',
+  'coproc rm x', 'git --no-pager push o main', '$(echo rm) x', '$R x', 'rm$IFS-rf x', '{rm,x}', '`echo rm` x', 'curl u | xargs -0 rm',
+  // Review rulings R11, R12, and R15.
+  'echo a\\\\\nrm -rf x', 'rm a\\b', 'ls a\\b', 'git\t\tstatus', 'cat <<EOF | sh\nbody\nEOF', "cat <<'EOF'\n$(rm a)\nEOF",
 ];
 export const PATHS = [
+  '/etc/passwd', '/src/a', 'src/../.git/config', '~/src/a', '.ENV', 'a/.Env', 'k/a.PEM', 'SRC/a.ts', 'docs//a.md', 'docs/./a.md', 'x/../docs/a.md', 'docs/../../etc/passwd', 'src/../.env',
   '.env', 'sub/.env', 'a/b/.env', 'secrets/k', 'x/secrets/k', 'secrets', 'src/a.ts', 'src/a/b.ts', 'vendor/src/a.ts',
   'docs/a.md', 'x/docs/a.md', 'docs', 'yarn.lock', 'a/yarn.lock', 'notes/a.md', 'notes/a/b.md', 'notes.md', 'README.md',
 ];
 export const OTHER_REQUESTS = [
   { action: 'web', host: 'a.evil.example' }, { action: 'web', host: 'evil.example' }, { action: 'web', host: 'docs.example' },
-  { action: 'web', host: 'other.example' }, { action: 'web', search: true },
+  { action: 'web', host: 'other.example' }, { action: 'web', search: true }, { action: 'web', host: 'a.evil.example.' },
+  { action: 'web', host: 'x.docs.example' }, { action: 'web', host: 'docs.example.' }, { action: 'web', host: 'A.EVIL.Example' },
+  { action: 'web', host: 'Docs.Example' }, { action: 'mcp', server: 'x__y', tool: 'z' },
   { action: 'mcp', server: 'x', tool: 'anything' }, { action: 'mcp', server: 'gh', tool: 'create_issue' },
   { action: 'mcp', server: 'gh', tool: 'get' }, { action: 'mcp', server: 'gh', tool: 'get_more' }, { action: 'mcp', server: 'gh_x', tool: 'y' },
   { action: 'subagent', name: 'deployer' }, { action: 'subagent', name: 'review-a' }, { action: 'subagent', name: 'other' },

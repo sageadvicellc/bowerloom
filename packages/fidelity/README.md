@@ -16,15 +16,17 @@ Spec: `2026-10-27-bowerloom-locked-in-parts.md`, sections 2, 3, 8, 10, 11, and 1
 
 A guardrail pattern is plain text in the contract. This package gives it a meaning.
 
-- **Shell**: Claude Code's Bash pattern. `*` matches any text. A trailing ` *` or `:*` that is the only wildcard also matches the bare command. A command line is split into its simple commands. When any of them matches, a `deny` or `ask` fires. An `allow` needs every one to match. The wrappers that Claude Code strips are stripped. A `deny` or `ask` also skips a leading `NAME=value`.
-- **Read, edit, write**: a path relative to the project root, in gitignore style. `*` stays in one folder, and `**` spans folders. A bare name matches at any depth. A pattern with a `/` matches from the root in an `allow`, and at any depth in a `deny` or `ask`. `edit` and `write` are one action. A `read` deny also blocks a change.
-- **Web**: a host name. The pattern `*` also covers web search.
+- **Shell**: Claude Code's Bash pattern. `*` matches any text. A trailing ` *` or `:*` that is the only wildcard also matches the bare command. A command line is split into its simple commands. When any of them matches, a `deny` or `ask` fires. An `allow` needs every one to match.
+  - Runs of spaces and tabs count as one space.
+  - The wrappers that Claude Code strips are stripped, and so are `command -p` and `xargs` with options before a literal program. A `deny` or `ask` also skips a leading `NAME=value`.
+  - Some forms are not fully parsed: a here-document, a comment, `$'...'`, `case`, a function, `eval`, `exec`, `coproc`, a pipe into a shell, and a program name built at run time. For these, the model never allows. When the program word of a deny or ask rule appears in the text, it asks. Otherwise the engine default applies.
+- **Read, edit, write**: a path relative to the project root, in gitignore style. `*` stays in one folder, and `**` spans folders. A bare name matches at any depth. A pattern with a `/` matches from the root in an `allow`, and at any depth in a `deny` or `ask`. A `deny` or `ask` ignores letter case. `edit` and `write` are one action. A `read` deny also blocks a change.
+  - A request path is resolved first: `//`, `./`, and `..`. When a path is absolute or leaves the project, it matches no rule.
+- **Web**: a host name. Letter case and a trailing dot do not count. A `deny` or `ask` also covers subdomains. The pattern `*` also covers web search.
 - **MCP**: `server`, `server/tool`, or `*`.
 - **Subagent and skill**: a name, where `*` matches any text.
 
 A pattern outside this language is `absent` in every engine and never written. Examples: an absolute path, `..`, `!`, `?` in a path, or a URL in a web rule.
-
-Claude Code reads these languages natively, so most Claude Code results are `exact`.
 
 ## Tighten, then refuse
 
@@ -33,28 +35,47 @@ When an engine cannot carry a rule exactly:
 - When the engine can block more, a `deny` or `ask` is tightened. The line is `translated` and names what it blocks extra.
 - An `allow` is never widened. When the engine reads it more widely, the line is `absent` and nothing is written.
 - A neutral `allow` never becomes a Codex `allow` rule. The line is `translated`, and it says nothing was written.
+- When a listed escape covers common forms of the rule's own program, the line is `weakened`.
 - A rule the engine has no place for is `absent`. `checkFidelity` refuses an enforced one unless a recorded approval exists.
 
 | | Claude Code | Codex | OpenCode 1.x | Pi | DeepSeek Harness |
 | --- | --- | --- | --- | --- | --- |
-| Shell deny or ask | exact | translated to a literal prefix, or absent with no prefix | translated, ordered | absent | absent |
-| Shell allow | exact | translated, not written | translated, or absent for a wider reading | absent | absent |
-| Path rules | exact | translated to the sandbox filesystem table | translated | absent | absent |
-| Web, skill, subagent | exact, or tightened | absent | translated or exact | absent | absent |
+| Shell deny or ask | translated | weakened, or translated with a sandbox; absent with no literal prefix | translated, spaces written as `*` | absent | absent |
+| Shell allow | translated | translated, not written | translated, or absent for a wider reading | absent | absent |
+| Path deny or ask | translated, or exact with a files sandbox | read: translated; change: weakened | translated | absent | absent |
+| Web deny or ask | translated, or exact with a network sandbox | absent | translated | absent | absent |
+| Skill, subagent | exact, or tightened | absent | exact | absent | absent |
 | MCP | exact, or tightened | translated to disabled tools | exact, or tightened | absent | absent |
 | Sandbox | exact | exact | absent | absent | translated |
 
+Each engine form also records its default for a request that no rule matches (`defaults`). For OpenCode, whose own default is allow, Bowerloom writes `"*": { "*": "ask" }` as the first key. Pi has no place for a default, so its default stays allow.
+
 ## Known escapes
 
-Matching is on the command text, so some forms escape a rule. Every shell loss line lists the escapes of its engine. In every engine: `sudo`, `env`, `bash -c`, an absolute program path, and quoting. Codex and OpenCode also strip no wrapper and keep a leading `NAME=value`. For a `bash -lc` script of plain words, Codex splits the commands. For any other script, it does not. `escapesOf(engine, request)` names the escapes a request uses.
+Matching is on the text as written, so some forms escape a rule. `KNOWN_ESCAPES` lists each one, with the engines it applies to. Every shell loss line lists the shell escapes of its engine, and every path loss line the path escapes.
+
+- In every engine: `sudo`, `env`, `bash -c`, an absolute program path, quoting, `find -exec`, and a flag before the subcommand.
+- Claude Code, Codex, and OpenCode parse commands themselves, and Bowerloom does not model their parsers. A here-document, `eval`, `exec`, `coproc`, a pipe into a shell, a program name built at run time, a comment, `$'...'`, `case`, and a function are listed. The live check of step 5 confirms each engine.
+- Codex and OpenCode strip no wrapper and keep a leading `NAME=value`. Codex splits a `bash -lc` script only when it holds plain words.
+- In paths: other letter case, and `//`, `./`, or `..`.
+
+`escapesOf(engine, request, rules)` names the escapes a request uses where the engine reads less than the model.
 
 ## For step 3
 
 - The forms are in memory. The OpenCode form is ordered lists, so a pattern such as `"1"` keeps its place. Write the 1.x shape for 1.x.
-- `privateBlocks` holds each entry's own block. Carry it unchanged.
+- `privateBlocks` holds the block of each entry that wrote something. Carry it unchanged. `excludedPrivateBlocks` lists the blocks of entries that wrote nothing, with the reason.
 - The DeepSeek Harness sandbox form names what the requirement asks for. The writer picks the mode for the pinned tag.
 - The Codex filesystem table binds only commands that run in the sandbox.
 
 ## The rulesync oracle
 
-`test/oracle.test.mjs` runs rulesync 43.2.0, a pinned dev dependency, on the same synthetic fixture. It runs in a child process. That process can write only inside a fresh temporary folder, and it cannot start a process or use the network. The test compares the decision of each engine for the same requests. Each difference must be on the section 11 list. The findings of 2026-10-28 that the list does not hold are kept apart in `FOUND_2026_10_28`. Until Hanna decides on them, the strict test is a TODO, and a pinned test fails on any new difference.
+`test/oracle.test.mjs` runs rulesync 43.2.0, a pinned dev dependency, on the same synthetic fixture. The test compares the decision of each engine for the same requests.
+
+These limits hold for the rulesync process:
+
+- It runs under macOS `sandbox-exec` with a profile that denies all network. A probe test shows that a process under the same profile cannot reach a local server. When `sandbox-exec` is missing or cannot apply the profile, the oracle tests are skipped with that reason. rulesync never runs without it.
+- Under the Node permission model, it can read only the rulesync package, `node_modules`, its fresh temporary folder, the Node install, and the preload. It can write only inside the temporary folder, and it cannot start a process or a worker. HOME is inside the temporary folder.
+- A preload also refuses Node's own network calls.
+
+Each difference must be on the list in section 11, items 3 and 4, of the locked-in parts spec. Two kinds of difference follow from review rulings made after item 4 was written: the OpenCode ask default (R8) and the OpenCode deny written with `*` for each space (R2). The test names them in `NOT_YET_IN_SPEC` and fails on any other difference. A TODO test stays until section 11 holds a line for each.

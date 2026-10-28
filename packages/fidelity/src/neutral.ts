@@ -7,20 +7,24 @@
  * The neutral pattern language of each action:
  * - `shell`: Claude Code's Bash pattern. `*` matches any text, spaces too. A trailing ` *` that is the only wildcard also
  *   matches the bare command, and a trailing `:*` means the same. A command line is split into its simple commands; a
- *   `deny` or `ask` fires when any of them matches, and an `allow` needs every one to match. Before matching, the
- *   wrappers Claude Code strips are stripped, and a `deny` or `ask` also skips leading `NAME=value` words. Matching is on
- *   the text as written, so quoting, `sudo`, `env`, `bash -c`, and absolute paths escape a rule in every engine, and
- *   every guardrail loss line says so (section 8.3 rule 6).
+ *   `deny` or `ask` fires when any of them matches, and an `allow` needs every one to match. Runs of spaces and tabs
+ *   count as one space (ruling R2). The wrappers Claude Code strips are stripped, and so are `command -p` and `xargs`
+ *   with options before a literal program (R4); a `deny` or `ask` also skips leading `NAME=value` words. A command line
+ *   with a form the splitter does not fully parse is never allowed from a rule (R1). Matching is on the text as
+ *   written, so quoting, `sudo`, `env`, `bash -c`, and absolute paths escape a rule in every engine, and every
+ *   guardrail loss line says so (section 8.3 rule 6).
  * - `read`, `edit`, `write`: the path language of `paths.ts`. `edit` and `write` are one action, a change to a file,
- *   because every engine joins them (section 8.4). A `read` deny also blocks a change to the same path.
- * - `web`: a host name, where `*` matches any text. The pattern `*` also covers web search.
+ *   because every engine joins them (section 8.4). A `read` deny also blocks a change to the same path. A request path
+ *   is resolved first; a `deny` or `ask` ignores letter case (R5).
+ * - `web`: a host name, where `*` matches any text. Letter case and a trailing dot do not count (R15); a `deny` or `ask`
+ *   also covers subdomains (R5). The pattern `*` also covers web search.
  * - `mcp`: `server` for every tool of a server, `server/tool`, or `*` for every server. A tool may hold `*`.
  * - `subagent` and `skill`: a name, where `*` matches any text.
  */
 import type { GuardrailEffect, GuardrailRule } from '../../harness-definition/src/index.js';
 import { combineParts, type Decision } from './decision.js';
-import { pathMatches, pathPatternProblem, type PathMode } from './paths.js';
-import { splitCommand, stripAssignments, stripWrappers } from './shell.js';
+import { normalizeRequestPath, pathMatches, pathPatternProblem, type PathMode } from './paths.js';
+import { collapseWhitespace, joinLines, opaqueForms, splitCommand, stripAssignments, stripWrappers } from './shell.js';
 
 /** One action a person or model asks an engine to take. */
 export type NeutralRequest =
@@ -77,24 +81,49 @@ export function bashPatternRegex(pattern: string): RegExp {
   return new RegExp(`^${p.split('*').map(esc).join('.*')}$`, 's');
 }
 
+/** Whose reading a shell matcher follows. `neutral` adds rulings R2 and R4 to Claude Code's documented reading. */
+export type ShellReading = 'neutral' | 'claude-code';
+
 /** The forms of one simple command that a rule of this effect is matched against. */
-export function shellForms(part: string, effect: GuardrailEffect): string[] {
-  const forms = new Set([part, stripWrappers(part)]);
+export function shellForms(part: string, effect: GuardrailEffect, reading: ShellReading = 'neutral'): string[] {
+  const strip = { options: reading === 'neutral' };
+  const start = reading === 'neutral' ? collapseWhitespace(part) : part;
+  const forms = new Set([start, stripWrappers(start, strip)]);
   if (effect !== 'allow') {
-    for (let i = 0; i < 4; i++) for (const f of [...forms]) { forms.add(stripAssignments(f)); forms.add(stripWrappers(f)); }
+    for (let i = 0; i < 4; i++) for (const f of [...forms]) { forms.add(stripAssignments(f)); forms.add(stripWrappers(f, strip)); }
   }
   return [...forms];
 }
 
-/** The decision of shell patterns, grouped by effect, for one command line. Shared with Claude Code, which is exact. */
-export function shellDecision(patterns: Readonly<Record<GuardrailEffect, readonly string[]>>, command: string): Decision {
+/** The decision of shell patterns, grouped by effect, for one command line, from the parsed parts only. */
+export function shellDecision(patterns: Readonly<Record<GuardrailEffect, readonly string[]>>, command: string, reading: ShellReading = 'neutral'): Decision {
   const parts = splitCommand(command);
   if (parts.length === 0) return 'default';
   const compiled = {
     deny: patterns.deny.map(bashPatternRegex), ask: patterns.ask.map(bashPatternRegex), allow: patterns.allow.map(bashPatternRegex),
   };
-  const hits = (effect: GuardrailEffect, part: string) => shellForms(part, effect).some(f => compiled[effect].some(re => re.test(f)));
+  const hits = (effect: GuardrailEffect, part: string) => shellForms(part, effect, reading).some(f => compiled[effect].some(re => re.test(f)));
   return combineParts(parts.map(part => hits('deny', part) ? 'deny' : hits('ask', part) ? 'ask' : hits('allow', part) ? 'allow' : 'default'));
+}
+
+/** The program word of a shell pattern: its first word, or null when that word holds a wildcard. */
+export function patternProgram(pattern: string): string | null {
+  const first = (pattern.endsWith(':*') ? `${pattern.slice(0, -2)} *` : pattern).trim().split(/\s+/)[0] ?? '';
+  return first === '' || first.includes('*') ? null : first;
+}
+
+/**
+ * For a command line with a form the splitter does not fully parse (ruling R1): the deny and ask rules whose program
+ * word appears anywhere in the text. A rule with no literal program word could match anything, so it counts.
+ */
+function failClosedRules<R extends RuleShape>(rules: readonly R[], command: string): R[] {
+  const text = joinLines(command);
+  return rules.filter(r => r.action === 'shell' && r.effect !== 'allow' && (() => {
+    const program = patternProgram(r.pattern);
+    if (program === null) return true;
+    const esc = program.replace(/[.+?^$()|{}[\]\\*]/g, '\\$&');
+    return new RegExp(`(?:^|[^A-Za-z0-9_-])${esc}(?:[^A-Za-z0-9_-]|$)`).test(text);
+  })());
 }
 
 /** The depth mode of a path rule of this effect. */
@@ -108,20 +137,41 @@ function mcpMatches(pattern: string, server: string, tool: string): boolean {
   return s === server && (t === undefined || globRegex(t).test(tool));
 }
 
+/**
+ * True when a path rule matches a request path. The path is normalized first (ruling R5); a path that leaves the
+ * project matches nothing. A deny or ask matches in any letter case, which blocks more; an allow does not.
+ */
+function pathRuleMatches(rule: RuleShape, path: string, mode: PathMode): boolean {
+  const normal = normalizeRequestPath(path);
+  return normal !== null && pathMatches(rule.pattern, normal, mode, rule.effect !== 'allow');
+}
+
+/**
+ * True when a web rule matches a host. Letter case and a trailing dot are ignored (ruling R15). A deny or ask also
+ * covers subdomains (ruling R5).
+ */
+function webMatches(rule: RuleShape, host: string): boolean {
+  const h = (host.endsWith('.') ? host.slice(0, -1) : host).toLowerCase();
+  const p = rule.pattern.toLowerCase();
+  return globRegex(p).test(h) || (rule.effect !== 'allow' && globRegex(`*.${p}`).test(h));
+}
+
 /** True when one neutral rule applies to one request. A rule outside the neutral language matches nothing. */
 export function ruleMatches(rule: RuleShape, request: NeutralRequest): boolean {
   if (patternProblem(rule) !== null) return false;
   switch (request.action) {
     case 'shell':
-      return rule.action === 'shell' && shellDecision({ deny: [], ask: [], allow: [], [rule.effect]: [rule.pattern] }, request.command) !== 'default';
+      if (rule.action !== 'shell') return false;
+      if (opaqueForms(request.command).length > 0) return failClosedRules([rule], request.command).length > 0;
+      return shellDecision({ deny: [], ask: [], allow: [], [rule.effect]: [rule.pattern] }, request.command) !== 'default';
     case 'read':
-      return rule.action === 'read' && pathMatches(rule.pattern, request.path, pathMode(rule.effect));
+      return rule.action === 'read' && pathRuleMatches(rule, request.path, pathMode(rule.effect));
     case 'edit': case 'write':
-      if (rule.action === 'read') return rule.effect === 'deny' && pathMatches(rule.pattern, request.path, 'any-depth');
-      return (rule.action === 'edit' || rule.action === 'write') && pathMatches(rule.pattern, request.path, pathMode(rule.effect));
+      if (rule.action === 'read') return rule.effect === 'deny' && pathRuleMatches(rule, request.path, 'any-depth');
+      return (rule.action === 'edit' || rule.action === 'write') && pathRuleMatches(rule, request.path, pathMode(rule.effect));
     case 'web':
       if (rule.action !== 'web') return false;
-      return 'search' in request ? rule.pattern === '*' : globRegex(rule.pattern).test(request.host);
+      return 'search' in request ? rule.pattern === '*' : webMatches(rule, request.host);
     case 'mcp':
       return rule.action === 'mcp' && mcpMatches(rule.pattern, request.server, request.tool);
     case 'subagent': case 'skill':
@@ -131,11 +181,14 @@ export function ruleMatches(rule: RuleShape, request: NeutralRequest): boolean {
 
 /**
  * The neutral decision for one request. For a shell request every simple command is judged on its own and the results
- * combine: any `deny` denies, else any `ask` asks, else `allow` only when every command is allowed.
+ * combine: any `deny` denies, else any `ask` asks, else `allow` only when every command is allowed. A command line with
+ * a form the splitter does not fully parse is never allowed from a rule: it asks when a deny or ask rule's program word
+ * appears in it, and otherwise gets the engine default (ruling R1).
  */
 export function neutralDecision(rules: readonly RuleShape[], request: NeutralRequest): Decision {
   const valid = rules.filter(r => patternProblem(r) === null);
   if (request.action === 'shell') {
+    if (opaqueForms(request.command).length > 0) return failClosedRules(valid, request.command).length > 0 ? 'ask' : 'default';
     const by = (effect: GuardrailEffect) => valid.filter(r => r.action === 'shell' && r.effect === effect).map(r => r.pattern);
     return shellDecision({ deny: by('deny'), ask: by('ask'), allow: by('allow') }, request.command);
   }
@@ -145,3 +198,20 @@ export function neutralDecision(rules: readonly RuleShape[], request: NeutralReq
   return matching.some(r => r.effect === 'allow') ? 'allow' : 'default';
 }
 
+/**
+ * The rules that decided the neutral decision: the rules of the deciding effect that match the request. For a command
+ * line the splitter does not fully parse, the deny and ask rules whose program word appears. Empty for `default`.
+ */
+export function decidingRules<R extends RuleShape>(rules: readonly R[], request: NeutralRequest): R[] {
+  const decision = neutralDecision(rules, request);
+  if (decision === 'default') return [];
+  const valid = rules.filter(r => patternProblem(r) === null);
+  if (request.action === 'shell' && opaqueForms(request.command).length > 0) return failClosedRules(valid, request.command);
+  const effect = decision as GuardrailEffect;
+  if (request.action === 'shell') {
+    const parts = splitCommand(request.command);
+    return valid.filter(r => r.action === 'shell' && r.effect === effect
+      && parts.some(part => shellDecision({ deny: [], ask: [], allow: [], [effect]: [r.pattern] }, part) !== 'default'));
+  }
+  return valid.filter(r => r.effect === effect && ruleMatches(r, request));
+}

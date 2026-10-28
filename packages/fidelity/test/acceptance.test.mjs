@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ENGINE_IDS, appliesTo, entryHash } from '../../../dist/packages/harness-definition/src/index.js';
 import {
-  DECISIONS, KNOWN_ESCAPES, NOT_WRITTEN, engineDecision, escapesOf, judgeGuardrails, morePermissive, neutralDecision, projectGuardrails,
+  DECISIONS, KNOWN_ESCAPES, NOT_WRITTEN, combineParts, decidingRules, engineDecision, openCodeRequest, openCodeWildcard, escapesOf, judgeGuardrails, morePermissive, neutralDecision, projectGuardrails,
   translateGuardrails,
 } from '../../../dist/packages/fidelity/src/index.js';
 import { MIXED_RULES, NOW, allRequests, random, rule, sandbox, source } from './fixture.mjs';
@@ -60,9 +60,12 @@ test('check 1: deny `git push * main` with allow `git *` gives a forbidden `git 
   assert.deepEqual(t.form.prefixRules.map(r => ({ pattern: r.pattern, decision: r.decision })), [{ pattern: ['git', 'push'], decision: 'forbidden' }]);
   assert.equal(t.form.prefixRules.some(r => r.decision === 'allow'), false);
   const deny = lineOf(t, 'no-push-main');
-  assert.equal(deny.result, 'translated');
+  // Ruling R14: common forms of git escape a Codex prefix rule, so with no sandbox the line is weakened.
+  assert.equal(deny.result, 'weakened');
   assert.match(deny.reason, /git push/);
   assert.match(deny.reason, /blocks more/);
+  const boxed = translateGuardrails('codex', { rules: [rule('no-push-main', 'shell', 'git push * main', 'deny')], sandbox: [sandbox()] });
+  assert.equal(lineOf(boxed, 'no-push-main').result, 'translated');
   const allow = lineOf(t, 'git-any');
   assert.equal(allow.result, 'translated');
   assert.match(allow.reason, /no Codex allow rule/);
@@ -144,9 +147,13 @@ test('check 2: every rule and sandbox field is projected or listed in the loss r
         if (line.result === 'absent') assert.equal(written.length, 0, `${entry.id} ${engine} absent but written`);
         else if (line.result === 'translated' && line.reason.includes(NOT_WRITTEN)) assert.equal(written.length, 0);
         else assert.ok(written.length > 0, `${entry.id} ${engine} ${line.result} but nothing written: ${line.reason}`);
+        // Ruling R16: a block goes with an entry that wrote something; otherwise it is reported as excluded.
         const block = entry.privateBlocks[engine];
-        if (line.result !== 'absent' && block !== undefined) assert.deepEqual(t.privateBlocks[entry.id], block);
-        else assert.equal(t.privateBlocks[entry.id], undefined);
+        if (written.length > 0 && block !== undefined) assert.deepEqual(t.privateBlocks[entry.id], block);
+        else {
+          assert.equal(t.privateBlocks[entry.id], undefined);
+          assert.equal(t.excludedPrivateBlocks.some(e => e.entry === entry.id), block !== undefined, `${entry.id} ${engine} excluded block`);
+        }
       }
       // Nothing is written that no entry asked for.
       for (const w of t.written) assert.ok([...rules, ...box].some(e => e.id === w.source), `${engine} wrote ${w.source}`);
@@ -166,23 +173,34 @@ test('check 2: the sandbox requirement has a line in every engine, with the resu
 // ---- The fidelity rule as a property ------------------------------------------------------------------------------------
 
 /**
- * Returns a message for each request where the engine decides more permissively than the neutral source, and the loss
- * report does not explain it: no rule that matches the request is `weakened` or `absent`, and the request is not a known
- * escape that the report lists for that engine.
+ * Returns a message for each request where the engine decides more permissively than the neutral source and the
+ * report does not explain it through the line that decided (ruling R1 on 122891c):
+ * - When the source decided by rules, every deciding rule's line must be `weakened` or `absent`, or list every known
+ *   escape of the engine that the request uses.
+ * - When the source decided nothing (`default`), the engine decision is its recorded default, or comes from rules; a
+ *   default must be one Bowerloom cannot write (Pi), and rules must explain it through their own lines in the same way.
  */
 function unexplained(rules, engine, requests) {
   const own = rules.filter(r => appliesTo(r, engine));
   const t = translateGuardrails(engine, { rules: own, sandbox: [] });
   const out = [];
+  const explains = (r, escapes) => ['weakened', 'absent'].includes(lineOf(t, r.id).result)
+    || (escapes.length > 0 && escapes.every(e => lineOf(t, r.id).reason.includes(KNOWN_ESCAPES[e].text)));
   for (const request of requests) {
     const neutral = neutralDecision(own, request);
     const projected = engineDecision(t.form, request);
     if (!morePermissive(projected, neutral)) continue;
-    const matching = own.filter(r => neutralDecision([r], request) !== 'default');
-    const lost = matching.some(r => ['weakened', 'absent'].includes(lineOf(t, r.id).result));
-    const escapes = escapesOf(engine, request);
-    const listed = escapes.length > 0 && matching.some(r => escapes.every(e => lineOf(t, r.id).reason.includes(KNOWN_ESCAPES[e].text)));
-    if (!lost && !listed) out.push(`${engine} ${JSON.stringify(request)}: ${projected} is more permissive than ${neutral}`);
+    const escapes = escapesOf(engine, request, own);
+    let deciders = decidingRules(own, request);
+    if (deciders.length === 0) {
+      deciders = own.filter(r => engineDecision(translateGuardrails(engine, { rules: [r], sandbox: [] }).form, request) === projected && projected !== t.form.defaults.decision);
+      if (deciders.length === 0) {
+        if (projected === t.form.defaults.decision && !t.form.defaults.written && engine === 'pi') continue;
+        out.push(`${engine} ${JSON.stringify(request)}: the engine default ${projected} is more permissive than ${neutral}`);
+        continue;
+      }
+    }
+    if (!deciders.every(r => explains(r, escapes))) out.push(`${engine} ${JSON.stringify(request)}: ${projected} is more permissive than ${neutral} (${deciders.map(r => r.id)}; escapes ${escapes})`);
   }
   return out;
 }
@@ -200,18 +218,29 @@ test('fidelity rule: the same holds for 200 random rule sets', () => {
   }
 });
 
-test('fidelity rule: where Claude Code carries every matching rule exactly, its decision equals the neutral one', () => {
-  const t = translateGuardrails('claude-code', { rules: MIXED_RULES, sandbox: [] });
+test('fidelity rule: where Claude Code carries every matching rule exactly and no escape applies, its decision equals the neutral one', () => {
+  const t = translateGuardrails('claude-code', { rules: MIXED_RULES, sandbox: [sandbox()] });
   let compared = 0;
   for (const request of allRequests()) {
+    if (escapesOf('claude-code', request, MIXED_RULES).length) continue;
+    // A trailing dot: the model ignores it (R15), and Claude Code may not, so Claude Code is narrower there.
+    if (request.action === 'web' && request.host?.endsWith('.')) continue;
     const matching = MIXED_RULES.filter(r => neutralDecision([r], request) !== 'default');
     if (matching.some(r => lineOf(t, r.id).result !== 'exact')) continue;
-    assert.equal(engineDecision(t.form, request), neutralDecision(MIXED_RULES, request), JSON.stringify(request));
+    const n = neutralDecision(MIXED_RULES, request);
+    const expected = n === 'default' ? t.form.defaults.decision : n;
+    const got = engineDecision(t.form, request);
+    // A line that says it blocks more may make Claude Code stricter, never looser.
+    const tightened = morePermissive(expected, got) && MIXED_RULES.some(r => /blocks more/.test(lineOf(t, r.id).reason)
+      && engineDecision(translateGuardrails('claude-code', { rules: [r], sandbox: [] }).form, request) === got);
+    if (!tightened) assert.equal(got, expected, JSON.stringify(request));
     compared++;
   }
-  assert.ok(compared > 100, `compared ${compared}`);
+  assert.ok(compared > 60, `compared ${compared}`);
+  // With a sandbox that covers files and network, only shell lines (R1), tightened names, and absent allows are not exact.
   const notExact = t.lines.filter(l => l.result !== 'exact').map(l => [l.entry, l.result]);
-  assert.deepEqual(notExact, [['no-mcp-x', 'translated'], ['agents-ok', 'absent']]);
+  const shellIds = MIXED_RULES.filter(r => r.action === 'shell').map(r => [r.id, 'translated']);
+  assert.deepEqual(notExact, [...shellIds, ['no-mcp-x', 'translated'], ['agents-ok', 'absent']]);
 });
 
 test('every guardrail loss line lists the escapes known in every engine (spec 8.3 rule 6)', () => {
@@ -256,11 +285,34 @@ test('check 9: OpenCode rules, read as last match wins, give the fixed-precedenc
   const t = translateGuardrails('opencode', { rules: OPENCODE_EXACT, sandbox: [] });
   let compared = 0;
   for (const request of allRequests()) {
-    if (escapesOf('opencode', request).length) continue;
-    assert.equal(engineDecision(t.form, request), neutralDecision(OPENCODE_EXACT, request), JSON.stringify(request));
+    if (escapesOf('opencode', request, OPENCODE_EXACT).length) continue;
+    // The neutral default is the engine default, which Bowerloom writes for OpenCode as ask (ruling R8).
+    const n = neutralDecision(OPENCODE_EXACT, request);
+    const expected = n === 'default' ? t.form.defaults.decision : n;
+    const got = engineDecision(t.form, request);
+    // R2 writes each space of a deny or ask as *, which also blocks forms the model misses: stricter, and said so.
+    const tightened = morePermissive(expected, got) && OPENCODE_EXACT.some(r => r.effect === got && /blocks more/.test(lineOf(t, r.id).reason)
+      && engineDecision(translateGuardrails('opencode', { rules: [r], sandbox: [] }).form, request) === got);
+    if (!tightened) assert.equal(got, expected, JSON.stringify(request));
     compared++;
   }
   assert.ok(compared > 100, `compared ${compared}`);
+});
+
+test('check 9: over the written rules, last match wins gives the same decision as the fixed precedence, for every request', () => {
+  const rank = { deny: 0, ask: 1, allow: 2 };
+  for (const rules of [OPENCODE_EXACT, MIXED_RULES]) {
+    const form = translateGuardrails('opencode', { rules, sandbox: [] }).form;
+    for (const request of allRequests()) {
+      const { permission, subjects } = openCodeRequest(request);
+      const fixed = subjects.map(subject => {
+        const hits = form.permission.filter(k => k.key !== '*' && openCodeWildcard(permission, k.key))
+          .flatMap(k => k.rules.filter(r => openCodeWildcard(subject, r.pattern)).map(r => r.action));
+        return hits.length ? hits.sort((a, b) => rank[a] - rank[b])[0] : form.defaults.decision;
+      });
+      assert.equal(engineDecision(form, request), combineParts(fixed), JSON.stringify(request));
+    }
+  }
 });
 
 test('check 9: each key is written allow first, then ask, then deny, whatever the source order', () => {

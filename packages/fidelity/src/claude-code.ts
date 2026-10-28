@@ -1,14 +1,19 @@
 /**
  * Claude Code: `permissions.allow`, `permissions.ask`, and `permissions.deny` in `settings.json`, and the sandbox.
- * Claude Code 2.1.310. The neutral pattern languages are Claude Code's, so most rules are `exact` (locked-in parts spec,
- * section 10). Tool names follow section 8.4: `write` becomes `Edit`, because a `Write` rule never matches.
+ * Claude Code 2.1.310. The neutral pattern languages are Claude Code's (locked-in parts spec, section 10). Tool names
+ * follow section 8.4: `write` becomes `Edit`, because a `Write` rule never matches.
+ *
+ * Review rulings on 122891c: a shell line is `translated`, because Claude Code's own command parser is not Bowerloom's
+ * (R1). A path or web deny or ask is `translated`, because a shell command can still reach the path or host, unless a
+ * sandbox the engine carries covers it (R3). A web deny also covers subdomains and a trailing dot (R5). A read deny
+ * writes `Read`, `Edit`, and `Write` (R6).
  */
 import type { GuardrailRule, SandboxRequirement } from '../../harness-definition/src/index.js';
 import type { Decision } from './decision.js';
 import { escapeSentence } from './escapes.js';
 import { bashPatternRegex, globRegex, shellDecision, type NeutralRequest } from './neutral.js';
 import { listMatches, type PathMode } from './paths.js';
-import { Collector, type SandboxForm, type Translation } from './translation.js';
+import { Collector, type EngineDefault, type SandboxForm, type Translation } from './translation.js';
 
 export interface ClaudeCodeLists {
   readonly allow?: readonly string[];
@@ -20,7 +25,15 @@ export interface ClaudeCodeForm {
   readonly engine: 'claude-code';
   readonly permissions: { readonly allow: readonly string[]; readonly ask: readonly string[]; readonly deny: readonly string[] };
   readonly sandbox?: SandboxForm;
+  readonly defaults: EngineDefault;
 }
+
+/** Claude Code's default for a request no rule matches. */
+export const CLAUDE_CODE_DEFAULT: EngineDefault = Object.freeze({
+  decision: 'default',
+  written: false,
+  reason: 'Claude Code applies its permission mode to a request no rule matches. Bowerloom writes no mode (section 8.3 rule 12). The research notes do not record what the default mode decides for each tool, so the live check of step 5 records it.',
+});
 
 /** A Claude Code tool call: the tool name and the one field a rule reads. */
 export interface ClaudeCodeRequest {
@@ -51,7 +64,8 @@ function listHits(list: readonly string[], effect: 'allow' | 'ask' | 'deny', req
     case 'Read':
       return all('Read') || listMatches(specs('Read').map(p => p.spec as string).filter(s => s !== undefined), request.path ?? '', mode);
     case 'WebFetch':
-      return all('WebFetch') || specs('WebFetch').some(p => p.spec?.startsWith('domain:') === true && globRegex(p.spec.slice(7)).test(request.host ?? ''));
+      // WebFetch matching ignores letter case (matching-semantics note, section 2: Case).
+      return all('WebFetch') || specs('WebFetch').some(p => p.spec?.startsWith('domain:') === true && globRegex(p.spec.slice(7).toLowerCase()).test((request.host ?? '').toLowerCase()));
     case 'Agent': case 'Skill':
       return all(request.tool) || specs(request.tool).some(p => p.spec !== undefined && bashPatternRegex(p.spec).test(request.name ?? ''));
     default:
@@ -71,7 +85,7 @@ export function claudeCodeDecide(lists: ClaudeCodeLists, request: ClaudeCodeRequ
   const deny = lists.deny ?? [], ask = lists.ask ?? [], allow = lists.allow ?? [];
   if (request.tool === 'Bash') {
     const bash = (list: readonly string[]) => list.map(parse).filter(p => p.tool === 'Bash').map(p => p.spec ?? '*');
-    return shellDecision({ deny: bash(deny), ask: bash(ask), allow: bash(allow) }, request.command ?? '');
+    return shellDecision({ deny: bash(deny), ask: bash(ask), allow: bash(allow) }, request.command ?? '', 'claude-code');
   }
   if (listHits(deny, 'deny', request)) return 'deny';
   if (listHits(ask, 'ask', request)) return 'ask';
@@ -103,36 +117,64 @@ export function claudeCodeRequest(request: NeutralRequest): ClaudeCodeRequest {
 }
 
 export function claudeCodeFormDecide(form: ClaudeCodeForm, request: NeutralRequest): Decision {
-  return claudeCodeDecide(form.permissions, claudeCodeRequest(request));
+  const decision = claudeCodeDecide(form.permissions, claudeCodeRequest(request));
+  return decision === 'default' ? form.defaults.decision : decision;
+}
+
+/** Translates rules that are inside the neutral language. */
+/** The sandbox note of a path or web deny or ask (ruling R3), and whether a carried sandbox covers it. */
+export function bypassNote(rule: GuardrailRule, sandbox: readonly SandboxRequirement[], carried: boolean): { readonly covered: boolean; readonly note: string } {
+  if (rule.effect === 'allow' || !['read', 'edit', 'write', 'web'].includes(rule.action)) return { covered: true, note: '' };
+  const web = rule.action === 'web';
+  const box = carried ? sandbox.find(s => web ? s.network : s.files) : undefined;
+  if (box) return { covered: true, note: ` The sandbox ${box.id} keeps a shell command from reaching the ${web ? 'host' : 'path'} as well.` };
+  return { covered: false, note: ` A shell command can still reach the ${web ? 'host' : 'path'}${web ? ', as with curl' : ', as with cat or a redirect'}: no sandbox this engine carries covers it.` };
+}
+
+/** The Claude Code host patterns of a neutral web deny or ask: the host, its subdomains, and both with a trailing dot. */
+export function webDenyHosts(pattern: string): string[] {
+  const hosts = new Set([pattern, `*.${pattern}`, `${pattern}.`, `*.${pattern}.`]);
+  return [...hosts];
 }
 
 /** Translates rules that are inside the neutral language. */
 export function translateClaudeCode(rules: readonly GuardrailRule[], sandbox: readonly SandboxRequirement[], out: Collector): Translation<ClaudeCodeForm> {
   const lists = { allow: [] as string[], ask: [] as string[], deny: [] as string[] };
   const escapes = escapeSentence('claude-code');
+  const pathEscapes = escapeSentence('claude-code', 'path');
+  const parser = "Claude Code's own command parser is not Bowerloom's, so how it splits a command line is not known here; the live check of step 5 confirms it.";
   const put = (rule: GuardrailRule, text: string) => {
     const list = lists[rule.effect];
     out.wrote(rule.id, `permissions.${rule.effect}[${list.length}]`);
     list.push(text);
+  };
+  const carried = (rule: GuardrailRule, text: string) => {
+    const { covered, note } = bypassNote(rule, sandbox, true);
+    out.line(rule, covered ? 'exact' : 'translated', `${text}${note}`);
   };
   for (const rule of rules) {
     const p = rule.pattern;
     switch (rule.action) {
       case 'shell':
         put(rule, `Bash(${p})`);
-        out.line(rule, 'exact', `Claude Code carries the rule as Bash(${p}). ${escapes}`);
+        out.line(rule, 'translated', `Claude Code carries the rule as Bash(${p}). ${parser} ${escapes}`);
         break;
       case 'read':
         put(rule, `Read(${p})`);
-        out.line(rule, 'exact', `Claude Code carries the rule as Read(${p}). A Read deny also blocks Edit and Write.`);
+        if (rule.effect === 'deny') { put(rule, `Edit(${p})`); put(rule, `Write(${p})`); }
+        carried(rule, rule.effect === 'deny'
+          ? `Claude Code carries the rule as Read(${p}), Edit(${p}), and Write(${p}), so a change to the path is blocked too. ${pathEscapes}`
+          : `Claude Code carries the rule as Read(${p}). ${pathEscapes}`);
         break;
       case 'edit': case 'write':
         put(rule, `Edit(${p})`);
-        out.line(rule, 'exact', `Claude Code carries the rule as Edit(${p}), which covers Edit, Write, and NotebookEdit. A Write rule would never match.`);
+        carried(rule, `Claude Code carries the rule as Edit(${p}), which covers Edit, Write, and NotebookEdit. A Write rule would never match. ${pathEscapes}`);
         break;
       case 'web':
-        if (p === '*') { put(rule, 'WebFetch'); put(rule, 'WebSearch'); out.line(rule, 'exact', 'Claude Code carries the rule as WebFetch and WebSearch.'); }
-        else { put(rule, `WebFetch(domain:${p})`); out.line(rule, 'exact', `Claude Code carries the rule as WebFetch(domain:${p}). Web search has no domain, as in the source.`); }
+        if (p === '*') { put(rule, 'WebFetch'); put(rule, 'WebSearch'); carried(rule, 'Claude Code carries the rule as WebFetch and WebSearch.'); break; }
+        if (rule.effect === 'allow') { put(rule, `WebFetch(domain:${p})`); out.line(rule, 'exact', `Claude Code carries the rule as WebFetch(domain:${p}). Web search has no domain, as in the source.`); break; }
+        for (const host of webDenyHosts(p)) put(rule, `WebFetch(domain:${host})`);
+        carried(rule, `Claude Code carries the rule as WebFetch(domain:...) for ${webDenyHosts(p).join(', ')}, so subdomains and a trailing dot are covered. Web search has no domain, as in the source.`);
         break;
       case 'mcp': {
         if (p === '*') {
@@ -171,5 +213,5 @@ export function translateClaudeCode(rules: readonly GuardrailRule[], sandbox: re
     out.wrote(s.id, 'sandbox');
     out.line(s, 'exact', 'Claude Code turns its sandbox on for the files and network the requirement names.');
   }
-  return out.done<ClaudeCodeForm>({ engine: 'claude-code', permissions: lists, ...(box ? { sandbox: box } : {}) });
+  return out.done<ClaudeCodeForm>({ engine: 'claude-code', permissions: lists, ...(box ? { sandbox: box } : {}), defaults: CLAUDE_CODE_DEFAULT });
 }

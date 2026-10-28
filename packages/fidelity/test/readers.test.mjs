@@ -19,7 +19,7 @@ test('splitCommand splits at operators outside quotes and adds nested commands',
   assert.deepEqual(splitCommand('if true; then rm x; else rm -i y; fi'), ['true', 'rm x', 'rm -i y']);
   assert.deepEqual(splitCommand('for f in a b; do rm $f; done'), ['rm $f']);
   assert.deepEqual(splitCommand('ls 2>&1 >out'), ['ls 2>&1 >out']);
-  assert.deepEqual(splitCommand('a \\\n&& b'), ['a', 'b']);
+  assert.deepEqual(splitCommand('a \\\n&& b'), ['a', 'b'], 'a backslash-newline joins');
   assert.deepEqual(splitCommand(''), []);
 });
 
@@ -35,7 +35,8 @@ test('stripWrappers removes the wrappers Claude Code strips, with their options'
   assert.equal(stripWrappers('nice -n 5 nohup rm x'), 'rm x');
   assert.equal(stripWrappers('stdbuf -oL time -p make'), 'make');
   assert.equal(stripWrappers('xargs rm'), 'rm');
-  assert.equal(stripWrappers('xargs -I {} rm {}'), 'xargs -I {} rm {}');
+  assert.equal(stripWrappers('xargs -I {} rm {}'), 'rm {}', 'ruling R4: options are stripped before a literal program');
+  assert.equal(stripWrappers('xargs -I {} rm {}', { options: false }), 'xargs -I {} rm {}', 'Claude Code strips bare xargs only');
   assert.equal(stripWrappers('command -v rm'), 'command -v rm');
   assert.equal(stripWrappers('nohup'), 'nohup');
   assert.equal(stripWrappers('sudo rm x'), 'sudo rm x');
@@ -111,7 +112,9 @@ test('private blocks reach only their own engine', () => {
   assert.deepEqual(translateGuardrails('codex', { rules: [r], sandbox: [] }).privateBlocks, { d: { justification: 'kept' } });
   assert.deepEqual(translateGuardrails('claude-code', { rules: [r], sandbox: [] }).privateBlocks, {});
   const absent = rule('v', 'shell', '* --version', 'deny', { privateBlocks: { codex: { k: 1 } } });
-  assert.deepEqual(translateGuardrails('codex', { rules: [absent], sandbox: [] }).privateBlocks, {}, 'an absent entry carries nothing');
+  const t = translateGuardrails('codex', { rules: [absent], sandbox: [] });
+  assert.deepEqual(t.privateBlocks, {}, 'an absent entry carries nothing');
+  assert.deepEqual(t.excludedPrivateBlocks.map(e => e.entry), ['v']);
 });
 
 test('an engine filter keeps a rule out of the other engines', () => {

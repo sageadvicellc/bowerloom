@@ -16,7 +16,8 @@ import { escapeSentence } from './escapes.js';
 import type { NeutralRequest } from './neutral.js';
 import { normalizePath } from './paths.js';
 import { splitCommand } from './shell.js';
-import { Collector, type Translation } from './translation.js';
+import { bypassNote } from './claude-code.js';
+import { Collector, type EngineDefault, type Translation } from './translation.js';
 
 export interface OpenCodeRule {
   readonly pattern: string;
@@ -36,6 +37,7 @@ export interface OpenCodeForm {
   readonly permission: OpenCodePermission;
   /** Never set: OpenCode documents no sandbox. */
   readonly sandbox?: undefined;
+  readonly defaults: EngineDefault;
 }
 
 export interface WildcardOptions {
@@ -121,7 +123,18 @@ export function openCodePathPatterns(pattern: string, effect: GuardrailEffect): 
 }
 
 const RANK: Readonly<Record<GuardrailEffect, number>> = { allow: 0, ask: 1, deny: 2 };
-const KEY_ORDER = ['bash', 'read', 'edit', 'webfetch', 'websearch', 'task', 'skill'];
+const READ_LIKE = ['grep', 'glob', 'list'];
+const KEY_ORDER = ['*', 'bash', 'read', ...READ_LIKE, 'edit', 'webfetch', 'websearch', 'task', 'skill'];
+
+/**
+ * OpenCode's built-in default for a request no rule matches is allow (agent defaults come first, then the
+ * configuration). Bowerloom writes an explicit ask default as the first key (ruling R8); every later rule overrides it.
+ */
+export const OPENCODE_DEFAULT: EngineDefault = Object.freeze({
+  decision: 'ask',
+  written: true,
+  reason: 'OpenCode allows a request that no rule matches. Bowerloom writes "*": { "*": "ask" } as the first key, so such a request asks.',
+});
 
 export function translateOpenCode(rules: readonly GuardrailRule[], sandbox: readonly SandboxRequirement[], out: Collector): Translation<OpenCodeForm> {
   const keys = new Map<string, Map<string, { action: GuardrailEffect; sources: string[] }>>();
@@ -134,6 +147,10 @@ export function translateOpenCode(rules: readonly GuardrailRule[], sandbox: read
   };
   const ordered = 'Each key is written allow first, then ask, then deny, so last match wins gives the fixed precedence.';
   const escapes = escapeSentence('opencode');
+  const pathEscapes = escapeSentence('opencode', 'path');
+  const parser = "OpenCode's own command parser is not Bowerloom's, so how it splits a command line is not known here; the live check of step 5 confirms it.";
+  // OpenCode documents no sandbox, so a shell command can always reach a denied path or host (ruling R3).
+  const bypass = (rule: GuardrailRule) => bypassNote(rule, sandbox, false).note;
   for (const rule of rules) {
     const p = rule.pattern;
     const allow = rule.effect === 'allow';
@@ -144,28 +161,38 @@ export function translateOpenCode(rules: readonly GuardrailRule[], sandbox: read
         const widen: string[] = [];
         if (ocPattern.includes('?')) widen.push('OpenCode reads ? as any one character and has no escape');
         if (ocPattern.includes('\\')) widen.push('OpenCode reads \\ as /');
-        if (ocPattern.endsWith(' *') && stars > 1) widen.push('OpenCode makes a trailing " *" optional even beside another wildcard');
+        if (allow && ocPattern.endsWith(' *') && stars > 1) widen.push('OpenCode makes a trailing " *" optional even beside another wildcard');
+        if (allow && ocPattern.includes('/')) widen.push('OpenCode rewrites a backslash in the command to /, so a / in the allow also matches a command with a backslash');
         if (allow && widen.length) { out.line(rule, 'absent', `${widen.join('; ')}, so the allow would cover more commands than ${p}. Not written. ${escapes}`); break; }
-        put(rule, 'bash', ocPattern);
+        // Ruling R2: a deny or ask writes each literal space as *, so extra spaces and tabs between words are caught.
+        const written = allow ? ocPattern : ocPattern.replace(/\s+/g, '*').replace(/\*+/g, '*');
+        if (!allow && written !== ocPattern) widen.push('each space is written as *, so extra spaces and tabs are caught, and so is other text in those places');
+        put(rule, 'bash', written);
         const more = widen.length ? ` ${widen.join('; ')}, so it blocks more than ${p}.` : '';
-        out.line(rule, 'translated', `OpenCode carries the rule under bash as ${ocPattern}. ${ordered}${more} ${escapes}`);
+        out.line(rule, 'translated', `OpenCode carries the rule under bash as ${written}. ${ordered}${more} ${parser} ${escapes}`);
         break;
       }
       case 'read': case 'edit': case 'write': {
+        if (p.startsWith('$HOME')) { out.line(rule, 'absent', `OpenCode expands $HOME at the start of a path pattern, so ${p} would name a folder in the home folder, not the project path of the source. Not written. ${pathEscapes}`); break; }
         const { patterns, wider } = openCodePathPatterns(p, rule.effect);
-        if (allow && wider) { out.line(rule, 'absent', `OpenCode's * crosses /, so the allow would cover more paths than ${p}. Not written.`); break; }
+        if (allow && wider) { out.line(rule, 'absent', `OpenCode's * crosses /, so the allow would cover more paths than ${p}. Not written. ${pathEscapes}`); break; }
         const targets = rule.action === 'read' ? (rule.effect === 'deny' ? ['read', 'edit'] : ['read']) : ['edit'];
         for (const key of targets) for (const pattern of patterns) put(rule, key, pattern);
+        // Ruling R9: grep, glob, and list read files too, and their permission subject is not the path in the research
+        // notes, so a read deny or ask covers each whole tool.
+        const readLike = rule.action === 'read' && !allow;
+        if (readLike) for (const key of READ_LIKE) put(rule, key, '*');
         const more = wider ? ` OpenCode's * crosses /, so it blocks more than ${p}.` : '';
         const editToo = targets.length > 1 ? ' A read deny is also written under edit, because it blocks changes too.' : '';
-        out.line(rule, 'translated', `OpenCode carries the rule under ${targets.join(' and ')} as ${patterns.join(', ')}, matched against the path from the project root. ${ordered}${editToo}${more}`);
+        const tools = readLike ? ` It also ${rule.effect === 'deny' ? 'blocks' : 'asks for'} every grep, glob, and list, which read files too: it blocks more.` : '';
+        out.line(rule, 'translated', `OpenCode carries the rule under ${targets.join(' and ')} as ${patterns.join(', ')}, matched against the path from the project root. ${ordered}${editToo}${tools}${more}${bypass(rule)} ${pathEscapes}`);
         break;
       }
       case 'web': {
-        if (p === '*') { put(rule, 'webfetch', '*'); put(rule, 'websearch', '*'); out.line(rule, 'exact', 'OpenCode carries the rule as one action for webfetch and websearch.'); break; }
+        if (p === '*') { put(rule, 'webfetch', '*'); put(rule, 'websearch', '*'); out.line(rule, allow ? 'exact' : 'translated', `OpenCode carries the rule as one action for webfetch and websearch.${bypass(rule)}`); break; }
         if (allow) { out.line(rule, 'absent', `OpenCode 1.x takes one action for all of webfetch, so an allow for ${p} would allow every host. Not written.`); break; }
         put(rule, 'webfetch', '*');
-        out.line(rule, 'translated', `OpenCode 1.x takes one action for all of webfetch, so the rule covers every host: it blocks more than ${p}.`);
+        out.line(rule, 'translated', `OpenCode 1.x takes one action for all of webfetch, so the rule covers every host: it blocks more than ${p}.${bypass(rule)}`);
         break;
       }
       case 'subagent': case 'skill': {
@@ -190,6 +217,7 @@ export function translateOpenCode(rules: readonly GuardrailRule[], sandbox: read
   }
   for (const s of sandbox) out.line(s, 'absent', 'OpenCode documents no sandbox. Bowerloom never labels an OpenCode projection as sandboxed.');
 
+  keys.set('*', new Map([['*', { action: 'ask' as GuardrailEffect, sources: [] as string[] }], ...(keys.get('*') ?? new Map())]));
   const builtIn = KEY_ORDER.filter(k => keys.has(k));
   const mcp = [...keys.keys()].filter(k => !KEY_ORDER.includes(k))
     .sort((a, b) => RANK[keys.get(a)!.get('*')!.action] - RANK[keys.get(b)!.get('*')!.action] || (a < b ? -1 : a > b ? 1 : 0));
@@ -199,5 +227,5 @@ export function translateOpenCode(rules: readonly GuardrailRule[], sandbox: read
     entries.forEach(([, v], i) => { for (const source of v.sources) out.wrote(source, `permission.${key}[${i}]`); });
     permission.push({ key, rules: entries.map(([pattern, v]) => ({ pattern, action: v.action })) });
   }
-  return out.done<OpenCodeForm>({ engine: 'opencode', version: 1, permission });
+  return out.done<OpenCodeForm>({ engine: 'opencode', version: 1, permission, defaults: OPENCODE_DEFAULT });
 }

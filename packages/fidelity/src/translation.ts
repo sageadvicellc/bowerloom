@@ -10,6 +10,16 @@ export interface Written {
   readonly where: string;
 }
 
+/**
+ * What an engine decides for a request that no written rule matches (ruling R8). `written` is true when Bowerloom
+ * writes that default into the engine form itself.
+ */
+export interface EngineDefault {
+  readonly decision: import('./decision.js').Decision;
+  readonly written: boolean;
+  readonly reason: string;
+}
+
 /** The sandbox an engine will enforce. */
 export interface SandboxForm {
   readonly files: boolean;
@@ -22,8 +32,10 @@ export interface Translation<F> {
   /** One line per rule and sandbox requirement that applies to the engine, exact ones too. */
   readonly lines: readonly LossLine[];
   readonly written: readonly Written[];
-  /** The engine-private block of each entry that is not `absent`, unchanged, for the writer to carry. */
+  /** The engine-private block of each entry that wrote something, unchanged, for the writer to carry. */
   readonly privateBlocks: Readonly<Record<string, JsonValue>>;
+  /** The blocks of entries that wrote nothing, with why each is left out (ruling R16). */
+  readonly excludedPrivateBlocks: readonly { readonly entry: string; readonly reason: string }[];
 }
 
 /** Collects lines and writes while one engine is translated. */
@@ -33,10 +45,12 @@ export class Collector {
   readonly privateBlocks: Record<string, JsonValue> = {};
   constructor(readonly engine: EngineId) {}
 
+  private readonly blocks = new Map<string, JsonValue>();
+
   line(entry: GuardrailRule | SandboxRequirement, result: Result, reason: string): void {
     this.lines.push({ part: 'guardrails', entry: entry.id, engine: this.engine, result, reason });
     const block = entry.privateBlocks[this.engine];
-    if (result !== 'absent' && block !== undefined) this.privateBlocks[entry.id] = block;
+    if (block !== undefined) this.blocks.set(entry.id, block);
   }
 
   wrote(source: string, where: string): void {
@@ -44,7 +58,12 @@ export class Collector {
   }
 
   done<F>(form: F): Translation<F> {
-    return { engine: this.engine, form, lines: this.lines, written: this.written, privateBlocks: this.privateBlocks };
+    const excluded: { entry: string; reason: string }[] = [];
+    for (const [entry, block] of this.blocks) {
+      if (this.written.some(w => w.source === entry)) this.privateBlocks[entry] = block;
+      else excluded.push({ entry, reason: `The entry writes nothing in ${this.engine}, so its ${this.engine} block has no place to go.` });
+    }
+    return { engine: this.engine, form, lines: this.lines, written: this.written, privateBlocks: this.privateBlocks, excludedPrivateBlocks: excluded };
   }
 }
 

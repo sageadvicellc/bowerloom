@@ -9,12 +9,19 @@
  */
 import type { GuardrailRule, SandboxRequirement } from '../../harness-definition/src/index.js';
 import { escapeSentence } from './escapes.js';
-import { Collector, type SandboxForm, type Translation } from './translation.js';
+import { Collector, type EngineDefault, type SandboxForm, type Translation } from './translation.js';
 
 export interface NoRulesForm {
   readonly engine: 'pi' | 'deepseek-harness';
   readonly sandbox?: SandboxForm;
+  readonly defaults: EngineDefault;
 }
+
+/** The default of each engine with no rule list (ruling R8). Neither engine has a place to write one. */
+export const NO_RULES_DEFAULTS: Readonly<Record<NoRulesForm['engine'], EngineDefault>> = Object.freeze({
+  pi: { decision: 'allow', written: false, reason: 'Pi has no permission rules, so every action runs without asking. Pi has no place to write a default.' },
+  'deepseek-harness': { decision: 'default', written: false, reason: 'DeepSeek Harness applies its approval mode. Bowerloom writes no mode, and the research notes do not record what the default mode decides; the live check of step 5 records it.' },
+});
 
 const WHY: Readonly<Record<NoRulesForm['engine'], string>> = {
   pi: 'Pi has no permission rules, so the engine does not enforce this rule.',
@@ -30,5 +37,5 @@ export function translateNoRules(engine: NoRulesForm['engine'], rules: readonly 
     out.wrote(s.id, 'sandbox');
     out.line(s, 'translated', 'DeepSeek Harness carries the requirement as one of its sandbox modes, which is a mode and not a rule list. Every release is a prerelease, so the writer checks the mode against the pinned tag.');
   }
-  return out.done<NoRulesForm>({ engine, ...(box ? { sandbox: box } : {}) });
+  return out.done<NoRulesForm>({ engine, ...(box ? { sandbox: box } : {}), defaults: NO_RULES_DEFAULTS[engine] });
 }

@@ -17,7 +17,7 @@ import type { Decision } from './decision.js';
 import { escapeSentence } from './escapes.js';
 import type { NeutralRequest } from './neutral.js';
 import { normalizePath } from './paths.js';
-import { Collector, NOT_WRITTEN, type SandboxForm, type Translation } from './translation.js';
+import { Collector, NOT_WRITTEN, type EngineDefault, type SandboxForm, type Translation } from './translation.js';
 
 export interface CodexMcpDisable {
   readonly server: string;
@@ -32,7 +32,15 @@ export interface CodexForm {
   readonly filesystem: readonly CodexFilesystemEntry[];
   readonly mcpDisabled: readonly CodexMcpDisable[];
   readonly sandbox?: SandboxForm;
+  readonly defaults: EngineDefault;
 }
+
+/** Codex's default for a command no rule matches (ruling R8). */
+export const CODEX_DEFAULT: EngineDefault = Object.freeze({
+  decision: 'default',
+  written: false,
+  reason: 'Codex applies its approval policy and sandbox to a command that no rule matches: inside the sandbox it can run without asking, and it never leaves the sandbox without a person. Bowerloom writes no policy (section 8.3 rule 12).',
+});
 
 /** A token Codex compares as a literal and a shell passes through unchanged. */
 const LITERAL_TOKEN = /^[A-Za-z0-9_./:@%+,=^-]+$/;
@@ -48,7 +56,8 @@ export function codexPrefix(pattern: string): { readonly tokens: readonly string
   else if (body.endsWith(' *')) { body = body.slice(0, -2); tail = true; }
   const words = body.trim().split(/\s+/).filter(Boolean);
   const tokens: string[] = [];
-  for (const w of words) { if (!LITERAL_TOKEN.test(w)) break; tokens.push(w); }
+  // A NAME=value word ends the prefix (ruling R13): Codex would compare it as argv, which a shell never passes.
+  for (const w of words) { if (!LITERAL_TOKEN.test(w) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(w)) break; tokens.push(w); }
   if (tokens.length === 0) return null;
   return { tokens, same: tail && tokens.length === words.length };
 }
@@ -103,14 +112,21 @@ export function translateCodex(rules: readonly GuardrailRule[], sandbox: readonl
         prefixRules.push({ pattern: prefix.tokens, decision, justification: `Bowerloom guardrail ${rule.id}` });
         const shown = prefix.tokens.join(' ');
         const more = prefix.same ? '' : ` The rule covers every command that starts with ${shown}, so it blocks more than ${p}.`;
-        out.line(rule, 'translated', `Codex carries the rule as a ${decision} prefix rule on ${shown}, matched against argv.${more} ${escapes}`);
+        // Ruling R14: Codex checks a script with a glob, ~, $, a redirect, quotes around a variable, or a trailing & as
+        // one bash -lc command, so common forms of the rule's own program escape it. That is weakened, unless a
+        // sandbox that Codex carries bounds what an escaped command can do.
+        const box = sandbox[0];
+        const common = `Codex checks a command with a glob, ~, $, a redirect, quotes around a variable, or a trailing & as one bash -lc command, so common forms of ${shown} escape the rule.`;
+        out.line(rule, box ? 'translated' : 'weakened', `Codex carries the rule as a ${decision} prefix rule on ${shown}, matched against argv.${more} ${common}${box ? ` The sandbox ${box.id} bounds what an escaped command can do.` : ' No sandbox requirement bounds them.'} ${escapes}`);
         break;
       }
       case 'read': case 'edit': case 'write': {
         const { entries, more } = filesystemEntries(rule);
         for (const e of entries) { out.wrote(rule.id, `filesystem["${e.path}"]`); filesystem.push(e); }
         const extra = more.length ? ` It blocks more: ${more.join('; ')}.` : '';
-        out.line(rule, 'translated', `Codex carries the rule in the sandbox filesystem table as ${entries.map(e => `${e.path} = ${e.access}`).join(', ')}.${tightenAsk}${extra} ${sandboxNote}`);
+        // Ruling R17: apply_patch may not honor the filesystem table, so a change rule is weakened until step 5 checks it.
+        const patch = rule.action === 'read' ? '' : ' Codex edits files through apply_patch, which may not honor the filesystem table, so the rule is weakened until the live check of step 5 confirms it.';
+        out.line(rule, rule.action === 'read' ? 'translated' : 'weakened', `Codex carries the rule in the sandbox filesystem table as ${entries.map(e => `${e.path} = ${e.access}`).join(', ')}.${tightenAsk}${extra} ${sandboxNote}${patch} ${escapeSentence('codex', 'path')}`);
         break;
       }
       case 'web': case 'skill': case 'subagent':
@@ -139,11 +155,16 @@ export function translateCodex(rules: readonly GuardrailRule[], sandbox: readonl
     if (s.files && s.network) out.line(s, 'exact', 'Codex keeps its sandbox on, with writes limited to the workspace and no network.');
     else out.line(s, 'translated', `Codex sandboxes files and network together, so it also limits ${s.files ? 'the network' : 'files'}: it blocks more than the requirement.`);
   }
-  return out.done<CodexForm>({ engine: 'codex', prefixRules, filesystem: table, mcpDisabled, ...(box ? { sandbox: box } : {}) });
+  return out.done<CodexForm>({ engine: 'codex', prefixRules, filesystem: table, mcpDisabled, ...(box ? { sandbox: box } : {}), defaults: CODEX_DEFAULT });
 }
 
 /** What the translated Codex form decides for a neutral request. */
 export function codexFormDecide(form: CodexForm, request: NeutralRequest): Decision {
+  const decision = codexRulesDecide(form, request);
+  return decision === 'default' ? form.defaults.decision : decision;
+}
+
+function codexRulesDecide(form: CodexForm, request: NeutralRequest): Decision {
   switch (request.action) {
     case 'shell': return codexDecide(form.prefixRules, codexShellArgv(request.command));
     case 'read': return codexFilesystemDecide(form.filesystem, 'read', request.path);

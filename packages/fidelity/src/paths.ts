@@ -51,7 +51,7 @@ function segmentSource(segment: string): string {
 }
 
 /** The regular expression of a gitignore-style pattern for paths relative to the project root, with `/` separators. */
-export function pathRegex(pattern: string, mode: PathMode): RegExp {
+export function pathRegex(pattern: string, mode: PathMode, ignoreCase = false): RegExp {
   const { body, dirOnly, anchored } = normalizePath(pattern);
   const segments = body.split('/');
   let source = '';
@@ -68,13 +68,32 @@ export function pathRegex(pattern: string, mode: PathMode): RegExp {
   const deep = !anchored && (mode === 'any-depth' || !body.includes('/'));
   const head = deep && !body.startsWith('**') ? '(?:.*/)?' : '';
   const tail = dirOnly ? '/.+' : '(?:/.*)?';
-  return new RegExp(`^${head}${source}${tail}$`, 's');
+  return new RegExp(`^${head}${source}${tail}$`, ignoreCase ? 'si' : 's');
 }
 
-/** True when the pattern matches the path, or a folder that holds it. */
-export function pathMatches(pattern: string, path: string, mode: PathMode): boolean {
-  const subject = path.startsWith('./') ? path.slice(2) : path;
-  return pathRegex(pattern, mode).test(subject);
+/**
+ * True when the pattern matches the path, or a folder that holds it. `ignoreCase` reads letters in any case.
+ * Input contract (review finding C3): a request path is relative to the project root. It is normalized first, and a
+ * path that is absolute or leaves the project matches nothing.
+ */
+export function pathMatches(pattern: string, path: string, mode: PathMode, ignoreCase = false): boolean {
+  const subject = normalizeRequestPath(path);
+  return subject !== null && pathRegex(pattern, mode, ignoreCase).test(subject);
+}
+
+/**
+ * A request path with `//`, `.` segments, and `..` segments resolved (ruling R5), or null when it leaves the project.
+ * Requests are relative to the project root.
+ */
+export function normalizeRequestPath(path: string): string | null {
+  if (path.startsWith('/') || path.startsWith('~')) return null;
+  const out: string[] = [];
+  for (const segment of path.split('/')) {
+    if (segment === '' || segment === '.') continue;
+    if (segment === '..') { if (out.length === 0) return null; out.pop(); continue; }
+    out.push(segment);
+  }
+  return out.length === 0 ? null : out.join('/');
 }
 
 /**

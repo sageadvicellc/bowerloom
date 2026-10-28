@@ -56,7 +56,7 @@ export function engineDecision(form: EngineForm, request: NeutralRequest): Decis
     case 'claude-code': return claudeCodeFormDecide(form, request);
     case 'codex': return codexFormDecide(form, request);
     case 'opencode': return openCodeFormDecide(form, request);
-    case 'pi': case 'deepseek-harness': return 'default';
+    case 'pi': case 'deepseek-harness': return form.defaults.decision;
   }
 }
 
