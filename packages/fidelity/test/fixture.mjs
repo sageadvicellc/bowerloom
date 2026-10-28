@@ -1,5 +1,6 @@
 // Synthetic guardrail fixtures for the fidelity tests. No private paths, no real rules.
 import { ENGINE_IDS } from '../../../dist/packages/harness-definition/src/index.js';
+import { KNOWN_ESCAPES } from '../../../dist/packages/fidelity/src/index.js';
 
 export const NOW = new Date('2026-10-28T12:00:00Z');
 
@@ -91,4 +92,13 @@ export function random(seed) {
   let s = seed >>> 0;
   const next = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   return { next, pick: list => list[Math.floor(next() * list.length)] };
+}
+
+/**
+ * True when a loss line explains a decision more permissive than the source (review item W11): the line is `weakened`
+ * or `absent`, or the request uses at least one known escape and the line lists every escape the request uses.
+ */
+export function explains(line, escapes) {
+  if (line.result === 'weakened' || line.result === 'absent') return true;
+  return escapes.length > 0 && escapes.every(e => line.reason.includes(KNOWN_ESCAPES[e].text));
 }

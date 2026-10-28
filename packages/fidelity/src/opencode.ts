@@ -150,7 +150,7 @@ export function translateOpenCode(rules: readonly GuardrailRule[], sandbox: read
   const pathEscapes = escapeSentence('opencode', 'path');
   const parser = "OpenCode's own command parser is not Bowerloom's, so how it splits a command line is not known here; the live check of step 5 confirms it.";
   // OpenCode documents no sandbox, so a shell command can always reach a denied path or host (ruling R3).
-  const bypass = (rule: GuardrailRule) => bypassNote(rule, sandbox, false).note;
+  const bypass = (rule: GuardrailRule) => bypassNote(rule, sandbox, false);
   for (const rule of rules) {
     const p = rule.pattern;
     const allow = rule.effect === 'allow';

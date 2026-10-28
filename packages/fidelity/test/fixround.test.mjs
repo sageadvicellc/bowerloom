@@ -91,16 +91,16 @@ test('R3: a path or web deny is translated unless a carried sandbox covers it', 
   for (const engine of ['claude-code', 'opencode']) {
     const t = translateGuardrails(engine, { rules: [read, web], sandbox: [] });
     for (const id of ['env', 'evil']) {
-      assert.equal(lineOf(t, id).result, 'translated', `${engine} ${id}`);
+      // Review item W6: a Claude Code web deny has a form with no documented vector, so it is weakened.
+      assert.equal(lineOf(t, id).result, engine === 'claude-code' && id === 'evil' ? 'weakened' : 'translated', `${engine} ${id}`);
       assert.match(lineOf(t, id).reason, /shell command can still reach/);
     }
   }
+  // Review item W5: a sandbox requirement has no scope, so it never upgrades the line; the note names it.
   const files = translateGuardrails('claude-code', { rules: [read, web], sandbox: [sandbox({ files: true, network: false })] });
-  assert.equal(lineOf(files, 'env').result, 'exact');
-  assert.match(lineOf(files, 'env').reason, /sandbox box/);
-  assert.equal(lineOf(files, 'evil').result, 'translated', 'the sandbox does not cover the network');
-  const both = translateGuardrails('claude-code', { rules: [read, web], sandbox: [sandbox()] });
-  assert.equal(lineOf(both, 'evil').result, 'exact');
+  assert.equal(lineOf(files, 'env').result, 'translated');
+  assert.match(lineOf(files, 'env').reason, /sandbox box may cover it/);
+  assert.doesNotMatch(lineOf(files, 'evil').reason, /sandbox box/, 'the sandbox does not cover the network');
   const oc = translateGuardrails('opencode', { rules: [read], sandbox: [sandbox()] });
   assert.equal(lineOf(oc, 'env').result, 'translated', 'OpenCode carries no sandbox');
 });
@@ -148,7 +148,7 @@ test('R5: request paths are normalized for //, ./, and ..', () => {
   assert.equal(normalizeRequestPath('docs/../../etc/passwd'), null, 'outside the project');
   const rules = [rule('d', 'read', 'config/prod.yml', 'deny'), rule('a', 'read', 'docs/**', 'allow')];
   for (const path of ['config//prod.yml', 'config/./prod.yml', 'x/../config/prod.yml']) assert.equal(neutralDecision(rules, { action: 'read', path }), 'deny', path);
-  assert.equal(neutralDecision(rules, { action: 'read', path: 'docs/../../etc/passwd' }), 'default');
+  assert.equal(neutralDecision(rules, { action: 'read', path: 'docs/../../etc/passwd' }), 'ask', 'review item W10: a deny makes it fail closed');
   assert.deepEqual(escapesOf('claude-code', { action: 'read', path: 'config//prod.yml' }, rules), ['path-form']);
 });
 
@@ -257,8 +257,8 @@ test('R14: a Codex shell deny or ask is weakened, unless a carried sandbox bound
   assert.equal(lineOf(bare, 'd').result, 'weakened');
   assert.match(lineOf(bare, 'd').reason, /glob/);
   const boxed = translateGuardrails('codex', { rules: [d], sandbox: [sandbox()] });
-  assert.equal(lineOf(boxed, 'd').result, 'translated');
-  assert.match(lineOf(boxed, 'd').reason, /sandbox box/);
+  assert.equal(lineOf(boxed, 'd').result, 'weakened', 'review item W5');
+  assert.match(lineOf(boxed, 'd').reason, /sandbox box may cover it/);
 });
 
 // ---- R15 (C7, C8) -------------------------------------------------------------------------------------------------------
@@ -340,6 +340,6 @@ test('follow-up 4: a path allow that an engine can reach through .. or other let
     assert.equal(neutralDecision([rule('a', 'read', 'src/**', 'allow')], { action: 'read', path: 'src/../.git/config' }), 'default');
   }
   // A path deny is not weakened by this; Codex writes no allow at all.
-  assert.equal(lineOf(translateGuardrails('claude-code', { rules: [rule('d', 'read', '.env', 'deny')], sandbox: [sandbox()] }), 'd').result, 'exact');
+  assert.equal(lineOf(translateGuardrails('claude-code', { rules: [rule('d', 'read', '.env', 'deny')], sandbox: [sandbox()] }), 'd').result, 'translated');
   assert.equal(lineOf(translateGuardrails('codex', { rules: [rule('a', 'read', 'src/**', 'allow')], sandbox: [] }), 'a').result, 'translated');
 });

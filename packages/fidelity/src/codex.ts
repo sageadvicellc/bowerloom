@@ -115,9 +115,10 @@ export function translateCodex(rules: readonly GuardrailRule[], sandbox: readonl
         // Ruling R14: Codex checks a script with a glob, ~, $, a redirect, quotes around a variable, or a trailing & as
         // one bash -lc command, so common forms of the rule's own program escape it. That is weakened, unless a
         // sandbox that Codex carries bounds what an escaped command can do.
+        // Review item W5: a sandbox requirement gives no scope, so it never upgrades the line; the note names it.
         const box = sandbox[0];
         const common = `Codex checks a command with a glob, ~, $, a redirect, quotes around a variable, or a trailing & as one bash -lc command, so common forms of ${shown} escape the rule.`;
-        out.line(rule, box ? 'translated' : 'weakened', `Codex carries the rule as a ${decision} prefix rule on ${shown}, matched against argv.${more} ${common}${box ? ` The sandbox ${box.id} bounds what an escaped command can do.` : ' No sandbox requirement bounds them.'} ${escapes}`);
+        out.line(rule, 'weakened', `Codex carries the rule as a ${decision} prefix rule on ${shown}, matched against argv.${more} ${common}${box ? ` The sandbox ${box.id} may cover it; the live check of step 5 checks it.` : ' No sandbox requirement bounds them.'} ${escapes}`);
         break;
       }
       case 'read': case 'edit': case 'write': {

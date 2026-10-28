@@ -44,7 +44,10 @@ const SANDBOX_MISSING = (() => {
   return probe.status === 0 ? null : `sandbox-exec could not apply its profile (${(probe.stderr || '').trim().slice(0, 120)}), so rulesync cannot run with the network denied.`;
 })();
 const ORACLE = SANDBOX_MISSING ? { skip: SANDBOX_MISSING } : {};
-const nodeInstall = path.dirname(path.dirname(fs.realpathSync(process.execPath)));
+/** The Node binary and its own lib folder (review item W8), not the whole install prefix. */
+const nodeReads = [fs.realpathSync(process.execPath), path.join(path.dirname(path.dirname(fs.realpathSync(process.execPath))), 'lib')];
+/** Every path the rulesync process may read. */
+const limits = folder => [path.join(root, 'node_modules/rulesync'), path.join(root, 'node_modules'), folder, ...nodeReads, preload];
 
 /** Runs `rulesync convert` from the Claude Code projection of the fixture. Returns the folder and the run. */
 function convert(to) {
@@ -56,7 +59,7 @@ function convert(to) {
   fs.mkdirSync(path.join(folder, 'home'));
   fs.writeFileSync(path.join(folder, '.claude/settings.json'), JSON.stringify({ permissions: cc.form.permissions }, null, 2) + '\n');
   fs.writeFileSync(path.join(folder, '.codex/config.toml'), UNMANAGED_TOML);
-  const reads = [path.join(root, 'node_modules/rulesync'), path.join(root, 'node_modules'), folder, nodeInstall, preload];
+  const reads = limits(folder);
   const run = spawnSync(SANDBOX_EXEC, ['-p', NO_NETWORK, process.execPath,
     '--permission', ...reads.map(r => `--allow-fs-read=${r}`), `--allow-fs-write=${folder}`, '--import', preload,
     cli, 'convert', '--from', 'claudecode', '--to', to, '--features', 'permissions',
@@ -240,6 +243,30 @@ test('the oracle profile denies the network: a process under it cannot reach a l
     assert.notEqual(probe, 'connected');
     assert.match(probe, /EPERM|EACCES/);
   } finally { server.close(); }
+});
+
+/** Runs a probe script under exactly the limits rulesync gets (review item W8). */
+function probeUnderLimits(script) {
+  const folder = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'bowerloom-probe-'));
+  folders.push(folder);
+  const file = path.join(folder, 'probe.mjs');
+  fs.writeFileSync(file, script);
+  const run = spawnSync(SANDBOX_EXEC, ['-p', NO_NETWORK, process.execPath, '--permission', ...limits(folder).map(r => `--allow-fs-read=${r}`), `--allow-fs-write=${folder}`, '--import', preload, file],
+    { cwd: folder, env: { PATH: process.env.PATH ?? '', HOME: path.join(folder, 'home') }, encoding: 'utf8', timeout: 30_000 });
+  return run.stdout.trim();
+}
+
+test('W8: under the oracle limits a read outside them and a process start are both denied', ORACLE, () => {
+  const out = probeUnderLimits(`import fs from 'node:fs'; import cp from 'node:child_process';
+const r = []; try { fs.readFileSync('/etc/hosts'); r.push('read'); } catch (e) { r.push(e.code); }
+try { cp.spawnSync('/bin/echo', ['x']); r.push('spawn'); } catch (e) { r.push(e.code); }
+try { fs.readdirSync(${JSON.stringify(os.homedir())}); r.push('home'); } catch (e) { r.push(e.code); }
+process.stdout.write(r.join(','));`);
+  assert.equal(out, 'ERR_ACCESS_DENIED,ERR_ACCESS_DENIED,ERR_ACCESS_DENIED');
+});
+
+test('W8: the Node install that rulesync may read is the Node binary and its own lib folder only', () => {
+  assert.deepEqual(nodeReads, [fs.realpathSync(process.execPath), path.join(path.dirname(path.dirname(fs.realpathSync(process.execPath))), 'lib')]);
 });
 
 test('rulesync ran under the profile: no network attempt, no process, no write or read outside its limits', ORACLE, () => {

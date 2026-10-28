@@ -74,7 +74,13 @@ function collect(text: string, out: string[]): void {
     if (quote === '"') { current += c; if (c === '"') quote = null; continue; }
     if (c === '"' || c === "'") { quote = c; current += c; continue; }
     if (c === '(' || c === ')') { flush(); continue; }
-    if (c === '<' && text[i + 1] === '<' && text[i + 2] !== '<') {
+    if (c === '<' && text[i + 1] === '<' && text[i + 2] === '<') {
+      // A here-string is one operator (review item W1); its word is data on the same line, never a here-document.
+      current += '<<<';
+      i += 2;
+      continue;
+    }
+    if (c === '<' && text[i + 1] === '<') {
       // A here-document (review finding C1). The operator stays on the command and the rest of the line is read on.
       // The body starts at the next newline and ends at a line that is the delimiter alone; with <<- leading tabs are
       // ignored. An unquoted delimiter lets the body expand, so its $(...) and backticks are commands.
@@ -195,60 +201,101 @@ export function stripAssignments(command: string): string {
 /** The wrappers Claude Code strips before it matches (locked-in parts spec, section 8.3 rule 6). */
 export const WRAPPERS = Object.freeze(['timeout', 'time', 'nice', 'nohup', 'stdbuf', 'command', 'builtin', 'noglob', 'xargs'] as const);
 
-/** Options of a wrapper that take the next word as their value. */
-const OPTION_VALUES: Readonly<Record<string, readonly string[]>> = {
-  timeout: ['-s', '--signal', '-k', '--kill-after'],
-  nice: ['-n', '--adjustment'],
-  stdbuf: ['-i', '-o', '-e', '--input', '--output', '--error'],
-};
-
-/** Options of `xargs` that take the next word as their value, when the value is not attached. */
-const XARGS_VALUES = ['-I', '-n', '-L', '-d', '-E', '-s', '-P', '-a', '-i', '-l', '-e'];
 /** A program word that is the same text at run time: no expansion, no quote, no brace. */
 const LITERAL_PROGRAM = /^[A-Za-z0-9_./+@%:,=-]+$/;
 
 export interface StripOptions {
   /**
    * Also strip `command -p` and `xargs` with options, when the program word after them is literal. The neutral model
-   * does (ruling R4). Claude Code strips bare `xargs` only, so its matcher passes false. Default: true.
+   * does (ruling R4). Claude Code strips bare `command` and `xargs` only, so its matcher passes false. Default: true.
    */
   readonly options?: boolean;
 }
 
 /**
- * The command without the wrappers in front of it. Bowerloom's reading of wrapper options: `timeout` takes options and
- * then one duration; `nice` and `stdbuf` take options; `time` takes `-p`. `command -v` changes what runs, so it is never
- * stripped. `command -p` and `xargs` with options are stripped only with `options` on and a literal program word after
- * them. A wrapper with nothing after it is kept.
+ * The options each wrapper takes (review item W2). `values` take the next word, or an attached value such as -n1;
+ * `flags` take none; `attached` take a value only when it is attached. Long options take `=value` or the next word.
+ * GNU and macOS forms are both listed for xargs, including macOS -J, -R, and -S.
  */
-export function stripWrappers(command: string, strip: StripOptions = {}): string {
-  const withOptions = strip.options ?? true;
+interface WrapperSpec {
+  readonly values?: readonly string[];
+  readonly flags?: readonly string[];
+  readonly attached?: readonly string[];
+  readonly longValues?: readonly string[];
+  readonly longFlags?: readonly string[];
+  /** `nice -5`: a short option that is a number. */
+  readonly numeric?: boolean;
+  /** Words after the options that are not the program: the duration of timeout. */
+  readonly positional?: number;
+}
+const WRAPPER_SPECS: Readonly<Record<(typeof WRAPPERS)[number], WrapperSpec>> = {
+  timeout: { values: ['-s', '-k'], flags: ['-v'], longValues: ['--signal', '--kill-after'], longFlags: ['--foreground', '--preserve-status', '--verbose'], positional: 1 },
+  time: { flags: ['-p'] },
+  nice: { values: ['-n'], longValues: ['--adjustment'], numeric: true },
+  nohup: {},
+  stdbuf: { values: ['-i', '-o', '-e'], longValues: ['--input', '--output', '--error'] },
+  command: { flags: ['-p'] },
+  builtin: {},
+  noglob: {},
+  xargs: {
+    values: ['-I', '-J', '-L', '-n', '-P', '-R', '-S', '-s', '-E', '-a', '-d'],
+    flags: ['-0', '-o', '-p', '-r', '-t', '-x'],
+    attached: ['-i', '-l', '-e'],
+    longValues: ['--max-args', '--delimiter', '--max-lines', '--max-procs', '--arg-file', '--eof', '--replace', '--max-chars', '--process-slot-var'],
+    longFlags: ['--null', '--no-run-if-empty', '--verbose', '--interactive', '--exit', '--open-tty'],
+  },
+};
+
+/** How a command's leading wrappers read: how many words they take, and whether one could not be read. */
+interface WrapperRead { readonly words: readonly RawWord[]; readonly opaque: boolean }
+
+/**
+ * Reads the wrappers in front of a command. A wrapper option outside the tables, `--`, combined short flags, a missing
+ * value, or a program word that is not literal makes the read `opaque` (review item W2). `command -v` and `command -V`
+ * ask about a program and run nothing, so they end the read. With `options` off (Claude Code's reading), `command` and
+ * `xargs` count only bare.
+ */
+function readWrappers(command: string, withOptions: boolean): WrapperRead {
   let words = rawWords(command);
   for (;;) {
     const first = words[0]?.text;
-    if (first === undefined || !(WRAPPERS as readonly string[]).includes(first)) break;
+    if (first === undefined || !(WRAPPERS as readonly string[]).includes(first)) return { words, opaque: false };
+    const spec = WRAPPER_SPECS[first as (typeof WRAPPERS)[number]];
+    if (first === 'command' && (words[1]?.text === '-v' || words[1]?.text === '-V')) return { words, opaque: false };
+    if (!withOptions && (first === 'command' || first === 'xargs') && words[1]?.text.startsWith('-')) return { words, opaque: false };
     let i = 1;
-    const takesValue = OPTION_VALUES[first] ?? [];
-    if (first === 'command') {
-      if (words[1]?.text === '-p' && withOptions) i = 2;
-      else if (words[1]?.text.startsWith('-')) break;
-    } else if (first === 'xargs') {
-      if (words[1]?.text.startsWith('-')) {
-        if (!withOptions) break;
-        while (i < words.length && words[i]!.text.startsWith('-')) i += XARGS_VALUES.includes(words[i]!.text) ? 2 : 1;
-        if (!LITERAL_PROGRAM.test(words[i]?.text ?? '')) break;
+    let bad = false;
+    while (i < words.length && words[i]!.text.startsWith('-') && words[i]!.text !== '-') {
+      const w = words[i]!.text;
+      if (w === '--') { bad = true; break; }
+      if (w.startsWith('--')) {
+        const name = w.split('=')[0] as string;
+        if (spec.longFlags?.includes(name) && !w.includes('=')) i += 1;
+        else if (spec.longValues?.includes(name)) i += w.includes('=') ? 1 : 2;
+        else { bad = true; break; }
+        continue;
       }
-    } else if (first === 'builtin' || first === 'noglob' || first === 'nohup') {
-      if (words[1]?.text.startsWith('-')) break;
-    } else {
-      while (i < words.length && words[i]!.text.startsWith('-') && words[i]!.text !== '-') {
-        i += takesValue.includes(words[i]!.text) ? 2 : 1;
-      }
-      if (first === 'timeout') i++;
+      const key = w.slice(0, 2);
+      if (spec.numeric && /^-\d+$/.test(w)) i += 1;
+      else if (spec.values?.includes(key)) i += w.length > 2 ? 1 : 2;
+      else if (spec.attached?.includes(key)) i += 1;
+      else if (spec.flags?.includes(key) && w.length === 2) i += 1;
+      else { bad = true; break; }
     }
-    if (i >= words.length) break;
+    i += spec.positional ?? 0;
+    if (bad || i > words.length) return { words, opaque: withOptions };
+    if (i === words.length) return { words, opaque: false };
+    if (!LITERAL_PROGRAM.test(words[i]!.text)) return { words, opaque: withOptions };
     words = words.slice(i);
   }
+}
+
+/**
+ * The command without the wrappers in front of it. A wrapper with nothing after it, or one that cannot be read, is
+ * kept: `opaqueForms` reports the second case.
+ */
+export function stripWrappers(command: string, strip: StripOptions = {}): string {
+  const { words } = readWrappers(command, strip.options ?? true);
   // Every step slices the same array, so the offsets still point into `command`.
   const first = words[0];
   return first === undefined || first.start === 0 ? command : command.slice(first.start).trim();
@@ -290,12 +337,20 @@ export function programWord(command: string): string {
 }
 
 /**
- * The forms of a command line that the splitter does not fully parse (ruling R1). For any of them the neutral model
- * fails closed: it never allows from a rule.
+ * The forms of a command line that the splitter does not fully parse (ruling R1, review items W2, W3, W4, and W9).
+ * For any of them the neutral model fails closed: it never allows from a rule.
  */
-export type OpaqueForm = 'here-document' | 'comment' | 'ansi-c-quote' | 'case' | 'function' | 'eval' | 'exec' | 'coproc' | 'pipe-to-shell' | 'runtime-word';
+export type OpaqueForm =
+  | 'here-document' | 'comment' | 'ansi-c-quote' | 'case' | 'function' | 'eval' | 'exec' | 'coproc' | 'pipe-to-shell'
+  | 'runtime-word' | 'wrapper-option' | 'shell-input' | 'runner';
 
-const SHELL_PROGRAMS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish']);
+/** Programs that read commands from input, a file, or text: shells and `source` (review item W3). */
+const SHELL_PROGRAMS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish', 'csh', 'tcsh', 'source', '.']);
+/** Programs that run another command (review item W9). */
+export const RUNNERS = Object.freeze(['sudo', 'env', 'busybox', 'setsid', 'ionice', 'flock', 'watch', 'chroot', 'script', 'ssh', 'strace', 'parallel', 'doas', 'su', 'nsenter', 'unshare', 'runuser', 'chrt', 'taskset', 'caffeinate', 'xcrun'] as const);
+const FIND_RUNS = new Set(['-exec', '-execdir', '-ok', '-okdir']);
+
+const baseName = (word: string) => word.slice(word.lastIndexOf('/') + 1);
 
 export function opaqueForms(text: string): OpaqueForm[] {
   const command = joinLines(text);
@@ -318,6 +373,7 @@ export function opaqueForms(text: string): OpaqueForm[] {
     }
     if (c === '#' && (i === 0 || /[\s;&|()]/.test(command[i - 1] as string))) found.add('comment');
     if (c === '<' && command[i + 1] === '<' && command[i + 2] !== '<' && command[i - 1] !== '<') found.add('here-document');
+    if (c === '<' && command[i + 1] === '<' && command[i + 2] === '<') i += 2;
     if (c === '|' && command[i + 1] !== '|' && command[i - 1] !== '|') {
       const rest = /^&?\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?:\S*\/)?([A-Za-z]+)/.exec(command.slice(i + 1));
       if (rest && SHELL_PROGRAMS.has(rest[1] as string)) found.add('pipe-to-shell');
@@ -328,11 +384,22 @@ export function opaqueForms(text: string): OpaqueForm[] {
   }
   endWord();
   for (const part of splitCommand(command)) {
+    const bare = stripAssignments(part);
+    if (readWrappers(bare, true).opaque) found.add('wrapper-option');
     const program = programWord(part);
-    if (program === 'eval') found.add('eval');
+    const name = baseName(program);
+    if (program === 'eval' || program === 'trap') found.add('eval');
     if (program === 'exec') found.add('exec');
     if (program === 'coproc') found.add('coproc');
-    if (program !== '' && !LITERAL_PROGRAM.test(program) && !/^['"][A-Za-z0-9_./+@%:,=-]+['"]$/.test(program)) found.add('runtime-word');
+    if (SHELL_PROGRAMS.has(name)) found.add('shell-input');
+    if ((RUNNERS as readonly string[]).includes(name)) {
+      found.add('runner');
+      // A runner in front of a shell, such as env bash, feeds that shell too.
+      if (rawWords(part).some(w => SHELL_PROGRAMS.has(baseName(w.text)))) found.add('shell-input');
+    }
+    if (name === 'find' && rawWords(part).some(w => FIND_RUNS.has(w.text))) found.add('runner');
+    // A quoted or escaped program word is a word the shell builds (the bash differential test of review item W1).
+    if (program !== '' && !LITERAL_PROGRAM.test(program)) found.add('runtime-word');
   }
   return [...found];
 }

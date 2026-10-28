@@ -11,7 +11,7 @@
 import type { GuardrailRule, SandboxRequirement } from '../../harness-definition/src/index.js';
 import type { Decision } from './decision.js';
 import { PATH_ALLOW_REACH, escapeSentence } from './escapes.js';
-import { bashPatternRegex, globRegex, shellDecision, type NeutralRequest } from './neutral.js';
+import { bashPatternRegex, globRegex, normalizeHost, shellDecision, type NeutralRequest } from './neutral.js';
 import { listMatches, type PathMode } from './paths.js';
 import { Collector, type EngineDefault, type SandboxForm, type Translation } from './translation.js';
 
@@ -122,18 +122,30 @@ export function claudeCodeFormDecide(form: ClaudeCodeForm, request: NeutralReque
 }
 
 /** Translates rules that are inside the neutral language. */
-/** The sandbox note of a path or web deny or ask (ruling R3), and whether a carried sandbox covers it. */
-export function bypassNote(rule: GuardrailRule, sandbox: readonly SandboxRequirement[], carried: boolean): { readonly covered: boolean; readonly note: string } {
-  if (rule.effect === 'allow' || !['read', 'edit', 'write', 'web'].includes(rule.action)) return { covered: true, note: '' };
+/**
+ * The note of a path or web deny or ask (ruling R3, review item W5): a shell command can still reach the path or host.
+ * A sandbox requirement gives no path or host scope, so it never makes the line exact; the note names it as one that
+ * may cover the rule, for the live check of step 5.
+ */
+export function bypassNote(rule: GuardrailRule, sandbox: readonly SandboxRequirement[], carried: boolean): string {
+  if (rule.effect === 'allow' || !['read', 'edit', 'write', 'web'].includes(rule.action)) return '';
   const web = rule.action === 'web';
   const box = carried ? sandbox.find(s => web ? s.network : s.files) : undefined;
-  if (box) return { covered: true, note: ` The sandbox ${box.id} keeps a shell command from reaching the ${web ? 'host' : 'path'} as well.` };
-  return { covered: false, note: ` A shell command can still reach the ${web ? 'host' : 'path'}${web ? ', as with curl' : ', as with cat or a redirect'}: no sandbox this engine carries covers it.` };
+  const reach = ` A shell command can still reach the ${web ? 'host, as with curl' : 'path, as with cat or a redirect'}.`;
+  return box ? `${reach} The sandbox ${box.id} may cover it; the live check of step 5 checks it.` : `${reach} No sandbox requirement this engine carries covers it.`;
 }
+
+/**
+ * The research-note vectors that document each Claude Code deny form (review item W6). The vectors are the authority:
+ * a deny form with no D-labelled vector is weakened until the live check of step 5.
+ */
+const VECTORS = { bash: 'vector CC02, CC03, CC08, CC13, and CC17', read: 'vector CC21, CC22, and CC23', edit: 'vector CC20', write: 'vector CC24', mcp: 'vector CC27' } as const;
+const UNDOCUMENTED = 'has no documented vector in the research notes, so the line is weakened until the live check of step 5 confirms it';
 
 /** The Claude Code host patterns of a neutral web deny or ask: the host, its subdomains, and both with a trailing dot. */
 export function webDenyHosts(pattern: string): string[] {
-  const hosts = new Set([pattern, `*.${pattern}`, `${pattern}.`, `*.${pattern}.`]);
+  const host = normalizeHost(pattern);
+  const hosts = new Set([host, `*.${host}`, `${host}.`, `*.${host}.`]);
   return [...hosts];
 }
 
@@ -151,38 +163,44 @@ export function translateClaudeCode(rules: readonly GuardrailRule[], sandbox: re
   const carried = (rule: GuardrailRule, text: string) => {
     // A path allow can be reached through .. or other letter case (follow-up ruling 4).
     if (rule.effect === 'allow' && rule.action !== 'web') { out.line(rule, 'weakened', `${text} ${PATH_ALLOW_REACH}`); return; }
-    const { covered, note } = bypassNote(rule, sandbox, true);
-    out.line(rule, covered ? 'exact' : 'translated', `${text}${note}`);
+    const note = bypassNote(rule, sandbox, true);
+    out.line(rule, note === '' ? 'exact' : 'translated', `${text}${note}`);
   };
+  const denyLike = (rule: GuardrailRule) => rule.effect !== 'allow';
   for (const rule of rules) {
     const p = rule.pattern;
     switch (rule.action) {
       case 'shell':
         put(rule, `Bash(${p})`);
-        out.line(rule, 'translated', `Claude Code carries the rule as Bash(${p}). ${parser} ${escapes}`);
+        out.line(rule, 'translated', `Claude Code carries the rule as Bash(${p}) (documented by ${VECTORS.bash}). ${parser} ${escapes}`);
         break;
       case 'read':
         put(rule, `Read(${p})`);
         if (rule.effect === 'deny') { put(rule, `Edit(${p})`); put(rule, `Write(${p})`); }
         carried(rule, rule.effect === 'deny'
-          ? `Claude Code carries the rule as Read(${p}), Edit(${p}), and Write(${p}), so a change to the path is blocked too. ${pathEscapes}`
-          : `Claude Code carries the rule as Read(${p}). ${pathEscapes}`);
+          ? `Claude Code carries the rule as Read(${p}) (documented by ${VECTORS.read}), Edit(${p}) (${VECTORS.edit}), and Write(${p}) (${VECTORS.write}: never matches, harmless), so a change to the path is blocked too. ${pathEscapes}`
+          : `Claude Code carries the rule as Read(${p}) (documented by ${VECTORS.read}). ${pathEscapes}`);
         break;
       case 'edit': case 'write':
         put(rule, `Edit(${p})`);
-        carried(rule, `Claude Code carries the rule as Edit(${p}), which covers Edit, Write, and NotebookEdit. A Write rule would never match. ${pathEscapes}`);
+        carried(rule, `Claude Code carries the rule as Edit(${p}) (documented by ${VECTORS.edit}), which covers Edit, Write, and NotebookEdit. A Write rule would never match (${VECTORS.write}). ${pathEscapes}`);
         break;
       case 'web':
-        if (p === '*') { put(rule, 'WebFetch'); put(rule, 'WebSearch'); carried(rule, 'Claude Code carries the rule as WebFetch and WebSearch.'); break; }
+        if (p === '*') {
+          put(rule, 'WebFetch'); put(rule, 'WebSearch');
+          if (denyLike(rule)) { out.line(rule, 'weakened', `Claude Code carries the rule as WebFetch and WebSearch. A bare WebFetch or WebSearch rule ${UNDOCUMENTED}.${bypassNote(rule, sandbox, true)}`); break; }
+          carried(rule, 'Claude Code carries the rule as WebFetch and WebSearch.');
+          break;
+        }
         if (rule.effect === 'allow') { put(rule, `WebFetch(domain:${p})`); out.line(rule, 'exact', `Claude Code carries the rule as WebFetch(domain:${p}). Web search has no domain, as in the source.`); break; }
         for (const host of webDenyHosts(p)) put(rule, `WebFetch(domain:${host})`);
-        carried(rule, `Claude Code carries the rule as WebFetch(domain:...) for ${webDenyHosts(p).join(', ')}, so subdomains and a trailing dot are covered. Web search has no domain, as in the source.`);
+        out.line(rule, 'weakened', `Claude Code carries the rule as WebFetch(domain:...) for ${webDenyHosts(p).join(', ')}, so subdomains and a trailing dot are covered. The domain and *. forms have vector CC25; the trailing-dot form ${UNDOCUMENTED}. Web search has no domain, as in the source.${bypassNote(rule, sandbox, true)}`);
         break;
       case 'mcp': {
         if (p === '*') {
           if (rule.effect === 'allow') { out.line(rule, 'absent', 'Claude Code accepts an MCP allow only after a literal server name, so an allow for every server is not written.'); break; }
           put(rule, 'mcp__*');
-          out.line(rule, 'exact', 'Claude Code carries the rule as mcp__*.');
+          out.line(rule, 'weakened', `Claude Code carries the rule as mcp__*. That form ${UNDOCUMENTED}.`);
           break;
         }
         const [server, tool] = p.split('/') as [string, string | undefined];
@@ -192,19 +210,24 @@ export function translateClaudeCode(rules: readonly GuardrailRule[], sandbox: re
         if (server.includes('__') || tool === undefined || tool.includes('*') || tool.includes('__')) {
           if (rule.effect === 'allow') { out.line(rule, 'absent', `In Claude Code, ${name} can also match a tool of another server whose name starts with ${server}__, so the allow could reach that server. Not written.`); break; }
           put(rule, name);
-          out.line(rule, 'translated', `Claude Code carries the rule as ${name}. It can also match a tool of another server whose name starts with ${server}__: it blocks more.`);
+          out.line(rule, 'translated', `Claude Code carries the rule as ${name} (documented by ${VECTORS.mcp}). It can also match a tool of another server whose name starts with ${server}__: it blocks more.`);
           break;
         }
         put(rule, name);
-        out.line(rule, 'exact', `Claude Code carries the rule as ${name}.`);
+        out.line(rule, 'exact', `Claude Code carries the rule as ${name}${denyLike(rule) ? ` (documented by ${VECTORS.mcp})` : ''}.`);
         break;
       }
       case 'subagent': case 'skill': {
         const tool = rule.action === 'subagent' ? 'Agent' : 'Skill';
-        if (!p.includes('*')) { put(rule, `${tool}(${p})`); out.line(rule, 'exact', `Claude Code carries the rule as ${tool}(${p}).`); break; }
+        if (!p.includes('*')) {
+          put(rule, `${tool}(${p})`);
+          if (denyLike(rule)) out.line(rule, 'weakened', `Claude Code carries the rule as ${tool}(${p}). That form ${UNDOCUMENTED}.`);
+          else out.line(rule, 'exact', `Claude Code carries the rule as ${tool}(${p}).`);
+          break;
+        }
         if (rule.effect === 'allow') { out.line(rule, 'absent', `Claude Code documents no wildcard in ${tool}(...), so a name pattern cannot be allowed exactly. Not written.`); break; }
         put(rule, tool);
-        out.line(rule, 'translated', `Claude Code documents no wildcard in ${tool}(...), so the rule covers the whole ${tool} tool: it blocks more than ${p}.`);
+        out.line(rule, 'weakened', `Claude Code documents no wildcard in ${tool}(...), so the rule covers the whole ${tool} tool: it blocks more than ${p}. A bare ${tool} rule ${UNDOCUMENTED}.`);
         break;
       }
     }

@@ -19,10 +19,18 @@ A guardrail pattern is plain text in the contract. This package gives it a meani
 - **Shell**: Claude Code's Bash pattern. `*` matches any text. A trailing ` *` or `:*` that is the only wildcard also matches the bare command. A command line is split into its simple commands. When any of them matches, a `deny` or `ask` fires. An `allow` needs every one to match.
   - Runs of spaces and tabs count as one space.
   - The wrappers that Claude Code strips are stripped, and so are `command -p` and `xargs` with options before a literal program. A `deny` or `ask` also skips a leading `NAME=value`.
-  - Some forms are not fully parsed: a here-document, a comment, `$'...'`, `case`, a function, `eval`, `exec`, `coproc`, a pipe into a shell, and a program name built at run time. For these, the model never allows. When the program word of a deny or ask rule appears in the text, it asks. Otherwise the engine default applies.
+  - A deny or ask compares the program word in any letter case.
+  - Some forms are not fully parsed. For these, the model never allows. When the program word of a deny or ask rule appears in the text, it asks. Otherwise the engine default applies. The forms:
+    - a here-document, a comment, `$'...'`, `case`, a function, `eval`, `exec`, `trap`, or `coproc`;
+    - a shell, `source`, or `.` as the program, with or without `-c`;
+    - a program that runs another command, such as `sudo`, `env`, `busybox`, `ssh`, or `find -exec`;
+    - a wrapper option outside the tables, `--`, or combined short flags;
+    - a program word that is quoted, escaped, or built at run time;
+    - for a deny or ask rule, a `$`, backtick, `{`, `*`, `?`, `[`, or `~` in the words the rule names.
+  - A here-string (`<<<`) is one operator. `test/round3.test.mjs` checks the splitter against real bash with a seeded generator. When bash is missing, that test is skipped and says why.
 - **Read, edit, write**: a path relative to the project root, in gitignore style. `*` stays in one folder, and `**` spans folders. A bare name matches at any depth. A pattern with a `/` matches from the root in an `allow`, and at any depth in a `deny` or `ask`. A `deny` or `ask` ignores letter case. `edit` and `write` are one action. A `read` deny also blocks a change.
-  - A request path is resolved first: `//`, `./`, and `..`. When a path is absolute or leaves the project, it matches no rule.
-- **Web**: a host name. Letter case and a trailing dot do not count. A `deny` or `ask` also covers subdomains. The pattern `*` also covers web search.
+  - A request path is resolved first: `//`, `./`, and `..`. When a path is absolute or leaves the project, it matches no rule. A deny or ask that could apply then makes the request ask.
+- **Web**: a host name. The host contract applies to the pattern and the request alike: userinfo, a port, and a trailing dot are dropped, and letter case does not count. A `deny` or `ask` also covers subdomains. The pattern `*` also covers web search.
 - **MCP**: `server`, `server/tool`, or `*`.
 - **Subagent and skill**: a name, where `*` matches any text.
 
@@ -36,17 +44,20 @@ When an engine cannot carry a rule exactly:
 - An `allow` is never widened. When the engine reads it more widely, the line is `absent` and nothing is written.
 - A neutral `allow` never becomes a Codex `allow` rule. The line is `translated`, and it says nothing was written.
 - When a listed escape covers common forms of the rule's own program, the line is `weakened`.
+- A Claude Code deny or ask line cites the research-note vector that documents its form. A form with no documented vector is `weakened` until the live check of step 5.
+- A sandbox requirement names no path or host, so it never makes a line `exact` or lifts a `weakened` one. The note names the sandbox that may cover the rule, and step 5 checks it.
 - A rule the engine has no place for is `absent`. `checkFidelity` refuses an enforced one unless a recorded approval exists.
 
 | | Claude Code | Codex | OpenCode 1.x | Pi | DeepSeek Harness |
 | --- | --- | --- | --- | --- | --- |
-| Shell deny or ask | translated | weakened, or translated with a sandbox; absent with no literal prefix | translated, spaces written as `*` | absent | absent |
+| Shell deny or ask | translated | weakened; absent with no literal prefix | translated, spaces written as `*` | absent | absent |
 | Shell allow | translated | translated, not written | translated, or absent for a wider reading | absent | absent |
-| Path deny or ask | translated, or exact with a files sandbox | read: translated; change: weakened | translated | absent | absent |
+| Path deny or ask | translated | read: translated; change: weakened | translated | absent | absent |
 | Path allow | weakened, because `..` or letter case can reach past it | translated, not written | weakened, or absent for a wider reading | absent | absent |
-| Web deny or ask | translated, or exact with a network sandbox | absent | translated | absent | absent |
-| Skill, subagent | exact, or tightened | absent | exact | absent | absent |
-| MCP | exact, or tightened | translated to disabled tools | exact, or tightened | absent | absent |
+| Web deny or ask | weakened: the trailing-dot form has no vector | absent | translated | absent | absent |
+| Skill, subagent deny or ask | weakened: no vector | absent | exact | absent | absent |
+| Skill, subagent allow | exact, or absent with a wildcard | absent | exact | absent | absent |
+| MCP deny or ask | cites CC27; `mcp__*` weakened | translated to disabled tools | exact, or tightened | absent | absent |
 | Sandbox | exact | exact | absent | absent | translated |
 
 Each engine form also records its default for a request that no rule matches (`defaults`). For OpenCode, whose own default is allow, Bowerloom writes `"*": { "*": "ask" }` as the first key. Pi has no place for a default, so its default stays allow. The defaults of Claude Code and DeepSeek Harness stay recorded as `default`: the research notes do not say what their modes decide, and the live check of step 5 records them.
@@ -76,7 +87,7 @@ Matching is on the text as written, so some forms escape a rule. `KNOWN_ESCAPES`
 These limits hold for the rulesync process:
 
 - It runs under macOS `sandbox-exec` with a profile that denies all network. A probe test shows that a process under the same profile cannot reach a local server. When `sandbox-exec` is missing or cannot apply the profile, the oracle tests are skipped with that reason. rulesync never runs without it.
-- Under the Node permission model, it can read only the rulesync package, `node_modules`, its fresh temporary folder, the Node install, and the preload. It can write only inside the temporary folder, and it cannot start a process or a worker. HOME is inside the temporary folder.
+- Under the Node permission model, it can read only the rulesync package, `node_modules`, its fresh temporary folder, the Node binary and its own `lib` folder, and the preload. A probe under the same limits shows that a read outside them and a process start are both denied. It can write only inside the temporary folder, and it cannot start a process or a worker. HOME is inside the temporary folder.
 - A preload also refuses Node's own network calls.
 
 Each difference must be on the list in section 11, items 3 and 4, of the locked-in parts spec, or the strict test fails.

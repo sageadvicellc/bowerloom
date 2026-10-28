@@ -7,7 +7,7 @@ import {
   DECISIONS, KNOWN_ESCAPES, NOT_WRITTEN, combineParts, decidingRules, engineDecision, openCodeRequest, openCodeWildcard, escapesOf, judgeGuardrails, morePermissive, neutralDecision, projectGuardrails,
   translateGuardrails,
 } from '../../../dist/packages/fidelity/src/index.js';
-import { MIXED_RULES, NOW, allRequests, random, rule, sandbox, source } from './fixture.mjs';
+import { MIXED_RULES, NOW, allRequests, explains, random, rule, sandbox, source } from './fixture.mjs';
 
 const lineOf = (translation, id) => translation.lines.find(l => l.entry === id);
 const approval = (entry, engine, result, extra = {}) => ({
@@ -65,7 +65,7 @@ test('check 1: deny `git push * main` with allow `git *` gives a forbidden `git 
   assert.match(deny.reason, /git push/);
   assert.match(deny.reason, /blocks more/);
   const boxed = translateGuardrails('codex', { rules: [rule('no-push-main', 'shell', 'git push * main', 'deny')], sandbox: [sandbox()] });
-  assert.equal(lineOf(boxed, 'no-push-main').result, 'translated');
+  assert.equal(lineOf(boxed, 'no-push-main').result, 'weakened', 'review item W5: a sandbox does not upgrade it');
   const allow = lineOf(t, 'git-any');
   assert.equal(allow.result, 'translated');
   assert.match(allow.reason, /no Codex allow rule/);
@@ -184,8 +184,7 @@ function unexplained(rules, engine, requests) {
   const own = rules.filter(r => appliesTo(r, engine));
   const t = translateGuardrails(engine, { rules: own, sandbox: [] });
   const out = [];
-  const explains = (r, escapes) => ['weakened', 'absent'].includes(lineOf(t, r.id).result)
-    || (escapes.length > 0 && escapes.every(e => lineOf(t, r.id).reason.includes(KNOWN_ESCAPES[e].text)));
+  const explainsRule = (r, escapes) => explains(lineOf(t, r.id), escapes);
   for (const request of requests) {
     const neutral = neutralDecision(own, request);
     const projected = engineDecision(t.form, request);
@@ -200,7 +199,7 @@ function unexplained(rules, engine, requests) {
         continue;
       }
     }
-    if (!deciders.every(r => explains(r, escapes))) out.push(`${engine} ${JSON.stringify(request)}: ${projected} is more permissive than ${neutral} (${deciders.map(r => r.id)}; escapes ${escapes})`);
+    if (!deciders.every(r => explainsRule(r, escapes))) out.push(`${engine} ${JSON.stringify(request)}: ${projected} is more permissive than ${neutral} (${deciders.map(r => r.id)}; escapes ${escapes})`);
   }
   return out;
 }
@@ -236,20 +235,26 @@ test('fidelity rule: where Claude Code carries every matching rule exactly and n
     if (!tightened) assert.equal(got, expected, JSON.stringify(request));
     compared++;
   }
-  assert.ok(compared > 60, `compared ${compared}`);
+  assert.ok(compared > 40, `compared ${compared}`);
   // With a sandbox that covers files and network, only shell lines (R1), path allows (follow-up 4), tightened names,
   // and absent allows are not exact.
   const notExact = t.lines.filter(l => l.result !== 'exact').map(l => [l.entry, l.result]);
+  // Path denies stay translated whatever the sandbox (W5); web, Agent, and Skill denies have no vector (W6).
+  const isPath = r => ['read', 'edit', 'write'].includes(r.action);
   const expected = MIXED_RULES.flatMap(r => r.action === 'shell' ? [[r.id, 'translated']]
-    : ['read', 'edit', 'write'].includes(r.action) && r.effect === 'allow' ? [[r.id, 'weakened']]
-      : r.id === 'no-mcp-x' ? [[r.id, 'translated']] : r.id === 'agents-ok' ? [[r.id, 'absent']] : []);
+    : isPath(r) ? [[r.id, r.effect === 'allow' ? 'weakened' : 'translated']]
+      : r.effect !== 'allow' && ['web', 'subagent', 'skill'].includes(r.action) ? [[r.id, 'weakened']]
+        : r.id === 'no-mcp-x' ? [[r.id, 'translated']] : r.id === 'agents-ok' ? [[r.id, 'absent']] : []);
   assert.deepEqual(notExact, expected);
 });
 
 test('every guardrail loss line lists the escapes known in every engine (spec 8.3 rule 6)', () => {
   for (const engine of ENGINE_IDS) {
     const t = translateGuardrails(engine, { rules: [rule('d', 'shell', 'rm *', 'deny')], sandbox: [] });
-    for (const id of ['sudo', 'env', 'shell-c', 'absolute-path']) assert.ok(lineOf(t, 'd').reason.includes(KNOWN_ESCAPES[id].text), `${engine} ${id}`);
+    for (const id of Object.keys(KNOWN_ESCAPES)) {
+      if (KNOWN_ESCAPES[id].kind === 'shell' && KNOWN_ESCAPES[id].engines.includes(engine)) assert.ok(lineOf(t, 'd').reason.includes(KNOWN_ESCAPES[id].text), `${engine} ${id}`);
+    }
+    for (const id of ['absolute-path', 'quoting', 'subcommand-flags']) assert.ok(KNOWN_ESCAPES[id].engines.includes(engine), `${id} applies to ${engine}`);
   }
   const oc = translateGuardrails('opencode', { rules: [rule('d', 'shell', 'rm *', 'deny')], sandbox: [] });
   assert.ok(lineOf(oc, 'd').reason.includes(KNOWN_ESCAPES.wrapper.text));

@@ -24,7 +24,7 @@
 import type { GuardrailEffect, GuardrailRule } from '../../harness-definition/src/index.js';
 import { combineParts, type Decision } from './decision.js';
 import { normalizeRequestPath, pathMatches, pathPatternProblem, type PathMode } from './paths.js';
-import { collapseWhitespace, joinLines, opaqueForms, splitCommand, stripAssignments, stripWrappers } from './shell.js';
+import { collapseWhitespace, joinLines, opaqueForms, rawWords, splitCommand, stripAssignments, stripWrappers } from './shell.js';
 
 /** One action a person or model asks an engine to take. */
 export type NeutralRequest =
@@ -95,14 +95,22 @@ export function shellForms(part: string, effect: GuardrailEffect, reading: Shell
   return [...forms];
 }
 
-/** The decision of shell patterns, grouped by effect, for one command line, from the parsed parts only. */
+/** The text with its first word in lower case. */
+const lowerFirst = (text: string) => text.replace(/^\S+/, w => w.toLowerCase());
+
+/**
+ * The decision of shell patterns, grouped by effect, for one command line, from the parsed parts only. In the neutral
+ * reading a deny or ask compares the program word in any letter case (review item W7).
+ */
 export function shellDecision(patterns: Readonly<Record<GuardrailEffect, readonly string[]>>, command: string, reading: ShellReading = 'neutral'): Decision {
   const parts = splitCommand(command);
   if (parts.length === 0) return 'default';
+  const fold = reading === 'neutral' ? lowerFirst : (t: string) => t;
   const compiled = {
-    deny: patterns.deny.map(bashPatternRegex), ask: patterns.ask.map(bashPatternRegex), allow: patterns.allow.map(bashPatternRegex),
+    deny: patterns.deny.map(p => bashPatternRegex(fold(p))), ask: patterns.ask.map(p => bashPatternRegex(fold(p))), allow: patterns.allow.map(bashPatternRegex),
   };
-  const hits = (effect: GuardrailEffect, part: string) => shellForms(part, effect, reading).some(f => compiled[effect].some(re => re.test(f)));
+  const hits = (effect: GuardrailEffect, part: string) => shellForms(part, effect, reading)
+    .flatMap(f => effect === 'allow' ? [f] : [f, fold(f)]).some(f => compiled[effect].some(re => re.test(f)));
   return combineParts(parts.map(part => hits('deny', part) ? 'deny' : hits('ask', part) ? 'ask' : hits('allow', part) ? 'allow' : 'default'));
 }
 
@@ -122,8 +130,50 @@ function failClosedRules<R extends RuleShape>(rules: readonly R[], command: stri
     const program = patternProgram(r.pattern);
     if (program === null) return true;
     const esc = program.replace(/[.+?^$()|{}[\]\\*]/g, '\\$&');
-    return new RegExp(`(?:^|[^A-Za-z0-9_-])${esc}(?:[^A-Za-z0-9_-]|$)`).test(text);
+    return new RegExp(`(?:^|[^A-Za-z0-9_-])${esc}(?:[^A-Za-z0-9_-]|$)`, 'i').test(text);
   })());
+}
+
+/** The literal words of a shell pattern before its first wildcard. */
+function literalWords(pattern: string): string[] {
+  const words = (pattern.endsWith(':*') ? `${pattern.slice(0, -2)} *` : pattern).trim().split(/\s+/);
+  const out: string[] = [];
+  for (const w of words) { if (w.includes('*')) break; out.push(w); }
+  return out;
+}
+
+/** True when a raw word holds an unquoted $, backtick, {, *, ?, [ or ~. */
+function buildsAtRunTime(word: string): boolean {
+  let quote: string | null = null;
+  for (let i = 0; i < word.length; i++) {
+    const c = word[i] as string;
+    if (quote === "'") { if (c === "'") quote = null; continue; }
+    if (c === '\\') { i++; continue; }
+    if (quote === '"') { if (c === '"') quote = null; else if (c === '$' || c === '`') return true; continue; }
+    if (c === "'" || c === '"') { quote = c; continue; }
+    if ('$`{*?[~'.includes(c)) return true;
+  }
+  return false;
+}
+
+/**
+ * True when, for a deny or ask rule, a part with the rule's program word builds one of the words the rule names at run
+ * time: an unquoted $, backtick, {, *, ?, [ or ~ in its first N words, N being the rule's literal word count (review
+ * item W4). Such a line is opaque for the neutral model.
+ */
+export function ruleOpaque(rules: readonly RuleShape[], command: string): boolean {
+  const named = rules.filter(r => r.action === 'shell' && r.effect !== 'allow').map(r => literalWords(r.pattern)).filter(w => w.length > 0);
+  if (named.length === 0) return false;
+  return splitCommand(command).some(part => {
+    const words = rawWords(stripWrappers(stripAssignments(collapseWhitespace(part)))).map(w => w.text);
+    const program = (words[0] ?? '').toLowerCase();
+    return named.some(literal => literal[0]!.toLowerCase() === program && words.slice(0, literal.length).some(buildsAtRunTime));
+  });
+}
+
+/** True when the neutral model fails closed on a command line for these rules. */
+function isOpaque(rules: readonly RuleShape[], command: string): boolean {
+  return opaqueForms(command).length > 0 || ruleOpaque(rules, command);
 }
 
 /** The depth mode of a path rule of this effect. */
@@ -147,12 +197,22 @@ function pathRuleMatches(rule: RuleShape, path: string, mode: PathMode): boolean
 }
 
 /**
+ * The host contract (review item W10): userinfo, a port, and a trailing dot are dropped, and letters are lower case.
+ * It applies to the pattern and to the request alike.
+ */
+export function normalizeHost(host: string): string {
+  let h = host.slice(host.lastIndexOf('@') + 1).replace(/:\d*$/, '');
+  if (h.endsWith('.')) h = h.slice(0, -1);
+  return h.toLowerCase();
+}
+
+/**
  * True when a web rule matches a host. Letter case and a trailing dot are ignored (ruling R15). A deny or ask also
  * covers subdomains (ruling R5).
  */
 function webMatches(rule: RuleShape, host: string): boolean {
-  const h = (host.endsWith('.') ? host.slice(0, -1) : host).toLowerCase();
-  const p = rule.pattern.toLowerCase();
+  const h = normalizeHost(host);
+  const p = normalizeHost(rule.pattern);
   return globRegex(p).test(h) || (rule.effect !== 'allow' && globRegex(`*.${p}`).test(h));
 }
 
@@ -162,7 +222,7 @@ export function ruleMatches(rule: RuleShape, request: NeutralRequest): boolean {
   switch (request.action) {
     case 'shell':
       if (rule.action !== 'shell') return false;
-      if (opaqueForms(request.command).length > 0) return failClosedRules([rule], request.command).length > 0;
+      if (isOpaque([rule], request.command)) return failClosedRules([rule], request.command).length > 0;
       return shellDecision({ deny: [], ask: [], allow: [], [rule.effect]: [rule.pattern] }, request.command) !== 'default';
     case 'read':
       return rule.action === 'read' && pathRuleMatches(rule, request.path, pathMode(rule.effect));
@@ -180,6 +240,18 @@ export function ruleMatches(rule: RuleShape, request: NeutralRequest): boolean {
 }
 
 /**
+ * For a path request that cannot be resolved inside the project: the deny and ask rules that could apply to it, which
+ * make the request ask (review item W10). Null when the path resolves, or the request is not a path.
+ */
+function unresolvedPathRules<R extends RuleShape>(rules: readonly R[], request: NeutralRequest): R[] | null {
+  if (request.action !== 'read' && request.action !== 'edit' && request.action !== 'write') return null;
+  if (normalizeRequestPath(request.path) !== null) return null;
+  return rules.filter(r => r.effect !== 'allow' && (request.action === 'read'
+    ? r.action === 'read'
+    : r.action === 'edit' || r.action === 'write' || (r.action === 'read' && r.effect === 'deny')));
+}
+
+/**
  * The neutral decision for one request. For a shell request every simple command is judged on its own and the results
  * combine: any `deny` denies, else any `ask` asks, else `allow` only when every command is allowed. A command line with
  * a form the splitter does not fully parse is never allowed from a rule: it asks when a deny or ask rule's program word
@@ -188,10 +260,12 @@ export function ruleMatches(rule: RuleShape, request: NeutralRequest): boolean {
 export function neutralDecision(rules: readonly RuleShape[], request: NeutralRequest): Decision {
   const valid = rules.filter(r => patternProblem(r) === null);
   if (request.action === 'shell') {
-    if (opaqueForms(request.command).length > 0) return failClosedRules(valid, request.command).length > 0 ? 'ask' : 'default';
+    if (isOpaque(valid, request.command)) return failClosedRules(valid, request.command).length > 0 ? 'ask' : 'default';
     const by = (effect: GuardrailEffect) => valid.filter(r => r.action === 'shell' && r.effect === effect).map(r => r.pattern);
     return shellDecision({ deny: by('deny'), ask: by('ask'), allow: by('allow') }, request.command);
   }
+  const unresolved = unresolvedPathRules(valid, request);
+  if (unresolved !== null) return unresolved.length > 0 ? 'ask' : 'default';
   const matching = valid.filter(r => ruleMatches(r, request));
   if (matching.some(r => r.effect === 'deny')) return 'deny';
   if (matching.some(r => r.effect === 'ask')) return 'ask';
@@ -206,7 +280,9 @@ export function decidingRules<R extends RuleShape>(rules: readonly R[], request:
   const decision = neutralDecision(rules, request);
   if (decision === 'default') return [];
   const valid = rules.filter(r => patternProblem(r) === null);
-  if (request.action === 'shell' && opaqueForms(request.command).length > 0) return failClosedRules(valid, request.command);
+  if (request.action === 'shell' && isOpaque(valid, request.command)) return failClosedRules(valid, request.command);
+  const unresolved = unresolvedPathRules(valid, request);
+  if (unresolved !== null) return unresolved;
   const effect = decision as GuardrailEffect;
   if (request.action === 'shell') {
     const parts = splitCommand(request.command);
