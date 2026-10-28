@@ -16,9 +16,11 @@ import fs from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { canonicalJson } from '../../contracts/src/index.js';
 import {
-  DEFINITION_LIMITS, ENGINE_IDS, PART_KEYS, REVISION_PREFIX, appliesTo, checkFidelity, isEngineId, loadDefinition, selectForEngine, skillContentHash,
+  DEFINITION_LIMITS, ENGINE_IDS, PART_KEYS, REVISION_PREFIX, adoptedPaths, appliesTo, checkFidelity, isEngineId, loadDefinition, parseStrictJson,
+  selectForEngine, skillContentHash,
 } from '../../harness-definition/src/index.js';
-import type { Definition, EngineId, FidelityApproval, LossLine, LossPart, PartKey, SkillEntry } from '../../harness-definition/src/index.js';
+import { decodeText } from '../../harness-definition/src/json.js';
+import type { AdoptedRecord, Definition, EngineId, FidelityApproval, LossLine, LossPart, PartKey, SkillEntry } from '../../harness-definition/src/index.js';
 import { LOCKED_PARTS, planLocked } from './locked.js';
 import type { CodexTrust, LockedPart, ReviewItem, TrustLine } from './locked.js';
 import {
@@ -345,6 +347,23 @@ function folderContent(projectDir: string, folder: string): { readonly files: re
   return { files: files.map(f => f.path.slice('skills/x/'.length)), sha256: skillContentHash('x', files).slice(REVISION_PREFIX.length) };
 }
 
+/**
+ * The content hash of the canonical 0.7 copy a record names, or null. The path must be one of the two 0.7 forms for the
+ * record's own id, and the catalog of that form must be a file that parses as a JSON object (review item K2).
+ */
+function canonicalHash(projectDir: string, record: AdoptedRecord): string | null {
+  const [managed, v1] = adoptedPaths(record.id);
+  const path = record.adoptedFrom.path;
+  const catalog = path === managed ? `.bowerloom/managed/catalog/${record.id}.json` : path === v1 ? '.bowerloom-skills/catalog.json' : null;
+  if (catalog === null) return null;
+  let got: ReturnType<typeof readProject>;
+  try { got = readProject(projectDir, catalog); } catch { return null; }
+  const text = got ? decodeText(got.bytes) : null;
+  const parsed = text === null ? null : parseStrictJson(text);
+  if (!parsed?.ok || parsed.value === null || typeof parsed.value !== 'object' || Array.isArray(parsed.value)) return null;
+  return folderContent(projectDir, path)?.sha256 ?? null;
+}
+
 interface Target { bytes: Uint8Array; mode: number; engines: Set<EngineId> }
 
 export function receiptFilesOf(changes: readonly PlannedChange[]): ReceiptFile[] {
@@ -480,7 +499,10 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
     const name = folder.split('/')[2]!;
     const record = def.adopted.find(a => a.part === 'skills' && a.id === name);
     const held = record ? folderContent(projectDir, folder) : null;
-    if (record && held && held.sha256 === record.adoptedFrom.sha256 && held.files.every(f => targets.has(`${folder}/${f}`))) continue;
+    // Review item K2: a cloned repository can forge the marker and the record, so the real canonical copy is read too.
+    const canonical = record ? canonicalHash(projectDir, record) : null;
+    if (record && held && canonical !== null && held.sha256 === record.adoptedFrom.sha256 && canonical === record.adoptedFrom.sha256
+      && held.files.every(f => targets.has(`${folder}/${f}`))) continue;
     managed.push(`${folder} (0.7 item ${holder})`);
   }
   if (managed.length) refuse('PORTABLE_MANAGED_COPY', managed);
@@ -526,7 +548,7 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
 
   // Sources of the borrowed skills (ruling P18).
   const projected = new Set(skillsById.keys());
-  const sources: ReceiptSource[] = def.sources.flatMap(s => s.items.filter(i => i.part === 'skills' && projected.has(i.id)).map(i => ({ skill: i.id, name: s.name, marketplace: s.marketplace, version: s.version })))
+  const sources: ReceiptSource[] = def.sources.flatMap(s => s.items.filter(i => i.part === 'skills' && projected.has(i.id)).map(i => ({ skill: i.id, name: s.name, marketplace: s.marketplace, version: s.version, ...(s.claimed ? { claimed: true as const } : {}) })))
     .sort((a, b) => byBytes(a.skill, b.skill));
 
   const definition = { folder: def.folder, harness: def.harness.id, revision: def.revision };

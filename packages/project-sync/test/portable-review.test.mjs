@@ -450,9 +450,13 @@ test('P27: a skill folder held by a 0.7 managed copy gets its own refusal that n
 test('step 3 contract: a folder a 0.7 managed copy holds is replaced only when sources.json records it with the same content hash', async t => {
   const old = skill('review', 'license: MIT\n').replace('Use review', 'An older review');
   const hashOf = files => skillContentHash('x', Object.entries(files).map(([rel, text]) => ({ path: `skills/x/${rel}`, bytes: Buffer.from(text) }))).slice('sha256:'.length);
-  const make = record => {
-    const p = project(t, { engines: [{ id: 'claude-code' }], parts: { plugins: 'sources.json' }, files: { 'sources.json': json({ sources: [], adopted: [{ part: 'skills', id: 'review', adoptedFrom: { kind: '0.7-managed', path: '.bowerloom/managed/skills/review', sha256: record } }] }) } });
-    for (const [rel, text] of [['.claude/skills/review/SKILL.md', old], ['.bowerloom/managed/catalog/review.json', '{}\n']]) { fs.mkdirSync(path.dirname(path.join(p.dir, rel)), { recursive: true }); fs.writeFileSync(path.join(p.dir, rel), text); }
+  /** A project whose 0.7 copy of review is the canonical copy, a catalog, and the Claude Code folder. Null leaves a file out. */
+  const make = (record, { canonical = old, catalog = '{}\n', folder = old, form = 'managed' } = {}) => {
+    const v1 = form === 'v1';
+    const recorded = v1 ? '.bowerloom-skills/skills/review' : '.bowerloom/managed/skills/review';
+    const p = project(t, { engines: [{ id: 'claude-code' }], parts: { plugins: 'sources.json' }, files: { 'sources.json': json({ sources: [], adopted: [{ part: 'skills', id: 'review', adoptedFrom: { kind: '0.7-managed', path: recorded, sha256: record } }] }) } });
+    const files = [['.claude/skills/review/SKILL.md', folder], [`${recorded}/SKILL.md`, canonical], [v1 ? '.bowerloom-skills/catalog.json' : '.bowerloom/managed/catalog/review.json', catalog]];
+    for (const [rel, text] of files) { if (text === null) continue; fs.mkdirSync(path.dirname(path.join(p.dir, rel)), { recursive: true }); fs.writeFileSync(path.join(p.dir, rel), text); }
     return p;
   };
   const p = make(hashOf({ 'SKILL.md': old }));
@@ -464,8 +468,16 @@ test('step 3 contract: a folder a 0.7 managed copy holds is replaced only when s
   await remove(p);
   assert.equal(fs.readFileSync(path.join(p.dir, '.claude/skills/review/SKILL.md'), 'utf8'), old);
   assert.equal(fs.existsSync(path.join(p.dir, '.claude/skills/review/references')), false);
-  const q = make(hashOf({ 'SKILL.md': old + 'changed\n' }));
-  assert.throws(() => planPortable(q.input()), e => e.code === 'PORTABLE_MANAGED_COPY');
+  assert.doesNotThrow(() => planPortable(make(hashOf({ 'SKILL.md': old }), { form: 'v1' }).input()), 'the v1 namespace works the same');
+  const refused = (q, what) => assert.throws(() => planPortable(q.input()), e => e.code === 'PORTABLE_MANAGED_COPY', what);
+  refused(make(hashOf({ 'SKILL.md': old + 'changed\n' })), 'a record that matches nothing');
+  // Review item K2: the record and the marker alone are not enough. The canonical copy must exist and hold the same
+  // content, and the catalog must parse.
+  const forged = 'forged by a cloned repository\n';
+  refused(make(hashOf({ 'SKILL.md': forged }), { canonical: null, folder: forged }), 'no canonical copy');
+  refused(make(hashOf({ 'SKILL.md': forged }), { folder: forged }), 'a canonical copy that differs from the record and the folder');
+  refused(make(hashOf({ 'SKILL.md': old }), { catalog: 'not json\n' }), 'a catalog that does not parse');
+  refused(make(hashOf({ 'SKILL.md': old }), { catalog: null }), 'no catalog');
 });
 
 // ---- P28: the remaining gaps -------------------------------------------------------------------------------------------------------

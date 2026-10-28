@@ -17,15 +17,17 @@ const ENGINE = 'codex' as const;
 const CONFIG = '.codex/config.toml';
 export const codexProjectDir = (command: string): string => command.replace(/\$\(git rev-parse --show-toplevel\)/g, '${PROJECT_DIR}');
 /**
- * Codex tool names that name one Claude Code tool each, as the hook writer maps them (fidelity, locked-hooks.ts):
- * `exec_command` is Bash and `spawn_agent` is Agent. `apply_patch` stands for Edit, MultiEdit, Write, and NotebookEdit
- * at once, so it is kept as written.
+ * Codex tool names as the Claude Code names a neutral matcher uses, the inverse of the hook writer's map (fidelity,
+ * locked-hooks.ts): `exec_command` is Bash, `spawn_agent` is Agent, and `apply_patch`, the Codex edit tool, stands for
+ * every Claude Code edit tool (review item K1). The writer maps those back to apply_patch for Codex.
  */
-const CODEX_TOOL_NAMES: Readonly<Record<string, string>> = { exec_command: 'Bash', spawn_agent: 'Agent' };
+const CODEX_TOOL_NAMES: Readonly<Record<string, readonly string[]>> = {
+  exec_command: ['Bash'], spawn_agent: ['Agent'], apply_patch: ['Edit', 'Write', 'MultiEdit', 'NotebookEdit'],
+};
 /** A hook matcher that lists tool names, with Codex names turned into Claude Code names and repeats removed. */
 export function codexMatcher(matcher: string): string {
   if (!/^[A-Za-z0-9_]+(?:\|[A-Za-z0-9_]+)*$/.test(matcher)) return matcher;
-  return [...new Set(matcher.split('|').map(n => CODEX_TOOL_NAMES[n] ?? n))].join('|');
+  return [...new Set(matcher.split('|').flatMap(n => CODEX_TOOL_NAMES[n] ?? [n]))].join('|');
 }
 /** The justification the rules writer gives a rule with none of its own. Adoption does not keep it. */
 const BOWERLOOM_JUSTIFICATION = /^Bowerloom guardrail [a-z0-9]+(?:-[a-z0-9]+)*$/;

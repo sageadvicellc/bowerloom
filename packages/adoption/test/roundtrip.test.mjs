@@ -177,16 +177,20 @@ test('check 1, locked-in half: Claude Code MCP servers, subagents, hooks, guardr
   const r = await roundTrip(t, CLAUDE_FILES, ['claude-code']);
   const e = r.one.def.entries;
   assert.deepEqual([e.mcp.length, e.subagents.length, e.hooks.length, e.rules.length, e.sandbox.length], [2, 1, 1, 5, 1], 'every locked-in part is adopted');
-  sameEntries(r, ['mcp', 'subagents', 'hooks', 'sandbox']);
+  sameEntries(r, ['mcp', 'subagents', 'hooks']);
   const source = readJson(r.dir, '.claude/settings.json').permissions, projected = readJson(r.fresh, '.claude/settings.json').permissions;
   const decide = lists => req => claudeCodeDecide(lists, claudeCodeRequest(req));
   // Expected: a neutral web deny also covers subdomains, so the projection blocks more. Its line is weakened.
   assert.deepEqual(decisionDiffs(decide(source), decide(projected)), [['web sub.example.test', 'default', 'deny']]);
   assert.equal(lineOf(r.plan, 'guardrails', ruleOf(r.one.def, 'web', 'example.test', 'deny').id).result, 'weakened');
   // Expected: the projection forbids commands outside the sandbox (ruling B11), a key with no neutral form; the
-  // engine-private file of leftover settings is not projected in this step.
-  assert.deepEqual(readJson(r.fresh, '.claude/settings.json').sandbox, { enabled: true, allowUnsandboxedCommands: false, ignoreViolations: { '*': ['/tmp'] } });
+  // engine-private file of leftover settings is not projected in this step. Review item K3: the sandbox writes a key of
+  // its x-claude-code block only from an allowlist, which is empty until step 5, so ignoreViolations is an absent field.
+  assert.deepEqual(readJson(r.fresh, '.claude/settings.json').sandbox, { enabled: true, allowUnsandboxedCommands: false });
   assert.equal(lineOf(r.plan, 'guardrails', 'sandbox').result, 'exact');
+  assert.equal(r.plan.loss.find(l => l.entry === 'sandbox' && l.field === 'x-claude-code').result, 'absent');
+  assert.deepEqual(r.two.def.entries.sandbox.map(({ privateBlocks, ...rest }) => rest), r.one.def.entries.sandbox.map(({ privateBlocks, ...rest }) => rest));
+  assert.deepEqual(r.two.def.entries.sandbox[0].privateBlocks, {});
   assert.deepEqual(r.two.plan.unmapped.filter(u => u.gate !== 'none').map(u => u.pointer), ['/sandbox/allowUnsandboxedCommands']);
   assert.equal(lineOf(r.plan, 'engine-private', 'engines/claude-code/settings.json').result, 'absent');
 });
@@ -200,6 +204,7 @@ const CODEX_FILES = {
   '.codex/rules/default.rules': 'prefix_rule(\n    pattern = ["git", "push"],\n    decision = "forbidden",\n    justification = "No pushes from an agent.",\n)\nprefix_rule(pattern = ["rm"], decision = "prompt")\n',
   '.codex/hooks.json': json({ hooks: {
     PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: '$(git rev-parse --show-toplevel)/scripts/check.sh', timeout: 10 }] }],
+    PostToolUse: [{ matcher: 'apply_patch', hooks: [{ type: 'command', command: 'npm run lint' }] }],
     SessionStart: [{ hooks: [{ type: 'command', command: 'echo ready' }] }],
   } }),
   '.codex/agents/reviewer.toml': 'name = "reviewer"\ndescription = "Reviews a change."\ndeveloper_instructions = "Read the diff and report."\nmodel = "model-b"\nmodel_reasoning_effort = "low"\n',
@@ -208,7 +213,7 @@ const CODEX_FILES = {
 test('check 1, locked-in half: Codex MCP servers, subagents, hooks, and rules adopt and project back with the same meaning; the sandbox is a listed loss', async t => {
   const r = await roundTrip(t, CODEX_FILES, ['codex']);
   const e = r.one.def.entries;
-  assert.deepEqual([e.mcp.length, e.subagents.length, e.hooks.length, e.rules.length, e.sandbox.length], [2, 1, 2, 2, 1], 'every locked-in part is adopted');
+  assert.deepEqual([e.mcp.length, e.subagents.length, e.hooks.length, e.rules.length, e.sandbox.length], [2, 1, 3, 2, 1], 'every locked-in part is adopted');
   // The rules come back as the same entries: the Codex rules reader is exact for prefix rules, and a justification
   // rides in the rule's x-codex block both ways.
   sameEntries(r, ['mcp', 'subagents', 'hooks', 'rules']);

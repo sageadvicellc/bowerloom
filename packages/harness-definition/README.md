@@ -89,7 +89,9 @@ Strength comes from the definition (`strengthOf`). A loss line holds no strength
 
 `sources` lists borrowed sources, each with a pinned version. `claimed: true` marks a source that a 0.7 catalog only claims, which Bowerloom did not check.
 
-`adopted` lists the skills that adoption converted from 0.7 managed copies. Each record is `{ part: "skills", id, adoptedFrom: { kind: "0.7-managed", path, sha256 } }`. `path` is the canonical copy, relative to the project, with no `..` segment. `sha256` is the hex of the copy's skill content hash (`skillContentHash` without its `sha256:` prefix). The loader checks both strictly. `definition.adopted` holds the records.
+`adopted` lists the skills that adoption converted from 0.7 managed copies. Each record is `{ part: "skills", id, adoptedFrom: { kind: "0.7-managed", path, sha256 } }`. `path` is the canonical copy of that very skill: exactly `.bowerloom/managed/skills/<id>` or `.bowerloom-skills/skills/<id>`, with the record's own id (`adoptedPaths`). `sha256` is the hex of the copy's skill content hash (`skillContentHash` without its `sha256:` prefix). The loader checks both strictly. `definition.adopted` holds the records.
+
+The skill content hash says two folders are equal after normalisation, not byte for byte: Markdown line endings become LF, file modes do not count, and an empty folder holds no file, so it does not count either.
 
 ## Revision
 

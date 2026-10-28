@@ -91,7 +91,8 @@ function filesystemEntries(rule: GuardrailRule): { entries: CodexFilesystemEntry
 export function codexJustification(block: JsonValue | undefined): string | undefined {
   if (block === null || typeof block !== 'object' || Array.isArray(block)) return undefined;
   const j = (block as Record<string, JsonValue>).justification;
-  return typeof j === 'string' && j.trim() !== '' && j.length <= 1024 && !/[\0-\x1f\x7f]/.test(j) ? j : undefined;
+  // Review item K4: no control character (C0, DEL, C1) and no invisible format, line, or paragraph separator.
+  return typeof j === 'string' && j.trim() !== '' && j.length <= 1024 && !/[\0-\x1f\x7f-\x9f\p{Cf}\p{Zl}\p{Zp}]/u.test(j) ? j : undefined;
 }
 
 export function translateCodex(rules: readonly GuardrailRule[], sandbox: readonly SandboxRequirement[], out: Collector): Translation<CodexForm> {
@@ -127,7 +128,8 @@ export function translateCodex(rules: readonly GuardrailRule[], sandbox: readonl
         // Review item W5: a sandbox requirement gives no scope, so it never upgrades the line; the note names it.
         const box = sandbox[0];
         const common = `Codex checks a command with a glob, ~, $, a redirect, quotes around a variable, or a trailing & as one bash -lc command, so common forms of ${shown} escape the rule.`;
-        out.line(rule, 'weakened', `Codex carries the rule as a ${decision} prefix rule on ${shown}, matched against argv.${more} ${common}${box ? ` The sandbox ${box.id} may cover it; the live check of step 5 checks it.` : ' No sandbox requirement bounds them.'} ${escapes}`);
+        const said = own !== undefined ? ' The justification Codex shows comes from the definition: it is the text of the rule\'s x-codex block.' : '';
+        out.line(rule, 'weakened', `Codex carries the rule as a ${decision} prefix rule on ${shown}, matched against argv.${said}${more} ${common}${box ? ` The sandbox ${box.id} may cover it; the live check of step 5 checks it.` : ' No sandbox requirement bounds them.'} ${escapes}`);
         break;
       }
       case 'read': case 'edit': case 'write': {
