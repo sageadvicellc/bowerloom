@@ -232,6 +232,18 @@ test('0.8 fidelity is an allowlisted runtime module with an optional manifest',(
  assert.ok(record.sourceFiles.some(f=>f.path==='packages/fidelity/src/locked-hooks.ts'));
 });
 
+// Bowerloom 0.8, step 5: `bowerloom harness adopt` and `harness merge` run the adoption package, so adoption is a runtime
+// module of the CLI too. It has no package.json of its own. Every package the CLI imports, at any depth, stays inside the allowlist.
+test('0.8 adoption is an allowlisted runtime module with an optional manifest',()=>{
+ assert.ok(MODULES.includes('adoption'));
+ const record=collect({repoDir:repo}).record;
+ assert.equal(record.sourceManifests.some(m=>m.path==='packages/adoption/package.json'),false);
+ for(const file of ['packages/adoption/src/merge.ts','apps/cli/src/harness-def.ts'])assert.ok(record.sourceFiles.some(f=>f.path===file),file);
+ const reached=new Set(record.sourceFiles.map(f=>/^packages\/([^/]+)\//.exec(f.path)?.[1]).filter(Boolean));
+ for(const name of reached)assert.ok(MODULES.includes(name),name);
+ for(const name of ['project-sync','harness-definition','fidelity','adoption'])assert.ok(reached.has(name),name);
+});
+
 // Beta 0.7.0 Day 0: the project-layer packages are runtime modules with optional internal manifests.
 test('beta 0.7.0 project packages are allowlisted modules whose manifests are optional but validated when present',()=>{
  const added=['project-context','project-config','project-authoring','skill-manifest','project-sync','context-slices'];
