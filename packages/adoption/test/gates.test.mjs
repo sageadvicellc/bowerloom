@@ -39,13 +39,32 @@ test('A7: a replaced secret names the person\'s own value; a ${NAME} in a comman
 
 test('A9: a private block or engine file that holds a command, a URL, or a credential helper needs approval', t => {
   const p = project(t, {
-    '.claude/settings.json': json({ awsAuthRefresh: 'aws sso login', outputStyle: 'Explanatory' }),
-    '.codex/config.toml': 'notify = ["notify-send", "done"]\n',
+    '.claude/settings.json': json({ outputStyle: 'Explanatory', companyAnnouncements: ['https://example.test/notes'] }),
+    '.codex/config.toml': 'file_opener = "vscode"\n',
     '.mcp.json': json({ mcpServers: { docs: { type: 'http', url: 'https://mcp.example.test/mcp', oauth: { authServerMetadataUrl: 'https://auth.example.test/meta' } } } }),
   });
   const plan = planAdoption(p.input({ engines: [{ id: 'claude-code' }, { id: 'codex' }] }));
-  for (const key of ['engine-private/engines/claude-code/settings.json', 'engine-private/engines/codex/config.json', 'mcp/docs']) assert.ok(plan.approvalsRequired.includes(key), key);
+  for (const key of ['engine-private/engines/claude-code/settings.json', 'mcp/docs']) assert.ok(plan.approvalsRequired.includes(key), key);
+  assert.equal(plan.approvalsRequired.includes('engine-private/engines/codex/config.json'), false, 'a plain value needs no approval');
   assert.ok(item(plan, 'mcp', 'docs').needsApproval.some(n => /command, a URL, or a credential helper/.test(n)));
+});
+
+test('A9, contract half: keys that run a command or grant trust are permission-like, so they are listed and never kept', async t => {
+  const p = project(t, {
+    '.claude/settings.json': json({
+      awsAuthRefresh: 'aws sso login', awsCredentialExport: 'aws-export', extraKnownMarketplaces: { team: { source: { source: 'github', repo: 'example/plugins' } } },
+      enabledPlugins: { 'formatter@team': true }, outputStyle: 'Explanatory',
+    }),
+    '.codex/config.toml': 'notify = ["notify-send", "done"]\nfile_opener = "vscode"\n\n[model_providers.local]\nname = "Local"\nbase_url = "http://localhost:1234/v1"\n',
+  });
+  const input = p.input({ engines: [{ id: 'claude-code' }, { id: 'codex' }] });
+  const plan = planAdoption(input);
+  const at = (path, pointer) => plan.unmapped.find(u => u.path === path && u.pointer === pointer);
+  for (const key of ['awsAuthRefresh', 'awsCredentialExport', 'extraKnownMarketplaces', 'enabledPlugins']) assert.match(at('.claude/settings.json', `/${key}`)?.reason ?? '', /permission-like/, key);
+  for (const key of ['notify', 'model_providers']) assert.match(at('.codex/config.toml', `/${key}`)?.reason ?? '', /permission-like/, key);
+  await applyAdoption(input, plan.revision, plan.approvalsRequired);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(p.def, 'engines/claude-code/settings.json'), 'utf8')), { outputStyle: 'Explanatory' });
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(p.def, 'engines/codex/config.json'), 'utf8')), { file_opener: 'vscode' });
 });
 
 test('A14: instructions that only some engines read need approval, since every engine reads them after projection', t => {

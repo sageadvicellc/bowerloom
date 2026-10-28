@@ -61,6 +61,8 @@ The result words are `exact`, `translated`, `weakened`, and `absent`, everywhere
 
 `checkFidelity` builds the expected set of part, entry, and engine itself. A missing line is a problem, so an empty report never passes. Every entry needs a line for every engine it applies to, exact ones too.
 
+A loss line names a part key, or `engine-private` for a file under `engines/<engine>/` (`LOSS_PARTS`). Its entry is the path of the file in the definition, such as `engines/codex/config.json`. Such a line is advisory.
+
 Strength comes from the definition (`strengthOf`). A loss line holds no strength:
 
 - A `deny` or `ask` rule is enforced.
@@ -71,7 +73,9 @@ Strength comes from the definition (`strengthOf`). A loss line holds no strength
 
 - `SKILL.md` frontmatter holds the open core fields only: `name`, `description`, `license`, `compatibility`, and `metadata`.
 - An engine-only skill key goes in the skill's entry in the `skills` map of `harness.json`, inside an `x-<engine>` block. The skill engine filter also goes there, as `engines`.
-- A private block holds no permission-like key at any depth. Examples: `permissions`, `allowed-tools`, `sandbox_mode`, `approval_policy`, `tools`, `hooks`, `mcpServers`. `isPermissionKey` holds the rule. Adopt Claude Code's `allowed-tools` as a guardrail entry, never as a private block.
+- A private block holds no permission-like key at any depth. Examples: `permissions`, `allowed-tools`, `sandbox_mode`, `permissionMode`, `defaultMode`, `approval_policy`, `tools`, `hooks`, `mcpServers`. `isPermissionKey` holds the rule. Adopt Claude Code's `allowed-tools` as a guardrail entry, never as a private block.
+- A key that runs a command, fetches a credential, or grants trust to a plugin or a provider is permission-like too: for example `awsAuthRefresh`, `awsCredentialExport`, `extraKnownMarketplaces`, `enabledPlugins`, `notify`, and `model_providers`.
+- `mode` alone is not permission-like. OpenCode's agent `mode` (`primary`, `subagent`, or `all`) rides in the agent's `x-opencode` block, and the subagent writer writes it back.
 - An engine that `harness.json` does not list cannot be the target of an engine filter, a private block, a model, or an `engines/<id>/` folder.
 - The denylist of private-block keys cannot be complete. So the projection lanes treat every private block as untrusted. They run the fidelity check on what they project from a private block, as they do for neutral entries.
 

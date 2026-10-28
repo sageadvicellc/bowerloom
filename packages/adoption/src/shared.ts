@@ -294,7 +294,8 @@ const riskyText = (v: string): boolean => /^[a-z][a-z0-9+.-]*:\/\//i.test(v) || 
 
 /**
  * True when a private block holds a command, a URL, or a credential helper: a key named for one, or a value that looks
- * like a URL, a path, or a command substitution. The contract's list of permission-like words does not cover these yet.
+ * like a URL, a path, or a command substitution. The contract refuses the keys that run a command or grant trust
+ * (`isPermissionKey`, step 3); this check also catches a value such as a URL under a plain key.
  */
 export function riskOf(value: JsonValue): boolean {
   if (typeof value === 'string') return riskyText(value);

@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { canonicalJson } from '../../contracts/src/index.js';
 import { ENGINE_IDS, PART_KEYS, appliesTo, checkFidelity, isEngineId, loadDefinition, selectForEngine } from '../../harness-definition/src/index.js';
-import type { Definition, EngineId, FidelityApproval, LossLine, PartKey, SkillEntry } from '../../harness-definition/src/index.js';
+import type { Definition, EngineId, FidelityApproval, LossLine, LossPart, PartKey, SkillEntry } from '../../harness-definition/src/index.js';
 import { LOCKED_PARTS, planLocked } from './locked.js';
 import type { CodexTrust, LockedPart, ReviewItem, TrustLine } from './locked.js';
 import {
@@ -510,7 +510,7 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
 }
 
 /** The parts of the loss report that go through the fidelity check (ruling P14, and step 3 for the locked-in parts). */
-const CHECKED_PARTS: readonly PartKey[] = ['system-prompt', 'memory', 'tool-guidance', 'skills', ...LOCKED_PARTS];
+const CHECKED_PARTS: readonly LossPart[] = ['system-prompt', 'memory', 'tool-guidance', 'skills', ...LOCKED_PARTS];
 
 /**
  * The loss report (section 6; ruling P14): every part the harness lists gets lines for every engine being projected.
@@ -570,9 +570,8 @@ function lossReport(
         for (const e of entries) loss.push({ part, entry: e.id, engine, result: 'absent', reason: LOCKED_IN_REASON });
       }
     }
-    // Review item V12: files under engines/<engine>/ have no part of their own. They are reported with the raw files
-    // of the definition, `scripts`, under their own path and the field `engine-private`.
-    for (const file of view.enginePrivate) loss.push({ part: 'scripts', entry: `engines/${engine}/${file}`, field: 'engine-private', engine, result: 'absent', reason: LOCKED_IN_REASON });
+    // Review item V12 and the step 3 contract: a file under engines/<engine>/ has the loss-line part engine-private.
+    for (const file of view.enginePrivate) loss.push({ part: 'engine-private', entry: `engines/${engine}/${file}`, engine, result: 'absent', reason: LOCKED_IN_REASON });
   }
   const has = (part: PartKey): boolean => listed.includes(part);
   const e = def.entries;

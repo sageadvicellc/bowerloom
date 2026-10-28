@@ -13,7 +13,8 @@ removal, and recovery), `src/portable-files.ts` (every read and write in the pro
 
 A plan reads only. A person approves its revision. Apply plans again under the project lock and writes only when the
 revision is the same. Scripts, engine-private files, and the private blocks of skills are not projected yet: the plan
-reports them `absent` and says that the projection is partial.
+reports them `absent` and says that the projection is partial. The line of a file under `engines/<engine>/` names the
+part `engine-private`.
 
 ## The locked-in parts (step 3)
 

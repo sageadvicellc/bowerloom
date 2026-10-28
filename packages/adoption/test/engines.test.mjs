@@ -163,15 +163,29 @@ test('OpenCode 1.x: permission keys, MCP entries, and agents; last match wins is
   assert.deepEqual(def.entries.mcp.find(s => s.name === 'remote').headers, { Authorization: 'Bearer ${REMOTE_TOKEN}' });
   assert.deepEqual(def.entries.subagents.map(s => [s.id, s.model, s.privateBlocks]).sort(), [
     ['helper', { opencode: 'provider/model-c' }, { opencode: { temperature: 0.2 } }],
-    ['reviewer', undefined, {}],
+    ['reviewer', undefined, { opencode: { mode: 'subagent' } }],
   ]);
-  // `mode` is permission-like in the contract (isPermissionKey), so it cannot ride in a private block.
-  assert.match(reasonAt(plan, '.opencode/agents/reviewer.md', '/mode'), /permission-like/);
+  // Step 3 contract change: an OpenCode agent's mode (primary, subagent, all) rides in its x-opencode block.
+  assert.equal(reasonAt(plan, '.opencode/agents/reviewer.md', '/mode'), undefined);
   assert.match(reasonAt(plan, '.opencode/agents/limited.md'), /tool limit/);
   assert.match(reasonAt(plan, 'opencode.json', '/plugin'), /plugin/);
   assert.match(reasonAt(plan, '.opencode/plugins'), /JavaScript/);
   assert.deepEqual(def.harness.engines, [{ id: 'opencode', version: '1.18.30', model: 'provider/model-c' }]);
   assert.deepEqual(fileOf(def, 'engines/opencode/opencode.json'), { $schema: 'https://opencode.ai/config.json' });
+});
+
+test('OpenCode agent mode: primary, subagent, and all ride in x-opencode; any other value is listed', async t => {
+  const p = project(t, {
+    'opencode.json': json({ agent: { lead: { description: 'Leads.', prompt: 'Lead the work.', mode: 'primary' }, odd: { description: 'Odd.', prompt: 'Be odd.', mode: 'background' } } }),
+    '.opencode/agents/both.md': '---\ndescription: Both ways.\nmode: all\n---\nWork either way.\n',
+    '.opencode/agents/listed.md': '---\ndescription: Listed.\nmode: 3\n---\nWork.\n',
+  });
+  const { plan, def } = await adopt(p, [{ id: 'opencode', version: '1.18.30' }]);
+  assert.deepEqual(def.entries.subagents.map(s => [s.id, s.privateBlocks]).sort(), [
+    ['both', { opencode: { mode: 'all' } }], ['lead', { opencode: { mode: 'primary' } }], ['listed', {}], ['odd', {}],
+  ]);
+  assert.match(reasonAt(plan, 'opencode.json', '/agent/odd/mode'), /primary, subagent, or all/);
+  assert.match(reasonAt(plan, '.opencode/agents/listed.md', '/mode'), /primary, subagent, or all/);
 });
 
 test('check 6: an OpenCode file in the 2.x shape, or a recorded version other than 1.x, is refused', t => {

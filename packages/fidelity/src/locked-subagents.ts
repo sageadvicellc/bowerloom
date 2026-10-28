@@ -45,6 +45,8 @@ export const OPENCODE_TOOL_KEYS: Readonly<Record<string, readonly string[]>> = O
   read: ['read'], search: ['grep', 'glob', 'list'], edit: ['edit'], write: ['edit'], shell: ['bash'], web: ['webfetch', 'websearch'],
   task: ['task'], skill: ['skill'],
 });
+/** The agent modes of OpenCode 1.18.30. An x-opencode block may name one; the writer writes it back. */
+export const OPENCODE_AGENT_MODES: readonly string[] = Object.freeze(['primary', 'subagent', 'all']);
 /** OpenCode tool keys that no neutral class allows. */
 export const OPENCODE_UNCLASSED_KEYS: readonly string[] = Object.freeze(['codesearch', 'lsp', 'todowrite', 'todoread']);
 const CLASSES = ['read', 'search', 'edit', 'write', 'shell', 'web', 'task', 'skill'] as const;
@@ -114,7 +116,13 @@ export function translateSubagents(engine: EngineId, subagents: readonly Subagen
           out.line(a.id, 'absent', 'The subagent is not written: Bowerloom has no OpenCode form for a subagent with no tools.');
           break;
         }
-        const front: [string, JsonValue | PermissionPairs][] = [['description', a.description], ['mode', 'subagent']];
+        // The step 3 contract change: an agent's mode (primary, subagent, all) rides in its x-opencode block and is
+        // written back in place of the default. Any other mode stays in the block and is reported as dropped.
+        const block = a.privateBlocks.opencode;
+        const own = block !== null && typeof block === 'object' && !Array.isArray(block) ? (block as Record<string, JsonValue>).mode : undefined;
+        const mode = typeof own === 'string' && OPENCODE_AGENT_MODES.includes(own) ? own : 'subagent';
+        const rest = mode === own ? Object.fromEntries(Object.entries(block as Record<string, JsonValue>).filter(([k]) => k !== 'mode')) : block;
+        const front: [string, JsonValue | PermissionPairs][] = [['description', a.description], ['mode', mode]];
         if (a.model?.opencode !== undefined) front.push(['model', a.model.opencode]);
         modelLine();
         if (a.tools !== undefined) {
@@ -131,9 +139,9 @@ export function translateSubagents(engine: EngineId, subagents: readonly Subagen
           else out.line(a.id, 'weakened', `${why} Every MCP tool is denied with *_*.`, 'tools');
         }
         if (a.skills !== undefined) out.line(a.id, 'translated', 'OpenCode documents no skill list per agent. The skills stay discoverable but are not preloaded.', 'skills');
-        const { dropped } = addPrivate(front as [string, JsonValue][], a.privateBlocks.opencode);
+        const { dropped } = addPrivate(front as [string, JsonValue][], rest);
         privateLine(out, a.id, dropped, 'the frontmatter');
-        out.line(a.id, 'translated', `OpenCode reads the subagent from .opencode/agents/${a.id}.md: the file name is the name, and mode is subagent.`);
+        out.line(a.id, 'translated', `OpenCode reads the subagent from .opencode/agents/${a.id}.md: the file name is the name, and mode is ${mode}.`);
         forms.push({ engine, id: a.id, frontmatter: front, body: a.body });
         break;
       }

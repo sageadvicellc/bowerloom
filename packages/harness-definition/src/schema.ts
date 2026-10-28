@@ -58,15 +58,22 @@ function keys(c: Checker, value: JsonValue | undefined, where: string, required:
 
 /**
  * Words of a key that make it permission-like: it would grant, ask, trust, sandbox, hook, reach tools or servers, run a
- * command, set the environment, or widen what the engine can write or reach.
+ * command, set the environment, fetch a credential, load a plugin or marketplace, or widen what the engine can write or
+ * reach (step 3 contract change, ruling A9: `awsAuthRefresh`, `awsCredentialExport`, `extraKnownMarketplaces`,
+ * `enabledPlugins`, `notify`, `model_providers`).
+ *
+ * `mode` alone is not a word here: OpenCode's agent `mode` (primary, subagent, all) is a plain engine-only field. The
+ * mode keys that grant or ask stay refused by their other words (`sandbox_mode`, `permissionMode`, `approval_mode`) or
+ * by a phrase (`defaultMode`).
  */
 const PERMISSION_WORDS = new Set([
   'permission', 'permissions', 'allow', 'allowed', 'allowlist', 'deny', 'denied', 'denylist', 'disallowed', 'ask',
   'sandbox', 'approval', 'approvals', 'approve', 'autoapprove', 'trust', 'trusted', 'bypass', 'dangerously', 'yolo',
   'tools', 'hook', 'hooks', 'mcp', 'server', 'servers', 'writable', 'network', 'shell', 'environment', 'env', 'command',
-  'commands', 'cmd', 'exec', 'executable', 'args', 'argv', 'mode', 'script', 'scripts', 'helper', 'policy', 'profile',
+  'commands', 'cmd', 'exec', 'executable', 'args', 'argv', 'script', 'scripts', 'helper', 'policy', 'profile',
+  'notify', 'credential', 'credentials', 'marketplace', 'marketplaces', 'plugin', 'plugins',
 ]);
-const PERMISSION_PHRASES = ['full_auto', 'status_line'];
+const PERMISSION_PHRASES = ['full_auto', 'status_line', 'default_mode', 'auth_refresh', 'model_provider'];
 const keyWords = (key: string) => key.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
 /** True when a key of a private block is permission-like, such as `permissions`, `allowed-tools`, or `sandbox_mode`. */
 export function isPermissionKey(key: string): boolean {

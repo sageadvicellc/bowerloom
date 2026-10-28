@@ -31,6 +31,13 @@ export type PartKind = (typeof PART_KINDS)[number];
 export const PART_KEYS = Object.freeze([...PART_KINDS, 'hooks', 'mcp'] as const);
 export type PartKey = (typeof PART_KEYS)[number];
 
+/**
+ * The parts a loss line can name: the part keys, plus `engine-private` for a file under `engines/<engine>/`. Such a file
+ * belongs to no part of section 4, so it has a loss-line part of its own. A line of it is always advisory.
+ */
+export const LOSS_PARTS = Object.freeze([...PART_KEYS, 'engine-private'] as const);
+export type LossPart = (typeof LOSS_PARTS)[number];
+
 /** Parts whose items a lower layer can `hide` or `replace` (section 6). */
 export const OVERRIDABLE_PARTS = Object.freeze(['skills', 'subagents', 'guardrails', 'hooks', 'mcp'] as const);
 export type OverridablePart = (typeof OVERRIDABLE_PARTS)[number];

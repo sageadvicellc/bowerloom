@@ -443,10 +443,27 @@ test('silent 14: frontmatter messages name the real fault', () => {
 
 test('M3: the private-block denylist covers config that grants, runs, or reaches', () => {
   const base = fullFiles();
-  for (const key of ['writable_roots', 'network_access', 'shell_environment_policy', 'servers', 'statusLine', 'apiKeyHelper', 'command', 'env', 'args', 'mode', 'executable', 'script']) {
+  for (const key of ['writable_roots', 'network_access', 'shell_environment_policy', 'servers', 'statusLine', 'apiKeyHelper', 'command', 'env', 'args', 'executable', 'script']) {
     refused({ ...base, 'agents/reader.md': agent('reader', `x-claude-code:\n  ${key}: x\n`) }, 'PRIVATE_BLOCK_PERMISSION');
   }
   ok({ ...base, 'agents/reader.md': agent('reader', 'x-claude-code:\n  color: blue\n  effort: high\n') });
+});
+
+test('step 3 contract: mode alone is not permission-like; its permission forms stay refused', () => {
+  const base = fullFiles();
+  const d = ok({ ...base, 'agents/reader.md': agent('reader', 'x-opencode:\n  mode: primary\n'), 'harness.json': harness({ parts: FULL_PARTS, engines: [{ id: 'claude-code' }, { id: 'codex' }, { id: 'opencode' }] }) });
+  assert.deepEqual(d.entries.subagents.find(s => s.id === 'reader').privateBlocks, { opencode: { mode: 'primary' } });
+  for (const key of ['sandbox_mode', 'permissionMode', 'defaultMode', 'default_mode', 'approval_policy', 'approvalMode']) {
+    refused({ ...base, 'agents/reader.md': agent('reader', `x-claude-code:\n  ${key}: x\n`) }, 'PRIVATE_BLOCK_PERMISSION');
+  }
+});
+
+test('step 3 contract (ruling A9): keys that run a command or grant trust are permission-like', () => {
+  const base = fullFiles();
+  for (const key of ['awsAuthRefresh', 'awsCredentialExport', 'extraKnownMarketplaces', 'enabledPlugins', 'notify', 'model_providers', 'model_provider', 'credential_helper']) {
+    refused({ ...base, 'agents/reader.md': agent('reader', `x-claude-code:\n  nested:\n    ${key}: x\n`) }, 'PRIVATE_BLOCK_PERMISSION');
+  }
+  ok({ ...base, 'agents/reader.md': agent('reader', 'x-claude-code:\n  color: blue\n  model_reasoning_effort: high\n') });
 });
 
 test('L2: a file swapped between the check and the open is refused', () => {
