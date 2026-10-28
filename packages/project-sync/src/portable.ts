@@ -1,36 +1,29 @@
 /**
  * The portable projection of Bowerloom 0.8 (portable parts spec; harness definition spec, sections 8, 9, and 13).
  *
- * It writes the portable parts of one harness definition into the project paths of each engine the harness names:
- * the system prompt as `AGENTS.md`, skills as folders under `.claude/skills` and `.agents/skills`, and tool guidance,
- * memory, and commands inside those two. Locked-in parts (MCP servers, subagents, hooks, and guardrails) are not written
- * here. For an engine that has no locked-in writer, a definition that holds one refuses with ENGINE_NO_WRITER.
+ * It writes the portable parts of one harness definition into the project paths of the engines it projects to: the
+ * system prompt as `AGENTS.md`, skills as folders under `.claude/skills` and `.agents/skills`, and tool guidance,
+ * memory, and commands inside those two. Locked-in parts (MCP servers, subagents, hooks, guardrails, and scripts) are
+ * not written here: the plan reports them `absent` and says the projection is partial. For an engine that has no
+ * locked-in writer, a definition that holds one refuses with ENGINE_NO_WRITER.
  *
- * The model is the one project-sync uses for skills sync and apply:
- * - A plan reads only. Its revision binds every input it read, and a person approves that exact revision.
- * - Apply runs under the project lock, plans again, and refuses STALE_APPROVAL unless the revision is the approved one.
- * - Before it overwrites or deletes a file, apply saves the bytes in the private state folder, and it journals each
- *   step in a pending marker there. A failure rolls back at once. A crash leaves the marker, and every later plan refuses
- *   PORTABLE_RECOVERY_REQUIRED until `applyPortableRecovery` rolls it back or finds the run complete.
- * - The receipt records the engines, their versions, the definition revision, and each written path with its hash, its
- *   file mode, and the file it replaced. Removal restores those files.
+ * This file plans. portable-run.ts applies, removes, and recovers; portable-files.ts and portable-state.ts hold the
+ * file and state layers. README.md in this package states what stays in the state folder.
  */
 import fs from 'node:fs';
-import { createHash, randomBytes } from 'node:crypto';
-import { dirname, isAbsolute, join } from 'node:path';
-import { canonicalJson, DefinitionError, oneLine } from '../../contracts/src/index.js';
-import { ENGINE_IDS, isEngineId, loadDefinition, selectForEngine } from '../../harness-definition/src/index.js';
-import type { Definition, EngineId, LossLine, Problem, SkillEntry } from '../../harness-definition/src/index.js';
+import { dirname, join, resolve } from 'node:path';
+import { canonicalJson } from '../../contracts/src/index.js';
+import { ENGINE_IDS, PART_KEYS, appliesTo, checkFidelity, isEngineId, loadDefinition, selectForEngine } from '../../harness-definition/src/index.js';
+import type { Definition, EngineId, LossLine, PartKey, SkillEntry } from '../../harness-definition/src/index.js';
 import { EngineWriterRefusal, isWriterEngine } from '../../skill-manifest/src/engine.js';
-import { withProjectLock } from '../../project-context/src/index.js';
-import type { HeldProjectLock } from '../../project-context/src/types.js';
-import { syncError } from './refusal.js';
+import {
+  byBytes, caseClashes, checkAncestors, readAbs, refuse, revisionOf, sameState, sha, stateOrUnsafe,
+} from './portable-files.js';
+import type { FileAfter, FileState } from './portable-files.js';
+import { checkPaths, pendingExists, readReceipt, blob } from './portable-state.js';
+import type { PortableEngine, PortableReceipt, ReceiptFile, ReceiptSource } from './portable-state.js';
 
-export const PORTABLE_PLAN_FORMAT = 'bowerloom/portable-projection-plan/v1beta1' as const;
-export const PORTABLE_RECEIPT_FORMAT = 'bowerloom/portable-projection-receipt/v1beta1' as const;
-export const PORTABLE_REMOVAL_FORMAT = 'bowerloom/portable-removal-plan/v1beta1' as const;
-export const PORTABLE_RECOVERY_FORMAT = 'bowerloom/portable-recovery-plan/v1beta1' as const;
-const PENDING_FORMAT = 'bowerloom/portable-pending/v1beta1' as const;
+export const PORTABLE_PLAN_FORMAT = 'bowerloom/portable-projection-plan/v1beta2' as const;
 
 // ---- engine facts (portable parts spec, sections 4.1 and 4.2) ----------------------------------------------------------
 
@@ -68,72 +61,94 @@ export const HIDDEN_FILE: Readonly<Record<EngineId, { readonly hidden: 'AGENTS.m
 export const RECONCILE_ACTIONS = Object.freeze(['accept-agents', 'merge', 'keep-both'] as const);
 export type ReconcileAction = (typeof RECONCILE_ACTIONS)[number];
 
-/**
- * The metadata key and value that mark a skill as a command (section 4.5). A portable command is a skill; the mark only
- * makes the loss report say `translated` for it. It uses the open `metadata` field, so `SKILL.md` stays portable.
- */
+/** The metadata key and value that mark a skill as a command (section 4.5). Only the loss report reads it. */
 export const COMMAND_METADATA = Object.freeze({ key: 'bowerloom-kind', value: 'command' } as const);
-
 /** The byte limit of the projected `AGENTS.md`: Codex stops loading instructions at 32 KiB by default (section 4.1, rule 3). */
 export const INSTRUCTIONS_LIMIT = 32 * 1024;
+/** The first Claude Code version that reads `AGENTS.md` when no `CLAUDE.md` exists (section 4.1, rule 4). */
+export const CLAUDE_CODE_READS_AGENTS = '2.1.277';
+/** The entry of a loss line for a listed part with nothing to project. */
+export const NOTHING = '(none)';
+/** The reason of a locked-in line (ruling P14). */
+export const LOCKED_IN_REASON = 'Not projected in this step; the locked-in writers come in step 3.';
+/** What a partial plan says (ruling P14). */
+export const PARTIAL_NOTICE = 'This projection is partial: it writes the portable parts only. Every line marked absent is not projected in this step.';
 
-// ---- refusals ----------------------------------------------------------------------------------------------------------
-
-const MESSAGES = {
-  PORTABLE_DEFINITION_INVALID: 'The harness definition cannot be loaded, so nothing was projected.',
-  PORTABLE_AT_IMPORT: 'instructions/AGENTS.md uses an @path import. Only Claude Code expands one; Codex and OpenCode read it as text. Nothing was projected.',
-  PORTABLE_INSTRUCTIONS_TOO_LARGE: 'instructions/AGENTS.md is larger than 32 KiB, where Codex stops loading instructions. Nothing was projected.',
-  PORTABLE_ENGINE_NOT_LISTED: 'The projection names an engine that harness.json does not list. Nothing was projected.',
-  PORTABLE_MERGE_NOT_BUILT: 'Merge moves the CLAUDE.md text into the definition, and this projection does not edit the definition. Choose Accept AGENTS.md or Keep both. Nothing was projected.',
-  PORTABLE_PATH_UNSAFE: 'A path Bowerloom would write or restore is a link, is not a plain file or folder, has more than one link, is not yours, or is larger than 1 MiB. Nothing was changed.',
-  PORTABLE_PATH_OCCUPIED: 'A skill folder Bowerloom would write already holds files that Bowerloom did not project. Nothing was changed.',
-  PORTABLE_DRIFT: 'A file Bowerloom projected was changed since it was written. Nothing was changed.',
-  PORTABLE_STATE_UNSAFE: 'The private state folder of the projection is not safe: it must be a real folder you own, mode 0700, outside the project.',
-  PORTABLE_RECOVERY_REQUIRED: 'An earlier projection or removal stopped part way. Nothing was changed. Recover it first.',
-  PORTABLE_NOTHING_PROJECTED: 'This project has no projection receipt, so there is nothing to remove.',
-  PORTABLE_RECOVER_NOTHING: 'No projection or removal of this project is unfinished.',
-  PORTABLE_USAGE: 'The projection input is not valid.',
-} as const;
-export type PortableCode = keyof typeof MESSAGES;
-export const PORTABLE_REFUSAL_CODES: readonly PortableCode[] = Object.freeze(Object.keys(MESSAGES) as PortableCode[]);
-
-/** A projection refusal. `paths` names the project-relative paths it is about, `problems` the loader's problems. */
-export class PortableRefusal extends DefinitionError {
-  constructor(code: PortableCode, readonly paths: readonly string[] = [], readonly problems: readonly Problem[] = []) {
-    super(code, paths.length ? `${MESSAGES[code]} ${oneLine(paths.slice(0, 20).join(', '))}${paths.length > 20 ? `, and ${paths.length - 20} more` : ''}.` : MESSAGES[code]);
-    this.name = 'PortableRefusal';
-  }
-}
-function refuse(code: PortableCode, paths: readonly string[] = [], problems: readonly Problem[] = []): never { throw new PortableRefusal(code, paths, problems); }
-
-// ---- @path imports (section 4.1, rule 2) -------------------------------------------------------------------------------
+// ---- @path imports (section 4.1, rule 2; ruling P25) ---------------------------------------------------------------------
 
 /**
  * The `@path` imports of a Markdown text, outside fenced code and inline code, with their line numbers. A token counts
- * when `@` starts a word and the rest names a file: it holds `/` or `.`, or starts with `~`. So `@AGENTS.md`,
- * `@docs/a.md`, and `@~/x` count, and a mention such as `@someone` or an address such as `a@b.dev` does not.
+ * when `@` starts a word and the rest names a file: it holds `/` or `.`, starts with `~`, or `exists(token)` says a file
+ * of that name exists, such as `@README`. A mention such as `@someone` or an address such as `a@b.dev` does not count.
+ * A fence closes only with the same character, at least as long as the opener, and nothing after it.
  */
-export function atImports(markdown: string): { readonly line: number; readonly token: string }[] {
+export function atImports(markdown: string, exists: (name: string) => boolean = () => false): { readonly line: number; readonly token: string }[] {
   const out: { line: number; token: string }[] = [];
-  let fence: string | null = null;
+  let fence: { char: string; length: number } | null = null;
   markdown.split('\n').forEach((raw, i) => {
-    const f = /^ {0,3}(`{3,}|~{3,})/.exec(raw);
-    if (f) { if (fence === null) fence = f[1]![0]!; else if (f[1]![0] === fence) fence = null; return; }
-    if (fence !== null) return;
+    if (fence === null) {
+      const open = /^ {0,3}(`{3,}|~{3,})/.exec(raw);
+      if (open && !(open[1]![0] === '`' && raw.slice(open[0].length).includes('`'))) { fence = { char: open[1]![0]!, length: open[1]!.length }; return; }
+    } else {
+      const close = /^ {0,3}(`{3,}|~{3,})[ \t]*$/.exec(raw);
+      if (close && close[1]![0] === fence.char && close[1]!.length >= fence.length) fence = null;
+      return;
+    }
     const line = raw.replace(/(`+)[^`]*?\1/g, ' ');
     for (const m of line.matchAll(/(?:^|[\s([{<"'*_])@([^\s)\]}>"'`]+)/g)) {
       const token = m[1]!.replace(/[.,;:!?]+$/, '');
-      if (token.length > 0 && (token.includes('/') || token.includes('.') || token.startsWith('~'))) out.push({ line: i + 1, token: '@' + token });
+      if (token.length === 0) continue;
+      const pathLike = token.includes('/') || token.includes('.') || token.startsWith('~');
+      if (pathLike || (/^[A-Za-z0-9_-]{1,255}$/.test(token) && exists(token))) out.push({ line: i + 1, token: '@' + token });
     }
   });
   return out;
 }
+/** True when the project holds an entry of that plain name. */
+const inProject = (projectDir: string) => (name: string): boolean => { try { fs.lstatSync(join(projectDir, name)); return true; } catch { return false; } };
+
+// ---- CLAUDE.md -----------------------------------------------------------------------------------------------------------
+
+/** The project's `CLAUDE.md`: absent, a file (following or not), or a link to the project's own `AGENTS.md` (ruling P22). */
+export type ClaudeFile = { readonly kind: 'absent' } | { readonly kind: 'file'; readonly state: FileState; readonly follows: boolean } | { readonly kind: 'link-to-agents' };
+export function readClaude(projectDir: string): ClaudeFile {
+  const abs = join(projectDir, 'CLAUDE.md');
+  let st: fs.Stats;
+  try { st = fs.lstatSync(abs); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { kind: 'absent' }; return refuse('PORTABLE_PATH_UNSAFE', ['CLAUDE.md']); }
+  if (st.isSymbolicLink()) {
+    let target: string;
+    try { target = fs.readlinkSync(abs); } catch { return refuse('PORTABLE_PATH_UNSAFE', ['CLAUDE.md']); }
+    if (resolve(projectDir, target) === join(projectDir, 'AGENTS.md')) return { kind: 'link-to-agents' };
+    return refuse('PORTABLE_PATH_UNSAFE', ['CLAUDE.md']);
+  }
+  const got = readAbs(abs, 'CLAUDE.md')!;
+  return { kind: 'file', state: got.state, follows: followsAgents(got.bytes.toString('utf8')) };
+}
+
+/**
+ * Files that keep Claude Code from reading `AGENTS.md` when the project has no `CLAUDE.md` (section 4.1, rule 4):
+ * a `CLAUDE.local.md` in the project or a folder above it, and a `CLAUDE.md` in a folder above it.
+ */
+export function claudeFilesAbove(projectDir: string): string[] {
+  const out: string[] = [];
+  const has = (p: string): boolean => { try { fs.lstatSync(p); return true; } catch { return false; } };
+  if (has(join(projectDir, 'CLAUDE.local.md'))) out.push(join(projectDir, 'CLAUDE.local.md'));
+  for (let at = dirname(projectDir); ; at = dirname(at)) {
+    for (const name of ['CLAUDE.md', 'CLAUDE.local.md']) if (has(join(at, name))) out.push(join(at, name));
+    if (dirname(at) === at) break;
+  }
+  return out;
+}
+/** True, false, or null for a version that is not `major.minor.patch`. */
+export function versionAtLeast(version: string | null, floor: string): boolean | null {
+  const m = version === null ? null : /^(\d+)\.(\d+)\.(\d+)/.exec(version);
+  if (!m) return null;
+  const f = floor.split('.').map(Number), v = m.slice(1, 4).map(Number);
+  for (let i = 0; i < 3; i++) if (v[i]! !== f[i]!) return v[i]! > f[i]!;
+  return true;
+}
 
 // ---- types -------------------------------------------------------------------------------------------------------------
-
-export interface PortableEngine { readonly id: EngineId; readonly version: string | null }
-export interface FileState { readonly sha256: string; readonly mode: number }
-export interface FileAfter extends FileState { readonly bytes: number }
 
 export interface PortableInput {
   /** The real absolute path of the project folder. */
@@ -148,6 +163,8 @@ export interface PortableInput {
   readonly reconcile?: ReconcileAction;
   /** True once a person saved trust for this project in Pi. Default: false, so Pi skills are `pending trust`. */
   readonly piTrustSaved?: boolean;
+  /** Accept the offer to write `CLAUDE.md` as `@AGENTS.md` when Claude Code would not read `AGENTS.md` (ruling P23). */
+  readonly writeClaudeMd?: boolean;
 }
 
 /** The drift report of a tree with both `AGENTS.md` and a `CLAUDE.md` that does not follow it (section 4.1, rule 5). */
@@ -178,17 +195,34 @@ export interface PlannedChange {
   readonly engines: readonly EngineId[];
 }
 
-/** A part that this projection does not write, and why. */
+/** A part that this projection does not write. */
 export interface Deferred {
   readonly engine: EngineId;
   readonly part: 'subagents' | 'guardrails' | 'hooks' | 'mcp' | 'scripts' | 'engine-private' | 'skill-private';
   readonly id: string;
 }
-
-/** A skill that an engine loads although its engine filter leaves that engine out, because the engine reads the folder. */
+/** A skill that a projected engine loads although its engine filter leaves that engine out (ruling P19). */
 export interface FilterLeak { readonly skill: string; readonly path: string; readonly engines: readonly EngineId[] }
+/** An input choice that did not apply, and why (ruling P16). */
+export interface Ignored { readonly option: 'reconcile' | 'writeClaudeMd' | 'piTrustSaved'; readonly value: string | boolean; readonly reason: string }
+/** An action the plan offers but does not take unless the input asks (ruling P23). */
+export interface Offer { readonly action: 'write-claude-md'; readonly reason: string }
 
-export interface PortablePlan {
+/** The report a person reads with the plan, and gets back from apply (ruling P20). */
+export interface PortableReport {
+  readonly loss: readonly LossLine[];
+  /** True when any part is not projected in this step. `notice` then says so plainly. */
+  readonly partial: boolean;
+  readonly notice: string | null;
+  readonly deferred: readonly Deferred[];
+  readonly filterLeaks: readonly FilterLeak[];
+  /** Skills that Pi skips in non-interactive runs until a person saves trust for the project. */
+  readonly pendingTrust: readonly string[];
+  readonly ignored: readonly Ignored[];
+  readonly offers: readonly Offer[];
+}
+
+export interface PortablePlan extends PortableReport {
   readonly format: typeof PORTABLE_PLAN_FORMAT;
   readonly projectDir: string;
   readonly stateDir: string;
@@ -198,14 +232,12 @@ export interface PortablePlan {
   readonly changes: readonly PlannedChange[];
   /** Folders apply creates, relative to the project, parents first. */
   readonly createDirs: readonly string[];
+  /** The created folders the receipt will list: the earlier ones that still exist, and the new ones. */
+  readonly createdDirs: readonly string[];
+  readonly sources: readonly ReceiptSource[];
   readonly drift: InstructionDrift | null;
   /** The reconcile action this plan carries out, or null when there is no drift. */
   readonly reconcile: ReconcileAction | null;
-  readonly loss: readonly LossLine[];
-  /** Skills that Pi skips in non-interactive runs until a person saves trust for the project. */
-  readonly pendingTrust: readonly string[];
-  readonly filterLeaks: readonly FilterLeak[];
-  readonly deferred: readonly Deferred[];
   readonly previousReceipt: string | null;
   /** True when apply would write nothing: every change is `unchanged` and the receipt would be the same. */
   readonly noop: boolean;
@@ -213,185 +245,26 @@ export interface PortablePlan {
   readonly revision: string;
 }
 
-export interface ReceiptFile extends FileAfter {
-  readonly path: string;
-  readonly engines: readonly EngineId[];
-  readonly original: FileState | null;
-}
-export interface PortableReceipt {
-  readonly format: typeof PORTABLE_RECEIPT_FORMAT;
-  readonly projectDir: string;
-  readonly definition: { readonly folder: string; readonly harness: string; readonly revision: string };
-  readonly engines: readonly PortableEngine[];
-  readonly files: readonly ReceiptFile[];
-  /** Folders the projection created, relative to the project, parents first. Removal deletes each that is empty. */
-  readonly createdDirs: readonly string[];
-  readonly planRevision: string;
-  readonly revision: string;
-}
-
-export interface PortableRemovalPlan {
-  readonly format: typeof PORTABLE_REMOVAL_FORMAT;
-  readonly projectDir: string;
-  readonly stateDir: string;
-  readonly receipt: string;
-  readonly changes: readonly PlannedChange[];
-  readonly removeDirs: readonly string[];
-  readonly writesAuthorized: false;
-  readonly revision: string;
-}
-export interface PortableRemovalResult { readonly planRevision: string; readonly restored: readonly string[]; readonly deleted: readonly string[] }
-
-export interface PortableRecoveryPlan {
-  readonly format: typeof PORTABLE_RECOVERY_FORMAT;
-  readonly projectDir: string;
-  readonly stateDir: string;
-  /** `complete`: the receipt was written, so the run finished and only the marker goes. `rollback`: every step is undone. */
-  readonly action: 'complete' | 'rollback';
-  readonly steps: readonly { readonly path: string; readonly now: FileState | null; readonly back: FileState | null }[];
-  readonly revision: string;
-}
-export type PortableApplyResult = { readonly noop: true; readonly planRevision: string } | { readonly noop: false; readonly receipt: PortableReceipt };
-
-// ---- small file helpers ------------------------------------------------------------------------------------------------
-
-const MAX_FILE = 1024 * 1024;
-const sha = (b: Uint8Array | string): string => createHash('sha256').update(b).digest('hex');
-const revisionOf = (body: unknown): string => sha(canonicalJson(body));
-const byBytes = (a: string, b: string): number => Buffer.compare(Buffer.from(a), Buffer.from(b));
-const uid = (): number | undefined => process.getuid?.();
-
-/** The bytes and state of a plain file of this user, or null when nothing is there. Anything else refuses PORTABLE_PATH_UNSAFE. */
-function readFile(abs: string, rel: string): { bytes: Buffer; state: FileState } | null {
-  let st: fs.Stats;
-  try { st = fs.lstatSync(abs); } catch (e) { const c = (e as NodeJS.ErrnoException).code; if (c === 'ENOENT') return null; return refuse('PORTABLE_PATH_UNSAFE', [rel]); }
-  if (!st.isFile() || st.nlink !== 1 || st.uid !== uid() || st.size > MAX_FILE) refuse('PORTABLE_PATH_UNSAFE', [rel]);
-  let fd: number;
-  try { fd = fs.openSync(abs, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK); } catch { return refuse('PORTABLE_PATH_UNSAFE', [rel]); }
-  try {
-    const open = fs.fstatSync(fd);
-    if (!open.isFile() || open.ino !== st.ino || open.dev !== st.dev || open.size > MAX_FILE) refuse('PORTABLE_PATH_UNSAFE', [rel]);
-    const bytes = Buffer.alloc(open.size); let at = 0;
-    while (at < bytes.length) { const n = fs.readSync(fd, bytes, at, bytes.length - at, null); if (n === 0) break; at += n; }
-    if (at !== open.size || fs.readSync(fd, Buffer.alloc(1), 0, 1, null) !== 0) refuse('PORTABLE_PATH_UNSAFE', [rel]);
-    return { bytes, state: { sha256: sha(bytes), mode: open.mode & 0o777 } };
-  } finally { fs.closeSync(fd); }
-}
-const stateOf = (abs: string, rel: string): FileState | null => readFile(abs, rel)?.state ?? null;
-const sameState = (a: FileState | null, b: FileState | null): boolean => a === null ? b === null : b !== null && a.sha256 === b.sha256 && a.mode === b.mode;
-
-/**
- * The folders between the project and a file that do not exist yet, parents first. Every folder that exists must be a
- * real folder of this user, not a link; anything else refuses PORTABLE_PATH_UNSAFE.
- */
-function missingDirs(projectDir: string, rel: string): string[] {
-  const parts = rel.split('/').slice(0, -1), out: string[] = [];
-  for (let i = 1; i <= parts.length; i++) {
-    const dir = parts.slice(0, i).join('/');
-    let st: fs.Stats;
-    try { st = fs.lstatSync(join(projectDir, dir)); } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') refuse('PORTABLE_PATH_UNSAFE', [dir]);
-      out.push(...parts.slice(i - 1).map((_, j) => parts.slice(0, i + j).join('/'))); break;
-    }
-    if (st.isSymbolicLink() || !st.isDirectory() || st.uid !== uid()) refuse('PORTABLE_PATH_UNSAFE', [dir]);
-  }
-  return out;
-}
-
-function syncDir(dir: string): void { const fd = fs.openSync(dir, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); } }
-
-/** Writes `bytes` at `abs` with `mode`: a fresh temporary in the same folder, flushed, then renamed over the target. */
-function writeAtomic(abs: string, bytes: Uint8Array, mode: number): void {
-  const temp = join(dirname(abs), `.${abs.slice(dirname(abs).length + 1)}.${randomBytes(8).toString('hex')}.bowerloom-tmp`);
-  const fd = fs.openSync(temp, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o600);
-  let moved = false;
-  try {
-    try { let at = 0; while (at < bytes.length) at += fs.writeSync(fd, bytes, at); fs.fchmodSync(fd, mode); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-    fs.renameSync(temp, abs); moved = true; syncDir(dirname(abs));
-  } finally { if (!moved) { try { fs.unlinkSync(temp); } catch { /* already gone */ } } }
-}
-
-// ---- private state -----------------------------------------------------------------------------------------------------
-
-const RECEIPT = 'receipt.json', PENDING = 'pending.json', BLOBS = 'blobs';
-
-function checkPaths(projectDir: unknown, stateDir: unknown): asserts projectDir is string {
-  for (const p of [projectDir, stateDir]) if (typeof p !== 'string' || !isAbsolute(p) || p.includes('\0') || p.endsWith('/')) refuse('PORTABLE_USAGE');
-  const project = projectDir as string, state = stateDir as string;
-  let real: string;
-  try { real = fs.realpathSync(project); } catch { return refuse('PORTABLE_USAGE'); }
-  if (real !== project || !fs.lstatSync(project).isDirectory()) refuse('PORTABLE_USAGE');
-  if (state === project || state.startsWith(project + '/') || project.startsWith(state + '/')) refuse('PORTABLE_STATE_UNSAFE');
-}
-
-/** True when the state folder exists. It must then be a private folder of this user. */
-function stateExists(stateDir: string): boolean {
-  let st: fs.Stats;
-  try { st = fs.lstatSync(stateDir); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return false; return refuse('PORTABLE_STATE_UNSAFE'); }
-  if (st.isSymbolicLink() || !st.isDirectory() || st.uid !== uid() || (st.mode & 0o077) !== 0) refuse('PORTABLE_STATE_UNSAFE');
-  return true;
-}
-
-function readRecord<T>(stateDir: string, name: string): T | null {
-  if (!stateExists(stateDir)) return null;
-  const got = readFile(join(stateDir, name), name);
-  if (got === null) return null;
-  if ((got.state.mode & 0o077) !== 0) refuse('PORTABLE_STATE_UNSAFE');
-  try { return JSON.parse(got.bytes.toString('utf8')) as T; } catch { return refuse('PORTABLE_STATE_UNSAFE'); }
-}
-
-/** The receipt of the projection in this state folder, or null. */
-export function readPortableReceipt(stateDir: string): PortableReceipt | null {
-  const r = readRecord<PortableReceipt>(stateDir, RECEIPT);
-  if (r === null) return null;
-  const { revision, ...body } = r;
-  if (r.format !== PORTABLE_RECEIPT_FORMAT || revision !== revisionOf(body)) refuse('PORTABLE_STATE_UNSAFE');
-  return r;
-}
-
-function ensureState(stateDir: string): void {
-  if (!stateExists(stateDir)) fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
-  stateExists(stateDir);
-  const blobs = join(stateDir, BLOBS);
-  if (!fs.existsSync(blobs)) fs.mkdirSync(blobs, { mode: 0o700 });
-  stateExists(blobs);
-}
-function writeRecord(stateDir: string, name: string, value: unknown): void { writeAtomic(join(stateDir, name), Buffer.from(JSON.stringify(value, null, 2) + '\n'), 0o600); }
-
-/** Saves the bytes of a file into the state folder, by hash. */
-function saveBlob(stateDir: string, bytes: Uint8Array): void {
-  const at = join(stateDir, BLOBS, sha(bytes));
-  if (readFile(at, BLOBS)?.state.sha256 === sha(bytes)) return;
-  writeAtomic(at, bytes, 0o600);
-}
-function blob(stateDir: string, state: FileState, rel: string): Buffer {
-  const got = readFile(join(stateDir, BLOBS, state.sha256), BLOBS);
-  if (got === null || got.state.sha256 !== state.sha256) return refuse('PORTABLE_STATE_UNSAFE', [rel]);
-  return got.bytes;
-}
-
 // ---- the drift report --------------------------------------------------------------------------------------------------
 
 /**
  * The drift report for a tree that holds `AGENTS.md` (or a projection that writes it) and a `CLAUDE.md` that does not
- * follow it. Null when there is no such drift. It names the hidden file for each engine, and offers Accept AGENTS.md as
- * the default action.
+ * follow it. Null when there is no such drift. A `CLAUDE.md` that is a link to the project's own `AGENTS.md` follows
+ * it; any other link refuses PORTABLE_PATH_UNSAFE.
  */
 export function instructionDrift(projectDir: string, engines: readonly EngineId[], agentsPlanned = false): InstructionDrift | null {
-  const claude = readFile(join(projectDir, 'CLAUDE.md'), 'CLAUDE.md');
-  if (claude === null || followsAgents(claude.bytes.toString('utf8'))) return null;
-  const agents = readFile(join(projectDir, 'AGENTS.md'), 'AGENTS.md') !== null ? 'present' : agentsPlanned ? 'planned' : null;
+  const claude = readClaude(projectDir);
+  if (claude.kind !== 'file' || claude.follows) return null;
+  const agents = readAbs(join(projectDir, 'AGENTS.md'), 'AGENTS.md') !== null ? 'present' : agentsPlanned ? 'planned' : null;
   if (agents === null) return null;
   const listed = ENGINE_IDS.filter(e => engines.includes(e));
   return { claude: claude.state, agents, engines: listed.map(engine => ({ engine, ...HIDDEN_FILE[engine] })), actions: RECONCILE_ACTIONS, defaultAction: 'accept-agents' };
 }
 
-// ---- the plan ----------------------------------------------------------------------------------------------------------
+// ---- helpers of the plan -------------------------------------------------------------------------------------------------
 
-interface Target { bytes: Uint8Array; mode: number; engines: Set<EngineId> }
-
-function load(folder: string): Definition {
-  if (typeof folder !== 'string' || !isAbsolute(folder)) return refuse('PORTABLE_USAGE');
+export function loadForProjection(folder: string): Definition {
+  if (typeof folder !== 'string' || !folder.startsWith('/')) return refuse('PORTABLE_USAGE');
   const r = loadDefinition(folder);
   if (!r.ok) return refuse('PORTABLE_DEFINITION_INVALID', [...new Set(r.problems.map(p => `${p.path} (${p.code})`))], r.problems);
   return r.definition;
@@ -413,27 +286,49 @@ function enginesOf(def: Definition, wanted: PortableInput['engines']): PortableE
 
 const isCommand = (s: SkillEntry): boolean => s.metadata?.[COMMAND_METADATA.key] === COMMAND_METADATA.value;
 
+/** The 0.7 managed item that holds a skill folder, or null (ruling P27). */
+function managedHolder(projectDir: string, folder: string): string | null {
+  const name = folder.split('/')[2]!;
+  const has = (rel: string): boolean => { try { fs.lstatSync(join(projectDir, rel)); return true; } catch { return false; } };
+  const ids = [name, ...(name.startsWith('slice-') ? [`slice_${name.slice(6)}`] : [])];
+  for (const id of ids) if (has(`.bowerloom/managed/catalog/${id}.json`) || has(`.bowerloom/managed/skills/${id}`)) return id;
+  return has('.bowerloom-skills') && has(`.bowerloom-skills/skills/${name}`) ? name : null;
+}
+
+interface Target { bytes: Uint8Array; mode: number; engines: Set<EngineId> }
+
+export function receiptFilesOf(changes: readonly PlannedChange[]): ReceiptFile[] {
+  return changes.filter(c => c.after !== null).map(c => ({ path: c.path, ...c.after!, engines: c.engines, original: c.original }));
+}
+const isDir = (projectDir: string, rel: string): boolean => {
+  try { if (checkAncestors(projectDir, rel + '/x').length) return false; const st = fs.lstatSync(join(projectDir, rel)); return st.isDirectory() && !st.isSymbolicLink(); } catch { return false; }
+};
+
+// ---- the plan ----------------------------------------------------------------------------------------------------------
+
 /** Plans the projection. Reads only. A refusal is a PortableRefusal, or an EngineWriterRefusal for a locked-in part. */
 export function planPortable(input: PortableInput): PortablePlan {
   if (input === null || typeof input !== 'object') return refuse('PORTABLE_USAGE');
   checkPaths(input.projectDir, input.stateDir);
   const { projectDir, stateDir } = input;
-  if (readRecord<unknown>(stateDir, PENDING) !== null) refuse('PORTABLE_RECOVERY_REQUIRED');
+  if (pendingExists(stateDir)) refuse('PORTABLE_RECOVERY_REQUIRED');
   const reconcileWanted = input.reconcile ?? 'accept-agents';
   if (!RECONCILE_ACTIONS.includes(reconcileWanted)) refuse('PORTABLE_USAGE');
-  const def = load(input.definitionFolder);
+  const def = loadForProjection(input.definitionFolder);
   const engines = enginesOf(def, input.engines), ids = engines.map(e => e.id);
-  const harnessIds = def.harness.engines.map(e => e.id);
+  const ignored: Ignored[] = [], offers: Offer[] = [];
+  const previous = readReceipt(stateDir, projectDir);
+  const owned = new Map((previous?.files ?? []).map(f => [f.path, f]));
 
   // Section 4.1: the system prompt. No @path import, and at most 32 KiB.
   const instructions = def.instructions;
   if (instructions !== undefined) {
-    const found = atImports(instructions);
+    const found = atImports(instructions, inProject(projectDir));
     if (found.length) refuse('PORTABLE_AT_IMPORT', found.map(f => `instructions/AGENTS.md line ${f.line}`));
     if (Buffer.byteLength(instructions) > INSTRUCTIONS_LIMIT) refuse('PORTABLE_INSTRUCTIONS_TOO_LARGE');
   }
 
-  // Locked-in parts. An engine with no writer for them refuses; the others leave them to their own lane.
+  // Locked-in parts. An engine with no writer for them refuses; the others report them absent.
   const deferred: Deferred[] = [];
   const views = new Map(ids.map(id => [id, selectForEngine(def, id)] as const));
   for (const [engine, view] of views) {
@@ -448,7 +343,7 @@ export function planPortable(input: PortableInput): PortablePlan {
     for (const s of view.skills) if (s.privateBlocks[engine] !== undefined) deferred.push({ engine, part: 'skill-private', id: s.id });
   }
 
-  // The targets: AGENTS.md, the skill folders, and CLAUDE.md when a person accepts AGENTS.md.
+  // The targets: AGENTS.md, the skill folders, and CLAUDE.md when a person accepts AGENTS.md or the offer of P23.
   const targets = new Map<string, Target>();
   const add = (path: string, bytes: Uint8Array, mode: number, engine: EngineId): void => {
     const t = targets.get(path);
@@ -465,25 +360,67 @@ export function planPortable(input: PortableInput): PortablePlan {
     }
   }
 
-  const previous = readPortableReceipt(stateDir);
-  const owned = new Map((previous?.files ?? []).map(f => [f.path, f]));
+  // Section 4.1, rules 4 to 6, and rulings P17, P22, P23. With no instructions, AGENTS.md and CLAUDE.md are not touched.
+  let drift: InstructionDrift | null = null, reconcile: ReconcileAction | null = null, claudeLine: { result: 'exact' | 'weakened'; reason: string } | null = null;
+  const addClaude = (): void => { for (const id of ids) add('CLAUDE.md', Buffer.from(FOLLOW_TEXT), 0o644, id); };
+  if (instructions === undefined) {
+    if (input.reconcile !== undefined) ignored.push({ option: 'reconcile', value: input.reconcile, reason: 'The definition has no instructions, so AGENTS.md and CLAUDE.md are not touched.' });
+    if (input.writeClaudeMd !== undefined) ignored.push({ option: 'writeClaudeMd', value: input.writeClaudeMd, reason: 'The definition has no instructions, so AGENTS.md and CLAUDE.md are not touched.' });
+  } else {
+    const claude = readClaude(projectDir);
+    drift = instructionDrift(projectDir, ids, true);
+    if (drift) {
+      reconcile = reconcileWanted;
+      if (reconcile === 'merge') refuse('PORTABLE_MERGE_NOT_BUILT');
+      if (reconcile === 'accept-agents') { addClaude(); claudeLine = { result: 'exact', reason: 'CLAUDE.md becomes the single line @AGENTS.md, so Claude Code loads AGENTS.md.' }; }
+      else claudeLine = { result: 'weakened', reason: 'CLAUDE.md does not follow AGENTS.md, so Claude Code does not load AGENTS.md. Keep both leaves the drift reported.' };
+      if (input.writeClaudeMd !== undefined) ignored.push({ option: 'writeClaudeMd', value: input.writeClaudeMd, reason: 'CLAUDE.md exists; the reconcile action decides what happens to it.' });
+    } else {
+      if (input.reconcile !== undefined) ignored.push({ option: 'reconcile', value: input.reconcile, reason: claude.kind === 'absent' ? 'There is no CLAUDE.md, so there is no drift to reconcile.' : 'CLAUDE.md already follows AGENTS.md, so there is no drift to reconcile.' });
+      if (claude.kind === 'link-to-agents') claudeLine = { result: 'exact', reason: 'CLAUDE.md is a link to AGENTS.md, so Claude Code loads AGENTS.md. Bowerloom leaves the link in place.' };
+      else if (claude.kind === 'file' || owned.has('CLAUDE.md')) {
+        if (owned.has('CLAUDE.md')) addClaude();
+        claudeLine = { result: 'exact', reason: 'CLAUDE.md is the single line @AGENTS.md, so Claude Code loads AGENTS.md.' };
+        if (input.writeClaudeMd !== undefined) ignored.push({ option: 'writeClaudeMd', value: input.writeClaudeMd, reason: 'CLAUDE.md already follows AGENTS.md.' });
+      } else if (ids.includes('claude-code')) {
+        const version = engines.find(e => e.id === 'claude-code')!.version;
+        const above = claudeFilesAbove(projectDir), atLeast = versionAtLeast(version, CLAUDE_CODE_READS_AGENTS);
+        const why: string[] = [];
+        if (above.length) why.push(`Claude Code reads AGENTS.md only when no CLAUDE.md or CLAUDE.local.md exists at or above the project, and these exist: ${above.join(', ')}.`);
+        if (atLeast === false) why.push(`Claude Code ${version} is older than ${CLAUDE_CODE_READS_AGENTS}, the first version that reads AGENTS.md.`);
+        if (why.length === 0) {
+          claudeLine = { result: 'exact', reason: `No CLAUDE.md exists, so Claude Code ${CLAUDE_CODE_READS_AGENTS} or later reads AGENTS.md.${atLeast === null ? ' The Claude Code version is not known, so this assumes a version that reads AGENTS.md.' : ''}` };
+          if (input.writeClaudeMd !== undefined) ignored.push({ option: 'writeClaudeMd', value: input.writeClaudeMd, reason: 'Claude Code already reads AGENTS.md here.' });
+        } else if (input.writeClaudeMd === true) {
+          addClaude(); claudeLine = { result: 'exact', reason: 'CLAUDE.md becomes the single line @AGENTS.md, so Claude Code loads AGENTS.md.' };
+        } else {
+          claudeLine = { result: 'weakened', reason: why.join(' ') };
+          offers.push({ action: 'write-claude-md', reason: `${why.join(' ')} Writing CLAUDE.md as @AGENTS.md makes Claude Code load AGENTS.md.` });
+        }
+      } else if (input.writeClaudeMd !== undefined) ignored.push({ option: 'writeClaudeMd', value: input.writeClaudeMd, reason: 'The projection does not include Claude Code.' });
+    }
+  }
+  if (input.piTrustSaved !== undefined && !ids.includes('pi')) ignored.push({ option: 'piTrustSaved', value: input.piTrustSaved, reason: 'The projection does not include Pi.' });
 
-  // Section 4.1, rules 4 to 6: CLAUDE.md follows AGENTS.md. A CLAUDE.md this projection made stays as long as it follows.
-  const drift = instructionDrift(projectDir, harnessIds, instructions !== undefined);
-  let reconcile: ReconcileAction | null = null;
-  if (drift) {
-    reconcile = reconcileWanted;
-    if (reconcile === 'merge') refuse('PORTABLE_MERGE_NOT_BUILT');
-    if (reconcile === 'accept-agents') for (const id of ids) add('CLAUDE.md', Buffer.from(FOLLOW_TEXT), 0o644, id);
-  } else if (owned.has('CLAUDE.md') && instructions !== undefined) for (const id of ids) add('CLAUDE.md', Buffer.from(FOLLOW_TEXT), 0o644, id);
+  // Case clashes, among the targets and against the files on disk (ruling P6).
+  const folded = new Map<string, string>(), clashes: string[] = [], listing = new Map<string, string[] | null>();
+  for (const path of targets.keys()) {
+    const key = path.toLowerCase(), other = folded.get(key);
+    if (other !== undefined) clashes.push(`${other} and ${path}`); else folded.set(key, path);
+    for (const c of caseClashes(projectDir, path, listing)) clashes.push(`${path} and ${c}`);
+  }
+  if (clashes.length) refuse('PORTABLE_CASE_CLASH', [...new Set(clashes)]);
 
   // Skill folders that Bowerloom did not project are never written into.
-  const occupied: string[] = [];
+  const occupied: string[] = [], managed: string[] = [];
   const folders = new Set([...targets.keys()].filter(p => p.startsWith('.claude/skills/') || p.startsWith('.agents/skills/')).map(p => p.split('/').slice(0, 3).join('/')));
-  for (const folder of folders) {
-    const ownsAny = [...owned.keys()].some(p => p.startsWith(folder + '/'));
-    if (!ownsAny && missingDirs(projectDir, folder + '/x').length === 0) occupied.push(folder);
+  for (const folder of [...folders].sort(byBytes)) {
+    if ([...owned.keys()].some(p => p.startsWith(folder + '/'))) continue;
+    if (checkAncestors(projectDir, folder + '/x').length) continue;
+    const holder = managedHolder(projectDir, folder);
+    if (holder !== null) managed.push(`${folder} (0.7 item ${holder})`); else occupied.push(folder);
   }
+  if (managed.length) refuse('PORTABLE_MANAGED_COPY', managed);
   if (occupied.length) refuse('PORTABLE_PATH_OCCUPIED', occupied);
 
   // The changes, against the receipt and the files on disk.
@@ -491,275 +428,116 @@ export function planPortable(input: PortableInput): PortablePlan {
   const createDirs = new Set<string>();
   for (const path of [...new Set([...targets.keys(), ...owned.keys()])].sort(byBytes)) {
     const target = targets.get(path), mine = owned.get(path);
-    for (const d of missingDirs(projectDir, path)) if (target) createDirs.add(d);
-    const now = stateOf(join(projectDir, path), path);
-    if (mine && !sameState(now, mine)) { drifted.push(path); continue; }
+    const now = stateOrUnsafe(projectDir, path);
+    if (now === 'unsafe') { if (!mine) refuse('PORTABLE_PATH_UNSAFE', [path]); drifted.push(`${path} (unsafe)`); continue; }
+    if (mine && !sameState(now, mine)) { drifted.push(`${path} (${now === null ? 'missing' : 'changed'})`); continue; }
+    if (target) for (const d of checkAncestors(projectDir, path)) createDirs.add(d);
     if (!target) {
+      if (mine!.original) blob(stateDir, mine!.original, path);
       changes.push({ path, action: mine!.original ? 'restore' : 'delete', before: now, after: null, original: mine!.original, engines: [] });
       continue;
     }
     const after: FileAfter = { sha256: sha(target.bytes), mode: target.mode, bytes: target.bytes.length };
     const action: ChangeAction = mine ? (sameState(now, after) ? 'unchanged' : 'update') : now === null ? 'create' : 'replace';
-    const original = mine ? mine.original : now;
-    changes.push({ path, action, before: now, after, original, engines: ENGINE_IDS.filter(e => target.engines.has(e)) });
+    if (mine?.original) blob(stateDir, mine.original, path);
+    changes.push({ path, action, before: now, after, original: mine ? mine.original : now, engines: ENGINE_IDS.filter(e => target.engines.has(e)) });
   }
   if (drifted.length) refuse('PORTABLE_DRIFT', drifted);
 
-  // The loss report: one line per portable part, entry, and engine (section 6).
-  const loss: LossLine[] = [];
-  const parts = def.harness.parts;
-  for (const { id: engine } of engines) {
-    if (instructions !== undefined) {
-      const keep = reconcile === 'keep-both' && engine === 'claude-code';
-      loss.push({
-        part: 'system-prompt', entry: 'AGENTS.md', engine, result: keep ? 'weakened' : 'exact',
-        reason: keep ? 'CLAUDE.md does not follow AGENTS.md, so Claude Code does not load AGENTS.md. Keep both leaves the drift reported.'
-          : engine === 'claude-code' ? (targets.has('CLAUDE.md') ? 'CLAUDE.md is the single line @AGENTS.md, so Claude Code loads AGENTS.md.' : 'No CLAUDE.md exists, so Claude Code 2.1.277 or later reads AGENTS.md.')
-          : engine === 'pi' ? 'Pi reads AGENTS.md, and AGENTS.md hides CLAUDE.md.' : 'The engine reads AGENTS.md as written.',
-      });
-    }
-    if (parts.memory !== undefined) loss.push({ part: 'memory', entry: 'instructions', engine, result: 'translated', reason: 'Standing facts project as instructions in AGENTS.md. Engine-written memory is runtime state and is not projected.' });
-    for (const pointer of parts['tool-guidance'] ?? []) {
-      const skill = /^skills\/(.+)$/.exec(pointer)?.[1];
-      if (skill !== undefined && !views.get(engine)!.skills.some(s => s.id === skill)) continue;
-      loss.push({ part: 'tool-guidance', entry: pointer, engine, result: 'exact', reason: skill !== undefined ? 'Tool guidance projects as the body of a skill.' : 'Tool guidance projects as a section of AGENTS.md.' });
-    }
-    for (const s of views.get(engine)!.skills) {
-      const trust = engine === 'pi' && input.piTrustSaved !== true ? ' Pending trust: Pi skips project .agents/skills in non-interactive runs until a person saves trust.' : '';
-      loss.push(isCommand(s)
-        ? { part: 'skills', entry: s.id, engine, result: 'translated', reason: `A command projects as a skill in ${SKILL_ROOTS[engine].join(' and ')}. Bowerloom writes no command file.${trust}` }
-        : { part: 'skills', entry: s.id, engine, result: 'exact', reason: `The engine reads ${SKILL_ROOTS[engine].join(' and ')}.${trust}` });
-    }
-  }
-
-  const pendingTrust = ids.includes('pi') && input.piTrustSaved !== true ? views.get('pi')!.skills.map(s => s.id) : [];
-
-  // Engines that load a skill their filter leaves out, because they read the folder it is in.
+  // Engines being projected that load a skill their filter leaves out, because they read its folder (ruling P19).
   const filterLeaks: FilterLeak[] = [];
   for (const s of [...skillsById.values()].sort((a, b) => byBytes(a.id, b.id))) {
     for (const root of ['.claude/skills', '.agents/skills'] as const) {
       if (!targets.has(`${root}/${s.name}/SKILL.md`)) continue;
-      const leak = harnessIds.filter(e => SKILL_ROOTS[e].includes(root) && s.engines !== undefined && !s.engines.includes(e));
-      if (leak.length) filterLeaks.push({ skill: s.id, path: `${root}/${s.name}`, engines: ENGINE_IDS.filter(e => leak.includes(e)) });
+      const leak = ids.filter(e => SKILL_ROOTS[e].includes(root) && !appliesTo(s, e));
+      if (leak.length) filterLeaks.push({ skill: s.id, path: `${root}/${s.name}`, engines: leak });
     }
   }
 
+  const loss = lossReport(def, engines, views, claudeLine, filterLeaks, input.piTrustSaved === true);
+  const pendingTrust = ids.includes('pi') && input.piTrustSaved !== true ? views.get('pi')!.skills.map(s => s.id) : [];
+  const partial = loss.some(l => l.result === 'absent') || deferred.length > 0;
+
+  // Sources of the borrowed skills (ruling P18).
+  const projected = new Set(skillsById.keys());
+  const sources: ReceiptSource[] = def.sources.flatMap(s => s.items.filter(i => i.part === 'skills' && projected.has(i.id)).map(i => ({ skill: i.id, name: s.name, marketplace: s.marketplace, version: s.version })))
+    .sort((a, b) => byBytes(a.skill, b.skill));
+
   const definition = { folder: def.folder, harness: def.harness.id, revision: def.revision };
   const receiptFiles = receiptFilesOf(changes);
-  const sameReceipt = previous !== null && canonicalJson({ d: previous.definition, e: previous.engines, f: previous.files, c: previous.createdDirs })
-    === canonicalJson({ d: definition, e: engines, f: receiptFiles, c: createdDirsOf(previous, createDirs, receiptFiles) });
+  const existing = (previous?.createdDirs ?? []).filter(d => isDir(projectDir, d));
+  const createdDirs = [...new Set([...existing, ...createDirs])].sort(byBytes);
+  const sameReceipt = previous !== null && canonicalJson({ d: previous.definition, e: previous.engines, f: previous.files, s: previous.sources, c: existing })
+    === canonicalJson({ d: definition, e: engines, f: receiptFiles, s: sources, c: createdDirs });
   const noop = changes.every(c => c.action === 'unchanged') && sameReceipt;
   const body = {
-    format: PORTABLE_PLAN_FORMAT, projectDir, stateDir, definition, engines, changes, createDirs: [...createDirs].sort(byBytes),
-    drift, reconcile, loss, pendingTrust, filterLeaks, deferred, previousReceipt: previous?.revision ?? null, noop, writesAuthorized: false as const,
+    format: PORTABLE_PLAN_FORMAT, projectDir, stateDir, definition, engines, changes, createDirs: [...createDirs].sort(byBytes), createdDirs, sources,
+    drift, reconcile, loss, partial, notice: partial ? PARTIAL_NOTICE : null, deferred, filterLeaks, pendingTrust, ignored, offers,
+    previousReceipt: previous?.revision ?? null, noop, writesAuthorized: false as const,
   };
   return { ...body, revision: revisionOf(body) };
 }
 
-function receiptFilesOf(changes: readonly PlannedChange[]): ReceiptFile[] {
-  return changes.filter(c => c.after !== null).map(c => ({ path: c.path, ...c.after!, engines: c.engines, original: c.original }));
-}
-/** The created folders a receipt keeps: the earlier ones that still hold a projected file, and the new ones. */
-function createdDirsOf(previous: PortableReceipt | null, fresh: Iterable<string>, files: readonly ReceiptFile[]): string[] {
-  const kept = (previous?.createdDirs ?? []).filter(d => files.some(f => f.path.startsWith(d + '/')));
-  return [...new Set([...kept, ...fresh])].sort(byBytes);
-}
-
-// ---- the journaled run ---------------------------------------------------------------------------------------------------
-
-interface Step { path: string; from: FileState | null; to: FileState | null }
-interface Pending { format: typeof PENDING_FORMAT; kind: 'apply' | 'remove'; planRevision: string; steps: Step[]; dirs: string[] }
-
-/** Writes the state a step wants. `bytes` null deletes the file. Checks the file is still `expect` first. */
-function put(projectDir: string, rel: string, expect: FileState | null, bytes: Uint8Array | null, mode: number): void {
-  const abs = join(projectDir, rel);
-  if (!sameState(stateOf(abs, rel), expect)) throw syncError('STALE_APPROVAL');
-  if (bytes === null) { if (expect !== null) { fs.unlinkSync(abs); syncDir(dirname(abs)); } return; }
-  writeAtomic(abs, bytes, mode);
-}
-
-/** Undoes the steps of a journal, last first: each file that holds its new state gets its old one back. */
-function rollback(projectDir: string, stateDir: string, pending: Pending): void {
-  for (const step of [...pending.steps].reverse()) {
-    const now = stateOf(join(projectDir, step.path), step.path);
-    if (sameState(now, step.from)) continue;
-    if (!sameState(now, step.to)) refuse('PORTABLE_DRIFT', [step.path]);
-    put(projectDir, step.path, now, step.from === null ? null : blob(stateDir, step.from, step.path), step.from?.mode ?? 0o644);
-  }
-  removeEmptyDirs(projectDir, pending.dirs);
-}
-function removeEmptyDirs(projectDir: string, dirs: readonly string[]): void {
-  for (const d of [...dirs].sort(byBytes).reverse()) {
-    const abs = join(projectDir, d);
-    try { const st = fs.lstatSync(abs); if (st.isDirectory() && !st.isSymbolicLink() && fs.readdirSync(abs).length === 0) { fs.rmdirSync(abs); syncDir(dirname(abs)); } } catch { /* gone, or not ours to remove */ }
-  }
-}
-function finish(stateDir: string, keep: ReadonlySet<string>): void {
-  const blobs = join(stateDir, BLOBS);
-  for (const name of fs.readdirSync(blobs)) if (!keep.has(name)) fs.unlinkSync(join(blobs, name));
-  fs.unlinkSync(join(stateDir, PENDING)); syncDir(stateDir);
-}
-
-/** Test hooks. Product code passes nothing. An error with `crash: true` thrown by `afterStep` stands for a killed process: no rollback. */
-export interface PortableHooks { readonly afterStep?: (path: string) => void }
-
-/** Runs the journaled steps. A failure rolls back what was done, then throws the failure. */
-function run(projectDir: string, stateDir: string, pending: Pending, steps: readonly { step: Step; bytes: Uint8Array | null }[], held: HeldProjectLock, hooks: PortableHooks): void {
-  writeRecord(stateDir, PENDING, pending);
-  try {
-    for (const d of pending.dirs) { held.assertHeld(projectDir); missingDirs(projectDir, d + '/x'); fs.mkdirSync(join(projectDir, d), { mode: 0o755 }); fs.chmodSync(join(projectDir, d), 0o755); }
-    for (const { step, bytes } of steps) { held.assertHeld(projectDir); put(projectDir, step.path, step.from, bytes, step.to?.mode ?? 0o644); hooks.afterStep?.(step.path); }
-  } catch (error) {
-    if (hooks.afterStep !== undefined && (error as { crash?: unknown } | null)?.crash === true) throw error;
-    try { rollback(projectDir, stateDir, pending); fs.unlinkSync(join(stateDir, PENDING)); } catch { /* the marker stays: recovery is required */ }
-    throw error;
-  }
-}
+/** The portable parts of the loss report, the ones this lane passes to the fidelity check (ruling P14). */
+const PORTABLE_PARTS: readonly PartKey[] = ['system-prompt', 'memory', 'tool-guidance', 'skills'];
 
 /**
- * Applies the projection whose revision a person approved. It plans again under the project lock and refuses
- * STALE_APPROVAL for any other revision. A plan with nothing to do writes nothing, not even the receipt.
+ * The loss report (section 6; ruling P14): every part the harness lists gets lines for every engine being projected.
+ * An empty part gets one `exact` line, entry `(none)`. Locked-in parts are `absent`. The portable lines must pass the
+ * fidelity check; the locked-in lines are not passed, so an enforced locked-in entry does not block this projection.
  */
-export async function applyPortable(input: PortableInput, revision: string, signal: AbortSignal = new AbortController().signal, hooks: PortableHooks = {}): Promise<PortableApplyResult> {
-  if (typeof revision !== 'string' || !/^[a-f0-9]{64}$/.test(revision)) throw syncError('STALE_APPROVAL');
-  checkPaths(input?.projectDir, input?.stateDir);
-  return withProjectLock(input.projectDir, signal, async held => {
-    const plan = planPortable(input);
-    if (plan.revision !== revision) throw syncError('STALE_APPROVAL');
-    if (plan.noop) return { noop: true, planRevision: plan.revision };
-    const { projectDir, stateDir } = plan;
-    ensureState(stateDir);
-    // Bytes of every target, from the definition the plan read, and a saved copy of every file a step overwrites or deletes.
-    const def = load(input.definitionFolder);
-    const steps: { step: Step; bytes: Uint8Array | null }[] = [];
-    for (const c of plan.changes) {
-      if (c.action === 'unchanged') continue;
-      if (c.before !== null) {
-        const got = readFile(join(projectDir, c.path), c.path);
-        if (got === null || !sameState(got.state, c.before)) throw syncError('STALE_APPROVAL');
-        saveBlob(stateDir, got.bytes);
+function lossReport(
+  def: Definition, engines: readonly PortableEngine[], views: ReadonlyMap<EngineId, ReturnType<typeof selectForEngine>>,
+  claudeLine: { result: 'exact' | 'weakened'; reason: string } | null, leaks: readonly FilterLeak[], trustSaved: boolean,
+): LossLine[] {
+  const loss: LossLine[] = [], leakLines = new Set<LossLine>();
+  const parts = def.harness.parts as Record<string, unknown>;
+  const listed = PART_KEYS.filter(k => parts[k] !== undefined);
+  const none = (part: PartKey, engine: EngineId): void => { loss.push({ part, entry: NOTHING, engine, result: 'exact', reason: 'Nothing to project.' }); };
+  for (const { id: engine } of engines) {
+    const view = views.get(engine)!;
+    for (const part of listed) {
+      if (part === 'system-prompt') {
+        const line = engine === 'claude-code' && claudeLine ? claudeLine
+          : { result: 'exact' as const, reason: engine === 'pi' ? 'Pi reads AGENTS.md, and AGENTS.md hides CLAUDE.md.' : 'The engine reads AGENTS.md as written.' };
+        loss.push({ part, entry: 'AGENTS.md', engine, ...line });
+      } else if (part === 'memory') {
+        loss.push({ part, entry: 'instructions', engine, result: 'translated', reason: 'Standing facts project as instructions in AGENTS.md. Engine-written memory is runtime state and is not projected.' });
+      } else if (part === 'tool-guidance') {
+        const pointers = def.harness.parts['tool-guidance'] ?? [];
+        if (pointers.length === 0) none(part, engine);
+        for (const pointer of pointers) {
+          const skill = /^skills\/(.+)$/.exec(pointer)?.[1];
+          if (skill !== undefined && !view.skills.some(s => s.id === skill)) loss.push({ part, entry: pointer, engine, result: 'absent', reason: `The skill ${skill} is filtered out for ${engine}, so its tool guidance does not reach it.` });
+          else loss.push({ part, entry: pointer, engine, result: 'exact', reason: skill !== undefined ? 'Tool guidance projects as the body of a skill.' : 'Tool guidance projects as a section of AGENTS.md.' });
+        }
+      } else if (part === 'skills') {
+        if (view.skills.length === 0) none(part, engine);
+        for (const s of view.skills) {
+          const trust = engine === 'pi' && !trustSaved ? ' Pending trust: Pi skips project .agents/skills in non-interactive runs until a person saves trust.' : '';
+          loss.push(isCommand(s)
+            ? { part, entry: s.id, engine, result: 'translated', reason: `A command projects as a skill in ${SKILL_ROOTS[engine].join(' and ')}. Bowerloom writes no command file.${trust}` }
+            : { part, entry: s.id, engine, result: 'exact', reason: `The engine reads ${SKILL_ROOTS[engine].join(' and ')}.${trust}` });
+          if (s.privateBlocks[engine] !== undefined) loss.push({ part, entry: s.id, field: `x-${engine}`, engine, result: 'absent', reason: LOCKED_IN_REASON });
+        }
+        for (const leak of leaks) if (leak.engines.includes(engine)) {
+          const line: LossLine = { part, entry: leak.skill, engine, result: 'weakened', reason: `The engine filter of ${leak.skill} leaves ${engine} out, but ${engine} reads ${leak.path}, so it loads the skill.` };
+          loss.push(line); leakLines.add(line);
+        }
+      } else if (part === 'plugins') {
+        if (def.sources.length === 0) none(part, engine);
+        for (const s of def.sources) loss.push({ part, entry: s.name, engine, result: 'translated', reason: 'A plugin is unpacked into its items. The receipt records the source, marketplace, and version of each borrowed skill.' });
+      } else {
+        const entries: readonly { id: string }[] = part === 'subagents' ? view.subagents : part === 'guardrails' ? [...view.rules, ...view.sandbox]
+          : part === 'hooks' ? view.hooks : part === 'mcp' ? view.mcp : part === 'scripts' ? def.scripts.map(id => ({ id })) : [];
+        if (entries.length === 0) none(part, engine);
+        for (const e of entries) loss.push({ part, entry: e.id, engine, result: 'absent', reason: LOCKED_IN_REASON });
       }
-      const bytes = c.after === null ? (c.original === null ? null : blob(stateDir, c.original, c.path)) : bytesFor(def, c.path);
-      if (bytes !== null && c.after !== null && sha(bytes) !== c.after.sha256) throw syncError('STALE_APPROVAL');
-      steps.push({ step: { path: c.path, from: c.before, to: c.after ?? c.original }, bytes });
     }
-    const previous = readPortableReceipt(stateDir);
-    const pending: Pending = { format: PENDING_FORMAT, kind: 'apply', planRevision: plan.revision, steps: steps.map(s => s.step), dirs: [...plan.createDirs] };
-    run(projectDir, stateDir, pending, steps, held, hooks);
-    const files = receiptFilesOf(plan.changes), createdDirs = createdDirsOf(previous, plan.createDirs, files);
-    // Folders an earlier run created that no projected file needs now go, when they are empty.
-    removeEmptyDirs(projectDir, (previous?.createdDirs ?? []).filter(d => !createdDirs.includes(d)));
-    const body = { format: PORTABLE_RECEIPT_FORMAT, projectDir, definition: plan.definition, engines: plan.engines, files, createdDirs, planRevision: plan.revision };
-    const receipt: PortableReceipt = { ...body, revision: revisionOf(body) };
-    writeRecord(stateDir, RECEIPT, receipt);
-    finish(stateDir, new Set(files.flatMap(f => (f.original ? [f.original.sha256] : []))));
-    return { noop: false, receipt };
-  });
-}
-
-/** The bytes a projected path gets: `AGENTS.md`, `CLAUDE.md`, or a file of a skill folder. */
-function bytesFor(def: Definition, path: string): Uint8Array {
-  if (path === 'AGENTS.md') return Buffer.from(def.instructions ?? '');
-  if (path === 'CLAUDE.md') return Buffer.from(FOLLOW_TEXT);
-  const m = /^\.(?:claude|agents)\/skills\/([^/]+)\/(.+)$/.exec(path);
-  const f = m && def.files.find(x => x.path === `skills/${m[1]}/${m[2]}`);
-  if (!f) throw syncError('STALE_APPROVAL');
-  return f.bytes;
-}
-
-// ---- drift against the receipt (portable spec, section 5.3) --------------------------------------------------------------
-
-/** Each projected file that differs from its receipt: changed, its mode changed, or missing. */
-export function portableDrift(input: { readonly projectDir: string; readonly stateDir: string }): { readonly path: string; readonly now: FileState | null; readonly recorded: FileState }[] {
-  checkPaths(input?.projectDir, input?.stateDir);
-  const receipt = readPortableReceipt(input.stateDir);
-  if (receipt === null) return [];
-  const out: { path: string; now: FileState | null; recorded: FileState }[] = [];
-  for (const f of receipt.files) {
-    let now: FileState | null;
-    try { now = stateOf(join(input.projectDir, f.path), f.path); } catch { now = null; }
-    if (!sameState(now, f)) out.push({ path: f.path, now, recorded: { sha256: f.sha256, mode: f.mode } });
   }
-  return out;
-}
-
-// ---- removal -------------------------------------------------------------------------------------------------------------
-
-/** Plans the removal of the projection: each projected file goes back to the file it replaced, or is deleted. */
-export function planPortableRemoval(input: { readonly projectDir: string; readonly stateDir: string }): PortableRemovalPlan {
-  checkPaths(input?.projectDir, input?.stateDir);
-  const { projectDir, stateDir } = input;
-  if (readRecord<unknown>(stateDir, PENDING) !== null) refuse('PORTABLE_RECOVERY_REQUIRED');
-  const receipt = readPortableReceipt(stateDir);
-  if (receipt === null) return refuse('PORTABLE_NOTHING_PROJECTED');
-  const drifted = portableDrift(input).map(d => d.path);
-  if (drifted.length) refuse('PORTABLE_DRIFT', drifted);
-  const changes = receipt.files.map((f): PlannedChange => ({
-    path: f.path, action: f.original ? 'restore' : 'delete', before: { sha256: f.sha256, mode: f.mode }, after: null, original: f.original, engines: [],
-  }));
-  const body = { format: PORTABLE_REMOVAL_FORMAT, projectDir, stateDir, receipt: receipt.revision, changes, removeDirs: [...receipt.createdDirs], writesAuthorized: false as const };
-  return { ...body, revision: revisionOf(body) };
-}
-
-/** Applies the approved removal under the project lock. The state folder of the projection is emptied at the end. */
-export async function applyPortableRemoval(input: { readonly projectDir: string; readonly stateDir: string }, revision: string, signal: AbortSignal = new AbortController().signal): Promise<PortableRemovalResult> {
-  if (typeof revision !== 'string' || !/^[a-f0-9]{64}$/.test(revision)) throw syncError('STALE_APPROVAL');
-  checkPaths(input?.projectDir, input?.stateDir);
-  return withProjectLock(input.projectDir, signal, async held => {
-    const plan = planPortableRemoval(input);
-    if (plan.revision !== revision) throw syncError('STALE_APPROVAL');
-    const { projectDir, stateDir } = plan;
-    const steps: { step: Step; bytes: Uint8Array | null }[] = [];
-    for (const c of plan.changes) {
-      const got = readFile(join(projectDir, c.path), c.path);
-      if (got === null || !sameState(got.state, c.before)) throw syncError('STALE_APPROVAL');
-      saveBlob(stateDir, got.bytes);
-      steps.push({ step: { path: c.path, from: c.before, to: c.original }, bytes: c.original === null ? null : blob(stateDir, c.original, c.path) });
-    }
-    run(projectDir, stateDir, { format: PENDING_FORMAT, kind: 'remove', planRevision: plan.revision, steps: steps.map(s => s.step), dirs: [] }, steps, held, {});
-    removeEmptyDirs(projectDir, plan.removeDirs);
-    fs.unlinkSync(join(stateDir, RECEIPT));
-    finish(stateDir, new Set());
-    return { planRevision: plan.revision, restored: plan.changes.filter(c => c.action === 'restore').map(c => c.path), deleted: plan.changes.filter(c => c.action === 'delete').map(c => c.path) };
-  });
-}
-
-// ---- recovery --------------------------------------------------------------------------------------------------------------
-
-/**
- * Plans the recovery of a run that stopped part way. When the receipt names the run's plan, the run finished and only
- * the marker goes. Otherwise every step is undone.
- */
-export function planPortableRecovery(input: { readonly projectDir: string; readonly stateDir: string }): PortableRecoveryPlan {
-  checkPaths(input?.projectDir, input?.stateDir);
-  const { projectDir, stateDir } = input;
-  const pending = readRecord<Pending>(stateDir, PENDING);
-  if (pending === null) return refuse('PORTABLE_RECOVER_NOTHING');
-  if (pending.format !== PENDING_FORMAT || !Array.isArray(pending.steps) || !Array.isArray(pending.dirs)) return refuse('PORTABLE_STATE_UNSAFE');
-  const receipt = readPortableReceipt(stateDir);
-  // An apply whose receipt names its plan finished. A removal whose receipt is gone finished too.
-  const complete = pending.kind === 'apply' ? receipt?.planRevision === pending.planRevision : receipt === null;
-  const steps = complete ? [] : pending.steps.map(s => ({ path: s.path, now: stateOf(join(projectDir, s.path), s.path), back: s.from }));
-  for (const s of pending.steps) if (!complete) {
-    const now = stateOf(join(projectDir, s.path), s.path);
-    if (!sameState(now, s.from) && !sameState(now, s.to)) refuse('PORTABLE_DRIFT', [s.path]);
-  }
-  const body = { format: PORTABLE_RECOVERY_FORMAT, projectDir, stateDir, action: complete ? 'complete' as const : 'rollback' as const, steps };
-  return { ...body, revision: revisionOf(body) };
-}
-
-/** Applies the approved recovery under the project lock. */
-export async function applyPortableRecovery(input: { readonly projectDir: string; readonly stateDir: string }, revision: string, signal: AbortSignal = new AbortController().signal): Promise<PortableRecoveryPlan> {
-  if (typeof revision !== 'string' || !/^[a-f0-9]{64}$/.test(revision)) throw syncError('STALE_APPROVAL');
-  checkPaths(input?.projectDir, input?.stateDir);
-  return withProjectLock(input.projectDir, signal, async () => {
-    const plan = planPortableRecovery(input);
-    if (plan.revision !== revision) throw syncError('STALE_APPROVAL');
-    const pending = readRecord<Pending>(plan.stateDir, PENDING)!;
-    const receipt = readPortableReceipt(plan.stateDir);
-    if (plan.action === 'rollback') rollback(plan.projectDir, plan.stateDir, pending);
-    const keep = new Set((receipt?.files ?? []).flatMap(f => (f.original ? [f.original.sha256] : [])));
-    finish(plan.stateDir, keep);
-    return plan;
-  });
+  const empty = { subagents: [], rules: [], sandbox: [], hooks: [], mcp: [] };
+  const portable = loss.filter(l => PORTABLE_PARTS.includes(l.part) && l.entry !== NOTHING && !leakLines.has(l));
+  const verdict = checkFidelity({ entries: { ...empty, skills: listed.includes('skills') ? def.entries.skills : [] }, engines: engines.map(e => e.id) }, portable, []);
+  if (!verdict.ok) refuse('PORTABLE_FIDELITY', verdict.problems.map(p => p.code));
+  return loss;
 }

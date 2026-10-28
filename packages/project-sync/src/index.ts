@@ -37,15 +37,22 @@ export type { StoreMigratePlan, StoreMigrateResult, MigrateItem, MigrateInput as
 // Spec 09: cache list and cache prune.
 export { listCache, planCachePrune, applyCachePrune, referenceSets, checkSelectors, cacheUsage, lineName, CACHE_LIST_FORMAT, CACHE_PRUNE_PLAN_FORMAT, CACHE_PRUNE_RESULT_FORMAT, CACHE_LIST_LIMIT, CACHE_USAGE } from './cache-admin.js';
 export type { CacheEntry, CacheList, CachePrunePlan, CachePruneResult, CachePruneSelectors, CacheAdminInput, CachePruneInput, CacheAdminHooks, CacheScope, PickedEntry, SkippedEntry, PruneInterrupt, ReferenceSets, PartialReason, Unreadable, UnlistedName } from './cache-admin.js';
-// Bowerloom 0.8, step 2: the portable projection (portable parts spec).
+// Bowerloom 0.8, step 2: the portable projection (portable parts spec). The test hook entry points of portable-run.ts
+// (applyPortableWith, applyPortableRemovalWith) are not exported here.
 export {
-  COMMAND_METADATA, FOLLOW_TEXT, HIDDEN_FILE, INSTRUCTIONS_LIMIT, PORTABLE_PLAN_FORMAT, PORTABLE_RECEIPT_FORMAT, PORTABLE_RECOVERY_FORMAT,
-  PORTABLE_REFUSAL_CODES, PORTABLE_REMOVAL_FORMAT, PortableRefusal, RECONCILE_ACTIONS, SKILL_ROOTS, applyPortable, applyPortableRecovery,
-  applyPortableRemoval, atImports, followsAgents, instructionDrift, planPortable, planPortableRecovery, planPortableRemoval, portableDrift,
-  readPortableReceipt,
+  CLAUDE_CODE_READS_AGENTS, COMMAND_METADATA, FOLLOW_TEXT, HIDDEN_FILE, INSTRUCTIONS_LIMIT, LOCKED_IN_REASON, NOTHING, PARTIAL_NOTICE,
+  PORTABLE_PLAN_FORMAT, RECONCILE_ACTIONS, SKILL_ROOTS, atImports, followsAgents, instructionDrift, planPortable,
 } from './portable.js';
 export type {
-  ChangeAction, Deferred, FileAfter, FileState, FilterLeak, InstructionDrift, PlannedChange, PortableApplyResult, PortableCode, PortableEngine,
-  PortableHooks, PortableInput, PortablePlan, PortableReceipt, PortableRecoveryPlan, PortableRemovalPlan, PortableRemovalResult, ReceiptFile,
+  ChangeAction, Deferred, FilterLeak, Ignored, InstructionDrift, Offer, PlannedChange, PortableInput, PortablePlan, PortableReport,
   ReconcileAction, SkillRoot,
 } from './portable.js';
+export {
+  PORTABLE_RECOVERY_FORMAT, PORTABLE_REMOVAL_FORMAT, applyPortable, applyPortableRecovery, applyPortableRemoval, planPortableRecovery,
+  planPortableRemoval, portableDrift, readPortableReceipt,
+} from './portable-run.js';
+export type { DriftLine, PortableApplyResult, PortableRecoveryPlan, PortableRemovalPlan, PortableRemovalResult, RecoveryInput } from './portable-run.js';
+export { PORTABLE_REFUSAL_CODES, PortableRefusal } from './portable-files.js';
+export type { FileAfter, FileState, LeftBehind, LeftReason, PortableCode } from './portable-files.js';
+export { PORTABLE_RECEIPT_FORMAT } from './portable-state.js';
+export type { PortableEngine, PortableReceipt, ReceiptFile, ReceiptSource } from './portable-state.js';

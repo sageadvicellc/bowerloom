@@ -4,64 +4,14 @@
 import test from '../../../dist/tests/support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
 import {
   FOLLOW_TEXT, HIDDEN_FILE, PORTABLE_REFUSAL_CODES, SKILL_ROOTS, applyPortable, applyPortableRecovery, applyPortableRemoval, atImports,
   instructionDrift, planPortable, planPortableRecovery, planPortableRemoval, portableDrift, readPortableReceipt,
 } from '../../../dist/packages/project-sync/src/index.js';
+import { applyPortableWith } from '../../../dist/packages/project-sync/src/portable-run.js';
 import { ENGINE_IDS, checkFidelity } from '../../../dist/packages/harness-definition/src/index.js';
-
-const sha = b => createHash('sha256').update(b).digest('hex');
-const FIVE = ENGINE_IDS.map(id => ({ id }));
-const code = expected => error => error?.code === expected;
-const json = v => JSON.stringify(v, null, 2) + '\n';
-const skill = (name, extra = '', body = `Use ${name} with care.\n`) => `---\nname: ${name}\ndescription: Reviews a change before merge.\n${extra}---\n\n${body}`;
-const INSTRUCTIONS = '# Demo\n\nStanding fact: the demo uses npm.\n\n## Tool guidance\n\nSearch before you read.\n';
-
-/** A project with a `.bowerloom` definition, and a private state folder outside it. */
-function project(t, { engines = FIVE, files = {}, parts = {}, skills = {} } = {}) {
-  const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'bowerloom-portable-'))); fs.chmodSync(base, 0o700);
-  t.after(() => { chmodTree(base); fs.rmSync(base, { recursive: true, force: true }); });
-  const dir = path.join(base, 'project'), def = path.join(dir, '.bowerloom');
-  fs.mkdirSync(def, { recursive: true, mode: 0o755 });
-  const all = {
-    'harness.json': json({
-      format: 'bowerloom/harness/v1beta1', id: 'demo', description: 'A demo harness.', engines,
-      parts: { 'system-prompt': 'instructions/AGENTS.md', skills: 'skills/', 'tool-guidance': ['instructions/AGENTS.md#Tool guidance'], ...parts }, skills,
-    }),
-    'instructions/AGENTS.md': INSTRUCTIONS,
-    'skills/review/SKILL.md': skill('review', 'license: MIT\n'),
-    'skills/review/references/notes.md': 'Review notes.\n',
-    ...files,
-  };
-  for (const [rel, text] of Object.entries(all)) {
-    if (text === null) continue;
-    const at = path.join(def, rel); fs.mkdirSync(path.dirname(at), { recursive: true }); fs.writeFileSync(at, text, { mode: 0o644 });
-  }
-  const stateDir = path.join(base, 'state', 'portable');
-  const input = (extra = {}) => ({ projectDir: dir, definitionFolder: def, stateDir, ...extra });
-  return { base, dir, def, stateDir, input };
-}
-function chmodTree(p) { try { const st = fs.lstatSync(p); if (st.isDirectory() && !st.isSymbolicLink()) { fs.chmodSync(p, 0o700); for (const n of fs.readdirSync(p)) chmodTree(path.join(p, n)); } } catch { /* gone */ } }
-
-/** Every file and folder of the project outside `.bowerloom`, with its hash and mode. */
-function snapshot(dir) {
-  const out = {};
-  const walk = rel => {
-    for (const name of fs.readdirSync(path.join(dir, rel)).sort()) {
-      const r = rel ? `${rel}/${name}` : name;
-      if (r === '.bowerloom') continue;
-      const st = fs.lstatSync(path.join(dir, r));
-      if (st.isDirectory()) { out[r + '/'] = st.mode & 0o777; walk(r); } else out[r] = `${sha(fs.readFileSync(path.join(dir, r)))} ${(st.mode & 0o777).toString(8)}`;
-    }
-  };
-  walk(''); return out;
-}
-const stamp = file => { const s = fs.statSync(file, { bigint: true }); return `${s.ino}:${s.mtimeNs}:${s.ctimeNs}`; };
-const written = (before, after) => [...new Set([...Object.keys(before), ...Object.keys(after)])].filter(k => before[k] !== after[k]).sort();
-async function project_(t, input) { const plan = planPortable(input); return { plan, result: await applyPortable(input, plan.revision) }; }
+import { FIVE, INSTRUCTIONS, code, json, project, projectNow as project_, sha, skill, snapshot, stamp, written } from './portable-fixture.mjs';
 
 // ---- check 2: the drift report ---------------------------------------------------------------------------------------------
 
@@ -103,7 +53,7 @@ test('check 3: Accept AGENTS.md leaves CLAUDE.md as the single line @AGENTS.md, 
   fs.writeFileSync(path.join(p.dir, 'CLAUDE.md'), 'Old Claude rules.\n', { mode: 0o640 }); fs.chmodSync(path.join(p.dir, 'CLAUDE.md'), 0o640);
   fs.writeFileSync(path.join(p.dir, 'AGENTS.md'), 'Old shared rules.\n');
   const before = snapshot(p.dir);
-  const { plan } = await project_(t, p.input());
+  const { plan } = await project_(p.input());
   assert.deepEqual(plan.changes.filter(c => c.path === 'CLAUDE.md' || c.path === 'AGENTS.md').map(c => [c.path, c.action]), [['AGENTS.md', 'replace'], ['CLAUDE.md', 'replace']]);
   assert.equal(fs.readFileSync(path.join(p.dir, 'CLAUDE.md'), 'utf8'), '@AGENTS.md\n');
   assert.equal(FOLLOW_TEXT.split('\n').filter(Boolean).length, 1);
@@ -115,7 +65,7 @@ test('check 3: Accept AGENTS.md leaves CLAUDE.md as the single line @AGENTS.md, 
   assert.deepEqual(result.restored, ['AGENTS.md', 'CLAUDE.md']);
   assert.equal(fs.readFileSync(path.join(p.dir, 'CLAUDE.md'), 'utf8'), 'Old Claude rules.\n');
   assert.deepEqual(snapshot(p.dir), before, 'every file, folder, and mode is as it was');
-  assert.equal(readPortableReceipt(p.stateDir), null);
+  assert.equal(readPortableReceipt(p.input()), null);
 });
 
 test('check 3: Keep both leaves CLAUDE.md and reports the drift; Merge is refused, not guessed', async t => {
@@ -246,7 +196,11 @@ test('the skill engine filter in harness.json keeps a skill out of other engines
   const plan = planPortable(p.input());
   assert.equal(plan.changes.some(c => c.path.startsWith('.claude/skills/review/')), false);
   assert.deepEqual(plan.changes.find(c => c.path === '.agents/skills/review/SKILL.md').engines, ['codex']);
-  assert.equal(plan.loss.some(l => l.entry === 'review' && l.engine === 'pi'), false);
+  // Ruling P19: an engine being projected that still reads the folder gets a weakened line, not an exact one.
+  for (const engine of ['opencode', 'pi', 'deepseek-harness']) {
+    const lines = plan.loss.filter(l => l.entry === 'review' && l.engine === engine);
+    assert.deepEqual(lines.map(l => l.result), ['weakened'], engine); assert.match(lines[0].reason, /filter of review leaves/);
+  }
   assert.deepEqual(plan.filterLeaks, [{ skill: 'review', path: '.agents/skills/review', engines: ['opencode', 'pi', 'deepseek-harness'] }]);
   assert.ok(plan.changes.some(c => c.path === '.claude/skills/deploy/SKILL.md'));
 });
@@ -254,7 +208,7 @@ test('the skill engine filter in harness.json keeps a skill out of other engines
 test('ENGINE_NO_WRITER is lifted for portable parts only: locked-in parts still refuse for opencode, pi, and deepseek-harness', async t => {
   for (const engine of ['opencode', 'pi', 'deepseek-harness']) {
     const p = project(t, { engines: [{ id: engine, version: '1.0.0' }] });
-    const { result } = await project_(t, p.input());
+    const { result } = await project_(p.input());
     assert.deepEqual(result.receipt.engines, [{ id: engine, version: '1.0.0' }], engine);
     const locked = project(t, { engines: [{ id: engine }], parts: { mcp: 'mcp.json' }, files: { 'mcp.json': json({ servers: [{ name: 'docs', transport: 'stdio', command: 'docs-mcp' }] }) } });
     assert.throws(() => planPortable(locked.input()), e => e.code === 'ENGINE_NO_WRITER' && e.message === `no writer for engine ${engine} yet`, engine);
@@ -274,11 +228,11 @@ test('an engine that harness.json does not list is refused', t => {
 
 test('the receipt records engine, engine version, definition revision, and each path, hash, and mode; a second run writes nothing', async t => {
   const p = project(t, { engines: [{ id: 'claude-code', version: '2.1.310' }, { id: 'codex', version: '0.157.0' }] });
-  const { plan, result } = await project_(t, p.input());
+  const { plan, result } = await project_(p.input());
   const r = result.receipt;
   assert.deepEqual(r.engines, [{ id: 'claude-code', version: '2.1.310' }, { id: 'codex', version: '0.157.0' }]);
   assert.match(r.definition.revision, /^sha256:[0-9a-f]{64}$/); assert.equal(r.definition.revision, plan.definition.revision);
-  assert.deepEqual(readPortableReceipt(p.stateDir), r);
+  assert.deepEqual(readPortableReceipt(p.input()), r);
   for (const f of r.files) {
     const bytes = fs.readFileSync(path.join(p.dir, f.path));
     assert.equal(f.sha256, sha(bytes), f.path); assert.equal(f.mode, fs.statSync(path.join(p.dir, f.path)).mode & 0o777, f.path);
@@ -289,7 +243,8 @@ test('the receipt records engine, engine version, definition revision, and each 
   const stamps = Object.fromEntries([...r.files.map(f => path.join(p.dir, f.path)), path.join(p.stateDir, 'receipt.json')].map(f => [f, stamp(f)]));
   const again = planPortable(p.input());
   assert.equal(again.noop, true); assert.ok(again.changes.every(c => c.action === 'unchanged'));
-  assert.deepEqual(await applyPortable(p.input(), again.revision), { noop: true, planRevision: again.revision });
+  const noop = await applyPortable(p.input(), again.revision);
+  assert.equal(noop.noop, true); assert.equal(noop.planRevision, again.revision); assert.deepEqual(noop.receipt, r);
   for (const [f, s] of Object.entries(stamps)) assert.equal(stamp(f), s, f);
 });
 
@@ -304,7 +259,7 @@ test('a change to the definition after the plan refuses STALE_APPROVAL and write
 
 test('an update replaces what changed, and a skill dropped from the definition is removed', async t => {
   const p = project(t, { files: { 'skills/deploy/SKILL.md': skill('deploy') } });
-  await project_(t, p.input());
+  await project_(p.input());
   fs.rmSync(path.join(p.def, 'skills/deploy'), { recursive: true });
   fs.writeFileSync(path.join(p.def, 'skills/review/references/notes.md'), 'New notes.\n');
   const plan = planPortable(p.input());
@@ -320,7 +275,7 @@ test('an update replaces what changed, and a skill dropped from the definition i
 
 test('a projected file changed by hand is drift: it is reported, and plan and removal refuse', async t => {
   const p = project(t);
-  await project_(t, p.input());
+  await project_(p.input());
   assert.deepEqual(portableDrift(p.input()), []);
   fs.appendFileSync(path.join(p.dir, '.claude/skills/review/SKILL.md'), 'Edited.\n');
   fs.chmodSync(path.join(p.dir, 'AGENTS.md'), 0o600);
@@ -352,7 +307,7 @@ test('a failure part way rolls back every step, and leaves no receipt and no mar
   fs.chmodSync(p.dir, 0o555); // AGENTS.md, the last file, cannot be written: the skill files before it were.
   try { await assert.rejects(applyPortable(p.input(), plan.revision), e => e.code === 'EACCES' || e.code === 'EPERM'); } finally { fs.chmodSync(p.dir, 0o755); }
   assert.deepEqual(snapshot(p.dir), before);
-  assert.equal(readPortableReceipt(p.stateDir), null);
+  assert.equal(readPortableReceipt(p.input()), null);
   assert.equal(fs.existsSync(path.join(p.stateDir, 'pending.json')), false);
   assert.throws(() => planPortableRecovery(p.input()), code('PORTABLE_RECOVER_NOTHING'));
 });
@@ -364,7 +319,7 @@ test('a run that stopped part way blocks every plan until recovery rolls it back
   const plan = planPortable(p.input());
   let steps = 0;
   const crash = Object.assign(new Error('simulated crash'), { crash: true });
-  await assert.rejects(applyPortable(p.input(), plan.revision, undefined, { afterStep: () => { if (++steps === 3) throw crash; } }), e => e === crash);
+  await assert.rejects(applyPortableWith(p.input(), plan.revision, new AbortController().signal, { afterStep: () => { if (++steps === 3) throw crash; } }), e => e === crash);
   assert.notDeepEqual(snapshot(p.dir), before, 'the crash left the project part way');
   assert.throws(() => planPortable(p.input()), code('PORTABLE_RECOVERY_REQUIRED'));
   assert.throws(() => planPortableRemoval(p.input()), code('PORTABLE_RECOVERY_REQUIRED'));
