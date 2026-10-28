@@ -76,7 +76,7 @@ const oldEngines = (ctx: Context, list: unknown): EngineId[] | null => {
 const relativePath = (p: unknown): p is string => typeof p === 'string' && p.length > 0 && p.length <= 512 && !p.startsWith('/') && !p.includes('\\') && !/[\0-\x1f\x7f]/.test(p)
   && p.split('/').every(seg => seg !== '' && seg !== '.' && seg !== '..');
 
-export const CLAIMED_APPROVAL = 'The source comes from what the 0.7 catalog claims, and Bowerloom did not check it. It is recorded in this plan only: sources.json gets it once the definition contract can mark it as claimed. A person checks it.';
+export const CLAIMED_APPROVAL = 'The source comes from what the 0.7 catalog claims, and Bowerloom did not check it. sources.json records it with claimed: true. A person checks it.';
 
 /**
  * 0.7 managed copies: `.bowerloom/managed/catalog/<item>.json` with the canonical copy in `.bowerloom/managed/skills/<id>`,

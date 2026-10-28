@@ -76,7 +76,7 @@ test('C5: the nested search skips .git and node_modules at every depth; a search
   assert.equal(stopped.ready, false);
 });
 
-test('C6: a claimed 0.7 source is recorded in the plan only, not written to sources.json', async t => {
+test('C6, closed by the step 3 contract: a claimed 0.7 source is written to sources.json marked claimed, and still needs approval', async t => {
   const TIDY = skill('tidy');
   const p = project(t, {
     '.bowerloom/managed/catalog/tidy.json': json({ format: 'bowerloom/managed-catalog/v1beta2', item: { kind: 'skill', id: 'tidy' }, source: { kind: 'npm', registry: 'https://registry.example.test', package: 'example-tidy', version: '1.0.0' }, harnesses: ['claude'] }),
@@ -84,9 +84,12 @@ test('C6: a claimed 0.7 source is recorded in the plan only, not written to sour
   });
   const plan = planAdoption(p.input({ engines: [{ id: 'claude-code' }] }));
   assert.equal(item(plan, 'skills', 'tidy').source.claimed, true);
-  assert.equal(plan.files.some(f => f.path === 'sources.json'), false);
+  assert.ok(plan.approvalsRequired.includes('skills/tidy'));
+  assert.ok(item(plan, 'skills', 'tidy').needsApproval.some(n => /claimed: true/.test(n)));
   await applyAdoption(p.input({ engines: [{ id: 'claude-code' }] }), plan.revision, plan.approvalsRequired);
-  assert.equal(fs.existsSync(path.join(p.def, 'sources.json')), false);
+  const written = JSON.parse(fs.readFileSync(path.join(p.def, 'sources.json'), 'utf8'));
+  assert.deepEqual(written.sources, [{ name: 'example-tidy', marketplace: 'https://registry.example.test', version: '1.0.0', claimed: true, items: [{ part: 'skills', id: 'tidy' }] }]);
+  assert.deepEqual(written.adopted.map(a => [a.id, a.adoptedFrom.kind, a.adoptedFrom.path]), [['tidy', '0.7-managed', '.bowerloom/managed/skills/tidy']]);
 });
 
 const S1 = 'sk-ant-' + 'synthetic0value0'.repeat(2);

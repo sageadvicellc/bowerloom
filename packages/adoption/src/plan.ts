@@ -18,9 +18,10 @@ import { basename, dirname, isAbsolute, join } from 'node:path';
 import { stringify } from 'yaml';
 import { canonicalJson } from '../../contracts/src/index.js';
 import {
-  ENGINE_IDS, GUARDRAIL_ACTIONS, HARNESS_FORMAT, LEGACY_NAMES, isEngineId, isId, isServerName, loadDefinition, scanSecrets,
+  ENGINE_IDS, GUARDRAIL_ACTIONS, HARNESS_FORMAT, LEGACY_NAMES, REVISION_PREFIX, isEngineId, isId, isServerName, loadDefinition, scanSecrets,
+  skillContentHash,
 } from '../../harness-definition/src/index.js';
-import type { EngineId, GuardrailAction, JsonValue, Problem } from '../../harness-definition/src/index.js';
+import type { AdoptedFrom, EngineId, GuardrailAction, JsonValue, Problem } from '../../harness-definition/src/index.js';
 import { atImports } from '../../project-sync/src/portable.js';
 import { byBytes, revisionOf, sha } from '../../project-sync/src/portable-files.js';
 import { DEFAULT_ENGINES } from '../../skill-manifest/src/engine.js';
@@ -303,6 +304,7 @@ function group(cands: readonly Candidate[], harness: readonly EngineId[], choice
     const differ = sorted.filter(c => bytesOf(c) !== bytesOf(lead));
     if (differ.length) notes.push(`The copies at ${[lead, ...differ].map(c => c.place.path).join(' and ')} mean the same but differ in bytes. The definition takes the bytes of ${lead.place.path}.`);
     const source = v.cands.find((c): c is Extract<Candidate, { part: 'skills' }> => c.part === 'skills' && c.source !== undefined)?.source;
+    const adoptedFrom = adoptedFromOf(sorted);
     const secrets = v.cands.flatMap(c => c.secrets);
     const extraNeeds: string[] = [];
     // Ruling A7: a reference that took the place of a literal secret sends the person's own value.
@@ -316,7 +318,7 @@ function group(cands: readonly Candidate[], harness: readonly EngineId[], choice
     if (lead.part === 'system-prompt' && engines !== null) extraNeeds.push(`Only ${engines.join(', ')} read this text today; after projection every listed engine reads this text.`);
     const item: PlanItem = {
       part: lead.part, id, places: v.places, engines, privateBlocks: ENGINE_IDS.filter(e => v.blocks[e] !== undefined),
-      needsApproval: [...needs, ...extraNeeds], notes, ...(source ? { source } : {}),
+      needsApproval: [...needs, ...extraNeeds], notes, ...(source ? { source } : {}), ...(adoptedFrom ? { adoptedFrom } : {}),
     };
     kept.push({ item, lead, blocks: v.blocks, models: v.models, secrets, fixed: v.fixed });
   };
@@ -410,6 +412,17 @@ function managedOf(list: readonly ManagedConversion[], kept: readonly Kept[], co
     const waiting = conflicts.some(c => c.choice === null && c.variants.some(v => v.places.some(p => p.path === canonical)));
     return { ...m, copies, reason: waiting ? 'Not converted yet: the copy is part of a conflict that waits for a choice.' : 'Not converted: the unmapped list says why.' };
   }).sort((a, b) => byBytes(a.catalog, b.catalog) || byBytes(a.id, b.id));
+}
+
+/**
+ * The durable record of a skill converted from a 0.7 managed copy (step 3 contract): the first managed copy in path
+ * order, with the hex of its skill content hash. The portable projection compares an engine folder with that hash.
+ */
+function adoptedFromOf(sorted: readonly Candidate[]): AdoptedFrom | undefined {
+  const c = sorted.find((x): x is Extract<Candidate, { part: 'skills' }> => x.part === 'skills' && x.place.kind === 'managed-0.7');
+  if (!c) return undefined;
+  const rows = [{ path: 'skills/x/SKILL.md', bytes: c.skill.raw }, ...c.skill.files.map(f => ({ path: `skills/x/${f.path}`, bytes: f.bytes }))];
+  return { kind: '0.7-managed', path: c.place.path, sha256: skillContentHash('x', rows).slice(REVISION_PREFIX.length) };
 }
 
 /** The bytes a candidate brings: the file it was read from, so two copies with one meaning can be told apart. */
@@ -569,20 +582,21 @@ function buildFiles(b: BuildInput): Map<string, { bytes: Uint8Array; mode: numbe
 
   for (const k of by('engine-private')) if (k.lead.part === 'engine-private') out.set(k.item.id, { bytes: json(k.lead.value), mode: 0o644 });
 
-  // sources.json: borrowed sources, one record per package. A source a 0.7 catalog only claims stays in the plan until
-  // the definition contract can mark it as claimed (item C6), so no claimed source is written.
+  // sources.json: borrowed sources, one record per package; a source a 0.7 catalog only claims is marked claimed. Each
+  // skill converted from a 0.7 managed copy gets its adoptedFrom record (step 3 contract).
   const sources = new Map<string, { source: SourceShape; items: { part: 'skills'; id: string }[] }>();
   for (const k of skills) {
     const s = k.item.source;
-    if (!s || s.claimed) continue;
+    if (!s) continue;
     const key = `${s.marketplace}\n${s.name}`, at = sources.get(key);
-    if (at && at.source.version !== s.version) { b.unmapped.push({ path: k.item.places[0]!.path, part: 'plugins', reason: `The source of ${k.item.id} names another pinned version of a package that another skill names too. sources.json holds one version per package, so this source is not recorded.`, gate: 'none' }); continue; }
+    if (at && (at.source.version !== s.version || at.source.claimed !== s.claimed)) { b.unmapped.push({ path: k.item.places[0]!.path, part: 'plugins', reason: `The source of ${k.item.id} names another pinned version of a package that another skill names too. sources.json holds one version per package, so this source is not recorded.`, gate: 'none' }); continue; }
     if (at) at.items.push({ part: 'skills', id: k.item.id }); else sources.set(key, { source: s, items: [{ part: 'skills', id: k.item.id }] });
   }
-  if (sources.size) {
+  const adopted = skills.flatMap(k => k.item.adoptedFrom ? [{ part: 'skills' as const, id: k.item.id, adoptedFrom: k.item.adoptedFrom }] : []);
+  if (sources.size || adopted.length) {
     const list = [...sources.values()].sort((a, c) => byBytes(`${a.source.marketplace}\n${a.source.name}`, `${c.source.marketplace}\n${c.source.name}`))
-      .map(x => ({ name: x.source.name, marketplace: x.source.marketplace, version: x.source.version, items: x.items }));
-    out.set('sources.json', { bytes: json({ sources: list }), mode: 0o644 }); parts.plugins = 'sources.json';
+      .map(x => ({ name: x.source.name, marketplace: x.source.marketplace, version: x.source.version, ...(x.source.claimed ? { claimed: true } : {}), items: x.items }));
+    out.set('sources.json', { bytes: json({ sources: list, ...(adopted.length ? { adopted } : {}) }), mode: 0o644 }); parts.plugins = 'sources.json';
   }
 
   const harness = {

@@ -13,7 +13,8 @@ removal, and recovery), `src/portable-files.ts` (every read and write in the pro
 
 A plan reads only. A person approves its revision. Apply plans again under the project lock and writes only when the
 revision is the same. Scripts, engine-private files, and the private blocks of skills are not projected yet: the plan
-reports them `absent` and says that the projection is partial.
+reports them `absent` and says that the projection is partial. The line of a file under `engines/<engine>/` names the
+part `engine-private`.
 
 ## The locked-in parts (step 3)
 
@@ -67,11 +68,22 @@ The same plan writes MCP servers, subagents, hooks, guardrails, and the sandbox.
 - **Claude Code settings.** A person's `disableAllHooks` or `permissions.defaultMode`, in `.claude/settings.json` or
   `.claude/settings.local.json`, makes the hook lines `weakened`. Every hook line says that user and managed settings
   are not read. A
-  sandbox requirement writes `enabled: true` and `allowUnsandboxedCommands: false`.
+  sandbox requirement writes `enabled: true` and `allowUnsandboxedCommands: false`, then the keys of the sandbox's
+  `x-claude-code` block, unchanged. A key Bowerloom writes itself is not taken from the block, and the line names it.
+- **Guardrail private blocks.** Only two have a place: the Claude Code sandbox block above, and a `justification` in a
+  Codex rule's `x-codex` block, which becomes the justification of its prefix rule. The line of any other guardrail
+  entry with a private block names the keys that are not written.
 - **DeepSeek Harness.** MCP servers are `@deepseek-ai/dsh-mcp-client` rows, read from that package's README at the
   pinned tag. A sandbox requirement is `absent` in the fidelity translation itself.
 - **The no-link fallback.** Where the file system has no link(), a new file is created with O_EXCL. A write that fails
   after that removes the file it created, so no truncated file stays behind.
+
+### A folder that a 0.7 managed copy holds
+
+A skill folder that a 0.7 skills sync manages refuses `PORTABLE_MANAGED_COPY`, unless adoption converted that copy.
+Then `sources.json` records the skill in `adopted`, with the hex of the copy's skill content hash. When the folder
+still holds exactly that content, and every file in it is one the projection writes, the plan replaces its files and
+saves the originals. Removal then restores the 0.7 copy. A folder that changed since adoption is refused as before.
 
 ### What the private state folder keeps
 

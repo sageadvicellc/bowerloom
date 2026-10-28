@@ -20,7 +20,7 @@ export {
   codexScriptCommands, codexShellArgv, codexSplits,
 } from './codex-shell.js';
 export type { CodexDecisionWord, CodexFilesystemEntry, CodexMatchOptions, CodexPrefixRule } from './codex-shell.js';
-export { CODEX_DEFAULT, codexPrefix } from './codex.js';
+export { CODEX_DEFAULT, codexJustification, codexPrefix } from './codex.js';
 export type { CodexForm, CodexMcpDisable } from './codex.js';
 export {
   OPENCODE_DEFAULT, openCodeDecide, openCodeFromConfig, openCodePathPatterns, openCodeRequest, openCodeShellSubjects, openCodeWildcard,
@@ -37,7 +37,7 @@ export { JsExpression, PermissionPairs, addPrivate, envDefaultIn, openCodeSubsti
 export type { LockedProblem } from './locked-common.js';
 export { DSH_MCP_PLUGIN, translateMcp } from './locked-mcp.js';
 export type { DshRow, DshValue, McpServerForm, McpTranslation } from './locked-mcp.js';
-export { CLAUDE_CODE_TOOLS, OPENCODE_TOOL_KEYS, OPENCODE_UNCLASSED_KEYS, translateSubagents } from './locked-subagents.js';
+export { CLAUDE_CODE_TOOLS, OPENCODE_AGENT_MODES, OPENCODE_TOOL_KEYS, OPENCODE_UNCLASSED_KEYS, translateSubagents } from './locked-subagents.js';
 export type { SubagentContext, SubagentForm, SubagentTranslation } from './locked-subagents.js';
 export {
   CLAUDE_CODE_HOOK_EVENTS, CODEX_HOOK_EVENTS, DEFAULT_HOOK_TIMEOUT_MS, OPENCODE_HOOK_EVENTS, PROJECT_DIR, PROJECT_DIR_FORMS, translateHooks,

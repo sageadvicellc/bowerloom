@@ -15,17 +15,20 @@ import { canonicalJson } from '../../contracts/src/index.js';
 import { isRecord } from './json.js';
 import { appliesTo } from './select.js';
 import type { EngineTarget, JsonValue, PartEntries, Problem, SubagentEntry } from './types.js';
-import { OVERRIDABLE_PARTS, PART_KEYS, RESULTS, isEngineId } from './words.js';
-import type { EngineId, OverridablePart, PartKey, Result, Strength } from './words.js';
+import { LOSS_PARTS, OVERRIDABLE_PARTS, PART_KEYS, RESULTS, isEngineId } from './words.js';
+import type { EngineId, LossPart, OverridablePart, PartKey, Result, Strength } from './words.js';
 
 /** The hash of one entry: SHA-256 over its canonical JSON. Fields that are undefined do not count. */
 export function entryHash(entry: object): string {
   return 'sha256:' + createHash('sha256').update(canonicalJson(JSON.parse(JSON.stringify(entry))), 'utf8').digest('hex');
 }
 
-/** How one engine carries one entry, or one field of it. A line that is not `exact` states its reason. */
+/**
+ * How one engine carries one entry, or one field of it. A line that is not `exact` states its reason. `part` is a part
+ * key, or `engine-private` for a file under `engines/<engine>/` (its entry is the definition path of the file).
+ */
 export interface LossLine {
-  readonly part: PartKey;
+  readonly part: LossPart;
   readonly entry: string;
   readonly field?: string;
   readonly engine: EngineId;
@@ -168,9 +171,9 @@ export function layerApprovalMatches(approval: LayerApproval, part: OverridableP
  * - a sandbox requirement is enforced;
  * - a hook has its own strength;
  * - a subagent with a tool limit is enforced for the entry and for the `tools` field; any other field is advisory;
- * - skills, MCP servers, and parts with no entries are advisory.
+ * - skills, MCP servers, engine-private files, and parts with no entries are advisory.
  */
-export function strengthOf(part: PartKey, entry: object, field?: string): Strength {
+export function strengthOf(part: LossPart, entry: object, field?: string): Strength {
   const e = entry as Record<string, unknown>;
   if (part === 'guardrails') {
     if (Object.hasOwn(e, 'files') && Object.hasOwn(e, 'network')) return 'enforced';
@@ -262,7 +265,7 @@ export function checkFidelity(source: FidelitySource, report: LossReport, approv
 function lineFault(line: LossLine, engines: readonly EngineId[]): string | null {
   if (!isRecord(line as unknown as JsonValue)) return 'A loss line must be an object.';
   if (Object.keys(line).some(k => !LINE_KEYS.includes(k))) return 'A loss line has a field that is not known. The definition gives the strength, not the report.';
-  if (!(PART_KEYS as readonly string[]).includes(line.part)) return 'A loss line names a part that is not known.';
+  if (!(LOSS_PARTS as readonly string[]).includes(line.part)) return 'A loss line names a part that is not known.';
   if (!nonEmpty(line.entry, 256)) return 'A loss line must name its entry.';
   if (line.field !== undefined && !nonEmpty(line.field, 256)) return 'A loss line field, when present, must name a field.';
   if (!isEngineId(line.engine) || !engines.includes(line.engine)) return 'A loss line names an engine that the harness does not project to.';

@@ -252,6 +252,31 @@ test('sources: a borrowed item records a pinned version and must exist', () => {
   refused({ ...base, 'sources.json': json({ sources: [{ ...src, marketplace: '' }] }) }, 'INVALID_FIELD');
 });
 
+test('step 3 contract: sources.json records a claimed source and a skill adopted from a 0.7 managed copy', () => {
+  const base = fullFiles();
+  const src = { name: 'kit', marketplace: 'market', version: '1.0.0', items: [{ part: 'skills', id: 'review' }] };
+  const from = { kind: '0.7-managed', path: '.bowerloom/managed/skills/review', sha256: 'a'.repeat(64) };
+  const adopted = [{ part: 'skills', id: 'review', adoptedFrom: from }];
+  const d = ok({ ...base, 'sources.json': json({ sources: [{ ...src, claimed: true }], adopted }) });
+  assert.deepEqual(d.sources, [{ ...src, claimed: true }]);
+  assert.deepEqual(d.adopted, adopted);
+  assert.deepEqual(ok(base).adopted, [], 'a definition with no record has an empty list');
+  assert.equal(ok(base).sources[0].claimed, undefined);
+  // claimed is true or absent.
+  for (const claimed of [false, 'yes', 1]) refused({ ...base, 'sources.json': json({ sources: [{ ...src, claimed }] }) }, 'INVALID_FIELD');
+  // The record is strict: shape, kind, a relative path with no .. segment, and a sha256 hash.
+  const bad = (adoptedFrom, extra = {}) => json({ sources: [], adopted: [{ part: 'skills', id: 'review', adoptedFrom, ...extra }] });
+  for (const path of ['../review', '/abs/review', 'a/../b', 'a/./b', 'a//b', '', 'a\\b', 'a/b/', '.']) refused({ ...base, 'sources.json': bad({ ...from, path }) }, 'INVALID_FIELD');
+  for (const sha256 of ['A'.repeat(64), 'a'.repeat(63), 'sha256:' + 'a'.repeat(64), 7]) refused({ ...base, 'sources.json': bad({ ...from, sha256 }) }, 'INVALID_FIELD');
+  refused({ ...base, 'sources.json': bad({ ...from, kind: '0.7-authored' }) }, 'INVALID_FIELD');
+  refused({ ...base, 'sources.json': bad({ ...from, extra: 1 }) }, 'UNKNOWN_FIELD');
+  refused({ ...base, 'sources.json': bad(from, { note: 'x' }) }, 'UNKNOWN_FIELD');
+  refused({ ...base, 'sources.json': json({ sources: [], adopted: [{ part: 'subagents', id: 'reader', adoptedFrom: from }] }) }, 'INVALID_FIELD');
+  refused({ ...base, 'sources.json': json({ sources: [], adopted: [{ part: 'skills', id: 'absent', adoptedFrom: from }] }) }, 'SOURCE_ITEM_MISSING');
+  refused({ ...base, 'sources.json': json({ sources: [], adopted: [...adopted, ...adopted] }) }, 'DUPLICATE_ID');
+  refused({ ...base, 'sources.json': json({ sources: [], adopted: {} }) }, 'INVALID_FIELD');
+});
+
 test('overrides in harness.json are checked for shape', () => {
   refused({ 'harness.json': harness({ overrides: [{ part: 'skills', id: 'a', action: 'remove' }] }) }, 'INVALID_FIELD');
   refused({ 'harness.json': harness({ overrides: [{ part: 'instructions', id: 'a', action: 'hide' }] }) }, 'INVALID_FIELD');
@@ -443,10 +468,27 @@ test('silent 14: frontmatter messages name the real fault', () => {
 
 test('M3: the private-block denylist covers config that grants, runs, or reaches', () => {
   const base = fullFiles();
-  for (const key of ['writable_roots', 'network_access', 'shell_environment_policy', 'servers', 'statusLine', 'apiKeyHelper', 'command', 'env', 'args', 'mode', 'executable', 'script']) {
+  for (const key of ['writable_roots', 'network_access', 'shell_environment_policy', 'servers', 'statusLine', 'apiKeyHelper', 'command', 'env', 'args', 'executable', 'script']) {
     refused({ ...base, 'agents/reader.md': agent('reader', `x-claude-code:\n  ${key}: x\n`) }, 'PRIVATE_BLOCK_PERMISSION');
   }
   ok({ ...base, 'agents/reader.md': agent('reader', 'x-claude-code:\n  color: blue\n  effort: high\n') });
+});
+
+test('step 3 contract: mode alone is not permission-like; its permission forms stay refused', () => {
+  const base = fullFiles();
+  const d = ok({ ...base, 'agents/reader.md': agent('reader', 'x-opencode:\n  mode: primary\n'), 'harness.json': harness({ parts: FULL_PARTS, engines: [{ id: 'claude-code' }, { id: 'codex' }, { id: 'opencode' }] }) });
+  assert.deepEqual(d.entries.subagents.find(s => s.id === 'reader').privateBlocks, { opencode: { mode: 'primary' } });
+  for (const key of ['sandbox_mode', 'permissionMode', 'defaultMode', 'default_mode', 'approval_policy', 'approvalMode']) {
+    refused({ ...base, 'agents/reader.md': agent('reader', `x-claude-code:\n  ${key}: x\n`) }, 'PRIVATE_BLOCK_PERMISSION');
+  }
+});
+
+test('step 3 contract (ruling A9): keys that run a command or grant trust are permission-like', () => {
+  const base = fullFiles();
+  for (const key of ['awsAuthRefresh', 'awsCredentialExport', 'extraKnownMarketplaces', 'enabledPlugins', 'notify', 'model_providers', 'model_provider', 'credential_helper']) {
+    refused({ ...base, 'agents/reader.md': agent('reader', `x-claude-code:\n  nested:\n    ${key}: x\n`) }, 'PRIVATE_BLOCK_PERMISSION');
+  }
+  ok({ ...base, 'agents/reader.md': agent('reader', 'x-claude-code:\n  color: blue\n  model_reasoning_effort: high\n') });
 });
 
 test('L2: a file swapped between the check and the open is refused', () => {
