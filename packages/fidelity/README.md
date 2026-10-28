@@ -43,12 +43,13 @@ When an engine cannot carry a rule exactly:
 | Shell deny or ask | translated | weakened, or translated with a sandbox; absent with no literal prefix | translated, spaces written as `*` | absent | absent |
 | Shell allow | translated | translated, not written | translated, or absent for a wider reading | absent | absent |
 | Path deny or ask | translated, or exact with a files sandbox | read: translated; change: weakened | translated | absent | absent |
+| Path allow | weakened, because `..` or letter case can reach past it | translated, not written | weakened, or absent for a wider reading | absent | absent |
 | Web deny or ask | translated, or exact with a network sandbox | absent | translated | absent | absent |
 | Skill, subagent | exact, or tightened | absent | exact | absent | absent |
 | MCP | exact, or tightened | translated to disabled tools | exact, or tightened | absent | absent |
 | Sandbox | exact | exact | absent | absent | translated |
 
-Each engine form also records its default for a request that no rule matches (`defaults`). For OpenCode, whose own default is allow, Bowerloom writes `"*": { "*": "ask" }` as the first key. Pi has no place for a default, so its default stays allow.
+Each engine form also records its default for a request that no rule matches (`defaults`). For OpenCode, whose own default is allow, Bowerloom writes `"*": { "*": "ask" }` as the first key. Pi has no place for a default, so its default stays allow. The defaults of Claude Code and DeepSeek Harness stay recorded as `default`: the research notes do not say what their modes decide, and the live check of step 5 records them.
 
 ## Known escapes
 
@@ -78,4 +79,4 @@ These limits hold for the rulesync process:
 - Under the Node permission model, it can read only the rulesync package, `node_modules`, its fresh temporary folder, the Node install, and the preload. It can write only inside the temporary folder, and it cannot start a process or a worker. HOME is inside the temporary folder.
 - A preload also refuses Node's own network calls.
 
-Each difference must be on the list in section 11, items 3 and 4, of the locked-in parts spec. Two kinds of difference follow from review rulings made after item 4 was written: the OpenCode ask default (R8) and the OpenCode deny written with `*` for each space (R2). The test names them in `NOT_YET_IN_SPEC` and fails on any other difference. A TODO test stays until section 11 holds a line for each.
+Each difference must be on the list in section 11, items 3 and 4, of the locked-in parts spec, or the strict test fails.

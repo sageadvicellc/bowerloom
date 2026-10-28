@@ -323,3 +323,23 @@ test('R17: an OpenCode path rule that starts with $HOME is absent; a Codex edit 
   assert.match(lineOf(cc, 'r').reason, /redirect/);
   assert.equal(engineDecision(cc.form, shell('echo x > .env')), 'default', 'a redirect to the denied path is not blocked by the model');
 });
+
+// ---- Follow-up ruling 4: path allows ----------------------------------------------------------------------------------------
+
+test('follow-up 4: a path allow that an engine can reach through .. or other letter case is weakened', () => {
+  for (const engine of ['claude-code', 'opencode']) {
+    for (const r of [rule('a', 'read', 'src/**', 'allow'), rule('b', 'edit', 'src/**', 'allow', { strength: 'enforced' }), rule('c', 'write', 'notes/**', 'allow')]) {
+      const t = translateGuardrails(engine, { rules: [r], sandbox: [] });
+      assert.equal(lineOf(t, r.id).result, 'weakened', `${engine} ${r.id}`);
+      assert.match(lineOf(t, r.id).reason, /\.\./);
+      assert.match(lineOf(t, r.id).reason, /letter case/);
+    }
+    // The engine really reaches outside the rule through ..
+    const t = translateGuardrails(engine, { rules: [rule('a', 'read', 'src/**', 'allow')], sandbox: [] });
+    assert.equal(engineDecision(t.form, { action: 'read', path: 'src/../.git/config' }), 'allow', engine);
+    assert.equal(neutralDecision([rule('a', 'read', 'src/**', 'allow')], { action: 'read', path: 'src/../.git/config' }), 'default');
+  }
+  // A path deny is not weakened by this; Codex writes no allow at all.
+  assert.equal(lineOf(translateGuardrails('claude-code', { rules: [rule('d', 'read', '.env', 'deny')], sandbox: [sandbox()] }), 'd').result, 'exact');
+  assert.equal(lineOf(translateGuardrails('codex', { rules: [rule('a', 'read', 'src/**', 'allow')], sandbox: [] }), 'a').result, 'translated');
+});

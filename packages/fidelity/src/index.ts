@@ -11,7 +11,7 @@ export { listMatches, normalizeRequestPath, pathMatches, pathPatternProblem, pat
 export type { PathMode } from './paths.js';
 export { WRAPPERS, collapseWhitespace, joinLines, opaqueForms, programWord, splitCommand, stripAssignments, stripWrappers } from './shell.js';
 export type { OpaqueForm, StripOptions } from './shell.js';
-export { KNOWN_ESCAPES, escapeSentence, escapesOf } from './escapes.js';
+export { KNOWN_ESCAPES, PATH_ALLOW_REACH, escapeSentence, escapesOf } from './escapes.js';
 export type { EscapeId, KnownEscape } from './escapes.js';
 export { CLAUDE_CODE_DEFAULT, claudeCodeDecide, claudeCodeHookMatches, claudeCodeRequest, webDenyHosts } from './claude-code.js';
 export type { ClaudeCodeForm, ClaudeCodeLists, ClaudeCodeRequest } from './claude-code.js';

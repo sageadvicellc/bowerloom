@@ -197,25 +197,21 @@ const ITEM_4_FILES = {
   },
 };
 
-/**
- * Differences that follow from rulings R2 and R8 of the review of 122891c, made after section 11 item 4 was written.
- * They are not on the spec list yet. The strict test accepts them by name, and a TODO test stays until section 11
- * holds a line for each.
- */
+/** Item 4, last two entries: what follows from rulings R2 and R8 of the review of 122891c. */
 const oursOpenCode = translateGuardrails('opencode', { rules: CARRIED, sandbox: [] });
 const withoutDefault = { ...oursOpenCode.form, permission: oursOpenCode.form.permission.filter(k => k.key !== '*'), defaults: { decision: 'default', written: false, reason: '' } };
-const NOT_YET_IN_SPEC = {
+Object.assign(ITEM_4, {
   'opencode-explicit-default': {
-    text: 'For OpenCode, Bowerloom writes an explicit ask default as the first key (ruling R8). Rulesync writes none, so OpenCode applies its built-in default.',
+    text: 'For OpenCode, Bowerloom writes an explicit default "*": {"*": "ask"} as the first key. Rulesync writes no default.',
     explains: d => d.engine === 'opencode' && d.bowerloom === 'ask' && engineDecision(withoutDefault, d.request) === d.rulesync,
   },
-  'opencode-whitespace-tightening': {
-    text: 'For OpenCode, Bowerloom writes each space of a deny or ask as * (ruling R2), so it also blocks extra spaces, tabs, flags before a subcommand, and quoted words. Rulesync keeps the spaces.',
+  'opencode-space-tightening': {
+    text: 'For OpenCode, Bowerloom writes each literal space in a deny or ask shell pattern as *. The rule then also blocks extra spaces and tabs. Rulesync writes the pattern unchanged.',
     explains: d => d.engine === 'opencode' && d.request.action === 'shell' && morePermissive(d.rulesync, d.bowerloom)
       && CARRIED.some(r => r.action === 'shell' && r.effect !== 'allow' && /each space is written as \*/.test(oursOpenCode.lines.find(l => l.entry === r.id)?.reason ?? '')
         && engineDecision(translateGuardrails('opencode', { rules: [r], sandbox: [] }).form, d.request) === d.bowerloom),
   },
-};
+});
 
 const SPEC_LIST = { ...ITEM_3, ...ITEM_4 };
 const explainedBy = d => Object.entries(SPEC_LIST).filter(([, k]) => k.explains(d)).map(([id]) => id);
@@ -252,19 +248,9 @@ test('rulesync ran under the profile: no network attempt, no process, no write o
   assert.ok(DIFFERENCES.length > 0, 'the comparison found nothing at all, so it is not comparing');
 });
 
-const pending = d => Object.entries(NOT_YET_IN_SPEC).filter(([, k]) => k.explains(d)).map(([id]) => id);
-
-test('check 11: every rulesync difference is on the section 11 list (items 3 and 4), or named as not yet in it', ORACLE, () => {
-  assert.deepEqual(DIFFERENCES.filter(d => explainedBy(d).length === 0 && pending(d).length === 0).map(describe), []);
+test('check 11: every rulesync difference is on the section 11 list (items 3 and 4)', ORACLE, () => {
+  assert.deepEqual(DIFFERENCES.filter(d => explainedBy(d).length === 0).map(describe), []);
   for (const [id, item] of Object.entries(ITEM_4_FILES)) assert.ok(item.present(), id);
-});
-
-const notYet = SANDBOX_MISSING ? [] : DIFFERENCES.filter(d => explainedBy(d).length === 0);
-test('check 11: section 11 holds a line for every difference of this round', {
-  ...ORACLE,
-  todo: notYet.length ? `${notYet.length} differences in ${new Set(notYet.flatMap(pending)).size} kinds follow from rulings R2 and R8 and need a section 11 line: ${[...new Set(notYet.flatMap(pending))].join(', ')}` : false,
-}, () => {
-  assert.deepEqual(notYet.map(describe), []);
 });
 
 test('check 11: each item 4 difference still occurs, so a stale item is noticed', ORACLE, () => {

@@ -56,6 +56,9 @@ export const KNOWN_ESCAPES: Readonly<Record<EscapeId, KnownEscape>> = Object.fre
   'path-form': { kind: 'path', engines: RULE_ENGINES, text: 'a path written with //, ./, or .. can escape the rule, or meet an allow it should not, because the engine may not resolve it; the neutral model resolves it first' },
 });
 
+/** The note of a path allow in an engine that matches the path as written. */
+export const PATH_ALLOW_REACH = 'The engine may not resolve .. and may compare letter case differently, so the allow can reach a path outside it, as with src/../x; that is weakened (follow-up ruling 4 on the review of 122891c).';
+
 /** The escape list of one engine and kind, as one sentence for a loss line. */
 export function escapeSentence(engine: EngineId, kind: KnownEscape['kind'] = 'shell'): string {
   const texts = (Object.values(KNOWN_ESCAPES) as KnownEscape[]).filter(e => e.kind === kind && e.engines.includes(engine)).map(e => e.text);

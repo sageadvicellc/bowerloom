@@ -237,10 +237,13 @@ test('fidelity rule: where Claude Code carries every matching rule exactly and n
     compared++;
   }
   assert.ok(compared > 60, `compared ${compared}`);
-  // With a sandbox that covers files and network, only shell lines (R1), tightened names, and absent allows are not exact.
+  // With a sandbox that covers files and network, only shell lines (R1), path allows (follow-up 4), tightened names,
+  // and absent allows are not exact.
   const notExact = t.lines.filter(l => l.result !== 'exact').map(l => [l.entry, l.result]);
-  const shellIds = MIXED_RULES.filter(r => r.action === 'shell').map(r => [r.id, 'translated']);
-  assert.deepEqual(notExact, [...shellIds, ['no-mcp-x', 'translated'], ['agents-ok', 'absent']]);
+  const expected = MIXED_RULES.flatMap(r => r.action === 'shell' ? [[r.id, 'translated']]
+    : ['read', 'edit', 'write'].includes(r.action) && r.effect === 'allow' ? [[r.id, 'weakened']]
+      : r.id === 'no-mcp-x' ? [[r.id, 'translated']] : r.id === 'agents-ok' ? [[r.id, 'absent']] : []);
+  assert.deepEqual(notExact, expected);
 });
 
 test('every guardrail loss line lists the escapes known in every engine (spec 8.3 rule 6)', () => {

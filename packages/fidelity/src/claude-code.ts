@@ -10,7 +10,7 @@
  */
 import type { GuardrailRule, SandboxRequirement } from '../../harness-definition/src/index.js';
 import type { Decision } from './decision.js';
-import { escapeSentence } from './escapes.js';
+import { PATH_ALLOW_REACH, escapeSentence } from './escapes.js';
 import { bashPatternRegex, globRegex, shellDecision, type NeutralRequest } from './neutral.js';
 import { listMatches, type PathMode } from './paths.js';
 import { Collector, type EngineDefault, type SandboxForm, type Translation } from './translation.js';
@@ -149,6 +149,8 @@ export function translateClaudeCode(rules: readonly GuardrailRule[], sandbox: re
     list.push(text);
   };
   const carried = (rule: GuardrailRule, text: string) => {
+    // A path allow can be reached through .. or other letter case (follow-up ruling 4).
+    if (rule.effect === 'allow' && rule.action !== 'web') { out.line(rule, 'weakened', `${text} ${PATH_ALLOW_REACH}`); return; }
     const { covered, note } = bypassNote(rule, sandbox, true);
     out.line(rule, covered ? 'exact' : 'translated', `${text}${note}`);
   };

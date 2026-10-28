@@ -12,7 +12,7 @@
  */
 import type { GuardrailEffect, GuardrailRule, SandboxRequirement } from '../../harness-definition/src/index.js';
 import { combineParts, type Decision } from './decision.js';
-import { escapeSentence } from './escapes.js';
+import { PATH_ALLOW_REACH, escapeSentence } from './escapes.js';
 import type { NeutralRequest } from './neutral.js';
 import { normalizePath } from './paths.js';
 import { splitCommand } from './shell.js';
@@ -185,7 +185,8 @@ export function translateOpenCode(rules: readonly GuardrailRule[], sandbox: read
         const more = wider ? ` OpenCode's * crosses /, so it blocks more than ${p}.` : '';
         const editToo = targets.length > 1 ? ' A read deny is also written under edit, because it blocks changes too.' : '';
         const tools = readLike ? ` It also ${rule.effect === 'deny' ? 'blocks' : 'asks for'} every grep, glob, and list, which read files too: it blocks more.` : '';
-        out.line(rule, 'translated', `OpenCode carries the rule under ${targets.join(' and ')} as ${patterns.join(', ')}, matched against the path from the project root. ${ordered}${editToo}${tools}${more}${bypass(rule)} ${pathEscapes}`);
+        const reach = allow ? ` ${PATH_ALLOW_REACH}` : '';
+        out.line(rule, allow ? 'weakened' : 'translated', `OpenCode carries the rule under ${targets.join(' and ')} as ${patterns.join(', ')}, matched against the path from the project root. ${ordered}${editToo}${tools}${more}${bypass(rule)}${reach} ${pathEscapes}`);
         break;
       }
       case 'web': {
