@@ -38,7 +38,7 @@ export type { StoreMigratePlan, StoreMigrateResult, MigrateItem, MigrateInput as
 export { listCache, planCachePrune, applyCachePrune, referenceSets, checkSelectors, cacheUsage, lineName, CACHE_LIST_FORMAT, CACHE_PRUNE_PLAN_FORMAT, CACHE_PRUNE_RESULT_FORMAT, CACHE_LIST_LIMIT, CACHE_USAGE } from './cache-admin.js';
 export type { CacheEntry, CacheList, CachePrunePlan, CachePruneResult, CachePruneSelectors, CacheAdminInput, CachePruneInput, CacheAdminHooks, CacheScope, PickedEntry, SkippedEntry, PruneInterrupt, ReferenceSets, PartialReason, Unreadable, UnlistedName } from './cache-admin.js';
 // Bowerloom 0.8, step 2: the portable projection (portable parts spec). The test hook entry points of portable-run.ts
-// (applyPortableWith, applyPortableRemovalWith) are not exported here.
+// (applyPortableWith, applyPortableRemovalWith, applyPortableRecoveryWith) are not exported here.
 export {
   CLAUDE_CODE_READS_AGENTS, COMMAND_METADATA, FOLLOW_TEXT, HIDDEN_FILE, INSTRUCTIONS_LIMIT, LOCKED_IN_REASON, NOTHING, PARTIAL_NOTICE,
   PORTABLE_PLAN_FORMAT, RECONCILE_ACTIONS, SKILL_ROOTS, atImports, followsAgents, instructionDrift, planPortable,
@@ -48,10 +48,10 @@ export type {
   ReconcileAction, SkillRoot,
 } from './portable.js';
 export {
-  PORTABLE_RECOVERY_FORMAT, PORTABLE_REMOVAL_FORMAT, applyPortable, applyPortableRecovery, applyPortableRemoval, planPortableRecovery,
+  KEEP_NOTICE, PORTABLE_RECOVERY_FORMAT, PORTABLE_REMOVAL_FORMAT, applyPortable, applyPortableRecovery, applyPortableRemoval, planPortableRecovery,
   planPortableRemoval, portableDrift, readPortableReceipt,
 } from './portable-run.js';
-export type { DriftLine, PortableApplyResult, PortableRecoveryPlan, PortableRemovalPlan, PortableRemovalResult, RecoveryInput } from './portable-run.js';
+export type { DriftLine, PortableApplyResult, PortableRecoveryPlan, PortableRecoveryResult, PortableRemovalPlan, PortableRemovalResult, RecoveryInput } from './portable-run.js';
 export { PORTABLE_REFUSAL_CODES, PortableRefusal } from './portable-files.js';
 export type { FileAfter, FileState, LeftBehind, LeftReason, PortableCode } from './portable-files.js';
 export { PORTABLE_RECEIPT_FORMAT } from './portable-state.js';

@@ -145,24 +145,61 @@ export function syncDir(dir: string): void { const fd = fs.openSync(dir, fs.cons
 const TEMP_SUFFIX = '.bowerloom-tmp';
 const tempName = (name: string): string => `.${name}.${randomBytes(8).toString('hex')}${TEMP_SUFFIX}`;
 
+export interface WriteOptions {
+  /** Link the temporary to the name, so a file that appeared since the check is never overwritten (ruling P24). */
+  readonly exclusive?: boolean;
+  /** Runs immediately before the link or rename. */
+  readonly recheck?: () => void;
+  readonly label?: string;
+  /** Runs once the file system holds the new file. */
+  readonly onPlaced?: () => void;
+  /** The link call. Tests pass one that fails, to reach the fallback. */
+  readonly link?: (from: string, to: string) => void;
+}
+const NO_LINK = new Set(['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'EXDEV', 'ENOSYS']);
+
 /**
- * Writes `bytes` at an absolute path through a fresh temporary in the same folder. `exclusive` links the temporary to
- * the name, which fails when anything appeared there since the check, and refuses that as drift (review ruling P24).
- * Otherwise the temporary is renamed over the target. `recheck` runs immediately before the link or rename.
+ * Writes `bytes` at an absolute path through a fresh temporary in the same folder. An exclusive write links the
+ * temporary to the name, which fails when anything is there, and refuses that as drift. Where the file system has no
+ * link(), it creates the name with O_EXCL instead (review item V6). Otherwise the temporary is renamed over the target.
  */
-export function writeAbs(abs: string, bytes: Uint8Array, mode: number, exclusive: boolean, recheck: () => void = () => {}, label = abs, onPlaced: () => void = () => {}): void {
+export function writeAbs(abs: string, bytes: Uint8Array, mode: number, options: WriteOptions = {}): void {
+  const { exclusive = false, recheck = () => {}, label = abs, onPlaced = () => {}, link = fs.linkSync } = options;
   const temp = join(dirname(abs), tempName(abs.slice(dirname(abs).length + 1)));
   const fd = fs.openSync(temp, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o600);
-  let placed = false;
   try {
     try { let at = 0; while (at < bytes.length) at += fs.writeSync(fd, bytes, at); fs.fchmodSync(fd, mode & 0o777); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
     recheck();
     if (exclusive) {
-      try { fs.linkSync(temp, abs); } catch (e) { if (code(e) === 'EEXIST') refuse('PORTABLE_DRIFT', [label]); throw e; }
-      placed = true; onPlaced(); fs.unlinkSync(temp);
-    } else { fs.renameSync(temp, abs); placed = true; onPlaced(); }
+      try { link(temp, abs); onPlaced(); } catch (e) {
+        if (code(e) === 'EEXIST') refuse('PORTABLE_DRIFT', [label]);
+        if (!NO_LINK.has(code(e) ?? '')) throw e;
+        createExclusive(abs, bytes, mode, label); onPlaced();
+      }
+    } else { fs.renameSync(temp, abs); onPlaced(); }
     syncDir(dirname(abs));
-  } finally { if (!placed || exclusive) { try { fs.unlinkSync(temp); } catch { /* already gone */ } } }
+  } finally { try { fs.unlinkSync(temp); } catch { /* renamed, or already gone */ } }
+}
+function createExclusive(abs: string, bytes: Uint8Array, mode: number, label: string): void {
+  let fd: number;
+  try { fd = fs.openSync(abs, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o600); } catch (e) {
+    if (code(e) === 'EEXIST') refuse('PORTABLE_DRIFT', [label]);
+    throw e;
+  }
+  try { let at = 0; while (at < bytes.length) at += fs.writeSync(fd, bytes, at); fs.fchmodSync(fd, mode & 0o777); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+}
+
+/** The device and inode of a folder, read without following a link. Refuses PORTABLE_PATH_UNSAFE for anything but a real folder. */
+export function folderId(abs: string, label: string): string {
+  let st: fs.Stats;
+  try { st = fs.lstatSync(abs); } catch { return refuse('PORTABLE_PATH_UNSAFE', [label]); }
+  if (st.isSymbolicLink() || !st.isDirectory()) refuse('PORTABLE_PATH_UNSAFE', [label]);
+  return `${st.dev}:${st.ino}`;
+}
+
+/** Removes the writer temporaries in one state folder (review item V9). Cleanup only: errors are ignored. */
+export function sweepFolderTemps(dir: string): void {
+  try { for (const n of fs.readdirSync(dir)) if (/^\..+\.[0-9a-f]{16}\.bowerloom-tmp$/.test(n)) { try { fs.unlinkSync(join(dir, n)); } catch { /* cleanup only */ } } } catch { /* cleanup only */ }
 }
 
 /** Removes leftover temporaries of the writer beside a project path. Every error is ignored: it is cleanup only. */
@@ -176,18 +213,22 @@ export function sweepTemps(projectDir: string, rel: string): void {
   } catch { /* cleanup only */ }
 }
 
-/** Creates one project folder, mode 0755, after the ancestry check. */
-export function makeDir(projectDir: string, rel: string): void {
+/**
+ * Creates one project folder, mode 0755, after the ancestry check. The chmod goes through a descriptor opened without
+ * following a link, so a folder swapped for a link after the mkdir is refused and nothing outside changes (item V5).
+ */
+export function makeDir(projectDir: string, rel: string, afterMkdir: (rel: string) => void = () => {}): void {
   checkAncestors(projectDir, rel, true);
   const abs = join(projectDir, rel);
-  try { fs.mkdirSync(abs, { mode: 0o755 }); } catch (e) { if (code(e) === 'EEXIST') refuse('PORTABLE_PATH_UNSAFE', [rel]); throw e; }
-  fs.chmodSync(abs, 0o755);
-  const st = fs.lstatSync(abs);
-  if (st.isSymbolicLink() || !st.isDirectory()) refuse('PORTABLE_PATH_UNSAFE', [rel]);
+  try { fs.mkdirSync(abs, { mode: 0o700 }); } catch (e) { if (code(e) === 'EEXIST') refuse('PORTABLE_PATH_UNSAFE', [rel]); throw e; }
+  afterMkdir(rel);
+  let fd: number;
+  try { fd = fs.openSync(abs, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_DIRECTORY); } catch { return refuse('PORTABLE_PATH_UNSAFE', [rel]); }
+  try { if (!fs.fstatSync(fd).isDirectory()) refuse('PORTABLE_PATH_UNSAFE', [rel]); fs.fchmodSync(fd, 0o755); } finally { fs.closeSync(fd); }
   syncDir(dirname(abs));
 }
 
-export type LeftReason = 'not-empty' | 'unsafe' | 'not-a-folder' | 'error';
+export type LeftReason = 'not-empty' | 'unsafe' | 'not-a-folder' | 'error' | 'lock-lost';
 export interface LeftBehind { readonly path: string; readonly reason: LeftReason }
 /**
  * Removes the folders Bowerloom created, deepest first, each only when it is an empty real folder reached through

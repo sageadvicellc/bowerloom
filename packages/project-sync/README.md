@@ -20,8 +20,11 @@ this step: the plan reports them `absent` and says that the projection is partia
 The state folder holds `receipt.json`, `pending.json` while a run is unfinished, and `blobs/`, the saved bytes of files.
 
 - Backups of the files a projection replaced stay in the state folder until removal. Removal puts them back and then
-  deletes them. A run also saves the current bytes of each file just before it overwrites or deletes it; those copies
-  go once the run, or its recovery, finishes.
+  deletes them. A run also saves the current bytes of each file just before it overwrites or deletes it. Those copies
+  go once the run, or its recovery, finishes, with one exception: when a run stops on drift, the copy of the changed
+  file it found is kept.
+- When recovery keeps a person's version of a path, the saved original of that path moves to `kept/` in the state
+  folder, which no cleanup touches. The path leaves the receipt, and the next apply targets it again.
 - A restore keeps permission bits only: the read, write, and execute bits of owner, group, and others. The setuid,
   setgid, and sticky bits of a replaced file are not restored.
 - A lost state folder means that Bowerloom no longer knows what it projected. The next plan treats the projected
@@ -35,3 +38,11 @@ The state folder holds `receipt.json`, `pending.json` while a run is unfinished,
 The revision of a record is a checksum, not a seal. Each record is read against a strict shape: every path must be
 `AGENTS.md`, `CLAUDE.md`, or a file of a skill folder under `.claude/skills` or `.agents/skills`, and the record must
 name this project. A record that fails is refused with `PORTABLE_STATE_INVALID` or `PORTABLE_STATE_FOREIGN`.
+
+### The remaining window
+
+Each write, rename, and unlink checks the folders above its path just before it acts. A rename reads its target again
+inside that last check, and an unlink compares the device and inode of its folder with the value checked a moment
+before. A folder is changed to mode 0755 through a descriptor that does not follow a link. A remaining window stays
+between that last check and the system call itself: a program that runs as the same user and swaps a folder or edits a
+file in that instant is not caught. The project lock keeps other Bowerloom commands out; it does not stop other programs.

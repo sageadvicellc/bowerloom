@@ -9,7 +9,7 @@ import { dirname, isAbsolute, join, normalize } from 'node:path';
 import { isEngineId } from '../../harness-definition/src/index.js';
 import type { EngineId } from '../../harness-definition/src/index.js';
 import {
-  isProjectedDir, isProjectedPath, readAbs, refuse, revisionOf, sha, uid, writeAbs,
+  isProjectedDir, isProjectedPath, readAbs, refuse, revisionOf, sha, sweepFolderTemps, uid, writeAbs,
 } from './portable-files.js';
 import type { FileAfter, FileState } from './portable-files.js';
 
@@ -51,8 +51,9 @@ export interface Pending {
 // ---- the state folder (ruling P4) --------------------------------------------------------------------------------------
 
 /**
- * The project must be a real absolute folder path. The state path must be absolute and normalized, and its real place,
- * found from its nearest existing folder, must be neither the project, inside it, nor above it.
+ * The project must be a real absolute folder path. The state path must be absolute and normalized. Its nearest existing
+ * folder, and every folder above that, must not be the project, compared by device and inode, so a link or another
+ * letter case cannot place it inside the project (review item V3). An existing state folder must not be above the project.
  */
 export function checkPaths(projectDir: unknown, stateDir: unknown): asserts projectDir is string {
   for (const p of [projectDir, stateDir]) if (typeof p !== 'string' || !isAbsolute(p) || p.includes('\0') || p.length > 4096) refuse('PORTABLE_USAGE');
@@ -61,14 +62,20 @@ export function checkPaths(projectDir: unknown, stateDir: unknown): asserts proj
   try { real = fs.realpathSync(project); } catch { return refuse('PORTABLE_USAGE'); }
   if (real !== project || !fs.lstatSync(project).isDirectory()) refuse('PORTABLE_USAGE');
   if (normalize(state) !== state || state.endsWith('/') || state === '/') refuse('PORTABLE_STATE_UNSAFE');
-  let at = state, rest = '';
-  for (;;) {
-    try { fs.lstatSync(at); break; } catch { if (dirname(at) === at) break; rest = rest ? `${at.slice(dirname(at).length + 1)}/${rest}` : at.slice(dirname(at).length + 1); at = dirname(at); }
+  const id = (p: string): string | null => { try { const st = fs.statSync(p); return `${st.dev}:${st.ino}`; } catch { return null; } };
+  const projectId = id(project);
+  let at = state, exists = true;
+  while (id(at) === null) { exists = false; if (dirname(at) === at) break; at = dirname(at); }
+  let realAt: string;
+  try { realAt = fs.realpathSync(at); } catch { return refuse('PORTABLE_STATE_UNSAFE'); }
+  for (let up = realAt; ; up = dirname(up)) {
+    if (id(up) === projectId) refuse('PORTABLE_STATE_UNSAFE');
+    if (dirname(up) === up) break;
   }
-  let base: string;
-  try { base = fs.realpathSync(at); } catch { return refuse('PORTABLE_STATE_UNSAFE'); }
-  const where = rest ? join(base, rest) : base;
-  if (where === project || where.startsWith(project + '/') || project.startsWith(where + '/')) refuse('PORTABLE_STATE_UNSAFE');
+  if (exists) {
+    const stateId = id(state);
+    for (let up = project; ; up = dirname(up)) { if (id(up) === stateId) refuse('PORTABLE_STATE_UNSAFE'); if (dirname(up) === up) break; }
+  }
 }
 
 /** True when the state folder exists. It must then be a private folder of this user. */
@@ -94,7 +101,7 @@ function readJson(stateDir: string, name: string): unknown {
   try { return JSON.parse(got.bytes.toString('utf8')) as unknown; } catch { return refuse('PORTABLE_STATE_INVALID', [name]); }
 }
 export function writeRecord(stateDir: string, name: 'receipt.json' | 'pending.json', value: unknown): void {
-  writeAbs(join(stateDir, name), Buffer.from(JSON.stringify(value, null, 2) + '\n'), 0o600, false);
+  writeAbs(join(stateDir, name), Buffer.from(JSON.stringify(value, null, 2) + '\n'), 0o600);
 }
 export function unlinkRecord(stateDir: string, name: 'receipt.json' | 'pending.json'): void {
   try { fs.unlinkSync(join(stateDir, name)); } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; }
@@ -177,27 +184,55 @@ export function readPending(stateDir: string, projectDir: string): Pending | nul
 }
 export const pendingExists = (stateDir: string): boolean => stateExists(stateDir) && fs.existsSync(join(stateDir, PENDING));
 
-// ---- blobs -------------------------------------------------------------------------------------------------------------
+// ---- blobs ---------------------------------------------------------------------------------------------------------------
 
+/** The `blobs` folder, checked as a real private folder of this user before any read or write in it (review item V9). */
+function blobsDir(stateDir: string): string {
+  const dir = join(stateDir, BLOBS);
+  if (!stateExists(dir)) refuse('PORTABLE_STATE_INVALID', ['blobs']);
+  return dir;
+}
 /** Saves bytes into the state folder, by their hash. */
 export function saveBlob(stateDir: string, bytes: Uint8Array): void {
-  const at = join(stateDir, BLOBS, sha(bytes));
+  const at = join(blobsDir(stateDir), sha(bytes));
   let have: string | null = null;
   try { have = readAbs(at, 'blob')?.state.sha256 ?? null; } catch { have = null; }
-  if (have !== sha(bytes)) writeAbs(at, bytes, 0o600, false);
+  if (have !== sha(bytes)) writeAbs(at, bytes, 0o600);
 }
 /** The saved bytes of a state. A missing or changed blob refuses PORTABLE_STATE_INVALID. */
 export function blob(stateDir: string, state: FileState, label: string): Buffer {
+  const dir = blobsDir(stateDir);
   let got: ReturnType<typeof readAbs> = null;
-  try { got = readAbs(join(stateDir, BLOBS, state.sha256), label); } catch { got = null; }
+  try { got = readAbs(join(dir, state.sha256), label); } catch { got = null; }
   if (got === null || got.state.sha256 !== state.sha256) return refuse('PORTABLE_STATE_INVALID', [`the saved copy of ${label}`]);
   return got.bytes;
 }
-/** Deletes every blob, and every leftover temporary, that `keep` does not name. */
+/** True when the saved copy of a state is present and whole. */
+export function blobOk(stateDir: string, state: FileState): boolean {
+  try { blob(stateDir, state, 'x'); return true; } catch (e) { if ((e as { code?: unknown }).code === 'PORTABLE_STATE_UNSAFE') throw e; return false; }
+}
+/** Deletes every blob that `keep` does not name, and every writer temporary of the state folder. */
 export function cleanBlobs(stateDir: string, keep: ReadonlySet<string>): void {
-  const dir = join(stateDir, BLOBS);
-  let names: string[];
-  try { names = fs.readdirSync(dir); } catch { return; }
-  for (const name of names) if (!keep.has(name)) { try { fs.unlinkSync(join(dir, name)); } catch { /* cleanup only */ } }
+  const dir = blobsDir(stateDir);
+  for (const name of fs.readdirSync(dir)) if (!keep.has(name)) { try { fs.unlinkSync(join(dir, name)); } catch { /* cleanup only */ } }
+  sweepFolderTemps(stateDir);
 }
 export const originalsOf = (r: PortableReceipt | null): Set<string> => new Set((r?.files ?? []).flatMap(f => (f.original ? [f.original.sha256] : [])));
+
+/**
+ * Keeps the saved original of a path that a person keeps (review item V1): a copy in `kept/`, which no cleanup touches.
+ * Returns its path, or null when no saved copy exists.
+ */
+export function keepOriginal(stateDir: string, state: FileState): string | null {
+  let bytes: Buffer;
+  try { bytes = blob(stateDir, state, 'kept'); } catch (e) { if ((e as { code?: unknown }).code === 'PORTABLE_STATE_UNSAFE') throw e; return null; }
+  const dir = join(stateDir, 'kept');
+  if (!stateExists(dir)) fs.mkdirSync(dir, { mode: 0o700 });
+  stateExists(dir);
+  const at = join(dir, state.sha256);
+  let have: string | null = null;
+  try { have = readAbs(at, 'kept')?.state.sha256 ?? null; } catch { have = null; }
+  if (have !== state.sha256) writeAbs(at, bytes, 0o600);
+  return at;
+}
+export const keptPath = (stateDir: string, state: FileState): string => join(stateDir, 'kept', state.sha256);

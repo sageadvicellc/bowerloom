@@ -7,26 +7,28 @@
  *   (rulings P2, P3). A new file is linked into place, so a file that appeared since the check is never overwritten (P24).
  * - A failure rolls back every step that was written, keeps going past a step it cannot roll back, and refuses
  *   PORTABLE_PARTIAL with the paths left over (P10). After a lost lock it touches nothing more (P11).
- * - After the steps: the receipt, then the cleanup of saved bytes and the marker, then empty folders (P9). A failure
- *   there refuses PORTABLE_PARTIAL: the files are applied and the marker stays for recovery.
+ * - After the steps: the empty folders an apply no longer needs, then the receipt, then the cleanup of saved bytes and
+ *   the marker (P9, V11). A failure there refuses PORTABLE_PARTIAL with the code of its cause: the files are applied
+ *   and the marker stays for recovery. The lock is checked before each of those writes (V7).
+ * - The journal lists only the folders a run really created, so a rollback never removes a person's folder (V10).
  * - Recovery finishes an apply whose receipt is written and a removal whose steps all ran (P21), and rolls back any
  *   other run. It can keep a person's version of a changed or deleted path and drop that path from the receipt (P10).
  *
  * The index exports the functions without hooks. The hooks entry points here are for tests (ruling P7).
  */
 import fs from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { withProjectLock } from '../../project-context/src/index.js';
 import type { HeldProjectLock } from '../../project-context/src/types.js';
 import { syncError } from './refusal.js';
 import {
-  PortableRefusal, byBytes, checkAncestors, isProjectedDir, isRefusal, makeDir, readProject, refuse, removeEmptyDirs, revisionOf, sameState, sha,
-  stateOrUnsafe, sweepTemps, syncDir, writeAbs,
+  PortableRefusal, byBytes, checkAncestors, folderId, isProjectedDir, isRefusal, makeDir, readProject, refuse, removeEmptyDirs, revisionOf, sameState,
+  sha, stateOrUnsafe, sweepTemps, syncDir, writeAbs,
 } from './portable-files.js';
 import type { FileState, LeftBehind } from './portable-files.js';
 import {
-  PENDING_FORMAT, PORTABLE_RECEIPT_FORMAT, blob, checkPaths, cleanBlobs, ensureState, originalsOf, pendingExists, readPending, readReceipt, saveBlob,
-  unlinkRecord, writeRecord,
+  PENDING_FORMAT, PORTABLE_RECEIPT_FORMAT, blob, blobOk, checkPaths, cleanBlobs, ensureState, keepOriginal, keptPath, originalsOf, pendingExists,
+  readPending, readReceipt, saveBlob, unlinkRecord, writeRecord,
 } from './portable-state.js';
 import type { Pending, PortableReceipt, Step } from './portable-state.js';
 import { FOLLOW_TEXT, loadForProjection, planPortable } from './portable.js';
@@ -37,8 +39,19 @@ export const PORTABLE_REMOVAL_FORMAT = 'bowerloom/portable-removal-plan/v1beta2'
 export const PORTABLE_RECOVERY_FORMAT = 'bowerloom/portable-recovery-plan/v1beta2' as const;
 
 /** Test hooks. Product code passes nothing. An error with `crash: true` stands for a killed process: nothing more runs. */
-export type RunPoint = 'before-steps' | 'after-steps' | 'after-receipt' | 'after-finish';
-export interface PortableHooks { readonly afterStep?: (path: string) => void; readonly at?: (point: RunPoint) => void }
+export type RunPoint = 'before-steps' | 'after-steps' | 'after-receipt' | 'after-finish' | 'recovery';
+export interface PortableHooks {
+  readonly afterStep?: (path: string) => void;
+  readonly at?: (point: RunPoint) => void;
+  /** Runs inside the last check before a file is linked or renamed into place. */
+  readonly beforePlace?: (path: string) => void;
+  /** Runs between the check of a folder and the unlink of a file in it. */
+  readonly beforeUnlink?: (path: string) => void;
+  /** Runs between the mkdir of a folder and its chmod. */
+  readonly afterMkdir?: (path: string) => void;
+  /** Stands in for link(), to reach the fallback of a file system without it. */
+  readonly link?: (from: string, to: string) => void;
+}
 
 export interface PortableApplyResult {
   readonly noop: boolean;
@@ -80,8 +93,19 @@ export interface PortableRecoveryPlan {
   readonly steps: readonly { readonly path: string; readonly now: FileState | null | 'unsafe'; readonly decision: 'undo' | 'none' | 'keep' }[];
   /** Paths that keep the person's version and leave the receipt. */
   readonly keep: readonly string[];
+  /**
+   * For each kept path, where its saved original stays: `kept/<hash>` in the state folder, or null when no original was
+   * saved or the copy is gone (review item V1).
+   */
+  readonly keptOriginals: readonly { readonly path: string; readonly original: string | null }[];
+  /** What keeping means for the next apply. Null when nothing is kept. */
+  readonly notice: string | null;
   readonly revision: string;
 }
+/** What recovery did: its plan, and the folders it could not remove (review item V14). */
+export interface PortableRecoveryResult extends PortableRecoveryPlan { readonly leftBehind: readonly LeftBehind[] }
+/** The words of a recovery plan that keeps paths. */
+export const KEEP_NOTICE = 'Each kept path leaves the receipt and is targeted again on the next apply, which saves the person\'s version as its original. The earlier original stays in the kept folder of the state folder.';
 export interface DriftLine { readonly path: string; readonly reason: 'changed' | 'missing' | 'unsafe'; readonly now: FileState | null; readonly recorded: FileState }
 
 const reportOf = (p: PortablePlan): PortableReport => ({
@@ -97,32 +121,49 @@ interface Work { readonly step: Step; readonly bytes: Uint8Array | null }
 
 function live(ctx: Ctx): void { try { ctx.held.assertHeld(ctx.projectDir); } catch { refuse('PORTABLE_LOCK_LOST'); } }
 const lockHeld = (ctx: Ctx): boolean => { try { ctx.held.assertHeld(ctx.projectDir); return true; } catch { return false; } };
+/** The code of an error, for a message: a short upper-case code, or the error's name. */
+const causeOf = (e: unknown): string => {
+  const c = (e as { code?: unknown } | null)?.code;
+  return typeof c === 'string' && /^[A-Z][A-Z0-9_]{0,40}$/.test(c) ? c : e instanceof Error && /^[A-Za-z]{1,40}$/.test(e.name) ? e.name : 'an unknown error';
+};
 
 /**
  * Moves one path from `step.from` to `step.to`. Immediately before it acts, it checks the folders above the path, saves
  * the current bytes, and compares them with `step.from`; a difference stops with PORTABLE_DRIFT and keeps the saved copy.
- * `onCommit` runs once the file system holds the new state.
+ * The last check before the link or rename reads the target again (V4). An unlink compares the device and inode of the
+ * folder with the value it checked a moment before (V5). `onCommit` runs once the file system holds the new state.
  */
 function put(ctx: Ctx, step: Step, bytes: Uint8Array | null, onCommit: () => void): void {
-  const { projectDir, stateDir } = ctx, rel = step.path, abs = join(projectDir, rel);
+  const { projectDir, stateDir, hooks } = ctx, rel = step.path, abs = join(projectDir, rel);
+  const drift = (state: FileState | null | undefined): never => { throw Object.assign(new PortableRefusal('PORTABLE_DRIFT', [rel]), { saved: state?.sha256 ?? null }); };
   const cur = readProject(projectDir, rel);
   if (cur) saveBlob(stateDir, cur.bytes);
   // Ruling P3: a mismatch stops with drift, and the copy just saved stays in the state folder.
-  if (!sameState(cur?.state ?? null, step.from)) throw Object.assign(new PortableRefusal('PORTABLE_DRIFT', [rel]), { saved: cur?.state.sha256 ?? null });
+  if (!sameState(cur?.state ?? null, step.from)) drift(cur?.state);
   if (bytes === null) {
     if (step.from === null) return;
     checkAncestors(projectDir, rel, true);
-    fs.unlinkSync(abs); onCommit(); syncDir(join(abs, '..'));
+    const parent = dirname(abs), checked = folderId(parent, rel);
+    hooks.beforeUnlink?.(rel);
+    if (folderId(parent, rel) !== checked) refuse('PORTABLE_PATH_UNSAFE', [rel]);
+    fs.unlinkSync(abs); onCommit(); syncDir(parent);
     return;
   }
   checkAncestors(projectDir, rel, true);
-  writeAbs(abs, bytes, step.to!.mode, step.from === null, () => checkAncestors(projectDir, rel, true), rel, onCommit);
+  const recheck = (): void => {
+    checkAncestors(projectDir, rel, true);
+    hooks.beforePlace?.(rel);
+    const again = readProject(projectDir, rel);
+    if (!sameState(again?.state ?? null, step.from)) drift(again?.state);
+  };
+  writeAbs(abs, bytes, step.to!.mode, { exclusive: step.from === null, recheck, label: rel, onPlaced: onCommit, ...(hooks.link ? { link: hooks.link } : {}) });
 }
 
 /**
  * Undoes steps, last first. A step whose path is at its new state goes back to its old state; one at its old state is
  * left; any other is left over. It recreates missing folders through the checked path first. It keeps going past a
- * step it cannot undo and returns every path left over. A lost lock stops it at once.
+ * step it cannot undo and returns every path left over. A lost lock stops it at once. Its callers sweep the writer
+ * temporaries of every journaled path, so it sweeps none itself.
  */
 function undo(ctx: Ctx, steps: readonly Step[]): string[] {
   const left: string[] = [];
@@ -133,7 +174,6 @@ function undo(ctx: Ctx, steps: readonly Step[]): string[] {
       if (now !== 'unsafe' && sameState(now, step.from)) continue;
       if (now === 'unsafe' || !sameState(now, step.to)) { left.push(step.path); continue; }
       if (step.from !== null) for (const d of checkAncestors(ctx.projectDir, step.path)) { if (!isProjectedDir(d)) refuse('PORTABLE_PATH_UNSAFE', [d]); makeDir(ctx.projectDir, d); }
-      sweepTemps(ctx.projectDir, step.path);
       put(ctx, { path: step.path, from: step.to, to: step.from }, step.from === null ? null : blob(ctx.stateDir, step.from, step.path), () => {});
     } catch (e) {
       if (isRefusal(e, 'PORTABLE_LOCK_LOST')) throw e;
@@ -144,14 +184,34 @@ function undo(ctx: Ctx, steps: readonly Step[]): string[] {
 }
 
 const partial = (detail: string, paths: readonly string[] = []): PortableRefusal => new PortableRefusal('PORTABLE_PARTIAL', paths, [], detail);
+/** An error with the folders a rollback left behind (V14). A frozen or foreign value gets a refusal that carries them. */
+function withLeft(error: unknown, leftBehind: readonly LeftBehind[]): unknown {
+  if (typeof error === 'object' && error !== null && Object.isExtensible(error)) { Object.defineProperty(error, 'leftBehind', { value: leftBehind, enumerable: false, configurable: true }); return error; }
+  return error;
+}
+/** Removes empty folders after checking the lock; with the lock lost, it removes none and reports each (V7). */
+function removeDirs(ctx: Ctx, dirs: readonly string[]): LeftBehind[] {
+  if (!lockHeld(ctx)) return [...new Set(dirs)].sort(byBytes).map(path => ({ path, reason: 'lock-lost' as const }));
+  return removeEmptyDirs(ctx.projectDir, dirs);
+}
 
-/** Journals and runs the steps. A failure rolls back what was written; see the module comment. */
-function execute(ctx: Ctx, pending: Pending, work: readonly Work[]): void {
-  writeRecord(ctx.stateDir, 'pending.json', pending);
+/**
+ * Journals and runs the steps. The journal lists only the folders the run created, each added once it exists (V10).
+ * A failure rolls back what was written; see the module comment.
+ */
+function execute(ctx: Ctx, pending: Pending, work: readonly Work[], planned: readonly string[]): void {
+  let journal: Pending = pending;
+  writeRecord(ctx.stateDir, 'pending.json', journal);
   ctx.hooks.at?.('before-steps');
-  const written: Step[] = [];
+  const written: Step[] = [], created: string[] = [];
   try {
-    for (const d of pending.kind === 'apply' ? pending.dirs : []) { live(ctx); makeDir(ctx.projectDir, d); }
+    for (const d of planned) {
+      live(ctx);
+      makeDir(ctx.projectDir, d, ctx.hooks.afterMkdir);
+      created.push(d);
+      journal = { ...journal, dirs: [...created] };
+      writeRecord(ctx.stateDir, 'pending.json', journal);
+    }
     for (const w of work) {
       live(ctx);
       put(ctx, w.step, w.bytes, () => { written.push(w.step); });
@@ -162,21 +222,22 @@ function execute(ctx: Ctx, pending: Pending, work: readonly Work[]): void {
     if (!lockHeld(ctx)) throw new PortableRefusal('PORTABLE_LOCK_LOST');
     const left = undo(ctx, written);
     for (const s of pending.steps) sweepTemps(ctx.projectDir, s.path);
-    if (pending.kind === 'apply') removeEmptyDirs(ctx.projectDir, pending.dirs);
-    if (left.length) throw partial(`Rolling back after ${error instanceof Error && 'code' in error ? String((error as { code: unknown }).code) : 'a failure'} left these paths as they are:`, left);
+    const leftBehind = removeDirs(ctx, created);
+    if (left.length) throw withLeft(partial(`Rolling back after ${causeOf(error)} left these paths as they are:`, left), leftBehind);
     unlinkRecord(ctx.stateDir, 'pending.json');
     const keep = originalsOf(readReceipt(ctx.stateDir, ctx.projectDir)), saved = (error as { saved?: unknown } | null)?.saved;
     if (typeof saved === 'string') keep.add(saved);
     cleanBlobs(ctx.stateDir, keep);
-    throw error;
+    throw withLeft(error, leftBehind);
   }
 }
 
-/** Runs the phase after the steps. A failure there leaves the files applied and the marker in place. */
+/** Runs the phase after the steps, after a lock check. A failure leaves the files applied and the marker in place. */
 function after(ctx: Ctx, work: () => void): void {
+  live(ctx);
   try { work(); } catch (e) {
-    if (isCrash(e)) throw e;
-    throw partial('Every file is applied, but the receipt or the cleanup failed. The pending marker is kept.');
+    if (isCrash(e) || isRefusal(e, 'PORTABLE_LOCK_LOST')) throw e;
+    throw partial(`Every file is applied, but the receipt or the cleanup failed (${causeOf(e)}). The pending marker is kept.`);
   }
 }
 
@@ -218,22 +279,26 @@ export async function applyPortableWith(input: PortableInput, revision: string, 
       if (bytes !== null && c.after !== null && sha(bytes) !== c.after.sha256) throw syncError('STALE_APPROVAL');
       work.push({ step: { path: c.path, from: c.before, to: c.after ? { sha256: c.after.sha256, mode: c.after.mode } : c.original }, bytes });
     }
-    execute(ctx, { format: PENDING_FORMAT, projectDir, kind: 'apply', planRevision: plan.revision, steps: work.map(w => w.step), dirs: plan.createDirs }, work);
+    execute(ctx, { format: PENDING_FORMAT, projectDir, kind: 'apply', planRevision: plan.revision, steps: work.map(w => w.step), dirs: [] }, work, plan.createDirs);
     hooks.at?.('after-steps');
     const files = plan.changes.filter(c => c.after !== null).map(c => ({ path: c.path, ...c.after!, engines: c.engines, original: c.original }));
-    const body = {
-      format: PORTABLE_RECEIPT_FORMAT, projectDir, definition: plan.definition, engines: plan.engines, files, sources: plan.sources,
-      createdDirs: plan.createdDirs, planRevision: plan.revision,
-    };
-    const receipt: PortableReceipt = { ...body, revision: revisionOf(body) };
+    let receipt: PortableReceipt | null = null, leftBehind: LeftBehind[] = [];
     after(ctx, () => {
+      // Review item V11: the folders no projected file needs go first, so the receipt lists only folders that remain.
+      leftBehind = removeDirs(ctx, plan.createdDirs.filter(d => !files.some(f => f.path.startsWith(d + '/'))));
+      const removed = new Set(plan.createdDirs.filter(d => !files.some(f => f.path.startsWith(d + '/')) && !leftBehind.some(l => l.path === d)));
+      const body = {
+        format: PORTABLE_RECEIPT_FORMAT, projectDir, definition: plan.definition, engines: plan.engines, files, sources: plan.sources,
+        createdDirs: plan.createdDirs.filter(d => !removed.has(d)), planRevision: plan.revision,
+      };
+      receipt = { ...body, revision: revisionOf(body) };
+      live(ctx);
       writeRecord(stateDir, 'receipt.json', receipt);
       hooks.at?.('after-receipt');
       cleanBlobs(stateDir, originalsOf(receipt));
       unlinkRecord(stateDir, 'pending.json'); syncDir(stateDir);
       hooks.at?.('after-finish');
     });
-    const leftBehind = removeEmptyDirs(projectDir, receipt.createdDirs.filter(d => !files.some(f => f.path.startsWith(d + '/'))));
     return { noop: false, planRevision: plan.revision, receipt, report: reportOf(plan), leftBehind };
   });
 }
@@ -293,16 +358,17 @@ export async function applyPortableRemovalWith(input: { readonly projectDir: str
     const { projectDir, stateDir } = plan, ctx: Ctx = { projectDir, stateDir, held, hooks };
     const work: Work[] = plan.changes.map(c => ({ step: { path: c.path, from: c.before, to: c.original }, bytes: c.original === null ? null : blob(stateDir, c.original, c.path) }));
     // The marker of a removal holds the folders to remove, so a removal finished by recovery removes them too.
-    execute(ctx, { format: PENDING_FORMAT, projectDir, kind: 'remove', planRevision: plan.revision, steps: work.map(w => w.step), dirs: plan.removeDirs }, work);
+    execute(ctx, { format: PENDING_FORMAT, projectDir, kind: 'remove', planRevision: plan.revision, steps: work.map(w => w.step), dirs: plan.removeDirs }, work, []);
     hooks.at?.('after-steps');
     after(ctx, () => {
       unlinkRecord(stateDir, 'receipt.json');
       hooks.at?.('after-receipt');
+      live(ctx);
       cleanBlobs(stateDir, new Set());
       unlinkRecord(stateDir, 'pending.json'); syncDir(stateDir);
       hooks.at?.('after-finish');
     });
-    const leftBehind = removeEmptyDirs(projectDir, plan.removeDirs);
+    const leftBehind = removeDirs(ctx, plan.removeDirs);
     return { planRevision: plan.revision, restored: plan.changes.filter(c => c.action === 'restore').map(c => c.path), deleted: plan.changes.filter(c => c.action === 'delete').map(c => c.path), leftBehind };
   });
 }
@@ -310,10 +376,12 @@ export async function applyPortableRemovalWith(input: { readonly projectDir: str
 // ---- recovery ------------------------------------------------------------------------------------------------------------
 
 /**
- * Plans the recovery. With an unfinished run: an apply whose receipt names its plan, or a removal whose receipt is gone
- * or whose steps all ran, is complete; any other run is rolled back. A path that is neither at its old nor its new state
- * refuses PORTABLE_DRIFT unless `keep` names it. With no unfinished run, `keep` drops changed or missing paths from the
- * receipt, so the person's version stays and removal leaves it alone.
+ * Plans the recovery. It first sweeps the writer temporaries beside each journaled path, so a link left by a kill does
+ * not read as a second link (V6). With an unfinished run: an apply whose receipt names its plan, or a removal whose
+ * receipt is gone or whose steps all ran, is complete; any other run is rolled back, and every saved copy a rollback
+ * needs is checked (V2). A path that is neither at its old nor its new state, or whose saved copy is gone, refuses
+ * unless `keep` names it. With no unfinished run, `keep` drops changed or missing paths from the receipt; their saved
+ * originals stay in the kept folder (V1).
  */
 export function planPortableRecovery(input: RecoveryInput): PortableRecoveryPlan {
   checkPaths(input?.projectDir, input?.stateDir);
@@ -322,8 +390,17 @@ export function planPortableRecovery(input: RecoveryInput): PortableRecoveryPlan
   if (!Array.isArray(keepWanted) || keepWanted.some(k => typeof k !== 'string')) refuse('PORTABLE_USAGE');
   const pending = readPending(stateDir, projectDir);
   const receipt = readReceipt(stateDir, projectDir);
-  const body = (kind: PortableRecoveryPlan['kind'], action: PortableRecoveryPlan['action'], steps: PortableRecoveryPlan['steps'], keep: string[]) => {
-    const b = { format: PORTABLE_RECOVERY_FORMAT, projectDir, stateDir, kind, action, steps, keep: keep.sort(byBytes) };
+  const originalOf = (path: string, fallback: FileState | null): string | null => {
+    const listed = receipt?.files.find(f => f.path === path);
+    const original = listed ? listed.original : fallback;
+    return original !== null && blobOk(stateDir, original) ? keptPath(stateDir, original) : null;
+  };
+  const body = (kind: PortableRecoveryPlan['kind'], action: PortableRecoveryPlan['action'], steps: PortableRecoveryPlan['steps'], keep: string[], from: ReadonlyMap<string, FileState | null>) => {
+    const sorted = keep.sort(byBytes);
+    const b = {
+      format: PORTABLE_RECOVERY_FORMAT, projectDir, stateDir, kind, action, steps, keep: sorted,
+      keptOriginals: sorted.map(path => ({ path, original: originalOf(path, from.get(path) ?? null) })), notice: sorted.length ? KEEP_NOTICE : null,
+    };
     return { ...b, revision: revisionOf(b) };
   };
   if (pending === null) {
@@ -331,30 +408,33 @@ export function planPortableRecovery(input: RecoveryInput): PortableRecoveryPlan
     const drift = new Set(portableDrift(input).map(d => d.path));
     const bad = keepWanted.filter(k => !drift.has(k));
     if (bad.length || receipt === null) refuse('PORTABLE_USAGE', bad);
-    return body(null, 'keep', [], [...new Set(keepWanted)]);
+    return body(null, 'keep', [], [...new Set(keepWanted)], new Map());
   }
+  for (const s of pending.steps) sweepTemps(projectDir, s.path);
   const states = pending.steps.map(s => ({ step: s, now: stateOrUnsafe(projectDir, s.path) }));
   const at = (now: FileState | null | 'unsafe', want: FileState | null): boolean => now !== 'unsafe' && sameState(now, want);
   const complete = pending.kind === 'apply' ? receipt?.planRevision === pending.planRevision : receipt === null || states.every(x => at(x.now, x.step.to));
   if (complete) {
     if (keepWanted.length) refuse('PORTABLE_USAGE', keepWanted);
-    return body(pending.kind, 'complete', states.map(x => ({ path: x.step.path, now: x.now, decision: 'none' as const })), []);
+    return body(pending.kind, 'complete', states.map(x => ({ path: x.step.path, now: x.now, decision: 'none' as const })), [], new Map());
   }
-  const drifted: string[] = [], keep: string[] = [];
+  const drifted: string[] = [], lost: string[] = [], keep: string[] = [];
   const steps = states.map(({ step, now }) => {
     if (at(now, step.from)) return { path: step.path, now, decision: 'none' as const };
-    if (at(now, step.to)) return { path: step.path, now, decision: 'undo' as const };
+    if (at(now, step.to) && (step.from === null || blobOk(stateDir, step.from))) return { path: step.path, now, decision: 'undo' as const };
     if (keepWanted.includes(step.path)) { keep.push(step.path); return { path: step.path, now, decision: 'keep' as const }; }
-    drifted.push(`${step.path} (${now === 'unsafe' ? 'unsafe' : now === null ? 'missing' : 'changed'})`);
+    if (at(now, step.to)) lost.push(step.path);
+    else drifted.push(`${step.path} (${now === 'unsafe' ? 'unsafe' : now === null ? 'missing' : 'changed'})`);
     return { path: step.path, now, decision: 'none' as const };
   });
   if (drifted.length) refuse('PORTABLE_DRIFT', drifted);
+  if (lost.length) throw new PortableRefusal('PORTABLE_STATE_INVALID', lost, [], 'The saved copy needed to roll these paths back is gone or changed. Name each in keep to leave it as it is:');
   const unknown = keepWanted.filter(k => !keep.includes(k));
   if (unknown.length) refuse('PORTABLE_USAGE', unknown);
-  return body(pending.kind, 'rollback', steps, keep);
+  return body(pending.kind, 'rollback', steps, keep, new Map(pending.steps.map(s => [s.path, s.from])));
 }
 
-/** Drops paths from the receipt: the person's version stays, and its saved original goes. */
+/** Drops paths from the receipt: the person's version stays. Its saved original moves to the kept folder (V1). */
 function dropFromReceipt(stateDir: string, receipt: PortableReceipt | null, paths: readonly string[]): PortableReceipt | null {
   if (receipt === null || !receipt.files.some(f => paths.includes(f.path))) return receipt;
   const { revision: _r, ...rest } = receipt;
@@ -365,36 +445,51 @@ function dropFromReceipt(stateDir: string, receipt: PortableReceipt | null, path
 }
 
 /** Applies the approved recovery under the project lock. */
-export async function applyPortableRecovery(input: RecoveryInput, revision: string, signal: AbortSignal = new AbortController().signal): Promise<PortableRecoveryPlan> {
+export async function applyPortableRecovery(input: RecoveryInput, revision: string, signal: AbortSignal = new AbortController().signal): Promise<PortableRecoveryResult> {
+  return applyPortableRecoveryWith(input, revision, signal, {});
+}
+/** applyPortableRecovery with test hooks. Not exported from the package index. */
+export async function applyPortableRecoveryWith(input: RecoveryInput, revision: string, signal: AbortSignal, hooks: PortableHooks): Promise<PortableRecoveryResult> {
   if (!hex(revision)) throw syncError('STALE_APPROVAL');
   checkPaths(input?.projectDir, input?.stateDir);
   return withProjectLock(input.projectDir, signal, async held => {
     const plan = planPortableRecovery(input);
     if (plan.revision !== revision) throw syncError('STALE_APPROVAL');
-    const { projectDir, stateDir } = plan, ctx: Ctx = { projectDir, stateDir, held, hooks: {} };
+    const { projectDir, stateDir } = plan, ctx: Ctx = { projectDir, stateDir, held, hooks };
+    hooks.at?.('recovery');
+    live(ctx);
     const pending = readPending(stateDir, projectDir);
     let receipt = readReceipt(stateDir, projectDir);
+    // Review item V1: each kept original is copied to the kept folder before any cleanup.
+    for (const k of plan.keptOriginals) if (k.original !== null) {
+      const listed = receipt?.files.find(f => f.path === k.path)?.original ?? pending?.steps.find(s => s.path === k.path)?.from ?? null;
+      if (listed) keepOriginal(stateDir, listed);
+    }
     if (plan.action === 'keep') {
+      live(ctx);
       receipt = dropFromReceipt(stateDir, receipt, plan.keep);
       cleanBlobs(stateDir, originalsOf(receipt));
-      return plan;
+      return { ...plan, leftBehind: [] };
     }
     const p = pending!;
-    for (const s of p.steps) sweepTemps(projectDir, s.path);
     if (plan.action === 'complete') {
+      live(ctx);
       if (p.kind === 'remove') { unlinkRecord(stateDir, 'receipt.json'); receipt = null; }
       cleanBlobs(stateDir, originalsOf(receipt));
       unlinkRecord(stateDir, 'pending.json'); syncDir(stateDir);
-      removeEmptyDirs(projectDir, p.kind === 'remove' ? p.dirs : (receipt?.createdDirs ?? []).filter(d => !receipt!.files.some(f => f.path.startsWith(d + '/'))));
-      return plan;
+      const r = receipt as PortableReceipt | null;
+      const leftBehind = removeDirs(ctx, p.kind === 'remove' ? p.dirs : (r?.createdDirs ?? []).filter(d => !r!.files.some(f => f.path.startsWith(d + '/'))));
+      return { ...plan, leftBehind };
     }
     const undoSteps = plan.steps.filter(s => s.decision === 'undo').map(s => p.steps.find(x => x.path === s.path)!);
+    // The plan, run again above, already swept the writer temporaries of every journaled path.
     const left = undo(ctx, undoSteps);
-    if (left.length) throw partial('Recovery could not roll back these paths:', left);
-    if (p.kind === 'apply') removeEmptyDirs(projectDir, p.dirs);
+    const leftBehind = p.kind === 'apply' ? removeDirs(ctx, p.dirs) : [];
+    if (left.length) throw withLeft(partial('Recovery could not roll back these paths:', left), leftBehind);
+    live(ctx);
     receipt = dropFromReceipt(stateDir, receipt, plan.keep);
     cleanBlobs(stateDir, originalsOf(receipt));
     unlinkRecord(stateDir, 'pending.json'); syncDir(stateDir);
-    return plan;
+    return { ...plan, leftBehind };
   });
 }

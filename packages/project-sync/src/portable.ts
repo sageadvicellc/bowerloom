@@ -11,7 +11,7 @@
  * file and state layers. README.md in this package states what stays in the state folder.
  */
 import fs from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { canonicalJson } from '../../contracts/src/index.js';
 import { ENGINE_IDS, PART_KEYS, appliesTo, checkFidelity, isEngineId, loadDefinition, selectForEngine } from '../../harness-definition/src/index.js';
 import type { Definition, EngineId, LossLine, PartKey, SkillEntry } from '../../harness-definition/src/index.js';
@@ -118,7 +118,12 @@ export function readClaude(projectDir: string): ClaudeFile {
   if (st.isSymbolicLink()) {
     let target: string;
     try { target = fs.readlinkSync(abs); } catch { return refuse('PORTABLE_PATH_UNSAFE', ['CLAUDE.md']); }
-    if (resolve(projectDir, target) === join(projectDir, 'AGENTS.md')) return { kind: 'link-to-agents' };
+    // Review item V8: the folder of the target is resolved for real, so a linked folder on the way cannot fake it.
+    // The folder part is joined as text and resolved by the system, which follows each link before each `..`.
+    const raw = target.startsWith('/') ? dirname(target) : `${projectDir}/${dirname(target)}`;
+    let same = false;
+    try { const a = fs.statSync(fs.realpathSync.native(raw)), b = fs.statSync(projectDir); same = a.dev === b.dev && a.ino === b.ino; } catch { same = false; }
+    if (same && basename(target) === 'AGENTS.md') return { kind: 'link-to-agents' };
     return refuse('PORTABLE_PATH_UNSAFE', ['CLAUDE.md']);
   }
   const got = readAbs(abs, 'CLAUDE.md')!;
@@ -534,6 +539,9 @@ function lossReport(
         for (const e of entries) loss.push({ part, entry: e.id, engine, result: 'absent', reason: LOCKED_IN_REASON });
       }
     }
+    // Review item V12: files under engines/<engine>/ have no part of their own. They are reported with the raw files
+    // of the definition, `scripts`, under their own path and the field `engine-private`.
+    for (const file of view.enginePrivate) loss.push({ part: 'scripts', entry: `engines/${engine}/${file}`, field: 'engine-private', engine, result: 'absent', reason: LOCKED_IN_REASON });
   }
   const empty = { subagents: [], rules: [], sandbox: [], hooks: [], mcp: [] };
   const portable = loss.filter(l => PORTABLE_PARTS.includes(l.part) && l.entry !== NOTHING && !leakLines.has(l));
