@@ -57,8 +57,8 @@ import type { SliceItem, SliceTreeHook } from './slices.js';
 import { readSliceTree } from '../../managed-skills/src/local-source.js';
 import { managedCode, offlineBecause, outward, syncError } from './refusal.js';
 
-export const APPLY_PLAN_FORMAT = 'bowerloom/project-apply-plan/v1beta2' as const;
-export const APPLY_RESULT_FORMAT = 'bowerloom/project-apply-result/v1beta2' as const;
+export const APPLY_PLAN_FORMAT = 'bowerloom/project-apply-plan/v1beta3' as const;
+export const APPLY_RESULT_FORMAT = 'bowerloom/project-apply-result/v1beta3' as const;
 /**
  * What apply prints in place of an edit to AGENTS.md or CLAUDE.md, for the engines it adds copies for (review
  * freeze finding 9). Fixed text: it names no path of this machine.

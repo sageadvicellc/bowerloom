@@ -101,7 +101,7 @@ export async function runProjectStatus(args: readonly string[], cwd: string, hom
   const MIGRATE = 'bowerloom skills migrate plan --state <earlier-state-folder>';
   if (words[0] === '--json') {
     return newCommandJson({
-      format: 'bowerloom/project-status/v1beta2', project: project.dir, projectId: project.projectId,
+      format: 'bowerloom/project-status/v1beta3', project: project.dir, projectId: project.projectId,
       markers: { folder: project.bowerloomIdentity !== null, config: project.configPresent }, setup, status, specReady, runtimeReady: false, executionAuthorized: false,
       revision, drift, owned, ...(legacy ? { legacy: { present: true, next: MIGRATE } } : {}), config: config.state === 'absent' ? null : { ...configObject(config), ...configAdditions(resolved, config, shared, lockError, lockFile) },
     });

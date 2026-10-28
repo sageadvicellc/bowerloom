@@ -67,7 +67,7 @@ test('apply: exit 3 shows the plan and the AGENTS.md pointer and writes nothing;
   assert.ok(shown.stdout.endsWith(`Approval required. Run the same command again with --approve ${revision}\n`), shown.stdout);
   assert.equal(tree(p.home), before);
   const json = run(p.dir, ['apply', '--json'], p.deny); assert.equal(json.status, 3);
-  const body = JSON.parse(json.stdout); assert.equal(body.revision, revision); assert.equal(body.plan.format, 'bowerloom/project-apply-plan/v1beta2'); assert.match(body.plan.pointer, /AGENTS\.md and CLAUDE\.md/);
+  const body = JSON.parse(json.stdout); assert.equal(body.revision, revision); assert.equal(body.plan.format, 'bowerloom/project-apply-plan/v1beta3'); assert.match(body.plan.pointer, /AGENTS\.md and CLAUDE\.md/);
   const applied = run(p.dir, ['apply', '--approve', revision], p.deny);
   assert.equal(applied.status, 0, applied.stderr); if (OUTPUT_DIR) writeFileSync(join(OUTPUT_DIR, 'apply-exit0.txt'), applied.stdout);
   assert.match(applied.stdout, new RegExp(`^Applied plan ${revision}\\.$`, 'm'));
@@ -123,7 +123,7 @@ const agentItem = (id: string, extra: Partial<AgentItem>): AgentItem => ({
   context: { slices: [], guard: null, guardRoots: [], unknown: [], beyondPreloadLimit: [], plainSkills: [], heldNeverInstalled: [], heldAfterInstalled: [], omitClaudeMd: false, beyondPreloadPositions: [], tools: null, mcpServers: false }, ...extra,
 });
 const planOf = (agents: AgentItem[], engines: ('claude-code' | 'codex')[], extra: Partial<ApplyPlan> = {}): ApplyPlan => ({
-  format: 'bowerloom/project-apply-plan/v1beta2', engines, team: null, skills: null, prompts: [], slices: [], agents, codexSlicesSkipped: false, unregisteredSlices: [], agentsMayBeTracked: false, codexAgentsSkipped: false, actionable: true,
+  format: 'bowerloom/project-apply-plan/v1beta3', engines, team: null, skills: null, prompts: [], slices: [], agents, codexSlicesSkipped: false, unregisteredSlices: [], agentsMayBeTracked: false, codexAgentsSkipped: false, actionable: true,
   pointer: applyPointer(engines), ...extra,
 } as unknown as ApplyPlan);
 

@@ -208,6 +208,7 @@ test('D6. the refusal table holds the codes of 5.1 under the eight labels, with 
 });
 
 const RELEASE_LABELS=['New commands','Projects and the store','Sharing','Agents and context slices','Install','Changed formats','Known limits'];
+const NEW_SINCE_BETA2=32;
 function betaThree(){
   const text=doc('releases.md'),start=text.indexOf('\n## 0.7.0-beta.3\n');
   assert.ok(start>=0,'releases.md holds ## 0.7.0-beta.3');
@@ -238,9 +239,12 @@ function sourceFormats(){
   return [...out].sort();
 }
 test('D8. every format string new since beta.2 appears in the beta.3 release notes',()=>{
-  const old=new Set(JSON.parse(read(resolve(import.meta.dirname,'beta2-formats.json')))),section=betaThree();
-  const added=sourceFormats().filter(f=>!old.has(f));
-  assert.ok(added.length>=37,`${added.length} new formats`);
+  // after-beta3-formats.json holds the formats that 0.8 bumped (step 0, the engine rename). They belong to the 0.8 notes, not to beta.3.
+  const old=new Set(JSON.parse(read(resolve(import.meta.dirname,'beta2-formats.json')))),later=new Set(JSON.parse(read(resolve(import.meta.dirname,'after-beta3-formats.json')))),section=betaThree();
+  const source=sourceFormats();
+  assert.deepEqual([...later].filter(f=>!source.includes(f)),[],'every format in after-beta3-formats.json is in the source');
+  const added=source.filter(f=>!old.has(f)&&!later.has(f));
+  assert.ok(added.length>=NEW_SINCE_BETA2,`${added.length} new formats`);
   assert.deepEqual(added.filter(f=>!section.includes(`\`${f}\``)),[]);
   assert.match(section,/Scripts that read `format` must accept the new names\./);
 });

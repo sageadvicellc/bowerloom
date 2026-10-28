@@ -150,7 +150,7 @@ test('20. a sliceTree hook that changes a file during the read makes the plan re
 });
 test('21. JSON keeps format v1beta2 and holds slices, codexSlicesSkipped, unregisteredSlices, and agentsMayBeTracked', async t => {
   const f = await wikiProject(t), p = await plan(f, ['claude-code']), json = JSON.parse(JSON.stringify(p));
-  assert.equal(json.format, 'bowerloom/project-apply-plan/v1beta2'); for (const k of ['slices', 'codexSlicesSkipped', 'unregisteredSlices', 'agentsMayBeTracked']) assert.ok(k in json, k);
+  assert.equal(json.format, 'bowerloom/project-apply-plan/v1beta3'); for (const k of ['slices', 'codexSlicesSkipped', 'unregisteredSlices', 'agentsMayBeTracked']) assert.ok(k in json, k);
   assert.equal(json.agentsMayBeTracked, false);
 });
 test('22. a registered folder that the store does not record holds SLICE_ROOT_MISSING with the folder steps', async t => {

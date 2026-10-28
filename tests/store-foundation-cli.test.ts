@@ -144,7 +144,7 @@ test('10. status --json in a config-only project', t => {
   const w = world(t), dir = configProject(w), run1 = run(dir, ['status', '--json'], w.env);
   assert.equal(run1.status, 0, run1.stderr);
   const j = JSON.parse(run1.stdout);
-  assert.equal(j.format, 'bowerloom/project-status/v1beta2'); assert.deepEqual(j.markers, { folder: false, config: true }); assert.equal(j.setup, 'none'); assert.equal(j.status, 'ready');
+  assert.equal(j.format, 'bowerloom/project-status/v1beta3'); assert.deepEqual(j.markers, { folder: false, config: true }); assert.equal(j.setup, 'none'); assert.equal(j.status, 'ready');
   assert.equal(j.specReady, false); assert.equal(j.revision, null); assert.deepEqual(j.drift, []); assert.deepEqual(j.owned, []); assert.equal(j.runtimeReady, false); assert.equal(j.executionAuthorized, false);
   assert.deepEqual(Object.keys(j.config), ['bytes', 'code', 'counts', 'engines', 'items', 'lock', 'path', 'sha256', 'state', 'store', 'storeCode', 'unselected']);
   const { store, storeCode, items, unselected, lock, ...base } = j.config;
@@ -191,7 +191,7 @@ test('12. status --json in a project with .bowerloom, a config, and a receipt ke
 test('12b. a project with .bowerloom and no config keeps the old behavior, with the new format', t => {
   const w = world(t), dir = startupProject(w);
   const j = JSON.parse(run(dir, ['status', '--json'], w.env).stdout);
-  assert.equal(j.format, 'bowerloom/project-status/v1beta2'); assert.deepEqual(j.markers, { folder: true, config: false }); assert.equal(j.setup, 'startup'); assert.equal(j.config, null);
+  assert.equal(j.format, 'bowerloom/project-status/v1beta3'); assert.deepEqual(j.markers, { folder: true, config: false }); assert.equal(j.setup, 'startup'); assert.equal(j.config, null);
   assert.equal(j.status, 'ready'); assert.deepEqual(j.drift, []);
   // A missing receipt with no config is still drift.
   rmSync(join(dir, '.bowerloom', 'installation-receipt.json'));

@@ -51,7 +51,7 @@ import { declaredAllowedTools } from './notices.js';
 import { projectRefusal } from '../../project-context/src/index.js';
 import { configRefusal } from '../../project-config/src/refusal.js';
 
-export const SYNC_PLAN_FORMAT = 'bowerloom/skills-sync-plan/v1beta2' as const;
+export const SYNC_PLAN_FORMAT = 'bowerloom/skills-sync-plan/v1beta3' as const;
 /** The free space each child keeps beyond its own bytes, the managed-skills minimum; also the cache reserve. */
 export const MIN_FREE_BYTES = 33554432;
 /** At most this many items in one plan: 128 manifest skills and 128 orphans. */

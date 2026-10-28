@@ -257,8 +257,8 @@ test('20. first-team agents are planned like any team\'s', async t => {
 test('21. the JSON plan has format v1beta2, the agents field with reserved capability fields, and codexAgentsSkipped', async t => {
   const f = await agentProject(t); agentSource(f, 'first-team', 'scribe.md', agentText('scribe'));
   const json = JSON.parse(JSON.stringify(await plan(f)));
-  assert.equal(json.format, 'bowerloom/project-apply-plan/v1beta2'); assert.equal(APPLY_PLAN_FORMAT, 'bowerloom/project-apply-plan/v1beta2');
-  assert.equal(APPLY_RESULT_FORMAT, 'bowerloom/project-apply-result/v1beta2');
+  assert.equal(json.format, 'bowerloom/project-apply-plan/v1beta3'); assert.equal(APPLY_PLAN_FORMAT, 'bowerloom/project-apply-plan/v1beta3');
+  assert.equal(APPLY_RESULT_FORMAT, 'bowerloom/project-apply-result/v1beta3');
   assert.equal(json.codexAgentsSkipped, true); assert.equal(json.agents.length, 1);
   assert.equal(json.agents[0].capabilities, null); assert.deepEqual(json.agents[0].enforcement, []);
   for (const key of ['id', 'team', 'itemId', 'state', 'action', 'engines', 'expected', 'before', 'previousReceiptRevision', 'history', 'hold', 'notices', 'builtin', 'capabilities', 'enforcement']) assert.ok(key in json.agents[0], key);

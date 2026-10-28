@@ -41,7 +41,7 @@ test('3. apply writes no file under .codex, even for both harnesses', async t =>
 test('4. the result has format v1beta2 and its items carry kind agent', async t => {
   const f = await agentProject(t); await createTeam(f, 'desk'); agentSource(f, 'first-team', 'scribe.md', agentText('scribe')); agentSource(f, 'desk', 'editor.md', agentText('editor'));
   const { result } = await applied(f, ['claude-code']);
-  assert.equal(result.format, 'bowerloom/project-apply-result/v1beta2'); assert.deepEqual(result.applied.map(x => [x.kind, x.id]), [['agent', 'editor'], ['agent', 'scribe']]);
+  assert.equal(result.format, 'bowerloom/project-apply-result/v1beta3'); assert.deepEqual(result.applied.map(x => [x.kind, x.id]), [['agent', 'editor'], ['agent', 'scribe']]);
   const again = await applied(f, ['claude-code']); assert.deepEqual(again.result.upToDate, [{ kind: 'agent', id: 'editor', origin: 'project', resolvedFrom: 'project' }, { kind: 'agent', id: 'scribe', origin: 'project', resolvedFrom: 'project' }]);
   agentSource(f, 'first-team', 'scribe.md', agentText('scribe', '', 'Held.\n')); fs.appendFileSync(target(f, 'editor'), 'Mine.\n');
   assert.deepEqual((await applied(f, ['claude-code'])).result.held.map(h => [h.kind, h.id, h.code]), [['agent', 'editor', 'MANAGED_SKILL_LOCAL_DRIFT']]);

@@ -39,7 +39,7 @@ import { oneLine } from '../../contracts/src/index.js';
 import { command, outward, shellPath, syncError, withStep } from './refusal.js';
 import type { FetchFlow } from './refusal.js';
 
-export const MIGRATE_PLAN_FORMAT = 'bowerloom/skills-migrate-plan/v1beta1' as const;
+export const MIGRATE_PLAN_FORMAT = 'bowerloom/skills-migrate-plan/v1beta2' as const;
 export interface MigrateInput { project: ProjectContext; stateRoot: string; legacyStateDir: string }
 export interface MigratePlan {
   format: typeof MIGRATE_PLAN_FORMAT;

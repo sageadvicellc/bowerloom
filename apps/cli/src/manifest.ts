@@ -346,7 +346,7 @@ function checkConfigMode(project: ProjectContext, home: string, json: boolean, w
   }
   rows.sort((a, b) => Buffer.compare(Buffer.from(a.id), Buffer.from(b.id)));
   const engines = [...read.config.engines];
-  const check = { format: own?.format ?? 'bowerloom/skills-manifest-check/v1beta2', valid: true, engines, skills: rows };
+  const check = { format: own?.format ?? 'bowerloom/skills-manifest-check/v1beta3', valid: true, engines, skills: rows };
   if (json) { write(newCommandJson(check)); return 0; }
   const width = Math.max(0, ...rows.map(s => s.id.length));
   write([

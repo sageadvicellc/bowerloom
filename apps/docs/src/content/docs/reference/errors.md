@@ -24,7 +24,7 @@ Keep your project out of iCloud Drive folders. Project commands such as `bowerlo
 | `contextImported` | False in the setup results documented here |
 | `hostedAgentCreated` | False in the setup results documented here |
 
-`bowerloom status` in a project folder reports `ready`, `drifted`, or `revision-pending` in `Setup:`. With `--json` it prints format `bowerloom/project-status/v1beta2` and reports `format`, `markers`, `setup`, `config`, `specReady`, `runtimeReady`, `executionAuthorized`, `revision`, `drift`, and `owned`. `runtimeReady` and `executionAuthorized` are false. A `bowerloom.json` that does not match its format adds the drift kind `config-invalid`, with the refusal code. Read [CLI reference](/docs/cli/#project-commands).
+`bowerloom status` in a project folder reports `ready`, `drifted`, or `revision-pending` in `Setup:`. With `--json` it prints format `bowerloom/project-status/v1beta3` and reports `format`, `markers`, `setup`, `config`, `specReady`, `runtimeReady`, `executionAuthorized`, `revision`, `drift`, and `owned`. `runtimeReady` and `executionAuthorized` are false. A `bowerloom.json` that does not match its format adds the drift kind `config-invalid`, with the refusal code. Read [CLI reference](/docs/cli/#project-commands).
 
 `ready-for-review` requires human review. It does not mean that a team runs or has execution permission.
 

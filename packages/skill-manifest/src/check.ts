@@ -9,7 +9,7 @@ import { MANIFEST_LIMITS, parseManifest } from './schema.js';
 import type { Entry } from './schema.js';
 import type { Engine } from './engine.js';
 
-export const MANIFEST_CHECK_FORMAT = 'bowerloom/skills-manifest-check/v1beta2' as const;
+export const MANIFEST_CHECK_FORMAT = 'bowerloom/skills-manifest-check/v1beta3' as const;
 export interface ManifestCheckItem { id: string; kind: 'npm' | 'git' | 'local'; pin: string; teams: string[] | null; source: 'project' | 'store' }
 export interface ManifestCheck { format: typeof MANIFEST_CHECK_FORMAT; manifest: string; scope: 'project' | 'store'; valid: true; sha256: string; bytes: number; engines: Engine[]; skills: ManifestCheckItem[] }
 

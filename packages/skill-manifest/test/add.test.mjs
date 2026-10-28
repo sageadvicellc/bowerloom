@@ -130,7 +130,7 @@ test('checkManifest reports a valid file, and refuses an absent or invalid one w
   assert.throws(() => checkManifest(p.dir), code('MANIFEST_NOT_FOUND'));
   fs.writeFileSync(p.file, serializeManifest(parseManifest(Buffer.from(JSON.stringify({ format: 'bowerloom/skills/v1beta1', harnesses: ['codex'], skills: [npmEntry(), gitEntry(), { id: 'house-style', source: { kind: 'local', path: 'skills/house-style' } }] })), MANIFEST_LIMITS), MANIFEST_LIMITS));
   const check = checkManifest(p.dir);
-  assert.equal(check.format, 'bowerloom/skills-manifest-check/v1beta2'); assert.equal(check.scope, 'project'); assert.equal(check.valid, true);
+  assert.equal(check.format, 'bowerloom/skills-manifest-check/v1beta3'); assert.equal(check.scope, 'project'); assert.equal(check.valid, true);
   assert.equal(check.sha256, sha(fs.readFileSync(p.file))); assert.deepEqual(check.engines, ['codex']);
   assert.deepEqual(check.skills, [
     { id: 'house-style', kind: 'local', pin: 'skills/house-style', teams: null, source: 'project' },

@@ -25,7 +25,7 @@ test('1. the plan binds config, lock, store, each content key, the lock pin and 
   writeConfig(w, { skills: [{ id: 'house-style', source: 'store' }, { id: 'tanstack-db', source: 'store' }] });
   const repo = pushStore(w); writeLock(w, { skills: [lockOfRepo(w, repo, 'skill', 'house-style'), { id: 'tanstack-db', from: 'store', pin: npm.entry }] });
   const plan = await planSync(input(w));
-  assert.equal(plan.format, 'bowerloom/skills-sync-plan/v1beta2');
+  assert.equal(plan.format, 'bowerloom/skills-sync-plan/v1beta3');
   assert.match(plan.config.sha256, /^[a-f0-9]{64}$/); assert.match(plan.lock.sha256, /^[a-f0-9]{64}$/);
   assert.equal(plan.store.dir, fs.realpathSync(w.store)); assert.match(plan.store.skills.sha256, /^[a-f0-9]{64}$/);
   const items = byId(plan);

@@ -194,7 +194,7 @@ const teamWords = (team: UpTeam): string => team.name === team.id ? team.id : `$
 function held(ctx: UpContext, next: UpNext, json: boolean, write: (text: string) => void): never {
   const team = next.team, items = next.held ?? [], count = `${items.length} ${items.length === 1 ? 'item' : 'items'}`;
   write(json
-    ? newCommandJson({ format: 'bowerloom/up-held/v1beta1', step: 'held', status: 'prepared, workers held', team, engines: ctx.engines, held: items, startHere: START_HERE, workersStarted: false, executionAuthorized: false })
+    ? newCommandJson({ format: 'bowerloom/up-held/v1beta2', step: 'held', status: 'prepared, workers held', team, engines: ctx.engines, held: items, startHere: START_HERE, workersStarted: false, executionAuthorized: false })
     : plainText((items.length ? [
       `prepared, ${count} held`,
       `  Team: ${teamWords(team)}, for ${harnessWords(ctx.engines)}. Workers stay held.`,
