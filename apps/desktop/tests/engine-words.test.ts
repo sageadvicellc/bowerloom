@@ -6,6 +6,7 @@ import {
   CHANGE_WORDS, DRIFT_WORDS, ENGINE_WORDS, GATE_WORDS, RESULT_TONE, RESULT_WORDS, approveLineName, approvePlanWords, changesLine, conflictWords, countsWords, engineHeading,
   engineList, hiddenWords, partName, readLine, removeFilesWords, removedWords, tickedWords, waitingWords, writeFilesWords, wroteAdoption, wroteInstall,
   acknowledgeName, approveItemName, engineDetails, ignoredWords, recoveryKindWords, stillWaiting, writesIntoLine,
+  MODE_CHOICE_WORDS, RECOVERY_ACTION_WORDS, headingLine, modeActionName, modeLine,
 } from '../renderer/harness/words-engine.js';
 
 test('the table is frozen; a label has at most 5 words, a hint 12, a paragraph 25, and none holds a banned word', () => {
@@ -44,4 +45,18 @@ test('the words built from a number or a name read right and obey the rules', ()
   assert.equal(stillWaiting('2 approvals'), 'Still waiting for: 2 approvals');
   assert.equal(engineDetails('Codex', '0.157.0', 'gpt-5'), 'Codex, version 0.157.0, model gpt-5'); assert.equal(engineDetails('Pi', null, null), 'Pi');
   for (const text of [approveItemName('mcp', 'mail'), acknowledgeName('.codex/config.toml#/approval_policy'), writesIntoLine(1), recoveryKindWords('apply' as const), recoveryKindWords('remove' as const), recoveryKindWords(null), ignoredWords('reconcile', 'There is no CLAUDE.md.')]) assert.equal(bannedHere(text), null, text);
+});
+
+test('step 5: Merge is offered in words, never "not built"; a mode line names its two actions and both modes', () => {
+  assert.equal(Object.values(ENGINE_WORDS.hint).some(t => /not built/i.test(t)), false);
+  assert.equal(ENGINE_WORDS.hint.mergeText, 'Moves CLAUDE.md into the harness.');
+  assert.equal(DRIFT_WORDS.mode, 'Mode changed since');
+  assert.deepEqual(MODE_CHOICE_WORDS, { restoreMode: 'Restore mode', recordMode: 'Keep new mode' });
+  assert.equal(RECOVERY_ACTION_WORDS.mode, 'Settle the file modes');
+  assert.equal(modeLine('0700', '0644'), 'Now 0700. Bowerloom wrote 0644.');
+  assert.equal(modeActionName('recordMode', 'AGENTS.md'), 'Keep new mode: AGENTS.md');
+  assert.equal(headingLine('From CLAUDE.md'), 'It goes under the heading From CLAUDE.md.');
+  for (const text of [modeLine('0700', '0644'), modeActionName('restoreMode', 'a/b.md'), headingLine('From CLAUDE.md'), ...Object.values(MODE_CHOICE_WORDS), ...Object.values(RECOVERY_ACTION_WORDS)]) {
+    assert.equal(bannedHere(text), null, text); assert.ok(countWords(text) <= LIMITS.hint, text);
+  }
 });

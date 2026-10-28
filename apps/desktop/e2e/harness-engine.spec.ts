@@ -134,7 +134,9 @@ test('Install: approve each weaker rule first, then read every result word, the 
   await expect(drift.locator('[data-drift-engine="codex"]')).toContainText('Codex does not read CLAUDE.md.');
   await expect(drift.getByRole('radio', { name: /Accept AGENTS\.md/ })).toHaveAttribute('aria-checked', 'true');
   await expect(drift.getByRole('radio', { name: /Accept AGENTS\.md/ })).toContainText('The default');
-  await expect(drift.getByRole('radio', { name: /Merge/ })).toHaveAttribute('aria-disabled', 'true');
+  await expect(drift.getByRole('radio', { name: /Merge/ })).not.toHaveAttribute('aria-disabled', 'true');
+  await expect(drift.getByRole('radio', { name: /Merge/ })).toContainText('Moves CLAUDE.md into the harness.');
+  await expect(s).not.toContainText('Not built yet');
   await expect(s.locator('[data-file="CLAUDE.md"]')).toContainText('Replaces yours');
   await shot(p, 'E7-install-plan');
   await drift.scrollIntoViewIfNeeded();
@@ -151,7 +153,8 @@ test('Install: approve each weaker rule first, then read every result word, the 
   // The new plan comes with no approval: the box is unticked, and Write waits for a new tick (U4).
   await expect(approve).not.toBeChecked();
   await expect(s.getByRole('button', { name: 'Write 9 files', exact: true })).toBeDisabled();
-  await drift.getByRole('radio', { name: /Keep both/ }).press('ArrowLeft');
+  // The radios go round: from Keep both, the next one is Accept AGENTS.md.
+  await drift.getByRole('radio', { name: /Keep both/ }).press('ArrowRight');
   await expect(drift.getByRole('radio', { name: /Accept AGENTS\.md/ })).toHaveAttribute('aria-checked', 'true');
   await expect(drift.getByRole('radio', { name: /Accept AGENTS\.md/ })).toBeFocused();
   await approve.check();
@@ -174,6 +177,40 @@ test('Install: approve each weaker rule first, then read every result word, the 
   const removed = r.locator('[data-done]');
   await expect(removed.locator('[data-section="result-Removed"] .hxi-file')).toHaveText(['.claude/settings.json', '.codex/rules/bowerloom.rules', 'AGENTS.md']);
   await expect(removed.locator('[data-section="result-Put back"] .hxi-file')).toHaveText(['CLAUDE.md']);
+});
+
+test('Merge: its own plan shows the CLAUDE.md text and the harness file, writes after its approval, and the install that follows accepts AGENTS.md', async () => {
+  const p = page();
+  const s = await openInstallReview(p);
+  for (const line of await s.locator('[data-section="approve-lines"] input').all()) await line.check();
+  await s.getByRole('button', { name: 'Plan with these approvals', exact: true }).click();
+  const drift = s.locator('[data-section="drift"]');
+  const merge = drift.getByRole('radio', { name: /Merge/ });
+  await merge.click();
+  await expect(merge).toHaveAttribute('aria-checked', 'true');
+  const plan = s.locator('[data-section="merge"]');
+  await expect(plan).toContainText('Draft the report on Friday.');
+  await expect(plan.locator('[data-file=".bowerloom/instructions/AGENTS.md"]')).toContainText('Update');
+  await expect(s.locator('[data-section="loss"]')).toHaveCount(0);
+  const go = s.getByRole('button', { name: 'Merge into the harness', exact: true });
+  await expect(go).toBeDisabled();
+  await s.locator('[data-approve-plan] input').check();
+  await expect(go).toBeEnabled();
+  await shot(p, 'E8c-merge-plan');
+  await go.click();
+  // The install plan comes back with Accept AGENTS.md, and waits for its own approval.
+  await expect(s.locator('[data-merged]')).toContainText('The harness now holds the CLAUDE.md text.');
+  await expect(drift.getByRole('radio', { name: /Accept AGENTS\.md/ })).toHaveAttribute('aria-checked', 'true');
+  await expect(s.locator('[data-file="CLAUDE.md"]')).toContainText('Replaces yours');
+  await expect(s.locator('[data-approve-plan] input')).not.toBeChecked();
+  // A second Merge has nothing to move, and says so in its own words.
+  await merge.click();
+  await expect(s.getByRole('alert')).toContainText('There is nothing to merge');
+  await s.getByRole('alert').getByRole('button', { name: 'Accept AGENTS.md', exact: true }).click();
+  await expect(drift.getByRole('radio', { name: /Accept AGENTS\.md/ })).toHaveAttribute('aria-checked', 'true');
+  await s.locator('[data-approve-plan] input').check();
+  await s.getByRole('button', { name: 'Write 10 files', exact: true }).click();
+  await expect(s.locator('[data-done]')).toContainText('CLAUDE.md');
 });
 
 test('a stopped folder: the plan refuses in its own words and offers the recovery plan, which runs after its approval', async () => {

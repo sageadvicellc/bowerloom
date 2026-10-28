@@ -25,7 +25,7 @@ import { useHeldFocus } from './use-held-focus.js';
 
 const W = ENGINE_WORDS;
 type Step = 'folder' | 'review' | 'confirm' | 'recover' | 'done';
-type Done = { kind: 'made'; written: readonly string[] } | { kind: 'recover'; removed: readonly string[]; kept: readonly string[]; leftFolders: readonly string[] };
+type Done = { kind: 'made'; written: readonly string[] } | { kind: 'recover'; removed: readonly string[]; restored: readonly string[]; kept: readonly string[]; leftFolders: readonly string[] };
 const NO_CHOICES: AdoptChoices = { picks: {}, acknowledged: [] };
 const BODY_NAME: Readonly<Record<Step, string>> = { folder: W.label.bodyFolder, review: W.label.bodyReview, confirm: W.label.bodyConfirm, recover: W.label.bodyReview, done: W.label.bodyResult };
 
@@ -152,8 +152,10 @@ export function AdoptSheet({ open, folderId, onClose }: { open: boolean; folderI
               <p className="hxi-sum">{W.paragraph.recoverIntro}</p>
               <p className="hxe-notice"><StateDot tone={recovery.journal === 'ok' ? 'quiet' : 'bad'}><span data-journal="">{recovery.journal === 'ok' ? W.hint.journalOk : W.hint.journalDamaged}</span></StateDot></p>
               {recovery.check.length === 0 ? null : <Section title={W.label.checkByHand} count={String(recovery.check.length)} slot="check"><ul className="hxe-places">{recovery.check.map(p => <li key={p} className="hxe-mono">{p}</li>)}</ul></Section>}
-              <Section title={W.label.changes} count={String(recovery.remove.length + recovery.kept.length)} slot="remove">
+              <Section title={W.label.changes} count={String(recovery.remove.length + recovery.restore.length + recovery.kept.length)} slot="remove">
                 <ul className="hxi-files">{recovery.remove.map(p => <li key={p} className="hxi-file" data-file={p}><span className="hxi-file-path">{p}</span><StateDot tone={CHANGE_TONE.delete}>{CHANGE_WORDS.delete}</StateDot></li>)}</ul>
+                {/* A stopped Merge replaced files: recovery puts each one back (D4A). */}
+                <ul className="hxi-files">{recovery.restore.map(p => <li key={p} className="hxi-file" data-file={p}><span className="hxi-file-path">{p}</span><StateDot tone={CHANGE_TONE.restore}>{CHANGE_WORDS.restore}</StateDot></li>)}</ul>
                 <ul className="hxi-files">{recovery.kept.map(k => <li key={k.path} className="hxi-file" data-file={k.path}><span className="hxi-file-path">{k.path}</span><StateDot tone="quiet">{k.reason === 'changed' ? W.hint.keptChanged : W.hint.keptUnsafe}</StateDot></li>)}</ul>
               </Section>
               {recovery.dirs.length === 0 ? null : <Section title={W.label.foldersRemoved} count={String(recovery.dirs.length)} slot="dirs"><ul className="hxe-places">{recovery.dirs.map(d => <li key={d} className="hxe-mono">{d}</li>)}</ul></Section>}
@@ -163,7 +165,7 @@ export function AdoptSheet({ open, folderId, onClose }: { open: boolean; folderI
           {step === 'done' && done !== null ? (
             done.kind === 'made'
               ? <ResultStep nothing={done.written.length === 0} lists={[{ title: W.label.writtenFiles, files: done.written }]} />
-              : <ResultStep nothing={done.removed.length === 0} lists={[{ title: W.label.removedFiles, files: done.removed }, { title: W.label.keptFiles, files: done.kept, note: W.hint.keptWhy }, { title: W.label.leftFolders, files: done.leftFolders, note: W.hint.leftBehindWhy }]} />
+              : <ResultStep nothing={done.removed.length + done.restored.length === 0} lists={[{ title: W.label.removedFiles, files: done.removed }, { title: W.label.restoredFiles, files: done.restored }, { title: W.label.keptFiles, files: done.kept, note: W.hint.keptWhy }, { title: W.label.leftFolders, files: done.leftFolders, note: W.hint.leftBehindWhy }]} />
           ) : null}
         </div>
       )}
