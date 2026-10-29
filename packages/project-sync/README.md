@@ -92,6 +92,8 @@ object. Only when the canonical copy, the record, and the folder have the same h
 one the projection writes, does the plan replace the files and save the originals. Removal then restores the 0.7 copy.
 Anything else is refused as before.
 
+One exception comes first, for any 0.7 item, a skill or a prompt. A folder that already holds exactly the files, bytes, and modes install would write is taken over, and nothing is written. The plan action is `take-over`, and removal keeps the folder. A forged marker gains nothing, because nothing is written. This is how the Codex skill folder of a 0.7 prompt installs after adoption: adoption reads that folder as a skill and does not convert the prompt. A 0.7 folder whose content would change, and that adoption did not convert, still refuses `PORTABLE_MANAGED_COPY`; the 0.7 sync owns it.
+
 The hash means equal after normalisation, not byte for byte: Markdown line endings become LF, file modes do not count,
 and an empty folder does not count. A file that differs only in those ways is still replaced, and its original bytes
 and mode are saved and restored.

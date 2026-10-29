@@ -329,7 +329,7 @@ The `bowerloom harness` commands adopt a folder into a 0.8 harness and install i
 | `PORTABLE_MERGE_NOT_BUILT` | Install never edits the harness, and Merge changes the instructions in it. | `bowerloom harness merge`, then `bowerloom harness install --reconcile accept-agents` |
 | `PORTABLE_PATH_UNSAFE` | A path is a link, is not a plain file or folder of yours, or is larger than 1 MiB. | Check each path the message names with `ls -la`. |
 | `PORTABLE_PATH_OCCUPIED` | A target holds files that Bowerloom did not write, and Bowerloom never overwrites them. | Move those files aside, then run the command again. |
-| `PORTABLE_MANAGED_COPY` | A 0.7 skills sync manages that skill copy, so install cannot write it. | `bowerloom harness adopt` |
+| `PORTABLE_MANAGED_COPY` | A 0.7 sync manages that copy, and install would change its content, so the 0.7 sync owns it. | For a skill, run `bowerloom harness adopt`. For a prompt, keep the engine copy as it is, or remove the 0.7 prompt with the 0.7 command, then run the command again. |
 | `PORTABLE_CASE_CLASH` | Two paths differ only in letter case, and many file systems treat them as one. | Rename one of the two paths the message lists. |
 | `PORTABLE_DRIFT` | A file that Bowerloom wrote, or was about to replace, changed since the plan. | `bowerloom harness drift` |
 | `PORTABLE_STATE_UNSAFE` | Bowerloom keeps its record of an install in a private folder that only you can change, outside the project. | check the private state folder: `$XDG_STATE_HOME/bowerloom` when `XDG_STATE_HOME` is set, else `~/.local/state/bowerloom` |

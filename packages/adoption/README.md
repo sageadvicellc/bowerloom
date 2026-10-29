@@ -72,7 +72,7 @@ A literal secret in an MCP `env`, header, argument, private block, or leftover s
 
 ## For the projection lanes
 
-- `plan.managed` names each converted copy and its engine copies. The portable projection takes an engine folder that a 0.7 managed copy holds when `sources.json` records the skill in `adopted` and the folder still has that content hash: it replaces the files and saves the originals, so removal restores the 0.7 copy. Any other such folder still refuses `PORTABLE_MANAGED_COPY`.
+- `plan.managed` names each converted copy and its engine copies. The portable projection takes an engine folder that a 0.7 managed copy holds when `sources.json` records the skill in `adopted` and the folder still has that content hash: it replaces the files and saves the originals, so removal restores the 0.7 copy. A folder that already holds exactly the bytes the projection would write is taken over with nothing written, which is how the Codex folder of a 0.7 prompt installs. Any other such folder still refuses `PORTABLE_MANAGED_COPY`.
 - A neutral hook command uses `${PROJECT_DIR}`. Claude Code's `$CLAUDE_PROJECT_DIR` and Codex's `$(git rev-parse --show-toplevel)` are rewritten to it.
 - A hook on `PreToolUse`, `UserPromptSubmit`, or `PermissionRequest` is `enforced`. Other hooks are `advisory`.
 - A Codex `allow` rule becomes a neutral `allow`. The note says Codex ran it outside the sandbox.

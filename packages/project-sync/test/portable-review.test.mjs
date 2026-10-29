@@ -444,7 +444,7 @@ test('P27: a skill folder held by a 0.7 managed copy gets its own refusal that n
   fs.writeFileSync(path.join(p.dir, '.claude/skills/review/SKILL.md'), skill('review'));
   fs.mkdirSync(path.join(p.def, 'managed/catalog'), { recursive: true });
   fs.writeFileSync(path.join(p.def, 'managed/catalog/review.json'), '{}\n');
-  assert.throws(() => planPortable(p.input()), e => e.code === 'PORTABLE_MANAGED_COPY' && /0\.7 item review/.test(e.message) && /Adoption \(step 3\)/.test(e.message));
+  assert.throws(() => planPortable(p.input()), e => e.code === 'PORTABLE_MANAGED_COPY' && /0\.7 item review/.test(e.message) && /Adoption converts a 0\.7 skill/.test(e.message));
 });
 
 test('step 3 contract: a folder a 0.7 managed copy holds is replaced only when sources.json records it with the same content hash', async t => {

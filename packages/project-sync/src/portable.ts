@@ -576,28 +576,31 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
 
   // Skill folders that Bowerloom did not project are never written into. A folder that already holds exactly the planned
   // files, bytes, and modes, and nothing else, is taken over unchanged: a folder adopted in place (definition spec, check
-  // 1). One whose files differ is refused, naming each differing file. A folder that a 0.7 managed copy holds is taken
-  // only when sources.json records that the skill was adopted from that copy, and the folder still holds exactly it:
-  // its files are then replaced, with their originals saved, so removal restores the 0.7 copy (step 3 contract).
+  // 1), or the Codex folder of a 0.7 managed prompt, which adoption reads as a skill and does not convert. Taking it over
+  // writes nothing, so a forged 0.7 marker gains nothing (review item K2 concerns writes). One whose files differ is
+  // refused, naming each differing file. A folder that a 0.7 managed copy holds is replaced only when sources.json
+  // records that the skill was adopted from that copy, and the folder still holds exactly it: its files are then
+  // replaced, with their originals saved, so removal restores the 0.7 copy (step 3 contract). Any other 0.7 copy whose
+  // content would change keeps refusing: the 0.7 sync owns it.
   const occupied: string[] = [], managed: string[] = [], legacy: string[] = [];
   const folders = new Set([...targets.keys()].filter(p => p.startsWith('.claude/skills/') || p.startsWith('.agents/skills/')).map(p => p.split('/').slice(0, 3).join('/')));
   for (const folder of [...folders].sort(byBytes)) {
     if ([...owned.keys()].some(p => p.startsWith(folder + '/'))) continue;
     if (checkAncestors(projectDir, folder + '/x').length) continue;
     const holder = managedHolder(projectDir, folder);
-    if (holder === null) {
-      const held = sameFolder(projectDir, folder, targets);
-      if (!held.same) occupied.push(...(held.differ ?? [folder]));
-      continue;
+    if (holder !== null) {
+      const name = folder.split('/')[2]!;
+      const record = def.adopted.find(a => a.part === 'skills' && a.id === name);
+      const held = record ? folderContent(projectDir, folder) : null;
+      // Review item K2: a cloned repository can forge the marker and the record, so the real canonical copy is read too.
+      const canonical = record ? canonicalHash(projectDir, record) : null;
+      if (record && held && canonical !== null && held.sha256 === record.adoptedFrom.sha256 && canonical === record.adoptedFrom.sha256
+        && held.files.every(f => targets.has(`${folder}/${f}`))) { legacy.push(folder + '/'); continue; }
     }
-    const name = folder.split('/')[2]!;
-    const record = def.adopted.find(a => a.part === 'skills' && a.id === name);
-    const held = record ? folderContent(projectDir, folder) : null;
-    // Review item K2: a cloned repository can forge the marker and the record, so the real canonical copy is read too.
-    const canonical = record ? canonicalHash(projectDir, record) : null;
-    if (record && held && canonical !== null && held.sha256 === record.adoptedFrom.sha256 && canonical === record.adoptedFrom.sha256
-      && held.files.every(f => targets.has(`${folder}/${f}`))) { legacy.push(folder + '/'); continue; }
-    managed.push(`${folder} (0.7 item ${holder})`);
+    const held = sameFolder(projectDir, folder, targets);
+    if (held.same) continue;
+    if (holder === null) occupied.push(...(held.differ ?? [folder]));
+    else managed.push(`${folder} (0.7 item ${holder})`);
   }
   if (managed.length) refuse('PORTABLE_MANAGED_COPY', managed);
   if (occupied.length) refuse('PORTABLE_PATH_OCCUPIED', occupied);

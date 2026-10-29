@@ -641,7 +641,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   PORTABLE_INSTRUCTIONS_TOO_LARGE: { sentence: 'AGENTS.md passes 32 KiB, where Codex stops loading instructions.', next: 'Shorten .bowerloom/instructions/AGENTS.md, then run the command again.' },
   PORTABLE_ENGINE_NOT_LISTED: { sentence: 'You named an engine that harness.json does not list.', next: 'Pass --engine with an engine that harness.json lists.' },
   PORTABLE_MERGE_NOT_BUILT: { sentence: 'Install never edits the harness, and Merge changes the instructions in it.', next: 'bowerloom harness merge, then bowerloom harness install --reconcile accept-agents' },
-  PORTABLE_MANAGED_COPY: { sentence: 'A 0.7 skills sync manages that skill copy, so install cannot write it.', next: 'bowerloom harness adopt' },
+  PORTABLE_MANAGED_COPY: { sentence: 'A 0.7 sync manages that copy, and install would change its content, so the 0.7 sync owns it.', next: 'For a skill, run bowerloom harness adopt. For a prompt, keep the engine copy as it is, or remove the 0.7 prompt with the 0.7 command, then run the command again.' },
   PORTABLE_CASE_CLASH: { sentence: 'Two paths differ only in letter case, and many file systems treat them as one.', next: 'Rename one of the two paths the message lists.' },
   PORTABLE_FIDELITY: { sentence: 'An engine would carry an entry more weakly than the harness says, and nothing records that you accept the loss.', next: 'For each line the message lists that you accept, run bowerloom harness accept <line-key>, then plan again.' },
   PORTABLE_PATH_OCCUPIED: { sentence: 'A target holds files that Bowerloom did not write, and Bowerloom never overwrites them.', next: 'Move those files aside, then run the command again.' },
