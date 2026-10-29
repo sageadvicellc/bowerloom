@@ -29,7 +29,7 @@ function world(t: TestContext): W {
   const home = join(base, 'home'); mkdirSync(home, { mode: 0o700 });
   const dir = join(home, 'Projects', 'e2e'); mkdirSync(dir, { recursive: true, mode: 0o700 });
   for (const [rel, text] of Object.entries(FIXTURE.files)) { mkdirSync(dirname(join(dir, rel)), { recursive: true }); writeFileSync(join(dir, rel), text, { mode: 0o644 }); }
-  const w = { base, home, dir, state: join(base, 'state'), env: { HOME: home, XDG_STATE_HOME: join(base, 'state') } };
+  const w = { base, home, dir, state: join(base, 'state'), env: { HOME: home, XDG_STATE_HOME: join(base, 'state'), BOWERLOOM_PREVIEW_ENGINES: '1' } };
   t.after(() => removeAll(base));
   return w;
 }
@@ -357,7 +357,7 @@ test('item 13: a printed install plan leaves out stateDir and keeps projectDir, 
   const dirs = dirsOf(w);
   const drafts = JSON.parse(readFileSync(dirs.approvals, 'utf8')) as { drafts: unknown[] };
   const full = planPortable({
-    projectDir: w.dir, definitionFolder: join(w.dir, '.bowerloom'), stateDir: dirs.portable, approvals: drafts.drafts as never,
+    projectDir: w.dir, definitionFolder: join(w.dir, '.bowerloom'), stateDir: dirs.portable, approvals: drafts.drafts as never, previewEngines: true,
   });
   assert.equal(full.revision, printed.revision, 'the revision is computed over the full plan, as before');
   const human = bl(w, ['status', '--json']);

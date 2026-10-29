@@ -1,5 +1,5 @@
 import { canonicalJson, DefinitionError, oneLine, shellArg } from '../../../packages/contracts/src/index.js';
-import { ENGINE_IDS } from '../../../packages/skill-manifest/src/engine.js';
+import { ENGINE_IDS, ENGINE_NAMES, isEngine } from '../../../packages/skill-manifest/src/engine.js';
 
 /**
  * The first screen a person sees, and the plain-words refusals. Output only: nothing here reads or writes a file.
@@ -504,6 +504,8 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   MANIFEST_DUPLICATE_ID: { sentence: 'Each skill needs its own id.', next: 'git diff .bowerloom/skills.json' },
   // Step 0 of 0.8: an engine the code knows by name, but cannot write files for yet.
   ENGINE_NO_WRITER: { sentence: 'Bowerloom writes files for Claude Code and Codex only, for now.', next: 'name claude-code or codex' },
+  // Beta.1: OpenCode, Pi, and DeepSeek Harness install only with BOWERLOOM_PREVIEW_ENGINES=1. The words that name the engine are in wordsFor.
+  ENGINE_PREVIEW: { sentence: 'This engine is a preview engine in this beta.', next: 'Install for claude-code or codex, or set BOWERLOOM_PREVIEW_ENGINES=1 to try it.' },
   MANIFEST_LIMIT: { sentence: 'This beta keeps skills.json small: 128 skills and 1 MiB at most.', next: 'bowerloom skills check' },
   SKILLS_ADD_SPEC_INVALID: { sentence: 'The source names a package or repository, an exact pin, and the skill folder.', next: 'bowerloom help skills' },
   SKILLS_ADD_EXISTS: { sentence: 'skills.json already holds a skill with this id or this source.', next: 'To move that id to another version or commit, add --replace: bowerloom skills add <source> --id <id> --replace.' },
@@ -708,6 +710,7 @@ function wordsFor(code: string, detail: RefusalDetail): Words {
     return { sentence: 'An interrupted write left a second link to skills.json, the temporary file .bowerloom/.skills.json.*.tmp. Check that both name the same file, then remove the temporary one.', next: 'ls -li .bowerloom/skills.json .bowerloom/.skills.json.*.tmp' };
   }
   if (code === 'ENGINE_NO_WRITER' && typeof detail.engine === 'string' && ENGINE_IDS.includes(detail.engine as never)) return { sentence: `Bowerloom has no writer for ${detail.engine} yet. It writes files for Claude Code and Codex only, for now.`, next: 'name claude-code or codex' };
+  if (code === 'ENGINE_PREVIEW' && typeof detail.engine === 'string' && isEngine(detail.engine)) return { sentence: `${ENGINE_NAMES[detail.engine]} is a preview engine in this beta.`, next: REFUSALS.ENGINE_PREVIEW!.next };
   if ((code === 'PROJECT_LOCK_SLOT_COLLISION' || code === 'MANAGED_SKILL_LOCK_SLOT_COLLISION') && validPort(detail.port)) {
     return { sentence: `The lock uses local port ${detail.port}. Another program listens on it, or another Bowerloom command is too busy to answer.`, next: `lsof -nP -iTCP:${detail.port} -sTCP:LISTEN` };
   }

@@ -30,6 +30,8 @@ One run reads at most what the loader takes: 4,096 files, 32 MiB, 4,096 entries 
 
 The engines are the input's, else the engines whose files the project holds, else the 0.7 default. `AGENTS.md` and `.agents/skills` name no engine: several engines read them.
 
+Adoption reads the files of all five engines. Beta.1 supports Claude Code and Codex; OpenCode, Pi, and DeepSeek Harness are preview engines, and only install to them waits for `BOWERLOOM_PREVIEW_ENGINES=1`. A harness may still list them.
+
 The readers follow the forms of Claude Code 2.1.310, Codex 0.157.0, OpenCode 1.18.30, Pi 1.4.0, and DeepSeek Harness 0.2.2-alpha.2 (`READER_VERSIONS`). Each place records the version its form belongs to.
 
 - OpenCode: only the 1.x shape is read. A 2.x shape, or a recorded version that is not 1.x, refuses with `ADOPTION_OPENCODE_VERSION`.

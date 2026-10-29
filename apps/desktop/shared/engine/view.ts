@@ -6,7 +6,8 @@
 import type { AdoptionPlan, AdoptionRecoveryPlan, Place } from '../../../../packages/adoption/src/index.js';
 import type { InstructionMergePlan, InstructionMergeRecoveryPlan } from '../../../../packages/adoption/src/merge.js';
 import type { DriftLine, PortablePlan, PortableRecoveryPlan, PortableRemovalPlan } from '../../../../packages/project-sync/src/index.js';
-import { ENGINE_IDS, RESULTS, isEngineId } from './types.js';
+import { ENGINE_IDS, isEngineId } from './engines.js';
+import { RESULTS } from './types.js';
 import type {
   AdoptApprovalView, AdoptPart, AdoptRecoveryView, AdoptSecretView, AdoptView, ApproveLineView, ChangeView, EngineId, EngineLossView, LossView, MergeView, PlaceView,
   ProjectView, RecoveryView, RemovalView, ResultWord,
@@ -159,6 +160,7 @@ export function projectView(plan: PortablePlan, folder: string, driftLines: read
     ignored: plan.ignored.map(i => ({ option: i.option, reason: s(i.reason) })),
     pendingTrust: plan.pendingTrust.map(s),
     filterLeaks: plan.filterLeaks.map(f => ({ skill: s(f.skill), path: s(f.path), engines: engines(f.engines) })),
+    skippedPreview: engines(plan.skippedPreview), keptPreview: engines(plan.keptPreview.map(e => e.id)), previewNotice: plan.previewNotice === null ? null : s(plan.previewNotice),
     noop: plan.noop,
     revision: plan.revision,
   };

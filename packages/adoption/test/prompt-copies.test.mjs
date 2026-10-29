@@ -29,7 +29,7 @@ async function adopted(t) {
   const planned = planAdoption(adoption);
   assert.equal(planned.ready, true, JSON.stringify(planned.problems ?? planned.conflicts));
   await applyAdoption(adoption, planned.revision, planned.approvalsRequired);
-  const portable = engines => ({ projectDir: f.projectDir, definitionFolder: path.join(f.projectDir, '.bowerloom'), stateDir: path.join(f.base, 'state', 'portable'), engines });
+  const portable = engines => ({ projectDir: f.projectDir, definitionFolder: path.join(f.projectDir, '.bowerloom'), stateDir: path.join(f.base, 'state', 'portable'), engines, previewEngines: true });
   return { f, planned, portable };
 }
 const under = (snap, prefix) => Object.fromEntries(Object.entries(snap).filter(([k]) => k === prefix || k.startsWith(prefix + '/')));
@@ -106,7 +106,7 @@ test('a forged marker and catalog over identical bytes are taken over without a 
   const adoption = { projectDir: f.projectDir, stateDir: path.join(f.base, 'state', 'adoption'), engines: [{ id: 'codex' }] };
   const planned = planAdoption(adoption);
   return applyAdoption(adoption, planned.revision, planned.approvalsRequired).then(async () => {
-    const input = { projectDir: f.projectDir, definitionFolder: path.join(f.projectDir, '.bowerloom'), stateDir: path.join(f.base, 'state', 'portable'), engines: [{ id: 'codex' }] };
+    const input = { projectDir: f.projectDir, definitionFolder: path.join(f.projectDir, '.bowerloom'), stateDir: path.join(f.base, 'state', 'portable'), engines: [{ id: 'codex' }], previewEngines: true };
     const before = snapshot(f.projectDir);
     const plan = planPortable(input);
     assert.deepEqual(plan.changes.filter(c => c.path.startsWith('.agents/skills/prompt-x/')).map(c => c.action), ['take-over']);

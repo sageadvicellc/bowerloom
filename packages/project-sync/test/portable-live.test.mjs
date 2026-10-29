@@ -38,7 +38,8 @@ async function projected(t, engine, skills = { 'live-check': `---\nname: live-ch
   };
   for (const [rel, text] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(def, rel)), { recursive: true }); fs.writeFileSync(path.join(def, rel), text); }
   spawnSync('git', ['init', '-q'], { cwd: dir });
-  const input = { projectDir: dir, definitionFolder: def, stateDir: path.join(base, 'state') };
+  // A live check may install to a preview engine (OpenCode, Pi, DeepSeek Harness), so the switch is on here.
+  const input = { projectDir: dir, definitionFolder: def, stateDir: path.join(base, 'state'), previewEngines: true };
   const plan = planPortable(input);
   await applyPortable(input, plan.revision);
   return { dir, plan };
@@ -71,7 +72,7 @@ test('check 10 (live): a Pi project skill is reported pending trust until a pers
   });
   // Saving trust is a person's step in Pi. Once the tester has saved it, set BOWERLOOM_LIVE_PI_TRUSTED=1 and run again.
   if (process.env.BOWERLOOM_LIVE_PI_TRUSTED === '1') {
-    assert.deepEqual(planPortable({ projectDir: dir, definitionFolder: path.join(dir, '.bowerloom'), stateDir: plan.stateDir, piTrustSaved: true }).pendingTrust, []);
+    assert.deepEqual(planPortable({ projectDir: dir, definitionFolder: path.join(dir, '.bowerloom'), stateDir: plan.stateDir, piTrustSaved: true, previewEngines: true }).pendingTrust, []);
   }
 });
 

@@ -265,6 +265,7 @@ function projectFixture(input: ProjectInput, projected: boolean, written: string
     pendingTrust: [],
     filterLeaks: [],
     takenOver: [],
+    skippedPreview: [], keptPreview: [], previewNotice: null,
     noop,
     revision,
   };
@@ -287,10 +288,10 @@ export const SAMPLE_CLAUDE = '# Weekly report\n\nDraft the report on Friday. Kee
 const choicesOf = (c: readonly string[] | RecoveryChoices): RecoveryChoices => (Array.isArray(c) ? { keep: [...c as readonly string[]], restoreMode: [], recordMode: [] } : c as RecoveryChoices);
 
 /** The sample bridge: the same calls as the real one, on three made-up folders in memory. Nothing is read or written. */
-export function createSampleEngine(): EngineBridge {
+export function createSampleEngine({ previewEngines = false }: { previewEngines?: boolean } = {}): EngineBridge {
   const folders = new Map<string, SampleFolder>();
   const add = (id: string, name: string, extra: Partial<FolderInfo>): void => {
-    folders.set(id, { info: { id, label: `~/Projects/${name}`, name, hasDefinition: false, engines: [], problem: null, projected: false, unfinished: { projection: false, adoption: false }, ...extra }, adopted: false, projected: false, written: null, stopped: extra.unfinished?.projection === true, merged: false });
+    folders.set(id, { info: { id, label: `~/Projects/${name}`, name, hasDefinition: false, engines: [], previewEngines, installedEngines: [], problem: null, projected: false, unfinished: { projection: false, adoption: false }, ...extra }, adopted: false, projected: false, written: null, stopped: extra.unfinished?.projection === true, merged: false });
   };
   add(SAMPLE_FOLDERS.adopt, 'inbox-tools', {});
   add(SAMPLE_FOLDERS.defined, 'weekly-report', { hasDefinition: true, engines: ['claude-code', 'codex', 'opencode'] });

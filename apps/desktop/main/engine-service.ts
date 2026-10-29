@@ -36,7 +36,9 @@ import type { Definition, FidelityApproval } from '../../../packages/harness-def
 import { checkProjectPath } from '../../../packages/project-context/src/index.js';
 import { labelOf, makeScrub, visible } from '../shared/engine/scrub.js';
 import type { Scrub } from '../shared/engine/scrub.js';
-import { ENGINE_IDS, EVERY_ENGINE_PARTS, RECONCILE, isEngineId } from '../shared/engine/types.js';
+import { ENGINE_IDS, isEngineId, isPreviewEngine } from '../shared/engine/engines.js';
+import { EnginePreviewRefusal } from '../../../packages/skill-manifest/src/engine.js';
+import { EVERY_ENGINE_PARTS, RECONCILE } from '../shared/engine/types.js';
 import type {
   AdoptApproval, AdoptChoices, AdoptRecovered, AdoptRecoveryView, AdoptView, AdoptWritten, Answer, ApproveLineView, EngineId, EveryEnginePart, FolderInfo, MergeView, MergeWritten,
   ProjectAnswer, ProjectInput, ProjectWritten, Recovered, RecoveryChoices, RecoveryView, Refusal, RemovalView, Removed,
@@ -57,6 +59,11 @@ export interface EngineServiceDeps {
   /** Who approves a line, as the approval record names the person. */
   readonly who: string;
   readonly now?: () => Date;
+  /**
+   * True when the app may install to preview engines (OpenCode, Pi, DeepSeek Harness). Main sets it from BOWERLOOM_PREVIEW_ENGINES=1 in its own
+   * environment (main/engine-state.ts). Default: false. It reaches the window as one answer per folder, never as the environment.
+   */
+  readonly previewEngines?: boolean;
 }
 
 /** A call the service refuses before it reaches a package: the window gets only the short code. */
@@ -173,6 +180,7 @@ export interface EngineService {
 
 export function createEngineService(deps: EngineServiceDeps): EngineService {
   const now = deps.now ?? (() => new Date());
+  const previewEngines = deps.previewEngines ?? false;
   const realHome = (() => { try { return realpathSync(deps.home); } catch { return deps.home; } })();
   const homes = [...new Set([deps.home, realHome])];
   const byId = new Map<string, Folder>();
@@ -259,11 +267,12 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     }
     const io = { projectDir: f.dir, stateDir: f.portableState };
     let projected = false, projection = false, adoption = false;
-    try { projected = readPortableReceipt(io) !== null; } catch { projected = false; }
+    let installedEngines: EngineId[] = [];
+    try { const receipt = readPortableReceipt(io); projected = receipt !== null; installedEngines = receipt === null ? [] : ENGINE_IDS.filter(e => receipt.engines.some(x => x.id === e)); } catch { projected = false; installedEngines = []; }
     try { projection = pendingExists(f.portableState); } catch { projection = false; }
     try { adoption = readJournal(f.adoptState, f.dir) !== null; } catch { adoption = false; }
     adoption ||= mergeIsStopped(f);
-    return { id: f.id, label: f.label, name: f.scrub(basename(f.dir)), hasDefinition, engines, problem, projected, unfinished: { projection, adoption } };
+    return { id: f.id, label: f.label, name: f.scrub(basename(f.dir)), hasDefinition, engines, previewEngines, installedEngines, problem, projected, unfinished: { projection, adoption } };
   }
 
   const adoptInput = (f: Folder, picks: AdoptChoices['picks'], acknowledged: readonly string[], everyEngine: readonly EveryEnginePart[]): AdoptionInput => ({
@@ -358,9 +367,14 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     return `approval drafts not cleared (${typeof code === 'string' && /^[A-Z][A-Za-z0-9_]{2,63}$/.test(code) ? code : 'FAILED'}); run bowerloom harness status`;
   };
 
+  /** Beta.1: a plan or a write that names a preview engine is refused up front when the app may not install to them. The package refuses it too. */
+  const refusePreview = (input: ProjectInput): void => {
+    const named = previewEngines ? undefined : ENGINE_IDS.find(e => isPreviewEngine(e) && input.engines.includes(e));
+    if (named !== undefined) throw new EnginePreviewRefusal(named);
+  };
   const portableInput = (f: Folder, input: ProjectInput, approvals: readonly FidelityApproval[]): PortableInput => ({
     projectDir: f.dir, definitionFolder: join(f.dir, '.bowerloom'), stateDir: f.portableState,
-    engines: input.engines.map(id => ({ id })), reconcile: input.reconcile, approvals,
+    engines: input.engines.map(id => ({ id })), reconcile: input.reconcile, approvals, previewEngines,
     ...(input.writeClaudeMd ? { writeClaudeMd: true } : {}),
   });
 
@@ -478,7 +492,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     }),
     planProjection: (id, input) => serial(async () => {
       const f = folderOf(id), i = checkProjectInput(input);
-      const a = await planned(f, 'projection', () => planProjectionNow(f, i));
+      const a = await planned(f, 'projection', () => { refusePreview(i); return planProjectionNow(f, i); });
       if (a.ok || a.refusal.code !== 'PORTABLE_DRIFT') return a;
       // A file Bowerloom wrote changed since: the window shows each one with why, and offers to keep the person's version.
       let drift: ReturnType<typeof portableDrift> = [];
@@ -487,7 +501,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     }),
     runProjection: (id, revision, input) => serial(async () => {
       const f = folderOf(id), rev = revisionArg(revision), i = checkProjectInput(input);
-      const stopped = await answer(f, () => whileStopped(f));
+      const stopped = await answer(f, () => { whileStopped(f); refusePreview(i); });
       if (!stopped.ok) return stopped;
       return written(f, 'projection', rev, i, async () => {
         // Main's dialog said yes: only now do the lines the person ticked become drafts on disk.

@@ -41,7 +41,8 @@ export function project(t, { engines = FIVE, files = {}, parts = {}, skills = {}
     const at = path.join(def, rel); fs.mkdirSync(path.dirname(at), { recursive: true }); fs.writeFileSync(at, text, { mode: 0o644 });
   }
   const stateDir = path.join(base, 'state', 'portable');
-  const input = (extra = {}) => ({ projectDir: dir, definitionFolder: def, stateDir, ...extra });
+  // Beta.1: OpenCode, Pi, and DeepSeek Harness are preview engines. These tests install to them, so the switch is on unless a test turns it off.
+  const input = (extra = {}) => ({ projectDir: dir, definitionFolder: def, stateDir, previewEngines: true, ...extra });
   return { base, dir, def, stateDir, input };
 }
 

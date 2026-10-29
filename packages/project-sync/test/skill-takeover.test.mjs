@@ -59,7 +59,7 @@ async function adoptInPlace(t, files = FILES, engines = ENGINES, edit = () => {}
   assert.equal(plan.ready, true, JSON.stringify({ conflicts: plan.conflicts, problems: plan.problems }));
   await applyAdoption(input, plan.revision, plan.approvalsRequired);
   edit(dir);
-  return { base, dir, def: path.join(dir, '.bowerloom'), input: { projectDir: dir, definitionFolder: path.join(dir, '.bowerloom'), stateDir: path.join(base, 'state', 'portable'), engines } };
+  return { base, dir, def: path.join(dir, '.bowerloom'), input: { projectDir: dir, definitionFolder: path.join(dir, '.bowerloom'), stateDir: path.join(base, 'state', 'portable'), engines, previewEngines: true } };
 }
 const actions = plan => plan.changes.map(c => [c.path, c.action]);
 const occupied = input => { try { planPortable(input); } catch (e) { assert.equal(e.code, 'PORTABLE_PATH_OCCUPIED', e.message); return e.paths; } assert.fail('expected PORTABLE_PATH_OCCUPIED'); };

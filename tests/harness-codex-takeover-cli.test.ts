@@ -43,7 +43,7 @@ function world(t: TestContext, files: Record<string, string> = FILES): W {
   const home = join(base, 'home'); mkdirSync(home, { mode: 0o700 });
   const dir = join(home, 'Projects', 'e2e'); mkdirSync(dir, { recursive: true, mode: 0o700 });
   for (const [rel, text] of Object.entries(files)) { mkdirSync(dirname(join(dir, rel)), { recursive: true }); writeFileSync(join(dir, rel), text, { mode: 0o644 }); }
-  return { base, dir, env: { HOME: home, XDG_STATE_HOME: join(base, 'state') } };
+  return { base, dir, env: { HOME: home, XDG_STATE_HOME: join(base, 'state'), BOWERLOOM_PREVIEW_ENGINES: '1' } };
 }
 const bl = (w: W, args: string[]) => run(w.dir, ['harness', ...args], w.env);
 const json = <T>(text: string): T => JSON.parse(text) as T;
