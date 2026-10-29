@@ -85,6 +85,11 @@ export function writeJournal(stateDir: string, journal: Journal): void {
   writeAbs(join(stateDir, JOURNAL), Buffer.from(JSON.stringify(journal, null, 2) + '\n'), 0o600);
 }
 
+/** True when an adoption stopped part way: its journal file is in the state folder, whether it can be read or not. */
+export function adoptionStopped(stateDir: string): boolean {
+  try { fs.lstatSync(join(stateDir, JOURNAL)); return true; } catch (e) { return (e as NodeJS.ErrnoException).code !== 'ENOENT'; }
+}
+
 export function removeJournal(stateDir: string): void {
   try { fs.unlinkSync(join(stateDir, JOURNAL)); } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; }
 }

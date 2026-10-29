@@ -29,7 +29,7 @@ import {
 import type { FileState } from '../../project-sync/src/portable-files.js';
 import { stateExists } from '../../project-sync/src/portable-state.js';
 import { INSTRUCTIONS_LIMIT, atImports, readClaude } from '../../project-sync/src/portable.js';
-import { checkState, readJournal } from './journal.js';
+import { adoptionStopped, checkState, readJournal } from './journal.js';
 import { AdoptionRefusal, refuse } from './refusal.js';
 
 export const MERGE_HEADING = 'From CLAUDE.md' as const;
@@ -43,9 +43,18 @@ export function mergeStopped(stateDir: string): boolean {
   try { fs.lstatSync(join(stateDir, MERGE_JOURNAL)); return true; } catch (e) { return (e as NodeJS.ErrnoException).code !== 'ENOENT'; }
 }
 const MERGE_STOPPED_WORDS = 'A merge of CLAUDE.md stopped part way, so install, remove, and accept wait until it is recovered. Run bowerloom harness recover --adoption. Nothing was changed.';
+const ADOPTION_STOPPED_WORDS = 'An adoption stopped part way, so install, remove, and accept wait until it is recovered. Run bowerloom harness recover --adoption. Nothing was changed.';
 /** Refuses ADOPTION_RECOVERY_REQUIRED while a merge is stopped. The install, the removal, and an accepted line must not run on a half-merged definition. */
 export function refuseWhileMergeStopped(stateDir: string): void {
   if (mergeStopped(stateDir)) throw new DefinitionError('ADOPTION_RECOVERY_REQUIRED', MERGE_STOPPED_WORDS);
+}
+/**
+ * Refuses ADOPTION_RECOVERY_REQUIRED while an adoption or a merge is stopped (journal files in the adoption state
+ * folder). The install, the removal, and an accepted line must not run on a half-written or half-merged definition.
+ */
+export function refuseWhileStopped(stateDir: string): void {
+  if (adoptionStopped(stateDir)) throw new DefinitionError('ADOPTION_RECOVERY_REQUIRED', ADOPTION_STOPPED_WORDS);
+  refuseWhileMergeStopped(stateDir);
 }
 
 const INSTRUCTIONS = '.bowerloom/instructions/AGENTS.md';

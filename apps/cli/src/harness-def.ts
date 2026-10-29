@@ -25,7 +25,7 @@ import type { AdoptionChoice, AdoptionPlan, EveryEnginePart } from '../../../pac
 import type { AdoptionRecoveryPlan } from '../../../packages/adoption/src/journal.js';
 import { JOURNAL, readJournal } from '../../../packages/adoption/src/journal.js';
 import {
-  applyInstructionMerge, applyInstructionMergeRecovery, mergeStopped, planInstructionMerge, planInstructionMergeRecovery, refuseWhileMergeStopped,
+  applyInstructionMerge, applyInstructionMergeRecovery, mergeStopped, planInstructionMerge, planInstructionMergeRecovery, refuseWhileStopped,
 } from '../../../packages/adoption/src/merge.js';
 import type { InstructionMergePlan, InstructionMergeRecoveryPlan } from '../../../packages/adoption/src/merge.js';
 import {
@@ -430,7 +430,7 @@ const printable = <P>(plan: P): P => {
 
 async function install(c: Ctx, f: Flags, approval: { approve?: string; json: boolean }, io: ApprovalIo, write: (text: string) => void): Promise<number> {
   installInput(c, f, []);
-  refuseWhileMergeStopped(c.dirs.adoption);
+  refuseWhileStopped(c.dirs.adoption);
   let first: PortablePlan;
   try { first = planPortable(installInput(c, f, approvalsNow(c))); } catch (error) { if (fidelityOf(error) !== null) return refuseFidelity(c, error, approval.json, write); throw error; }
   // Spec L check 10: a plan that would write nothing is a no-op, with no approval asked.
@@ -455,7 +455,7 @@ async function accept(c: Ctx, f: Flags, json: boolean, write: (text: string) => 
   const key = f.positional[0]!;
   const match = /^(.+)@([a-z-]+):([a-f0-9]{12})$/.exec(key);
   if (match === null || !isEngineId(match[2])) usage('accept takes the key of a refused line, as harness install prints it: <part>/<entry>[.<field>]@<engine>:<hash12>.');
-  refuseWhileMergeStopped(c.dirs.adoption);
+  refuseWhileStopped(c.dirs.adoption);
   const def = loaded(c);
   // The lines of the engine the key names, with no approval, so a line approved before is found too. Another engine's refusal, such as a
   // version Bowerloom does not write for, must not hide the line.
@@ -512,7 +512,7 @@ async function drift(c: Ctx, check: boolean, json: boolean, write: (text: string
 }
 
 async function remove(c: Ctx, approval: { approve?: string; json: boolean }, io: ApprovalIo, write: (text: string) => void): Promise<number> {
-  refuseWhileMergeStopped(c.dirs.adoption);
+  refuseWhileStopped(c.dirs.adoption);
   const change: PlannedChange<PortableRemovalPlan> = {
     async plan() { return planPortableRemoval(portableIo(c)); }, revision: p => p.revision, review: renderRemoval,
     async apply(revision) {

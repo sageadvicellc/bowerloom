@@ -163,6 +163,32 @@ test('item 4: a merge that stopped part way blocks install, remove, and accept w
   assert.equal(bl(w, ['remove', '--json']).status, 3);
 });
 
+/** A journal as a stopped adoption leaves it: the shape `applyAdoption` writes before its first file. */
+const STOPPED_ADOPTION = (projectDir: string): string => `${JSON.stringify({ format: 'bowerloom/adoption-pending/v1beta1', projectDir, planRevision: 'a'.repeat(64), files: [], dirs: [] }, null, 2)}\n`;
+
+test('a stopped adoption blocks install, remove, and accept with ADOPTION_RECOVERY_REQUIRED, as a stopped merge does; status and recovery still answer', t => {
+  const w = world(t);
+  adopt(w);
+  const { refused } = install(w, ['--reconcile', 'keep-both']);
+  const journal = join(dirsOf(w).adoption, 'adoption-pending.json');
+  mkdirSync(dirsOf(w).adoption, { recursive: true, mode: 0o700 });
+  for (const text of [STOPPED_ADOPTION(w.dir), '{ not json']) {
+    writeFileSync(journal, text, { mode: 0o600 });
+    for (const args of [['install', '--json'], ['remove', '--json'], ['accept', refused[0]!.key, '--json']]) {
+      const r = bl(w, args);
+      assert.equal(r.status, 1, `${args[0]}: ${r.stdout}`); assert.equal(errorCode(r.stderr), 'ADOPTION_RECOVERY_REQUIRED', args[0]);
+      assert.match(errorMessage(r.stderr), /adoption stopped part way/, args[0]);
+      assert.match(errorMessage(r.stderr), /bowerloom harness recover --adoption/, args[0]);
+    }
+    assert.equal(bl(w, ['status']).status, 0);
+  }
+  writeFileSync(journal, STOPPED_ADOPTION(w.dir), { mode: 0o600 });
+  const recovery = json<{ revision: string }>(bl(w, ['recover', '--adoption', '--json']).stdout);
+  assert.equal(bl(w, ['recover', '--adoption', '--approve', recovery.revision]).status, 0);
+  assert.equal(existsSync(journal), false);
+  assert.equal(bl(w, ['remove', '--json']).status, 3, 'after the recovery the removal plans again');
+});
+
 // ---- items 5 and 6 ----------------------------------------------------------------------------------------------------------
 
 test('items 5 and 6: removal keeps a taken-over file (JSON kept, human keep) and the human result lists every left-behind folder', t => {

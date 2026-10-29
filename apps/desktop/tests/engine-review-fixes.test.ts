@@ -3,7 +3,7 @@
 // warning the window shows. Synthetic folders only.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, mkdirSync, readFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { applyInstructionMergeWith, planInstructionMerge } from '../../../packages/adoption/src/merge.js';
 import { readPortableReceipt } from '../../../packages/project-sync/src/index.js';
@@ -162,4 +162,30 @@ test('item 4: a merge that stopped part way blocks the install and the removal, 
   const removed = await service.runRemoval(id, 'b'.repeat(64));
   assert.ok(!removed.ok); assert.equal(removed.refusal.code, 'ADOPTION_RECOVERY_REQUIRED');
   assert.equal(readFileSync(join(dir, 'CLAUDE.md'), 'utf8'), '# Demo for Claude\n\nUse pnpm.\n', 'CLAUDE.md was never touched');
+});
+
+test('a stopped adoption blocks the install and the removal, in the plan and in the write, as a stopped merge does', async t => {
+  const s = setup(t), dir = definedFolder(s.home), before = filesOf(dir);
+  const { service, id, dirs } = await chosen(s, dir);
+  const input = await ticked(service, id, { ...INPUT, reconcile: 'keep-both' });
+  const plan = planOf(value(await service.planProjection(id, input)));
+  // The journal a stopped adoption leaves in the adoption state folder: a readable one, then one that cannot be read.
+  mkdirSync(dirs.adoption, { recursive: true, mode: 0o700 });
+  const journal = join(dirs.adoption, 'adoption-pending.json');
+  for (const text of [`${JSON.stringify({ format: 'bowerloom/adoption-pending/v1beta1', projectDir: dir, planRevision: 'a'.repeat(64), files: [], dirs: [] }, null, 2)}\n`, '{ not json']) {
+    writeFileSync(journal, text, { mode: 0o600 });
+    const asked = s.asked.length;
+    const run = await service.runProjection(id, plan.revision, input);
+    assert.ok(!run.ok); assert.equal(run.refusal.code, 'ADOPTION_RECOVERY_REQUIRED');
+    assert.match(run.refusal.message, /adoption stopped part way/);
+    assert.match(run.refusal.message, /bowerloom harness recover --adoption/);
+    assert.equal(s.asked.length, asked, 'main did not even ask');
+    const again = await service.planProjection(id, input);
+    assert.ok(!again.ok); assert.equal(again.refusal.code, 'ADOPTION_RECOVERY_REQUIRED');
+    const removal = await service.planRemoval(id);
+    assert.ok(!removal.ok); assert.equal(removal.refusal.code, 'ADOPTION_RECOVERY_REQUIRED');
+    const removed = await service.runRemoval(id, 'b'.repeat(64));
+    assert.ok(!removed.ok); assert.equal(removed.refusal.code, 'ADOPTION_RECOVERY_REQUIRED');
+  }
+  assert.deepEqual(filesOf(dir), before, 'nothing in the folder changed');
 });

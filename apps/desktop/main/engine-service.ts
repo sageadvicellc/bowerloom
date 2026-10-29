@@ -17,7 +17,7 @@ import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, isAbsolute, join } from 'node:path';
 import { applyAdoption, applyAdoptionRecovery, planAdoptionRecovery } from '../../../packages/adoption/src/index.js';
 import {
-  applyInstructionMerge, applyInstructionMergeRecovery, mergeStopped, planInstructionMerge, planInstructionMergeRecovery, refuseWhileMergeStopped,
+  applyInstructionMerge, applyInstructionMergeRecovery, mergeStopped, planInstructionMerge, planInstructionMergeRecovery, refuseWhileStopped,
 } from '../../../packages/adoption/src/merge.js';
 import type { InstructionMergePlan } from '../../../packages/adoption/src/merge.js';
 import type { AdoptionInput, AdoptionPlan } from '../../../packages/adoption/src/index.js';
@@ -239,8 +239,8 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
 
   /** True when a Merge stopped part way here: its journal is in the adoption state folder (decision D4A). */
   const mergeIsStopped = (f: Folder): boolean => mergeStopped(f.adoptState);
-  /** Install, removal, and a tick wait while a Merge is stopped: they would run on a half-merged definition. */
-  const whileMergeStopped = (f: Folder): void => refuseWhileMergeStopped(f.adoptState);
+  /** Install, removal, and a tick wait while an adoption or a Merge is stopped: they would run on a half-written or half-merged definition. */
+  const whileStopped = (f: Folder): void => refuseWhileStopped(f.adoptState);
   /** Which stopped run the recovery of a stopped harness settles: an adoption first, as the packages refuse in that order, else a Merge. */
   function stoppedKind(f: Folder): 'adoption' | 'merge' {
     let adoption: boolean;
@@ -365,7 +365,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
   });
 
   function planProjectionNow(f: Folder, input: ProjectInput): { value: ProjectAnswer; revision: string; choices: unknown; ask: Ask | null } | { value: ProjectAnswer; revision: null } {
-    whileMergeStopped(f);
+    whileStopped(f);
     const { approvals, mine } = approvalsFor(f, input.approve);
     try {
       const plan = planPortable(portableInput(f, input, approvals));
@@ -487,7 +487,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     }),
     runProjection: (id, revision, input) => serial(async () => {
       const f = folderOf(id), rev = revisionArg(revision), i = checkProjectInput(input);
-      const stopped = await answer(f, () => whileMergeStopped(f));
+      const stopped = await answer(f, () => whileStopped(f));
       if (!stopped.ok) return stopped;
       return written(f, 'projection', rev, i, async () => {
         // Main's dialog said yes: only now do the lines the person ticked become drafts on disk.
@@ -512,7 +512,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     planRemoval: id => serial(async () => {
       const f = folderOf(id);
       return planned(f, 'removal', () => {
-        whileMergeStopped(f);
+        whileStopped(f);
         const plan = planPortableRemoval({ projectDir: f.dir, stateDir: f.portableState });
         const restores = plan.changes.filter(c => c.action === 'restore' && !keepsFile(c)).length, deletes = plan.changes.filter(c => c.action === 'delete').length;
         return { value: removalView(plan, f.scrub), revision: plan.revision, choices: null, ask: ASK.removal(f.label, deletes, restores, plan.revision) };
@@ -520,7 +520,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     }),
     runRemoval: (id, revision) => serial(async () => {
       const f = folderOf(id), rev = revisionArg(revision);
-      const stopped = await answer(f, () => whileMergeStopped(f));
+      const stopped = await answer(f, () => whileStopped(f));
       if (!stopped.ok) return stopped;
       return written(f, 'removal', rev, null, async () => {
         const r = await applyPortableRemoval({ projectDir: f.dir, stateDir: f.portableState }, rev);
