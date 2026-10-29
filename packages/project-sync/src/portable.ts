@@ -536,7 +536,9 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
   // Beta.1: with the switch off, what an earlier flagged install wrote for a preview engine is left alone, not deleted and not restored.
   const keptPreview: PortableEngine[] = allowPreview ? [] : (previous?.engines ?? []).filter(e => isPreviewEngine(e.id) && !engines.some(x => x.id === e.id));
   const keptIds = new Set<EngineId>(keptPreview.map(e => e.id));
-  const keptPaths = new Set([...owned.values()].filter(f => f.engines.length > 0 && f.engines.every(e => keptIds.has(e))).map(f => f.path));
+  // A path with any kept owner stays while no engine being projected targets it. Its owners narrow to the kept ones.
+  const keptPaths = new Set([...owned.values()].filter(f => f.engines.some(e => keptIds.has(e))).map(f => f.path));
+  const keptFolders = new Set<string>();
   const recordedModes = readRecordedModes(stateDir, projectDir);
 
   // Section 4.1: the system prompt. No @path import, and at most 32 KiB.
@@ -690,7 +692,8 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
     // A file only a preview engine reads, written by an earlier flagged install: the receipt keeps it as it is, whatever is on disk now.
     if (!target && mine && keptPaths.has(path)) {
       if (mine.original) blob(stateDir, mine.original, path);
-      changes.push({ path, action: 'unchanged', before: now === 'unsafe' ? null : now, after: { sha256: mine.sha256, mode: mine.mode, bytes: mine.bytes }, original: mine.original, engines: mine.engines });
+      changes.push({ path, action: 'unchanged', before: now === 'unsafe' ? null : now, after: { sha256: mine.sha256, mode: mine.mode, bytes: mine.bytes }, original: mine.original, engines: mine.engines.filter(e => keptIds.has(e)) });
+      keptFolders.add(path.split('/').slice(0, 3).join('/'));
       continue;
     }
     if (now === 'unsafe') { if (!mine) refuse('PORTABLE_PATH_UNSAFE', [path]); drifted.push(`${path} (unsafe)`); continue; }
@@ -748,6 +751,13 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
   const projected = new Set(skillsById.keys());
   const sources: ReceiptSource[] = def.sources.flatMap(s => s.items.filter(i => i.part === 'skills' && projected.has(i.id)).map(i => ({ skill: i.id, name: s.name, marketplace: s.marketplace, version: s.version, ...(s.claimed ? { claimed: true as const } : {}) })))
     .sort((a, b) => byBytes(a.skill, b.skill));
+  // The source of a skill whose folder stays for a preview engine goes forward too.
+  const folderOf = (skill: string): string => def.entries.skills.find(e => e.id === skill)?.name ?? skill;
+  for (const old of previous?.sources ?? []) {
+    if (projected.has(old.skill) || sources.some(x => x.skill === old.skill)) continue;
+    if ([...keptFolders].some(dir => dir.endsWith(`/${folderOf(old.skill)}`))) sources.push(old);
+  }
+  sources.sort((a, b) => byBytes(a.skill, b.skill));
 
   const definition = { folder: def.folder, harness: def.harness.id, revision: def.revision };
   const receiptFiles = receiptFilesOf(changes);

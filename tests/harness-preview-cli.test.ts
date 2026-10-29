@@ -266,8 +266,10 @@ test('status says whether preview engines are on, which listed engines this envi
   const p = planInstall(w, [], ON);
   assert.equal(bl(w, ['install', '--approve', p.revision], ON).status, 0);
   const held = json<{ previewEngines: { held: string[]; notInstalled: string[] } }>(bl(w, ['status', '--json']).stdout).previewEngines;
-  assert.deepEqual(held.held, ['opencode']); assert.deepEqual(held.notInstalled, ['opencode']);
-  assert.match(bl(w, ['status']).stdout, /Installed earlier and left as they are: opencode\./);
+  assert.deepEqual(held.held, ['opencode']); assert.deepEqual(held.notInstalled, [], 'a held engine is not also listed as not installed to');
+  const words = bl(w, ['status']).stdout;
+  assert.match(words, /Installed earlier and left as they are: opencode\./);
+  assert.doesNotMatch(words, /Not installed to/);
 });
 
 test('accept for a preview engine line is refused with ENGINE_PREVIEW while the switch is off', t => {

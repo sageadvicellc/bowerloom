@@ -158,7 +158,8 @@ test('left alone: an install with the switch off keeps the OpenCode files, the r
   assert.equal(second.plan.previewNotice, 'Preview engines skipped: opencode. Its files from an earlier install are left as they are. Set BOWERLOOM_PREVIEW_ENGINES=1 to install to it.');
   assert.deepEqual(second.plan.engines.map(e => e.engine), ['claude-code', 'codex']);
   for (const p of only) assert.ok(!second.plan.changes.some(c => c.path === p && c.action !== 'unchanged'), `${p} is not touched`);
-  if (!second.plan.noop) value(await off.runProjection(offId, second.plan.revision, second.ticked));
+  assert.equal(second.plan.noop, false, 'the shared files lose their OpenCode owner in the receipt, so there is a record to write');
+  value(await off.runProjection(offId, second.plan.revision, second.ticked));
   const after = filesOf(dir);
   for (const p of only) assert.equal(after[p], installed[p], `${p} is byte for byte the same`);
   assert.deepEqual((await off.folders())[0]!.installedEngines, ['claude-code', 'codex', 'opencode'], 'the receipt still lists OpenCode');

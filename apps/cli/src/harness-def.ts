@@ -336,10 +336,12 @@ async function status(c: Ctx, json: boolean, write: (text: string) => void): Pro
   };
   // Beta.1: which preview engines this environment installs to, which listed engines it will not, and which the receipt still holds.
   const previewOn = previewEnginesAllowed(c.env);
+  const held = receipt == null ? [] : ENGINE_IDS.filter(id => isPreviewEngine(id) && receipt.engines.some(e => e.id === id));
   const previewEngines = {
     on: previewOn,
-    notInstalled: previewOn ? [] : ENGINE_IDS.filter(id => isPreviewEngine(id) && engines.some(e => e.id === id)),
-    held: receipt == null ? [] : ENGINE_IDS.filter(id => isPreviewEngine(id) && receipt.engines.some(e => e.id === id)),
+    // An engine the receipt holds is named once, under `held`.
+    notInstalled: previewOn ? [] : ENGINE_IDS.filter(id => isPreviewEngine(id) && engines.some(e => e.id === id) && !held.includes(id)),
+    held,
   };
   const body = {
     format: 'bowerloom/harness-status/v1beta1', folder: c.dir, legacy: c.legacy,

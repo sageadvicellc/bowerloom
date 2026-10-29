@@ -9,7 +9,8 @@ import {
   applyPortable, applyPortableRemoval, planPortable, planPortableRemoval, portableDrift, readPortableReceipt,
 } from '../../../dist/packages/project-sync/src/index.js';
 import { EnginePreviewRefusal } from '../../../dist/packages/skill-manifest/src/engine.js';
-import { FIVE, project, snapshot } from './portable-fixture.mjs';
+import { FIVE, json, project, snapshot } from './portable-fixture.mjs';
+import { revisionOf } from '../../../dist/packages/project-sync/src/portable-files.js';
 import { approveAll, lockedProject } from './locked-fixture.mjs';
 
 const OFF = { previewEngines: false };
@@ -203,4 +204,88 @@ test('the refusal reads the same for install, accept, and a preview-only harness
   const error = new EnginePreviewRefusal('pi');
   assert.doesNotMatch(error.message, /Nothing was installed/);
   assert.match(error.message, /^pi is a preview engine in this beta\./);
+});
+
+// ---- verification round: shared paths, switching back on, older receipts, and sources -------------------------------------------
+
+test('left alone: a path owned by a kept preview engine and a supported engine that is no longer a target stays, narrowed to the kept owners', async t => {
+  const p = project(t);
+  const first = planPortable(p.input(ON));
+  await applyPortable(p.input(ON), first.revision);
+  const shared = readPortableReceipt(p.input()).files.find(f => f.path === '.agents/skills/review/SKILL.md');
+  assert.deepEqual(shared.engines, ['codex', 'opencode', 'pi', 'deepseek-harness'], 'the path is shared before');
+  const before = sha(p, shared.path);
+  const input = p.input({ ...OFF, engines: [{ id: 'claude-code' }] });
+  const plan = planPortable(input);
+  const change = plan.changes.find(c => c.path === shared.path);
+  assert.equal(change.action, 'unchanged', 'not deleted while OpenCode, Pi, and DeepSeek Harness stay in the receipt');
+  assert.deepEqual(change.engines, ['opencode', 'pi', 'deepseek-harness']);
+  await applyPortable(input, plan.revision);
+  assert.equal(sha(p, shared.path), before);
+  const after = readPortableReceipt(p.input());
+  assert.deepEqual(after.files.find(f => f.path === shared.path).engines, ['opencode', 'pi', 'deepseek-harness']);
+  assert.ok(after.engines.some(e => e.id === 'opencode'));
+});
+
+test('switching on again after an off install needs no new approval, changes no file byte, restores the engine lists, and leaves the next plan a no-op', async t => {
+  const { p, receipt, approvals } = await flagged(t);
+  const snap = snapshot(p.dir);
+  const off = p.input({ ...OFF, approvals });
+  await applyPortable(off, planPortable(off).revision);
+  const mid = readPortableReceipt(p.input());
+  assert.notDeepEqual(mid.files.map(f => f.engines), receipt.files.map(f => f.engines), 'the shared lists shrank while the switch was off');
+  const on = p.input({ ...ON, approvals: mid.approvals });
+  const plan = planPortable(on);
+  assert.deepEqual(plan.skippedPreview, []); assert.deepEqual(plan.keptPreview, []);
+  assert.ok(plan.changes.every(c => c.action === 'unchanged'), 'no file changes');
+  await applyPortable(on, plan.revision);
+  assert.deepEqual(snapshot(p.dir), snap, 'every file and mode is as it was');
+  const back = readPortableReceipt(p.input());
+  assert.deepEqual(back.files, receipt.files, 'the engine lists of the shared files are restored');
+  assert.deepEqual(back.engines, receipt.engines);
+  assert.deepEqual(back.approvals, receipt.approvals);
+  assert.equal(planPortable(p.input({ ...ON, approvals: back.approvals })).noop, true);
+});
+
+for (const form of ['v1beta3', 'v1beta2']) {
+  test(`a receipt of the older ${form} shape, planned with the switch off, leaves the preview files alone`, async t => {
+    const { p, approvals } = await flagged(t);
+    const file = path.join(p.stateDir, 'receipt.json');
+    const { revision: _r, ...body } = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const old = { ...body, format: `bowerloom/portable-projection-receipt/${form}`, sources: body.sources.map(({ claimed: _c, ...s }) => s) };
+    if (form === 'v1beta2') delete old.approvals;
+    fs.writeFileSync(file, JSON.stringify({ ...old, revision: revisionOf(old) }, null, 2) + '\n', { mode: 0o600 });
+    const receipt = readPortableReceipt(p.input());
+    assert.ok(receipt.engines.some(e => e.id === 'opencode'), 'the older receipt reads');
+    const only = receipt.files.filter(f => f.engines.length > 0 && f.engines.every(isPreview));
+    assert.ok(only.length > 0);
+    const before = snapshot(p.dir);
+    const input = p.input({ ...OFF, approvals });
+    const plan = planPortable(input);
+    assert.deepEqual(plan.keptPreview.map(e => e.id), ['opencode', 'pi', 'deepseek-harness']);
+    for (const f of only) assert.equal(plan.changes.find(c => c.path === f.path).action, 'unchanged', f.path);
+    await applyPortable(input, plan.revision);
+    assert.deepEqual(snapshot(p.dir), before, 'no file changed');
+    const after = readPortableReceipt(p.input());
+    for (const f of only) assert.deepEqual(after.files.find(x => x.path === f.path), f);
+    assert.equal(after.format, 'bowerloom/portable-projection-receipt/v1beta4');
+  });
+}
+
+test('left alone: the sources of a skill only a preview engine reads are carried forward', async t => {
+  const p = project(t, {
+    skills: { review: { engines: ['opencode'] } }, parts: { plugins: 'sources.json' },
+    files: { 'sources.json': json({ sources: [{ name: 'review-kit', marketplace: 'example-market', version: '1.2.0', claimed: true, items: [{ part: 'skills', id: 'review' }] }] }) },
+  });
+  const first = planPortable(p.input(ON));
+  await applyPortable(p.input(ON), first.revision);
+  // A claimed source: a receipt with an unclaimed one does not read back (see the report), so this test uses the form that does.
+  const source = { skill: 'review', name: 'review-kit', marketplace: 'example-market', version: '1.2.0', claimed: true };
+  assert.deepEqual(readPortableReceipt(p.input()).sources, [source]);
+  const input = p.input(OFF);
+  const plan = planPortable(input);
+  assert.deepEqual(plan.sources, [source], 'the plan carries it');
+  await applyPortable(input, plan.revision);
+  assert.deepEqual(readPortableReceipt(p.input()).sources, [source], 'the receipt keeps it');
+  assert.ok(fs.existsSync(path.join(p.dir, '.claude/skills/review/SKILL.md')), 'the skill the source belongs to is still there');
 });
