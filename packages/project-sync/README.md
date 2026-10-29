@@ -12,9 +12,19 @@ removal, and recovery), `src/portable-files.ts` (every read and write in the pro
 (the private state folder).
 
 A plan reads only. A person approves its revision. Apply plans again under the project lock and writes only when the
-revision is the same. Scripts, engine-private files, and the private blocks of skills are not projected yet: the plan
-reports them `absent` and says that the projection is partial. The line of a file under `engines/<engine>/` names the
-part `engine-private`.
+revision is the same. Scripts and engine-private files are not projected yet: the plan reports them `absent` and says
+that the projection is partial. The line of a file under `engines/<engine>/` names the part `engine-private`.
+
+The private block of a skill (`x-<engine>` in `harness.json`) is written back into the engine's `SKILL.md`, after the
+core fields, as `key: <JSON value>` lines (`src/skill-private.ts`). A skill folder is shared by the engines that read it,
+so a path takes a block only when every engine that writes it holds the same block. Otherwise the plan reports the
+block `absent` and writes the core fields only.
+
+A skill folder a person made is taken over, with nothing written, when its file set and every file but `SKILL.md` match
+the plan in bytes and mode, and its `SKILL.md` means the same: the same frontmatter values and the same body. Key order,
+quoting, comments, and line endings do not matter; a changed value, a missing or extra key, or a body change refuses
+`PORTABLE_PATH_OCCUPIED`. The receipt records the held bytes, so a later plan finds nothing to update until the
+definition says something else.
 
 ## The locked-in parts (step 3)
 

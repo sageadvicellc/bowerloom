@@ -368,7 +368,7 @@ export function yamlBlock(map: { readonly [key: string]: YamlOut }, indent: numb
   }).join('');
 }
 
-const fmKey = (k: string): string => (/^[A-Za-z][A-Za-z0-9_-]*$/.test(k) ? k : JSON.stringify(k));
+export const fmKey = (k: string): string => (/^[A-Za-z][A-Za-z0-9_-]*$/.test(k) ? k : JSON.stringify(k));
 /**
  * Markdown with YAML frontmatter. Keys are plain, values are JSON. A `PermissionPairs` marker is a nested block mapping,
  * or `{}` when it is empty (ruling B16); any other value, a list of pairs too, is written as data.
