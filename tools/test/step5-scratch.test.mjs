@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { removeAll } from '../../dist/tests/support/config-cli.js';
 import { DEFAULT_FLOOR_BYTES, MAX_FILE_BYTES, ROOT_PREFIX, ScratchError, SKIPPED_FOLDERS, TREE_NAME, cleanupRoot, guardDir, hashFiles, planCopy, scratchCopy, skipRule } from '../step5/scratch-copy.mjs';
 import { diff, readManifest, readonlyRun, runner, snapshot, sourceProof } from '../step5/readonly-run.mjs';
 
@@ -19,7 +20,13 @@ const FAKE_SECRET = ['sk', 'ant', 'api03'].join('-') + '-' + 'Q7x'.repeat(14);
 
 // Each test works in its own HOME and XDG_STATE_HOME, below one temp folder.
 const made = [];
-test.after(() => { for (const d of made) fs.rmSync(d, { recursive: true, force: true }); });
+// A link whose target is already removed is unlinked itself, because rmSync leaves a dangling link where it stands.
+test.after(() => {
+  for (const d of made.splice(0)) {
+    let stat = null; try { stat = fs.lstatSync(d); } catch { /* gone */ }
+    if (stat?.isSymbolicLink()) fs.unlinkSync(d); else removeAll(d);
+  }
+});
 function temp(prefix) { const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix))); made.push(d); return d; }
 // The test process itself also reads no real home or state folder.
 const own = temp('bowerloom-step5-own-');

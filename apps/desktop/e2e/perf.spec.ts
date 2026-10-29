@@ -4,10 +4,13 @@
  */
 import { _electron as electron, expect, test } from '@playwright/test';
 import electronPath from 'electron';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { removeTempDirs, tempDir } from './proto-temp.js';
+
+// Every folder this file made in the temp folder goes when its tests are done, also when one failed.
+test.afterAll(() => { removeTempDirs(); });
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 mkdirSync(join(desktop, 'screenshots'), { recursive: true });
@@ -15,10 +18,10 @@ mkdirSync(join(desktop, 'screenshots'), { recursive: true });
 for (const n of [200, 500]) {
   test(`the map with ${n} things pans and zooms smoothly`, async () => {
     test.setTimeout(120_000);
-    const dir = mkdtempSync(join(tmpdir(), 'bowerloom-perf-'));
+    const dir = tempDir('bowerloom-perf-');
     const html = join(dir, 'perf.html');
     writeFileSync(html, `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="${pathToFileURL(join(desktop, 'dist/renderer/tokens.css')).href}"><link rel="stylesheet" href="${pathToFileURL(join(desktop, 'dist/renderer/styles.css')).href}"><link rel="stylesheet" href="${pathToFileURL(join(desktop, '.build/perf/harness.css')).href}"></head><body><script src="${pathToFileURL(join(desktop, '.build/perf/harness.js')).href}"></script></body></html>`);
-    const userData = mkdtempSync(join(tmpdir(), 'bowerloom-perf-ud-'));
+    const userData = tempDir('bowerloom-perf-ud-');
     const app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--sample-data', `--user-data-dir=${userData}`] });
     try {
       await app.firstWindow();

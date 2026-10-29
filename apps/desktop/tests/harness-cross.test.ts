@@ -4,7 +4,7 @@
 // temporary folder, no engine runs, and no answer of the service holds an absolute path of the fixture.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -14,7 +14,7 @@ import { runHarnessDefCommand } from '../../cli/src/harness-def.js';
 import { createEngineService } from '../main/engine-service.js';
 import type { EngineService } from '../main/engine-service.js';
 import type { AdoptChoices, AdoptView, Answer, FolderInfo, ProjectAnswer, ProjectInput } from '../shared/engine/types.js';
-import { DESKTOP } from './support.js';
+import { DESKTOP, removeTree } from './support.js';
 
 const FIXTURE = JSON.parse(readFileSync(join(DESKTOP, '..', '..', 'tests', 'fixtures', 'harness-08', 'project.json'), 'utf8')) as { files: Record<string, string> };
 const WHEN = new Date('2026-10-28T12:00:00Z');
@@ -25,12 +25,12 @@ const PICK = { 'system-prompt/AGENTS.md': 'AGENTS.md' };
 const GUARD = realpathSync(mkdtempSync(join(tmpdir(), 'bowerloom-cross-guard-')));
 process.env.HOME = join(GUARD, 'home'); process.env.XDG_STATE_HOME = join(GUARD, 'state');
 mkdirSync(process.env.HOME, { recursive: true, mode: 0o700 });
-process.on('exit', () => rmSync(GUARD, { recursive: true, force: true }));
+process.on('exit', () => removeTree(GUARD));
 
 interface W { base: string; home: string; dir: string; stateHome: string; stateRoot: string; env: NodeJS.ProcessEnv }
 function world(t: test.TestContext): W {
   const base = realpathSync(mkdtempSync(join(tmpdir(), 'bowerloom-cross-')));
-  t.after(() => rmSync(base, { recursive: true, force: true }));
+  t.after(() => removeTree(base));
   const home = join(base, 'home'); mkdirSync(home, { mode: 0o700 });
   const dir = join(home, 'Projects', 'e2e'); mkdirSync(dir, { recursive: true, mode: 0o700 });
   for (const [rel, text] of Object.entries(FIXTURE.files)) { mkdirSync(dirname(join(dir, rel)), { recursive: true }); writeFileSync(join(dir, rel), text); }

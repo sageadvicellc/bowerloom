@@ -9,19 +9,19 @@ import { _electron as electron, expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import electronPath from 'electron';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { desktop, shot } from './harness-page.js';
 import { sampleEngineFixtures } from '../shared/engine/sample.js';
 import type { AdoptView, FolderInfo, ProjectInput } from '../shared/engine/types.js';
+import { removeTempDirs, tempDir } from './proto-temp.js';
 
 let app: ElectronApplication, page: Page, html: string;
 
 test.beforeAll(async () => {
   test.setTimeout(240_000);
-  const out = mkdtempSync(join(tmpdir(), 'bowerloom-sheets-'));
+  const out = tempDir('bowerloom-sheets-');
   // The page is built here, from the source, with React and the app's own CSS.
   const script = `import { build } from 'esbuild'; await build({ entryPoints: ['tests/component/sheets-page.tsx'], outfile: ${JSON.stringify(join(out, 'sheets.js'))}, bundle: true, format: 'iife', platform: 'browser', target: 'chrome140', jsx: 'automatic', loader: { '.css': 'css' }, define: { 'process.env.NODE_ENV': '"production"' }, logLevel: 'warning' });`;
   const built = spawnSync(process.execPath, ['--input-type=module', '-e', script], { cwd: desktop, encoding: 'utf8' });
@@ -30,11 +30,11 @@ test.beforeAll(async () => {
   if (bundle.status !== 0) throw new Error(bundle.stderr);
   html = join(out, 'sheets.html');
   writeFileSync(html, `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="${pathToFileURL(join(desktop, 'dist/renderer/tokens.css')).href}"><link rel="stylesheet" href="${pathToFileURL(join(out, 'sheets.css')).href}"></head><body><script src="${pathToFileURL(join(out, 'sheets.js')).href}"></script></body></html>`);
-  const userData = mkdtempSync(join(tmpdir(), 'bowerloom-prototype-e2e-sheets-'));
+  const userData = tempDir('bowerloom-prototype-e2e-sheets-');
   app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--prototype-v3', `--user-data-dir=${userData}`] });
   await app.firstWindow();
 });
-test.afterAll(async () => { await app?.close(); });
+test.afterAll(async () => { await app?.close(); removeTempDirs(); });
 
 async function open(query = ''): Promise<Page> {
   const before = app.windows().length;
