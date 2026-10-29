@@ -126,7 +126,7 @@ function folderOf(cwd: string, home: string, dir: string | undefined): string {
 export interface StatusProblem { readonly section: string; readonly code: string; readonly file: string | null }
 interface Ctx {
   readonly dir: string; readonly dirs: HarnessStateDirs; readonly legacy: LegacySettle; readonly signal: AbortSignal; readonly env: NodeJS.ProcessEnv;
-  /** Set only for `status`: the move of the record of the earlier app failed. Other verbs throw instead. */
+  /** Set only for `status`: the marker of the move of the record of the earlier app is damaged. Other verbs throw instead. */
   readonly moveProblem: StatusProblem | null;
 }
 
@@ -147,7 +147,11 @@ async function contextOf(cwd: string, home: string, env: NodeJS.ProcessEnv, flag
   // Decision D3A: the record of the earlier app moves once, under the project lock, before any stage reads a record. With nothing to
   // move it takes no lock. `status` reports a move that fails as a problem of its section, and goes on.
   let legacy: LegacySettle = 'none', moveProblem: StatusProblem | null = null;
-  try { legacy = await settleLegacyState(dirs, dir, signal); } catch (error) { if (!lenient) throw error; moveProblem = problemOf('move', error, 'moving.json'); }
+  try { legacy = await settleLegacyState(dirs, dir, signal); } catch (error) {
+    // Only a damaged marker is a problem to report. Two records, or a record that is not safe, stay a refusal: Bowerloom does not guess which is real.
+    if (!lenient || codeOf(error) !== 'PORTABLE_STATE_INVALID') throw error;
+    moveProblem = problemOf('move', error, 'moving.json');
+  }
   return { dir, dirs, legacy, signal, env, moveProblem };
 }
 
