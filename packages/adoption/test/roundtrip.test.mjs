@@ -73,7 +73,7 @@ for (const [engine, files] of Object.entries(ENGINE_FILES)) {
 
     const b = path.join(a.base, 'fresh');
     fs.mkdirSync(b, { mode: 0o755 });
-    const portable = { projectDir: b, definitionFolder: a.def, stateDir: path.join(a.base, 'state', 'portable') };
+    const portable = { projectDir: b, definitionFolder: a.def, stateDir: path.join(a.base, 'state', 'portable'), previewEngines: true };
     const projection = planPortable(portable);
     assert.deepEqual(projection.loss.filter(l => l.result !== 'exact' && l.field === undefined && l.part !== 'memory'), [], 'every portable line is exact');
     await applyPortable(portable, projection.revision);
@@ -124,7 +124,7 @@ async function roundTrip(t, files, engines) {
   const one = await adoptAll(a.dir, a.stateDir, ids);
   const fresh = path.join(a.base, 'fresh');
   fs.mkdirSync(fresh, { mode: 0o755 });
-  const input = { projectDir: fresh, definitionFolder: a.def, stateDir: path.join(a.base, 'state', 'portable'), engines: ids };
+  const input = { projectDir: fresh, definitionFolder: a.def, stateDir: path.join(a.base, 'state', 'portable'), engines: ids, previewEngines: true };
   let approvals = [];
   try { planPortable(input); } catch (e) { if (e.code !== 'PORTABLE_FIDELITY' || !e.refused) throw e; approvals = approvalsFor(one.def, e.refused); }
   const plan = planPortable({ ...input, approvals });

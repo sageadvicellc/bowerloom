@@ -16,11 +16,12 @@ import fs from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { canonicalJson } from '../../contracts/src/index.js';
 import {
-  DEFINITION_LIMITS, ENGINE_IDS, PART_KEYS, REVISION_PREFIX, adoptedPaths, appliesTo, checkFidelity, isEngineId, loadDefinition, parseStrictJson,
-  selectForEngine, skillContentHash,
+  DEFINITION_LIMITS, ENGINE_IDS, PART_KEYS, REVISION_PREFIX, adoptedPaths, appliesTo, checkFidelity, isEngineId, isPreviewEngine, loadDefinition, parseStrictJson,
+  PREVIEW_ENGINES_ENV, previewEnginesAllowed, selectForEngine, skillContentHash,
 } from '../../harness-definition/src/index.js';
 import { decodeText } from '../../harness-definition/src/json.js';
 import type { AdoptedRecord, Definition, EngineId, FidelityApproval, LossLine, LossPart, PartKey, SkillEntry } from '../../harness-definition/src/index.js';
+import { EnginePreviewRefusal } from '../../skill-manifest/src/engine.js';
 import { LOCKED_PARTS, planLocked } from './locked.js';
 import { projectedSkillMd, sameSkillText } from './skill-private.js';
 import { sameValue } from './locked-text.js';
@@ -218,6 +219,13 @@ export interface PortableInput {
   readonly stateDir: string;
   /** The engines to project to, each listed in harness.json. Default: every engine harness.json lists. */
   readonly engines?: readonly { readonly id: EngineId; readonly version?: string }[];
+  /**
+   * True when preview engines (OpenCode, Pi, DeepSeek Harness) may be installed to. Beta.1 supports Claude Code and Codex only. When false, an
+   * engine named in `engines` that is a preview engine is refused (ENGINE_PREVIEW), and with no `engines` the plan skips the preview engines
+   * that harness.json lists. Default: the environment variable BOWERLOOM_PREVIEW_ENGINES, which turns them on only when it is exactly `1`.
+   * The command line and the app both plan here, so they cannot differ.
+   */
+  readonly previewEngines?: boolean;
   /** How to reconcile a `CLAUDE.md` that does not follow `AGENTS.md`. Default: accept-agents. */
   readonly reconcile?: ReconcileAction;
   /** True once a person saved trust for this project in Pi. Default: false, so Pi skills are `pending trust`. */
@@ -310,6 +318,10 @@ export interface PortablePlan extends PortableReport {
   readonly stateDir: string;
   readonly definition: { readonly folder: string; readonly harness: string; readonly revision: string };
   readonly engines: readonly PortableEngine[];
+  /** The preview engines that harness.json lists and this plan leaves out, because the preview switch is off. Empty when the switch is on. */
+  readonly skippedPreview: readonly EngineId[];
+  /** One plain sentence that names the skipped preview engines and the switch that turns them on, or null when none was skipped. */
+  readonly previewNotice: string | null;
   /** Every path the projection writes, keeps, restores, or deletes, in byte order. */
   readonly changes: readonly PlannedChange[];
   /** Folders apply creates, relative to the project, parents first. */
@@ -352,7 +364,7 @@ export function loadForProjection(folder: string): Definition {
   return r.definition;
 }
 
-function enginesOf(def: Definition, wanted: PortableInput['engines']): PortableEngine[] {
+function enginesOf(def: Definition, wanted: PortableInput['engines'], allowPreview: boolean): { readonly engines: PortableEngine[]; readonly skipped: EngineId[] } {
   const listed = new Map(def.harness.engines.map(e => [e.id, e.version ?? null]));
   const list: readonly { readonly id: EngineId; readonly version?: string }[] = wanted ?? def.harness.engines.map(e => ({ id: e.id }));
   if (!Array.isArray(list) || list.length === 0) return refuse('PORTABLE_USAGE');
@@ -363,7 +375,14 @@ function enginesOf(def: Definition, wanted: PortableInput['engines']): PortableE
     if (e.version !== undefined && (typeof e.version !== 'string' || !/^[0-9A-Za-z.+-]{1,64}$/.test(e.version))) return refuse('PORTABLE_USAGE');
     out.set(e.id, e.version ?? listed.get(e.id) ?? null);
   }
-  return ENGINE_IDS.filter(id => out.has(id)).map(id => ({ id, version: out.get(id)! }));
+  const ordered = ENGINE_IDS.filter(id => out.has(id));
+  const previews = ordered.filter(isPreviewEngine);
+  // Beta.1: a preview engine is installed to only when the switch is on. Named on purpose, it is refused. Left to the default list, it is skipped.
+  if (!allowPreview && previews.length > 0) {
+    if (wanted !== undefined || previews.length === ordered.length) throw new EnginePreviewRefusal(previews[0]!);
+    return { engines: ordered.filter(id => !isPreviewEngine(id)).map(id => ({ id, version: out.get(id)! })), skipped: previews };
+  }
+  return { engines: ordered.map(id => ({ id, version: out.get(id)! })), skipped: [] };
 }
 
 const isCommand = (s: SkillEntry): boolean => s.metadata?.[COMMAND_METADATA.key] === COMMAND_METADATA.value;
@@ -487,7 +506,7 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
   const reconcileWanted = input.reconcile ?? 'accept-agents';
   if (!RECONCILE_ACTIONS.includes(reconcileWanted)) refuse('PORTABLE_USAGE');
   const def = loadForProjection(input.definitionFolder);
-  const engines = enginesOf(def, input.engines), ids = engines.map(e => e.id);
+  const { engines, skipped: skippedPreview } = enginesOf(def, input.engines, input.previewEngines ?? previewEnginesAllowed(process.env)), ids = engines.map(e => e.id);
   const ignored: Ignored[] = [], offers: Offer[] = [];
   const previous = readReceipt(stateDir, projectDir);
   const owned = new Map((previous?.files ?? []).map(f => [f.path, f]));
@@ -700,7 +719,7 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
     ...locked.takenOver.filter(x => targets.has(x.path)).map(x => ({ path: x.path, entry: x.entry })),
   ].sort((a, b) => byBytes(a.path, b.path) || byBytes(a.entry ?? '', b.entry ?? ''));
   const body = {
-    format: PORTABLE_PLAN_FORMAT, projectDir, stateDir, definition, engines, changes, createDirs: [...createDirs].sort(byBytes), createdDirs, sources,
+    format: PORTABLE_PLAN_FORMAT, projectDir, stateDir, definition, engines, skippedPreview, previewNotice: skippedPreview.length ? `Preview engines skipped: ${skippedPreview.join(', ')}. Set ${PREVIEW_ENGINES_ENV}=1 to install to them.` : null, changes, createDirs: [...createDirs].sort(byBytes), createdDirs, sources,
     drift, reconcile, loss, partial, notice: partial ? PARTIAL_NOTICE : null, deferred, filterLeaks, pendingTrust, ignored, offers,
     trust: locked.trust, review: locked.review, approved, takenOver, previousReceipt: previous?.revision ?? null, noop, writesAuthorized: false as const,
   };

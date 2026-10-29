@@ -36,7 +36,8 @@ import type { Definition, FidelityApproval } from '../../../packages/harness-def
 import { checkProjectPath } from '../../../packages/project-context/src/index.js';
 import { labelOf, makeScrub, visible } from '../shared/engine/scrub.js';
 import type { Scrub } from '../shared/engine/scrub.js';
-import { ENGINE_IDS, EVERY_ENGINE_PARTS, RECONCILE, isEngineId } from '../shared/engine/types.js';
+import { ENGINE_IDS, isEngineId } from '../shared/engine/engines.js';
+import { EVERY_ENGINE_PARTS, RECONCILE } from '../shared/engine/types.js';
 import type {
   AdoptApproval, AdoptChoices, AdoptRecovered, AdoptRecoveryView, AdoptView, AdoptWritten, Answer, ApproveLineView, EngineId, EveryEnginePart, FolderInfo, MergeView, MergeWritten,
   ProjectAnswer, ProjectInput, ProjectWritten, Recovered, RecoveryChoices, RecoveryView, Refusal, RemovalView, Removed,
@@ -57,6 +58,11 @@ export interface EngineServiceDeps {
   /** Who approves a line, as the approval record names the person. */
   readonly who: string;
   readonly now?: () => Date;
+  /**
+   * True when the app may install to preview engines (OpenCode, Pi, DeepSeek Harness). Main sets it from BOWERLOOM_PREVIEW_ENGINES=1 in its own
+   * environment (main/engine-state.ts). Default: false. It reaches the window as one answer per folder, never as the environment.
+   */
+  readonly previewEngines?: boolean;
 }
 
 /** A call the service refuses before it reaches a package: the window gets only the short code. */
@@ -173,6 +179,7 @@ export interface EngineService {
 
 export function createEngineService(deps: EngineServiceDeps): EngineService {
   const now = deps.now ?? (() => new Date());
+  const previewEngines = deps.previewEngines ?? false;
   const realHome = (() => { try { return realpathSync(deps.home); } catch { return deps.home; } })();
   const homes = [...new Set([deps.home, realHome])];
   const byId = new Map<string, Folder>();
@@ -263,7 +270,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     try { projection = pendingExists(f.portableState); } catch { projection = false; }
     try { adoption = readJournal(f.adoptState, f.dir) !== null; } catch { adoption = false; }
     adoption ||= mergeIsStopped(f);
-    return { id: f.id, label: f.label, name: f.scrub(basename(f.dir)), hasDefinition, engines, problem, projected, unfinished: { projection, adoption } };
+    return { id: f.id, label: f.label, name: f.scrub(basename(f.dir)), hasDefinition, engines, previewEngines, problem, projected, unfinished: { projection, adoption } };
   }
 
   const adoptInput = (f: Folder, picks: AdoptChoices['picks'], acknowledged: readonly string[], everyEngine: readonly EveryEnginePart[]): AdoptionInput => ({
@@ -360,7 +367,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
 
   const portableInput = (f: Folder, input: ProjectInput, approvals: readonly FidelityApproval[]): PortableInput => ({
     projectDir: f.dir, definitionFolder: join(f.dir, '.bowerloom'), stateDir: f.portableState,
-    engines: input.engines.map(id => ({ id })), reconcile: input.reconcile, approvals,
+    engines: input.engines.map(id => ({ id })), reconcile: input.reconcile, approvals, previewEngines,
     ...(input.writeClaudeMd ? { writeClaudeMd: true } : {}),
   });
 

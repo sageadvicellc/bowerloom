@@ -26,6 +26,17 @@ quoting, comments, and line endings do not matter; a changed value, a missing or
 `PORTABLE_PATH_OCCUPIED`. The receipt records the held bytes, so a later plan finds nothing to update until the
 definition says something else.
 
+## Supported engines
+
+Beta.1 supports Claude Code and Codex. OpenCode, Pi, and DeepSeek Harness are preview engines. They stay in the code, but install to them is refused unless `BOWERLOOM_PREVIEW_ENGINES=1` is set. Any other value leaves it off.
+
+- An engine named on purpose (`--engine opencode`) is refused with `ENGINE_PREVIEW` before any write.
+- With no engine named, install uses the supported engines that `harness.json` lists. The plan names the preview engines it skipped (`skippedPreview`) and the switch that turns them on. If no supported engine is left, install is refused with `ENGINE_PREVIEW`.
+- The plan covers the engine set it installs, so a plan made with the switch off cannot be approved with it on.
+- Adopt, drift, status, and remove are not gated. Remove still removes the files an earlier flagged install wrote.
+
+The list, `isPreviewEngine`, and `previewEnginesAllowed` are in `packages/harness-definition/src/words.ts`. `PortableInput.previewEngines` sets the switch for one call; without it the plan reads the environment. The command line and the app both plan here, so they cannot differ.
+
 ## The locked-in parts (step 3)
 
 The same plan writes MCP servers, subagents, hooks, guardrails, and the sandbox. `src/locked.ts` plans the files and

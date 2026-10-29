@@ -5,6 +5,7 @@
  */
 import { useEffect, useId, useRef } from 'react';
 import type { ReactElement, ReactNode, Ref } from 'react';
+import { isPreviewEngine } from '../../../shared/engine/engines.js';
 import { ENGINE_NAMES } from '../../../shared/engine/types.js';
 import type { DriftLineView, FolderInfo, ModeChoice, PlaceView, Refusal, ResultWord } from '../../../shared/engine/types.js';
 import { HButton, StateDot } from '../parts/controls.js';
@@ -24,7 +25,7 @@ export function folderLine(folder: FolderInfo, sheet: 'make' | 'install'): { wor
   if (folder.problem !== null) return { words: folder.problem, off: true };
   if (folder.unfinished.projection) return { words: W.hint.stopped, off: false };
   if (folder.projected) return { words: W.hint.installedBefore, off: false };
-  return { words: folder.engines.length === 0 ? W.hint.noEngines : engineList(folder.engines.map(e => ENGINE_NAMES[e])), off: false };
+  return { words: folder.engines.length === 0 ? W.hint.noEngines : engineList(folder.engines.map(e => (isPreviewEngine(e) ? `${ENGINE_NAMES[e]} (preview)` : ENGINE_NAMES[e]))), off: false };
 }
 
 export interface FolderStepProps {

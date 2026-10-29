@@ -39,7 +39,7 @@ import type {
 } from '../../../packages/project-sync/src/index.js';
 import { pendingExists } from '../../../packages/project-sync/src/portable-state.js';
 import { readRecordedModes } from '../../../packages/project-sync/src/portable.js';
-import { ENGINE_IDS, entryHash, isEngineId, loadDefinition } from '../../../packages/harness-definition/src/index.js';
+import { ENGINE_IDS, entryHash, isEngineId, loadDefinition, previewEnginesAllowed } from '../../../packages/harness-definition/src/index.js';
 import type { Definition, EngineId, FidelityApproval } from '../../../packages/harness-definition/src/index.js';
 import { checkProjectPath, privateStateRoot } from '../../../packages/project-context/src/index.js';
 import type { PlannedChange } from '../../../packages/project-context/src/types.js';
@@ -58,6 +58,7 @@ export const HARNESS_HELP = [
   '  bowerloom harness status [--dir <absolute-folder>] [--json]',
   '  bowerloom harness adopt [--engine <id>[@<version>]]... [--pick <conflict>=<variant>]... [--rename <conflict>:<variant>=<id>]... [--acknowledge <id>]... [--every-engine guardrails|hooks|mcp]... [--confirm <part/id>]... [--approve <revision>] [--json]',
   '  bowerloom harness install [--engine <id>]... [--reconcile accept-agents|merge|keep-both] [--write-claude-md] [--pi-trust-saved] [--approve <revision>] [--json]',
+  '    opencode, pi, and deepseek-harness are preview engines: they install only with BOWERLOOM_PREVIEW_ENGINES=1 set.',
   '  bowerloom harness accept <line-key> [--json]',
   '  bowerloom harness merge [--approve <revision>] [--json]',
   '  bowerloom harness drift [--check] [--json]',
@@ -71,6 +72,8 @@ export const HARNESS_HELP = [
   'apply to every engine of the harness; an item that differs between engines keeps its engines, and the plan says why.',
   'Install writes the engine files from .bowerloom. A rule an engine carries more weakly than the harness says is refused;',
   'each refused line has a key, and harness accept <key> approves that line. Then install again.',
+  'This beta supports Claude Code and Codex. OpenCode, Pi, and DeepSeek Harness are preview engines. Install to them is refused,',
+  'and install with no --engine skips them, unless you set BOWERLOOM_PREVIEW_ENGINES=1. Adopt, drift, status, and remove work for every engine.',
   'Merge moves the text of CLAUDE.md into .bowerloom/instructions/AGENTS.md. Install then makes CLAUDE.md read AGENTS.md.',
   'Drift lists the files Bowerloom wrote that changed since. Drift --check fails when a file changed, when CLAUDE.md does not follow AGENTS.md,',
   'or when nothing is installed. Recover keeps your version, or puts a mode back, or records it.',
@@ -247,6 +250,7 @@ function renderAdoption(p: AdoptionPlan): string {
 function renderInstall(p: PortablePlan): string {
   const changing = p.changes.filter(c => c.action !== 'unchanged');
   const out = [`Install to ${p.engines.map(e => (e.version ? `${e.id} ${e.version}` : e.id)).join(', ')}: ${count(changing.length, 'file')} to change.`];
+  if (p.previewNotice !== null) out.push(p.previewNotice);
   for (const c of changing) out.push(`  ${c.action.padEnd(7)} ${c.path}`);
   for (const l of p.loss.filter(x => x.result !== 'exact')) out.push(`  ${l.result.padEnd(10)} ${lineName(l)}`);
   for (const a of p.approved) out.push(`  approved  ${lineName(a)} by ${a.who} at ${a.when}`);
@@ -402,6 +406,8 @@ function installInput(c: Ctx, f: Flags, approvals: readonly FidelityApproval[]):
   if (reconcile !== undefined && !(RECONCILE_ACTIONS as readonly string[]).includes(reconcile)) usage(`--reconcile takes ${RECONCILE_ACTIONS.join(', ')}.`);
   return {
     projectDir: c.dir, definitionFolder: definitionFolder(c), stateDir: c.dirs.portable, approvals,
+    // Beta.1: OpenCode, Pi, and DeepSeek Harness install only with BOWERLOOM_PREVIEW_ENGINES=1. The check is in planPortable, which the app plans through too.
+    previewEngines: previewEnginesAllowed(c.env),
     ...(ids.length ? { engines: ids.map(id => ({ id: id as EngineId })) } : {}),
     ...(reconcile !== undefined ? { reconcile: reconcile as ReconcileAction } : {}),
     ...(f.bools.has('--write-claude-md') ? { writeClaudeMd: true } : {}),

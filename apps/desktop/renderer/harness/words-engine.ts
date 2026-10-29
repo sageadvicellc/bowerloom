@@ -45,6 +45,8 @@ export const ENGINE_WORDS = deepFreeze({
     shownInFull: 'Shown in full. Read it before you approve.', pendingTrust: 'Pending trust', trusted: 'Trusted',
     fromVariable: 'read from a variable when it runs', noLines: 'Nothing to install for this interface.', defaultChoice: 'The default',
     approveChanged: 'The plan changed. Approve it again.', pickInterface: 'Pick at least one interface.',
+    previewTag: 'Preview', previewOff: 'Preview. Start Bowerloom with BOWERLOOM_PREVIEW_ENGINES=1 to install.',
+    previewOnly: 'This harness lists preview interfaces only. Set BOWERLOOM_PREVIEW_ENGINES=1.',
     sameAsNow: 'The folder already matches. Nothing is written.', removeNote: 'Bowerloom puts back what it replaced and deletes only its own files.',
     acceptAgentsText: 'CLAUDE.md becomes one line: @AGENTS.md.', mergeText: 'Moves CLAUDE.md into the harness.', keepBothText: 'CLAUDE.md stays. Claude Code keeps reading it.',
     sampleNote: 'Sample. Nothing is written to your disk.',

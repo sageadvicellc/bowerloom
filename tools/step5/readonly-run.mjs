@@ -71,7 +71,8 @@ export function diff(a, b) {
 // ---- the commands ------------------------------------------------------------------------------------------------------
 
 export function runner(root, dir, cli, { timeoutMs = 180_000 } = {}) {
-  const env = { PATH: process.env.PATH ?? '', HOME: join(root, 'home'), XDG_STATE_HOME: join(root, 'state'), NO_COLOR: '1' };
+  // The run installs to OpenCode on purpose. Beta.1 treats OpenCode as a preview engine, so the switch is set here, for the copy only.
+  const env = { PATH: process.env.PATH ?? '', HOME: join(root, 'home'), XDG_STATE_HOME: join(root, 'state'), NO_COLOR: '1', BOWERLOOM_PREVIEW_ENGINES: '1' };
   const steps = [];
   const run = (name, args) => {
     const r = spawnSync(process.execPath, [cli, 'harness', ...args], { cwd: dir, env, encoding: 'utf8', timeout: timeoutMs, maxBuffer: 64 * 2 ** 20, stdio: ['ignore', 'pipe', 'pipe'] });

@@ -13,6 +13,7 @@
  */
 import { useRef } from 'react';
 import type { KeyboardEvent, ReactElement } from 'react';
+import { isPreviewEngine } from '../../../shared/engine/engines.js';
 import { ENGINE_NAMES, writesFile } from '../../../shared/engine/types.js';
 import type { ApproveLineView, ChangeView, MergeView, ModeChoice, ProjectView, Reconcile, RecoveryView, RemovalView } from '../../../shared/engine/types.js';
 import { shortRevision } from '../../../shared/engine/gates.js';
@@ -148,7 +149,7 @@ export function PlanReview({ plan, writeClaudeMd, approvedRevision, held, onWrit
       <Section title={W.label.lossReport} slot="loss">
         {plan.engines.map(e => (
           <div key={e.engine} className="hxe-engine" data-engine={e.engine}>
-            <h4 className="hxe-engine-head"><span>{engineHeading(ENGINE_NAMES[e.engine], e.version)}</span><span className="hxe-muted">{countsWords(e.counts)}</span></h4>
+            <h4 className="hxe-engine-head"><span>{engineHeading(ENGINE_NAMES[e.engine], e.version)}{isPreviewEngine(e.engine) ? <> <StateDot tone="quiet">{W.hint.previewTag}</StateDot></> : null}</span><span className="hxe-muted">{countsWords(e.counts)}</span></h4>
             {e.parts.length === 0 ? <p className="hxe-text hxe-muted">{W.hint.noLines}</p> : null}
             {e.parts.map(p => (
               <div key={p.part} className="hxe-group" data-part={p.part}>

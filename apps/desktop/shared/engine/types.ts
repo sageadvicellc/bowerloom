@@ -4,10 +4,9 @@
  * The sample launch answers the same calls from synthetic fixtures in memory (shared/engine/sample.ts) and writes nothing.
  */
 
-/** The engines of Bowerloom 0.8, in the order the packages list them. */
-export const ENGINE_IDS = Object.freeze(['claude-code', 'codex', 'opencode', 'pi', 'deepseek-harness'] as const);
-export type EngineId = (typeof ENGINE_IDS)[number];
-export const isEngineId = (value: unknown): value is EngineId => typeof value === 'string' && (ENGINE_IDS as readonly string[]).includes(value);
+/** The engine ids are the harness definition core's own list (shared/engine/engines.ts). Only the type is named here, so this file, which the bridge imports, pulls in no package. */
+import type { EngineId } from '../../../../packages/harness-definition/src/words.js';
+export type { EngineId };
 
 /** How each engine is named on a screen. */
 export const ENGINE_NAMES: Readonly<Record<EngineId, string>> = Object.freeze({
@@ -43,6 +42,11 @@ export interface FolderInfo {
   readonly hasDefinition: boolean;
   /** The engines harness.json lists, when it loads. */
   readonly engines: readonly EngineId[];
+  /**
+   * True when the app may install to preview engines (OpenCode, Pi, DeepSeek Harness): main read BOWERLOOM_PREVIEW_ENGINES=1 from its own environment.
+   * Only this one answer reaches the window, never the environment. The same for every folder.
+   */
+  readonly previewEngines: boolean;
   /** Why the definition does not load, or null. */
   readonly problem: string | null;
   /** True when Bowerloom has a receipt of an earlier install here. */

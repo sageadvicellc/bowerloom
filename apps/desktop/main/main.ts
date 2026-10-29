@@ -13,7 +13,7 @@ import type { Controller } from './controller.js';
 import { realFolderFollowing } from './real-fs.js';
 import { registerRealIpc, usableHome } from './real-ipc.js';
 import { registerEngineIpc } from './engine-ipc.js';
-import { engineStateRoot } from './engine-state.js';
+import { enginePreviewSwitch, engineStateRoot } from './engine-state.js';
 import { windowOptions } from './window-options.js';
 import { APP_HOST, APP_INDEX, APP_SCHEME, allowRequest, chooseUserData, decideNavigation, isAllowedSender, makePrototypeDataDir, removeAndReport, resolveAppFile, userDataArg, webPreferences } from './security.js';
 
@@ -184,6 +184,8 @@ app.whenReady().then(async () => {
     if (prototypeV3Real) {
       registerEngineIpc({
         ipc: ipcMain, appIndexUrl: indexUrl, home, stateRoot: engineStateRoot(home), who: userInfo().username || 'this Mac',
+        // Beta.1: OpenCode, Pi, and DeepSeek Harness install only when the app starts with BOWERLOOM_PREVIEW_ENGINES=1. The window gets one yes or no, never the environment.
+        previewEngines: enginePreviewSwitch(),
         // Main's own question before every write (U16): words main builds from its record of the plan; the window cannot word or skip it.
         confirm: async ask => {
           const options: Electron.MessageBoxOptions = { type: 'question', title: ask.title, message: ask.message, detail: ask.detail, buttons: ['Cancel', 'Write'], defaultId: 0, cancelId: 0, noLink: true };

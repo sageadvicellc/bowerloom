@@ -6,7 +6,8 @@
 import type { AdoptionPlan, AdoptionRecoveryPlan, Place } from '../../../../packages/adoption/src/index.js';
 import type { InstructionMergePlan, InstructionMergeRecoveryPlan } from '../../../../packages/adoption/src/merge.js';
 import type { DriftLine, PortablePlan, PortableRecoveryPlan, PortableRemovalPlan } from '../../../../packages/project-sync/src/index.js';
-import { ENGINE_IDS, RESULTS, isEngineId } from './types.js';
+import { ENGINE_IDS, isEngineId } from './engines.js';
+import { RESULTS } from './types.js';
 import type {
   AdoptApprovalView, AdoptPart, AdoptRecoveryView, AdoptSecretView, AdoptView, ApproveLineView, ChangeView, EngineId, EngineLossView, LossView, MergeView, PlaceView,
   ProjectView, RecoveryView, RemovalView, ResultWord,

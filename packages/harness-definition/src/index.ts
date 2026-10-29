@@ -5,10 +5,12 @@
  */
 export {
   DEFINITION_LIMITS, ENGINE_IDS, GUARDRAIL_ACTIONS, GUARDRAIL_EFFECTS, HARNESS_FORMAT, LEGACY_NAMES, LOSS_PARTS, MCP_TRANSPORTS,
-  OVERRIDABLE_PARTS, PART_KEYS, PART_KINDS, PART_LOCATIONS, RESULTS, STRENGTHS, TOOL_CLASSES, isEngineId, isId, isServerName,
+  OVERRIDABLE_PARTS, PART_KEYS, PART_KINDS, PART_LOCATIONS, PREVIEW_ENGINES_ENV, PREVIEW_ENGINE_IDS, RESULTS, STRENGTHS, SUPPORTED_ENGINE_IDS, TOOL_CLASSES,
+  isEngineId, isId, isPreviewEngine, isServerName, previewEnginesAllowed,
 } from './words.js';
 export type {
-  EngineId, GuardrailAction, GuardrailEffect, LossPart, McpTransport, OverridablePart, PartKey, PartKind, Result, Strength, ToolClass,
+  EngineId, GuardrailAction, GuardrailEffect, LossPart, McpTransport, OverridablePart, PartKey, PartKind, PreviewEngineId, Result, Strength, SupportedEngineId,
+  ToolClass,
 } from './words.js';
 export type {
   AdoptedFrom, AdoptedRecord, Definition, DefinitionFile, EngineTarget, EnvValue, Filterable, GuardrailRule, HarnessFile, HookEntry, JsonValue,

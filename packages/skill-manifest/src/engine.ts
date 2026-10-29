@@ -13,7 +13,7 @@
  * and `claude-code`.
  */
 import { DefinitionError } from '../../contracts/src/index.js';
-import { ENGINE_IDS, isEngineId } from '../../harness-definition/src/words.js';
+import { ENGINE_IDS, PREVIEW_ENGINES_ENV, SUPPORTED_ENGINE_IDS, isEngineId } from '../../harness-definition/src/words.js';
 import type { EngineId } from '../../harness-definition/src/words.js';
 
 /** Every engine id, in the order of the 0.8 harness definition (section 11). The core's list itself, not a copy. */
@@ -27,7 +27,7 @@ export const ENGINE_NAMES: Readonly<Record<Engine, string>> = Object.freeze({
 });
 
 /** The engines that a code path can write files for today. Every other engine is refused by `writerEngines`. */
-export const WRITER_ENGINE_IDS = Object.freeze(['claude-code', 'codex'] as const);
+export const WRITER_ENGINE_IDS = SUPPORTED_ENGINE_IDS;
 export type WriterEngine = (typeof WRITER_ENGINE_IDS)[number];
 export const isWriterEngine = (value: unknown): value is WriterEngine => typeof value === 'string' && (WRITER_ENGINE_IDS as readonly string[]).includes(value);
 
@@ -61,6 +61,15 @@ export class EngineWriterRefusal extends DefinitionError {
   constructor(readonly engine: Engine) { super('ENGINE_NO_WRITER', `no writer for engine ${engine} yet`); this.name = 'EngineWriterRefusal'; }
 }
 export const isEngineWriterRefusal = (error: unknown): error is EngineWriterRefusal => error instanceof EngineWriterRefusal;
+
+/**
+ * The refusal for a preview engine when the preview switch is off. Beta.1 supports Claude Code and Codex; install to the
+ * other three is refused before any write. The code and the words are fixed.
+ */
+export class EnginePreviewRefusal extends DefinitionError {
+  constructor(readonly engine: Engine) { super('ENGINE_PREVIEW', `${engine} is a preview engine in this beta. Nothing was installed. Install for claude-code or codex, or set ${PREVIEW_ENGINES_ENV}=1 to try it.`); this.name = 'EnginePreviewRefusal'; }
+}
+export const isEnginePreviewRefusal = (error: unknown): error is EnginePreviewRefusal => error instanceof EnginePreviewRefusal;
 /** The list when every engine in it has a writer. Otherwise throws EngineWriterRefusal for the first engine that has none. */
 export function writerEngines(engines: readonly Engine[]): WriterEngine[] {
   for (const engine of engines) if (!isWriterEngine(engine)) throw new EngineWriterRefusal(engine);

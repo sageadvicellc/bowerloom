@@ -59,9 +59,10 @@ async function waiting(p: Page, name: string): Promise<Call> {
   return (await calls(p)).filter(c => c.name === name && !c.settled).at(-1)!;
 }
 
-const folder = (id: string, name: string, extra: Partial<FolderInfo> = {}): FolderInfo => ({ id, label: `~/Projects/${name}`, name, hasDefinition: false, engines: [], problem: null, projected: false, unfinished: { projection: false, adoption: false }, ...extra });
+const folder = (id: string, name: string, extra: Partial<FolderInfo> = {}): FolderInfo => ({ id, label: `~/Projects/${name}`, name, hasDefinition: false, engines: [], previewEngines: false, problem: null, projected: false, unfinished: { projection: false, adoption: false }, ...extra });
 const A = folder('folder-1', 'alpha'), B = folder('folder-2', 'beta');
-const D = folder('folder-3', 'defined', { hasDefinition: true, engines: ['claude-code', 'codex', 'opencode'] });
+// Beta.1: OpenCode is a preview engine. D is a folder of an app started with BOWERLOOM_PREVIEW_ENGINES=1, so its tests keep installing to all three.
+const D = folder('folder-3', 'defined', { hasDefinition: true, engines: ['claude-code', 'codex', 'opencode'], previewEngines: true });
 const fx = sampleEngineFixtures();
 const ok = <T>(value: T): { ok: true; value: T } => ({ ok: true, value });
 const refused = (code: string, message: string): { ok: false; refusal: { code: string; message: string; paths: string[] } } => ({ ok: false, refusal: { code, message, paths: [] } });
@@ -187,6 +188,62 @@ test('SM2, U15: a re-plan that names a changed entry with a new key asks again, 
   await expect(s.getByRole('button', { name: 'Plan with these approvals', exact: true })).toBeDisabled();
 });
 
+// ---- beta.1: preview engines --------------------------------------------------------------------------------------------------
+
+const PREVIEW_OFF = folder('folder-5', 'preview-off', { hasDefinition: true, engines: ['claude-code', 'codex', 'opencode'], previewEngines: false });
+const PREVIEW_ONLY = folder('folder-6', 'preview-only', { hasDefinition: true, engines: ['opencode', 'pi'], previewEngines: false });
+
+test('beta.1: with the switch off, the install sheet shows OpenCode with a Preview tag, unticked and held, and plans only Claude Code and Codex', async () => {
+  const p = await open();
+  await auto(p, 'folders', [PREVIEW_OFF]);
+  await p.getByRole('button', { name: 'Install from a folder', exact: true }).click();
+  const s = sheet(p, 'Install a folder\'s harness');
+  await expect(s.locator('[data-folder="folder-5"]')).toContainText('OpenCode (preview)');
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(s.locator('[data-engine="claude-code"] input')).toBeChecked();
+  await expect(s.locator('[data-engine="codex"] input')).toBeChecked();
+  const card = s.locator('[data-engine="opencode"]');
+  await expect(card.locator('input')).not.toBeChecked();
+  await expect(card.locator('input')).toBeDisabled();
+  await expect(card).toHaveAttribute('data-off', '');
+  await expect(card.locator('[data-slot="preview-note"]')).toContainText('Preview');
+  await expect(card.locator('[data-slot="preview-note"]')).toContainText('BOWERLOOM_PREVIEW_ENGINES=1');
+  for (const supported of ['claude-code', 'codex']) await expect(s.locator(`[data-engine="${supported}"] [data-slot="preview-note"]`)).toHaveCount(0);
+  await card.click({ force: true });
+  await expect(card.locator('input')).not.toBeChecked();
+  await shot(p, 'F3-install-preview-off');
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  const planned = await waiting(p, 'planProjection');
+  expect((planned.args[1] as ProjectInput).engines).toEqual(['claude-code', 'codex']);
+});
+
+test('beta.1: with the switch on, OpenCode keeps its Preview tag but is ticked and can be installed to', async () => {
+  const p = await open();
+  await auto(p, 'folders', [{ ...PREVIEW_OFF, previewEngines: true }]);
+  await p.getByRole('button', { name: 'Install from a folder', exact: true }).click();
+  const s = sheet(p, 'Install a folder\'s harness');
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  const card = s.locator('[data-engine="opencode"]');
+  await expect(card.locator('[data-slot="preview-note"]')).toContainText('Preview');
+  await expect(card.locator('[data-slot="preview-note"]')).not.toContainText('BOWERLOOM_PREVIEW_ENGINES');
+  await expect(card.locator('input')).toBeEnabled();
+  await expect(card.locator('input')).toBeChecked();
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  const planned = await waiting(p, 'planProjection');
+  expect((planned.args[1] as ProjectInput).engines).toEqual(['claude-code', 'codex', 'opencode']);
+});
+
+test('beta.1: a harness that lists preview engines only cannot go on while the switch is off', async () => {
+  const p = await open();
+  await auto(p, 'folders', [PREVIEW_ONLY]);
+  await p.getByRole('button', { name: 'Install from a folder', exact: true }).click();
+  const s = sheet(p, 'Install a folder\'s harness');
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(s.getByText('This harness lists preview interfaces only', { exact: false })).toBeVisible();
+  for (const id of ['opencode', 'pi']) await expect(s.locator(`[data-engine="${id}"] input`)).toBeDisabled();
+  await expect(s.getByRole('button', { name: 'Next', exact: true })).toBeDisabled();
+});
+
 test('U11: a failed folder list is a refusal, not an empty list; a chooser that throws is reported; with no bridge the button says why', async () => {
   const p = await open();
   await p.getByRole('button', { name: 'From a folder', exact: true }).click();
@@ -228,7 +285,7 @@ test('U12: Confirm repeats the problems and the files, says "Ready to write." wh
 
 // ---- verification round: W3 to W9 and the U12 leftover
 
-const D2 = folder('folder-4', 'second', { hasDefinition: true, engines: ['claude-code', 'codex', 'opencode'] });
+const D2 = folder('folder-4', 'second', { hasDefinition: true, engines: ['claude-code', 'codex', 'opencode'], previewEngines: true });
 const INPUT3: ProjectInput = { engines: ['claude-code', 'codex', 'opencode'], reconcile: 'accept-agents', writeClaudeMd: false, approve: [] };
 
 async function installReview(p: Page, folders: FolderInfo[]): Promise<ReturnType<typeof sheet>> {

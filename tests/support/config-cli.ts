@@ -41,7 +41,8 @@ export function world(t: TestContext, prefix = 'bowerloom-config-cli-'): World {
 }
 /** The environment of this test process without the GitHub token variables (spec 07). A test passes a canary in `env`. */
 export function baseEnv(): Record<string, string | undefined> {
-  const { BOWERLOOM_GITHUB_TOKEN: _b, GH_TOKEN: _h, GITHUB_TOKEN: _g, ...rest } = process.env; return rest;
+  // The preview switch is cleared too: a test that installs to a preview engine sets it in its own `env`.
+  const { BOWERLOOM_GITHUB_TOKEN: _b, GH_TOKEN: _h, GITHUB_TOKEN: _g, BOWERLOOM_PREVIEW_ENGINES: _p, ...rest } = process.env; return rest;
 }
 export function run(cwd: string, args: string[], env: Record<string, string>, node: string[] = []) {
   const r = spawnSync(process.execPath, [...node, cli, ...args], { cwd, encoding: 'utf8', timeout: 120000, env: { ...baseEnv(), ...env } });

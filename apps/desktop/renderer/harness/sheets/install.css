@@ -28,6 +28,8 @@
 [data-home] .hxi-card[data-off]:hover { border-color: var(--hm-border); }
 [data-home] .hxi-card[data-off] .hxi-card-name { color: var(--text-muted); }
 [data-home] .hxi-card-text { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+/* The Preview tag of an interface Bowerloom 0.8 beta.1 does not support yet: the tag, and why it cannot be ticked. */
+[data-home] .hxi-card-note { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--hm-space-2); font-size: var(--hm-text-small, var(--hm-text-base)); }
 [data-home] .hxi-card-name { font-size: var(--hm-text-name); font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
 [data-home] .hxi-card-sub { font-size: var(--hm-text-base); line-height: 1.4; color: var(--text-muted); overflow-wrap: anywhere; }
 [data-home] .hxi-card .hx-state { color: var(--text-muted); align-items: flex-start; }

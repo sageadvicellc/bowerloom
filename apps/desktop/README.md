@@ -50,6 +50,8 @@ npm --prefix "<repo>" run desktop:prototype
 
 Two commands open the same app. Use `npm --prefix "<repo>" run desktop:prototype:v2` for a made-up sample world. It reads nothing from your computer. Use `npm --prefix "<repo>" run desktop:prototype:real` for your own setup, read only. It needs a real home folder (the `HOME` variable).
 
+The install sheet shows Claude Code and Codex, and shows OpenCode, Pi, and DeepSeek Harness with a Preview tag. Bowerloom 0.8.0-beta.1 supports Claude Code and Codex. The three preview engines can be installed to only when the app starts with `BOWERLOOM_PREVIEW_ENGINES=1`. Reading and removing work for all five.
+
 What real mode reads, in plain English:
 
 1. It looks in the tool folders of your home folder: Claude Code, Codex and OpenCode. It also notices a Hermes folder, but Hermes is not an engine of Bowerloom 0.8, so the harness preview does not show what is in it. It says how many things it left out. You can also pick a folder, and it finds the projects inside it.
