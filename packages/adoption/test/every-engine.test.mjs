@@ -96,6 +96,42 @@ test('D8B rule 2: a server kept under two ids because it differs between engines
   assert.equal(row.widens, 0);
 });
 
+test('D8B rule 2: two engines with different hooks for the same event and matcher keep them per engine; the plan lists each as not widened', t => {
+  const cc = { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'echo from-claude', timeout: 5 }] }, { matcher: 'Edit', hooks: [{ type: 'command', command: 'echo edit', timeout: 5 }] }] };
+  const p = project(t, {
+    '.claude/settings.json': json({ hooks: cc }),
+    '.codex/hooks.json': json({ hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'echo from-codex', timeout: 5 }] }] } }),
+  });
+  const plan = planAdoption(p.input({ engines: THREE, everyEngine: ['hooks'] }));
+  const hooksOf = plan.items.filter(i => i.part === 'hooks');
+  assert.equal(hooksOf.length, 3);
+  const byCommand = id => plan.items.find(i => i.part === 'hooks' && i.id === id);
+  const row = plan.everyEngine.find(e => e.part === 'hooks');
+  const kept = row.notWidened.map(n => n.id).sort();
+  assert.equal(kept.length, 2, JSON.stringify(row));
+  for (const n of row.notWidened) assert.match(n.reason, /different hook for the same event/);
+  assert.deepEqual(kept.map(id => byCommand(id).engines).sort(), [['claude-code'], ['codex']], 'each engine keeps its own Bash hook');
+  // The Edit hook has no other version in another engine, so it is widened.
+  const edit = hooksOf.find(i => !kept.includes(i.id));
+  assert.equal(edit.engines, null);
+  assert.equal(row.widens, 1);
+});
+
+test('D8B: an identical hook from two engines merges into one item and is widened', t => {
+  const hooks = { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: '${CLAUDE_PROJECT_DIR}/scripts/check.sh', timeout: 5 }] }] };
+  const p = project(t, {
+    '.claude/settings.json': json({ hooks }),
+    '.codex/hooks.json': json({ hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: '$(git rev-parse --show-toplevel)/scripts/check.sh', timeout: 5 }] }] } }),
+  });
+  const plain = planAdoption(p.input({ engines: THREE }));
+  const one = plain.items.filter(i => i.part === 'hooks');
+  assert.equal(one.length, 1);
+  assert.deepEqual(one[0].engines, ['claude-code', 'codex']);
+  const wide = planAdoption(p.input({ engines: THREE, everyEngine: ['hooks'] }));
+  assert.equal(wide.items.find(i => i.part === 'hooks').engines, null);
+  assert.deepEqual(wide.everyEngine.find(e => e.part === 'hooks'), { part: 'hooks', chosen: true, widens: 1, notWidened: [] });
+});
+
 test('D8B rule 3: the choice changes the revision, so an approval made without it does not match, nor the other way round', async t => {
   const p = claudeOnly(t);
   const plain = planAdoption(p.input({ engines: THREE }));

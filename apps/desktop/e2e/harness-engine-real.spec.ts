@@ -2,13 +2,15 @@
  * The adopt and install sheets on a person's own folders (Electron started with --prototype-v3-real, HOME and XDG_STATE_HOME pointed at a made-up folder).
  * The main process runs the packages: the plans are real, nothing is written while the person reads, and the writes land only after each approval, through
  * the packages, in the chosen folder and the private state folder under the made-up home. Undo is a removal plan, and it puts the folder back byte for byte.
+ * Each test gets its own made-up home, its own state root and its own app: one test's folders, records, approval drafts, window size and answers to main's
+ * question never reach the next, so any test passes alone or after the others, in any order.
  */
 import { expect, test } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { chmodSync, existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { definedFolder, engineFolder, filesOf } from '../tests/helpers-engine/folders.js';
-import { launchReal } from './harness-real-page.js';
+import { bundleOnce, launchReal } from './harness-real-page.js';
 import type { RealHarness } from './harness-real-page.js';
 import { removeTempDirs, tempDir } from './proto-temp.js';
 import { shot } from './harness-page.js';
@@ -16,19 +18,28 @@ import { shot } from './harness-page.js';
 let h: RealHarness, home: string;
 const page = (): Page => h.page;
 
-test.beforeAll(async () => {
-  test.setTimeout(240_000);
+test.beforeAll(() => { test.setTimeout(240_000); bundleOnce(); });
+test.afterAll(() => { removeTempDirs(); });
+test.beforeEach(async () => {
+  test.setTimeout(120_000);
   home = realpathSync(tempDir('bowerloom-engine-home-'));
   chmodSync(home, 0o700);
-  h = await launchReal(home, { XDG_STATE_HOME: join(home, '.local', 'state') });
+  h = await launchReal(home, { XDG_STATE_HOME: join(home, '.local', 'state') }, false);
   await page().emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });
-});
-test.afterAll(async () => { try { await h?.app.close(); } finally { removeTempDirs(); } });
-test.beforeEach(async () => {
   await page().evaluate(() => { location.hash = '#prototype-v3-real/projects'; location.reload(); });
   await page().waitForLoadState('domcontentloaded');
   await page().waitForSelector('[data-home]');
 });
+test.afterEach(async () => { await h?.app.close(); });
+
+/** Goes from the interfaces step to the weaker rules, waits until the plan shows all of them, and ticks each one. */
+async function tickWeakerRules(s: Locator, count: number): Promise<void> {
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  const lines = s.locator('[data-section="approve-lines"] input');
+  await expect(lines).toHaveCount(count);
+  for (const line of await lines.all()) await line.check();
+  await expect(s.locator('[data-section="approve-lines"]')).toContainText(`${count} of ${count} ticked`);
+}
 
 test('New harness from a folder writes .bowerloom only after the pick, each acknowledgement and each approval, and leaves the engine files as they were', async () => {
   const p = page(), dir = engineFolder(home), before = filesOf(dir);
@@ -130,8 +141,7 @@ test('Merge on a real folder: its own plan, main asks before the harness changes
   await s.getByRole('button', { name: 'Choose a folder', exact: true }).click();
   await expect(s.locator('.hxi-card', { hasText: 'merge-me' })).toHaveAttribute('aria-pressed', 'true');
   await s.getByRole('button', { name: 'Next', exact: true }).click();
-  await s.getByRole('button', { name: 'Next', exact: true }).click();
-  for (const line of await s.locator('[data-section="approve-lines"] input').all()) await line.check();
+  await tickWeakerRules(s, 2);
   await s.getByRole('button', { name: 'Plan with these approvals', exact: true }).click();
   await s.locator('[data-section="drift"]').getByRole('radio', { name: /Merge/ }).click();
   const plan = s.locator('[data-section="merge"]');
@@ -166,9 +176,9 @@ test('a mode drift line in the real window: both actions fit 900 by 600, answer 
   const s = p.getByRole('dialog', { name: 'Install a folder\'s harness' });
   await h.pick(dir);
   await s.getByRole('button', { name: 'Choose a folder', exact: true }).click();
+  await expect(s.locator('.hxi-card', { hasText: 'mode-me' })).toHaveAttribute('aria-pressed', 'true');
   await s.getByRole('button', { name: 'Next', exact: true }).click();
-  await s.getByRole('button', { name: 'Next', exact: true }).click();
-  for (const line of await s.locator('[data-section="approve-lines"] input').all()) await line.check();
+  await tickWeakerRules(s, 2);
   await s.getByRole('button', { name: 'Plan with these approvals', exact: true }).click();
   await s.locator('[data-approve-plan] input').check();
   await s.getByRole('button', { name: /^Write \d+ files$/ }).click();
