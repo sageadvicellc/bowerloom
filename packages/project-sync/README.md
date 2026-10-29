@@ -33,6 +33,7 @@ Beta.1 supports Claude Code and Codex. OpenCode, Pi, and DeepSeek Harness are pr
 - An engine named on purpose (`--engine opencode`) is refused with `ENGINE_PREVIEW` before any write.
 - With no engine named, install uses the supported engines that `harness.json` lists. The plan names the preview engines it skipped (`skippedPreview`) and the switch that turns them on. If no supported engine is left, install is refused with `ENGINE_PREVIEW`.
 - The plan covers the engine set it installs, so a plan made with the switch off cannot be approved with it on.
+- With the switch off, what an earlier flagged install wrote for a preview engine is left alone. A file that only preview engines read stays an unchanged target: it is not deleted and not restored. The new receipt still lists those engines and their files, and carries their recorded approvals forward. The plan names them in `keptPreview` and in its notice. A file shared with a supported engine follows the supported engine.
 - Adopt, drift, status, and remove are not gated. Remove still removes the files an earlier flagged install wrote.
 
 The list, `isPreviewEngine`, and `previewEnginesAllowed` are in `packages/harness-definition/src/words.ts`. `PortableInput.previewEngines` sets the switch for one call; without it the plan reads the environment. The command line and the app both plan here, so they cannot differ.

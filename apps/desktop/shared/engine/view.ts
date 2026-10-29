@@ -160,6 +160,7 @@ export function projectView(plan: PortablePlan, folder: string, driftLines: read
     ignored: plan.ignored.map(i => ({ option: i.option, reason: s(i.reason) })),
     pendingTrust: plan.pendingTrust.map(s),
     filterLeaks: plan.filterLeaks.map(f => ({ skill: s(f.skill), path: s(f.path), engines: engines(f.engines) })),
+    skippedPreview: engines(plan.skippedPreview), keptPreview: engines(plan.keptPreview.map(e => e.id)), previewNotice: plan.previewNotice === null ? null : s(plan.previewNotice),
     noop: plan.noop,
     revision: plan.revision,
   };

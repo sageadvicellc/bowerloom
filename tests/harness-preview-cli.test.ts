@@ -121,12 +121,12 @@ test('install with no --engine installs the supported engines and names the skip
   const off = planInstall(w, [], {});
   assert.deepEqual(off.plan.engines.map(e => e.id), ['claude-code', 'codex']);
   assert.deepEqual(off.plan.skippedPreview, ['opencode']);
-  assert.equal(off.plan.previewNotice, 'Preview engines skipped: opencode. Set BOWERLOOM_PREVIEW_ENGINES=1 to install to them.', 'the --json plan names them too');
+  assert.equal(off.plan.previewNotice, 'Preview engines skipped: opencode. Set BOWERLOOM_PREVIEW_ENGINES=1 to install to it.', 'the --json plan names them too');
   assert.ok(!off.refusedEngines.includes('opencode'), 'no refused line for a skipped engine');
   const human = bl(w, ['install']);
   assert.equal(human.status, 3, human.stderr);
   assert.match(human.stdout, /^Install to claude-code 2\.1\.310, codex 0\.157\.0:/);
-  assert.match(human.stdout, /Preview engines skipped: opencode\. Set BOWERLOOM_PREVIEW_ENGINES=1 to install to them\./);
+  assert.match(human.stdout, /Preview engines skipped: opencode\. Set BOWERLOOM_PREVIEW_ENGINES=1 to install to it\./);
   assert.doesNotMatch(human.stdout, /opencode 1\.18\.30/);
 });
 
@@ -186,4 +186,130 @@ test('help names the switch', () => {
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /BOWERLOOM_PREVIEW_ENGINES=1/);
   assert.match(r.stdout, /OpenCode, Pi, and DeepSeek Harness are preview engines/);
+});
+
+// ---- left alone, results, status, accept, and harnesses that list only preview engines ------------------------------------------
+
+const harnessFile = (w: W): string => join(w.dir, '.bowerloom', 'harness.json');
+function listEngines(w: W, engines: { id: string; version: string }[]): void {
+  const file = harnessFile(w), harness = JSON.parse(readFileSync(file, 'utf8')) as { engines: unknown };
+  harness.engines = [...engines].sort((a, b) => (a.id < b.id ? -1 : 1));
+  writeFileSync(file, `${JSON.stringify(harness, null, 2)}\n`);
+}
+const VERSIONS: Record<string, string> = { 'claude-code': '2.1.310', codex: '0.157.0', opencode: '1.18.30', pi: '1.4.0', 'deepseek-harness': '0.2.2-alpha.2' };
+const listed = (...ids: string[]) => ids.map(id => ({ id, version: VERSIONS[id]! }));
+
+/** Adopts, then installs everything with the switch on. */
+function flaggedInstall(w: W): { opencodeFiles: string[]; bytes: Record<string, string> } {
+  adopt(w);
+  const originals = snapshot(w.dir, outsideDefinition);
+  const on = planInstall(w, [], ON);
+  assert.equal(bl(w, ['install', '--approve', on.revision], ON).status, 0);
+  const installed = snapshot(w.dir, outsideDefinition);
+  const opencodeFiles = Object.keys(installed).filter(rel => !(rel in originals) && /opencode/.test(rel));
+  assert.ok(opencodeFiles.length > 0);
+  return { opencodeFiles, bytes: Object.fromEntries(opencodeFiles.map(rel => [rel, installed[rel]!])) };
+}
+
+test('an install with the switch off leaves the OpenCode files of an earlier flagged install as they are, says so, and remove still takes them', t => {
+  const w = world(t);
+  const { opencodeFiles, bytes } = flaggedInstall(w);
+  const off = planInstall(w, [], {});
+  assert.deepEqual(off.plan.engines.map(e => e.id), ['claude-code', 'codex']);
+  assert.deepEqual((off.plan as unknown as { keptPreview: { id: string }[] }).keptPreview.map(e => e.id), ['opencode']);
+  assert.equal(off.plan.previewNotice, 'Preview engines skipped: opencode. Its files from an earlier install are left as they are. Set BOWERLOOM_PREVIEW_ENGINES=1 to install to it.');
+  for (const rel of opencodeFiles) assert.ok(!off.plan.changes.some(c => c.path === rel && c.action !== 'unchanged'), `${rel} is not touched`);
+  // The result of the approved install names where it installed, and what it skipped and kept (item 3), in JSON and in words.
+  const human = bl(w, ['install']);
+  assert.equal(human.status, 3, human.stderr);
+  assert.match(human.stdout, /Its files from an earlier install are left as they are\./);
+  const applied = bl(w, ['install', '--approve', off.revision, '--json']);
+  assert.equal(applied.status, 0, applied.stderr + applied.stdout);
+  const result = json<{ result: { installed: string[]; skippedPreview: string[]; keptPreview: string[]; previewNotice: string } }>(applied.stdout).result;
+  assert.deepEqual(result.installed, ['claude-code', 'codex']);
+  assert.deepEqual(result.skippedPreview, ['opencode']);
+  assert.deepEqual(result.keptPreview, ['opencode']);
+  assert.match(result.previewNotice, /left as they are/);
+  const after = snapshot(w.dir, outsideDefinition);
+  for (const rel of opencodeFiles) assert.equal(after[rel], bytes[rel], `${rel} is byte for byte the same`);
+  const status = json<{ receipt: { engines: { id: string }[] } }>(bl(w, ['status', '--json']).stdout);
+  assert.ok(status.receipt.engines.some(e => e.id === 'opencode'), 'the receipt still lists OpenCode');
+  assert.equal(bl(w, ['drift', '--check']).status, 0, 'drift with the switch off reports nothing');
+  const again = bl(w, ['install', '--json']);
+  assert.equal(again.status, 0, 'the next install has nothing to do'); assert.equal(json<{ nothingToDo?: boolean }>(again.stdout).nothingToDo, true);
+  // Remove with the switch off still removes them.
+  const removal = bl(w, ['remove', '--json']);
+  assert.equal(removal.status, 3, removal.stderr);
+  assert.equal(bl(w, ['remove', '--approve', json<{ revision: string }>(removal.stdout).revision]).status, 0);
+  for (const rel of opencodeFiles) assert.equal(existsSync(join(w.dir, rel)), false, rel);
+});
+
+test('a human install result names where it installed and what it left out', t => {
+  const w = world(t);
+  adopt(w);
+  const off = planInstall(w, [], {});
+  const done = bl(w, ['install', '--approve', off.revision]);
+  assert.equal(done.status, 0, done.stderr);
+  assert.match(done.stdout, /Installed to: claude-code, codex\./);
+  assert.match(done.stdout, /Preview engines skipped: opencode\. Set BOWERLOOM_PREVIEW_ENGINES=1 to install to it\./);
+});
+
+test('status says whether preview engines are on, which listed engines this environment will not install to, and which the receipt still holds', t => {
+  const w = world(t);
+  adopt(w);
+  const off = json<{ previewEngines: { on: boolean; notInstalled: string[]; held: string[] } }>(bl(w, ['status', '--json']).stdout);
+  assert.deepEqual(off.previewEngines, { on: false, notInstalled: ['opencode'], held: [] });
+  assert.match(bl(w, ['status']).stdout, /Preview engines are off \(set BOWERLOOM_PREVIEW_ENGINES=1 to turn them on\)\. Not installed to: opencode\./);
+  const on = json<{ previewEngines: { on: boolean; notInstalled: string[]; held: string[] } }>(bl(w, ['status', '--json'], ON).stdout);
+  assert.deepEqual(on.previewEngines, { on: true, notInstalled: [], held: [] });
+  assert.match(bl(w, ['status'], ON).stdout, /Preview engines are on\./);
+  const p = planInstall(w, [], ON);
+  assert.equal(bl(w, ['install', '--approve', p.revision], ON).status, 0);
+  const held = json<{ previewEngines: { held: string[]; notInstalled: string[] } }>(bl(w, ['status', '--json']).stdout).previewEngines;
+  assert.deepEqual(held.held, ['opencode']); assert.deepEqual(held.notInstalled, ['opencode']);
+  assert.match(bl(w, ['status']).stdout, /Installed earlier and left as they are: opencode\./);
+});
+
+test('accept for a preview engine line is refused with ENGINE_PREVIEW while the switch is off', t => {
+  const w = world(t);
+  adopt(w);
+  const first = bl(w, ['install', '--json'], ON);
+  assert.equal(first.status, 1);
+  const line = json<{ refused: { key: string; engine: string }[] }>(first.stdout).refused.find(l => l.engine === 'opencode');
+  assert.ok(line, 'an OpenCode line is refused with the switch on');
+  const accepted = bl(w, ['accept', line!.key, '--json']);
+  assert.equal(accepted.status, 1, accepted.stderr + accepted.stdout);
+  assert.equal(errorCode(accepted.stderr), 'ENGINE_PREVIEW');
+  assert.equal(bl(w, ['accept', line!.key, '--json'], ON).status, 0, 'with the switch on it is accepted');
+});
+
+test('a harness that lists only OpenCode is refused with ENGINE_PREVIEW when no engine is named', t => {
+  const w = world(t);
+  const only = ['--engine', 'opencode@1.18.30'];
+  const planned = bl(w, ['adopt', ...only, '--json']);
+  assert.equal(planned.status, 3, planned.stderr + planned.stdout);
+  const body = json<{ revision: string; plan: { approvalsRequired: string[]; ready: boolean } }>(planned.stdout);
+  assert.equal(body.plan.ready, true, 'adopting OpenCode alone needs no answer');
+  const done = bl(w, ['adopt', ...only, ...body.plan.approvalsRequired.flatMap(k => ['--confirm', k]), '--approve', body.revision]);
+  assert.equal(done.status, 0, done.stderr + done.stdout);
+  assert.deepEqual(json<{ definition: { engines: { id: string }[] } }>(bl(w, ['status', '--json']).stdout).definition.engines.map(e => e.id), ['opencode']);
+  const before = snapshot(w.base);
+  const r = bl(w, ['install', '--json']);
+  assert.equal(r.status, 1, r.stderr + r.stdout);
+  assert.equal(errorCode(r.stderr), 'ENGINE_PREVIEW', r.stderr);
+  assert.match(JSON.parse(r.stderr).error.message as string, /opencode is a preview engine in this beta/);
+  assert.deepEqual(snapshot(w.base), before, 'nothing was written');
+});
+
+test('a harness that lists Pi and DeepSeek Harness refuses each with ENGINE_PREVIEW, not PORTABLE_ENGINE_NOT_LISTED', t => {
+  const w = world(t);
+  adopt(w);
+  listEngines(w, listed('claude-code', 'codex', 'opencode', 'pi', 'deepseek-harness'));
+  assert.equal(bl(w, ['status', '--json']).status, 0);
+  for (const engine of ['opencode', 'pi', 'deepseek-harness']) {
+    const r = bl(w, ['install', '--engine', engine, '--json']);
+    assert.equal(r.status, 1, `${engine}: ${r.stderr}`);
+    assert.equal(errorCode(r.stderr), 'ENGINE_PREVIEW', engine);
+    assert.match(JSON.parse(r.stderr).error.message as string, new RegExp(`^${engine} is a preview engine in this beta`));
+  }
 });

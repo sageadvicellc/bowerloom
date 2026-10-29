@@ -39,7 +39,7 @@ import type {
 } from '../../../packages/project-sync/src/index.js';
 import { pendingExists } from '../../../packages/project-sync/src/portable-state.js';
 import { readRecordedModes } from '../../../packages/project-sync/src/portable.js';
-import { ENGINE_IDS, entryHash, isEngineId, loadDefinition, previewEnginesAllowed } from '../../../packages/harness-definition/src/index.js';
+import { ENGINE_IDS, PREVIEW_ENGINES_ENV, entryHash, isEngineId, isPreviewEngine, loadDefinition, previewEnginesAllowed } from '../../../packages/harness-definition/src/index.js';
 import type { Definition, EngineId, FidelityApproval } from '../../../packages/harness-definition/src/index.js';
 import { checkProjectPath, privateStateRoot } from '../../../packages/project-context/src/index.js';
 import type { PlannedChange } from '../../../packages/project-context/src/types.js';
@@ -334,16 +334,26 @@ async function status(c: Ctx, json: boolean, write: (text: string) => void): Pro
     adoption: section(problems, 'adoption', JOURNAL, false, () => readJournal(c.dirs.adoption, c.dir) !== null),
     merge: mergeUnfinished(c),
   };
+  // Beta.1: which preview engines this environment installs to, which listed engines it will not, and which the receipt still holds.
+  const previewOn = previewEnginesAllowed(c.env);
+  const previewEngines = {
+    on: previewOn,
+    notInstalled: previewOn ? [] : ENGINE_IDS.filter(id => isPreviewEngine(id) && engines.some(e => e.id === id)),
+    held: receipt == null ? [] : ENGINE_IDS.filter(id => isPreviewEngine(id) && receipt.engines.some(e => e.id === id)),
+  };
   const body = {
     format: 'bowerloom/harness-status/v1beta1', folder: c.dir, legacy: c.legacy,
     definition: { present, harness, engines, problem }, projected: receipt === undefined ? null : receipt !== null,
     receipt: receipt == null ? null : { revision: receipt.revision, engines: receipt.engines, files: receipt.files.length, approvals: receipt.approvals.length },
+    previewEngines,
     unfinished, drafts, problems,
   };
   if (json) { write(newCommandJson(plain(body))); return 0; }
   const out = [present ? `Harness ${harness ?? '(does not load)'} for ${engines.map(e => (e.version ? `${e.id} ${e.version}` : e.id)).join(', ') || 'no engine'}.` : 'No harness definition in this folder. Next: bowerloom harness adopt.'];
   if (problem !== null) out.push(`The definition does not load: ${problem}`);
   if (receipt !== undefined) out.push(receipt === null ? 'Nothing is installed.' : `Installed: ${count(receipt.files.length, 'file')} for ${receipt.engines.map(e => e.id).join(', ')}, ${count(receipt.approvals.length, 'approved line')}.`);
+  out.push(previewOn ? 'Preview engines are on.' : `Preview engines are off (set ${PREVIEW_ENGINES_ENV}=1 to turn them on).${previewEngines.notInstalled.length ? ` Not installed to: ${previewEngines.notInstalled.join(', ')}.` : ''}`);
+  if (previewEngines.held.length) out.push(`Installed earlier and ${previewOn ? 'still held' : 'left as they are'}: ${previewEngines.held.join(', ')}.`);
   if (drafts) out.push(`${count(drafts, 'accepted line')} waiting for the next install.`);
   for (const p of problems) out.push(`Problem: ${p.file ?? p.section} (${p.code}). ${PROBLEM_HINT[p.code] ?? 'Check it in the private state folder.'}`);
   if (unfinished.projection) out.push('An install or removal stopped part way. Next: bowerloom harness recover.');
@@ -450,7 +460,7 @@ async function install(c: Ctx, f: Flags, approval: { approve?: string; json: boo
       const r = await applyPortable(input, revision, c.signal);
       // The receipt records the approvals now, so their drafts go. The install is done whether or not they do.
       const warnings = r.receipt !== null ? await clearDrafts(c, r.receipt.approvals) : [];
-      return { noop: r.noop, receipt: r.receipt?.revision ?? null, takenOver: r.report.takenOver, leftBehind: r.leftBehind, ...(warnings.length ? { warnings } : {}) };
+      return { noop: r.noop, receipt: r.receipt?.revision ?? null, installed: r.installed, skippedPreview: r.skippedPreview, keptPreview: r.keptPreview, previewNotice: r.previewNotice, takenOver: r.report.takenOver, leftBehind: r.leftBehind, ...(warnings.length ? { warnings } : {}) };
     },
   };
   return approved(change, approval, io, write);
@@ -466,7 +476,7 @@ async function accept(c: Ctx, f: Flags, json: boolean, write: (text: string) => 
   // The lines of the engine the key names, with no approval, so a line approved before is found too. Another engine's refusal, such as a
   // version Bowerloom does not write for, must not hide the line.
   let lines: RefusedLine[] = [];
-  try { planPortable({ projectDir: c.dir, definitionFolder: definitionFolder(c), stateDir: c.dirs.portable, approvals: [], engines: [{ id: match![2] as EngineId }] }); } catch (error) {
+  try { planPortable({ projectDir: c.dir, definitionFolder: definitionFolder(c), stateDir: c.dirs.portable, approvals: [], engines: [{ id: match![2] as EngineId }], previewEngines: previewEnginesAllowed(c.env) }); } catch (error) {
     const raw = fidelityOf(error);
     if (raw === null) throw error;
     lines = refusedLines(def, raw);
@@ -594,6 +604,9 @@ export function resultLines(result: unknown): string[] {
     const list = r[key];
     if (Array.isArray(list)) for (const entry of list) { const p = phrase(entry); if (p !== null) out.push(`${label}: ${p}`); }
   };
+  // An install says where it went, and what it left out (beta.1 preview engines).
+  if (Array.isArray(r.installed) && r.installed.length && r.installed.every(x => typeof x === 'string')) out.push(`Installed to: ${(r.installed as string[]).join(', ')}.`);
+  if (typeof r.previewNotice === 'string') out.push(r.previewNotice);
   each('leftBehind', 'Left in place'); each('kept', 'Kept as it is'); each('leftFolders', 'Left folder'); each('warnings', 'Note');
   return out;
 }

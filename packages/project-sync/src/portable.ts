@@ -322,6 +322,11 @@ export interface PortablePlan extends PortableReport {
   readonly skippedPreview: readonly EngineId[];
   /** One plain sentence that names the skipped preview engines and the switch that turns them on, or null when none was skipped. */
   readonly previewNotice: string | null;
+  /**
+   * With the switch off: the preview engines the earlier receipt holds. Their files stay as they are, the new receipt carries them and their approvals
+   * forward, and removal still removes them. Empty when the switch is on or the receipt holds none.
+   */
+  readonly keptPreview: readonly PortableEngine[];
   /** Every path the projection writes, keeps, restores, or deletes, in byte order. */
   readonly changes: readonly PlannedChange[];
   /** Folders apply creates, relative to the project, parents first. */
@@ -382,7 +387,24 @@ function enginesOf(def: Definition, wanted: PortableInput['engines'], allowPrevi
     if (wanted !== undefined || previews.length === ordered.length) throw new EnginePreviewRefusal(previews[0]!);
     return { engines: ordered.filter(id => !isPreviewEngine(id)).map(id => ({ id, version: out.get(id)! })), skipped: previews };
   }
-  return { engines: ordered.map(id => ({ id, version: out.get(id)! })), skipped: [] };
+  // The switch is off and the supported engines were named: the preview engines that harness.json lists are left out all the same.
+  const skipped = allowPreview ? [] : ENGINE_IDS.filter(id => listed.has(id) && isPreviewEngine(id) && !out.has(id));
+  return { engines: ordered.map(id => ({ id, version: out.get(id)! })), skipped };
+}
+
+/** The engines a receipt lists: the ones installed now, then the preview engines whose earlier files are left alone, in engine order. */
+export function receiptEngines(installed: readonly PortableEngine[], kept: readonly PortableEngine[]): PortableEngine[] {
+  const all = [...installed, ...kept.filter(k => !installed.some(i => i.id === k.id))];
+  return ENGINE_IDS.flatMap(id => all.filter(e => e.id === id));
+}
+
+/** The one sentence that names the preview engines left out, those whose earlier files stay as they are, and the switch. Null when none. */
+function previewNoticeOf(skipped: readonly EngineId[], kept: readonly EngineId[]): string | null {
+  const names = ENGINE_IDS.filter(id => skipped.includes(id) || kept.includes(id));
+  if (names.length === 0) return null;
+  const one = names.length === 1;
+  const left = kept.length === 0 ? '' : kept.length === names.length ? ` ${one ? 'Its' : 'Their'} files from an earlier install are left as they are.` : ` Files from an earlier install are left as they are for ${kept.join(', ')}.`;
+  return `Preview engines skipped: ${names.join(', ')}.${left} Set ${PREVIEW_ENGINES_ENV}=1 to install to ${one ? 'it' : 'them'}.`;
 }
 
 const isCommand = (s: SkillEntry): boolean => s.metadata?.[COMMAND_METADATA.key] === COMMAND_METADATA.value;
@@ -506,10 +528,15 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
   const reconcileWanted = input.reconcile ?? 'accept-agents';
   if (!RECONCILE_ACTIONS.includes(reconcileWanted)) refuse('PORTABLE_USAGE');
   const def = loadForProjection(input.definitionFolder);
-  const { engines, skipped: skippedPreview } = enginesOf(def, input.engines, input.previewEngines ?? previewEnginesAllowed(process.env)), ids = engines.map(e => e.id);
+  const allowPreview = input.previewEngines ?? previewEnginesAllowed(process.env);
+  const { engines, skipped: skippedPreview } = enginesOf(def, input.engines, allowPreview), ids = engines.map(e => e.id);
   const ignored: Ignored[] = [], offers: Offer[] = [];
   const previous = readReceipt(stateDir, projectDir);
   const owned = new Map((previous?.files ?? []).map(f => [f.path, f]));
+  // Beta.1: with the switch off, what an earlier flagged install wrote for a preview engine is left alone, not deleted and not restored.
+  const keptPreview: PortableEngine[] = allowPreview ? [] : (previous?.engines ?? []).filter(e => isPreviewEngine(e.id) && !engines.some(x => x.id === e.id));
+  const keptIds = new Set<EngineId>(keptPreview.map(e => e.id));
+  const keptPaths = new Set([...owned.values()].filter(f => f.engines.length > 0 && f.engines.every(e => keptIds.has(e))).map(f => f.path));
   const recordedModes = readRecordedModes(stateDir, projectDir);
 
   // Section 4.1: the system prompt. No @path import, and at most 32 KiB.
@@ -660,6 +687,12 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
   for (const path of [...new Set([...targets.keys(), ...owned.keys()])].sort(byBytes)) {
     const target = targets.get(path), mine = owned.get(path);
     const now = stateOrUnsafe(projectDir, path);
+    // A file only a preview engine reads, written by an earlier flagged install: the receipt keeps it as it is, whatever is on disk now.
+    if (!target && mine && keptPaths.has(path)) {
+      if (mine.original) blob(stateDir, mine.original, path);
+      changes.push({ path, action: 'unchanged', before: now === 'unsafe' ? null : now, after: { sha256: mine.sha256, mode: mine.mode, bytes: mine.bytes }, original: mine.original, engines: mine.engines });
+      continue;
+    }
     if (now === 'unsafe') { if (!mine) refuse('PORTABLE_PATH_UNSAFE', [path]); drifted.push(`${path} (unsafe)`); continue; }
     if (mine && !sameState(now, mine)) { drifted.push(`${path} (${driftReason(now, mine)})`); continue; }
     if (target) for (const d of checkAncestors(projectDir, path)) createDirs.add(d);
@@ -696,7 +729,16 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
   }
 
   const report = lossReport(def, engines, views, claudeLine, filterLeaks, input.piTrustSaved === true, locked.lines, input.approvals ?? [], unprojected);
-  const approved = report.approved;
+  // The recorded approvals of the kept engines go forward unchanged, in the order of the earlier receipt, so a later plan can be a no-op.
+  const approvalKey = (a: FidelityApproval): string => [a.part, a.entry, a.field ?? '', a.engine].join('\u0000');
+  const approved: FidelityApproval[] = [];
+  if (keptIds.size === 0) approved.push(...report.approved);
+  else {
+    const fresh = new Map(report.approved.map(a => [approvalKey(a), a] as const));
+    const carried = new Map((previous?.approvals ?? []).filter(a => keptIds.has(a.engine)).map(a => [approvalKey(a), a] as const));
+    for (const a of previous?.approvals ?? []) { const pick = carried.get(approvalKey(a)) ?? fresh.get(approvalKey(a)); if (pick !== undefined && !approved.includes(pick)) approved.push(pick); }
+    for (const a of report.approved) if (!approved.some(x => approvalKey(x) === approvalKey(a))) approved.push(a);
+  }
   // Rulings B7 and B18: a sentence about the engine version goes on every line of that engine.
   const loss = report.loss.map(l => (locked.notes.has(l.engine) ? { ...l, reason: l.reason + locked.notes.get(l.engine)! } : l));
   const pendingTrust = ids.includes('pi') && input.piTrustSaved !== true ? views.get('pi')!.skills.map(s => s.id) : [];
@@ -712,14 +754,14 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
   const existing = (previous?.createdDirs ?? []).filter(d => isDir(projectDir, d));
   const createdDirs = [...new Set([...existing, ...createDirs])].sort(byBytes);
   const sameReceipt = previous !== null && canonicalJson({ d: previous.definition, e: previous.engines, f: previous.files, s: previous.sources, c: existing, a: previous.approvals })
-    === canonicalJson({ d: definition, e: engines, f: receiptFiles, s: sources, c: createdDirs, a: approved });
+    === canonicalJson({ d: definition, e: receiptEngines(engines, keptPreview), f: receiptFiles, s: sources, c: createdDirs, a: approved });
   const noop = changes.every(c => c.action === 'unchanged') && sameReceipt;
   const takenOver: TakenOver[] = [
     ...changes.filter(c => c.action === 'take-over').map((c): TakenOver => ({ path: c.path })),
     ...locked.takenOver.filter(x => targets.has(x.path)).map(x => ({ path: x.path, entry: x.entry })),
   ].sort((a, b) => byBytes(a.path, b.path) || byBytes(a.entry ?? '', b.entry ?? ''));
   const body = {
-    format: PORTABLE_PLAN_FORMAT, projectDir, stateDir, definition, engines, skippedPreview, previewNotice: skippedPreview.length ? `Preview engines skipped: ${skippedPreview.join(', ')}. Set ${PREVIEW_ENGINES_ENV}=1 to install to them.` : null, changes, createDirs: [...createDirs].sort(byBytes), createdDirs, sources,
+    format: PORTABLE_PLAN_FORMAT, projectDir, stateDir, definition, engines, skippedPreview, previewNotice: previewNoticeOf(skippedPreview, keptPreview.map(e => e.id)), keptPreview, changes, createDirs: [...createDirs].sort(byBytes), createdDirs, sources,
     drift, reconcile, loss, partial, notice: partial ? PARTIAL_NOTICE : null, deferred, filterLeaks, pendingTrust, ignored, offers,
     trust: locked.trust, review: locked.review, approved, takenOver, previousReceipt: previous?.revision ?? null, noop, writesAuthorized: false as const,
   };

@@ -246,7 +246,7 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
                     <Tile name="monitor" />
                     <span className="hxi-card-text">
                       <span className="hxi-card-name">{ENGINE_NAMES[id]}</span>
-                      {preview ? <span className="hxi-card-note" data-slot="preview-note"><StateDot tone="quiet">{W.hint.previewTag}</StateDot>{locked ? <span className="hxe-muted"> {W.hint.previewOff}</span> : null}</span> : null}
+                      {preview ? <span className="hxi-card-note" data-slot="preview-note"><StateDot tone="quiet">{W.hint.previewTag}</StateDot>{locked ? <span className="hxe-muted" data-slot="preview-why"> {folder.installedEngines.includes(id) ? W.hint.previewKept : W.hint.previewOff}</span> : null}</span> : null}
                     </span>
                   </label>
                 </li>

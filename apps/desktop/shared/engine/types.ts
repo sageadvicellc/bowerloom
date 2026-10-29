@@ -47,6 +47,8 @@ export interface FolderInfo {
    * Only this one answer reaches the window, never the environment. The same for every folder.
    */
   readonly previewEngines: boolean;
+  /** The engines the receipt of an earlier install here lists, in engine order. Empty when nothing is installed. */
+  readonly installedEngines: readonly EngineId[];
   /** Why the definition does not load, or null. */
   readonly problem: string | null;
   /** True when Bowerloom has a receipt of an earlier install here. */
@@ -250,6 +252,13 @@ export interface ProjectView {
   readonly ignored: readonly { readonly option: string; readonly reason: string }[];
   readonly pendingTrust: readonly string[];
   readonly filterLeaks: readonly { readonly skill: string; readonly path: string; readonly engines: readonly EngineId[] }[];
+  /**
+   * Beta.1: the listed preview engines this plan leaves out, those among them whose files from an earlier install stay as they are, and the one sentence
+   * that says so and names the switch. Empty and null when the app may install to preview engines or none is listed.
+   */
+  readonly skippedPreview: readonly EngineId[];
+  readonly keptPreview: readonly EngineId[];
+  readonly previewNotice: string | null;
   readonly noop: boolean;
   readonly revision: string;
 }

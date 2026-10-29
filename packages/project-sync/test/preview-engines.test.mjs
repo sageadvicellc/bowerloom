@@ -4,11 +4,13 @@ import test from '../../../dist/tests/support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import {
   applyPortable, applyPortableRemoval, planPortable, planPortableRemoval, portableDrift, readPortableReceipt,
 } from '../../../dist/packages/project-sync/src/index.js';
 import { EnginePreviewRefusal } from '../../../dist/packages/skill-manifest/src/engine.js';
 import { FIVE, project, snapshot } from './portable-fixture.mjs';
+import { approveAll, lockedProject } from './locked-fixture.mjs';
 
 const OFF = { previewEngines: false };
 const ON = { previewEngines: true };
@@ -109,4 +111,96 @@ test('removal and drift stay open: a flagged install to a preview engine is remo
   await applyPortableRemoval(p.input(OFF), removal.revision);
   assert.deepEqual(snapshot(p.dir), before, 'every file the flagged install wrote is gone');
   assert.equal(readPortableReceipt(p.input()), null);
+});
+
+// ---- left alone: a preview engine that an earlier flagged install wrote is neither deleted nor restored ------------------------
+
+const RULES = [{ id: 'no-push-main', action: 'shell', pattern: 'git push * main', effect: 'deny', strength: 'enforced' }];
+const isPreview = id => ['opencode', 'pi', 'deepseek-harness'].includes(id);
+const keyOf = a => [a.part, a.entry, a.field ?? '', a.engine].join('\u0000');
+const sha = (p, rel) => createHash('sha256').update(fs.readFileSync(path.join(p.dir, rel))).digest('hex');
+
+/** A project with locked-in parts for all five engines, installed with the switch on. */
+async function flagged(t) {
+  const p = lockedProject(t, { rules: RULES, hooks: [{ id: 'guard', event: 'PreToolUse', matcher: 'Bash', command: '${PROJECT_DIR}/scripts/guard.sh', strength: 'enforced' }] });
+  let approvals = [];
+  try { planPortable(p.input(ON)); } catch (e) { if (e.code !== 'PORTABLE_FIDELITY') throw e; approvals = approveAll(p, e); }
+  const plan = planPortable(p.input({ ...ON, approvals }));
+  await applyPortable(p.input({ ...ON, approvals }), plan.revision);
+  const receipt = readPortableReceipt(p.input());
+  const only = receipt.files.filter(f => f.engines.length > 0 && f.engines.every(isPreview));
+  return { p, receipt, only, approvals: receipt.approvals };
+}
+
+test('left alone: with the switch off, files of preview engines from an earlier install stay unchanged targets, named or not', async t => {
+  const { p, only, receipt } = await flagged(t);
+  assert.ok(only.length >= 3, `preview-only files: ${only.map(f => f.path).join(', ')}`);
+  assert.ok(receipt.approvals.some(a => isPreview(a.engine)), 'an approval for a preview engine is recorded');
+  for (const named of [undefined, [{ id: 'claude-code' }, { id: 'codex' }]]) {
+    const plan = planPortable(p.input({ ...OFF, approvals: receipt.approvals, ...(named ? { engines: named } : {}) }));
+    assert.deepEqual(plan.engines.map(e => e.id), ['claude-code', 'codex']);
+    assert.deepEqual(plan.skippedPreview, ['opencode', 'pi', 'deepseek-harness']);
+    assert.deepEqual(plan.keptPreview.map(e => e.id), ['opencode', 'pi', 'deepseek-harness']);
+    for (const f of only) {
+      const c = plan.changes.find(x => x.path === f.path);
+      assert.ok(c, f.path); assert.equal(c.action, 'unchanged', `${f.path} is ${c.action}`);
+    }
+    assert.ok(!plan.changes.some(c => c.action === 'delete' || c.action === 'restore'), 'nothing is deleted or restored');
+    assert.match(plan.previewNotice, /^Preview engines skipped: opencode, pi, deepseek-harness\. Their files from an earlier install are left as they are\. Set BOWERLOOM_PREVIEW_ENGINES=1 to install to them\.$/);
+  }
+});
+
+test('left alone: the new receipt carries the files, the engines, and the approvals of the preview engines forward; drift stays quiet; the third plan is a no-op', async t => {
+  const { p, only, receipt, approvals } = await flagged(t);
+  const before = Object.fromEntries(only.map(f => [f.path, sha(p, f.path)]));
+  const input = p.input({ ...OFF, approvals, engines: [{ id: 'claude-code' }, { id: 'codex' }] });
+  const plan = planPortable(input);
+  await applyPortable(input, plan.revision);
+  for (const f of only) assert.equal(sha(p, f.path), before[f.path], `${f.path} is byte for byte the same`);
+  const after = readPortableReceipt(p.input());
+  assert.deepEqual(after.engines.map(e => e.id), receipt.engines.map(e => e.id), 'the receipt still lists every engine');
+  for (const f of only) assert.deepEqual(after.files.find(x => x.path === f.path), f, `${f.path} is carried forward unchanged`);
+  const kept = a => approvals.filter(x => isPreview(x.engine)).map(x => [keyOf(x), JSON.stringify(x)]);
+  for (const [k, text] of kept()) assert.equal(JSON.stringify(after.approvals.find(a => keyOf(a) === k)), text, 'an approval of a preview engine is carried forward');
+  assert.deepEqual(portableDrift(p.input(OFF)), [], 'drift with the switch off reports nothing');
+  assert.equal(planPortable(p.input({ ...OFF, approvals: after.approvals, engines: [{ id: 'claude-code' }, { id: 'codex' }] })).noop, true, 'the next plan has nothing to do');
+  assert.equal(planPortable(p.input({ ...OFF, approvals: after.approvals })).noop, true, 'the same with no engine named');
+});
+
+test('left alone: the revision differs from the switch-on plan, and a file a person changed in a kept path does not block the install', async t => {
+  const { p, only, approvals } = await flagged(t);
+  const off = planPortable(p.input({ ...OFF, approvals })), on = planPortable(p.input({ ...ON, approvals }));
+  assert.notEqual(off.revision, on.revision);
+  assert.deepEqual(on.keptPreview, []); assert.equal(on.previewNotice, null);
+  fs.appendFileSync(path.join(p.dir, only[0].path), '\n// a person\'s edit\n');
+  const plan = planPortable(p.input({ ...OFF, approvals }));
+  assert.equal(plan.changes.find(c => c.path === only[0].path).action, 'unchanged');
+  assert.ok(portableDrift(p.input(OFF)).some(d => d.path === only[0].path), 'drift still reports the changed file');
+});
+
+test('left alone: remove with the switch off still removes the files, even after an install with the switch off', async t => {
+  const { p, only, approvals } = await flagged(t);
+  const before = snapshot(p.dir);
+  const input = p.input({ ...OFF, approvals });
+  await applyPortable(input, planPortable(input).revision);
+  for (const f of only) assert.ok(fs.existsSync(path.join(p.dir, f.path)), f.path);
+  const removal = planPortableRemoval(p.input(OFF));
+  await applyPortableRemoval(p.input(OFF), removal.revision);
+  for (const f of only) assert.equal(fs.existsSync(path.join(p.dir, f.path)), false, f.path);
+  assert.equal(readPortableReceipt(p.input()), null);
+  assert.ok(Object.keys(snapshot(p.dir)).length <= Object.keys(before).length);
+});
+
+test('a named supported engine still reports the listed preview engines as skipped', t => {
+  const p = project(t);
+  const plan = planPortable(p.input({ ...OFF, engines: [{ id: 'codex' }] }));
+  assert.deepEqual(plan.skippedPreview, ['opencode', 'pi', 'deepseek-harness']);
+  assert.deepEqual(plan.keptPreview, [], 'nothing was installed before, so nothing is kept');
+  assert.match(plan.previewNotice, /^Preview engines skipped: opencode, pi, deepseek-harness\. Set BOWERLOOM_PREVIEW_ENGINES=1 to install to them\.$/);
+});
+
+test('the refusal reads the same for install, accept, and a preview-only harness: it says nothing was installed only if it was never tried', () => {
+  const error = new EnginePreviewRefusal('pi');
+  assert.doesNotMatch(error.message, /Nothing was installed/);
+  assert.match(error.message, /^pi is a preview engine in this beta\./);
 });

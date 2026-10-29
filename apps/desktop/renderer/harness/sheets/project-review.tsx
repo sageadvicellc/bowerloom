@@ -140,6 +140,7 @@ export function PlanReview({ plan, writeClaudeMd, approvedRevision, held, onWrit
   return (
     <>
       <p className="hxi-sum">{plan.noop ? W.hint.sameAsNow : changesLine(changing.length, plan.folder)}</p>
+      {plan.previewNotice === null ? null : <p className="hxe-notice" data-preview-notice=""><StateDot tone="quiet">{plan.previewNotice}</StateDot></p>}
       {plan.notice === null ? null : <p className="hxe-notice" data-partial={plan.partial ? '' : undefined} data-notice=""><StateDot tone={plan.partial ? 'warn' : 'quiet'}>{plan.notice}</StateDot></p>}
       {plan.offers.length === 0 && !writeClaudeMd ? null : (
         <ul className="hxe-ticks">

@@ -265,6 +265,7 @@ function projectFixture(input: ProjectInput, projected: boolean, written: string
     pendingTrust: [],
     filterLeaks: [],
     takenOver: [],
+    skippedPreview: [], keptPreview: [], previewNotice: null,
     noop,
     revision,
   };
@@ -290,7 +291,7 @@ const choicesOf = (c: readonly string[] | RecoveryChoices): RecoveryChoices => (
 export function createSampleEngine(): EngineBridge {
   const folders = new Map<string, SampleFolder>();
   const add = (id: string, name: string, extra: Partial<FolderInfo>): void => {
-    folders.set(id, { info: { id, label: `~/Projects/${name}`, name, hasDefinition: false, engines: [], previewEngines: false, problem: null, projected: false, unfinished: { projection: false, adoption: false }, ...extra }, adopted: false, projected: false, written: null, stopped: extra.unfinished?.projection === true, merged: false });
+    folders.set(id, { info: { id, label: `~/Projects/${name}`, name, hasDefinition: false, engines: [], previewEngines: false, installedEngines: [], problem: null, projected: false, unfinished: { projection: false, adoption: false }, ...extra }, adopted: false, projected: false, written: null, stopped: extra.unfinished?.projection === true, merged: false });
   };
   add(SAMPLE_FOLDERS.adopt, 'inbox-tools', {});
   // The sample shows the whole install flow, so this folder has the preview switch on: OpenCode keeps its Preview tag and can be ticked. Nothing is written. The locked state is covered by the component specs and the service tests.

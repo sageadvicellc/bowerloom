@@ -59,7 +59,7 @@ async function waiting(p: Page, name: string): Promise<Call> {
   return (await calls(p)).filter(c => c.name === name && !c.settled).at(-1)!;
 }
 
-const folder = (id: string, name: string, extra: Partial<FolderInfo> = {}): FolderInfo => ({ id, label: `~/Projects/${name}`, name, hasDefinition: false, engines: [], previewEngines: false, problem: null, projected: false, unfinished: { projection: false, adoption: false }, ...extra });
+const folder = (id: string, name: string, extra: Partial<FolderInfo> = {}): FolderInfo => ({ id, label: `~/Projects/${name}`, name, hasDefinition: false, engines: [], previewEngines: false, installedEngines: [], problem: null, projected: false, unfinished: { projection: false, adoption: false }, ...extra });
 const A = folder('folder-1', 'alpha'), B = folder('folder-2', 'beta');
 // Beta.1: OpenCode is a preview engine. D is a folder of an app started with BOWERLOOM_PREVIEW_ENGINES=1, so its tests keep installing to all three.
 const D = folder('folder-3', 'defined', { hasDefinition: true, engines: ['claude-code', 'codex', 'opencode'], previewEngines: true });
@@ -231,6 +231,25 @@ test('beta.1: with the switch on, OpenCode keeps its Preview tag but is ticked a
   await s.getByRole('button', { name: 'Next', exact: true }).click();
   const planned = await waiting(p, 'planProjection');
   expect((planned.args[1] as ProjectInput).engines).toEqual(['claude-code', 'codex', 'opencode']);
+});
+
+test('beta.1: a preview engine the receipt still holds says "Installed earlier. Left as it is." and the plan review shows the notice', async () => {
+  const p = await open();
+  const kept = { ...PREVIEW_OFF, installedEngines: ['claude-code', 'codex', 'opencode'] } as FolderInfo;
+  await auto(p, 'folders', [kept]);
+  await p.getByRole('button', { name: 'Install from a folder', exact: true }).click();
+  const s = sheet(p, 'Install a folder\'s harness');
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  const card = s.locator('[data-engine="opencode"]');
+  await expect(card.locator('input')).toBeDisabled();
+  await expect(card.locator('[data-slot="preview-note"]')).toContainText('Preview');
+  await expect(card.locator('[data-slot="preview-why"]')).toHaveText('Installed earlier. Left as it is.');
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  const input: ProjectInput = { engines: ['claude-code', 'codex'], reconcile: 'accept-agents', writeClaudeMd: false, approve: [] };
+  const notice = 'Preview engines skipped: opencode. Its files from an earlier install are left as they are. Set BOWERLOOM_PREVIEW_ENGINES=1 to install to it.';
+  await answer(p, (await waiting(p, 'planProjection')).id, ok({ kind: 'plan', plan: { ...fx.project(input), skippedPreview: ['opencode'], keptPreview: ['opencode'], previewNotice: notice } }));
+  await expect(s.locator('[data-preview-notice]')).toHaveText(notice);
+  await shot(p, 'F4-install-preview-kept');
 });
 
 test('beta.1: a harness that lists preview engines only cannot go on while the switch is off', async () => {

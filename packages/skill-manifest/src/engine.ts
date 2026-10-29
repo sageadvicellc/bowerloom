@@ -67,7 +67,7 @@ export const isEngineWriterRefusal = (error: unknown): error is EngineWriterRefu
  * other three is refused before any write. The code and the words are fixed.
  */
 export class EnginePreviewRefusal extends DefinitionError {
-  constructor(readonly engine: Engine) { super('ENGINE_PREVIEW', `${engine} is a preview engine in this beta. Nothing was installed. Install for claude-code or codex, or set ${PREVIEW_ENGINES_ENV}=1 to try it.`); this.name = 'EnginePreviewRefusal'; }
+  constructor(readonly engine: Engine) { super('ENGINE_PREVIEW', `${engine} is a preview engine in this beta. Use claude-code or codex, or set ${PREVIEW_ENGINES_ENV}=1 to try it.`); this.name = 'EnginePreviewRefusal'; }
 }
 export const isEnginePreviewRefusal = (error: unknown): error is EnginePreviewRefusal => error instanceof EnginePreviewRefusal;
 /** The list when every engine in it has a writer. Otherwise throws EngineWriterRefusal for the first engine that has none. */
