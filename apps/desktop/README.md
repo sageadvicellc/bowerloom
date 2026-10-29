@@ -50,7 +50,7 @@ npm --prefix "<repo>" run desktop:prototype
 
 Two commands open the same app. Use `npm --prefix "<repo>" run desktop:prototype:v2` for a made-up sample world. It reads nothing from your computer. Use `npm --prefix "<repo>" run desktop:prototype:real` for your own setup, read only. It needs a real home folder (the `HOME` variable).
 
-The install sheet shows Claude Code and Codex, and shows OpenCode, Pi, and DeepSeek Harness with a Preview tag. Bowerloom 0.8.0-beta.1 supports Claude Code and Codex. The three preview engines can be installed to only when the app starts with `BOWERLOOM_PREVIEW_ENGINES=1`. Reading and removing work for all five.
+The install sheet shows Claude Code and Codex, and shows OpenCode, Pi, and DeepSeek Harness with a Preview tag. Bowerloom 0.8.0-beta.1 supports Claude Code and Codex. The three preview engines can be installed to only when the app starts with `BOWERLOOM_PREVIEW_ENGINES=1`. Reading and removing work for all five. The sample world locks the three too: they show the tag, unticked and disabled. The sample cannot turn them on; only the e2e specs that install to OpenCode do, with a launch argument.
 
 What real mode reads, in plain English:
 

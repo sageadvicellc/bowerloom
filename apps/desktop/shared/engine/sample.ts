@@ -288,14 +288,13 @@ export const SAMPLE_CLAUDE = '# Weekly report\n\nDraft the report on Friday. Kee
 const choicesOf = (c: readonly string[] | RecoveryChoices): RecoveryChoices => (Array.isArray(c) ? { keep: [...c as readonly string[]], restoreMode: [], recordMode: [] } : c as RecoveryChoices);
 
 /** The sample bridge: the same calls as the real one, on three made-up folders in memory. Nothing is read or written. */
-export function createSampleEngine(): EngineBridge {
+export function createSampleEngine({ previewEngines = false }: { previewEngines?: boolean } = {}): EngineBridge {
   const folders = new Map<string, SampleFolder>();
   const add = (id: string, name: string, extra: Partial<FolderInfo>): void => {
-    folders.set(id, { info: { id, label: `~/Projects/${name}`, name, hasDefinition: false, engines: [], previewEngines: false, installedEngines: [], problem: null, projected: false, unfinished: { projection: false, adoption: false }, ...extra }, adopted: false, projected: false, written: null, stopped: extra.unfinished?.projection === true, merged: false });
+    folders.set(id, { info: { id, label: `~/Projects/${name}`, name, hasDefinition: false, engines: [], previewEngines, installedEngines: [], problem: null, projected: false, unfinished: { projection: false, adoption: false }, ...extra }, adopted: false, projected: false, written: null, stopped: extra.unfinished?.projection === true, merged: false });
   };
   add(SAMPLE_FOLDERS.adopt, 'inbox-tools', {});
-  // The sample shows the whole install flow, so this folder has the preview switch on: OpenCode keeps its Preview tag and can be ticked. Nothing is written. The locked state is covered by the component specs and the service tests.
-  add(SAMPLE_FOLDERS.defined, 'weekly-report', { hasDefinition: true, engines: ['claude-code', 'codex', 'opencode'], previewEngines: true });
+  add(SAMPLE_FOLDERS.defined, 'weekly-report', { hasDefinition: true, engines: ['claude-code', 'codex', 'opencode'] });
   add(SAMPLE_FOLDERS.stopped, 'garden', { hasDefinition: true, engines: ['claude-code', 'codex'], unfinished: { projection: true, adoption: false } });
   const info = (f: SampleFolder): FolderInfo => ({ ...f.info, projected: f.projected, unfinished: { projection: f.stopped, adoption: false }, hasDefinition: f.info.hasDefinition || f.adopted, engines: f.adopted ? ['claude-code', 'codex'] : f.info.engines });
   const get = (id: string): SampleFolder => { const f = folders.get(id); if (f === undefined) throw new Error('UNKNOWN_FOLDER'); return f; };

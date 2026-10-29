@@ -14,6 +14,7 @@ import { realFolderFollowing } from './real-fs.js';
 import { registerRealIpc, usableHome } from './real-ipc.js';
 import { registerEngineIpc } from './engine-ipc.js';
 import { enginePreviewSwitch, engineStateRoot } from './engine-state.js';
+import { SAMPLE_PREVIEW_FLAG, withSamplePreviewEngines } from '../shared/engine/sample-switch.js';
 import { windowOptions } from './window-options.js';
 import { APP_HOST, APP_INDEX, APP_SCHEME, allowRequest, chooseUserData, decideNavigation, isAllowedSender, makePrototypeDataDir, removeAndReport, resolveAppFile, userDataArg, webPreferences } from './security.js';
 
@@ -34,6 +35,8 @@ const prototypeV3 = argv.includes('--prototype-v3');
 // The harness-first preview on the person's own folders (--prototype-v3-real) has the same locks and the same bridge as --prototype-real, and opens the harness-first page.
 // It also answers the adopt and install sheets (main/engine-ipc.ts): those read only until a person approves a plan, and then write through the packages.
 const prototypeV3Real = argv.includes('--prototype-v3-real');
+// Beta.1: the e2e specs that install to OpenCode start the sample launch with this argument. Never the launch on the person's own folders, never the environment.
+const samplePreviewEngines = prototypeV3 && !prototypeV3Real && argv.includes(SAMPLE_PREVIEW_FLAG);
 const prototypeMode = argv.includes('--prototype') || prototypeV2 || prototypeReal || prototypeV3 || prototypeV3Real;
 // The prototype writes nothing to the real app data, whoever starts it. (The adopt and install sheets of --prototype-v3-real are the one exception, and
 // not in app data: after a person approves a plan and says yes in main's own dialog, they write in the folder the person chose and in Bowerloom's private
@@ -144,7 +147,11 @@ app.whenReady().then(async () => {
     const url = new URL(request.url), file = url.host === APP_HOST ? resolveAppFile(rendererDir, url.pathname) : null;
     const type = file === null ? undefined : TYPES[file.slice(file.lastIndexOf('.'))];
     if (file === null || type === undefined) return new Response('Not found', { status: 404 });
-    try { return new Response(await readFile(file), { headers: { 'content-type': type } }); } catch { return new Response('Not found', { status: 404 }); }
+    try {
+      const bytes = await readFile(file);
+      const body = samplePreviewEngines && url.pathname === '/index.html' ? withSamplePreviewEngines(bytes.toString('utf8'), true) : bytes;
+      return new Response(body, { headers: { 'content-type': type } });
+    } catch { return new Response('Not found', { status: 404 }); }
   });
   // No request leaves the machine: the session cancels everything that is not one of the app's own files.
   session.defaultSession.webRequest.onBeforeRequest((details, callback) => callback({ cancel: !allowRequest(details.url, root) }));

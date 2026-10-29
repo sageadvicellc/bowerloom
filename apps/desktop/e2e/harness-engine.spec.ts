@@ -15,7 +15,8 @@ let h: Harness;
 const page = (): Page => h.page;
 const PROJECTS = '#prototype-v3/projects';
 
-test.beforeAll(async () => { test.setTimeout(240_000); h = await launchHarness(); });
+// These specs install to OpenCode, a preview engine in beta.1, so the sample launch turns the preview switch on (main's launch argument; the default demo has it off).
+test.beforeAll(async () => { test.setTimeout(240_000); h = await launchHarness({ samplePreviewEngines: true }); });
 test.afterAll(async () => { try { await h.app.close(); } finally { removeTempDirs(); } });
 test.beforeEach(async () => { await page().emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' }); await fresh(page(), PROJECTS); });
 

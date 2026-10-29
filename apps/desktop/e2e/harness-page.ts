@@ -26,11 +26,11 @@ export const WELCOME = '#prototype-v3';
 export const WEEKLY = 'harness-weekly-report-crew';
 
 /** Builds the bundle fresh from the source in this folder, starts the app with --prototype-v3 and waits for the first window. */
-export async function launchHarness(): Promise<Harness> {
+export async function launchHarness({ samplePreviewEngines = false }: { samplePreviewEngines?: boolean } = {}): Promise<Harness> {
   const built = spawnSync(process.execPath, [join(desktop, 'tools', 'bundle.mjs')], { cwd: desktop, encoding: 'utf8' });
   if (built.status !== 0 || !existsSync(join(desktop, 'dist', 'main.mjs'))) throw new Error(`The bundle did not build.\n${built.stdout}\n${built.stderr}`);
   const userData = tempDir('bowerloom-prototype-e2e-');
-  const app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--prototype-v3', `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
+  const app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--prototype-v3', ...(samplePreviewEngines ? ['--sample-preview-engines'] : []), `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
   await page.waitForSelector('[data-home]');
