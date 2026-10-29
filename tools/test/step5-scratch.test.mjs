@@ -527,3 +527,80 @@ test('restored is null when the run stopped, and set when it ran to the end', ()
   assert.equal(stopped.restored, null);
   assert.ok(stopped.install.stopped);
 });
+
+// ---- every exit path of the run sets refusalCodes ---------------------------------------------------------------------
+
+/**
+ * A stand-in for the built command line, so a run can be made to stop at any step with any code. `script` maps a stage
+ * (adopt-plan, adopt-plan-answered, adopt-apply, install, accept, install-plan, install-apply, drift, remove-plan, remove-apply, status)
+ * to a list of answers, used in call order: { exit, stdout?, code? }. A stage with no answer exits 0 with no output.
+ */
+function scriptedCli(script) {
+  const dir = temp('bowerloom-step5-fake-cli-');
+  const file = path.join(dir, 'main.js');
+  fs.writeFileSync(file, `
+import fs from 'node:fs';
+const SCRIPT = ${JSON.stringify(script)};
+const [, , , verb, ...rest] = process.argv;
+const approve = rest.includes('--approve');
+const counts = new URL('./counts.json', import.meta.url);
+let n = {}; try { n = JSON.parse(fs.readFileSync(counts, 'utf8')); } catch { /* first call */ }
+const plain = verb + (approve ? '-apply' : '');
+const stage = plain === 'adopt' ? (n.adopt ? 'adopt-plan-answered' : 'adopt-plan') : plain === 'adopt-apply' ? 'adopt-apply'
+  : plain === 'install' ? (n.install ? 'install-plan' : 'install') : plain === 'remove' ? 'remove-plan' : plain;
+n[plain] = (n[plain] ?? 0) + 1; const at = n[plain] - 1; fs.writeFileSync(counts, JSON.stringify(n));
+const list = SCRIPT[stage] ?? [];
+const answer = list[Math.min(at, list.length - 1)] ?? { exit: 0 };
+if (answer.stdout !== undefined) process.stdout.write(JSON.stringify(answer.stdout) + '\\n');
+if (answer.code !== undefined) process.stderr.write(JSON.stringify({ error: { code: answer.code, message: 'stopped' } }) + '\\n');
+process.exit(answer.exit);
+`);
+  fs.writeFileSync(path.join(dir, 'package.json'), '{"type":"module"}\n');
+  return file;
+}
+const PLAN_OF = (extra = {}) => ({ items: [], conflicts: [], unmapped: [], secrets: [], everyEngine: [], files: [], approvalsRequired: [], ready: true, ...extra });
+const ADOPT_OK = { 'adopt-plan': [{ exit: 3, stdout: { revision: 'a'.repeat(64), plan: PLAN_OF() } }], 'adopt-plan-answered': [{ exit: 3, stdout: { revision: 'a'.repeat(64), plan: PLAN_OF() } }], 'adopt-apply': [{ exit: 0 }] };
+const INSTALL_OK = { revision: 'b'.repeat(64), plan: { changes: [], loss: [], deferred: [], pendingTrust: [], takenOver: [] } };
+
+function stoppedRun(script) {
+  const base = temp('bowerloom-step5-stop-');
+  const dir = path.join(base, 'project'); fs.mkdirSync(dir);
+  const root = path.join(base, 'root'); fs.mkdirSync(root);
+  return readonlyRun({ root, dir, cli: scriptedCli(script) });
+}
+
+test('a run that stops at the adopt-plan step reports the code the step carried', () => {
+  const report = stoppedRun({ 'adopt-plan': [{ exit: 1, code: 'ADOPTION_PROJECT_UNSAFE' }] });
+  assert.equal(report.stoppedAt, 'adopt-plan');
+  assert.deepEqual(report.refusalCodes, ['ADOPTION_PROJECT_UNSAFE']);
+  assert.deepEqual(report.steps.map(x => [x.step, x.exit, x.code]), [['status', 0, undefined], ['adopt-plan', 1, 'ADOPTION_PROJECT_UNSAFE']]);
+});
+
+test('every place a run can stop sets refusalCodes from the steps it ran, an array even when no step carried a code', () => {
+  const unsettled = PLAN_OF({ conflicts: [{ key: 'system-prompt/AGENTS.md', choice: null, variants: [{ key: 'AGENTS.md', places: [{ engines: [] }] }] }] });
+  const cases = {
+    'adopt-plan': [{ 'adopt-plan': [{ exit: 1, code: 'ADOPTION_DEFINED' }] }, ['ADOPTION_DEFINED']],
+    'adopt-plan (no code)': [{ 'adopt-plan': [{ exit: 2 }] }, []],
+    'adopt-plan-answered': [{ ...ADOPT_OK, 'adopt-plan-answered': [{ exit: 1, code: 'ADOPTION_CHOICE_INVALID' }] }, ['ADOPTION_CHOICE_INVALID']],
+    'adopt-not-ready': [{ ...ADOPT_OK, 'adopt-plan-answered': [{ exit: 3, stdout: { revision: 'a'.repeat(64), plan: PLAN_OF({ ready: false }) } }] }, []],
+    'adopt-answers': [{ ...ADOPT_OK, 'adopt-plan': [{ exit: 3, stdout: { revision: 'a'.repeat(64), plan: unsettled } }], 'adopt-plan-answered': [{ exit: 3, stdout: { revision: 'a'.repeat(64), plan: unsettled } }] }, []],
+    'adopt-apply': [{ ...ADOPT_OK, 'adopt-apply': [{ exit: 1, code: 'ADOPTION_STALE_APPROVAL' }] }, ['ADOPTION_STALE_APPROVAL']],
+    accept: [{ ...ADOPT_OK, install: [{ exit: 1, code: 'PORTABLE_FIDELITY', stdout: { refused: [{ key: 'mcp/x@codex:aaaaaaaaaaaa', engine: 'codex', result: 'weakened' }] } }], accept: [{ exit: 1, code: 'ADOPTION_USAGE' }] }, ['ADOPTION_USAGE', 'PORTABLE_FIDELITY']],
+    install: [{ ...ADOPT_OK, install: [{ exit: 1, code: 'PORTABLE_CONFLICT' }] }, ['PORTABLE_CONFLICT']],
+    'install-apply': [{ ...ADOPT_OK, install: [{ exit: 3, stdout: INSTALL_OK }], 'install-apply': [{ exit: 1, code: 'PORTABLE_DRIFT' }] }, ['PORTABLE_DRIFT']],
+    'remove-plan': [{ ...ADOPT_OK, install: [{ exit: 3, stdout: INSTALL_OK }], 'remove-plan': [{ exit: 1, code: 'PORTABLE_NOTHING_PROJECTED' }] }, ['PORTABLE_NOTHING_PROJECTED']],
+    'remove-apply': [{ ...ADOPT_OK, install: [{ exit: 3, stdout: INSTALL_OK }], 'remove-plan': [{ exit: 3, stdout: { revision: 'c'.repeat(64), plan: { changes: [] } } }], 'remove-apply': [{ exit: 1, code: 'PORTABLE_STATE_INVALID' }] }, ['PORTABLE_STATE_INVALID']],
+  };
+  for (const [stage, [script, codes]] of Object.entries(cases)) {
+    const report = stoppedRun(script);
+    assert.equal(report.stoppedAt, stage.split(' ')[0], stage);
+    assert.ok(Array.isArray(report.refusalCodes), `${stage}: refusalCodes is an array`);
+    assert.deepEqual(report.refusalCodes, codes, stage);
+  }
+});
+
+test('a run that finishes sets refusalCodes too', () => {
+  const report = stoppedRun({ ...ADOPT_OK, install: [{ exit: 3, stdout: INSTALL_OK }], 'remove-plan': [{ exit: 3, stdout: { revision: 'c'.repeat(64), plan: { changes: [] } } }] });
+  assert.equal(report.stoppedAt, null);
+  assert.deepEqual(report.refusalCodes, []);
+});

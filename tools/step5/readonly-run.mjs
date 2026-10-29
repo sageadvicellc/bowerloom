@@ -94,7 +94,8 @@ export function readonlyRun({ root, dir, cli, everyEngine = [], timeoutMs }) {
   const { run, steps } = runner(root, dir, cli, timeoutMs === undefined ? {} : { timeoutMs });
   const engines = ENGINES.flatMap(e => ['--engine', e]), every = everyEngine.flatMap(p => ['--every-engine', p]);
   const report = { steps, stoppedAt: null, status: null, adoption: null, install: null, drift: null, removal: null, refusalCodes: [], written: [], outsideDefinition: [], restored: null };
-  const stop = (at) => { report.stoppedAt = at; return report; };
+  // Every exit path goes through here or to the last line, so refusalCodes always lists the codes of the steps that ran.
+  const stop = (at) => { report.stoppedAt = at; report.refusalCodes = codes(steps); return report; };
 
   const s0 = run('status', ['status', '--json']);
   report.status = { present: s0.json?.definition?.present ?? null, projected: s0.json?.projected ?? null };
@@ -141,16 +142,16 @@ export function readonlyRun({ root, dir, cli, everyEngine = [], timeoutMs }) {
     const p = attempt.json.plan;
     report.install = installReport(p, refused);
     const applied = run('install-apply', ['install', ...target, '--approve', attempt.json.revision, '--json']);
-    if (applied.exit !== 0) { report.refusalCodes = codes(steps); return stop('install-apply'); }
+    if (applied.exit !== 0) return stop('install-apply');
     report.written = [...new Set([...report.written, ...p.changes.filter(c => c.action !== 'unchanged' && c.action !== 'take-over').map(c => c.path)])].sort();
     const plugin = join(dir, ...PLUGIN.split('/'));
     report.install.pluginHash = existsSync(plugin) ? createHash('sha256').update(readFileSync(plugin)).digest('hex') : null;
     const d = run('drift', ['drift', '--json']);
     report.drift = (d.json?.drift ?? []).map(x => `${x.reason} ${x.path}`);
     const rm = run('remove-plan', ['remove', '--json']);
-    if (rm.exit !== 3 || rm.json === null) { report.refusalCodes = codes(steps); return stop('remove-plan'); }
+    if (rm.exit !== 3 || rm.json === null) return stop('remove-plan');
     const removed = run('remove-apply', ['remove', '--approve', rm.json.revision, '--json']);
-    if (removed.exit !== 0) { report.refusalCodes = codes(steps); return stop('remove-apply'); }
+    if (removed.exit !== 0) return stop('remove-apply');
     report.removal = { changes: rm.json.plan.changes.length };
   } else { report.install = { refused: refusedCounts(refused), stopped: attempt.code ?? `exit ${attempt.exit}` }; report.stoppedAt = 'install'; }
   // A run that stopped has not been through remove, so there is nothing to compare: restored stays null.
