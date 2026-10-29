@@ -4,10 +4,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { DESKTOP, SAMPLE_DIR } from './support.js';
+import { DESKTOP, SAMPLE_DIR, tempDir } from './support.js';
 
 const NETWORK = /^(net|https?|http2|dns|dns\/promises|tls|dgram)$/;
 /** Modules of the bundle that import a network module, with what they import. A new entry here must be argued for. */
@@ -60,25 +59,22 @@ test('the scan itself sees every way of loading: bare names, require(), import()
 
 for (const mode of ['sample', 'real'] as const) {
   test(`reading the ${mode} data, as the app does, starts no process and opens no connection or server`, t => {
-    const log = join(mkdtempSync(join(tmpdir(), 'bowerloom-viewer-deny-log-')), 'hits.log');
-    t.after(() => rmSync(join(log, '..'), { recursive: true, force: true }));
-    const r = spawnSync(process.execPath, ['--import', join(DESKTOP, 'tests', 'helpers', 'deny.mjs'), join(DESKTOP, '.build', 'helpers', 'read-sample.mjs'), SAMPLE_DIR, mode], { encoding: 'utf8', timeout: 120000, env: { ...process.env, DENY_LOG: log } });
+    const log = join(tempDir(t, 'bowerloom-viewer-deny-log-'), 'hits.log'), app = tempDir(t, 'bowerloom-viewer-deny-');
+    const r = spawnSync(process.execPath, ['--import', join(DESKTOP, 'tests', 'helpers', 'deny.mjs'), join(DESKTOP, '.build', 'helpers', 'read-sample.mjs'), SAMPLE_DIR, mode, app], { encoding: 'utf8', timeout: 120000, env: { ...process.env, DENY_LOG: log } });
     assert.equal(r.status, 0, r.stderr + r.stdout); assert.match(r.stdout, new RegExp(`READ 4 projects \\(${mode}\\)`));
     assert.equal(existsSync(log) ? readFileSync(log, 'utf8') : '', '', 'nothing was denied, so nothing was tried');
   });
 }
 
 test('the denial really denies: a process start, a connection, a server, a lookup, and a fetch are caught, by require', t => {
-  const log = join(mkdtempSync(join(tmpdir(), 'bowerloom-viewer-deny-log-')), 'hits.log');
-  t.after(() => rmSync(join(log, '..'), { recursive: true, force: true }));
+  const log = join(tempDir(t, 'bowerloom-viewer-deny-log-'), 'hits.log');
   const code = "const cp = require('node:child_process'); const net = require('node:net'); const dns = require('node:dns'); let n = 0; for (const f of [() => cp.spawnSync('ls'), () => net.connect(80, 'localhost'), () => net.createServer().listen(0), () => fetch('http://localhost'), () => dns.promises.lookup('localhost'), () => require('node:dgram').createSocket('udp4'), () => require('node:http2').connect('http://localhost')]) { try { f(); } catch { n++; } } console.log('CAUGHT ' + n);";
   const r = spawnSync(process.execPath, ['--import', join(DESKTOP, 'tests', 'helpers', 'deny.mjs'), '-e', code], { encoding: 'utf8', env: { ...process.env, DENY_LOG: log } });
   assert.match(r.stdout, /CAUGHT 7/); assert.equal(readFileSync(log, 'utf8').trim().split('\n').length, 7);
 });
 
 test('the denial also catches a NAMED import, which a patch of the default object alone would miss', t => {
-  const log = join(mkdtempSync(join(tmpdir(), 'bowerloom-viewer-deny-log-')), 'hits.log');
-  t.after(() => rmSync(join(log, '..'), { recursive: true, force: true }));
+  const log = join(tempDir(t, 'bowerloom-viewer-deny-log-'), 'hits.log');
   const code = [
     "import { spawn, execFileSync } from 'node:child_process';", "import { request } from 'node:https';", "import { get } from 'node:http';", "import { connect, createServer } from 'node:net';",
     "import { lookup } from 'node:dns';", "import { promises } from 'node:dns';", "import { createSocket } from 'node:dgram';", "import { connect as h2 } from 'node:http2';",

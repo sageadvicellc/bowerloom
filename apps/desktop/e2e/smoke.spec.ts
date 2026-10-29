@@ -5,18 +5,21 @@
 import { _electron as electron, expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import electronPath from 'electron';
-import { mkdtempSync, mkdirSync, realpathSync } from 'node:fs';
+import { mkdirSync, realpathSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { removeTempDirs, tempDir } from './proto-temp.js';
+
+// Every folder this file made in the temp folder goes when its tests are done, also when one failed.
+test.afterAll(() => { removeTempDirs(); });
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const shots = join(desktop, 'screenshots');
 mkdirSync(shots, { recursive: true });
 
 async function launch(args: string[], extraEnv: Record<string, string> = {}): Promise<{ app: ElectronApplication; page: Page }> {
-  const userData = mkdtempSync(join(tmpdir(), 'bowerloom-viewer-e2e-'));
+  const userData = tempDir('bowerloom-viewer-e2e-');
   const app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, ...args, `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1', ...extraEnv } });
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
@@ -206,7 +209,7 @@ test('after a screen change the keyboard moves to the heading and a screen reade
 for (const theme of ['light', 'dark'] as const) {
   test(`sandbox mode in ${theme}: the badge on every screen, the workspace, the projects, and the context store`, async () => {
     test.setTimeout(300_000);
-    const box = join(realpathSync(mkdtempSync(join(tmpdir(), 'bowerloom-e2e-sandbox-'))), 'E2E Sandbox');
+    const box = join(realpathSync(tempDir('bowerloom-e2e-sandbox-')), 'E2E Sandbox');
     const made = spawnSync(process.execPath, [join(desktop, 'tools', 'make-sandbox.mjs')], { encoding: 'utf8', env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', BOWERLOOM_VIEWER_SANDBOX: box } });
     expect(made.status, made.stderr + made.stdout).toBe(0);
     const { app, page } = await launch(['--sandbox'], { BOWERLOOM_VIEWER_SANDBOX: box });

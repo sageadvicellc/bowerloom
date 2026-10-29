@@ -114,13 +114,12 @@ test('the text that goes to the page is capped for each text and for the whole r
 
 const CHILD = `
 import { build } from 'esbuild';
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-const [home, fifo] = process.argv.slice(1);
+const [home, fifo, scratch] = process.argv.slice(1);
 const out = await build({ stdin: { contents: "export * from './main/real-scan.ts'; export * from './main/real-fs.ts';", resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'esm', platform: 'node', logLevel: 'silent' });
-const file = join(mkdtempSync(join(tmpdir(), 'bowerloom-real-child-')), 'reader.mjs');
+const file = join(scratch, 'reader.mjs');
 writeFileSync(file, out.outputFiles[0].text);
 const reader = await import(pathToFileURL(file).href);
 const tally = reader.newTally();
@@ -140,7 +139,7 @@ test('a pipe where a skill, an agent or a settings file should be is skipped and
   }
   const direct = join(home, '.claude', 'skills', 'direct.md');
   execFileSync('mkfifo', [direct]);
-  const ran = spawnSync(process.execPath, ['--input-type=module', '-e', CHILD, home, direct], { cwd: DESKTOP, encoding: 'utf8', timeout: 30000 });
+  const ran = spawnSync(process.execPath, ['--input-type=module', '-e', CHILD, home, direct, tempDir(t, 'bowerloom-real-child-')], { cwd: DESKTOP, encoding: 'utf8', timeout: 30000 });
   assert.equal(ran.error, undefined, `the reader did not finish: ${String(ran.error)}`);
   assert.equal(ran.status, 0, ran.stderr);
   const out = JSON.parse(ran.stdout) as { direct: string | null; directCounted: number; discoverCounted: number; readCounted: number; records: string[] };

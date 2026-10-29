@@ -1,8 +1,8 @@
 // A Git repository as the GitHub REST API shows it, for tests of spec 06. Not a test file, and not part of the product.
 //
-// buildFakeRepo(owner, repo, files, commit, dir?) computes real git object ids, as resolve-git.ts rebuilds them: a blob
+// buildFakeRepo(owner, repo, files, commit, dir) computes real git object ids, as resolve-git.ts rebuilds them: a blob
 // id is SHA-1 of `blob <len>\0<bytes>`, a tree id is SHA-1 of its sorted rows. It writes one fixture file per API URL
-// into `dir` and returns:
+// into `dir`, a folder the caller made and removes (this helper makes none), and returns:
 //   commit     the commit sha given
 //   tree       the root tree id
 //   routes     each `https://api.github.com/repos/<o>/<r>/git/...` URL mapped to its fixture file, for
@@ -13,7 +13,6 @@
 // A file value is its text, or { text, mode } for another mode, { link } for a symlink, { submodule: true } for a gitlink.
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
 export type FakeFile = string | { text: string; mode?: string } | { link: string } | { submodule: true };
@@ -26,8 +25,8 @@ interface Row { name: string; type: 'blob' | 'tree' | 'commit'; mode: string; sh
 const oid = (kind: string, bytes: Buffer): string => createHash('sha1').update(`${kind} ${bytes.length}\0`).update(bytes).digest('hex');
 const order = (a: Row, b: Row): number => Buffer.compare(Buffer.from(a.name + (a.type === 'tree' ? '/' : '')), Buffer.from(b.name + (b.type === 'tree' ? '/' : '')));
 
-export function buildFakeRepo(owner: string, repo: string, files: Readonly<Record<string, FakeFile>>, commit: string, dir?: string): FakeRepo {
-  const out = dir ?? fs.mkdtempSync(path.join(os.tmpdir(), 'bowerloom-fake-repo-'));
+export function buildFakeRepo(owner: string, repo: string, files: Readonly<Record<string, FakeFile>>, commit: string, dir: string): FakeRepo {
+  const out = dir;
   const dirs = new Map<string, Row[]>([['', []]]), blobs = new Map<string, Buffer>();
   const parentOf = (p: string): string => { const d = path.posix.dirname(p); return d === '.' ? '' : d; };
   const ensure = (d: string): void => {
