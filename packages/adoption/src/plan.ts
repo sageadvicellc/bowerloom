@@ -43,7 +43,7 @@ import { listNestedInstructions, readInstructions, readSkillPlaces } from './por
 import { RISK_APPROVAL, riskOf } from './shared.js';
 import { secretName } from './secrets.js';
 import { refuse } from './refusal.js';
-import { skillMarkdown } from './skills.js';
+import { skillMarkdown, translatedMarkdown } from './skills.js';
 
 export interface AdoptionInput {
   /** The real absolute path of the project folder. */
@@ -138,7 +138,7 @@ export function planWithBytes(input: AdoptionInput): PlanWithBytes {
 
   const built = buildFiles({ harnessId, description, engines: planEngines, items: kept, unmapped: missed, warnings });
   const files: PlannedFile[] = [...built.entries()].sort(([a], [b]) => byBytes(a, b))
-    .map(([path, f]) => ({ path, sha256: sha(f.bytes), bytes: f.bytes.length, mode: f.mode }));
+    .map(([path, f]) => ({ path, sha256: sha(f.bytes), bytes: f.bytes.length, mode: f.mode, ...(f.replaces !== undefined ? { replaces: f.replaces } : {}) }));
   const unmapped = finalUnmapped(missed, acknowledged);
   const ready0 = conflicts.every(c => c.choice !== null) && unmapped.every(u => u.gate === 'none' || (u.gate === 'acknowledge' && u.acknowledged));
   const validated = validate(built, kept);
@@ -322,6 +322,7 @@ function group(cands: readonly Candidate[], harness: readonly EngineId[], choice
     if (differ.length) notes.push(`The copies at ${[lead, ...differ].map(c => c.place.path).join(' and ')} mean the same but differ in bytes. The definition takes the bytes of ${lead.place.path}.`);
     const source = v.cands.find((c): c is Extract<Candidate, { part: 'skills' }> => c.part === 'skills' && c.source !== undefined)?.source;
     const adoptedFrom = adoptedFromOf(sorted, id);
+    const translated = v.cands.find((c): c is Extract<Candidate, { part: 'skills' }> => c.part === 'skills' && c.translated !== undefined)?.translated;
     const secrets = v.cands.flatMap(c => c.secrets);
     const extraNeeds: string[] = [];
     // Ruling A7: a reference that took the place of a literal secret sends the person's own value.
@@ -335,7 +336,7 @@ function group(cands: readonly Candidate[], harness: readonly EngineId[], choice
     if (lead.part === 'system-prompt' && engines !== null) extraNeeds.push(`Only ${engines.join(', ')} read this text today; after projection every listed engine reads this text.`);
     const item: PlanItem = {
       part: lead.part, id, places: v.places, engines, privateBlocks: ENGINE_IDS.filter(e => v.blocks[e] !== undefined),
-      needsApproval: [...needs, ...extraNeeds], notes, ...(source ? { source } : {}), ...(adoptedFrom ? { adoptedFrom } : {}),
+      needsApproval: [...needs, ...extraNeeds], notes, ...(translated ? { translated } : {}), ...(source ? { source } : {}), ...(adoptedFrom ? { adoptedFrom } : {}),
     };
     kept.push({ item, lead, blocks: v.blocks, models: v.models, secrets, fixed: v.fixed });
   };
@@ -593,8 +594,9 @@ function xBlocks(blocks: Partial<Record<EngineId, JsonValue>>): Record<string, J
 }
 const filterOf = (item: PlanItem): Record<string, JsonValue> => item.engines ? { engines: [...item.engines] } : {};
 
-function buildFiles(b: BuildInput): Map<string, { bytes: Uint8Array; mode: number }> {
-  const out = new Map<string, { bytes: Uint8Array; mode: number }>();
+type Built = { bytes: Uint8Array; mode: number; replaces?: string };
+function buildFiles(b: BuildInput): Map<string, Built> {
+  const out = new Map<string, Built>();
   const by = <P extends ItemPart>(part: P) => b.items.filter(k => k.item.part === part);
   const parts: Record<string, JsonValue> = {};
   const skillSettings: Record<string, JsonValue> = {};
@@ -606,6 +608,10 @@ function buildFiles(b: BuildInput): Map<string, { bytes: Uint8Array; mode: numbe
   for (const k of skills) {
     if (k.lead.part !== 'skills') continue;
     const id = k.item.id, copy = k.lead.skill;
+    if (k.fixed && k.lead.translated) {
+      // A 0.7 skill in place whose name differs from its folder: the one file apply replaces, by its name line only.
+      out.set(`skills/${id}/SKILL.md`, { bytes: translatedMarkdown(copy, k.lead.translated.from, k.lead.translated.to), mode: copy.rawExecutable ? 0o755 : 0o644, replaces: sha(copy.raw) });
+    }
     if (!k.fixed) {
       out.set(`skills/${id}/SKILL.md`, { bytes: skillMarkdown(copy, id), mode: copy.rawExecutable ? 0o755 : 0o644 });
       for (const f of copy.files) out.set(`skills/${id}/${f.path}`, { bytes: f.bytes, mode: f.executable ? 0o755 : 0o644 });
@@ -675,7 +681,7 @@ function buildFiles(b: BuildInput): Map<string, { bytes: Uint8Array; mode: numbe
  * Loads the planned files with the contract's loader, in a scratch folder outside the project. The 0.7 skills already in
  * `.bowerloom/skills` join them, since the loader reads them as definition skills.
  */
-function validate(files: ReadonlyMap<string, { bytes: Uint8Array; mode: number }>, kept: readonly Kept[]): { problems: Problem[]; revision: string | null } {
+function validate(files: ReadonlyMap<string, Built>, kept: readonly Kept[]): { problems: Problem[]; revision: string | null } {
   const scratch = fs.mkdtempSync(join(os.tmpdir(), 'bowerloom-adoption-check-'));
   try {
     const root = join(scratch, '.bowerloom');
@@ -683,7 +689,7 @@ function validate(files: ReadonlyMap<string, { bytes: Uint8Array; mode: number }
     for (const [rel, f] of files) put(rel, f.bytes, f.mode);
     for (const k of kept) {
       if (!k.fixed || k.lead.part !== 'skills') continue;
-      put(`skills/${k.item.id}/SKILL.md`, k.lead.skill.raw, k.lead.skill.rawExecutable ? 0o755 : 0o644);
+      if (!files.has(`skills/${k.item.id}/SKILL.md`)) put(`skills/${k.item.id}/SKILL.md`, k.lead.skill.raw, k.lead.skill.rawExecutable ? 0o755 : 0o644);
       for (const f of k.lead.skill.files) put(`skills/${k.item.id}/${f.path}`, f.bytes, f.executable ? 0o755 : 0o644);
     }
     const r = loadDefinition(root);

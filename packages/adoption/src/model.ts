@@ -95,6 +95,9 @@ export interface SourceShape {
   readonly claimed?: true;
 }
 
+/** A 0.7 skill adopted under the name of its folder: the name its SKILL.md had, and the name it has now. */
+export interface Translated { readonly from: string; readonly to: string }
+
 interface CandidateBase {
   readonly place: Place;
   /** Private blocks by engine. Only engines of the harness are kept. */
@@ -105,7 +108,7 @@ interface CandidateBase {
 }
 export type Candidate =
   | CandidateBase & { readonly part: 'system-prompt'; readonly id: 'AGENTS.md'; readonly text: string; readonly raw: Uint8Array }
-  | CandidateBase & { readonly part: 'skills'; readonly id: string; readonly skill: SkillCopy; readonly fixed: boolean; readonly source?: SourceShape }
+  | CandidateBase & { readonly part: 'skills'; readonly id: string; readonly skill: SkillCopy; readonly fixed: boolean; readonly translated?: Translated; readonly source?: SourceShape }
   | CandidateBase & { readonly part: 'subagents'; readonly id: string; readonly subagent: SubagentShape; readonly models: Partial<Record<EngineId, string>> }
   | CandidateBase & { readonly part: 'guardrails'; readonly id: string; readonly rule: RuleShape }
   | CandidateBase & { readonly part: 'guardrails'; readonly id: 'sandbox'; readonly sandbox: SandboxShape }
@@ -126,6 +129,8 @@ export interface PlanItem {
   /** Why a person must look at this item before adoption writes it. Empty when nothing needs a look. */
   readonly needsApproval: readonly string[];
   readonly notes: readonly string[];
+  /** For a 0.7 skill whose name differed from its folder: the old and the new name. Apply rewrites the name line. */
+  readonly translated?: Translated;
   /** The 0.7 source recorded in `sources.json`, for a converted managed copy. */
   readonly source?: SourceShape;
   /** For a skill converted from a 0.7 managed copy: the copy and its content hash, recorded in `sources.json`. */
@@ -170,6 +175,8 @@ export interface PlannedFile {
   readonly sha256: string;
   readonly bytes: number;
   readonly mode: number;
+  /** Set for a 0.7 file that apply replaces in place: the hash of the bytes it must still hold. Every other file is created. */
+  readonly replaces?: string;
 }
 
 export interface PlanEngine {

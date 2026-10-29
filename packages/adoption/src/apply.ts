@@ -6,7 +6,10 @@
  *
  * Every write goes through the portable projection's write layer: each folder above the path is checked just before the
  * write, and each file is linked into place, so a file that appeared since the plan is never overwritten. Apply creates
- * files only; it never changes or deletes a file it did not write.
+ * files only; it never deletes a file it did not write. One exception: a 0.7 skill whose name differs from its folder
+ * is replaced in place, by the same bytes with the name line set to the folder name (`PlannedFile.replaces`). It is
+ * replaced only while it still holds the bytes the plan read, just before `harness.json`, and it is not in the journal,
+ * so a recovery never removes it. A failure that apply handles puts the original bytes and mode back.
  *
  * Ruling A11: before the first write, a journal in the state folder lists the planned files and folders, and
  * `harness.json` is written last, so a stopped run never leaves a definition. When anything fails, apply removes what it
@@ -67,10 +70,20 @@ export async function applyAdoptionWith(input: AdoptionInput, revision: string, 
     if (missing.length) refuse('ADOPTION_APPROVAL_REQUIRED', missing);
 
     const stateDir = input.stateDir;
-    const order = [...plan.files.filter(f => f.path !== 'harness.json'), ...plan.files.filter(f => f.path === 'harness.json')];
+    // Created files first, then the replaced 0.7 files, then `harness.json`, so a stopped run never leaves a definition.
+    const order = [...plan.files.filter(f => f.path !== 'harness.json' && f.replaces === undefined), ...plan.files.filter(f => f.replaces !== undefined), ...plan.files.filter(f => f.path === 'harness.json')];
     const rels = order.map(f => `.bowerloom/${f.path}`);
     const dirs = [...new Set(rels.flatMap(rel => checkAncestors(projectDir, rel)))].sort(byBytes);
-    writeJournal(stateDir, { format: 'bowerloom/adoption-pending/v1beta1', projectDir, planRevision: plan.revision, files: order.map((f, i) => ({ path: rels[i]!, sha256: f.sha256 })), dirs });
+    // A replaced file is read now, under the lock, and must hold the bytes the plan read.
+    const originals = new Map<string, { bytes: Buffer; mode: number }>();
+    for (const [i, f] of order.entries()) {
+      if (f.replaces === undefined) continue;
+      const now = readAbs(join(projectDir, rels[i]!), rels[i]!);
+      if (now === null || now.state.sha256 !== f.replaces) refuse('ADOPTION_STALE_APPROVAL', [rels[i]!]);
+      originals.set(rels[i]!, { bytes: now.bytes, mode: now.state.mode });
+    }
+    const journaled = order.flatMap((f, i) => f.replaces === undefined ? [{ path: rels[i]!, sha256: f.sha256 }] : []);
+    writeJournal(stateDir, { format: 'bowerloom/adoption-pending/v1beta1', projectDir, planRevision: plan.revision, files: journaled, dirs });
 
     const written: { rel: string; sha256: string }[] = [];
     const created: string[] = [];
@@ -79,7 +92,12 @@ export async function applyAdoptionWith(input: AdoptionInput, revision: string, 
       for (const w of [...written].reverse()) {
         try {
           const now = readAbs(join(projectDir, w.rel), w.rel);
-          if (now !== null && now.state.sha256 === w.sha256 && checkAncestors(projectDir, w.rel).length === 0) fs.unlinkSync(join(projectDir, w.rel));
+          const original = originals.get(w.rel);
+          if (original !== undefined) {
+            // A replaced 0.7 file goes back to its bytes and mode, only while it still holds what apply wrote.
+            if (now !== null && now.state.sha256 === w.sha256) writeAbs(join(projectDir, w.rel), original.bytes, original.mode, { label: w.rel, recheck: () => { if (checkAncestors(projectDir, w.rel, true).length) refuse('ADOPTION_PATH_UNSAFE', [w.rel]); } });
+            else left.push(w.rel);
+          } else if (now !== null && now.state.sha256 === w.sha256 && checkAncestors(projectDir, w.rel).length === 0) fs.unlinkSync(join(projectDir, w.rel));
           else if (now !== null) left.push(w.rel);
         } catch { left.push(w.rel); }
       }
@@ -106,9 +124,13 @@ export async function applyAdoptionWith(input: AdoptionInput, revision: string, 
         if (sha(f.bytes) !== file.sha256) refuse('ADOPTION_STALE_APPROVAL');
         for (const dir of checkAncestors(projectDir, rel)) makeDir(projectDir, dir, made => { created.push(made); hooks.afterMkdir?.(made); });
         hooks.beforeWrite?.(rel);
-        writeAbs(join(projectDir, rel), f.bytes, f.mode, {
-          exclusive: true, label: rel,
-          recheck: () => { if (checkAncestors(projectDir, rel, true).length) refuse('ADOPTION_PATH_UNSAFE', [rel]); },
+        const original = originals.get(rel);
+        writeAbs(join(projectDir, rel), f.bytes, original?.mode ?? f.mode, {
+          exclusive: original === undefined, label: rel,
+          recheck: () => {
+            if (checkAncestors(projectDir, rel, true).length) refuse('ADOPTION_PATH_UNSAFE', [rel]);
+            if (original !== undefined && readAbs(join(projectDir, rel), rel)?.state.sha256 !== file.replaces) refuse('ADOPTION_STALE_APPROVAL', [rel]);
+          },
           onPlaced: () => { written.push({ rel, sha256: file.sha256 }); },
         });
       }

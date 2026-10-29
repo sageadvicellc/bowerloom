@@ -57,12 +57,15 @@ export function readSkillFolder(
   const data = fm.data;
   const folder = rel.split('/').at(-1)!;
   const named = data.name;
-  const id = typeof named === 'string' && isId(named) ? named : named === undefined ? (options.idHint ?? folder) : null;
+  // A 0.7 skill already in place whose only fault is a name that differs from its folder is adopted under the folder name.
+  const renamed = fixed && typeof named === 'string' && named !== folder && isId(named) && isId(folder);
+  const id = renamed ? folder : typeof named === 'string' && isId(named) ? named : named === undefined ? (options.idHint ?? folder) : null;
   if (id === null || !isId(id)) return fault('The skill has no name that is a valid id: lowercase letters, digits, and single hyphens, up to 64 characters.');
   if (!text(data.description, 1024)) return fault('The skill has no description of 1 to 1,024 characters, which the definition needs.');
 
   const notes: string[] = [];
   if (named === undefined) notes.push(`SKILL.md has no name; the folder name ${id} becomes the name.`);
+  else if (renamed) notes.push(`Translated: the 0.7 skill name ${named} becomes ${folder}, the name of its folder. Only the name line of SKILL.md changes.`);
   else if (named !== folder) notes.push(`The folder is named after the skill name ${id}.`);
   const extra: Record<string, JsonValue> = {};
   const rules: Candidate[] = [];
@@ -105,14 +108,16 @@ export function readSkillFolder(
     for (const e of engines) blocks[e] = extra;
     if (engines.length === 0) r.miss(`${rel}/SKILL.md`, 'skills', 'These engine-only keys have no engine of this harness that reads the folder, so they are not adopted.', '/');
   }
-  if (fixed && (Object.keys(extra).length || unmappedKeys.length || named !== folder)) {
+  if (fixed && (Object.keys(extra).length || unmappedKeys.length || (named !== folder && !renamed))) {
     return { fault: 'SKILL.md holds fields other than the open core fields, or a name that differs from its folder.' };
   }
   const files = tree.filter(f => f.path !== 'SKILL.md').map(f => ({ path: f.path, bytes: f.file.bytes, executable: f.file.executable }));
   const clean = named === folder && Object.keys(extra).length === 0 && unmappedKeys.length === 0;
   const copy: SkillCopy = { data: keep, body: toLf(fm.body), files, text: toLf(raw), raw: main.file.bytes, rawExecutable: main.file.executable, clean };
+  const translated = renamed ? { from: named as string, to: folder } : undefined;
+  const needsApproval = translated ? [`Adoption rewrites the name line of ${rel}/SKILL.md from ${translated.from} to ${translated.to}, so the definition loads. Nothing else in the file changes.`] : [];
   return {
-    skill: { part: 'skills', id, skill: copy, fixed, ...(options.source ? { source: options.source } : {}), place, blocks, needsApproval: [], notes, secrets: [] },
+    skill: { part: 'skills', id, skill: copy, fixed, ...(translated ? { translated } : {}), ...(options.source ? { source: options.source } : {}), place, blocks, needsApproval, notes, secrets: [] },
     rules, lost,
   };
 }
@@ -133,4 +138,19 @@ export function skillMarkdown(copy: SkillCopy, id: string): Uint8Array {
   else (doc.contents as { items: unknown[] }).items.unshift(doc.createPair('name', id));
   const block = doc.toString({ lineWidth: 0 });
   return Buffer.from(`${split.head}\n${block}${split.tail}`);
+}
+
+
+/**
+ * The bytes of a 0.7 SKILL.md with its name line set to the folder name: the file as written, only that line changed.
+ * A name written some way the line edit does not read falls back to a frontmatter rewrite that sets `name`.
+ */
+export function translatedMarkdown(copy: SkillCopy, from: string, to: string): Uint8Array {
+  const text = Buffer.from(copy.raw).toString('utf8');
+  const quoted = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const line = new RegExp(`^(name:[ \\t]*)(["']?)${quoted}\\2([ \\t]*(?:#.*)?)$`, 'm');
+  const end = /\r?\n---[ \t]*(?:\r?\n|$)/.exec(text.slice(3));
+  const head = end ? text.slice(0, 3 + end.index) : '';
+  if (end && line.test(head)) return Buffer.from(head.replace(line, (_m, a: string, q: string, c: string) => `${a}${q}${to}${q}${c}`) + text.slice(head.length));
+  return skillMarkdown({ ...copy, clean: false, data: { ...copy.data, name: to } }, to);
 }
