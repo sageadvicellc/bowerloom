@@ -315,3 +315,24 @@ test('a harness that lists Pi and DeepSeek Harness refuses each with ENGINE_PREV
     assert.match(JSON.parse(r.stderr).error.message as string, new RegExp(`^${engine} is a preview engine in this beta`));
   }
 });
+
+test('a harness with an unclaimed plugins/sources.json entry installs, and status, drift, a second install, and remove all read its receipt', t => {
+  const w = world(t);
+  adopt(w);
+  const file = harnessFile(w), harness = JSON.parse(readFileSync(file, 'utf8')) as { parts: Record<string, unknown> };
+  harness.parts.plugins = 'sources.json';
+  writeFileSync(file, `${JSON.stringify(harness, null, 2)}\n`);
+  writeFileSync(join(w.dir, '.bowerloom', 'sources.json'), `${JSON.stringify({ sources: [{ name: 'review-kit', marketplace: 'example-market', version: '1.2.0', items: [{ part: 'skills', id: 'review' }] }] }, null, 2)}\n`);
+  const plan = planInstall(w, [], {});
+  assert.equal(bl(w, ['install', '--approve', plan.revision]).status, 0);
+  const status = bl(w, ['status', '--json']);
+  assert.equal(status.status, 0, status.stderr);
+  const body = json<{ projected: boolean; problems: unknown[] }>(status.stdout);
+  assert.equal(body.projected, true); assert.deepEqual(body.problems, []);
+  assert.equal(bl(w, ['drift', '--check']).status, 0);
+  const again = bl(w, ['install', '--json']);
+  assert.equal(again.status, 0, again.stderr); assert.equal(json<{ nothingToDo?: boolean }>(again.stdout).nothingToDo, true);
+  const removal = bl(w, ['remove', '--json']);
+  assert.equal(removal.status, 3, removal.stderr);
+  assert.equal(bl(w, ['remove', '--approve', json<{ revision: string }>(removal.stdout).revision]).status, 0);
+});

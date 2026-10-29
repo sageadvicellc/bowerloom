@@ -275,12 +275,11 @@ for (const form of ['v1beta3', 'v1beta2']) {
 test('left alone: the sources of a skill only a preview engine reads are carried forward', async t => {
   const p = project(t, {
     skills: { review: { engines: ['opencode'] } }, parts: { plugins: 'sources.json' },
-    files: { 'sources.json': json({ sources: [{ name: 'review-kit', marketplace: 'example-market', version: '1.2.0', claimed: true, items: [{ part: 'skills', id: 'review' }] }] }) },
+    files: { 'sources.json': json({ sources: [{ name: 'review-kit', marketplace: 'example-market', version: '1.2.0', items: [{ part: 'skills', id: 'review' }] }] }) },
   });
   const first = planPortable(p.input(ON));
   await applyPortable(p.input(ON), first.revision);
-  // A claimed source: a receipt with an unclaimed one does not read back (see the report), so this test uses the form that does.
-  const source = { skill: 'review', name: 'review-kit', marketplace: 'example-market', version: '1.2.0', claimed: true };
+  const source = { skill: 'review', name: 'review-kit', marketplace: 'example-market', version: '1.2.0' };
   assert.deepEqual(readPortableReceipt(p.input()).sources, [source]);
   const input = p.input(OFF);
   const plan = planPortable(input);

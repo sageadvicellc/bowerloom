@@ -163,7 +163,9 @@ export function readReceipt(stateDir: string, projectDir: string): PortableRecei
   });
   unique(files.map(f => f.path), n);
   const sources = list(o.sources, n, x => {
-    const s = closed(x, ['skill', 'name', 'marketplace', 'version', ...(older ? [] : ['claimed'])], n);
+    // `claimed` is written only for a source a 0.7 catalog merely claims, so a current-format source may or may not hold the key. When it does, it is true.
+    const hasClaimed = !older && isObj(x) && Object.hasOwn(x, 'claimed');
+    const s = closed(x, ['skill', 'name', 'marketplace', 'version', ...(hasClaimed ? ['claimed'] : [])], n);
     if (Object.hasOwn(s, 'claimed') && s.claimed !== true) bad(n);
     const source: ReceiptSource = { skill: text(s.skill, n, 64), name: text(s.name, n, 256), marketplace: text(s.marketplace, n, 256), version: text(s.version, n, 256), ...(s.claimed === true ? { claimed: true as const } : {}) };
     return source;
