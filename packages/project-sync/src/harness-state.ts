@@ -174,15 +174,27 @@ export interface SettleHooks {
  * shared record absent: one rename, then `moved.json`. Both present: HARNESS_STATE_TWO_RECORDS, and nothing changes.
  * A link, a folder of another owner, or a folder open to others on either path refuses PORTABLE_STATE_UNSAFE.
  * Run it before the first read of the record. A second call changes nothing.
+ *
+ * It looks first without the lock: with no old record and no move marker there is no work, so it answers `none` and a
+ * read-only command never fails PROJECT_LOCKED while another command writes. It takes the lock, and checks again
+ * inside it, only when there is work to do.
  */
 export async function settleLegacyState(dirs: HarnessStateDirs, projectDir: string, signal?: AbortSignal): Promise<LegacySettle> {
   return settleLegacyStateWith(dirs, projectDir, signal, {});
+}
+
+/** True when an old record or a move marker exists. The folder checks refuse as they do under the lock. A marker that cannot be read counts as work. */
+function hasMoveWork(layout: HarnessStateDirs): boolean {
+  if (legacyExists(layout)) return true;
+  if (!recordExists(layout)) return false;
+  try { fs.lstatSync(join(layout.base, MOVING)); return true; } catch (e) { return (e as NodeJS.ErrnoException).code !== 'ENOENT'; }
 }
 
 /** `settleLegacyState` with test hooks. Not exported from the package index. */
 export async function settleLegacyStateWith(dirs: HarnessStateDirs, projectDir: string, signal: AbortSignal | undefined, hooks: SettleHooks): Promise<LegacySettle> {
   const layout = checkLayout(dirs, projectDir);
   const from = relative(rootOf(layout), layout.legacy);
+  if (!hasMoveWork(layout)) return 'none';
   return withProjectLock(projectDir, signal ?? new AbortController().signal, async held => {
     const hasBase = recordExists(layout), hasLegacy = legacyExists(layout);
     if (hasBase && hasLegacy) refuseHarness('HARNESS_STATE_TWO_RECORDS');
