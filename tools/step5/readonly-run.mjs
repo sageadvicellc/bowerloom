@@ -70,15 +70,17 @@ export function diff(a, b) {
 
 // ---- the commands ------------------------------------------------------------------------------------------------------
 
-function runner(root, dir, cli) {
+export function runner(root, dir, cli, { timeoutMs = 180_000 } = {}) {
   const env = { PATH: process.env.PATH ?? '', HOME: join(root, 'home'), XDG_STATE_HOME: join(root, 'state'), NO_COLOR: '1' };
   const steps = [];
   const run = (name, args) => {
-    const r = spawnSync(process.execPath, [cli, 'harness', ...args], { cwd: dir, env, encoding: 'utf8', timeout: 180_000, maxBuffer: 64 * 2 ** 20, stdio: ['ignore', 'pipe', 'pipe'] });
+    const r = spawnSync(process.execPath, [cli, 'harness', ...args], { cwd: dir, env, encoding: 'utf8', timeout: timeoutMs, maxBuffer: 64 * 2 ** 20, stdio: ['ignore', 'pipe', 'pipe'] });
     let json = null, code = null;
     try { json = r.stdout.trim().startsWith('{') ? JSON.parse(r.stdout) : null; } catch { /* not JSON */ }
     try { const e = JSON.parse(r.stderr.trim().split('\n').pop() ?? ''); if (typeof e?.error?.code === 'string') code = e.error.code; else if (typeof e?.code === 'string') code = e.code; } catch { /* no code */ }
-    steps.push({ step: name, exit: r.status, ...(code !== null ? { code } : {}) });
+    // A spawn error, a signal, and a timeout are recorded: a step with no exit status says why.
+    const error = typeof r.error?.code === 'string' ? r.error.code : r.error ? 'ERROR' : null;
+    steps.push({ step: name, exit: r.status, ...(code !== null ? { code } : {}), ...(error !== null ? { error } : {}), ...(r.signal ? { signal: r.signal } : {}), ...(r.error?.code === 'ETIMEDOUT' ? { timedOut: true } : {}) });
     return { exit: r.status, json, code };
   };
   return { run, steps };
@@ -88,8 +90,8 @@ const count = (list, key) => { const out = {}; for (const x of list) out[key(x)]
 const claudeVariant = c => (c.variants.find(v => v.places.some(p => p.engines.includes('claude-code'))) ?? c.variants[0]).key;
 
 /** Runs the whole sequence in `dir`. Returns the report. Nothing in the report is a file's content. */
-export function readonlyRun({ root, dir, cli, everyEngine = [] }) {
-  const { run, steps } = runner(root, dir, cli);
+export function readonlyRun({ root, dir, cli, everyEngine = [], timeoutMs }) {
+  const { run, steps } = runner(root, dir, cli, timeoutMs === undefined ? {} : { timeoutMs });
   const engines = ENGINES.flatMap(e => ['--engine', e]), every = everyEngine.flatMap(p => ['--every-engine', p]);
   const report = { steps, stoppedAt: null, status: null, adoption: null, install: null, drift: null, removal: null, refusalCodes: [], written: [], outsideDefinition: [], restored: null };
   const stop = (at) => { report.stoppedAt = at; return report; };
@@ -151,9 +153,11 @@ export function readonlyRun({ root, dir, cli, everyEngine = [] }) {
     if (removed.exit !== 0) { report.refusalCodes = codes(steps); return stop('remove-apply'); }
     report.removal = { changes: rm.json.plan.changes.length };
   } else { report.install = { refused: refusedCounts(refused), stopped: attempt.code ?? `exit ${attempt.exit}` }; report.stoppedAt = 'install'; }
-  const afterRemoval = snapshot(dir);
-  const differences = diff(afterAdoption, afterRemoval);
-  report.restored = { equalToPostAdoption: differences.length === 0, differences: differences.map(d => `${d.kind} ${d.path}`) };
+  // A run that stopped has not been through remove, so there is nothing to compare: restored stays null.
+  if (report.stoppedAt === null) {
+    const differences = diff(afterAdoption, snapshot(dir));
+    report.restored = { equalToPostAdoption: differences.length === 0, differences: differences.map(d => `${d.kind} ${d.path}`) };
+  }
   report.refusalCodes = codes(steps);
   return report;
 }
@@ -216,6 +220,7 @@ if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToP
     writeFileSync(join(root, 'report.json'), `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     process.exitCode = report.sourceProof.unchanged && report.stoppedAt === null ? 0 : 1;
+    process.stderr.write(`Delete the scratch root after you read the report: node tools/step5/scratch-copy.mjs --cleanup ${JSON.stringify(root)}\n`);
   } catch (error) {
     if (!(error instanceof ScratchError)) throw error;
     process.stderr.write(`${JSON.stringify({ ok: false, code: error.code, message: error.message })}\n`);

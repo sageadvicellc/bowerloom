@@ -7,8 +7,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_FLOOR_BYTES, MAX_FILE_BYTES, ROOT_PREFIX, ScratchError, TREE_NAME, guardDir, hashFiles, planCopy, scratchCopy, skipRule } from '../step5/scratch-copy.mjs';
-import { diff, readManifest, snapshot, sourceProof } from '../step5/readonly-run.mjs';
+import { DEFAULT_FLOOR_BYTES, MAX_FILE_BYTES, ROOT_PREFIX, ScratchError, SKIPPED_FOLDERS, TREE_NAME, cleanupRoot, guardDir, hashFiles, planCopy, scratchCopy, skipRule } from '../step5/scratch-copy.mjs';
+import { diff, readManifest, readonlyRun, runner, snapshot, sourceProof } from '../step5/readonly-run.mjs';
 
 const repo = fileURLToPath(new URL('../../', import.meta.url));
 const COPY = path.join(repo, 'tools/step5/scratch-copy.mjs'), RUN = path.join(repo, 'tools/step5/readonly-run.mjs');
@@ -48,7 +48,7 @@ function sourceTree({ settingsLocal = '{"permissions":{"allow":["Bash(ls:*)"]}}\
     ['.codex/auth.json', '{"never":"copied"}\n'], ['.codex/sessions/log.txt', 'not allowlisted\n'],
     ['.env', 'A=1\n'], ['.env.local', 'A=2\n'], ['server.pem', 'k\n'], ['notes.txt', 'not allowlisted\n'], ['credentials.json', '{}\n'],
     ['docs/AGENTS.md', 'nested\n'], ['docs/deep/er/CLAUDE.md', 'nested\n'], ['docs/readme.md', 'not a nested instruction file\n'],
-    ['node_modules/pkg/AGENTS.md', 'dependency\n'], ['archive/AGENTS.md', 'archive\n'], ['.git/config', '[core]\n'], ['.hermes/AGENTS.md', 'h\n'], ['test-results/AGENTS.md', 't\n'],
+    ['node_modules/pkg/AGENTS.md', 'dependency\n'], ['archive/AGENTS.md', 'archive\n'], ['.git/config', '[core]\n'], ['test-results/AGENTS.md', 't\n'],
   ]) put(src, rel, text);
   fs.writeFileSync(path.join(src, '.claude', 'big.md'), Buffer.alloc(MAX_FILE_BYTES + 1, 97));
   // Links: one to a file outside the tree, one to a folder that holds an instruction file. Neither may be followed.
@@ -59,15 +59,44 @@ function sourceTree({ settingsLocal = '{"permissions":{"allow":["Bash(ls:*)"]}}\
   fs.symlinkSync(path.join(outside, 'AGENTS.md'), path.join(src, '.claude', 'linked.md'));
   return { base, src, outside };
 }
-function root() { return temp(ROOT_PREFIX); }
+// A scratch root is a name that does not exist yet: the copy makes the folder itself and refuses an existing one.
+function root() { const d = temp(ROOT_PREFIX); fs.rmdirSync(d); return d; }
 const listTree = dir => { const out = []; const walk = r => { for (const n of fs.readdirSync(path.join(dir, r)).sort()) { const c = r ? `${r}/${n}` : n; if (fs.lstatSync(path.join(dir, c)).isDirectory()) walk(c); else out.push(c); } }; walk(''); return out; };
 
 test('the skip list names each rule, and wins over names the allowlist would take', () => {
-  const cases = { '.git': 'skipped-folder', node_modules: 'skipped-folder', '.worktrees': 'skipped-folder', archive: 'skipped-folder', '.paperclip': 'skipped-folder', '.hermes': 'skipped-folder', '.qmd': 'skipped-folder', 'test-results': 'skipped-folder',
-    '.env': 'env-file', '.env.production': 'env-file', 'a.pem': 'key-file', 'b.KEY': 'key-file', 'c.p12': 'key-file', id_rsa: 'ssh-key', 'Login-Keychain.db': 'keychain', '.netrc': 'credentials-file', '.npmrc': 'credentials-file',
-    'auth.json': 'credentials-file', 'credentials.json': 'credentials-file', 'my-token.md': 'secret-name', 'Secrets.md': 'secret-name', 'a.sqlite': 'database', 'a.sqlite-wal': 'database' };
+  const cases = { '.git': 'skipped-folder', node_modules: 'skipped-folder', '.worktrees': 'skipped-folder', archive: 'skipped-folder', 'test-results': 'skipped-folder',
+    '.env': 'env-file', '.env.production': 'env-file', 'a.pem': 'key-file', 'b.KEY': 'key-file', 'c.p12': 'key-file', 'd.pfx': 'key-file', 'e.JKS': 'key-file', 'f.keystore': 'key-file', id_rsa: 'ssh-key', 'Login-Keychain.db': 'keychain',
+    '.netrc': 'credentials-file', '.npmrc': 'credentials-file', '.pgpass': 'credentials-file', '.git-credentials': 'credentials-file',
+    'auth.json': 'credentials-file', 'credentials.json': 'credentials-file', '.credentials.json': 'credentials-file', '.Credentials': 'credentials-file',
+    'my-token.md': 'secret-name', 'Secrets.md': 'secret-name', 'a.sqlite': 'database', 'a.sqlite-wal': 'database' };
   for (const [name, rule] of Object.entries(cases)) assert.equal(skipRule(name), rule, name);
-  for (const name of ['AGENTS.md', 'CLAUDE.md', '.mcp.json', 'settings.json', 'config.toml', 'SKILL.md', 'identity.md']) assert.equal(skipRule(name), null, name);
+  for (const name of ['AGENTS.md', 'CLAUDE.md', '.mcp.json', 'settings.json', 'config.toml', 'SKILL.md', 'identity.md', '.gitignore', '.claude']) assert.equal(skipRule(name), null, name);
+});
+
+test('the shipped skip list holds only generic folder names; extra names come from --skip', () => {
+  // The shipped list is exactly these generic names; no tool folder of one person is on it.
+  assert.deepEqual([...SKIPPED_FOLDERS].sort(), ['.git', '.worktrees', 'archive', 'node_modules', 'test-results']);
+  assert.equal(skipRule('.madeup-tool'), null);
+  assert.equal(skipRule('.madeup-tool', new Set(['.madeup-tool'])), 'skipped-folder');
+  // A made-up folder is copied until it is named.
+  const { src } = sourceTree();
+  put(src, '.madeup-tool/AGENTS.md', 'm\n'); put(src, 'other-stuff/AGENTS.md', 'o\n'); put(src, 'docs/Made-Up-Cache/CLAUDE.md', 'c\n');
+  assert.ok(planCopy(src).files.some(f => f.rel === '.madeup-tool/AGENTS.md'));
+  const plan = planCopy(src, { skip: ['.madeup-tool', 'made-up-cache'] });
+  assert.deepEqual(plan.files.filter(f => /madeup|made-up|other-stuff/i.test(f.rel)).map(f => f.rel), ['other-stuff/AGENTS.md']);
+  assert.deepEqual(plan.skipped.filter(s => /madeup|made-up/i.test(s.rel)), [{ rel: '.madeup-tool', rule: 'skipped-folder' }, { rel: 'docs/Made-Up-Cache', rule: 'skipped-folder' }]);
+  // Through the command, the option repeats; a path or a missing value is a usage error.
+  const base = temp('bowerloom-step5-env-'), env = envOf(base), r = root();
+  put(src, '.other-made-up/AGENTS.md', 'x\n');
+  const done = spawnSync(process.execPath, [COPY, src, r, '--min-free-bytes', '0', '--skip', '.madeup-tool', '--skip', '.other-made-up'], { encoding: 'utf8', env });
+  assert.equal(done.status, 0, done.stderr);
+  const tree = path.join(r, 'tree', TREE_NAME);
+  assert.equal(fs.existsSync(path.join(tree, '.madeup-tool')) || fs.existsSync(path.join(tree, '.other-made-up')), false);
+  assert.ok(fs.existsSync(path.join(tree, 'other-stuff', 'AGENTS.md')));
+  for (const bad of [['--skip'], ['--skip', 'a/b'], ['--skip', '']]) {
+    const run = spawnSync(process.execPath, [COPY, src, root(), '--min-free-bytes', '0', ...bad], { encoding: 'utf8', env });
+    assert.equal(run.status, 2, bad.join(' ')); assert.equal(JSON.parse(run.stderr).code, 'USAGE');
+  }
 });
 
 test('the allowlist: root instruction files and tool folders are copied; the skip list, the size limit, and everything else are not', () => {
@@ -90,7 +119,7 @@ test('the allowlist: root instruction files and tool folders are copied; the ski
   assert.equal(rule('.codex/auth.json'), 'credentials-file');
   assert.equal(rule('.codex/sessions'), 'not-allowlisted');
   assert.equal(rule('.env'), 'env-file'); assert.equal(rule('server.pem'), 'key-file'); assert.equal(rule('credentials.json'), 'credentials-file');
-  for (const dir of ['node_modules', 'archive', '.git', '.hermes', 'test-results']) assert.equal(rule(dir), 'skipped-folder', dir);
+  for (const dir of ['node_modules', 'archive', '.git', 'test-results']) assert.equal(rule(dir), 'skipped-folder', dir);
   // The scratch root: private, with home, state, and a tree whose name has a space.
   assert.equal(fs.statSync(r).mode & 0o777, 0o700);
   for (const d of ['home', 'state', 'tree', path.join('tree', TREE_NAME)]) assert.equal(fs.statSync(path.join(r, d)).mode & 0o777, 0o700, d);
@@ -176,7 +205,7 @@ test('the free-space floor: the copy is refused before anything is created when 
   const reader = free => dir => { asked.push(dir); return free; };
   const r = root();
   assert.throws(() => scratchCopy(src, r, { freeBytes: reader(DEFAULT_FLOOR_BYTES + plan.bytes - 1) }), e => e instanceof ScratchError && e.code === 'FREE_SPACE_BELOW_FLOOR');
-  assert.deepEqual(fs.readdirSync(r), [], 'nothing was created');
+  assert.equal(fs.existsSync(r), false, 'nothing was created');
   assert.deepEqual(asked, [os.tmpdir() === path.dirname(r) ? path.dirname(r) : fs.realpathSync(path.dirname(r))]);
   // The bytes to copy count against the floor, and the floor is 12 GiB by default.
   assert.equal(DEFAULT_FLOOR_BYTES, 12 * 1024 ** 3);
@@ -186,10 +215,10 @@ test('the free-space floor: the copy is refused before anything is created when 
   const r2 = root();
   assert.throws(() => scratchCopy(src, r2, { freeBytes: reader(100 * 1024 ** 3), minFreeBytes: 101 * 1024 ** 3 }), e => e.code === 'FREE_SPACE_BELOW_FLOOR');
   assert.throws(() => scratchCopy(src, r2, { freeBytes: () => NaN }), e => e.code === 'FREE_SPACE_BELOW_FLOOR');
-  assert.deepEqual(fs.readdirSync(r2), []);
+  assert.equal(fs.existsSync(r2), false);
 });
 
-test('the scratch root must be new or empty, named for this tool, directly below the system temp folder, and apart from the source', () => {
+test('the scratch root must be new, named for this tool, directly below the system temp folder, and apart from the source', () => {
   const { src, base } = sourceTree();
   const code = fn => { try { fn(); } catch (e) { return e.code; } return 'none'; };
   const free = { freeBytes: PLENTY };
@@ -197,7 +226,7 @@ test('the scratch root must be new or empty, named for this tool, directly below
   assert.equal(code(() => scratchCopy(src, path.join(os.tmpdir(), 'other-name-' + process.pid), free)), 'ROOT_NAME');
   assert.equal(code(() => scratchCopy(src, path.join(base, ROOT_PREFIX + 'inner'), free)), 'ROOT_OUTSIDE_TEMP');
   assert.equal(code(() => scratchCopy(src, path.join(process.env.HOME, ROOT_PREFIX + 'home'), free)), 'ROOT_OUTSIDE_TEMP');
-  const full = root(); fs.writeFileSync(path.join(full, 'x'), 'x');
+  const full = root(); fs.mkdirSync(full); fs.writeFileSync(path.join(full, 'x'), 'x');
   assert.equal(code(() => scratchCopy(src, full, free)), 'ROOT_NOT_EMPTY');
   assert.equal(code(() => scratchCopy(path.join(base, 'nope'), root(), free)), 'SOURCE_MISSING');
   assert.equal(code(() => scratchCopy('relative', root(), free)), 'SOURCE_NOT_ABSOLUTE');
@@ -319,4 +348,182 @@ test('the scratch scripts are not shipped: the pack lists neither tools/ nor the
   for (const entry of [...MODULES, ...ASSETS]) assert.equal(/step5|^tools\//.test(entry), false, entry);
   const text = fs.readFileSync(path.join(repo, 'tools/cli-distribution/pack.mjs'), 'utf8');
   assert.equal(/tools\/step5|scratch-copy|readonly-run/.test(text), false);
+});
+
+// ---- review fixes: S3, S6, silent-failure 7 ----------------------------------------------------------------------------
+
+test('the secret scan covers every file the copy keeps; a hit withholds it and names the path and the rule, never the value', () => {
+  const { src } = sourceTree(), r = root();
+  const json = `${JSON.stringify({ env: { SERVICE_API_KEY: FAKE_SECRET } })}\n`, line = `SERVICE_API_KEY = "${FAKE_SECRET}"\n`;
+  const dirty = ['.mcp.json', '.claude/settings.json', 'opencode.json', '.pi/settings.json', '.codex/config.toml', '.opencode/plugins/p.js', '.agents/skills/a/SKILL.md', 'docs/AGENTS.md', 'CLAUDE.md'];
+  for (const rel of dirty) put(src, rel, rel.endsWith('.json') ? json : line);
+  const report = scratchCopy(src, r, { freeBytes: PLENTY });
+  assert.deepEqual(report.withheld.map(w => w.rel), [...dirty].sort());
+  for (const w of report.withheld) assert.ok(w.rules.length > 0 && w.rules.every(x => typeof x === 'string' && /^[a-z0-9-]+$/.test(x)), w.rel);
+  assert.deepEqual(report.withheld.map(w => Object.keys(w).sort()), report.withheld.map(() => ['rel', 'rules']));
+  const tree = path.join(r, 'tree', TREE_NAME);
+  const left = listTree(tree).filter(f => !f.startsWith('.git/'));
+  for (const rel of dirty) assert.equal(left.includes(rel), false, `${rel} is withheld`);
+  assert.ok(left.includes('AGENTS.md') && left.includes('.claude/skills/review/SKILL.md'), 'clean files are still copied');
+  const everything = [JSON.stringify(report), fs.readFileSync(path.join(r, 'scratch.json'), 'utf8'), ...listTree(r).map(f => fs.readFileSync(path.join(r, f), 'utf8'))].join('\n');
+  assert.equal(everything.includes(FAKE_SECRET), false, 'the value is nowhere in the scratch root or the report');
+  // A withheld file is hashed, so the source proof still sees a change to it.
+  const manifest = JSON.parse(fs.readFileSync(path.join(r, 'scratch.json'), 'utf8'));
+  for (const rel of dirty) assert.ok(rel in manifest.sourceHashes, rel);
+  assert.equal(report.ok, true);
+});
+
+test('a credentials file with a leading dot, and the other key and password stores, are skipped even in a tool folder', () => {
+  const { src } = sourceTree(), r = root();
+  for (const rel of ['.claude/.credentials.json', '.claude/.pgpass', '.agents/.git-credentials', '.pi/store.pfx', '.pi/store.jks', '.pi/store.keystore']) put(src, rel, '{}\n');
+  const report = scratchCopy(src, r, { freeBytes: PLENTY });
+  const rule = rel => report.skipped.listed.find(s => s.rel === rel)?.rule;
+  assert.equal(rule('.claude/.credentials.json'), 'credentials-file');
+  assert.equal(rule('.claude/.pgpass'), 'credentials-file');
+  assert.equal(rule('.agents/.git-credentials'), 'credentials-file');
+  for (const rel of ['.pi/store.pfx', '.pi/store.jks', '.pi/store.keystore']) assert.equal(rule(rel), 'key-file', rel);
+  const left = listTree(path.join(r, 'tree', TREE_NAME));
+  assert.equal(left.some(f => /credentials|pgpass|\.pfx|\.jks|keystore/.test(f)), false);
+});
+
+test('the scratch root is made with mode 0700 and without recursion: an existing name is refused, and a planted link is never followed', () => {
+  const { src, base } = sourceTree();
+  const code = fn => { try { fn(); } catch (e) { return e.code; } return 'none'; };
+  const free = { freeBytes: PLENTY };
+  // An empty folder that already exists is refused (EEXIST), not reused.
+  const existing = root(); fs.mkdirSync(existing, { mode: 0o755 });
+  assert.equal(code(() => scratchCopy(src, existing, free)), 'ROOT_EXISTS');
+  assert.deepEqual(fs.readdirSync(existing), [], 'nothing was written into it');
+  assert.equal(fs.statSync(existing).mode & 0o777, 0o755, 'its mode was not touched');
+  // A link planted at the name is refused, and the folder it leads to is left alone.
+  const target = path.join(base, 'target'); fs.mkdirSync(target, { mode: 0o755 });
+  const planted = root(); fs.symlinkSync(target, planted);
+  assert.notEqual(code(() => scratchCopy(src, planted, free)), 'none');
+  assert.deepEqual(fs.readdirSync(target), []);
+  assert.equal(fs.statSync(target).mode & 0o777, 0o755);
+  // A new name gives a real folder, private, owned by the user.
+  const fresh = root();
+  scratchCopy(src, fresh, free);
+  const st = fs.lstatSync(fresh);
+  assert.ok(st.isDirectory() && !st.isSymbolicLink());
+  assert.equal(st.mode & 0o777, 0o700);
+  assert.equal(st.uid, process.getuid());
+  // The command line gives the same refusal.
+  const env = envOf(temp('bowerloom-step5-env-'));
+  const again = spawnSync(process.execPath, [COPY, src, existing, '--min-free-bytes', '0'], { encoding: 'utf8', env });
+  assert.equal(again.status, 3); assert.equal(JSON.parse(again.stderr).code, 'ROOT_EXISTS');
+});
+
+test('a folder the walk cannot read is recorded as unreadable-folder and the report is not ok', { skip: process.getuid?.() === 0 }, () => {
+  const { src } = sourceTree(), r = root();
+  const locked = path.join(src, '.claude', 'locked');
+  put(src, '.claude/locked/note.md', 'n\n');
+  fs.chmodSync(locked, 0o000);
+  try {
+    const plan = planCopy(src);
+    assert.deepEqual(plan.skipped.filter(s => s.rule === 'unreadable-folder'), [{ rel: '.claude/locked', rule: 'unreadable-folder' }]);
+    const report = scratchCopy(src, r, { freeBytes: PLENTY });
+    assert.equal(report.ok, false);
+    assert.equal(report.skipped.byRule['unreadable-folder'], 1);
+    assert.ok(report.skipped.listed.some(s => s.rel === '.claude/locked' && s.rule === 'unreadable-folder'));
+    // The rest of the copy went ahead.
+    assert.ok(fs.existsSync(path.join(r, 'tree', TREE_NAME, 'AGENTS.md')));
+    // The command exits 1 for a report that is not ok.
+    const run = spawnSync(process.execPath, [COPY, src, root(), '--min-free-bytes', '0'], { encoding: 'utf8', env: envOf(temp('bowerloom-step5-env-')) });
+    assert.equal(run.status, 1);
+  } finally { fs.chmodSync(locked, 0o755); }
+});
+
+test('--cleanup removes a scratch root, and only one that passes the root checks', () => {
+  const { src } = sourceTree();
+  const code = fn => { try { fn(); } catch (e) { return e.code; } return 'none'; };
+  const env = envOf(temp('bowerloom-step5-env-'));
+  const r = root();
+  const done = spawnSync(process.execPath, [COPY, src, r, '--min-free-bytes', '0'], { encoding: 'utf8', env });
+  assert.equal(done.status, 0, done.stderr);
+  // The last line of output tells the reader to delete the root after reading the report; stdout stays pure JSON.
+  const lines = done.stderr.trim().split('\n');
+  assert.match(lines[lines.length - 1], /delete the scratch root.*--cleanup/i);
+  assert.ok(done.stderr.includes(r));
+  JSON.parse(done.stdout);
+  // Refusals first, each leaving the folder in place.
+  assert.equal(code(() => cleanupRoot('relative/' + ROOT_PREFIX + 'x')), 'ROOT_NOT_ABSOLUTE');
+  const other = temp('other-name-'); fs.writeFileSync(path.join(other, 'scratch.json'), '{}');
+  assert.equal(code(() => cleanupRoot(other)), 'ROOT_NAME');
+  const noManifest = temp(ROOT_PREFIX);
+  assert.equal(code(() => cleanupRoot(noManifest)), 'ROOT_NOT_SCRATCH');
+  const outside = path.join(temp('bowerloom-step5-holder-'), ROOT_PREFIX + 'inner'); fs.mkdirSync(outside); fs.writeFileSync(path.join(outside, 'scratch.json'), '{}');
+  assert.equal(code(() => cleanupRoot(outside)), 'ROOT_OUTSIDE_TEMP');
+  assert.equal(code(() => cleanupRoot(root())), 'ROOT_MISSING');
+  const linkTarget = temp(ROOT_PREFIX); fs.writeFileSync(path.join(linkTarget, 'scratch.json'), '{}');
+  const link = root(); fs.symlinkSync(linkTarget, link);
+  assert.notEqual(code(() => cleanupRoot(link)), 'none');
+  for (const kept of [other, noManifest, outside, linkTarget, r]) assert.equal(fs.existsSync(kept), true, kept);
+  // A real scratch root goes, whole; the source does not.
+  const refusedCli = spawnSync(process.execPath, [COPY, '--cleanup', other], { encoding: 'utf8', env });
+  assert.equal(refusedCli.status, 3); assert.equal(JSON.parse(refusedCli.stderr).code, 'ROOT_NAME');
+  const gone = spawnSync(process.execPath, [COPY, '--cleanup', r], { encoding: 'utf8', env });
+  assert.equal(gone.status, 0, gone.stderr);
+  assert.equal(fs.existsSync(r), false);
+  assert.equal(fs.existsSync(path.join(src, 'AGENTS.md')), true);
+  const twice = spawnSync(process.execPath, [COPY, '--cleanup', r], { encoding: 'utf8', env });
+  assert.equal(twice.status, 3); assert.equal(JSON.parse(twice.stderr).code, 'ROOT_MISSING');
+  const usage = spawnSync(process.execPath, [COPY, '--cleanup'], { encoding: 'utf8', env });
+  assert.equal(usage.status, 2);
+  const mixed = spawnSync(process.execPath, [COPY, '--cleanup', r, src], { encoding: 'utf8', env });
+  assert.equal(mixed.status, 2);
+});
+
+// A stand-in for the built command line, so these tests start no engine and no network call. It is a plain node script.
+function fakeCli(body) {
+  const dir = temp('bowerloom-step5-fake-'), file = path.join(dir, 'cli.js');
+  fs.writeFileSync(file, body);
+  return file;
+}
+const PLAN = { items: [], conflicts: [], unmapped: [], secrets: [], approvalsRequired: [], everyEngine: [], files: [], ready: true };
+const ADOPT_THEN_STOP = `
+const a = process.argv.slice(3);
+if (a[0] === 'status') { console.log('{}'); process.exit(0); }
+if (a[0] === 'adopt') { if (a.includes('--approve')) process.exit(0); console.log(JSON.stringify({ plan: ${JSON.stringify(PLAN)}, revision: 'r1' })); process.exit(3); }
+process.exit(1);
+`;
+
+test('a step records the spawn error code, the signal, and a timed-out flag', () => {
+  const { src } = sourceTree(), r = root();
+  scratchCopy(src, r, { freeBytes: PLENTY });
+  const dir = path.join(r, 'tree', TREE_NAME);
+  // A signal: the child ends itself.
+  const killed = readonlyRun({ root: r, dir, cli: fakeCli("if (process.argv[3] === 'status') process.kill(process.pid, 'SIGKILL'); process.exit(1);") });
+  assert.equal(killed.steps[0].step, 'status');
+  assert.equal(killed.steps[0].exit, null);
+  assert.equal(killed.steps[0].signal, 'SIGKILL');
+  assert.equal(killed.steps[0].timedOut, undefined);
+  assert.equal(killed.steps[0].error, undefined);
+  // A timeout: the child outlives the limit.
+  const slow = runner(r, dir, fakeCli('setTimeout(() => {}, 60000);'), { timeoutMs: 300 });
+  slow.run('status', ['status']);
+  assert.equal(slow.steps[0].timedOut, true);
+  assert.equal(slow.steps[0].error, 'ETIMEDOUT');
+  assert.equal(slow.steps[0].signal, 'SIGTERM');
+  assert.equal(slow.steps[0].exit, null);
+  // A spawn error: the folder to run in is missing.
+  const broken = runner(r, path.join(r, 'no-such-folder'), fakeCli('process.exit(0);'));
+  broken.run('status', ['status']);
+  assert.equal(broken.steps[0].error, 'ENOENT');
+  assert.equal(broken.steps[0].exit, null);
+  // A normal step carries none of the three.
+  const fine = runner(r, dir, fakeCli('process.exit(0);'));
+  fine.run('status', ['status']);
+  assert.deepEqual(fine.steps, [{ step: 'status', exit: 0 }]);
+});
+
+test('restored is null when the run stopped, and set when it ran to the end', () => {
+  const { src } = sourceTree(), r = root();
+  scratchCopy(src, r, { freeBytes: PLENTY });
+  const dir = path.join(r, 'tree', TREE_NAME);
+  // Adoption applies, then install refuses: the run stops at install, and no restore was ever tried.
+  const stopped = readonlyRun({ root: r, dir, cli: fakeCli(ADOPT_THEN_STOP) });
+  assert.equal(stopped.stoppedAt, 'install');
+  assert.equal(stopped.restored, null);
+  assert.ok(stopped.install.stopped);
 });
