@@ -268,11 +268,12 @@ export interface ProjectInput {
   readonly approve: readonly string[];
 }
 /** `written`: the files the install wrote. `takenOver`: the person's files it recorded and did not write. */
-export interface ProjectWritten { readonly noop: boolean; readonly written: readonly string[]; readonly takenOver: readonly string[]; readonly leftBehind: readonly string[] }
+/** `warnings`: words about something that did not finish after the write worked, such as approval drafts that were not cleared. Absent when none. */
+export interface ProjectWritten { readonly noop: boolean; readonly written: readonly string[]; readonly takenOver: readonly string[]; readonly leftBehind: readonly string[]; readonly warnings?: readonly string[] }
 
 export interface RemovalView { readonly changes: readonly ChangeView[]; readonly removeDirs: readonly string[]; readonly revision: string }
 /** `kept`: files the install took over, which the removal leaves as they are. */
-export interface Removed { readonly restored: readonly string[]; readonly kept: readonly string[]; readonly deleted: readonly string[]; readonly leftBehind: readonly string[] }
+export interface Removed { readonly restored: readonly string[]; readonly kept: readonly string[]; readonly deleted: readonly string[]; readonly leftBehind: readonly string[]; readonly warnings?: readonly string[] }
 /** The two answers to a mode drift line: put the recorded mode back, or let the record take the new mode (decision D5A). */
 export type ModeChoice = 'restoreMode' | 'recordMode';
 /**

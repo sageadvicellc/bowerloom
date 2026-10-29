@@ -157,8 +157,10 @@ test('the app adopts, the command line installs, the app sees the folder install
   assert.deepEqual(status.json.unfinished, { projection: false, adoption: false, merge: false });
   const gone = await cli(w, ['remove', '--json']);
   assert.equal(gone.code, 1); assert.equal(gone.error?.code, 'PORTABLE_NOTHING_PROJECTED');
-  const drift = await cli(w, ['drift', '--check', '--json']);
-  assert.equal(drift.code, 0, drift.out); assert.deepEqual(drift.json.drift, [], 'nothing installed is nothing that drifted');
+  const drift = await cli(w, ['drift', '--json']);
+  assert.equal(drift.code, 0, drift.out); assert.deepEqual(drift.json.drift, [], 'nothing installed is nothing that drifted'); assert.equal(drift.json.projected, false);
+  const checked = await cli(w, ['drift', '--check', '--json']);
+  assert.equal(checked.code, 1); assert.equal(checked.error?.code, 'PORTABLE_NOTHING_PROJECTED', 'a check of nothing does not pass');
 });
 
 test('the command line adopts and installs, the app reads that record, finds nothing to change, and removes it', async t => {

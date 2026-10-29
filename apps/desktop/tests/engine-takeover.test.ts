@@ -53,7 +53,7 @@ test('check 1: the app shows taken-over files as taken over, counts only written
   const writes = plan.changes.filter(writesFile).length;
   assert.ok(writes > 0 && writes === plan.changes.length - TAKEN.length, 'every other path of this plan writes');
   const done = value(await service.runProjection(id, plan.revision, input));
-  assert.deepEqual(asked.at(-1), ASK.projection(label, writes, plan.revision), 'the dialog counts only the files written');
+  assert.deepEqual(asked.at(-1), ASK.projection(label, writes, plan.revision, input.approve.length), 'the dialog counts only the files written, and the lines approved');
   assert.deepEqual(done.takenOver, TAKEN);
   assert.ok(TAKEN.every(p => !done.written.includes(p)), 'a taken-over file is not reported as written');
   assert.equal(done.written.length, writes);

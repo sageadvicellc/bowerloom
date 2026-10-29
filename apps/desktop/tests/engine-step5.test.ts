@@ -87,7 +87,7 @@ test('7B: both records present is a plain refusal on choosing the folder; nothin
   assert.ok(existsSync(dirs.legacy) && existsSync(dirs.base));
 });
 
-test('D2A, D3A: a tick in the app is an approval draft the command line reads, a draft on disk counts in the app, and an install or a removal drops them', async t => {
+test('D2A, D3A: a tick in the app is a record in memory until main\'s dialog says yes, a draft on disk counts in the app, and an install or a removal drops them', async t => {
   const s = setup(t), dir = definedFolder(s.home);
   const { service, id, dirs } = await chosen(s, dir);
   const ask = value(await service.planProjection(id, INPUT)) as Extract<ProjectAnswer, { kind: 'approve' }>;
@@ -95,22 +95,21 @@ test('D2A, D3A: a tick in the app is an approval draft the command line reads, a
   assert.deepEqual(readApprovalDrafts(dirs, dir), [], 'a plan with no tick writes no draft');
   const input = { ...INPUT, approve: ask.lines.map(l => l.key) };
   const first = planOf(value(await service.planProjection(id, input)));
-  const drafts = readApprovalDrafts(dirs, dir);
-  assert.equal(drafts.length, 2);
-  assert.ok(drafts.every(d => d.who === 'tester' && d.when === '2026-10-28T12:00:00Z'));
-  // Another session (or the command line) plans with the drafts on disk: no line to approve, the same plan.
+  assert.deepEqual(readApprovalDrafts(dirs, dir), [], 'a plan with ticks writes no draft either (item 8)');
+  // Another session (or the command line) has no draft to plan with, so it asks for the lines again.
   const other = await chosen(s, dir);
-  const shared = planOf(value(await other.service.planProjection(other.id, INPUT)));
-  assert.equal(shared.revision, first.revision, 'the same drafts give the same plan');
-  assert.equal(shared.approved.length, 2);
-  assert.ok(shared.approved.every(a => !a.earlier));
-  value(await other.service.runProjection(other.id, shared.revision, INPUT));
+  const apart = value(await other.service.planProjection(other.id, INPUT)) as Extract<ProjectAnswer, { kind: 'approve' }>;
+  assert.equal(apart.kind, 'approve');
+  const loaded = loadDefinition(join(dir, '.bowerloom'));
+  assert.ok(loaded.ok);
+  const asked = s.asked.length;
+  value(await service.runProjection(id, first.revision, input));
+  assert.equal(s.asked.length, asked + 1, 'main asked before it wrote');
   assert.deepEqual(readApprovalDrafts(dirs, dir), [], 'the receipt records them, so the drafts go');
   const receipt = readPortableReceipt({ projectDir: dir, stateDir: dirs.portable })!;
   assert.equal(receipt.approvals.length, 2);
+  assert.ok(receipt.approvals.every(a => a.who === 'tester' && a.when === '2026-10-28T12:00:00Z'));
   // A draft left on disk goes with a removal.
-  const loaded = loadDefinition(join(dir, '.bowerloom'));
-  assert.ok(loaded.ok);
   const { when: _when, ...draft } = receipt.approvals[0]!;
   addApprovalDraft(dirs, dir, draft, { definition: loaded.definition, now: WHEN });
   assert.equal(readApprovalDrafts(dirs, dir).length, 1);

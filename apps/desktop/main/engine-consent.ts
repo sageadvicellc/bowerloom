@@ -31,12 +31,14 @@ export const cancelled = (): { ok: false; refusal: Refusal } => ({
 
 const files = (n: number): string => `${n} ${n === 1 ? 'file' : 'files'}`;
 const again = 'Bowerloom plans again first and stops if anything changed.';
+/** What the person approved in this sheet, so the dialog says how many weaker lines the yes covers. Nothing when none were ticked. */
+const approvedLines = (n: number): string => (n === 0 ? '' : `You approved ${n} ${n === 1 ? 'line' : 'lines'} that an interface carries more weakly than the harness says. `);
 
 /** The words of each dialog, from main's own counts. */
 export const ASK = Object.freeze({
   adoption: (label: string, n: number, rev: string): Ask => ({ title: 'Write the new harness', message: `Write ${files(n)} into ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. Only .bowerloom changes. ${again}` }),
-  projection: (label: string, n: number, rev: string): Ask => ({ title: 'Install the harness', message: `Write ${files(n)} in ${label}?`, detail: `From plan ${rev.slice(0, 8)}. Undo puts back what this replaces. ${again}` }),
-  record: (label: string, rev: string): Ask => ({ title: 'Update the record', message: `Update Bowerloom's record for ${label}?`, detail: `From plan ${rev.slice(0, 8)}. No file in the folder changes; Bowerloom's private record of this install does. ${again}` }),
+  projection: (label: string, n: number, rev: string, approved = 0): Ask => ({ title: 'Install the harness', message: `Write ${files(n)} in ${label}?`, detail: `From plan ${rev.slice(0, 8)}. ${approvedLines(approved)}Undo puts back what this replaces. ${again}` }),
+  record: (label: string, rev: string, approved = 0): Ask => ({ title: 'Update the record', message: `Update Bowerloom's record for ${label}?`, detail: `From plan ${rev.slice(0, 8)}. ${approvedLines(approved)}No file in the folder changes; Bowerloom's private record of this install does. ${again}` }),
   removal: (label: string, deletes: number, restores: number, rev: string): Ask => ({ title: 'Remove what Bowerloom wrote', message: `Delete ${files(deletes)} and put back ${files(restores)} in ${label}?`, detail: `From plan ${rev.slice(0, 8)}. ${again}` }),
   recovery: (label: string, steps: number, action: string, rev: string): Ask => ({ title: 'Finish a stopped install', message: `${action === 'keep' ? 'Keep your versions' : action === 'complete' ? 'Finish the stopped run' : 'Take the stopped run back'} in ${label}?`, detail: `From plan ${rev.slice(0, 8)}, ${steps} ${steps === 1 ? 'step' : 'steps'}. ${again}` }),
   /** A recovery that settles mode drift lines (decision D5A): each mode goes back, or the record takes it. */

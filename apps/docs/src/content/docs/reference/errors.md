@@ -333,7 +333,7 @@ The `bowerloom harness` commands adopt a folder into a 0.8 harness and install i
 | `PORTABLE_CASE_CLASH` | Two paths differ only in letter case, and many file systems treat them as one. | Rename one of the two paths the message lists. |
 | `PORTABLE_DRIFT` | A file that Bowerloom wrote, or was about to replace, changed since the plan. | `bowerloom harness drift` |
 | `PORTABLE_STATE_UNSAFE` | Bowerloom keeps its record of an install in a private folder that only you can change, outside the project. | check the private state folder: `$XDG_STATE_HOME/bowerloom` when `XDG_STATE_HOME` is set, else `~/.local/state/bowerloom` |
-| `PORTABLE_STATE_INVALID` | A record in the private state folder is damaged, or a saved copy that it needs is gone. | `bowerloom harness recover`. If the message lists paths with no saved copy, add `--keep <path>` for each. |
+| `PORTABLE_STATE_INVALID` | The record that the message names is damaged, or a saved copy that it needs is gone. | Move the file the message names aside in the private state folder, then run the command again. If the message says a saved copy is gone, run `bowerloom harness recover` with `--keep <path>` for each path. |
 | `PORTABLE_STATE_FOREIGN` | The private state folder holds the record of another folder, and Bowerloom never uses it for this one. | Run the command from the folder that made the record. |
 | `PORTABLE_RECOVERY_REQUIRED` | An earlier install or removal stopped part way, and Bowerloom changes nothing else until it is recovered. | `bowerloom harness recover` |
 | `PORTABLE_PARTIAL` | The run stopped part way, and some files are not as planned. The message lists them. | `bowerloom harness recover` |
