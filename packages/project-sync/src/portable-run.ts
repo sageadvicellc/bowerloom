@@ -13,6 +13,9 @@
  * - The journal lists only the folders a run really created, so a rollback never removes a person's folder (V10).
  * - Recovery finishes an apply whose receipt is written and a removal whose steps all ran (P21), and rolls back any
  *   other run. It can keep a person's version of a changed or deleted path and drop that path from the receipt (P10).
+ * - A file whose bytes match the receipt and whose mode does not is mode drift (decision D5A). Recovery restores the
+ *   recorded mode through the journaled steps, or records the new mode in the receipt, never one that lets the group
+ *   or others write the file.
  *
  * The index exports the functions without hooks. The hooks entry points here are for tests (ruling P7).
  */
@@ -22,8 +25,8 @@ import { withProjectLock } from '../../project-context/src/index.js';
 import type { HeldProjectLock } from '../../project-context/src/types.js';
 import { syncError } from './refusal.js';
 import {
-  PortableRefusal, byBytes, checkAncestors, folderId, isProjectedDir, isRefusal, makeDir, readProject, refuse, removeEmptyDirs, revisionOf, sameState,
-  sha, stateOrUnsafe, sweepTemps, syncDir, writeAbs,
+  GROUP_OR_WORLD_WRITE, PortableRefusal, byBytes, checkAncestors, driftReason, folderId, isProjectedDir, isRefusal, makeDir, readProject, refuse,
+  removeEmptyDirs, revisionOf, sameContent, sameState, sha, stateOrUnsafe, sweepTemps, syncDir, writeAbs,
 } from './portable-files.js';
 import type { FileState, LeftBehind } from './portable-files.js';
 import {
@@ -31,7 +34,7 @@ import {
   readPending, readReceipt, saveBlob, unlinkRecord, writeRecord,
 } from './portable-state.js';
 import type { Pending, PortableReceipt, Step } from './portable-state.js';
-import { planWithBytes } from './portable.js';
+import { clearRecordedModes, planWithBytes, readRecordedModes, writeRecordedModes } from './portable.js';
 import type { PlannedChange, PortableInput, PortablePlan, PortableReport } from './portable.js';
 
 export const PORTABLE_REMOVAL_FORMAT = 'bowerloom/portable-removal-plan/v1beta2' as const;
@@ -75,11 +78,25 @@ export interface PortableRemovalPlan {
 }
 export interface PortableRemovalResult {
   readonly planRevision: string;
+  /** The files put back as they were. */
   readonly restored: readonly string[];
+  /** The files whose original is their current state, as a file taken over: they stay as they are, unwritten. */
+  readonly kept: readonly string[];
   readonly deleted: readonly string[];
   readonly leftBehind: readonly LeftBehind[];
 }
-export interface RecoveryInput { readonly projectDir: string; readonly stateDir: string; readonly keep?: readonly string[] }
+export interface RecoveryInput {
+  readonly projectDir: string;
+  readonly stateDir: string;
+  /** Paths whose person's version stays and which leave the receipt. */
+  readonly keep?: readonly string[];
+  /** Mode-drift paths that go back to the recorded mode (decision D5A). */
+  readonly restoreMode?: readonly string[];
+  /** Mode-drift paths whose new mode the receipt takes. Refused for a mode with group or world write. */
+  readonly recordMode?: readonly string[];
+}
+/** One mode-drift path of a recovery plan and what happens to it. */
+export interface ModeChoice { readonly path: string; readonly choice: 'restoreMode' | 'recordMode'; readonly now: FileState; readonly recorded: FileState }
 export interface PortableRecoveryPlan {
   readonly format: typeof PORTABLE_RECOVERY_FORMAT;
   readonly projectDir: string;
@@ -89,11 +106,15 @@ export interface PortableRecoveryPlan {
   /**
    * `complete`: the run finished its steps; only the receipt and cleanup remain. `rollback`: each written step is undone.
    * `keep`: no run is unfinished; the named paths keep the person's version and leave the receipt.
+   * `mode`: no run is unfinished; each path of `modes` goes back to its recorded mode or the receipt takes its new mode.
+   * Paths in `keep` are kept as well.
    */
-  readonly action: 'complete' | 'rollback' | 'keep';
+  readonly action: 'complete' | 'rollback' | 'keep' | 'mode';
   readonly steps: readonly { readonly path: string; readonly now: FileState | null | 'unsafe'; readonly decision: 'undo' | 'none' | 'keep' }[];
   /** Paths that keep the person's version and leave the receipt. */
   readonly keep: readonly string[];
+  /** The mode choices, in path order. Empty unless the action is `mode`. */
+  readonly modes: readonly ModeChoice[];
   /**
    * For each kept path, where its saved original stays: `kept/<hash>` in the state folder, or null when no original was
    * saved or the copy is gone (review item V1).
@@ -107,12 +128,15 @@ export interface PortableRecoveryPlan {
 export interface PortableRecoveryResult extends PortableRecoveryPlan { readonly leftBehind: readonly LeftBehind[] }
 /** The words of a recovery plan that keeps paths. */
 export const KEEP_NOTICE = 'Each kept path leaves the receipt and is targeted again on the next apply, which saves the person\'s version as its original. The earlier original stays in the kept folder of the state folder.';
-export interface DriftLine { readonly path: string; readonly reason: 'changed' | 'missing' | 'unsafe'; readonly now: FileState | null; readonly recorded: FileState }
+/** `mode`: the bytes match the receipt and the mode does not. `changed`: the bytes differ, whatever the mode. */
+export interface DriftLine { readonly path: string; readonly reason: 'changed' | 'missing' | 'unsafe' | 'mode'; readonly now: FileState | null; readonly recorded: FileState }
 
 const reportOf = (p: PortablePlan): PortableReport => ({
   loss: p.loss, partial: p.partial, notice: p.notice, deferred: p.deferred, filterLeaks: p.filterLeaks, pendingTrust: p.pendingTrust, ignored: p.ignored, offers: p.offers,
-  trust: p.trust, review: p.review, approved: p.approved,
+  trust: p.trust, review: p.review, approved: p.approved, takenOver: p.takenOver,
 });
+/** A restore whose original is the state the path holds now: nothing to write (a file Bowerloom took over). */
+const stays = (c: PlannedChange): boolean => c.action === 'restore' && c.original !== null && sameState(c.before, c.original);
 const hex = (r: unknown): r is string => typeof r === 'string' && /^[a-f0-9]{64}$/.test(r);
 const isCrash = (e: unknown): boolean => (e as { crash?: unknown } | null)?.crash === true;
 
@@ -263,9 +287,18 @@ export async function applyPortableWith(input: PortableInput, revision: string, 
     const previous = readReceipt(stateDir, projectDir);
     if (plan.noop) return { noop: true, planRevision: plan.revision, receipt: previous, report: reportOf(plan), leftBehind: [] };
     ensureState(stateDir);
+    // A file taken over is not written. Its bytes are saved as its original, which the receipt names, so a later update
+    // can restore them and a later plan can read them. The plan just read it under the lock; a change since is drift.
+    for (const c of plan.changes) {
+      if (c.action !== 'take-over') continue;
+      live(ctx);
+      const cur = readProject(projectDir, c.path);
+      if (cur === null || !sameState(cur.state, c.before)) refuse('PORTABLE_DRIFT', [c.path]);
+      saveBlob(stateDir, cur!.bytes);
+    }
     const work: Work[] = [];
     for (const c of plan.changes) {
-      if (c.action === 'unchanged') continue;
+      if (c.action === 'unchanged' || c.action === 'take-over' || stays(c)) continue;
       const target = planned.get(c.path);
       if (c.after !== null && target === undefined) throw syncError('STALE_APPROVAL');
       const bytes = c.after !== null ? target! : c.original === null ? null : blob(stateDir, c.original, c.path);
@@ -298,7 +331,7 @@ export async function applyPortableWith(input: PortableInput, revision: string, 
 
 // ---- drift against the receipt (portable spec, section 5.3; ruling P13) --------------------------------------------------
 
-/** Each projected file that differs from its receipt, with why: changed (content or mode), missing, or unsafe. */
+/** Each projected file that differs from its receipt, with why: changed (content), mode (the mode only), missing, or unsafe. */
 export function portableDrift(input: { readonly projectDir: string; readonly stateDir: string }): DriftLine[] {
   checkPaths(input?.projectDir, input?.stateDir);
   const receipt = readReceipt(input.stateDir, input.projectDir);
@@ -307,8 +340,7 @@ export function portableDrift(input: { readonly projectDir: string; readonly sta
   for (const f of receipt.files) {
     const now = stateOrUnsafe(input.projectDir, f.path), recorded = { sha256: f.sha256, mode: f.mode };
     if (now === 'unsafe') out.push({ path: f.path, reason: 'unsafe', now: null, recorded });
-    else if (now === null) out.push({ path: f.path, reason: 'missing', now, recorded });
-    else if (!sameState(now, f)) out.push({ path: f.path, reason: 'changed', now, recorded });
+    else if (!sameState(now, recorded)) out.push({ path: f.path, reason: driftReason(now, recorded), now, recorded });
   }
   return out;
 }
@@ -349,12 +381,15 @@ export async function applyPortableRemovalWith(input: { readonly projectDir: str
     const plan = planPortableRemoval(input);
     if (plan.revision !== revision) throw syncError('STALE_APPROVAL');
     const { projectDir, stateDir } = plan, ctx: Ctx = { projectDir, stateDir, held, hooks };
-    const work: Work[] = plan.changes.map(c => ({ step: { path: c.path, from: c.before, to: c.original }, bytes: c.original === null ? null : blob(stateDir, c.original, c.path) }));
+    // A file whose original is its current state, as a file taken over, stays as it is: no step of the journal.
+    const work: Work[] = plan.changes.filter(c => !stays(c))
+      .map(c => ({ step: { path: c.path, from: c.before, to: c.original }, bytes: c.original === null ? null : blob(stateDir, c.original, c.path) }));
     // The marker of a removal holds the folders to remove, so a removal finished by recovery removes them too.
     execute(ctx, { format: PENDING_FORMAT, projectDir, kind: 'remove', planRevision: plan.revision, steps: work.map(w => w.step), dirs: plan.removeDirs }, work, []);
     hooks.at?.('after-steps');
     after(ctx, () => {
       unlinkRecord(stateDir, 'receipt.json');
+      clearRecordedModes(stateDir);
       hooks.at?.('after-receipt');
       live(ctx);
       cleanBlobs(stateDir, new Set());
@@ -362,7 +397,10 @@ export async function applyPortableRemovalWith(input: { readonly projectDir: str
       hooks.at?.('after-finish');
     });
     const leftBehind = removeDirs(ctx, plan.removeDirs);
-    return { planRevision: plan.revision, restored: plan.changes.filter(c => c.action === 'restore').map(c => c.path), deleted: plan.changes.filter(c => c.action === 'delete').map(c => c.path), leftBehind };
+    return {
+      planRevision: plan.revision, restored: plan.changes.filter(c => c.action === 'restore' && !stays(c)).map(c => c.path), kept: plan.changes.filter(stays).map(c => c.path),
+      deleted: plan.changes.filter(c => c.action === 'delete').map(c => c.path), leftBehind,
+    };
   });
 }
 
@@ -374,13 +412,22 @@ export async function applyPortableRemovalWith(input: { readonly projectDir: str
  * receipt is gone or whose steps all ran, is complete; any other run is rolled back, and every saved copy a rollback
  * needs is checked (V2). A path that is neither at its old nor its new state, or whose saved copy is gone, refuses
  * unless `keep` names it. With no unfinished run, `keep` drops changed or missing paths from the receipt; their saved
- * originals stay in the kept folder (V1).
+ * originals stay in the kept folder (V1). With no unfinished run, `restoreMode` and `recordMode` settle mode-drift
+ * paths (decision D5A); `recordMode` refuses PORTABLE_MODE_UNSAFE for a mode with group or world write. A path named in
+ * two of the three lists, or a mode choice while a run is unfinished, refuses PORTABLE_USAGE.
  */
 export function planPortableRecovery(input: RecoveryInput): PortableRecoveryPlan {
   checkPaths(input?.projectDir, input?.stateDir);
   const { projectDir, stateDir } = input;
-  const keepWanted = input.keep ?? [];
-  if (!Array.isArray(keepWanted) || keepWanted.some(k => typeof k !== 'string')) refuse('PORTABLE_USAGE');
+  const list = (v: unknown): string[] => {
+    if (v === undefined) return [];
+    if (!Array.isArray(v) || v.some(k => typeof k !== 'string')) return refuse('PORTABLE_USAGE');
+    return [...new Set(v as string[])];
+  };
+  const keepWanted = list(input.keep), restoreWanted = list(input.restoreMode), recordWanted = list(input.recordMode);
+  const modeWanted = [...restoreWanted, ...recordWanted];
+  const named = [...keepWanted, ...modeWanted], twice = named.filter((k, i) => named.indexOf(k) !== i);
+  if (twice.length) refuse('PORTABLE_USAGE', [...new Set(twice)]);
   const pending = readPending(stateDir, projectDir);
   const receipt = readReceipt(stateDir, projectDir);
   const originalOf = (path: string, fallback: FileState | null): string | null => {
@@ -388,21 +435,29 @@ export function planPortableRecovery(input: RecoveryInput): PortableRecoveryPlan
     const original = listed ? listed.original : fallback;
     return original !== null && blobOk(stateDir, original) ? keptPath(stateDir, original) : null;
   };
-  const body = (kind: PortableRecoveryPlan['kind'], action: PortableRecoveryPlan['action'], steps: PortableRecoveryPlan['steps'], keep: string[], from: ReadonlyMap<string, FileState | null>) => {
+  const body = (kind: PortableRecoveryPlan['kind'], action: PortableRecoveryPlan['action'], steps: PortableRecoveryPlan['steps'], keep: string[], from: ReadonlyMap<string, FileState | null>, modes: readonly ModeChoice[] = []) => {
     const sorted = keep.sort(byBytes);
     const b = {
-      format: PORTABLE_RECOVERY_FORMAT, projectDir, stateDir, kind, action, steps, keep: sorted,
+      format: PORTABLE_RECOVERY_FORMAT, projectDir, stateDir, kind, action, steps, keep: sorted, modes,
       keptOriginals: sorted.map(path => ({ path, original: originalOf(path, from.get(path) ?? null) })), notice: sorted.length ? KEEP_NOTICE : null,
     };
     return { ...b, revision: revisionOf(b) };
   };
   if (pending === null) {
-    if (keepWanted.length === 0) return refuse('PORTABLE_RECOVER_NOTHING');
-    const drift = new Set(portableDrift(input).map(d => d.path));
-    const bad = keepWanted.filter(k => !drift.has(k));
+    if (named.length === 0) return refuse('PORTABLE_RECOVER_NOTHING');
+    const drift = new Map(portableDrift(input).map(d => [d.path, d] as const));
+    const bad = [...keepWanted.filter(k => !drift.has(k)), ...modeWanted.filter(k => drift.get(k)?.reason !== 'mode')];
     if (bad.length || receipt === null) refuse('PORTABLE_USAGE', bad);
-    return body(null, 'keep', [], [...new Set(keepWanted)], new Map());
+    if (modeWanted.length === 0) return body(null, 'keep', [], keepWanted, new Map());
+    const open = recordWanted.filter(k => (drift.get(k)!.now!.mode & GROUP_OR_WORLD_WRITE) !== 0);
+    if (open.length) refuse('PORTABLE_MODE_UNSAFE', open.sort(byBytes));
+    const modes: ModeChoice[] = modeWanted.sort(byBytes).map(path => {
+      const d = drift.get(path)!;
+      return { path, choice: restoreWanted.includes(path) ? 'restoreMode' : 'recordMode', now: d.now!, recorded: d.recorded };
+    });
+    return body(null, 'mode', [], keepWanted, new Map(), modes);
   }
+  if (modeWanted.length) refuse('PORTABLE_USAGE', modeWanted);
   for (const s of pending.steps) sweepTemps(projectDir, s.path);
   const states = pending.steps.map(s => ({ step: s, now: stateOrUnsafe(projectDir, s.path) }));
   const at = (now: FileState | null | 'unsafe', want: FileState | null): boolean => now !== 'unsafe' && sameState(now, want);
@@ -417,7 +472,7 @@ export function planPortableRecovery(input: RecoveryInput): PortableRecoveryPlan
     if (at(now, step.to) && (step.from === null || blobOk(stateDir, step.from))) return { path: step.path, now, decision: 'undo' as const };
     if (keepWanted.includes(step.path)) { keep.push(step.path); return { path: step.path, now, decision: 'keep' as const }; }
     if (at(now, step.to)) lost.push(step.path);
-    else drifted.push(`${step.path} (${now === 'unsafe' ? 'unsafe' : now === null ? 'missing' : 'changed'})`);
+    else drifted.push(`${step.path} (${now === 'unsafe' ? 'unsafe' : now === null ? 'missing' : sameContent(now, step.from) || sameContent(now, step.to) ? 'mode' : 'changed'})`);
     return { path: step.path, now, decision: 'none' as const };
   });
   if (drifted.length) refuse('PORTABLE_DRIFT', drifted);
@@ -427,14 +482,73 @@ export function planPortableRecovery(input: RecoveryInput): PortableRecoveryPlan
   return body(pending.kind, 'rollback', steps, keep, new Map(pending.steps.map(s => [s.path, s.from])));
 }
 
-/** Drops paths from the receipt: the person's version stays. Its saved original moves to the kept folder (V1). */
-function dropFromReceipt(stateDir: string, receipt: PortableReceipt | null, paths: readonly string[]): PortableReceipt | null {
-  if (receipt === null || !receipt.files.some(f => paths.includes(f.path))) return receipt;
+/**
+ * Drops paths from the receipt: the person's version stays. Its saved original moves to the kept folder (V1). Each path
+ * of `modes` takes its new mode in the receipt (decision D5A).
+ */
+function dropFromReceipt(stateDir: string, receipt: PortableReceipt | null, paths: readonly string[], modes: ReadonlyMap<string, number> = new Map()): PortableReceipt | null {
+  if (receipt === null || !receipt.files.some(f => paths.includes(f.path) || modes.has(f.path))) return receipt;
   const { revision: _r, ...rest } = receipt;
-  const body = { ...rest, files: receipt.files.filter(f => !paths.includes(f.path)) };
+  const body = { ...rest, files: receipt.files.filter(f => !paths.includes(f.path)).map(f => (modes.has(f.path) ? { ...f, mode: modes.get(f.path)! } : f)) };
   const next: PortableReceipt = { ...body, revision: revisionOf(body) };
   writeRecord(stateDir, 'receipt.json', next);
   return next;
+}
+
+/**
+ * Settles mode drift (decision D5A). Each `restoreMode` path is rewritten with its own bytes at the recorded mode,
+ * through the journaled steps, so a crash leaves a marker that recovery rolls back. The pending marker carries the
+ * revision of this recovery plan, which no receipt names, so recovery rolls such a run back rather than finish it.
+ * Then the receipt drops the kept paths and takes each `recordMode` mode, and the marker goes.
+ */
+function settleModes(ctx: Ctx, plan: PortableRecoveryPlan, receipt: PortableReceipt | null): PortableRecoveryResult {
+  const { projectDir, stateDir, hooks } = ctx;
+  const restore = plan.modes.filter(m => m.choice === 'restoreMode');
+  const record = new Map(plan.modes.filter(m => m.choice === 'recordMode').map(m => [m.path, m.now.mode] as const));
+  // The recorded modes go first, so a crash before the receipt leaves an entry that no receipt matches: harmless.
+  const rewrite = (): PortableReceipt | null => {
+    if (record.size) noteRecordedModes(stateDir, projectDir, receipt, record);
+    return dropFromReceipt(stateDir, receipt, plan.keep, record);
+  };
+  if (restore.length) {
+    ensureState(stateDir);
+    const work: Work[] = restore.map(m => {
+      const cur = readProject(projectDir, m.path);
+      if (cur === null || !sameState(cur.state, m.now)) refuse('PORTABLE_DRIFT', [m.path]);
+      return { step: { path: m.path, from: m.now, to: m.recorded }, bytes: cur!.bytes };
+    });
+    execute(ctx, { format: PENDING_FORMAT, projectDir, kind: 'apply', planRevision: plan.revision, steps: work.map(w => w.step), dirs: [] }, work, []);
+    hooks.at?.('after-steps');
+    after(ctx, () => {
+      const next = rewrite();
+      hooks.at?.('after-receipt');
+      cleanBlobs(stateDir, originalsOf(next));
+      unlinkRecord(stateDir, 'pending.json'); syncDir(stateDir);
+      hooks.at?.('after-finish');
+    });
+  } else {
+    live(ctx);
+    const next = rewrite();
+    cleanBlobs(stateDir, originalsOf(next));
+  }
+  return { ...plan, leftBehind: [] };
+}
+
+/**
+ * Notes each recorded mode with the content and the mode the projection planned for it, so a later install keeps it
+ * while the plan is the same. The planned mode is the receipt's mode, unless an earlier note for the same content
+ * already holds it.
+ */
+function noteRecordedModes(stateDir: string, projectDir: string, receipt: PortableReceipt | null, record: ReadonlyMap<string, number>): void {
+  const notes = new Map(readRecordedModes(stateDir, projectDir));
+  for (const [path, mode] of record) {
+    const f = receipt?.files.find(x => x.path === path);
+    if (!f) continue;
+    const prior = notes.get(path);
+    const planned = prior && prior.sha256 === f.sha256 && prior.recorded === f.mode ? prior.planned : f.mode;
+    notes.set(path, { path, sha256: f.sha256, planned, recorded: mode });
+  }
+  writeRecordedModes(stateDir, projectDir, [...notes.values()]);
 }
 
 /** Applies the approved recovery under the project lock. */
@@ -464,10 +578,11 @@ export async function applyPortableRecoveryWith(input: RecoveryInput, revision: 
       cleanBlobs(stateDir, originalsOf(receipt));
       return { ...plan, leftBehind: [] };
     }
+    if (plan.action === 'mode') return settleModes(ctx, plan, receipt);
     const p = pending!;
     if (plan.action === 'complete') {
       live(ctx);
-      if (p.kind === 'remove') { unlinkRecord(stateDir, 'receipt.json'); receipt = null; }
+      if (p.kind === 'remove') { unlinkRecord(stateDir, 'receipt.json'); clearRecordedModes(stateDir); receipt = null; }
       cleanBlobs(stateDir, originalsOf(receipt));
       unlinkRecord(stateDir, 'pending.json'); syncDir(stateDir);
       const r = receipt as PortableReceipt | null;

@@ -137,6 +137,8 @@ async function main(args: string[]): Promise<void> {
   // F' code review C: bare bowerloom prints the short help. At cc117ac it was a usage refusal, not a plumbing form.
   if (args.length === 0 || (args.length === 1 && (args[0] === '--help' || args[0] === '-h' || args[0] === 'help'))) { process.stdout.write(`${releaseHeading()}\n${shortHelp()}`); return; }
   if (args[0] === 'help') {
+    // Step 5: the 0.8 harness commands have their own topic, outside the short help.
+    if (args.length === 2 && args[1] === 'harness') { const { HARNESS_HELP } = await import('./harness-def.js'); process.stdout.write(`${releaseHeading()}\n${HARNESS_HELP}`); return; }
     const text = helpText(args.slice(1));
     if (text === null) throw new DefinitionError('USAGE', 'There is no help for that. Run bowerloom help to see the commands.');
     process.stdout.write(`${releaseHeading()}\n${text}`); return;
@@ -282,6 +284,13 @@ async function main(args: string[]): Promise<void> {
     process.stdout.write(args[1] === 'plan' && !args.includes('--json')
       ? renderStartupRevisionReview(result as import('../../../packages/startup/src/index.js').StartupRevisionPlan)
       : `${canonicalJson(result)}\n`);
+    return;
+  }
+  // Step 5, decision D1A: the 0.8 harness commands. The 0.7 forms all take --synthetic and keep their handler below.
+  if (args[0] === 'harness' && !args.includes('--synthetic')) {
+    const { runHarnessDefCommand, HARNESS_HELP } = await import('./harness-def.js');
+    if (args.length === 2 && (args[1] === '--help' || args[1] === '-h')) { process.stdout.write(`${releaseHeading()}\n${HARNESS_HELP}`); return; }
+    process.exitCode = await runHarnessDefCommand(args, process.cwd(), homedir(), text => process.stdout.write(text), undefined, process.env);
     return;
   }
   if (args[0] === 'harness') {

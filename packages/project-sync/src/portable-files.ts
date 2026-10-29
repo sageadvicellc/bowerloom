@@ -20,7 +20,7 @@ const MESSAGES = {
   PORTABLE_ENGINE_NOT_LISTED: 'The projection names an engine that harness.json does not list. Nothing was projected.',
   PORTABLE_MERGE_NOT_BUILT: 'Merge moves the CLAUDE.md text into the definition, and this projection does not edit the definition. Choose Accept AGENTS.md or Keep both. Nothing was projected.',
   PORTABLE_PATH_UNSAFE: 'A path Bowerloom would read, write, or restore is a link, is not a plain file or folder, has more than one link, is not yours, is larger than 1 MiB, or sits in a folder that is not where Bowerloom expects it. Nothing more was changed.',
-  PORTABLE_PATH_OCCUPIED: 'A skill folder Bowerloom would write already holds files that Bowerloom did not project. Nothing was changed.',
+  PORTABLE_PATH_OCCUPIED: 'A skill folder or file Bowerloom would write already holds files that Bowerloom did not project, and they differ from what Bowerloom would write. Nothing was changed.',
   PORTABLE_MANAGED_COPY: 'A skill folder Bowerloom would write holds a copy that a 0.7 skills sync manages. Adoption (step 3) converts it. Nothing was changed.',
   PORTABLE_CASE_CLASH: 'Two paths differ only in the case of their letters, and many file systems treat them as one. Nothing was changed.',
   PORTABLE_DRIFT: 'A file Bowerloom projected, or a file it was about to replace, changed since the plan. Nothing more was changed.',
@@ -39,6 +39,7 @@ const MESSAGES = {
   PORTABLE_ENV_DEFAULT: 'An entry holds ${NAME:-x} or a like default form. No engine is documented to expand it, so Bowerloom never copies it as literal text. Write ${NAME}. Nothing was projected.',
   PORTABLE_TARGET_INVALID: 'A file Bowerloom would add entries to is not valid strict JSON, valid TOML, or UTF-8 text, so Bowerloom cannot keep its bytes as they are. Nothing was projected.',
   PORTABLE_UNSAFE_VALUE: 'A value would change meaning in the engine file: an OpenCode string holds {env: or {file:, which OpenCode replaces, or a DeepSeek Harness private block holds an object shaped like a !!js expression. Nothing was projected.',
+  PORTABLE_MODE_UNSAFE: 'The new mode of a projected file lets the group or others write it, so the receipt does not take it. Restore the recorded mode, or narrow the mode first. Nothing was changed.',
   PORTABLE_ORDER_UNSAFE: 'An OpenCode permission key or pattern is a whole number such as 1. OpenCode reads its file into a JavaScript object, which moves such a key to the front, so the last-match order would change. Nothing was projected.',
 } as const;
 export type PortableCode = keyof typeof MESSAGES;
@@ -64,6 +65,12 @@ export const revisionOf = (body: unknown): string => sha(canonicalJson(body));
 export const byBytes = (a: string, b: string): number => Buffer.compare(Buffer.from(a), Buffer.from(b));
 export const uid = (): number | undefined => process.getuid?.();
 export const sameState = (a: FileState | null, b: FileState | null): boolean => a === null ? b === null : b !== null && a.sha256 === b.sha256 && a.mode === b.mode;
+/** True when both files exist and hold the same bytes, whatever their modes. */
+export const sameContent = (a: FileState | null, b: FileState | null): boolean => a !== null && b !== null && a.sha256 === b.sha256;
+/** The mode bits that let the group or others write a file. A recorded mode never holds them (decision D5A). */
+export const GROUP_OR_WORLD_WRITE = 0o022;
+/** Why a file differs from the state it should hold: `mode` when only the mode differs, else `changed` or `missing`. */
+export const driftReason = (now: FileState | null, want: FileState): 'changed' | 'missing' | 'mode' => now === null ? 'missing' : sameContent(now, want) ? 'mode' : 'changed';
 const code = (e: unknown): string | undefined => (e as NodeJS.ErrnoException | null)?.code;
 
 // ---- path shapes (review ruling P1) ------------------------------------------------------------------------------------

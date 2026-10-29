@@ -12,7 +12,7 @@ import { CANCELLED, NOT_THE_PLAN_SHOWN } from '../shared/engine/types.js';
 import type { Refusal } from '../shared/engine/types.js';
 
 /** The kinds of plan a write can name. */
-export type PlanKind = 'adoption' | 'projection' | 'removal' | 'recovery' | 'adoption-recovery';
+export type PlanKind = 'adoption' | 'projection' | 'removal' | 'recovery' | 'adoption-recovery' | 'merge';
 
 /** Main's record of the last plan it returned: its revision, the choices it was made with (canonical JSON), and the words of the dialog. */
 export interface ShownPlan { readonly revision: string; readonly choices: string; readonly ask: Ask | null }
@@ -39,7 +39,12 @@ export const ASK = Object.freeze({
   record: (label: string, rev: string): Ask => ({ title: 'Update the record', message: `Update Bowerloom's record for ${label}?`, detail: `From plan ${rev.slice(0, 8)}. No file in the folder changes; Bowerloom's private record of this install does. ${again}` }),
   removal: (label: string, deletes: number, restores: number, rev: string): Ask => ({ title: 'Remove what Bowerloom wrote', message: `Delete ${files(deletes)} and put back ${files(restores)} in ${label}?`, detail: `From plan ${rev.slice(0, 8)}. ${again}` }),
   recovery: (label: string, steps: number, action: string, rev: string): Ask => ({ title: 'Finish a stopped install', message: `${action === 'keep' ? 'Keep your versions' : action === 'complete' ? 'Finish the stopped run' : 'Take the stopped run back'} in ${label}?`, detail: `From plan ${rev.slice(0, 8)}, ${steps} ${steps === 1 ? 'step' : 'steps'}. ${again}` }),
+  /** A recovery that settles mode drift lines (decision D5A): each mode goes back, or the record takes it. */
+  modes: (label: string, n: number, rev: string): Ask => ({ title: 'Settle changed file modes', message: `Restore or keep ${n} file ${n === 1 ? 'mode' : 'modes'} in ${label}?`, detail: `From plan ${rev.slice(0, 8)}. ${again}` }),
   adoptionRecovery: (label: string, n: number, rev: string): Ask => ({ title: 'Finish a stopped harness', message: `Remove ${files(n)} that a stopped run left in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. ${again}` }),
+  /** Merge (decision D4A): a definition edit only. CLAUDE.md changes later, in the install that accepts AGENTS.md. */
+  merge: (label: string, n: number, rev: string): Ask => ({ title: 'Merge CLAUDE.md into the harness', message: `Write ${files(n)} into ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. CLAUDE.md does not change yet. ${again}` }),
+  mergeRecovery: (label: string, n: number, rev: string): Ask => ({ title: 'Finish a stopped harness', message: `Put back ${files(n)} that a stopped merge changed in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. ${again}` }),
 });
 
 /** Session records of the last plan of each kind, per folder. A plan that fails clears its kind, so a stale plan can never be written. */

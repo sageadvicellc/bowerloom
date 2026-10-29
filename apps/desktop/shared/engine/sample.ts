@@ -4,13 +4,15 @@
  * make from a synthetic folder), and the words of the refusals are the packages' words.
  *  - `inbox-tools` is set up the old way: adoption finds a conflict, three approvals, two acknowledgements and one entry it lists only.
  *  - `weekly-report` holds a definition for Claude Code, Codex and OpenCode, and its own CLAUDE.md: the plan asks for two approvals, then shows every
- *    result word, the partial notice, pending trust, the code and commands to read, and the drift report with Accept AGENTS.md as the default.
+ *    result word, the partial notice, pending trust, the code and commands to read, and the drift report with Accept AGENTS.md as the default. Merge
+ *    moves its CLAUDE.md into the harness once; the install that follows accepts AGENTS.md.
  *  - `garden` holds an install that stopped part way: only a recovery plan can run.
  */
 import type {
   AdoptChoices, AdoptRecovered, AdoptRecoveryView, AdoptView, AdoptWritten, Answer, ApproveLineView, ChangeView, EngineBridge, EngineId, FolderInfo, LossView,
-  ProjectAnswer, ProjectInput, ProjectView, ProjectWritten, Recovered, RecoveryView, Refusal, RemovalView, Removed,
+  MergeView, MergeWritten, ProjectAnswer, ProjectInput, ProjectView, ProjectWritten, Recovered, RecoveryChoices, RecoveryView, Refusal, RemovalView, Removed,
 } from './types.js';
+import { writesFile } from './types.js';
 import { approveKey, lossByEngine, unmappedHashBody } from './view.js';
 
 /** The packages' own words for the refusals the sample can give (packages/adoption/src/refusal.ts, packages/project-sync/src/portable-files.ts). */
@@ -21,6 +23,7 @@ export const SAMPLE_MESSAGES = Object.freeze({
   ADOPTION_ACKNOWLEDGEMENT_REQUIRED: 'Unmapped entries could hold a deny, an ask, or a sandbox value. A person acknowledges each by id before adoption writes. Nothing was written.',
   ADOPTION_DEFINED: 'The .bowerloom folder already holds harness.json, so it is a 0.8 definition. Adoption writes a new definition only. Nothing was changed.',
   ADOPTION_RECOVER_NOTHING: 'No adoption of this project is unfinished, so there is nothing to recover.',
+  ADOPTION_MERGE_NOTHING: 'There is nothing to merge: the project has no CLAUDE.md, its CLAUDE.md is empty or already follows AGENTS.md, or the definition\'s instructions already hold its text. Nothing was changed.',
   PORTABLE_DEFINITION_INVALID: 'The harness definition cannot be loaded, so nothing was projected.',
   PORTABLE_MERGE_NOT_BUILT: 'Merge moves the CLAUDE.md text into the definition, and this projection does not edit the definition. Choose Accept AGENTS.md or Keep both. Nothing was projected.',
   PORTABLE_DRIFT: 'A file Bowerloom projected, or a file it was about to replace, changed since the plan. Nothing more was changed.',
@@ -241,6 +244,7 @@ function projectFixture(input: ProjectInput, projected: boolean, written: string
     ignored: [],
     pendingTrust: [],
     filterLeaks: [],
+    takenOver: [],
     noop,
     revision,
   };
@@ -255,13 +259,18 @@ export function sampleEngineFixtures(): { adopt: AdoptView; approveLines: Approv
   };
 }
 
-interface SampleFolder { info: FolderInfo; adopted: boolean; projected: boolean; written: string | null; stopped: boolean }
+interface SampleFolder { info: FolderInfo; adopted: boolean; projected: boolean; written: string | null; stopped: boolean; merged: boolean }
+
+/** The CLAUDE.md of the sample folder that differs from its AGENTS.md. */
+export const SAMPLE_CLAUDE = '# Weekly report\n\nDraft the report on Friday. Keep each section under 200 words.\n';
+/** The keep list of earlier steps, or the full recovery choices, as one shape. */
+const choicesOf = (c: readonly string[] | RecoveryChoices): RecoveryChoices => (Array.isArray(c) ? { keep: [...c as readonly string[]], restoreMode: [], recordMode: [] } : c as RecoveryChoices);
 
 /** The sample bridge: the same calls as the real one, on three made-up folders in memory. Nothing is read or written. */
 export function createSampleEngine(): EngineBridge {
   const folders = new Map<string, SampleFolder>();
   const add = (id: string, name: string, extra: Partial<FolderInfo>): void => {
-    folders.set(id, { info: { id, label: `~/Projects/${name}`, name, hasDefinition: false, engines: [], problem: null, projected: false, unfinished: { projection: false, adoption: false }, ...extra }, adopted: false, projected: false, written: null, stopped: extra.unfinished?.projection === true });
+    folders.set(id, { info: { id, label: `~/Projects/${name}`, name, hasDefinition: false, engines: [], problem: null, projected: false, unfinished: { projection: false, adoption: false }, ...extra }, adopted: false, projected: false, written: null, stopped: extra.unfinished?.projection === true, merged: false });
   };
   add(SAMPLE_FOLDERS.adopt, 'inbox-tools', {});
   add(SAMPLE_FOLDERS.defined, 'weekly-report', { hasDefinition: true, engines: ['claude-code', 'codex', 'opencode'] });
@@ -284,6 +293,12 @@ export function createSampleEngine(): EngineBridge {
     const needed = APPROVE.filter(l => input.engines.includes(l.engine)).map(l => ({ ...l, key: sampleKey(l), approvable: true, text: SAMPLE_ENTRY[`${l.part}/${l.entry}`] ?? '' }));
     if (!f.projected && needed.some(l => !input.approve.includes(l.key))) return ok({ kind: 'approve', lines: needed, approvedSoFar: input.approve.filter(k => needed.some(l => l.key === k)) });
     return ok({ kind: 'plan', plan: projectFixture(input, f.projected, f.written) });
+  }
+
+  function mergePlan(f: SampleFolder): Answer<MergeView> {
+    if (f.stopped) return refuse('PORTABLE_RECOVERY_REQUIRED');
+    if (!f.info.hasDefinition || f.merged || f.projected) return refuse('ADOPTION_MERGE_NOTHING');
+    return ok({ folder: f.info.label, claude: SAMPLE_CLAUDE, heading: 'From CLAUDE.md', addsPart: false, files: [{ path: '.bowerloom/instructions/AGENTS.md', action: 'update' }], revision: sampleRevision(`merge ${f.info.id}`) });
   }
 
   return {
@@ -315,7 +330,7 @@ export function createSampleEngine(): EngineBridge {
       if (a.value.kind !== 'plan' || a.value.plan.revision !== revision) return refuse('ADOPTION_STALE_APPROVAL');
       const plan = a.value.plan;
       f.projected = true; f.written = JSON.stringify({ ...input, approve: [...input.approve].sort() });
-      return ok({ noop: plan.noop, written: plan.changes.filter(c => c.action !== 'unchanged').map(c => c.path), leftBehind: [] });
+      return ok({ noop: plan.noop, written: plan.changes.filter(writesFile).map(c => c.path), takenOver: plan.changes.filter(c => c.action === 'take-over').map(c => c.path), leftBehind: [] });
     })()),
     planRemoval: id => settle(((): Answer<RemovalView> => {
       const f = get(id);
@@ -331,23 +346,31 @@ export function createSampleEngine(): EngineBridge {
       if (!f.projected) return refuse('PORTABLE_NOTHING_PROJECTED');
       if (revision !== sampleRevision(`removal ${f.written}`)) return refuse('ADOPTION_STALE_APPROVAL');
       f.projected = false; f.written = null;
-      return ok({ restored: ['CLAUDE.md'], deleted: ['.claude/settings.json', '.codex/rules/bowerloom.rules', 'AGENTS.md'], leftBehind: [] });
+      return ok({ restored: ['CLAUDE.md'], kept: [], deleted: ['.claude/settings.json', '.codex/rules/bowerloom.rules', 'AGENTS.md'], leftBehind: [] });
     })()),
-    planRecovery: (id, keep) => settle(((): Answer<RecoveryView> => {
-      const f = get(id);
+    planRecovery: (id, choices) => settle(((): Answer<RecoveryView> => {
+      const f = get(id), c = choicesOf(choices);
       if (!f.stopped) return refuse('PORTABLE_RECOVER_NOTHING');
       return ok({
         kind: 'apply', action: 'rollback',
         steps: [{ path: 'AGENTS.md', now: 'present', decision: 'undo' }, { path: '.claude/settings.json', now: 'present', decision: 'undo' }, { path: '.codex/hooks.json', now: 'missing', decision: 'none' }],
-        keep: [...keep], notice: null, revision: sampleRevision(`recovery ${keep.join(',')}`),
+        keep: [...c.keep], modes: [], notice: null, revision: sampleRevision(`recovery ${c.keep.join(',')}`),
       });
     })()),
-    runRecovery: (id, revision, keep) => settle(((): Answer<Recovered> => {
-      const f = get(id);
+    runRecovery: (id, revision, choices) => settle(((): Answer<Recovered> => {
+      const f = get(id), c = choicesOf(choices);
       if (!f.stopped) return refuse('PORTABLE_RECOVER_NOTHING');
-      if (revision !== sampleRevision(`recovery ${keep.join(',')}`)) return refuse('ADOPTION_STALE_APPROVAL');
+      if (revision !== sampleRevision(`recovery ${c.keep.join(',')}`)) return refuse('ADOPTION_STALE_APPROVAL');
       f.stopped = false;
       return ok({ leftBehind: [] });
+    })()),
+    planMerge: id => settle(mergePlan(get(id))),
+    runMerge: (id, revision) => settle(((): Answer<MergeWritten> => {
+      const f = get(id), plan = mergePlan(f);
+      if (!plan.ok) return plan;
+      if (plan.value.revision !== revision) return refuse('ADOPTION_STALE_APPROVAL');
+      f.merged = true;
+      return ok({ written: plan.value.files.map(x => x.path) });
     })()),
   };
 }

@@ -131,12 +131,21 @@ export function locateJson(text: string): JNode | null {
 
 // ---- JSON: edit -----------------------------------------------------------------------------------------------------------
 
-/** Add members to the object at `path`, or items to the array at `path`. Missing objects on the way are created. */
+/**
+ * Add members to the object at `path`, or items to the array at `path`. Missing objects on the way are created. `same`
+ * says when a member the file holds means the planned value, where two forms mean the same to the engine; the default is
+ * equal JSON values.
+ */
 export type JsonOp =
-  | { readonly kind: 'members'; readonly path: readonly string[]; readonly members: readonly (readonly [string, Out])[] }
+  | { readonly kind: 'members'; readonly path: readonly string[]; readonly members: readonly (readonly [string, Out])[]; readonly same?: (held: unknown, planned: unknown) => boolean }
   | { readonly kind: 'items'; readonly path: readonly string[]; readonly items: readonly Out[] };
 
-export type EditResult = { readonly ok: true; readonly text: string } | { readonly ok: false; readonly reason: 'invalid' } | { readonly ok: false; readonly reason: 'conflict'; readonly at: readonly string[] };
+/**
+ * `kept` names each entry the file already holds with the same name and the same value as the planned entry: the edit
+ * leaves it as it is, and Bowerloom takes it over (definition spec, check 1, on an adopted folder). A JSON member is
+ * `a.b.name`, a JSON array item is `a.b[index]` at its index in the file, and a TOML table is its dotted header path.
+ */
+export type EditResult = { readonly ok: true; readonly text: string; readonly kept: readonly string[] } | { readonly ok: false; readonly reason: 'invalid' } | { readonly ok: false; readonly reason: 'conflict'; readonly at: readonly string[] };
 
 /** The indent unit of a JSON text: the leading white space of its first indented line, or two spaces. */
 function unitOf(text: string): string {
@@ -155,8 +164,8 @@ export function editJson(base: string | null, ops: readonly JsonOp[]): EditResul
   if (root0 === null || root0.kind !== 'object') return { ok: false, reason: 'invalid' };
   const unit = unitOf(text);
   const pad = (d: number): string => unit.repeat(d);
-  const conflicts: string[] = [];
-  const insertMembers = (obj: Extract<JNode, { kind: 'object' }>, depth: number, add: readonly (readonly [string, Out])[]): void => {
+  const conflicts: string[] = [], kept: string[] = [];
+  const insertMembers =(obj: Extract<JNode, { kind: 'object' }>, depth: number, add: readonly (readonly [string, Out])[]): void => {
     const body = add.map(([k, v]) => `${pad(depth + 1)}${JSON.stringify(k)}: ${renderJson(v, unit, depth + 1)}`);
     if (obj.members.length) {
       const at = obj.members.at(-1)!.value.end;
@@ -187,7 +196,8 @@ export function editJson(base: string | null, ops: readonly JsonOp[]): EditResul
       for (const [k, v] of op.members) {
         const had = node.members.find(x => x.key === k);
         if (!had) { add.push([k, v]); continue; }
-        if (!sameValue(JSON.parse(text.slice(had.value.start, had.value.end)), plain(v))) conflicts.push([...op.path, k].join('.'));
+        if (!(op.same ?? sameValue)(JSON.parse(text.slice(had.value.start, had.value.end)), plain(v))) conflicts.push([...op.path, k].join('.'));
+        else kept.push([...op.path, k].join('.'));
       }
       if (add.length) insertMembers(node, depth, add);
     } else {
@@ -197,7 +207,11 @@ export function editJson(base: string | null, ops: readonly JsonOp[]): EditResul
       if (had.value.kind !== 'array') { conflicts.push(op.path.join('.')); continue; }
       const arr = had.value;
       const present = arr.items.map(n => JSON.parse(text.slice(n.start, n.end)) as unknown);
-      const add = op.items.filter(v => !present.some(p => sameValue(p, plain(v))));
+      const add: Out[] = [];
+      for (const v of op.items) {
+        const at = present.findIndex(p => sameValue(p, plain(v)));
+        if (at < 0) add.push(v); else kept.push(`${op.path.join('.')}[${at}]`);
+      }
       if (add.length === 0) continue;
       const body = add.map(v => `${pad(depth + 2)}${renderJson(v, unit, depth + 2)}`);
       if (arr.items.length) {
@@ -208,7 +222,7 @@ export function editJson(base: string | null, ops: readonly JsonOp[]): EditResul
   }
   if (conflicts.length) return { ok: false, reason: 'conflict', at: conflicts };
   if (locateJson(text) === null) return { ok: false, reason: 'invalid' };
-  return { ok: true, text };
+  return { ok: true, text, kept: [...new Set(kept)] };
 }
 
 // ---- TOML: render ---------------------------------------------------------------------------------------------------------
@@ -276,20 +290,175 @@ export const TOML_TABLES_CLOSE = '# End of the tables Bowerloom writes.\n';
 /** A managed table: its header path and its keys. */
 export interface TomlTable { readonly path: readonly string[]; readonly entries: readonly (readonly [string, Out])[] }
 
+// ---- TOML: read one table, for a takeover ---------------------------------------------------------------------------------
+
+/**
+ * A reader for the one line of a simple TOML key or value. It reads the forms Bowerloom writes, and a little more: basic
+ * and literal strings, decimal integers, floats that are not whole numbers, booleans, and one-line arrays and inline
+ * tables of those. Anything else (a multi-line value, a date, a whole-number float, a hexadecimal number, a dotted key)
+ * makes it fail, so the table is not taken over and the conflict stands.
+ */
+class LineReader {
+  i = 0;
+  constructor(readonly s: string) {}
+  fail(): never { throw new SyntaxError('not a simple TOML line'); }
+  ws(): void { while (this.s[this.i] === ' ' || this.s[this.i] === '\t') this.i++; }
+  basic(): string {
+    this.i++;
+    let out = '';
+    for (;;) {
+      const c = this.s[this.i];
+      if (c === undefined) this.fail();
+      if (c === '"') { this.i++; return out; }
+      if (c === '\\') {
+        const e = this.s[this.i + 1] ?? '';
+        const simple: Record<string, string> = { b: '\b', t: '\t', n: '\n', f: '\f', r: '\r', '"': '"', '\\': '\\' };
+        if (simple[e] !== undefined) { out += simple[e]; this.i += 2; continue; }
+        const width = e === 'u' ? 4 : e === 'U' ? 8 : 0, hex = this.s.slice(this.i + 2, this.i + 2 + width);
+        if (width === 0 || !new RegExp(`^[0-9A-Fa-f]{${width}}$`).test(hex)) this.fail();
+        const cp = parseInt(hex, 16);
+        if (cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) this.fail();
+        out += String.fromCodePoint(cp); this.i += 2 + width; continue;
+      }
+      out += c; this.i++;
+    }
+  }
+  literal(): string {
+    const end = this.s.indexOf("'", this.i + 1);
+    if (end < 0) this.fail();
+    const out = this.s.slice(this.i + 1, end);
+    this.i = end + 1;
+    return out;
+  }
+  key(): string {
+    const c = this.s[this.i];
+    if (c === '"') { if (this.s.startsWith('"""', this.i)) this.fail(); return this.basic(); }
+    if (c === "'") { if (this.s.startsWith("'''", this.i)) this.fail(); return this.literal(); }
+    const m = /^[A-Za-z0-9_-]+/.exec(this.s.slice(this.i));
+    if (!m) this.fail();
+    this.i += m![0].length;
+    return m![0];
+  }
+  /** A dotted key path, as a header holds one. */
+  path(): string[] {
+    const out: string[] = [];
+    for (;;) { this.ws(); out.push(this.key()); this.ws(); if (this.s[this.i] !== '.') return out; this.i++; }
+  }
+  value(): unknown {
+    const c = this.s[this.i];
+    if (c === '"' || c === "'") return this.key();
+    if (c === '[') {
+      this.i++;
+      const out: unknown[] = [];
+      for (;;) {
+        this.ws();
+        if (this.s[this.i] === ']') { this.i++; return out; }
+        out.push(this.value()); this.ws();
+        if (this.s[this.i] === ',') { this.i++; continue; }
+        if (this.s[this.i] === ']') { this.i++; return out; }
+        this.fail();
+      }
+    }
+    if (c === '{') {
+      this.i++; this.ws();
+      const out: Record<string, unknown> = {};
+      if (this.s[this.i] === '}') { this.i++; return out; }
+      for (;;) {
+        this.ws();
+        const k = this.key(); this.ws();
+        if (this.s[this.i] !== '=' || Object.hasOwn(out, k)) this.fail();
+        this.i++; this.ws();
+        out[k] = this.value(); this.ws();
+        if (this.s[this.i] === ',') { this.i++; continue; }
+        if (this.s[this.i] === '}') { this.i++; return out; }
+        this.fail();
+      }
+    }
+    const m = /^[^\s,\]}#]+/.exec(this.s.slice(this.i));
+    if (!m) this.fail();
+    const word = m![0];
+    this.i += word.length;
+    if (word === 'true') return true;
+    if (word === 'false') return false;
+    if (/^[+-]?(?:0|[1-9](?:_?[0-9])*)$/.test(word)) { const n = Number(word.replace(/_/g, '')); if (!Number.isSafeInteger(n)) this.fail(); return n; }
+    if (/^[+-]?(?:0|[1-9](?:_?[0-9])*)(?:\.[0-9](?:_?[0-9])*)?(?:[eE][+-]?[0-9](?:_?[0-9])*)?$/.test(word)) {
+      // A whole-number float reads as a float in TOML and would be written as an integer, so it is not the same value.
+      const n = Number(word.replace(/_/g, ''));
+      if (!Number.isFinite(n) || Number.isInteger(n)) this.fail();
+      return n;
+    }
+    return this.fail();
+  }
+  /** The rest of the line: white space and an optional comment. */
+  end(): void { this.ws(); if (this.i < this.s.length && this.s[this.i] !== '#') this.fail(); }
+}
+
+/**
+ * The keys and values of the table that one header of `text` defines at `path`, read from that header's own lines, or
+ * null when the header is not found exactly once or any of its lines is not one simple `key = value`.
+ */
+export function tomlHeaderTable(text: string, path: readonly string[]): Record<string, unknown> | null {
+  const lines = text.split('\n').map(l => (l.endsWith('\r') ? l.slice(0, -1) : l));
+  const headerAt = (line: string): string[] | null => {
+    const r = new LineReader(line);
+    r.ws();
+    if (line[r.i] !== '[' || line[r.i + 1] === '[') return null;
+    r.i++;
+    try { const p = r.path(); if (line[r.i] !== ']') return null; r.i++; r.end(); return p; } catch { return null; }
+  };
+  const found = lines.flatMap((l, n) => { const p = headerAt(l); return p && same(p, path) ? [n] : []; });
+  if (found.length !== 1) return null;
+  const out: Record<string, unknown> = {};
+  try {
+    for (let n = found[0]! + 1; n < lines.length; n++) {
+      const r = new LineReader(lines[n]!);
+      r.ws();
+      if (lines[n]![r.i] === '[') break;
+      if (r.i === lines[n]!.length || lines[n]![r.i] === '#') continue;
+      const k = r.key(); r.ws();
+      if (lines[n]![r.i] !== '=' || Object.hasOwn(out, k)) return null;
+      r.i++; r.ws();
+      out[k] = r.value();
+      r.end();
+    }
+  } catch { return null; }
+  return out;
+}
+
+/**
+ * True when the person's table at `path` can be taken over: one header defines it, nothing else in the file defines a
+ * key or table under it or a value on its way, and its own lines hold exactly the planned keys with the same values.
+ */
+function tomlTakeOver(text: string, d: TomlDefined, t: TomlTable): boolean {
+  const path = t.path, under = (p: readonly string[]): boolean => startsWith(p, path);
+  if (d.headers.filter(p => same(p, path)).length !== 1) return false;
+  if (d.headers.some(p => p.length > path.length && under(p))) return false;
+  if ([...d.arrays, ...d.dotted].some(p => under(p) || startsWith(path, p))) return false;
+  if (d.values.some(p => (under(p) && p.length !== path.length + 1) || (p.length <= path.length && startsWith(path, p)))) return false;
+  const held = tomlHeaderTable(text, path);
+  return held !== null && sameValue(held, plain(new Ordered(t.entries)));
+}
+
 /**
  * Adds managed keys at the top and managed tables at the end of a TOML text, or of an empty file. The person's bytes
- * stay as they are, in order. `forbid` names top-level keys whose presence makes the managed content meaningless.
+ * stay as they are, in order. `forbid` names top-level keys whose presence makes the managed content meaningless. A
+ * managed table that the person's file already holds, with the same keys and values, is taken over: it stays where it
+ * is, nothing is added for it, and `kept` names it.
  */
-export function editToml(base: string | null, root: readonly (readonly [string, Out])[], tables: readonly TomlTable[], forbid: readonly string[] = []): EditResult {
+export function editToml(base: string | null, root: readonly (readonly [string, Out])[], tablesWanted: readonly TomlTable[], forbid: readonly string[] = []): EditResult {
   // Ruling B20: a person's file with no bytes is refused, as an empty JSON file is.
   if (base === '') return { ok: false, reason: 'invalid' };
   const text = base ?? '';
   const d = scanToml(text);
   if (d === null) return { ok: false, reason: 'invalid' };
-  const conflicts = [
-    ...root.flatMap(([k]) => tomlRootConflicts(d, k)), ...forbid.flatMap(k => tomlRootConflicts(d, k)),
-    ...tables.flatMap(t => tomlTableConflicts(d, t.path)),
-  ];
+  const kept: string[] = [], tables: TomlTable[] = [], tableConflicts: string[] = [];
+  for (const t of tablesWanted) {
+    const c = tomlTableConflicts(d, t.path);
+    if (c.length === 0) tables.push(t);
+    else if (tomlTakeOver(text, d, t)) kept.push(t.path.join('.'));
+    else tableConflicts.push(...c);
+  }
+  const conflicts = [...root.flatMap(([k]) => tomlRootConflicts(d, k)), ...forbid.flatMap(k => tomlRootConflicts(d, k)), ...tableConflicts];
   if (conflicts.length) return { ok: false, reason: 'conflict', at: [...new Set(conflicts)] };
   // A byte order mark is not TOML 1.0, so the scan above has refused one already.
   const body = text;
@@ -299,7 +468,7 @@ export function editToml(base: string | null, root: readonly (readonly [string, 
     : '';
   const out = `${head}${body}${tail}`;
   if (scanToml(out) === null) return { ok: false, reason: 'invalid' };
-  return { ok: true, text: out };
+  return { ok: true, text: out, kept };
 }
 
 // ---- YAML and frontmatter -------------------------------------------------------------------------------------------------

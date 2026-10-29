@@ -3,7 +3,8 @@
  * its reason; the plan's notice; the drift report of AGENTS.md and CLAUDE.md with the actions the plan offers and Accept AGENTS.md as the default; what waits
  * for the person's trust, and the skills that wait for it; skills that reach an interface their filter leaves out; every command and every file of code
  * Bowerloom will write, in full; the files that changed since Bowerloom wrote them; the approved weaker rules, ticked now or recorded earlier; every file it
- * changes; and the choices that did not count. The removal and recovery plans are drawn here too. Each plan ends with one tick box that approves its revision.
+ * changes; and the choices that did not count. The removal and recovery plans are drawn here too, and the Merge plan (decision D4A): the CLAUDE.md text
+ * that moves, the harness files it changes, and what comes next. Each plan ends with one tick box that approves its revision.
  *
  * Fields of the plan left out on purpose (U6): file hashes and modes (`before`, `after`, `original` of a change) and the folders a run creates: they are
  * bookkeeping of the packages and the file list already says what changes; `deferred`: every deferred part also has an `absent` loss line with its reason;
@@ -12,15 +13,15 @@
  */
 import { useRef } from 'react';
 import type { KeyboardEvent, ReactElement } from 'react';
-import { ENGINE_NAMES } from '../../../shared/engine/types.js';
-import type { ApproveLineView, ChangeView, ProjectView, Reconcile, RecoveryView, RemovalView } from '../../../shared/engine/types.js';
+import { ENGINE_NAMES, writesFile } from '../../../shared/engine/types.js';
+import type { ApproveLineView, ChangeView, MergeView, ModeChoice, ProjectView, Reconcile, RecoveryView, RemovalView } from '../../../shared/engine/types.js';
 import { shortRevision } from '../../../shared/engine/gates.js';
 import { StateDot } from '../parts/controls.js';
 import {
-  CHANGE_TONE, CHANGE_WORDS, DRIFT_WORDS, ENGINE_WORDS, RECOVERY_ACTION_WORDS, RECOVERY_DECISION_WORDS, RECOVERY_NOW_WORDS, RESULT_WORDS, TRUST_WORDS, approvePlanWords,
-  changesLine, countsWords, engineHeading, engineList, hiddenWords, ignoredWords, partName, recoveryKindWords, tickedWords,
+  CHANGE_TONE, CHANGE_WORDS, ENGINE_WORDS, MODE_CHOICE_WORDS, RECOVERY_ACTION_WORDS, RECOVERY_DECISION_WORDS, RECOVERY_NOW_WORDS, RESULT_WORDS, TRUST_WORDS, approvePlanWords,
+  changesLine, countsWords, engineHeading, engineList, headingLine, hiddenWords, ignoredWords, modeLine, partName, recoveryKindWords, tickedWords,
 } from '../words-engine.js';
-import { CodeText, ResultDot, Section, TickRow } from './engine-parts.js';
+import { CodeText, DriftLines, ResultDot, Section, TickRow } from './engine-parts.js';
 
 const W = ENGINE_WORDS;
 const names = (ids: readonly (keyof typeof ENGINE_NAMES)[]): string => engineList(ids.map(e => ENGINE_NAMES[e]));
@@ -56,19 +57,19 @@ export function ApproveLines({ lines, ticked, held, onTick }: { lines: readonly 
 
 const RECONCILE_WORDS: Readonly<Record<Reconcile, { name: string; text: string }>> = Object.freeze({
   'accept-agents': { name: W.label.acceptAgents, text: W.hint.acceptAgentsText },
-  merge: { name: W.label.merge, text: W.hint.mergeNotBuilt },
+  merge: { name: W.label.merge, text: W.hint.mergeText },
   'keep-both': { name: W.label.keepBoth, text: W.hint.keepBothText },
 });
 
 /**
  * The drift report: which interface reads which file, whether AGENTS.md is there or the install writes it, and the actions the plan offers, with Accept
- * AGENTS.md as the default. Merge is not built yet and says so.
+ * AGENTS.md as the default. Merge plans its own definition edit first (decision D4A); the sheet draws that plan below.
  */
 export function DriftReport({ plan, reconcile, held, onReconcile }: { plan: ProjectView; reconcile: Reconcile; held: boolean; onReconcile(r: Reconcile): void }): ReactElement | null {
   const radios = useRef<(HTMLButtonElement | null)[]>([]);
   const drift = plan.drift;
   if (drift === null) return null;
-  const actions = drift.actions, usable: readonly Reconcile[] = actions.filter(r => r !== 'merge');
+  const actions = drift.actions, usable: readonly Reconcile[] = actions;
   const move = (e: KeyboardEvent<HTMLButtonElement>, r: Reconcile): void => {
     if (held) return;
     const at = usable.indexOf(r), last = usable.length - 1;
@@ -92,9 +93,9 @@ export function DriftReport({ plan, reconcile, held, onReconcile }: { plan: Proj
       </ul>
       <div className="hxe-reconcile" role="radiogroup" aria-label={W.label.reconcile}>
         {actions.map((r, i) => {
-          const off = r === 'merge' || held, on = r === reconcile;
+          const off = held, on = r === reconcile;
           return (
-            <button key={r} ref={el => { radios.current[i] = el; }} type="button" role="radio" className="hxi-choice" aria-checked={on} aria-disabled={off ? true : undefined} data-off={r === 'merge' ? '' : undefined}
+            <button key={r} ref={el => { radios.current[i] = el; }} type="button" role="radio" className="hxi-choice" aria-checked={on} aria-disabled={off ? true : undefined}
               tabIndex={on ? 0 : -1} data-reconcile={r} onClick={() => { if (!off) onReconcile(r); }} onKeyDown={e => move(e, r)}>
               <span className="hxi-choice-name">{RECONCILE_WORDS[r].name}{r === drift.defaultAction ? <span className="hxe-default"> · {W.hint.defaultChoice}</span> : null}</span>
               <span className="hxi-choice-text">{RECONCILE_WORDS[r].text}</span>
@@ -128,11 +129,13 @@ export interface PlanReviewProps {
   held: boolean;
   onWriteClaude(on: boolean): void;
   onApprove(revision: string | null): void;
+  /** Plans the recovery of one mode drift line (decision D5A). */
+  onMode?: (path: string, choice: ModeChoice) => void;
 }
 
 /** The plan below the drift report. The sheet draws the drift report itself, so it stays in place, with the focus, while a new plan is made (U4, U9). */
-export function PlanReview({ plan, writeClaudeMd, approvedRevision, held, onWriteClaude, onApprove }: PlanReviewProps): ReactElement {
-  const changing = plan.changes.filter(c => c.action !== 'unchanged');
+export function PlanReview({ plan, writeClaudeMd, approvedRevision, held, onWriteClaude, onApprove, onMode }: PlanReviewProps): ReactElement {
+  const changing = plan.changes.filter(writesFile);
   return (
     <>
       <p className="hxi-sum">{plan.noop ? W.hint.sameAsNow : changesLine(changing.length, plan.folder)}</p>
@@ -205,7 +208,7 @@ export function PlanReview({ plan, writeClaudeMd, approvedRevision, held, onWrit
       )}
       {plan.driftLines.length === 0 ? null : (
         <Section title={W.label.driftLines} count={String(plan.driftLines.length)} slot="drift-lines">
-          <ul className="hxe-places">{plan.driftLines.map(d => <li key={d.path}><StateDot tone="warn">{DRIFT_WORDS[d.reason]}</StateDot> <span className="hxe-mono">{d.path}</span></li>)}</ul>
+          <DriftLines lines={plan.driftLines} onMode={onMode} held={held} />
         </Section>
       )}
       {plan.approved.length === 0 ? null : (
@@ -243,14 +246,50 @@ export function RemovalReview({ plan, folder, approved, held, onApprove }: { pla
   );
 }
 
+/**
+ * The Merge plan (decision D4A): the whole CLAUDE.md text that moves, the heading it goes under, each harness file it writes, and what comes next. It ends
+ * with one tick box that approves its revision; main asks once more in its own dialog before it writes.
+ */
+export function MergeReview({ plan, approved, held, onApprove }: { plan: MergeView; approved: boolean; held: boolean; onApprove(on: boolean): void }): ReactElement {
+  return (
+    <>
+      <p className="hxi-sum">{W.paragraph.mergeIntro}</p>
+      <Section title={W.label.mergeText} slot="merge">
+        {plan.claude === '' ? <p className="hxe-text"><StateDot tone="bad">{W.hint.noClaudeText}</StateDot></p> : <CodeText text={plan.claude} label="CLAUDE.md" />}
+        <p className="hxe-text hxe-muted">{headingLine(plan.heading)}</p>
+        <ul className="hxi-files">
+          {plan.files.map(f => (
+            <li key={f.path} className="hxi-file" data-file={f.path} data-action={f.action}><span className="hxi-file-path">{f.path}</span><StateDot tone={CHANGE_TONE[f.action]}>{CHANGE_WORDS[f.action]}</StateDot></li>
+          ))}
+        </ul>
+        {plan.addsPart ? <p className="hxe-text">{W.hint.addsPart}</p> : null}
+        <p className="hxe-text">{W.hint.mergeThen}</p>
+      </Section>
+      {/* A plan with no text to show is never approved here: the person approves only what they read. */}
+      {plan.claude === '' ? null : (
+        <ul className="hxe-ticks hxe-approve" data-approve-plan=""><TickRow slot="revision" checked={approved} disabled={held} label={approvePlanWords(shortRevision(plan.revision))} name={plan.folder} onChange={onApprove} /></ul>
+      )}
+    </>
+  );
+}
+
 export function RecoveryReview({ plan, folder, approved, held, onApprove }: { plan: RecoveryView; folder: string; approved: boolean; held: boolean; onApprove(on: boolean): void }): ReactElement {
   return (
     <>
-      <p className="hxi-sum">{plan.action === 'keep' ? W.paragraph.keepIntro : W.paragraph.recoverIntro}</p>
+      <p className="hxi-sum">{plan.action === 'keep' ? W.paragraph.keepIntro : plan.action === 'mode' ? W.paragraph.modeIntro : W.paragraph.recoverIntro}</p>
       <p className="hxe-notice" data-recovery-kind={plan.kind ?? 'none'}><StateDot tone="warn">{`${recoveryKindWords(plan.kind)}: ${RECOVERY_ACTION_WORDS[plan.action]}`}</StateDot></p>
       {plan.steps.length === 0 ? null : (
         <Section title={W.label.changes} count={String(plan.steps.length)} slot="steps">
           <ul className="hxi-files">{plan.steps.map(s => <li key={s.path} className="hxi-file" data-file={s.path}><span className="hxi-file-path">{s.path} <span className="hxe-muted">· {RECOVERY_NOW_WORDS[s.now]}</span></span><StateDot tone={s.decision === 'undo' ? 'warn' : 'quiet'}>{RECOVERY_DECISION_WORDS[s.decision]}</StateDot></li>)}</ul>
+        </Section>
+      )}
+      {plan.modes.length === 0 ? null : (
+        <Section title={W.label.modes} count={String(plan.modes.length)} slot="modes">
+          <ul className="hxi-files">
+            {plan.modes.map(m => (
+              <li key={m.path} className="hxi-file" data-mode={m.path}><span className="hxi-file-path">{m.path} <span className="hxe-muted">· {modeLine(m.now, m.recorded)}</span></span><StateDot tone="quiet">{MODE_CHOICE_WORDS[m.choice]}</StateDot></li>
+            ))}
+          </ul>
         </Section>
       )}
       {plan.keep.length === 0 ? null : <Section title={W.label.keepMine} count={String(plan.keep.length)} slot="keep"><ul className="hxe-places">{plan.keep.map(k => <li key={k} className="hxe-mono">{k}</li>)}</ul></Section>}

@@ -37,6 +37,17 @@ const SHEETS: readonly (readonly [string, (p: Page) => Promise<void>])[] = [
     await s.getByRole('button', { name: 'Plan with these approvals', exact: true }).click();
     await expect(s.locator('[data-section="loss"]')).toBeVisible();
   }],
+  ['merge-plan', async p => {
+    await p.getByRole('button', { name: 'Install from a folder', exact: true }).click();
+    const s = p.getByRole('dialog');
+    await s.getByRole('button', { name: 'Next', exact: true }).click();
+    await expect(s.locator('[data-engine="codex"] input')).toBeChecked();
+    await s.getByRole('button', { name: 'Next', exact: true }).click();
+    for (const b of await s.locator('[data-section="approve-lines"] input').all()) await b.check();
+    await s.getByRole('button', { name: 'Plan with these approvals', exact: true }).click();
+    await s.locator('[data-section="drift"]').getByRole('radio', { name: /Merge/ }).click();
+    await expect(s.locator('[data-section="merge"]')).toBeVisible();
+  }],
 ];
 
 const SCREENS: readonly (readonly [string, string])[] = [
@@ -121,7 +132,8 @@ test('every control of each sheet is reached by Tab, and each one draws an outli
     await fresh(p, '#prototype-v3/projects');
     await openSheet(p);
     const wanted = await controlsOf(p, '[role="dialog"]');
-    expect(wanted.length, `${name}: the sheet has controls`).toBeGreaterThan(5);
+    // The Merge plan has fewer controls than the others: the drift radios, its text, its one approval, Back, Merge and Close.
+    expect(wanted.length, `${name}: the sheet has controls`).toBeGreaterThan(name === 'merge-plan' ? 4 : 5);
     const reached = new Map<string, boolean>();
     for (let i = 0; i < wanted.length + 5; i += 1) {
       await p.keyboard.press('Tab');

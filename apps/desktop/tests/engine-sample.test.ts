@@ -117,6 +117,23 @@ test('sample install: approvals first, the drift report with Accept AGENTS.md as
   assert.equal((await e.folders()).find(f => f.id === id)!.projected, false);
 });
 
+test('sample Merge: its own plan with the CLAUDE.md text, written once by its revision; a second Merge has nothing to move', async () => {
+  const e = createSampleEngine(), id = SAMPLE_FOLDERS.defined;
+  const plan = value(await e.planMerge(id));
+  assert.deepEqual(plan.files, [{ path: '.bowerloom/instructions/AGENTS.md', action: 'update' }]);
+  assert.match(plan.claude, /Draft the report on Friday\./);
+  const stale = await e.runMerge(id, 'a'.repeat(64));
+  assert.ok(!stale.ok); assert.equal(stale.refusal.code, 'ADOPTION_STALE_APPROVAL');
+  assert.deepEqual(value(await e.runMerge(id, plan.revision)).written, ['.bowerloom/instructions/AGENTS.md']);
+  const again = await e.planMerge(id);
+  assert.ok(!again.ok); assert.equal(again.refusal.code, 'ADOPTION_MERGE_NOTHING');
+  const stopped = await e.planMerge(SAMPLE_FOLDERS.stopped);
+  assert.ok(!stopped.ok); assert.equal(stopped.refusal.code, 'PORTABLE_RECOVERY_REQUIRED');
+  // The recovery calls take the full choices too.
+  const rec = value(await e.planRecovery(SAMPLE_FOLDERS.stopped, { keep: [], restoreMode: [], recordMode: [] }));
+  assert.deepEqual(rec.modes, []);
+});
+
 test('sample recovery: the stopped folder refuses a plan until its recovery runs', async () => {
   const e = createSampleEngine(), id = SAMPLE_FOLDERS.stopped;
   const blocked = await e.planProjection(id, { ...INPUT, engines: ['claude-code'] });

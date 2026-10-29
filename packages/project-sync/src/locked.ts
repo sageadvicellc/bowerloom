@@ -13,19 +13,23 @@
  *   same bytes.
  * - A file Bowerloom owns whole is rendered. A file at one of those paths that Bowerloom did not write is never
  *   overwritten.
+ * - A person's file or entry that already holds exactly what Bowerloom would write, as after adoption in place, is
+ *   taken over: nothing is written for it, and the receipt records the file with its original equal to its current
+ *   state (definition spec, check 1). Anything that differs is still refused.
  */
 import {
   JsExpression, codexJustification, openCodeSubstitution, translateGuardrails, translateHooks, translateMcp, translateSubagents, type CodexForm, type HookForm,
   type McpServerForm, type OpenCodeForm, type SubagentForm,
 } from '../../fidelity/src/index.js';
 import type { ClaudeCodeForm } from '../../fidelity/src/index.js';
-import { entryHash } from '../../harness-definition/src/index.js';
+import { parseDocument } from 'yaml';
+import { entryHash, readFrontmatter } from '../../harness-definition/src/index.js';
 import type { Definition, EngineId, EngineView, LossLine } from '../../harness-definition/src/index.js';
-import { readProject, refuse, stateOrUnsafe } from './portable-files.js';
+import { readProject, refuse, sha, stateOrUnsafe } from './portable-files.js';
 import { blob } from './portable-state.js';
 import type { PortableEngine, ReceiptFile } from './portable-state.js';
 import {
-  Ordered, editJson, editToml, frontmatter, tomlLines, yamlBlock, type EditResult, type JsonOp, type Out, type TomlTable, type YamlOut,
+  Ordered, editJson, editToml, frontmatter, sameValue, tomlLines, yamlBlock, type EditResult, type JsonOp, type Out, type TomlTable, type YamlOut,
 } from './locked-text.js';
 
 /**
@@ -113,6 +117,11 @@ export interface LockedPlan {
   readonly review: readonly ReviewItem[];
   /** A sentence about the engine version, added to every line of that engine (rulings B7 and B18). */
   readonly notes: ReadonlyMap<EngineId, string>;
+  /**
+   * The entries of a person's file, one Bowerloom has not written yet, that already hold exactly what Bowerloom would
+   * add: the edit leaves them as they are, and the receipt takes the file over (definition spec, check 1).
+   */
+  readonly takenOver: readonly { readonly path: string; readonly entry: string }[];
 }
 
 const hasLocked = (v: EngineView): boolean => v.subagents.length + v.rules.length + v.sandbox.length + v.hooks.length + v.mcp.length > 0;
@@ -203,18 +212,31 @@ export function planLocked(ctx: LockedContext): LockedPlan {
   const lines = new Map<EngineId, Map<LockedPart, LossLine[]>>();
   const trust: TrustLine[] = [], review: ReviewItem[] = [];
   const conflicts: string[] = [], invalid: string[] = [], envDefaults: string[] = [], occupied: string[] = [], orderUnsafe: string[] = [], unsafeValues: string[] = [];
+  const takenOver: { path: string; entry: string }[] = [];
 
   const put = (path: string, value: string, engine: EngineId, mode = 0o644): void => { targets.set(path, { bytes: Buffer.from(value), mode, engine }); };
   const merged = (path: string, result: EditResult, engine: EngineId, mode: number): void => {
-    if (result.ok) put(path, result.text, engine, mode);
-    else if (result.reason === 'invalid') invalid.push(path);
+    if (result.ok) {
+      put(path, result.text, engine, mode);
+      if (!ctx.owned.has(path)) takenOver.push(...result.kept.map(entry => ({ path, entry })));
+    } else if (result.reason === 'invalid') invalid.push(path);
     else conflicts.push(...result.at.map(k => `${path}: ${k}`));
   };
-  /** A file Bowerloom owns whole: never written over a file that a person made (ruling B20). */
-  const owned = (path: string, value: string, engine: EngineId): void => {
+  /**
+   * A file Bowerloom owns whole: never written over a file that a person made (ruling B20). A person's file that already
+   * holds exactly the bytes and mode Bowerloom would write is taken over instead (definition spec, check 1). So is one
+   * whose text `means` says is the same to the engine: the plan then holds the person's bytes, so nothing is written,
+   * and a later install that still means the same keeps them.
+   */
+  const owned = (path: string, value: string, engine: EngineId, means?: (held: string, planned: string) => boolean): void => {
     const now = stateOrUnsafe(ctx.projectDir, path);
-    if (now !== null && now !== 'unsafe' && !ctx.owned.has(path)) occupied.push(path);
-    put(path, value, engine);
+    let text = value;
+    if (now !== null && now !== 'unsafe' && now.sha256 !== sha(value) && means) {
+      const got = readProject(ctx.projectDir, path), held = got?.bytes.toString('utf8');
+      if (got && held !== undefined && Buffer.from(held, 'utf8').equals(got.bytes) && means(held, value)) text = held;
+    }
+    if (now !== null && now !== 'unsafe' && !ctx.owned.has(path) && !(now.sha256 === sha(text) && now.mode === 0o644)) occupied.push(path);
+    put(path, text, engine);
   };
   const jsonFile = (path: string, ops: readonly JsonOp[], engine: EngineId): void => {
     if (!ops.length) return;
@@ -254,7 +276,7 @@ export function planLocked(ctx: LockedContext): LockedPlan {
     switch (engine) {
       case 'claude-code': {
         const form = g.form as ClaudeCodeForm;
-        jsonFile('.mcp.json', m.servers.length ? [{ kind: 'members', path: ['mcpServers'], members: m.servers.map(f => [f.name, objectOf(f)]) }] : [], engine);
+        jsonFile('.mcp.json', m.servers.length ? [{ kind: 'members', path: ['mcpServers'], members: m.servers.map(f => [f.name, objectOf(f)]), same: sameServer }] : [], engine);
         commands('.mcp.json', engine, m.servers);
         if (targets.has('.mcp.json')) trust.push({ engine, path: '.mcp.json', state: 'pending trust', reason: 'Claude Code asks the person to approve each project server in .mcp.json before it runs.' });
         const ops: JsonOp[] = [];
@@ -295,7 +317,7 @@ export function planLocked(ctx: LockedContext): LockedPlan {
         }
         jsonFile('.claude/settings.json', ops, engine);
         hookCommands('.claude/settings.json', engine, h.hooks);
-        for (const a of s.subagents) owned(`.claude/agents/${a.id}.md`, renderAgent(a), engine);
+        for (const a of s.subagents) owned(`.claude/agents/${a.id}.md`, renderAgent(a), engine, sameAgentText);
         break;
       }
       case 'codex': {
@@ -376,7 +398,7 @@ export function planLocked(ctx: LockedContext): LockedPlan {
         }
         jsonFile('opencode.json', ops, engine);
         commands('opencode.json', engine, m.servers);
-        for (const a of s.subagents) owned(`.opencode/agents/${a.id}.md`, renderAgent(a), engine);
+        for (const a of s.subagents) owned(`.opencode/agents/${a.id}.md`, renderAgent(a), engine, sameAgentText);
         if (h.hooks.length) {
           const code = renderPlugin(h.hooks.filter((x): x is Extract<HookForm, { engine: 'opencode' }> => x.engine === 'opencode'));
           owned(OPENCODE_PLUGIN, code, engine);
@@ -385,7 +407,7 @@ export function planLocked(ctx: LockedContext): LockedPlan {
         break;
       }
       case 'pi': {
-        jsonFile('.pi/mcp.json', m.servers.length ? [{ kind: 'members', path: ['mcpServers'], members: m.servers.map(f => [f.name, objectOf(f)]) }] : [], engine);
+        jsonFile('.pi/mcp.json', m.servers.length ? [{ kind: 'members', path: ['mcpServers'], members: m.servers.map(f => [f.name, objectOf(f)]), same: sameServer }] : [], engine);
         commands('.pi/mcp.json', engine, m.servers);
         if (targets.has('.pi/mcp.json')) trust.push({ engine, path: '.pi/mcp.json', state: ctx.piTrustSaved ? 'trusted' : 'pending trust', reason: ctx.piTrustSaved ? 'A person saved trust for this project in Pi.' : 'Pi skips files under .pi/ in non-interactive runs until a person saves trust for the project.' });
         break;
@@ -433,10 +455,42 @@ export function planLocked(ctx: LockedContext): LockedPlan {
   const key = (a: { readonly path: string; readonly part?: string; readonly entry?: string; readonly kind?: string }): string => `${a.path}\u0000${a.kind ?? ''}\u0000${a.part ?? ''}\u0000${a.entry ?? ''}`;
   trust.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
   review.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
-  return { targets, lines, trust, review, notes };
+  return { targets, lines, trust, review, notes, takenOver };
 }
 
 const objectOf = (f: McpServerForm): Out => ('value' in f ? f.value : null) as Out;
+
+/**
+ * A server of `.mcp.json` or `.pi/mcp.json` means the planned one: equal values, or a held server with no `type` and a
+ * `command`, which Claude Code and Pi run as a stdio server (and the adoption reader reads so), where the plan writes
+ * `"type": "stdio"` and every other value is equal.
+ */
+export function sameServer(held: unknown, planned: unknown): boolean {
+  if (sameValue(held, planned)) return true;
+  if (!isObject(held) || !isObject(planned) || Object.hasOwn(held, 'type') || held.command === undefined || planned.type !== 'stdio') return false;
+  return sameValue({ ...held, type: 'stdio' }, planned);
+}
+
+/** The YAML block of a Markdown text with frontmatter, read by the YAML 1.1 rules, or a value no frontmatter equals. */
+function yaml11(text: string): unknown {
+  const m = /^---\n([\s\S]*?\n)?---\n/.exec(text);
+  if (!m) return undefined;
+  const doc = parseDocument(m[1] ?? '', { version: '1.1', uniqueKeys: true });
+  if (doc.errors.length || doc.warnings.length) return undefined;
+  try { return doc.toJS({ maxAliasCount: 0 }) as unknown; } catch { return undefined; }
+}
+/**
+ * An agent file a person wrote means the rendered one when its frontmatter holds the same values and its body is the
+ * same text. Both the YAML 1.2 reader of the definition and a YAML 1.1 reader must agree, so a plain value that some
+ * engine reads as another type (`yes`, `on`, `010`) is not the same. A carriage return anywhere is not the same either.
+ */
+export function sameAgentText(held: string, planned: string): boolean {
+  if (held.includes('\r')) return false;
+  const a = readFrontmatter(held), b = readFrontmatter(planned);
+  if (!a.ok || !b.ok || a.body !== b.body || !sameValue(a.data, b.data)) return false;
+  const old = yaml11(held);
+  return old !== undefined && sameValue(old, yaml11(planned)) && sameValue(old, a.data);
+}
 
 /** One hook group per hook: the hooks shape of Claude Code and Codex. */
 function hookOps(hooks: readonly HookForm[]): JsonOp[] {

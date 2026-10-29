@@ -25,6 +25,9 @@
 
 [data-home] .hxe-rows, [data-home] .hxe-ticks, [data-home] .hxe-places, [data-home] .hxe-paths { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--hm-space-2); }
 [data-home] .hxe-places, [data-home] .hxe-paths { gap: 2px; font-size: var(--hm-text-base); line-height: 1.45; }
+/* A drift line: its words, then the two actions of a mode line, which wrap below the words in a narrow sheet. The buttons are the kit's, with its hover and focus ring. */
+[data-home] .hxe-drift-line { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--hm-space-1) var(--hm-space-3); min-height: 2rem; }
+[data-home] .hxe-line-actions { display: flex; flex-wrap: wrap; gap: var(--hm-space-2); }
 [data-home] .hxe-row { display: flex; flex-direction: column; gap: var(--hm-space-1); box-sizing: border-box; padding: var(--hm-space-2) var(--hm-space-3); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); min-width: 0; }
 [data-home] .hxe-row-title { display: flex; flex-wrap: wrap; align-items: center; gap: var(--hm-space-1) var(--hm-space-3); margin: 0; font-size: var(--hm-text-base); line-height: 1.4; }
 [data-home] .hxe-group + .hxe-group { margin-top: var(--hm-space-1); }
