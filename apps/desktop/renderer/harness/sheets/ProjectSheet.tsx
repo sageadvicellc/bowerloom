@@ -33,8 +33,8 @@ import { useHeldFocus } from './use-held-focus.js';
 const W = ENGINE_WORDS;
 type Step = 'folder' | 'interfaces' | 'review' | 'done';
 type Done =
-  | { kind: 'install'; written: readonly string[]; leftBehind: readonly string[]; noop: boolean }
-  | { kind: 'remove'; deleted: readonly string[]; restored: readonly string[]; leftBehind: readonly string[] }
+  | { kind: 'install'; written: readonly string[]; leftBehind: readonly string[]; noop: boolean; warnings?: readonly string[] }
+  | { kind: 'remove'; deleted: readonly string[]; restored: readonly string[]; leftBehind: readonly string[]; warnings?: readonly string[] }
   | { kind: 'recover'; undone: readonly string[]; kept: readonly string[]; restoredModes: readonly string[]; recordedModes: readonly string[]; leftBehind: readonly string[] };
 const NO_CHOICES: RecoveryChoices = { keep: [], restoreMode: [], recordMode: [] };
 const keepOnly = (keep: readonly string[]): RecoveryChoices => ({ ...NO_CHOICES, keep: [...keep] });
@@ -269,8 +269,8 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
 }
 
 function DoneStep({ done }: { done: Done }): ReactElement {
-  if (done.kind === 'install') return <ResultStep nothing={done.noop || done.written.length === 0} lists={[{ title: W.label.writtenFiles, files: done.written }, { title: W.label.leftBehind, files: done.leftBehind, note: W.hint.leftBehindWhy }]} />;
-  if (done.kind === 'remove') return <ResultStep nothing={done.deleted.length + done.restored.length === 0} lists={[{ title: W.label.removedFiles, files: done.deleted }, { title: W.label.restoredFiles, files: done.restored }, { title: W.label.leftBehind, files: done.leftBehind, note: W.hint.leftBehindWhy }]} />;
+  if (done.kind === 'install') return <ResultStep nothing={done.noop || done.written.length === 0} warnings={done.warnings ?? []} lists={[{ title: W.label.writtenFiles, files: done.written }, { title: W.label.leftBehind, files: done.leftBehind, note: W.hint.leftBehindWhy }]} />;
+  if (done.kind === 'remove') return <ResultStep nothing={done.deleted.length + done.restored.length === 0} warnings={done.warnings ?? []} lists={[{ title: W.label.removedFiles, files: done.deleted }, { title: W.label.restoredFiles, files: done.restored }, { title: W.label.leftBehind, files: done.leftBehind, note: W.hint.leftBehindWhy }]} />;
   return (
     <ResultStep nothing={done.undone.length + done.kept.length + done.restoredModes.length + done.recordedModes.length === 0} lists={[
       { title: W.label.undoneFiles, files: done.undone }, { title: W.label.keptFiles, files: done.kept }, { title: W.label.modeRestored, files: done.restoredModes },

@@ -182,7 +182,7 @@ export function Places({ places }: { places: readonly PlaceView[] }): ReactEleme
 }
 
 /** The result of a write, a removal or a recovery: each list of files with its heading, and plain words when nothing changed (U5). */
-export function ResultStep({ lists, nothing, children }: { lists: readonly { title: string; files: readonly string[]; note?: string }[]; nothing: boolean; children?: ReactNode }): ReactElement {
+export function ResultStep({ lists, nothing, warnings = [], children }: { lists: readonly { title: string; files: readonly string[]; note?: string }[]; nothing: boolean; warnings?: readonly string[]; children?: ReactNode }): ReactElement {
   const shown = lists.filter(l => l.files.length > 0);
   return (
     <div data-done="">
@@ -193,6 +193,7 @@ export function ResultStep({ lists, nothing, children }: { lists: readonly { tit
           <ul className="hxi-files">{l.files.map(f => <li key={f} className="hxi-file"><span className="hxi-file-path">{f}</span></li>)}</ul>
         </Section>
       ))}
+      {warnings.map(w => <p key={w} className="hxe-text" role="status" data-warning="">{w}</p>)}
       {children}
     </div>
   );
