@@ -10,8 +10,9 @@
  *   engines that had it, and listed as a difference.
  * - An item's engine filter is the engines that read its places. With every engine of the harness, it has no filter.
  * - Decision D8B: "Use for every engine", chosen per part for guardrails, hooks, and MCP servers, removes the filter from
- *   every item of that part. An item that differs between engines (a guardrail difference, or a conflict kept under
- *   distinct ids) keeps its filter, and the plan lists it as not widened. The choice is part of the plan's revision.
+ *   every item of that part. An item that differs between engines (a guardrail difference, a conflict kept under
+ *   distinct ids, or a hook when another engine holds a different hook for the same event and matcher) keeps its
+ *   filter, and the plan lists it as not widened. The choice is part of the plan's revision.
  * - The planned files are loaded with the contract's loader in a scratch folder outside the project. A problem there is
  *   a problem of the plan, and apply refuses it.
  */
@@ -112,7 +113,7 @@ export function planWithBytes(input: AdoptionInput): PlanWithBytes {
   const grouped = group(cands, engines, choices, missed);
   const { conflicts } = grouped;
   const differences = differencesOf(grouped.kept, engines);
-  const { kept, everyEngine } = widen(grouped.kept, differences, grouped.split, wide);
+  const { kept, everyEngine } = widen(grouped.kept, differences, grouped.split, wide, engines);
   const items = kept.map(k => k.item);
   importsOf(kept, projectDir, missed);
 
@@ -410,15 +411,32 @@ function differencesOf(kept: readonly Kept[], harness: readonly EngineId[]): Dif
 
 /**
  * Decision D8B: "Use for every engine" removes the engine filter from every item of a chosen part, so the item applies
- * to every engine of the harness. A guardrail of a difference, and an item kept under its own id because it differs
- * between places, keep their filters: the choice never merges or drops a difference. Each part is counted, chosen or
- * not, so a person sees what the choice would widen.
+ * to every engine of the harness. The choice never merges or drops a difference, so these keep their filters:
+ * - a guardrail of a difference;
+ * - an item kept under its own id because it differs between places;
+ * - a hook when an engine outside its filter holds a different hook for the same event and matcher (spec H 10.6: the
+ *   same entry can differ between two engines). Identical hooks merged into one item already, so they widen.
+ * Each part is counted, chosen or not, so a person sees what the choice would widen.
  */
-function widen(kept: readonly Kept[], differences: readonly Difference[], split: ReadonlySet<string>, chosen: ReadonlySet<EveryEnginePart>): { kept: Kept[]; everyEngine: EveryEngine[] } {
+function widen(
+  kept: readonly Kept[], differences: readonly Difference[], split: ReadonlySet<string>, chosen: ReadonlySet<EveryEnginePart>, harness: readonly EngineId[],
+): { kept: Kept[]; everyEngine: EveryEngine[] } {
   const differing = new Set(differences.flatMap(d => d.rules.map(r => `guardrails/${r.id}`)));
+  // The engines that hold a hook for each event and matcher: an item with no filter is held by every engine of the harness.
+  const slot = (k: Kept): string | null => k.lead.part === 'hooks' ? `${k.lead.hook.event}\n${k.lead.hook.matcher ?? ''}` : null;
+  const holders = new Map<string, { id: string; engines: readonly EngineId[] }[]>();
+  for (const k of kept) { const key = slot(k); if (key !== null) holders.set(key, [...(holders.get(key) ?? []), { id: k.item.id, engines: k.item.engines ?? harness }]); }
+  const otherHook = (k: Kept): boolean => {
+    const key = slot(k);
+    if (key === null || k.item.engines === null) return false;
+    const mine = k.item.engines;
+    return (holders.get(key) ?? []).some(h => h.id !== k.item.id && h.engines.some(e => !mine.includes(e)));
+  };
+  const byKey = new Map(kept.map(k => [`${k.item.part}/${k.item.id}`, k]));
   const reasonOf = (key: string): string | null => differing.has(key)
     ? 'Not widened: its effect differs between engines, so each engine keeps its own rule.'
-    : split.has(key) ? 'Not widened: it differs between places, and a person kept each copy under its own id, so each keeps its engines.' : null;
+    : split.has(key) ? 'Not widened: it differs between places, and a person kept each copy under its own id, so each keeps its engines.'
+      : byKey.has(key) && otherHook(byKey.get(key)!) ? 'Not widened: another engine holds a different hook for the same event and matcher, so each engine keeps its own hook.' : null;
   const everyEngine: EveryEngine[] = EVERY_ENGINE_PARTS.map(part => {
     const filtered = kept.filter(k => k.item.part === part && k.item.engines !== null);
     const notWidened = filtered.flatMap(k => { const reason = reasonOf(`${part}/${k.item.id}`); return reason === null ? [] : [{ id: k.item.id, reason }]; });
