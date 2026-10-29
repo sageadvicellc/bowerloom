@@ -36,7 +36,9 @@ test('main marks the page only when asked: the attribute is added to the body on
 });
 
 test('the shipped page does not carry the attribute, and main reads the launch argument for the sample launch only', () => {
-  assert.doesNotMatch(read('renderer/index.html'), new RegExp(SAMPLE_PREVIEW_ATTRIBUTE));
+  const page = read('renderer/index.html');
+  assert.doesNotMatch(page, new RegExp(SAMPLE_PREVIEW_ATTRIBUTE));
+  assert.equal((page.match(/<body>/g) ?? []).length, 1, 'main marks the one plain <body>; a body with attributes would leave the switch silently off');
   const main = read('main/main.ts');
   assert.match(main, /const samplePreviewEngines = prototypeV3 && !prototypeV3Real && argv\.includes\(SAMPLE_PREVIEW_FLAG\);/);
   assert.equal([...main.matchAll(/SAMPLE_PREVIEW_FLAG/g)].length >= 2, true);
