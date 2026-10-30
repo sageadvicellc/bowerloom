@@ -121,7 +121,7 @@ test('B6: Codex writes default_permissions = "bowerloom" and a profile that exte
   assert.deepEqual(e.refused.map(l => [l.entry, l.result]).sort(), [['box', 'weakened'], ['no-env', 'weakened'], ['no-push-main', 'weakened']]);
   for (const l of e.refused.filter(x => x.entry !== 'no-push-main')) {
     assert.match(l.reason, /Live check g8 of step 5 showed on Codex 0\.157\.0 that this profile loads/);
-    assert.match(l.reason, /No live check covered a glob entry, a read-only entry, the network and write bounds of :workspace/);
+    assert.match(l.reason, l.entry === 'box' ? /No live check covered the network and write bounds of :workspace/ : /No live check covered a glob entry/);
     assert.match(l.reason, /--sandbox/);
     assert.doesNotMatch(l.reason, /until the live check of step 5 confirms its syntax|switch of the Codex permission profile is off/);
   }

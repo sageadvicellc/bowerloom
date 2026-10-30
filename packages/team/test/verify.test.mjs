@@ -109,6 +109,13 @@ test('B6: an unattended Codex member whose guardrails write the permission profi
   assert.ok(withPath.problems.some(p => p.code === 'TEAM_START_UNPINNED' && /--sandbox/.test(p.message) && /permission profile/.test(p.message)), JSON.stringify(withPath.problems));
   // A harness with no path rule and no sandbox writes no profile, so the check stays quiet.
   assert.equal(plan([]).ok, true);
+  // A sandbox requirement alone, in the harness, writes the profile too.
+  const box = planTeamStart(team, { projectDir: project, versions: VERSIONS, harnesses: { demo: { ...harness(), entries: { ...harness().entries, sandbox: [{ id: 'box', files: true, network: true, strength: 'advisory', privateBlocks: {} }] } } }, home: tempDir(), env: NO_ENV });
+  assert.ok(!box.ok && box.problems.some(p => p.code === 'TEAM_START_UNPINNED' && /--sandbox/.test(p.message)), JSON.stringify(box.problems));
+  // A manual start runs no command, so the check stays quiet.
+  const manual = makeTeam({ 'team.json': json(teamFile({ members: [member('solo', { engine: 'codex', start: 'manual' })], limits: { activeMembers: 1 } })) });
+  const quiet = planTeamStart(loadTeam(manual.folder).team, { projectDir: manual.project, versions: VERSIONS, harnesses: { demo: harness([{ ...rule('no-env'), action: 'read', pattern: '.env', privateBlocks: {} }]) }, home: tempDir(), env: NO_ENV });
+  assert.equal(quiet.ok ? false : quiet.problems.some(p => p.code === 'TEAM_START_UNPINNED'), false, JSON.stringify(quiet.ok ? null : quiet.problems));
 });
 
 // ---- V5: more characters that one-line text refuses -------------------------------------------------------------------

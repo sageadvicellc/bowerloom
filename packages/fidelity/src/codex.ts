@@ -42,6 +42,12 @@ export const CODEX_DEFAULT: EngineDefault = Object.freeze({
   reason: 'Codex applies its approval policy and sandbox to a command that no rule matches: inside the sandbox it can run without asking, and it never leaves the sandbox without a person. Bowerloom writes no policy (section 8.3 rule 12).',
 });
 
+/**
+ * What live check g8 of step 5 covered of the Codex permission profile (ruling B6), said on every line the profile
+ * carries.
+ */
+const PROFILE_SCOPE = 'Bowerloom writes it into a Codex permission profile that extends :workspace, selected by default_permissions. Live check g8 of step 5 showed on Codex 0.157.0 that this profile loads and that a literal deny entry at the project root blocks a read. Bowerloom does not read user or managed configuration, a profile selected on the command line, or start flags such as --sandbox, and no live check covered them.';
+
 /** A token Codex compares as a literal and a shell passes through unchanged. */
 const LITERAL_TOKEN = /^[A-Za-z0-9_./:@%+,=^-]+$/;
 
@@ -136,11 +142,12 @@ export function translateCodex(rules: readonly GuardrailRule[], sandbox: readonl
         const { entries, more } = filesystemEntries(rule);
         for (const e of entries) { out.wrote(rule.id, `filesystem["${e.path}"]`); filesystem.push(e); }
         const extra = more.length ? ` It blocks more: ${more.join('; ')}.` : '';
-        // Ruling R17: live check g8 of step 5 patched a file under one literal deny entry, and the file did not change. A
-        // change rule writes a read-only entry for a literal path and glob deny entries for every other path, and no
-        // live check covered either form, so a change rule stays weakened.
-        const patch = rule.action === 'read' ? '' : ` Codex edits files through apply_patch. Live check g8 of step 5 found a file under a literal deny entry unchanged after a patch turn, but no live check covered ${entries.some(e => e.access === 'read') ? 'a read-only entry' : 'a glob entry'}, so the rule is weakened.`;
-        out.line(rule, rule.action === 'read' ? 'translated' : 'weakened', `Codex carries the rule in the sandbox filesystem table as ${entries.map(e => `${e.path} = ${e.access}`).join(', ')}.${tightenAsk}${extra} ${sandboxNote}${patch} ${escapeSentence('codex', 'path')}`);
+        // Rulings B6 and R17: live check g8 of step 5 covered one literal deny entry at the project root, for a read and a
+        // patch turn. Every path rule also writes a glob entry, and a change rule on a literal path writes a read-only
+        // entry. No live check covered either form, so every path rule is weakened and names the forms.
+        const forms = [...(entries.some(e => e.access === 'read') ? ['a read-only entry'] : []), ...(entries.some(e => e.path.includes('*')) ? ['a glob entry'] : [])];
+        const patch = rule.action === 'read' ? '' : ' Codex edits files through apply_patch, and g8 found the file unchanged after a patch turn.';
+        out.line(rule, 'weakened', `Codex carries the rule in the sandbox filesystem table as ${entries.map(e => `${e.path} = ${e.access}`).join(', ')}.${tightenAsk}${extra} ${sandboxNote} ${PROFILE_SCOPE}${patch} No live check covered ${forms.join(' or ') || 'this entry'}, so the rule is weakened. ${escapeSentence('codex', 'path')}`);
         break;
       }
       case 'web': case 'skill': case 'subagent':
@@ -166,8 +173,9 @@ export function translateCodex(rules: readonly GuardrailRule[], sandbox: readonl
   for (const s of sandbox) {
     box = { files: true, network: true };
     out.wrote(s.id, 'sandbox');
-    if (s.files && s.network) out.line(s, 'exact', 'Codex keeps its sandbox on, with writes limited to the workspace and no network.');
-    else out.line(s, 'translated', `Codex sandboxes files and network together, so it also limits ${s.files ? 'the network' : 'files'}: it blocks more than the requirement.`);
+    // Ruling B6: g8 showed that the profile loads. No live check covered the network and write bounds of :workspace.
+    const both = s.files && s.network ? 'Codex keeps its sandbox on, with writes limited to the workspace and no network, as the research notes say.' : `Codex sandboxes files and network together, so it also limits ${s.files ? 'the network' : 'files'}: it blocks more than the requirement.`;
+    out.line(s, 'weakened', `${both} ${PROFILE_SCOPE} No live check covered the network and write bounds of :workspace, so the line is weakened.`);
   }
   return out.done<CodexForm>({ engine: 'codex', prefixRules, filesystem: table, mcpDisabled, ...(box ? { sandbox: box } : {}), defaults: CODEX_DEFAULT });
 }

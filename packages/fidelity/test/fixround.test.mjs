@@ -320,12 +320,14 @@ test('R17: an OpenCode path rule that starts with $HOME is absent; a Codex edit 
   const cx = translateGuardrails('codex', { rules: [rule('e', 'edit', 'docs/**', 'deny'), rule('w', 'write', 'src/*.lock', 'deny'), rule('r', 'read', '.env', 'deny')], sandbox: [] });
   assert.equal(lineOf(cx, 'e').result, 'weakened');
   assert.match(lineOf(cx, 'e').reason, /docs = read/);
-  assert.match(lineOf(cx, 'e').reason, /Live check g8 of step 5 found a file under a literal deny entry unchanged after a patch turn, but no live check covered a read-only entry/);
+  assert.match(lineOf(cx, 'e').reason, /g8 found the file unchanged after a patch turn\. No live check covered a read-only entry or a glob entry, so the rule is weakened/);
   assert.equal(lineOf(cx, 'w').result, 'weakened');
   assert.equal(cx.form.filesystem.filter(f => f.path.includes('src/*.lock')).every(f => f.access === 'deny'), true);
-  assert.match(lineOf(cx, 'w').reason, /no live check covered a glob entry/);
+  assert.match(lineOf(cx, 'w').reason, /No live check covered a glob entry, so the rule is weakened/);
   assert.doesNotMatch(lineOf(cx, 'w').reason, /until the live check of step 5 confirms it/);
-  assert.equal(lineOf(cx, 'r').result, 'translated');
+  // A read rule writes glob entries for copies below the root, which g8 did not cover either (ruling B6).
+  assert.equal(lineOf(cx, 'r').result, 'weakened');
+  assert.match(lineOf(cx, 'r').reason, /No live check covered a glob entry, so the rule is weakened/);
   assert.doesNotMatch(lineOf(cx, 'r').reason, /apply_patch/);
   const cc = translateGuardrails('claude-code', { rules: [rule('r', 'read', '.env', 'deny')], sandbox: [] });
   assert.match(lineOf(cc, 'r').reason, /redirect/);

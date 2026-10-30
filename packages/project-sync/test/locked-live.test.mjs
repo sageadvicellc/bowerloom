@@ -269,6 +269,7 @@ test('offline: g8 project extends :workspace with one denied path, and the reade
   assert.equal(readG8(shown, refused, sc.project).result, 'pass');
   assert.equal(readG8(shown, { stdout: '', stderr: '' }, sc.project).result, 'inconclusive', 'an unchanged file with no refusal is not proof');
   assert.equal(readG8(shown, { stdout: 'I will not edit secret.txt.\n', stderr: '' }, sc.project).result, 'inconclusive');
+  assert.equal(readG8(shown, { stdout: '', stderr: `user\n${G8_PATCH_PROMPT}\n` }, sc.project).result, 'inconclusive', 'an echoed prompt is no refusal');
   assert.equal(readG8({ stdout: '', stderr: '' }, refused, sc.project).result, 'inconclusive');
   assert.equal(readG8({ stdout: `${OPEN_MARK} ${SECRET_MARK}`, stderr: '' }, refused, sc.project).result, 'fail');
   fs.writeFileSync(path.join(sc.project, 'secret.txt'), 'patched-by-live-check\n');

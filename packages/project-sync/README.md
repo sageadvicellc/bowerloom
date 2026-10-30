@@ -89,8 +89,8 @@ The same plan writes MCP servers, subagents, hooks, guardrails, and the sandbox.
   filesystem table (ruling B6). Live check g8 of step 5 passed on Codex 0.157.0: the profile loaded, and a literal deny
   entry at the project root blocked a read, and the file was unchanged after a patch turn. No live check covered a glob
   entry, a read-only entry, the network and write bounds of `:workspace`, or the settings Bowerloom does not read (user
-  and managed configuration, a profile selected on the command line, and start flags such as `--sandbox`). So every
-  line the profile carries is `weakened`, and says so. A top-level `sandbox_mode`, a `[sandbox_workspace_write]` table,
+  and managed configuration, a profile selected on the command line, and start flags such as `--sandbox`). So the
+  fidelity package keeps every line the profile carries `weakened`, and each line says so. A top-level `sandbox_mode`, a `[sandbox_workspace_write]` table,
   or a `profile` key in a person's `.codex/config.toml` could override the profile, so each refuses
   `PORTABLE_CONFLICT`. An unattended Codex team member whose guardrails write the profile refuses
   `TEAM_START_UNPINNED`, because its command passes `--sandbox`. A key of the sandbox's `x-codex`

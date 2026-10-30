@@ -45,13 +45,11 @@ const ENGINE_NAMES: Readonly<Record<EngineId, string>> = { 'claude-code': 'Claud
 /**
  * The switch of the Codex permission profile (ruling B6). It is on: live check g8 of step 5 (tools/step5/live/README.md)
  * passed on Codex 0.157.0 on 2026-10-30. A config with `default_permissions = "bowerloom"` and a profile that extends
- * `:workspace` loaded, and its deny entry stopped Codex from reading and from patching the denied file. If the switch is
- * off, Bowerloom writes no `default_permissions` and no profile, and every entry the profile would carry is weakened.
- * While it is on, every line the profile carries is weakened too, and says what g8 covered and what it did not.
+ * `:workspace` loaded, its literal deny entry blocked a read, and the file was unchanged after a patch turn. The fidelity
+ * package keeps every line the profile carries weakened and says what g8 did not cover. If the switch is off, Bowerloom
+ * writes no `default_permissions` and no profile, and the line says that too.
  */
 export const CODEX_PROFILE_ENABLED: boolean = true;
-/** What live check g8 covered of the profile, said on every line the profile carries. */
-const CODEX_PROFILE_COVERAGE = 'Bowerloom writes default_permissions = "bowerloom" and a Codex permission profile that extends :workspace (ruling B6). Live check g8 of step 5 showed on Codex 0.157.0 that this profile loads, that a literal deny entry at the project root blocks a read, and that the file was unchanged after a patch turn. No live check covered a glob entry, a read-only entry, the network and write bounds of :workspace, or the settings Bowerloom does not read: user and managed configuration, a profile selected on the command line, and start flags such as --sandbox. So the line is weakened.';
 /** The Codex permission profile Bowerloom would write, and the built-in profile it would extend. */
 export const CODEX_PROFILE = 'bowerloom';
 export const CODEX_PROFILE_BASE = ':workspace';
@@ -349,11 +347,6 @@ export function planLocked(ctx: LockedContext): LockedPlan {
           if (CODEX_PROFILE_ENABLED) {
             const profile = codexProfile(form);
             root.push(...profile.root); forbid.push(...profile.forbid); tables.push(...profile.tables);
-            // Live check g8 covered the profile syntax and one literal deny entry, not every form the profile carries.
-            const held = new Set(g.written.filter(w => w.where.startsWith('filesystem[') || w.where === 'sandbox').map(w => w.source));
-            for (const [i, l] of guardLines.entries()) {
-              if (held.has(l.entry) && l.field === undefined) guardLines[i] = { ...l, result: 'weakened', reason: `${CODEX_PROFILE_COVERAGE} The form: ${l.reason}` };
-            }
             // The profile carries no key of the sandbox's x-codex block. As review item K3 does for Claude Code, each key
             // gets an absent line, which needs an approval, since the sandbox is enforced.
             const box = view.sandbox[0], block = box && form.sandbox ? g.privateBlocks[box.id] : undefined;
