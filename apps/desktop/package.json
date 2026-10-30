@@ -1,8 +1,8 @@
 {
   "name": "@bowerloom/desktop",
-  "version": "0.7.0-beta.3",
+  "version": "0.8.0-beta.1",
   "private": true,
-  "description": "Bowerloom Viewer: a read-only desktop window onto everything Bowerloom manages.",
+  "description": "Bowerloom desktop: define one harness and install it into Claude Code and Codex, with a preview before every change.",
   "author": "Sage Advice LLC",
   "license": "MIT",
   "type": "module",
@@ -42,8 +42,8 @@
     "typescript": "7.0.2"
   },
   "build": {
-    "appId": "com.sageadvice.bowerloom.viewer",
-    "productName": "Bowerloom Viewer",
+    "appId": "com.sageadvice.bowerloom",
+    "productName": "Bowerloom",
     "copyright": "Sage Advice LLC",
     "directories": {
       "output": "release",

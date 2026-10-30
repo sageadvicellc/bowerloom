@@ -74,3 +74,9 @@
 @media (prefers-reduced-motion: reduce) {
   [data-home] .hxe-tick { transition: none !important; }
 }
+
+/* The after-apply check: one question, three buttons, then an optional note. */
+[data-home] .hxe-check { display: flex; flex-direction: column; gap: var(--hm-space-3); margin-top: var(--hm-space-4); }
+[data-home] .hxe-check-row { display: flex; flex-wrap: wrap; gap: var(--hm-space-2); }
+[data-home] .hxe-check-note { box-sizing: border-box; width: 100%; min-height: 5.9rem; resize: vertical; padding: var(--hm-space-3); font: inherit; font-size: var(--hm-text-base); line-height: 1.45; color: var(--text); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); }
+[data-home] .hxe-check-note:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }

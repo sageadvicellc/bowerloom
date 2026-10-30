@@ -1,0 +1,63 @@
+name: Fidelity gap
+description: An installed copy differs from its source in a way that the fidelity report did not show.
+title: "[Fidelity]: "
+labels: ["bug", "needs:triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A fidelity gap is a difference between your harness and the copy that Bowerloom installed into an engine. Examples are a dropped part, a changed setting, or a rule that became more permissive. If a copy became more permissive than its source, say so in the first field. We treat that as a severity 1 problem.
+
+        Attach the diagnostic bundle. Run `bowerloom report`, or choose Help > Report a problem in the app.
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Engine
+      options:
+        - Claude Code
+        - Codex
+        - Both
+    validations:
+      required: true
+  - type: dropdown
+    id: part
+    attributes:
+      label: Part type
+      options:
+        - Skill
+        - Agent
+        - Tool or MCP server
+        - Permission or deny rule
+        - Context or knowledge slice
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: difference
+    attributes:
+      label: What is different?
+      description: Describe the source and the installed copy. Do not paste private file contents. A short, made-up example is enough.
+    validations:
+      required: true
+  - type: textarea
+    id: report-said
+    attributes:
+      label: What did the fidelity report say?
+      description: Copy the line from the preview or the report, if there was one.
+    validations:
+      required: false
+  - type: textarea
+    id: bundle
+    attributes:
+      label: Diagnostic bundle
+      description: Paste the output of `bowerloom report`, or keep the bundle that the app filled in.
+      render: text
+    validations:
+      required: true
+  - type: checkboxes
+    id: review
+    attributes:
+      label: Privacy check
+      options:
+        - label: I read the bundle and the text above, and they hold nothing private.
+          required: true

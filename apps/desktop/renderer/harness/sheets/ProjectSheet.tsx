@@ -26,6 +26,8 @@ import { Tile } from '../icons.js';
 import { useEngine } from '../engine.js';
 import type { EngineSheetMode } from '../ui.js';
 import { ENGINE_WORDS, removeFilesWords, writeFilesWords } from '../words-engine.js';
+import { AfterApplyCheck } from './after-apply-check.js';
+import type { AfterApplyCheckProps } from './after-apply-check.js';
 import { Busy, FolderStep, RefusalNote, ResultStep, folderLine } from './engine-parts.js';
 import { ApproveLines, DriftReport, MergeReview, PlanReview, RecoveryReview, RemovalReview } from './project-review.js';
 import { chooseFolderCall, foldersCall, useCall } from './use-call.js';
@@ -270,7 +272,7 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
             ) : null}
             {step === 'review' && mode === 'remove' && removal !== null && folder !== undefined ? <RemovalReview plan={removal} folder={folder.label} approved={approved === removal.revision} held={held} onApprove={on => setApproved(on ? removal.revision : null)} /> : null}
             {step === 'review' && mode === 'recover' && recovery !== null && folder !== undefined ? <RecoveryReview plan={recovery} folder={folder.label} approved={approved === recovery.revision} held={held} onApprove={on => setApproved(on ? recovery.revision : null)} /> : null}
-            {step === 'done' && done !== null ? <DoneStep done={done} /> : null}
+            {step === 'done' && done !== null ? <DoneStep done={done} record={engine === null ? null : (a, n) => engine.recordCheck(a, n)} /> : null}
           </>
         ) : null}
       </div>
@@ -278,8 +280,8 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
   );
 }
 
-function DoneStep({ done }: { done: Done }): ReactElement {
-  if (done.kind === 'install') return <ResultStep nothing={done.noop || done.written.length === 0} warnings={done.warnings ?? []} lists={[{ title: W.label.writtenFiles, files: done.written }, { title: W.label.leftBehind, files: done.leftBehind, note: W.hint.leftBehindWhy }]} />;
+function DoneStep({ done, record }: { done: Done; record: AfterApplyCheckProps['record'] | null }): ReactElement {
+  if (done.kind === 'install') return <ResultStep nothing={done.noop || done.written.length === 0} warnings={done.warnings ?? []} lists={[{ title: W.label.writtenFiles, files: done.written }, { title: W.label.leftBehind, files: done.leftBehind, note: W.hint.leftBehindWhy }]}>{record === null ? null : <AfterApplyCheck record={record} />}</ResultStep>;
   if (done.kind === 'remove') return <ResultStep nothing={done.deleted.length + done.restored.length === 0} warnings={done.warnings ?? []} lists={[{ title: W.label.removedFiles, files: done.deleted }, { title: W.label.restoredFiles, files: done.restored }, { title: W.label.leftBehind, files: done.leftBehind, note: W.hint.leftBehindWhy }]} />;
   return (
     <ResultStep nothing={done.undone.length + done.kept.length + done.restoredModes.length + done.recordedModes.length === 0} lists={[

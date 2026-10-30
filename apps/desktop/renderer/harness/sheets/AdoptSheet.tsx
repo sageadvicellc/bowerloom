@@ -19,6 +19,7 @@ import { useEngine } from '../engine.js';
 import { useUi } from '../ui.js';
 import { CHANGE_TONE, CHANGE_WORDS, ENGINE_WORDS, approvePlanWords, writeFilesWords } from '../words-engine.js';
 import { AdoptConfirm, AdoptReview } from './adopt-review.js';
+import { AfterApplyCheck } from './after-apply-check.js';
 import { Busy, FolderStep, RefusalNote, ResultStep, Section, TickRow, folderLine } from './engine-parts.js';
 import { chooseFolderCall, foldersCall, useCall } from './use-call.js';
 import { useHeldFocus } from './use-held-focus.js';
@@ -166,7 +167,7 @@ export function AdoptSheet({ open, folderId, onClose }: { open: boolean; folderI
           ) : null}
           {step === 'done' && done !== null ? (
             done.kind === 'made'
-              ? <ResultStep nothing={done.written.length === 0} lists={[{ title: W.label.writtenFiles, files: done.written }]} />
+              ? <ResultStep nothing={done.written.length === 0} lists={[{ title: W.label.writtenFiles, files: done.written }]}>{engine === null ? null : <AfterApplyCheck record={(a, n) => engine.recordCheck(a, n)} />}</ResultStep>
               : <ResultStep nothing={done.removed.length + done.restored.length === 0} lists={[{ title: W.label.removedFiles, files: done.removed }, { title: W.label.restoredFiles, files: done.restored }, { title: W.label.keptFiles, files: done.kept, note: W.hint.keptWhy }, { title: W.label.leftFolders, files: done.leftFolders, note: W.hint.leftBehindWhy }]} />
           ) : null}
         </div>

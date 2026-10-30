@@ -393,5 +393,7 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
       f.merged = true;
       return ok({ written: plan.value.files.map(x => x.path) });
     })()),
+    // The sample writes nothing, not even a usage line.
+    recordCheck: () => settle(false),
   };
 }

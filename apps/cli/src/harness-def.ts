@@ -18,6 +18,7 @@ import { lstatSync, realpathSync } from 'node:fs';
 import { userInfo } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
+import { recordScenario } from './events.js';
 import { applyAdoption, applyAdoptionRecovery, planAdoption, planAdoptionRecovery } from '../../../packages/adoption/src/index.js';
 import type { AdoptionInput } from '../../../packages/adoption/src/index.js';
 import { EVERY_ENGINE_PARTS } from '../../../packages/adoption/src/model.js';
@@ -131,6 +132,8 @@ interface Ctx {
   readonly dir: string; readonly dirs: HarnessStateDirs; readonly legacy: LegacySettle; readonly signal: AbortSignal; readonly env: NodeJS.ProcessEnv;
   /** Set only for `status`: the marker of the move of the record of the earlier app is damaged. Other verbs throw instead. */
   readonly moveProblem: StatusProblem | null;
+  /** The write this run applied, for the local usage log. Set by `approved`. A plan that waited, or a no-op, leaves it unset. */
+  applied?: { revision: string; result: unknown };
 }
 
 const codeOf = (error: unknown): string => {
@@ -407,7 +410,7 @@ async function adopt(c: Ctx, f: Flags, approval: { approve?: string; json: boole
     async plan() { return planAdoption(input); }, revision: p => p.revision, review: renderAdoption,
     async apply(revision) { const r = await applyAdoption(input, revision, confirms, c.signal); return { written: r.written.map(p => `.bowerloom/${p}`) }; },
   };
-  return approved(change, approval, io, write);
+  return approved(change, approval, io, write, c);
 }
 
 function installInput(c: Ctx, f: Flags, approvals: readonly FidelityApproval[]): PortableInput {
@@ -465,7 +468,7 @@ async function install(c: Ctx, f: Flags, approval: { approve?: string; json: boo
       return { noop: r.noop, receipt: r.receipt?.revision ?? null, installed: r.installed, skippedPreview: r.skippedPreview, keptPreview: r.keptPreview, previewNotice: r.previewNotice, takenOver: r.report.takenOver, leftBehind: r.leftBehind, ...(warnings.length ? { warnings } : {}) };
     },
   };
-  return approved(change, approval, io, write);
+  return approved(change, approval, io, write, c);
 }
 
 /** `harness accept <key>`: one approval draft for one refused line, bound to the hash of its entry now. */
@@ -510,7 +513,7 @@ async function merge(c: Ctx, approval: { approve?: string; json: boolean }, io: 
     async plan() { return planInstructionMerge(input); }, revision: p => p.revision, review: renderMerge,
     async apply(revision) { const r = await applyInstructionMerge(input, revision, c.signal); return { written: r.written, revision: r.revision }; },
   };
-  return approved(change, approval, io, write);
+  return approved(change, approval, io, write, c);
 }
 
 async function drift(c: Ctx, check: boolean, json: boolean, write: (text: string) => void): Promise<number> {
@@ -540,7 +543,7 @@ async function remove(c: Ctx, approval: { approve?: string; json: boolean }, io:
       return { restored: r.restored, kept: r.kept, deleted: r.deleted, leftBehind: r.leftBehind, ...(warnings.length ? { warnings } : {}) };
     },
   };
-  return approved(change, approval, io, write);
+  return approved(change, approval, io, write, c);
 }
 
 async function recover(c: Ctx, f: Flags, approval: { approve?: string; json: boolean }, io: ApprovalIo, write: (text: string) => void): Promise<number> {
@@ -552,13 +555,13 @@ async function recover(c: Ctx, f: Flags, approval: { approve?: string; json: boo
         async plan() { return planInstructionMergeRecovery(input); }, revision: p => p.revision, review: renderAdoptionRecovery,
         async apply(revision) { return applyInstructionMergeRecovery(input, revision, c.signal); },
       };
-      return approved(change, approval, io, write);
+      return approved(change, approval, io, write, c);
     }
     const change: PlannedChange<AdoptionRecoveryPlan> = {
       async plan() { return planAdoptionRecovery(input); }, revision: p => p.revision, review: renderAdoptionRecovery,
       async apply(revision) { return applyAdoptionRecovery(input, revision, c.signal); },
     };
-    return approved(change, approval, io, write);
+    return approved(change, approval, io, write, c);
   }
   const keep = all(f, '--keep'), restoreMode = all(f, '--restore-mode'), recordMode = all(f, '--record-mode');
   const input: RecoveryInput = {
@@ -568,7 +571,7 @@ async function recover(c: Ctx, f: Flags, approval: { approve?: string; json: boo
     async plan() { return planPortableRecovery(input); }, revision: p => p.revision, review: renderRecovery,
     async apply(revision) { const r = await applyPortableRecovery(input, revision, c.signal); return { action: r.action, leftBehind: r.leftBehind }; },
   };
-  return approved(change, approval, io, write);
+  return approved(change, approval, io, write, c);
 }
 
 /** The command that finishes a run that stopped part way, by the code of its refusal. */
@@ -614,11 +617,11 @@ export function resultLines(result: unknown): string[] {
 }
 
 /** The approval wrapper, with plain JSON in and out. A good write also prints what it left behind or kept (human mode only). */
-async function approved<P>(change: PlannedChange<P>, approval: { approve?: string; json: boolean }, io: ApprovalIo, write: (text: string) => void): Promise<number> {
+async function approved<P>(change: PlannedChange<P>, approval: { approve?: string; json: boolean }, io: ApprovalIo, write: (text: string) => void, c: Ctx): Promise<number> {
   let applied: unknown;
   const wrapped: PlannedChange<P> = {
     ...change, async plan() { return printable(plain(await change.plan())); },
-    async apply(revision) { try { applied = plain(await change.apply(revision)); return applied; } catch (error) { throw withPartialWords(error); } },
+    async apply(revision) { try { applied = plain(await change.apply(revision)); c.applied = { revision, result: applied }; return applied; } catch (error) { throw withPartialWords(error); } },
   };
   const result = await runWithApproval(wrapped, approval, io);
   const lines = result.exitCode === 0 && !approval.json ? resultLines(applied) : [];
@@ -673,14 +676,45 @@ async function dispatch(
   const { io, write } = run;
   const c = await contextOf(run.cwd, run.home, run.env, flags, run.signal, verb === 'status');
   const a = { ...(approval.approve !== undefined ? { approve: approval.approve } : {}), json: approval.json };
-  switch (verb) {
-    case 'status': return status(c, approval.json, write);
-    case 'adopt': return adopt(c, flags, a, io, write);
-    case 'install': return install(c, flags, a, io, write);
-    case 'accept': return accept(c, flags, approval.json, write);
-    case 'merge': return merge(c, a, io, write);
-    case 'drift': return drift(c, flags.bools.has('--check'), approval.json, write);
-    case 'remove': return remove(c, a, io, write);
-    case 'recover': return recover(c, flags, a, io, write);
-  }
+  const go = (): Promise<number> => {
+    switch (verb) {
+      case 'status': return status(c, approval.json, write);
+      case 'adopt': return adopt(c, flags, a, io, write);
+      case 'install': return install(c, flags, a, io, write);
+      case 'accept': return accept(c, flags, approval.json, write);
+      case 'merge': return merge(c, a, io, write);
+      case 'drift': return drift(c, flags.bools.has('--check'), approval.json, write);
+      case 'remove': return remove(c, a, io, write);
+      case 'recover': return recover(c, flags, a, io, write);
+    }
+  };
+  // Usage events for the local log: S1 adopt, S2 install, S5 remove and recover. The log never changes a result.
+  const step = verb === 'adopt' || verb === 'install' || verb === 'remove' || verb === 'recover' ? verb : null;
+  if (step === null) return go();
+  const where = { env: run.env, home: run.home };
+  const bothEngines = (engines: readonly string[] | undefined): boolean => engines !== undefined && engines.includes('claude-code') && engines.includes('codex');
+  const scenarioOf = (engines: readonly string[] | undefined): string | undefined => step === 'adopt' ? 'S1' : step === 'install' ? (bothEngines(engines) ? 'S2' : undefined) : 'S5';
+  return recordScenario(where, outcome => {
+    if (outcome === 'refused') {
+      // A stop request is not a refusal. The engines are the ones the person asked for.
+      if (run.signal.aborted) return null;
+      const asked = step === 'install' ? all(flags, '--engine').filter(id => (ENGINE_IDS as readonly string[]).includes(id)) : [];
+      const scenario = scenarioOf(asked);
+      return { step, ...(scenario !== undefined ? { scenario } : {}), ...(asked.length ? { engines: asked } : {}), ...(step === 'install' ? { targetRoot: c.dir } : {}) };
+    }
+    // Only a run that applied a write is a done scenario: a no-op install applied nothing.
+    if (c.applied === undefined) return null;
+    const engines = step === 'install' ? installedEngines(c.applied.result) : undefined;
+    const scenario = scenarioOf(engines);
+    return {
+      step, ...(scenario !== undefined ? { scenario } : {}), plan: c.applied.revision,
+      ...(engines !== undefined && engines.length ? { engines } : {}), ...(step === 'install' ? { targetRoot: c.dir } : {}),
+    };
+  }, go);
 }
+
+/** The engine ids a result lists under `installed`. */
+const installedEngines = (result: unknown): string[] | undefined => {
+  const list = (result as { installed?: unknown } | null)?.installed;
+  return Array.isArray(list) ? list.filter((x): x is string => typeof x === 'string') : undefined;
+};

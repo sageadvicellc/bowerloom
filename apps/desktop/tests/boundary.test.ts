@@ -96,9 +96,25 @@ function sourceFiles(dir: string): string[] { return readdirSync(join(DESKTOP, d
 test('the viewer\'s source writes a file in only a short list of modules, and each asks the boundary first', () => {
   const all = [...sourceFiles('main'), ...sourceFiles('shared'), ...sourceFiles('preload'), ...sourceFiles('renderer')];
   const writers = all.filter(f => WRITE.test(strip(readFileSync(join(DESKTOP, f), 'utf8'))) || (/^renderer\//.test(f) && /node:fs/.test(readFileSync(join(DESKTOP, f), 'utf8')))).sort();
-  const allowed = Object.keys(WRITERS).concat(['main/sandbox.ts', 'main/sketches.ts']);
+  // The usage summary is the one file the person names: main writes it only to the path the native save dialog returned, for its owner only.
+  const allowed = Object.keys(WRITERS).concat(['main/sandbox.ts', 'main/sketches.ts', 'main/diagnostics-dialogs.ts']);
   for (const w of writers) assert.ok(allowed.includes(w), `${w} writes a file but is not in the list`);
   for (const [file, need] of Object.entries(WRITERS)) assert.match(strip(readFileSync(join(DESKTOP, file), 'utf8')), need, `${file} must ask the boundary before it writes`);
   for (const file of ['main/sandbox.ts', 'main/sketches.ts']) { try { assert.match(strip(readFileSync(join(DESKTOP, file), 'utf8')), /assert(App)?Writable\(/, file); } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; } }
+  const saves = strip(readFileSync(join(DESKTOP, 'main/diagnostics-dialogs.ts'), 'utf8'));
+  assert.match(saves, /deps\.showSave\([\s\S]*\(deps\.writeFile \?\? writePrivate\)\(picked\.filePath,/, 'the summary goes only where the save dialog said');
+  assert.match(saves, /writeFileSync\(path, text, \{ mode: 0o600 \}\)/, 'and a new file is for its owner only');
+  assert.equal((saves.match(/writeFileSync\(/g) ?? []).length, 1, 'one write call');
   assert.equal(all.some(f => f.startsWith('main/boundary')), true);
+});
+
+test('in packages/diagnostics only src/log.ts writes a file, and it writes only below the event log folder', () => {
+  const dir = join(DESKTOP, '..', '..', 'packages', 'diagnostics', 'src');
+  const writers = readdirSync(dir).filter(f => f.endsWith('.ts') && WRITE.test(strip(readFileSync(join(dir, f), 'utf8')))).sort();
+  assert.deepEqual(writers, ['log.ts']);
+  const log = strip(readFileSync(join(dir, 'log.ts'), 'utf8'));
+  // Every path it writes is the event log folder, a file in it, or a temporary file beside the log.
+  assert.match(log, /export const eventLogDir = \(stateRoot: string\): string => join\(stateRoot, 'events'\)/);
+  assert.match(log, /const dir = eventLogDir\(options\.stateRoot\)/);
+  assert.doesNotMatch(log, /homedir|process\.cwd|tmpdir|\.\.\//, 'no path outside the state root');
 });

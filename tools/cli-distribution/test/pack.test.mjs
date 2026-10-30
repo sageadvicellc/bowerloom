@@ -244,6 +244,15 @@ test('0.8 adoption is an allowlisted runtime module with an optional manifest',(
  for(const name of ['project-sync','harness-definition','fidelity','adoption'])assert.ok(reached.has(name),name);
 });
 
+// Bowerloom 0.8: `bowerloom report` and `bowerloom events` run the diagnostics package, and every command that records a usage event
+// imports it, so it is a runtime module with no manifest of its own.
+test('0.8 diagnostics is an allowlisted runtime module with an optional manifest',()=>{
+ assert.ok(MODULES.includes('diagnostics'));
+ const record=collect({repoDir:repo}).record;
+ assert.equal(record.sourceManifests.some(m=>m.path==='packages/diagnostics/package.json'),false);
+ for(const file of ['packages/diagnostics/src/report.ts','apps/cli/src/diagnostics.ts','apps/cli/src/events.ts'])assert.ok(record.sourceFiles.some(f=>f.path===file),file);
+});
+
 // Beta 0.7.0 Day 0: the project-layer packages are runtime modules with optional internal manifests.
 test('beta 0.7.0 project packages are allowlisted modules whose manifests are optional but validated when present',()=>{
  const added=['project-context','project-config','project-authoring','skill-manifest','project-sync','context-slices'];

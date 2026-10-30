@@ -22,7 +22,7 @@ const privateArchive: Record = {
 const refuses = (record: unknown, label: string) => assert.throws(() => validateReleaseIdentity(record, pkg), /installed release record/, label);
 
 test('the release record and package.json name one version, unreleased, for npm under the beta dist-tag', () => {
-  assert.match(VERSION, /^0\.7\.0-beta\.\d+$/); assert.equal(release.version, VERSION);
+  assert.match(VERSION, /^0\.8\.0-beta\.\d+$/); assert.equal(release.version, VERSION);
   assert.deepEqual(release.distribution, { kind: 'npm-beta-stream', distTag: 'beta' });
   assert.equal(release.npm.distTag, 'beta'); assert.equal(release.npm.installCommand, BETA_INSTALL);
   assert.equal(release.state, 'unreleased'); assert.equal(release.npm.published, false);
