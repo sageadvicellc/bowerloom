@@ -323,15 +323,19 @@ test('guardrails: Claude Code permissions merge into a settings file a person ke
   assert.equal(read(p, '.claude/settings.json'), mine);
 });
 
-test('guardrails: Codex gets forbidden prefix rules and no allow rule at all; the permission profile is held back (B6)', async t => {
+test('guardrails: Codex gets forbidden prefix rules, no allow rule at all, and the bowerloom permission profile (B6)', async t => {
   const p = lockedProject(t, { engines: engines('codex'), mcp: null, parts: { mcp: undefined }, rules: RULES });
   const { plan } = await projectNow(p.input({ approvals: approvalsFor(p) }));
   const rules = read(p, '.codex/rules/bowerloom.rules');
   assert.match(rules, /prefix_rule\(\n {4}pattern = \["git", "push"\],\n {4}decision = "forbidden",/);
   assert.equal(/decision = "allow"/.test(rules), false);
-  assert.equal(exists(p, '.codex/config.toml'), false, 'no profile and no default_permissions');
-  assert.equal(line(plan, 'guardrails', 'no-env', 'codex').result, 'weakened');
-  assert.deepEqual(plan.trust.filter(x => x.engine === 'codex').map(x => [x.path, x.state]), [['.codex/rules/bowerloom.rules', 'pending trust']]);
+  const config = read(p, '.codex/config.toml');
+  assert.match(config, /^default_permissions = "bowerloom"$/m);
+  assert.match(config, /^\[permissions\.bowerloom\]\nextends = ":workspace"$/m);
+  assert.match(config, /^\[permissions\.bowerloom\.filesystem\.":workspace_roots"\]\n".env" = "deny"$/m);
+  assert.equal(line(plan, 'guardrails', 'no-env', 'codex').result, 'weakened', 'g8 covered no glob entry');
+  assert.match(line(plan, 'guardrails', 'no-env', 'codex').reason, /Live check g8/);
+  assert.deepEqual(plan.trust.filter(x => x.engine === 'codex').map(x => [x.path, x.state]), [['.codex/config.toml', 'pending trust'], ['.codex/rules/bowerloom.rules', 'pending trust']]);
 });
 
 test('guardrails: an MCP deny in Codex disables the tool in the managed server entry; a server the projection does not write is weakened', async t => {

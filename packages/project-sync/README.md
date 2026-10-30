@@ -84,9 +84,18 @@ The same plan writes MCP servers, subagents, hooks, guardrails, and the sandbox.
   and Codex hook command, by file, and in full the OpenCode plugin, the DeepSeek Harness patch, and
   `.codex/rules/bowerloom.rules`. The plan
   revision covers it. Claude Code project servers in `.mcp.json` are `pending trust`, because Claude Code asks first.
-- **The Codex profile is held back** (`CODEX_PROFILE_ENABLED` is false). Bowerloom writes no `default_permissions` and
-  no `[permissions.bowerloom]` until the live check of step 5 confirms their syntax. Codex path rules and sandbox
-  requirements are `weakened` until then. `codexProfile` keeps the code.
+- **The Codex profile.** Codex path rules and a sandbox requirement write `default_permissions = "bowerloom"` and a
+  `[permissions.bowerloom]` profile that extends `:workspace`, with the path rules in its `":workspace_roots"`
+  filesystem table (ruling B6). Live check g8 of step 5 passed on Codex 0.157.0: the profile loaded, and a literal deny
+  entry at the project root blocked a read, and the file was unchanged after a patch turn. No live check covered a glob
+  entry, a read-only entry, the network and write bounds of `:workspace`, or the settings Bowerloom does not read (user
+  and managed configuration, a profile selected on the command line, and start flags such as `--sandbox`). So the
+  fidelity package keeps every line the profile carries `weakened`, and each line says so. A top-level `sandbox_mode`, a `[sandbox_workspace_write]` table,
+  or a `profile` key in a person's `.codex/config.toml` could override the profile, so each refuses
+  `PORTABLE_CONFLICT`. An unattended Codex team member whose guardrails write the profile refuses
+  `TEAM_START_UNPINNED`, because its command passes `--sandbox`. A key of the sandbox's `x-codex`
+  block is not written and gets an `absent` line with the field `x-codex`, which needs an approval. If
+  `CODEX_PROFILE_ENABLED` is false, Bowerloom writes no profile, and the path rules and the sandbox are `weakened`.
 - **Claude Code settings.** A person's `disableAllHooks` or `permissions.defaultMode`, in `.claude/settings.json` or
   `.claude/settings.local.json`, makes the hook lines `weakened`. Every hook line says that user and managed settings
   are not read. A

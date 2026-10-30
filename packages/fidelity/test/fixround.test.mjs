@@ -315,10 +315,20 @@ test('R17: an OpenCode path rule that starts with $HOME is absent; a Codex edit 
   const oc = translateGuardrails('opencode', { rules: [rule('h', 'read', '$HOME/x', 'allow'), rule('k', 'edit', '$HOME/y', 'deny')], sandbox: [] });
   assert.equal(lineOf(oc, 'h').result, 'absent');
   assert.equal(lineOf(oc, 'k').result, 'absent');
-  const cx = translateGuardrails('codex', { rules: [rule('e', 'edit', 'docs/**', 'deny'), rule('r', 'read', '.env', 'deny')], sandbox: [] });
+  // Live check g8 covered one literal deny entry. A change rule writes a read-only entry for a literal path and glob deny
+  // entries for any other path, and no live check covered either, so both stay weakened and name the form.
+  const cx = translateGuardrails('codex', { rules: [rule('e', 'edit', 'docs/**', 'deny'), rule('w', 'write', 'src/*.lock', 'deny'), rule('r', 'read', '.env', 'deny')], sandbox: [] });
   assert.equal(lineOf(cx, 'e').result, 'weakened');
-  assert.match(lineOf(cx, 'e').reason, /apply_patch/);
-  assert.equal(lineOf(cx, 'r').result, 'translated');
+  assert.match(lineOf(cx, 'e').reason, /docs = read/);
+  assert.match(lineOf(cx, 'e').reason, /g8 found the file unchanged after a patch turn\. No live check covered a read-only entry or a glob entry, so the rule is weakened/);
+  assert.equal(lineOf(cx, 'w').result, 'weakened');
+  assert.equal(cx.form.filesystem.filter(f => f.path.includes('src/*.lock')).every(f => f.access === 'deny'), true);
+  assert.match(lineOf(cx, 'w').reason, /No live check covered a glob entry, so the rule is weakened/);
+  assert.doesNotMatch(lineOf(cx, 'w').reason, /until the live check of step 5 confirms it/);
+  // A read rule writes glob entries for copies below the root, which g8 did not cover either (ruling B6).
+  assert.equal(lineOf(cx, 'r').result, 'weakened');
+  assert.match(lineOf(cx, 'r').reason, /No live check covered a glob entry, so the rule is weakened/);
+  assert.doesNotMatch(lineOf(cx, 'r').reason, /apply_patch/);
   const cc = translateGuardrails('claude-code', { rules: [rule('r', 'read', '.env', 'deny')], sandbox: [] });
   assert.match(lineOf(cc, 'r').reason, /redirect/);
   assert.equal(engineDecision(cc.form, shell('echo x > .env')), 'default', 'a redirect to the denied path is not blocked by the model');

@@ -164,8 +164,10 @@ test('check 2: every rule and sandbox field is projected or listed in the loss r
 test('check 2: the sandbox requirement has a line in every engine, with the results of the capability matrix', () => {
   const t = Object.fromEntries(ENGINE_IDS.map(e => [e, translateGuardrails(e, { rules: [], sandbox: [sandbox()] })]));
   assert.deepEqual(Object.fromEntries(ENGINE_IDS.map(e => [e, lineOf(t[e], 'box').result])), {
-    'claude-code': 'exact', codex: 'exact', opencode: 'absent', pi: 'absent', 'deepseek-harness': 'absent',
+    'claude-code': 'exact', codex: 'weakened', opencode: 'absent', pi: 'absent', 'deepseek-harness': 'absent',
   });
+  // Ruling B6: live check g8 showed that the Codex profile loads, but no live check covered the bounds of :workspace.
+  assert.match(lineOf(t.codex, 'box').reason, /No live check covered the network and write bounds of :workspace/);
   assert.deepEqual(t['claude-code'].form.sandbox, { files: true, network: true });
   assert.equal(t.opencode.written.length, 0);
 });
