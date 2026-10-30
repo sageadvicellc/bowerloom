@@ -1,18 +1,19 @@
 /**
  * Save (0.8.0-beta.1, option C): each folder saves its own harness definition. The input is the folder's full target
- * file set, a path relative to `.bowerloom` mapped to its bytes. The save replaces, creates, and deletes files in
- * `.bowerloom` until the folder holds exactly that set. Files the loader does not read (0.7 names, `.DS_Store`, an
- * empty `.gitkeep`) are never touched.
+ * file set, the `DefinitionFile[]` that `editDefinition` and a version read return: a path relative to `.bowerloom`, its
+ * bytes, and its execute bit. The save replaces, creates, and deletes files in `.bowerloom` until the folder holds
+ * exactly that set. A file it writes gets mode 0755 when executable, else 0644; a change of the execute bit alone is an
+ * update. Files the loader does not read (0.7 names, `.DS_Store`, an empty `.gitkeep`) are never touched.
  *
  * - The plan reads only. It refuses a path outside `.bowerloom`, a hidden name, a 0.7 name, a link, a path that clashes
- *   with another in letter case or Unicode form, a secret value in any file it writes, and a target the loader rejects
- *   (it loads the target in a scratch folder outside the project). Its revision binds the state of every file it
- *   touches and the revision of the definition now.
+ *   with another in letter case or Unicode form, and a secret value in any file. It then validates the target with
+ *   `loadDefinitionFiles`, the loader run in memory, which is the one check of the definition itself and gives the
+ *   target revision. Its revision binds the state of every file it touches and the revision of the definition now.
  * - Apply plans again under the project lock and writes only when the revision is the one approved. It writes
  *   creates and updates, then deletes, then removes the folders the deletes emptied, and writes `harness.json` last.
  *   It then loads the definition again and checks it is the planned target.
  * - The journal, `save-pending.json` in the adoption state folder, is written before the first write. It holds the
- *   state before and after of each file, the bytes it replaces, and the bytes it writes. A failure puts every original
+ *   state before and after of each file (hash and mode), the bytes it replaces, and the bytes it writes. A failure puts every original
  *   back; a crash leaves the journal, and every later save plan refuses SAVE_RECOVERY_REQUIRED until a person approves
  *   a save recovery, which either undoes the save or finishes it.
  * - This copies the reviewed journal pattern of `merge.ts`, as the save plan asks, rather than sharing one.
@@ -20,12 +21,10 @@
  *   the write, a new file is linked into place, and a replaced or deleted file must still hold the planned bytes.
  */
 import fs from 'node:fs';
-import os from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
 import { DefinitionError, oneLine } from '../../contracts/src/index.js';
-import { DEFINITION_LIMITS, INCOMPLETE_RULES, LEGACY_NAMES, loadDefinition, parseStrictJson, scanSecrets } from '../../harness-definition/src/index.js';
-import type { Problem } from '../../harness-definition/src/index.js';
-import { decodeText } from '../../harness-definition/src/json.js';
+import { DEFINITION_LIMITS, INCOMPLETE_RULES, LEGACY_NAMES, loadDefinition, loadDefinitionFiles, scanSecrets } from '../../harness-definition/src/index.js';
+import type { DefinitionFile, Problem } from '../../harness-definition/src/index.js';
 import { withProjectLock } from '../../project-context/src/index.js';
 import {
   PortableRefusal, byBytes, caseClashes, checkAncestors, makeDir, readProject, removeEmptyDirs, revisionOf, sameState, sha, syncDir, uid, writeAbs,
@@ -85,8 +84,15 @@ export interface SaveInput {
   /** The private state folder of adoption, outside the project. The save journal goes there, beside the adoption and merge journals. */
   readonly stateDir: string;
 }
-/** The full target file set of the folder's definition: a path relative to `.bowerloom`, to its bytes. */
-export type SaveTarget = ReadonlyMap<string, Uint8Array> | Readonly<Record<string, Uint8Array>>;
+/**
+ * The full target file set of the folder's definition, as `editDefinition` and a version read return it: each path
+ * relative to `.bowerloom`, once. An absent `executable` means false.
+ */
+export type SaveTarget = readonly DefinitionFile[];
+/** A file mode the save writes: 0755 for an executable file, else 0644. */
+const modeFor = (executable: boolean): number => executable ? 0o755 : 0o644;
+/** The target after `readTarget`: copied bytes and a definite execute bit. */
+type Target = ReadonlyMap<string, { readonly bytes: Buffer; readonly executable: boolean }>;
 /** One change, relative to `.bowerloom`. */
 export interface SaveChange {
   readonly path: string;
@@ -166,21 +172,23 @@ function checkInput(input: SaveInput): { projectDir: string; stateDir: string } 
   return { projectDir, stateDir };
 }
 
-/** Copies the target into a fresh map, so a caller that changes its buffers later cannot change what was checked. */
-function readTarget(target: unknown): Map<string, Buffer> {
-  let entries: [unknown, unknown][];
-  if (target instanceof Map) entries = [...target.entries()];
-  else if (target !== null && typeof target === 'object' && !Array.isArray(target) && [Object.prototype, null].includes(Object.getPrototypeOf(target))) entries = Object.entries(target);
-  else return refuse('SAVE_USAGE');
-  if (entries.length > DEFINITION_LIMITS.files) refuse('SAVE_TOO_LARGE');
-  const out = new Map<string, Buffer>();
+const FILE_KEYS = new Set(['path', 'bytes', 'executable']);
+/**
+ * Copies the target into a fresh map, so a caller that changes its buffers later cannot change what was checked. Each
+ * entry is a closed `{ path, bytes, executable? }`, and each path comes once.
+ */
+function readTarget(target: unknown): Map<string, { bytes: Buffer; executable: boolean }> {
+  if (!Array.isArray(target)) return refuse('SAVE_USAGE');
+  if (target.length > DEFINITION_LIMITS.files) refuse('SAVE_TOO_LARGE');
+  const out = new Map<string, { bytes: Buffer; executable: boolean }>();
   let total = 0;
-  for (const [k, v] of entries) {
-    if (typeof k !== 'string' || !(v instanceof Uint8Array)) refuse('SAVE_USAGE');
-    if (v.length > DEFINITION_LIMITS.fileBytes) refuse('SAVE_TOO_LARGE', [k]);
-    total += v.length;
+  for (const f of target as readonly unknown[]) {
+    if (!isObj(f) || Object.keys(f).some(k => !FILE_KEYS.has(k)) || typeof f.path !== 'string' || !(f.bytes instanceof Uint8Array)
+      || (f.executable !== undefined && typeof f.executable !== 'boolean') || out.has(f.path)) return refuse('SAVE_USAGE');
+    if (f.bytes.length > DEFINITION_LIMITS.fileBytes) refuse('SAVE_TOO_LARGE', [f.path]);
+    total += f.bytes.length;
     if (total > DEFINITION_LIMITS.totalBytes) refuse('SAVE_TOO_LARGE');
-    out.set(k, Buffer.from(v));
+    out.set(f.path, { bytes: Buffer.from(f.bytes), executable: f.executable === true });
   }
   return out;
 }
@@ -199,9 +207,12 @@ function plainPath(rel: unknown): rel is string {
 /** A project-relative journal path: `.bowerloom/` and a plain path. */
 const journalPath = (p: unknown): p is string => typeof p === 'string' && p.startsWith(`${DEF}/`) && plainPath(p.slice(DEF.length + 1));
 
-/** Refuses two target paths that name one file or folder on a case-insensitive or normalizing file system, and a file where a folder must be. */
+/**
+ * Refuses two target paths that name one file or folder on a case-insensitive or normalizing file system. A file where a
+ * folder must be is the loader's refusal.
+ */
 function checkClashes(paths: readonly string[]): void {
-  const files = new Set(paths), folded = new Map<string, string>();
+  const folded = new Map<string, string>();
   for (const rel of paths) {
     const parts = rel.split('/');
     for (let i = 1; i <= parts.length; i++) {
@@ -209,7 +220,6 @@ function checkClashes(paths: readonly string[]): void {
       const seen = folded.get(key);
       if (seen !== undefined && seen !== prefix) refuse('SAVE_PATH_UNSAFE', [seen, prefix]);
       folded.set(key, prefix);
-      if (i < parts.length && files.has(prefix)) refuse('SAVE_PATH_UNSAFE', [prefix]);
     }
   }
 }
@@ -245,30 +255,16 @@ function walk(projectDir: string): { dirs: string[]; files: string[] } {
   return { dirs, files };
 }
 
-/** The top-level names that the target `harness.json` points to. `engines/` needs no pointer. */
-function pointedTop(harness: Buffer | undefined): Set<string> {
-  const out = new Set<string>(['engines']);
-  const text = harness === undefined ? null : decodeText(harness);
-  const parsed = text === null ? null : parseStrictJson(text);
-  if (!parsed?.ok || parsed.value === null || typeof parsed.value !== 'object' || Array.isArray(parsed.value)) return out;
-  const parts = (parsed.value as Record<string, unknown>).parts;
-  if (parts === null || typeof parts !== 'object' || Array.isArray(parts)) return out;
-  for (const v of Object.values(parts)) for (const s of Array.isArray(v) ? v : [v]) if (typeof s === 'string') out.add(s.split(/[/#]/)[0]!);
-  return out;
-}
-
 /**
- * The folders the deletes empty, deepest first. A folder goes when a delete is under it and nothing stays under it: no
- * target file, no other file, and no folder that stays. A top-level folder that the target `harness.json` points to stays,
- * because the loader needs it.
+ * The folders the deletes empty, in byte order. A folder goes when a delete is under it and nothing stays under it: no
+ * target file, no other file, and no folder that stays. The in-memory loader has no empty folders, so a folder that a
+ * part of the target needs holds a target file and stays.
  */
-function emptiedDirs(dirs: readonly string[], files: readonly string[], deleted: ReadonlySet<string>, target: ReadonlyMap<string, Buffer>): string[] {
+function emptiedDirs(dirs: readonly string[], files: readonly string[], deleted: ReadonlySet<string>, target: Target): string[] {
   const kept = new Set<string>([...target.keys(), ...files.filter(f => !deleted.has(f))]);
-  const pointed = pointedTop(target.get(HARNESS));
   const under = (d: string, set: Iterable<string>): boolean => { for (const f of set) if (f.startsWith(`${d}/`)) return true; return false; };
   const removed = new Set<string>();
   for (const d of [...dirs].sort(byBytes).reverse()) {
-    if (!d.includes('/') && pointed.has(d)) continue;
     if (!under(d, deleted) || under(d, kept)) continue;
     if (dirs.some(sub => sub.startsWith(`${d}/`) && !removed.has(sub))) continue;
     removed.add(d);
@@ -276,33 +272,27 @@ function emptiedDirs(dirs: readonly string[], files: readonly string[], deleted:
   return [...removed].sort(byBytes);
 }
 
-/** Loads the target in a scratch folder outside the project, laid out as the folder will be. Returns its revision, or refuses with the loader's problems. */
-function targetRevision(target: ReadonlyMap<string, Buffer>, modes: ReadonlyMap<string, number>, dirs: readonly string[]): string {
-  const scratch = fs.mkdtempSync(join(os.tmpdir(), 'bowerloom-save-check-'));
-  try {
-    const at = join(scratch, DEF);
-    fs.mkdirSync(at, { mode: 0o700 });
-    for (const d of [...dirs].sort(byBytes)) fs.mkdirSync(join(at, d), { recursive: true, mode: 0o700 });
-    for (const [rel, bytes] of target) {
-      const p = join(at, rel), mode = modes.get(rel) ?? 0o644;
-      fs.mkdirSync(dirname(p), { recursive: true, mode: 0o700 });
-      fs.writeFileSync(p, bytes, { mode }); fs.chmodSync(p, mode);
-    }
-    const r = loadDefinition(at);
-    return r.ok ? r.definition.revision : invalid(r.problems);
-  } finally { fs.rmSync(scratch, { recursive: true, force: true }); }
-}
-
 // ---- plan --------------------------------------------------------------------------------------------------------------
 
 interface Planned { readonly plan: SavePlan; readonly originals: ReadonlyMap<string, Buffer> }
 
-function planCore(projectDir: string, stateDir: string, target: ReadonlyMap<string, Buffer>): Planned {
+function planCore(projectDir: string, stateDir: string, target: Target): Planned {
   if (adoptionStopped(stateDir) || mergeStopped(stateDir) || saveStopped(stateDir)) refuse('SAVE_RECOVERY_REQUIRED');
   const paths = [...target.keys()].sort(byBytes);
   const bad = paths.filter(p => !plainPath(p));
   if (bad.length) refuse('SAVE_PATH_UNSAFE', bad);
   checkClashes(paths);
+
+  // Secrets: the loader's own scan, on every file. The refusal names the place, never the value. A file the scan cannot
+  // read whole (unparseable JSON, an overlong line) is the loader's refusal, next.
+  const list: DefinitionFile[] = paths.map(rel => ({ path: rel, bytes: target.get(rel)!.bytes, executable: target.get(rel)!.executable }));
+  const incomplete = new Set<string>(INCOMPLETE_RULES);
+  const findings = scanSecrets(list).filter(f => !incomplete.has(f.rule));
+  if (findings.length) refuse('SAVE_SECRET_FOUND', [...new Set(findings.map(f => f.line !== undefined ? `${f.path} line ${f.line}` : f.pointer !== undefined ? `${f.path} at ${f.pointer}` : f.path))]);
+  // The one check of the definition itself: the loader, run in memory, before anything on disk is read.
+  const validated = loadDefinitionFiles(list, join(projectDir, DEF));
+  if (!validated.ok) return invalid(validated.problems);
+  const after = validated.definition.revision;
 
   // The folder itself, then every target path on disk, before the loader: a link is a path refusal, never followed.
   guarded(() => checkAncestors(projectDir, `${DEF}/${HARNESS}`, true));
@@ -331,14 +321,14 @@ function planCore(projectDir: string, stateDir: string, target: ReadonlyMap<stri
   }
   for (const f of def.files) if (!onDisk.get(f.path)!.bytes.equals(f.bytes)) refuse('SAVE_STALE', [f.path]);
 
-  const writes: SaveChange[] = [], deletes: SaveChange[] = [], originals = new Map<string, Buffer>(), modes = new Map<string, number>();
+  const writes: SaveChange[] = [], deletes: SaveChange[] = [], originals = new Map<string, Buffer>();
   let harness: SaveChange | null = null, payload = 0;
   for (const rel of paths) {
-    const next = target.get(rel)!, now = onDisk.get(rel) ?? null;
+    const { bytes: next, executable } = target.get(rel)!, now = onDisk.get(rel) ?? null;
     if (now !== null && !currentPaths.has(rel)) refuse('SAVE_PATH_UNSAFE', [rel]);
-    const mode = now?.state.mode ?? 0o644;
-    modes.set(rel, mode);
-    if (now !== null && now.bytes.equals(next)) continue;
+    const mode = modeFor(executable);
+    // The same bytes and the same execute bit are no change, whatever the other mode bits are.
+    if (now !== null && now.bytes.equals(next) && ((now.state.mode & 0o111) !== 0) === executable) continue;
     const change: SaveChange = { path: rel, action: now ? 'update' : 'create', before: now?.state ?? null, after: { sha256: sha(next), mode, bytes: next.length } };
     payload += next.length + (now?.bytes.length ?? 0);
     if (now) originals.set(rel, now.bytes);
@@ -356,15 +346,8 @@ function planCore(projectDir: string, stateDir: string, target: ReadonlyMap<stri
   deletes.sort((a, b) => byBytes(a.path, b.path));
   if (payload > SAVE_PAYLOAD_LIMIT) refuse('SAVE_TOO_LARGE');
 
-  // Secrets: the loader's own scan, on every file the save writes. The refusal names the place, never the value. A
-  // file the scan cannot read whole (unparseable JSON, an overlong line) is the loader's refusal, below.
-  const incomplete = new Set<string>(INCOMPLETE_RULES);
-  const findings = scanSecrets(writes.concat(harness ? [harness] : []).map(c => ({ path: c.path, bytes: target.get(c.path)! }))).filter(f => !incomplete.has(f.rule));
-  if (findings.length) refuse('SAVE_SECRET_FOUND', [...new Set(findings.map(f => f.line !== undefined ? `${f.path} line ${f.line}` : f.pointer !== undefined ? `${f.path} at ${f.pointer}` : f.path))]);
-
   const { dirs, files } = walk(projectDir);
   const emptied = emptiedDirs(dirs, files, deleted, target);
-  const after = targetRevision(target, modes, dirs.filter(d => !emptied.includes(d)));
   const body = {
     format: SAVE_PLAN_FORMAT, projectDir, changes: [...writes, ...deletes, ...(harness ? [harness] : [])], emptied,
     currentRevision: def.revision, targetRevision: after, writesAuthorized: false as const,
@@ -404,7 +387,7 @@ export async function applySaveWith(input: SaveInput, revision: string, target: 
     if (plan.changes.length === 0) return { planRevision: plan.revision, written: [], revision: plan.currentRevision, plan };
     const steps: JournalStep[] = plan.changes.map(c => ({
       path: inProject(c.path), from: c.before, to: c.after ? { sha256: c.after.sha256, mode: c.after.mode } : null,
-      original: c.before ? originals.get(c.path)!.toString('base64') : null, bytes: c.after ? wanted.get(c.path)!.toString('base64') : null,
+      original: c.before ? originals.get(c.path)!.toString('base64') : null, bytes: c.after ? wanted.get(c.path)!.bytes.toString('base64') : null,
     }));
     const dirs = [...new Set(steps.filter(s => s.to !== null).flatMap(s => guarded(() => checkAncestors(projectDir, s.path))))].sort(byBytes);
     const journal: SaveJournal = {

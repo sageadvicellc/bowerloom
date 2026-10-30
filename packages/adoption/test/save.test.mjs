@@ -4,17 +4,16 @@ import test from '../../../dist/tests/support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { loadDefinition } from '../../../dist/packages/harness-definition/src/index.js';
+import { editDefinition, loadDefinition } from '../../../dist/packages/harness-definition/src/index.js';
 import { withProjectLock } from '../../../dist/packages/project-context/src/index.js';
 import * as adoption from '../../../dist/packages/adoption/src/index.js';
-import {
-  SAVE_JOURNAL, SAVE_REFUSAL_CODES, applySave, applySaveWith, planSave, planSaveRecovery, refuseWhileSaveStopped, runSaveRecovery, saveStopped,
-} from '../../../dist/packages/adoption/src/save.js';
+import * as save from '../../../dist/packages/adoption/src/save.js';
 import { JOURNAL } from '../../../dist/packages/adoption/src/journal.js';
 import { MERGE_JOURNAL } from '../../../dist/packages/adoption/src/merge.js';
 import { INSTRUCTIONS, json, project, skill } from '../../project-sync/test/portable-fixture.mjs';
 import { code, snapshot } from './fixture.mjs';
 
+const { SAVE_JOURNAL, SAVE_REFUSAL_CODES, planSaveRecovery, refuseWhileSaveStopped, runSaveRecovery, saveStopped } = save;
 const signal = () => new AbortController().signal;
 const crash = () => Object.assign(new Error('simulated crash'), { crash: true });
 const HARNESS = { format: 'bowerloom/harness/v1beta1', id: 'demo', description: 'A demo harness.' };
@@ -26,12 +25,23 @@ function saving(t, opts = {}) {
   return { ...p, adoptState, save: () => ({ projectDir: p.dir, stateDir: adoptState }) };
 }
 const journalAt = p => path.join(p.adoptState, SAVE_JOURNAL);
-/** The definition's own files as a target set: path relative to `.bowerloom`, to bytes. */
+/**
+ * The definition's own files, as a Map the tests edit: path relative to `.bowerloom`, to `{ bytes, executable }`. A test
+ * sets plain bytes for a file that is not executable.
+ */
 function current(p) {
   const r = loadDefinition(p.def);
   assert.ok(r.ok, 'the fixture loads');
-  return new Map(r.definition.files.map(f => [f.path, Buffer.from(f.bytes)]));
+  return new Map(r.definition.files.map(f => [f.path, { bytes: Buffer.from(f.bytes), executable: f.executable === true }]));
 }
+const bytesOf = v => v instanceof Uint8Array ? v : v.bytes;
+/** The target the save takes, a `DefinitionFile[]`, from a test Map. Anything else passes as it is, for the usage tests. */
+const files = t => !(t instanceof Map) ? t : [...t].map(([p, v]) => v instanceof Uint8Array ? { path: p, bytes: v, executable: false }
+  : v !== null && typeof v === 'object' && 'bytes' in v ? { path: p, ...v } : { path: p, bytes: v });
+const planSave = (input, t) => save.planSave(input, files(t));
+const applySave = (input, revision, t, s) => save.applySave(input, revision, files(t), s);
+const applySaveWith = (input, revision, t, s, hooks) => save.applySaveWith(input, revision, files(t), s, hooks);
+const modeOf = (p, rel) => fs.statSync(path.join(p.def, rel)).mode & 0o777;
 /** The current harness.json, changed by `change`. */
 function harnessWith(p, change) {
   const h = JSON.parse(fs.readFileSync(path.join(p.def, 'harness.json'), 'utf8'));
@@ -84,10 +94,29 @@ test('a target equal to the definition plans no change, and its apply writes not
   assert.deepEqual(snapshot(p.base), before);
 });
 
-test('a target may be a plain object as well as a Map', t => {
+test('the target is the DefinitionFile list: a Map, a plain object, a duplicate path, or an odd entry is refused', t => {
   const p = saving(t);
-  const asObject = Object.fromEntries(mixed(p));
-  assert.equal(planSave(p.save(), asObject).revision, planSave(p.save(), mixed(p)).revision);
+  const target = mixed(p);
+  assert.throws(() => save.planSave(p.save(), new Map([...target].map(([k, v]) => [k, bytesOf(v)]))), code('SAVE_USAGE'));
+  assert.throws(() => save.planSave(p.save(), Object.fromEntries([...target].map(([k, v]) => [k, bytesOf(v)]))), code('SAVE_USAGE'));
+  const list = files(target);
+  assert.throws(() => save.planSave(p.save(), [...list, list[0]]), code('SAVE_USAGE'), 'a path named twice');
+  assert.throws(() => save.planSave(p.save(), [...list.slice(1), { ...list[0], executable: 'yes' }]), code('SAVE_USAGE'));
+  assert.throws(() => save.planSave(p.save(), [...list.slice(1), { ...list[0], sha256: 'x' }]), code('SAVE_USAGE'), 'a closed shape');
+  const noFlag = list.map(({ executable: _e, ...f }) => f);
+  assert.equal(save.planSave(p.save(), noFlag).revision, save.planSave(p.save(), list).revision, 'an absent executable means false');
+});
+
+test('the result of editDefinition saves as it is, and loads as the edit planned', async t => {
+  const p = saving(t);
+  const def = loadDefinition(p.def).definition;
+  const edit = editDefinition(def, [{ kind: 'set-instructions', text: `${INSTRUCTIONS}\nAdded by an edit.\n` }, { kind: 'add-skill', id: 'lint', text: skill('lint') }]);
+  assert.ok(edit.ok, JSON.stringify(edit));
+  const plan = save.planSave(p.save(), edit.files);
+  assert.deepEqual(plan.changes.map(c => [c.path, c.action]).sort(), edit.changes.map(c => [c.path, c.kind]).sort());
+  await save.applySave(p.save(), plan.revision, edit.files);
+  assert.equal(loadDefinition(p.def).definition.revision, plan.targetRevision);
+  for (const f of edit.files) assert.ok(fs.readFileSync(path.join(p.def, f.path)).equals(Buffer.from(f.bytes)), f.path);
 });
 
 // ---- apply ---------------------------------------------------------------------------------------------------------------
@@ -106,7 +135,7 @@ test('apply writes creates, updates, and deletes, harness.json last, then clears
   const loaded = loadDefinition(p.def);
   assert.ok(loaded.ok);
   assert.equal(loaded.definition.revision, plan.targetRevision); assert.equal(r.revision, plan.targetRevision);
-  for (const [rel, bytes] of target) assert.ok(fs.readFileSync(path.join(p.def, rel)).equals(bytes), rel);
+  for (const [rel, v] of target) assert.ok(fs.readFileSync(path.join(p.def, rel)).equals(bytesOf(v)), rel);
   assert.equal(fs.existsSync(path.join(p.def, 'skills/review/references')), false, 'the emptied folder is removed');
   assert.equal(snapshot(p.def)['skills/review/SKILL.md'], untouched, 'an untouched file is never rewritten');
   assert.equal(fs.statSync(path.join(p.def, 'skills/lint/SKILL.md')).mode & 0o777, 0o644);
@@ -114,8 +143,8 @@ test('apply writes creates, updates, and deletes, harness.json last, then clears
   assert.equal(await lockIsFree(p.dir), 'free', 'the project lock is released');
 });
 
-test('deletes: a whole skill goes, with its folders; the skills folder stays while harness.json points to it', async t => {
-  const p = saving(t);
+test('deletes: a whole skill goes, with its folders; the skills folder stays while it holds another skill', async t => {
+  const p = saving(t, { files: { 'skills/lint/SKILL.md': skill('lint') } });
   const target = current(p);
   target.delete('skills/review/SKILL.md'); target.delete('skills/review/references/notes.md');
   const plan = planSave(p.save(), target);
@@ -123,8 +152,15 @@ test('deletes: a whole skill goes, with its folders; the skills folder stays whi
   assert.deepEqual(plan.emptied, ['skills/review', 'skills/review/references']);
   await applySave(p.save(), plan.revision, target);
   assert.equal(fs.existsSync(path.join(p.def, 'skills/review')), false);
-  assert.ok(fs.statSync(path.join(p.def, 'skills')).isDirectory(), 'parts.skills still points to skills/');
+  assert.ok(fs.statSync(path.join(p.def, 'skills/lint')).isDirectory());
   assert.equal(loadDefinition(p.def).definition.revision, plan.targetRevision);
+});
+
+test('deletes: removing every skill while harness.json still points to skills/ is refused, as the editor\'s loader refuses it', t => {
+  const p = saving(t);
+  const target = current(p);
+  target.delete('skills/review/SKILL.md'); target.delete('skills/review/references/notes.md');
+  assert.throws(() => planSave(p.save(), target), code('SAVE_DEFINITION_INVALID'));
 });
 
 test('deletes: removing the skills part and every skill removes the skills folder', async t => {
@@ -139,15 +175,75 @@ test('deletes: removing the skills part and every skill removes the skills folde
   assert.ok(loadDefinition(p.def).ok);
 });
 
-test('an update keeps the file mode, so a script stays executable', async t => {
-  const p = saving(t, { parts: { scripts: 'scripts/' }, files: { 'scripts/check.sh': '#!/bin/sh\necho one\n' } });
+/** A project with a scripts part: `check.sh`, mode 0755, and `notes.txt`, mode 0644. */
+function scripted(t) {
+  const p = saving(t, { parts: { scripts: 'scripts/' }, files: { 'scripts/check.sh': '#!/bin/sh\necho one\n', 'scripts/notes.txt': 'Notes.\n' } });
   fs.chmodSync(path.join(p.def, 'scripts/check.sh'), 0o755);
+  return p;
+}
+
+test('the mode follows executable: 0755 when true, 0644 when false, for a create and an update', async t => {
+  const p = scripted(t);
+  assert.equal(current(p).get('scripts/check.sh').executable, true, 'the fixture reads as executable');
   const target = current(p);
-  target.set('scripts/check.sh', Buffer.from('#!/bin/sh\necho two\n'));
+  target.set('scripts/check.sh', { bytes: Buffer.from('#!/bin/sh\necho two\n'), executable: true });
+  target.set('scripts/new.sh', { bytes: Buffer.from('#!/bin/sh\necho new\n'), executable: true });
+  target.set('scripts/plain.txt', Buffer.from('Plain.\n'));
+  target.set('scripts/notes.txt', Buffer.from('Notes, edited.\n'));
   const plan = planSave(p.save(), target);
-  assert.equal(plan.changes[0].after.mode, 0o755);
+  assert.deepEqual(plan.changes.map(c => [c.path, c.action, c.after.mode]), [
+    ['scripts/check.sh', 'update', 0o755], ['scripts/new.sh', 'create', 0o755], ['scripts/notes.txt', 'update', 0o644], ['scripts/plain.txt', 'create', 0o644],
+  ]);
   await applySave(p.save(), plan.revision, target);
-  assert.equal(fs.statSync(path.join(p.def, 'scripts/check.sh')).mode & 0o777, 0o755);
+  assert.deepEqual(['check.sh', 'new.sh', 'notes.txt', 'plain.txt'].map(n => modeOf(p, `scripts/${n}`)), [0o755, 0o755, 0o644, 0o644]);
+  assert.ok(loadDefinition(p.def).definition.files.find(f => f.path === 'scripts/new.sh').executable);
+});
+
+test('a change of the execute bit alone is an update; the same bytes and the same bit are no change', async t => {
+  const p = scripted(t);
+  assert.deepEqual(planSave(p.save(), current(p)).changes, [], 'executable true on a 0755 file is no change');
+  const target = current(p);
+  target.set('scripts/check.sh', { ...target.get('scripts/check.sh'), executable: false });
+  target.set('scripts/notes.txt', { ...target.get('scripts/notes.txt'), executable: true });
+  const plan = planSave(p.save(), target);
+  assert.deepEqual(plan.changes.map(c => [c.path, c.action, c.before.mode, c.after.mode, c.before.sha256 === c.after.sha256]), [
+    ['scripts/check.sh', 'update', 0o755, 0o644, true], ['scripts/notes.txt', 'update', 0o644, 0o755, true],
+  ]);
+  await applySave(p.save(), plan.revision, target);
+  assert.equal(modeOf(p, 'scripts/check.sh'), 0o644); assert.equal(modeOf(p, 'scripts/notes.txt'), 0o755);
+});
+
+test('the journal holds each mode: undo and finish both restore the execute bit', async t => {
+  for (const mode of ['undo', 'finish']) {
+    const p = scripted(t);
+    const before = content(p.def);
+    const target = current(p);
+    target.set('scripts/check.sh', { ...target.get('scripts/check.sh'), executable: false });
+    target.set('scripts/notes.txt', { ...target.get('scripts/notes.txt'), executable: true });
+    const plan = planSave(p.save(), target), err = crash();
+    await assert.rejects(applySaveWith(p.save(), plan.revision, target, signal(), { afterWrite: rel => { if (rel === 'scripts/check.sh') throw err; } }), e => e === err);
+    const journal = JSON.parse(fs.readFileSync(journalAt(p), 'utf8'));
+    assert.deepEqual(journal.files.map(f => [f.path, f.from.mode, f.to.mode]), [['.bowerloom/scripts/check.sh', 0o755, 0o644], ['.bowerloom/scripts/notes.txt', 0o644, 0o755]]);
+    assert.equal(modeOf(p, 'scripts/check.sh'), 0o644, 'the first step landed');
+    const rec = planSaveRecovery(p.save());
+    await runSaveRecovery(p.save(), rec.revision, mode);
+    if (mode === 'undo') assert.deepEqual(content(p.def), before, 'both modes are back');
+    else { assert.equal(modeOf(p, 'scripts/check.sh'), 0o644); assert.equal(modeOf(p, 'scripts/notes.txt'), 0o755); }
+    assert.equal(fs.existsSync(journalAt(p)), false);
+  }
+});
+
+test('a failure puts the old mode back with the old bytes', async t => {
+  const p = scripted(t);
+  const before = content(p.def);
+  const target = current(p);
+  target.set('scripts/check.sh', { bytes: Buffer.from('#!/bin/sh\necho two\n'), executable: false });
+  target.set('harness.json', harnessWith(p, h => { h.description = 'Edited.'; }));
+  const plan = planSave(p.save(), target);
+  const boom = Object.assign(new Error('disk full'), { code: 'ENOSPC' });
+  await assert.rejects(applySaveWith(p.save(), plan.revision, target, signal(), { beforeWrite: rel => { if (rel === 'harness.json') throw boom; } }), e => e === boom);
+  assert.deepEqual(content(p.def), before);
+  assert.equal(modeOf(p, 'scripts/check.sh'), 0o755);
 });
 
 test('0.7 files in the folder are never touched by a save', async t => {
@@ -290,7 +386,7 @@ test('after a crash, recovery can finish the save instead', async t => {
     assert.equal(r.revision, plan.targetRevision);
     const loaded = loadDefinition(p.def);
     assert.ok(loaded.ok); assert.equal(loaded.definition.revision, plan.targetRevision);
-    for (const [rel, bytes] of target) assert.ok(fs.readFileSync(path.join(p.def, rel)).equals(bytes), rel);
+    for (const [rel, v] of target) assert.ok(fs.readFileSync(path.join(p.def, rel)).equals(bytesOf(v)), rel);
     assert.equal(fs.existsSync(path.join(p.def, 'skills/review/references')), false);
     assert.equal(fs.existsSync(journalAt(p)), false);
     assert.equal(await lockIsFree(p.dir), 'free');
@@ -359,7 +455,7 @@ test('a path outside .bowerloom, or a hidden path trick, is refused and nothing 
   const bad = [
     '../CLAUDE.md', '/etc/hosts', 'skills/../../CLAUDE.md', 'skills/./review/SKILL.md', 'skills//review/SKILL.md', '',
     '.hidden/file.md', 'skills/.review/SKILL.md', '.bowerloom/harness.json', 'skills\\review\\SKILL.md', 'skills/re\0view/SKILL.md',
-    'skills/re\u0001view/SKILL.md', 'skills.json', 'teams/x.md', 'skills/café/SKILL.md', `skills/${'a'.repeat(256)}/SKILL.md`,
+    'skills/re\u0001view/SKILL.md', 'skills.json', 'teams/x.md', 'skills/review/references/cafe\u0301.md', `skills/${'a'.repeat(256)}/SKILL.md`,
     `${'a/'.repeat(17)}x.md`, 'skills/re\u200bview/SKILL.md', 'skills/review/references/notes\u202e.md', 'skills/review/references/a\u2028b.md',
   ];
   for (const rel of bad) {
@@ -369,12 +465,12 @@ test('a path outside .bowerloom, or a hidden path trick, is refused and nothing 
   assert.deepEqual(snapshot(p.base), before);
 });
 
-test('two paths that differ only in case or Unicode form, or a file where a folder must be, are refused', t => {
+test('two paths that differ only in case or Unicode form are refused; a file where a folder must be is the loader\'s refusal', t => {
   const p = saving(t);
   const a = current(p); a.set('skills/Review/SKILL.md', Buffer.from(skill('Review')));
   assert.throws(() => planSave(p.save(), a), code('SAVE_PATH_UNSAFE'));
   const b = current(p); b.set('skills/review', Buffer.from('a file over a folder\n'));
-  assert.throws(() => planSave(p.save(), b), code('SAVE_PATH_UNSAFE'));
+  assert.throws(() => planSave(p.save(), b), code('SAVE_DEFINITION_INVALID'));
   const c = current(p); c.set('skills/café/SKILL.md', Buffer.from(skill('cafe'))); c.set('skills/CAFÉ/SKILL.md', Buffer.from(skill('cafe')));
   assert.throws(() => planSave(p.save(), c), code('SAVE_PATH_UNSAFE'));
 });
@@ -401,10 +497,11 @@ test('a symbolic link at a target path, in a folder above one, or as .bowerloom 
 
 test('.bowerloom as a link is refused', t => {
   const p = saving(t);
+  const target = current(p);
   const moved = path.join(p.base, 'real-def');
   fs.renameSync(p.def, moved);
   fs.symlinkSync(moved, p.def);
-  assert.throws(() => planSave(p.save(), new Map([['harness.json', Buffer.from('{}\n')]])), code('SAVE_PATH_UNSAFE'));
+  assert.throws(() => planSave(p.save(), target), code('SAVE_PATH_UNSAFE'));
 });
 
 test('a folder swapped for a link after the plan is never followed; the save puts back what it wrote', async t => {
@@ -464,7 +561,7 @@ test('a folder whose definition does not load cannot be saved over', t => {
   assert.throws(() => planSave(p.save(), new Map([['harness.json', Buffer.from(json({ ...HARNESS, engines: [], parts: {}, skills: {} }))]])), code('SAVE_DEFINITION_INVALID'));
 });
 
-test('a target over the loader limits is refused before anything is read into a scratch folder', t => {
+test('a target over the loader limits is refused before the loader runs', t => {
   const p = saving(t);
   const big = current(p); big.set('skills/review/references/notes.md', Buffer.alloc(1024 * 1024 + 1, 0x61));
   assert.throws(() => planSave(p.save(), big), code('SAVE_TOO_LARGE'));
@@ -498,6 +595,7 @@ test('a bad input is refused as usage, and an unsafe state folder as unsafe', t 
   assert.throws(() => planSave({ ...p.save(), extra: 1 }, target), code('SAVE_USAGE'));
   assert.throws(() => planSave(p.save(), null), code('SAVE_USAGE'));
   assert.throws(() => planSave(p.save(), [['harness.json', Buffer.from('{}')]]), code('SAVE_USAGE'));
+  assert.throws(() => planSave(p.save(), [null]), code('SAVE_USAGE'));
   assert.throws(() => planSave(p.save(), new Map([['harness.json', 'text, not bytes']])), code('SAVE_USAGE'));
   assert.throws(() => planSave({ projectDir: 'relative', stateDir: p.adoptState }, target), code('SAVE_USAGE'));
   assert.throws(() => planSave({ projectDir: p.dir, stateDir: path.join(p.dir, 'state') }, target), code('SAVE_STATE_UNSAFE'));
@@ -519,6 +617,7 @@ test('two saves at once: one writes, the other is refused, and the definition is
 
 test('the package index exports the save API and every refusal code', () => {
   for (const name of ['planSave', 'applySave', 'planSaveRecovery', 'runSaveRecovery', 'saveStopped', 'refuseWhileSaveStopped']) assert.equal(typeof adoption[name], 'function', name);
+  assert.equal(adoption.planSave, save.planSave);
   assert.equal(adoption.applySaveWith, undefined, 'the test hooks stay out of the index');
   assert.equal(adoption.SAVE_JOURNAL, 'save-pending.json');
   assert.deepEqual([...SAVE_REFUSAL_CODES].sort(), [
