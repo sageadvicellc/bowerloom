@@ -65,10 +65,16 @@ export function parseArticle(file: string, source: string): Article {
 }
 
 /** Reads every article in a folder. Drafts and future-dated articles are left out. */
-export function loadArticles(dir: string, today: string = new Date().toISOString().slice(0, 10)): Article[] {
-  if (!existsSync(dir)) return [];
-  const files = readdirSync(dir).filter(f => f.endsWith('.md') && f.toLowerCase() !== 'readme.md').sort();
+export function loadArticles(dir: string, today: string = new Date().toISOString().slice(0, 10), warn: (message: string) => void = () => {}): Article[] {
+  if (!existsSync(dir)) throw new Error(`Articles content folder not found: ${dir}. Restore content/articles (it holds a README even when it has no articles).`);
+  const names = readdirSync(dir).sort();
+  for (const f of names) if (!f.endsWith('.md') && f !== '.gitkeep') warn(`Skipped "${f}": only .md files are articles.`);
+  const files = names.filter(f => f.endsWith('.md') && f.toLowerCase() !== 'readme.md');
   const all = files.map(f => parseArticle(f, readFileSync(join(dir, f), 'utf8')));
+  for (const a of all) {
+    if (a.draft) warn(`Skipped article "${a.slug}": it is a draft.`);
+    else if (a.date > today) warn(`Skipped article "${a.slug}": dated ${a.date}, which is in the future.`);
+  }
   return all.filter(a => !a.draft && a.date <= today)
     .sort((a, b) => b.date.localeCompare(a.date) || a.slug.localeCompare(b.slug));
 }
@@ -253,8 +259,8 @@ export function articlesPlugin(site: SiteInfo, dir: string) {
   return {
     name: 'landing-articles',
     apply: 'build' as const,
-    generateBundle(this: { emitFile: (f: { type: 'asset'; fileName: string; source: string }) => void }) {
-      for (const [fileName, source] of Object.entries(buildFiles(site, loadArticles(dir)))) {
+    generateBundle(this: { emitFile: (f: { type: 'asset'; fileName: string; source: string }) => void; warn: (m: string) => void }) {
+      for (const [fileName, source] of Object.entries(buildFiles(site, loadArticles(dir, undefined, m => this.warn(m))))) {
         this.emitFile({ type: 'asset', fileName, source });
       }
     },

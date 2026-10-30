@@ -22,3 +22,15 @@ Unknown keys, a missing required key, or a bad date fails the build with a messa
 Markdown after the front matter. Raw HTML is shown as text, never run. Links may be `http`, `https`, or relative. Other schemes are dropped.
 
 Every article page says "Agents helped draft this article." Drafts go through the separate fact-check and approval path before `draft: true` is removed.
+
+## Dates and local preview
+
+A future-dated article appears only after the next build on or after its date. Nothing rebuilds on its own, so run a build that day.
+
+`vite dev` does not serve `/articles/`, the sitemap, or robots.txt. Run `npm run build --workspaces=false`, then `npm run preview --workspaces=false`.
+
+## Link limits
+
+A link target may hold one level of balanced parentheses, such as `https://example.org/wiki/Thing_(idea)`. Deeper nesting is not read as a link. A target with a space is not a link.
+
+A missing `content/articles` folder fails the build. A draft, a future-dated article, or a file that is not `.md` prints a warning with its name.

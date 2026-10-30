@@ -5,7 +5,7 @@ export const escapeHtml = (value: string): string =>
 
 /** Returns a safe href, or null when the target is not http(s) or relative. */
 export function safeHref(raw: string): string | null {
-  const url = raw.trim();
+  const url = raw.trim().replaceAll('\\', '/');
   if (!url || /[\u0000-\u001f\u007f\s]/.test(url)) return null;
   if (/^[a-z][a-z0-9+.-]*:/i.test(url)) {
     try {
@@ -13,11 +13,11 @@ export function safeHref(raw: string): string | null {
       return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? url : null;
     } catch { return null; }
   }
-  if (url.startsWith('//') || url.startsWith('\\')) return null;
+  if (url.startsWith('//')) return null;
   return url;
 }
 
-const INLINE = /`([^`]+)`|\[([^\]]+)\]\(([^)]*)\)|\*\*([^*]+)\*\*|\*([^*\s][^*]*)\*/g;
+const INLINE = /`([^`]+)`|\[([^\]]+)\]\(((?:[^()]|\([^()]*\))*)\)|\*\*([^*]+)\*\*|\*([^*\s][^*]*)\*/g;
 
 export function renderInline(text: string): string {
   let out = '';

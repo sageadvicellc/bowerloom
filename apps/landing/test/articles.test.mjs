@@ -61,7 +61,27 @@ test('drafts, future-dated files, and the README are excluded; order is newest f
   try {
     assert.deepEqual(loadArticles(dir, '2026-06-01').map(a => a.slug), ['new', 'old']);
     assert.deepEqual(loadArticles(dir, '2027-01-01').map(a => a.slug), ['future', 'new', 'old']);
-    assert.equal(loadArticles(join(dir, 'missing'), '2026-06-01').length, 0);
+  } finally { rmSync(dir, {recursive: true}); }
+});
+
+test('a missing content folder fails with a clear message', () => {
+  assert.throws(() => loadArticles(join(tmpdir(), 'no-such-articles-folder'), '2026-06-01'), /content folder.*not found/i);
+  assert.throws(() => articlesPlugin(site, join(tmpdir(), 'no-such-articles-folder')).generateBundle.call({emitFile() {}, warn() {}}), /not found/);
+});
+
+test('each skipped article and each stray file prints one warning', () => {
+  const dir = folder({
+    'README.md': '# readme', 'live.md': fm({date: '2026-01-01'}),
+    'draft-one.md': fm({draft: 'true'}), 'later.md': fm({date: '2027-01-01'}), 'notes.txt': 'x',
+  });
+  try {
+    const warnings = [];
+    loadArticles(dir, '2026-06-01', m => warnings.push(m));
+    assert.equal(warnings.length, 3);
+    assert.ok(warnings.some(w => /draft-one/.test(w) && /draft/.test(w)));
+    assert.ok(warnings.some(w => /later/.test(w) && /2027-01-01/.test(w)));
+    assert.ok(warnings.some(w => /notes\.txt/.test(w) && /\.md/.test(w)));
+    assert.ok(!warnings.some(w => /README|live/.test(w)));
   } finally { rmSync(dir, {recursive: true}); }
 });
 
@@ -166,7 +186,18 @@ test('markdown escapes raw HTML and drops unsafe links', () => {
 
 test('safeHref accepts http(s) and relative only', () => {
   for (const ok of ['https://a.test/x', 'http://a.test', '/x', './x', '../x', '#a', 'page/']) assert.equal(safeHref(ok), ok, ok);
-  for (const no of ['javascript:alert(1)', 'JaVaScRiPt:x', 'data:text/html,x', 'mailto:a@b.test', 'vbscript:x', '//evil.test', ' java\nscript:x', '', 'ftp://a.test']) assert.equal(safeHref(no), null, JSON.stringify(no));
+  for (const no of ['javascript:alert(1)', 'JaVaScRiPt:x', 'data:text/html,x', 'mailto:a@b.test', 'vbscript:x', '//evil.test', ' java\nscript:x', '', 'ftp://a.test', '/\\evil.test', '\\\\evil.test', '\\/evil.test', '/\\/evil.test']) assert.equal(safeHref(no), null, JSON.stringify(no));
+});
+
+test('safeHref turns backslashes into slashes', () => {
+  assert.equal(safeHref('\\docs\\page'), '/docs/page');
+  assert.equal(safeHref('https:\\\\a.test'), 'https://a.test');
+});
+
+test('links keep one level of balanced parentheses', () => {
+  const html = renderMarkdown('[w](https://en.example.org/wiki/Thing_(idea)) and [x](/a(b)c)');
+  assert.match(html, /href="https:\/\/en\.example\.org\/wiki\/Thing_\(idea\)"/);
+  assert.match(html, /href="\/a\(b\)c"/);
 });
 
 test('markdown renders lists, quotes, rules, and demotes headings below the page title', () => {
@@ -209,7 +240,7 @@ test('the plugin emits assets from a fixture folder', () => {
   const dir = folder({'one.md': fm({date: '2020-01-01'}), 'later.md': fm({date: '2999-01-01'})});
   try {
     const emitted = [];
-    articlesPlugin(site, dir).generateBundle.call({emitFile: f => emitted.push(f.fileName)});
+    articlesPlugin(site, dir).generateBundle.call({emitFile: f => emitted.push(f.fileName), warn() {}});
     assert.deepEqual(emitted.sort(), ['articles/index.html', 'articles/one/index.html', 'robots.txt', 'sitemap.xml']);
   } finally { rmSync(dir, {recursive: true}); }
 });
@@ -219,7 +250,7 @@ test('the real content folder ships without articles and builds index, sitemap, 
   const names = readdirSync(dir).filter(f => f.endsWith('.md') && f !== 'README.md');
   assert.deepEqual(names, [], 'no article content ships in this change');
   const emitted = [];
-  articlesPlugin(site, dir).generateBundle.call({emitFile: f => emitted.push(f.fileName)});
+  articlesPlugin(site, dir).generateBundle.call({emitFile: f => emitted.push(f.fileName), warn() {}});
   assert.deepEqual(emitted.sort(), ['articles/index.html', 'robots.txt', 'sitemap.xml']);
 });
 
