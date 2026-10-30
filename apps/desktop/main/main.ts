@@ -96,7 +96,7 @@ function createWindow(): void {
   // A real mode without its bridge must stop here, not open as the sample with a window that looks as if it could read: a failed preload ends in the same box as any other failed start.
   if (prototypeReal || prototypeV3Real) window.webContents.on('preload-error', (_event, _path, error) => startupFailed(error));
   window.once('ready-to-show', () => window?.show());
-  // The home app prototype is called "Bowerloom" from the first moment: the page title it loads with ("Bowerloom Viewer") never reaches the title bar.
+  // The home app prototype is called "Bowerloom" from the first moment: the page title it loads with never reaches the title bar.
   if (prototypeV2 || prototypeReal || prototypeV3 || prototypeV3Real) window.on('page-title-updated', event => event.preventDefault());
   window.on('closed', () => { window = null; });
   if (prototypeReal) window.webContents.loadURL(`${indexUrl}${REAL_HASH}`).catch(startupFailed);

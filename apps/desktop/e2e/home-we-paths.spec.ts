@@ -51,7 +51,7 @@ test('an agent has "Show where it lives", closed; opened it lists one sample pat
     expect(path).not.toContain('/Users/');
     if (homedir().length > 1) expect(path).not.toContain(homedir());
   }
-  expect(await panel().innerText()).not.toContain(homedir().length > 1 ? homedir() : '/Users/hannamacintosh');
+  expect(await panel().innerText()).not.toContain(homedir().length > 1 ? homedir() : '/Users/test-person');
   expect(await budget()).toEqual([]);
   await atEverySize(p, 'path-disclosure-open', async () => { await disclosure().scrollIntoViewIfNeeded(); });
   await disclosure().click();

@@ -11,5 +11,5 @@ const MIN = { minWidth: 900, minHeight: 600 } as const;
 export function windowOptions(prototypeV2: boolean): WindowOptions {
   return prototypeV2
     ? { width: 1280, height: 800, ...MIN, title: 'Bowerloom' }
-    : { width: 1100, height: 760, ...MIN, title: 'Bowerloom Viewer' };
+    : { width: 1100, height: 760, ...MIN, title: 'Bowerloom' };
 }

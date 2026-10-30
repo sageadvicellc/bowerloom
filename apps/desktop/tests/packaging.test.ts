@@ -21,6 +21,15 @@ test('the viewer is its own package: the command line package and the root works
   assert.equal(existsSync(join(DESKTOP, 'package-lock.json')), true);
 });
 
+test('the package carries the 0.8 identity: version 0.8.0-beta.1 and the product name Bowerloom', () => {
+  const b = pkg.build as { productName: string; appId: string };
+  assert.equal(pkg.version, '0.8.0-beta.1');
+  assert.equal(b.productName, 'Bowerloom');
+  assert.doesNotMatch(String(pkg.description), /Viewer|read-only/);
+  const lock = JSON.parse(readFileSync(join(DESKTOP, 'package-lock.json'), 'utf8')) as { version: string; packages: Record<string, { version?: string }> };
+  assert.equal(lock.version, '0.8.0-beta.1'); assert.equal(lock.packages['']!.version, '0.8.0-beta.1');
+});
+
 test('the build targets are macOS (dmg and zip), Windows (nsis), and Linux (AppImage), with a GitHub feed and no publishing', () => {
   const b = pkg.build as { mac: { target: { target: string }[] }; win: { target: string[] }; linux: { target: string[] }; publish: { provider: string; owner: string; repo: string }; appId: string; extraResources: { from: string; to: string }[] };
   assert.deepEqual(b.mac.target.map(x => x.target).sort(), ['dmg', 'zip']); assert.deepEqual(b.win.target, ['nsis']); assert.deepEqual(b.linux.target, ['AppImage']);
@@ -55,10 +64,10 @@ test('the build turns on the safe fuses: no run-as-node, no NODE_OPTIONS, no ins
   assert.match(pkg.devDependencies['@electron/fuses']!, /^\d+\.\d+\.\d+$/);
 });
 
-test('the built binary has those fuses (checked when a macOS build is present)', { skip: !existsSync(join(DESKTOP, 'release', 'mac-arm64', 'Bowerloom Viewer.app')) ? 'no macOS build in release/' : false }, () => {
+test('the built binary has those fuses (checked when a macOS build is present)', { skip: !existsSync(join(DESKTOP, 'release', 'mac-arm64', 'Bowerloom.app')) ? 'no macOS build in release/' : false }, () => {
   const r = spawnSync(process.execPath, [join(DESKTOP, 'tools', 'check-fuses.mjs')], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  const x64 = join(DESKTOP, 'release', 'mac', 'Bowerloom Viewer.app', 'Contents', 'MacOS', 'Bowerloom Viewer');
+  const x64 = join(DESKTOP, 'release', 'mac', 'Bowerloom.app', 'Contents', 'MacOS', 'Bowerloom');
   if (existsSync(x64)) assert.equal(spawnSync(process.execPath, [join(DESKTOP, 'tools', 'check-fuses.mjs'), x64], { encoding: 'utf8' }).status, 0);
 });
 
