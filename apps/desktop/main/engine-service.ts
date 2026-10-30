@@ -34,6 +34,8 @@ import { addApprovalDraftLocked, dropApprovalDraftsLocked, readApprovalDrafts } 
 import { entryHash, loadDefinition } from '../../../packages/harness-definition/src/index.js';
 import type { Definition, FidelityApproval } from '../../../packages/harness-definition/src/index.js';
 import { checkProjectPath } from '../../../packages/project-context/src/index.js';
+import { ANSWERS, NOTE_LIMIT } from '../../../packages/diagnostics/src/index.js';
+import type { Answer as CheckAnswer } from '../../../packages/diagnostics/src/index.js';
 import { labelOf, makeScrub, visible } from '../shared/engine/scrub.js';
 import type { Scrub } from '../shared/engine/scrub.js';
 import { ENGINE_IDS, isEngineId, isPreviewEngine } from '../shared/engine/engines.js';
@@ -64,6 +66,11 @@ export interface EngineServiceDeps {
    * environment (main/engine-state.ts). Default: false. It reaches the window as one answer per folder, never as the environment.
    */
   readonly previewEngines?: boolean;
+  /**
+   * Writes one line of the local usage log (packages/diagnostics). It never reaches the window. The service calls it inside a try, so a recorder that
+   * throws changes no result. Default: records nothing.
+   */
+  readonly record?: (input: Readonly<Record<string, unknown>>) => void;
 }
 
 /** A call the service refuses before it reaches a package: the window gets only the short code. */
@@ -176,6 +183,16 @@ export interface EngineService {
   runRecovery(folderId: unknown, revision: unknown, choices: unknown): Promise<Answer<Recovered>>;
   planMerge(folderId: unknown): Promise<Answer<MergeView>>;
   runMerge(folderId: unknown, revision: unknown): Promise<Answer<MergeWritten>>;
+  /** Records the answer to "Did this do what you wanted?" in the local log. True when a line was written. Never refuses a valid answer. */
+  recordCheck(answer: unknown, note: unknown): Promise<boolean>;
+}
+
+/** The answer and the note of an after-apply check, checked again in main: the window is never trusted. A note is at most 500 characters. */
+export function checkCheckArgs(answer: unknown, note: unknown): { answer: CheckAnswer; note?: string } {
+  if (typeof answer !== 'string' || !(ANSWERS as readonly string[]).includes(answer)) return bad();
+  if (note === undefined || note === null) return { answer: answer as CheckAnswer };
+  if (typeof note !== 'string' || note.length > NOTE_LIMIT) return bad();
+  return note.trim() === '' ? { answer: answer as CheckAnswer } : { answer: answer as CheckAnswer, note };
 }
 
 export function createEngineService(deps: EngineServiceDeps): EngineService {
@@ -190,6 +207,19 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
   const plans = new ShownPlans();
   let chain: Promise<unknown> = Promise.resolve();
   let count = 0;
+
+  /** Writes a usage event. A recorder that throws, or none, changes nothing. */
+  const record = (input: Readonly<Record<string, unknown>>): void => { try { deps.record?.({ source: 'app', ...input }); } catch { /* recording never changes a result */ } };
+  /** Runs a write and records its scenario: done when it finishes, refused with the code of the refusal when it does not. The result or the error passes through as it was. */
+  const scenarioOf = async <T>(f: Folder, spec: { scenario?: string; step: string; engines?: readonly string[]; plan?: string; target?: boolean }, run: () => Promise<T>): Promise<T> => {
+    const base = { kind: 'scenario', step: spec.step, ...(spec.scenario === undefined ? {} : { scenario: spec.scenario }), ...(spec.engines === undefined ? {} : { engines: spec.engines }), ...(spec.plan === undefined ? {} : { plan: spec.plan }), ...(spec.target ? { targetRoot: f.dir } : {}) };
+    try { const r = await run(); record({ ...base, outcome: 'done' }); return r; } catch (error) {
+      let code = 'FAILED';
+      try { code = refusalOf(error, f.scrub).code; } catch { /* keep FAILED */ }
+      record({ ...base, outcome: 'refused', code });
+      throw error;
+    }
+  };
 
   /** One call at a time, in the order they came. */
   const serial = <T>(run: () => Promise<T>): Promise<T> => {
@@ -462,10 +492,10 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
       // The plan shown last was made with the acknowledgements that counted, each by id and hash; the write must name them, and every approval with its
       // hash, exactly. An acknowledgement or an approval of content the person did not read never matches.
       const shownPicks = { picks: c.picks, acknowledged: sortById(c.acknowledged), approvals: byKey(list), everyEngine: c.everyEngine };
-      return written(f, 'adoption', rev, shownPicks, async () => {
+      return written(f, 'adoption', rev, shownPicks, () => scenarioOf(f, { scenario: 'S1', step: 'adopt' }, async () => {
         const r = await applyAdoption(adoptInput(f, c.picks, c.acknowledged.map(a => a.id), c.everyEngine), rev, list.map(a => a.key));
         return { written: r.written.map(p => f.scrub(`.bowerloom/${p}`)) };
-      });
+      }));
     }),
     planAdoptionRecovery: id => serial(async () => {
       const f = folderOf(id), io = { projectDir: f.dir, stateDir: f.adoptState };
@@ -480,7 +510,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     }),
     runAdoptionRecovery: (id, revision) => serial(async () => {
       const f = folderOf(id), rev = revisionArg(revision), io = { projectDir: f.dir, stateDir: f.adoptState };
-      return written(f, 'adoption-recovery', rev, null, async () => {
+      return written(f, 'adoption-recovery', rev, null, () => scenarioOf(f, { scenario: 'S5', step: 'recover' }, async () => {
         // The kind is read again here. When the stopped run changed since the plan, the package's own revision check refuses the write.
         if (stoppedKind(f) === 'merge') {
           const r = await applyInstructionMergeRecovery(io, rev);
@@ -488,7 +518,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
         }
         const r = await applyAdoptionRecovery(io, rev);
         return { removed: r.removed.map(f.scrub), restored: [], kept: r.kept.map(k => f.scrub(k.path)), leftFolders: r.leftFolders.map(f.scrub) };
-      });
+      }));
     }),
     planProjection: (id, input) => serial(async () => {
       const f = folderOf(id), i = checkProjectInput(input);
@@ -502,8 +532,9 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     runProjection: (id, revision, input) => serial(async () => {
       const f = folderOf(id), rev = revisionArg(revision), i = checkProjectInput(input);
       const stopped = await answer(f, () => { whileStopped(f); refusePreview(i); });
-      if (!stopped.ok) return stopped;
-      return written(f, 'projection', rev, i, async () => {
+      if (!stopped.ok) { record({ kind: 'scenario', step: 'install', outcome: 'refused', code: stopped.refusal.code }); return stopped; }
+      const engines = ENGINE_IDS.filter(e => (e === 'claude-code' || e === 'codex') && i.engines.includes(e));
+      return written(f, 'projection', rev, i, () => scenarioOf(f, { ...(engines.length === 2 ? { scenario: 'S2' } : {}), step: 'install', engines, plan: rev, target: true }, async () => {
         // Main's dialog said yes: only now do the lines the person ticked become drafts on disk.
         await keepTicks(f, i.approve);
         const io = portableInput(f, i, approvalsFor(f, i.approve).approvals);
@@ -521,7 +552,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
           noop: r.noop, written: writes.map(c => f.scrub(c.path)), takenOver: plan.changes.filter(c => c.action === 'take-over').map(c => f.scrub(c.path)),
           leftBehind: r.leftBehind.map(l => f.scrub(l.path)), ...(warnings.length ? { warnings } : {}),
         };
-      });
+      }));
     }),
     planRemoval: id => serial(async () => {
       const f = folderOf(id);
@@ -535,8 +566,8 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     runRemoval: (id, revision) => serial(async () => {
       const f = folderOf(id), rev = revisionArg(revision);
       const stopped = await answer(f, () => whileStopped(f));
-      if (!stopped.ok) return stopped;
-      return written(f, 'removal', rev, null, async () => {
+      if (!stopped.ok) { record({ kind: 'scenario', scenario: 'S5', step: 'remove', outcome: 'refused', code: stopped.refusal.code }); return stopped; }
+      return written(f, 'removal', rev, null, () => scenarioOf(f, { scenario: 'S5', step: 'remove' }, async () => {
         const r = await applyPortableRemoval({ projectDir: f.dir, stateDir: f.portableState }, rev);
         made.delete(f.id); shown.delete(f.id);
         // Nothing is installed now, so no draft of this folder stands for anything (D3A). The removal itself is done; a draft that stays is never wrong,
@@ -544,7 +575,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
         const warnings: string[] = [];
         try { await dropApprovalDraftsLocked(f.dirs, f.dir); } catch (error) { warnings.push(draftsWarning(error)); }
         return { restored: r.restored.map(f.scrub), kept: r.kept.map(f.scrub), deleted: r.deleted.map(f.scrub), leftBehind: r.leftBehind.map(l => f.scrub(l.path)), ...(warnings.length ? { warnings } : {}) };
-      });
+      }));
     }),
     planRecovery: (id, choices) => serial(async () => {
       const f = folderOf(id), c = checkRecoveryChoices(choices);
@@ -556,10 +587,10 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     }),
     runRecovery: (id, revision, choices) => serial(async () => {
       const f = folderOf(id), rev = revisionArg(revision), c = checkRecoveryChoices(choices);
-      return written(f, 'recovery', rev, c, async () => {
+      return written(f, 'recovery', rev, c, () => scenarioOf(f, { scenario: 'S5', step: 'recover' }, async () => {
         const r = await applyPortableRecovery(recoveryInput(f, c), rev);
         return { leftBehind: r.leftBehind.map(l => f.scrub(l.path)) };
-      });
+      }));
     }),
     planMerge: id => serial(async () => {
       const f = folderOf(id);
@@ -576,6 +607,12 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
         plans.clear(f.id, 'projection');
         return { written: r.written.map(f.scrub) };
       });
+    }),
+    recordCheck: (answer, note) => serial(async () => {
+      const c = checkCheckArgs(answer, note);
+      let wrote = false;
+      try { deps.record?.({ source: 'app', kind: 'check', answer: c.answer, ...(c.note === undefined ? {} : { note: c.note }) }); wrote = true; } catch { wrote = false; }
+      return wrote;
     }),
   };
 }
