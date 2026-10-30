@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
   CHECKS, CODEX_ROOT_LOCK, CODEX_ROOT_MARKER, CODEX_ROOT_VARIABLE, codexGate, codexTrustRefusal, makeScratch, prepareCodexRoot, resultLine,
@@ -16,6 +16,7 @@ import { setup } from '../step5/live/codex-trust-setup.mjs';
 
 const repo = fileURLToPath(new URL('../../', import.meta.url));
 const SETUP = path.join(repo, 'tools/step5/live/codex-trust-setup.mjs');
+const LIB_URL = new URL('../step5/live/lib.mjs', import.meta.url).href;
 const TRUST_IDS = ['g4', 'g7', 'g8', 'g9'];
 
 const made = [];
@@ -291,11 +292,11 @@ test('setup makes the root, the marker, a git project, and the exact g7 hook, th
     const p = g7Project(sc, 'codex');
     assert.equal(written, p.files['.codex/hooks.json']);
   } finally { sc.cleanup(); }
-  assert.ok(text.includes(`cd "${real}/project" && codex`), 'step 1');
+  assert.ok(text.includes(`cd '${real}/project' && codex`), 'step 1, in single quotes so ! cannot expand');
   assert.match(text, /1\. .*codex/);
   assert.match(text, /2\. .*trust/i);
   assert.match(text, /3\. .*\/hooks/);
-  assert.ok(text.includes(`BOWERLOOM_LIVE_CODEX_ROOT="${real}"`));
+  assert.ok(text.includes(`BOWERLOOM_LIVE_CODEX_ROOT='${real}'`));
   assert.ok(text.includes('BOWERLOOM_LIVE_CODEX_TRUSTED=1'));
   assert.match(text, /g7/);
 });
@@ -337,4 +338,207 @@ test('setup twice leaves one hook file, one project, and no lock', () => {
   const real = fs.realpathSync(root);
   assert.ok(fs.existsSync(path.join(real, 'project/.codex/hooks.json')));
   assert.equal(fs.existsSync(lockOf(real)), false);
+});
+
+// ---- round 2: lock ownership, signals, read-only folders, nesting, and odd roots -------------------------------------------
+
+test('a run that lost its lock to a person and a second run never deletes the second run\'s lock', () => {
+  const root = path.join(area(), 'root');
+  const first = makeScratch('bowerloom-live-g4', { fixedBase: root });
+  fs.rmSync(lockOf(first.base)); // a person deletes what looked like a stale lock
+  const second = makeScratch('bowerloom-live-g8', { fixedBase: root });
+  const secondLock = fs.readFileSync(lockOf(second.base), 'utf8');
+  second.write({ 'in-use.txt': 'second run data' });
+  first.cleanup(); // the first run ends late
+  assert.equal(fs.readFileSync(path.join(second.project, 'in-use.txt'), 'utf8'), 'second run data', 'the late cleanup clears nothing of the second run');
+  assert.ok(fs.existsSync(lockOf(second.base)), 'the second run still holds its lock');
+  assert.equal(fs.readFileSync(lockOf(second.base), 'utf8'), secondLock);
+  assert.throws(() => makeScratch('bowerloom-live-g9', { fixedBase: root }), /another live run holds/i);
+  second.cleanup();
+  assert.equal(fs.existsSync(lockOf(second.base)), false);
+});
+
+test('a lock holds a token, and two locks never share one', () => {
+  const root = path.join(area(), 'root');
+  const a = makeScratch('bowerloom-live-g4', { fixedBase: root });
+  const first = JSON.parse(fs.readFileSync(lockOf(a.base), 'utf8'));
+  a.cleanup();
+  const b = makeScratch('bowerloom-live-g4', { fixedBase: root });
+  const second = JSON.parse(fs.readFileSync(lockOf(b.base), 'utf8'));
+  b.cleanup();
+  assert.equal(first.pid, process.pid);
+  assert.match(first.token, /^\d+-[0-9a-f]{16,}-\d+$/);
+  assert.notEqual(first.token, second.token);
+});
+
+test('a release of a lock that holds a different token or unreadable text leaves the file alone', () => {
+  const root = path.join(area(), 'root');
+  const sc = makeScratch('bowerloom-live-g4', { fixedBase: root });
+  fs.writeFileSync(lockOf(sc.base), 'not json');
+  sc.release();
+  assert.equal(fs.readFileSync(lockOf(sc.base), 'utf8'), 'not json');
+  fs.rmSync(lockOf(sc.base));
+});
+
+test('normal release removes the signal handlers it added', () => {
+  const before = [process.listenerCount('SIGINT'), process.listenerCount('SIGTERM')];
+  const root = path.join(area(), 'root');
+  const sc = makeScratch('bowerloom-live-g4', { fixedBase: root });
+  assert.equal(process.listenerCount('SIGINT'), before[0] + 1);
+  assert.equal(process.listenerCount('SIGTERM'), before[1] + 1);
+  sc.cleanup();
+  assert.deepEqual([process.listenerCount('SIGINT'), process.listenerCount('SIGTERM')], before);
+});
+
+/** Starts a child that holds the lock of a root, waits until it says so, sends the signal, and returns the exit code. */
+function killHolder(root, signal) {
+  const code = `import { makeScratch } from ${JSON.stringify(LIB_URL)}; makeScratch('bowerloom-live-sig', { fixedBase: ${JSON.stringify(root)} }); process.stdout.write('ready\\n'); setInterval(() => {}, 1000);`;
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ['--input-type=module', '-e', code], { env: { PATH: process.env.PATH ?? '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    let err = '';
+    child.stderr.on('data', c => { err += c; });
+    child.stdout.once('data', () => child.kill(signal));
+    child.on('error', reject);
+    child.on('close', (status, sig) => resolve({ status, sig, err }));
+    setTimeout(() => { child.kill('SIGKILL'); }, 30_000).unref();
+  });
+}
+
+for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143]]) {
+  test(`${signal} releases the lock and exits with ${code}`, async () => {
+    const root = path.join(area(), 'root');
+    const r = await killHolder(root, signal);
+    assert.equal(r.status, code, `${r.err} (signal ${r.sig})`);
+    assert.equal(fs.existsSync(lockOf(fs.realpathSync(root))), false, 'the lock is gone');
+    makeScratch('bowerloom-live-after', { fixedBase: root }).cleanup(); // the next run starts
+  });
+}
+
+test('cleanup clears a folder that an engine left read-only (0500 and 0000), and a read-only file', () => {
+  const root = path.join(area(), 'root');
+  const sc = makeScratch('bowerloom-live-g8', { fixedBase: root });
+  sc.write({ 'ro/inner/file.txt': 'x', 'locked/file.txt': 'y' });
+  fs.chmodSync(path.join(sc.project, 'ro/inner/file.txt'), 0o400);
+  fs.chmodSync(path.join(sc.project, 'ro/inner'), 0o500);
+  fs.chmodSync(path.join(sc.project, 'ro'), 0o500);
+  fs.chmodSync(path.join(sc.project, 'locked'), 0o000);
+  sc.cleanup();
+  assert.deepEqual(fs.readdirSync(sc.project), []);
+  assert.equal(fs.existsSync(lockOf(sc.base)), false);
+});
+
+test('a link planted inside project or home is removed and its outside target survives a clear', () => {
+  const outside = area();
+  const target = path.join(outside, 'precious');
+  fs.mkdirSync(target);
+  fs.writeFileSync(path.join(target, 'keep.txt'), 'keep');
+  const fileTarget = path.join(outside, 'file.txt');
+  fs.writeFileSync(fileTarget, 'keep');
+  const root = path.join(area(), 'root');
+  const sc = makeScratch('bowerloom-live-g4', { fixedBase: root });
+  fs.symlinkSync(target, path.join(sc.project, 'dirlink'));
+  fs.symlinkSync(fileTarget, path.join(sc.home, 'filelink'));
+  fs.mkdirSync(path.join(sc.project, 'sub'));
+  fs.symlinkSync(target, path.join(sc.project, 'sub/nested'));
+  sc.cleanup();
+  assert.deepEqual(fs.readdirSync(sc.project), []);
+  assert.deepEqual(fs.readdirSync(sc.home), []);
+  assert.equal(fs.readFileSync(path.join(target, 'keep.txt'), 'utf8'), 'keep');
+  assert.equal(fs.readFileSync(fileTarget, 'utf8'), 'keep');
+  assert.equal((fs.statSync(target).mode & 0o777) !== 0, true);
+});
+
+test('a read-only folder that holds a link does not let the clear reach the link target', () => {
+  const outside = area();
+  const target = path.join(outside, 'precious');
+  fs.mkdirSync(target, { mode: 0o700 });
+  fs.writeFileSync(path.join(target, 'keep.txt'), 'keep');
+  const root = path.join(area(), 'root');
+  const sc = makeScratch('bowerloom-live-g4', { fixedBase: root });
+  fs.mkdirSync(path.join(sc.project, 'ro'));
+  fs.symlinkSync(target, path.join(sc.project, 'ro/link'));
+  fs.chmodSync(path.join(sc.project, 'ro'), 0o500);
+  fs.chmodSync(target, 0o500);
+  sc.cleanup();
+  assert.equal(fs.statSync(target).mode & 0o777, 0o500, 'the link target was not changed');
+  assert.equal(fs.readFileSync(path.join(target, 'keep.txt'), 'utf8'), 'keep');
+  fs.chmodSync(target, 0o700);
+});
+
+test('a symlinked project, home, or stubs folder is refused, also when it appears after the first run', () => {
+  const outside = area();
+  fs.writeFileSync(path.join(outside, 'keep.txt'), 'keep');
+  for (const name of ['project', 'home', 'stubs']) {
+    const root = path.join(area(), 'root');
+    makeScratch('bowerloom-live-g4', { fixedBase: root }).cleanup();
+    const real = fs.realpathSync(root);
+    fs.rmSync(path.join(real, name), { recursive: true });
+    fs.symlinkSync(outside, path.join(real, name));
+    assert.throws(() => makeScratch('bowerloom-live-g4', { fixedBase: root }), /not a plain folder/, name);
+    assert.equal(fs.readFileSync(path.join(outside, 'keep.txt'), 'utf8'), 'keep');
+    assert.equal(fs.existsSync(lockOf(real)), false);
+  }
+});
+
+test('a root inside another root is refused, also a new path under it, and nothing is written', () => {
+  const outer = path.join(area(), 'outer');
+  const real = prepareCodexRoot(outer);
+  for (const inner of [path.join(outer, 'inner'), path.join(outer, 'project', 'x'), path.join(outer, 'a', 'b', 'c')]) {
+    assert.throws(() => prepareCodexRoot(inner), /inside another Codex root/);
+  }
+  fs.mkdirSync(path.join(outer, 'emptydir'));
+  assert.throws(() => prepareCodexRoot(path.join(outer, 'emptydir')), /inside another Codex root/);
+  assert.equal(fs.existsSync(path.join(real, 'a')), false);
+  assert.deepEqual(fs.readdirSync(path.join(real, 'emptydir')), []);
+});
+
+test('the marker is written atomically and a stray temporary marker does not count as content', () => {
+  const root = path.join(area(), 'empty');
+  fs.mkdirSync(root);
+  fs.writeFileSync(path.join(root, `${CODEX_ROOT_MARKER}.tmp-1-abc`), 'half');
+  assert.doesNotThrow(() => prepareCodexRoot(root));
+  assert.equal(fs.readFileSync(path.join(root, CODEX_ROOT_MARKER), 'utf8').startsWith('Bowerloom live check root'), true);
+  assert.doesNotThrow(() => prepareCodexRoot(root)); // a second first-use sees an identical marker
+  assert.deepEqual(fs.readdirSync(root).filter(n => n.startsWith(CODEX_ROOT_MARKER) && n !== CODEX_ROOT_MARKER), [`${CODEX_ROOT_MARKER}.tmp-1-abc`]);
+});
+
+test('the filesystem root, the home folder, and a git repository are refused as a root', () => {
+  assert.throws(() => prepareCodexRoot('/'), /filesystem root/);
+  const dir = area();
+  const fakeHome = path.join(dir, 'fake-home');
+  fs.mkdirSync(fakeHome);
+  assert.throws(() => prepareCodexRoot(fakeHome, { home: fakeHome }), /home folder/);
+  assert.throws(() => prepareCodexRoot(fakeHome + '/', { home: fakeHome }), /home folder/);
+  assert.equal(fs.existsSync(path.join(fakeHome, CODEX_ROOT_MARKER)), false);
+  const repoDir = path.join(dir, 'a-repo');
+  fs.mkdirSync(path.join(repoDir, '.git'), { recursive: true });
+  assert.throws(() => prepareCodexRoot(repoDir), /git repository/);
+  assert.deepEqual(fs.readdirSync(repoDir), ['.git']);
+});
+
+test('a trailing slash gives the same root, and an empty root variable is a refusal, not a random folder', () => {
+  const root = path.join(area(), 'root');
+  const a = makeScratch('bowerloom-live-g4', { fixedBase: root + '/' });
+  const base = a.base;
+  a.cleanup();
+  const b = makeScratch('bowerloom-live-g4', { fixedBase: root });
+  assert.equal(b.base, base);
+  b.cleanup();
+  assert.throws(() => makeScratch('bowerloom-live-g4', { fixedBase: '' }), /absolute path/);
+  const gate = codexGate('g4', { BOWERLOOM_LIVE_CODEX_TRUSTED: '1', [CODEX_ROOT_VARIABLE]: '' });
+  assert.match(gate.message, /BOWERLOOM_LIVE_CODEX_ROOT/);
+});
+
+test('setup prints single quotes around paths, escapes a single quote in the path, and words temp-folder advice as advice', () => {
+  const root = path.join(area(), "it's a root");
+  const out = [];
+  const real = setup(root, { write: text => out.push(text) });
+  const text = out.join('');
+  assert.ok(text.includes(`cd '${real.replace(/'/g, `'\\''`)}/project' && codex`));
+  assert.ok(!/cd "/.test(text));
+  assert.match(text, /system temp folder can disappear at a reboot\. A folder elsewhere is better\./);
+  assert.doesNotMatch(text, /must|required/i);
+  const usage = runSetup([]).stderr;
+  assert.match(usage, /outside the system temp folder is better/);
+  assert.doesNotMatch(usage, /must|required/i);
 });

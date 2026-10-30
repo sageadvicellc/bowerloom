@@ -17,8 +17,9 @@ import { pathToFileURL } from 'node:url';
 import { CODEX_ROOT_VARIABLE, makeScratch } from './lib.mjs';
 import { g7Project } from './projects.mjs';
 
-const USAGE = 'usage: node tools/step5/live/codex-trust-setup.mjs <root>\n  <root> is an absolute path to an empty or new folder, outside the system temp folder.\n';
-const quote = text => `"${String(text).replace(/(["\\$`])/g, '\\$1')}"`;
+const USAGE = 'usage: node tools/step5/live/codex-trust-setup.mjs <root>\n  <root> is an absolute path to an empty or new folder. A folder outside the system temp folder is better, because a reboot can clear one inside it.\n';
+// Single quotes keep a shell from expanding ! $ and backticks. A single quote in the path is closed, escaped, and reopened.
+const quote = text => `'${String(text).replace(/'/g, `'\\''`)}'`;
 
 /** Makes the root and returns its real path. `write` receives the text to show the person. */
 export function setup(root, { write = text => process.stdout.write(text) } = {}) {
@@ -47,6 +48,7 @@ export function setup(root, { write = text => process.stdout.write(text) } = {})
     'Only check g7 uses a hook. Its hook file is the same on every run, so the trust you gave holds.',
     'Checks g4, g8, and g9 write project config and rules, which need the folder trust only.',
     'Keep the root where it is. If you move it or choose another root, run this script and the three steps again.',
+    'A root inside the system temp folder can disappear at a reboot. A folder elsewhere is better.',
     '',
   ].join('\n'));
   return sc.base;

@@ -9,6 +9,7 @@
 // - A Codex check can run in one fixed root (BOWERLOOM_LIVE_CODEX_ROOT), so a trusted project path and a reviewed hook hash stay
 //   the same on every run. The root is checked, locked for one run, and cleared between runs. It is never deleted.
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -142,23 +143,53 @@ const SCRATCH_DIRS = ['project', 'home', 'state', 'stubs'];
 const refuse = text => { throw new Error(text); };
 const lstatOrNull = file => { try { return fs.lstatSync(file); } catch (error) { if (error.code === 'ENOENT') return null; throw error; } };
 const isMarker = file => { const st = lstatOrNull(file); return !!st && st.isFile() && fs.readFileSync(file, 'utf8') === MARKER_TEXT; };
+const hasMarkerEntry = file => lstatOrNull(file) !== null;
+// A temporary marker (written, then renamed) does not count as content, so two first uses at once do not refuse each other.
+const isTempMarker = name => name.startsWith(`${CODEX_ROOT_MARKER}.tmp-`);
+
+/** The folders above a path, nearest first, ending at the filesystem root. */
+function* ancestorsOf(dir) {
+  for (let up = path.dirname(dir); ; up = path.dirname(up)) {
+    yield up;
+    if (path.dirname(up) === up) return;
+  }
+}
+/** The real path of the nearest folder at or above `dir` that exists. */
+function nearestRealAncestor(dir) {
+  for (let at = dir; ; at = path.dirname(at)) {
+    if (lstatOrNull(at)) return fs.realpathSync(at);
+    if (path.dirname(at) === at) return at;
+  }
+}
 
 /**
- * Checks and prepares a fixed Codex root, and returns its real path. It refuses a relative path, a symlink, a file, a folder
- * owned by another user, and a non-empty folder without the marker file. It makes the folder with mode 0700 when it is
- * missing or empty, writes the marker, and makes the four scratch folders. It deletes nothing.
+ * Checks and prepares a fixed Codex root, and returns its real path. It refuses a relative path, the filesystem root, the
+ * home folder, a git repository, a symlink, a file, a folder owned by another user, a folder inside another Codex root, and a
+ * non-empty folder without the marker file. It makes the folder with mode 0700 when it is missing or empty, writes the marker
+ * (to a temporary name, then a rename), and makes the four scratch folders. It deletes nothing.
  */
-export function prepareCodexRoot(root, { uid = process.getuid?.() } = {}) {
+export function prepareCodexRoot(root, { uid = process.getuid?.(), home = os.homedir() } = {}) {
   if (typeof root !== 'string' || !path.isAbsolute(root)) refuse(`${CODEX_ROOT_VARIABLE} must be an absolute path.`);
   const given = path.resolve(root);
+  if (path.dirname(given) === given) refuse('The Codex root is the filesystem root. Choose an empty or new folder.');
   const st = lstatOrNull(given);
+  if (st?.isSymbolicLink()) refuse('The Codex root is a symlink. Use the real folder, not a link to it.');
+  if (st && !st.isDirectory()) refuse('The Codex root path exists and is not a folder.');
+  const existing = st ? fs.realpathSync(given) : null;
+  let homeReal = null;
+  try { homeReal = fs.realpathSync(home); } catch { /* no home folder to compare */ }
+  if (existing && existing === homeReal) refuse('The Codex root is the home folder. Choose an empty or new folder.');
+  if (st && uid !== undefined && st.uid !== uid) refuse('The Codex root is owned by another user. Use a folder you own.');
+  if (st && lstatOrNull(path.join(given, '.git'))) refuse('The Codex root is a git repository. Choose an empty or new folder.');
+  // A root inside another root: look for the marker in every folder above it (for a new path, from the nearest folder that exists).
+  const near = existing ?? nearestRealAncestor(given);
+  for (const folder of existing ? ancestorsOf(existing) : [near, ...ancestorsOf(near)]) {
+    if (hasMarkerEntry(path.join(folder, CODEX_ROOT_MARKER))) refuse(`The Codex root is inside another Codex root (${folder}). Choose a folder outside it.`);
+  }
   let real;
   if (st) {
-    if (st.isSymbolicLink()) refuse(`The Codex root is a symlink. Use the real folder, not a link to it.`);
-    if (!st.isDirectory()) refuse(`The Codex root path exists and is not a folder.`);
-    if (uid !== undefined && st.uid !== uid) refuse(`The Codex root is owned by another user. Use a folder you own.`);
     real = fs.realpathSync(given);
-    if (!isMarker(path.join(real, CODEX_ROOT_MARKER)) && fs.readdirSync(real).length > 0) {
+    if (!isMarker(path.join(real, CODEX_ROOT_MARKER)) && fs.readdirSync(real).filter(name => !isTempMarker(name)).length > 0) {
       refuse(`The Codex root is not empty and has no ${CODEX_ROOT_MARKER} marker file that Bowerloom wrote. Choose an empty or new folder.`);
     }
   } else {
@@ -166,7 +197,11 @@ export function prepareCodexRoot(root, { uid = process.getuid?.() } = {}) {
     real = fs.realpathSync(given);
   }
   fs.chmodSync(real, 0o700);
-  if (!isMarker(path.join(real, CODEX_ROOT_MARKER))) fs.writeFileSync(path.join(real, CODEX_ROOT_MARKER), MARKER_TEXT, { mode: 0o600 });
+  const marker = path.join(real, CODEX_ROOT_MARKER);
+  if (!isMarker(marker)) {
+    const temp = `${marker}.tmp-${process.pid}-${crypto.randomBytes(6).toString('hex')}`;
+    try { fs.writeFileSync(temp, MARKER_TEXT, { mode: 0o600, flag: 'wx' }); fs.renameSync(temp, marker); } finally { fs.rmSync(temp, { force: true }); }
+  }
   for (const name of SCRATCH_DIRS) {
     const dir = path.join(real, name);
     const entry = lstatOrNull(dir);
@@ -176,24 +211,52 @@ export function prepareCodexRoot(root, { uid = process.getuid?.() } = {}) {
   return real;
 }
 
+/** Gives the owner read, write, and search rights on a real folder and on every real folder below it. A link is never followed. */
+function openFolders(dir) {
+  const st = lstatOrNull(dir);
+  if (!st || !st.isDirectory()) return;
+  if ((st.mode & 0o700) !== 0o700) fs.chmodSync(dir, st.mode | 0o700);
+  for (const entry of fs.readdirSync(dir)) openFolders(path.join(dir, entry));
+}
+
 /** Empties project, home, state, and stubs, and removes the log. The root, the marker, and the folders stay. */
 function clearCodexRoot(base) {
   for (const name of SCRATCH_DIRS) {
     const dir = path.join(base, name);
     if (!lstatOrNull(dir)?.isDirectory()) refuse(`${name} in the Codex root is not a plain folder (a link or a file stands there). Remove it by hand and run again.`);
-    for (const entry of fs.readdirSync(dir)) fs.rmSync(path.join(dir, entry), { recursive: true, force: true });
+    for (const entry of fs.readdirSync(dir)) {
+      const full = path.join(dir, entry);
+      try { openFolders(full); fs.rmSync(full, { recursive: true, force: true }); } catch (error) { refuse(`Could not clear ${full} (${error.code ?? error.message}). Remove it by hand and run again.`); }
+    }
   }
   fs.rmSync(path.join(base, 'evidence.jsonl'), { force: true });
 }
 
-const heldLocks = new Set();
+// Locks held by this process, by token. One shared pair of signal handlers serves all of them and exists only while one is held.
+const heldLocks = new Map();
 let exitHookSet = false;
+const SIGNAL_CODES = { SIGINT: 130, SIGTERM: 143 };
+const readToken = file => { try { return JSON.parse(fs.readFileSync(file, 'utf8')).token ?? null; } catch { return null; } };
+/** Removes a lock file only when it still holds this token. */
+function dropLock(token) {
+  const file = heldLocks.get(token);
+  if (file === undefined) return;
+  heldLocks.delete(token);
+  if (readToken(file) === token) fs.rmSync(file, { force: true });
+  if (heldLocks.size === 0) for (const signal of Object.keys(SIGNAL_CODES)) process.removeListener(signal, onSignal);
+}
+function onSignal(signal) {
+  for (const token of [...heldLocks.keys()]) { try { dropLock(token); } catch { /* best effort */ } }
+  process.exit(SIGNAL_CODES[signal]);
+}
 /**
  * Takes the exclusive lock of one run, or throws. A lock is never cleaned by guess: the message says which process wrote it and
- * tells the person to delete the file by hand when no run is active. The returned function releases the lock once.
+ * tells the person to delete the file by hand when no run is active. The lock holds a token, so a run removes only its own lock,
+ * also after a person deleted a lock and a later run took the folder. The returned object has `release()`, once, and `owns()`.
  */
 function acquireLock(base) {
   const file = path.join(base, CODEX_ROOT_LOCK);
+  const token = `${process.pid}-${crypto.randomBytes(8).toString('hex')}-${Date.now()}`;
   let fd;
   try { fd = fs.openSync(file, 'wx', 0o600); } catch (error) {
     if (error.code !== 'EEXIST') throw error;
@@ -206,14 +269,15 @@ function acquireLock(base) {
     } catch { /* an unreadable lock keeps the generic text */ }
     refuse(`Another live run holds the lock file ${file} (${who}). Wait for that run to end. If no run is active, delete that file and run again.`);
   }
-  fs.writeSync(fd, JSON.stringify({ pid: process.pid, at: new Date().toISOString() }) + '\n');
+  fs.writeSync(fd, JSON.stringify({ pid: process.pid, token, at: new Date().toISOString() }) + '\n');
   fs.closeSync(fd);
-  heldLocks.add(file);
+  heldLocks.set(token, file);
   if (!exitHookSet) {
     exitHookSet = true;
-    process.on('exit', () => { for (const held of heldLocks) { try { fs.rmSync(held, { force: true }); } catch { /* best effort */ } } });
+    process.on('exit', () => { for (const held of [...heldLocks.keys()]) { try { dropLock(held); } catch { /* best effort */ } } });
   }
-  return () => { if (heldLocks.delete(file)) fs.rmSync(file, { force: true }); };
+  for (const signal of Object.keys(SIGNAL_CODES)) if (!process.listeners(signal).includes(onSignal)) process.on(signal, onSignal);
+  return { release: () => dropLock(token), owns: () => heldLocks.has(token) && readToken(file) === token };
 }
 
 /**
@@ -228,10 +292,12 @@ function acquireLock(base) {
  */
 export function makeScratch(prefix = 'bowerloom-live', { fixedBase = null } = {}) {
   let base;
-  let releaseLock = () => {};
-  if (fixedBase) {
+  let lock = { release() {}, owns: () => true };
+  const releaseLock = () => lock.release();
+  const fixed = fixedBase !== null && fixedBase !== undefined; // an empty string is a refusal, never a random folder
+  if (fixed) {
     base = prepareCodexRoot(fixedBase);
-    releaseLock = acquireLock(base);
+    lock = acquireLock(base);
     try { clearCodexRoot(base); } catch (error) { releaseLock(); throw error; }
   } else {
     base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `${prefix}-`)));
@@ -266,8 +332,9 @@ export function makeScratch(prefix = 'bowerloom-live', { fixedBase = null } = {}
     /** Drops the lock of a fixed base and clears nothing. A random scratch folder has no lock. */
     release() { releaseLock(); },
     cleanup() {
-      if (!fixedBase) { fs.rmSync(base, { recursive: true, force: true }); return; }
-      try { clearCodexRoot(base); } finally { releaseLock(); }
+      if (!fixed) { fs.rmSync(base, { recursive: true, force: true }); return; }
+      // Clear only while this run still owns the lock. A late cleanup must not wipe a later run's files.
+      try { if (lock.owns()) clearCodexRoot(base); } finally { releaseLock(); }
     },
   };
   return scratch;
