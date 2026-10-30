@@ -401,13 +401,19 @@ function fingerprint(store: string): string {
 
 /**
  * The plan of setting the folder's version store aside. Reads only. VERSION_NOTHING when there is no store. `damaged` is
- * true when its index cannot be read (VERSION_CORRUPT); a store that reads may be set aside too.
+ * true when its index is not whole (VERSION_CORRUPT) or not safe to read (PORTABLE_STATE_UNSAFE); a store that reads may
+ * be set aside too. A store folder that is itself unsafe is refused, as every call refuses it.
  */
 export function planSetAsideVersions(dirs: HarnessStateDirs): SetAsidePlan {
   const { store } = storeOf(dirs);
   if (!recordExists(dirs) || !stateExists(store)) return refuseVersion('VERSION_NOTHING');
+  // The store folder passed its checks. An index that is not whole, or not safe to read (a shared mode, a second link, past the bound), is damaged: the
+  // rename below moves it as it is, and never opens or follows it.
   let damaged = false;
-  try { readIndex(store); } catch (e) { if (e instanceof VersionRefusal && e.code === 'VERSION_CORRUPT') damaged = true; else throw e; }
+  try { readIndex(store); } catch (e) {
+    if ((e instanceof VersionRefusal && e.code === 'VERSION_CORRUPT') || (e instanceof PortableRefusal && e.code === 'PORTABLE_STATE_UNSAFE')) damaged = true;
+    else throw e;
+  }
   return { damaged, revision: fingerprint(store) };
 }
 

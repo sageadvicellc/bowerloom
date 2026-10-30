@@ -432,3 +432,23 @@ test('the warning of a left journal says the save stays when the note is cleared
   assert.match(journal!, /the save stays, and Bowerloom clears its note/);
   assert.doesNotMatch(journal!, /takes this save back/);
 });
+
+// ---- verification review, finding 2: an index the state layer refuses can be set aside ---------------------------------------
+
+test('a save point index open to others is refused as unsafe, and setting the old save points aside lets the folder save again', async t => {
+  const s = setup(t);
+  const dir = teamFolder(s.home);
+  const f = await choose(s, dir);
+  await save(s, f.id, LINK);
+  const store = join(harnessStateDirs(stateRootOf(s.home), dir).base, 'versions');
+  chmodSync(join(store, 'index.json'), 0o644);
+  assert.equal(refusal(await s.service.listVersions(f.id)).code, 'PORTABLE_STATE_UNSAFE');
+  const plan = value(await s.service.planSetAside(f.id));
+  assert.equal(plan.damaged, true);
+  const done = value(await s.service.runSetAside(f.id, plan.revision));
+  assert.equal(existsSync(store), false);
+  assert.equal(existsSync(join(dirname(store), done.name, 'index.json')), true, 'the index is kept, aside');
+  assert.deepEqual(value(await s.service.listVersions(f.id)), []);
+  await save(s, f.id, UNLINK);
+  assert.deepEqual(value(await s.service.listVersions(f.id)).map(v => v.id), ['v2', 'v1']);
+});

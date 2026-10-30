@@ -314,6 +314,11 @@ export function EditStep({ base, now, draft, count, held, versions, world, linki
 
 /** "Set old save points aside": the plan shown (or null), the dated name of the last one done (or null), and the two calls. */
 export interface SetAsideParts { readonly view: SetAsideView | null; readonly done: string | null; plan(): void; run(): void }
+/**
+ * The refusals of a save point record that set-aside can clear: an index that is not whole, and one the state layer will not read (open to others, a second
+ * link, or past its bound). The set-aside plan in main checks again and renames the record without opening it.
+ */
+const SET_ASIDE_CODES: ReadonlySet<string> = new Set(['VERSION_CORRUPT', 'PORTABLE_STATE_UNSAFE']);
 
 /**
  * The save points, newest first, each with "Go back". A damaged record shows its refusal; it is never drawn as "no save point yet", and it offers to set the
@@ -326,7 +331,7 @@ export function SavePoints({ versions, held, onGoBack, setAside }: { versions: A
     <Section title={W.label.savePoints} {...(versions !== null && versions.ok ? { count: String(list.length) } : {})} slot="save-points">
       {refusal !== null ? <RefusalNote refusal={refusal}>{null}</RefusalNote> : null}
       {refusal !== null && SAVE_REFUSAL_WORDS[refusal.code] !== undefined ? <p className="hxe-text" data-next-step="">{SAVE_REFUSAL_WORDS[refusal.code]}</p> : null}
-      {setAside !== undefined && refusal?.code === 'VERSION_CORRUPT' && setAside.view === null ? <HButton size="small" disabled={held} data-set-aside="" onClick={setAside.plan}>{W.label.planSetAside}</HButton> : null}
+      {setAside !== undefined && refusal !== null && SET_ASIDE_CODES.has(refusal.code) && setAside.view === null ?<HButton size="small" disabled={held} data-set-aside="" onClick={setAside.plan}>{W.label.planSetAside}</HButton> : null}
       {setAside !== undefined && setAside.view !== null ? (
         <div data-set-aside-plan={setAside.view.revision.slice(0, 8)}>
           <p className="hxe-text">{W.hint.setAsideNote}</p>

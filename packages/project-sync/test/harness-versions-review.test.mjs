@@ -151,3 +151,41 @@ test('the set-aside plan changes when the store changes, so an old approval is r
   assert.throws(() => setAsideVersions(w.dirs, plan.revision, NOW), code('VERSION_STALE'));
   assert.ok(fs.existsSync(w.store));
 });
+
+// ---- verification review, finding 2: an index the state layer refuses is damaged too ---------------------------------------
+
+/**
+ * Each way the index reads as unsafe: open to others, a second hard link, and over the index bound. The store reads PORTABLE_STATE_UNSAFE; the set-aside
+ * plan calls it damaged, and the rename moves the index as it is: the same inode, the same mode, the same size, and the other link still names it.
+ */
+const UNSAFE_INDEX = [
+  ['an index open to others', w => { fs.chmodSync(w.index, 0o644); }],
+  ['a hard-linked index', w => { fs.linkSync(w.index, path.join(w.base, 'other-name.json')); }],
+  ['an index over the bound', w => { fs.writeFileSync(w.index, Buffer.alloc(VERSION_LIMITS.index + 1, 32), { mode: 0o600 }); }],
+];
+for (const [name, spoil] of UNSAFE_INDEX) {
+  test(`${name} is unsafe to read, and the set-aside plan treats it as damaged and renames it without opening it`, async t => {
+    const w = world(t);
+    recordVersion(w.dirs, 'definition', files(3), meta('r1'));
+    spoil(w);
+    const before = fs.lstatSync(w.index);
+    assert.throws(() => listVersions(w.dirs, 'definition'), code('PORTABLE_STATE_UNSAFE'));
+    const plan = planSetAsideVersions(w.dirs);
+    assert.equal(plan.damaged, true);
+    const r = await setAsideVersionsLocked(w.dirs, w.dir, plan.revision, NOW);
+    const moved = fs.lstatSync(path.join(w.dirs.base, r.name, 'index.json'));
+    assert.deepEqual([moved.ino, moved.mode, moved.size, moved.nlink], [before.ino, before.mode, before.size, before.nlink]);
+    assert.ok(moved.isFile(), 'a plain file, not followed or replaced');
+    assert.equal(fs.existsSync(w.store), false);
+    assert.deepEqual(listVersions(w.dirs, 'definition'), []);
+    assert.equal(recordVersion(w.dirs, 'definition', files(1), meta('r2')).id, 'v1');
+  });
+}
+
+test('a store folder that is unsafe is still refused by the set-aside plan, not read as damaged', t => {
+  const w = world(t);
+  recordVersion(w.dirs, 'definition', files(1), meta('r1'));
+  fs.chmodSync(w.store, 0o755);
+  assert.throws(() => planSetAsideVersions(w.dirs), code('PORTABLE_STATE_UNSAFE'));
+  fs.chmodSync(w.store, 0o700);
+});

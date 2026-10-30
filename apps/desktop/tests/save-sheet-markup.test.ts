@@ -74,6 +74,15 @@ test('a damaged save point record offers to set the old save points aside: the p
   assert.ok(done.includes(ENGINE_WORDS.hint.setAsideDone));
 });
 
+test('a save point record the state layer refuses as unsafe offers to set the old save points aside too; another refusal does not', () => {
+  const aside = { view: null, done: null, plan: noop, run: noop };
+  const unsafe = renderToStaticMarkup(createElement(SavePoints, { versions: { ok: false, refusal: { code: 'PORTABLE_STATE_UNSAFE', message: 'Unsafe.', paths: [] } }, held: false, onGoBack: noop, setAside: aside }));
+  assert.match(unsafe, /data-refusal="PORTABLE_STATE_UNSAFE"/);
+  assert.match(unsafe, /data-set-aside=""/);
+  const other = renderToStaticMarkup(createElement(SavePoints, { versions: { ok: false, refusal: { code: 'VERSION_UNKNOWN', message: 'Unknown.', paths: [] } }, held: false, onGoBack: noop, setAside: aside }));
+  assert.doesNotMatch(other, /data-set-aside/);
+});
+
 test('the review lists each file with its action, the harness as it will be, and one tick that names the revision; a no-change plan offers no tick', () => {
   const view = { folder: '~/Projects/weekly-report', changes: [{ path: '.bowerloom/agents/editor.md', action: 'update' as const }], definition: draftView(BASE, linkSkill(BASE, EMPTY_DRAFT, 'editor', 'check-facts', true)), noop: false, revision: 'abcdef12'.repeat(8) };
   const shown: Shown = { kind: 'save', view, edits: [{ kind: 'set-agent', id: 'editor', skills: ['check-facts'] }] };
