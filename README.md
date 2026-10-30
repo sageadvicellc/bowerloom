@@ -5,7 +5,7 @@
 
 <a id="grow-your-capabilities-with-bowerloom"></a>
 
-# Own your AI skills, agents, and connections
+# One setup, two engines
 
 <p>
   <a href="https://bowerloom.ai/docs/releases/"><img src="docs/assets/badge-version.svg" alt="Current beta version" height="28"></a>
@@ -14,159 +14,69 @@
   <a href="#install-bowerloom"><img src="docs/assets/badge-npm.svg" alt="npm 11" height="28"></a>
 </p>
 
-Bowerloom is an agent environment manager. It sets up the skills, prompts, and teams that Claude Code and Codex use in your project. Each change shows its exact plan first, and Bowerloom writes nothing until you approve that plan. It records what it installed, and it does not overwrite a copy that you changed. Skills come from npm or GitHub, pinned to an exact version or commit. Team definitions declare proposed access and review points. Runtime permissions stay a separate decision.
+Bowerloom lets you define one harness and install it into Claude Code and Codex. A harness is the set of skills, agents, tools, rules, and context that surrounds a coding model. You keep one definition in a `.bowerloom` folder. Bowerloom writes the files of each engine from it.
 
-[Main site](https://bowerloom.ai) · [Documentation](https://bowerloom.ai/docs/) · [Build with your agent](#build-with-your-agent) · [Roadmap](#roadmap)
+Every change shows a preview first. Bowerloom writes nothing until you approve the exact plan. It keeps a record of what it wrote, so you can see drift and undo an install. When an engine cannot carry a part of your harness, the preview says so, part by part. An installed copy is never more permissive than its source.
 
-<a id="release-status"></a>
+[Main site](https://bowerloom.ai) · [Documentation](https://bowerloom.ai/docs/) · [Report a problem](#report-a-problem)
 
-## Roadmap
+## Why portability
 
-Bowerloom moves from project integration in the 0.7 beta toward a stable v1. The dates below are 2026 estimates, not commitments. The optimistic scenario assumes that each stage meets its review criteria without substantial rework. The pessimistic scenario allows more time for fixes and feedback, so later milestones follow the revised earlier stages.
+Many people run more than one coding agent. Each agent keeps its own skills folder, agent files, MCP list, and permission rules. A change in one agent does not reach the other. Bowerloom gives you one source for all of them.
 
-| Stage | Intended outcome | Optimistic estimate | Pessimistic estimate |
-| --- | --- | --- | --- |
-| 0.7 beta handoff | Put project integration and documented limits in colleagues' hands. | Colleague soft launch: Monday, October 12. | Unresolved release defects move the handoff later. |
-| 0.7.x capability additions | Add capabilities from observed use and accepted priorities. | October to November. | Additions extend beyond November if fixes or required controls take longer. |
-| 1.0 beta | Bring the intended v1 capabilities into a defined, tested scope. | Around December. | After December if the 0.7.x work needs more time. |
-| Release candidate | Focus on stability, installation, recovery, security, and documentation. | Toward the end of December. | After the delayed 1.0 beta and its necessary fixes. |
-| Stable v1 | Release the version that meets the final criteria. | After a successful release candidate. No confirmed date. | After remaining release-candidate defects are resolved. No confirmed date. |
+- Adopt what you already have. Bowerloom reads the engine files in a project and builds one harness from them. An adopt changes no engine file.
+- Install it everywhere. One install command writes the files for Claude Code and Codex.
+- See what each engine can carry. Each part gets one of four results: `exact`, `translated`, `weakened`, or `absent`. If an engine carries a rule more weakly than your harness says, Bowerloom refuses that rule. You accept the line to continue.
+- Keep control. Drift shows the files that changed after an install. Remove puts back every file that the install replaced.
 
-Capability additions are planned work, not features supplied by the current setup commands. The roadmap does not promise automatic team execution, shared company services, or unattended support. Stable v1 depends on the release candidate's results. It has no assumed calendar date.
+## How it works
 
-[Full roadmap](https://bowerloom.ai/docs/roadmap/)
+Run these commands in a project folder. Every command that writes prints a plan and a revision first. To apply the plan, run the same command again with `--approve <revision>`.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-beta/exports/portable-teams-dark.png">
-  <img src="docs/assets/readme-beta/exports/portable-teams-light.png" alt="">
-</picture>
-
-## Portable teams
-
-Roles, skills, handoffs, and review expectations stay in files that follow you. Commit `.bowerloom/skills.json` and the team, skill, and prompt definitions with your project, and inspect them in another agent application. Keep the receipt and the setup notes, such as `brief.json` and `START-HERE.md`, on your machine. Their portability does not transfer credentials, approval, or runtime authority. Before sharing a definition, review its project name, goal, and brief for private information. Keep installation receipts, private bindings, credentials, and execution records out of shared files.
-
-The beta's harness commands process selected synthetic configuration files for Codex and Claude Code. They do not change live agent configuration or run models. The separate portable skill installer projects selected files into a new Codex workspace, rather than an existing project. Use the [harness guide](https://bowerloom.ai/docs/harnesses/) and [portable skill guide](https://bowerloom.ai/docs/guides/add-skills/) for their distinct prerequisites and limits.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-beta/exports/architecture-dark.png">
-  <img src="docs/assets/readme-beta/exports/architecture-light.png" alt="">
-</picture>
-
-## Inside `.bowerloom/`
-
-
-The setup places the team specification, role prompts, skills, working agreement, and handoff maps under `.bowerloom/` in your project. Planning proposes 20 definition files. Exact approval installs them and adds one private receipt that binds those files to the local project. Commit the team, skill, and prompt definitions with the project. The receipt, the setup notes, and credentials stay on your machine. The [skills guide](https://bowerloom.ai/docs/guides/add-skills/#what-to-commit) gives the exact `.gitignore` lines. The tree below lists that installed layout.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-beta/exports/structure-dark.png">
-  <img src="docs/assets/readme-beta/exports/structure-light.png" alt="Startup proposes 20 portable files under .bowerloom. Approved installation adds one private receipt. The text tree below lists every file.">
-</picture>
-
-```text
-.bowerloom/
-├── START-HERE.md
-├── brief.json
-├── manifest.json
-├── milestones.md
-├── optional-controls.md
-├── skills/
-│   └── personal-assistant/
-│       ├── SKILL.md
-│       └── profile.json
-├── startup-review.md
-├── startup.json
-├── teams/
-│   └── first-team/
-│       ├── assets/
-│       │   ├── brief.json
-│       │   ├── milestones.md
-│       │   └── working-agreement.md
-│       ├── maps/
-│       │   ├── relay.json
-│       │   └── vines.json
-│       ├── prompts/
-│       │   ├── lead.md
-│       │   ├── maker.md
-│       │   └── reviewer.md
-│       ├── skills/
-│       │   └── bounded-draft.md
-│       └── team.yaml
-├── working-agreement.md
-└── installation-receipt.json  [private; created during installation]
+```sh
+bowerloom harness adopt
+bowerloom harness install --engine claude-code --engine codex
+bowerloom harness drift
+bowerloom harness remove
 ```
 
-| Part | What it contains |
-| --- | --- |
-| `START-HERE.md` and `startup-review.md` | Your goal, proposed setup, first decision, and review instructions |
-| `brief.json` | Your explicit project name, goal, profile, and review choices |
-| `skills/personal-assistant/` | Guidance and a profile for your existing agent |
-| `teams/first-team/` | The team definition, prompts, skill, source assets, and communication and logging maps |
-| `working-agreement.md` and `milestones.md` | Responsibilities, boundaries, and review points |
-| `manifest.json` and `startup.json` | Bundle contents and startup document references |
-| `optional-controls.md` | Instructions for separately approved local connections and registered-work stops |
-| `installation-receipt.json` | The private target path, exact approval, file hashes, and compiler evidence |
+1. `harness adopt` reads the Claude Code and Codex files of the folder and writes only `.bowerloom`.
+2. `harness install` writes the engine files from `.bowerloom`. A refused line has a key. Run `harness accept <key>` to approve that line, then install again.
+3. `harness drift` lists the files that Bowerloom wrote and that changed since. If a file changed, `harness drift --check` fails.
+4. `harness remove` puts back every file that install replaced, and deletes the files that install created.
 
-The maps describe handoffs and logging, but setup does not open connections, start logging services, or schedule work. The generated inventory contains no `.bowerloom/routines/` directory. Private connection bindings, credentials, and runtime state need separate locations and approvals. Their absence from the portable folders keeps definitions separate from local authority.
+`bowerloom help harness` lists every flag. No harness command runs an engine or a model.
 
-## Meet the workshop
-
-| Module | Responsibility and current boundary |
-| --- | --- |
-| Teams | Roles, skills, and permission definitions. Startup produces a specification, without running the team. |
-| Relay | Communication definitions and approved local links. A link grants no execution or write authority. |
-| Roots | Source-linked knowledge and controlled access. Shared company retrieval and access are outside the documented setup path. |
-| Vines | Logs that record work. Startup declares logging maps without a running logging service. |
-| Workbench | Repeatable scenarios and comparison records. Setup does not execute a comparison. |
-
-These modules describe responsibilities within a team. Their names do not imply equal runtime support, so use [current support](https://bowerloom.ai/docs/status/) to choose a supported task. MCP connects agent applications to tool servers, but the beta's `mcp plan` command only reads selected synthetic files. It does not contact a server or invoke a tool. The [MCP guide](https://bowerloom.ai/docs/mcp/) explains that planning boundary.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-beta/exports/approvals-dark.png">
-  <img src="docs/assets/readme-beta/exports/approvals-light.png" alt="">
-</picture>
-
-## Approvals and control
-
-A setup plan identifies the target, inputs, file contents, hashes, and revision that you approve. Changed inputs require another plan, and status reports drift when installed files differ. Revision retains transaction records with supported resume and rollback choices for interrupted changes. These controls govern the planned local file operation. Roles, permissions, and review points in a team definition remain proposed rules until a supported execution path enforces them.
-
-Installation, runtime enrollment, backend setup, and connected actions need their own approvals. The optional `destruct <team-id>` and `destruct all` commands request a stop within the selected local registry, while preserving project files and records. They do not stop unrelated sessions or backend services. A stop request or timeout does not prove cleanup. Read the [stop guide](https://bowerloom.ai/docs/stop/) before selecting that operation.
+This beta supports Claude Code and Codex. OpenCode, Pi, and DeepSeek Harness are preview engines. To install into them, set `BOWERLOOM_PREVIEW_ENGINES=1`.
 
 ## Current capabilities
 
 <!-- release:support:start -->
-Open beta · 0.7.0-beta.3
+Open beta · 0.8.0-beta.1
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
 
 | Capability | Current boundary |
 | --- | --- |
-| Setup | Prepare a personal-agent profile, team definition, and working agreement in a new or existing project. Exact approval writes the planned files. |
-| Portable skills | Pin skills from npm or GitHub with skills add, then install them for Claude Code and Codex with skills sync. A copy in the project does not prove that Claude Code or Codex finds or runs it. |
-| Revision | Plan a change to an installed setup, then approve its exact revision before replacement. |
+| Harness | Adopt the Claude Code and Codex files of a project into one `.bowerloom` definition. Then install it into both engines after a preview. |
+| Fidelity | The preview reports each part as exact, translated, weakened, or absent, per engine. A weaker rule needs your approval, line by line. |
+| Recovery | Drift lists changed files. Remove puts back what an install replaced. |
+| Portable skills | Pin skills from npm or GitHub with skills add. Then install them for Claude Code and Codex with skills sync. |
 | Execution | Setup does not start workers, grant runtime access, or authorize connected actions. |
-| Harnesses | Synthetic configuration commands support Codex and Claude Code fixtures. They do not run models or change live agent configuration. |
-| Connections | MCP planning reads selected synthetic files. Local backend installation requires a separate plan and exact approval. |
-| Company | Shared company access, retrieval, offboarding, and deletion are outside this beta's documented setup path. |
 
 These guides use macOS arm64 and Node 24.11.0. Other host systems are outside this documented installation path.
-
-Running a team needs separate runtime permissions and controls. The setup commands do not grant them. Shared company access and unattended services are outside this setup walkthrough.
 <!-- release:support:end -->
 
 ## Beta limits
 
-Keep your project out of iCloud Drive folders. Project commands such as `bowerloom up`, `ls`, `status`, `apply`, and `skills sync` refuse a project under `~/Documents` or `~/Desktop` when Desktop and Documents sync is on, and under the `~/Library` cloud folders, with `PROJECT_IN_CLOUD_FOLDER`. The older forms that take an explicit path do not run this check. See the [beta limits](https://bowerloom.ai/docs/guides/add-skills/#current-beta-limits).
-
-- No worker starts. `up` ends at `prepared, workers held`.
 - Pinned skills come from public sources only. A store in a private GitHub repository needs `BOWERLOOM_GITHUB_TOKEN`. Only MIT and Apache-2.0 skills install.
-- `bowerloom revise` refuses once a project holds content added after setup. The fix comes in a later 0.7 release.
-- The portable install supports Claude Code and Codex. Native discovery of the installed files has not been observed.
+- Keep your project out of iCloud Drive folders. Project commands refuse a project in a cloud-synced folder with `PROJECT_IN_CLOUD_FOLDER`.
+- The desktop app is experimental. It is possibly not part of v1. Every feature in this README also works in the command line.
+- Apple did not sign this build. [Open the unsigned app](#open-the-unsigned-app) gives the steps to open it.
 
 ## Install Bowerloom
 
-Bowerloom is an open beta on npm as `bowerloom`, under the `beta` dist-tag. There is no stable release yet, so the `latest` tag also points at this beta. Install with `@beta` to stay on the beta stream.
-
-Install the beta CLI with Node `>=24.11.0 <25` and npm `11`.
+Bowerloom is an open beta on npm as `bowerloom`, under the `beta` dist-tag. It is open source under the MIT license. Install it with Node `>=24.11.0 <25` and npm `11`.
 
 ```sh
 npm install -g bowerloom@beta
@@ -174,169 +84,68 @@ bowerloom --version
 bowerloom --help
 ```
 
-Updates are not automatic. To update, run `npm install -g bowerloom@beta` again. Do not use `npm update -g bowerloom` for this: for a global package, npm updates to the `latest` tag, not to `beta`, and it can downgrade a beta install. If your agent runs in a sandbox that blocks writes outside the project, run the install in your own terminal. A colleague who was given a `bowerloom-0.7.0-beta.3.tgz` file can still install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.7.0-beta.3.tgz`.
+Updates are not automatic. To update, run `npm install -g bowerloom@beta` again. Do not use `npm update -g bowerloom`, because npm then updates to the `latest` tag and can downgrade a beta. If you have a release file, install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.8.0-beta.1.tgz`.
 
 If npm refuses with a permission error, do not use `sudo`. Set a user prefix for global packages instead. The [install guide](https://bowerloom.ai/docs/start/) shows the steps.
 
-First-team setup does not need Docker. The separate local backend requires Docker Desktop and its own plan and approval.
+## Open the unsigned app
 
-These guides use macOS arm64 and Node 24.11.0. Other host systems are outside this documented installation path.
+The desktop app is open source. Apple did not sign or notarize it. The first time you open it, macOS blocks it and shows a warning. You can read the source in this repository before you open it.
 
-## Build with your agent
+1. Move `Bowerloom.app` to your Applications folder.
+2. Open the app once. macOS shows a warning. Close the warning.
+3. Open the Apple menu, then System Settings.
+4. Click Privacy & Security, then scroll down to Security.
+5. Click Open Anyway next to the message about Bowerloom. The button is available for about an hour after step 2.
+6. If macOS asks for your login password, enter it. Then click Open.
 
-![Hanna and S4-G3 study a holographic plan in a tree laboratory.](docs/assets/readme-beta/images/startup.webp)
+After this, the app opens like any other app. If you do not want to allow an unsigned app, use the command line. It gives you every feature.
 
-Start with a workflow you already perform, such as turning an accepted brief into an implementation proposal and reviewing the result. Describe what each step reads, what it produces, who decides, and where work passes to the next person or agent. Your personal agent helps map those responsibilities to a team graph, the tasks and their handoffs. The beta supplies a fixed Engineer, Founder, or Research profile for comparison with that process. It does not import your project or generate an arbitrary graph from a conversation.
+## Report a problem
 
-The fixed first-team graph gives the lead responsibility for scope, the maker responsibility for a draft, and the reviewer responsibility for critique. The reviewer receives both scope and draft, so review stays tied to the original brief. The specification records these dependencies, role prompts, proposed outputs, and access declarations. Compare them with your actual workflow and working agreement before approving the setup files. The [workflow guide](https://bowerloom.ai/docs/guides/integrate-workflow/) explains the mapping and review steps.
-
-```text
-Lead: scope ────→ Maker: draft ────→ Reviewer: review
-     └────────────────────────────→ Reviewer: review
-```
-
-### Describe the integration
-
-Give your existing personal agent this request:
-
-```text
-Help me map my existing manual or one-to-one agent workflow into a Bowerloom team specification for this project.
-Ask what each step reads and produces, where work changes hands, and which decisions stay with me.
-Compare that process with the fixed Engineer, Founder, or Research profile.
-Use my description as input. Ask before reading additional project files.
-Show the roles, handoffs, proposed access, working agreement, and exact file plan.
-Use bowerloom up in my project folder and show me each plan.
-Wait for my approval of the exact plan revision.
-After installation, read bowerloom status, .bowerloom/startup-review.md, and .bowerloom/START-HERE.md with me.
-Do not import live agent configuration, start workers, or execute the project.
-```
-
-<a id="plan-the-setup"></a>
-
-### Prepare the project with one command
-
-Open a terminal in your project folder. Run `up` with a team name and a goal:
+Bowerloom never sends anything by itself. To report a problem, make a diagnostic bundle and read it. Then open the issue yourself.
 
 ```sh
-bowerloom up --team "Studio crew" --goal "Prepare a fictional onboarding kit for an independent design studio."
+bowerloom report
 ```
 
-`up` shows one next step at a time. The steps are `init`, `team`, `sync`, and `apply`. In a terminal, it asks before each step. An agent passes `--approve <revision>` instead.
+The bundle holds the Bowerloom version, the macOS version, and the Claude Code and Codex versions. It also holds the last error code, recent event lines, and the hash of the last plan. It holds no secrets, no file contents, and no home folder path. The command prints the bundle and a link to a new GitHub issue that holds the bundle. `bowerloom report --json` gives the same bundle to an agent, so your agent can write the issue for you. In the app, choose Help > Report a problem.
 
-<a id="approve-the-exact-files"></a>
+Choose the issue form that fits:
 
-Each run without `--approve` prints the plan and its revision, then exits 3. Read the plan. Then run the same command again with the revision:
+- [Bug](https://github.com/sageadvicellc/bowerloom/issues/new?template=bug.yml): Bowerloom did something wrong or stopped with an error.
+- [Fidelity gap](https://github.com/sageadvicellc/bowerloom/issues/new?template=fidelity-gap.yml): an installed copy differs from its source, and the preview did not say so.
+- [Engine change](https://github.com/sageadvicellc/bowerloom/issues/new?template=engine-change.yml): a new Claude Code or Codex version changed what Bowerloom installs.
+
+Ask questions in [Q&A](https://github.com/sageadvicellc/bowerloom/discussions/categories/q-a). Share ideas in [Ideas](https://github.com/sageadvicellc/bowerloom/discussions/categories/ideas).
+
+## Your usage log
+
+Bowerloom keeps a small event log on your computer. It records which tasks finished, such as an adopt or an install, and error codes. It records no names, no paths, and no file contents. It makes no network calls.
 
 ```sh
-bowerloom up --team "Studio crew" --goal "Prepare a fictional onboarding kit for an independent design studio." --approve REVISION_FROM_THE_PLAN
+bowerloom events
+bowerloom events summary
 ```
 
-Repeat until the project is prepared. The last run prints `prepared, workers held` and exits 4. If a skill, prompt, or team is held or gone, the last run prints `prepared, N items held` and a next command for each item. Exit 4 means a gate holds the workers. It does not mean the command failed.
+`bowerloom events` shows the newest events. `bowerloom events summary` shows the counts of the last seven days. To help us, save the summary with `--out <file>` and attach it to an issue. To turn the log off, set `BOWERLOOM_EVENT_LOG=off`. In the app, choose Help > Usage log.
 
-`up` never edits `AGENTS.md` or `CLAUDE.md`, and it never runs `claude`, `codex`, or any other program.
+After an install in the app, Bowerloom asks "Did this do what you wanted?" For "Partly" or "No", it then asks what you were trying to do. Your answer stays in the local log.
 
-Exit codes:
+## Later work
 
-- 0 means done.
-- 1 means refused.
-- 2 means a usage error.
-- 3 means approval required.
-- 4 means held by a gate.
-- 130 means you stopped at the yes/no question with Ctrl-C or Ctrl-D. It prints `Stopped. Nothing was changed.`
-
-### Look at the project
-
-```sh
-bowerloom ls
-bowerloom status
-```
-
-`ls` lists the teams, skills, and prompts in `.bowerloom`. `status` shows the setup state, any drift, and any skill you edited by hand. Both commands only read.
-
-Read `.bowerloom/startup-review.md` and `.bowerloom/START-HERE.md` with your personal agent. Compare the team specification, role prompts, handoff map, and working agreement with your process. A successful file installation starts no workers, backend services, or connected tools. If the fixed profile leaves a workflow requirement unmet, record that gap before any later project work. Use [files and configuration](https://bowerloom.ai/docs/configuration/) for the inventory and [revision](https://bowerloom.ai/docs/revision/) for a supported goal or profile change.
-
-### Add and sync third-party skills
-
-Pin a skill at an exact npm version or a full 40-character GitHub commit. Then check, sync, and apply:
-
-```sh
-bowerloom skills add npm:<package>@<version>:<path>
-bowerloom skills add github:<owner>/<repo>@<40-char-commit>:<path>
-bowerloom skills check
-bowerloom skills sync
-bowerloom apply
-```
-
-`skills add` records the pin in `.bowerloom/skills.json` and installs nothing. `skills check` checks every pin offline. `skills sync` installs the pinned skills and puts them in place for Claude Code and Codex. `apply` puts the prompts in place for Claude Code, Codex, or both, and any skill copy that is still missing. Each command that changes files shows a plan first. Read the [skills guide](https://bowerloom.ai/docs/guides/add-skills/) for the refusal codes.
-
-### Create teams, skills, and prompts
-
-```sh
-bowerloom team create <name> [--profile engineer|founder|research]
-bowerloom skill create <name> [--team <team>]
-bowerloom prompt create <name> [--team <team>]
-```
-
-These commands write inside `.bowerloom` only. Read [Create teams, skills, and prompts](https://bowerloom.ai/docs/guides/create-items/) for each one.
-
-### Advanced: plan and apply with explicit paths
-
-The older plumbing forms take an absolute target path. They do not check for cloud-synced folders. Replace the example target with your project's absolute directory:
-
-```sh
-bowerloom init plan --mode existing --target /absolute/projects/existing-project --profile engineer --name "First team" --goal "Plan an accessible project website and its meaningful checks."
-bowerloom init apply --mode existing --target /absolute/projects/existing-project --profile engineer --name "First team" --goal "Plan an accessible project website and its meaningful checks." --approve REPLACE_WITH_EXACT_PLAN_REVISION
-bowerloom init status --target /absolute/projects/existing-project
-```
-
-Existing mode proposes a new `.bowerloom/` directory while preserving project files and leaving live agent configuration unread. Add `--json` to `init plan` to inspect each file and its hash. Keep the inputs unchanged between plan and apply. An existing `.bowerloom/` installation needs [revision](https://bowerloom.ai/docs/revision/) instead of fresh setup. Run `bowerloom help advanced` for every form.
-
-### Optional separate workspace
-
-If you want a separate unused workspace, use the [new-workspace guide](https://bowerloom.ai/docs/guides/new-workspace/). The primary integration path above keeps your existing project in place.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-beta/exports/labs-workflow-dark.png">
-  <img src="docs/assets/readme-beta/exports/labs-workflow-light.png" alt="">
-</picture>
-
-## The Labs workflow
-
-The first Sagespec team brought together a Knowledge officer, Brand review, and a Tech lead. Their Bowerloom work connects source knowledge, brand direction, and technical delivery.
-
-| Role | Responsibility |
-| --- | --- |
-| Knowledge officer | Maintains the wiki and source records, then turns source material into specifications |
-| Brand review | Sets the identity and creative direction, delegates design, and reviews the result |
-| Tech lead | Defines technical scope, assigns specialists, and brings evidence and decisions to the founder |
-
-The Labs example shows how knowledge, brand, and technical responsibilities connect around a project. Its `v0.7-workbench` label identifies the experiment, rather than the framework version. The example describes the team's responsibilities and does not prove that Bowerloom independently executed that entire team. Sagespec remains private.
-
-## Bugs, questions, and feedback
-
-Report reproducible bugs in [GitHub Issues](https://github.com/sageadvicellc/bowerloom/issues). Search open and closed issues before creating a report.
-
-Include the version, OS, harness, expected result, actual result, reproduction steps, and sanitized logs. Add new evidence to an existing report when applicable.
-
-Ask questions in [Q&A](https://github.com/sageadvicellc/bowerloom/discussions/categories/q-a). Share feedback in [General](https://github.com/sageadvicellc/bowerloom/discussions/categories/general).
-
-Discuss feature proposals in [Ideas](https://github.com/sageadvicellc/bowerloom/discussions/categories/ideas). Describe the task, problem, proposed result, and current workaround.
-
-Read [Bug reports and feedback](https://bowerloom.ai/docs/feedback/) for report examples and privacy guidance. Keep private paths, credentials, and raw receipts private.
+These items are named for later releases, but they are not promises: Windows and Linux, team sync, signing and automatic updates, other knowledge bases, and more engines.
 
 ## Contributing
-
 
 ![H4N-N4 assembles a small device while S4-G3 assists Hanna at the neighboring screen.](docs/assets/readme-beta/images/contributing.webp)
 
 Bring a small, reproducible change that the team can review.
 
 - Describe the problem and the result that you expect.
-- Include a focused example or meaningful test with your change.
+- Include a focused example or a test with your change.
 - Follow the [contributor guide](https://bowerloom.ai/docs/contributors/) for source changes and review.
 
-Keep credentials, customer data, and private references out of public issues and pull requests.
-
-Use [GitHub Issues](https://github.com/sageadvicellc/bowerloom/issues) to agree on the scope before a large change.
+Keep credentials, customer data, and private references out of public issues and pull requests. Use [GitHub Issues](https://github.com/sageadvicellc/bowerloom/issues) to agree on the scope before a large change.
 
 Made by Sage Advice. [License](LICENSE) · [Source](https://github.com/sageadvicellc/bowerloom).

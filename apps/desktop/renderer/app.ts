@@ -321,7 +321,7 @@ function settingsScreen(s: Snapshot): HTMLElement {
 
 function welcome(): HTMLElement {
   return h('div', { class: 'welcome' },
-    h('div', { class: 'brand' }, icon(ICONS.leaf, 32), 'Bowerloom Viewer'),
+    h('div', { class: 'brand' }, icon(ICONS.leaf, 32), 'Bowerloom'),
     h('h1', { text: 'See everything Bowerloom looks after' }),
     h('p', { class: 'lead', text: 'Bowerloom keeps your AI skills, prompts, and teams in one place and shares them with your projects. This app shows you all of it, in plain words, and changes nothing.' }),
     h('div', { class: 'choices' }, button('Look at my Bowerloom', async () => { state.info = (await act('Opening your Bowerloom', () => api.chooseMode('real'))) ?? state.info; await reload(); go({ screen: 'home' }, true); }, 'btn big'), button('Try it with sample data', async () => { state.info = (await act('Opening the sample data', () => api.chooseMode('sample'))) ?? state.info; await reload(); go({ screen: 'home' }, true); }, 'btn big secondary')),
@@ -346,7 +346,7 @@ function shell(content: HTMLElement, banner: HTMLElement | null = null): HTMLEle
   return h('div', { class: 'shell' },
     h('aside', { class: 'sidebar' }, h('div', { class: 'brand' }, icon(ICONS.leaf, 28), 'Bowerloom'), info.mode === 'sandbox' ? h('div', { class: 'sandbox-badge', role: 'note' }, 'Sandbox: safe to break') : null, nav, button('Look again', () => { void reload(); }, 'btn secondary')),
     h('main', { id: 'main' }, banner, content),
-    h('footer', { class: 'footer' }, h('span', { text: `Bowerloom Viewer ${info.version}` }), h('span', { text: info.updates.status }), h('span', { class: 'spacer' }), h('span', { text: info.mode === 'sample' ? 'Showing sample data' : info.mode === 'sandbox' ? 'Sandbox: safe to break' : 'Showing your own Bowerloom' })));
+    h('footer', { class: 'footer' }, h('span', { text: `Bowerloom ${info.version}` }), h('span', { text: info.updates.status }), h('span', { class: 'spacer' }), h('span', { text: info.mode === 'sample' ? 'Showing sample data' : info.mode === 'sandbox' ? 'Sandbox: safe to break' : 'Showing your own Bowerloom' })));
 }
 
 function body(): HTMLElement {
@@ -390,7 +390,7 @@ function render(): void {
   const view = state.info.firstRun ? h('main', { id: 'main', class: 'solo' }, content) : shell(body(), banner);
   const live = h('div', { id: 'live', class: 'sr', role: 'status', aria: { live: 'polite' } });
   root.replaceChildren(view, live);
-  document.title = `Bowerloom Viewer - ${titleOf(state.route.screen)}`;
+  document.title = `Bowerloom - ${titleOf(state.route.screen)}`;
   announce();
 }
 

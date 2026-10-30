@@ -27,7 +27,7 @@ export async function checkFuses(executable) {
 
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
   const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
-  const exe = process.argv[2] ?? join(desktop, 'release', 'mac-arm64', 'Bowerloom Viewer.app', 'Contents', 'MacOS', 'Bowerloom Viewer');
+  const exe = process.argv[2] ?? join(desktop, 'release', 'mac-arm64', 'Bowerloom.app', 'Contents', 'MacOS', 'Bowerloom');
   if (!existsSync(exe)) { console.error(`No built app at ${exe}. Run npm run build first.`); process.exit(2); }
   const problems = await checkFuses(exe);
   if (problems.length) { console.error(`Fuses are wrong:\n  ${problems.join('\n  ')}`); process.exit(1); }

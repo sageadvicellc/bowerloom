@@ -351,18 +351,29 @@ export interface EngineBridge {
   planMerge(folderId: string): Promise<Answer<MergeView>>;
   /** Writes the Merge plan shown last, after main's own dialog. */
   runMerge(folderId: string, revision: string): Promise<Answer<MergeWritten>>;
+  /**
+   * Records the answer to "Did this do what you wanted?" in the local usage log on this computer. `note` is the person's own words, at most 500 characters, or
+   * null. True when it was recorded. Nothing leaves the computer. The sample records nothing and answers false.
+   */
+  recordCheck(answer: CheckAnswer, note: string | null): Promise<boolean>;
 }
+
+/** The three answers of the after-apply check. */
+export const CHECK_ANSWERS = Object.freeze(['yes', 'partly', 'no'] as const);
+export type CheckAnswer = (typeof CHECK_ANSWERS)[number];
+/** The longest note the check takes, in characters. Main checks it again. */
+export const CHECK_NOTE_LIMIT = 500;
 
 /** The names of the calls, in one list, so the bridge, the handler and the tests agree. */
 export const ENGINE_CALLS = Object.freeze([
   'folders', 'chooseFolder', 'planAdoption', 'runAdoption', 'planAdoptionRecovery', 'runAdoptionRecovery',
-  'planProjection', 'runProjection', 'planRemoval', 'runRemoval', 'planRecovery', 'runRecovery', 'planMerge', 'runMerge',
+  'planProjection', 'runProjection', 'planRemoval', 'runRemoval', 'planRecovery', 'runRecovery', 'planMerge', 'runMerge', 'recordCheck',
 ] as const);
 export type EngineCall = (typeof ENGINE_CALLS)[number];
 /** How many arguments each call takes. A call with another count is refused before anything runs. */
 export const ENGINE_ARITY: Readonly<Record<EngineCall, number>> = Object.freeze({
   folders: 0, chooseFolder: 0, planAdoption: 2, runAdoption: 4, planAdoptionRecovery: 1, runAdoptionRecovery: 2,
-  planProjection: 2, runProjection: 3, planRemoval: 1, runRemoval: 2, planRecovery: 2, runRecovery: 3, planMerge: 1, runMerge: 2,
+  planProjection: 2, runProjection: 3, planRemoval: 1, runRemoval: 2, planRecovery: 2, runRecovery: 3, planMerge: 1, runMerge: 2, recordCheck: 2,
 });
 /** One channel per call, apart from every other channel of the app. */
 export const ENGINE_CHANNELS: Readonly<Record<EngineCall, string>> = Object.freeze(Object.fromEntries(ENGINE_CALLS.map(c => [c, `bowerloom-engine:${c}`])) as Record<EngineCall, string>);
