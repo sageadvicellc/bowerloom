@@ -42,7 +42,7 @@
     "typescript": "7.0.2"
   },
   "build": {
-    "appId": "com.sageadvice.bowerloom.viewer",
+    "appId": "com.sageadvice.bowerloom",
     "productName": "Bowerloom",
     "copyright": "Sage Advice LLC",
     "directories": {

@@ -21,10 +21,11 @@ test('the viewer is its own package: the command line package and the root works
   assert.equal(existsSync(join(DESKTOP, 'package-lock.json')), true);
 });
 
-test('the package carries the 0.8 identity: version 0.8.0-beta.1 and the product name Bowerloom', () => {
+test('the package carries the 0.8 identity: version 0.8.0-beta.1, the product name Bowerloom, and the app id com.sageadvice.bowerloom', () => {
   const b = pkg.build as { productName: string; appId: string };
   assert.equal(pkg.version, '0.8.0-beta.1');
   assert.equal(b.productName, 'Bowerloom');
+  assert.equal(b.appId, 'com.sageadvice.bowerloom');
   assert.doesNotMatch(String(pkg.description), /Viewer|read-only/);
   const lock = JSON.parse(readFileSync(join(DESKTOP, 'package-lock.json'), 'utf8')) as { version: string; packages: Record<string, { version?: string }> };
   assert.equal(lock.version, '0.8.0-beta.1'); assert.equal(lock.packages['']!.version, '0.8.0-beta.1');
