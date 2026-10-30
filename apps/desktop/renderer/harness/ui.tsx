@@ -27,6 +27,8 @@ export interface StartState { readonly open: boolean; readonly harnessId: string
 export type EngineSheetMode = 'install' | 'remove' | 'recover';
 export interface AdoptState { readonly open: boolean; readonly folderId: string | null }
 export interface ProjectSheetState { readonly open: boolean; readonly folderId: string | null; readonly mode: EngineSheetMode; readonly keep: readonly string[] }
+/** The save sheet: one folder's own harness, edited as a draft until Save, with its save points (option C). */
+export interface SaveSheetState { readonly open: boolean; readonly folderId: string | null }
 export interface ToastState { readonly id: number; readonly text: string; readonly action: { readonly label: string; readonly run: () => void } | null }
 
 export interface Ui {
@@ -49,6 +51,10 @@ export interface Ui {
   readonly projectSheet: ProjectSheetState;
   openProject(request?: { folderId?: string | null; mode?: EngineSheetMode; keep?: readonly string[] }): void;
   closeProject(): void;
+  /** The save sheet of a folder's own harness. It opens in either launch: on the person's own folders it plans read-only and writes only after approval. */
+  readonly saveSheet: SaveSheetState;
+  openSave(request?: { folderId?: string | null }): void;
+  closeSave(): void;
   /** The harness the Harness list has selected, or null. */
   readonly pickedHarnessId: string | null;
   pickHarness(id: string | null): void;
@@ -79,6 +85,7 @@ export function UiProvider({ children }: { children?: ReactNode }): ReactElement
   const [picked, setPicked] = useState<string | null>(null);
   const [adopt, setAdopt] = useState<AdoptState>({ open: false, folderId: null });
   const [projectSheet, setProjectSheet] = useState<ProjectSheetState>({ open: false, folderId: null, mode: 'install', keep: [] });
+  const [saveSheet, setSaveSheet] = useState<SaveSheetState>({ open: false, folderId: null });
   const [toast, setToast] = useState<ToastState | null>(null);
   const [layers, setLayers] = useState(0);
   const counter = useRef(0), timer = useRef<number | null>(null), held = useRef(false), shown = useRef(false);
@@ -126,6 +133,9 @@ export function UiProvider({ children }: { children?: ReactNode }): ReactElement
     projectSheet,
     openProject: (request = {}) => setProjectSheet({ open: true, folderId: request.folderId ?? null, mode: request.mode ?? 'install', keep: request.keep ?? [] }),
     closeProject: () => setProjectSheet(current => ({ ...current, open: false })),
+    saveSheet,
+    openSave: (request = {}) => setSaveSheet({ open: true, folderId: request.folderId ?? null }),
+    closeSave: () => setSaveSheet(current => ({ ...current, open: false })),
     pickedHarnessId: picked, pickHarness: setPicked,
     replaceWorld: next => {
       harnessStore.loadWorld(next);
@@ -135,7 +145,7 @@ export function UiProvider({ children }: { children?: ReactNode }): ReactElement
       if (route !== null && routeGone(harnessStore.getState(), route)) go({ name: 'harnesses' });
     },
     toast, showToast, hideToast, holdToast, layers, pushLayer,
-  }), [install, start, adopt, projectSheet, picked, toast, showToast, hideToast, holdToast, layers, pushLayer, harnessStore]);
+  }), [install, start, adopt, projectSheet, saveSheet, picked, toast, showToast, hideToast, holdToast, layers, pushLayer, harnessStore]);
   return <Context value={ui}>{children}</Context>;
 }
 

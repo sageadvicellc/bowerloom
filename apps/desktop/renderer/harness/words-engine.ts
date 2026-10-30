@@ -36,6 +36,10 @@ export const ENGINE_WORDS = deepFreeze({
     mergeIt: 'Merge into the harness', mergeText: 'CLAUDE.md text to move', restoreMode: 'Restore mode', recordMode: 'Keep new mode', modes: 'File modes',
     checkYes: 'Yes', checkPartly: 'Partly', checkNo: 'No', checkSave: 'Save', checkSkip: 'Skip',
     modeRestored: 'Mode put back', modeRecorded: 'New mode kept', everyEngine: 'Use for every engine', everyEngineTitle: 'For every engine',
+    saveTitle: 'Edit a folder\'s harness', editFolder: 'Edit from a folder', stepEdit: 'Edit', bodyEdit: 'Edit the harness', reviewSave: 'Review the save',
+    agentSkills: 'Skills each agent uses', skillsHere: 'Skills in this harness', interfacesHere: 'Interfaces it lists', agentsAndSkills: 'Agents and skills',
+    removeSkill: 'Remove', keepSkill: 'Keep', savePoints: 'Save points', goBack: 'Go back', goBackTitle: 'Back to a save point', nowMark: 'Now',
+    saved: 'Saved', savePoint: 'Save point', noAgents: 'No agents', noSkills: 'No skills',
   },
   hint: {
     pickFolder: 'Pick the folder Bowerloom reads.', samplePick: 'Sample folders. Nothing is read or written.', readOnly: 'Bowerloom only reads until you approve.',
@@ -63,6 +67,10 @@ export const ENGINE_WORDS = deepFreeze({
     leftBehindWhy: 'Bowerloom could not remove these. Check them by hand.', keptWhy: 'These changed since, so Bowerloom left them.',
     merged: 'Merged. The harness now holds the CLAUDE.md text.', mergeThen: 'Next, the install uses Accept AGENTS.md.',
     addsPart: 'harness.json gains the instructions part.', noClaudeText: 'Bowerloom cannot show this text. Plan again.',
+    draftNote: 'Your changes stay a draft until you save.', noSavePoints: 'No save point yet. The first save keeps one.',
+    savedNote: 'Saved. Installed files change only when you install.', installNext: 'Install it to write each interface\'s files.',
+    removedMark: 'Removed when you save.', stoppedChange: 'A change to the harness stopped part way here.', linkHint: 'Press an agent\'s circle, then a skill, to link them.',
+    noAgentsHere: 'This harness has no agents to link skills to.', currentPoint: 'The harness is this save point now.', pointKept: 'Save point kept:',
   },
   paragraph: {
     adoptIntro: 'Bowerloom reads the files your interfaces use and proposes a harness. It writes only into .bowerloom, and only after you approve.',
@@ -80,6 +88,8 @@ export const ENGINE_WORDS = deepFreeze({
     modeIntro: 'Only the file mode changed after Bowerloom wrote these files. Put the recorded mode back, or keep the new one.',
     checkAsk: 'Did this do what you wanted?', checkWhy: 'What were you trying to do?', checkThanks: 'Thanks. This stays on this computer.', checkFailed: 'Your answer was not saved.',
     everyEngineIntro: 'Each item reaches only the engines whose files held it. Tick a part to use its items for every engine.',
+    saveIntro: 'Bowerloom changes only this folder\'s .bowerloom harness. You read every file first. Nothing changes until you save.',
+    goBackIntro: 'Go back puts the harness as it was at that save point. Bowerloom keeps the harness as it is now as a save point too.',
   },
 } as const);
 
@@ -191,5 +201,45 @@ export const modeLine = (now: string, recorded: string): string => `Now ${now}. 
 export const modeActionName = (choice: ModeChoice, path: string): string => `${MODE_CHOICE_WORDS[choice]}: ${path}`;
 /** "It goes under the heading From CLAUDE.md." */
 export const headingLine = (heading: string): string => `It goes under the heading ${heading}.`;
+// ---- the save step
+
+/** What to do next after each refusal of the save step, under the refusal's own words. Main's and the packages' codes, each once. */
+export const SAVE_REFUSAL_WORDS: Readonly<Record<string, string>> = Object.freeze({
+  SAVE_NO_DEFINITION: 'Make a harness first with New harness from a folder.',
+  SAVE_SOURCE_MISSING: 'Choose another folder, or check that its harness loads.',
+  SAVE_USAGE: 'Close the sheet and open it again.',
+  SAVE_STALE: 'The harness changed since. Review the save again.',
+  SAVE_DEFINITION_INVALID: 'Fix the files listed, then review the save again.',
+  SAVE_SECRET_FOUND: 'Use a ${NAME} reference in place of the value.',
+  SAVE_RECOVERY_REQUIRED: 'Finish the stopped change first, then save.',
+  SAVE_PARTIAL: 'Finish the stopped change. It puts the files back.',
+  SAVE_PATH_UNSAFE: 'Check the files listed by hand, then try again.',
+  SAVE_TOO_LARGE: 'Make the harness smaller, then try again.',
+  SAVE_STATE_UNSAFE: 'Bowerloom\'s private folder is not safe. Check who can write it.',
+  SAVE_ABORTED: 'Nothing more changed. Save again when you are ready.',
+  SAVE_RECOVER_NOTHING: 'Nothing stopped here. You can save now.',
+  SAVE_FINISH_BLOCKED: 'Take the stopped save back, then save again.',
+  EDIT_BAD_EDIT: 'Close the sheet and open it again.',
+  EDIT_UNSAFE_ID: 'Close the sheet and open it again.',
+  EDIT_UNKNOWN_ID: 'The harness changed since. Choose the folder again.',
+  EDIT_DUPLICATE_ID: 'This harness holds that skill already.',
+  EDIT_TOO_LARGE: 'Make the change smaller, then try again.',
+  EDIT_SECRET_FOUND: 'Use a ${NAME} reference in place of the value.',
+  EDIT_INVALID: 'The harness would not load. Clear the last change.',
+  VERSION_USAGE: 'Close the sheet and open it again.',
+  VERSION_UNKNOWN: 'That save point is gone. Pick another one.',
+  VERSION_CORRUPT: 'The save point record is damaged. Nothing was changed.',
+  VERSION_TOO_LARGE: 'This harness is too large to keep a save point.',
+});
+const plain = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
+/** "Save 3 files". */
+export const saveFilesWords = (n: number): string => `Save ${plain(n, 'file', 'files')}`;
+/** "Go back to v2". */
+export const goBackWords = (id: string): string => `Go back to ${id}`;
+/** "2 changes, not saved yet." */
+export const draftWords = (n: number): string => (n === 0 ? 'No change yet.' : `${plain(n, 'change', 'changes')}, not saved yet.`);
+/** "2026-10-30 12:00 UTC, 3 files": when a save point was kept, and how many files it holds. */
+export const savePointLine = (created: string, files: number): string => `${created.slice(0, 10)} ${created.slice(11, 16)} UTC, ${plain(files, 'file', 'files')}`;
+
 /** "Claude Code, version 2.1.310, model sonnet". */
 export const engineDetails = (name: string, version: string | null, model: string | null): string => [name, version === null ? null : `version ${version}`, model === null ? null : `model ${model}`].filter(Boolean).join(', ');

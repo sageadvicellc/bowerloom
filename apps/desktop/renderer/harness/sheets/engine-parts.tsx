@@ -16,20 +16,24 @@ import './engine.css';
 const W = ENGINE_WORDS;
 
 /** What a folder card says under the name, and whether the person can pick it, for the sheet that asks. */
-export function folderLine(folder: FolderInfo, sheet: 'make' | 'install'): { words: string; off: boolean } {
+export function folderLine(folder: FolderInfo, sheet: 'make' | 'install' | 'save'): { words: string; off: boolean } {
   if (sheet === 'make') {
-    if (folder.unfinished.adoption) return { words: W.hint.stoppedHarness, off: false };
+    // A stopped adoption, Merge or save is settled here, by the recovery of the stopped harness.
+    if (folder.unfinished.adoption) return { words: W.hint.stoppedChange, off: false };
     return folder.hasDefinition ? { words: W.hint.holdsHarness, off: true } : { words: W.hint.noHarness, off: false };
   }
   if (!folder.hasDefinition) return { words: W.hint.noHarness, off: true };
+  // The save sheet can be picked with a stopped change: the save is refused with words, and offers the recovery.
+  if (sheet === 'save' && folder.unfinished.adoption) return { words: W.hint.stoppedChange, off: false };
   if (folder.problem !== null) return { words: folder.problem, off: true };
+  if (sheet === 'save') return { words: folder.engines.length === 0 ? W.hint.noEngines : engineList(folder.engines.map(e => ENGINE_NAMES[e])), off: false };
   if (folder.unfinished.projection) return { words: W.hint.stopped, off: false };
   if (folder.projected) return { words: W.hint.installedBefore, off: false };
   return { words: folder.engines.length === 0 ? W.hint.noEngines : engineList(folder.engines.map(e => (isPreviewEngine(e) ? `${ENGINE_NAMES[e]} (preview)` : ENGINE_NAMES[e]))), off: false };
 }
 
 export interface FolderStepProps {
-  sheet: 'make' | 'install';
+  sheet: 'make' | 'install' | 'save';
   folders: readonly FolderInfo[];
   picked: string | null;
   sample: boolean;
@@ -50,7 +54,7 @@ export function FolderStep({ sheet, folders, picked, sample, noBridge, busy, int
   const why = useId();
   return (
     <>
-      <p className="hxi-intro" tabIndex={-1} ref={introRef}>{sheet === 'make' ? W.paragraph.adoptIntro : W.paragraph.installIntro}</p>
+      <p className="hxi-intro" tabIndex={-1} ref={introRef}>{sheet === 'make' ? W.paragraph.adoptIntro : sheet === 'save' ? W.paragraph.saveIntro : W.paragraph.installIntro}</p>
       {/* With a refusal and no folders, the refusal says what happened; "No folder yet" would say the list is empty when it could not be read (U11). */}
       {folders.length === 0 && children !== undefined && children !== null && !noBridge ? null : <p className="hxi-intro">{noBridge ? W.hint.noBridge : sample ? W.hint.samplePick : folders.length === 0 ? W.hint.noFolders : W.hint.pickFolder}</p>}
       {folders.length === 0 ? null : (

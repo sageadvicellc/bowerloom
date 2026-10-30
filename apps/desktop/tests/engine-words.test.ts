@@ -7,7 +7,11 @@ import {
   engineList, hiddenWords, partName, readLine, removeFilesWords, removedWords, tickedWords, waitingWords, writeFilesWords, wroteAdoption, wroteInstall,
   acknowledgeName, approveItemName, engineDetails, ignoredWords, recoveryKindWords, stillWaiting, writesIntoLine,
   MODE_CHOICE_WORDS, RECOVERY_ACTION_WORDS, headingLine, modeActionName, modeLine,
+  SAVE_REFUSAL_WORDS, draftWords, goBackWords, saveFilesWords, savePointLine,
 } from '../renderer/harness/words-engine.js';
+import { SAVE_REFUSAL_CODES } from '../../../packages/adoption/src/index.js';
+import { VERSION_REFUSAL_CODES } from '../../../packages/project-sync/src/index.js';
+import { SAVE_MAIN_WORDS } from '../shared/engine/types.js';
 
 test('the table is frozen; a label has at most 5 words, a hint 12, a paragraph 25, and none holds a banned word', () => {
   assert.equal(Object.isFrozen(ENGINE_WORDS.label), true);
@@ -59,4 +63,20 @@ test('step 5: Merge is offered in words, never "not built"; a mode line names it
   for (const text of [modeLine('0700', '0644'), modeActionName('restoreMode', 'a/b.md'), headingLine('From CLAUDE.md'), ...Object.values(MODE_CHOICE_WORDS), ...Object.values(RECOVERY_ACTION_WORDS)]) {
     assert.equal(bannedHere(text), null, text); assert.ok(countWords(text) <= LIMITS.hint, text);
   }
+});
+
+test('save step: every new refusal code has words for what to do next, inside the hint limit and free of banned words', () => {
+  const edit = ['EDIT_BAD_EDIT', 'EDIT_UNSAFE_ID', 'EDIT_UNKNOWN_ID', 'EDIT_DUPLICATE_ID', 'EDIT_TOO_LARGE', 'EDIT_SECRET_FOUND', 'EDIT_INVALID'];
+  const codes: string[] = [...SAVE_REFUSAL_CODES, ...VERSION_REFUSAL_CODES, ...edit, ...Object.keys(SAVE_MAIN_WORDS)];
+  assert.deepEqual(codes.filter(c => SAVE_REFUSAL_WORDS[c] === undefined), [], 'every code has words');
+  assert.deepEqual(Object.keys(SAVE_REFUSAL_WORDS).filter(c => !codes.includes(c)), [], 'no words for a code that does not exist');
+  for (const [code, text] of Object.entries(SAVE_REFUSAL_WORDS)) {
+    assert.ok(countWords(text) <= LIMITS.hint, `${code}: ${text}`);
+    assert.equal(bannedHere(text), null, `${code}: ${text}`);
+  }
+  assert.equal(saveFilesWords(1), 'Save 1 file'); assert.equal(saveFilesWords(3), 'Save 3 files');
+  assert.equal(goBackWords('v2'), 'Go back to v2');
+  assert.equal(draftWords(0), 'No change yet.'); assert.equal(draftWords(2), '2 changes, not saved yet.');
+  assert.equal(savePointLine('2026-10-30T12:00:00Z', 3), '2026-10-30 12:00 UTC, 3 files');
+  for (const text of [saveFilesWords(2), goBackWords('v12'), draftWords(1), savePointLine('2026-10-30T12:00:00Z', 1)]) { assert.equal(bannedHere(text), null, text); assert.ok(countWords(text) <= LIMITS.hint, text); }
 });

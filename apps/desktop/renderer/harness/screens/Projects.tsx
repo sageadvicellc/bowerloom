@@ -143,6 +143,7 @@ export function Projects({ id }: { id: string | null }): ReactElement {
       tools={<>
         <HButton icon="folder" data-open-adopt="" onClick={() => ui.openAdopt()}>{ENGINE_WORDS.label.fromFolder}</HButton>
         <HButton icon="harness" data-open-project="" onClick={() => ui.openProject()}>{ENGINE_WORDS.label.installFolder}</HButton>
+        <HButton icon="save-clock" data-open-save="" onClick={() => ui.openSave()}>{ENGINE_WORDS.label.editFolder}</HButton>
         <HIconButton icon="plus" label={FLOW.label.addFolder} tip={FLOW.hint.notInPreview} side="below-end" aria-disabled="true" onClick={e => { e.preventDefault(); ui.showToast(FLOW.hint.notInPreview); }} />
       </>}
       details={selected === undefined ? undefined : <Details state={state} project={selected} />}>

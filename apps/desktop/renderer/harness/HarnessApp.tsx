@@ -37,6 +37,7 @@ import { InstallSheet } from './sheets/InstallSheet.js';
 import { StartSheet } from './sheets/StartSheet.js';
 import { AdoptSheet } from './sheets/AdoptSheet.js';
 import { ProjectSheet } from './sheets/ProjectSheet.js';
+import { SaveSheet } from './sheets/SaveSheet.js';
 import { EngineProvider } from './engine.js';
 import { createSampleEngine } from '../../shared/engine/sample.js';
 import { SAMPLE_PREVIEW_ATTRIBUTE } from '../../shared/engine/sample-switch.js';
@@ -74,6 +75,7 @@ function Overlays(): ReactElement {
       <StartSheet open={ui.start.open} harnessId={ui.start.harnessId} projectId={ui.start.projectId} onClose={ui.closeStart} />
       <AdoptSheet open={ui.adopt.open} folderId={ui.adopt.folderId} onClose={ui.closeAdopt} />
       <ProjectSheet open={ui.projectSheet.open} folderId={ui.projectSheet.folderId} mode={ui.projectSheet.mode} keep={ui.projectSheet.keep} onClose={ui.closeProject} />
+      <SaveSheet open={ui.saveSheet.open} folderId={ui.saveSheet.folderId} onClose={ui.closeSave} />
       <Toast />
     </>
   );
