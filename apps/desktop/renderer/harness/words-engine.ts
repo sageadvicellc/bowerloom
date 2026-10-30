@@ -34,6 +34,7 @@ export const ENGINE_WORDS = deepFreeze({
     stepResult: 'Done', bodyFolder: 'Pick a folder', bodyReview: 'Review the plan', bodyConfirm: 'Confirm each one', bodyResult: 'What Bowerloom did', bodyInterfaces: 'Pick the interfaces',
     writeFiles: 'Write files', undoneFiles: 'Taken back', engineFound: 'Found here', engineNamed: 'Named, not found', shape: 'Read as',
     mergeIt: 'Merge into the harness', mergeText: 'CLAUDE.md text to move', restoreMode: 'Restore mode', recordMode: 'Keep new mode', modes: 'File modes',
+    checkYes: 'Yes', checkPartly: 'Partly', checkNo: 'No', checkSave: 'Save', checkSkip: 'Skip',
     modeRestored: 'Mode put back', modeRecorded: 'New mode kept', everyEngine: 'Use for every engine', everyEngineTitle: 'For every engine',
   },
   hint: {
@@ -76,6 +77,7 @@ export const ENGINE_WORDS = deepFreeze({
     notReady: 'Not ready: Bowerloom\'s plan is not ready though nothing waits on you. Plan again to check.',
     mergeIntro: 'Merge adds the text of CLAUDE.md to the harness instructions, under its own heading. CLAUDE.md itself does not change yet.',
     modeIntro: 'Only the file mode changed after Bowerloom wrote these files. Put the recorded mode back, or keep the new one.',
+    checkAsk: 'Did this do what you wanted?', checkWhy: 'What were you trying to do?', checkThanks: 'Thanks. This stays on this computer.',
     everyEngineIntro: 'Each item reaches only the engines whose files held it. Tick a part to use its items for every engine.',
   },
 } as const);
