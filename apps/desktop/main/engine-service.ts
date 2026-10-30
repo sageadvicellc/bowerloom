@@ -332,8 +332,17 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
   const saveIsStopped = (f: Folder): boolean => { try { return saveStopped(f.adoptState); } catch { return true; } };
   /** Adoption and Merge wait while a save is stopped: they would run on a half-saved definition. */
   const whileSaveStopped = (f: Folder): void => refuseWhileSaveStopped(f.adoptState);
-  /** Install, removal, and a tick wait while an adoption, a Merge or a save is stopped: they would run on a half-written, half-merged or half-saved definition. */
-  const whileStopped = (f: Folder): void => { refuseWhileStopped(f.adoptState); whileSaveStopped(f); };
+  /**
+   * Install, removal, a tick and a save wait while an adoption, a Merge or a save is stopped: they would run on a half-written, half-merged or half-saved
+   * definition. The package's own check covers all three, the same check the command line runs; a stopped save is told in the save step's own words, which
+   * do not send the person to the app they are in.
+   */
+  const whileStopped = (f: Folder): void => {
+    try { refuseWhileStopped(f.adoptState); } catch (error) {
+      if ((error as { code?: unknown } | null)?.code === 'SAVE_RECOVERY_REQUIRED') whileSaveStopped(f);
+      throw error;
+    }
+  };
   /** Which stopped run the recovery of a stopped harness settles: an adoption first, as the packages refuse in that order, then a Merge, then a save. */
   function stoppedKind(f: Folder): 'adoption' | 'merge' | 'save' {
     let adoption: boolean;

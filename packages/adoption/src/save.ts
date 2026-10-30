@@ -31,11 +31,11 @@ import {
 } from '../../project-sync/src/portable-files.js';
 import type { FileState } from '../../project-sync/src/portable-files.js';
 import { checkPaths, stateExists } from '../../project-sync/src/portable-state.js';
-import { adoptionStopped } from './journal.js';
+import { SAVE_JOURNAL, adoptionStopped, saveStopped } from './journal.js';
 import { mergeStopped } from './merge.js';
 
 export const SAVE_PLAN_FORMAT = 'bowerloom/definition-save-plan/v1beta1' as const;
-export const SAVE_JOURNAL = 'save-pending.json';
+export { SAVE_JOURNAL, saveStopped };
 export const SAVE_JOURNAL_FORMAT = 'bowerloom/definition-save-pending/v1beta1' as const;
 export const SAVE_RECOVERY_FORMAT = 'bowerloom/definition-save-recovery-plan/v1beta1' as const;
 /** The bytes a save may replace and write together: the journal holds both. */
@@ -147,10 +147,6 @@ const inDef = (rel: string): string => rel.startsWith(`${DEF}/`) ? rel.slice(DEF
 
 // ---- stopped runs ------------------------------------------------------------------------------------------------------
 
-/** True when a save stopped part way: its journal file is in the adoption state folder, whether it can be read or not. */
-export function saveStopped(stateDir: string): boolean {
-  try { fs.lstatSync(join(stateDir, SAVE_JOURNAL)); return true; } catch (e) { return (e as NodeJS.ErrnoException).code !== 'ENOENT'; }
-}
 /** Refuses SAVE_RECOVERY_REQUIRED while a save is stopped. An install, a removal, an adoption, or a merge must not run on a half-saved definition. */
 export function refuseWhileSaveStopped(stateDir: string): void {
   if (saveStopped(stateDir)) refuse('SAVE_RECOVERY_REQUIRED');
