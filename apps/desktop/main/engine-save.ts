@@ -8,7 +8,7 @@
  *    the first save (and before any save when the harness changed since the last save point), and one after each save and each go-back.
  * Nothing here talks to the window: engine-service.ts calls these, inside its gate.
  */
-import { lstatSync } from 'node:fs';
+import { lstatSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import { INCOMPLETE_RULES, editDefinition, loadDefinition, loadDefinitionFiles, scanSecrets } from '../../../packages/harness-definition/src/index.js';
@@ -178,9 +178,20 @@ export { codeOf as saveCodeOf };
  * left to finish, and the harness loads now at the save's target revision (`revisionNow`). The recovery then finishes it, which changes no file and only
  * clears the journal, rather than taking the save back. Without the last check a file outside the save, changed by hand since, would make `finish`
  * refuse every time, and the person could not recover at all; such a save is taken back, as before.
+ *
+ * `finish` also removes each folder the save's deletes emptied (`emptied`), and refuses when one is there and is not an empty plain folder: a folder put
+ * back with only a `.DS_Store` in it, which the loader skips. So each such folder must be absent, or a plain folder with no entry at all; anything else,
+ * or a folder that cannot be read, takes the save back. `projectDir` is the folder of the harness.
  */
-export function saveDone(plan: Pick<SaveRecoveryPlan, 'journal' | 'kept' | 'finish' | 'targetRevision'>, revisionNow: string | null): boolean {
-  return plan.journal === 'ok' && plan.kept.length === 0 && plan.finish.length === 0 && plan.targetRevision !== null && plan.targetRevision === revisionNow;
+export function saveDone(plan: Pick<SaveRecoveryPlan, 'journal' | 'kept' | 'finish' | 'targetRevision' | 'emptied'>, revisionNow: string | null, projectDir: string): boolean {
+  if (plan.journal !== 'ok' || plan.kept.length !== 0 || plan.finish.length !== 0 || plan.targetRevision === null || plan.targetRevision !== revisionNow) return false;
+  return plan.emptied.every(rel => {
+    const abs = join(projectDir, '.bowerloom', rel);
+    try {
+      const st = lstatSync(abs);
+      return !st.isSymbolicLink() && st.isDirectory() && readdirSync(abs).length === 0;
+    } catch (e) { return (e as NodeJS.ErrnoException).code === 'ENOENT'; }
+  });
 }
 
 /** The save points of a folder, newest first, each with whether the harness is that save point now. */

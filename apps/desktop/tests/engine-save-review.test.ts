@@ -10,7 +10,7 @@ import type { EngineService } from '../main/engine-service.js';
 import type { Ask } from '../main/engine-consent.js';
 import { ASK } from '../main/engine-consent.js';
 import { afterSaveWarnings, currentDefinition, keepBefore, keepable, targetOf, versionViews } from '../main/engine-save.js';
-import { applySave, applySaveWith, planSave as packagePlanSave } from '../../../packages/adoption/src/save.js';
+import { applySave, applySaveWith, planSave as packagePlanSave, planSaveRecovery, runSaveRecovery } from '../../../packages/adoption/src/save.js';
 import { loadDefinition } from '../../../packages/harness-definition/src/index.js';
 import { harnessStateDirs } from '../../../packages/project-sync/src/harness-state.js';
 import type { Answer, FolderInfo, SaveEdit } from '../shared/engine/types.js';
@@ -347,9 +347,8 @@ const readDef = (dir: string, rel: string): string => readFileSync(join(dir, '.b
  * Saves through the package so that the journal cannot be removed at the end, as a full disk or a changed permission would: the save finishes, every file
  * is the target, and the journal stays (`journalLeft`). No save point is kept for it, as when the "Saved" save point fails too.
  */
-async function finishASaveAndLeaveItsJournal(s: Setup, dir: string): Promise<void> {
+async function finishASaveAndLeaveItsJournal(s: Setup, dir: string, target = EVERY_SOURCE(dir)): Promise<void> {
   const dirs = harnessStateDirs(stateRootOf(s.home), dir);
-  const target = EVERY_SOURCE(dir);
   const io = { projectDir: dir, stateDir: dirs.adoption };
   try {
     const r = await applySaveWith(io, packagePlanSave(io, target).revision, target, new AbortController().signal, { afterWrite: () => { chmodSync(dirs.adoption, 0o500); } });
@@ -434,6 +433,77 @@ test('the warning of a left journal says the save stays when the note is cleared
   assert.match(journal!, /Finish a stopped harness/);
   assert.match(journal!, /the save stays, and Bowerloom clears its note/);
   assert.doesNotMatch(journal!, /takes this save back/);
+});
+
+test('the mode of a save recovery is part of the plan shown: when a file outside the save changes after the plan, the run is refused as not the shown plan, and nothing changes', async t => {
+  const s = setup(t);
+  const dir = teamFolder(s.home);
+  const f = await choose(s, dir);
+  await finishASaveAndLeaveItsJournal(s, dir);
+  const journal = join(harnessStateDirs(stateRootOf(s.home), dir).adoption, 'save-pending.json');
+  const agents = join(dir, '.bowerloom/instructions/AGENTS.md'), original = readFileSync(agents, 'utf8');
+
+  // Shown: keep the finished save. Then a file outside the save changes, so the same revision would now mean undo.
+  const keep = value(await s.service.planAdoptionRecovery(f.id));
+  assert.equal(keep.done, true);
+  writeFileSync(agents, '# Team\n\nUse pnpm.\n');
+  const changed = filesOf(dir), asksBefore = s.asks.length;
+  assert.equal(refusal(await s.service.runAdoptionRecovery(f.id, keep.revision)).code, 'NOT_THE_PLAN_SHOWN');
+  assert.equal(s.asks.length, asksBefore, 'no dialog for a plan that was not shown');
+  assert.deepEqual(filesOf(dir), changed, 'nothing was undone');
+  assert.match(readDef(dir, 'agents/reader.md'), /Read every source\./);
+  assert.ok(existsSync(journal));
+
+  // The other way round: shown as undo, then the file goes back, so the same revision would now mean keep.
+  const undo = value(await s.service.planAdoptionRecovery(f.id));
+  assert.equal(undo.done, false);
+  assert.equal(undo.revision, keep.revision, 'the package revision alone cannot tell the two modes apart');
+  writeFileSync(agents, original);
+  const back = filesOf(dir);
+  assert.equal(refusal(await s.service.runAdoptionRecovery(f.id, undo.revision)).code, 'NOT_THE_PLAN_SHOWN');
+  assert.deepEqual(filesOf(dir), back);
+  assert.ok(existsSync(journal));
+
+  // A plan shown again runs in its own mode.
+  const again = value(await s.service.planAdoptionRecovery(f.id));
+  assert.equal(again.done, true);
+  value(await s.service.runAdoptionRecovery(f.id, again.revision));
+  assert.deepEqual(filesOf(dir), back);
+  assert.equal(existsSync(journal), false);
+});
+
+test('a finished save whose emptied folder came back with a .DS_Store is taken back, so the recovery never refuses for good, and no journal is left', async t => {
+  const s = setup(t);
+  const dir = teamFolder(s.home);
+  put(dir, '.bowerloom/skills/outline/references/notes.md', 'Notes.\n');
+  const before = filesOf(dir);
+  const f = await choose(s, dir);
+  // The save deletes the one reference file, which empties `references`; the save removes that folder too.
+  const loaded = loadDefinition(join(dir, '.bowerloom'));
+  assert.ok(loaded.ok);
+  await finishASaveAndLeaveItsJournal(s, dir, loaded.definition.files.filter(file => file.path !== 'skills/outline/references/notes.md'));
+  assert.equal(existsSync(join(dir, '.bowerloom/skills/outline/references')), false);
+  // The Finder puts the folder back with only its metadata in it. The harness still loads at the save's target, as the loader skips `.DS_Store`.
+  mkdirSync(join(dir, '.bowerloom/skills/outline/references'));
+  writeFileSync(join(dir, '.bowerloom/skills/outline/references/.DS_Store'), 'x');
+  const now = loadDefinition(join(dir, '.bowerloom'));
+  assert.ok(now.ok, 'the harness loads');
+  // Finishing refuses here, and changes nothing: it must remove the emptied folder, which is no longer empty.
+  const io = { projectDir: dir, stateDir: harnessStateDirs(stateRootOf(s.home), dir).adoption };
+  await assert.rejects(runSaveRecovery(io, planSaveRecovery(io).revision, 'finish'), (e: { code?: string }) => e.code === 'SAVE_STALE');
+  const plan = value(await s.service.planAdoptionRecovery(f.id));
+  assert.equal(plan.done, false, 'finishing would refuse: the folder it must remove is not empty');
+  assert.deepEqual(plan.remove, []);
+  assert.deepEqual(plan.restore, ['.bowerloom/skills/outline/references/notes.md']);
+  const r = value(await s.service.runAdoptionRecovery(f.id, plan.revision));
+  assert.deepEqual(r.restored, ['.bowerloom/skills/outline/references/notes.md']);
+  // Every file is as it was before the save; the only extra is the metadata file the Finder added.
+  const after = filesOf(dir);
+  assert.ok(after['.bowerloom/skills/outline/references/.DS_Store']);
+  delete after['.bowerloom/skills/outline/references/.DS_Store'];
+  assert.deepEqual(after, before);
+  assert.equal(existsSync(join(harnessStateDirs(stateRootOf(s.home), dir).adoption, 'save-pending.json')), false, 'no journal is left');
+  assert.equal((await s.service.folders()).find(x => x.id === f.id)!.unfinished.adoption, false);
 });
 
 // ---- verification review, finding 2: an index the state layer refuses can be set aside ---------------------------------------

@@ -630,14 +630,15 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
         if (kind === 'save') {
           const plan = planSaveRecovery(io);
           const inDef = (p: string): string => f.scrub(`.bowerloom/${p}`);
-          // A finished save whose journal was left is kept: the plan shows no file to take back, and says the save stays.
-          const done = saveDone(plan, revisionNow(f));
+          // A finished save whose journal was left is kept: the plan shows no file to take back, and says the save stays. The mode is one of the plan's
+          // choices, so the write runs only in the mode shown: the package revision does not cover the files outside the journal that decide it.
+          const done = saveDone(plan, revisionNow(f), f.dir);
           const view: AdoptRecoveryView = {
             kind: 'save', journal: plan.journal, done, check: plan.check.map(inDef),
             remove: done ? [] : plan.undo.filter(u => u.action === 'delete').map(u => inDef(u.path)), restore: done ? [] : plan.undo.filter(u => u.action !== 'delete').map(u => inDef(u.path)),
             kept: plan.kept.map(k => ({ path: inDef(k.path), reason: k.reason })), dirs: done ? [] : plan.dirs.map(inDef), revision: plan.revision,
           };
-          return { value: view, revision: plan.revision, choices: null, ask: ASK.saveRecovery(f.label, done ? 0 : plan.undo.length, plan.revision, done) };
+          return { value: view, revision: plan.revision, choices: { done }, ask: ASK.saveRecovery(f.label, done ? 0 : plan.undo.length, plan.revision, done) };
         }
         if (kind === 'merge') {
           const plan = planInstructionMergeRecovery(io);
@@ -649,7 +650,11 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     }),
     runAdoptionRecovery: (id, revision) => serial(async () => {
       const f = folderOf(id), rev = revisionArg(revision), io = { projectDir: f.dir, stateDir: f.adoptState };
-      return written(f, 'adoption-recovery', rev, null, () => scenarioOf(f, { scenario: 'S5', step: 'recover' }, async () => {
+      // A save recovery names its mode as the plan did. When the mode now differs from the one shown, as when a file outside the journal changed since,
+      // the write is not the plan shown, and nothing runs. Any other recovery has no choices. A read that fails names none, so it never matches a save plan.
+      let mode: { done: boolean } | null = null;
+      try { if (stoppedKind(f) === 'save') mode = { done: saveDone(planSaveRecovery(io), revisionNow(f), f.dir) }; } catch { mode = null; }
+      return written(f, 'adoption-recovery', rev, mode, () => scenarioOf(f, { scenario: 'S5', step: 'recover' }, async () => {
         // The kind is read again here. When the stopped run changed since the plan, the package's own revision check refuses the write.
         const kind = stoppedKind(f);
         // Each result says whether the harness loads after it (`revision`, null when not), and which files a person checks by hand: every file of a
@@ -658,10 +663,10 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
         if (kind === 'save') {
           // A stopped save is taken back: each file goes back to what the save replaced. The plan read again names which were deleted and which restored.
           // A save that finished and only left its journal is kept instead: `finish` runs no step, checks the harness is the save's target, and clears
-          // the journal. Taking it back would lose the save for good when its save point was not kept either. The package's revision check refuses
-          // the write when the plan changed since the one shown, so the mode always matches the plan the person approved.
+          // the journal. Taking it back would lose the save for good when its save point was not kept either. The mode is the one the shown plan
+          // named, matched by `written` above; the package's revision check refuses the write when the journal or its files changed since.
           const plan = planSaveRecovery(io);
-          const r = await runSaveRecovery(io, rev, saveDone(plan, revisionNow(f)) ? 'finish' : 'undo');
+          const r = await runSaveRecovery(io, rev, mode?.done === true ? 'finish' : 'undo');
           const inDef = (p: string): string => f.scrub(`.bowerloom/${p}`);
           const deleted = new Set(plan.undo.filter(u => u.action === 'delete').map(u => u.path));
           plans.clear(f.id, 'projection'); plans.clear(f.id, 'save'); plans.clear(f.id, 'restore');
