@@ -13,6 +13,27 @@ export function isEngineId(value: unknown): value is EngineId {
   return typeof value === 'string' && (ENGINE_IDS as readonly string[]).includes(value);
 }
 
+/**
+ * Bowerloom 0.8.0-beta.1 supports Claude Code and Codex. The other three engines stay in the code as preview engines:
+ * install to them is refused unless the preview switch is on. Adoption still reads their files, and removal still removes
+ * the files an earlier flagged install wrote. This is the one list; every other package takes it from here.
+ */
+export const PREVIEW_ENGINE_IDS = Object.freeze(['opencode', 'pi', 'deepseek-harness'] as const satisfies readonly EngineId[]);
+export type PreviewEngineId = (typeof PREVIEW_ENGINE_IDS)[number];
+export function isPreviewEngine(value: unknown): value is PreviewEngineId {
+  return typeof value === 'string' && (PREVIEW_ENGINE_IDS as readonly string[]).includes(value);
+}
+/** The engines beta.1 supports, in the order of `ENGINE_IDS`. */
+export const SUPPORTED_ENGINE_IDS = Object.freeze(ENGINE_IDS.filter(id => !isPreviewEngine(id)) as Exclude<EngineId, PreviewEngineId>[]);
+export type SupportedEngineId = (typeof SUPPORTED_ENGINE_IDS)[number];
+
+/** The environment variable that turns preview engines on. Only the exact value `1` does. */
+export const PREVIEW_ENGINES_ENV = 'BOWERLOOM_PREVIEW_ENGINES';
+/** True when the given environment turns preview engines on. Anything but the exact text `1` means off. */
+export function previewEnginesAllowed(env: Readonly<Record<string, string | undefined>>): boolean {
+  return Object.hasOwn(env, PREVIEW_ENGINES_ENV) && env[PREVIEW_ENGINES_ENV] === '1';
+}
+
 /** `enforced`: the engine must block the action. `advisory`: the text only asks the model. */
 export const STRENGTHS = Object.freeze(['enforced', 'advisory'] as const);
 export type Strength = (typeof STRENGTHS)[number];

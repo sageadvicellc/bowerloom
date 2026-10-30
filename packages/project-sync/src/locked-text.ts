@@ -260,7 +260,7 @@ export const tomlLines = (entries: readonly (readonly [string, Out])[]): string 
 // ---- TOML: scan -----------------------------------------------------------------------------------------------------------
 
 // The scanner is the strict TOML 1.0 parser of toml-scan.ts (ruling D1).
-import { scanToml, type TomlDefined } from './toml-scan.js';
+import { holdsOpaque, readToml, scanToml, type TomlDefined } from './toml-scan.js';
 export { scanToml, validScalar } from './toml-scan.js';
 export type { TomlDefined } from './toml-scan.js';
 
@@ -293,150 +293,20 @@ export interface TomlTable { readonly path: readonly string[]; readonly entries:
 // ---- TOML: read one table, for a takeover ---------------------------------------------------------------------------------
 
 /**
- * A reader for the one line of a simple TOML key or value. It reads the forms Bowerloom writes, and a little more: basic
- * and literal strings, decimal integers, floats that are not whole numbers, booleans, and one-line arrays and inline
- * tables of those. Anything else (a multi-line value, a date, a whole-number float, a hexadecimal number, a dotted key)
- * makes it fail, so the table is not taken over and the conflict stands.
+ * True when the person's file holds, at `t.path`, a table that means what Bowerloom would write there: the same keys
+ * with the same values, whatever the layout. The scanner reads the whole file, so a header with sub-tables, dotted keys,
+ * an inline table, another key order, a multi-line array, a trailing comma, and a literal string all read the same. A
+ * value the reader does not compare (a multi-line string, a whole-number float, a hexadecimal number, a date, an array
+ * of tables) makes it false, so the conflict stands.
  */
-class LineReader {
-  i = 0;
-  constructor(readonly s: string) {}
-  fail(): never { throw new SyntaxError('not a simple TOML line'); }
-  ws(): void { while (this.s[this.i] === ' ' || this.s[this.i] === '\t') this.i++; }
-  basic(): string {
-    this.i++;
-    let out = '';
-    for (;;) {
-      const c = this.s[this.i];
-      if (c === undefined) this.fail();
-      if (c === '"') { this.i++; return out; }
-      if (c === '\\') {
-        const e = this.s[this.i + 1] ?? '';
-        const simple: Record<string, string> = { b: '\b', t: '\t', n: '\n', f: '\f', r: '\r', '"': '"', '\\': '\\' };
-        if (simple[e] !== undefined) { out += simple[e]; this.i += 2; continue; }
-        const width = e === 'u' ? 4 : e === 'U' ? 8 : 0, hex = this.s.slice(this.i + 2, this.i + 2 + width);
-        if (width === 0 || !new RegExp(`^[0-9A-Fa-f]{${width}}$`).test(hex)) this.fail();
-        const cp = parseInt(hex, 16);
-        if (cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) this.fail();
-        out += String.fromCodePoint(cp); this.i += 2 + width; continue;
-      }
-      out += c; this.i++;
-    }
+function tomlTakeOver(data: Record<string, unknown>, t: TomlTable): boolean {
+  let at: unknown = data;
+  for (const k of t.path) {
+    if (at === null || typeof at !== 'object' || Array.isArray(at) || !Object.hasOwn(at, k)) return false;
+    at = (at as Record<string, unknown>)[k];
   }
-  literal(): string {
-    const end = this.s.indexOf("'", this.i + 1);
-    if (end < 0) this.fail();
-    const out = this.s.slice(this.i + 1, end);
-    this.i = end + 1;
-    return out;
-  }
-  key(): string {
-    const c = this.s[this.i];
-    if (c === '"') { if (this.s.startsWith('"""', this.i)) this.fail(); return this.basic(); }
-    if (c === "'") { if (this.s.startsWith("'''", this.i)) this.fail(); return this.literal(); }
-    const m = /^[A-Za-z0-9_-]+/.exec(this.s.slice(this.i));
-    if (!m) this.fail();
-    this.i += m![0].length;
-    return m![0];
-  }
-  /** A dotted key path, as a header holds one. */
-  path(): string[] {
-    const out: string[] = [];
-    for (;;) { this.ws(); out.push(this.key()); this.ws(); if (this.s[this.i] !== '.') return out; this.i++; }
-  }
-  value(): unknown {
-    const c = this.s[this.i];
-    if (c === '"' || c === "'") return this.key();
-    if (c === '[') {
-      this.i++;
-      const out: unknown[] = [];
-      for (;;) {
-        this.ws();
-        if (this.s[this.i] === ']') { this.i++; return out; }
-        out.push(this.value()); this.ws();
-        if (this.s[this.i] === ',') { this.i++; continue; }
-        if (this.s[this.i] === ']') { this.i++; return out; }
-        this.fail();
-      }
-    }
-    if (c === '{') {
-      this.i++; this.ws();
-      const out: Record<string, unknown> = {};
-      if (this.s[this.i] === '}') { this.i++; return out; }
-      for (;;) {
-        this.ws();
-        const k = this.key(); this.ws();
-        if (this.s[this.i] !== '=' || Object.hasOwn(out, k)) this.fail();
-        this.i++; this.ws();
-        out[k] = this.value(); this.ws();
-        if (this.s[this.i] === ',') { this.i++; continue; }
-        if (this.s[this.i] === '}') { this.i++; return out; }
-        this.fail();
-      }
-    }
-    const m = /^[^\s,\]}#]+/.exec(this.s.slice(this.i));
-    if (!m) this.fail();
-    const word = m![0];
-    this.i += word.length;
-    if (word === 'true') return true;
-    if (word === 'false') return false;
-    if (/^[+-]?(?:0|[1-9](?:_?[0-9])*)$/.test(word)) { const n = Number(word.replace(/_/g, '')); if (!Number.isSafeInteger(n)) this.fail(); return n; }
-    if (/^[+-]?(?:0|[1-9](?:_?[0-9])*)(?:\.[0-9](?:_?[0-9])*)?(?:[eE][+-]?[0-9](?:_?[0-9])*)?$/.test(word)) {
-      // A whole-number float reads as a float in TOML and would be written as an integer, so it is not the same value.
-      const n = Number(word.replace(/_/g, ''));
-      if (!Number.isFinite(n) || Number.isInteger(n)) this.fail();
-      return n;
-    }
-    return this.fail();
-  }
-  /** The rest of the line: white space and an optional comment. */
-  end(): void { this.ws(); if (this.i < this.s.length && this.s[this.i] !== '#') this.fail(); }
-}
-
-/**
- * The keys and values of the table that one header of `text` defines at `path`, read from that header's own lines, or
- * null when the header is not found exactly once or any of its lines is not one simple `key = value`.
- */
-export function tomlHeaderTable(text: string, path: readonly string[]): Record<string, unknown> | null {
-  const lines = text.split('\n').map(l => (l.endsWith('\r') ? l.slice(0, -1) : l));
-  const headerAt = (line: string): string[] | null => {
-    const r = new LineReader(line);
-    r.ws();
-    if (line[r.i] !== '[' || line[r.i + 1] === '[') return null;
-    r.i++;
-    try { const p = r.path(); if (line[r.i] !== ']') return null; r.i++; r.end(); return p; } catch { return null; }
-  };
-  const found = lines.flatMap((l, n) => { const p = headerAt(l); return p && same(p, path) ? [n] : []; });
-  if (found.length !== 1) return null;
-  const out: Record<string, unknown> = {};
-  try {
-    for (let n = found[0]! + 1; n < lines.length; n++) {
-      const r = new LineReader(lines[n]!);
-      r.ws();
-      if (lines[n]![r.i] === '[') break;
-      if (r.i === lines[n]!.length || lines[n]![r.i] === '#') continue;
-      const k = r.key(); r.ws();
-      if (lines[n]![r.i] !== '=' || Object.hasOwn(out, k)) return null;
-      r.i++; r.ws();
-      out[k] = r.value();
-      r.end();
-    }
-  } catch { return null; }
-  return out;
-}
-
-/**
- * True when the person's table at `path` can be taken over: one header defines it, nothing else in the file defines a
- * key or table under it or a value on its way, and its own lines hold exactly the planned keys with the same values.
- */
-function tomlTakeOver(text: string, d: TomlDefined, t: TomlTable): boolean {
-  const path = t.path, under = (p: readonly string[]): boolean => startsWith(p, path);
-  if (d.headers.filter(p => same(p, path)).length !== 1) return false;
-  if (d.headers.some(p => p.length > path.length && under(p))) return false;
-  if ([...d.arrays, ...d.dotted].some(p => under(p) || startsWith(path, p))) return false;
-  if (d.values.some(p => (under(p) && p.length !== path.length + 1) || (p.length <= path.length && startsWith(path, p)))) return false;
-  const held = tomlHeaderTable(text, path);
-  return held !== null && sameValue(held, plain(new Ordered(t.entries)));
+  if (at === null || typeof at !== 'object' || Array.isArray(at) || holdsOpaque(at)) return false;
+  return sameValue(at, plain(new Ordered(t.entries)));
 }
 
 /**
@@ -449,13 +319,14 @@ export function editToml(base: string | null, root: readonly (readonly [string, 
   // Ruling B20: a person's file with no bytes is refused, as an empty JSON file is.
   if (base === '') return { ok: false, reason: 'invalid' };
   const text = base ?? '';
-  const d = scanToml(text);
-  if (d === null) return { ok: false, reason: 'invalid' };
+  const read = readToml(text);
+  if (read === null) return { ok: false, reason: 'invalid' };
+  const d = read.defined;
   const kept: string[] = [], tables: TomlTable[] = [], tableConflicts: string[] = [];
   for (const t of tablesWanted) {
     const c = tomlTableConflicts(d, t.path);
     if (c.length === 0) tables.push(t);
-    else if (tomlTakeOver(text, d, t)) kept.push(t.path.join('.'));
+    else if (tomlTakeOver(read.data, t)) kept.push(t.path.join('.'));
     else tableConflicts.push(...c);
   }
   const conflicts = [...root.flatMap(([k]) => tomlRootConflicts(d, k)), ...forbid.flatMap(k => tomlRootConflicts(d, k)), ...tableConflicts];
@@ -497,7 +368,7 @@ export function yamlBlock(map: { readonly [key: string]: YamlOut }, indent: numb
   }).join('');
 }
 
-const fmKey = (k: string): string => (/^[A-Za-z][A-Za-z0-9_-]*$/.test(k) ? k : JSON.stringify(k));
+export const fmKey = (k: string): string => (/^[A-Za-z][A-Za-z0-9_-]*$/.test(k) ? k : JSON.stringify(k));
 /**
  * Markdown with YAML frontmatter. Keys are plain, values are JSON. A `PermissionPairs` marker is a nested block mapping,
  * or `{}` when it is empty (ruling B16); any other value, a list of pairs too, is written as data.

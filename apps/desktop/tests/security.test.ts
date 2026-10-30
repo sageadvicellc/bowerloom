@@ -104,11 +104,11 @@ test('the page never builds markup from text: no innerHTML, no eval, no document
   for (const { file, text } of [...sources('renderer'), ...sources('shared')]) assert.doesNotMatch(strip(text), /innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval\(|new Function\(|setAttribute\(\s*['"]on|srcdoc|dangerouslySetInnerHTML/, file);
 });
 
-test('process.env is read in exactly four places (the token state, the settings of the run, the sandbox folder constant, and the state folder of the install sheets), and the token value never leaves its module', () => {
+test('process.env is read in exactly four places (the token state, the settings of the run, the sandbox folder constant, and the state folder and preview switch of the install sheets), and the token value never leaves its module', () => {
   const users = sources('main').filter(({ text }) => /process\.env/.test(strip(text))).map(f => f.file).sort();
   assert.deepEqual(users, ['main/boundary.ts', 'main/controller.ts', 'main/engine-state.ts', 'main/token.ts']);
-  // The install sheets read one variable, XDG_STATE_HOME, and nothing else of the environment.
-  assert.deepEqual([...strip(read('main/engine-state.ts')).matchAll(/process\.env(\.\w+)?/g)].map(m => m[0]), ['process.env.XDG_STATE_HOME']);
+  // The install sheets read two variables and nothing else of the environment: XDG_STATE_HOME, and BOWERLOOM_PREVIEW_ENGINES (beta.1: only the exact value 1 turns preview engines on; only a yes or no leaves the file).
+  assert.deepEqual([...strip(read('main/engine-state.ts')).matchAll(/process\.env(\.\w+)?/g)].map(m => m[0]), ['process.env.XDG_STATE_HOME', 'process.env.BOWERLOOM_PREVIEW_ENGINES']);
   const token = read('main/token.ts');
   assert.match(token, /return GithubToken\.status\(only\)/);
   assert.doesNotMatch(token, /fromEnv|reveal|\.value|console\./);

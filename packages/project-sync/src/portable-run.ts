@@ -34,7 +34,8 @@ import {
   readPending, readReceipt, saveBlob, unlinkRecord, writeRecord,
 } from './portable-state.js';
 import type { Pending, PortableReceipt, Step } from './portable-state.js';
-import { clearRecordedModes, planWithBytes, readRecordedModes, writeRecordedModes } from './portable.js';
+import type { EngineId } from '../../harness-definition/src/index.js';
+import { clearRecordedModes, planWithBytes, readRecordedModes, receiptEngines, writeRecordedModes } from './portable.js';
 import type { PlannedChange, PortableInput, PortablePlan, PortableReport } from './portable.js';
 
 export const PORTABLE_REMOVAL_FORMAT = 'bowerloom/portable-removal-plan/v1beta2' as const;
@@ -57,12 +58,23 @@ export interface PortableHooks {
   readonly afterCreate?: (path: string) => void;
 }
 
+/** What a run says about engines: where it installed, and what it left alone. */
+const previewOf = (plan: PortablePlan) => ({
+  installed: plan.engines.map(e => e.id), skippedPreview: plan.skippedPreview, keptPreview: plan.keptPreview.map(e => e.id), previewNotice: plan.previewNotice,
+});
+
 export interface PortableApplyResult {
   readonly noop: boolean;
   readonly planRevision: string;
   /** The receipt now in force. Null only for a no-op run of a project that has none. */
   readonly receipt: PortableReceipt | null;
   readonly report: PortableReport;
+  /** The engines this run installed to, the preview engines it left out, and the preview engines whose earlier files it left as they are. */
+  readonly installed: readonly EngineId[];
+  readonly skippedPreview: readonly EngineId[];
+  readonly keptPreview: readonly EngineId[];
+  /** The plan's one sentence about those preview engines and the switch, or null. */
+  readonly previewNotice: string | null;
   /** Folders Bowerloom created that it could not remove, with why. */
   readonly leftBehind: readonly LeftBehind[];
 }
@@ -285,7 +297,7 @@ export async function applyPortableWith(input: PortableInput, revision: string, 
     if (plan.revision !== revision) throw syncError('STALE_APPROVAL');
     const { projectDir, stateDir } = plan, ctx: Ctx = { projectDir, stateDir, held, hooks };
     const previous = readReceipt(stateDir, projectDir);
-    if (plan.noop) return { noop: true, planRevision: plan.revision, receipt: previous, report: reportOf(plan), leftBehind: [] };
+    if (plan.noop) return { noop: true, planRevision: plan.revision, receipt: previous, report: reportOf(plan), ...previewOf(plan), leftBehind: [] };
     ensureState(stateDir);
     // A file taken over is not written. Its bytes are saved as its original, which the receipt names, so a later update
     // can restore them and a later plan can read them. The plan just read it under the lock; a change since is drift.
@@ -314,7 +326,7 @@ export async function applyPortableWith(input: PortableInput, revision: string, 
       leftBehind = removeDirs(ctx, plan.createdDirs.filter(d => !files.some(f => f.path.startsWith(d + '/'))));
       const removed = new Set(plan.createdDirs.filter(d => !files.some(f => f.path.startsWith(d + '/')) && !leftBehind.some(l => l.path === d)));
       const body = {
-        format: PORTABLE_RECEIPT_FORMAT, projectDir, definition: plan.definition, engines: plan.engines, files, sources: plan.sources,
+        format: PORTABLE_RECEIPT_FORMAT, projectDir, definition: plan.definition, engines: receiptEngines(plan.engines, plan.keptPreview), files, sources: plan.sources,
         createdDirs: plan.createdDirs.filter(d => !removed.has(d)), approvals: plan.approved, planRevision: plan.revision,
       };
       receipt = { ...body, revision: revisionOf(body) };
@@ -325,7 +337,7 @@ export async function applyPortableWith(input: PortableInput, revision: string, 
       unlinkRecord(stateDir, 'pending.json'); syncDir(stateDir);
       hooks.at?.('after-finish');
     });
-    return { noop: false, planRevision: plan.revision, receipt, report: reportOf(plan), leftBehind };
+    return { noop: false, planRevision: plan.revision, receipt, report: reportOf(plan), ...previewOf(plan), leftBehind };
   });
 }
 

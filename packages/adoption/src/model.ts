@@ -95,6 +95,9 @@ export interface SourceShape {
   readonly claimed?: true;
 }
 
+/** A 0.7 skill adopted under the name of its folder: the name its SKILL.md had, and the name it has now. */
+export interface Translated { readonly from: string; readonly to: string }
+
 interface CandidateBase {
   readonly place: Place;
   /** Private blocks by engine. Only engines of the harness are kept. */
@@ -105,7 +108,7 @@ interface CandidateBase {
 }
 export type Candidate =
   | CandidateBase & { readonly part: 'system-prompt'; readonly id: 'AGENTS.md'; readonly text: string; readonly raw: Uint8Array }
-  | CandidateBase & { readonly part: 'skills'; readonly id: string; readonly skill: SkillCopy; readonly fixed: boolean; readonly source?: SourceShape }
+  | CandidateBase & { readonly part: 'skills'; readonly id: string; readonly skill: SkillCopy; readonly fixed: boolean; readonly translated?: Translated; readonly source?: SourceShape }
   | CandidateBase & { readonly part: 'subagents'; readonly id: string; readonly subagent: SubagentShape; readonly models: Partial<Record<EngineId, string>> }
   | CandidateBase & { readonly part: 'guardrails'; readonly id: string; readonly rule: RuleShape }
   | CandidateBase & { readonly part: 'guardrails'; readonly id: 'sandbox'; readonly sandbox: SandboxShape }
@@ -126,6 +129,8 @@ export interface PlanItem {
   /** Why a person must look at this item before adoption writes it. Empty when nothing needs a look. */
   readonly needsApproval: readonly string[];
   readonly notes: readonly string[];
+  /** For a 0.7 skill whose name differed from its folder: the old and the new name. Apply rewrites the name line. */
+  readonly translated?: Translated;
   /** The 0.7 source recorded in `sources.json`, for a converted managed copy. */
   readonly source?: SourceShape;
   /** For a skill converted from a 0.7 managed copy: the copy and its content hash, recorded in `sources.json`. */
@@ -170,6 +175,8 @@ export interface PlannedFile {
   readonly sha256: string;
   readonly bytes: number;
   readonly mode: number;
+  /** Set for a 0.7 file that apply replaces in place: the hash of the bytes it must still hold. Every other file is created. */
+  readonly replaces?: string;
 }
 
 export interface PlanEngine {
@@ -181,6 +188,21 @@ export interface PlanEngine {
   readonly detected: boolean;
   /** The file shapes read for this engine, each with the engine version whose documented form it is. */
   readonly shapes: readonly { readonly path: string; readonly shape: string; readonly shapeVersion: string | null }[];
+}
+
+/** The parts that take "Use for every engine" (decision D8B), in the order a plan lists them. */
+export const EVERY_ENGINE_PARTS = ['guardrails', 'hooks', 'mcp'] as const;
+export type EveryEnginePart = (typeof EVERY_ENGINE_PARTS)[number];
+
+/** "Use for every engine" for one part (decision D8B). */
+export interface EveryEngine {
+  readonly part: EveryEnginePart;
+  /** True when the input chose it for this part. */
+  readonly chosen: boolean;
+  /** The items of this part whose engine filter the choice removes: the ones it widened when chosen, else the ones it would widen. */
+  readonly widens: number;
+  /** The items of this part with an engine filter that the choice never removes, each with the reason: they differ between engines. */
+  readonly notWidened: readonly { readonly id: string; readonly reason: string }[];
 }
 
 export const ADOPTION_PLAN_FORMAT = 'bowerloom/adoption-plan/v1beta1' as const;
@@ -196,6 +218,8 @@ export interface AdoptionPlan {
   readonly items: readonly PlanItem[];
   readonly conflicts: readonly Conflict[];
   readonly differences: readonly Difference[];
+  /** "Use for every engine" for guardrails, hooks, and MCP servers, in that order (decision D8B). */
+  readonly everyEngine: readonly EveryEngine[];
   readonly unmapped: readonly Unmapped[];
   readonly secrets: readonly SecretLine[];
   readonly managed: readonly ManagedConversion[];

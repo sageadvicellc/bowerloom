@@ -39,6 +39,7 @@ import { AdoptSheet } from './sheets/AdoptSheet.js';
 import { ProjectSheet } from './sheets/ProjectSheet.js';
 import { EngineProvider } from './engine.js';
 import { createSampleEngine } from '../../shared/engine/sample.js';
+import { SAMPLE_PREVIEW_ATTRIBUTE } from '../../shared/engine/sample-switch.js';
 import type { EngineBridge } from '../../shared/engine/types.js';
 import { WORDS } from './words.js';
 
@@ -95,6 +96,6 @@ export function HarnessApp({ store: given, real = null, realMode = real !== null
   const [store] = useState(() => given ?? createHarnessStore({ initial: realMode ? blankRealState(realNow()) : createSampleWorld(realNow()), now: realNow, finishRunning: true }));
   useEffect(() => () => store.dispose(), [store]);
   // The adopt and install sheets: the sample answers in memory and writes nothing; real mode uses the window's engine bridge, or none (the sheets then say so).
-  const [engine] = useState<EngineBridge | null>(() => (givenEngine !== undefined ? givenEngine : realMode ? null : createSampleEngine()));
+  const [engine] = useState<EngineBridge | null>(() => (givenEngine !== undefined ? givenEngine : realMode ? null : createSampleEngine({ previewEngines: document.body.getAttribute(SAMPLE_PREVIEW_ATTRIBUTE) === '1' })));
   return <HarnessProvider store={store}><EngineProvider engine={engine}><UiProvider><Routes bridge={real} realMode={realMode} /></UiProvider></EngineProvider></HarnessProvider>;
 }

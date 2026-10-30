@@ -15,7 +15,7 @@
     "bundle": "node tools/bundle.mjs",
     "dev": "npm run bundle && electron . --sample-data",
     "start": "npm run bundle && electron .",
-    "test": "node tools/bundle.mjs --tests && node --test --test-timeout=120000 .build/tests/*.test.mjs",
+    "test": "node tools/bundle.mjs && node tools/bundle.mjs --tests && node --test --test-timeout=120000 .build/tests/*.test.mjs",
     "screenshots": "npm run bundle && playwright test --config playwright.config.ts",
     "build": "npm run bundle && electron-builder --mac --publish never",
     "sample:make": "node tools/make-sample.mjs",

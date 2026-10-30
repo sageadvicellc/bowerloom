@@ -15,7 +15,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
-  CHECKS, PROBE, appendResult, classify, codexTrustRefusal, commandOf, liveSkip, makeScratch, probeServer, readLog, recorded,
+  CHECKS, CODEX_ROOT_VARIABLE, PROBE, appendResult, classify, codexGate, codexTrustRefusal, commandOf, liveSkip, makeScratch, probeServer, readLog, recorded,
   resultLine, resultsPath, runEngine, sanitize, shapeOf, stubSource, versionOf,
 } from '../../../tools/step5/live/lib.mjs';
 import {
@@ -120,16 +120,17 @@ test('offline: commands come from the environment, versions are never detected, 
   assert.equal(liveSkip('codex', { BOWERLOOM_LIVE_ENGINES: '1' }), 'no command for codex');
 });
 
-test('offline: a Codex check refuses with a clear message until the trust variable is 1', () => {
+test('offline: a Codex check refuses with a clear message until the trust variable is 1 and the root is set', () => {
+  const both = { BOWERLOOM_LIVE_CODEX_TRUSTED: '1', BOWERLOOM_LIVE_CODEX_ROOT: '/fixed/root' };
   for (const id of CHECKS.filter(c => c.codexTrust).map(c => c.id)) {
     assert.match(codexTrustRefusal(id, {}), new RegExp(`Check ${id} refuses to run`));
     assert.match(codexTrustRefusal(id, { BOWERLOOM_LIVE_CODEX_TRUSTED: '0' }), /BOWERLOOM_LIVE_CODEX_TRUSTED=1/);
-    assert.equal(codexTrustRefusal(id, { BOWERLOOM_LIVE_CODEX_TRUSTED: '1' }), null);
+    assert.match(codexTrustRefusal(id, { BOWERLOOM_LIVE_CODEX_TRUSTED: '1' }), new RegExp(`${CODEX_ROOT_VARIABLE}.*codex-trust-setup\\.mjs`));
+    assert.equal(codexTrustRefusal(id, both), null);
+    assert.equal(codexGate(id, both), null);
   }
   assert.deepEqual(CHECKS.filter(c => c.codexTrust).map(c => c.id), ['g4', 'g7', 'g8', 'g9']);
 });
-
-// ---- offline: result lines ----------------------------------------------------------------------------------------
 
 test('offline: a result line holds the check, engine, version, command shape, result, evidence, and a UTC date, and no private path', t => {
   const sc = withScratch(t);
@@ -329,6 +330,7 @@ test('offline: the README has one section per check with command, proof, settled
     assert.match(section, new RegExp(`Turns:\\*\\* ${c.turns}\\b`), `${c.id} turn count`);
     if (c.kind === 'manual') assert.match(section, /Manual/, `${c.id} is marked manual`);
     if (c.codexTrust) assert.match(section, /BOWERLOOM_LIVE_CODEX_TRUSTED=1/, `${c.id} names the trust variable`);
+    if (c.codexTrust) assert.match(section, /BOWERLOOM_LIVE_CODEX_ROOT=/, `${c.id} names the root variable`);
   }
 });
 
@@ -373,13 +375,14 @@ const stopped = (problem, shape) => ({ result: 'inconclusive', observed: problem
 function live(id, engine, title, body, { codex = false } = {}) {
   test(`${id} (live): ${title}`, { skip: liveSkip(engine), timeout: 1_800_000 }, async t => {
     if (codex) {
-      const message = codexTrustRefusal(id);
-      if (message) {
-        appendResult(resultLine({ check: id, engine, version: versionOf(engine), command: 'refused before any turn', result: 'inconclusive', observed: 'refused: Codex trust not confirmed', evidence: message }));
-        assert.fail(message);
+      const gate = codexGate(id);
+      if (gate) {
+        appendResult(resultLine({ check: id, engine, version: versionOf(engine), command: 'refused before any turn', result: 'inconclusive', observed: gate.observed, evidence: gate.message }));
+        assert.fail(gate.message);
       }
     }
-    const sc = makeScratch(`bowerloom-live-${id}`);
+    // A Codex check runs in the one fixed root, so the trusted project path and the hook command never change.
+    const sc = makeScratch(`bowerloom-live-${id}`, codex ? { fixedBase: process.env[CODEX_ROOT_VARIABLE] } : {});
     t.after(() => sc.cleanup());
     await recorded({ check: id, engine, scratch: sc }, () => body(sc, t, commandOf(engine)));
   });

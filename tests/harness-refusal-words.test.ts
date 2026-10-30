@@ -93,6 +93,7 @@ test('the next steps that the blueprint names are the ones printed', () => {
     ['PORTABLE_DEFINITION_INVALID', 'bowerloom harness status'],
     ['PORTABLE_MERGE_NOT_BUILT', 'bowerloom harness merge'],
     ['PORTABLE_MANAGED_COPY', 'bowerloom harness adopt'],
+    ['PORTABLE_MANAGED_COPY', 'remove the 0.7 prompt'],
     ['PORTABLE_FIDELITY', 'bowerloom harness accept <line-key>'],
     ['PORTABLE_DRIFT', 'bowerloom harness drift'],
     ['PORTABLE_RECOVERY_REQUIRED', 'bowerloom harness recover'],

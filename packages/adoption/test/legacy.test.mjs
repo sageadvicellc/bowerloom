@@ -219,10 +219,20 @@ test('a matching 0.7 folder that holds a file the definition skill no longer has
   assert.throws(() => planPortable(portable), e => e.code === 'PORTABLE_MANAGED_COPY');
 });
 
-test('without the sources.json record, a folder held by a 0.7 managed copy keeps PORTABLE_MANAGED_COPY', async t => {
+test('without the sources.json record, a 0.7 managed folder is taken over while it holds the planned bytes, and refuses once they change', async t => {
   const { p, portable } = await adoptedTidy(t);
   const file = path.join(p.def, 'sources.json');
   const value = JSON.parse(fs.readFileSync(file, 'utf8'));
   fs.writeFileSync(file, json({ sources: value.sources }));
-  assert.throws(() => planPortable(portable), e => e.code === 'PORTABLE_MANAGED_COPY');
+  const before = snapshot(p.dir);
+  const plan = planPortable(portable);
+  assert.deepEqual(plan.changes.filter(c => c.path.endsWith('tidy/SKILL.md')).map(c => c.action), ['take-over', 'take-over'], 'same bytes: nothing is written');
+  await applyPortable(portable, plan.revision);
+  for (const rel of ['.claude/skills/tidy/SKILL.md', '.agents/skills/tidy/SKILL.md']) assert.equal(snapshot(p.dir)[rel], before[rel], rel);
+  // Changed bytes still refuse.
+  const q = await adoptedTidy(t);
+  const rec = path.join(q.p.def, 'sources.json');
+  fs.writeFileSync(rec, json({ sources: JSON.parse(fs.readFileSync(rec, 'utf8')).sources }));
+  fs.writeFileSync(path.join(q.p.dir, '.claude/skills/tidy/SKILL.md'), TIDY + 'Edited.\n');
+  assert.throws(() => planPortable(q.portable), e => e.code === 'PORTABLE_MANAGED_COPY');
 });

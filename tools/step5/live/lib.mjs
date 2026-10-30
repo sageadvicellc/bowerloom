@@ -6,7 +6,10 @@
 // - An engine version comes from BOWERLOOM_LIVE_<ENGINE>_VERSION. Nothing here runs a binary to learn it.
 // - A stub command logs argv, the NAMES of environment variables, and standard input. It never logs a value.
 // - A result line holds no home path and no scratch path.
+// - A Codex check can run in one fixed root (BOWERLOOM_LIVE_CODEX_ROOT), so a trusted project path and a reviewed hook hash stay
+//   the same on every run. The root is checked, locked for one run, and cleared between runs. It is never deleted.
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -54,11 +57,31 @@ export function liveSkip(engine, env = process.env) {
   if (env.BOWERLOOM_LIVE_ENGINES !== '1') return 'set BOWERLOOM_LIVE_ENGINES=1 to run live engine checks';
   return commandOf(engine, env) === null ? `no command for ${engine}` : false;
 }
-/** The message that refuses a Codex check until the owner has done the Codex trust steps, or null. */
-export function codexTrustRefusal(id, env = process.env) {
-  if (env.BOWERLOOM_LIVE_CODEX_TRUSTED === '1') return null;
-  return `Check ${id} refuses to run. Codex reads a project .codex folder and runs a project hook only after a person trusts the folder and reviews the hook. Do those two Codex trust steps for the scratch project (see tools/step5/live/README.md), then set BOWERLOOM_LIVE_CODEX_TRUSTED=1. No turn was spent.`;
+export const CODEX_ROOT_VARIABLE = 'BOWERLOOM_LIVE_CODEX_ROOT';
+/** The file that marks a folder as a Codex root that Bowerloom made. A non-empty folder without it is never used. */
+export const CODEX_ROOT_MARKER = '.bowerloom-live-codex-root';
+/** The lock file of one run. It sits in the root and holds the process id. */
+export const CODEX_ROOT_LOCK = '.bowerloom-live-codex-lock';
+const MARKER_TEXT = 'Bowerloom live check root for Codex.\nThe live checks clear project, home, state, and stubs in this folder. Keep this file.\n';
+const SETUP_SCRIPT = 'tools/step5/live/codex-trust-setup.mjs';
+
+/**
+ * The refusal of a Codex check, or null when the check may run. A Codex check needs both variables: the trust variable
+ * (a person did the trust steps) and the root variable (an absolute path, the folder they trusted).
+ * The result holds `message` (for the failed test and the result line) and `observed` (the short result text).
+ */
+export function codexGate(id, env = process.env) {
+  const tail = `Run node ${SETUP_SCRIPT} <root> once, do the three manual steps it prints, then set BOWERLOOM_LIVE_CODEX_TRUSTED=1 and ${CODEX_ROOT_VARIABLE}=<root>. See tools/step5/live/README.md. No turn was spent.`;
+  if (env.BOWERLOOM_LIVE_CODEX_TRUSTED !== '1') {
+    return { observed: 'refused: Codex trust not confirmed', message: `Check ${id} refuses to run. Codex reads a project .codex folder and runs a project hook only after a person trusts the folder and reviews the hook. That trust is saved for one folder path, so the checks need one fixed root. ${tail}` };
+  }
+  const root = env[CODEX_ROOT_VARIABLE];
+  if (!root) return { observed: `refused: ${CODEX_ROOT_VARIABLE} not set`, message: `Check ${id} refuses to run. BOWERLOOM_LIVE_CODEX_TRUSTED=1 is set, but ${CODEX_ROOT_VARIABLE} is not. A random scratch folder cannot hold a Codex trust. ${tail}` };
+  if (!path.isAbsolute(root)) return { observed: `refused: ${CODEX_ROOT_VARIABLE} is not absolute`, message: `Check ${id} refuses to run. ${CODEX_ROOT_VARIABLE} must be an absolute path. ${tail}` };
+  return null;
 }
+/** The message that refuses a Codex check until the person has done the Codex trust steps, or null. */
+export const codexTrustRefusal = (id, env = process.env) => codexGate(id, env)?.message ?? null;
 
 const shellQuote = text => `'${String(text).replace(/'/g, `'\\''`)}'`;
 
@@ -116,18 +139,174 @@ export function classify(value) {
   return v === PROBE ? 'probe-value' : v.includes('${') ? 'literal-ref' : v.includes(PROBE) ? 'contains-probe' : null;
 }
 
+const SCRATCH_DIRS = ['project', 'home', 'state', 'stubs'];
+const refuse = text => { throw new Error(text); };
+const lstatOrNull = file => { try { return fs.lstatSync(file); } catch (error) { if (error.code === 'ENOENT') return null; throw error; } };
+const isMarker = file => { const st = lstatOrNull(file); return !!st && st.isFile() && fs.readFileSync(file, 'utf8') === MARKER_TEXT; };
+const hasMarkerEntry = file => lstatOrNull(file) !== null;
+// A temporary marker (written, then renamed) does not count as content, so two first uses at once do not refuse each other.
+const isTempMarker = name => name.startsWith(`${CODEX_ROOT_MARKER}.tmp-`);
+
+/** The folders above a path, nearest first, ending at the filesystem root. */
+function* ancestorsOf(dir) {
+  for (let up = path.dirname(dir); ; up = path.dirname(up)) {
+    yield up;
+    if (path.dirname(up) === up) return;
+  }
+}
+/** The real path of the nearest folder at or above `dir` that exists. */
+function nearestRealAncestor(dir) {
+  for (let at = dir; ; at = path.dirname(at)) {
+    if (lstatOrNull(at)) return fs.realpathSync(at);
+    if (path.dirname(at) === at) return at;
+  }
+}
+
+/**
+ * Checks and prepares a fixed Codex root, and returns its real path. It refuses a relative path, the filesystem root, the
+ * home folder, a git repository, a symlink, a file, a folder owned by another user, a folder inside another Codex root, and a
+ * non-empty folder without the marker file. It makes the folder with mode 0700 when it is missing or empty, writes the marker
+ * (to a temporary name, then a rename), and makes the four scratch folders. It deletes nothing.
+ */
+export function prepareCodexRoot(root, { uid = process.getuid?.(), home = os.homedir() } = {}) {
+  if (typeof root !== 'string' || !path.isAbsolute(root)) refuse(`${CODEX_ROOT_VARIABLE} must be an absolute path.`);
+  const given = path.resolve(root);
+  if (path.dirname(given) === given) refuse('The Codex root is the filesystem root. Choose an empty or new folder.');
+  const st = lstatOrNull(given);
+  if (st?.isSymbolicLink()) refuse('The Codex root is a symlink. Use the real folder, not a link to it.');
+  if (st && !st.isDirectory()) refuse('The Codex root path exists and is not a folder.');
+  const existing = st ? fs.realpathSync(given) : null;
+  let homeReal = null;
+  try { homeReal = fs.realpathSync(home); } catch { /* no home folder to compare */ }
+  if (existing && existing === homeReal) refuse('The Codex root is the home folder. Choose an empty or new folder.');
+  if (st && uid !== undefined && st.uid !== uid) refuse('The Codex root is owned by another user. Use a folder you own.');
+  if (st && lstatOrNull(path.join(given, '.git'))) refuse('The Codex root is a git repository. Choose an empty or new folder.');
+  // A root inside another root: look for the marker in every folder above it (for a new path, from the nearest folder that exists).
+  const near = existing ?? nearestRealAncestor(given);
+  for (const folder of existing ? ancestorsOf(existing) : [near, ...ancestorsOf(near)]) {
+    if (hasMarkerEntry(path.join(folder, CODEX_ROOT_MARKER))) refuse(`The Codex root is inside another Codex root (${folder}). Choose a folder outside it.`);
+  }
+  let real;
+  if (st) {
+    real = fs.realpathSync(given);
+    if (!isMarker(path.join(real, CODEX_ROOT_MARKER)) && fs.readdirSync(real).filter(name => !isTempMarker(name)).length > 0) {
+      refuse(`The Codex root is not empty and has no ${CODEX_ROOT_MARKER} marker file that Bowerloom wrote. Choose an empty or new folder.`);
+    }
+  } else {
+    fs.mkdirSync(given, { recursive: true, mode: 0o700 });
+    real = fs.realpathSync(given);
+  }
+  fs.chmodSync(real, 0o700);
+  const marker = path.join(real, CODEX_ROOT_MARKER);
+  if (!isMarker(marker)) {
+    const temp = `${marker}.tmp-${process.pid}-${crypto.randomBytes(6).toString('hex')}`;
+    try { fs.writeFileSync(temp, MARKER_TEXT, { mode: 0o600, flag: 'wx' }); fs.renameSync(temp, marker); } finally { fs.rmSync(temp, { force: true }); }
+  }
+  for (const name of SCRATCH_DIRS) {
+    const dir = path.join(real, name);
+    const entry = lstatOrNull(dir);
+    if (!entry) fs.mkdirSync(dir, { mode: 0o700 });
+    else if (!entry.isDirectory()) refuse(`${name} in the Codex root is not a plain folder (a link or a file stands there). Remove it by hand and run again.`);
+  }
+  return real;
+}
+
+/** Gives the owner read, write, and search rights on a real folder and on every real folder below it. A link is never followed. */
+function openFolders(dir) {
+  const st = lstatOrNull(dir);
+  if (!st || !st.isDirectory()) return;
+  if ((st.mode & 0o700) !== 0o700) fs.chmodSync(dir, st.mode | 0o700);
+  for (const entry of fs.readdirSync(dir)) openFolders(path.join(dir, entry));
+}
+
+/** Empties project, home, state, and stubs, and removes the log. The root, the marker, and the folders stay. */
+function clearCodexRoot(base) {
+  for (const name of SCRATCH_DIRS) {
+    const dir = path.join(base, name);
+    if (!lstatOrNull(dir)?.isDirectory()) refuse(`${name} in the Codex root is not a plain folder (a link or a file stands there). Remove it by hand and run again.`);
+    for (const entry of fs.readdirSync(dir)) {
+      const full = path.join(dir, entry);
+      try { openFolders(full); fs.rmSync(full, { recursive: true, force: true }); } catch (error) { refuse(`Could not clear ${full} (${error.code ?? error.message}). Remove it by hand and run again.`); }
+    }
+  }
+  fs.rmSync(path.join(base, 'evidence.jsonl'), { force: true });
+}
+
+// Locks held by this process, by token. One shared pair of signal handlers serves all of them and exists only while one is held.
+const heldLocks = new Map();
+let exitHookSet = false;
+const SIGNAL_CODES = { SIGINT: 130, SIGTERM: 143 };
+const readToken = file => { try { return JSON.parse(fs.readFileSync(file, 'utf8')).token ?? null; } catch { return null; } };
+/** Removes a lock file only when it still holds this token. */
+function dropLock(token) {
+  const file = heldLocks.get(token);
+  if (file === undefined) return;
+  heldLocks.delete(token);
+  if (readToken(file) === token) fs.rmSync(file, { force: true });
+  if (heldLocks.size === 0) for (const signal of Object.keys(SIGNAL_CODES)) process.removeListener(signal, onSignal);
+}
+function onSignal(signal) {
+  for (const token of [...heldLocks.keys()]) { try { dropLock(token); } catch { /* best effort */ } }
+  process.exit(SIGNAL_CODES[signal]);
+}
+/**
+ * Takes the exclusive lock of one run, or throws. A lock is never cleaned by guess: the message says which process wrote it and
+ * tells the person to delete the file by hand when no run is active. The lock holds a token, so a run removes only its own lock,
+ * also after a person deleted a lock and a later run took the folder. The returned object has `release()`, once, and `owns()`.
+ */
+function acquireLock(base) {
+  const file = path.join(base, CODEX_ROOT_LOCK);
+  const token = `${process.pid}-${crypto.randomBytes(8).toString('hex')}-${Date.now()}`;
+  let fd;
+  try { fd = fs.openSync(file, 'wx', 0o600); } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    let who = 'a process that is not named in the lock file';
+    try {
+      const pid = Number(JSON.parse(fs.readFileSync(file, 'utf8')).pid);
+      let alive = true;
+      try { process.kill(pid, 0); } catch (killError) { alive = killError.code === 'EPERM'; }
+      who = `process ${pid}, which is ${alive ? 'still running' : 'not running'}`;
+    } catch { /* an unreadable lock keeps the generic text */ }
+    refuse(`Another live run holds the lock file ${file} (${who}). Wait for that run to end. If no run is active, delete that file and run again.`);
+  }
+  fs.writeSync(fd, JSON.stringify({ pid: process.pid, token, at: new Date().toISOString() }) + '\n');
+  fs.closeSync(fd);
+  heldLocks.set(token, file);
+  if (!exitHookSet) {
+    exitHookSet = true;
+    process.on('exit', () => { for (const held of [...heldLocks.keys()]) { try { dropLock(held); } catch { /* best effort */ } } });
+  }
+  for (const signal of Object.keys(SIGNAL_CODES)) if (!process.listeners(signal).includes(onSignal)) process.on(signal, onSignal);
+  return { release: () => dropLock(token), owns: () => heldLocks.has(token) && readToken(file) === token };
+}
+
 /**
  * A fresh scratch folder (mode 0700) with a project, a home, a state folder, and a stub. When an engine allows it, the
  * run points XDG_STATE_HOME inside the scratch folder. HOME stays real unless BOWERLOOM_LIVE_ISOLATE_HOME=1, because an
  * engine that signed in through the home folder would lose its login.
+ *
+ * With `fixedBase` (an absolute path, for the Codex checks) the scratch folder is that one folder every run: the project is
+ * always `<fixedBase>/project`, so the stub path, the log path, and a hook command stay byte-identical. The folder is checked
+ * (see prepareCodexRoot), locked for this run, and cleared at the start and at `cleanup()`. `cleanup()` keeps the root, its
+ * marker, and its folders, and drops the lock. `release()` drops the lock and clears nothing.
  */
-export function makeScratch(prefix = 'bowerloom-live') {
-  const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `${prefix}-`)));
-  fs.chmodSync(base, 0o700);
-  const dirs = Object.fromEntries(['project', 'home', 'state', 'stubs'].map(name => [name, path.join(base, name)]));
-  for (const dir of Object.values(dirs)) fs.mkdirSync(dir, { mode: 0o700 });
+export function makeScratch(prefix = 'bowerloom-live', { fixedBase = null } = {}) {
+  let base;
+  let lock = { release() {}, owns: () => true };
+  const releaseLock = () => lock.release();
+  const fixed = fixedBase !== null && fixedBase !== undefined; // an empty string is a refusal, never a random folder
+  if (fixed) {
+    base = prepareCodexRoot(fixedBase);
+    lock = acquireLock(base);
+    try { clearCodexRoot(base); } catch (error) { releaseLock(); throw error; }
+  } else {
+    base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `${prefix}-`)));
+    fs.chmodSync(base, 0o700);
+    for (const name of SCRATCH_DIRS) fs.mkdirSync(path.join(base, name), { mode: 0o700 });
+  }
+  const dirs = Object.fromEntries(SCRATCH_DIRS.map(name => [name, path.join(base, name)]));
   const stub = path.join(dirs.stubs, 'log-stub.mjs');
-  fs.writeFileSync(stub, STUB_SOURCE, { mode: 0o600 });
+  try { fs.writeFileSync(stub, STUB_SOURCE, { mode: 0o600 }); } catch (error) { releaseLock(); throw error; }
   const log = path.join(base, 'evidence.jsonl');
   const scratch = {
     base, ...dirs, stub, log,
@@ -150,7 +329,13 @@ export function makeScratch(prefix = 'bowerloom-live') {
     env(extra = {}) {
       return { ...process.env, XDG_STATE_HOME: dirs.state, ...(process.env.BOWERLOOM_LIVE_ISOLATE_HOME === '1' ? { HOME: dirs.home } : {}), ...extra };
     },
-    cleanup() { fs.rmSync(base, { recursive: true, force: true }); },
+    /** Drops the lock of a fixed base and clears nothing. A random scratch folder has no lock. */
+    release() { releaseLock(); },
+    cleanup() {
+      if (!fixed) { fs.rmSync(base, { recursive: true, force: true }); return; }
+      // Clear only while this run still owns the lock. A late cleanup must not wipe a later run's files.
+      try { if (lock.owns()) clearCodexRoot(base); } finally { releaseLock(); }
+    },
   };
   return scratch;
 }

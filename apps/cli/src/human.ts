@@ -1,5 +1,5 @@
 import { canonicalJson, DefinitionError, oneLine, shellArg } from '../../../packages/contracts/src/index.js';
-import { ENGINE_IDS } from '../../../packages/skill-manifest/src/engine.js';
+import { ENGINE_IDS, ENGINE_NAMES, isEngine } from '../../../packages/skill-manifest/src/engine.js';
 
 /**
  * The first screen a person sees, and the plain-words refusals. Output only: nothing here reads or writes a file.
@@ -504,6 +504,8 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   MANIFEST_DUPLICATE_ID: { sentence: 'Each skill needs its own id.', next: 'git diff .bowerloom/skills.json' },
   // Step 0 of 0.8: an engine the code knows by name, but cannot write files for yet.
   ENGINE_NO_WRITER: { sentence: 'Bowerloom writes files for Claude Code and Codex only, for now.', next: 'name claude-code or codex' },
+  // Beta.1: OpenCode, Pi, and DeepSeek Harness install only with BOWERLOOM_PREVIEW_ENGINES=1. The words that name the engine are in wordsFor.
+  ENGINE_PREVIEW: { sentence: 'This engine is a preview engine in this beta.', next: 'Install for claude-code or codex, or set BOWERLOOM_PREVIEW_ENGINES=1 to try it.' },
   MANIFEST_LIMIT: { sentence: 'This beta keeps skills.json small: 128 skills and 1 MiB at most.', next: 'bowerloom skills check' },
   SKILLS_ADD_SPEC_INVALID: { sentence: 'The source names a package or repository, an exact pin, and the skill folder.', next: 'bowerloom help skills' },
   SKILLS_ADD_EXISTS: { sentence: 'skills.json already holds a skill with this id or this source.', next: 'To move that id to another version or commit, add --replace: bowerloom skills add <source> --id <id> --replace.' },
@@ -641,7 +643,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   PORTABLE_INSTRUCTIONS_TOO_LARGE: { sentence: 'AGENTS.md passes 32 KiB, where Codex stops loading instructions.', next: 'Shorten .bowerloom/instructions/AGENTS.md, then run the command again.' },
   PORTABLE_ENGINE_NOT_LISTED: { sentence: 'You named an engine that harness.json does not list.', next: 'Pass --engine with an engine that harness.json lists.' },
   PORTABLE_MERGE_NOT_BUILT: { sentence: 'Install never edits the harness, and Merge changes the instructions in it.', next: 'bowerloom harness merge, then bowerloom harness install --reconcile accept-agents' },
-  PORTABLE_MANAGED_COPY: { sentence: 'A 0.7 skills sync manages that skill copy, so install cannot write it.', next: 'bowerloom harness adopt' },
+  PORTABLE_MANAGED_COPY: { sentence: 'A 0.7 sync manages that copy, and install would change its content, so the 0.7 sync owns it.', next: 'For a skill, run bowerloom harness adopt. For a prompt, keep the engine copy as it is, or remove the 0.7 prompt with the 0.7 command, then run the command again.' },
   PORTABLE_CASE_CLASH: { sentence: 'Two paths differ only in letter case, and many file systems treat them as one.', next: 'Rename one of the two paths the message lists.' },
   PORTABLE_FIDELITY: { sentence: 'An engine would carry an entry more weakly than the harness says, and nothing records that you accept the loss.', next: 'For each line the message lists that you accept, run bowerloom harness accept <line-key>, then plan again.' },
   PORTABLE_PATH_OCCUPIED: { sentence: 'A target holds files that Bowerloom did not write, and Bowerloom never overwrites them.', next: 'Move those files aside, then run the command again.' },
@@ -653,7 +655,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   PORTABLE_NOTHING_PROJECTED: { sentence: 'No install is recorded for this folder, so there is nothing to remove.', next: 'bowerloom harness status' },
   PORTABLE_RECOVER_NOTHING: { sentence: 'No install or removal is unfinished, and you named no path to keep or restore.', next: 'bowerloom harness drift' },
   PORTABLE_STATE_UNSAFE: { sentence: 'Bowerloom keeps its record of an install in a private folder that only you can change, outside the project.', next: 'check the private state folder: $XDG_STATE_HOME/bowerloom when XDG_STATE_HOME is set, else ~/.local/state/bowerloom' },
-  PORTABLE_STATE_INVALID: { sentence: 'A record in the private state folder is damaged, or a saved copy that it needs is gone.', next: 'bowerloom harness recover. If the message lists paths with no saved copy, add --keep <path> for each.' },
+  PORTABLE_STATE_INVALID: { sentence: 'The record that the message names is damaged, or a saved copy that it needs is gone.', next: 'Move the file the message names aside in the private state folder, then run the command again. If the message says a saved copy is gone, run bowerloom harness recover with --keep <path> for each path.' },
   PORTABLE_STATE_FOREIGN: { sentence: 'The private state folder holds the record of another folder, and Bowerloom never uses it for this one.', next: 'Run the command from the folder that made the record.' },
   PORTABLE_ENGINE_VERSION: { sentence: 'Bowerloom writes engine files only for versions it has checked.', next: 'Set the engine version in harness.json to a version the message names, then run the command again.' },
   PORTABLE_CONFLICT: { sentence: 'A file that Bowerloom would add entries to holds an entry of the same name, or a setting that changes what the entries mean. Bowerloom never edits your entries.', next: 'Rename one of the two entries, then run the command again.' },
@@ -708,6 +710,7 @@ function wordsFor(code: string, detail: RefusalDetail): Words {
     return { sentence: 'An interrupted write left a second link to skills.json, the temporary file .bowerloom/.skills.json.*.tmp. Check that both name the same file, then remove the temporary one.', next: 'ls -li .bowerloom/skills.json .bowerloom/.skills.json.*.tmp' };
   }
   if (code === 'ENGINE_NO_WRITER' && typeof detail.engine === 'string' && ENGINE_IDS.includes(detail.engine as never)) return { sentence: `Bowerloom has no writer for ${detail.engine} yet. It writes files for Claude Code and Codex only, for now.`, next: 'name claude-code or codex' };
+  if (code === 'ENGINE_PREVIEW' && typeof detail.engine === 'string' && isEngine(detail.engine)) return { sentence: `${ENGINE_NAMES[detail.engine]} is a preview engine in this beta.`, next: REFUSALS.ENGINE_PREVIEW!.next };
   if ((code === 'PROJECT_LOCK_SLOT_COLLISION' || code === 'MANAGED_SKILL_LOCK_SLOT_COLLISION') && validPort(detail.port)) {
     return { sentence: `The lock uses local port ${detail.port}. Another program listens on it, or another Bowerloom command is too busy to answer.`, next: `lsof -nP -iTCP:${detail.port} -sTCP:LISTEN` };
   }

@@ -82,7 +82,7 @@ async function adoptInPlace(t, files, engines, edit = () => {}) {
   const loaded = loadDefinition(def);
   assert.equal(loaded.ok, true, JSON.stringify(loaded.problems));
   edit(dir);
-  const install = { projectDir: dir, definitionFolder: def, stateDir: path.join(base, 'state', 'portable'), engines };
+  const install = { projectDir: dir, definitionFolder: def, stateDir: path.join(base, 'state', 'portable'), engines, previewEngines: true };
   // Recorded approvals for every enforced line the fidelity check refuses, as a person records them.
   let approvals = [];
   try { planPortable(install); } catch (e) {

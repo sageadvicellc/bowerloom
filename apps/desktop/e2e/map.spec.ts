@@ -6,10 +6,13 @@ import { _electron as electron, expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import electronPath from 'electron';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { removeTempDirs, tempDir } from './proto-temp.js';
+
+// Every folder this file made in the temp folder goes when its tests are done, also when one failed.
+test.afterAll(() => { removeTempDirs(); });
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const shots = join(desktop, 'screenshots');
@@ -17,7 +20,7 @@ mkdirSync(shots, { recursive: true });
 const nav = (page: Page, label: string) => page.locator('nav.nav').getByRole('button', { name: label });
 
 async function launch(args: string[], extraEnv: Record<string, string> = {}): Promise<{ app: ElectronApplication; page: Page; violations: string[] }> {
-  const userData = mkdtempSync(join(tmpdir(), 'bowerloom-viewer-e2e-'));
+  const userData = tempDir('bowerloom-viewer-e2e-');
   const app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, ...args, `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1', ...extraEnv } });
   const page = await app.firstWindow();
   const violations: string[] = [];
@@ -29,7 +32,7 @@ async function launch(args: string[], extraEnv: Record<string, string> = {}): Pr
 }
 
 const sandboxRoot = (): string => {
-  const box = join(realpathSync(mkdtempSync(join(tmpdir(), 'bowerloom-e2e-map-'))), 'Map Sandbox');
+  const box = join(realpathSync(tempDir('bowerloom-e2e-map-')), 'Map Sandbox');
   const made = spawnSync(process.execPath, [join(desktop, 'tools', 'make-sandbox.mjs')], { encoding: 'utf8', env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', BOWERLOOM_VIEWER_SANDBOX: box } });
   expect(made.status, made.stderr + made.stdout).toBe(0);
   return box;

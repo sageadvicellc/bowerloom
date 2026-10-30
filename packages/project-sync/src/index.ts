@@ -64,5 +64,5 @@ export type { PortableEngine, PortableReceipt, ReceiptFile, ReceiptSource } from
 // settleLegacyStateWith is not exported here.
 export { HARNESS_MOVED_FORMAT, HARNESS_STATE_REFUSAL_CODES, HarnessStateRefusal, harnessStateDirs, settleLegacyState } from './harness-state.js';
 export type { HarnessStateCode, HarnessStateDirs, LegacySettle } from './harness-state.js';
-export { APPROVAL_DRAFTS_FORMAT, addApprovalDraft, dropApprovalDrafts, readApprovalDrafts } from './harness-approvals.js';
+export { APPROVAL_DRAFTS_FORMAT, addApprovalDraft, addApprovalDraftLocked, dropApprovalDrafts, dropApprovalDraftsLocked, readApprovalDrafts } from './harness-approvals.js';
 export type { AddApprovalDraftOptions, ApprovalDraftInput, ReadApprovalDraftsOptions } from './harness-approvals.js';

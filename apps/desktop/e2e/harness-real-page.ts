@@ -19,10 +19,18 @@ export interface RealHarness {
   asked(): Promise<{ message: string; detail: string }[]>;
 }
 
-/** Builds the bundle fresh from the source in this folder, starts the app with --prototype-v3-real on the given HOME (and any other variable given, such as XDG_STATE_HOME) and waits for the first window. */
-export async function launchReal(home: string, env: Record<string, string> = {}): Promise<RealHarness> {
+/** Builds the bundle fresh from the source in this folder. `launchReal` does it first, unless a spec that starts one app per test did it once already. */
+export function bundleOnce(): void {
   const built = spawnSync(process.execPath, [join(desktop, 'tools', 'bundle.mjs')], { cwd: desktop, encoding: 'utf8' });
   if (built.status !== 0 || !existsSync(join(desktop, 'dist', 'main.mjs'))) throw new Error(`The bundle did not build.\n${built.stdout}\n${built.stderr}`);
+}
+
+/**
+ * Starts the app with --prototype-v3-real on the given HOME (and any other variable given, such as XDG_STATE_HOME) and waits for the first window. It builds
+ * the bundle first unless `bundle` is false.
+ */
+export async function launchReal(home: string, env: Record<string, string> = {}, bundle = true): Promise<RealHarness> {
+  if (bundle) bundleOnce();
   const userData = tempDir('bowerloom-prototype-e2e-');
   const app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--prototype-v3-real', `--user-data-dir=${userData}`], env: { ...process.env, HOME: home, ELECTRON_DISABLE_SECURITY_WARNINGS: '1', ...env } });
   await app.evaluate(({ dialog }) => {

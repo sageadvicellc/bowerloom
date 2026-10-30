@@ -17,7 +17,7 @@ import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, isAbsolute, join } from 'node:path';
 import { applyAdoption, applyAdoptionRecovery, planAdoptionRecovery } from '../../../packages/adoption/src/index.js';
 import {
-  MERGE_JOURNAL, applyInstructionMerge, applyInstructionMergeRecovery, planInstructionMerge, planInstructionMergeRecovery,
+  applyInstructionMerge, applyInstructionMergeRecovery, mergeStopped, planInstructionMerge, planInstructionMergeRecovery, refuseWhileStopped,
 } from '../../../packages/adoption/src/merge.js';
 import type { InstructionMergePlan } from '../../../packages/adoption/src/merge.js';
 import type { AdoptionInput, AdoptionPlan } from '../../../packages/adoption/src/index.js';
@@ -30,15 +30,17 @@ import type { PortableInput } from '../../../packages/project-sync/src/index.js'
 import { pendingExists } from '../../../packages/project-sync/src/portable-state.js';
 import { harnessStateDirs, settleLegacyState } from '../../../packages/project-sync/src/harness-state.js';
 import type { HarnessStateDirs } from '../../../packages/project-sync/src/harness-state.js';
-import { addApprovalDraft, dropApprovalDrafts, readApprovalDrafts } from '../../../packages/project-sync/src/harness-approvals.js';
+import { addApprovalDraftLocked, dropApprovalDraftsLocked, readApprovalDrafts } from '../../../packages/project-sync/src/harness-approvals.js';
 import { entryHash, loadDefinition } from '../../../packages/harness-definition/src/index.js';
 import type { Definition, FidelityApproval } from '../../../packages/harness-definition/src/index.js';
 import { checkProjectPath } from '../../../packages/project-context/src/index.js';
 import { labelOf, makeScrub, visible } from '../shared/engine/scrub.js';
 import type { Scrub } from '../shared/engine/scrub.js';
-import { ENGINE_IDS, RECONCILE, isEngineId } from '../shared/engine/types.js';
+import { ENGINE_IDS, isEngineId, isPreviewEngine } from '../shared/engine/engines.js';
+import { EnginePreviewRefusal } from '../../../packages/skill-manifest/src/engine.js';
+import { EVERY_ENGINE_PARTS, RECONCILE } from '../shared/engine/types.js';
 import type {
-  AdoptApproval, AdoptChoices, AdoptRecovered, AdoptRecoveryView, AdoptView, AdoptWritten, Answer, ApproveLineView, EngineId, FolderInfo, MergeView, MergeWritten,
+  AdoptApproval, AdoptChoices, AdoptRecovered, AdoptRecoveryView, AdoptView, AdoptWritten, Answer, ApproveLineView, EngineId, EveryEnginePart, FolderInfo, MergeView, MergeWritten,
   ProjectAnswer, ProjectInput, ProjectWritten, Recovered, RecoveryChoices, RecoveryView, Refusal, RemovalView, Removed,
 } from '../shared/engine/types.js';
 import { adoptRecoveryView, adoptionView, approveKey, approveLine, keepsFile, mergeRecoveryView, mergeView, projectView, recoveryView, removalView } from '../shared/engine/view.js';
@@ -57,6 +59,11 @@ export interface EngineServiceDeps {
   /** Who approves a line, as the approval record names the person. */
   readonly who: string;
   readonly now?: () => Date;
+  /**
+   * True when the app may install to preview engines (OpenCode, Pi, DeepSeek Harness). Main sets it from BOWERLOOM_PREVIEW_ENGINES=1 in its own
+   * environment (main/engine-state.ts). Default: false. It reaches the window as one answer per folder, never as the environment.
+   */
+  readonly previewEngines?: boolean;
 }
 
 /** A call the service refuses before it reaches a package: the window gets only the short code. */
@@ -93,16 +100,19 @@ const hashed = (v: unknown, max = 2000): { key: string; hash: string }[] => {
   });
 };
 
-export function checkChoices(v: unknown): AdoptChoices {
+export function checkChoices(v: unknown): AdoptChoices & { readonly everyEngine: readonly EveryEnginePart[] } {
   if (v === null || typeof v !== 'object' || Array.isArray(v)) return bad();
   const o = v as Record<string, unknown>;
-  if (Object.keys(o).some(k => k !== 'picks' && k !== 'acknowledged')) return bad();
+  if (Object.keys(o).some(k => k !== 'picks' && k !== 'acknowledged' && k !== 'everyEngine')) return bad();
+  // Decision D8B: each part at most once, kept in the order of the parts, so the plan and its write name the same choice.
+  const every = o.everyEngine === undefined ? [] : o.everyEngine;
+  if (!Array.isArray(every) || every.some(p => !(EVERY_ENGINE_PARTS as readonly unknown[]).includes(p)) || new Set(every).size !== every.length) return bad();
   const picks = o.picks;
   if (picks === null || typeof picks !== 'object' || Array.isArray(picks)) return bad();
   const entries = Object.entries(picks as Record<string, unknown>);
   if (entries.length > 2000 || entries.some(([k, x]) => !safeString(k, 1024) || !safeString(x, 1024))) return bad();
   if (Array.isArray(o.acknowledged) && o.acknowledged.some(a => a === null || typeof a !== 'object' || !('id' in (a as object)))) return bad();
-  return { picks: Object.fromEntries(entries) as Record<string, string>, acknowledged: hashed(o.acknowledged).map(a => ({ id: a.key, hash: a.hash })) };
+  return { picks: Object.fromEntries(entries) as Record<string, string>, acknowledged: hashed(o.acknowledged).map(a => ({ id: a.key, hash: a.hash })), everyEngine: EVERY_ENGINE_PARTS.filter(p => every.includes(p)) };
 }
 
 export function checkApprovals(v: unknown): AdoptApproval[] {
@@ -170,6 +180,7 @@ export interface EngineService {
 
 export function createEngineService(deps: EngineServiceDeps): EngineService {
   const now = deps.now ?? (() => new Date());
+  const previewEngines = deps.previewEngines ?? false;
   const realHome = (() => { try { return realpathSync(deps.home); } catch { return deps.home; } })();
   const homes = [...new Set([deps.home, realHome])];
   const byId = new Map<string, Folder>();
@@ -235,14 +246,14 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
   }
 
   /** True when a Merge stopped part way here: its journal is in the adoption state folder (decision D4A). */
-  function mergeStopped(f: Folder): boolean {
-    try { lstatSync(join(f.adoptState, MERGE_JOURNAL)); return true; } catch { return false; }
-  }
+  const mergeIsStopped = (f: Folder): boolean => mergeStopped(f.adoptState);
+  /** Install, removal, and a tick wait while an adoption or a Merge is stopped: they would run on a half-written or half-merged definition. */
+  const whileStopped = (f: Folder): void => refuseWhileStopped(f.adoptState);
   /** Which stopped run the recovery of a stopped harness settles: an adoption first, as the packages refuse in that order, else a Merge. */
   function stoppedKind(f: Folder): 'adoption' | 'merge' {
     let adoption: boolean;
     try { adoption = readJournal(f.adoptState, f.dir) !== null; } catch { adoption = true; }
-    return !adoption && mergeStopped(f) ? 'merge' : 'adoption';
+    return !adoption && mergeIsStopped(f) ? 'merge' : 'adoption';
   }
 
   function info(f: Folder): FolderInfo {
@@ -256,26 +267,28 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     }
     const io = { projectDir: f.dir, stateDir: f.portableState };
     let projected = false, projection = false, adoption = false;
-    try { projected = readPortableReceipt(io) !== null; } catch { projected = false; }
+    let installedEngines: EngineId[] = [];
+    try { const receipt = readPortableReceipt(io); projected = receipt !== null; installedEngines = receipt === null ? [] : ENGINE_IDS.filter(e => receipt.engines.some(x => x.id === e)); } catch { projected = false; installedEngines = []; }
     try { projection = pendingExists(f.portableState); } catch { projection = false; }
     try { adoption = readJournal(f.adoptState, f.dir) !== null; } catch { adoption = false; }
-    adoption ||= mergeStopped(f);
-    return { id: f.id, label: f.label, name: f.scrub(basename(f.dir)), hasDefinition, engines, problem, projected, unfinished: { projection, adoption } };
+    adoption ||= mergeIsStopped(f);
+    return { id: f.id, label: f.label, name: f.scrub(basename(f.dir)), hasDefinition, engines, previewEngines, installedEngines, problem, projected, unfinished: { projection, adoption } };
   }
 
-  const adoptInput = (f: Folder, picks: AdoptChoices['picks'], acknowledged: readonly string[]): AdoptionInput => ({
+  const adoptInput = (f: Folder, picks: AdoptChoices['picks'], acknowledged: readonly string[], everyEngine: readonly EveryEnginePart[]): AdoptionInput => ({
     projectDir: f.dir, stateDir: f.adoptState,
     choices: Object.fromEntries(Object.entries(picks).map(([k, pick]) => [k, { pick }])),
     acknowledged,
+    ...(everyEngine.length ? { everyEngine } : {}),
   });
 
   /**
    * The adoption plan for these choices. An acknowledgement counts only when its hash is the hash of the entry as the plan shows it now (U3); one that
    * does not match is dropped, and the plan is made again without it.
    */
-  function adoptionNow(f: Folder, c: AdoptChoices): { plan: AdoptionPlan; view: AdoptView; acknowledged: AdoptChoices['acknowledged'] } {
+  function adoptionNow(f: Folder, c: ReturnType<typeof checkChoices>): { plan: AdoptionPlan; view: AdoptView; acknowledged: AdoptChoices['acknowledged'] } {
     const make = (acks: readonly string[]): { plan: AdoptionPlan; view: AdoptView } => {
-      const { plan, bytes } = planAdoptionWithBytes(adoptInput(f, c.picks, acks));
+      const { plan, bytes } = planAdoptionWithBytes(adoptInput(f, c.picks, acks, c.everyEngine));
       return { plan, view: adoptionView(plan, f.label, f.scrub, { hashOf, textOf: key => approvalText(key, bytes) }) };
     };
     const wanted = c.acknowledged.map(a => a.id);
@@ -294,15 +307,16 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
 
   /**
    * The approval records of one plan (U15). A key names a line and the hash of its entry, so a changed entry has a new key, and the old tick covers nothing.
-   * The records are the approval drafts the app and the command line share (D2A, D3A): a draft keeps the time it was first written, so the plan run and the
-   * write compute the same revision, in this session or another, from the app or the command line.
-   *  - A line the person ticked in this sheet becomes a draft when the sheet plans with it (`persist`). A write only reads the drafts, so nothing is written
-   *    before main's own dialog. A line whose entry changed since it was shown is never written as a draft: its record lives for the session only, and the
-   *    plan asks for the new line.
+   * A record keeps the time it was first made, so the plan and the write compute the same revision, in this session or another, from the app or the command
+   * line.
+   *  - A line the person ticked in this sheet is a record in memory for the plan shown. Planning writes nothing to the disk: a tick that is never written,
+   *    or that the person cancels, leaves no approval behind that the command line would count. The record becomes a draft only when the write runs, after
+   *    main's own dialog (`keepTicks`).
    *  - Every draft on disk whose entry is unchanged counts, so a line accepted at the command line is not asked again here.
    *  - An approval that an earlier install recorded is reused only for an entry that is unchanged, and the plan lists it as earlier.
+   * `ticked` counts the lines the person approved in this sheet.
    */
-  function approvalsFor(f: Folder, keys: readonly string[], persist: boolean): { approvals: FidelityApproval[]; mine: Set<string> } {
+  function approvalsFor(f: Folder, keys: readonly string[]): { approvals: FidelityApproval[]; mine: Set<string>; ticked: FidelityApproval[] } {
     const lines = shown.get(f.id) ?? new Map<string, Shown>(), records = made.get(f.id) ?? new Map<string, FidelityApproval>();
     made.set(f.id, records);
     const loaded = loadDefinition(join(f.dir, '.bowerloom'));
@@ -313,21 +327,19 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
       return entry !== undefined && entryHash(entry) === a.entryHash;
     };
     const keyOf = (a: FidelityApproval): string => approveKey(a, a.entryHash);
-    let drafts = def === null ? [] : readApprovalDrafts(f.dirs, f.dir, { definition: def });
-    const out: FidelityApproval[] = [];
+    const drafts = def === null ? [] : readApprovalDrafts(f.dirs, f.dir, { definition: def });
+    const out: FidelityApproval[] = [], ticked: FidelityApproval[] = [];
     for (const key of keys) {
       const line = lines.get(key);
       if (line === undefined || line.hash === null) return bad();
       let record = drafts.find(d => keyOf(d) === key) ?? records.get(key);
-      if (record === undefined || !drafts.includes(record)) {
+      if (record === undefined) {
         const reason = `Approved in the Bowerloom app after reading this line: ${line.raw.reason}`.slice(0, 4096);
-        const draft = { part: line.raw.part as FidelityApproval['part'], entry: line.raw.entry, ...(line.raw.field === undefined ? {} : { field: line.raw.field }), engine: line.raw.engine as EngineId, result: line.raw.result, entryHash: line.hash, who: deps.who, reason };
-        if (persist && def !== null && unchanged(draft)) {
-          record = addApprovalDraft(f.dirs, f.dir, draft, { definition: def, now: now() });
-          drafts = [...drafts.filter(d => keyOf(d) !== key), record];
-        } else record ??= { ...draft, when: isoSeconds(now()) };
+        record = { part: line.raw.part as FidelityApproval['part'], entry: line.raw.entry, ...(line.raw.field === undefined ? {} : { field: line.raw.field }), engine: line.raw.engine as EngineId, result: line.raw.result, entryHash: line.hash, who: deps.who, reason, when: isoSeconds(now()) };
         records.set(key, record);
       }
+      // A record that is not a draft yet, for an entry that has not changed since it was shown, is what the write will keep.
+      if (!drafts.includes(record) && unchanged(record)) ticked.push(record);
       out.push(record);
     }
     const mineKeys = new Set(out.map(keyOf));
@@ -336,17 +348,39 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     let recorded: readonly FidelityApproval[] = [];
     try { recorded = readPortableReceipt({ projectDir: f.dir, stateDir: f.portableState })?.approvals ?? []; } catch { recorded = []; }
     const earlier = recorded.filter(a => unchanged(a) && !mineKeys.has(keyOf(a)));
-    return { approvals: [...earlier, ...others, ...out], mine: mineKeys };
+    return { approvals: [...earlier, ...others, ...out], mine: mineKeys, ticked };
   }
+  /**
+   * Keeps the lines the person ticked as approval drafts, under the project lock, with the time they were planned with. Called only when a write runs,
+   * after the shown plan matched and main's own dialog said yes. A line whose entry changed since it was shown is refused as stale, and nothing is kept.
+   */
+  async function keepTicks(f: Folder, keys: readonly string[]): Promise<void> {
+    const { ticked } = approvalsFor(f, keys);
+    if (ticked.length === 0) return;
+    const loaded = loadDefinition(join(f.dir, '.bowerloom'));
+    if (!loaded.ok) return;
+    for (const { when, ...draft } of ticked) await addApprovalDraftLocked(f.dirs, f.dir, draft, { definition: loaded.definition, now: new Date(when) });
+  }
+  /** The warning for approval drafts that could not be cleared after a write that worked. The write stays done. */
+  const draftsWarning = (error: unknown): string => {
+    const code = (error as { code?: unknown } | null)?.code;
+    return `approval drafts not cleared (${typeof code === 'string' && /^[A-Z][A-Za-z0-9_]{2,63}$/.test(code) ? code : 'FAILED'}); run bowerloom harness status`;
+  };
 
+  /** Beta.1: a plan or a write that names a preview engine is refused up front when the app may not install to them. The package refuses it too. */
+  const refusePreview = (input: ProjectInput): void => {
+    const named = previewEngines ? undefined : ENGINE_IDS.find(e => isPreviewEngine(e) && input.engines.includes(e));
+    if (named !== undefined) throw new EnginePreviewRefusal(named);
+  };
   const portableInput = (f: Folder, input: ProjectInput, approvals: readonly FidelityApproval[]): PortableInput => ({
     projectDir: f.dir, definitionFolder: join(f.dir, '.bowerloom'), stateDir: f.portableState,
-    engines: input.engines.map(id => ({ id })), reconcile: input.reconcile, approvals,
+    engines: input.engines.map(id => ({ id })), reconcile: input.reconcile, approvals, previewEngines,
     ...(input.writeClaudeMd ? { writeClaudeMd: true } : {}),
   });
 
   function planProjectionNow(f: Folder, input: ProjectInput): { value: ProjectAnswer; revision: string; choices: unknown; ask: Ask | null } | { value: ProjectAnswer; revision: null } {
-    const { approvals, mine } = approvalsFor(f, input.approve, true);
+    whileStopped(f);
+    const { approvals, mine } = approvalsFor(f, input.approve);
     try {
       const plan = planPortable(portableInput(f, input, approvals));
       let drift: ReturnType<typeof portableDrift> = [];
@@ -356,7 +390,8 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
       const changing = plan.changes.filter(c => c.action !== 'unchanged' && c.action !== 'take-over' && !keepsFile(c)).length;
       // Main asks before every write that changes anything on disk. Only a no-op plan writes nothing at all; a plan that changes no file of the folder
       // still writes Bowerloom's record (the receipt and its pending marker), so it asks too, in words that say so (W1).
-      const ask = plan.noop ? null : changing === 0 ? ASK.record(f.label, plan.revision) : ASK.projection(f.label, changing, plan.revision);
+      const ticked = input.approve.length;
+      const ask = plan.noop ? null : changing === 0 ? ASK.record(f.label, plan.revision, ticked) : ASK.projection(f.label, changing, plan.revision, ticked);
       return { value: { kind: 'plan', plan: view }, revision: plan.revision, choices: input, ask };
     } catch (error) {
       const refused = (error as { code?: unknown; refused?: unknown } | null);
@@ -419,16 +454,16 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
       return planned(f, 'adoption', () => {
         const { plan, view, acknowledged } = adoptionNow(f, c);
         // The record keeps what the write must repeat: the picks, the acknowledgements that counted, and each approval with its hash.
-        return { value: view, revision: plan.revision, choices: { picks: c.picks, acknowledged: sortById(acknowledged), approvals: byKey(view.approvals.filter(a => a.blocked === null).map(a => ({ key: a.key, hash: a.hash }))) }, ask: ASK.adoption(f.label, plan.files.length, plan.revision) };
+        return { value: view, revision: plan.revision, choices: { picks: c.picks, acknowledged: sortById(acknowledged), approvals: byKey(view.approvals.filter(a => a.blocked === null).map(a => ({ key: a.key, hash: a.hash }))), everyEngine: c.everyEngine }, ask: ASK.adoption(f.label, plan.files.length, plan.revision) };
       });
     }),
     runAdoption: (id, revision, choices, approvals) => serial(async () => {
       const f = folderOf(id), rev = revisionArg(revision), c = checkChoices(choices), list = checkApprovals(approvals);
       // The plan shown last was made with the acknowledgements that counted, each by id and hash; the write must name them, and every approval with its
       // hash, exactly. An acknowledgement or an approval of content the person did not read never matches.
-      const shownPicks = { picks: c.picks, acknowledged: sortById(c.acknowledged), approvals: byKey(list) };
+      const shownPicks = { picks: c.picks, acknowledged: sortById(c.acknowledged), approvals: byKey(list), everyEngine: c.everyEngine };
       return written(f, 'adoption', rev, shownPicks, async () => {
-        const r = await applyAdoption(adoptInput(f, c.picks, c.acknowledged.map(a => a.id)), rev, list.map(a => a.key));
+        const r = await applyAdoption(adoptInput(f, c.picks, c.acknowledged.map(a => a.id), c.everyEngine), rev, list.map(a => a.key));
         return { written: r.written.map(p => f.scrub(`.bowerloom/${p}`)) };
       });
     }),
@@ -457,7 +492,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     }),
     planProjection: (id, input) => serial(async () => {
       const f = folderOf(id), i = checkProjectInput(input);
-      const a = await planned(f, 'projection', () => planProjectionNow(f, i));
+      const a = await planned(f, 'projection', () => { refusePreview(i); return planProjectionNow(f, i); });
       if (a.ok || a.refusal.code !== 'PORTABLE_DRIFT') return a;
       // A file Bowerloom wrote changed since: the window shows each one with why, and offers to keep the person's version.
       let drift: ReturnType<typeof portableDrift> = [];
@@ -466,26 +501,32 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     }),
     runProjection: (id, revision, input) => serial(async () => {
       const f = folderOf(id), rev = revisionArg(revision), i = checkProjectInput(input);
+      const stopped = await answer(f, () => { whileStopped(f); refusePreview(i); });
+      if (!stopped.ok) return stopped;
       return written(f, 'projection', rev, i, async () => {
-        const io = portableInput(f, i, approvalsFor(f, i.approve, false).approvals);
+        // Main's dialog said yes: only now do the lines the person ticked become drafts on disk.
+        await keepTicks(f, i.approve);
+        const io = portableInput(f, i, approvalsFor(f, i.approve).approvals);
         const plan = planPortable(io);
         const r = await applyPortable(io, rev);
         // The receipt now records the approvals this install used, so their drafts go (D3A). The install itself is done: a draft that stays is never
-        // wrong, since a draft counts only for its unchanged entry, and the next install drops it.
+        // wrong, since a draft counts only for its unchanged entry, and the next install drops it. The window is told.
+        const warnings: string[] = [];
         try {
           const recorded = r.receipt?.approvals ?? readPortableReceipt({ projectDir: f.dir, stateDir: f.portableState })?.approvals ?? [];
-          dropApprovalDrafts(f.dirs, f.dir, recorded);
-        } catch { /* the drafts stay; see above */ }
+          await dropApprovalDraftsLocked(f.dirs, f.dir, recorded);
+        } catch (error) { warnings.push(draftsWarning(error)); }
         const writes = plan.changes.filter(c => c.action !== 'unchanged' && c.action !== 'take-over' && !keepsFile(c));
         return {
           noop: r.noop, written: writes.map(c => f.scrub(c.path)), takenOver: plan.changes.filter(c => c.action === 'take-over').map(c => f.scrub(c.path)),
-          leftBehind: r.leftBehind.map(l => f.scrub(l.path)),
+          leftBehind: r.leftBehind.map(l => f.scrub(l.path)), ...(warnings.length ? { warnings } : {}),
         };
       });
     }),
     planRemoval: id => serial(async () => {
       const f = folderOf(id);
       return planned(f, 'removal', () => {
+        whileStopped(f);
         const plan = planPortableRemoval({ projectDir: f.dir, stateDir: f.portableState });
         const restores = plan.changes.filter(c => c.action === 'restore' && !keepsFile(c)).length, deletes = plan.changes.filter(c => c.action === 'delete').length;
         return { value: removalView(plan, f.scrub), revision: plan.revision, choices: null, ask: ASK.removal(f.label, deletes, restores, plan.revision) };
@@ -493,12 +534,16 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     }),
     runRemoval: (id, revision) => serial(async () => {
       const f = folderOf(id), rev = revisionArg(revision);
+      const stopped = await answer(f, () => whileStopped(f));
+      if (!stopped.ok) return stopped;
       return written(f, 'removal', rev, null, async () => {
         const r = await applyPortableRemoval({ projectDir: f.dir, stateDir: f.portableState }, rev);
         made.delete(f.id); shown.delete(f.id);
-        // Nothing is installed now, so no draft of this folder stands for anything (D3A). The removal itself is done; a draft that stays is never wrong.
-        try { dropApprovalDrafts(f.dirs, f.dir); } catch { /* the drafts stay; see above */ }
-        return { restored: r.restored.map(f.scrub), kept: r.kept.map(f.scrub), deleted: r.deleted.map(f.scrub), leftBehind: r.leftBehind.map(l => f.scrub(l.path)) };
+        // Nothing is installed now, so no draft of this folder stands for anything (D3A). The removal itself is done; a draft that stays is never wrong,
+        // and the window is told.
+        const warnings: string[] = [];
+        try { await dropApprovalDraftsLocked(f.dirs, f.dir); } catch (error) { warnings.push(draftsWarning(error)); }
+        return { restored: r.restored.map(f.scrub), kept: r.kept.map(f.scrub), deleted: r.deleted.map(f.scrub), leftBehind: r.leftBehind.map(l => f.scrub(l.path)), ...(warnings.length ? { warnings } : {}) };
       });
     }),
     planRecovery: (id, choices) => serial(async () => {

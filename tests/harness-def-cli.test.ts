@@ -7,7 +7,7 @@ import test from './support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,11 +22,13 @@ import { withPartialWords } from '../apps/cli/src/harness-def.js';
 const FIXTURE = JSON.parse(readFileSync(fileURLToPath(new URL('../../tests/fixtures/harness-08/project.json', import.meta.url)), 'utf8')) as { files: Record<string, string> };
 const ENGINES = ['--engine', 'claude-code@2.1.310', '--engine', 'codex@0.157.0', '--engine', 'opencode@1.18.30'];
 const PICK = ['--pick', 'system-prompt/AGENTS.md=AGENTS.md'];
+/** Decision D8B: the guardrail, hook, and servers found in Claude Code files apply to every engine of the harness. */
+const EVERY = ['--every-engine', 'guardrails', '--every-engine', 'hooks', '--every-engine', 'mcp'];
 const KEY = /^(skills|subagents|guardrails|hooks|mcp)\/[^@\s]+@(claude-code|codex|opencode|pi|deepseek-harness):[a-f0-9]{12}$/;
-/** The files adoption read and the person later moves aside, as the PORTABLE_CONFLICT and PORTABLE_PATH_OCCUPIED refusals advise. */
-const ADOPTED_ENGINE_FILES = ['.claude/skills', '.mcp.json', '.claude/settings.json'];
+/** Files install finds equal in bytes or in meaning to what it would write. It takes them over: it records them and writes nothing. */
+const TAKEN_OVER = ['.claude/settings.json', '.claude/skills/review/SKILL.md', '.mcp.json', 'AGENTS.md'];
 
-interface W { base: string; home: string; dir: string; state: string; aside: string; env: Record<string, string> }
+interface W { base: string; home: string; dir: string; state: string; env: Record<string, string> }
 interface Refused { key: string; part: string; entry: string; field?: string; engine: string; result: string; reason: string; approvable: boolean }
 
 function world(t: TestContext): W {
@@ -34,9 +36,8 @@ function world(t: TestContext): W {
   t.after(() => removeAll(base));
   const home = join(base, 'home'); mkdirSync(home, { mode: 0o700 });
   const dir = join(home, 'Projects', 'e2e'); mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const aside = join(base, 'aside'); mkdirSync(aside, { mode: 0o700 });
   for (const [rel, text] of Object.entries(FIXTURE.files)) { mkdirSync(dirname(join(dir, rel)), { recursive: true }); writeFileSync(join(dir, rel), text, { mode: 0o644 }); }
-  return { base, home, dir, state: join(base, 'state'), aside, env: { HOME: home, XDG_STATE_HOME: join(base, 'state') } };
+  return { base, home, dir, state: join(base, 'state'), env: { HOME: home, XDG_STATE_HOME: join(base, 'state'), BOWERLOOM_PREVIEW_ENGINES: '1' } };
 }
 const bl = (w: W, args: string[], cwd = w.dir) => run(cwd, ['harness', ...args], w.env);
 const json = <T = Record<string, unknown>>(text: string): T => JSON.parse(text) as T;
@@ -58,33 +59,23 @@ function snapshot(root: string, skip: (rel: string) => boolean = () => false): R
 }
 const outsideDefinition = (rel: string): boolean => rel === '.bowerloom' || rel.startsWith('.bowerloom/');
 
-/** Plans adoption (exit 3), then applies it with every confirmation the plan asks for. */
-function adopt(w: W): { revision: string; approvals: string[] } {
-  const planned = bl(w, ['adopt', ...ENGINES, ...PICK, '--json']);
+/**
+ * Plans adoption (exit 3), then applies it with every confirmation the plan asks for. By default the guardrail, hook, and
+ * servers apply to every engine (decision D8B), so no one edits the definition by hand.
+ */
+function adopt(w: W, every: readonly string[] = EVERY): { revision: string; approvals: string[] } {
+  const planned = bl(w, ['adopt', ...ENGINES, ...PICK, ...every, '--json']);
   assert.equal(planned.status, 3, planned.stderr + planned.stdout);
   const body = json<{ revision: string; plan: { approvalsRequired: string[]; ready: boolean } }>(planned.stdout);
   assert.equal(body.plan.ready, true);
   const confirms = body.plan.approvalsRequired.flatMap(k => ['--confirm', k]);
-  const applied = bl(w, ['adopt', ...ENGINES, ...PICK, ...confirms, '--approve', body.revision]);
+  const applied = bl(w, ['adopt', ...ENGINES, ...PICK, ...every, ...confirms, '--approve', body.revision]);
   assert.equal(applied.status, 0, applied.stderr + applied.stdout);
   return { revision: body.revision, approvals: body.plan.approvalsRequired };
 }
 
-/**
- * The person's own steps after adoption: the guardrail, hook, and servers apply to every engine (adoption scoped them to
- * Claude Code, where it found them), and the engine files adoption read move aside so the projection owns those paths.
- */
-function widenAndMoveAside(w: W): void {
-  for (const [file, key] of [['guardrails.json', 'rules'], ['hooks.json', 'hooks'], ['mcp.json', 'servers']] as const) {
-    const path = join(w.dir, '.bowerloom', file), value = json<Record<string, Record<string, unknown>[]>>(readFileSync(path, 'utf8'));
-    for (const entry of value[key]!) delete entry.engines;
-    writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
-  }
-  for (const rel of ADOPTED_ENGINE_FILES) renameSync(join(w.dir, rel), join(w.aside, rel.replace(/\//g, '_')));
-}
-
 /** Install refuses with fidelity lines; each is accepted; install then plans (exit 3) and applies (exit 0). */
-function install(w: W): { refused: Refused[]; revision: string; changes: { path: string; action: string }[] } {
+function install(w: W): { refused: Refused[]; revision: string; changes: { path: string; action: string }[]; takenOver: { path: string; entry?: string }[] } {
   const first = bl(w, ['install', '--json']);
   assert.equal(first.status, 1, first.stderr + first.stdout);
   assert.equal(errorCode(first.stderr), 'PORTABLE_FIDELITY');
@@ -95,10 +86,10 @@ function install(w: W): { refused: Refused[]; revision: string; changes: { path:
   }
   const planned = bl(w, ['install', '--json']);
   assert.equal(planned.status, 3, planned.stderr + planned.stdout);
-  const body = json<{ revision: string; plan: { changes: { path: string; action: string }[] } }>(planned.stdout);
+  const body = json<{ revision: string; plan: { changes: { path: string; action: string }[]; takenOver: { path: string; entry?: string }[] } }>(planned.stdout);
   const applied = bl(w, ['install', '--approve', body.revision, '--json']);
   assert.equal(applied.status, 0, applied.stderr + applied.stdout);
-  return { refused, revision: body.revision, changes: body.plan.changes };
+  return { refused, revision: body.revision, changes: body.plan.changes, takenOver: body.plan.takenOver };
 }
 
 test('Spec H check 7: adopt plans with exit 3 and writes nothing; apply writes only .bowerloom and every original stays byte for byte', t => {
@@ -137,9 +128,42 @@ test('Spec H check 7: adopt plans with exit 3 and writes nothing; apply writes o
   assert.equal(again.status, 1); assert.equal(errorCode(again.stderr), 'ADOPTION_DEFINED');
 });
 
+test('Decision D8B: adopt --every-engine for guardrails, hooks, and mcp widens them; install gives Codex and OpenCode lines with no hand edit', t => {
+  const w = world(t);
+  type Every = { part: string; chosen: boolean; widens: number; notWidened: { id: string; reason: string }[] };
+  const plain = json<{ revision: string; plan: { everyEngine: Every[] } }>(bl(w, ['adopt', ...ENGINES, ...PICK, '--json']).stdout);
+  assert.deepEqual(plain.plan.everyEngine.map(e => [e.part, e.chosen, e.widens]), [['guardrails', false, 1], ['hooks', false, 1], ['mcp', false, 2]], 'each part counts what the choice would widen');
+  const human = bl(w, ['adopt', ...ENGINES, ...PICK]);
+  assert.match(human.stdout, /--every-engine hooks/);
+  const planned = bl(w, ['adopt', ...ENGINES, ...PICK, ...EVERY, '--json']);
+  assert.equal(planned.status, 3, planned.stderr);
+  const wide = json<{ revision: string; plan: { everyEngine: Every[]; approvalsRequired: string[] } }>(planned.stdout);
+  assert.deepEqual(wide.plan.everyEngine.map(e => [e.part, e.chosen, e.widens, e.notWidened.length]), [['guardrails', true, 1, 0], ['hooks', true, 1, 0], ['mcp', true, 2, 0]]);
+  assert.notEqual(wide.revision, plain.revision, 'the choice is part of the plan revision');
+  // An approval made without the choice does not match the plan with it.
+  const confirms = wide.plan.approvalsRequired.flatMap(k => ['--confirm', k]);
+  const stale = bl(w, ['adopt', ...ENGINES, ...PICK, ...EVERY, ...confirms, '--approve', plain.revision]);
+  assert.equal(stale.status, 1); assert.equal(errorCode(stale.stderr), 'STALE_APPROVAL');
+  assert.equal(existsSync(join(w.dir, '.bowerloom')), false);
+  // The flag repeated in another order is the same plan.
+  const reordered = json<{ revision: string }>(bl(w, ['adopt', ...ENGINES, ...PICK, '--every-engine', 'mcp', '--every-engine', 'hooks', '--every-engine', 'guardrails', '--json']).stdout);
+  assert.equal(reordered.revision, wide.revision);
+  adopt(w);
+  for (const [file, key] of [['guardrails.json', 'rules'], ['hooks.json', 'hooks'], ['mcp.json', 'servers']] as const) {
+    const value = json<Record<string, Record<string, unknown>[]>>(readFileSync(join(w.dir, '.bowerloom', file), 'utf8'));
+    for (const entry of value[key]!) assert.equal('engines' in entry, false, `${file}: ${JSON.stringify(entry)}`);
+  }
+  const { refused } = install(w);
+  for (const rel of ['.codex/rules/bowerloom.rules', '.codex/hooks.json', '.opencode/plugins/bowerloom-hooks.js']) assert.ok(existsSync(join(w.dir, rel)), `${rel}: the Claude Code deny rule and hook reach Codex and OpenCode`);
+  assert.match(readFileSync(join(w.dir, '.codex', 'config.toml'), 'utf8'), /\[mcp_servers\.lint\]/, 'and a Claude Code server reaches Codex');
+  assert.ok(Object.keys(json<{ mcp: Record<string, unknown> }>(readFileSync(join(w.dir, 'opencode.json'), 'utf8')).mcp).length >= 2, 'and OpenCode');
+  assert.deepEqual([...new Set(refused.map(l => l.engine))].sort(), ['codex', 'opencode']);
+  assert.ok(refused.some(l => l.part === 'hooks') && refused.some(l => l.part === 'guardrails'), refused.map(l => l.key).join(' '));
+});
+
 test('Spec P check 7: install to claude-code, codex and opencode gives fidelity lines; accept each; install exits 3, then 0', t => {
   const w = world(t);
-  adopt(w); widenAndMoveAside(w);
+  adopt(w);
   const { refused, changes } = install(w);
   assert.ok(refused.length >= 3, 'the deny rule and the hook are weaker in Codex and OpenCode');
   for (const line of refused) {
@@ -164,9 +188,49 @@ test('Spec P check 7: install to claude-code, codex and opencode gives fidelity 
   assert.equal(again.status, 0, again.stderr);
 });
 
+test('Install takes over files equal in bytes or meaning: it records them, writes nothing to them, and removal leaves them as they were', t => {
+  const w = world(t);
+  adopt(w);
+  const originals = snapshot(w.dir, outsideDefinition);
+  const modes = Object.fromEntries(TAKEN_OVER.map(rel => [rel, lstatSync(join(w.dir, rel)).mode & 0o7777]));
+  const first = json<{ refused: Refused[] }>(bl(w, ['install', '--json']).stdout);
+  for (const line of first.refused) assert.equal(bl(w, ['accept', line.key]).status, 0);
+  // The person reads the plan: each equal file is marked take-over, not replace or update.
+  const human = bl(w, ['install']);
+  assert.equal(human.status, 3, human.stderr);
+  for (const rel of TAKEN_OVER) assert.match(human.stdout, new RegExp(`take-over +${rel.replace(/[.\\/]/g, c => `\\${c}`)}\\n`), rel);
+  const planned = bl(w, ['install', '--json']);
+  assert.equal(planned.status, 3, planned.stderr);
+  const { revision, plan: { changes, takenOver } } = json<{ revision: string; plan: { changes: { path: string; action: string }[]; takenOver: { path: string; entry?: string }[] } }>(planned.stdout);
+  const applied = bl(w, ['install', '--approve', revision, '--json']);
+  assert.equal(applied.status, 0, applied.stderr + applied.stdout);
+  const action = (rel: string): string | undefined => changes.find(c => c.path === rel)?.action;
+  for (const rel of TAKEN_OVER) assert.equal(action(rel), 'take-over', rel);
+  assert.equal(action('CLAUDE.md'), 'replace', 'CLAUDE.md differs from the reconciled text, so it is replaced and its original is saved');
+  assert.equal(action('.codex/config.toml'), 'replace', 'the Codex file gains the adopted server beside the unmanaged one');
+  assert.deepEqual([...new Set(takenOver.map(x => x.path))].sort(), TAKEN_OVER, 'the plan lists each taken over file once by path');
+  assert.ok(takenOver.some(x => x.path === '.mcp.json' && x.entry === 'mcpServers.files'), 'and an entry of a shared file by name');
+  assert.ok(takenOver.some(x => x.path === '.claude/settings.json' && x.entry === 'permissions.deny[0]'));
+  // Nothing was written to a taken over file: same bytes, same mode.
+  const now = snapshot(w.dir, outsideDefinition);
+  for (const rel of TAKEN_OVER) { assert.equal(now[rel], originals[rel], `${rel} is byte for byte the original`); assert.equal(lstatSync(join(w.dir, rel)).mode & 0o7777, modes[rel]); }
+  const status = json<{ receipt: { files: number } }>(bl(w, ['status', '--json']).stdout);
+  assert.ok(status.receipt.files >= TAKEN_OVER.length, 'the receipt records the taken over files');
+  // A taken over file the person later changes is drift, like any file Bowerloom wrote.
+  writeFileSync(join(w.dir, '.mcp.json'), '{"mcpServers":{}}\n');
+  const drift = json<{ drift: { path: string; reason: string }[] }>(bl(w, ['drift', '--json']).stdout).drift;
+  assert.deepEqual(drift.map(d => `${d.reason} ${d.path}`), ['changed .mcp.json']);
+  writeFileSync(join(w.dir, '.mcp.json'), FIXTURE.files['.mcp.json']!);
+  assert.deepEqual(json<{ drift: unknown[] }>(bl(w, ['drift', '--json']).stdout).drift, []);
+  // Removal gives back the original of every path.
+  const removal = json<{ revision: string }>(bl(w, ['remove', '--json']).stdout);
+  assert.equal(bl(w, ['remove', '--approve', removal.revision]).status, 0);
+  assert.deepEqual(snapshot(w.dir, outsideDefinition), originals);
+});
+
 test('Spec L checks 10 and 4: a second install is a no-op, and the unmanaged Codex server survives', t => {
   const w = world(t);
-  adopt(w); widenAndMoveAside(w);
+  adopt(w);
   const config = readFileSync(join(w.dir, '.codex', 'config.toml'), 'utf8');
   install(w);
   const after = snapshot(w.dir), stateAfter = snapshot(w.state);
@@ -184,7 +248,7 @@ test('Spec L checks 10 and 4: a second install is a no-op, and the unmanaged Cod
 
 test('Spec P check 3 and decision D5A: drift shows changed and mode, removal refuses, recover clears both, removal restores every original', t => {
   const w = world(t);
-  adopt(w); widenAndMoveAside(w);
+  adopt(w);
   const beforeInstall = snapshot(w.dir);
   install(w);
   const clean = bl(w, ['drift', '--check', '--json']);
@@ -229,7 +293,7 @@ test('Spec P check 3 and decision D5A: drift shows changed and mode, removal ref
   const after = snapshot(w.dir);
   const kept = '.claude/skills/review/SKILL.md';
   assert.match(readFileSync(join(w.dir, kept), 'utf8'), /Review it twice/);
-  const withoutKept = (s: Record<string, string>): Record<string, string> => Object.fromEntries(Object.entries(s).filter(([k]) => !k.startsWith('.claude/')));
+  const withoutKept = (s: Record<string, string>): Record<string, string> => Object.fromEntries(Object.entries(s).filter(([k]) => k !== kept));
   assert.deepEqual(withoutKept(after), withoutKept(beforeInstall));
   assert.equal(readFileSync(join(w.dir, 'CLAUDE.md'), 'utf8'), FIXTURE.files['CLAUDE.md']);
   assert.equal(readFileSync(join(w.dir, '.codex', 'config.toml'), 'utf8'), FIXTURE.files['.codex/config.toml']);
@@ -241,7 +305,7 @@ test('Spec P check 3 and decision D5A: drift shows changed and mode, removal ref
 
 test('A stale --approve refuses STALE_APPROVAL, and accept refuses a key whose entry changed', t => {
   const w = world(t);
-  adopt(w); widenAndMoveAside(w);
+  adopt(w);
   const first = json<{ refused: Refused[] }>(bl(w, ['install', '--json']).stdout).refused;
   for (const line of first) assert.equal(bl(w, ['accept', line.key]).status, 0);
   const planned = json<{ revision: string }>(bl(w, ['install', '--json']).stdout);
@@ -270,7 +334,7 @@ test('A stale --approve refuses STALE_APPROVAL, and accept refuses a key whose e
 
 test('Decision D4A: merge moves CLAUDE.md into the definition; install then makes CLAUDE.md @AGENTS.md, and removal restores it', t => {
   const w = world(t);
-  adopt(w); widenAndMoveAside(w);
+  adopt(w);
   const claude = readFileSync(join(w.dir, 'CLAUDE.md'), 'utf8');
   const drift = json<{ instructions: { agents: string } | null }>(bl(w, ['drift', '--json']).stdout);
   assert.notEqual(drift.instructions, null, 'CLAUDE.md does not follow AGENTS.md');
@@ -328,7 +392,6 @@ test('Decision D3A: the record of the earlier app is moved on the first command,
   const input = { projectDir: w.dir, stateDir: join(legacy, 'adoption'), engines: [{ id: 'claude-code' as const, version: '2.1.310' }] };
   const plan = planAdoption(input);
   await applyAdoption(input, plan.revision, plan.approvalsRequired);
-  for (const rel of ADOPTED_ENGINE_FILES) renameSync(join(w.dir, rel), join(w.aside, rel.replace(/\//g, '_')));
   const io = { projectDir: w.dir, definitionFolder: join(w.dir, '.bowerloom'), stateDir: join(legacy, 'portable') };
   await applyPortable(io, planPortable(io).revision);
   const files = snapshot(w.dir);
@@ -351,7 +414,7 @@ test('Decision D3A: the record of the earlier app is moved on the first command,
 
 test('Routing and usage: 0.7 forms with --synthetic keep their handler; the 0.8 forms refuse bad flags with exit 2', t => {
   const w = world(t);
-  for (const args of [['bogus'], ['status', '--dir', 'relative/path'], ['status', '--approve', 'a'.repeat(64)], ['install', '--engine'], ['install', '--engine', 'vim'], ['accept'], ['accept', 'a', 'b'], ['recover', '--adoption', '--keep', 'x'], ['drift', '--check', '--check'], ['adopt', '--pick', 'nothing'], []]) {
+  for (const args of [['bogus'], ['status', '--dir', 'relative/path'], ['status', '--approve', 'a'.repeat(64)], ['install', '--engine'], ['install', '--engine', 'vim'], ['accept'], ['accept', 'a', 'b'], ['recover', '--adoption', '--keep', 'x'], ['drift', '--check', '--check'], ['adopt', '--pick', 'nothing'], ['adopt', '--every-engine', 'skills'], ['adopt', '--every-engine', 'hooks', '--every-engine', 'hooks'], ['adopt', '--every-engine'], []]) {
     const r = bl(w, args);
     assert.equal(r.status, 2, `${args.join(' ')}: ${r.stderr}`); assert.equal(errorCode(r.stderr), 'USAGE');
   }

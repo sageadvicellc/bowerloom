@@ -180,6 +180,7 @@ These codes come from `bowerloom cache prune`. It also raises `STALE_APPROVAL`, 
 | `MANIFEST_LICENSE_UNSUPPORTED` | This beta installs MIT and Apache-2.0 skills only. | Choose another skill, or run `bowerloom help skills`. |
 | `MANIFEST_DUPLICATE_ID` | Each skill needs its own id. | Run `git diff .bowerloom/skills.json`. |
 | `ENGINE_NO_WRITER` | Bowerloom writes files for Claude Code and Codex only, for now. The command or the file named another engine, such as opencode, pi, or deepseek-harness. The message names it. | Name `claude-code` or `codex`. |
+| `ENGINE_PREVIEW` | This engine is a preview engine in this beta. Beta.1 supports Claude Code and Codex. You named OpenCode, Pi, or DeepSeek Harness for an install or an accept, or the harness lists only those engines. Nothing was written. The message names the engine. | Install for `claude-code` or `codex`, or set `BOWERLOOM_PREVIEW_ENGINES=1` to try the preview engine. |
 | `MANIFEST_LIMIT` | This beta keeps `skills.json` small: 128 skills and 1 MiB at most. That counts local and pinned skills together. The store `skills.json` holds at most 256 skills and 4 MiB. | Run `bowerloom skills check`. |
 | `SKILLS_ADD_SPEC_INVALID` | The source names a package or repository, an exact pin, and the skill folder. | Run `bowerloom help skills`. |
 | `SKILLS_ADD_EXISTS` | `skills.json` already holds a skill with this id or this source. | To move that id to another version or commit, add `--replace`: `bowerloom skills add <source> --id <id> --replace`. |
@@ -329,11 +330,11 @@ The `bowerloom harness` commands adopt a folder into a 0.8 harness and install i
 | `PORTABLE_MERGE_NOT_BUILT` | Install never edits the harness, and Merge changes the instructions in it. | `bowerloom harness merge`, then `bowerloom harness install --reconcile accept-agents` |
 | `PORTABLE_PATH_UNSAFE` | A path is a link, is not a plain file or folder of yours, or is larger than 1 MiB. | Check each path the message names with `ls -la`. |
 | `PORTABLE_PATH_OCCUPIED` | A target holds files that Bowerloom did not write, and Bowerloom never overwrites them. | Move those files aside, then run the command again. |
-| `PORTABLE_MANAGED_COPY` | A 0.7 skills sync manages that skill copy, so install cannot write it. | `bowerloom harness adopt` |
+| `PORTABLE_MANAGED_COPY` | A 0.7 sync manages that copy, and install would change its content, so the 0.7 sync owns it. | For a skill, run `bowerloom harness adopt`. For a prompt, keep the engine copy as it is, or remove the 0.7 prompt with the 0.7 command, then run the command again. |
 | `PORTABLE_CASE_CLASH` | Two paths differ only in letter case, and many file systems treat them as one. | Rename one of the two paths the message lists. |
 | `PORTABLE_DRIFT` | A file that Bowerloom wrote, or was about to replace, changed since the plan. | `bowerloom harness drift` |
 | `PORTABLE_STATE_UNSAFE` | Bowerloom keeps its record of an install in a private folder that only you can change, outside the project. | check the private state folder: `$XDG_STATE_HOME/bowerloom` when `XDG_STATE_HOME` is set, else `~/.local/state/bowerloom` |
-| `PORTABLE_STATE_INVALID` | A record in the private state folder is damaged, or a saved copy that it needs is gone. | `bowerloom harness recover`. If the message lists paths with no saved copy, add `--keep <path>` for each. |
+| `PORTABLE_STATE_INVALID` | The record that the message names is damaged, or a saved copy that it needs is gone. | Move the file the message names aside in the private state folder, then run the command again. If the message says a saved copy is gone, run `bowerloom harness recover` with `--keep <path>` for each path. |
 | `PORTABLE_STATE_FOREIGN` | The private state folder holds the record of another folder, and Bowerloom never uses it for this one. | Run the command from the folder that made the record. |
 | `PORTABLE_RECOVERY_REQUIRED` | An earlier install or removal stopped part way, and Bowerloom changes nothing else until it is recovered. | `bowerloom harness recover` |
 | `PORTABLE_PARTIAL` | The run stopped part way, and some files are not as planned. The message lists them. | `bowerloom harness recover` |

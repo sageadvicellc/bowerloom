@@ -4,7 +4,8 @@ import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
-import test from 'node:test';
+import test, { after } from 'node:test';
+import { removeAll } from './support/config-cli.js';
 import { canonicalJson, DefinitionError } from '../packages/contracts/src/index.js';
 import { runRoutineCommand } from '../apps/cli/src/routine.js';
 import { exportRoutineYaml, loadRoutineFiles } from '../packages/routines/src/files.js';
@@ -12,9 +13,15 @@ import { scaffold } from '../packages/startup/src/scaffold.js';
 import { planStartup, applyStartup, inspectStartup } from '../packages/startup/src/index.js';
 
 const sha = (value: string | Buffer) => 'sha256:' + createHash('sha256').update(value).digest('hex');
+const made: string[] = [];
+// Every folder a test made goes when the file is done, also when a test failed or left a part of it read only.
+// A person who names a fixture folder with BOWERLOOM_ROUTINE_TEST_FIXTURES asked to keep the evidence there. The system temp folder is always cleaned.
+after(() => { if (process.env.BOWERLOOM_ROUTINE_TEST_FIXTURES === undefined) for (const dir of made.splice(0)) removeAll(dir); });
 function area(): string {
   const base = realpathSync(process.env.BOWERLOOM_ROUTINE_TEST_FIXTURES ?? tmpdir());
-  return realpathSync(mkdtempSync(join(base, 'bowerloom-routine-cli-')));
+  const dir = realpathSync(mkdtempSync(join(base, 'bowerloom-routine-cli-')));
+  made.push(dir);
+  return dir;
 }
 function fixture() {
   const parent = area(), root = join(parent, '.bowerloom'); mkdirSync(root, {mode: 0o700});

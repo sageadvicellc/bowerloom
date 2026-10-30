@@ -7,6 +7,7 @@
  * draft is checked by `parseFidelityApproval`. A draft is dropped once a receipt records it, and on removal.
  */
 import fs from 'node:fs';
+import { withProjectLock } from '../../project-context/src/index.js';
 import { entryHash, parseFidelityApproval } from '../../harness-definition/src/index.js';
 import type { Definition, FidelityApproval } from '../../harness-definition/src/index.js';
 import { refuse, syncDir } from './portable-files.js';
@@ -94,7 +95,8 @@ export function readApprovalDrafts(dirs: HarnessStateDirs, projectDir: string, o
  * stored is kept as it is, with its first time, and nothing is written. A draft of the same line with another result
  * or hash is replaced. Drafts whose entry changed or is gone are dropped in the same write. A draft whose entry hash is
  * not the hash of its entry in `definition` refuses HARNESS_APPROVAL_STALE; a draft that is not a valid approval, or
- * that carries its own time, refuses PORTABLE_USAGE. The write is atomic.
+ * that carries its own time, refuses PORTABLE_USAGE. The write is atomic. It reads, then writes, with no lock: a caller
+ * that holds the project lock calls this one, and any other caller calls `addApprovalDraftLocked`.
  */
 export function addApprovalDraft(dirs: HarnessStateDirs, projectDir: string, draft: ApprovalDraftInput, options: AddApprovalDraftOptions): FidelityApproval {
   const layout = checkLayout(dirs, projectDir);
@@ -116,7 +118,8 @@ export function addApprovalDraft(dirs: HarnessStateDirs, projectDir: string, dra
 /**
  * Drops drafts and returns how many it dropped. With `recorded`, the approvals a receipt now holds, it drops each
  * draft of the same line, result, and entry hash; with none, it drops every draft (on removal). The file goes when no
- * draft is left. A damaged file is refused and kept.
+ * draft is left. A damaged file is refused and kept. It takes no lock: a caller that holds the project lock calls this
+ * one, and any other caller calls `dropApprovalDraftsLocked`.
  */
 export function dropApprovalDrafts(dirs: HarnessStateDirs, projectDir: string, recorded?: readonly FidelityApproval[]): number {
   const layout = checkLayout(dirs, projectDir);
@@ -129,4 +132,23 @@ export function dropApprovalDrafts(dirs: HarnessStateDirs, projectDir: string, r
   if (kept.length === drafts.length && drafts.length > 0) return 0;
   save(layout, projectDir, kept);
   return drafts.length - kept.length;
+}
+
+/**
+ * `addApprovalDraft` under the project lock, so two commands cannot read the file and both write it back. The lock is not
+ * waited for: another holder gives PROJECT_LOCKED and nothing is written. Do not call it while holding the lock.
+ */
+export async function addApprovalDraftLocked(
+  dirs: HarnessStateDirs, projectDir: string, draft: ApprovalDraftInput, options: AddApprovalDraftOptions, signal?: AbortSignal,
+): Promise<FidelityApproval> {
+  checkLayout(dirs, projectDir);
+  return withProjectLock(projectDir, signal ?? new AbortController().signal, async held => { held.assertHeld(projectDir); return addApprovalDraft(dirs, projectDir, draft, options); });
+}
+
+/** `dropApprovalDrafts` under the project lock, as `addApprovalDraftLocked`. */
+export async function dropApprovalDraftsLocked(
+  dirs: HarnessStateDirs, projectDir: string, recorded?: readonly FidelityApproval[], signal?: AbortSignal,
+): Promise<number> {
+  checkLayout(dirs, projectDir);
+  return withProjectLock(projectDir, signal ?? new AbortController().signal, async held => { held.assertHeld(projectDir); return dropApprovalDrafts(dirs, projectDir, recorded); });
 }

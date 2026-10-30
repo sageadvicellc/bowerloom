@@ -9,6 +9,10 @@
  * - Guardrail rules for one action and pattern whose effect differs between engines are both kept, each with the
  *   engines that had it, and listed as a difference.
  * - An item's engine filter is the engines that read its places. With every engine of the harness, it has no filter.
+ * - Decision D8B: "Use for every engine", chosen per part for guardrails, hooks, and MCP servers, removes the filter from
+ *   every item of that part. An item that differs between engines (a guardrail difference, a conflict kept under
+ *   distinct ids, or a hook when another engine holds a different hook for the same event and matcher) keeps its
+ *   filter, and the plan lists it as not widened. The choice is part of the plan's revision.
  * - The planned files are loaded with the contract's loader in a scratch folder outside the project. A problem there is
  *   a problem of the plan, and apply refuses it.
  */
@@ -31,14 +35,15 @@ import { ProjectReader } from './files.js';
 import { checkState, readJournal } from './journal.js';
 import { readLegacy } from './legacy.js';
 import {
-  ADOPTION_PLAN_FORMAT, type AdoptionChoice, type AdoptionPlan, type Candidate, type Conflict, type Difference, type ItemPart, type Missed,
+  ADOPTION_PLAN_FORMAT, EVERY_ENGINE_PARTS, type AdoptionChoice, type AdoptionPlan, type Candidate, type Conflict, type Difference, type EveryEngine,
+  type EveryEnginePart, type ItemPart, type Missed,
   type ManagedConversion, type Place, type PlanEngine, type PlanItem, type PlannedFile, type SecretLine, type SourceShape, type Unmapped,
 } from './model.js';
 import { listNestedInstructions, readInstructions, readSkillPlaces } from './portable-readers.js';
 import { RISK_APPROVAL, riskOf } from './shared.js';
 import { secretName } from './secrets.js';
 import { refuse } from './refusal.js';
-import { skillMarkdown } from './skills.js';
+import { skillMarkdown, translatedMarkdown } from './skills.js';
 
 export interface AdoptionInput {
   /** The real absolute path of the project folder. */
@@ -52,6 +57,11 @@ export interface AdoptionInput {
   readonly choices?: Readonly<Record<string, AdoptionChoice>>;
   /** The ids of gated unmapped entries a person acknowledges (ruling A17). */
   readonly acknowledged?: readonly string[];
+  /**
+   * Decision D8B: the parts whose items apply to every engine of the harness, whatever engines read their places. Each
+   * part at most once. Default: none, so each item keeps the engines that read it.
+   */
+  readonly everyEngine?: readonly EveryEnginePart[];
 }
 
 /** A plan with the bytes of each planned file, for apply. */
@@ -67,7 +77,7 @@ const CONTROL = /[\0-\x08\x0a-\x1f\x7f]/;
 export function planAdoption(input: AdoptionInput): AdoptionPlan { return planWithBytes(input).plan; }
 
 export function planWithBytes(input: AdoptionInput): PlanWithBytes {
-  const { projectDir, stateDir, wanted, harnessId, description, choices, acknowledged } = checkInput(input);
+  const { projectDir, stateDir, wanted, harnessId, description, choices, acknowledged, everyEngine: wide } = checkInput(input);
   if (readJournal(stateDir, projectDir) !== null) refuse('ADOPTION_RECOVERY_REQUIRED');
   const definitionFolder = join(projectDir, '.bowerloom');
   const r = new ProjectReader(projectDir);
@@ -100,8 +110,11 @@ export function planWithBytes(input: AdoptionInput): PlanWithBytes {
   // Ids that come from content, so identical entries merge and others never clash.
   const cands = dropAllows({ ...ctx, cands: withoutSecrets(ctx, ctx.cands) }).map(withId);
   const missed: Missed[] = r.unmapped;
-  const { items, conflicts, kept } = group(cands, engines, choices, missed);
-  const differences = differencesOf(kept, engines);
+  const grouped = group(cands, engines, choices, missed);
+  const { conflicts } = grouped;
+  const differences = differencesOf(grouped.kept, engines);
+  const { kept, everyEngine } = widen(grouped.kept, differences, grouped.split, wide, engines);
+  const items = kept.map(k => k.item);
   importsOf(kept, projectDir, missed);
 
   // Explicit models of each engine: the input wins; an engine file gives one otherwise.
@@ -125,7 +138,7 @@ export function planWithBytes(input: AdoptionInput): PlanWithBytes {
 
   const built = buildFiles({ harnessId, description, engines: planEngines, items: kept, unmapped: missed, warnings });
   const files: PlannedFile[] = [...built.entries()].sort(([a], [b]) => byBytes(a, b))
-    .map(([path, f]) => ({ path, sha256: sha(f.bytes), bytes: f.bytes.length, mode: f.mode }));
+    .map(([path, f]) => ({ path, sha256: sha(f.bytes), bytes: f.bytes.length, mode: f.mode, ...(f.replaces !== undefined ? { replaces: f.replaces } : {}) }));
   const unmapped = finalUnmapped(missed, acknowledged);
   const ready0 = conflicts.every(c => c.choice !== null) && unmapped.every(u => u.gate === 'none' || (u.gate === 'acknowledge' && u.acknowledged));
   const validated = validate(built, kept);
@@ -136,7 +149,7 @@ export function planWithBytes(input: AdoptionInput): PlanWithBytes {
   const body = {
     format: ADOPTION_PLAN_FORMAT, projectDir, definitionFolder, harness: { id: harnessId, description }, engines: planEngines,
     read: [...r.read.entries()].sort(([a], [b]) => byBytes(a, b)).map(([path, sha256]) => ({ path, sha256 })),
-    items, conflicts, differences, unmapped, secrets, managed: managedOf(ctx.managed, kept, conflicts), warnings,
+    items, conflicts, differences, everyEngine, unmapped, secrets, managed: managedOf(ctx.managed, kept, conflicts), warnings,
     files, approvalsRequired, problems: validated.problems, ready: ready0 && validated.problems.length === 0, writesAuthorized: false as const,
   };
   const plan: AdoptionPlan = { ...body, revision: revisionOf(body) };
@@ -147,7 +160,7 @@ export function planWithBytes(input: AdoptionInput): PlanWithBytes {
 
 function checkInput(input: AdoptionInput) {
   if (input === null || typeof input !== 'object') return refuse('ADOPTION_USAGE');
-  const allowed = new Set(['projectDir', 'stateDir', 'engines', 'harness', 'choices', 'acknowledged']);
+  const allowed = new Set(['projectDir', 'stateDir', 'engines', 'harness', 'choices', 'acknowledged', 'everyEngine']);
   if (Object.keys(input).some(k => !allowed.has(k))) refuse('ADOPTION_USAGE');
   const { projectDir } = input;
   if (typeof projectDir !== 'string' || !isAbsolute(projectDir) || projectDir.includes('\0')) refuse('ADOPTION_USAGE');
@@ -181,7 +194,9 @@ function checkInput(input: AdoptionInput) {
   const description = h?.description ?? 'Adopted from the engine files of this project.';
   const choices = input.choices ?? {};
   if (choices === null || typeof choices !== 'object' || Array.isArray(choices)) refuse('ADOPTION_USAGE');
-  return { projectDir, stateDir, wanted, harnessId, description, choices, acknowledged };
+  const everyEngine: unknown = input.everyEngine === undefined ? [] : input.everyEngine;
+  if (!Array.isArray(everyEngine) || everyEngine.some(x => !(EVERY_ENGINE_PARTS as readonly unknown[]).includes(x)) || new Set(everyEngine).size !== everyEngine.length) refuse('ADOPTION_USAGE');
+  return { projectDir, stateDir, wanted, harnessId, description, choices, acknowledged, everyEngine: new Set<EveryEnginePart>(everyEngine) };
 }
 
 /**
@@ -291,6 +306,8 @@ function group(cands: readonly Candidate[], harness: readonly EngineId[], choice
   const kept: Kept[] = [];
   const keys = [...groups.keys()].sort(byBytes);
   const known = new Set<string>();
+  /** The keys of items kept under distinct ids because they differ between places (decision D8B keeps their filters). */
+  const split = new Set<string>();
   const taken = new Map<ItemPart, Set<string>>();
   const use = (part: ItemPart, id: string): void => { const s = taken.get(part) ?? new Set(); s.add(id); taken.set(part, s); };
   for (const k of keys) { const [part, ...rest] = k.split('/'); use(part as ItemPart, rest.join('/')); }
@@ -305,6 +322,7 @@ function group(cands: readonly Candidate[], harness: readonly EngineId[], choice
     if (differ.length) notes.push(`The copies at ${[lead, ...differ].map(c => c.place.path).join(' and ')} mean the same but differ in bytes. The definition takes the bytes of ${lead.place.path}.`);
     const source = v.cands.find((c): c is Extract<Candidate, { part: 'skills' }> => c.part === 'skills' && c.source !== undefined)?.source;
     const adoptedFrom = adoptedFromOf(sorted, id);
+    const translated = v.cands.find((c): c is Extract<Candidate, { part: 'skills' }> => c.part === 'skills' && c.translated !== undefined)?.translated;
     const secrets = v.cands.flatMap(c => c.secrets);
     const extraNeeds: string[] = [];
     // Ruling A7: a reference that took the place of a literal secret sends the person's own value.
@@ -318,7 +336,7 @@ function group(cands: readonly Candidate[], harness: readonly EngineId[], choice
     if (lead.part === 'system-prompt' && engines !== null) extraNeeds.push(`Only ${engines.join(', ')} read this text today; after projection every listed engine reads this text.`);
     const item: PlanItem = {
       part: lead.part, id, places: v.places, engines, privateBlocks: ENGINE_IDS.filter(e => v.blocks[e] !== undefined),
-      needsApproval: [...needs, ...extraNeeds], notes, ...(source ? { source } : {}), ...(adoptedFrom ? { adoptedFrom } : {}),
+      needsApproval: [...needs, ...extraNeeds], notes, ...(translated ? { translated } : {}), ...(source ? { source } : {}), ...(adoptedFrom ? { adoptedFrom } : {}),
     };
     kept.push({ item, lead, blocks: v.blocks, models: v.models, secrets, fixed: v.fixed });
   };
@@ -336,11 +354,12 @@ function group(cands: readonly Candidate[], harness: readonly EngineId[], choice
     conflicts.push(conflict);
     if (choice === null) continue;
     applyChoice(conflict, choice, variants, harness, taken, keep, unmapped);
+    if ('rename' in choice) for (const x of kept) if (x.item.part === part && conflict.variants.some(v => x.item.places.some(p => placeKey(p) === v.key))) split.add(`${part}/${x.item.id}`);
   }
   for (const k of Object.keys(choices)) if (!known.has(k)) refuse('ADOPTION_CHOICE_INVALID', [k.slice(0, 80)]);
   const items = kept.map(x => x.item).sort((a, b) => byBytes(`${a.part}/${a.id}`, `${b.part}/${b.id}`));
   kept.sort((a, b) => byBytes(`${a.item.part}/${a.item.id}`, `${b.item.part}/${b.item.id}`));
-  return { items, conflicts, kept };
+  return { items, conflicts, kept, split };
 }
 
 function applyChoice(
@@ -389,6 +408,48 @@ function differencesOf(kept: readonly Kept[], harness: readonly EngineId[]): Dif
     out.push({ action, pattern, rules: list.map(k => ({ id: k.item.id, effect: (k.lead as Extract<Candidate, { rule: unknown }>).rule.effect, engines: k.item.engines ?? [...harness] })) });
   }
   return out;
+}
+
+/**
+ * Decision D8B: "Use for every engine" removes the engine filter from every item of a chosen part, so the item applies
+ * to every engine of the harness. The choice never merges or drops a difference, so these keep their filters:
+ * - a guardrail of a difference;
+ * - an item kept under its own id because it differs between places;
+ * - a hook when an engine outside its filter holds a different hook for the same event and matcher (spec H 10.6: the
+ *   same entry can differ between two engines). Identical hooks merged into one item already, so they widen.
+ * Each part is counted, chosen or not, so a person sees what the choice would widen.
+ */
+function widen(
+  kept: readonly Kept[], differences: readonly Difference[], split: ReadonlySet<string>, chosen: ReadonlySet<EveryEnginePart>, harness: readonly EngineId[],
+): { kept: Kept[]; everyEngine: EveryEngine[] } {
+  const differing = new Set(differences.flatMap(d => d.rules.map(r => `guardrails/${r.id}`)));
+  // The engines that hold a hook for each event and matcher: an item with no filter is held by every engine of the harness.
+  const slot = (k: Kept): string | null => k.lead.part === 'hooks' ? `${k.lead.hook.event}\n${k.lead.hook.matcher ?? ''}` : null;
+  const holders = new Map<string, { id: string; engines: readonly EngineId[] }[]>();
+  for (const k of kept) { const key = slot(k); if (key !== null) holders.set(key, [...(holders.get(key) ?? []), { id: k.item.id, engines: k.item.engines ?? harness }]); }
+  const otherHook = (k: Kept): boolean => {
+    const key = slot(k);
+    if (key === null || k.item.engines === null) return false;
+    const mine = k.item.engines;
+    return (holders.get(key) ?? []).some(h => h.id !== k.item.id && h.engines.some(e => !mine.includes(e)));
+  };
+  const byKey = new Map(kept.map(k => [`${k.item.part}/${k.item.id}`, k]));
+  const reasonOf = (key: string): string | null => differing.has(key)
+    ? 'Not widened: its effect differs between engines, so each engine keeps its own rule.'
+    : split.has(key) ? 'Not widened: it differs between places, and a person kept each copy under its own id, so each keeps its engines.'
+      : byKey.has(key) && otherHook(byKey.get(key)!) ? 'Not widened: another engine holds a different hook for the same event and matcher, so each engine keeps its own hook.' : null;
+  const everyEngine: EveryEngine[] = EVERY_ENGINE_PARTS.map(part => {
+    const filtered = kept.filter(k => k.item.part === part && k.item.engines !== null);
+    const notWidened = filtered.flatMap(k => { const reason = reasonOf(`${part}/${k.item.id}`); return reason === null ? [] : [{ id: k.item.id, reason }]; });
+    return { part, chosen: chosen.has(part), widens: filtered.length - notWidened.length, notWidened };
+  });
+  const out = kept.map(k => {
+    const part = k.item.part as EveryEnginePart;
+    if (!chosen.has(part) || k.item.engines === null || reasonOf(`${part}/${k.item.id}`) !== null) return k;
+    const note = `Used for every engine, as a person chose for ${part}. Before, only ${k.item.engines.join(', ') || 'no engine of the harness'} read it.`;
+    return { ...k, item: { ...k.item, engines: null, notes: [...k.item.notes, note] } };
+  });
+  return { kept: out, everyEngine };
 }
 
 function shapesOf(engine: EngineId, cands: readonly Candidate[]): PlanEngine['shapes'] {
@@ -533,8 +594,9 @@ function xBlocks(blocks: Partial<Record<EngineId, JsonValue>>): Record<string, J
 }
 const filterOf = (item: PlanItem): Record<string, JsonValue> => item.engines ? { engines: [...item.engines] } : {};
 
-function buildFiles(b: BuildInput): Map<string, { bytes: Uint8Array; mode: number }> {
-  const out = new Map<string, { bytes: Uint8Array; mode: number }>();
+type Built = { bytes: Uint8Array; mode: number; replaces?: string };
+function buildFiles(b: BuildInput): Map<string, Built> {
+  const out = new Map<string, Built>();
   const by = <P extends ItemPart>(part: P) => b.items.filter(k => k.item.part === part);
   const parts: Record<string, JsonValue> = {};
   const skillSettings: Record<string, JsonValue> = {};
@@ -546,6 +608,10 @@ function buildFiles(b: BuildInput): Map<string, { bytes: Uint8Array; mode: numbe
   for (const k of skills) {
     if (k.lead.part !== 'skills') continue;
     const id = k.item.id, copy = k.lead.skill;
+    if (k.fixed && k.lead.translated) {
+      // A 0.7 skill in place whose name differs from its folder: the one file apply replaces, by its name line only.
+      out.set(`skills/${id}/SKILL.md`, { bytes: translatedMarkdown(copy, k.lead.translated.from, k.lead.translated.to), mode: copy.rawExecutable ? 0o755 : 0o644, replaces: sha(copy.raw) });
+    }
     if (!k.fixed) {
       out.set(`skills/${id}/SKILL.md`, { bytes: skillMarkdown(copy, id), mode: copy.rawExecutable ? 0o755 : 0o644 });
       for (const f of copy.files) out.set(`skills/${id}/${f.path}`, { bytes: f.bytes, mode: f.executable ? 0o755 : 0o644 });
@@ -615,7 +681,7 @@ function buildFiles(b: BuildInput): Map<string, { bytes: Uint8Array; mode: numbe
  * Loads the planned files with the contract's loader, in a scratch folder outside the project. The 0.7 skills already in
  * `.bowerloom/skills` join them, since the loader reads them as definition skills.
  */
-function validate(files: ReadonlyMap<string, { bytes: Uint8Array; mode: number }>, kept: readonly Kept[]): { problems: Problem[]; revision: string | null } {
+function validate(files: ReadonlyMap<string, Built>, kept: readonly Kept[]): { problems: Problem[]; revision: string | null } {
   const scratch = fs.mkdtempSync(join(os.tmpdir(), 'bowerloom-adoption-check-'));
   try {
     const root = join(scratch, '.bowerloom');
@@ -623,7 +689,7 @@ function validate(files: ReadonlyMap<string, { bytes: Uint8Array; mode: number }
     for (const [rel, f] of files) put(rel, f.bytes, f.mode);
     for (const k of kept) {
       if (!k.fixed || k.lead.part !== 'skills') continue;
-      put(`skills/${k.item.id}/SKILL.md`, k.lead.skill.raw, k.lead.skill.rawExecutable ? 0o755 : 0o644);
+      if (!files.has(`skills/${k.item.id}/SKILL.md`)) put(`skills/${k.item.id}/SKILL.md`, k.lead.skill.raw, k.lead.skill.rawExecutable ? 0o755 : 0o644);
       for (const f of k.lead.skill.files) put(`skills/${k.item.id}/${f.path}`, f.bytes, f.executable ? 0o755 : 0o644);
     }
     const r = loadDefinition(root);

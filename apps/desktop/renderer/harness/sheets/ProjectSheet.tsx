@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Stepper } from '../../home/kit/Stepper.js';
 import { projectCanWrite, untickedLines } from '../../../shared/engine/gates.js';
+import { isPreviewEngine } from '../../../shared/engine/engines.js';
 import { ENGINE_NAMES, writesFile } from '../../../shared/engine/types.js';
 import type { EngineId, FolderInfo, MergeView, ModeChoice, ProjectAnswer, ProjectInput, ProjectView, Reconcile, RecoveryChoices, RecoveryView, RemovalView } from '../../../shared/engine/types.js';
 import { Sheet } from '../parts/Sheet.js';
@@ -33,12 +34,15 @@ import { useHeldFocus } from './use-held-focus.js';
 const W = ENGINE_WORDS;
 type Step = 'folder' | 'interfaces' | 'review' | 'done';
 type Done =
-  | { kind: 'install'; written: readonly string[]; leftBehind: readonly string[]; noop: boolean }
-  | { kind: 'remove'; deleted: readonly string[]; restored: readonly string[]; leftBehind: readonly string[] }
+  | { kind: 'install'; written: readonly string[]; leftBehind: readonly string[]; noop: boolean; warnings?: readonly string[] }
+  | { kind: 'remove'; deleted: readonly string[]; restored: readonly string[]; leftBehind: readonly string[]; warnings?: readonly string[] }
   | { kind: 'recover'; undone: readonly string[]; kept: readonly string[]; restoredModes: readonly string[]; recordedModes: readonly string[]; leftBehind: readonly string[] };
 const NO_CHOICES: RecoveryChoices = { keep: [], restoreMode: [], recordMode: [] };
 const keepOnly = (keep: readonly string[]): RecoveryChoices => ({ ...NO_CHOICES, keep: [...keep] });
 const BODY_NAME: Readonly<Record<Step, string>> = { folder: W.label.bodyFolder, interfaces: W.label.bodyInterfaces, review: W.label.bodyReview, done: W.label.bodyResult };
+
+/** The interfaces a folder's install starts with: the ones its harness lists, without the preview ones unless the app may install to them. */
+const installable = (f: FolderInfo | undefined): readonly EngineId[] => (f === undefined ? [] : f.engines.filter(e => f.previewEngines || !isPreviewEngine(e)));
 
 export interface ProjectSheetProps { open: boolean; folderId: string | null; mode: EngineSheetMode; keep: readonly string[]; onClose(): void }
 
@@ -79,7 +83,7 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
       const usable = list.filter(f => !folderLine(f, 'install').off);
       const id = folderId !== null && usable.some(f => f.id === folderId) ? folderId : usable[0]?.id ?? null;
       setPicked(id);
-      setEngines(list.find(f => f.id === id)?.engines ?? []);
+      setEngines(installable(list.find(f => f.id === id)));
       // Opened for one folder's removal or recovery (from Done, or from "Keep my versions"): the plan shows at once.
       if (id !== null && folderId === id && openedMode !== 'install') { setStep('review'); planOther(id, openedMode, keepOnly(openedKeep)); }
     });
@@ -139,13 +143,13 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
   const settleMode = (path: string, choice: ModeChoice): void => switchTo('recover', { ...NO_CHOICES, [choice]: [path] });
   /** The choices of one folder: its drift action and its CLAUDE.md offer go with it (W3). */
   const resetChoices = (): void => { setReconcile('accept-agents'); setWriteClaudeMd(false); };
-  const pick = (id: string): void => { if (held || id === picked) return; setPicked(id); setEngines(folders.find(f => f.id === id)?.engines ?? []); resetChoices(); resetPlans(); };
+  const pick = (id: string): void => { if (held || id === picked) return; setPicked(id); setEngines(installable(folders.find(f => f.id === id))); resetChoices(); resetPlans(); };
   const choose = (): void => {
     if (engine === null || held) return;
     void call.plan(W.label.chooseFolder, () => chooseFolderCall(engine), got => {
       if (got === null) return;
       setFolders(got.list);
-      if (!folderLine(got.info, 'install').off) { setPicked(got.info.id); setEngines(got.info.engines); resetChoices(); resetPlans(); }
+      if (!folderLine(got.info, 'install').off) { setPicked(got.info.id); setEngines(installable(got.info)); resetChoices(); resetPlans(); }
     });
   };
   const next = (): void => {
@@ -160,7 +164,7 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
     if (to !== 'review') { setAnswer(null); setApproved(null); setMerge(null); if (reconcile === 'merge') setReconcile('accept-agents'); }
     setStep(to);
   };
-  const toggleEngine = (id: EngineId): void => { if (!held) setEngines(list => (list.includes(id) ? list.filter(e => e !== id) : (folder?.engines ?? []).filter(e => e === id || list.includes(e)))); };
+  const toggleEngine = (id: EngineId): void => { if (!held && installable(folder).includes(id)) setEngines(list => (list.includes(id) ? list.filter(e => e !== id) : (folder?.engines ?? []).filter(e => e === id || list.includes(e)))); };
   const changeReconcile = (r: Reconcile): void => { if (held) return; setReconcile(r); if (r === 'merge') planMerge(); else planInstall(input(sent, r)); };
   const changeClaude = (on: boolean): void => { if (held) return; setWriteClaudeMd(on); planInstall(input(sent, reconcile, on)); };
 
@@ -231,17 +235,23 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
         ) : null}
         {step === 'interfaces' && folder !== undefined ? (
           <>
-            <p className="hxi-intro">{folder.engines.length === 0 ? W.hint.noEngines : W.hint.pickInterface}</p>
+            <p className="hxi-intro">{folder.engines.length === 0 ? W.hint.noEngines : installable(folder).length === 0 ? W.hint.previewOnly : W.hint.pickInterface}</p>
             <ul className="hxi-list" aria-label={W.label.engineChoices}>
-              {folder.engines.map(id => (
+              {folder.engines.map(id => {
+                const preview = isPreviewEngine(id), locked = preview && !folder.previewEngines;
+                return (
                 <li key={id}>
-                  <label className="hxi-card" data-on={engines.includes(id) ? '' : undefined} data-engine={id}>
-                    <input type="checkbox" className="hxi-check" checked={engines.includes(id)} onChange={() => toggleEngine(id)} />
+                  <label className="hxi-card" data-on={engines.includes(id) ? '' : undefined} data-off={locked ? '' : undefined} data-preview={preview ? '' : undefined} data-engine={id}>
+                    <input type="checkbox" className="hxi-check" checked={engines.includes(id)} disabled={locked} onChange={() => toggleEngine(id)} />
                     <Tile name="monitor" />
-                    <span className="hxi-card-text"><span className="hxi-card-name">{ENGINE_NAMES[id]}</span></span>
+                    <span className="hxi-card-text">
+                      <span className="hxi-card-name">{ENGINE_NAMES[id]}</span>
+                      {preview ? <span className="hxi-card-note" data-slot="preview-note"><StateDot tone="quiet">{W.hint.previewTag}</StateDot>{locked ? <span className="hxe-muted" data-slot="preview-why"> {folder.installedEngines.includes(id) ? W.hint.previewKept : W.hint.previewOff}</span> : null}</span> : null}
+                    </span>
                   </label>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           </>
         ) : null}
@@ -269,8 +279,8 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
 }
 
 function DoneStep({ done }: { done: Done }): ReactElement {
-  if (done.kind === 'install') return <ResultStep nothing={done.noop || done.written.length === 0} lists={[{ title: W.label.writtenFiles, files: done.written }, { title: W.label.leftBehind, files: done.leftBehind, note: W.hint.leftBehindWhy }]} />;
-  if (done.kind === 'remove') return <ResultStep nothing={done.deleted.length + done.restored.length === 0} lists={[{ title: W.label.removedFiles, files: done.deleted }, { title: W.label.restoredFiles, files: done.restored }, { title: W.label.leftBehind, files: done.leftBehind, note: W.hint.leftBehindWhy }]} />;
+  if (done.kind === 'install') return <ResultStep nothing={done.noop || done.written.length === 0} warnings={done.warnings ?? []} lists={[{ title: W.label.writtenFiles, files: done.written }, { title: W.label.leftBehind, files: done.leftBehind, note: W.hint.leftBehindWhy }]} />;
+  if (done.kind === 'remove') return <ResultStep nothing={done.deleted.length + done.restored.length === 0} warnings={done.warnings ?? []} lists={[{ title: W.label.removedFiles, files: done.deleted }, { title: W.label.restoredFiles, files: done.restored }, { title: W.label.leftBehind, files: done.leftBehind, note: W.hint.leftBehindWhy }]} />;
   return (
     <ResultStep nothing={done.undone.length + done.kept.length + done.restoredModes.length + done.recordedModes.length === 0} lists={[
       { title: W.label.undoneFiles, files: done.undone }, { title: W.label.keptFiles, files: done.kept }, { title: W.label.modeRestored, files: done.restoredModes },

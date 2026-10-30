@@ -12,9 +12,31 @@ removal, and recovery), `src/portable-files.ts` (every read and write in the pro
 (the private state folder).
 
 A plan reads only. A person approves its revision. Apply plans again under the project lock and writes only when the
-revision is the same. Scripts, engine-private files, and the private blocks of skills are not projected yet: the plan
-reports them `absent` and says that the projection is partial. The line of a file under `engines/<engine>/` names the
-part `engine-private`.
+revision is the same. Scripts and engine-private files are not projected yet: the plan reports them `absent` and says
+that the projection is partial. The line of a file under `engines/<engine>/` names the part `engine-private`.
+
+The private block of a skill (`x-<engine>` in `harness.json`) is written back into the engine's `SKILL.md`, after the
+core fields, as `key: <JSON value>` lines (`src/skill-private.ts`). A skill folder is shared by the engines that read it,
+so a path takes a block only when every engine that writes it holds the same block. Otherwise the plan reports the
+block `absent` and writes the core fields only.
+
+A skill folder a person made is taken over, with nothing written, when its file set and every file but `SKILL.md` match
+the plan in bytes and mode, and its `SKILL.md` means the same: the same frontmatter values and the same body. Key order,
+quoting, comments, and line endings do not matter; a changed value, a missing or extra key, or a body change refuses
+`PORTABLE_PATH_OCCUPIED`. The receipt records the held bytes, so a later plan finds nothing to update until the
+definition says something else.
+
+## Supported engines
+
+Beta.1 supports Claude Code and Codex. OpenCode, Pi, and DeepSeek Harness are preview engines. They stay in the code, but install to them is refused unless `BOWERLOOM_PREVIEW_ENGINES=1` is set. Any other value leaves it off.
+
+- An engine named on purpose (`--engine opencode`) is refused with `ENGINE_PREVIEW` before any write.
+- With no engine named, install uses the supported engines that `harness.json` lists. The plan names the preview engines it skipped (`skippedPreview`) and the switch that turns them on. If no supported engine is left, install is refused with `ENGINE_PREVIEW`.
+- The plan covers the engine set it installs, so a plan made with the switch off cannot be approved with it on.
+- With the switch off, what an earlier flagged install wrote for a preview engine is left alone. A file that only preview engines read stays an unchanged target: it is not deleted and not restored. The new receipt still lists those engines and their files, and carries their recorded approvals forward. The plan names them in `keptPreview` and in its notice. A file shared with a supported engine follows the supported engine.
+- Adopt, drift, status, and remove are not gated. Remove still removes the files an earlier flagged install wrote.
+
+The list, `isPreviewEngine`, and `previewEnginesAllowed` are in `packages/harness-definition/src/words.ts`. `PortableInput.previewEngines` sets the switch for one call; without it the plan reads the environment. The command line and the app both plan here, so they cannot differ.
 
 ## The locked-in parts (step 3)
 
@@ -91,6 +113,8 @@ forge both the record and the marker files, so the plan also reads the canonical
 object. Only when the canonical copy, the record, and the folder have the same hash, and every file in the folder is
 one the projection writes, does the plan replace the files and save the originals. Removal then restores the 0.7 copy.
 Anything else is refused as before.
+
+One exception comes first, for any 0.7 item, a skill or a prompt. A folder that already holds exactly the files, bytes, and modes install would write is taken over, and nothing is written. The plan action is `take-over`, and removal keeps the folder. A forged marker gains nothing, because nothing is written. This is how the Codex skill folder of a 0.7 prompt installs after adoption: adoption reads that folder as a skill and does not convert the prompt. A 0.7 folder whose content would change, and that adoption did not convert, still refuses `PORTABLE_MANAGED_COPY`; the 0.7 sync owns it.
 
 The hash means equal after normalisation, not byte for byte: Markdown line endings become LF, file modes do not count,
 and an empty folder does not count. A file that differs only in those ways is still replaced, and its original bytes

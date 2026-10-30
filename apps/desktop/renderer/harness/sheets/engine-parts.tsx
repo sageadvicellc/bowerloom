@@ -5,6 +5,7 @@
  */
 import { useEffect, useId, useRef } from 'react';
 import type { ReactElement, ReactNode, Ref } from 'react';
+import { isPreviewEngine } from '../../../shared/engine/engines.js';
 import { ENGINE_NAMES } from '../../../shared/engine/types.js';
 import type { DriftLineView, FolderInfo, ModeChoice, PlaceView, Refusal, ResultWord } from '../../../shared/engine/types.js';
 import { HButton, StateDot } from '../parts/controls.js';
@@ -24,7 +25,7 @@ export function folderLine(folder: FolderInfo, sheet: 'make' | 'install'): { wor
   if (folder.problem !== null) return { words: folder.problem, off: true };
   if (folder.unfinished.projection) return { words: W.hint.stopped, off: false };
   if (folder.projected) return { words: W.hint.installedBefore, off: false };
-  return { words: folder.engines.length === 0 ? W.hint.noEngines : engineList(folder.engines.map(e => ENGINE_NAMES[e])), off: false };
+  return { words: folder.engines.length === 0 ? W.hint.noEngines : engineList(folder.engines.map(e => (isPreviewEngine(e) ? `${ENGINE_NAMES[e]} (preview)` : ENGINE_NAMES[e]))), off: false };
 }
 
 export interface FolderStepProps {
@@ -182,7 +183,7 @@ export function Places({ places }: { places: readonly PlaceView[] }): ReactEleme
 }
 
 /** The result of a write, a removal or a recovery: each list of files with its heading, and plain words when nothing changed (U5). */
-export function ResultStep({ lists, nothing, children }: { lists: readonly { title: string; files: readonly string[]; note?: string }[]; nothing: boolean; children?: ReactNode }): ReactElement {
+export function ResultStep({ lists, nothing, warnings = [], children }: { lists: readonly { title: string; files: readonly string[]; note?: string }[]; nothing: boolean; warnings?: readonly string[]; children?: ReactNode }): ReactElement {
   const shown = lists.filter(l => l.files.length > 0);
   return (
     <div data-done="">
@@ -193,6 +194,7 @@ export function ResultStep({ lists, nothing, children }: { lists: readonly { tit
           <ul className="hxi-files">{l.files.map(f => <li key={f} className="hxi-file"><span className="hxi-file-path">{f}</span></li>)}</ul>
         </Section>
       ))}
+      {warnings.map(w => <p key={w} className="hxe-text" role="status" data-warning="">{w}</p>)}
       {children}
     </div>
   );

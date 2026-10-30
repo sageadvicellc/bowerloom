@@ -16,12 +16,15 @@ import fs from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { canonicalJson } from '../../contracts/src/index.js';
 import {
-  DEFINITION_LIMITS, ENGINE_IDS, PART_KEYS, REVISION_PREFIX, adoptedPaths, appliesTo, checkFidelity, isEngineId, loadDefinition, parseStrictJson,
-  selectForEngine, skillContentHash,
+  DEFINITION_LIMITS, ENGINE_IDS, PART_KEYS, REVISION_PREFIX, adoptedPaths, appliesTo, checkFidelity, isEngineId, isPreviewEngine, loadDefinition, parseStrictJson,
+  PREVIEW_ENGINES_ENV, previewEnginesAllowed, selectForEngine, skillContentHash,
 } from '../../harness-definition/src/index.js';
 import { decodeText } from '../../harness-definition/src/json.js';
 import type { AdoptedRecord, Definition, EngineId, FidelityApproval, LossLine, LossPart, PartKey, SkillEntry } from '../../harness-definition/src/index.js';
+import { EnginePreviewRefusal } from '../../skill-manifest/src/engine.js';
 import { LOCKED_PARTS, planLocked } from './locked.js';
+import { projectedSkillMd, sameSkillText } from './skill-private.js';
+import { sameValue } from './locked-text.js';
 import type { CodexTrust, LockedPart, ReviewItem, TrustLine } from './locked.js';
 import {
   GROUP_OR_WORLD_WRITE, PortableRefusal, byBytes, caseClashes, checkAncestors, driftReason, isProjectedPath, readAbs, readProject, refuse, revisionOf, sameState, sha,
@@ -216,6 +219,13 @@ export interface PortableInput {
   readonly stateDir: string;
   /** The engines to project to, each listed in harness.json. Default: every engine harness.json lists. */
   readonly engines?: readonly { readonly id: EngineId; readonly version?: string }[];
+  /**
+   * True when preview engines (OpenCode, Pi, DeepSeek Harness) may be installed to. Beta.1 supports Claude Code and Codex only. When false, an
+   * engine named in `engines` that is a preview engine is refused (ENGINE_PREVIEW), and with no `engines` the plan skips the preview engines
+   * that harness.json lists. Default: the environment variable BOWERLOOM_PREVIEW_ENGINES, which turns them on only when it is exactly `1`.
+   * The command line and the app both plan here, so they cannot differ.
+   */
+  readonly previewEngines?: boolean;
   /** How to reconcile a `CLAUDE.md` that does not follow `AGENTS.md`. Default: accept-agents. */
   readonly reconcile?: ReconcileAction;
   /** True once a person saved trust for this project in Pi. Default: false, so Pi skills are `pending trust`. */
@@ -308,6 +318,15 @@ export interface PortablePlan extends PortableReport {
   readonly stateDir: string;
   readonly definition: { readonly folder: string; readonly harness: string; readonly revision: string };
   readonly engines: readonly PortableEngine[];
+  /** The preview engines that harness.json lists and this plan leaves out, because the preview switch is off. Empty when the switch is on. */
+  readonly skippedPreview: readonly EngineId[];
+  /** One plain sentence that names the skipped preview engines and the switch that turns them on, or null when none was skipped. */
+  readonly previewNotice: string | null;
+  /**
+   * With the switch off: the preview engines the earlier receipt holds. Their files stay as they are, the new receipt carries them and their approvals
+   * forward, and removal still removes them. Empty when the switch is on or the receipt holds none.
+   */
+  readonly keptPreview: readonly PortableEngine[];
   /** Every path the projection writes, keeps, restores, or deletes, in byte order. */
   readonly changes: readonly PlannedChange[];
   /** Folders apply creates, relative to the project, parents first. */
@@ -350,7 +369,7 @@ export function loadForProjection(folder: string): Definition {
   return r.definition;
 }
 
-function enginesOf(def: Definition, wanted: PortableInput['engines']): PortableEngine[] {
+function enginesOf(def: Definition, wanted: PortableInput['engines'], allowPreview: boolean): { readonly engines: PortableEngine[]; readonly skipped: EngineId[] } {
   const listed = new Map(def.harness.engines.map(e => [e.id, e.version ?? null]));
   const list: readonly { readonly id: EngineId; readonly version?: string }[] = wanted ?? def.harness.engines.map(e => ({ id: e.id }));
   if (!Array.isArray(list) || list.length === 0) return refuse('PORTABLE_USAGE');
@@ -361,7 +380,31 @@ function enginesOf(def: Definition, wanted: PortableInput['engines']): PortableE
     if (e.version !== undefined && (typeof e.version !== 'string' || !/^[0-9A-Za-z.+-]{1,64}$/.test(e.version))) return refuse('PORTABLE_USAGE');
     out.set(e.id, e.version ?? listed.get(e.id) ?? null);
   }
-  return ENGINE_IDS.filter(id => out.has(id)).map(id => ({ id, version: out.get(id)! }));
+  const ordered = ENGINE_IDS.filter(id => out.has(id));
+  const previews = ordered.filter(isPreviewEngine);
+  // Beta.1: a preview engine is installed to only when the switch is on. Named on purpose, it is refused. Left to the default list, it is skipped.
+  if (!allowPreview && previews.length > 0) {
+    if (wanted !== undefined || previews.length === ordered.length) throw new EnginePreviewRefusal(previews[0]!);
+    return { engines: ordered.filter(id => !isPreviewEngine(id)).map(id => ({ id, version: out.get(id)! })), skipped: previews };
+  }
+  // The switch is off and the supported engines were named: the preview engines that harness.json lists are left out all the same.
+  const skipped = allowPreview ? [] : ENGINE_IDS.filter(id => listed.has(id) && isPreviewEngine(id) && !out.has(id));
+  return { engines: ordered.map(id => ({ id, version: out.get(id)! })), skipped };
+}
+
+/** The engines a receipt lists: the ones installed now, then the preview engines whose earlier files are left alone, in engine order. */
+export function receiptEngines(installed: readonly PortableEngine[], kept: readonly PortableEngine[]): PortableEngine[] {
+  const all = [...installed, ...kept.filter(k => !installed.some(i => i.id === k.id))];
+  return ENGINE_IDS.flatMap(id => all.filter(e => e.id === id));
+}
+
+/** The one sentence that names the preview engines left out, those whose earlier files stay as they are, and the switch. Null when none. */
+function previewNoticeOf(skipped: readonly EngineId[], kept: readonly EngineId[]): string | null {
+  const names = ENGINE_IDS.filter(id => skipped.includes(id) || kept.includes(id));
+  if (names.length === 0) return null;
+  const one = names.length === 1;
+  const left = kept.length === 0 ? '' : kept.length === names.length ? ` ${one ? 'Its' : 'Their'} files from an earlier install are left as they are.` : ` Files from an earlier install are left as they are for ${kept.join(', ')}.`;
+  return `Preview engines skipped: ${names.join(', ')}.${left} Set ${PREVIEW_ENGINES_ENV}=1 to install to ${one ? 'it' : 'them'}.`;
 }
 
 const isCommand = (s: SkillEntry): boolean => s.metadata?.[COMMAND_METADATA.key] === COMMAND_METADATA.value;
@@ -426,10 +469,10 @@ export function receiptFilesOf(changes: readonly PlannedChange[]): ReceiptFile[]
 }
 /**
  * Whether a skill folder a person made already holds exactly the files the plan writes there, each with the planned
- * bytes and mode, and nothing else. `differ` names the files whose bytes or mode differ when the folder holds the same
+ * bytes and mode, and nothing else. SKILL.md may differ in bytes when it means the same: `meant` lists it then. `differ` names the files whose bytes or mode differ when the folder holds the same
  * file names; it is null when the names differ or the folder holds a link or anything but plain files and folders.
  */
-function sameFolder(projectDir: string, folder: string, targets: ReadonlyMap<string, Target>): { readonly same: boolean; readonly differ: readonly string[] | null } {
+function sameFolder(projectDir: string, folder: string, targets: ReadonlyMap<string, Target>): { readonly same: boolean; readonly differ: readonly string[] | null; readonly meant: readonly string[] } {
   const found: string[] = [];
   const walk = (rel: string, depth: number): boolean => {
     if (depth > DEFINITION_LIMITS.depth) return false;
@@ -446,14 +489,23 @@ function sameFolder(projectDir: string, folder: string, targets: ReadonlyMap<str
     return true;
   };
   const planned = [...targets.keys()].filter(p => p.startsWith(folder + '/')).sort(byBytes);
-  if (!walk(folder, 1) || found.length !== planned.length || !found.sort(byBytes).every((p, i) => p === planned[i])) return { same: false, differ: null };
-  const differ: string[] = [];
+  if (!walk(folder, 1) || found.length !== planned.length || !found.sort(byBytes).every((p, i) => p === planned[i])) return { same: false, differ: null, meant: [] };
+  const differ: string[] = [], meant: string[] = [];
   for (const p of planned) {
     const now = stateOrUnsafe(projectDir, p), t = targets.get(p)!;
-    if (now === 'unsafe') return { same: false, differ: null };
-    if (!sameState(now, { sha256: sha(t.bytes), mode: t.mode })) differ.push(p);
+    if (now === 'unsafe') return { same: false, differ: null, meant: [] };
+    if (sameState(now, { sha256: sha(t.bytes), mode: t.mode })) continue;
+    if (p === `${folder}/SKILL.md` && now !== null && now.mode === t.mode && heldMeans(projectDir, p, t.bytes)) meant.push(p); else differ.push(p);
   }
-  return { same: differ.length === 0, differ };
+  return { same: differ.length === 0, differ, meant: differ.length === 0 ? meant : [] };
+}
+
+/** True when the SKILL.md a person made holds the same frontmatter values and the same body as the planned bytes. */
+function heldMeans(projectDir: string, rel: string, planned: Uint8Array): boolean {
+  let held: ReturnType<typeof readProject>;
+  try { held = readProject(projectDir, rel); } catch { return false; }
+  const heldText = held === null ? null : decodeText(held.bytes), plannedText = decodeText(planned);
+  return heldText !== null && plannedText !== null && sameSkillText(heldText, plannedText);
 }
 
 const isDir = (projectDir: string, rel: string): boolean => {
@@ -476,10 +528,17 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
   const reconcileWanted = input.reconcile ?? 'accept-agents';
   if (!RECONCILE_ACTIONS.includes(reconcileWanted)) refuse('PORTABLE_USAGE');
   const def = loadForProjection(input.definitionFolder);
-  const engines = enginesOf(def, input.engines), ids = engines.map(e => e.id);
+  const allowPreview = input.previewEngines ?? previewEnginesAllowed(process.env);
+  const { engines, skipped: skippedPreview } = enginesOf(def, input.engines, allowPreview), ids = engines.map(e => e.id);
   const ignored: Ignored[] = [], offers: Offer[] = [];
   const previous = readReceipt(stateDir, projectDir);
   const owned = new Map((previous?.files ?? []).map(f => [f.path, f]));
+  // Beta.1: with the switch off, what an earlier flagged install wrote for a preview engine is left alone, not deleted and not restored.
+  const keptPreview: PortableEngine[] = allowPreview ? [] : (previous?.engines ?? []).filter(e => isPreviewEngine(e.id) && !engines.some(x => x.id === e.id));
+  const keptIds = new Set<EngineId>(keptPreview.map(e => e.id));
+  // A path with any kept owner stays while no engine being projected targets it. Its owners narrow to the kept ones.
+  const keptPaths = new Set([...owned.values()].filter(f => f.engines.some(e => keptIds.has(e))).map(f => f.path));
+  const keptFolders = new Set<string>();
   const recordedModes = readRecordedModes(stateDir, projectDir);
 
   // Section 4.1: the system prompt. No @path import, and at most 32 KiB.
@@ -495,7 +554,6 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
   const views = new Map(ids.map(id => [id, selectForEngine(def, id)] as const));
   for (const [engine, view] of views) {
     deferred.push(...def.scripts.map(id => ({ engine, part: 'scripts' as const, id })), ...view.enginePrivate.map(id => ({ engine, part: 'engine-private' as const, id })));
-    for (const s of view.skills) if (s.privateBlocks[engine] !== undefined) deferred.push({ engine, part: 'skill-private', id: s.id });
   }
   if (input.codexTrust !== undefined && (input.codexTrust === null || typeof input.codexTrust !== 'object' || typeof input.codexTrust.folderTrusted !== 'boolean'
     || !Array.isArray(input.codexTrust.reviewedHooks) || input.codexTrust.reviewedHooks.some(h => typeof h !== 'string'))) refuse('PORTABLE_USAGE');
@@ -514,12 +572,32 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
   for (const [path, t] of locked.targets) add(path, t.bytes, t.mode, t.engine);
   const files = new Map(def.files.map(f => [f.path, f]));
   const skillsById = new Map<string, SkillEntry>();
+  // The private block of a skill is written back into SKILL.md. A folder is shared by the engines that read it, so a block
+  // is written into a path only when every engine that writes that path holds the same block that can be written. An
+  // engine's block is projected when every path it writes carries it; otherwise the plan keeps saying it is absent.
+  const skillMd = new Map<string, { readonly skill: SkillEntry; readonly engines: EngineId[] }>();
   for (const [engine, view] of views) for (const s of view.skills) {
     skillsById.set(s.id, s);
     for (const root of SKILL_ROOTS[engine]) for (const rel of s.files) {
       const f = files.get(`skills/${s.id}/${rel}`)!;
-      add(`${root}/${s.name}/${rel}`, f.bytes, f.executable ? 0o755 : 0o644, engine);
+      const path = `${root}/${s.name}/${rel}`;
+      if (rel !== 'SKILL.md') { add(path, f.bytes, f.executable ? 0o755 : 0o644, engine); continue; }
+      const got = skillMd.get(path);
+      if (got) got.engines.push(engine); else skillMd.set(path, { skill: s, engines: [engine] });
     }
+  }
+  const unprojected = new Set<string>();
+  for (const [path, { skill: s, engines: writers }] of [...skillMd].sort((a, b) => byBytes(a[0], b[0]))) {
+    const f = files.get(`skills/${s.id}/SKILL.md`)!;
+    const blocks = writers.map(e => views.get(e)!.skills.find(x => x.id === s.id)!.privateBlocks[e]);
+    const bytes = blocks.every(b => b !== undefined && sameValue(b, blocks[0])) ? projectedSkillMd(f.bytes, blocks[0]) : null;
+    for (const [i, e] of writers.entries()) {
+      if (bytes === null && blocks[i] !== undefined) unprojected.add(`${e}\u0000${s.id}`);
+      add(path, bytes ?? f.bytes, f.executable ? 0o755 : 0o644, e);
+    }
+  }
+  for (const [engine, view] of views) for (const s of view.skills) {
+    if (s.privateBlocks[engine] !== undefined && unprojected.has(`${engine}\u0000${s.id}`)) deferred.push({ engine, part: 'skill-private', id: s.id });
   }
 
   // Section 4.1, rules 4 to 6, and rulings P17, P22, P23. With no instructions, AGENTS.md and CLAUDE.md are not touched.
@@ -576,28 +654,31 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
 
   // Skill folders that Bowerloom did not project are never written into. A folder that already holds exactly the planned
   // files, bytes, and modes, and nothing else, is taken over unchanged: a folder adopted in place (definition spec, check
-  // 1). One whose files differ is refused, naming each differing file. A folder that a 0.7 managed copy holds is taken
-  // only when sources.json records that the skill was adopted from that copy, and the folder still holds exactly it:
-  // its files are then replaced, with their originals saved, so removal restores the 0.7 copy (step 3 contract).
-  const occupied: string[] = [], managed: string[] = [], legacy: string[] = [];
+  // 1), or the Codex folder of a 0.7 managed prompt, which adoption reads as a skill and does not convert. Taking it over
+  // writes nothing, so a forged 0.7 marker gains nothing (review item K2 concerns writes). One whose files differ is
+  // refused, naming each differing file. A folder that a 0.7 managed copy holds is replaced only when sources.json
+  // records that the skill was adopted from that copy, and the folder still holds exactly it: its files are then
+  // replaced, with their originals saved, so removal restores the 0.7 copy (step 3 contract). Any other 0.7 copy whose
+  // content would change keeps refusing: the 0.7 sync owns it.
+  const occupied: string[] = [], managed: string[] = [], legacy: string[] = [], meant = new Set<string>();
   const folders = new Set([...targets.keys()].filter(p => p.startsWith('.claude/skills/') || p.startsWith('.agents/skills/')).map(p => p.split('/').slice(0, 3).join('/')));
   for (const folder of [...folders].sort(byBytes)) {
     if ([...owned.keys()].some(p => p.startsWith(folder + '/'))) continue;
     if (checkAncestors(projectDir, folder + '/x').length) continue;
     const holder = managedHolder(projectDir, folder);
-    if (holder === null) {
-      const held = sameFolder(projectDir, folder, targets);
-      if (!held.same) occupied.push(...(held.differ ?? [folder]));
-      continue;
+    if (holder !== null) {
+      const name = folder.split('/')[2]!;
+      const record = def.adopted.find(a => a.part === 'skills' && a.id === name);
+      const held = record ? folderContent(projectDir, folder) : null;
+      // Review item K2: a cloned repository can forge the marker and the record, so the real canonical copy is read too.
+      const canonical = record ? canonicalHash(projectDir, record) : null;
+      if (record && held && canonical !== null && held.sha256 === record.adoptedFrom.sha256 && canonical === record.adoptedFrom.sha256
+        && held.files.every(f => targets.has(`${folder}/${f}`))) { legacy.push(folder + '/'); continue; }
     }
-    const name = folder.split('/')[2]!;
-    const record = def.adopted.find(a => a.part === 'skills' && a.id === name);
-    const held = record ? folderContent(projectDir, folder) : null;
-    // Review item K2: a cloned repository can forge the marker and the record, so the real canonical copy is read too.
-    const canonical = record ? canonicalHash(projectDir, record) : null;
-    if (record && held && canonical !== null && held.sha256 === record.adoptedFrom.sha256 && canonical === record.adoptedFrom.sha256
-      && held.files.every(f => targets.has(`${folder}/${f}`))) { legacy.push(folder + '/'); continue; }
-    managed.push(`${folder} (0.7 item ${holder})`);
+    const held = sameFolder(projectDir, folder, targets);
+    if (held.same) { for (const p of held.meant) meant.add(p); continue; }
+    if (holder === null) occupied.push(...(held.differ ?? [folder]));
+    else managed.push(`${folder} (0.7 item ${holder})`);
   }
   if (managed.length) refuse('PORTABLE_MANAGED_COPY', managed);
   if (occupied.length) refuse('PORTABLE_PATH_OCCUPIED', occupied);
@@ -608,6 +689,13 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
   for (const path of [...new Set([...targets.keys(), ...owned.keys()])].sort(byBytes)) {
     const target = targets.get(path), mine = owned.get(path);
     const now = stateOrUnsafe(projectDir, path);
+    // A file only a preview engine reads, written by an earlier flagged install: the receipt keeps it as it is, whatever is on disk now.
+    if (!target && mine && keptPaths.has(path)) {
+      if (mine.original) blob(stateDir, mine.original, path);
+      changes.push({ path, action: 'unchanged', before: now === 'unsafe' ? null : now, after: { sha256: mine.sha256, mode: mine.mode, bytes: mine.bytes }, original: mine.original, engines: mine.engines.filter(e => keptIds.has(e)) });
+      keptFolders.add(path.split('/').slice(0, 3).join('/'));
+      continue;
+    }
     if (now === 'unsafe') { if (!mine) refuse('PORTABLE_PATH_UNSAFE', [path]); drifted.push(`${path} (unsafe)`); continue; }
     if (mine && !sameState(now, mine)) { drifted.push(`${path} (${driftReason(now, mine)})`); continue; }
     if (target) for (const d of checkAncestors(projectDir, path)) createDirs.add(d);
@@ -619,7 +707,12 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
     // Decision D5A: a recorded mode stays while the plan still wants the content and mode it was recorded against.
     const rec = recordedModes.get(path), want = sha(target.bytes);
     const keepMode = mine !== undefined && rec !== undefined && rec.sha256 === want && mine.sha256 === want && mine.mode === rec.recorded && target.mode === rec.planned;
-    const after: FileAfter = { sha256: want, mode: keepMode ? mine.mode : target.mode, bytes: target.bytes.length };
+    let after: FileAfter = { sha256: want, mode: keepMode ? mine.mode : target.mode, bytes: target.bytes.length };
+    // A SKILL.md a person made that means the planned one stays as it is: the receipt records its own bytes, so the plan
+    // writes nothing now and finds nothing to update later, until the definition says something else.
+    if (path.endsWith('/SKILL.md') && now !== null && !sameState(now, after) && (meant.has(path) || (mine !== undefined && sameState(now, mine))) && heldMeans(projectDir, path, target.bytes)) {
+      after = { sha256: now.sha256, mode: now.mode, bytes: readProject(projectDir, path)!.bytes.length };
+    }
     // A 0.7 managed copy keeps the step 3 contract, a replace, even where its bytes are already the planned ones.
     const takeOver = now !== null && sameState(now, after) && !legacy.some(f => path.startsWith(f));
     const action: ChangeAction = mine ? (sameState(now, after) ? 'unchanged' : 'update') : now === null ? 'create' : takeOver ? 'take-over' : 'replace';
@@ -638,8 +731,17 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
     }
   }
 
-  const report = lossReport(def, engines, views, claudeLine, filterLeaks, input.piTrustSaved === true, locked.lines, input.approvals ?? []);
-  const approved = report.approved;
+  const report = lossReport(def, engines, views, claudeLine, filterLeaks, input.piTrustSaved === true, locked.lines, input.approvals ?? [], unprojected);
+  // The recorded approvals of the kept engines go forward unchanged, in the order of the earlier receipt, so a later plan can be a no-op.
+  const approvalKey = (a: FidelityApproval): string => [a.part, a.entry, a.field ?? '', a.engine].join('\u0000');
+  const approved: FidelityApproval[] = [];
+  if (keptIds.size === 0) approved.push(...report.approved);
+  else {
+    const fresh = new Map(report.approved.map(a => [approvalKey(a), a] as const));
+    const carried = new Map((previous?.approvals ?? []).filter(a => keptIds.has(a.engine)).map(a => [approvalKey(a), a] as const));
+    for (const a of previous?.approvals ?? []) { const pick = carried.get(approvalKey(a)) ?? fresh.get(approvalKey(a)); if (pick !== undefined && !approved.includes(pick)) approved.push(pick); }
+    for (const a of report.approved) if (!approved.some(x => approvalKey(x) === approvalKey(a))) approved.push(a);
+  }
   // Rulings B7 and B18: a sentence about the engine version goes on every line of that engine.
   const loss = report.loss.map(l => (locked.notes.has(l.engine) ? { ...l, reason: l.reason + locked.notes.get(l.engine)! } : l));
   const pendingTrust = ids.includes('pi') && input.piTrustSaved !== true ? views.get('pi')!.skills.map(s => s.id) : [];
@@ -649,20 +751,27 @@ export function planWithBytes(input: PortableInput): { readonly plan: PortablePl
   const projected = new Set(skillsById.keys());
   const sources: ReceiptSource[] = def.sources.flatMap(s => s.items.filter(i => i.part === 'skills' && projected.has(i.id)).map(i => ({ skill: i.id, name: s.name, marketplace: s.marketplace, version: s.version, ...(s.claimed ? { claimed: true as const } : {}) })))
     .sort((a, b) => byBytes(a.skill, b.skill));
+  // The source of a skill whose folder stays for a preview engine goes forward too.
+  const folderOf = (skill: string): string => def.entries.skills.find(e => e.id === skill)?.name ?? skill;
+  for (const old of previous?.sources ?? []) {
+    if (projected.has(old.skill) || sources.some(x => x.skill === old.skill)) continue;
+    if ([...keptFolders].some(dir => dir.endsWith(`/${folderOf(old.skill)}`))) sources.push(old);
+  }
+  sources.sort((a, b) => byBytes(a.skill, b.skill));
 
   const definition = { folder: def.folder, harness: def.harness.id, revision: def.revision };
   const receiptFiles = receiptFilesOf(changes);
   const existing = (previous?.createdDirs ?? []).filter(d => isDir(projectDir, d));
   const createdDirs = [...new Set([...existing, ...createDirs])].sort(byBytes);
   const sameReceipt = previous !== null && canonicalJson({ d: previous.definition, e: previous.engines, f: previous.files, s: previous.sources, c: existing, a: previous.approvals })
-    === canonicalJson({ d: definition, e: engines, f: receiptFiles, s: sources, c: createdDirs, a: approved });
+    === canonicalJson({ d: definition, e: receiptEngines(engines, keptPreview), f: receiptFiles, s: sources, c: createdDirs, a: approved });
   const noop = changes.every(c => c.action === 'unchanged') && sameReceipt;
   const takenOver: TakenOver[] = [
     ...changes.filter(c => c.action === 'take-over').map((c): TakenOver => ({ path: c.path })),
     ...locked.takenOver.filter(x => targets.has(x.path)).map(x => ({ path: x.path, entry: x.entry })),
   ].sort((a, b) => byBytes(a.path, b.path) || byBytes(a.entry ?? '', b.entry ?? ''));
   const body = {
-    format: PORTABLE_PLAN_FORMAT, projectDir, stateDir, definition, engines, changes, createDirs: [...createDirs].sort(byBytes), createdDirs, sources,
+    format: PORTABLE_PLAN_FORMAT, projectDir, stateDir, definition, engines, skippedPreview, previewNotice: previewNoticeOf(skippedPreview, keptPreview.map(e => e.id)), keptPreview, changes, createDirs: [...createDirs].sort(byBytes), createdDirs, sources,
     drift, reconcile, loss, partial, notice: partial ? PARTIAL_NOTICE : null, deferred, filterLeaks, pendingTrust, ignored, offers,
     trust: locked.trust, review: locked.review, approved, takenOver, previousReceipt: previous?.revision ?? null, noop, writesAuthorized: false as const,
   };
@@ -682,7 +791,7 @@ const CHECKED_PARTS: readonly LossPart[] = ['system-prompt', 'memory', 'tool-gui
 function lossReport(
   def: Definition, engines: readonly PortableEngine[], views: ReadonlyMap<EngineId, ReturnType<typeof selectForEngine>>,
   claudeLine: { result: 'exact' | 'weakened'; reason: string } | null, leaks: readonly FilterLeak[], trustSaved: boolean,
-  locked: ReadonlyMap<EngineId, ReadonlyMap<LockedPart, readonly LossLine[]>>, approvals: readonly unknown[],
+  locked: ReadonlyMap<EngineId, ReadonlyMap<LockedPart, readonly LossLine[]>>, approvals: readonly unknown[], unprojected: ReadonlySet<string>,
 ): { loss: LossLine[]; approved: FidelityApproval[] } {
   const loss: LossLine[] = [], leakLines = new Set<LossLine>();
   const parts = def.harness.parts as Record<string, unknown>;
@@ -712,7 +821,7 @@ function lossReport(
           loss.push(isCommand(s)
             ? { part, entry: s.id, engine, result: 'translated', reason: `A command projects as a skill in ${SKILL_ROOTS[engine].join(' and ')}. Bowerloom writes no command file.${trust}` }
             : { part, entry: s.id, engine, result: 'exact', reason: `The engine reads ${SKILL_ROOTS[engine].join(' and ')}.${trust}` });
-          if (s.privateBlocks[engine] !== undefined) loss.push({ part, entry: s.id, field: `x-${engine}`, engine, result: 'absent', reason: LOCKED_IN_REASON });
+          if (s.privateBlocks[engine] !== undefined && unprojected.has(`${engine}\u0000${s.id}`)) loss.push({ part, entry: s.id, field: `x-${engine}`, engine, result: 'absent', reason: LOCKED_IN_REASON });
         }
         for (const leak of leaks) if (leak.engines.includes(engine)) {
           const line: LossLine = { part, entry: leak.skill, engine, result: 'weakened', reason: `The engine filter of ${leak.skill} leaves ${engine} out, but ${engine} reads ${leak.path}, so it loads the skill.` };

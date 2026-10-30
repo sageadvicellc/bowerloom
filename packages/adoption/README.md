@@ -30,6 +30,8 @@ One run reads at most what the loader takes: 4,096 files, 32 MiB, 4,096 entries 
 
 The engines are the input's, else the engines whose files the project holds, else the 0.7 default. `AGENTS.md` and `.agents/skills` name no engine: several engines read them.
 
+Adoption reads the files of all five engines. Beta.1 supports Claude Code and Codex; OpenCode, Pi, and DeepSeek Harness are preview engines, and only install to them waits for `BOWERLOOM_PREVIEW_ENGINES=1`. A harness may still list them.
+
 The readers follow the forms of Claude Code 2.1.310, Codex 0.157.0, OpenCode 1.18.30, Pi 1.4.0, and DeepSeek Harness 0.2.2-alpha.2 (`READER_VERSIONS`). Each place records the version its form belongs to.
 
 - OpenCode: only the 1.x shape is read. A 2.x shape, or a recorded version that is not 1.x, refuses with `ADOPTION_OPENCODE_VERSION`.
@@ -56,6 +58,7 @@ A skill's `allowed-tools` is listed, not adopted: a grant scoped to the skill ha
 
 - Identity is meaning: the neutral content first, then the private blocks. Identical items merge into one item that lists every place. If the copies differ in bytes, a note names them. Two copies that one engine reads, one with a private block and one without, are a conflict.
 - An item's engine filter is the engines that read its places. With every engine of the harness, it has no filter.
+- Decision D8B: `everyEngine` in the input (`guardrails`, `hooks`, `mcp`, each at most once) removes the filter from every item of that part, so it applies to every engine of the harness. A rule of a difference, or an item kept under its own id because it differs between places, keeps its filter. The plan's `everyEngine` lists, per part, whether it was chosen, how many items it widens, and each item not widened with the reason. The choice is part of the plan revision. CLI: `bowerloom harness adopt --every-engine <part>`.
 - Items with the same part and id that differ are a conflict. Variants are in path order. A person picks one (`{ pick }`) or keeps them under distinct ids (`{ rename }`). The instructions and the sandbox take `pick` only.
 - Guardrail rules for one action and pattern with different effects in different engines are both kept, each for its engines, and listed in `differences`.
 
@@ -71,7 +74,7 @@ A literal secret in an MCP `env`, header, argument, private block, or leftover s
 
 ## For the projection lanes
 
-- `plan.managed` names each converted copy and its engine copies. The portable projection takes an engine folder that a 0.7 managed copy holds when `sources.json` records the skill in `adopted` and the folder still has that content hash: it replaces the files and saves the originals, so removal restores the 0.7 copy. Any other such folder still refuses `PORTABLE_MANAGED_COPY`.
+- `plan.managed` names each converted copy and its engine copies. The portable projection takes an engine folder that a 0.7 managed copy holds when `sources.json` records the skill in `adopted` and the folder still has that content hash: it replaces the files and saves the originals, so removal restores the 0.7 copy. A folder that already holds exactly the bytes the projection would write is taken over with nothing written, which is how the Codex folder of a 0.7 prompt installs. Any other such folder still refuses `PORTABLE_MANAGED_COPY`.
 - A neutral hook command uses `${PROJECT_DIR}`. Claude Code's `$CLAUDE_PROJECT_DIR` and Codex's `$(git rev-parse --show-toplevel)` are rewritten to it.
 - A hook on `PreToolUse`, `UserPromptSubmit`, or `PermissionRequest` is `enforced`. Other hooks are `advisory`.
 - A Codex `allow` rule becomes a neutral `allow`. The note says Codex ran it outside the sandbox.

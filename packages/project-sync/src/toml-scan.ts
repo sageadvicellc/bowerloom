@@ -19,10 +19,23 @@ export interface TomlDefined {
 
 type Table = { kind: 'table'; how: 'implicit' | 'header' | 'dotted' | 'inline'; scope: number; children: Map<string, Node>; path: string[] };
 type ArrayOfTables = { kind: 'aot'; items: Table[]; path: string[] };
-type Value = { kind: 'value' };
+type Value = { kind: 'value'; js: unknown };
 type Node = Table | ArrayOfTables | Value;
 
 class Invalid extends Error {}
+
+/**
+ * A value the reader holds but does not compare: a multi-line string, a whole-number float, a hexadecimal, octal, or
+ * binary number, a special float, a date or a time, a number past the safe range, or an array of tables. A table that
+ * holds one is never taken over, since its meaning is not compared.
+ */
+export class Opaque { constructor(readonly word: string) {} }
+/** True when a value read by `readToml` holds an `Opaque` anywhere inside it. */
+export function holdsOpaque(v: unknown): boolean {
+  if (v instanceof Opaque) return true;
+  if (Array.isArray(v)) return v.some(holdsOpaque);
+  return v !== null && typeof v === 'object' && Object.values(v).some(holdsOpaque);
+}
 const fail = (): never => { throw new Invalid('not TOML 1.0'); };
 
 /** True for a character TOML refuses in a string or a comment: a control character other than tab. */
@@ -65,10 +78,41 @@ export function validScalar(word: string): boolean {
 
 /** Scans a TOML text. Null when it is not TOML 1.0, or when the scanner cannot check a part of it fully. */
 export function scanToml(text: string): TomlDefined | null {
-  try { return scan(text); } catch (e) { if (e instanceof Invalid) return null; throw e; }
+  const got = readToml(text);
+  return got === null ? null : got.defined;
 }
 
-function scan(text: string): TomlDefined {
+/**
+ * Scans a TOML text and reads its value: the tables, the arrays, the strings, the booleans, the integers, and the
+ * non-whole floats it holds, whatever the layout (headers, sub-tables, dotted keys, inline tables). Key order is the
+ * order of the first definition. A value `Opaque` stands for what the reader does not compare. Null when `scanToml` is.
+ */
+export function readToml(text: string): { readonly defined: TomlDefined; readonly data: Record<string, unknown> } | null {
+  try {
+    const got = scan(text);
+    return { defined: { headers: got.headers, arrays: got.arrays, values: got.values, dotted: got.dotted }, data: got.data };
+  } catch (e) { if (e instanceof Invalid) return null; throw e; }
+}
+
+/** The plain value of a node: a table is an object with no prototype, an array of tables is opaque. */
+function plainOf(n: Node): unknown {
+  if (n.kind === 'value') return n.js;
+  if (n.kind === 'aot') return new Opaque('array of tables');
+  const out: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+  for (const [k, v] of n.children) out[k] = plainOf(v);
+  return out;
+}
+
+/** What a bare word reads as: a boolean, a decimal integer, a float that is not whole; anything else is opaque. */
+function wordValue(word: string): unknown {
+  if (word === 'true') return true;
+  if (word === 'false') return false;
+  if (DEC.test(word)) { const n = Number(word.replace(/_/g, '')); return Number.isSafeInteger(n) ? n : new Opaque(word); }
+  if (FLOAT.test(word)) { const n = Number(word.replace(/_/g, '')); return Number.isFinite(n) && !Number.isInteger(n) ? n : new Opaque(word); }
+  return new Opaque(word);
+}
+
+function scan(text: string): TomlDefined & { readonly data: Record<string, unknown> } {
   let i = 0, scope = 0;
   const headers: string[][] = [], arrays: string[][] = [], values: string[][] = [], dotted: string[][] = [];
   const root: Table = { kind: 'table', how: 'implicit', scope: 0, children: new Map(), path: [] };
@@ -181,18 +225,19 @@ function scan(text: string): TomlDefined {
     if (record) values.push([...target.path, last]);
   };
   const value = (path: string[]): Node => {
-    if (at('"""')) { multiline('"'); return { kind: 'value' }; }
-    if (at("'''")) { multiline("'"); return { kind: 'value' }; }
-    if (text[i] === '"') { basic(); return { kind: 'value' }; }
-    if (text[i] === "'") { literal(); return { kind: 'value' }; }
+    if (at('"""')) { multiline('"'); return { kind: 'value', js: new Opaque('multi-line string') }; }
+    if (at("'''")) { multiline("'"); return { kind: 'value', js: new Opaque('multi-line string') }; }
+    if (text[i] === '"') return { kind: 'value', js: basic() };
+    if (text[i] === "'") return { kind: 'value', js: literal() };
     if (text[i] === '[') {
       i++;
+      const items: unknown[] = [];
       for (;;) {
         gap();
-        if (text[i] === ']') { i++; return { kind: 'value' }; }
-        value(path); gap();
+        if (text[i] === ']') { i++; return { kind: 'value', js: items }; }
+        items.push(plainOf(value(path))); gap();
         if (text[i] === ',') { i++; continue; }
-        if (text[i] === ']') { i++; return { kind: 'value' }; }
+        if (text[i] === ']') { i++; return { kind: 'value', js: items }; }
         fail();
       }
     }
@@ -219,7 +264,7 @@ function scan(text: string): TomlDefined {
     }
     if (!validScalar(word)) fail();
     i += word.length;
-    return { kind: 'value' };
+    return { kind: 'value', js: wordValue(word) };
   };
 
   /** Walks a header path to its parent table, making implicit tables on the way. */
@@ -269,5 +314,5 @@ function scan(text: string): TomlDefined {
     keyValue(current, current.scope, true);
     eol();
   }
-  return { headers, arrays, values, dotted };
+  return { headers, arrays, values, dotted, data: plainOf(root) as Record<string, unknown> };
 }

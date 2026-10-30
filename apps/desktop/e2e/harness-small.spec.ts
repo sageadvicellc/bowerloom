@@ -27,6 +27,14 @@ const SHEETS: readonly (readonly [string, (p: Page) => Promise<void>])[] = [
     await s.getByRole('button', { name: 'Next', exact: true }).click();
     await expect(s.locator('[data-section="approvals"]')).toBeVisible();
   }],
+  // Decision D8B: the review step with its "Use for every engine" ticks, one of them ticked.
+  ['adopt-review', async p => {
+    await p.getByRole('button', { name: 'From a folder', exact: true }).click();
+    const s = p.getByRole('dialog');
+    await s.getByRole('button', { name: 'Next', exact: true }).click();
+    await s.getByRole('checkbox', { name: 'Use for every engine: Guardrails' }).check();
+    await expect(s.locator('[data-section="every-engine"]')).toContainText('1 of 3 ticked');
+  }],
   ['install-plan', async p => {
     await p.getByRole('button', { name: 'Install from a folder', exact: true }).click();
     const s = p.getByRole('dialog');

@@ -4,10 +4,9 @@
  * The sample launch answers the same calls from synthetic fixtures in memory (shared/engine/sample.ts) and writes nothing.
  */
 
-/** The engines of Bowerloom 0.8, in the order the packages list them. */
-export const ENGINE_IDS = Object.freeze(['claude-code', 'codex', 'opencode', 'pi', 'deepseek-harness'] as const);
-export type EngineId = (typeof ENGINE_IDS)[number];
-export const isEngineId = (value: unknown): value is EngineId => typeof value === 'string' && (ENGINE_IDS as readonly string[]).includes(value);
+/** The engine ids are the harness definition core's own list (shared/engine/engines.ts). Only the type is named here, so this file, which the bridge imports, pulls in no package. */
+import type { EngineId } from '../../../../packages/harness-definition/src/words.js';
+export type { EngineId };
 
 /** How each engine is named on a screen. */
 export const ENGINE_NAMES: Readonly<Record<EngineId, string>> = Object.freeze({
@@ -43,6 +42,13 @@ export interface FolderInfo {
   readonly hasDefinition: boolean;
   /** The engines harness.json lists, when it loads. */
   readonly engines: readonly EngineId[];
+  /**
+   * True when the app may install to preview engines (OpenCode, Pi, DeepSeek Harness): main read BOWERLOOM_PREVIEW_ENGINES=1 from its own environment.
+   * Only this one answer reaches the window, never the environment. The same for every folder.
+   */
+  readonly previewEngines: boolean;
+  /** The engines the receipt of an earlier install here lists, in engine order. Empty when nothing is installed. */
+  readonly installedEngines: readonly EngineId[];
   /** Why the definition does not load, or null. */
   readonly problem: string | null;
   /** True when Bowerloom has a receipt of an earlier install here. */
@@ -114,6 +120,16 @@ export interface AdoptApprovalView {
   /** Why this approval cannot be given here, or null. An approval with no text to show is a block, never a tick (W4). */
   readonly blocked: string | null;
 }
+/** The parts that take "Use for every engine" (decision D8B), in the order the sheet shows them. */
+export type EveryEnginePart = 'guardrails' | 'hooks' | 'mcp';
+export const EVERY_ENGINE_PARTS: readonly EveryEnginePart[] = Object.freeze(['guardrails', 'hooks', 'mcp'] as const);
+/** "Use for every engine" for one part: whether it is ticked, how many items it widens, and the items it never widens, each with why (D8B). */
+export interface AdoptEveryEngineView {
+  readonly part: EveryEnginePart;
+  readonly chosen: boolean;
+  readonly widens: number;
+  readonly notWidened: readonly { readonly id: string; readonly reason: string }[];
+}
 export interface AdoptView {
   readonly folder: string;
   readonly harness: { readonly id: string; readonly description: string };
@@ -122,6 +138,8 @@ export interface AdoptView {
   readonly items: readonly AdoptItemView[];
   readonly conflicts: readonly AdoptConflictView[];
   readonly differences: readonly AdoptDifferenceView[];
+  /** One row per part, guardrails, hooks and servers, in that order (D8B). */
+  readonly everyEngine: readonly AdoptEveryEngineView[];
   readonly unmapped: readonly AdoptUnmappedView[];
   readonly secrets: readonly AdoptSecretView[];
   readonly managed: readonly { readonly catalog: string; readonly id: string; readonly skill: string | null; readonly reason: string }[];
@@ -139,6 +157,8 @@ export interface AdoptChoices {
   readonly picks: Readonly<Record<string, string>>;
   /** The gated unmapped entries the person acknowledged, each by id and by the hash of what the person read. */
   readonly acknowledged: readonly { readonly id: string; readonly hash: string }[];
+  /** The parts ticked "Use for every engine" (D8B). None when left out. */
+  readonly everyEngine?: readonly EveryEnginePart[];
 }
 export interface AdoptWritten { readonly written: readonly string[] }
 /** One approval as the window sends it: the key and the hash of what the person read. */
@@ -232,6 +252,13 @@ export interface ProjectView {
   readonly ignored: readonly { readonly option: string; readonly reason: string }[];
   readonly pendingTrust: readonly string[];
   readonly filterLeaks: readonly { readonly skill: string; readonly path: string; readonly engines: readonly EngineId[] }[];
+  /**
+   * Beta.1: the listed preview engines this plan leaves out, those among them whose files from an earlier install stay as they are, and the one sentence
+   * that says so and names the switch. Empty and null when the app may install to preview engines or none is listed.
+   */
+  readonly skippedPreview: readonly EngineId[];
+  readonly keptPreview: readonly EngineId[];
+  readonly previewNotice: string | null;
   readonly noop: boolean;
   readonly revision: string;
 }
@@ -254,11 +281,12 @@ export interface ProjectInput {
   readonly approve: readonly string[];
 }
 /** `written`: the files the install wrote. `takenOver`: the person's files it recorded and did not write. */
-export interface ProjectWritten { readonly noop: boolean; readonly written: readonly string[]; readonly takenOver: readonly string[]; readonly leftBehind: readonly string[] }
+/** `warnings`: words about something that did not finish after the write worked, such as approval drafts that were not cleared. Absent when none. */
+export interface ProjectWritten { readonly noop: boolean; readonly written: readonly string[]; readonly takenOver: readonly string[]; readonly leftBehind: readonly string[]; readonly warnings?: readonly string[] }
 
 export interface RemovalView { readonly changes: readonly ChangeView[]; readonly removeDirs: readonly string[]; readonly revision: string }
 /** `kept`: files the install took over, which the removal leaves as they are. */
-export interface Removed { readonly restored: readonly string[]; readonly kept: readonly string[]; readonly deleted: readonly string[]; readonly leftBehind: readonly string[] }
+export interface Removed { readonly restored: readonly string[]; readonly kept: readonly string[]; readonly deleted: readonly string[]; readonly leftBehind: readonly string[]; readonly warnings?: readonly string[] }
 /** The two answers to a mode drift line: put the recorded mode back, or let the record take the new mode (decision D5A). */
 export type ModeChoice = 'restoreMode' | 'recordMode';
 /**

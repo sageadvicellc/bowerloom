@@ -21,7 +21,7 @@ const MESSAGES = {
   PORTABLE_MERGE_NOT_BUILT: 'Merge moves the CLAUDE.md text into the definition, and this projection does not edit the definition. Choose Accept AGENTS.md or Keep both. Nothing was projected.',
   PORTABLE_PATH_UNSAFE: 'A path Bowerloom would read, write, or restore is a link, is not a plain file or folder, has more than one link, is not yours, is larger than 1 MiB, or sits in a folder that is not where Bowerloom expects it. Nothing more was changed.',
   PORTABLE_PATH_OCCUPIED: 'A skill folder or file Bowerloom would write already holds files that Bowerloom did not project, and they differ from what Bowerloom would write. Nothing was changed.',
-  PORTABLE_MANAGED_COPY: 'A skill folder Bowerloom would write holds a copy that a 0.7 skills sync manages. Adoption (step 3) converts it. Nothing was changed.',
+  PORTABLE_MANAGED_COPY: 'A folder Bowerloom would write holds a copy that a 0.7 sync manages, and writing it would change its content. The 0.7 sync owns that copy, so Bowerloom leaves it unchanged. Adoption converts a 0.7 skill, not a 0.7 prompt. For a prompt, keep the engine copy as it is, or remove the 0.7 prompt with the 0.7 command. Nothing was changed.',
   PORTABLE_CASE_CLASH: 'Two paths differ only in the case of their letters, and many file systems treat them as one. Nothing was changed.',
   PORTABLE_DRIFT: 'A file Bowerloom projected, or a file it was about to replace, changed since the plan. Nothing more was changed.',
   PORTABLE_STATE_UNSAFE: 'The private state folder of the projection is not safe: it must be a normalized path to a real folder you own, mode 0700, outside the project.',
