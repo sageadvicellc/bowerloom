@@ -70,3 +70,6 @@ export type { AddApprovalDraftOptions, ApprovalDraftInput, ReadApprovalDraftsOpt
 // exported here.
 export { VERSION_FORMAT, VERSION_LIMITS, VERSION_REFUSAL_CODES, VersionRefusal, listVersions, readVersion, recordVersion } from './versions.js';
 export type { StoredVersion, VersionCode, VersionEntry, VersionFile, VersionFiles, VersionMeta } from './versions.js';
+// The save step in the desktop app: the version store under the project lock, for a caller that holds no lock.
+export { recordVersionLocked } from './versions-locked.js';
+export type { KeepVersion } from './versions-locked.js';

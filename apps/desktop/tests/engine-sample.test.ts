@@ -2,15 +2,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { AdoptionRefusal } from '../../../packages/adoption/src/index.js';
-import { PortableRefusal } from '../../../packages/project-sync/src/index.js';
-import type { AdoptionCode } from '../../../packages/adoption/src/index.js';
-import type { PortableCode } from '../../../packages/project-sync/src/index.js';
+import { AdoptionRefusal, SaveRefusal } from '../../../packages/adoption/src/index.js';
+import { PortableRefusal, VersionRefusal } from '../../../packages/project-sync/src/index.js';
+import type { AdoptionCode, SaveCode } from '../../../packages/adoption/src/index.js';
+import type { PortableCode, VersionCode } from '../../../packages/project-sync/src/index.js';
 import { SAMPLE_FOLDERS, SAMPLE_MESSAGES, createSampleEngine, sampleEngineFixtures } from '../shared/engine/sample.js';
 import { createEngineService } from '../main/engine-service.js';
-import type { Answer, ProjectAnswer, ProjectInput } from '../shared/engine/types.js';
+import { SAVE_MAIN_WORDS } from '../shared/engine/types.js';
+import type { Answer, ProjectAnswer, ProjectInput, SaveEdit } from '../shared/engine/types.js';
 import { tempDir } from './support.js';
-import { definedFolder, engineFolder, homeFolder } from './helpers-engine/folders.js';
+import { definedFolder, engineFolder, homeFolder, teamFolder } from './helpers-engine/folders.js';
 
 const value = <T>(a: Answer<T> | null): T => { assert.ok(a !== null); if (!a.ok) assert.fail(`${a.refusal.code}`); return a.value; };
 const INPUT: ProjectInput = { engines: ['claude-code', 'codex', 'opencode'], reconcile: 'accept-agents', writeClaudeMd: false, approve: [] };
@@ -35,7 +36,9 @@ function sameShape(real: unknown, sample: unknown): string[] {
 
 test('the sample\'s words for each refusal are the packages\' own words', () => {
   for (const [code, words] of Object.entries(SAMPLE_MESSAGES)) {
-    const made = code.startsWith('ADOPTION_') ? new AdoptionRefusal(code as AdoptionCode) : new PortableRefusal(code as PortableCode);
+    if (Object.hasOwn(SAVE_MAIN_WORDS, code)) { assert.equal(SAVE_MAIN_WORDS[code as keyof typeof SAVE_MAIN_WORDS], words, code); continue; }
+    const made = code.startsWith('ADOPTION_') ? new AdoptionRefusal(code as AdoptionCode) : code.startsWith('SAVE_') ? new SaveRefusal(code as SaveCode)
+      : code.startsWith('VERSION_') ? new VersionRefusal(code as VersionCode) : new PortableRefusal(code as PortableCode);
     assert.equal(made.message, words, code);
   }
 });
@@ -143,4 +146,63 @@ test('sample recovery: the stopped folder refuses a plan until its recovery runs
   value(await e.runRecovery(id, rec.revision, []));
   assert.equal((await e.folders()).find(f => f.id === id)!.unfinished.projection, false);
   assert.equal(value(await e.planProjection(id, { ...INPUT, engines: ['claude-code'] })).kind, 'plan');
+});
+
+test('the sample save, save point and go-back answers have every field of main\'s, and its edit refusal reads as the package\'s', async t => {
+  const home = homeFolder(tempDir(t, 'bowerloom-engine-sample-save-'));
+  const dir = teamFolder(home);
+  const service = createEngineService({ home, stateRoot: join(home, '.local', 'state', 'bowerloom'), chooseFolder: async () => dir, confirm: async () => true, who: 't' });
+  const f = value(await service.chooseFolder());
+  const link: SaveEdit[] = [{ kind: 'set-agent', id: 'reader', skills: ['outline'] }];
+  const real = value(await service.planSave(f.id, link));
+  value(await service.runSave(f.id, real.revision, link));
+  const realVersions = value(await service.listVersions(f.id));
+  const realBack = value(await service.planRestore(f.id, 'v1'));
+  const realWritten = value(await service.runRestore(f.id, realBack.revision, 'v1'));
+  const e = createSampleEngine(), id = SAMPLE_FOLDERS.defined;
+  const sample = value(await e.planSave(id, [{ kind: 'set-agent', id: 'editor', skills: ['draft-outline'] }]));
+  assert.deepEqual(sameShape(real, sample), []);
+  value(await e.runSave(id, sample.revision, [{ kind: 'set-agent', id: 'editor', skills: ['draft-outline'] }]));
+  assert.deepEqual(sameShape(realVersions, value(await e.listVersions(id))), []);
+  const back = value(await e.planRestore(id, 'v1'));
+  assert.deepEqual(sameShape(realBack, back), []);
+  assert.deepEqual(sameShape(realWritten, value(await e.runRestore(id, back.revision, 'v1'))), []);
+  const realUnknown = await service.planSave(f.id, [{ kind: 'set-agent', id: 'nobody', skills: [] }]);
+  const sampleUnknown = await e.planSave(id, [{ kind: 'set-agent', id: 'nobody', skills: [] }]);
+  assert.ok(!realUnknown.ok && !sampleUnknown.ok);
+  assert.deepEqual([sampleUnknown.refusal.code, sampleUnknown.refusal.message], [realUnknown.refusal.code, realUnknown.refusal.message]);
+});
+
+test('sample save: a link is a set-agent edit, a stale revision is refused, a save keeps two save points, and Go back puts the harness back', async () => {
+  const e = createSampleEngine(), id = SAMPLE_FOLDERS.defined;
+  const now = value(await e.planSave(id, []));
+  assert.equal(now.noop, true);
+  assert.deepEqual(now.definition.agents.map(a => [a.id, a.skills]), [['editor', []], ['writer', ['draft-outline']]]);
+  assert.deepEqual(value(await e.listVersions(id)), []);
+  const edits: SaveEdit[] = [{ kind: 'set-agent', id: 'editor', skills: ['check-facts'] }];
+  const plan = value(await e.planSave(id, edits));
+  assert.deepEqual(plan.changes, [{ path: '.bowerloom/agents/editor.md', action: 'update' }]);
+  const stale = await e.runSave(id, 'a'.repeat(64), edits);
+  assert.ok(!stale.ok); assert.equal(stale.refusal.code, 'SAVE_STALE');
+  const done = value(await e.runSave(id, plan.revision, edits));
+  assert.deepEqual(done, { written: ['.bowerloom/agents/editor.md'], version: 'v2' });
+  assert.deepEqual(value(await e.listVersions(id)).map(v => [v.id, v.current]), [['v2', true], ['v1', false]]);
+  assert.deepEqual(value(await e.planSave(id, [])).definition.agents.find(a => a.id === 'editor')!.skills, ['check-facts']);
+  const back = value(await e.planRestore(id, 'v1'));
+  assert.deepEqual(back.changes, [{ path: '.bowerloom/agents/editor.md', action: 'update' }]);
+  value(await e.runRestore(id, back.revision, 'v1'));
+  assert.deepEqual(value(await e.planSave(id, [])).definition.agents.find(a => a.id === 'editor')!.skills, []);
+  assert.deepEqual(value(await e.listVersions(id)).map(v => [v.id, v.current]), [['v3', true], ['v2', false], ['v1', true]]);
+  const unknown = await e.planRestore(id, 'v9');
+  assert.ok(!unknown.ok); assert.equal(unknown.refusal.code, 'VERSION_UNKNOWN');
+  const none = await e.planSave(SAMPLE_FOLDERS.adopt, []);
+  assert.ok(!none.ok); assert.equal(none.refusal.code, 'SAVE_NO_DEFINITION');
+  // A skill copied from another sample folder, then removed again, and the interfaces.
+  const copy = value(await e.planSave(id, [{ kind: 'add-skill', id: 'water-plants', from: SAMPLE_FOLDERS.stopped }, { kind: 'set-engines', engines: ['claude-code', 'codex'] }]));
+  assert.deepEqual(copy.changes.map(c => [c.path, c.action]), [['.bowerloom/skills/water-plants/SKILL.md', 'create'], ['.bowerloom/harness.json', 'update']]);
+  assert.deepEqual(copy.definition.engines, ['claude-code', 'codex']);
+  const ghost = await e.planSave(id, [{ kind: 'add-skill', id: 'ghost', from: SAMPLE_FOLDERS.stopped }]);
+  assert.ok(!ghost.ok); assert.equal(ghost.refusal.code, 'SAVE_SOURCE_MISSING');
+  const gone = value(await e.planSave(id, [{ kind: 'remove-skill', id: 'draft-outline' }]));
+  assert.deepEqual(gone.changes.map(c => [c.path, c.action]), [['.bowerloom/agents/writer.md', 'update'], ['.bowerloom/skills/draft-outline/SKILL.md', 'delete']]);
 });
