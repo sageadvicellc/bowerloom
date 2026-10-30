@@ -52,8 +52,26 @@ test('a damaged save point record is a refusal with words and what to do next, n
   const html = renderToStaticMarkup(createElement(SavePoints, { versions: { ok: false, refusal: { code: 'VERSION_CORRUPT', message: 'The version store is damaged.', paths: [] } }, held: false, onGoBack: noop }));
   assert.match(html, /data-refusal="VERSION_CORRUPT"/);
   assert.ok(html.includes('The version store is damaged.'));
-  assert.ok(html.includes('The save point record is damaged. Nothing was changed.'));
+  assert.ok(html.includes('Set the old save points aside to start a new record.'));
   assert.ok(!html.includes(ENGINE_WORDS.hint.noSavePoints));
+});
+
+test('a damaged save point record offers to set the old save points aside: the plan says nothing is deleted, and the result names where they went', () => {
+  const damaged = { ok: false as const, refusal: { code: 'VERSION_CORRUPT', message: 'The version store is damaged.', paths: [] } };
+  const aside = (over: Partial<{ view: { folder: string; damaged: boolean; revision: string } | null; done: string | null }> = {}) => ({ view: null, done: null, plan: noop, run: noop, ...over });
+  const offer = renderToStaticMarkup(createElement(SavePoints, { versions: damaged, held: false, onGoBack: noop, setAside: aside() }));
+  assert.match(offer, /data-set-aside=""/);
+  assert.ok(offer.includes(ENGINE_WORDS.label.planSetAside));
+  // A record that reads offers nothing to set aside.
+  const whole = renderToStaticMarkup(createElement(SavePoints, { versions: { ok: true, value: [V('v1', true)] }, held: false, onGoBack: noop, setAside: aside() }));
+  assert.doesNotMatch(whole, /data-set-aside/);
+  const planned = renderToStaticMarkup(createElement(SavePoints, { versions: damaged, held: false, onGoBack: noop, setAside: aside({ view: { folder: '~/Projects/team', damaged: true, revision: 'abcdef12'.repeat(8) } }) }));
+  assert.match(planned, /data-run-set-aside=""/);
+  assert.ok(planned.includes(ENGINE_WORDS.hint.setAsideNote));
+  assert.ok(planned.includes(ENGINE_WORDS.label.setAside));
+  const done = renderToStaticMarkup(createElement(SavePoints, { versions: { ok: true, value: [] }, held: false, onGoBack: noop, setAside: aside({ done: 'versions-set-aside-20261030T120000Z' }) }));
+  assert.match(done, /data-set-aside-done="versions-set-aside-20261030T120000Z"/);
+  assert.ok(done.includes(ENGINE_WORDS.hint.setAsideDone));
 });
 
 test('the review lists each file with its action, the harness as it will be, and one tick that names the revision; a no-change plan offers no tick', () => {

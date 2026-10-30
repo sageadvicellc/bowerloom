@@ -180,7 +180,16 @@ export interface AdoptRecoveryView {
   readonly dirs: readonly string[];
   readonly revision: string;
 }
-export interface AdoptRecovered { readonly removed: readonly string[]; readonly restored: readonly string[]; readonly kept: readonly string[]; readonly leftFolders: readonly string[] }
+/**
+ * What a recovery of a stopped harness did. `revision` is the harness revision after it, or null when the folder's harness does not load (after an adoption is
+ * taken back, null also when no harness is left). `check` lists the files a person checks by hand: every file of a damaged journal, and every file the
+ * recovery kept because it changed since the stop.
+ */
+export interface AdoptRecovered {
+  readonly removed: readonly string[]; readonly restored: readonly string[]; readonly kept: readonly string[]; readonly leftFolders: readonly string[];
+  readonly revision: string | null;
+  readonly check: readonly string[];
+}
 
 // ---- the projection -------------------------------------------------------------------------------------------------------
 
@@ -342,7 +351,6 @@ export type SaveEdit =
   | { readonly kind: 'remove-skill'; readonly id: string }
   | { readonly kind: 'add-skill'; readonly id: string; readonly from: string }
   | { readonly kind: 'set-engines'; readonly engines: readonly EngineId[] };
-export const SAVE_EDIT_KINDS = Object.freeze(['set-agent', 'remove-skill', 'add-skill', 'set-engines'] as const);
 /** The most edits one save takes. */
 export const SAVE_EDIT_LIMIT = 200;
 
@@ -385,6 +393,13 @@ export interface RestoreView extends SaveView { readonly version: VersionView }
  * something after it did not finish, such as recording the save point.
  */
 export interface SaveWritten { readonly written: readonly string[]; readonly version: string | null; readonly warnings?: readonly string[] }
+/**
+ * The plan of "Set the old save points aside": the folder's save point record is renamed to a dated name in Bowerloom's private folder, and nothing is deleted.
+ * `damaged` is true when the record cannot be read. `revision` is what the write names.
+ */
+export interface SetAsideView { readonly folder: string; readonly damaged: boolean; readonly revision: string }
+/** The dated name the old save points were set aside under, in Bowerloom's private folder. */
+export interface SetAsideWritten { readonly name: string }
 
 // ---- the calls ------------------------------------------------------------------------------------------------------------
 
@@ -423,6 +438,10 @@ export interface EngineBridge {
   planRestore(folderId: string, version: string): Promise<Answer<RestoreView>>;
   /** Writes the go-back plan shown last, for the same save point, after main's own dialog. */
   runRestore(folderId: string, revision: string, version: string): Promise<Answer<SaveWritten>>;
+  /** Plans setting the folder's old save points aside, so a damaged record never locks the person out. Reads only. */
+  planSetAside(folderId: string): Promise<Answer<SetAsideView>>;
+  /** Sets the old save points aside, for the plan shown last, after main's own dialog. Nothing is deleted. */
+  runSetAside(folderId: string, revision: string): Promise<Answer<SetAsideWritten>>;
   /**
    * Records the answer to "Did this do what you wanted?" in the local usage log on this computer. `note` is the person's own words, at most 500 characters, or
    * null. True when it was recorded. Nothing leaves the computer. The sample records nothing and answers false.
@@ -440,14 +459,14 @@ export const CHECK_NOTE_LIMIT = 500;
 export const ENGINE_CALLS = Object.freeze([
   'folders', 'chooseFolder', 'planAdoption', 'runAdoption', 'planAdoptionRecovery', 'runAdoptionRecovery',
   'planProjection', 'runProjection', 'planRemoval', 'runRemoval', 'planRecovery', 'runRecovery', 'planMerge', 'runMerge', 'recordCheck',
-  'planSave', 'runSave', 'listVersions', 'planRestore', 'runRestore',
+  'planSave', 'runSave', 'listVersions', 'planRestore', 'runRestore', 'planSetAside', 'runSetAside',
 ] as const);
 export type EngineCall = (typeof ENGINE_CALLS)[number];
 /** How many arguments each call takes. A call with another count is refused before anything runs. */
 export const ENGINE_ARITY: Readonly<Record<EngineCall, number>> = Object.freeze({
   folders: 0, chooseFolder: 0, planAdoption: 2, runAdoption: 4, planAdoptionRecovery: 1, runAdoptionRecovery: 2,
   planProjection: 2, runProjection: 3, planRemoval: 1, runRemoval: 2, planRecovery: 2, runRecovery: 3, planMerge: 1, runMerge: 2, recordCheck: 2,
-  planSave: 2, runSave: 3, listVersions: 1, planRestore: 2, runRestore: 3,
+  planSave: 2, runSave: 3, listVersions: 1, planRestore: 2, runRestore: 3, planSetAside: 1, runSetAside: 2,
 });
 /** One channel per call, apart from every other channel of the app. */
 export const ENGINE_CHANNELS: Readonly<Record<EngineCall, string>> = Object.freeze(Object.fromEntries(ENGINE_CALLS.map(c => [c, `bowerloom-engine:${c}`])) as Record<EngineCall, string>);
@@ -462,8 +481,11 @@ export const CANCELLED = 'CANCELLED';
  */
 export const SAVE_NO_DEFINITION = 'SAVE_NO_DEFINITION';
 export const SAVE_SOURCE_MISSING = 'SAVE_SOURCE_MISSING';
-/** The words of those two refusals, the same in main and in the sample. */
-export const SAVE_MAIN_WORDS: Readonly<Record<typeof SAVE_NO_DEFINITION | typeof SAVE_SOURCE_MISSING, string>> = Object.freeze({
+/** The save points before and after the save could not both be kept, so the save would leave Go back with no entry for it. */
+export const SAVE_POINT_TOO_LARGE = 'SAVE_POINT_TOO_LARGE';
+/** The words of those refusals, the same in main and in the sample. */
+export const SAVE_MAIN_WORDS: Readonly<Record<typeof SAVE_NO_DEFINITION | typeof SAVE_SOURCE_MISSING | typeof SAVE_POINT_TOO_LARGE, string>> = Object.freeze({
   SAVE_NO_DEFINITION: 'This folder has no harness yet, so there is nothing to save. Make one first with New harness from a folder. Nothing was written.',
   SAVE_SOURCE_MISSING: 'The folder to copy from does not hold that skill, or its harness does not load. Nothing was written.',
+  SAVE_POINT_TOO_LARGE: 'This harness is too large for Bowerloom to keep a save point before and after this save, so Go back would have no entry for it. Nothing was written.',
 });

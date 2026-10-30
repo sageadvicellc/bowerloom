@@ -12,7 +12,7 @@ import { CANCELLED, NOT_THE_PLAN_SHOWN } from '../shared/engine/types.js';
 import type { Refusal } from '../shared/engine/types.js';
 
 /** The kinds of plan a write can name. */
-export type PlanKind = 'adoption' | 'projection' | 'removal' | 'recovery' | 'adoption-recovery' | 'merge' | 'save' | 'restore';
+export type PlanKind = 'adoption' | 'projection' | 'removal' | 'recovery' | 'adoption-recovery' | 'merge' | 'save' | 'restore' | 'set-aside';
 
 /** Main's record of the last plan it returned: its revision, the choices it was made with (canonical JSON), and the words of the dialog. */
 export interface ShownPlan { readonly revision: string; readonly choices: string; readonly ask: Ask | null }
@@ -51,6 +51,8 @@ export const ASK = Object.freeze({
   save: (label: string, n: number, rev: string): Ask => ({ title: 'Save the harness', message: `Change ${files(n)} in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. Bowerloom keeps a save point, so you can go back. Installed files do not change until you install. ${again}` }),
   /** "Go back": a save whose target is a stored save point. */
   restore: (label: string, n: number, version: string, rev: string): Ask => ({ title: 'Go back to a save point', message: `Go back to ${version} and change ${files(n)} in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. Bowerloom keeps the harness as it is now as a save point too. Installed files do not change until you install. ${again}` }),
+  /** Sets a folder's old save points aside: the record is renamed in Bowerloom's private folder; nothing in the folder changes and nothing is deleted. */
+  setAside: (label: string, rev: string): Ask => ({ title: 'Set the old save points aside', message: `Set the old save points of ${label} aside and start a new record?`, detail: `From plan ${rev.slice(0, 8)}. Bowerloom renames its record to a dated name in its private folder and deletes nothing. Go back then starts from the next save. ${again}` }),
   saveRecovery: (label: string, n: number, rev: string): Ask => ({ title: 'Finish a stopped harness', message: `Put back ${files(n)} that a stopped save changed in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. ${again}` }),
 });
 

@@ -32,7 +32,7 @@ import {
 } from '../../../packages/project-sync/src/index.js';
 import type { PortableInput } from '../../../packages/project-sync/src/index.js';
 import { pendingExists } from '../../../packages/project-sync/src/portable-state.js';
-import { readVersion } from '../../../packages/project-sync/src/index.js';
+import { planSetAsideVersions, readVersion, setAsideVersionsLocked } from '../../../packages/project-sync/src/index.js';
 import { harnessStateDirs, settleLegacyState } from '../../../packages/project-sync/src/harness-state.js';
 import type { HarnessStateDirs } from '../../../packages/project-sync/src/harness-state.js';
 import { addApprovalDraftLocked, dropApprovalDraftsLocked, readApprovalDrafts } from '../../../packages/project-sync/src/harness-approvals.js';
@@ -48,12 +48,15 @@ import { EnginePreviewRefusal } from '../../../packages/skill-manifest/src/engin
 import { EVERY_ENGINE_PARTS, RECONCILE, SAVE_EDIT_LIMIT } from '../shared/engine/types.js';
 import type {
   AdoptApproval, AdoptChoices, AdoptRecovered, AdoptRecoveryView, AdoptView, AdoptWritten, Answer, ApproveLineView, EngineId, EveryEnginePart, FolderInfo, MergeView, MergeWritten,
-  ProjectAnswer, ProjectInput, ProjectWritten, Recovered, RecoveryChoices, RecoveryView, Refusal, RemovalView, Removed, RestoreView, SaveEdit, SaveView, SaveWritten, VersionView,
+  DefinitionView, ProjectAnswer, ProjectInput, ProjectWritten, Recovered, RecoveryChoices, RecoveryView, Refusal, RemovalView, Removed, RestoreView, SaveEdit, SaveView, SaveWritten,
+  SetAsideView, SetAsideWritten, VersionView,
 } from '../shared/engine/types.js';
 import { adoptRecoveryView, adoptionView, approveKey, approveLine, keepsFile, mergeRecoveryView, mergeView, projectView, recoveryView, removalView } from '../shared/engine/view.js';
 import { ASK, ShownPlans, approvalText, cancelled, canonical, hashOf, notTheShownPlan } from './engine-consent.js';
 import type { Ask } from './engine-consent.js';
-import { VERSION_KEY, currentDefinition, keepAfter, keepBefore, savedLabel, targetOf, targetView, versionViews, viewOf, wentBackLabel } from './engine-save.js';
+import {
+  VERSION_KEY, afterSaveWarnings, copiesOk, currentDefinition, keepAfter, keepBefore, keepable, saveCodeOf, savedLabel, targetOf, targetView, versionViews, viewOf, wentBackLabel,
+} from './engine-save.js';
 
 export interface EngineServiceDeps {
   /** The home folder. Paths below it are shown with `~`. */
@@ -166,7 +169,7 @@ const idArg = (v: unknown): string => (isId(v) ? v : bad());
  */
 export function checkSaveEdits(v: unknown): SaveEdit[] {
   if (!Array.isArray(v) || v.length > SAVE_EDIT_LIMIT) return bad();
-  return v.map((e): SaveEdit => {
+  const edits = v.map((e): SaveEdit => {
     if (!plainObject(e)) return bad();
     switch (e.kind) {
       case 'set-agent': {
@@ -185,6 +188,8 @@ export function checkSaveEdits(v: unknown): SaveEdit[] {
       default: return bad();
     }
   });
+  // add-skill reads and scans a whole skill of another folder: at most ADD_SKILL_LIMIT of them, and each (folder, skill) pair once.
+  return copiesOk(edits) ? edits : bad();
 }
 const VERSION_ID = /^v[1-9][0-9]{0,9}$/;
 const versionArg = (v: unknown): string => (typeof v === 'string' && VERSION_ID.test(v) ? v : bad());
@@ -228,6 +233,8 @@ export interface EngineService {
   listVersions(folderId: unknown): Promise<Answer<VersionView[]>>;
   planRestore(folderId: unknown, version: unknown): Promise<Answer<RestoreView>>;
   runRestore(folderId: unknown, revision: unknown, version: unknown): Promise<Answer<SaveWritten>>;
+  planSetAside(folderId: unknown): Promise<Answer<SetAsideView>>;
+  runSetAside(folderId: unknown, revision: unknown): Promise<Answer<SetAsideWritten>>;
   /** Records the answer to "Did this do what you wanted?" in the local log. True only when a line was written; false when the log is off, the write failed, or more than 10 came in a minute. */
   recordCheck(answer: unknown, note: unknown): Promise<boolean>;
 }
@@ -535,33 +542,48 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     whileStopped(f);
     const def = currentDefinition(f.dir);
     const target = targetOf(def, edits, from => folderOf(from).dir);
-    return { plan: packagePlanSave(saveIo(f), target), target };
+    const plan = packagePlanSave(saveIo(f), target);
+    // A save that changes files keeps a save point before and after it; one that could not be kept is refused here, before the person approves.
+    if (plan.changes.length > 0) keepable(def.files, target);
+    return { plan, target };
   }
+  /** The harness view with every string a person wrote passed through the folder's scrub, so no home path reaches the window. */
+  const scrubbed = (f: Folder, d: DefinitionView): DefinitionView => ({
+    ...d, id: f.scrub(d.id), description: f.scrub(d.description),
+    skills: d.skills.map(x => ({ id: x.id, name: f.scrub(x.name), description: f.scrub(x.description) })),
+    agents: d.agents.map(a => ({ ...a, name: f.scrub(a.name), description: f.scrub(a.description) })),
+  });
   function saveView(f: Folder, plan: SavePlan, target: readonly DefinitionFile[]): SaveView {
     return {
-      folder: f.label, changes: plan.changes.map(c => ({ path: f.scrub(`.bowerloom/${c.path}`), action: c.action })), definition: targetView(target, f.dir),
+      folder: f.label, changes: plan.changes.map(c => ({ path: f.scrub(`.bowerloom/${c.path}`), action: c.action })), definition: scrubbed(f, targetView(target, f.dir)),
       noop: plan.changes.length === 0, revision: plan.revision,
     };
   }
   /**
    * Writes a save target the person approved: a save point of the harness as it is first (a save never runs without a way back), then the package's
    * journaled write under the project lock, then a save point of what it wrote. A plan shown before it, of an install, a save or a go-back, can no longer be
-   * written. A save point that could not be kept after the write is a warning: the save is done.
+   * written. Save points that could not both be kept refuse the write up front. A save point that could not be kept after the write, or a journal that
+   * could not be removed, is a warning in words: the save is done. The save point is logged as a refused step of its own.
    */
   async function saveAndKeep(f: Folder, rev: string, target: readonly DefinitionFile[], label: (changes: number) => string): Promise<SaveWritten> {
     const at = now();
-    if (packagePlanSave(saveIo(f), target).changes.length > 0) await keepBefore(f.dir, f.dirs, at);
+    if (packagePlanSave(saveIo(f), target).changes.length > 0) {
+      keepable(currentDefinition(f.dir).files, target);
+      await keepBefore(f.dir, f.dirs, at);
+    }
     const r = await applySave(saveIo(f), rev, target);
     plans.clear(f.id, 'projection'); plans.clear(f.id, 'save'); plans.clear(f.id, 'restore');
-    if (r.written.length === 0) return { written: [], version: null };
-    const warnings: string[] = [];
-    let version: string | null = null;
+    if (r.written.length === 0) { const w = afterSaveWarnings(r.journalLeft, null); return { written: [], version: null, ...(w.length ? { warnings: w } : {}) }; }
+    let version: string | null = null, pointError: unknown = null;
     try { version = await keepAfter(f.dir, f.dirs, target, r.revision, label(r.written.length), at); } catch (error) {
-      const code = (error as { code?: unknown } | null)?.code;
-      warnings.push(`save point not kept (${typeof code === 'string' && /^[A-Z][A-Z0-9_]{2,63}$/.test(code) ? code : 'FAILED'}); the save is done`);
+      pointError = error;
+      record({ kind: 'scenario', step: 'save-point', outcome: 'refused', code: saveCodeOf(error) });
     }
+    const warnings = afterSaveWarnings(r.journalLeft, pointError);
     return { written: r.written.map(p => f.scrub(`.bowerloom/${p}`)), version, ...(warnings.length ? { warnings } : {}) };
   }
+  /** The revision of the folder's harness now, or null when it does not load. */
+  const revisionNow = (f: Folder): string | null => { const r = loadDefinition(join(f.dir, '.bowerloom')); return r.ok ? r.definition.revision : null; };
 
   return {
     folders: () => serial(async () => [...byId.values()].map(info)),
@@ -628,6 +650,9 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
       return written(f, 'adoption-recovery', rev, null, () => scenarioOf(f, { scenario: 'S5', step: 'recover' }, async () => {
         // The kind is read again here. When the stopped run changed since the plan, the package's own revision check refuses the write.
         const kind = stoppedKind(f);
+        // Each result says whether the harness loads after it (`revision`, null when not), and which files a person checks by hand: every file of a
+        // damaged journal, and every file the recovery kept.
+        const checkOf = (check: readonly string[], kept: readonly string[]): string[] => [...new Set([...check, ...kept])];
         if (kind === 'save') {
           // A stopped save is taken back: each file goes back to what the save replaced. The plan read again names which were deleted and which restored.
           const plan = planSaveRecovery(io);
@@ -635,14 +660,22 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
           const inDef = (p: string): string => f.scrub(`.bowerloom/${p}`);
           const deleted = new Set(plan.undo.filter(u => u.action === 'delete').map(u => u.path));
           plans.clear(f.id, 'projection'); plans.clear(f.id, 'save'); plans.clear(f.id, 'restore');
-          return { removed: r.undone.filter(p => deleted.has(p)).map(inDef), restored: r.undone.filter(p => !deleted.has(p)).map(inDef), kept: r.kept.map(k => inDef(k.path)), leftFolders: r.leftFolders.map(inDef) };
+          const kept = r.kept.map(k => inDef(k.path));
+          return {
+            removed: r.undone.filter(p => deleted.has(p)).map(inDef), restored: r.undone.filter(p => !deleted.has(p)).map(inDef), kept, leftFolders: r.leftFolders.map(inDef),
+            revision: r.revision, check: checkOf(plan.check.map(inDef), kept),
+          };
         }
         if (kind === 'merge') {
+          const plan = planInstructionMergeRecovery(io);
           const r = await applyInstructionMergeRecovery(io, rev);
-          return { removed: [], restored: r.restored.map(f.scrub), kept: r.kept.map(k => f.scrub(k.path)), leftFolders: r.leftFolders.map(f.scrub) };
+          const kept = r.kept.map(k => f.scrub(k.path));
+          return { removed: [], restored: r.restored.map(f.scrub), kept, leftFolders: r.leftFolders.map(f.scrub), revision: revisionNow(f), check: checkOf(plan.check.map(f.scrub), kept) };
         }
+        const plan = planAdoptionRecovery(io);
         const r = await applyAdoptionRecovery(io, rev);
-        return { removed: r.removed.map(f.scrub), restored: [], kept: r.kept.map(k => f.scrub(k.path)), leftFolders: r.leftFolders.map(f.scrub) };
+        const kept = r.kept.map(k => f.scrub(k.path));
+        return { removed: r.removed.map(f.scrub), restored: [], kept, leftFolders: r.leftFolders.map(f.scrub), revision: revisionNow(f), check: checkOf(plan.check.map(f.scrub), kept) };
       }));
     }),
     planProjection: (id, input) => serial(async () => {
@@ -765,7 +798,8 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
         const def = currentDefinition(f.dir);
         const stored = readVersion(f.dirs, VERSION_KEY, v);
         const plan = packagePlanSave(saveIo(f), stored.files);
-        const value: RestoreView = { ...saveView(f, plan, stored.files), version: viewOf(stored.entry, def.revision) };
+        if (plan.changes.length > 0) keepable(def.files, stored.files);
+        const value: RestoreView = { ...saveView(f, plan, stored.files), version: viewOf(stored.entry, def) };
         return { value, revision: plan.revision, choices: { version: v }, ask: value.noop ? null : ASK.restore(f.label, plan.changes.length, v, plan.revision) };
       });
     }),
@@ -777,6 +811,23 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
         // The save point is read again, checked against its hashes; a changed store or harness changes the plan revision, and the package refuses.
         const stored = readVersion(f.dirs, VERSION_KEY, v);
         return saveAndKeep(f, rev, stored.files, () => wentBackLabel(v));
+      }));
+    }),
+    planSetAside: id => serial(async () => {
+      const f = folderOf(id);
+      return planned(f, 'set-aside', () => {
+        const plan = planSetAsideVersions(f.dirs);
+        const value: SetAsideView = { folder: f.label, damaged: plan.damaged, revision: plan.revision };
+        return { value, revision: plan.revision, choices: null, ask: ASK.setAside(f.label, plan.revision) };
+      });
+    }),
+    runSetAside: (id, revision) => serial(async () => {
+      const f = folderOf(id), rev = revisionArg(revision);
+      return written(f, 'set-aside', rev, null, () => scenarioOf(f, { step: 'set-aside' }, async () => {
+        // The store plans again under the project lock and moves nothing when it changed since the plan. Nothing is deleted.
+        const r = await setAsideVersionsLocked(f.dirs, f.dir, rev, now());
+        plans.clear(f.id, 'restore');
+        return { name: r.name };
       }));
     }),
     recordCheck: (answer, note) => serial(async () => {

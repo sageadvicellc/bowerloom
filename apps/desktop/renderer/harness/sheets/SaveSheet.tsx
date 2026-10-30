@@ -14,7 +14,7 @@ import type { ReactElement } from 'react';
 import { Stepper } from '../../home/kit/Stepper.js';
 import { ENGINE_IDS, isPreviewEngine } from '../../../shared/engine/engines.js';
 import { ENGINE_NAMES } from '../../../shared/engine/types.js';
-import type { Answer, DefinitionView, EngineId, FolderInfo, Refusal, RestoreView, SaveEdit, SaveView, SaveWritten, VersionView } from '../../../shared/engine/types.js';
+import type { Answer, DefinitionView, EngineId, FolderInfo, Refusal, RestoreView, SaveEdit, SaveView, SaveWritten, SetAsideView, VersionView } from '../../../shared/engine/types.js';
 import {
   EMPTY_DRAFT, agentPart, definitionWorld, draftCount, draftEdits, draftView, linkSkill, partSkill, removeSkill, setDraftEngines,
 } from '../../../shared/harness/save-draft.js';
@@ -62,11 +62,13 @@ export function SaveSheet({ open, folderId, onClose }: SaveSheetProps): ReactEle
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [positions, setPositions] = useState<Readonly<Record<string, Point>>>({});
   const [lastPlan, setLastPlan] = useState<(() => void) | null>(null);
+  const [aside, setAside] = useState<SetAsideView | null>(null);
+  const [asideDone, setAsideDone] = useState<string | null>(null);
   const intro = useRef<HTMLParagraphElement>(null), body = useRef<HTMLDivElement>(null), first = useRef(true);
   const held = call.writing, busy = call.busy !== null;
 
   /** Everything of one folder goes when the folder changes: the harness read, the draft, the plan, its approval and the result. */
-  const resetFolder = (): void => { setBase(null); setDraft(EMPTY_DRAFT); setVersions(null); setShown(null); setApproved(null); setDone(null); setLinkingId(null); setSelectedId(null); setPositions({}); setLastPlan(null); call.clear(); };
+  const resetFolder = (): void => { setBase(null); setDraft(EMPTY_DRAFT); setVersions(null); setShown(null); setApproved(null); setDone(null); setLinkingId(null); setSelectedId(null); setPositions({}); setLastPlan(null); setAside(null); setAsideDone(null); call.clear(); };
   useEffect(() => {
     if (!open) return;
     setStep('folder'); setFolders([]); setPicked(null); resetFolder();
@@ -129,6 +131,29 @@ export function SaveSheet({ open, folderId, onClose }: SaveSheetProps): ReactEle
     void call.write(W.label.writing, run, r => { setDone({ kind: s.kind, written: r }); setDraft(EMPTY_DRAFT); setStep('done'); });
   };
 
+  /**
+   * "Set old save points aside": plans it, then writes it after main's own dialog. The record is renamed in Bowerloom's private folder and nothing is deleted;
+   * the save points are read again after it.
+   */
+  const setAsideParts = {
+    view: aside, done: asideDone,
+    plan: (): void => {
+      if (engine === null || folder === undefined) return;
+      const id = folder.id;
+      setAsideDone(null);
+      void call.plan(W.label.planning, () => engine.planSetAside(id), v => setAside(v));
+    },
+    run: (): void => {
+      if (engine === null || folder === undefined || aside === null) return;
+      const id = folder.id, rev = aside.revision;
+      void call.write(W.label.writing, async () => {
+        const r = await engine.runSetAside(id, rev);
+        if (r.ok) setVersions(await engine.listVersions(id));
+        return r;
+      }, r => { setAside(null); setAsideDone(r.name); });
+    },
+  };
+
   const pick = (id: string): void => { if (held || id === picked) return; setPicked(id); resetFolder(); };
   const choose = (): void => {
     if (engine === null || held) return;
@@ -174,6 +199,7 @@ export function SaveSheet({ open, folderId, onClose }: SaveSheetProps): ReactEle
     <RefusalNote refusal={call.refusal} focusId={call.refusalId}>
       {lastPlan !== null && step !== 'folder' ? <HButton onClick={lastPlan}>{W.label.planAgain}</HButton> : null}
       {folder !== undefined && call.refusal.code === 'SAVE_RECOVERY_REQUIRED' ? <HButton onClick={() => { onClose(); ui.openAdopt({ folderId: folder.id }); }}>{W.label.planRecovery}</HButton> : null}
+      {folder !== undefined && call.refusal.code === 'VERSION_CORRUPT' && step !== 'edit' ? <HButton data-set-aside="" onClick={() => { back('edit'); setAsideParts.plan(); }}>{W.label.planSetAside}</HButton> : null}
     </RefusalNote>
   );
   const nextWords = call.refusal === null ? null : SAVE_REFUSAL_WORDS[call.refusal.code];
@@ -197,7 +223,7 @@ export function SaveSheet({ open, folderId, onClose }: SaveSheetProps): ReactEle
         {step === 'edit' && base !== null && now !== null && world !== null ? (
           <EditStep base={base} now={now} draft={draft} count={count} held={held || busy} versions={versions} world={world} linkingId={linkingId} selectedId={selectedId}
             onDraft={setDraft} onLinkStart={id => setLinkingId(c => (c === id ? null : id))} onLinkTarget={onLinkTarget} onLinkCancel={() => setLinkingId(null)} onSelect={setSelectedId}
-            onMove={(id, at) => setPositions(p => ({ ...p, [id]: at }))} onGoBack={planRestore} />
+            onMove={(id, at) => setPositions(p => ({ ...p, [id]: at }))} onGoBack={planRestore} setAside={setAsideParts} />
         ) : null}
         {step === 'review' && shown !== null ? <SaveReview shown={shown} approved={approved === shown.view.revision} held={held} onApprove={on => setApproved(on ? shown.view.revision : null)} /> : null}
         {step === 'done' && done !== null ? (
@@ -216,10 +242,11 @@ export interface EditStepProps {
   world: NonNullable<ReturnType<typeof definitionWorld>>; linkingId: string | null; selectedId: string | null;
   onDraft(next: (d: SaveDraft) => SaveDraft): void; onLinkStart(id: string): void; onLinkTarget(id: string): void; onLinkCancel(): void; onSelect(id: string | null): void;
   onMove(id: string, at: Point): void; onGoBack(version: string): void;
+  setAside?: SetAsideParts;
 }
 
 /** The draft of one folder's harness: the graph, the skills of each agent, the skills, the interfaces, and the save points. */
-export function EditStep({ base, now, draft, count, held, versions, world, linkingId, selectedId, onDraft, onLinkStart, onLinkTarget, onLinkCancel, onSelect, onMove, onGoBack }: EditStepProps): ReactElement {
+export function EditStep({ base, now, draft, count, held, versions, world, linkingId, selectedId, onDraft, onLinkStart, onLinkTarget, onLinkCancel, onSelect, onMove, onGoBack, setAside }: EditStepProps): ReactElement {
   const engines = ENGINE_IDS.filter(e => base.engines.includes(e) || !isPreviewEngine(e));
   return (
     <>
@@ -280,19 +307,33 @@ export function EditStep({ base, now, draft, count, held, versions, world, linki
           ))}
         </ul>
       </Section>
-      <SavePoints versions={versions} held={held} onGoBack={onGoBack} />
+      <SavePoints versions={versions} held={held} onGoBack={onGoBack} {...(setAside === undefined ? {} : { setAside })} />
     </>
   );
 }
 
-/** The save points, newest first, each with "Go back". A damaged record shows its refusal; it is never drawn as "no save point yet". */
-export function SavePoints({ versions, held, onGoBack }: { versions: Answer<readonly VersionView[]> | null; held: boolean; onGoBack(version: string): void }): ReactElement {
+/** "Set old save points aside": the plan shown (or null), the dated name of the last one done (or null), and the two calls. */
+export interface SetAsideParts { readonly view: SetAsideView | null; readonly done: string | null; plan(): void; run(): void }
+
+/**
+ * The save points, newest first, each with "Go back". A damaged record shows its refusal; it is never drawn as "no save point yet", and it offers to set the
+ * old save points aside, planned first and written after main's own dialog, so a person is never locked out.
+ */
+export function SavePoints({ versions, held, onGoBack, setAside }: { versions: Answer<readonly VersionView[]> | null; held: boolean; onGoBack(version: string): void; setAside?: SetAsideParts }): ReactElement {
   const refusal: Refusal | null = versions !== null && !versions.ok ? versions.refusal : null;
   const list = versions !== null && versions.ok ? versions.value : [];
   return (
     <Section title={W.label.savePoints} {...(versions !== null && versions.ok ? { count: String(list.length) } : {})} slot="save-points">
       {refusal !== null ? <RefusalNote refusal={refusal}>{null}</RefusalNote> : null}
       {refusal !== null && SAVE_REFUSAL_WORDS[refusal.code] !== undefined ? <p className="hxe-text" data-next-step="">{SAVE_REFUSAL_WORDS[refusal.code]}</p> : null}
+      {setAside !== undefined && refusal?.code === 'VERSION_CORRUPT' && setAside.view === null ? <HButton size="small" disabled={held} data-set-aside="" onClick={setAside.plan}>{W.label.planSetAside}</HButton> : null}
+      {setAside !== undefined && setAside.view !== null ? (
+        <div data-set-aside-plan={setAside.view.revision.slice(0, 8)}>
+          <p className="hxe-text">{W.hint.setAsideNote}</p>
+          <HButton size="small" variant="primary" disabled={held} data-run-set-aside="" onClick={setAside.run}>{W.label.setAside}</HButton>
+        </div>
+      ) : null}
+      {setAside?.done != null ? <p className="hxe-text" data-set-aside-done={setAside.done}><StateDot tone="good">{W.hint.setAsideDone}</StateDot> {setAside.done}</p> : null}
       {versions !== null && versions.ok && list.length === 0 ? <p className="hxe-text hxe-muted">{W.hint.noSavePoints}</p> : null}
       {list.length === 0 ? null : (
         <ul className="hxi-files" aria-label={W.label.savePoints}>
