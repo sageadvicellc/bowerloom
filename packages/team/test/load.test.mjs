@@ -200,7 +200,8 @@ test('an approval record that is not valid is a problem', () => {
 test('team guardrails use the harness guardrail shape', () => {
   refused(only(teamFile({ guardrails: { rules: [rule('no-push', { effect: 'block' })] } })), 'TEAM_GUARDRAILS_INVALID');
   refused(only(teamFile({ guardrails: { rules: [rule('a'), rule('a')] } })), 'TEAM_GUARDRAILS_INVALID');
-  ok(only(teamFile({ guardrails: { rules: [], sandbox: { id: 'box', files: true, network: false } } })));
+  // Claude Code members only: a Codex sandbox line is weakened (ruling B6), and this test is about the shape only.
+  ok(only(teamFile({ members: [member('lead'), member('maker', { folder: 'wt/maker' })], guardrails: { rules: [], sandbox: { id: 'box', files: true, network: false } } })));
 });
 
 // ---- fields, words, and files ---------------------------------------------------------------------------------------

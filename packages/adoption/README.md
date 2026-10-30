@@ -88,6 +88,6 @@ A literal secret in an MCP `env`, header, argument, private block, or leftover s
 
 - Every engine: the engine-private file of leftover settings (`engines/<engine>/...`) is not projected in this step: `absent`.
 - Claude Code: a web deny also covers subdomains, so the projection blocks more: `weakened`. The sandbox also gets `allowUnsandboxedCommands: false` (ruling B11), which adoption lists as permission-like: the sandbox line stays `exact`. A key of the sandbox's `x-claude-code` block is not written until the step 5 live check documents it: an `absent` field line.
-- Codex: the sandbox requirement and its `x-codex` block are not written until the step 5 live check confirms the permission profile (ruling B6): `weakened`.
+- Codex: the sandbox requirement is written as the `bowerloom` permission profile (ruling B6). Live check g8 did not cover the network and write bounds of `:workspace`: `weakened`. The profile carries no key of the `x-codex` block: an `absent` field line. Adoption does not read a permission profile, so the second adoption has no sandbox entry.
 - OpenCode: Bowerloom writes `"*": { "*": "ask" }` first, so a request the source left to OpenCode's own default (allow) asks. A shell deny is written with `*` for its spaces, and the web deny `*` also covers web search, so both block more: `translated`.
 - DeepSeek Harness keeps MCP servers, hooks, and permissions outside the project, so there is nothing to carry. Pi carries MCP servers only.

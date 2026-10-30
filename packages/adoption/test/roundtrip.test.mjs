@@ -218,9 +218,16 @@ test('check 1, locked-in half: Codex MCP servers, subagents, hooks, and rules ad
   // rides in the rule's x-codex block both ways.
   sameEntries(r, ['mcp', 'subagents', 'hooks', 'rules']);
   assert.deepEqual(ruleOf(r.one.def, 'shell', 'git push *', 'deny').privateBlocks, { codex: { justification: 'No pushes from an agent.' } });
-  // Expected: Bowerloom writes no Codex permission profile until the live check of step 5 (ruling B6), so the sandbox
-  // requirement and its x-codex block are not written. Its line is weakened.
+  // Expected: the sandbox requirement is written as the bowerloom permission profile (ruling B6). Live check g8 did not
+  // cover the network and write bounds of :workspace, so its line is weakened. The profile carries no key of its x-codex
+  // block, so that key gets an absent field line. Adoption does not read a permission profile, so the second adoption
+  // has no sandbox entry.
   assert.equal(lineOf(r.plan, 'guardrails', 'sandbox').result, 'weakened');
+  assert.match(lineOf(r.plan, 'guardrails', 'sandbox').reason, /network and write bounds of :workspace/);
+  const field = r.plan.loss.find(l => l.part === 'guardrails' && l.entry === 'sandbox' && l.field === 'x-codex');
+  assert.equal(field?.result, 'absent');
+  assert.match(field.reason, /exclude_slash_tmp/);
+  assert.match(fs.readFileSync(path.join(r.fresh, '.codex/config.toml'), 'utf8'), /^default_permissions = "bowerloom"$/m);
   assert.deepEqual(r.two.def.entries.sandbox, []);
   assert.equal(lineOf(r.plan, 'engine-private', 'engines/codex/config.json').result, 'absent');
 });

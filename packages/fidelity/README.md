@@ -80,6 +80,7 @@ Matching is on the text as written, so some forms escape a rule. `KNOWN_ESCAPES`
 - A Codex prefix rule takes its `justification` from the rule's `x-codex` block when that is one line of text with no control, format (Cf), line, or paragraph separator character (`codexJustification`), and the line says the text comes from the definition. Otherwise it names the rule, `Bowerloom guardrail <id>`.
 - A DeepSeek Harness sandbox requirement is `absent`: at the pinned tag a mode covers file effects only, a session can switch it, and no patch row that sets it is confirmed.
 - The Codex filesystem table binds only commands that run in the sandbox.
+- Codex path rules and the Codex sandbox requirement are `weakened` (rulings B6 and R17). Live check g8 showed that the permission profile loads and that a literal deny entry at the project root blocks a read and leaves the file unchanged after a patch turn. No live check covered a glob entry, a read-only entry, or the network and write bounds of `:workspace`, and each line names what it lacks.
 
 ## The rulesync oracle
 

@@ -235,6 +235,14 @@ function planMember(team: Team, m: TeamMember, input: StartInput, projectDir: st
       const prefix = [rules, harnessEntries?.rules ?? []].flatMap(r => (translateGuardrails('codex', { rules: r, sandbox: [] }).form as { prefixRules?: readonly unknown[] }).prefixRules ?? []);
       if (prefix.length) fail('TEAM_START_UNPINNED', `The member ${who} runs codex exec with --ignore-rules, and its guardrails write ${prefix.length} rule${prefix.length === 1 ? '' : 's'} to .codex/rules/bowerloom.rules. No record says that --ignore-rules keeps a project rules file, so the rules could be dropped. Start it manual until the step 5 live check records what --ignore-rules covers.`);
     }
+    if (m.engine === 'codex' && m.start === 'headless' && row.supported && row.argv.includes('--sandbox')) {
+      // The guardrail projection writes path rules and a sandbox requirement as a permission profile, selected by
+      // default_permissions in the project .codex/config.toml (ruling B6). The command passes --sandbox, which sets
+      // sandbox_mode, and live check g8 ran without it, so no record says the profile still holds (read fail-closed).
+      const carried = [[rules, sandbox], [harnessEntries?.rules ?? [], harnessEntries?.sandbox ?? []]] as const;
+      const profile = carried.some(([r, b]) => { const f = translateGuardrails('codex', { rules: r, sandbox: b }).form as { filesystem?: readonly unknown[]; sandbox?: unknown }; return (f.filesystem?.length ?? 0) > 0 || f.sandbox !== undefined; });
+      if (profile) fail('TEAM_START_UNPINNED', `The member ${who} runs codex exec with --sandbox, and its guardrails write a Codex permission profile for path rules or a sandbox requirement. No record says that the profile holds when --sandbox is given, so the path rules could be dropped. Start it manual until a live check records it.`);
+    }
     if (m.engine === 'codex' && m.start === 'headless' && (harnessEntries?.mcp ?? []).some(s => appliesTo(s, 'codex'))) {
       fail('TEAM_START_APPROVAL_UNREACHABLE', `The member ${who} runs codex exec with MCP servers. Codex cancels MCP calls under codex exec even with approval_policy "never", and only a bypass worked (open issue 24135). Start the member manual, or give its harness no MCP server for Codex.`);
     }

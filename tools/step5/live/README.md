@@ -129,8 +129,8 @@ Manual runbook:
 ## Check g8: Codex permission profile
 
 - **Command:** `BOWERLOOM_LIVE_ENGINES=1 BOWERLOOM_LIVE_CODEX_TRUSTED=1 BOWERLOOM_LIVE_CODEX_ROOT='<root>' BOWERLOOM_LIVE_CODEX='["codex","exec","--skip-git-repo-check"]' node --test packages/project-sync/test/locked-live.test.mjs --test-name-pattern='g8 \(live\)'`
-- **Proves:** a config with `default_permissions = "bowerloom"` and a profile that extends `:workspace` loads, and its `deny` entry stops Codex from reading and from patching `secret.txt`. Turn one reads both files. Turn two patches the denied file.
-- **Settles:** `CODEX_PROFILE_ENABLED` in `packages/project-sync/src/locked.ts` (ruling B6) and ruling R17, the weakened patch line in `packages/fidelity/src/codex.ts`.
+- **Proves:** a config with `default_permissions = "bowerloom"` and a profile that extends `:workspace` loads, and its literal `deny` entry stops Codex from reading `secret.txt` and leaves it unchanged after a patch turn. Turn one reads both files. Turn two patches the denied file, and its output must show a refusal for `secret.txt`, or the result is inconclusive.
+- **Settles:** `CODEX_PROFILE_ENABLED` in `packages/project-sync/src/locked.ts` (ruling B6). It passed on Codex 0.157.0 on 2026-10-30, and the switch is on. That run used the reader from before the patch turn needed a shown refusal. It does not settle ruling R17 in `packages/fidelity/src/codex.ts`: it covers one literal deny entry, not a read-only entry or a glob entry, so those lines stay weakened. It also does not cover the network and write bounds of `:workspace`, or a start command that passes `--sandbox`.
 - **Turns:** 2
 - **Prerequisite:** the Codex trust steps, `BOWERLOOM_LIVE_CODEX_ROOT`, and `BOWERLOOM_LIVE_CODEX_TRUSTED=1`.
 
