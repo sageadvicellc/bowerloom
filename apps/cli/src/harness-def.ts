@@ -18,6 +18,7 @@ import { lstatSync, realpathSync } from 'node:fs';
 import { userInfo } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
+import { recordScenario } from './events.js';
 import { applyAdoption, applyAdoptionRecovery, planAdoption, planAdoptionRecovery } from '../../../packages/adoption/src/index.js';
 import type { AdoptionInput } from '../../../packages/adoption/src/index.js';
 import { EVERY_ENGINE_PARTS } from '../../../packages/adoption/src/model.js';
@@ -613,12 +614,15 @@ export function resultLines(result: unknown): string[] {
   return out;
 }
 
+/** The last write this command applied, for the local usage log. Set by `approved`, cleared at the start of each run. A plan that waited, or a no-op, leaves it empty. */
+let lastApply: { revision: string; result: unknown } | null = null;
+
 /** The approval wrapper, with plain JSON in and out. A good write also prints what it left behind or kept (human mode only). */
 async function approved<P>(change: PlannedChange<P>, approval: { approve?: string; json: boolean }, io: ApprovalIo, write: (text: string) => void): Promise<number> {
   let applied: unknown;
   const wrapped: PlannedChange<P> = {
     ...change, async plan() { return printable(plain(await change.plan())); },
-    async apply(revision) { try { applied = plain(await change.apply(revision)); return applied; } catch (error) { throw withPartialWords(error); } },
+    async apply(revision) { try { applied = plain(await change.apply(revision)); lastApply = { revision, result: applied }; return applied; } catch (error) { throw withPartialWords(error); } },
   };
   const result = await runWithApproval(wrapped, approval, io);
   const lines = result.exitCode === 0 && !approval.json ? resultLines(applied) : [];
@@ -651,6 +655,7 @@ export async function runHarnessDefCommand(args: readonly string[], cwd: string,
   const flags = parseFlags(approval.rest, spec);
   if (verb === 'recover' && flags.bools.has('--adoption') && ['--keep', '--restore-mode', '--record-mode'].some(k => all(flags, k).length)) usage('recover --adoption takes no --keep, --restore-mode, or --record-mode.');
   // Ctrl-C and a terminate request stop the run at its next safe point; the handlers are gone when the command ends.
+  lastApply = null;
   const controller = new AbortController(), stop = (): void => controller.abort();
   process.once('SIGINT', stop); process.once('SIGTERM', stop);
   try {
@@ -673,14 +678,37 @@ async function dispatch(
   const { io, write } = run;
   const c = await contextOf(run.cwd, run.home, run.env, flags, run.signal, verb === 'status');
   const a = { ...(approval.approve !== undefined ? { approve: approval.approve } : {}), json: approval.json };
-  switch (verb) {
-    case 'status': return status(c, approval.json, write);
-    case 'adopt': return adopt(c, flags, a, io, write);
-    case 'install': return install(c, flags, a, io, write);
-    case 'accept': return accept(c, flags, approval.json, write);
-    case 'merge': return merge(c, a, io, write);
-    case 'drift': return drift(c, flags.bools.has('--check'), approval.json, write);
-    case 'remove': return remove(c, a, io, write);
-    case 'recover': return recover(c, flags, a, io, write);
-  }
+  const go = (): Promise<number> => {
+    switch (verb) {
+      case 'status': return status(c, approval.json, write);
+      case 'adopt': return adopt(c, flags, a, io, write);
+      case 'install': return install(c, flags, a, io, write);
+      case 'accept': return accept(c, flags, approval.json, write);
+      case 'merge': return merge(c, a, io, write);
+      case 'drift': return drift(c, flags.bools.has('--check'), approval.json, write);
+      case 'remove': return remove(c, a, io, write);
+      case 'recover': return recover(c, flags, a, io, write);
+    }
+  };
+  // Usage events for the local log: S1 adopt, S2 install, S5 remove and recover. The log never changes a result.
+  const step = verb === 'adopt' || verb === 'install' || verb === 'remove' || verb === 'recover' ? verb : null;
+  if (step === null) return go();
+  const where = { env: run.env, home: run.home };
+  return recordScenario(where, outcome => {
+    // A refusal names the step. Only a run that applied a write is a done scenario: a no-op install applied nothing.
+    if (outcome === 'refused') return { step, ...(step === 'install' ? { targetRoot: c.dir } : {}) };
+    if (lastApply === null) return null;
+    const engines = step === 'install' ? installedEngines(lastApply.result) : undefined;
+    const scenario = step === 'adopt' ? 'S1' : step === 'install' ? (engines?.includes('claude-code') && engines.includes('codex') ? 'S2' : undefined) : 'S5';
+    return {
+      step, ...(scenario !== undefined ? { scenario } : {}), plan: lastApply.revision,
+      ...(engines !== undefined && engines.length ? { engines } : {}), ...(step === 'install' ? { targetRoot: c.dir } : {}),
+    };
+  }, go);
 }
+
+/** The engine ids a result lists under `installed`. */
+const installedEngines = (result: unknown): string[] | undefined => {
+  const list = (result as { installed?: unknown } | null)?.installed;
+  return Array.isArray(list) ? list.filter((x): x is string => typeof x === 'string') : undefined;
+};

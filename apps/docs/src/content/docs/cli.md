@@ -162,6 +162,18 @@ bowerloom context guard --agent <role> --explain <path> [--tool Read|Grep|Glob] 
 
 `context show` prints the files a slice selects and the index skill that `apply` writes for it. `context measure` compares what each agent loads at start with the same agent loaded with every `.md` file of a baseline folder. Bytes are exact and tokens are an estimate. Both read only and use no network. `context guard` is the read guard that `apply` adds to an agent with slices. Claude Code runs it as `bowerloom-guard`, a second command of the package, before each Read, Grep, and Glob of that agent. The hook form reads the hook input on standard input and prints a deny line or nothing. With `--explain` it prints what the guard decides for one path. See [Context slices for agents](/docs/guides/context-slices/#the-read-guard).
 
+## Report a problem and the usage log
+
+```text
+bowerloom report [--template bug|fidelity-gap|engine-change] [--json]
+bowerloom events [--json]
+bowerloom events summary [--with-notes] [--out <absolute-file>] [--json]
+```
+
+`report` prints a bundle you can read in full: the Bowerloom version, your system, the Claude Code and Codex versions, the newest error code, and the newest 20 lines of the usage log. Then it prints a link that opens a GitHub issue with the bundle filled in. Bowerloom sends nothing. You choose whether to open the link. A home folder path or a token that shows up in the bundle is replaced before it is printed.
+
+Bowerloom keeps a usage log on this computer, at `events/events.jsonl` in its state folder. A line records which scenario ran, whether it finished or was refused, and an error code. It holds no names, paths, or file contents. `events` shows the newest 50 lines. `events summary` counts the last 7 days. `--out` writes the summary to a new file that only you can read, and it never replaces a file: an existing file is refused with `TARGET_EXISTS`. Notes you typed in an after-apply check stay in the log, and join a summary only with `--with-notes`. Set `BOWERLOOM_EVENT_LOG=off` to stop all writing. A log that cannot be written prints one line on stderr and never changes a command's result.
+
 ## Registered folders
 
 ```text
