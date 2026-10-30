@@ -362,7 +362,7 @@ export function planLocked(ctx: LockedContext): LockedPlan {
           } else {
             // Ruling B6: with the switch off there is no profile. Every entry the profile would carry is weakened and says so.
             const held = new Set(g.written.filter(w => w.where.startsWith('filesystem[') || w.where === 'sandbox').map(w => w.source));
-            for (const l of [...guardLines]) if (held.has(l.entry)) setLine(l.entry, 'weakened', `Not written: the switch of the Codex permission profile is off, so Bowerloom writes no profile. The form it holds back: ${l.reason}`);
+            for (const l of [...guardLines]) if (held.has(l.entry)) setLine(l.entry, 'weakened', 'Not written: the switch of the Codex permission profile is off, so Bowerloom writes no profile and Codex does not carry this entry.');
           }
         }
         if (root.length || tables.length) {

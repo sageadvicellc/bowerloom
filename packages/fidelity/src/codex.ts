@@ -46,7 +46,7 @@ export const CODEX_DEFAULT: EngineDefault = Object.freeze({
  * What live check g8 of step 5 covered of the Codex permission profile (ruling B6), said on every line the profile
  * carries.
  */
-const PROFILE_SCOPE = 'Bowerloom writes it into a Codex permission profile that extends :workspace, selected by default_permissions. Live check g8 of step 5 showed on Codex 0.157.0 that this profile loads and that a literal deny entry at the project root blocks a read. Bowerloom does not read user or managed configuration, a profile selected on the command line, or start flags such as --sandbox, and no live check covered them.';
+const PROFILE_SCOPE = 'Bowerloom writes this entry into a Codex permission profile that extends :workspace, selected by default_permissions. Live check g8 of step 5 showed on Codex 0.157.0 that this profile loads and that a literal deny entry at the project root blocks a read. Bowerloom does not read user or managed configuration, a profile selected on the command line, or start flags such as --sandbox, and no live check covered them.';
 
 /** A token Codex compares as a literal and a shell passes through unchanged. */
 const LITERAL_TOKEN = /^[A-Za-z0-9_./:@%+,=^-]+$/;
@@ -174,7 +174,7 @@ export function translateCodex(rules: readonly GuardrailRule[], sandbox: readonl
     box = { files: true, network: true };
     out.wrote(s.id, 'sandbox');
     // Ruling B6: g8 showed that the profile loads. No live check covered the network and write bounds of :workspace.
-    const both = s.files && s.network ? 'Codex keeps its sandbox on, with writes limited to the workspace and no network, as the research notes say.' : `Codex sandboxes files and network together, so it also limits ${s.files ? 'the network' : 'files'}: it blocks more than the requirement.`;
+    const both = s.files && s.network ? 'Codex keeps its sandbox on, with writes limited to the workspace and no network.' : `Codex sandboxes files and network together, so it also limits ${s.files ? 'the network' : 'files'}: it blocks more than the requirement.`;
     out.line(s, 'weakened', `${both} ${PROFILE_SCOPE} No live check covered the network and write bounds of :workspace, so the line is weakened.`);
   }
   return out.done<CodexForm>({ engine: 'codex', prefixRules, filesystem: table, mcpDisabled, ...(box ? { sandbox: box } : {}), defaults: CODEX_DEFAULT });
