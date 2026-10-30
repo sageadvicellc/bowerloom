@@ -14,9 +14,10 @@
  * it, which may be one that has been dropped since.
  *
  * Bounds (VERSION_LIMITS): 50 versions per folder, 4096 files and 32 MiB per version (the harness definition's own
- * limits), 1 MiB per file, 64 folders, and 1 MiB for the index, which the state layer reads at most. The index is written
- * as compact JSON, so the index is the one bound below the harness limits; `checkVersionsFit` says up front whether a set
- * of save points fits it. A version past the cap of 50 drops the oldest of its folder. A version that would push the
+ * limits), 1 MiB per file, 64 folders, and 16 MiB for the index. The state layer reads no file past 1 MiB, so the index
+ * has its own reader with the same checks and this larger bound: two save points of a harness at 4096 files with paths
+ * of 1024 bytes fit, with room for more history. The index is written as compact JSON; `checkVersionsFit` says up front
+ * whether a set of save points fits it. A version past the cap of 50 drops the oldest of its folder. A version that would push the
  * index past its size drops the oldest of its folder too, and is refused VERSION_TOO_LARGE when it cannot fit alone.
  *
  * A record writes the new blobs first, then the index through a temporary and a rename, then removes every blob the index no
@@ -36,8 +37,8 @@ import fs from 'node:fs';
 import { basename, dirname, isAbsolute, join, normalize } from 'node:path';
 import { DefinitionError } from '../../contracts/src/index.js';
 import type { DefinitionFile } from '../../harness-definition/src/index.js';
-import { MAX_FILE, PortableRefusal, byBytes, readAbs, refuse, sha, sweepFolderTemps, syncDir, writeAbs } from './portable-files.js';
-import { ensureRecordFolder, readPrivateJson, recordExists } from './harness-state.js';
+import { MAX_FILE, PortableRefusal, byBytes, readAbs, refuse, sha, sweepFolderTemps, syncDir, uid, writeAbs } from './portable-files.js';
+import { ensureRecordFolder, recordExists } from './harness-state.js';
 import type { HarnessStateDirs } from './harness-state.js';
 import { stateExists } from './portable-state.js';
 
@@ -77,8 +78,11 @@ export const VERSION_LIMITS = Object.freeze({
   fileBytes: MAX_FILE,
   /** Folders in one store. */
   folders: 64,
-  /** Bytes in the index file. The state layer reads no file larger than this. */
-  index: MAX_FILE,
+  /**
+   * Bytes in the index file: two save points of a harness at the file limit with paths of 1024 bytes, about 4.7 MiB
+   * each, and history beside them. Read by `readIndexBytes`, not by the state layer, which stops at 1 MiB.
+   */
+  index: 16 * 1024 * 1024,
 });
 
 /** One file of a version: its path inside the definition folder, the hash and size of its bytes, and its execute bit. */
@@ -238,20 +242,39 @@ function holdsBlobs(blobs: string): boolean {
   return names.some(n => SHA.test(n));
 }
 /**
+ * The index bytes: a plain private file of this user, no link, one link, at most VERSION_LIMITS.index. Null when it is
+ * absent. The state layer's `readPrivateJson` reads at most 1 MiB, so this copies its checks with the index's own bound,
+ * as the save journal's reader does. Every check runs on the path before it is opened, and again on the open file, so a
+ * link, a shared file, a second link, or a file past the bound is refused PORTABLE_STATE_UNSAFE before any byte is read.
+ */
+function readIndexBytes(abs: string): Buffer | null {
+  let st: fs.Stats;
+  try { st = fs.lstatSync(abs); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null; return refuse('PORTABLE_STATE_UNSAFE'); }
+  if (!st.isFile() || st.nlink !== 1 || st.uid !== uid() || st.size > VERSION_LIMITS.index || (st.mode & 0o077) !== 0) refuse('PORTABLE_STATE_UNSAFE');
+  let fd: number;
+  try { fd = fs.openSync(abs, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK); } catch { return refuse('PORTABLE_STATE_UNSAFE'); }
+  try {
+    const open = fs.fstatSync(fd);
+    if (!open.isFile() || open.ino !== st.ino || open.dev !== st.dev || open.nlink !== 1 || open.size > VERSION_LIMITS.index || (open.mode & 0o077) !== 0) refuse('PORTABLE_STATE_UNSAFE');
+    const bytes = Buffer.alloc(open.size); let at = 0;
+    while (at < bytes.length) { const n = fs.readSync(fd, bytes, at, bytes.length - at, null); if (n === 0) break; at += n; }
+    if (at !== open.size || fs.readSync(fd, Buffer.alloc(1), 0, 1, null) !== 0) refuse('PORTABLE_STATE_UNSAFE');
+    return bytes;
+  } finally { fs.closeSync(fd); }
+}
+/**
  * The folders in the index file. None when there is no file and no saved copy. A file that is not a whole index, and a
  * missing index with saved copies left behind, refuse VERSION_CORRUPT: those copies are someone's save points, and the
- * next record would erase them as orphans.
+ * next record would erase them as orphans. A file that cannot be read safely refuses PORTABLE_STATE_UNSAFE.
  */
 function readIndex(store: string): Folder[] {
+  const bytes = readIndexBytes(join(store, INDEX_NAME));
+  if (bytes === null) return holdsBlobs(join(store, BLOBS)) ? refuseVersion('VERSION_CORRUPT') : [];
   let raw: unknown;
-  try { raw = readPrivateJson(join(store, INDEX_NAME), `${STORE}/${INDEX_NAME}`); } catch (e) {
-    if (e instanceof PortableRefusal && e.code === 'PORTABLE_STATE_INVALID') return refuseVersion('VERSION_CORRUPT');
-    throw e;
-  }
-  if (raw === null) return holdsBlobs(join(store, BLOBS)) ? refuseVersion('VERSION_CORRUPT') : [];
+  try { raw = JSON.parse(bytes.toString('utf8')) as unknown; } catch { return refuseVersion('VERSION_CORRUPT'); }
   return parseIndex(raw);
 }
-/** The index as compact JSON, so the 1 MiB the state layer reads holds as many save points as it can. */
+/** The index as compact JSON, so its bound holds as many save points as it can. */
 const serialize = (folders: readonly Folder[]): Buffer =>
   Buffer.from(JSON.stringify({ format: VERSION_FORMAT, folders: [...folders].sort((a, b) => byBytes(a.key, b.key)) }) + '\n');
 

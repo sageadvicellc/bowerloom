@@ -120,7 +120,7 @@ test('versions: each folder counts on its own', t => {
 // ---- caps --------------------------------------------------------------------------------------------------------------
 
 test('versions: the limits are the documented ones', () => {
-  assert.deepEqual({ ...VERSION_LIMITS }, { versions: 50, files: 4096, bytes: 32 * 1024 * 1024, fileBytes: 1024 * 1024, folders: 64, index: 1024 * 1024 });
+  assert.deepEqual({ ...VERSION_LIMITS }, { versions: 50, files: 4096, bytes: 32 * 1024 * 1024, fileBytes: 1024 * 1024, folders: 64, index: 16 * 1024 * 1024 });
   assert.throws(() => { VERSION_LIMITS.versions = 1; }, TypeError);
 });
 
@@ -178,13 +178,13 @@ test('versions: a file set at the limits is stored, and one past a limit is refu
 
 test('versions: an index that would pass its size limit drops the oldest versions of the folder, and keeps the new one', t => {
   const w = world(t);
-  const long = i => Object.fromEntries(Array.from({ length: 200 }, (_, k) => [`${'d'.repeat(900)}/${i}-${k}.md`, `${k}`]));
-  for (let i = 0; i < 8; i++) recordVersion(w.dirs, 'wide', set(long(i)), meta(`r${i}`));
+  const long = i => Object.fromEntries(Array.from({ length: VERSION_LIMITS.files }, (_, k) => [`${'d'.repeat(990)}/${i}-${k}.md`, `${k % 4}`]));
+  for (let i = 0; i < 5; i++) recordVersion(w.dirs, 'wide', set(long(i)), meta(`r${i}`));
   const list = listVersions(w.dirs, 'wide');
-  assert.ok(list.length < 8 && list.length >= 1);
-  assert.equal(list[0].id, 'v8');
+  assert.ok(list.length < 5 && list.length >= 1);
+  assert.equal(list[0].id, 'v5');
   assert.ok(fs.statSync(w.index).size <= VERSION_LIMITS.index);
-  assert.ok(readVersion(w.dirs, 'wide', 'v8').files.length === 200);
+  assert.ok(readVersion(w.dirs, 'wide', 'v5').files.length === VERSION_LIMITS.files);
 });
 
 test('versions: the number of folders is bounded', t => {

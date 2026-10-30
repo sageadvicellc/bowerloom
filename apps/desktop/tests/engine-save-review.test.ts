@@ -9,7 +9,7 @@ import { createEngineService } from '../main/engine-service.js';
 import type { EngineService } from '../main/engine-service.js';
 import type { Ask } from '../main/engine-consent.js';
 import { ASK } from '../main/engine-consent.js';
-import { afterSaveWarnings, currentDefinition, keepBefore, targetOf, versionViews } from '../main/engine-save.js';
+import { afterSaveWarnings, currentDefinition, keepBefore, keepable, targetOf, versionViews } from '../main/engine-save.js';
 import { applySave, applySaveWith, planSave as packagePlanSave } from '../../../packages/adoption/src/save.js';
 import { loadDefinition } from '../../../packages/harness-definition/src/index.js';
 import { harnessStateDirs } from '../../../packages/project-sync/src/harness-state.js';
@@ -82,18 +82,21 @@ test('a harness of more than 8 MiB saves twice and goes back, with every save po
   assert.deepEqual(filesOf(dir), before);
 });
 
-test('a save whose save points cannot both be kept is refused up front, with words, and nothing is written', async t => {
+test('save points that cannot both be kept are refused up front, with words', () => {
+  // The index holds two save points of a harness at the file limit with long paths. Only paths whose every byte doubles in JSON pass it, which no folder
+  // on this system can hold, so the check runs on the file sets alone: each one fits the index, the one before and the one after together do not.
+  const set = (byte: number): { path: string; bytes: Uint8Array }[] => Array.from({ length: 4096 }, (_, i) => ({ path: `${'"'.repeat(1015)}/${String(i).padStart(4, '0')}.md`, bytes: Buffer.from([byte]) }));
+  assert.doesNotThrow(() => keepable(set(97), set(97).slice(0, 1)));
+  assert.throws(() => keepable(set(97), set(98)), (e: { code?: string; message?: string }) => e.code === 'SAVE_POINT_TOO_LARGE' && e.message === SAVE_MAIN_WORDS.SAVE_POINT_TOO_LARGE && /Go back/.test(e.message));
+});
+
+test('a harness at the file limit with long paths saves, and keeps both save points', async t => {
   const s = setup(t);
-  // Long paths: each save point alone fits the 1 MiB index, the one before and the one after together do not.
-  const dir = bigTeam(s.home, 1500, 2, 'd'.repeat(240)), before = filesOf(dir);
+  // Before the index had its own bound, the save points of this harness passed the 1 MiB the state layer reads, and the save was refused.
+  const dir = bigTeam(s.home, 4000, 2, 'd'.repeat(60));
   const f = await choose(s, dir);
-  const r = refusal(await s.service.planSave(f.id, LINK));
-  assert.equal(r.code, 'SAVE_POINT_TOO_LARGE');
-  assert.equal(r.message, SAVE_MAIN_WORDS.SAVE_POINT_TOO_LARGE);
-  assert.match(r.message, /Go back/);
-  assert.equal(value(await s.service.planSave(f.id, [])).noop, true, 'reading the harness still works');
-  assert.deepEqual(filesOf(dir), before);
-  assert.deepEqual(value(await s.service.listVersions(f.id)), []);
+  await save(s, f.id, LINK);
+  assert.deepEqual(value(await s.service.listVersions(f.id)).map(v => v.id), ['v2', 'v1']);
 });
 
 // ---- finding 3: add-skill stays bounded ---------------------------------------------------------------------------------------

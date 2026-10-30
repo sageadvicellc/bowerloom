@@ -54,19 +54,19 @@ test('a save point over 8 MiB is kept, twice, and each reads back whole', t => {
   assert.equal(readVersion(w.dirs, 'definition', 'v2').files.length, 10);
 });
 
-test('the store limits reach the harness limits; the index of 1 MiB is the one bound below them', () => {
+test('the store limits reach the harness limits; the index has its own bound of 16 MiB, past the 1 MiB the state layer reads', () => {
   assert.equal(VERSION_LIMITS.files, 4096);
   assert.equal(VERSION_LIMITS.bytes, 32 * 1024 * 1024);
-  assert.equal(VERSION_LIMITS.index, 1024 * 1024);
+  assert.equal(VERSION_LIMITS.index, 16 * 1024 * 1024);
 });
 
 test('checkVersionsFit says up front whether the save points before and after a save can both be kept', () => {
   assert.doesNotThrow(() => checkVersionsFit('definition', [files(201), files(250)]));
   assert.doesNotThrow(() => checkVersionsFit('definition', [files(9, VERSION_LIMITS.fileBytes - 1), files(9, VERSION_LIMITS.fileBytes - 1)]));
-  // Long paths: one set fits the index alone, two do not.
-  const wide = files(1500, 1, `skills/${'d'.repeat(300)}`);
-  assert.doesNotThrow(() => checkVersionsFit('definition', [wide]));
-  assert.throws(() => checkVersionsFit('definition', [wide, wide]), code('VERSION_TOO_LARGE'));
+  // The longest paths at the file limit: two sets fit the index together, four do not.
+  const wide = files(VERSION_LIMITS.files, 1, `skills/${'d'.repeat(1000)}`);
+  assert.doesNotThrow(() => checkVersionsFit('definition', [wide, wide]));
+  assert.throws(() => checkVersionsFit('definition', [wide, wide, wide, wide]), code('VERSION_TOO_LARGE'));
   assert.throws(() => checkVersionsFit('definition', [files(VERSION_LIMITS.files + 1)]), code('VERSION_TOO_LARGE'));
   assert.throws(() => checkVersionsFit('a/b', [files(1)]), code('VERSION_USAGE'));
 });
@@ -188,4 +188,45 @@ test('a store folder that is unsafe is still refused by the set-aside plan, not 
   fs.chmodSync(w.store, 0o755);
   assert.throws(() => planSetAsideVersions(w.dirs), code('PORTABLE_STATE_UNSAFE'));
   fs.chmodSync(w.store, 0o700);
+});
+
+// ---- verification review, finding 3: the index bound is not the save limit -------------------------------------------------
+
+test('two save points of a harness at 4,096 files with paths of 100 characters are both kept, and each reads back whole', t => {
+  const w = world(t);
+  const at = (n, byte) => Array.from({ length: VERSION_LIMITS.files }, (_, i) => {
+    const tail = `/${String(i).padStart(4, '0')}.md`;
+    return { path: `skills/${'p'.repeat(100 - 'skills/'.length - tail.length)}${tail}`, bytes: Buffer.from([byte + (i === n ? 1 : 0)]) };
+  });
+  const a = at(-1, 97), b = at(7, 97);
+  assert.ok(a.every(f => f.path.length === 100));
+  assert.doesNotThrow(() => checkVersionsFit('definition', [a, b]));
+  recordVersion(w.dirs, 'definition', a, meta('r1'));
+  recordVersion(w.dirs, 'definition', b, meta('r2'));
+  assert.deepEqual(listVersions(w.dirs, 'definition').map(v => v.id), ['v2', 'v1'], 'neither one was dropped to fit the index');
+  assert.ok(fs.statSync(w.index).size > 1024 * 1024, 'the index is past the 1 MiB the state layer reads');
+  assert.ok(fs.statSync(w.index).size <= VERSION_LIMITS.index);
+  assert.equal(readVersion(w.dirs, 'definition', 'v1').files.length, VERSION_LIMITS.files);
+  assert.deepEqual(readVersion(w.dirs, 'definition', 'v2').files[7].bytes, Buffer.from([98]));
+  // More history fits beside them.
+  recordVersion(w.dirs, 'definition', at(8, 97), meta('r3'));
+  assert.deepEqual(listVersions(w.dirs, 'definition').map(v => v.id), ['v3', 'v2', 'v1']);
+});
+
+test('the index keeps the safety checks of a private state file: a link, a shared mode, a second link, and a size past the bound are refused before any read', t => {
+  const w = world(t);
+  recordVersion(w.dirs, 'definition', files(1), meta('r1'));
+  const good = fs.readFileSync(w.index);
+  fs.unlinkSync(w.index);
+  fs.writeFileSync(path.join(w.base, 'elsewhere.json'), good, { mode: 0o600 });
+  fs.symlinkSync(path.join(w.base, 'elsewhere.json'), w.index);
+  assert.throws(() => listVersions(w.dirs, 'definition'), code('PORTABLE_STATE_UNSAFE'), 'a link');
+  fs.unlinkSync(w.index);
+  fs.writeFileSync(w.index, good, { mode: 0o640 });
+  assert.throws(() => listVersions(w.dirs, 'definition'), code('PORTABLE_STATE_UNSAFE'), 'a shared mode');
+  fs.chmodSync(w.index, 0o600);
+  assert.equal(listVersions(w.dirs, 'definition').length, 1);
+  fs.renameSync(w.index, path.join(w.base, 'kept.json'));
+  fs.mkdirSync(w.index, { mode: 0o700 });
+  assert.throws(() => listVersions(w.dirs, 'definition'), code('PORTABLE_STATE_UNSAFE'), 'a folder');
 });
