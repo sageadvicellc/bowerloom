@@ -62,6 +62,7 @@ export const ENGINE_WORDS = deepFreeze({
     agentsPresent: 'AGENTS.md is in the folder.', agentsPlanned: 'This install writes AGENTS.md.', approvedEarlier: 'approved earlier, unchanged since', approvedNow: 'approved now',
     readyToWrite: 'Ready to write.',
     journalOk: 'The stopped run\'s record is whole.', journalDamaged: 'The stopped run\'s record is damaged. Check these files by hand.',
+    saveDone: 'The save is done. The save stays, and Bowerloom clears its note.',
     nothingFound: 'Bowerloom found nothing to carry over in this folder.', noEngines: 'This harness lists no interface. Add one to harness.json.',
     nothingToRemove: 'Nothing to remove. Bowerloom wrote nothing here.', nothingChanged: 'Nothing changed. The folder already matched the plan.',
     noText: 'Bowerloom has no file text for this approval.', cannotApprove: 'This line cannot be approved here. Change the harness first.',

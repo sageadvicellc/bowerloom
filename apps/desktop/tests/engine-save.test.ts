@@ -295,15 +295,20 @@ test('after a save the install plan shown before is gone, and the save itself wr
   assert.match(readFileSync(join(dir, '.claude/agents/reader.md'), 'utf8'), /outline/);
 });
 
-/** Leaves a save stopped part way: the package's own journal, as a killed process would leave it. */
+/**
+ * Leaves a save stopped part way: the package's own journal, as a killed process would leave it. The save changes two files and stops after the first, so
+ * the recovery takes it back. (A save that wrote every file is kept by the recovery instead: engine-save-review.test.ts.)
+ */
 async function stopASave(s: Setup, dir: string): Promise<void> {
   const dirs = harnessStateDirs(stateRootOf(s.home), dir);
   const loaded = loadDefinition(join(dir, '.bowerloom'));
   assert.ok(loaded.ok);
-  const target = loaded.definition.files.map(file => (file.path === 'agents/reader.md' ? { ...file, bytes: Buffer.from(Buffer.from(file.bytes).toString('utf8').replace('Read the sources.', 'Read every source.')) } : file));
+  const edit = (file: { path: string; bytes: Uint8Array }, from: string, to: string): Buffer => Buffer.from(Buffer.from(file.bytes).toString('utf8').replace(from, to));
+  const target = loaded.definition.files.map(file => (file.path === 'agents/reader.md' ? { ...file, bytes: edit(file, 'Read the sources.', 'Read every source.') }
+    : file.path === 'agents/writer.md' ? { ...file, bytes: edit(file, 'Write the draft.', 'Write every draft.') } : file));
   const io = { projectDir: dir, stateDir: dirs.adoption };
   const plan = packagePlanSave(io, target);
-  await assert.rejects(applySaveWith(io, plan.revision, target, new AbortController().signal, { afterWrite: () => { throw Object.assign(new Error('killed'), { crash: true }); } }), /killed/);
+  await assert.rejects(applySaveWith(io, plan.revision, target, new AbortController().signal, { afterWrite: rel => { if (rel === 'agents/reader.md') throw Object.assign(new Error('killed'), { crash: true }); } }), /killed/);
 }
 
 test('while a save is stopped, install, removal, adoption, merge and save are refused with words, and the folder offers its recovery, which takes the save back', async t => {

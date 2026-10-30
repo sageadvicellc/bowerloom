@@ -330,3 +330,105 @@ test('a folder that changes between the save point kept before a save and the sa
 test('SAVE_EDIT_KINDS is gone: the edit kinds are the SaveEdit union alone', () => {
   assert.equal((types as Record<string, unknown>).SAVE_EDIT_KINDS, undefined);
 });
+
+// ---- verification review, finding 1: a finished save whose journal was left -----------------------------------------------
+
+const EVERY_SOURCE = (dir: string): { path: string; bytes: Uint8Array; executable?: boolean }[] => {
+  const loaded = loadDefinition(join(dir, '.bowerloom'));
+  assert.ok(loaded.ok);
+  return loaded.definition.files.map(file => (file.path === 'agents/reader.md' ? { ...file, bytes: Buffer.from(Buffer.from(file.bytes).toString('utf8').replace('Read the sources.', 'Read every source.')) } : file));
+};
+const readDef = (dir: string, rel: string): string => readFileSync(join(dir, '.bowerloom', rel), 'utf8');
+
+/**
+ * Saves through the package so that the journal cannot be removed at the end, as a full disk or a changed permission would: the save finishes, every file
+ * is the target, and the journal stays (`journalLeft`). No save point is kept for it, as when the "Saved" save point fails too.
+ */
+async function finishASaveAndLeaveItsJournal(s: Setup, dir: string): Promise<void> {
+  const dirs = harnessStateDirs(stateRootOf(s.home), dir);
+  const target = EVERY_SOURCE(dir);
+  const io = { projectDir: dir, stateDir: dirs.adoption };
+  try {
+    const r = await applySaveWith(io, packagePlanSave(io, target).revision, target, new AbortController().signal, { afterWrite: () => { chmodSync(dirs.adoption, 0o500); } });
+    assert.equal(r.journalLeft, true);
+  } finally { chmodSync(dirs.adoption, 0o700); }
+  assert.ok(existsSync(join(dirs.adoption, 'save-pending.json')));
+}
+
+test('a save that finished but left its journal is kept by the recovery: every file stays, the note is cleared, and the save points do not change', async t => {
+  const s = setup(t);
+  const dir = teamFolder(s.home);
+  const f = await choose(s, dir);
+  await save(s, f.id, LINK);
+  await finishASaveAndLeaveItsJournal(s, dir);
+  const saved = filesOf(dir), points = value(await s.service.listVersions(f.id));
+  assert.match(readDef(dir, 'agents/reader.md'), /Read every source\./);
+  assert.equal((await s.service.folders()).find(x => x.id === f.id)!.unfinished.adoption, true);
+
+  const plan = value(await s.service.planAdoptionRecovery(f.id));
+  assert.equal(plan.kind, 'save');
+  assert.equal(plan.journal, 'ok');
+  assert.equal(plan.done, true);
+  assert.deepEqual([plan.remove, plan.restore, plan.kept], [[], [], []], 'the plan takes nothing back');
+  const asksBefore = s.asks.length;
+  const r = value(await s.service.runAdoptionRecovery(f.id, plan.revision));
+  assert.equal(s.asks.length, asksBefore + 1);
+  const ask = s.asks.at(-1)!;
+  assert.deepEqual(ask, ASK.saveRecovery('~/Projects/team', 0, plan.revision, true));
+  assert.match(`${ask.message} ${ask.detail}`, /the save stays, and Bowerloom clears its note/i);
+  assert.doesNotMatch(`${ask.message} ${ask.detail}`, /put back/i);
+
+  assert.deepEqual(filesOf(dir), saved, 'every file is the finished save');
+  assert.deepEqual([r.removed, r.restored, r.kept, r.check], [[], [], [], []]);
+  const now = loadDefinition(join(dir, '.bowerloom'));
+  assert.ok(now.ok);
+  assert.equal(r.revision, now.definition.revision);
+  assert.equal(existsSync(join(harnessStateDirs(stateRootOf(s.home), dir).adoption, 'save-pending.json')), false, 'the note is cleared');
+  assert.equal((await s.service.folders()).find(x => x.id === f.id)!.unfinished.adoption, false);
+  assert.deepEqual(value(await s.service.listVersions(f.id)), points, 'the save points are unchanged');
+  value(await s.service.planSave(f.id, []));
+});
+
+test('a save stopped part way is still taken back: its plan is not done, it asks to put the files back, and every file returns', async t => {
+  const s = setup(t);
+  const dir = teamFolder(s.home), before = filesOf(dir);
+  const f = await choose(s, dir);
+  // Two files change; the process is killed after the first is written, so the second is still to do.
+  const target = EVERY_SOURCE(dir).map(file => (file.path === 'agents/writer.md' ? { ...file, bytes: Buffer.from(Buffer.from(file.bytes).toString('utf8').replace('Write the draft.', 'Write every draft.')) } : file));
+  const io = { projectDir: dir, stateDir: harnessStateDirs(stateRootOf(s.home), dir).adoption };
+  await assert.rejects(applySaveWith(io, packagePlanSave(io, target).revision, target, new AbortController().signal, { afterWrite: rel => { if (rel === 'agents/reader.md') throw Object.assign(new Error('killed'), { crash: true }); } }), /killed/);
+  assert.match(readDef(dir, 'agents/reader.md'), /Read every source\./);
+  assert.doesNotMatch(readDef(dir, 'agents/writer.md'), /Write every draft\./);
+  const plan = value(await s.service.planAdoptionRecovery(f.id));
+  assert.equal(plan.done, false);
+  assert.deepEqual(plan.restore, ['.bowerloom/agents/reader.md']);
+  const r = value(await s.service.runAdoptionRecovery(f.id, plan.revision));
+  assert.deepEqual(s.asks.at(-1), ASK.saveRecovery('~/Projects/team', 1, plan.revision, false));
+  assert.match(s.asks.at(-1)!.message, /^Put back 1 file/);
+  assert.deepEqual(r.restored, ['.bowerloom/agents/reader.md']);
+  assert.deepEqual(filesOf(dir), before);
+});
+
+test('a save whose files are all written is taken back, not finished, when a file outside it changed since, so the recovery can never refuse for good', async t => {
+  const s = setup(t);
+  const dir = teamFolder(s.home);
+  const f = await choose(s, dir);
+  await finishASaveAndLeaveItsJournal(s, dir);
+  // A file the save did not touch changes by hand: the harness is no longer the save's target, so finishing it would refuse every time.
+  writeFileSync(join(dir, '.bowerloom/instructions/AGENTS.md'), '# Team\n\nUse pnpm.\n');
+  const plan = value(await s.service.planAdoptionRecovery(f.id));
+  assert.equal(plan.done, false);
+  assert.deepEqual(plan.restore, ['.bowerloom/agents/reader.md']);
+  value(await s.service.runAdoptionRecovery(f.id, plan.revision));
+  assert.doesNotMatch(readDef(dir, 'agents/reader.md'), /Read every source\./);
+  assert.match(readDef(dir, 'instructions/AGENTS.md'), /pnpm/);
+  assert.equal((await s.service.folders()).find(x => x.id === f.id)!.unfinished.adoption, false);
+});
+
+test('the warning of a left journal says the save stays when the note is cleared, and never that the recovery takes the save back', () => {
+  const [journal] = afterSaveWarnings(true, null);
+  assert.match(journal!, /^The save is done\./);
+  assert.match(journal!, /Finish a stopped harness/);
+  assert.match(journal!, /the save stays, and Bowerloom clears its note/);
+  assert.doesNotMatch(journal!, /takes this save back/);
+});

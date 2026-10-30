@@ -168,10 +168,15 @@ export interface AdoptApproval { readonly key: string; readonly hash: string }
 export interface AdoptRecoveryView {
   /**
    * `adoption`: the stopped run made a new harness; recovery removes its files. `merge`: the stopped run was a Merge; recovery puts the files back.
-   * `save`: the stopped run was a save of the harness; recovery takes it back, putting each file as it was before.
+   * `save`: the stopped run was a save of the harness; recovery takes it back, putting each file as it was before, unless the save was done (`done`).
    */
   readonly kind: 'adoption' | 'merge' | 'save';
   readonly journal: 'ok' | 'damaged';
+  /**
+   * A save only: true when the save finished and only its note was left (a whole journal, every file the save's target, none changed since). Recovery
+   * then changes no file: the save stays, and Bowerloom clears its note. `remove` and `restore` are empty.
+   */
+  readonly done?: boolean;
   readonly check: readonly string[];
   readonly remove: readonly string[];
   /** Files that go back to the bytes the stopped Merge replaced. Empty for an adoption. */

@@ -53,7 +53,10 @@ export const ASK = Object.freeze({
   restore: (label: string, n: number, version: string, rev: string): Ask => ({ title: 'Go back to a save point', message: `Go back to ${version} and change ${files(n)} in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. Bowerloom keeps the harness as it is now as a save point too. Installed files do not change until you install. ${again}` }),
   /** Sets a folder's old save points aside: the record is renamed in Bowerloom's private folder; nothing in the folder changes and nothing is deleted. */
   setAside: (label: string, rev: string): Ask => ({ title: 'Set the old save points aside', message: `Set the old save points of ${label} aside and start a new record?`, detail: `From plan ${rev.slice(0, 8)}. Bowerloom renames its record to a dated name in its private folder and deletes nothing. Go back then starts from the next save. ${again}` }),
-  saveRecovery: (label: string, n: number, rev: string): Ask => ({ title: 'Finish a stopped harness', message: `Put back ${files(n)} that a stopped save changed in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. ${again}` }),
+  /** A stopped save is taken back; a save that finished and only left its note (`done`) is kept, and changes no file. */
+  saveRecovery: (label: string, n: number, rev: string, done = false): Ask => (done
+    ? { title: 'Finish a stopped harness', message: `Keep the finished save in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. The save stays, and Bowerloom clears its note. No file changes. ${again}` }
+    : { title: 'Finish a stopped harness', message: `Put back ${files(n)} that a stopped save changed in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. ${again}` }),
 });
 
 /** Session records of the last plan of each kind, per folder. A plan that fails clears its kind, so a stale plan can never be written. */

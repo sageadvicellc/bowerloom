@@ -55,7 +55,7 @@ import { adoptRecoveryView, adoptionView, approveKey, approveLine, keepsFile, me
 import { ASK, ShownPlans, approvalText, cancelled, canonical, hashOf, notTheShownPlan } from './engine-consent.js';
 import type { Ask } from './engine-consent.js';
 import {
-  VERSION_KEY, afterSaveWarnings, copiesOk, currentDefinition, keepAfter, keepBefore, keepable, saveCodeOf, savedLabel, targetOf, targetView, versionViews, viewOf, wentBackLabel,
+  VERSION_KEY, afterSaveWarnings, copiesOk, currentDefinition, keepAfter, keepBefore, keepable, saveCodeOf, saveDone, savedLabel, targetOf, targetView, versionViews, viewOf, wentBackLabel,
 } from './engine-save.js';
 
 export interface EngineServiceDeps {
@@ -630,12 +630,14 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
         if (kind === 'save') {
           const plan = planSaveRecovery(io);
           const inDef = (p: string): string => f.scrub(`.bowerloom/${p}`);
+          // A finished save whose journal was left is kept: the plan shows no file to take back, and says the save stays.
+          const done = saveDone(plan, revisionNow(f));
           const view: AdoptRecoveryView = {
-            kind: 'save', journal: plan.journal, check: plan.check.map(inDef),
-            remove: plan.undo.filter(u => u.action === 'delete').map(u => inDef(u.path)), restore: plan.undo.filter(u => u.action !== 'delete').map(u => inDef(u.path)),
-            kept: plan.kept.map(k => ({ path: inDef(k.path), reason: k.reason })), dirs: plan.dirs.map(inDef), revision: plan.revision,
+            kind: 'save', journal: plan.journal, done, check: plan.check.map(inDef),
+            remove: done ? [] : plan.undo.filter(u => u.action === 'delete').map(u => inDef(u.path)), restore: done ? [] : plan.undo.filter(u => u.action !== 'delete').map(u => inDef(u.path)),
+            kept: plan.kept.map(k => ({ path: inDef(k.path), reason: k.reason })), dirs: done ? [] : plan.dirs.map(inDef), revision: plan.revision,
           };
-          return { value: view, revision: plan.revision, choices: null, ask: ASK.saveRecovery(f.label, plan.undo.length, plan.revision) };
+          return { value: view, revision: plan.revision, choices: null, ask: ASK.saveRecovery(f.label, done ? 0 : plan.undo.length, plan.revision, done) };
         }
         if (kind === 'merge') {
           const plan = planInstructionMergeRecovery(io);
@@ -655,8 +657,11 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
         const checkOf = (check: readonly string[], kept: readonly string[]): string[] => [...new Set([...check, ...kept])];
         if (kind === 'save') {
           // A stopped save is taken back: each file goes back to what the save replaced. The plan read again names which were deleted and which restored.
+          // A save that finished and only left its journal is kept instead: `finish` runs no step, checks the harness is the save's target, and clears
+          // the journal. Taking it back would lose the save for good when its save point was not kept either. The package's revision check refuses
+          // the write when the plan changed since the one shown, so the mode always matches the plan the person approved.
           const plan = planSaveRecovery(io);
-          const r = await runSaveRecovery(io, rev, 'undo');
+          const r = await runSaveRecovery(io, rev, saveDone(plan, revisionNow(f)) ? 'finish' : 'undo');
           const inDef = (p: string): string => f.scrub(`.bowerloom/${p}`);
           const deleted = new Set(plan.undo.filter(u => u.action === 'delete').map(u => u.path));
           plans.clear(f.id, 'projection'); plans.clear(f.id, 'save'); plans.clear(f.id, 'restore');

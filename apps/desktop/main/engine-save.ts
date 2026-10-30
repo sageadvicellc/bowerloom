@@ -14,6 +14,7 @@ import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import { INCOMPLETE_RULES, editDefinition, loadDefinition, loadDefinitionFiles, scanSecrets } from '../../../packages/harness-definition/src/index.js';
 import type { Definition, DefinitionEdit, DefinitionFile, EngineTarget } from '../../../packages/harness-definition/src/index.js';
 import { SaveRefusal } from '../../../packages/adoption/src/index.js';
+import type { SaveRecoveryPlan } from '../../../packages/adoption/src/index.js';
 import { checkVersionsFit, listVersions, recordVersionLocked } from '../../../packages/project-sync/src/index.js';
 import type { VersionEntry } from '../../../packages/project-sync/src/index.js';
 import type { HarnessStateDirs } from '../../../packages/project-sync/src/harness-state.js';
@@ -166,11 +167,21 @@ const codeOf = (error: unknown): string => {
 export function afterSaveWarnings(journalLeft: boolean, pointError: unknown): string[] {
   const out: string[] = [];
   if (pointError !== null && pointError !== undefined) out.push(`The save is done. Bowerloom could not keep a save point of it (${codeOf(pointError)}), so Go back has no entry for this save.`);
-  // The app's recovery of a stopped save takes it back; the words say so, so nobody undoes a finished save by surprise.
-  if (journalLeft) out.push('The save is done. Bowerloom could not clear its note of the save in progress, so install and other changes wait. Finish a stopped harness clears the note, and it takes this save back.');
+  // The app's recovery of a finished save keeps it (`saveDone`); the words say so, so nobody fears losing the save to the recovery.
+  if (journalLeft) out.push('The save is done. Bowerloom could not clear its note of the save in progress, so install and other changes wait. Use Finish a stopped harness: the save stays, and Bowerloom clears its note.');
   return out;
 }
 export { codeOf as saveCodeOf };
+
+/**
+ * True when the recovery plan of a stopped save is a save that finished and only left its journal: the journal is whole, no file changed since, no step is
+ * left to finish, and the harness loads now at the save's target revision (`revisionNow`). The recovery then finishes it, which changes no file and only
+ * clears the journal, rather than taking the save back. Without the last check a file outside the save, changed by hand since, would make `finish`
+ * refuse every time, and the person could not recover at all; such a save is taken back, as before.
+ */
+export function saveDone(plan: Pick<SaveRecoveryPlan, 'journal' | 'kept' | 'finish' | 'targetRevision'>, revisionNow: string | null): boolean {
+  return plan.journal === 'ok' && plan.kept.length === 0 && plan.finish.length === 0 && plan.targetRevision !== null && plan.targetRevision === revisionNow;
+}
 
 /** The save points of a folder, newest first, each with whether the harness is that save point now. */
 export function versionViews(dirs: HarnessStateDirs, def: Definition): VersionView[] {
