@@ -13,21 +13,30 @@
  * never reused, even after the oldest version is dropped, and a version's `parent` names the version recorded just before
  * it, which may be one that has been dropped since.
  *
- * Bounds (VERSION_LIMITS): 50 versions per folder, 200 files and 8 MiB per version, 1 MiB per file, 64 folders, and 1 MiB
- * for the index. A version past the cap of 50 drops the oldest of its folder. A version that would push the index past its
- * size drops the oldest of its folder too, and is refused VERSION_TOO_LARGE when it cannot fit alone.
+ * Bounds (VERSION_LIMITS): 50 versions per folder, 4096 files and 32 MiB per version (the harness definition's own
+ * limits), 1 MiB per file, 64 folders, and 1 MiB for the index, which the state layer reads at most. The index is written
+ * as compact JSON, so the index is the one bound below the harness limits; `checkVersionsFit` says up front whether a set
+ * of save points fits it. A version past the cap of 50 drops the oldest of its folder. A version that would push the
+ * index past its size drops the oldest of its folder too, and is refused VERSION_TOO_LARGE when it cannot fit alone.
  *
  * A record writes the new blobs first, then the index through a temporary and a rename, then removes every blob the index no
- * longer names. A write that stops at any point leaves the earlier index whole; the blobs it left are removed by the next
- * record. A missing or changed blob, and a damaged index, refuse VERSION_CORRUPT. Nothing is ever read as an empty set.
+ * longer names. The first record of a store writes an empty index before any blob. A write that stops at any point leaves
+ * the earlier index whole; the blobs it left are removed by the next record. A missing or changed blob, a damaged index,
+ * and a missing index with blobs left behind refuse VERSION_CORRUPT. Nothing is ever read as an empty set, and no blob is
+ * erased while the index that names it cannot be read.
+ *
+ * A store that cannot be read is never a dead end: `planSetAsideVersions` and `setAsideVersions` rename the `versions`
+ * folder to `versions-set-aside-<UTC time>` beside it, after a person approves, and delete nothing. The next record starts
+ * a new store.
  *
  * Calls are synchronous and take no lock. A caller that saves holds the project lock around `recordVersion` already.
  */
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
-import { basename, isAbsolute, join, normalize } from 'node:path';
+import { basename, dirname, isAbsolute, join, normalize } from 'node:path';
 import { DefinitionError } from '../../contracts/src/index.js';
 import type { DefinitionFile } from '../../harness-definition/src/index.js';
-import { MAX_FILE, PortableRefusal, byBytes, readAbs, refuse, sha, sweepFolderTemps, writeAbs } from './portable-files.js';
+import { MAX_FILE, PortableRefusal, byBytes, readAbs, refuse, sha, sweepFolderTemps, syncDir, writeAbs } from './portable-files.js';
 import { ensureRecordFolder, readPrivateJson, recordExists } from './harness-state.js';
 import type { HarnessStateDirs } from './harness-state.js';
 import { stateExists } from './portable-state.js';
@@ -37,8 +46,10 @@ import { stateExists } from './portable-state.js';
 const MESSAGES = {
   VERSION_USAGE: 'The version input is not valid: a folder key, a file set, or a label is not in the shape the store takes. Nothing was written.',
   VERSION_UNKNOWN: 'The store holds no such version for this folder. Nothing was changed.',
-  VERSION_CORRUPT: 'The version store is damaged: its index is not valid, or a saved copy of a file is missing or has changed. Nothing was changed.',
+  VERSION_CORRUPT: 'The version store is damaged: its index is not valid, its index is gone while saved copies are left, or a saved copy of a file is missing or has changed. Nothing was changed.',
   VERSION_TOO_LARGE: 'The files are over a limit of the version store: files in a version, bytes in a version, bytes in one file, folders, or the size of the index. Nothing was written.',
+  VERSION_STALE: 'The version store changed after the plan to set it aside. Nothing was moved. Plan again.',
+  VERSION_NOTHING: 'There is no version store to set aside. Nothing was changed.',
 } as const;
 export type VersionCode = keyof typeof MESSAGES;
 export const VERSION_REFUSAL_CODES: readonly VersionCode[] = Object.freeze(Object.keys(MESSAGES) as VersionCode[]);
@@ -58,10 +69,10 @@ export const VERSION_FORMAT = 'bowerloom/harness-versions/v1' as const;
 export const VERSION_LIMITS = Object.freeze({
   /** Versions kept per folder. Past it, the oldest goes. */
   versions: 50,
-  /** Files in one version. */
-  files: 200,
-  /** Bytes in one version, all files together. */
-  bytes: 8 * 1024 * 1024,
+  /** Files in one version: the harness definition's own limit. */
+  files: 4096,
+  /** Bytes in one version, all files together: the harness definition's own limit. */
+  bytes: 32 * 1024 * 1024,
   /** Bytes in one file. The state layer reads no file larger than this. */
   fileBytes: MAX_FILE,
   /** Folders in one store. */
@@ -220,17 +231,29 @@ function parseIndex(raw: unknown): Folder[] {
   });
 }
 
-/** The folders in the index file, or none when there is no file. A file that is not a whole index refuses VERSION_CORRUPT. */
+/** True when the blobs folder holds a saved copy: a file named by a sha256. A temporary of a writer does not count. */
+function holdsBlobs(blobs: string): boolean {
+  let names: string[];
+  try { names = fs.readdirSync(blobs); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return false; return refuse('PORTABLE_STATE_UNSAFE'); }
+  return names.some(n => SHA.test(n));
+}
+/**
+ * The folders in the index file. None when there is no file and no saved copy. A file that is not a whole index, and a
+ * missing index with saved copies left behind, refuse VERSION_CORRUPT: those copies are someone's save points, and the
+ * next record would erase them as orphans.
+ */
 function readIndex(store: string): Folder[] {
   let raw: unknown;
   try { raw = readPrivateJson(join(store, INDEX_NAME), `${STORE}/${INDEX_NAME}`); } catch (e) {
     if (e instanceof PortableRefusal && e.code === 'PORTABLE_STATE_INVALID') return refuseVersion('VERSION_CORRUPT');
     throw e;
   }
-  return raw === null ? [] : parseIndex(raw);
+  if (raw === null) return holdsBlobs(join(store, BLOBS)) ? refuseVersion('VERSION_CORRUPT') : [];
+  return parseIndex(raw);
 }
+/** The index as compact JSON, so the 1 MiB the state layer reads holds as many save points as it can. */
 const serialize = (folders: readonly Folder[]): Buffer =>
-  Buffer.from(JSON.stringify({ format: VERSION_FORMAT, folders: [...folders].sort((a, b) => byBytes(a.key, b.key)) }, null, 2) + '\n');
+  Buffer.from(JSON.stringify({ format: VERSION_FORMAT, folders: [...folders].sort((a, b) => byBytes(a.key, b.key)) }) + '\n');
 
 // ---- blobs -------------------------------------------------------------------------------------------------------------
 
@@ -255,6 +278,24 @@ function ensureStore(dirs: HarnessStateDirs, store: string, blobs: string): void
 
 // ---- the calls ---------------------------------------------------------------------------------------------------------
 
+/**
+ * Refuses VERSION_TOO_LARGE up front when one folder's index could not hold these file sets as versions together: a save
+ * keeps the harness before it and after it, and a save point that cannot be kept means Go back has no entry for that
+ * save. Each set is checked against the store limits too (VERSION_USAGE for a bad set or key). The check counts the
+ * longest label and revision the store takes, so a set it passes fits whatever label the caller gives. Reads nothing.
+ */
+export function checkVersionsFit(folderKey: string, sets: readonly VersionFiles[]): void {
+  const key = keyOf(folderKey);
+  if (!Array.isArray(sets) || sets.length === 0) refuseVersion('VERSION_USAGE');
+  const top = 2 ** 31;
+  const versions = sets.map((files, i): VersionEntry => ({
+    id: `v${top - sets.length + i + 1}`, counter: top - sets.length + i + 1, parent: `v${top - sets.length + i}`, revision: 'r'.repeat(128),
+    created: '2026-01-01T00:00:00Z', label: 'l'.repeat(200),
+    files: filesOf(files).map(f => ({ path: f.path, sha256: '0'.repeat(64), bytes: f.bytes.length, executable: f.executable })),
+  }));
+  if (serialize([{ key, counter: top, versions }]).length > VERSION_LIMITS.index) refuseVersion('VERSION_TOO_LARGE');
+}
+
 const copyEntry = (e: VersionEntry): VersionEntry => Object.freeze({ ...e, files: Object.freeze(e.files.map(f => Object.freeze({ ...f }))) });
 
 /**
@@ -274,6 +315,8 @@ export function recordVersionWith(dirs: HarnessStateDirs, folderKey: string, fil
   const key = keyOf(folderKey), set = filesOf(files), m = metaOf(meta);
   ensureStore(dirs, store, blobs);
   const folders = readIndex(store);
+  // A new store gets its empty index before any blob, so a record that stops after its blobs never leaves blobs with no index.
+  if (!fs.existsSync(join(store, INDEX_NAME))) writeAbs(join(store, INDEX_NAME), serialize([]), 0o600);
 
   let folder = folders.find(f => f.key === key);
   if (folder === undefined) {
@@ -335,4 +378,56 @@ export function readVersion(dirs: HarnessStateDirs, folderKey: string, id: strin
     out.push({ path: f.path, bytes: got.bytes, executable: f.executable });
   }
   return { entry: copyEntry(entry), files: out };
+}
+
+// ---- set aside -----------------------------------------------------------------------------------------------------------
+
+/** The plan of setting a store aside: whether it reads as damaged, and the revision an approval names. */
+export interface SetAsidePlan { readonly damaged: boolean; readonly revision: string }
+/** The dated folder name the store was renamed to, beside it in the record folder. */
+export interface SetAsideResult { readonly name: string }
+
+/** A fingerprint of every entry of the store and of its blobs folder: name, kind, size, mode, inode, and change times. */
+function fingerprint(store: string): string {
+  const list = (dir: string): unknown[] => {
+    let names: string[];
+    try { names = fs.readdirSync(dir).sort(byBytes); } catch { return []; }
+    return names.map(n => {
+      try { const st = fs.lstatSync(join(dir, n)); return [n, st.isDirectory() ? 'd' : st.isFile() ? 'f' : 'o', st.size, st.mode, st.ino, st.mtimeMs, st.ctimeMs]; } catch { return [n]; }
+    });
+  };
+  return createHash('sha256').update(JSON.stringify({ format: 'bowerloom/harness-versions-set-aside/v1', store: list(store), blobs: list(join(store, BLOBS)) })).digest('hex');
+}
+
+/**
+ * The plan of setting the folder's version store aside. Reads only. VERSION_NOTHING when there is no store. `damaged` is
+ * true when its index cannot be read (VERSION_CORRUPT); a store that reads may be set aside too.
+ */
+export function planSetAsideVersions(dirs: HarnessStateDirs): SetAsidePlan {
+  const { store } = storeOf(dirs);
+  if (!recordExists(dirs) || !stateExists(store)) return refuseVersion('VERSION_NOTHING');
+  let damaged = false;
+  try { readIndex(store); } catch (e) { if (e instanceof VersionRefusal && e.code === 'VERSION_CORRUPT') damaged = true; else throw e; }
+  return { damaged, revision: fingerprint(store) };
+}
+
+/**
+ * Renames the store to `versions-set-aside-<UTC time>` (with `-2`, `-3`, and so on when that name is taken) beside it,
+ * when the plan is the one approved, else VERSION_STALE. Deletes nothing. The next record starts a new store. The caller
+ * holds the project lock (`setAsideVersionsLocked` takes it).
+ */
+export function setAsideVersions(dirs: HarnessStateDirs, revision: string, now: Date = new Date()): SetAsideResult {
+  const { store } = storeOf(dirs);
+  if (typeof revision !== 'string' || !SHA.test(revision) || !(now instanceof Date) || Number.isNaN(now.getTime())) return refuseVersion('VERSION_USAGE');
+  if (planSetAsideVersions(dirs).revision !== revision) return refuseVersion('VERSION_STALE');
+  const stamp = isoSeconds(now).replace(/[-:]/g, '');
+  const parent = dirname(store);
+  for (let n = 1; n <= 1000; n++) {
+    const name = `${STORE}-set-aside-${stamp}${n === 1 ? '' : `-${n}`}`;
+    if (fs.existsSync(join(parent, name))) continue;
+    fs.renameSync(store, join(parent, name));
+    syncDir(parent);
+    return { name };
+  }
+  return refuseVersion('VERSION_TOO_LARGE');
 }
