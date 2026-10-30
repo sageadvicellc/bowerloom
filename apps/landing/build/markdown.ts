@@ -38,7 +38,7 @@ export function renderInline(text: string): string {
   return out + escapeHtml(text.slice(last));
 }
 
-/** Headings shift down one level because the page title is the only h1. */
+/** The page title is the only h1, so `#` and `##` both become h2 and deeper levels keep their number: the outline never skips a level. */
 export function renderMarkdown(source: string): string {
   const lines = source.replace(/\r\n?/g, '\n').split('\n');
   const html: string[] = [];
@@ -58,7 +58,7 @@ export function renderMarkdown(source: string): string {
     }
     const heading = /^(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
     if (heading) {
-      const level = Math.min(6, heading[1].length + 1);
+      const level = Math.min(6, Math.max(2, heading[1].length));
       html.push(`<h${level}>${renderInline(heading[2])}</h${level}>`);
       i++; continue;
     }

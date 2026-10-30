@@ -227,3 +227,11 @@ test('navigation links to the articles index', () => {
   const nav = readFileSync(new URL('../src/SiteNavigation.tsx', import.meta.url), 'utf8');
   assert.match(nav, /<a href="\/articles\/"[^>]*>Articles<\/a>/);
 });
+
+test('article headings never skip a level: # and ## both become h2 under the page h1, ### becomes h3', () => {
+  const html = renderMarkdown('# Top\n\n## Section\n\n### Detail\n');
+  assert.match(html, /<h2>Top<\/h2>/);
+  assert.match(html, /<h2>Section<\/h2>/);
+  assert.match(html, /<h3>Detail<\/h3>/);
+  assert.doesNotMatch(html, /<h1>/);
+});
