@@ -13,7 +13,12 @@ import type { Controller } from './controller.js';
 import { realFolderFollowing } from './real-fs.js';
 import { registerRealIpc, usableHome } from './real-ipc.js';
 import { registerEngineIpc } from './engine-ipc.js';
-import { enginePreviewSwitch, engineStateRoot } from './engine-state.js';
+import { diagnosticsEnv, enginePreviewSwitch, engineStateRoot } from './engine-state.js';
+import { createRecorder } from './engine-events.js';
+import { helpMenu } from './help-menu.js';
+import { reportProblem, showUsageLog } from './diagnostics-dialogs.js';
+import type { DialogDeps } from './diagnostics-dialogs.js';
+import { execFileRunner } from '../../../packages/diagnostics/src/index.js';
 import { SAMPLE_PREVIEW_FLAG, withSamplePreviewEngines } from '../shared/engine/sample-switch.js';
 import { windowOptions } from './window-options.js';
 import { APP_HOST, APP_INDEX, APP_SCHEME, allowRequest, chooseUserData, decideNavigation, isAllowedSender, makePrototypeDataDir, removeAndReport, resolveAppFile, userDataArg, webPreferences } from './security.js';
@@ -138,6 +143,18 @@ function registerIpc(): void {
   guarded('copyText', (text: string) => controller.copyText(text));
 }
 
+/** The tools of the two Help dialogs. Links go through the same allowlist as every other link of the app (main/diagnostics-dialogs.ts). */
+function diagnosticsDeps(): DialogDeps {
+  const home = homedir();
+  return {
+    stateRoot: engineStateRoot(home), home, env: diagnosticsEnv(), appVersion: app.getVersion(), platform: process.platform, run: execFileRunner, now: () => new Date(),
+    showMessage: options => { const o = { ...options, buttons: [...options.buttons] }; return window === null ? dialog.showMessageBox(o) : dialog.showMessageBox(window, o); },
+    showSave: options => (window === null ? dialog.showSaveDialog(options) : dialog.showSaveDialog(window, options)),
+    openExternal: url => shell.openExternal(url),
+    copyText: text => clipboard.writeText(text),
+  };
+}
+
 app.on('web-contents-created', (_event, contents) => hardenContents(contents));
 
 app.whenReady().then(async () => {
@@ -163,6 +180,7 @@ app.whenReady().then(async () => {
     { role: 'editMenu' as const },
     { label: 'View', submenu: [{ role: 'zoomIn' as const }, { role: 'zoomOut' as const }, { role: 'resetZoom' as const }, { type: 'separator' as const }, { role: 'togglefullscreen' as const }] },
     { role: 'windowMenu' as const },
+    helpMenu({ report: () => { void reportProblem(diagnosticsDeps()).catch(error => console.error('Report a problem failed.', error)); }, usage: () => { void showUsageLog(diagnosticsDeps()).catch(error => console.error('Usage log failed.', error)); } }),
   ]));
   const sampleDir = app.isPackaged ? join(process.resourcesPath, 'sample-data') : join(root, '..', 'sample-data');
   controller = createController({
@@ -193,6 +211,8 @@ app.whenReady().then(async () => {
         ipc: ipcMain, appIndexUrl: indexUrl, home, stateRoot: engineStateRoot(home), who: userInfo().username || 'this Mac',
         // Beta.1: OpenCode, Pi, and DeepSeek Harness install only when the app starts with BOWERLOOM_PREVIEW_ENGINES=1. The window gets one yes or no, never the environment.
         previewEngines: enginePreviewSwitch(),
+        // The local usage log: lines about what was done, never a name or a path. BOWERLOOM_EVENT_LOG=off turns it off.
+        record: createRecorder({ stateRoot: engineStateRoot(home), env: diagnosticsEnv() }),
         // Main's own question before every write (U16): words main builds from its record of the plan; the window cannot word or skip it.
         confirm: async ask => {
           const options: Electron.MessageBoxOptions = { type: 'question', title: ask.title, message: ask.message, detail: ask.detail, buttons: ['Cancel', 'Write'], defaultId: 0, cancelId: 0, noLink: true };
