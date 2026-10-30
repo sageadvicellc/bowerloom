@@ -15,7 +15,7 @@ The scripts call models, so they can cost money. A turn is about 15k to 40k toke
 3. Pass each engine version yourself: `BOWERLOOM_LIVE_CLAUDE_CODE_VERSION`, `BOWERLOOM_LIVE_CODEX_VERSION`, `BOWERLOOM_LIVE_OPENCODE_VERSION`, `BOWERLOOM_LIVE_PI_VERSION`. The scripts never run a binary to find a version. An unset version is recorded as `unknown`.
 4. Choose where result lines go: `BOWERLOOM_LIVE_RESULTS=<file>`. If you leave it unset, the run makes a private results folder in the system temp folder and keeps it.
 
-Each run uses a new scratch folder with mode 0700 and a synthetic project. The folder is removed at the end. `XDG_STATE_HOME` points inside it. `HOME` stays real, because an engine that signed in through the home folder would lose its login. If the engine signs in with an API key in the environment, you may set `BOWERLOOM_LIVE_ISOLATE_HOME=1`.
+Each run uses a new scratch folder with mode 0700 and a synthetic project. The folder is removed at the end. The Codex checks are the exception: they use the fixed root described under "Codex trust steps". `XDG_STATE_HOME` points inside it. `HOME` stays real, because an engine that signed in through the home folder would lose its login. If the engine signs in with an API key in the environment, you may set `BOWERLOOM_LIVE_ISOLATE_HOME=1`.
 
 A stub command (a small node script) logs argv, the names of environment variables, and standard input. It never logs a value. The checks assert on that log and on files, never on model wording.
 
@@ -34,12 +34,30 @@ Each check appends one JSON line:
 
 ## Codex trust steps
 
-Codex reads a project `.codex` folder, and runs a project hook, only after a person trusts them. Checks g4, g7, g8, and g9 need this. Do these two steps first:
+Codex reads a project `.codex` folder, and runs a project hook, only after a person trusts them. Codex saves the trust for one project path. It saves the hook trust against the hash of the hook. A random scratch folder per run has a new path and a new hook command every time, so it can never be trusted. Checks g4, g7, g8, and g9 therefore run in one fixed root.
 
-1. Trust the project folder in Codex. Each check makes a new scratch folder. Trust the folder that holds the scratch folders, or pause the run and trust each one.
-2. Review each hook by its hash. Codex asks for this the first time it sees a hook.
+Set up the root once:
 
-Then set `BOWERLOOM_LIVE_CODEX_TRUSTED=1`. Without it, these four tests refuse before any turn, fail with a clear message, and record an inconclusive line. Checks g7 and g9 are the two the plan names. Checks g4 and g8 read project config too, so they refuse the same way.
+1. Pick an empty or new folder outside the system temp folder, such as a folder in your home folder. A reboot can clear a folder under the system temp folder. Then the trust steps start again.
+2. Build once with `npm run build`, then run: `node tools/step5/live/codex-trust-setup.mjs "<root>"`. The script makes the root, `<root>/project` with `git init`, the log stub, and the g7 hook file. It prints no environment value and starts no engine.
+3. Do the three steps the script prints:
+   1. Start Codex in the project: `cd "<root>/project" && codex`
+   2. Accept the trust prompt for the folder.
+   3. Type `/hooks`, review the hook and trust it, then quit Codex.
+4. Set two variables for the live Codex checks: `BOWERLOOM_LIVE_CODEX_ROOT="<root>"` and `BOWERLOOM_LIVE_CODEX_TRUSTED=1`. Every Codex command below needs both.
+
+How the fixed root works:
+
+- Every run of g4, g7 (Codex case), g8, and g9 uses `<root>/project` as the project, and the same `home`, `state`, `stubs`, and `evidence.jsonl` beside it. The stub path, the log path, and the g7 hook command are the same on every run, so the hook hash does not change.
+- Only g7 defines a hook. Checks g4, g8, and g9 write project config and rules. These need the folder trust only.
+- Before each run, and after it, the checks clear what is inside `project`, `home`, `state`, and `stubs`, and remove the log. They keep the root, the `.bowerloom-live-codex-root` marker file, and the folders. They never delete the root. Each run also makes a new `.git` folder in the project. Codex finds the project root by that folder.
+- A run refuses a relative path, a symlink, a folder owned by another user, and a non-empty folder that has no marker file.
+- A run takes a lock file named `.bowerloom-live-codex-lock` in the root, and removes it at the end, also after a failure. A second run refuses while the lock exists. A run that was killed can leave the lock. The message names the process. When no run is active, delete the lock file by hand.
+- Claude Code and OpenCode runs keep their random scratch folders.
+
+If you set `BOWERLOOM_LIVE_CODEX_TRUSTED=1` and leave out `BOWERLOOM_LIVE_CODEX_ROOT`, these four tests refuse before any turn. They fail with a message that names both variables and the setup script, and they record an inconclusive line. Without the trust variable they refuse the same way.
+
+If you move the root, change its path, or change the g7 hook, run the setup script and the three steps again.
 
 ## Check g1: AGENTS.md alone loads
 
@@ -67,11 +85,11 @@ Then set `BOWERLOOM_LIVE_CODEX_TRUSTED=1`. Without it, these four tests refuse b
 
 ## Check g4: Codex expands `${NAME}` in an MCP server
 
-- **Command:** `BOWERLOOM_LIVE_ENGINES=1 BOWERLOOM_LIVE_CODEX_TRUSTED=1 BOWERLOOM_LIVE_CODEX='["codex","exec","--skip-git-repo-check"]' node --test packages/project-sync/test/locked-live.test.mjs --test-name-pattern='g4 \(live\)'`
+- **Command:** `BOWERLOOM_LIVE_ENGINES=1 BOWERLOOM_LIVE_CODEX_TRUSTED=1 BOWERLOOM_LIVE_CODEX_ROOT="<root>" BOWERLOOM_LIVE_CODEX='["codex","exec","--skip-git-repo-check"]' node --test packages/project-sync/test/locked-live.test.mjs --test-name-pattern='g4 \(live\)'`
 - **Proves:** whether Codex expands `${PROBE}` in the arguments, the env table, the URL, and an HTTP header of a `.codex/config.toml` server. The run sets `PROBE`, and a stub plus a local probe server log what they receive. The `env_vars` entry is the control.
 - **Settles:** the `absent` lines of `codex()` in `packages/fidelity/src/locked-mcp.ts`.
 - **Turns:** 1
-- **Prerequisite:** the Codex trust steps and `BOWERLOOM_LIVE_CODEX_TRUSTED=1`.
+- **Prerequisite:** the Codex trust steps, `BOWERLOOM_LIVE_CODEX_ROOT`, and `BOWERLOOM_LIVE_CODEX_TRUSTED=1`.
 
 ## Check g5: OpenCode approval order
 
@@ -102,27 +120,27 @@ Manual runbook:
 
 ## Check g7: Hook blocking
 
-- **Command:** `BOWERLOOM_LIVE_ENGINES=1 BOWERLOOM_LIVE_CODEX_TRUSTED=1 BOWERLOOM_LIVE_CLAUDE_CODE='["claude","-p"]' BOWERLOOM_LIVE_CODEX='["codex","exec","--skip-git-repo-check"]' BOWERLOOM_LIVE_OPENCODE='["opencode","run"]' node --test packages/project-sync/test/locked-live.test.mjs --test-name-pattern='g7 \(live\)'`. To run one engine, add its name to the pattern, such as `'g7 \(live\).*opencode'`.
+- **Command:** `BOWERLOOM_LIVE_ENGINES=1 BOWERLOOM_LIVE_CODEX_TRUSTED=1 BOWERLOOM_LIVE_CODEX_ROOT="<root>" BOWERLOOM_LIVE_CLAUDE_CODE='["claude","-p"]' BOWERLOOM_LIVE_CODEX='["codex","exec","--skip-git-repo-check"]' BOWERLOOM_LIVE_OPENCODE='["opencode","run"]' node --test packages/project-sync/test/locked-live.test.mjs --test-name-pattern='g7 \(live\)'`. To run one engine, add its name to the pattern, such as `'g7 \(live\).*opencode'`.
 - **Proves:** a `PreToolUse` hook that exits 2 stops `touch blocked.txt`. If the hook ran and the file does not exist, the check passes. If the hook ran and the file exists, the check fails.
 - **Settles:** Spec L section 7.3, and the weakened and translated lines for hooks in `packages/fidelity/src/locked-hooks.ts`. It also settles how a person's `permissions.defaultMode` meets the hook (the note in `packages/project-sync/src/locked.ts`).
 - **Turns:** 3 to 5. One per engine. A rerun costs one more.
-- **Prerequisite:** for Codex, the trust steps and `BOWERLOOM_LIVE_CODEX_TRUSTED=1`. Claude Code runs with `--allowedTools Bash` and the prompt on standard input. Codex runs with `--sandbox workspace-write -c approval_policy="never"`.
+- **Prerequisite:** for Codex, the trust steps, `BOWERLOOM_LIVE_CODEX_ROOT`, and `BOWERLOOM_LIVE_CODEX_TRUSTED=1`. Claude Code runs with `--allowedTools Bash` and the prompt on standard input. Codex runs with `--sandbox workspace-write -c approval_policy="never"`.
 
 ## Check g8: Codex permission profile
 
-- **Command:** `BOWERLOOM_LIVE_ENGINES=1 BOWERLOOM_LIVE_CODEX_TRUSTED=1 BOWERLOOM_LIVE_CODEX='["codex","exec","--skip-git-repo-check"]' node --test packages/project-sync/test/locked-live.test.mjs --test-name-pattern='g8 \(live\)'`
+- **Command:** `BOWERLOOM_LIVE_ENGINES=1 BOWERLOOM_LIVE_CODEX_TRUSTED=1 BOWERLOOM_LIVE_CODEX_ROOT="<root>" BOWERLOOM_LIVE_CODEX='["codex","exec","--skip-git-repo-check"]' node --test packages/project-sync/test/locked-live.test.mjs --test-name-pattern='g8 \(live\)'`
 - **Proves:** a config with `default_permissions = "bowerloom"` and a profile that extends `:workspace` loads, and its `deny` entry stops Codex from reading and from patching `secret.txt`. Turn one reads both files. Turn two patches the denied file.
 - **Settles:** `CODEX_PROFILE_ENABLED` in `packages/project-sync/src/locked.ts` (ruling B6) and ruling R17, the weakened patch line in `packages/fidelity/src/codex.ts`.
 - **Turns:** 2
-- **Prerequisite:** the Codex trust steps and `BOWERLOOM_LIVE_CODEX_TRUSTED=1`.
+- **Prerequisite:** the Codex trust steps, `BOWERLOOM_LIVE_CODEX_ROOT`, and `BOWERLOOM_LIVE_CODEX_TRUSTED=1`.
 
 ## Check g9: `--ignore-rules`
 
-- **Command:** `BOWERLOOM_LIVE_ENGINES=1 BOWERLOOM_LIVE_CODEX_TRUSTED=1 BOWERLOOM_LIVE_CODEX='["codex","exec","--skip-git-repo-check"]' node --test packages/project-sync/test/locked-live.test.mjs --test-name-pattern='g9 \(live\)'`
+- **Command:** `BOWERLOOM_LIVE_ENGINES=1 BOWERLOOM_LIVE_CODEX_TRUSTED=1 BOWERLOOM_LIVE_CODEX_ROOT="<root>" BOWERLOOM_LIVE_CODEX='["codex","exec","--skip-git-repo-check"]' node --test packages/project-sync/test/locked-live.test.mjs --test-name-pattern='g9 \(live\)'`
 - **Proves:** with the Codex start command of `packages/team/src/engines.ts` (only the binary comes from your variable), a project rule that forbids `touch` is kept or dropped. If `ignore-probe.txt` exists, the rule was dropped.
 - **Settles:** `TEAM_START_UNPINNED` for a Codex member whose guardrails write `.codex/rules/bowerloom.rules` (`packages/team/src/start.ts`, ruling V4).
 - **Turns:** 1
-- **Prerequisite:** the Codex trust steps and `BOWERLOOM_LIVE_CODEX_TRUSTED=1`.
+- **Prerequisite:** the Codex trust steps, `BOWERLOOM_LIVE_CODEX_ROOT`, and `BOWERLOOM_LIVE_CODEX_TRUSTED=1`.
 
 ## Check g10: Claude Code `--setting-sources`
 
