@@ -20,7 +20,7 @@ export const EMPTY_DRAFT: SaveDraft = Object.freeze({ agents: Object.freeze({}),
 const same = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((x, i) => x === b[i]);
 const has = (def: DefinitionView, skill: string): boolean => def.skills.some(s => s.id === skill);
 
-/** The skills an agent uses in the draft, in the order of the harness's skills, without the removed ones. */
+/** The skills an agent uses in the draft, in the agent's own order with each new link at the end, without the removed ones. */
 function skillsOf(base: DefinitionView, draft: SaveDraft, agent: string): string[] {
   const now = draft.agents[agent] ?? base.agents.find(a => a.id === agent)?.skills ?? [];
   return now.filter(s => !draft.removed.includes(s));
@@ -28,15 +28,17 @@ function skillsOf(base: DefinitionView, draft: SaveDraft, agent: string): string
 /** The base skills of an agent, in their own order, without the removed ones: what the removal alone leaves. */
 const baseSkills = (base: DefinitionView, draft: SaveDraft, agent: string): string[] => (base.agents.find(a => a.id === agent)?.skills ?? []).filter(s => !draft.removed.includes(s));
 
-/** Links a skill to an agent (`on`) or unlinks it. An unknown agent, an unknown or removed skill, changes nothing. A list back at its base drops out of the draft. */
+/**
+ * Links a skill to an agent (`on`) or unlinks it. A new link goes to the end of the agent's own list, and every other skill keeps its place, so a link and its
+ * unlink are no change. An unknown agent, an unknown or removed skill, changes nothing. A list back at its base drops out of the draft.
+ */
 export function linkSkill(base: DefinitionView, draft: SaveDraft, agent: string, skill: string, on: boolean): SaveDraft {
   const known = base.agents.find(a => a.id === agent);
   if (known === undefined || !has(base, skill) || (on && draft.removed.includes(skill))) return draft;
   const now = draft.agents[agent] ?? known.skills;
   if (now.includes(skill) === on) return draft;
-  const nextList = on ? base.skills.map(s => s.id).filter(id => id === skill || now.includes(id)) : now.filter(s => s !== skill);
   // A skill the agent named that the harness does not list stays where it was: main's edit keeps it, and the package refuses it with words.
-  const kept = on ? [...nextList, ...now.filter(s => !has(base, s))] : nextList;
+  const kept = on ? [...now, skill] : now.filter(s => s !== skill);
   const agents = { ...draft.agents };
   if (same(kept, known.skills)) delete agents[agent]; else agents[agent] = kept;
   return { ...draft, agents };
