@@ -422,5 +422,5 @@ main(argv).catch((error: unknown) => {
   process.stderr.write(failure.text);
   process.exitCode = failure.exitCode;
   // A stop at a prompt is not a failure. Any other failure is one `error` event in the local log, which never changes the output above.
-  if (failure.exitCode !== 130) noteFailure(where(), error, argv, COMMANDS);
+  if (failure.exitCode !== 130) noteFailure(error, argv, COMMANDS);
 });

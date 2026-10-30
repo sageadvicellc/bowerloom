@@ -4,6 +4,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { symlinkSync } from 'node:fs';
+import { recordScenario } from '../apps/cli/src/events.js';
+import { promptStopped } from '../apps/cli/src/human.js';
 import { fileURLToPath } from 'node:url';
 import { run, world } from './support/config-cli.js';
 import type { World } from './support/config-cli.js';
@@ -151,4 +154,73 @@ test('slice create records S7 only when applied; a refusal records refused; skil
   assert.deepEqual(scenarios().at(-1) && [scenarios().at(-1)!.outcome, scenarios().at(-1)!.code], ['refused', 'SLICE_EXISTS']);
   assert.notEqual(runSlice(p.dir, ['skills', 'add', 'not-a-source'], p.home, { env }).status, 0);
   assert.deepEqual([scenarios().at(-1)!.scenario, scenarios().at(-1)!.outcome, scenarios().at(-1)!.step], ['S3', 'refused', 'add']);
+});
+
+const TOKEN = `ghp_${'Q1w2E3r4T5'.repeat(4)}`;
+
+test('a note with a home path and a token is redacted in the log, --with-notes, --json and --out', t => {
+  const w = world(t), env = envOf(w);
+  mkdirSync(dirname(logFile(w)), { recursive: true, mode: 0o700 });
+  // The log was written by an older version: the note is raw in it, so the summary must redact it again.
+  const raw = JSON.stringify({ v: 1, at: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'), source: 'app', kind: 'check', answer: 'no', note: `broke in ${w.home}/proj with ${TOKEN} at /Users/someone/x` });
+  writeFileSync(logFile(w), `${raw}\n`, { mode: 0o600 });
+  const out = join(w.work, 'notes.json');
+  const outputs = [run(w.work, ['events', 'summary', '--with-notes'], env).stdout, run(w.work, ['events', 'summary', '--with-notes', '--json'], env).stdout];
+  assert.equal(run(w.work, ['events', 'summary', '--with-notes', '--out', out], env).status, 0);
+  outputs.push(readFileSync(out, 'utf8'));
+  for (const text of outputs) { assert.equal(text.includes(w.home), false); assert.equal(text.includes(TOKEN), false); assert.equal(text.includes('someone'), false); assert.match(text, /~\/proj/); }
+});
+
+test('events prints its log path with ~ even when the home folder is reached through a link', t => {
+  const w = world(t), real = join(w.base, 'real-home'), link = join(w.base, 'link-home');
+  mkdirSync(real, { mode: 0o700 }); symlinkSync(real, link);
+  const r = run(w.work, ['events'], { ...envOf(w), HOME: link });
+  assert.match(r.stdout, /^Log: ~\/\.local\/state\/bowerloom\/events\/events\.jsonl$/m);
+  assert.equal(r.stdout.includes(real), false); assert.equal(r.stdout.includes(link), false);
+});
+
+test('a log that cannot be read is shown by events and summary, not shown as empty', t => {
+  const w = world(t), env = envOf(w);
+  mkdirSync(logFile(w), { recursive: true });
+  const e = run(w.work, ['events'], env);
+  assert.equal(e.status, 0); assert.match(e.stdout, /^Event log: unreadable \([A-Z]+\)$/m); assert.doesNotMatch(e.stdout, /No events yet/);
+  assert.match(run(w.work, ['events', '--json'], env).stdout, /"logStatus":"unreadable \(/);
+  assert.match(run(w.work, ['events', 'summary'], env).stderr, /^Event log: unreadable \(/m);
+});
+
+test('--out into a folder that does not exist is a plain refusal, not a raw ENOENT', t => {
+  const w = world(t), r = run(w.work, ['events', 'summary', '--out', join(w.work, 'missing', 's.json')], envOf(w));
+  assert.equal(r.status, 1); assert.match(r.stderr, /does not exist/); assert.doesNotMatch(r.stderr, /ENOENT/);
+});
+
+test('refused harness runs record S1, S2 with both engines asked for, and S5', t => {
+  const w = world(t), env = envOf(w), dir = project(w), bl = (args: string[]) => run(dir, ['harness', ...args], env);
+  const stale = 'a'.repeat(64);
+  assert.equal(bl([...ADOPT, '--approve', stale]).status, 1);
+  assert.equal(bl(['install', '--engine', 'claude-code', '--engine', 'codex', '--approve', stale]).status, 1);
+  assert.equal(bl(['install', '--engine', 'codex', '--approve', stale]).status, 1);
+  assert.equal(bl(['remove', '--approve', stale]).status, 1);
+  assert.equal(bl(['recover', '--approve', stale]).status, 1);
+  const rows = events(w).filter(e => e.kind === 'scenario').map(e => [e.scenario ?? null, e.outcome, e.step, e.engines?.join('+') ?? null]);
+  assert.deepEqual(rows, [['S1', 'refused', 'adopt', null], ['S2', 'refused', 'install', 'claude-code+codex'], [null, 'refused', 'install', 'codex'], ['S5', 'refused', 'remove', null], ['S5', 'refused', 'recover', null]]);
+});
+
+test('a stop at a prompt records nothing; an exit code other than 0 records nothing; a refusal records its code', async t => {
+  const w = world(t), where = { env: { XDG_STATE_HOME: join(w.base, 'st'), BOWERLOOM_EVENT_LOG: '' } as NodeJS.ProcessEnv, home: w.home };
+  const file = join(w.base, 'st', 'bowerloom', 'events', 'events.jsonl'), spec = { scenario: 'S5', step: 'recover' };
+  await assert.rejects(recordScenario(where, spec, async () => { throw promptStopped(); }));
+  for (const code of [1, 2, 3, 4, 130]) assert.equal(await recordScenario(where, spec, async () => code), code);
+  assert.equal(existsSync(file), false);
+  assert.equal(await recordScenario(where, spec, async () => 0), 0);
+  await assert.rejects(recordScenario(where, spec, async () => { throw Object.assign(new Error('x'), { code: 'SOME_REFUSAL' }); }));
+  assert.deepEqual(readFileSync(file, 'utf8').split('\n').filter(Boolean).map(l => (JSON.parse(l) as Event).outcome + ':' + ((JSON.parse(l) as Event).code ?? '')), ['done:', 'refused:SOME_REFUSAL']);
+});
+
+test('with the log on and an unwritable state folder, stdout and the exit code match a run with the log off', t => {
+  const w = world(t);
+  mkdirSync(join(w.home, '.local'), { recursive: true }); writeFileSync(join(w.home, '.local', 'state'), 'x');
+  const on = run(w.work, ['skills', 'bogus'], envOf(w)), off = run(w.work, ['skills', 'bogus'], envOf(w, { BOWERLOOM_EVENT_LOG: 'off' }));
+  assert.equal(on.status, off.status); assert.equal(on.stdout, off.stdout);
+  assert.equal(on.stderr.startsWith(off.stderr), true, 'the failure report is first and unchanged');
+  assert.equal(on.stderr.slice(off.stderr.length), 'Bowerloom could not write its local event log: ENOTDIR\n');
 });

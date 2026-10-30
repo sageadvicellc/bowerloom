@@ -1,3 +1,5 @@
+import { redactText } from './redact.js';
+
 /**
  * The schema of one usage event (version 1). Every field is allowlisted. A value that fails its check is dropped:
  * the event is still kept without it, and the raw value is never stored. Pure functions, no file access.
@@ -47,9 +49,12 @@ const member = <T extends string>(list: readonly T[], value: unknown): T | undef
 const matching = (pattern: RegExp, value: unknown): string | undefined => (typeof value === 'string' && pattern.test(value) ? value : undefined);
 
 /** Free text from a check question: separators to spaces, hidden characters removed, at most 500 characters. Undefined when empty. */
-export function cleanNote(value: unknown): string | undefined {
+/** `home: null` skips the redaction, for a line read back from the log (the summary redacts it with the caller's folders). */
+export function cleanNote(value: unknown, home: string | readonly string[] | null = ''): string | undefined {
   if (typeof value !== 'string') return undefined;
-  let text = value.replace(SEPARATORS, ' ').replace(HIDDEN, '').replace(/ {2,}/g, ' ').trim();
+  // Paths and secrets go before the length cut, so a cut never leaves half of one.
+  const flat = value.replace(SEPARATORS, ' ').replace(HIDDEN, '').replace(/ {2,}/g, ' ').trim();
+  let text = home === null ? flat : redactText(flat, home);
   if (text.length > NOTE_LIMIT) {
     text = text.slice(0, NOTE_LIMIT);
     // Never end on half of a surrogate pair.
@@ -63,7 +68,7 @@ export function cleanNote(value: unknown): string | undefined {
 export function isoSeconds(date: Date): string { return date.toISOString().replace(/\.\d{3}Z$/, 'Z'); }
 
 /** The checked optional fields of an event, in schema order. `target` is passed through only when it is already an id. */
-export function checkedFields(raw: Readonly<Record<string, unknown>>, kind: EventKind): Omit<UsageEvent, 'v' | 'at' | 'source' | 'kind'> {
+export function checkedFields(raw: Readonly<Record<string, unknown>>, kind: EventKind, home: string | readonly string[] | null = ''): Omit<UsageEvent, 'v' | 'at' | 'source' | 'kind'> {
   const out: Omit<UsageEvent, 'v' | 'at' | 'source' | 'kind'> = {};
   const scenario = member(SCENARIOS, raw.scenario); if (scenario !== undefined) out.scenario = scenario;
   const outcome = member(OUTCOMES, raw.outcome); if (outcome !== undefined) out.outcome = outcome;
@@ -76,7 +81,7 @@ export function checkedFields(raw: Readonly<Record<string, unknown>>, kind: Even
   const target = matching(TARGET, raw.target); if (target !== undefined) out.target = target;
   if (kind === 'check') {
     const answer = member(ANSWERS, raw.answer); if (answer !== undefined) out.answer = answer;
-    const note = cleanNote(raw.note); if (note !== undefined) out.note = note;
+    const note = cleanNote(raw.note, home); if (note !== undefined) out.note = note;
   }
   return out;
 }
@@ -89,15 +94,15 @@ export function parseEvent(value: unknown): UsageEvent | null {
   const at = matching(AT, value.at);
   const source = member(EVENT_SOURCES, value.source), kind = member(EVENT_KINDS, value.kind);
   if (at === undefined || Number.isNaN(Date.parse(at)) || source === undefined || kind === undefined) return null;
-  return { v: 1, at, source, kind, ...checkedFields(value, kind) };
+  return { v: 1, at, source, kind, ...checkedFields(value, kind, null) };
 }
 
 /** A new event from caller input, stamped with the clock. Null when the source or the kind is not valid. `target` is set by the log. */
-export function newEvent(input: unknown, now: Date): UsageEvent | null {
+export function newEvent(input: unknown, now: Date, home: string | readonly string[] = ''): UsageEvent | null {
   if (!plainObject(input)) return null;
   const source = member(EVENT_SOURCES, input.source), kind = member(EVENT_KINDS, input.kind);
   if (source === undefined || kind === undefined || Number.isNaN(now.getTime())) return null;
   // The caller never supplies a target id, only a root folder, which the log turns into an id.
   const { target: _ignored, ...rest } = input;
-  return { v: 1, at: isoSeconds(now), source, kind, ...checkedFields(rest, kind) };
+  return { v: 1, at: isoSeconds(now), source, kind, ...checkedFields(rest, kind, home) };
 }

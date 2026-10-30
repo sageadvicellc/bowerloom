@@ -1,3 +1,4 @@
+import { redactText } from './redact.js';
 import { SCENARIOS } from './schema.js';
 import type { EngineName, Scenario, UsageEvent } from './schema.js';
 
@@ -17,12 +18,13 @@ const DAY = 86_400_000;
 const planOf = (plan: string): string => plan.replace(/^sha256:/, '');
 
 /**
- * The counts of the 7 days before `now`, from the start of that UTC day. It holds no target, no plan and no time of day.
+ * The counts of the 7 days (7 x 24 hours) before `now`. It holds no target, no plan and no time of day.
  * S2 counts as met by an S2 event, or by one plan installed into both engines within the window. S8 is met when two or
- * more distinct project folders had a done install. Notes come out only with `withNotes`.
+ * more distinct project folders had a done install. S8 has no refused count on purpose: it is derived from done installs
+ * only, and a refused install is counted under its own step and error code, never as a missing folder. Notes come out only with `withNotes`.
  */
-export function weeklySummary(events: readonly UsageEvent[], now: Date, options: { withNotes?: boolean } = {}): UsageSummary {
-  const start = new Date(now.getTime() - 7 * DAY); start.setUTCHours(0, 0, 0, 0);
+export function weeklySummary(events: readonly UsageEvent[], now: Date, options: { withNotes?: boolean; home?: string | readonly string[] } = {}): UsageSummary {
+  const start = new Date(now.getTime() - 7 * DAY);
   const inWindow = events.filter(e => { const t = Date.parse(e.at); return t >= start.getTime() && t <= now.getTime(); });
   const scenarios = Object.fromEntries(SCENARIOS.map(s => [s, { done: 0, refused: 0 }])) as UsageSummary['scenarios'];
   const errors = new Map<string, number>(), checks = { yes: 0, partly: 0, no: 0 }, notes: string[] = [];
@@ -50,6 +52,7 @@ export function weeklySummary(events: readonly UsageEvent[], now: Date, options:
     errors: [...errors].map(([code, count]) => ({ code, count })).sort((a, b) => b.count - a.count || (a.code < b.code ? -1 : 1)).slice(0, 10),
     checks,
   };
-  if (options.withNotes === true) summary.notes = notes;
+  // A note is redacted again here: a log from an older version, or one edited by hand, may hold a path or a secret.
+  if (options.withNotes === true) summary.notes = notes.map(n => redactText(n, options.home ?? ''));
   return summary;
 }

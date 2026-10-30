@@ -1,6 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
-import { buildReport, eventLogPath, execFileRunner, issueUrl, readEvents, redactText, renderReport, weeklySummary } from '../../../packages/diagnostics/src/index.js';
+import { buildReport, eventLogPath, execFileRunner, issueUrl, pathForms, readEvents, redactText, renderReport, weeklySummary } from '../../../packages/diagnostics/src/index.js';
 import type { ProcessRunner, UsageEvent, UsageSummary } from '../../../packages/diagnostics/src/index.js';
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import { privateStateRoot } from '../../../packages/project-context/src/index.js';
@@ -55,7 +55,11 @@ function renderSummary(s: UsageSummary): string {
 }
 
 export function runEventsCommand(args: readonly string[], home: string, write: (text: string) => void, env: NodeJS.ProcessEnv = process.env, now: Date = new Date()): number {
-  const stateRoot = privateStateRoot(env, home), tilde = (path: string): string => redactText(path, home);
+  const stateRoot = privateStateRoot(env, home), hidden = pathForms(home), tilde = (path: string): string => {
+    const shown = redactText(path, hidden);
+    // A state folder outside the home folder is named by its place, never by its full path.
+    return shown.startsWith('/') ? redactText(shown, pathForms(stateRoot)).replace(/^~/, '<state folder>') : shown;
+  };
   const isSummary = args[1] === 'summary';
   let json = false, withNotes = false, out: string | undefined;
   for (let i = isSummary ? 2 : 1; i < args.length; i++) {
@@ -65,13 +69,16 @@ export function runEventsCommand(args: readonly string[], home: string, write: (
     else if (isSummary && word === '--out' && out === undefined && i + 1 < args.length && isAbsolute(args[i + 1]!) && !args[i + 1]!.includes('\0')) out = args[++i]!;
     else usage(EVENTS_USAGE);
   }
-  const { events, malformed } = readEvents(stateRoot);
+  const { events, malformed, readError } = readEvents(stateRoot);
   if (isSummary) {
-    const summary = weeklySummary(events, now, { withNotes });
+    // The summary file schema is fixed, so a log that could not be read is said on stderr.
+    if (readError !== undefined) process.stderr.write(`Event log: unreadable (${readError})\n`);
+    const summary = weeklySummary(events, now, { withNotes, home: hidden });
     if (out !== undefined) {
       // The summary is a file the person chose to write. It never replaces a file, and it is private to its owner.
       try { writeFileSync(out, newCommandJson(summary), { flag: 'wx', mode: 0o600 }); } catch (error) {
         if ((error as { code?: string }).code === 'EEXIST') throw new DefinitionError('TARGET_EXISTS', 'That file already exists. Bowerloom does not replace it. Choose a new file name.');
+        if ((error as { code?: string }).code === 'ENOENT') throw new DefinitionError('IO_ERROR', 'The folder for that file does not exist. Create it, or choose a file in a folder that exists.');
         throw error;
       }
       write(`Wrote the summary to ${plainText(tilde(out))}.\n`);
@@ -79,9 +86,10 @@ export function runEventsCommand(args: readonly string[], home: string, write: (
     return 0;
   }
   const newest = events.slice(-LISTED), log = tilde(eventLogPath(stateRoot));
-  if (json) { write(newCommandJson({ log, events: newest.map(shown), malformed })); return 0; }
+  if (json) { write(newCommandJson({ log, logStatus: readError === undefined ? 'ok' : `unreadable (${readError})`, events: newest.map(shown), malformed })); return 0; }
   write([
-    ...(newest.length ? [`Newest ${plural(newest.length, 'event', 'events')} of ${events.length}:`, ...newest.map(lineOf)] : ['No events yet.']),
+    ...(readError !== undefined ? [`Event log: unreadable (${readError})`] : []),
+    ...(newest.length ? [`Newest ${plural(newest.length, 'event', 'events')} of ${events.length}:`, ...newest.map(lineOf)] : readError === undefined ? ['No events yet.'] : []),
     ...(malformed ? [plural(malformed, 'line', 'lines') + ' could not be read.'] : []),
     `Log: ${plainText(log)}`, '',
   ].join('\n'));

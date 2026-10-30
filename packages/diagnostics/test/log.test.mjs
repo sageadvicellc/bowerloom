@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appendFileSync, chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, symlinkSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { eventLogPath, readEvents, recordEvent } from '../../../dist/packages/diagnostics/src/index.js';
+import { eventLogOff, eventLogPath, readEvents, recordEvent } from '../../../dist/packages/diagnostics/src/index.js';
 import { PLAN, at, stateRoot } from './fixture.mjs';
 
 const opts = (root, env = {}, now = at()) => ({ stateRoot: root, env, now });
@@ -124,4 +124,56 @@ test('readEvents returns valid events, drops bad fields, and counts malformed li
   assert.equal(malformed, 4);
   assert.equal(events.length, 2);
   assert.deepEqual(events[1], { v: 1, at: '2026-10-30T14:00:01Z', source: 'app', kind: 'scenario', scenario: 'S5', outcome: 'done' });
+});
+
+test('notes are redacted when recorded: a planted home path and token never reach the log', t => {
+  const root = stateRoot(t);
+  recordEvent({ ...opts(root), home: ['/home/test-person'] }, { source: 'app', kind: 'check', answer: 'no', note: `I ran /home/test-person/x with ghp_${'Q1w2E3r4T5'.repeat(4)} and /Users/someone/y` });
+  const text = readFileSync(eventLogPath(root), 'utf8');
+  assert.equal(/test-person|someone|ghp_/.test(text), false);
+  assert.equal(lines(root)[0].note, 'I ran ~/x with [redacted] and ~/y');
+});
+
+test('off accepts off, 0, false and no in any letter case', () => {
+  for (const v of ['off', 'OFF', '0', 'false', 'No', ' off ']) assert.equal(eventLogOff({ BOWERLOOM_EVENT_LOG: v }), true, v);
+  for (const v of [undefined, '', 'on', '1', 'yes']) assert.equal(eventLogOff({ BOWERLOOM_EVENT_LOG: v }), false, String(v));
+});
+
+test('an events folder that is a symbolic link is refused and nothing is written through it', t => {
+  const root = stateRoot(t), elsewhere = stateRoot(t);
+  mkdirSync(root, { recursive: true }); mkdirSync(elsewhere, { recursive: true });
+  symlinkSync(elsewhere, join(root, 'events'));
+  const r = recordEvent(opts(root), { source: 'cli', kind: 'check' });
+  assert.deepEqual(r, { ok: false, code: 'EVENT_DIR_NOT_FOLDER' });
+  assert.equal(existsSync(join(elsewhere, 'events.jsonl')), false);
+});
+
+test('a damaged salt is replaced with a notice; a salt that is a link is refused; the salt mode is fixed on read', t => {
+  const root = stateRoot(t), salt = join(root, 'events', 'salt');
+  recordEvent(opts(root), { source: 'cli', kind: 'check', targetRoot: '/home/test-person/a' });
+  chmodSync(salt, 0o644);
+  recordEvent(opts(root), { source: 'cli', kind: 'check', targetRoot: '/home/test-person/a' });
+  assert.equal(lstatSync(salt).mode & 0o777, 0o600);
+  writeFileSync(salt, 'short', { mode: 0o600 });
+  const r = recordEvent(opts(root), { source: 'cli', kind: 'check', targetRoot: '/home/test-person/a' });
+  assert.equal(r.ok, true); assert.match(r.notice, /count of repositories restarts/);
+  assert.equal(readFileSync(salt).length, 32);
+  const other = stateRoot(t);
+  recordEvent(opts(other), { source: 'cli', kind: 'check' });
+  symlinkSync(salt, join(other, 'events', 'salt'));
+  assert.equal(recordEvent(opts(other), { source: 'cli', kind: 'check', targetRoot: '/home/test-person/a' }).ok, false);
+});
+
+test('readEvents: a log that cannot be read sets readError, a missing log does not, and only the newest 4 MiB is read', t => {
+  const root = stateRoot(t);
+  assert.equal('readError' in readEvents(root), false);
+  mkdirSync(eventLogPath(root), { recursive: true });
+  assert.match(readEvents(root).readError, /^[A-Z]+$/);
+  const big = stateRoot(t);
+  mkdirSync(join(big, 'events'), { recursive: true });
+  const row = JSON.stringify({ v: 1, at: '2026-10-30T10:00:00Z', source: 'cli', kind: 'error', code: 'BULK_ROW', note: 'x' });
+  writeFileSync(eventLogPath(big), `${`${row}\n`.repeat(Math.ceil((5 * 1024 * 1024) / (row.length + 1)))}`);
+  const { events, malformed } = readEvents(big);
+  assert.equal(malformed, 0, 'the partial first line is dropped, not counted');
+  assert.ok(events.length * (row.length + 1) <= 4 * 1024 * 1024 && events.length > 3 * 1024 * 1024 / (row.length + 1));
 });

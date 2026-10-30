@@ -8,10 +8,10 @@ const ev = (day, extra) => ({ v: 1, at: `2026-10-${day}T10:00:00Z`, source: 'cli
 const done = (day, scenario, extra = {}) => ev(day, { kind: 'scenario', scenario, outcome: 'done', ...extra });
 
 test('the window is the 7 days before now, as dates, and old events do not count', () => {
-  const s = weeklySummary([done('22', 'S1'), done('23', 'S1'), done('30', 'S1')], now);
+  const s = weeklySummary([done('22', 'S1'), done('23', 'S1'), { ...done('24', 'S1'), at: '2026-10-23T14:00:00Z' }, done('24', 'S1'), done('30', 'S1')], now);
   assert.equal(s.schema, 'bowerloom/usage-summary/v1');
   assert.deepEqual([s.from, s.to], ['2026-10-23', '2026-10-30']);
-  assert.deepEqual(s.scenarios.S1, { done: 2, refused: 0 });
+  assert.deepEqual(s.scenarios.S1, { done: 3, refused: 0 }, 'the window is exactly 7 x 24 hours: 10-23T10:00 is out, 10-23T14:00 is in');
   assert.deepEqual(Object.keys(s.scenarios), ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8']);
 });
 
@@ -66,4 +66,10 @@ test('notes appear only with withNotes, and never targets or timestamps', () => 
   assert.equal('notes' in weeklySummary(events, now, { withNotes: false }), false);
   assert.deepEqual(weeklySummary(events, now, { withNotes: true }).notes, ['hand a setup to a colleague']);
   assert.deepEqual(weeklySummary([], now, { withNotes: true }).notes, []);
+});
+
+test('notes are redacted again in the summary, with the given home', () => {
+  const events = [ev('25', { kind: 'check', answer: 'no', note: 'see /home/test-person/work and ghp_' + 'Q1w2E3r4T5'.repeat(4) })];
+  const [note] = weeklySummary(events, now, { withNotes: true, home: ['/home/test-person'] }).notes;
+  assert.equal(note, 'see ~/work and [redacted]');
 });

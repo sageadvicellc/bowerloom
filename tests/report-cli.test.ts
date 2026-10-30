@@ -18,16 +18,17 @@ function fakeEngines(w: World, outputs: Readonly<Record<string, string>>): strin
   }
   return bin;
 }
-const envOf = (w: World, bin: string): Record<string, string> => ({ ...w.env, XDG_STATE_HOME: '', PATH: `${bin}:/usr/bin:/bin`, BOWERLOOM_EVENT_LOG: '' });
+const envOf = (w: World, bin: string): Record<string, string> => ({ ...w.env, XDG_STATE_HOME: '', // Only the fake folder: the test starts node by its full path, so no engine of this machine can be found.
+  PATH: bin, BOWERLOOM_EVENT_LOG: '' });
 const json = <T>(text: string): T => JSON.parse(text) as T;
 
 test('report prints the bundle, says nothing was sent, and gives the issue link', t => {
   const w = world(t), bin = fakeEngines(w, { claude: 'claude 2.1.4 (Claude Code)' });
-  // Remove a stray engine of this machine: only our folder plus system tools are on PATH, and codex is not in them.
   const r = run(w.work, ['report'], envOf(w, bin));
   assert.equal(r.status, 0, r.stderr); assert.equal(r.stderr, '');
   assert.match(r.stdout, /^Bowerloom problem report \(bowerloom\/report\/v1\)$/m);
   assert.match(r.stdout, /^Claude Code: 2\.1\.4$/m);
+  assert.match(r.stdout, /^Codex: not found$/m, 'PATH holds only the fake folder');
   assert.match(r.stdout, /^Last error: none$/m);
   assert.match(r.stdout, /\n\nNothing was sent\. To file an issue, read the bundle above, then open this link:\nhttps:\/\/github\.com\/sageadvicellc\/bowerloom\/issues\/new\?template=bug\.yml&bundle=\S+\n$/);
   assert.equal(r.stdout.includes(w.home), false, 'no home path');

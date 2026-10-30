@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { buildReport, eventLogPath, issueUrl, probeEngine, recordEvent, redactText, renderReport } from '../../../dist/packages/diagnostics/src/index.js';
 import { HOME, PLAN, at, stateRoot } from './fixture.mjs';
 
@@ -23,10 +24,12 @@ const rec = (root, input, when = '2026-10-30T14:00:00Z') => recordEvent({ stateR
 test('probeEngine parses the first version, maps ENOENT to not found, and anything else to unknown', async () => {
   assert.equal(await probeEngine('claude', runner({ claude: 'Claude Code 2.1.4-beta.1+build (x)' }), '/usr/bin', HOME), '2.1.4-beta.1+build');
   assert.equal(await probeEngine('claude', runner({}), '/usr/bin', HOME), 'not found');
-  assert.equal(await probeEngine('claude', runner({ claude: fail('ETIMEDOUT') }), '/usr/bin', HOME), 'unknown');
-  assert.equal(await probeEngine('claude', runner({ claude: Object.assign(new Error('t'), { killed: true }) }), '/usr/bin', HOME), 'unknown');
-  assert.equal(await probeEngine('claude', runner({ claude: 'garbage with no number' }), '/usr/bin', HOME), 'unknown');
-  assert.equal(await probeEngine('claude', runner({ claude: '' }), '/usr/bin', HOME), 'unknown');
+  assert.equal(await probeEngine('claude', runner({ claude: fail('ETIMEDOUT') }), '/usr/bin', HOME), 'unknown (timeout)');
+  assert.equal(await probeEngine('claude', runner({ claude: Object.assign(new Error('t'), { killed: true, signal: 'SIGKILL' }) }), '/usr/bin', HOME), 'unknown (timeout)');
+  assert.equal(await probeEngine('claude', runner({ claude: fail('EACCES') }), '/usr/bin', HOME), 'unknown (EACCES)');
+  assert.equal(await probeEngine('claude', runner({ claude: Object.assign(new Error('x'), { code: 2 }) }), '/usr/bin', HOME), 'unknown (exit 2)');
+  assert.equal(await probeEngine('claude', runner({ claude: 'garbage with no number' }), '/usr/bin', HOME), 'unknown (no version in output)');
+  assert.equal(await probeEngine('claude', runner({ claude: '' }), '/usr/bin', HOME), 'unknown (no version in output)');
 });
 
 test('engines are probed without a shell, with a 3 second timeout and only PATH and HOME', async t => {
@@ -36,6 +39,7 @@ test('engines are probed without a shell, with a 3 second timeout and only PATH 
   assert.deepEqual(calls.map(c => [c.file, c.args]), [['claude', ['--version']], ['codex', ['--version']]]);
   for (const c of calls) {
     assert.equal(c.options.timeout, 3000);
+    assert.equal(c.options.killSignal, 'SIGKILL');
     assert.deepEqual(c.options.env, { PATH: '/usr/bin:/bin', HOME });
     assert.notEqual(c.options.shell, true);
   }
@@ -47,12 +51,12 @@ test('the bundle has the report fields, the os from sw_vers on darwin, and no no
   rec(root, { source: 'app', kind: 'check', answer: 'no', note: 'private words' }, '2026-10-30T11:00:00Z');
   rec(root, { source: 'cli', kind: 'error', code: 'PORTABLE_DRIFT', step: 'drift' }, '2026-10-30T12:00:00Z');
   const calls = [];
-  const b = await buildReport(base(root, { platform: 'darwin', appVersion: '0.8.0', run: runner({ claude: '2.1.4', codex: 'codex 1.0.0', sw_vers: '15.1\n' }, calls) }));
+  const b = await buildReport(base(root, { platform: 'darwin', appVersion: '0.8.0', run: runner({ claude: '2.1.4', codex: 'codex 1.0.0', '/usr/bin/sw_vers': '15.1\n' }, calls) }));
   assert.equal(b.schema, 'bowerloom/report/v1');
   assert.equal(b.created, '2026-10-30T14:00:00Z');
   assert.deepEqual(b.bowerloom, { cli: '0.8.0-beta.1', app: '0.8.0' });
-  assert.deepEqual(b.os, { platform: 'darwin', version: '15.1' });
-  assert.deepEqual(calls.find(c => c.file === 'sw_vers').args, ['-productVersion']);
+  assert.deepEqual(b.os, { platform: 'darwin', version: 'macOS 15.1' });
+  assert.deepEqual(calls.find(c => c.file === '/usr/bin/sw_vers').args, ['-productVersion']);
   assert.equal(b.lastError, 'PORTABLE_DRIFT');
   assert.equal(b.planHash, PLAN);
   assert.equal(b.recent.length, 3);
@@ -124,4 +128,56 @@ test('issueUrl stays under 7,500 characters by dropping the oldest lines, and sa
   assert.doesNotMatch(decodeURIComponent(issueUrl(b, 'engine-change.yml')), /older lines/);
   assert.match(issueUrl(b, 'fidelity-gap.yml'), /template=fidelity-gap\.yml/);
   assert.throws(() => issueUrl(b, 'other.yml'));
+});
+
+test('a failing sw_vers says so, and never shows the kernel version unlabeled', async t => {
+  const b = await buildReport(base(stateRoot(t), { platform: 'darwin', run: runner({ claude: '2.1.4' }) }));
+  assert.equal(b.os.version, 'unknown (sw_vers failed)');
+});
+
+test('probe PATH keeps only absolute entries; an unset PATH gets a fixed default', async t => {
+  const calls = [];
+  await buildReport(base(stateRoot(t), { env: { PATH: ':relative/bin::/usr/bin:./x' }, run: runner({}, calls) }));
+  assert.equal(calls[0].options.env.PATH, '/usr/bin');
+  calls.length = 0;
+  await buildReport(base(stateRoot(t), { env: {}, run: runner({}, calls) }));
+  assert.equal(calls[0].options.env.PATH, '/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin');
+  calls.length = 0;
+  await buildReport(base(stateRoot(t), { env: { PATH: 'rel:' }, run: runner({}, calls) }));
+  assert.equal(calls[0].options.env.PATH, '/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin');
+});
+
+test('an unreadable log is said in the bundle, never Last error: none', async t => {
+  const root = stateRoot(t);
+  rec(root, { source: 'cli', kind: 'check', answer: 'yes' });
+  let b = await buildReport(base(root));
+  assert.deepEqual([b.logStatus, b.malformedLines, b.lastError], ['ok', 0, 'none']);
+  appendFileSync(eventLogPath(root), 'garbage\n');
+  assert.equal((await buildReport(base(root))).malformedLines, 1);
+  assert.equal((await buildReport(base(stateRoot(t)))).logStatus, 'empty');
+  const dir = stateRoot(t);
+  mkdirSync(join(dir, 'events', 'events.jsonl'), { recursive: true });
+  b = await buildReport(base(dir));
+  assert.match(b.logStatus, /^unreadable \([A-Z]+\)$/);
+  assert.equal(b.lastError, 'unknown (log unreadable)');
+  assert.match(renderReport(b), /^Event log: unreadable/m);
+});
+
+test('the redaction guard covers other systems, other letter cases and URL-encoded paths; sk- inside a word survives', () => {
+  const cases = [
+    ['/USERS/Test-Person/x', '~/x'], ['/Home/test-person/x', '~/x'], ['/root/.config', '~/.config'], ['/var/folders/ab/xyz/T/f', '~/T/f'],
+    ['/private/var/folders/ab/xyz', '~'], ['/Volumes/Disk/Users/test-person/p', '~/p'], ['C:\\Users\\Test Person\\x', '~ Person\\x'],
+    ['C:/Users/test-person/x', '~/x'], ['file%2FUsers%2Ftest-person%2Fx', 'file~%2Fx'], ['task-abcdefghijklmnopqrstuvwxyz', 'task-abcdefghijklmnopqrstuvwxyz'],
+    ['disk-abcdefghijklmnopqrstuvwxyz', 'disk-abcdefghijklmnopqrstuvwxyz'], ['a /usr/root/x', 'a /usr/root/x'],
+  ];
+  for (const [input, expected] of cases) assert.equal(redactText(input, ''), expected, input);
+  assert.equal(redactText('/real/home/dir/x', ['/real/home/dir', '/private/real/home/dir']), '~/x');
+  assert.equal(redactText('/private/real/home/dir/x', ['/real/home/dir', '/private/real/home/dir']), '~/x');
+});
+
+test('a version printed with a home path or token is redacted before it is cut to 64 characters', async () => {
+  const long = `1.2.3-${'a'.repeat(50)}-ghp_${'Z9y8X7w6V5'.repeat(4)}`;
+  const v = await probeEngine('claude', runner({ claude: long }), '/usr/bin', HOME);
+  assert.equal(v.includes('ghp_'), false);
+  assert.equal(v.includes('Z9y8X7w6'), false);
 });
