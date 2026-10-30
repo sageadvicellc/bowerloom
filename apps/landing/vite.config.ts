@@ -1,6 +1,8 @@
 import { defineConfig } from "vite";
+import {fileURLToPath} from "node:url";
 import react from "@vitejs/plugin-react";
 import {release, readerRelease} from "./src/release.ts";
+import {articlesPlugin} from "./build/articles.ts";
 import social from "../../release/social-preview.json" with {type: "json"};
 
 const escapeHtml = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
@@ -30,6 +32,8 @@ export default defineConfig({
   plugins: [react(), {
     name: "shared-release-metadata",
     transformIndexHtml: html => renderMetadata(html),
-  }],
+  }, articlesPlugin({
+    site: release.urls.site, docs: release.urls.docs, repository: release.urls.repository, image: social.image,
+  }, fileURLToPath(new URL("./content/articles", import.meta.url)))],
   build: { chunkSizeWarningLimit: 700 },
 });

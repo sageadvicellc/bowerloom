@@ -12,9 +12,9 @@ test('the home app prototype opens at 1280 by 800 and is called Bowerloom', () =
   assert.deepEqual({ width: o.width, height: o.height, title: o.title }, { width: 1280, height: 800, title: 'Bowerloom' });
 });
 
-test('every other launch keeps 1100 by 760 and the name Bowerloom Viewer', () => {
+test('every other launch keeps 1100 by 760 and is called Bowerloom too', () => {
   const o = windowOptions(false);
-  assert.deepEqual({ width: o.width, height: o.height, title: o.title }, { width: 1100, height: 760, title: 'Bowerloom Viewer' });
+  assert.deepEqual({ width: o.width, height: o.height, title: o.title }, { width: 1100, height: 760, title: 'Bowerloom' });
 });
 
 test('the smallest window is the same for both, and 1280 is past the width where the shelves hide beside a drawer, with the navigation open', () => {

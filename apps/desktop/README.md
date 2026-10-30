@@ -1,6 +1,6 @@
-# Bowerloom Viewer
+# Bowerloom desktop (experimental)
 
-A desktop window that shows you everything Bowerloom looks after: your skills, prompts, teams, helpers, knowledge folders, and which project uses what. It only looks. It never changes your library or your projects.
+The desktop app of Bowerloom. It is experimental, and it is possibly not part of v1. The command line gives you every feature. The screens below show your skills, prompts, teams, helpers, knowledge folders, and which project uses what. The harness screens adopt a project and install its harness after a preview. Help > Report a problem builds a diagnostic bundle, and Help > Usage log shows the local event log.
 
 ## Open it
 
@@ -9,16 +9,16 @@ Copy one line into a terminal window. It works from any folder. The first time, 
 Your own Bowerloom:
 
 ```
-npm --prefix "/Users/hannamacintosh/Sage Advice/code/internal-tools/bowerloom-desktop" run desktop
+npm --prefix "<path-to-bowerloom>" run desktop
 ```
 
 Made-up sample data, so you can see every state at once:
 
 ```
-npm --prefix "/Users/hannamacintosh/Sage Advice/code/internal-tools/bowerloom-desktop" run desktop:sample
+npm --prefix "<path-to-bowerloom>" run desktop:sample
 ```
 
-If you keep the code somewhere else, put that folder between the quote marks instead.
+Put the folder of your Bowerloom checkout between the quote marks.
 
 The first time you open your own Bowerloom, the app looks once at the folders right inside your home folder for ones that hold Bowerloom, and starts with those. Home shows what it is reading, with Remove and Add buttons, so you can change it. It never looks inside Documents or Desktop by itself. It reads a few levels deep inside each folder, finds projects set up the older way (a .bowerloom folder) as well as newer ones, and skips folders named examples, fixtures or test unless you turn that on in Settings. Nothing in those folders changes.
 

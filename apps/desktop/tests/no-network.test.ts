@@ -18,6 +18,12 @@ const ALLOWED_NETWORK_MODULES: Record<string, string[]> = {
   '../../packages/managed-skills/src/v2-transaction.ts': ['net'],
 };
 
+/**
+ * Modules of the bundle that may start a process, with what they import. One: the problem report asks each engine for its version (`claude --version`), with
+ * execFile and no shell, a 3 second limit, and a minimal environment (packages/diagnostics/src/report.ts). Nothing else of the bundle starts a process.
+ */
+const ALLOWED_PROCESS_MODULES: Record<string, string[]> = { '../../packages/diagnostics/src/report.ts': ['child_process'] };
+
 const BARE = '(?:node:)?';
 const WORKERS = /^(child_process|worker_threads|cluster)$/;
 function bundledImports(): { byModule: Map<string, Set<string>>; text: string; code: string } {
@@ -38,7 +44,13 @@ test('the bundled main file never loads child_process, worker_threads, or cluste
   // Every way to load a module: import ... from, bare import, require(), and import(): with or without the node: prefix.
   const loads = [...code.matchAll(new RegExp(`(?:from|import|require)\\s*\\(?\\s*["']${BARE}([a-z_\\/0-9]+)["']`, 'g'))].map(m => m[1]!);
   assert.ok(loads.length > 50, 'the scan sees the imports');
-  assert.deepEqual(loads.filter(name => WORKERS.test(name)), [], 'no process or thread is started from the bundle');
+  assert.equal(loads.filter(name => WORKERS.test(name)).length, Object.values(ALLOWED_PROCESS_MODULES).flat().length, 'only the listed module loads a process module');
+  const starters: Record<string, string[]> = {};
+  for (const [module, imports] of byModule) { const found = [...imports].filter(i => WORKERS.test(i)).sort(); if (found.length) starters[module] = found; }
+  assert.deepEqual(starters, ALLOWED_PROCESS_MODULES, 'a module that can start a process is new: argue for it, then list it');
+  const probe = readFileSync(join(DESKTOP, '..', '..', 'packages', 'diagnostics', 'src', 'report.ts'), 'utf8');
+  assert.match(probe, /import \{ execFile \} from 'node:child_process';/, 'the report uses execFile only');
+  assert.doesNotMatch(probe.replace(/\/\/.*$/gm, ''), /(?<![.\w])(spawn|exec|fork|execSync|spawnSync)\s*\(/, 'never a shell');
   assert.doesNotMatch(code, /(?<![.\w])(?:globalThis|global|self|window)\.fetch\(|(?<![.\w])fetch\(|new WebSocket\(|XMLHttpRequest|new EventSource\(/, 'no fetch, web socket or event source call');
   // A network module loaded in any form other than a plain top-level import (a require() or import() call) is never expected.
   const calls = [...code.matchAll(new RegExp(`(?:require|import)\\(\\s*["']${BARE}([a-z_\\/0-9]+)["']`, 'g'))].map(m => m[1]!).filter(name => NETWORK.test(name) || WORKERS.test(name));

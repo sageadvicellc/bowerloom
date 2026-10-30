@@ -57,6 +57,21 @@ export function shortHelp(): string {
 
 /** Full help for one command, keyed by the command word. `init` has its own text in main.ts. */
 export const TOPICS: Readonly<Record<string, string>> = {
+  report: [
+    'Usage:', '  bowerloom report [--template bug|fidelity-gap|engine-change] [--json]', '',
+    'Prints a problem report that you can read in full: the Bowerloom version, your system, the Claude Code and Codex versions,',
+    'the newest error code, and the newest 20 lines of the usage log, which hold no names, paths, or file contents.',
+    'Then it prints a link that opens a GitHub issue with the report filled in. Nothing is sent. You choose whether to open the link.',
+    'A home folder path or a token that appears in the report is replaced before it is shown.',
+  ].join('\n') + '\n',
+  events: [
+    'Usage:', '  bowerloom events [--json]', '  bowerloom events summary [--with-notes] [--out <absolute-file>] [--json]', '',
+    'Bowerloom keeps a usage log on this computer, in events/events.jsonl in its state folder. It records which scenario ran, whether it finished or was refused,',
+    'and error codes. It records no names, paths, or file contents. It never leaves this computer on its own.',
+    'events shows the newest 50 lines. events summary counts the last 7 days. --out writes the summary to a new file that only you can read; it never replaces a file.',
+    'Notes you typed in an after-apply check stay in the log, and join a summary only with --with-notes.',
+    'Set BOWERLOOM_EVENT_LOG=off to stop all writing.',
+  ].join('\n') + '\n',
   store: [
     'Usage:', '  bowerloom store status [--json]',
     '  bowerloom store migrate [--skill <id>]... [--prompt <id>]... [--team <id>]... [--all] [--commit <sha>] [--approve <revision>] [--json]',
@@ -369,7 +384,7 @@ export function promptStopped(applied?: string): DefinitionError {
   stoppedAtPrompt.add(error); return error;
 }
 export const isPromptStopped = (error: unknown): error is DefinitionError => typeof error === 'object' && error !== null && stoppedAtPrompt.has(error);
-const codeOf = (error: unknown): string | null =>
+export const codeOf = (error: unknown): string | null =>
   error !== null && typeof error === 'object' && 'code' in error && typeof error.code === 'string' && /^[A-Z_]{1,100}$/.test(error.code) ? error.code : null;
 
 /**

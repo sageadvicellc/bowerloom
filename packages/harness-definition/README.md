@@ -11,6 +11,8 @@ Specs: `2026-10-27-bowerloom-harness-definition.md`, and sections 2 to 4 of `202
 - `selectForEngine(source, engine)` gives the view for one engine. The view also lists what it left out.
 - `checkFidelity(source, report, approvals, options)` judges a loss report.
 - `computeRevision(files)` gives the revision hash. `scanSecrets(files)` finds secret values.
+- `loadDefinitionFiles(files)` runs the same loader over files held in memory. It reads and writes nothing on disk.
+- `editDefinition(def, edits)` applies a closed set of edits to one loaded definition. It returns the full target file set and a change list, or a typed refusal. It is pure. A file that no edit names stays byte-identical, and `loadDefinitionFiles` checks the result. The edits are `set-skill`, `add-skill`, `remove-skill`, `set-agent`, `set-instructions`, and `set-engines`. The refusal codes are `EDIT_BAD_EDIT`, `EDIT_UNSAFE_ID`, `EDIT_UNKNOWN_ID`, `EDIT_DUPLICATE_ID`, `EDIT_TOO_LARGE`, `EDIT_SECRET_FOUND`, and `EDIT_INVALID`.
 
 ## A 0.8 folder
 
