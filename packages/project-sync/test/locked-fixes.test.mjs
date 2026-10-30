@@ -96,31 +96,103 @@ test('B5, D1: a TOML file with a byte order mark is not TOML 1.0, so Bowerloom r
   assert.equal(editToml('model = "x"\n', [['k', 'v']], []).text.startsWith('# Bowerloom'), true);
 });
 
-// ---- B6: the Codex profile is held back -------------------------------------------------------------------------------------
+// ---- B6: the Codex profile, on since live check g8 ----------------------------------------------------------------------------
 
-test('B6: Codex gets no default_permissions and no profile; path rules and the sandbox are weakened until step 5', async t => {
-  assert.equal(CODEX_PROFILE_ENABLED, false);
+/** The profile Bowerloom writes for RULES (a read deny of .env) and a sandbox requirement. */
+const PROFILE = [
+  'default_permissions = "bowerloom"',
+  '',
+  '[permissions.bowerloom]',
+  'extends = ":workspace"',
+  '',
+  '[permissions.bowerloom.filesystem.":workspace_roots"]',
+  '".env" = "deny"',
+  '"**/.env" = "deny"',
+  '"**/.env/**" = "deny"',
+];
+
+test('B6: the switch is on, since live check g8 passed on Codex 0.157.0', () => {
+  assert.equal(CODEX_PROFILE_ENABLED, true);
+});
+
+test('B6: Codex writes default_permissions = "bowerloom" and a profile that extends :workspace; each line it carries says what g8 covered', async t => {
   const p = lockedProject(t, { engines: engines('codex'), ...none, rules: RULES, sandbox: { id: 'box', files: true, network: true } });
   const e = (() => { try { planPortable(p.input()); } catch (err) { return err; } })();
   assert.deepEqual(e.refused.map(l => [l.entry, l.result]).sort(), [['box', 'weakened'], ['no-env', 'weakened'], ['no-push-main', 'weakened']]);
-  for (const l of e.refused.filter(x => x.entry !== 'no-push-main')) assert.match(l.reason, /step 5/);
-  await projectNow(p.input({ approvals: approveAll(p, e) }));
-  assert.equal(exists(p, '.codex/config.toml'), false, 'nothing else goes to config.toml here');
+  for (const l of e.refused.filter(x => x.entry !== 'no-push-main')) {
+    assert.match(l.reason, /Live check g8 of step 5 showed on Codex 0\.157\.0 that this profile loads/);
+    assert.match(l.reason, /No live check covered a glob entry, a read-only entry, the network and write bounds of :workspace/);
+    assert.match(l.reason, /--sandbox/);
+    assert.doesNotMatch(l.reason, /until the live check of step 5 confirms its syntax|switch of the Codex permission profile is off/);
+  }
+  const { plan } = await projectNow(p.input({ approvals: approveAll(p, e) }));
+  assert.equal(line(plan, 'guardrails', 'no-env', 'codex').result, 'weakened');
+  assert.equal(line(plan, 'guardrails', 'box', 'codex').result, 'weakened');
+  const text = read(p, '.codex/config.toml');
+  for (const l of PROFILE) assert.ok(text.split('\n').includes(l), l);
+  assert.match(text, /^default_permissions = "bowerloom"$/m);
+  assert.match(text, /^\[permissions\.bowerloom\]\nextends = ":workspace"$/m);
+  assert.ok(text.indexOf('default_permissions') < text.indexOf('[permissions.bowerloom]'), 'the key is top level, before every table');
+  assert.equal(/^sandbox_mode/m.test(text), false);
   assert.ok(exists(p, '.codex/rules/bowerloom.rules'));
-  // A sandbox_mode the person keeps is no longer a conflict: Bowerloom writes no profile.
-  const q = lockedProject(t, { engines: engines('codex'), rules: RULES });
-  put(q, '.codex/config.toml', 'sandbox_mode = "workspace-write"\n');
-  assert.doesNotMatch(read(q, '.codex/config.toml'), /default_permissions/);
-  await projectNow(q.input({ approvals: approvalsFor(q) }));
-  assert.doesNotMatch(read(q, '.codex/config.toml'), /default_permissions|\[permissions/);
+  await removal(p);
+  assert.equal(exists(p, '.codex/config.toml'), false, 'removal takes the file Bowerloom created');
 });
 
-test('B6: the profile code stays behind the switch: it gives the profile when called', () => {
+test('B6: a sandbox requirement alone writes the profile with no filesystem table', async t => {
+  const p = lockedProject(t, { engines: engines('codex'), ...none, sandbox: { id: 'box', files: true, network: true } });
+  const { plan } = await projectNow(p.input({ approvals: approvalsFor(p) }));
+  assert.equal(line(plan, 'guardrails', 'box', 'codex').result, 'weakened');
+  const text = read(p, '.codex/config.toml');
+  assert.match(text, /^default_permissions = "bowerloom"$/m);
+  assert.match(text, /^\[permissions\.bowerloom\]\nextends = ":workspace"$/m);
+  assert.equal(text.includes('filesystem'), false);
+});
+
+test('B6: the profile merges into a config.toml a person keeps, and removal restores it; a key that could override the profile is a conflict', async t => {
+  const p = lockedProject(t, { engines: engines('codex'), ...none, rules: RULES.slice(1) });
+  const mine = 'model = "model-a"\n\n[mcp_servers.mine]\ncommand = "mine"\n';
+  put(p, '.codex/config.toml', mine);
+  await projectNow(p.input({ approvals: approvalsFor(p) }));
+  const text = read(p, '.codex/config.toml');
+  assert.match(text, /^model = "model-a"$/m); assert.match(text, /^\[mcp_servers\.mine\]$/m);
+  assert.match(text, /^default_permissions = "bowerloom"$/m); assert.match(text, /^\[permissions\.bowerloom\]\nextends = ":workspace"$/m);
+  await removal(p);
+  assert.equal(read(p, '.codex/config.toml'), mine);
+  // A top-level sandbox_mode, a sandbox_workspace_write table, or a selected config profile could override the profile or
+  // change what it allows, so Bowerloom refuses rather than write a profile Codex may not apply.
+  for (const kept of ['sandbox_mode = "workspace-write"\n', '[sandbox_workspace_write]\nnetwork_access = true\n', 'profile = "fast"\n\n[profiles.fast]\nsandbox_mode = "danger-full-access"\n']) {
+    const q = lockedProject(t, { engines: engines('codex'), ...none, rules: RULES.slice(1) });
+    put(q, '.codex/config.toml', kept);
+    assert.throws(() => planPortable(q.input()), err => err.code === 'PORTABLE_CONFLICT' && err.message.includes('.codex/config.toml'), kept);
+    assert.equal(read(q, '.codex/config.toml'), kept);
+  }
+});
+
+test('B6: a key of the sandbox\'s x-codex block is not written and gets an absent line, which needs an approval', async t => {
+  const p = lockedProject(t, { engines: engines('codex'), ...none, sandbox: { id: 'box', files: true, network: true, 'x-codex': { exclude_slash_tmp: true } } });
+  const e = (() => { try { planPortable(p.input()); } catch (err) { return err; } })();
+  assert.equal(e?.code, 'PORTABLE_FIDELITY');
+  const field = e.refused.find(l => l.entry === 'box' && l.field === 'x-codex');
+  assert.equal(field?.result, 'absent');
+  assert.match(field.reason, /exclude_slash_tmp/);
+  assert.doesNotMatch(field.reason, /Live check g8/, 'the coverage sentence is on the entry line, not the field line');
+  const { plan } = await projectNow(p.input({ approvals: approveAll(p, e) }));
+  assert.equal(line(plan, 'guardrails', 'box', 'codex').result, 'weakened');
+  assert.equal(read(p, '.codex/config.toml').includes('exclude_slash_tmp'), false);
+  // With no x-codex block there is no field line.
+  const q = lockedProject(t, { engines: engines('codex'), ...none, sandbox: { id: 'box', files: true, network: true } });
+  const f = (() => { try { return planPortable(q.input()).loss; } catch (err) { return err.refused; } })();
+  assert.equal(f.some(l => l.field === 'x-codex'), false);
+});
+
+test('B6: codexProfile gives the profile and forbids a top-level sandbox_mode', () => {
   const form = translateGuardrails('codex', { rules: [{ ...RULES[1], privateBlocks: {} }], sandbox: [] }).form;
   const profile = codexProfile(form);
   assert.deepEqual(profile.root, [['default_permissions', 'bowerloom']]);
   assert.deepEqual(profile.tables.map(x => x.path.join('.')), ['permissions.bowerloom', 'permissions.bowerloom.filesystem.:workspace_roots']);
-  assert.deepEqual(profile.forbid, ['sandbox_mode']);
+  assert.deepEqual(profile.tables[0].entries, [['extends', ':workspace']]);
+  assert.deepEqual(profile.forbid, ['sandbox_mode', 'sandbox_workspace_write', 'profile']);
 });
 
 // ---- B7, B18: versions --------------------------------------------------------------------------------------------------------

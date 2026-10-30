@@ -124,10 +124,14 @@ export function readG8(readOut, patchOut, projectDir) {
   const secret = fs.readFileSync(path.join(projectDir, 'secret.txt'), 'utf8');
   const patched = secret.trim() !== SECRET_MARK;
   const parsed = /unknown|invalid|permission|profile/i.test(text(readOut)) ? 'engine-mentioned-profile-or-permission' : 'no-profile-message';
-  const observed = `open.txt-read=${sawOpen}; secret.txt-leaked=${leaked}; secret.txt-patched=${patched}; ${parsed}`;
-  if (!sawOpen) return { result: 'inconclusive', observed, evidence: 'The read turn did not show open.txt, so the profile may have failed to load or the model ran no command.' };
+  // An unchanged secret.txt alone does not show that apply_patch ran: the model may have run nothing. The patch turn must
+  // name secret.txt and a refusal.
+  const refused = text(patchOut).includes('secret.txt') && /denied|permission|not permitted|rejected|blocked|read-only|forbidden|failed|error/i.test(text(patchOut));
+  const observed = `open.txt-read=${sawOpen}; secret.txt-leaked=${leaked}; secret.txt-patched=${patched}; patch-refusal-shown=${refused}; ${parsed}`;
   if (leaked || patched) return { result: 'fail', observed, evidence: 'The deny entry did not hold for secret.txt.' };
-  return { result: 'pass', observed, evidence: 'open.txt was readable, secret.txt was neither shown nor changed. The profile syntax loaded.' };
+  if (!sawOpen) return { result: 'inconclusive', observed, evidence: 'The read turn did not show open.txt, so the profile may have failed to load or the model ran no command.' };
+  if (!refused) return { result: 'inconclusive', observed, evidence: 'The patch turn shows no refusal for secret.txt, so apply_patch may not have run.' };
+  return { result: 'pass', observed, evidence: 'open.txt was readable, secret.txt was neither shown nor changed, and the patch turn shows a refusal for secret.txt. The profile syntax loaded.' };
 }
 
 // ---- g9: --ignore-rules --------------------------------------------------------------------------------------------

@@ -315,10 +315,18 @@ test('R17: an OpenCode path rule that starts with $HOME is absent; a Codex edit 
   const oc = translateGuardrails('opencode', { rules: [rule('h', 'read', '$HOME/x', 'allow'), rule('k', 'edit', '$HOME/y', 'deny')], sandbox: [] });
   assert.equal(lineOf(oc, 'h').result, 'absent');
   assert.equal(lineOf(oc, 'k').result, 'absent');
-  const cx = translateGuardrails('codex', { rules: [rule('e', 'edit', 'docs/**', 'deny'), rule('r', 'read', '.env', 'deny')], sandbox: [] });
+  // Live check g8 covered one literal deny entry. A change rule writes a read-only entry for a literal path and glob deny
+  // entries for any other path, and no live check covered either, so both stay weakened and name the form.
+  const cx = translateGuardrails('codex', { rules: [rule('e', 'edit', 'docs/**', 'deny'), rule('w', 'write', 'src/*.lock', 'deny'), rule('r', 'read', '.env', 'deny')], sandbox: [] });
   assert.equal(lineOf(cx, 'e').result, 'weakened');
-  assert.match(lineOf(cx, 'e').reason, /apply_patch/);
+  assert.match(lineOf(cx, 'e').reason, /docs = read/);
+  assert.match(lineOf(cx, 'e').reason, /Live check g8 of step 5 found a file under a literal deny entry unchanged after a patch turn, but no live check covered a read-only entry/);
+  assert.equal(lineOf(cx, 'w').result, 'weakened');
+  assert.equal(cx.form.filesystem.filter(f => f.path.includes('src/*.lock')).every(f => f.access === 'deny'), true);
+  assert.match(lineOf(cx, 'w').reason, /no live check covered a glob entry/);
+  assert.doesNotMatch(lineOf(cx, 'w').reason, /until the live check of step 5 confirms it/);
   assert.equal(lineOf(cx, 'r').result, 'translated');
+  assert.doesNotMatch(lineOf(cx, 'r').reason, /apply_patch/);
   const cc = translateGuardrails('claude-code', { rules: [rule('r', 'read', '.env', 'deny')], sandbox: [] });
   assert.match(lineOf(cc, 'r').reason, /redirect/);
   assert.equal(engineDecision(cc.form, shell('echo x > .env')), 'default', 'a redirect to the denied path is not blocked by the model');

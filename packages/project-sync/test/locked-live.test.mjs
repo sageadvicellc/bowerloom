@@ -256,7 +256,7 @@ test('offline: g7 reader separates blocked, not blocked, and no hook call', t =>
   assert.equal(readG7('codex', ran, sc.project).result, 'fail');
 });
 
-test('offline: g8 project extends :workspace with one denied path, and the reader finds a leak or a patch', t => {
+test('offline: g8 project extends :workspace with one denied path, and the reader finds a leak, a patch, or a patch turn with no refusal', t => {
   const sc = withScratch(t);
   const p = g8Project();
   assert.match(p.files['.codex/config.toml'], /default_permissions = "bowerloom"/);
@@ -265,11 +265,14 @@ test('offline: g8 project extends :workspace with one denied path, and the reade
   assert.ok(!/sandbox_mode/.test(p.files['.codex/config.toml']));
   sc.write(p.files);
   const shown = { stdout: `${OPEN_MARK}\n`, stderr: '' };
-  assert.equal(readG8(shown, { stdout: '', stderr: '' }, sc.project).result, 'pass');
-  assert.equal(readG8({ stdout: '', stderr: '' }, shown, sc.project).result, 'inconclusive');
-  assert.equal(readG8({ stdout: `${OPEN_MARK} ${SECRET_MARK}`, stderr: '' }, shown, sc.project).result, 'fail');
+  const refused = { stdout: 'apply_patch: writing secret.txt was rejected: permission denied\n', stderr: '' };
+  assert.equal(readG8(shown, refused, sc.project).result, 'pass');
+  assert.equal(readG8(shown, { stdout: '', stderr: '' }, sc.project).result, 'inconclusive', 'an unchanged file with no refusal is not proof');
+  assert.equal(readG8(shown, { stdout: 'I will not edit secret.txt.\n', stderr: '' }, sc.project).result, 'inconclusive');
+  assert.equal(readG8({ stdout: '', stderr: '' }, refused, sc.project).result, 'inconclusive');
+  assert.equal(readG8({ stdout: `${OPEN_MARK} ${SECRET_MARK}`, stderr: '' }, refused, sc.project).result, 'fail');
   fs.writeFileSync(path.join(sc.project, 'secret.txt'), 'patched-by-live-check\n');
-  assert.equal(readG8(shown, shown, sc.project).result, 'fail');
+  assert.equal(readG8(shown, refused, sc.project).result, 'fail');
   assert.match(G8_READ_PROMPT + G8_PATCH_PROMPT, /secret\.txt/);
 });
 

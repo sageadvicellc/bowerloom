@@ -5,8 +5,8 @@
  *
  * - Guardrails and the sandbox take the engine form and the loss lines of the fidelity package as they are. A line
  *   changes only where the writer does not carry what the line claims: a Codex MCP rule for a server the projection does
- *   not write, the Codex permission profile while its switch is off (ruling B6), and Claude Code hooks that a person's
- *   settings turn off or put under a permission mode (ruling B11).
+ *   not write, the Codex permission profile if its switch is turned off (ruling B6), and Claude Code hooks that a
+ *   person's settings turn off or put under a permission mode (ruling B11).
  * - A file a person keeps (`.mcp.json`, `.claude/settings.json`, `.codex/config.toml`, `.codex/hooks.json`,
  *   `opencode.json`, `.pi/mcp.json`) gets entries added by text insertion. Every other byte stays, and so does its mode.
  *   The base of the insertion is the file as it was before Bowerloom first wrote it, so a second projection gives the
@@ -43,10 +43,15 @@ export const PINNED_VERSIONS: Readonly<Partial<Record<EngineId, readonly string[
 export const CHECKED_VERSIONS: Readonly<Partial<Record<EngineId, string>>> = Object.freeze({ 'claude-code': '2.1.310', codex: '0.157.0', pi: '1.4.0' });
 const ENGINE_NAMES: Readonly<Record<EngineId, string>> = { 'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode', pi: 'Pi', 'deepseek-harness': 'DeepSeek Harness' };
 /**
- * The switch of the Codex permission profile. While it is off, Bowerloom writes no `default_permissions` and no profile,
- * until the live check of step 5 confirms their syntax (ruling B6).
+ * The switch of the Codex permission profile (ruling B6). It is on: live check g8 of step 5 (tools/step5/live/README.md)
+ * passed on Codex 0.157.0 on 2026-10-30. A config with `default_permissions = "bowerloom"` and a profile that extends
+ * `:workspace` loaded, and its deny entry stopped Codex from reading and from patching the denied file. If the switch is
+ * off, Bowerloom writes no `default_permissions` and no profile, and every entry the profile would carry is weakened.
+ * While it is on, every line the profile carries is weakened too, and says what g8 covered and what it did not.
  */
-export const CODEX_PROFILE_ENABLED: boolean = false;
+export const CODEX_PROFILE_ENABLED: boolean = true;
+/** What live check g8 covered of the profile, said on every line the profile carries. */
+const CODEX_PROFILE_COVERAGE = 'Bowerloom writes default_permissions = "bowerloom" and a Codex permission profile that extends :workspace (ruling B6). Live check g8 of step 5 showed on Codex 0.157.0 that this profile loads, that a literal deny entry at the project root blocks a read, and that the file was unchanged after a patch turn. No live check covered a glob entry, a read-only entry, the network and write bounds of :workspace, or the settings Bowerloom does not read: user and managed configuration, a profile selected on the command line, and start flags such as --sandbox. So the line is weakened.';
 /** The Codex permission profile Bowerloom would write, and the built-in profile it would extend. */
 export const CODEX_PROFILE = 'bowerloom';
 export const CODEX_PROFILE_BASE = ':workspace';
@@ -344,10 +349,27 @@ export function planLocked(ctx: LockedContext): LockedPlan {
           if (CODEX_PROFILE_ENABLED) {
             const profile = codexProfile(form);
             root.push(...profile.root); forbid.push(...profile.forbid); tables.push(...profile.tables);
-          } else {
-            // Ruling B6: no profile until step 5. Every entry the profile would carry is weakened and says so.
+            // Live check g8 covered the profile syntax and one literal deny entry, not every form the profile carries.
             const held = new Set(g.written.filter(w => w.where.startsWith('filesystem[') || w.where === 'sandbox').map(w => w.source));
-            for (const l of [...guardLines]) if (held.has(l.entry)) setLine(l.entry, 'weakened', `Not written: Bowerloom writes no Codex permission profile until the live check of step 5 confirms its syntax. The form it holds back: ${l.reason}`);
+            for (const [i, l] of guardLines.entries()) {
+              if (held.has(l.entry) && l.field === undefined) guardLines[i] = { ...l, result: 'weakened', reason: `${CODEX_PROFILE_COVERAGE} The form: ${l.reason}` };
+            }
+            // The profile carries no key of the sandbox's x-codex block. As review item K3 does for Claude Code, each key
+            // gets an absent line, which needs an approval, since the sandbox is enforced.
+            const box = view.sandbox[0], block = box && form.sandbox ? g.privateBlocks[box.id] : undefined;
+            if (box && block !== undefined) {
+              const keys = isObject(block) ? Object.keys(block) : null;
+              if (keys === null || keys.length) {
+                guardLines.push({
+                  part: 'guardrails', entry: box.id, field: `x-${engine}`, engine, result: 'absent',
+                  reason: `${keys ? `These keys of the x-${engine} block are not written: ${keys.join(', ')}.` : `The x-${engine} block is not an object, so it is not written.`} The Codex permission profile extends ${CODEX_PROFILE_BASE}, and Bowerloom writes no sandbox key from the block into it.`,
+                });
+              }
+            }
+          } else {
+            // Ruling B6: with the switch off there is no profile. Every entry the profile would carry is weakened and says so.
+            const held = new Set(g.written.filter(w => w.where.startsWith('filesystem[') || w.where === 'sandbox').map(w => w.source));
+            for (const l of [...guardLines]) if (held.has(l.entry)) setLine(l.entry, 'weakened', `Not written: the switch of the Codex permission profile is off, so Bowerloom writes no profile. The form it holds back: ${l.reason}`);
           }
         }
         if (root.length || tables.length) {
@@ -500,11 +522,14 @@ function hookOps(hooks: readonly HookForm[]): JsonOp[] {
   }));
 }
 
-/** The profile: the key that selects it, its tables, and the top-level key that would override it. */
+/**
+ * The profile: the key that selects it, its tables, and the top-level keys of a person's file that could override it or
+ * change what it allows. Each of those keys is a conflict.
+ */
 export function codexProfile(form: CodexForm): { readonly root: [string, Out][]; readonly tables: TomlTable[]; readonly forbid: string[] } {
   const tables: TomlTable[] = [{ path: ['permissions', CODEX_PROFILE], entries: [['extends', CODEX_PROFILE_BASE]] }];
   if (form.filesystem.length) tables.push({ path: ['permissions', CODEX_PROFILE, 'filesystem', ':workspace_roots'], entries: filesystemEntries(form.filesystem) });
-  return { root: [['default_permissions', CODEX_PROFILE]], tables, forbid: ['sandbox_mode'] };
+  return { root: [['default_permissions', CODEX_PROFILE]], tables, forbid: ['sandbox_mode', 'sandbox_workspace_write', 'profile'] };
 }
 
 /** Codex lets one path hold one access: the strictest one wins when two rules name a path. */

@@ -136,8 +136,10 @@ export function translateCodex(rules: readonly GuardrailRule[], sandbox: readonl
         const { entries, more } = filesystemEntries(rule);
         for (const e of entries) { out.wrote(rule.id, `filesystem["${e.path}"]`); filesystem.push(e); }
         const extra = more.length ? ` It blocks more: ${more.join('; ')}.` : '';
-        // Ruling R17: apply_patch may not honor the filesystem table, so a change rule is weakened until step 5 checks it.
-        const patch = rule.action === 'read' ? '' : ' Codex edits files through apply_patch, which may not honor the filesystem table, so the rule is weakened until the live check of step 5 confirms it.';
+        // Ruling R17: live check g8 of step 5 patched a file under one literal deny entry, and the file did not change. A
+        // change rule writes a read-only entry for a literal path and glob deny entries for every other path, and no
+        // live check covered either form, so a change rule stays weakened.
+        const patch = rule.action === 'read' ? '' : ` Codex edits files through apply_patch. Live check g8 of step 5 found a file under a literal deny entry unchanged after a patch turn, but no live check covered ${entries.some(e => e.access === 'read') ? 'a read-only entry' : 'a glob entry'}, so the rule is weakened.`;
         out.line(rule, rule.action === 'read' ? 'translated' : 'weakened', `Codex carries the rule in the sandbox filesystem table as ${entries.map(e => `${e.path} = ${e.access}`).join(', ')}.${tightenAsk}${extra} ${sandboxNote}${patch} ${escapeSentence('codex', 'path')}`);
         break;
       }

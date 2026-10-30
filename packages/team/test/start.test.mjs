@@ -221,8 +221,11 @@ test('decision 9: an ask rule in the member harness counts too; deny and allow r
     refusedStart(one.team, input(one.project, { harnesses: { demo: harness('demo', { rules: [loadedRule('ask-push', { effect: 'ask' })] }) } }), 'TEAM_START_APPROVAL_UNREACHABLE');
   }
   const { project, team } = setup(solo('codex'), {}, []);
-  // A deny of a path is no approval; a shell deny is covered in verify.test.mjs (V4: --ignore-rules).
-  planned(team, input(project, { harnesses: { demo: harness('demo', { rules: [loadedRule('no-env', { action: 'read', pattern: '.env' }), loadedRule('read-docs', { action: 'read', pattern: 'docs/**', effect: 'allow', strength: 'advisory' })] }) } }));
+  // A deny of a path is no approval; a shell deny is covered in verify.test.mjs (V4: --ignore-rules). A path rule writes
+  // the Codex permission profile, which --sandbox may override, so the member is refused for that alone (B6).
+  const paths = refusedStart(team, input(project, { harnesses: { demo: harness('demo', { rules: [loadedRule('no-env', { action: 'read', pattern: '.env' }), loadedRule('read-docs', { action: 'read', pattern: 'docs/**', effect: 'allow', strength: 'advisory' })] }) } }), 'TEAM_START_UNPINNED');
+  assert.equal(paths.some(p => p.code === 'TEAM_START_APPROVAL_UNREACHABLE'), false);
+  assert.ok(paths.every(p => p.code === 'TEAM_START_UNPINNED' && /--sandbox/.test(p.message)), JSON.stringify(paths));
   // An ask rule for another engine does not apply.
   planned(team, input(project, { harnesses: { demo: harness('demo', { rules: [loadedRule('ask-claude', { effect: 'ask', engines: ['claude-code'] })] }) } }));
 });
