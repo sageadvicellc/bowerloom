@@ -542,3 +542,46 @@ test('special characters survive an edit unchanged', () => {
   assert.equal(text(byPath(r).get('skills/deploy/SKILL.md')), skill('deploy', 'Snowman ☃ and emoji 😀.', '', body));
   assert.equal(loadFromDisk(r).entries.skills.find(s => s.id === 'deploy').body, '\n' + body);
 });
+
+test('an agent edit keeps the frontmatter comments and key order through a link, an unlink, and a remove-skill', () => {
+  const commented = [
+    '---',
+    '# The reader agent. Keep this note.',
+    'name: reader',
+    'description: A read-only reader. # why it is read-only',
+    'model:',
+    '  claude-code: model-a # the fast one',
+    'tools:',
+    '  - read # always',
+    '  - search',
+    'skills:',
+    '  - review # first',
+    'x-claude-code:',
+    '  color: blue # the colour in the menu',
+    '---',
+    '',
+    'Read the files.',
+    '',
+  ].join('\n');
+  const def = load(fullFiles({ 'agents/reader.md': commented }));
+  const keyOrder = t => t.split('\n').filter(l => /^[a-z-]+:/.test(l)).map(l => l.slice(0, l.indexOf(':')));
+  const original = keyOrder(commented);
+  const comments = ['# The reader agent. Keep this note.', '# why it is read-only', '# the fast one', '# always', '# the colour in the menu'];
+  const check = (r, label) => {
+    const out = text(byPath(r).get('agents/reader.md'));
+    for (const c of comments) assert.ok(out.includes(c), `${label}: the comment "${c}" survives`);
+    assert.deepEqual(keyOrder(out), original, `${label}: the keys keep their order`);
+    assert.ok(out.endsWith('---\n\nRead the files.\n'), `${label}: the body is the same`);
+    return out;
+  };
+  const linked = check(done(def, [{ kind: 'set-agent', id: 'reader', skills: ['review', 'deploy'] }]), 'link');
+  assert.ok(linked.includes('# first'), 'link: a kept item keeps its comment');
+  assert.deepEqual(readFrontmatter(linked).data.skills, ['review', 'deploy']);
+  const relinked = load(fullFiles({ 'agents/reader.md': linked }));
+  const unlinked = check(done(relinked, [{ kind: 'set-agent', id: 'reader', skills: ['review'] }]), 'unlink');
+  assert.ok(unlinked.includes('# first'), 'unlink: a kept item keeps its comment');
+  assert.deepEqual(readFrontmatter(unlinked).data.skills, ['review']);
+  const removed = check(done(relinked, [{ kind: 'remove-skill', id: 'deploy' }]), 'remove-skill');
+  assert.ok(removed.includes('# first'), 'remove-skill: a kept item keeps its comment');
+  assert.deepEqual(readFrontmatter(removed).data.skills, ['review']);
+});
