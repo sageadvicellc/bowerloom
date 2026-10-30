@@ -166,7 +166,8 @@ const codeOf = (error: unknown): string => {
 export function afterSaveWarnings(journalLeft: boolean, pointError: unknown): string[] {
   const out: string[] = [];
   if (pointError !== null && pointError !== undefined) out.push(`The save is done. Bowerloom could not keep a save point of it (${codeOf(pointError)}), so Go back has no entry for this save.`);
-  if (journalLeft) out.push('The save is done. Bowerloom could not clear its note of the save in progress, so install and other changes wait. Choose Finish a stopped harness for this folder.');
+  // The app's recovery of a stopped save takes it back; the words say so, so nobody undoes a finished save by surprise.
+  if (journalLeft) out.push('The save is done. Bowerloom could not clear its note of the save in progress, so install and other changes wait. Finish a stopped harness clears the note, and it takes this save back.');
   return out;
 }
 export { codeOf as saveCodeOf };
