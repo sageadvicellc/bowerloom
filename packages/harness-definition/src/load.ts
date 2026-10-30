@@ -46,12 +46,29 @@ const LEGACY = new Set<string>(LEGACY_NAMES);
 const byBytes = (a: string, b: string) => Buffer.compare(Buffer.from(a), Buffer.from(b));
 type Kind = 'file' | 'dir' | 'link' | 'other' | null;
 
+/**
+ * Reads the files of a definition. With `memory` it reads a set of files held in memory instead of a folder: every check
+ * below runs the same, and nothing touches the disk. `loadDefinitionFiles` checks the paths of a memory set first.
+ */
 class Reader {
   readonly problems: Problem[] = [];
   readonly files = new Map<string, { bytes: Uint8Array; executable: boolean }>();
   private total = 0;
   private readonly canonical = new Set<string>();
-  constructor(readonly root: string) {}
+  /** From a folder of the memory set to the names inside it. The top folder is the empty string. */
+  private readonly folders = new Map<string, Set<string>>();
+  constructor(readonly root: string, private readonly memory?: ReadonlyMap<string, DefinitionFile>) {
+    if (!memory) return;
+    for (const rel of memory.keys()) {
+      const parts = rel.split('/');
+      for (let i = 0; i < parts.length; i++) {
+        const dir = parts.slice(0, i).join('/');
+        const names = this.folders.get(dir) ?? new Set<string>();
+        names.add(parts[i]!);
+        this.folders.set(dir, names);
+      }
+    }
+  }
 
   fail(code: string, rel: string, message: string): void {
     if (this.problems.length < DEFINITION_LIMITS.problems) this.problems.push({ code, path: rel, message });
@@ -64,6 +81,7 @@ class Reader {
 
   /** The kind of an entry, without following a link. Null when it does not exist, `other` after an UNREADABLE problem. */
   kind(rel: string): Kind {
+    if (this.memory) return this.memory.has(rel) ? 'file' : this.folders.has(rel) ? 'dir' : null;
     let st: fs.Stats;
     try { st = fs.lstatSync(path.join(this.root, rel)); } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
@@ -79,6 +97,15 @@ class Reader {
     if (this.canonical.has(key)) { this.fail('DUPLICATE_PATH', rel, 'Two files have this name in different Unicode forms.'); return undefined; }
     this.canonical.add(key);
     if (this.files.size >= DEFINITION_LIMITS.files) { this.fail('TOO_LARGE', rel, `A definition holds at most ${DEFINITION_LIMITS.files} files.`); return undefined; }
+    if (this.memory) {
+      const file = this.memory.get(rel);
+      if (!file) { this.fail('UNREADABLE', rel, 'This entry cannot be read (ENOENT).'); return undefined; }
+      if (!this.admit(rel, file.bytes.length)) return undefined;
+      const bytes = Buffer.from(file.bytes);
+      this.total += bytes.length;
+      this.files.set(rel, { bytes, executable: file.executable === true });
+      return bytes;
+    }
     const abs = path.join(this.root, rel);
     let seen: fs.Stats;
     try { seen = fs.lstatSync(abs); } catch (error) { this.unreadable(rel, error); return undefined; }
@@ -95,8 +122,7 @@ class Reader {
       if (st.dev !== seen.dev || st.ino !== seen.ino) { this.fail('FILE_CHANGED', rel, 'This file was replaced while it was read.'); return undefined; }
       if (!st.isFile()) { this.fail('UNEXPECTED_FILE', rel, 'This must be a regular file.'); return undefined; }
       if (st.nlink !== 1) { this.fail('HARDLINK', rel, 'A definition cannot hold a file with more than one hard link.'); return undefined; }
-      if (st.size > DEFINITION_LIMITS.fileBytes) { this.fail('TOO_LARGE', rel, 'A definition file holds at most 1 MiB.'); return undefined; }
-      if (this.total + st.size > DEFINITION_LIMITS.totalBytes) { this.fail('TOO_LARGE', rel, 'A definition holds at most 32 MiB in all.'); return undefined; }
+      if (!this.admit(rel, st.size)) return undefined;
       const buffer = Buffer.alloc(st.size + 1);
       let length = 0;
       for (;;) {
@@ -116,6 +142,19 @@ class Reader {
     } finally { fs.closeSync(fd); }
   }
 
+  /** True when a file of this size fits the limits; else records the problem. */
+  private admit(rel: string, size: number): boolean {
+    if (size > DEFINITION_LIMITS.fileBytes) { this.fail('TOO_LARGE', rel, 'A definition file holds at most 1 MiB.'); return false; }
+    if (this.total + size > DEFINITION_LIMITS.totalBytes) { this.fail('TOO_LARGE', rel, 'A definition holds at most 32 MiB in all.'); return false; }
+    return true;
+  }
+
+  /** The names in a folder, unsorted. `.` is the top folder. Throws a system error for a folder that cannot be listed. */
+  readdir(rel: string): string[] {
+    if (this.memory) return [...(this.folders.get(rel === '.' ? '' : rel) ?? [])];
+    return fs.readdirSync(path.join(this.root, rel));
+  }
+
   /**
    * The names in a folder, in byte order. The folder is checked again just before it is listed. Refuses links, hidden
    * names, and odd characters; skips a `.DS_Store` file and an empty `.gitkeep` file.
@@ -126,7 +165,7 @@ class Reader {
     if (self === 'link') { this.fail('SYMLINK', rel, 'A definition cannot hold a symbolic link.'); return []; }
     if (self !== 'dir') return [];
     let names: string[];
-    try { names = fs.readdirSync(path.join(this.root, rel)); } catch (error) { this.unreadable(rel, error); return []; }
+    try { names = this.readdir(rel); } catch (error) { this.unreadable(rel, error); return []; }
     if (names.length > DEFINITION_LIMITS.folderEntries) { this.fail('TOO_LARGE', rel, `A folder holds at most ${DEFINITION_LIMITS.folderEntries} entries.`); return []; }
     const out: { name: string; kind: 'file' | 'dir' }[] = [];
     for (const name of names.sort(byBytes)) {
@@ -145,6 +184,7 @@ class Reader {
   skipped(rel: string, name: string): boolean {
     if (name === '.DS_Store') return true;
     if (name !== '.gitkeep') return false;
+    if (this.memory) return this.memory.get(rel)?.bytes.length === 0;
     try { return fs.lstatSync(path.join(this.root, rel)).size === 0; } catch { return false; }
   }
 
@@ -198,6 +238,41 @@ export function loadDefinition(folder: string): LoadResult {
     return fail(r.problems);
   }
   if (!st.isDirectory()) return fail([{ code: 'FOLDER_MISSING', path: '.', message: 'The definition folder must be a folder, not a file or a link.' }]);
+  return loadFrom(r, root);
+}
+
+/**
+ * Loads a definition from files held in memory: the same checks as `loadDefinition`, with no access to the disk. A path is
+ * relative to the `.bowerloom` folder, with `/` separators. `folder` is only a label for `Definition.folder`. A path that
+ * is not plain, a path used twice, and a path used as both a file and a folder are problems. Nothing given is changed.
+ */
+export function loadDefinitionFiles(files: readonly DefinitionFile[], folder = ''): LoadResult {
+  if (!Array.isArray(files)) return fail([{ code: 'INVALID_FILES', path: '.', message: 'The files must be a list of paths and bytes.' }]);
+  const memory = new Map<string, DefinitionFile>();
+  const problems: Problem[] = [];
+  const add = (code: string, message: string, at = '.') => { if (problems.length < DEFINITION_LIMITS.problems) problems.push({ code, path: at, message }); };
+  for (const file of files as readonly unknown[]) {
+    const f = file as Partial<DefinitionFile> | null;
+    if (f === null || typeof f !== 'object' || typeof f.path !== 'string' || !(f.bytes instanceof Uint8Array)) { add('INVALID_FILES', 'Each file needs a path and bytes.'); continue; }
+    if (!plainPath(f.path)) { add('UNEXPECTED_FILE', 'A definition path must be a plain relative path with / separators.'); continue; }
+    if (memory.has(f.path)) { add('DUPLICATE_PATH', 'Two files have the same path.', f.path); continue; }
+    memory.set(f.path, f as DefinitionFile);
+  }
+  for (const p of memory.keys()) {
+    for (let i = p.indexOf('/'); i !== -1; i = p.indexOf('/', i + 1)) {
+      if (memory.has(p.slice(0, i))) { add('UNEXPECTED_FILE', 'This path is used as both a file and a folder.', p.slice(0, i)); break; }
+    }
+  }
+  if (problems.length) return fail(problems);
+  return loadFrom(new Reader('', memory), folder);
+}
+
+/** A path with `/` separators and no empty, `.`, or `..` part, no backslash, and no control character. */
+function plainPath(p: string): boolean {
+  return p !== '' && !/[\x00-\x1f\x7f\\]/.test(p) && p.split('/').every(part => part !== '' && part !== '.' && part !== '..');
+}
+
+function loadFrom(r: Reader, root: string): LoadResult {
   if (r.kind('harness.json') === null) return fail([{ code: 'HARNESS_MISSING', path: 'harness.json', message: 'A definition folder needs a harness.json file.' }]);
 
   const present = topLevel(r);
@@ -254,7 +329,7 @@ function fail(problems: readonly Problem[]): LoadResult { return { ok: false, pr
 function topLevel(r: Reader): Set<string> {
   const present = new Set<string>();
   let names: string[];
-  try { names = fs.readdirSync(r.root).sort(byBytes); } catch (error) { r.unreadable('.', error); return present; }
+  try { names = r.readdir('.').sort(byBytes); } catch (error) { r.unreadable('.', error); return present; }
   for (const name of names) {
     const kind = r.kind(name);
     if (kind === 'link') { r.fail('SYMLINK', name, 'A definition folder cannot hold a symbolic link.'); continue; }

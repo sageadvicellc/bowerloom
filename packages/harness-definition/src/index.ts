@@ -19,7 +19,7 @@ export type {
 } from './types.js';
 export { jsonValueFault, parseStrictJson, readFrontmatter } from './json.js';
 export type { FrontmatterResult, StrictJsonCode, StrictJsonResult } from './json.js';
-export { isDefinitionFolder, loadDefinition } from './load.js';
+export { isDefinitionFolder, loadDefinition, loadDefinitionFiles } from './load.js';
 export { adoptedPaths, isPermissionKey } from './schema.js';
 export { REVISION_PREFIX, canonicalBytes, computeRevision, fileContentHash, skillContentHash } from './revision.js';
 export { INCOMPLETE_RULES, isReferenceOnly, isSafeName, isSecretKey, safeName, scanSecrets } from './secrets.js';
@@ -35,3 +35,5 @@ export {
 export type {
   ApprovalOptions, FidelityApproval, FidelitySource, FidelityVerdict, JudgedLine, LayerApproval, LossLine, LossReport, ParseResult,
 } from './fidelity.js';
+export { EDIT_KINDS, editDefinition } from './write.js';
+export type { DefinitionEdit, EditChange, EditRefusalCode, EditResult } from './write.js';
