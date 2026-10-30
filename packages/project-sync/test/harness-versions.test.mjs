@@ -27,6 +27,7 @@ function world(t) {
   const store = path.join(dirs.base, 'versions');
   return { base, dir, stateRoot, dirs, store, index: path.join(store, 'index.json'), blobs: path.join(store, 'blobs') };
 }
+const at = (read, p) => read.files.find(f => f.path === p)?.bytes;
 const blobNames = w => fs.existsSync(w.blobs) ? fs.readdirSync(w.blobs).sort() : [];
 const rawIndex = w => JSON.parse(fs.readFileSync(w.index, 'utf8'));
 
@@ -55,8 +56,9 @@ test('versions: a record, list, and read round trip keeps every byte, in private
   assert.deepEqual(listVersions(w.dirs, 'main'), [made]);
   const read = readVersion(w.dirs, 'main', 'v1');
   assert.deepEqual(read.entry, made);
-  assert.deepEqual([...read.files.keys()].sort(), [...files.keys()].sort());
-  for (const [p, b] of files) assert.deepEqual(Buffer.from(read.files.get(p)), b);
+  assert.deepEqual(read.files.map(f => f.path), [...files.keys()].sort());
+  for (const [p, b] of files) assert.deepEqual(Buffer.from(at(read, p)), b);
+  assert.ok(read.files.every(f => f.executable === false));
 
   const file = rawIndex(w);
   assert.equal(file.format, VERSION_FORMAT);
@@ -69,7 +71,7 @@ test('versions: a plain object of path to bytes is taken as a file set, and a te
   const w = world(t);
   const made = recordVersion(w.dirs, 'main', { 'harness.json': Buffer.from('{}\n'), 'a.md': new Uint8Array([104, 105]) }, meta());
   assert.deepEqual(made.files.map(f => f.path), ['a.md', 'harness.json']);
-  assert.deepEqual(Buffer.from(readVersion(w.dirs, 'main', 'v1').files.get('a.md')), Buffer.from('hi'));
+  assert.deepEqual(Buffer.from(at(readVersion(w.dirs, 'main', 'v1'), 'a.md')), Buffer.from('hi'));
   assert.throws(() => recordVersion(w.dirs, 'main', { 'harness.json': '{}' }, meta()), code('VERSION_USAGE'));
 });
 
@@ -148,7 +150,7 @@ test('versions: pruning one folder never touches another', t => {
   recordVersion(w.dirs, 'other', set({ f: 'other-only' }), meta('o1'));
   for (let i = 0; i < VERSION_LIMITS.versions + 2; i++) recordVersion(w.dirs, 'main', set({ f: `m${i}` }), meta(`r${i}`));
   assert.equal(listVersions(w.dirs, 'other').length, 1);
-  assert.equal(Buffer.from(readVersion(w.dirs, 'other', 'v1').files.get('f')).toString(), 'other-only');
+  assert.equal(Buffer.from(at(readVersion(w.dirs, 'other', 'v1'), 'f')).toString(), 'other-only');
 });
 
 test('versions: a file set at the limits is stored, and one past a limit is refused with nothing written', t => {
@@ -181,7 +183,7 @@ test('versions: an index that would pass its size limit drops the oldest version
   assert.ok(list.length < 8 && list.length >= 1);
   assert.equal(list[0].id, 'v8');
   assert.ok(fs.statSync(w.index).size <= VERSION_LIMITS.index);
-  assert.ok(readVersion(w.dirs, 'wide', 'v8').files.size === 200);
+  assert.ok(readVersion(w.dirs, 'wide', 'v8').files.length === 200);
 });
 
 test('versions: the number of folders is bounded', t => {
@@ -202,7 +204,7 @@ test('versions: a write that stops before the index lands leaves the earlier ind
   assert.deepEqual(fs.readFileSync(w.index), before);
   assert.deepEqual(fs.readdirSync(w.store).sort(), ['blobs', 'index.json']);
   assert.deepEqual(listVersions(w.dirs, 'main').map(v => v.id), ['v1']);
-  assert.equal(Buffer.from(readVersion(w.dirs, 'main', 'v1').files.get('f')).toString(), 'first');
+  assert.equal(Buffer.from(at(readVersion(w.dirs, 'main', 'v1'), 'f')).toString(), 'first');
   // The blob of the lost write is an orphan. The next record removes it and takes the same counter.
   assert.ok(blobNames(w).includes(sha('second')));
   const next = recordVersion(w.dirs, 'main', set({ f: 'third' }), meta('r3'));
@@ -250,7 +252,7 @@ test('versions: a changed blob, a short blob, and a blob that is a link are each
   fs.writeFileSync(path.join(w.blobs, sha('alpha')), 'ALPHA');
   assert.throws(() => readVersion(w.dirs, 'main', 'v1'), code('VERSION_CORRUPT'));
   fs.writeFileSync(path.join(w.blobs, sha('alpha')), 'alpha');
-  assert.equal(readVersion(w.dirs, 'main', 'v1').files.size, 3);
+  assert.equal(readVersion(w.dirs, 'main', 'v1').files.length, 3);
   fs.truncateSync(path.join(w.blobs, sha('beta')), 2);
   assert.throws(() => readVersion(w.dirs, 'main', 'v1'), code('VERSION_CORRUPT'));
   fs.writeFileSync(path.join(w.blobs, sha('beta')), 'beta');
@@ -264,8 +266,8 @@ test('versions: a recorded blob that was damaged is written again by the next re
   recordVersion(w.dirs, 'main', set({ a: 'alpha' }), meta('r1'));
   fs.writeFileSync(path.join(w.blobs, sha('alpha')), 'broken');
   recordVersion(w.dirs, 'main', set({ a: 'alpha' }), meta('r2'));
-  assert.equal(Buffer.from(readVersion(w.dirs, 'main', 'v2').files.get('a')).toString(), 'alpha');
-  assert.equal(Buffer.from(readVersion(w.dirs, 'main', 'v1').files.get('a')).toString(), 'alpha');
+  assert.equal(Buffer.from(at(readVersion(w.dirs, 'main', 'v2'), 'a')).toString(), 'alpha');
+  assert.equal(Buffer.from(at(readVersion(w.dirs, 'main', 'v1'), 'a')).toString(), 'alpha');
 });
 
 test('versions: a damaged or odd index is VERSION_CORRUPT for list, read, and record, and is left as it is', t => {
@@ -386,8 +388,8 @@ test('versions: folders do not leak into each other, by list, by read, or by a s
   assert.throws(() => readVersion(w.dirs, 'three', 'v1'), code('VERSION_UNKNOWN'));
   // The id v1 exists in both, and each read gives its own folder's bytes.
   const one = readVersion(w.dirs, 'one', 'v1'), two = readVersion(w.dirs, 'two', 'v1');
-  assert.equal(Buffer.from(one.files.get('harness.json')).toString(), 'ONE'); assert.equal(one.files.has('extra.md'), false);
-  assert.equal(Buffer.from(two.files.get('harness.json')).toString(), 'TWO'); assert.equal(two.files.has('extra.md'), true);
+  assert.equal(Buffer.from(at(one, 'harness.json')).toString(), 'ONE'); assert.equal((at(one, 'extra.md') !== undefined), false);
+  assert.equal(Buffer.from(at(two, 'harness.json')).toString(), 'TWO'); assert.equal((at(two, 'extra.md') !== undefined), true);
   assert.equal(one.entry.label, 'one label'); assert.equal(two.entry.label, 'two label');
 });
 
@@ -406,9 +408,9 @@ test('versions: a returned entry and file set are copies, so a caller cannot cha
   input.get('f')[0] = 0; input.set('g', Buffer.from('x'));
   assert.throws(() => { made.files[0].path = 'changed'; }, TypeError);
   const read = readVersion(w.dirs, 'main', 'v1');
-  assert.equal(Buffer.from(read.files.get('f')).toString(), 'abc');
-  read.files.get('f')[0] = 0;
-  assert.equal(Buffer.from(readVersion(w.dirs, 'main', 'v1').files.get('f')).toString(), 'abc');
+  assert.equal(Buffer.from(at(read, 'f')).toString(), 'abc');
+  at(read, 'f')[0] = 0;
+  assert.equal(Buffer.from(at(readVersion(w.dirs, 'main', 'v1'), 'f')).toString(), 'abc');
   assert.equal(listVersions(w.dirs, 'main')[0].files.length, 1);
 });
 
@@ -423,5 +425,94 @@ test('versions: the refusal codes are listed, each refusal is a VersionRefusal, 
       assert.ok(!e.message.includes(w.base), e.message);
       assert.ok(!e.message.includes(secret), e.message);
     }
+  }
+});
+
+// ---- the execute bit ---------------------------------------------------------------------------------------------------
+
+const file = (path, text, executable) => ({ path, bytes: Buffer.from(text), ...(executable === undefined ? {} : { executable }) });
+
+test('versions: a list of definition files keeps the execute bit of each, and reads back as a sorted list of the same shape', t => {
+  const w = world(t);
+  const made = recordVersion(w.dirs, 'main', [
+    file('skills/review/scripts/run.sh', '#!/bin/sh\n', true), file('harness.json', '{}\n', false), file('B.md', 'upper'), file('a.md', 'lower', true),
+  ], meta());
+  // Byte order: an upper-case name sorts before a lower-case one.
+  assert.deepEqual(made.files.map(f => [f.path, f.executable]), [['B.md', false], ['a.md', true], ['harness.json', false], ['skills/review/scripts/run.sh', true]]);
+  assert.deepEqual(Object.keys(made.files[0]).sort(), ['bytes', 'executable', 'path', 'sha256']);
+  const read = readVersion(w.dirs, 'main', 'v1');
+  assert.ok(Array.isArray(read.files));
+  assert.deepEqual(read.files.map(f => f.path), ['B.md', 'a.md', 'harness.json', 'skills/review/scripts/run.sh']);
+  assert.deepEqual(read.files.map(f => f.executable), [false, true, false, true]);
+  for (const f of read.files) { assert.deepEqual(Object.keys(f).sort(), ['bytes', 'executable', 'path']); assert.ok(f.bytes instanceof Uint8Array); }
+  assert.equal(Buffer.from(at(read, 'a.md')).toString(), 'lower');
+  assert.deepEqual(listVersions(w.dirs, 'main')[0].files.map(f => f.executable), [false, true, false, true]);
+  assert.equal(rawIndex(w).folders[0].versions[0].files[1].executable, true);
+});
+
+test('versions: a map or an object of bytes is taken with the execute bit off', t => {
+  const w = world(t);
+  recordVersion(w.dirs, 'main', set({ 'run.sh': 'x', 'b': 'y' }), meta());
+  recordVersion(w.dirs, 'main', { 'run.sh': Buffer.from('x') }, meta());
+  for (const id of ['v1', 'v2']) assert.ok(readVersion(w.dirs, 'main', id).files.every(f => f.executable === false));
+});
+
+test('versions: the same bytes with another execute bit are one blob and two entries', t => {
+  const w = world(t);
+  recordVersion(w.dirs, 'main', [file('a.sh', 'same', true), file('b.sh', 'same', false)], meta());
+  assert.deepEqual(blobNames(w), [sha('same')]);
+  assert.deepEqual(readVersion(w.dirs, 'main', 'v1').files.map(f => f.executable), [true, false]);
+});
+
+test('versions: what readVersion returns can be recorded again as it is, with nothing lost', t => {
+  const w = world(t);
+  recordVersion(w.dirs, 'main', [file('x.sh', '#!/bin/sh\n', true), file('harness.json', '{}\n')], meta('r1'));
+  const back = readVersion(w.dirs, 'main', 'v1').files;
+  const again = recordVersion(w.dirs, 'main', back, meta('r2'));
+  assert.deepEqual(again.files, listVersions(w.dirs, 'main').at(-1).files);
+  assert.deepEqual(again.files, readVersion(w.dirs, 'main', 'v1').entry.files);
+  assert.deepEqual(readVersion(w.dirs, 'main', 'v2').files, back);
+});
+
+test('versions: a list with a bad execute bit, a repeated path, or an odd element is refused VERSION_USAGE', t => {
+  const w = world(t);
+  const ok = file('harness.json', '{}');
+  const bad = [
+    [], [ok, file('harness.json', 'other')], [{ ...ok, executable: 1 }], [{ ...ok, executable: 'true' }], [{ ...ok, executable: null }],
+    [{ path: 'a', bytes: 'text' }], [{ path: '../a', bytes: Buffer.from('x') }], [{ bytes: Buffer.from('x') }], [null], ['a'], [ok, 5],
+    [{ ...ok, mode: 0o755 }],
+  ];
+  for (const files of bad) assert.throws(() => recordVersion(w.dirs, 'main', files, meta()), code('VERSION_USAGE'), JSON.stringify(files));
+  assert.equal(fs.existsSync(w.store), false);
+});
+
+test('versions: a list over a limit is refused VERSION_TOO_LARGE', t => {
+  const w = world(t);
+  const many = Array.from({ length: VERSION_LIMITS.files + 1 }, (_, i) => file(`f/${i}.md`, 'x'));
+  assert.throws(() => recordVersion(w.dirs, 'main', many, meta()), code('VERSION_TOO_LARGE'));
+  assert.throws(() => recordVersion(w.dirs, 'main', [{ path: 'big', bytes: Buffer.alloc(VERSION_LIMITS.fileBytes + 1) }], meta()), code('VERSION_TOO_LARGE'));
+});
+
+test('versions: an index entry with no execute field reads as not executable, and the next record writes the field', t => {
+  const w = world(t);
+  recordVersion(w.dirs, 'main', [file('a.sh', 'one', true), file('b.md', 'two')], meta('r1'));
+  const index = rawIndex(w);
+  for (const f of index.folders[0].versions[0].files) delete f.executable;
+  fs.writeFileSync(w.index, JSON.stringify(index, null, 2) + '\n', { mode: 0o600 });
+  assert.deepEqual(listVersions(w.dirs, 'main')[0].files.map(f => f.executable), [false, false]);
+  assert.deepEqual(readVersion(w.dirs, 'main', 'v1').files.map(f => f.executable), [false, false]);
+  recordVersion(w.dirs, 'main', [file('a.sh', 'one', true)], meta('r2'));
+  const after = rawIndex(w).folders[0].versions;
+  assert.deepEqual(after.map(v => v.files.map(f => f.executable)), [[false, false], [true]]);
+});
+
+test('versions: an index entry whose execute field is not a boolean is VERSION_CORRUPT', t => {
+  const w = world(t);
+  recordVersion(w.dirs, 'main', [file('a.sh', 'one', true)], meta());
+  for (const bad of [1, 'true', null, {}]) {
+    const index = rawIndex(w);
+    index.folders[0].versions[0].files[0].executable = bad;
+    fs.writeFileSync(w.index, JSON.stringify(index, null, 2) + '\n', { mode: 0o600 });
+    assert.throws(() => listVersions(w.dirs, 'main'), code('VERSION_CORRUPT'), JSON.stringify(bad));
   }
 });

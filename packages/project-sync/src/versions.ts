@@ -5,6 +5,9 @@
  *   <state>/versions/index.json   one record of every folder's versions, written atomically, mode 0600
  *   <state>/versions/blobs/<sha>  one file per distinct content, named by its sha256, mode 0600
  *
+ * Each file keeps its execute bit, so a restore gives back the same definition files. An index entry with no `executable`
+ * field reads as false. The format stays `v1`: the field is optional on read and always written, so no bump is needed.
+ *
  * A folder is named by a folder key, a short name of letters, digits, `-` and `_` that the caller picks. A key is never a
  * path: it only names a list in the index. Each folder counts its versions on its own, `v1`, `v2`, and so on. A counter is
  * never reused, even after the oldest version is dropped, and a version's `parent` names the version recorded just before
@@ -23,6 +26,7 @@
 import fs from 'node:fs';
 import { basename, isAbsolute, join, normalize } from 'node:path';
 import { DefinitionError } from '../../contracts/src/index.js';
+import type { DefinitionFile } from '../../harness-definition/src/index.js';
 import { MAX_FILE, PortableRefusal, byBytes, readAbs, refuse, sha, sweepFolderTemps, writeAbs } from './portable-files.js';
 import { ensureRecordFolder, readPrivateJson, recordExists } from './harness-state.js';
 import type { HarnessStateDirs } from './harness-state.js';
@@ -66,8 +70,8 @@ export const VERSION_LIMITS = Object.freeze({
   index: MAX_FILE,
 });
 
-/** One file of a version: its path inside the definition folder, and the hash and size of its bytes. */
-export interface VersionFile { readonly path: string; readonly sha256: string; readonly bytes: number }
+/** One file of a version: its path inside the definition folder, the hash and size of its bytes, and its execute bit. */
+export interface VersionFile { readonly path: string; readonly sha256: string; readonly bytes: number; readonly executable: boolean }
 /** One recorded version of a folder. `parent` is the version recorded just before, or null for the first. */
 export interface VersionEntry {
   readonly id: string;
@@ -88,10 +92,13 @@ export interface VersionMeta {
   /** The present time. Default: the clock. */
   readonly now?: Date;
 }
-/** A file set as a caller gives it: relative path to bytes, as a map or a plain object. */
-export type VersionFiles = ReadonlyMap<string, Uint8Array> | Readonly<Record<string, Uint8Array>>;
-/** A version with every file it holds. */
-export interface StoredVersion { readonly entry: VersionEntry; readonly files: Map<string, Uint8Array> }
+/**
+ * A file set as a caller gives it: a list of definition files (path, bytes, and an optional execute bit), or, with the
+ * execute bit off for every file, a map or a plain object of relative path to bytes.
+ */
+export type VersionFiles = readonly DefinitionFile[] | ReadonlyMap<string, Uint8Array> | Readonly<Record<string, Uint8Array>>;
+/** A version with every file it holds, as definition files in byte order of the path. */
+export interface StoredVersion { readonly entry: VersionEntry; readonly files: DefinitionFile[] }
 /** Test hooks of `recordVersionWith`: each runs at one point of a record, so a test can stop it there. */
 export interface RecordHooks {
   readonly beforeBlobs?: () => void;
@@ -132,23 +139,33 @@ function storeOf(dirs: unknown): { store: string; blobs: string } {
 }
 const keyOf = (key: unknown): string => (typeof key === 'string' && KEY.test(key) ? key : refuseVersion('VERSION_USAGE'));
 
-/** The file set as a map of copied bytes, checked against the shape and the limits. */
-function filesOf(files: unknown): Map<string, Buffer> {
-  let pairs: [unknown, unknown][];
-  if (files instanceof Map) pairs = [...files.entries()];
-  else if (isObj(files) && (Object.getPrototypeOf(files) === Object.prototype || Object.getPrototypeOf(files) === null)) pairs = Object.entries(files);
-  else return refuseVersion('VERSION_USAGE');
-  if (pairs.length === 0) refuseVersion('VERSION_USAGE');
-  for (const [p, b] of pairs) if (!goodPath(p) || !(b instanceof Uint8Array)) refuseVersion('VERSION_USAGE');
-  if (pairs.length > VERSION_LIMITS.files) refuseVersion('VERSION_TOO_LARGE');
+/** The file set as a sorted list of copied bytes, checked against the shape and the limits. */
+function filesOf(files: unknown): { path: string; bytes: Buffer; executable: boolean }[] {
+  const list: { path: unknown; bytes: unknown; executable: unknown }[] = [];
+  if (Array.isArray(files)) {
+    for (const f of files as unknown[]) {
+      if (!isObj(f) || Object.keys(f).some(k => k !== 'path' && k !== 'bytes' && k !== 'executable')) return refuseVersion('VERSION_USAGE');
+      if (f.executable !== undefined && typeof f.executable !== 'boolean') return refuseVersion('VERSION_USAGE');
+      list.push({ path: f.path, bytes: f.bytes, executable: f.executable ?? false });
+    }
+  } else if (files instanceof Map) {
+    for (const [path, bytes] of files.entries()) list.push({ path, bytes, executable: false });
+  } else if (isObj(files) && (Object.getPrototypeOf(files) === Object.prototype || Object.getPrototypeOf(files) === null)) {
+    for (const [path, bytes] of Object.entries(files)) list.push({ path, bytes, executable: false });
+  } else return refuseVersion('VERSION_USAGE');
+  if (list.length === 0) refuseVersion('VERSION_USAGE');
+  for (const f of list) if (!goodPath(f.path) || !(f.bytes instanceof Uint8Array)) refuseVersion('VERSION_USAGE');
+  if (new Set(list.map(f => f.path)).size !== list.length) refuseVersion('VERSION_USAGE');
+  if (list.length > VERSION_LIMITS.files) refuseVersion('VERSION_TOO_LARGE');
   let total = 0;
-  for (const [, b] of pairs) {
-    const n = (b as Uint8Array).length;
+  for (const f of list) {
+    const n = (f.bytes as Uint8Array).length;
     if (n > VERSION_LIMITS.fileBytes) refuseVersion('VERSION_TOO_LARGE');
     total += n;
   }
   if (total > VERSION_LIMITS.bytes) refuseVersion('VERSION_TOO_LARGE');
-  return new Map((pairs as [string, Uint8Array][]).sort(([a], [b]) => byBytes(a, b)).map(([p, b]) => [p, Buffer.from(b)]));
+  return (list as { path: string; bytes: Uint8Array; executable: boolean }[])
+    .sort((a, b) => byBytes(a.path, b.path)).map(f => ({ path: f.path, bytes: Buffer.from(f.bytes), executable: f.executable }));
 }
 
 function metaOf(meta: unknown): { revision: string; label: string; created: string } {
@@ -174,10 +191,12 @@ function parseEntry(raw: unknown, folderCounter: number): VersionEntry {
   if (!Array.isArray(o.files) || o.files.length < 1 || o.files.length > VERSION_LIMITS.files) bad();
   let total = 0, last: string | null = null;
   const files = (o.files as unknown[]).map((f): VersionFile => {
-    if (!isObj(f) || !exactKeys(f, ['path', 'sha256', 'bytes']) || !goodPath(f.path) || typeof f.sha256 !== 'string' || !SHA.test(f.sha256) || !isCount(f.bytes, 0, VERSION_LIMITS.fileBytes)) return bad();
+    if (!isObj(f) || !(exactKeys(f, ['path', 'sha256', 'bytes']) || exactKeys(f, ['path', 'sha256', 'bytes', 'executable']))) return bad();
+    if (!goodPath(f.path) || typeof f.sha256 !== 'string' || !SHA.test(f.sha256) || !isCount(f.bytes, 0, VERSION_LIMITS.fileBytes)) return bad();
+    if (f.executable !== undefined && typeof f.executable !== 'boolean') return bad();
     if (last !== null && byBytes(last, f.path) >= 0) bad();
     last = f.path; total += f.bytes;
-    return Object.freeze({ path: f.path, sha256: f.sha256, bytes: f.bytes });
+    return Object.freeze({ path: f.path, sha256: f.sha256, bytes: f.bytes, executable: f.executable ?? false });
   });
   if (total > VERSION_LIMITS.bytes) bad();
   return Object.freeze({
@@ -240,7 +259,7 @@ const copyEntry = (e: VersionEntry): VersionEntry => Object.freeze({ ...e, files
 
 /**
  * Records `files` as the next version of the folder `folderKey` and returns the entry. `files` is the full file set of the
- * definition folder, relative path to bytes. The write is atomic and bounded (see the top of the file). Refuses
+ * definition folder: a list of `{ path, bytes, executable? }`, or a map or object of path to bytes with every execute bit off. The write is atomic and bounded (see the top of the file). Refuses
  * VERSION_USAGE for a bad key, file set, or meta, VERSION_TOO_LARGE past a limit, VERSION_CORRUPT for a damaged index
  * (which it leaves as it is), PORTABLE_USAGE for a layout that is not a harness layout, and PORTABLE_STATE_UNSAFE for a
  * state folder that is a link or is open to others.
@@ -266,7 +285,7 @@ export function recordVersionWith(dirs: HarnessStateDirs, folderKey: string, fil
   const entry: VersionEntry = Object.freeze({
     id: `v${folder.counter}`, counter: folder.counter, parent: folder.counter > 1 ? `v${folder.counter - 1}` : null,
     revision: m.revision, created: m.created, label: m.label,
-    files: Object.freeze([...set].map(([path, bytes]) => Object.freeze({ path, sha256: sha(bytes), bytes: bytes.length }))),
+    files: Object.freeze(set.map(f => Object.freeze({ path: f.path, sha256: sha(f.bytes), bytes: f.bytes.length, executable: f.executable }))),
   });
   folder.versions.push(entry);
   while (folder.versions.length > VERSION_LIMITS.versions) folder.versions.shift();
@@ -275,7 +294,7 @@ export function recordVersionWith(dirs: HarnessStateDirs, folderKey: string, fil
   if (body.length > VERSION_LIMITS.index) refuseVersion('VERSION_TOO_LARGE');
 
   hooks.beforeBlobs?.();
-  for (const [path, bytes] of set) {
+  for (const { path, bytes } of set) {
     const hash = sha(bytes);
     if (!blobWhole(blobs, hash, bytes.length)) writeAbs(join(blobs, hash), bytes, 0o600, { label: path });
   }
@@ -295,7 +314,8 @@ export function listVersions(dirs: HarnessStateDirs, folderKey: string): readonl
 }
 
 /**
- * One version of a folder with every file it holds, each checked against its recorded hash and size. VERSION_UNKNOWN when
+ * One version of a folder with every file it holds as a list of definition files in byte order of the path, ready to be passed
+ * to the save step. Each file is checked against its recorded hash and size. VERSION_UNKNOWN when
  * the folder holds no such version. VERSION_CORRUPT when the index is damaged or a blob is missing, changed, or a link;
  * the file set is never returned in part.
  */
@@ -307,12 +327,12 @@ export function readVersion(dirs: HarnessStateDirs, folderKey: string, id: strin
   const entry = typeof id === 'string' ? folder?.versions.find(v => v.id === id) : undefined;
   if (entry === undefined) return refuseVersion('VERSION_UNKNOWN');
   if (!stateExists(blobs)) return refuseVersion('VERSION_CORRUPT');
-  const out = new Map<string, Uint8Array>();
+  const out: DefinitionFile[] = [];
   for (const f of entry.files) {
     let got: ReturnType<typeof readAbs> = null;
     try { got = readAbs(join(blobs, f.sha256), 'blob'); } catch { got = null; }
     if (got === null || got.bytes.length !== f.bytes || got.state.sha256 !== f.sha256) return refuseVersion('VERSION_CORRUPT');
-    out.set(f.path, got.bytes);
+    out.push({ path: f.path, bytes: got.bytes, executable: f.executable });
   }
   return { entry: copyEntry(entry), files: out };
 }
