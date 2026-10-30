@@ -39,6 +39,7 @@ export const ENGINE_WORDS = deepFreeze({
     saveTitle: 'Edit a folder\'s harness', editFolder: 'Edit from a folder', stepEdit: 'Edit', bodyEdit: 'Edit the harness', reviewSave: 'Review the save',
     agentSkills: 'Skills each agent uses', skillsHere: 'Skills in this harness', interfacesHere: 'Interfaces it lists', agentsAndSkills: 'Agents and skills',
     removeSkill: 'Remove', keepSkill: 'Keep', savePoints: 'Save points', goBack: 'Go back', goBackTitle: 'Back to a save point', nowMark: 'Now',
+    setAside: 'Set old save points aside', planSetAside: 'Review setting them aside', checkHere: 'Check these files',
     saved: 'Saved', savePoint: 'Save point', noAgents: 'No agents', noSkills: 'No skills',
   },
   hint: {
@@ -71,6 +72,8 @@ export const ENGINE_WORDS = deepFreeze({
     savedNote: 'Saved. Installed files change only when you install.', installNext: 'Install it to write each interface\'s files.',
     removedMark: 'Removed when you save.', stoppedChange: 'A change to the harness stopped part way here.', linkHint: 'Press an agent\'s circle, then a skill, to link them.',
     noAgentsHere: 'This harness has no agents to link skills to.', currentPoint: 'The harness is this save point now.', pointKept: 'Save point kept:',
+    setAsideNote: 'Nothing is deleted. Go back starts again from the next save.', setAsideDone: 'The old save points were set aside as',
+    notLoading: 'The harness does not load now. Check these files by hand.',
   },
   paragraph: {
     adoptIntro: 'Bowerloom reads the files your interfaces use and proposes a harness. It writes only into .bowerloom, and only after you approve.',
@@ -228,8 +231,11 @@ export const SAVE_REFUSAL_WORDS: Readonly<Record<string, string>> = Object.freez
   EDIT_INVALID: 'The harness would not load. Clear the last change.',
   VERSION_USAGE: 'Close the sheet and open it again.',
   VERSION_UNKNOWN: 'That save point is gone. Pick another one.',
-  VERSION_CORRUPT: 'The save point record is damaged. Nothing was changed.',
+  VERSION_CORRUPT: 'Set the old save points aside to start a new record.',
   VERSION_TOO_LARGE: 'This harness is too large to keep a save point.',
+  VERSION_STALE: 'The save points changed since. Review setting them aside again.',
+  VERSION_NOTHING: 'There are no save points to set aside.',
+  SAVE_POINT_TOO_LARGE: 'Make the harness smaller, then save again.',
 });
 const plain = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 /** "Save 3 files". */

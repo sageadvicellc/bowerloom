@@ -645,6 +645,8 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   ADOPTION_STATE_UNSAFE: { sentence: 'Bowerloom keeps its record of a harness in a private folder that only you can change, outside the project.', next: 'check the private state folder: $XDG_STATE_HOME/bowerloom when XDG_STATE_HOME is set, else ~/.local/state/bowerloom' },
   ADOPTION_RECOVERY_REQUIRED: { sentence: 'An earlier adoption stopped part way, and Bowerloom changes nothing else until it is recovered.', next: 'bowerloom harness recover --adoption' },
   ADOPTION_RECOVER_NOTHING: { sentence: 'No adoption of this folder is unfinished.', next: 'bowerloom harness status' },
+  // A save runs only in the app (0.8.0-beta.1), so the command line names the app to recover it.
+  SAVE_RECOVERY_REQUIRED: { sentence: 'A save of the harness in the Bowerloom app stopped part way, and Bowerloom changes nothing else until it is recovered.', next: 'Open this folder in the Bowerloom app and choose Finish a stopped harness.' },
   ADOPTION_APPROVAL_REQUIRED: { sentence: 'Some items need your confirmation, and you did not confirm every one.', next: 'Add --confirm <part/id> for each item the message lists.' },
   ADOPTION_ACKNOWLEDGEMENT_REQUIRED: { sentence: 'Adoption did not read some entries, and one of them could hold a deny, an ask, or a sandbox value that limits access.', next: 'Add --acknowledge <id> for each entry the message lists.' },
   ADOPTION_AT_IMPORT: { sentence: 'The instructions use an @path import. Only Claude Code expands one, so the other engines read it as text.', next: 'Replace the @path line with the text it imports, then run the command again.' },

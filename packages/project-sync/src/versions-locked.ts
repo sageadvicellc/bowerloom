@@ -5,8 +5,8 @@
 import { withProjectLock } from '../../project-context/src/index.js';
 import { checkLayout } from './harness-state.js';
 import type { HarnessStateDirs } from './harness-state.js';
-import { listVersions, recordVersion } from './versions.js';
-import type { VersionEntry, VersionFiles, VersionMeta } from './versions.js';
+import { listVersions, recordVersion, setAsideVersions } from './versions.js';
+import type { SetAsideResult, VersionEntry, VersionFiles, VersionMeta } from './versions.js';
 
 /** What to record: the file set and its meta, as `recordVersion` takes them. */
 export interface KeepVersion { readonly files: VersionFiles; readonly meta: VersionMeta }
@@ -25,5 +25,14 @@ export async function recordVersionLocked(
     held.assertHeld(projectDir);
     const keep = next(listVersions(dirs, folderKey)[0] ?? null);
     return keep === null ? null : recordVersion(dirs, folderKey, keep.files, keep.meta);
+  });
+}
+
+/** `setAsideVersions` under the project lock, for a caller that holds no lock (the desktop app). */
+export async function setAsideVersionsLocked(dirs: HarnessStateDirs, projectDir: string, revision: string, now: Date = new Date(), signal?: AbortSignal): Promise<SetAsideResult> {
+  checkLayout(dirs, projectDir);
+  return withProjectLock(projectDir, signal ?? new AbortController().signal, async held => {
+    held.assertHeld(projectDir);
+    return setAsideVersions(dirs, revision, now);
   });
 }

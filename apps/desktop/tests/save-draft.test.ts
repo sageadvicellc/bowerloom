@@ -43,7 +43,7 @@ test('a removed skill is one remove-skill edit, after any set-agent, and no agen
   d = linkSkill(BASE, d, 'editor', 'check-facts', true);
   assert.deepEqual(draftEdits(BASE, d), [{ kind: 'set-agent', id: 'editor', skills: ['check-facts'] }, { kind: 'remove-skill', id: 'draft-outline' }]);
   // Keeping the skill again brings back the link the draft held for it.
-  assert.deepEqual(draftEdits(BASE, removeSkill(BASE, d, 'draft-outline', false)), [{ kind: 'set-agent', id: 'editor', skills: ['check-facts', 'draft-outline'] }]);
+  assert.deepEqual(draftEdits(BASE, removeSkill(BASE, d, 'draft-outline', false)), [{ kind: 'set-agent', id: 'editor', skills: ['draft-outline', 'check-facts'] }]);
   // A removed skill cannot be linked.
   assert.deepEqual(linkSkill(BASE, d, 'writer', 'draft-outline', true), d);
 });
@@ -67,4 +67,18 @@ test('the parts world maps the draft onto the builder: agents and skills are par
   const graph = graphOf(state, harness);
   assert.equal(graph.nodes.length, 4);
   assert.equal(graph.edges.length, 2);
+});
+
+test('a new link goes to the end of the agent\'s own list, so a link and its unlink are no change, whatever order the agent keeps', () => {
+  const base: DefinitionView = {
+    ...BASE,
+    skills: [...BASE.skills, { id: 'summarize', name: 'summarize', description: 'Summarizes.' }],
+    // The agent keeps its skills in its own order, not the harness's.
+    agents: [{ id: 'editor', name: 'editor', description: 'Edits.', skills: ['draft-outline', 'check-facts'] }],
+  };
+  const linked = linkSkill(base, EMPTY_DRAFT, 'editor', 'summarize', true);
+  assert.deepEqual(draftEdits(base, linked), [{ kind: 'set-agent', id: 'editor', skills: ['draft-outline', 'check-facts', 'summarize'] }]);
+  const back = linkSkill(base, linked, 'editor', 'summarize', false);
+  assert.deepEqual(draftEdits(base, back), [], 'link plus unlink is no change');
+  assert.deepEqual(back, EMPTY_DRAFT);
 });

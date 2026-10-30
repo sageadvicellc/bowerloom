@@ -7,15 +7,16 @@
  * `engines/` pass through unread. A file that an edit names is written whole:
  * - `harness.json` as `JSON.stringify(value, null, 2)` and a newline, from the parsed file, so key order and every field
  *   an edit does not name stay as they were.
- * - An agent file as YAML frontmatter and the same body, with only the named fields changed.
+ * - An agent file with its YAML frontmatter edited in place, so comments and key order stay, and the same body.
  * - A skill or the instructions as the text given.
  *
  * The result is checked with the package loader, run over the files in memory (`loadDefinitionFiles`), so it is exactly
  * what `loadDefinition` accepts. A fault comes back as a typed refusal, never a throw, and never repeats a value.
  */
-import { stringify } from 'yaml';
+import { isMap, isScalar, isSeq, parseDocument } from 'yaml';
 import { canonicalJson } from '../../contracts/src/index.js';
-import { decodeText, isRecord, parseStrictJson, readFrontmatter } from './json.js';
+import { splitFrontmatter } from '../../context-slices/src/frontmatter.js';
+import { decodeText, isRecord, parseStrictJson, readFrontmatter, toLf } from './json.js';
 import { loadDefinitionFiles } from './load.js';
 import { safeName } from './secrets.js';
 import type { Definition, DefinitionFile, EngineTarget, JsonValue, Problem } from './types.js';
@@ -308,8 +309,10 @@ function unlink(data: Obj, id: string): boolean {
 }
 
 /**
- * Rewrites one agent file when `change` says the frontmatter changed: the same keys in the same order, the changed fields,
- * and the same body. An agent the loader would refuse is left alone; the load of the result reports it.
+ * Rewrites one agent file when `change` says the frontmatter changed. The YAML document is edited in place: every comment,
+ * every key in its order, and every field `change` does not touch stay as they were. A list that changes keeps the node of
+ * each item it still holds, with that item's comment. The body is the same. An agent the loader would refuse is left
+ * alone; the load of the result reports it.
  */
 function rewriteAgent(work: Work, path: string, change: (data: Obj) => boolean): void {
   const file = work.get(path)!;
@@ -318,9 +321,27 @@ function rewriteAgent(work: Work, path: string, change: (data: Obj) => boolean):
   if (!fm?.ok) return;
   const data: Obj = { ...fm.data };
   if (!change(data)) return;
-  const yaml = stringify(data, { aliasDuplicateObjects: false, lineWidth: 0 });
+  const split = splitFrontmatter(toLf(source!));
+  const doc = split === null ? null : parseDocument(split.block, { uniqueKeys: true });
+  if (doc === null || doc.errors.length || !isMap(doc.contents)) return;
+  for (const key of AGENT_LIST_FIELDS) {
+    const before = fm.data[key], after = data[key];
+    if (same(before, after)) continue;
+    if (after === undefined) { doc.delete(key); continue; }
+    const node = doc.get(key, true);
+    if (isSeq(node) && Array.isArray(after)) {
+      const pool = [...node.items];
+      node.items = after.map(value => {
+        const at = pool.findIndex(item => isScalar(item) && item.value === value);
+        return at < 0 ? doc.createNode(value) : pool.splice(at, 1)[0]!;
+      });
+    } else doc.set(key, doc.createNode(after));
+  }
+  const yaml = doc.toString({ lineWidth: 0 });
   work.set(path, { bytes: Buffer.from(`---\n${yaml}---\n${fm.body}`, 'utf8'), executable: file.executable });
 }
+/** The agent fields an edit sets. */
+const AGENT_LIST_FIELDS = ['skills', 'tools'] as const;
 
 /**
  * `harness.json` as a parsed value that edits change. `flush` writes it back only when its meaning changed, so an edit

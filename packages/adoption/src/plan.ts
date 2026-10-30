@@ -32,7 +32,7 @@ import { DEFAULT_ENGINES } from '../../skill-manifest/src/engine.js';
 import { DSH_PINNED_TAG, READER_VERSIONS, lose, type Context, type LostAction } from './context.js';
 import { ENGINE_READERS, detectEngines, sweep } from './engines.js';
 import { ProjectReader } from './files.js';
-import { checkState, readJournal } from './journal.js';
+import { checkState, readJournal, saveStopped } from './journal.js';
 import { readLegacy } from './legacy.js';
 import {
   ADOPTION_PLAN_FORMAT, EVERY_ENGINE_PARTS, type AdoptionChoice, type AdoptionPlan, type Candidate, type Conflict, type Difference, type EveryEngine,
@@ -78,7 +78,8 @@ export function planAdoption(input: AdoptionInput): AdoptionPlan { return planWi
 
 export function planWithBytes(input: AdoptionInput): PlanWithBytes {
   const { projectDir, stateDir, wanted, harnessId, description, choices, acknowledged, everyEngine: wide } = checkInput(input);
-  if (readJournal(stateDir, projectDir) !== null) refuse('ADOPTION_RECOVERY_REQUIRED');
+  // A stopped save is a half-saved definition: it is recovered before anything new is planned.
+  if (readJournal(stateDir, projectDir) !== null || saveStopped(stateDir)) refuse('ADOPTION_RECOVERY_REQUIRED');
   const definitionFolder = join(projectDir, '.bowerloom');
   const r = new ProjectReader(projectDir);
   const authored = checkDefinitionFolder(r);

@@ -13,7 +13,7 @@
 import type {
   AdoptChoices, AdoptRecovered, AdoptRecoveryView, AdoptView, AdoptWritten, Answer, ApproveLineView, ChangeView, DefinitionView, EngineBridge, EngineId, EveryEnginePart, FolderInfo, LossView,
   MergeView, MergeWritten, ProjectAnswer, ProjectInput, ProjectView, ProjectWritten, Recovered, RecoveryChoices, RecoveryView, Refusal, RemovalView, Removed, RestoreView, SaveChangeView,
-  SaveEdit, SaveView, SaveWritten, VersionView,
+  SaveEdit, SaveView, SaveWritten, SetAsideView, SetAsideWritten, VersionView,
 } from './types.js';
 import { ENGINE_NAMES, EVERY_ENGINE_PARTS, SAVE_MAIN_WORDS, writesFile } from './types.js';
 import { approveKey, lossByEngine, unmappedHashBody } from './view.js';
@@ -35,6 +35,8 @@ export const SAMPLE_MESSAGES = Object.freeze({
   PORTABLE_RECOVER_NOTHING: 'No projection or removal of this project is unfinished, and no path to keep was named.',
   SAVE_STALE: 'The definition changed after the save was planned, or the approval is for another plan. Nothing more was written. Plan again to see the new plan.',
   VERSION_UNKNOWN: 'The store holds no such version for this folder. Nothing was changed.',
+  VERSION_STALE: 'The version store changed after the plan to set it aside. Nothing was moved. Plan again.',
+  VERSION_NOTHING: 'There is no version store to set aside. Nothing was changed.',
   SAVE_NO_DEFINITION: SAVE_MAIN_WORDS.SAVE_NO_DEFINITION,
   SAVE_SOURCE_MISSING: SAVE_MAIN_WORDS.SAVE_SOURCE_MISSING,
 } as const);
@@ -523,6 +525,21 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
       if (!a.ok) return a;
       if (a.value.revision !== revision) return refuse('SAVE_STALE');
       return ok(write(f, a.value, `Went back to ${version}`));
+    })()),
+    // The sample's save points live in memory and are never damaged. Setting them aside starts a new list; the counter goes on, as nothing is deleted.
+    planSetAside: id => settle(((): Answer<SetAsideView> => {
+      const f = get(id);
+      if (f.def === null) return refuse('SAVE_NO_DEFINITION');
+      if (f.versions.length === 0) return refuse('VERSION_NOTHING');
+      return ok({ folder: f.info.label, damaged: false, revision: sampleRevision(`set-aside ${f.versions.map(v => v.entry.id).join(',')}`) });
+    })()),
+    runSetAside: (id, revision) => settle(((): Answer<SetAsideWritten> => {
+      const f = get(id);
+      if (f.def === null) return refuse('SAVE_NO_DEFINITION');
+      if (f.versions.length === 0) return refuse('VERSION_NOTHING');
+      if (revision !== sampleRevision(`set-aside ${f.versions.map(v => v.entry.id).join(',')}`)) return refuse('VERSION_STALE');
+      f.versions = [];
+      return ok({ name: 'versions-set-aside-sample' });
     })()),
   };
 }

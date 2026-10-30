@@ -8,8 +8,8 @@ import { editDefinition, loadDefinition } from '../../../dist/packages/harness-d
 import { withProjectLock } from '../../../dist/packages/project-context/src/index.js';
 import * as adoption from '../../../dist/packages/adoption/src/index.js';
 import * as save from '../../../dist/packages/adoption/src/save.js';
-import { JOURNAL } from '../../../dist/packages/adoption/src/journal.js';
-import { MERGE_JOURNAL } from '../../../dist/packages/adoption/src/merge.js';
+import { JOURNAL, saveStopped as journalSaveStopped } from '../../../dist/packages/adoption/src/journal.js';
+import { MERGE_JOURNAL, planInstructionMerge, refuseWhileStopped } from '../../../dist/packages/adoption/src/merge.js';
 import { INSTRUCTIONS, json, project, skill } from '../../project-sync/test/portable-fixture.mjs';
 import { code, snapshot } from './fixture.mjs';
 
@@ -141,6 +141,27 @@ test('apply writes creates, updates, and deletes, harness.json last, then clears
   assert.equal(fs.statSync(path.join(p.def, 'skills/lint/SKILL.md')).mode & 0o777, 0o644);
   assert.equal(fs.existsSync(journalAt(p)), false, 'the journal is removed');
   assert.equal(await lockIsFree(p.dir), 'free', 'the project lock is released');
+});
+
+test('a journal that cannot be removed after a finished save is reported, and the save is not undone', async t => {
+  const p = saving(t);
+  const target = mixed(p);
+  const plan = planSave(p.save(), target);
+  assert.equal(plan.changes.at(-1).path, 'harness.json');
+  // After the last write the state folder takes no change, so the journal cannot be unlinked.
+  t.after(() => { try { fs.chmodSync(p.adoptState, 0o700); } catch { /* gone */ } });
+  const r = await applySaveWith(p.save(), plan.revision, target, signal(), { afterWrite: rel => { if (rel === 'harness.json') fs.chmodSync(p.adoptState, 0o500); } });
+  fs.chmodSync(p.adoptState, 0o700);
+  assert.equal(r.journalLeft, true, 'the result says the journal stayed');
+  assert.equal(r.revision, plan.targetRevision);
+  assert.equal(loadDefinition(p.def).definition.revision, plan.targetRevision, 'the finished save stays');
+  for (const [rel, v] of target) assert.ok(fs.readFileSync(path.join(p.def, rel)).equals(bytesOf(v)), rel);
+  assert.equal(fs.existsSync(journalAt(p)), true, 'the journal stays for a recovery');
+  assert.equal(await lockIsFree(p.dir), 'free');
+  assert.throws(() => planSave(p.save(), current(p)), code('SAVE_RECOVERY_REQUIRED'), 'later saves wait for the recovery');
+  const q = saving(t), other = mixed(q);
+  const ok = await applySave(q.save(), planSave(q.save(), other).revision, other);
+  assert.equal(ok.journalLeft, false, 'a save whose journal goes says so');
 });
 
 test('deletes: a whole skill goes, with its folders; the skills folder stays while it holds another skill', async t => {
@@ -584,6 +605,24 @@ test('a save is refused while an adoption or a merge is stopped', async t => {
     await assert.rejects(applySave(p.save(), plan.revision, target), code('SAVE_RECOVERY_REQUIRED'), name);
     assert.deepEqual(snapshot(p.def), before);
   }
+});
+
+test('a stopped save holds every other change: the install guard, the merge plan, and the adoption plan refuse until it is recovered', t => {
+  const p = saving(t);
+  const merge = () => planInstructionMerge(p.save());
+  const adopt = () => adoption.planAdoption({ projectDir: p.dir, stateDir: p.adoptState, engines: [{ id: 'claude-code' }] });
+  // With nothing stopped, each refuses for its own reason, or passes.
+  assert.doesNotThrow(() => refuseWhileStopped(p.adoptState));
+  assert.throws(merge, code('ADOPTION_MERGE_NOTHING'));
+  assert.throws(adopt, code('ADOPTION_DEFINED'));
+  assert.equal(journalSaveStopped(p.adoptState), false);
+  fs.mkdirSync(p.adoptState, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(journalAt(p), '{ any content, even damaged', { mode: 0o600 });
+  assert.equal(journalSaveStopped(p.adoptState), true);
+  assert.equal(saveStopped, journalSaveStopped, 'one check, in journal.ts');
+  assert.throws(() => refuseWhileStopped(p.adoptState), e => e.code === 'SAVE_RECOVERY_REQUIRED' && /save/i.test(e.message) && /Finish a stopped harness/.test(e.message));
+  assert.throws(merge, code('ADOPTION_RECOVERY_REQUIRED'));
+  assert.throws(adopt, code('ADOPTION_RECOVERY_REQUIRED'));
 });
 
 // ---- input, concurrency, and exports -------------------------------------------------------------------------------------

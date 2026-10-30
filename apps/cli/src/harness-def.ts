@@ -24,7 +24,7 @@ import type { AdoptionInput } from '../../../packages/adoption/src/index.js';
 import { EVERY_ENGINE_PARTS } from '../../../packages/adoption/src/model.js';
 import type { AdoptionChoice, AdoptionPlan, EveryEnginePart } from '../../../packages/adoption/src/model.js';
 import type { AdoptionRecoveryPlan } from '../../../packages/adoption/src/journal.js';
-import { JOURNAL, readJournal } from '../../../packages/adoption/src/journal.js';
+import { JOURNAL, readJournal, saveStopped } from '../../../packages/adoption/src/journal.js';
 import {
   applyInstructionMerge, applyInstructionMergeRecovery, mergeStopped, planInstructionMerge, planInstructionMergeRecovery, refuseWhileStopped,
 } from '../../../packages/adoption/src/merge.js';
@@ -79,6 +79,7 @@ export const HARNESS_HELP = [
   'Drift lists the files Bowerloom wrote that changed since. Drift --check fails when a file changed, when CLAUDE.md does not follow AGENTS.md,',
   'or when nothing is installed. Recover keeps your version, or puts a mode back, or records it.',
   'A merge or an adoption that stopped part way blocks install, remove, and accept until harness recover --adoption settles it.',
+  'A save of the harness that stopped part way in the Bowerloom app blocks install, remove, accept, adopt, and merge until the app recovers it.',
   'Remove puts back every file install replaced, and deletes the files it created.',
   'Every write prints a plan and its revision first. Run the same command with --approve <revision> to apply it.',
   'No command runs an engine. Engine versions come from harness.json.', '',
@@ -336,6 +337,8 @@ async function status(c: Ctx, json: boolean, write: (text: string) => void): Pro
     projection: section(problems, 'projection', 'pending.json', false, () => pendingExists(c.dirs.portable)),
     adoption: section(problems, 'adoption', JOURNAL, false, () => readJournal(c.dirs.adoption, c.dir) !== null),
     merge: mergeUnfinished(c),
+    // A save runs only in the app; its journal sits beside the adoption and merge journals, and blocks the same commands.
+    save: section(problems, 'save', 'save-pending.json', false, () => saveStopped(c.dirs.adoption)),
   };
   // Beta.1: which preview engines this environment installs to, which listed engines it will not, and which the receipt still holds.
   const previewOn = previewEnginesAllowed(c.env);
@@ -363,6 +366,7 @@ async function status(c: Ctx, json: boolean, write: (text: string) => void): Pro
   for (const p of problems) out.push(`Problem: ${p.file ?? p.section} (${p.code}). ${PROBLEM_HINT[p.code] ?? 'Check it in the private state folder.'}`);
   if (unfinished.projection) out.push('An install or removal stopped part way. Next: bowerloom harness recover.');
   if (unfinished.adoption || unfinished.merge) out.push(`${unfinished.merge ? 'A merge' : 'An adoption'} stopped part way. Next: bowerloom harness recover --adoption.`);
+  if (unfinished.save) out.push('A save of the harness stopped part way. Next: open this folder in the Bowerloom app and choose Finish a stopped harness.');
   if (c.legacy !== 'none') out.push('The record of the earlier app moved to the shared record.');
   write(`${plainText(out.join('\n'), true)}\n`); return 0;
 }
@@ -406,6 +410,8 @@ function adoptionInput(c: Ctx, f: Flags): AdoptionInput {
 
 async function adopt(c: Ctx, f: Flags, approval: { approve?: string; json: boolean }, io: ApprovalIo, write: (text: string) => void): Promise<number> {
   const input = adoptionInput(c, f), confirms = [...new Set(all(f, '--confirm'))];
+  // A stopped save is refused with its own code and words: the package's ADOPTION_RECOVERY_REQUIRED would point at recover --adoption.
+  refuseWhileStopped(c.dirs.adoption);
   const change: PlannedChange<AdoptionPlan> = {
     async plan() { return planAdoption(input); }, revision: p => p.revision, review: renderAdoption,
     async apply(revision) { const r = await applyAdoption(input, revision, confirms, c.signal); return { written: r.written.map(p => `.bowerloom/${p}`) }; },
@@ -509,6 +515,7 @@ async function accept(c: Ctx, f: Flags, json: boolean, write: (text: string) => 
 
 async function merge(c: Ctx, approval: { approve?: string; json: boolean }, io: ApprovalIo, write: (text: string) => void): Promise<number> {
   const input = { projectDir: c.dir, stateDir: c.dirs.adoption };
+  refuseWhileStopped(c.dirs.adoption);
   const change: PlannedChange<InstructionMergePlan> = {
     async plan() { return planInstructionMerge(input); }, revision: p => p.revision, review: renderMerge,
     async apply(revision) { const r = await applyInstructionMerge(input, revision, c.signal); return { written: r.written, revision: r.revision }; },

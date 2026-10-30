@@ -120,7 +120,7 @@ test('versions: each folder counts on its own', t => {
 // ---- caps --------------------------------------------------------------------------------------------------------------
 
 test('versions: the limits are the documented ones', () => {
-  assert.deepEqual({ ...VERSION_LIMITS }, { versions: 50, files: 200, bytes: 8 * 1024 * 1024, fileBytes: 1024 * 1024, folders: 64, index: 1024 * 1024 });
+  assert.deepEqual({ ...VERSION_LIMITS }, { versions: 50, files: 4096, bytes: 32 * 1024 * 1024, fileBytes: 1024 * 1024, folders: 64, index: 1024 * 1024 });
   assert.throws(() => { VERSION_LIMITS.versions = 1; }, TypeError);
 });
 
@@ -155,16 +155,17 @@ test('versions: pruning one folder never touches another', t => {
 
 test('versions: a file set at the limits is stored, and one past a limit is refused with nothing written', t => {
   const w = world(t);
-  const many = Object.fromEntries(Array.from({ length: VERSION_LIMITS.files }, (_, i) => [`f/${i}.md`, `x${i}`]));
+  const many = Object.fromEntries(Array.from({ length: VERSION_LIMITS.files }, (_, i) => [`f/${i}.md`, 'x']));
   assert.equal(recordVersion(w.dirs, 'many', set(many), meta()).files.length, VERSION_LIMITS.files);
   const before = fs.readFileSync(w.index);
   const blobsBefore = blobNames(w);
   assert.throws(() => recordVersion(w.dirs, 'many', set({ ...many, 'one-more.md': 'x' }), meta()), code('VERSION_TOO_LARGE'));
 
   const mib = n => Buffer.alloc(n, 7);
-  const eight = new Map(Array.from({ length: 8 }, (_, i) => [`b${i}`, Buffer.concat([mib(VERSION_LIMITS.fileBytes - 1), Buffer.from([i])])]));
-  assert.equal(recordVersion(w.dirs, 'big', eight, meta()).files.length, 8);
-  const over = new Map(eight); over.set('b8', Buffer.from('x'));
+  const whole = VERSION_LIMITS.bytes / VERSION_LIMITS.fileBytes;
+  const eight = new Map(Array.from({ length: whole }, (_, i) => [`b${i}`, mib(VERSION_LIMITS.fileBytes)]));
+  assert.equal(recordVersion(w.dirs, 'big', eight, meta()).files.length, whole);
+  const over = new Map(eight); over.set(`b${whole}`, Buffer.from('x'));
   assert.throws(() => recordVersion(w.dirs, 'big', over, meta()), code('VERSION_TOO_LARGE'));
   assert.throws(() => recordVersion(w.dirs, 'huge', new Map([['f', mib(VERSION_LIMITS.fileBytes + 1)]]), meta()), code('VERSION_TOO_LARGE'));
 
@@ -415,7 +416,7 @@ test('versions: a returned entry and file set are copies, so a caller cannot cha
 });
 
 test('versions: the refusal codes are listed, each refusal is a VersionRefusal, and no message carries a path', t => {
-  assert.deepEqual([...VERSION_REFUSAL_CODES].sort(), ['VERSION_CORRUPT', 'VERSION_TOO_LARGE', 'VERSION_UNKNOWN', 'VERSION_USAGE']);
+  assert.deepEqual([...VERSION_REFUSAL_CODES].sort(), ['VERSION_CORRUPT', 'VERSION_NOTHING', 'VERSION_STALE', 'VERSION_TOO_LARGE', 'VERSION_UNKNOWN', 'VERSION_USAGE']);
   const w = world(t);
   const secret = 'folder-named-with-a-recognizable-token';
   recordVersion(w.dirs, secret, set({ f: 'x' }), meta());
