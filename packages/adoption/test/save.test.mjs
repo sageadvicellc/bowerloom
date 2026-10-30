@@ -143,6 +143,27 @@ test('apply writes creates, updates, and deletes, harness.json last, then clears
   assert.equal(await lockIsFree(p.dir), 'free', 'the project lock is released');
 });
 
+test('a journal that cannot be removed after a finished save is reported, and the save is not undone', async t => {
+  const p = saving(t);
+  const target = mixed(p);
+  const plan = planSave(p.save(), target);
+  assert.equal(plan.changes.at(-1).path, 'harness.json');
+  // After the last write the state folder takes no change, so the journal cannot be unlinked.
+  t.after(() => { try { fs.chmodSync(p.adoptState, 0o700); } catch { /* gone */ } });
+  const r = await applySaveWith(p.save(), plan.revision, target, signal(), { afterWrite: rel => { if (rel === 'harness.json') fs.chmodSync(p.adoptState, 0o500); } });
+  fs.chmodSync(p.adoptState, 0o700);
+  assert.equal(r.journalLeft, true, 'the result says the journal stayed');
+  assert.equal(r.revision, plan.targetRevision);
+  assert.equal(loadDefinition(p.def).definition.revision, plan.targetRevision, 'the finished save stays');
+  for (const [rel, v] of target) assert.ok(fs.readFileSync(path.join(p.def, rel)).equals(bytesOf(v)), rel);
+  assert.equal(fs.existsSync(journalAt(p)), true, 'the journal stays for a recovery');
+  assert.equal(await lockIsFree(p.dir), 'free');
+  assert.throws(() => planSave(p.save(), current(p)), code('SAVE_RECOVERY_REQUIRED'), 'later saves wait for the recovery');
+  const q = saving(t), other = mixed(q);
+  const ok = await applySave(q.save(), planSave(q.save(), other).revision, other);
+  assert.equal(ok.journalLeft, false, 'a save whose journal goes says so');
+});
+
 test('deletes: a whole skill goes, with its folders; the skills folder stays while it holds another skill', async t => {
   const p = saving(t, { files: { 'skills/lint/SKILL.md': skill('lint') } });
   const target = current(p);

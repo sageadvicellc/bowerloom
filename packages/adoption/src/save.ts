@@ -122,6 +122,11 @@ export interface SaveResult {
   /** The definition revision now. */
   readonly revision: string;
   readonly plan: SavePlan;
+  /**
+   * True when the save finished and its journal could not be removed. The files are the target and stay; every later
+   * save, install, and merge waits until the stopped save is recovered.
+   */
+  readonly journalLeft: boolean;
 }
 /** Test hooks. Not exported from the package index. An error with `crash: true` stands for a killed process. Paths are relative to `.bowerloom`. */
 export interface SaveHooks { readonly beforeWrite?: (rel: string) => void; readonly afterWrite?: (rel: string) => void }
@@ -380,7 +385,7 @@ export async function applySaveWith(input: SaveInput, revision: string, target: 
   return withProjectLock(projectDir, signal, async () => {
     const { plan, originals } = planCore(projectDir, stateDir, wanted);
     if (plan.revision !== revision) refuse('SAVE_STALE');
-    if (plan.changes.length === 0) return { planRevision: plan.revision, written: [], revision: plan.currentRevision, plan };
+    if (plan.changes.length === 0) return { planRevision: plan.revision, written: [], revision: plan.currentRevision, plan, journalLeft: false };
     const steps: JournalStep[] = plan.changes.map(c => ({
       path: inProject(c.path), from: c.before, to: c.after ? { sha256: c.after.sha256, mode: c.after.mode } : null,
       original: c.before ? originals.get(c.path)!.toString('base64') : null, bytes: c.after ? wanted.get(c.path)!.bytes.toString('base64') : null,
@@ -400,6 +405,7 @@ export async function applySaveWith(input: SaveInput, revision: string, target: 
       if (error instanceof SaveRefusal) throw error;
       return mapPortable(error);
     };
+    let revisionNow: string;
     try {
       runSteps(projectDir, journal, steps, {
         before: step => { if (signal.aborted) refuse('SAVE_ABORTED'); hooks.beforeWrite?.(inDef(step.path)); },
@@ -410,9 +416,12 @@ export async function applySaveWith(input: SaveInput, revision: string, target: 
       const loaded = loadDefinition(join(projectDir, DEF));
       if (!loaded.ok) return invalid(loaded.problems);
       if (loaded.definition.revision !== plan.targetRevision) refuse('SAVE_STALE');
-      removeSaveJournal(stateDir);
-      return { planRevision: plan.revision, written: plan.changes.map(c => c.path), revision: loaded.definition.revision, plan };
+      revisionNow = loaded.definition.revision;
     } catch (error) { return fail(error); }
+    // The save is done. A journal that cannot be removed is reported, never undone: the files are the approved target.
+    let journalLeft = false;
+    try { removeSaveJournal(stateDir); } catch { journalLeft = true; }
+    return { planRevision: plan.revision, written: plan.changes.map(c => c.path), revision: revisionNow, plan, journalLeft };
   });
 }
 
