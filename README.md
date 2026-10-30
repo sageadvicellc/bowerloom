@@ -52,7 +52,7 @@ This beta supports Claude Code and Codex. OpenCode, Pi, and DeepSeek Harness are
 ## Current capabilities
 
 <!-- release:support:start -->
-Open beta · 0.7.0-beta.3
+Open beta · 0.8.0-beta.1
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
 
@@ -84,7 +84,7 @@ bowerloom --version
 bowerloom --help
 ```
 
-Updates are not automatic. To update, run `npm install -g bowerloom@beta` again. Do not use `npm update -g bowerloom`, because npm then updates to the `latest` tag and can downgrade a beta. If you have a release file, install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.7.0-beta.3.tgz`.
+Updates are not automatic. To update, run `npm install -g bowerloom@beta` again. Do not use `npm update -g bowerloom`, because npm then updates to the `latest` tag and can downgrade a beta. If you have a release file, install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.8.0-beta.1.tgz`.
 
 If npm refuses with a permission error, do not use `sudo`. Set a user prefix for global packages instead. The [install guide](https://bowerloom.ai/docs/start/) shows the steps.
 

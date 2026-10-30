@@ -8,10 +8,23 @@ order: 27
 Release notes describe user-visible changes by version. [Current support](/docs/status/) describes supported tasks and limits.
 
 <!-- release:status:start -->
-Open beta · 0.7.0-beta.3
+Open beta · 0.8.0-beta.1
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
 <!-- release:status:end -->
+
+## 0.8.0-beta.1
+
+This release brings one setup for two engines. You keep one harness definition in a `.bowerloom` folder, and Bowerloom writes the files of Claude Code and Codex from it.
+
+- `bowerloom harness adopt` reads the Claude Code and Codex files of a project and writes only `.bowerloom`.
+- `bowerloom harness install` writes the engine files from `.bowerloom`, after a preview. Bowerloom writes nothing until you approve the exact plan.
+- `bowerloom harness drift` lists the files that Bowerloom wrote and that changed since. `harness drift --check` fails if a file changed.
+- `bowerloom harness remove` puts back every file that install replaced, and deletes the files that install created.
+- The preview reports each part of a harness as `exact`, `translated`, `weakened`, or `absent`, per engine. A weaker rule needs your approval, line by line.
+- `bowerloom report` makes a diagnostic bundle that you can read before you open an issue. `bowerloom events` shows the newest events of the local event log.
+- The event log lives on your computer and makes no network calls.
+- The desktop app is experimental, and Apple did not sign it. The README gives the steps to open it.
 
 ## 0.7.0-beta.3
 

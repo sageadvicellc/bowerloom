@@ -5,10 +5,10 @@ section: "Reference"
 order: 22
 ---
 
-Use the documentation for the installed version. This reference describes the `0.7.0-beta` line.
+Use the documentation for the installed version. This reference describes the `0.8.0-beta` line.
 
 <!-- release:status:start -->
-Open beta · 0.7.0-beta.3
+Open beta · 0.8.0-beta.1
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
 <!-- release:status:end -->
@@ -32,7 +32,7 @@ bowerloom help advanced
 
 Bare `bowerloom` prints the short help. An unknown command prints `Unknown command <word>. Run bowerloom help.` The help heading reads `open beta`.
 
-The version output reads `Bowerloom 0.7.0-beta.3`. Command syntax does not grant execution permission.
+The version output reads `Bowerloom 0.8.0-beta.1`. Command syntax does not grant execution permission.
 
 ## Approvals and exit codes
 
