@@ -212,7 +212,7 @@ app.whenReady().then(async () => {
         // Beta.1: OpenCode, Pi, and DeepSeek Harness install only when the app starts with BOWERLOOM_PREVIEW_ENGINES=1. The window gets one yes or no, never the environment.
         previewEngines: enginePreviewSwitch(),
         // The local usage log: lines about what was done, never a name or a path. BOWERLOOM_EVENT_LOG=off turns it off.
-        record: createRecorder({ stateRoot: engineStateRoot(home), env: diagnosticsEnv() }),
+        record: createRecorder({ stateRoot: engineStateRoot(home), env: diagnosticsEnv(), home }),
         // Main's own question before every write (U16): words main builds from its record of the plan; the window cannot word or skip it.
         confirm: async ask => {
           const options: Electron.MessageBoxOptions = { type: 'question', title: ask.title, message: ask.message, detail: ask.detail, buttons: ['Cancel', 'Write'], defaultId: 0, cancelId: 0, noLink: true };

@@ -8,7 +8,9 @@ import type { CheckAnswer } from '../../../shared/engine/types.js';
 export type CheckState =
   | { readonly step: 'ask' }
   | { readonly step: 'why'; readonly answer: 'partly' | 'no'; readonly note: string }
-  | { readonly step: 'thanks' };
+  | { readonly step: 'saving' }
+  | { readonly step: 'thanks' }
+  | { readonly step: 'failed' };
 
 export const CHECK_START: CheckState = Object.freeze({ step: 'ask' });
 
@@ -24,21 +26,38 @@ export interface CheckRecord { readonly answer: CheckAnswer; readonly note: stri
 /** At most 500 characters, as the person typed them. */
 export const cappedNote = (note: string): string => (note.length > CHECK_NOTE_LIMIT ? note.slice(0, CHECK_NOTE_LIMIT) : note);
 
+/** The state once the save has answered: thanks only when the answer was saved. */
+export const checkSettled = (saved: boolean): CheckState => (saved ? { step: 'thanks' } : { step: 'failed' });
+
+/**
+ * Records an answer and says whether it was saved. A false answer or a rejection is false, and the reason goes to the console.
+ */
+export async function saveCheck(record: (answer: CheckAnswer, note: string | null) => Promise<unknown>, rec: CheckRecord, log: (message: string, detail?: unknown) => void = console.error): Promise<boolean> {
+  try {
+    const saved = await record(rec.answer, rec.note);
+    if (saved !== true) log('Bowerloom did not save the answer to the check.', saved);
+    return saved === true;
+  } catch (error) {
+    log('Bowerloom could not save the answer to the check.', error);
+    return false;
+  }
+}
+
 /**
  * The next state and the line to record, if any. Yes records at once. Partly and No ask what the person was trying to do and record nothing yet; Save records
- * the answer with the note (an empty note is none), and Skip records the answer without it. After that the check says thanks and takes no more taps.
+ * the answer with the note (an empty note is none), and Skip records the answer without it. After that the check waits for the answer to be saved ('saving'), takes no more taps, and says thanks only when it was saved.
  */
 export function checkNext(state: CheckState, action: CheckAction): { readonly state: CheckState; readonly record: CheckRecord | null } {
   if (state.step === 'ask' && action.kind === 'answer') {
-    if (action.answer === 'yes') return { state: { step: 'thanks' }, record: { answer: 'yes', note: null } };
+    if (action.answer === 'yes') return { state: { step: 'saving' }, record: { answer: 'yes', note: null } };
     return { state: { step: 'why', answer: action.answer, note: '' }, record: null };
   }
   if (state.step === 'why') {
     if (action.kind === 'type') return { state: { ...state, note: cappedNote(action.note) }, record: null };
-    if (action.kind === 'skip') return { state: { step: 'thanks' }, record: { answer: state.answer, note: null } };
+    if (action.kind === 'skip') return { state: { step: 'saving' }, record: { answer: state.answer, note: null } };
     if (action.kind === 'save') {
       const note = state.note.trim();
-      return { state: { step: 'thanks' }, record: { answer: state.answer, note: note === '' ? null : note } };
+      return { state: { step: 'saving' }, record: { answer: state.answer, note: note === '' ? null : note } };
     }
   }
   return { state, record: null };

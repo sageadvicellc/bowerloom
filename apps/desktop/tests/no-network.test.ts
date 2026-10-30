@@ -44,7 +44,7 @@ test('the bundled main file never loads child_process, worker_threads, or cluste
   // Every way to load a module: import ... from, bare import, require(), and import(): with or without the node: prefix.
   const loads = [...code.matchAll(new RegExp(`(?:from|import|require)\\s*\\(?\\s*["']${BARE}([a-z_\\/0-9]+)["']`, 'g'))].map(m => m[1]!);
   assert.ok(loads.length > 50, 'the scan sees the imports');
-  assert.deepEqual(loads.filter(name => WORKERS.test(name)), ['child_process'], 'only the problem report starts a process, and it is listed');
+  assert.equal(loads.filter(name => WORKERS.test(name)).length, Object.values(ALLOWED_PROCESS_MODULES).flat().length, 'only the listed module loads a process module');
   const starters: Record<string, string[]> = {};
   for (const [module, imports] of byModule) { const found = [...imports].filter(i => WORKERS.test(i)).sort(); if (found.length) starters[module] = found; }
   assert.deepEqual(starters, ALLOWED_PROCESS_MODULES, 'a module that can start a process is new: argue for it, then list it');

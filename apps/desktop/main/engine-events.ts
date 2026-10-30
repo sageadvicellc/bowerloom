@@ -9,19 +9,25 @@ export interface RecorderDeps {
   readonly stateRoot: string;
   readonly env: NodeJS.ProcessEnv;
   readonly now?: () => Date;
+  /** The home folder, hidden as `~` in a note before it is stored. */
+  readonly home?: string;
   /** Where a failed write is told. Default: the console. */
   readonly onFailure?: (message: string) => void;
 }
 
-export function createRecorder(deps: RecorderDeps): (input: Readonly<Record<string, unknown>>) => void {
+/** Returns true only when a line was written. False when the log is off or the write failed (a failure is told, never thrown). */
+export function createRecorder(deps: RecorderDeps): (input: Readonly<Record<string, unknown>>) => boolean {
   const now = deps.now ?? (() => new Date());
   const tell = deps.onFailure ?? ((message: string) => console.error(message));
   return input => {
     try {
-      const result = recordEvent({ stateRoot: deps.stateRoot, env: deps.env, now: now() }, input);
-      if (!result.ok) tell(`Bowerloom could not write its local event log: ${result.code}`);
+      const result = recordEvent({ stateRoot: deps.stateRoot, env: deps.env, now: now(), ...(deps.home === undefined ? {} : { home: deps.home }) }, input);
+      if (!result.ok) { tell(`Bowerloom could not write its local event log: ${result.code}`); return false; }
+      if (result.notice !== undefined) tell(result.notice);
+      return result.written;
     } catch {
       tell('Bowerloom could not write its local event log: FAILED');
+      return false;
     }
   };
 }

@@ -70,7 +70,7 @@ export interface EngineServiceDeps {
    * Writes one line of the local usage log (packages/diagnostics). It never reaches the window. The service calls it inside a try, so a recorder that
    * throws changes no result. Default: records nothing.
    */
-  readonly record?: (input: Readonly<Record<string, unknown>>) => void;
+  readonly record?: (input: Readonly<Record<string, unknown>>) => boolean;
 }
 
 /** A call the service refuses before it reaches a package: the window gets only the short code. */
@@ -183,7 +183,7 @@ export interface EngineService {
   runRecovery(folderId: unknown, revision: unknown, choices: unknown): Promise<Answer<Recovered>>;
   planMerge(folderId: unknown): Promise<Answer<MergeView>>;
   runMerge(folderId: unknown, revision: unknown): Promise<Answer<MergeWritten>>;
-  /** Records the answer to "Did this do what you wanted?" in the local log. True when a line was written. Never refuses a valid answer. */
+  /** Records the answer to "Did this do what you wanted?" in the local log. True only when a line was written; false when the log is off, the write failed, or more than 10 came in a minute. */
   recordCheck(answer: unknown, note: unknown): Promise<boolean>;
 }
 
@@ -208,18 +208,24 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
   let chain: Promise<unknown> = Promise.resolve();
   let count = 0;
 
-  /** Writes a usage event. A recorder that throws, or none, changes nothing. */
-  const record = (input: Readonly<Record<string, unknown>>): void => { try { deps.record?.({ source: 'app', ...input }); } catch { /* recording never changes a result */ } };
+  /**
+   * Writes a usage event. A recorder that throws, or none, changes nothing: the failure is told on the console. Only a package refusal and a finished write are
+   * recorded. A stale-approval mismatch (NOT_THE_PLAN_SHOWN) or a person cancelling main's confirm records nothing on purpose: neither is a failure of the product.
+   */
+  const record = (input: Readonly<Record<string, unknown>>): void => { try { deps.record?.({ source: 'app', ...input }); } catch (error) { console.error('Bowerloom could not record a usage event.', error); } };
   /** Runs a write and records its scenario: done when it finishes, refused with the code of the refusal when it does not. The result or the error passes through as it was. */
   const scenarioOf = async <T>(f: Folder, spec: { scenario?: string; step: string; engines?: readonly string[]; plan?: string; target?: boolean }, run: () => Promise<T>): Promise<T> => {
     const base = { kind: 'scenario', step: spec.step, ...(spec.scenario === undefined ? {} : { scenario: spec.scenario }), ...(spec.engines === undefined ? {} : { engines: spec.engines }), ...(spec.plan === undefined ? {} : { plan: spec.plan }), ...(spec.target ? { targetRoot: f.dir } : {}) };
     try { const r = await run(); record({ ...base, outcome: 'done' }); return r; } catch (error) {
       let code = 'FAILED';
-      try { code = refusalOf(error, f.scrub).code; } catch { /* keep FAILED */ }
+      try { code = refusalOf(error, f.scrub).code; } catch (inner) { console.error('Bowerloom could not name the refusal for its usage event.', inner); }
       record({ ...base, outcome: 'refused', code });
       throw error;
     }
   };
+  /** The after-apply check is recorded at most this many times in this window each minute. */
+  const CHECKS_PER_MINUTE = 10;
+  const checkTimes: number[] = [];
 
   /** One call at a time, in the order they came. */
   const serial = <T>(run: () => Promise<T>): Promise<T> => {
@@ -610,10 +616,12 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     }),
     recordCheck: (answer, note) => serial(async () => {
       const c = checkCheckArgs(answer, note);
-      let wrote = false;
-      try { deps.record?.({ source: 'app', kind: 'check', answer: c.answer, ...(c.note === undefined ? {} : { note: c.note }) }); wrote = true; } catch { wrote = false; }
-      return wrote;
+      // At most 10 a minute: over the cap nothing is written.
+      const at = now().getTime();
+      while (checkTimes.length > 0 && at - checkTimes[0]! >= 60_000) checkTimes.shift();
+      if (checkTimes.length >= CHECKS_PER_MINUTE) return false;
+      checkTimes.push(at);
+      try { return deps.record?.({ source: 'app', kind: 'check', answer: c.answer, ...(c.note === undefined ? {} : { note: c.note }) }) === true; } catch (error) { console.error('Bowerloom could not record the check.', error); return false; }
     }),
   };
 }
-

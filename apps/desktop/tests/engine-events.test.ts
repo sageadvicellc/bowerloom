@@ -2,7 +2,7 @@
 // that a recorder which throws changes no result, the new recordCheck call (arity, channel, validation in main), and the recorder's own log.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, statSync } from 'node:fs';
+import { readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readEvents, eventLogPath } from '../../../packages/diagnostics/src/index.js';
 import { createEngineService, checkCheckArgs } from '../main/engine-service.js';
@@ -21,7 +21,7 @@ type Seen = Record<string, unknown>;
 const INPUT: ProjectInput = { engines: ['claude-code', 'codex'], reconcile: 'accept-agents', writeClaudeMd: false, approve: [] };
 const value = <T>(a: Answer<T> | null): T => { assert.ok(a !== null, 'an answer'); if (!a.ok) assert.fail(`refused: ${a.refusal.code}`); return a.value; };
 
-function setup(t: test.TestContext, record: ((input: Seen) => void) | undefined): { home: string; service: EngineService; pick(dir: string | null): void } {
+function setup(t: test.TestContext, record: ((input: Seen) => boolean) | undefined): { home: string; service: EngineService; pick(dir: string | null): void } {
   const home = homeFolder(tempDir(t, 'bowerloom-events-'));
   let next: string | null = null;
   const service = createEngineService({ home, stateRoot: join(home, '.local', 'state', 'bowerloom'), chooseFolder: async () => next, confirm: async () => true, who: 'tester', now: () => WHEN, ...(record === undefined ? {} : { record }) });
@@ -38,7 +38,7 @@ async function install(service: EngineService, folder: FolderInfo, input: Projec
 
 test('an install into both engines records S2 with the engines, the plan, and the folder for the log to key; nothing else', async t => {
   const seen: Seen[] = [];
-  const { home, service, pick } = setup(t, e => seen.push(e));
+  const { home, service, pick } = setup(t, e => { seen.push(e); return true; });
   const dir = definedFolder(home);
   const folder = await choose(service, pick, dir);
   assert.equal((await install(service, folder)).ok, true);
@@ -51,7 +51,7 @@ test('an install into both engines records S2 with the engines, the plan, and th
 
 test('an install into one engine records no scenario, only step install and its engine', async t => {
   const seen: Seen[] = [];
-  const { home, service, pick } = setup(t, e => seen.push(e));
+  const { home, service, pick } = setup(t, e => { seen.push(e); return true; });
   const folder = await choose(service, pick, definedFolder(home));
   assert.equal((await install(service, folder, { ...INPUT, engines: ['claude-code'] })).ok, true);
   assert.equal(seen[0]!.scenario, undefined);
@@ -60,7 +60,7 @@ test('an install into one engine records no scenario, only step install and its 
 
 test('a removal records S5 remove; a write the package refuses records the refusal code and still returns the refusal', async t => {
   const seen: Seen[] = [];
-  const { home, service, pick } = setup(t, e => seen.push(e));
+  const { home, service, pick } = setup(t, e => { seen.push(e); return true; });
   const dir = definedFolder(home);
   const folder = await choose(service, pick, dir);
   await install(service, folder);
@@ -84,7 +84,7 @@ test('a removal records S5 remove; a write the package refuses records the refus
 
 test('an adoption records S1 adopt', async t => {
   const seen: Seen[] = [];
-  const { home, service, pick } = setup(t, e => seen.push(e));
+  const { home, service, pick } = setup(t, e => { seen.push(e); return true; });
   const folder = await choose(service, pick, engineFolder(home));
   const first = value(await service.planAdoption(folder.id, { picks: {}, acknowledged: [] }));
   const picks = Object.fromEntries(first.conflicts.map(c => [c.key, c.variants[0]!.key]));
@@ -109,7 +109,7 @@ test('a recorder that throws changes no result of any call', async t => {
 
 test('recordCheck: main validates the answer and the note again, and passes only a clean pair to the recorder', async t => {
   const seen: Seen[] = [];
-  const { service } = setup(t, e => seen.push(e));
+  const { service } = setup(t, e => { seen.push(e); return true; });
   assert.equal(await service.recordCheck('yes', null), true);
   assert.equal(await service.recordCheck('partly', 'I wanted two files.'), true);
   assert.equal(await service.recordCheck('no', '   '), true);
@@ -126,7 +126,7 @@ test('recordCheck is one more call on its own channel with two arguments, and th
   assert.equal(ENGINE_CHANNELS.recordCheck, 'bowerloom-engine:recordCheck');
   const seen: Seen[] = [];
   const handlers = new Map<string, (event: { senderFrame: unknown }, ...args: unknown[]) => unknown>();
-  registerEngineIpc({ ipc: { handle: (c, l) => { handlers.set(c, l as never); } }, appIndexUrl: APP_INDEX, home: '/nonexistent-home', stateRoot: '/nonexistent-home/.local/state/bowerloom', chooseFolder: async () => null, confirm: async () => false, who: 't', record: e => seen.push(e) });
+  registerEngineIpc({ ipc: { handle: (c, l) => { handlers.set(c, l as never); } }, appIndexUrl: APP_INDEX, home: '/nonexistent-home', stateRoot: '/nonexistent-home/.local/state/bowerloom', chooseFolder: async () => null, confirm: async () => false, who: 't', record: e => { seen.push(e); return true; } });
   const call = handlers.get(ENGINE_CHANNELS.recordCheck)!;
   const page = { senderFrame: { url: APP_INDEX, parent: null } };
   const reason = async (event: { senderFrame: unknown }, ...args: unknown[]): Promise<string> => { try { await call(event, ...args); return 'ok'; } catch (e) { return (e as Error).message; } };
@@ -164,4 +164,34 @@ test('the recorder writes a private log under the state root, keeps the folder o
   const broken = createRecorder({ stateRoot: eventLogPath(root), env: {}, now: () => WHEN, onFailure: m => told.push(m) });
   assert.doesNotThrow(() => broken({ source: 'app', kind: 'check', answer: 'yes' }));
   assert.equal(told.length, 1); assert.match(told[0]!, /^Bowerloom could not write its local event log: /);
+});
+
+test('recordCheck answers true only when a line was written: false with no recorder, a failed write, a recorder that throws, or the log off', async t => {
+  assert.equal(await setup(t, undefined).service.recordCheck('yes', null), false);
+  assert.equal(await setup(t, () => false).service.recordCheck('yes', null), false);
+  assert.equal(await setup(t, () => { throw new Error('disk full'); }).service.recordCheck('yes', null), false);
+  assert.equal(await setup(t, () => true).service.recordCheck('yes', null), true);
+  const root = join(tempDir(t, 'bowerloom-check-'), 'state');
+  const told: string[] = [];
+  const blocker = join(tempDir(t, 'bowerloom-blocker-'), 'file'); writeFileSync(blocker, 'x');
+  const failing = createRecorder({ stateRoot: blocker, env: {}, now: () => WHEN, onFailure: m => told.push(m) });
+  const off = createRecorder({ stateRoot: root, env: { BOWERLOOM_EVENT_LOG: 'off' }, now: () => WHEN, onFailure: m => told.push(m) });
+  const on = createRecorder({ stateRoot: root, env: {}, now: () => WHEN, onFailure: m => told.push(m) });
+  const input = { source: 'app', kind: 'check', answer: 'yes' };
+  assert.deepEqual([failing(input), off(input), on(input)], [false, false, true]);
+  assert.equal(told.length, 1);
+});
+
+test('recordCheck takes at most 10 a minute per window: the eleventh writes nothing, and a minute later it works again', async t => {
+  const seen: Seen[] = [];
+  let clock = WHEN.getTime();
+  const home = homeFolder(tempDir(t, 'bowerloom-rate-'));
+  const service = createEngineService({ home, stateRoot: join(home, 's'), chooseFolder: async () => null, confirm: async () => true, who: 'tester', now: () => new Date(clock), record: e => { seen.push(e); return true; } });
+  const results: boolean[] = [];
+  for (let i = 0; i < 11; i++) results.push(await service.recordCheck('yes', null));
+  assert.deepEqual(results, [...Array(10).fill(true), false]);
+  assert.equal(seen.length, 10);
+  clock += 60_000;
+  assert.equal(await service.recordCheck('no', null), true);
+  assert.equal(seen.length, 11);
 });

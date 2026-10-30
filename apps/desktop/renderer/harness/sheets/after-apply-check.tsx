@@ -1,7 +1,7 @@
 /**
  * "Did this do what you wanted?" in the done step of an install or a new harness. One tap records the answer in the local usage log on this computer. On
  * Partly or No, one more question asks what the person was trying to do; Save keeps the words, Skip keeps only the answer. Nothing leaves the computer.
- * A write that fails is not shown: the check is a courtesy and never stops the sheet.
+ * Thanks shows only when the answer was saved. When it was not (the log is off, the write failed, or the sample), the check says so and the reason goes to the console.
  */
 import { useState } from 'react';
 import type { ReactElement } from 'react';
@@ -9,7 +9,7 @@ import { CHECK_NOTE_LIMIT } from '../../../shared/engine/types.js';
 import type { CheckAnswer } from '../../../shared/engine/types.js';
 import { HButton } from '../parts/controls.js';
 import { ENGINE_WORDS } from '../words-engine.js';
-import { CHECK_START, checkNext } from './check-logic.js';
+import { CHECK_START, checkNext, checkSettled, saveCheck } from './check-logic.js';
 import type { CheckAction, CheckState } from './check-logic.js';
 
 const W = ENGINE_WORDS;
@@ -26,8 +26,10 @@ export function AfterApplyCheck({ record, initial = CHECK_START }: AfterApplyChe
   const act = (action: CheckAction): void => {
     const next = checkNext(state, action);
     setState(next.state);
-    if (next.record !== null) void Promise.resolve().then(() => record(next.record!.answer, next.record!.note)).catch(() => undefined);
+    if (next.record !== null) void saveCheck(record, next.record).then(saved => setState(checkSettled(saved)));
   };
+  if (state.step === 'saving') return <p className="hxe-text hxe-muted" role="status" data-check="saving">{W.hint.checkSaving}</p>;
+  if (state.step === 'failed') return <p className="hxe-text hxe-muted" role="status" data-check="failed">{W.paragraph.checkFailed}</p>;
   if (state.step === 'thanks') return <p className="hxe-text hxe-muted" role="status" data-check="thanks">{W.paragraph.checkThanks}</p>;
   if (state.step === 'why') {
     return (
