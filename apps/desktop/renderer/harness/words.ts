@@ -108,7 +108,7 @@ export const installTitle = (name: string): string => `Install ${name}`;
 /** "Skill from Caveman plug-in, version 1.2". */
 export const fromWords = (kind: PartKind, source: string, version: string | undefined): string => `${KIND_NAME[kind]} from ${source}${version === undefined ? '' : `, version ${version}`}`;
 /** "Discard 3 changes?": the question when the person leaves a folder with unsaved changes (owner decision Q1A). */
-export const discardWords = (n: number): string => `Discard ${n} ${n === 1 ? 'change' : 'changes'}?`;
+export { discardWords } from '../../shared/harness/close-words.js';
 /** "Unlink editor and check-facts": the name of the Unlink button of one link. */
 export const unlinkName = (agent: string, part: string): string => `${WORDS.label.unlink} ${agent} and ${part}`;
 /** "Open weekly-report in the builder". */

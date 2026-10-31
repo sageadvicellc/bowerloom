@@ -42,10 +42,10 @@ import { EngineProvider } from './engine.js';
 import { NotesProvider } from './notes/notes-session.js';
 import { NotesFirstRun } from './notes/NotesFirstRun.js';
 import { FolderDraftProvider } from './folder-draft.js';
+import { useCloseGuard } from './close-guard.js';
 import { createSampleEngine } from '../../shared/engine/sample.js';
 import { SAMPLE_PREVIEW_ATTRIBUTE } from '../../shared/engine/sample-switch.js';
 import type { EngineBridge } from '../../shared/engine/types.js';
-import { WORDS } from './words.js';
 
 /** The screen a route names. */
 function Screens({ route, bridge, realMode }: { route: Route; bridge: RealBridge | null; realMode: boolean }): ReactElement {
@@ -87,7 +87,8 @@ function Overlays(): ReactElement {
 
 function Routes({ bridge, realMode }: { bridge: RealBridge | null; realMode: boolean }): ReactElement {
   const route = useRoute();
-  useEffect(() => { document.title = WORDS.label.appName; }, [route]);
+  // The title is the app's name, and carries the count of unsaved changes for main (which keeps the title bar to the name). The close guard holds the unload while there are any.
+  useCloseGuard();
   if (isFirstRun(route)) return <Screens route={route} bridge={bridge} realMode={realMode} />;
   return <Shell route={route} overlays={<Overlays />}><Screens route={route} bridge={bridge} realMode={realMode} /></Shell>;
 }
