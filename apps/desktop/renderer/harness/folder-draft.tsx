@@ -44,6 +44,10 @@ const sameHarness = (a: DefinitionView, b: DefinitionView): boolean => a === b |
 export const loadDropsDraft = (entry: FolderEntry, base: DefinitionView): boolean =>
   entry.base !== null && !sameHarness(entry.base, base) && draftCount(entry.base, entry.stack.present) > 0;
 const put = (s: FolderDrafts, folder: string, entry: FolderEntry): FolderDrafts => ({ ...s, [folder]: entry });
+/** How many unsaved changes one folder's draft holds: none before its harness is read. */
+const countOf = (entry: FolderEntry): number => (entry.base === null ? 0 : draftCount(entry.base, entry.stack.present));
+/** The unsaved changes of every folder together: the N of "Discard N changes?" when the window closes (renderer/harness/close-guard.ts). */
+export const totalChangeCount = (s: FolderDrafts): number => Object.values(s).reduce((sum, entry) => sum + countOf(entry), 0);
 /** The folder's own entry, or undefined. A name like `__proto__` or `constructor` never reaches the prototype's property. */
 export const entryOf = (s: FolderDrafts, folder: string): FolderEntry | undefined => (Object.hasOwn(s, folder) ? s[folder] : undefined);
 /** The stack after a step: the same state when the stack did not change, so React draws nothing. */
@@ -113,6 +117,13 @@ export function useFolderDrafts(): { readonly drafts: FolderDrafts; dispatch(a: 
   return ctx;
 }
 
+/** The unsaved changes of every folder together. */
+export function useChangeCount(): number {
+  const ctx = useContext(Context);
+  if (ctx === null) throw new Error('The folder drafts are missing. Draw the screen inside FolderDraftProvider.');
+  return useMemo(() => totalChangeCount(ctx.drafts), [ctx.drafts]);
+}
+
 export function useFolderDraft(folder: string | null): FolderDraft {
   const ctx = useContext(Context);
   if (ctx === null) throw new Error('The folder drafts are missing. Draw the screen inside FolderDraftProvider.');
@@ -122,7 +133,7 @@ export function useFolderDraft(folder: string | null): FolderDraft {
   return useMemo<FolderDraft>(() => {
     const f = folder ?? '';
     return {
-      entry, draft: entry.stack.present, count: entry.base === null ? 0 : draftCount(entry.base, entry.stack.present),
+      entry, draft: entry.stack.present, count: countOf(entry),
       canUndo: canUndo(entry.stack), canRedo: canRedo(entry.stack), undoCount: undoCount(entry.stack),
       loaded: (base, versions) => send({ kind: 'loaded', folder: f, base, versions }),
       setVersions: versions => send({ kind: 'versions', folder: f, versions }),

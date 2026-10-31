@@ -19,7 +19,34 @@ export function hiddenArgs(): string[] { return watching ? [] : [E2E_HIDDEN_FLAG
 /** The options of a window that a spec makes in the main process (it is plain data, so it can go through `app.evaluate`). */
 export function extraWindowOptions(): { show: boolean; paintWhenInitiallyHidden?: boolean } { return watching ? { show: true } : { ...hiddenWindowOptions() }; }
 
-/** Starts the built app (the folder `desktop`) with the given arguments and environment, hidden unless the person watches. */
-export function launchElectron(desktop: string, args: string[], env?: Record<string, string | undefined>): Promise<ElectronApplication> {
-  return electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, ...args, ...hiddenArgs()], ...(env === undefined ? {} : { env: env as Record<string, string> }) });
+/**
+ * Answers main's close question ("Discard N changes?", main/close-guard.ts) in place of a person, and records what it was asked. `answer` is the index of the button: 0 is
+ * "Keep editing" and 1 is "Discard". It replaces the synchronous box in the main process, so a hidden run never waits on a box nobody can see. Gives nothing back; read the
+ * asks with `closeAsks`.
+ */
+export async function answerCloseQuestion(app: ElectronApplication, answer: 0 | 1): Promise<void> {
+  await app.evaluate(({ dialog }, a) => {
+    const g = globalThis as unknown as { __closeAsks?: { title: string; detail: string; buttons: string[]; defaultId: number; cancelId: number }[] };
+    g.__closeAsks = [];
+    (dialog as unknown as { showMessageBoxSync: (...args: unknown[]) => number }).showMessageBoxSync = (...args: unknown[]): number => {
+      const options = args[args.length - 1] as { title: string; detail: string; buttons: string[]; defaultId: number; cancelId: number };
+      g.__closeAsks!.push({ title: options.title, detail: options.detail, buttons: [...options.buttons], defaultId: options.defaultId, cancelId: options.cancelId });
+      return a;
+    };
+  }, answer);
+}
+
+/** What main asked since the last `answerCloseQuestion`. */
+export function closeAsks(app: ElectronApplication): Promise<{ title: string; detail: string; buttons: string[]; defaultId: number; cancelId: number }[]> {
+  return app.evaluate(() => (globalThis as unknown as { __closeAsks?: never[] }).__closeAsks ?? []);
+}
+
+/**
+ * Starts the built app (the folder `desktop`) with the given arguments and environment, hidden unless the person watches. The close question answers "Discard" at first,
+ * so a run that ends, or reloads the page, with unsaved changes in the Builder never waits on a box; a spec about the question sets its own answer.
+ */
+export async function launchElectron(desktop: string, args: string[], env?: Record<string, string | undefined>): Promise<ElectronApplication> {
+  const app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, ...args, ...hiddenArgs()], ...(env === undefined ? {} : { env: env as Record<string, string> }) });
+  await answerCloseQuestion(app, 1);
+  return app;
 }

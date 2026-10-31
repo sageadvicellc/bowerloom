@@ -17,8 +17,9 @@ import { reportProblem, showUsageLog } from './diagnostics-dialogs.js';
 import type { DialogDeps } from './diagnostics-dialogs.js';
 import { execFileRunner } from '../../../packages/diagnostics/src/index.js';
 import { withSamplePreviewEngines } from '../shared/engine/sample-switch.js';
-import { leaveDock, revealWindow, windowOptions } from './window-options.js';
+import { e2eHidden, leaveDock, revealWindow, windowOptions } from './window-options.js';
 import { windowFailure } from './window-failure.js';
+import { bringForBox, closeGuard } from './close-guard.js';
 import type { EngineService } from './engine-service.js';
 import { APP_HOST, APP_INDEX, APP_SCHEME, allowRequest, chooseUserData, decideNavigation, makeTempDataDir, removeAndReport, resolveAppFile, userDataArg, webPreferences } from './security.js';
 
@@ -79,6 +80,9 @@ function startupFailed(error: unknown, title = 'Bowerloom could not start'): voi
 /** The engine calls of this launch, once registered; null for a launch with none. A window that dies waits for this to be idle (main/window-failure.ts). */
 let engineForExit: EngineService | null = null;
 
+/** True once a failed window has started the quit of the app. The close guard then lets the unload go on without a box (main/close-guard.ts). */
+let closeEnding = false;
+
 /**
  * A window that died, or a page that did not load, once the app is running. A write may be in progress, so this never ends the process at once: it waits for the
  * engine to be idle, shows the box, and quits through app.quit(), so before-quit and quit run. app.exit is for start-up failures only (startupFailed).
@@ -88,6 +92,7 @@ const windowEnded = windowFailure({
   say: text => { process.stderr.write(text); },
   showBox: (title, message) => { dialog.showErrorBox(title, message); },
   setExitCode: code => { process.exitCode = code; },
+  markEnding: () => { closeEnding = true; },
   quit: () => app.quit(),
 });
 function windowFailed(error: Error, title: string): Promise<void> { return windowEnded(error, title); }
@@ -105,6 +110,11 @@ function createWindow(): void {
   window.webContents.on('render-process-gone', (_event, details) => { if (details.reason !== 'clean-exit') void windowFailed(new Error(`The window stopped (${details.reason}). Open Bowerloom again.`), 'Bowerloom stopped'); });
   window.webContents.on('did-fail-load', (_event, code, description, _url, isMainFrame) => { if (isMainFrame && code !== -3) void windowFailed(new Error(`The window could not load its page (${description}).`), 'Bowerloom could not start'); });
   window.once('ready-to-show', () => { if (window !== null) revealWindow(window, argv); });
+  // Unsaved Builder changes: the window holds its own unload, and Electron cancels that unload without a word unless main handles this event. Main asks "Discard N changes?" in its own
+  // box, at once (this event is answered when the handler returns, so the box is the synchronous one). Closing the window, a reload and Cmd+Q (app.quit closes each window through
+  // the same unload) all come here. The window has no channel to skip the box or answer it; it only names a count in its page title (main/close-guard.ts).
+  const win = window;
+  win.webContents.on('will-prevent-unload', closeGuard({ title: () => win.webContents.getTitle(), ending: () => closeEnding, reveal: () => bringForBox(win, !e2eHidden(argv)), ask: options => dialog.showMessageBoxSync(win, { ...options, buttons: [...options.buttons] }) }));
   // The app is called "Bowerloom" from the first moment: the page title it loads with never reaches the title bar.
   window.on('page-title-updated', event => event.preventDefault());
   window.on('closed', () => { window = null; });
