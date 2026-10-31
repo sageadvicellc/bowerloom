@@ -45,6 +45,11 @@ const clean = (value: string | undefined): string | undefined => {
   if (value === undefined || value === '') return undefined;
   try { const text = decodeURIComponent(value); return /^[A-Za-z0-9._-]{1,120}$/.test(text) ? text : undefined; } catch { return undefined; }
 };
+/**
+ * The ids the Builder opens: `folder-<n>` from main, and `sample-<name>` from the sample launch. Any other id (a name like `__proto__`, or one a person typed)
+ * opens the folder list instead.
+ */
+const BUILDER_ID = /^(?:folder-[0-9]{1,6}|sample-[a-z]+(?:-[a-z]+){0,4})$/;
 const isKind = (value: string | undefined): value is PartKind => value !== undefined && (PART_KINDS as readonly string[]).includes(value);
 
 /** The route an address names, or null when the address is not the preview's own. An unknown page under the preview's address is the Harness list. */
@@ -59,7 +64,7 @@ export function parseRoute(hash: string): Route | null {
     case 'notes': return { name: 'notes' };
     case 'harnesses': return id === undefined ? { name: 'harnesses' } : { name: 'harnesses', id };
     // An older address with a view after the id still opens the folder.
-    case 'builder': return id === undefined ? { name: 'harnesses' } : { name: 'builder', id };
+    case 'builder': return id === undefined || !BUILDER_ID.test(id) ? { name: 'harnesses' } : { name: 'builder', id };
     case 'file': return id === undefined ? { name: 'harnesses' } : { name: 'file', partId: id };
     case 'library': {
       const kind = isKind(a) ? a : 'skill', partId = clean(b);

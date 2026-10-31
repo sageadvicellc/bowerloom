@@ -41,12 +41,14 @@ export type FolderDraftAction =
 
 const sameHarness = (a: DefinitionView, b: DefinitionView): boolean => a === b || JSON.stringify(a) === JSON.stringify(b);
 const put = (s: FolderDrafts, folder: string, entry: FolderEntry): FolderDrafts => ({ ...s, [folder]: entry });
+/** The folder's own entry, or undefined. A name like `__proto__` or `constructor` never reaches the prototype's property. */
+export const entryOf = (s: FolderDrafts, folder: string): FolderEntry | undefined => (Object.hasOwn(s, folder) ? s[folder] : undefined);
 /** The stack after a step: the same state when the stack did not change, so React draws nothing. */
 const withStack = (s: FolderDrafts, folder: string, entry: FolderEntry, stack: DraftStack): FolderDrafts => (stack === entry.stack ? s : put(s, folder, { ...entry, stack }));
 
 /** The next drafts of the folders. A change, an undo or a discard of a folder not read yet changes nothing. */
 export function folderDraftsReduce(s: FolderDrafts, a: FolderDraftAction): FolderDrafts {
-  const entry = s[a.folder];
+  const entry = entryOf(s, a.folder);
   switch (a.kind) {
     case 'loaded': {
       const was = entry ?? EMPTY_FOLDER;
@@ -112,7 +114,7 @@ export function useFolderDraft(folder: string | null): FolderDraft {
   const ctx = useContext(Context);
   if (ctx === null) throw new Error('The folder drafts are missing. Draw the screen inside FolderDraftProvider.');
   const { drafts, dispatch } = ctx;
-  const entry = folder === null ? EMPTY_FOLDER : drafts[folder] ?? EMPTY_FOLDER;
+  const entry = folder === null ? EMPTY_FOLDER : entryOf(drafts, folder) ?? EMPTY_FOLDER;
   const send = useCallback((a: FolderDraftAction): void => { if (folder !== null) dispatch(a); }, [folder, dispatch]);
   return useMemo<FolderDraft>(() => {
     const f = folder ?? '';

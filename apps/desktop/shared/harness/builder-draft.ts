@@ -104,15 +104,15 @@ function endOf(partId: string): End {
 
 /**
  * Runs one Builder gesture on the draft of one folder's harness. `base` is the harness as main read it; `pending` holds the notes folders the person chose
- * that the draft does not hold yet, which the graph draws as cards. The base and the draft are never changed.
+ * that the draft does not hold yet, which the graph draws as cards. `folderId` is the folder being edited (a copy from it is refused). The base and the draft are never changed.
  */
-export function builderAction(base: DefinitionView, draft: SaveDraft, action: BuilderAction, pending: readonly SourceView[] = []): BuilderResult {
+export function builderAction(base: DefinitionView, draft: SaveDraft, action: BuilderAction, pending: readonly SourceView[] = [], folderId?: string): BuilderResult {
   switch (action.kind) {
     case 'link': case 'unlink': return link(base, draft, action.a, action.b, action.kind === 'link', pending);
     case 'remove': return remove(base, draft, action.part);
     case 'keep': return keep(base, draft, action.part);
     case 'add-notes': return addNotes(base, draft, action.agent, action.source);
-    case 'copy-skill': return copy(base, draft, action.copy);
+    case 'copy-skill': return copy(base, draft, action.copy, folderId);
     case 'add-keeper': return addKeeper(base, draft, action.view);
     case 'set-engines': return engines(base, draft, action.engines);
     case 'new-harness': return refuse('new-harness');
@@ -192,8 +192,9 @@ function addNotes(base: DefinitionView, draft: SaveDraft, agentId: string, sourc
   return changed(draft, attachNotes(base, draft, end.id, source, true));
 }
 
-function copy(base: DefinitionView, draft: SaveDraft, skill: SkillCopy): BuilderResult {
-  if (skill.from === base.id) return refuse('same-folder');
+function copy(base: DefinitionView, draft: SaveDraft, skill: SkillCopy, folderId: string | undefined): BuilderResult {
+  // `from` is a folder id, so it is compared with the id of the folder being edited. The harness's own id is another thing.
+  if (folderId !== undefined && skill.from === folderId) return refuse('same-folder');
   const view = draftView(base, draft);
   if (view.skills.some(s => s.id === skill.id) || draft.removed.includes(skill.id) || draft.copies.some(c => c.id === skill.id)) return refuse('skill-here');
   if (draft.copies.length >= COPY_LIMIT) return refuse('copy-limit');

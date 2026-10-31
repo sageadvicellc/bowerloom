@@ -27,9 +27,10 @@ const KIT_VIEW: DefinitionView = {
   agents: [...BASE.agents, { id: KEEPER_AGENT, name: 'Notes keeper', description: 'Keeps the notes.', skills: ['add-source', 'tidy'], notes: [] }],
   kits: [{ id: KEEPER_KIT, version: '1.0.0', skills: ['add-source', 'tidy'] }],
 };
+const FOLDER = 'folder-1';
 const SUMMARIZE: SkillCopy = { id: 'summarize', from: 'reading', fromLabel: 'reading', name: 'summarize', description: 'Summarizes a page.' };
 
-const run = (action: BuilderAction, draft: SaveDraft = EMPTY_DRAFT, pending: readonly SourceView[] = []): BuilderResult => builderAction(BASE, draft, action, pending);
+const run = (action: BuilderAction, draft: SaveDraft = EMPTY_DRAFT, pending: readonly SourceView[] = []): BuilderResult => builderAction(BASE, draft, action, pending, FOLDER);
 /** The draft of an allowed gesture; the test fails with the refusal's words when it was refused. */
 function ok(result: BuilderResult): SaveDraft {
   if (!result.ok) assert.fail(`refused: ${result.refusal}: ${result.words}`);
@@ -187,7 +188,9 @@ test('copying a skill from another folder is an add-skill edit; one the harness 
 });
 
 test('a copy from this same folder is refused: the skill is here already', () => {
-  refused(run({ kind: 'copy-skill', copy: { ...SUMMARIZE, from: BASE.id } }), 'same-folder');
+  refused(run({ kind: 'copy-skill', copy: { ...SUMMARIZE, from: FOLDER } }), 'same-folder');
+  // The harness id is not the folder id: a folder that happens to share the harness's name is another folder.
+  assert.equal(run({ kind: 'copy-skill', copy: { ...SUMMARIZE, from: BASE.id } }).ok, true);
 });
 
 test('the interfaces are a set-engines edit; none at all, or the same ones, are refused', () => {
