@@ -5,10 +5,11 @@
  *
  * Where "seen" is kept: the window has no preference file of its own, and in this launch (--prototype-v3 and --prototype-v3-real) its app data is a
  * temporary folder that main removes when the app quits, so nothing kept there outlives the launch anyway. The harness window writes nothing to storage on
- * disk (tests/harness-boundary.test.ts), so "seen" goes in the safest per-viewer store: this window's `sessionStorage`, which is held in memory, survives a
- * reload of the page, and goes with the window. The tour therefore starts once per launch. This file is the one place in the window that touches it.
- * Every read and write is wrapped: a storage that throws, or none at all, never stops the window, and "seen" is then held in memory, so the tour still
- * never repeats in this window.
+ * disk on purpose (tests/harness-boundary.test.ts), so "seen" goes in the narrowest per-viewer store: this window's `sessionStorage`. It is not held in
+ * memory only: the browser engine keeps it in the temporary app data folder of this launch, so it survives a reload of the page and goes with that folder
+ * when the app quits. The tour therefore starts once per launch. This file is the one place in the window that touches it. Every read and write is
+ * wrapped: a storage that throws, or none at all, never stops the window. A read that throws counts as "not seen" and is told with console.warn; "seen"
+ * is then held in memory, so the tour still never repeats in this window.
  */
 import type { DefinitionView } from '../../../shared/engine/types.js';
 import { keeperOf } from '../../../shared/harness/save-draft.js';
@@ -26,7 +27,10 @@ export function createTourMemory(storage: () => SeenStorage | null | undefined):
   return {
     seen: () => {
       if (held) return true;
-      try { return storage()?.getItem(TOUR_SEEN_KEY) === '1'; } catch { return false; }
+      try { return storage()?.getItem(TOUR_SEEN_KEY) === '1'; } catch (error) {
+        console.warn('Bowerloom could not read whether the tour was seen, so it counts as not seen.', error);
+        return false;
+      }
     },
     mark: () => {
       held = true;

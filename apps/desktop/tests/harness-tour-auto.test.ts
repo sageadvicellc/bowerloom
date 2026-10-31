@@ -6,6 +6,9 @@ import assert from 'node:assert/strict';
 import { TOUR_SEEN_KEY, createTourMemory, startsOnItsOwn } from '../renderer/harness/tour/seen.js';
 import type { DefinitionView } from '../shared/engine/types.js';
 import { KEEPER_AGENT } from '../shared/harness/save-draft.js';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { DESKTOP } from './support.js';
 
 const BASE: DefinitionView = {
   id: 'team', description: '', engines: ['claude-code'], instructions: false, skills: [], agents: [{ id: 'reader', name: 'reader', description: '', skills: [], notes: [] }], sources: [], kits: [],
@@ -55,6 +58,29 @@ test('a storage that throws, or none at all, never stops the window: the tour is
   const missing = createTourMemory(() => null);
   missing.mark();
   assert.equal(missing.seen(), true);
+});
+
+test('a storage read that throws is "not seen", and it is told on the console with console.warn', t => {
+  const warned = t.mock.method(console, 'warn', () => undefined);
+  const s = storage(); s.broken = true;
+  assert.equal(createTourMemory(() => s).seen(), false);
+  assert.equal(warned.mock.callCount(), 1);
+  const [words, error] = warned.mock.calls[0]!.arguments as [unknown, unknown];
+  assert.match(String(words), /tour/i);
+  assert.ok(error instanceof Error && error.message === 'storage is off');
+  // A storage that cannot be reached at all is told the same way.
+  assert.equal(createTourMemory(() => { throw new Error('no storage here'); }).seen(), false);
+  assert.equal(warned.mock.callCount(), 2);
+  // A storage that works, or none, says nothing.
+  assert.equal(createTourMemory(() => storage()).seen(), false);
+  assert.equal(createTourMemory(() => null).seen(), false);
+  assert.equal(warned.mock.callCount(), 2);
+});
+
+test('the comment of seen.ts says where sessionStorage lands: the temporary app data folder, not memory', () => {
+  const text = readFileSync(join(DESKTOP, 'renderer', 'harness', 'tour', 'seen.ts'), 'utf8');
+  assert.doesNotMatch(text, /held in memory, survives/);
+  assert.match(text, /temporary app data folder/);
 });
 
 test('a stored value other than "1" is not seen', () => {
