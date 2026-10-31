@@ -115,8 +115,11 @@ export function SaveSheet({ open, folderId, tour: tourAsked = false, start = 'fo
     void call.plan(W.label.planning, () => foldersCall(engine), list => {
       setFolders(list);
       const usable = list.filter(f => !folderLine(f, 'save').off);
-      const id = folderId !== null && usable.some(f => f.id === folderId) ? folderId : usable[0]?.id ?? null;
+      // A folder asked for that cannot be saved picks nothing, and says why: the sheet never saves a folder other than the one the person asked for.
+      const asked = folderId === null ? undefined : list.find(f => f.id === folderId);
+      const id = folderId === null ? usable[0]?.id ?? null : usable.some(f => f.id === folderId) ? folderId : null;
       setPicked(id);
+      if (folderId !== null && id === null) setNote(asked === undefined ? WORDS.hint.noFolder : `${asked.name}: ${folderLine(asked, 'save').words}`);
       // Opened by the Builder's Save or Go back: the plan of that folder at once, from the draft the Builder drew.
       const entry = id === null ? undefined : entryOf(drafts.current, id);
       if (start !== 'review' || id === null || id !== folderId || entry === undefined || entry.base === null) return;
@@ -273,6 +276,7 @@ export function SaveSheet({ open, folderId, tour: tourAsked = false, start = 'fo
         {step === 'folder' ? (
           <FolderStep sheet="save" folders={folders} picked={picked} sample={engine?.mode === 'sample'} noBridge={engine === null} busy={busy} introRef={intro} onPick={pick} onChoose={choose}>
             {refusal}{nextWords === undefined || nextWords === null ? null : <p className="hxe-text" data-next-step="">{nextWords}</p>}
+            {note === null ? null : <p className="hxe-text" role="status" data-folder-note="">{note}</p>}
           </FolderStep>
         ) : null}
         {step !== 'folder' ? (

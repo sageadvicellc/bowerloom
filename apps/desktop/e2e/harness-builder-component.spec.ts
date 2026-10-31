@@ -256,3 +256,18 @@ test('L7: a set-aside that worked says so when the save points cannot be read ag
   await expect(drawer.locator('[data-set-aside-done]')).toHaveAttribute('data-set-aside-done', 'v-old-2026-10-31');
   await expect(drawer.getByRole('alert').filter({ hasText: CALL_FAILED })).toBeVisible();
 });
+
+test('a save sheet opened for a folder that cannot be saved picks nothing and says why, and never saves another folder', async () => {
+  const stopped: FolderInfo = { ...WEEKLY, problem: 'The harness folder is not safe to read.' };
+  const other: FolderInfo = { ...WEEKLY, id: 'folder-4', label: '~/Projects/other', name: 'other' };
+  const p = await open(BUILDER, { folders: [stopped, other], planSave: ok(view()), listVersions: ok([]), notesSummary: ok(NOTES) });
+  await expect(p.locator('.hx-node[data-node="agent:editor"]')).toBeVisible();
+  await tick(p, 'editor', 'check-facts').check();
+  const before = await named(p, 'planSave');
+  await p.locator('[data-builder-save]').click();
+  const sheet = p.getByRole('dialog', { name: 'Edit a folder\'s harness' });
+  await expect(sheet.locator('[data-folder-note]')).toHaveText('weekly: The harness folder is not safe to read.');
+  await expect(sheet.locator('[data-open-edit]')).toBeDisabled();
+  await expect(sheet.locator('[data-save-review]')).toHaveCount(0);
+  expect(await named(p, 'planSave')).toBe(before);
+});
