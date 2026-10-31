@@ -8,6 +8,7 @@
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { chmodSync, existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { userInfo } from 'node:os';
 import { join } from 'node:path';
 import { definedFolder, engineFolder, filesOf } from '../tests/helpers-engine/folders.js';
 import { bundleOnce, launchReal } from './harness-real-page.js';
@@ -109,6 +110,9 @@ test('Install a folder\'s harness: approve the weaker rules, read the plan, appr
   await expect(s.locator('[data-review="code"][data-path=".codex/rules/bowerloom.rules"] pre')).toContainText('decision = "forbidden"');
   await expect(s.locator('[data-engine="codex"] [data-part="mcp"]')).toContainText('Absent');
   await expect(s.locator('[data-section="approved"] li')).toHaveCount(2);
+  // Each approved row says when, and never the account name of this computer (owner decision, 2026-10-31).
+  for (const row of await s.locator('[data-section="approved"] li').all()) await expect(row).toContainText(/approved now · \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/);
+  expect(await s.locator('[data-section="approved"]').innerText()).not.toContain(userInfo().username);
   await expect(s).not.toContainText(home);
   expect(filesOf(dir), 'nothing written while the person reads').toEqual(before);
   await shot(p, 'R3-real-install-plan');

@@ -175,6 +175,7 @@ test('Install: approve each weaker rule first, then read every result word, the 
   await expect(plugin).toContainText('A Bowerloom hook blocked this action.');
   await expect(s.locator('[data-path=".mcp.json"] .hxe-env')).toContainText('read from a variable when it runs');
   await expect(s.locator('[data-section="approved"] li')).toHaveCount(3);
+  for (const row of await s.locator('[data-section="approved"] li').all()) await expect(row).toContainText(/approved now · \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/);
   // The drift report.
   const drift = s.locator('[data-section="drift"]');
   await expect(drift).toContainText('AGENTS.md and CLAUDE.md differ');
