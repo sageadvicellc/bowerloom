@@ -5,6 +5,9 @@
  * It runs on the made-up home (tools/made-up-home.ts), project `rope-yard`, which already holds a harness for both programs. "The result shows in Claude Code and Codex" is checked on disk:
  * the files in the plan are the files written, and each one carries the bytes its source says. No program is started. Whether each program lists the skills and agents is the owner's
  * look at pass 2 and is not tested here.
+ *
+ * The step "drags a skill to an agent" FAILS on this folder (the last test of the file, an expected failure): the Builder moves the agents away while a skill is dragged, so the drop misses. The journey
+ * joins the skill the other way the Builder offers (press the agent, its circle, then the skill) and goes on from there.
  */
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
