@@ -9,6 +9,8 @@
  *   an edit does not name stay as they were.
  * - An agent file with its YAML frontmatter edited in place, so comments and key order stay, and the same body.
  * - A skill or the instructions as the text given.
+ * - `knowledge.json` as `JSON.stringify(value, null, 2)` and a newline, as `harness.json` is. The last source removed
+ *   deletes the file.
  *
  * The result is checked with the package loader, run over the files in memory (`loadDefinitionFiles`), so it is exactly
  * what `loadDefinition` accepts. A fault comes back as a typed refusal, never a throw, and never repeats a value.
@@ -19,11 +21,12 @@ import { splitFrontmatter } from '../../context-slices/src/frontmatter.js';
 import { decodeText, isRecord, parseStrictJson, readFrontmatter, toLf } from './json.js';
 import { loadDefinitionFiles } from './load.js';
 import { safeName } from './secrets.js';
-import type { Definition, DefinitionFile, EngineTarget, JsonValue, Problem } from './types.js';
-import { DEFINITION_LIMITS, isId } from './words.js';
+import { isKnowledgeKind, isKnowledgePath } from './knowledge.js';
+import type { Definition, DefinitionFile, EngineTarget, JsonValue, KnowledgeSource, Problem } from './types.js';
+import { DEFINITION_LIMITS, KNOWLEDGE_FILE, KNOWLEDGE_KINDS, isId } from './words.js';
 
 /** The kinds of edit, one set for every caller. */
-export const EDIT_KINDS = Object.freeze(['set-skill', 'add-skill', 'remove-skill', 'set-agent', 'set-instructions', 'set-engines'] as const);
+export const EDIT_KINDS = Object.freeze(['set-skill', 'add-skill', 'remove-skill', 'set-agent', 'set-instructions', 'set-engines', 'set-source', 'remove-source'] as const);
 
 /**
  * One edit of one folder's definition.
@@ -31,18 +34,29 @@ export const EDIT_KINDS = Object.freeze(['set-skill', 'add-skill', 'remove-skill
  * - `add-skill`: creates `skills/<id>/SKILL.md` and lists the skills part in `harness.json` when it was not listed.
  * - `remove-skill`: deletes every file of the skill, its settings in `harness.json`, and its link in each agent. A
  *   reference the definition keeps elsewhere, such as tool guidance or `sources.json`, makes the result invalid.
- * - `set-agent`: sets the linked `skills` and the `tools` of `agents/<id>.md`. A field left out stays; `null` removes it.
- *   A skill newly linked must be a skill of this folder.
+ * - `set-agent`: sets the linked `skills`, the `tools`, and the `notes` of `agents/<id>.md`. A field left out stays;
+ *   `null` removes it. A skill newly linked must be a skill of this folder, and a source newly listed in `notes` must be
+ *   a source of this folder's `knowledge.json`.
  * - `set-instructions`: replaces the full text of `instructions/AGENTS.md`, creating it when the definition had none.
  * - `set-engines`: replaces the engine list of `harness.json`.
+ * - `set-source`: adds a knowledge source to `knowledge.json`, creating the file, or replaces the source of the same name
+ *   in place. The path must already be in stored form (`storedKnowledgePath` gives it): relative inside the harness
+ *   folder, or `~/<path>`.
+ * - `remove-source`: removes a source from `knowledge.json`, and its name from the `notes` of each agent, as
+ *   `remove-skill` does for skills. A `notes` list left empty is removed. The last source removed deletes the file.
  */
 export type DefinitionEdit =
   | { readonly kind: 'set-skill'; readonly id: string; readonly text: string }
   | { readonly kind: 'add-skill'; readonly id: string; readonly text: string }
   | { readonly kind: 'remove-skill'; readonly id: string }
-  | { readonly kind: 'set-agent'; readonly id: string; readonly skills?: readonly string[] | null; readonly tools?: readonly string[] | null }
+  | {
+    readonly kind: 'set-agent'; readonly id: string; readonly skills?: readonly string[] | null; readonly tools?: readonly string[] | null;
+    readonly notes?: readonly string[] | null;
+  }
   | { readonly kind: 'set-instructions'; readonly text: string }
-  | { readonly kind: 'set-engines'; readonly engines: readonly EngineTarget[] };
+  | { readonly kind: 'set-engines'; readonly engines: readonly EngineTarget[] }
+  | { readonly kind: 'set-source'; readonly source: KnowledgeSource }
+  | { readonly kind: 'remove-source'; readonly name: string };
 
 /** What a result does to one path, compared with the definition given. */
 export interface EditChange {
@@ -55,14 +69,17 @@ export interface EditChange {
  * - `EDIT_BAD_EDIT`: the edit is not one of the shapes above.
  * - `EDIT_UNSAFE_ID`: an id is not lowercase letters, digits, and single hyphens up to 64 characters, so it cannot name a
  *   skill or an agent, and never a path.
- * - `EDIT_UNKNOWN_ID`: the skill or agent does not exist in the folder.
+ * - `EDIT_UNKNOWN_ID`: the skill, agent, or knowledge source does not exist in the folder.
  * - `EDIT_DUPLICATE_ID`: `add-skill` names a skill that exists.
+ * - `EDIT_UNSAFE_PATH`: a knowledge source path is not in stored form: it is absolute, holds `..`, or is otherwise not
+ *   a relative path inside the harness folder or a `~/` path.
  * - `EDIT_TOO_LARGE`: a text, the list of edits, or the result is over `DEFINITION_LIMITS`, a line of 4096 characters among them.
  * - `EDIT_SECRET_FOUND`: the result holds a secret value.
  * - `EDIT_INVALID`: the loader refuses the result; `problems` lists why.
  */
 export type EditRefusalCode =
-  | 'EDIT_BAD_EDIT' | 'EDIT_UNSAFE_ID' | 'EDIT_UNKNOWN_ID' | 'EDIT_DUPLICATE_ID' | 'EDIT_TOO_LARGE' | 'EDIT_SECRET_FOUND' | 'EDIT_INVALID';
+  | 'EDIT_BAD_EDIT' | 'EDIT_UNSAFE_ID' | 'EDIT_UNKNOWN_ID' | 'EDIT_DUPLICATE_ID' | 'EDIT_UNSAFE_PATH' | 'EDIT_TOO_LARGE' | 'EDIT_SECRET_FOUND'
+  | 'EDIT_INVALID';
 
 export type EditResult =
   | {
@@ -120,13 +137,15 @@ function apply(def: Definition, edits: readonly DefinitionEdit[]): EditResult {
 
   const work: Work = new Map(def.files.map(f => [f.path, { bytes: Buffer.from(f.bytes), executable: f.executable === true }]));
   const harness = new HarnessDraft(work);
+  const knowledge = new KnowledgeDraft(work);
   edits.forEach((edit, i) => {
-    try { applyOne(work, harness, snapshot(edit)); } catch (error) {
+    try { applyOne(work, harness, knowledge, snapshot(edit)); } catch (error) {
       if (error instanceof Refusal && error.edit === undefined) throw new Refusal(error.code, error.message, i, error.problems);
       throw error;
     }
   });
   harness.flush();
+  knowledge.flush();
 
   const files: DefinitionFile[] = [...work.entries()].sort(([a], [b]) => byBytes(a, b)).map(([path, f]) => ({ path, bytes: f.bytes, executable: f.executable }));
   const loaded = loadDefinitionFiles(files, def.folder);
@@ -162,9 +181,11 @@ const SHAPES: Readonly<Record<(typeof EDIT_KINDS)[number], { required: readonly 
   'set-skill': { required: ['id', 'text'], optional: [] },
   'add-skill': { required: ['id', 'text'], optional: [] },
   'remove-skill': { required: ['id'], optional: [] },
-  'set-agent': { required: ['id'], optional: ['skills', 'tools'] },
+  'set-agent': { required: ['id'], optional: ['skills', 'tools', 'notes'] },
   'set-instructions': { required: ['text'], optional: [] },
   'set-engines': { required: ['engines'], optional: [] },
+  'set-source': { required: ['source'], optional: [] },
+  'remove-source': { required: ['name'], optional: [] },
 };
 
 const isPlain = (value: unknown): value is Record<string, unknown> => {
@@ -225,9 +246,22 @@ function engineList(value: unknown): Obj[] {
   });
 }
 
+/** A knowledge source of a `set-source` edit: exactly a kind, a name, and a stored path. The message never repeats a path. */
+function sourceOf(value: unknown): KnowledgeSource {
+  if (!isPlain(value)) throw new Refusal('EDIT_BAD_EDIT', 'A set-source edit needs a source: an object with a kind, a name, and a path.');
+  const keys = Object.keys(value);
+  if (keys.length !== 3 || !['kind', 'name', 'path'].every(k => keys.includes(k))) throw new Refusal('EDIT_BAD_EDIT', 'A source has exactly a kind, a name, and a path.');
+  const { kind, name, path } = value;
+  if (!isKnowledgeKind(kind)) throw new Refusal('EDIT_BAD_EDIT', `A source kind must be ${KNOWLEDGE_KINDS.join(', or ')}.`);
+  const id = idOf(name, 'source');
+  if (typeof path !== 'string') throw new Refusal('EDIT_BAD_EDIT', 'A source path must be text.');
+  if (!isKnowledgePath(path)) throw new Refusal('EDIT_UNSAFE_PATH', 'A source path must be a folder inside the harness folder, relative to it, or a folder in ~/ form, with no "..".');
+  return { kind, name: id, path };
+}
+
 // ---- the edits ------------------------------------------------------------------------------------------------------
 
-function applyOne(work: Work, harness: HarnessDraft, edit: Record<string, unknown> & { kind: (typeof EDIT_KINDS)[number] }): void {
+function applyOne(work: Work, harness: HarnessDraft, knowledge: KnowledgeDraft, edit: Record<string, unknown> & { kind: (typeof EDIT_KINDS)[number] }): void {
   switch (edit.kind) {
     case 'set-skill': {
       const id = idOf(edit.id, 'skill'), body = textOf(edit.text, 'skill');
@@ -263,12 +297,14 @@ function applyOne(work: Work, harness: HarnessDraft, edit: Record<string, unknow
         if (typeof t !== 'string') throw new Refusal('EDIT_BAD_EDIT', 'Each tool must be a string.');
         return t;
       });
-      if (skills === undefined && tools === undefined) throw new Refusal('EDIT_BAD_EDIT', 'A set-agent edit needs skills, tools, or both.');
+      const notes = edit.notes === undefined || edit.notes === null ? edit.notes : listOf(edit.notes, 'notes list').map(n => idOf(n, 'source'));
+      if (skills === undefined && tools === undefined && notes === undefined) throw new Refusal('EDIT_BAD_EDIT', 'A set-agent edit needs skills, tools, notes, or more than one.');
       rewriteAgent(work, at, data => {
         const had = Array.isArray(data.skills) ? data.skills : [];
         for (const s of skills ?? []) if (!had.includes(s) && !skillFiles(work, s).length) throw new Refusal('EDIT_UNKNOWN_ID', `The folder holds no skill ${safeName(s)} to link.`);
-        const skillsChanged = setField(data, 'skills', skills), toolsChanged = setField(data, 'tools', tools);
-        return skillsChanged + toolsChanged > 0;
+        for (const n of notes ?? []) if (!knowledge.has(n)) throw new Refusal('EDIT_UNKNOWN_ID', `The folder holds no knowledge source ${safeName(n)} to list in notes.`);
+        const skillsChanged = setField(data, 'skills', skills), toolsChanged = setField(data, 'tools', tools), notesChanged = setField(data, 'notes', notes);
+        return skillsChanged + toolsChanged + notesChanged > 0;
       });
       return;
     }
@@ -281,6 +317,16 @@ function applyOne(work: Work, harness: HarnessDraft, edit: Record<string, unknow
     case 'set-engines':
       harness.setEngines(engineList(edit.engines));
       return;
+    case 'set-source':
+      knowledge.set(sourceOf(edit.source));
+      return;
+    case 'remove-source': {
+      const name = idOf(edit.name, 'source');
+      if (!knowledge.has(name)) throw new Refusal('EDIT_UNKNOWN_ID', `The folder holds no knowledge source ${safeName(name)}.`);
+      knowledge.remove(name);
+      for (const path of [...work.keys()]) if (AGENT_FILE.test(path)) rewriteAgent(work, path, data => unlinkNotes(data, name));
+      return;
+    }
   }
 }
 
@@ -293,7 +339,7 @@ function skillFiles(work: Work, id: string): string[] {
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /** Sets a field of agent frontmatter: undefined leaves it, null removes it. Returns 1 when the data changed. */
-function setField(data: Obj, key: 'skills' | 'tools', value: readonly string[] | null | undefined): 0 | 1 {
+function setField(data: Obj, key: (typeof AGENT_LIST_FIELDS)[number], value: readonly string[] | null | undefined): 0 | 1 {
   if (value === undefined) return 0;
   if (value === null) { if (!Object.hasOwn(data, key)) return 0; delete data[key]; return 1; }
   if (Object.hasOwn(data, key) && same(data[key], value)) return 0;
@@ -305,6 +351,14 @@ function setField(data: Obj, key: 'skills' | 'tools', value: readonly string[] |
 function unlink(data: Obj, id: string): boolean {
   if (!Array.isArray(data.skills) || !data.skills.includes(id)) return false;
   data.skills = data.skills.filter(s => s !== id);
+  return true;
+}
+
+/** Takes a source out of the notes of an agent. A list left empty is removed. Returns true when the data changed. */
+function unlinkNotes(data: Obj, name: string): boolean {
+  if (!Array.isArray(data.notes) || !data.notes.includes(name)) return false;
+  const left = data.notes.filter(n => n !== name);
+  if (left.length) data.notes = left; else delete data.notes;
   return true;
 }
 
@@ -341,7 +395,7 @@ function rewriteAgent(work: Work, path: string, change: (data: Obj) => boolean):
   work.set(path, { bytes: Buffer.from(`---\n${yaml}---\n${fm.body}`, 'utf8'), executable: file.executable });
 }
 /** The agent fields an edit sets. */
-const AGENT_LIST_FIELDS = ['skills', 'tools'] as const;
+const AGENT_LIST_FIELDS = ['skills', 'tools', 'notes'] as const;
 
 /**
  * `harness.json` as a parsed value that edits change. `flush` writes it back only when its meaning changed, so an edit
@@ -378,5 +432,55 @@ class HarnessDraft {
     if (canonicalJson(this.value) === canonicalJson(this.original)) return;
     const was = this.work.get(HARNESS)!;
     this.work.set(HARNESS, { bytes: Buffer.from(JSON.stringify(this.value, null, 2) + '\n', 'utf8'), executable: was.executable });
+  }
+}
+
+/**
+ * `knowledge.json` as a list of sources that edits change. `flush` writes it only when its meaning changed, so an edit
+ * that nets out keeps the original bytes, and deletes it when the last source is gone. A file that is not valid stays as
+ * it is for the loader to refuse; an edit of it is refused.
+ */
+class KnowledgeDraft {
+  private readonly original: JsonValue | null;
+  private readonly value: Obj | null;
+  private sources: KnowledgeSource[];
+  constructor(private readonly work: Work) {
+    const file = work.get(KNOWLEDGE_FILE);
+    const text = file ? decodeText(file.bytes) : null;
+    const parsed = text === null ? null : parseStrictJson(text);
+    const ok = parsed?.ok === true && isRecord(parsed.value) && Array.isArray(parsed.value.sources) ? parsed.value : null;
+    this.value = ok;
+    this.original = ok === null ? null : JSON.parse(JSON.stringify(ok)) as JsonValue;
+    // The loader checks every source of the result; a source that is not a record is kept for it to refuse.
+    this.sources = ok === null ? [] : (ok.sources as readonly JsonValue[]).map(s => s as unknown as KnowledgeSource);
+  }
+
+  private usable(): void {
+    if (this.work.has(KNOWLEDGE_FILE) && this.value === null) throw new Refusal('EDIT_INVALID', 'knowledge.json is not valid.');
+  }
+
+  has(name: string): boolean { return this.sources.some(s => isRecord(s as unknown as JsonValue) && s.name === name); }
+
+  set(source: KnowledgeSource): void {
+    this.usable();
+    const at = this.sources.findIndex(s => isRecord(s as unknown as JsonValue) && s.name === source.name);
+    if (at >= 0) this.sources[at] = source; else this.sources.push(source);
+  }
+
+  remove(name: string): void {
+    this.usable();
+    this.sources = this.sources.filter(s => !isRecord(s as unknown as JsonValue) || s.name !== name);
+  }
+
+  flush(): void {
+    const had = this.work.get(KNOWLEDGE_FILE);
+    if (had && this.value === null) return;
+    const next: Obj = { ...(this.value ?? {}), sources: this.sources.map(s => ({ ...s })) as unknown as JsonValue };
+    if (this.original !== null && canonicalJson(next) === canonicalJson(this.original)) return;
+    if (this.sources.length === 0) {
+      if (had) this.work.delete(KNOWLEDGE_FILE);
+      return;
+    }
+    this.work.set(KNOWLEDGE_FILE, { bytes: Buffer.from(JSON.stringify(next, null, 2) + '\n', 'utf8'), executable: had?.executable ?? false });
   }
 }

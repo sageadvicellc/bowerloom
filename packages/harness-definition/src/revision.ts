@@ -4,9 +4,9 @@
  *
  * Canonical form of one file:
  * - Path: relative to the `.bowerloom` folder, `/` separators, Unicode NFC.
- * - The five machine files at the top (`harness.json`, `guardrails.json`, `hooks.json`, `mcp.json`, `sources.json`):
- *   the `canonicalJson` of the parsed value, so key order and spacing do not count. Array order counts. A machine file
- *   that is not strict JSON has no canonical form: `canonicalBytes` throws.
+ * - The six machine files at the top (`harness.json`, `guardrails.json`, `hooks.json`, `mcp.json`, `sources.json`,
+ *   `knowledge.json`): the `canonicalJson` of the parsed value, so key order and spacing do not count. Array order
+ *   counts. A machine file that is not strict JSON has no canonical form: `canonicalBytes` throws.
  * - A Markdown file (`.md`) outside `scripts/` and `engines/`: the text with CRLF and CR turned into LF.
  * - Any other file: its bytes, unchanged. Scripts and engine-private files are hashed exactly as written.
  * Files are sorted by the UTF-8 bytes of their canonical path. The hash is SHA-256 over
@@ -22,7 +22,7 @@ import type { DefinitionFile } from './types.js';
 export const REVISION_PREFIX = 'sha256:' as const;
 const DOMAIN = 'bowerloom/harness-revision/v3\n';
 const SKILL_DOMAIN = 'bowerloom/skill-content/v1\n';
-const MACHINE_JSON = new Set(['harness.json', 'guardrails.json', 'hooks.json', 'mcp.json', 'sources.json']);
+const MACHINE_JSON = new Set(['harness.json', 'guardrails.json', 'hooks.json', 'mcp.json', 'sources.json', 'knowledge.json']);
 
 /** The canonical bytes of one file, as the revision hashes them. */
 export function canonicalBytes(file: DefinitionFile): Buffer {
