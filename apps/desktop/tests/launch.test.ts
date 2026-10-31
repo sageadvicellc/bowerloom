@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import type { SpawnSyncReturns } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { FLAGS, launchOf } from '../main/launch.js';
 import { E2E_HIDDEN_FLAG } from '../main/window-options.js';
@@ -115,6 +115,13 @@ test('a refused start tells main to exit with the words, before any window opens
   assert.match(main, /if \(launch\.refusal !== null\) \{ process\.stderr\.write\(`\$\{launch\.refusal\}\\n`\); app\.exit\(2\); process\.exit\(2\); \}/, 'app.exit does not stop the script, so process.exit(2) ends it on the spot');
   assert.ok(main.indexOf('launch.refusal') < main.indexOf('protocol.handle'), 'the check comes before the page is served');
   assert.ok(main.indexOf('launch.refusal') < main.indexOf('createWindow()'), 'and before the window opens');
+});
+
+test('no comment or word in the app names a retired flag or a mode that is gone', () => {
+  const retired = /--prototype|prototype-v\d|home app dev flags?|two home app/i;
+  const files = (dir: string): string[] => readdirSync(join(DESKTOP, dir), { recursive: true, withFileTypes: true }).filter(e => e.isFile() && /\.(?:tsx?|mjs|css)$/.test(e.name)).map(e => join(dir, (e as unknown as { parentPath: string }).parentPath.slice(join(DESKTOP, dir).length + 1), e.name));
+  const found = ['main', 'renderer', 'shared', 'preload', 'tools'].flatMap(files).filter(file => retired.test(read(file)));
+  assert.deepEqual(found, []);
 });
 
 test('the shipped address of the app and of the sample carry no prototype name', () => {

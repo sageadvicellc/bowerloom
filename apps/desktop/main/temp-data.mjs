@@ -1,4 +1,4 @@
-// The temporary data folder of the made-up launches (--sample, and the two home app dev flags): how it is chosen, made and removed. The app on the person's own
+// The temporary data folder of the made-up launch (--sample): how it is chosen, made and removed. The app on the person's own
 // folders never uses one: it keeps Electron's normal data folder. Plain JavaScript on purpose, so the launcher (tools/run.mjs, which runs with no build step)
 // and the app (main/main.ts, through security.ts) share ONE set of checks. Types are in temp-data.d.mts.
 import { chmodSync, existsSync, lstatSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';

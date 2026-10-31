@@ -1,6 +1,7 @@
 /**
- * The screens that are not a list: nothing found, a call that failed, and a window with no bridge. Both say what happened in plain words and offer a way on. "Use the sample" opens the sample instead,
- * so the person can still look around the app. The reason for a failure is a short sentence made from the bridge's code (reasonWords), never a path or a stack.
+ * The screens that are not a list: nothing found, a call that failed, and a window with no bridge. The first two say what happened in plain words and offer a way on; "Use the sample" opens the
+ * sample instead, so the person can still look around the app. The third offers one thing only: to close the window. The reason for a failure is a short sentence made from the bridge's code
+ * (reasonWords), never a path or a stack.
  */
 import { useEffect, useRef } from 'react';
 import type { ReactElement } from 'react';
@@ -49,7 +50,7 @@ export function ReadFailed({ code, onRetry, onSample, onLeave }: { code: string;
   );
 }
 
-/** A real launch whose bridge is missing or partial. It says so in plain words and offers no way on: the sample is not a stand-in for the person's own folders. */
+/** A real launch whose bridge is missing or partial. It says so in plain words and offers one thing only, to close the window: the sample is not a stand-in for the person's own folders. */
 export function NoBridge(): ReactElement {
   const close = useRef<HTMLButtonElement>(null);
   useEffect(() => { close.current?.focus({ preventScroll: true }); }, []);

@@ -1,5 +1,5 @@
 /**
- * Every fixed word a person reads on the screens that run on their own folders (`--prototype-v3-real`), in one frozen table of the same shape as WORDS: a label has at most 5 words, a hint 12, a paragraph or a popover 25,
+ * Every fixed word a person reads on the screens that run on their own folders (the default launch, with no flag), in one frozen table of the same shape as WORDS: a label has at most 5 words, a hint 12, a paragraph or a popover 25,
  * and no banned word appears (tests/harness-words.test.ts holds the table and the builders at the bottom to that). Words that are the same as the home app's reader (the places, the counts) are taken from its table, so they cannot drift.
  * A file path or a name from a file is never a word here: it is the person's own text, drawn as text.
  */
