@@ -38,6 +38,7 @@ import { StartSheet } from './sheets/StartSheet.js';
 import { AdoptSheet } from './sheets/AdoptSheet.js';
 import { ProjectSheet } from './sheets/ProjectSheet.js';
 import { SaveSheet } from './sheets/SaveSheet.js';
+import { ShareSheets } from './sheets/ImportSheet.js';
 import { EngineProvider } from './engine.js';
 import { NotesProvider } from './notes/notes-session.js';
 import { NotesFirstRun } from './notes/NotesFirstRun.js';
@@ -82,6 +83,7 @@ function Overlays(): ReactElement {
       <AdoptSheet open={ui.adopt.open} folderId={ui.adopt.folderId} onClose={ui.closeAdopt} />
       <ProjectSheet open={ui.projectSheet.open} folderId={ui.projectSheet.folderId} mode={ui.projectSheet.mode} keep={ui.projectSheet.keep} onClose={ui.closeProject} />
       <SaveSheet open={ui.saveSheet.open} folderId={ui.saveSheet.folderId} tour={ui.saveSheet.tour} start={ui.saveSheet.start} restore={ui.saveSheet.restore} onClose={ui.closeSave} />
+      <ShareSheets />
       <Toast />
     </>
   );

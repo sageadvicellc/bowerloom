@@ -26,6 +26,7 @@ import { RefusalNote, folderLine } from '../sheets/engine-parts.js';
 import { chooseFolderCall, foldersCall, useCall } from '../sheets/use-call.js';
 import { ENGINE_WORDS } from '../words-engine.js';
 import { openFolderName } from '../words.js';
+import { SHARE } from '../words-share.js';
 
 function Row({ harness, state, selected, onPick, onStart }: { harness: Harness; state: HarnessState; selected: boolean; onPick(): void; onStart(): void }): ReactElement {
   const status = harnessStatus(state, harness.id);
@@ -118,7 +119,7 @@ export function HarnessList({ id }: { id: string | null }): ReactElement {
 function Folders(): ReactElement | null {
   const engine = useEngine(), ui = useUi(), call = useCall();
   const [folders, setFolders] = useState<readonly FolderInfo[]>([]);
-  const sheetOpen = ui.adopt.open || ui.saveSheet.open || ui.projectSheet.open;
+  const sheetOpen = ui.adopt.open || ui.saveSheet.open || ui.projectSheet.open || ui.importSheet.open;
   useEffect(() => { if (engine !== null && !sheetOpen) void call.plan(ENGINE_WORDS.label.planning, () => foldersCall(engine), setFolders); }, [engine, sheetOpen]);
   if (engine === null) return null;
   const choose = (): void => { void call.plan(ENGINE_WORDS.label.chooseFolder, () => chooseFolderCall(engine), got => { if (got !== null) setFolders(got.list); }); };
@@ -144,7 +145,10 @@ function Folders(): ReactElement | null {
           ))}
         </ul>
       )}
-      <div className="hx-actions"><HButton icon="folder" data-choose-folder="" disabled={call.busy !== null} onClick={choose}>{ENGINE_WORDS.label.chooseFolder}</HButton></div>
+      <div className="hx-actions">
+        <HButton icon="folder" data-choose-folder="" disabled={call.busy !== null} onClick={choose}>{ENGINE_WORDS.label.chooseFolder}</HButton>
+        <HButton icon="page" data-import-file="" onClick={() => ui.openImport()}>{SHARE.label.importFromFile}</HButton>
+      </div>
     </section>
   );
 }
