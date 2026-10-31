@@ -36,7 +36,7 @@ import { useHeldFocus } from './use-held-focus.js';
 import { KeeperBuild } from '../notes/KeeperBuild.js';
 import { NotesPanel } from '../notes/NotesPanel.js';
 import { NotesStep } from '../notes/NotesStep.js';
-import { buildProgress, notesCards } from '../notes/notes-logic.js';
+import { buildProgress, notesCards, notesToRead, readReplaces } from '../notes/notes-logic.js';
 import type { NotesCard } from '../notes/notes-logic.js';
 import { useNotesSession } from '../notes/notes-session.js';
 import { TourAnnouncer, TourOverlay } from '../tour/TourOverlay.js';
@@ -86,7 +86,12 @@ export function SaveSheet({ open, folderId, tour: tourAsked = false, onClose }: 
   const held = call.writing, busy = call.busy !== null;
 
   /** Everything of one folder goes when the folder changes: the harness read, the draft, the plan, its approval and the result. */
-  const resetFolder = (): void => { setBase(null); setDraft(EMPTY_DRAFT); setVersions(null); setShown(null); setApproved(null); setDone(null); setLinkingId(null); setSelectedId(null); setPositions({}); setLastPlan(null); setAside(null); setAsideDone(null); setNotesWay(null); call.clear(); };
+  const resetFolder = (): void => {
+    setBase(null); setDraft(EMPTY_DRAFT); setVersions(null); setShown(null); setApproved(null); setDone(null); setLinkingId(null); setSelectedId(null); setPositions({}); setLastPlan(null);
+    setAside(null); setAsideDone(null); setNotesWay(null); call.clear();
+    // The Notes panel reads its folders again: a new folder, or the sheet opened again, never shows an old read.
+    reading.current = new Set(); setSummaries({});
+  };
   useEffect(() => {
     if (!open) return;
     tourWanted.current = tourAsked;
@@ -118,15 +123,21 @@ export function SaveSheet({ open, folderId, tour: tourAsked = false, onClose }: 
   const keeper = now === null ? null : keeperOf(now);
   const progress = now === null ? null : buildProgress(now, offeredIds, cards);
 
-  // The Notes panel reads each source the harness holds once: names and counts only. A chosen folder carries its own read.
+  // The Notes panel reads each source the harness holds once each time the sheet opens on a folder: names and counts only. A fresh read of a folder chosen
+  // in this window replaces its snapshot.
   useEffect(() => {
     if (engine === null || now === null) return;
-    for (const s of now.sources) {
-      if (reading.current.has(s.notesId) || session.chosen.some(c => c.id === s.notesId)) continue;
-      reading.current.add(s.notesId);
-      const id = s.notesId;
+    for (const id of notesToRead(now, reading.current)) {
+      reading.current.add(id);
+      const mine = reading.current;
       const failed: Answer<NotesView> = { ok: false, refusal: { code: 'FAILED', message: NOTES.hint.noSummary, paths: [] } };
-      void engine.notesSummary(id).catch(() => failed).then(a => setSummaries(m => ({ ...m, [id]: a })));
+      void engine.notesSummary(id).catch(() => failed).then(a => {
+        // A read that started before the sheet closed, or before another folder, is dropped.
+        if (reading.current !== mine) return;
+        setSummaries(m => ({ ...m, [id]: a }));
+        const fresh = readReplaces(session.chosen, id, a);
+        if (fresh !== null) session.choose(fresh);
+      });
     }
   }, [engine, now, session.chosen]);
   // The tour: it starts as the edit opens when the sheet was opened for it, and ends when the edit goes.

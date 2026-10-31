@@ -62,3 +62,15 @@ export function buildProgress(now: DefinitionView, offered: readonly string[], c
   const firstDone = keeper.skills.includes(first), restDone = offered.every(s => keeper.skills.includes(s)), notesDone = keeper.notes.length > 0, hasNotes = cards.length > 0;
   return { first, firstDone, restDone, notesDone, hasNotes, done: firstDone && restDone && (notesDone || !hasNotes) };
 }
+
+/**
+ * The notes ids the Notes panel reads now: every source of the harness that no read has started for since the sheet opened, a folder chosen in this window
+ * too, so a sheet opened again reads each one again.
+ */
+export function notesToRead(now: DefinitionView, reading: ReadonlySet<string>): string[] {
+  return now.sources.map(s => s.notesId).filter((id, i, all) => !reading.has(id) && all.indexOf(id) === i);
+}
+/** The chosen folder a fresh read replaces: the read itself, when it came and is of a folder chosen in this window; else null. */
+export function readReplaces(chosen: readonly NotesView[], id: string, read: Answer<NotesView>): NotesView | null {
+  return read.ok && read.value.id === id && chosen.some(c => c.id === id) ? read.value : null;
+}

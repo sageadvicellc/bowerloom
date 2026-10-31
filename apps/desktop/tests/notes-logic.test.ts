@@ -2,7 +2,7 @@
 // source of the harness, then each chosen folder not attached yet), who reads each one, and how far the keeper build is, for the tour's waiting step.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { afterChoose, buildProgress, notesCards } from '../renderer/harness/notes/notes-logic.js';
+import { afterChoose, buildProgress, notesCards, notesToRead, readReplaces } from '../renderer/harness/notes/notes-logic.js';
 import { EMPTY_DRAFT, KEEPER_AGENT, attachNotes, draftView } from '../shared/harness/save-draft.js';
 import type { DefinitionView, NotesView } from '../shared/engine/types.js';
 
@@ -57,4 +57,23 @@ test('the build progress follows the keeper: first skill, the rest, then the not
   assert.equal(buildProgress({ ...DEF, sources: [], agents: DEF.agents.map(a => (a.id === KEEPER_AGENT ? { ...a, skills: KIT } : a)) }, KIT, []).done, true);
   // No keeper: nothing is done.
   assert.equal(buildProgress({ ...DEF, agents: [] }, KIT, cards).done, false);
+});
+
+test('the panel reads every source the harness holds that is not being read now, a chosen folder too, so opening the sheet again reads again', () => {
+  const two: DefinitionView = { ...DEF, sources: [...DEF.sources, { name: 'garden-notes', kind: 'wiki-folder', label: '~/Documents/Garden notes', notesId: 'n1' }] };
+  assert.deepEqual(notesToRead(two, new Set()), ['n0', 'n1'], 'n1 is a chosen folder: it is read again too');
+  assert.deepEqual(notesToRead(two, new Set(['n0'])), ['n1']);
+  assert.deepEqual(notesToRead(two, new Set(['n0', 'n1'])), []);
+});
+
+test('a fresh read replaces the snapshot of a chosen folder; a refusal or a folder not chosen replaces nothing', () => {
+  const chosen = [view({ pages: 14 })];
+  const fresh = view({ pages: 20 });
+  assert.deepEqual(readReplaces(chosen, 'n1', { ok: true, value: fresh }), fresh);
+  assert.equal(readReplaces(chosen, 'n1', { ok: false, refusal: { code: 'FAILED', message: 'x', paths: [] } }), null);
+  assert.equal(readReplaces(chosen, 'n9', { ok: true, value: view({ id: 'n9' }) }), null);
+  // With the snapshot replaced, the card shows the fresh read.
+  const now: DefinitionView = { ...DEF, sources: [{ name: 'garden-notes', kind: 'wiki-folder', label: '~/Documents/Garden notes', notesId: 'n1' }] };
+  const card = notesCards(now, [fresh], { n1: { ok: true, value: fresh } })[0]!;
+  assert.equal(card.summary?.ok && card.summary.value.pages, 20);
 });
