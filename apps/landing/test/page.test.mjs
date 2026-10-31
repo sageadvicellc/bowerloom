@@ -257,7 +257,7 @@ test('a screenshot slot shows both themes\' images with a size, late loading, an
       assert.ok(image.includes('loading="lazy"'), theme);
       assert.ok(image.includes('alt="'), theme);
     }
-    assert.ok(html.includes(`<figcaption>${slot.caption}</figcaption>`));
+    assert.match(html, new RegExp(`<figcaption id="[^"]+">${slot.caption.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}<\/figcaption>`));
     assert.doesNotMatch(html, /Screenshot to come|aria-hidden="true">Screenshot/);
   } finally { await page.close(); }
 });

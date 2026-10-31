@@ -1,4 +1,4 @@
-import { useRef, useState, type MouseEvent, type Ref } from 'react';
+import { useId, useRef, useState, type MouseEvent, type PointerEvent, type Ref } from 'react';
 import { screenshotSlots, shotSource, shotThemes, type ScreenshotSlotId } from './screenshots';
 
 /**
@@ -15,19 +15,20 @@ export default function ScreenshotSlot({ slot }: { slot: ScreenshotSlotId }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
   const [opened, setOpened] = useState(false);
+  const caption = useId();
   const open = () => { setOpened(true); dialog.current?.showModal(); };
   // The browser gives the focus back by itself. This line covers a browser that does not.
   const closed = () => { opener.current?.focus(); };
   return <>
     <figure className="screenshot-slot" data-screenshot-slot={item.id}>
-      <button ref={opener} type="button" className="screenshot-open" aria-haspopup="dialog" aria-label={`Enlarge the screenshot: ${item.caption}`} onClick={open}>
+      <button ref={opener} type="button" className="screenshot-open" aria-haspopup="dialog" aria-label="Enlarge the screenshot" aria-describedby={caption} onClick={open}>
         {shotThemes.map(theme => <img
           key={theme} className="screenshot-image" data-shot-theme={theme}
           src={shotSource(item.id, theme)} width={item.width} height={item.height}
           alt={item.alt} loading="lazy" decoding="async" />)}
         <span className="screenshot-hint" aria-hidden="true">Enlarge</span>
       </button>
-      <figcaption>{item.caption}</figcaption>
+      <figcaption id={caption}>{item.caption}</figcaption>
     </figure>
     <ShotDialog id={item.id} loaded={opened} ref={dialog} onClose={closed} />
   </>;
@@ -36,9 +37,16 @@ export default function ScreenshotSlot({ slot }: { slot: ScreenshotSlotId }) {
 /** The enlarged view of one shot. `loaded` is false until the first time it opens, and then it holds the files of both themes (the style sheet shows the current one). */
 export function ShotDialog({ id, loaded, ref, onClose }: { id: ScreenshotSlotId; loaded: boolean; ref?: Ref<HTMLDialogElement>; onClose?: () => void }) {
   const item = screenshotSlots.find(entry => entry.id === id)!;
-  // The dialog box is filled edge to edge by its own content, so a click that lands on the dialog itself is a click on the backdrop.
-  const backdrop = (event: MouseEvent<HTMLDialogElement>) => { if (event.target === event.currentTarget) event.currentTarget.close(); };
-  return <dialog ref={ref} className="screenshot-dialog" data-screenshot-dialog={item.id} aria-label={item.alt} onClose={onClose} onClick={backdrop}>
+  // The dialog box is filled edge to edge by its own content, so a click on the dialog itself is a click on the backdrop. It counts only when the press began there too:
+  // a drag that starts inside (a text selection, a scrollbar) and ends on the backdrop must not close the dialog.
+  const pressedOnBackdrop = useRef(false);
+  const press = (event: PointerEvent<HTMLDialogElement>) => { pressedOnBackdrop.current = event.target === event.currentTarget; };
+  const backdrop = (event: MouseEvent<HTMLDialogElement>) => {
+    const close = pressedOnBackdrop.current && event.target === event.currentTarget;
+    pressedOnBackdrop.current = false;
+    if (close) event.currentTarget.close();
+  };
+  return <dialog ref={ref} className="screenshot-dialog" data-screenshot-dialog={item.id} aria-label={item.alt} onClose={onClose} onPointerDown={press} onClick={backdrop}>
     <div className="screenshot-dialog-bar">
       <p className="screenshot-dialog-caption">{item.caption}</p>
       <form method="dialog"><button type="submit" className="screenshot-close">Close</button></form>

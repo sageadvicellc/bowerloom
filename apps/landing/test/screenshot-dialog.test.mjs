@@ -20,7 +20,9 @@ test('every shot is a button that opens a dialog named by its alt text', async (
       const html = renderToStaticMarkup(createElement(page.slot.default, { slot: item.id }));
       const [button] = tags(html, 'button');
       assert.ok(button.includes('type="button"') && button.includes('class="screenshot-open"') && button.includes('aria-haspopup="dialog"'), item.id);
-      assert.ok(button.includes(`aria-label="${escape(`Enlarge the screenshot: ${item.caption}`)}"`), `${item.id}: the button says what it opens`);
+      assert.ok(button.includes('aria-label="Enlarge the screenshot"'), `${item.id}: the button says what it does`);
+      const id = /aria-describedby="([^"]+)"/.exec(button)?.[1];
+      assert.ok(id !== undefined && html.includes(`<figcaption id="${id}">${escape(item.caption)}</figcaption>`), `${item.id}: the caption describes the button, so it is read once`);
       const [dialog] = tags(html, 'dialog');
       assert.ok(dialog.includes(`aria-label="${escape(item.alt)}"`), `${item.id}: the dialog is named by the alt text`);
       const inside = html.slice(html.indexOf('<button'), html.indexOf('</button>'));
@@ -42,7 +44,7 @@ test('the shot in the page is unchanged: one image per theme, sized, lazy, with 
       assert.ok(image.includes(`src="${shotSource(item.id, theme)}"`) && image.includes(`width="${item.width}"`) && image.includes(`height="${item.height}"`), theme);
       assert.ok(image.includes('loading="lazy"') && image.includes(`alt="${escape(item.alt)}"`), theme);
     }
-    assert.ok(figure.includes(`<figcaption>${escape(item.caption)}</figcaption>`));
+    assert.match(figure, new RegExp(`<figcaption id="[^"]+">${escape(item.caption)}</figcaption>`));
     assert.match(figure, /<span class="screenshot-hint" aria-hidden="true">Enlarge<\/span>/);
   } finally { await page.close(); }
 });
@@ -80,12 +82,14 @@ test('after the first open the dialog holds the full file of each theme at its o
 });
 
 test('the component opens with showModal, keeps no custom focus trap, and gives the focus back', async () => {
-  const source = await read('src/ScreenshotSlot.tsx');
+  // The code only: a word in a comment is not a focus trap.
+  const source = (await read('src/ScreenshotSlot.tsx')).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   assert.match(source, /showModal\(\)/);
   assert.doesNotMatch(source, /onKeyDown|keydown|focusin|onCancel/i, 'Escape and the focus trap are the dialog\'s own');
   assert.match(source, /opener\.current\?\.focus\(\)/);
   assert.match(source, /onClose=\{/);
   assert.match(source, /event\.target === event\.currentTarget/);
+  assert.match(source, /onPointerDown=\{press\}/, 'a click closes only when the press began on the backdrop too');
 });
 
 test('the style sheet scrolls inside the dialog, reserves the picture\'s size, and animates only opacity and transform, and not at all under reduced motion', async () => {
