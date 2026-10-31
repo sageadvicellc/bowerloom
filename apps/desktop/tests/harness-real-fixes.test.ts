@@ -19,7 +19,7 @@ import { ChooseLines, NOTES_SHOWN, PlaceNotes, ReadNotes, visibleNotes } from '.
 import { PlaceRow } from '../renderer/harness/real/PlaceRow.js';
 import { REAL, limitsLine, nothingReadLine, skippedLine } from '../renderer/harness/real/words-real.js';
 import { reasonWords } from '../renderer/home/real/words.js';
-import { crashLine } from '../renderer/common/error-boundary.js';
+import { CRASH_TITLE, crashLine } from '../renderer/common/error-boundary.js';
 import { makeOnce, makeSources } from '../renderer/harness/screens/read-make.js';
 import { FLOW } from '../renderer/harness/words-flow.js';
 
@@ -168,8 +168,12 @@ test('loadWorld tells every listener even when one throws, and logs the error', 
 });
 
 test('the crash text is true in both modes: the sample is named only in the sample', () => {
-  assert.match(crashLine(false), /sample data/); assert.doesNotMatch(crashLine(true), /sample/i); assert.match(crashLine(true), /folders were not changed/);
-  assert.equal(bannedHere(crashLine(true)), null);
+  assert.match(crashLine(false), /sample data/); assert.doesNotMatch(crashLine(true), /sample/i);
+  // On the person's own folders a write may have finished before the window stopped, so the words never say that nothing was saved or that the folders were not changed.
+  assert.equal(crashLine(true), 'Reload to start again. If you were saving or installing, open the folder again to see what was written.');
+  for (const text of [CRASH_TITLE, crashLine(true), crashLine(false)]) { assert.doesNotMatch(text, /prototype/i, text); assert.equal(bannedHere(text), null, text); assert.ok(countWords(text) <= LIMITS.paragraph, text); }
+  assert.doesNotMatch(`${CRASH_TITLE} ${crashLine(true)}`, /nothing was saved|not changed|were not|no change/i, 'no claim that a real write did not happen');
+  assert.match(crashLine(false), /Nothing was written/, 'the sample writes nothing, so it can say so');
 });
 
 test('making a harness runs once for a double click, says "Nothing was made." when nothing came, and then works again', () => {
