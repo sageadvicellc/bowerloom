@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { APP_INDEX, CSP, EXTERNAL_HOSTS, allowRequest, decideNavigation, isAllowedExternal, resolveAppFile, webPreferences } from '../main/security.js';
+import { APP_INDEX, CSP, EXTERNAL_HOSTS, allowRequest, decideNavigation, isAllowedExternal, isAllowedSender, resolveAppFile, webPreferences } from '../main/security.js';
 import { join as joinPath } from 'node:path';
 import { CHANNELS } from '../shared/channels.js';
 import { DESKTOP } from './support.js';
@@ -181,4 +181,17 @@ test('only main/engine-service.ts calls the packages\' writes of adoption and th
   assert.match(strip(read('main/main.ts')), /if \(prototypeV3Real\) \{\s*const engine = registerEngineIpc\(/);
   // Main's private copies of tidy-up reports go when the app quits.
   assert.match(strip(read('main/main.ts')), /app\.once\('quit', \(\) => engine\.clearReportCopies\(\)\)/);
+});
+
+test('outside the preview modes only the app\'s own page is answered, and the guard checks the sender before it runs the handler', () => {
+  assert.equal(isAllowedSender(false, APP_INDEX, APP_INDEX), true);
+  assert.equal(isAllowedSender(false, `${APP_INDEX}#x`, APP_INDEX), true);
+  assert.equal(isAllowedSender(false, null, APP_INDEX), false);
+  assert.equal(isAllowedSender(false, 'https://example.com/', APP_INDEX), false);
+  assert.equal(isAllowedSender(false, 'file:///etc/passwd', APP_INDEX), false);
+  const main = strip(read('main/main.ts'));
+  assert.equal([...main.matchAll(/ipcMain\.handle/g)].length, 1, 'one guard');
+  const guard = main.slice(main.indexOf('const guarded'), main.indexOf("guarded('getInfo'"));
+  assert.ok(guard.indexOf('isAllowedSender(') > -1, 'the guard asks');
+  assert.ok(guard.indexOf('isAllowedSender(') < guard.indexOf('handler('), 'the sender check comes before the handler');
 });
