@@ -56,7 +56,7 @@
       ],
       "signed": false,
       "notarized": false,
-      "note": "The macOS app carries only a self-made local signature. Apple did not sign or check it, so macOS blocks the first open until you allow it in System Settings. The x64 build is in the build settings and was not tried. The build settings also list Windows and Linux installers, and those were not tried."
+      "note": "The macOS app carries only a self-made local signature. Apple did not sign or check it, so macOS blocks the first open until you allow it in System Settings. The x64 build (for Intel Macs) is in the build settings and was not tried. The build settings also list Windows and Linux installers, and those were not tried."
     },
     "note": "Windows and Linux are named for later releases. Other systems remain under review."
   },
@@ -68,9 +68,9 @@
     "drift": "Drift lists the files that Bowerloom wrote and that changed since the install. Drift --check fails when a file changed.",
     "remove": "Remove puts back every file that an install replaced and deletes the files that the install created.",
     "save": "The save step in the desktop app writes a change to the harness of a folder after you approve it, and keeps a save point before and after. Go back returns the harness to an earlier save point.",
-    "notes": "In the desktop app, a new or empty notes folder can start from the starter wiki of the Notes keeper kit, or get version history if it has none. The Notes keeper kit holds one agent and six skills that look after a folder of notes.",
+    "notes": "In the desktop app, a new or empty notes folder can start from the starter wiki of the Notes keeper kit. A linked notes folder with no version history can get it. The Notes keeper kit holds one agent and six skills that look after a folder of notes.",
     "skills": "Pin skills from npm or GitHub with skills add, then install them for Claude Code and Codex with skills sync.",
-    "desktop": "The desktop app is a main part of this release, and it is a beta. It does the same adopt, install, and remove steps as the command line, and adds the Builder, the save step, and save points. Apple did not sign the macOS app.",
+    "desktop": "The desktop app is a main part of this release, and it is a beta. It does the same adopt, install, and remove steps as the command line, and adds the Builder, the screen where you edit a harness, with the save step and save points. Apple did not sign the macOS app.",
     "execution": "Setup does not start workers, grant runtime access, or authorize connected actions.",
     "limits": [
       "No harness command runs an engine or a model.",
