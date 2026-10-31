@@ -74,3 +74,13 @@ export function notesToRead(now: DefinitionView, reading: ReadonlySet<string>): 
 export function readReplaces(chosen: readonly NotesView[], id: string, read: Answer<NotesView>): NotesView | null {
   return read.ok && read.value.id === id && chosen.some(c => c.id === id) ? read.value : null;
 }
+
+/**
+ * Adds the keeper and then moves the tour on, only when both held: the plan answered (`plan` resolves true), and its answer put the keeper in the draft
+ * (`take` returns true). A refused or superseded plan leaves the tour on its step, so the refusal keeps the focus.
+ */
+export async function addThenNext(plan: (onValue: (view: DefinitionView) => void) => Promise<boolean>, take: (view: DefinitionView) => boolean, then: () => void): Promise<void> {
+  let added = false;
+  const ok = await plan(view => { added = take(view); });
+  if (ok && added) then();
+}

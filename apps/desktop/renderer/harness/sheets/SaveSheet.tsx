@@ -19,8 +19,8 @@ import { ENGINE_IDS, isPreviewEngine } from '../../../shared/engine/engines.js';
 import { ENGINE_NAMES } from '../../../shared/engine/types.js';
 import type { Answer, DefinitionView, EngineId, FolderInfo, NotesView, Refusal, RestoreView, SaveEdit, SaveView, SaveWritten, SetAsideView, VersionView } from '../../../shared/engine/types.js';
 import {
-  EMPTY_DRAFT, KEEPER_AGENT, KEEPER_KIT, addKit, agentPart, attachNotes, definitionWorld, draftCount, draftEdits, draftView, keeperOf, keeperSkills, linkRest, linkSkill,
-  draftStart, partNotes, partSkill, removeSkill, setDraftEngines,
+  EMPTY_DRAFT, KEEPER_AGENT, KEEPER_KIT, agentPart, attachNotes, definitionWorld, draftCount, draftEdits, draftView, keeperOf, keeperSkills, linkRest, linkSkill,
+  draftStart, keeperAdded, partNotes, partSkill, removeSkill, setDraftEngines,
 } from '../../../shared/harness/save-draft.js';
 import type { SaveDraft } from '../../../shared/harness/save-draft.js';
 import type { Point } from '../../../shared/harness/types.js';
@@ -36,7 +36,7 @@ import { useHeldFocus } from './use-held-focus.js';
 import { KeeperBuild } from '../notes/KeeperBuild.js';
 import { NotesPanel } from '../notes/NotesPanel.js';
 import { NotesStep } from '../notes/NotesStep.js';
-import { buildProgress, notesCards, notesToRead, readReplaces } from '../notes/notes-logic.js';
+import { addThenNext, buildProgress, notesCards, notesToRead, readReplaces } from '../notes/notes-logic.js';
 import type { NotesCard } from '../notes/notes-logic.js';
 import { useNotesSession } from '../notes/notes-session.js';
 import { TourAnnouncer, TourOverlay } from '../tour/TourOverlay.js';
@@ -82,6 +82,9 @@ export function SaveSheet({ open, folderId, tour: tourAsked = false, onClose }: 
   const [notesWay, setNotesWay] = useState<'use' | 'start' | null>(null);
   const [tour, tourDo] = useReducer(tourReduce, TOUR_STEPS, createTour);
   const tourWanted = useRef(false), reading = useRef(new Set<string>()), wasBuilt = useRef(false);
+  // The draft as it is now, for an answer that comes after a render.
+  const draftNow = useRef(draft);
+  draftNow.current = draft;
   const intro = useRef<HTMLParagraphElement>(null), body = useRef<HTMLDivElement>(null), first = useRef(true);
   const held = call.writing, busy = call.busy !== null;
 
@@ -237,12 +240,18 @@ export function SaveSheet({ open, folderId, tour: tourAsked = false, onClose }: 
   };
   /**
    * Adds the Notes keeper from the kit as a draft: main plans the harness with the kit added (reads only), and the draft keeps that answer to draw the keeper
-   * and its skills. Nothing is written until Save. `then` runs after the answer, whether or not it came.
+   * and its skills. Nothing is written until Save. `then` runs only when the plan answered and the keeper is in the draft; a keeper there already runs it at
+   * once. Otherwise the tour stays where it is and the refusal keeps the focus.
    */
   const addKeeper = (then?: () => void): void => {
-    if (engine === null || folder === undefined || base === null || keeper !== null) { then?.(); return; }
+    if (keeper !== null) { then?.(); return; }
+    if (engine === null || folder === undefined || base === null) return;
     const id = folder.id, from = base;
-    void call.plan(W.label.planning, () => engine.planSave(id, [{ kind: 'add-from-kit', kit: KEEPER_KIT }]), v => setDraft(d => addKit(from, d, v.definition))).then(() => then?.());
+    void addThenNext(
+      onValue => call.plan(W.label.planning, () => engine.planSave(id, [{ kind: 'add-from-kit', kit: KEEPER_KIT }]), v => onValue(v.definition)),
+      view => { const next = keeperAdded(from, draftNow.current, view); if (next === null) return false; draftNow.current = next; setDraft(next); return true; },
+      () => then?.(),
+    );
   };
   const notesParts: EditNotes = {
     cards, keeper, offered: offeredIds.map(id => now?.skills.find(s => s.id === id) ?? { id, name: id, description: '' }), fromKit: draft.kit !== null,

@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   EMPTY_DRAFT, KEEPER_AGENT, KEEPER_FIRST_SKILL, KEEPER_KIT, addKit, attachNotes, definitionWorld, draftCount, draftEdits, draftView, keeperOf, keeperSkills,
-  linkRest, linkSkill, partNotes, removeKit, removeSkill, sourceFor,
+  keeperAdded, linkRest, linkSkill, partNotes, removeKit, removeSkill, sourceFor,
 } from '../shared/harness/save-draft.js';
 import type { DefinitionView, SourceView } from '../shared/engine/types.js';
 import { graphOf } from '../shared/harness/layout.js';
@@ -148,4 +148,14 @@ test('a saved keeper is offered every skill of its kit record that the harness h
   // "Add the other skills" then links the rest.
   const d = linkRest(saved, EMPTY_DRAFT, KEEPER_AGENT, offered);
   assert.equal(keeperOf(draftView(saved, d))?.skills.length, KIT_SKILLS.length);
+});
+
+test('keeperAdded: the draft with the keeper when the plan holds it, else null, so the tour does not move on', () => {
+  const d = keeperAdded(BASE, EMPTY_DRAFT, WITH_KIT);
+  assert.ok(d !== null);
+  assert.ok(keeperOf(draftView(BASE, d)) !== null);
+  // A plan that lost an item of the harness, one with no kit, and one whose kit has no keeper add nothing.
+  assert.equal(keeperAdded(BASE, EMPTY_DRAFT, { ...WITH_KIT, agents: WITH_KIT.agents.filter(a => a.id !== 'editor') }), null);
+  assert.equal(keeperAdded(BASE, EMPTY_DRAFT, { ...WITH_KIT, kits: [] }), null);
+  assert.equal(keeperAdded(BASE, EMPTY_DRAFT, { ...WITH_KIT, agents: WITH_KIT.agents.filter(a => a.id !== KEEPER_AGENT) }), null);
 });

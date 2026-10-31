@@ -129,6 +129,12 @@ export function removeKit(base: DefinitionView, draft: SaveDraft): SaveDraft {
   return { ...next, sources: next.sources.filter(s => Object.values(next.notes).some(list => list.includes(s.name))) };
 }
 
+/** The draft with the kit added from a plan's view, when that view brings the Notes keeper into the draft; else null, and the draft stays as it was. */
+export function keeperAdded(base: DefinitionView, draft: SaveDraft, view: DefinitionView): SaveDraft | null {
+  const next = addKit(base, draft, view);
+  return next.kit !== null && next !== draft && keeperOf(draftView(base, next)) !== null ? next : null;
+}
+
 /** The Notes keeper in a harness as the draft draws it, or null. */
 export const keeperOf = (view: DefinitionView): DefinitionView['agents'][number] | null => view.agents.find(a => a.id === KEEPER_AGENT) ?? null;
 

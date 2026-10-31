@@ -2,7 +2,7 @@
 // source of the harness, then each chosen folder not attached yet), who reads each one, and how far the keeper build is, for the tour's waiting step.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { afterChoose, buildProgress, notesCards, notesToRead, readReplaces } from '../renderer/harness/notes/notes-logic.js';
+import { addThenNext, afterChoose, buildProgress, notesCards, notesToRead, readReplaces } from '../renderer/harness/notes/notes-logic.js';
 import { EMPTY_DRAFT, KEEPER_AGENT, attachNotes, draftView } from '../shared/harness/save-draft.js';
 import type { DefinitionView, NotesView } from '../shared/engine/types.js';
 
@@ -76,4 +76,16 @@ test('a fresh read replaces the snapshot of a chosen folder; a refusal or a fold
   const now: DefinitionView = { ...DEF, sources: [{ name: 'garden-notes', kind: 'wiki-folder', label: '~/Documents/Garden notes', notesId: 'n1' }] };
   const card = notesCards(now, [fresh], { n1: { ok: true, value: fresh } })[0]!;
   assert.equal(card.summary?.ok && card.summary.value.pages, 20);
+});
+
+test('the tour moves on after adding the keeper only when the plan came and the keeper is in the draft', async () => {
+  const run = async (ok: boolean, value: boolean | null, taken: boolean): Promise<boolean> => {
+    let moved = false;
+    await addThenNext(async onValue => { if (value !== null) onValue(DEF); return ok; }, () => taken, () => { moved = true; });
+    return moved;
+  };
+  assert.equal(await run(true, true, true), true);
+  assert.equal(await run(false, null, false), false, 'a refused plan: the tour stays');
+  assert.equal(await run(true, true, false), false, 'a plan whose answer adds no keeper: the tour stays');
+  assert.equal(await run(true, null, false), false, 'a plan superseded before its answer: the tour stays');
 });
