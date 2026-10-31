@@ -12,6 +12,7 @@ import { agentLists, moreLabel, rowsLeft, visibleRows } from '../shared/proto/ag
 import { CASE_IDS, generateWorld } from '../shared/proto/sample.js';
 import { createStore } from '../shared/proto/store.js';
 import type { AgentItem } from '../shared/proto/types.js';
+import { clientNames } from './client-names.js';
 
 const COMMAND = /\bbowerloom (ls|status|use|unuse|lock|apply|skills|skill|prompt|team|store|folder|slice|context|cache|up|help)\b|\bnpm (run|install)\b|\bgit (push|init|add|commit|remote)\b|\bcd \S|\bchmod\b|--[a-z]{3,}|terminal|command line|\$ /i;
 const BANNED_WORD = /\bhelpers?\b|\bteams?\b/i;
@@ -115,5 +116,5 @@ test('the combobox and the menu button follow the pattern: roles, a closed list,
 
 test('the words are plain: no helper, no team, no command line, no em-dash', () => {
   for (const markup of [render(), detail(owned), detail(library)]) { const w = textOf(markup); assert.doesNotMatch(w, COMMAND, w.slice(0, 80)); assert.doesNotMatch(w, BANNED_WORD, w.slice(0, 80)); assert.doesNotMatch(w, /—/); }
-  assert.doesNotMatch(render(), /Fearless|Advanced Metrics/);
+  assert.deepEqual(clientNames(textOf(render())), []);
 });

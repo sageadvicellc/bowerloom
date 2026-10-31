@@ -70,7 +70,7 @@ Writing rules for the whole page. They are the repository's simple-English rules
 5. Define each term at first use, in the sentence that introduces it.
 6. Use none of the words in the list of test D10. Say what Bowerloom does and what the reader does.
 7. No semicolons. No dashes as punctuation.
-8. Do not name Fearless or Advanced Metrics (repository rule 9).
+8. Do not name a client of the practice (repository rule 9).
 9. No private paths. The build throws on `/Users/` or `file://` (`apps/docs/src/lib/content.mjs:84`). Use `~` or a placeholder.
 10. Use `bowerloom` commands exactly as they print.
 11. A string from the code that holds a modal verb or a semicolon goes in inline code or a fence. Examples: the shared-project note `could not read <x>; treating this project as shared`, and the plan tag `(not on this machine yet; Bowerloom shows what it can do after the fetch)`.
@@ -761,7 +761,7 @@ This spec is the docs track. Sections 3.1 to 3.8 list every change.
 - D8. Every format string in `packages/*/src` and `apps/cli/src` that is not in `beta2-formats.json` appears in the `## 0.7.0-beta.3` section of `releases.md`.
 - D9. The `private-store` section of the page holds these phrases: `api.github.com`, `never stores`, `never prints`, `refuses redirects`, `Credentials:`, `--approve`. It names each of `apply --frozen`, `skills sync`, `use`, `lock update`, and `store migrate`, and holds the phrase "sync step of `up`".
 - D10. Outside fenced blocks, inline code spans, and the lines between the `item-source-refusals` anchor and the next anchor, the page has no semicolon. It uses none of the words `can`, `could`, `may`, `might`, `should`, `would` (whole words, any case).
-- D11. The page does not contain `Fearless` or `Advanced Metrics`.
+- D11. The page names no client of the practice. The test holds the sha256 of each lowercased client name, never the name itself.
 - D12. The line of `cli.md` that starts "These commands work in a project folder." holds `bowerloom.json`.
 - D13. `add-skills.md` holds "without credentials" and "/docs/guides/item-sources/#private-store", and links `/docs/guides/item-sources/` in its `## Share a project` section. It no longer holds "Private registries and private repositories are not supported in this beta." or "Private registries and private repositories are not supported."
 - D14. `guides/index.md` links to `/docs/guides/item-sources/`.
