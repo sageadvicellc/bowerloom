@@ -4,9 +4,11 @@
  * the last step), and a compact stepper that says "Step 2 of 7". A step with no target ("What next") sits in the middle with its short list and closing line.
  *
  * It is drawn in the window's layer (`#hx-layer`), over a sheet that is open, so the sheet's inert page never holds it. Its keys are taken first (capture):
- * Escape skips the tour, and Tab stays in the card (and, while a step waits, the lit area), so the sheet's own Tab trap never pulls the focus away.
+ * Escape skips the tour, and Tab stays in the card (and, while a step waits, the controls of the lit area that take the focus), so the sheet's own Tab trap
+ * never pulls the focus away. A refusal that takes the focus keeps it.
  * A step that waits (building the keeper) cuts a real hole: four blocks surround it and the rest of the layer lets the pointer through, so a drag inside the lit
- * area works. The focus goes back to what had it when the tour ends, or to the Help button. With "reduce motion" on, nothing slides.
+ * area works. When the tour ends the focus goes to the Help button, which replays it; with no Help button on the page, back to what had it before the tour.
+ * With "reduce motion" on, nothing slides.
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -40,6 +42,13 @@ function rectOf(el: Element): Box | null {
     box = inside(box, { x: q.left, y: q.top, w: q.width, h: q.height });
   }
   return box;
+}
+
+/** The controls of a lit area that Tab may stop on. */
+export const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
+/** True for an element that takes the focus now: not inert, drawn, and in the tab order. */
+export function takesFocus(el: HTMLElement): boolean {
+  return el.tabIndex >= 0 && el.closest('[inert]') === null && el.getClientRects().length > 0;
 }
 
 /** The narrowest the card may be made, in pixels, to fit beside a very large target. */
@@ -124,13 +133,15 @@ export function TourCard({ state, hint = null, onNext, onBack, onSkip }: TourOve
     };
   }, [stepId, litId]);
 
-  // Focus: into the card now, back to where it was when the tour ends. Escape skips; Tab stays in the card, and in the lit area while a step waits.
+  // Focus: into the card now; when the tour ends, onto the Help button, or back to where it was when there is none. Escape skips; Tab stays in the card,
+  // and in the lit area while a step waits.
   useEffect(() => {
     const before = currentControl();
     next.current?.focus();
     const stops = (): HTMLElement[] => {
       const area = mode.current.waiting && mode.current.litId !== null ? findTarget(mode.current.litId) : null;
-      const own = [...(area?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), [draggable="true"]') ?? [])].filter(el => el.closest('[inert]') === null && el.getClientRects().length > 0);
+      // Only what takes the focus: a card that can be dragged is not a stop (its Add button is), so Tab never lands on something focus() skips.
+      const own = [...(area?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])].filter(takesFocus);
       return [...own, ...(pop.current?.querySelectorAll<HTMLElement>('button:not([disabled])') ?? [])];
     };
     const key = (e: KeyboardEvent): void => {
@@ -148,6 +159,8 @@ export function TourCard({ state, hint = null, onNext, onBack, onSkip }: TourOve
       // A press in the lit area on something that takes no focus gives it to a box around the area (the sheet's body): that press is the person's, and a
       // focus moved away now would stop the drag it starts.
       if (area !== null && (area.contains(e.target) || e.target.contains(area))) return;
+      // A refusal takes the focus so its words are read: the tour does not take it back.
+      if (e.target instanceof Element && e.target.closest('[role="alert"]') !== null) return;
       (next.current ?? pop.current.querySelector<HTMLElement>('button'))?.focus();
     };
     window.addEventListener('keydown', key, true);
@@ -155,6 +168,7 @@ export function TourCard({ state, hint = null, onNext, onBack, onSkip }: TourOve
     return () => {
       window.removeEventListener('keydown', key, true);
       document.removeEventListener('focusin', focusin);
+      // The Help button first, so the person sees where to replay the tour; what had the focus before only when there is no Help button.
       focusFirst([findTarget('help')?.querySelector<HTMLElement>('button') ?? findTarget('help'), before]);
     };
   }, []);

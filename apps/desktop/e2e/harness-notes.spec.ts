@@ -151,16 +151,23 @@ test('the same walk with the keyboard alone: no pointer press, no drag', async (
   for (let i = 0; i < 3; i++) { await expect(next).toBeFocused(); await p.keyboard.press('Enter'); await expect(t).toContainText(`Step ${i + 2} of 7`); }
   await expect(t).toContainText('Skills are what it knows how to do.');
 
-  // Escape ends the tour at the step that waits. The build is then done with Tab, Enter and Space alone.
-  await p.keyboard.press('Escape');
-  await expect(t).toHaveCount(0);
+  // The keeper is built inside the tour's waiting step, with Tab and Enter alone: the first Add button has the focus.
   const tray = s.locator('[data-section="keeper-build"]');
-  await press(tray.getByRole('button', { name: 'Add add-source to the Notes keeper', exact: true }));
+  await expect(tray.getByRole('button', { name: 'Add add-source to the Notes keeper', exact: true })).toBeFocused();
+  await p.keyboard.press('Enter');
   await expect(s.locator('[data-shelf="skills"] [data-on-shelf="add-source"]')).toBeVisible();
   await press(tray.getByRole('button', { name: 'Add the other skills', exact: true }));
   await expect(s.locator('[data-shelf="skills"] [data-on-shelf]')).toHaveCount(skills.length);
   await press(tray.getByRole('button', { name: 'Put Notes on the Notes shelf', exact: true }));
   await expect(s.locator('[data-shelf="notes"] [data-on-shelf]')).toHaveCount(1);
+
+  // The keeper is built, so the tour moves on by itself. Its Next button has the focus again; Enter walks to the end, and Done closes it.
+  await expect(t).toContainText('Step 5 of 7');
+  for (let i = 5; i < 7; i++) { await expect(next).toBeFocused(); await p.keyboard.press('Enter'); await expect(t).toContainText(`Step ${i + 1} of 7`); }
+  const doneButton = t.getByRole('button', { name: 'Done', exact: true });
+  await expect(doneButton).toBeFocused();
+  await p.keyboard.press('Enter');
+  await expect(t).toHaveCount(0);
 
   // Then Tab to "Review the save", Enter, Tab to the tick, Space, Tab to Save, Enter.
   await press(s.getByRole('button', { name: 'Review the save', exact: true }));
@@ -175,13 +182,10 @@ test('the same walk with the keyboard alone: no pointer press, no drag', async (
 });
 
 /**
- * KNOWN BUG, found by this spec and not fixed here (the app code is out of this lane). While the tour waits for the keeper to be built, the Tab key is taken
- * by the tour (renderer/harness/tour/TourOverlay.tsx) and cycles through `button, input, [draggable="true"]` in the lit area. A skill card is a `li` with
- * `draggable="true"` and no tabindex, so it cannot take the focus: focus() does nothing, the focus stays on the control before it, and the next Tab picks the
- * same card again. A keyboard user is stuck on the first control and cannot reach "Add the other skills" or the Add buttons that follow.
- * This test states what happens now. When the bug is fixed it fails on its last line; then turn the last line round (`toBe(true)`) and drop "KNOWN BUG".
+ * In the tour step that waits for the keeper to be built, the tour takes Tab and cycles through the controls of the lit area that take the focus, then its own
+ * card. A skill card that can be dragged is not one of them: its Add button is. So Tab moves on from the first Add button and reaches "Add the other skills".
  */
-test('KNOWN BUG: in the tour step that waits, Tab cannot leave the first Add button', async () => {
+test('in the tour step that waits, Tab moves from the first Add button on to "Add the other skills"', async () => {
   const p = page();
   await keyPress(p, p.getByRole('button', { name: 'Start fresh', exact: true }));
   await keyPress(p, p.locator('[data-notes-step="starter"]').getByRole('button', { name: 'Create', exact: true }));
@@ -198,6 +202,7 @@ test('KNOWN BUG: in the tour step that waits, Tab cannot leave the first Add but
   const other = s.locator('[data-section="keeper-build"]').getByRole('button', { name: 'Add the other skills', exact: true });
   let reached = false;
   for (let i = 0; i < 20 && !reached; i++) { await p.keyboard.press('Tab'); reached = await other.evaluate(el => el === document.activeElement); }
-  expect(reached, 'Tab reaches "Add the other skills" (false while the bug stands)').toBe(false);
-  await expect(first).toBeFocused();
+  expect(reached, 'Tab reaches "Add the other skills"').toBe(true);
+  // The focus never sat on a card that cannot take it: each Tab moved it.
+  await expect(first).not.toBeFocused();
 });
