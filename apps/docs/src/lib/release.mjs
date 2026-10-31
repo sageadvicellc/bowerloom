@@ -24,11 +24,15 @@ export function installCommandAccepted(r) {
   const expected = expectedInstallCommand(r);
   return expected !== null && typeof r.npm.installCommand === 'string' && expected.test(r.npm.installCommand);
 }
+// The 0.8 capability keys. Each holds a sentence, and limits holds a list of sentences.
+export const capabilityKeys = ['setup','adopt','install','fidelity','drift','remove','save','notes','skills','desktop','execution'];
+export const capabilitiesComplete = c => c && capabilityKeys.every(key => typeof c[key] === 'string' && c[key].length > 0)
+  && Array.isArray(c.limits) && c.limits.length > 0 && c.limits.every(x => typeof x === 'string' && x.length > 0);
 export async function readRelease() {
   const raw = await readFile(sourcePaths.release,'utf8');
   const r = JSON.parse(raw);
   if (r.schema !== 'bowerloom/release/v1' || !/^\d+\.\d+\.\d+-beta\.\d+$/.test(r.version)
-    || !installCommandAccepted(r)
+    || !installCommandAccepted(r) || !capabilitiesComplete(r.capabilities)
     || (r.state === 'published') !== r.npm.published
     || (r.npm.published && (!r.npm.ownershipVerified || !r.npm.publishingIdentityVerified || !r.systems.releaseQualified.length))) {
     throw new Error('Inconsistent release metadata; documentation publication is refused.');
@@ -39,21 +43,27 @@ export function releaseReference(r) {
   const support = new URL('status/',r.urls.docs.endsWith('/')?r.urls.docs:r.urls.docs+'/').href;
   return `Version: ${r.version} · Release: ${r.release}.\n\n[Source repository](${r.urls.repository}) · [Current support and limits](${support})`;
 }
+// The systems sentence comes from the record: the tested rows and the record's own note.
 export function systemSupport(r) {
-  return releasePresentation(r).platforms;
+  const tested = r.systems.tested.map(system => `${system.os} ${system.architecture} and Node ${system.node}`).join('; ');
+  return `These guides use ${tested}. ${r.systems.note}`;
 }
+// The one npm gate is the landing presentation's. The command shows only when the record says the package is published.
 export function installPublished(r) {
-  return r.npm.published === true && r.state === 'published';
+  return releasePresentation(r).installAvailable;
 }
+const capabilityLabel = key => key === 'skills' ? 'Portable skills' : key[0].toUpperCase() + key.slice(1);
 export function releaseSections(r) {
   const reader=releasePresentation(r);
   const status=`${reader.label} · ${reader.version}\n\n${reader.capabilities.execution}`;
   const docker='Harness commands and first-team setup do not need Docker. The separate local backend requires Docker Desktop and its own plan and approval.';
   // The install command shows only after npm publishes the package. Until then the block says it arrives later.
-  const install=installPublished(r)
-    ? `Install the beta CLI with Node \`${r.requirements.node}\` and npm \`${r.requirements.npm}\`.\n\n\`\`\`sh\n${reader.setupCommands}\n\`\`\`\n\n${reader.installNote}\n\n${docker}\n\n${systemSupport(r)}`
+  const install=reader.installAvailable
+    ? `Install the beta CLI with Node \`${r.requirements.node}\` and npm \`${r.requirements.npm}\`.\n\n\`\`\`sh\n${reader.installCommand}\nbowerloom --version\nbowerloom --help\n\`\`\`\n\nThe \`${r.npm.distTag}\` dist-tag follows the beta stream, so the command keeps you on it.\n\n${docker}\n\n${systemSupport(r)}`
     : `Bowerloom needs Node \`${r.requirements.node}\` and npm \`${r.requirements.npm}\`. The npm package \`${r.npm.packageName}\` is not published yet. The install command arrives when the beta publishes, under the \`${r.npm.distTag}\` dist-tag.\n\n${docker}\n\n${systemSupport(r)}`;
-  const support=`${status}\n\n| Capability | Current boundary |\n| --- | --- |\n${Object.entries(reader.capabilities).map(([key,value])=>`| ${key==='skills'?'Portable skills':key[0].toUpperCase()+key.slice(1)} | ${value} |`).join('\n')}\n\n${systemSupport(r)}\n\n${reader.beyondSetup} ${reader.unattended}`;
+  const rows=Object.entries(reader.capabilities).map(([key,value])=>`| ${capabilityLabel(key)} | ${value} |`).join('\n');
+  const limits=reader.limits.map(limit=>`- ${limit}`).join('\n');
+  const support=`${status}\n\n| Capability | Current boundary |\n| --- | --- |\n${rows}\n\n${systemSupport(r)}\n\nLimits of this beta:\n\n${limits}`;
   return {status,install,support};
 }
 export function expandRelease(markdown, release) {

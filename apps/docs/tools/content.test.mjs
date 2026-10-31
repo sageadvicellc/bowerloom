@@ -7,7 +7,7 @@ import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {htmlIds,duplicateHtmlIds,missingLegacyAliases} from '../src/lib/html-ids.mjs';
 import {copyFeedback} from '../src/lib/copy-feedback.mjs';
-import {expandRelease,readRelease,releaseReference,releaseSections,installCommandAccepted} from '../src/lib/release.mjs';
+import {capabilitiesComplete,capabilityKeys,expandRelease,readRelease,releaseReference,releaseSections,installCommandAccepted} from '../src/lib/release.mjs';
 import {unsupportedPublicInstalls} from './install-guard.mjs';
 import {pairedCopy,normalizeNotices,markdownSections,getDocuments,indexMarkdown,searchIndexes,pageTree} from '../src/lib/content.mjs';
 
@@ -111,18 +111,28 @@ test('all exports and copied procedures identify the exact shared release and su
 test('reader projection preserves raw operational state and presents bounded setup systems',async()=>{
   const release=await readRelease(),before=JSON.stringify(release),sections=releaseSections(release);
   for(const row of release.systems.tested)for(const value of [row.os,row.architecture,row.node])assert(sections.support.includes(value));
-  assert(sections.support.includes('Other host systems are outside this documented installation path.'));
-  assert(sections.support.includes('They do not run models or change live agent configuration.'));
-  assert(sections.support.includes('| Portable skills | Pin skills from npm or GitHub with skills add, then install them for Claude Code and Codex with skills sync. A copy in the project does not prove that Claude Code or Codex finds or runs it. |'));
+  assert(sections.support.includes('Windows and Linux are named for later releases. Other systems remain under review.'));
+  assert(sections.support.includes('| Portable skills | Pin skills from npm or GitHub with skills add, then install them for Claude Code and Codex with skills sync. |'));
+  assert.deepEqual(Object.keys(release.capabilities),[...capabilityKeys,'limits']);
+  for(const key of capabilityKeys)
+    assert(sections.support.includes(`| ${key==='skills'?'Portable skills':key[0].toUpperCase()+key.slice(1)} | ${release.capabilities[key]} |`),`the ${key} row follows the record`);
+  for(const limit of release.capabilities.limits)assert(sections.support.includes(`- ${limit}`),limit);
+  assert(sections.support.includes('- No harness command runs an engine or a model.'));
   assert(!sections.status.startsWith('**'));
   assert(sections.support.includes('Setup does not start workers, grant runtime access, or authorize connected actions.'));
-  assert(sections.support.includes('Shared company access and unattended services are outside this setup walkthrough.'));
+  assert(sections.support.includes('- Windows and Linux are not supported in this beta.'));
   assert.doesNotMatch(Object.values(sections).join('\n'),/unpublished|unreleased|candidate|ownership|founder acceptance|publication approval|release-qualified/i);
   assert.equal(JSON.stringify(release),before);
   const next={...release,version:'0.8.0-beta.99',distribution:{...release.distribution,archive:'bowerloom-0.8.0-beta.99.tgz'},npm:{...release.npm,installCommand:'npm install -g ./bowerloom-0.8.0-beta.99.tgz'}};
   assert(!releaseSections(next).install.includes(next.npm.installCommand),'an unpublished record shows no command');
   assert(releaseSections(publishedRecord(next)).install.includes(next.npm.installCommand),'a published record shows its command');assert(releaseReference(next).includes(next.version));
   assert.equal(next.state,release.state);assert.equal(next.npm.published,release.npm.published);
+});
+test('a record with a missing or empty capability is refused',async()=>{
+  const {capabilities}=await readRelease();
+  assert(capabilitiesComplete(capabilities));
+  for(const key of capabilityKeys){const {[key]:_,...rest}=capabilities;assert(!capabilitiesComplete(rest),`no ${key}`);assert(!capabilitiesComplete({...capabilities,[key]:''}),`empty ${key}`);}
+  assert(!capabilitiesComplete({...capabilities,limits:[]}));assert(!capabilitiesComplete({...capabilities,limits:'none'}));assert(!capabilitiesComplete(undefined));
 });
 test('rendered raw anchors suppress legacy aliases and duplicate IDs fail the shared link rule',()=>{
   const html='<h2 id="title">Title</h2><a id="old-anchor"></a><a title=" id=not-an-id" id=bare></a><span id="escaped&#45;id"></span><!-- <a id="ignored"> --><script>"<a id=script>"</script><pre>&lt;a id="code"&gt;</pre>';

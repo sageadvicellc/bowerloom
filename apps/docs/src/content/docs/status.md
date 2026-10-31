@@ -14,17 +14,28 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 
 | Capability | Current boundary |
 | --- | --- |
-| Setup | Prepare a personal-agent profile, team definition, and working agreement in a new or existing project. Exact approval writes the planned files. |
-| Portable skills | Project selected skill files into a new Codex or Claude Code workspace. Native discovery by Claude Code has not been observed. The installer does not prove discovery or execution. |
-| Revision | Plan a change to an installed setup, then approve its exact revision before replacement. |
+| Setup | Define one harness in a .bowerloom folder, then install it into Claude Code and Codex. A harness is the set of skills, agents, tools, rules, and context that surrounds a coding model. Every change to your files shows a plan first and writes only after you approve the exact plan. |
+| Adopt | Adopt reads the engine files of a folder and builds one harness definition from them. It writes only .bowerloom and changes no engine file. |
+| Install | Install writes the files of each engine from .bowerloom. Claude Code and Codex are supported. OpenCode, Pi, and DeepSeek Harness are preview engines, and install writes to them only when BOWERLOOM_PREVIEW_ENGINES=1 is set. |
+| Fidelity | The install plan reports each part of the harness, per engine, as exact, translated, weakened, or absent. A rule that an engine carries more weakly than the harness says is refused until you accept that line. |
+| Drift | Drift lists the files that Bowerloom wrote and that changed since the install. Drift --check fails when a file changed. |
+| Remove | Remove puts back every file that an install replaced and deletes the files that the install created. |
+| Save | The save step in the desktop app writes a change to the harness of a folder after you approve it, and keeps a save point before and after. Go back returns the harness to an earlier save point. |
+| Notes | In the desktop app, a new or empty notes folder can start from the starter wiki of the Notes keeper kit. A linked notes folder with no version history can get it. The Notes keeper kit holds one agent and six skills that look after a folder of notes. |
+| Portable skills | Pin skills from npm or GitHub with skills add, then install them for Claude Code and Codex with skills sync. |
+| Desktop | The desktop app is a main part of this release, and it is a beta. It does the same adopt, install, and remove steps as the command line, and adds the Builder, the screen where you edit a harness, with the save step and save points. Apple did not sign the macOS app. |
 | Execution | Setup does not start workers, grant runtime access, or authorize connected actions. |
-| Harnesses | Synthetic configuration commands support Codex and Claude Code fixtures. They do not run models or change live agent configuration. |
-| Connections | MCP planning reads selected synthetic files. Local backend installation requires a separate plan and exact approval. |
-| Company | Shared company access, retrieval, offboarding, and deletion are outside this beta's documented setup path. |
 
-These guides use macOS arm64 and Node 24.11.0. Other host systems are outside this documented installation path.
+These guides use macOS arm64 and Node 24.11.0. Windows and Linux are named for later releases. Other systems remain under review.
 
-Running a team needs separate runtime permissions and controls. The setup commands do not grant them. Shared company access and unattended services are outside this setup walkthrough.
+Limits of this beta:
+
+- No harness command runs an engine or a model.
+- OpenCode, Pi, and DeepSeek Harness are preview engines in this beta. Adopt, drift, status, and remove work for them, and install needs BOWERLOOM_PREVIEW_ENGINES=1.
+- The save step, save points, Go back, and the notes actions run in the desktop app only. The command line does not have them.
+- The desktop app is not signed with an Apple Developer ID and is not notarized. Updates stay off until the first release.
+- Windows and Linux are not supported in this beta.
+- Team sync, signing and automatic updates, other knowledge bases, and more engines are named for later releases. They are not promises.
 <!-- release:support:end -->
 
 ## Beta limits
