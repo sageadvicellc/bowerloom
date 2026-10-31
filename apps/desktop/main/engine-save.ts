@@ -6,21 +6,25 @@
  *  - The target is the full file set of the folder's `.bowerloom`; packages/adoption `planSave` and `applySave` write it under the project lock.
  *  - Save points: packages/project-sync `recordVersionLocked`, under the project lock, in the folder's private state. One is kept of the harness as it was before
  *    the first save (and before any save when the harness changed since the last save point), and one after each save and each go-back.
+ *  - Notes (spec 6.9): `set-source` names a notes folder by the id main gave it, and main stores its path; `add-from-kit` adds a shipped kit's agent and
+ *    skills with bytes main reads from the kit (main/kit.ts), and records the kit's pinned version in `sources.json`. A skill removed that a record in
+ *    `sources.json` names leaves that record in the same save.
  * Nothing here talks to the window: engine-service.ts calls these, inside its gate.
  */
 import { lstatSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import { INCOMPLETE_RULES, editDefinition, loadDefinition, loadDefinitionFiles, scanSecrets } from '../../../packages/harness-definition/src/index.js';
-import type { Definition, DefinitionEdit, DefinitionFile, EngineTarget } from '../../../packages/harness-definition/src/index.js';
+import type { Definition, DefinitionEdit, DefinitionFile, EngineTarget, KnowledgeSource, SourceRecord } from '../../../packages/harness-definition/src/index.js';
 import { SaveRefusal } from '../../../packages/adoption/src/index.js';
 import type { SaveRecoveryPlan } from '../../../packages/adoption/src/index.js';
 import { checkVersionsFit, listVersions, recordVersionLocked } from '../../../packages/project-sync/src/index.js';
 import type { VersionEntry } from '../../../packages/project-sync/src/index.js';
 import type { HarnessStateDirs } from '../../../packages/project-sync/src/harness-state.js';
 import { ENGINE_IDS } from '../shared/engine/engines.js';
-import { SAVE_MAIN_WORDS, SAVE_NO_DEFINITION, SAVE_POINT_TOO_LARGE, SAVE_SOURCE_MISSING } from '../shared/engine/types.js';
-import type { DefinitionView, EngineId, SaveEdit, VersionView } from '../shared/engine/types.js';
+import { KIT_ALREADY_ADDED, KIT_IDS, KIT_INVALID, KIT_MAIN_WORDS, KIT_MARKETPLACE, SAVE_MAIN_WORDS, SAVE_NO_DEFINITION, SAVE_POINT_TOO_LARGE, SAVE_SOURCE_MISSING, SOURCE_NAME_TAKEN } from '../shared/engine/types.js';
+import type { DefinitionView, EngineId, KitId, SaveEdit, SourceView, VersionView } from '../shared/engine/types.js';
+import type { Kit } from './kit.js';
 
 /** The one folder key of a project's save points: the state layout is per project already, so a project has one list. */
 export const VERSION_KEY = 'definition';
@@ -47,24 +51,36 @@ export function currentDefinition(dir: string): Definition {
   return loaded.definition;
 }
 
-/** The harness as the editor draws it. Ids, names and the one-line descriptions only; no file text. */
-export function definitionView(def: Definition): DefinitionView {
+/** How a stored knowledge source reaches the window: its label and the notes id main gave its folder. The default shows the stored path and no id. */
+export type SourceOf = (source: KnowledgeSource) => SourceView;
+const storedOnly: SourceOf = s => ({ name: s.name, kind: s.kind, label: s.path, notesId: '' });
+
+/** The shipped kits a definition holds items of: each record of `sources.json` from the kit marketplace, with its pinned version. */
+export function kitsOf(def: Definition): DefinitionView['kits'] {
+  return def.sources.filter(r => r.marketplace === KIT_MARKETPLACE && (KIT_IDS as readonly string[]).includes(r.name))
+    .map(r => ({ id: r.name as KitId, version: r.version, skills: r.items.filter(i => i.part === 'skills').map(i => i.id) }));
+}
+
+/** The harness as the editor draws it. Ids, names and the one-line descriptions only; no file text, and no path but a source's label. */
+export function definitionView(def: Definition, sourceOf: SourceOf = storedOnly): DefinitionView {
   const h = def.harness as unknown as { id?: unknown; description?: unknown; engines: readonly { id: string }[] };
   return {
     id: typeof h.id === 'string' ? h.id : '',
     description: typeof h.description === 'string' ? h.description : '',
     engines: ENGINE_IDS.filter(e => h.engines.some(x => x.id === e)),
     skills: def.entries.skills.map(s => ({ id: s.id, name: s.name, description: s.description })),
-    agents: def.entries.subagents.map(a => ({ id: a.id, name: a.name, description: a.description, skills: [...(a.skills ?? [])] })),
+    agents: def.entries.subagents.map(a => ({ id: a.id, name: a.name, description: a.description, skills: [...(a.skills ?? [])], notes: [...(a.notes ?? [])] })),
     instructions: def.instructions !== undefined,
+    sources: def.knowledge.map(sourceOf),
+    kits: kitsOf(def),
   };
 }
 
 /** The definition view of a target file set, through the loader run in memory. The save plan validated the same set first. */
-export function targetView(files: readonly DefinitionFile[], dir: string): DefinitionView {
+export function targetView(files: readonly DefinitionFile[], dir: string, sourceOf: SourceOf = storedOnly): DefinitionView {
   const loaded = loadDefinitionFiles(files, join(dir, DEF));
   if (!loaded.ok) throw new SaveRefusal('SAVE_DEFINITION_INVALID', [...new Set(loaded.problems.map(p => `${p.path} (${p.code})`))], loaded.problems);
-  return definitionView(loaded.definition);
+  return definitionView(loaded.definition, sourceOf);
 }
 
 /**
@@ -99,19 +115,38 @@ function engineOf(def: Definition, id: EngineId): EngineTarget {
 
 /** The most `add-skill` edits one save takes: each one reads and scans a whole skill of another folder. */
 export const ADD_SKILL_LIMIT = 16;
-/** True when the `add-skill` edits are at most ADD_SKILL_LIMIT and no (from, id) pair comes twice. Main's input check refuses anything else. */
+/**
+ * True when the `add-skill` edits are at most ADD_SKILL_LIMIT and no (from, id) pair comes twice, and each kit is added at most once. Main's input check
+ * refuses anything else.
+ */
 export function copiesOk(edits: readonly SaveEdit[]): boolean {
   const pairs = edits.filter((e): e is Extract<SaveEdit, { kind: 'add-skill' }> => e.kind === 'add-skill').map(e => `${e.from}\u0000${e.id}`);
-  return pairs.length <= ADD_SKILL_LIMIT && new Set(pairs).size === pairs.length;
+  const kits = edits.filter((e): e is Extract<SaveEdit, { kind: 'add-from-kit' }> => e.kind === 'add-from-kit').map(e => e.kit);
+  return pairs.length <= ADD_SKILL_LIMIT && new Set(pairs).size === pairs.length && new Set(kits).size === kits.length;
 }
+
+/** What the notes edits need from main: the stored path of a notes folder by its id, and a shipped kit, loaded now. */
+export interface NotesEditDeps {
+  /**
+   * The stored path of the notes folder `notesId`, relative to the harness folder or in `~` form. Throws the call's own refusal for an id main does not
+   * know, and the package's refusal, with its words, for a folder that has no stored form.
+   */
+  readonly sourcePath: (notesId: string) => string;
+  /** The kit, loaded and validated now (main/kit.ts). Throws KIT_INVALID. */
+  readonly kit: (id: KitId) => Kit;
+}
+const NO_NOTES: NotesEditDeps = {
+  sourcePath: () => { throw new DefinitionError('EDIT_UNSAFE_PATH', 'This window cannot attach notes. Nothing was written.'); },
+  kit: () => { throw new DefinitionError(KIT_INVALID, `${KIT_MAIN_WORDS.KIT_INVALID} (no kit folder)`); },
+};
 
 /**
  * The full target file set of the folder after the window's edits, in path order. `sourceDir` names the folder of an `add-skill` by its id; it throws the
  * call's own refusal for an id main does not know. Each source folder is asked for and loaded once per call. A refusal of `editDefinition` keeps its code
  * and its words. Edits over the copy bounds (`copiesOk`) are EDIT_TOO_LARGE.
  */
-export function targetOf(def: Definition, edits: readonly SaveEdit[], sourceDir: (folderId: string) => string): DefinitionFile[] {
-  if (!copiesOk(edits)) throw new DefinitionError('EDIT_TOO_LARGE', `One save copies at most ${ADD_SKILL_LIMIT} skills, each from one folder once. Nothing was written.`);
+export function targetOf(def: Definition, edits: readonly SaveEdit[], sourceDir: (folderId: string) => string, notes: NotesEditDeps = NO_NOTES): DefinitionFile[] {
+  if (!copiesOk(edits)) throw new DefinitionError('EDIT_TOO_LARGE', `One save copies at most ${ADD_SKILL_LIMIT} skills, each from one folder once, and adds each kit once. Nothing was written.`);
   const out: DefinitionEdit[] = [];
   const sources = new Map<string, { dir: string; loaded: ReturnType<typeof loadDefinition> }>();
   const source = (folderId: string): { dir: string; loaded: ReturnType<typeof loadDefinition> } => {
@@ -121,11 +156,53 @@ export function targetOf(def: Definition, edits: readonly SaveEdit[], sourceDir:
   };
   // The other files of the last copy of each skill id: an earlier copy that a later edit removed brings none of its files back.
   const copied = new Map<string, DefinitionFile[]>();
+  // The records of `sources.json` as the edits so far leave them, by name, so a removed skill leaves its record in the same save.
+  const borrowed = new Map<string, SourceRecord>(def.sources.map(r => [r.name, r]));
+  // The stored path of each source name as the edits so far leave it, so one name never stands for two folders.
+  const named = new Map<string, string>(def.knowledge.map(k => [k.name, k.path]));
   for (const e of edits) {
     switch (e.kind) {
-      case 'set-agent': out.push({ kind: 'set-agent', id: e.id, skills: [...e.skills] }); break;
-      case 'remove-skill': out.push({ kind: 'remove-skill', id: e.id }); copied.delete(e.id); break;
+      case 'set-agent': out.push({ kind: 'set-agent', id: e.id, ...(e.skills === undefined ? {} : { skills: [...e.skills] }), ...(e.notes === undefined ? {} : { notes: [...e.notes] }) }); break;
+      case 'remove-skill': {
+        for (const [name, record] of [...borrowed]) {
+          if (!record.items.some(i => i.part === 'skills' && i.id === e.id)) continue;
+          const items = record.items.filter(i => !(i.part === 'skills' && i.id === e.id));
+          if (items.length === 0) { borrowed.delete(name); out.push({ kind: 'remove-borrowed', name }); } else {
+            const next: SourceRecord = { name: record.name, marketplace: record.marketplace, version: record.version, ...(record.claimed ? { claimed: true as const } : {}), items };
+            borrowed.set(name, next); out.push({ kind: 'set-borrowed', source: next });
+          }
+        }
+        out.push({ kind: 'remove-skill', id: e.id }); copied.delete(e.id); break;
+      }
       case 'set-engines': out.push({ kind: 'set-engines', engines: e.engines.map(id => engineOf(def, id)) }); break;
+      case 'set-source': {
+        const path = notes.sourcePath(e.notesId), held = named.get(e.name);
+        if (held !== undefined && held !== path) throw new DefinitionError(SOURCE_NAME_TAKEN, SAVE_MAIN_WORDS.SOURCE_NAME_TAKEN);
+        named.set(e.name, path);
+        out.push({ kind: 'set-source', source: { kind: 'wiki-folder', name: e.name, path } }); break;
+      }
+      case 'remove-source': named.delete(e.name); out.push({ kind: 'remove-source', name: e.name }); break;
+      case 'add-from-kit': {
+        // Every byte comes from the kit main ships, read and validated now; the window named the kit only.
+        const kit = notes.kit(e.kit);
+        // The kit is there already only when its record is of the kit marketplace; a borrowed record of that name from elsewhere is a clash of names.
+        const held = borrowed.get(kit.id);
+        if (held?.marketplace === KIT_MARKETPLACE) throw new DefinitionError(KIT_ALREADY_ADDED, KIT_MAIN_WORDS.KIT_ALREADY_ADDED);
+        if (held !== undefined) throw new DefinitionError('EDIT_DUPLICATE_ID', `The harness already borrows a source named ${kit.id} from elsewhere. Nothing was written.`);
+        for (const skill of kit.skills) {
+          const main = skill.files.find(f => f.path === 'SKILL.md')!;
+          out.push({ kind: 'add-skill', id: skill.id, text: Buffer.from(main.bytes).toString('utf8') });
+          copied.set(skill.id, skill.files.filter(f => f.path !== 'SKILL.md').map(f => ({ path: `skills/${skill.id}/${f.path}`, bytes: f.bytes, executable: f.executable === true })));
+        }
+        out.push({ kind: 'add-agent', id: kit.agent.id, text: kit.agent.text });
+        const record: SourceRecord = {
+          name: kit.id, marketplace: KIT_MARKETPLACE, version: kit.version,
+          items: [{ part: 'subagents', id: kit.agent.id }, ...kit.skills.map(skill => ({ part: 'skills' as const, id: skill.id }))],
+        };
+        borrowed.set(kit.id, record);
+        out.push({ kind: 'set-borrowed', source: record });
+        break;
+      }
       case 'add-skill': {
         const from = source(e.from);
         const files = skillFrom(from.dir, e.id, from.loaded);

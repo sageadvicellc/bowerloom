@@ -13,7 +13,8 @@ import { ENGINE_WORDS } from '../renderer/harness/words-engine.js';
 const BASE: DefinitionView = {
   id: 'weekly-report', description: 'Drafts the weekly report.', engines: ['claude-code', 'codex'], instructions: true,
   skills: [{ id: 'check-facts', name: 'check-facts', description: 'Checks each figure.' }, { id: 'draft-outline', name: 'draft-outline', description: 'Outlines it.' }],
-  agents: [{ id: 'editor', name: 'editor', description: 'Edits.', skills: [] }, { id: 'writer', name: 'writer', description: 'Writes.', skills: ['draft-outline'] }],
+  agents: [{ id: 'editor', name: 'editor', description: 'Edits.', skills: [], notes: [] }, { id: 'writer', name: 'writer', description: 'Writes.', skills: ['draft-outline'], notes: [] }],
+  sources: [], kits: [],
 };
 const noop = (): void => undefined;
 const V = (id: string, current: boolean): VersionView => ({ id, created: '2026-10-30T12:00:00Z', label: id === 'v1' ? 'As it was before the first save' : 'Saved 1 change', files: 5, current });

@@ -76,6 +76,15 @@ export const PART_LOCATIONS = Object.freeze({
   mcp: 'mcp.json',
 } as const satisfies Record<Exclude<PartKey, 'tool-guidance'>, string>);
 
+/**
+ * The machine file that records knowledge sources (0.8 spec, sections 6.9 and 6.10). A source is a pointer: a kind, a name,
+ * and a path. It is not a part, so `harness.json` holds no pointer to it.
+ */
+export const KNOWLEDGE_FILE = 'knowledge.json' as const;
+/** The kinds of knowledge source. Beta.1 has one: a folder of Markdown pages. A later kind reaches agents as an MCP server. */
+export const KNOWLEDGE_KINDS = Object.freeze(['wiki-folder'] as const);
+export type KnowledgeKind = (typeof KNOWLEDGE_KINDS)[number];
+
 /** Neutral tool classes (section 4.1). `mcp:<server>` names one MCP server. */
 export const TOOL_CLASSES = Object.freeze(['read', 'search', 'edit', 'write', 'shell', 'web', 'task', 'skill'] as const);
 export type ToolClass = (typeof TOOL_CLASSES)[number] | `mcp:${string}`;

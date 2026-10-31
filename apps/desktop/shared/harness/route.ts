@@ -15,6 +15,8 @@ export type Route =
   | { readonly name: 'welcome' }
   | { readonly name: 'choose' }
   | { readonly name: 'read' }
+  /** The notes step of the first run: "Where do you keep your notes?" */
+  | { readonly name: 'notes' }
   | { readonly name: 'harnesses'; readonly id?: string }
   | { readonly name: 'builder'; readonly id: string; readonly view: BuilderView }
   | { readonly name: 'file'; readonly partId: string }
@@ -36,8 +38,8 @@ export const isRealHash = (hash: string): boolean => under(hash, REAL_BASE);
 /** The base an address was opened on: the page keeps it when it moves, so a reload opens the same launch. */
 export const baseOf = (hash: string): string => (isRealHash(hash) ? REAL_BASE : BASE);
 
-/** The three screens before the app: they have no navigation. */
-export const FIRST_RUN: readonly RouteName[] = Object.freeze(['welcome', 'choose', 'read']);
+/** The screens before the app: they have no navigation. */
+export const FIRST_RUN: readonly RouteName[] = Object.freeze(['welcome', 'choose', 'read', 'notes']);
 export const isFirstRun = (route: Route): boolean => FIRST_RUN.includes(route.name);
 
 const clean = (value: string | undefined): string | undefined => {
@@ -55,6 +57,7 @@ export function parseRoute(hash: string): Route | null {
     case undefined: case '': return { name: 'welcome' };
     case 'choose': return { name: 'choose' };
     case 'read': return { name: 'read' };
+    case 'notes': return { name: 'notes' };
     case 'harnesses': return id === undefined ? { name: 'harnesses' } : { name: 'harnesses', id };
     case 'builder': return id === undefined ? { name: 'harnesses' } : { name: 'builder', id, view: b === 'list' ? 'list' : 'graph' };
     case 'file': return id === undefined ? { name: 'harnesses' } : { name: 'file', partId: id };
@@ -78,7 +81,7 @@ const seg = (value: string): string => encodeURIComponent(value);
 export function formatRoute(route: Route, base: string = BASE): string {
   switch (route.name) {
     case 'welcome': return base;
-    case 'choose': case 'read': case 'history': case 'help': return `${base}/${route.name}`;
+    case 'choose': case 'read': case 'notes': case 'history': case 'help': return `${base}/${route.name}`;
     case 'harnesses': case 'projects': case 'runs': case 'interfaces': return route.id === undefined ? `${base}/${route.name}` : `${base}/${route.name}/${seg(route.id)}`;
     case 'builder': return `${base}/builder/${seg(route.id)}/${route.view}`;
     case 'file': return `${base}/file/${seg(route.partId)}`;

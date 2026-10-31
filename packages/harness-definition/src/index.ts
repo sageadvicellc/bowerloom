@@ -4,22 +4,24 @@
  * README.md in this package states the trust boundary and the rules for the later lanes.
  */
 export {
-  DEFINITION_LIMITS, ENGINE_IDS, GUARDRAIL_ACTIONS, GUARDRAIL_EFFECTS, HARNESS_FORMAT, LEGACY_NAMES, LOSS_PARTS, MCP_TRANSPORTS,
+  DEFINITION_LIMITS, ENGINE_IDS, GUARDRAIL_ACTIONS, GUARDRAIL_EFFECTS, HARNESS_FORMAT, KNOWLEDGE_FILE, KNOWLEDGE_KINDS, LEGACY_NAMES, LOSS_PARTS, MCP_TRANSPORTS,
   OVERRIDABLE_PARTS, PART_KEYS, PART_KINDS, PART_LOCATIONS, PREVIEW_ENGINES_ENV, PREVIEW_ENGINE_IDS, RESULTS, STRENGTHS, SUPPORTED_ENGINE_IDS, TOOL_CLASSES,
   isEngineId, isId, isPreviewEngine, isServerName, previewEnginesAllowed,
 } from './words.js';
 export type {
-  EngineId, GuardrailAction, GuardrailEffect, LossPart, McpTransport, OverridablePart, PartKey, PartKind, PreviewEngineId, Result, Strength, SupportedEngineId,
+  EngineId, GuardrailAction, GuardrailEffect, KnowledgeKind, LossPart, McpTransport, OverridablePart, PartKey, PartKind, PreviewEngineId, Result, Strength, SupportedEngineId,
   ToolClass,
 } from './words.js';
 export type {
-  AdoptedFrom, AdoptedRecord, Definition, DefinitionFile, EngineTarget, EnvValue, Filterable, GuardrailRule, HarnessFile, HookEntry, JsonValue,
+  AdoptedFrom, AdoptedRecord, Definition, DefinitionFile, EngineTarget, EnvValue, Filterable, GuardrailRule, HarnessFile, HookEntry, JsonValue, KnowledgeSource,
   LayerOverride, LoadResult, McpServer, PartEntries, PartPointers, PrivateBlocks, Problem, SandboxRequirement, SecretRef,
   ScriptEntry, SkillEntry, SkillSettings, SourceRecord, SubagentEntry,
 } from './types.js';
 export { jsonValueFault, parseStrictJson, readFrontmatter } from './json.js';
 export type { FrontmatterResult, StrictJsonCode, StrictJsonResult } from './json.js';
 export { isDefinitionFolder, loadDefinition, loadDefinitionFiles } from './load.js';
+export { KNOWLEDGE_PATH_MAX, isKnowledgeKind, isKnowledgePath, storedKnowledgePath } from './knowledge.js';
+export type { KnowledgePathCode, KnowledgePathResult } from './knowledge.js';
 export { adoptedPaths, isPermissionKey } from './schema.js';
 export { REVISION_PREFIX, canonicalBytes, computeRevision, fileContentHash, skillContentHash } from './revision.js';
 export { INCOMPLETE_RULES, isReferenceOnly, isSafeName, isSecretKey, safeName, scanSecrets } from './secrets.js';

@@ -1,5 +1,6 @@
 /**
- * S1.3, Read sources. The sources that were kept, each with "Make a harness from this", and two buttons under the list: "Make all 4" and "Not now". Making a harness (`store.createHarnessFromSource`)
+ * S1.3, Read sources. The sources that were kept, each with "Make a harness from this", and three buttons under the list: "Make all 4", "Set up my notes"
+ * (the notes step, first five minutes section 4 step 3) and "Not now". Making a harness (`store.createHarnessFromSource`)
  * opens the app on it. "Make all 4" makes one from each. "Not now" opens the app on the sample. Nothing is read or written: the harness is made from the sample world, in memory.
  * On the person's own folders (the state holds `real`) the list can be long: a count line and the reader's notes come first, and the list scrolls in its own box.
  */
@@ -12,6 +13,7 @@ import { go } from '../router.js';
 import { useHarnessState, useHarnessStore } from '../session.js';
 import { useUi } from '../ui.js';
 import { FLOW, makeAll, readTitle } from '../words-flow.js';
+import { NOTES } from '../words-notes.js';
 import { FirstHead, SourceVia, sourceCountsWords } from './first-run-parts.js';
 import { makeOnce, makeSources } from './read-make.js';
 import { ReadNotes } from '../real/ReadNotes.js';
@@ -52,6 +54,7 @@ export function ReadSources(): ReactElement {
       </ul>
       <div className="hxf-actions">
         {kept.length === 0 ? null : <HButton ref={primary} variant="primary" onClick={makeEvery}>{makeAll(kept.length)}</HButton>}
+        <HButton icon="page" data-set-up-notes="" onClick={() => go({ name: 'notes' })}>{NOTES.label.setUpNotes}</HButton>
         <HButton onClick={() => go({ name: 'harnesses' })}>{FLOW.label.notNow}</HButton>
       </div>
       {/* The first screens have no shell, so this one holds its own layer for "Nothing was made." */}

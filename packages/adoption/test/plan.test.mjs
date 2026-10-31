@@ -85,6 +85,11 @@ test('a .bowerloom folder with a name that is neither 0.7 nor a 0.7 skill folder
   assert.throws(() => planAdoption(p.input({ engines: TWO })), code('ADOPTION_FOLDER_OCCUPIED'));
 });
 
+test('notes lane D: adoption neither reads nor writes knowledge.json; a stray one without harness.json is refused', t => {
+  const p = project(t, { 'AGENTS.md': INSTRUCTIONS, '.bowerloom/knowledge.json': json({ sources: [{ kind: 'wiki-folder', name: 'wiki', path: 'notes' }] }) });
+  assert.throws(() => planAdoption(p.input({ engines: TWO })), code('ADOPTION_FOLDER_OCCUPIED'));
+});
+
 test('input faults are refused', t => {
   const p = project(t, {});
   assert.throws(() => planAdoption({ projectDir: 'relative/path' }), code('ADOPTION_USAGE'));

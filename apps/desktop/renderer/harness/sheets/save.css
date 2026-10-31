@@ -10,3 +10,6 @@
 [data-home] .hxs-tick { display: inline-flex; align-items: center; gap: var(--hm-space-2); min-height: 2rem; color: var(--text); cursor: pointer; }
 [data-home] .hxs-point { align-items: center; }
 [data-home] .hxs-point-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1 1 auto; }
+/* A skill row: the name keeps its width, and a long description (the kit's are a paragraph) shows one line, in full on hover. */
+[data-home] [data-section="skills"] .hxi-file-path { flex: none; max-width: 40%; }
+[data-home] .hxs-desc { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

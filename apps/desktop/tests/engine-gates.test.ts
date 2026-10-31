@@ -87,7 +87,7 @@ test('the handler has one channel per call, apart from every other channel, and 
   const handlers = new Map<string, (event: RealEvent, ...args: unknown[]) => unknown>();
   registerEngineIpc({ ipc: { handle: (c, l) => { handlers.set(c, l); } }, appIndexUrl: APP_INDEX, home: '/nonexistent-home', stateRoot: '/nonexistent-home/.local/state/bowerloom', chooseFolder: async () => null, confirm: async () => false, who: 't' });
   assert.deepEqual([...handlers.keys()].sort(), Object.values(ENGINE_CHANNELS).sort());
-  assert.equal(ENGINE_CALLS.length, 22);
+  assert.equal(ENGINE_CALLS.length, 28);
   for (const channel of Object.values(ENGINE_CHANNELS)) {
     assert.ok(!(Object.values(REAL_CHANNELS) as string[]).includes(channel) && !(Object.values(CHANNELS) as string[]).includes(channel), channel);
   }

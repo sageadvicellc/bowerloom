@@ -22,11 +22,13 @@ import { computeRevision, fileContentHash, skillContentHash } from './revision.j
 import {
   Checker, checkGuardrails, checkHarness, checkHooks, checkMcp, checkSkill, checkSources, checkSubagent,
 } from './schema.js';
+import { checkKnowledge } from './knowledge.js';
 import { INCOMPLETE_RULES, safeName, scanSecrets } from './secrets.js';
 import type {
-  AdoptedRecord, Definition, DefinitionFile, HarnessFile, JsonValue, LoadResult, PartEntries, Problem, SkillEntry, SourceRecord, SubagentEntry,
+  AdoptedRecord, Definition, DefinitionFile, HarnessFile, JsonValue, KnowledgeSource, LoadResult, PartEntries, Problem, SkillEntry, SourceRecord,
+  SubagentEntry,
 } from './types.js';
-import { DEFINITION_LIMITS, ENGINE_IDS, LEGACY_NAMES, PART_LOCATIONS, isEngineId, isId } from './words.js';
+import { DEFINITION_LIMITS, ENGINE_IDS, KNOWLEDGE_FILE, LEGACY_NAMES, PART_LOCATIONS, isEngineId, isId } from './words.js';
 import type { EngineId, PartKey } from './words.js';
 
 /** Top-level names of section 8, with the part key that must point to each. `engines/` has no pointer. */
@@ -41,6 +43,8 @@ const TOP: Readonly<Record<string, { dir: boolean; key: PartKey | null }>> = {
   'guardrails.json': { dir: false, key: 'guardrails' },
   'mcp.json': { dir: false, key: 'mcp' },
   'sources.json': { dir: false, key: 'plugins' },
+  // A knowledge source is a pointer, not a part (0.8 spec, section 6.9), so harness.json holds no pointer to this file.
+  'knowledge.json': { dir: false, key: null },
 };
 const LEGACY = new Set<string>(LEGACY_NAMES);
 const byBytes = (a: string, b: string) => Buffer.compare(Buffer.from(a), Buffer.from(b));
@@ -293,6 +297,9 @@ function loadFrom(r: Reader, root: string): LoadResult {
   const hooks = readJsonPart(r, present, 'hooks.json', checkHooks) ?? [];
   const mcp = readJsonPart(r, present, 'mcp.json', checkMcp) ?? [];
   const { sources, adopted } = readJsonPart(r, present, 'sources.json', checkSources) ?? { sources: [], adopted: [] };
+  // Undefined when knowledge.json is present and faulty: its own problems say so, and the notes of agents are not checked.
+  const knowledgeRead = present.has(KNOWLEDGE_FILE) ? readJsonPart(r, present, KNOWLEDGE_FILE, (c, v) => checkKnowledge(v, (code, message) => c.fail(code, message))) : [];
+  const knowledge = knowledgeRead ?? [];
 
   const skills = harness ? applySkillSettings(r, harness, rawSkills) : rawSkills;
   const entries: PartEntries = { skills, subagents, rules: guardrails.rules, sandbox: guardrails.sandbox, hooks, mcp };
@@ -301,6 +308,7 @@ function loadFrom(r: Reader, root: string): LoadResult {
     checkEnginesListed(r, harness, entries, enginePrivate);
   }
   checkSourceItems(r, sources, adopted, entries);
+  if (knowledgeRead) checkNotes(r, knowledgeRead, subagents);
 
   const files: DefinitionFile[] = [...r.files.entries()].sort(([a], [b]) => byBytes(a, b)).map(([p, f]) => ({ path: p, bytes: f.bytes, executable: f.executable }));
   const incomplete = new Set<string>(INCOMPLETE_RULES);
@@ -317,7 +325,7 @@ function loadFrom(r: Reader, root: string): LoadResult {
     return { id: p, contentHash: fileContentHash({ path: `scripts/${p}`, bytes: f.bytes }), executable: f.executable };
   });
   const definition: Definition = {
-    folder: root, harness, ...(instructions !== undefined ? { instructions } : {}), entries, sources, adopted, scripts, scriptEntries,
+    folder: root, harness, ...(instructions !== undefined ? { instructions } : {}), entries, sources, adopted, knowledge, scripts, scriptEntries,
     enginePrivate, files, revision: computeRevision(files),
   };
   return { ok: true, definition };
@@ -466,7 +474,7 @@ function checkPointers(r: Reader, harness: HarnessFile, present: Set<string>, in
     const pointer = parts[key];
     if (pointer === undefined) continue;
     if (pointer !== where) {
-      const extra = key === 'memory' ? ' How a knowledge base connects is not defined yet.' : '';
+      const extra = key === 'memory' ? ' A knowledge source is not a part: knowledge.json records it.' : '';
       r.fail('PART_POINTER', 'harness.json', `parts.${key} must be ${where}.${extra}`);
       continue;
     }
@@ -514,4 +522,12 @@ function checkSourceItems(r: Reader, sources: readonly SourceRecord[], adopted: 
   adopted.forEach((a, i) => {
     if (!entries.skills.some(e => e.id === a.id)) r.fail('SOURCE_ITEM_MISSING', 'sources.json', `adopted[${i}] names a skill that this layer does not hold.`);
   });
+}
+
+/** Each name an agent lists in `notes` names a source of this layer's `knowledge.json`. */
+function checkNotes(r: Reader, knowledge: readonly KnowledgeSource[], subagents: readonly SubagentEntry[]): void {
+  const names = new Set(knowledge.map(k => k.name));
+  for (const a of subagents) for (const name of a.notes ?? []) {
+    if (!names.has(name)) r.fail('NOTES_SOURCE_UNKNOWN', `agents/${a.id}.md`, `notes lists ${name}, which is not a source in knowledge.json of this folder.`);
+  }
 }

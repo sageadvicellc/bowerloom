@@ -4,7 +4,7 @@
  * most 25, and no banned word, so "adopt", "apply", "import" and "MCP" never reach the screen. tests/engine-words.test.ts holds the table and the builders to it.
  * The words that come from a plan (a reason, a rule, a path) are shown as the packages wrote them.
  */
-import type { ChangeView, DriftLineView, EngineId, Gate, ModeChoice, RecoveryView, ResultWord } from '../../shared/engine/types.js';
+import type { ChangeView, DriftLineView, EngineId, Gate, ModeChoice, RecoveryView, Refusal, ResultWord } from '../../shared/engine/types.js';
 import type { Tone } from '../../shared/harness/status.js';
 
 const deepFreeze = <T extends object>(value: T): T => {
@@ -237,7 +237,53 @@ export const SAVE_REFUSAL_WORDS: Readonly<Record<string, string>> = Object.freez
   VERSION_STALE: 'The save points changed since. Review setting them aside again.',
   VERSION_NOTHING: 'There are no save points to set aside.',
   SAVE_POINT_TOO_LARGE: 'Make the harness smaller, then save again.',
+  EDIT_UNSAFE_PATH: 'Choose the notes folder again, then save.',
+  SOURCE_NAME_TAKEN: 'Give these notes another name, then save.',
+  KIT_INVALID: 'Install Bowerloom again to repair the notes keeper.',
+  KIT_ALREADY_ADDED: 'The notes keeper is here already. Nothing to add.',
+  KNOWLEDGE_PATH_UNSAFE: 'Choose a notes folder inside your home folder.',
+  KNOWLEDGE_PATH_ESCAPES: 'Choose the notes folder again, then save.',
+  KNOWLEDGE_PATH_OUTSIDE: 'Move the notes into your home folder, then choose them again.',
 });
+
+/** What to do next after each refusal of the notes calls (spec 6.9), under the refusal's own words. The package's NOTES_ codes and main's, each once. */
+export const NOTES_REFUSAL_WORDS: Readonly<Record<string, string>> = Object.freeze({
+  NOTES_USAGE: 'Close this and open it again.',
+  NOTES_FOLDER_MISSING: 'The folder is gone. Choose your notes folder again.',
+  NOTES_PATH_UNSAFE: 'Choose a plain folder of your own, not a link.',
+  NOTES_NOT_EMPTY: 'Choose an empty folder, or make a new one.',
+  NOTES_TEMPLATE_INVALID: 'Install Bowerloom again to repair the starter notes.',
+  NOTES_STALE: 'The folder changed. Look at the preview again.',
+  NOTES_ALREADY_REPOSITORY: 'This folder keeps its history already. Nothing to do.',
+  NOTES_PARENT_REPOSITORY: 'Use this folder with Use my notes, or pick one outside.',
+  NOTES_NESTED_REPOSITORY: 'A folder inside keeps its own history. Move it out first.',
+  NOTES_GIT_FILES: 'Remove the git settings file, then try again.',
+  NOTES_NOTHING_TO_COMMIT: 'Add a page to the folder first, then try again.',
+  NOTES_TOO_LARGE: 'Start the history by hand with git for this folder.',
+  NOTES_GIT_MISSING: 'Install the Command Line Tools for Xcode, then try again.',
+  NOTES_GIT_ARGV: 'Report a problem from the Help menu.',
+  NOTES_GIT_CONFIG: 'Remove the filter, ssh, mailmap, or include settings from its git config.',
+  NOTES_GIT_TIMEOUT: 'Try again. If it stops again, report a problem.',
+  NOTES_GIT_OUTPUT: 'Report a problem from the Help menu.',
+  NOTES_GIT_FAILED: 'Try again. If it fails again, report a problem.',
+  NOTES_PARTIAL: 'Check the files listed, then start again in an empty folder.',
+  KIT_INVALID: 'Install Bowerloom again to repair the notes keeper.',
+  NOT_A_FOLDER: 'Choose a folder, not a file.',
+  NOTES_NOT_CHOSEN: 'Choose this folder with Use my notes first.',
+});
+/**
+ * What to do after a notes write stopped part way (NOTES_PARTIAL), by the step that stopped: the starter wrote files into an empty folder; the history start
+ * made a `.git` folder in a folder that had none, which the person can remove to try again. The starter's words are NOTES_PARTIAL's own.
+ */
+export const NOTES_PARTIAL_WORDS: Readonly<Record<'starter' | 'history', string>> = Object.freeze({
+  starter: NOTES_REFUSAL_WORDS.NOTES_PARTIAL!,
+  history: 'Bowerloom just made its .git folder. Remove it, then try again.',
+});
+/** The next-step words of a notes refusal, for the write that was running: `history`, `starter`, or none. */
+export function notesNextWords(refusal: Refusal, during: 'starter' | 'history' | null): string | null {
+  if (refusal.code === 'NOTES_PARTIAL' && during !== null) return NOTES_PARTIAL_WORDS[during];
+  return NOTES_REFUSAL_WORDS[refusal.code] ?? null;
+}
 const plain = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 /** "Save 3 files". */
 export const saveFilesWords = (n: number): string => `Save ${plain(n, 'file', 'files')}`;

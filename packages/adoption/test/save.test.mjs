@@ -119,6 +119,26 @@ test('the result of editDefinition saves as it is, and loads as the edit planned
   for (const f of edit.files) assert.ok(fs.readFileSync(path.join(p.def, f.path)).equals(Buffer.from(f.bytes)), f.path);
 });
 
+test('notes lane D: a save carries knowledge.json and agent notes as it carries any definition file', async t => {
+  const p = saving(t, { parts: { subagents: 'agents/' }, files: { 'agents/keeper.md': '---\nname: keeper\ndescription: Looks after the notes.\n---\n\nKeep the notes tidy.\n' } });
+  const source = { kind: 'wiki-folder', name: 'wiki', path: '~/notes' };
+  const add = editDefinition(loadDefinition(p.def).definition, [{ kind: 'set-source', source }, { kind: 'set-agent', id: 'keeper', notes: ['wiki'] }]);
+  assert.ok(add.ok, JSON.stringify(add));
+  const plan = save.planSave(p.save(), add.files);
+  assert.deepEqual(plan.changes.map(c => [c.path, c.action]).sort(), [['agents/keeper.md', 'update'], ['knowledge.json', 'create']]);
+  await save.applySave(p.save(), plan.revision, add.files);
+  const saved = loadDefinition(p.def).definition;
+  assert.deepEqual(saved.knowledge.map(k => ({ ...k })), [source]);
+  assert.deepEqual(saved.entries.subagents[0].notes, ['wiki']);
+  const drop = editDefinition(saved, [{ kind: 'remove-source', name: 'wiki' }]);
+  assert.ok(drop.ok, JSON.stringify(drop));
+  const second = save.planSave(p.save(), drop.files);
+  assert.deepEqual(second.changes.map(c => [c.path, c.action]).sort(), [['agents/keeper.md', 'update'], ['knowledge.json', 'delete']]);
+  await save.applySave(p.save(), second.revision, drop.files);
+  assert.equal(fs.existsSync(path.join(p.def, 'knowledge.json')), false);
+  assert.equal(loadDefinition(p.def).definition.entries.subagents[0].notes, undefined);
+});
+
 // ---- apply ---------------------------------------------------------------------------------------------------------------
 
 test('apply writes creates, updates, and deletes, harness.json last, then clears the journal and the lock', async t => {

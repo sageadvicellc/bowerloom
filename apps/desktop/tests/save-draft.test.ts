@@ -11,7 +11,8 @@ import { graphOf } from '../shared/harness/layout.js';
 const BASE: DefinitionView = {
   id: 'weekly-report', description: 'Drafts the weekly report.', engines: ['claude-code', 'codex'], instructions: true,
   skills: [{ id: 'check-facts', name: 'check-facts', description: 'Checks each figure.' }, { id: 'draft-outline', name: 'draft-outline', description: 'Outlines it.' }],
-  agents: [{ id: 'editor', name: 'editor', description: 'Edits.', skills: [] }, { id: 'writer', name: 'writer', description: 'Writes.', skills: ['draft-outline'] }],
+  agents: [{ id: 'editor', name: 'editor', description: 'Edits.', skills: [], notes: [] }, { id: 'writer', name: 'writer', description: 'Writes.', skills: ['draft-outline'], notes: [] }],
+  sources: [], kits: [],
 };
 
 test('an empty draft changes nothing and makes no edit', () => {
@@ -74,7 +75,7 @@ test('a new link goes to the end of the agent\'s own list, so a link and its unl
     ...BASE,
     skills: [...BASE.skills, { id: 'summarize', name: 'summarize', description: 'Summarizes.' }],
     // The agent keeps its skills in its own order, not the harness's.
-    agents: [{ id: 'editor', name: 'editor', description: 'Edits.', skills: ['draft-outline', 'check-facts'] }],
+    agents: [{ id: 'editor', name: 'editor', description: 'Edits.', skills: ['draft-outline', 'check-facts'], notes: [] }],
   };
   const linked = linkSkill(base, EMPTY_DRAFT, 'editor', 'summarize', true);
   assert.deepEqual(draftEdits(base, linked), [{ kind: 'set-agent', id: 'editor', skills: ['draft-outline', 'check-facts', 'summarize'] }]);
