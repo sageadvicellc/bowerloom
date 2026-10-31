@@ -26,6 +26,7 @@ import { parseDocument } from 'yaml';
 import { entryHash, readFrontmatter } from '../../harness-definition/src/index.js';
 import type { Definition, EngineId, EngineView, LossLine } from '../../harness-definition/src/index.js';
 import { readProject, refuse, sha, stateOrUnsafe } from './portable-files.js';
+import { withNotesSections } from './notes.js';
 import { blob } from './portable-state.js';
 import type { PortableEngine, ReceiptFile } from './portable-state.js';
 import {
@@ -267,7 +268,16 @@ export function planLocked(ctx: LockedContext): LockedPlan {
     // The keys of a guardrail entry's private block that the writer carries, by entry (checks 1 and 9 of step 3).
     const carried = new Map<string, readonly string[]>();
     const m = translateMcp(engine, view.mcp);
-    const s = translateSubagents(engine, view.subagents, { servers: view.mcp.map(x => x.name) });
+    // Notes lane D: an agent that lists knowledge sources gets the notes section at the end of its instructions.
+    const s = translateSubagents(engine, withNotesSections(view.subagents, ctx.def.knowledge), { servers: view.mcp.map(x => x.name) });
+    const subagentLines: LossLine[] = [...s.lines];
+    for (const a of view.subagents) {
+      if (!a.notes?.length || !s.subagents.some(f => f.id === a.id)) continue;
+      subagentLines.push({
+        part: 'subagents', entry: a.id, field: 'notes', engine, result: 'translated',
+        reason: `The knowledge sources ${a.notes.join(', ')} project as a notes section at the end of the subagent's instructions, which names each folder and its AGENTS.md. Nothing limits which pages the subagent reads.`,
+      });
+    }
     const h = translateHooks(engine, view.hooks);
     for (const p of [...m.problems, ...s.problems, ...h.problems]) (p.code === 'ENV_DEFAULT' ? envDefaults : unsafeValues).push(`${p.part}/${p.entry}`);
     const guardLines = g.lines.map(l => ({ ...l }));
@@ -458,7 +468,7 @@ export function planLocked(ctx: LockedContext): LockedPlan {
     // Once a person saved trust in Pi, a Pi line no longer says the file is pending trust.
     const mcpLines = engine === 'pi' && ctx.piTrustSaved ? m.lines.map(l => ({ ...l, reason: l.reason.replace(/ Pending trust: [^.]*\./, ' A person saved trust for this project, so Pi loads it.') })) : [...m.lines];
     lines.set(engine, new Map<LockedPart, LossLine[]>([
-      ['guardrails', guardLines.map(l => (l.field !== undefined ? l : { ...l, reason: l.reason + note(l.entry) }))], ['mcp', mcpLines], ['subagents', [...s.lines]], ['hooks', hookLines],
+      ['guardrails', guardLines.map(l => (l.field !== undefined ? l : { ...l, reason: l.reason + note(l.entry) }))], ['mcp', mcpLines], ['subagents', subagentLines], ['hooks', hookLines],
     ]));
   }
   if (envDefaults.length) refuse('PORTABLE_ENV_DEFAULT', [...new Set(envDefaults)]);

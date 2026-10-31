@@ -260,7 +260,7 @@ export function checkSkill(c: Checker, folder: string, data: Obj, body: string, 
 const TOOL_CLASS = new RegExp(`^(?:${TOOL_CLASSES.join('|')})$|^mcp:[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`);
 
 export function checkSubagent(c: Checker, stem: string, data: Obj, body: string): SubagentEntry | undefined {
-  const k = keys(c, data, 'The subagent frontmatter', ['name', 'description'], ['model', 'tools', 'skills', 'engines'], true);
+  const k = keys(c, data, 'The subagent frontmatter', ['name', 'description'], ['model', 'tools', 'skills', 'notes', 'engines'], true);
   if (!k) return undefined;
   const { obj, blocks } = k;
   if (typeof obj.name !== 'string') return c.fail('INVALID_FIELD', 'The subagent name must be text.');
@@ -292,6 +292,11 @@ export function checkSubagent(c: Checker, stem: string, data: Obj, body: string)
     const items = array(c, obj.skills, 'The subagent skills');
     if (!items || items.some(s => !isId(s)) || new Set(items).size !== items.length) { ok = false; if (items) c.fail('INVALID_FIELD', 'The subagent skills must be distinct skill ids.'); }
     else entry.skills = items as string[];
+  }
+  if (Object.hasOwn(obj, 'notes')) {
+    const items = array(c, obj.notes, 'The subagent notes');
+    if (!items || items.some(s => !isId(s)) || new Set(items).size !== items.length) { ok = false; if (items) c.fail('INVALID_FIELD', 'The subagent notes must be distinct knowledge source names.'); }
+    else entry.notes = items as string[];
   }
   const filter = engineFilter(c, obj, 'The subagent');
   if (filter === undefined) ok = false; else if (filter !== null) entry.engines = filter;

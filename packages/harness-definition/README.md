@@ -12,13 +12,25 @@ Specs: `2026-10-27-bowerloom-harness-definition.md`, and sections 2 to 4 of `202
 - `checkFidelity(source, report, approvals, options)` judges a loss report.
 - `computeRevision(files)` gives the revision hash. `scanSecrets(files)` finds secret values.
 - `loadDefinitionFiles(files)` runs the same loader over files held in memory. It reads and writes nothing on disk.
-- `editDefinition(def, edits)` applies a closed set of edits to one loaded definition. It returns the full target file set and a change list, or a typed refusal. It is pure. A file that no edit names stays byte-identical, and `loadDefinitionFiles` checks the result. The edits are `set-skill`, `add-skill`, `remove-skill`, `set-agent`, `set-instructions`, and `set-engines`. The refusal codes are `EDIT_BAD_EDIT`, `EDIT_UNSAFE_ID`, `EDIT_UNKNOWN_ID`, `EDIT_DUPLICATE_ID`, `EDIT_TOO_LARGE`, `EDIT_SECRET_FOUND`, and `EDIT_INVALID`.
+- `editDefinition(def, edits)` applies a closed set of edits to one loaded definition. It returns the full target file set and a change list, or a typed refusal. It is pure. A file that no edit names stays byte-identical, and `loadDefinitionFiles` checks the result. The edits are `set-skill`, `add-skill`, `remove-skill`, `set-agent` (skills, tools, and notes), `set-instructions`, `set-engines`, `set-source`, and `remove-source`. The refusal codes are `EDIT_BAD_EDIT`, `EDIT_UNSAFE_ID`, `EDIT_UNKNOWN_ID`, `EDIT_DUPLICATE_ID`, `EDIT_UNSAFE_PATH`, `EDIT_TOO_LARGE`, `EDIT_SECRET_FOUND`, and `EDIT_INVALID`.
+- `storedKnowledgePath(folder, { root, home })` gives the stored form of a folder a person picked, or a typed refusal. It reads no disk.
 
 ## A 0.8 folder
 
 If a `.bowerloom` folder holds `harness.json`, it is a 0.8 definition. Otherwise it is not. `isDefinitionFolder` checks this.
 
 Each top-level name is either a section 8 name or a 0.7 name in `LEGACY_NAMES`. The loader neither reads nor changes a 0.7 name. It refuses any other name, so a typo such as `guardrail.json` is not lost silently. The 0.7 list is a snapshot of 0.7.0-beta.3. When 0.7 adds a name, add it to the list.
+
+## Knowledge sources
+
+A knowledge source is a pointer: a kind, a name, and a path (0.8 spec, sections 6.9 and 6.10). Bowerloom never reads page content.
+
+- `knowledge.json` at the top of the `.bowerloom` folder lists the sources: `{ "sources": [ { "kind": "wiki-folder", "name": "wiki", "path": "notes" } ] }`. `wiki-folder` is the one kind. It is not a part, so `harness.json` holds no pointer to it.
+- A name is an id. A path is `.` (the harness folder, which holds `.bowerloom`), a path relative to the harness folder, or `~/<path>`. It is never absolute and holds no `..`, backslash, backtick, or control character. Each name and each path is used once. Load problems: `KNOWLEDGE_KIND`, `KNOWLEDGE_PATH`, `KNOWLEDGE_DUPLICATE_PATH`, and the shared `INVALID_ID`, `DUPLICATE_ID`, `INVALID_FIELD`, and `UNKNOWN_FIELD`. A message never repeats a path.
+- An agent lists the sources it reads in its frontmatter: `notes: [wiki]`. A name that is not a source of the same folder is `NOTES_SOURCE_UNKNOWN`.
+- `remove-source` takes the name out of every agent's `notes`, as `remove-skill` does for skills, and removes a list it leaves empty. The last source removed deletes `knowledge.json`.
+- `storedKnowledgePath` refuses `KNOWLEDGE_PATH_OUTSIDE` for an absolute folder outside both the harness folder and home, `KNOWLEDGE_PATH_ESCAPES` for a `..` that leaves the harness folder or home, and `KNOWLEDGE_PATH_UNSAFE` for home itself and odd text.
+- The revision hashes `knowledge.json` in canonical form, as the other machine files.
 
 ## Trust boundary
 

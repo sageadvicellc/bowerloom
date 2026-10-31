@@ -161,3 +161,14 @@ inside that last check, and an unlink compares the device and inode of its folde
 before. A folder is changed to mode 0755 through a descriptor that does not follow a link. A remaining window stays
 between that last check and the system call itself: a program that runs as the same user and swaps a folder or edits a
 file in that instant is not caught. The project lock keeps other Bowerloom commands out; it does not stop other programs.
+
+## Notes sections and the export bundle (notes lane D)
+
+- An agent that lists knowledge sources in `notes` gets one section at the end of its instructions: in
+  `.claude/agents/<id>.md` for Claude Code and in `developer_instructions` of `.codex/agents/<id>.toml` for Codex
+  (`notes.ts`). OpenCode, a preview engine, shares the body and gets it too. It is fixed text: a `## Notes` heading, then one line per source, in the agent's order:
+  ``- <name>: the wiki folder at `<path>`. Read `<path>/AGENTS.md` first.`` No page map and no read rule.
+- An agent that lists no source, and the project `AGENTS.md`, are projected byte for byte as before.
+- The loss report adds a `translated` line with the field `notes` for each such agent and engine.
+- `exportDefinitionBundle(def)` holds every definition file but `knowledge.json`, and each source by kind and name
+  only, never its path (0.8 spec, section 6.7).

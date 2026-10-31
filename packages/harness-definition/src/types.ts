@@ -1,6 +1,6 @@
 /** The shapes of a loaded harness definition (harness definition spec, sections 3, 4, and 8). */
 import type {
-  EngineId, GuardrailAction, GuardrailEffect, McpTransport, OverridablePart, PartKey, Strength, ToolClass,
+  EngineId, GuardrailAction, GuardrailEffect, KnowledgeKind, McpTransport, OverridablePart, PartKey, Strength, ToolClass,
 } from './words.js';
 
 export type JsonValue = null | boolean | number | string | readonly JsonValue[] | { readonly [key: string]: JsonValue };
@@ -99,6 +99,19 @@ export interface SubagentEntry extends Filterable, Private {
   readonly model?: Readonly<Partial<Record<EngineId, string>>>;
   readonly tools?: readonly ToolClass[];
   readonly skills?: readonly string[];
+  /** The knowledge sources the agent reads, by name. Each names a source in `knowledge.json` of the same layer. */
+  readonly notes?: readonly string[];
+}
+
+/**
+ * A knowledge source in `knowledge.json` (0.8 spec, sections 6.9 and 6.10): a pointer, never page content. `path` is
+ * relative to the harness folder (the folder that holds `.bowerloom`) when the source sits inside it, `.` for that folder
+ * itself, and `~/<path>` otherwise. It is never absolute and holds no `..`.
+ */
+export interface KnowledgeSource {
+  readonly kind: KnowledgeKind;
+  readonly name: string;
+  readonly path: string;
 }
 
 /**
@@ -226,6 +239,8 @@ export interface Definition {
   readonly sources: readonly SourceRecord[];
   /** The skills converted from 0.7 managed copies, from `sources.json`. Empty when it records none. */
   readonly adopted: readonly AdoptedRecord[];
+  /** The knowledge sources, from `knowledge.json`, in file order. Empty when the definition has no such file. */
+  readonly knowledge: readonly KnowledgeSource[];
   /** Files under `scripts/`, relative to it. */
   readonly scripts: readonly string[];
   /** The same files as entries, for `entryHash`: content hash and execute bit. A chmod changes the entry hash. */
