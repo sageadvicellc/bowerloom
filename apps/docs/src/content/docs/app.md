@@ -9,6 +9,12 @@ The Bowerloom desktop app is a main part of Bowerloom 0.8.0-beta.1, next to the 
 
 The app is for macOS. It shows a plan and its words before every change. Nothing is written until you approve the plan.
 
+## Open it on your folders or on a sample
+
+The app opens with no flag, on your own folders. It reads the folders you tick, and it writes only a plan you approve. From a source checkout, run `npm run desktop`.
+
+`npm run desktop:sample` opens the same app on invented sample folders. Nothing on your computer is read or written, and the mark at the foot of the menu says **Preview** instead of **Beta**. Use it to see every state of the app at once.
+
 ## Open the unsigned app
 
 Apple did not sign or notarize this app. The first time you open it, macOS blocks it and shows a warning. The source is in the repository, so you can read it first.
@@ -29,7 +35,23 @@ The app opens on a welcome screen. It says that Bowerloom only reads, and that n
 
 The app then looks for the engine files of your folders and lists what it found, with counts. Each source is ticked. Untick a source to skip it. Bowerloom reads the names and the text of the files you keep, and the text stays on your computer. Press **Looks right**, and then **Make a harness from this** for each source, or **Make all** for every source. The notes step follows. [Notes and the Notes keeper](/docs/guides/notes/) covers it.
 
-The left menu then holds Harnesses, Library, Projects, Runs, Engines, and Help. Harnesses lists the folders that have a harness. Projects lists your folders and the harnesses installed in them.
+The left menu then holds Harnesses, Library, Projects, and Runs. At its foot are Engines, Install history, and Help. Harnesses lists the folders that have a harness. Projects lists your folders and the harnesses installed in them. Engines lists each engine with its health and a switch. The switch decides whether the install offers that engine.
+
+Install history is the install undo list. Each row is one change, newest first, with an **Undo** that puts back what the change replaced. Only the newest change of one install can be undone. On your own folders the list starts empty in beta.1, because an install from Projects is not in beta.1. To undo a folder install, press **Undo** in the install sheet, then approve the removal.
+
+## The Beta mark and the blocked controls
+
+Under the menu, a **Beta** mark opens a short note about this beta. It lists the controls that are **Not in beta.1**. Those controls show the words "Not in beta.1" and do nothing yet:
+
+- Start, on a harness
+- Compare
+- Runs
+- Assign to project, in the details of a harness
+- Install, Update, Review, and Assign harness, in Projects
+- Add, the plus button in the Library
+- Add a folder, in Projects
+
+**From a folder** and **Install from a folder** in Projects work, and so does the save step in the Builder. This page covers them below.
 
 ## Make a harness from a folder
 
