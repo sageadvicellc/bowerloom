@@ -28,6 +28,8 @@ export interface Refusal {
   readonly paths: readonly string[];
   /** For a refusal because files Bowerloom wrote changed since: each one, with why. */
   readonly drift?: readonly DriftLineView[];
+  /** For a step that stopped part way (NOTES_PARTIAL): the code of the refusal that stopped it. */
+  readonly step?: string;
 }
 /** Every call answers this way, so a refusal reaches the window with its words and is never lost in an error. */
 export type Answer<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly refusal: Refusal };

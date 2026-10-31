@@ -229,10 +229,12 @@ const versionArg = (v: unknown): string => (typeof v === 'string' && VERSION_ID.
 
 /** A refusal of a package, as words the window shows. An error that is not a refusal says only that the call failed. */
 export function refusalOf(error: unknown, s: Scrub): Refusal {
-  const e = error as { code?: unknown; message?: unknown; paths?: unknown } | null;
-  if (e !== null && typeof e === 'object' && typeof e.code === 'string' && /^[A-Z][A-Z0-9_]{2,63}$/.test(e.code) && typeof e.message === 'string') {
+  const e = error as { code?: unknown; message?: unknown; paths?: unknown; step?: unknown } | null;
+  const CODE = /^[A-Z][A-Z0-9_]{2,63}$/;
+  if (e !== null && typeof e === 'object' && typeof e.code === 'string' && CODE.test(e.code) && typeof e.message === 'string') {
     const paths = Array.isArray(e.paths) ? e.paths.filter((p): p is string => typeof p === 'string').slice(0, 50).map(s) : [];
-    return { code: e.code, message: s(e.message), paths };
+    // A notes step that stopped part way names the refusal that stopped it, so the window can say what to do about the cause.
+    return { code: e.code, message: s(e.message), paths, ...(typeof e.step === 'string' && CODE.test(e.step) ? { step: e.step } : {}) };
   }
   return { code: 'FAILED', message: 'Bowerloom could not finish this. Nothing more was changed.', paths: [] };
 }

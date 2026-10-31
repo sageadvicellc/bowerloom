@@ -2,7 +2,7 @@
  * The logic behind the notes step and the Notes panel (spec 6.9), with no React and no call: what a chosen folder needs next, the notes cards the panel and the
  * map draw, and how far the keeper build is. A card is named by the folder's own name when Bowerloom read it, else by the source's name: a path never names it.
  */
-import type { Answer, DefinitionView, NotesView, SourceView } from '../../../shared/engine/types.js';
+import type { Answer, DefinitionView, NotesView, NotesWritten, SourceView } from '../../../shared/engine/types.js';
 import { KEEPER_FIRST_SKILL, keeperOf, sourceFor } from '../../../shared/harness/save-draft.js';
 import type { BuildProgress } from '../words-notes.js';
 
@@ -83,4 +83,12 @@ export async function addThenNext(plan: (onValue: (view: DefinitionView) => void
   let added = false;
   const ok = await plan(view => { added = take(view); });
   if (ok && added) then();
+}
+
+/**
+ * The folder as a finished write leaves it: the fresh read when it came, else the read from before with the history the write made. A re-read that fails
+ * never hides a write that worked.
+ */
+export function writtenView(before: NotesView, written: NotesWritten, reread: Answer<NotesView> | null): NotesView {
+  return reread !== null && reread.ok ? reread.value : { ...before, history: 'git', lastCommitAt: written.committedAt };
 }

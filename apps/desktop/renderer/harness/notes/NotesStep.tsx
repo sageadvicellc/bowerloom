@@ -8,14 +8,14 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import type { Answer, NotesHistoryPlanView, NotesStarterView, NotesView, Refusal } from '../../../shared/engine/types.js';
+import type { Answer, NotesHistoryPlanView, NotesStarterView, NotesView, NotesWritten, Refusal } from '../../../shared/engine/types.js';
 import { HButton, StateDot } from '../parts/controls.js';
 import { useEngine } from '../engine.js';
 import { Busy, RefusalNote } from '../sheets/engine-parts.js';
 import { useCall } from '../sheets/use-call.js';
-import { notesNextWords } from '../words-engine.js';
+import { NOTES_REFUSAL_WORDS, notesNextWords } from '../words-engine.js';
 import { NOTES, hiddenWords, moreWords, pagesWords } from '../words-notes.js';
-import { afterChoose } from './notes-logic.js';
+import { afterChoose, writtenView } from './notes-logic.js';
 import { useNotesSession } from './notes-session.js';
 import './notes.css';
 
@@ -25,7 +25,7 @@ export type NotesPhase =
   | { readonly kind: 'ask' }
   | { readonly kind: 'offer'; readonly view: NotesView; readonly plan: NotesHistoryPlanView | null }
   | { readonly kind: 'starter'; readonly view: NotesView; readonly plan: NotesStarterView | null }
-  | { readonly kind: 'done'; readonly view: NotesView; readonly how: NotesEnd };
+  | { readonly kind: 'done'; readonly view: NotesView; readonly how: NotesEnd; /** False when git still lists files after the first commit. */ readonly clean?: boolean };
 
 /** The most file names the history offer lists on screen. The count says how many in all. */
 const LIST_LIMIT = 12;
@@ -47,6 +47,8 @@ export interface NotesStepViewProps {
 export function NotesStepView({ phase, busy, refusal, refusalId, held, onUse, onFresh, onStartHistory, onDecline, onCreate, onAgain }: NotesStepViewProps): ReactElement {
   // A write that stopped part way gets the advice of its own step: the history start in the offer, the starter in "Start fresh".
   const next = refusal === null ? null : notesNextWords(refusal, phase.kind === 'offer' ? 'history' : phase.kind === 'starter' ? 'starter' : null);
+  // The refusal that stopped a step part way, with its own words, under the step's advice.
+  const cause = refusal?.step === undefined || refusal.step === refusal.code ? null : NOTES_REFUSAL_WORDS[refusal.step] ?? null;
   const off = held || busy !== null;
   return (
     <div className="hxn-step" data-notes-step={phase.kind}>
@@ -54,6 +56,7 @@ export function NotesStepView({ phase, busy, refusal, refusalId, held, onUse, on
       {busy === null ? null : <Busy words={busy} />}
       {refusal === null ? null : <RefusalNote refusal={refusal} focusId={refusalId}>{null}</RefusalNote>}
       {next === null ? null : <p className="hxe-text" data-next-step="">{next}</p>}
+      {cause === null ? null : <p className="hxe-text" data-next-step-cause={refusal?.step}>{cause}</p>}
       {phase.kind === 'ask' ? (
         <div className="hxn-ways">
           <span className="hxn-way"><HButton icon="folder" variant="primary" disabled={off} data-notes-use="" onClick={onUse}>{NOTES.label.useMine}</HButton><span className="hxe-muted">{NOTES.hint.useHint}</span></span>
@@ -103,6 +106,7 @@ export function NotesStepView({ phase, busy, refusal, refusalId, held, onUse, on
         <div data-notes-done={phase.how}>
           <p className="hxn-folder"><span className="hxn-folder-name">{phase.view.name}</span> <span className="hxe-muted">{pagesWords(phase.view.pages, phase.view.complete)}</span></p>
           <p className="hxe-text"><StateDot tone={phase.how === 'ready' || phase.how === 'created' ? 'good' : 'quiet'}>{END_WORDS[phase.how]}</StateDot></p>
+          {phase.clean === false ? <p className="hxe-text" data-not-clean=""><StateDot tone="warn">{NOTES.hint.notClean}</StateDot></p> : null}
           <HButton size="small" disabled={off} onClick={onAgain}>{NOTES.label.chooseAgain}</HButton>
         </div>
       ) : null}
@@ -124,7 +128,7 @@ export function NotesStep({ onDone, start }: NotesStepProps): ReactElement {
   const began = useRef(false), box = useRef<HTMLDivElement>(null);
   // Each new phase is brought into view: in the Notes panel the step opens below the map, so its files and its button stay in sight.
   useEffect(() => { if (phase.kind !== 'ask') box.current?.scrollIntoView({ block: 'start' }); }, [phase.kind]);
-  const finish = (view: NotesView, how: NotesEnd): void => { session.choose(view); setPhase({ kind: 'done', view, how }); onDone?.(view, how); };
+  const finish = (view: NotesView, how: NotesEnd, clean = true): void => { session.choose(view); setPhase({ kind: 'done', view, how, clean }); onDone?.(view, how); };
   /** main's chooser: null when the person closed it, which is no refusal. */
   const choose = async (purpose: 'use' | 'start'): Promise<Answer<NotesView | null>> => {
     const got = await engine!.chooseNotesFolder(purpose);
@@ -149,20 +153,23 @@ export function NotesStep({ onDone, start }: NotesStepProps): ReactElement {
       void call.plan(NOTES.label.reading, () => engine.planCreateNotes(view.id), plan => setPhase({ kind: 'starter', view, plan }));
     });
   };
-  /** After a write, the folder is read again, so the panel shows its new history. */
-  const written = async (id: string, run: () => Promise<Answer<unknown>>): Promise<Answer<NotesView>> => {
+  /** After a write, the folder is read again, so the panel shows its new history. A re-read that fails still finishes with what the write did. */
+  const written = async (before: NotesView, run: () => Promise<Answer<NotesWritten>>): Promise<Answer<{ view: NotesView; clean: boolean }>> => {
     const r = await run();
-    return r.ok ? engine!.notesSummary(id) : r;
+    if (!r.ok) return r;
+    let reread: Answer<NotesView> | null = null;
+    try { reread = await engine!.notesSummary(before.id); } catch { reread = null; }
+    return { ok: true, value: { view: writtenView(before, r.value, reread), clean: r.value.clean } };
   };
   const startHistory = (): void => {
     if (engine === null || phase.kind !== 'offer' || phase.plan === null) return;
-    const id = phase.view.id, rev = phase.plan.revision;
-    void call.write(NOTES.label.writing, () => written(id, () => engine.runNotesHistory(id, rev)), view => finish(view, 'ready'));
+    const before = phase.view, rev = phase.plan.revision;
+    void call.write(NOTES.label.writing, () => written(before, () => engine.runNotesHistory(before.id, rev)), v => finish(v.view, 'ready', v.clean));
   };
   const create = (): void => {
     if (engine === null || phase.kind !== 'starter' || phase.plan === null) return;
-    const id = phase.view.id, rev = phase.plan.revision;
-    void call.write(NOTES.label.writing, () => written(id, () => engine.runCreateNotes(id, rev)), view => finish(view, 'created'));
+    const before = phase.view, rev = phase.plan.revision;
+    void call.write(NOTES.label.writing, () => written(before, () => engine.runCreateNotes(before.id, rev)), v => finish(v.view, 'created', v.clean));
   };
   const decline = (): void => { if (phase.kind === 'offer') finish(phase.view, 'report-only'); };
   const again = (): void => { if (call.writing) return; call.clear(); setPhase({ kind: 'ask' }); };

@@ -10,7 +10,7 @@ import { NotesPanel } from '../renderer/harness/notes/NotesPanel.js';
 import { KeeperBuild } from '../renderer/harness/notes/KeeperBuild.js';
 import { notesCards } from '../renderer/harness/notes/notes-logic.js';
 import { NOTES } from '../renderer/harness/words-notes.js';
-import { NOTES_PARTIAL_WORDS } from '../renderer/harness/words-engine.js';
+import { NOTES_PARTIAL_WORDS, NOTES_REFUSAL_WORDS } from '../renderer/harness/words-engine.js';
 import type { DefinitionView, NotesHistoryPlanView, NotesStarterView, NotesView } from '../shared/engine/types.js';
 import { KEEPER_AGENT } from '../shared/harness/save-draft.js';
 
@@ -145,4 +145,16 @@ test('a history start that stopped part way gets its own advice, apart from a st
   assert.ok(!history.includes(NOTES_PARTIAL_WORDS.starter));
   assert.ok(starter.includes(NOTES_PARTIAL_WORDS.starter));
   assert.ok(!starter.includes(NOTES_PARTIAL_WORDS.history));
+});
+
+test('a write that left the folder unclean says so, and a step that stopped part way names its cause', () => {
+  const unclean = step({ kind: 'done', view: GARDEN, how: 'created', clean: false });
+  assert.match(unclean, /data-not-clean=""/);
+  assert.ok(unclean.includes(NOTES.hint.notClean));
+  assert.doesNotMatch(step({ kind: 'done', view: GARDEN, how: 'created', clean: true }), /data-not-clean/);
+  const plan: NotesHistoryPlanView = { notes: '~/Documents/Garden notes', files: [{ path: 'index.md', kind: 'file' }], count: 1, hidden: 0, revision: 'r'.repeat(64) };
+  const partial = { code: 'NOTES_PARTIAL', step: 'NOTES_GIT_MISSING', message: 'The step stopped part way.', paths: ['.git'] };
+  const html = step({ kind: 'offer', view: { ...GARDEN, history: 'none' }, plan }, { refusal: partial, refusalId: 1 });
+  assert.match(html, /data-next-step-cause="NOTES_GIT_MISSING"/);
+  assert.ok(html.includes(NOTES_REFUSAL_WORDS.NOTES_GIT_MISSING!));
 });

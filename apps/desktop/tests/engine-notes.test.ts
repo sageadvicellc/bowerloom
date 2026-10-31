@@ -6,10 +6,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createEngineService, EngineCallRefusal } from '../main/engine-service.js';
+import { createEngineService, EngineCallRefusal, refusalOf } from '../main/engine-service.js';
 import type { EngineService } from '../main/engine-service.js';
 import type { Ask } from '../main/engine-consent.js';
-import { findGit } from '../../../packages/notes-source/src/index.js';
+import { NotesRefusal, findGit } from '../../../packages/notes-source/src/index.js';
 import { loadDefinition } from '../../../packages/harness-definition/src/index.js';
 import type { Answer, FolderInfo, NotesPurpose, NotesView, SaveEdit } from '../shared/engine/types.js';
 import { ENGINE_ARITY, ENGINE_CALLS, KIT_MAIN_WORDS, NOTES_PLAN_LIST_LIMIT } from '../shared/engine/types.js';
@@ -348,4 +348,13 @@ test('a source read from knowledge.json gets a read-only id: its summary reads, 
   assert.equal(chosen.id, src.notesId);
   const plan = await w.planNotesHistory(chosen.id);
   assert.notEqual(plan.ok ? 'ok' : plan.refusal.code, 'NOTES_NOT_CHOSEN');
+});
+
+test('refusalOf passes the step that stopped a notes write part way through to the window', () => {
+  const same = (p: string): string => p;
+  const r = refusalOf(new NotesRefusal('NOTES_PARTIAL', ['.git'], 'NOTES_GIT_TIMEOUT'), same);
+  assert.equal(r.code, 'NOTES_PARTIAL');
+  assert.equal(r.step, 'NOTES_GIT_TIMEOUT');
+  assert.equal(refusalOf(new NotesRefusal('NOTES_STALE'), same).step, undefined, 'no step, no field');
+  assert.equal(refusalOf({ code: 'NOTES_PARTIAL', message: 'x', step: 'not a code' }, same).step, undefined, 'only a code passes');
 });

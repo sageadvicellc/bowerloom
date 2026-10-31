@@ -2,7 +2,7 @@
 // source of the harness, then each chosen folder not attached yet), who reads each one, and how far the keeper build is, for the tour's waiting step.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addThenNext, afterChoose, buildProgress, notesCards, notesToRead, readReplaces } from '../renderer/harness/notes/notes-logic.js';
+import { addThenNext, afterChoose, writtenView, buildProgress, notesCards, notesToRead, readReplaces } from '../renderer/harness/notes/notes-logic.js';
 import { EMPTY_DRAFT, KEEPER_AGENT, attachNotes, draftView } from '../shared/harness/save-draft.js';
 import type { DefinitionView, NotesView } from '../shared/engine/types.js';
 
@@ -88,4 +88,14 @@ test('the tour moves on after adding the keeper only when the plan came and the 
   assert.equal(await run(false, null, false), false, 'a refused plan: the tour stays');
   assert.equal(await run(true, true, false), false, 'a plan whose answer adds no keeper: the tour stays');
   assert.equal(await run(true, null, false), false, 'a plan superseded before its answer: the tour stays');
+});
+
+test('after a write, a re-read that fails still finishes with what the write did', () => {
+  const before = view({ history: 'none', lastCommitAt: null });
+  const wrote = { files: 3, committedAt: '2026-10-30T12:00:00Z', clean: true };
+  const reread = view({ pages: 15, lastCommitAt: '2026-10-30T12:00:00Z' });
+  assert.deepEqual(writtenView(before, wrote, { ok: true, value: reread }), reread);
+  const failed = writtenView(before, wrote, { ok: false, refusal: { code: 'NOTES_GIT_TIMEOUT', message: 'x', paths: [] } });
+  assert.deepEqual([failed.id, failed.history, failed.lastCommitAt, failed.pages], ['n1', 'git', '2026-10-30T12:00:00Z', 14]);
+  assert.deepEqual(writtenView(before, wrote, null), failed, 'a re-read that threw is the same');
 });
