@@ -26,7 +26,7 @@ A built app opens the same way as the first line: with no flag, on your own fold
 
 1. It looks in the tool folders of your home folder: Claude Code, Codex and OpenCode. It also notices a Hermes folder, but Hermes is not an engine of Bowerloom 0.8, so the harness preview does not show what is in it. It says how many things it left out. You can also pick a folder, and it finds the projects inside it.
 2. Question one shows the places it found with counts, and no file names. Question two, "Read what is inside?", reads only the places you ticked.
-3. It reads names, descriptions, structure and the names of keys, plus the text of the skills, agents and saved prompts you tick, and the first lines of notes pages. Known key and password shapes are hidden. That check goes by shape, so look at anything private before you share it.
+3. It reads names, descriptions, structure and the names of keys, plus the text of the skills, agents and saved prompts you tick, the project instruction files, settings, hooks and tool entries of the folders you tick, and the first lines of notes pages. Known key and password shapes are hidden. That check goes by shape, so look at anything private before you share it.
 4. You then choose which agents go on the map. "Find more" does the same again and adds to what you have.
 
 The tests run on a made-up home folder (`tests/fixtures-real`), never on yours.
@@ -46,7 +46,7 @@ When AGENTS.md and CLAUDE.md differ, **Merge** moves the CLAUDE.md text into the
 
 ## Where the app may write
 
-Apart from the steps you approve on your own folders (see above), the app has no way to change a Bowerloom file of yours. Two small writes remain in the main process: the usage summary, which goes only to the path you pick in the save dialog, and the private copy of a tidy-up report. `tests/writers.test.ts` holds this list.
+Apart from the steps you approve on your own folders (see above), the app has no way to change a Bowerloom file of yours. The app also writes a local usage log of what was done, with no name and no path (`BOWERLOOM_EVENT_LOG=off` turns it off), and it moves the state record of an earlier version into the private state folder of Bowerloom. Two small writes remain in the main process: the usage summary, which goes only to the path you pick in the save dialog, and the private copy of a tidy-up report, which the app removes when it closes. The browser engine keeps its own profile folder (window settings and cache) between starts. `tests/writers.test.ts` and `tests/writers-imports.test.ts` hold the list of files that can write.
 
 ## Motion
 

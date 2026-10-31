@@ -431,11 +431,12 @@ test('the launcher: the one mode flag is known, a real home folder is needed for
   if (process.platform !== 'win32') assert.equal(mod.realHome({ HOME: '/Users/x' }, () => true), '/Users/x');
   assert.equal(mod.realHome({ HOME: '/Users/x' }, () => false), null); assert.equal(mod.realHome({}, () => true), null); assert.equal(mod.realHome({ HOME: 'x' }, () => true), null);
   assert.match(src, /console\.log\(`\\n\$\{APP_PROMISE\}/);
-  // The promise of the app on the person's own folders: the ticks are on folders, a write needs an approved plan, and the data folder lasts.
+  // The promise of the app on the person's own folders: the ticks are on folders, a write needs an approved plan, and every other write the app makes is named.
   const v = mod.APP_PROMISE;
-  for (const fact of [/skills/, /agents/, /saved prompts/, /first lines of notes pages/, /config key names/, /Known key and password shapes are hidden/, /Writes: only a plan you approved and said yes to/, /lasting data folder/]) assert.match(v, fact, String(fact));
+  for (const fact of [/skills/, /agents/, /saved prompts/, /project instruction files/, /settings/, /hooks/, /tool entries/, /first lines of notes pages/, /config key names/, /Known key and password shapes are hidden/]) assert.match(v, fact, `reads: ${String(fact)}`);
+  for (const fact of [/Writes: only a plan you approved and said yes to/, /in the folder you chose/, /private state folder of Bowerloom/, /state record of an earlier version/, /local usage log/, /no name and no path/, /BOWERLOOM_EVENT_LOG=off turns it off/, /usage summary only when you save it in the dialog/, /private temporary copy of a tidy-up report/, /removes when it closes/, /browser profile folder/, /window settings and cache/, /between starts/]) assert.match(v, fact, `writes: ${String(fact)}`);
   assert.doesNotMatch(v, /agents you tick/, 'the ticks of the app are on folders, not on skills and agents');
-  assert.doesNotMatch(v, /never|no key|Writes: nothing|no changes to your files|deletes them when it closes/i, 'the app writes on approval and keeps its data folder: the read-only promise is not made');
+  assert.doesNotMatch(v, /never|no key|Writes: nothing|no changes to your files|deletes them when it closes|lasting data folder/i, 'the app writes on approval and keeps a browser profile: no read-only promise, and no claim the app does not keep');
 });
 
 test('the real page source never builds markup from text and never reaches the normal bridge', () => {
