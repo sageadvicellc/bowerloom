@@ -112,6 +112,8 @@ If npm refuses with a permission error, do not use `sudo`. Set a user prefix for
 
 The desktop app is a beta, and it is a main part of this release. It does the adopt, install, and remove steps on screen, after a preview and an approval. It also has the Builder, which shows a harness as a graph of agents and skills, and the save step, which saves a change to the harness after you review and approve it. Each save keeps a save point. Go back returns the harness to a save point, and Set aside starts a new record of save points. Notes and the ready-made Notes keeper kit let agents read a folder of notes. The [desktop app guide](https://bowerloom.ai/docs/app/) covers each screen.
 
+From a source checkout, `npm run desktop` opens the app on your own folders. `npm run desktop:sample` opens it on invented sample folders, and reads and writes nothing on your computer.
+
 ## Open the unsigned app
 
 The desktop app is open source. Apple did not sign or notarize it. The first time you open it, macOS blocks it and shows a warning. You can read the source in this repository before you open it.

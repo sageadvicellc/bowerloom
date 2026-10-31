@@ -1,6 +1,6 @@
-# Bowerloom desktop (experimental)
+# Bowerloom desktop (beta)
 
-The desktop app of Bowerloom. It is experimental, and it is possibly not part of v1. The command line gives you every feature. The app shows the harness of a project and installs it into Claude Code and Codex, with a preview before every change. Help > Report a problem builds a diagnostic bundle, and Help > Usage log shows the local event log.
+The desktop app of Bowerloom. It is a beta, and it is a main part of Bowerloom 0.8.0-beta.1, next to the command line. It does the adopt, install, and remove steps on screen, with a plan to read before every change. It also has the Builder, where you edit a harness, the save step, and save points, which the command line does not have. Help > Report a problem builds a diagnostic bundle, and Help > Usage log shows the local event log.
 
 ## Open it
 
@@ -24,7 +24,7 @@ A built app opens the same way as the first line: with no flag, on your own fold
 
 ## What the app reads, in plain English
 
-1. It looks in the tool folders of your home folder: Claude Code, Codex and OpenCode. It also notices a Hermes folder, but Hermes is not an engine of Bowerloom 0.8, so the harness preview does not show what is in it. It says how many things it left out. You can also pick a folder, and it finds the projects inside it.
+1. It looks in the tool folders of your home folder: Claude Code, Codex and OpenCode. It also notices a Hermes folder, but Hermes is not an engine of Bowerloom 0.8, so the app does not show what is in it. It says how many things it left out. You can also pick a folder, and it finds the projects inside it.
 2. Question one shows the places it found with counts, and no file names. Question two, "Read what is inside?", reads only the places you ticked.
 3. It reads names, descriptions, structure and the names of keys, plus the text of the skills, agents and saved prompts you tick, the project instruction files, settings, hooks and tool entries of the folders you tick, and the first lines of notes pages. Known key and password shapes are hidden. That check goes by shape, so look at anything private before you share it.
 4. You then choose which agents go on the map. "Find more" does the same again and adds to what you have.
@@ -37,8 +37,8 @@ The install sheet shows Claude Code and Codex, and shows OpenCode, Pi, and DeepS
 
 Two sheets on the Projects screen work on your own folders. In the sample they run on made-up folders and write nothing.
 
-- **From a folder** makes a harness from the files your interfaces already use. It shows what it found and where, the copies that differ (you pick one), the rules that differ by interface, and everything it leaves out, with the reason. Before it writes, you read and tick each approval (a hook or a server that runs a command, a secret it replaced) and each acknowledgement (a rule it does not carry). It writes only into the folder's `.bowerloom` folder.
-- **Install from a folder** writes the folder's harness into each interface's own files. First it lists any rule that an interface carries weaker than the harness asks, and you tick each one. Then it shows, for each interface and each part, a dot and a word (Exact, Translated, Weakened, Absent) with the reason, what waits for your trust, and every command and file of code it will write, in full. When the folder has both AGENTS.md and a CLAUDE.md that differ, it shows which interface reads which, with Accept AGENTS.md as the default. You approve the plan by its number, and only then can you write. Undo opens the removal plan, which you approve the same way. A run that stopped part way gets a recovery plan.
+- **From a folder** makes a harness from the files your engines already use. It shows what it found and where, the copies that differ (you pick one), the rules that differ by engine, and everything it leaves out, with the reason. Before it writes, you read and tick each approval (a hook or a server that runs a command, a secret it replaced) and each acknowledgement (a rule it does not carry). It writes only into the folder's `.bowerloom` folder.
+- **Install from a folder** writes the folder's harness into each engine's own files. First it lists any rule that an engine carries weaker than the harness asks, and you tick each one. Then it shows, for each engine and each part, a dot and a word (Exact, Translated, Weakened, Absent) with the reason, what waits for your trust, and every command and file of code it will write, in full. When the folder has both AGENTS.md and a CLAUDE.md that differ, it shows which engine reads which, with Accept AGENTS.md as the default. You approve the plan by its number, and only then can you write. Undo opens the removal plan, which you approve the same way. A run that stopped part way gets a recovery plan.
 
 On your own folders the main process does the work with Bowerloom's own packages. It plans without writing, and writes only the plan you approved: it plans again and stops if anything changed. Main also asks its own yes-or-no question before every write. The window gets plain words and paths inside the folder, never your full paths. Bowerloom keeps its records in its private state folder (`$XDG_STATE_HOME/bowerloom`, else `~/.local/state/bowerloom`), in the same place the command line uses: one `harness` folder per project. A record the earlier app kept under `desktop/` moves there once, when you choose the folder. If both exist, the app stops and says so, and changes nothing. To open a tidy-up report of a notes folder, the main process copies the report into a new private folder in the system temporary folder and opens the copy, never the report itself. The copy goes on the next open, and when the app quits.
 
