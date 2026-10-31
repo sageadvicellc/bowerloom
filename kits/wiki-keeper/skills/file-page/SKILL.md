@@ -17,6 +17,7 @@ The wiki is a git repository of its own, or a folder inside a larger repository.
 git status --porcelain -- .
 ```
 
+- If Bowerloom says this folder has no history, change nothing.
 - If `git status --porcelain -- .` fails, the folder is not inside a git work tree. Change nothing. Tell the person what you found, and say that the folder needs to be in a git repository first.
 - If the command prints anything, the working tree of the wiki is not empty. Stop. Tell the person which files are waiting, and ask them to commit those changes or set them aside. Do not tidy them yourself.
 
@@ -44,6 +45,10 @@ MSG
 ```
 
 Add every other file you changed to both lines above, by its exact path. Run both lines in the wiki folder. The commit names the exact paths it takes, so nothing else that is staged in a larger repository goes into it. Never stage everything at once. Never skip a check or amend. If the commit fails, leave the files as they are and tell the person what went wrong.
+
+Every path you stage is inside the wiki: no `..`, no `/` at the start, no `*`, `?`, or `[`.
+
+In a larger repository its own hooks run on your commit. Afterwards run `git log -1 --stat --format=%s`. If it lists a path you did not name, stop and tell the person. Do not amend. In a larger repository each path shows from that repository's root, so the wiki folder's name comes first.
 
 ## Stop and ask
 

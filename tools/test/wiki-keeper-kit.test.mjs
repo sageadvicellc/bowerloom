@@ -103,6 +103,8 @@ test('every skill has a one-line purpose that starts with a verb and fits the li
 
 /** The clean check every changing skill runs: limited to the wiki folder, so a change elsewhere in a larger repository does not count. */
 const STATUS = 'git status --porcelain -- .';
+/** The check after a commit: it lists every path the commit holds, so a path a hook added shows. */
+const AFTER_COMMIT = 'git log -1 --stat --format=%s';
 /** The paths of a `git add -- <paths>` or a `git commit -F - -- <paths> <<'MSG'` line. */
 const addPaths = line => line.replace(/^git add -- /, '').split(' ');
 const commitPaths = line => /^git commit -F - -- (.+) <<'MSG'$/.exec(line)?.[1].split(' ') ?? null;
@@ -147,6 +149,42 @@ test('a changing skill commits exactly the paths it staged, so other staged chan
   for (const id of ['add-source', 'file-page']) assert.match(skillText(id), /both lines/i, `${id}: an extra page goes on the staging line and the commit line`);
 });
 
+/** The three rules of a commit in plain words. 1 and 2 go in every changing skill's finish section; the agent states all three. */
+const RULES = Object.freeze({
+  paths: 'Every path you stage is inside the wiki: no `..`, no `/` at the start, no `*`, `?`, or `[`.',
+  hooks: `In a larger repository its own hooks run on your commit. Afterwards run \`${AFTER_COMMIT}\`. If it lists a path you did not name, stop and tell the person. Do not amend.`,
+  noHistory: 'If Bowerloom says this folder has no history, change nothing.',
+});
+
+/** The text of one `## ` section of a Markdown text, by the start of its heading. */
+function section(markdown, heading) {
+  const at = markdown.indexOf(`\n## ${heading}`);
+  if (at === -1) return '';
+  const next = markdown.indexOf('\n## ', at + 1);
+  return markdown.slice(at, next === -1 ? undefined : next);
+}
+
+test('every changing skill states the path rule and the hook rule in its finish section', () => {
+  for (const id of CHANGING) {
+    const finish = section(skillText(id), 'Finish with one commit');
+    assert.notEqual(finish, '', `${id}: has a finish section`);
+    // A wrapped line still reads as one sentence.
+    const flat = finish.replace(/\s+/g, ' ');
+    assert.ok(flat.includes(RULES.paths), `${id}: the path rule`);
+    assert.ok(flat.includes(RULES.hooks), `${id}: the hook rule`);
+    assert.ok(flat.indexOf(RULES.hooks) > flat.indexOf('```bash'), `${id}: the hook rule comes after the commit`);
+  }
+});
+
+test('every changing skill and the agent change nothing when Bowerloom says the folder has no history', () => {
+  for (const id of CHANGING) assert.ok(skillText(id).replace(/\s+/g, ' ').includes(RULES.noHistory), id);
+});
+
+test('the agent states all three commit rules', () => {
+  const text = read('agents/notes-keeper.md').replace(/\s+/g, ' ');
+  for (const [name, rule] of Object.entries(RULES)) assert.ok(text.includes(rule), name);
+});
+
 test('the log skill reads the history of the wiki folder only', () => {
   const logs = codeLines(skillText('log-change')).filter(l => /^git log\b/.test(l));
   assert.ok(logs.length >= 2);
@@ -182,7 +220,7 @@ const allowed = cmd => ALLOWED.some(r => r.test(cmd));
 
 test('the allowlist itself refuses the commands that change history, the tree, or a remote', () => {
   for (const cmd of ['git status --porcelain -- .', 'git add -- pages/a.md log.md', "git commit -F - -- pages/a.md log.md <<'MSG'", 'git log', 'git log --format="%ad %s" --date=short -n 50 -- .',
-    'git log -1 --stat --format="%s" <commit> -- .']) {
+    'git log -1 --stat --format="%s" <commit> -- .', AFTER_COMMIT]) {
     assert.ok(allowed(cmd), cmd);
   }
   for (const cmd of ['git add -A', 'git add .', 'git add -- .', 'git add -- -A', 'git commit -a', 'git commit -m "x"', 'git commit --amend', 'git commit -F - --amend', 'git rm a.md',
@@ -369,4 +407,30 @@ test('the commit of every changing skill holds only its own paths, and a file st
     assert.match(status, /^ M out\.md$/m, `${id}: the other change is left as it was`);
     assert.equal(repo.sh(repo.wiki, STATUS), '', `${id}: the wiki is clean after the commit`);
   }
+});
+
+test('the check after a commit lists only the named paths, and shows a path that a hook of the larger repository added', { skip: needsGit }, t => {
+  const id = 'file-page';
+  const code = codeLines(skillText(id));
+  const add = fill(code.find(l => /^git add\b/.test(l)));
+  const at = code.findIndex(l => /^git commit\b/.test(l));
+  const commit = [fill(code[at]), fill(code[at + 1]), code[at + 2]].join('\n') + '\n';
+  const paths = addPaths(add);
+  const listed = out => out.split('\n').slice(1).map(l => /^ (\S+)\s+\|/.exec(l)?.[1]).filter(Boolean).sort();
+
+  const plain = largerRepo(t);
+  for (const rel of paths) plain.write(`knowledge-base/${rel}`, `# ${rel}\n`);
+  plain.sh(plain.wiki, `${add}\n${commit}`);
+  const clean = plain.sh(plain.wiki, AFTER_COMMIT);
+  assert.equal(clean.split('\n')[0], code[at + 1].replace(/<([^>]+)>/g, (_, n) => n.replace(/\s+/g, '-')), 'the first line is the message');
+  assert.deepEqual(listed(clean), paths.map(p => `knowledge-base/${p}`).sort(), 'only the named paths, by their place in the larger repository');
+
+  const hooked = largerRepo(t);
+  fs.mkdirSync(path.join(hooked.root, '.git', 'hooks'), { recursive: true });
+  hooked.write('extra.md', '# a hook wrote this\n');
+  fs.writeFileSync(path.join(hooked.root, '.git', 'hooks', 'pre-commit'), '#!/bin/sh\ngit add -- "$(git rev-parse --show-toplevel)/extra.md"\n', { mode: 0o755 });
+  for (const rel of paths) hooked.write(`knowledge-base/${rel}`, `# ${rel}\n`);
+  hooked.sh(hooked.wiki, `${add}\n${commit}`);
+  const seen = listed(hooked.sh(hooked.wiki, AFTER_COMMIT));
+  assert.ok(seen.includes('extra.md'), `the check shows the path the hook added: ${seen.join(', ')}`);
 });
