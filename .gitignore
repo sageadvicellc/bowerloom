@@ -5,3 +5,8 @@ dist/
 .env.*
 *.tsbuildinfo
 .DS_Store
+
+# Bowerloom projects these local copies from .bowerloom.
+/.agents/skills/factory-*/
+/.claude/skills/factory-*/
+/.claude/agents/factory-*.md

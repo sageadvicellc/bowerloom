@@ -20,3 +20,13 @@ Alpha readiness no longer stops this approved beta campaign. Stop at beta review
 The first company pilot uses cast-based dummy accounts and synthetic project data. Read docs/beta/company-pilot-fixture.json.
 Real business data needs an approved retention and deletion policy.
 Only Hanna merges main or approves beta publication. Existing source-license, approval, disk, and identity controls remain in force.
+
+
+## Repository factory
+
+Read FACTORY.md for the factory charter and invocation.
+Use factory-intake for intake, factory-delivery for accepted work, and factory-review for independent review.
+Use factory-handoff for research requests, article candidates, and release-health reports.
+Shared factories use their named research or articles skill.
+The factory grants no new permission to merge, publish, deploy, spend, or access another repository.
+Keep every existing repository rule and approval path.
