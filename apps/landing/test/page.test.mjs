@@ -145,21 +145,45 @@ test('every navigation link and hero link points at a section that exists', asyn
   for (const target of targets) assert.ok(ids.has(target), `#${target} has a section`);
 });
 
-test('every screenshot slot is used once, uses one placeholder, and names the screen it needs', async () => {
+test('every screenshot slot is used once, has one image per theme, and says what its screen shows', async () => {
   const sections = await read('src/Sections.tsx');
   assert.equal(new Set(screenshotSlots.map(slot => slot.id)).size, screenshotSlots.length);
   assert.ok(screenshotSlots.length >= 4);
   for (const slot of screenshotSlots) {
     assert.ok(slot.caption.length > 20 && slot.capture.length > 20, slot.id);
+    assert.ok(slot.alt.length > 60 && slot.alt !== slot.caption, `${slot.id}: the alt text says what the picture shows`);
+    assert.ok(Number.isInteger(slot.width) && Number.isInteger(slot.height) && slot.width / slot.height > 1.4 && slot.width / slot.height < 1.7, `${slot.id}: a size that suits a 16:10 slot`);
     assert.equal(sections.split(`<ScreenshotSlot slot="${slot.id}"`).length - 1, 1, slot.id);
   }
   assert.equal((sections.match(/<ScreenshotSlot /g) ?? []).length, screenshotSlots.length);
-  assert.doesNotMatch(sections, /<img /, 'Sections use the placeholder, not images');
-  const placeholder = await read('src/ScreenshotSlot.tsx');
-  assert.match(placeholder, /data-screenshot-slot/);
-  assert.match(placeholder, /screenshot-frame" aria-hidden="true"/);
-  assert.doesNotMatch(placeholder, /role="img"|aria-label/, 'the caption alone carries the meaning');
-  assert.doesNotMatch(placeholder, /<img /);
+  assert.doesNotMatch(sections, /<img /, 'Sections use the slot component, not images');
+  const slotSource = await read('src/ScreenshotSlot.tsx');
+  assert.match(slotSource, /data-screenshot-slot/);
+  assert.match(slotSource, /loading="lazy"/);
+  assert.match(slotSource, /width=\{item\.width\} height=\{item\.height\}/);
+  assert.match(slotSource, /alt=\{item\.alt\}/);
+  assert.doesNotMatch(slotSource + await read('src/page.css'), /Screenshot to come|screenshot-frame/, 'the placeholder is gone');
+});
+
+/** Width and height of a WebP file, read from its header (lossy, lossless, and extended files). */
+function webpSize(bytes) {
+  assert.equal(bytes.toString('ascii', 0, 4), 'RIFF');
+  assert.equal(bytes.toString('ascii', 8, 12), 'WEBP');
+  const kind = bytes.toString('ascii', 12, 16);
+  if (kind === 'VP8 ') return { width: bytes.readUInt16LE(26) & 0x3fff, height: bytes.readUInt16LE(28) & 0x3fff };
+  if (kind === 'VP8L') { const bits = bytes.readUInt32LE(21); return { width: (bits & 0x3fff) + 1, height: ((bits >> 14) & 0x3fff) + 1 }; }
+  if (kind === 'VP8X') return { width: bytes.readUIntLE(24, 3) + 1, height: bytes.readUIntLE(27, 3) + 1 };
+  throw new Error(`Unknown WebP chunk ${kind}`);
+}
+
+test('every screenshot has a light and a dark WebP file under 300 KB, at the size the slot says', async () => {
+  for (const slot of screenshotSlots) {
+    for (const theme of ['light', 'dark']) {
+      const bytes = await readFile(new URL(`../public/shots/${slot.id}-${theme}.webp`, import.meta.url));
+      assert.ok(bytes.byteLength < 300 * 1024, `${slot.id}-${theme} is ${bytes.byteLength} bytes`);
+      assert.deepEqual(webpSize(bytes), { width: slot.width, height: slot.height }, `${slot.id}-${theme}`);
+    }
+  }
 });
 
 test('the footer and links name no removed page', () => {
@@ -218,12 +242,22 @@ test('the install command is absent while npm lacks the package, and present whe
   } finally { await page.close(); }
 });
 
-test('a screenshot slot hides its frame from screen readers and keeps its caption', async () => {
+test('a screenshot slot shows both themes\' images with a size, late loading, and alt text, and keeps its caption', async () => {
   const page = await loadPage();
   try {
     const html = renderToStaticMarkup(createElement(page.sections.WhatItDoes));
-    assert.match(html, /<div class="screenshot-frame" aria-hidden="true">Screenshot to come<\/div>/);
-    assert.ok(html.includes(`<figcaption>${screenshotSlots[0].caption}</figcaption>`));
-    assert.doesNotMatch(html, /role="img"/);
+    const [slot] = screenshotSlots;
+    const images = [...html.matchAll(/<img [^>]*>/g)].map(match => match[0]);
+    assert.equal(images.length, 2, 'one image for each theme');
+    for (const theme of ['light', 'dark']) {
+      const image = images.find(tag => tag.includes(`data-shot-theme="${theme}"`));
+      assert.ok(image, theme);
+      assert.ok(image.includes(`src="/shots/${slot.id}-${theme}.webp"`), theme);
+      assert.ok(image.includes(`width="${slot.width}"`) && image.includes(`height="${slot.height}"`), theme);
+      assert.ok(image.includes('loading="lazy"'), theme);
+      assert.ok(image.includes('alt="'), theme);
+    }
+    assert.ok(html.includes(`<figcaption>${slot.caption}</figcaption>`));
+    assert.doesNotMatch(html, /Screenshot to come|aria-hidden="true">Screenshot/);
   } finally { await page.close(); }
 });

@@ -62,11 +62,15 @@
 .install-card .button { margin-top: 24px; }
 #install-cli, #install-app { scroll-margin-top: 96px; }
 
-/* The one neutral placeholder for screenshots that arrive after launch */
+/* Screenshots: the light and the dark file are both in the page, and the one that matches the theme shows. */
 .screenshot-slot { margin: 0; }
-.screenshot-frame { display: grid; place-items: center; aspect-ratio: 16 / 10; width: 100%; border: 1.5px dashed var(--ui-border); border-radius: 12px; background: color-mix(in srgb, var(--ui-primary) 6%, var(--ui-surface)); color: var(--ui-muted); font: 14px/1.5 var(--ui-font); }
-.band .screenshot-frame { background: color-mix(in srgb, var(--ui-primary) 6%, var(--ui-bg)); }
-#command-line .screenshot-frame { max-height: 340px; background: color-mix(in srgb, var(--ui-primary) 6%, var(--ui-surface)); }
+.screenshot-image { display: block; width: 100%; height: auto; border: 1px solid var(--ui-border); border-radius: 12px; background: var(--ui-surface); }
+.screenshot-image[data-shot-theme='dark'], [data-theme='dark'] .screenshot-image[data-shot-theme='light'] { display: none; }
+[data-theme='dark'] .screenshot-image[data-shot-theme='dark'] { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .screenshot-image[data-shot-theme='light'] { display: none; }
+  :root:not([data-theme]) .screenshot-image[data-shot-theme='dark'] { display: block; }
+}
 .screenshot-slot figcaption { margin-top: 10px; font: 14px/1.6 var(--ui-font); color: var(--ui-muted); }
 
 /* Hero actions. On desktop the headline and both buttons stay on the first screen: the banner takes what the copy leaves. */
@@ -90,7 +94,6 @@
 
 @media (max-width: 1100px) {
   .app-grid { grid-template-columns: minmax(0, 1fr); gap: 40px; }
-  .app-grid .screenshot-frame { aspect-ratio: 16 / 9; }
 }
 @media (max-width: 900px) {
   .steps { grid-template-columns: minmax(0, 1fr); gap: 24px; }
