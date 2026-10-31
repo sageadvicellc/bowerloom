@@ -19,6 +19,12 @@
 [data-home] .hx-block { display: flex; flex-direction: column; }
 [data-home] .hx-block-state { margin-top: calc(-1 * var(--hm-space-1)); }
 [data-home] .hx-path { overflow-wrap: anywhere; }
+/* A file path behind "Show details" (parts/PathDisclosure.tsx). The button is the kit's text button; its left padding is taken back so its words line up with the text above it. The path is the
+   person's own text in the code face, quiet, and wraps anywhere so a long one never makes the column scroll sideways. No motion. */
+[data-home] .hx-disclosure { display: flex; flex-direction: column; align-items: flex-start; gap: var(--hm-space-1); min-width: 0; }
+[data-home] .hx-disclosure > .kit-button { margin-left: calc(-1 * var(--hm-space-3)); }
+[data-home] .hx-disclosure-path { margin: 0; font-family: var(--font-mono); font-size: var(--hm-text-base); line-height: 1.4; color: var(--text-muted); overflow-wrap: anywhere; user-select: text; }
+[data-home] .hx-disclosure-path[hidden] { display: none; }
 [data-home] .hx-note { margin-top: calc(-1 * var(--hm-space-1)); }
 [data-home] .hx-inline-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--hm-space-2) var(--hm-space-4); }
 [data-home] .hx-actions { display: flex; flex-direction: column; gap: var(--hm-space-3); }

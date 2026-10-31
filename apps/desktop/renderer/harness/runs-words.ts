@@ -9,26 +9,26 @@ const deepFreeze = <T extends object>(value: T): T => {
 
 export const RUN_WORDS = deepFreeze({
   label: {
-    project: 'Project', interfaces: 'Interfaces', instruction: 'Instruction', harnessAndProject: 'Harness and project', started: 'Started',
+    project: 'Project', interfaces: 'Engines', instruction: 'Instruction', harnessAndProject: 'Harness and project', started: 'Started',
     bringFront: 'Bring window to the front', openCompare: 'Open compare', closeCompare: 'Close compare', close: 'Close', compare: 'Compare',
     yourNotes: 'Your notes', saveRating: 'Save rating and notes', ratingGroup: 'Rating', pickProject: 'Pick a project', runsList: 'Runs',
   },
   hint: {
     startPlaceholder: 'Say what the harness should do.',
-    switchedOff: 'Switched off. Turn it on in Interfaces.',
+    switchedOff: 'Switched off. Turn it on in Engines.',
     emptyHarness: 'This harness is empty. Add parts before you start it.',
     needsInstall: 'Install first, then start.',
-    bringTip: 'The full app brings the interface window to the front.',
-    bringToast: 'Not in this preview. The full app brings it forward.',
+    bringTip: 'Brings the engine window forward. Not in beta.1.',
+    bringToast: 'Not in beta.1.',
     noRuns: 'No runs yet. Press Start on a harness.',
     noGroup: 'That group of runs is not here.', noRun: 'That run is not here.',
-    needInstruction: 'Write an instruction to start.', needInterface: 'Tick an interface to start.', needProject: 'Pick a project to start.',
+    needInstruction: 'Write an instruction to start.', needInterface: 'Tick an engine to start.', needProject: 'Pick a project to start.',
     saved: 'Saved on this computer, in Bowerloom. Your project files do not change.',
     savedToast: 'Saved rating and notes.',
   },
   paragraph: {
-    startNote: 'Bowerloom opens each interface with your instruction. It never reads the chat.',
-    chatNote: 'Bowerloom does not read or keep the chat. Read it in the interface window.',
+    startNote: 'Bowerloom opens each engine with your instruction. It never reads the chat.',
+    chatNote: 'Bowerloom does not read or keep the chat. Read it in the engine window.',
     ratingLocked: 'A run that is still going cannot be rated. The rating unlocks when it is done.',
   },
 } as const);

@@ -7,7 +7,8 @@
 [data-home] .hxp-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 var(--hm-space-3); min-width: 0; }
 [data-home] .hxp-title .hx-row-main { flex: none; font-size: var(--hm-text-name); }
 [data-home] .hxp-harness { font-size: var(--hm-text-base); color: var(--text-muted); }
-[data-home] .hxp-path { font-size: var(--hm-text-base); color: var(--text-muted); line-height: 1.4; overflow-wrap: anywhere; }
+/* The row's whole face is the pick button's stretched target (.hx-row-main::after), so the disclosure sits above it, as the row's action does. */
+[data-home] .hxp-path { position: relative; z-index: 1; margin-top: calc(-1 * var(--hm-space-1)); }
 [data-home] .hxp-dots { position: relative; pointer-events: none; list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 2px var(--hm-space-5); }
 [data-home] .hxp-dots + .hxp-dots { margin-top: 0; }
 [data-home] .hxp-dots-name { font-size: var(--hm-text-base); font-weight: 600; }

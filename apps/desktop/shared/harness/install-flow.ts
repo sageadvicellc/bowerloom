@@ -33,7 +33,7 @@ export function chosenInterfaces(state: HarnessState, ticked: readonly Interface
 export function interfaceLine(state: HarnessState, harness: Harness, iface: Interface): { words: string; tone: Tone } {
   if (iface.health === 'not-found') return { words: installInterfaceLine(state, harness, iface), tone: 'quiet' };
   if (iface.health === 'problem') return { words: iface.on ? 'Found. Its config file has a problem.' : installInterfaceLine(state, harness, iface), tone: 'warn' };
-  if (!iface.on) return { words: 'Found. Switched off in Interfaces.', tone: 'quiet' };
+  if (!iface.on) return { words: 'Found. Switched off in Engines.', tone: 'quiet' };
   return { words: installInterfaceLine(state, harness, iface), tone: blockedFor(state, harness, iface.id).length === 0 ? 'good' : 'warn' };
 }
 

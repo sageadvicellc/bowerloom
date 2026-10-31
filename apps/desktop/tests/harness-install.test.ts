@@ -103,7 +103,7 @@ test('the Interfaces switches change what the install sheet offers', () => {
   const w = world(), off = setInterfaceOn(w, 'codex', false, FIXED_NOW), h = harnessById(off, weekly)!;
   assert.deepEqual(chosenInterfaces(off, null, bowerloom, weekly), ['claude-code']);
   assert.deepEqual(chosenInterfaces(off, ['claude-code', 'codex'], bowerloom, weekly), ['claude-code'], 'a tick for an interface that is off is dropped');
-  assert.deepEqual(interfaceLine(off, h, interfaceById(off, 'codex')!), { words: 'Found. Switched off in Interfaces.', tone: 'quiet' });
+  assert.deepEqual(interfaceLine(off, h, interfaceById(off, 'codex')!), { words: 'Found. Switched off in Engines.', tone: 'quiet' });
   assert.equal(buildInstallPlan(off, bowerloom, weekly, chosenInterfaces(off, null, bowerloom, weekly)).groups.length, 1);
   const on = setInterfaceOn(off, 'opencode', true, FIXED_NOW);
   assert.deepEqual(chosenInterfaces(on, ['claude-code', 'opencode'], bowerloom, weekly), ['claude-code', 'opencode']);
@@ -169,13 +169,13 @@ test('the words of the first-run, Projects, install, Interfaces and history scre
     for (const [key, text] of entries) { assert.ok(countWords(text) <= limit, `${group}.${key}: ${text}`); assert.equal(bannedHere(text), null, `${group}.${key}`); assert.equal(text, text.trim(), `${group}.${key}`); }
   }
   assert.deepEqual([FLOW.label.findMyFiles, FLOW.label.looksRight, FLOW.label.makeFromThis, FLOW.label.notNow, FLOW.label.showDetails, FLOW.label.addFolder], ['Find my files', 'Looks right', 'Make a harness from this', 'Not now', 'Show details', 'Add a folder']);
-  assert.deepEqual([FLOW.hint.welcomeLineOne, FLOW.hint.welcomeLineTwo], ['Build a harness from your agents and skills.', 'Then run it in any interface you use.']);
+  assert.deepEqual([FLOW.hint.welcomeLineOne, FLOW.hint.welcomeLineTwo], ['Build a harness from your agents and skills.', 'Then run it in any engine you use.']);
   assert.equal(FLOW.paragraph.chooseLine, 'Untick a source to skip it. Bowerloom reads the names and text of the files you keep. The text stays on this computer.');
   assert.equal(FLOW.paragraph.readLine, 'A harness is a saved list of agents and skills. Bowerloom stores it as one small file in the project you install it to.');
-  assert.equal(FLOW.hint.installNote, 'Nothing changes until you press Install. You can undo in Version history.');
+  assert.equal(FLOW.hint.installNote, 'Nothing changes until you press Install. You can undo in Install history.');
   assert.equal(FLOW.hint.historyHint, 'Newest first. Undo puts back what the change replaced.');
   assert.equal(FLOW.hint.removeNote, 'This does not delete your files. It removes only what Bowerloom wrote.');
-  assert.equal(interfacesHint(4), '4 interfaces. Bowerloom installs only for the ones that are switched on.');
+  assert.equal(interfacesHint(4), '4 engines. Bowerloom installs only for the ones that are switched on.');
   assert.equal(foundSources(4), 'Found 4 sources'); assert.equal(readTitle(4), 'Read 4 sources. Make a harness from each.'); assert.equal(makeAll(4), 'Make all 4');
   assert.deepEqual(Object.values(FILE_WORDS), ['New', 'Update', 'Conflict', 'Same']);
   assert.deepEqual([actionFor('out-of-date'), actionFor('conflict'), actionFor('not-installed'), actionFor('installed')], ['Update', 'Review', 'Install', null]);

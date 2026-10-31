@@ -1,5 +1,5 @@
 /**
- * S11, Version history. Every change the preview made, newest first and grouped by day. Each row says what changed, then the time, the person, the computer and what it wrote. "Undo" puts back what the change
+ * S11, Install history. Every change the preview made, newest first and grouped by day. Each row says what changed, then the time, the person, the computer and what it wrote. "Undo" puts back what the change
  * replaced (`store.undo`). The change stays in the list, marked "Undone", and the undo is a new row. A row that is itself an undo cannot be undone.
  * Only the newest change of one install or one harness can be undone: an older row has Undo off, with "Undo the newer change first" beside it. An undo that cannot apply says why in a note.
  */
@@ -41,7 +41,7 @@ export function History(): ReactElement {
     requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-history="${id}"]`)?.focus({ preventScroll: true }));
   };
   return (
-    <Screen slot="history" title={WORDS.label.versionHistory}>
+    <Screen slot="history" title={WORDS.label.installHistory}>
       <p className="kit-hint hx-hint">{FLOW.hint.historyHint}</p>
       <div className="hxh-days">
         {groupByDay(state.history).map(group => (

@@ -1,6 +1,6 @@
 /**
  * The left navigation of the preview, drawn as a branching tree like the home app's (renderer/home/shell/Sidebar.tsx): the collapse button and the app mark, "New harness" (the one primary item),
- * the section "Workspace" with Harnesses, Library (a folder: Agents, Skills, Tools and Context hang off a thin branch line), Projects and Runs; and at the foot Interfaces, Version history,
+ * the section "Workspace" with Harnesses, Library (a folder: Agents, Skills, Tools and Context hang off a thin branch line), Projects and Runs; and at the foot Interfaces, Install history,
  * Help and the "Preview" mark. It has three looks: open (232 px), a rail (48 px, icons only, each with a tooltip) and hidden (under 900 px, where the toggle in the top row opens it over the page).
  * The place you are on is a soft fill with `aria-current="page"`, never a tick. A kind of the Library that is open says `aria-current="true"` and has no fill of its own: the design fills Library. The items are one Tab stop with the arrow keys inside; the collapse button and the Preview mark are Tab stops of their own.
  */
@@ -157,7 +157,7 @@ export function Navigation(p: NavigationProps): ReactElement {
       <div className="hm-nav-low">
         <ul className="hm-nav-list">
           <li><Item {...item} navKey="interfaces" icon="monitor" label={WORDS.label.interfaces} current={here === 'interfaces'} onClick={p.onInterfaces} /></li>
-          <li><Item {...item} navKey="history" icon="clock" label={WORDS.label.versionHistory} current={here === 'history'} onClick={p.onHistory} /></li>
+          <li><Item {...item} navKey="history" icon="clock" label={WORDS.label.installHistory} current={here === 'history'} onClick={p.onHistory} /></li>
           <li><Item {...item} navKey="help" icon="help" label={WORDS.label.help} current={here === 'help'} onClick={p.onHelp} /></li>
         </ul>
         <div className="hm-preview" data-preview=""><PreviewMark rail={rail} /></div>

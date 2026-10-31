@@ -214,26 +214,28 @@ test('the file view draws the file as text: markup and an order stay words, the 
   await shot(p, 'real-5-file');
 });
 
-test('Install and Start are not in this preview: a note says so and no sheet opens; the Preview mark says what this preview does', async () => {
+test('Install and Start are not in beta.1: a note says so and no sheet opens; the Beta mark says what Bowerloom does and what is not in beta.1', async () => {
   const p = page();
   await p.evaluate(() => { location.hash = '#prototype-v3/harnesses'; });
   await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
   await p.getByRole('button', { name: 'Assign to project', exact: true }).first().click();
-  await expect(p.locator('[data-toast]')).toContainText('Not in this preview.');
+  await expect(p.locator('[data-toast]')).toContainText('Not in beta.1.');
   await expect(p.locator('[aria-modal="true"]')).toHaveCount(0);
   const start = p.getByRole('button', { name: 'Start', exact: true });
   await expect(start, 'the details column of the selected harness has a Start button').toHaveCount(1);
   await start.click();
-  await expect(p.locator('[data-toast]')).toContainText('Not in this preview.');
+  await expect(p.locator('[data-toast]')).toContainText('Not in beta.1.');
   await expect(p.locator('[aria-modal="true"]')).toHaveCount(0);
   // The list says "Not checked" for where the harness runs, and names no program.
   const runsIn = p.locator('section', { has: p.locator('#hx-runs-in') });
   await expect(runsIn).toContainText('Not checked');
   for (const program of ['Claude Code', 'Codex', 'OpenCode', 'Hermes']) await expect(runsIn, program).not.toContainText(program);
-  await p.getByRole('button', { name: 'About this preview', exact: true }).click();
+  await p.getByRole('button', { name: 'About this beta', exact: true }).click();
   const pop = p.locator('.hx-preview-pop');
-  await expect(pop).toContainText('This preview reads your own folders. It writes only after you approve a plan in Projects.');
-  await expect(pop).toContainText('Not in this preview');
+  await expect(p.locator('[data-preview-mark]')).toHaveText('Beta');
+  await expect(pop).toContainText('Bowerloom is in beta. It reads your own folders and writes only after you approve what it will write.');
+  await expect(pop).toContainText('Not in beta.1');
+  await expect(pop).not.toContainText(/preview|full app/i);
   await expect(pop.locator('li')).toHaveText(['Assign to project', 'Start', 'Compare', 'Runs']);
   await everyStep('preview', false);
   await shot(p, 'real-6-preview');
@@ -244,7 +246,7 @@ test('Install and Start are not in this preview: a note says so and no sheet ope
 test('Interfaces says Bowerloom has not checked which parts a program can use, and keeps the sample\'s claim out', async () => {
   const p = page();
   await p.evaluate(() => { location.hash = '#prototype-v3/interfaces/codex'; });
-  await expect(p.getByRole('heading', { level: 1, name: 'Interfaces', exact: true })).toBeVisible();
+  await expect(p.getByRole('heading', { level: 1, name: 'Engines', exact: true })).toBeVisible();
   const details = p.getByRole('complementary');
   await expect(details).toContainText('Bowerloom has not checked which parts this program can use.');
   await expect(details).not.toContainText('Tools that only Claude Code supports');
@@ -300,14 +302,14 @@ test('a second read asks first: "Cancel" keeps every harness, "Yes, read them" s
   expect(before).toBe(1);
   // A note with an old "Undo" is on its way when the read starts: it must not outlive the old world.
   await p.getByRole('button', { name: 'Assign to project', exact: true }).first().click();
-  await expect(p.locator('[data-toast]')).toContainText('Not in this preview.');
+  await expect(p.locator('[data-toast]')).toContainText('Not in beta.1.');
   await p.evaluate(() => { location.hash = '#prototype-v3/choose'; });
   await expect(p.getByRole('heading', { level: 1, name: /^Found \d+ places?$/ })).toBeVisible();
   await p.locator('.hxf-card', { hasText: 'Hermes at home' }).getByRole('checkbox').uncheck();
   await p.getByRole('button', { name: 'Looks right', exact: true }).click();
   const consent = p.locator('[data-consent]');
   await expect(p.getByRole('heading', { level: 1, name: 'Read what is inside?' })).toBeFocused();
-  await expect(consent.locator('[data-replace]')).toHaveText('Reading again starts this preview over. It changes nothing on your computer.');
+  await expect(consent.locator('[data-replace]')).toHaveText('Reading again starts over. It changes nothing on your computer.');
   await expect(p.getByRole('button', { name: 'Not now', exact: true })).toHaveCount(0);
   await expect(consent.locator('li[data-place]', { hasText: 'Claude Code at home' })).toBeVisible();
   await everyStep('replace-consent');

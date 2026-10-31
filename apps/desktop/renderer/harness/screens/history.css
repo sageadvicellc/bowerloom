@@ -1,5 +1,5 @@
 /*
- * Version history (S11). Every rule starts at [data-home]. One row for each change: a clock tile, the change in words, the line under it, and Undo at the right. Text is 14 px or more.
+ * Install history (S11). Every rule starts at [data-home]. One row for each change: a clock tile, the change in words, the line under it, and Undo at the right. Text is 14 px or more.
  */
 [data-home] .hxh-days { display: flex; flex-direction: column; gap: var(--hm-space-4); }
 [data-home] .hxh-day { display: flex; flex-direction: column; gap: var(--hm-space-3); }

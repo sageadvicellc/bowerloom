@@ -196,8 +196,8 @@ const installable = (state: HarnessState, ids: readonly InterfaceId[]): Interfac
 
 /** Why no interface can be used for these ids, or null when at least one can. */
 function interfaceProblem(state: HarnessState, ids: readonly InterfaceId[]): string | null {
-  if (ids.length === 0) return 'no interface is picked';
-  return installable(state, ids).length === 0 ? 'no interface that is switched on and found is picked' : null;
+  if (ids.length === 0) return 'no engine is picked';
+  return installable(state, ids).length === 0 ? 'no engine that is switched on and found is picked' : null;
 }
 
 /** Why an install cannot be made, in a few lowercase words, or null when it can: the harness and the project are known, the harness holds a part, and an interface can be used. */
@@ -340,7 +340,7 @@ function change(state: HarnessState, step: UndoStep): HarnessState {
 
 /** Applies one step, or says why it cannot: the harness or the interface it puts back is not here any more. */
 function applyStep(state: HarnessState, step: UndoStep): { state: HarnessState; reason: string | null } {
-  if (step.op === 'set-interface') return interfaceById(state, step.interfaceId) === undefined ? { state, reason: 'that interface is not here any more' } : { state: change(state, step), reason: null };
+  if (step.op === 'set-interface') return interfaceById(state, step.interfaceId) === undefined ? { state, reason: 'that engine is not here any more' } : { state: change(state, step), reason: null };
   if (harnessById(state, step.harnessId) === undefined) return { state, reason: `${HARNESS_GONE} any more` };
   if (step.op === 'restore-install' && projectById(state, step.projectId) === undefined) return { state, reason: 'that project is not here any more' };
   return { state: change(state, step), reason: null };

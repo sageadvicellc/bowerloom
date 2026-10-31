@@ -15,7 +15,8 @@ import { useUi } from '../ui.js';
 import type { Ui } from '../ui.js';
 import { HButton, HIconButton, StateDot } from '../parts/controls.js';
 import { Tile } from '../icons.js';
-import { WORDS, projectsHint } from '../words.js';
+import { WORDS, notYetWords, projectsHint } from '../words.js';
+import { PathDisclosure } from '../parts/PathDisclosure.js';
 import { FLOW, actionFor, actionName, installFor, nothingChanged, removedWords, reviewFor, savedAs, updateFor } from '../words-flow.js';
 import { undoNow } from '../undo-note.js';
 import { ENGINE_WORDS } from '../words-engine.js';
@@ -47,7 +48,7 @@ function Row({ state, project, selected, onPick }: { state: HarnessState; projec
           <button type="button" className="hx-row-main" aria-pressed={selected} onClick={onPick}>{project.name}</button>
           <span className="hxp-harness">{installs.length === 0 ? FLOW.label.noHarnessYet : names.join(', ')}</span>
         </span>
-        <span className="hxp-path">{project.path}</span>
+        <PathDisclosure className="hxp-path" path={project.path} subject={project.name} key={project.path} />
         {installs.map((install, n) => (
           <ul key={install.harnessId} className="hxp-dots" aria-label={names[n]}>
             {many ? <li className="hxp-dots-name">{names[n]}</li> : null}
@@ -113,7 +114,7 @@ function Details({ state, project }: { state: HarnessState; project: Project }):
   return (
     <>
       <DetailsHead tile={<Tile name="folder" size="large" />} title={project.name} subtitle={FLOW.label.project} />
-      <p className="hx-text hx-muted hx-path">{project.path}</p>
+      <PathDisclosure path={project.path} subject={project.name} key={project.path} />
       {installs.length === 0 ? <p className="hx-text hx-muted">{FLOW.label.noHarnessYet}</p> : installs.map(install => {
         const harness = harnessById(state, install.harnessId);
         return harness === undefined ? null : <InstallBlock key={install.harnessId} state={state} store={store} ui={ui} project={project} install={install} harness={harness} many={many} />;
@@ -129,6 +130,7 @@ function Details({ state, project }: { state: HarnessState; project: Project }):
 
 export function Projects({ id }: { id: string | null }): ReactElement {
   const state = useHarnessState(), ui = useUi();
+  const notYet = notYetWords(state.real !== undefined);
   const selected = state.projects.find(p => p.id === id) ?? (id === null ? state.projects[0] : undefined);
   if (id !== null && selected === undefined) {
     return (
@@ -144,7 +146,7 @@ export function Projects({ id }: { id: string | null }): ReactElement {
         <HButton icon="folder" data-open-adopt="" onClick={() => ui.openAdopt()}>{ENGINE_WORDS.label.fromFolder}</HButton>
         <HButton icon="harness" data-open-project="" onClick={() => ui.openProject()}>{ENGINE_WORDS.label.installFolder}</HButton>
         <HButton icon="save-clock" data-open-save="" onClick={() => ui.openSave()}>{ENGINE_WORDS.label.editFolder}</HButton>
-        <HIconButton icon="plus" label={FLOW.label.addFolder} tip={FLOW.hint.notInPreview} side="below-end" aria-disabled="true" onClick={e => { e.preventDefault(); ui.showToast(FLOW.hint.notInPreview); }} />
+        <HIconButton icon="plus" label={FLOW.label.addFolder} tip={notYet} side="below-end" aria-disabled="true" onClick={e => { e.preventDefault(); ui.showToast(notYet); }} />
       </>}
       details={selected === undefined ? undefined : <Details state={state} project={selected} />}>
       <p className="kit-hint hx-hint">{projectsHint(state.projects.length)}</p>

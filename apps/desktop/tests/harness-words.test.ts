@@ -5,7 +5,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DESIGN_WORDS, HARNESS_BANNED, LIMITS, bannedHere, countWords } from '../shared/harness/words.js';
 import { BANNED, bannedIn } from '../shared/home/textbudget.js';
-import { KIND_NAME, KIND_PLURAL, WORDS, addName, addTo, addToWords, fixName, fromWords, harnessListHint, installTitle, linkFromWords, missingKind, namedBy, nodeName, partsCount, projectsHint, startName, tabWords, willUse } from '../renderer/harness/words.js';
+import { KIND_NAME, KIND_PLURAL, WORDS, addName, addTo, addToWords, fixName, fromWords, notYetWords, detailsName, harnessListHint, installTitle, linkFromWords, missingKind, namedBy, nodeName, partsCount, projectsHint, startName, tabWords, willUse } from '../renderer/harness/words.js';
 import { REAL, countsLine, couldNotReadLine, foldersLine, foundInLine, foundPlaces, modelBadgeLine, moreNotes, nothingReadLine, limitsLine, readCountLine, readSummary, skippedLine, textsCutLine } from '../renderer/harness/real/words-real.js';
 import { reasonWords } from '../renderer/home/real/words.js';
 import { SAMPLE_IDS, createSampleWorld } from '../shared/harness/sample.js';
@@ -14,12 +14,14 @@ import { buildInstallPlan, installButtonWords, planSummary } from '../shared/har
 import { DESKTOP } from './support.js';
 
 test('the preview\'s rule is the home rule less the words the design is built on, and every other banned word stays', () => {
-  assert.deepEqual([...DESIGN_WORDS].sort(), ['conflict', 'harness', 'helper', 'interface', 'plan', 'project', 'scan', 'version']);
+  assert.deepEqual([...DESIGN_WORDS].sort(), ['conflict', 'harness', 'helper', 'plan', 'project', 'scan', 'version']);
   assert.ok(DESIGN_WORDS.every(w => BANNED.includes(w)), 'each design word was banned at home');
   assert.deepEqual([...HARNESS_BANNED], BANNED.filter(w => !DESIGN_WORDS.includes(w)));
   for (const word of ['global', 'scope', 'slice', 'apply', 'adopt', 'export', 'import', 'team', 'grant', 'wire', 'ghost', 'lasso', 'mcp', 'token']) assert.notEqual(bannedHere(`the ${word} here`), null, word);
-  for (const word of ['harness', 'project', 'conflict', 'interface', 'scan', 'helper', 'plans', 'version']) { assert.equal(bannedHere(`the ${word} here`), null, word); assert.notEqual(bannedIn(`the ${word} here`), null, `${word} stays banned at home`); }
-  assert.equal(bannedHere('Version history'), null);
+  for (const word of ['harness', 'project', 'conflict', 'scan', 'helper', 'plans', 'version']) { assert.equal(bannedHere(`the ${word} here`), null, word); assert.notEqual(bannedIn(`the ${word} here`), null, `${word} stays banned at home`); }
+  assert.equal(bannedHere('Install history'), null);
+  assert.notEqual(bannedHere('Pick an interface'), null, 'the screens say engine, so interface is banned again');
+  assert.equal(bannedHere('Pick an engine'), null);
 });
 
 test('WORDS is frozen all the way down; a label has at most 5 words, a hint 12, a paragraph 25, and none has a banned word', () => {
@@ -36,9 +38,9 @@ test('WORDS is frozen all the way down; a label has at most 5 words, a hint 12, 
 
 test('the words copied from the design are exactly as written in the pictures', () => {
   const l = WORDS.label, h = WORDS.hint, p = WORDS.paragraph;
-  assert.deepEqual([l.newHarness, l.workspace, l.versionHistory, l.start, l.openInBuilder, l.assignToProject, l.viewFile, l.removeFromHarness, l.addToHarness, l.addParts, l.startFromScan, l.emptyTitle],
-    ['New harness', 'Workspace', 'Version history', 'Start', 'Open in builder', 'Assign to project', 'View file', 'Remove from this harness', 'Add to a harness', 'Add parts', 'Start from a scan', 'This harness is empty']);
-  assert.deepEqual([h.legendNew, h.legendMissing, h.missingNode, h.removeNote, h.readOnlyRelease, h.emptyBody], ['New in this harness', 'Missing. Fix shows the change first.', 'Missing. Needed.', 'Remove deletes the skill\'s files when you save.', 'Read-only in this release', 'Add agents, skills, tools and context from your Library.']);
+  assert.deepEqual([l.newHarness, l.workspace, l.installHistory, l.start, l.openInBuilder, l.assignToProject, l.viewFile, l.removeFromHarness, l.addToHarness, l.addParts, l.startFromScan, l.emptyTitle],
+    ['New harness', 'Workspace', 'Install history', 'Start', 'Open in builder', 'Assign to project', 'View file', 'Remove from this harness', 'Add to a harness', 'Add parts', 'Start from a scan', 'This harness is empty']);
+  assert.deepEqual([h.legendNew, h.legendMissing, h.missingNode, h.removeNote, h.readOnly, h.emptyBody], ['New in this harness', 'Missing. Fix shows the change first.', 'Missing. Needed.', 'Remove deletes the skill\'s files when you save.', 'Read-only', 'Add agents, skills, tools and context from your Library.']);
   assert.equal(p.pickAPart, 'Pick a part to see its file, what it uses and where else it is used.'); assert.equal(p.fileNote, 'Secrets in this file are hidden here. Bowerloom keeps what it reads on this computer.');
   assert.equal(harnessListHint(4), '4 harnesses. Pick one to see what holds.'); assert.equal(projectsHint(5), '5 projects. Each shows where a harness is installed.');
   assert.equal(fromWords('skill', 'Caveman plug-in', '1'), 'Skill from Caveman plug-in, version 1'); assert.equal(fromWords('agent', 'Made by you', undefined), 'Agent from Made by you');
@@ -77,30 +79,32 @@ test('no source file of the preview has a banned word in a string literal or in 
     // The sample's own text (the files that people read) is checked on the data; ids, paths and CSS class names are code.
     // real-map.ts names the reader's own kinds in code (a data tag is not a word on screen); the words it makes are checked in tests/harness-real-map.test.ts.
     if (file.endsWith('/sample.ts') || file.endsWith('/real-map.ts')) continue;
-    for (const piece of pieces) assert.equal(bannedHere(piece), null, `${file}: ${piece}`);
+    // A route, a step and a data key are code, not words: "interfaces" stays the name of the route and of the data, and the screens say "Engines".
+    for (const piece of pieces.filter(p => !/^(?:interfaces?|last-interface|set-interface)$/.test(p))) assert.equal(bannedHere(piece), null, `${file}: ${piece}`);
   }
 });
 
 test('the real words (the preview on the person\'s own folders) are frozen, within the limits, and have no banned word', () => {
-  assert.equal(Object.isFrozen(REAL), true); assert.equal(Object.isFrozen(REAL.label), true); assert.equal(Object.isFrozen(REAL.notInPreview), true);
+  assert.equal(Object.isFrozen(REAL), true); assert.equal(Object.isFrozen(REAL.label), true); assert.equal(Object.isFrozen(REAL.notInBeta), true);
   assert.throws(() => { (REAL.label as Record<string, string>).useSample = 'x'; }, TypeError);
   for (const [group, limit] of [['label', LIMITS.label], ['hint', LIMITS.hint], ['paragraph', LIMITS.paragraph]] as const) {
     const entries = Object.entries(REAL[group]);
     assert.ok(entries.length >= 4, group);
     for (const [key, text] of entries) { assert.ok(countWords(text) <= limit, `${group}.${key}: ${text}`); assert.equal(bannedHere(text), null, `${group}.${key}`); assert.equal(text, text.trim(), `${group}.${key}`); }
   }
-  for (const line of REAL.notInPreview) { assert.ok(countWords(line) <= LIMITS.popover, line); assert.equal(bannedHere(line), null, line); }
-  assert.deepEqual(REAL.notInPreview, ['Assign to project', 'Start', 'Compare', 'Runs']);
-  assert.equal(REAL.label.previewNot, WORDS.label.previewNot, 'the popover heading is the same in both modes');
+  for (const line of REAL.notInBeta) { assert.ok(countWords(line) <= LIMITS.popover, line); assert.equal(bannedHere(line), null, line); }
+  assert.deepEqual(REAL.notInBeta, ['Assign to project', 'Start', 'Compare', 'Runs']);
+  assert.deepEqual([REAL.label.beta, REAL.label.aboutBeta, REAL.label.notInBeta, WORDS.hint.notInBeta], ['Beta', 'About this beta', 'Not in beta.1', 'Not in beta.1.']);
+  assert.equal(notYetWords(true), 'Not in beta.1.'); assert.equal(notYetWords(false), 'Not in this preview.');
 });
 
 test('the real words say what the design asks for, word for word', () => {
   assert.equal(REAL.label.consentTitle, 'Read what is inside?');
   assert.deepEqual([REAL.label.yesRead, REAL.label.notNow, REAL.label.addFolder, REAL.label.useSample, REAL.label.tryAgain, REAL.label.nothingTitle], ['Yes, read them', 'Not now', 'Add a folder', 'Use the sample', 'Try again', 'Nothing found yet']);
-  assert.equal(REAL.paragraph.previewAbout, 'This preview reads your own folders. It writes only after you approve a plan in Projects.');
+  assert.equal(REAL.paragraph.betaAbout, 'Bowerloom is in beta. It reads your own folders and writes only after you approve what it will write.');
   assert.equal(couldNotReadLine(3), 'Could not read 3 things.'); assert.equal(couldNotReadLine(1), 'Could not read 1 thing.');
   assert.equal(REAL.hint.stoppedEarly, 'It stopped early to stay within its limits.'); assert.equal(REAL.hint.consentOne, 'It reads text only in the folders you ticked.');
-  assert.equal(REAL.hint.replaceLine, 'Reading again starts this preview over. It changes nothing on your computer.'); assert.equal(REAL.label.cancel, 'Cancel');
+  assert.equal(REAL.hint.replaceLine, 'Reading again starts over. It changes nothing on your computer.'); assert.equal(REAL.label.cancel, 'Cancel');
   assert.match(REAL.paragraph.chooseLine, /opened settings files and read names and structure\. It reads text only in folders you keep ticked\./, 'the Choose line says what is opened before the tick and what only after it');
   assert.doesNotMatch(REAL.paragraph.chooseLine, /opens only the folders you keep ticked/);
   assert.match(REAL.paragraph.consentNotes, /whole folder/); assert.match(REAL.paragraph.consentNotes, /first lines of up to 2000/); assert.match(REAL.hint.consentLinks, /Linked folders are followed/);

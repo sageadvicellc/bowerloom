@@ -38,10 +38,12 @@ export const REAL = deepFreeze({
     showFewerNotes: 'Show fewer notes',
     toolFolders: REAL_WORDS.hint.detailsTools,
     topics: REAL_WORDS.hint.detailsTopics,
-    previewNot: 'Not in this preview',
+    notInBeta: 'Not in beta.1',
+    beta: 'Beta',
+    aboutBeta: 'About this beta',
     cancel: 'Cancel',
     notesFirstLines: 'first lines of notes pages',
-    replaceTitle: 'Start this preview over?',
+    replaceTitle: 'Read your folders again?',
     notChecked: 'Not checked',
   },
   hint: {
@@ -63,17 +65,16 @@ export const REAL = deepFreeze({
     consentLinks: 'Linked folders are followed to where they point.',
     nextStep: 'Pick a smaller folder to read all of it.',
     detailsFrom: 'These notes are from the first look at each folder.',
-    replaceLine: 'Reading again starts this preview over. It changes nothing on your computer.',
+    replaceLine: 'Reading again starts over. It changes nothing on your computer.',
   },
   paragraph: {
     chooseLine: 'To count what each folder holds, Bowerloom opened settings files and read names and structure. It reads text only in folders you keep ticked.',
     consentNotes: 'It looks through the whole folder for notes pages. It reads the first lines of up to 2000 of them.',
     readLine: 'A harness is a saved list of agents and skills. Bowerloom stores it as one small file in the project you install it to.',
-    previewAbout: 'This preview reads your own folders. It writes only after you approve a plan in Projects.',
-    previewFull: 'In the full app, Start opens the interface for you.',
+    betaAbout: 'Bowerloom is in beta. It reads your own folders and writes only after you approve what it will write.',
   },
-  /** The list of the Preview mark's popover in this mode: what the person cannot do yet. */
-  notInPreview: ['Assign to project', 'Start', 'Compare', 'Runs'],
+  /** The list of the Beta mark's popover in this mode: what is not in beta.1. */
+  notInBeta: ['Assign to project', 'Start', 'Compare', 'Runs'],
 } as const);
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;

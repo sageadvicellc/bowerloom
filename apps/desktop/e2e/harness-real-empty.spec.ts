@@ -85,7 +85,7 @@ test('"Use the sample" asks first once harnesses exist: "Cancel" and "Not now" k
   await expect(p.getByRole('heading', { level: 1, name: 'Nothing found yet' })).toBeVisible();
   await p.getByRole('button', { name: 'Use the sample', exact: true }).click();
   const ask = p.locator('[data-replace-confirm]');
-  await expect(ask).toContainText('Reading again starts this preview over. It changes nothing on your computer.');
+  await expect(ask).toContainText('Reading again starts over. It changes nothing on your computer.');
   await expect(p.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
   await p.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(ask).toHaveCount(0);

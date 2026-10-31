@@ -16,7 +16,9 @@ import { Sheet } from '../parts/Sheet.js';
 import { Button } from '../../home/kit/Button.js';
 import { HButton, HIconButton, StateDot } from '../parts/controls.js';
 import { HIcon, KIND_ICON, Tile } from '../icons.js';
-import { KIND_PLURAL, WORDS, addTo, fromWords } from '../words.js';
+import { KIND_PLURAL, WORDS, addTo, fromWords, notYetWords } from '../words.js';
+import { PathDisclosure } from '../parts/PathDisclosure.js';
+import { fileNameOf } from '../../../shared/harness/frontmatter.js';
 import { nothingChanged } from '../words-flow.js';
 import { undoNow } from '../undo-note.js';
 
@@ -54,7 +56,8 @@ function Details({ state, part, onAdd }: { state: HarnessState; part: Part; onAd
       <p className="hx-text">{part.description}</p>
       <section className="hx-block" aria-labelledby="hx-lib-file">
         <h3 className="hx-h3" id="hx-lib-file">{WORDS.label.file}</h3>
-        <p className="hx-text hx-muted hx-path">{part.path}</p>
+        <p className="hx-text hx-muted">{fileNameOf(part.path)}</p>
+        <PathDisclosure path={part.path} subject={part.name} key={part.path} />
       </section>
       <div className="hx-actions">
         <HButton icon="eye" onClick={() => go({ name: 'file', partId: part.id })}>{WORDS.label.viewFile}</HButton>
@@ -104,6 +107,7 @@ function PickHarnessSheet({ open, part, onClose }: { open: boolean; part: Part |
 
 export function Library({ kind, partId }: { kind: PartKind; partId: string | null }): ReactElement {
   const state = useHarnessState(), ui = useUi();
+  const notYet = notYetWords(state.real !== undefined);
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<SortMode>('name');
   const [picking, setPicking] = useState<{ open: boolean; part: Part | null }>({ open: false, part: null });
@@ -122,7 +126,7 @@ export function Library({ kind, partId }: { kind: PartKind; partId: string | nul
   }
   return (
     <Screen slot="library" title={WORDS.label.library}
-      tools={<HIconButton icon="plus" label={WORDS.label.add} tip={WORDS.hint.previewOnly} side="below-end" aria-disabled="true" onClick={e => { e.preventDefault(); ui.showToast(WORDS.hint.previewOnly); }} />}
+      tools={<HIconButton icon="plus" label={WORDS.label.add} tip={notYet} side="below-end" aria-disabled="true" onClick={e => { e.preventDefault(); ui.showToast(notYet); }} />}
       details={selected === undefined ? undefined : <Details state={state} part={selected} onAdd={() => setPicking({ open: true, part: selected })} />}>
       <div className="hx-tabs" role="group" aria-label={WORDS.label.libraryPages}>
         {PART_KINDS.map(k => <button key={k} type="button" className="hx-tab" aria-pressed={k === kind} onClick={() => open(k)}>{KIND_PLURAL[k]} <span className="hx-tab-count">{counts[k]}</span></button>)}

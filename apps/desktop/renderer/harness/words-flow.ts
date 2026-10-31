@@ -1,5 +1,5 @@
 /**
- * The fixed words of the first-run screens, Projects, the install sheet, Interfaces and Version history, in one frozen table (the same shape and the same limits as WORDS in words.ts:
+ * The fixed words of the first-run screens, Projects, the install sheet, Interfaces and Install history, in one frozen table (the same shape and the same limits as WORDS in words.ts:
  * a label at most 5 words, a hint at most 12, a paragraph at most 25, no banned word). They are copied from the design pictures S1.1 to S1.3, S6, S7.1 to S7.3, S10 and S11.
  * tests/harness-install.test.ts holds this table and the builders at the bottom to the rules.
  */
@@ -19,30 +19,30 @@ export const FLOW = deepFreeze({
     partsInSource: 'What Bowerloom reads', foundAt: 'Found in',
     // Projects
     update: 'Update', install: 'Install', review: 'Review', assignHarness: 'Assign harness', assignAnother: 'Assign another harness', removeFromProject: 'Remove from project', project: 'Project', noHarnessYet: 'No harness yet',
-    projectRows: 'Projects', interfacesOfInstall: 'Interfaces',
+    projectRows: 'Projects', interfacesOfInstall: 'Engines',
     // Install sheet
-    stepProject: 'Project', stepHarness: 'Harness', stepInterfaces: 'Interfaces', stepReview: 'Review', installSteps: 'Install steps', next: 'Next', installAHarness: 'Install a harness', folders: 'Folders', harnessChoices: 'Harnesses',
-    interfaceChoices: 'Interfaces to install for', manifestKind: 'Manifest', fileNew: 'New', fileUpdate: 'Update', fileConflict: 'Conflict', fileSame: 'Same',
+    stepProject: 'Project', stepHarness: 'Harness', stepInterfaces: 'Engines', stepReview: 'Review', installSteps: 'Install steps', next: 'Next', installAHarness: 'Install a harness', folders: 'Folders', harnessChoices: 'Harnesses',
+    interfaceChoices: 'Engines to install for', manifestKind: 'Manifest', fileNew: 'New', fileUpdate: 'Update', fileConflict: 'Conflict', fileSame: 'Same',
     showDifference: 'Show the difference', hideDifference: 'Hide the difference', yourFile: 'Your file', harnessCopy: 'Harness copy',
     conflictChoice: 'How to settle it',
     // Interfaces
-    useInterface: 'Use this interface', whatWrites: 'What Bowerloom writes', cannotUse: 'Cannot use', lookAgain: 'Look again', looking: 'Looking',
+    useInterface: 'Use this engine', whatWrites: 'What Bowerloom writes', cannotUse: 'Cannot use', lookAgain: 'Look again', looking: 'Looking',
     // History
     undone: 'Undone', historyList: 'Changes',
   },
   /** Short lines: at most 12 words each. */
   hint: {
-    welcomeLineOne: 'Build a harness from your agents and skills.', welcomeLineTwo: 'Then run it in any interface you use.',
+    welcomeLineOne: 'Build a harness from your agents and skills.', welcomeLineTwo: 'Then run it in any engine you use.',
     tickOne: 'Tick at least one source.', notInPreview: 'Not in this preview.', noSources: 'No source is ticked.',
     manifestNote: 'Bowerloom manifest. Commit this file to share the harness.',
-    pickFolder: 'Pick the folder to install into.', pickHarness: 'Pick the harness to install.', pickInterfaces: 'Each interface gets its own files. Pick the ones to install for.',
-    installNote: 'Nothing changes until you press Install. You can undo in Version history.',
+    pickFolder: 'Pick the folder to install into.', pickHarness: 'Pick the harness to install.', pickInterfaces: 'Each engine gets its own files. Pick the ones to install for.',
+    installNote: 'Nothing changes until you press Install. You can undo in Install history.',
     pickToContinue: 'Pick one to continue.',
     removeNote: 'This does not delete your files. It removes only what Bowerloom wrote.',
     yourFileNone: 'Not in this preview.', historyHint: 'Newest first. Undo puts back what the change replaced.',
-    lookedAgain: 'Looked again. Nothing changed.', noneOffered: 'No interface is switched on. Turn one on in Interfaces.',
+    lookedAgain: 'Looked again. Nothing changed.', noneOffered: 'No engine is switched on. Turn one on in Engines.',
     nothingMade: 'Nothing was made.',
-    pickInterface: 'Pick at least one interface.', undoFirst: 'Undo the newer change first', noProject: 'That project is not here.',
+    pickInterface: 'Pick at least one engine.', undoFirst: 'Undo the newer change first', noProject: 'That project is not here.',
   },
   /** A short paragraph: at most 25 words each. */
   paragraph: {
@@ -86,7 +86,7 @@ export const installAction = (harness: string, project: string): string => `Inst
 /** "Use Codex": the name of a switch. */
 export const interfaceSwitch = (name: string): string => `Use ${name}`;
 /** "3 interfaces. Bowerloom installs only for the ones that are switched on." */
-export const interfacesHint = (n: number): string => `${n} ${n === 1 ? 'interface' : 'interfaces'}. Bowerloom installs only for the ones that are switched on.`;
+export const interfacesHint = (n: number): string => `${n} ${n === 1 ? 'engine' : 'engines'}. Bowerloom installs only for the ones that are switched on.`;
 /** "Undo Installed Weekly report crew in bowerloom": the name of a button. */
 export const undoName = (text: string): string => `Undo ${text}`;
 /** The words of a file state in the review. */

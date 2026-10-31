@@ -258,7 +258,7 @@ test('beta.1: a harness that lists preview engines only cannot go on while the s
   await p.getByRole('button', { name: 'Install from a folder', exact: true }).click();
   const s = sheet(p, 'Install a folder\'s harness');
   await s.getByRole('button', { name: 'Next', exact: true }).click();
-  await expect(s.getByText('This harness lists preview interfaces only', { exact: false })).toBeVisible();
+  await expect(s.getByText('This harness lists preview engines only', { exact: false })).toBeVisible();
   for (const id of ['opencode', 'pi']) await expect(s.locator(`[data-engine="${id}"] input`)).toBeDisabled();
   await expect(s.getByRole('button', { name: 'Next', exact: true })).toBeDisabled();
 });

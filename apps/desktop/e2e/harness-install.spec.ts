@@ -1,6 +1,6 @@
 /**
  * Projects and the install sheet in the real window (Electron started with --prototype-v3): the rows with their statuses and buttons, the three steps, the review with a conflict (Install is blocked
- * until it is settled), the install itself (the statuses change on Projects and on the Harness list, one history entry, "Installed." with Undo), and Undo in Version history. The sheet keeps one height.
+ * until it is settled), the install itself (the statuses change on Projects and on the Harness list, one history entry, "Installed." with Undo), and Undo in Install history. The sheet keeps one height.
  */
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
@@ -43,7 +43,7 @@ test('Projects shows the five rows of the design with their statuses and the but
   await expect(rows.nth(0).getByRole('button', { name: /^Update/ })).toBeVisible();
   await expect(rows.nth(1)).toContainText('Claude Code installed');
   await expect(rows.nth(1)).toContainText('Codex installed');
-  await expect(rows.nth(1).getByRole('button')).toHaveCount(1);
+  await expect(rows.nth(1).getByRole('button'), 'the name of the project and Show details, and no action').toHaveCount(2);
   await expect(rows.nth(2)).toContainText('Research desk');
   await expect(rows.nth(2)).toContainText('Codex has a conflict');
   await expect(rows.nth(2).getByRole('button', { name: /^Review/ })).toBeVisible();
@@ -78,7 +78,7 @@ test('the review lists all 10 files grouped by interface, and a conflict blocks 
   await expect(s.locator('[data-file=".claude/agents/writer.md"]')).toContainText('Update');
   await expect(s.locator('[data-file=".codex/agents/writer.toml"]')).toContainText('Conflict');
   await expect(s.getByText('Bowerloom manifest. Commit this file to share the harness.')).toBeVisible();
-  await expect(s.getByText('Nothing changes until you press Install. You can undo in Version history.')).toBeVisible();
+  await expect(s.getByText('Nothing changes until you press Install. You can undo in Install history.')).toBeVisible();
   await expect(s.getByText('Conflict: .codex/agents/writer.toml already exists. Pick one.')).toBeVisible();
   const choices = s.getByRole('radio');
   await expect(choices).toHaveCount(3);
@@ -110,7 +110,7 @@ test('the review lists all 10 files grouped by interface, and a conflict blocks 
   await shot(p, 'S7.3-install-review');
 });
 
-test('Install changes the statuses on Projects and on the Harness list, adds one history entry, shows "Installed. Undo", and Undo in Version history restores everything', async () => {
+test('Install changes the statuses on Projects and on the Harness list, adds one history entry, shows "Installed. Undo", and Undo in Install history restores everything', async () => {
   const p = page();
   const s = await openReview(p);
   await s.getByRole('radio').nth(0).click();
@@ -180,7 +180,7 @@ test('Assign to project walks the three steps at one sheet height: pick the fold
   await expect(cards.nth(0)).toHaveAttribute('aria-pressed', 'false');
   await cards.nth(0).click();
   await s.getByRole('button', { name: 'Next', exact: true }).click();
-  await expect(s.getByText('Each interface gets its own files. Pick the ones to install for.')).toBeVisible();
+  await expect(s.getByText('Each engine gets its own files. Pick the ones to install for.')).toBeVisible();
   const boxes = s.getByRole('checkbox');
   await expect(boxes).toHaveCount(3);
   await expect(boxes.nth(0)).toBeChecked(); await expect(boxes.nth(1)).toBeChecked();
@@ -250,11 +250,11 @@ test('the details buttons of a project open the review for Update and Review, an
   await expect(row(p, 'site-redesign')).toContainText('Codex installed');
 });
 
-test('Interfaces: a switch decides whether an interface is offered in the install sheet, and the change is in Version history', async () => {
+test('Engines: a switch decides whether an engine is offered in the install sheet, and the change is in Install history', async () => {
   const p = page();
   await go(p, '#prototype-v3/interfaces');
-  await expect(p.getByRole('heading', { level: 1, name: 'Interfaces', exact: true })).toBeVisible();
-  await expect(p.getByText('3 interfaces. Bowerloom installs only for the ones that are switched on.')).toBeVisible();
+  await expect(p.getByRole('heading', { level: 1, name: 'Engines', exact: true })).toBeVisible();
+  await expect(p.getByText('3 engines. Bowerloom installs only for the ones that are switched on.')).toBeVisible();
   const rows = p.locator('.hxn-row');
   await expect(rows).toHaveCount(3);
   await expect(rows.nth(0)).toContainText('Found at ~/.claude');
@@ -284,7 +284,7 @@ test('Interfaces: a switch decides whether an interface is offered in the instal
   const boxes = named.getByRole('checkbox');
   await expect(boxes.nth(1)).toBeDisabled();
   await expect(boxes.nth(1)).not.toBeChecked();
-  await expect(named).toContainText('Found. Switched off in Interfaces.');
+  await expect(named).toContainText('Found. Switched off in Engines.');
   await expect(boxes.nth(0)).toBeChecked();
   await p.keyboard.press('Escape');
   await go(p, HISTORY);
@@ -294,10 +294,10 @@ test('Interfaces: a switch decides whether an interface is offered in the instal
   await expect(p.getByRole('switch').nth(1)).toHaveAttribute('aria-checked', 'true');
 });
 
-test('Version history lists the sample entries newest first, grouped by day, each with its words and Undo', async () => {
+test('Install history lists the sample entries newest first, grouped by day, each with its words and Undo', async () => {
   const p = page();
   await go(p, HISTORY);
-  await expect(p.getByRole('heading', { level: 1, name: 'Version history', exact: true })).toBeVisible();
+  await expect(p.getByRole('heading', { level: 1, name: 'Install history', exact: true })).toBeVisible();
   await expect(p.getByText('Newest first. Undo puts back what the change replaced.')).toBeVisible();
   await expect(p.getByRole('heading', { level: 2, name: 'Yesterday', exact: true })).toBeVisible();
   const rows = p.locator('.hxh-row');

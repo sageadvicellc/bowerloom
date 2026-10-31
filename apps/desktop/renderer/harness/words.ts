@@ -14,8 +14,8 @@ export const WORDS = deepFreeze({
   /** Names of things and buttons: at most 5 words each. */
   label: {
     appName: 'Bowerloom', newHarness: 'New harness', workspace: 'Workspace', mainMenu: 'Main menu', libraryPages: 'Library pages',
-    harnesses: 'Harnesses', library: 'Library', agents: 'Agents', skills: 'Skills', tools: 'Tools', context: 'Context', projects: 'Projects', runs: 'Runs', interfaces: 'Interfaces',
-    versionHistory: 'Version history', help: 'Help', preview: 'Preview', aboutPreview: 'About this preview',
+    harnesses: 'Harnesses', library: 'Library', agents: 'Agents', skills: 'Skills', tools: 'Tools', context: 'Context', projects: 'Projects', runs: 'Runs', interfaces: 'Engines',
+    installHistory: 'Install history', help: 'Help', preview: 'Preview', aboutPreview: 'About this preview',
     hideNav: 'Hide navigation', showNav: 'Show navigation', hideDetails: 'Hide details', showDetails: 'Show details',
     search: 'Search', close: 'Close', cancel: 'Cancel', add: 'Add', sort: 'Sort', sortGroup: 'Order of the list',
     start: 'Start', openInBuilder: 'Open in builder', assignToProject: 'Assign to project', runsIn: 'Runs in', installedIn: 'Installed in',
@@ -35,7 +35,8 @@ export const WORDS = deepFreeze({
   hint: {
     pickToSee: 'Pick one to see what holds.',
     removeNote: 'Remove deletes the skill\'s files when you save.',
-    readOnlyRelease: 'Read-only in this release',
+    readOnly: 'Read-only',
+    notInBeta: 'Not in beta.1.',
     legendNew: 'New in this harness', legendMissing: 'Missing. Fix shows the change first.',
     missingNode: 'Missing. Needed.', newMark: 'New',
     emptyBody: 'Add agents, skills, tools and context from your Library.',
@@ -53,11 +54,11 @@ export const WORDS = deepFreeze({
     pickAPart: 'Pick a part to see its file, what it uses and where else it is used.',
     fileNote: 'Secrets in this file are hidden here. Bowerloom keeps what it reads on this computer.',
     previewAbout: 'This is a preview. It runs on sample data. Nothing is written to your disk.',
-    previewFull: 'In the full app, Start opens the interface for you.',
+    previewFull: 'In beta.1, Start does not open an engine.',
     welcomeLine: 'Bowerloom only reads. Nothing changes until you press Install.',
-    helpOne: 'A harness is a saved bundle of your AI helpers.', helpTwo: 'Build one from your agents and skills. Then run it in any interface you use.',
+    helpOne: 'A harness is a saved bundle of your AI helpers.', helpTwo: 'Build one from your agents and skills. Then run it in any engine you use.',
     helpThree: 'Pick a harness to see where it is installed. Open it in the builder to change what it holds.',
-    helpFour: 'Bowerloom only reads until you press Install. You can undo an install in Version history.',
+    helpFour: 'Bowerloom only reads until you press Install. You can undo an install in Install history.',
   },
   /** The list of the Preview mark's popover: each line at most 25 words. */
   notInPreview: ['The confirm sheet for a community skill', 'Real files', 'Real runs'],
@@ -68,6 +69,10 @@ export const KIND_NAME: Readonly<Record<PartKind, string>> = Object.freeze({ age
 /** The names of the kinds in the plural, for a tab and a group heading. */
 export const KIND_PLURAL: Readonly<Record<PartKind, string>> = Object.freeze({ agent: 'Agents', skill: 'Skills', tool: 'Tools', context: 'Context' });
 
+/** "Not in this preview." in the sample, "Not in beta.1." on the person's own folders: the note for a button that does nothing yet. */
+export const notYetWords = (real: boolean): string => (real ? WORDS.hint.notInBeta : WORDS.hint.previewOnly);
+/** "Show details for Writer": the name of a Show details button, which holds a file path. The shown words stay "Show details", so the name still contains them. */
+export const detailsName = (open: boolean, subject: string): string => `${open ? WORDS.label.hideDetails : WORDS.label.showDetails} for ${subject}`;
 /** "Missing skill", the line under the name of a missing part. */
 export const missingKind = (kind: PartKind): string => `Missing ${kind}`;
 /** "Writer names it. This harness does not hold it." */

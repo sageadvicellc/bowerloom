@@ -34,17 +34,17 @@ test('the Start sheet opens on the first project that holds the harness, with tw
   await expect(s.getByRole('checkbox', { name: /Codex/ })).toBeChecked();
   await expect(s).toContainText('Installed in this project.');
   await expect(s).toContainText('Out of date. You review the update before it runs.');
-  await expect(s).toContainText('Switched off. Turn it on in Interfaces.');
+  await expect(s).toContainText('Switched off. Turn it on in Engines.');
   await expect(s.getByRole('status')).toContainText('Compare is on. Bowerloom opens 2 runs with the same instruction in one folder, so run them one at a time if they write files.');
   await expect(s.getByRole('textbox', { name: 'Instruction' })).toHaveValue('Write a weekly report from the notes in Meetings. Check that every claim has a source.');
-  await expect(s).toContainText('Bowerloom opens each interface with your instruction. It never reads the chat.');
+  await expect(s).toContainText('Bowerloom opens each engine with your instruction. It never reads the chat.');
   await expect(s.getByRole('button', { name: 'Review and start 2 runs', exact: true })).toBeEnabled();
   await shot(p, 'S8-start-run');
   await p.keyboard.press('Escape');
   await expect(s).toHaveCount(0);
 });
 
-test('unticking an interface drops the notice and changes the count; an empty instruction or no tick disables Start', async () => {
+test('unticking an engine drops the notice and changes the count; an empty instruction or no tick disables Start', async () => {
   const s = await openStart();
   await s.getByRole('checkbox', { name: /Codex/ }).uncheck();
   await expect(s.getByRole('status')).toHaveCount(0);
@@ -99,7 +99,7 @@ test('start two runs from two ticked interfaces: Runs shows them Running, Compar
   const details = p.getByRole('complementary');
   await expect(details).toContainText('Claude Code run'); await expect(details).toContainText('Running'); await expect(details).toContainText(INSTRUCTION);
   await expect(details).toContainText('Weekly report crew in site-redesign'); await expect(details).toContainText('Today at');
-  await expect(details).toContainText('Bowerloom does not read or keep the chat. Read it in the interface window.');
+  await expect(details).toContainText('Bowerloom does not read or keep the chat. Read it in the engine window.');
   expect(await p.evaluate(() => typeof (window as unknown as { bowerloom?: unknown }).bowerloom)).toBe('undefined');
 
   // Picking the second run changes the details.
@@ -109,7 +109,7 @@ test('start two runs from two ticked interfaces: Runs shows them Running, Compar
 
   // "Bring window to the front" opens no window: it says so, and nothing changes.
   await details.getByRole('button', { name: 'Bring window to the front', exact: true }).click();
-  await expect(p.getByText('Not in this preview. The full app brings it forward.')).toBeVisible();
+  await expect(p.locator('[data-toast]')).toContainText('Not in beta.1.');
   await expect(rows.nth(0)).toContainText('Running');
 
   // Compare: both columns, the rating locked and the reason in words.
@@ -225,7 +225,7 @@ test('a note stops its timer while the pointer is on it, and starts again when t
   await fresh(p, '#prototype-v3/runs');
   await p.locator('.hr-row').first().getByRole('button', { name: /^Bring .* window to the front$/ }).click();
   const toast = p.locator('[data-toast]');
-  await expect(toast).toContainText('Not in this preview.');
+  await expect(toast).toContainText('Not in beta.1.');
   await toast.hover();
   await p.waitForTimeout(9_000);
   await expect(toast).toBeVisible();
