@@ -1,13 +1,13 @@
 ---
 title: "Install Bowerloom"
-description: "Install the beta from npm, read its version, and prepare your first project."
+description: "Read the requirements, learn when the CLI arrives, and adopt your first harness."
 section: "Start here"
 order: 1
 ---
 
-Bowerloom brings governance to the agent teams, skills, and prompts in your project. It shows a plan before every change. It writes only after you approve that exact plan. It pins every third-party skill to an exact version or commit. It accepts only MIT and Apache-2.0 skills. It copies text files and runs nothing. In this beta no worker starts.
+Bowerloom lets you define one harness and install it into Claude Code and Codex. It shows a plan before every change. It writes only after you approve that exact plan. It copies text files and runs no engine and no model.
 
-Install the `bowerloom` command from the npm beta stream. Then run one command in a project folder. Each step shows its plan first, and you approve each step.
+This page covers the command line. The [desktop app](/docs/app/) is the other way to use Bowerloom 0.8.0-beta.1. It is a beta, and it has its own install steps for the unsigned macOS app.
 
 Keep your project out of iCloud Drive folders. Project commands such as `bowerloom up`, `ls`, `status`, `apply`, and `skills sync` refuse a project under `~/Documents` or `~/Desktop` when Desktop and Documents sync is on, and under the `~/Library` cloud folders, with `PROJECT_IN_CLOUD_FOLDER`. The older forms that take an explicit path do not run this check. This beta reads pinned skills only from public sources. A store in a private GitHub repository needs `BOWERLOOM_GITHUB_TOKEN`, as [Where your items come from](/docs/guides/item-sources/#private-store) explains. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
 
@@ -16,7 +16,7 @@ Keep your project out of iCloud Drive folders. Project commands such as `bowerlo
 ## Ask your agent
 
 ```text
-Read the Bowerloom installation guide for 0.8.0-beta.1. Review the requirements and the install command with me. After installation, read the version and help. Ask me for the team name and the goal. Then run bowerloom up for my project and show me each plan. Wait for my exact approval of each step. Do not start workers, and do not edit AGENTS.md or CLAUDE.md.
+Read the Bowerloom installation guide for 0.8.0-beta.1. Review the requirements with me. Tell me whether the CLI is published yet. When it is installed, read the version and help. Then run bowerloom harness status in my project, and show me each plan before you write anything. Wait for my exact approval of each step. Do not start an engine, and do not edit AGENTS.md or CLAUDE.md by hand.
 ```
 
 ## Agent procedure
@@ -27,21 +27,11 @@ Read the Bowerloom installation guide for 0.8.0-beta.1. Review the requirements 
 
 You need Node `>=24.11.0 <25` and npm `11`. The Node range comes from the `engines` field of the product's `package.json`.
 
-Bowerloom is on npm as `bowerloom`, under the `beta` dist-tag. A dist-tag is a name that points at one published version. There is no stable release yet, so the `latest` tag also points at this beta. Install with `@beta` to stay on the beta stream.
+The CLI arrives on npm as `bowerloom`, under the `beta` dist-tag, when the beta publishes. A dist-tag is a name that points at one published version. This page shows no install command until then, because the package is not published yet. [Release notes](/docs/releases/) says when it is.
 
-Stop before you install. Show the human the install command below and what it does, and wait for the human's approval. If your agent runs in a sandbox that blocks writes outside the project, ask the human to run the install command in their own terminal. The command installs the beta globally:
+A colleague who was given a `bowerloom-0.8.0-beta.1.tgz` file can install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.8.0-beta.1.tgz`. Installing from a downloaded .tgz file gives the same dependency versions as the tested build. The file carries its dependencies, so it installs with no network and no npm cache. If your agent runs in a sandbox that blocks writes outside the project, ask the human to run the install command in their own terminal.
 
-```sh
-npm install -g bowerloom@beta
-bowerloom --version
-bowerloom --help
-```
-
-Updates are not automatic. To update, run `npm install -g bowerloom@beta` again. Do not use `npm update -g bowerloom` for this: for a global package, npm updates to the `latest` tag, not to `beta`, and it can downgrade a beta install.
-
-A colleague who was given a `bowerloom-0.8.0-beta.1.tgz` file can still install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.8.0-beta.1.tgz`. Installing from a downloaded .tgz file gives the same dependency versions as the tested build. The file carries its dependencies, so it installs with no network and no npm cache.
-
-npm reports the packages it added and exits 0. In the tests for this release, `bowerloom --version` printed this line:
+After installation, `bowerloom --version` prints this line:
 
 ```text
 Bowerloom 0.8.0-beta.1
@@ -54,7 +44,7 @@ Bowerloom 0.8.0-beta.1: open beta
 Setup does not start workers, grant runtime access, or authorize connected actions.
 ```
 
-If npm refuses with a permission error, do not use `sudo`. Set a user prefix for global packages instead:
+If npm refuses an install with a permission error, do not use `sudo`. Set a user prefix for global packages instead:
 
 ```sh
 mkdir -p "$HOME/.npm-global"
@@ -62,9 +52,9 @@ npm config set prefix "$HOME/.npm-global"
 export PATH="$HOME/.npm-global/bin:$PATH"
 ```
 
-Add the `export` line to your shell profile so that new terminals find `bowerloom`. Then run the install command again.
+Add the `export` line to your shell profile so that new terminals find `bowerloom`. Then install again.
 
-First-team setup does not need Docker. The separate local backend requires Docker Desktop and its own plan and approval.
+Harness commands and first-team setup do not need Docker. The separate local backend requires Docker Desktop and its own plan and approval. The separate local backend requires Docker Desktop and its own plan and approval.
 
 These guides use macOS arm64 and Node 24.11.0. Other host systems are outside this documented installation path.
 
@@ -77,14 +67,30 @@ After installation, read the version and help:
 ```sh
 bowerloom --version
 bowerloom --help
+bowerloom help harness
 bowerloom help advanced
 ```
 
-The short help lists the commands you use first. `bowerloom help <command>` shows the full help for one command. `bowerloom help advanced` lists every form, including the older request-file forms. [CLI reference](/docs/cli/) explains each command.
+The short help lists the commands you use first. `bowerloom help <command>` shows the full help for one command. `bowerloom help harness` lists the harness commands. `bowerloom help advanced` lists every form, including the older request-file forms. [CLI reference](/docs/cli/) explains each command.
 
 Use the documentation that matches your installed version.
 
-### Prepare a project with one command
+### Adopt your first harness
+
+Open a terminal in your project folder. Read the state, then adopt the engine files that the project already has:
+
+```sh
+bowerloom harness status
+bowerloom harness adopt
+```
+
+`adopt` prints a plan and its revision, and exits 3. It writes only `.bowerloom`. Show the plan to the human. After the human approves it, run the same command with `--approve <revision>`. Then run `bowerloom harness install` the same way. [Adopt and install a harness](/docs/guides/adopt-and-install/) shows every flag and every refusal.
+
+<a id="prepare-a-project-with-one-command"></a>
+
+### Prepare a team with `up` (0.7 flow)
+
+This flow comes from 0.7. It sets up a personal agent and a team, and it is described under Legacy 0.7 team setup. The harness commands above are the current path.
 
 If Claude Code runs with its sandbox on, run the `bowerloom` commands outside it. [Agent sandboxes](/docs/troubleshooting/#agent-sandboxes) shows how.
 
@@ -153,10 +159,10 @@ Do not use an unknown package or archive to get around an installation failure.
 
 ## Choose the next task
 
-- [Integrate your first team](/docs/learn/first-team/) walks through `up` step by step.
+- [Desktop app (beta)](/docs/app/) shows the same steps on screen.
+- [Adopt and install a harness](/docs/guides/adopt-and-install/) covers the command path.
 - [Add third-party skills](/docs/guides/add-skills/) pins skills from npm and GitHub, syncs them, and applies them.
-- [Create teams, skills, and prompts](/docs/guides/create-items/) covers the create commands.
-- If `.bowerloom/` already exists from an earlier setup, `up` continues from its state. [Revision](/docs/revision/) changes the goal or profile.
+- [Integrate your first team](/docs/learn/first-team/) walks through the 0.7 `up` flow step by step.
 
 Source development follows [Contribute from source](/docs/contributors/). [Installation troubleshooting](/docs/troubleshooting/#installation) covers failed or mismatched installations.
 

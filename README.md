@@ -16,6 +16,8 @@
 
 Bowerloom lets you define one harness and install it into Claude Code and Codex. A harness is the set of skills, agents, tools, rules, and context that surrounds a coding model. You keep one definition in a `.bowerloom` folder. Bowerloom writes the files of each engine from it.
 
+You can work in the command line or in the desktop app. The desktop app is a main part of Bowerloom 0.8.0-beta.1, next to the command line, and it is a beta.
+
 Every change shows a preview first. Bowerloom writes nothing until you approve the exact plan. It keeps a record of what it wrote, so you can see drift and undo an install. When an engine cannot carry a part of your harness, the preview says so, part by part. An installed copy is never more permissive than its source.
 
 [Main site](https://bowerloom.ai) · [Documentation](https://bowerloom.ai/docs/) · [Report a problem](#report-a-problem)
@@ -71,35 +73,35 @@ These guides use macOS arm64 and Node 24.11.0. Other host systems are outside th
 
 - Pinned skills come from public sources only. A store in a private GitHub repository needs `BOWERLOOM_GITHUB_TOKEN`. Only MIT and Apache-2.0 skills install.
 - Keep your project out of iCloud Drive folders. Project commands refuse a project in a cloud-synced folder with `PROJECT_IN_CLOUD_FOLDER`.
-- The desktop app is experimental. It is possibly not part of v1. Every feature in this README also works in the command line.
+- The desktop app is a beta. The Builder, the save step, and Save points exist only in the app. The adopt, install, drift, and remove steps work in both.
+- Beta.1 supports Claude Code and Codex. OpenCode, Pi, and DeepSeek Harness are preview engines. They install only with `BOWERLOOM_PREVIEW_ENGINES=1`.
+- The npm package is not published yet. The install command arrives when the beta publishes.
 - Apple did not sign this build. [Open the unsigned app](#open-the-unsigned-app) gives the steps to open it.
 
 ## Install Bowerloom
 
-Bowerloom is an open beta on npm as `bowerloom`, under the `beta` dist-tag. It is open source under the MIT license. Install it with Node `>=24.11.0 <25` and npm `11`.
+The CLI arrives on npm as `bowerloom`, under the `beta` dist-tag, when the beta publishes. This README shows no install command until then. Bowerloom is open source under the MIT license. It needs Node `>=24.11.0 <25` and npm `11`.
 
-```sh
-npm install -g bowerloom@beta
-bowerloom --version
-bowerloom --help
-```
-
-Updates are not automatic. To update, run `npm install -g bowerloom@beta` again. Do not use `npm update -g bowerloom`, because npm then updates to the `latest` tag and can downgrade a beta. If you have a release file, install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.8.0-beta.1.tgz`.
+If you have a release file, install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.8.0-beta.1.tgz`. Then run `bowerloom --version` and `bowerloom --help`.
 
 If npm refuses with a permission error, do not use `sudo`. Set a user prefix for global packages instead. The [install guide](https://bowerloom.ai/docs/start/) shows the steps.
+
+## The desktop app
+
+The desktop app is a beta, and it is a main part of this release. It does the adopt, install, and remove steps on screen, after a preview and an approval. It also has the Builder, which shows a harness as a graph of agents and skills, and the save step, which saves a change to the harness after you review and approve it. Each save keeps a save point. Go back returns the harness to a save point, and Set aside starts a new record of save points. Notes and the ready-made Notes keeper kit let agents read a folder of notes. The [desktop app guide](https://bowerloom.ai/docs/app/) covers each screen.
 
 ## Open the unsigned app
 
 The desktop app is open source. Apple did not sign or notarize it. The first time you open it, macOS blocks it and shows a warning. You can read the source in this repository before you open it.
 
-1. Move `Bowerloom.app` to your Applications folder.
+1. Download the app from the GitHub release page of Bowerloom 0.8.0-beta.1. Move `Bowerloom.app` to your Applications folder.
 2. Open the app once. macOS shows a warning. Close the warning.
 3. Open the Apple menu, then System Settings.
 4. Click Privacy & Security, then scroll down to Security.
 5. Click Open Anyway next to the message about Bowerloom. The button is available for about an hour after step 2.
 6. If macOS asks for your login password, enter it. Then click Open.
 
-After this, the app opens like any other app. If you do not want to allow an unsigned app, use the command line. It gives you every feature.
+After this, the app opens like any other app. If you do not want to allow an unsigned app, use the command line. It covers the adopt, install, drift, and remove steps.
 
 ## Report a problem
 

@@ -1,9 +1,11 @@
 ---
 title: "Revise an installed setup"
-description: "Review a goal or profile change before replacing managed files."
-section: "Guides"
+description: "Legacy 0.7. Review a goal or profile change before replacing managed files."
+section: "Legacy 0.7 team setup"
 order: 8
 ---
+
+> **Legacy (0.7).** This page describes the team setup flow of Bowerloom 0.7. Its commands are still in the CLI help of 0.8.0-beta.1. The current path is [Adopt and install a harness](/docs/guides/adopt-and-install/).
 
 Revision changes an installed setup through another exact plan. It retains private history and preserves unrelated project files.
 

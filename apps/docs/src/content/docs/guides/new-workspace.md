@@ -1,9 +1,11 @@
 ---
 title: "Prepare a separate workspace"
-description: "Use an optional new workspace without replacing an existing project."
-section: "Guides"
+description: "Legacy 0.7. Use an optional new workspace without replacing an existing project."
+section: "Legacy 0.7 team setup"
 order: 7.2
 ---
+
+> **Legacy (0.7).** This page describes the team setup flow of Bowerloom 0.7. Its commands are still in the CLI help of 0.8.0-beta.1. The current path is [Adopt and install a harness](/docs/guides/adopt-and-install/).
 
 Use this optional guide when you want a separate unused workspace. For your current project, use [Integrate your first team](/docs/learn/first-team/) instead. This example prepares the fixed Engineer specification named “Clean install trial.” It ends with a file review and starts no workers.
 

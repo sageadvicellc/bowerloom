@@ -1,9 +1,11 @@
 ---
 title: "Beta guide"
-description: "Integrate a workflow with your project. Review the setup, install the beta, choose a startup path, and read the beta limits."
-section: "Help"
+description: "Legacy 0.7. Integrate a workflow with your project. Review the setup, install the beta, choose a startup path, and read the beta limits."
+section: "Legacy 0.7 team setup"
 order: 28.5
 ---
+
+> **Legacy (0.7).** This page describes the team setup flow of Bowerloom 0.7. Its commands are still in the CLI help of 0.8.0-beta.1. The current path is [Adopt and install a harness](/docs/guides/adopt-and-install/).
 
 Use the [setup builder](/#build) to describe the work you already do and the decisions you retain. Your personal agent helps map that process into roles and handoffs, then compares it with a fixed Engineer, Founder, or Research specification. The setup builder prepares text locally. It does not connect your account or start workers.
 
@@ -19,21 +21,7 @@ Roles, skills, handoffs, and review expectations stay in files that follow you. 
 
 Read the [documentation](/docs/) and the [README](https://github.com/sageadvicellc/bowerloom/blob/main/README.md) before you install anything. [Install Bowerloom](/docs/start/) has the full steps.
 
-<!-- release:install:start -->
-Install the beta CLI with Node `>=24.11.0 <25` and npm `11`.
-
-```sh
-npm install -g bowerloom@beta
-bowerloom --version
-bowerloom --help
-```
-
-First-team setup does not need Docker. The separate local backend requires Docker Desktop and its own plan and approval.
-
-These guides use macOS arm64 and Node 24.11.0. Other host systems are outside this documented installation path.
-<!-- release:install:end -->
-
-There is no stable release yet, so the latest tag also points at this beta. Install with @beta to stay on the beta stream. Updates are not automatic. To update, run `npm install -g bowerloom@beta` again. Do not use `npm update -g bowerloom` for this: for a global package, npm updates to the `latest` tag, not to `beta`, and it can downgrade a beta install. If your agent runs in a sandbox that blocks writes outside the project, run the install in your own terminal.
+The CLI needs Node `>=24.11.0 <25` and npm `11`. It arrives on npm under the `beta` dist-tag when the beta publishes. This page shows no install command until then. These guides use macOS arm64 and Node 24.11.0. Other host systems are outside this documented installation path.
 
 ## Choose your startup path
 

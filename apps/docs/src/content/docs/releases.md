@@ -24,7 +24,11 @@ This release brings one setup for two engines. You keep one harness definition i
 - The preview reports each part of a harness as `exact`, `translated`, `weakened`, or `absent`, per engine. A weaker rule needs your approval, line by line.
 - `bowerloom report` makes a diagnostic bundle that you can read before you open an issue. `bowerloom events` shows the newest events of the local event log.
 - The event log lives on your computer and makes no network calls.
-- The desktop app is experimental, and Apple did not sign it. The README gives the steps to open it.
+- Beta.1 supports Claude Code and Codex. OpenCode, Pi, and DeepSeek Harness are preview engines. They install only with `BOWERLOOM_PREVIEW_ENGINES=1`.
+- Install writes a Codex permission profile for the path rules and sandbox rules of a harness. [Codex and Claude Code](/docs/harnesses/#the-codex-permission-profile) explains it.
+- The desktop app is a main part of this release, next to the command line, and it is a beta. It has the Builder, the save step, Save points, Go back, and Set aside. Apple did not sign it. [Desktop app (beta)](/docs/app/) gives the steps to open it.
+- Notes and the Notes keeper kit let agents read a folder of notes, and add a ready-made agent that looks after it. [Notes and the Notes keeper](/docs/guides/notes/) explains them.
+- The npm package is not published yet. The install command arrives when the beta publishes.
 
 ## 0.7.0-beta.3
 

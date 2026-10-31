@@ -28,7 +28,7 @@ bowerloom help <command>
 bowerloom help advanced
 ```
 
-`bowerloom --help` lists the commands you use first. `bowerloom help <command>` shows the full help of one command. These commands have it: `up`, `ls`, `status`, `store`, `use`, `unuse`, `lock`, and `receipt`. So do `cache`, `skills`, `apply`, `context`, `team`, `skill`, `prompt`, and `init`. `bowerloom help slice` and `bowerloom help folder` show the help of `context`. `bowerloom help advanced` lists every form, including the request-file forms and the plumbing commands below. A command followed by `--help` shows the same text as `help <command>`.
+`bowerloom --help` lists the commands you use first. `bowerloom help <command>` shows the full help of one command. These commands have it: `up`, `ls`, `status`, `store`, `use`, `unuse`, `lock`, and `receipt`. So do `cache`, `skills`, `apply`, `context`, `team`, `skill`, `prompt`, and `init`. `bowerloom help harness` shows the harness commands, which the short help leaves out. `bowerloom help slice` and `bowerloom help folder` show the help of `context`. `bowerloom help advanced` lists every form, including the request-file forms and the plumbing commands below. A command followed by `--help` shows the same text as `help <command>`.
 
 Bare `bowerloom` prints the short help. An unknown command prints `Unknown command <word>. Run bowerloom help.` The help heading reads `open beta`.
 
@@ -258,9 +258,54 @@ Links disclose one selected definition between reviewed installed local roots. A
 
 A link grants no execution authority. Changed source, recipient, expiry, or file binding requires inspection and renewed approval. Do not share raw receipts.
 
-<a id="harness"></a>
+## Harness
 
-## Synthetic harness configuration
+These commands adopt the engine files of a folder into one harness, and install it for each engine. [Adopt and install a harness](/docs/guides/adopt-and-install/) walks through them. `bowerloom help harness` prints the same forms. They are not in the short help.
+
+```text
+bowerloom harness status [--dir <absolute-folder>] [--json]
+bowerloom harness adopt [--engine <id>[@<version>]]... [--pick <conflict>=<variant>]... [--rename <conflict>:<variant>=<id>]... [--acknowledge <id>]... [--every-engine guardrails|hooks|mcp]... [--confirm <part/id>]... [--approve <revision>] [--json]
+bowerloom harness install [--engine <id>]... [--reconcile accept-agents|merge|keep-both] [--write-claude-md] [--pi-trust-saved] [--approve <revision>] [--json]
+bowerloom harness accept <line-key> [--json]
+bowerloom harness merge [--approve <revision>] [--json]
+bowerloom harness drift [--check] [--json]
+bowerloom harness remove [--approve <revision>] [--json]
+bowerloom harness recover [--adoption] [--keep <path>]... [--restore-mode <path>]... [--record-mode <path>]... [--approve <revision>] [--json]
+```
+
+Every command takes `--dir <absolute-folder>`. The default is the working folder. A flag that takes a value reads the next word, and `--flag=value` is not accepted.
+
+| Command | What it does |
+| --- | --- |
+| `status` | Reads the folder and the install record, and changes nothing. It reports the harness, the engines, the install, preview engines, saved approvals, and any run that stopped part way. |
+| `adopt` | Reads the engine files of the folder and writes only `.bowerloom`. It changes no engine file. |
+| `install` | Writes the engine files from `.bowerloom`. A rule that an engine carries more weakly than the harness says is refused, and each refused line has a key. |
+| `accept` | Saves your approval of one refused line, named by its key `<part>/<entry>[.<field>]@<engine>:<hash12>`. Install again afterward. |
+| `merge` | Moves the text of `CLAUDE.md` into `.bowerloom/instructions/AGENTS.md`. `CLAUDE.md` does not change until the next install. |
+| `drift` | Lists the files that Bowerloom wrote and that changed since. With `--check` it fails when a file changed, when `CLAUDE.md` does not follow `AGENTS.md`, or when nothing is installed. |
+| `remove` | Puts back every file that install replaced, and deletes the files that install created. |
+| `recover` | Finishes or takes back a run that stopped part way. `--keep`, `--restore-mode`, and `--record-mode` settle changed files and modes. `--adoption` settles an adoption or a merge. |
+
+Flags:
+
+- `--json` prints the plan or the result as JSON. A write with `--json` and no `--approve` prints its plan and exits 3.
+- `--approve <revision>` applies the plan with that revision. `status`, `accept`, and `drift` take no `--approve`.
+- `--engine <id>` names an engine: `claude-code`, `codex`, `opencode`, `pi`, or `deepseek-harness`. `adopt` also takes `@<version>`. Name each engine once.
+- `--pick`, `--rename`, and `--acknowledge` answer the conflicts and the entries that adoption does not read. `--confirm <part/id>` confirms an item that needs it. `--every-engine` takes `guardrails`, `hooks`, or `mcp`, and each part once.
+- `--reconcile`, `--write-claude-md`, and `--pi-trust-saved` settle `AGENTS.md` and `CLAUDE.md`, and one Pi setting, during `install`.
+- `--check` belongs to `drift`.
+
+This beta supports Claude Code and Codex. OpenCode, Pi, and DeepSeek Harness are preview engines. An install to one needs `BOWERLOOM_PREVIEW_ENGINES=1`. An install with no `--engine` skips them. Adopt, drift, status, and remove work for all five.
+
+An adoption or a merge that stopped blocks install, remove, and accept until `harness recover --adoption` settles it. A save of the harness that stopped part way in the desktop app blocks install, remove, accept, adopt, and merge until the app finishes it.
+
+Any harness command first moves the install record of an older Bowerloom app to the shared record. The command line and the desktop app share that record. It sits in the private state folder, `$XDG_STATE_HOME/bowerloom` when `XDG_STATE_HOME` is set, else `~/.local/state/bowerloom`.
+
+No harness command runs an engine or a model. [Errors](/docs/reference/errors/#harness-refusals) lists the refusal codes.
+
+### Synthetic forms from 0.7
+
+The 0.7 forms of `harness` all take `--synthetic`. They process selected fixture files and are not the 0.8 path. `bowerloom help advanced` lists them.
 
 ```text
 bowerloom harness import --harness codex|claude --file <absolute-fixture-file> --synthetic
@@ -274,7 +319,7 @@ bowerloom harness recover --state <private-directory> --synthetic --approve <rec
 
 Import and plan read separately reviewed synthetic inputs. Approved projection and removal change the selected fixture. Projection writes the selected files into that fixture configuration. Recovery requires its recorded operation approval.
 
-The --synthetic flag is an assertion. If a file is live or unreviewed, stop. Read [Codex and Claude Code](/docs/harnesses/).
+The `--synthetic` flag is an assertion. It cannot prove that a file is synthetic. If a file is live or unreviewed, stop. Read [Codex and Claude Code](/docs/harnesses/).
 
 <a id="mcp"></a>
 

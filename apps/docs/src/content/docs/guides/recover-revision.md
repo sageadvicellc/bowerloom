@@ -1,9 +1,11 @@
 ---
 title: "Recover an interrupted revision"
-description: "Preserve the transaction and choose its supported resume or rollback action."
-section: "Guides"
+description: "Legacy 0.7. Preserve the transaction and choose its supported resume or rollback action."
+section: "Legacy 0.7 team setup"
 order: 9
 ---
+
+> **Legacy (0.7).** This page describes the team setup flow of Bowerloom 0.7. Its commands are still in the CLI help of 0.8.0-beta.1. The current path is [Adopt and install a harness](/docs/guides/adopt-and-install/).
 
 Recovery resolves an interrupted revision. It uses the recorded transaction and its original approval.
 

@@ -1,9 +1,11 @@
 ---
 title: "Learn Bowerloom"
-description: "Map your existing workflow, integrate its specification, and review the resulting files."
-section: "Learn"
+description: "Legacy 0.7. Map your existing workflow, integrate its specification, and review the resulting files."
+section: "Legacy 0.7 team setup"
 order: 2
 ---
+
+> **Legacy (0.7).** This page describes the team setup flow of Bowerloom 0.7. Its commands are still in the CLI help of 0.8.0-beta.1. The current path is [Adopt and install a harness](/docs/guides/adopt-and-install/).
 
 Use this path to integrate a team specification with a project you already use. Begin with the process you perform manually or with one agent, then describe its inputs, outputs, decisions, and handoffs. Your personal agent helps compare that process with the fixed Engineer, Founder, or Research profile. You review the proposed files before their installation. The walkthrough ends with an inspected specification and grants no execution authority.
 
