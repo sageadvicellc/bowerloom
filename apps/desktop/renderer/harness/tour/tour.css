@@ -1,0 +1,40 @@
+/*
+ * The guided tour of the harness-first window, ported from the home tour (renderer/home/tour/tour.css) under its own class names, so the two never meet:
+ * a dim layer with a lit hole around the target (a box-shadow, so the hole follows the target) and one small card next to it. It sits over the sheets
+ * (z-index 70) and the note (80). The hole and the card move with the existing tour token, and not at all when the person asked for less motion.
+ */
+[data-home] .hxt-layer { position: fixed; inset: 0; z-index: 1000; overflow: hidden; }
+[data-home] .hxt-block { position: absolute; inset: 0; }
+/* A waiting step: the layer lets the pointer through, four blocks keep the rest of the window out, and the lit hole is open to a press and a drag. */
+[data-home] .hxt-layer[data-wait] { pointer-events: none; }
+[data-home] .hxt-layer[data-wait] .hxt-block { display: none; }
+[data-home] .hxt-edge { position: absolute; pointer-events: auto; }
+[data-home] .hxt-layer[data-wait] .hxt-pop { pointer-events: auto; }
+[data-home] .hxt-dim { position: absolute; inset: 0; background: var(--hm-scrim); display: none; }
+[data-home] .hxt-layer[data-missing] .hxt-dim { display: block; }
+[data-home] .hxt-layer[data-missing] .hxt-spot { display: none; }
+[data-home] .hxt-spot {
+  position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; border-radius: var(--hm-radius);
+  box-shadow: 0 0 0 3px var(--hm-ring), 0 0 0 100vmax var(--hm-scrim);
+  transition: left var(--motion-home-tour-spot-ms, 0ms) var(--motion-home-tour-spot-ease, ease), top var(--motion-home-tour-spot-ms, 0ms) var(--motion-home-tour-spot-ease, ease), width var(--motion-home-tour-spot-ms, 0ms) var(--motion-home-tour-spot-ease, ease), height var(--motion-home-tour-spot-ms, 0ms) var(--motion-home-tour-spot-ease, ease);
+}
+[data-home] .hxt-layer[data-first] .hxt-spot, [data-home] .hxt-layer[data-first] .hxt-pop { transition: none; }
+[data-home] .hxt-pop {
+  position: absolute; left: 0; top: 0; box-sizing: border-box; width: min(21rem, calc(100vw - 1.5rem));
+  display: flex; flex-direction: column; gap: var(--hm-space-4); padding: var(--hm-space-5);
+  background: var(--surface); color: var(--text); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow-lift);
+  transition: left var(--motion-home-tour-spot-ms, 0ms) var(--motion-home-tour-spot-ease, ease), top var(--motion-home-tour-spot-ms, 0ms) var(--motion-home-tour-spot-ease, ease);
+}
+[data-home] .hxt-pop[data-centered] { width: min(24rem, calc(100vw - 1.5rem)); }
+[data-home] .hxt-text { margin: 0; text-wrap: balance; font-size: var(--hm-text-section); line-height: 1.35; font-weight: 600; }
+[data-home] .hxt-layer[data-wait] .hxt-pop { gap: var(--hm-space-3); }
+[data-home] .hxt-hint { margin: calc(var(--hm-space-2) * -1) 0 0; font-size: var(--hm-text-base); font-weight: 600; color: var(--accent-strong); }
+[data-home] .hxt-list { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: var(--hm-space-2); font-size: var(--hm-text-base); line-height: 1.45; }
+[data-home] .hxt-foot { margin: 0; font-size: var(--hm-text-base); color: var(--text-muted); }
+[data-home] .hxt-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--hm-space-3); }
+[data-home] .hxt-actions { display: flex; align-items: center; gap: var(--hm-space-2); }
+[data-home] .hxt-actions .hxt-skip { margin-right: auto; }
+[data-home] .hxt-actions .kit-button[data-variant="primary"] { min-width: 5rem; }
+@media (prefers-reduced-motion: reduce) {
+  [data-home] .hxt-spot, [data-home] .hxt-pop { transition: none !important; }
+}
