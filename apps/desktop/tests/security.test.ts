@@ -150,7 +150,7 @@ test('the bundle adds no inline style element and no eval, and no graph library 
 test('a made-up launch gets no bridge, no calls, no outside link and a temporary data folder; the others get the one bridge', () => {
   const main = strip(read('main/main.ts'));
   assert.match(main, /const launch = launchOf\(argv\);/);
-  assert.match(main, /if \(launch\.temporaryData\) \{\s*const choice = chooseUserData\(userDataArg\(argv\), tmpdir\(\)\)/);
+  assert.match(main, /if \(launch\.temporaryData\) \{\s*try \{\s*const choice = chooseUserData\(userDataArg\(argv\), tmpdir\(\)\)/);
   assert.match(main, /webPreferences\(launch\.preload === 'real' \? join\(root, 'preload-real\.cjs'\) : undefined, app\.isPackaged\)/);
   assert.match(main, /if \(launch\.realReader\) \{[\s\S]*?registerRealIpc\(/);
   assert.match(main, /if \(launch\.engineCalls\) \{\s*const engine = registerEngineIpc\(/);
