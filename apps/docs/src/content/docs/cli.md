@@ -28,7 +28,7 @@ bowerloom help <command>
 bowerloom help advanced
 ```
 
-`bowerloom --help` lists the commands you use first. `bowerloom help <command>` shows the full help of one command. These commands have it: `up`, `ls`, `status`, `store`, `use`, `unuse`, `lock`, and `receipt`. So do `cache`, `skills`, `apply`, `context`, `team`, `skill`, `prompt`, and `init`. `bowerloom help slice` and `bowerloom help folder` show the help of `context`. `bowerloom help advanced` lists every form, including the request-file forms and the plumbing commands below. A command followed by `--help` shows the same text as `help <command>`.
+`bowerloom --help` lists the commands you use first. `bowerloom help <command>` shows the full help of one command. These commands have it: `up`, `ls`, `status`, `store`, `use`, `unuse`, `lock`, and `receipt`. So do `cache`, `skills`, `apply`, `context`, `team`, `skill`, `prompt`, `init`, `report`, and `events`. `bowerloom help slice` and `bowerloom help folder` show the help of `context`. `bowerloom help advanced` lists every form, including the request-file forms and the plumbing commands below. A command followed by `--help` shows the same text as `help <command>`.
 
 Bare `bowerloom` prints the short help. An unknown command prints `Unknown command <word>. Run bowerloom help.` The help heading reads `open beta`.
 
