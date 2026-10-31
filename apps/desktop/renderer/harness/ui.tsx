@@ -28,7 +28,11 @@ export type EngineSheetMode = 'install' | 'remove' | 'recover';
 export interface AdoptState { readonly open: boolean; readonly folderId: string | null }
 export interface ProjectSheetState { readonly open: boolean; readonly folderId: string | null; readonly mode: EngineSheetMode; readonly keep: readonly string[] }
 /** The save sheet: one folder's own harness, edited as a draft until Save, with its save points (option C). */
-export interface SaveSheetState { readonly open: boolean; readonly folderId: string | null; /** True when the sheet starts the guided tour as the edit opens. */ readonly tour: boolean }
+export interface SaveSheetState {
+  readonly open: boolean; readonly folderId: string | null; /** True when the sheet starts the guided tour as the edit opens. */ readonly tour: boolean;
+  /** The step it opens on: the folder step, or the review of the folder's draft (the Builder's Save), or of a go-back to `restore` (its Go back). */
+  readonly start: 'folder' | 'review'; readonly restore: string | null;
+}
 export interface ToastState { readonly id: number; readonly text: string; readonly action: { readonly label: string; readonly run: () => void } | null }
 
 export interface Ui {
@@ -53,7 +57,7 @@ export interface Ui {
   closeProject(): void;
   /** The save sheet of a folder's own harness. It opens in either launch: on the person's own folders it plans read-only and writes only after approval. */
   readonly saveSheet: SaveSheetState;
-  openSave(request?: { folderId?: string | null; tour?: boolean }): void;
+  openSave(request?: { folderId?: string | null; tour?: boolean; start?: 'folder' | 'review'; restore?: string | null }): void;
   closeSave(): void;
   /** The harness the Harness list has selected, or null. */
   readonly pickedHarnessId: string | null;
@@ -85,7 +89,7 @@ export function UiProvider({ children }: { children?: ReactNode }): ReactElement
   const [picked, setPicked] = useState<string | null>(null);
   const [adopt, setAdopt] = useState<AdoptState>({ open: false, folderId: null });
   const [projectSheet, setProjectSheet] = useState<ProjectSheetState>({ open: false, folderId: null, mode: 'install', keep: [] });
-  const [saveSheet, setSaveSheet] = useState<SaveSheetState>({ open: false, folderId: null, tour: false });
+  const [saveSheet, setSaveSheet] = useState<SaveSheetState>({ open: false, folderId: null, tour: false, start: 'folder', restore: null });
   const [toast, setToast] = useState<ToastState | null>(null);
   const [layers, setLayers] = useState(0);
   const counter = useRef(0), timer = useRef<number | null>(null), held = useRef(false), shown = useRef(false);
@@ -134,7 +138,7 @@ export function UiProvider({ children }: { children?: ReactNode }): ReactElement
     openProject: (request = {}) => setProjectSheet({ open: true, folderId: request.folderId ?? null, mode: request.mode ?? 'install', keep: request.keep ?? [] }),
     closeProject: () => setProjectSheet(current => ({ ...current, open: false })),
     saveSheet,
-    openSave: (request = {}) => setSaveSheet({ open: true, folderId: request.folderId ?? null, tour: request.tour ?? false }),
+    openSave: (request = {}) => setSaveSheet({ open: true, folderId: request.folderId ?? null, tour: request.tour ?? false, start: request.start ?? 'folder', restore: request.restore ?? null }),
     closeSave: () => setSaveSheet(current => ({ ...current, open: false })),
     pickedHarnessId: picked, pickHarness: setPicked,
     replaceWorld: next => {
