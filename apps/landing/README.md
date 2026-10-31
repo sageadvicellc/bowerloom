@@ -24,7 +24,9 @@ The download button links to the releases page on GitHub and names no file.
 
 ## Screenshots
 
-The real 0.8 screenshots arrive after the launch change lands. Each slot uses one placeholder, `src/ScreenshotSlot.tsx`. `src/screenshots.ts` lists every slot, its caption, and the screen it needs. The frame is `aria-hidden`, so the caption alone carries the meaning for a screen reader. To fill a slot, swap the frame for the image. Keep the caption.
+Five screenshots fill the slots. `src/screenshots.ts` lists each slot: its caption, its alt text, its pixel size, and the screen it shows. `src/ScreenshotSlot.tsx` puts a light and a dark image in the page, and `src/page.css` shows the one that matches the theme. The files are `public/shots/<id>-light.webp` and `<id>-dark.webp`. The alt text says what each picture shows, and the caption stays beside it.
+
+To take them again after a change to a screen, run `npm run shots --prefix apps/landing`. It builds the root packages, runs `apps/desktop/e2e/landing-shots.spec.ts` hidden, and rewrites the files. The app starts the default way on a made-up home, so no real folder, name, or path is on screen. The spec fails if a picture would show this computer's user name, home folder, host name, or temp folder. Read each new picture before you commit it. The command line shot runs the built CLI on the made-up project and draws its real output in a plain terminal frame. Change `apps/desktop/e2e/landing-shots-fixture.ts` to change the project the shots show. Then update the alt text and the size in `src/screenshots.ts` to match, and the test checks the sizes.
 
 ## Visual system
 
