@@ -32,8 +32,7 @@ const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.j
 protocol.registerSchemesAsPrivileged([{ scheme: APP_SCHEME, privileges: { standard: true, secure: true } }]);
 
 const argv = process.argv.slice(1);
-// The clickable prototype (Bowerloom 0.8): the same page with #prototype added, and no IPC at all.
-// The home app prototype (--prototype-v2) is treated the same way: no preload, no IPC, a temporary data folder, and no external links.
+// The home app preview (--prototype-v2): no preload, no IPC, a temporary data folder, and no external links.
 const prototypeV2 = argv.includes('--prototype-v2');
 // The read-only reader of a real setup (--prototype-real) keeps every prototype lock below and adds one thing: a preload with three named calls (main/real-ipc.ts).
 const prototypeReal = argv.includes('--prototype-real');
@@ -44,8 +43,8 @@ const prototypeV3 = argv.includes('--prototype-v3');
 const prototypeV3Real = argv.includes('--prototype-v3-real');
 // Beta.1: the e2e specs that install to OpenCode start the sample launch with this argument. Never the launch on the person's own folders, never the environment.
 const samplePreviewEngines = prototypeV3 && !prototypeV3Real && argv.includes(SAMPLE_PREVIEW_FLAG);
-const prototypeMode = argv.includes('--prototype') || prototypeV2 || prototypeReal || prototypeV3 || prototypeV3Real;
-// The prototype writes nothing to the real app data, whoever starts it. (The adopt and install sheets of --prototype-v3-real are the one exception, and
+const prototypeMode = prototypeV2 || prototypeReal || prototypeV3 || prototypeV3Real;
+// A preview writes nothing to the real app data, whoever starts it. (The adopt and install sheets of --prototype-v3-real are the one exception, and
 // not in app data: after a person approves a plan and says yes in main's own dialog, they write in the folder the person chose and in Bowerloom's private
 // state folder, through the packages; see main/engine-service.ts.) It keeps its own temporary data folder (or the one it was given, when that
 // is one of its own), and removes it when the app quits. The launcher does the same; this keeps the promise when the app is started without it.
@@ -97,7 +96,7 @@ function createWindow(): void {
   window = new BrowserWindow({
     ...windowOptions(prototypeV2 || prototypeReal || prototypeV3 || prototypeV3Real), useContentSize: true, show: false,
     backgroundColor: '#f6f5f0',
-    // The prototype page gets no bridge at all: no preload, so no `window.bowerloom`, and nothing to call even if a channel were open.
+    // A preview page without a real reader gets no bridge at all: no preload, so no `window.bowerloom`, and nothing to call even if a channel were open.
     webPreferences: prototypeReal || prototypeV3Real ? webPreferences(join(root, 'preload-real.cjs'), app.isPackaged) : webPreferences(prototypeMode ? undefined : join(root, 'preload.cjs'), app.isPackaged),
   });
   // A real mode without its bridge must stop here, not open as the sample with a window that looks as if it could read: a failed preload ends in the same box as any other failed start.
@@ -109,7 +108,6 @@ function createWindow(): void {
   if (prototypeReal) window.webContents.loadURL(`${indexUrl}${REAL_HASH}`).catch(startupFailed);
   else if (prototypeV3 || prototypeV3Real) window.loadURL(`${indexUrl}${prototypeV3Real ? '#prototype-v3-real' : '#prototype-v3'}`).catch(startupFailed);
   else if (prototypeV2) window.loadURL(`${indexUrl}#prototype-v2`).catch(startupFailed);
-  else if (prototypeMode) window.loadURL(`${indexUrl}#prototype`).catch(startupFailed);
   else window.loadURL(indexUrl).catch(startupFailed);
 }
 

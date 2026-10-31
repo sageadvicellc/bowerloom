@@ -138,14 +138,14 @@ test('the libraries add no inline style element: the bundler removes the two tha
   const css = read('renderer/graph.css'); assert.match(css, /force-graph-container canvas/); assert.match(css, /float-tooltip-kap/);
 });
 
-// ---- The prototypes (--prototype, --prototype-v2 and the harness-first --prototype-v3) share one list: every property of the first holds for the others.
-const PROTOTYPE_FLAGS = ['--prototype', '--prototype-v2', '--prototype-v3'] as const;
+// ---- The previews (--prototype-v2 and the harness-first --prototype-v3) share one list: every property of the first holds for the others.
+const PROTOTYPE_FLAGS = ['--prototype-v2', '--prototype-v3'] as const;
 
 test('each prototype flag puts the window in the same locked mode: no preload, no IPC, no outside link, no real data folder', () => {
   const main = strip(read('main/main.ts'));
   for (const flag of PROTOTYPE_FLAGS) assert.match(main, new RegExp(`argv\\.includes\\('${flag}'\\)`), flag);
   // One switch carries all four promises, so the second flag cannot have a different one.
-  assert.match(main, /const prototypeMode = argv\.includes\('--prototype'\) \|\| prototypeV2 \|\| prototypeReal \|\| prototypeV3 \|\| prototypeV3Real;/);
+  assert.match(main, /const prototypeMode = prototypeV2 \|\| prototypeReal \|\| prototypeV3 \|\| prototypeV3Real;/);
   assert.match(main, /webPreferences\(prototypeMode \? undefined : join\(root, 'preload\.cjs'\), app\.isPackaged\)/);
   assert.match(main, /isAllowedSender\(prototypeMode,/);
   assert.equal([...main.matchAll(/&& !prototypeMode\) void controller\.openLink|!prototypeMode\) void controller\.openLink/g)].length, 2, 'both link paths ask prototypeMode first');
@@ -155,7 +155,7 @@ test('each prototype flag puts the window in the same locked mode: no preload, n
 });
 
 test('the page of the home app is the app\'s own page: navigation inside it is allowed, and nothing else leaves', () => {
-  for (const hash of ['#prototype', '#prototype-v2', '#prototype-v2/kit', '#prototype-v3', '#prototype-v3-real', '#prototype-v3-real/choose', '#prototype-v3/builder/harness-weekly-report-crew/list']) assert.equal(decideNavigation(`${APP_INDEX}${hash}`, APP_INDEX), 'allow-app', hash);
+  for (const hash of ['#prototype-v2', '#prototype-v2/kit', '#prototype-v3', '#prototype-v3-real', '#prototype-v3-real/choose', '#prototype-v3/builder/harness-weekly-report-crew/list']) assert.equal(decideNavigation(`${APP_INDEX}${hash}`, APP_INDEX), 'allow-app', hash);
   assert.equal(decideNavigation('https://example.com/#prototype-v2', APP_INDEX), 'block');
   const preload = strip(read('preload/preload.ts'));
   assert.doesNotMatch(preload, /prototype/i);

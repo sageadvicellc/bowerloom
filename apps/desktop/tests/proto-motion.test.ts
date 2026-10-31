@@ -88,10 +88,3 @@ test('with reduce motion on, the hover duration and every travel are 0, and the 
   assert.equal(props['--motion-setup-reveal-travel'], '0px'); assert.equal(props['--motion-versions-travel'], '0px');
   assert.equal(props['--motion-ease-out'], MOTION.ease.out);
 });
-
-test('the reveal and the new-result animation use the travel tokens, not a distance of their own', () => {
-  const read = (file: string): string => readFileSync(join(DESKTOP, 'renderer', 'proto', file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-  assert.match(read('setup-screen.css'), /@keyframes sx-reveal \{ from \{[^}]*translateY\(var\(--motion-setup-reveal-travel, 0px\)\)/);
-  assert.match(read('versions-screen.css'), /@keyframes vx-in \{ from \{[^}]*translateY\(var\(--motion-versions-travel, 0px\)\)/);
-  assert.doesNotMatch(read('setup-screen.css') + read('versions-screen.css'), /translateY\(\d/);
-});

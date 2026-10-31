@@ -9,13 +9,12 @@ import { ICONS, h, icon } from './dom.js';
 import { applyMotionTokens } from './motion-tokens.js';
 import { mapHost, renderMap } from './map/mount.js';
 import { disposeKnowledge, knowledgeHost } from './graph/knowledge.js';
-import { mountPrototype } from './proto/mount.js';
 import { isHomeHash, mountHome } from './home/mount.js';
 import { isHarnessHash, mountHarness } from './harness/mount.js';
 
 declare global { interface Window { bowerloom: ViewerApi } }
-// The prototype page has no bridge (main.ts leaves the preload out there), so `window.bowerloom` is missing then. This stand-in keeps the top of
-// this file from failing, and any call on it is refused. The prototype is mounted at the bottom and never calls it.
+// The home app and the harness-first preview have no bridge (main.ts leaves the preload out there), so `window.bowerloom` is missing then. This stand-in keeps the top of
+// this file from failing, and any call on it is refused. Those pages are mounted at the bottom and never call it.
 const api: ViewerApi = window.bowerloom ?? new Proxy({} as ViewerApi, { get: () => () => Promise.reject(new Error('This page has no bridge.')) });
 
 type Screen = Link['screen'];
@@ -419,7 +418,6 @@ async function reload(): Promise<void> {
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
 applyMotionTokens();
 window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', () => applyMotionTokens());
-// The clickable prototype of Bowerloom 0.8 opens on the address #prototype. It keeps everything in memory and skips the normal start.
 // The 0.8 home app opens on #prototype-v2 (and its kit gallery on #prototype-v2/kit). It shares the in-memory sample and has no bridge either.
 // The harness-first preview opens on #prototype-v3 (launch mode --prototype-v3), the same way: no bridge, in memory.
-if (location.hash === '#prototype') { applyTheme(); mountPrototype(root); } else if (isHarnessHash(location.hash)) { applyTheme(); mountHarness(root); } else if (isHomeHash(location.hash)) { applyTheme(); mountHome(root); } else void reload();
+if (isHarnessHash(location.hash)) { applyTheme(); mountHarness(root); } else if (isHomeHash(location.hash)) { applyTheme(); mountHome(root); } else void reload();

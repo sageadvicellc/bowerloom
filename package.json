@@ -64,7 +64,6 @@
     "desktop:dev": "node apps/desktop/tools/run.mjs --sample-data",
     "desktop:build": "npm --prefix apps/desktop run build",
     "desktop:test": "npm --prefix apps/desktop run test",
-    "desktop:prototype": "node apps/desktop/tools/run.mjs --prototype",
     "desktop:prototype:v2": "node apps/desktop/tools/run.mjs --prototype-v2",
     "desktop:prototype:v3": "node apps/desktop/tools/run.mjs --prototype-v3",
     "desktop:prototype:real": "node apps/desktop/tools/run.mjs --prototype-real",
