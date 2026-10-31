@@ -251,6 +251,29 @@ for (const file of Object.keys(result.metafile.inputs)) {
 process.stdout.write(JSON.stringify({ files, inputs: Object.keys(result.metafile.inputs), outputs: result.outputFiles.map(f => f.text) }));
 `;
 
+const TRANSFORM_CHILD = `
+import { transformSync } from 'esbuild';
+const loaders = { '.ts': 'ts', '.mts': 'ts', '.cts': 'ts', '.tsx': 'tsx', '.jsx': 'jsx', '.js': 'js', '.mjs': 'js', '.cjs': 'js' };
+const chunks = []; for await (const chunk of process.stdin) chunks.push(chunk);
+const { sources } = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+const out = {};
+for (const [name, text] of Object.entries(sources)) {
+  const loader = loaders[name.slice(name.lastIndexOf('.'))];
+  try { out[name] = { js: transformSync(text, { loader, format: 'esm', jsx: 'automatic', sourcefile: name, tsconfigRaw: { compilerOptions: { verbatimModuleSyntax: true } } }).code }; } catch (error) { out[name] = { error: String(error.message ?? error) }; }
+}
+process.stdout.write(JSON.stringify(out));
+`;
+
+/**
+ * Each source (name to text) as plain JavaScript (types gone, JSX turned into calls, comments gone), by one esbuild child process for the whole set. A source that does not parse
+ * comes back with `error` and no `js`: the caller must treat that as a failure, never as a clean file. The name's extension picks the loader (.ts .mts .cts .tsx .jsx .js .mjs .cjs).
+ */
+export function plainJs(sources: Readonly<Record<string, string>>, desktop: string): Record<string, { readonly js?: string; readonly error?: string }> {
+  const ran = spawnSync(process.execPath, ['--input-type=module', '-e', TRANSFORM_CHILD], { cwd: desktop, input: JSON.stringify({ sources }), encoding: 'utf8', timeout: 120000, maxBuffer: 256 * 1024 * 1024 });
+  if (ran.status !== 0) throw new Error(`The transform for the static check failed: ${ran.stderr || String(ran.error)}`);
+  return JSON.parse(ran.stdout) as Record<string, { js?: string; error?: string }>;
+}
+
 export interface Bundle { readonly files: readonly { readonly abs: string; readonly bytes: number; readonly js: string; readonly externals: readonly string[]; readonly kinds: readonly string[] }[]; readonly inputs: readonly string[]; readonly outputs: readonly string[] }
 
 /** Builds the entry files in memory (all imports followed; packages left out) and hands back every file of the graph as plain JavaScript. Throws if the build fails. */
