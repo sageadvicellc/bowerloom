@@ -1,5 +1,5 @@
 /**
- * Journey 1 (spec section 12): "Cold start and adopt". Hanna installs with the one terminal command, approves a scan, ticks places, and sees everything as one graph.
+ * Journey 1 (spec section 12): "Cold start and adopt". The person installs with the one terminal command, approves a scan, ticks places, and sees everything as one graph.
  *
  * It runs on the made-up home (tools/made-up-home.ts). Two steps are NOT run here:
  *   - "installs with the one terminal command" is outside the app (it is the terminal), so a test of the app cannot run it. `e2e/packaged-app.spec.ts` starts a built app when one is there.

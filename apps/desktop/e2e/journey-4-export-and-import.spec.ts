@@ -1,5 +1,5 @@
 /**
- * Journey 4 (spec section 12): "Export and import". Hanna exports a harness, imports it into a second Bowerloom, reads the preview, and reads the list of secrets to add.
+ * Journey 4 (spec section 12): "Export and import". The person exports a harness, imports it into a second Bowerloom, reads the preview, and reads the list of secrets to add.
  *
  * NOT BUILT in beta.1. The harness-first app has no export and no import: no screen, no button, no call between the window and the main process (the calls are listed in
  * shared/engine/types.ts: folders, adoption, projection, removal, recovery, merge, save, versions, restore, set aside, notes). The old home app had them, and it was removed. What is left of it is

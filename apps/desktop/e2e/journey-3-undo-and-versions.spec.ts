@@ -1,5 +1,5 @@
 /**
- * Journey 3 (spec section 12): "Undo and versions". Hanna makes a bad edit, opens the history, compares two versions, and restores one.
+ * Journey 3 (spec section 12): "Undo and versions". The person makes a bad edit, opens the history, compares two versions, and restores one.
  *
  * It runs on the made-up home (tools/made-up-home.ts), project `rope-yard`. The history is the Builder's "Save points" drawer. The step "compares two versions" is NOT BUILT in beta.1:
  * the drawer lists each save point with "Go back" and nothing else, and the only preview is the review of a go-back, which lists the files that would change against the folder as it is

@@ -1,12 +1,12 @@
 /**
  * Journey 5 (spec section 12): "Notes and the wiki keeper", in its two runs, on the made-up home (tools/made-up-home.ts, real git from the machine, no engine and no model).
  *
- * Create: Hanna follows the tour with no wiki. She creates the starter wiki and builds the wiki keeper harness from the kit. She saves it to her interfaces. In one interface, she asks an agent
+ * Create: the person follows the tour with no wiki. They create the starter wiki and builds the wiki keeper harness from the kit. They save it to their engines. In one engine, they ask an agent
  * to add a source and to write a refinement report. Each action makes one commit, and the report run changes no page outside the reports folder.
  *   Runs here: the tour, the starter wiki (one commit, the kit's own bytes), the keeper build, the save, the install to Claude Code and Codex.
  *   NEEDS LIVE APPROVAL (a test.fixme below): asking an agent to add a source and to write a report. It needs a live engine session and a model, which this lane must not start. The skills' own
  *   text is checked on disk where it was installed (one commit, a clean tree first), and `tools/test/wiki-keeper-kit.test.mjs` runs the skills' git commands without a model. Neither is the live run.
- * Link: Hanna links a wiki that already has a git history. The dashboard page count matches a count made from the files, and its last-commit date matches `git log`. The test reads both itself.
+ * Link: the person links a wiki that already has a git history. The dashboard page count matches a count made from the files, and its last-commit date matches `git log`. The test reads both itself.
  */
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
@@ -201,7 +201,7 @@ test('Journey 5, link: a wiki with a git history is linked; the dashboard page c
   h = await startApp(home, '', { freshTour: true });
   const p = h.page;
 
-  await test.step('5.7 link her own wiki: it already has a history, so no offer is made and nothing is asked or written', async () => {
+  await test.step('5.7 link their own wiki: it already has a history, so no offer is made and nothing is asked or written', async () => {
     await toNotesStep(p);
     await h.pick(wiki);
     await p.getByRole('button', { name: 'Use my notes', exact: true }).click();

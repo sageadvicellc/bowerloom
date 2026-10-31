@@ -1,5 +1,5 @@
 /**
- * Journey 2 (spec section 12): "Build and project". Hanna opens a folder's harness and drags a skill to an agent. She saves, then installs. The result shows in Claude Code and Codex.
+ * Journey 2 (spec section 12): "Build and project". The person opens a folder's harness and drags a skill to an agent. They save, then install. The result shows in Claude Code and Codex.
  * After a restart, she goes back to the save point before the change.
  *
  * It runs on the made-up home (tools/made-up-home.ts), project `rope-yard`, which already holds a harness for both programs. "The result shows in Claude Code and Codex" is checked on disk:

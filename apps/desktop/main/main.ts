@@ -155,6 +155,8 @@ app.whenReady().then(async () => {
   session.defaultSession.setDevicePermissionHandler(() => false);
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(process.platform === 'darwin' ? [{ role: 'appMenu' as const }] : []),
+    // The File menu holds Close Window (Cmd+W) on a Mac and Quit elsewhere. Closing goes through the same unsaved-changes question as Cmd+Q.
+    { role: 'fileMenu' as const },
     { role: 'editMenu' as const },
     { label: 'View', submenu: [{ role: 'zoomIn' as const }, { role: 'zoomOut' as const }, { role: 'resetZoom' as const }, { type: 'separator' as const }, { role: 'togglefullscreen' as const }] },
     { role: 'windowMenu' as const },
