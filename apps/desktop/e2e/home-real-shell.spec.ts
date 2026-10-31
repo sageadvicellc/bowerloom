@@ -6,9 +6,8 @@
  * The checks that hold at every step: the made-up key value is nowhere in the page, no name the sample uses is on the screen, nothing is "undefined", the text stays in budget and at 14 px or more,
  * and the folder is the same, byte for byte, before and after. With HOME_I4_SHOTS set to a folder, it saves screenshots at 1280 by 800, light and dark.
  */
-import { _electron as electron, expect, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
-import electronPath from 'electron';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -22,6 +21,7 @@ import { SHELL_AGENTS, SHELL_SECRET, buildShellHome } from '../tests/fixtures-re
 import type { ShellHome } from '../tests/fixtures-real/shell-home.js';
 import { fingerprint } from '../tests/fixtures-real/fingerprint.js';
 import { desktop, launchHome, resize, setLook, skipTour } from './home-page.js';
+import { launchElectron } from './hidden.js';
 import { removeTempDirs, tempDir } from './temp-dirs.js';
 import { animationsDone } from './page-wait.js';
 
@@ -65,7 +65,7 @@ test.beforeAll(async () => {
   OWN = await ownWords(fixture);
   before = fingerprint(fixture.root);
   const userData = tempDir('bowerloom-e2e-');
-  app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--home-real', `--user-data-dir=${userData}`], env: { ...process.env, HOME: fixture.home, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
+  app = await launchElectron(desktop, ['--home-real', `--user-data-dir=${userData}`], { ...process.env, HOME: fixture.home, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' });
   // The system folder chooser cannot be driven from here: the main process gets one that answers with the folder the test sets in `globalThis.__pick`.
   await app.evaluate(({ dialog }) => {
     (globalThis as unknown as { __pick: string | null }).__pick = null;

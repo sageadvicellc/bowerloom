@@ -3,14 +3,13 @@
  * One launch per spec file. The specs run one at a time on this machine: take the lock before a run (`until mkdir /tmp/bowerloom-test.lock 2>/dev/null; do sleep 5; done`) and release it after.
  * Set HARNESS_SHOTS to a folder outside the repo to also save screenshots.
  */
-import { _electron as electron } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
-import electronPath from 'electron';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TOUR_SEEN_KEY } from '../renderer/harness/tour/seen.js';
+import { launchElectron } from './hidden.js';
 import { animationsDone } from './page-wait.js';
 import { tempDir } from './temp-dirs.js';
 
@@ -34,7 +33,7 @@ export async function launchHarness({ samplePreviewEngines = false, freshTour = 
   const built = spawnSync(process.execPath, [join(desktop, 'tools', 'bundle.mjs')], { cwd: desktop, encoding: 'utf8' });
   if (built.status !== 0 || !existsSync(join(desktop, 'dist', 'main.mjs'))) throw new Error(`The bundle did not build.\n${built.stdout}\n${built.stderr}`);
   const userData = tempDir('bowerloom-e2e-');
-  const app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--sample', ...(samplePreviewEngines ? ['--sample-preview-engines'] : []), `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
+  const app = await launchElectron(desktop, ['--sample', ...(samplePreviewEngines ? ['--sample-preview-engines'] : []), `--user-data-dir=${userData}`], { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' });
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
   await page.waitForSelector('[data-home]');

@@ -17,7 +17,7 @@ import { reportProblem, showUsageLog } from './diagnostics-dialogs.js';
 import type { DialogDeps } from './diagnostics-dialogs.js';
 import { execFileRunner } from '../../../packages/diagnostics/src/index.js';
 import { withSamplePreviewEngines } from '../shared/engine/sample-switch.js';
-import { windowOptions } from './window-options.js';
+import { leaveDock, revealWindow, windowOptions } from './window-options.js';
 import { APP_HOST, APP_INDEX, APP_SCHEME, allowRequest, chooseUserData, decideNavigation, makeTempDataDir, removeAndReport, resolveAppFile, userDataArg, webPreferences } from './security.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -29,6 +29,8 @@ protocol.registerSchemesAsPrivileged([{ scheme: APP_SCHEME, privileges: { standa
 const argv = process.argv.slice(1);
 // What this start is: the app on the person's own folders (no flag), the sample (--sample), or one of the two home app dev flags. See main/launch.ts.
 const launch = launchOf(argv);
+// A test start with --e2e-hidden shows no window and no Dock icon (main/window-options.ts). It changes nothing else.
+leaveDock(app, argv);
 // The app on the person's own folders keeps Electron's normal data folder, which lasts between starts. A made-up launch (the sample, the home app) writes nothing to the real app data,
 // whoever starts it: it keeps its own temporary data folder (or the one it was given, when that is one of its own), and removes it when the app quits. The launcher does the same;
 // this keeps the promise when the app is started without it. Not caught: a hard kill (SIGKILL, a crash, a power cut) leaves the folder, and the browser engine writes a few small
@@ -76,7 +78,7 @@ function createWindow(): void {
   });
   // A bridge that does not load must stop here, not open as a window that looks as if it could read: a failed preload ends in the same box as any other failed start.
   if (launch.preload === 'real') window.webContents.on('preload-error', (_event, _path, error) => startupFailed(error));
-  window.once('ready-to-show', () => window?.show());
+  window.once('ready-to-show', () => { if (window !== null) revealWindow(window, argv); });
   // The app is called "Bowerloom" from the first moment: the page title it loads with never reaches the title bar.
   window.on('page-title-updated', event => event.preventDefault());
   window.on('closed', () => { window = null; });

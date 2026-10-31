@@ -4,15 +4,15 @@
  * cannot be read and the sheet's own next steps (M1), no bridge at all, a second visit that reads the base and the notes again (CM1, CM2), a refusal that
  * reaches the person from a tick (M3), a save that fails and keeps the draft, and a set-aside that works while the save points cannot be read again (L7).
  */
-import { _electron as electron, expect, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
-import electronPath from 'electron';
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { desktop } from './harness-page.js';
 import type { DefinitionView, FolderInfo } from '../shared/engine/types.js';
+import { extraWindowOptions, launchElectron } from './hidden.js';
 import { removeTempDirs, tempDir } from './temp-dirs.js';
 
 let app: ElectronApplication, page: Page, html: string;
@@ -28,7 +28,7 @@ test.beforeAll(async () => {
   html = join(out, 'sheets.html');
   writeFileSync(html, `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="${pathToFileURL(join(desktop, 'dist/renderer/tokens.css')).href}"><link rel="stylesheet" href="${pathToFileURL(join(out, 'sheets.css')).href}"></head><body><script src="${pathToFileURL(join(out, 'sheets.js')).href}"></script></body></html>`);
   const userData = tempDir('bowerloom-e2e-builder-component-');
-  app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--sample', `--user-data-dir=${userData}`] });
+  app = await launchElectron(desktop, ['--sample', `--user-data-dir=${userData}`]);
   await app.firstWindow();
 });
 test.afterAll(async () => { await app?.close(); removeTempDirs(); });
@@ -60,7 +60,7 @@ const READS = { folders: [WEEKLY], planSave: ok(view()), listVersions: ok([]), n
 async function open(hash: string, auto: Record<string, unknown> | null, bridge = true): Promise<Page> {
   const before = app.windows().length;
   const query = `?hash=${encodeURIComponent(hash)}${auto === null ? '' : `&auto=${encodeURIComponent(JSON.stringify(auto))}`}${bridge ? '' : '&bridge=none'}`;
-  await app.evaluate(({ BrowserWindow }, url) => { const w = new BrowserWindow({ width: 1280, height: 800, show: true, webPreferences: { contextIsolation: true, sandbox: true, partition: 'builder-component-test' } }); void w.loadURL(url); }, `${pathToFileURL(html).href}${query}`);
+  await app.evaluate(({ BrowserWindow }, { url, options }) => { const w = new BrowserWindow({ width: 1280, height: 800, ...options, webPreferences: { contextIsolation: true, sandbox: true, partition: 'builder-component-test' } }); void w.loadURL(url); }, { url: `${pathToFileURL(html).href}${query}`, options: extraWindowOptions() });
   await expect.poll(() => app.windows().length).toBe(before + 1);
   page = app.windows()[before]!;
   await page.waitForFunction(() => (window as unknown as { __ready?: boolean }).__ready === true);

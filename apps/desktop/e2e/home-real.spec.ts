@@ -4,9 +4,8 @@
  * main process by one that answers with the fixture's work folder), and checks the page: no key value anywhere in its text, text drawn as text, the bridge has three calls, and
  * the fixture is the same, byte for byte, before and after. With HOME_REAL_SHOTS set to a folder, it saves screenshots of the bare list at 1280 by 800, light and dark.
  */
-import { _electron as electron, expect, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
-import electronPath from 'electron';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -14,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { FAKE_SECRET, FAKE_TOKEN_IN_TEXT, buildFixture } from '../tests/fixtures-real/build.js';
 import type { Fixture } from '../tests/fixtures-real/build.js';
 import { fingerprint } from '../tests/fixtures-real/fingerprint.js';
+import { launchElectron } from './hidden.js';
 import { removeTempDirs, tempDir } from './temp-dirs.js';
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -29,11 +29,7 @@ test.beforeAll(async () => {
   fixture = buildFixture();
   before = fingerprint(fixture.root);
   const userData = tempDir('bowerloom-e2e-');
-  app = await electron.launch({
-    executablePath: electronPath as unknown as string,
-    args: [desktop, '--home-real', `--user-data-dir=${userData}`],
-    env: { ...process.env, HOME: fixture.home, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' },
-  });
+  app = await launchElectron(desktop, ['--home-real', `--user-data-dir=${userData}`], { ...process.env, HOME: fixture.home, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' });
   // The system folder chooser cannot be driven from here; the main process gets one that answers with the fixture's work folder.
   await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [folder] })) as unknown as typeof dialog.showOpenDialog; }, fixture.work);
   page = await app.firstWindow();
