@@ -3,11 +3,10 @@
  * it"). First use is the first time the edit of a folder's agents opens, the notes-and-keeper flow, with no Notes keeper saved yet. Once it has started it
  * is "seen", and it does not start on its own again; Help replays it at any time.
  *
- * Where "seen" is kept: the window has no preference file of its own, and in this launch (--sample and the default launch) its app data is a
- * temporary folder that main removes when the app quits, so nothing kept there outlives the launch anyway. The harness window writes nothing to storage on
- * disk on purpose (tests/harness-boundary.test.ts), so "seen" goes in the narrowest per-viewer store: this window's `sessionStorage`. It is not held in
- * memory only: the browser engine keeps it in the temporary app data folder of this launch, so it survives a reload of the page and goes with that folder
- * when the app quits. The tour therefore starts once per launch. This file is the one place in the window that touches it. Every read and write is
+ * Where "seen" is kept: the window has no preference file of its own, and the harness window writes nothing to storage on disk on purpose (tests/harness-boundary.test.ts), so
+ * "seen" goes in the narrowest per-viewer store: this window's `sessionStorage`. It belongs to the window's session. It survives a reload of the page and does not outlive
+ * the window, so the tour starts once for each time the app is opened, on the person's own folders and in the sample alike. (The browser engine keeps its profile in the
+ * app data folder: the lasting one for the app on the person's own folders, a temporary one for the sample. Nothing here depends on which.) This file is the one place in the window that touches it. Every read and write is
  * wrapped: a storage that throws, or none at all, never stops the window. A read that throws counts as "not seen" and is told with console.warn; "seen"
  * is then held in memory, so the tour still never repeats in this window.
  */

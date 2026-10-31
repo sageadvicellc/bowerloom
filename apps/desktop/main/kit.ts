@@ -1,6 +1,6 @@
 /**
  * The ready-made kits that ship with Bowerloom (0.8 spec, section 6.9), as main reads them. A kit is a read-only library in the repository's `kits/`
- * folder; electron-builder copies that folder into the app's resources, the way it copies `sample-data` (apps/desktop/package.json, `extraResources`).
+ * folder; electron-builder copies that folder into the app's resources (apps/desktop/package.json, `extraResources`).
  *  - In development the kit is read from the repository; in a packaged build from `<resources>/kits`.
  *  - Every byte a save or a starter wiki writes from a kit is read here, from the kit's own files. The window names a kit by id and sends no text.
  *  - The kit is validated at every load: `kit.json` as strict JSON with exactly its five fields and a pinned version; the agent and the skills through the
