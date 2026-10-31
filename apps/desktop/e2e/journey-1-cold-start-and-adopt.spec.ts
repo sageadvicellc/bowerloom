@@ -1,0 +1,249 @@
+/**
+ * Journey 1 (spec section 12): "Cold start and adopt". Hanna installs with the one terminal command, approves a scan, ticks places, and sees everything as one graph.
+ *
+ * It runs on the made-up home (tools/made-up-home.ts). Two steps are NOT run here:
+ *   - "installs with the one terminal command" is outside the app (it is the terminal), so a test of the app cannot run it. `e2e/packaged-app.spec.ts` starts a built app when one is there.
+ *   - "sees everything as one graph" is NOT BUILT in beta.1 as the spec words it: the Builder draws the graph of one folder's harness (agents and skills), never the home and every project together.
+ * What runs: the scan in its two questions, the ticks, the read, and "adopt by copy" of two projects, which is how the scan's finds reach the graph of a folder. Every count and every byte is
+ * read from the files by the test.
+ */
+import { expect, test } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { loadDefinition } from '../../../packages/harness-definition/src/index.js';
+import { bundleOnce } from './harness-real-page.js';
+import type { RealHarness } from './harness-real-page.js';
+import { adoptSheet, newMadeUpHome, openInBuilder, readTree, startApp, without } from './journey-support.js';
+import { removeTempDirs } from './temp-dirs.js';
+
+let h: RealHarness;
+test.beforeAll(() => { test.setTimeout(240_000); bundleOnce(); });
+test.afterAll(() => { removeTempDirs(); });
+test.afterEach(async () => { await h?.app.close().catch(() => undefined); });
+
+// ---- what the files say, counted by the test --------------------------------------------------------------------------------
+
+const names = (dir: string, keep: (name: string) => boolean = () => true): string[] => (existsSync(dir) ? readdirSync(dir).filter(keep).sort() : []);
+const json = (file: string): Record<string, unknown> => (existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown> : {});
+const hookCount = (file: string): number => {
+  const hooks = json(file).hooks as Record<string, { hooks?: unknown[] }[]> | undefined;
+  return hooks === undefined ? 0 : Object.values(hooks).flat().reduce((n, group) => n + (group.hooks?.length ?? 0), 0);
+};
+const serverCount = (file: string): number => Object.keys((json(file).mcpServers as Record<string, unknown> | undefined) ?? {}).length;
+const tomlServers = (file: string): number => (existsSync(file) ? (readFileSync(file, 'utf8').match(/^\[mcp_servers\.[^\]]+\]/gm) ?? []).length : 0);
+const skillDirs = (dir: string): number => names(dir, n => existsSync(join(dir, n, 'SKILL.md'))).length;
+/** Markdown files at the top of a project folder, outside hidden names: the pages the scan calls notes. */
+const topNotes = (dir: string): number => names(dir, n => n.endsWith('.md')).length;
+
+const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
+/** The words of a place's count line: agents, skills, tools (servers and hooks are told apart), and notes; a kind with none is left out. */
+function line(c: { agent: number; skill: number; tool: number; hook: number; note: number }): string {
+  const parts = [['agent', c.agent], ['skill', c.skill], ['tool', c.tool], ['hook', c.hook], ['note', c.note]] as const;
+  const words = parts.filter(([, n]) => n > 0).map(([w, n]) => plural(n, w));
+  return words.length === 0 ? 'Nothing here' : words.join(', ');
+}
+
+test('Journey 1, scan: Find my files, the two questions, the ticks, and the read; every count matches the files and no file changes', async () => {
+  test.setTimeout(240_000);
+  const home = newMadeUpHome(), root = home.home;
+  const before = readTree(root, { skip: ['.local', '.git'] });
+  h = await startApp(home, '', { freshTour: true });
+  const p: Page = h.page;
+  const card = (name: string | RegExp) => p.locator('.hxf-card', { hasText: name });
+
+  await test.step('1.2 approve the scan: question one lists the places with counts from the files, and the paths show only behind Show details', async () => {
+    await expect(p.getByRole('heading', { level: 1, name: 'Bowerloom', exact: true })).toBeVisible();
+    await p.getByRole('button', { name: 'Find my files', exact: true }).click();
+    await expect(p.getByRole('heading', { level: 1, name: 'Found 2 places' })).toBeVisible();
+    const claude = { agent: names(join(root, '.claude', 'agents')).length, skill: skillDirs(join(root, '.claude', 'skills')), tool: serverCount(join(root, '.claude.json')), hook: hookCount(join(root, '.claude', 'settings.json')), note: 0 };
+    const codex = { agent: names(join(root, '.codex', 'agents')).length, skill: skillDirs(join(root, '.codex', 'skills')), tool: tomlServers(join(root, '.codex', 'config.toml')), hook: 0, note: 0 };
+    await expect(card('Claude Code at home')).toContainText(line(claude));
+    await expect(card('Codex at home')).toContainText(line(codex));
+    expect(await p.locator('body').innerText()).not.toContain(root);
+    await expect(p.locator('[data-details]')).toHaveCount(0);
+    await p.getByRole('button', { name: 'Show details', exact: true }).click();
+    await expect(p.locator('[data-details]').first()).toContainText('~');
+    await p.getByRole('button', { name: 'Hide details', exact: true }).click();
+  });
+
+  await test.step('1.3a add the folder of projects: each project is a place with counts from its files', async () => {
+    await h.pick(home.projects);
+    await p.getByRole('button', { name: 'Add a folder', exact: true }).click();
+    await expect(p.getByRole('heading', { level: 1, name: 'Found 6 places' })).toBeVisible();
+    const project = (name: string): string => {
+      const dir = join(home.projects, name);
+      return line({
+        agent: names(join(dir, '.claude', 'agents')).length + names(join(dir, '.codex', 'agents')).length,
+        skill: skillDirs(join(dir, '.claude', 'skills')) + skillDirs(join(dir, '.agents', 'skills')) + skillDirs(join(dir, '.codex', 'skills')) + skillDirs(join(dir, '.bowerloom', 'skills')),
+        tool: serverCount(join(dir, '.mcp.json')) + tomlServers(join(dir, '.codex', 'config.toml')),
+        hook: hookCount(join(dir, '.claude', 'settings.json')), note: topNotes(dir),
+      });
+    };
+    for (const name of ['ferry-schedule', 'kite-workshop', 'rope-yard']) await expect(card(name).first(), name).toContainText(project(name));
+  });
+
+  await test.step('1.3b tick places: untick one, and the second question names exactly the ticked folders', async () => {
+    await card('kite-workshop').getByRole('checkbox').uncheck();
+    await p.getByRole('button', { name: 'Looks right', exact: true }).click();
+    await expect(p.getByRole('heading', { level: 1, name: 'Read what is inside?' })).toBeVisible();
+    const consent = p.locator('[data-consent]');
+    await expect(consent.locator('li[data-place]')).toHaveCount(4);
+    await expect(consent).toContainText('ferry-schedule');
+    await expect(consent).toContainText('rope-yard');
+    await expect(consent).not.toContainText('kite-workshop');
+    await expect(consent).toContainText('Your files are not changed.');
+    expect(await p.locator('body').innerText()).not.toContain(root);
+    // Escape goes back without reading.
+    await p.keyboard.press('Escape');
+    await expect(p.getByRole('heading', { level: 1, name: 'Found 6 places' })).toBeVisible();
+    await expect(card('kite-workshop').getByRole('checkbox')).not.toBeChecked();
+    await p.getByRole('button', { name: 'Looks right', exact: true }).click();
+  });
+
+  await test.step('1.3c read the ticked places: the list holds the ticked sources only, counts agree, and the Bowerloom folder is counted as left out', async () => {
+    await p.getByRole('button', { name: 'Yes, read them', exact: true }).click();
+    await expect(p.locator('[data-count]')).toContainText('parts in all', { timeout: 20_000 });
+    await expect(p.getByRole('heading', { level: 1, name: /^Read \d+ sources?\. Make a harness from each\.$/ })).toBeVisible();
+    const body = await p.locator('body').innerText();
+    for (const present of ['Your Claude Code folder', 'Your Codex folder', 'ferry-schedule (Claude Code)', 'ferry-schedule (Codex)']) expect(body, present).toContain(present);
+    expect(body, 'the unticked project is not read').not.toContain('kite-workshop');
+    // The cards' own numbers add up to the count line.
+    const cards = await p.locator('.hxf-card').allInnerTexts();
+    const sum = cards.reduce((n, text) => n + [...text.matchAll(/(\d+) (?:agents?|skills?|tools?|contexts?)/g)].reduce((m, x) => m + Number(x[1]), 0), 0);
+    const stated = /(\d+) sources?, (\d+) parts in all/.exec(await p.locator('[data-count]').innerText())!;
+    expect(Number(stated[1])).toBe(cards.length);
+    expect(Number(stated[2])).toBe(sum);
+    // rope-yard already holds a harness: its skills are counted as left out, by the files' own count.
+    await expect(p.locator('[data-read-notes]')).toContainText(`${skillDirs(join(home.rope, '.bowerloom', 'skills'))} things in a Bowerloom folder are not shown.`);
+  });
+
+  await test.step('1.4 the scan changed no file of the home', async () => {
+    expect(readTree(root, { skip: ['.local', '.git'] })).toEqual(before);
+  });
+});
+
+test.fixme('Journey 1, step 1.1: install with the one terminal command (outside the app: a terminal, not a screen; not run in pass 1)', () => {
+  // The spec starts the journey with an install from a terminal. The app has no part in it, and a test of the app must not open a terminal. The packaged app has its own spec (e2e/packaged-app.spec.ts).
+});
+
+test.fixme('Journey 1, step 1.5: see everything as one graph (NOT BUILT in beta.1: the Builder draws one folder\'s agents and skills, not the home and every project together)', () => {
+  // Beta.1 keeps one harness for each folder (spec 6.3, decided 2026-10-30), and the Harnesses list shows the scan's finds as rows. The next test shows the graph of one adopted folder.
+});
+
+test('Journey 1, adopt by copy: a project is adopted with the choices and approvals the plan asks for, the original files stay as they were, and the folder\'s graph shows what was adopted', async () => {
+  test.setTimeout(240_000);
+  const home = newMadeUpHome(), dir = home.ferry;
+  const original = readTree(dir);
+  h = await startApp(home, 'projects');
+  const p = h.page, s = adoptSheet(p);
+
+  await test.step('1.4a pick the project: the review lists what was found and where, and writes nothing', async () => {
+    await p.getByRole('button', { name: 'From a folder', exact: true }).click();
+    await h.pick(dir);
+    await s.getByRole('button', { name: 'Choose a folder', exact: true }).click();
+    await expect(s.locator('.hxi-card', { hasText: 'ferry-schedule' })).toHaveAttribute('aria-pressed', 'true');
+    await s.getByRole('button', { name: 'Next', exact: true }).click();
+    await expect(s.getByText(/^Read \d+ files in ~\/Projects\/ferry-schedule\. Nothing is written yet\.$/)).toBeVisible();
+    await expect(s).not.toContainText(home.home);
+    expect(readTree(dir), 'nothing is written while the person reads').toEqual(original);
+  });
+
+  await test.step('1.4b a skill found in two places with the same text is one item that lists both places', async () => {
+    const item = s.locator('[data-item="skills/timetable-check"]');
+    await expect(item).toHaveCount(1);
+    await expect(item).toContainText('.agents/skills/timetable-check');
+    await expect(item).toContainText('.claude/skills/timetable-check');
+    expect(original['.agents/skills/timetable-check/SKILL.md']).toBe(original['.claude/skills/timetable-check/SKILL.md']);
+  });
+
+  await test.step('1.4c two instruction files that differ are shown side by side, and the person picks one', async () => {
+    const conflict = s.locator('[data-conflict="system-prompt/AGENTS.md"]');
+    await expect(conflict).toContainText('AGENTS.md');
+    await expect(conflict).toContainText('CLAUDE.md');
+    expect(original['AGENTS.md']).not.toBe(original['CLAUDE.md']);
+    await conflict.getByRole('radio', { name: /^AGENTS\.md/ }).click();
+    await expect(conflict).toContainText('Using AGENTS.md.');
+  });
+
+  await test.step('1.4d what adopt leaves out is listed with its reason (a finding: a Codex agent with multi-line instructions is not adopted)', async () => {
+    // FINDING. A Codex agent file written the usual way, with `developer_instructions = """ ... """`, is outside the subset of TOML that adoption reads (TOML_UNSUPPORTED). It is listed, not lost, but the agent is not adopted.
+    const left = s.locator('[data-unmapped=".codex/agents/signal-reader.toml"]');
+    await expect(left).toHaveCount(1);
+    await expect(left).toContainText('TOML_UNSUPPORTED');
+  });
+
+  let written: string[];
+  await test.step('1.4e approve the hook and the tool (each runs a command or sends a value), then write: only the harness folder changes', async () => {
+    await s.getByRole('button', { name: 'Next', exact: true }).click();
+    const approvals = s.locator('[data-section="approvals"] [data-tick]');
+    await expect(approvals).toHaveCount(2);
+    const write = s.getByRole('button', { name: /^Write \d+ files$/ });
+    await expect(write).toBeDisabled();
+    for (const a of await approvals.all()) await a.getByRole('checkbox').check();
+    await expect(write).toBeEnabled();
+    expect(readTree(dir), 'the ticks write nothing').toEqual(original);
+    await write.click();
+    await expect(s.locator('[data-done]')).toBeVisible();
+    expect((await h.asked()).at(-1)!.message).toMatch(/^Write \d+ files into ~\/Projects\/ferry-schedule\/\.bowerloom\?$/);
+    written = (await s.locator('[data-done] li').allInnerTexts()).map(t => t.trim().replace(/^\.bowerloom\//, ''));
+  });
+
+  await test.step('1.4f the bytes: the original files are unchanged, the written files are the listed files, and each carries what its source said', async () => {
+    const after = readTree(dir);
+    expect(without(after, '.bowerloom/'), 'copy, not move: every original file is as it was').toEqual(original);
+    const harness = Object.fromEntries(Object.entries(after).filter(([f]) => f.startsWith('.bowerloom/')).map(([f, t]) => [f.slice('.bowerloom/'.length), t]));
+    expect(Object.keys(harness).sort(), 'the files on disk are the files the sheet listed').toEqual([...written].sort());
+    expect(harness['instructions/AGENTS.md']).toBe(original['AGENTS.md']);
+    expect(harness['skills/timetable-check/SKILL.md']).toBe(original['.claude/skills/timetable-check/SKILL.md']);
+    expect(harness['skills/chart-check/SKILL.md']).toBe(original['.claude/skills/chart-check/SKILL.md']);
+    expect(Object.keys(harness).filter(f => f.startsWith('agents/')), 'the Codex agent with multi-line text is not adopted').toEqual(['agents/dock-clerk.md']);
+    // A tool keeps the name of its variable, never a value (spec principle 3).
+    const mcp = JSON.parse(harness['mcp.json']!) as { servers: { name: string; env?: Record<string, string> }[] };
+    expect(mcp.servers.map(x => x.name)).toEqual(['tide-feed']);
+    expect(mcp.servers[0]!.env).toEqual({ TIDE_API_KEY: '${TIDE_API_KEY}' });
+    expect(JSON.parse(harness['hooks.json']!).hooks).toHaveLength(1);
+    expect(JSON.parse(harness['guardrails.json']!).rules).toHaveLength(1);
+    expect(loadDefinition(join(dir, '.bowerloom')).ok).toBe(true);
+  });
+
+  await test.step('1.5 the folder\'s graph shows what was adopted: its agents and skills, as the files hold them', async () => {
+    await s.getByRole('button', { name: 'Close', exact: true }).last().click();
+    await s.waitFor({ state: 'detached' });
+    await p.evaluate(() => { location.hash = '#app/harnesses'; });
+    await openInBuilder(h, dir, 'ferry-schedule');
+    const ids = await p.locator('.hx-node').evaluateAll(els => els.map(e => e.getAttribute('data-node')).sort());
+    const def = join(dir, '.bowerloom');
+    const expected = [...names(join(def, 'agents')).map(f => `agent:${f.replace(/\.md$/, '')}`), ...names(join(def, 'skills')).map(f => `skill:${f}`)].sort();
+    expect(ids).toEqual(expected);
+    expect(ids.length).toBeGreaterThan(0);
+  });
+});
+
+test('Journey 1, adopt by copy, a second project: a Claude Code project with nothing to approve is adopted, and both folders are listed on the Harnesses screen', async () => {
+  test.setTimeout(240_000);
+  const home = newMadeUpHome(), dir = home.kite;
+  const original = readTree(dir);
+  h = await startApp(home, 'projects');
+  const p = h.page, s = adoptSheet(p);
+  await p.getByRole('button', { name: 'From a folder', exact: true }).click();
+  await h.pick(dir);
+  await s.getByRole('button', { name: 'Choose a folder', exact: true }).click();
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(s.getByText(/^Read \d+ files in ~\/Projects\/kite-workshop\. Nothing is written yet\.$/)).toBeVisible();
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(s.locator('[data-section="approvals"] [data-tick]')).toHaveCount(0);
+  await s.getByRole('button', { name: /^Write \d+ files$/ }).click();
+  await expect(s.locator('[data-done]')).toBeVisible();
+  const after = readTree(dir);
+  expect(without(after, '.bowerloom/'), 'every original file is as it was').toEqual(original);
+  expect(after['.bowerloom/skills/string-test/SKILL.md']).toBe(original['.claude/skills/string-test/SKILL.md']);
+  expect(Object.keys(after).filter(f => f.startsWith('.bowerloom/agents/'))).toEqual(['.bowerloom/agents/wind-reader.md']);
+  await s.getByRole('button', { name: 'Close', exact: true }).last().click();
+  await s.waitFor({ state: 'detached' });
+  await p.evaluate(() => { location.hash = '#app/harnesses'; });
+  await h.pick(dir);
+  const folders = p.locator('[data-section="folders"]');
+  await folders.getByRole('button', { name: 'Choose a folder', exact: true }).click();
+  await expect(folders.getByRole('button', { name: 'Open kite-workshop in the builder', exact: true })).toBeVisible();
+});
