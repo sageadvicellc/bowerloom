@@ -325,7 +325,6 @@ The `bowerloom harness` commands adopt a folder into a 0.8 harness and install i
 | `ADOPTION_MERGE_NOTHING` | Merge has no work: the folder has no `CLAUDE.md`, its `CLAUDE.md` is empty or already follows `AGENTS.md`, or the harness instructions already hold its text. | `bowerloom harness status` |
 | `ADOPTION_INSTRUCTIONS_TOO_LARGE` | The merged instructions would pass 32 KiB, where Codex stops loading instructions. | Shorten `CLAUDE.md` or `.bowerloom/instructions/AGENTS.md`, then run `bowerloom harness merge` again. |
 | `PORTABLE_DEFINITION_INVALID` | The harness does not load, so Bowerloom installs nothing. | `bowerloom harness status` |
-| `NOTES_SOURCE_UNKNOWN` | An agent file in `.bowerloom/agents/` lists a name under `notes`, and `knowledge.json` of this folder holds no source of that name, so the harness does not load. The harness loader in `packages/harness-definition/src/load.ts` raises it, and the message names the agent file. | Add the source to `.bowerloom/knowledge.json`, or remove the name from `notes` in the agent file, then run the command again. |
 | `PORTABLE_AT_IMPORT` | `AGENTS.md` uses an `@path` import. Only Claude Code expands one, so Codex and OpenCode read it as text. | Replace the `@path` line in `.bowerloom/instructions/AGENTS.md` with the text it imports. |
 | `PORTABLE_INSTRUCTIONS_TOO_LARGE` | `AGENTS.md` passes 32 KiB, where Codex stops loading instructions. | Shorten `.bowerloom/instructions/AGENTS.md`, then run the command again. |
 | `PORTABLE_ENGINE_NOT_LISTED` | You named an engine that `harness.json` does not list. | Pass `--engine` with an engine that `harness.json` lists. |
@@ -354,6 +353,14 @@ The `bowerloom harness` commands adopt a folder into a 0.8 harness and install i
 | `PORTABLE_ORDER_UNSAFE` | OpenCode moves a whole-number key to the front of its object, so the order of its last-match rules would change. | Rename the key or pattern so that it is not a whole number. |
 | `HARNESS_STATE_TWO_RECORDS` | Two private records exist for this folder, one from the earlier app and one shared, and Bowerloom does not pick one. | Move the record you do not want aside in the private state folder: `$XDG_STATE_HOME/bowerloom` when `XDG_STATE_HOME` is set, else `~/.local/state/bowerloom`. Then run the command again. |
 | `HARNESS_APPROVAL_STALE` | The entry that this approval names changed, or is gone, since the line was shown. | Plan again with `bowerloom harness install`, then run `bowerloom harness accept <line-key>` for the new line. |
+
+## Harness load problems
+
+A harness that does not load makes the command refuse with `PORTABLE_DEFINITION_INVALID`. The message lists each file with the code of its problem in parentheses, such as `agents/keeper.md (NOTES_SOURCE_UNKNOWN)`. These codes are not refusal codes of their own. The terminal prints no sentence or `Next:` line for them, so this table gives the meaning and the fix.
+
+| Code | Meaning | Next action |
+| --- | --- | --- |
+| `NOTES_SOURCE_UNKNOWN` | An agent file in `.bowerloom/agents/` lists a name under `notes`, and `knowledge.json` of this folder holds no source of that name, so the harness does not load. The message names the agent file. | Add the source to `.bowerloom/knowledge.json`, or remove the name from `notes` in the agent file, then run the command again. |
 
 ## Stop results
 
