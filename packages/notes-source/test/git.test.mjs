@@ -102,7 +102,7 @@ test('runGit spawns the found binary with only the allowed argv, the verified fo
     .filter(([k]) => !['PWD', 'SHLVL', '_', 'OLDPWD'].includes(k)));
   assert.deepEqual(env, {
     PATH: '/usr/bin:/bin', LC_ALL: 'C', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', GIT_TERMINAL_PROMPT: '0', GIT_LITERAL_PATHSPECS: '1',
-    GIT_ATTR_NOSYSTEM: '1', GIT_OPTIONAL_LOCKS: '0', GIT_DIR: path.join(dir, '.git'), GIT_WORK_TREE: dir,
+    GIT_ATTR_NOSYSTEM: '1', GIT_OPTIONAL_LOCKS: '0', GIT_NO_LAZY_FETCH: '1', GIT_PROTOCOL_FROM_USER: '0', GIT_DIR: path.join(dir, '.git'), GIT_WORK_TREE: dir,
   });
   await runGit(git, dir, { op: 'init' });
   const initEnv = fs.readFileSync(rec + '.env', 'utf8');

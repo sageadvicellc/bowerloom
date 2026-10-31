@@ -4,7 +4,7 @@
  * - The page count is every `*.md` name of a plain file, outside hidden folders, without following any link. It stops
  *   at an entry bound and a time bound, and says when it stopped early. A folder it cannot list leaves it incomplete.
  * - The latest report date comes from `reports/YYYY-MM-DD-*.md` names, in a real `reports` folder.
- * - The last commit time comes from `git log -1 --format=%ct`, the only git call, when `.git` is a real folder.
+ * - The last commit time comes from `git log -1 --format=%ct`, when `.git` is a real folder and its own config passes runGit's check.
  */
 import fs from 'node:fs';
 import { join } from 'node:path';
@@ -28,12 +28,15 @@ export interface SummaryOptions extends NotesOptions {
 }
 
 /**
- * - `git`: `.git` is a real folder and git log ran; `lastCommitAt` is null when there is no commit yet.
+ * - `git`: `.git` is a real folder and git log read its last commit.
+ * - `no-commit`: `.git` is a real folder, and git log found no commit, or git cannot read it as a repository. A history start that stopped part way
+ *   leaves this; it is never ready.
  * - `none`: the folder has no `.git`.
  * - `git-missing`: the folder has `.git`, and git is not installed.
+ * - `refused`: the repository's own git settings could make git start a program (NOTES_GIT_CONFIG), so no git command ran.
  * - `unreadable`: `.git` is not a real folder of yours, or git stopped on a timeout or the output cap.
  */
-export type NotesHistory = 'git' | 'none' | 'git-missing' | 'unreadable';
+export type NotesHistory = 'git' | 'no-commit' | 'none' | 'git-missing' | 'refused' | 'unreadable';
 
 export interface NotesSummary {
   readonly format: typeof NOTES_SUMMARY_FORMAT;
@@ -110,7 +113,8 @@ async function history(dir: string, options: SummaryOptions): Promise<Pick<Notes
     const out = await runGit(git, dir, { op: 'log-time' }, { timeoutMs: options.timeoutMs ?? SUMMARY_LIMITS.gitTimeoutMs, ...(options.outputBytes === undefined ? {} : { outputBytes: options.outputBytes }) });
     return { history: 'git', lastCommitAt: commitTime(out) };
   } catch (e) {
-    if (isNotesRefusal(e, 'NOTES_GIT_FAILED')) return { history: 'git', lastCommitAt: null };
+    if (isNotesRefusal(e, 'NOTES_GIT_FAILED')) return { history: 'no-commit', lastCommitAt: null };
+    if (isNotesRefusal(e, 'NOTES_GIT_CONFIG')) return { history: 'refused', lastCommitAt: null };
     if (isNotesRefusal(e, 'NOTES_GIT_MISSING')) return { history: 'git-missing', lastCommitAt: null };
     if (isNotesRefusal(e, 'NOTES_USAGE')) throw e;
     return { history: 'unreadable', lastCommitAt: null };

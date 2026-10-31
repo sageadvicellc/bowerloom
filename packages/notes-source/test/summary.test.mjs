@@ -92,12 +92,12 @@ test('the last commit time comes from git log', { skip: needsGit }, async t => {
   assert.equal(s.lastCommitAt, new Date(Number(ownGit(dir, ['log', '-1', '--format=%ct'])) * 1000).toISOString());
 });
 
-test('history is none with no .git, git with no commit yet, and unreadable when .git is not a plain folder', { skip: needsGit }, async t => {
+test('history is none with no .git, no-commit with no commit yet, and unreadable when .git is not a plain folder', { skip: needsGit }, async t => {
   const dir = tempDir(t); put(dir, 'index.md');
   assert.deepEqual([(await readNotesSummary(dir)).history, (await readNotesSummary(dir)).lastCommitAt], ['none', null]);
   ownGit(dir, ['init', '-q']);
   const empty = await readNotesSummary(dir);
-  assert.deepEqual([empty.history, empty.lastCommitAt], ['git', null]);
+  assert.deepEqual([empty.history, empty.lastCommitAt], ['no-commit', null], 'a .git with no commit is not ready');
   const linked = tempDir(t); put(linked, 'index.md'); fs.symlinkSync(path.join(dir, '.git'), path.join(linked, '.git'));
   assert.deepEqual([(await readNotesSummary(linked)).history, (await readNotesSummary(linked)).lastCommitAt], ['unreadable', null]);
 });
@@ -142,4 +142,19 @@ test('a linked repository\'s own config cannot make the summary run a program, e
   assert.equal(s.history, 'git');
   assert.equal(s.lastCommitAt, '2026-01-01T00:00:00.000Z');
   assert.equal(fs.existsSync(marker), false, 'no program named by the repository config ran');
+});
+
+test('a .git that git cannot read as a repository is no-commit, not git', { skip: needsGit }, async t => {
+  const dir = tempDir(t); put(dir, 'index.md');
+  fs.mkdirSync(path.join(dir, '.git'));
+  const s = await readNotesSummary(dir);
+  assert.deepEqual([s.history, s.lastCommitAt], ['no-commit', null]);
+});
+
+test('an init stopped before its first commit reads as no-commit', { skip: needsGit }, async t => {
+  const dir = tempDir(t); put(dir, 'index.md'); put(dir, 'pages/a.md');
+  ownGit(dir, ['init', '-q']);
+  ownGit(dir, ['add', '--', 'index.md']);
+  const s = await readNotesSummary(dir);
+  assert.equal(s.history, 'no-commit');
 });

@@ -5,7 +5,11 @@
  *   dialog, so only the Command Line Tools and Xcode gits count. The binary must be a plain executable file, owned by
  *   root or by you, that nobody else can write.
  * - Every argv is one of five fixed forms, behind fixed hardening options, and is checked against that allowlist just
- *   before the start. Nothing else ever runs.
+ *   before the start. A sixth form, the key names of the repository's own config, runs only inside runGit. Nothing else
+ *   ever runs. The hardening forbids every transport (`protocol.allow=never`), and the environment turns lazy fetches
+ *   off, so git never reaches a remote.
+ * - A repository whose own config sets a key that can start a program or reach a remote (an extension, such as a partial
+ *   clone, an ssh command, a remote address, a protocol rule, or an include) is refused before any command but init.
  * - The process starts with `shell: false`, the verified folder as cwd, and a minimal environment that holds no
  *   variable of the caller: no HOME, so no global or XDG config, plus `GIT_CONFIG_GLOBAL=/dev/null` and
  *   `GIT_CONFIG_NOSYSTEM=1`. Pathspecs are literal. Every form except init pins `GIT_DIR` and `GIT_WORK_TREE` to the
@@ -103,6 +107,7 @@ export const GIT_HARDENING: readonly string[] = Object.freeze([
   '-c', 'user.name=Bowerloom',
   '-c', 'user.email=bowerloom@localhost',
   '-c', 'init.defaultBranch=main',
+  '-c', 'protocol.allow=never',
 ]);
 
 export const GIT_LIMITS = Object.freeze({
@@ -129,6 +134,11 @@ const FIXED: Readonly<Record<'init' | 'log-time' | 'status', readonly string[]>>
   'log-time': ['log', '-1', '--format=%ct'],
   status: ['status', '--porcelain'],
 });
+/**
+ * The sixth form, which only runGit itself starts, before every command but init: the key names of the repository's own config file, with no include
+ * followed. It is never a GitCommand, so no caller can ask for it.
+ */
+const CONFIG_KEYS: readonly string[] = Object.freeze(['config', '--local', '--no-includes', '--name-only', '--list', '-z']);
 
 const keysAre = (value: object, keys: readonly string[]): boolean => {
   const own = Object.keys(value).sort();
@@ -157,7 +167,7 @@ export function checkGitArgv(argv: unknown): void {
   const list = argv as string[];
   if (!same(list.slice(0, GIT_HARDENING.length), GIT_HARDENING)) refuse('NOTES_GIT_ARGV');
   const tail = list.slice(GIT_HARDENING.length);
-  if (Object.values(FIXED).some(form => same(tail, form))) return;
+  if (Object.values(FIXED).some(form => same(tail, form)) || same(tail, CONFIG_KEYS)) return;
   if (tail.length === 4 && tail[0] === 'commit' && tail[1] === '-q' && tail[2] === '-m' && MESSAGE_SET.has(tail[3]!)) return;
   if (tail.length >= 3 && tail[0] === 'add' && tail[1] === '--') {
     const paths = tail.slice(2);
@@ -199,7 +209,7 @@ function limit(value: unknown, fallback: number, max: number): number {
 export function gitEnvironment(dir: string, op: GitCommand['op']): Record<string, string> {
   const env: Record<string, string> = {
     PATH: '/usr/bin:/bin', LC_ALL: 'C', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', GIT_TERMINAL_PROMPT: '0',
-    GIT_LITERAL_PATHSPECS: '1', GIT_ATTR_NOSYSTEM: '1', GIT_OPTIONAL_LOCKS: '0',
+    GIT_LITERAL_PATHSPECS: '1', GIT_ATTR_NOSYSTEM: '1', GIT_OPTIONAL_LOCKS: '0', GIT_NO_LAZY_FETCH: '1', GIT_PROTOCOL_FROM_USER: '0',
   };
   if (op !== 'init') { env.GIT_DIR = join(dir, '.git'); env.GIT_WORK_TREE = dir; }
   return env;
@@ -213,9 +223,34 @@ export function checkGitDir(dir: string): void {
 }
 
 /**
+ * True for a config key a notes repository may not set, by its name as `git config --name-only` prints it (section and key in lowercase). Each one can
+ * make git start a program or reach a remote: an extension (a partial clone fetches missing objects lazily), an ssh command or proxy, a remote's address
+ * or helper, a protocol rule (it would override `protocol.allow=never`), or an include (it would bring in keys this check never saw).
+ */
+export function riskyConfigKey(key: string): boolean {
+  const k = key.toLowerCase();
+  return k.startsWith('extensions.') || k.startsWith('protocol.') || k.startsWith('include.') || k.startsWith('includeif.')
+    || k === 'core.sshcommand' || k === 'core.gitproxy' || k === 'ssh.variant'
+    || (k.startsWith('remote.') && /\.(?:url|pushurl|vcs|uploadpack|receivepack)$/.test(k));
+}
+
+/**
+ * Refuses NOTES_GIT_CONFIG when the repository's own config file sets a risky key (riskyConfigKey), and NOTES_GIT_FAILED when git cannot list it. The list is read by git
+ * itself, under the same hardening, with includes off, so the keys are the ones git would see; only key names are read, never a value.
+ */
+async function checkRepoConfig(file: string, dir: string, timeoutMs: number, cap: number): Promise<void> {
+  const argv = [...GIT_HARDENING, ...CONFIG_KEYS];
+  checkGitArgv(argv);
+  // A list git cannot make (a broken repository) refuses NOTES_GIT_FAILED, as the command itself would: nothing else runs.
+  const out = await spawnGit(file, argv, dir, gitEnvironment(dir, 'status'), timeoutMs, cap);
+  if (out.split('\0').some(key => riskyConfigKey(key.trim()))) refuse('NOTES_GIT_CONFIG');
+}
+
+/**
  * Runs one allowed git command in a verified folder and returns its stdout. Every command but init needs `.git` to be
- * a real folder of yours. Refuses NOTES_GIT_TIMEOUT, NOTES_GIT_OUTPUT, NOTES_GIT_FAILED (a non-zero exit), or
- * NOTES_GIT_MISSING (the binary is gone). Git's own messages are never passed on: they can hold paths.
+ * a real folder of yours, and its own config file to set no risky key (NOTES_GIT_CONFIG), checked just before. Refuses
+ * NOTES_GIT_TIMEOUT, NOTES_GIT_OUTPUT, NOTES_GIT_FAILED (a non-zero exit), or NOTES_GIT_MISSING (the binary is gone).
+ * Git's own messages are never passed on: they can hold paths.
  */
 export async function runGit(git: GitBinary, dir: string, command: GitCommand, options: GitRunOptions = {}): Promise<string> {
   if (!FOUND.has(git)) refuse('NOTES_USAGE');
@@ -223,7 +258,7 @@ export async function runGit(git: GitBinary, dir: string, command: GitCommand, o
   const cap = limit(options.outputBytes, GIT_LIMITS.outputBytes, GIT_LIMITS.maxOutputBytes);
   const argv = gitArgv(command);
   verifiedFolder(dir);
-  if (command.op !== 'init') checkGitDir(dir);
+  if (command.op !== 'init') { checkGitDir(dir); await checkRepoConfig(git.path, dir, timeoutMs, cap); }
   checkGitArgv(argv);
   return spawnGit(git.path, argv, dir, gitEnvironment(dir, command.op), timeoutMs, cap);
 }
