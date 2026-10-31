@@ -4,12 +4,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import type { SpawnSyncReturns } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { FLAGS, launchOf } from '../main/launch.js';
 import { E2E_HIDDEN_FLAG } from '../main/window-options.js';
 import { BASE, REAL_BASE } from '../shared/harness/route.js';
-import { DESKTOP } from './support.js';
+import { buildMainInto } from './fixtures-real/main-bundle.js';
+import { DESKTOP, tempDir } from './support.js';
 
 const read = (path: string): string => readFileSync(join(DESKTOP, path), 'utf8');
 
@@ -142,9 +143,11 @@ test('main.ts reads its plan from launchOf, and no prototype name is left in the
 test('the built app exits with code 2 and the words on stderr for a misspelled or retired flag, and opens no window', async t => {
   const { electronBinary } = await import(`${join(DESKTOP, 'tools', 'run.mjs')}`) as { electronBinary(desktop: string, platform: string): string | null };
   const binary = electronBinary(DESKTOP, process.platform);
-  if (binary === null || !existsSync(join(DESKTOP, 'dist', 'main.mjs'))) { t.skip('the app window or the built bundle is not here'); return; }
+  if (binary === null) { t.skip('the app window is not here'); return; }
+  // A private build of main.ts, so that a rebuild of dist/ by another test in the same run cannot leave this one with a half-made app.
+  const app = buildMainInto(DESKTOP, tempDir(t, 'bowerloom-launch-main-'));
   for (const flag of ['--smaple', '--Sample', '--sample=1', '--home-real', '--sample-preview-engines', '\u2014\u2014sample', 'sample']) {
-    const r: SpawnSyncReturns<string> = spawnSync(binary, [DESKTOP, flag, E2E_HIDDEN_FLAG], { encoding: 'utf8', timeout: 60000, env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
+    const r: SpawnSyncReturns<string> = spawnSync(binary, [app, flag, E2E_HIDDEN_FLAG], { encoding: 'utf8', timeout: 60000, env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
     assert.equal(r.status, 2, `${flag}: ${r.stderr}`);
     assert.match(r.stderr, flag === '--sample-preview-engines' ? /works only together with --sample/ : new RegExp(`Bowerloom does not know "${flag}"`), flag);
   }
