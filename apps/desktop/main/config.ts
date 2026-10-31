@@ -37,7 +37,7 @@ export function parseSettings(text: string): AppSettings | null {
   const v = value as Record<string, unknown>;
   const theme = v.theme === 'light' || v.theme === 'dark' ? v.theme : 'system';
   const roots = Array.isArray(v.roots) ? [...new Set(v.roots.filter((r): r is string => typeof r === 'string' && isAbsolute(r) && !r.includes('\0') && r.length < 4096))].slice(0, MAX_ROOTS) : [];
-  const mode = v.mode === 'sample' || v.mode === 'real' || v.mode === 'sandbox' ? v.mode : null;
+  const mode = v.mode === 'sample' || v.mode === 'real' ? v.mode : null;
   const roles: Record<string, FolderRole> = bare();
   if (v.roles !== null && typeof v.roles === 'object' && !Array.isArray(v.roles)) for (const [k, r] of Object.entries(v.roles as Record<string, unknown>).slice(0, MAX_ROLES)) if (isAbsolute(k) && !k.includes('\0') && k.length < 4096 && (FOLDER_ROLES as readonly unknown[]).includes(r)) roles[k] = r as FolderRole;
   return { theme, roots, mode, includeExamples: v.includeExamples === true, roles, mapLayout: parseLayout(v.mapLayout), discovered: v.discovered === true };

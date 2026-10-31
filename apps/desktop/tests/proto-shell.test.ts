@@ -171,7 +171,7 @@ test('the launcher: each prototype flag is known, a mode that excludes the other
   assert.match(src, /makePrototypeDataDir\(\)/); assert.match(strip(read('main/prototype-dir.mjs')), /mkdtempSync\(/);
   for (const { flag } of PROTOTYPE_FLAGS) {
     assert.match(src, new RegExp(`KNOWN = new Set\\(\\[[^\\]]*'${flag}'`), flag); assert.match(src, new RegExp(`MODES = new Set\\(\\[[^\\]]*'${flag}'`), flag);
-    for (const other of ['--sample-data', '--real-data', '--sandbox', ...PROTOTYPE_FLAGS.map(f => f.flag).filter(f => f !== flag)]) {
+    for (const other of ['--sample-data', '--real-data', ...PROTOTYPE_FLAGS.map(f => f.flag).filter(f => f !== flag)]) {
       const r = spawnSync(process.execPath, [join(DESKTOP, 'tools', 'run.mjs'), flag, other], { cwd: tmpdir(), encoding: 'utf8', timeout: 30000 });
       assert.equal(r.status, 2, `${flag} ${other}`); assert.match(r.stderr, /not more/); assert.doesNotMatch(r.stdout, /Installing|Building/);
     }

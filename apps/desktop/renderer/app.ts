@@ -309,10 +309,9 @@ function settingsScreen(s: Snapshot): HTMLElement {
       h('div', { class: 'row-list' }, ...s.projects.map(p => h('div', { class: 'row static-row' }, h('span', { class: 'title', text: p.name }),
         h('span', { class: 'chips', role: 'group', aria: { label: `Kind of folder: ${p.name}` } }, ...(['project', 'workspace', 'context-store'] as FolderRole[]).map(role => h('button', { type: 'button', class: p.role === role ? 'btn' : 'btn secondary', aria: { pressed: String(p.role === role) }, on: { click: () => { void (async () => { settled(await act('Saving your choice', () => api.setRole(p.key, role))); await reload(); })(); } } }, ROLE_WORDS[role].label))))))) : null,
     h('div', { class: 'card' }, h('h2', { text: 'What you are looking at' }),
-      h('p', { text: info.mode === 'sample' ? 'Sample data, made to show every state.' : info.mode === 'sandbox' ? 'The sandbox: invented content in its own pretend home, safe to break.' : 'Your own Bowerloom.' }), h('p', { class: 'tech', text: info.storePath }),
-      h('div', { class: 'chips' }, ...(['real', 'sample', 'sandbox'] as const).filter(m => m !== info.mode && (m !== 'sandbox' || info.sandbox.exists)).map(m =>
-        button(m === 'real' ? 'Look at my Bowerloom' : m === 'sample' ? 'Try the sample data' : 'Open the sandbox', async () => { state.info = (await act('Switching', () => api.chooseMode(m))) ?? state.info; state.history = []; await reload(); go({ screen: 'home' }, true); }, 'btn secondary'))),
-      !info.sandbox.exists ? h('p', { class: 'small muted', text: 'There is no sandbox yet. It is made by the sandbox command (see the README).' }) : null),
+      h('p', { text: info.mode === 'sample' ? 'Sample data, made to show every state.' : 'Your own Bowerloom.' }), h('p', { class: 'tech', text: info.storePath }),
+      h('div', { class: 'chips' }, ...(['real', 'sample'] as const).filter(m => m !== info.mode).map(m =>
+        button(m === 'real' ? 'Look at my Bowerloom' : 'Try the sample data', async () => { state.info = (await act('Switching', () => api.chooseMode(m))) ?? state.info; state.history = []; await reload(); go({ screen: 'home' }, true); }, 'btn secondary')))),
     h('div', { class: 'card' }, h('h2', { text: 'Appearance' }), h('div', { class: 'chips' }, theme('system', 'Match my computer'), theme('light', 'Light'), theme('dark', 'Dark'))),
     h('div', { class: 'card' }, h('h2', { text: 'About' }), h('dl', { class: 'kv' }, h('dt', { text: 'Version' }), h('dd', { text: info.version }), h('dt', { text: 'Updates' }), h('dd', { text: info.updates.status })),
       button('Check for updates', async () => { const r = await act('Checking for updates', () => api.checkForUpdates()); if (r !== null) { state.notice = r.status; state.info = (await act('Reading the version', () => api.getInfo())) ?? state.info; } render(); }, 'btn secondary'), state.notice ? h('p', { role: 'status', text: state.notice }) : null,
@@ -344,9 +343,9 @@ function shell(content: HTMLElement, banner: HTMLElement | null = null): HTMLEle
     return b;
   }));
   return h('div', { class: 'shell' },
-    h('aside', { class: 'sidebar' }, h('div', { class: 'brand' }, icon(ICONS.leaf, 28), 'Bowerloom'), info.mode === 'sandbox' ? h('div', { class: 'sandbox-badge', role: 'note' }, 'Sandbox: safe to break') : null, nav, button('Look again', () => { void reload(); }, 'btn secondary')),
+    h('aside', { class: 'sidebar' }, h('div', { class: 'brand' }, icon(ICONS.leaf, 28), 'Bowerloom'), nav, button('Look again', () => { void reload(); }, 'btn secondary')),
     h('main', { id: 'main' }, banner, content),
-    h('footer', { class: 'footer' }, h('span', { text: `Bowerloom ${info.version}` }), h('span', { text: info.updates.status }), h('span', { class: 'spacer' }), h('span', { text: info.mode === 'sample' ? 'Showing sample data' : info.mode === 'sandbox' ? 'Sandbox: safe to break' : 'Showing your own Bowerloom' })));
+    h('footer', { class: 'footer' }, h('span', { text: `Bowerloom ${info.version}` }), h('span', { text: info.updates.status }), h('span', { class: 'spacer' }), h('span', { text: info.mode === 'sample' ? 'Showing sample data' : 'Showing your own Bowerloom' })));
 }
 
 function body(): HTMLElement {

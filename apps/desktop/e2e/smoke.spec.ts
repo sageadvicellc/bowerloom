@@ -5,8 +5,7 @@
 import { _electron as electron, expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import electronPath from 'electron';
-import { mkdirSync, realpathSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { removeTempDirs, tempDir } from './proto-temp.js';
@@ -204,32 +203,3 @@ test('after a screen change the keyboard moves to the heading and a screen reade
     await expect(details.locator('pre')).toContainText('Folder: ');
   } finally { await app.close(); }
 });
-
-// The sandbox, made by the real tool in a temporary place (never the real sandbox folder), and read in the real window.
-for (const theme of ['light', 'dark'] as const) {
-  test(`sandbox mode in ${theme}: the badge on every screen, the workspace, the projects, and the context store`, async () => {
-    test.setTimeout(300_000);
-    const box = join(realpathSync(tempDir('bowerloom-e2e-sandbox-')), 'E2E Sandbox');
-    const made = spawnSync(process.execPath, [join(desktop, 'tools', 'make-sandbox.mjs')], { encoding: 'utf8', env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', BOWERLOOM_VIEWER_SANDBOX: box } });
-    expect(made.status, made.stderr + made.stdout).toBe(0);
-    const { app, page } = await launch(['--sandbox'], { BOWERLOOM_VIEWER_SANDBOX: box });
-    try {
-      await nav(page, 'Settings').click();
-      await page.getByRole('button', { name: theme === 'dark' ? 'Dark' : 'Light', exact: true }).click();
-      await nav(page, 'Home').click();
-      for (const label of ['Home', 'Projects', 'Library', 'Knowledge folders', 'Storage', 'Settings']) { await nav(page, label).click(); await expect(page.locator('.sandbox-badge')).toHaveText('Sandbox: safe to break'); }
-      await nav(page, 'Home').click();
-      await expect(page.getByText(/^As of /)).toBeVisible();
-      await snap(page, 'S1-sandbox-home', theme);
-      await nav(page, 'Projects').click();
-      await expect(page.getByRole('heading', { name: 'Context stores' })).toBeVisible();
-      await expect(page.getByRole('heading', { name: 'Workspace' })).toBeVisible();
-      await snap(page, 'S2-sandbox-projects', theme);
-      await page.getByRole('heading', { name: 'Context stores' }).scrollIntoViewIfNeeded();
-      await snap(page, 'S3-sandbox-context-stores', theme);
-      await page.getByRole('button', { name: 'Open this folder' }).click();
-      await expect(page.getByText('What kind of folder is this?')).toBeVisible();
-      await snap(page, 'S4-sandbox-folder-kind', theme);
-    } finally { await app.close(); }
-  });
-}

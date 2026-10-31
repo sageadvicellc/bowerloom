@@ -77,16 +77,9 @@ When AGENTS.md and CLAUDE.md differ, **Merge** moves the CLAUDE.md text into the
 
 ## Where the viewer may write
 
-The viewer writes in only two places. One is its own folder (its settings, and later your sketches). The other is the **sandbox**, a folder made only for trying things. It never writes in your real folders. A short piece of code, the write boundary, checks every place before anything is written there. It refuses a path with "..", a path through a shortcut (a link), a path outside the allowed folders, your home folder, any folder that holds your home folder, any of your real folders, and any folder that does not carry the mark the viewer puts in the sandbox. The list of allowed folders is fixed in the program. The settings file cannot change it, and neither can anything in the window.
+The viewer writes in one place: its own folder (its settings, the copy of the sample data, and your sketches). A short piece of code, the write boundary, checks every place before anything is written there. It refuses a path with "..", a path through a shortcut (a link), and a path outside that folder. The allowed folder is fixed in the program. The settings file cannot change it, and neither can anything in the window.
 
-Widening the places the viewer may write is not available. A later version will do it only with an explicit, confirmed step. Until then the viewer has no way to change a Bowerloom file of yours.
-
-## The sandbox
-
-A copy of the shape of your own setup, made of invented content, in the folder `Sage Advice Sandbox` next to `Sage Advice`. It has its own pretend home with its own shared library, so you can try everything without touching the real ones. A banner on every screen says "Sandbox: safe to break".
-
-- `npm --prefix "<repo>" run desktop:sandbox` makes it if it is missing and opens the viewer on it.
-- `npm --prefix "<repo>" run sandbox:reset` deletes it and builds it again. It refuses to delete anything unless the folder is exactly the sandbox folder and carries the viewer's mark, and has no shortcut that leads outside.
+Apart from the steps you approve on your own folders (see above), the viewer has no way to change a Bowerloom file of yours.
 
 ## What is not built yet
 

@@ -456,7 +456,7 @@ test('the launcher: the real flag is known, excludes every other mode, needs a r
     const r = spawnSync(process.execPath, [join(DESKTOP, 'tools', 'run.mjs'), ...args], { env: { PATH: process.env.PATH ?? '', ...env }, encoding: 'utf8', timeout: 30000 });
     return { status: r.status, stdout: r.stdout, stderr: r.stderr };
   };
-  for (const other of ['--sample-data', '--real-data', '--sandbox', '--prototype', '--prototype-v2', '--prototype-v3']) {
+  for (const other of ['--sample-data', '--real-data', '--prototype', '--prototype-v2', '--prototype-v3']) {
     const r = run(['--prototype-real', other], { HOME: '/tmp' });
     assert.equal(r.status, 2, other); assert.match(r.stderr, /not more/); assert.doesNotMatch(r.stdout, /Installing|Building/);
   }

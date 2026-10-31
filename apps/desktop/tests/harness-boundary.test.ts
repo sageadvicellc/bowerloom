@@ -72,7 +72,7 @@ test('the launcher and the root script know --prototype-v3, keep one mode at a t
   const root = JSON.parse(read('../../package.json')) as { scripts: Record<string, string> };
   assert.equal(root.scripts['desktop:prototype:v3'], 'node apps/desktop/tools/run.mjs --prototype-v3');
   assert.equal(root.scripts['desktop:prototype:v2'], 'node apps/desktop/tools/run.mjs --prototype-v2');
-  for (const other of ['--sample-data', '--real-data', '--sandbox', '--prototype', '--prototype-v2', '--prototype-real', '--prototype-v3-real']) {
+  for (const other of ['--sample-data', '--real-data', '--prototype', '--prototype-v2', '--prototype-real', '--prototype-v3-real']) {
     const r = spawnSync(process.execPath, [join(DESKTOP, 'tools', 'run.mjs'), '--prototype-v3', other], { env: { PATH: process.env.PATH ?? '', HOME: '/tmp' }, encoding: 'utf8', timeout: 30000 });
     assert.equal(r.status, 2, other); assert.match(r.stderr, /not more/); assert.doesNotMatch(r.stdout, /Installing|Building/);
   }
@@ -90,7 +90,7 @@ test('the launcher and the root script know --prototype-v3-real: one mode at a t
     const r = spawnSync(process.execPath, [join(DESKTOP, 'tools', 'run.mjs'), ...args], { env: { PATH: process.env.PATH ?? '', ...env }, encoding: 'utf8', timeout: 30000 });
     return { status: r.status, stdout: r.stdout, stderr: r.stderr };
   };
-  for (const other of ['--sample-data', '--real-data', '--sandbox', '--prototype', '--prototype-v2', '--prototype-v3', '--prototype-real']) {
+  for (const other of ['--sample-data', '--real-data', '--prototype', '--prototype-v2', '--prototype-v3', '--prototype-real']) {
     const r = run(['--prototype-v3-real', other], { HOME: '/tmp' });
     assert.equal(r.status, 2, other); assert.match(r.stderr, /not more/); assert.doesNotMatch(r.stdout, /Installing|Building/);
   }

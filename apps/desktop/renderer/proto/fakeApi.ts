@@ -88,7 +88,7 @@ export function createFakeApi(world: World): ViewerApi {
   const settled = (): SettingsResult => ({ settings: clone(settings), message: null });
   const change = (patch: Partial<AppSettings>): SettingsResult => { settings = { ...settings, ...patch }; return settled(); };
   const summary = (s: Sketch): SketchSummary => ({ name: s.name, nodes: s.nodes.length, edges: s.edges.length });
-  const info = (): AppInfo => ({ version: '0.8.0-prototype', mode, storePath: '', updates: { enabled: false, status: 'off' }, platform: 'prototype', firstRun: false, sandbox: { path: '', exists: false }, notice: null });
+  const info = (): AppInfo => ({ version: '0.8.0-prototype', mode, storePath: '', updates: { enabled: false, status: 'off' }, platform: 'prototype', firstRun: false, notice: null });
 
   return {
     getInfo: async () => info(),

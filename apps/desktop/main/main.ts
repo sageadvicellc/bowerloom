@@ -61,7 +61,7 @@ if (prototypeMode) {
   app.once('quit', cleanUp);
   process.once('exit', cleanUp);
 }
-const forcedMode: Mode | null = argv.includes('--sample-data') ? 'sample' : argv.includes('--real-data') ? 'real' : argv.includes('--sandbox') ? 'sandbox' : null;
+const forcedMode: Mode | null = argv.includes('--sample-data') ? 'sample' : argv.includes('--real-data') ? 'real' : null;
 
 let controller: Controller;
 let window: BrowserWindow | null = null;

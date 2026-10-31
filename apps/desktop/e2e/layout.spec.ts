@@ -1,12 +1,11 @@
 /**
  * The map fills exactly the window that is left, at three window sizes, and after the first fit every node is inside the picture.
- * Checked on the sandbox map (the real app) and on the made-up map of 200 things (the same screen in a plain frame).
+ * Checked on the made-up map of 200 things (the same screen in a plain frame).
  */
 import { _electron as electron, expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import electronPath from 'electron';
-import { spawnSync } from 'node:child_process';
-import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { removeTempDirs, tempDir } from './proto-temp.js';
@@ -18,14 +17,6 @@ const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const shots = join(desktop, 'screenshots');
 mkdirSync(shots, { recursive: true });
 const SIZES = [[900, 600], [1100, 760], [1440, 900]] as const;
-
-const sandboxRoot = (): string => {
-  const box = join(realpathSync(tempDir('bowerloom-e2e-layout-')), 'Layout Sandbox');
-  const made = spawnSync(process.execPath, [join(desktop, 'tools', 'make-sandbox.mjs')], { encoding: 'utf8', env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', BOWERLOOM_VIEWER_SANDBOX: box } });
-  expect(made.status, made.stderr + made.stdout).toBe(0);
-  return box;
-};
-let box: string | null = null;
 
 /** What must hold on the map screen: every node inside the picture, and nothing below the bottom of the window. */
 async function assertFits(page: Page, label: string): Promise<void> {
@@ -44,28 +35,6 @@ async function assertFits(page: Page, label: string): Promise<void> {
   expect(r.pageScroll, `${label}: the page scrolls`).toBeLessThanOrEqual(1);
   expect(r.mainScroll, `${label}: the main area scrolls`).toBeLessThanOrEqual(1);
   expect(r.toolbar, `${label}: the toolbar takes at most two rows`).toBeLessThan(90);
-}
-
-for (const [w, h] of SIZES) {
-  test(`the sandbox map fits a ${w} by ${h} window: nothing clipped, every node inside the picture`, async () => {
-    test.setTimeout(180_000);
-    box ??= sandboxRoot();
-    const userData = tempDir('bowerloom-viewer-e2e-');
-    const app: ElectronApplication = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--sandbox', `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1', BOWERLOOM_VIEWER_SANDBOX: box } });
-    try {
-      const page = await app.firstWindow(); await page.waitForLoadState('domcontentloaded');
-      await app.evaluate(({ BrowserWindow }, size) => { BrowserWindow.getAllWindows()[0]!.setContentSize(size.w, size.h); }, { w, h });
-      await page.waitForTimeout(400);
-      await page.locator('nav.nav').getByRole('button', { name: 'Map', exact: true }).click();
-      await expect(page.locator('#bw-page-map .react-flow__node').first()).toBeVisible();
-      await assertFits(page, `sandbox ${w}x${h}`);
-      await page.screenshot({ path: join(shots, `M1-map-overview-${w}x${h}.png`), scale: 'css' });
-      // Everything too: still inside the picture, and the hint says so when the words are small.
-      await page.getByRole('button', { name: 'Everything', exact: true }).click();
-      await assertFits(page, `sandbox everything ${w}x${h}`);
-      await page.screenshot({ path: join(shots, `M1b-map-everything-${w}x${h}.png`), scale: 'css' });
-    } finally { await app.close(); }
-  });
 }
 
 for (const [w, h] of SIZES) {

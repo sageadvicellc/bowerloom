@@ -21,8 +21,8 @@ export { makePrototypeDataDir, removePrototypeDataDir };
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const repo = join(desktop, '..', '..');
-const KNOWN = new Set(['--sample-data', '--real-data', '--sandbox', '--prototype', '--prototype-v2', '--prototype-v3', '--prototype-real', '--prototype-v3-real', '--build-only']);
-const MODES = new Set(['--sample-data', '--real-data', '--sandbox', '--prototype', '--prototype-v2', '--prototype-v3', '--prototype-real', '--prototype-v3-real']);
+const KNOWN = new Set(['--sample-data', '--real-data', '--prototype', '--prototype-v2', '--prototype-v3', '--prototype-real', '--prototype-v3-real', '--build-only']);
+const MODES = new Set(['--sample-data', '--real-data', '--prototype', '--prototype-v2', '--prototype-v3', '--prototype-real', '--prototype-v3-real']);
 // The prototypes start with a fresh temporary data folder and write nothing else.
 const PROTOTYPES = ['--prototype', '--prototype-v2', '--prototype-v3'];
 // The real-setup preview has the same lock (a fresh temporary data folder, nothing written to the real app data) and adds a read-only bridge. It needs a real home folder.
@@ -134,7 +134,7 @@ function main() {
   const args = process.argv.slice(2);
   const unknown = args.filter(a => !KNOWN.has(a));
   if (unknown.length) fail(`I do not know ${unknown.map(a => `"${a}"`).join(', ')}. Use --sample-data to open the sample, --real-data to open your own Bowerloom, --prototype, --prototype-v2 or --prototype-v3 to open a clickable prototype, --prototype-real or --prototype-v3-real to open a preview on your own setup (read-only), or --build-only to only build.`, 2);
-  if (args.filter(a => MODES.has(a)).length > 1) fail('Choose one of --sample-data, --real-data, --sandbox, --prototype, --prototype-v2, --prototype-v3, --prototype-real and --prototype-v3-real, not more.', 2);
+  if (args.filter(a => MODES.has(a)).length > 1) fail('Choose one of --sample-data, --real-data, --prototype, --prototype-v2, --prototype-v3, --prototype-real and --prototype-v3-real, not more.', 2);
   const onRealSetup = REAL_FLAGS.some(flag => args.includes(flag));
   if (onRealSetup && realHome() === null) fail('The real setup preview needs a home folder, and HOME is not set to a folder that exists. Nothing was read.', 2);
 
@@ -147,8 +147,6 @@ function main() {
   step('Building the viewer...', process.execPath, [join(desktop, 'tools', 'bundle.mjs')], desktop, process.env);
   if (args.includes('--build-only')) process.exit(0);
 
-  // The sandbox is made once if it is missing. Its own tool checks everything before it writes.
-  if (args.includes('--sandbox')) step('Making the sandbox if it is missing...', process.execPath, [join(desktop, 'tools', 'make-sandbox.mjs')], desktop, process.env);
   console.log('\nOpening the viewer...');
   const electron = electronBinary(desktop);
   if (electron === null) fail('The app window is not installed. Run the command again.', 1);

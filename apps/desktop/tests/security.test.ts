@@ -94,9 +94,9 @@ test('the main process calls no command that writes Bowerloom data and starts no
   assert.match(read('main/reader.ts'), /runProjectStatus\(\['status', '--json'\]/);
 });
 
-test('only six main files write a file: the settings, the sample copy, the sandbox, the sketches, the usage summary the person saves, and the private copy of a tidy-up report; the first four behind the write boundary', () => {
+test('only five main files write a file: the settings, the sample copy, the sketches, the usage summary the person saves, and the private copy of a tidy-up report; the first three behind the write boundary', () => {
   const writers = sources('main').filter(({ text }) => /\b(writeFileSync|writeFile|mkdirSync|rmSync|cpSync|chmodSync|renameSync|unlinkSync|appendFileSync|copyFileSync|symlinkSync)\b/.test(strip(text))).map(f => f.file).sort();
-  assert.deepEqual(writers, ['main/config.ts', 'main/diagnostics-dialogs.ts', 'main/notes-report.ts', 'main/sample.ts', 'main/sandbox.ts', 'main/sketches.ts']);
+  assert.deepEqual(writers, ['main/config.ts', 'main/diagnostics-dialogs.ts', 'main/notes-report.ts', 'main/sample.ts', 'main/sketches.ts']);
   assert.match(read('main/sample.ts'), /isInside\(realpathSync\(appDir\), target\)/);
 });
 
@@ -104,9 +104,9 @@ test('the page never builds markup from text: no innerHTML, no eval, no document
   for (const { file, text } of [...sources('renderer'), ...sources('shared')]) assert.doesNotMatch(strip(text), /innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval\(|new Function\(|setAttribute\(\s*['"]on|srcdoc|dangerouslySetInnerHTML/, file);
 });
 
-test('process.env is read in exactly four places (the token state, the settings of the run, the sandbox folder constant, and the state folder and preview switch of the install sheets), and the token value never leaves its module', () => {
+test('process.env is read in exactly three places (the token state, the settings of the run, and the state folder and preview switch of the install sheets), and the token value never leaves its module', () => {
   const users = sources('main').filter(({ text }) => /process\.env/.test(strip(text))).map(f => f.file).sort();
-  assert.deepEqual(users, ['main/boundary.ts', 'main/controller.ts', 'main/engine-state.ts', 'main/token.ts']);
+  assert.deepEqual(users, ['main/controller.ts', 'main/engine-state.ts', 'main/token.ts']);
   // The install sheets read two variables and nothing else of the environment: XDG_STATE_HOME, and BOWERLOOM_PREVIEW_ENGINES (beta.1: only the exact value 1 turns preview engines on; only a yes or no leaves the file). The usage log and the problem report read two more, PATH (to find the engines' version commands) and BOWERLOOM_EVENT_LOG (the off switch), and pass on nothing else.
   assert.deepEqual([...strip(read('main/engine-state.ts')).matchAll(/process\.env(\.\w+)?/g)].map(m => m[0]), ['process.env.XDG_STATE_HOME', 'process.env.BOWERLOOM_PREVIEW_ENGINES', 'process.env.PATH', 'process.env.BOWERLOOM_EVENT_LOG']);
   const token = read('main/token.ts');
