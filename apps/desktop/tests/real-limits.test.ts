@@ -67,8 +67,7 @@ test('a call that would read more than the byte cap stops early, says so, and th
   assert.equal(result.textsCut, records.length, 'every text was cut, and the count says so');
   const payload = JSON.stringify(result).length;
   assert.ok(payload < 1_000_000, `the result is ${payload} bytes`);
-  // The hash is of the whole text that was read (the Overview tells equal skills by it), so a cut text no longer matches the hash of the part that is shown; every other rule holds.
-  assert.deepEqual(validateWorld(result.world).filter(problem => !/ has a wrong hash in /.test(problem)), []);
+  assert.deepEqual(validateWorld(result.world), [], 'a cut text has the hash of the whole text, and the world is still valid');
 });
 
 test('a file count and a byte count are taken one file at a time, and a spent budget refuses every later file', () => {

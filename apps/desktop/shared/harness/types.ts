@@ -49,12 +49,13 @@ export interface Part {
   readonly badge?: string;
   /** False for a part that a harness holds but the Library tabs do not list. */
   readonly inLibrary: boolean;
-  /** Real mode, a tool only: what kind of tool the reader found. Optional until Task 2 lane G fills it (shared/harness/real-map.ts). */
+  /** Real mode, a tool only: what kind of tool the reader found. Set by the real reader (real-map.ts) and by the Overview sample. */
   readonly toolKind?: 'mcp' | 'prompt' | 'hook';
   /**
-   * Real mode: the content hash of the file the reader read for this part (`FoundAt.contentHash`, a hash of that file's text). For a skill it is the hash of its
-   * SKILL.md text only: the reader reads no script beside it, so two skills with equal SKILL.md text and different scripts read as the same skill, and the Overview
-   * says "same text", not "same files". Equal hashes mark skills shared. Optional until Task 2 lane G fills it.
+   * Real mode: the content hash of the file the reader read for this part (`FoundAt.contentHash`, a hash of the whole text of that file, also when the reader cut
+   * the text it keeps). It is absent when the file had no readable text. For a skill it is the hash of its SKILL.md text only: the reader reads no script beside it,
+   * so two skills with equal SKILL.md text and different scripts read as the same skill, and the Overview says "same text", not "same files". Equal hashes mark
+   * skills shared. The real reader fills it (real-map.ts), and so does the Overview sample; the plain sample world has none.
    */
   readonly contentHash?: string;
 }
@@ -157,9 +158,9 @@ export interface ScanSource {
   readonly partIds: readonly string[];
   /** The links the files themselves name (real mode): an agent to the skills and connections it uses. Absent in the sample, where a harness made from the source gets one automatic link for each part. */
   readonly links?: readonly Link[];
-  /** Real mode: `home` for the home folder, `project` for a work folder or a folder the person picked. Optional until Task 2 lane G fills it (shared/harness/real-map.ts). */
+  /** Real mode: `home` for the home folder, `project` for a work folder or a folder the person picked. Set by the real reader (real-map.ts) and by the Overview sample. */
   readonly scope?: 'home' | 'project';
-  /** Real mode: the folder the source was found in, written with `~` for the home folder (`~`, `~/Projects/alpha`). Never a full path. Optional until Task 2 lane G fills it. */
+  /** Real mode: the folder the source was found in, written with `~` for the home folder (`~`, `~/Projects/alpha`). Never a full path. Set by the real reader; a source without it reads as a project named by its name. */
   readonly label?: string;
 }
 

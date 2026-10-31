@@ -109,10 +109,31 @@ export function overviewOf(state: HarnessState, folders: readonly FolderInfo[]):
 const KIND_ORDER: readonly PartKind[] = ['agent', 'skill', 'tool', 'context'];
 /** Compares by code unit, so the order is the same on every computer and in every language setting. */
 const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
-/** A full path in a text (two or more `/name` parts at a word start, or a drive path) is cut down to its last name. A `~/` path and a word like and/or are left as they are. */
-const FULL_PATH = /(?<=^|[\s(\x22\x27\x60=:,;])(?:(?:\/[^\s/\x22\x27\x60),;]+){2,}\/?|[A-Za-z]:[\\/][^\s\x22\x27\x60),;]*)/g;
+/*
+ * A full path in a text is cut down to its last name, and the home folder of a person to `~`. What counts as a full path:
+ *  - a rooted path of two or more names (`/etc/hosts`), a drive path (`C:\x`), a UNC path (`\\server\share`), either slash, and `file://` in front;
+ *  - it starts at the start of the text, or after a space or one of ( " ' ` = : , ; [ < { | >, and it ends at a space or at one of " ' ` < > [ ] { } | ) , ;
+ *  - a name in the middle of a path may hold spaces when each word after the first starts with a capital letter or a digit (`Hanna Sage`, `Sage Advice`), so the home folder
+ *    name does not survive; the last name may not hold a space.
+ *  - `/Users/<name>`, `/home/<name>` and `C:\Users\<name>` with nothing after them are `~`.
+ * `~/…` paths, URLs with a host, and words like and/or are left as they are. Known false hits, kept: `GET /v1/messages` reads as a path of two names, and `a:/b` as a drive.
+ * The pattern is written with escapes for the quote characters, because the banned-word scan of the sources reads a quote inside a pattern as the start of a string.
+ */
+const SEP = String.raw`[\\/]`;
+const SEG = String.raw`[^\s\\/\x22\x27\x60<>\[\]{}|),;]`;
+const SEGS = `${SEG}+(?: [A-Z0-9]${SEG}*)*`;
+const LAST = `${SEG}+`;
+const ROOT = String.raw`(?:[A-Za-z]:[\\/]|\\\\|[\\/])`;
+const FULL_PATH = new RegExp(
+  String.raw`(?<=^|[\s(\x22\x27\x60=:,;\[<{|>])(?:file:\/\/)?(?:` +
+  [`${ROOT}(?:${SEGS}${SEP}){2,}${LAST}${SEP}?`, `${ROOT}(?:[Uu]sers|[Hh]ome)${SEP}${SEGS}${SEP}?`, `${ROOT}${SEGS}${SEP}${LAST}${SEP}?`, `[A-Za-z]:${SEP}${LAST}${SEP}?`].join('|') + ')',
+  'g',
+);
 function shortPaths(text: string): string {
-  return text.replace(FULL_PATH, found => `…/${found.split(/[\\/]/).filter(x => x !== '').at(-1) ?? ''}`);
+  return text.replace(FULL_PATH, found => {
+    const names = found.replace(/^file:\/\//, '').replace(/^[A-Za-z]:(?=[\\/])/, '').split(/[\\/]/).filter(x => x !== '');
+    return names.length === 2 && /^(?:users|home)$/i.test(names[0]!) ? '~' : `…/${names.at(-1) ?? ''}`;
+  });
 }
 const shown = (text: string): string => shortPaths(cleanLine(text));
 /** A label is the folder in `~` form. A full path (a slash, a back slash or a drive at the front) is cut down to its last name. */
