@@ -34,6 +34,22 @@ const CASES: readonly (readonly [string, string, string])[] = [
   ['the home folder on its own (Windows)', 'Lives in C:\\Users\\hanna now', 'Lives in ~ now'],
   ['the home folder with a space in its name', 'Lives in /Users/Hanna Sage now', 'Lives in ~ now'],
   ['the home folder with a closing slash', 'Lives in /Users/hanna/ now', 'Lives in ~ now'],
+  ['a home folder name with a lowercase second word (macOS)', 'In /Users/my projects/x now', 'In …/x now'],
+  ['a home folder name with a lowercase word and a longer tail', 'In /Users/hanna smith/x/y now', 'In …/y now'],
+  ['a home folder name with a lowercase word (Windows)', 'In C:\\Users\\my docs\\x now', 'In …/x now'],
+  ['a home folder name with a lowercase word (Linux)', 'In /home/jo ann/x now', 'In …/x now'],
+  ['a home folder name with an accent', 'In /Users/éva dupont/x now', 'In …/x now'],
+  ['a home folder name under another folder', 'In /Volumes/Data/Users/hanna smith/x now', 'In …/x now'],
+  ['a home folder name with a lowercase word in a file URL', 'In file:///Users/my docs/x now', 'In …/x now'],
+  ['a home folder name of four words', 'In /Users/a b c d/x now', 'In …/x now'],
+  ['a home folder name and then a path, kept as two paths', 'Lives in /Users/hanna and /etc/hosts', 'Lives in ~ and …/hosts'],
+  ['a home folder with a comma after it and then a path', 'Lives in /Users/hanna, then /etc/hosts', 'Lives in ~, then …/hosts'],
+  ['a home folder name in quotes', 'Set "/Users/my docs/x" and "/Users/hanna smith/y"', 'Set "…/x" and "…/y"'],
+  ['the end of a sentence after a bare home folder', 'See /Users/hanna. Next we go', 'See ~. Next we go'],
+  ['an exclamation mark after a bare home folder', 'See /Users/hanna! Then we go', 'See ~! Then we go'],
+  ['a question mark after a path', 'Is it /etc/hosts? Yes', 'Is it …/hosts? Yes'],
+  ['a full stop after a long path', 'Read /Users/a/b/notes. Then stop', 'Read …/notes. Then stop'],
+  ['a full stop after a drive path', 'Read C:\\work\\a\\notes!', 'Read …/notes!'],
   ['two paths in one text', 'Reads /Users/a/notes and then /etc/hosts', 'Reads …/notes and then …/hosts'],
   ['a path after an equals sign and a colon', 'path=/Users/a/b, home:/home/a/c', 'path=…/b, home:…/c'],
 ];
@@ -49,6 +65,17 @@ test('texts that are not full paths are left as they are', () => {
   for (const text of ['and/or', 'read/write', 'a/b/c style', '1/2/3 of 4/5/6', 'https://example.com/a/b/c', '~/Projects/alpha/x', '~ and ~/notes', 'Use /compact first', 'Step 1/2', 'See Users/hanna/x']) {
     assert.equal(summaryOf(text), text);
   }
+});
+
+test('the limits of the home folder rule: more than four words, or more than sixty characters, are left to the plain rule, and a bare home folder keeps its own rule', () => {
+  // Five words: the name is not cut as a whole. The plain rule still cuts what it can read as a path, and never keeps a path with two or more names.
+  assert.equal(summaryOf('In /Users/a b c d e/x now'), 'In ~ b c d e/x now');
+  const long = 'x'.repeat(61);
+  assert.equal(summaryOf(`In /Users/${long}/y now`), 'In …/y now');
+  assert.equal(summaryOf(`In /Users/${'x'.repeat(60)}/y now`), 'In …/y now');
+  // A bare home folder (no separator after it): the capital-word rule of before.
+  assert.equal(summaryOf('In /Users/my docs now'), 'In ~ docs now');
+  assert.equal(summaryOf('In /Users/Hanna Sage now'), 'In ~ now');
 });
 
 test('two false hits are known and kept: a web request line and a letter before a colon and a slash read as paths', () => {
