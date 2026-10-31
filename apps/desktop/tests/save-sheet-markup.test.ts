@@ -85,7 +85,7 @@ test('a save point record the state layer refuses as unsafe offers to set the ol
 });
 
 test('the review lists each file with its action, the harness as it will be, and one tick that names the revision; a no-change plan offers no tick', () => {
-  const view = { folder: '~/Projects/weekly-report', changes: [{ path: '.bowerloom/agents/editor.md', action: 'update' as const }], definition: draftView(BASE, linkSkill(BASE, EMPTY_DRAFT, 'editor', 'check-facts', true)), noop: false, revision: 'abcdef12'.repeat(8) };
+  const view = { folder: '~/Projects/weekly-report', changes: [{ path: '.bowerloom/agents/editor.md', action: 'update' as const }], definition: draftView(BASE, linkSkill(BASE, EMPTY_DRAFT, 'editor', 'check-facts', true)), noop: false, revision: 'abcdef12'.repeat(8), removedSources: [], copiedExecutables: [], acknowledge: null };
   const shown: Shown = { kind: 'save', view, edits: [{ kind: 'set-agent', id: 'editor', skills: ['check-facts'] }] };
   const html = renderToStaticMarkup(createElement(SaveReview, { shown, approved: false, held: false, onApprove: noop }));
   assert.match(html, /data-file="\.bowerloom\/agents\/editor\.md" data-action="update"/);

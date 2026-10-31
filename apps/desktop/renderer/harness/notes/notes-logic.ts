@@ -24,7 +24,11 @@ export function afterChoose(view: NotesView): AfterChoose {
   }
 }
 
-/** One notes card: the source it is (or would be when attached), its name, whether the harness holds it, who reads it, and Bowerloom's read of it. */
+/**
+ * One notes card: the source it is (or would be when attached), its name, whether the harness holds it, who reads it, and Bowerloom's read of it. `saved`:
+ * the harness as saved holds the source, so the person may stop using it. `stopped`: the draft stops using it when the person saves; `readers` then names
+ * the agents that lose it.
+ */
 export interface NotesCard {
   readonly key: string;
   readonly source: SourceView;
@@ -33,21 +37,32 @@ export interface NotesCard {
   readonly readers: readonly string[];
   /** The read of the folder, or null before one is made. A refusal is shown in words. */
   readonly summary: Answer<NotesView> | null;
+  readonly saved?: boolean;
+  readonly stopped?: boolean;
 }
 
 /**
- * The cards: each source of the harness (as the draft draws it) in its own order, then each folder the person chose that is not one of them. `summaries` holds
- * the reads made so far, by notes id; a chosen folder carries its own.
+ * The cards: each source of the harness (as the draft draws it) in its own order, then each saved source the draft stops using (`stopped`, kept so the
+ * person can keep using it again), then each folder the person chose that is not one of them. `summaries` holds the reads made so far, by notes id; a chosen
+ * folder carries its own. `saved` names the sources the harness holds as saved.
  */
-export function notesCards(now: DefinitionView, chosen: readonly NotesView[], summaries: Readonly<Record<string, Answer<NotesView>>>): NotesCard[] {
+export function notesCards(
+  now: DefinitionView, chosen: readonly NotesView[], summaries: Readonly<Record<string, Answer<NotesView>>>,
+  stopped: readonly { readonly source: SourceView; readonly agents: readonly string[] }[] = [], saved: readonly string[] = [],
+): NotesCard[] {
   const readers = (name: string): string[] => now.agents.filter(a => a.notes.includes(name)).map(a => a.name);
   const nameOf = (summary: Answer<NotesView> | null, fallback: string): string => (summary !== null && summary.ok ? summary.value.name : fallback);
+  // A folder chosen in this window carries the newest read (after its history starts, say); else the panel's own read, once made.
+  const summaryOf = (s: SourceView): Answer<NotesView> | null => { const own = chosen.find(c => c.id === s.notesId); return own !== undefined ? { ok: true, value: own } : summaries[s.notesId] ?? null; };
   const out: NotesCard[] = now.sources.map(s => {
-    // A folder chosen in this window carries the newest read (after its history starts, say); else the panel's own read, once made.
-    const own = chosen.find(c => c.id === s.notesId);
-    const summary: Answer<NotesView> | null = own !== undefined ? { ok: true, value: own } : summaries[s.notesId] ?? null;
-    return { key: s.notesId, source: s, name: nameOf(summary, s.name), attached: true, readers: readers(s.name), summary };
+    const summary = summaryOf(s);
+    return { key: s.notesId, source: s, name: nameOf(summary, s.name), attached: true, readers: readers(s.name), summary, ...(saved.includes(s.name) ? { saved: true } : {}) };
   });
+  for (const { source: s, agents } of stopped) {
+    if (out.some(card => card.key === s.notesId)) continue;
+    const summary = summaryOf(s);
+    out.push({ key: s.notesId, source: s, name: nameOf(summary, s.name), attached: true, readers: [...agents], summary, saved: true, stopped: true });
+  }
   for (const c of chosen) {
     if (out.some(card => card.key === c.id)) continue;
     const summary: Answer<NotesView> = summaries[c.id] ?? { ok: true, value: c };

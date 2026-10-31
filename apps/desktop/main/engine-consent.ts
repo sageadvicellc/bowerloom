@@ -16,8 +16,8 @@ export type PlanKind = 'adoption' | 'projection' | 'removal' | 'recovery' | 'ado
 
 /** Main's record of the last plan it returned: its revision, the choices it was made with (canonical JSON), and the words of the dialog. */
 export interface ShownPlan { readonly revision: string; readonly choices: string; readonly ask: Ask | null }
-/** The words of the dialog: a title, one question, and a detail line. */
-export interface Ask { readonly title: string; readonly message: string; readonly detail: string }
+/** The words of the dialog: a title, one question, and a detail line. `button` names the yes button when it is not "Write". */
+export interface Ask { readonly title: string; readonly message: string; readonly detail: string; readonly button?: string }
 
 export const hashOf = (value: unknown): string => createHash('sha256').update(canonicalJson(JSON.parse(JSON.stringify(value)))).digest('hex');
 export const canonical = (value: unknown): string => canonicalJson(JSON.parse(JSON.stringify(value)));
@@ -28,9 +28,27 @@ export const notTheShownPlan = (): { ok: false; refusal: Refusal } => ({
 export const cancelled = (): { ok: false; refusal: Refusal } => ({
   ok: false, refusal: { code: CANCELLED, message: 'Nothing was written. The confirmation was closed without a yes.', paths: [] },
 });
+/** The same for a dialog that opens a file rather than writing one. */
+export const openCancelled = (): { ok: false; refusal: Refusal } => ({
+  ok: false, refusal: { code: CANCELLED, message: 'Nothing was opened. The question was closed without a yes.', paths: [] },
+});
 
 const files = (n: number): string => `${n} ${n === 1 ? 'file' : 'files'}`;
 const again = 'Bowerloom plans again first and stops if anything changed.';
+/** The most file names a dialog lists; the rest are counted. */
+const DIALOG_NAMES = 10;
+const named = (paths: readonly string[]): string => (paths.length <= DIALOG_NAMES ? paths.join(', ') : `${paths.slice(0, DIALOG_NAMES).join(', ')} and ${paths.length - DIALOG_NAMES} more`);
+/**
+ * What a save or a go-back does to files that can run, for the detail line: the files whose bytes stay the same and whose execute bit alone changes, and
+ * the files it writes that can run as programs. Nothing when neither holds.
+ */
+export interface SaveMarks { readonly executables?: readonly string[]; readonly modeOnly?: readonly string[] }
+function marksLine(marks: SaveMarks): string {
+  const run = marks.executables ?? [], mode = marks.modeOnly ?? [];
+  const runLine = run.length === 0 ? '' : `${run.length === 1 ? 'This file can run as a program' : 'These files can run as programs'}: ${named(run)}. `;
+  const modeLine = mode.length === 0 ? '' : `Only the permission to run changes: ${named(mode)}. `;
+  return `${modeLine}${runLine}`;
+}
 /** What the person approved in this sheet, so the dialog says how many weaker lines the yes covers. Nothing when none were ticked. */
 const approvedLines = (n: number): string => (n === 0 ? '' : `You approved ${n} ${n === 1 ? 'line' : 'lines'} that an interface carries more weakly than the harness says. `);
 
@@ -48,9 +66,11 @@ export const ASK = Object.freeze({
   merge: (label: string, n: number, rev: string): Ask => ({ title: 'Merge CLAUDE.md into the harness', message: `Write ${files(n)} into ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. CLAUDE.md does not change yet. ${again}` }),
   mergeRecovery: (label: string, n: number, rev: string): Ask => ({ title: 'Finish a stopped harness', message: `Put back ${files(n)} that a stopped merge changed in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. ${again}` }),
   /** A save of the folder's own harness (option C). It changes only `.bowerloom`; the interfaces' files change later, in an install of its own. */
-  save: (label: string, n: number, rev: string): Ask => ({ title: 'Save the harness', message: `Change ${files(n)} in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. Bowerloom keeps a save point, so you can go back. Installed files do not change until you install. ${again}` }),
+  save: (label: string, n: number, rev: string, marks: SaveMarks = {}): Ask => ({ title: 'Save the harness', message: `Change ${files(n)} in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. ${marksLine(marks)}Bowerloom keeps a save point, so you can go back. Installed files do not change until you install. ${again}` }),
   /** "Go back": a save whose target is a stored save point. */
-  restore: (label: string, n: number, version: string, rev: string): Ask => ({ title: 'Go back to a save point', message: `Go back to ${version} and change ${files(n)} in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. Bowerloom keeps the harness as it is now as a save point too. Installed files do not change until you install. ${again}` }),
+  restore: (label: string, n: number, version: string, rev: string, marks: SaveMarks = {}): Ask => ({ title: 'Go back to a save point', message: `Go back to ${version} and change ${files(n)} in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. ${marksLine(marks)}Bowerloom keeps the harness as it is now as a save point too. Installed files do not change until you install. ${again}` }),
+  /** Opens the newest tidy-up report of a notes folder in the app the computer uses for it. Nothing is written. */
+  openReport: (label: string, path: string): Ask => ({ title: 'Open the tidy-up report', message: `Open ${path} from ${label}?`, detail: 'It opens in the app your computer uses for .md files. Bowerloom changes nothing in the notes folder.', button: 'Open' }),
   /** Sets a folder's old save points aside: the record is renamed in Bowerloom's private folder; nothing in the folder changes and nothing is deleted. */
   setAside: (label: string, rev: string): Ask => ({ title: 'Set the old save points aside', message: `Set the old save points of ${label} aside and start a new record?`, detail: `From plan ${rev.slice(0, 8)}. Bowerloom renames its record to a dated name in its private folder and deletes nothing. Go back then starts from the next save. ${again}` }),
   /** A stopped save is taken back; a save that finished and only left its note (`done`) is kept, and changes no file. */
@@ -69,6 +89,8 @@ export class ShownPlans {
   private key = (folderId: string, kind: PlanKind): string => `${folderId}\u0000${kind}`;
   set(folderId: string, kind: PlanKind, plan: ShownPlan): void { this.plans.set(this.key(folderId, kind), plan); }
   clear(folderId: string, kind: PlanKind): void { this.plans.delete(this.key(folderId, kind)); }
+  /** The record of the last plan of this kind, or null. It matches nothing: a write still names the plan through `match`. */
+  peek(folderId: string, kind: PlanKind): ShownPlan | null { return this.plans.get(this.key(folderId, kind)) ?? null; }
   /** The record, when the write names its revision and its choices exactly; else null. */
   match(folderId: string, kind: PlanKind, revision: string, choices: unknown): ShownPlan | null {
     const p = this.plans.get(this.key(folderId, kind));

@@ -217,7 +217,7 @@ app.whenReady().then(async () => {
         record: createRecorder({ stateRoot: engineStateRoot(home), env: diagnosticsEnv(), home }),
         // Main's own question before every write (U16): words main builds from its record of the plan; the window cannot word or skip it.
         confirm: async ask => {
-          const options: Electron.MessageBoxOptions = { type: 'question', title: ask.title, message: ask.message, detail: ask.detail, buttons: ['Cancel', 'Write'], defaultId: 0, cancelId: 0, noLink: true };
+          const options: Electron.MessageBoxOptions = { type: 'question', title: ask.title, message: ask.message, detail: ask.detail, buttons: ['Cancel', ask.button ?? 'Write'], defaultId: 0, cancelId: 0, noLink: true };
           const result = window === null ? await dialog.showMessageBox(options) : await dialog.showMessageBox(window, options);
           return result.response === 1;
         },
@@ -236,6 +236,8 @@ app.whenReady().then(async () => {
         // The ready-made kits ship read-only: from the repository in development, from the app's resources in a packaged build. A broken kit is told on
         // the console now, and every call that needs it refuses with words; it is never replaced by an empty kit.
         kitsDir: shippedKits({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, appRoot: root }),
+        // The tidy-up report of a notes folder, which main found and checked itself, opens in the app the computer uses for it. The window never names a path.
+        openPath: path => shell.openPath(path),
       });
     }
   }

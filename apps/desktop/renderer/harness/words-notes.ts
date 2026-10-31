@@ -22,6 +22,7 @@ export const NOTES = deepFreeze({
     tour: 'Tour', tourSteps: 'Tour steps', tourSkip: 'Skip tour', tourBack: 'Back', tourNext: 'Next', tourDone: 'Done',
     stepMap: 'Agents', stepNotes: 'Notes', stepKeeper: 'Keeper', stepShelves: 'Shelves', stepSave: 'Save', stepHelp: 'Help', stepNext: 'What next',
     takeOff: 'Take off', removeKeeper: 'Take the keeper out', reading: 'Reading the folder', writing: 'Writing', folder: 'Folder', latestReport: 'Latest report', building: 'Build the keeper',
+    stopUsing: 'Stop using these notes', keepUsing: 'Keep using these notes', stoppedNotes: 'Notes it stops using', opening: 'Opening the report',
   },
   /** Short lines: at most 12 words each. */
   hint: {
@@ -53,6 +54,9 @@ export const NOTES = deepFreeze({
     helpLives: 'Help sits at the top of this sheet.',
     noSummary: 'Bowerloom could not read these notes now.',
     firstRunNote: 'Next, build an agent that looks after them.',
+    stopsOnSave: 'Stops when you save.',
+    folderStays: 'Your notes folder itself does not change.',
+    reportOpened: 'The report opened in its own app.',
   },
 } as const);
 
@@ -71,6 +75,17 @@ export const usedByWords = (agents: readonly string[]): string => (agents.length
 export function reportWords(latest: { readonly date: string; readonly path: string } | null, complete = true): string {
   if (latest === null) return complete ? 'No tidy-up report yet.' : 'No tidy-up report in the part read.';
   return complete ? `Tidy-up report ${latest.date}` : `Tidy-up report ${latest.date} or later`;
+}
+/** "Open the tidy-up report of 2026-10-27": the name of the report line's button. */
+export const openReportName = (date: string): string => `Open the tidy-up report of ${date}`;
+/** "Stop using Reading list" and "Keep using Reading list": the names of a card's two buttons. */
+export const stopName = (notes: string): string => `Stop using ${notes}`;
+export const keepName = (notes: string): string => `Keep using ${notes}`;
+/** "reader and writer lose these notes.", or "No agent reads these notes." for none. */
+export function loseWords(agents: readonly string[]): string {
+  if (agents.length === 0) return 'No agent reads these notes.';
+  const list = agents.length === 1 ? agents[0]! : `${agents.slice(0, -1).join(', ')} and ${agents[agents.length - 1]!}`;
+  return `${list} ${agents.length === 1 ? 'loses' : 'lose'} these notes.`;
 }
 /** "And 3 more.": the file names past the list's end. */
 export const moreWords = (n: number): string => `And ${n} more.`;

@@ -23,8 +23,15 @@ export const KEEPER_AGENT = 'notes-keeper';
 export const KEEPER_FIRST_SKILL = 'add-source';
 
 /**
+ * A skill the draft copies from the harness of another folder (`add-skill`): its id, the id main gave that folder, the folder's label, and the name and
+ * description the editor shows. Main reads every byte of it there again when it plans.
+ */
+export interface SkillCopy { readonly id: string; readonly from: string; readonly fromLabel: string; readonly name: string; readonly description: string }
+
+/**
  * The person's changes: the skills and the notes of each agent they changed, the skills they remove, the interfaces (or null when unchanged), the kit they
- * add with the harness as main planned it with the kit, and the notes sources they add.
+ * add with the harness as main planned it with the kit, the notes sources they add, the saved sources they stop using, and the skills they copy from
+ * another folder.
  */
 export interface SaveDraft {
   readonly agents: Readonly<Record<string, readonly string[]>>;
@@ -33,16 +40,25 @@ export interface SaveDraft {
   readonly engines: readonly EngineId[] | null;
   readonly kit: { readonly id: KitId; readonly view: DefinitionView } | null;
   readonly sources: readonly SourceView[];
+  readonly stopped: readonly string[];
+  readonly copies: readonly SkillCopy[];
 }
 export const EMPTY_DRAFT: SaveDraft = Object.freeze({
   agents: Object.freeze({}), notes: Object.freeze({}), removed: Object.freeze([]) as readonly string[], engines: null, kit: null, sources: Object.freeze([]) as readonly SourceView[],
+  stopped: Object.freeze([]) as readonly string[], copies: Object.freeze([]) as readonly SkillCopy[],
 });
+/** The most skills one draft copies from other folders: main takes at most this many `add-skill` edits in one save. */
+export const COPY_LIMIT = 16;
 
 const same = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((x, i) => x === b[i]);
+/** The harness the draft starts from: as main read it, or with the kit added when the draft adds one, with each skill the draft copies added after. */
+function startOf(base: DefinitionView, draft: SaveDraft): DefinitionView {
+  const start = draft.kit?.view ?? base;
+  if (draft.copies.length === 0) return start;
+  return { ...start, skills: [...start.skills, ...draft.copies.map(c => ({ id: c.id, name: c.name, description: c.description }))] };
+}
 const has = (def: DefinitionView, skill: string): boolean => def.skills.some(s => s.id === skill);
-/** The harness the draft starts from: as main read it, or with the kit added when the draft adds one. */
-const startOf = (base: DefinitionView, draft: SaveDraft): DefinitionView => draft.kit?.view ?? base;
-/** The same, for the editor: the skills it lists, removed ones included, are this harness's. */
+/** The same, for the editor: the skills it lists, removed ones and copies included, are this harness's. */
 export const draftStart = startOf;
 
 /** The skills an agent uses in the draft, in the agent's own order with each new link at the end, without the removed ones. */
@@ -52,11 +68,14 @@ function skillsOf(base: DefinitionView, draft: SaveDraft, agent: string): string
 }
 /** The start skills of an agent, in their own order, without the removed ones: what the removal alone leaves. */
 const startSkills = (base: DefinitionView, draft: SaveDraft, agent: string): string[] => (startOf(base, draft).agents.find(a => a.id === agent)?.skills ?? []).filter(s => !draft.removed.includes(s));
-/** The notes an agent reads in the draft. */
-const notesOf = (base: DefinitionView, draft: SaveDraft, agent: string): readonly string[] => draft.notes[agent] ?? startOf(base, draft).agents.find(a => a.id === agent)?.notes ?? [];
-const startNotes = (base: DefinitionView, draft: SaveDraft, agent: string): readonly string[] => startOf(base, draft).agents.find(a => a.id === agent)?.notes ?? [];
-/** The sources of the draft: the harness's own, then each one the draft adds. */
-const sourcesOf = (base: DefinitionView, draft: SaveDraft): SourceView[] => [...startOf(base, draft).sources, ...draft.sources];
+/** The notes an agent reads in the draft, without the sources it stops using. */
+const notesOf = (base: DefinitionView, draft: SaveDraft, agent: string): readonly string[] =>
+  (draft.notes[agent] ?? startOf(base, draft).agents.find(a => a.id === agent)?.notes ?? []).filter(n => !draft.stopped.includes(n));
+/** The start notes of an agent, without the stopped sources: what the stop alone leaves, which is the remove-source edit's own work. */
+const startNotes = (base: DefinitionView, draft: SaveDraft, agent: string): readonly string[] =>
+  (startOf(base, draft).agents.find(a => a.id === agent)?.notes ?? []).filter(n => !draft.stopped.includes(n));
+/** The sources of the draft: the harness's own that it keeps using, then each one the draft adds. */
+const sourcesOf = (base: DefinitionView, draft: SaveDraft): SourceView[] => [...startOf(base, draft).sources.filter(s => !draft.stopped.includes(s.name)), ...draft.sources];
 
 /**
  * Links a skill to an agent (`on`) or unlinks it. A new link goes to the end of the agent's own list, and every other skill keeps its place, so a link and its
@@ -79,8 +98,10 @@ export function linkRest(base: DefinitionView, draft: SaveDraft, agent: string, 
   return skills.reduce((d, skill) => linkSkill(base, d, agent, skill, true), draft);
 }
 
-/** Marks a skill to be removed when the person saves (`on`), or keeps it again. */
+/** Marks a skill to be removed when the person saves (`on`), or keeps it again. A skill the draft copies is taken out of the draft instead. */
 export function removeSkill(base: DefinitionView, draft: SaveDraft, skill: string, on: boolean): SaveDraft {
+  const copy = draft.copies.find(c => c.id === skill);
+  if (copy !== undefined) return on ? copySkill(base, draft, copy, false) : draft;
   const start = startOf(base, draft);
   if (!has(start, skill) || draft.removed.includes(skill) === on) return draft;
   const removed = on ? start.skills.map(s => s.id).filter(id => id === skill || draft.removed.includes(id)) : draft.removed.filter(s => s !== skill);
@@ -170,7 +191,7 @@ export function sourceFor(view: DefinitionView, notes: Pick<NotesView, 'id' | 'l
  */
 export function attachNotes(base: DefinitionView, draft: SaveDraft, agent: string, source: SourceView, on: boolean): SaveDraft {
   const start = startOf(base, draft);
-  if (!start.agents.some(a => a.id === agent)) return draft;
+  if (!start.agents.some(a => a.id === agent) || draft.stopped.includes(source.name)) return draft;
   const held = sourcesOf(base, draft).find(s => s.notesId === source.notesId);
   const name = held?.name ?? source.name;
   const now = notesOf(base, draft, agent);
@@ -185,13 +206,59 @@ export function attachNotes(base: DefinitionView, draft: SaveDraft, agent: strin
   return { ...draft, notes, sources };
 }
 
+/**
+ * Stops using a saved notes source when the person saves (`on`), or keeps using it again: one `remove-source` edit, which also takes the source off every
+ * agent's Notes shelf. A tick on it made in this draft goes with it. A source the harness does not hold (one the draft only adds goes when no agent reads it)
+ * changes nothing. Nothing in the notes folder changes.
+ */
+export function stopSource(base: DefinitionView, draft: SaveDraft, name: string, on: boolean): SaveDraft {
+  if (!base.sources.some(s => s.name === name) || draft.stopped.includes(name) === on) return draft;
+  if (!on) return { ...draft, stopped: draft.stopped.filter(n => n !== name) };
+  const next: SaveDraft = { ...draft, stopped: [...draft.stopped, name] };
+  const notes: Record<string, readonly string[]> = {};
+  for (const [id, list] of Object.entries(draft.notes)) {
+    const kept = list.filter(n => n !== name);
+    if (!same(kept, startNotes(base, next, id))) notes[id] = kept;
+  }
+  return { ...next, notes };
+}
+/** Each saved source the draft stops using, with the names of the agents that read it now and lose it. */
+export function stoppedSources(base: DefinitionView, draft: SaveDraft): { readonly source: SourceView; readonly agents: readonly string[] }[] {
+  return base.sources.filter(s => draft.stopped.includes(s.name)).map(source => ({ source, agents: base.agents.filter(a => a.notes.includes(source.name)).map(a => a.name) }));
+}
+
+// ---- skills copied from another folder
+
+/** True when the draft may copy a skill of this id: the harness (with the kit and the copies of the draft) does not hold it, and the draft copies fewer than 16. */
+export const canCopy = (base: DefinitionView, draft: SaveDraft, id: string): boolean => !has(startOf(base, draft), id) && draft.copies.length < COPY_LIMIT;
+/**
+ * Copies a skill from another folder's harness (`on`), or takes the copy out again with every link to it. An id the harness holds, or one copied already,
+ * is not copied over it. The window sends the id and the folder's id only: main reads the skill there again.
+ */
+export function copySkill(base: DefinitionView, draft: SaveDraft, copy: SkillCopy, on: boolean): SaveDraft {
+  if (on) return canCopy(base, draft, copy.id) ? { ...draft, copies: [...draft.copies, copy] } : draft;
+  if (!draft.copies.some(c => c.id === copy.id)) return draft;
+  const next: SaveDraft = { ...draft, copies: draft.copies.filter(c => c.id !== copy.id) };
+  const agents: Record<string, readonly string[]> = {};
+  for (const [id, list] of Object.entries(draft.agents)) {
+    const kept = list.filter(s => s !== copy.id);
+    if (!same(kept, startOf(base, next).agents.find(a => a.id === id)?.skills ?? [])) agents[id] = kept;
+  }
+  return { ...next, agents };
+}
+
 // ---- the edits
 
-/** The closed edits of the draft, in the order main applies them: the kit, each new source, each changed agent, each removal, then the interfaces. */
+/**
+ * The closed edits of the draft, in the order main applies them: the kit, each new source, each copied skill, each changed agent, each removal of a skill,
+ * each source it stops using, then the interfaces. A copy comes before the agents that link it, and a stop after the agents, so no edit names a skill that is
+ * not there yet or a source that is gone.
+ */
 export function draftEdits(base: DefinitionView, draft: SaveDraft): SaveEdit[] {
   const out: SaveEdit[] = [];
   if (draft.kit !== null) out.push({ kind: 'add-from-kit', kit: draft.kit.id });
   for (const s of draft.sources) out.push({ kind: 'set-source', name: s.name, notesId: s.notesId });
+  for (const c of draft.copies) out.push({ kind: 'add-skill', id: c.id, from: c.from });
   for (const a of startOf(base, draft).agents) {
     const skills = skillsOf(base, draft, a.id), notes = notesOf(base, draft, a.id);
     const skillsChanged = !same(skills, startSkills(base, draft, a.id)), notesChanged = !same(notes, startNotes(base, draft, a.id));
@@ -199,6 +266,7 @@ export function draftEdits(base: DefinitionView, draft: SaveDraft): SaveEdit[] {
     if (skillsChanged || notesChanged) out.push({ kind: 'set-agent', id: a.id, ...(skillsChanged ? { skills } : {}), ...(notesChanged ? { notes: [...notes] } : {}) });
   }
   for (const id of draft.removed) out.push({ kind: 'remove-skill', id });
+  for (const name of draft.stopped) out.push({ kind: 'remove-source', name });
   if (draft.engines !== null && !same(draft.engines, base.engines)) out.push({ kind: 'set-engines', engines: [...draft.engines] });
   return out;
 }

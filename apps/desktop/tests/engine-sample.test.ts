@@ -13,7 +13,7 @@ import { readFrontmatter } from '../../../packages/harness-definition/src/index.
 import { SAMPLE_FOLDERS, SAMPLE_KIT, SAMPLE_MESSAGES, SAMPLE_NOTES, createSampleEngine, sampleEngineFixtures } from '../shared/engine/sample.js';
 import { createEngineService } from '../main/engine-service.js';
 import { loadKit } from '../main/kit.js';
-import { KIT_MAIN_WORDS, SAVE_MAIN_WORDS } from '../shared/engine/types.js';
+import { KIT_MAIN_WORDS, REPORT_MAIN_WORDS, SAVE_MAIN_WORDS } from '../shared/engine/types.js';
 import type { Answer, ProjectAnswer, ProjectInput, SaveEdit } from '../shared/engine/types.js';
 import { DESKTOP, tempDir } from './support.js';
 import { definedFolder, engineFolder, homeFolder, teamFolder } from './helpers-engine/folders.js';
@@ -43,6 +43,7 @@ test('the sample\'s words for each refusal are the packages\' own words', () => 
   for (const [code, words] of Object.entries(SAMPLE_MESSAGES)) {
     if (Object.hasOwn(SAVE_MAIN_WORDS, code)) { assert.equal(SAVE_MAIN_WORDS[code as keyof typeof SAVE_MAIN_WORDS], words, code); continue; }
     if (Object.hasOwn(KIT_MAIN_WORDS, code)) { assert.equal(KIT_MAIN_WORDS[code as keyof typeof KIT_MAIN_WORDS], words, code); continue; }
+    if (Object.hasOwn(REPORT_MAIN_WORDS, code)) { assert.equal(REPORT_MAIN_WORDS[code as keyof typeof REPORT_MAIN_WORDS], words, code); continue; }
     if (code.startsWith('NOTES_')) { assert.equal(new NotesRefusal(code as NotesCode).message, words, code); continue; }
     const made = code.startsWith('ADOPTION_') ? new AdoptionRefusal(code as AdoptionCode) : code.startsWith('SAVE_') ? new SaveRefusal(code as SaveCode)
       : code.startsWith('VERSION_') ? new VersionRefusal(code as VersionCode) : new PortableRefusal(code as PortableCode);

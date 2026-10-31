@@ -12,7 +12,7 @@ import {
 import { NOTES_REFUSAL_CODES } from '../../../packages/notes-source/src/index.js';
 import { SAVE_REFUSAL_CODES } from '../../../packages/adoption/src/index.js';
 import { VERSION_REFUSAL_CODES } from '../../../packages/project-sync/src/index.js';
-import { KIT_MAIN_WORDS, SAVE_MAIN_WORDS } from '../shared/engine/types.js';
+import { KIT_MAIN_WORDS, REPORT_MAIN_WORDS, SAVE_MAIN_WORDS } from '../shared/engine/types.js';
 
 test('the table is frozen; a label has at most 5 words, a hint 12, a paragraph 25, and none holds a banned word', () => {
   assert.equal(Object.isFrozen(ENGINE_WORDS.label), true);
@@ -85,7 +85,8 @@ test('save step: every new refusal code has words for what to do next, inside th
 });
 
 test('notes: every refusal of the notes calls has words for what to do next, inside the hint limit and free of banned words', () => {
-  const codes: string[] = [...NOTES_REFUSAL_CODES, 'KIT_INVALID', 'NOT_A_FOLDER', 'NOTES_NOT_CHOSEN'];
+  // The tidy-up report's own refusals of main (REPORT_MAIN_WORDS) are shown with the notes words too.
+  const codes: string[] = [...NOTES_REFUSAL_CODES, 'KIT_INVALID', 'NOT_A_FOLDER', 'NOTES_NOT_CHOSEN', ...Object.keys(REPORT_MAIN_WORDS)];
   assert.deepEqual(codes.filter(c => NOTES_REFUSAL_WORDS[c] === undefined), [], 'every code has words');
   assert.deepEqual(Object.keys(NOTES_REFUSAL_WORDS).filter(c => !codes.includes(c)), [], 'no words for a code that does not exist');
   for (const [code, text] of Object.entries(NOTES_REFUSAL_WORDS)) {
