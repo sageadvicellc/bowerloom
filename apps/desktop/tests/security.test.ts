@@ -140,8 +140,8 @@ test('the bundle adds no inline style element and no eval, and no graph library 
   assert.doesNotMatch(bundle, /createElement\(["']style["']\)/, 'no code that makes a style element');
   assert.doesNotMatch(bundle, /\beval\(|new Function\(/);
   assert.doesNotMatch(bundle, /force-graph|float-tooltip/, 'the knowledge graph of the viewer is gone');
-  const pkg = JSON.parse(read('package.json')) as { dependencies: Record<string, string> };
-  assert.deepEqual(Object.keys(pkg.dependencies).filter(name => /force-graph|xyflow/.test(name)), []);
+  const pkg = JSON.parse(read('package.json')) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+  assert.deepEqual(Object.keys({ ...pkg.dependencies, ...pkg.devDependencies }).filter(name => /force-graph|xyflow/.test(name)), []);
   assert.doesNotMatch(read('tools/bundle.mjs'), /force-graph|noInlineStyle/);
 });
 
