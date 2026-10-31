@@ -47,3 +47,7 @@ export const screenshotSlots = [
   },
 ] as const;
 export type ScreenshotSlotId = typeof screenshotSlots[number]['id'];
+/** The two themes a shot is taken in. */
+export const shotThemes = ['light', 'dark'] as const;
+/** The path of one file of a shot, in `public/shots`. The page and its enlarged view load the same file. */
+export const shotSource = (id: ScreenshotSlotId, theme: typeof shotThemes[number]): string => `/shots/${id}-${theme}.webp`;

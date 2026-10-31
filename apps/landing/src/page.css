@@ -73,6 +73,51 @@
 }
 .screenshot-slot figcaption { margin-top: 10px; font: 14px/1.6 var(--ui-font); color: var(--ui-muted); }
 
+/* Enlarge a screenshot. The shot is a button; it keeps the size of the image, so nothing moves. The hint sits on the image and takes no room. */
+.screenshot-open { position: relative; display: block; width: 100%; margin: 0; padding: 0; border: 0; border-radius: 12px; background: none; color: inherit; font: inherit; text-align: left; cursor: zoom-in; }
+.screenshot-open:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 3px; }
+.screenshot-open .screenshot-image { transition: border-color 160ms cubic-bezier(.23, 1, .32, 1); }
+.screenshot-open:hover .screenshot-image { border-color: var(--ui-primary); }
+.screenshot-hint { position: absolute; right: 12px; bottom: 12px; padding: 4px 12px; border: 1px solid var(--ui-border); border-radius: 999px; background: var(--ui-surface); color: var(--ui-text); font: 13px/1.5 var(--ui-font); pointer-events: none; }
+
+/* The enlarged view: a native modal dialog. It is as wide as the window allows and no taller than it. The bar stays; the picture scrolls under it. */
+.screenshot-dialog { box-sizing: border-box; width: min(1600px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); margin: auto; padding: 0; overflow: hidden; border: 1px solid var(--ui-border); border-radius: 12px; background: var(--ui-bg); color: var(--ui-text); }
+.screenshot-dialog[open] { display: flex; flex-direction: column; }
+.screenshot-dialog::backdrop { background: rgb(0 0 0 / .64); }
+.screenshot-dialog-bar { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 8px 8px 18px; border-bottom: 1px solid var(--ui-border); }
+.screenshot-dialog-bar form { margin: 0; }
+.screenshot-dialog-caption { display: -webkit-box; min-width: 0; margin: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font: 14px/1.5 var(--ui-font); color: var(--ui-muted); }
+.screenshot-close { min-width: 44px; min-height: 44px; padding: 8px 18px; border: 1px solid var(--ui-border); border-radius: 6px; background: var(--ui-surface); color: var(--ui-text); font: 14px/1.4 var(--ui-font); cursor: pointer; }
+.screenshot-close:hover { border-color: var(--ui-primary); }
+.screenshot-close:focus-visible, .screenshot-scroll:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 2px; }
+.screenshot-scroll:focus-visible { outline-offset: -2px; }
+/* The scroll area stays inside the dialog. A picture wider than a phone is 960 px wide, so the words in it can be read, and the area scrolls sideways. */
+.screenshot-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; background: var(--ui-surface); }
+.screenshot-full { display: block; width: max(100%, 960px); height: auto; }
+.screenshot-full[data-shot-theme='dark'], [data-theme='dark'] .screenshot-full[data-shot-theme='light'] { display: none; }
+[data-theme='dark'] .screenshot-full[data-shot-theme='dark'] { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .screenshot-full[data-shot-theme='light'] { display: none; }
+  :root:not([data-theme]) .screenshot-full[data-shot-theme='dark'] { display: block; }
+}
+/* The page behind does not scroll while the dialog is open. The gutter stays, so the page does not change width. */
+html:has(.screenshot-dialog[open]) { overflow: hidden; scrollbar-gutter: stable; }
+/* Motion (decision: marketing page, so polish first). Opening happens a few times a visit: 220 ms, fade and a short rise, ease-out. Closing is shorter and only fades.
+   Only opacity and transform move. A browser that cannot animate display drops the whole line and shows the dialog at once. */
+@media (prefers-reduced-motion: no-preference) {
+  .screenshot-dialog, .screenshot-dialog::backdrop { opacity: 0; transition: opacity 140ms cubic-bezier(.23, 1, .32, 1), display 140ms allow-discrete, overlay 140ms allow-discrete; }
+  .screenshot-dialog { transform: translateY(0); transition: opacity 140ms cubic-bezier(.23, 1, .32, 1), transform 140ms cubic-bezier(.23, 1, .32, 1), display 140ms allow-discrete, overlay 140ms allow-discrete; }
+  .screenshot-dialog[open], .screenshot-dialog[open]::backdrop { opacity: 1; transition-duration: 220ms; }
+  .screenshot-dialog[open] { transform: none; }
+  @starting-style {
+    .screenshot-dialog[open] { opacity: 0; transform: translateY(8px); }
+    .screenshot-dialog[open]::backdrop { opacity: 0; }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .screenshot-open .screenshot-image { transition: none; }
+}
+
 /* Hero actions. On desktop the headline and both buttons stay on the first screen: the banner takes what the copy leaves. */
 @media (min-width: 761px) {
   .normal-site .normal-hero .hero-copy { padding-top: 20px; }
