@@ -1,7 +1,8 @@
 /**
  * The bridge of the real-setup reader: three named calls, and the calls of the adopt and install sheets (shared/engine/types.ts), which the main
  * process answers only for the harness-first window on the person's own folders (the default launch). It is the only preload the real mode loads (the normal bridge is not loaded in the
- * preview). Each call sends one message on its own channel. The page gets no Node, no path, no generic send, and no way to listen.
+ * preview). It exposes both objects or neither: main loads this file only for the plan whose `preload` is 'real', and for that plan it registers the reader and the engine calls together
+ * (main/launch.ts; tests/launch.test.ts holds that every plan has the three on or the three off), so a window never holds a call that main does not answer. Each call sends one message on its own channel. The page gets no Node, no path, no generic send, and no way to listen.
  */
 import { contextBridge, ipcRenderer } from 'electron';
 import { REAL_CHANNELS } from '../shared/real/types.js';

@@ -57,6 +57,21 @@ test('flags that are exactly known, and arguments that are not mode flags, are n
   assert.deepEqual(Object.values(FLAGS).filter(f => /prototype/.test(f)), []);
 });
 
+test('every plan keeps the reader, the engine calls and the bridge together: all three on for the app, all three off for the sample and a refused start', () => {
+  for (const argv of [[], [FLAGS.sample], [FLAGS.sample, '--sample-preview-engines'], ['--smaple'], ['--unknown-chromium-flag']]) {
+    const l = launchOf(argv);
+    assert.equal(l.realReader, l.engineCalls, JSON.stringify(argv));
+    assert.equal(l.realReader, l.preload === 'real', `${JSON.stringify(argv)}: the bridge file is loaded exactly when main answers its calls`);
+  }
+});
+
+test('main registers the reader and the engine calls for the plan that loads the bridge, and for no other', () => {
+  const main = read('main/main.ts').replace(/\/\/.*$/gm, '');
+  assert.equal([...main.matchAll(/registerRealIpc\(/g)].length, 1); assert.equal([...main.matchAll(/registerEngineIpc\(/g)].length, 1);
+  assert.match(main, /if \(launch\.realReader\) \{[\s\S]*?registerRealIpc\([\s\S]*?if \(launch\.engineCalls\) \{[\s\S]*?registerEngineIpc\(/, 'the engine handlers sit inside the reader branch');
+  assert.match(read('preload/real-preload.ts'), /exposes both objects or neither/, 'the bridge file says why one never loads without the other');
+});
+
 test('a refused start tells main to exit with the words, before any window opens', () => {
   const main = read('main/main.ts');
   assert.match(main, /if \(launch\.refusal !== null\) \{ process\.stderr\.write\(`\$\{launch\.refusal\}\\n`\); app\.exit\(2\); \}/);
