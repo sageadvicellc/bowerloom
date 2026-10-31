@@ -227,7 +227,7 @@ test('D7a. the beta.3 notes open with one plain sentence and carry no review or 
   assert.equal(body[0],'## 0.7.0-beta.3');
   assert.match(body[1],/^This release [^*`#-][^\n]*\.$/,'a sentence opens the section, as it does for beta.2');
   assert.equal(body[2],'**New commands**');
-  assert.doesNotMatch(section,/\b(?:review round|round \d|PR \d|pull request|track \d+|spec \d+|Hanna|owner decision|TODO|TBD)\b/i);
+  assert.doesNotMatch(section,/\b(?:review round|round \d|PR \d|pull request|track \d+|spec \d+|the maintainer|owner decision|TODO|TBD)\b/i);
 });
 
 const FORMAT=/bowerloom\/[a-z-]+\/v1(?:alpha|beta)[0-9]+/g;
@@ -413,7 +413,7 @@ test('D29. no docs page and not the README names a private path',()=>{
   }
 });
 
-// Round 1 of the reviews of PR 101, D (Hanna's choice C on #97): an errors.md row uses the words the terminal prints.
+// Round 1 of the reviews of PR 101, D (the maintainer's choice C on #97): an errors.md row uses the words the terminal prints.
 // The meaning cell holds the sentence of human.ts, and the next-step cell holds its next step, backticks aside. A sentence
 // starts with a capital letter in a cell, so the first letter is compared without its case.
 // Each code listed here is not compared, for the reason given.

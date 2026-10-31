@@ -162,8 +162,8 @@ test('times: the words of a stamp, a run and a history entry', () => {
   assert.equal(stampWords({ daysAgo: 0, time: '10:40' }), 'Today 10:40'); assert.equal(stampWords({ daysAgo: 1, time: '16:30' }), 'Yesterday 16:30'); assert.equal(stampWords({ daysAgo: 3, time: '09:00' }), '3 days ago 09:00');
   assert.equal(stampAtWords({ daysAgo: 0, time: '10:42' }), 'Today at 10:42'); assert.equal(startedWords({ daysAgo: 0, time: '10:42' }), 'started 10:42'); assert.equal(startedWords({ daysAgo: 1, time: '16:05' }), 'started yesterday 16:05');
   assert.deepEqual(w.history.map(e => entryMeta(e)), [
-    'Today 10:40 · Hanna · this Mac · 10 files written', 'Today 10:12 · Hanna · this Mac · manifest changed',
-    'Yesterday 16:30 · Hanna · this Mac · manifest changed', 'Yesterday 16:02 · Hanna · this Mac · manifest created',
+    'Today 10:40 · Robin · this Mac · 10 files written', 'Today 10:12 · Robin · this Mac · manifest changed',
+    'Yesterday 16:30 · Robin · this Mac · manifest changed', 'Yesterday 16:02 · Robin · this Mac · manifest created',
   ]);
   assert.deepEqual(groupByDay(w.history).map(g => [g.day, g.entries.length]), [['Today', 2], ['Yesterday', 2]]); assert.equal(dayGroupOf({ daysAgo: 5, time: '08:00' }), 'Earlier');
   assert.equal(minutesOpen(w.runs[0]!, { daysAgo: 0, time: '10:54' }), 12); assert.equal(minutesOpen(w.runs[2]!, NOW), 1135, 'yesterday 16:05 to today 11:00');

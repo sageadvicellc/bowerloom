@@ -1,6 +1,6 @@
 # Trellis v0.7-alpha revision 02
 
-Hanna selected this revision on October 1, 2026. It replaces the fixed craft-shop authoring trial as the primary founder experience.
+The maintainer selected this revision on October 1, 2026. It replaces the fixed craft-shop authoring trial as the primary founder experience.
 
 The earlier implementation and its acceptance evidence remain preserved. This revision requires new evidence for its changed behavior.
 
@@ -74,7 +74,7 @@ An expired credential stops the affected operation. Preserve the run for recover
 
 ## Landing page
 
-Hanna selected an interactive cyber-solar workshop with glowing connections. The primary action is “Build with your agent.”
+The maintainer selected an interactive cyber-solar workshop with glowing connections. The primary action is “Build with your agent.”
 
 Use the actual Projection UI design system as the starting point. Version 0.1.5 supplies dark surfaces, chartreuse accents, mono type, and compact controls.
 
@@ -90,7 +90,7 @@ Keep documentation and GitHub links visible. Do not add a waitlist, account requ
 
 ## Evidence and review gates
 
-Independent code review precedes feature integration. Hanna then performs UAT, which means testing the intended experience herself.
+Independent code review precedes feature integration. The maintainer then performs UAT, which means testing the intended experience in person.
 
 The acceptance packet records the exact source revision, commands, environment, outcomes, and known limits. A video presentation is not required.
 
@@ -110,11 +110,11 @@ Record setup time, review time, corrections, and available usage observations. C
 
 Label unavailable usage measurements explicitly. Do not report measured savings from one unmatched run or claim repeated A/B improvement without repeated comparisons.
 
-Founder review time remains unmeasured until Hanna performs the test. Agent review time is a separate measurement.
+Founder review time remains unmeasured until the maintainer performs the test. Agent review time is a separate measurement.
 
 ## Working order
 
-The team owns implementation, independent review, and integration into `feature/trellis-v1`. Hanna alone merges into main.
+The team owns implementation, independent review, and integration into `feature/trellis-v1`. The maintainer alone merges into main.
 
 Public deployment, release publication, new spending, and repository retirement retain their existing gates. Preserve the five module repositories and all earlier evidence.
 

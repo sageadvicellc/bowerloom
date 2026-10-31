@@ -37,9 +37,9 @@ test('MCP may appear only in a popover', () => {
   assert.ok(Object.values(WORDS.popover).some(t => /\bMCP\b/.test(t)), 'the rule is shown in one popover');
 });
 
-test('the storyboard vocabulary is used as written, except where Hanna chose another word', () => {
+test('the storyboard vocabulary is used as written, except where the maintainer chose another word', () => {
   const l = WORDS.label;
-  // Hanna renamed the storyboard's "Save points" to "Version history" on 2026-10-25. It is the one phrase that lets the word "version" through.
+  // the maintainer renamed the storyboard's "Save points" to "Version history" on 2026-10-25. It is the one phrase that lets the word "version" through.
   assert.deepEqual([l.versionHistory, l.save, l.add, l.help, l.showTour, l.yourAgents], ['Version history', 'Save', 'Add', 'Help', 'Show me around', 'Your agents']);
   assert.equal(bannedIn(l.versionHistory), null); assert.notEqual(bannedIn('version'), null);
   assert.doesNotMatch(JSON.stringify(WORDS), /save point/i, 'no screen word still says save point');

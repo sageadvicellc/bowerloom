@@ -8,7 +8,7 @@
  * material and surfaces per item, the before-pins of every item surface, each previous receipt and the engine set.
  * Its revision is the one approval that stands in for every child approval of the run.
  *
- * The skills cache is shared by every project on the machine (Hanna, global skill cache), so another project may fill
+ * The skills cache is shared by every project on the machine (the maintainer, global skill cache), so another project may fill
  * it, or create a shared folder, between this plan and its apply. The revision therefore binds what such a run cannot
  * change (`syncBinding`): each pin's content key, never whether the cache holds it now or under which operation id,
  * and the shared folders by path only. Each pinned item that installs or updates has an approved fetch from its host

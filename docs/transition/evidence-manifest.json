@@ -169,7 +169,7 @@
     "evidence_limit": "No live integration, access, deletion, or recovery test. Historical comparison unchanged."
   },
   "alpha_approval_packet": {
-    "status": "Approved by Hanna on October 1, 2026. Implementation is active. Release acceptance remains pending.",
+    "status": "Approved by the maintainer on October 1, 2026. Implementation is active. Release acceptance remains pending.",
     "scope": "Codex-first alpha only; later roadmap stages remain gated.",
     "files": [
       {

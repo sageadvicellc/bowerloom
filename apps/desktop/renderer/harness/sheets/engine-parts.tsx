@@ -1,7 +1,7 @@
 /**
  * The parts the adopt and install sheets share: the folder step, a section with a heading, a tick box with its full words and its item's name, a refusal in
  * plain words that takes the focus when it appears, a busy line, a block of code shown in full, a result list, and the result of a loss line as a dot and a
- * word. A tick box is used only for a choice the person can change (Hanna, 2026-10-27).
+ * word. A tick box is used only for a choice the person can change (the maintainer, 2026-10-27).
  */
 import { useEffect, useId, useRef } from 'react';
 import type { ReactElement, ReactNode, Ref } from 'react';

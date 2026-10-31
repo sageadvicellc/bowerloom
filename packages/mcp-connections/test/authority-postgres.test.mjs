@@ -15,12 +15,12 @@ function initial(id) {
   const source = input(), scope = { workspaceId:'synthetic', runId:id, taskId:'discovery' };
   const proposal = createDiscoveryProposal({ scope, requestId:id, ownerEpoch:1, input:source,
     effect:{kind:'streamable-http',endpoint:source.binding.transport.endpoint,authBindingRevision:planMcpConnection(source).bindingRevision},timeoutMs:1000 });
-  return createDiscoveryAuthorityState(proposal, { scope, ownerSubject:'hanna-dummy', ownerEpoch:1,
-    approverSubjects:['hanna-dummy'], readyAtMs:1000, leaseExpiresAtMs:60000, revoked:false });
+  return createDiscoveryAuthorityState(proposal, { scope, ownerSubject:'owner-dummy', ownerEpoch:1,
+    approverSubjects:['owner-dummy'], readyAtMs:1000, leaseExpiresAtMs:60000, revoked:false });
 }
 const identity = { async authenticate(value) {
   if(value !== 'synthetic-owner') throw new Error('PRIVATE_IDENTITY_ERROR');
-  return {subject:'hanna-dummy',proofRef:'synthetic:proof',expiresAtMs:60000};
+  return {subject:'owner-dummy',proofRef:'synthetic:proof',expiresAtMs:60000};
 } };
 const clock = {now:()=>2000,alarm:(deadline,callback)=>{const timer=setTimeout(callback,Math.max(1,deadline-2000));return ()=>clearTimeout(timer);}};
 function adapter(observed) {

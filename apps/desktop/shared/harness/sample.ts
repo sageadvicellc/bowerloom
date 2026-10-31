@@ -204,7 +204,7 @@ function sampleRuns(now: Stamp): readonly Run[] {
 }
 
 const entry = (n: number, text: string, stamp: Stamp, filesWritten: number, manifest: HistoryEntry['manifest'], undo: HistoryEntry['undo']): HistoryEntry =>
-  ({ id: `history-${n}`, text, stamp, person: 'Hanna', computer: 'this Mac', filesWritten, manifest, undo, undone: false });
+  ({ id: `history-${n}`, text, stamp, person: 'Robin', computer: 'this Mac', filesWritten, manifest, undo, undone: false });
 
 function sampleHistory(now: Stamp): readonly HistoryEntry[] {
   // The newest two are minutes old and the older two are from the day before, so the order is right at any hour.

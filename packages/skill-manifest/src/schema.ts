@@ -17,7 +17,7 @@ import type { Engine } from './engine.js';
 
 export const MANIFEST_FORMAT = 'bowerloom/skills/v1beta1' as const;
 export const MANIFEST_FILE = 'skills.json' as const;
-/** skills: local and pinned entries share the count (Hanna, global skill cache). teams: per entry. */
+/** skills: local and pinned entries share the count (the maintainer, global skill cache). teams: per entry. */
 export interface ManifestLimits { bytes: number; skills: number; teams: number; idLength: number }
 export const MANIFEST_LIMITS = Object.freeze({ bytes: 1048576, skills: 128, teams: 32, idLength: 64 });
 /** The store holds more than a project: 256 skills and 4 MiB (store writes spec, 4.2). */

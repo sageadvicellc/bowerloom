@@ -9,7 +9,7 @@
 
 /**
  * The words and phrases that must never reach a screen, in lower case. A plural ("teams", "harnesses") counts too.
- * "undo" left the list on 2026-10-25: Hanna chose it for the note after Remove, for the Undo beside each change, and for "Undo all changes".
+ * "undo" left the list on 2026-10-25: the maintainer chose it for the note after Remove, for the Undo beside each change, and for "Undo all changes".
  */
 export const BANNED: readonly string[] = Object.freeze([
   'harness', 'global', 'project', 'scope', 'slice', 'version', 'apply', 'scan', 'adopt', 'conflict', 'interface', 'export', 'import',
@@ -21,7 +21,7 @@ export const POPOVER_OK: readonly string[] = Object.freeze(['mcp']);
 
 /**
  * A phrase that holds a banned word and is still the right screen word. It is taken out before the check.
- * "Version history" is Hanna's own name for the list of earlier copies (2026-10-25): the exact phrase passes, the single word "history" is not banned, and
+ * "Version history" is the maintainer's own name for the list of earlier copies (2026-10-25): the exact phrase passes, the single word "history" is not banned, and
  * "version" alone (or "versions") stays banned. "Decided in the plan" is the source line of the "How it will work" sheet (Wave E): it says where a statement comes from,
  * and "plan" alone stays banned.
  */

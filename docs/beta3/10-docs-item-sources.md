@@ -3,7 +3,7 @@
 ## 1. Header
 
 - Source: sageadvicellc/bowerloom#80, phase 9 and decision 20. Issue body: https://github.com/sageadvicellc/bowerloom/issues/80. Decision 20: https://github.com/sageadvicellc/bowerloom/issues/80#issuecomment-6333018480. The settled variants and the token: https://github.com/sageadvicellc/bowerloom/issues/80#issuecomment-6333364163.
-- Lane: 2. Hanna calls this a release requirement, not a footnote. Beta.3 does not ship without it.
+- Lane: 2. The maintainer calls this a release requirement, not a footnote. Beta.3 does not ship without it.
 - Branch: `beta3/10-docs-item-sources`.
 - Depends on: specs 01a, 02, and 03 to 09, merged at cc8187e. It also depends on the code track `beta3/10a-sharing-fixes` (section 1.2). The build starts after that track merges into `release/0.7.0-beta.3`.
 - Line numbers below are from commit cc8187e, the head of `release/0.7.0-beta.3` with every beta.3 spec merged. If a line moved, find the place by its text.
@@ -28,7 +28,7 @@ A parallel code track builds three fixes. The docs describe them. Each fact belo
 
 ## 2. Problem
 
-Hanna called the idea "an embedded nuance". A person must understand four things before they share a project that uses the store. They must know where each item's bytes come from. They must know what the lock file records. They must know what a teammate needs. They must know the result for a store with no remote.
+The maintainer called the idea "an embedded nuance". A person must understand four things before they share a project that uses the store. They must know where each item's bytes come from. They must know what the lock file records. They must know what a teammate needs. They must know the result for a store with no remote.
 
 The code answers each question, but only a page can explain it. Without the page, a person finds the answer by hitting a refusal. The page also gives a reader one place to learn the whole model: the store, the config, the lock, the caches, and the commands that connect them.
 

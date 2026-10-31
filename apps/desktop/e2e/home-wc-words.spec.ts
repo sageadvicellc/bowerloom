@@ -64,7 +64,7 @@ async function openSheet(): Promise<void> {
 test('Find says "Found 10 agents" and nothing more about the apps: no line about agents in more than one app, no note about the apps, no tile for an app', async () => {
   const p = page();
   await openFind();
-  // Hanna dropped "N work in more than one app" and the note; an agent shows the apps it works with as tags, and the count line is the total only.
+  // the maintainer dropped "N work in more than one app" and the note; an agent shows the apps it works with as tags, and the count line is the total only.
   expect(MULTI).toBeGreaterThan(0);
   await expect(p.getByRole('heading', { level: 1 })).toHaveText('Found 10 agents');
   await expect(p.locator('[data-multi], .fr-apps, [data-apps-note], .fr-tile, .fr-tiles')).toHaveCount(0);

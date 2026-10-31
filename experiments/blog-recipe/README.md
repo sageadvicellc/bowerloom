@@ -10,4 +10,4 @@ Record elapsed drafting time, corrections, available usage, and review effort fo
 
 The first matched pair establishes a baseline only. It does not prove a general improvement or repeated A/B result.
 
-Hanna's review time remains unmeasured until she performs UAT. Do not substitute an agent's review time for hers.
+The maintainer's review time remains unmeasured until the maintainer performs UAT. Do not substitute an agent's review time for the maintainer's.

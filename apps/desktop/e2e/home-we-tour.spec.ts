@@ -113,7 +113,7 @@ test('a tour that ends does not pick an agent for a person who picked none', asy
   await expect(p.locator('.hm-grid .kit-card[data-selected]')).toHaveCount(0);
 });
 
-test('no screen of Find carries a note about the apps: the apps are flat tags on the agents (Hanna dropped "These are the apps your agents work in.")', async () => {
+test('no screen of Find carries a note about the apps: the apps are flat tags on the agents (the maintainer dropped "These are the apps your agents work in.")', async () => {
   const p = page();
   await fresh(p, undefined, { welcome: true });
   const note = p.locator('[data-apps-note]');

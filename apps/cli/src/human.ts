@@ -455,7 +455,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   STORE_UNREADABLE: { sentence: 'A folder that cannot be read cannot be checked, so Bowerloom does not use it.', next: 'ls -ld ~ ~/.bowerloom' },
   STORE_IN_CLOUD_FOLDER: { sentence: 'Cloud sync changes file times and moves files, which breaks the checks that keep the store safe.', next: 'Move the home folder setup out of iCloud. The store must stay at ~/.bowerloom.' },
   STORE_STATE_NESTED: { sentence: 'Bowerloom keeps the cache outside the store, so a store inside the state folder, or the reverse, is refused.', next: 'Set XDG_STATE_HOME to a folder outside ~/.bowerloom.' },
-  // Round 1 of the reviews of PR 101 (Hanna's choice C on #97): the words of the errors.md row, so the terminal and the docs agree.
+  // Round 1 of the reviews of PR 101 (the maintainer's choice C on #97): the words of the errors.md row, so the terminal and the docs agree.
   STORE_WRITE_FAILED: { sentence: 'Bowerloom failed to write to the store. The disk refused the write, and the message names the system error, such as ENOSPC.', next: 'df -h ~ && ls -ld ~/.bowerloom' },
   STORE_LOCKED: { sentence: 'Two commands must not change the store at the same time, so nothing was changed.', next: 'When the other command is done, run this one again.' },
   STORE_NOT_A_PROJECT: { sentence: 'The store holds definitions only, so a folder inside it cannot be a project.', next: 'Run the command in a project folder outside ~/.bowerloom.' },
@@ -475,14 +475,14 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   // Review F1 of PR 97.
   GITHUB_TOKEN_SSO_REQUIRED: { sentence: 'An organization that uses single sign-on refuses a token until it is authorized for that organization.', next: "Authorize the token for the organization on GitHub, under the token's settings, then run the command again." },
   CONFIG_ITEM_SELECTED: { sentence: 'This project already picks that item from that source.', next: 'bowerloom ls' },
-  // Spec 08, section 5. Review C2 of PR 98 (Hanna's choice C on #97): each sentence says why, and the next step is the table's.
+  // Spec 08, section 5. Review C2 of PR 98 (the maintainer's choice C on #97): each sentence says why, and the next step is the table's.
   MIGRATE_ITEM_NOT_FOUND: { sentence: 'store migrate moves only items that this project defines in .bowerloom, with their files in place.', next: 'bowerloom ls' },
   MIGRATE_ITEM_UNSUPPORTED: { sentence: 'A store item holds only md, txt, json, yaml, yml, csv, and license files, within the size limits.', next: 'bowerloom help store' },
   MIGRATE_ID_EXISTS: { sentence: 'Bowerloom never overwrites a store item, so an item with the same id and other bytes cannot move.', next: 'Rename the project item, or remove the store item yourself.' },
   MIGRATE_RESERVED: { sentence: 'Setup made these items for this project, so they stay in it.', next: 'bowerloom store migrate --all skips them.' },
   MIGRATE_TEAM_MISSING: { sentence: 'The store keeps the team tag, so that team must be in the store.', next: 'Add --team <name> to move that team too.' },
   MIGRATE_LIMIT: { sentence: 'This beta keeps the store record small: 512 items and 1 MiB at most.', next: 'Remove items from the store, or move fewer items.' },
-  // Spec 09, section 5, with review M4 of PR 99 (Hanna's choice C on #97): each sentence says why.
+  // Spec 09, section 5, with review M4 of PR 99 (the maintainer's choice C on #97): each sentence says why.
   CACHE_ENTRY_NOT_FOUND: { sentence: 'cache prune --entry deletes only an entry that cache list shows, so the text must start one of its ids.', next: 'bowerloom cache list' },
   CACHE_ENTRY_BUSY: { sentence: 'Bowerloom never deletes an entry while another command holds it. An owner lock older than a day does not count.', next: 'When the other command is done, run this one again.' },
   CACHE_PRUNE_FAILED: { sentence: 'Bowerloom deletes only private folders of this user, one at a time, and stops at the first one it cannot delete.', next: 'bowerloom cache list, then run the command again without --approve' },

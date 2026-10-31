@@ -162,7 +162,7 @@ test('the name of a key stays, and the text around a secret is kept', () => {
 
 test('ordinary prose, paths, references and short hashes are left alone', () => {
   const same = [
-    'Use a password manager.', 'API design notes', 'The key idea is to keep tokens short.', 'A monkey: banana', 'author: Hanna Sage', 'Basic configuration of the thing',
+    'Use a password manager.', 'API design notes', 'The key idea is to keep tokens short.', 'A monkey: banana', 'author: Robin Example', 'Basic configuration of the thing',
     'knowledge-base/specs/2026-10-12-resume-cms-completion.md is the spec', 'See https://example.test/docs/Getting-Started-Guide-2/overview for details',
     'password: ${PASSWORD} stays', 'Set API_KEY=$API_KEY before running', 'token: $GITHUB_TOKEN', 'key: <YOUR_API_KEY>', 'Authorization: Bearer ${TOKEN}', 'api_key: {{ secrets.API_KEY }}',
     'bearer_token_env_var = "DOCS_TOKEN"', 'Commit 3f2a9c1 fixed it', 'git@github.com:org/repo.git', 'ssh://git@github.com/org/repo', 'if (token == null) return', 'token: true',

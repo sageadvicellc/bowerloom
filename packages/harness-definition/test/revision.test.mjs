@@ -72,7 +72,7 @@ test('decision 6: a skill entry hash covers every file of the skill folder', () 
   const crlf = loadDefinition(makeDefinition({ ...base, 'skills/review/SKILL.md': base['skills/review/SKILL.md'].replace(/\n/g, '\r\n') })).definition.entries.skills.find(s => s.id === 'review');
   assert.equal(crlf.contentHash, a.contentHash);
   // An approval of the old skill no longer matches.
-  const approval = { part: 'skills', entry: 'review', engine: 'codex', result: 'absent', entryHash: entryHash(a), who: 'Hanna Sage', when: '2026-10-28T14:00:00Z', reason: 'Reviewed.' };
+  const approval = { part: 'skills', entry: 'review', engine: 'codex', result: 'absent', entryHash: entryHash(a), who: 'Robin Example', when: '2026-10-28T14:00:00Z', reason: 'Reviewed.' };
   const line = { part: 'skills', entry: 'review', engine: 'codex', result: 'absent', reason: 'x' };
   assert.equal(fidelityApprovalMatches(approval, line, a), true);
   assert.equal(fidelityApprovalMatches(approval, line, changed), false);

@@ -20,7 +20,7 @@ export const UNDO_NEWER_FIRST = 'undo the newer change first';
 const HARNESS_GONE = 'that harness is not here';
 
 export const RUN_FINISH_MS = 15_000;
-export const PERSON = 'Hanna', COMPUTER = 'this Mac';
+export const PERSON = 'Robin', COMPUTER = 'this Mac';
 
 // ---- Small helpers
 

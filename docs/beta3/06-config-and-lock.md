@@ -985,7 +985,7 @@ The `sentence` of each new code in `REFUSALS`:
 - `GITHUB_RATE_LIMITED`: `GitHub allows about 60 requests an hour without a token and about 5,000 with one.`
 - `ITEM_REVIEW_REQUIRED`: `Bowerloom shows what an item can do before it installs it.`
 
-Amended by #101 (round 1 of its reviews, Hanna's choice C on #97: an errors.md row uses the words the terminal prints). The docs words were kept and the CLI changed to match them:
+Amended by #101 (round 1 of its reviews, the maintainer's choice C on #97: an errors.md row uses the words the terminal prints). The docs words were kept and the CLI changed to match them:
 
 - `STORE_REMOTE_PRIVATE`: `GitHub does not show this repository without a token. It is private, or it does not exist.`
 - `CONFIG_WRITE_UNCONFIRMED`: `bowerloom.json was written, but it changed again before Bowerloom read it back.`
@@ -1428,7 +1428,7 @@ Update existing tests: `tests/skills-cli.test.ts`, `tests/ls-status-cli.test.ts`
 11. Measure one 126-blob fetch against GitHub. If it passes 25 s, fetch blobs with a new transport for each 40 blobs. Each transport gets the same approved host. The 4 metadata requests share the first one.
 12. The exact `git status` paths of the `config-only-cli` test. They come from reading the install places, not from a run. Run the test once and compare. Fallback: take the list from that run, and check it by hand against the install places.
 
-## 13. New decision for Hanna
+## 13. New decision for the maintainer
 
 Decision record: https://github.com/sageadvicellc/bowerloom/issues/80#issuecomment-6334887017. Status: pending. This is a security decision with no automatic default. Variant A is built in this spec.
 

@@ -1,6 +1,6 @@
 /**
  * Where the home app opens, from the page address. `#prototype-v2` is the first minute: the Welcome screen, then Find, then the map with the tour.
- * `#prototype-v2/map` goes straight to the map, with no Welcome and no tour (for Hanna, and for the tests of the map). `#prototype-v2/map/tour` is the
+ * `#prototype-v2/map` goes straight to the map, with no Welcome and no tour (for the maintainer, and for the tests of the map). `#prototype-v2/map/tour` is the
  * same map with the tour starting by itself, as it does after Find. Two more addresses open the same pages in read-only mode: `#prototype-v2/readonly` is the first
  * minute and `#prototype-v2/map/readonly` is the map alone. Read only means nothing on the page can change the setup (renderer/home/read-only.tsx). Pure: the address goes
  * in, the start comes out.
