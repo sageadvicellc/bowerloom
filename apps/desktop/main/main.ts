@@ -15,6 +15,8 @@ import { registerRealIpc, usableHome } from './real-ipc.js';
 import { registerEngineIpc } from './engine-ipc.js';
 import { diagnosticsEnv, enginePreviewSwitch, engineStateRoot } from './engine-state.js';
 import { createRecorder } from './engine-events.js';
+import { shippedKits } from './kit.js';
+import { NOTES_DIALOG } from './notes-dialog.js';
 import { helpMenu } from './help-menu.js';
 import { reportProblem, showUsageLog } from './diagnostics-dialogs.js';
 import type { DialogDeps } from './diagnostics-dialogs.js';
@@ -224,6 +226,16 @@ app.whenReady().then(async () => {
           const result = window === null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(window, options);
           return result.canceled || result.filePaths[0] === undefined ? null : result.filePaths[0];
         },
+        // Main's own notes chooser: its words come from main, never from the window. "Start fresh" lets the person make a new folder in it.
+        chooseNotesFolder: async purpose => {
+          const words = NOTES_DIALOG[purpose];
+          const options: Electron.OpenDialogOptions = { title: words.title, message: words.message, buttonLabel: words.button, properties: purpose === 'start' ? ['openDirectory', 'createDirectory'] : ['openDirectory'] };
+          const result = window === null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(window, options);
+          return result.canceled || result.filePaths[0] === undefined ? null : result.filePaths[0];
+        },
+        // The ready-made kits ship read-only: from the repository in development, from the app's resources in a packaged build. A broken kit is told on
+        // the console now, and every call that needs it refuses with words; it is never replaced by an empty kit.
+        kitsDir: shippedKits({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, appRoot: root }),
       });
     }
   }

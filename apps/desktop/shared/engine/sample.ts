@@ -9,13 +9,16 @@
  *  - `garden` holds an install that stopped part way: only a recovery plan can run.
  * Each folder that holds a harness can also save its own harness (option C): agents, skills and interfaces, edited by id, with save points and "Go back".
  * A skill is copied from the harness of another sample folder. Save points keep a made-up time, one minute apart.
+ * Notes (spec 6.9): two made-up notes folders answer main's notes chooser. `Garden notes` holds pages and no history yet, so the history offer shows;
+ * `Notes` is empty, so "Start fresh" shows the starter files of the notes keeper kit. The ready-made notes keeper is added from the same made-up copy of
+ * the kit's agent and skills (tests/engine-sample.test.ts holds it to the kit main ships), and notes attach to an agent through the save.
  */
 import type {
   AdoptChoices, AdoptRecovered, AdoptRecoveryView, AdoptView, AdoptWritten, Answer, ApproveLineView, ChangeView, DefinitionView, EngineBridge, EngineId, EveryEnginePart, FolderInfo, LossView,
-  MergeView, MergeWritten, ProjectAnswer, ProjectInput, ProjectView, ProjectWritten, Recovered, RecoveryChoices, RecoveryView, Refusal, RemovalView, Removed, RestoreView, SaveChangeView,
-  SaveEdit, SaveView, SaveWritten, SetAsideView, SetAsideWritten, VersionView,
+  MergeView, MergeWritten, NotesHistoryPlanView, NotesStarterView, NotesView, NotesWritten, ProjectAnswer, ProjectInput, ProjectView, ProjectWritten, Recovered, RecoveryChoices, RecoveryView,
+  Refusal, RemovalView, Removed, RestoreView, SaveChangeView, SaveEdit, SaveView, SaveWritten, SetAsideView, SetAsideWritten, VersionView,
 } from './types.js';
-import { ENGINE_NAMES, EVERY_ENGINE_PARTS, SAVE_MAIN_WORDS, writesFile } from './types.js';
+import { ENGINE_NAMES, EVERY_ENGINE_PARTS, KIT_MAIN_WORDS, NOTES_PURPOSES, SAVE_MAIN_WORDS, writesFile } from './types.js';
 import { approveKey, lossByEngine, unmappedHashBody } from './view.js';
 
 /** The packages' own words for the refusals the sample can give (packages/adoption/src/refusal.ts, packages/project-sync/src/portable-files.ts). */
@@ -39,6 +42,11 @@ export const SAMPLE_MESSAGES = Object.freeze({
   VERSION_NOTHING: 'There is no version store to set aside. Nothing was changed.',
   SAVE_NO_DEFINITION: SAVE_MAIN_WORDS.SAVE_NO_DEFINITION,
   SAVE_SOURCE_MISSING: SAVE_MAIN_WORDS.SAVE_SOURCE_MISSING,
+  KIT_ALREADY_ADDED: KIT_MAIN_WORDS.KIT_ALREADY_ADDED,
+  NOTES_NOT_EMPTY: 'The folder for the starter wiki is not empty. A starter wiki goes only into a new or empty folder. Nothing was written.',
+  NOTES_STALE: 'The folder changed after the preview, or the approval is for another preview. Nothing was changed. Preview again.',
+  NOTES_ALREADY_REPOSITORY: 'The folder already has version history (.git). Nothing was changed.',
+  NOTES_NOTHING_TO_COMMIT: 'The folder holds no file for the first commit. Nothing was changed.',
 } as const);
 type SampleCode = keyof typeof SAMPLE_MESSAGES;
 const refuse = (code: SampleCode, paths: readonly string[] = []): { ok: false; refusal: Refusal } => ({ ok: false, refusal: { code, message: SAMPLE_MESSAGES[code], paths } });
@@ -55,6 +63,35 @@ export function sampleRevision(text: string): string {
 }
 
 export const SAMPLE_FOLDERS = Object.freeze({ adopt: 'sample-inbox-tools', defined: 'sample-weekly-report', stopped: 'sample-garden' });
+/** The made-up notes folders: `use` holds pages and no history; `start` is empty, for "Start fresh". */
+export const SAMPLE_NOTES = Object.freeze({ use: 'sample-notes', start: 'sample-new-notes' });
+
+/**
+ * The notes keeper kit as the sample shows it: the pinned version, the agent, and the skills with the names and one-line descriptions of the kit main ships
+ * (kits/wiki-keeper). tests/engine-sample.test.ts holds every field here to the kit itself.
+ */
+export const SAMPLE_KIT = Object.freeze({
+  id: 'wiki-keeper' as const, version: '0.1.0',
+  agent: Object.freeze({ id: 'notes-keeper', description: 'Looks after a folder of notes. Adds sources, files pages, answers questions from the notes with citations, checks the notes for problems, and writes a tidy-up report.', skills: Object.freeze(['add-source', 'file-page', 'answer-from-notes', 'check-notes', 'log-change', 'refine-report']) }),
+  skills: Object.freeze([
+    { id: 'add-source', description: 'Saves a new source into the wiki and turns it into notes. Use when the person hands over a file, a note, a transcript, or pasted text to keep. It keeps the original untouched, writes a summary page, updates related pages, and makes one commit.' },
+    { id: 'answer-from-notes', description: 'Answers a question from the pages in the wiki and cites each page it used. Use when the person asks what their notes say about a subject. It changes nothing, says plainly when the notes hold no answer, and never fills a gap from memory.' },
+    { id: 'check-notes', description: 'Checks the wiki for problems and reports them without fixing anything. Use when the person asks if their notes are in good shape. It finds broken links, pages with no links, missing page fields, sources that do not exist, and pages missing from the index.' },
+    { id: 'file-page', description: 'Writes a new page, or updates an existing one, from what the wiki already holds or from what the person says. Use when the person wants a subject written down in the notes. It avoids duplicates, cites its sources, links the page both ways, and makes one commit.' },
+    { id: 'log-change', description: 'Brings the log up to date with changes already made to the wiki, by hand or by another tool. Use when the person edited the notes themselves and wants the log to catch up. It reads the commit history, adds log lines, and makes one commit.' },
+    { id: 'refine-report', description: 'Studies the whole wiki and writes one tidy-up report that suggests topics to merge, pages to split or shorten, stale pages, and missing links. Use when the person asks for a tidy-up or refinement report. It writes only the report, commits only the report, and changes no other page.' },
+  ]),
+  /** The starter template, each file with its size in bytes. */
+  starter: Object.freeze([
+    { path: 'AGENTS.md', bytes: 2809 }, { path: 'index.md', bytes: 302 }, { path: 'log.md', bytes: 203 },
+    { path: 'pages/README.md', bytes: 431 }, { path: 'reports/README.md', bytes: 402 }, { path: 'sources/README.md', bytes: 433 },
+  ]),
+});
+/** The pages of the made-up `Garden notes`, for its history plan. One hidden folder stays out of the first commit. */
+const SAMPLE_NOTE_FILES: readonly string[] = Object.freeze([
+  'beds/east-bed.md', 'beds/herb-spiral.md', 'beds/north-bed.md', 'compost.md', 'frost-dates.md', 'index.md', 'log.md', 'pests/aphids.md', 'pests/slugs.md',
+  'plans/2026-spring.md', 'plans/2026-winter.md', 'seed-list.md', 'tools.md', 'watering.md',
+]);
 
 const PLUGIN = `// Bowerloom generated this OpenCode plugin from the hooks of a harness definition. Read it before you approve the plan:
 // OpenCode loads every file in .opencode/plugins and runs it with your permissions. Removal restores what was here before.
@@ -298,28 +335,31 @@ interface SampleFolder {
 // ---- the save step of the sample: each folder's own harness, in memory -----------------------------------------------------------
 
 const skillOf = (id: string, description: string): DefinitionView['skills'][number] => ({ id, name: id, description });
-const agentOf = (id: string, description: string, skills: readonly string[]): DefinitionView['agents'][number] => ({ id, name: id, description, skills });
+const agentOf = (id: string, description: string, skills: readonly string[]): DefinitionView['agents'][number] => ({ id, name: id, description, skills, notes: [] });
 /** The made-up harness of each sample folder that holds one. `inbox-tools` gets its own after the sample adoption. */
 const SAMPLE_DEFS: Readonly<Record<string, DefinitionView>> = Object.freeze({
   [SAMPLE_FOLDERS.defined]: {
     id: 'weekly-report', description: 'Drafts the weekly report.', engines: ['claude-code', 'codex', 'opencode'], instructions: true,
     skills: [skillOf('check-facts', 'Checks each figure in a draft.'), skillOf('draft-outline', 'Outlines the report.')],
-    agents: [agentOf('editor', 'Edits the draft.', []), agentOf('writer', 'Writes the draft.', ['draft-outline'])],
+    agents: [agentOf('editor', 'Edits the draft.', []), agentOf('writer', 'Writes the draft.', ['draft-outline'])], sources: [], kits: [],
   },
   [SAMPLE_FOLDERS.stopped]: {
     id: 'garden', description: 'Keeps the garden notes.', engines: ['claude-code', 'codex'], instructions: true,
-    skills: [skillOf('water-plants', 'Plans the watering.')], agents: [agentOf('gardener', 'Looks after the beds.', ['water-plants'])],
+    skills: [skillOf('water-plants', 'Plans the watering.')], agents: [agentOf('gardener', 'Looks after the beds.', ['water-plants'])], sources: [], kits: [],
   },
   [SAMPLE_FOLDERS.adopt]: {
     id: 'inbox-tools', description: 'Adopted from the engine files of this project.', engines: ['claude-code', 'codex'], instructions: true,
-    skills: [skillOf('sort-mail', 'Sorts the inbox.')], agents: [agentOf('triage', 'Triages new mail.', [])],
+    skills: [skillOf('sort-mail', 'Sorts the inbox.')], agents: [agentOf('triage', 'Triages new mail.', [])], sources: [], kits: [],
   },
 });
 /** The files of a sample harness, each as a text that stands for its bytes, so a change list compares two harnesses as the save plan compares two file sets. */
 function sampleFiles(d: DefinitionView): Map<string, string> {
-  const out = new Map<string, string>([['harness.json', JSON.stringify({ id: d.id, engines: d.engines })]]);
+  // harness.json lists sources.json while a kit's record is in it, as the real one lists the plugins part.
+  const out = new Map<string, string>([['harness.json', JSON.stringify({ id: d.id, engines: d.engines, ...(d.kits.length ? { plugins: 'sources.json' } : {}) })]]);
   for (const k of d.skills) out.set(`skills/${k.id}/SKILL.md`, JSON.stringify(k));
   for (const a of d.agents) out.set(`agents/${a.id}.md`, JSON.stringify(a));
+  if (d.sources.length) out.set('knowledge.json', JSON.stringify(d.sources.map(x => [x.name, x.label])));
+  if (d.kits.length) out.set('sources.json', JSON.stringify(d.kits));
   return out;
 }
 const byText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
@@ -338,6 +378,10 @@ function sampleChanges(from: DefinitionView, to: DefinitionView): SaveChangeView
 const sameDef = (a: DefinitionView, b: DefinitionView): boolean => JSON.stringify([...sampleFiles(a)]) === JSON.stringify([...sampleFiles(b)]);
 /** The words of the definition package for an id the folder does not hold (packages/harness-definition, `editDefinition`). */
 const editRefusal = (what: string, id: string, tail = ''): { ok: false; refusal: Refusal } => ({ ok: false, refusal: { code: 'EDIT_UNKNOWN_ID', message: `The folder holds no ${what} "${id}"${tail}.`, paths: [] } });
+const duplicate = (what: string, id: string): { ok: false; refusal: Refusal } => ({ ok: false, refusal: { code: 'EDIT_DUPLICATE_ID', message: `The folder already holds ${what} "${id}".`, paths: [] } });
+
+/** A made-up notes folder, as the Notes panel reads it. */
+interface SampleNotes { view: NotesView; files: readonly string[]; hidden: number }
 
 /** The CLAUDE.md of the sample folder that differs from its AGENTS.md. */
 export const SAMPLE_CLAUDE = '# Weekly report\n\nDraft the report on Friday. Keep each section under 200 words.\n';
@@ -353,6 +397,14 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
   add(SAMPLE_FOLDERS.adopt, 'inbox-tools', {});
   add(SAMPLE_FOLDERS.defined, 'weekly-report', { hasDefinition: true, engines: ['claude-code', 'codex', 'opencode'] });
   add(SAMPLE_FOLDERS.stopped, 'garden', { hasDefinition: true, engines: ['claude-code', 'codex'], unfinished: { projection: true, adoption: false } });
+  const notes = new Map<string, SampleNotes>([
+    [SAMPLE_NOTES.use, { view: { id: SAMPLE_NOTES.use, label: '~/Documents/Garden notes', name: 'Garden notes', suggestedName: 'garden-notes', pages: SAMPLE_NOTE_FILES.length, complete: true, history: 'none', lastCommitAt: null, latestReport: null }, files: SAMPLE_NOTE_FILES, hidden: 1 }],
+    [SAMPLE_NOTES.start, { view: { id: SAMPLE_NOTES.start, label: '~/Documents/Notes', name: 'Notes', suggestedName: 'notes', pages: 0, complete: true, history: 'none', lastCommitAt: null, latestReport: null }, files: [], hidden: 0 }],
+  ]);
+  /** A notes folder by id; an id the sample never gave is refused as main refuses it. */
+  const notesGet = (id: string): SampleNotes => { const n = notes.get(id); if (n === undefined) throw new Error('UNKNOWN_FOLDER'); return n; };
+  /** The time of the sample's first commit: fixed, as the sample has no clock. */
+  const COMMITTED = '2026-10-28T09:30:00Z';
   const info = (f: SampleFolder): FolderInfo => ({ ...f.info, projected: f.projected, unfinished: { projection: f.stopped, adoption: false }, hasDefinition: f.info.hasDefinition || f.adopted, engines: f.adopted ? ['claude-code', 'codex'] : f.info.engines });
   const get = (id: string): SampleFolder => { const f = folders.get(id); if (f === undefined) throw new Error('UNKNOWN_FOLDER'); return f; };
   const settle = async <T>(value: T): Promise<T> => value;
@@ -380,16 +432,36 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
     for (const e of edits) {
       if (e.kind === 'set-agent') {
         if (!d.agents.some(a => a.id === e.id)) return editRefusal('agent', e.id);
-        const ghost = e.skills.find(k => !d.skills.some(x => x.id === k));
+        const ghost = (e.skills ?? []).find(k => !d.skills.some(x => x.id === k));
         if (ghost !== undefined) return editRefusal('skill', ghost, ' to link');
-        d = { ...d, agents: d.agents.map(a => (a.id === e.id ? { ...a, skills: [...e.skills] } : a)) };
+        const unknown = (e.notes ?? []).find(n => !d.sources.some(x => x.name === n));
+        if (unknown !== undefined) return editRefusal('knowledge source', unknown, ' to list in notes');
+        d = { ...d, agents: d.agents.map(a => (a.id === e.id ? { ...a, ...(e.skills === undefined ? {} : { skills: [...e.skills] }), ...(e.notes === undefined ? {} : { notes: [...e.notes] }) } : a)) };
+      } else if (e.kind === 'set-source') {
+        const n = notesGet(e.notesId).view;
+        const source = { name: e.name, kind: 'wiki-folder' as const, label: n.label, notesId: n.id };
+        d = { ...d, sources: d.sources.some(x => x.name === e.name) ? d.sources.map(x => (x.name === e.name ? source : x)) : [...d.sources, source] };
+      } else if (e.kind === 'remove-source') {
+        if (!d.sources.some(x => x.name === e.name)) return editRefusal('knowledge source', e.name);
+        d = { ...d, sources: d.sources.filter(x => x.name !== e.name), agents: d.agents.map(a => ({ ...a, notes: a.notes.filter(n => n !== e.name) })) };
+      } else if (e.kind === 'add-from-kit') {
+        if (d.kits.some(k => k.id === e.kit)) return { ok: false, refusal: { code: 'KIT_ALREADY_ADDED', message: SAMPLE_MESSAGES.KIT_ALREADY_ADDED, paths: [] } };
+        const taken = SAMPLE_KIT.skills.find(k => d.skills.some(x => x.id === k.id));
+        if (taken !== undefined) return duplicate('a skill', taken.id);
+        if (d.agents.some(a => a.id === SAMPLE_KIT.agent.id)) return duplicate('an agent', SAMPLE_KIT.agent.id);
+        d = {
+          ...d,
+          skills: [...d.skills, ...SAMPLE_KIT.skills.map(k => skillOf(k.id, k.description))].sort((a, b) => byText(a.id, b.id)),
+          agents: [...d.agents, { ...agentOf(SAMPLE_KIT.agent.id, SAMPLE_KIT.agent.description, SAMPLE_KIT.agent.skills) }].sort((a, b) => byText(a.id, b.id)),
+          kits: [...d.kits, { id: SAMPLE_KIT.id, version: SAMPLE_KIT.version }],
+        };
       } else if (e.kind === 'remove-skill') {
         if (!d.skills.some(x => x.id === e.id)) return editRefusal('skill', e.id);
         d = { ...d, skills: d.skills.filter(x => x.id !== e.id), agents: d.agents.map(a => ({ ...a, skills: a.skills.filter(k => k !== e.id) })) };
       } else if (e.kind === 'add-skill') {
         const source = get(e.from).def?.skills.find(x => x.id === e.id);
         if (source === undefined) return refuse('SAVE_SOURCE_MISSING');
-        if (d.skills.some(x => x.id === e.id)) return { ok: false, refusal: { code: 'EDIT_DUPLICATE_ID', message: `The folder already holds a skill "${e.id}".`, paths: [] } };
+        if (d.skills.some(x => x.id === e.id)) return duplicate('a skill', e.id);
         d = { ...d, skills: [...d.skills, source].sort((a, b) => byText(a.id, b.id)) };
       } else {
         d = { ...d, engines: (Object.keys(ENGINE_NAMES) as EngineId[]).filter(x => e.engines.includes(x)) };
@@ -432,6 +504,18 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
     if (f.stopped) return refuse('PORTABLE_RECOVERY_REQUIRED');
     if (!f.info.hasDefinition || f.merged || f.projected) return refuse('ADOPTION_MERGE_NOTHING');
     return ok({ folder: f.info.label, claude: SAMPLE_CLAUDE, heading: 'From CLAUDE.md', addsPart: false, files: [{ path: '.bowerloom/instructions/AGENTS.md', action: 'update' }], revision: sampleRevision(`merge ${f.info.id}`) });
+  }
+
+  /** The starter plan of an empty made-up folder, or the package's refusal of a folder that holds pages. */
+  function starterPlan(n: SampleNotes): Answer<NotesStarterView> {
+    if (n.view.pages > 0 || n.view.history !== 'none') return refuse('NOTES_NOT_EMPTY');
+    return ok({ notes: n.view.label, createsFolder: false, folders: ['pages', 'reports', 'sources'], files: SAMPLE_KIT.starter.map(f => ({ ...f })), kit: { id: SAMPLE_KIT.id, version: SAMPLE_KIT.version }, revision: sampleRevision(`starter ${n.view.id}`) });
+  }
+  /** The history plan of a made-up folder with pages and no history, or the package's refusal. */
+  function historyPlan(n: SampleNotes): Answer<NotesHistoryPlanView> {
+    if (n.view.history !== 'none') return refuse('NOTES_ALREADY_REPOSITORY');
+    if (n.files.length === 0) return refuse('NOTES_NOTHING_TO_COMMIT');
+    return ok({ notes: n.view.label, files: n.files.map(path => ({ path, kind: 'file' as const })), count: n.files.length, hidden: n.hidden, revision: sampleRevision(`history ${n.view.id}`) });
   }
 
   return {
@@ -540,6 +624,28 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
       if (revision !== sampleRevision(`set-aside ${f.versions.map(v => v.entry.id).join(',')}`)) return refuse('VERSION_STALE');
       f.versions = [];
       return ok({ name: 'versions-set-aside-sample' });
+    })()),
+    // The sample has no chooser: it answers the made-up notes folder for each purpose.
+    chooseNotesFolder: purpose => settle(((): Answer<NotesView> => {
+      if (!(NOTES_PURPOSES as readonly string[]).includes(purpose)) throw new Error('BAD_ARGUMENT');
+      return ok({ ...notesGet(purpose === 'use' ? SAMPLE_NOTES.use : SAMPLE_NOTES.start).view });
+    })()),
+    notesSummary: id => settle(ok({ ...notesGet(id).view })),
+    planCreateNotes: id => settle(starterPlan(notesGet(id))),
+    runCreateNotes: (id, revision) => settle(((): Answer<NotesWritten> => {
+      const n = notesGet(id), plan = starterPlan(n);
+      if (!plan.ok) return plan;
+      if (plan.value.revision !== revision) return refuse('NOTES_STALE');
+      n.view = { ...n.view, pages: SAMPLE_KIT.starter.length, history: 'git', lastCommitAt: COMMITTED };
+      return ok({ files: SAMPLE_KIT.starter.length, committedAt: COMMITTED, clean: true });
+    })()),
+    planNotesHistory: id => settle(historyPlan(notesGet(id))),
+    runNotesHistory: (id, revision) => settle(((): Answer<NotesWritten> => {
+      const n = notesGet(id), plan = historyPlan(n);
+      if (!plan.ok) return plan;
+      if (plan.value.revision !== revision) return refuse('NOTES_STALE');
+      n.view = { ...n.view, history: 'git', lastCommitAt: COMMITTED };
+      return ok({ files: n.files.length, committedAt: COMMITTED, clean: true });
     })()),
   };
 }

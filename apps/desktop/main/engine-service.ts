@@ -11,12 +11,18 @@
  *  - keeps each folder's records in the private state layout the command line uses (packages/project-sync/src/harness-state.ts, decision 7B), moves the
  *    record of the earlier app there once when the folder is chosen, and shares the approval drafts of fidelity lines with the command line (D2A, D3A);
  *  - saves one folder's own harness (option C) from a closed list of edits by id, keeps save points before and after, and goes back to one, through the same
- *    gate (main/engine-save.ts). Install, removal, adoption and merge wait while a save is stopped.
+ *    gate (main/engine-save.ts). Install, removal, adoption and merge wait while a save is stopped;
+ *  - knows notes folders (spec 6.9) only by the id it handed out, from its own notes chooser or from a source a harness records, and plans and writes
+ *    "Start fresh" (the shipped kit's starter wiki) and version history for linked notes through the same gate, with packages/notes-source. Attaching
+ *    notes to an agent, and adding the ready-made notes keeper from its kit (main/kit.ts), are save edits.
  * Nothing here writes a file itself. The handler takes its tools as arguments, so a test runs it on synthetic folders with no Electron.
  */
 import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, isAbsolute, join } from 'node:path';
+import { DefinitionError } from '../../../packages/contracts/src/index.js';
+import { applyGitInit, applyStarter, planGitInit, planStarter, readNotesSummary } from '../../../packages/notes-source/src/index.js';
+import type { NotesOptions } from '../../../packages/notes-source/src/index.js';
 import {
   applyAdoption, applyAdoptionRecovery, applySave, planAdoptionRecovery, planSave as packagePlanSave, planSaveRecovery, refuseWhileSaveStopped, runSaveRecovery, saveStopped,
 } from '../../../packages/adoption/src/index.js';
@@ -36,12 +42,16 @@ import { planSetAsideVersions, readVersion, setAsideVersionsLocked } from '../..
 import { harnessStateDirs, settleLegacyState } from '../../../packages/project-sync/src/harness-state.js';
 import type { HarnessStateDirs } from '../../../packages/project-sync/src/harness-state.js';
 import { addApprovalDraftLocked, dropApprovalDraftsLocked, readApprovalDrafts } from '../../../packages/project-sync/src/harness-approvals.js';
-import { entryHash, isId, loadDefinition } from '../../../packages/harness-definition/src/index.js';
+import { entryHash, isId, loadDefinition, storedKnowledgePath } from '../../../packages/harness-definition/src/index.js';
 import type { Definition, DefinitionFile, FidelityApproval } from '../../../packages/harness-definition/src/index.js';
 import { checkProjectPath } from '../../../packages/project-context/src/index.js';
 import { ANSWERS, NOTE_LIMIT } from '../../../packages/diagnostics/src/index.js';
 import type { Answer as CheckAnswer } from '../../../packages/diagnostics/src/index.js';
 import { labelOf, makeScrub, visible } from '../shared/engine/scrub.js';
+import { KIT_IDS, KIT_INVALID, KIT_MAIN_WORDS, NOTES_PLAN_LIST_LIMIT, NOTES_PURPOSES } from '../shared/engine/types.js';
+import type { KitId, NotesHistoryPlanView, NotesPurpose, NotesStarterView, NotesView, NotesWritten } from '../shared/engine/types.js';
+import { loadKit } from './kit.js';
+import type { Kit } from './kit.js';
 import type { Scrub } from '../shared/engine/scrub.js';
 import { ENGINE_IDS, isEngineId, isPreviewEngine } from '../shared/engine/engines.js';
 import { EnginePreviewRefusal } from '../../../packages/skill-manifest/src/engine.js';
@@ -57,6 +67,7 @@ import type { Ask } from './engine-consent.js';
 import {
   VERSION_KEY, afterSaveWarnings, copiesOk, currentDefinition, keepAfter, keepBefore, keepable, saveCodeOf, saveDone, savedLabel, targetOf, targetView, versionViews, viewOf, wentBackLabel,
 } from './engine-save.js';
+import type { NotesEditDeps, SourceOf } from './engine-save.js';
 
 export interface EngineServiceDeps {
   /** The home folder. Paths below it are shown with `~`. */
@@ -80,6 +91,12 @@ export interface EngineServiceDeps {
    * throws changes no result. Default: records nothing.
    */
   readonly record?: (input: Readonly<Record<string, unknown>>) => boolean;
+  /** Main's own folder chooser for notes, with words for `use` ("Use my notes") or `start` ("Start fresh"). Null when the person closed it. Default: closed. */
+  readonly chooseNotesFolder?: (purpose: NotesPurpose) => Promise<string | null>;
+  /** The folder of the shipped kits (main/kit.ts, `kitsFolder`), asked each time a kit is loaded. With none, a kit is refused KIT_INVALID. */
+  readonly kitsDir?: () => string;
+  /** Where packages/notes-source looks for git. Tests set it; the app passes nothing, so only the fixed places count. */
+  readonly notesOptions?: NotesOptions;
 }
 
 /** A call the service refuses before it reaches a package: the window gets only the short code. */
@@ -97,6 +114,8 @@ type RawLine = { part: string; entry: string; field?: string; engine: string; re
 interface Shown { readonly line: ApproveLineView; readonly raw: RawLine; readonly hash: string | null }
 
 const ID = /^folder-[0-9]{1,6}$/;
+/** The id of a notes folder main gave out. Apart from the folder ids, so one can never stand for the other. */
+const NOTES_ID = /^notes-[0-9]{1,6}$/;
 const HEX64 = /^[a-f0-9]{64}$/;
 const safeString = (v: unknown, max = 4096): v is string => typeof v === 'string' && v.length > 0 && v.length <= max && !v.includes('\u0000');
 const bad = (): never => { throw new EngineCallRefusal('BAD_ARGUMENT'); };
@@ -173,11 +192,18 @@ export function checkSaveEdits(v: unknown): SaveEdit[] {
     if (!plainObject(e)) return bad();
     switch (e.kind) {
       case 'set-agent': {
-        if (!exactKeys(e, ['kind', 'id', 'skills']) || !Array.isArray(e.skills) || e.skills.length > SAVE_EDIT_LIMIT) return bad();
-        const skills = e.skills.map(idArg);
-        if (new Set(skills).size !== skills.length) return bad();
-        return { kind: 'set-agent', id: idArg(e.id), skills };
+        // The skills an agent uses, the notes it reads, or both; each a list of distinct ids.
+        if (!Object.keys(e).every(k => ['kind', 'id', 'skills', 'notes'].includes(k)) || (e.skills === undefined && e.notes === undefined)) return bad();
+        const ids = (list: unknown): string[] => {
+          if (!Array.isArray(list) || list.length > SAVE_EDIT_LIMIT) return bad();
+          const out = list.map(idArg);
+          return new Set(out).size === out.length ? out : bad();
+        };
+        return { kind: 'set-agent', id: idArg(e.id), ...(e.skills === undefined ? {} : { skills: ids(e.skills) }), ...(e.notes === undefined ? {} : { notes: ids(e.notes) }) };
       }
+      case 'set-source': return exactKeys(e, ['kind', 'name', 'notesId']) && typeof e.notesId === 'string' && NOTES_ID.test(e.notesId) ? { kind: 'set-source', name: idArg(e.name), notesId: e.notesId } : bad();
+      case 'remove-source': return exactKeys(e, ['kind', 'name']) ? { kind: 'remove-source', name: idArg(e.name) } : bad();
+      case 'add-from-kit': return exactKeys(e, ['kind', 'kit']) && (KIT_IDS as readonly unknown[]).includes(e.kit) ? { kind: 'add-from-kit', kit: e.kit as KitId } : bad();
       case 'remove-skill': return exactKeys(e, ['kind', 'id']) ? { kind: 'remove-skill', id: idArg(e.id) } : bad();
       case 'add-skill': return exactKeys(e, ['kind', 'id', 'from']) && typeof e.from === 'string' && ID.test(e.from) ? { kind: 'add-skill', id: idArg(e.id), from: e.from } : bad();
       case 'set-engines': {
@@ -188,9 +214,16 @@ export function checkSaveEdits(v: unknown): SaveEdit[] {
       default: return bad();
     }
   });
-  // add-skill reads and scans a whole skill of another folder: at most ADD_SKILL_LIMIT of them, and each (folder, skill) pair once.
+  // add-skill reads and scans a whole skill of another folder: at most ADD_SKILL_LIMIT of them, and each (folder, skill) pair once. A kit comes once.
   return copiesOk(edits) ? edits : bad();
 }
+
+/** A source name made from a folder name: lowercase letters, digits and single hyphens, or `notes` when nothing is left. */
+export function suggestedSourceName(name: string): string {
+  const id = name.normalize('NFKD').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+/, '').slice(0, 64).replace(/-+$/, '');
+  return isId(id) ? id : 'notes';
+}
+const purposeArg = (v: unknown): NotesPurpose => ((NOTES_PURPOSES as readonly unknown[]).includes(v) ? v as NotesPurpose : bad());
 const VERSION_ID = /^v[1-9][0-9]{0,9}$/;
 const versionArg = (v: unknown): string => (typeof v === 'string' && VERSION_ID.test(v) ? v : bad());
 
@@ -237,7 +270,18 @@ export interface EngineService {
   runSetAside(folderId: unknown, revision: unknown): Promise<Answer<SetAsideWritten>>;
   /** Records the answer to "Did this do what you wanted?" in the local log. True only when a line was written; false when the log is off, the write failed, or more than 10 came in a minute. */
   recordCheck(answer: unknown, note: unknown): Promise<boolean>;
+  chooseNotesFolder(purpose: unknown): Promise<Answer<NotesView> | null>;
+  notesSummary(notesId: unknown): Promise<Answer<NotesView>>;
+  planCreateNotes(notesId: unknown): Promise<Answer<NotesStarterView>>;
+  runCreateNotes(notesId: unknown, revision: unknown): Promise<Answer<NotesWritten>>;
+  planNotesHistory(notesId: unknown): Promise<Answer<NotesHistoryPlanView>>;
+  runNotesHistory(notesId: unknown, revision: unknown): Promise<Answer<NotesWritten>>;
 }
+
+/** A notes folder main knows, by the id it handed out. `dir` stays in main. */
+interface Notes { readonly id: string; readonly dir: string; readonly label: string; readonly name: string; readonly scrub: Scrub }
+/** What the gate keys a plan by: a folder or a notes folder. */
+type Keyed = { readonly id: string; readonly scrub: Scrub };
 
 /** The answer and the note of an after-apply check, checked again in main: the window is never trusted. A note is at most 500 characters. */
 export function checkCheckArgs(answer: unknown, note: unknown): { answer: CheckAnswer; note?: string } {
@@ -291,14 +335,14 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     if (f === undefined) throw new EngineCallRefusal('UNKNOWN_FOLDER');
     return f;
   };
-  const answer = async <T>(f: Folder | null, run: () => Promise<T> | T): Promise<Answer<T>> => {
+  const answer = async <T>(f: Keyed | null, run: () => Promise<T> | T): Promise<Answer<T>> => {
     try { return { ok: true, value: await run() }; } catch (error) {
       if (error instanceof EngineCallRefusal) throw error;
       return { ok: false, refusal: refusalOf(error, f?.scrub ?? makeScrub(homes.map(path => ({ path, as: '~' })))) };
     }
   };
   /** Plans, records the plan as the one shown last of its kind, and clears that record when the plan fails. */
-  const planned = async <T>(f: Folder, kind: Parameters<ShownPlans['set']>[1], run: () => { value: T; revision: string; choices: unknown; ask: Ask | null } | { value: T; revision: null }): Promise<Answer<T>> => {
+  const planned = async <T>(f: Keyed, kind: Parameters<ShownPlans['set']>[1], run: () => { value: T; revision: string; choices: unknown; ask: Ask | null } | { value: T; revision: null }): Promise<Answer<T>> => {
     plans.clear(f.id, kind);
     return answer(f, () => {
       const r = run();
@@ -307,7 +351,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     });
   };
   /** Runs a write only for the plan shown last with these choices, after main's own dialog and the person's yes. */
-  const written = async <T>(f: Folder, kind: Parameters<ShownPlans['set']>[1], revision: string, choices: unknown, run: () => Promise<T>): Promise<Answer<T>> => {
+  const written = async <T>(f: Keyed, kind: Parameters<ShownPlans['set']>[1], revision: string, choices: unknown, run: () => Promise<T>): Promise<Answer<T>> => {
     const shownPlan = plans.match(f.id, kind, revision, choices);
     if (shownPlan === null) return notTheShownPlan();
     if (shownPlan.ask !== null && !(await deps.confirm(shownPlan.ask))) return cancelled();
@@ -332,6 +376,75 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     byId.set(id, f);
     return f;
   }
+
+  // ---- notes folders (spec 6.9) ------------------------------------------------------------------------------------------
+
+  const notesById = new Map<string, Notes>();
+  let notesCount = 0;
+  const notesOptions: NotesOptions = deps.notesOptions ?? {};
+  /**
+   * Gives a notes folder its id, once per folder. `label` is how the window names it: the `~` form, or a source's stored form under its harness. The
+   * folder need not exist yet: a source a harness records may point at a folder that is gone, and its read then says so.
+   */
+  function registerNotes(dir: string, label?: string): Notes {
+    let real = dir;
+    try { real = realpathSync(dir); } catch { real = dir; }
+    for (const n of notesById.values()) if (n.dir === real) return n;
+    notesCount += 1;
+    const id = `notes-${notesCount}`;
+    const shown = visible(label ?? labelOf(real, homes.find(h => real === h || real.startsWith(`${h}/`)) ?? deps.home));
+    const scrub = makeScrub([{ path: real, as: shown }, { path: dir, as: shown }, ...homes.map(path => ({ path, as: '~' }))]);
+    const n: Notes = { id, dir: real, label: shown, name: visible(basename(real)), scrub };
+    notesById.set(id, n);
+    return n;
+  }
+  const notesOf = (id: unknown): Notes => {
+    if (typeof id !== 'string' || !NOTES_ID.test(id)) return bad();
+    const n = notesById.get(id);
+    if (n === undefined) throw new EngineCallRefusal('UNKNOWN_FOLDER');
+    return n;
+  };
+  /** The Notes panel's read of one folder: names and counts only, through packages/notes-source, which never opens a page. */
+  async function notesView(n: Notes): Promise<NotesView> {
+    const s = await readNotesSummary(n.dir, notesOptions);
+    return {
+      id: n.id, label: n.label, name: n.name, suggestedName: suggestedSourceName(n.name), pages: s.pages, complete: s.complete, history: s.history,
+      lastCommitAt: s.lastCommitAt === null ? null : isoSeconds(new Date(s.lastCommitAt)),
+      latestReport: s.latestReport === null ? null : { date: s.latestReport.date, path: n.scrub(s.latestReport.path) },
+    };
+  }
+  /** The shipped kit, loaded and validated now. With no kit folder it is refused, never empty. */
+  const kitNow = (id: KitId): Kit => {
+    const dir = deps.kitsDir?.();
+    if (dir === undefined) throw new DefinitionError(KIT_INVALID, `${KIT_MAIN_WORDS.KIT_INVALID} (no kit folder)`);
+    return loadKit(dir, id);
+  };
+  /** A source of a harness as the window gets it: its label, and a notes id for the folder it points at. */
+  const sourceViewOf = (f: Folder): SourceOf => src => {
+    const home = src.path.startsWith('~/');
+    const abs = src.path === '.' ? f.dir : home ? join(realHome, src.path.slice(2)) : join(f.dir, src.path);
+    const label = src.path === '.' ? f.label : home ? src.path : `${f.label}/${src.path}`;
+    return { name: src.name, kind: src.kind, label: visible(label), notesId: registerNotes(abs, label).id };
+  };
+  /** What the notes edits of a save need: the stored path of a notes folder, relative to this harness folder or in `~` form, and the shipped kit. */
+  const notesEdits = (f: Folder): NotesEditDeps => ({
+    sourcePath: notesId => {
+      const n = notesOf(notesId);
+      const r = storedKnowledgePath(n.dir, { root: f.dir, home: realHome });
+      if (!r.ok) throw new DefinitionError(r.code, r.message);
+      return r.path;
+    },
+    kit: kitNow,
+  });
+  /** Runs a notes write and records its step: done, or refused with its code. The result or the error passes through as it was. */
+  const notesStep = async <T>(n: Notes, step: string, run: () => Promise<T>): Promise<T> => {
+    try { const r = await run(); record({ kind: 'scenario', step, outcome: 'done' }); return r; } catch (error) {
+      let code = 'FAILED';
+      try { code = refusalOf(error, n.scrub).code; } catch (inner) { console.error('Bowerloom could not name the refusal for its usage event.', inner); }
+      record({ kind: 'scenario', step, outcome: 'refused', code });
+      throw error;
+    }
+  };
 
   /** True when a Merge stopped part way here: its journal is in the adoption state folder (decision D4A). */
   const mergeIsStopped = (f: Folder): boolean => mergeStopped(f.adoptState);
@@ -541,7 +654,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
   function saveNow(f: Folder, edits: readonly SaveEdit[]): { plan: SavePlan; target: DefinitionFile[] } {
     whileStopped(f);
     const def = currentDefinition(f.dir);
-    const target = targetOf(def, edits, from => folderOf(from).dir);
+    const target = targetOf(def, edits, from => folderOf(from).dir, notesEdits(f));
     const plan = packagePlanSave(saveIo(f), target);
     // A save that changes files keeps a save point before and after it; one that could not be kept is refused here, before the person approves.
     if (plan.changes.length > 0) keepable(def.files, target);
@@ -552,10 +665,11 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     ...d, id: f.scrub(d.id), description: f.scrub(d.description),
     skills: d.skills.map(x => ({ id: x.id, name: f.scrub(x.name), description: f.scrub(x.description) })),
     agents: d.agents.map(a => ({ ...a, name: f.scrub(a.name), description: f.scrub(a.description) })),
+    sources: d.sources.map(x => ({ ...x, label: f.scrub(x.label) })),
   });
   function saveView(f: Folder, plan: SavePlan, target: readonly DefinitionFile[]): SaveView {
     return {
-      folder: f.label, changes: plan.changes.map(c => ({ path: f.scrub(`.bowerloom/${c.path}`), action: c.action })), definition: scrubbed(f, targetView(target, f.dir)),
+      folder: f.label, changes: plan.changes.map(c => ({ path: f.scrub(`.bowerloom/${c.path}`), action: c.action })), definition: scrubbed(f, targetView(target, f.dir, sourceViewOf(f))),
       noop: plan.changes.length === 0, revision: plan.revision,
     };
   }
@@ -848,6 +962,68 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
       if (checkTimes.length >= CHECKS_PER_MINUTE) return false;
       checkTimes.push(at);
       try { return deps.record?.({ source: 'app', kind: 'check', answer: c.answer, ...(c.note === undefined ? {} : { note: c.note }) }) === true; } catch (error) { console.error('Bowerloom could not record the check.', error); return false; }
+    }),
+    chooseNotesFolder: purpose => serial(async () => {
+      const p = purposeArg(purpose);
+      const picked = deps.chooseNotesFolder === undefined ? null : await deps.chooseNotesFolder(p);
+      if (picked === null) return null;
+      const s = makeScrub(homes.map(path => ({ path, as: '~' })));
+      try {
+        if (typeof picked !== 'string' || !isAbsolute(picked) || picked.includes('\u0000')) return bad();
+        const dir = realpathSync(picked);
+        if (!lstatSync(dir).isDirectory()) return bad();
+        checkProjectPath(dir, deps.home);
+        const n = registerNotes(dir);
+        return await answer(n, () => notesView(n));
+      } catch (error) {
+        if (error instanceof EngineCallRefusal) return { ok: false, refusal: { code: 'NOT_A_FOLDER', message: 'That is not a folder Bowerloom can use. Choose a folder.', paths: [] } } as const;
+        return { ok: false, refusal: refusalOf(error, s) } as const;
+      }
+    }),
+    notesSummary: id => serial(async () => {
+      const n = notesOf(id);
+      return answer(n, () => notesView(n));
+    }),
+    planCreateNotes: id => serial(async () => {
+      const n = notesOf(id);
+      return planned(n, 'notes-starter', () => {
+        const kit = kitNow('wiki-keeper');
+        const plan = planStarter(n.dir, kit.starter, notesOptions);
+        const value: NotesStarterView = {
+          notes: n.label, createsFolder: plan.createsFolder, folders: plan.folders.map(n.scrub), files: plan.files.map(f => ({ path: n.scrub(f.path), bytes: f.bytes })),
+          kit: { id: kit.id, version: kit.version }, revision: plan.revision,
+        };
+        return { value, revision: plan.revision, choices: null, ask: ASK.notesStarter(n.label, plan.files.length, plan.revision) };
+      });
+    }),
+    runCreateNotes: (id, revision) => serial(async () => {
+      const n = notesOf(id), rev = revisionArg(revision);
+      return written(n, 'notes-starter', rev, null, () => notesStep(n, 'notes-create', async () => {
+        // The template is read from the kit again; when it changed since the plan, the package's revision check refuses the write.
+        const r = await applyStarter(n.dir, rev, kitNow('wiki-keeper').starter, notesOptions);
+        plans.clear(n.id, 'notes-history');
+        return { files: r.files.length, committedAt: isoSeconds(new Date(r.committedAt)), clean: r.clean };
+      }));
+    }),
+    planNotesHistory: id => serial(async () => {
+      const n = notesOf(id);
+      return planned(n, 'notes-history', () => {
+        const plan = planGitInit(n.dir, notesOptions);
+        const value: NotesHistoryPlanView = {
+          notes: n.label, files: plan.files.slice(0, NOTES_PLAN_LIST_LIMIT).map(f => ({ path: n.scrub(f.path), kind: f.kind })), count: plan.files.length, hidden: plan.hidden,
+          revision: plan.revision,
+        };
+        return { value, revision: plan.revision, choices: null, ask: ASK.notesHistory(n.label, plan.files.length, plan.revision) };
+      });
+    }),
+    runNotesHistory: (id, revision) => serial(async () => {
+      const n = notesOf(id), rev = revisionArg(revision);
+      return written(n, 'notes-history', rev, null, () => notesStep(n, 'notes-history', async () => {
+        // The package lists the folder again and refuses NOTES_STALE, before it runs git, when anything changed since the plan.
+        const r = await applyGitInit(n.dir, rev, notesOptions);
+        plans.clear(n.id, 'notes-starter');
+        return { files: r.files.length, committedAt: isoSeconds(new Date(r.committedAt)), clean: r.clean };
+      }));
     }),
   };
 }

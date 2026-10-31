@@ -350,14 +350,38 @@ export interface MergeWritten { readonly written: readonly string[] }
  *  - `remove-skill`: the skill goes from the harness, and from every agent that used it.
  *  - `add-skill`: copies the skill `id` from the harness of another folder the person chose (`from`, a folder id). Main reads the skill there again.
  *  - `set-engines`: the interfaces the harness lists. An engine kept keeps its version and model.
+ *  - `set-agent` with `notes`: the notes sources an agent reads, by source name. `skills` and `notes` may each be left out; one of them is there.
+ *  - `set-source`: attaches the notes folder `notesId` (an id main gave out, never a path) as the source `name`. Main stores its path itself, relative
+ *    when it sits inside the folder and in `~` form otherwise. A source of the same name is replaced.
+ *  - `remove-source`: the source goes from the harness, and from the notes of every agent that read it.
+ *  - `add-from-kit`: adds a ready-made kit that ships with Bowerloom: its agent and its skills, read by main from the kit itself, with the kit's pinned
+ *    version recorded in `sources.json`. The window names the kit only.
  */
 export type SaveEdit =
-  | { readonly kind: 'set-agent'; readonly id: string; readonly skills: readonly string[] }
+  | { readonly kind: 'set-agent'; readonly id: string; readonly skills?: readonly string[]; readonly notes?: readonly string[] }
   | { readonly kind: 'remove-skill'; readonly id: string }
   | { readonly kind: 'add-skill'; readonly id: string; readonly from: string }
-  | { readonly kind: 'set-engines'; readonly engines: readonly EngineId[] };
+  | { readonly kind: 'set-engines'; readonly engines: readonly EngineId[] }
+  | { readonly kind: 'set-source'; readonly name: string; readonly notesId: string }
+  | { readonly kind: 'remove-source'; readonly name: string }
+  | { readonly kind: 'add-from-kit'; readonly kit: KitId };
 /** The most edits one save takes. */
 export const SAVE_EDIT_LIMIT = 200;
+
+/** The ready-made kits that ship with Bowerloom, by id. A closed list: the window names one of these, and main reads the kit from its own files. */
+export const KIT_IDS = Object.freeze(['wiki-keeper'] as const);
+export type KitId = (typeof KIT_IDS)[number];
+/** The marketplace name `sources.json` records for an item that came from a shipped kit. */
+export const KIT_MARKETPLACE = 'bowerloom-kits';
+
+/** One notes source of a harness as the editor draws it. `label` is the folder in `~` form, or under the harness folder's label; never a full path. */
+export interface SourceView {
+  readonly name: string;
+  readonly kind: 'wiki-folder';
+  readonly label: string;
+  /** The id main gave the folder, for notesSummary and the history plan. */
+  readonly notesId: string;
+}
 
 /** One folder's harness as the editor draws it: its skills, its agents with the skills each uses, and its interfaces. Text is never sent. */
 export interface DefinitionView {
@@ -365,10 +389,61 @@ export interface DefinitionView {
   readonly description: string;
   readonly engines: readonly EngineId[];
   readonly skills: readonly { readonly id: string; readonly name: string; readonly description: string }[];
-  readonly agents: readonly { readonly id: string; readonly name: string; readonly description: string; readonly skills: readonly string[] }[];
+  /** `notes`: the names of the sources the agent reads. */
+  readonly agents: readonly { readonly id: string; readonly name: string; readonly description: string; readonly skills: readonly string[]; readonly notes: readonly string[] }[];
   /** True when the harness holds instructions (AGENTS.md). */
   readonly instructions: boolean;
+  /** The notes sources the harness records (knowledge.json), in file order. */
+  readonly sources: readonly SourceView[];
+  /** The shipped kits the harness holds items of, each with the version `sources.json` pinned. */
+  readonly kits: readonly { readonly id: KitId; readonly version: string }[];
 }
+
+// ---- notes (spec 6.9) --------------------------------------------------------------------------------------------------------
+
+/** How a notes folder keeps its history: a git repository, none yet, git not installed, or a `.git` Bowerloom cannot read. */
+export type NotesHistory = 'git' | 'none' | 'git-missing' | 'unreadable';
+/** Why main's own notes chooser opens: `use`, the notes the person has ("Use my notes"); `start`, an empty folder for a starter wiki ("Start fresh"). */
+export const NOTES_PURPOSES = Object.freeze(['use', 'start'] as const);
+export type NotesPurpose = (typeof NOTES_PURPOSES)[number];
+/**
+ * One notes folder, as the Notes panel shows it. Names and counts only: Bowerloom never opens a page. `pages` counts `*.md` names; `complete` is false
+ * when a bound stopped the count. `latestReport` is the newest tidy-up report by the date in its name, its path relative to the notes folder.
+ */
+export interface NotesView {
+  readonly id: string;
+  readonly label: string;
+  readonly name: string;
+  /** A source name made from the folder name, for `set-source`. */
+  readonly suggestedName: string;
+  readonly pages: number;
+  readonly complete: boolean;
+  readonly history: NotesHistory;
+  /** UTC, to the second, or null. */
+  readonly lastCommitAt: string | null;
+  readonly latestReport: { readonly date: string; readonly path: string } | null;
+}
+/** The plan of "Start fresh": the starter files of the kit, each relative to the notes folder, and one first commit. */
+export interface NotesStarterView {
+  readonly notes: string;
+  readonly createsFolder: boolean;
+  readonly folders: readonly string[];
+  readonly files: readonly { readonly path: string; readonly bytes: number }[];
+  readonly kit: { readonly id: KitId; readonly version: string };
+  readonly revision: string;
+}
+/** The most file names a history plan lists. `count` is the full number. */
+export const NOTES_PLAN_LIST_LIMIT = 500;
+/** The plan of starting version history in a linked notes folder: the files the first commit adds, and how many hidden names stay out of it. */
+export interface NotesHistoryPlanView {
+  readonly notes: string;
+  readonly files: readonly { readonly path: string; readonly kind: 'file' | 'link' }[];
+  readonly count: number;
+  readonly hidden: number;
+  readonly revision: string;
+}
+/** What a starter or a history start did: the number of files in the first commit, its time, and whether the folder is clean after it. */
+export interface NotesWritten { readonly files: number; readonly committedAt: string; readonly clean: boolean }
 /** One file a save changes, as `.bowerloom/<path>`. */
 export interface SaveChangeView { readonly path: string; readonly action: 'create' | 'update' | 'delete' }
 /**
@@ -448,6 +523,21 @@ export interface EngineBridge {
   /** Sets the old save points aside, for the plan shown last, after main's own dialog. Nothing is deleted. */
   runSetAside(folderId: string, revision: string): Promise<Answer<SetAsideWritten>>;
   /**
+   * Opens main's own folder chooser for notes. `use` ("Use my notes"): the person picks the notes they have. `start` ("Start fresh"): the person picks, or makes, an empty folder for a
+   * starter wiki. Null when the person closed it. The sample answers a made-up folder.
+   */
+  chooseNotesFolder(purpose: NotesPurpose): Promise<Answer<NotesView> | null>;
+  /** The Notes panel's read of one notes folder. Reads names only. */
+  notesSummary(notesId: string): Promise<Answer<NotesView>>;
+  /** Plans "Start fresh": the kit's starter wiki in an empty notes folder, then one first commit. Reads only. */
+  planCreateNotes(notesId: string): Promise<Answer<NotesStarterView>>;
+  /** Writes the starter plan shown last, after main's own dialog. */
+  runCreateNotes(notesId: string, revision: string): Promise<Answer<NotesWritten>>;
+  /** Plans starting version history in a linked notes folder that has none. Reads only. */
+  planNotesHistory(notesId: string): Promise<Answer<NotesHistoryPlanView>>;
+  /** Starts the history the plan shown last showed, after main's own dialog: git init, and one first commit of exactly the files listed. */
+  runNotesHistory(notesId: string, revision: string): Promise<Answer<NotesWritten>>;
+  /**
    * Records the answer to "Did this do what you wanted?" in the local usage log on this computer. `note` is the person's own words, at most 500 characters, or
    * null. True when it was recorded. Nothing leaves the computer. The sample records nothing and answers false.
    */
@@ -465,6 +555,7 @@ export const ENGINE_CALLS = Object.freeze([
   'folders', 'chooseFolder', 'planAdoption', 'runAdoption', 'planAdoptionRecovery', 'runAdoptionRecovery',
   'planProjection', 'runProjection', 'planRemoval', 'runRemoval', 'planRecovery', 'runRecovery', 'planMerge', 'runMerge', 'recordCheck',
   'planSave', 'runSave', 'listVersions', 'planRestore', 'runRestore', 'planSetAside', 'runSetAside',
+  'chooseNotesFolder', 'notesSummary', 'planCreateNotes', 'runCreateNotes', 'planNotesHistory', 'runNotesHistory',
 ] as const);
 export type EngineCall = (typeof ENGINE_CALLS)[number];
 /** How many arguments each call takes. A call with another count is refused before anything runs. */
@@ -472,6 +563,7 @@ export const ENGINE_ARITY: Readonly<Record<EngineCall, number>> = Object.freeze(
   folders: 0, chooseFolder: 0, planAdoption: 2, runAdoption: 4, planAdoptionRecovery: 1, runAdoptionRecovery: 2,
   planProjection: 2, runProjection: 3, planRemoval: 1, runRemoval: 2, planRecovery: 2, runRecovery: 3, planMerge: 1, runMerge: 2, recordCheck: 2,
   planSave: 2, runSave: 3, listVersions: 1, planRestore: 2, runRestore: 3, planSetAside: 1, runSetAside: 2,
+  chooseNotesFolder: 1, notesSummary: 1, planCreateNotes: 1, runCreateNotes: 2, planNotesHistory: 1, runNotesHistory: 2,
 });
 /** One channel per call, apart from every other channel of the app. */
 export const ENGINE_CHANNELS: Readonly<Record<EngineCall, string>> = Object.freeze(Object.fromEntries(ENGINE_CALLS.map(c => [c, `bowerloom-engine:${c}`])) as Record<EngineCall, string>);
@@ -493,4 +585,14 @@ export const SAVE_MAIN_WORDS: Readonly<Record<typeof SAVE_NO_DEFINITION | typeof
   SAVE_NO_DEFINITION: 'This folder has no harness yet, so there is nothing to save. Make one first with New harness from a folder. Nothing was written.',
   SAVE_SOURCE_MISSING: 'The folder to copy from does not hold that skill, or its harness does not load. Nothing was written.',
   SAVE_POINT_TOO_LARGE: 'This harness is too large for Bowerloom to keep a save point before and after this save, so Go back would have no entry for it. Nothing was written.',
+});
+/**
+ * Refusals of main itself for a ready-made kit, with words: the kit that ships with Bowerloom is missing or damaged (KIT_INVALID, whose message goes on
+ * with the reason), or the harness holds the kit already.
+ */
+export const KIT_INVALID = 'KIT_INVALID';
+export const KIT_ALREADY_ADDED = 'KIT_ALREADY_ADDED';
+export const KIT_MAIN_WORDS: Readonly<Record<typeof KIT_INVALID | typeof KIT_ALREADY_ADDED, string>> = Object.freeze({
+  KIT_INVALID: 'The ready-made notes keeper that ships with Bowerloom is missing or damaged, so Bowerloom will not use it. Nothing was written.',
+  KIT_ALREADY_ADDED: 'This harness holds the notes keeper already. Nothing was written.',
 });

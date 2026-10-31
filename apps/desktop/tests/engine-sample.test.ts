@@ -6,11 +6,16 @@ import { AdoptionRefusal, SaveRefusal } from '../../../packages/adoption/src/ind
 import { PortableRefusal, VersionRefusal } from '../../../packages/project-sync/src/index.js';
 import type { AdoptionCode, SaveCode } from '../../../packages/adoption/src/index.js';
 import type { PortableCode, VersionCode } from '../../../packages/project-sync/src/index.js';
-import { SAMPLE_FOLDERS, SAMPLE_MESSAGES, createSampleEngine, sampleEngineFixtures } from '../shared/engine/sample.js';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { NotesRefusal, findGit } from '../../../packages/notes-source/src/index.js';
+import type { NotesCode } from '../../../packages/notes-source/src/index.js';
+import { readFrontmatter } from '../../../packages/harness-definition/src/index.js';
+import { SAMPLE_FOLDERS, SAMPLE_KIT, SAMPLE_MESSAGES, SAMPLE_NOTES, createSampleEngine, sampleEngineFixtures } from '../shared/engine/sample.js';
 import { createEngineService } from '../main/engine-service.js';
-import { SAVE_MAIN_WORDS } from '../shared/engine/types.js';
+import { loadKit } from '../main/kit.js';
+import { KIT_MAIN_WORDS, SAVE_MAIN_WORDS } from '../shared/engine/types.js';
 import type { Answer, ProjectAnswer, ProjectInput, SaveEdit } from '../shared/engine/types.js';
-import { tempDir } from './support.js';
+import { DESKTOP, tempDir } from './support.js';
 import { definedFolder, engineFolder, homeFolder, teamFolder } from './helpers-engine/folders.js';
 
 const value = <T>(a: Answer<T> | null): T => { assert.ok(a !== null); if (!a.ok) assert.fail(`${a.refusal.code}`); return a.value; };
@@ -37,6 +42,8 @@ function sameShape(real: unknown, sample: unknown): string[] {
 test('the sample\'s words for each refusal are the packages\' own words', () => {
   for (const [code, words] of Object.entries(SAMPLE_MESSAGES)) {
     if (Object.hasOwn(SAVE_MAIN_WORDS, code)) { assert.equal(SAVE_MAIN_WORDS[code as keyof typeof SAVE_MAIN_WORDS], words, code); continue; }
+    if (Object.hasOwn(KIT_MAIN_WORDS, code)) { assert.equal(KIT_MAIN_WORDS[code as keyof typeof KIT_MAIN_WORDS], words, code); continue; }
+    if (code.startsWith('NOTES_')) { assert.equal(new NotesRefusal(code as NotesCode).message, words, code); continue; }
     const made = code.startsWith('ADOPTION_') ? new AdoptionRefusal(code as AdoptionCode) : code.startsWith('SAVE_') ? new SaveRefusal(code as SaveCode)
       : code.startsWith('VERSION_') ? new VersionRefusal(code as VersionCode) : new PortableRefusal(code as PortableCode);
     assert.equal(made.message, words, code);
@@ -205,4 +212,114 @@ test('sample save: a link is a set-agent edit, a stale revision is refused, a sa
   assert.ok(!ghost.ok); assert.equal(ghost.refusal.code, 'SAVE_SOURCE_MISSING');
   const gone = value(await e.planSave(id, [{ kind: 'remove-skill', id: 'draft-outline' }]));
   assert.deepEqual(gone.changes.map(c => [c.path, c.action]), [['.bowerloom/agents/writer.md', 'update'], ['.bowerloom/skills/draft-outline/SKILL.md', 'delete']]);
+});
+
+// ---- notes (spec 6.9) ---------------------------------------------------------------------------------------------------------
+
+const KITS = join(DESKTOP, '..', '..', 'kits');
+const gitMissing = ((): string | false => { try { findGit(); return false; } catch { return 'git is not installed at a fixed path, so the real notes writes are not compared here'; } })();
+const refusalOf = <T>(a: Answer<T>): { code: string; message: string } => { assert.equal(a.ok, false, 'a refusal'); return (a as Extract<Answer<T>, { ok: false }>).refusal; };
+
+test('the sample\'s notes keeper is the kit main ships: its version, its agent, each skill\'s description, and the starter files', () => {
+  const kit = loadKit(KITS, 'wiki-keeper');
+  assert.equal(SAMPLE_KIT.version, kit.version);
+  assert.equal(SAMPLE_KIT.agent.id, kit.agent.id);
+  const agent = readFrontmatter(kit.agent.text);
+  assert.ok(agent.ok);
+  assert.equal(SAMPLE_KIT.agent.description, agent.data.description);
+  assert.deepEqual([...SAMPLE_KIT.agent.skills], agent.data.skills);
+  assert.deepEqual(SAMPLE_KIT.skills.map(k => k.id), kit.skills.map(k => k.id));
+  for (const k of kit.skills) {
+    const fm = readFrontmatter(Buffer.from(k.files[0]!.bytes).toString('utf8'));
+    assert.ok(fm.ok);
+    assert.equal(SAMPLE_KIT.skills.find(x => x.id === k.id)!.description, fm.data.description, k.id);
+  }
+  assert.deepEqual(SAMPLE_KIT.starter.map(f => [f.path, f.bytes]), kit.starter.map(f => [f.path, f.bytes.length]));
+});
+
+test('the sample notes answers have every field of main\'s: the chooser, the panel read, the save with the kit and a source, and both plans', { skip: gitMissing }, async t => {
+  const home = homeFolder(tempDir(t, 'bowerloom-engine-sample-notes-'));
+  const dir = teamFolder(home);
+  const notesDir = join(home, 'Documents', 'Garden notes');
+  mkdirSync(join(notesDir, 'beds'), { recursive: true });
+  writeFileSync(join(notesDir, 'index.md'), '# Garden\n'); writeFileSync(join(notesDir, 'beds', 'east-bed.md'), '# East\n');
+  const empty = join(home, 'Documents', 'Notes'); mkdirSync(empty);
+  let notes = notesDir;
+  const service = createEngineService({ home, stateRoot: join(home, '.local', 'state', 'bowerloom'), chooseFolder: async () => dir, confirm: async () => true, who: 't', chooseNotesFolder: async () => notes, kitsDir: () => KITS });
+  const f = value(await service.chooseFolder());
+  const e = createSampleEngine();
+  const realNotes = value(await service.chooseNotesFolder('use'));
+  const sampleNotes = value(await e.chooseNotesFolder('use'));
+  assert.deepEqual(sameShape(realNotes, sampleNotes), []);
+  assert.deepEqual(Object.keys(realNotes).sort(), Object.keys(sampleNotes).sort());
+  assert.deepEqual(sameShape(value(await service.notesSummary(realNotes.id)), value(await e.notesSummary(sampleNotes.id))), []);
+  const realEdits: SaveEdit[] = [{ kind: 'add-from-kit', kit: 'wiki-keeper' }, { kind: 'set-source', name: 'garden', notesId: realNotes.id }, { kind: 'set-agent', id: 'notes-keeper', notes: ['garden'] }];
+  const sampleEdits: SaveEdit[] = [{ kind: 'add-from-kit', kit: 'wiki-keeper' }, { kind: 'set-source', name: 'garden', notesId: sampleNotes.id }, { kind: 'set-agent', id: 'notes-keeper', notes: ['garden'] }];
+  const real = value(await service.planSave(f.id, realEdits));
+  const sample = value(await e.planSave(SAMPLE_FOLDERS.defined, sampleEdits));
+  assert.deepEqual(sameShape(real, sample), []);
+  // The change list names the same new files: the keeper, its skills, knowledge.json and sources.json; and harness.json changes.
+  const added = (v: typeof real): string[] => v.changes.filter(c => c.action === 'create' || c.path === '.bowerloom/harness.json').map(c => `${c.path}:${c.action}`).sort();
+  assert.deepEqual(added(sample), added(real));
+  assert.deepEqual(sample.definition.agents.find(a => a.id === 'notes-keeper'), real.definition.agents.find(a => a.id === 'notes-keeper'));
+  assert.deepEqual(sample.definition.kits, real.definition.kits);
+  const realHistory = value(await service.planNotesHistory(realNotes.id));
+  const sampleHistory = value(await e.planNotesHistory(sampleNotes.id));
+  assert.deepEqual(sameShape(realHistory, sampleHistory), []);
+  assert.deepEqual(sameShape(value(await service.runNotesHistory(realNotes.id, realHistory.revision)), value(await e.runNotesHistory(sampleNotes.id, sampleHistory.revision))), []);
+  notes = empty;
+  const realEmpty = value(await service.chooseNotesFolder('start'));
+  const sampleEmpty = value(await e.chooseNotesFolder('start'));
+  const realStarter = value(await service.planCreateNotes(realEmpty.id));
+  const sampleStarter = value(await e.planCreateNotes(sampleEmpty.id));
+  assert.deepEqual(sameShape(realStarter, sampleStarter), []);
+  assert.deepEqual(sampleStarter.files, realStarter.files);
+  assert.deepEqual(sampleStarter.folders, realStarter.folders);
+  // The refusals the sample gives read as main's.
+  const realGhost = refusalOf(await service.planSave(f.id, [{ kind: 'set-agent', id: 'reader', notes: ['ghost'] }]));
+  const sampleGhost = refusalOf(await e.planSave(SAMPLE_FOLDERS.defined, [{ kind: 'set-agent', id: 'editor', notes: ['ghost'] }]));
+  assert.deepEqual([sampleGhost.code, sampleGhost.message], [realGhost.code, realGhost.message]);
+  const realFull = refusalOf(await service.planCreateNotes(realNotes.id));
+  const sampleFull = refusalOf(await e.planCreateNotes(sampleNotes.id));
+  assert.deepEqual([sampleFull.code, sampleFull.message], [realFull.code, realFull.message]);
+});
+
+test('sample notes: link shows pages and no history; history starts once by revision; Start fresh writes the starter once; the keeper attaches through a save', async () => {
+  const e = createSampleEngine();
+  const link = value(await e.chooseNotesFolder('use'));
+  assert.equal(link.id, SAMPLE_NOTES.use);
+  assert.equal(link.history, 'none');
+  assert.ok(link.pages > 0);
+  assert.ok(!link.label.startsWith('/'));
+  const plan = value(await e.planNotesHistory(link.id));
+  assert.equal(plan.count, plan.files.length);
+  assert.equal(refusalOf(await e.runNotesHistory(link.id, 'a'.repeat(64))).code, 'NOTES_STALE');
+  const done = value(await e.runNotesHistory(link.id, plan.revision));
+  assert.equal(done.files, plan.count);
+  assert.equal(value(await e.notesSummary(link.id)).history, 'git');
+  assert.equal(refusalOf(await e.planNotesHistory(link.id)).code, 'NOTES_ALREADY_REPOSITORY');
+  assert.equal(refusalOf(await e.planCreateNotes(link.id)).code, 'NOTES_NOT_EMPTY');
+  const fresh = value(await e.chooseNotesFolder('start'));
+  assert.equal(fresh.id, SAMPLE_NOTES.start);
+  assert.equal(fresh.pages, 0);
+  const starter = value(await e.planCreateNotes(fresh.id));
+  assert.deepEqual(starter.kit, { id: 'wiki-keeper', version: SAMPLE_KIT.version });
+  value(await e.runCreateNotes(fresh.id, starter.revision));
+  const after = value(await e.notesSummary(fresh.id));
+  assert.deepEqual([after.history, after.pages], ['git', SAMPLE_KIT.starter.length]);
+  assert.equal(refusalOf(await e.planCreateNotes(fresh.id)).code, 'NOTES_NOT_EMPTY');
+  // The keeper and the notes attach through the save step, and show on the next read.
+  const id = SAMPLE_FOLDERS.defined;
+  const edits: SaveEdit[] = [{ kind: 'add-from-kit', kit: 'wiki-keeper' }, { kind: 'set-source', name: 'notes', notesId: fresh.id }, { kind: 'set-agent', id: 'notes-keeper', notes: ['notes'] }];
+  const save = value(await e.planSave(id, edits));
+  value(await e.runSave(id, save.revision, edits));
+  const now = value(await e.planSave(id, [])).definition;
+  assert.deepEqual(now.sources, [{ name: 'notes', kind: 'wiki-folder', label: '~/Documents/Notes', notesId: fresh.id }]);
+  assert.deepEqual(now.agents.find(a => a.id === 'notes-keeper')!.notes, ['notes']);
+  assert.deepEqual(now.kits, [{ id: 'wiki-keeper', version: SAMPLE_KIT.version }]);
+  const twice = refusalOf(await e.planSave(id, [{ kind: 'add-from-kit', kit: 'wiki-keeper' }]));
+  assert.deepEqual([twice.code, twice.message], ['KIT_ALREADY_ADDED', KIT_MAIN_WORDS.KIT_ALREADY_ADDED]);
+  const gone = value(await e.planSave(id, [{ kind: 'remove-source', name: 'notes' }]));
+  assert.deepEqual(gone.definition.agents.find(a => a.id === 'notes-keeper')!.notes, []);
+  assert.deepEqual(gone.changes.map(c => c.path).sort(), ['.bowerloom/agents/notes-keeper.md', '.bowerloom/knowledge.json']);
 });

@@ -12,7 +12,7 @@ import { CANCELLED, NOT_THE_PLAN_SHOWN } from '../shared/engine/types.js';
 import type { Refusal } from '../shared/engine/types.js';
 
 /** The kinds of plan a write can name. */
-export type PlanKind = 'adoption' | 'projection' | 'removal' | 'recovery' | 'adoption-recovery' | 'merge' | 'save' | 'restore' | 'set-aside';
+export type PlanKind = 'adoption' | 'projection' | 'removal' | 'recovery' | 'adoption-recovery' | 'merge' | 'save' | 'restore' | 'set-aside' | 'notes-starter' | 'notes-history';
 
 /** Main's record of the last plan it returned: its revision, the choices it was made with (canonical JSON), and the words of the dialog. */
 export interface ShownPlan { readonly revision: string; readonly choices: string; readonly ask: Ask | null }
@@ -57,6 +57,10 @@ export const ASK = Object.freeze({
   saveRecovery: (label: string, n: number, rev: string, done = false): Ask => (done
     ? { title: 'Finish a stopped harness', message: `Keep the finished save in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. The save stays, and Bowerloom clears its note. No file changes. ${again}` }
     : { title: 'Finish a stopped harness', message: `Put back ${files(n)} that a stopped save changed in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. ${again}` }),
+  /** "Start fresh" (spec 6.9): the kit's starter files into an empty notes folder, and one first commit. */
+  notesStarter: (label: string, n: number, rev: string): Ask => ({ title: 'Start your notes', message: `Write ${files(n)} into ${label} and start its history?`, detail: `From plan ${rev.slice(0, 8)}. Bowerloom makes one first commit with git, and changes nothing else. ${again}` }),
+  /** Version history for linked notes: git init, and one first commit of the files listed. No page changes. */
+  notesHistory: (label: string, n: number, rev: string): Ask => ({ title: 'Start the history of your notes', message: `Start version history in ${label} with ${files(n)}?`, detail: `From plan ${rev.slice(0, 8)}. Bowerloom runs git init and makes one first commit. No page changes. ${again}` }),
 });
 
 /** Session records of the last plan of each kind, per folder. A plan that fails clears its kind, so a stale plan can never be written. */

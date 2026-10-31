@@ -19,10 +19,15 @@ const ALLOWED_NETWORK_MODULES: Record<string, string[]> = {
 };
 
 /**
- * Modules of the bundle that may start a process, with what they import. One: the problem report asks each engine for its version (`claude --version`), with
- * execFile and no shell, a 3 second limit, and a minimal environment (packages/diagnostics/src/report.ts). Nothing else of the bundle starts a process.
+ * Modules of the bundle that may start a process, with what they import. Two:
+ *  - the problem report asks each engine for its version (`claude --version`), with execFile and no shell, a 3 second limit, and a minimal environment
+ *    (packages/diagnostics/src/report.ts);
+ *  - the notes source runs git (spec 6.9: every notes folder is a git repository, and Bowerloom starts one with a preview): one module, git found by fixed
+ *    path only, five fixed argument forms, no shell, a minimal environment with no HOME and no git config, a timeout and an output cap, and only after
+ *    main's own dialog or for the Notes panel's read of the last commit time (packages/notes-source/src/git.ts).
+ * Nothing else of the bundle starts a process.
  */
-const ALLOWED_PROCESS_MODULES: Record<string, string[]> = { '../../packages/diagnostics/src/report.ts': ['child_process'] };
+const ALLOWED_PROCESS_MODULES: Record<string, string[]> = { '../../packages/diagnostics/src/report.ts': ['child_process'], '../../packages/notes-source/src/git.ts': ['child_process'] };
 
 const BARE = '(?:node:)?';
 const WORKERS = /^(child_process|worker_threads|cluster)$/;
@@ -51,6 +56,12 @@ test('the bundled main file never loads child_process, worker_threads, or cluste
   const probe = readFileSync(join(DESKTOP, '..', '..', 'packages', 'diagnostics', 'src', 'report.ts'), 'utf8');
   assert.match(probe, /import \{ execFile \} from 'node:child_process';/, 'the report uses execFile only');
   assert.doesNotMatch(probe.replace(/\/\/.*$/gm, ''), /(?<![.\w])(spawn|exec|fork|execSync|spawnSync)\s*\(/, 'never a shell');
+  // The notes git runner: one spawn, with no shell, of the git it found by fixed path. Nothing else in it starts a process.
+  const git = readFileSync(join(DESKTOP, '..', '..', 'packages', 'notes-source', 'src', 'git.ts'), 'utf8').replace(/\/\/.*$/gm, '');
+  assert.match(git, /import \{ spawn \} from 'node:child_process';/, 'the notes runner imports spawn only');
+  assert.equal([...git.matchAll(/(?<![.\w])spawn\s*\(/g)].length, 1, 'one place starts git');
+  assert.match(git, /spawn\(file, \[\.\.\.argv\], \{ cwd, env, shell: false,/, 'git runs with no shell');
+  assert.doesNotMatch(git, /(?<![.\w])(exec|execFile|fork|execSync|spawnSync|execFileSync)\s*\(/, 'nothing else starts a process');
   assert.doesNotMatch(code, /(?<![.\w])(?:globalThis|global|self|window)\.fetch\(|(?<![.\w])fetch\(|new WebSocket\(|XMLHttpRequest|new EventSource\(/, 'no fetch, web socket or event source call');
   // A network module loaded in any form other than a plain top-level import (a require() or import() call) is never expected.
   const calls = [...code.matchAll(new RegExp(`(?:require|import)\\(\\s*["']${BARE}([a-z_\\/0-9]+)["']`, 'g'))].map(m => m[1]!).filter(name => NETWORK.test(name) || WORKERS.test(name));
