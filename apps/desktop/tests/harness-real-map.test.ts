@@ -1,4 +1,4 @@
-// The mapping from what the real-setup reader found to the state of the harness-first preview (--prototype-v3-real). It runs on the made-up home folder of
+// The mapping from what the real-setup reader found to the state of the harness-first preview (the default launch). It runs on the made-up home folder of
 // tests/fixtures-real and on small homes made here. It never reads the real HOME. Nothing is written outside a temporary folder.
 import test from 'node:test';
 import assert from 'node:assert/strict';

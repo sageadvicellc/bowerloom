@@ -1,5 +1,5 @@
 /**
- * "Choose notes" in the real window (Electron started with --prototype-v2, on the test page #prototype-v2/notes): the layer opens from the Notes shelf,
+ * "Choose notes" in the real window (Electron started with --home-sample, on the test page #prototype-v2/notes): the layer opens from the Notes shelf,
  * topics switch on and off with a live count, parts are left out, notes are picked by hand, "Use these notes" stages exactly one change, "Cancel" stages
  * none, the keyboard-only path, reduce motion, the text budget on the real page, and nothing cropped at the two review sizes.
  * Set HOME_U0_SHOTS to a folder to also save screenshots at 1440 by 900 and 900 by 600, light and dark.

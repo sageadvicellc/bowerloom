@@ -1,5 +1,5 @@
 /**
- * The Builder of one folder's harness, in the real window on the sample launch (--prototype-v3): the sample engine's folders, in memory, nothing read or
+ * The Builder of one folder's harness, in the real window on the sample launch (--sample): the sample engine's folders, in memory, nothing read or
  * written. The folder list, drag to link with real pointer events, a drag that only moves, Unlink, Undo and Redo, a refusal in words, Save through the save
  * sheet's review and its Install, the Save points drawer with Go back, "Discard N changes?" when leaving, New harness opening "From a folder", a folder with
  * no harness, and an id main does not know. Set HARNESS_SHOTS to a folder to save screenshots.
@@ -13,7 +13,7 @@ import type { Harness } from './harness-page.js';
 let h: Harness;
 const page = (): Page => h.page;
 const WEEKLY = 'sample-weekly-report';
-const BUILDER = `#prototype-v3/builder/${WEEKLY}`;
+const BUILDER = `#sample/builder/${WEEKLY}`;
 const node = (id: string): Locator => page().locator(`.hx-node[data-node="${id}"]`);
 const count = (p: Page): Locator => p.locator('[data-draft]');
 const tick = (p: Page, agent: string, skill: string): Locator => p.locator(`[data-agent="${agent}"]`).getByRole('checkbox', { name: `${skill}: ${agent}` });
@@ -41,13 +41,13 @@ async function openWeekly(p: Page): Promise<void> {
 
 test('the folder list opens a folder in the Builder, which draws its harness as a graph with no change yet', async () => {
   const p = page();
-  await fresh(p, '#prototype-v3/harnesses');
+  await fresh(p, '#sample/harnesses');
   const folders = p.locator('[data-section="folders"]');
   await expect(folders.locator('[data-folder-row]')).toHaveCount(3);
   await expect(folders.getByRole('button', { name: 'Open weekly-report in the builder', exact: true })).toBeVisible();
   await expect(folders.locator('[data-folder-row="sample-inbox-tools"]').getByRole('button', { name: 'From a folder', exact: true })).toBeVisible();
   await folders.getByRole('button', { name: 'Open weekly-report in the builder', exact: true }).click();
-  await expect(p).toHaveURL(new RegExp(`#prototype-v3/builder/${WEEKLY}$`));
+  await expect(p).toHaveURL(new RegExp(`#sample/builder/${WEEKLY}$`));
   await expect(p.getByRole('heading', { level: 1, name: 'weekly-report' })).toBeVisible();
   for (const id of ['agent:editor', 'agent:writer', 'skill:check-facts', 'skill:draft-outline']) await expect(node(id)).toBeVisible();
   await expect(p.locator('.hx-edge')).toHaveCount(1);
@@ -258,7 +258,7 @@ test('New harness is refused in words and opens "From a folder"; a folder with n
   const adopt = p.getByRole('dialog', { name: 'New harness from a folder' });
   await expect(adopt).toBeVisible();
   await adopt.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await fresh(p, '#prototype-v3/builder/sample-inbox-tools');
+  await fresh(p, '#sample/builder/sample-inbox-tools');
   await expect(p.locator('[data-no-harness]')).toContainText('No harness here yet.');
   await p.locator('[data-no-harness]').getByRole('button', { name: 'From a folder', exact: true }).click();
   await expect(p.getByRole('dialog', { name: 'New harness from a folder' })).toBeVisible();
@@ -266,11 +266,11 @@ test('New harness is refused in words and opens "From a folder"; a folder with n
 
 test('a store harness\'s "Open in builder" opens "From a folder", and an id main does not know goes back to the folder list', async () => {
   const p = page();
-  await fresh(p, '#prototype-v3/harnesses');
+  await fresh(p, '#sample/harnesses');
   await p.getByRole('complementary').getByRole('button', { name: 'Open in builder', exact: true }).click();
   await expect(p.getByRole('dialog', { name: 'New harness from a folder' })).toBeVisible();
   await p.keyboard.press('Escape');
-  await fresh(p, '#prototype-v3/builder/folder-99');
+  await fresh(p, '#sample/builder/folder-99');
   await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
   await expect(p.getByText('That folder is not open. Choose it again.')).toBeVisible();
 });

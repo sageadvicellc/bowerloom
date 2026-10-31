@@ -1,5 +1,5 @@
 /**
- * The adopt and install sheets of the sample launch (--prototype-v3): three made-up folders, and the same calls as the real bridge, answered in memory.
+ * The adopt and install sheets of the sample launch (--sample): three made-up folders, and the same calls as the real bridge, answered in memory.
  * Nothing is read and nothing is written. The plans are shaped like the packages' own (tests/engine-sample.test.ts holds the shapes to a plan the packages
  * make from a synthetic folder), and the words of the refusals are the packages' words.
  *  - `inbox-tools` is set up the old way: adoption finds a conflict, three approvals, two acknowledgements and one entry it lists only.

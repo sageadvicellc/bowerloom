@@ -1,5 +1,5 @@
 /**
- * The map and its side panel, in the real window (Electron started with --prototype-v2): ten plain agents in one grid with no groups, a hint on every card,
+ * The map and its side panel, in the real window (Electron started with --home-sample): ten plain agents in one grid with no groups, a hint on every card,
  * the three shelves of the agent that is picked, a quiet Remove on every shelf card that stages one change, the Save bar that counts the changes, saves,
  * shows the three ticks and goes back, the sort toggle, the text budget on the real page in every state, and a path through all of it by keyboard alone.
  * Set HOME_U1_SHOTS to a folder to also save screenshots at 1440 by 900 and 900 by 600, light and dark: start, agent picked, one change, saved.

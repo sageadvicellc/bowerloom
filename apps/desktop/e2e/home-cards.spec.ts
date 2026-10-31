@@ -1,5 +1,5 @@
 /**
- * Wave A of the 0.8 agents-first preview (kept up to date by Wave D), in the real window (Electron started with --prototype-v2): the agent tile with its counts and the tray they open,
+ * Wave A of the 0.8 agents-first preview (kept up to date by Wave D), in the real window (Electron started with --home-sample): the agent tile with its counts and the tray they open,
  * selection as a highlight with no check mark, the details panel for an agent, a skill, a tool and a set of notes, the Version history button with its tooltip,
  * the keyboard path through all of it, reduce motion, the text budget at every step, and two window sizes (1280 by 800 and 900 by 600).
  * Set HOME_U0_SHOTS to a folder to also save screenshots at both sizes, light and dark.

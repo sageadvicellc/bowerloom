@@ -1,5 +1,5 @@
 /**
- * Which Choose screen a launch gets. The mode comes from the page address (`#prototype-v3-real` or `#prototype-v3`), never from whether a bridge is there: a real launch whose bridge is
+ * Which Choose screen a launch gets. The mode comes from the page address (`#app` or `#sample`), never from whether a bridge is there: a real launch whose bridge is
  * missing or partial gets the no-bridge error, and never the sample.
  */
 import type { RealBridge } from '../../../shared/real/types.js';

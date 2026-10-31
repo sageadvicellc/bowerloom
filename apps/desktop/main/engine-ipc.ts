@@ -1,6 +1,6 @@
 /**
  * The calls of the adopt, install and save sheets, answered in the main process (shared/engine/types.ts names them, the save step's five calls among
- * them). Registered for --prototype-v3-real only. Each call:
+ * them). Registered for the default launch only. Each call:
  *  - is answered only for the app's own page, in its main frame, before anything else happens;
  *  - takes exactly the number of arguments its name says;
  *  - hands back plain data from main/engine-service.ts, or one short code (NOT_ALLOWED, BAD_ARGUMENT, UNKNOWN_FOLDER, FAILED).

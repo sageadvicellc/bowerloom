@@ -1,5 +1,5 @@
 /**
- * Wave E, group B, in the real window (Electron started with --prototype-v2): the note after Remove ("Removed <name>. Undo") and the Save bar must describe the
+ * Wave E, group B, in the real window (Electron started with --home-sample): the note after Remove ("Removed <name>. Undo") and the Save bar must describe the
  * draft as it is now. After Ctrl+Z, after the note's own Undo, after an Undo in the list of changes, and after Go back, a note about a change that no longer
  * exists goes away; a note about a change that is still there stays. The note keeps its eight seconds. The Library page's note goes the same way.
  * Set HOME_WE_SHOTS to a folder to also save the screenshot "undo note after Ctrl+Z".

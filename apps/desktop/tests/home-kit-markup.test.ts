@@ -23,7 +23,7 @@ import { KitGallery } from '../renderer/home/KitGallery.js';
 import { TourAnnouncer, TourOverlay } from '../renderer/home/tour/TourOverlay.js';
 import { TOUR_STEPS } from '../renderer/home/tour/steps.js';
 import { createTour, startTour, stepNext } from '../renderer/home/tour/tour.js';
-import { ProtoProvider } from '../renderer/common/session.js';
+import { WorldProvider } from '../renderer/common/session.js';
 import { loadWorld } from '../renderer/common/world.js';
 import { createStore } from '../shared/world/store.js';
 import { assertTextBudget, extractText } from '../shared/home/textbudget.js';
@@ -37,7 +37,7 @@ const within = (markup: string): void => assert.deepEqual(assertTextBudget(marku
 const levels = (markup: string): number[] => [...markup.matchAll(/<h([1-6])[\s>]/g)].map(m => Number(m[1]));
 /** True when no heading is more than one level deeper than the one before it. */
 const inOrder = (list: number[]): boolean => list.every((level, i) => i === 0 ? level === 1 || level === 2 : level <= list[i - 1]! + 1);
-const shell = (): string => html(createElement(ProtoProvider, { store: createStore(loadWorld()) }, createElement(HomeApp)));
+const shell = (): string => html(createElement(WorldProvider, { store: createStore(loadWorld()) }, createElement(HomeApp)));
 
 test('a ready-made agent in a list is the same compact row as a skill: a glyph tile (no initials, no person), a name button and a hint', () => {
   const m = html(createElement(ItemCard, { kind: 'agent', name: 'Velvet Weaver', hint: 'A weaver with 3 skills and 1 tool.', selected: false, onSelect: none }));
@@ -237,7 +237,7 @@ test('the shell shows every agent in name order, with a plain name and a hint th
 });
 
 test('the kit gallery shows both looks, every card state and every part, passes the text budget, and keeps its headings in order', () => {
-  const m = html(createElement(ProtoProvider, { store: createStore(loadWorld()) }, createElement(KitGallery)));
+  const m = html(createElement(WorldProvider, { store: createStore(loadWorld()) }, createElement(KitGallery)));
   assert.equal([...m.matchAll(/data-theme="(light|dark)"/g)].map(x => x[1]).join(), 'light,dark');
   for (const state of ['data-demo="hover"', 'data-demo="focus"', 'data-selected=""', 'data-size="tile"', 'data-size="small"', 'kit-tray', 'data-kind="tool"', 'data-kind="note"', 'data-kind="skill"']) assert.match(m, new RegExp(state), state);
   for (const tone of ['warn', 'new', 'info']) assert.match(m, new RegExp(`kit-status" data-tone="${tone}"`), tone);

@@ -1,5 +1,5 @@
 /**
- * The data of the harness-first preview (`--prototype-v3`). Plain data only: no React, no clock, no file. Everything is in memory, so nothing is written anywhere.
+ * The data of the harness-first preview (`--sample`). Plain data only: no React, no clock, no file. Everything is in memory, so nothing is written anywhere.
  * A harness is a saved list of parts (agents, skills, tools, context). It is installed into a project, once for each interface (Claude Code, Codex, OpenCode).
  */
 
@@ -184,7 +184,7 @@ export interface HarnessState {
   readonly chosenSourceIds: readonly string[];
   /** A counter for the ids of new things, so the store needs no random number and no clock. */
   readonly nextId: number;
-  /** Set only when the world was read from the person's own folders (`--prototype-v3-real`). */
+  /** Set only when the world was read from the person's own folders (the default launch). */
   readonly real?: RealNotes;
 }
 

@@ -1,5 +1,5 @@
 /**
- * Wave F, Find, in the real window (Electron started with --prototype-v2). The FIRST scan is a full page that shows ONE selectable list of agents (a checkbox, a name, a one-line
+ * Wave F, Find, in the real window (Electron started with --home-sample). The FIRST scan is a full page that shows ONE selectable list of agents (a checkbox, a name, a one-line
  * job, and a flat tag for each app the agent works with; no tiles and no counts for the apps). After it, "Find more" is the same scan inside the right column of the map, titled
  * "Find more": it can be closed with a visible Close icon and with Escape, it never blocks the rest of the app, and it gives the focus back to the navigation item. The full-page
  * Find never comes back. Checked at 1280 by 800 and 900 by 600, with the text budget at every step.

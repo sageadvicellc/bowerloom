@@ -1,5 +1,5 @@
 /**
- * Beta.1, demo mode (Electron started with --prototype-v3, no extra argument): the install sheet locks OpenCode like the real app does. OpenCode, with Pi and
+ * Beta.1, demo mode (Electron started with --sample, no extra argument): the install sheet locks OpenCode like the real app does. OpenCode, with Pi and
  * DeepSeek Harness where a harness lists them, shows a Preview tag, unticked and disabled, and the sheet goes on with Claude Code and Codex.
  */
 import { expect, test } from '@playwright/test';
@@ -10,7 +10,7 @@ import type { Harness } from './harness-page.js';
 let h: Harness;
 test.beforeAll(async () => { test.setTimeout(240_000); h = await launchHarness(); });
 test.afterAll(async () => { try { await h.app.close(); } finally { removeTempDirs(); } });
-test.beforeEach(async () => { await h.page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' }); await fresh(h.page, '#prototype-v3/projects'); });
+test.beforeEach(async () => { await h.page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' }); await fresh(h.page, '#sample/projects'); });
 
 test('the default demo launch carries no switch, and the install sheet shows OpenCode locked', async () => {
   const p = h.page;

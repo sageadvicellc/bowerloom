@@ -1,5 +1,5 @@
 /**
- * Wave F, the shell as a desktop app, in the real window (Electron started with --prototype-v2): three columns as in the Claude and ChatGPT desktop apps. The left navigation
+ * Wave F, the shell as a desktop app, in the real window (Electron started with --home-sample): three columns as in the Claude and ChatGPT desktop apps. The left navigation
  * (232 px open, a 48 px icon rail when put away, hidden under 900 px where its toggle opens it over the page), the middle (a slim top row with the page title and the page's icon
  * buttons, then the stage), and the details at the right (put away with its own icon at the top right). Both toggles are real buttons with a name, aria-expanded, aria-controls
  * and a tooltip that names the shortcut (Ctrl or Cmd + B for the navigation, with Shift for the details). The state of both lives in memory only.

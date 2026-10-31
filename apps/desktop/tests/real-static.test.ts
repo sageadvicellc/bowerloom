@@ -1,17 +1,16 @@
 // Hard static checks of the real-setup reader: its source calls nothing that writes, deletes, renames, starts a process or reaches the network; its bridge has exactly three
-// calls; its handler answers only the app's own page; and the launcher and main process lock it the way every prototype is locked.
+// calls; its handler answers only the app's own page; and the launcher and main process lock it the way every launch is locked.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { APP_INDEX, decideNavigation, isAllowedRealSender, isAllowedSender } from '../main/security.js';
+import { APP_INDEX, decideNavigation, isAllowedRealSender } from '../main/security.js';
 import { registerRealIpc, usableHome } from '../main/real-ipc.js';
 import type { RealEvent } from '../main/real-ipc.js';
 import { REAL_CALLS, REAL_CHANNELS, REAL_HARNESS_HASH, REAL_HASH } from '../shared/real/types.js';
 import { ENGINE_CALLS, ENGINE_CHANNELS } from '../shared/engine/types.js';
 import type { EngineCall } from '../shared/engine/types.js';
-import { CHANNELS } from '../shared/channels.js';
 import { DESKTOP, tempDir } from './support.js';
 import { bundleOf, checkEntries, importsOf, problemsOfBuilt, problemsOfLibraryBundle, problemsOfShippedBundle, tokenize } from './fixtures-real/static-check.js';
 import type { BundleAllowance, Policy } from './fixtures-real/static-check.js';
@@ -39,9 +38,9 @@ const SHARED_REAL = (rel: string): boolean => /^shared\/real\/[\w-]+\.ts$/.test(
 const MAIN_ENTRIES = ['main/real-ipc.ts', 'main/real-scan.ts', 'main/real-fs.ts'];
 const MAIN_POLICY: Policy = {
   allowFile: rel => SHARED_REAL(rel) || /^main\/real-[\w-]+\.ts$/.test(rel) || ['main/safe.ts', 'main/security.ts', 'shared/world/sample.ts', 'shared/world/types.ts', 'shared/world/rng.ts', 'shared/world/words.ts', 'shared/world/slicerule.ts'].includes(rel),
-  // main/security.ts re-exports the temporary-folder helpers of the other modes from main/prototype-dir.mjs. The reader imports none of them, so the bundler drops that file;
+  // main/security.ts re-exports the temporary-folder helpers of the made-up launches from main/temp-data.mjs. The reader imports none of them, so the bundler drops that file;
   // the check holds it to contributing no code at all.
-  deadOk: { 'main/prototype-dir.mjs': 'security.ts re-exports the helpers of the other modes; the reader uses none and the bundle holds none of it' },
+  deadOk: { 'main/temp-data.mjs': 'security.ts re-exports the helpers of the made-up launches; the reader uses none and the bundle holds none of it' },
   modules: { 'node:fs': FS_READ, 'node:path': '*', 'node:url': ['fileURLToPath'] },
 };
 const PRELOAD_POLICY: Policy = {
@@ -85,7 +84,7 @@ test('the check sees the whole graph: the files the handler imports are all in i
   const graph = bundleOf(MAIN_ENTRIES, DESKTOP);
   const seen = new Map(graph.files.map(f => [f.abs.slice(DESKTOP.length + 1), f.bytes]));
   for (const file of ['main/real-ipc.ts', 'main/real-scan.ts', 'main/real-fs.ts', 'main/safe.ts', 'main/security.ts', 'shared/real/redact.ts', 'shared/real/adapters.ts', 'shared/real/map-world.ts', 'shared/real/toml.ts', 'shared/world/sample.ts']) assert.ok((seen.get(file) ?? 0) > 0, `${file} is in the graph and in the bundle`);
-  assert.equal(seen.get('main/prototype-dir.mjs'), 0, 'the temporary-folder helpers are reached through main/security.ts and put no code in the bundle');
+  assert.equal(seen.get('main/temp-data.mjs'), 0, 'the temporary-folder helpers are reached through main/security.ts and put no code in the bundle');
   assert.ok(graph.files.every(f => f.js !== ''), 'every file of the graph was read as JavaScript');
 });
 
@@ -134,11 +133,9 @@ test('the built bridge (preload-real.cjs) holds no banned name, and calls requir
 // script. It is built here in memory the same way and read for every sink and channel by name. A library uses a few of these names for its own business; each is listed with its exact count
 // and its reason, so a new use, or a library update that adds one, fails here until a person has looked at it.
 const KNOWN_LIBRARY_USES: Readonly<Record<string, BundleAllowance>> = {
-  innerHTML: { ids: 11, strings: 2, why: 'react-dom sets and clears it for its own nodes and for the dangerouslySetInnerHTML prop that no file of ours uses; d3-selection has selection.html(), which nothing of ours calls' },
-  dangerouslySetInnerHTML: { ids: 4, strings: 11, why: 'react-dom handles the prop by name; the source check above refuses the name in every file of ours' },
-  Function: { ids: 5, strings: 0, why: 'four are `instanceof Function` tests in libraries, and one is lodash\'s `Function("return this")()` fallback for the global object, which the page policy (no unsafe-eval) would refuse to run' },
+  innerHTML: { ids: 3, strings: 2, why: 'react-dom sets and clears it for its own nodes and for the dangerouslySetInnerHTML prop that no file of ours uses' },
+  dangerouslySetInnerHTML: { ids: 4, strings: 9, why: 'react-dom handles the prop by name; the source check above refuses the name in every file of ours' },
   bowerloomReal: { ids: 1, strings: 0, why: 'renderer/home/real/bridge.ts, the one file that reads the real bridge from the window; the source check above refuses the name anywhere else' },
-  'window.bowerloom': { ids: 1, strings: 0, why: 'renderer/app.ts reads the normal bridge, which is missing in a prototype window, and falls back to a stub' },
   sessionStorage: { ids: 2, strings: 0, why: 'renderer/harness/tour/seen.ts keeps one key, whether the guided tour was seen, in the window\'s memory-only session store, so the tour starts once at first use; tests/harness-boundary.test.ts allows it in that file alone and refuses storage on disk everywhere' },
 };
 
@@ -284,18 +281,17 @@ test('the handler file names the three channels and answers the app page only, b
   assert.match(guard, /args\.length !== argCount/, 'the number of arguments is checked');
 });
 
-test('the channels of the reader are its own: none is in the normal list, and the normal list is unchanged', () => {
+test('the channels of the reader are its own: the viewer\'s channels are gone, and none of the three is shared with the engine calls', () => {
   assert.deepEqual(Object.keys(REAL_CHANNELS).sort(), ['discoverPlaces', 'pickFolder', 'readSelected']);
   assert.deepEqual([...REAL_CALLS], ['discoverPlaces', 'pickFolder', 'readSelected']);
-  for (const channel of Object.values(REAL_CHANNELS)) assert.ok(!(Object.values(CHANNELS) as string[]).includes(channel), channel);
-  assert.equal(Object.keys(CHANNELS).length, 21);
+  for (const channel of Object.values(REAL_CHANNELS)) assert.ok(!(Object.values(ENGINE_CHANNELS) as string[]).includes(channel) && !channel.startsWith('viewer:'), channel);
+  assert.equal(existsSync(join(DESKTOP, 'shared', 'channels.ts')), false, 'the list of the viewer\'s 21 channels is gone');
 });
 
-test('only the app page, in real mode, may ask; the normal refusal of every prototype is not changed', () => {
+test('only the app page, in real mode, may ask', () => {
   const hashes = [REAL_HASH, REAL_HARNESS_HASH, ''];
   for (const hash of hashes) { assert.equal(isAllowedRealSender(true, `${APP_INDEX}${hash}`, APP_INDEX), true, hash); assert.equal(isAllowedRealSender(false, `${APP_INDEX}${hash}`, APP_INDEX), false, `not in real mode: ${hash}`); }
   for (const url of [null, 'https://github.com/x', 'file:///etc/passwd', 'app://evil/index.html', 'app://viewer/other.html', `${APP_INDEX}?q=1`, 'devtools://devtools/bundled/x.html']) assert.equal(isAllowedRealSender(true, url, APP_INDEX), false, String(url));
-  for (const hash of hashes) assert.equal(isAllowedSender(true, `${APP_INDEX}${hash}`, APP_INDEX), false, 'the normal check still refuses every prototype page');
   assert.equal(decideNavigation(`${APP_INDEX}${REAL_HASH}`, APP_INDEX), 'allow-app');
 });
 
@@ -408,22 +404,20 @@ test('the built bridge, run with a fake Electron, exposes the reader\'s three fr
   await assert.rejects(engine.folders(), (e: Error) => e.message === 'FAILED');
 });
 
-// ---- main.ts and the launcher: the same lock as every prototype
+// ---- main.ts and the launcher: the same lock for every launch
 
-test('main.ts: the real flag is one more prototype mode (temp data folder, strict CSP, no outside link), with one preload of its own and a page of its own', () => {
+test('main.ts: the readers are registered only for the launches that plan them, the real bridge is named once, and the page and the guard are the same for every launch', () => {
   const main = strip(read('main/main.ts'));
-  assert.match(main, /const prototypeReal = argv\.includes\('--prototype-real'\);/);
-  assert.match(main, /const prototypeMode = prototypeV2 \|\| prototypeReal \|\| prototypeV3 \|\| prototypeV3Real;/);
-  assert.match(main, /prototypeReal \|\| prototypeV3Real \? webPreferences\(join\(root, 'preload-real\.cjs'\), app\.isPackaged\) : webPreferences\(prototypeMode \? undefined : join\(root, 'preload\.cjs'\), app\.isPackaged\)/);
+  assert.match(main, /webPreferences\(launch\.preload === 'real' \? join\(root, 'preload-real\.cjs'\) : undefined, app\.isPackaged\)/);
   assert.equal([...main.matchAll(/preload-real\.cjs/g)].length, 1, 'the real bridge is named once');
   assert.equal([...main.matchAll(/registerRealIpc\(/g)].length, 1);
-  assert.match(main, /if \(prototypeReal \|\| prototypeV3Real\) \{[\s\S]*?registerRealIpc\(/, 'the handlers exist only in the two real modes');
-  assert.match(main, /loadURL\(`\$\{indexUrl\}\$\{REAL_HASH\}`\)\.catch\(startupFailed\)/);
-  assert.equal([...main.matchAll(/ipcMain\.handle/g)].length, 1, 'main.ts still has one guard of its own');
-  assert.equal([...main.matchAll(/!prototypeMode/g)].length, 2, 'an outside link is opened only outside prototype mode, in both places');
+  assert.match(main, /if \(launch\.realReader\) \{[\s\S]*?registerRealIpc\(/, 'the reader handlers exist only for a launch that asks for them');
+  assert.match(main, /window\.loadURL\(`\$\{indexUrl\}\$\{launch\.hash\}`\)\.catch\(startupFailed\)/);
+  assert.equal([...main.matchAll(/ipcMain\.handle/g)].length, 0, 'main.ts answers no channel itself: the handlers of main/real-ipc.ts and main/engine-ipc.ts check the sender');
+  assert.doesNotMatch(main, /openLink|controller/, 'main.ts opens no outside link and has no controller');
   assert.match(main, /The real setup reader needs a home folder/);
-  assert.doesNotMatch(main, /real\.html/, 'real mode serves the same page as every other mode');
-  assert.match(main, /const url = new URL\(request\.url\), file = url\.host === APP_HOST \? resolveAppFile\(rendererDir, url\.pathname\) : null;/, 'one line picks the file, for every mode');
+  assert.doesNotMatch(main, /real\.html/, 'every launch serves the same page');
+  assert.match(main, /const url = new URL\(request\.url\), file = url\.host === APP_HOST \? resolveAppFile\(rendererDir, url\.pathname\) : null;/, 'one line picks the file, for every launch');
 });
 
 /** The policy of every page of the app, word for word: real mode loads the same page, so this is the policy of real mode too. */
@@ -449,40 +443,23 @@ test('the real bridge is read in one file of the page, and the screens of real m
   }
 });
 
-test('the launcher: the real flag is known, excludes every other mode, needs a real home folder, and says what it reads before the window opens', async () => {
+test('the launcher: the home reader\'s flag is known, excludes every other mode, needs a real home folder, and says what it reads before the window opens', async () => {
   const src = strip(read('tools/run.mjs'));
-  assert.match(src, /KNOWN = new Set\(\[[^\]]*'--prototype-real'/); assert.match(src, /MODES = new Set\(\[[^\]]*'--prototype-real'/);
-  const run = (args: string[], env: Record<string, string>): { status: number | null; stdout: string; stderr: string } => {
-    const r = spawnSync(process.execPath, [join(DESKTOP, 'tools', 'run.mjs'), ...args], { env: { PATH: process.env.PATH ?? '', ...env }, encoding: 'utf8', timeout: 30000 });
-    return { status: r.status, stdout: r.stdout, stderr: r.stderr };
-  };
-  for (const other of ['--sample-data', '--real-data', '--prototype-v2', '--prototype-v3']) {
-    const r = run(['--prototype-real', other], { HOME: '/tmp' });
-    assert.equal(r.status, 2, other); assert.match(r.stderr, /not more/); assert.doesNotMatch(r.stdout, /Installing|Building/);
-  }
-  for (const home of ['', 'relative/home', '/this/folder/does/not/exist']) {
-    const r = run(['--prototype-real', '--build-only'], { HOME: home });
-    assert.equal(r.status, 2, `HOME=${home}`); assert.match(r.stderr, /needs a home folder/); assert.doesNotMatch(r.stdout, /Installing|Building/, 'nothing is built, nothing is read');
-  }
-  const mod = await import(`${join(DESKTOP, 'tools', 'run.mjs')}`) as { REAL_PROMISE: string; REAL_FLAG: string; realHome(env: Record<string, string>, exists: (p: string) => boolean): string | null; electronArgs(d: string, f: string[], u: string | null): string[] };
+  assert.match(src, /KNOWN = new Set\(\[[^\]]*'--home-real'/); assert.match(src, /MODES = new Set\(\[[^\]]*'--home-real'/);
+  const mod = await import(`${join(DESKTOP, 'tools', 'run.mjs')}`) as { REAL_PROMISE: string; APP_PROMISE: string; REAL_FLAG: string; realHome(env: Record<string, string>, exists: (p: string) => boolean): string | null };
   assert.equal(mod.REAL_PROMISE, 'Reads: names, descriptions, structure and key names, plus the text of the skills and agents you tick. Known key and password shapes are hidden. Writes: no changes to your files. The app keeps its own temporary files and deletes them when it closes.');
   assert.doesNotMatch(mod.REAL_PROMISE, /never|no key/i, 'the promise says the text of ticked files is read, and that hiding keys is by known shape');
   assert.doesNotMatch(mod.REAL_PROMISE, /Writes: nothing/, 'the promise does not claim that nothing is written: the app keeps a temporary profile folder, which it removes when it closes');
-  assert.equal(mod.REAL_FLAG, '--prototype-real');
+  assert.equal(mod.REAL_FLAG, '--home-real');
   if (process.platform !== 'win32') assert.equal(mod.realHome({ HOME: '/Users/x' }, () => true), '/Users/x');
   assert.equal(mod.realHome({ HOME: '/Users/x' }, () => false), null); assert.equal(mod.realHome({}, () => true), null); assert.equal(mod.realHome({ HOME: 'x' }, () => true), null);
-  assert.deepEqual(mod.electronArgs('/d', ['--prototype-real'], '/tmp/bowerloom-prototype-x'), ['/d', '--user-data-dir=/tmp/bowerloom-prototype-x', '--prototype-real']);
-  assert.match(src, /PROTOTYPES\.some\(flag => args\.includes\(flag\)\) \|\| REAL_FLAGS\.some\(flag => args\.includes\(flag\)\) \? makePrototypeDataDir\(\) : null/, 'the real preview gets a fresh temporary data folder too');
-  assert.match(src, /const promise = args\.includes\('--prototype-v3-real'\) \? REAL_V3_PROMISE : REAL_PROMISE;/, 'the harness-first flag prints its own promise, the other real flag prints the pinned one');
+  assert.match(src, /const promise = args\.includes\(REAL_FLAG\) \? REAL_PROMISE : APP_PROMISE;/, 'the home reader prints the pinned promise, the app prints its own');
   assert.match(src, /console\.log\(`\\n\$\{promise\}/);
-  const v3 = (mod as unknown as { REAL_V3_PROMISE: string }).REAL_V3_PROMISE;
-  assert.equal(v3, 'Reads: names, descriptions, structure and config key names of the folders it lists, plus the text of the skills, agents and saved prompts, and the first lines of notes pages, in the folders you tick. Known key and password shapes are hidden. Writes: no changes to your files. The app keeps its own temporary files and deletes them when it closes.');
-  for (const fact of [/skills/, /agents/, /saved prompts/, /first lines of notes pages/, /config key names/, /Known key and password shapes are hidden/, /no changes to your files/, /deletes them when it closes/]) assert.match(v3, fact, String(fact));
-  assert.doesNotMatch(v3, /agents you tick/, 'the ticks of the harness-first preview are on folders, not on skills and agents');
-  assert.doesNotMatch(v3, /never|no key|Writes: nothing/i);
-  const root = JSON.parse(read('../../package.json')) as { scripts: Record<string, string> };
-  assert.equal(root.scripts['desktop:prototype:real'], 'node apps/desktop/tools/run.mjs --prototype-real');
-  assert.equal(root.scripts['desktop:prototype:v2'], 'node apps/desktop/tools/run.mjs --prototype-v2', 'the sample world keeps its own command');
+  // The promise of the app on the person\'s own folders: the ticks are on folders, a write needs an approved plan, and the data folder lasts.
+  const v = mod.APP_PROMISE;
+  for (const fact of [/skills/, /agents/, /saved prompts/, /first lines of notes pages/, /config key names/, /Known key and password shapes are hidden/, /Writes: only a plan you approved and said yes to/, /lasting data folder/]) assert.match(v, fact, String(fact));
+  assert.doesNotMatch(v, /agents you tick/, 'the ticks of the app are on folders, not on skills and agents');
+  assert.doesNotMatch(v, /never|no key|Writes: nothing|no changes to your files|deletes them when it closes/i, 'the app writes on approval and keeps its data folder: the read-only promise is not made');
 });
 
 test('the real page source never builds markup from text and never reaches the normal bridge', () => {

@@ -1,6 +1,6 @@
 /**
  * The bridge of the real-setup reader: three named calls, and the calls of the adopt and install sheets (shared/engine/types.ts), which the main
- * process answers only for the harness-first window on the person's own folders (--prototype-v3-real). It is the only preload the real mode loads (the normal bridge is not loaded in the
+ * process answers only for the harness-first window on the person's own folders (the default launch). It is the only preload the real mode loads (the normal bridge is not loaded in the
  * preview). Each call sends one message on its own channel. The page gets no Node, no path, no generic send, and no way to listen.
  */
 import { contextBridge, ipcRenderer } from 'electron';

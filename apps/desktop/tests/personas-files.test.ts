@@ -1,4 +1,4 @@
-// The persona tool never writes inside the repository (so it can never touch the tracked pictures in apps/desktop/screenshots), writes only through
+// The persona tool never writes inside the repository (so it can never touch the tracked files in apps/desktop/e2e), writes only through
 // one module, and refuses an --out or state folder that sits in the repository. No window is started here.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -20,17 +20,17 @@ interface FilesModule {
 const files = async (): Promise<FilesModule> => await import(join(DESKTOP, 'tools', 'personas', 'files.mjs')) as FilesModule;
 const TOOL = join(DESKTOP, 'tools', 'personas');
 
-test('the repository root is found from the tool folder, and apps/desktop/screenshots is inside it', async () => {
+test('the repository root is found from the tool folder, and apps/desktop/e2e is inside it', async () => {
   const f = await files();
   assert.equal(f.DESKTOP, DESKTOP);
   assert.equal(f.REPO_ROOT, resolve(DESKTOP, '..', '..'), 'the root is two folders above apps/desktop');
   assert.ok(existsSync(join(f.REPO_ROOT, 'apps', 'desktop', 'package.json')));
-  assert.equal(f.isInsideRepo(join(DESKTOP, 'screenshots', '00-welcome-light.png')), true);
+  assert.equal(f.isInsideRepo(join(DESKTOP, 'e2e', 'harness-page.ts')), true);
 });
 
 test('a write inside the repository, or at a relative path, is refused', async t => {
   const f = await files();
-  for (const bad of [join(DESKTOP, 'screenshots', 'new.png'), join(DESKTOP, 'screenshots'), join(f.REPO_ROOT, 'x.txt'), join(DESKTOP, 'tools', 'personas', 'transcript.txt'), join(DESKTOP, 'not-yet', 'deep', 'file.png'), f.REPO_ROOT]) {
+  for (const bad of [join(DESKTOP, 'e2e', 'new.png'), join(DESKTOP, 'e2e'), join(f.REPO_ROOT, 'x.txt'), join(DESKTOP, 'tools', 'personas', 'transcript.txt'), join(DESKTOP, 'not-yet', 'deep', 'file.png'), f.REPO_ROOT]) {
     assert.throws(() => f.assertWritable(bad), /never writes inside the repository/, bad);
     assert.throws(() => f.writeText(bad, 'x'), /never writes inside the repository/, bad);
     assert.throws(() => f.writeBytes(bad, new Uint8Array([1])), /never writes inside the repository/, bad);
@@ -52,10 +52,10 @@ test('a write inside the repository, or at a relative path, is refused', async t
 test('a link in the temporary folder that leads into the repository does not hide the repository', async t => {
   const f = await files();
   const dir = tempDir(t);
-  symlinkSync(join(DESKTOP, 'screenshots'), join(dir, 'sneaky'));
+  symlinkSync(join(DESKTOP, 'e2e'), join(dir, 'sneaky'));
   assert.throws(() => f.assertWritable(join(dir, 'sneaky', 'x.png')), /never writes inside the repository/);
   assert.throws(() => f.writeBytes(join(dir, 'sneaky', 'x.png'), new Uint8Array([1])), /never writes inside the repository/);
-  assert.equal(existsSync(join(DESKTOP, 'screenshots', 'x.png')), false);
+  assert.equal(existsSync(join(DESKTOP, 'e2e', 'x.png')), false);
 });
 
 test('only a file that the tool wrote itself can be removed by it', async t => {
@@ -102,11 +102,11 @@ test('serve refuses an --out folder inside the repository, and a state folder in
   };
   const dir = tempDir(t);
   const env = { BOWERLOOM_PERSONAS_DIR: dir };
-  const inShots = run(['serve', '--id', 'guard', '--out', join(DESKTOP, 'screenshots', 'persona-run')], env);
+  const inShots = run(['serve', '--id', 'guard', '--out', join(DESKTOP, 'e2e', 'persona-run')], env);
   assert.equal(inShots.status, 1);
   assert.match(inShots.stderr, /never writes inside the repository/);
   assert.equal(inShots.stdout.includes('READY'), false);
-  assert.equal(existsSync(join(DESKTOP, 'screenshots', 'persona-run')), false);
+  assert.equal(existsSync(join(DESKTOP, 'e2e', 'persona-run')), false);
   const inRepo = run(['serve', '--id', 'guard', '--out', join(DESKTOP, '..', '..', 'persona-out')], env);
   assert.equal(inRepo.status, 1);
   assert.match(inRepo.stderr, /never writes inside the repository/);

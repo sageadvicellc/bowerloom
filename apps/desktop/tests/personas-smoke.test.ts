@@ -50,7 +50,7 @@ test('serve, look, goto map, click the first agent, look again, stop: the snapsh
   const state = tempDir(t, 'bowerloom-personas-smoke-');
   const out = join(state, 'out');
   const env = { ...process.env, BOWERLOOM_PERSONAS_DIR: state };
-  const shotsBefore = gitStatus('screenshots');
+  const shotsBefore = gitStatus('e2e');
   const drive = (...args: string[]): { status: number | null; stdout: string; stderr: string; ms: number } => {
     const began = Date.now();
     const r = spawnSync(process.execPath, [join(TOOL, 'drive.mjs'), '--id', 'smoke', ...args], { encoding: 'utf8', env, timeout: 8000 });
@@ -69,7 +69,7 @@ test('serve, look, goto map, click the first agent, look again, stop: the snapsh
   const info = JSON.parse(readFileSync(stateFile, 'utf8')) as { port: number; token: string; pid: number; out: string };
   assert.ok(info.port > 0 && info.token.length >= 32 && info.pid === server.pid);
   assert.equal(info.out, out);
-  assert.ok(existsSync(dataDir) && dataDir.includes('bowerloom-prototype-'));
+  assert.ok(existsSync(dataDir) && dataDir.includes('bowerloom-sample-'));
 
   // The server is a loopback server that wants its token.
   assert.equal(await post(info.port, null, JSON.stringify({ cmd: 'look', args: [] })), 401);
@@ -96,7 +96,7 @@ test('serve, look, goto map, click the first agent, look again, stop: the snapsh
   assert.doesNotMatch(first.stdout, /<\/?[a-z][^>]*>/i, 'no markup');
   assert.doesNotMatch(first.stdout, /\b(?:class|style|data-[a-z-]+)=|function\s*\(|=>|innerHTML|querySelector|sourceMappingURL/i);
   assert.ok(!first.stdout.includes(resolve(DESKTOP, '..', '..')), 'no path of the repository');
-  assert.ok(!first.stdout.includes('bowerloom-prototype-'), 'no data folder name');
+  assert.ok(!first.stdout.includes('bowerloom-sample-'), 'no data folder name');
 
   // goto map, then the first agent.
   const toMap = drive('goto', 'map');
@@ -155,6 +155,6 @@ test('serve, look, goto map, click the first agent, look again, stop: the snapsh
   assert.equal(existsSync(dataDir), false, 'the data folder that serve made is removed');
   assert.ok(existsSync(join(out, 'transcript.txt')) && existsSync(shot), 'the out folder is kept');
   assert.equal(relative(resolve(DESKTOP, '..', '..'), dirname(shot)).startsWith('..'), true, 'nothing was written in the repository');
-  assert.equal(gitStatus('screenshots'), shotsBefore, 'no tracked screenshot changed');
+  assert.equal(gitStatus('e2e'), shotsBefore, 'no tracked e2e file changed');
   assert.match(drive('look').stderr, /No session is running for the id "smoke"/);
 });

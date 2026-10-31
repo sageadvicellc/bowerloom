@@ -1,5 +1,5 @@
 /**
- * Wave E, group J, in the real window (Electron started with --prototype-v2): a state label is never cut ("2 different copi..."): a narrow card says "2 copies" and
+ * Wave E, group J, in the real window (Electron started with --home-sample): a state label is never cut ("2 different copi..."): a narrow card says "2 copies" and
  * the full words stay in the page; the map shows four columns of tiles where the stage can hold four (the panel can be put away); the job line of a tile keeps one line and
  * has its whole text as a tooltip; the picker of "Add to which agent?" lists the agent that is picked first and says "Selected"; and the version history names each
  * point by what changed, with the time, and the warning says which changes would go.

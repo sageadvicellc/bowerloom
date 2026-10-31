@@ -1,5 +1,5 @@
 /**
- * The Add drawer and the "two different copies" dialog, in the real window (Electron started with --prototype-v2, on the Add test page #prototype-v2/add).
+ * The Add drawer and the "two different copies" dialog, in the real window (Electron started with --home-sample, on the Add test page #prototype-v2/add).
  * Adding by the picker and by a real mouse drag, the shared-file preview and commit, the copies dialog (pick, badge gone, focus trap, Escape), the keyboard-only
  * path, reduce motion, text size, nothing cropped at the two review sizes, and the text budget on the real page.
  * Set HOME_U0_SHOTS to a folder to also save screenshots at 1440 by 900 and 900 by 600, light and dark.
@@ -23,7 +23,7 @@ const page = (): Page => home.page;
 test.beforeAll(async () => {
   test.setTimeout(240_000);
   home = await launchHome();
-  folder = tempDir('bowerloom-prototype-e2e-files-');
+  folder = tempDir('bowerloom-e2e-files-');
 });
 test.afterAll(async () => { try { await home.app.close(); } finally { removeTempDirs(); } });
 test.beforeEach(async () => {

@@ -93,7 +93,7 @@ function Routes({ bridge, realMode }: { bridge: RealBridge | null; realMode: boo
 }
 
 /**
- * `realMode` is true for the launch on the person's own folders (`--prototype-v3-real`, the address `#prototype-v3-real`); `real` is its read-only bridge, null when the window has none or a partial one.
+ * `realMode` is true for the launch on the person's own folders (the default launch, the address `#app`); `real` is its read-only bridge, null when the window has none or a partial one.
  * In real mode Choose reads the person's folders and the world starts empty; with no bridge Choose shows the no-bridge error, and never the sample. Without `realMode`, a bridge makes it real (a caller that gives only the bridge).
  */
 export function HarnessApp({ store: given, real = null, realMode = real !== null, engine: givenEngine }: { store?: HarnessStore; real?: RealBridge | null; realMode?: boolean; engine?: EngineBridge | null | undefined }): ReactElement {

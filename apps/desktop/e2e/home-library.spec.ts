@@ -1,5 +1,5 @@
 /**
- * The Library page in the real window (Electron started with --prototype-v2, on the test page #prototype-v2/library): a tab for each kind, a live search with a
+ * The Library page in the real window (Electron started with --home-sample, on the test page #prototype-v2/library): a tab for each kind, a live search with a
  * count, two orders, details for any thing (read only, with where it came from), the actions (Add to an agent, Remove from library with its dialog, Make my own
  * copy, Update with the two views, the "different copies" badge), "Add from the web" with the starter sources and a pasted link, the bad links, the
  * keyboard-only path, the order in which Escape closes layers, where the focus goes back to, the text budget after each step, both review sizes and reduce

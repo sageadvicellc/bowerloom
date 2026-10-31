@@ -1,5 +1,5 @@
 /**
- * Goal 2 of the 0.8 build, on the sample launch (--prototype-v3): every screen at 900 by 600 (the smallest window), in light and dark. No screen is wider than
+ * Goal 2 of the 0.8 build, on the sample launch (--sample): every screen at 900 by 600 (the smallest window), in light and dark. No screen is wider than
  * the window, the top row keeps its title and its buttons, every button, link and box of a screen draws a focus ring when the keyboard reaches it, and every
  * button changes when the pointer is on it. The sage leaf stands at the top of the navigation in each of its modes.
  * Set HARNESS_SHOTS to a folder to save screenshots.
@@ -59,10 +59,10 @@ const SHEETS: readonly (readonly [string, (p: Page) => Promise<void>])[] = [
 ];
 
 const SCREENS: readonly (readonly [string, string])[] = [
-  ['welcome', '#prototype-v3'], ['choose', '#prototype-v3/choose'], ['read', '#prototype-v3/read'], ['harnesses', '#prototype-v3/harnesses'],
-  ['builder', '#prototype-v3/builder/sample-weekly-report'], ['library', '#prototype-v3/library/skill'],
-  ['projects', '#prototype-v3/projects'], ['runs', '#prototype-v3/runs'], ['compare', '#prototype-v3/compare/group-1'], ['interfaces', '#prototype-v3/interfaces'],
-  ['history', '#prototype-v3/history'], ['help', '#prototype-v3/help'],
+  ['welcome', '#sample'], ['choose', '#sample/choose'], ['read', '#sample/read'], ['harnesses', '#sample/harnesses'],
+  ['builder', '#sample/builder/sample-weekly-report'], ['library', '#sample/library/skill'],
+  ['projects', '#sample/projects'], ['runs', '#sample/runs'], ['compare', '#sample/compare/group-1'], ['interfaces', '#sample/interfaces'],
+  ['history', '#sample/history'], ['help', '#sample/help'],
 ];
 
 /** The elements that stick out past the right edge of the window, by class. */
@@ -99,7 +99,7 @@ for (const scheme of ['light', 'dark'] as const) {
     }
     // The sheets: nothing sticks out of a sheet, long names wrap, and the sheet fits the window (U13).
     for (const [name, openSheet] of SHEETS) {
-      await fresh(p, '#prototype-v3/projects');
+      await fresh(p, '#sample/projects');
       await openSheet(p);
       const sheet = p.getByRole('dialog');
       const box = (await sheet.boundingBox())!;
@@ -137,7 +137,7 @@ test('every control of each sheet is reached by Tab, and each one draws an outli
   await p.setViewportSize({ width: 900, height: 600 });
   await p.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });
   for (const [name, openSheet] of SHEETS) {
-    await fresh(p, '#prototype-v3/projects');
+    await fresh(p, '#sample/projects');
     await openSheet(p);
     const wanted = await controlsOf(p, '[role="dialog"]');
     // The Merge plan has fewer controls than the others: the drift radios, its text, its one approval, Back, Merge and Close.
@@ -218,7 +218,7 @@ test('every button of every screen changes when the pointer is on it', async () 
   }
   // The controls of the sheets: buttons, radios and the cards of the tick boxes.
   for (const [name, openSheet] of SHEETS) {
-    await fresh(p, '#prototype-v3/projects');
+    await fresh(p, '#sample/projects');
     await openSheet(p);
     const sheet = p.getByRole('dialog');
     const rest = await sheet.locator('.hx-sheet-title').boundingBox();
@@ -239,7 +239,7 @@ test('the sage leaf stands at the top of the navigation, open, as a rail, and in
   await p.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });
   for (const [w, mode] of [[1280, 'open'], [1000, 'rail'], [900, 'rail']] as const) {
     await p.setViewportSize({ width: w, height: 700 });
-    await fresh(p, '#prototype-v3/harnesses');
+    await fresh(p, '#sample/harnesses');
     await expect(p.locator('.hm-root')).toHaveAttribute('data-nav', mode);
     const leaf = p.locator('#hm-nav .hm-brand svg');
     await expect(leaf).toBeVisible();

@@ -1,5 +1,5 @@
 /**
- * The Skip link of the page ("Skip to the content", the first stop of Tab) in the sample pages, in the real window (Electron started with --prototype-v2): Enter on it moves the focus to the main region and
+ * The Skip link of the page ("Skip to the content", the first stop of Tab) in the sample pages, in the real window (Electron started with --home-sample): Enter on it moves the focus to the main region and
  * leaves the address and the page as they were, in the full app and in read-only mode. (Real mode has its own case in home-real-shell.spec.ts.)
  */
 import { expect, test } from '@playwright/test';

@@ -1,5 +1,5 @@
 /**
- * Wave F, read-only mode, in the real window (Electron started with --prototype-v2): `#prototype-v2/map/readonly` (and `#prototype-v2/readonly` for Welcome) shows the setup
+ * Wave F, read-only mode, in the real window (Electron started with --home-sample): `#prototype-v2/map/readonly` (and `#prototype-v2/readonly` for Welcome) shows the setup
  * and holds back every control that would change it. Each such control is still shown, in its place, in the Tab order, with `aria-disabled="true"` (not a native `disabled`, so
  * the keyboard and the pointer can still reach it) and a plain reason in its tooltip: "Read-only: your setup is not changed." The Save bar says "Read-only. Nothing here changes
  * your setup." and the Preview mark says "Read-only". Looking is unchanged: picking, details, trays, the Library tabs, filters and search, the version history list, "Look inside"

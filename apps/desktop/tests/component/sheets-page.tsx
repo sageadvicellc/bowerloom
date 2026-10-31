@@ -37,7 +37,7 @@ if (seeded !== null) Object.assign(driver.auto, JSON.parse(seeded) as Driver['au
 
 const params = new URLSearchParams(location.search);
 applyMotionTokens();
-location.hash = params.get('hash') ?? '#prototype-v3/projects';
+location.hash = params.get('hash') ?? '#sample/projects';
 const root = document.createElement('div');
 document.body.append(root);
 const noBridge = params.get('bridge') === 'none';

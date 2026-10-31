@@ -1,5 +1,5 @@
 /**
- * The 0.8 home app shell and card kit, in the real window (Electron started with --prototype-v2 and a temporary data folder).
+ * The 0.8 home app shell and card kit, in the real window (Electron started with --home-sample and a temporary data folder).
  * It opens, shows the grid of agents, the kit gallery renders in both looks, the drawers manage the focus, reduce motion yields no animation, there is no
  * bridge, no text is under 14 px, nothing is cropped at the two review sizes, and the real page passes the text budget.
  * Set HOME_U0_SHOTS to a folder to also save screenshots at 1440 by 900 and 900 by 600, light and dark.

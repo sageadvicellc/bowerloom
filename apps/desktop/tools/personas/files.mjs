@@ -1,5 +1,5 @@
 // The ONE place where the persona tool writes a file. Every other file of the tool only reads. A write is refused when its path is inside the
-// repository (that covers apps/desktop/screenshots, which is tracked) or when the path is not absolute. A symbolic link that leads into the
+// repository (that covers apps/desktop/e2e, which is tracked) or when the path is not absolute. A symbolic link that leads into the
 // repository is followed first, so a link cannot hide a path. tests/personas-files.test.ts scans the other files to prove they hold no direct write call.
 import { appendFileSync, existsSync, mkdirSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';

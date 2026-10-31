@@ -1,5 +1,5 @@
 /**
- * Projects and the install sheet in the real window (Electron started with --prototype-v3): the rows with their statuses and buttons, the three steps, the review with a conflict (Install is blocked
+ * Projects and the install sheet in the real window (Electron started with --sample): the rows with their statuses and buttons, the three steps, the review with a conflict (Install is blocked
  * until it is settled), the install itself (the statuses change on Projects and on the Harness list, one history entry, "Installed." with Undo), and Undo in Version history. The sheet keeps one height.
  */
 import { expect, test } from '@playwright/test';
@@ -10,8 +10,8 @@ import type { Harness } from './harness-page.js';
 
 let h: Harness;
 const page = (): Page => h.page;
-const PROJECTS = '#prototype-v3/projects';
-const HISTORY = '#prototype-v3/history';
+const PROJECTS = '#sample/projects';
+const HISTORY = '#sample/history';
 
 test.beforeAll(async () => { test.setTimeout(240_000); h = await launchHarness(); });
 test.afterAll(async () => { try { await h.app.close(); } finally { removeTempDirs(); } });
@@ -252,7 +252,7 @@ test('the details buttons of a project open the review for Update and Review, an
 
 test('Interfaces: a switch decides whether an interface is offered in the install sheet, and the change is in Version history', async () => {
   const p = page();
-  await go(p, '#prototype-v3/interfaces');
+  await go(p, '#sample/interfaces');
   await expect(p.getByRole('heading', { level: 1, name: 'Interfaces', exact: true })).toBeVisible();
   await expect(p.getByText('3 interfaces. Bowerloom installs only for the ones that are switched on.')).toBeVisible();
   const rows = p.locator('.hxn-row');
@@ -290,7 +290,7 @@ test('Interfaces: a switch decides whether an interface is offered in the instal
   await go(p, HISTORY);
   await expect(p.locator('.hxh-row').nth(0)).toContainText('Turned off Codex');
   await p.locator('.hxh-row').nth(0).getByRole('button', { name: /^Undo/ }).click();
-  await go(p, '#prototype-v3/interfaces');
+  await go(p, '#sample/interfaces');
   await expect(p.getByRole('switch').nth(1)).toHaveAttribute('aria-checked', 'true');
 });
 

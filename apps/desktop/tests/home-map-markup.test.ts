@@ -8,7 +8,7 @@ import { Shelf } from '../renderer/home/kit/Shelf.js';
 import { SortList, SortMenu } from '../renderer/home/kit/SortMenu.js';
 import { SaveBar } from '../renderer/home/save/SaveBar.js';
 import { HomeApp } from '../renderer/home/HomeApp.js';
-import { ProtoProvider } from '../renderer/common/session.js';
+import { WorldProvider } from '../renderer/common/session.js';
 import { loadWorld } from '../renderer/common/world.js';
 import { createStore } from '../shared/world/store.js';
 import { saveBar } from '../shared/home/savebar.js';
@@ -107,14 +107,14 @@ test('a save with no earlier save point has no Go back', () => {
 });
 
 test('every agent card on the map carries the id of its agent, once each', () => {
-  const m = html(createElement(ProtoProvider, { store: createStore(loadWorld()) }, createElement(HomeApp)));
+  const m = html(createElement(WorldProvider, { store: createStore(loadWorld()) }, createElement(HomeApp)));
   const ids = [...m.matchAll(/data-drop-agent="([^"]+)"/g)].map(x => x[1]!);
   assert.equal(ids.length, 10); assert.equal(new Set(ids).size, 10); assert.ok(ids.every(id => /^agent-\d\d$/.test(id)), ids.join());
   assert.match(m, /data-sort-button=""/); assert.doesNotMatch(m, /class="hm-group|data-kind="group"/);
 });
 
 test('the window starts with a link to the details, before the navigation, and exactly one tile of the grid is in the Tab order', () => {
-  const m = html(createElement(ProtoProvider, { store: createStore(loadWorld()) }, createElement(HomeApp)));
+  const m = html(createElement(WorldProvider, { store: createStore(loadWorld()) }, createElement(HomeApp)));
   assert.match(m, /<div class="hm-root" data-home="" data-nav="open"><a class="hm-skip" href="#hm-panel-title">Skip to details<\/a><nav class="hm-nav"/);
   const tiles = m.slice(m.indexOf('class="hm-grid"'), m.indexOf('</main>'));
   assert.equal([...tiles.matchAll(/class="kit-card-main"[^>]*tabindex="0"/g)].length, 1, 'one tile is the stop');

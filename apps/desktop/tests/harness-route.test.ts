@@ -17,44 +17,44 @@ test('every route formats to an address and parses back to the same route', () =
     { name: 'runs' }, { name: 'runs', id: 'run-1' }, { name: 'compare', group: 'group-1' }, { name: 'interfaces' }, { name: 'interfaces', id: 'codex' }, { name: 'history' }, { name: 'help' },
   ];
   for (const route of routes) { const hash = formatRoute(route); assert.ok(hash.startsWith(BASE), hash); assert.deepEqual(parseRoute(hash), route, hash); }
-  assert.equal(formatRoute({ name: 'welcome' }), '#prototype-v3');
+  assert.equal(formatRoute({ name: 'welcome' }), '#sample');
   for (const route of routes) { const hash = formatRoute(route, REAL_BASE); assert.ok(hash.startsWith(REAL_BASE), hash); assert.deepEqual(parseRoute(hash), route, hash); }
 });
 
 test('the real launch has its own address: both are the preview\'s own, only the real one is real, and the base is kept when the page moves', () => {
-  assert.equal(REAL_BASE, '#prototype-v3-real');
-  for (const hash of ['#prototype-v3-real', '#prototype-v3-real/choose', '#prototype-v3-real/builder/harness-a/list']) { assert.equal(isHarnessHash(hash), true, hash); assert.equal(isRealHash(hash), true, hash); assert.equal(baseOf(hash), REAL_BASE, hash); }
-  for (const hash of ['#prototype-v3', '#prototype-v3/choose', '']) { assert.equal(isRealHash(hash), false, hash); assert.equal(baseOf(hash), BASE, hash); }
-  for (const hash of ['#prototype-v3-realx', '#prototype-v3-real2/choose', '#prototype-v3-rea', '#prototype-v3-real-x']) { assert.equal(parseRoute(hash), null, hash); assert.equal(isHarnessHash(hash), false, hash); assert.equal(isRealHash(hash), false, hash); }
-  assert.deepEqual(parseRoute('#prototype-v3-real'), { name: 'welcome' }); assert.deepEqual(parseRoute('#prototype-v3-real/choose'), { name: 'choose' });
-  assert.deepEqual(parseRoute('#prototype-v3-real/nothing-here'), { name: 'harnesses' });
-  assert.equal(formatRoute({ name: 'read' }, REAL_BASE), '#prototype-v3-real/read'); assert.equal(formatRoute({ name: 'welcome' }, REAL_BASE), '#prototype-v3-real');
+  assert.equal(REAL_BASE, '#app');
+  for (const hash of ['#app', '#app/choose', '#app/builder/harness-a/list']) { assert.equal(isHarnessHash(hash), true, hash); assert.equal(isRealHash(hash), true, hash); assert.equal(baseOf(hash), REAL_BASE, hash); }
+  for (const hash of ['#sample', '#sample/choose', '']) { assert.equal(isRealHash(hash), false, hash); assert.equal(baseOf(hash), BASE, hash); }
+  for (const hash of ['#appx', '#app2/choose', '#sample-rea', '#app-x']) { assert.equal(parseRoute(hash), null, hash); assert.equal(isHarnessHash(hash), false, hash); assert.equal(isRealHash(hash), false, hash); }
+  assert.deepEqual(parseRoute('#app'), { name: 'welcome' }); assert.deepEqual(parseRoute('#app/choose'), { name: 'choose' });
+  assert.deepEqual(parseRoute('#app/nothing-here'), { name: 'harnesses' });
+  assert.equal(formatRoute({ name: 'read' }, REAL_BASE), '#app/read'); assert.equal(formatRoute({ name: 'welcome' }, REAL_BASE), '#app');
 });
 
 test('an address that is not the preview\'s own parses to null, and an unknown page under it is the Harness list', () => {
-  for (const hash of ['', '#main', '#prototype', '#prototype-v2', '#prototype-v2/map', '#prototype-v30', '#prototype-v3x/harnesses']) { assert.equal(parseRoute(hash), null, hash); assert.equal(isHarnessHash(hash), false, hash); }
-  assert.deepEqual(parseRoute('#prototype-v3/'), { name: 'welcome' });
-  assert.deepEqual(parseRoute('#prototype-v3/nothing-here'), { name: 'harnesses' });
-  assert.deepEqual(parseRoute('#prototype-v3/builder'), { name: 'harnesses' }); assert.deepEqual(parseRoute('#prototype-v3/file'), { name: 'harnesses' }); assert.deepEqual(parseRoute('#prototype-v3/compare'), { name: 'runs' });
-  assert.deepEqual(parseRoute('#prototype-v3/library/nonsense'), { name: 'library', kind: 'skill' });
-  assert.deepEqual(parseRoute('#prototype-v3/builder/<script>/list'), { name: 'harnesses' }, 'an id with odd characters is refused');
-  assert.deepEqual(parseRoute('#prototype-v3/builder/%E0%A4%A/list'), { name: 'harnesses' });
-  assert.deepEqual(parseRoute('#prototype-v3/builder/folder-3/sideways'), { name: 'builder', id: 'folder-3' });
+  for (const hash of ['', '#main', '#prototype', '#prototype-v2', '#prototype-v2/map', '#sample0', '#samplex/harnesses']) { assert.equal(parseRoute(hash), null, hash); assert.equal(isHarnessHash(hash), false, hash); }
+  assert.deepEqual(parseRoute('#sample/'), { name: 'welcome' });
+  assert.deepEqual(parseRoute('#sample/nothing-here'), { name: 'harnesses' });
+  assert.deepEqual(parseRoute('#sample/builder'), { name: 'harnesses' }); assert.deepEqual(parseRoute('#sample/file'), { name: 'harnesses' }); assert.deepEqual(parseRoute('#sample/compare'), { name: 'runs' });
+  assert.deepEqual(parseRoute('#sample/library/nonsense'), { name: 'library', kind: 'skill' });
+  assert.deepEqual(parseRoute('#sample/builder/<script>/list'), { name: 'harnesses' }, 'an id with odd characters is refused');
+  assert.deepEqual(parseRoute('#sample/builder/%E0%A4%A/list'), { name: 'harnesses' });
+  assert.deepEqual(parseRoute('#sample/builder/folder-3/sideways'), { name: 'builder', id: 'folder-3' });
 });
 
 test('the Builder opens only an id main gives a folder (folder-<n>) or the sample launch gives one (sample-<name>); any other id is the folder list', () => {
-  for (const id of ['folder-1', 'folder-999999', 'sample-weekly-report', 'sample-inbox-tools']) assert.deepEqual(parseRoute(`#prototype-v3/builder/${id}`), { name: 'builder', id }, id);
+  for (const id of ['folder-1', 'folder-999999', 'sample-weekly-report', 'sample-inbox-tools']) assert.deepEqual(parseRoute(`#sample/builder/${id}`), { name: 'builder', id }, id);
   for (const id of ['__proto__', 'constructor', 'toString', 'harness-a', 'folder-', 'folder-1234567', 'folder-1a', 'Folder-1', 'sample-', 'sample-A', '..', 'folder-1.']) {
-    assert.deepEqual(parseRoute(`#prototype-v3/builder/${id}`), { name: 'harnesses' }, id);
+    assert.deepEqual(parseRoute(`#sample/builder/${id}`), { name: 'harnesses' }, id);
   }
 });
 
 test('the Builder\'s address names one folder: builder/<folderId>; an older address with a view still opens the folder', () => {
-  assert.equal(formatRoute({ name: 'builder', id: 'folder-2' }), '#prototype-v3/builder/folder-2');
-  assert.equal(formatRoute({ name: 'builder', id: 'folder-2' }, REAL_BASE), '#prototype-v3-real/builder/folder-2');
-  assert.deepEqual(parseRoute('#prototype-v3/builder/folder-2'), { name: 'builder', id: 'folder-2' });
-  assert.deepEqual(parseRoute('#prototype-v3-real/builder/folder-2/list'), { name: 'builder', id: 'folder-2' });
-  assert.deepEqual(parseRoute('#prototype-v3/builder/'), { name: 'harnesses' });
+  assert.equal(formatRoute({ name: 'builder', id: 'folder-2' }), '#sample/builder/folder-2');
+  assert.equal(formatRoute({ name: 'builder', id: 'folder-2' }, REAL_BASE), '#app/builder/folder-2');
+  assert.deepEqual(parseRoute('#sample/builder/folder-2'), { name: 'builder', id: 'folder-2' });
+  assert.deepEqual(parseRoute('#app/builder/folder-2/list'), { name: 'builder', id: 'folder-2' });
+  assert.deepEqual(parseRoute('#sample/builder/'), { name: 'harnesses' });
 });
 
 test('the three first screens have no navigation; every other route belongs to an item of it', () => {

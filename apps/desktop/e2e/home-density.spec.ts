@@ -1,5 +1,5 @@
 /**
- * Wave D of the 0.8 home app, in the real window (Electron started with --prototype-v2): one tile for every agent, a tray for its lists, one row for every skill, tool and
+ * Wave D of the 0.8 home app, in the real window (Electron started with --home-sample): one tile for every agent, a tray for its lists, one row for every skill, tool and
  * note, a state that is a dot and words, and the whole window at about 90 percent of its first size. It measures what a person sees: every agent tile has the same
  * width and height (with a long name and with no tools), the counts do not wrap, a tray opens under the tile's row and pushes the later rows down, one tray at a time,
  * every row has one height, every word is 14 px or more on every screen, no filled pill is left, a state is a dot and words, and a target is never under 24 px square

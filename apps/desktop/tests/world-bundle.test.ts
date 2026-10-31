@@ -8,7 +8,7 @@ import { bundleText, grantWords, openExportedFile } from '../shared/world/export
 import { generateWorld } from '../shared/world/sample.js';
 import { createStore } from '../shared/world/store.js';
 import type { AgentItem, Bundle, McpTool, SkillItem, World } from '../shared/world/types.js';
-import { createEmptyWorld } from '../renderer/common/fakeApi.js';
+import { createEmptyWorld } from '../renderer/common/empty-world.js';
 import { DESKTOP } from './support.js';
 import { agent, found, makeWorld, mcp, prompt, skill } from './testworld.js';
 

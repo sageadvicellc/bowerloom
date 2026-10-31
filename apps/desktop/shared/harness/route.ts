@@ -1,13 +1,13 @@
 /**
- * The addresses of the harness-first preview. The page address is the router: `#prototype-v3/builder/folder-2` is the Builder, on the folder main calls `folder-2`.
+ * The addresses of the harness-first preview. The page address is the router: `#sample/builder/folder-2` is the Builder, on the folder main calls `folder-2`.
  * Pure: a route is plain data, and `parseRoute` and `formatRoute` go both ways. An address that is not the preview's own (the skip link's `#main`) parses to null, which leaves the page as it is.
  */
 import type { PartKind } from './types.js';
 import { PART_KINDS } from './types.js';
 
-export const BASE = '#prototype-v3';
-/** The address of the launch on the person's own folders (`--prototype-v3-real`). The page is told its mode by this address, never by whether a bridge is there. */
-export const REAL_BASE = '#prototype-v3-real';
+export const BASE = '#sample';
+/** The address of the launch on the person's own folders (the default launch). The page is told its mode by this address, never by whether a bridge is there. */
+export const REAL_BASE = '#app';
 
 export type Route =
   | { readonly name: 'welcome' }

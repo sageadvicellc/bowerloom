@@ -68,7 +68,7 @@ test('an interface that is out of date does not start silently: the install revi
   await expect(s).toBeVisible();
   await p.keyboard.press('Escape');
   await expect(s).toHaveCount(0);
-  await p.evaluate(() => { location.hash = '#prototype-v3/runs'; });
+  await p.evaluate(() => { location.hash = '#sample/runs'; });
   await expect(p.getByText('3 runs. Runs of one instruction are grouped for Compare.')).toBeVisible();
 });
 
@@ -159,7 +159,7 @@ test('start two runs from two ticked interfaces: Runs shows them Running, Compar
 
 test('the sample group in Compare is as in the design: the Codex run is Done and rated Worse, the Claude Code run is not rated', async () => {
   const p = page();
-  await fresh(p, '#prototype-v3/compare/group-1');
+  await fresh(p, '#sample/compare/group-1');
   const cols = p.locator('.hc-col');
   await expect(cols).toHaveCount(2);
   await expect(cols.nth(1)).toContainText('Codex'); await expect(cols.nth(1)).toContainText('Done');
@@ -169,14 +169,14 @@ test('the sample group in Compare is as in the design: the Codex run is Done and
   await expect(cols.nth(0)).toContainText(/Started .+\. Open for 1[2-3] minutes\./);
   await expect(p.locator('.hc-col [aria-pressed="true"]')).toHaveCount(1);
   await shot(p, 'S9-compare');
-  await fresh(p, '#prototype-v3/runs');
+  await fresh(p, '#sample/runs');
   await expect(p.getByText('3 runs. Runs of one instruction are grouped for Compare.')).toBeVisible();
   await expect(p.locator('.hr-row')).toHaveCount(3);
   await expect(p.locator('.hr-row').nth(2)).toContainText('Closed');
   await expect(p.locator('.hr-row').nth(2)).toContainText('notes · started yesterday 16:05');
   await expect(p.locator('.hr-row[data-selected]')).toContainText('Weekly report crew in Claude Code');
   await shot(p, 'S9-runs');
-  await fresh(p, '#prototype-v3/compare/group-404');
+  await fresh(p, '#sample/compare/group-404');
   await expect(p.getByText('That group of runs is not here.')).toBeVisible();
 });
 
@@ -222,7 +222,7 @@ test('Start with an interface that is not installed yet: the review lists its fi
 test('a note stops its timer while the pointer is on it, and starts again when the pointer leaves', async () => {
   test.setTimeout(60_000);
   const p = page();
-  await fresh(p, '#prototype-v3/runs');
+  await fresh(p, '#sample/runs');
   await p.locator('.hr-row').first().getByRole('button', { name: /^Bring .* window to the front$/ }).click();
   const toast = p.locator('[data-toast]');
   await expect(toast).toContainText('Not in this preview.');

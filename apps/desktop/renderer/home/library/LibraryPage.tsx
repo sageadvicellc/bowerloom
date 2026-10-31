@@ -1,6 +1,6 @@
 /**
  * The Library page: the body of the 0.8 home app's fourth place, a stage and a details panel (the same two columns as the map) with the layers that belong to
- * them. Render it inside `ProtoProvider`, in the shell's `hm-root`, between the top bar and the Save bar. On the stage: the title, a segmented control (Skills,
+ * them. Render it inside `WorldProvider`, in the shell's `hm-root`, between the top bar and the Save bar. On the stage: the title, a segmented control (Skills,
  * Agents, Tools, Notes), a search box with a live count, "Sort by" (Name or Recently added), "Add from the web", and a list of everything the person owns of the
  * kind picked, including what no agent uses. The panel shows the details of the row that is picked, read only, with the actions: Add to an agent, Make my own
  * copy, Update, Remove from library. Every action stages a draft change through the store, so the Save bar counts it, the version history lists it and "Go back"
@@ -18,7 +18,7 @@ import { addToAgentAction, makeOwnCopyAction, removeFromLibraryAction, useUpdate
 import { plainNameOf } from '../../../shared/home/plain-names.js';
 import { stillInDraft } from '../../../shared/home/change-undo.js';
 import { reduceStore } from '../../../shared/world/store.js';
-import { useProtoStore } from '../../common/session.js';
+import { useWorldStore } from '../../common/session.js';
 import { CopiesDialog } from '../copies/CopiesDialog.js';
 import { Button } from '../kit/Button.js';
 import { useLeaving } from '../kit/presence.js';
@@ -73,7 +73,7 @@ interface UpdateSnapshot { readonly id: string; readonly name: string; readonly 
 type FocusAfter = { readonly row: number } | 'heading' | 'title';
 
 export function LibraryPage({ onOpenAgent, shell, selectedAgent = null }: LibraryPageProps = {}): ReactElement {
-  const { state, dispatch } = useProtoStore();
+  const { state, dispatch } = useWorldStore();
   const world = state.draft;
   const [ownKind, setOwnKind] = useState<LibraryKind>('skill');
   const kind = shell === undefined ? ownKind : shell.kind;

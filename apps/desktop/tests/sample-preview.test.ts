@@ -40,8 +40,10 @@ test('the shipped page does not carry the attribute, and main reads the launch a
   assert.doesNotMatch(page, new RegExp(SAMPLE_PREVIEW_ATTRIBUTE));
   assert.equal((page.match(/<body>/g) ?? []).length, 1, 'main marks the one plain <body>; a body with attributes would leave the switch silently off');
   const main = read('main/main.ts');
-  assert.match(main, /const samplePreviewEngines = prototypeV3 && !prototypeV3Real && argv\.includes\(SAMPLE_PREVIEW_FLAG\);/);
-  assert.equal([...main.matchAll(/SAMPLE_PREVIEW_FLAG/g)].length >= 2, true);
+  assert.match(main, /launch\.samplePreviewEngines && url\.pathname === '\/index\.html' \? withSamplePreviewEngines\(bytes\.toString\('utf8'\), true\) : bytes/);
+  const plan = read('main/launch.ts');
+  assert.match(plan, /samplePreviewEngines: argv\.includes\(SAMPLE_PREVIEW_FLAG\)/, 'the argument is read in the sample launch only');
+  assert.equal([...plan.matchAll(/samplePreviewEngines: argv\.includes/g)].length, 1, 'no other launch reads it');
   assert.doesNotMatch(main, /process\.env[^\n]*SAMPLE_PREVIEW|SAMPLE_PREVIEW[^\n]*process\.env/, 'the environment cannot turn it on');
 });
 

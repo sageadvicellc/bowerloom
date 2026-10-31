@@ -1,5 +1,5 @@
 // A small invented World for the prototype store, plan and bundle tests. Built here with createEmptyWorld and hand-made items.
-import { createEmptyWorld } from '../renderer/common/fakeApi.js';
+import { createEmptyWorld } from '../renderer/common/empty-world.js';
 import type { AgentItem, FoundAt, McpTool, PromptTool, HookTool, SkillItem, WikiPage, World } from '../shared/world/types.js';
 
 export const found = (iface: FoundAt['interface'], path: string, text: string, hash = `h-${text}`): FoundAt => ({ interface: iface, path, contentHash: hash, text });

@@ -1,5 +1,5 @@
 /**
- * The design and motion fixes of the 0.8 home app, measured in the real window (Electron started with --prototype-v2): the window size, the drawer and the page
+ * The design and motion fixes of the 0.8 home app, measured in the real window (Electron started with --home-sample): the window size, the drawer and the page
  * moving together, the note after an add, one help button, the honest Save bar, a readable disabled button, the new look of a note card, the starter agents,
  * the first agent picked, the arrival of a new card, the enter and exit of the layers, and the press feedback. Frames are sampled with requestAnimationFrame, never
  * with a fixed wait. Set HOME_FIX_SHOTS to a folder to also save screenshots at 1280 by 800 and 900 by 600, light and dark.

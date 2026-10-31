@@ -15,7 +15,7 @@ import { NOTES_HASH } from '../renderer/home/notes/route.js';
 import {
   NOTES_WORDS, SIZE_LINE, keptHint, leaveOutGroup, leaveOutOf, notesCount, ofTotal, partBackIn, partLeftOut, partOfTopic, pickedByHand, sizeLine, topicAdded, topicRemoved, topicTab, willRead,
 } from '../renderer/home/notes/notes-words.js';
-import { ProtoProvider } from '../renderer/common/session.js';
+import { WorldProvider } from '../renderer/common/session.js';
 import { generateWorld } from '../shared/world/sample.js';
 import { createStore } from '../shared/world/store.js';
 import { EMPTY_SELECTION, makeBasis, previewOf, ruleLines, toggleTopic } from '../shared/home/notes-model.js';
@@ -30,7 +30,7 @@ const within = (markup: string): void => assert.deepEqual(assertTextBudget(marku
 const said = (markup: string): string => extractText(markup).map(p => p.text).join(' | ');
 const NO_PATH = /\.bowerloom|\/sample\/|SKILL\.md|\/Users\/|\.claude\/|\.codex\/|alderhythe|tarnwick|brindle|sedgefield|fennrow|quillmoor|cinderlow|marrowdeep/;
 const store = () => createStore(generateWorld(1));
-const layer = (agentId: string): string => html(createElement(ProtoProvider, { store: store() }, createElement(ChooseNotes, { open: true, agentId, onClose: () => undefined })));
+const layer = (agentId: string): string => html(createElement(WorldProvider, { store: store() }, createElement(ChooseNotes, { open: true, agentId, onClose: () => undefined })));
 
 test('NOTES_WORDS is frozen all the way down and has the same three groups as WORDS', () => {
   assert.deepEqual(Object.keys(NOTES_WORDS), ['label', 'hint', 'popover']);
@@ -114,9 +114,9 @@ test('for an agent that reads notes already, the topics it names are on and "Kep
 });
 
 test('the layer shows nothing for an agent that is not there or when it is closed', () => {
-  const closed = html(createElement(ProtoProvider, { store: store() }, createElement(ChooseNotes, { open: false, agentId: 'agent-05', onClose: () => undefined })));
+  const closed = html(createElement(WorldProvider, { store: store() }, createElement(ChooseNotes, { open: false, agentId: 'agent-05', onClose: () => undefined })));
   assert.doesNotMatch(closed, /kit-drawer"/);
-  const missing = html(createElement(ProtoProvider, { store: store() }, createElement(ChooseNotes, { open: true, agentId: 'nobody', onClose: () => undefined })));
+  const missing = html(createElement(WorldProvider, { store: store() }, createElement(ChooseNotes, { open: true, agentId: 'nobody', onClose: () => undefined })));
   assert.doesNotMatch(missing, /kit-drawer"/);
 });
 

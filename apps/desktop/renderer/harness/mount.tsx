@@ -1,5 +1,5 @@
 /**
- * Puts the harness-first preview into the page. Called once, when the page address starts with #prototype-v3 (launch mode --prototype-v3) or #prototype-v3-real (--prototype-v3-real).
+ * Puts the harness-first preview into the page. Called once, when the page address starts with #sample (launch mode --sample) or #app (the default launch).
  * The sample launch has no bridge, no file, no network and no storage: everything is the in-memory sample (shared/harness/sample.ts), and it ignores a bridge if one were there.
  * The launch on the person's own folders has the bridge of three read-only calls, and the engine calls of the adopt and install sheets, which read only until a person approves a plan. The mode is the address's: a real address with no bridge (or a partial one) shows the no-bridge error, never the sample.
  */

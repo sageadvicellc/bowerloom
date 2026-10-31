@@ -11,7 +11,7 @@ import type { ShelfEntry } from '../../../shared/home/cards.js';
 import { plainName } from '../../../shared/home/add-model.js';
 import { changeCount, withStartPoint } from '../../../shared/home/savebar.js';
 import { createStore } from '../../../shared/world/store.js';
-import { ProtoProvider, useProtoStore } from '../../common/session.js';
+import { WorldProvider, useWorldStore } from '../../common/session.js';
 import { Button } from '../kit/Button.js';
 import { Drawer } from '../kit/Drawer.js';
 import { KitIcon } from '../kit/icons.js';
@@ -32,7 +32,7 @@ const L = ADD_WORDS.label, H = ADD_WORDS.hint;
 const none = (): void => undefined;
 const SAMPLE = sharedFileSample();
 function Page(): ReactElement {
-  const { state, dispatch } = useProtoStore();
+  const { state, dispatch } = useWorldStore();
   const [drawer, setDrawer] = useState(false);
   const [copiesFor, setCopiesFor] = useState<string | null>(null);
   const [kept, setKept] = useState('');
@@ -97,5 +97,5 @@ function Page(): ReactElement {
 export function AddHarness(): ReactElement {
   // The first save point is the world as it was found, so "Go back" always has somewhere to go.
   const [store] = useState(() => createStore(withStartPoint(addDemoWorld())));
-  return <ProtoProvider store={store}><Page /></ProtoProvider>;
+  return <WorldProvider store={store}><Page /></WorldProvider>;
 }

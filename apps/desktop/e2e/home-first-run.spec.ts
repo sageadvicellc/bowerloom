@@ -1,5 +1,5 @@
 /**
- * The first minute of the 0.8 home app, in the real window (Electron started with --prototype-v2): Welcome, Find (the tiles light one by one, "Where I looked",
+ * The first minute of the 0.8 home app, in the real window (Electron started with --home-sample): Welcome, Find (the tiles light one by one, "Where I looked",
  * "Looks right"), the second question ("Read what is inside?"), the brief reading, the map, the tour that starts by itself and waits at step two for a real click,
  * "Find more", the closing note after the first Save, the keyboard alone, reduce motion, and the text budget on every screen at both sizes.
  * Set HOME_U0_SHOTS to a folder to also save each screen at 1440 by 900 and 900 by 600, light and dark.

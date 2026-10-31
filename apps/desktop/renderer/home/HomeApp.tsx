@@ -51,7 +51,7 @@ import type { BarPhase } from '../../shared/home/savebar.js';
 import { barSaid, placeOf, stillInDraft } from '../../shared/home/change-undo.js';
 import { reduceStore } from '../../shared/world/store.js';
 import type { StoreAction } from '../../shared/world/store.js';
-import { useProtoStore } from '../common/session.js';
+import { useWorldStore } from '../common/session.js';
 import { AddDrawerBody } from './add/AddDrawerBody.js';
 import { dropTargetFor } from './add/dom-helpers.js';
 import { CopiesDialog } from './copies/CopiesDialog.js';
@@ -148,7 +148,7 @@ const freshOf = (fresh: Fresh | null, picked: string | null): string | null => (
 
 export function HomeApp({ skipped: skippedProp = NONE, onSkippedChange, autoTour = false, closingNote = false, barPhase, dataSource = 'sample' }: HomeAppProps = {}): ReactElement {
   const readOnly = useReadOnly();
-  const { state, dispatch } = useProtoStore();
+  const { state, dispatch } = useWorldStore();
   const [view, setView] = useState<View>('agents');
   const [selected, setSelected] = useState<Selected | null>(null);
   const [drawer, setDrawer] = useState<DrawerId | null>(null);

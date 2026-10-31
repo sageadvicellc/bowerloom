@@ -15,7 +15,7 @@ import {
 import type { Selection } from '../../../shared/home/notes-model.js';
 import { chooseNotesAction, notesWouldChange } from '../../../shared/home/notes-actions.js';
 import type { Topic } from '../../../shared/home/notes-topics.js';
-import { useProtoStore } from '../../common/session.js';
+import { useWorldStore } from '../../common/session.js';
 import { Button } from '../kit/Button.js';
 import { Glyph } from '../kit/Glyph.js';
 import { Drawer } from '../kit/Drawer.js';
@@ -42,7 +42,7 @@ export interface ChooseNotesProps {
 }
 
 export function ChooseNotes({ open, agentId, onClose, onChosen, returnTo }: ChooseNotesProps): ReactElement {
-  const { state } = useProtoStore();
+  const { state } = useWorldStore();
   const agent = agentId === null ? undefined : state.draft.items.find((i): i is AgentItem => i.kind === 'agent' && i.id === agentId && i.library === null);
   return (
     <div className="nt-layer" data-notes-layer="">
@@ -56,7 +56,7 @@ export function ChooseNotes({ open, agentId, onClose, onChosen, returnTo }: Choo
 type Step = 'topics' | 'hand';
 
 function ChooseNotesBody({ agent, onClose, onChosen }: { agent: AgentItem; onClose(): void; onChosen?(agentId: string): void }): ReactElement {
-  const { state, dispatch } = useProtoStore();
+  const { state, dispatch } = useWorldStore();
   const world = state.draft;
   const slice = agent.definition.sliceId === undefined ? undefined : world.slices.find(s => s.id === agent.definition.sliceId);
   // The basis is made once per opening: the layer works from what the agent reads when it opens, and a change made meanwhile is not mixed in.

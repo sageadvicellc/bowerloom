@@ -1,6 +1,0 @@
-/* The few style rules that force-graph and its tooltip would add as an inline style element, which the page's policy does not allow. Kept here, in a file. */
-.force-graph-container canvas { display: block; user-select: none; outline: none; -webkit-tap-highlight-color: transparent; }
-.force-graph-container .clickable { cursor: pointer; }
-.force-graph-container .grabbable { cursor: grab; }
-.force-graph-container .grabbable:active { cursor: grabbing; }
-.float-tooltip-kap { position: absolute; width: max-content; max-width: max(50%, 150px); padding: 3px 5px; border-radius: 3px; font: 12px sans-serif; color: var(--text); background: var(--surface); border: 1px solid var(--border); pointer-events: none; }

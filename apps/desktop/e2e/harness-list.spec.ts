@@ -1,5 +1,5 @@
 /**
- * The Harness list (S2) in the real window (Electron started with --prototype-v3): the four rows with the statuses of the design, selecting a row fills the details column,
+ * The Harness list (S2) in the real window (Electron started with --sample): the four rows with the statuses of the design, selecting a row fills the details column,
  * and "Start" and the play button open the start sheet. Escape closes a sheet. There is no bridge to the computer.
  */
 import { expect, test } from '@playwright/test';
@@ -90,16 +90,16 @@ const hash = (p: Page): Promise<string> => p.evaluate(() => location.hash);
 test('picking a row goes to the address of that harness, so the address and the details agree, also after "Make a harness" opened another one', async () => {
   const p = page();
   const panel = p.getByRole('complementary');
-  await p.evaluate(id => { location.hash = `#prototype-v3/harnesses/${id}`; }, 'harness-research-desk');
+  await p.evaluate(id => { location.hash = `#sample/harnesses/${id}`; }, 'harness-research-desk');
   await expect(panel.getByRole('heading', { level: 2, name: 'Research desk' })).toBeVisible();
   await p.locator('.hx-row-harness', { hasText: 'Caveman pack' }).getByRole('button', { name: 'Caveman pack', exact: true }).click();
-  expect(await hash(p)).toBe('#prototype-v3/harnesses/harness-caveman-pack');
+  expect(await hash(p)).toBe('#sample/harnesses/harness-caveman-pack');
   await expect(panel.getByRole('heading', { level: 2, name: 'Caveman pack' })).toBeVisible();
   await expect(p.locator('.hx-row[data-selected]')).toContainText('Caveman pack');
   // The play button starts the harness of its row, and the details show that harness.
   await p.getByRole('button', { name: 'Start Inbox helper', exact: true }).click();
   await expect(p.getByRole('dialog', { name: 'Start Inbox helper' })).toBeVisible();
-  expect(await hash(p)).toBe('#prototype-v3/harnesses/harness-inbox-helper');
+  expect(await hash(p)).toBe('#sample/harnesses/harness-inbox-helper');
   await p.keyboard.press('Escape');
   await expect(panel.getByRole('heading', { level: 2, name: 'Inbox helper' })).toBeVisible();
   await expect(p.locator('.hx-row[data-selected]')).toContainText('Inbox helper');
@@ -113,24 +113,24 @@ test('an address that names nothing says so, and does not show the first item', 
     ['harnesses/harness-nope', 'That harness is not here.', 'Harnesses'], ['runs/run-nope', 'That run is not here.', 'Runs'],
     ['projects/project-nope', 'That project is not here.', 'Projects'], ['library/skill/skill-nope', 'That part is not here.', 'Library'],
   ] as const) {
-    await fresh(p, `#prototype-v3/${route}`);
+    await fresh(p, `#sample/${route}`);
     await expect(p.getByText(words)).toBeVisible();
     await expect(p.getByRole('complementary')).toHaveCount(0);
     await expect(p.locator('.hx-row')).toHaveCount(0);
     await p.locator('main').getByRole('button', { name: back, exact: true }).click();
     await expect(p.locator('.hx-row').first()).toBeVisible();
   }
-  await fresh(p, `#prototype-v3/harnesses/${WEEKLY}`);
+  await fresh(p, `#sample/harnesses/${WEEKLY}`);
   await expect(p.getByRole('complementary').getByRole('heading', { level: 2, name: 'Weekly report crew' })).toBeVisible();
 });
 
 test('a button that is not in the preview says so when it is pressed', async () => {
   const p = page();
-  await fresh(p, '#prototype-v3/projects');
+  await fresh(p, '#sample/projects');
   // The buttons are marked aria-disabled (they stay in the tab order and say so), which Playwright treats as off; a real press is forced.
   await p.getByRole('button', { name: 'Add a folder', exact: true }).click({ force: true });
   await expect(p.locator('[data-toast]')).toContainText('Not in this preview.');
-  await fresh(p, '#prototype-v3/library/skill');
+  await fresh(p, '#sample/library/skill');
   await p.getByRole('button', { name: 'Add', exact: true }).click({ force: true });
   await expect(p.locator('[data-toast]')).toContainText('Not in this preview.');
 });

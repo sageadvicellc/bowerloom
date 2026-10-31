@@ -1,5 +1,5 @@
 /**
- * The adopt and install sheets in the real window, on the sample launch (--prototype-v3): synthetic folders in memory, nothing read or written.
+ * The adopt and install sheets in the real window, on the sample launch (--sample): synthetic folders in memory, nothing read or written.
  * "New harness from a folder": the conflict to pick, the reasons of what is not carried over, the words of every approval and acknowledgement, each ticked
  * one by one, and "Write N files" blocked until the last one. "Install a folder's harness": the weaker rules to approve first, then every result word with its
  * reason, the partial notice, pending trust, code shown in full, the drift report with Accept AGENTS.md as the default, the plan approval that a changed choice
@@ -13,7 +13,7 @@ import type { Harness } from './harness-page.js';
 
 let h: Harness;
 const page = (): Page => h.page;
-const PROJECTS = '#prototype-v3/projects';
+const PROJECTS = '#sample/projects';
 
 // These specs install to OpenCode, a preview engine in beta.1, so the sample launch turns the preview switch on (main's launch argument; the default demo has it off).
 test.beforeAll(async () => { test.setTimeout(240_000); h = await launchHarness({ samplePreviewEngines: true }); });

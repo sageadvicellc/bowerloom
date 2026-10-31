@@ -1,5 +1,5 @@
 /**
- * Wave E, group H, in the real window (Electron started with --prototype-v2): the details of an agent, a skill and a tool, on the map and on the Library page, have a quiet
+ * Wave E, group H, in the real window (Electron started with --home-sample): the details of an agent, a skill and a tool, on the map and on the Library page, have a quiet
  * "Show where it lives" (closed, with aria-expanded) that lists one sample path for each program that holds the thing, from the sample world's folders and never this
  * machine's; "Copy path" puts the path on the clipboard and says "Copied"; and if the window will not let the page copy, the path is selected and the line says so.
  * Set HOME_WE_SHOTS to a folder to also save the screenshot "path disclosure open".

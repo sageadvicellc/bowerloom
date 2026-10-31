@@ -1,8 +1,8 @@
-// The harness-first preview (--prototype-v3) is held to the same locks as the home app preview (--prototype-v2): no bridge, no file, no network, no storage, no markup from text,
-// a temporary data folder, no outside link. The launch mode is wired in main.ts, the launcher and the root script.
+// The harness-first app is held to the same locks in both launches: the sample (--sample) has no bridge, no file, no network, no storage, no markup from text, a temporary data folder and no outside link;
+// the app on the person's own folders (no flag) has the one bridge of main/real-preload.ts. The launch is wired in main/launch.ts, main.ts, the launcher and the root scripts.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { APP_INDEX, decideNavigation } from '../main/security.js';
@@ -14,38 +14,31 @@ function sources(dir: string): { file: string; text: string }[] {
   return readdirSync(join(DESKTOP, dir), { recursive: true, withFileTypes: true }).filter(e => e.isFile() && /\.tsx?$/.test(e.name)).map(e => { const file = join((e as unknown as { parentPath: string }).parentPath, e.name); return { file, text: readFileSync(file, 'utf8') }; });
 }
 
-test('main.ts: --prototype-v3 is one more prototype mode: no preload, no IPC, a temporary data folder, no outside link, and its own address', () => {
+test('main.ts: the sample launch has no preload, no IPC, a temporary data folder and its own address; the others have the one bridge', () => {
   const main = strip(read('main/main.ts'));
-  assert.match(main, /const prototypeV3 = argv\.includes\('--prototype-v3'\);/);
-  assert.match(main, /const prototypeMode = prototypeV2 \|\| prototypeReal \|\| prototypeV3 \|\| prototypeV3Real;/);
-  assert.match(main, /else if \(prototypeV3 \|\| prototypeV3Real\) window\.loadURL\(`\$\{indexUrl\}\$\{prototypeV3Real \? '#prototype-v3-real' : '#prototype-v3'\}`\)\.catch\(startupFailed\);/, 'the real flag opens its own address and the sample flag the sample one');
-  assert.match(main, /windowOptions\(prototypeV2 \|\| prototypeReal \|\| prototypeV3 \|\| prototypeV3Real\)/);
-  assert.doesNotMatch(main, /prototypeV3\s*\?[^\n]*preload/);
-  assert.equal([...main.matchAll(/preload\.cjs/g)].length, 1, 'the one normal bridge is named once, and no prototype names its own');
-  assert.equal(decideNavigation(`${APP_INDEX}#prototype-v3/builder/harness-weekly-report-crew/graph`, APP_INDEX), 'allow-app');
-  assert.equal(decideNavigation('https://example.com/#prototype-v3', APP_INDEX), 'block');
+  assert.match(main, /const launch = launchOf\(argv\);/);
+  assert.match(main, /\.\.\.windowOptions\(\)/);
+  assert.match(main, /webPreferences\(launch\.preload === 'real' \? join\(root, 'preload-real\.cjs'\) : undefined, app\.isPackaged\)/);
+  assert.equal([...main.matchAll(/preload-real\.cjs/g)].length, 1, 'the one bridge is named once');
+  assert.equal([...main.matchAll(/preload\.cjs/g)].length, 0, 'the old viewer bridge is not named');
+  assert.match(main, /if \(launch\.temporaryData\) \{/);
+  assert.match(main, /window\.on\('page-title-updated', event => event\.preventDefault\(\)\);/);
+  assert.equal(decideNavigation(`${APP_INDEX}#sample/builder/harness-weekly-report-crew/graph`, APP_INDEX), 'allow-app');
+  assert.equal(decideNavigation('https://example.com/#sample', APP_INDEX), 'block');
 });
 
-test('main.ts: --prototype-v3-real gets the read-only bridge and the same locks; the sample --prototype-v3 never does', () => {
+test('main.ts: the app on the person\'s own folders gets the read-only bridge and the engine calls; a failed bridge stops the start; the sample never has either', () => {
   const main = strip(read('main/main.ts'));
-  assert.match(main, /const prototypeV3Real = argv\.includes\('--prototype-v3-real'\);/);
-  assert.match(main, /prototypeReal \|\| prototypeV3Real \? webPreferences\(join\(root, 'preload-real\.cjs'\), app\.isPackaged\) : webPreferences\(prototypeMode \? undefined : join\(root, 'preload\.cjs'\), app\.isPackaged\)/);
-  assert.equal([...main.matchAll(/preload-real\.cjs/g)].length, 1, 'the read-only bridge is named once');
-  assert.equal([...main.matchAll(/preload\.cjs/g)].length, 1, 'the one normal bridge is still named once');
-  assert.match(main, /if \(prototypeReal \|\| prototypeV3Real\) \{\s*const home = usableHome\(/, 'the reader is registered for either real flag');
-  assert.match(main, /if \(prototypeV2 \|\| prototypeReal \|\| prototypeV3 \|\| prototypeV3Real\) window\.on\('page-title-updated'/);
-  // The line that names the read-only bridge never names the sample flag on its own.
-  const bridgeLine = main.split('\n').find(line => line.includes('preload-real.cjs'))!;
-  assert.doesNotMatch(bridgeLine, /prototypeV3(?!Real)\b/);
-  assert.doesNotMatch(main, /prototypeV3(?!Real)\b[^\n]*preload-real/);
-  assert.doesNotMatch(main, /registerRealIpc[^\n]*prototypeV3(?!Real)\b/);
-  // A real preview whose bridge failed to load stops with the start-failed box, instead of opening as the sample.
-  assert.match(main, /if \(prototypeReal \|\| prototypeV3Real\) window\.webContents\.on\('preload-error', \(_event, _path, error\) => startupFailed\(error\)\);/);
+  assert.match(main, /if \(launch\.realReader\) \{\s*const home = usableHome\(/, 'the reader is registered for a launch that asks for it');
+  assert.match(main, /if \(launch\.engineCalls\) \{\s*const engine = registerEngineIpc\(/);
+  // A launch whose bridge failed to load stops with the start-failed box, instead of opening as the sample.
+  assert.match(main, /if \(launch\.preload === 'real'\) window\.webContents\.on\('preload-error', \(_event, _path, error\) => startupFailed\(error\)\);/);
   assert.equal([...main.matchAll(/preload-error/g)].length, 1);
-  assert.equal(decideNavigation(`${APP_INDEX}#prototype-v3/choose`, APP_INDEX), 'allow-app');
-  assert.equal(decideNavigation(`${APP_INDEX}#prototype-v3-real/choose`, APP_INDEX), 'allow-app');
-  assert.equal(decideNavigation(`${APP_INDEX}#prototype-v3-real`, APP_INDEX), 'allow-app');
-  assert.equal(decideNavigation('https://example.com/#prototype-v3-real', APP_INDEX), 'block');
+  assert.doesNotMatch(main, /sample[^\n]*(registerRealIpc|registerEngineIpc|preload-real)/i);
+  assert.equal(decideNavigation(`${APP_INDEX}#sample/choose`, APP_INDEX), 'allow-app');
+  assert.equal(decideNavigation(`${APP_INDEX}#app/choose`, APP_INDEX), 'allow-app');
+  assert.equal(decideNavigation(`${APP_INDEX}#app`, APP_INDEX), 'allow-app');
+  assert.equal(decideNavigation('https://example.com/#app', APP_INDEX), 'block');
 });
 
 test('the mode comes from the address, not from the bridge: the mount asks the address, and a real address without its bridge is an error, not the sample', () => {
@@ -66,47 +59,44 @@ test('only the real screens and the mount file of the preview import the read-on
   for (const { file, text } of sources('shared/harness')) assert.doesNotMatch(strip(text), named, `${file} names the bridge`);
 });
 
-test('the launcher and the root script know --prototype-v3, keep one mode at a time, and give it a fresh temporary data folder', () => {
+test('the launcher and the root scripts: no flag opens the app on the person\'s own folders, --sample opens the sample, one mode at a time, and a real home folder is needed for the first', async () => {
   const src = strip(read('tools/run.mjs'));
-  assert.match(src, /KNOWN = new Set\(\[[^\]]*'--prototype-v3'/); assert.match(src, /MODES = new Set\(\[[^\]]*'--prototype-v3'/); assert.match(src, /PROTOTYPES = \[[^\]]*'--prototype-v3'/);
+  assert.match(src, /KNOWN = new Set\(\['--sample', '--home-sample', '--home-real', '--build-only'\]\)/); assert.match(src, /MODES = new Set\(\['--sample', '--home-sample', '--home-real'\]\)/);
+  assert.match(src, /const onRealSetup = !args\.some\(a => a === '--sample' \|\| a === '--home-sample'\);/);
+  assert.match(src, /const dataDir = TEMPORARY\.some\(flag => args\.includes\(flag\)\) \? makeTempDataDir\(\) : null;/, 'only the flagged launches get a temporary data folder');
   const root = JSON.parse(read('../../package.json')) as { scripts: Record<string, string> };
-  assert.equal(root.scripts['desktop:prototype:v3'], 'node apps/desktop/tools/run.mjs --prototype-v3');
-  assert.equal(root.scripts['desktop:prototype:v2'], 'node apps/desktop/tools/run.mjs --prototype-v2');
-  for (const other of ['--sample-data', '--real-data', '--prototype-v2', '--prototype-real', '--prototype-v3-real']) {
-    const r = spawnSync(process.execPath, [join(DESKTOP, 'tools', 'run.mjs'), '--prototype-v3', other], { env: { PATH: process.env.PATH ?? '', HOME: '/tmp' }, encoding: 'utf8', timeout: 30000 });
-    assert.equal(r.status, 2, other); assert.match(r.stderr, /not more/); assert.doesNotMatch(r.stdout, /Installing|Building/);
-  }
-});
-
-test('the launcher and the root script know --prototype-v3-real: one mode at a time, a real home folder, the promise, and a fresh temporary data folder', async () => {
-  const src = strip(read('tools/run.mjs'));
-  assert.match(src, /KNOWN = new Set\(\[[^\]]*'--prototype-v3-real'/); assert.match(src, /MODES = new Set\(\[[^\]]*'--prototype-v3-real'/);
-  assert.match(src, /REAL_FLAGS = \[REAL_FLAG, '--prototype-v3-real'\]/);
-  assert.match(src, /REAL_FLAGS\.some\(flag => args\.includes\(flag\)\)/);
-  const root = JSON.parse(read('../../package.json')) as { scripts: Record<string, string> };
-  assert.equal(root.scripts['desktop:prototype:v3:real'], 'node apps/desktop/tools/run.mjs --prototype-v3-real');
-  assert.equal(root.scripts['desktop:prototype:v3'], 'node apps/desktop/tools/run.mjs --prototype-v3', 'the sample keeps its own command');
+  assert.equal(root.scripts.desktop, 'node apps/desktop/tools/run.mjs');
+  assert.equal(root.scripts['desktop:sample'], 'node apps/desktop/tools/run.mjs --sample');
+  assert.equal(root.scripts['desktop:dev'], 'node apps/desktop/tools/run.mjs --sample');
+  assert.deepEqual(Object.keys(root.scripts).filter(name => name.startsWith('desktop:prototype')), [], 'the four prototype scripts are gone');
   const run = (args: string[], env: Record<string, string>): { status: number | null; stdout: string; stderr: string } => {
     const r = spawnSync(process.execPath, [join(DESKTOP, 'tools', 'run.mjs'), ...args], { env: { PATH: process.env.PATH ?? '', ...env }, encoding: 'utf8', timeout: 30000 });
     return { status: r.status, stdout: r.stdout, stderr: r.stderr };
   };
-  for (const other of ['--sample-data', '--real-data', '--prototype-v2', '--prototype-v3', '--prototype-real']) {
-    const r = run(['--prototype-v3-real', other], { HOME: '/tmp' });
-    assert.equal(r.status, 2, other); assert.match(r.stderr, /not more/); assert.doesNotMatch(r.stdout, /Installing|Building/);
+  for (const [first, second] of [['--sample', '--home-sample'], ['--sample', '--home-real'], ['--home-sample', '--home-real']] as const) {
+    const r = run([first, second], { HOME: '/tmp' });
+    assert.equal(r.status, 2, `${first} ${second}`); assert.match(r.stderr, /not more/); assert.doesNotMatch(r.stdout, /Installing|Building/);
   }
-  for (const home of ['', 'relative/home', '/this/folder/does/not/exist']) {
-    const r = run(['--prototype-v3-real', '--build-only'], { HOME: home });
-    assert.equal(r.status, 2, `HOME=${home}`); assert.match(r.stderr, /needs a home folder/); assert.doesNotMatch(r.stdout, /Installing|Building/, 'nothing is built, nothing is read');
+  for (const old of ['--prototype-v2', '--prototype-v3', '--prototype-real', '--prototype-v3-real', '--sample-data', '--real-data']) {
+    const r = run([old], { HOME: '/tmp' });
+    assert.equal(r.status, 2, old); assert.match(r.stderr, new RegExp(`do not know "${old}"`)); assert.doesNotMatch(r.stdout, /Installing|Building/);
   }
-  const mod = await import(`${join(DESKTOP, 'tools', 'run.mjs')}`) as { REAL_FLAG: string; REAL_FLAGS: string[]; electronArgs(d: string, f: string[], u: string | null): string[] };
-  assert.equal(mod.REAL_FLAG, '--prototype-real'); assert.deepEqual(mod.REAL_FLAGS, ['--prototype-real', '--prototype-v3-real']);
-  assert.deepEqual(mod.electronArgs('/d', ['--prototype-v3-real'], '/tmp/bowerloom-prototype-x'), ['/d', '--user-data-dir=/tmp/bowerloom-prototype-x', '--prototype-v3-real']);
+  for (const flags of [[], ['--home-real']]) {
+    for (const home of ['', 'relative/home', '/this/folder/does/not/exist']) {
+      const r = run([...flags, '--build-only'], { HOME: home });
+      assert.equal(r.status, 2, `${flags.join(' ')} HOME=${home}`); assert.match(r.stderr, /needs a home folder/); assert.doesNotMatch(r.stdout, /Installing|Building/, 'nothing is built, nothing is read');
+    }
+  }
+  const mod = await import(`${join(DESKTOP, 'tools', 'run.mjs')}`) as { REAL_FLAG: string; electronArgs(d: string, f: string[], u: string | null): string[] };
+  assert.equal(mod.REAL_FLAG, '--home-real');
+  assert.deepEqual(mod.electronArgs('/d', ['--sample'], '/tmp/bowerloom-sample-x'), ['/d', '--user-data-dir=/tmp/bowerloom-sample-x', '--sample']);
+  assert.deepEqual(mod.electronArgs('/d', [], null), ['/d'], 'the app on the person\'s own folders gets no data folder argument');
 });
 
-test('the page mounts the preview only on its own address, and the preload never names it', () => {
+test('the page mounts the harness-first app on its own addresses, a bare address is the app on the person\'s own folders, and the old viewer bridge is gone', () => {
   const app = strip(read('renderer/app.ts'));
-  assert.match(app, /isHarnessHash\(location\.hash\)\) \{ applyTheme\(\); mountHarness\(root\); \}/);
-  assert.doesNotMatch(strip(read('preload/preload.ts')), /prototype/i);
+  assert.match(app, /if \(!isHarnessHash\(location\.hash\)\) location\.hash = REAL_BASE;\s*mountHarness\(root\);/);
+  assert.equal(existsSync(join(DESKTOP, 'preload', 'preload.ts')), false);
 });
 
 test('the preview source never reaches the bridge, a file, the network, storage or markup from text; only the clock file reads the time', () => {

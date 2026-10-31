@@ -28,10 +28,10 @@ test.beforeAll(async () => {
   if (built.status !== 0 || !existsSync(join(desktop, 'dist', 'renderer', 'app.js'))) throw new Error(`The bundle did not build.\n${built.stdout}\n${built.stderr}`);
   fixture = buildFixture();
   before = fingerprint(fixture.root);
-  const userData = tempDir('bowerloom-prototype-e2e-');
+  const userData = tempDir('bowerloom-e2e-');
   app = await electron.launch({
     executablePath: electronPath as unknown as string,
-    args: [desktop, '--prototype-real', `--user-data-dir=${userData}`],
+    args: [desktop, '--home-real', `--user-data-dir=${userData}`],
     env: { ...process.env, HOME: fixture.home, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' },
   });
   // The system folder chooser cannot be driven from here; the main process gets one that answers with the fixture's work folder.

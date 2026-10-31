@@ -1,5 +1,5 @@
 /**
- * Where the keyboard focus goes when one layer hands over to the next, in the real window (Electron started with --prototype-v2, on the home app itself).
+ * Where the keyboard focus goes when one layer hands over to the next, in the real window (Electron started with --home-sample, on the home app itself).
  * Every case opens a layer, closes it, and asserts that `document.activeElement` is the control that opened it (or, when that control is gone, a stable
  * control: the card that owns it, the button that opens the layer, or the main heading). The focus is read twice, right after the close and again once the
  * exits have ended and the layer is out of the page, so a focus that is right for a moment and lost a moment later still fails. The cases run with motion

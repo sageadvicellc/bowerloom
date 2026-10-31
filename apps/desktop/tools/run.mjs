@@ -1,37 +1,33 @@
 #!/usr/bin/env node
-// One command to open the viewer, from any folder:
-//   npm --prefix <repo> run desktop           (your own Bowerloom)
-//   npm --prefix <repo> run desktop:sample    (made-up sample data)
-//   npm --prefix <repo> run desktop:prototype:v2 (the 0.8 home app, agents first: the same promises)
-//   npm --prefix <repo> run desktop:prototype:v3 (the 0.8 harness-first preview: sample data, nothing written, the same promises)
-//   npm --prefix <repo> run desktop:prototype:real (the 0.8 preview on YOUR setup: it reads your tool folders and changes nothing; needs a real HOME)
-//   npm --prefix <repo> run desktop:prototype:v3:real (the 0.8 harness-first preview on YOUR setup: the same read-only reader and promise; needs a real HOME)
+// One command to open the app, from any folder:
+//   npm --prefix <repo> run desktop         (the app on YOUR folders: it reads the folders you tick, and writes only a plan you approve; needs a real HOME)
+//   npm --prefix <repo> run desktop:sample  (the same app on made-up folders: nothing is read or written)
+//   npm --prefix <repo> run desktop -- --home-sample | --home-real   (dev flags of the 0.8 home app: the sample world, and the read-only reader of your setup)
 // It installs what is missing, builds the app, and opens the window. Pass --build-only to stop before the window.
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { constants } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { makePrototypeDataDir, removeAndReport, removePrototypeDataDir } from '../main/prototype-dir.mjs';
+import { makeTempDataDir, removeAndReport, removeTempDataDir } from '../main/temp-data.mjs';
 
-// The data folder rules (how the folder is made, and the checks before it is removed) live in main/prototype-dir.mjs, which the app shares.
-export { makePrototypeDataDir, removePrototypeDataDir };
+// The temporary data folder rules (how the folder is made, and the checks before it is removed) live in main/temp-data.mjs, which the app shares.
+export { makeTempDataDir, removeTempDataDir };
 // The launcher removes through removeAndReport, so a folder it cannot remove is named on stderr: "Could not remove <dir>. Delete it yourself."
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const repo = join(desktop, '..', '..');
-const KNOWN = new Set(['--sample-data', '--real-data', '--prototype-v2', '--prototype-v3', '--prototype-real', '--prototype-v3-real', '--build-only']);
-const MODES = new Set(['--sample-data', '--real-data', '--prototype-v2', '--prototype-v3', '--prototype-real', '--prototype-v3-real']);
-// The prototypes start with a fresh temporary data folder and write nothing else.
-const PROTOTYPES = ['--prototype-v2', '--prototype-v3'];
-// The real-setup preview has the same lock (a fresh temporary data folder, nothing written to the real app data) and adds a read-only bridge. It needs a real home folder.
-export const REAL_FLAG = '--prototype-real';
-// The harness-first preview on the person's own setup has the same lock, the same bridge and the same promise.
-export const REAL_FLAGS = [REAL_FLAG, '--prototype-v3-real'];
-/** What the real-setup preview says on the terminal before it opens its window. Tests hold this to shared/real/types.ts. */
+// With no mode flag the app opens on the person's own folders. These flags pick a made-up launch or a dev launch of the home app. main/launch.ts holds the same names.
+const KNOWN = new Set(['--sample', '--home-sample', '--home-real', '--build-only']);
+const MODES = new Set(['--sample', '--home-sample', '--home-real']);
+// Every flagged launch starts with a fresh temporary data folder and writes nothing else. Only the app on the person's own folders, with no flag, keeps the normal one.
+const TEMPORARY = ['--sample', '--home-sample', '--home-real'];
+// The home app's reader of the person's own setup is read-only and needs a real home folder. So does the app on the person's own folders.
+export const REAL_FLAG = '--home-real';
+/** What the home app's reader says on the terminal before it opens its window. Tests hold this to shared/real/types.ts. */
 export const REAL_PROMISE = 'Reads: names, descriptions, structure and key names, plus the text of the skills and agents you tick. Known key and password shapes are hidden. Writes: no changes to your files. The app keeps its own temporary files and deletes them when it closes.';
-/** What the harness-first preview on the person's own setup says before it opens. The ticks there are on folders, so the words name folders; REAL_PROMISE above is pinned word for word by a test and stays as it is. */
-export const REAL_V3_PROMISE = 'Reads: names, descriptions, structure and config key names of the folders it lists, plus the text of the skills, agents and saved prompts, and the first lines of notes pages, in the folders you tick. Known key and password shapes are hidden. Writes: no changes to your files. The app keeps its own temporary files and deletes them when it closes.';
+/** What the app says on the terminal before it opens on the person's own folders. The ticks there are on folders. A write needs a plan the person approved and a yes in the app's own question. */
+export const APP_PROMISE = 'Reads: names, descriptions, structure and config key names of the folders it lists, plus the text of the skills, agents and saved prompts, and the first lines of notes pages, in the folders you tick. Known key and password shapes are hidden. Writes: only a plan you approved and said yes to, in the folder you chose and in the private state folder of Bowerloom. The app keeps a lasting data folder for its window settings.';
 
 /** The home folder the real-setup preview will read, or null when HOME is not set to a folder that exists. Only the home variable is looked at. */
 export function realHome(env = process.env, exists = path => existsSync(path)) {
@@ -132,27 +128,28 @@ function step(text, command, argv, cwd, env) {
 function main() {
   const args = process.argv.slice(2);
   const unknown = args.filter(a => !KNOWN.has(a));
-  if (unknown.length) fail(`I do not know ${unknown.map(a => `"${a}"`).join(', ')}. Use --sample-data to open the sample, --real-data to open your own Bowerloom, --prototype-v2 or --prototype-v3 to open a clickable preview, --prototype-real or --prototype-v3-real to open a preview on your own setup (read-only), or --build-only to only build.`, 2);
-  if (args.filter(a => MODES.has(a)).length > 1) fail('Choose one of --sample-data, --real-data, --prototype-v2, --prototype-v3, --prototype-real and --prototype-v3-real, not more.', 2);
-  const onRealSetup = REAL_FLAGS.some(flag => args.includes(flag));
-  if (onRealSetup && realHome() === null) fail('The real setup preview needs a home folder, and HOME is not set to a folder that exists. Nothing was read.', 2);
+  if (unknown.length) fail(`I do not know ${unknown.map(a => `"${a}"`).join(', ')}. Use no flag to open the app on your own folders, --sample to open it on made-up folders, --home-sample or --home-real for the home app, or --build-only to only build.`, 2);
+  if (args.filter(a => MODES.has(a)).length > 1) fail('Choose one of --sample, --home-sample and --home-real, not more.', 2);
+  // The app on the person's own folders (no mode flag) and the home reader both look at a home folder.
+  const onRealSetup = !args.some(a => a === '--sample' || a === '--home-sample');
+  if (onRealSetup && realHome() === null) fail('The app needs a home folder, and HOME is not set to a folder that exists. Nothing was read.', 2);
 
   const npm = npmCommand();
   const clean = installEnv();
   if (!existsSync(marker(repo))) { step('Installing Bowerloom (first time only)...', npm.command, [...npm.prefix, 'ci', '--no-audit', '--no-fund'], repo, clean); mkdirSync(join(repo, 'node_modules'), { recursive: true }); writeFileSync(marker(repo), 'ok\n'); }
-  if (!existsSync(marker(desktop))) { step('Installing the viewer (first time only)...', npm.command, [...npm.prefix, 'ci', '--no-audit', '--no-fund'], desktop, clean); }
+  if (!existsSync(marker(desktop))) { step('Installing the app (first time only)...', npm.command, [...npm.prefix, 'ci', '--no-audit', '--no-fund'], desktop, clean); }
   if (!existsSync(join(desktop, 'node_modules', 'electron', 'path.txt'))) step('Downloading the app window (first time only)...', process.execPath, [join(desktop, 'node_modules', 'electron', 'install.js')], desktop, clean);
   if (!existsSync(marker(desktop))) writeFileSync(marker(desktop), 'ok\n');
-  step('Building the viewer...', process.execPath, [join(desktop, 'tools', 'bundle.mjs')], desktop, process.env);
+  step('Building the app...', process.execPath, [join(desktop, 'tools', 'bundle.mjs')], desktop, process.env);
   if (args.includes('--build-only')) process.exit(0);
 
-  console.log('\nOpening the viewer...');
+  console.log('\nOpening the app...');
   const electron = electronBinary(desktop);
   if (electron === null) fail('The app window is not installed. Run the command again.', 1);
   const flags = args.filter(a => MODES.has(a));
-  // The prototype starts with a fresh, empty data folder and removes it when the window closes, so it leaves nothing in the real app data.
-  const dataDir = PROTOTYPES.some(flag => args.includes(flag)) || REAL_FLAGS.some(flag => args.includes(flag)) ? makePrototypeDataDir() : null;
-  const promise = args.includes('--prototype-v3-real') ? REAL_V3_PROMISE : REAL_PROMISE;
+  // A flagged launch starts with a fresh, empty data folder and removes it when the window closes, so it leaves nothing in the real app data. The app on the person's own folders keeps its normal data folder.
+  const dataDir = TEMPORARY.some(flag => args.includes(flag)) ? makeTempDataDir() : null;
+  const promise = args.includes(REAL_FLAG) ? REAL_PROMISE : APP_PROMISE;
   if (onRealSetup) console.log(`\n${promise}\nHome folder: ${realHome()}`);
   const child = spawn(electron, electronArgs(desktop, flags, dataDir), { stdio: 'inherit', env: process.env });
   superviseChild(child, { dataDir });

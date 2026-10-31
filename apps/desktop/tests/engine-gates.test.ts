@@ -11,7 +11,6 @@ import { registerEngineIpc } from '../main/engine-ipc.js';
 import type { RealEvent } from '../main/real-ipc.js';
 import { APP_INDEX } from '../main/security.js';
 import { REAL_CHANNELS } from '../shared/real/types.js';
-import { CHANNELS } from '../shared/channels.js';
 import { sampleEngineFixtures } from '../shared/engine/sample.js';
 
 const adopt = (): AdoptView => structuredClone(sampleEngineFixtures().adopt);
@@ -89,7 +88,7 @@ test('the handler has one channel per call, apart from every other channel, and 
   assert.deepEqual([...handlers.keys()].sort(), Object.values(ENGINE_CHANNELS).sort());
   assert.equal(ENGINE_CALLS.length, 29);
   for (const channel of Object.values(ENGINE_CHANNELS)) {
-    assert.ok(!(Object.values(REAL_CHANNELS) as string[]).includes(channel) && !(Object.values(CHANNELS) as string[]).includes(channel), channel);
+    assert.ok(!(Object.values(REAL_CHANNELS) as string[]).includes(channel) && !channel.startsWith('viewer:'), channel);
   }
   const page: RealEvent = { senderFrame: { url: APP_INDEX, parent: null } };
   const reason = async (channel: string, event: RealEvent, ...args: unknown[]): Promise<string> => { try { await handlers.get(channel)!(event, ...args); return 'ok'; } catch (e) { return (e as Error).message; } };

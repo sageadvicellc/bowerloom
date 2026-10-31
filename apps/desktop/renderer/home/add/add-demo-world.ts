@@ -5,7 +5,7 @@
  * Four agents, eight skills (one of them found with two different texts), four tools and one hook, three sets of notes, and one library of
  * ready-made agents. Every path is invented and never shown.
  */
-import { createEmptyWorld } from '../../common/fakeApi.js';
+import { createEmptyWorld } from '../../common/empty-world.js';
 import { hashText } from '../../../shared/world/sample.js';
 import { createStore, reduceStore } from '../../../shared/world/store.js';
 import type { AgentItem, FoundAt, HookTool, InterfaceId, LibraryRef, McpTool, PromptTool, SkillItem, World } from '../../../shared/world/types.js';

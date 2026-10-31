@@ -1,5 +1,5 @@
 /**
- * The window items on the sample launch (--prototype-v3): made-up folders in memory, nothing read, written or opened.
+ * The window items on the sample launch (--sample): made-up folders in memory, nothing read, written or opened.
  *  - Item 3: the guided tour starts on its own the first time the edit opens with no Notes keeper saved, and only once; Help replays it. This launch starts
  *    with the tour unseen (`freshTour`), unlike the other specs.
  *  - Items 4 and 5: "Skills from another folder" copies the sample's skill with a script; the review marks it, and Save waits for the acknowledgement.
@@ -13,7 +13,7 @@ import type { Harness } from './harness-page.js';
 
 let h: Harness;
 const page = (): Page => h.page;
-const PROJECTS = '#prototype-v3/projects';
+const PROJECTS = '#sample/projects';
 
 test.beforeAll(async () => { test.setTimeout(240_000); h = await launchHarness({ freshTour: true }); });
 test.afterAll(async () => { try { await h.app.close(); } finally { removeTempDirs(); } });

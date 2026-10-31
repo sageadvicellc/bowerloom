@@ -1,5 +1,5 @@
 /**
- * Wave C, group 2, in the real window (Electron started with --prototype-v2): the labeled Share button next to Add, the Help button with its word, the note after
+ * Wave C, group 2, in the real window (Electron started with --home-sample): the labeled Share button next to Add, the Help button with its word, the note after
  * Remove (eight seconds, pauses on hover and focus, fades) with its Undo, the Save bar's "N changes" as a button that opens a list with one Undo for each change
  * (one change taken back alone; a change another one needs says why it cannot go), "Undo all changes", Ctrl+Z and Shift+Ctrl+Z, and the same bar and list on the Library page.
  * Set HOME_WC_SHOTS to a folder to also save screenshots at 1280 by 800 and 900 by 600, light and dark.

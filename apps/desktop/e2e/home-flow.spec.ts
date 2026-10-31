@@ -1,5 +1,5 @@
 /**
- * The whole storyboard, in the real window (Electron started with --prototype-v2, on the home app itself, with the Add drawer, the "two different copies"
+ * The whole storyboard, in the real window (Electron started with --home-sample, on the home app itself, with the Add drawer, the "two different copies"
  * dialog and the Version history drawer mounted in it): pick an agent, remove a skill, Save, see the ticks, Go back; open Add and add a skill by the picker and by a
  * real mouse drag onto an agent card; open the copies dialog from a badge and keep a copy; open Version history and go back to the first point. Also the Save bar
  * sentences, the layout of the card (one column at 15 rem and wider), the tour with the Add drawer, Escape one layer at a time, less motion, the keyboard

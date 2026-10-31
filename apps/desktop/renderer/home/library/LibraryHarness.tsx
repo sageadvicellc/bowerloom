@@ -16,7 +16,7 @@ import type { BarPhase } from '../../../shared/home/savebar.js';
 import { withSampleCopies } from '../../../shared/home/sample-copies.js';
 import { withStarterAgents } from '../../../shared/home/starters.js';
 import { createStore, reduceStore } from '../../../shared/world/store.js';
-import { ProtoProvider, useProtoStore } from '../../common/session.js';
+import { WorldProvider, useWorldStore } from '../../common/session.js';
 import { loadWorld } from '../../common/world.js';
 import { Button } from '../kit/Button.js';
 import { Drawer } from '../kit/Drawer.js';
@@ -35,7 +35,7 @@ import '../home.css';
 import './library.css';
 
 function Page(): ReactElement {
-  const { state, dispatch } = useProtoStore();
+  const { state, dispatch } = useWorldStore();
   const [phase, setPhase] = useState<BarPhase | null>(null);
   const [history, setHistory] = useState(false);
   const clock = useRef<HTMLButtonElement>(null);
@@ -85,6 +85,6 @@ function Page(): ReactElement {
 export function LibraryHarness(): ReactElement {
   // The first save point is the world as it was found, so "Go back" always has somewhere to go.
   const [store] = useState(() => createStore(withStartPoint(withLibrarySamples(withStarterAgents(withSampleCopies(loadWorld()))))));
-  return <ProtoProvider store={store}><Page /></ProtoProvider>;
+  return <WorldProvider store={store}><Page /></WorldProvider>;
 }
 

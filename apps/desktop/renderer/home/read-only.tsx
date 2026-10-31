@@ -9,7 +9,7 @@
 import { createContext, useContext, useMemo } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import type { Store } from '../../shared/world/store.js';
-import { ProtoProvider } from '../common/session.js';
+import { WorldProvider } from '../common/session.js';
 import { Button } from './kit/Button.js';
 import type { ButtonProps } from './kit/Button.js';
 import { IconButton } from './kit/IconButton.js';
@@ -34,7 +34,7 @@ export const guardedStore = (store: Store): Store => ({ getState: store.getState
 
 export function ReadOnlyScope({ readOnly, store, children }: { readOnly: boolean; store: Store; children?: ReactNode }): ReactElement {
   const used = useMemo(() => (readOnly ? guardedStore(store) : store), [readOnly, store]);
-  return <ReadOnlyContext.Provider value={readOnly}><ProtoProvider store={used}>{children}</ProtoProvider></ReadOnlyContext.Provider>;
+  return <ReadOnlyContext.Provider value={readOnly}><WorldProvider store={used}>{children}</WorldProvider></ReadOnlyContext.Provider>;
 }
 
 /** Just the flag, for a test or a screen drawn on its own. */

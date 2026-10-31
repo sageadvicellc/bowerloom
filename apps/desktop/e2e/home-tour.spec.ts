@@ -1,5 +1,5 @@
 /**
- * The guided tour of the 0.8 home app, in the real window (Electron started with --prototype-v2). It runs once on first mount, walks seven steps with the
+ * The guided tour of the 0.8 home app, in the real window (Electron started with --home-sample). It runs once on first mount, walks seven steps with the
  * keyboard (Next, Back, Escape), lights each target with a hole that contains it, keeps the popover off the target, moves the focus in and gives it back,
  * announces each step, works with reduce motion, survives a missing target and a resize, does not run twice in one session, and replays from Help.
  * Set HOME_U0_SHOTS to a folder to also save tour step 2 at 1440 by 900 and 900 by 600, light and dark.

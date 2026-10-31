@@ -1,5 +1,5 @@
 /**
- * Real mode in the shell, in the real window (Electron started with --prototype-real and HOME pointed at a made-up folder, tests/fixtures-real/shell-home.ts). Nothing of the
+ * Real mode in the shell, in the real window (Electron started with --home-real and HOME pointed at a made-up folder, tests/fixtures-real/shell-home.ts). Nothing of the
  * person's own folders is read: the launched app sees only the fixture. The spec walks the whole first minute on that setup: Welcome, the first question (the places, with counts),
  * the second question ("Read what is inside?"), the list of agents with their app tags (Hermes among them), the map (read only), the details of a real skill, a tray, the Library,
  * the held controls and their tooltip, the Share file (built in memory), Version history, the tour, and "Find more" in the right column with a second folder.
@@ -64,8 +64,8 @@ test.beforeAll(async () => {
   fixture = buildShellHome();
   OWN = await ownWords(fixture);
   before = fingerprint(fixture.root);
-  const userData = tempDir('bowerloom-prototype-e2e-');
-  app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--prototype-real', `--user-data-dir=${userData}`], env: { ...process.env, HOME: fixture.home, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
+  const userData = tempDir('bowerloom-e2e-');
+  app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--home-real', `--user-data-dir=${userData}`], env: { ...process.env, HOME: fixture.home, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
   // The system folder chooser cannot be driven from here: the main process gets one that answers with the folder the test sets in `globalThis.__pick`.
   await app.evaluate(({ dialog }) => {
     (globalThis as unknown as { __pick: string | null }).__pick = null;
@@ -490,7 +490,7 @@ test('opened by the other launch command, the real address says so in plain word
     await home.page.waitForLoadState('domcontentloaded');
     await home.page.waitForSelector('[data-screen="no-real"]');
     await expect(home.page.getByRole('heading', { level: 1 })).toHaveText('Real mode needs the real launch command.');
-    await expect(home.page.locator('[data-command]')).toHaveText('npm run desktop:prototype:real');
+    await expect(home.page.locator('[data-command]')).toHaveText('npm run desktop -- --home-real');
     expect(await home.page.evaluate(() => typeof (window as unknown as { bowerloomReal?: unknown }).bowerloomReal)).toBe('undefined');
     expect(await home.page.locator('body').innerText()).not.toMatch(/Meeting assistant|Inbox sorter/);
   } finally { await home.app.close(); }

@@ -1,5 +1,5 @@
 /**
- * The main-process side of adoption and the projection for the harness-first window (--prototype-v3-real). It is the only place the window's adopt and install
+ * The main-process side of adoption and the projection for the harness-first window (the default launch). It is the only place the window's adopt and install
  * sheets reach the packages. It:
  *  - knows folders only by the id it handed out when the person chose the folder in the system chooser, so the window never names a path;
  *  - plans with the packages and hands back plain views (shared/engine/view.ts) with every path of the person written as `~` or the folder's label;

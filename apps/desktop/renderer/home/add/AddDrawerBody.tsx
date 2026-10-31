@@ -4,7 +4,7 @@
  * made through the store's own action, so the Save bar counts it and "Go back" undoes it. A line joins the card to the agent for a moment; with less
  * motion a plain note says the same. Ready-made agents sit under Agents, because the map shows the person's own agents only.
  *
- * To use it, put it inside a `Drawer` under a `ProtoProvider` and give each agent card on the page a `data-drop-agent="<agent id>"` element. `nameOf` and
+ * To use it, put it inside a `Drawer` under a `WorldProvider` and give each agent card on the page a `data-drop-agent="<agent id>"` element. `nameOf` and
  * `hintOf` turn a stored name and an id into the words on a card (the plain layer). A shared file is added with the store's own `importBundle` action.
  * The connect line runs from the card in the drawer to the agent card; `line={false}` leaves it out (the real shell marks the agent and the new shelf card
  * instead, because there the shelves sit between the drawer and the map and a line would cross other cards). `onAdded` tells the page which agent got
@@ -17,7 +17,7 @@ import { SHELF_LIMIT, visibleCount } from '../../../shared/home/cards.js';
 import { ADD_TABS, DEFAULT_TAB, addAction, agentChoices, entriesFor, installAction, newAgentId, nextTab, plainName, selectedFirst, stageAdd, stageInstall } from '../../../shared/home/add-model.js';
 import type { AddEntry, AddTab, AgentChoice, HintOf, NameOf } from '../../../shared/home/add-model.js';
 import { entryOf, originOf } from '../../../shared/home/library-model.js';
-import { useProtoStore } from '../../common/session.js';
+import { useWorldStore } from '../../common/session.js';
 import { stageFile } from '../../../shared/home/add-file.js';
 import type { Bundle } from '../../../shared/world/types.js';
 import { DragFollower } from '../kit/DragFollower.js';
@@ -73,7 +73,7 @@ function sourceLine(world: Parameters<typeof entryOf>[0], entry: AddEntry): stri
 }
 
 export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT_TAB, onOpenCopies, sampleFile, hideAgents = NO_HIDDEN, lastCopy, selectedAgent = null, line: withLine = true, onAdded, onShow }: AddDrawerBodyProps): ReactElement {
-  const { state, dispatch } = useProtoStore();
+  const { state, dispatch } = useWorldStore();
   const readOnly = useReadOnly();
   const world = state.draft;
   const [tab, setTab] = useState<AddTab>(initialTab);

@@ -1,4 +1,4 @@
-// The silent-failure fixes of the preview on the person's own folders (--prototype-v3-real): a read that holds nothing keeps what the reader said, a throw while a read is finished ends on the
+// The silent-failure fixes of the preview on the person's own folders (the default launch): a read that holds nothing keeps what the reader said, a throw while a read is finished ends on the
 // error screen, the launch mode is explicit, notes are not hidden, a folder added twice is said, and a failing listener, make or crash text is not silent. No file is read; no real folder is used.
 import test from 'node:test';
 import assert from 'node:assert/strict';

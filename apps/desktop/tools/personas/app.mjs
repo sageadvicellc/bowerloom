@@ -24,7 +24,7 @@ export async function openPreview({ desktop, userDataDir, outDir, size, hide = [
   const { _electron } = await import('@playwright/test');
   const executablePath = electronBinary(desktop);
   if (executablePath === null) throw new PersonaError('The app window is not installed. Run npm run dev once in apps/desktop to install it.');
-  const app = await _electron.launch({ executablePath, args: [desktop, '--prototype-v2', `--user-data-dir=${userDataDir}`], env: appEnv(), timeout: 30000 });
+  const app = await _electron.launch({ executablePath, args: [desktop, '--home-sample', `--user-data-dir=${userDataDir}`], env: appEnv(), timeout: 30000 });
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
   await page.waitForSelector('[data-home]', { timeout: 20000 });

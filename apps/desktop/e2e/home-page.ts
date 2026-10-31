@@ -1,5 +1,5 @@
 /**
- * Shared set-up for the home app e2e specs (Electron started with --prototype-v2 and a temporary data folder from temp-dirs.ts). One launch per spec file,
+ * Shared set-up for the home app e2e specs (Electron started with --home-sample and a temporary data folder from temp-dirs.ts). One launch per spec file,
  * a viewport override to the sizes the review needs, the theme, and screenshots when HOME_U0_SHOTS names a folder (outside the repo).
  */
 import { _electron as electron, expect } from '@playwright/test';
@@ -22,12 +22,12 @@ export const THEMES = ['light', 'dark'] as const;
 
 export interface Home { app: ElectronApplication; page: Page }
 
-/** Builds the bundle fresh from the source in this folder, starts the app with --prototype-v2 and waits for the first window. */
+/** Builds the bundle fresh from the source in this folder, starts the app with --home-sample and waits for the first window. */
 export async function launchHome(): Promise<Home> {
   const built = spawnSync(process.execPath, [join(desktop, 'tools', 'bundle.mjs')], { cwd: desktop, encoding: 'utf8' });
   if (built.status !== 0 || !existsSync(join(desktop, 'dist', 'main.mjs'))) throw new Error(`The bundle did not build.\n${built.stdout}\n${built.stderr}`);
-  const userData = tempDir('bowerloom-prototype-e2e-');
-  const app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--prototype-v2', `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
+  const userData = tempDir('bowerloom-e2e-');
+  const app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--home-sample', `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
   await page.waitForSelector('[data-home]');

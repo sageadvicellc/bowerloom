@@ -1,5 +1,5 @@
 /**
- * The first three screens of the harness-first preview in the real window (Electron started with --prototype-v3): Welcome, Choose sources (a short look first, then three sources with ticks),
+ * The first three screens of the harness-first preview in the real window (Electron started with --sample): Welcome, Choose sources (a short look first, then three sources with ticks),
  * Read sources, and then the app. "Make a harness from this", "Make all 3" and "Not now" each open the app. Text is 14 px or more and a button is 32 px.
  */
 import { expect, test } from '@playwright/test';

@@ -11,7 +11,7 @@ import { createStore } from '../shared/world/store.js';
 import { ownedAgents, shelvesOf } from '../shared/home/cards.js';
 import { removeAction, saveAction } from '../renderer/home/store-actions.js';
 import { loadWorld } from '../renderer/common/world.js';
-import { useProtoStore } from '../renderer/common/session.js';
+import { useWorldStore } from '../renderer/common/session.js';
 import { assertTextBudget, countWords } from '../shared/home/textbudget.js';
 
 const none = (): void => undefined;
@@ -96,7 +96,7 @@ test('the read-only scope hands the screens a store that cannot change: the stat
 test('a read-only scope gives a screen the guarded dispatch; a scope that is not read only gives it the real one', () => {
   const store = createStore(loadWorld());
   let seen: { readOnly: boolean; same: boolean } | null = null;
-  const Probe = (): ReturnType<typeof createElement> => { const { dispatch } = useProtoStore(); seen = { readOnly: useReadOnly(), same: dispatch === store.dispatch }; return createElement('i'); };
+  const Probe = (): ReturnType<typeof createElement> => { const { dispatch } = useWorldStore(); seen = { readOnly: useReadOnly(), same: dispatch === store.dispatch }; return createElement('i'); };
   renderToStaticMarkup(createElement(ReadOnlyScope, { readOnly: true, store }, createElement(Probe)));
   assert.deepEqual(seen, { readOnly: true, same: false });
   renderToStaticMarkup(createElement(ReadOnlyScope, { readOnly: false, store }, createElement(Probe)));

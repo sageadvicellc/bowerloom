@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as typesModule from '../shared/world/types.js';
-import { createEmptyWorld } from '../renderer/common/fakeApi.js';
+import { createEmptyWorld } from '../renderer/common/empty-world.js';
 import type {
   AccessClass, AgentDefinition, AgentItem, Bundle, BundleItem, ContextSliceItem, Enforcement, FoundAt, HarnessItem, HarnessItemKind, HookTool,
   ImportClash, ImportFile, ImportGrant, ImportPreview, InstalledState, InterfaceExtra, InterfaceId, InterfaceInfo, LibraryRef, LibrarySource, McpTool,

@@ -47,11 +47,11 @@ test('the shipped kit loads: its pinned version, one agent, six skills, and the 
   assert.ok(Object.isFrozen(kit) && Object.isFrozen(kit.skills) && Object.isFrozen(kit.starter), 'the loaded kit is read-only');
 });
 
-test('the kit folder: the repository in development, the app resources in a packaged build, and package.json ships it as sample-data ships', () => {
+test('the kit folder: the repository in development, the app resources in a packaged build, and package.json ships it as the only extra resource', () => {
   assert.equal(kitsFolder({ packaged: true, resourcesPath: '/Applications/Bowerloom.app/Contents/Resources', appRoot: '/x/dist' }), '/Applications/Bowerloom.app/Contents/Resources/kits');
   assert.equal(kitsFolder({ packaged: false, resourcesPath: '/unused', appRoot: join(DESKTOP, 'dist') }), KITS);
   const pkg = JSON.parse(readFileSync(join(DESKTOP, 'package.json'), 'utf8')) as { build: { extraResources: { from: string; to: string }[] } };
-  assert.deepEqual(pkg.build.extraResources, [{ from: 'sample-data', to: 'sample-data' }, { from: '../../kits', to: 'kits' }]);
+  assert.deepEqual(pkg.build.extraResources, [{ from: '../../kits', to: 'kits' }]);
 });
 
 test('a missing kit, a missing kit.json, and a kit.json that is not strict are refused with words, never an empty kit', t => {

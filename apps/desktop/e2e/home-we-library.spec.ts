@@ -1,5 +1,5 @@
 /**
- * Wave E, group A (and the source lines of group G), in the real window (Electron started with --prototype-v2, on the Library test page): the "Not used yet"
+ * Wave E, group A (and the source lines of group G), in the real window (Electron started with --home-sample, on the Library test page): the "Not used yet"
  * switch with its count, the third order "Most used", search that also finds the words of a status, a row that is not used keeps its hint and the height of
  * every other row and shows its status as grey words with a grey dot, the note that explains the count on the Agents tab, no bare "?" next to the title, and a
  * source line under every card of the Add drawer.

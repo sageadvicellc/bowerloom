@@ -1,5 +1,5 @@
 /**
- * Wave E, group C, in the real window (Electron started with --prototype-v2, on the Library test page): the "Add from the web" sheet gives weight to what needs care.
+ * Wave E, group C, in the real window (Electron started with --home-sample, on the Library test page): the "Add from the web" sheet gives weight to what needs care.
  * "Runs code" and "Can change things" are bold with an amber dot, "Needs a key" has the same dot at the normal weight, each with one plain sentence under it; the column
  * of the sheet is centred and about 760 px wide; the line about what starts ticked is reworded; and "Add N items" still counts what is ticked.
  * Set HOME_WE_SHOTS to a folder to also save screenshots at 1280 by 800 and 900 by 600, light and dark.

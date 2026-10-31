@@ -1,5 +1,5 @@
 /**
- * Turns what the real-setup reader found (a `RealResult`) into the state of the harness-first preview (`--prototype-v3-real`). Pure: no file, no clock, no random number.
+ * Turns what the real-setup reader found (a `RealResult`) into the state of the harness-first preview (the default launch). Pure: no file, no clock, no random number.
  *
  * The reader already hands over a `World` whose items carry their file path (written with `~`) and their text, which is cut to a limit and has every known key shape hidden.
  * This file reshapes it for the harness screens:

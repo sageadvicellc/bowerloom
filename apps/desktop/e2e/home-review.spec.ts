@@ -1,5 +1,5 @@
 /**
- * The fixes from the three reviews of the agents-first prototype, in the real window (Electron started with --prototype-v2, on the home app itself):
+ * The fixes from the three reviews of the agents-first prototype, in the real window (Electron started with --home-sample, on the home app itself):
  * Escape reaches only the top layer even when the focus left it, the Save bar forgets "Saved" when a new change starts, a shared file's missing references,
  * an empty file and a refused file in plain words, a drag that is cancelled or ended with the mouse, Find more with changes that wait, and the "Preview" badge.
  * Set HOME_U0_SHOTS to a folder to also save screenshots at 1440 by 900 and 900 by 600, light and dark.

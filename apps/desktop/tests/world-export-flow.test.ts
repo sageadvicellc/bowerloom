@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { EXPORT_PROMISE, bundleText, clashWords, describeExport, installBundle, openExportedFile, secretWords } from '../shared/world/export-flow.js';
 import { buildBundle } from '../shared/world/bundle.js';
 import { CASE_IDS, generateWorld } from '../shared/world/sample.js';
-import { createEmptyWorld } from '../renderer/common/fakeApi.js';
+import { createEmptyWorld } from '../renderer/common/empty-world.js';
 import { copy } from './testworld.js';
 
 const world = generateWorld(1);

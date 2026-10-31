@@ -1,5 +1,5 @@
 /**
- * Wave E, groups F and G, in the real window (Electron started with --prototype-v2): the Share sheet names the keys it leaves out (by the names of their variables,
+ * Wave E, groups F and G, in the real window (Electron started with --home-sample): the Share sheet names the keys it leaves out (by the names of their variables,
  * never a value), says in two lines that it makes one file and that the real app asks where to save it, says it again with "Share file ready" and its size, and
  * offers "Show what is in it", which opens Look inside; the text of a tool in Look inside is plain words; the copies dialog dates each copy and says which is newer; and
  * the Save bar says which agent two added skills went to.

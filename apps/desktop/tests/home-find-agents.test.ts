@@ -18,7 +18,7 @@ import { createStore, reduceStore } from '../shared/world/store.js';
 import { FIND_WORDS, foundTitle, readProgress, readSummary, readingNow, unsavedAgent } from '../renderer/home/first-run/find-words.js';
 import { FindScreen } from '../renderer/home/first-run/FindScreen.js';
 import { FindPanel } from '../renderer/home/first-run/FindPanel.js';
-import { ProtoProvider } from '../renderer/common/session.js';
+import { WorldProvider } from '../renderer/common/session.js';
 import { assertTextBudget, bannedIn, countWords } from '../shared/home/textbudget.js';
 import { removeAction } from '../renderer/home/store-actions.js';
 import { shelvesOf } from '../shared/home/cards.js';
@@ -138,7 +138,7 @@ test('the new Find words follow the budget: labels at most 5 words, hints at mos
 });
 
 // ---- The markup.
-const draw = (element: ReturnType<typeof createElement>): string => renderToStaticMarkup(createElement(ProtoProvider, { store: createStore(world()) }, element));
+const draw = (element: ReturnType<typeof createElement>): string => renderToStaticMarkup(createElement(WorldProvider, { store: createStore(world()) }, element));
 
 test('the first scan page starts looking with a progress bar and no tiles; no per-app tile, count or note is anywhere on it', () => {
   const m = draw(createElement(FindScreen, { world: world(), onLeave: none, onDone: none }));

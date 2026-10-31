@@ -13,19 +13,16 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "bundle": "node tools/bundle.mjs",
-    "dev": "npm run bundle && electron . --sample-data",
+    "dev": "npm run bundle && electron . --sample",
     "start": "npm run bundle && electron .",
     "test": "node tools/bundle.mjs && node tools/bundle.mjs --tests && node --test --test-timeout=120000 .build/tests/*.test.mjs",
-    "screenshots": "npm run bundle && playwright test --config playwright.config.ts",
+    "e2e": "npm run bundle && playwright test --config playwright.config.ts",
     "build": "npm run bundle && electron-builder --mac --publish never",
-    "sample:make": "node tools/make-sample.mjs",
     "verify:fuses": "node tools/check-fuses.mjs",
     "personas:serve": "node tools/personas/drive.mjs serve"
   },
   "dependencies": {
-    "@xyflow/react": "12.12.0",
     "electron-updater": "6.8.10",
-    "force-graph": "1.52.0",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
@@ -53,10 +50,6 @@
       "package.json"
     ],
     "extraResources": [
-      {
-        "from": "sample-data",
-        "to": "sample-data"
-      },
       {
         "from": "../../kits",
         "to": "kits"

@@ -1,5 +1,5 @@
 /**
- * Wave E, group D, in the real window (Electron started with --prototype-v2): "Already included" follows every switch of Choose notes and its numbers (each topic,
+ * Wave E, group D, in the real window (Electron started with --home-sample): "Already included" follows every switch of Choose notes and its numbers (each topic,
  * the notes picked by hand, and what comes from older handles) add up to the preview's total exactly; there is one such line and one "What is included" list, never a
  * stale second copy; and the open "Leave out" panel lies over the cards under it and leaves no hole in the grid.
  * Set HOME_WE_SHOTS to a folder to also save screenshots at 1280 by 800 and 900 by 600, light and dark.

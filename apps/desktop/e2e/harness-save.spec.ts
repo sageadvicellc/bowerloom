@@ -1,5 +1,5 @@
 /**
- * The save sheet in the real window, on the sample launch (--prototype-v3): synthetic folders in memory, nothing read or written.
+ * The save sheet in the real window, on the sample launch (--sample): synthetic folders in memory, nothing read or written.
  * "Edit from a folder" on Projects: pick the folder, link a skill to an agent as a draft, read the change list, approve its revision and save, see the save
  * point kept and the install offered, then use "Go back" on the first save point and see the link gone. Set HARNESS_SHOTS to a folder to save screenshots.
  */
@@ -11,7 +11,7 @@ import type { Harness } from './harness-page.js';
 
 let h: Harness;
 const page = (): Page => h.page;
-const PROJECTS = '#prototype-v3/projects';
+const PROJECTS = '#sample/projects';
 const EDITOR_FILE = '.bowerloom/agents/editor.md';
 
 test.beforeAll(async () => { test.setTimeout(240_000); h = await launchHarness(); });

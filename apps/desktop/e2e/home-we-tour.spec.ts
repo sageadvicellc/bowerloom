@@ -1,5 +1,5 @@
 /**
- * Wave E, group E, in the real window (Electron started with --prototype-v2): the tour says "Step 3 of 7" and has a clear "Skip tour" on every step; its sentences
+ * Wave E, group E, in the real window (Electron started with --home-sample): the tour says "Step 3 of 7" and has a clear "Skip tour" on every step; its sentences
  * have at most ten words; the card of step three sits beside the lit details panel and covers neither the panel nor the agent that is picked, whichever agent
  * that is and at every size; the tour never picks an agent in silence (the sentence says so); and "These are the apps your agents work in." belongs to the
  * results of Find and is not on the screen that asks "Read what is inside?".

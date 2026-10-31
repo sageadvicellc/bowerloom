@@ -1,5 +1,5 @@
 /**
- * Types and limits of the read-only reader of a real setup (the `--prototype-real` mode of the 0.8 preview).
+ * Types and limits of the read-only reader of a real setup (the `--home-real` mode of the 0.8 preview).
  * Everything here is plain data. The reader looks at the person's tool folders, and shows names, descriptions, structure and the NAMES of keys. For the skills and agents the person ticks it also keeps their text
  * (up to `excerptChars` of each file). Key and password shapes that it knows are hidden from that text; the check goes by shape, so it is best effort. It never writes. The bridge that the page gets has exactly three calls (see `RealBridge`).
  */

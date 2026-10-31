@@ -1,0 +1,11 @@
+export const SAMPLE_PREFIX: 'bowerloom-sample-';
+export const E2E_PREFIX: 'bowerloom-e2e-';
+export const TEMP_PREFIXES: readonly ['bowerloom-sample-', 'bowerloom-e2e-'];
+export function userDataArg(argv: readonly string[]): string | null;
+export function isTempDataPath(dir: string, tmp: string): boolean;
+export function chooseUserData(arg: string | null, tmp: string): { readonly action: 'keep'; readonly dir: string } | { readonly action: 'make' };
+export function mayRemoveTempDir(dir: string, facts: { readonly isSymbolicLink: boolean; readonly isDirectory: boolean; readonly realParent: string; readonly realTmp: string }): boolean;
+export function makeTempDataDir(tmp?: string): string;
+export type RemoveReason = 'removed' | 'absent' | 'refused' | 'failed';
+export function removeTempDataDir(dir: string, tmp?: string): RemoveReason;
+export function removeAndReport(dir: string, tmp?: string, write?: (text: string) => unknown): RemoveReason;

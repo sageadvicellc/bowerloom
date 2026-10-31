@@ -59,7 +59,7 @@ export const REAL_WORDS = deepFreeze({
 });
 
 /** The command that starts real mode. */
-export const REAL_COMMAND = 'npm run desktop:prototype:real';
+export const REAL_COMMAND = 'npm run desktop -- --home-real';
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 

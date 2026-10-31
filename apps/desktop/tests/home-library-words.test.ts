@@ -19,7 +19,7 @@ import { RemoveDialog } from '../renderer/home/library/RemoveDialog.js';
 import { UpdateDialog } from '../renderer/home/library/UpdateDialog.js';
 import { WebSheet } from '../renderer/home/library/WebSheet.js';
 import { LIBRARY_HASH } from '../renderer/home/library/route.js';
-import { ProtoProvider } from '../renderer/common/session.js';
+import { WorldProvider } from '../renderer/common/session.js';
 import { createStore } from '../shared/world/store.js';
 import { LIMITS, assertTextBudget, bannedIn, countWords, extractText } from '../shared/home/textbudget.js';
 import { DESKTOP } from './support.js';
@@ -31,7 +31,7 @@ const html = (element: ReactElement): string => renderToStaticMarkup(element);
 const within = (markup: string): void => assert.deepEqual(assertTextBudget(markup), [], markup.slice(0, 300));
 const said = (markup: string): string => extractText(markup).map(p => p.text).join(' | ');
 const NO_PATH = /\.bowerloom|\/sample\/|SKILL\.md|\/Users\/|\.claude\/|\.codex\/|web\/|copies\/|alderhythe|tarnwick/;
-const provided = (child: ReactElement) => createElement(ProtoProvider, { store: createStore(libraryWorld()) }, child);
+const provided = (child: ReactElement) => createElement(WorldProvider, { store: createStore(libraryWorld()) }, child);
 const noop = (): void => undefined;
 
 test('LIBRARY_WORDS is frozen all the way down and has the same three groups as WORDS', () => {

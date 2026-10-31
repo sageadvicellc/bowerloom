@@ -9,21 +9,21 @@ import type { Store, StoreAction, StoreState } from '../../shared/world/store.js
 const StoreContext = createContext<Store | null>(null);
 
 /** Gives every screen below it the same store. */
-export function ProtoProvider({ store, children }: { store: Store; children?: ReactNode }) {
+export function WorldProvider({ store, children }: { store: Store; children?: ReactNode }) {
   return createElement(StoreContext.Provider, { value: store }, children);
 }
 
 /** What a screen sees of the session: the current state and the way to change it. */
-export interface ProtoSession { readonly state: StoreState; dispatch(action: StoreAction): void }
+export interface WorldSession { readonly state: StoreState; dispatch(action: StoreAction): void }
 
-/** The words of the error `useProtoStore` throws when there is no provider. */
-export const MISSING_SESSION_MESSAGE = 'This screen needs the prototype session. Wrap it in ProtoProvider.';
+/** The words of the error `useWorldStore` throws when there is no provider. */
+export const MISSING_SESSION_MESSAGE = 'This screen needs the prototype session. Wrap it in WorldProvider.';
 
 /** True for that error and no other. A caller that wants to carry on without a session catches this one only. */
 export const isMissingSession = (error: unknown): boolean => error instanceof Error && error.message === MISSING_SESSION_MESSAGE;
 
 /** The state of the store, kept up to date as it changes, plus `dispatch`. Throws in plain words when there is no provider. */
-export function useProtoStore(): ProtoSession {
+export function useWorldStore(): WorldSession {
   const store = useContext(StoreContext);
   if (store === null) throw new Error(MISSING_SESSION_MESSAGE);
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);

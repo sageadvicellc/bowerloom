@@ -4,20 +4,20 @@ import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createStore } from '../shared/world/store.js';
-import { ProtoProvider, useProtoStore } from '../renderer/common/session.js';
-import { createEmptyWorld } from '../renderer/common/fakeApi.js';
+import { WorldProvider, useWorldStore } from '../renderer/common/session.js';
+import { createEmptyWorld } from '../renderer/common/empty-world.js';
 import { generateWorld } from '../shared/world/sample.js';
 import { loadWorld } from '../renderer/common/world.js';
 
 function Probe() {
-  const { state } = useProtoStore();
+  const { state } = useWorldStore();
   return createElement('p', null, `${state.draft.items.length} items, ${state.draft.versions.length} versions`);
 }
 
 test('a screen under the provider reads the live state of the store', () => {
   const world = generateWorld(1);
   const store = createStore(world);
-  const markup = renderToStaticMarkup(createElement(ProtoProvider, { store }, createElement(Probe)));
+  const markup = renderToStaticMarkup(createElement(WorldProvider, { store }, createElement(Probe)));
   assert.match(markup, new RegExp(`${world.items.length} items, 0 versions`));
 });
 
@@ -35,7 +35,7 @@ test('an action sent through the store changes the draft, and the committed worl
 });
 
 test('a screen without a provider fails in plain words', () => {
-  assert.throws(() => renderToStaticMarkup(createElement(Probe)), /ProtoProvider/);
+  assert.throws(() => renderToStaticMarkup(createElement(Probe)), /WorldProvider/);
 });
 
 test('two sessions never share state', () => {

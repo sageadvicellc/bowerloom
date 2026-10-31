@@ -1,5 +1,5 @@
 /**
- * Wave E, group I, in the real window (Electron started with --prototype-v2): the Preview popover has a link "How it will work" that opens a short sheet. The sheet has two
+ * Wave E, group I, in the real window (Electron started with --home-sample): the Preview popover has a link "How it will work" that opens a short sheet. The sheet has two
  * lists, "What is decided" (each statement with its source, "Decided in the plan") and "Not decided yet"; it is a modal dialog (the focus starts on its title and
  * stays inside, Escape closes it and gives the focus back to the Preview mark), its words pass the budget, no text in it is under 14 px, and at 900 by 600 its body
  * scrolls while the title and Done stay in view.

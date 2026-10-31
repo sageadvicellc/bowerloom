@@ -10,7 +10,7 @@ import { copiesLookAlike, copiesOf, hasCopies, keepCopyAction, newerCopy } from 
 import type { CopyView } from '../../../shared/home/add-copies.js';
 import { plainName } from '../../../shared/home/add-model.js';
 import type { NameOf } from '../../../shared/home/add-model.js';
-import { useProtoStore } from '../../common/session.js';
+import { useWorldStore } from '../../common/session.js';
 import { Button } from '../kit/Button.js';
 import { IconButton } from '../kit/IconButton.js';
 import { ADD_WORDS, copyNumber, foundIn, linesChanged, newerIs } from '../add/add-words.js';
@@ -58,7 +58,7 @@ function Copy({ copy, onKeep }: { copy: CopyView; onKeep(): void }): ReactElemen
 }
 
 export function CopiesDialog({ itemId, nameOf = plainName, leaving = false, onClose, onKept, restoreFocus }: CopiesDialogProps): ReactElement | null {
-  const { state, dispatch } = useProtoStore();
+  const { state, dispatch } = useWorldStore();
   const item = state.draft.items.find(i => i.id === itemId);
   const titleId = useId(), tipId = useId(), replacedId = useId();
   const dialog = useRef<HTMLDivElement>(null), heading = useRef<HTMLHeadingElement>(null);

@@ -9,7 +9,7 @@ import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
-import { makePrototypeDataDir, removePrototypeDataDir } from '../../main/prototype-dir.mjs';
+import { makeTempDataDir, removeTempDataDir } from '../../main/temp-data.mjs';
 import { DESKTOP, REPO_ROOT, appendText, assertWritable, ensureDir, removeOwnFile, writeText } from './files.mjs';
 import { PersonaError, USAGE, checkId, parseCli, redact, stateFileFor, stateRoot, validateCommand } from './protocol.mjs';
 import { staleReason } from './buildcheck.mjs';
@@ -39,7 +39,7 @@ async function serve(flags, env) {
   ensureDir(root);
   ensureDir(outDir);
   const transcript = join(outDir, 'transcript.txt');
-  const userDataDir = makePrototypeDataDir();
+  const userDataDir = makeTempDataDir();
   const hide = [REPO_ROOT, DESKTOP, userDataDir];
   const note = text => appendText(transcript, `[${new Date().toISOString()}] ${text}\n`);
   note(`Session "${id}" starts. Window ${size.width} by ${size.height}.`);
@@ -49,7 +49,7 @@ async function serve(flags, env) {
     const { openPreview } = await import('./app.mjs');
     preview = await openPreview({ desktop: DESKTOP, userDataDir, outDir, size, hide });
   } catch (error) {
-    removePrototypeDataDir(userDataDir);
+    removeTempDataDir(userDataDir);
     throw error instanceof PersonaError ? error : new PersonaError(`The app window could not start. ${String(error.message).split('\n')[0]}`);
   }
 
@@ -61,7 +61,7 @@ async function serve(flags, env) {
     try { note(`Session "${id}" ends: ${reason}.`); } catch { /* the out folder is gone */ }
     await Promise.race([commands.close(), new Promise(r => setTimeout(r, 1000))]);
     await preview.close();
-    const reasonCode = removePrototypeDataDir(userDataDir);
+    const reasonCode = removeTempDataDir(userDataDir);
     removeOwnFile(statePath);
     console.log(`Session ended (${reason}). Data folder ${reasonCode === 'removed' ? 'removed' : `not removed (${reasonCode})`}. Out folder kept: ${outDir}`);
     process.exit(0);

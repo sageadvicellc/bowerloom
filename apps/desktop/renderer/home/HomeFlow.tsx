@@ -10,7 +10,7 @@ import type { BarPhase } from '../../shared/home/savebar.js';
 import { screenAfter } from '../../shared/home/flow-screens.js';
 import type { Screen } from '../../shared/home/flow-screens.js';
 import { startOf } from '../../shared/home/route.js';
-import { useProtoStore } from '../common/session.js';
+import { useWorldStore } from '../common/session.js';
 import { HomeApp } from './HomeApp.js';
 import { FindScreen } from './first-run/FindScreen.js';
 import { Welcome } from './first-run/Welcome.js';
@@ -21,7 +21,7 @@ import './kit/kit.css';
 import './home.css';
 
 export function HomeFlow({ dataSource = 'sample' }: { dataSource?: DataSource } = {}): ReactElement {
-  const { state } = useProtoStore();
+  const { state } = useWorldStore();
   const [start] = useState(() => startOf(location.hash));
   const [screen, setScreen] = useState<Screen>(start.screen);
   const [skipped, setSkipped] = useState<readonly string[]>([]);

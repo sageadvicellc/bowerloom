@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { createRng } from '../shared/world/rng.js';
 import { CASE_IDS, SAMPLE_WORDS, generateWorld, hashText, validateWorld } from '../shared/world/sample.js';
 import { matchPages } from '../shared/world/slicerule.js';
-import { createEmptyWorld } from '../renderer/common/fakeApi.js';
+import { createEmptyWorld } from '../renderer/common/empty-world.js';
 import type { AgentItem, HarnessItem, HookTool, McpTool, SkillItem, World } from '../shared/world/types.js';
 import { DESKTOP } from './support.js';
 

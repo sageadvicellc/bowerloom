@@ -14,7 +14,7 @@ import {
 } from '../../../shared/home/library-sources.js';
 import type { SampleSource, SourceItem } from '../../../shared/home/library-sources.js';
 import type { StoreAction } from '../../../shared/world/store.js';
-import { useProtoStore } from '../../common/session.js';
+import { useWorldStore } from '../../common/session.js';
 import { Button } from '../kit/Button.js';
 import { Drawer } from '../kit/Drawer.js';
 import { Glyph } from '../kit/Glyph.js';
@@ -53,7 +53,7 @@ export function WebSheet({ open, onClose, onAdded, returnTo }: WebSheetProps): R
 type View = { readonly kind: 'start' } | { readonly kind: 'source'; readonly source: SampleSource };
 
 function WebBody({ onClose, onAdded }: { onClose(): void; onAdded: WebSheetProps['onAdded'] }): ReactElement {
-  const { state, dispatch } = useProtoStore();
+  const { state, dispatch } = useWorldStore();
   const [view, setView] = useState<View>({ kind: 'start' });
   const [link, setLink] = useState('');
   const [problem, setProblem] = useState<Problem>(null);

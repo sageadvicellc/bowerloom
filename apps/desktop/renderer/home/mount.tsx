@@ -12,7 +12,7 @@ import { withLibrarySamples } from '../../shared/home/library-sample.js';
 import { withSampleCopies } from '../../shared/home/sample-copies.js';
 import { withStarterAgents } from '../../shared/home/starters.js';
 import { ErrorBoundary } from '../common/error-boundary.js';
-import { ProtoProvider } from '../common/session.js';
+import { WorldProvider } from '../common/session.js';
 import { ReadOnlyScope } from './read-only.js';
 import { startOf } from '../../shared/home/route.js';
 import { loadWorld } from '../common/world.js';
@@ -68,7 +68,7 @@ function SampleRoot(): ReactElement {
   if (page === 'add') return <AddHarness />;
   if (page === 'notes') return <NotesHarness />;
   if (page === 'library') return <LibraryHarness />;
-  if (page === 'kit') return <ProtoProvider store={store}><KitGallery /></ProtoProvider>;
+  if (page === 'kit') return <WorldProvider store={store}><KitGallery /></WorldProvider>;
   return <ReadOnlyScope readOnly={readOnly} store={store}><HomeFlow /></ReadOnlyScope>;
 }
 

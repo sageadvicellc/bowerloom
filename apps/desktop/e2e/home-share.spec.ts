@@ -1,5 +1,5 @@
 /**
- * Share in the real window (Electron started with --prototype-v2, on the home app itself): the Share section at the foot of the Version history drawer, the Share
+ * Share in the real window (Electron started with --home-sample, on the home app itself): the Share section at the foot of the Version history drawer, the Share
  * sheet (counts, what is left out, the agents to leave out, "Create share file"), the round trip into "Open a shared file" (the same counts come back), the agents
  * that Find skipped, the keyboard alone, less motion, Escape one layer at a time, text size, and the text budget on the real page at every step.
  * Set HOME_U0_SHOTS to a folder to also save screenshots at 1440 by 900 and 900 by 600, light and dark.

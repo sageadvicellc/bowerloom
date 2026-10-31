@@ -11,7 +11,7 @@ import { changeCount, saveBar, withStartPoint } from '../../../shared/home/saveb
 import type { BarPhase } from '../../../shared/home/savebar.js';
 import { withSampleCopies } from '../../../shared/home/sample-copies.js';
 import { createStore, reduceStore } from '../../../shared/world/store.js';
-import { ProtoProvider, useProtoStore } from '../../common/session.js';
+import { WorldProvider, useWorldStore } from '../../common/session.js';
 import { loadWorld } from '../../common/world.js';
 import { KitIcon } from '../kit/icons.js';
 import { ItemCard } from '../kit/ItemCard.js';
@@ -31,7 +31,7 @@ const L = NOTES_WORDS.label, H = NOTES_WORDS.hint;
 const FRESH_MS = 5000;
 
 function Page(): ReactElement {
-  const { state, dispatch } = useProtoStore();
+  const { state, dispatch } = useWorldStore();
   const [picked, setPicked] = useState<string | null>(null);
   const [pickedItem, setPickedItem] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -107,5 +107,5 @@ function Page(): ReactElement {
 export function NotesHarness(): ReactElement {
   // The first save point is the world as it was found, so "Go back" always has somewhere to go.
   const [store] = useState(() => createStore(withStartPoint(withSampleCopies(loadWorld()))));
-  return <ProtoProvider store={store}><Page /></ProtoProvider>;
+  return <WorldProvider store={store}><Page /></WorldProvider>;
 }

@@ -30,8 +30,8 @@ test.beforeAll(async () => {
   if (bundle.status !== 0) throw new Error(bundle.stderr);
   html = join(out, 'sheets.html');
   writeFileSync(html, `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="${pathToFileURL(join(desktop, 'dist/renderer/tokens.css')).href}"><link rel="stylesheet" href="${pathToFileURL(join(out, 'sheets.css')).href}"></head><body><script src="${pathToFileURL(join(out, 'sheets.js')).href}"></script></body></html>`);
-  const userData = tempDir('bowerloom-prototype-e2e-sheets-');
-  app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--prototype-v3', `--user-data-dir=${userData}`] });
+  const userData = tempDir('bowerloom-e2e-sheets-');
+  app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--sample', `--user-data-dir=${userData}`] });
   await app.firstWindow();
 });
 test.afterAll(async () => { await app?.close(); removeTempDirs(); });

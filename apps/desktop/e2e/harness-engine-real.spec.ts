@@ -1,5 +1,5 @@
 /**
- * The adopt and install sheets on a person's own folders (Electron started with --prototype-v3-real, HOME and XDG_STATE_HOME pointed at a made-up folder).
+ * The adopt and install sheets on a person's own folders (Electron started with no flag, HOME and XDG_STATE_HOME pointed at a made-up folder).
  * The main process runs the packages: the plans are real, nothing is written while the person reads, and the writes land only after each approval, through
  * the packages, in the chosen folder and the private state folder under the made-up home. Undo is a removal plan, and it puts the folder back byte for byte.
  * Each test gets its own made-up home, its own state root and its own app: one test's folders, records, approval drafts, window size and answers to main's
@@ -26,7 +26,7 @@ test.beforeEach(async () => {
   chmodSync(home, 0o700);
   h = await launchReal(home, { XDG_STATE_HOME: join(home, '.local', 'state') }, false);
   await page().emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });
-  await page().evaluate(() => { location.hash = '#prototype-v3-real/projects'; location.reload(); });
+  await page().evaluate(() => { location.hash = '#app/projects'; location.reload(); });
   await page().waitForLoadState('domcontentloaded');
   await page().waitForSelector('[data-home]');
 });

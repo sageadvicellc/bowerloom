@@ -12,7 +12,7 @@ import { CopiesDialog } from '../renderer/home/copies/CopiesDialog.js';
 import { addDemoWorld, DEMO } from '../renderer/home/add/add-demo-world.js';
 import { ADD_WORDS, NOTE_STAY_MS } from '../renderer/home/add/add-words.js';
 import { sharedFileSample } from '../renderer/home/add/add-sample-file.js';
-import { ProtoProvider } from '../renderer/common/session.js';
+import { WorldProvider } from '../renderer/common/session.js';
 import { ADD_TABS, agentChoices, entriesFor } from '../shared/home/add-model.js';
 import type { AddTab } from '../shared/home/add-model.js';
 import { createStore } from '../shared/world/store.js';
@@ -22,7 +22,7 @@ const html = (element: ReactElement): string => renderToStaticMarkup(element);
 const none = (): void => undefined;
 const within = (markup: string): void => assert.deepEqual(assertTextBudget(markup), [], markup.slice(0, 300));
 const NO_PATH = /\.bowerloom|\/sample\/|SKILL\.md|\/Users\/|\.claude\/|\.codex\//;
-const provide = (child: ReactElement) => createElement(ProtoProvider, { store: createStore(addDemoWorld()) }, child);
+const provide = (child: ReactElement) => createElement(WorldProvider, { store: createStore(addDemoWorld()) }, child);
 const drawer = (tab: AddTab, extra: object = {}): string => html(provide(createElement(AddDrawerBody, { initialTab: tab, ...extra })));
 
 test('the drawer shows five tabs in order, one selected, and a labelled panel', () => {

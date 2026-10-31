@@ -9,7 +9,7 @@ import { FIND_WORDS, foundTitle, readProgress, readSummary, readingNow } from '.
 import { Welcome } from '../renderer/home/first-run/Welcome.js';
 import { FindScreen } from '../renderer/home/first-run/FindScreen.js';
 import { HomeApp } from '../renderer/home/HomeApp.js';
-import { ProtoProvider } from '../renderer/common/session.js';
+import { WorldProvider } from '../renderer/common/session.js';
 import { loadWorld } from '../renderer/common/world.js';
 import { createStore } from '../shared/world/store.js';
 import { withSampleCopies } from '../shared/home/sample-copies.js';
@@ -67,7 +67,7 @@ test('Welcome renders the logo, two lines of one sentence, one button and one qu
 
 test('Find draws a search that waits, the first time, with no tile for an app and no folder path anywhere', () => {
   const store = createStore(world());
-  const m = renderToStaticMarkup(createElement(ProtoProvider, { store }, createElement(FindScreen, { world: store.getState().draft, onLeave: none, onDone: none })));
+  const m = renderToStaticMarkup(createElement(WorldProvider, { store }, createElement(FindScreen, { world: store.getState().draft, onLeave: none, onDone: none })));
   assert.deepEqual(assertTextBudget(m), []);
   assert.equal([...m.matchAll(/class="fr-tile"/g)].length, 0);
   assert.match(m, /role="progressbar"[^>]*aria-valuenow="0"/);
@@ -77,7 +77,7 @@ test('Find draws a search that waits, the first time, with no tile for an app an
 
 test('the navigation always has "Find more", and the strip for notes is there but empty until a note arrives (it also holds the note after Remove)', () => {
   const store = createStore(world());
-  const draw = (props: Record<string, unknown>): string => renderToStaticMarkup(createElement(ProtoProvider, { store }, createElement(HomeApp, props)));
+  const draw = (props: Record<string, unknown>): string => renderToStaticMarkup(createElement(WorldProvider, { store }, createElement(HomeApp, props)));
   assert.match(draw({}), /data-nav-key="find"[^>]*>(?:<svg[\s\S]*?<\/svg>)<span class="hm-nav-label">Find more</); assert.doesNotMatch(draw({}), /data-open/); assert.match(draw({}), /<div class="hm-toast"[^>]*><\/div>/, 'the strip is empty');
   const guided = draw({ onFindMore: none, closingNote: true });
   assert.match(guided, />Find more</); assert.match(guided, /class="hm-toast"/); assert.doesNotMatch(guided, /untouched/, 'the note is empty until the first Save');
@@ -88,7 +88,7 @@ test('HomeApp keeps skipped agents off the map', () => {
   const store = createStore(world());
   const w = store.getState().draft;
   const agentIds = w.items.filter(i => i.kind === 'agent' && i.library === null).map(i => i.id);
-  const draw = (skipped: string[]): string => renderToStaticMarkup(createElement(ProtoProvider, { store }, createElement(HomeApp, { skipped } as Record<string, unknown>)));
+  const draw = (skipped: string[]): string => renderToStaticMarkup(createElement(WorldProvider, { store }, createElement(HomeApp, { skipped } as Record<string, unknown>)));
   assert.equal([...draw([]).matchAll(/data-drop-agent=/g)].length, 10);
   assert.equal([...draw(agentIds.slice(0, 3)).matchAll(/data-drop-agent=/g)].length, 7);
   assert.match(draw(agentIds.slice(0, 3)), /7 agents/);
