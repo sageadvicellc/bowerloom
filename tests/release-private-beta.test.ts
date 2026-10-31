@@ -33,23 +33,18 @@ test('the release record and package.json name one version, unreleased, for npm 
   assert.equal(validateReleaseIdentity(release, pkg).version, VERSION);
 });
 
-test('every surface that pins the version names the package version, and the generated install blocks name the record command', () => {
+test('every surface that pins the version names the package version', () => {
   for (const path of ['packages/harness-portability/package.json', 'packages/mcp-connections/package.json']) assert.equal((JSON.parse(read(path)) as { version: string }).version, VERSION, path);
   const lock = JSON.parse(read('package-lock.json')) as { version: string; packages: { [k: string]: { version?: string } } };
   assert.equal(lock.version, VERSION); assert.equal(lock.packages['']!.version, VERSION);
   assert.match(read('docs/assets/badge-version.svg'), new RegExp(`aria-label="Version ${VERSION.replace(/\./g, '\\.')}"`));
-  for (const path of ['README.md', 'apps/docs/src/content/docs/start.md']) {
-    const text = read(path);
-    assert.ok(text.includes(`\`\`\`sh\n${release.npm.installCommand}\nbowerloom --version\nbowerloom --help\n\`\`\``), path);
-    assert.doesNotMatch(text, /npm install --global bowerloom@/, path);
-  }
   for (const path of ['README.md', 'apps/docs/src/content/docs/backend.md', 'apps/docs/src/content/docs/cli.md', 'apps/docs/src/content/docs/mcp.md', 'apps/docs/src/content/docs/revision.md', 'apps/docs/src/content/docs/status.md', 'apps/docs/src/content/docs/stop.md', 'apps/docs/src/content/docs/releases.md']) {
     assert.ok(read(path).includes(`Open beta · ${VERSION}`), path);
   }
   const docs = 'apps/docs/src/content/docs/';
   for (const [path, text] of [
     [docs + 'cli.md', `The version output reads \`Bowerloom ${VERSION}\`.`],
-    [docs + 'status.md', `Bowerloom \`${VERSION}\` prepares readable local definitions`],
+    [docs + 'status.md', `Bowerloom \`${VERSION}\` keeps one harness for a project and installs it for Claude Code and Codex, after a preview.`],
     [docs + 'reference/index.md', `This reference describes \`${VERSION}\``],
     [docs + 'start.md', `Read the Bowerloom installation guide for ${VERSION}.`],
     [docs + 'start.md', `\`\`\`text\nBowerloom ${VERSION}\n\`\`\``],
@@ -57,6 +52,30 @@ test('every surface that pins the version names the package version, and the gen
     [docs + 'start.md', `\`npm install -g ~/Downloads/bowerloom-${VERSION}.tgz\``],
     ['README.md', `\`npm install -g ~/Downloads/bowerloom-${VERSION}.tgz\``],
   ] as const) assert.ok(read(path).includes(text), `${path}: ${text}`);
+});
+
+test('the install block shows the command only after npm publishes, in the README, the install page, and the beta guide', async () => {
+  // The generator decides the block. It is loaded by a variable specifier because the module is plain JavaScript.
+  const href = new URL('apps/docs/src/lib/release.mjs', root).href;
+  const { expandRelease, releaseSections } = await import(href) as { expandRelease: (markdown: string, record: unknown) => string; releaseSections: (record: unknown) => { install: string } };
+  const published = { ...release, state: 'published', npm: { ...release.npm, published: true } };
+  const command = release.npm.installCommand;
+  const commandBlock = `\`\`\`sh\n${command}\nbowerloom --version\nbowerloom --help\n\`\`\``;
+  assert.ok(releaseSections(published).install.includes(commandBlock), 'a published record shows the command block');
+  assert.ok(!releaseSections(release).install.includes(command), 'an unpublished record shows no command');
+  for (const path of ['README.md', 'apps/docs/src/content/docs/start.md', 'apps/docs/src/content/docs/beta-guide.md']) {
+    const raw = read(path);
+    assert.equal(raw.split('<!-- release:install:start -->').length - 1, 1, path);
+    assert.equal(raw.split('<!-- release:install:end -->').length - 1, 1, path);
+    const whileUnpublished = expandRelease(raw, { ...release, state: 'unreleased', npm: { ...release.npm, published: false } });
+    assert.ok(!whileUnpublished.includes(command), `${path}: no command before npm publishes`);
+    assert.match(whileUnpublished, /The install command arrives when the beta publishes/, path);
+    const afterPublication = expandRelease(raw, published);
+    assert.ok(afterPublication.includes(commandBlock), `${path}: the command after npm publishes`);
+    assert.doesNotMatch(afterPublication, /arrives when the beta publishes/, path);
+    assert.doesNotMatch(afterPublication, /npm install --global bowerloom@/, path);
+  }
+  assert.ok(read('README.md').includes(releaseSections(release).install), 'the README holds the block that the record generates');
 });
 
 test('the release identity binds the install command to the distribution: an archive is never published, npm keeps its form', () => {

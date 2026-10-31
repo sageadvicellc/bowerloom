@@ -46,7 +46,7 @@ Keep your project out of iCloud Drive folders. Project commands such as `bowerlo
 - No Bowerloom command runs an engine or a model, and no worker starts.
 - The desktop app is a beta and is not signed or notarized. It has no automatic updates. The save step, save points, and the Builder exist only in the app.
 - This guide set uses macOS arm64 and Node 24.11.0. Other host systems are outside the documented path.
-- Preview engines are not supported in this beta.
+- Preview engines have no support promise in this beta.
 - A projected file does not prove that an engine finds or runs it.
 
 ## The 0.7 commands that remain

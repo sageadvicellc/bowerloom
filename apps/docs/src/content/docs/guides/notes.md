@@ -27,7 +27,7 @@ When you take a notes folder off a harness, the folder itself does not change.
 2. **Start fresh** lists the starter files first. **Create** writes them.
 3. The app checks whether the folder keeps its history with git. If it does not, it offers to start one, so that changes can be undone. You can choose **No history for now**. Then the Notes keeper only reports and changes no page. If git is not on the computer, the keeper also only reports.
 4. The Notes panel in the Builder shows each notes folder with its page count, the date of its last change, the agents that read it, and the latest tidy-up report. **Stop using these notes** takes the folder off the harness when you save. The folder itself stays.
-5. A notes folder must be inside your home folder. The app refuses a folder outside it.
+5. A notes folder must be inside your home folder or inside the harness folder. The app refuses any other folder, the home folder itself, and a hidden folder or a folder inside one.
 
 ## The Notes keeper kit
 

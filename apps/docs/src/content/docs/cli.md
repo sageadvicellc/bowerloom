@@ -281,18 +281,18 @@ Every command takes `--dir <absolute-folder>`. The default is the working folder
 | `adopt` | Reads the engine files of the folder and writes only `.bowerloom`. It changes no engine file. |
 | `install` | Writes the engine files from `.bowerloom`. A rule that an engine carries more weakly than the harness says is refused, and each refused line has a key. |
 | `accept` | Saves your approval of one refused line, named by its key `<part>/<entry>[.<field>]@<engine>:<hash12>`. Install again afterward. |
-| `merge` | Moves the text of `CLAUDE.md` into `.bowerloom/instructions/AGENTS.md`. `CLAUDE.md` does not change until the next install. |
+| `merge` | Moves the text of `CLAUDE.md` into `.bowerloom/instructions/AGENTS.md`. `CLAUDE.md` does not change until the next install, which makes it the one line `@AGENTS.md`. |
 | `drift` | Lists the files that Bowerloom wrote and that changed since. With `--check` it fails when a file changed, when `CLAUDE.md` does not follow `AGENTS.md`, or when nothing is installed. |
 | `remove` | Puts back every file that install replaced, and deletes the files that install created. |
 | `recover` | Finishes or takes back a run that stopped part way. `--keep`, `--restore-mode`, and `--record-mode` settle changed files and modes. `--adoption` settles an adoption or a merge. |
 
 Flags:
 
-- `--json` prints the plan or the result as JSON. A write with `--json` and no `--approve` prints its plan and exits 3.
+- `--json` prints the plan or the result as JSON. A write with `--json` and no `--approve` prints its plan and exits 3. In a terminal without `--json`, a write asks `Apply plan <short revision>? [y/N]`.
 - `--approve <revision>` applies the plan with that revision. `status`, `accept`, and `drift` take no `--approve`.
 - `--engine <id>` names an engine: `claude-code`, `codex`, `opencode`, `pi`, or `deepseek-harness`. `adopt` also takes `@<version>`. Name each engine once.
 - `--pick`, `--rename`, and `--acknowledge` answer the conflicts and the entries that adoption does not read. `--confirm <part/id>` confirms an item that needs it. `--every-engine` takes `guardrails`, `hooks`, or `mcp`, and each part once.
-- `--reconcile`, `--write-claude-md`, and `--pi-trust-saved` settle `AGENTS.md` and `CLAUDE.md`, and one Pi setting, during `install`.
+- `--reconcile`, `--write-claude-md`, and `--pi-trust-saved` settle `AGENTS.md` and `CLAUDE.md`, and one Pi setting, during `install`. `--reconcile merge` is refused with `PORTABLE_MERGE_NOT_BUILT`. To merge, run `harness merge --approve <revision>`, then `harness install` with the default `accept-agents`.
 - `--check` belongs to `drift`.
 
 This beta supports Claude Code and Codex. OpenCode, Pi, and DeepSeek Harness are preview engines. An install to one needs `BOWERLOOM_PREVIEW_ENGINES=1`. An install with no `--engine` skips them. Adopt, drift, status, and remove work for all five.

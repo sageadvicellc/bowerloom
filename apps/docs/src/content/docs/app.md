@@ -73,7 +73,7 @@ On Harnesses, **Open <name> in the builder** opens one folder's harness as a gra
 2. Tick **I approve plan** with the plan number.
 3. Press **Save N files**.
 
-A save changes only the `.bowerloom` harness of that folder. Installed engine files change only when you install. If a save stops part way, the app says so, and the command line refuses install, remove, and the other writes until you finish the stopped save in the app.
+A save changes only the `.bowerloom` harness of that folder. Installed engine files change only when you install. If a save stops part way, the app says so, and the command line refuses install, remove, accept, adopt, and merge until you finish the stopped save in the app.
 
 ## Save points, Go back, and Set aside
 
@@ -81,7 +81,7 @@ Every save keeps a save point, which is a copy of the harness as it was. The fir
 
 - The clock button at the top of the Builder opens Save points. Each row has its number, what changed, its time, and how many files it holds. The row marked Now is the current harness.
 - **Go back** on a row puts the harness as it was at that save point. Bowerloom also keeps the harness as it is now as a save point, so nothing is lost and the list only grows. Going back changes only `.bowerloom`, and you review and approve it first, as you do for a save.
-- **Set old save points aside** starts a new record. It shows a review first. It deletes nothing, and **Go back** then starts again from the next save.
+- **Set old save points aside** shows only when the app refuses the record of save points, because the record is not whole or is not safe to read. It starts a new record. It shows a review first. It deletes nothing, and **Go back** then starts again from the next save.
 
 ## Notes
 

@@ -21,7 +21,9 @@ Roles, skills, handoffs, and review expectations stay in files that follow you. 
 
 Read the [documentation](/docs/) and the [README](https://github.com/sageadvicellc/bowerloom/blob/main/README.md) before you install anything. [Install Bowerloom](/docs/start/) has the full steps.
 
-The CLI needs Node `>=24.11.0 <25` and npm `11`. It arrives on npm under the `beta` dist-tag when the beta publishes. This page shows no install command until then. These guides use macOS arm64 and Node 24.11.0. Other host systems are outside this documented installation path.
+<!-- release:install:start -->
+STUB
+<!-- release:install:end -->
 
 ## Choose your startup path
 

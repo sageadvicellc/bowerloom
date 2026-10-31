@@ -25,9 +25,11 @@ Read the Bowerloom installation guide for 0.8.0-beta.1. Review the requirements 
 
 ### Prerequisites and installation
 
-You need Node `>=24.11.0 <25` and npm `11`. The Node range comes from the `engines` field of the product's `package.json`.
+<!-- release:install:start -->
+STUB
+<!-- release:install:end -->
 
-The CLI arrives on npm as `bowerloom`, under the `beta` dist-tag, when the beta publishes. A dist-tag is a name that points at one published version. This page shows no install command until then, because the package is not published yet. [Release notes](/docs/releases/) says when it is.
+The Node range comes from the `engines` field of the product's `package.json`. A dist-tag is a name that points at one published version. [Release notes](/docs/releases/) says when the package is published.
 
 A colleague who was given a `bowerloom-0.8.0-beta.1.tgz` file can install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.8.0-beta.1.tgz`. Installing from a downloaded .tgz file gives the same dependency versions as the tested build. The file carries its dependencies, so it installs with no network and no npm cache. If your agent runs in a sandbox that blocks writes outside the project, ask the human to run the install command in their own terminal.
 
@@ -53,10 +55,6 @@ export PATH="$HOME/.npm-global/bin:$PATH"
 ```
 
 Add the `export` line to your shell profile so that new terminals find `bowerloom`. Then install again.
-
-Harness commands and first-team setup do not need Docker. The separate local backend requires Docker Desktop and its own plan and approval. The separate local backend requires Docker Desktop and its own plan and approval.
-
-These guides use macOS arm64 and Node 24.11.0. Other host systems are outside this documented installation path.
 
 <a id="check-the-installed-command"></a>
 
@@ -84,7 +82,7 @@ bowerloom harness status
 bowerloom harness adopt
 ```
 
-`adopt` prints a plan and its revision, and exits 3. It writes only `.bowerloom`. Show the plan to the human. After the human approves it, run the same command with `--approve <revision>`. Then run `bowerloom harness install` the same way. [Adopt and install a harness](/docs/guides/adopt-and-install/) shows every flag and every refusal.
+`adopt` prints a plan and its revision. With `--json`, or without a terminal, it then exits 3. It writes only `.bowerloom`. Show the plan to the human. After the human approves it, run the same command with `--approve <revision>`. Then run `bowerloom harness install` the same way. [Adopt and install a harness](/docs/guides/adopt-and-install/) shows every flag and every refusal.
 
 <a id="prepare-a-project-with-one-command"></a>
 

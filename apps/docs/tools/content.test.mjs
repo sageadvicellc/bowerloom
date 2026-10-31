@@ -11,14 +11,37 @@ import {expandRelease,readRelease,releaseReference,releaseSections,installComman
 import {unsupportedPublicInstalls} from './install-guard.mjs';
 import {pairedCopy,normalizeNotices,markdownSections,getDocuments,indexMarkdown,searchIndexes,pageTree} from '../src/lib/content.mjs';
 
-test('resolved reader release block preserves exact installation command and refuses unknown markers',async()=>{
+const publishedRecord=r=>({...r,state:'published',npm:{...r.npm,published:true}});
+test('the install block shows the command only when the record is published, and refuses unknown markers',async()=>{
   const release=await readRelease();
-  const resolved=expandRelease('Before\n<!-- release:install:start -->STALE<!-- release:install:end -->\nAfter',release);
-  assert(!resolved.includes('STALE'));assert(resolved.includes(release.npm.installCommand));
-  assert.doesNotMatch(resolved,/unpublished|unreleased|publication|candidate|ownership|private package/i);
-  assert.match(resolved,/First-team setup does not need Docker/);
+  const stub='Before\n<!-- release:install:start -->STALE<!-- release:install:end -->\nAfter';
+  assert.equal(release.npm.published,false,'the packed record is unpublished');
+  const unpublished=expandRelease(stub,release);
+  assert(!unpublished.includes('STALE'));
+  assert(!unpublished.includes(release.npm.installCommand),'no install command before npm publishes');
+  assert.doesNotMatch(unpublished,/npm install/);
+  assert.match(unpublished,/The install command arrives when the beta publishes/);
+  assert.match(unpublished,/first-team setup do not need Docker/);
+  const published=expandRelease(stub,publishedRecord(release));
+  assert(!published.includes('STALE'));
+  assert(published.includes(`\`\`\`sh\n${release.npm.installCommand}\nbowerloom --version\nbowerloom --help\n\`\`\``));
+  assert.doesNotMatch(published,/arrives when the beta publishes|unpublished|unreleased|publication|candidate|ownership|private package/i);
+  assert.match(published,/first-team setup do not need Docker/);
   assert.throws(()=>expandRelease('<!-- release:unknown:start -->x<!-- release:unknown:end -->',release));
   assert.throws(()=>expandRelease('<!-- release:status:start -->',release));
+});
+test('README, the install page, and the beta guide each carry an install block that follows the record state',async()=>{
+  const release=await readRelease();
+  const read=path=>readFile(new URL('../../../'+path,import.meta.url),'utf8');
+  for(const path of ['README.md','apps/docs/src/content/docs/start.md','apps/docs/src/content/docs/beta-guide.md']){
+    const raw=await read(path);
+    assert.equal(raw.split('<!-- release:install:start -->').length-1,1,path);
+    for(const [label,record,shows] of [['unpublished',release,false],['published',publishedRecord(release),true]]){
+      const text=expandRelease(raw,record);
+      assert.equal(text.includes(`\`\`\`sh\n${record.npm.installCommand}\nbowerloom --version\nbowerloom --help\n\`\`\``),shows,`${path} ${label}`);
+      assert.equal(/arrives when the beta publishes/.test(text),!shows,`${path} ${label}`);
+    }
+  }
 });
 test('the beta stream installs from the registry by its dist-tag or its exact version',async()=>{
   const release=await readRelease();
@@ -97,7 +120,8 @@ test('reader projection preserves raw operational state and presents bounded set
   assert.doesNotMatch(Object.values(sections).join('\n'),/unpublished|unreleased|candidate|ownership|founder acceptance|publication approval|release-qualified/i);
   assert.equal(JSON.stringify(release),before);
   const next={...release,version:'0.8.0-beta.99',distribution:{...release.distribution,archive:'bowerloom-0.8.0-beta.99.tgz'},npm:{...release.npm,installCommand:'npm install -g ./bowerloom-0.8.0-beta.99.tgz'}};
-  assert(releaseSections(next).install.includes(next.npm.installCommand));assert(releaseReference(next).includes(next.version));
+  assert(!releaseSections(next).install.includes(next.npm.installCommand),'an unpublished record shows no command');
+  assert(releaseSections(publishedRecord(next)).install.includes(next.npm.installCommand),'a published record shows its command');assert(releaseReference(next).includes(next.version));
   assert.equal(next.state,release.state);assert.equal(next.npm.published,release.npm.published);
 });
 test('rendered raw anchors suppress legacy aliases and duplicate IDs fail the shared link rule',()=>{

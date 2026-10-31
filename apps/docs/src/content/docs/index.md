@@ -1,6 +1,6 @@
 ---
 title: "Build with your agent"
-description: "Keep one harness for Claude Code and Codex, install it after a preview, and approve every change."
+description: "Set up the skills, prompts, and teams your agents use, and approve every change."
 section: "Start here"
 order: 0
 ---

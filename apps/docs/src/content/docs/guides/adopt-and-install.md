@@ -7,7 +7,7 @@ order: 6.5
 
 This guide is the main path of Bowerloom 0.8.0-beta.1. You adopt the engine files that a project already has into one harness. Then you install that harness for each engine. [Harness, engines, and fidelity](/docs/concepts/harness-and-fidelity/) defines the words. The [desktop app](/docs/app/) does the same steps on screen.
 
-Every command that writes shows a plan and a revision first. Nothing is written until you run the same command again with `--approve <revision>`. [Approvals and exit codes](/docs/cli/#approvals-and-exit-codes) explains the exit codes. No harness command runs an engine or a model.
+Every command that writes shows a plan and a revision first. Nothing is written until you approve that exact plan. In a terminal, the command asks `Apply plan <short revision>? [y/N]`. An agent, or a run with `--json` or without a terminal, prints the plan, exits 3, and applies it when you run the same command again with `--approve <revision>`. [Approvals and exit codes](/docs/cli/#approvals-and-exit-codes) explains the exit codes. No harness command runs an engine or a model.
 
 ## Ask your agent
 
@@ -37,7 +37,7 @@ bowerloom harness status
 bowerloom harness adopt
 ```
 
-Adopt reads the engine files of the folder and writes only `.bowerloom`. It changes no engine file. It exits 3 with a plan that lists each `.bowerloom` file it would write. The plan can also hold these items:
+Adopt reads the engine files of the folder and writes only `.bowerloom`. It changes no engine file. It prints a plan that lists each `.bowerloom` file it would write. In a terminal it then asks whether to apply the plan. With `--json`, or without a terminal, it exits 3 and writes nothing. The plan can also hold these items:
 
 - A conflict. Two engines hold an item of the same name and the copies differ. Answer each one with `--pick <conflict>=<variant>`, or with `--rename <conflict>:<variant>=<id>` to keep both under new ids.
 - A line `Not adopted`. Bowerloom did not read the entry. When the line says so, add `--acknowledge <id>` to leave it out on purpose.
@@ -68,7 +68,7 @@ By default install covers each supported engine that the harness lists. To choos
 If both `AGENTS.md` and `CLAUDE.md` exist and differ, choose what to do with `--reconcile`:
 
 - `accept-agents` makes `CLAUDE.md` one line that reads `@AGENTS.md`.
-- `merge` is the value that follows `bowerloom harness merge`. That command first moves the text of `CLAUDE.md` into `.bowerloom/instructions/AGENTS.md`. It shows its own plan and needs its own `--approve`.
+- `merge` is refused. Install never edits the harness, so `--reconcile merge` stops with `PORTABLE_MERGE_NOT_BUILT`. To merge, run `bowerloom harness merge --approve <revision>` first. It moves the text of `CLAUDE.md` into `.bowerloom/instructions/AGENTS.md`, shows its own plan, and needs its own approval. Then run `bowerloom harness install` with the default `accept-agents`. Install then makes `CLAUDE.md` the one line `@AGENTS.md`.
 - `keep-both` leaves `CLAUDE.md` as it is, so Claude Code keeps reading it.
 
 Two more flags apply in narrow cases. `--write-claude-md` accepts an offer in the plan to write `CLAUDE.md` as `@AGENTS.md` when no `CLAUDE.md` exists. `--pi-trust-saved` applies only when the install includes Pi, which is a preview engine.

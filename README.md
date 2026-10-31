@@ -75,12 +75,19 @@ These guides use macOS arm64 and Node 24.11.0. Other host systems are outside th
 - Keep your project out of iCloud Drive folders. Project commands refuse a project in a cloud-synced folder with `PROJECT_IN_CLOUD_FOLDER`.
 - The desktop app is a beta. The Builder, the save step, and Save points exist only in the app. The adopt, install, drift, and remove steps work in both.
 - Beta.1 supports Claude Code and Codex. OpenCode, Pi, and DeepSeek Harness are preview engines. They install only with `BOWERLOOM_PREVIEW_ENGINES=1`.
-- The npm package is not published yet. The install command arrives when the beta publishes.
 - Apple did not sign this build. [Open the unsigned app](#open-the-unsigned-app) gives the steps to open it.
 
 ## Install Bowerloom
 
-The CLI arrives on npm as `bowerloom`, under the `beta` dist-tag, when the beta publishes. This README shows no install command until then. Bowerloom is open source under the MIT license. It needs Node `>=24.11.0 <25` and npm `11`.
+<!-- release:install:start -->
+Bowerloom needs Node `>=24.11.0 <25` and npm `11`. The npm package `bowerloom` is not published yet. The install command arrives when the beta publishes, under the `beta` dist-tag.
+
+Harness commands and first-team setup do not need Docker. The separate local backend requires Docker Desktop and its own plan and approval.
+
+These guides use macOS arm64 and Node 24.11.0. Other host systems are outside this documented installation path.
+<!-- release:install:end -->
+
+Bowerloom is open source under the MIT license.
 
 If you have a release file, install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.8.0-beta.1.tgz`. Then run `bowerloom --version` and `bowerloom --help`.
 
