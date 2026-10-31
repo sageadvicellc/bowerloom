@@ -223,7 +223,7 @@ test('every gesture beta.1 does not allow is refused in words, and the draft sta
 test('New harness and a harness from a scan open the sheet that makes a harness from a folder; no other refusal opens anything', () => {
   for (const kind of ['new-harness', 'harness-from-scan'] as const) {
     const r = run({ kind });
-    assert.ok(!r.ok && r.opens === 'adopt', kind);
+    assert.ok(!r.ok && r.opens === 'from-folder', kind);
   }
   for (const action of [{ kind: 'rename', name: 'x' }, { kind: 'second-harness' }, { kind: 'add-part', part: 'agent' }, { kind: 'link', a: 'agent:editor', b: 'agent:writer' }] as const) {
     const r = run(action);

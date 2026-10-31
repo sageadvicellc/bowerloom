@@ -74,18 +74,18 @@ export const BUILDER_REFUSALS = Object.freeze({
 } as const);
 export type BuilderRefusal = keyof typeof BUILDER_REFUSALS;
 
-/** The sheet a refusal opens: the one that makes a harness from a folder, or none. */
-export type BuilderOpens = 'adopt' | null;
+/** The sheet a refusal opens: "From a folder", which makes a harness from a folder (`ui.openAdopt`), or none. */
+export type BuilderOpens = 'from-folder' | null;
 /** An allowed gesture gives the next draft. A refused one gives its code, its words, and the sheet it opens, and no draft. */
 export type BuilderResult =
   | { readonly ok: true; readonly draft: SaveDraft }
   | { readonly ok: false; readonly refusal: BuilderRefusal; readonly words: string; readonly opens: BuilderOpens };
 
-const OPENS_ADOPT: readonly BuilderRefusal[] = ['new-harness', 'harness-from-scan'];
+const OPENS_FROM_FOLDER: readonly BuilderRefusal[] = ['new-harness', 'harness-from-scan'];
 const TOOL = 'tool:';
 
 function refuse(refusal: BuilderRefusal): BuilderResult {
-  return { ok: false, refusal, words: BUILDER_REFUSALS[refusal], opens: OPENS_ADOPT.includes(refusal) ? 'adopt' : null };
+  return { ok: false, refusal, words: BUILDER_REFUSALS[refusal], opens: OPENS_FROM_FOLDER.includes(refusal) ? 'from-folder' : null };
 }
 /** The next draft, or a no-change refusal when the reducer handed the same draft back. */
 const changed = (before: SaveDraft, after: SaveDraft): BuilderResult => (after === before ? refuse('no-change') : { ok: true, draft: after });
