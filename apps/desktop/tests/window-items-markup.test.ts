@@ -7,8 +7,10 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { NotesPanel } from '../renderer/harness/notes/NotesPanel.js';
 import { notesCards } from '../renderer/harness/notes/notes-logic.js';
-import { EditStep, SaveReview } from '../renderer/harness/sheets/SaveSheet.js';
-import type { CopyParts, Shown } from '../renderer/harness/sheets/SaveSheet.js';
+import { SaveReview } from '../renderer/harness/sheets/SaveSheet.js';
+import type { Shown } from '../renderer/harness/sheets/SaveSheet.js';
+import { EditStep } from '../renderer/harness/FolderEditor.js';
+import type { CopyParts } from '../renderer/harness/FolderEditor.js';
 import { ENGINE_WORDS } from '../renderer/harness/words-engine.js';
 import { NOTES } from '../renderer/harness/words-notes.js';
 import { EMPTY_DRAFT, copySkill, definitionWorld, draftCount, draftView, stopSource, stoppedSources } from '../shared/harness/save-draft.js';
@@ -124,7 +126,7 @@ test('the edit offers skills from another folder: each folder by its label, its 
   };
   const html = renderToStaticMarkup(createElement(EditStep, {
     base: BASE, now, draft, count: draftCount(BASE, draft), held: false, versions: { ok: true, value: [] }, world: definitionWorld(now), linkingId: null, selectedId: null,
-    onDraft: noop, onLinkStart: noop, onLinkTarget: noop, onLinkCancel: noop, onSelect: noop, onMove: noop, onGoBack: noop, copy,
+    onAction: noop, onLinkStart: noop, onLinkTarget: noop, onLinkCancel: noop, onSelect: noop, onMove: noop, onGoBack: noop, copy,
   }));
   assert.match(html, /data-section="copy-skills"/);
   assert.match(html, /data-copy-from="folder-2"[^>]*aria-pressed="true"/);

@@ -4,7 +4,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { EditStep, SaveReview, SavePoints } from '../renderer/harness/sheets/SaveSheet.js';
+import { SaveReview } from '../renderer/harness/sheets/SaveSheet.js';
+import { EditStep, SavePoints } from '../renderer/harness/FolderEditor.js';
 import type { Shown } from '../renderer/harness/sheets/SaveSheet.js';
 import { EMPTY_DRAFT, definitionWorld, draftView, linkSkill, removeSkill } from '../shared/harness/save-draft.js';
 import type { DefinitionView, VersionView } from '../shared/engine/types.js';
@@ -24,7 +25,7 @@ test('the edit draws the draft: the agent ticks follow it, a removed skill is ma
   const now = draftView(BASE, draft);
   const html = renderToStaticMarkup(createElement(EditStep, {
     base: BASE, now, draft, count: 2, held: false, versions: { ok: true, value: [] }, world: definitionWorld(now), linkingId: null, selectedId: null,
-    onDraft: noop, onLinkStart: noop, onLinkTarget: noop, onLinkCancel: noop, onSelect: noop, onMove: noop, onGoBack: noop,
+    onAction: noop, onLinkStart: noop, onLinkTarget: noop, onLinkCancel: noop, onSelect: noop, onMove: noop, onGoBack: noop,
   }));
   assert.match(html, /data-draft="2"/);
   assert.ok(html.includes('2 changes, not saved yet.'));

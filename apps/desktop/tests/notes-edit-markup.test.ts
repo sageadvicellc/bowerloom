@@ -5,8 +5,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { EditStep, SaveBar, SaveReview } from '../renderer/harness/sheets/SaveSheet.js';
-import type { EditNotes } from '../renderer/harness/sheets/SaveSheet.js';
+import { SaveBar, SaveReview } from '../renderer/harness/sheets/SaveSheet.js';
+import { EditStep } from '../renderer/harness/FolderEditor.js';
+import type { EditNotes } from '../renderer/harness/FolderEditor.js';
 import { notesCards } from '../renderer/harness/notes/notes-logic.js';
 import { NOTES } from '../renderer/harness/words-notes.js';
 import { EMPTY_DRAFT, KEEPER_AGENT, KEEPER_KIT, addKit, definitionWorld, draftCount, draftView, keeperOf, keeperSkills } from '../shared/harness/save-draft.js';
@@ -34,7 +35,7 @@ function draw(withKit: boolean): string {
   };
   return renderToStaticMarkup(createElement(EditStep, {
     base: BASE, now, draft, count: draftCount(BASE, draft), held: false, versions: { ok: true, value: [] }, world: definitionWorld(now, cards.filter(c => !c.attached).map(c => c.source)),
-    linkingId: null, selectedId: null, onDraft: noop, onLinkStart: noop, onLinkTarget: noop, onLinkCancel: noop, onSelect: noop, onMove: noop, onGoBack: noop, notes,
+    linkingId: null, selectedId: null, onAction: noop, onLinkStart: noop, onLinkTarget: noop, onLinkCancel: noop, onSelect: noop, onMove: noop, onGoBack: noop, notes,
   }));
 }
 

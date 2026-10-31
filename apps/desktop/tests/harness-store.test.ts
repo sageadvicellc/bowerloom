@@ -134,7 +134,7 @@ test('fixMissingPart: the Library part takes the place of the missing one, the l
 test('the install list for Weekly report crew in bowerloom is the design list: 10 files, 7 new, 2 updates, 1 conflict', () => {
   const plan = buildInstallPlan(world(), bowerloom, weekly, ['claude-code', 'codex']);
   assert.deepEqual(plan.counts, { new: 7, update: 2, conflict: 1, total: 10 });
-  assert.deepEqual(plan.manifest, { path: '.bowerloom/harnesses/weekly-report-crew.json', state: 'new' });
+  assert.deepEqual(plan.manifest, { path: '.bowerloom/harness.json', state: 'new' });
   assert.deepEqual(plan.groups.map(g => g.interfaceId), ['claude-code', 'codex']);
   assert.deepEqual(plan.groups[0]!.files, [
     { path: '.claude/agents/planner.md', state: 'new' }, { path: '.claude/agents/researcher.md', state: 'new' }, { path: '.claude/agents/writer.md', state: 'update' },
@@ -154,7 +154,7 @@ test('the install list for Weekly report crew in bowerloom is the design list: 1
 
 test('any other install list follows one rule: a new manifest, an agent file for each agent, and the first two skills', () => {
   const plan = buildInstallPlan(world(), archive, inbox, ['claude-code', 'codex']);
-  assert.equal(plan.manifest.state, 'new'); assert.equal(plan.manifest.path, '.bowerloom/harnesses/inbox-helper.json');
+  assert.equal(plan.manifest.state, 'new'); assert.equal(plan.manifest.path, '.bowerloom/harness.json');
   assert.deepEqual(plan.groups[0]!.files.map(f => f.path), ['.claude/agents/inbox-sorter.md', '.claude/skills/answer-a-common-question/SKILL.md', '.claude/skills/sort-the-inbox/SKILL.md']);
   assert.ok(plan.groups.every(g => g.files.every(f => f.state === 'new')));
   const conflict = buildInstallPlan(world(), notes, research, ['codex']);

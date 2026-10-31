@@ -73,7 +73,7 @@ export const installFor = (name: string): string => `Install ${name}`;
 export const updateFor = (name: string): string => `Update ${name}`;
 /** "Review Codex". */
 export const reviewFor = (name: string): string => `Review ${name}`;
-/** "Saved in the project as .bowerloom/harnesses/weekly-report-crew.json. Commit it to share the harness." */
+/** "Saved in the project as .bowerloom/harness.json. Commit it to share the harness." */
 export const savedAs = (path: string): string => `Saved in the project as ${path}. Commit it to share the harness.`;
 /** "Conflict: .codex/agents/writer.toml already exists. Pick one." */
 export const conflictTitle = (path: string): string => `Conflict: ${path} already exists. Pick one.`;

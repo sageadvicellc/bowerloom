@@ -7,7 +7,7 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { removeTempDirs } from './proto-temp.js';
-import { WEEKLY, fresh, launchHarness, shot } from './harness-page.js';
+import { fresh, launchHarness, shot } from './harness-page.js';
 import type { Harness } from './harness-page.js';
 
 let h: Harness;
@@ -60,7 +60,7 @@ const SHEETS: readonly (readonly [string, (p: Page) => Promise<void>])[] = [
 
 const SCREENS: readonly (readonly [string, string])[] = [
   ['welcome', '#prototype-v3'], ['choose', '#prototype-v3/choose'], ['read', '#prototype-v3/read'], ['harnesses', '#prototype-v3/harnesses'],
-  ['builder-graph', `#prototype-v3/builder/${WEEKLY}/graph`], ['builder-list', `#prototype-v3/builder/${WEEKLY}/list`], ['library', '#prototype-v3/library/skill'],
+  ['builder', '#prototype-v3/builder/sample-weekly-report'], ['library', '#prototype-v3/library/skill'],
   ['projects', '#prototype-v3/projects'], ['runs', '#prototype-v3/runs'], ['compare', '#prototype-v3/compare/group-1'], ['interfaces', '#prototype-v3/interfaces'],
   ['history', '#prototype-v3/history'], ['help', '#prototype-v3/help'],
 ];

@@ -60,6 +60,8 @@
 [data-home] .hx-box-press:hover { border-color: var(--accent-strong); background: var(--accent-soft); }
 [data-home] .hx-box-main { all: unset; box-sizing: border-box; flex: 1 1 auto; min-width: 0; font-size: var(--hm-text-base); font-weight: 600; cursor: pointer; touch-action: manipulation; overflow-wrap: anywhere; }
 [data-home] .hx-box-main::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+/* A button of its own in a row that presses as a whole (the Builder's Unlink) sits above the row's press area. */
+[data-home] .hx-box-press .kit-button { position: relative; z-index: 1; }
 [data-home] .hx-box:has(.hx-box-main:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
 [data-home] .hx-box-kind { flex: none; position: relative; color: var(--text-muted); font-size: var(--hm-text-base); }
 [data-home] .hx-excerpt { margin: 0; padding: var(--hm-space-4); background: var(--surface-2); border-radius: var(--hm-radius); font: inherit; font-size: var(--hm-text-base); line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -129,6 +131,8 @@
 [data-home] .hx-node[data-missing] { background: var(--surface); border: 1.5px dashed var(--hm-amber); }
 [data-home] .hx-node[data-missing] .hx-tile { background: transparent; color: var(--hm-amber); }
 [data-home] .hx-node[data-candidate] { border-color: var(--accent-strong); box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 4px var(--accent-strong); cursor: pointer; }
+/* Drag to link: the agent a dragged skill or notes card would link to when dropped. */
+[data-home] .hx-node[data-drop] { border-color: var(--accent-strong); box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 4px var(--accent-strong); }
 [data-home] .hx-node[data-dragging] { z-index: 3; cursor: grabbing; box-shadow: var(--hm-shadow-lift); }
 [data-home] .hx-node:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 [data-home] .hx-node-text { display: flex; flex-direction: column; min-width: 0; }

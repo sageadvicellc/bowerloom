@@ -57,14 +57,19 @@ test('Start in the details and the play button of a row open the start sheet; Es
   await expect(p.getByRole('dialog')).toHaveCount(0);
 });
 
-test('Assign to project opens the install sheet, and Open in builder opens the builder', async () => {
+test('Assign to project opens the install sheet; Open in builder on a sample harness says why and opens "From a folder"; a folder opens the Builder', async () => {
   const p = page();
   await p.getByRole('button', { name: 'Assign to project', exact: true }).click();
   await expect(p.getByRole('dialog', { name: 'Install Weekly report crew' })).toBeVisible();
   await p.keyboard.press('Escape');
-  await p.getByRole('button', { name: 'Open in builder', exact: true }).click();
-  await expect(p.getByRole('heading', { level: 1, name: 'Weekly report crew' })).toBeVisible();
-  await expect(p.getByText('11 parts')).toBeVisible();
+  // The Builder edits one folder's harness, so a harness of the sample world opens the sheet that makes one from a folder.
+  await p.getByRole('complementary').getByRole('button', { name: 'Open in builder', exact: true }).click();
+  await expect(p.getByText('Each folder holds one harness. Make a new one from a folder.')).toBeVisible();
+  await expect(p.getByRole('dialog', { name: 'New harness from a folder' })).toBeVisible();
+  await p.keyboard.press('Escape');
+  await p.locator('[data-section="folders"]').getByRole('button', { name: 'Open weekly-report in the builder', exact: true }).click();
+  await expect(p.getByRole('heading', { level: 1, name: 'weekly-report' })).toBeVisible();
+  await expect(p.locator('[data-draft]')).toContainText('No change yet.');
 });
 
 test('Cmd or Ctrl+B puts the navigation away to a rail and brings it back', async () => {

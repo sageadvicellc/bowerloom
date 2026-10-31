@@ -1,212 +1,276 @@
 /**
- * The Harness builder (S3) in the real window: the graph, selecting a node (its neighbours stay bright), dragging a node (its place is kept in the manifest and the curves follow),
- * linking by the handle, the Fix sheet, zoom and fit, the list view, and the empty harness.
+ * The Builder of one folder's harness, in the real window on the sample launch (--prototype-v3): the sample engine's folders, in memory, nothing read or
+ * written. The folder list, drag to link with real pointer events, a drag that only moves, Unlink, Undo and Redo, a refusal in words, Save through the save
+ * sheet's review and its Install, the Save points drawer with Go back, "Discard N changes?" when leaving, New harness opening "From a folder", a folder with
+ * no harness, and an id main does not know. Set HARNESS_SHOTS to a folder to save screenshots.
  */
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { removeTempDirs } from './proto-temp.js';
-import { WEEKLY, fresh, launchHarness } from './harness-page.js';
+import { fresh, launchHarness, shot } from './harness-page.js';
 import type { Harness } from './harness-page.js';
 
 let h: Harness;
 const page = (): Page => h.page;
-const node = (name: string): Locator => page().locator('.hx-node', { hasText: name }).first();
+const WEEKLY = 'sample-weekly-report';
+const BUILDER = `#prototype-v3/builder/${WEEKLY}`;
+const node = (id: string): Locator => page().locator(`.hx-node[data-node="${id}"]`);
+const count = (p: Page): Locator => p.locator('[data-draft]');
+const tick = (p: Page, agent: string, skill: string): Locator => p.locator(`[data-agent="${agent}"]`).getByRole('checkbox', { name: `${skill}: ${agent}` });
 
 test.beforeAll(async () => { test.setTimeout(240_000); h = await launchHarness(); });
 test.afterAll(async () => { try { await h.app.close(); } finally { removeTempDirs(); } });
-test.beforeEach(async () => { await page().emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' }); await fresh(page(), `#prototype-v3/builder/${WEEKLY}/graph`); await expect(node('Researcher')).toBeVisible(); });
+test.beforeEach(async () => { await page().emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' }); });
 
-test('the graph shows the eleven parts and the missing one, with the legend, the zoom buttons and the small map', async () => {
-  const p = page();
-  await expect(p.locator('.hx-node')).toHaveCount(12);
-  await expect(p.locator('.hx-node[data-missing]')).toHaveCount(1);
-  await expect(p.locator('.hx-edge')).toHaveCount(10);
-  await expect(p.getByText('New in this harness')).toBeVisible();
-  await expect(p.getByText('Missing. Fix shows the change first.')).toBeVisible();
-  for (const name of ['Zoom in', 'Zoom out', 'Fit to window']) await expect(p.getByRole('button', { name, exact: true })).toBeVisible();
-  await expect(p.getByRole('group', { name: 'Small map' })).toBeVisible();
-  await expect(p.getByText('11 parts')).toBeVisible();
-  await expect(p.getByRole('complementary')).toContainText('Nothing selected');
-});
-
-test('selecting a node keeps its neighbours bright and fades the rest; the details show the part', async () => {
-  const p = page();
-  await node('Researcher').click();
-  await expect(node('Researcher')).toHaveAttribute('aria-pressed', 'true');
-  for (const name of ['Web search', 'Summarize sources', 'Check facts', 'Client list']) await expect(node(name)).not.toHaveAttribute('data-faded', '');
-  for (const name of ['Planner', 'Writer', 'Draft outline', 'Spreadsheet', 'Format report', 'Style guide']) await expect(node(name)).toHaveAttribute('data-faded', '');
-  await expect(p.locator('.hx-edge[data-on]')).toHaveCount(4);
-  const panel = p.getByRole('complementary');
-  await expect(panel.getByRole('heading', { level: 2, name: 'Researcher' })).toBeVisible();
-  await expect(panel).toContainText('agents/researcher.md');
-  await expect(panel).toContainText('name: researcher');
-  await expect(panel).toContainText('Used in 1 other harness');
-  for (const name of ['Summarize sources', 'Web search', 'Check facts', 'Client list']) await expect(panel.getByRole('button', { name, exact: true })).toBeVisible();
-  // A press on the background clears the selection.
-  await p.locator('.hx-canvas').click({ position: { x: 300, y: 20 } });
-  await expect(p.getByRole('complementary')).toContainText('Nothing selected');
-});
-
-test('dragging a node moves it, the curve follows, and the place is kept in the manifest', async () => {
-  const p = page();
-  const writer = node('Writer');
-  const before = (await writer.boundingBox())!;
-  const edgeBefore = await p.locator('.hx-edge').last().getAttribute('d');
-  const x = before.x + 60, y = before.y + 30;
-  await p.mouse.move(x, y); await p.mouse.down(); await p.mouse.move(x + 30, y - 60, { steps: 6 }); await p.mouse.move(x + 60, y - 120, { steps: 6 });
-  const during = await p.locator('.hx-edge').evaluateAll(list => list.map(e => e.getAttribute('d')));
+/** Drags one node onto a point of another with real pointer events, in steps, as a person would. */
+async function drag(p: Page, from: Locator, to: { x: number; y: number }): Promise<void> {
+  const a = (await from.boundingBox())!;
+  await p.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await p.mouse.down();
+  await p.mouse.move(a.x + a.width / 2 + 12, a.y + a.height / 2 + 6, { steps: 4 });
+  await p.mouse.move(to.x, to.y, { steps: 12 });
   await p.mouse.up();
-  const after = (await writer.boundingBox())!;
-  expect(Math.round(after.x - before.x)).toBe(60); expect(Math.round(before.y - after.y)).toBe(120);
-  expect(during.some(d => d !== edgeBefore)).toBe(true);
-  // The drag did not select the node.
-  await expect(writer).not.toHaveAttribute('aria-pressed', 'true');
-  // The place is in the manifest: leave to the list view and come back, and the node is where it was dropped.
-  const left = await writer.evaluate(el => (el as HTMLElement).style.left + '|' + (el as HTMLElement).style.top);
-  await p.getByRole('button', { name: 'List view', exact: true }).click();
-  await expect(p.getByRole('heading', { level: 2, name: /^Agents/ })).toBeVisible();
-  await p.getByRole('button', { name: 'Graph view', exact: true }).click();
-  await expect(node('Writer')).toBeVisible();
-  expect(await node('Writer').evaluate(el => (el as HTMLElement).style.left + '|' + (el as HTMLElement).style.top)).toBe(left);
-  expect(left).not.toBe('48px|462px');
+}
+const middle = async (l: Locator): Promise<{ x: number; y: number }> => { const b = (await l.boundingBox())!; return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
+
+async function openWeekly(p: Page): Promise<void> {
+  await fresh(p, BUILDER);
+  await expect(node('agent:editor')).toBeVisible();
+  await expect(count(p)).toContainText('No change yet.');
+}
+
+test('the folder list opens a folder in the Builder, which draws its harness as a graph with no change yet', async () => {
+  const p = page();
+  await fresh(p, '#prototype-v3/harnesses');
+  const folders = p.locator('[data-section="folders"]');
+  await expect(folders.locator('[data-folder-row]')).toHaveCount(3);
+  await expect(folders.getByRole('button', { name: 'Open weekly-report in the builder', exact: true })).toBeVisible();
+  await expect(folders.locator('[data-folder-row="sample-inbox-tools"]').getByRole('button', { name: 'From a folder', exact: true })).toBeVisible();
+  await folders.getByRole('button', { name: 'Open weekly-report in the builder', exact: true }).click();
+  await expect(p).toHaveURL(new RegExp(`#prototype-v3/builder/${WEEKLY}$`));
+  await expect(p.getByRole('heading', { level: 1, name: 'weekly-report' })).toBeVisible();
+  for (const id of ['agent:editor', 'agent:writer', 'skill:check-facts', 'skill:draft-outline']) await expect(node(id)).toBeVisible();
+  await expect(p.locator('.hx-edge')).toHaveCount(1);
+  await expect(count(p)).toContainText('No change yet.');
+  await expect(p.locator('[data-builder-save]')).toBeDisabled();
+  await expect(p.locator('[data-builder-undo]')).toBeDisabled();
+  await expect(p.locator('[data-drop-hint]')).toHaveText('Drag a skill onto an agent to link them.');
+  // The editor in the window has no save points of its own: they are in the drawer.
+  await expect(p.locator('main [data-section="save-points"]')).toHaveCount(0);
+  await shot(p, 'B1-builder');
 });
 
-test('the arrow keys move the focused node, and zoom and fit change the view', async () => {
+test('drag to link: a skill dropped on an agent links them, and goes back to its place; a drop on empty ground only moves it', async () => {
   const p = page();
-  await node('Planner').focus();
-  const before = (await node('Planner').boundingBox())!;
-  await p.keyboard.press('ArrowRight'); await p.keyboard.press('ArrowDown');
-  const after = (await node('Planner').boundingBox())!;
-  expect(after.x).toBeGreaterThan(before.x); expect(after.y).toBeGreaterThan(before.y);
-  const world = p.locator('.hx-world');
-  const t0 = await world.evaluate(el => (el as HTMLElement).style.transform);
-  await p.getByRole('button', { name: 'Zoom in', exact: true }).click();
-  const t1 = await world.evaluate(el => (el as HTMLElement).style.transform);
-  expect(t1).not.toBe(t0);
-  await p.getByRole('button', { name: 'Zoom out', exact: true }).click(); await p.getByRole('button', { name: 'Zoom out', exact: true }).click();
-  await p.getByRole('button', { name: 'Fit to window', exact: true }).click();
-  expect(await world.evaluate(el => (el as HTMLElement).style.transform)).toBe(t0);
-  // Panning: drag the background.
-  const box = (await p.locator('.hx-canvas').boundingBox())!;
-  await p.mouse.move(box.x + 330, box.y + 40); await p.mouse.down(); await p.mouse.move(box.x + 380, box.y + 90, { steps: 5 }); await p.mouse.up();
-  expect(await world.evaluate(el => (el as HTMLElement).style.transform)).not.toBe(t0);
+  await openWeekly(p);
+  const skill = node('skill:check-facts'), before = (await skill.boundingBox())!;
+  await drag(p, skill, await middle(node('agent:editor')));
+  await expect(count(p)).toContainText('1 change, not saved yet.');
+  await expect(tick(p, 'editor', 'check-facts')).toBeChecked();
+  await expect(p.locator('.hx-edge')).toHaveCount(2);
+  const back = (await skill.boundingBox())!;
+  expect(Math.round(back.x - before.x)).toBe(0); expect(Math.round(back.y - before.y)).toBe(0);
+  await shot(p, 'B2-builder-linked');
+  // A drag to empty ground moves the node and changes nothing in the draft.
+  const outline = node('skill:draft-outline'), was = (await outline.boundingBox())!;
+  await drag(p, outline, { x: was.x + was.width / 2 + 40, y: was.y + was.height / 2 + 90 });
+  const moved = (await outline.boundingBox())!;
+  expect(Math.abs(moved.y - was.y)).toBeGreaterThan(40);
+  await expect(count(p)).toContainText('1 change, not saved yet.');
 });
 
-test('linking: press the handle of an agent, then a part; the link is saved and can be undone', async () => {
+test('Unlink in the details takes a link off; Undo and Redo step through the unsaved changes, with the keys too', async () => {
   const p = page();
-  await node('Researcher').click();
-  await p.getByRole('button', { name: 'Link from this agent', exact: true }).click();
-  await expect(p.getByText('Pick a part to link from Researcher.')).toBeVisible();
-  await expect(node('Format report')).toHaveAttribute('data-candidate', '');
-  await expect(node('Web search')).not.toHaveAttribute('data-candidate', '');
-  await node('Format report').click();
-  await expect(p.getByText('Linked Researcher to Format report.')).toBeVisible();
-  await expect(p.getByRole('complementary').getByRole('button', { name: 'Format report', exact: true })).toBeVisible();
-  await p.getByRole('button', { name: 'Undo', exact: true }).click();
-  await expect(p.getByRole('complementary').getByRole('button', { name: 'Format report', exact: true })).toHaveCount(0);
-  // Escape stops linking without a link.
-  await node('Researcher').click();
-  await p.getByRole('button', { name: 'Link from this agent', exact: true }).click();
-  await p.keyboard.press('Escape');
-  await expect(p.getByText('Pick a part to link from Researcher.')).toHaveCount(0);
-});
-
-test('the keyboard can link: "Link to..." in the details, and Enter on the circle, both start linking; a part is picked with the keyboard and the link is saved', async () => {
-  const p = page();
+  await openWeekly(p);
+  await drag(p, node('skill:check-facts'), await middle(node('agent:editor')));
+  await expect(count(p)).toContainText('1 change, not saved yet.');
+  await node('agent:writer').click();
   const panel = p.getByRole('complementary');
-  const canvas = p.locator('.hx-canvas');
-  // Select an agent with the keyboard, press "Link to...", and pick the part that has the focus.
-  await node('Researcher').focus();
+  await expect(panel.getByRole('heading', { level: 2, name: 'writer' })).toBeVisible();
+  await panel.getByRole('button', { name: 'Unlink writer and draft-outline', exact: true }).click();
+  await expect(count(p)).toContainText('2 changes, not saved yet.');
+  await expect(tick(p, 'writer', 'draft-outline')).not.toBeChecked();
+  await expect(p.locator('.hx-edge')).toHaveCount(1);
+  await p.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(count(p)).toContainText('1 change, not saved yet.');
+  await expect(tick(p, 'writer', 'draft-outline')).toBeChecked();
+  await p.getByRole('button', { name: 'Redo', exact: true }).click();
+  await expect(count(p)).toContainText('2 changes, not saved yet.');
+  await p.locator('.hx-canvas').click({ position: { x: 300, y: 12 } });
+  await p.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
+  await p.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
+  await expect(count(p)).toContainText('No change yet.');
+  await expect(p.locator('[data-builder-undo]')).toBeDisabled();
+  await p.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+z' : 'Control+Shift+z');
+  await expect(count(p)).toContainText('1 change, not saved yet.');
+});
+
+test('a skill selected offers Remove, which says it deletes the files at Save, and Keep takes it back', async () => {
+  const p = page();
+  await openWeekly(p);
+  await node('skill:check-facts').click();
+  const panel = p.getByRole('complementary');
+  await expect(panel).toContainText('Remove deletes the skill\'s files when you save.');
+  await panel.getByRole('button', { name: 'Remove', exact: true }).click();
+  await expect(count(p)).toContainText('1 change, not saved yet.');
+  await expect(node('skill:check-facts')).toHaveCount(0);
+  await expect(p.locator('[data-skill-row="check-facts"]')).toHaveAttribute('data-removed', '');
+  await panel.getByRole('button', { name: 'Keep', exact: true }).click();
+  await expect(count(p)).toContainText('No change yet.');
+  await expect(node('skill:check-facts')).toBeVisible();
+});
+
+test('a refused drop says why in words, the draft does not change, and the node goes back to its place', async () => {
+  const p = page();
+  await openWeekly(p);
+  const outline = node('skill:draft-outline'), before = (await outline.boundingBox())!;
+  await drag(p, outline, await middle(node('agent:writer')));
+  await expect(p.getByText('That link is there already.')).toBeVisible();
+  await expect(count(p)).toContainText('No change yet.');
+  const after = (await outline.boundingBox())!;
+  expect(Math.round(after.x - before.x)).toBe(0); expect(Math.round(after.y - before.y)).toBe(0);
+});
+
+test('the keyboard links too: "Link to..." in the details, then Enter on the part with the focus', async () => {
+  const p = page();
+  await openWeekly(p);
+  await node('agent:editor').focus();
   await p.keyboard.press('Enter');
-  await expect(node('Researcher')).toHaveAttribute('aria-pressed', 'true');
-  const linkTo = panel.getByRole('button', { name: 'Link to...', exact: true });
+  const linkTo = p.getByRole('complementary').getByRole('button', { name: 'Link to...', exact: true });
   await linkTo.focus();
   await p.keyboard.press('Enter');
-  await expect(canvas).toHaveAttribute('data-linking', '');
-  await expect(p.getByText('Pick a part to link from Researcher.')).toBeVisible();
+  await expect(p.locator('.hx-canvas')).toHaveAttribute('data-linking', '');
   await expect(p.locator('.hx-node[data-candidate]:focus')).toHaveCount(1);
-  const picked = await p.evaluate(() => document.activeElement?.querySelector('.hx-node-name')?.textContent ?? '');
-  expect(picked).not.toBe('');
   await p.keyboard.press('Enter');
-  await expect(p.getByText(`Linked Researcher to ${picked}.`)).toBeVisible();
-  await expect(canvas).not.toHaveAttribute('data-linking', '');
-  await expect(panel.getByRole('button', { name: picked, exact: true })).toBeVisible();
-  // The circle on the node: Enter on it starts the link (the key does not reach the node), and the arrows do not move the node.
-  await node('Writer').focus();
-  await p.keyboard.press('Enter');
-  await p.keyboard.press('Tab');
-  const handle = p.getByRole('button', { name: 'Link from this agent', exact: true });
-  await expect(handle).toBeFocused();
-  const before = await node('Writer').boundingBox();
-  await p.keyboard.press('ArrowRight');
-  expect(await node('Writer').boundingBox()).toEqual(before);
-  await p.keyboard.press('Enter');
-  await expect(canvas).toHaveAttribute('data-linking', '');
-  await expect(p.getByText('Pick a part to link from Writer.')).toBeVisible();
-  const target = p.locator('.hx-node[data-candidate]').first();
-  const name = (await target.locator('.hx-node-name').textContent()) ?? '';
-  await target.focus();
-  await p.keyboard.press('Enter');
-  await expect(p.getByText(`Linked Writer to ${name}.`)).toBeVisible();
-  await expect(canvas).not.toHaveAttribute('data-linking', '');
+  await expect(count(p)).toContainText('1 change, not saved yet.');
+  await expect(p.locator('.hx-canvas')).not.toHaveAttribute('data-linking', '');
 });
 
-test('Fix opens a short sheet that says what changes, then adds the part', async () => {
+test('Save opens the save sheet on its review step with the Builder\'s draft; Done offers Install; the Save points drawer goes back', async () => {
   const p = page();
-  await p.getByRole('button', { name: 'Fix Translate', exact: true }).click();
-  const sheet = p.getByRole('dialog', { name: 'Fix Translate' });
-  await expect(sheet).toBeVisible();
-  await expect(sheet).toContainText('Only the manifest changes');
-  await sheet.getByRole('button', { name: 'Cancel' }).click();
-  await expect(p.locator('.hx-node[data-missing]')).toHaveCount(1);
-  await p.getByRole('button', { name: 'Fix Translate', exact: true }).click();
-  await p.getByRole('dialog', { name: 'Fix Translate' }).getByRole('button', { name: 'Add Translate' }).click();
-  await expect(p.locator('.hx-node[data-missing]')).toHaveCount(0);
-  await expect(p.getByText('12 parts')).toBeVisible();
-  await expect(p.getByRole('complementary').getByRole('heading', { level: 2, name: 'Translate' })).toBeVisible();
+  await openWeekly(p);
+  await drag(p, node('skill:check-facts'), await middle(node('agent:editor')));
+  await p.locator('[data-builder-save]').click();
+  const s = p.getByRole('dialog', { name: 'Edit a folder\'s harness' });
+  const review = s.locator('[data-save-review="save"]');
+  await expect(review).toBeVisible();
+  await expect(review.locator('[data-file]')).toHaveCount(1);
+  await expect(review.locator('[data-file=".bowerloom/agents/editor.md"]')).toHaveAttribute('data-action', 'update');
+  await expect(review.locator('[data-agent-after="editor"]')).toContainText('check-facts');
+  await shot(p, 'B3-builder-save-review');
+  // Back to the edit in the sheet: the same draft as the Builder's.
+  await s.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(tick(p, 'editor', 'check-facts').filter({ visible: true }).first()).toBeChecked();
+  await expect(s.locator('[data-draft]')).toContainText('1 change, not saved yet.');
+  await s.getByRole('button', { name: 'Review the save', exact: true }).click();
+  await review.locator('[data-approve-plan] input').check();
+  await s.getByRole('button', { name: 'Save 1 file', exact: true }).click();
+  await expect(s.locator('[data-version-kept]')).toHaveAttribute('data-version-kept', 'v2');
+  await expect(s.locator('[data-install-next]')).toHaveText('Install it');
+  await s.locator('[data-install-next]').click();
+  const install = p.getByRole('dialog', { name: 'Install a folder\'s harness' });
+  await expect(install).toBeVisible();
+  await install.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(install).toHaveCount(0);
+
+  // The Builder reads the folder again: the link is saved, and nothing waits.
+  await expect(count(p)).toContainText('No change yet.');
+  await expect(tick(p, 'editor', 'check-facts')).toBeChecked();
+  await p.getByRole('button', { name: 'Save points', exact: true }).click();
+  const drawer = p.getByRole('dialog', { name: 'Save points' });
+  await expect(drawer.locator('[data-version]')).toHaveCount(2);
+  await expect(drawer.locator('[data-version="v2"]')).toHaveAttribute('data-current', '');
+  await shot(p, 'B4-builder-save-points');
+  await drawer.getByRole('button', { name: 'Go back to v1', exact: true }).click();
+  const back = s.locator('[data-save-review="restore"]');
+  await expect(back.locator('[data-going-back="v1"]')).toContainText(/as it was/i);
+  await back.locator('[data-approve-plan] input').check();
+  await s.getByRole('button', { name: 'Go back to v1', exact: true }).click();
+  await expect(s.locator('[data-version-kept]')).toBeVisible();
+  await s.getByRole('button', { name: 'Close', exact: true }).last().click();
+  await expect(tick(p, 'editor', 'check-facts')).not.toBeChecked();
 });
 
-test('Add part opens the Library as a drawer, and Remove takes a part out without deleting its file', async () => {
+test('Go back with unsaved changes asks "Discard N changes?" first: Keep editing opens nothing, Discard drops the draft and opens the review', async () => {
   const p = page();
-  await p.getByRole('button', { name: 'Add part', exact: true }).click();
-  const drawer = p.getByRole('dialog', { name: 'Add a part' });
-  await expect(drawer).toBeVisible();
-  await drawer.getByRole('button', { name: 'Add Answer a common question to Weekly report crew' }).click();
-  await expect(p.getByText('12 parts')).toBeVisible();
+  await openWeekly(p);
+  // One save, so there is a save point to go back to.
+  await drag(p, node('skill:check-facts'), await middle(node('agent:editor')));
+  await p.getByRole('button', { name: 'Save', exact: true }).click();
+  const s = p.getByRole('dialog', { name: 'Edit a folder\'s harness' });
+  await s.locator('[data-approve-plan] input').check();
+  await s.getByRole('button', { name: 'Save 1 file', exact: true }).click();
+  await expect(s.locator('[data-version-kept]')).toBeVisible();
+  await s.getByRole('button', { name: 'Close', exact: true }).last().click();
+  await expect(count(p)).toContainText('No change yet.');
+  // A new change, not saved. Go back would throw it away, so it asks.
+  await tick(p, 'writer', 'check-facts').check();
+  await expect(count(p)).toContainText('1 change, not saved yet.');
+  await p.getByRole('button', { name: 'Save points', exact: true }).click();
+  const drawer = p.getByRole('dialog', { name: 'Save points' });
+  await drawer.getByRole('button', { name: 'Go back to v1', exact: true }).click();
+  const ask = p.getByRole('dialog', { name: 'Discard 1 change?' });
+  await expect(ask).toBeVisible();
+  await expect(s).toHaveCount(0);
+  await ask.getByRole('button', { name: 'Keep editing', exact: true }).click();
+  await expect(ask).toHaveCount(0);
+  await expect(s).toHaveCount(0);
+  await expect(count(p)).toContainText('1 change, not saved yet.');
+  await expect(tick(p, 'writer', 'check-facts')).toBeChecked();
+  // Discard: the draft goes, and the review of the go-back opens.
+  await p.getByRole('button', { name: 'Save points', exact: true }).click();
+  await p.getByRole('dialog', { name: 'Save points' }).getByRole('button', { name: 'Go back to v1', exact: true }).click();
+  await p.getByRole('dialog', { name: 'Discard 1 change?' }).getByRole('button', { name: 'Discard', exact: true }).click();
+  await expect(s.locator('[data-save-review="restore"] [data-going-back="v1"]')).toBeVisible();
   await p.keyboard.press('Escape');
-  await expect(drawer).toHaveCount(0);
-  await node('Spreadsheet').click();
-  const panel = p.getByRole('complementary');
-  await expect(panel).toContainText('This does not delete the file.');
-  await panel.getByRole('button', { name: 'Remove from this harness' }).click();
-  await expect(node('Spreadsheet')).toHaveCount(0);
-  await p.getByRole('button', { name: 'Undo', exact: true }).click();
-  await expect(node('Spreadsheet')).toBeVisible();
+  await expect(s).toHaveCount(0);
+  await expect(count(p)).toContainText('No change yet.');
+  await expect(tick(p, 'writer', 'check-facts')).not.toBeChecked();
 });
 
-test('the list view groups the parts, marks the new one, and View file opens the read-only file view', async () => {
+test('leaving a folder with unsaved changes asks "Discard N changes?": Keep editing stays, Discard drops the draft and goes', async () => {
   const p = page();
-  await p.getByRole('button', { name: 'List view', exact: true }).click();
-  for (const group of [/^Agents 3/, /^Skills 5/, /^Tools 2/, /^Context 2/]) await expect(p.getByRole('heading', { level: 2, name: group })).toBeVisible();
-  await expect(p.locator('.hx-lrow', { hasText: 'Spreadsheet' })).toContainText('New');
-  await expect(p.locator('.hx-lrow[data-missing]')).toContainText('Missing. Needed.');
-  await p.locator('.hx-lrow', { hasText: 'Researcher' }).getByRole('button', { name: 'Researcher', exact: true }).click();
-  await p.getByRole('complementary').getByRole('button', { name: 'View file' }).click();
-  await expect(p.getByRole('heading', { level: 1, name: 'researcher.md' })).toBeVisible();
-  await expect(p.getByText('Read-only in this release')).toBeVisible();
-  await expect(p.getByRole('heading', { level: 2, name: 'Front matter' })).toBeVisible();
-  await expect(p.getByRole('heading', { level: 2, name: 'Raw file' })).toBeVisible();
-  await expect(p.locator('.hx-raw')).toContainText('You find sources for a topic.');
-  await expect(p.getByText('Summarize sources, Check facts')).toBeVisible();
+  await openWeekly(p);
+  await drag(p, node('skill:check-facts'), await middle(node('agent:editor')));
+  await p.locator('nav').getByRole('button', { name: 'Harnesses', exact: true }).first().click();
+  const ask = p.getByRole('dialog', { name: 'Discard 1 change?' });
+  await expect(ask).toBeVisible();
+  await shot(p, 'B5-builder-discard');
+  await ask.getByRole('button', { name: 'Keep editing', exact: true }).click();
+  await expect(ask).toHaveCount(0);
+  await expect(p).toHaveURL(new RegExp(`builder/${WEEKLY}$`));
+  await expect(count(p)).toContainText('1 change, not saved yet.');
+  await p.locator('nav').getByRole('button', { name: 'Harnesses', exact: true }).first().click();
+  await p.getByRole('dialog', { name: 'Discard 1 change?' }).getByRole('button', { name: 'Discard', exact: true }).click();
+  await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
+  await p.locator('[data-section="folders"]').getByRole('button', { name: 'Open weekly-report in the builder', exact: true }).click();
+  await expect(count(p)).toContainText('No change yet.');
+  // With no change, leaving asks nothing.
+  await p.locator('nav').getByRole('button', { name: 'Harnesses', exact: true }).first().click();
+  await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
 });
 
-test('a new harness is empty, and the empty state offers to add parts', async () => {
+test('New harness is refused in words and opens "From a folder"; a folder with no harness offers it too', async () => {
   const p = page();
+  await openWeekly(p);
   await p.getByRole('button', { name: 'New harness', exact: true }).click();
-  await expect(p.getByRole('heading', { level: 1, name: 'New harness' })).toBeVisible();
-  await expect(p.getByText('0 parts')).toBeVisible();
-  await expect(p.getByRole('heading', { name: 'This harness is empty' })).toBeVisible();
-  await expect(p.getByRole('button', { name: 'Start', exact: true })).toBeDisabled();
-  await p.getByRole('button', { name: 'Add parts', exact: true }).click();
-  await expect(p.getByRole('dialog', { name: 'Add a part' })).toBeVisible();
+  await expect(p.getByText('Each folder holds one harness. Make a new one from a folder.')).toBeVisible();
+  const adopt = p.getByRole('dialog', { name: 'New harness from a folder' });
+  await expect(adopt).toBeVisible();
+  await adopt.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await fresh(p, '#prototype-v3/builder/sample-inbox-tools');
+  await expect(p.locator('[data-no-harness]')).toContainText('No harness here yet.');
+  await p.locator('[data-no-harness]').getByRole('button', { name: 'From a folder', exact: true }).click();
+  await expect(p.getByRole('dialog', { name: 'New harness from a folder' })).toBeVisible();
+});
+
+test('a store harness\'s "Open in builder" opens "From a folder", and an id main does not know goes back to the folder list', async () => {
+  const p = page();
+  await fresh(p, '#prototype-v3/harnesses');
+  await p.getByRole('complementary').getByRole('button', { name: 'Open in builder', exact: true }).click();
+  await expect(p.getByRole('dialog', { name: 'New harness from a folder' })).toBeVisible();
+  await p.keyboard.press('Escape');
+  await fresh(p, '#prototype-v3/builder/folder-99');
+  await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
+  await expect(p.getByText('That folder is not open. Choose it again.')).toBeVisible();
 });

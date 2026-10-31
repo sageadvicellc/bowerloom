@@ -401,7 +401,8 @@ test('routeGone says when an address names something the loaded state does not h
   const some = { harness: state.harnesses[0]!.id, part: state.parts[0]!.id, project: state.projects[0]!.id, run: state.runs.find(r => r.groupId !== null)!, iface: state.interfaces[0]!.id };
   for (const route of [{ name: 'welcome' }, { name: 'choose' }, { name: 'read' }, { name: 'harnesses' }, { name: 'history' }, { name: 'help' }, { name: 'runs' }, { name: 'projects' }, { name: 'interfaces' }] as const) assert.equal(routeGone(state, route), false, route.name);
   assert.equal(routeGone(state, { name: 'harnesses', id: some.harness }), false); assert.equal(routeGone(state, { name: 'harnesses', id: 'harness-999' }), true);
-  assert.equal(routeGone(state, { name: 'builder', id: some.harness, view: 'graph' }), false); assert.equal(routeGone(state, { name: 'builder', id: 'harness-999', view: 'list' }), true);
+  // The Builder names a folder, which the world of parts does not hold: the Builder itself sends an unknown folder to the folder list.
+  assert.equal(routeGone(state, { name: 'builder', id: some.harness }), false); assert.equal(routeGone(state, { name: 'builder', id: 'folder-999' }), false);
   assert.equal(routeGone(state, { name: 'file', partId: some.part }), false); assert.equal(routeGone(state, { name: 'file', partId: 'part-999' }), true);
   assert.equal(routeGone(state, { name: 'library', kind: 'skill' }), false); assert.equal(routeGone(state, { name: 'library', kind: 'skill', partId: some.part }), false); assert.equal(routeGone(state, { name: 'library', kind: 'skill', partId: 'part-999' }), true);
   assert.equal(routeGone(state, { name: 'projects', id: some.project }), false); assert.equal(routeGone(state, { name: 'projects', id: 'project-999' }), true);
@@ -409,7 +410,8 @@ test('routeGone says when an address names something the loaded state does not h
   assert.equal(routeGone(state, { name: 'compare', group: some.run.groupId! }), false); assert.equal(routeGone(state, { name: 'compare', group: 'group-999' }), true);
   assert.equal(routeGone(state, { name: 'interfaces', id: some.iface }), false); assert.equal(routeGone(state, { name: 'interfaces', id: 'nope' }), true);
   const real = realToHarnessState(emptyResult(), []);
-  assert.equal(routeGone(real, { name: 'builder', id: some.harness, view: 'graph' }), true, 'a harness of the old state is gone after a real read');
+  assert.equal(routeGone(real, { name: 'harnesses', id: some.harness }), true, 'a harness of the old state is gone after a real read');
+  assert.equal(routeGone(real, { name: 'builder', id: 'folder-1' }), false, 'a folder is not part of the read, so a real read keeps the Builder open');
   assert.equal(routeGone(real, { name: 'harnesses' }), false);
 });
 

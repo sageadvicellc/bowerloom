@@ -3,6 +3,7 @@
  * (renderer/home/home.css): the navigation at the left, the middle column (a slim top row and the stage) and the details column at the right.
  * It holds the two toggles. The navigation hides and shows with its button and with Cmd+B (Ctrl+B); the details column with its button and Cmd+Shift+B (Ctrl+Shift+B). Both live in memory only.
  * A screen draws its own top row and columns with `Screen` (Screen.tsx), which reads the toggles from here.
+ * "New harness" is refused in words: each folder holds one harness, so it opens "From a folder", which makes one (shared/harness/builder-draft.ts).
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
@@ -14,7 +15,8 @@ import { navKeyOf } from '../../shared/harness/route.js';
 import type { Route } from '../../shared/harness/route.js';
 import { Navigation } from './Navigation.js';
 import { go } from './router.js';
-import { useHarnessStore } from './session.js';
+import { useUi } from './ui.js';
+import { BUILDER_REFUSALS } from '../../shared/harness/builder-draft.js';
 import { WORDS } from './words.js';
 import '../home/home-tokens.css';
 import '../home/kit/kit.css';
@@ -39,7 +41,7 @@ export function useShell(): ShellValue {
 }
 
 export function Shell({ route, children, overlays }: { route: Route; children?: ReactNode; overlays?: ReactNode }): ReactElement {
-  const store = useHarnessStore();
+  const ui = useUi();
   const width = useWindowWidth(), mac = onMac();
   const [navChosen, setNavChosen] = useState<boolean | null>(null);
   const [overlay, setOverlay] = useState(false);
@@ -94,7 +96,7 @@ export function Shell({ route, children, overlays }: { route: Route; children?: 
     <Context value={value}>
       <div className="hm-root" data-home="" data-shell="harness" data-nav={mode}>
         <Navigation mode={mode} overlay={mode === 'hidden' && overlay} current={navKeyOf(route)} onToggle={toggleNav}
-          onNewHarness={() => { const id = store.createHarness(); go({ name: 'builder', id, view: 'graph' }); }}
+          onNewHarness={() => { ui.showToast(BUILDER_REFUSALS['new-harness']); ui.openAdopt({}); }}
           onHarnesses={() => go({ name: 'harnesses' })} onLibrary={kind => go({ name: 'library', kind: kind ?? 'skill' })} onProjects={() => go({ name: 'projects' })} onRuns={() => go({ name: 'runs' })}
           onInterfaces={() => go({ name: 'interfaces' })} onHistory={() => go({ name: 'history' })} onHelp={() => go({ name: 'help' })} />
         {mode === 'hidden' && overlay ? <div className="hm-nav-scrim" data-nav-scrim="" aria-hidden="true" onClick={() => { setOverlay(false); requestAnimationFrame(() => topToggle.current?.focus()); }} /> : null}

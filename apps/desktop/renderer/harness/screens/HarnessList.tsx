@@ -1,10 +1,13 @@
 /**
  * S2, the Harness list. Each harness is a row: its counts, its status (the worst state over its projects, computed from the install data), and a play button.
  * Picking a row goes to the address of that harness (`#harnesses/<id>`), so the address and the details column agree; the details show: where it runs, where it is installed, and three buttons.
- * "Start" and the play button open the start sheet for the harness of their row, "Open in builder" opens the builder, "Assign to project" opens the install sheet at its first step.
+ * "Start" and the play button open the start sheet for the harness of their row (sample only), "Assign to project" opens the install sheet at its first step.
+ * "Open in builder" on such a harness is refused in words: the Builder edits one folder's harness, so it opens "From a folder", which makes one.
+ * Under the rows, "Folders": each folder main knows, with "Open in builder" for one that holds a harness and "From a folder" for one that does not, and
+ * "Choose a folder". This is the folder list the Builder goes back to when its folder is not open (after a new start).
  * An address that names no harness shows "That harness is not here", not the first harness.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { harnessCountsWords, harnessStatus, installLine, installsOfHarness, projectById, runsIn } from '../../../shared/harness/status.js';
 import type { Harness, HarnessState } from '../../../shared/harness/types.js';
@@ -16,6 +19,13 @@ import { HButton, HIconButton, StateDot } from '../parts/controls.js';
 import { HIcon, Tile } from '../icons.js';
 import { WORDS, harnessListHint, startName } from '../words.js';
 import { NotChecked } from '../real/NotChecked.js';
+import { useEngine } from '../engine.js';
+import { BUILDER_REFUSALS } from '../../../shared/harness/builder-draft.js';
+import type { FolderInfo } from '../../../shared/engine/types.js';
+import { RefusalNote, folderLine } from '../sheets/engine-parts.js';
+import { chooseFolderCall, foldersCall, useCall } from '../sheets/use-call.js';
+import { ENGINE_WORDS } from '../words-engine.js';
+import { openFolderName } from '../words.js';
 
 function Row({ harness, state, selected, onPick, onStart }: { harness: Harness; state: HarnessState; selected: boolean; onPick(): void; onStart(): void }): ReactElement {
   const status = harnessStatus(state, harness.id);
@@ -56,7 +66,7 @@ function Details({ harness, state }: { harness: Harness; state: HarnessState }):
       </section>
       <div className="hx-actions">
         <HButton icon="play" variant="primary" onClick={() => ui.openStart({ harnessId: harness.id })}>{WORDS.label.start}</HButton>
-        <HButton icon="harness" onClick={() => go({ name: 'builder', id: harness.id, view: 'graph' })}>{WORDS.label.openInBuilder}</HButton>
+        <HButton icon="harness" onClick={() => { ui.showToast(BUILDER_REFUSALS['harness-from-scan']); ui.openAdopt({}); }}>{WORDS.label.openInBuilder}</HButton>
         <HButton icon="folder" onClick={() => ui.openInstall({ harnessId: harness.id, projectId: null, step: 'project' })}>{WORDS.label.assignToProject}</HButton>
       </div>
     </>
@@ -96,6 +106,45 @@ export function HarnessList({ id }: { id: string | null }): ReactElement {
         {rows.map(h => <Row key={h.id} harness={h} state={state} selected={selected?.id === h.id} onPick={() => pick(h.id)} onStart={() => { pick(h.id); ui.openStart({ harnessId: h.id }); }} />)}
       </ul>
       {rows.length === 0 ? <p className="kit-hint hx-hint">{WORDS.hint.noMatch}</p> : null}
+      <Folders />
     </Screen>
+  );
+}
+
+/**
+ * "Folders": each folder main knows, by its name and its line (the interfaces its harness lists, or "No harness here yet"), with the way into the Builder.
+ * A folder that holds no harness opens "From a folder", which makes one. "Choose a folder" opens the system chooser.
+ */
+function Folders(): ReactElement | null {
+  const engine = useEngine(), ui = useUi(), call = useCall();
+  const [folders, setFolders] = useState<readonly FolderInfo[]>([]);
+  const sheetOpen = ui.adopt.open || ui.saveSheet.open || ui.projectSheet.open;
+  useEffect(() => { if (engine !== null && !sheetOpen) void call.plan(ENGINE_WORDS.label.planning, () => foldersCall(engine), setFolders); }, [engine, sheetOpen]);
+  if (engine === null) return null;
+  const choose = (): void => { void call.plan(ENGINE_WORDS.label.chooseFolder, () => chooseFolderCall(engine), got => { if (got !== null) setFolders(got.list); }); };
+  return (
+    <section className="hx-block hx-folders" aria-labelledby="hx-folders" data-section="folders">
+      <h2 className="hx-h3" id="hx-folders">{ENGINE_WORDS.label.folders}</h2>
+      {call.refusal === null ? null : <RefusalNote refusal={call.refusal} focusId={call.refusalId}>{null}</RefusalNote>}
+      {folders.length === 0 ? <p className="kit-hint hx-hint">{ENGINE_WORDS.hint.noFolders}</p> : (
+        <ul className="hx-rows" aria-label={ENGINE_WORDS.label.folders}>
+          {folders.map(f => (
+            <li key={f.id} className="hx-row hx-row-folder" data-folder-row={f.id}>
+              <Tile name="folder" size="large" />
+              <div className="hx-row-text">
+                <span className="hx-row-main">{f.name}</span>
+                <span className="hx-row-meta">{folderLine(f, 'save').words}</span>
+              </div>
+              <span className="hx-row-action">
+                {f.hasDefinition
+                  ? <HButton icon="harness" size="small" aria-label={openFolderName(f.name)} data-open-builder={f.id} onClick={() => go({ name: 'builder', id: f.id })}>{WORDS.label.openInBuilder}</HButton>
+                  : <HButton icon="folder" size="small" data-from-folder={f.id} onClick={() => ui.openAdopt({ folderId: f.id })}>{ENGINE_WORDS.label.fromFolder}</HButton>}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="hx-actions"><HButton icon="folder" data-choose-folder="" disabled={call.busy !== null} onClick={choose}>{ENGINE_WORDS.label.chooseFolder}</HButton></div>
+    </section>
   );
 }

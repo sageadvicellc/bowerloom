@@ -43,12 +43,22 @@ const named = (paths: readonly string[]): string => (paths.length <= DIALOG_NAME
  * What a save or a go-back does to files that can run, for the detail line: the files whose bytes stay the same and whose execute bit alone changes, and
  * the files it writes that can run as programs. Nothing when neither holds.
  */
-export interface SaveMarks { readonly executables?: readonly string[]; readonly modeOnly?: readonly string[] }
+export interface SaveMarks { readonly executables?: readonly string[]; readonly modeOnly?: readonly string[]; /** How many of the plan's files it deletes. */ readonly deletes?: number }
 function marksLine(marks: SaveMarks): string {
   const run = marks.executables ?? [], mode = marks.modeOnly ?? [];
   const runLine = run.length === 0 ? '' : `${run.length === 1 ? 'This file can run as a program' : 'These files can run as programs'}: ${named(run)}. `;
   const modeLine = mode.length === 0 ? '' : `Only the permission to run changes: ${named(mode)}. `;
   return `${modeLine}${runLine}`;
+}
+/**
+ * What a save does to files, in the dialog's question: the files it changes, and the files it deletes. `n` counts every file of the plan. The words keep to
+ * "Change" when nothing is deleted, so a save that only edits reads as it always did.
+ */
+function changeWords(n: number, marks: SaveMarks, lead = ''): string {
+  const deletes = Math.min(Math.max(marks.deletes ?? 0, 0), n), changes = n - deletes;
+  if (deletes === 0) return `${lead === '' ? 'Change' : `${lead} and change`} ${files(n)}`;
+  if (changes === 0) return `${lead === '' ? 'Delete' : `${lead} and delete`} ${files(deletes)}`;
+  return `${lead === '' ? 'Change' : `${lead}, change`} ${files(changes)} and delete ${files(deletes)}`;
 }
 /** What the person approved in this sheet, so the dialog says how many weaker lines the yes covers. Nothing when none were ticked. */
 const approvedLines = (n: number): string => (n === 0 ? '' : `You approved ${n} ${n === 1 ? 'line' : 'lines'} that an interface carries more weakly than the harness says. `);
@@ -67,9 +77,9 @@ export const ASK = Object.freeze({
   merge: (label: string, n: number, rev: string): Ask => ({ title: 'Merge CLAUDE.md into the harness', message: `Write ${files(n)} into ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. CLAUDE.md does not change yet. ${again}` }),
   mergeRecovery: (label: string, n: number, rev: string): Ask => ({ title: 'Finish a stopped harness', message: `Put back ${files(n)} that a stopped merge changed in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. ${again}` }),
   /** A save of the folder's own harness (option C). It changes only `.bowerloom`; the interfaces' files change later, in an install of its own. */
-  save: (label: string, n: number, rev: string, marks: SaveMarks = {}): Ask => ({ title: 'Save the harness', message: `Change ${files(n)} in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. ${marksLine(marks)}Bowerloom keeps a save point, so you can go back. Installed files do not change until you install. ${again}` }),
+  save: (label: string, n: number, rev: string, marks: SaveMarks = {}): Ask => ({ title: 'Save the harness', message: `${changeWords(n, marks)} in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. ${marksLine(marks)}Bowerloom keeps a save point, so you can go back. Installed files do not change until you install. ${again}` }),
   /** "Go back": a save whose target is a stored save point. */
-  restore: (label: string, n: number, version: string, rev: string, marks: SaveMarks = {}): Ask => ({ title: 'Go back to a save point', message: `Go back to ${version} and change ${files(n)} in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. ${marksLine(marks)}Bowerloom keeps the harness as it is now as a save point too. Installed files do not change until you install. ${again}` }),
+  restore: (label: string, n: number, version: string, rev: string, marks: SaveMarks = {}): Ask => ({ title: 'Go back to a save point', message: `${changeWords(n, marks, `Go back to ${version}`)} in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. ${marksLine(marks)}Bowerloom keeps the harness as it is now as a save point too. Installed files do not change until you install. ${again}` }),
   /** Opens a private copy of the newest tidy-up report of a notes folder in the app the computer uses for it. Nothing in the notes folder is written. */
   openReport: (label: string, path: string): Ask => ({ title: 'Open the tidy-up report', message: `Open ${visible(path)} from ${visible(label)}?`, detail: 'It opens in the app your computer uses for .md files. Bowerloom changes nothing in the notes folder.', button: 'Open' }),
   /** Sets a folder's old save points aside: the record is renamed in Bowerloom's private folder; nothing in the folder changes and nothing is deleted. */

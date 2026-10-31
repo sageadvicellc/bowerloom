@@ -55,7 +55,7 @@ test('Projects shows the five rows of the design with their statuses and the but
   await expect(p.locator('.hxp-row[data-selected]')).toContainText('bowerloom');
   const panel = p.getByRole('complementary');
   await expect(panel.getByRole('heading', { level: 2, name: 'bowerloom' })).toBeVisible();
-  await expect(panel).toContainText('Saved in the project as .bowerloom/harnesses/weekly-report-crew.json. Commit it to share the harness.');
+  await expect(panel).toContainText('Saved in the project as .bowerloom/harness.json. Commit it to share the harness.');
   await expect(panel.locator('.hxp-iface')).toHaveCount(3);
   await expect(panel.locator('.hxp-iface').nth(1)).toContainText('Out of date');
   await expect(panel.getByRole('button', { name: 'Assign another harness', exact: true })).toBeVisible();
@@ -74,7 +74,7 @@ test('the review lists all 10 files grouped by interface, and a conflict blocks 
   await expect(s.locator('.hxi-file')).toHaveCount(10);
   await expect(s.locator('[data-group="claude-code"] .hxi-file')).toHaveCount(5);
   await expect(s.locator('[data-group="codex"] .hxi-file')).toHaveCount(4);
-  await expect(s.locator('[data-file=".bowerloom/harnesses/weekly-report-crew.json"]')).toContainText('New');
+  await expect(s.locator('[data-file=".bowerloom/harness.json"]')).toContainText('New');
   await expect(s.locator('[data-file=".claude/agents/writer.md"]')).toContainText('Update');
   await expect(s.locator('[data-file=".codex/agents/writer.toml"]')).toContainText('Conflict');
   await expect(s.getByText('Bowerloom manifest. Commit this file to share the harness.')).toBeVisible();
@@ -221,7 +221,7 @@ test('Assign harness on a project with none asks for the harness, then installs 
   await expect(named).toBeVisible();
   await named.getByRole('button', { name: 'Next', exact: true }).click();
   await named.getByRole('button', { name: 'Next', exact: true }).click();
-  await expect(named.locator('.hxi-file').first()).toContainText('.bowerloom/harnesses/inbox-helper.json');
+  await expect(named.locator('.hxi-file').first()).toContainText('.bowerloom/harness.json');
   await expect(named.getByRole('radio')).toHaveCount(0);
   await named.getByRole('button', { name: /^Install \d+ files$/ }).click();
   await expect(sheet(p, 'Install Inbox helper')).toHaveCount(0);

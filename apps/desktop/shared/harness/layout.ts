@@ -73,6 +73,17 @@ export function edgePath(from: GraphNode, to: GraphNode): string {
 }
 
 /** The ids that stay bright when a node is selected: the node, and every node joined to it by an edge. */
+/**
+ * Drag to link: the agent that a skill or a notes card (kind `context`) was dropped on, when the point of the drop, in graph units, is inside that agent's
+ * node, its edge included. Null for any other drag, which moves the node: an agent dragged, or a drop beside every agent.
+ */
+export function dropLinkTarget(nodes: readonly GraphNode[], dragged: string, at: Point): string | null {
+  const from = nodes.find(n => n.id === dragged);
+  if (from === undefined || (from.kind !== 'skill' && from.kind !== 'context')) return null;
+  const on = nodes.find(n => n.kind === 'agent' && n.id !== dragged && at.x >= n.x && at.x <= n.x + n.w && at.y >= n.y && at.y <= n.y + n.h);
+  return on?.id ?? null;
+}
+
 export function brightIds(edges: readonly GraphEdge[], selectedId: string | null): ReadonlySet<string> | null {
   if (selectedId === null) return null;
   const out = new Set<string>([selectedId]);

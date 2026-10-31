@@ -1,92 +1,102 @@
 /**
- * The details column of the builder. Nothing picked: "Nothing selected" and what to do. A part picked: its name and kind, what it does, where it works, its file (the first lines, as plain text),
- * "View file", "Link to..." (an agent, in the Graph: it starts linking, the same as the circle on the node, for the keyboard and for a large target) and "Remove from this harness" (which says that the file is not deleted),
- * what it uses (an agent) or which agents use it (any other part), and where else it is used.
- * A missing part picked: what it is and a Fix button. Every name and line here comes from the person's own files and is drawn as plain text.
+ * The details column of the Builder, for the part selected on the graph of one folder's harness. Nothing selected: what to do. An agent: what it does, and
+ * each skill and notes card it uses, with Unlink, and "Link to..." for the keyboard. A skill or a notes card: what it is, the agents that use it, with Unlink,
+ * and Remove (or Keep, once the draft marks it to go), with the hint that Remove deletes a skill's files when the person saves.
+ * Every change is a Builder gesture (`onAct`), which goes through builderAction and onto the folder's undo stack. Every name comes from the person's own
+ * files and is drawn as plain text.
  */
 import type { ReactElement } from 'react';
-import { excerptOf } from '../../../../shared/harness/frontmatter.js';
-import { harnessesHolding, usedByAgents, usedInOtherWords, usesOf, worksIn } from '../../../../shared/harness/status.js';
-import type { Harness, HarnessState, Part } from '../../../../shared/harness/types.js';
+import type { DefinitionView } from '../../../../shared/engine/types.js';
+import type { BuilderAction } from '../../../../shared/harness/builder-draft.js';
+import { agentPart, notesPartId, partNotes, partSkill } from '../../../../shared/harness/save-draft.js';
+import type { SaveDraft } from '../../../../shared/harness/save-draft.js';
 import { DetailsHead } from '../../Screen.js';
 import { KIND_ICON, Tile } from '../../icons.js';
 import { HButton, StateDot } from '../../parts/controls.js';
-import { KIND_NAME, WORDS, missingKind, namedBy } from '../../words.js';
-import { NotChecked } from '../../real/NotChecked.js';
+import { KIND_NAME, WORDS, unlinkName } from '../../words.js';
+import { ENGINE_WORDS } from '../../words-engine.js';
+import { NOTES } from '../../words-notes.js';
 
 export interface BuilderDetailsProps {
-  state: HarnessState;
-  harness: Harness;
+  /** The harness as the draft makes it. */
+  now: DefinitionView;
+  /** The harness the draft starts from, so a skill or notes the draft marks to go can be kept again. */
+  start: DefinitionView;
+  draft: SaveDraft;
   selectedId: string | null;
+  linkingId: string | null;
+  held: boolean;
   onSelect(id: string): void;
-  onViewFile(partId: string): void;
-  onRemove(partId: string): void;
-  onFix(missingId: string): void;
-  /** The agent that is being linked, or null. */
-  linkingId?: string | null;
-  /** Starts (or stops) linking from an agent. Left out in the List view, which has no linking. */
-  onLinkStart?: ((agentId: string) => void) | undefined;
+  /** Starts (or stops) linking from an agent, for the keyboard. */
+  onLinkStart(agentId: string): void;
+  onAct(action: BuilderAction): void;
 }
 
-function PartDetails({ state, harness, part, linkingId, onSelect, onViewFile, onRemove, onLinkStart }: { state: HarnessState; harness: Harness; part: Part; linkingId: string | null } & Pick<BuilderDetailsProps, 'onSelect' | 'onViewFile' | 'onRemove' | 'onLinkStart'>): ReactElement {
-  const others = harnessesHolding(state, part.id).filter(h => h.id !== harness.id).length;
-  const rows = part.kind === 'agent' ? usesOf(state, harness, part.id) : usedByAgents(state, harness, part.id);
+interface Row { readonly id: string; readonly name: string; readonly kind: 'agent' | 'skill' | 'context' }
+
+function Links({ title, owner, rows, held, onSelect, onAct }: { title: string; owner: { id: string; name: string; agent: boolean }; rows: readonly Row[]; held: boolean; onSelect(id: string): void; onAct(a: BuilderAction): void }): ReactElement {
   return (
-    <>
-      <DetailsHead tile={<Tile name={KIND_ICON[part.kind]} size="large" />} title={part.name} subtitle={KIND_NAME[part.kind]} />
-      <p className="hx-text">{part.description}</p>
-      <section className="hx-block" aria-labelledby="hx-works-in">
-        <h3 className="hx-h3" id="hx-works-in">{WORDS.label.worksIn}</h3>
-        {state.real === undefined ? <ul className="hx-inline-list">{worksIn(state, part).map(i => <li key={i.id}><StateDot tone="good">{i.name}</StateDot></li>)}</ul> : <NotChecked part={part} />}
-      </section>
-      <section className="hx-block" aria-labelledby="hx-file">
-        <h3 className="hx-h3" id="hx-file">{WORDS.label.file}</h3>
-        <p className="hx-text hx-muted hx-path">{part.path}</p>
-        <pre className="hx-excerpt" data-budget="content">{excerptOf(part.fileText)}</pre>
-      </section>
-      <div className="hx-actions">
-        <HButton icon="eye" onClick={() => onViewFile(part.id)}>{WORDS.label.viewFile}</HButton>
-        {part.kind === 'agent' && onLinkStart !== undefined ? <HButton icon="harness" aria-pressed={linkingId === part.id} onClick={() => onLinkStart(part.id)}>{WORDS.label.linkTo}</HButton> : null}
-        <HButton icon="minus-circle" onClick={() => onRemove(part.id)}>{WORDS.label.removeFromHarness}</HButton>
-        <p className="hx-text hx-muted hx-note">{WORDS.hint.removeNote}</p>
-      </div>
-      {rows.length === 0 ? null : (
-        <section className="hx-block" aria-labelledby="hx-uses">
-          <h3 className="hx-h3" id="hx-uses">{part.kind === 'agent' ? WORDS.label.uses : WORDS.label.usedBy}</h3>
-          <ul className="hx-box-list">
-            {rows.map(row => (
-              <li key={row.id} className="hx-box hx-box-press">
-                <Tile name={KIND_ICON[row.kind]} size="small" />
-                <button type="button" className="hx-box-main" onClick={() => onSelect(row.id)}>{row.name}</button>
-                <span className="hx-box-kind">{KIND_NAME[row.kind]}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
+    <section className="hx-block" aria-labelledby="hx-links" data-links={owner.id}>
+      <h3 className="hx-h3" id="hx-links">{title}</h3>
+      {rows.length === 0 ? <p className="hx-text hx-muted">{WORDS.hint.noLinks}</p> : (
+        <ul className="hx-box-list">
+          {rows.map(row => (
+            <li key={row.id} className="hx-box hx-box-press" data-link={row.id}>
+              <Tile name={KIND_ICON[row.kind]} size="small" />
+              <button type="button" className="hx-box-main" onClick={() => onSelect(row.id)}>{row.name}</button>
+              <HButton size="small" disabled={held} data-unlink={row.id} aria-label={owner.agent ? unlinkName(owner.name, row.name) : unlinkName(row.name, owner.name)}
+                onClick={() => onAct({ kind: 'unlink', a: owner.id, b: row.id })}>{WORDS.label.unlink}</HButton>
+            </li>
+          ))}
+        </ul>
       )}
-      {others === 0 ? null : <StateDot tone="good" className="hx-block-state">{usedInOtherWords(others)}</StateDot>}
-    </>
+    </section>
   );
 }
 
-export function BuilderDetails({ state, harness, selectedId, linkingId = null, onSelect, onViewFile, onRemove, onFix, onLinkStart }: BuilderDetailsProps): ReactElement {
-  const part = selectedId === null ? undefined : state.parts.find(p => p.id === selectedId && harness.partIds.includes(p.id));
-  const ref = selectedId === null ? undefined : harness.missing.find(m => m.id === selectedId);
-  if (part !== undefined) return <PartDetails state={state} harness={harness} part={part} linkingId={linkingId} onSelect={onSelect} onViewFile={onViewFile} onRemove={onRemove} onLinkStart={onLinkStart} />;
-  if (ref !== undefined) {
-    const users = harness.links.filter(l => l.to === ref.id).map(l => state.parts.find(p => p.id === l.from)).filter((p): p is Part => p !== undefined);
+export function BuilderDetails({ now, start, draft, selectedId, linkingId, held, onSelect, onLinkStart, onAct }: BuilderDetailsProps): ReactElement {
+  const agentId = selectedId === null ? null : agentPart(selectedId), skillId = selectedId === null ? null : partSkill(selectedId), notesName = selectedId === null ? null : partNotes(selectedId);
+  const agent = agentId === null ? undefined : now.agents.find(a => a.id === agentId);
+  const skill = skillId === null ? undefined : start.skills.find(s => s.id === skillId);
+  const source = notesName === null ? undefined : now.sources.find(s => s.name === notesName) ?? start.sources.find(s => s.name === notesName);
+  const users = (has: (a: DefinitionView['agents'][number]) => boolean): Row[] => now.agents.filter(has).map(a => ({ id: `agent:${a.id}`, name: a.name, kind: 'agent' }));
+  if (agent !== undefined) {
+    const rows: Row[] = [
+      ...agent.skills.flatMap(id => { const s = now.skills.find(x => x.id === id); return s === undefined ? [] : [{ id: `skill:${s.id}`, name: s.name, kind: 'skill' as const }]; }),
+      ...agent.notes.map(n => ({ id: notesPartId(n), name: n, kind: 'context' as const })),
+    ];
     return (
       <>
-        <DetailsHead tile={<Tile name="warning-triangle" size="large" />} title={ref.name} subtitle={missingKind(ref.kind)} />
-        <p className="hx-text">{users.length === 0 ? WORDS.hint.missingNode : namedBy(users.map(u => u.name))}</p>
-        <div className="hx-actions"><HButton variant="primary" onClick={() => onFix(ref.id)}>{WORDS.label.fix}</HButton></div>
+        <DetailsHead tile={<Tile name={KIND_ICON.agent} size="large" />} title={agent.name} subtitle={KIND_NAME.agent} />
+        <p className="hx-text">{agent.description}</p>
+        <div className="hx-actions">
+          <HButton icon="harness" disabled={held} aria-pressed={linkingId === selectedId} onClick={() => onLinkStart(selectedId!)}>{WORDS.label.linkTo}</HButton>
+        </div>
+        <Links title={WORDS.label.uses} owner={{ id: selectedId!, name: agent.name, agent: true }} rows={rows} held={held} onSelect={onSelect} onAct={onAct} />
+      </>
+    );
+  }
+  if (skill !== undefined || source !== undefined) {
+    const id = selectedId!, name = skill?.name ?? source!.name;
+    const rows = skill !== undefined ? users(a => a.skills.includes(skill.id)) : users(a => a.notes.includes(source!.name));
+    const gone = skill !== undefined ? draft.removed.includes(skill.id) : draft.stopped.includes(source!.name);
+    return (
+      <>
+        <DetailsHead tile={<Tile name={skill !== undefined ? KIND_ICON.skill : KIND_ICON.context} size="large" />} title={name} subtitle={skill !== undefined ? KIND_NAME.skill : NOTES.label.notes} />
+        <p className="hx-text">{skill?.description ?? source!.label}</p>
+        <div className="hx-actions">
+          {gone ? <StateDot tone="warn">{ENGINE_WORDS.hint.removedMark}</StateDot> : null}
+          <HButton icon="minus-circle" disabled={held} data-remove-part={id} onClick={() => onAct({ kind: gone ? 'keep' : 'remove', part: id })}>{gone ? ENGINE_WORDS.label.keepSkill : ENGINE_WORDS.label.removeSkill}</HButton>
+          <p className="hx-text hx-muted hx-note">{skill !== undefined ? WORDS.hint.removeNote : NOTES.hint.folderStays}</p>
+        </div>
+        <Links title={WORDS.label.usedBy} owner={{ id, name, agent: false }} rows={rows} held={held} onSelect={onSelect} onAct={onAct} />
       </>
     );
   }
   return (
     <>
       <h2 className="kit-heading hx-dtitle" id="hm-panel-title" tabIndex={-1}>{WORDS.label.nothingSelected}</h2>
-      <p className="hx-text hx-muted" data-budget="paragraph">{WORDS.paragraph.pickAPart}</p>
+      <p className="hx-text hx-muted" data-budget="paragraph">{WORDS.hint.dropToLink}</p>
     </>
   );
 }
