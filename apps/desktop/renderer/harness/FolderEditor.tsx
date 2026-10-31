@@ -129,7 +129,8 @@ export function useFolderEditor({ engine, call, folder, folders, onFolders, base
   // The Notes panel reads each source the harness holds once for each folder: names and counts only. A fresh read of a folder chosen in this window replaces
   // its snapshot. The folder is a dependency: the reset above starts the reads again for it, so a folder opened again never keeps an empty panel.
   useEffect(() => {
-    if (engine === null || now === null) return;
+    // Wait for the folder: a read that starts before it is known is reset and starts again.
+    if (engine === null || now === null || folderId === null) return;
     for (const id of notesToRead(now, reading.current)) {
       reading.current.add(id);
       const mine = reading.current;

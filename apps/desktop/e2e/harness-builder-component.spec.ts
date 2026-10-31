@@ -241,6 +241,29 @@ test('a save that fails keeps the draft: the sheet shows the refusal, and the Bu
   await expect(tick(p, 'editor', 'check-facts')).toBeChecked();
 });
 
+test('N1: while the sheet reads the Notes keeper, Review the save waits, so the review never plans past it', async () => {
+  const p = await open(BUILDER, { folders: [WEEKLY], listVersions: ok([]), notesSummary: ok(NOTES) });
+  await answer(p, (await waiting(p, 'planSave')).id, ok(view()));
+  await expect(p.locator('.hx-node[data-node="agent:editor"]')).toBeVisible();
+  await tick(p, 'editor', 'check-facts').check();
+  await p.locator('[data-builder-save]').click();
+  const sheet = p.getByRole('dialog', { name: 'Edit a folder\'s harness' });
+  await answer(p, (await waiting(p, 'planSave')).id, ok(view([{ path: '.bowerloom/agents/editor.md', action: 'update' }])));
+  await sheet.getByRole('button', { name: 'Back', exact: true }).click();
+  // The guided tour starts on its own at first use; it is not what this test is about.
+  const skip = p.getByRole('button', { name: 'Skip tour', exact: true });
+  await skip.click();
+  const review = sheet.getByRole('button', { name: 'Review the save', exact: true });
+  await expect(review).toBeEnabled();
+  await sheet.getByRole('button', { name: 'Add the Notes keeper', exact: true }).click();
+  const kit = await waiting(p, 'planSave');
+  expect(kit.args).toEqual(['folder-3', [{ kind: 'add-from-kit', kit: expect.any(String) }]]);
+  await expect(review).toBeDisabled();
+  await expect(sheet.getByText('Planning', { exact: true })).toBeVisible();
+  await answer(p, kit.id, refused('NOT_ALLOWED', 'The kit is not here.'));
+  await expect(review).toBeEnabled();
+});
+
 test('L7: a set-aside that worked says so when the save points cannot be read again; the failure is the save points\' own', async () => {
   const p = await open(BUILDER, { folders: [WEEKLY], planSave: ok(view()), notesSummary: ok(NOTES), listVersions: refused('VERSION_CORRUPT', 'The save point record is damaged.') });
   await expect(p.locator('.hx-node[data-node="agent:editor"]')).toBeVisible();

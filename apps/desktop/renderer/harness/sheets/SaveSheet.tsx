@@ -90,7 +90,7 @@ export function SaveSheet({ open, folderId, tour: tourAsked = false, start = 'fo
   const drafts = useRef(all.drafts);
   drafts.current = all.drafts;
   const intro = useRef<HTMLParagraphElement>(null), body = useRef<HTMLDivElement>(null), first = useRef(true);
-  const held = call.writing, busy = call.busy !== null;
+  const held = call.writing;
   const folder = folders.find(f => f.id === picked);
   const editor = useFolderEditor({
     engine, call, folder, folders, onFolders: setFolders, base, draft, positions: fd.entry.positions, onPush: d => { setNote(null); fd.push(d); },
@@ -98,6 +98,8 @@ export function SaveSheet({ open, folderId, tour: tourAsked = false, start = 'fo
   });
 
   const { now, world, count, keeper, progress } = editor;
+  // The editor's own reads (the keeper, a skill from another folder) hold the sheet too, so Review save never plans past one that is still running.
+  const busyWords = call.busy ?? editor.busy, busy = busyWords !== null;
 
   /**
    * Everything of the sheet's own goes when the folder changes: the plan, its approval and the result, and the reads of the editor. The draft is the folder's,
@@ -281,7 +283,7 @@ export function SaveSheet({ open, folderId, tour: tourAsked = false, start = 'fo
         ) : null}
         {step !== 'folder' ? (
           <>
-            {busy ? <Busy words={call.busy!} /> : null}
+            {busy ? <Busy words={busyWords!} /> : null}
             {refusal}
             {nextWords === undefined || nextWords === null ? null : <p className="hxe-text" data-next-step="">{nextWords}</p>}
           </>
