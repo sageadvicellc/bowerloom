@@ -18,7 +18,7 @@ import type { ReactElement, ReactNode } from 'react';
 import { Stepper } from '../../home/kit/Stepper.js';
 import { ENGINE_NAMES } from '../../../shared/engine/types.js';
 import type { Answer, DefinitionView, EngineId, FolderInfo, RestoreView, SaveEdit, SaveView, SaveWritten, SetAsideView, VersionView } from '../../../shared/engine/types.js';
-import { agentPart, attachNotes, draftEdits, keeperOf, linkSkill, partNotes, partSkill } from '../../../shared/harness/save-draft.js';
+import { draftEdits, keeperOf } from '../../../shared/harness/save-draft.js';
 import type { SaveDraft } from '../../../shared/harness/save-draft.js';
 import { Sheet } from '../parts/Sheet.js';
 import { HButton, StateDot } from '../parts/controls.js';
@@ -26,17 +26,18 @@ import { useEngine } from '../engine.js';
 import { useUi } from '../ui.js';
 import { EditStep, useFolderEditor } from '../FolderEditor.js';
 import type { SetAsideParts } from '../FolderEditor.js';
-import { useFolderDraft, useFolderDrafts } from '../folder-draft.js';
+import { EMPTY_FOLDER, entryOf, loadDropsDraft, useFolderDraft, useFolderDrafts } from '../folder-draft.js';
 import {
   CHANGE_TONE, CHANGE_WORDS, ENGINE_WORDS, NOTES_REFUSAL_WORDS, SAVE_REFUSAL_WORDS, approvePlanWords, draftWords, fromWords, goBackWords, saveFilesWords, savePointLine,
 } from '../words-engine.js';
 import { Busy, FolderStep, RefusalNote, ResultStep, Section, TickRow, folderLine } from './engine-parts.js';
-import { chooseFolderCall, foldersCall, useCall } from './use-call.js';
+import { chooseFolderCall, foldersCall, useCall, versionsCall } from './use-call.js';
 import { useHeldFocus } from './use-held-focus.js';
 import { WINDOW_TOUR, startsOnItsOwn } from '../tour/seen.js';
 import { TourAnnouncer, TourOverlay } from '../tour/TourOverlay.js';
 import { createTour, currentStep, isWaiting, nextStepId, tourReduce } from '../tour/tour.js';
 import { NOTES, TOUR_STEPS, buildHint, loseWords } from '../words-notes.js';
+import { WORDS } from '../words.js';
 import './save.css';
 import '../notes/notes.css';
 
@@ -51,7 +52,7 @@ export type Shown = { kind: 'save'; view: SaveView; edits: readonly SaveEdit[] }
 export async function openCall(engine: NonNullable<ReturnType<typeof useEngine>>, id: string): Promise<Answer<{ view: SaveView; versions: Answer<readonly VersionView[]> }>> {
   const view = await engine.planSave(id, []);
   if (!view.ok) return view;
-  return { ok: true, value: { view: view.value, versions: await engine.listVersions(id) } };
+  return { ok: true, value: { view: view.value, versions: await versionsCall(engine, id) } };
 }
 
 export interface SaveSheetProps {
@@ -81,18 +82,24 @@ export function SaveSheet({ open, folderId, tour: tourAsked = false, start = 'fo
   const [lastPlan, setLastPlan] = useState<(() => void) | null>(null);
   const [aside, setAside] = useState<SetAsideView | null>(null);
   const [asideDone, setAsideDone] = useState<string | null>(null);
+  // What the last gesture or the last read said in words: a gesture the draft refused, or a draft dropped because the harness changed.
+  const [note, setNote] = useState<string | null>(null);
   const [tour, tourDo] = useReducer(tourReduce, TOUR_STEPS, createTour);
   const tourWanted = useRef(false), wasBuilt = useRef(false);
   // The drafts as they are now, for the plan the sheet makes as it opens on its review step.
   const drafts = useRef(all.drafts);
   drafts.current = all.drafts;
   const intro = useRef<HTMLParagraphElement>(null), body = useRef<HTMLDivElement>(null), first = useRef(true);
-  const held = call.writing, busy = call.busy !== null;
+  const held = call.writing;
   const folder = folders.find(f => f.id === picked);
   const editor = useFolderEditor({
-    engine, call, folder, folders, onFolders: setFolders, base, draft, positions: fd.entry.positions, onDraft: fd.change, onPush: fd.push, onHelp: () => tourDo('replay'),
+    engine, call, folder, folders, onFolders: setFolders, base, draft, positions: fd.entry.positions, onPush: d => { setNote(null); fd.push(d); },
+    onRefused: r => setNote(r.words), onHelp: () => tourDo('replay'),
   });
+
   const { now, world, count, keeper, progress } = editor;
+  // The editor's own reads (the keeper, a skill from another folder) hold the sheet too, so Review save never plans past one that is still running.
+  const busyWords = call.busy ?? editor.busy, busy = busyWords !== null;
 
   /**
    * Everything of the sheet's own goes when the folder changes: the plan, its approval and the result, and the reads of the editor. The draft is the folder's,
@@ -100,7 +107,7 @@ export function SaveSheet({ open, folderId, tour: tourAsked = false, start = 'fo
    */
   const resetFolder = (): void => {
     setShown(null); setApproved(null); setAcked(null); setDone(null); setLinkingId(null); setSelectedId(null); setLastPlan(null);
-    setAside(null); setAsideDone(null); call.clear(); editor.reset();
+    setAside(null); setAsideDone(null); setNote(null); call.clear(); editor.reset();
   };
   useEffect(() => {
     if (!open) return;
@@ -110,10 +117,13 @@ export function SaveSheet({ open, folderId, tour: tourAsked = false, start = 'fo
     void call.plan(W.label.planning, () => foldersCall(engine), list => {
       setFolders(list);
       const usable = list.filter(f => !folderLine(f, 'save').off);
-      const id = folderId !== null && usable.some(f => f.id === folderId) ? folderId : usable[0]?.id ?? null;
+      // A folder asked for that cannot be saved picks nothing, and says why: the sheet never saves a folder other than the one the person asked for.
+      const asked = folderId === null ? undefined : list.find(f => f.id === folderId);
+      const id = folderId === null ? usable[0]?.id ?? null : usable.some(f => f.id === folderId) ? folderId : null;
       setPicked(id);
+      if (folderId !== null && id === null) setNote(asked === undefined ? WORDS.hint.noFolder : `${asked.name}: ${folderLine(asked, 'save').words}`);
       // Opened by the Builder's Save or Go back: the plan of that folder at once, from the draft the Builder drew.
-      const entry = id === null ? undefined : drafts.current[id];
+      const entry = id === null ? undefined : entryOf(drafts.current, id);
       if (start !== 'review' || id === null || id !== folderId || entry === undefined || entry.base === null) return;
       if (restore !== null) planRestoreOf(id, restore); else planSaveOf(id, entry.base, entry.stack.present);
     });
@@ -142,7 +152,11 @@ export function SaveSheet({ open, folderId, tour: tourAsked = false, start = 'fo
   function load(id: string): void {
     if (engine === null) return;
     const run = (): void => {
-      void call.plan(W.label.planning, () => openCall(engine, id), v => { all.dispatch({ kind: 'loaded', folder: id, base: v.view.definition, versions: v.versions }); setShown(null); setApproved(null); setStep('edit'); });
+      void call.plan(W.label.planning, () => openCall(engine, id), v => {
+        // A draft made on another harness cannot stay on this one: say so.
+        setNote(loadDropsDraft(entryOf(drafts.current, id) ?? EMPTY_FOLDER, v.view.definition) ? WORDS.hint.draftDropped : null);
+        all.dispatch({ kind: 'loaded', folder: id, base: v.view.definition, versions: v.versions }); setShown(null); setApproved(null); setStep('edit');
+      });
     };
     setLastPlan(() => run);
     run();
@@ -198,7 +212,8 @@ export function SaveSheet({ open, folderId, tour: tourAsked = false, start = 'fo
       const id = folder.id, rev = aside.revision;
       void call.write(W.label.writing, async () => {
         const r = await engine.runSetAside(id, rev);
-        if (r.ok) all.dispatch({ kind: 'versions', folder: id, versions: await engine.listVersions(id) });
+        // The save points are read again after it. A read that fails is the save points' own failure: the set-aside worked, and says so.
+        if (r.ok) all.dispatch({ kind: 'versions', folder: id, versions: await versionsCall(engine, id) });
         return r;
       }, r => { setAside(null); setAsideDone(r.name); });
     },
@@ -221,12 +236,9 @@ export function SaveSheet({ open, folderId, tour: tourAsked = false, start = 'fo
   };
   /** A link drawn on the graph: from an agent to a skill, or to a notes card, as a draft. */
   const onLinkTarget = (partId: string): void => {
-    const agent = linkingId === null ? null : agentPart(linkingId), skill = partSkill(partId), notes = partNotes(partId);
+    const from = linkingId;
     setLinkingId(null);
-    if (base === null || agent === null) return;
-    if (skill !== null) fd.change(d => linkSkill(base, d, agent, skill, true));
-    const card = notes === null ? undefined : editor.cards.find(c => c.source.name === notes);
-    if (card !== undefined) fd.change(d => attachNotes(base, d, agent, card.source, true));
+    if (from !== null) editor.act({ kind: 'link', a: from, b: partId });
   };
   /** Next on the tour: before the keeper step, the keeper is added from the kit, so the step lights it. */
   const tourNext = (): void => { if (nextStepId(tour) === 'keeper' && keeper === null) editor.addKeeper(() => tourDo('next')); else tourDo('next'); };
@@ -266,20 +278,23 @@ export function SaveSheet({ open, folderId, tour: tourAsked = false, start = 'fo
         {step === 'folder' ? (
           <FolderStep sheet="save" folders={folders} picked={picked} sample={engine?.mode === 'sample'} noBridge={engine === null} busy={busy} introRef={intro} onPick={pick} onChoose={choose}>
             {refusal}{nextWords === undefined || nextWords === null ? null : <p className="hxe-text" data-next-step="">{nextWords}</p>}
+            {note === null ? null : <p className="hxe-text" role="status" data-folder-note="">{note}</p>}
           </FolderStep>
         ) : null}
         {step !== 'folder' ? (
           <>
-            {busy ? <Busy words={call.busy!} /> : null}
+            {busy ? <Busy words={busyWords!} /> : null}
             {refusal}
             {nextWords === undefined || nextWords === null ? null : <p className="hxe-text" data-next-step="">{nextWords}</p>}
           </>
         ) : null}
         {step === 'edit' && base !== null && now !== null && world !== null ? (
           <EditStep base={base} now={now} draft={draft} count={count} held={held || busy} versions={versions} world={world} linkingId={linkingId} selectedId={selectedId}
-            onDraft={fd.change} onLinkStart={id => setLinkingId(c => (c === id ? null : id))} onLinkTarget={onLinkTarget} onLinkCancel={() => setLinkingId(null)} onSelect={setSelectedId}
+            onAction={editor.act} onLinkStart={id => setLinkingId(c => (c === id ? null : id))} onLinkTarget={onLinkTarget} onLinkCancel={() => setLinkingId(null)} onSelect={setSelectedId}
             onMove={fd.move} onGoBack={planRestore} setAside={setAsideParts} notes={editor.notes} {...(editor.copy === undefined ? {} : { copy: editor.copy })} />
         ) : null}
+        {step === 'edit' && note !== null ? <p className="hxe-text" role="status" data-gesture-note="">{note}</p> : null}
+        {step === 'edit' ? editor.refusals.map(r => <RefusalNote key={r.key} refusal={r.refusal} focusId={r.id}>{null}</RefusalNote>) : null}
         {step === 'edit' && editor.opened !== null ? <p className="hxe-text" data-report-opened={editor.opened}><StateDot tone="good">{NOTES.hint.reportOpened}</StateDot></p> : null}
         {step === 'review' && shown !== null ? (
           <SaveReview shown={shown} approved={approved === shown.view.revision} held={held} onApprove={on => setApproved(on ? shown.view.revision : null)}

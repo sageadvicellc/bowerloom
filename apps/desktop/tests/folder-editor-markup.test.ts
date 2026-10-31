@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { CopySkills, EditStep, SavePoints } from '../renderer/harness/FolderEditor.js';
+import { CopySkills, EditStep, SavePoints, SetAsideBlock } from '../renderer/harness/FolderEditor.js';
 import { EMPTY_DRAFT, definitionWorld, draftView, linkSkill } from '../shared/harness/save-draft.js';
 import type { DefinitionView } from '../shared/engine/types.js';
 import { ENGINE_WORDS } from '../renderer/harness/words-engine.js';
@@ -23,7 +23,7 @@ const props = (over: Record<string, unknown> = {}) => {
   const draft = linkSkill(BASE, EMPTY_DRAFT, 'editor', 'check-facts', true), now = draftView(BASE, draft);
   return {
     base: BASE, now, draft, count: 1, held: false, versions: { ok: true as const, value: [] }, world: definitionWorld(now), linkingId: null, selectedId: null,
-    onDraft: noop, onLinkStart: noop, onLinkTarget: noop, onLinkCancel: noop, onSelect: noop, onMove: noop, onGoBack: noop, ...over,
+    onAction: noop, onLinkStart: noop, onLinkTarget: noop, onLinkCancel: noop, onSelect: noop, onMove: noop, onGoBack: noop, ...over,
   };
 };
 
@@ -52,4 +52,29 @@ test('the save sheet holds no editor of its own: it draws the one from FolderEdi
   assert.match(sheet, /useFolderDraft\(/);
   // The draft is never held as the sheet's own state.
   assert.doesNotMatch(sheet, /useState<SaveDraft>/);
+});
+
+test('set-aside is one block for the sheet and the Builder: the button for a record it can clear, the plan with its one button, and the dated name', () => {
+  const base = { view: null, done: null, plan: noop, run: noop };
+  const corrupt = { code: 'VERSION_CORRUPT', message: 'Damaged.', paths: [] }, other = { code: 'SAVE_STALE', message: 'Stale.', paths: [] };
+  const button = renderToStaticMarkup(createElement(SetAsideBlock, { refusal: corrupt, held: false, setAside: base }));
+  assert.match(button, /data-set-aside=""/);
+  assert.ok(button.includes(ENGINE_WORDS.label.planSetAside));
+  assert.doesNotMatch(renderToStaticMarkup(createElement(SetAsideBlock, { refusal: other, held: false, setAside: base })), /data-set-aside/, 'a refusal set-aside cannot clear offers nothing');
+  assert.doesNotMatch(renderToStaticMarkup(createElement(SetAsideBlock, { refusal: null, held: false, setAside: base })), /data-set-aside/);
+  const plan = renderToStaticMarkup(createElement(SetAsideBlock, { refusal: null, held: true, setAside: { ...base, view: { revision: 'abcdef0123456789', folder: '~/x' } as never } }));
+  assert.match(plan, /data-set-aside-plan="abcdef01"/);
+  assert.match(plan, /<button[^>]*disabled=""[^>]*data-run-set-aside=""|<button[^>]*data-run-set-aside=""[^>]*disabled=""/, 'held while a write runs');
+  assert.match(renderToStaticMarkup(createElement(SetAsideBlock, { refusal: null, held: false, setAside: { ...base, done: 'v-old-2026' } })), /data-set-aside-done="v-old-2026"/);
+});
+
+test('no gesture of the editor skips builderAction: it holds no direct call of a save-draft reducer, so a refusal always reaches the person', () => {
+  const editor = readFileSync(join(DESKTOP, 'renderer/harness/FolderEditor.tsx'), 'utf8');
+  for (const name of ['linkSkill(', 'attachNotes(', 'removeSkill(', 'copySkill(', 'setDraftEngines(', 'stopSource(', 'removeKit(', 'keeperAdded(']) assert.equal(editor.includes(name), false, name);
+  assert.doesNotMatch(editor, /onDraft/);
+  // The editor's two plans have a lane each, so neither can drop the other.
+  assert.match(editor, /keeperCall\.plan\(/);
+  assert.match(editor, /copyCall\.plan\(/);
+  const sheet = readFileSync(join(DESKTOP, 'renderer/harness/sheets/SaveSheet.tsx'), 'utf8');
+  assert.doesNotMatch(sheet, /fd\.change|onDraft/);
 });

@@ -752,6 +752,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
   /** The marks main's dialog names: each file the plan writes that can run, and each whose execute bit alone changes. */
   const marksOf = (changes: readonly SaveChangeView[]): SaveMarks => ({
     executables: changes.filter(c => c.executable === true && c.action !== 'delete').map(c => c.path), modeOnly: changes.filter(c => c.modeOnly === true).map(c => c.path),
+    deletes: changes.filter(c => c.action === 'delete').length,
   });
   /** The acknowledgement the save plan shown last asks for, or null: it is part of the plan's choices. */
   const shownAcknowledge = (f: Folder): string | null => {

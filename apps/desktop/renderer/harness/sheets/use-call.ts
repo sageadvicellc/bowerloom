@@ -7,7 +7,7 @@
  * so the sheet can move the focus to it (U9).
  */
 import { useCallback, useMemo, useRef, useState } from 'react';
-import type { Answer, EngineBridge, FolderInfo, Refusal } from '../../../shared/engine/types.js';
+import type { Answer, EngineBridge, FolderInfo, Refusal, VersionView } from '../../../shared/engine/types.js';
 import { CallLanes, callRefusal } from './call-lanes.js';
 
 export { callRefusal };
@@ -54,4 +54,12 @@ export async function chooseFolderCall(engine: EngineBridge): Promise<Answer<{ i
 /** The folder list as one call, so a failure is a refusal and never an empty list (U11). */
 export async function foldersCall(engine: EngineBridge): Promise<Answer<readonly FolderInfo[]>> {
   return { ok: true, value: await engine.folders() };
+}
+
+/**
+ * The save points of a folder as one answer: a read that throws is a refusal in words, so a save point record that cannot be read never undoes a plan or a
+ * set-aside that worked. The caller shows it as the save points' own failure.
+ */
+export async function versionsCall(engine: EngineBridge, id: string): Promise<Answer<readonly VersionView[]>> {
+  try { return await engine.listVersions(id); } catch (error) { return { ok: false, refusal: callRefusal(error) }; }
 }

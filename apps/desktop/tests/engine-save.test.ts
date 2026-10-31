@@ -353,3 +353,18 @@ test('an adoption is refused while a save of the same folder is stopped', async 
   assert.equal(adopt.code, 'SAVE_RECOVERY_REQUIRED');
   assert.equal(refusal(await s.service.runAdoption(f.id, 'a'.repeat(64), { picks: {}, acknowledged: [] }, [])).code, 'SAVE_RECOVERY_REQUIRED');
 });
+
+test('a save that removes a skill deletes its files, and main\'s dialog says it deletes them', async t => {
+  const s = setup(t);
+  const dir = teamFolder(s.home);
+  const f = await choose(s, dir);
+  const edits: SaveEdit[] = [{ kind: 'remove-skill', id: 'outline' }];
+  const plan = value(await s.service.planSave(f.id, edits));
+  const deleted = plan.changes.filter(c => c.action === 'delete').length, others = plan.changes.length - deleted;
+  assert.ok(deleted > 0, 'the plan deletes the skill\'s files');
+  value(await s.service.runSave(f.id, plan.revision, edits));
+  const message = s.asks[0]!.message;
+  assert.match(message, new RegExp(`[Dd]elete ${deleted} ${deleted === 1 ? 'file' : 'files'} in ~/Projects/team/\\.bowerloom\\?$`));
+  assert.match(message, others === 0 ? /^Delete / : new RegExp(`^Change ${others} ${others === 1 ? 'file' : 'files'} and delete `));
+  assert.equal(JSON.stringify(s.asks).includes(s.home), false);
+});

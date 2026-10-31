@@ -28,7 +28,7 @@ export const ENGINE_WORDS = deepFreeze({
     planRemoval: 'Plan a removal', planRecovery: 'Plan a recovery', keepMine: 'Keep my versions', folderGone: 'Folders it removes',
     nothingToChange: 'Nothing to change', finish: 'Finish', engineChoices: 'Interfaces to install for', resultDetails: 'Lines',
     planning: 'Planning', writing: 'Writing', refusal: 'Bowerloom stopped', installIt: 'Install it', acknowledged: 'Acknowledged', becomes: 'becomes', newFile: 'New',
-    planAgain: 'Plan again', result: 'What Bowerloom did', writtenFiles: 'Written', removedFiles: 'Removed', restoredFiles: 'Put back', keptFiles: 'Kept as they are',
+    planAgain: 'Plan again', tryAgain: 'Try again', result: 'What Bowerloom did', writtenFiles: 'Written', removedFiles: 'Removed', restoredFiles: 'Put back', keptFiles: 'Kept as they are',
     leftBehind: 'Left behind', leftFolders: 'Folders left', undo: 'Undo', converted: 'Older Bowerloom copies', filterLeaks: 'Skills read past their filter',
     pendingTrust: 'Skills that wait for trust', checkByHand: 'Files to check by hand', foldersRemoved: 'Folders it removes when empty', exactText: 'The exact text',
     stepResult: 'Done', bodyFolder: 'Pick a folder', bodyReview: 'Review the plan', bodyConfirm: 'Confirm each one', bodyResult: 'What Bowerloom did', bodyInterfaces: 'Pick the interfaces',

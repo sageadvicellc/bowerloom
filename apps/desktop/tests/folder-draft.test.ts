@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { EMPTY_FOLDER, FolderDraftProvider, folderDraftsReduce, useFolderDraft } from '../renderer/harness/folder-draft.js';
+import { EMPTY_FOLDER, FolderDraftProvider, folderDraftsReduce, loadDropsDraft, useFolderDraft } from '../renderer/harness/folder-draft.js';
 import type { FolderDrafts } from '../renderer/harness/folder-draft.js';
 import { EMPTY_DRAFT, linkSkill, removeSkill } from '../shared/harness/save-draft.js';
 import { UNDO_LIMIT, canRedo, canUndo, undoCount } from '../shared/harness/draft-undo.js';
@@ -113,4 +113,35 @@ test('the provider hands each folder its own entry to the screens below it', () 
   const html = renderToStaticMarkup(createElement(FolderDraftProvider, { initial }, createElement(Show, { folder: A }), createElement(Show, { folder: B })));
   assert.match(html, /data-folder="folder-1" data-undo="true" data-base="weekly-report">1</);
   assert.match(html, /data-folder="folder-2" data-undo="false" data-base="none">0</);
+});
+
+test('a folder named like an Object property is a folder like any other: it reads its own entry and never the prototype', () => {
+  for (const name of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
+    // Nothing read yet: no entry, and a change, an undo and a discard change nothing.
+    const none: FolderDrafts = {};
+    assert.equal(folderDraftsReduce(none, { kind: 'change', folder: name, next: d => link(d) }), none, name);
+    assert.equal(folderDraftsReduce(none, { kind: 'undo', folder: name }), none, name);
+    assert.equal(folderDraftsReduce(none, { kind: 'saved', folder: name }), none, name);
+    // Read: the entry is the folder's own.
+    const s = folderDraftsReduce(loaded(none, name), { kind: 'change', folder: name, next: d => link(d) });
+    assert.equal(Object.hasOwn(s, name), true, name);
+    assert.equal(undoCount(s[name]!.stack), 1, name);
+    assert.equal(Object.getPrototypeOf(s), Object.prototype, 'the table keeps its prototype');
+  }
+  function Show({ folder }: { folder: string }) {
+    const d = useFolderDraft(folder);
+    return createElement('span', { 'data-base': d.entry.base === null ? 'none' : d.entry.base.id }, String(d.count));
+  }
+  const html = renderToStaticMarkup(createElement(FolderDraftProvider, null, createElement(Show, { folder: '__proto__' }), createElement(Show, { folder: 'constructor' })));
+  assert.equal((html.match(/data-base="none">0</g) ?? []).length, 2);
+});
+
+test('reading a harness that differs from the one a draft was made on drops a draft with changes, and only then', () => {
+  const changed: DefinitionView = { ...BASE, agents: BASE.agents.map(a => (a.id === 'editor' ? { ...a, skills: ['check-facts'] } : a)) };
+  const withDraft = folderDraftsReduce(loaded({}, A), { kind: 'change', folder: A, next: d => link(d) })[A]!;
+  const clean = loaded({}, A)[A]!;
+  assert.equal(loadDropsDraft(withDraft, changed), true, 'changes, and another harness');
+  assert.equal(loadDropsDraft(withDraft, { ...BASE }), false, 'the same harness read again keeps the draft');
+  assert.equal(loadDropsDraft(clean, changed), false, 'nothing to lose');
+  assert.equal(loadDropsDraft(EMPTY_FOLDER, changed), false, 'a folder not read yet');
 });

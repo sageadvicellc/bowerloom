@@ -39,7 +39,14 @@ test('an address that is not the preview\'s own parses to null, and an unknown p
   assert.deepEqual(parseRoute('#prototype-v3/library/nonsense'), { name: 'library', kind: 'skill' });
   assert.deepEqual(parseRoute('#prototype-v3/builder/<script>/list'), { name: 'harnesses' }, 'an id with odd characters is refused');
   assert.deepEqual(parseRoute('#prototype-v3/builder/%E0%A4%A/list'), { name: 'harnesses' });
-  assert.deepEqual(parseRoute('#prototype-v3/builder/harness-a/sideways'), { name: 'builder', id: 'harness-a' });
+  assert.deepEqual(parseRoute('#prototype-v3/builder/folder-3/sideways'), { name: 'builder', id: 'folder-3' });
+});
+
+test('the Builder opens only an id main gives a folder (folder-<n>) or the sample launch gives one (sample-<name>); any other id is the folder list', () => {
+  for (const id of ['folder-1', 'folder-999999', 'sample-weekly-report', 'sample-inbox-tools']) assert.deepEqual(parseRoute(`#prototype-v3/builder/${id}`), { name: 'builder', id }, id);
+  for (const id of ['__proto__', 'constructor', 'toString', 'harness-a', 'folder-', 'folder-1234567', 'folder-1a', 'Folder-1', 'sample-', 'sample-A', '..', 'folder-1.']) {
+    assert.deepEqual(parseRoute(`#prototype-v3/builder/${id}`), { name: 'harnesses' }, id);
+  }
 });
 
 test('the Builder\'s address names one folder: builder/<folderId>; an older address with a view still opens the folder', () => {
