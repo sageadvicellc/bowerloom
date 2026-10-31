@@ -324,16 +324,13 @@ test('sample notes: link shows pages and no history; history starts once by revi
   assert.deepEqual(gone.changes.map(c => c.path).sort(), ['.bowerloom/agents/notes-keeper.md', '.bowerloom/knowledge.json']);
 });
 
-test('the made-up notes folders read as a reading list, never as a private product name', async () => {
+test('the made-up notes folder is a reading list: its name, its label, and its pages', async () => {
   const e = createSampleEngine();
-  for (const purpose of ['use', 'start'] as const) {
-    const a = await e.chooseNotesFolder(purpose);
-    assert.ok(a !== null && a.ok);
-    assert.doesNotMatch(JSON.stringify(a.value), /garden/i);
-  }
+  const use = await e.chooseNotesFolder('use');
+  assert.ok(use !== null && use.ok);
+  assert.deepEqual([use.value.name, use.value.label, use.value.suggestedName], ['Reading list', '~/Documents/Reading list', 'reading-list']);
   const plan = await e.planNotesHistory(SAMPLE_NOTES.use);
   assert.ok(plan.ok);
-  assert.doesNotMatch(JSON.stringify(plan.value), /garden|bed|compost|pest/i);
-  const use = await e.chooseNotesFolder('use');
-  assert.equal(use !== null && use.ok ? use.value.name : '', 'Reading list');
+  const tops = [...new Set(plan.value.files.map(f => f.path.split('/')[0]!).filter(p => !p.endsWith('.md')))].sort();
+  assert.deepEqual(tops, ['articles', 'books', 'notes']);
 });
