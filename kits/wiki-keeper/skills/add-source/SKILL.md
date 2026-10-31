@@ -11,15 +11,14 @@ This skill changes pages. It makes one commit.
 
 ## Before you start
 
-Run these two commands in the wiki folder.
+Check that the wiki folder holds a `.git` folder at its root. Then run this command in the wiki folder.
 
 ```bash
-git rev-parse --show-toplevel
 git status --porcelain
 ```
 
-- If the first command fails, or it does not print the wiki folder, the folder is not a git repository. Change nothing. Tell the person what you found, and say that the folder needs to become a git repository first.
-- If the second command prints anything, the working tree is not empty. Stop. Tell the person which files are waiting, and ask them to commit those changes or set them aside. Do not tidy them yourself.
+- If there is no `.git` folder at the root, or `git status --porcelain` fails, the folder is not a git repository. Change nothing. Tell the person what you found, and say that the folder needs to become a git repository first.
+- If the command prints anything, the working tree is not empty. Stop. Tell the person which files are waiting, and ask them to commit those changes or set them aside. Do not tidy them yourself.
 
 Then read `AGENTS.md` at the root of the wiki. It states the folders, the page fields, the link style, and the log format. If it disagrees with this skill, `AGENTS.md` wins.
 
@@ -37,14 +36,16 @@ Then read `AGENTS.md` at the root of the wiki. It states the folders, the page f
 
 ## Finish with one commit
 
-Stage only the files you wrote. Then make one commit.
+Stage only the files you wrote. Then make one commit. Write `<short name>` from the source's name, reduced to letters, digits, spaces, and hyphens. Drop every other character, and keep it on one line. The message reaches git through a quoted heredoc, so nothing in it runs.
 
 ```bash
 git add -- sources/<source-file> pages/<summary-page>.md index.md log.md
-git commit -m "add source: <short name>"
+git commit -F - <<'MSG'
+add source: <short name>
+MSG
 ```
 
-Add every other page you changed to the `git add` line, by its exact path. Never stage everything at once. Never skip a check or amend. If the commit fails, leave the files as they are and tell the person what went wrong.
+Add every other page you changed to the staging line above, by its exact path. Never stage everything at once. Never skip a check or amend. If the commit fails, leave the files as they are and tell the person what went wrong.
 
 ## Stop and ask
 

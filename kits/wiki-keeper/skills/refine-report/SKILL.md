@@ -11,15 +11,14 @@ This skill writes one file: `reports/YYYY-MM-DD-refine.md`, with today's date. I
 
 ## Before you start
 
-Run these two commands in the wiki folder.
+Check that the wiki folder holds a `.git` folder at its root. Then run this command in the wiki folder.
 
 ```bash
-git rev-parse --show-toplevel
 git status --porcelain
 ```
 
-- If the first command fails, or it does not print the wiki folder, the folder is not a git repository. Change nothing. You may still study the notes and show the person the report in the chat. Do not save a file.
-- If the second command prints anything, the working tree is not empty. Stop. Tell the person which files are waiting, and ask them to commit those changes or set them aside.
+- If there is no `.git` folder at the root, or `git status --porcelain` fails, the folder is not a git repository. Change nothing. You may still study the notes and show the person the report in the chat. Do not save a file.
+- If the command prints anything, the working tree is not empty. Stop. Tell the person which files are waiting, and ask them to commit those changes or set them aside.
 
 Then read `AGENTS.md` at the root of the wiki. It states the page fields and the link style. If it disagrees with this skill, `AGENTS.md` wins.
 
@@ -61,11 +60,13 @@ This is the only file you write. Change no other file or page. Do not edit `inde
 
 ## Finish with one commit
 
-Stage only the report. Then make one commit.
+Stage only the report. Then make one commit. The message holds only letters, digits, spaces, and hyphens after the colon, on one line. It reaches git through a quoted heredoc, so nothing in it runs.
 
 ```bash
 git add -- reports/YYYY-MM-DD-refine.md
-git commit -m "refine report: YYYY-MM-DD"
+git commit -F - <<'MSG'
+refine report: YYYY-MM-DD
+MSG
 ```
 
 Use today's date in both lines. Never skip a check or amend. If the commit fails, leave the file as it is and tell the person what went wrong.

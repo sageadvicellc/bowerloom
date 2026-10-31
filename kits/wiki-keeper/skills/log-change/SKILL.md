@@ -11,15 +11,14 @@ This skill changes the log. It makes one commit.
 
 ## Before you start
 
-Run these two commands in the wiki folder.
+Check that the wiki folder holds a `.git` folder at its root. Then run this command in the wiki folder.
 
 ```bash
-git rev-parse --show-toplevel
 git status --porcelain
 ```
 
-- If the first command fails, or it does not print the wiki folder, the folder is not a git repository. Change nothing. Tell the person what you found, and say that the folder needs to become a git repository first. The log cannot be built without history.
-- If the second command prints anything, the working tree is not empty. Stop. This skill records changes that are already committed. Tell the person which files are waiting, and ask them to commit those changes or set them aside.
+- If there is no `.git` folder at the root, or `git status --porcelain` fails, the folder is not a git repository. Change nothing. Tell the person what you found, and say that the folder needs to become a git repository first. The log cannot be built without history.
+- If the command prints anything, the working tree is not empty. Stop. This skill records changes that are already committed. Tell the person which files are waiting, and ask them to commit those changes or set them aside.
 
 Then read `AGENTS.md` at the root of the wiki for the log format. If it disagrees with this skill, `AGENTS.md` wins.
 
@@ -36,7 +35,7 @@ Then read `AGENTS.md` at the root of the wiki for the log format. If it disagree
 4. **Check what each commit changed**, when its message is not clear.
 
    ```bash
-   git show --stat --format="%s" <commit>
+   git log -1 --stat --format="%s" <commit>
    ```
 
 5. **Write the log lines.** One line for each change that deserves one, oldest first, at the bottom of `log.md`. Use the format that `AGENTS.md` gives. Say what changed in plain words. Do not put commit ids in the log.
@@ -46,11 +45,13 @@ If there is nothing to record, say so. Change nothing and make no commit.
 
 ## Finish with one commit
 
-Stage only the log. Then make one commit.
+Stage only the log. Then make one commit. Write `<date>` as `YYYY-MM-DD`. The message holds only letters, digits, spaces, and hyphens after the colon, on one line. It reaches git through a quoted heredoc, so nothing in it runs.
 
 ```bash
 git add -- log.md
-git commit -m "log: record changes up to <date>"
+git commit -F - <<'MSG'
+log: record changes up to <date>
+MSG
 ```
 
 Never skip a check or amend. If the commit fails, leave the file as it is and tell the person what went wrong.

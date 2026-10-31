@@ -118,7 +118,71 @@ test('a skill that changes a page stops with a report when the folder is not a g
     const text = skillText(id);
     assert.match(text, /not a git repository/i, `${id}: names the case`);
     assert.match(text, /change nothing/i, `${id}: changes nothing in that case`);
-    assert.ok(codeLines(text).some(l => /^git rev-parse\b/.test(l)), `${id}: tests for a repository first`);
+    // The wiki must be its own repository: a `.git` folder at its root, and git status must work. No other git command is needed for the check.
+    assert.match(text, /`\.git` folder at (?:its|the) root/i, `${id}: checks for .git at the wiki root`);
+    assert.match(text, /git status --porcelain`? fails/i, `${id}: a failing status means no repository`);
+  }
+});
+
+// ---- every git command in the kit, in prose and in code, against one allowlist -------------------------------------------
+
+/** The git subcommands a text can name. A word after "git" that is not one of these (such as "repository") is prose, not a command. */
+const GIT_COMMANDS = new Set(('add am apply archive bisect blame branch bundle cat-file checkout cherry-pick citool clean clone commit config describe diff '
+  + 'fetch filter-branch for-each-ref format-patch fsck gc grep gui hash-object init log ls-files ls-tree maintenance merge mv notes prune pull push '
+  + 'range-diff read-tree rebase reflog remote repack replace reset restore rev-list rev-parse revert rm shortlog show sparse-checkout stash status '
+  + 'submodule switch symbolic-ref tag update-index update-ref worktree write-tree').split(' '));
+
+/** Every git command a text names, anywhere: each `git <command> ...` up to the end of its line or its code span, with a following option too. */
+function gitCommands(text) {
+  const out = [];
+  for (const m of text.matchAll(/\bgit\s+((?:-c\s+\S+\s+|-C\s+\S+\s+|--?[a-z][\w-]*\s+)*)([a-z][a-z-]*)([^`\n]*)/g)) {
+    if (m[1].trim() !== '') { out.push(`git ${m[1]}${m[2]}${m[3]}`.trim()); continue; }
+    if (GIT_COMMANDS.has(m[2])) out.push(`git ${m[2]}${m[3]}`.trim());
+  }
+  return out;
+}
+
+/** The allowlist. Anything else, in prose or in code, fails. */
+const ALLOWED = [
+  /^git status --porcelain$/,
+  /^git add --(?!.*\s(?:-A|--all|\.|-f|--force|-u|--update)(?:\s|$)) \S.*$/,
+  /^git commit -F - <<'MSG'$/,
+  /^git log(?:\s+(?!--output|--ext-diff|-p\b|--patch)\S+)*$/,
+];
+const allowed = cmd => ALLOWED.some(r => r.test(cmd));
+
+test('the allowlist itself refuses the commands that change history, the tree, or a remote', () => {
+  for (const cmd of ['git status --porcelain', 'git add -- pages/a.md log.md', "git commit -F - <<'MSG'", 'git log', 'git log --format="%ad %s" --date=short -n 50', 'git log -1 --stat --format="%s" <commit>']) {
+    assert.ok(allowed(cmd), cmd);
+  }
+  for (const cmd of ['git add -A', 'git add .', 'git add -- .', 'git add -- -A', 'git commit -a', 'git commit -m "x"', 'git commit --amend', 'git commit -F - --amend', 'git rm a.md',
+    'git restore a.md', 'git switch main', 'git gc', 'git push', 'git reset --hard', 'git show --stat HEAD', 'git rev-parse --show-toplevel', 'git status',
+    'git log --output=x', 'git -c core.pager=sh log', 'git checkout -- a.md', 'git stash', 'git clean -fd']) {
+    assert.ok(!allowed(cmd), cmd);
+  }
+  assert.deepEqual(gitCommands('Run `git add -A` and git push, then git repository words.'), ['git add -A', 'git push, then git repository words.']);
+  assert.deepEqual(gitCommands('```\ngit -c x=y status --porcelain\n```'), ['git -c x=y status --porcelain']);
+});
+
+test('every git command in every skill and in the agent, in prose and in code, is on the allowlist', () => {
+  const texts = [...SKILLS.map(id => [`skills/${id}/SKILL.md`, skillText(id)]), ['agents/notes-keeper.md', read('agents/notes-keeper.md')]];
+  let seen = 0;
+  for (const [rel, text] of texts) {
+    for (const cmd of gitCommands(text)) { seen += 1; assert.ok(allowed(cmd), `${rel}: ${cmd}`); }
+  }
+  assert.ok(seen > 0);
+});
+
+test('a changing skill commits with a quoted heredoc, one message line, and tells the agent to reduce the title to plain characters', () => {
+  for (const id of CHANGING) {
+    const text = skillText(id);
+    const code = codeLines(text);
+    const at = code.findIndex(l => /^git commit\b/.test(l));
+    assert.equal(code[at], "git commit -F - <<'MSG'", `${id}: the message comes on stdin, never inside quotes on the command line`);
+    assert.match(code[at + 1], /^[a-z][a-z -]*: [<A-Za-z][A-Za-z0-9 <>-]*$/, `${id}: one plain message line`);
+    assert.equal(code[at + 2], 'MSG', `${id}: the heredoc ends on the next line`);
+    assert.match(text, /letters, digits, spaces, and hyphens/i, `${id}: the title is reduced to plain characters`);
+    assert.doesNotMatch(text, /git commit -m/, `${id}: no message inside double quotes`);
   }
 });
 
