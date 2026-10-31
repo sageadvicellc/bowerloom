@@ -5,7 +5,7 @@
  */
 import type { ReactElement } from 'react';
 import { chipWords, harnessById, installState, installStates, installsOfProject, stateTone, stateWords, worstState } from '../../../shared/harness/status.js';
-import { manifestPathOf } from '../../../shared/harness/files.js';
+import { HARNESS_FILE } from '../../../shared/harness/files.js';
 import type { HarnessStore } from '../../../shared/harness/store.js';
 import type { Harness, HarnessState, Install, InstallState, Project } from '../../../shared/harness/types.js';
 import { DetailsHead, Screen } from '../Screen.js';
@@ -80,7 +80,7 @@ function InstallBlock({ state, store, ui, project, install, harness, many }: { s
       <section className="hx-block" aria-label={`${WORDS.label.harness} ${harness.name}`}>
         <h3 className="hx-h3">{WORDS.label.harness}</h3>
         <p className="hxp-hname">{harness.name}</p>
-        <p className="hx-text hx-muted">{savedAs(manifestPathOf(harness))}</p>
+        <p className="hx-text hx-muted">{savedAs(HARNESS_FILE)}</p>
       </section>
       <section className="hx-block" aria-label={`${FLOW.label.interfacesOfInstall} ${harness.name}`}>
         <h3 className="hx-h3">{FLOW.label.interfacesOfInstall}</h3>

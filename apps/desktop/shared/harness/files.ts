@@ -2,12 +2,14 @@
  * The list of files an install writes, for the review step of the install sheet. Nothing is written in this preview: the list only says what the full app would write.
  * The list for "Weekly report crew" in "bowerloom" with Claude Code and Codex is the one in the design (S7.3): 10 files, 7 new, 2 updates and 1 conflict.
  * Any other harness, project or interface gets a list built by one rule (see `buildInstallPlan`).
+ * A folder holds one harness, in one file: `.bowerloom/harness.json`. The list names that file first.
  */
-import type { ConflictChoice, FileState, Harness, HarnessState, InstallPlan, InterfaceId, PlannedFile } from './types.js';
+import type { ConflictChoice, FileState, HarnessState, InstallPlan, InterfaceId, PlannedFile } from './types.js';
 import { slugOf } from './sample.js';
 import { harnessById, installOf, partsOf } from './status.js';
 
-export const manifestPathOf = (harness: Harness): string => `.bowerloom/harnesses/${slugOf(harness.name)}.json`;
+/** The one file a folder's harness is kept in. */
+export const HARNESS_FILE = '.bowerloom/harness.json';
 
 const AGENT_FILE: Readonly<Record<InterfaceId, (slug: string) => string>> = {
   'claude-code': s => `.claude/agents/${s}.md`, codex: s => `.codex/agents/${s}.toml`, opencode: s => `.opencode/agents/${s}.md`,
@@ -35,7 +37,7 @@ function file(interfaceId: InterfaceId, [kind, slug, state]: Entry): PlannedFile
 
 /**
  * The files an install of `harnessId` into `projectId` writes for `interfaceIds`.
- * The rule: the manifest is new when the project holds nothing of the harness yet, else an update. For each interface, every agent of the harness gets a file, and so do the first two skills.
+ * The rule: the harness file is new when the project holds nothing of the harness yet, else an update. For each interface, every agent of the harness gets a file, and so do the first two skills.
  * A file is new when the interface is not installed there, an update when it is out of date (or installed already), and the first agent's file is a conflict when the interface has a conflict.
  */
 export function buildInstallPlan(state: HarnessState, projectId: string, harnessId: string, interfaceIds: readonly InterfaceId[]): InstallPlan {
@@ -45,7 +47,7 @@ export function buildInstallPlan(state: HarnessState, projectId: string, harness
   const pending = install !== undefined && Object.values(install.states).some(s => s !== 'installed');
   const design = DESIGN_PLAN.project === projectId && DESIGN_PLAN.harness === harnessId && pending;
   const held = install !== undefined && Object.values(install.states).some(s => s !== 'not-installed');
-  const manifest: PlannedFile = { path: manifestPathOf(harness), state: design ? DESIGN_PLAN.manifest : held ? 'update' : 'new' };
+  const manifest: PlannedFile = { path: HARNESS_FILE, state: design ? DESIGN_PLAN.manifest : held ? 'update' : 'new' };
   const parts = partsOf(state, harness);
   const agents = parts.filter(p => p.kind === 'agent'), skills = parts.filter(p => p.kind === 'skill').slice(0, 2);
   const groups = interfaceIds.map(interfaceId => {

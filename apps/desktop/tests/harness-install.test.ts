@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SAMPLE_IDS, createSampleWorld } from '../shared/harness/sample.js';
-import { buildInstallPlan, defaultChoices, installButtonWords, keepBothName, manifestPathOf, planSummary } from '../shared/harness/files.js';
+import { HARNESS_FILE, buildInstallPlan, defaultChoices, installButtonWords, keepBothName, planSummary } from '../shared/harness/files.js';
 import { CHOICE_WORDS, chosenInterfaces, choiceFor, choiceHint, choicesOf, defaultInterfaces, interfaceLine, selectable, settled, unsettled } from '../shared/harness/install-flow.js';
 import { FIXED_NOW, UNDO_NEWER_FIRST, install, removeInstall, setInterfaceOn, undoEntry } from '../shared/harness/store.js';
 import { harnessById, harnessStatus, installOf, installLine, interfaceById, projectStatus, startNeeds } from '../shared/harness/status.js';
@@ -23,14 +23,24 @@ test('the review of Weekly report crew in bowerloom lists every file of the desi
   assert.deepEqual([plan.counts.new, plan.counts.update, plan.counts.conflict], [7, 2, 1]);
   assert.equal(planSummary(plan), '7 new files, 2 updates and 1 conflict');
   assert.equal(installButtonWords(plan), 'Install 10 files');
-  assert.deepEqual(plan.manifest, { path: '.bowerloom/harnesses/weekly-report-crew.json', state: 'new' });
+  assert.deepEqual(plan.manifest, { path: '.bowerloom/harness.json', state: 'new' });
   assert.deepEqual(plan.groups.map(g => g.interfaceId), ['claude-code', 'codex']);
   assert.deepEqual(plan.groups[0]!.files.map(f => `${f.path} ${f.state}`), [
     '.claude/agents/planner.md new', '.claude/agents/researcher.md new', '.claude/agents/writer.md update', '.claude/skills/draft-outline/SKILL.md new', '.claude/skills/check-facts/SKILL.md update']);
   assert.deepEqual(plan.groups[1]!.files.map(f => `${f.path} ${f.state}`), [
     '.codex/agents/planner.toml new', '.codex/agents/researcher.toml new', '.codex/agents/writer.toml conflict', '.agents/skills/draft-outline/SKILL.md new']);
   assert.deepEqual(plan.conflicts.map(f => f.path), ['.codex/agents/writer.toml']);
-  assert.equal(plan.manifest.path, manifestPathOf(harnessById(world(), weekly)!));
+  assert.equal(plan.manifest.path, HARNESS_FILE);
+});
+
+test('every install plan names the one harness file of the folder, .bowerloom/harness.json, and never a file under .bowerloom/harnesses/', () => {
+  const w = world();
+  assert.equal(HARNESS_FILE, '.bowerloom/harness.json');
+  for (const project of w.projects) for (const harness of w.harnesses) {
+    const plan = buildInstallPlan(w, project.id, harness.id, CC);
+    assert.equal(plan.manifest.path, HARNESS_FILE, `${project.id} ${harness.id}`);
+    for (const f of [plan.manifest, ...plan.groups.flatMap(g => g.files)]) assert.doesNotMatch(f.path, /^\.bowerloom\/harnesses\//, f.path);
+  }
 });
 
 test('every other install gets a list by one rule, and every file of every group is in the count', () => {
@@ -186,10 +196,10 @@ test('Start then Install: the interfaces ticked in Start are the ones the review
 
 test('the words built from a name, a path or a number obey the same rules', () => {
   const w = world(), h = harnessById(w, weekly)!, plan = buildInstallPlan(w, bowerloom, weekly, CC);
-  const built = [makeFrom('Caveman (plug-in)'), actionName('Update', 'Weekly report crew', 'bowerloom'), installFor('Codex'), updateFor('Codex'), reviewFor('Codex'), savedAs(manifestPathOf(h)), installAction('Weekly report crew', 'bowerloom'),
+  const built = [makeFrom('Caveman (plug-in)'), actionName('Update', 'Weekly report crew', 'bowerloom'), installFor('Codex'), updateFor('Codex'), reviewFor('Codex'), savedAs(HARNESS_FILE), installAction('Weekly report crew', 'bowerloom'),
     interfaceSwitch('Codex'), undoName('Installed Weekly report crew in bowerloom'), removedWords('Weekly report crew'), nothingChanged('that link is there already'), nothingChanged(UNDO_NEWER_FIRST), FLOW.hint.undoFirst, settledWords('Keep mine'), foundSources(1), readTitle(1), makeAll(2), interfacesHint(1)];
   for (const text of built) assert.equal(bannedHere(text), null, text);
-  for (const text of [savedAs(manifestPathOf(h)), conflictTitle('.codex/agents/writer.toml'), reviewLine(planSummary(plan), '~/Sage Advice/code/internal-tools/bowerloom')]) { assert.ok(countWords(text) <= LIMITS.hint + 5, text); assert.equal(bannedHere(text), null, text); }
+  for (const text of [savedAs(HARNESS_FILE), conflictTitle('.codex/agents/writer.toml'), reviewLine(planSummary(plan), '~/Sage Advice/code/internal-tools/bowerloom')]) { assert.ok(countWords(text) <= LIMITS.hint + 5, text); assert.equal(bannedHere(text), null, text); }
   for (const c of CONFLICT_CHOICES) { const text = choiceHint(c, '.codex/agents/writer.toml'); assert.ok(countWords(text) <= LIMITS.hint, text); assert.equal(bannedHere(text), null, text); assert.equal(bannedHere(CHOICE_WORDS[c]), null); }
   for (const iface of w.interfaces) { const line = interfaceLine(w, h, iface).words; assert.ok(countWords(line) <= LIMITS.hint, line); assert.equal(bannedHere(line), null, line); }
   assert.ok(countWords(reviewLine(planSummary(plan), '~/Sage Advice/code/internal-tools/bowerloom')) <= LIMITS.paragraph);
