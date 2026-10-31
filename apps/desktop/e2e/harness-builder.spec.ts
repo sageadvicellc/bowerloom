@@ -191,6 +191,43 @@ test('Save opens the save sheet on its review step with the Builder\'s draft; Do
   await expect(tick(p, 'editor', 'check-facts')).not.toBeChecked();
 });
 
+test('Go back with unsaved changes asks "Discard N changes?" first: Keep editing opens nothing, Discard drops the draft and opens the review', async () => {
+  const p = page();
+  await openWeekly(p);
+  // One save, so there is a save point to go back to.
+  await drag(p, node('skill:check-facts'), await middle(node('agent:editor')));
+  await p.getByRole('button', { name: 'Save', exact: true }).click();
+  const s = p.getByRole('dialog', { name: 'Edit a folder\'s harness' });
+  await s.locator('[data-approve-plan] input').check();
+  await s.getByRole('button', { name: 'Save 1 file', exact: true }).click();
+  await expect(s.locator('[data-version-kept]')).toBeVisible();
+  await s.getByRole('button', { name: 'Close', exact: true }).last().click();
+  await expect(count(p)).toContainText('No change yet.');
+  // A new change, not saved. Go back would throw it away, so it asks.
+  await tick(p, 'writer', 'check-facts').check();
+  await expect(count(p)).toContainText('1 change, not saved yet.');
+  await p.getByRole('button', { name: 'Save points', exact: true }).click();
+  const drawer = p.getByRole('dialog', { name: 'Save points' });
+  await drawer.getByRole('button', { name: 'Go back to v1', exact: true }).click();
+  const ask = p.getByRole('dialog', { name: 'Discard 1 change?' });
+  await expect(ask).toBeVisible();
+  await expect(s).toHaveCount(0);
+  await ask.getByRole('button', { name: 'Keep editing', exact: true }).click();
+  await expect(ask).toHaveCount(0);
+  await expect(s).toHaveCount(0);
+  await expect(count(p)).toContainText('1 change, not saved yet.');
+  await expect(tick(p, 'writer', 'check-facts')).toBeChecked();
+  // Discard: the draft goes, and the review of the go-back opens.
+  await p.getByRole('button', { name: 'Save points', exact: true }).click();
+  await p.getByRole('dialog', { name: 'Save points' }).getByRole('button', { name: 'Go back to v1', exact: true }).click();
+  await p.getByRole('dialog', { name: 'Discard 1 change?' }).getByRole('button', { name: 'Discard', exact: true }).click();
+  await expect(s.locator('[data-save-review="restore"] [data-going-back="v1"]')).toBeVisible();
+  await p.keyboard.press('Escape');
+  await expect(s).toHaveCount(0);
+  await expect(count(p)).toContainText('No change yet.');
+  await expect(tick(p, 'writer', 'check-facts')).not.toBeChecked();
+});
+
 test('leaving a folder with unsaved changes asks "Discard N changes?": Keep editing stays, Discard drops the draft and goes', async () => {
   const p = page();
   await openWeekly(p);
