@@ -1,0 +1,133 @@
+/**
+ * The summary of one notes folder, for the Notes panel. It reads names only and never opens a page:
+ *
+ * - The page count is every `*.md` name of a plain file, outside hidden folders, without following any link. It stops
+ *   at an entry bound and a time bound, and says when it stopped early. A folder it cannot list leaves it incomplete.
+ * - The latest report date comes from `reports/YYYY-MM-DD-*.md` names, in a real `reports` folder.
+ * - The last commit time comes from `git log -1 --format=%ct`, the only git call, when `.git` is a real folder.
+ */
+import fs from 'node:fs';
+import { join } from 'node:path';
+import { byBytes } from '../../project-sync/src/portable-files.js';
+import { uid, verifiedFolder } from './folder.js';
+import { findGit, runGit } from './git.js';
+import { commitTime } from './history.js';
+import { isNotesRefusal, refuse } from './refusal.js';
+import type { NotesOptions } from './starter.js';
+
+export const NOTES_SUMMARY_FORMAT = 'bowerloom/notes-summary/v1beta1' as const;
+export const SUMMARY_LIMITS = Object.freeze({ entries: 50_000, timeBudgetMs: 2000, depth: 64, gitTimeoutMs: 5000 });
+
+export interface SummaryOptions extends NotesOptions {
+  /** The most entries the count reads. Default 50000. */
+  readonly maxEntries?: number;
+  /** The most milliseconds the count takes. Default 2000. */
+  readonly timeBudgetMs?: number;
+  /** The clock the time bound reads. Tests pass one; the app passes nothing. */
+  readonly clock?: () => number;
+}
+
+/**
+ * - `git`: `.git` is a real folder and git log ran; `lastCommitAt` is null when there is no commit yet.
+ * - `none`: the folder has no `.git`.
+ * - `git-missing`: the folder has `.git`, and git is not installed.
+ * - `unreadable`: `.git` is not a real folder of yours, or git stopped on a timeout or the output cap.
+ */
+export type NotesHistory = 'git' | 'none' | 'git-missing' | 'unreadable';
+
+export interface NotesSummary {
+  readonly format: typeof NOTES_SUMMARY_FORMAT;
+  readonly pages: number;
+  /** False when a bound stopped the count, or a folder could not be listed. */
+  readonly complete: boolean;
+  readonly history: NotesHistory;
+  /** The last commit time as an ISO date, or null. */
+  readonly lastCommitAt: string | null;
+  /** The newest report by the date in its name, or null. */
+  readonly latestReport: { readonly date: string; readonly path: string } | null;
+}
+
+const MD = /\.md$/i;
+const REPORT = /^(\d{4})-(\d{2})-(\d{2})-.+\.md$/i;
+
+function countPages(dir: string, maxEntries: number, budget: number, clock: () => number): { pages: number; complete: boolean } {
+  const start = clock();
+  let pages = 0, entries = 0, complete = true;
+  const stack: { abs: string; depth: number }[] = [{ abs: dir, depth: 0 }];
+  walk: while (stack.length) {
+    const { abs, depth } = stack.pop()!;
+    if (depth > SUMMARY_LIMITS.depth) { complete = false; continue; }
+    let handle: fs.Dir;
+    try { handle = fs.opendirSync(abs); } catch { complete = false; continue; }
+    try {
+      for (let entry = handle.readSync(); entry !== null; entry = handle.readSync()) {
+        if (++entries > maxEntries || clock() - start > budget) { complete = false; break walk; }
+        if (entry.name.startsWith('.')) continue;
+        if (entry.isDirectory()) stack.push({ abs: join(abs, entry.name), depth: depth + 1 });
+        else if (entry.isFile() && MD.test(entry.name)) pages++;
+      }
+    } catch { complete = false; } finally { handle.closeSync(); }
+  }
+  return { pages, complete };
+}
+
+function validDate(y: string, m: string, d: string): boolean {
+  const t = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)));
+  return t.getUTCFullYear() === Number(y) && t.getUTCMonth() === Number(m) - 1 && t.getUTCDate() === Number(d);
+}
+
+function latestReport(dir: string, maxEntries: number): NotesSummary['latestReport'] {
+  const abs = join(dir, 'reports');
+  try {
+    const st = fs.lstatSync(abs);
+    if (st.isSymbolicLink() || !st.isDirectory() || st.uid !== uid()) return null;
+  } catch { return null; }
+  let best: { date: string; name: string } | null = null;
+  let handle: fs.Dir;
+  try { handle = fs.opendirSync(abs); } catch { return null; }
+  try {
+    let n = 0;
+    for (let entry = handle.readSync(); entry !== null && ++n <= maxEntries; entry = handle.readSync()) {
+      const m = REPORT.exec(entry.name);
+      if (!m || !entry.isFile() || !validDate(m[1]!, m[2]!, m[3]!)) continue;
+      const date = `${m[1]}-${m[2]}-${m[3]}`;
+      if (!best || date > best.date || (date === best.date && byBytes(entry.name, best.name) > 0)) best = { date, name: entry.name };
+    }
+  } catch { /* a listing that fails part way keeps what it read */ } finally { handle.closeSync(); }
+  return best ? { date: best.date, path: `reports/${best.name}` } : null;
+}
+
+async function history(dir: string, options: SummaryOptions): Promise<Pick<NotesSummary, 'history' | 'lastCommitAt'>> {
+  try {
+    const st = fs.lstatSync(join(dir, '.git'));
+    if (st.isSymbolicLink() || !st.isDirectory() || st.uid !== uid()) return { history: 'unreadable', lastCommitAt: null };
+  } catch (e) {
+    return { history: (e as NodeJS.ErrnoException).code === 'ENOENT' ? 'none' : 'unreadable', lastCommitAt: null };
+  }
+  let git;
+  try { git = findGit(options.gitCandidates === undefined ? {} : { candidates: options.gitCandidates }); } catch { return { history: 'git-missing', lastCommitAt: null }; }
+  try {
+    const out = await runGit(git, dir, { op: 'log-time' }, { timeoutMs: options.timeoutMs ?? SUMMARY_LIMITS.gitTimeoutMs, ...(options.outputBytes === undefined ? {} : { outputBytes: options.outputBytes }) });
+    return { history: 'git', lastCommitAt: commitTime(out) };
+  } catch (e) {
+    if (isNotesRefusal(e, 'NOTES_GIT_FAILED')) return { history: 'git', lastCommitAt: null };
+    if (isNotesRefusal(e, 'NOTES_GIT_MISSING')) return { history: 'git-missing', lastCommitAt: null };
+    if (isNotesRefusal(e, 'NOTES_USAGE')) throw e;
+    return { history: 'unreadable', lastCommitAt: null };
+  }
+}
+
+/**
+ * Reads the summary of a linked notes folder. Never opens a page and never follows a link. Refuses
+ * NOTES_FOLDER_MISSING, NOTES_PATH_UNSAFE, or NOTES_USAGE (a bound out of range).
+ */
+export async function readNotesSummary(dir: string, options: SummaryOptions = {}): Promise<NotesSummary> {
+  const folder = verifiedFolder(dir);
+  const maxEntries = options.maxEntries ?? SUMMARY_LIMITS.entries, budget = options.timeBudgetMs ?? SUMMARY_LIMITS.timeBudgetMs;
+  if (!Number.isInteger(maxEntries) || maxEntries < 1 || !Number.isFinite(budget) || budget < 0) refuse('NOTES_USAGE');
+  const clock = options.clock ?? (() => performance.now());
+  const { pages, complete } = countPages(folder.abs, maxEntries, budget, clock);
+  return {
+    format: NOTES_SUMMARY_FORMAT, pages, complete, ...(await history(folder.abs, options)), latestReport: latestReport(folder.abs, maxEntries),
+  };
+}
