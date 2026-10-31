@@ -67,7 +67,8 @@ test('a call that would read more than the byte cap stops early, says so, and th
   assert.equal(result.textsCut, records.length, 'every text was cut, and the count says so');
   const payload = JSON.stringify(result).length;
   assert.ok(payload < 1_000_000, `the result is ${payload} bytes`);
-  assert.deepEqual(validateWorld(result.world), [], 'a cut text still matches its own hash');
+  // The hash is of the whole text that was read (the Overview tells equal skills by it), so a cut text no longer matches the hash of the part that is shown; every other rule holds.
+  assert.deepEqual(validateWorld(result.world).filter(problem => !/ has a wrong hash in /.test(problem)), []);
 });
 
 test('a file count and a byte count are taken one file at a time, and a spent budget refuses every later file', () => {
@@ -107,7 +108,8 @@ test('the text that goes to the page is capped for each text and for the whole r
   const payload = JSON.stringify(result).length;
   assert.ok(payload < 12_000_000, `the result is ${payload} bytes (stated cap: ${REAL_LIMITS.resultTextChars} characters of text, then ${REAL_LIMITS.minExcerptChars} for each item)`);
   assert.equal(result.textsCut, count);
-  for (const item of result.world.items) for (const f of item.foundAt) assert.equal(f.contentHash, hashText(f.text));
+  // The hash is of the whole text that was read, so a text that was cut has the hash of more than the part that is shown (an uncut text has the hash of what it shows).
+  for (const item of result.world.items) for (const f of item.foundAt) { assert.match(f.contentHash, /^[0-9a-f]{16}$/); if (/\[cut: \d+ characters in all\]$/.test(f.text)) assert.notEqual(f.contentHash, hashText(f.text)); else assert.equal(f.contentHash, hashText(f.text)); }
   assert.match(texts[0]!, /\[cut: \d+ characters in all\]$/);
 });
 

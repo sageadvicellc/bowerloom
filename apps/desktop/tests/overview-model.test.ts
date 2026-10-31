@@ -184,3 +184,20 @@ test('the model does not change the state it reads', () => {
   overviewOf(state, [folder('f', '~/Projects/alpha', true)]);
   assert.equal(JSON.stringify(state), before);
 });
+
+test('a summary or name that holds a full path is cut down to its last name; a ~ path and a word like and/or are left alone', () => {
+  const p = part('p', 'skill', 'Open /Users/someone/notes/today', { summary: 'Reads /Users/someone/notes and C:\\Users\\someone\\docs\\a.md, not ~/notes or and/or (/etc/hosts) /compact' });
+  const o = overviewOf(stateOf([source('s', [p], { scope: 'home', label: '~' })], [p]), []);
+  const n = o.groups[0]!.nodes[0]!;
+  assert.equal(n.name, 'Open …/today');
+  assert.equal(n.summary, 'Reads …/notes and …/a.md, not ~/notes or and/or (…/hosts) /compact');
+  assert.doesNotMatch(JSON.stringify(o), /someone|Users/);
+});
+
+test('a shared node has a share key and no other node does; the key is the hash, not a path', () => {
+  const o = overviewOf(createSampleOverviewState(), []);
+  const nodes = o.groups.flatMap(g => g.nodes);
+  for (const n of nodes) assert.equal(n.shareKey !== undefined, n.sharedWith.length > 0, n.id);
+  const keys = new Set(nodes.filter(n => n.shareKey !== undefined).map(n => n.shareKey));
+  assert.deepEqual([...keys], [...o.sharedKeys.keys()]);
+});

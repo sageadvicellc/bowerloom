@@ -6,6 +6,15 @@
  *
  * Pure: no DOM, no clock, no random number. Every order is fixed, so the same input gives an equal output. A layout is indexed once, in a weak table keyed by the layout
  * object, so `visibleOf`, `neighbourOf` and `sharedEdgesOf` do not scan the whole layout on every call; the table is a cache and never changes an answer.
+ *
+ * Notes for the screen (lane H):
+ *  - A place header holds no card, so the arrow keys never reach it, and under OVERVIEW_LIMITS.detailZoom there are no cards at all. Draw each header as a real button in the
+ *    tab order, and let Enter and Space on it open or close the place.
+ *  - Pass `among = new Set(visible.nodes)` to `neighbourOf`, so a key press goes only to a card that is on the page, and scroll the focused card into view.
+ *  - `sharedEdgesOf` returns edges to every laid copy, and `visibleOf` does not add the copies of the selected card. Draw only the dotted edges whose far end is in
+ *    `visible.nodes`. To light every copy, `Overview.sharedKeys` lists their node ids.
+ *  - A project folder outside the home folder has a label like `…/name` and is never "In Bowerloom" (main knows such a folder by its full path). Its button reads
+ *    "Choose this folder".
  */
 import type { PartKind } from './types.js';
 import { NODE_SIZE } from './layout.js';
@@ -19,6 +28,8 @@ export interface LaidNode extends GraphNode {
   readonly toolKind?: OverviewToolKind;
   readonly runsCode?: true;
   readonly sharedWith: readonly string[];
+  /** The key every copy of a shared skill has in common (`OverviewNode.shareKey`); absent when the node is not shared. */
+  readonly shareKey?: string;
 }
 /** An edge with the group it is inside. `from` and `to` are node ids. */
 export interface LaidEdge { readonly id: string; readonly from: string; readonly to: string; readonly groupId: string }
@@ -107,7 +118,7 @@ export function layoutOf(overview: Overview, expanded: ReadonlySet<string>): Ove
         ids.push(n.id);
         nodes.push({
           id: n.id, kind: n.kind, name: n.name, summary: n.summary, missing: false, isNew: false, x: x + c.x, y: y + c.y, w: c.w, h: c.h,
-          groupId: g.id, ...(n.toolKind === undefined ? {} : { toolKind: n.toolKind }), ...(n.runsCode === undefined ? {} : { runsCode: n.runsCode }), sharedWith: n.sharedWith,
+          groupId: g.id, ...(n.toolKind === undefined ? {} : { toolKind: n.toolKind }), ...(n.runsCode === undefined ? {} : { runsCode: n.runsCode }), sharedWith: n.sharedWith, ...(n.shareKey === undefined ? {} : { shareKey: n.shareKey }),
         });
       }
       for (const e of g.edges) edges.push({ id: e.id, from: e.from, to: e.to, groupId: g.id });
@@ -156,39 +167,48 @@ export interface OverviewVisible {
 }
 /**
  * The clusters, nodes and edges that meet a window of `width` by `height` screen pixels seen through `view`, plus `margin` graph units on every side (default
- * OVERVIEW_LIMITS.cullMargin). `selected` is a node id that stays in the set even when it is out of view. It counts inside the cap: when the nodes in view fill
- * OVERVIEW_LIMITS.domNodes, the selected node takes the place of the last one, so `nodes.length` is at most domNodes.
- * When more nodes are in view than the cap, the ones nearest the middle of the window stay. An edge is kept when at least one of its ends is in `nodes`, so a long edge across the window is drawn;
- * `clusters` are the boxes that meet the window (the selected node's own box is not added when it is out of view).
+ * OVERVIEW_LIMITS.cullMargin). `selected` is a node id that stays in the set even when it is out of view.
+ *
+ * The page holds at most OVERVIEW_LIMITS.domNodes items in all, boxes and cards together: `clusters.length + nodes.length` never passes it, so `nodes.length` is at most
+ * domNodes too. When more are in view than that, the ones nearest the middle of the window stay, boxes first and then cards in the room that is left. The selected node counts
+ * inside the cap: it takes the place of the farthest card (or, with no room left, of the farthest box). An edge is kept when at least one of its ends is in `nodes`, so a long
+ * edge across the window is drawn. `clusters` are the boxes that meet the window; the selected node's own box is not added when it is out of view.
  */
 export function visibleOf(layout: OverviewLayout, view: View, width: number, height: number, margin?: number, selected?: string | null): OverviewVisible {
   const k = Number.isFinite(view.k) && view.k > 0 ? view.k : 1;
-  const m = margin ?? OVERVIEW_LIMITS.cullMargin;
+  const m = margin ?? OVERVIEW_LIMITS.cullMargin, cap = OVERVIEW_LIMITS.domNodes;
   const x0 = -view.x / k - m, y0 = -view.y / k - m, x1 = (Math.max(0, width) - view.x) / k + m, y1 = (Math.max(0, height) - view.y) / k + m;
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
   const meets = (r: { x: number; y: number; w: number; h: number }): boolean => r.x < x1 && r.x + r.w > x0 && r.y < y1 && r.y + r.h > y0;
-  const clusters = layout.clusters.filter(meets);
+  const near = (r: { x: number; y: number; w: number; h: number }): number => (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2;
   const detail: OverviewVisible['detail'] = view.k >= OVERVIEW_LIMITS.detailZoom ? 'nodes' : 'boxes';
-  if (detail === 'boxes') return { detail, clusters: clusters.map(c => c.id), nodes: [], edges: [] };
   const index = indexOf(layout);
+  const picked = detail === 'boxes' || selected === undefined || selected === null ? undefined : index.byId.get(selected);
+  let clusters = layout.clusters.filter(meets);
+  // The boxes first: at most the cap, and one place is kept free for the selected card.
+  const boxCap = picked === undefined ? cap : cap - 1;
+  if (clusters.length > boxCap) {
+    const at = new Map(clusters.map((c, i) => [c.id, i] as const));
+    clusters = clusters.map(c => ({ c, d: near(c) })).sort((a, b) => a.d - b.d || at.get(a.c.id)! - at.get(b.c.id)!).slice(0, boxCap).map(e => e.c).sort((a, b) => at.get(a.id)! - at.get(b.id)!);
+  }
+  const ids = clusters.map(c => c.id);
+  if (detail === 'boxes') return { detail, clusters: ids, nodes: [], edges: [] };
   const inView: LaidNode[] = [];
   for (const c of clusters) if (c.expanded) for (const n of index.byGroup.get(c.id) ?? []) if (meets(n)) inView.push(n);
+  // The cards: the room left after the boxes, the selected card inside it.
+  const room = cap - clusters.length;
+  const pickedIn = picked !== undefined && inView.includes(picked);
   let chosen = inView;
-  const cap = OVERVIEW_LIMITS.domNodes;
-  const picked = selected === undefined || selected === null ? undefined : index.byId.get(selected);
-  if (inView.length > cap) {
-    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
-    const near = (n: LaidNode): number => (n.x + n.w / 2 - cx) ** 2 + (n.y + n.h / 2 - cy) ** 2;
-    chosen = inView.map(n => ({ n, d: near(n), at: index.order.get(n.id)! })).sort((a, b) => a.d - b.d || a.at - b.at).slice(0, cap).map(e => e.n);
+  if (inView.length + (picked !== undefined && !pickedIn ? 1 : 0) > room) {
+    // Nearest first; the selected card counts as nearest, so it is never the one that goes.
+    chosen = inView.map(n => ({ n, d: n === picked ? -1 : near(n), at: index.order.get(n.id)! })).sort((a, b) => a.d - b.d || a.at - b.at).slice(0, Math.max(0, picked !== undefined && !pickedIn ? room - 1 : room)).map(e => e.n);
   }
-  if (picked !== undefined && !chosen.includes(picked)) {
-    // The selected node stays, inside the cap: it takes the place of the last (the farthest) one.
-    chosen = chosen.length >= cap ? [...chosen.slice(0, cap - 1), picked] : [...chosen, picked];
-  }
+  if (picked !== undefined && !pickedIn) chosen = [...chosen, picked];
   chosen = [...chosen].sort((a, b) => index.order.get(a.id)! - index.order.get(b.id)!);
-  const ids = new Set(chosen.map(n => n.id));
+  const have = new Set(chosen.map(n => n.id));
   const edges: string[] = [];
-  for (const c of clusters) if (c.expanded) for (const e of index.edgesByGroup.get(c.id) ?? []) if (ids.has(e.from) || ids.has(e.to)) edges.push(e.id);
-  return { detail, clusters: clusters.map(c => c.id), nodes: chosen.map(n => n.id), edges };
+  for (const c of clusters) if (c.expanded) for (const e of index.edgesByGroup.get(c.id) ?? []) if (have.has(e.from) || have.has(e.to)) edges.push(e.id);
+  return { detail, clusters: ids, nodes: chosen.map(n => n.id), edges };
 }
 
 /** What `visibleOf`, `neighbourOf` and `sharedEdgesOf` look up, built once for each layout object. */
@@ -213,19 +233,17 @@ function indexOf(layout: OverviewLayout): Index {
   return made;
 }
 
-/** The thin dotted edges drawn for the selected node only: from it to each copy of the same skill in other places, in group order. Empty for a node that is not shared.
- * Only copies that are laid (in an open place) get an edge. A laid node does not carry its content hash, so a copy is found in another place as the skill that is shared with
- * the same set of places and has the same name; with no such name, as the only skill shared with that set. The edge id is `<node>~<copy>`; its `groupId` is the node's place. */
+/**
+ * The thin dotted edges drawn for the selected node only: from it to each copy of the same skill in the other places, in group order (a place with two copies gives two
+ * edges). A copy is a laid node of a place in `sharedWith` with the same `shareKey`, so a renamed copy is found and a different skill with the same name is not. Only copies that
+ * are laid (in an open place) get an edge. Empty for a node that is not shared. The edge id is `<node>~<copy>`; its `groupId` is the node's place.
+ */
 export function sharedEdgesOf(layout: OverviewLayout, nodeId: string): readonly LaidEdge[] {
   const index = indexOf(layout), node = index.byId.get(nodeId);
-  if (node === undefined || node.sharedWith.length === 0) return [];
-  const sig = (n: LaidNode): string => [...n.sharedWith, n.groupId].sort().join('\u0000');
-  const mine = sig(node), out: LaidEdge[] = [];
+  if (node === undefined || node.sharedWith.length === 0 || node.shareKey === undefined) return [];
+  const out: LaidEdge[] = [];
   for (const groupId of node.sharedWith) {
-    const same = (index.byGroup.get(groupId) ?? []).filter(n => n.kind === 'skill' && n.sharedWith.length > 0 && sig(n) === mine);
-    const named = same.filter(n => n.name === node.name);
-    const copy = named.length > 0 ? named[0] : same.length === 1 ? same[0] : undefined;
-    if (copy !== undefined) out.push({ id: `${node.id}~${copy.id}`, from: node.id, to: copy.id, groupId: node.groupId });
+    for (const copy of index.byGroup.get(groupId) ?? []) if (copy.shareKey === node.shareKey) out.push({ id: `${node.id}~${copy.id}`, from: node.id, to: copy.id, groupId: node.groupId });
   }
   return out;
 }
@@ -234,22 +252,25 @@ export type Direction = 'up' | 'down' | 'left' | 'right';
 /**
  * The nearest node from `id` in a direction, for the arrow keys. `among` limits the choice to those node ids (the visible set); with none, every laid node counts.
  * Null when there is none. Ties go to the smaller id, so the move is the same every time.
- * A node counts when its middle is on the far side of this node's middle in that direction. The nearest wins by the distance along the move plus twice the distance across it,
- * so a key press stays in its column or row first and then goes on to the next place.
+ * A node counts when its middle is on the far side of this node's middle in that direction. The nearest wins by the distance along the move plus twice the distance across it.
+ * A node of the same place wins over a nearer node of another place: a key press stays in its own place while there is a card to go to, and goes on to the next place after that.
  */
 export function neighbourOf(layout: OverviewLayout, id: string, direction: Direction, among?: ReadonlySet<string>): string | null {
   const index = indexOf(layout), from = index.byId.get(id);
   if (from === undefined) return null;
   const fx = from.x + from.w / 2, fy = from.y + from.h / 2;
-  let best: LaidNode | null = null, bestCost = Number.POSITIVE_INFINITY;
+  // Two bests: the nearest in the same place, and the nearest anywhere. The first wins when there is one.
+  let same: LaidNode | null = null, sameCost = Number.POSITIVE_INFINITY, any: LaidNode | null = null, anyCost = Number.POSITIVE_INFINITY;
   for (const n of among === undefined ? layout.nodes : [...among].map(a => index.byId.get(a)).filter((n): n is LaidNode => n !== undefined)) {
     if (n.id === id) continue;
     const dx = n.x + n.w / 2 - fx, dy = n.y + n.h / 2 - fy;
     const along = direction === 'right' ? dx : direction === 'left' ? -dx : direction === 'down' ? dy : -dy;
     if (along <= 0) continue;
     const cost = along + 2 * Math.abs(direction === 'left' || direction === 'right' ? dy : dx);
-    if (cost < bestCost || (cost === bestCost && best !== null && n.id < best.id)) { best = n; bestCost = cost; }
+    if (cost < anyCost || (cost === anyCost && any !== null && n.id < any.id)) { any = n; anyCost = cost; }
+    if (n.groupId === from.groupId && (cost < sameCost || (cost === sameCost && same !== null && n.id < same.id))) { same = n; sameCost = cost; }
   }
+  const best = same ?? any;
   return best === null ? null : best.id;
 }
 

@@ -238,20 +238,20 @@ test('2,000 parts in 30 places: the page never holds more than the node cap at a
   for (const k of [0.4, 0.5, 0.75, 1, 2]) {
     for (const view of [{ x: 0, y: 0, k }, { x: -2000 * k, y: -1000 * k, k }]) {
       const v = visibleOf(layout, view, 1600, 900);
-      assert.ok(v.nodes.length <= cap, `k ${k}: ${v.nodes.length}`);
+      assert.ok(v.nodes.length + v.clusters.length <= cap, `k ${k}: ${v.nodes.length} cards and ${v.clusters.length} boxes`);
       assert.equal(new Set(v.nodes).size, v.nodes.length);
     }
   }
   // Zoomed far out at the detail limit, the window sees more than the cap and the cap binds.
   const crowded = visibleOf(layout, { x: 0, y: 0, k: 0.5 }, 30000, 30000);
-  assert.equal(crowded.nodes.length, cap);
+  assert.equal(crowded.clusters.length, 30); assert.equal(crowded.nodes.length + crowded.clusters.length, cap, 'boxes and cards together fill the cap');
   // The selected node, in view or far away, is inside the set and inside the cap. It takes the place of one node.
   for (const id of [layout.nodes[0]!.id, layout.nodes.at(-1)!.id, layout.nodes[1000]!.id]) {
     const v = visibleOf(layout, { x: 0, y: 0, k: 0.5 }, 30000, 30000, undefined, id);
-    assert.equal(v.nodes.length, cap); assert.ok(v.nodes.includes(id), id);
+    assert.equal(v.nodes.length + v.clusters.length, cap); assert.ok(v.nodes.includes(id), id);
   }
   const far = layout.nodes.at(-1)!.id, small = visibleOf(layout, VIEW, 300, 200, 0, far);
-  assert.ok(small.nodes.includes(far) && small.nodes.length <= cap);
+  assert.ok(small.nodes.includes(far) && small.nodes.length + small.clusters.length <= cap);
   assert.equal(visibleOf(layout, VIEW, 300, 200, 0, 'no such node').nodes.includes('no such node'), false);
   assert.deepEqual(visibleOf(layout, VIEW, 300, 200, 0, null), visibleOf(layout, VIEW, 300, 200, 0));
   // Nodes stay in layout order, and the nearest to the middle of the window are the ones kept.
@@ -300,17 +300,50 @@ test('a copy in a closed place gets no edge', () => {
   assert.deepEqual(sharedEdgesOf(layoutOf(o, new Set(['src-claude'])), 'src-claude/skill-check-facts'), []);
 });
 
-test('two shared skills in the same places are told apart by name', () => {
-  const mk = (id: string, name: string, hash: string): Part => part(id, 'skill', name, { contentHash: hash });
-  const parts = [mk('a1', 'Alpha', 'ha'), mk('b1', 'Beta', 'hb'), mk('a2', 'Alpha', 'ha'), mk('b2', 'Beta', 'hb')];
-  const state: HarnessState = { ...bigState(1, 1), parts, sources: [
-    { id: 'one', name: 'One', interfaceName: 'Claude Code', harnessName: 'one', partIds: ['a1', 'b1'], scope: 'home', label: '~' },
-    { id: 'two', name: 'Two', interfaceName: 'Claude Code', harnessName: 'two', partIds: ['a2', 'b2'], scope: 'project', label: '~/two' },
+/** A scan of two places made from `[group id, part id, name, hash]` rows; every part is a skill. */
+function twoPlaces(one: readonly (readonly [string, string, string])[], two: readonly (readonly [string, string, string])[]): Overview {
+  const mk = ([id, name, hash]: readonly [string, string, string]): Part => part(id, 'skill', name, { contentHash: hash });
+  const state: HarnessState = { ...bigState(1, 1), parts: [...one, ...two].map(mk), sources: [
+    { id: 'one', name: 'One', interfaceName: 'Claude Code', harnessName: 'one', partIds: one.map(r => r[0]), scope: 'home', label: '~' },
+    { id: 'two', name: 'Two', interfaceName: 'Claude Code', harnessName: 'two', partIds: two.map(r => r[0]), scope: 'project', label: '~/two' },
   ] };
-  const o = overviewOf(state, NO_FOLDERS), layout = layoutOf(o, all(o));
+  return overviewOf(state, NO_FOLDERS);
+}
+
+test('a shared node carries a key that its copies have in common, and a node that is not shared has none', () => {
+  const o = sample(), layout = layoutOf(o, all(o));
+  const keys = layout.nodes.filter(n => n.sharedWith.length > 0).map(n => n.shareKey);
+  assert.equal(keys.length, 3); assert.ok(keys.every(k => typeof k === 'string' && k !== '') && new Set(keys).size === 1);
+  assert.deepEqual(layout.nodes.filter(n => n.sharedWith.length === 0).filter(n => n.shareKey !== undefined), []);
+  assert.equal([...o.sharedKeys.keys()][0], keys[0]);
+  for (const n of o.groups.flatMap(g => g.nodes)) assert.equal(n.shareKey !== undefined, n.sharedWith.length > 0, n.id);
+});
+
+test('two shared skills in the same places are told apart by content', () => {
+  const o = twoPlaces([['a1', 'Alpha', 'ha'], ['b1', 'Beta', 'hb']], [['a2', 'Alpha', 'ha'], ['b2', 'Beta', 'hb']]), layout = layoutOf(o, all(o));
   assert.deepEqual(sharedEdgesOf(layout, 'one/a1').map(e => e.to), ['two/a2']);
   assert.deepEqual(sharedEdgesOf(layout, 'one/b1').map(e => e.to), ['two/b2']);
   assert.deepEqual(sharedEdgesOf(layout, 'two/b2').map(e => e.to), ['one/b1']);
+});
+
+test('a copy that was renamed is still found: the edge follows the content, not the name', () => {
+  const o = twoPlaces([['x', 'x', 'h1'], ['y', 'y', 'h2']], [['xc', 'x-copy', 'h1'], ['yc', 'y-copy', 'h2']]), layout = layoutOf(o, all(o));
+  assert.deepEqual(sharedEdgesOf(layout, 'one/x').map(e => e.to), ['two/xc']);
+  assert.deepEqual(sharedEdgesOf(layout, 'one/y').map(e => e.to), ['two/yc']);
+  assert.deepEqual(sharedEdgesOf(layout, 'two/yc').map(e => e.to), ['one/y']);
+});
+
+test('two skills with one name and different content are not linked; the edge goes to the one with the same content', () => {
+  // Home has x (h1). The other place has x (h2, different text) and y (h1, the same text as home x, under another name).
+  const o = twoPlaces([['x', 'x', 'h1']], [['x2', 'x', 'h2'], ['y2', 'y', 'h1']]), layout = layoutOf(o, all(o));
+  assert.deepEqual(sharedEdgesOf(layout, 'one/x').map(e => e.to), ['two/y2']);
+  assert.deepEqual(sharedEdgesOf(layout, 'two/y2').map(e => e.to), ['one/x']);
+  assert.deepEqual(sharedEdgesOf(layout, 'two/x2'), [], 'a skill with its own text has no copy');
+});
+
+test('two copies in one other place both get an edge', () => {
+  const o = twoPlaces([['x', 'x', 'h1']], [['c1', 'one copy', 'h1'], ['c2', 'two copy', 'h1']]), layout = layoutOf(o, all(o));
+  assert.deepEqual(sharedEdgesOf(layout, 'one/x').map(e => e.to).sort(), ['two/c1', 'two/c2']);
 });
 
 // ---- neighbourOf
@@ -328,6 +361,22 @@ test('arrow keys move inside a place: across the two columns and down a column',
   const column = alpha.filter(n => n.kind !== 'agent').sort((a, b) => a.y - b.y);
   for (let i = 0; i + 1 < column.length; i += 1) { assert.equal(neighbourOf(layout, column[i]!.id, 'down'), column[i + 1]!.id); assert.equal(neighbourOf(layout, column[i + 1]!.id, 'up'), column[i]!.id); }
   assert.equal(neighbourOf(layout, 'no such node', 'up'), null);
+});
+
+test('left and right stay in the place: from a low card of the right column, left goes to the agent of its own place, not to the card beside it in the next place', () => {
+  const skills = Array.from({ length: 10 }, (_, i) => `S${String(i).padStart(2, '0')}`);
+  const parts: Part[] = [], ids = (slug: string): string[] => [`${slug}-A`, ...skills.map(s => `${slug}-${s}`)];
+  for (const slug of ['l', 'r']) { parts.push(part(`${slug}-A`, 'agent', 'Agent')); for (const s of skills) parts.push(part(`${slug}-${s}`, 'skill', s)); }
+  const state: HarnessState = { ...bigState(1, 1), parts, sources: ['l', 'r'].map((slug, i) => ({ id: slug, name: slug, interfaceName: 'Claude Code', harnessName: slug, partIds: ids(slug), scope: i === 0 ? 'home' as const : 'project' as const, label: i === 0 ? '~' : '~/r' })) };
+  const o = overviewOf(state, NO_FOLDERS), layout = layoutOf(o, all(o));
+  assert.ok(layout.clusters[1]!.x > layout.clusters[0]!.x, 'the two places are side by side');
+  assert.equal(neighbourOf(layout, 'r/r-S06', 'left'), 'r/r-A');
+  assert.equal(neighbourOf(layout, 'l/l-S06', 'left'), 'l/l-A');
+  // With nothing to the right in its own place, right goes on to the next place.
+  const hop = neighbourOf(layout, 'l/l-S06', 'right')!;
+  assert.equal(layout.nodes.find(n => n.id === hop)!.groupId, 'r');
+  // And an agent goes right to a card of its own place.
+  assert.equal(layout.nodes.find(n => n.id === neighbourOf(layout, 'r/r-A', 'right')!)!.groupId, 'r');
 });
 
 test('arrow keys move between places: right to the next column and down to the next row', () => {
@@ -415,7 +464,7 @@ test('3,000 parts in 40 places lay out well inside the budget', () => {
   const c0 = performance.now(); const expanded = defaultExpanded(o); const c1 = performance.now();
   const v0 = performance.now(); const visible = visibleOf(layout, { x: 0, y: 0, k: 0.5 }, 1600, 900); const v1 = performance.now();
   const n0 = performance.now(); neighbourOf(layout, layout.nodes[1500]!.id, 'right'); const n1 = performance.now();
-  assert.equal(layout.nodes.length, 3000); assert.ok(visible.nodes.length <= OVERVIEW_LIMITS.domNodes); assert.ok(expanded.size >= 1);
+  assert.equal(layout.nodes.length, 3000); assert.ok(visible.nodes.length + visible.clusters.length <= OVERVIEW_LIMITS.domNodes); assert.ok(expanded.size >= 1);
   console.log(`overview timing: overviewOf ${(t1 - t0).toFixed(1)} ms, layoutOf median of 7 ${median.toFixed(1)} ms (min ${times[0]!.toFixed(1)}, max ${times[6]!.toFixed(1)}), defaultExpanded ${(c1 - c0).toFixed(2)} ms, first visibleOf ${(v1 - v0).toFixed(1)} ms, neighbourOf ${(n1 - n0).toFixed(2)} ms`);
   // The target is 100 ms on the development machine. The bound is wide, so a slow or busy machine does not fail the gate; a layout that went quadratic would.
   assert.ok(median < 500, `layoutOf took ${median.toFixed(1)} ms`);
@@ -429,7 +478,39 @@ test('one open place with 3,000 parts (a big library) lays out fast, and the pag
   const v0 = performance.now(), visible = visibleOf(layout, { x: 0, y: 0, k: 0.5 }, 1600, 900), v1 = performance.now();
   console.log(`overview timing, one place of 3,000: layoutOf ${took.toFixed(1)} ms, visibleOf ${(v1 - v0).toFixed(1)} ms`);
   assert.equal(layout.nodes.length, 3000);
-  assert.ok(visible.nodes.length <= OVERVIEW_LIMITS.domNodes);
+  assert.ok(visible.nodes.length + visible.clusters.length <= OVERVIEW_LIMITS.domNodes);
   assert.ok(took < 500, `layoutOf took ${took.toFixed(1)} ms`);
   for (let i = 0; i < layout.nodes.length - 1; i += 1) assert.ok(layout.nodes[i]!.groupId === layout.nodes[i + 1]!.groupId);
+});
+
+test('the page cap counts boxes too: 1,000 closed places seen from far away never give more than the cap', () => {
+  const o = overviewOf(bigState(1000, 1), NO_FOLDERS), layout = layoutOf(o, new Set());
+  for (const k of [0.05, 0.2, 0.45, 0.5, 1]) {
+    const v = visibleOf(layout, { x: 0, y: 0, k }, 1600, 900, undefined, null);
+    assert.ok(v.clusters.length + v.nodes.length <= OVERVIEW_LIMITS.domNodes, `k ${k}: ${v.clusters.length} boxes`);
+  }
+  const far = visibleOf(layout, { x: 0, y: 0, k: 0.05 }, 1600, 900);
+  assert.equal(far.clusters.length, OVERVIEW_LIMITS.domNodes, 'more places meet the window than the cap, so the cap binds');
+  // The places kept are the ones nearest the middle of the window, in layout order.
+  const order = new Map(layout.clusters.map((c, i) => [c.id, i]));
+  assert.deepEqual(far.clusters, [...far.clusters].sort((a, b) => order.get(a)! - order.get(b)!));
+});
+
+test('when the selected card has to be added, the farthest card goes, not the last in layout order', () => {
+  const o = overviewOf(bigState(1, 1000), NO_FOLDERS), layout = layoutOf(o, all(o));
+  const view = { x: 0, y: 0, k: 1 };
+  // Find a window that holds more than the cap, then a selected card outside it.
+  const full = visibleOf(layout, view, 1600, 30000, 0);
+  assert.equal(full.nodes.length + full.clusters.length, OVERVIEW_LIMITS.domNodes);
+  const outside = layout.nodes.at(-1)!.id;
+  assert.ok(!full.nodes.includes(outside));
+  const withPick = visibleOf(layout, view, 1600, 30000, 0, outside);
+  assert.equal(withPick.nodes.length + withPick.clusters.length, OVERVIEW_LIMITS.domNodes);
+  assert.ok(withPick.nodes.includes(outside));
+  const dropped = full.nodes.filter(id => !withPick.nodes.includes(id));
+  assert.equal(dropped.length, 1);
+  // The card that went is the farthest from the middle of the window of those kept before.
+  const byId = new Map(layout.nodes.map(n => [n.id, n]));
+  const cx = 800, cy = 15000, dist = (id: string): number => { const n = byId.get(id)!; return (n.x + n.w / 2 - cx) ** 2 + (n.y + n.h / 2 - cy) ** 2; };
+  assert.equal(dist(dropped[0]!), Math.max(...full.nodes.map(dist)));
 });

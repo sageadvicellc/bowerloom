@@ -191,9 +191,9 @@ export function partOfItem(item: HarnessItem, sourceId: string, sourceLabel: str
     path: path.split('/').map(plain).join('/'), source: sourceLabel, origin: sourceId,
     ...(plug?.version === undefined ? {} : { version: plug.version }), fileText, cannotUse: [], inLibrary: true,
     ...(model === undefined || plain(model.badge) === '' ? {} : { badge: cut(plain(model.badge), 40) }),
-    // The Overview reads these two. `contentHash` is the hash of the file text the reader kept for the part (a skill's SKILL.md), so two places with equal text read as one shared skill.
+    // The Overview reads these two. `contentHash` is the hash of the whole text of the file the reader read for the part (a skill's SKILL.md), and is absent when the file had no readable text, so two places with equal text read as one shared skill.
     ...(item.kind === 'tool' ? { toolKind: item.toolKind } : {}),
-    ...(first === undefined || item.kind === 'context-slice' ? {} : { contentHash: first.contentHash }),
+    ...(first === undefined || item.kind === 'context-slice' || first.contentHash === '' ? {} : { contentHash: first.contentHash }),
   };
 }
 

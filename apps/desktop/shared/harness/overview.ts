@@ -26,7 +26,7 @@ export const OVERVIEW_LIMITS = Object.freeze({ expandedNodes: 150, expandAllMax:
 /**
  * One node of the Overview. `id` is `<group id>/<part id>`, so it is unique across the whole Overview even when two places hold the same skill. `partId` is the
  * part it shows (`Part.id`). `toolKind` is set for a tool; `runsCode` is true for a hook (and only then). `sharedWith` lists the ids of the OTHER groups that hold a
- * skill with the same content hash, in group order; it is empty for a node that is not shared. Names and summaries are the parts' own, already scrubbed.
+ * skill with the same content hash, in group order; it is empty for a node that is not shared. Names and summaries are the parts' own, made one plain line, with any full path in them cut down to `…/<last name>`.
  */
 export interface OverviewNode {
   readonly id: string;
@@ -37,6 +37,11 @@ export interface OverviewNode {
   readonly name: string;
   readonly summary: string;
   readonly sharedWith: readonly string[];
+  /**
+   * Set only on a node that is shared (`sharedWith` is not empty): an opaque key that every copy of the skill has in common, here the content hash. Two nodes are copies of one
+   * another when their keys are equal. It is a hash, never a path.
+   */
+  readonly shareKey?: string;
 }
 
 /** An edge from an agent node to a skill, tool or notes node of the same group, from the links the agent's file names. Never across groups. Ids are node ids. */
@@ -104,7 +109,12 @@ export function overviewOf(state: HarnessState, folders: readonly FolderInfo[]):
 const KIND_ORDER: readonly PartKind[] = ['agent', 'skill', 'tool', 'context'];
 /** Compares by code unit, so the order is the same on every computer and in every language setting. */
 const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
-const shown = (text: string): string => cleanLine(text);
+/** A full path in a text (two or more `/name` parts at a word start, or a drive path) is cut down to its last name. A `~/` path and a word like and/or are left as they are. */
+const FULL_PATH = /(?<=^|[\s(\x22\x27\x60=:,;])(?:(?:\/[^\s/\x22\x27\x60),;]+){2,}\/?|[A-Za-z]:[\\/][^\s\x22\x27\x60),;]*)/g;
+function shortPaths(text: string): string {
+  return text.replace(FULL_PATH, found => `…/${found.split(/[\\/]/).filter(x => x !== '').at(-1) ?? ''}`);
+}
+const shown = (text: string): string => shortPaths(cleanLine(text));
 /** A label is the folder in `~` form. A full path (a slash, a back slash or a drive at the front) is cut down to its last name. */
 function labelOf(label: string): string {
   const one = shown(label);
@@ -159,13 +169,14 @@ function markShared(built: readonly Built[]): Overview {
   const holders = new Map<string, { node: string; group: string }[]>();
   for (const b of built) for (const n of b.group.nodes) { const hash = b.hashes.get(n.id); if (hash === undefined) continue; const list = holders.get(hash) ?? []; list.push({ node: n.id, group: b.group.id }); holders.set(hash, list); }
   const sharedKeys = new Map<string, readonly string[]>();
-  const others = new Map<string, readonly string[]>();
+  const others = new Map<string, readonly string[]>(), keys = new Map<string, string>();
   for (const [hash, list] of holders) {
     const groupIds = [...new Set(list.map(h => h.group))];
     if (groupIds.length < 2) continue;
     sharedKeys.set(hash, list.map(h => h.node));
     for (const h of list) others.set(h.node, groupIds.filter(g => g !== h.group));
+    for (const h of list) keys.set(h.node, hash);
   }
-  const groups = built.map(b => ({ ...b.group, nodes: b.group.nodes.map(n => (others.has(n.id) ? { ...n, sharedWith: others.get(n.id)! } : n)) }));
+  const groups = built.map(b => ({ ...b.group, nodes: b.group.nodes.map(n => (others.has(n.id) ? { ...n, sharedWith: others.get(n.id)!, shareKey: keys.get(n.id)! } : n)) }));
   return { groups, sharedKeys };
 }

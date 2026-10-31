@@ -8,9 +8,10 @@ import type { TestContext } from 'node:test';
 import { createScanner } from '../main/real-scan.js';
 import { buildRealResult } from '../shared/real/map-world.js';
 import type { RealPlace } from '../shared/real/types.js';
-import { folderLabelOf, realToHarnessState } from '../shared/harness/real-map.js';
+import { folderLabelOf, partOfItem, realToHarnessState } from '../shared/harness/real-map.js';
 import { overviewOf } from '../shared/harness/overview.js';
 import type { HarnessState } from '../shared/harness/types.js';
+import type { HarnessItem } from '../shared/world/types.js';
 import { buildFixture } from './fixtures-real/build.js';
 import { tempDir } from './support.js';
 
@@ -113,4 +114,24 @@ test('the made-up fixture of the reader tests also gives sources with scopes, an
 test('a folder outside the home folder keeps only its last name in the label', () => {
   assert.equal(folderLabelOf('~'), '~'); assert.equal(folderLabelOf('~/Projects/alpha'), '~/Projects/alpha');
   assert.equal(folderLabelOf('/Volumes/Disk/work/alpha'), '…/alpha'); assert.equal(folderLabelOf('C:\\work\\beta'), '…/beta'); assert.equal(folderLabelOf(''), '…');
+});
+
+test('the content hash is of the whole file text: a long skill that the reader cuts for the page still reads the same in two places, and different long texts differ', async t => {
+  const home = join(tempDir(t), 'home'), work = join(home, 'work');
+  const long = (end: string): string => skill('Long one', `${'word '.repeat(10000)}${end}`);
+  put(join(home, '.claude', 'skills', 'long-one', 'SKILL.md'), long('end A'));
+  put(join(work, 'alpha', '.claude', 'skills', 'long-one', 'SKILL.md'), long('end A'));
+  put(join(work, 'beta', '.claude', 'skills', 'long-one', 'SKILL.md'), long('end B'));
+  const { state } = await read(home, [work]);
+  const copies = state.parts.filter(p => p.kind === 'skill' && p.name === 'Long one');
+  assert.equal(copies.length, 3);
+  assert.ok(copies.every(p => /^[0-9a-f]{16}$/.test(p.contentHash ?? '')));
+  assert.equal(new Set(copies.map(p => p.contentHash)).size, 2, 'two copies of one text, one of another');
+  assert.ok(copies.some(p => p.fileText.length > 0));
+});
+
+test('a skill whose file had no readable text gets no content hash, so it is never shared', () => {
+  const item = (hash: string): HarnessItem => ({ id: 'real-skill-e', kind: 'skill', name: 'Empty', scopeId: 'global', library: null, description: '', foundAt: [{ interface: 'claude-code', path: '~/.claude/skills/e/SKILL.md', contentHash: hash, text: '' }] });
+  assert.equal(Object.hasOwn(partOfItem(item(''), 's', 'S'), 'contentHash'), false);
+  assert.equal(partOfItem(item('abc'), 's', 'S').contentHash, 'abc');
 });

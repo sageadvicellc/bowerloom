@@ -87,7 +87,8 @@ function placeMembers(members: readonly Located[], nowMs: number, fold: boolean,
     if (seen.has(face)) continue;
     seen.add(face);
     const text = textOf(m);
-    foundAt.push({ interface: face, path: joinPath(m.read.place.path, m.rec.relPath), contentHash: hashText(text), text });
+    // The hash is of the whole text the reader read, not of the shown text, which may be cut. A file with no readable text has no hash (an empty string), so two such files never read as one.
+    foundAt.push({ interface: face, path: joinPath(m.read.place.path, m.rec.relPath), contentHash: m.rec.text === '' ? '' : hashText(m.rec.text), text });
     days.push(m.rec.mtimeMs > 0 ? Math.max(0, Math.floor((nowMs - m.rec.mtimeMs) / DAY_MS)) : 0);
   }
   return { foundAt, days, extra };
