@@ -308,6 +308,11 @@ export interface EngineService {
   openNotesReport(notesId: unknown): Promise<Answer<ReportOpened>>;
   /** Removes main's private copies of tidy-up reports. Main calls it at quit. Not a call of the window. */
   clearReportCopies(): void;
+  /**
+   * Resolves when no call is running or waiting in the serial queue, however each one ended. Main waits for it before it ends a window that died after start-up,
+   * so a write in progress is never cut off. It never rejects. Not a call of the window.
+   */
+  idle(): Promise<void>;
 }
 
 /**
@@ -1150,6 +1155,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
       });
     }),
     clearReportCopies: () => reportCopies.clear(),
+    idle: async () => { let seen: Promise<unknown>; do { seen = chain; await seen; } while (seen !== chain); },
   };
 }
 

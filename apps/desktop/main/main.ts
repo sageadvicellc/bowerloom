@@ -18,6 +18,8 @@ import type { DialogDeps } from './diagnostics-dialogs.js';
 import { execFileRunner } from '../../../packages/diagnostics/src/index.js';
 import { withSamplePreviewEngines } from '../shared/engine/sample-switch.js';
 import { leaveDock, revealWindow, windowOptions } from './window-options.js';
+import { windowFailure } from './window-failure.js';
+import type { EngineService } from './engine-service.js';
 import { APP_HOST, APP_INDEX, APP_SCHEME, allowRequest, chooseUserData, decideNavigation, makeTempDataDir, removeAndReport, resolveAppFile, userDataArg, webPreferences } from './security.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -73,6 +75,22 @@ function startupFailed(error: unknown, title = 'Bowerloom could not start'): voi
   app.exit(1);
 }
 
+/** The engine calls of this launch, once registered; null for a launch with none. A window that dies waits for this to be idle (main/window-failure.ts). */
+let engineForExit: EngineService | null = null;
+
+/**
+ * A window that died, or a page that did not load, once the app is running. A write may be in progress, so this never ends the process at once: it waits for the
+ * engine to be idle, shows the box, and quits through app.quit(), so before-quit and quit run. app.exit is for start-up failures only (startupFailed).
+ */
+const windowEnded = windowFailure({
+  get engine() { return engineForExit; },
+  say: text => { process.stderr.write(text); },
+  showBox: (title, message) => { dialog.showErrorBox(title, message); },
+  setExitCode: code => { process.exitCode = code; },
+  quit: () => app.quit(),
+});
+function windowFailed(error: Error, title: string): Promise<void> { return windowEnded(error, title); }
+
 function createWindow(): void {
   window = new BrowserWindow({
     ...windowOptions(), useContentSize: true, show: false,
@@ -82,9 +100,9 @@ function createWindow(): void {
   });
   // A bridge that does not load must stop here, not open as a window that looks as if it could read: a failed preload ends in the same box as any other failed start.
   if (launch.preload === 'real') window.webContents.on('preload-error', (_event, _path, error) => startupFailed(error));
-  // A window whose page process died, or whose page did not load, must not stay open and blank: it ends in the same box. A clean exit and a cancelled load (code -3) are not failures.
-  window.webContents.on('render-process-gone', (_event, details) => { if (details.reason !== 'clean-exit') startupFailed(new Error(`The window stopped (${details.reason}). Open Bowerloom again.`), 'Bowerloom stopped'); });
-  window.webContents.on('did-fail-load', (_event, code, description, _url, isMainFrame) => { if (isMainFrame && code !== -3) startupFailed(new Error(`The window could not load its page (${description}).`)); });
+  // A window whose page process died, or whose page did not load, must not stay open and blank: it ends in a box too, but only after any write in progress has finished (windowFailed). A clean exit and a cancelled load (code -3) are not failures.
+  window.webContents.on('render-process-gone', (_event, details) => { if (details.reason !== 'clean-exit') void windowFailed(new Error(`The window stopped (${details.reason}). Open Bowerloom again.`), 'Bowerloom stopped'); });
+  window.webContents.on('did-fail-load', (_event, code, description, _url, isMainFrame) => { if (isMainFrame && code !== -3) void windowFailed(new Error(`The window could not load its page (${description}).`), 'Bowerloom could not start'); });
   window.once('ready-to-show', () => { if (window !== null) revealWindow(window, argv); });
   // The app is called "Bowerloom" from the first moment: the page title it loads with never reaches the title bar.
   window.on('page-title-updated', event => event.preventDefault());
@@ -175,6 +193,7 @@ app.whenReady().then(async () => {
         // Main passes its own private copy of the report here, never the report itself (main/notes-report.ts).
         openPath: path => shell.openPath(path),
       });
+      engineForExit = engine;
       // Main's private copies of tidy-up reports go when the app quits. A copy left by a hard kill stays in the person's own temporary folder.
       app.once('quit', () => engine.clearReportCopies());
     }

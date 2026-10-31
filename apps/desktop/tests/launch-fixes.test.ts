@@ -195,10 +195,10 @@ test('main.ts shows an error box and exits when the start fails or the page does
 
 // ---- review fixes: a window that dies or fails to load ends in the same box, a failed temporary folder is a failed start, and the home-folder error speaks to a person
 
-test('a window whose page process died, or whose page did not load, ends in the failed-start box, and a cancelled load or a clean exit does not', () => {
+test('a window whose page process died, or whose page did not load, ends in a box after any write has finished, and a cancelled load or a clean exit does not', () => {
   const main = strip(read('main/main.ts'));
-  assert.match(main, /webContents\.on\('render-process-gone', \(_event, details\) => \{ if \(details\.reason !== 'clean-exit'\) startupFailed\(/);
-  assert.match(main, /webContents\.on\('did-fail-load', \(_event, code, description, _url, isMainFrame\) => \{ if \(isMainFrame && code !== -3\) startupFailed\(/, 'only the main frame, and not a cancelled load (-3)');
+  assert.match(main, /webContents\.on\('render-process-gone', \(_event, details\) => \{ if \(details\.reason !== 'clean-exit'\) void windowFailed\(/);
+  assert.match(main, /webContents\.on\('did-fail-load', \(_event, code, description, _url, isMainFrame\) => \{ if \(isMainFrame && code !== -3\) void windowFailed\(/, 'only the main frame, and not a cancelled load (-3)');
   assert.match(main, /function startupFailed\(error: unknown, title = 'Bowerloom could not start'\)/);
   assert.match(main, /dialog\.showErrorBox\(title, message\)/); assert.match(main, /app\.exit\(1\)/);
 });
