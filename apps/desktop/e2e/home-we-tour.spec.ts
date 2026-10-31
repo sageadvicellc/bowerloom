@@ -8,8 +8,8 @@
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { assertTextBudget, countWords } from '../shared/home/textbudget.js';
-import { removeTempDirs } from './proto-temp.js';
-import { animationsDone } from './proto-wait.js';
+import { removeTempDirs } from './temp-dirs.js';
+import { animationsDone } from './page-wait.js';
 import { fresh, launchHome, overlaps, rectOf, resize, setLook } from './home-page.js';
 import type { Home } from './home-page.js';
 import { WE_SHOTS, weShot } from './home-we-shots.js';

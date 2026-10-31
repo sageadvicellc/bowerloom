@@ -6,7 +6,7 @@
  * (one the person added from a file) shows its own text instead (see details.ts).
  * Rules: plain words, no banned word (tests/home-words.test.ts scans this file like every other), at most four lines of at most about twenty words each.
  */
-import type { AccessClass, InterfaceId } from '../proto/types.js';
+import type { AccessClass, InterfaceId } from '../world/types.js';
 
 /** Where a skill came from, in the words a card shows. */
 export const SOURCE_WORDS = Object.freeze({ you: 'Made by you', open: 'Open skills library', community: 'Community skills library' });

@@ -4,7 +4,7 @@
  */
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { removeTempDirs } from './proto-temp.js';
+import { removeTempDirs } from './temp-dirs.js';
 import { fresh, launchHome } from './home-page.js';
 import type { Home } from './home-page.js';
 

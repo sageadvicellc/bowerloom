@@ -6,7 +6,7 @@
  */
 import { useEffect, useRef } from 'react';
 import type { ReactElement } from 'react';
-import type { World } from '../../../shared/proto/types.js';
+import type { World } from '../../../shared/world/types.js';
 import { IconButton } from '../kit/IconButton.js';
 import { WORDS } from '../words.js';
 import { RealFind } from '../real/RealFind.js';

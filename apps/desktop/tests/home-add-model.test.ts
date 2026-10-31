@@ -1,9 +1,9 @@
 // The logic behind the Add drawer: the tab model, the cards of each tab, and staging an add through the store's own actions.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createStore, isDirty, reduceStore } from '../shared/proto/store.js';
-import type { StoreState } from '../shared/proto/store.js';
-import { generateWorld } from '../shared/proto/sample.js';
+import { createStore, isDirty, reduceStore } from '../shared/world/store.js';
+import type { StoreState } from '../shared/world/store.js';
+import { generateWorld } from '../shared/world/sample.js';
 import { countWords } from '../shared/home/textbudget.js';
 import {
   ADD_TABS, agentChoices, agentHas, clampWords, entriesFor, installAction, newAgentId, nextTab, plainName, selectedFirst, stageAdd, stageInstall, tabOfKey,

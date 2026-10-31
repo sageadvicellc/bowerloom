@@ -1,10 +1,10 @@
 // "From a shared file": what opening a file would do, in counts and names, and the store's own action that adds it.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildBundle } from '../shared/proto/bundle.js';
-import { bundleText } from '../shared/proto/export-flow.js';
-import { createStore, isDirty, reduceStore } from '../shared/proto/store.js';
-import type { Bundle, World } from '../shared/proto/types.js';
+import { buildBundle } from '../shared/world/bundle.js';
+import { bundleText } from '../shared/world/export-flow.js';
+import { createStore, isDirty, reduceStore } from '../shared/world/store.js';
+import type { Bundle, World } from '../shared/world/types.js';
 import { FILE_KIND_ORDER, FILE_MAX_BYTES, addsNothing, capList, countOf, readSharedFile } from '../shared/home/add-file.js';
 import { importFileAction } from '../renderer/home/store-actions.js';
 import { plainName } from '../shared/home/add-model.js';

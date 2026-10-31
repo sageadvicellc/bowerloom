@@ -12,7 +12,7 @@ import { firstHeading, firstSentence, parseFrontmatter } from '../shared/real/fr
 import { countsOf, tallyWords, topicsOf } from '../shared/real/place.js';
 import type { NoteEntry, PlaceRead, StampedRecord } from '../shared/real/place.js';
 import { cleanLine, cleanPath, cut, safeText } from '../shared/real/redact.js';
-import { hashText } from '../shared/proto/sample.js';
+import { hashText } from '../shared/world/sample.js';
 import { REAL_LIMITS } from '../shared/real/types.js';
 import type { RealApp, RealDiscovery, RealPlace, RealPlaceKind } from '../shared/real/types.js';
 import { addTally, couldNotRead, isThere, listDir, makeBudget, miss, mustStop, newTally, readHead, readText, realFolderFollowing, resolveInside, shortPath, walkFiles } from './real-fs.js';

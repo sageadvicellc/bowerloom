@@ -5,8 +5,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import type { World } from '../../../shared/proto/types.js';
-import { createStore } from '../../../shared/proto/store.js';
+import type { World } from '../../../shared/world/types.js';
+import { createStore } from '../../../shared/world/store.js';
 import { mergeResults } from '../../../shared/real/merge-result.js';
 import { GLOBAL_SCOPE } from '../../../shared/real/map-world.js';
 import { clearRealResult, registerRealResult } from '../../../shared/real/plain-fallback.js';

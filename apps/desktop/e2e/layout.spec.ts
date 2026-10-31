@@ -8,7 +8,7 @@ import electronPath from 'electron';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { removeTempDirs, tempDir } from './proto-temp.js';
+import { removeTempDirs, tempDir } from './temp-dirs.js';
 
 // Every folder this file made in the temp folder goes when its tests are done, also when one failed.
 test.afterAll(() => { removeTempDirs(); });

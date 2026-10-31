@@ -1,12 +1,12 @@
 // U3, the first minute. The tool tiles and the places of the Find screen come from the sample world, and the flow that walks them is a pure machine.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateWorld } from '../shared/proto/sample.js';
-import type { InterfaceId, World } from '../shared/proto/types.js';
+import { generateWorld } from '../shared/world/sample.js';
+import type { InterfaceId, World } from '../shared/world/types.js';
 import { ownedAgents } from '../shared/home/cards.js';
 import { withSampleCopies } from '../shared/home/sample-copies.js';
 import { FIND_TOOLS, findPlaces, multiProgramAgents, skippedAgents, toolTiles, unsavedAgents } from '../shared/home/find-model.js';
-import { createStore, reduceStore } from '../shared/proto/store.js';
+import { createStore, reduceStore } from '../shared/world/store.js';
 import { unsavedAgent } from '../renderer/home/first-run/find-words.js';
 import { findReduce, readTotal, startFind } from '../shared/home/find-flow.js';
 import type { FindAction, FindState } from '../shared/home/find-flow.js';

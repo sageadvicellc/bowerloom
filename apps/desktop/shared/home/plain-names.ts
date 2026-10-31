@@ -3,7 +3,7 @@
  * by id, so this builds the one from the other for a world: a name goes in, the plain name comes out. A name the layer does not know becomes words
  * ("study-buddy" becomes "Study Buddy"). The hint of a card comes from the same layer, by id.
  */
-import type { HarnessItem, Slice, World } from '../proto/types.js';
+import type { HarnessItem, Slice, World } from '../world/types.js';
 import { plainName } from './add-model.js';
 import type { HintOf, NameOf } from './add-model.js';
 import { plainOf } from './plain.js';

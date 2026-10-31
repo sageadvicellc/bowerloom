@@ -2,12 +2,12 @@
 // file, a hostile file that must not freeze the window, the paths that leave in a copy, and the words of the Share sheet.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BUNDLE_LIMITS, buildBundle, commitImport } from '../shared/proto/bundle.js';
-import { bundleText } from '../shared/proto/export-flow.js';
-import { createStore, reduceStore } from '../shared/proto/store.js';
-import { LIBRARY_CATALOG } from '../shared/proto/library-catalog.js';
-import type { Bundle, SkillItem, World } from '../shared/proto/types.js';
-import { generateWorld } from '../shared/proto/sample.js';
+import { BUNDLE_LIMITS, buildBundle, commitImport } from '../shared/world/bundle.js';
+import { bundleText } from '../shared/world/export-flow.js';
+import { createStore, reduceStore } from '../shared/world/store.js';
+import { LIBRARY_CATALOG } from '../shared/world/library-catalog.js';
+import type { Bundle, SkillItem, World } from '../shared/world/types.js';
+import { generateWorld } from '../shared/world/sample.js';
 import { FILE_MAX_ITEMS, readSharedFile, stageFile } from '../shared/home/add-file.js';
 import { planShare } from '../shared/home/share-model.js';
 import { withSampleCopies } from '../shared/home/sample-copies.js';
@@ -16,7 +16,7 @@ import { SHARE_WORDS, leftOutLine } from '../renderer/home/share/share-words.js'
 import { ADD_WORDS, pointsToMissing } from '../renderer/home/add/add-words.js';
 import { LIMITS, assertTextBudget, bannedIn, countWords } from '../shared/home/textbudget.js';
 import { importFileAction } from '../renderer/home/store-actions.js';
-import { found, makeWorld, skill } from './proto-testworld.js';
+import { found, makeWorld, skill } from './testworld.js';
 
 const empty: Bundle = { scopeIds: [], items: [], toolRefs: [], sliceRules: [] };
 

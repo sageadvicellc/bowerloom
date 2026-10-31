@@ -1,16 +1,16 @@
-// The prototype's data model: shared/proto/types.ts is types only, and createEmptyWorld makes a valid, plain-JSON World.
+// The prototype's data model: shared/world/types.ts is types only, and createEmptyWorld makes a valid, plain-JSON World.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import * as typesModule from '../shared/proto/types.js';
-import { createEmptyWorld } from '../renderer/proto/fakeApi.js';
+import * as typesModule from '../shared/world/types.js';
+import { createEmptyWorld } from '../renderer/common/fakeApi.js';
 import type {
   AccessClass, AgentDefinition, AgentItem, Bundle, BundleItem, ContextSliceItem, Enforcement, FoundAt, HarnessItem, HarnessItemKind, HookTool,
   ImportClash, ImportFile, ImportGrant, ImportPreview, InstalledState, InterfaceExtra, InterfaceId, InterfaceInfo, LibraryRef, LibrarySource, McpTool,
   Override, OverrideMode, Plan, PlanChange, PromptTool, Scope, ScopeKind, SecretRef, SecretSlot, SkillItem, Slice, SliceRule, ToolAttachment,
   ToolItem, ToolKind, ToolReference, Version, WikiPage, World,
-} from '../shared/proto/types.js';
+} from '../shared/world/types.js';
 import { DESKTOP } from './support.js';
 
 const secret: SecretRef = { kind: 'env', name: 'EXAMPLE_TOKEN', state: 'missing' };
@@ -56,10 +56,10 @@ const SAMPLES: Record<string, unknown> = {
   ToolKind: 'hook' satisfies ToolKind, ToolReference: toolRef, Version: version, WikiPage: page, World: world,
 };
 
-const typesSource = readFileSync(join(DESKTOP, 'shared', 'proto', 'types.ts'), 'utf8');
+const typesSource = readFileSync(join(DESKTOP, 'shared', 'world', 'types.ts'), 'utf8');
 const exportedNames = [...typesSource.matchAll(/^export (?:type|interface) (\w+)/gm)].map(m => m[1]!).sort();
 
-test('shared/proto/types.ts holds types only: no runtime export, no import, no Date, no class', () => {
+test('shared/world/types.ts holds types only: no runtime export, no import, no Date, no class', () => {
   assert.deepEqual(Object.keys(typesModule), []);
   assert.doesNotMatch(typesSource, /^\s*import\s/m);
   assert.doesNotMatch(typesSource, /^export (const|let|var|function|class|enum)\b/m);

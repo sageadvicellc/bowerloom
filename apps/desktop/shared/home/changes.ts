@@ -3,8 +3,8 @@
  * words, so a bar with one or two changes can say what they are ("Removed Write a reply", "Added Sort my inbox to Inbox sorter") and a bar with three or
  * more says "3 changes". It walks the saved world and the draft the way `changeCount` does, so the list is as long as the count. Pure: no React, no DOM.
  */
-import type { AgentItem, HarnessItem, World } from '../proto/types.js';
-import { distinctTexts } from '../proto/conflicts.js';
+import type { AgentItem, HarnessItem, World } from '../world/types.js';
+import { distinctTexts } from '../world/conflicts.js';
 import { agentCard, itemTitle, noteWords, readableName } from './cards.js';
 import { absorbedSlices, isAbsorbedItem } from './notes-actions.js';
 import { plainOf } from './plain.js';

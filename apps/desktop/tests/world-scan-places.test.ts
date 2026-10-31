@@ -1,12 +1,12 @@
 // The scan, step one: places and counts, worked out from the world's foundAt paths. Pure, deterministic, and it never reads a file's text.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PLACE_GROUPS, buildScan, placeIdOf } from '../shared/proto/scan-places.js';
-import type { ScanPlace } from '../shared/proto/scan-places.js';
-import { CASE_IDS, generateWorld } from '../shared/proto/sample.js';
-import { createEmptyWorld } from '../renderer/proto/fakeApi.js';
-import type { HarnessItem, World } from '../shared/proto/types.js';
-import { copy, found, skill } from './proto-testworld.js';
+import { PLACE_GROUPS, buildScan, placeIdOf } from '../shared/world/scan-places.js';
+import type { ScanPlace } from '../shared/world/scan-places.js';
+import { CASE_IDS, generateWorld } from '../shared/world/sample.js';
+import { createEmptyWorld } from '../renderer/common/fakeApi.js';
+import type { HarnessItem, World } from '../shared/world/types.js';
+import { copy, found, skill } from './testworld.js';
 
 const world = generateWorld(1);
 const scan = buildScan(world);

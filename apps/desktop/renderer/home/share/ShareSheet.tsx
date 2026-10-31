@@ -11,7 +11,7 @@
  */
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react';
-import type { World } from '../../../shared/proto/types.js';
+import type { World } from '../../../shared/world/types.js';
 import { agentCard, shelvesOf } from '../../../shared/home/cards.js';
 import { plainNameOf } from '../../../shared/home/plain-names.js';
 import { LOOK_KIND_WORDS, flaggedIds, lookItems } from '../../../shared/home/share-look.js';

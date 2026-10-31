@@ -3,10 +3,10 @@
  * `mountRealHarness(root)` puts the bare test page there instead. `isRealHash` says whether an address is one of the real-mode pages.
  */
 import { createRoot } from 'react-dom/client';
-import type { World } from '../../../shared/proto/types.js';
+import type { World } from '../../../shared/world/types.js';
 import { REAL_HARNESS_HASH, REAL_HASH } from '../../../shared/real/types.js';
 import type { RealResult } from '../../../shared/real/types.js';
-import { ErrorBoundary } from '../../proto/error-boundary.js';
+import { ErrorBoundary } from '../../common/error-boundary.js';
 import { RealHarness } from './RealHarness.js';
 import { RealLoader } from './RealLoader.js';
 

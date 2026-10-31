@@ -4,9 +4,9 @@
  * (source, author, release, date added), what a tool can reach and do, and the full text. Pure: no React, no DOM, no clock, no random number.
  * The words that these helpers build are listed in `renderer/home/library/library-words.ts`, so one test holds them to the text budget.
  */
-import type { AgentItem, HarnessItem, Slice, ToolItem, World } from '../proto/types.js';
-import { CASE_IDS } from '../proto/sample.js';
-import { distinctTexts } from '../proto/conflicts.js';
+import type { AgentItem, HarnessItem, Slice, ToolItem, World } from '../world/types.js';
+import { CASE_IDS } from '../world/sample.js';
+import { distinctTexts } from '../world/conflicts.js';
 import { agentChoices, clampWords } from './add-model.js';
 import type { AddEntry, AgentChoice } from './add-model.js';
 import { CARD_WORDS, agentCard, noteWords, ownedAgents, readableName } from './cards.js';

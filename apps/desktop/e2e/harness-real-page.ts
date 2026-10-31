@@ -11,7 +11,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { TOUR_SEEN_KEY } from '../renderer/harness/tour/seen.js';
 import { desktop } from './harness-page.js';
-import { tempDir } from './proto-temp.js';
+import { tempDir } from './temp-dirs.js';
 
 export interface RealHarness {
   app: ElectronApplication; page: Page; pick(folder: string | null): Promise<void>; dialogs: string[];

@@ -8,13 +8,13 @@
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { assertTextBudget } from '../shared/home/textbudget.js';
-import { generateWorld } from '../shared/proto/sample.js';
+import { generateWorld } from '../shared/world/sample.js';
 import { planShare, shareableAgents } from '../shared/home/share-model.js';
 import { withLibrarySamples } from '../shared/home/library-sample.js';
 import { withSampleCopies } from '../shared/home/sample-copies.js';
 import { withStarterAgents } from '../shared/home/starters.js';
-import { removeTempDirs } from './proto-temp.js';
-import { animationsDone } from './proto-wait.js';
+import { removeTempDirs } from './temp-dirs.js';
+import { animationsDone } from './page-wait.js';
 import { ensurePicked, fresh, launchHome, resize, skipTour } from './home-page.js';
 import type { Home } from './home-page.js';
 import { atEverySize } from './home-we-shots.js';

@@ -3,11 +3,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { createStore } from '../shared/proto/store.js';
-import { ProtoProvider, useProtoStore } from '../renderer/proto/session.js';
-import { createEmptyWorld } from '../renderer/proto/fakeApi.js';
-import { generateWorld } from '../shared/proto/sample.js';
-import { loadWorld } from '../renderer/proto/world.js';
+import { createStore } from '../shared/world/store.js';
+import { ProtoProvider, useProtoStore } from '../renderer/common/session.js';
+import { createEmptyWorld } from '../renderer/common/fakeApi.js';
+import { generateWorld } from '../shared/world/sample.js';
+import { loadWorld } from '../renderer/common/world.js';
 
 function Probe() {
   const { state } = useProtoStore();

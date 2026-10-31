@@ -31,7 +31,7 @@
  */
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { FocusEvent as ReactFocusEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactElement } from 'react';
-import type { InterfaceId } from '../../shared/proto/types.js';
+import type { InterfaceId } from '../../shared/world/types.js';
 import { CHIP_KINDS, agentCard, ownedAgents, shelvesOf } from '../../shared/home/cards.js';
 import { agentOfSelected, detailsOf } from '../../shared/home/details.js';
 import type { Selected } from '../../shared/home/details.js';
@@ -49,9 +49,9 @@ import { describeChanges, savePointRows } from '../../shared/home/points.js';
 import { saveBar } from '../../shared/home/savebar.js';
 import type { BarPhase } from '../../shared/home/savebar.js';
 import { barSaid, placeOf, stillInDraft } from '../../shared/home/change-undo.js';
-import { reduceStore } from '../../shared/proto/store.js';
-import type { StoreAction } from '../../shared/proto/store.js';
-import { useProtoStore } from '../proto/session.js';
+import { reduceStore } from '../../shared/world/store.js';
+import type { StoreAction } from '../../shared/world/store.js';
+import { useProtoStore } from '../common/session.js';
 import { AddDrawerBody } from './add/AddDrawerBody.js';
 import { dropTargetFor } from './add/dom-helpers.js';
 import { CopiesDialog } from './copies/CopiesDialog.js';

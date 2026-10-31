@@ -12,7 +12,7 @@ import { detailsOf } from '../shared/home/details.js';
 import { ownedAgents } from '../shared/home/cards.js';
 import { saveAction, goBackAction } from '../renderer/home/store-actions.js';
 import { WORDS } from '../renderer/home/words.js';
-import { createStore } from '../shared/proto/store.js';
+import { createStore } from '../shared/world/store.js';
 import { withStartPoint } from '../shared/home/savebar.js';
 import { UPDATE_ITEM_ID } from '../shared/home/library-sample.js';
 import { assertTextBudget, countWords } from '../shared/home/textbudget.js';

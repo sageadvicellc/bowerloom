@@ -1,5 +1,5 @@
 /**
- * Shared set-up for the harness-first preview e2e specs (Electron started with --prototype-v3 and a temporary data folder from proto-temp.ts).
+ * Shared set-up for the harness-first preview e2e specs (Electron started with --prototype-v3 and a temporary data folder from temp-dirs.ts).
  * One launch per spec file. The specs run one at a time on this machine: take the lock before a run (`until mkdir /tmp/bowerloom-test.lock 2>/dev/null; do sleep 5; done`) and release it after.
  * Set HARNESS_SHOTS to a folder outside the repo to also save screenshots.
  */
@@ -11,8 +11,8 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TOUR_SEEN_KEY } from '../renderer/harness/tour/seen.js';
-import { animationsDone } from './proto-wait.js';
-import { tempDir } from './proto-temp.js';
+import { animationsDone } from './page-wait.js';
+import { tempDir } from './temp-dirs.js';
 
 export const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const shotsDir = process.env.HARNESS_SHOTS ?? null;

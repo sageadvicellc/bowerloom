@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { isRemovable, removeTempDirs, tempDir } from '../e2e/proto-temp.js';
+import { isRemovable, removeTempDirs, tempDir } from '../e2e/temp-dirs.js';
 
 const scratch = (): string => mkdtempSync(join(tmpdir(), 'bl-temp-test-'));
 

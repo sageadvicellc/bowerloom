@@ -10,8 +10,8 @@ import { agentHint, itemBadge, ownedAgents } from '../../../shared/home/cards.js
 import type { ShelfEntry } from '../../../shared/home/cards.js';
 import { plainName } from '../../../shared/home/add-model.js';
 import { changeCount, withStartPoint } from '../../../shared/home/savebar.js';
-import { createStore } from '../../../shared/proto/store.js';
-import { ProtoProvider, useProtoStore } from '../../proto/session.js';
+import { createStore } from '../../../shared/world/store.js';
+import { ProtoProvider, useProtoStore } from '../../common/session.js';
 import { Button } from '../kit/Button.js';
 import { Drawer } from '../kit/Drawer.js';
 import { KitIcon } from '../kit/icons.js';

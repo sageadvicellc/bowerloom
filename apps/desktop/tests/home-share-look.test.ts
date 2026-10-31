@@ -5,8 +5,8 @@ import { flaggedIds, lookItems, looksLikeKey } from '../shared/home/share-look.j
 import { buildShare, planShare, shareableAgents } from '../shared/home/share-model.js';
 import { libraryWorld } from './home-library-world.js';
 import { plainNameOf } from '../shared/home/plain-names.js';
-import type { SkillItem, World } from '../shared/proto/types.js';
-import { hashText } from '../shared/proto/sample.js';
+import type { SkillItem, World } from '../shared/world/types.js';
+import { hashText } from '../shared/world/sample.js';
 
 test('the check flags the shapes of keys and passwords and leaves plain text alone', () => {
   for (const bad of [

@@ -4,7 +4,7 @@
  */
 import { createContext, createElement, useContext, useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
-import type { Store, StoreAction, StoreState } from '../../shared/proto/store.js';
+import type { Store, StoreAction, StoreState } from '../../shared/world/store.js';
 
 const StoreContext = createContext<Store | null>(null);
 

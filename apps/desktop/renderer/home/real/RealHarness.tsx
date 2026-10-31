@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
-import type { World } from '../../../shared/proto/types.js';
+import type { World } from '../../../shared/world/types.js';
 import { clearRealResult, realPlainOf, registerRealResult } from '../../../shared/real/plain-fallback.js';
 import type { RealResult } from '../../../shared/real/types.js';
 import { RealLoader } from './RealLoader.js';

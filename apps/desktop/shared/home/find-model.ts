@@ -4,8 +4,8 @@
  * tile for each of the three programs (`toolTiles`, `multiProgramAgents`) is no longer drawn: the first scan shows agents, not apps. Ready-made agents from a library are not
  * listed: they live in the Add drawer. Pure: no clock, no random number, no file is read. The world is never changed.
  */
-import type { AgentItem, InterfaceId, World } from '../proto/types.js';
-import { placeIdOf } from '../proto/scan-places.js';
+import type { AgentItem, InterfaceId, World } from '../world/types.js';
+import { placeIdOf } from '../world/scan-places.js';
 import { agentCard, itemTitle, ownedAgents } from './cards.js';
 import { PROGRAM_NAMES } from './plain-details.js';
 

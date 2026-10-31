@@ -1,11 +1,11 @@
 // The words of export and the plain-JSON round trip of import into a second, separate world.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { EXPORT_PROMISE, bundleText, clashWords, describeExport, installBundle, openExportedFile, secretWords } from '../shared/proto/export-flow.js';
-import { buildBundle } from '../shared/proto/bundle.js';
-import { CASE_IDS, generateWorld } from '../shared/proto/sample.js';
-import { createEmptyWorld } from '../renderer/proto/fakeApi.js';
-import { copy } from './proto-testworld.js';
+import { EXPORT_PROMISE, bundleText, clashWords, describeExport, installBundle, openExportedFile, secretWords } from '../shared/world/export-flow.js';
+import { buildBundle } from '../shared/world/bundle.js';
+import { CASE_IDS, generateWorld } from '../shared/world/sample.js';
+import { createEmptyWorld } from '../renderer/common/fakeApi.js';
+import { copy } from './testworld.js';
 
 const world = generateWorld(1);
 

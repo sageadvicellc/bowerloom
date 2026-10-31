@@ -3,7 +3,7 @@
  * DeepSeek Harness where a harness lists them, shows a Preview tag, unticked and disabled, and the sheet goes on with Claude Code and Codex.
  */
 import { expect, test } from '@playwright/test';
-import { removeTempDirs } from './proto-temp.js';
+import { removeTempDirs } from './temp-dirs.js';
 import { fresh, launchHarness } from './harness-page.js';
 import type { Harness } from './harness-page.js';
 

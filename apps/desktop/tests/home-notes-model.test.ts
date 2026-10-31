@@ -1,9 +1,9 @@
 // The model of "Choose notes": switches in, the store's own rule out, counted by the one matcher; and back again.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateWorld } from '../shared/proto/sample.js';
-import { describeRule, matchPages } from '../shared/proto/slicerule.js';
-import type { SliceRule } from '../shared/proto/types.js';
+import { generateWorld } from '../shared/world/sample.js';
+import { describeRule, matchPages } from '../shared/world/slicerule.js';
+import type { SliceRule } from '../shared/world/types.js';
 import {
   EMPTY_SELECTION, NO_OTHER, addsOf, alreadyOf, clearHand, isEmpty, keptCount, makeBasis, matchedOf, previewOf, ruleLines, sizeOf, sameSelection, selectionFromSlice, toChoice, toggleHand, toggleKeep, toggleLeaveOut, toggleTopic, topicCount,
 } from '../shared/home/notes-model.js';

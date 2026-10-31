@@ -8,9 +8,9 @@
  * the sample itself, which the 0.7 screens and their tests use, is not changed. The words of a starter are read by the plain layer through `starterOf`.
  * Pure: no React, no DOM, no clock, no random number.
  */
-import { globalScope } from '../proto/common.js';
-import { CASE_IDS, hashText } from '../proto/sample.js';
-import type { AgentItem, World } from '../proto/types.js';
+import { globalScope } from '../world/common.js';
+import { CASE_IDS, hashText } from '../world/sample.js';
+import type { AgentItem, World } from '../world/types.js';
 
 /** One starter. `job` is the line under its name, in the words a person would use. Banned words stay out of it (no "plan"), and it has at most 12 words. */
 export interface Starter {

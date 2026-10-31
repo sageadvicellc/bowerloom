@@ -3,7 +3,7 @@
  * Everything here is plain data. The reader looks at the person's tool folders, and shows names, descriptions, structure and the NAMES of keys. For the skills and agents the person ticks it also keeps their text
  * (up to `excerptChars` of each file). Key and password shapes that it knows are hidden from that text; the check goes by shape, so it is best effort. It never writes. The bridge that the page gets has exactly three calls (see `RealBridge`).
  */
-import type { World } from '../proto/types.js';
+import type { World } from '../world/types.js';
 
 /** The programs the reader knows. The first three are the interfaces of the sample world; the other two are best effort. */
 export type RealApp = 'claude-code' | 'codex' | 'opencode' | 'hermes' | 'bowerloom';

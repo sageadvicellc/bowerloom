@@ -2,9 +2,9 @@
 // generated library agents ("Amber Cartographer", "A cartographer with nothing added yet.") (fix list item 7). Adding one makes an agent that is not empty.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createStore } from '../shared/proto/store.js';
-import { generateWorld } from '../shared/proto/sample.js';
-import type { AgentItem, World } from '../shared/proto/types.js';
+import { createStore } from '../shared/world/store.js';
+import { generateWorld } from '../shared/world/sample.js';
+import type { AgentItem, World } from '../shared/world/types.js';
 import { entriesFor, installAction, newAgentId, stageInstall } from '../shared/home/add-model.js';
 import { plainHintOf, plainNameOf } from '../shared/home/plain-names.js';
 import { STARTERS, starterOf, withStarterAgents } from '../shared/home/starters.js';

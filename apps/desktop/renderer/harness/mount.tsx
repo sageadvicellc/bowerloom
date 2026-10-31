@@ -5,7 +5,7 @@
  */
 import { createRoot } from 'react-dom/client';
 import { isHarnessHash, isRealHash } from '../../shared/harness/route.js';
-import { ErrorBoundary } from '../proto/error-boundary.js';
+import { ErrorBoundary } from '../common/error-boundary.js';
 import { wireSkipLink } from '../home/route-latch.js';
 import { getBridge } from '../home/real/bridge.js';
 import { HarnessApp } from './HarnessApp.js';

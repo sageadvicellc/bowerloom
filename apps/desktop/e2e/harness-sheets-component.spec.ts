@@ -15,7 +15,7 @@ import { pathToFileURL } from 'node:url';
 import { desktop, shot } from './harness-page.js';
 import { sampleEngineFixtures } from '../shared/engine/sample.js';
 import type { AdoptView, FolderInfo, ProjectInput } from '../shared/engine/types.js';
-import { removeTempDirs, tempDir } from './proto-temp.js';
+import { removeTempDirs, tempDir } from './temp-dirs.js';
 
 let app: ElectronApplication, page: Page, html: string;
 

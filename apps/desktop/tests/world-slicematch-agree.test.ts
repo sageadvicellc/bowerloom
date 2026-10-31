@@ -3,12 +3,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createRng } from '../shared/proto/rng.js';
-import { generateWorld } from '../shared/proto/sample.js';
-import { createStore } from '../shared/proto/store.js';
-import { countMatches, matchPages, selectPages } from '../shared/proto/slicerule.js';
-import { liveMatch, slicePages } from '../shared/proto/slicematch.js';
-import type { SliceRule, WikiPage, World } from '../shared/proto/types.js';
+import { createRng } from '../shared/world/rng.js';
+import { generateWorld } from '../shared/world/sample.js';
+import { createStore } from '../shared/world/store.js';
+import { countMatches, matchPages, selectPages } from '../shared/world/slicerule.js';
+import { liveMatch, slicePages } from '../shared/world/slicematch.js';
+import type { SliceRule, WikiPage, World } from '../shared/world/types.js';
 import { DESKTOP } from './support.js';
 
 const world = generateWorld(1);
@@ -66,7 +66,7 @@ test('pinning freezes exactly the pages the rule engine counts, and a pinned sli
 });
 
 test('slicematch.ts has no matcher of its own: it calls matchPages', () => {
-  const text = readFileSync(join(DESKTOP, 'shared', 'proto', 'slicematch.ts'), 'utf8');
+  const text = readFileSync(join(DESKTOP, 'shared', 'world', 'slicematch.ts'), 'utf8');
   assert.match(text, /matchPages\(/);
   assert.doesNotMatch(text, /startsWith\(|\.links/, 'no second implementation of folders or links');
 });

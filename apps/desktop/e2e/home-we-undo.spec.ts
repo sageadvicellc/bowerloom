@@ -7,7 +7,7 @@
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { assertTextBudget } from '../shared/home/textbudget.js';
-import { removeTempDirs } from './proto-temp.js';
+import { removeTempDirs } from './temp-dirs.js';
 import { ensurePicked, fresh, launchHome, resize, skipTour } from './home-page.js';
 import type { Home } from './home-page.js';
 import { atEverySize } from './home-we-shots.js';

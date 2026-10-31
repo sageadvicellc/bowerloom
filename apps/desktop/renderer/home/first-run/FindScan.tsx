@@ -10,7 +10,7 @@
  */
 import { useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import type { World } from '../../../shared/proto/types.js';
+import type { World } from '../../../shared/world/types.js';
 import { FIND_TOOLS, findAgents, findPlaces, lockedAgents } from '../../../shared/home/find-model.js';
 import type { FindAgent } from '../../../shared/home/find-model.js';
 import { findReduce, readTotal, startFind } from '../../../shared/home/find-flow.js';

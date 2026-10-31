@@ -6,7 +6,7 @@
 import { useId, useMemo } from 'react';
 import type { ReactElement } from 'react';
 import type { UpdateInfo } from '../../../shared/home/library-model.js';
-import { diffLines } from '../../../shared/proto/setup-diff.js';
+import { diffLines } from '../../../shared/world/setup-diff.js';
 import { Button } from '../kit/Button.js';
 import { LibraryDialog } from './LibraryDialog.js';
 import { LIBRARY_WORDS, changedLines } from './library-words.js';

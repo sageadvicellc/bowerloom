@@ -3,12 +3,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildBundle, commitImport, parseBundle, previewImport } from '../shared/proto/bundle.js';
-import { createStore } from '../shared/proto/store.js';
-import type { AgentItem, Bundle, McpTool, SkillItem, World } from '../shared/proto/types.js';
-import { createEmptyWorld } from '../renderer/proto/fakeApi.js';
+import { buildBundle, commitImport, parseBundle, previewImport } from '../shared/world/bundle.js';
+import { createStore } from '../shared/world/store.js';
+import type { AgentItem, Bundle, McpTool, SkillItem, World } from '../shared/world/types.js';
+import { createEmptyWorld } from '../renderer/common/fakeApi.js';
 import { DESKTOP } from './support.js';
-import { agent, found, makeWorld, skill } from './proto-testworld.js';
+import { agent, found, makeWorld, skill } from './testworld.js';
 
 const RULE = { folders: ['notes'], pageTypesAndTags: { types: ['concept'], tags: ['a'] }, linksFromSeeds: { hops: 1 } } as const;
 
@@ -197,6 +197,6 @@ test('an agent with an unknown skill or tool id keeps the id it had (library ref
 });
 
 test('the bundle source reads no clock and no random number, and touches no window or file', () => {
-  const text = readFileSync(join(DESKTOP, 'shared', 'proto', 'bundle.ts'), 'utf8');
+  const text = readFileSync(join(DESKTOP, 'shared', 'world', 'bundle.ts'), 'utf8');
   for (const word of ['Date.', 'new Date', 'Math.random', 'window.bowerloom', 'node:fs', 'innerHTML', 'crypto']) assert.equal(text.includes(word), false, word);
 });

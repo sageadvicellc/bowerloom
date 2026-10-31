@@ -1,7 +1,7 @@
 // The line comparison of conflicting copies (setup-diff.ts): which lines to mark as changed, and how a path is cut for one line.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { diffLines, plainLines, splitLines, splitPath } from '../shared/proto/setup-diff.js';
+import { diffLines, plainLines, splitLines, splitPath } from '../shared/world/setup-diff.js';
 
 test('a text is lines: line breaks of both kinds, no extra empty line at the end, nothing for an empty text', () => {
   assert.deepEqual(splitLines('a\nb\n'), ['a', 'b']);

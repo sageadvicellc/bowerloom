@@ -13,8 +13,8 @@ import {
   SAMPLE_SOURCES, abilityOfItem, addressOf, defaultTicked, groupedItems, kindCounts, needsKeyOf, openLink, reachOfItem, runsCodeOf,
 } from '../../../shared/home/library-sources.js';
 import type { SampleSource, SourceItem } from '../../../shared/home/library-sources.js';
-import type { StoreAction } from '../../../shared/proto/store.js';
-import { useProtoStore } from '../../proto/session.js';
+import type { StoreAction } from '../../../shared/world/store.js';
+import { useProtoStore } from '../../common/session.js';
 import { Button } from '../kit/Button.js';
 import { Drawer } from '../kit/Drawer.js';
 import { Glyph } from '../kit/Glyph.js';

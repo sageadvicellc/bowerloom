@@ -18,7 +18,7 @@ import type { Answer, SaveEdit } from '../shared/engine/types.js';
 import { filesOf, sourceFolder, teamFolder } from '../tests/helpers-engine/folders.js';
 import { bundleOnce, launchReal } from './harness-real-page.js';
 import type { RealHarness } from './harness-real-page.js';
-import { removeTempDirs, tempDir } from './proto-temp.js';
+import { removeTempDirs, tempDir } from './temp-dirs.js';
 
 let h: RealHarness, home: string;
 const page = (): Page => h.page;

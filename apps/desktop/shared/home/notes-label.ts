@@ -5,8 +5,8 @@
  * five words and a hint at most twelve. The set keeps its stored name; only the words on a card and on the Save bar change, and both come from here.
  * Pure: no React, no DOM, no clock.
  */
-import type { Slice, WikiPage } from '../proto/types.js';
-import { memoMatch } from '../proto/slice-preview.js';
+import type { Slice, WikiPage } from '../world/types.js';
+import { memoMatch } from '../world/slice-preview.js';
 import { otherOf, selectionFromSlice } from './notes-model.js';
 import type { Basis } from './notes-model.js';
 import { buildTopics } from './notes-topics.js';

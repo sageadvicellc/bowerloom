@@ -4,10 +4,10 @@
  * what the person stages here is the same draft change as anywhere else and "Go back" and "Save" work on it without a special case.
  * The words that these helpers build are listed in `renderer/home/add/add-words.ts`, so one test holds them to the text budget.
  */
-import type { AgentItem, HarnessItem, ToolItem, World } from '../proto/types.js';
-import { reduceStore } from '../proto/store.js';
-import type { StoreAction, StoreState } from '../proto/store.js';
-import { globalScope } from '../proto/common.js';
+import type { AgentItem, HarnessItem, ToolItem, World } from '../world/types.js';
+import { reduceStore } from '../world/store.js';
+import type { StoreAction, StoreState } from '../world/store.js';
+import { globalScope } from '../world/common.js';
 import { agentHint, itemBadge, ownedAgents, readableName } from './cards.js';
 import type { CardBadge } from './cards.js';
 

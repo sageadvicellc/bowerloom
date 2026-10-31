@@ -38,7 +38,7 @@ const SHARED_REAL = (rel: string): boolean => /^shared\/real\/[\w-]+\.ts$/.test(
 
 const MAIN_ENTRIES = ['main/real-ipc.ts', 'main/real-scan.ts', 'main/real-fs.ts'];
 const MAIN_POLICY: Policy = {
-  allowFile: rel => SHARED_REAL(rel) || /^main\/real-[\w-]+\.ts$/.test(rel) || ['main/safe.ts', 'main/security.ts', 'shared/proto/sample.ts', 'shared/proto/types.ts', 'shared/proto/rng.ts', 'shared/proto/words.ts', 'shared/proto/slicerule.ts'].includes(rel),
+  allowFile: rel => SHARED_REAL(rel) || /^main\/real-[\w-]+\.ts$/.test(rel) || ['main/safe.ts', 'main/security.ts', 'shared/world/sample.ts', 'shared/world/types.ts', 'shared/world/rng.ts', 'shared/world/words.ts', 'shared/world/slicerule.ts'].includes(rel),
   // main/security.ts re-exports the temporary-folder helpers of the other modes from main/prototype-dir.mjs. The reader imports none of them, so the bundler drops that file;
   // the check holds it to contributing no code at all.
   deadOk: { 'main/prototype-dir.mjs': 'security.ts re-exports the helpers of the other modes; the reader uses none and the bundle holds none of it' },
@@ -54,7 +54,7 @@ const PRELOAD_POLICY: Policy = {
 const RENDERER_ENTRIES = ['renderer/home/real/mountReal.tsx'];
 const RENDERER_POLICY: Policy = {
   allowFile: rel => SHARED_REAL(rel) || /^renderer\/home\/real\/[\w-]+\.(?:tsx?|css)$/.test(rel)
-    || ['renderer/proto/error-boundary.tsx', 'shared/proto/words.ts', 'shared/proto/slicerule.ts', 'shared/home/textbudget.ts', 'shared/home/plain-details.ts', 'shared/home/titles.ts', 'shared/proto/types.ts'].includes(rel),
+    || ['renderer/common/error-boundary.tsx', 'shared/world/words.ts', 'shared/world/slicerule.ts', 'shared/home/textbudget.ts', 'shared/home/plain-details.ts', 'shared/home/titles.ts', 'shared/world/types.ts'].includes(rel),
   deadOk: {},
   modules: { react: '*', 'react/jsx-runtime': '*', 'react-dom/client': '*' },
   extraNames: /^(?:innerHTML|outerHTML|insertAdjacentHTML|dangerouslySetInnerHTML|localStorage|sessionStorage|indexedDB)$/,
@@ -68,7 +68,7 @@ const RENDERER_POLICY: Policy = {
 const SHELL_ENTRIES = ['renderer/home/mount.tsx', 'renderer/home/real/mountReal.tsx', 'renderer/home/real/RealRoot.tsx', 'renderer/home/real/RealScan.tsx', 'renderer/home/real/RealFind.tsx', 'renderer/home/real/RealFlow.tsx'];
 const SHELL_POLICY: Policy = {
   page: true,
-  allowFile: rel => /^(?:renderer\/home|renderer\/proto|renderer\/harness\/real|shared\/home|shared\/proto|shared\/real)\/[\w./-]+\.(?:tsx?|css)$/.test(rel) || ['renderer/clock.ts', 'renderer/motion-tokens.ts', 'shared/clock-words.ts'].includes(rel),
+  allowFile: rel => /^(?:renderer\/home|renderer\/common|renderer\/harness\/real|shared\/home|shared\/world|shared\/real)\/[\w./-]+\.(?:tsx?|css)$/.test(rel) || ['renderer/clock.ts', 'renderer/motion-tokens.ts', 'shared/clock-words.ts'].includes(rel),
   deadOk: {},
   modules: { react: '*', 'react/jsx-runtime': '*', 'react-dom': '*', 'react-dom/client': '*' },
   extraNames: /^(?:innerHTML|outerHTML|insertAdjacentHTML|dangerouslySetInnerHTML|localStorage|sessionStorage|indexedDB|openDatabase|bowerloomReal)$/,
@@ -84,7 +84,7 @@ test('the main-process reader and everything it imports, however deep, import on
 test('the check sees the whole graph: the files the handler imports are all in it, and the file it must not use contributes nothing', () => {
   const graph = bundleOf(MAIN_ENTRIES, DESKTOP);
   const seen = new Map(graph.files.map(f => [f.abs.slice(DESKTOP.length + 1), f.bytes]));
-  for (const file of ['main/real-ipc.ts', 'main/real-scan.ts', 'main/real-fs.ts', 'main/safe.ts', 'main/security.ts', 'shared/real/redact.ts', 'shared/real/adapters.ts', 'shared/real/map-world.ts', 'shared/real/toml.ts', 'shared/proto/sample.ts']) assert.ok((seen.get(file) ?? 0) > 0, `${file} is in the graph and in the bundle`);
+  for (const file of ['main/real-ipc.ts', 'main/real-scan.ts', 'main/real-fs.ts', 'main/safe.ts', 'main/security.ts', 'shared/real/redact.ts', 'shared/real/adapters.ts', 'shared/real/map-world.ts', 'shared/real/toml.ts', 'shared/world/sample.ts']) assert.ok((seen.get(file) ?? 0) > 0, `${file} is in the graph and in the bundle`);
   assert.equal(seen.get('main/prototype-dir.mjs'), 0, 'the temporary-folder helpers are reached through main/security.ts and put no code in the bundle');
   assert.ok(graph.files.every(f => f.js !== ''), 'every file of the graph was read as JavaScript');
 });

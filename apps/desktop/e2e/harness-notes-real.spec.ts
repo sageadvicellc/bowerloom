@@ -20,7 +20,7 @@ import { dirname, join, resolve } from 'node:path';
 import { filesOf, teamFolder } from '../tests/helpers-engine/folders.js';
 import { bundleOnce, launchReal } from './harness-real-page.js';
 import type { RealHarness } from './harness-real-page.js';
-import { removeTempDirs, tempDir } from './proto-temp.js';
+import { removeTempDirs, tempDir } from './temp-dirs.js';
 import { GIT, KIT_DIR, NO_GIT_REASON, commitAll, commitCount, countMarkdown, git, kitSkillIds, kitStarter, lastCommitDay, walkFiles } from './harness-notes-support.js';
 
 test.skip(GIT === null, NO_GIT_REASON);

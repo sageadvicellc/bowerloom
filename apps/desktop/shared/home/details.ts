@@ -3,8 +3,8 @@
  * One thing is selected at a time: an agent, or a skill, a tool or a set of notes (which is then opened from an agent, its owner). The panel reads and
  * shows; nothing here changes the world. The words come from the plain layers (plain.ts, plain-details.ts, notes-label.ts).
  */
-import type { AgentItem, FoundAt, HarnessItem, SkillItem, ToolItem, World } from '../proto/types.js';
-import { memoMatch } from '../proto/slice-preview.js';
+import type { AgentItem, FoundAt, HarnessItem, SkillItem, ToolItem, World } from '../world/types.js';
+import { memoMatch } from '../world/slice-preview.js';
 import { agentCard, itemBadge, noteWords, shelvesOf, wordsOf } from './cards.js';
 import type { CardBadge, Shelves } from './cards.js';
 import { buildTopics, plainTitles } from './notes-topics.js';

@@ -3,9 +3,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { cutLinks, countMatches, describeRule, estimateTokens, joinedSince, matchPages, selectPages } from '../shared/proto/slicerule.js';
-import { generateWorld } from '../shared/proto/sample.js';
-import type { SliceRule, WikiPage } from '../shared/proto/types.js';
+import { cutLinks, countMatches, describeRule, estimateTokens, joinedSince, matchPages, selectPages } from '../shared/world/slicerule.js';
+import { generateWorld } from '../shared/world/sample.js';
+import type { SliceRule, WikiPage } from '../shared/world/types.js';
 import { DESKTOP } from './support.js';
 
 const page = (id: string, folder: string, type = 'note', tags: string[] = [], links: string[] = [], bytes = 1000, joinedSinceVisit = false): WikiPage =>
@@ -237,8 +237,8 @@ test('generateWorld plus matchPages over 700 pages finishes under 500 ms', () =>
   assert.ok(elapsed < 500, `took ${elapsed.toFixed(0)} ms`);
 });
 
-test('shared/proto/slicerule.ts is pure: no import except the types and the word joiner, no file, no clock, no random number', () => {
-  const code = readFileSync(join(DESKTOP, 'shared', 'proto', 'slicerule.ts'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+test('shared/world/slicerule.ts is pure: no import except the types and the word joiner, no file, no clock, no random number', () => {
+  const code = readFileSync(join(DESKTOP, 'shared', 'world', 'slicerule.ts'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   assert.doesNotMatch(code, /node:|Math\.random|Date\.|\bnew Date\b|innerHTML|window\.bowerloom/);
   for (const m of code.matchAll(/^import .*$/gm)) assert.match(m[0], /^import type |^import \{ joinWords \} from '\.\/words\.js';$/, 'only type imports and the word joiner');
 });

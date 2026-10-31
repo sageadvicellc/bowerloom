@@ -10,7 +10,7 @@ import type { BarPhase } from '../../shared/home/savebar.js';
 import { screenAfter } from '../../shared/home/flow-screens.js';
 import type { Screen } from '../../shared/home/flow-screens.js';
 import { startOf } from '../../shared/home/route.js';
-import { useProtoStore } from '../proto/session.js';
+import { useProtoStore } from '../common/session.js';
 import { HomeApp } from './HomeApp.js';
 import { FindScreen } from './first-run/FindScreen.js';
 import { Welcome } from './first-run/Welcome.js';

@@ -1,10 +1,10 @@
 // The difference between two versions, worked out from their snapshot texts, in the names of what changed.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { diffCount, diffVersions } from '../shared/proto/versions-diff.js';
-import { createStore, snapshotOf } from '../shared/proto/store.js';
-import { CASE_IDS, generateWorld } from '../shared/proto/sample.js';
-import type { Version } from '../shared/proto/types.js';
+import { diffCount, diffVersions } from '../shared/world/versions-diff.js';
+import { createStore, snapshotOf } from '../shared/world/store.js';
+import { CASE_IDS, generateWorld } from '../shared/world/sample.js';
+import type { Version } from '../shared/world/types.js';
 
 const world = generateWorld(1);
 const store = () => createStore(world);

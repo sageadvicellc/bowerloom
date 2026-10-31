@@ -14,7 +14,7 @@ import { SHARE_WORDS, bringsLine, countsLine, flaggedLine, leftOutLine, sizeLine
 import { SavePoints } from '../renderer/home/points/SavePoints.js';
 import { FileTab } from '../renderer/home/add/FileTab.js';
 import { plainName } from '../shared/home/add-model.js';
-import { generateWorld } from '../shared/proto/sample.js';
+import { generateWorld } from '../shared/world/sample.js';
 import { withSampleCopies } from '../shared/home/sample-copies.js';
 import { ownedAgents } from '../shared/home/cards.js';
 import { planShare } from '../shared/home/share-model.js';

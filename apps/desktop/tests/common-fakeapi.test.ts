@@ -5,8 +5,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { CHANNELS } from '../shared/channels.js';
 import type { Sketch, ViewerApi } from '../shared/types.js';
-import type { World } from '../shared/proto/types.js';
-import { createEmptyWorld, createFakeApi } from '../renderer/proto/fakeApi.js';
+import type { World } from '../shared/world/types.js';
+import { createEmptyWorld, createFakeApi } from '../renderer/common/fakeApi.js';
 import { DESKTOP } from './support.js';
 
 const sketch = (name: string): Sketch => ({ version: 1, name, nodes: [{ id: 'n1', kind: 'skill', label: 'A', x: 1, y: 2 }], edges: [] });
@@ -119,7 +119,7 @@ test('two fake APIs made in one process share no state', async () => {
 
 test('the prototype source touches no window bridge, file, markup string, random number or clock', () => {
   const files: string[] = [];
-  for (const dir of ['renderer/proto', 'shared/proto']) {
+  for (const dir of ['renderer/common', 'shared/world']) {
     for (const entry of readdirSync(join(DESKTOP, dir), { recursive: true, withFileTypes: true })) {
       if (entry.isFile() && /\.tsx?$/.test(entry.name)) files.push(join((entry as unknown as { parentPath: string }).parentPath, entry.name));
     }

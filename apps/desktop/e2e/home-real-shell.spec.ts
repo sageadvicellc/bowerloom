@@ -22,8 +22,8 @@ import { SHELL_AGENTS, SHELL_SECRET, buildShellHome } from '../tests/fixtures-re
 import type { ShellHome } from '../tests/fixtures-real/shell-home.js';
 import { fingerprint } from '../tests/fixtures-real/fingerprint.js';
 import { desktop, launchHome, resize, setLook, skipTour } from './home-page.js';
-import { removeTempDirs, tempDir } from './proto-temp.js';
-import { animationsDone } from './proto-wait.js';
+import { removeTempDirs, tempDir } from './temp-dirs.js';
+import { animationsDone } from './page-wait.js';
 
 const shots = process.env.HOME_I4_SHOTS ?? null;
 if (shots !== null) mkdirSync(shots, { recursive: true });

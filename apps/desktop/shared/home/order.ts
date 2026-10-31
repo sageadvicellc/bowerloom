@@ -3,7 +3,7 @@
  * agent changed. The sample has no clock, so "recently" is a rank: an agent the person changed in this session comes first (the newest change first), then the
  * rest by the sample's own rank (see `agentRecency`), then by name. Pure: no clock, no random number.
  */
-import type { AgentItem, World } from '../proto/types.js';
+import type { AgentItem, World } from '../world/types.js';
 import { agentCard, shelvesOf } from './cards.js';
 import { agentRecency } from './plain.js';
 

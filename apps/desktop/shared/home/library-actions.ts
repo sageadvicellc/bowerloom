@@ -1,11 +1,11 @@
 /**
- * How the Library page reaches the store. Every press is one store action (shared/proto/store-library.ts for the four Library actions, the existing
+ * How the Library page reaches the store. Every press is one store action (shared/world/store-library.ts for the four Library actions, the existing
  * `attachSkill`, `attachTool` and `assignSlice` for "Add to an agent"), so each is one draft change, one line on the Save bar, one row of the version
  * history and one step to undo. This file also plans an "Add from the web": which of the ticked items are new, which are already here (skipped), and which
  * meet an item of the same name with other text (they become a second copy and show the "different copies" badge). Pure: no React, no DOM.
  */
-import type { StoreAction } from '../proto/store.js';
-import type { World } from '../proto/types.js';
+import type { StoreAction } from '../world/store.js';
+import type { World } from '../world/types.js';
 import { addAction } from './add-model.js';
 import type { AddEntry } from './add-model.js';
 import { allLinesOf, copyDraft, entriesOf, entryOf, lookOf } from './library-model.js';

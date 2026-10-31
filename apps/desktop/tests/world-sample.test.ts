@@ -4,11 +4,11 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createRng } from '../shared/proto/rng.js';
-import { CASE_IDS, SAMPLE_WORDS, generateWorld, hashText, validateWorld } from '../shared/proto/sample.js';
-import { matchPages } from '../shared/proto/slicerule.js';
-import { createEmptyWorld } from '../renderer/proto/fakeApi.js';
-import type { AgentItem, HarnessItem, HookTool, McpTool, SkillItem, World } from '../shared/proto/types.js';
+import { createRng } from '../shared/world/rng.js';
+import { CASE_IDS, SAMPLE_WORDS, generateWorld, hashText, validateWorld } from '../shared/world/sample.js';
+import { matchPages } from '../shared/world/slicerule.js';
+import { createEmptyWorld } from '../renderer/common/fakeApi.js';
+import type { AgentItem, HarnessItem, HookTool, McpTool, SkillItem, World } from '../shared/world/types.js';
 import { DESKTOP } from './support.js';
 
 const world = generateWorld(1);
@@ -298,9 +298,9 @@ test('the sample world is not rendered with a secret value, an e-mail address, a
 
 // ---- The source files stay pure ----
 
-test('shared/proto/rng.ts and sample.ts use no file, no clock, no random number, no markup string and no bridge', () => {
+test('shared/world/rng.ts and sample.ts use no file, no clock, no random number, no markup string and no bridge', () => {
   for (const file of ['rng.ts', 'sample.ts']) {
-    const code = readFileSync(join(DESKTOP, 'shared', 'proto', file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const code = readFileSync(join(DESKTOP, 'shared', 'world', file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     assert.doesNotMatch(code, /node:|Math\.random|Date\.|\bnew Date\b|innerHTML|window\.bowerloom|\beval\(/, file);
     for (const m of code.matchAll(/^import[\s\S]*?;$/gm)) assert.match(m[0], /from '\.\/(types|rng|slicerule|words)\.js';$/, `${file}: ${m[0]}`);
   }

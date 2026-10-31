@@ -8,7 +8,7 @@
 import type {
   AppInfo, AppSettings, GraphResult, ItemContent, KnowledgeGraph, Mode, PageResult, SettingsResult, Sketch, SketchResult, SketchSummary, Snapshot, ViewerApi,
 } from '../../shared/types.js';
-import type { HarnessItem, World } from '../../shared/proto/types.js';
+import type { HarnessItem, World } from '../../shared/world/types.js';
 
 const clone = <T>(value: T): T => structuredClone(value);
 const utf8Bytes = (text: string): number => new TextEncoder().encode(text).length;

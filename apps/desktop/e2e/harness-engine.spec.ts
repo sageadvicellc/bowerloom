@@ -7,7 +7,7 @@
  */
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
-import { removeTempDirs } from './proto-temp.js';
+import { removeTempDirs } from './temp-dirs.js';
 import { fresh, launchHarness, shot } from './harness-page.js';
 import type { Harness } from './harness-page.js';
 

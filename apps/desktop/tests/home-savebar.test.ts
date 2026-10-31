@@ -6,9 +6,9 @@ import { CARD_WORDS, shelvesOf } from '../shared/home/cards.js';
 import { changesCount, WORDS } from '../renderer/home/words.js';
 import { barText } from '../renderer/home/save/SaveBar.js';
 import { discardAction, goBackAction, removeAction, saveAction } from '../renderer/home/store-actions.js';
-import { createStore, isDirty, snapshotOf } from '../shared/proto/store.js';
-import { generateWorld } from '../shared/proto/sample.js';
-import type { AgentItem } from '../shared/proto/types.js';
+import { createStore, isDirty, snapshotOf } from '../shared/world/store.js';
+import { generateWorld } from '../shared/world/sample.js';
+import type { AgentItem } from '../shared/world/types.js';
 import { assertTextBudget } from '../shared/home/textbudget.js';
 
 const fresh = () => createStore(withStartPoint(generateWorld(1)));

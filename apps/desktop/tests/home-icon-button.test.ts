@@ -7,11 +7,11 @@ import { IconButton } from '../renderer/home/kit/IconButton.js';
 import { KIT_ICON_NAMES } from '../renderer/home/kit/icons.js';
 import { Tooltip } from '../renderer/home/kit/Tooltip.js';
 import { EditButton, EditIconButton, READ_ONLY_REASON, ReadOnlyFlag, ReadOnlyScope, guardedStore, useReadOnly } from '../renderer/home/read-only.js';
-import { createStore } from '../shared/proto/store.js';
+import { createStore } from '../shared/world/store.js';
 import { ownedAgents, shelvesOf } from '../shared/home/cards.js';
 import { removeAction, saveAction } from '../renderer/home/store-actions.js';
-import { loadWorld } from '../renderer/proto/world.js';
-import { useProtoStore } from '../renderer/proto/session.js';
+import { loadWorld } from '../renderer/common/world.js';
+import { useProtoStore } from '../renderer/common/session.js';
 import { assertTextBudget, countWords } from '../shared/home/textbudget.js';
 
 const none = (): void => undefined;

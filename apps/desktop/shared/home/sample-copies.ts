@@ -1,12 +1,12 @@
 /**
- * The sample world of the home view. Seed 1 of the sample (shared/proto/sample.ts, which this file does not touch) has exactly one skill found with
+ * The sample world of the home view. Seed 1 of the sample (shared/world/sample.ts, which this file does not touch) has exactly one skill found with
  * different texts, and no agent holds it, so no shelf would ever show the "2 different copies" badge. This gives one skill that an agent does hold a
  * second copy, in plain lines, so the badge shows on a shelf and the copies dialog has something real to open. It is deterministic: no clock, no random
  * number. A world that already has such a skill, or that lacks the skill, comes back as it is.
  */
-import type { HarnessItem, SkillItem, World } from '../proto/types.js';
-import { distinctTexts } from '../proto/conflicts.js';
-import { hashText } from '../proto/sample.js';
+import type { HarnessItem, SkillItem, World } from '../world/types.js';
+import { distinctTexts } from '../world/conflicts.js';
+import { hashText } from '../world/sample.js';
 import { realCopyDaysOf } from '../real/plain-fallback.js';
 import { ownedAgents } from './cards.js';
 

@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import { DRAG_START, dragCancel, dragMove, dragPress, dragRelease, idleDrag } from '../renderer/home/kit/drag.js';
 import { drawerStep } from '../renderer/home/kit/drawer-phase.js';
 import { saveAction } from '../renderer/home/store-actions.js';
-import { createStore } from '../shared/proto/store.js';
-import { makeWorld } from './proto-testworld.js';
+import { createStore } from '../shared/world/store.js';
+import { makeWorld } from './testworld.js';
 
 test('a press is not a drag until the pointer has moved 6 pixels', () => {
   assert.equal(DRAG_START, 6);

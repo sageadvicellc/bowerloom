@@ -1,15 +1,15 @@
 /**
  * Undo for one change, alone. The Save bar lists the changes that wait, and each row can be taken back without touching the others.
  *
- * Method: the store remembers the edits that made the draft, in order (`draftActions`, shared/proto/store.ts). To undo one row this finds the edit (or the
+ * Method: the store remembers the edits that made the draft, in order (`draftActions`, shared/world/store.ts). To undo one row this finds the edit (or the
  * two edits) that make the row, replays the others from the saved world, and keeps the result only when the list of rows is then exactly the old list
  * without that row. If taking the edit out also takes other rows with it (a skill that was added to the library and then to an agent: the second row
  * needs the first), the row cannot be undone alone and says so in plain words: the later change goes first. A row that no edit makes on its own (two
  * edits to the same notes) can only go with "Undo all changes". Nothing is guessed: every answer is checked by replaying.
  * Pure: no React, no DOM, no clock.
  */
-import type { StoreState } from '../proto/store.js';
-import { draftActions, replayActions } from '../proto/store.js';
+import type { StoreState } from '../world/store.js';
+import { draftActions, replayActions } from '../world/store.js';
 import { barSentence, changeSentence } from './changes.js';
 import type { Change } from './changes.js';
 import { libraryChangeList, librarySentence } from './library-changes.js';

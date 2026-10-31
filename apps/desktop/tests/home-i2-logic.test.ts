@@ -1,12 +1,12 @@
 // Slice I2: the pure logic that joins the Add drawer, the copies dialog and the save points to the real shell.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createStore, reduceStore } from '../shared/proto/store.js';
-import type { StoreState } from '../shared/proto/store.js';
-import { distinctTexts } from '../shared/proto/conflicts.js';
-import type { Bundle, World } from '../shared/proto/types.js';
-import { buildBundle } from '../shared/proto/bundle.js';
-import { generateWorld } from '../shared/proto/sample.js';
+import { createStore, reduceStore } from '../shared/world/store.js';
+import type { StoreState } from '../shared/world/store.js';
+import { distinctTexts } from '../shared/world/conflicts.js';
+import type { Bundle, World } from '../shared/world/types.js';
+import { buildBundle } from '../shared/world/bundle.js';
+import { generateWorld } from '../shared/world/sample.js';
 import { ownedAgents, shelvesOf } from '../shared/home/cards.js';
 import { hasCopies } from '../shared/home/add-copies.js';
 import { changeCount, withStartPoint } from '../shared/home/savebar.js';

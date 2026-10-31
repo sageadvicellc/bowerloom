@@ -6,7 +6,7 @@
  * point at a skill that only an earlier read found, because the reader looks for the links inside one read. The counts are counted again from the merged world, so they
  * always agree with what the screens list. Nothing here reads a file, a clock or the network.
  */
-import type { HarnessItem, InterfaceInfo, Scope, WikiPage, World } from '../proto/types.js';
+import type { HarnessItem, InterfaceInfo, Scope, WikiPage, World } from '../world/types.js';
 import type { RealCounts, RealResult } from './types.js';
 
 const PROGRAM_RANK: Readonly<Record<string, number>> = { 'claude-code': 0, codex: 1, opencode: 2, hermes: 3, bowerloom: 4 };

@@ -3,10 +3,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ACCESS_WORDS, COMPACT_GROUP_LIMITS, NO_OWN_GROUPS, actionsFor, buildHarnessMap, describeNode, groupIdOf, interfaceNodeId, ownGroupId, ownGroupParts, scopeNodeId } from '../shared/proto/harnessmodel.js';
-import type { HarnessMapModel, HarnessNode, HarnessView } from '../shared/proto/harnessmodel.js';
-import { CASE_IDS, generateWorld } from '../shared/proto/sample.js';
-import type { AgentItem, World } from '../shared/proto/types.js';
+import { ACCESS_WORDS, COMPACT_GROUP_LIMITS, NO_OWN_GROUPS, actionsFor, buildHarnessMap, describeNode, groupIdOf, interfaceNodeId, ownGroupId, ownGroupParts, scopeNodeId } from '../shared/world/harnessmodel.js';
+import type { HarnessMapModel, HarnessNode, HarnessView } from '../shared/world/harnessmodel.js';
+import { CASE_IDS, generateWorld } from '../shared/world/sample.js';
+import type { AgentItem, World } from '../shared/world/types.js';
 import { DESKTOP } from './support.js';
 
 const world = generateWorld(1);
@@ -249,9 +249,9 @@ test('long text is cut to one short line', () => {
   assert.ok(node(buildHarnessMap(w, view('global')), 'skill-003').detail.length <= 90);
 });
 
-test('shared/proto/harnessmodel.ts is pure: types and the slice rule only, no file, clock, random number, markup string or bridge', () => {
+test('shared/world/harnessmodel.ts is pure: types and the slice rule only, no file, clock, random number, markup string or bridge', () => {
   for (const file of ['harnessmodel.ts']) {
-    const code = readFileSync(join(DESKTOP, 'shared', 'proto', file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const code = readFileSync(join(DESKTOP, 'shared', 'world', file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     assert.doesNotMatch(code, /from ['"]node:|node:fs|Math\.random|Date\.|\bnew Date\b|innerHTML|window\.bowerloom|\beval\(|process\.env|fetch\(|localStorage/, file);
     for (const m of code.matchAll(/^import[\s\S]*?;$/gm)) assert.match(m[0], /from '\.\/(types|slicerule|harnessmodel|common|words)\.js';$/, `${file}: ${m[0]}`);
   }

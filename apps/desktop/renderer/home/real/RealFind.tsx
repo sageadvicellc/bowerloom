@@ -5,7 +5,7 @@
  */
 import { useState } from 'react';
 import type { ReactElement } from 'react';
-import type { World } from '../../../shared/proto/types.js';
+import type { World } from '../../../shared/world/types.js';
 import { FindScan } from '../first-run/FindScan.js';
 import { RealScan } from './RealScan.js';
 import { useRealFlow } from './RealFlow.js';

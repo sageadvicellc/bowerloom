@@ -1,12 +1,12 @@
 /**
  * How "Choose notes" reaches the store, and how the Save bar counts it. One press of "Use these notes" is one store action (`chooseNotes`, see
- * shared/proto/store-notes.ts) and one change on the Save bar, even when it makes a new saved choice of pages, puts it in the list of items and points the
+ * shared/world/store-notes.ts) and one change on the Save bar, even when it makes a new saved choice of pages, puts it in the list of items and points the
  * agent at it: those three are one thing to a person, "this agent reads these notes". `absorbedSlices` names the new choices that belong to such a change,
  * so `changeCount` and `listChanges` do not count them a second time. Pure: no React, no DOM.
  */
-import type { StoreAction } from '../proto/store.js';
-import { chooseNotes, strayDraftSlices } from '../proto/store-notes.js';
-import type { HarnessItem, World } from '../proto/types.js';
+import type { StoreAction } from '../world/store.js';
+import { chooseNotes, strayDraftSlices } from '../world/store-notes.js';
+import type { HarnessItem, World } from '../world/types.js';
 import type { Choice } from './notes-model.js';
 
 const NAME_WORDS = 4;

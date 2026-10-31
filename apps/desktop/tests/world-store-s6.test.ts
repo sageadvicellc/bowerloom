@@ -1,12 +1,12 @@
 // The two store actions added for the skills and agents screens: addLibrary (one invented library from a catalog) and moveSkill (reorder one skill of one agent).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { catalogItemId, FOLDER_CANDIDATES, LIBRARY_CATALOG } from '../shared/proto/library-catalog.js';
-import { CASE_IDS, generateWorld, validateWorld } from '../shared/proto/sample.js';
-import { createStore, isDirty, reduceStore, snapshotOf } from '../shared/proto/store.js';
-import type { StoreAction, StoreState } from '../shared/proto/store.js';
-import type { AgentItem, SkillItem, World } from '../shared/proto/types.js';
-import { agent, copy, makeWorld, skill } from './proto-testworld.js';
+import { catalogItemId, FOLDER_CANDIDATES, LIBRARY_CATALOG } from '../shared/world/library-catalog.js';
+import { CASE_IDS, generateWorld, validateWorld } from '../shared/world/sample.js';
+import { createStore, isDirty, reduceStore, snapshotOf } from '../shared/world/store.js';
+import type { StoreAction, StoreState } from '../shared/world/store.js';
+import type { AgentItem, SkillItem, World } from '../shared/world/types.js';
+import { agent, copy, makeWorld, skill } from './testworld.js';
 
 const sample = generateWorld(1);
 const works = LIBRARY_CATALOG.find(l => l.id === 'lantern-works')!;

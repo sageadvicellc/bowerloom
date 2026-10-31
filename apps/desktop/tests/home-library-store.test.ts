@@ -4,11 +4,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createStore, reduceStore } from '../shared/proto/store.js';
-import type { StoreAction, StoreState } from '../shared/proto/store.js';
-import type { AgentItem, HarnessItem, World } from '../shared/proto/types.js';
-import { distinctTexts } from '../shared/proto/conflicts.js';
-import { hashText } from '../shared/proto/sample.js';
+import { createStore, reduceStore } from '../shared/world/store.js';
+import type { StoreAction, StoreState } from '../shared/world/store.js';
+import type { AgentItem, HarnessItem, World } from '../shared/world/types.js';
+import { distinctTexts } from '../shared/world/conflicts.js';
+import { hashText } from '../shared/world/sample.js';
 import { UPDATE_ITEM_ID } from '../shared/home/library-sample.js';
 import { textOfItem, infoOf, SAMPLE_SOURCES, newItemOf } from '../shared/home/library-sources.js';
 import { DESKTOP } from './support.js';
@@ -196,7 +196,7 @@ test('the Library actions go through createStore: subscribers hear one change ea
 });
 
 test('the store sources of the Library read no clock and no random number', () => {
-  const text = readFileSync(join(DESKTOP, 'shared', 'proto', 'store-library.ts'), 'utf8');
+  const text = readFileSync(join(DESKTOP, 'shared', 'world', 'store-library.ts'), 'utf8');
   for (const word of ['Date.', 'new Date', 'Math.random', 'window.bowerloom', 'node:fs', 'innerHTML', 'performance.now', 'crypto']) assert.equal(text.includes(word), false, word);
 });
 

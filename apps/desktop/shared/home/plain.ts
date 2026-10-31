@@ -1,5 +1,5 @@
 /**
- * The plain layer of the home app. The sample world (shared/proto/sample.ts) names things like "gilded-gantry", which tells a stranger nothing. This
+ * The plain layer of the home app. The sample world (shared/world/sample.ts) names things like "gilded-gantry", which tells a stranger nothing. This
  * file gives every sample agent, skill, tool and note a plain name and a one-line hint, keyed by the sample's own ids, so the store, the tests and the
  * old prototype keep working on the sample as it is. An id that is not listed here falls back to the item's own name (see cards.ts).
  *
@@ -8,8 +8,8 @@
  * No brand names, no file paths, none of the banned words. `tests/home-plain.test.ts` holds every row to these rules.
  */
 
-import type { Slice } from '../proto/types.js';
-import { generateWorld } from '../proto/sample.js';
+import type { Slice } from '../world/types.js';
+import { generateWorld } from '../world/sample.js';
 import { realPlainById, realRecencyOf } from '../real/plain-fallback.js';
 import { starterOf } from './starters.js';
 

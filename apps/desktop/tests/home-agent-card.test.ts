@@ -7,7 +7,7 @@ import { AgentCard } from '../renderer/home/kit/AgentCard.js';
 import type { AgentCardProps } from '../renderer/home/kit/AgentCard.js';
 import { AGENT_ACCENTS, agentAccent, agentCard, ownedAgents, shelvesOf } from '../shared/home/cards.js';
 import type { ShelfEntry, Shelves } from '../shared/home/cards.js';
-import { generateWorld } from '../shared/proto/sample.js';
+import { generateWorld } from '../shared/world/sample.js';
 import { assertTextBudget } from '../shared/home/textbudget.js';
 
 const world = generateWorld(1);

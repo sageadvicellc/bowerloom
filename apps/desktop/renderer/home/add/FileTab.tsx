@@ -8,7 +8,7 @@ import type { DragEvent as ReactDragEvent, ReactElement } from 'react';
 import { FILE_IDLE, FILE_KIND_ORDER, FILE_MAX_BYTES, addsNothing, capList, countOf, readSharedFile, stepAfterAdd, stepFromResult } from '../../../shared/home/add-file.js';
 import type { FileFailure, FileStep, FileThing, FileThingKind, SharedFilePreview } from '../../../shared/home/add-file.js';
 import type { NameOf } from '../../../shared/home/add-model.js';
-import type { Bundle, World } from '../../../shared/proto/types.js';
+import type { Bundle, World } from '../../../shared/world/types.js';
 import { Button } from '../kit/Button.js';
 import { KitIcon } from '../kit/icons.js';
 import type { KitIconName } from '../kit/icons.js';

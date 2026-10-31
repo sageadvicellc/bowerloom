@@ -10,7 +10,7 @@ import { copiesLookAlike, copiesOf, hasCopies, keepCopyAction, newerCopy } from 
 import type { CopyView } from '../../../shared/home/add-copies.js';
 import { plainName } from '../../../shared/home/add-model.js';
 import type { NameOf } from '../../../shared/home/add-model.js';
-import { useProtoStore } from '../../proto/session.js';
+import { useProtoStore } from '../../common/session.js';
 import { Button } from '../kit/Button.js';
 import { IconButton } from '../kit/IconButton.js';
 import { ADD_WORDS, copyNumber, foundIn, linesChanged, newerIs } from '../add/add-words.js';

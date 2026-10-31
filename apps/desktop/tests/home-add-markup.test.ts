@@ -12,10 +12,10 @@ import { CopiesDialog } from '../renderer/home/copies/CopiesDialog.js';
 import { addDemoWorld, DEMO } from '../renderer/home/add/add-demo-world.js';
 import { ADD_WORDS, NOTE_STAY_MS } from '../renderer/home/add/add-words.js';
 import { sharedFileSample } from '../renderer/home/add/add-sample-file.js';
-import { ProtoProvider } from '../renderer/proto/session.js';
+import { ProtoProvider } from '../renderer/common/session.js';
 import { ADD_TABS, agentChoices, entriesFor } from '../shared/home/add-model.js';
 import type { AddTab } from '../shared/home/add-model.js';
-import { createStore } from '../shared/proto/store.js';
+import { createStore } from '../shared/world/store.js';
 import { assertTextBudget, countWords } from '../shared/home/textbudget.js';
 
 const html = (element: ReactElement): string => renderToStaticMarkup(element);

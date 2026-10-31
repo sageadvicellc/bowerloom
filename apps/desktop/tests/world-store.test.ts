@@ -3,12 +3,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createStore, isDirty, reduceStore } from '../shared/proto/store.js';
-import type { StoreAction } from '../shared/proto/store.js';
-import { liveMatch } from '../shared/proto/slicematch.js';
-import type { AgentItem, SkillItem, World } from '../shared/proto/types.js';
+import { createStore, isDirty, reduceStore } from '../shared/world/store.js';
+import type { StoreAction } from '../shared/world/store.js';
+import { liveMatch } from '../shared/world/slicematch.js';
+import type { AgentItem, SkillItem, World } from '../shared/world/types.js';
 import { DESKTOP } from './support.js';
-import { agent, copy, found, makeWorld, skill } from './proto-testworld.js';
+import { agent, copy, found, makeWorld, skill } from './testworld.js';
 
 const RULE = { folders: ['notes'], pageTypesAndTags: { types: [], tags: [] }, linksFromSeeds: null } as const;
 const agentOf = (w: World, id: string): AgentItem => w.items.find(i => i.id === id && i.kind === 'agent') as AgentItem;
@@ -309,7 +309,7 @@ test('special characters in names survive unchanged', () => {
 
 test('the store source reads no clock and no random number, and touches no window or file', () => {
   for (const f of ['store.ts', 'common.ts', 'slicematch.ts']) {
-    const text = readFileSync(join(DESKTOP, 'shared', 'proto', f), 'utf8');
+    const text = readFileSync(join(DESKTOP, 'shared', 'world', f), 'utf8');
     for (const word of ['Date.', 'new Date', 'Math.random', 'window.bowerloom', 'node:fs', 'innerHTML', 'performance.now', 'crypto']) assert.equal(text.includes(word), false, `${f} contains ${word}`);
     assert.doesNotMatch(text, /from ['"]node:/, f);
   }

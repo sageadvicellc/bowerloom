@@ -4,9 +4,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { reduceStore } from '../shared/proto/store.js';
-import type { StoreState } from '../shared/proto/store.js';
-import { distinctTexts } from '../shared/proto/conflicts.js';
+import { reduceStore } from '../shared/world/store.js';
+import type { StoreState } from '../shared/world/store.js';
+import { distinctTexts } from '../shared/world/conflicts.js';
 import {
   SAMPLE_SOURCES, addressOf, defaultTicked, groupedItems, kindCounts, needsKeyOf, openLink, runsCodeOf, textOfItem,
 } from '../shared/home/library-sources.js';

@@ -5,7 +5,7 @@
  * ("fern-hill" becomes "Fern Hill"). It also gives every page a plain title, built from its part and its kind, because the sample's own titles are nonsense.
  * Pure: no React, no DOM, no clock, no random number.
  */
-import type { WikiPage } from '../proto/types.js';
+import type { WikiPage } from '../world/types.js';
 import { itemTitle } from './titles.js';
 
 /** One part of a topic: a sub-folder. `folder` is its full path ("alderhythe/gorse"), which is also how the slice rule names it. */

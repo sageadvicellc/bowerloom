@@ -15,9 +15,9 @@ import { NOTES_HASH } from '../renderer/home/notes/route.js';
 import {
   NOTES_WORDS, SIZE_LINE, keptHint, leaveOutGroup, leaveOutOf, notesCount, ofTotal, partBackIn, partLeftOut, partOfTopic, pickedByHand, sizeLine, topicAdded, topicRemoved, topicTab, willRead,
 } from '../renderer/home/notes/notes-words.js';
-import { ProtoProvider } from '../renderer/proto/session.js';
-import { generateWorld } from '../shared/proto/sample.js';
-import { createStore } from '../shared/proto/store.js';
+import { ProtoProvider } from '../renderer/common/session.js';
+import { generateWorld } from '../shared/world/sample.js';
+import { createStore } from '../shared/world/store.js';
 import { EMPTY_SELECTION, makeBasis, previewOf, ruleLines, toggleTopic } from '../shared/home/notes-model.js';
 import { LIMITS, assertTextBudget, bannedIn, countWords, extractText } from '../shared/home/textbudget.js';
 import { DESKTOP } from './support.js';
