@@ -73,8 +73,11 @@ export const REAL = deepFreeze({
     readLine: 'A harness is a saved list of agents and skills. Bowerloom stores it as one small file in the project you install it to.',
     betaAbout: 'Bowerloom is in beta. It reads your own folders and writes only after you approve what it will write.',
   },
-  /** The list of the Beta mark's popover in this mode: what is not in beta.1. */
-  notInBeta: ['Assign to project', 'Start', 'Compare', 'Runs'],
+  /**
+   * The list of the Beta mark's popover in this mode: every control that is not in beta.1. Install from a folder and Edit from a folder work, so no line is worded
+   * so that it could mean them: the lines that share a name with a working control say where the blocked one is.
+   */
+  notInBeta: ['Start', 'Compare', 'Runs', 'Assign to project, in the Harnesses list', 'Assign harness, Install, Update and Review, in Projects', 'Add, in the Library', 'Add a folder, in Projects'],
 } as const);
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;

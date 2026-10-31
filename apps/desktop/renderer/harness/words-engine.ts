@@ -260,7 +260,7 @@ export const NOTES_REFUSAL_WORDS: Readonly<Record<string, string>> = Object.free
   NOTES_PATH_UNSAFE: 'Choose a plain folder of your own, not a link.',
   NOTES_NOT_EMPTY: 'Choose an empty folder, or make a new one.',
   NOTES_TEMPLATE_INVALID: 'Install Bowerloom again to repair the starter notes.',
-  NOTES_STALE: 'The folder changed. Look at the preview again.',
+  NOTES_STALE: 'The folder changed. Look at the plan again.',
   NOTES_ALREADY_REPOSITORY: 'This folder keeps its history already. Nothing to do.',
   NOTES_PARENT_REPOSITORY: 'Use this folder with Use my notes, or pick one outside.',
   NOTES_NESTED_REPOSITORY: 'A folder inside keeps its own history. Move it out first.',

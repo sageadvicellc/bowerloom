@@ -14,7 +14,7 @@ import { undoNow } from '../undo-note.js';
 import { HButton, StateDot } from '../parts/controls.js';
 import { HIcon } from '../icons.js';
 import { WORDS } from '../words.js';
-import { FLOW, undoName } from '../words-flow.js';
+import { FLOW, historyLines, undoName } from '../words-flow.js';
 import './history.css';
 
 function Row({ entry, held, onUndo }: { entry: HistoryEntry; held: boolean; onUndo(): void }): ReactElement {
@@ -42,7 +42,7 @@ export function History(): ReactElement {
   };
   return (
     <Screen slot="history" title={WORDS.label.installHistory}>
-      <p className="kit-hint hx-hint">{FLOW.hint.historyHint}</p>
+      {historyLines(state.real !== undefined, state.history.length).map(line => <p key={line} className="kit-hint hx-hint">{line}</p>)}
       <div className="hxh-days">
         {groupByDay(state.history).map(group => (
           <section key={group.day} className="hxh-day" aria-label={group.day}>

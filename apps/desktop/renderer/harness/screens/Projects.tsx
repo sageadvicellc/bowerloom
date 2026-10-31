@@ -17,7 +17,7 @@ import { HButton, HIconButton, StateDot } from '../parts/controls.js';
 import { Tile } from '../icons.js';
 import { WORDS, notYetWords, projectsHint } from '../words.js';
 import { PathDisclosure } from '../parts/PathDisclosure.js';
-import { FLOW, actionFor, actionName, installFor, nothingChanged, removedWords, reviewFor, savedAs, updateFor } from '../words-flow.js';
+import { FLOW, actionFor, actionName, rowSubject, installFor, nothingChanged, removedWords, reviewFor, savedAs, updateFor } from '../words-flow.js';
 import { undoNow } from '../undo-note.js';
 import { ENGINE_WORDS } from '../words-engine.js';
 import './projects.css';
@@ -48,7 +48,7 @@ function Row({ state, project, selected, onPick }: { state: HarnessState; projec
           <button type="button" className="hx-row-main" aria-pressed={selected} onClick={onPick}>{project.name}</button>
           <span className="hxp-harness">{installs.length === 0 ? FLOW.label.noHarnessYet : names.join(', ')}</span>
         </span>
-        <PathDisclosure className="hxp-path" path={project.path} subject={project.name} key={project.path} />
+        <PathDisclosure className="hxp-path" path={project.path} subject={rowSubject(project.name)} key={project.id} />
         {installs.map((install, n) => (
           <ul key={install.harnessId} className="hxp-dots" aria-label={names[n]}>
             {many ? <li className="hxp-dots-name">{names[n]}</li> : null}
@@ -114,7 +114,7 @@ function Details({ state, project }: { state: HarnessState; project: Project }):
   return (
     <>
       <DetailsHead tile={<Tile name="folder" size="large" />} title={project.name} subtitle={FLOW.label.project} />
-      <PathDisclosure path={project.path} subject={project.name} key={project.path} />
+      <PathDisclosure path={project.path} subject={project.name} key={project.id} />
       {installs.length === 0 ? <p className="hx-text hx-muted">{FLOW.label.noHarnessYet}</p> : installs.map(install => {
         const harness = harnessById(state, install.harnessId);
         return harness === undefined ? null : <InstallBlock key={install.harnessId} state={state} store={store} ui={ui} project={project} install={install} harness={harness} many={many} />;

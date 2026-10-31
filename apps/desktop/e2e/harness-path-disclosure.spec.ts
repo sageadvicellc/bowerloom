@@ -70,3 +70,46 @@ test('File view: the path is behind "Show details" and the title is the file nam
   await expect(p.getByText('Read-only in this release')).toHaveCount(0);
   await exercise(p, p.locator('[data-screen="file"] .hx-file'), /^skills\/[a-z-]+\/SKILL\.md$/);
 });
+
+test('Projects: the row\'s button is named "in the list", apart from the details column\'s, and both start with the shown words', async () => {
+  const p = page();
+  await fresh(p, '#prototype-v3/projects');
+  const row = p.locator('.hxp-row').first(), name = (await row.locator('.hx-row-main').innerText()).trim();
+  const inRow = row.locator('[data-path-disclosure] > button'), inDetails = p.getByRole('complementary').locator('[data-path-disclosure] > button');
+  await expect(inRow).toHaveAccessibleName(`Show details for ${name} in the list`);
+  await expect(inRow).toHaveText('Show details');
+  await expect(inDetails).toHaveAccessibleName(`Show details for ${name}`);
+  await expect(p.getByRole('button', { name: `Show details for ${name}`, exact: true }), 'one button has this name').toHaveCount(1);
+});
+
+/** The middle of the right end of a box, away from the button at its left. */
+async function emptyPart(p: Page, box: Locator): Promise<{ x: number; y: number }> {
+  const b = (await box.boundingBox())!;
+  return { x: b.x + b.width - 12, y: b.y + b.height / 2 };
+}
+
+test('Projects: a press on the empty part of a row picks the row, and a press on its Show details does not', async () => {
+  const p = page();
+  await fresh(p, '#prototype-v3/projects');
+  const rows = p.locator('.hxp-row');
+  expect(await rows.count()).toBeGreaterThanOrEqual(3);
+  await expect(rows.nth(0)).toHaveAttribute('data-selected', '');
+  // The disclosure of the third row: the button opens the path and the pick stays where it was.
+  await rows.nth(2).locator('[data-path-disclosure] > button').click();
+  await expect(rows.nth(2).locator('[data-path-disclosure] > button')).toHaveAttribute('aria-expanded', 'true');
+  await expect(rows.nth(0)).toHaveAttribute('data-selected', '');
+  await expect(rows.nth(2)).not.toHaveAttribute('data-selected', '');
+  // The empty part of the second row (the right end of the line that holds its disclosure) picks it.
+  const point = await emptyPart(p, rows.nth(1).locator('.hxp-path'));
+  await p.mouse.click(point.x, point.y);
+  await expect(rows.nth(1)).toHaveAttribute('data-selected', '');
+  await expect(rows.nth(0)).not.toHaveAttribute('data-selected', '');
+  // The disclosure's own button still opens its path and leaves the pick on the second row.
+  await rows.nth(0).locator('[data-path-disclosure] > button').click();
+  await expect(rows.nth(0).locator('[data-path-disclosure] > button')).toHaveAttribute('aria-expanded', 'true');
+  await expect(rows.nth(1)).toHaveAttribute('data-selected', '');
+  // The path text can still be selected: a press on it does not pick the row either.
+  const text = rows.nth(0).locator('[data-path]');
+  await text.click();
+  await expect(rows.nth(1)).toHaveAttribute('data-selected', '');
+});

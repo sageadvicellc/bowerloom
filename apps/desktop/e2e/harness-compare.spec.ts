@@ -109,7 +109,7 @@ test('start two runs from two ticked interfaces: Runs shows them Running, Compar
 
   // "Bring window to the front" opens no window: it says so, and nothing changes.
   await details.getByRole('button', { name: 'Bring window to the front', exact: true }).click();
-  await expect(p.locator('[data-toast]')).toContainText('Not in beta.1.');
+  await expect(p.locator('[data-toast]')).toContainText('Not in this preview.');
   await expect(rows.nth(0)).toContainText('Running');
 
   // Compare: both columns, the rating locked and the reason in words.
@@ -225,7 +225,7 @@ test('a note stops its timer while the pointer is on it, and starts again when t
   await fresh(p, '#prototype-v3/runs');
   await p.locator('.hr-row').first().getByRole('button', { name: /^Bring .* window to the front$/ }).click();
   const toast = p.locator('[data-toast]');
-  await expect(toast).toContainText('Not in beta.1.');
+  await expect(toast).toContainText('Not in this preview.');
   await toast.hover();
   await p.waitForTimeout(9_000);
   await expect(toast).toBeVisible();

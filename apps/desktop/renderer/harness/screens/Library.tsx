@@ -57,7 +57,7 @@ function Details({ state, part, onAdd }: { state: HarnessState; part: Part; onAd
       <section className="hx-block" aria-labelledby="hx-lib-file">
         <h3 className="hx-h3" id="hx-lib-file">{WORDS.label.file}</h3>
         <p className="hx-text hx-muted">{fileNameOf(part.path)}</p>
-        <PathDisclosure path={part.path} subject={part.name} key={part.path} />
+        <PathDisclosure path={part.path} subject={part.name} key={part.id} />
       </section>
       <div className="hx-actions">
         <HButton icon="eye" onClick={() => go({ name: 'file', partId: part.id })}>{WORDS.label.viewFile}</HButton>

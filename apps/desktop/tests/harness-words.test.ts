@@ -2,10 +2,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { DESIGN_WORDS, HARNESS_BANNED, LIMITS, bannedHere, countWords } from '../shared/harness/words.js';
 import { BANNED, bannedIn } from '../shared/home/textbudget.js';
-import { KIND_NAME, KIND_PLURAL, WORDS, addName, addTo, addToWords, fixName, fromWords, notYetWords, detailsName, harnessListHint, installTitle, linkFromWords, missingKind, namedBy, nodeName, partsCount, projectsHint, startName, tabWords, willUse } from '../renderer/harness/words.js';
+import { KIND_NAME, KIND_PLURAL, WORDS, addName, addTo, addToWords, fixName, fromWords, helpLines, notYetWords, detailsName, harnessListHint, installTitle, linkFromWords, missingKind, namedBy, nodeName, partsCount, projectsHint, startName, tabWords, willUse } from '../renderer/harness/words.js';
+import { FLOW, historyLines, welcomeLines } from '../renderer/harness/words-flow.js';
+import { RUN_WORDS, bringTipWords, bringToastWords, noRunsWords } from '../renderer/harness/runs-words.js';
+import { ASK } from '../main/engine-consent.js';
+import { NOTES_REFUSAL_WORDS } from '../renderer/harness/words-engine.js';
+import { SAMPLE_MESSAGES } from '../shared/engine/sample.js';
 import { REAL, countsLine, couldNotReadLine, foldersLine, foundInLine, foundPlaces, modelBadgeLine, moreNotes, nothingReadLine, limitsLine, readCountLine, readSummary, skippedLine, textsCutLine } from '../renderer/harness/real/words-real.js';
 import { reasonWords } from '../renderer/home/real/words.js';
 import { SAMPLE_IDS, createSampleWorld } from '../shared/harness/sample.js';
@@ -67,21 +72,66 @@ test('the words the logic builds (statuses, counts, install lines, notices) obey
   for (const text of texts.filter(t => t !== status.compareNotice(2))) assert.ok(countWords(text) <= LIMITS.hint, text);
 });
 
-test('no source file of the preview has a banned word in a string literal or in JSX text', () => {
+/**
+ * Names in code that are banned words as text but not words on a screen: a route, a step, a store operation, a data tag, a file name. Each file lists its names piece by piece, exactly. A new one in
+ * any file, and a name that left a file, both fail until this list says so. No whole string is exempt anywhere else, so "interface" as a label or a note is still caught.
+ */
+const times = (piece: string, n: number): string[] => Array.from({ length: n }, () => piece);
+const CODE_NAMES: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  'renderer/harness/HarnessApp.tsx': times('interfaces', 1), 'renderer/harness/Navigation.tsx': times('interfaces', 3), 'renderer/harness/Shell.tsx': times('interfaces', 1), 'renderer/harness/ui.tsx': times('interfaces', 2),
+  'renderer/harness/screens/Interfaces.tsx': times('interfaces', 2), 'renderer/harness/screens/Projects.tsx': times('interfaces', 1), 'renderer/harness/sheets/InstallSheet.tsx': times('interfaces', 5), 'renderer/harness/sheets/ProjectSheet.tsx': times('interfaces', 8),
+  'shared/harness/builder-draft.ts': times('last-interface', 2), 'shared/harness/route.ts': times('interfaces', 8), 'shared/harness/status.ts': times('interfaces', 1),
+  'shared/harness/store.ts': [...times('set-interface', 4), ...times('interface', 4)], 'shared/harness/types.ts': times('set-interface', 1),
+  'shared/engine/types.ts': [...times('mcp', 3), 'apply'], 'main/engine-consent.ts': ['mcp', 'mcp.json'],
+});
+/** The text pieces of a source file: its string literals and its JSX text, without comments and import paths. */
+function textPieces(source: string): string[] {
   const strip = (t: string): string => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
-  const files = ['renderer/harness', 'shared/harness'].flatMap(dir => readdirSync(join(DESKTOP, dir), { recursive: true, withFileTypes: true }).filter(e => e.isFile() && /\.tsx?$/.test(e.name)).map(e => join((e as unknown as { parentPath: string }).parentPath, e.name)));
+  const code = strip(source).replace(/\b(?:from|import)\s*['"][^'"\n]*['"]/g, '');
+  const pieces: string[] = [];
+  for (const m of code.matchAll(/'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"|`((?:[^`\\]|\\.)*)`/g)) pieces.push((m[1] ?? m[2] ?? m[3] ?? '').replace(/\$\{[^}]*\}/g, ' '));
+  for (const m of code.matchAll(/>([^<>{}=;()]*[A-Za-z][^<>{}=;()]*)</g)) pieces.push(m[1]!);
+  return pieces;
+}
+
+test('no source file of the preview, its engine screens or main\'s dialogs has a banned word in a string literal or in JSX text', () => {
+  const dirs = ['renderer/harness', 'shared/harness', 'shared/engine'];
+  const files = [...dirs.flatMap(dir => readdirSync(join(DESKTOP, dir), { recursive: true, withFileTypes: true }).filter(e => e.isFile() && /\.tsx?$/.test(e.name)).map(e => join((e as unknown as { parentPath: string }).parentPath, e.name))), join(DESKTOP, 'main', 'engine-consent.ts')];
   assert.ok(files.length >= 30, `${files.length} files`);
+  assert.ok(files.some(f => f.endsWith(`${sep}main${sep}engine-consent.ts`)) && files.some(f => f.includes(`${sep}shared${sep}engine${sep}`)), 'the dialog words and the engine words are scanned');
+  const listed = new Set<string>();
   for (const file of files) {
-    const code = strip(readFileSync(file, 'utf8')).replace(/\b(?:from|import)\s*['"][^'"\n]*['"]/g, '');
-    const pieces: string[] = [];
-    for (const m of code.matchAll(/'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"|`((?:[^`\\]|\\.)*)`/g)) pieces.push((m[1] ?? m[2] ?? m[3] ?? '').replace(/\$\{[^}]*\}/g, ' '));
-    for (const m of code.matchAll(/>([^<>{}=;()]*[A-Za-z][^<>{}=;()]*)</g)) pieces.push(m[1]!);
-    // The sample's own text (the files that people read) is checked on the data; ids, paths and CSS class names are code.
-    // real-map.ts names the reader's own kinds in code (a data tag is not a word on screen); the words it makes are checked in tests/harness-real-map.test.ts.
-    if (file.endsWith('/sample.ts') || file.endsWith('/real-map.ts')) continue;
-    // A route, a step and a data key are code, not words: "interfaces" stays the name of the route and of the data, and the screens say "Engines".
-    for (const piece of pieces.filter(p => !/^(?:interfaces?|last-interface|set-interface)$/.test(p))) assert.equal(bannedHere(piece), null, `${file}: ${piece}`);
+    const name = relative(DESKTOP, file).split(sep).join('/');
+    // The sample's own text (the files that people read) is checked on the data. real-map.ts names the reader's own kinds in code (a data tag is not a word on screen); the words it makes are checked in tests/harness-real-map.test.ts.
+    // shared/engine/sample.ts holds the text of whole sample files (code, hooks, rules); its refusal messages are held to the words by the test below.
+    if (name === 'shared/harness/sample.ts' || name === 'shared/harness/real-map.ts' || name === 'shared/engine/sample.ts') continue;
+    const rest = textPieces(readFileSync(file, 'utf8'));
+    for (const piece of CODE_NAMES[name] ?? []) {
+      const at = rest.indexOf(piece);
+      assert.notEqual(at, -1, `${name}: the listed name "${piece}" is not there any more, or is listed too often`);
+      rest.splice(at, 1);
+    }
+    if (name in CODE_NAMES) listed.add(name);
+    for (const piece of rest) assert.equal(bannedHere(piece), null, `${name}: ${piece}`);
   }
+  assert.deepEqual([...listed].sort(), Object.keys(CODE_NAMES).sort(), 'every file in the list was scanned');
+});
+
+test('the guard catches the old word as a whole string anywhere that is not a listed name in code', () => {
+  assert.notEqual(bannedHere('interface'), null); assert.notEqual(bannedHere('Interfaces'), null); assert.notEqual(bannedHere('last-interface'), null);
+  assert.deepEqual(textPieces("const label = 'interface'; const note = `Pick an interface`;"), ['interface', 'Pick an interface'], 'a string that equals the old word is a piece like any other');
+  assert.deepEqual(textPieces('<h2>interface</h2>'), ['interface'], 'a bare word on a screen is a piece, and only the per-file list of names in code lets one stay');
+});
+
+test('main\'s write dialogs and the engine words say engine, not interface', () => {
+  const asks = [ASK.projection('bowerloom', 3, 'abcdef123456', 2), ASK.record('bowerloom', 'abcdef123456', 2)];
+  for (const ask of asks) { assert.match(ask.detail, /an engine carries more weakly/); assert.doesNotMatch(`${ask.title} ${ask.message} ${ask.detail}`, /interface/i); }
+  for (const text of [...Object.values(SAMPLE_MESSAGES), ...Object.values(NOTES_REFUSAL_WORDS)]) assert.doesNotMatch(text, /interface/i, text);
+});
+
+test('the stale-plan notes say plan, not preview', () => {
+  assert.equal(NOTES_REFUSAL_WORDS.NOTES_STALE, 'The folder changed. Look at the plan again.');
+  assert.equal(SAMPLE_MESSAGES.NOTES_STALE, 'The folder changed after the plan, or the approval is for another plan. Nothing was changed. Plan again.');
 });
 
 test('the real words (the preview on the person\'s own folders) are frozen, within the limits, and have no banned word', () => {
@@ -93,7 +143,8 @@ test('the real words (the preview on the person\'s own folders) are frozen, with
     for (const [key, text] of entries) { assert.ok(countWords(text) <= limit, `${group}.${key}: ${text}`); assert.equal(bannedHere(text), null, `${group}.${key}`); assert.equal(text, text.trim(), `${group}.${key}`); }
   }
   for (const line of REAL.notInBeta) { assert.ok(countWords(line) <= LIMITS.popover, line); assert.equal(bannedHere(line), null, line); }
-  assert.deepEqual(REAL.notInBeta, ['Assign to project', 'Start', 'Compare', 'Runs']);
+  assert.deepEqual(REAL.notInBeta, ['Start', 'Compare', 'Runs', 'Assign to project, in the Harnesses list', 'Assign harness, Install, Update and Review, in Projects', 'Add, in the Library', 'Add a folder, in Projects']);
+  assert.ok(!REAL.notInBeta.some(line => /^Install from a folder$|^From a folder$/.test(line)), 'Install from a folder works, so it is not on the list');
   assert.deepEqual([REAL.label.beta, REAL.label.aboutBeta, REAL.label.notInBeta, WORDS.hint.notInBeta], ['Beta', 'About this beta', 'Not in beta.1', 'Not in beta.1.']);
   assert.equal(notYetWords(true), 'Not in beta.1.'); assert.equal(notYetWords(false), 'Not in this preview.');
 });
@@ -118,4 +169,29 @@ test('the words the real screens build from a number or a code obey the same rul
   assert.equal(foundInLine('Your Claude Code folder'), 'Found in your Claude Code folder'); assert.equal(foundInLine('Caveman plug-in'), 'Found in Caveman plug-in'); assert.equal(REAL.label.notChecked, 'Not checked');
   assert.equal(textsCutLine(1), '1 text was cut short.'); assert.equal(textsCutLine(5), '5 texts were cut short.');
   assert.equal(readCountLine(1, 1), '1 source, 1 part in all.'); assert.equal(foldersLine(3), '3 folders ticked.'); assert.equal(moreNotes(4), 'and 4 more notes.');
+});
+
+test('the words that depend on the mode never say that a blocked feature works in real mode, and the sample keeps its words', () => {
+  const real = [...helpLines(true), ...welcomeLines(true), ...historyLines(true, 0), noRunsWords(true), bringTipWords(true), bringToastWords(true)];
+  for (const text of real) {
+    assert.equal(bannedHere(text), null, text);
+    assert.doesNotMatch(text, /Press Start|run it in any engine|undo an install in Install history|You can undo in Install history/i, text);
+  }
+  for (const text of [...welcomeLines(true), ...historyLines(true, 0), noRunsWords(true), bringToastWords(true), bringTipWords(true)]) assert.ok(countWords(text) <= LIMITS.hint, text);
+  for (const text of helpLines(true)) assert.ok(countWords(text) <= LIMITS.paragraph, text);
+  assert.equal(noRunsWords(true), 'Runs are not in beta.1.');
+  assert.equal(welcomeLines(true)[1], 'Running one is not in beta.1.');
+  assert.equal(helpLines(true)[1], 'Build one from your agents and skills. Running one is not in beta.1.');
+  assert.equal(helpLines(true)[3], 'Bowerloom only reads until you approve a write. To undo a folder install, press Undo when it finishes.');
+  assert.deepEqual(historyLines(true, 0), ['Nothing is listed yet. Installs from Projects are not in beta.1.', 'To undo a folder install, press Undo when it finishes.']);
+  assert.equal(bringToastWords(true), 'Not in beta.1.'); assert.equal(bringTipWords(true), 'Brings the engine window forward. Not in beta.1.');
+  // The sample keeps the words of the pictures.
+  assert.deepEqual(helpLines(false), [WORDS.paragraph.helpOne, WORDS.paragraph.helpTwo, WORDS.paragraph.helpThree, WORDS.paragraph.helpFour]);
+  assert.equal(helpLines(false)[1], 'Build one from your agents and skills. Then run it in any engine you use.');
+  assert.equal(helpLines(false)[3], 'Bowerloom only reads until you press Install. You can undo an install in Install history.');
+  assert.deepEqual(welcomeLines(false), ['Build a harness from your agents and skills.', 'Then run it in any engine you use.']);
+  assert.deepEqual(historyLines(false, 0), [FLOW.hint.historyHint]); assert.deepEqual(historyLines(false, 3), [FLOW.hint.historyHint]); assert.deepEqual(historyLines(true, 2), [FLOW.hint.historyHint]);
+  assert.equal(noRunsWords(false), 'No runs yet. Press Start on a harness.');
+  assert.equal(bringToastWords(false), 'Not in this preview.'); assert.equal(bringTipWords(false), 'Brings the engine window forward. Not in this preview.');
+  assert.equal(RUN_WORDS.hint.noRuns, 'No runs yet. Press Start on a harness.');
 });

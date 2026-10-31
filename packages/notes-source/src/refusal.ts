@@ -10,7 +10,7 @@ const MESSAGES = {
   NOTES_PATH_UNSAFE: 'A path is not a plain absolute path to a real folder of yours, is a link, or holds a name git cannot take safely. Nothing was changed.',
   NOTES_NOT_EMPTY: 'The folder for the starter wiki is not empty. A starter wiki goes only into a new or empty folder. Nothing was written.',
   NOTES_TEMPLATE_INVALID: 'The starter template is not a list of plain relative files within the limits. Nothing was written.',
-  NOTES_STALE: 'The folder changed after the preview, or the approval is for another preview. Nothing was changed. Preview again.',
+  NOTES_STALE: 'The folder changed after the plan, or the approval is for another plan. Nothing was changed. Plan again.',
   NOTES_ALREADY_REPOSITORY: 'The folder already has version history (.git). Nothing was changed.',
   NOTES_PARENT_REPOSITORY: 'This folder already has history in a larger repository, so Bowerloom starts no new one inside it. Nothing was changed.',
   NOTES_NESTED_REPOSITORY: 'A folder inside the notes has its own version history (.git), so one first commit cannot hold it. Nothing was changed.',

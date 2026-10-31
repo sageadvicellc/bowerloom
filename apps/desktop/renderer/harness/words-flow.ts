@@ -32,7 +32,7 @@ export const FLOW = deepFreeze({
   },
   /** Short lines: at most 12 words each. */
   hint: {
-    welcomeLineOne: 'Build a harness from your agents and skills.', welcomeLineTwo: 'Then run it in any engine you use.',
+    welcomeLineOne: 'Build a harness from your agents and skills.', welcomeLineTwo: 'Then run it in any engine you use.', welcomeLineTwoReal: 'Running one is not in beta.1.',
     tickOne: 'Tick at least one source.', notInPreview: 'Not in this preview.', noSources: 'No source is ticked.',
     manifestNote: 'Bowerloom manifest. Commit this file to share the harness.',
     pickFolder: 'Pick the folder to install into.', pickHarness: 'Pick the harness to install.', pickInterfaces: 'Each engine gets its own files. Pick the ones to install for.',
@@ -40,6 +40,7 @@ export const FLOW = deepFreeze({
     pickToContinue: 'Pick one to continue.',
     removeNote: 'This does not delete your files. It removes only what Bowerloom wrote.',
     yourFileNone: 'Not in this preview.', historyHint: 'Newest first. Undo puts back what the change replaced.',
+    historyEmptyReal: 'Nothing is listed yet. Installs from Projects are not in beta.1.', historyUndoReal: 'To undo a folder install, press Undo when it finishes.',
     lookedAgain: 'Looked again. Nothing changed.', noneOffered: 'No engine is switched on. Turn one on in Engines.',
     nothingMade: 'Nothing was made.',
     pickInterface: 'Pick at least one engine.', undoFirst: 'Undo the newer change first', noProject: 'That project is not here.',
@@ -50,6 +51,13 @@ export const FLOW = deepFreeze({
     readLine: 'A harness is a saved list of agents and skills. Bowerloom stores it as one small file in the project you install it to.',
   },
 } as const);
+
+// ---- Words that depend on the mode (`real`: the person's own folders)
+
+/** The two lines of Welcome. On the person's own folders the second says that running is not in beta.1. */
+export const welcomeLines = (real: boolean): readonly [string, string] => [FLOW.hint.welcomeLineOne, real ? FLOW.hint.welcomeLineTwoReal : FLOW.hint.welcomeLineTwo];
+/** The lines over the Install history list. With no entries on the person's own folders, nothing is listed and an install from Projects is not in beta.1; the second line says how to undo a folder install. */
+export const historyLines = (real: boolean, entries: number): readonly string[] => (real && entries === 0 ? [FLOW.hint.historyEmptyReal, FLOW.hint.historyUndoReal] : [FLOW.hint.historyHint]);
 
 // ---- Words built from a name or a number
 
@@ -67,6 +75,8 @@ export const nothingChanged = (reason: string): string => `Nothing changed: ${re
 export const removedWords = (harness: string): string => `Removed ${harness}.`;
 /** "Update Weekly report crew in bowerloom": the name of a project button. */
 export const actionName = (action: string, harness: string, project: string): string => `${action} ${harness} in ${project}`;
+/** "bowerloom in the list": the subject of the Show details button in a project's row, so it differs from the one in the details column. The shown words stay "Show details". */
+export const rowSubject = (project: string): string => `${project} in the list`;
 /** "Install Codex": the name of a button in the details. */
 export const installFor = (name: string): string => `Install ${name}`;
 /** "Update Codex". */

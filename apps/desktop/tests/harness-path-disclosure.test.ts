@@ -6,6 +6,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { PathDisclosure } from '../renderer/harness/parts/PathDisclosure.js';
 import { WORDS, detailsName } from '../renderer/harness/words.js';
+import { rowSubject } from '../renderer/harness/words-flow.js';
 import { bannedHere, countWords, LIMITS } from '../shared/harness/words.js';
 
 const markup = (path: string, subject: string): string => renderToStaticMarkup(createElement(PathDisclosure, { path, subject }));
@@ -35,4 +36,14 @@ test('a path is the person\'s own text: markup in it is escaped, never drawn', (
   const m = markup('<img src=x onerror=alert(1)>', 'Writer');
   assert.ok(!m.includes('<img'), m);
   assert.ok(m.includes('&lt;img'), m);
+});
+
+test('the row\'s button and the details column\'s button have different names, and the shown words stay inside both', () => {
+  for (const open of [false, true]) {
+    const row = detailsName(open, rowSubject('bowerloom')), column = detailsName(open, 'bowerloom');
+    assert.notEqual(row, column);
+    assert.equal(row, `${open ? WORDS.label.hideDetails : WORDS.label.showDetails} for bowerloom in the list`);
+    assert.ok(row.startsWith(open ? WORDS.label.hideDetails : WORDS.label.showDetails), 'label in name');
+    assert.ok(countWords(row) <= LIMITS.hint && bannedHere(row) === null, row);
+  }
 });

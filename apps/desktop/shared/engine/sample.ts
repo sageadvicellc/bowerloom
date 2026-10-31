@@ -47,7 +47,7 @@ export const SAMPLE_MESSAGES = Object.freeze({
   REPORT_NONE: REPORT_MAIN_WORDS.REPORT_NONE,
   KIT_ALREADY_ADDED: KIT_MAIN_WORDS.KIT_ALREADY_ADDED,
   NOTES_NOT_EMPTY: 'The folder for the starter wiki is not empty. A starter wiki goes only into a new or empty folder. Nothing was written.',
-  NOTES_STALE: 'The folder changed after the preview, or the approval is for another preview. Nothing was changed. Preview again.',
+  NOTES_STALE: 'The folder changed after the plan, or the approval is for another plan. Nothing was changed. Plan again.',
   NOTES_ALREADY_REPOSITORY: 'The folder already has version history (.git). Nothing was changed.',
   NOTES_NOTHING_TO_COMMIT: 'The folder holds no file for the first commit. Nothing was changed.',
 } as const);

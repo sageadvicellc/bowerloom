@@ -2,6 +2,8 @@
  * The fixed words of the Start sheet, Runs and Compare (S8, S9), copied from the design pictures. They obey the same limits as WORDS (a label at most 5 words, a hint at most 12, a paragraph
  * at most 25) and the same banned-word rule; tests/harness-runs.test.ts holds them to it.
  */
+import { notYetWords } from './words.js';
+
 const deepFreeze = <T extends object>(value: T): T => {
   for (const inner of Object.values(value)) if (typeof inner === 'object' && inner !== null) deepFreeze(inner);
   return Object.freeze(value);
@@ -18,9 +20,8 @@ export const RUN_WORDS = deepFreeze({
     switchedOff: 'Switched off. Turn it on in Engines.',
     emptyHarness: 'This harness is empty. Add parts before you start it.',
     needsInstall: 'Install first, then start.',
-    bringTip: 'Brings the engine window forward. Not in beta.1.',
-    bringToast: 'Not in beta.1.',
-    noRuns: 'No runs yet. Press Start on a harness.',
+    bringTip: 'Brings the engine window forward.',
+    noRuns: 'No runs yet. Press Start on a harness.', noRunsReal: 'Runs are not in beta.1.',
     noGroup: 'That group of runs is not here.', noRun: 'That run is not here.',
     needInstruction: 'Write an instruction to start.', needInterface: 'Tick an engine to start.', needProject: 'Pick a project to start.',
     saved: 'Saved on this computer, in Bowerloom. Your project files do not change.',
@@ -33,6 +34,12 @@ export const RUN_WORDS = deepFreeze({
   },
 } as const);
 
+/** The note of a button that does nothing yet: "Not in this preview." on the sample, "Not in beta.1." on the person's own folders. */
+export const bringToastWords = (real: boolean): string => notYetWords(real);
+/** The tip of "Bring window to the front": what it would do, then why it does nothing yet. */
+export const bringTipWords = (real: boolean): string => `${RUN_WORDS.hint.bringTip} ${notYetWords(real)}`;
+/** The line over an empty list of runs. Start is blocked on the person's own folders, so the line must not point to it. */
+export const noRunsWords = (real: boolean): string => (real ? RUN_WORDS.hint.noRunsReal : RUN_WORDS.hint.noRuns);
 /** "Claude Code is still running. Save again when it is done." */
 export const stillRunning = (names: readonly string[]): string => `${names.join(' and ')} ${names.length === 1 ? 'is' : 'are'} still running. Save again when done.`;
 /** "Compare: Write a weekly report..." */

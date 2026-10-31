@@ -29,7 +29,7 @@ export function FileView({ partId }: { partId: string }): ReactElement {
   return (
     <Screen slot="file" title={fileNameOf(part.path)} titleExtra={<StateDot tone="quiet" className="hx-title-state">{WORDS.hint.readOnly}</StateDot>} tools={<HButton icon="back" variant="text" onClick={back}>{WORDS.label.back}</HButton>}>
       <div className="hx-file">
-        <PathDisclosure path={part.path} subject={fileNameOf(part.path)} key={part.path} />
+        <PathDisclosure path={part.path} subject={fileNameOf(part.path)} key={part.id} />
         <p className="hx-text hx-muted" data-budget="paragraph">{WORDS.paragraph.fileNote}</p>
         <div className="hx-usedby"><strong>{WORDS.label.usedBy}</strong>{state.real === undefined ? <ul className="hx-inline-list">{worksIn(state, part).map(i => <li key={i.id}><StateDot tone="good">{i.name}</StateDot></li>)}</ul> : <NotChecked part={part} />}</div>
         <div className="hx-file-cols">
