@@ -7,7 +7,7 @@ import {
   engineList, hiddenWords, partName, readLine, removeFilesWords, removedWords, tickedWords, waitingWords, writeFilesWords, wroteAdoption, wroteInstall,
   acknowledgeName, approveItemName, engineDetails, ignoredWords, recoveryKindWords, stillWaiting, writesIntoLine,
   MODE_CHOICE_WORDS, RECOVERY_ACTION_WORDS, headingLine, modeActionName, modeLine,
-  SAVE_REFUSAL_WORDS, draftWords, goBackWords, saveFilesWords, savePointLine, NOTES_REFUSAL_WORDS,
+  SAVE_REFUSAL_WORDS, draftWords, goBackWords, saveFilesWords, savePointLine, NOTES_REFUSAL_WORDS, NOTES_PARTIAL_WORDS,
 } from '../renderer/harness/words-engine.js';
 import { NOTES_REFUSAL_CODES } from '../../../packages/notes-source/src/index.js';
 import { SAVE_REFUSAL_CODES } from '../../../packages/adoption/src/index.js';
@@ -91,5 +91,15 @@ test('notes: every refusal of the notes calls has words for what to do next, ins
   for (const [code, text] of Object.entries(NOTES_REFUSAL_WORDS)) {
     assert.ok(countWords(text) <= LIMITS.hint, `${code}: ${text}`);
     assert.equal(bannedHere(text), null, `${code}: ${text}`);
+  }
+});
+
+test('notes: a step that stopped part way has advice of its own for the starter and for the history start', () => {
+  assert.deepEqual(Object.keys(NOTES_PARTIAL_WORDS).sort(), ['history', 'starter']);
+  assert.notEqual(NOTES_PARTIAL_WORDS.history, NOTES_PARTIAL_WORDS.starter);
+  assert.equal(NOTES_REFUSAL_WORDS.NOTES_PARTIAL, NOTES_PARTIAL_WORDS.starter);
+  for (const [step, text] of Object.entries(NOTES_PARTIAL_WORDS)) {
+    assert.ok(countWords(text) <= LIMITS.hint, `${step}: ${text}`);
+    assert.equal(bannedHere(text), null, `${step}: ${text}`);
   }
 });

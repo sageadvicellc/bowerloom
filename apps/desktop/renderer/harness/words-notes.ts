@@ -34,6 +34,8 @@ export const NOTES = deepFreeze({
     reportOnly: 'No history, so the keeper only reports and changes no page.',
     gitMissing: 'Git is not on this computer, so the keeper only reports.',
     unreadable: 'Bowerloom cannot read this folder\'s history.',
+    noCommit: 'Its history has no first commit. Finish it with git.',
+    refused: 'Its git settings could start a program, so Bowerloom stopped.',
     ready: 'Your notes are ready.',
     created: 'Your notes are ready, with a history from the start.',
     moreKinds: 'More kinds of notes are coming.',

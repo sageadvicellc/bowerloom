@@ -10,6 +10,7 @@ import { NotesPanel } from '../renderer/harness/notes/NotesPanel.js';
 import { KeeperBuild } from '../renderer/harness/notes/KeeperBuild.js';
 import { notesCards } from '../renderer/harness/notes/notes-logic.js';
 import { NOTES } from '../renderer/harness/words-notes.js';
+import { NOTES_PARTIAL_WORDS } from '../renderer/harness/words-engine.js';
 import type { DefinitionView, NotesHistoryPlanView, NotesStarterView, NotesView } from '../shared/engine/types.js';
 import { KEEPER_AGENT } from '../shared/harness/save-draft.js';
 
@@ -118,4 +119,30 @@ test('a built keeper has nothing left in the tray, and "Add the other skills" is
   assert.match(html, /data-link-rest="" disabled=""|disabled=""[^>]*data-link-rest=""/);
   assert.match(html, /data-on-shelf="garden-notes"/);
   assert.doesNotMatch(html, /draggable="true"/);
+});
+
+test('a folder whose history has no first commit, or whose git settings were refused, ends in words and is not ready', () => {
+  const noCommit = step({ kind: 'done', view: { ...GARDEN, history: 'no-commit', lastCommitAt: null }, how: 'no-commit' });
+  assert.ok(noCommit.includes(NOTES.hint.noCommit));
+  assert.match(noCommit, /data-notes-done="no-commit"/);
+  assert.ok(!noCommit.includes(NOTES.hint.ready));
+  const refused = step({ kind: 'done', view: { ...GARDEN, history: 'refused', lastCommitAt: null }, how: 'refused' });
+  assert.ok(refused.includes(NOTES.hint.refused));
+  const panel = renderToStaticMarkup(createElement(NotesPanel, {
+    cards: notesCards({ ...DEF, sources: [], agents: DEF.agents.map(a => ({ ...a, notes: [] })) }, [{ ...GARDEN, history: 'no-commit', lastCommitAt: null }], {}), held: false, hasKeeper: true,
+    onUse: noop, onFresh: noop, onAddKeeper: noop,
+  }));
+  assert.ok(panel.includes(NOTES.hint.noCommit));
+});
+
+test('a history start that stopped part way gets its own advice, apart from a starter that stopped part way', () => {
+  const partial = { code: 'NOTES_PARTIAL', message: 'The step stopped part way. The paths listed were written and are left as they are. .git.', paths: ['.git'] };
+  const plan: NotesHistoryPlanView = { notes: '~/Documents/Garden notes', files: [{ path: 'index.md', kind: 'file' }], count: 1, hidden: 0, revision: 'r'.repeat(64) };
+  const history = step({ kind: 'offer', view: { ...GARDEN, history: 'none' }, plan }, { refusal: partial, refusalId: 1 });
+  const starterPlan: NotesStarterView = { notes: '~/Documents/Notes', createsFolder: false, folders: [], files: [{ path: 'AGENTS.md', bytes: 10 }], kit: { id: 'wiki-keeper', version: '0.1.0' }, revision: 's'.repeat(64) };
+  const starter = step({ kind: 'starter', view: { ...GARDEN, id: 'n2', name: 'Notes', pages: 0, history: 'none' }, plan: starterPlan }, { refusal: partial, refusalId: 1 });
+  assert.ok(history.includes(NOTES_PARTIAL_WORDS.history), history);
+  assert.ok(!history.includes(NOTES_PARTIAL_WORDS.starter));
+  assert.ok(starter.includes(NOTES_PARTIAL_WORDS.starter));
+  assert.ok(!starter.includes(NOTES_PARTIAL_WORDS.history));
 });

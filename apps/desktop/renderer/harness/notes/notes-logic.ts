@@ -6,13 +6,18 @@ import type { Answer, DefinitionView, NotesView, SourceView } from '../../../sha
 import { KEEPER_FIRST_SKILL, keeperOf, sourceFor } from '../../../shared/harness/save-draft.js';
 import type { BuildProgress } from '../words-notes.js';
 
-/** What a chosen notes folder needs next: nothing (it keeps a history), an offer to start its history, or words that the keeper only reports. */
-export type AfterChoose = 'ready' | 'offer-history' | 'git-missing' | 'unreadable';
+/**
+ * What a chosen notes folder needs next: nothing (it keeps a history), an offer to start its history, or words that the keeper only reports. A `.git` with no
+ * first commit (a history start that stopped part way, or a repository git cannot read) is never ready: Bowerloom does not finish it, and says so in words.
+ */
+export type AfterChoose = 'ready' | 'offer-history' | 'no-commit' | 'git-missing' | 'refused' | 'unreadable';
 export function afterChoose(view: NotesView): AfterChoose {
   switch (view.history) {
     case 'git': return 'ready';
     case 'none': return 'offer-history';
+    case 'no-commit': return 'no-commit';
     case 'git-missing': return 'git-missing';
+    case 'refused': return 'refused';
     case 'unreadable': return 'unreadable';
   }
 }

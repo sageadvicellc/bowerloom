@@ -401,8 +401,11 @@ export interface DefinitionView {
 
 // ---- notes (spec 6.9) --------------------------------------------------------------------------------------------------------
 
-/** How a notes folder keeps its history: a git repository, none yet, git not installed, or a `.git` Bowerloom cannot read. */
-export type NotesHistory = 'git' | 'none' | 'git-missing' | 'unreadable';
+/**
+ * How a notes folder keeps its history: a git repository with a commit; a `.git` with no first commit, or one git cannot read (`no-commit`); none yet; git
+ * not installed; a `.git` whose own settings could make git start a program, so Bowerloom ran nothing there (`refused`); or a `.git` Bowerloom cannot read.
+ */
+export type NotesHistory = 'git' | 'no-commit' | 'none' | 'git-missing' | 'refused' | 'unreadable';
 /** Why main's own notes chooser opens: `use`, the notes the person has ("Use my notes"); `start`, an empty folder for a starter wiki ("Start fresh"). */
 export const NOTES_PURPOSES = Object.freeze(['use', 'start'] as const);
 export type NotesPurpose = (typeof NOTES_PURPOSES)[number];

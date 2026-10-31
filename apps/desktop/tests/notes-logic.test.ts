@@ -22,6 +22,11 @@ test('after a folder is chosen: notes with a history are ready; none offers to s
   assert.equal(afterChoose(view({ history: 'unreadable' })), 'unreadable');
 });
 
+test('after a folder is chosen: a .git with no first commit is never ready, and a refused git config is never ready', () => {
+  assert.equal(afterChoose(view({ history: 'no-commit', lastCommitAt: null })), 'no-commit');
+  assert.equal(afterChoose(view({ history: 'refused', lastCommitAt: null })), 'refused');
+});
+
 test('the cards: each source of the harness first, then each chosen folder that is not one of them, with who reads it', () => {
   const chosen = [view(), view({ id: 'n0', name: 'Old', suggestedName: 'old' })];
   const now = draftView(DEF, attachNotes(DEF, EMPTY_DRAFT, 'editor', DEF.sources[0]!, true));

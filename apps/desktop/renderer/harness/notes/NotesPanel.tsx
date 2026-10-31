@@ -5,6 +5,7 @@
  * "Use my notes" and "Start fresh" open the notes step in place (`step`), and with no keeper yet the panel offers the ready-made Notes keeper.
  */
 import type { ReactElement, ReactNode } from 'react';
+import type { NotesView } from '../../../shared/engine/types.js';
 import { HButton, StateDot } from '../parts/controls.js';
 import { Section } from '../sheets/engine-parts.js';
 import { NOTES_REFUSAL_WORDS } from '../words-engine.js';
@@ -23,6 +24,11 @@ export interface NotesPanelProps {
   step?: ReactNode;
 }
 
+/** Why a folder's history is not ready, in words. */
+const HISTORY_WORDS: Readonly<Record<Exclude<NotesView['history'], 'git'>, string>> = Object.freeze({
+  none: NOTES.hint.reportOnly, 'no-commit': NOTES.hint.noCommit, 'git-missing': NOTES.hint.gitMissing, refused: NOTES.hint.refused, unreadable: NOTES.hint.unreadable,
+});
+
 /** The lines of one card: what Bowerloom read of the folder, or why it could not. */
 function linesOf(card: NotesCard): ReactNode[] {
   const s = card.summary;
@@ -35,7 +41,7 @@ function linesOf(card: NotesCard): ReactNode[] {
     <span data-last-change="">{lastChangeWords(v.lastCommitAt)}</span>,
     readers,
     <span data-report="">{reportWords(v.latestReport)}</span>,
-    ...(v.history === 'git' ? [] : [<StateDot key="h" tone="quiet">{v.history === 'git-missing' ? NOTES.hint.gitMissing : v.history === 'unreadable' ? NOTES.hint.unreadable : NOTES.hint.reportOnly}</StateDot>]),
+    ...(v.history === 'git' ? [] : [<StateDot key="h" tone={v.history === 'none' ? 'quiet' : 'warn'}>{HISTORY_WORDS[v.history]}</StateDot>]),
     ...(card.attached ? [] : [<StateDot key="a" tone="quiet">{NOTES.hint.notAttached}</StateDot>]),
   ];
 }

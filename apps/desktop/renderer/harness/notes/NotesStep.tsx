@@ -13,14 +13,14 @@ import { HButton, StateDot } from '../parts/controls.js';
 import { useEngine } from '../engine.js';
 import { Busy, RefusalNote } from '../sheets/engine-parts.js';
 import { useCall } from '../sheets/use-call.js';
-import { NOTES_REFUSAL_WORDS } from '../words-engine.js';
+import { notesNextWords } from '../words-engine.js';
 import { NOTES, hiddenWords, moreWords, pagesWords } from '../words-notes.js';
 import { afterChoose } from './notes-logic.js';
 import { useNotesSession } from './notes-session.js';
 import './notes.css';
 
 /** How a finished step left the notes. */
-export type NotesEnd = 'ready' | 'created' | 'report-only' | 'git-missing' | 'unreadable';
+export type NotesEnd = 'ready' | 'created' | 'report-only' | 'no-commit' | 'git-missing' | 'refused' | 'unreadable';
 export type NotesPhase =
   | { readonly kind: 'ask' }
   | { readonly kind: 'offer'; readonly view: NotesView; readonly plan: NotesHistoryPlanView | null }
@@ -30,7 +30,8 @@ export type NotesPhase =
 /** The most file names the history offer lists on screen. The count says how many in all. */
 const LIST_LIMIT = 12;
 const END_WORDS: Readonly<Record<NotesEnd, string>> = Object.freeze({
-  ready: NOTES.hint.ready, created: NOTES.hint.created, 'report-only': NOTES.hint.reportOnly, 'git-missing': NOTES.hint.gitMissing, unreadable: NOTES.hint.unreadable,
+  ready: NOTES.hint.ready, created: NOTES.hint.created, 'report-only': NOTES.hint.reportOnly, 'no-commit': NOTES.hint.noCommit, 'git-missing': NOTES.hint.gitMissing,
+  refused: NOTES.hint.refused, unreadable: NOTES.hint.unreadable,
 });
 
 export interface NotesStepViewProps {
@@ -44,7 +45,8 @@ export interface NotesStepViewProps {
 
 /** The step as it looks in each phase. No call: the container (NotesStep) makes them. */
 export function NotesStepView({ phase, busy, refusal, refusalId, held, onUse, onFresh, onStartHistory, onDecline, onCreate, onAgain }: NotesStepViewProps): ReactElement {
-  const next = refusal === null ? null : NOTES_REFUSAL_WORDS[refusal.code] ?? null;
+  // A write that stopped part way gets the advice of its own step: the history start in the offer, the starter in "Start fresh".
+  const next = refusal === null ? null : notesNextWords(refusal, phase.kind === 'offer' ? 'history' : phase.kind === 'starter' ? 'starter' : null);
   const off = held || busy !== null;
   return (
     <div className="hxn-step" data-notes-step={phase.kind}>
