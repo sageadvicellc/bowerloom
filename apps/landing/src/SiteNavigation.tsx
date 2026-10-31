@@ -1,12 +1,13 @@
-import { readerRelease, docsPath, betaGuidePath } from './release';
+import { readerRelease, docsPath } from './release';
 import { useEffect, useRef, useState } from 'react';
 import { repository } from './content';
 
 function NavigationLinks({ onNavigate }: { onNavigate?: () => void }) {
   return <>
-    <a href="#recipe" onClick={onNavigate}>The Labs workflow</a>
-    <a href="#build" onClick={onNavigate}>Build with your agent</a>
-    <a href={betaGuidePath} onClick={onNavigate}>Beta guide</a>
+    <a href="#how-it-works" onClick={onNavigate}>How it works</a>
+    <a href="#app" onClick={onNavigate}>The app</a>
+    <a href="#command-line" onClick={onNavigate}>The command line</a>
+    <a href="#install" onClick={onNavigate}>Install</a>
     <a href="/articles/" onClick={onNavigate}>Articles</a>
     <a href={docsPath} onClick={onNavigate}>Docs</a>
     <a href={repository} target="_blank" rel="noopener noreferrer" onClick={onNavigate} aria-label="GitHub (opens in a new tab)">GitHub <span aria-hidden="true">↗</span></a>
