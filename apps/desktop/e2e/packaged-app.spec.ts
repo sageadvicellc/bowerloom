@@ -16,6 +16,7 @@ import { createRequire } from 'node:module';
 import { buildShellHome } from '../tests/fixtures-real/shell-home.js';
 import type { ShellHome } from '../tests/fixtures-real/shell-home.js';
 import { desktop } from './harness-page.js';
+import { hiddenArgs } from './hidden.js';
 import { removeTempDirs, tempDir } from './temp-dirs.js';
 
 const folder = process.arch === 'arm64' ? 'mac-arm64' : 'mac';
@@ -54,7 +55,7 @@ test('the built app opens the harness-first app on the person\'s own folders, wi
   expect(listed.filter(f => /sample-data|preload\.cjs$|force-graph|\/screenshots\//.test(f) && !f.endsWith('preload-real.cjs'))).toEqual([]);
   expect(listed.some(f => f.endsWith('/dist/preload-real.cjs'))).toBe(true);
 
-  child = spawn(binary, ['--remote-debugging-port=0', `--user-data-dir=${userData}`], { stdio: 'ignore', env: { PATH: process.env.PATH ?? '', HOME: fixture.home, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
+  child = spawn(binary, ['--remote-debugging-port=0', `--user-data-dir=${userData}`, ...hiddenArgs()], { stdio: 'ignore', env: { PATH: process.env.PATH ?? '', HOME: fixture.home, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
   const port = await portOf(userData);
   browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
   let page: Page | undefined;

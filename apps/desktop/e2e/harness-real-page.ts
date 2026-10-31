@@ -3,14 +3,13 @@
  * is read: the launched app sees only the folder it is given. The system folder chooser cannot be driven from a test, so the main process gets one that answers with the folder set by `pick`.
  * The specs run one at a time on this machine: take the lock before a run (`until mkdir /tmp/bowerloom-test.lock 2>/dev/null; do sleep 5; done`) and release it after.
  */
-import { _electron as electron } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
-import electronPath from 'electron';
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { TOUR_SEEN_KEY } from '../renderer/harness/tour/seen.js';
 import { desktop } from './harness-page.js';
+import { launchElectron } from './hidden.js';
 import { tempDir } from './temp-dirs.js';
 
 export interface RealHarness {
@@ -36,7 +35,7 @@ export function bundleOnce(): void {
 export async function launchReal(home: string, env: Record<string, string> = {}, bundle = true, { freshTour = false }: { freshTour?: boolean } = {}): Promise<RealHarness> {
   if (bundle) bundleOnce();
   const userData = tempDir('bowerloom-e2e-');
-  const app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, `--user-data-dir=${userData}`], env: { ...process.env, HOME: home, ELECTRON_DISABLE_SECURITY_WARNINGS: '1', ...env } });
+  const app = await launchElectron(desktop, [`--user-data-dir=${userData}`], { ...process.env, HOME: home, ELECTRON_DISABLE_SECURITY_WARNINGS: '1', ...env });
   await app.evaluate(({ dialog }) => {
     (globalThis as unknown as { __pick: string | null }).__pick = null;
     dialog.showOpenDialog = (async () => { const pick = (globalThis as unknown as { __pick: string | null }).__pick; return pick === null ? { canceled: true, filePaths: [] } : { canceled: false, filePaths: [pick] }; }) as unknown as typeof dialog.showOpenDialog;
