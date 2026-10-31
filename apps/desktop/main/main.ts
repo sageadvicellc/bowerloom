@@ -27,9 +27,9 @@ const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.j
 protocol.registerSchemesAsPrivileged([{ scheme: APP_SCHEME, privileges: { standard: true, secure: true } }]);
 
 const argv = process.argv.slice(1);
-// What this start is: the app on the person's own folders (no flag), the sample (--sample), or one of the two home app dev flags. See main/launch.ts.
+// What this start is: the app on the person's own folders (no flag), or the sample (--sample). See main/launch.ts.
 const launch = launchOf(argv);
-// The app on the person's own folders keeps Electron's normal data folder, which lasts between starts. A made-up launch (the sample, the home app) writes nothing to the real app data,
+// The app on the person's own folders keeps Electron's normal data folder, which lasts between starts. The made-up launch (the sample) writes nothing to the real app data,
 // whoever starts it: it keeps its own temporary data folder (or the one it was given, when that is one of its own), and removes it when the app quits. The launcher does the same;
 // this keeps the promise when the app is started without it. Not caught: a hard kill (SIGKILL, a crash, a power cut) leaves the folder, and the browser engine writes a few small
 // files (Local State, Preferences) after the quit event. The folder holds only browser settings and cache, and the system clears its temporary folder.

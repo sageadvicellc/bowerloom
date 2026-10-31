@@ -4,7 +4,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildBundle, commitImport, parseBundle, previewImport } from '../shared/world/bundle.js';
-import { bundleText, grantWords, openExportedFile } from '../shared/world/export-flow.js';
 import { generateWorld } from '../shared/world/sample.js';
 import { createStore } from '../shared/world/store.js';
 import type { AgentItem, Bundle, McpTool, SkillItem, World } from '../shared/world/types.js';
@@ -252,7 +251,6 @@ test('the preview lists every access class the import would grant, and the size 
   const w: World = { ...makeWorld(), items: [skill('s1', 'Review', 'global', 'abcdef'), mcp('t1', 'Search'), prompt('t2', 'Summarize', 'Say hi'), { ...agent('a1', 'Planner', ['s1']), definition: { ...agent('a1', 'Planner').definition, skillIds: ['s1'], toolAttachments: [{ toolId: 't1', access: 'read-write' }, { toolId: 't2', access: 'read-only' }] } }] };
   const p = previewImport(clone(buildBundle(w, ['global'])), empty());
   assert.deepEqual(p.grants, [{ agent: 'Planner', tool: 'Search', access: 'read-write' }, { agent: 'Planner', tool: 'Summarize', access: 'read-only' }]);
-  assert.match(grantWords(p.grants[0]!), /^Planner may use Search: read and write\.$/);
   assert.equal(p.files.length, 4);
   for (const f of p.files) assert.ok(Number.isInteger(f.characters) && f.characters > 0, f.path);
   const skillFile = p.files.find(f => f.path.endsWith('SKILL.md'))!;
@@ -347,19 +345,11 @@ test('a bundle past a size, count or depth limit is refused in plain words', () 
   assert.doesNotThrow(() => parseBundle(b({ items: many(2000, skillAt) })));
 });
 
-test('a file past 2 MB is refused before anything is installed, and a good file opens', () => {
-  const big = JSON.stringify({ scopeIds: [], items: [], toolRefs: [], sliceRules: [], pad: 'x'.repeat(2 * 1024 * 1024 + 1) });
-  const r = openExportedFile(big, empty());
-  assert.equal(r.ok, false);
-  if (!r.ok) assert.match(r.message, /larger than 2 MB.*Nothing was installed\.$/);
-  assert.equal(openExportedFile(bundleText(buildBundle(makeWorld(), ['global'])), empty()).ok, true);
-});
-
 test('no absolute path leaves the export, and a path outside the scope is made relative and lands under the receiving scope', () => {
   const world = generateWorld(1), bundle = buildBundle(world, world.scopes.map(s => s.id));
   assert.ok(bundle.items.length > 0);
   for (const i of bundle.items) for (const f of i.foundAt) { assert.equal(f.path.startsWith('/'), false, f.path); assert.doesNotMatch(f.path, /Users|home|^[A-Za-z]:|\\/, f.path); assert.ok(f.path.length > 0); }
-  assert.doesNotMatch(bundleText(bundle), /"path":"\//);
+  assert.doesNotMatch(JSON.stringify(bundle), /"path":"\//);
   const w: World = { ...makeWorld(), items: [{ ...skill('s1', 'Away'), foundAt: [found('claude-code', '/home/someone/.claude/skills/Away/SKILL.md', 'x'), found('codex', 'C:\\Users\\someone\\x\\SKILL.md', 'x')] }] };
   const own = clone(buildBundle(w, ['global']));
   for (const f of (own.items[0] as SkillItem).foundAt) assert.doesNotMatch(f.path, /someone|^\/|^[A-Za-z]:/);

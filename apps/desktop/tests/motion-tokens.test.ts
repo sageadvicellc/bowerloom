@@ -67,11 +67,11 @@ test('the same call twice publishes the same values, and a call changes nothing 
   assert.equal(JSON.stringify(MOTION), before);
 });
 
-test('the shared parts of the app (navigation, buttons, rows, cards, tabs) take their timing from the hover token and the strong ease-out, not from a time of their own', () => {
+test('the shared button of the page styles takes its timing from the hover token and the strong ease-out, not from a time of their own', () => {
   const css = readFileSync(join(DESKTOP, 'renderer', 'styles.css'), 'utf8'), tokens = readFileSync(join(DESKTOP, 'renderer', 'tokens.css'), 'utf8');
   assert.doesNotMatch(css, /var\(--motion\)/, 'no 140 ms with the default ease');
   assert.doesNotMatch(tokens, /--motion:/, 'the old single duration is gone');
-  for (const rule of [/\.nav button \{[^}]*transition: background var\(--motion-hover-ms, 0ms\) var\(--motion-ease-out, ease\)/, /\.btn \{[^}]*transition: background var\(--motion-hover-ms, 0ms\) var\(--motion-ease-out, ease\)/, /\.row \{[^}]*transition: border-color var\(--motion-hover-ms, 0ms\) var\(--motion-ease-out, ease\)/, /\.stat \{[^}]*transition: border-color var\(--motion-hover-ms, 0ms\) var\(--motion-ease-out, ease\)/, /\.tabs button \{[^}]*transition: color var\(--motion-hover-ms, 0ms\) var\(--motion-ease-out, ease\), border-color var\(--motion-hover-ms, 0ms\) var\(--motion-ease-out, ease\)/]) assert.match(css, rule);
+  for (const rule of [/\.btn \{[^}]*transition: background var\(--motion-hover-ms, 0ms\) var\(--motion-ease-out, ease\)/]) assert.match(css, rule);
 });
 
 test('the hover duration is 90 ms, the ease-out is the strong one, and the travel of a reveal is a token', () => {

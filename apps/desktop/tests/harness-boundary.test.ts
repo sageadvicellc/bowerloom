@@ -61,9 +61,9 @@ test('only the real screens and the mount file of the preview import the read-on
 
 test('the launcher and the root scripts: no flag opens the app on the person\'s own folders, --sample opens the sample, one mode at a time, and a real home folder is needed for the first', async () => {
   const src = strip(read('tools/run.mjs'));
-  assert.match(src, /KNOWN = new Set\(\['--sample', '--home-sample', '--home-real', '--build-only'\]\)/); assert.match(src, /MODES = new Set\(\['--sample', '--home-sample', '--home-real'\]\)/);
-  assert.match(src, /const onRealSetup = !args\.some\(a => a === '--sample' \|\| a === '--home-sample'\);/);
-  assert.match(src, /const dataDir = TEMPORARY\.some\(flag => args\.includes\(flag\)\) \? makeTempDataDir\(\) : null;/, 'only the flagged launches get a temporary data folder');
+  assert.match(src, /KNOWN = new Set\(\['--sample', '--build-only'\]\)/); assert.match(src, /MODES = new Set\(\['--sample'\]\)/);
+  assert.match(src, /const onRealSetup = !args\.includes\('--sample'\);/);
+  assert.match(src, /const dataDir = TEMPORARY\.some\(flag => args\.includes\(flag\)\) \? makeTempDataDir\(\) : null;/, 'only the made-up launch gets a temporary data folder');
   const root = JSON.parse(read('../../package.json')) as { scripts: Record<string, string> };
   assert.equal(root.scripts.desktop, 'node apps/desktop/tools/run.mjs');
   assert.equal(root.scripts['desktop:sample'], 'node apps/desktop/tools/run.mjs --sample');
@@ -73,22 +73,17 @@ test('the launcher and the root scripts: no flag opens the app on the person\'s 
     const r = spawnSync(process.execPath, [join(DESKTOP, 'tools', 'run.mjs'), ...args], { env: { PATH: process.env.PATH ?? '', ...env }, encoding: 'utf8', timeout: 30000 });
     return { status: r.status, stdout: r.stdout, stderr: r.stderr };
   };
-  for (const [first, second] of [['--sample', '--home-sample'], ['--sample', '--home-real'], ['--home-sample', '--home-real']] as const) {
-    const r = run([first, second], { HOME: '/tmp' });
-    assert.equal(r.status, 2, `${first} ${second}`); assert.match(r.stderr, /not more/); assert.doesNotMatch(r.stdout, /Installing|Building/);
-  }
-  for (const old of ['--prototype-v2', '--prototype-v3', '--prototype-real', '--prototype-v3-real', '--sample-data', '--real-data']) {
+  for (const old of ['--home-sample', '--home-real', '--prototype-v2', '--prototype-v3', '--prototype-real', '--prototype-v3-real', '--sample-data', '--real-data']) {
     const r = run([old], { HOME: '/tmp' });
     assert.equal(r.status, 2, old); assert.match(r.stderr, new RegExp(`do not know "${old}"`)); assert.doesNotMatch(r.stdout, /Installing|Building/);
   }
-  for (const flags of [[], ['--home-real']]) {
+  {
     for (const home of ['', 'relative/home', '/this/folder/does/not/exist']) {
-      const r = run([...flags, '--build-only'], { HOME: home });
-      assert.equal(r.status, 2, `${flags.join(' ')} HOME=${home}`); assert.match(r.stderr, /needs a home folder/); assert.doesNotMatch(r.stdout, /Installing|Building/, 'nothing is built, nothing is read');
+      const r = run(['--build-only'], { HOME: home });
+      assert.equal(r.status, 2, `HOME=${home}`); assert.match(r.stderr, /needs a home folder/); assert.doesNotMatch(r.stdout, /Installing|Building/, 'nothing is built, nothing is read');
     }
   }
-  const mod = await import(`${join(DESKTOP, 'tools', 'run.mjs')}`) as { REAL_FLAG: string; electronArgs(d: string, f: string[], u: string | null): string[] };
-  assert.equal(mod.REAL_FLAG, '--home-real');
+  const mod = await import(`${join(DESKTOP, 'tools', 'run.mjs')}`) as { electronArgs(d: string, f: string[], u: string | null): string[] };
   assert.deepEqual(mod.electronArgs('/d', ['--sample'], '/tmp/bowerloom-sample-x'), ['/d', '--user-data-dir=/tmp/bowerloom-sample-x', '--sample']);
   assert.deepEqual(mod.electronArgs('/d', [], null), ['/d'], 'the app on the person\'s own folders gets no data folder argument');
 });

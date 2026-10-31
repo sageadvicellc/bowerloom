@@ -8,7 +8,8 @@ import { join } from 'node:path';
 import { APP_INDEX, decideNavigation, isAllowedRealSender } from '../main/security.js';
 import { registerRealIpc, usableHome } from '../main/real-ipc.js';
 import type { RealEvent } from '../main/real-ipc.js';
-import { REAL_CALLS, REAL_CHANNELS, REAL_HARNESS_HASH, REAL_HASH } from '../shared/real/types.js';
+import { REAL_BASE } from '../shared/harness/route.js';
+import { REAL_CALLS, REAL_CHANNELS } from '../shared/real/types.js';
 import { ENGINE_CALLS, ENGINE_CHANNELS } from '../shared/engine/types.js';
 import type { EngineCall } from '../shared/engine/types.js';
 import { DESKTOP, tempDir } from './support.js';
@@ -49,31 +50,22 @@ const PRELOAD_POLICY: Policy = {
   deadOk: {},
   modules: { electron: ['contextBridge', 'ipcRenderer'] },
 };
-// entry.tsx (the script of the temporary real.html page, which only called mountRealHarness) is gone: the shell mounts real mode from index.html. mountReal.tsx is the root of the reader's screens.
-const RENDERER_ENTRIES = ['renderer/home/real/mountReal.tsx'];
-const RENDERER_POLICY: Policy = {
-  allowFile: rel => SHARED_REAL(rel) || /^renderer\/home\/real\/[\w-]+\.(?:tsx?|css)$/.test(rel)
-    || ['renderer/common/error-boundary.tsx', 'shared/world/words.ts', 'shared/world/slicerule.ts', 'shared/home/textbudget.ts', 'shared/home/plain-details.ts', 'shared/home/titles.ts', 'shared/world/types.ts'].includes(rel),
-  deadOk: {},
-  modules: { react: '*', 'react/jsx-runtime': '*', 'react-dom/client': '*' },
-  extraNames: /^(?:innerHTML|outerHTML|insertAdjacentHTML|dangerouslySetInnerHTML|localStorage|sessionStorage|indexedDB)$/,
-  tolerate: { 'shared/home/textbudget.ts': { names: /^exec$/, strings: /^link$/, why: 'a regular expression\'s exec, and the word "link" in a list of words the screens may not use; both are text, not calls' } },
-  extraPaths: ['window.bowerloom'],
-};
-
-// The shell. Real mode runs the whole 0.8 shell in the window (dist/renderer/app.js: mount.tsx, RealRoot.tsx and everything they import, which is the sample screens too), so the reader's
-// own page files are not the only code that sees the person's setup. The shell is held to the rules of a page: no markup built from text, no channel out of the page, no text run as
-// code, no storage, no new window, and the real bridge named in one file only. The names that write files or start programs are the ordinary words of a page, so they are not on this list.
-const SHELL_ENTRIES = ['renderer/home/mount.tsx', 'renderer/home/real/mountReal.tsx', 'renderer/home/real/RealRoot.tsx', 'renderer/home/real/RealScan.tsx', 'renderer/home/real/RealFind.tsx', 'renderer/home/real/RealFlow.tsx'];
+// The page. The window runs one script, dist/renderer/app.js, built from renderer/app.ts: the harness-first app and everything it imports. That code sees the person's setup, so it is held to the
+// rules of a page: no markup built from text, no channel out of the page, no text run as code, no storage, no new window, and the real bridge named in one file only. The names that write
+// files or start programs are the ordinary words of a page, so they are not on this list.
+const SHELL_ENTRIES = ['renderer/app.ts'];
 const SHELL_POLICY: Policy = {
   page: true,
-  allowFile: rel => /^(?:renderer\/home|renderer\/common|renderer\/harness\/real|shared\/home|shared\/world|shared\/real)\/[\w./-]+\.(?:tsx?|css)$/.test(rel) || ['renderer/clock.ts', 'renderer/motion-tokens.ts', 'shared/clock-words.ts'].includes(rel),
+  allowFile: rel => /^(?:renderer|shared)\/[\w./-]+\.(?:tsx?|css)$/.test(rel) || /(?:^|\/)packages\/harness-definition\/src\/words\.ts$/.test(rel),
   deadOk: {},
   modules: { react: '*', 'react/jsx-runtime': '*', 'react-dom': '*', 'react-dom/client': '*' },
   extraNames: /^(?:innerHTML|outerHTML|insertAdjacentHTML|dangerouslySetInnerHTML|localStorage|sessionStorage|indexedDB|openDatabase|bowerloomReal)$/,
   extraStrings: /^(?:innerHTML|outerHTML|insertAdjacentHTML|dangerouslySetInnerHTML|localStorage|sessionStorage|indexedDB|bowerloomReal)$/,
   extraPaths: ['window.bowerloom', 'window.open', 'self.open', 'top.open', 'globalThis.open', 'document.write', 'document.writeln'],
-  tolerate: { 'renderer/home/real/bridge.ts': { names: /^bowerloomReal$/, strings: /^bowerloomReal$/, why: 'the one file that names the real bridge, read from the window by name' } },
+  tolerate: {
+    'renderer/home/real/bridge.ts': { names: /^bowerloomReal$/, strings: /^bowerloomReal$/, why: 'the one file that names the real bridge, read from the window by name' },
+    'renderer/harness/tour/seen.ts': { names: /^sessionStorage$/, strings: /^$/, why: 'keeps one key, whether the guided tour was seen, in the window\'s memory-only session store; tests/harness-boundary.test.ts allows it in this file alone' },
+  },
 };
 
 test('the main-process reader and everything it imports, however deep, import only the allowed files and modules and use no name that writes, runs a program, or reaches the network', () => {
@@ -89,7 +81,7 @@ test('the check sees the whole graph: the files the handler imports are all in i
 });
 
 test('the tokenizer finds the same imports that esbuild finds, in every file of the real graphs', () => {
-  for (const [entries, format, platform] of [[MAIN_ENTRIES, 'esm', 'node'], [['preload/real-preload.ts'], 'cjs', 'node'], [RENDERER_ENTRIES, 'esm', 'browser'], [SHELL_ENTRIES, 'esm', 'browser']] as const) {
+  for (const [entries, format, platform] of [[MAIN_ENTRIES, 'esm', 'node'], [['preload/real-preload.ts'], 'cjs', 'node'], [SHELL_ENTRIES, 'esm', 'browser']] as const) {
     for (const file of bundleOf(entries, DESKTOP, format, platform).files) {
       const mine = new Set(importsOf(tokenize(file.js)).map(i => i.from).filter(from => !from.startsWith('.')));
       assert.deepEqual([...mine].sort(), [...new Set(file.externals)].sort(), file.abs);
@@ -98,29 +90,26 @@ test('the tokenizer finds the same imports that esbuild finds, in every file of 
   }
 });
 
-test('the whole shell that real mode runs (the real root, its screens, and every screen they import) builds no markup from text, opens no channel out of the page, runs no text as code, uses no storage or new window, and names the real bridge in bridge.ts only', () => {
+test('the whole page that the window runs (renderer/app.ts and every file it imports) builds no markup from text, opens no channel out of the page, runs no text as code, uses no storage or new window, and names the real bridge in bridge.ts only', () => {
   assert.deepEqual(checkEntries(SHELL_ENTRIES, DESKTOP, SHELL_POLICY, 'esm', 'browser'), []);
 });
 
-test('the shell check covers the files that ship: the real shell files and the whole shell are in its graph', () => {
+test('the page check covers the files that ship: the entry, the harness mount, the real screens and the bridge are in its graph, and the home app is not', () => {
   const seen = new Set(bundleOf(SHELL_ENTRIES, DESKTOP, 'esm', 'browser').files.map(f => f.abs.slice(DESKTOP.length + 1)));
-  for (const file of ['renderer/home/mount.tsx', 'renderer/home/real/RealRoot.tsx', 'renderer/home/real/RealScan.tsx', 'renderer/home/real/RealFind.tsx', 'renderer/home/real/RealFlow.tsx', 'renderer/home/real/bridge.ts', 'renderer/home/HomeFlow.tsx', 'renderer/home/HomeApp.tsx', 'renderer/home/library/LibraryPage.tsx', 'renderer/home/share/ShareSheet.tsx']) assert.ok(seen.has(file), `${file} is in the graph`);
-  // The files that real mode loads are the ones the page entry imports: if the page entry stops importing mount.tsx, this list is stale.
-  assert.match(read('renderer/app.ts'), /from '\.\/home\/mount\.js'/);
+  for (const file of ['renderer/app.ts', 'renderer/harness/mount.tsx', 'renderer/harness/HarnessApp.tsx', 'renderer/harness/real/RealChoose.tsx', 'renderer/home/real/bridge.ts']) assert.ok(seen.has(file), `${file} is in the graph`);
+  for (const file of ['renderer/home/mount.tsx', 'renderer/home/HomeApp.tsx', 'renderer/home/real/mountReal.tsx']) assert.equal(seen.has(file), false, `${file} is gone`);
+  // The files that the window loads are the ones the page entry imports: if the page entry stops importing the harness mount, this list is stale.
+  assert.match(read('renderer/app.ts'), /from '\.\/harness\/mount\.js'/);
 });
 
 test('the bridge and everything it imports use only electron\'s contextBridge and ipcRenderer, and no banned name', () => {
   assert.deepEqual(checkEntries(['preload/real-preload.ts'], DESKTOP, PRELOAD_POLICY, 'cjs'), []);
 });
 
-test('the real page script and everything it imports use only react, no markup from text, no storage, no network, and not the normal bridge', () => {
-  assert.deepEqual(checkEntries(RENDERER_ENTRIES, DESKTOP, RENDERER_POLICY, 'esm', 'browser'), []);
-});
-
 // The built files. The real handler is bundled into dist/main.mjs together with the normal controller and the rest of the main process, so that file holds code the reader's
 // rules do not apply to; it cannot be scanned the same way. The module boundary is held instead: the source check above covers every file the real handler imports, and the two
 // files below are the whole of what the real mode loads besides main.mjs.
-const BUILT_PRELOAD_ENTRY = 'preload/real-preload.ts', BUILT_PAGE_ENTRY = 'renderer/home/real/mountReal.tsx';
+const BUILT_PRELOAD_ENTRY = 'preload/real-preload.ts';
 
 test('the built bridge (preload-real.cjs) holds no banned name, and calls require only for electron', () => {
   const inMemory = bundleOf([BUILT_PRELOAD_ENTRY], DESKTOP, 'cjs', 'node', 'external').outputs[0]!;
@@ -129,7 +118,7 @@ test('the built bridge (preload-real.cjs) holds no banned name, and calls requir
   if (existsSync(onDisk)) assert.deepEqual(problemsOfBuilt('dist/preload-real.cjs', readFileSync(onDisk, 'utf8'), PRELOAD_POLICY, ['electron']), []);
 });
 
-// The page script that ships is dist/renderer/app.js: tools/bundle.mjs builds renderer/app.ts (the whole shell, the sample screens and the old viewer, with React and the map libraries) as one
+// The page script that ships is dist/renderer/app.js: tools/bundle.mjs builds renderer/app.ts (the harness-first app, with React) as one
 // script. It is built here in memory the same way and read for every sink and channel by name. A library uses a few of these names for its own business; each is listed with its exact count
 // and its reason, so a new use, or a library update that adds one, fails here until a person has looked at it.
 const KNOWN_LIBRARY_USES: Readonly<Record<string, BundleAllowance>> = {
@@ -139,20 +128,11 @@ const KNOWN_LIBRARY_USES: Readonly<Record<string, BundleAllowance>> = {
   sessionStorage: { ids: 2, strings: 0, why: 'renderer/harness/tour/seen.ts keeps one key, whether the guided tour was seen, in the window\'s memory-only session store, so the tour starts once at first use; tests/harness-boundary.test.ts allows it in that file alone and refuses storage on disk everywhere' },
 };
 
-test('the page script that ships (the whole shell, built as it is for dist/renderer/app.js) uses no sink or channel beyond the listed library uses, each at its exact count', () => {
+test('the page script that ships (built as it is for dist/renderer/app.js) uses no sink or channel beyond the listed library uses, each at its exact count', () => {
   assert.match(read('tools/bundle.mjs'), /entryPoints: \[join\(here, 'renderer\/app\.ts'\)\], outfile: join\(here, 'dist\/renderer\/app\.js'\), format: 'iife', platform: 'browser'/, 'the shipped script is built from renderer/app.ts');
   const built = bundleOf(['renderer/app.ts'], DESKTOP, 'iife', 'browser', 'bundle');
-  assert.ok(built.inputs.some(f => f.endsWith('renderer/home/real/RealRoot.tsx')) && built.inputs.some(f => f.endsWith('renderer/home/mount.tsx')), 'the shipped script holds the real shell');
+  assert.ok(built.inputs.some(f => f.endsWith('renderer/harness/real/RealChoose.tsx')) && built.inputs.some(f => f.endsWith('renderer/harness/mount.tsx')), 'the shipped script holds the harness-first app');
   assert.deepEqual(problemsOfShippedBundle('renderer/app.ts (built now)', built.outputs[0]!, KNOWN_LIBRARY_USES), []);
-});
-
-test('the reader\'s own loader page (mountReal), built alone as one script, opens no channel out of the page and runs no text as code, and holds only react beyond the reader\'s own files', () => {
-  const built = bundleOf([BUILT_PAGE_ENTRY], DESKTOP, 'iife', 'browser', 'bundle');
-  assert.deepEqual(problemsOfLibraryBundle('the reader\'s screens (built now)', built.outputs[0]!), []);
-  const packages = new Set(built.inputs.filter(f => f.includes('node_modules/')).map(f => /node_modules\/((?:@[^/]+\/)?[^/]+)/.exec(f.slice(f.lastIndexOf('node_modules/')))![1]!));
-  assert.deepEqual([...packages].sort(), ['react', 'react-dom', 'scheduler']);
-  // There is no second page and no second script any more: a built folder from before holds neither.
-  for (const gone of ['real.js', 'real.html']) assert.equal(existsSync(join(DESKTOP, 'dist', 'renderer', gone)), false, `${gone} is not built`);
 });
 
 // ---- the checker itself, shown to fail on bad files
@@ -289,10 +269,10 @@ test('the channels of the reader are its own: the viewer\'s channels are gone, a
 });
 
 test('only the app page, in real mode, may ask', () => {
-  const hashes = [REAL_HASH, REAL_HARNESS_HASH, ''];
+  const hashes = [REAL_BASE, `${REAL_BASE}/harnesses`, ''];
   for (const hash of hashes) { assert.equal(isAllowedRealSender(true, `${APP_INDEX}${hash}`, APP_INDEX), true, hash); assert.equal(isAllowedRealSender(false, `${APP_INDEX}${hash}`, APP_INDEX), false, `not in real mode: ${hash}`); }
   for (const url of [null, 'https://github.com/x', 'file:///etc/passwd', 'app://evil/index.html', 'app://viewer/other.html', `${APP_INDEX}?q=1`, 'devtools://devtools/bundled/x.html']) assert.equal(isAllowedRealSender(true, url, APP_INDEX), false, String(url));
-  assert.equal(decideNavigation(`${APP_INDEX}${REAL_HASH}`, APP_INDEX), 'allow-app');
+  assert.equal(decideNavigation(`${APP_INDEX}${REAL_BASE}`, APP_INDEX), 'allow-app');
 });
 
 // ---- the handler, run with a fake in place of Electron
@@ -302,7 +282,7 @@ function fakeIpc(): { handlers: Map<string, Listener>; ipc: { handle(c: string, 
   const handlers = new Map<string, Listener>();
   return { handlers, ipc: { handle: (channel, listener) => { assert.ok(!handlers.has(channel), `${channel} registered twice`); handlers.set(channel, listener); } } };
 }
-const page: RealEvent = { senderFrame: { url: `${APP_INDEX}${REAL_HASH}`, parent: null } };
+const page: RealEvent = { senderFrame: { url: `${APP_INDEX}${REAL_BASE}`, parent: null } };
 
 test('the handler refuses another page, a sub-frame, no frame, and the wrong number of arguments; it never reveals more than a short code', async t => {
   const f = buildFixture();
@@ -312,7 +292,7 @@ test('the handler refuses another page, a sub-frame, no frame, and the wrong num
   assert.deepEqual([...handlers.keys()].sort(), Object.values(REAL_CHANNELS).sort());
   const reason = async (channel: string, event: RealEvent, ...args: unknown[]): Promise<string> => { try { await handlers.get(channel)!(event, ...args); return 'answered'; } catch (e) { return (e as Error).message; } };
   for (const channel of Object.values(REAL_CHANNELS)) {
-    for (const bad of [null, { url: 'https://example.com/', parent: null }, { url: `${APP_INDEX}${REAL_HASH}`, parent: {} }, { url: 'file:///etc/hosts', parent: null }]) {
+    for (const bad of [null, { url: 'https://example.com/', parent: null }, { url: `${APP_INDEX}${REAL_BASE}`, parent: {} }, { url: 'file:///etc/hosts', parent: null }]) {
       assert.equal(await reason(channel, { senderFrame: bad }), 'NOT_ALLOWED', `${channel} ${JSON.stringify(bad)}`);
     }
   }
@@ -430,32 +410,28 @@ test('real mode loads the one page of the app, and that page has the strict poli
   assert.deepEqual([...page.matchAll(/<script[^>]*src="([^"]+)"/g)].map(m => m[1]), ['app.js']);
   assert.equal(existsSync(join(DESKTOP, 'renderer', 'home', 'real', 'real.html')), false, 'no second page is left in the source');
   // The window of real mode gets the one page at the real address, and only the real bridge (checked in the main.ts test above).
-  assert.equal(decideNavigation(`${APP_INDEX}${REAL_HASH}`, APP_INDEX), 'allow-app');
+  assert.equal(decideNavigation(`${APP_INDEX}${REAL_BASE}`, APP_INDEX), 'allow-app');
 });
 
-test('the real bridge is read in one file of the page, and the screens of real mode never call anything but its three calls', () => {
-  const users = names('renderer/home', /\.tsx?$/).concat(names('renderer/home/real', /\.tsx?$/), names('renderer/home/first-run', /\.tsx?$/), names('renderer/home/shell', /\.tsx?$/));
-  const naming = users.filter(file => /bowerloomReal/.test(strip(read(file))));
+const sourcesUnder = (dir: string): string[] => readdirSync(join(DESKTOP, dir), { withFileTypes: true }).flatMap(e => (e.isDirectory() ? sourcesUnder(`${dir}/${e.name}`) : /\.tsx?$/.test(e.name) ? [`${dir}/${e.name}`] : []));
+
+test('the real bridge is read in one file of the page, and the screens never call anything but its three calls', () => {
+  const naming = sourcesUnder('renderer').filter(file => /bowerloomReal/.test(strip(read(file))));
   assert.deepEqual(naming, ['renderer/home/real/bridge.ts'], 'only bridge.ts reads window.bowerloomReal');
-  for (const file of ['renderer/home/real/RealScan.tsx', 'renderer/home/real/RealRoot.tsx', 'renderer/home/real/RealFind.tsx', 'renderer/home/real/RealFlow.tsx']) {
+  for (const file of sourcesUnder('renderer/harness/real')) {
     const calls = [...strip(read(file)).matchAll(/\b(?:calls|bridge)\.(\w+)\(/g)].map(m => m[1]!);
     assert.ok(calls.every(name => (REAL_CALLS as readonly string[]).includes(name)), `${file}: ${calls.join(',')}`);
   }
 });
 
-test('the launcher: the home reader\'s flag is known, excludes every other mode, needs a real home folder, and says what it reads before the window opens', async () => {
+test('the launcher: the one mode flag is known, a real home folder is needed for the app on the person\'s own folders, and it says what it reads and writes before the window opens', async () => {
   const src = strip(read('tools/run.mjs'));
-  assert.match(src, /KNOWN = new Set\(\[[^\]]*'--home-real'/); assert.match(src, /MODES = new Set\(\[[^\]]*'--home-real'/);
-  const mod = await import(`${join(DESKTOP, 'tools', 'run.mjs')}`) as { REAL_PROMISE: string; APP_PROMISE: string; REAL_FLAG: string; realHome(env: Record<string, string>, exists: (p: string) => boolean): string | null };
-  assert.equal(mod.REAL_PROMISE, 'Reads: names, descriptions, structure and key names, plus the text of the skills and agents you tick. Known key and password shapes are hidden. Writes: no changes to your files. The app keeps its own temporary files and deletes them when it closes.');
-  assert.doesNotMatch(mod.REAL_PROMISE, /never|no key/i, 'the promise says the text of ticked files is read, and that hiding keys is by known shape');
-  assert.doesNotMatch(mod.REAL_PROMISE, /Writes: nothing/, 'the promise does not claim that nothing is written: the app keeps a temporary profile folder, which it removes when it closes');
-  assert.equal(mod.REAL_FLAG, '--home-real');
+  assert.match(src, /KNOWN = new Set\(\['--sample', '--build-only'\]\)/); assert.match(src, /MODES = new Set\(\['--sample'\]\)/);
+  const mod = await import(`${join(DESKTOP, 'tools', 'run.mjs')}`) as { APP_PROMISE: string; realHome(env: Record<string, string>, exists: (p: string) => boolean): string | null };
   if (process.platform !== 'win32') assert.equal(mod.realHome({ HOME: '/Users/x' }, () => true), '/Users/x');
   assert.equal(mod.realHome({ HOME: '/Users/x' }, () => false), null); assert.equal(mod.realHome({}, () => true), null); assert.equal(mod.realHome({ HOME: 'x' }, () => true), null);
-  assert.match(src, /const promise = args\.includes\(REAL_FLAG\) \? REAL_PROMISE : APP_PROMISE;/, 'the home reader prints the pinned promise, the app prints its own');
-  assert.match(src, /console\.log\(`\\n\$\{promise\}/);
-  // The promise of the app on the person\'s own folders: the ticks are on folders, a write needs an approved plan, and the data folder lasts.
+  assert.match(src, /console\.log\(`\\n\$\{APP_PROMISE\}/);
+  // The promise of the app on the person's own folders: the ticks are on folders, a write needs an approved plan, and the data folder lasts.
   const v = mod.APP_PROMISE;
   for (const fact of [/skills/, /agents/, /saved prompts/, /first lines of notes pages/, /config key names/, /Known key and password shapes are hidden/, /Writes: only a plan you approved and said yes to/, /lasting data folder/]) assert.match(v, fact, String(fact));
   assert.doesNotMatch(v, /agents you tick/, 'the ticks of the app are on folders, not on skills and agents');

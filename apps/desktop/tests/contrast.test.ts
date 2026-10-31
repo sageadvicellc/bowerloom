@@ -25,12 +25,6 @@ for (const [name, vars] of [['light', light], ['dark', dark]] as const) {
   });
 }
 
-for (const [name, vars] of [['light', light], ['dark', dark]] as const) {
-  test(`${name} theme: the eight graph colours are each seen against the graph's background (3 to 1, for shapes)`, () => {
-    for (let i = 1; i <= 8; i++) assert.ok(ratio(vars[`graph-${i}`]!, vars.surface!) >= 3, `graph-${i} is ${ratio(vars[`graph-${i}`]!, vars.surface!).toFixed(2)}`);
-  });
-}
-
 // ---- The 0.8 home app's own tokens (renderer/home/home-tokens.css). They are scoped to [data-home], so the 0.7 screens do not change.
 const homeCss = readFileSync(join(DESKTOP, 'renderer', 'home', 'home-tokens.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 function homeBlock(selector: RegExp): string { return selector.exec(homeCss)![1]!; }
@@ -39,7 +33,6 @@ const homeNumber = (block: string, name: string): number => Number(new RegExp(`-
 const homeLightBlock = homeBlock(/^\[data-home\] \{([\s\S]*?)\n\}/m), homeDarkBlock = homeBlock(/^\[data-theme="dark"\] \[data-home\], \[data-home\]\[data-theme="dark"\] \{([\s\S]*?)\n\}/m);
 const homeLight = { ...light, ...homeVars(homeLightBlock) }, homeDark = { ...dark, ...homeVars(homeDarkBlock) };
 const homeKitCss = readFileSync(join(DESKTOP, 'renderer', 'home', 'kit', 'kit.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-const homeMapCss = readFileSync(join(DESKTOP, 'renderer', 'home', 'map', 'map.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 const mixHex = (top: string, under: string, amount: number): string => '#' + [1, 3, 5].map(i => Math.round(parseInt(top.slice(i, i + 2), 16) * amount + parseInt(under.slice(i, i + 2), 16) * (1 - amount)).toString(16).padStart(2, '0')).join('');
 
 test('the home tokens only reach the home app: every selector starts at [data-home], with a dark variant for each look', () => {
@@ -116,12 +109,11 @@ for (const [name, vars, block] of [['light', homeLight, homeLightBlock], ['dark'
     for (const [fg, bg] of PAIRS) assert.ok(ratio(vars[fg]!, vars[bg]!) >= 4.5, `${fg} on ${bg} is ${ratio(vars[fg]!, vars[bg]!).toFixed(2)}`);
     for (const bg of ['bg', 'surface', 'accent-soft']) assert.ok(ratio(vars.focus!, vars[bg]!) >= 3, `focus on ${bg}`);
   });
-  test(`${name} theme, home app: the 2 px edge of a selected card, row or segment is 3 to 1 against everything it sits next to`, () => {
+  test(`${name} theme, home app: the 2 px edge of a selected card is 3 to 1 against everything it sits next to`, () => {
     // A selected card is a highlight with no check mark, so the edge and the tint are all that tell it apart. The edge touches the page (bg), a neighbouring card
     // (surface), the tile and the chips inside the card (surface-2) and its own tint (accent-soft); a selected row sits on the tint of its owner card as well.
     for (const against of ['bg', 'surface', 'surface-2', 'accent-soft']) assert.ok(ratio(vars['accent-strong']!, vars[against]!) >= 3, `selected edge on ${against} is ${ratio(vars['accent-strong']!, vars[against]!).toFixed(2)}`);
     assert.match(homeKitCss, /\.kit-card\[data-selected\][^{]*\{[^}]*border-width: 2px;/, 'the selected edge is 2 px');
-    assert.match(homeMapCss, /\.hm-seg-button\[aria-pressed="true"\][^{]*\{[^}]*inset 0 0 0 2px var\(--accent-strong\)/, 'the selected segment has a 2 px edge');
   });
   test(`${name} theme, home app: the glyph on its tile is 4.5 to 1, and the edge of a chip or a tile is 3 to 1 on the card and (in the accent edge it takes there) on a selected card`, () => {
     assert.ok(ratio(vars['accent-strong']!, vars['surface-2']!) >= 4.5, `glyph on tile is ${ratio(vars['accent-strong']!, vars['surface-2']!).toFixed(2)}`);
@@ -207,7 +199,7 @@ test('no pill is left in the home style sheets: a state has no fill, no border a
   const dir = join(DESKTOP, 'renderer', 'home');
   const files = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? files(join(d, e.name)) : e.name.endsWith('.css') ? [join(d, e.name)] : []);
   const sheets = files(dir).map(f => ({ f: f.slice(dir.length + 1), css: readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '') }));
-  assert.ok(sheets.length >= 12);
+  assert.ok(sheets.length >= 5);
   for (const { f, css } of sheets) {
     assert.doesNotMatch(css, /\.kit-badge|\.kit-chip\b|\.kit-pill|\.dt-chip\b[^{]*\{[^}]*border-radius/, `${f} still styles a pill`);
     for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
@@ -236,7 +228,7 @@ test('every word in the home style sheets is 14 px or more: each font size is a 
       seen += 1;
     }
   }
-  assert.ok(seen > 60, `${seen} font sizes checked`);
+  assert.ok(seen > 15, `${seen} font sizes checked`);
 });
 
 test('a row and a tile have one size each, from tokens: the row is --hm-row-h high, the tile --hm-tile-w by --hm-tile-h, and neither grows with its words', () => {

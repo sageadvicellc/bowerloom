@@ -58,9 +58,6 @@ export const REAL_WORDS = deepFreeze({
   popover: {},
 });
 
-/** The command that starts real mode. */
-export const REAL_COMMAND = 'npm run desktop -- --home-real';
-
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 
 /** "2 agents, 6 skills, 3 tools, 1 hook, 6 notes": what a place holds, leaving out what it does not. */

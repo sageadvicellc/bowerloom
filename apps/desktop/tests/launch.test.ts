@@ -29,19 +29,11 @@ test('--sample opens the same app on made-up folders: no bridge, no calls, a tem
 test('the preview engines open only for the sample, and only with their own argument', () => {
   assert.equal(launchOf([FLAGS.sample, '--sample-preview-engines']).samplePreviewEngines, true);
   assert.equal(launchOf(['--sample-preview-engines']).samplePreviewEngines, false, 'never the launch on the person\'s own folders');
-  assert.equal(launchOf([FLAGS.homeSample, '--sample-preview-engines']).samplePreviewEngines, false);
 });
 
-test('the home app keeps two neutral dev flags: the sample with no bridge, and the read-only reader', () => {
-  const s = launchOf([FLAGS.homeSample]), r = launchOf([FLAGS.homeReal]);
-  assert.deepEqual({ kind: s.kind, hash: s.hash, preload: s.preload, realReader: s.realReader, engineCalls: s.engineCalls, temporaryData: s.temporaryData }, { kind: 'home-sample', hash: '#prototype-v2', preload: 'none', realReader: false, engineCalls: false, temporaryData: true });
-  assert.deepEqual({ kind: r.kind, hash: r.hash, preload: r.preload, realReader: r.realReader, engineCalls: r.engineCalls, temporaryData: r.temporaryData }, { kind: 'home-real', hash: '#prototype-v2/real', preload: 'real', realReader: true, engineCalls: false, temporaryData: true });
-});
-
-test('two mode flags at once: the one with the fewest rights wins, and nothing named --prototype-* is a mode any more', () => {
-  assert.equal(launchOf([FLAGS.homeReal, FLAGS.sample]).kind, 'sample');
-  assert.equal(launchOf([FLAGS.homeReal, FLAGS.homeSample]).kind, 'home-sample');
-  for (const old of ['--prototype-v2', '--prototype-v3', '--prototype-real', '--prototype-v3-real', '--sample-data', '--real-data']) assert.equal(launchOf([old]).kind, 'app', old);
+test('the retired home flags and every old prototype name are not modes: the start opens the app on the person\'s own folders', () => {
+  for (const old of ['--home-sample', '--home-real', '--prototype-v2', '--prototype-v3', '--prototype-real', '--prototype-v3-real', '--sample-data', '--real-data']) assert.equal(launchOf([old]).kind, 'app', old);
+  assert.deepEqual(Object.keys(FLAGS), ['sample']);
   assert.deepEqual(Object.values(FLAGS).filter(f => /prototype/.test(f)), []);
 });
 

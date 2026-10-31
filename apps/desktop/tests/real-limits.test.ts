@@ -16,7 +16,8 @@ import { hashText, validateWorld } from '../shared/world/sample.js';
 import { buildRealResult } from '../shared/real/map-world.js';
 import type { PlaceRead, StampedRecord } from '../shared/real/place.js';
 import { parseToml } from '../shared/real/toml.js';
-import { REAL_CHANNELS, REAL_HASH, REAL_LIMITS } from '../shared/real/types.js';
+import { REAL_BASE } from '../shared/harness/route.js';
+import { REAL_CHANNELS, REAL_LIMITS } from '../shared/real/types.js';
 import { DESKTOP, tempDir } from './support.js';
 
 const put = (file: string, text: string | Buffer): void => { mkdirSync(join(file, '..'), { recursive: true }); writeFileSync(file, text); };
@@ -275,7 +276,7 @@ test('while the folder chooser is open no other call starts, and a closed choose
     ipc: { handle: (channel, listener) => { handlers.set(channel, listener); } }, appIndexUrl: APP_INDEX, home,
     chooseFolder: () => new Promise<string | null>(resolve => { answer = resolve; }),
   });
-  const page: RealEvent = { senderFrame: { url: `${APP_INDEX}${REAL_HASH}`, parent: null } };
+  const page: RealEvent = { senderFrame: { url: `${APP_INDEX}${REAL_BASE}`, parent: null } };
   const call = (channel: string, ...args: unknown[]): Promise<unknown> => Promise.resolve(handlers.get(channel)!(page, ...args));
   const pick = call(REAL_CHANNELS.pickFolder);
   await new Promise(resolve => setImmediate(resolve));

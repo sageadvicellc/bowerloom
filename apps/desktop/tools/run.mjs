@@ -2,7 +2,6 @@
 // One command to open the app, from any folder:
 //   npm --prefix <repo> run desktop         (the app on YOUR folders: it reads the folders you tick, and writes only a plan you approve; needs a real HOME)
 //   npm --prefix <repo> run desktop:sample  (the same app on made-up folders: nothing is read or written)
-//   npm --prefix <repo> run desktop -- --home-sample | --home-real   (dev flags of the 0.8 home app: the sample world, and the read-only reader of your setup)
 // It installs what is missing, builds the app, and opens the window. Pass --build-only to stop before the window.
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -17,19 +16,15 @@ export { makeTempDataDir, removeTempDataDir };
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const repo = join(desktop, '..', '..');
-// With no mode flag the app opens on the person's own folders. These flags pick a made-up launch or a dev launch of the home app. main/launch.ts holds the same names.
-const KNOWN = new Set(['--sample', '--home-sample', '--home-real', '--build-only']);
-const MODES = new Set(['--sample', '--home-sample', '--home-real']);
-// Every flagged launch starts with a fresh temporary data folder and writes nothing else. Only the app on the person's own folders, with no flag, keeps the normal one.
-const TEMPORARY = ['--sample', '--home-sample', '--home-real'];
-// The home app's reader of the person's own setup is read-only and needs a real home folder. So does the app on the person's own folders.
-export const REAL_FLAG = '--home-real';
-/** What the home app's reader says on the terminal before it opens its window. Tests hold this to shared/real/types.ts. */
-export const REAL_PROMISE = 'Reads: names, descriptions, structure and key names, plus the text of the skills and agents you tick. Known key and password shapes are hidden. Writes: no changes to your files. The app keeps its own temporary files and deletes them when it closes.';
+// With no mode flag the app opens on the person's own folders. `--sample` opens it on made-up folders. main/launch.ts holds the same name.
+const KNOWN = new Set(['--sample', '--build-only']);
+const MODES = new Set(['--sample']);
+// The made-up launch starts with a fresh temporary data folder and writes nothing else. Only the app on the person's own folders, with no flag, keeps the normal one.
+const TEMPORARY = ['--sample'];
 /** What the app says on the terminal before it opens on the person's own folders. The ticks there are on folders. A write needs a plan the person approved and a yes in the app's own question. */
 export const APP_PROMISE = 'Reads: names, descriptions, structure and config key names of the folders it lists, plus the text of the skills, agents and saved prompts, and the first lines of notes pages, in the folders you tick. Known key and password shapes are hidden. Writes: only a plan you approved and said yes to, in the folder you chose and in the private state folder of Bowerloom. The app keeps a lasting data folder for its window settings.';
 
-/** The home folder the real-setup preview will read, or null when HOME is not set to a folder that exists. Only the home variable is looked at. */
+/** The home folder the app will read, or null when HOME is not set to a folder that exists. Only the home variable is looked at. */
 export function realHome(env = process.env, exists = path => existsSync(path)) {
   const home = process.platform === 'win32' ? env.USERPROFILE : env.HOME;
   return typeof home === 'string' && isAbsolute(home) && home.length > 1 && !home.includes('\0') && exists(home) ? home : null;
@@ -128,10 +123,9 @@ function step(text, command, argv, cwd, env) {
 function main() {
   const args = process.argv.slice(2);
   const unknown = args.filter(a => !KNOWN.has(a));
-  if (unknown.length) fail(`I do not know ${unknown.map(a => `"${a}"`).join(', ')}. Use no flag to open the app on your own folders, --sample to open it on made-up folders, --home-sample or --home-real for the home app, or --build-only to only build.`, 2);
-  if (args.filter(a => MODES.has(a)).length > 1) fail('Choose one of --sample, --home-sample and --home-real, not more.', 2);
-  // The app on the person's own folders (no mode flag) and the home reader both look at a home folder.
-  const onRealSetup = !args.some(a => a === '--sample' || a === '--home-sample');
+  if (unknown.length) fail(`I do not know ${unknown.map(a => `"${a}"`).join(', ')}. Use no flag to open the app on your own folders, --sample to open it on made-up folders, or --build-only to only build.`, 2);
+  // The app on the person's own folders (no mode flag) looks at a home folder.
+  const onRealSetup = !args.includes('--sample');
   if (onRealSetup && realHome() === null) fail('The app needs a home folder, and HOME is not set to a folder that exists. Nothing was read.', 2);
 
   const npm = npmCommand();
@@ -147,10 +141,9 @@ function main() {
   const electron = electronBinary(desktop);
   if (electron === null) fail('The app window is not installed. Run the command again.', 1);
   const flags = args.filter(a => MODES.has(a));
-  // A flagged launch starts with a fresh, empty data folder and removes it when the window closes, so it leaves nothing in the real app data. The app on the person's own folders keeps its normal data folder.
+  // The made-up launch starts with a fresh, empty data folder and removes it when the window closes, so it leaves nothing in the real app data. The app on the person's own folders keeps its normal data folder.
   const dataDir = TEMPORARY.some(flag => args.includes(flag)) ? makeTempDataDir() : null;
-  const promise = args.includes(REAL_FLAG) ? REAL_PROMISE : APP_PROMISE;
-  if (onRealSetup) console.log(`\n${promise}\nHome folder: ${realHome()}`);
+  if (onRealSetup) console.log(`\n${APP_PROMISE}\nHome folder: ${realHome()}`);
   const child = spawn(electron, electronArgs(desktop, flags, dataDir), { stdio: 'inherit', env: process.env });
   superviseChild(child, { dataDir });
 }

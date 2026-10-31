@@ -159,12 +159,12 @@ test('a made-up launch gets no bridge, no calls, no outside link and a temporary
 });
 
 test('every address of the app is the app\'s own page: navigation inside it is allowed, and nothing else leaves', () => {
-  for (const hash of ['#prototype-v2', '#prototype-v2/kit', '#sample', '#app', '#app/choose', '#sample/builder/harness-weekly-report-crew/list']) assert.equal(decideNavigation(`${APP_INDEX}${hash}`, APP_INDEX), 'allow-app', hash);
-  assert.equal(decideNavigation('https://example.com/#prototype-v2', APP_INDEX), 'block');
+  for (const hash of ['#sample/choose', '#sample', '#app', '#app/choose', '#sample/builder/harness-weekly-report-crew/list']) assert.equal(decideNavigation(`${APP_INDEX}${hash}`, APP_INDEX), 'allow-app', hash);
+  assert.equal(decideNavigation('https://example.com/#app', APP_INDEX), 'block');
   assert.doesNotMatch(strip(read('preload/real-preload.ts')), /prototype/i);
 });
 
-test('the home app source never reaches the bridge, a file, the network, storage or markup from text', () => {
+test('the kit and shell code that the app keeps in the home folders never reaches the bridge, a file, the network, storage or markup from text', () => {
   const files = [...sources('renderer/home'), ...sources('shared/home')];
   assert.ok(files.length >= 10, `${files.length} files`);
   const banned: [string, RegExp][] = [['window.bowerloom', /window\.bowerloom\b|\bbowerloom\./], ['node:', /node:/], ['fetch', /\bfetch\(|XMLHttpRequest|WebSocket/], ['localStorage', /localStorage|sessionStorage|indexedDB|document\.cookie/], ['innerHTML', /innerHTML|outerHTML|insertAdjacentHTML|dangerouslySetInnerHTML/], ['eval', /\beval\(|new Function\(/], ['Date', /\bDate\b/], ['Math.random', /Math\.random/]];

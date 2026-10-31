@@ -58,10 +58,6 @@ Every duration, easing and distance of the app's motion is in one file, `rendere
 - The app is not signed with a Developer ID. The macOS build carries only a self-made local signature, which the safety switches need in order to start. A signed installer needs an Apple Developer ID certificate. macOS will not let an unsigned app update itself.
 - Windows and Linux installers are set up in the build settings but have not been built or tried.
 
-## The 0.8 home app (dev only)
-
-The earlier 0.8 home app is still in the source and is not part of the shipped screens. Two dev flags open it: `npm --prefix "<repo>" run desktop -- --home-sample` for a made-up sample world, and `npm --prefix "<repo>" run desktop -- --home-real` for your own setup, read only. Its tests and the persona tool still use it.
-
 ## For developers
 
 All commands run from the repository root, or with `npm --prefix <repo>`.

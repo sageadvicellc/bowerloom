@@ -6,7 +6,6 @@ import { join } from 'node:path';
 import type { TestContext } from 'node:test';
 import { createScanner } from '../main/real-scan.js';
 import { newTally } from '../main/real-fs.js';
-import { distinctTexts } from '../shared/world/conflicts.js';
 import { validateWorld } from '../shared/world/sample.js';
 import type { AgentItem, HarnessItem, World } from '../shared/world/types.js';
 import { buildRealResult } from '../shared/real/map-world.js';
@@ -15,6 +14,9 @@ import type { RealResult } from '../shared/real/types.js';
 import { assertTextBudget, bannedIn } from '../shared/home/textbudget.js';
 import { FAKE_SECRET, FAKE_TOKEN_IN_TEXT, buildFixture } from './fixtures-real/build.js';
 import type { Fixture } from './fixtures-real/build.js';
+
+/** How many different texts an item holds across every place it was found. */
+const distinctTexts = (item: HarnessItem): number => new Set(item.foundAt.map(f => f.contentHash)).size;
 
 const NOW = Date.UTC(2026, 9, 26);
 

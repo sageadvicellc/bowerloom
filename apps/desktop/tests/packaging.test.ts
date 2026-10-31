@@ -88,7 +88,7 @@ test('the launcher gives install scripts a minimal environment: no token reaches
 });
 
 test('the launcher refuses an unknown flag with a plain message, and two modes at once, without installing or building anything', () => {
-  for (const [args, re] of [[['--prototype-v3'], /do not know "--prototype-v3"/], [['--sample', '--home-sample'], /not more/], [['--build-only', '--nope', '-x'], /"--nope", "-x"/]] as const) {
+  for (const [args, re] of [[['--prototype-v3'], /do not know "--prototype-v3"/], [['--sample', '--home-sample'], /do not know "--home-sample"/], [['--build-only', '--nope', '-x'], /"--nope", "-x"/]] as const) {
     const r = spawnSync(process.execPath, [join(DESKTOP, 'tools', 'run.mjs'), ...args], { cwd: tmpdir(), encoding: 'utf8', timeout: 30000 });
     assert.equal(r.status, 2, args.join(' ')); assert.match(r.stderr, re); assert.doesNotMatch(r.stdout, /Installing|Building/);
   }

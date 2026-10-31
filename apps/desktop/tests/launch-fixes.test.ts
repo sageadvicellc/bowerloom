@@ -1,4 +1,4 @@
-// A made-up launch (--sample, and the two home app dev flags) writes nothing to the real app data, with or without the launcher; the launcher cleans up reliably; and a made-up page has no bridge.
+// A made-up launch (--sample) writes nothing to the real app data, with or without the launcher; the launcher cleans up reliably; and a made-up page has no bridge.
 // The app on the person's own folders keeps the lasting data folder of Electron.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -146,9 +146,10 @@ test('the window leaves the preload out for a made-up launch, and gives the real
   assert.doesNotMatch(main, /join\(root, 'preload\.cjs'\)/, 'the old viewer bridge is not loaded');
 });
 
-test('app.ts mounts the harness-first app or the home app by the page address, and has no bridge of its own', () => {
+test('app.ts mounts the harness-first app only, and has no bridge of its own', () => {
   const app = strip(read('renderer/app.ts'));
-  assert.match(app, /isHarnessHash\(location\.hash\)/); assert.match(app, /isHomeHash\(location\.hash\)/); assert.doesNotMatch(app, /window\.bowerloom\b|mountPrototype/);
+  assert.match(app, /isHarnessHash\(location\.hash\)/); assert.doesNotMatch(app, /isHomeHash|mountHome|renderer\/home\/mount|window\.bowerloom\b|mountPrototype/);
+  assert.equal(existsSync(join(DESKTOP, 'renderer', 'home', 'mount.tsx')), false, 'the home app is gone');
   assert.match(app, /location\.hash = REAL_BASE/, 'a bare address is the app on the person\'s own folders, never the sample');
   assert.equal(existsSync(join(DESKTOP, 'preload', 'preload.ts')), false, 'the viewer bridge is gone');
 });

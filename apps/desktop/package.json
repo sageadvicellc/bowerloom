@@ -18,8 +18,7 @@
     "test": "node tools/bundle.mjs && node tools/bundle.mjs --tests && node --test --test-timeout=120000 .build/tests/*.test.mjs",
     "e2e": "npm run bundle && playwright test --config playwright.config.ts",
     "build": "npm run bundle && electron-builder --mac --publish never",
-    "verify:fuses": "node tools/check-fuses.mjs",
-    "personas:serve": "node tools/personas/drive.mjs serve"
+    "verify:fuses": "node tools/check-fuses.mjs"
   },
   "dependencies": {
     "electron-updater": "6.8.10",
