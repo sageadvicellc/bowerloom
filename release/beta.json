@@ -22,7 +22,7 @@
     "availabilityNote": "Install it from npm under the beta dist-tag with npm install -g bowerloom@beta.",
     "authenticatedIdentity": "hannasage",
     "identityEvidence": "Authenticated npm whoami observation on 2026-10-06. Package ownership and publication authorization remain separate.",
-    "ownershipEvidence": "Public registry read on 2026-10-22: hannasage is the only maintainer of bowerloom, and the 0.7.0-beta.2 integrity equals the prepared archive."
+    "ownershipEvidence": "Public registry read on 2026-10-31: hannasage is the only maintainer of bowerloom. The listed versions are 0.0.0-stage, 0.7.0-beta.1 and 0.7.0-beta.2. Version 0.8.0-beta.1 is not listed."
   },
   "urls": {
     "site": "https://bowerloom.ai",
@@ -40,22 +40,45 @@
         "os": "macOS",
         "architecture": "arm64",
         "node": "24.11.0",
-        "scope": "Isolated package installation, setup, revision, upgrade and removal with cached dependencies"
+        "scope": "The build, the repository test suites, and the built command line, run from a source checkout"
       }
     ],
     "releaseQualified": [],
-    "note": "Additional systems remain under review."
+    "desktop": {
+      "os": "macOS",
+      "architectures": [
+        "arm64",
+        "x64"
+      ],
+      "packages": [
+        "dmg",
+        "zip"
+      ],
+      "signed": false,
+      "notarized": false,
+      "note": "The macOS app carries only a local ad-hoc signature. It has no Apple Developer ID signature and no notarization, so macOS blocks the first open until you allow it in System Settings. The build settings also list Windows and Linux installers, but nobody has built or tried them."
+    },
+    "note": "Windows and Linux are named for later releases. Other systems remain under review."
   },
   "capabilities": {
-    "setup": "Prepare and review a personal-agent profile, team specification and working agreement in a new or existing project. Exact approval installs the planned files.",
-    "revision": "Review an installed setup change before applying its exact revision.",
+    "setup": "Define one harness in a .bowerloom folder, then install it into Claude Code and Codex. A harness is the set of skills, agents, tools, rules, and context that surrounds a coding model. Every change shows a plan first and writes only after you approve the exact plan.",
+    "adopt": "Adopt reads the engine files of a folder and builds one harness definition from them. It writes only .bowerloom and changes no engine file.",
+    "install": "Install writes the files of each engine from .bowerloom. Claude Code and Codex are supported. OpenCode, Pi, and DeepSeek Harness are preview engines, and install writes to them only when BOWERLOOM_PREVIEW_ENGINES=1 is set.",
+    "fidelity": "The install plan reports each part of the harness, per engine, as exact, translated, weakened, or absent. A rule that an engine carries more weakly than the harness says is refused until you accept that line.",
+    "drift": "Drift lists the files that Bowerloom wrote and that changed since the install. Drift --check fails when a file changed.",
+    "remove": "Remove puts back every file that an install replaced and deletes the files that the install created.",
+    "save": "The save step in the desktop app writes a change to the harness of a folder after you approve it, and keeps a save point before and after. Go back returns the harness to an earlier save point.",
+    "notes": "In the desktop app, a notes folder can start from the starter wiki of the Notes keeper kit, or get version history if it has none. The Notes keeper kit holds one agent and six skills that look after a folder of notes.",
+    "skills": "Pin skills from npm or GitHub with skills add, then install them for Claude Code and Codex with skills sync.",
+    "desktop": "The desktop app is experimental and possibly not part of v1. Its build settings make a macOS app that is not signed with an Apple Developer ID.",
     "execution": "Setup does not start workers, grant runtime access, or authorize connected actions.",
-    "harnesses": "Codex and Claude Code execution require separate qualification. File portability does not establish runtime support.",
-    "connections": "MCP connections and local backends require separate reviewed bindings and permissions.",
-    "company": "Shared company access, offboarding and deletion remain release requirements.",
     "limits": [
-      "Full runtime acceptance remains incomplete.",
-      "Unattended support requires an independently accepted installed security configuration."
+      "No harness command runs an engine or a model.",
+      "OpenCode, Pi, and DeepSeek Harness are preview engines in this beta. Adopt, drift, status, and remove work for them, and install needs BOWERLOOM_PREVIEW_ENGINES=1.",
+      "The save step, save points, Go back, and the notes actions run in the desktop app only. The command line does not have them.",
+      "The desktop app is not signed with an Apple Developer ID and is not notarized. Updates stay off until the first release.",
+      "Windows and Linux are not supported in this beta.",
+      "Team sync, signing and automatic updates, other knowledge bases, and more engines are named for later releases. They are not promises."
     ]
   }
 }
