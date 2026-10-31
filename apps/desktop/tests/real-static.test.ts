@@ -139,6 +139,7 @@ const KNOWN_LIBRARY_USES: Readonly<Record<string, BundleAllowance>> = {
   Function: { ids: 5, strings: 0, why: 'four are `instanceof Function` tests in libraries, and one is lodash\'s `Function("return this")()` fallback for the global object, which the page policy (no unsafe-eval) would refuse to run' },
   bowerloomReal: { ids: 1, strings: 0, why: 'renderer/home/real/bridge.ts, the one file that reads the real bridge from the window; the source check above refuses the name anywhere else' },
   'window.bowerloom': { ids: 1, strings: 0, why: 'renderer/app.ts reads the normal bridge, which is missing in a prototype window, and falls back to a stub' },
+  sessionStorage: { ids: 2, strings: 0, why: 'renderer/harness/tour/seen.ts keeps one key, whether the guided tour was seen, in the window\'s memory-only session store, so the tour starts once at first use; tests/harness-boundary.test.ts allows it in that file alone and refuses storage on disk everywhere' },
 };
 
 test('the page script that ships (the whole shell, built as it is for dist/renderer/app.js) uses no sink or channel beyond the listed library uses, each at its exact count', () => {

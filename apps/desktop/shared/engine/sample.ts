@@ -14,11 +14,12 @@
  * the kit's agent and skills (tests/engine-sample.test.ts holds it to the kit main ships), and notes attach to an agent through the save.
  */
 import type {
-  AdoptChoices, AdoptRecovered, AdoptRecoveryView, AdoptView, AdoptWritten, Answer, ApproveLineView, ChangeView, DefinitionView, EngineBridge, EngineId, EveryEnginePart, FolderInfo, LossView,
-  MergeView, MergeWritten, NotesHistoryPlanView, NotesStarterView, NotesView, NotesWritten, ProjectAnswer, ProjectInput, ProjectView, ProjectWritten, Recovered, RecoveryChoices, RecoveryView,
-  Refusal, RemovalView, Removed, RestoreView, SaveChangeView, SaveEdit, SaveView, SaveWritten, SetAsideView, SetAsideWritten, VersionView,
+  AdoptChoices, AdoptRecovered, AdoptRecoveryView, AdoptView, AdoptWritten, Answer, ApproveLineView, ChangeView, CopiedExecutableView, DefinitionView, EngineBridge, EngineId, EveryEnginePart,
+  FolderInfo, LossView, MergeView, MergeWritten, NotesHistoryPlanView, NotesStarterView, NotesView, NotesWritten, ProjectAnswer, ProjectInput, ProjectView, ProjectWritten, Recovered,
+  RecoveryChoices, RecoveryView, Refusal, RemovalView, Removed, ReportOpened, RestoreView, SaveChangeView, SaveEdit, SaveRequest, SaveView, SaveWritten, SetAsideView, SetAsideWritten,
+  StoppedSourceView, VersionView,
 } from './types.js';
-import { ENGINE_NAMES, EVERY_ENGINE_PARTS, KIT_MAIN_WORDS, NOTES_PURPOSES, SAVE_MAIN_WORDS, writesFile } from './types.js';
+import { ENGINE_NAMES, EVERY_ENGINE_PARTS, KIT_MAIN_WORDS, NOTES_PURPOSES, REPORT_MAIN_WORDS, SAVE_MAIN_WORDS, writesFile } from './types.js';
 import { approveKey, lossByEngine, unmappedHashBody } from './view.js';
 
 /** The packages' own words for the refusals the sample can give (packages/adoption/src/refusal.ts, packages/project-sync/src/portable-files.ts). */
@@ -42,6 +43,8 @@ export const SAMPLE_MESSAGES = Object.freeze({
   VERSION_NOTHING: 'There is no version store to set aside. Nothing was changed.',
   SAVE_NO_DEFINITION: SAVE_MAIN_WORDS.SAVE_NO_DEFINITION,
   SAVE_SOURCE_MISSING: SAVE_MAIN_WORDS.SAVE_SOURCE_MISSING,
+  SAVE_EXECUTABLE_UNACKNOWLEDGED: SAVE_MAIN_WORDS.SAVE_EXECUTABLE_UNACKNOWLEDGED,
+  REPORT_NONE: REPORT_MAIN_WORDS.REPORT_NONE,
   KIT_ALREADY_ADDED: KIT_MAIN_WORDS.KIT_ALREADY_ADDED,
   NOTES_NOT_EMPTY: 'The folder for the starter wiki is not empty. A starter wiki goes only into a new or empty folder. Nothing was written.',
   NOTES_STALE: 'The folder changed after the preview, or the approval is for another preview. Nothing was changed. Preview again.',
@@ -345,32 +348,49 @@ const SAMPLE_DEFS: Readonly<Record<string, DefinitionView>> = Object.freeze({
   },
   [SAMPLE_FOLDERS.stopped]: {
     id: 'garden', description: 'Keeps the garden notes.', engines: ['claude-code', 'codex'], instructions: true,
-    skills: [skillOf('water-plants', 'Plans the watering.')], agents: [agentOf('gardener', 'Looks after the beds.', ['water-plants'])], sources: [], kits: [],
+    skills: [skillOf('soil-check', 'Checks the soil with a small script.'), skillOf('water-plants', 'Plans the watering.')], agents: [agentOf('gardener', 'Looks after the beds.', ['water-plants'])], sources: [], kits: [],
   },
   [SAMPLE_FOLDERS.adopt]: {
     id: 'inbox-tools', description: 'Adopted from the engine files of this project.', engines: ['claude-code', 'codex'], instructions: true,
     skills: [skillOf('sort-mail', 'Sorts the inbox.')], agents: [agentOf('triage', 'Triages new mail.', [])], sources: [], kits: [],
   },
 });
+/** The other files of a sample skill, beside its SKILL.md, each relative to the skill folder: `soil-check` carries a script that can run. */
+const SAMPLE_SKILL_FILES: Readonly<Record<string, readonly { readonly path: string; readonly executable: boolean }[]>> = Object.freeze({
+  'soil-check': Object.freeze([{ path: 'scripts/soil-check.sh', executable: true }]),
+});
+/** True for a sample file that can run as a program. */
+const sampleExecutable = (path: string): boolean => {
+  const m = /^skills\/([^/]+)\/(.+)$/.exec(path);
+  return m !== null && (SAMPLE_SKILL_FILES[m[1]!] ?? []).some(f => f.path === m[2] && f.executable);
+};
 /** The files of a sample harness, each as a text that stands for its bytes, so a change list compares two harnesses as the save plan compares two file sets. */
 function sampleFiles(d: DefinitionView): Map<string, string> {
   // harness.json lists sources.json while a kit's record is in it, as the real one lists the plugins part.
   const out = new Map<string, string>([['harness.json', JSON.stringify({ id: d.id, engines: d.engines, ...(d.kits.length ? { plugins: 'sources.json' } : {}) })]]);
-  for (const k of d.skills) out.set(`skills/${k.id}/SKILL.md`, JSON.stringify(k));
+  for (const k of d.skills) {
+    out.set(`skills/${k.id}/SKILL.md`, JSON.stringify(k));
+    for (const f of SAMPLE_SKILL_FILES[k.id] ?? []) out.set(`skills/${k.id}/${f.path}`, `${k.id}/${f.path}`);
+  }
   for (const a of d.agents) out.set(`agents/${a.id}.md`, JSON.stringify(a));
   if (d.sources.length) out.set('knowledge.json', JSON.stringify(d.sources.map(x => [x.name, x.label])));
   if (d.kits.length) out.set('sources.json', JSON.stringify(d.kits));
   return out;
 }
 const byText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
-/** The change list as the save plan orders it: creates and updates, then deletes, then harness.json, each group in path order. */
-function sampleChanges(from: DefinitionView, to: DefinitionView): SaveChangeView[] {
+/**
+ * The change list as the save plan orders it: creates and updates, then deletes, then harness.json, each group in path order. A file that can run is
+ * marked, and a file of a skill copied from another folder names it (`copiedFrom`, by skill id).
+ */
+function sampleChanges(from: DefinitionView, to: DefinitionView, copiedFrom: ReadonlyMap<string, string> = new Map()): SaveChangeView[] {
   const a = sampleFiles(from), b = sampleFiles(to), writes: SaveChangeView[] = [], deletes: SaveChangeView[] = [];
   let harness: SaveChangeView | null = null;
   for (const path of [...new Set([...a.keys(), ...b.keys()])].sort(byText)) {
     const was = a.get(path), now = b.get(path);
     if (was === now) continue;
-    const change: SaveChangeView = { path: `.bowerloom/${path}`, action: was === undefined ? 'create' : now === undefined ? 'delete' : 'update' };
+    const action = was === undefined ? 'create' : now === undefined ? 'delete' : 'update';
+    const label = action === 'delete' ? undefined : copiedFrom.get(/^skills\/([^/]+)\//.exec(path)?.[1] ?? '');
+    const change: SaveChangeView = { path: `.bowerloom/${path}`, action, ...(action !== 'delete' && sampleExecutable(path) ? { executable: true as const } : {}), ...(label === undefined ? {} : { from: label }) };
     if (path === 'harness.json') harness = change; else if (change.action === 'delete') deletes.push(change); else writes.push(change);
   }
   return [...writes, ...deletes, ...(harness === null ? [] : [harness])];
@@ -476,8 +496,23 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
   function savePlan(f: SampleFolder, edits: readonly SaveEdit[]): Answer<SaveView & { after: DefinitionView }> {
     const a = edited(f, edits);
     if (!a.ok) return a;
-    const changes = sampleChanges(f.def!, a.value);
-    return ok({ folder: f.info.label, changes, definition: a.value, noop: changes.length === 0, revision: sampleRevision(`save ${f.info.id} ${JSON.stringify(f.def)} ${JSON.stringify(a.value)}`), after: a.value });
+    // The folder each copied skill comes from, by skill id, as main names it: the last copy wins, and a removal takes it away.
+    const copiedFrom = new Map<string, string>();
+    for (const e of edits) {
+      if (e.kind === 'add-skill') copiedFrom.set(e.id, get(e.from).info.label);
+      else if (e.kind === 'remove-skill') copiedFrom.delete(e.id);
+    }
+    const changes = sampleChanges(f.def!, a.value, copiedFrom);
+    const revision = sampleRevision(`save ${f.info.id} ${JSON.stringify(f.def)} ${JSON.stringify(a.value)}`);
+    const copied: CopiedExecutableView[] = changes.filter(c => c.executable === true && c.from !== undefined).map(c => ({ path: c.path, from: c.from! }));
+    const removedSources: StoppedSourceView[] = [...new Set(edits.filter(e => e.kind === 'remove-source').map(e => (e as { name: string }).name))].flatMap(name => {
+      const src = f.def!.sources.find(s => s.name === name);
+      return src === undefined ? [] : [{ name, label: src.label, agents: f.def!.agents.filter(x => x.notes.includes(name)).map(x => x.name) }];
+    });
+    return ok({
+      folder: f.info.label, changes, definition: a.value, noop: changes.length === 0, revision, removedSources, copiedExecutables: copied,
+      acknowledge: copied.length === 0 ? null : sampleRevision(`acknowledge ${revision} ${JSON.stringify(copied)}`), after: a.value,
+    });
   }
   const versionView = (f: SampleFolder, v: SampleFolder['versions'][number]): VersionView => ({ ...v.entry, current: f.def !== null && sameDef(v.def, f.def) });
   /** Keeps a save point, as main does: the harness as it was first when the newest one is not it, then what was written. */
@@ -500,7 +535,10 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
     const v = f.versions.find(x => x.entry.id === version);
     if (v === undefined) return refuse('VERSION_UNKNOWN');
     const changes = sampleChanges(f.def, v.def);
-    return ok({ folder: f.info.label, changes, definition: v.def, noop: changes.length === 0, revision: sampleRevision(`restore ${f.info.id} ${version} ${JSON.stringify(f.def)}`), version: versionView(f, v), after: v.def });
+    return ok({
+      folder: f.info.label, changes, definition: v.def, noop: changes.length === 0, revision: sampleRevision(`restore ${f.info.id} ${version} ${JSON.stringify(f.def)}`), version: versionView(f, v), after: v.def,
+      removedSources: [], copiedExecutables: [], acknowledge: null,
+    });
   }
   const strip = <T extends { after: DefinitionView }>(v: T): Omit<T, 'after'> => { const { after: _after, ...rest } = v; return rest; };
 
@@ -596,10 +634,12 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
     // The sample writes nothing, not even a usage line.
     recordCheck: () => settle(false),
     planSave: (id, edits) => settle(((): Answer<SaveView> => { const a = savePlan(get(id), edits); return a.ok ? ok(strip(a.value)) : a; })()),
-    runSave: (id, revision, edits) => settle(((): Answer<SaveWritten> => {
-      const f = get(id), a = savePlan(f, edits);
+    runSave: (id, revision, sent) => settle(((): Answer<SaveWritten> => {
+      const request: SaveRequest = Array.isArray(sent) ? { edits: sent as readonly SaveEdit[], acknowledged: null } : sent as SaveRequest;
+      const f = get(id), a = savePlan(f, request.edits);
       if (!a.ok) return a;
       if (a.value.revision !== revision) return refuse('SAVE_STALE');
+      if (a.value.acknowledge !== null && request.acknowledged !== a.value.acknowledge) return refuse('SAVE_EXECUTABLE_UNACKNOWLEDGED');
       return ok(write(f, a.value, `Saved ${a.value.changes.length} ${a.value.changes.length === 1 ? 'change' : 'changes'}`));
     })()),
     listVersions: id => settle(((): Answer<readonly VersionView[]> => {
@@ -650,6 +690,11 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
       if (plan.value.revision !== revision) return refuse('NOTES_STALE');
       n.view = { ...n.view, history: 'git', lastCommitAt: COMMITTED };
       return ok({ files: n.files.length, committedAt: COMMITTED, clean: true });
+    })()),
+    // The sample opens no file. A made-up folder with a report would name it; these have none, so the answer is main's own words for that.
+    openNotesReport: id => settle(((): Answer<ReportOpened> => {
+      const n = notesGet(id);
+      return n.view.latestReport === null ? refuse('REPORT_NONE') : ok({ path: n.view.latestReport.path });
     })()),
   };
 }

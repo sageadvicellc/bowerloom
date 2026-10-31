@@ -74,7 +74,7 @@ test('the save bar holds the count and the one button, and the tour lights it', 
 test('the review lists the notes each agent will read', () => {
   const definition: DefinitionView = { ...WITH_KIT, sources: [{ name: 'reading-list', kind: 'wiki-folder', label: '~/Documents/Reading list', notesId: 'n1' }], agents: WITH_KIT.agents.map(a => (a.id === KEEPER_AGENT ? { ...a, notes: ['reading-list'] } : a)) };
   const html = renderToStaticMarkup(createElement(SaveReview, {
-    shown: { kind: 'save', view: { folder: '~/Projects/weekly-report', changes: [{ path: '.bowerloom/knowledge.json', action: 'create' }], definition, noop: false, revision: 'a'.repeat(64) }, edits: [] },
+    shown: { kind: 'save', view: { folder: '~/Projects/weekly-report', changes: [{ path: '.bowerloom/knowledge.json', action: 'create' }], definition, noop: false, revision: 'a'.repeat(64), removedSources: [], copiedExecutables: [], acknowledge: null }, edits: [] },
     approved: false, held: false, onApprove: noop,
   }));
   assert.match(html, /data-agent-notes-after="notes-keeper"/);
@@ -83,7 +83,7 @@ test('the review lists the notes each agent will read', () => {
 
 test('the review warns when the keeper is saved with no skills', () => {
   const review = (skills: string[]): string => renderToStaticMarkup(createElement(SaveReview, {
-    shown: { kind: 'save', view: { folder: '~/Projects/weekly-report', changes: [{ path: '.bowerloom/agents/notes-keeper.md', action: 'create' }], definition: { ...WITH_KIT, agents: WITH_KIT.agents.map(a => (a.id === KEEPER_AGENT ? { ...a, skills } : a)) }, noop: false, revision: 'a'.repeat(64) }, edits: [] },
+    shown: { kind: 'save', view: { folder: '~/Projects/weekly-report', changes: [{ path: '.bowerloom/agents/notes-keeper.md', action: 'create' }], definition: { ...WITH_KIT, agents: WITH_KIT.agents.map(a => (a.id === KEEPER_AGENT ? { ...a, skills } : a)) }, noop: false, revision: 'a'.repeat(64), removedSources: [], copiedExecutables: [], acknowledge: null }, edits: [] },
     approved: false, held: false, onApprove: noop,
   }));
   const none = review([]);

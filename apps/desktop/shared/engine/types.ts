@@ -457,11 +457,29 @@ export interface NotesHistoryPlanView {
 }
 /** What a starter or a history start did: the number of files in the first commit, its time, and whether the folder is clean after it. */
 export interface NotesWritten { readonly files: number; readonly committedAt: string; readonly clean: boolean }
-/** One file a save changes, as `.bowerloom/<path>`. */
-export interface SaveChangeView { readonly path: string; readonly action: 'create' | 'update' | 'delete' }
+/**
+ * One file a save changes, as `.bowerloom/<path>`. Each mark is there only when it holds, so a plain change is `{ path, action }`:
+ *  - `executable`: the file the save writes can run as a program (mode 0755).
+ *  - `from`: the label of the other folder a copied file comes from (`add-skill`).
+ *  - `modeOnly`: the bytes stay the same; only the execute bit changes.
+ */
+export interface SaveChangeView {
+  readonly path: string;
+  readonly action: 'create' | 'update' | 'delete';
+  readonly executable?: true;
+  readonly from?: string;
+  readonly modeOnly?: true;
+}
+/** A notes source a save stops using (`remove-source`): its name, its label, and the names of the agents that read it now and lose it. */
+export interface StoppedSourceView { readonly name: string; readonly label: string; readonly agents: readonly string[] }
+/** A file that can run, copied from another folder by the save, and the label of that folder. */
+export interface CopiedExecutableView { readonly path: string; readonly from: string }
 /**
  * The save plan: the files it changes in `.bowerloom`, and the harness as it will be. With no edits it is a read of the folder's harness as it is now, and
  * `noop` is true. `revision` is what the write names.
+ *  - `removedSources`: each notes source the save stops using, with the agents that lose it. Nothing in a notes folder changes.
+ *  - `copiedExecutables`: each file that can run that the save copies from another folder. When there is one, `acknowledge` is the hash a person's
+ *    acknowledgement names (`SaveRequest`), and main writes the plan only with it. Null when there is none.
  */
 export interface SaveView {
   readonly folder: string;
@@ -469,7 +487,17 @@ export interface SaveView {
   readonly definition: DefinitionView;
   readonly noop: boolean;
   readonly revision: string;
+  readonly removedSources: readonly StoppedSourceView[];
+  readonly copiedExecutables: readonly CopiedExecutableView[];
+  readonly acknowledge: string | null;
 }
+/**
+ * A save as the window sends it when the plan copies files that can run from another folder: the edits, and the plan's `acknowledge` hash once the person
+ * ticked that they read them. The edits list alone stands for `{ edits, acknowledged: null }`.
+ */
+export interface SaveRequest { readonly edits: readonly SaveEdit[]; readonly acknowledged: string | null }
+/** The tidy-up report main opened: its path relative to the notes folder. */
+export interface ReportOpened { readonly path: string }
 /** One save point of a folder, newest first in a list. `current` is true when the folder's harness is that save point now. */
 export interface VersionView {
   readonly id: string;
@@ -523,8 +551,11 @@ export interface EngineBridge {
   runMerge(folderId: string, revision: string): Promise<Answer<MergeWritten>>;
   /** Plans a save of the folder's own harness with these edits. Reads only. With no edits, it reads the harness as it is. */
   planSave(folderId: string, edits: readonly SaveEdit[]): Promise<Answer<SaveView>>;
-  /** Writes the save plan shown last, with the same edits, after main's own dialog. It keeps a save point first. Install is a separate step. */
-  runSave(folderId: string, revision: string, edits: readonly SaveEdit[]): Promise<Answer<SaveWritten>>;
+  /**
+   * Writes the save plan shown last, with the same edits, after main's own dialog. It keeps a save point first. Install is a separate step. A plan that copies
+   * files that can run from another folder is written only with its acknowledgement (`SaveRequest`).
+   */
+  runSave(folderId: string, revision: string, edits: readonly SaveEdit[] | SaveRequest): Promise<Answer<SaveWritten>>;
   /** The save points of the folder, newest first. A damaged record is a refusal, never an empty list. */
   listVersions(folderId: string): Promise<Answer<readonly VersionView[]>>;
   /** Plans "Go back" to one save point. Reads only. */
@@ -551,6 +582,11 @@ export interface EngineBridge {
   /** Starts the history the plan shown last showed, after main's own dialog: git init, and one first commit of exactly the files listed. */
   runNotesHistory(notesId: string, revision: string): Promise<Answer<NotesWritten>>;
   /**
+   * Opens the newest tidy-up report of a notes folder in the app the computer uses for it, after main's own dialog. Main finds the report itself, checks its
+   * path again, and opens only the report the Notes panel was shown last. The window names the notes folder by its id only. The sample opens nothing.
+   */
+  openNotesReport(notesId: string): Promise<Answer<ReportOpened>>;
+  /**
    * Records the answer to "Did this do what you wanted?" in the local usage log on this computer. `note` is the person's own words, at most 500 characters, or
    * null. True when it was recorded. Nothing leaves the computer. The sample records nothing and answers false.
    */
@@ -568,7 +604,7 @@ export const ENGINE_CALLS = Object.freeze([
   'folders', 'chooseFolder', 'planAdoption', 'runAdoption', 'planAdoptionRecovery', 'runAdoptionRecovery',
   'planProjection', 'runProjection', 'planRemoval', 'runRemoval', 'planRecovery', 'runRecovery', 'planMerge', 'runMerge', 'recordCheck',
   'planSave', 'runSave', 'listVersions', 'planRestore', 'runRestore', 'planSetAside', 'runSetAside',
-  'chooseNotesFolder', 'notesSummary', 'planCreateNotes', 'runCreateNotes', 'planNotesHistory', 'runNotesHistory',
+  'chooseNotesFolder', 'notesSummary', 'planCreateNotes', 'runCreateNotes', 'planNotesHistory', 'runNotesHistory', 'openNotesReport',
 ] as const);
 export type EngineCall = (typeof ENGINE_CALLS)[number];
 /** How many arguments each call takes. A call with another count is refused before anything runs. */
@@ -576,7 +612,7 @@ export const ENGINE_ARITY: Readonly<Record<EngineCall, number>> = Object.freeze(
   folders: 0, chooseFolder: 0, planAdoption: 2, runAdoption: 4, planAdoptionRecovery: 1, runAdoptionRecovery: 2,
   planProjection: 2, runProjection: 3, planRemoval: 1, runRemoval: 2, planRecovery: 2, runRecovery: 3, planMerge: 1, runMerge: 2, recordCheck: 2,
   planSave: 2, runSave: 3, listVersions: 1, planRestore: 2, runRestore: 3, planSetAside: 1, runSetAside: 2,
-  chooseNotesFolder: 1, notesSummary: 1, planCreateNotes: 1, runCreateNotes: 2, planNotesHistory: 1, runNotesHistory: 2,
+  chooseNotesFolder: 1, notesSummary: 1, planCreateNotes: 1, runCreateNotes: 2, planNotesHistory: 1, runNotesHistory: 2, openNotesReport: 1,
 });
 /** One channel per call, apart from every other channel of the app. */
 export const ENGINE_CHANNELS: Readonly<Record<EngineCall, string>> = Object.freeze(Object.fromEntries(ENGINE_CALLS.map(c => [c, `bowerloom-engine:${c}`])) as Record<EngineCall, string>);
@@ -595,8 +631,11 @@ export const SAVE_SOURCE_MISSING = 'SAVE_SOURCE_MISSING';
 export const SAVE_POINT_TOO_LARGE = 'SAVE_POINT_TOO_LARGE';
 /** A set-source whose name the harness holds already for another notes folder. */
 export const SOURCE_NAME_TAKEN = 'SOURCE_NAME_TAKEN';
+/** A save that copies files that can run from another folder, written without the acknowledgement the plan shown last asked for. */
+export const SAVE_EXECUTABLE_UNACKNOWLEDGED = 'SAVE_EXECUTABLE_UNACKNOWLEDGED';
 /** The words of those refusals, the same in main and in the sample. */
-export const SAVE_MAIN_WORDS: Readonly<Record<typeof SAVE_NO_DEFINITION | typeof SAVE_SOURCE_MISSING | typeof SAVE_POINT_TOO_LARGE | typeof SOURCE_NAME_TAKEN, string>> = Object.freeze({
+export const SAVE_MAIN_WORDS: Readonly<Record<typeof SAVE_NO_DEFINITION | typeof SAVE_SOURCE_MISSING | typeof SAVE_POINT_TOO_LARGE | typeof SOURCE_NAME_TAKEN | typeof SAVE_EXECUTABLE_UNACKNOWLEDGED, string>> = Object.freeze({
+  SAVE_EXECUTABLE_UNACKNOWLEDGED: 'This save copies files that can run as programs from another folder. Tick that you read them, then save. Nothing was written.',
   SOURCE_NAME_TAKEN: 'The harness has notes of that name for another folder already. Nothing was written.',
   SAVE_NO_DEFINITION: 'This folder has no harness yet, so there is nothing to save. Make one first with New harness from a folder. Nothing was written.',
   SAVE_SOURCE_MISSING: 'The folder to copy from does not hold that skill, or its harness does not load. Nothing was written.',
@@ -619,4 +658,19 @@ export const KIT_MAIN_WORDS: Readonly<Record<typeof KIT_INVALID | typeof KIT_ALR
 export const NOTES_NOT_CHOSEN = 'NOTES_NOT_CHOSEN';
 export const NOTES_MAIN_WORDS: Readonly<Record<typeof NOTES_NOT_CHOSEN, string>> = Object.freeze({
   NOTES_NOT_CHOSEN: 'Bowerloom changes a notes folder only after you choose it here with "Use my notes" or "Start fresh". Nothing was changed.',
+});
+/**
+ * Refusals of main itself for "open the tidy-up report", with words: the folder holds no report; the newest report now is not the one the Notes panel was
+ * shown last; the report is not a plain file of its own in the folder (a link, a second link, or a reports folder that is a link); or the computer could
+ * not open it.
+ */
+export const REPORT_NONE = 'REPORT_NONE';
+export const REPORT_NOT_SHOWN = 'REPORT_NOT_SHOWN';
+export const REPORT_UNSAFE = 'REPORT_UNSAFE';
+export const REPORT_OPEN_FAILED = 'REPORT_OPEN_FAILED';
+export const REPORT_MAIN_WORDS: Readonly<Record<typeof REPORT_NONE | typeof REPORT_NOT_SHOWN | typeof REPORT_UNSAFE | typeof REPORT_OPEN_FAILED, string>> = Object.freeze({
+  REPORT_NONE: 'This notes folder holds no tidy-up report yet. Nothing was opened.',
+  REPORT_NOT_SHOWN: 'The newest tidy-up report is not the one shown here. Nothing was opened. Read the notes again.',
+  REPORT_UNSAFE: 'The tidy-up report is not a plain file of its own in the notes folder, so Bowerloom will not open it. Nothing was opened.',
+  REPORT_OPEN_FAILED: 'Your computer could not open the tidy-up report. Nothing was changed.',
 });

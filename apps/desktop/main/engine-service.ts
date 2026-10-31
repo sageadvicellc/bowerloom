@@ -24,7 +24,7 @@ import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import { NotesRefusal, applyGitInit, applyStarter, planGitInit, planStarter, readNotesSummary } from '../../../packages/notes-source/src/index.js';
 import type { NotesOptions } from '../../../packages/notes-source/src/index.js';
 import {
-  applyAdoption, applyAdoptionRecovery, applySave, planAdoptionRecovery, planSave as packagePlanSave, planSaveRecovery, refuseWhileSaveStopped, runSaveRecovery, saveStopped,
+  SaveRefusal, applyAdoption, applyAdoptionRecovery, applySave, planAdoptionRecovery, planSave as packagePlanSave, planSaveRecovery, refuseWhileSaveStopped, runSaveRecovery, saveStopped,
 } from '../../../packages/adoption/src/index.js';
 import {
   applyInstructionMerge, applyInstructionMergeRecovery, mergeStopped, planInstructionMerge, planInstructionMergeRecovery, refuseWhileStopped,
@@ -58,14 +58,17 @@ import { EnginePreviewRefusal } from '../../../packages/skill-manifest/src/engin
 import { EVERY_ENGINE_PARTS, RECONCILE, SAVE_EDIT_LIMIT } from '../shared/engine/types.js';
 import type {
   AdoptApproval, AdoptChoices, AdoptRecovered, AdoptRecoveryView, AdoptView, AdoptWritten, Answer, ApproveLineView, EngineId, EveryEnginePart, FolderInfo, MergeView, MergeWritten,
-  DefinitionView, ProjectAnswer, ProjectInput, ProjectWritten, Recovered, RecoveryChoices, RecoveryView, Refusal, RemovalView, Removed, RestoreView, SaveEdit, SaveView, SaveWritten,
-  SetAsideView, SetAsideWritten, VersionView,
+  DefinitionView, ProjectAnswer, ProjectInput, ProjectWritten, Recovered, RecoveryChoices, RecoveryView, Refusal, RemovalView, Removed, ReportOpened, RestoreView, SaveChangeView, SaveEdit,
+  SaveRequest, SaveView, SaveWritten, SetAsideView, SetAsideWritten, VersionView,
 } from '../shared/engine/types.js';
+import { REPORT_MAIN_WORDS, REPORT_NONE, REPORT_NOT_SHOWN, REPORT_OPEN_FAILED, SAVE_EXECUTABLE_UNACKNOWLEDGED, SAVE_MAIN_WORDS } from '../shared/engine/types.js';
+import { checkedReport, newestReport } from './notes-report.js';
 import { adoptRecoveryView, adoptionView, approveKey, approveLine, keepsFile, mergeRecoveryView, mergeView, projectView, recoveryView, removalView } from '../shared/engine/view.js';
-import { ASK, ShownPlans, approvalText, cancelled, canonical, hashOf, notTheShownPlan } from './engine-consent.js';
-import type { Ask } from './engine-consent.js';
+import { ASK, ShownPlans, approvalText, cancelled, canonical, hashOf, notTheShownPlan, openCancelled } from './engine-consent.js';
+import type { Ask, SaveMarks } from './engine-consent.js';
 import {
-  VERSION_KEY, afterSaveWarnings, copiesOk, currentDefinition, keepAfter, keepBefore, keepable, saveCodeOf, saveDone, savedLabel, targetOf, targetView, versionViews, viewOf, wentBackLabel,
+  VERSION_KEY, acknowledgeOf, afterSaveWarnings, changeViews, copiedExecutables, copiesOk, currentDefinition, keepAfter, keepBefore, keepable, saveCodeOf, saveDone, savedLabel,
+  stoppedSources, targetOf, targetView, versionViews, viewOf, wentBackLabel,
 } from './engine-save.js';
 import type { NotesEditDeps, SourceOf } from './engine-save.js';
 
@@ -97,6 +100,11 @@ export interface EngineServiceDeps {
   readonly kitsDir?: () => string;
   /** Where packages/notes-source looks for git. Tests set it; the app passes nothing, so only the fixed places count. */
   readonly notesOptions?: NotesOptions;
+  /**
+   * Opens a file main checked in the app the computer uses for it (Electron `shell.openPath`): an empty string when it opened, else the reason. Only the
+   * tidy-up report of a notes folder reaches it. Default: none, and the call is refused in words.
+   */
+  readonly openPath?: (path: string) => Promise<string>;
 }
 
 /** A call the service refuses before it reaches a package: the window gets only the short code. */
@@ -218,6 +226,18 @@ export function checkSaveEdits(v: unknown): SaveEdit[] {
   return copiesOk(edits) ? edits : bad();
 }
 
+/**
+ * The third argument of runSave, checked in main: the edits list alone (no acknowledgement), or exactly `{ edits, acknowledged }`, where `acknowledged` is
+ * null or the 64-hex hash a plan's `acknowledge` named. Anything else is refused (BAD_ARGUMENT).
+ */
+export function checkSaveRequest(v: unknown): SaveRequest {
+  if (Array.isArray(v)) return { edits: checkSaveEdits(v), acknowledged: null };
+  if (!plainObject(v) || !exactKeys(v, ['edits', 'acknowledged'])) return bad();
+  const acknowledged = v.acknowledged === null ? null : revisionArg(v.acknowledged);
+  if (!Array.isArray(v.edits)) return bad();
+  return { edits: checkSaveEdits(v.edits), acknowledged };
+}
+
 /** A source name made from a folder name: lowercase letters, digits and single hyphens, or `notes` when nothing is left. */
 export function suggestedSourceName(name: string): string {
   const id = name.normalize('NFKD').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+/, '').slice(0, 64).replace(/-+$/, '');
@@ -278,6 +298,7 @@ export interface EngineService {
   runCreateNotes(notesId: unknown, revision: unknown): Promise<Answer<NotesWritten>>;
   planNotesHistory(notesId: unknown): Promise<Answer<NotesHistoryPlanView>>;
   runNotesHistory(notesId: unknown, revision: unknown): Promise<Answer<NotesWritten>>;
+  openNotesReport(notesId: unknown): Promise<Answer<ReportOpened>>;
 }
 
 /**
@@ -429,10 +450,17 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     if (n === undefined) throw new EngineCallRefusal('UNKNOWN_FOLDER');
     return n;
   };
+  /**
+   * The tidy-up report each notes folder's read showed the window last, relative to the folder, or null for none. Opening a report opens only this one, as a
+   * write writes only the plan shown last: a report that came after the panel read the folder is never opened unseen.
+   */
+  const shownReports = new Map<string, string | null>();
   /** The Notes panel's read of one folder: names and counts only, through packages/notes-source, which never opens a page. */
   async function notesView(n: Notes): Promise<NotesView> {
+    shownReports.delete(n.id);
     if (n.unsafe) throw new NotesRefusal('NOTES_PATH_UNSAFE');
     const s = await readNotesSummary(n.dir, notesOptions);
+    shownReports.set(n.id, s.latestReport?.path ?? null);
     return {
       id: n.id, label: n.label, name: n.name, suggestedName: suggestedSourceName(n.name), pages: s.pages, complete: s.complete, history: s.history,
       lastCommitAt: s.lastCommitAt === null ? null : isoSeconds(new Date(s.lastCommitAt)),
@@ -679,14 +707,15 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
   /** The input of the save package for a folder: its own adoption state folder holds the save journal, beside the adoption and merge journals. */
   const saveIo = (f: Folder): { projectDir: string; stateDir: string } => ({ projectDir: f.dir, stateDir: f.adoptState });
   /** The save plan of these edits, and its target file set. Refused while an adoption, a Merge or a save is stopped. */
-  function saveNow(f: Folder, edits: readonly SaveEdit[]): { plan: SavePlan; target: DefinitionFile[] } {
+  function saveNow(f: Folder, edits: readonly SaveEdit[]): { plan: SavePlan; target: DefinitionFile[]; def: Definition; origins: Map<string, string> } {
     whileStopped(f);
     const def = currentDefinition(f.dir);
-    const target = targetOf(def, edits, from => folderOf(from).dir, notesEdits(f));
+    const origins = new Map<string, string>();
+    const target = targetOf(def, edits, from => folderOf(from).dir, notesEdits(f), origins);
     const plan = packagePlanSave(saveIo(f), target);
     // A save that changes files keeps a save point before and after it; one that could not be kept is refused here, before the person approves.
     if (plan.changes.length > 0) keepable(def.files, target);
-    return { plan, target };
+    return { plan, target, def, origins };
   }
   /** The harness view with every string a person wrote passed through the folder's scrub, so no home path reaches the window. */
   const scrubbed = (f: Folder, d: DefinitionView): DefinitionView => ({
@@ -695,12 +724,31 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     agents: d.agents.map(a => ({ ...a, name: f.scrub(a.name), description: f.scrub(a.description) })),
     sources: d.sources.map(x => ({ ...x, label: f.scrub(x.label) })),
   });
-  function saveView(f: Folder, plan: SavePlan, target: readonly DefinitionFile[]): SaveView {
+  /**
+   * The save plan as the window reads it. `made` is what a save of edits adds: the folder each copied file comes from (`origins`, by folder id), the edits
+   * and the harness they start from, for the notes the save stops using. A go-back has none of it: it copies nothing from another folder and stops no source
+   * by an edit of its own.
+   */
+  function saveView(f: Folder, plan: SavePlan, target: readonly DefinitionFile[], made?: { origins: ReadonlyMap<string, string>; edits: readonly SaveEdit[]; def: Definition }): SaveView {
+    const labelOf = (rel: string): string | undefined => { const id = made?.origins.get(rel); return id === undefined ? undefined : byId.get(id)?.label; };
+    const changes: SaveChangeView[] = changeViews(plan.changes, labelOf, f.scrub);
+    const copied = copiedExecutables(changes);
     return {
-      folder: f.label, changes: plan.changes.map(c => ({ path: f.scrub(`.bowerloom/${c.path}`), action: c.action })), definition: scrubbed(f, targetView(target, f.dir, sourceViewOf(f))),
-      noop: plan.changes.length === 0, revision: plan.revision,
+      folder: f.label, changes, definition: scrubbed(f, targetView(target, f.dir, sourceViewOf(f))), noop: plan.changes.length === 0, revision: plan.revision,
+      removedSources: made === undefined ? [] : stoppedSources(made.def, made.edits, sourceViewOf(f)).map(s => ({ ...s, label: f.scrub(s.label), agents: s.agents.map(f.scrub) })),
+      copiedExecutables: copied, acknowledge: acknowledgeOf(plan.revision, copied),
     };
   }
+  /** The marks main's dialog names: each file the plan writes that can run, and each whose execute bit alone changes. */
+  const marksOf = (changes: readonly SaveChangeView[]): SaveMarks => ({
+    executables: changes.filter(c => c.executable === true && c.action !== 'delete').map(c => c.path), modeOnly: changes.filter(c => c.modeOnly === true).map(c => c.path),
+  });
+  /** The acknowledgement the save plan shown last asks for, or null: it is part of the plan's choices. */
+  const shownAcknowledge = (f: Folder): string | null => {
+    const shownPlan = plans.peek(f.id, 'save');
+    if (shownPlan === null) return null;
+    try { const c = JSON.parse(shownPlan.choices) as { acknowledged?: unknown }; return typeof c.acknowledged === 'string' ? c.acknowledged : null; } catch { return null; }
+  };
   /**
    * Writes a save target the person approved: a save point of the harness as it is first (a save never runs without a way back), then the package's
    * journaled write under the project lock, then a save point of what it wrote. A plan shown before it, of an install, a save or a go-back, can no longer be
@@ -924,18 +972,24 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     planSave: (id, edits) => serial(async () => {
       const f = folderOf(id), e = checkSaveEdits(edits);
       return planned(f, 'save', () => {
-        const { plan, target } = saveNow(f, e);
-        const value: SaveView = saveView(f, plan, target);
-        return { value, revision: plan.revision, choices: e, ask: value.noop ? null : ASK.save(f.label, plan.changes.length, plan.revision) };
+        const { plan, target, def, origins } = saveNow(f, e);
+        const value: SaveView = saveView(f, plan, target, { origins, edits: e, def });
+        // The choices hold the acknowledgement this plan asks for (null for none), so a write without it is never the plan shown.
+        return { value, revision: plan.revision, choices: { edits: e, acknowledged: value.acknowledge }, ask: value.noop ? null : ASK.save(f.label, plan.changes.length, plan.revision, marksOf(value.changes)) };
       });
     }),
     runSave: (id, revision, edits) => serial(async () => {
-      const f = folderOf(id), rev = revisionArg(revision), e = checkSaveEdits(edits);
+      const f = folderOf(id), rev = revisionArg(revision), request = checkSaveRequest(edits), e = request.edits;
       const stopped = await answer(f, () => whileStopped(f));
       if (!stopped.ok) return stopped;
-      return written(f, 'save', rev, e, () => scenarioOf(f, { step: 'save' }, async () => {
-        // The target is made again from the harness as it is now; when it changed since the plan, the package's revision check refuses the write.
-        const { target } = saveNow(f, e);
+      // A plan that copies files that can run from another folder is written only with the person's acknowledgement of it, before any dialog.
+      const need = shownAcknowledge(f);
+      if (need !== null && request.acknowledged !== need) return { ok: false, refusal: { code: SAVE_EXECUTABLE_UNACKNOWLEDGED, message: SAVE_MAIN_WORDS.SAVE_EXECUTABLE_UNACKNOWLEDGED, paths: [] } };
+      return written(f, 'save', rev, { edits: e, acknowledged: request.acknowledged }, () => scenarioOf(f, { step: 'save' }, async () => {
+        // The target is made again from the harness as it is now; when it changed since the plan, the package's revision check refuses the write. The
+        // files that can run it copies must be the ones acknowledged, too: the hash binds the plan's revision and each such file.
+        const { plan, target, def, origins } = saveNow(f, e);
+        if (saveView(f, plan, target, { origins, edits: e, def }).acknowledge !== request.acknowledged) throw new SaveRefusal('SAVE_STALE');
         return saveAndKeep(f, rev, target, n => savedLabel(n));
       }));
     }),
@@ -952,7 +1006,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
         const plan = packagePlanSave(saveIo(f), stored.files);
         if (plan.changes.length > 0) keepable(def.files, stored.files);
         const value: RestoreView = { ...saveView(f, plan, stored.files), version: viewOf(stored.entry, def) };
-        return { value, revision: plan.revision, choices: { version: v }, ask: value.noop ? null : ASK.restore(f.label, plan.changes.length, v, plan.revision) };
+        return { value, revision: plan.revision, choices: { version: v }, ask: value.noop ? null : ASK.restore(f.label, plan.changes.length, v, plan.revision, marksOf(value.changes)) };
       });
     }),
     runRestore: (id, revision, version) => serial(async () => {
@@ -1054,6 +1108,29 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
         plans.clear(n.id, 'notes-starter');
         return { files: r.files.length, committedAt: isoSeconds(new Date(r.committedAt)), clean: r.clean };
       }));
+    }),
+    openNotesReport: id => serial(async () => {
+      const n = notesOf(id);
+      // Main finds the newest report itself, and opens it only when it is the one the panel was shown last: no dialog for a report the person never saw.
+      const found = await answer(n, () => {
+        if (n.unsafe) throw new NotesRefusal('NOTES_PATH_UNSAFE');
+        const rel = newestReport(n.dir);
+        if (rel === null && shownReports.get(n.id) === null) throw new DefinitionError(REPORT_NONE, REPORT_MAIN_WORDS.REPORT_NONE);
+        if (rel === null || !shownReports.has(n.id) || shownReports.get(n.id) !== rel) throw new DefinitionError(REPORT_NOT_SHOWN, REPORT_MAIN_WORDS.REPORT_NOT_SHOWN);
+        return checkedReport(n.dir, rel);
+      });
+      if (!found.ok) return found;
+      if (!(await deps.confirm(ASK.openReport(n.label, found.value.rel)))) return openCancelled();
+      return answer(n, async () => {
+        // Checked once more after the dialog, right before it opens: the path is still a plain file of its own inside the notes folder.
+        const place = checkedReport(n.dir, found.value.rel);
+        if (deps.openPath === undefined) throw new DefinitionError(REPORT_OPEN_FAILED, REPORT_MAIN_WORDS.REPORT_OPEN_FAILED);
+        let failed: string;
+        try { failed = await deps.openPath(place.abs); } catch { failed = 'failed'; }
+        if (failed !== '') throw new DefinitionError(REPORT_OPEN_FAILED, REPORT_MAIN_WORDS.REPORT_OPEN_FAILED);
+        record({ kind: 'scenario', step: 'notes-report', outcome: 'done' });
+        return { path: n.scrub(place.rel) };
+      });
     }),
   };
 }

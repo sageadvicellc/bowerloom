@@ -7,7 +7,7 @@ export { STARTER_LIMITS, STARTER_PLAN_FORMAT, applyStarter, planStarter } from '
 export type { NotesOptions, StarterPlan, StarterResult, TemplateFile } from './starter.js';
 export { GIT_INIT_LIMITS, GIT_INIT_PLAN_FORMAT, applyGitInit, planGitInit } from './init.js';
 export type { GitInitOptions, GitInitPlan, GitInitResult } from './init.js';
-export { NOTES_SUMMARY_FORMAT, SUMMARY_LIMITS, readNotesSummary } from './summary.js';
+export { NOTES_SUMMARY_FORMAT, SUMMARY_LIMITS, readLatestReport, readNotesSummary } from './summary.js';
 export type { NotesHistory, NotesSummary, SummaryOptions } from './summary.js';
 export { findRepository } from './repo.js';
 export type { Repository, RepositoryOptions } from './repo.js';

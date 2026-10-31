@@ -131,6 +131,18 @@ async function history(dir: string, options: SummaryOptions): Promise<Pick<Notes
 }
 
 /**
+ * Reads the newest tidy-up report of a notes folder by the same rule as the summary, and nothing else: no page count and no git. The app uses it to find the
+ * report it opens, so the file it opens is the one the panel names. Never opens a page and never follows a link. Refuses NOTES_FOLDER_MISSING,
+ * NOTES_PATH_UNSAFE, or NOTES_USAGE (a bound out of range).
+ */
+export function readLatestReport(dir: string, options: Pick<SummaryOptions, 'maxEntries'> = {}): Pick<NotesSummary, 'latestReport' | 'reportsComplete'> {
+  const folder = verifiedFolder(dir);
+  const maxEntries = options.maxEntries ?? SUMMARY_LIMITS.entries;
+  if (!Number.isInteger(maxEntries) || maxEntries < 1) refuse('NOTES_USAGE');
+  return latestReport(folder.abs, maxEntries);
+}
+
+/**
  * Reads the summary of a linked notes folder. Never opens a page and never follows a link. Refuses
  * NOTES_FOLDER_MISSING, NOTES_PATH_UNSAFE, or NOTES_USAGE (a bound out of range).
  */

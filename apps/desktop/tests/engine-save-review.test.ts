@@ -41,7 +41,8 @@ const LINK: SaveEdit[] = [{ kind: 'set-agent', id: 'reader', skills: ['outline']
 const UNLINK: SaveEdit[] = [{ kind: 'set-agent', id: 'reader', skills: [] }];
 async function save(s: Setup, id: string, edits: readonly SaveEdit[]): Promise<types.SaveWritten> {
   const plan = value(await s.service.planSave(id, edits));
-  return value(await s.service.runSave(id, plan.revision, edits));
+  // A plan that copies files that can run from another folder is written with the person's acknowledgement of them.
+  return value(await s.service.runSave(id, plan.revision, plan.acknowledge === null ? edits : { edits, acknowledged: plan.acknowledge }));
 }
 /** The team folder with `n` more reference files in the skill `outline`, each of `size` bytes of short text lines. */
 function bigTeam(home: string, n: number, size: number, folder = 'p'): string {
