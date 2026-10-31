@@ -8,7 +8,7 @@
  */
 import fs from 'node:fs';
 import os from 'node:os';
-import { dirname, isAbsolute, join, relative, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { plainRelative, uid } from './folder.js';
 import { refuse } from './refusal.js';
 
@@ -34,12 +34,24 @@ export interface RepositoryOptions {
 
 const errno = (e: unknown): string | undefined => (e as NodeJS.ErrnoException | null)?.code;
 
-/** The home folder the walk stops at, by its real path when it has one. Refuses NOTES_USAGE for a home that is not absolute. */
+/**
+ * The real path of a folder, in the letter case the disk keeps. `fs.realpathSync` keeps the case it was given, so on a case-insensitive disk `KB` and `kb`
+ * would be two names for one folder: the walk would then miss the home stop, and the wiki's place in a larger repository would not match what git tracks.
+ * The system's own realpath returns the case on disk. A folder that does not exist yet is its parent's real path plus its own name.
+ */
+function onDisk(abs: string): string | null {
+  try { return fs.realpathSync.native(abs); } catch (e) {
+    if (errno(e) !== 'ENOENT' || dirname(abs) === abs) return null;
+    try { return join(fs.realpathSync.native(dirname(abs)), basename(abs)); } catch { return null; }
+  }
+}
+
+/** The home folder the walk stops at, by its real path on disk when it has one. Refuses NOTES_USAGE for a home that is not absolute. */
 export function stopFolder(options: RepositoryOptions): string | null {
   const home = options.home ?? (() => { try { return os.userInfo().homedir; } catch { return null; } })();
   if (home === null) return null;
   if (typeof home !== 'string' || !isAbsolute(home) || home.includes('\0')) return refuse('NOTES_USAGE');
-  try { return fs.realpathSync(home); } catch { return home; }
+  return onDisk(home) ?? home;
 }
 
 /** What `<folder>/.git` is: absent, a real folder of yours, something else, or not known. */
@@ -53,11 +65,15 @@ function gitEntry(folder: string): 'absent' | 'plain' | 'not-plain' | 'unknown' 
 }
 
 /**
- * Finds the repository that keeps the history of `dir`, an absolute path that is its own real path (or, for a folder that does not exist yet, whose parent
- * is). Reads names only. Refuses NOTES_USAGE for a home folder that is not absolute.
+ * Finds the repository that keeps the history of `given`, an absolute path that is its own real path (or, for a folder that does not exist yet, whose parent
+ * is). The walk starts from its real path on disk, in the disk's own letter case, so `root` and `prefix` are in that case too. Reads names only. Refuses
+ * NOTES_USAGE for a home folder that is not absolute.
  */
-export function findRepository(dir: string, options: RepositoryOptions = {}): Repository {
+export function findRepository(given: string, options: RepositoryOptions = {}): Repository {
   const home = stopFolder(options);
+  // The walk, the home stop, and the prefix all use the letter case on disk, so they match each other and what git tracks.
+  const dir = onDisk(given);
+  if (dir === null) return { kind: 'unknown' };
   const own = gitEntry(dir);
   if (own === 'plain') return { kind: 'self', root: dir };
   if (own === 'not-plain') return { kind: 'not-plain', at: 'self' };

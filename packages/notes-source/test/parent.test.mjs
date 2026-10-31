@@ -111,6 +111,37 @@ test('the walk stops at the home folder: a repository at or above home is not a 
   assert.equal(planGitInit(dir, { home }).files.length, 1, 'and the history offer stays');
 });
 
+/** The reason to skip a letter-case test, or false when the disk under `dir` treats `a` and `A` as one name. */
+function caseSensitiveDisk(dir) {
+  fs.mkdirSync(path.join(dir, 'case-probe'));
+  return fs.existsSync(path.join(dir, 'CASE-PROBE')) ? false : 'the test disk is case-sensitive, so a folder chosen in another letter case is not the same folder';
+}
+
+test('on a case-insensitive disk, a wiki chosen as KB while git tracks kb still finds its commit', { skip: needsGit }, async t => {
+  const { root, wikiAt } = parentRepo(t, { wiki: 'kb' });
+  const skip = caseSensitiveDisk(path.dirname(root));
+  if (skip) { t.skip(skip); return; }
+  const chosen = path.join(root, 'KB');
+  assert.equal(fs.realpathSync(chosen), chosen, 'node keeps the letter case it was given, which is how the mismatch reaches the walk');
+  const s = await readNotesSummary(chosen);
+  assert.deepEqual([s.history, s.lastCommitAt, s.pages], ['parent', iso(wikiAt), 3]);
+  const upper = path.join(path.dirname(root), path.basename(root).toUpperCase(), 'KB');
+  assert.deepEqual([(await readNotesSummary(upper)).history, (await readNotesSummary(upper)).lastCommitAt], ['parent', iso(wikiAt)], 'every folder on the way in another case');
+});
+
+test('on a case-insensitive disk, the walk stops at the home folder whatever its letter case', { skip: needsGit }, async t => {
+  const base = tempDir(t), home = path.join(base, 'home'), dir = path.join(home, 'Documents', 'wiki');
+  const skip = caseSensitiveDisk(base);
+  if (skip) { t.skip(skip); return; }
+  put(dir, 'index.md');
+  ownGit(base, ['init', '-q']);
+  put(base, 'README.md'); commitAt(base, 'readme', '2024-01-01T00:00:00Z', ['README.md']);
+  assert.equal((await readNotesSummary(dir, { home })).history, 'none');
+  assert.equal((await readNotesSummary(dir, { home: path.join(base, 'HOME') })).history, 'none', 'a home named in another case');
+  assert.equal((await readNotesSummary(path.join(base, 'HOME', 'Documents', 'wiki'), { home })).history, 'none', 'a wiki chosen in another case');
+  assert.equal(planGitInit(path.join(base, 'HOME', 'Documents', 'wiki'), { home }).files.length, 1, 'the history offer stays');
+});
+
 // ---- init and the starter ----------------------------------------------------------------------------------------------
 
 test('planGitInit refuses a folder inside a larger repository with NOTES_PARENT_REPOSITORY, and apply starts nothing', { skip: needsGit }, async t => {
