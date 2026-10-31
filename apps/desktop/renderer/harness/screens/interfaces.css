@@ -1,0 +1,27 @@
+/*
+ * Interfaces (S10). Every rule starts at [data-home]. A row is the Harness list's row (hx-row). The switch at its right is a real switch: pressing it changes whether the interface is offered in the
+ * install and start sheets. The dot and the words say whether the interface was found. Text is 14 px or more.
+ */
+[data-home] ul.hxn-rows { gap: 0.8125rem; }
+[data-home] .hxn-row { min-height: 5.625rem; }
+[data-home] .hxn-row .hx-row-text { gap: 3px; }
+[data-home] .hxn-row[data-gone] { opacity: 0.72; }
+[data-home] .hxn-row[data-gone] .hx-tile { opacity: 0.8; }
+[data-home] .hxn-health { position: relative; pointer-events: none; align-self: flex-start; margin-top: 2px; }
+[data-home] .hxn-switch-wrap { position: relative; z-index: 1; flex: none; }
+[data-home] .hxn-switch { all: unset; box-sizing: border-box; display: inline-flex; align-items: center; gap: var(--hm-space-3); min-height: var(--hm-control-h); padding: 0 var(--hm-space-2); font-size: var(--hm-text-base); color: var(--text); cursor: pointer; touch-action: manipulation; border-radius: var(--hm-radius-small); }
+[data-home] .hxn-switch:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+[data-home] .hxn-switch:disabled { cursor: not-allowed; color: var(--text-muted); }
+[data-home] .hxn-track { flex: none; position: relative; width: 2.25rem; height: 1.25rem; box-sizing: border-box; border: 1px solid var(--hm-border); border-radius: 999px; background: var(--surface-2); transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease); }
+[data-home] .hxn-thumb { position: absolute; top: 50%; left: 0.1875rem; width: 0.75rem; height: 0.75rem; margin-top: -0.375rem; border-radius: 50%; background: var(--text-muted); transition: transform var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease); }
+[data-home] .hxn-switch[aria-checked="true"] .hxn-track { background: var(--accent-strong); border-color: var(--accent-strong); }
+[data-home] .hxn-switch[aria-checked="true"] .hxn-thumb { transform: translateX(1rem); background: var(--accent-contrast); }
+[data-home] .hxn-head-sub { display: inline-flex; }
+[data-home] .hxn-wide .kit-button { width: 100%; }
+[data-home] .hxn-path { font-size: var(--hm-text-base); overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) {
+  [data-home] .hxn-track, [data-home] .hxn-thumb { transition: none !important; }
+}
+/* Goal 2: the switch answers the pointer with a soft fill, as a quiet button does. */
+[data-home] .hxn-switch:not(:disabled):hover { background: var(--accent-soft); }
+[data-home] .hxn-switch:not(:disabled):hover .hxn-track { border-color: var(--accent-strong); }

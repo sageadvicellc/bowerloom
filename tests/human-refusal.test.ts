@@ -54,7 +54,7 @@ const M1: ReadonlyArray<readonly [string, string, string]> = [
   ['FOLDER_UNSAFE', 'Bowerloom reads only folders that you own and that no other user can change.', 'ls -ld <folder>'],
   ['FOLDER_IN_CLOUD', 'Cloud sync changes file times and moves files, which breaks the checks that keep a folder safe.', 'mv <folder> ~/Projects/'],
   ['FOLDER_INVALID', 'Bowerloom reads folder records strictly, so a hand edit can break one.', 'bowerloom folder list'],
-  ['FOLDER_NOT_ALLOWED', 'A registered folder is shared with the projects you allow, one by one.', 'bowerloom folder allow <folder-name>'],
+  ['FOLDER_NOT_ALLOWED', 'A registered folder is shared with the projects you allow, one by one, for one summary kind each.', 'bowerloom folder allow <folder-name> heading'],
 ];
 
 test('renderRefusal prints the fixed plain words of each M1 refusal code, with the code kept visible', () => {
@@ -245,7 +245,7 @@ test('spec 07: GITHUB_TOKEN_INVALID, STORE_REMOTE_AUTH_FAILED, and the new STORE
   assert.equal(reportFailure(new DefinitionError('GITHUB_TOKEN_INVALID', rows[0]![1]), false).text, `${JSON.stringify({ error: { code: 'GITHUB_TOKEN_INVALID', message: rows[0]![1] } })}\n`);
 });
 
-// Spec 08, section 5: the six store migrate codes. Review C2 of PR 98 (Hanna's choice C on #97): each sentence says why,
+// Spec 08, section 5: the six store migrate codes. Review C2 of PR 98 (the maintainer's choice C on #97): each sentence says why,
 // and does not repeat the message. Each has a row in the errors reference whose meaning is that sentence.
 test('spec 08: the MIGRATE_* codes have their words and a row in the errors reference', () => {
   const rows: ReadonlyArray<readonly [string, string, string]> = [
@@ -264,7 +264,7 @@ test('spec 08: the MIGRATE_* codes have their words and a row in the errors refe
   assert.match(renderRefusal('MIGRATE_ID_EXISTS', 'm.', { next: 'bowerloom receipt clean --global' }), /\nNext: bowerloom receipt clean --global\n$/);
 });
 
-// Spec 09, section 5, with review M4 of PR 99 (Hanna's choice C on #97): each sentence says why, and the errors row
+// Spec 09, section 5, with review M4 of PR 99 (the maintainer's choice C on #97): each sentence says why, and the errors row
 // says the same words. The fixed message of the code stays the message of section 5.
 test('spec 09: the CACHE_* codes have their words, their fixed messages, and the same words in the errors reference', () => {
   const rows: ReadonlyArray<readonly [string, string, string, string]> = [

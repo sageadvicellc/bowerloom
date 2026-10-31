@@ -1,8 +1,8 @@
 # Trellis working order
 
-Hanna reviews and merges completed features into `main`. The team owns implementation, peer review, and merges into feature branches within approved scope.
+The maintainer reviews and merges completed features into `main`. The team owns implementation, peer review, and merges into feature branches within approved scope.
 
-The founder clarified this rule on October 1, 2026. It supersedes earlier blanket merge restrictions in this campaign. Hanna approved the alpha build on October 1, 2026. The bounded implementation campaign is active.
+The founder clarified this rule on October 1, 2026. It supersedes earlier blanket merge restrictions in this campaign. The maintainer approved the alpha build on October 1, 2026. The bounded implementation campaign is active.
 
 ## Branch ownership
 
@@ -10,7 +10,7 @@ An integration branch combines accepted work from task branches. The current int
 
 Workers create task branches from the integration branch. Each task has an owner, a bounded change, and observable acceptance criteria. Its pull request targets the integration branch.
 
-Only Hanna, through `hannasage`, merges into `main`. Agents never push or merge into `main`. The review identifies the exact feature revision that Hanna will receive.
+Only the maintainer, through `hannasage`, merges into `main`. Agents never push or merge into `main`. The review identifies the exact feature revision that the maintainer will receive.
 
 ## Team workflow
 
@@ -27,7 +27,7 @@ Only Hanna, through `hannasage`, merges into `main`. Agents never push or merge 
 
 The author cannot supply the independent review. Changed code needs renewed review. The integration lead resolves routine conflicts and obtains review of the resulting changes.
 
-Feature merges do not need Hanna's approval for each task. Escalation is for a scope decision, an unresolved tradeoff, or a blocker that requires Hanna. Routine branch coordination stays with the team.
+Feature merges do not need the maintainer's approval for each task. Escalation is for a scope decision, an unresolved tradeoff, or a blocker that requires the maintainer. Routine branch coordination stays with the team.
 
 ## Identities and execution
 
@@ -39,11 +39,11 @@ A successful branch push does not establish server-enforced merge protection. Th
 
 ## Founder review
 
-The daily packet presents the assembled feature, acceptance instructions, test results, usage, gaps, and decisions. The feature-to-main pull request stays ready for Hanna's review when its acceptance criteria pass. Hanna reviews that result and performs the merge.
+The daily packet presents the assembled feature, acceptance instructions, test results, usage, gaps, and decisions. The feature-to-main pull request stays ready for the maintainer's review when its acceptance criteria pass. The maintainer reviews that result and performs the merge.
 
 Codex-first `v0.7-alpha` enables founder testing and marketing preparation before beta. Trellis v0.7-beta precedes a separate Sagespec product team with its own lead. The approved alpha packet supplies implementation defaults and delegated engineering choices. Material scope changes and later release gates remain explicit. This campaign does not start Sagespec early.
 
-The canonical release sequence is `v0.7-alpha`, `v0.7-beta`, `v1-beta`, and `v1-rc`. A release candidate is a build proposed for final acceptance. Legacy names such as `Sagespec v3` remain historical references. Current plans use the canonical release names. Both Codex and Claude Code are required for `v0.7-beta`. Sagespec is Hanna's flagship product built on Trellis to automate her entire business.
+The canonical release sequence is `v0.7-alpha`, `v0.7-beta`, `v1-beta`, and `v1-rc`. A release candidate is a build proposed for final acceptance. Legacy names such as `Sagespec v3` remain historical references. Current plans use the canonical release names. Both Codex and Claude Code are required for `v0.7-beta`. Sagespec is the maintainer's flagship product built on Trellis to automate the maintainer's entire business.
 
 ## Disk reserve
 
@@ -53,7 +53,7 @@ Do not remove existing worktrees, Docker data, or private files without founder 
 
 ## Capacity amendment
 
-On October 1, Hanna changed this campaign reserve to 5 percent. Continue until alpha is ready for demo and review or usage reaches 95 percent.
+On October 1, the maintainer changed this campaign reserve to 5 percent. Continue until alpha is ready for demo and review or usage reaches 95 percent.
 
 This instruction supersedes the earlier 25 percent reserve for this campaign. Preserve held allowances and room for active lead, worker, and review work.
 

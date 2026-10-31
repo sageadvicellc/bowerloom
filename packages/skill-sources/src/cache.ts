@@ -375,7 +375,7 @@ function openCacheOperation(planValue:unknown,approvalRevision:string,signal:Abo
   }
 }
 /**
- * Fills one cache operation from bytes already in memory (`skills add` keeps what it verified; Hanna, global skill
+ * Fills one cache operation from bytes already in memory (`skills add` keeps what it verified; the maintainer, global skill
  * cache). It runs the same steps as an acquisition, without its two GETs: open the operation exclusively, mark it
  * RECEIVING, stage (verifyPayload checks every byte against the plan again), then complete it, which reads the stored
  * bytes back and verifies them once more. `approvalRevision` must be the plan's revision. A refusal before the

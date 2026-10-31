@@ -6,9 +6,9 @@ This baseline records the founder's requirements and planning decisions from thi
 
 ## Product and release requirements
 
-Trellis is the open-source tooling and framework for building self-managing systems. Sagespec is Hanna's flagship product built on Trellis to automate her entire business. Trellis and Sagespec have separate product scopes.
+Trellis is the open-source tooling and framework for building self-managing systems. Sagespec is the maintainer's flagship product built on Trellis to automate the maintainer's entire business. Trellis and Sagespec have separate product scopes.
 
-Deliver `v0.7-alpha` first with Codex. Hanna uses it for personal testing and records a baseline for beta comparisons. Alpha also enables a marketing and social team to prepare the campaign without waiting for beta.
+Deliver `v0.7-alpha` first with Codex. The maintainer uses it for personal testing and records a baseline for beta comparisons. Alpha also enables a marketing and social team to prepare the campaign without waiting for beta.
 
 Deliver `v0.7-beta` next. Then build Sagespec on that release through a separate product team with its own lead. Keep Trellis maintenance and Sagespec product delivery under separate ownership. The marketing team and Sagespec product team have different scopes. Their lead assignments remain future work.
 
@@ -20,11 +20,11 @@ The v0.7-beta demo has two paths. Technical founders receive a built local appli
 
 Coda is the Solution Lead. Emery is the Design Lead. Subscription profiles set a maximum of two to seven active workers, with lead activity included in usage accounting.
 
-The five modules are trellis-vines, trellis-relay, trellis-roots, trellis-crew, and trellis-workbench. Hanna selected a monorepo on October 1, 2026. The framework modules move into `sageadvicellc/trellis` with separate interfaces, tests, and build boundaries. Sagespec remains a separate product repository. Exact module contracts remain part of the specification review.
+The five modules are trellis-vines, trellis-relay, trellis-roots, trellis-crew, and trellis-workbench. The maintainer selected a monorepo on October 1, 2026. The framework modules move into `sageadvicellc/trellis` with separate interfaces, tests, and build boundaries. Sagespec remains a separate product repository. Exact module contracts remain part of the specification review.
 
 Vines is the logging system. It records operational events and evidence. Self-improvement belongs to a later Sagespec layer built on Vines.
 
-Hanna clarified this boundary on October 1, 2026. The alpha film excludes Sagespec and self-improvement references. Workbench retains repeatable crew testing.
+The maintainer clarified this boundary on October 1, 2026. The alpha film excludes Sagespec and self-improvement references. Workbench retains repeatable crew testing.
 
 Codex is the selected first harness for `v0.7-alpha`. Both Codex and Claude Code are required for `v0.7-beta`. Each requires live evidence for its declared controls. A harness is the agent tool that runs a session. Research also evaluates suitable open-source alternatives.
 
@@ -34,15 +34,15 @@ The canonical release sequence is `v0.7-alpha`, `v0.7-beta`, `v1-beta`, and `v1-
 
 Beta must test independent personal installations and shared company use. Multiple employees work through one company server while retaining autonomous personal installations on their own machines. Personal use and company participation coexist. Joining a company must preserve that independence.
 
-The specification must define ownership of company work and boundaries around private personal work. Proposed tests cover separate credentials and state, scoped company access, personal work during server outages, and safe reconnection. These detailed tests remain proposals. Supabase is a conditional requirement, subject to suitability for setup, access, recovery, and deletion. Hanna favors PostgreSQL throughout personal and company installations. The exact packaging and workflow engine remain proposed.
+The specification must define ownership of company work and boundaries around private personal work. Proposed tests cover separate credentials and state, scoped company access, personal work during server outages, and safe reconnection. These detailed tests remain proposals. Supabase is a conditional requirement, subject to suitability for setup, access, recovery, and deletion. The maintainer favors PostgreSQL throughout personal and company installations. The exact packaging and workflow engine remain proposed.
 
 ## Language and teaching
 
-Hanna requested Endor and Star Wars references in nomenclature, tutorials, and examples. Use the connected tree-village idea to explain independent installations and scoped connections. Keep ordinary technical terms visible beside the metaphors. Preserve clear commands, permission language, errors, and approval instructions. The detailed tutorial vocabulary remains a proposal.
+The maintainer requested Endor and Star Wars references in nomenclature, tutorials, and examples. Use the connected tree-village idea to explain independent installations and scoped connections. Keep ordinary technical terms visible beside the metaphors. Preserve clear commands, permission language, errors, and approval instructions. The detailed tutorial vocabulary remains a proposal.
 
 ## Storage and data lifecycle direction
 
-Hanna prioritizes ease of use for both technical and nontechnical founders. Supabase must remain in the supported backend design if it satisfies the stated needs. Studio is part of that requirement. The v1 core must avoid proprietary coordination dependencies.
+The maintainer prioritizes ease of use for both technical and nontechnical founders. Supabase must remain in the supported backend design if it satisfies the stated needs. Studio is part of that requirement. The v1 core must avoid proprietary coordination dependencies.
 
 Company embeddings and wiki content need centralized storage with limited, revocable access over secure connections. Personal and client-private content must retain explicit ownership and access boundaries. Joining a shared company instance preserves personal autonomy.
 
@@ -106,4 +106,4 @@ The founder reports that the handoff is complete and the old team is stopped. Pr
 
 Prepare one daily review at 9 a.m. America/New_York. Include completed outcomes, acceptance instructions, test evidence, remaining risks, and required founder decisions. Measure task success, founder intervention, usage per accepted result, completion time, recovery reliability, and retrieval accuracy.
 
-The first campaign completed its specification gate. Hanna approved the bounded alpha build on October 1, 2026. Implementation now follows that packet and its delegated engineering choices. Later release and main-merge gates remain separate.
+The first campaign completed its specification gate. The maintainer approved the bounded alpha build on October 1, 2026. Implementation now follows that packet and its delegated engineering choices. Later release and main-merge gates remain separate.

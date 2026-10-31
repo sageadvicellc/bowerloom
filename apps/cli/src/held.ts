@@ -11,10 +11,10 @@ import { itemPath, readAuthoringState } from '../../../packages/project-authorin
 import type { AuthoredItem } from '../../../packages/project-authoring/src/state.js';
 import { missingPromptHold } from '../../../packages/project-sync/src/prompts.js';
 import type { AgentItem, PromptItem, SliceItem, SyncItem } from '../../../packages/project-sync/src/index.js';
-import type { Harness } from '../../../packages/managed-skills/src/v2-types.js';
+import type { WriterEngine } from '../../../packages/skill-manifest/src/engine.js';
 
-/** `harness` is reserved for spec 01b, which holds an agent for one harness only. */
-export interface HeldItem { kind: 'team' | 'skill' | 'prompt' | 'agent' | 'slice'; id: string; code: string; next: string; harness?: Harness }
+/** `engine` is reserved for spec 01b, which holds an agent for one engine only. */
+export interface HeldItem { kind: 'team' | 'skill' | 'prompt' | 'agent' | 'slice'; id: string; code: string; next: string; engine?: WriterEngine }
 
 function receiptItems(project: ProjectContext): readonly AuthoredItem[] {
   try { return readAuthoringState(join(project.dir, '.bowerloom')).receipt?.value.items ?? []; } catch { return []; }

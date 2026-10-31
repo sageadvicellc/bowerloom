@@ -1,0 +1,15 @@
+/*
+ * The save sheet (0.8.0-beta.1, option C). Every rule starts at [data-home]. The graph is the builder's own, in a box of fixed height; the tick lists and
+ * the save points use the sheet's own cards and rows. No motion of its own.
+ */
+[data-home] .hx-sheet[data-slot="save"][data-tall] { height: min(43.75rem, calc(100% - 1.375rem)); }
+[data-home] .hxs-graph { position: relative; display: flex; height: 18rem; border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); overflow: hidden; }
+[data-home] .hxs-agent { margin: 0 0 var(--hm-space-3); padding: var(--hm-space-2) var(--hm-space-3); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); }
+[data-home] .hxs-agent-name { padding: 0 var(--hm-space-1); font-weight: 600; color: var(--text); }
+[data-home] .hxs-ticks { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--hm-space-2) var(--hm-space-4); }
+[data-home] .hxs-tick { display: inline-flex; align-items: center; gap: var(--hm-space-2); min-height: 2rem; color: var(--text); cursor: pointer; }
+[data-home] .hxs-point { align-items: center; }
+[data-home] .hxs-point-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1 1 auto; }
+/* A skill row: the name keeps its width, and a long description (the kit's are a paragraph) shows one line, in full on hover. */
+[data-home] [data-section="skills"] .hxi-file-path { flex: none; max-width: 40%; }
+[data-home] .hxs-desc { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

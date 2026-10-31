@@ -1,10 +1,11 @@
 import type { AcquiredSkillCacheSelector, AcquiredSkillClosure } from '../../skill-sources/src/cache.js';
+import type { OldEngineId } from '../../skill-manifest/src/engine.js';
 export interface Identity { device: string; inode: string; birthtimeNs: string; uid: number; mode: number }
 export interface FilePin { path: string; identity: Identity; bytes: number; sha256: string | null; mtimeNs: string; ctimeNs: string }
 export interface Surface { kind: 'canonical' | 'projection' | 'catalog'; path: string; pins: FilePin[] | null }
 export interface Material { kind: Surface['kind']; files: { path: string; text: string; sha256: string; mode: number }[] }
 export interface ObservedSkillRequest {
-  operation: 'install' | 'update'; projectDir: string; stateDir: string; harness: 'codex' | 'claude';
+  operation: 'install' | 'update'; projectDir: string; stateDir: string; harness: OldEngineId;
   cache: AcquiredSkillCacheSelector; expectedPreviousRevision: string | null; minFreeBytes: number;
 }
 export interface PlanCore {
@@ -25,7 +26,7 @@ export interface ObservedSkillPlan {
 export interface ObservedSkillReceipt {
   format: 'bowerloom/observed-managed-skill-receipt/v1beta1'; state: 'committed' | 'rolled-back';
   operationKey: string; planRevision: string; previousRevision: string | null;
-  projectDir: string; stateDir: string; harness: 'codex' | 'claude';
+  projectDir: string; stateDir: string; harness: OldEngineId;
   installed: Surface[]; restoredPrevious: ObservedSkillReceipt | null; revision: string; executionAuthorized: false;
 }
 export interface SkillInspection {

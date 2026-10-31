@@ -1,0 +1,153 @@
+/*
+ * The Add drawer body, the "two different copies" dialog and the Add test page. Everything starts at [data-home] and takes its colours from the shared
+ * tokens (light and dark), its sizes from home-tokens.css (text 14 px at the least) and its timing from the motion tokens. The only new motion is the
+ * wire that joins a card to the agent it was added to: it draws itself with the map's wire-draw timing and is not drawn at all under reduce motion.
+ */
+
+/* ---- Tabs */
+/* The drawer body is the Add body's own frame: the tabs and the list scroll together in .add-scroll, and the note after an add has a foot of its own under them,
+   so it never lies over a row. (The body keeps its padding in .add-scroll, so everything inside sits where it did.) */
+[data-home] .kit-drawer-body:has(> .add-body) { padding: 0; gap: 0; overflow: hidden; }
+[data-home] .add-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+[data-home] .add-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--hm-space-5); display: flex; flex-direction: column; gap: var(--hm-space-4); }
+/* The tabs are one segmented control, 32 px high: one edge around all of them, a line between two, the open one filled. It wraps only when the drawer is too narrow for all five. */
+[data-home] .add-tabs { flex: none; display: flex; flex-wrap: wrap; border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); background: var(--surface); overflow: hidden; }
+[data-home] .add-tab {
+  flex: 1 1 auto; font: inherit; font-size: var(--hm-text-base); font-weight: 600; line-height: 1.2; min-height: var(--hm-control-h); padding: 0 var(--hm-space-2); box-sizing: border-box;
+  border: 0; border-left: 1px solid var(--hm-border); margin-left: -1px; border-radius: 0; background: transparent; color: var(--text); cursor: pointer; touch-action: manipulation;
+  transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
+}
+[data-home] .add-tab:first-child { border-left: 0; margin-left: 0; }
+[data-home] .add-tab:hover { background: var(--accent-soft); }
+[data-home] .add-tab[aria-selected="true"] { background: var(--accent); color: var(--accent-contrast); font-weight: 700; }
+[data-home] .add-tab:focus-visible, [data-home] .add-lines:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+[data-home] .add-panel { display: flex; flex-direction: column; gap: var(--hm-space-4); }
+
+/* ---- Rows */
+[data-home] .add-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--hm-space-3); }
+[data-home] .add-row { display: flex; flex-direction: column; gap: var(--hm-space-2); }
+[data-home] .add-row[data-draggable] { user-select: none; -webkit-user-select: none; }
+[data-home] .add-row-main { display: flex; align-items: center; gap: var(--hm-space-2); }
+/* A row of the drawer is the kit's row: one height, the name over one clipped line of hint, and the Add to button at the end of it. */
+[data-home] .add-row-card { flex: 1 1 0; min-width: 0; }
+[data-home] .add-row-source { margin: 0; padding: 0 var(--hm-space-3); }
+[data-home] .add-row-main > .kit-button { flex: none; }
+
+/* ---- The picker of agents under a row */
+[data-home] .add-picker { display: flex; flex-direction: column; gap: var(--hm-space-2); padding: var(--hm-space-3); background: var(--surface-2); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); }
+[data-home] .add-picker-title { font-weight: 600; color: var(--text); }
+[data-home] .add-picker-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--hm-space-1); max-height: 13.5rem; overflow-y: auto; }
+[data-home] .add-pick {
+  position: relative; display: flex; align-items: center; gap: var(--hm-space-3); box-sizing: border-box; min-height: var(--hm-control-h); padding: var(--hm-space-1) var(--hm-space-3);
+  background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small);
+  transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
+}
+[data-home] .add-pick:hover { background: var(--accent-soft); border-color: var(--accent-strong); }
+[data-home] .add-pick:has(.add-pick-main:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
+[data-home] .add-pick[data-has] { border-style: dashed; background: transparent; color: var(--text-muted); }
+[data-home] .add-pick-main {
+  all: unset; box-sizing: border-box; flex: 1 1 auto; min-width: 0; cursor: pointer; touch-action: manipulation;
+  font-size: var(--hm-text-base); font-weight: 600; line-height: 1.3; color: inherit; overflow-wrap: anywhere;
+}
+[data-home] .add-pick-main::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+[data-home] .add-pick[data-has] .add-pick-main { cursor: default; }
+[data-home] .add-pick-note { margin-left: auto; white-space: nowrap; }
+
+/* ---- The note after an add: a foot under the list, with the words and a "Show" button. It takes no room until a note arrives, fades in with the overlay tokens
+   and out in 100 ms, and never moves the rows above it (the list only gets a little shorter). */
+[data-home] .add-foot { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--hm-space-3); height: 0; overflow: hidden; margin: 0 var(--hm-space-5); }
+[data-home] .add-foot[data-open] {
+  height: auto; overflow: visible; margin-bottom: var(--hm-space-4); padding: var(--hm-space-2) var(--hm-space-3) var(--hm-space-2) var(--hm-space-4); background: var(--good-bg); color: var(--good-fg);
+  border: 1px solid color-mix(in srgb, currentColor 40%, transparent); border-radius: var(--hm-radius-small); box-shadow: var(--hm-shadow);
+  animation: kit-overlay-in var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out) both;
+}
+[data-home] .add-foot[data-leaving] { animation: kit-overlay-out var(--motion-home-overlay-out-ms, 0ms) var(--motion-home-overlay-out-ease, ease-in) both; }
+[data-home] .add-note { min-width: 0; font-size: var(--hm-text-base); font-weight: 600; }
+
+/* ---- The wire from a card to its agent (the only new motion) */
+[data-home] .add-link { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 25; pointer-events: none; overflow: visible; opacity: 1; transition: opacity var(--motion-node-exit-ms, 0ms) var(--motion-node-exit-ease, ease-in); }
+[data-home] .add-link[data-leaving] { opacity: 0; }
+[data-home] .add-link-path { fill: none; stroke: var(--accent-strong); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 0; animation: add-link-draw var(--motion-edge-draw-ms, 0ms) var(--motion-edge-draw-ease, ease-out) both; }
+[data-home] .add-link-end { fill: var(--accent-strong); animation: add-link-dot var(--motion-edge-draw-ms, 0ms) var(--motion-edge-draw-ease, ease-out) both; }
+@keyframes add-link-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes add-link-dot { from { opacity: 0; } 70% { opacity: 0; } to { opacity: 1; } }
+
+/* ---- An agent card that can take a dragged card */
+[data-home] [data-drop-ready] .kit-card { outline: 2px dashed var(--accent-strong); outline-offset: 3px; }
+[data-home] [data-drop-over] .kit-card { outline-style: solid; outline-width: 3px; background: var(--accent-soft); border-color: var(--accent-strong); box-shadow: var(--hm-shadow-lift); }
+
+/* ---- From a shared file */
+[data-home] .add-file, [data-home] .add-preview { display: flex; flex-direction: column; gap: var(--hm-space-4); }
+[data-home] .add-drop {
+  display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--hm-space-3); padding: var(--hm-space-6) var(--hm-space-4);
+  border: 2px dashed var(--hm-border); border-radius: var(--hm-radius); background: var(--surface-2); color: var(--text-muted);
+  transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
+}
+[data-home] .add-drop .kit-icon { color: var(--accent-strong); }
+[data-home] .add-drop[data-over] { border-style: solid; border-color: var(--accent-strong); background: var(--accent-soft); color: var(--text); }
+[data-home] .add-drop-text { max-width: 18rem; }
+[data-home] .add-actions { display: flex; flex-wrap: wrap; gap: var(--hm-space-3); }
+/* The buttons that finish a preview stay in view at the bottom of the drawer while a long list scrolls under them. */
+[data-home] .add-preview > .add-actions { position: sticky; bottom: calc(-1 * var(--hm-space-5)); margin: 0 calc(-1 * var(--hm-space-5)) calc(-1 * var(--hm-space-5)); padding: var(--hm-space-3) var(--hm-space-5); background: var(--surface); border-top: 1px solid var(--border); }
+[data-home] .add-drop .add-actions { justify-content: center; }
+[data-home] .kit-hint.add-missing { margin: 0; color: var(--text); }
+[data-home] .add-lead { margin: 0; display: flex; align-items: center; gap: var(--hm-space-2); font-size: var(--hm-text-base); font-weight: 600; color: var(--text); }
+[data-home] .add-section { display: flex; flex-direction: column; gap: var(--hm-space-2); padding: var(--hm-space-4); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); }
+[data-home] .add-things { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--hm-space-2); }
+[data-home] .add-things > li { display: flex; align-items: center; gap: var(--hm-space-2); font-weight: 600; }
+[data-home] .add-things .kit-icon { color: var(--accent-strong); }
+[data-home] .add-names { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--hm-space-1); font-weight: 600; }
+
+/* ---- The "two different copies" dialog */
+[data-home] .add-scrim { position: fixed; inset: 0; z-index: 900; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: var(--hm-space-5); background: var(--hm-scrim); animation: kit-fade-in var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out) both; }
+/* A dialog and the share sheet come in with a fade and a 4 px rise over the scrim's fade, and leave faster with a fade; while they leave they ignore the pointer. */
+[data-home] .add-dialog, [data-home] .sh-dialog { animation: kit-overlay-in var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out) both; }
+[data-home] .add-scrim[data-leaving], [data-home] .add-scrim[data-leaving] .add-dialog, [data-home] .add-scrim[data-leaving] .sh-dialog { animation: kit-overlay-out var(--motion-home-overlay-out-ms, 0ms) var(--motion-home-overlay-out-ease, ease-in) both; pointer-events: none; }
+[data-home] .add-dialog {
+  box-sizing: border-box; display: grid; grid-template-rows: auto minmax(0, 1fr); width: min(54rem, 100%); max-height: 100%;
+  background: var(--surface); color: var(--text); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow-lift); overflow: hidden;
+}
+[data-home] .add-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--hm-space-3); padding: var(--hm-space-4) var(--hm-space-5); border-bottom: 1px solid var(--border); }
+[data-home] .add-dialog-title { display: flex; flex-direction: column; gap: var(--hm-space-1); min-width: 0; }
+[data-home] .add-dialog-title h2 { outline-offset: 4px; width: fit-content; border-radius: var(--hm-radius-small); }
+[data-home] .add-dialog-name { margin: 0; font-size: var(--hm-text-base); font-weight: 600; overflow-wrap: anywhere; }
+[data-home] .add-copies { display: grid; grid-template-columns: repeat(auto-fit, minmax(14.5rem, 1fr)); gap: var(--hm-space-4); padding: var(--hm-space-5); overflow: auto; min-height: 0; }
+[data-home] .add-dialog[data-copies="2"] .add-copies { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+[data-home] .add-dialog[data-copies="3"] .add-copies { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+[data-home] .add-copy { display: flex; flex-direction: column; gap: var(--hm-space-3); min-width: 0; min-height: 0; padding: var(--hm-space-4); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); }
+[data-home] .add-copy-head { display: flex; flex-direction: column; gap: var(--hm-space-1); }
+[data-home] .add-copy-count { font-weight: 600; color: var(--text); }
+[data-home] .add-lines {
+  list-style: none; margin: 0; padding: var(--hm-space-2); flex: 1 1 auto; min-height: 5rem; overflow: auto; display: flex; flex-direction: column; gap: 2px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--hm-radius-small); font-size: var(--hm-text-small); line-height: 1.4;
+}
+[data-home] .add-line-row { display: flex; gap: var(--hm-space-2); padding: 2px var(--hm-space-2); border-radius: 0.25rem; overflow-wrap: anywhere; }
+[data-home] .add-line-row[data-changed] { background: var(--warn-bg); color: var(--warn-fg); font-weight: 650; }
+[data-home] .add-mark { flex: none; width: 1rem; text-align: center; font-weight: 700; }
+[data-home] .add-copy > .kit-button { align-self: flex-start; }
+@media (max-width: 640px) {
+  [data-home] .add-dialog[data-copies] .add-copies { grid-template-columns: minmax(0, 1fr); }
+  [data-home] .add-scrim { padding: var(--hm-space-2); }
+}
+
+/* ---- The Add test page (#prototype-v2/add) */
+[data-home].add-page { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100vh; min-height: 0; }
+[data-home] .add-bar { display: flex; align-items: center; gap: var(--hm-space-3); min-height: var(--hm-bar-h); padding: var(--hm-space-2) var(--hm-space-5); background: var(--surface); border-bottom: 1px solid var(--hm-border); }
+[data-home] .add-brand { display: flex; align-items: center; gap: var(--hm-space-3); font-size: var(--hm-text-title); font-weight: 600; color: var(--text); }
+[data-home] .add-brand .kit-icon { color: var(--accent-strong); }
+[data-home] .add-spacer { flex: 1; }
+[data-home] .add-count { font-size: var(--hm-text-base); font-weight: 600; padding: 0 var(--hm-space-3); }
+[data-home] .add-count[data-count="0"] { color: var(--text-muted); font-weight: 400; }
+[data-home] .add-stage-wrap { position: relative; min-height: 0; overflow: hidden; }
+[data-home] .add-stage { height: 100%; box-sizing: border-box; overflow-y: auto; padding: var(--hm-space-6); display: flex; flex-direction: column; gap: var(--hm-space-5); }
+/* While the drawer is open the stage keeps clear of it, so every agent stays in reach of a drag. */
+[data-home] .add-stage[data-drawer] { padding-right: calc(var(--hm-drawer-w) + var(--hm-space-5)); }
+[data-home] .add-stage-head, [data-home] .add-section-block { display: flex; flex-direction: column; gap: var(--hm-space-3); }
+[data-home] .add-stage-head h1 { outline-offset: 4px; width: fit-content; max-width: 100%; border-radius: var(--hm-radius-small); }
+[data-home] .add-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, var(--hm-tile-w)); gap: var(--hm-space-4); justify-content: start; align-content: start; }
+[data-home] .add-grid > li { display: flex; }
+[data-home] .add-kept { margin: 0; min-height: 1.5rem; font-weight: 600; }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-home] .add-link, [data-home] .add-link-path, [data-home] .add-link-end, [data-home] .add-tab, [data-home] .add-pick, [data-home] .add-drop { animation: none !important; transition: none !important; }
+}

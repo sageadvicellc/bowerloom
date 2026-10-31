@@ -15,7 +15,7 @@ const problems = [];
 if (process.argv.includes('--check')) {
   const release = await readRelease();
   for (const file of ['README.md', 'docs/assets/badge-version.svg']) {
-    const found = (await readFile(resolve(root, file), 'utf8')).match(/0\.7\.0-(?:alpha|beta)\.\d+/g) ?? [];
+    const found = (await readFile(resolve(root, file), 'utf8')).match(/\d+\.\d+\.\d+-(?:alpha|beta)\.\d+/g) ?? [];
     for (const version of new Set(found)) if (version !== release.version) problems.push(`RELEASE_VERSION_DRIFT: ${file} holds ${version}, expected ${release.version}.`);
     if (!found.includes(release.version)) problems.push(`RELEASE_VERSION_MISSING: ${file} does not hold ${release.version}.`);
   }

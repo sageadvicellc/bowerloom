@@ -25,7 +25,7 @@ test('1. the plan binds config, lock, store, each content key, the lock pin and 
   writeConfig(w, { skills: [{ id: 'house-style', source: 'store' }, { id: 'tanstack-db', source: 'store' }] });
   const repo = pushStore(w); writeLock(w, { skills: [lockOfRepo(w, repo, 'skill', 'house-style'), { id: 'tanstack-db', from: 'store', pin: npm.entry }] });
   const plan = await planSync(input(w));
-  assert.equal(plan.format, 'bowerloom/skills-sync-plan/v1beta2');
+  assert.equal(plan.format, 'bowerloom/skills-sync-plan/v1beta3');
   assert.match(plan.config.sha256, /^[a-f0-9]{64}$/); assert.match(plan.lock.sha256, /^[a-f0-9]{64}$/);
   assert.equal(plan.store.dir, fs.realpathSync(w.store)); assert.match(plan.store.skills.sha256, /^[a-f0-9]{64}$/);
   const items = byId(plan);
@@ -35,7 +35,7 @@ test('1. the plan binds config, lock, store, each content key, the lock pin and 
   assert.equal(plan.bowerloomFolder, 'present'); assert.equal(plan.frozen, false);
   const revisions = new Set([plan.revision]);
   // The config changes.
-  writeConfig(w, { skills: [{ id: 'house-style', source: 'store' }, { id: 'tanstack-db', source: 'store' }], harnesses: ['claude'] }); revisions.add((await planSync(input(w))).revision);
+  writeConfig(w, { skills: [{ id: 'house-style', source: 'store' }, { id: 'tanstack-db', source: 'store' }], engines: ['claude-code'] }); revisions.add((await planSync(input(w))).revision);
   writeConfig(w, { skills: [{ id: 'house-style', source: 'store' }, { id: 'tanstack-db', source: 'store' }] });
   assert.equal((await planSync(input(w))).revision, plan.revision);
   // The lock changes.
@@ -246,7 +246,7 @@ test('spec 07, 2 and 3. a new repository list gives a new revision, a new token 
   writeLock(w, { ...lock, skills: [...lock.skills, other] });
   assert.notEqual((await planSync(input(w, { githubToken: tokenOf(CANARY) }))).revision, a.revision);
   // The frozen apply plan: the union of the skills sub-plan and the locked prompt and team, and no part of the token.
-  const applyInput = extra => ({ project: w.project(), stateRoot: w.stateRoot, home: w.home, harnesses: ['claude', 'codex'], team: null, frozen: true, ...extra });
+  const applyInput = extra => ({ project: w.project(), stateRoot: w.stateRoot, home: w.home, engines: ['claude-code', 'codex'], team: null, frozen: true, ...extra });
   const fa = await planProjectApply(applyInput({ githubToken: tokenOf(CANARY) })), fb = await planProjectApply(applyInput({ githubToken: tokenOf(OTHER_CANARY) }));
   assert.deepEqual(fa.network.credentials, CREDENTIALS(['a-org/tools', 'sageadvicellc/store'])); assert.equal(fa.revision, fb.revision);
   assert.equal((await planProjectApply(applyInput({}))).network.credentials, null);
@@ -259,7 +259,7 @@ test('spec 07. a frozen apply with only a locked prompt and team still names the
   writeConfig(w, { skills: [{ id: 'tanstack-db', source: 'store' }], prompts: [{ id: 'weekly-update', source: 'store' }], teams: [{ id: 'research', source: 'store' }] });
   const lock = JSON.parse(fs.readFileSync(path.join(w.projectDir, 'bowerloom.lock.json'), 'utf8'));
   writeLock(w, { ...lock, skills: lock.skills.filter(s => s.id === 'tanstack-db') });
-  const applyInput = extra => ({ project: w.project(), stateRoot: w.stateRoot, home: w.home, harnesses: ['claude', 'codex'], team: null, ...extra });
+  const applyInput = extra => ({ project: w.project(), stateRoot: w.stateRoot, home: w.home, engines: ['claude-code', 'codex'], team: null, ...extra });
   const frozen = await planProjectApply(applyInput({ frozen: true, githubToken: tokenOf(CANARY) }));
   assert.deepEqual(frozen.network.credentials, CREDENTIALS(['sageadvicellc/store']));
   // The apply plan binds the field itself: no skill sub-plan carries it here, and the token still changes the revision.
@@ -279,7 +279,7 @@ test('spec 07, 4. apply refuses STALE_APPROVAL when the token is missing and the
   const bare = await planSync(input(w));
   await assert.rejects(applySync(input(w, { githubToken: tokenOf(CANARY) }), bare.revision, deps(noAcquirer(), { storeTransport: transport })), code('STALE_APPROVAL'));
   assert.equal(transport.made.length, 0, 'nothing was fetched');
-  const applyInput = extra => ({ project: w.project(), stateRoot: w.stateRoot, home: w.home, harnesses: ['claude', 'codex'], team: null, frozen: true, ...extra });
+  const applyInput = extra => ({ project: w.project(), stateRoot: w.stateRoot, home: w.home, engines: ['claude-code', 'codex'], team: null, frozen: true, ...extra });
   const fa = await planProjectApply(applyInput({ githubToken: tokenOf(CANARY) }));
   await assert.rejects(applyProjectApply(applyInput({}), fa.revision, new AbortController().signal, { acquirer: noAcquirer(), storeTransport: transport }), code('STALE_APPROVAL'));
   const fb = await planProjectApply(applyInput({}));
@@ -304,7 +304,7 @@ test('spec 07, 6. with a token, the authored fetch gets githubAuth for its repos
   assert.ok(plainTransport.made.length >= 2); assert.ok(plainTransport.made.every(o => JSON.stringify(o) === '{}'));
   // A frozen apply passes the token to its prompt and team fetches as well.
   const { w: w3, npm: npm3, repo: repo3 } = await tokenClone(t), applyTransport = recordingTransport(repo3);
-  const applyInput = extra => ({ project: w3.project(), stateRoot: w3.stateRoot, home: w3.home, harnesses: ['claude', 'codex'], team: null, frozen: true, ...extra });
+  const applyInput = extra => ({ project: w3.project(), stateRoot: w3.stateRoot, home: w3.home, engines: ['claude-code', 'codex'], team: null, frozen: true, ...extra });
   const fa = await planProjectApply(applyInput({ githubToken: token }));
   const done = await applyProjectApply(applyInput({ githubToken: token }), fa.revision, new AbortController().signal, { acquirer: fakeAcquirer([npm3]), storeTransport: applyTransport });
   assert.ok(done.applied.some(a => a.kind === 'prompt' && a.id === 'weekly-update'));

@@ -1,0 +1,58 @@
+/*
+ * The three first screens of the harness-first preview (Welcome, Choose sources, Read sources). Every rule starts at [data-home]. Text is 14 px or more, a button is 32 px, a tick is only for
+ * a choice the person can change. The column is centered on the page colour with no navigation: Welcome sits in the middle of the window, the other two start at the top.
+ */
+[data-home].hx-first[data-screen="choose"], [data-home].hx-first[data-screen="read"] { align-items: flex-start; }
+[data-home].hx-first[data-screen] .hx-first-main { gap: var(--hm-space-5); overflow: visible; box-sizing: border-box; width: 100%; padding: 0 var(--hm-space-5) var(--hm-space-6); }
+[data-home].hx-first[data-screen="choose"] .hx-first-main, [data-home].hx-first[data-screen="read"] .hx-first-main { max-width: 56rem; padding-top: 3.25rem; }
+[data-home].hx-first[data-screen="welcome"] .hx-first-main { max-width: 42rem; padding: 0 var(--hm-space-5); }
+
+/* Welcome */
+[data-home] .hxf-leaf { color: var(--accent-strong); display: inline-flex; margin-bottom: var(--hm-space-5); }
+[data-home] .hxf-name { margin: 0; font-size: var(--hm-text-display); line-height: 1.25; font-weight: 600; outline-offset: 6px; border-radius: var(--hm-radius-small); }
+[data-home] .hxf-lead { margin: 0; font-size: var(--hm-text-title); line-height: 1.6667; font-weight: 600; }
+[data-home] .hxf-lead span { display: block; }
+[data-home] .hxf-plain { margin: 0; font-size: var(--hm-text-base); line-height: 1.45; color: var(--text-muted); }
+[data-home] .hxf-go { margin-top: calc(-1 * var(--hm-space-1)); }
+
+/* The brand line and the steps over the two list screens */
+[data-home] .hxf-brand { margin: 0; display: inline-flex; align-items: center; gap: var(--hm-space-3); font-size: var(--hm-text-title); font-weight: 600; line-height: 1.3; color: var(--text); }
+[data-home] .hxf-brand .kit-icon { color: var(--accent-strong); }
+[data-home] .hxf-steps .kit-stepper { justify-content: center; flex-wrap: nowrap; gap: var(--hm-space-2); }
+[data-home] .hxf-steps .kit-step:not(:last-child)::after { width: 2.5rem; background: var(--border); }
+[data-home] .hxf-steps .kit-step[data-state="done"]:not(:last-child)::after { background: var(--accent-strong); }
+[data-home] .hxf-steps .kit-step[data-state="now"] .kit-step-dot { width: 1.5rem; height: 1.5rem; }
+[data-home] .hxf-steps .kit-step { opacity: 1; }
+[data-home] .hxf-steps .kit-step-label, [data-home] .hxf-steps .kit-step[data-state="now"] .kit-step-label { font-weight: 600; color: var(--text); }
+[data-home] .hxf-steps .kit-step[data-state="next"] .kit-step-label { font-weight: 500; color: var(--text-muted); }
+[data-home] .hxf-title { margin: 0; font-size: var(--hm-text-title); line-height: 1.3; font-weight: 600; outline-offset: 6px; border-radius: var(--hm-radius-small); }
+[data-home] .hxf-line { margin: 0; font-size: var(--hm-text-base); line-height: 1.45; color: var(--text-muted); max-width: 52rem; text-wrap: balance; }
+
+/* The scan: a track and a fill that grows by scaleX from the left. */
+[data-home] .hxf-progress { position: relative; width: min(100%, 40rem); height: 0.75rem; box-sizing: border-box; border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); background: var(--surface-2); overflow: hidden; }
+[data-home] .hxf-progress-fill { position: absolute; inset: 0; background: var(--accent-strong); border-radius: var(--hm-radius-small); transform-origin: left; transition: transform var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease); }
+
+/* The four sources */
+[data-home] .hxf-cards { list-style: none; margin: 0; padding: 0; width: min(100%, 40rem); display: flex; flex-direction: column; gap: 0.5rem; text-align: left; }
+[data-home] .hxf-card { display: flex; flex-direction: column; box-sizing: border-box; background: var(--surface); color: var(--text); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); }
+[data-home] .hxf-card-row { display: flex; align-items: center; gap: var(--hm-space-4); box-sizing: border-box; min-height: 5.625rem; padding: var(--hm-space-3) var(--hm-space-4) var(--hm-space-3) calc(var(--hm-space-4) - 1px); }
+[data-home] label.hxf-card-row { cursor: pointer; touch-action: manipulation; border-radius: calc(var(--hm-radius) - 1px); }
+[data-home] label.hxf-card-row:hover { background: var(--accent-soft); }
+[data-home] label.hxf-card-row:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: -3px; }
+[data-home] .hxf-check { flex: none; width: 1.125rem; height: 1.125rem; margin: 0; accent-color: var(--accent-strong); cursor: pointer; }
+[data-home] .hxf-card-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+[data-home] .hxf-card-name { font-size: var(--hm-text-name); font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+[data-home] .hxf-card[data-off] .hxf-card-name { color: var(--text-muted); font-weight: 400; }
+[data-home] .hxf-card-meta { font-size: var(--hm-text-base); line-height: 1.4; color: var(--text-muted); }
+[data-home] .hxf-via { align-self: flex-start; color: var(--text-muted); }
+[data-home] .hxf-via.hx-state { color: var(--text-muted); }
+[data-home] .hxf-card-names { margin: 0; padding: 0 var(--hm-space-4) var(--hm-space-3) calc(var(--hm-space-4) * 2 + 1.25rem); font-size: var(--hm-text-base); line-height: 1.45; color: var(--text-muted); overflow-wrap: anywhere; }
+[data-home] .hxf-card-go { flex: none; }
+
+/* The buttons under the list */
+[data-home] .hxf-actions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: var(--hm-space-3); }
+[data-home] .hxf-status { margin: 0; min-height: 1.25rem; font-size: var(--hm-text-base); color: var(--text-muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-home] .hxf-progress-fill { transition: none !important; }
+}

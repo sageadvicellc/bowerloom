@@ -22,7 +22,7 @@ const network = denyNetwork();
 after(() => assert.deepEqual(network, [], 'no network'));
 const signal = () => new AbortController().signal;
 const ctx = w => discoverProject(w.projectDir, w.home);
-const applyInput = (w, extra = {}) => ({ project: ctx(w), stateRoot: w.stateRoot, home: w.home, harnesses: ['claude', 'codex'], team: null, frozen: true, ...extra });
+const applyInput = (w, extra = {}) => ({ project: ctx(w), stateRoot: w.stateRoot, home: w.home, engines: ['claude-code', 'codex'], team: null, frozen: true, ...extra });
 const exists = (w, rel) => fs.existsSync(path.join(w.projectDir, rel));
 const HELD = 'Run bowerloom apply --frozen again to review it.';
 const skill = body => `---\nname: house-style\ndescription: A store skill.\n${body}`;

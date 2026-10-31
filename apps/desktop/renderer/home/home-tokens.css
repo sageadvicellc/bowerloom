@@ -1,0 +1,61 @@
+/*
+ * Tokens of the Bowerloom 0.8 home app. Every rule starts at `[data-home]`, the root only the home app carries, so nothing in the 0.7 screens or the old
+ * prototype changes. The colours come from tokens.css (the sage accent, the surfaces, the text); this file adds the sizes and the few colours the
+ * home app needs, and gives each a dark variant. A border meets 3 to 1 against the page, a card and a quiet panel (WCAG 1.4.11); text meets 4.5 to 1
+ * (tests/contrast.test.ts checks both). A theme can be set on the root itself (`data-theme` next to `data-home`), which the kit gallery uses.
+ */
+[data-home] {
+  /* The scale of the home app, at about 90 percent of the first one. Every size in the home screens comes from here, so one number moves the whole window.
+     Type: no word is under 14 px (0.875rem). The page title is 18 px, a section heading 16 px, a card name 15 px, and the rest 14 px. */
+  --hm-text-title: 1.125rem;
+  --hm-text-section: 1rem;
+  --hm-text-name: 0.9375rem;
+  --hm-text-base: 0.875rem;
+  --hm-text-small: 0.875rem;
+  --hm-text-heading: 1rem;
+  --hm-text-display: 1.5rem;
+  --hm-leading: 1.45;
+  /* Space steps: 4, 6, 10, 14, 20, 28, 44 px. */
+  --hm-space-1: 0.25rem; --hm-space-2: 0.375rem; --hm-space-3: 0.625rem; --hm-space-4: 0.875rem; --hm-space-5: 1.25rem; --hm-space-6: 1.75rem; --hm-space-7: 2.75rem;
+  --hm-radius: 0.625rem; --hm-radius-small: 0.375rem; --hm-radius-pill: 999px;
+  /* Controls: a button is 32 px high with 12 px of padding; a segment of the sort toggle is 28 px; a target is never under 24 px square (WCAG 2.2, 2.5.8). */
+  --hm-control-h: 2rem; --hm-control-h-small: 1.75rem; --hm-control-pad: 0.75rem; --hm-target-min: 1.5rem;
+  --hm-icon: 1.25rem; --hm-icon-small: 1rem; --hm-dot: 0.5rem;
+  /* The agent tile: one width and one height for every agent, whatever the name or the counts. */
+  --hm-tile-w: 15.625rem; --hm-tile-h: 7.75rem; --hm-tile-glyph: 1.5rem;
+  /* The row of a skill, tool or note: one height everywhere (tray, panel, Add drawer, Choose notes). The tile that leads it is 28 px and holds a 20 px icon. */
+  --hm-row-h: 2.75rem; --hm-row-tile: 1.75rem; --hm-row-w: 15rem; --hm-row-min-w: 11rem;
+  --hm-tray-col: 14rem;
+  --hm-drawer-w: min(380px, 92vw);
+  --hm-panel-w: clamp(17rem, 25vw, 20rem);
+  /* The left navigation: 232 px open, an icon rail of 48 px when put away. */
+  --hm-nav-w: 14.5rem; --hm-nav-rail-w: 3rem;
+  --hm-bar-h: 3.25rem; --hm-savebar-h: 3rem;
+  --hm-border: #868880;
+  --hm-amber: #b36b00;
+  /* The four identity colours of an agent tile (a thin top edge and the fill of its bar; never behind words). Each is 3 to 1 or more on the page, a card, a quiet panel and a selected card. */
+  --hm-ac-blue: #2f62b8; --hm-ac-green: #2e7d32; --hm-ac-orange: #b85a00; --hm-ac-red: #c0392b;
+  /* The width of the column of the "Add from the web" sheet: about 760 px. */
+  --hm-sheet-w: 47.5rem;
+  --hm-ring: #ffffff;
+  --hm-scrim-alpha: 0.55;
+  --hm-scrim: rgb(0 0 0 / var(--hm-scrim-alpha));
+  --hm-shadow: 0 1px 2px rgb(0 0 0 / 0.08), 0 4px 14px rgb(0 0 0 / 0.07);
+  --hm-shadow-lift: 0 2px 4px rgb(0 0 0 / 0.1), 0 10px 24px rgb(0 0 0 / 0.1);
+  --hm-shadow-drawer: -8px 0 28px rgb(0 0 0 / 0.14);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: var(--hm-text-base);
+  line-height: var(--hm-leading);
+}
+[data-theme="dark"] [data-home], [data-home][data-theme="dark"] {
+  --hm-border: #68796e;
+  --hm-amber: #f0b13a;
+  --hm-ac-blue: #7aa7f0; --hm-ac-green: #7bc47f; --hm-ac-orange: #f0a050; --hm-ac-red: #f08a80;
+  --hm-ring: #e8eee9;
+  --hm-scrim-alpha: 0.6;
+  --hm-shadow: 0 1px 2px rgb(0 0 0 / 0.5), 0 4px 14px rgb(0 0 0 / 0.35);
+  --hm-shadow-lift: 0 2px 4px rgb(0 0 0 / 0.5), 0 10px 24px rgb(0 0 0 / 0.45);
+  --hm-shadow-drawer: -8px 0 28px rgb(0 0 0 / 0.5);
+}

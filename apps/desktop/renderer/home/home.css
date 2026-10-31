@@ -1,0 +1,101 @@
+/*
+ * The shell of the home app, as a desktop app: three columns. The navigation at the left (232 px, an icon rail of 48 px when put away, hidden under 900 px; shell.css), the
+ * content in the middle (a slim top row with the page title and the page's icon buttons, then the stage), and the details at the right (about 320 px, put away with its own
+ * icon). A Save bar sits under the middle and the right column, and two drawers (Add, Version history) open over the right edge of the stage.
+ * Scoped to [data-home]. At about 90 percent of the first scale (home-tokens.css): the page title is 18 px, a section heading 16 px, all other text 14 px, nothing smaller.
+ * The top row is 52 px, the Save bar 48 px, the details about 320 px, a drawer about 380 px.
+ */
+html, body { height: 100%; }
+[data-home].hm-root { --hm-nav-col: var(--hm-nav-w); display: grid; grid-template-columns: var(--hm-nav-col) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: 100vh; min-height: 0; }
+[data-home].hm-root[data-nav="rail"] { --hm-nav-col: var(--hm-nav-rail-w); }
+[data-home].hm-root[data-nav="hidden"] { --hm-nav-col: 0px; }
+/* The test pages (the Library page and the Choose notes page on their own) keep one column: a bar, the body, the note and the Save bar, one under the other. The page is the container. */
+[data-home].hm-root.hm-flat { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto auto; container: hmcol / inline-size; }
+/* The middle and the right column: the top row, the body, the strip for a note and the Save bar. It is a container, so the body can ask how wide it is (the navigation takes part of the window). */
+[data-home] .hm-col { grid-column: 2; grid-row: 1; display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; min-width: 0; min-height: 0; container: hmcol / inline-size; }
+/* The link to the details panel: out of sight until the keyboard reaches it (it is the second stop of the page, after the page's own "Skip to the content"). */
+[data-home] .hm-skip { position: absolute; left: -9999px; top: var(--hm-space-3); z-index: 2000; display: inline-flex; align-items: center; min-height: var(--hm-control-h); padding: 0 var(--hm-space-4); box-sizing: border-box; font-size: var(--hm-text-base); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; color: var(--accent-contrast); background: var(--accent-strong); border-radius: var(--hm-radius-small); }
+[data-home] .hm-skip:focus { left: var(--hm-space-3); outline: 3px solid var(--focus); outline-offset: 2px; }
+[data-home] .hm-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* The bar of the test pages (the Library page and the Choose notes page on their own), which have no navigation. */
+[data-home] .hm-bar { display: flex; align-items: center; gap: var(--hm-space-3); min-height: var(--hm-bar-h); box-sizing: border-box; padding: var(--hm-space-2) var(--hm-space-5); background: var(--surface); border-bottom: 1px solid var(--hm-border); }
+[data-home] .hm-spacer { flex: 1; }
+
+[data-home] .hm-body { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--hm-panel-w); min-height: 0; overflow: hidden; }
+/* A drawer (Add, Version history) takes its own column at the right edge. The map and the shelves keep clear of it, so an agent card stays within reach of a drag and
+   the shelf that changes stays in view. The room is made on the drawer's own clock: the padding grows over the same 220 ms that the drawer slides in, and shrinks over
+   its close time, so the map never jumps ahead of the drawer. (Padding is a layout property; it is the only way to move a grid of cards and keep it in step. It runs
+   for 220 ms, once, and not at all under reduce motion.) The page marks the body `data-moving` for a moment around each open and close (HomeApp), so the
+   transition belongs to the drawer alone: dragging the window edge never makes the columns lag behind it. */
+[data-home] .hm-body[data-drawer] { padding-right: var(--hm-drawer-w); }
+[data-home] .hm-body[data-moving] { transition: padding-right var(--motion-panel-close-ms, 0ms) var(--motion-panel-close-ease, ease-in), grid-template-columns var(--motion-panel-close-ms, 0ms) var(--motion-panel-close-ease, ease-in); }
+[data-home] .hm-body[data-moving][data-drawer] { transition: padding-right var(--motion-home-drawer-ms, 0ms) var(--motion-home-drawer-ease, ease-out), grid-template-columns var(--motion-home-drawer-ms, 0ms) var(--motion-home-drawer-ease, ease-out); }
+/* In a window too narrow for all three, the shelves give way to the drawer until it closes. The number is worked out, not guessed: with a drawer open the map
+   keeps room for ONE column of tiles at the least (the navigation takes 232 px, so two columns would hide the shelves in the default 1280 px window), which is 250 px
+   and 2 x 20 = 40 px of stage padding, 290 px in all. The panel is 320 px and the drawer 380 px, and 290 + 320 + 380 = 990. The width asked is the width of the middle and
+   right columns (the container `hmcol`), not the window, because the navigation takes 232 or 48 px of the window: from 990 px of those columns up all three sit side by side
+   (a window of 1222 px with the navigation open); below it the panel gives way. They fade out in 110 ms, and their column closes with the drawer's room, while what is in
+   them keeps its width, so nothing in them is squeezed on the way out. */
+@container hmcol (min-width: 761px) and (max-width: 989px) {
+  [data-home] .hm-body[data-drawer] { grid-template-columns: minmax(0, 1fr) 0px; }
+  [data-home] .hm-body[data-drawer] .hm-panel { opacity: 0; visibility: hidden; pointer-events: none; overflow: hidden; padding-left: 0; padding-right: 0; border-left-width: 0; }
+  [data-home] .hm-panel > * { min-width: calc(var(--hm-panel-w) - 2 * var(--hm-space-4)); }
+}
+/* The details panel put away: the map has the whole width, so a window that holds four columns of tiles shows four. (1098 px of stage: 4 x 250 + 3 x 14 + 2 x 28.) */
+[data-home] .hm-body[data-details="closed"] { grid-template-columns: minmax(0, 1fr); }
+[data-home] .hm-body[data-details="closed"] .hm-panel { display: none; }
+/* Under 760 px of columns (smaller than the window can be) the shelves sit under the map, and a drawer simply takes their place. */
+@container hmcol (max-width: 760px) {
+  [data-home] .hm-body[data-drawer] { grid-template-columns: minmax(0, 1fr); }
+  [data-home] .hm-body[data-drawer] .hm-panel { display: none; }
+}
+[data-home] .hm-stage { overflow-y: auto; padding: var(--hm-space-5); display: flex; flex-direction: column; gap: var(--hm-space-4); min-width: 0; }
+[data-home] .hm-stage-head { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: var(--hm-space-3) var(--hm-space-5); }
+[data-home] .hm-stage-title { display: flex; flex-direction: column; gap: var(--hm-space-1); }
+/* The map: the same tile everywhere (one width, one height). There is no row gap, because a tray may sit between two rows: each tile keeps its own 14 px under it, and
+   a tray that is closed has no height and so adds none. A tray is one more grid item that spans the whole row and follows the last tile of its row (HomeApp). */
+[data-home] .hm-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, var(--hm-tile-w)); column-gap: var(--hm-space-4); row-gap: 0; justify-content: start; align-content: start; align-items: start; }
+[data-home] .hm-grid > li.hm-tile { display: flex; padding-bottom: var(--hm-space-4); }
+[data-home] .hm-grid > li.hm-tray-slot { grid-column: 1 / -1; min-width: 0; display: block; }
+
+[data-home] .hm-panel {
+  overflow-y: auto; padding: var(--hm-space-5) var(--hm-space-4); border-left: 1px solid var(--hm-border); background: var(--surface); display: flex; flex-direction: column; gap: var(--hm-space-4);
+  transition: opacity var(--motion-home-shelves-ms, 0ms) var(--motion-home-shelves-ease, ease-out), visibility var(--motion-home-shelves-ms, 0ms) var(--motion-home-shelves-ease, ease-out), padding var(--motion-home-drawer-ms, 0ms) var(--motion-home-drawer-ease, ease-out);
+}
+[data-home] .hm-panel-head { display: flex; flex-direction: column; gap: var(--hm-space-1); }
+[data-home] .hm-panel-head h2 { outline-offset: 4px; width: fit-content; max-width: 100%; border-radius: var(--hm-radius-small); }
+
+[data-home] .hm-savebar { display: flex; align-items: center; justify-content: space-between; gap: var(--hm-space-4); min-height: var(--hm-savebar-h); box-sizing: border-box; padding: var(--hm-space-2) var(--hm-space-5); background: var(--surface); border-top: 1px solid var(--hm-border); }
+[data-home] .hm-savebar p { margin: 0; font-size: var(--hm-text-base); }
+
+[data-home] .hm-empty { margin: 0; }
+@container hmcol (max-width: 760px) {
+  [data-home] .hm-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  [data-home] .hm-panel { border-left: 0; border-top: 1px solid var(--hm-border); max-height: 45vh; }
+}
+
+/* ---- The kit gallery: a normal page that scrolls, with the same parts in a light and a dark look side by side. */
+[data-home].hm-gallery-page { min-height: 100vh; padding: var(--hm-space-5); display: flex; flex-direction: column; gap: var(--hm-space-5); }
+[data-home] .hm-gallery-intro { display: flex; flex-direction: column; gap: var(--hm-space-1); }
+[data-home] .hm-gallery-themes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 34rem), 1fr)); gap: var(--hm-space-5); align-items: start; }
+[data-home] .hm-gallery-theme { background: var(--bg); color: var(--text); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); padding: var(--hm-space-5); display: flex; flex-direction: column; gap: var(--hm-space-5); }
+[data-home] .hm-gallery-block { display: flex; flex-direction: column; gap: var(--hm-space-3); align-items: flex-start; width: 100%; }
+[data-home] .hm-gallery-row { display: flex; flex-wrap: wrap; gap: var(--hm-space-4); align-items: flex-start; }
+[data-home] .hm-gallery-cell { display: flex; flex-direction: column; gap: var(--hm-space-2); align-items: flex-start; }
+[data-home] .hm-gallery-popover-room { min-height: 11rem; }
+
+/* ---- The tools beside the sort toggle, and the one closing note after the first Save. */
+[data-home] .hm-stage-tools { display: flex; align-items: center; flex-wrap: wrap; gap: var(--hm-space-3) var(--hm-space-5); }
+[data-home] .hm-toast {
+  /* The note has a strip of its own between the page and the Save bar, at the left, so it never lies over a tile or a row. The strip has no height while there is no note. */
+  display: none; justify-self: start; box-sizing: border-box; max-width: calc(100vw - 2 * var(--hm-space-5)); margin: var(--hm-space-2) var(--hm-space-5);
+  align-items: center; gap: var(--hm-space-3); padding: var(--hm-space-1) var(--hm-space-4);
+  background: var(--surface); color: var(--text); border: 1px solid var(--accent-strong); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow); font-size: var(--hm-text-base); font-weight: 600;
+}
+[data-home] .hm-toast[data-open] { display: flex; animation: hm-toast-in var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out) both; }
+/* It leaves with a quicker fade. The note's rise is 4 px, from the overlay tokens. */
+[data-home] .hm-toast[data-leaving] { display: flex; animation: hm-toast-out var(--motion-home-overlay-out-ms, 0ms) var(--motion-home-overlay-out-ease, ease-in) both; pointer-events: none; }
+[data-home] .hm-toast .kit-icon { color: var(--accent-strong); }
+@keyframes hm-toast-in { from { opacity: 0; transform: translateY(var(--motion-home-overlay-travel, 0px)); } to { opacity: 1; transform: none; } }
+@keyframes hm-toast-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: none; } }

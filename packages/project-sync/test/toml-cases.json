@@ -1,0 +1,501 @@
+{
+ "source": "Synthetic TOML cases from the step 3 lane B verification (v3b) and the final round. valid is the verdict of Python 3.14 tomllib (TOML 1.0).",
+ "cases": [
+  {
+   "text": "a = 1\na = 2\n",
+   "valid": false
+  },
+  {
+   "text": "[a]\n[a]\n",
+   "valid": false
+  },
+  {
+   "text": "a = {b=1, b=2}\n",
+   "valid": false
+  },
+  {
+   "text": "a = [{b=1,b=2}]\n",
+   "valid": false
+  },
+  {
+   "text": "a.b = 1\n[a]\n",
+   "valid": false
+  },
+  {
+   "text": "[a]\nb=1\n[a.b]\n",
+   "valid": false
+  },
+  {
+   "text": "[[a]]\nx=1\n[[a]]\nx=1\n",
+   "valid": true
+  },
+  {
+   "text": "[[a]]\n[a.b]\n[[a]]\n[a.b]\n",
+   "valid": true
+  },
+  {
+   "text": "[[a]]\n[a.b]\n[a.b]\n",
+   "valid": false
+  },
+  {
+   "text": "[a.b]\n[[a]]\n",
+   "valid": false
+  },
+  {
+   "text": "[[a.b]]\n[[a]]\n[[a.b]]\n",
+   "valid": false
+  },
+  {
+   "text": "[[a]]\n[[a.b]]\n[[a.b]]\n[[a]]\n[[a.b]]\n",
+   "valid": true
+  },
+  {
+   "text": "a = \"\\U0001F600\"\n",
+   "valid": true
+  },
+  {
+   "text": "a = \"\\UFFFFFFFF\"\n",
+   "valid": false
+  },
+  {
+   "text": "a = \"\\uD800\"\n",
+   "valid": false
+  },
+  {
+   "text": "\"\\U00000061\" = 1\na = 2\n",
+   "valid": false
+  },
+  {
+   "text": "\"\\U00000061\" = 1\n[a]\n",
+   "valid": false
+  },
+  {
+   "text": "a = \"\"\"\\q\"\"\"\n",
+   "valid": false
+  },
+  {
+   "text": "a = \"x\u0001y\"\n",
+   "valid": false
+  },
+  {
+   "text": "a = 2020-13-45\n",
+   "valid": false
+  },
+  {
+   "text": "a = 1979-05-27 07:32:00\n",
+   "valid": true
+  },
+  {
+   "text": "a = 07:32\n",
+   "valid": false
+  },
+  {
+   "text": "a = 1e5\n",
+   "valid": true
+  },
+  {
+   "text": "a = 01\n",
+   "valid": false
+  },
+  {
+   "text": "a = 0x_1\n",
+   "valid": false
+  },
+  {
+   "text": "a = 1__0\n",
+   "valid": false
+  },
+  {
+   "text": "a = \"\"\"x\"\"\"\"\n",
+   "valid": true
+  },
+  {
+   "text": "a = \"\"\"x\"\"\"\"\"\n",
+   "valid": true
+  },
+  {
+   "text": "a = '''x''''\n",
+   "valid": true
+  },
+  {
+   "text": "a=\n",
+   "valid": false
+  },
+  {
+   "text": "a = {b = 1,}\n",
+   "valid": false
+  },
+  {
+   "text": "a = [1,,2]\n",
+   "valid": false
+  },
+  {
+   "text": "a = [1 2]\n",
+   "valid": false
+  },
+  {
+   "text": "a = [\n1,\n]\n",
+   "valid": true
+  },
+  {
+   "text": "a = {\nb=1}\n",
+   "valid": false
+  },
+  {
+   "text": "[a]\nb.c = 1\n[a.b]\n",
+   "valid": false
+  },
+  {
+   "text": "[a.b]\n[a]\nb.c = 1\n",
+   "valid": false
+  },
+  {
+   "text": "[a]\nb.c = 1\n[a.b.d]\n",
+   "valid": true
+  },
+  {
+   "text": "a.b = 1\na.b.c = 2\n",
+   "valid": false
+  },
+  {
+   "text": "a = 1\n[a.b]\n",
+   "valid": false
+  },
+  {
+   "text": "a = {b=1}\n[a.c]\n",
+   "valid": false
+  },
+  {
+   "text": "a = {b=1}\na.c=1\n",
+   "valid": false
+  },
+  {
+   "text": "[ a . b ]\n",
+   "valid": true
+  },
+  {
+   "text": "[a]\nb = 1 # c\n",
+   "valid": true
+  },
+  {
+   "text": "a = 1 b = 2\n",
+   "valid": false
+  },
+  {
+   "text": "﻿a = 1\n",
+   "valid": false
+  },
+  {
+   "text": "a = 1\r\nb = 2\r\n",
+   "valid": true
+  },
+  {
+   "text": "a = \"x\\\ny\"\n",
+   "valid": false
+  },
+  {
+   "text": "# \u0001\n",
+   "valid": false
+  },
+  {
+   "text": "a = 'x\u0001'\n",
+   "valid": false
+  },
+  {
+   "text": "[[a]]\n[a.b]\nc=1\n[[a]]\n[a.b]\nc=1\n",
+   "valid": true
+  },
+  {
+   "text": "[a]\n[a.b.c]\n[a.b]\n",
+   "valid": true
+  },
+  {
+   "text": "[a.b.c]\n[a.b]\n[a]\n",
+   "valid": true
+  },
+  {
+   "text": "a.b.c = 1\n[a.b]\n",
+   "valid": false
+  },
+  {
+   "text": "a.b.c = 1\n[a.b.d]\n",
+   "valid": true
+  },
+  {
+   "text": "[x]\na = 1\n[y]\na = 2\n",
+   "valid": true
+  },
+  {
+   "text": "a = [[1],[2]]\n",
+   "valid": true
+  },
+  {
+   "text": "a = [ {b=1}, {b=2} ]\n[[a]]\n",
+   "valid": false
+  },
+  {
+   "text": "a = 1.\n",
+   "valid": false
+  },
+  {
+   "text": "a = .5\n",
+   "valid": false
+  },
+  {
+   "text": "a = +1\n",
+   "valid": true
+  },
+  {
+   "text": "a = 1_000\n",
+   "valid": true
+  },
+  {
+   "text": "a = -inf\n",
+   "valid": true
+  },
+  {
+   "text": "a = nan\n",
+   "valid": true
+  },
+  {
+   "text": "a = 0b102\n",
+   "valid": false
+  },
+  {
+   "text": "a = 0o8\n",
+   "valid": false
+  },
+  {
+   "text": "a = 0xDEADbeef\n",
+   "valid": true
+  },
+  {
+   "text": "a = true\nb = TRUE\n",
+   "valid": false
+  },
+  {
+   "text": "a = \"\\x41\"\n",
+   "valid": false
+  },
+  {
+   "text": "a = \"\\e\"\n",
+   "valid": false
+  },
+  {
+   "text": "a = \"\\u0000\"\n",
+   "valid": true
+  },
+  {
+   "text": "a=1979-05-27T07:32:00-08:00\n",
+   "valid": true
+  },
+  {
+   "text": "a=1979-05-27T07:32:00.999999Z\n",
+   "valid": true
+  },
+  {
+   "text": "a=1979-05-27t07:32:00z\n",
+   "valid": true
+  },
+  {
+   "text": "[a]\n[b]\n[a.c]\n",
+   "valid": true
+  },
+  {
+   "text": "a=\"b\"\n[a]\n",
+   "valid": false
+  },
+  {
+   "text": "a = {}\n[a]\n",
+   "valid": false
+  },
+  {
+   "text": "[a]\nx=1\n[a]\ny=2\n",
+   "valid": false
+  },
+  {
+   "text": "[a]\n[[a.b]]\n[a.b]\n",
+   "valid": false
+  },
+  {
+   "text": "[[a]]\n[a]\n",
+   "valid": false
+  },
+  {
+   "text": "[\"a\".\"b\"]\n[a.b]\n",
+   "valid": false
+  },
+  {
+   "text": "[a.'b']\n[a.b]\n",
+   "valid": false
+  },
+  {
+   "text": "\"\"=1\n\"\" = 2\n",
+   "valid": false
+  },
+  {
+   "text": "a = [\n# c\n1,\n2 # d\n]\n",
+   "valid": true
+  },
+  {
+   "text": "a = \"unterminated\n",
+   "valid": false
+  },
+  {
+   "text": "a = 'x\n'",
+   "valid": false
+  },
+  {
+   "text": "k = {a.b=1, a.c=2}\n",
+   "valid": true
+  },
+  {
+   "text": "k = {a.b=1, a={}}\n",
+   "valid": false
+  },
+  {
+   "text": "k={a=1}\nk.b=2\n",
+   "valid": false
+  },
+  {
+   "text": "a = 1979-05-27T07:32:60Z\n",
+   "valid": false
+  },
+  {
+   "text": "a = 1979-02-29\n",
+   "valid": false
+  },
+  {
+   "text": "a = 1980-02-29\n",
+   "valid": true
+  },
+  {
+   "text": "a = 24:00:00\n",
+   "valid": false
+  },
+  {
+   "text": "a = 07:32:00\n",
+   "valid": true
+  },
+  {
+   "text": "a = \"\"\"a\\\n   b\"\"\"\n",
+   "valid": true
+  },
+  {
+   "text": "a = \"tab\there\"\n",
+   "valid": true
+  },
+  {
+   "text": "# tab\there\n",
+   "valid": true
+  },
+  {
+   "text": "a = \"\"\"x\u0001\"\"\"\n",
+   "valid": false
+  },
+  {
+   "text": "a = '''x\u0001'''\n",
+   "valid": false
+  },
+  {
+   "text": "a = 1\rb = 2\n",
+   "valid": false
+  },
+  {
+   "text": "a = \"\\u00e9\"\n",
+   "valid": true
+  },
+  {
+   "text": "[a]\nb = {c.d = 1}\n",
+   "valid": true
+  },
+  {
+   "text": "k = {a = 1, a.b = 2}\n",
+   "valid": false
+  },
+  {
+   "text": "[[a.b]]\n[a]\n",
+   "valid": true
+  },
+  {
+   "text": "[a.b.c]\n[a]\nb.d = 1\n",
+   "valid": true
+  },
+  {
+   "text": "a = [1, \"x\"]\n",
+   "valid": true
+  },
+  {
+   "text": "a = 0o17\n",
+   "valid": true
+  },
+  {
+   "text": "a = 0b101\n",
+   "valid": true
+  },
+  {
+   "text": "a = -0x1\n",
+   "valid": false
+  },
+  {
+   "text": "a = 1e1_0\n",
+   "valid": true
+  },
+  {
+   "text": "a = 3.14_15\n",
+   "valid": true
+  },
+  {
+   "text": "a = -0.0\n",
+   "valid": true
+  },
+  {
+   "text": "a = 1979-05-27T07:32:00.5-07:00\n",
+   "valid": true
+  },
+  {
+   "text": "a = 1979-05-27\n",
+   "valid": true
+  },
+  {
+   "text": "\"a.b\" = 1\na.b = 2\n",
+   "valid": true
+  },
+  {
+   "text": "[a.b.c]\n[a]\nb.d = 1\n[a.b]\n",
+   "valid": false
+  },
+  {
+   "text": "[a.b.c]\n[a]\nb.d = 1\n[a.b.e]\n",
+   "valid": true
+  },
+  {
+   "text": "[a.b.c]\nx=1\n[a]\nb.c.y = 1\n",
+   "valid": false
+  },
+  {
+   "text": "[a.b.c]\n[a]\nb.d = 1\n[x]\n[a.b.d2]\n",
+   "valid": true
+  },
+  {
+   "text": "a.b = 1\n[a.c]\n",
+   "valid": true
+  },
+  {
+   "text": "a = \"\"\"x\\q\"\"\"\n",
+   "valid": false
+  },
+  {
+   "text": "a = '''x'''''\n",
+   "valid": true
+  },
+  {
+   "text": "a = \"\"\"x\"\"\"\"\"\"\n",
+   "valid": false
+  },
+  {
+   "text": "[a]\n[[a.b]]\n[[a.b]]\nc.d=1\n[a.b.c]\n",
+   "valid": false
+  }
+ ]
+}

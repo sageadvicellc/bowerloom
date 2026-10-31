@@ -1,0 +1,54 @@
+name: Engine change
+description: A new Claude Code or Codex version changed how it reads skills, agents, tools, or settings.
+title: "[Engine change]: "
+labels: ["needs:triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form when an engine update breaks or changes something that Bowerloom installs. Attach the diagnostic bundle so that we can see the engine versions. Run `bowerloom report`, or choose Help > Report a problem in the app.
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Engine
+      options:
+        - Claude Code
+        - Codex
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: New engine version
+      description: The version where the change started, such as the output of `claude --version` or `codex --version`.
+    validations:
+      required: true
+  - type: textarea
+    id: change
+    attributes:
+      label: What changed?
+      description: Describe the old behavior and the new behavior.
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Release note or source
+      description: A link to the engine release note or issue, if you have one.
+    validations:
+      required: false
+  - type: textarea
+    id: bundle
+    attributes:
+      label: Diagnostic bundle
+      description: Paste the output of `bowerloom report`, or keep the bundle that the app filled in.
+      render: text
+    validations:
+      required: true
+  - type: checkboxes
+    id: review
+    attributes:
+      label: Privacy check
+      options:
+        - label: I read the bundle and the text above, and they hold nothing private.
+          required: true

@@ -14,7 +14,7 @@ The older craft-shop trial and recorded demo below remain separate evidence. The
 
 The film experiment is filed. A new film and a completed agent-team task are not requirements for the revised founder trial.
 
-The public installer, documentation site, and release remain unpublished. Hanna retains founder acceptance and the main merge.
+The public installer, documentation site, and release remain unpublished. The maintainer retains founder acceptance and the main merge.
 
 ## Earlier recorded demo
 
@@ -89,6 +89,6 @@ Historical Workbench source imports retain their license hold. No new implementa
 
 Open-work disposition, replacement availability, founder main merge, and archival gates remain unsatisfied. Repository retirement requires the separate cutover process.
 
-Agents integrate independently reviewed task branches into `feature/trellis-v1`. Hanna, through `hannasage`, alone merges the assembled feature into `main`.
+Agents integrate independently reviewed task branches into `feature/trellis-v1`. The maintainer, through `hannasage`, alone merges the assembled feature into `main`.
 
 Trellis remains separate from the private Sagespec Labs configuration. This demo starts no Sagespec or marketing team.

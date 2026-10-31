@@ -1,0 +1,7 @@
+# Bowerloom: files of this machine. Git leaves them out, so a pushed store does not publish them.
+/folders/
+.*.tmp
+/authoring/pending.json
+/authoring/.stage-*/
+/authoring/.tmp-*
+.DS_Store

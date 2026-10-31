@@ -145,7 +145,7 @@ test('an absent uid must match the decoder, and a present one must still match i
   assert.throws(() => one(absent), code('NPM_TAR_DECODER'));
 });
 
-// Hanna's decision: the record cap is 8192, since real packages such as ecc-universal@2.2.1 hold 2615.
+// the maintainer's decision: the record cap is 8192, since real packages such as ecc-universal@2.2.1 hold 2615.
 const manyFiles = n => Buffer.concat([...Array.from({ length: n }, (_, i) => nodeTarHeader('package/f' + i + '.md', 0)), Buffer.alloc(1024)]);
 test('an archive of more than 1024 and at most 8192 records enumerates; 8193 refuses with NPM_TAR_BOUND', () => {
   assert.equal(enumerateNpmTar(manyFiles(2615), () => {}).recordCount, 2615);

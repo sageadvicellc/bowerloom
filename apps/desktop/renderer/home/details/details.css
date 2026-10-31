@@ -1,0 +1,54 @@
+/*
+ * The details panel. Scoped to [data-home]. Text is 14 px at the least; a block heading is 16 px. A block is a heading and a line or two; nothing here is wider than the panel.
+ * The programs a thing works in are plain words joined by dots, and the agents that use it are text buttons: no pills.
+ * The full text of a skill sits in a quiet box that scrolls on its own if it is long.
+ */
+[data-home] .dt-head { flex-direction: row; align-items: flex-start; gap: var(--hm-space-3); }
+[data-home] .dt-head-text { display: flex; flex-direction: column; gap: var(--hm-space-1); min-width: 0; }
+[data-home] .dt-kind { text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--text-muted); }
+[data-home] .dt-back { display: flex; }
+[data-home] .dt-block { display: flex; flex-direction: column; align-items: flex-start; gap: var(--hm-space-2); }
+[data-home] .dt-block p { margin: 0; font-size: var(--hm-text-base); line-height: 1.45; }
+[data-home] .dt-block p.kit-hint { font-size: var(--hm-text-small); }
+[data-home] .dt-sub { margin: 0; font-size: var(--hm-text-section); line-height: 1.3; font-weight: 600; color: var(--text); }
+[data-home] .dt-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--hm-space-1); }
+[data-home] .dt-chip { display: inline-flex; align-items: center; min-height: var(--hm-control-h-small); font-size: var(--hm-text-base); font-weight: 600; line-height: 1.2; color: var(--text); }
+[data-home] .dt-chips > li + li::before { content: "\00b7"; margin-right: var(--hm-space-1); color: var(--text-muted); font-weight: 600; }
+[data-home] .dt-agent {
+  display: inline-flex; align-items: center; min-height: var(--hm-control-h-small); padding: 0 var(--hm-space-2); box-sizing: border-box; cursor: pointer; touch-action: manipulation;
+  font: inherit; font-size: var(--hm-text-base); font-weight: 600; line-height: 1.2; color: var(--text); background: transparent; border: 0; border-radius: var(--hm-radius-small);
+  text-decoration: underline; text-underline-offset: 3px; transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
+}
+[data-home] .dt-agent:hover { background: var(--accent-soft); }
+[data-home] .dt-agent:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
+[data-home] .dt-titles { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--hm-space-1); font-size: var(--hm-text-base); }
+[data-home] .dt-titles li { padding-left: var(--hm-space-3); border-left: 2px solid var(--hm-border); }
+[data-home] .dt-badge, [data-home] .dt-actions, [data-home] .dt-full { display: flex; flex-wrap: wrap; align-items: center; gap: var(--hm-space-2); }
+[data-home] .dt-full { flex-direction: column; align-items: flex-start; }
+[data-home] .dt-key { display: flex; flex-wrap: wrap; align-items: center; gap: var(--hm-space-2); margin: 0; font-size: var(--hm-text-base); }
+[data-home] .dt-key p { margin: 0; }
+[data-home] .dt-text {
+  width: 100%; box-sizing: border-box; max-height: 14rem; overflow-y: auto; padding: var(--hm-space-3) var(--hm-space-4); background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--hm-border); border-radius: var(--hm-radius); display: flex; flex-direction: column; gap: var(--hm-space-2);
+}
+[data-home] .dt-text p { margin: 0; font-size: var(--hm-text-base); line-height: 1.5; }
+
+/* The facts of a skill from outside: who made it and which release it is, as a short list of a name and its value. */
+[data-home] .dt-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--hm-space-1) var(--hm-space-3); margin: var(--hm-space-2) 0 0; }
+[data-home] .dt-facts dt { color: var(--text-muted); font-weight: 600; }
+[data-home] .dt-facts dd { margin: 0; overflow-wrap: anywhere; }
+
+/* "Show where it lives": a quiet text button, and, open, one sample path for each program with "Copy path". The path can always be selected by hand. */
+[data-home] .dt-lives { display: flex; flex-direction: column; align-items: flex-start; gap: var(--hm-space-2); margin-left: calc(-1 * var(--hm-space-3)); }
+[data-home] .dt-places { list-style: none; margin: 0; padding: 0 0 0 var(--hm-space-3); width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: var(--hm-space-3); }
+[data-home] .dt-place { display: flex; flex-direction: column; gap: var(--hm-space-1); min-width: 0; }
+[data-home] .dt-place-app { margin: 0; font-weight: 600; color: var(--text); }
+[data-home] .dt-path {
+  display: block; box-sizing: border-box; padding: var(--hm-space-2) var(--hm-space-3); font-family: var(--font-mono, ui-monospace, monospace); font-size: var(--hm-text-base); line-height: 1.4;
+  color: var(--text); background: var(--surface-2); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); overflow-wrap: break-word; user-select: text; -webkit-user-select: text;
+}
+[data-home] .dt-path:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+[data-home] .dt-place-actions { display: flex; align-items: center; gap: var(--hm-space-3); }
+[data-home] .dt-copied { font-size: var(--hm-text-base); font-weight: 600; color: var(--text); }
+[data-home] .dt-copied:empty { display: none; }
+[data-home] .dt-blocked { margin: 0 0 0 var(--hm-space-3); font-weight: 600; color: var(--text); }

@@ -41,7 +41,8 @@ export function tanstackPin(): PinnedEntry {
 /** The example bowerloom.json: three skills, one prompt, and two teams. */
 export function configValue(): ProjectConfig {
   return {
-    format: CONFIG_FORMAT, harnesses: ['claude', 'codex'],
+    // The docs show this file in the old form, so the example keeps it: `oldForm` makes serializeConfig write `harnesses`.
+    format: CONFIG_FORMAT, engines: ['claude-code', 'codex'], oldForm: true,
     skills: [{ id: 'house-style', source: 'store' }, { id: 'local-tool', source: 'project' }, { id: 'tanstack-db', source: 'store', via: ['research'] }],
     prompts: [{ id: 'weekly-update', source: 'store' }],
     teams: [{ id: 'first-team', source: 'project' }, { id: 'research', source: 'store' }],

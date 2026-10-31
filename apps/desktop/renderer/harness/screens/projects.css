@@ -1,0 +1,24 @@
+/*
+ * Projects (S6). Every rule starts at [data-home]. A row is the Harness list's row (hx-row): the name is the button that covers it, and the action at the right is above it. The statuses are dots and
+ * words, never pills. Text is 14 px or more.
+ */
+[data-home] .hxp-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--hm-space-4); }
+[data-home] .hxp-row { align-items: center; padding-top: var(--hm-space-3); padding-bottom: var(--hm-space-3); }
+[data-home] .hxp-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 var(--hm-space-3); min-width: 0; }
+[data-home] .hxp-title .hx-row-main { flex: none; font-size: var(--hm-text-name); }
+[data-home] .hxp-harness { font-size: var(--hm-text-base); color: var(--text-muted); }
+[data-home] .hxp-path { font-size: var(--hm-text-base); color: var(--text-muted); line-height: 1.4; overflow-wrap: anywhere; }
+[data-home] .hxp-dots { position: relative; pointer-events: none; list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 2px var(--hm-space-5); }
+[data-home] .hxp-dots + .hxp-dots { margin-top: 0; }
+[data-home] .hxp-dots-name { font-size: var(--hm-text-base); font-weight: 600; }
+
+/* The details column */
+[data-home] .hxp-install { display: flex; flex-direction: column; gap: var(--hm-space-4); }
+[data-home] .hxp-install + .hxp-install { padding-top: var(--hm-space-4); border-top: 1px solid var(--border); }
+[data-home] .hxp-hname { margin: 0 0 var(--hm-space-2); font-size: var(--hm-text-base); font-weight: 600; line-height: 1.35; }
+[data-home] .hxp-ifaces { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--hm-space-3); }
+[data-home] .hxp-iface { display: flex; align-items: center; justify-content: space-between; gap: var(--hm-space-3); box-sizing: border-box; min-height: 3.5rem; padding: var(--hm-space-2) var(--hm-space-3); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); }
+[data-home] .hxp-iface-text { display: flex; flex-direction: column; min-width: 0; }
+[data-home] .hxp-iface-name { font-weight: 600; font-size: var(--hm-text-base); line-height: 1.35; }
+[data-home] .hxp-wide .kit-button { width: 100%; }
+[data-home] .hxp-wide { display: flex; flex-direction: column; gap: var(--hm-space-3); }

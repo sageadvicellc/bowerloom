@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { readInstalledRelease } from './release.js';
 import { shortHelp, TOPICS, reportFailure } from './human.js';
+import { noteFailure, recordScenario } from './events.js';
 import { namesYesFlag } from './confirm.js';
 import { failClosedOnBrokenPipe, quietBrokenPipe } from './broken-pipe.js';
 import { canonicalJson, DefinitionError } from '../../../packages/contracts/src/index.js';
@@ -104,6 +105,9 @@ const INIT_HELP = [
   'Status inspects the saved specification. Demo-plan offers an optional handoff without execution.', '',
 ].join('\n');
 
+/** Where the local event log lives for this run. */
+const where = (): { env: NodeJS.ProcessEnv; home: string } => ({ env: process.env, home: homedir() });
+
 function installedVersion(): string { return readInstalledRelease().version; }
 
 // Review finding 8 (the owner's default: F' is the launch build): the heading says "open beta". The release
@@ -129,7 +133,7 @@ function helpText(words: readonly string[]): string | null {
 // its own usage words, as at cc117ac.
 const SESSION_FLAGS = ['--installation', '--registry', '--demo', '--pro', '--5x', '--20x', '--candidate', '--action'];
 // Every first word main() handles. Any other first word is a typo: review finding 6.
-const COMMANDS = new Set(['help', '--help', '-h', '--version', '-V', 'ls', 'cache', 'store', 'receipt', 'use', 'unuse', 'lock', 'status', 'init', 'team', 'skill', 'prompt', 'slice', 'folder', 'context', 'skills', 'apply', 'up', 'routine', 'mcp', 'link', 'revise', 'harness', 'control', 'destruct', 'backend', 'portable', 'recipe', 'authoring', 'review', 'approve', 'cancel', 'validate', 'plan']);
+const COMMANDS = new Set(['help', '--help', '-h', '--version', '-V', 'ls', 'cache', 'store', 'receipt', 'use', 'unuse', 'lock', 'status', 'init', 'team', 'skill', 'prompt', 'slice', 'folder', 'context', 'skills', 'apply', 'up', 'routine', 'mcp', 'link', 'revise', 'harness', 'control', 'destruct', 'backend', 'portable', 'recipe', 'authoring', 'review', 'approve', 'cancel', 'validate', 'plan', 'report', 'events']);
 
 async function main(args: string[]): Promise<void> {
   // There is no --yes: approval always names the plan it approves (usage error, exit 2). `-y` as a flag's value is a value.
@@ -137,11 +141,23 @@ async function main(args: string[]): Promise<void> {
   // F' code review C: bare bowerloom prints the short help. At cc117ac it was a usage refusal, not a plumbing form.
   if (args.length === 0 || (args.length === 1 && (args[0] === '--help' || args[0] === '-h' || args[0] === 'help'))) { process.stdout.write(`${releaseHeading()}\n${shortHelp()}`); return; }
   if (args[0] === 'help') {
+    // Step 5: the 0.8 harness commands have their own topic, outside the short help.
+    if (args.length === 2 && args[1] === 'harness') { const { HARNESS_HELP } = await import('./harness-def.js'); process.stdout.write(`${releaseHeading()}\n${HARNESS_HELP}`); return; }
     const text = helpText(args.slice(1));
     if (text === null) throw new DefinitionError('USAGE', 'There is no help for that. Run bowerloom help to see the commands.');
     process.stdout.write(`${releaseHeading()}\n${text}`); return;
   }
   if (args.length === 2 && (args[1] === '--help' || args[1] === '-h') && topic(args[0]) !== null) { process.stdout.write(`${releaseHeading()}\n${topic(args[0])}`); return; }
+  if (args[0] === 'report') {
+    const { runReportCommand } = await import('./diagnostics.js');
+    process.exitCode = await runReportCommand(args, homedir(), text => process.stdout.write(text), process.env);
+    return;
+  }
+  if (args[0] === 'events') {
+    const { runEventsCommand } = await import('./diagnostics.js');
+    process.exitCode = runEventsCommand(args, homedir(), text => process.stdout.write(text), process.env);
+    return;
+  }
   if (args[0] === 'ls') { const { runLsCommand } = await import('./ls.js'); process.stdout.write(runLsCommand(args, process.cwd(), homedir())); return; }
   // Spec 09: cache list and cache prune.
   if (args[0] === 'cache') {
@@ -202,7 +218,9 @@ async function main(args: string[]): Promise<void> {
       return;
     }
     const { runCreateCommand } = await import('./create.js');
-    process.exitCode = await runCreateCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    const create = (): Promise<number> => runCreateCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    // Scenario S7: a knowledge slice.
+    process.exitCode = args[0] === 'slice' && args[1] === 'create' ? await recordScenario(where(), { scenario: 'S7', step: 'create' }, create) : await create();
     return;
   }
   // Spec 06: use and unuse change bowerloom.json and bowerloom.lock.json; lock verify and lock update read and write the lock.
@@ -220,7 +238,9 @@ async function main(args: string[]): Promise<void> {
   if (args[0] === 'skills' && (args[1] === 'add' || args[1] === 'check')) {
     if (args.length === 3 && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS.skills!}`); return; }
     const { runManifestCommand } = await import('./manifest.js');
-    process.exitCode = await runManifestCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    const manifest = (): Promise<number> => runManifestCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    // Scenario S3: add from a library.
+    process.exitCode = args[1] === 'add' ? await recordScenario(where(), { scenario: 'S3', step: 'add' }, manifest) : await manifest();
     return;
   }
   // M5: sync, the v1beta2 item recovery (only with --item; the v1 forms take --request) and migrate.
@@ -228,7 +248,8 @@ async function main(args: string[]): Promise<void> {
     if (args.length === 3 && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS.skills!}`); return; }
     const { runSyncCommand, runRecoverItemCommand, runMigrateCommand } = await import('./sync.js');
     const run = args[1] === 'sync' ? runSyncCommand : args[1] === 'migrate' ? runMigrateCommand : runRecoverItemCommand;
-    process.exitCode = await run(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    const sync = (): Promise<number> => run(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    process.exitCode = args[1] === 'sync' ? await recordScenario(where(), { scenario: 'S3', step: 'sync' }, sync) : await sync();
     return;
   }
   // M6: apply, and up in project mode. `up` without --team stays the --demo session command below.
@@ -278,10 +299,20 @@ async function main(args: string[]): Promise<void> {
   }
   if (args[0] === 'revise') {
     const { runRevisionCommand, renderStartupRevisionReview } = await import('./revision.js');
-    const result = await runRevisionCommand(args);
+    let result: unknown;
+    const revise = async (): Promise<number> => { result = await runRevisionCommand(args); return 0; };
+    // Scenario S5: recover.
+    if (args[1] === 'recover') await recordScenario(where(), { scenario: 'S5', step: 'recover' }, revise); else await revise();
     process.stdout.write(args[1] === 'plan' && !args.includes('--json')
       ? renderStartupRevisionReview(result as import('../../../packages/startup/src/index.js').StartupRevisionPlan)
       : `${canonicalJson(result)}\n`);
+    return;
+  }
+  // Step 5, decision D1A: the 0.8 harness commands. The 0.7 forms all take --synthetic and keep their handler below.
+  if (args[0] === 'harness' && !args.includes('--synthetic')) {
+    const { runHarnessDefCommand, HARNESS_HELP } = await import('./harness-def.js');
+    if (args.length === 2 && (args[1] === '--help' || args[1] === '-h')) { process.stdout.write(`${releaseHeading()}\n${HARNESS_HELP}`); return; }
+    process.exitCode = await runHarnessDefCommand(args, process.cwd(), homedir(), text => process.stdout.write(text), undefined, process.env);
     return;
   }
   if (args[0] === 'harness') {
@@ -306,7 +337,11 @@ async function main(args: string[]): Promise<void> {
   }
   if (args[0] === 'portable') {
     const { runPortableCommand } = await import('./portable.js');
-    process.stdout.write(`${canonicalJson(runPortableCommand(args))}\n`);
+    let result: unknown;
+    const portable = async (): Promise<number> => { result = runPortableCommand(args); return 0; };
+    // Scenario S6: hand a setup to a colleague.
+    if (args[1] === 'install') await recordScenario(where(), { scenario: 'S6', step: 'portable' }, portable); else await portable();
+    process.stdout.write(`${canonicalJson(result)}\n`);
     return;
   }
   if (args[0] === 'recipe') {
@@ -386,4 +421,6 @@ main(argv).catch((error: unknown) => {
   const failure = reportFailure(error, process.stderr.isTTY === true);
   process.stderr.write(failure.text);
   process.exitCode = failure.exitCode;
+  // A stop at a prompt is not a failure. Any other failure is one `error` event in the local log, which never changes the output above.
+  if (failure.exitCode !== 130) noteFailure(error, argv, COMMANDS);
 });

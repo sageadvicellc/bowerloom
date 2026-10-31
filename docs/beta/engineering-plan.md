@@ -1,6 +1,6 @@
 # Beta engineering plan
 
-Hanna approved v0.7-beta on October 4, 2026. Issue #51 records the release scope.
+The maintainer approved v0.7-beta on October 4, 2026. Issue #51 records the release scope.
 The baseline is merged alpha commit `edc491ad8c0206f2b77aae31eba20c5a1d7eef32`.
 This document selects engineering work. It does not claim that its acceptance gates passed.
 
@@ -14,7 +14,7 @@ This document selects engineering work. It does not claim that its acceptance ga
 6. Assemble security, recovery, installation, and animation evidence for founder acceptance.
 
 The first task branch is `task/beta-foundation`. Reviewed work integrates into `feature/bowerloom-beta`.
-Only Hanna merges `main`. The alpha production deployment stays pinned until a separately approved release.
+Only the maintainer merges `main`. The alpha production deployment stays pinned until a separately approved release.
 Existing brand, content, knowledge, and independent review chats keep their roles. The PM coordinates those chats.
 The coding lead runs at most two implementation workers with distinct file ownership.
 
@@ -68,7 +68,7 @@ Implementation must compare their current syntax with the installed version and 
 
 ## Portable routines
 
-Hanna approved issue #66 for beta on October 4, 2026. A routine is a reusable procedure with explicit inputs and outcomes.
+The maintainer approved issue #66 for beta on October 4, 2026. A routine is a reusable procedure with explicit inputs and outcomes.
 Store versioned definitions under `.bowerloom/routines/`. The first routine references the existing Labs-to-blog recipe.
 Reference pinned skills, existing team definitions, and approved MCP declarations. Do not duplicate their instructions in routine definitions.
 Keep installed bindings, credentials, execution state, and approvals separate from portable definitions.
@@ -82,11 +82,11 @@ Record exact revisions, independent review, security evidence, and documentation
 
 ## Company pilot and lifecycle
 
-Hanna selected cast-based dummy accounts with synthetic project data for the first company trial.
-Use Hanna, Miki, and S4-G3 from `company-pilot-fixture.json`. Their dummy addresses use `example.test`.
+The maintainer selected cast-based dummy accounts with synthetic project data for the first company trial.
+Use the maintainer, Miki, and S4-G3 from `company-pilot-fixture.json`. Their dummy addresses use `example.test`.
 These personas represent no real employee accounts. Disable email delivery and keep credentials out of fixtures.
 Declare memberships and resource grants separately for each test. The identity list grants no access.
-Real business data and optional telemetry remain excluded until Hanna approves their retention and deletion schedule.
+Real business data and optional telemetry remain excluded until the maintainer approves their retention and deletion schedule.
 Keep personal and company databases, credentials, and execution roots separate.
 Membership alone grants no resource access. Each resource grant names an owner, recipient, allowed action, and expiry or revocation rule.
 
@@ -109,16 +109,16 @@ Record observed results and uncertainty. A single comparison cannot establish an
 
 Build the CLI from an explicit file allowlist. Exclude private files, test fixtures, credentials, source maps, and historical repositories.
 Resolve workspace runtime dependencies in the artifact. Do not require the developer checkout or its node_modules after installation.
-Hanna selected the unscoped npm package `bowerloom`, if available. The executable is `bowerloom`.
+The maintainer selected the unscoped npm package `bowerloom`, if available. The executable is `bowerloom`.
 The registry returned HTTP 404 on October 4. This observation does not reserve the name or authorize publication.
 Test installation, help, setup, revision, stop, harness conversion, MCP, Workbench, upgrade, and removal from the actual artifact.
 Name supported operating systems explicitly. Do not infer cross-platform support from TypeScript compilation.
 
 ## Website and release evidence
 
-Hanna replaced the framed splash on October 4 at 4:01 p.m. EDT.
+The maintainer replaced the framed splash on October 4 at 4:01 p.m. EDT.
 The website opens with a cinematic intro that fills desktop and mobile viewports.
-The camera pivots around Hanna's shop, follows a bridge to a second lab, and reveals the connected tree habitat.
+The camera pivots around the maintainer's shop, follows a bridge to a second lab, and reveals the connected tree habitat.
 The second lab includes its own S4 pair and several H4Ns. The camera then pans toward a sun flare.
 Animate the Bowerloom logo into that scene. Automatically slide the intro upward to reveal the site underneath.
 Keep Skip small and out of the way, with usable touch and keyboard access.
@@ -127,10 +127,10 @@ Brand owns shot continuity, desktop and portrait framing, audio, and the product
 Engineering owns playback, automatic entry, accessibility, loading bounds, and new acceptance evidence.
 Sound effects and an original score remain requested if feasible within the existing allowance.
 The prior framed splash is not founder accepted. Preserve its evidence without applying its tests to the new behavior.
-Hanna approved production on October 4 at 4:16 p.m. EDT, with a 176-credit cap inside the existing allowance.
+The maintainer approved production on October 4 at 4:16 p.m. EDT, with a 176-credit cap inside the existing allowance.
 The estimate includes 96 credits for initial shots and 80 for repairs. Requote final inputs before each job.
 The selected plan lasts 23 seconds and includes native landscape and portrait footage, original local score, and synthesized effects.
-Miki remains in the opening with Hanna, S4-G3, and H4N-N4. The optional provider audio route is not selected.
+Miki remains in the opening with the maintainer, S4-G3, and H4N-N4. The optional provider audio route is not selected.
 Production can proceed without another plan approval. Finished-film acceptance and publication remain separate gates.
 
 Preserve the accepted dark footer and current brand palette while reconciling the older green-footer wording in #42.
@@ -139,11 +139,11 @@ Content changes must distinguish implemented behavior, tests, and planned featur
 
 Every release gate names source, artifact, harness, scenario, test result, reviewer, and open limitations.
 Source unit tests do not replace live tasks or clean installation. Missing security results remain unknown.
-Public beta publication, production promotion, and the final merge remain Hanna's decisions.
+Public beta publication, production promotion, and the final merge remain the maintainer's decisions.
 
 ## Documentation site amendment
 
-Hanna added a full documentation site as required issue #62 on October 4.
+The maintainer added a full documentation site as required issue #62 on October 4.
 Evaluate a small Astro Starlight prototype first, with a pinned version and measured build output.
 Starlight supports repository-owned Markdown and MDX through its [documented content layout](https://starlight.astro.build/getting-started/).
 Choose a simpler maintained alternative only if the prototype supplies a concrete reason.
@@ -153,7 +153,7 @@ Cover installation, first team, permissions, stop, revision, both harnesses, MCP
 Each capability page states tested versions, source revision, known limits, and whether its example is a fixture.
 Run documented commands against the packaged artifact. Test search, links, keyboard access, code readability, and mobile navigation.
 Content review owns wording review. Independent review judges the supporting evidence.
-Hanna selected `bowerloom.ai/docs`. Build the documentation under `/docs` in the existing landing deployment project.
+The maintainer selected `bowerloom.ai/docs`. Build the documentation under `/docs` in the existing landing deployment project.
 Protected previews can proceed now. Public deployment remains a separate approval.
 
 ## MCP planning slice
@@ -164,7 +164,7 @@ The command does not contact an endpoint or grant authority. Live discovery and 
 
 ## README and full-page journey amendment
 
-Hanna added required README issue #67 on October 4.
+The maintainer added required README issue #67 on October 4.
 Brand owns fresh section headers, supporting artwork, and an Archify chart of the actual `.bowerloom/` hierarchy.
 Engineering derives that hierarchy from an exact reviewed source revision and synthetic generated setup output.
 The chart distinguishes portable files, private bindings, approval records, execution state, and planned paths.
@@ -177,7 +177,7 @@ Test narrow screens and GitHub light and dark views.
 Content reviews wording and image descriptions. Knowledge receives the final approved package and its source record.
 Engineering integrates the reviewed package through the beta feature branch.
 
-Hanna replaced both earlier animation layouts with the cinematic intro described above.
+The maintainer replaced both earlier animation layouts with the cinematic intro described above.
 The earlier full-page background and framed-player previews remain historical experiments.
 Issue #58 requires the full sequence and automatic entry, with protected desktop and mobile review.
 Do not crop required characters from a portrait frame. Brand must approve each supported shot composition.
@@ -187,18 +187,18 @@ Use muted inline autoplay and a discreet sound opt-in. Provide Play when browser
 Skip remains available during loading, playback, and failure. Reduced-motion visits bypass automatic camera and slide motion.
 Stop active media after entry and restore useful keyboard focus. Keep session and direct-link behavior predictable.
 The site beneath the intro uses its ordinary readable surfaces and selective H4N and S4 panel accents.
-Preserve established unit shapes and colors. S4-G3 remains Hanna's bespoke unit.
+Preserve established unit shapes and colors. S4-G3 remains the maintainer's bespoke unit.
 
 Acceptance covers completion, automatic reveal, Skip, audio opt-in, blocked autoplay, keyboard access, reduced motion, and media failure.
 Test continuity and framing across the whole sequence on desktop, phone, and tablet layouts.
 Measure loading bounds and performance. Separate physical-device evidence from browser viewport tests.
 Bind every result to exact code and media revisions. The prior 45-test result does not establish this new behavior.
 Brand reviews the sequence and sound. Content reviews visible copy. Independent review assesses source and evidence.
-Founder creative acceptance remains required. Only Hanna merges main or approves production publication.
+Founder creative acceptance remains required. Only the maintainer merges main or approves production publication.
 
 ## Cinematic continuity revision
 
-Hanna requested a revised film on October 4 at 5:37 p.m. EDT. The 23-second candidate is not founder accepted.
+The maintainer requested a revised film on October 4 at 5:37 p.m. EDT. The 23-second candidate is not founder accepted.
 Use 10–15 seconds total, including the logo and automatic reveal. This timing replaces the earlier 23-second requirement.
 Restore the original approved laboratory style. Show one continuous drone journey through connected labs, with the established cast across those labs.
 Brand owns the cast map, reference frames, continuous route, and costed repair plan. Establish that plan before further generation.
@@ -207,7 +207,7 @@ Engineering reduces the logo shadow and keeps one media clock for the film, soun
 Both native formats must supply matching duration and cue times. Keep the small Skip control and existing playback alternatives.
 Preserve the earlier media and tests as history. They do not establish acceptance of the new film.
 
-Hanna replaced automatic entry at 5:41 p.m. EDT. Hold the final logo after the film ends.
+The maintainer replaced automatic entry at 5:41 p.m. EDT. Hold the final logo after the film ends.
 Enter fades the introduction to white, then fades into the site. The upward slide and automatic dismissal are superseded.
 Keep Enter available throughout playback. Failure and reduced-motion visits retain a still scene with Enter.
 Fade audio during entry, then stop it. Prevent duplicate transitions and restore useful keyboard focus.

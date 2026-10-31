@@ -1,0 +1,32 @@
+{
+  "format": "bowerloom/authoring-receipt/v1beta1",
+  "items": [
+    {
+      "kind": "slice",
+      "id": "brief-titles",
+      "teams": [],
+      "files": [
+        {
+          "path": "slices/brief-titles.yaml",
+          "sha256": "e14579812912d7e522901908675079347eb70dbbfb165ec0dab084a4602c2186",
+          "bytes": 208
+        }
+      ],
+      "planRevision": "ea43fac128983e609af4215c3dc2ebaad1e37c74518fe4fd3f0c9022459ea735"
+    },
+    {
+      "kind": "slice",
+      "id": "team-notes",
+      "teams": [],
+      "files": [
+        {
+          "path": "slices/team-notes.yaml",
+          "sha256": "97b9025387a3eca52dd6c89eee3f9630753aac9b91901168571161e4916eaef1",
+          "bytes": 204
+        }
+      ],
+      "planRevision": "31d4a4a614358fb658b35dd7c67dc9cb7ffaa6827f3a852a8a81e1a1d697a12f"
+    }
+  ],
+  "revision": "e6ed2719514787b12d333ce7359e8ea8983e9add57523fcc1b602b24bfcc4225"
+}

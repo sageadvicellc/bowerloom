@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, chmod, mkdir, readFile, writeFile, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -6,9 +6,14 @@ import { join } from 'node:path';
 import { realpathSync } from 'node:fs';
 import { planStartup, applyStartup, inspectStartup } from '../../../dist/packages/startup/src/index.js';
 import { planLink, applyLink, readLink, revokeLink } from '../../../dist/packages/connections/src/index.js';
+import { removeAll } from '../../../dist/tests/support/config-cli.js';
+
+// Every folder a test made goes when the file is done, also when a test failed.
+const made = [];
+after(() => { for (const dir of made.splice(0)) removeAll(dir); });
 
 async function fixture(goal = 'Review a fictional project setup with no worker execution.') {
-  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'bowerloom-links-')); await chmod(dir, 0o700);
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'bowerloom-links-')); made.push(dir); await chmod(dir, 0o700);
   const from = join(dir, 'personal'), to = join(dir, 'project');
   for (const targetDir of [from, to]) {
     const input = {mode:'new', targetDir, brief:{projectName:'Connection fixture',goal}};

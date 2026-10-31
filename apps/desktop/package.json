@@ -1,0 +1,119 @@
+{
+  "name": "@bowerloom/desktop",
+  "version": "0.8.0-beta.1",
+  "private": true,
+  "description": "Bowerloom desktop: define one harness and install it into Claude Code and Codex, with a preview before every change.",
+  "author": "Sage Advice LLC",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/main.mjs",
+  "engines": {
+    "node": ">=24.11.0 <25"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "bundle": "node tools/bundle.mjs",
+    "dev": "npm run bundle && electron . --sample-data",
+    "start": "npm run bundle && electron .",
+    "test": "node tools/bundle.mjs && node tools/bundle.mjs --tests && node --test --test-timeout=120000 .build/tests/*.test.mjs",
+    "screenshots": "npm run bundle && playwright test --config playwright.config.ts",
+    "build": "npm run bundle && electron-builder --mac --publish never",
+    "sample:make": "node tools/make-sample.mjs",
+    "verify:fuses": "node tools/check-fuses.mjs",
+    "sandbox:reset": "node tools/make-sandbox.mjs --reset",
+    "personas:serve": "node tools/personas/drive.mjs serve"
+  },
+  "dependencies": {
+    "@xyflow/react": "12.12.0",
+    "electron-updater": "6.8.10",
+    "force-graph": "1.52.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@electron/fuses": "2.1.3",
+    "@playwright/test": "1.64.0",
+    "@types/node": "24.11.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "electron": "44.7.0",
+    "electron-builder": "26.17.0",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2"
+  },
+  "build": {
+    "appId": "com.sageadvice.bowerloom",
+    "productName": "Bowerloom",
+    "copyright": "Sage Advice LLC",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "sample-data",
+        "to": "sample-data"
+      },
+      {
+        "from": "../../kits",
+        "to": "kits"
+      }
+    ],
+    "asar": true,
+    "publish": {
+      "provider": "github",
+      "owner": "sageadvicellc",
+      "repo": "bowerloom"
+    },
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Development"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true,
+      "grantFileProtocolExtraPrivileges": false
+    }
+  }
+}

@@ -70,7 +70,7 @@ test('3. apply writes each kind, the skills.json entry, and the receipt directly
   assert.deepEqual(skill.items.map(i => [i.kind, i.id]), [['skill', 'house-style']]);
   assert.match(fs.readFileSync(join(w.store, 'skills', 'house-style', 'SKILL.md'), 'utf8'), /^---\nname: house-style\n/);
   const manifest = parseManifest(fs.readFileSync(join(w.store, 'skills.json')), MANIFEST_LIMITS);
-  assert.deepEqual(manifest.harnesses, ['claude', 'codex']); assert.deepEqual(manifest.skills, [{ id: 'house-style', source: { kind: 'local', path: 'skills/house-style' } }]);
+  assert.deepEqual(manifest.engines, ['claude-code', 'codex']); assert.equal(manifest.harnesses, undefined); assert.deepEqual(manifest.skills, [{ id: 'house-style', source: { kind: 'local', path: 'skills/house-style' } }]);
   await create(w, input(w, 'prompt', 'weekly-update'));
   await create(w, input(w, 'team', 'research-desk', { profile: 'research' }));
   const receipt = JSON.parse(fs.readFileSync(join(w.store, 'authoring', 'receipt.json'), 'utf8'));

@@ -156,7 +156,7 @@ test('9. skills check --global prints skills.json (store) is valid; with no stor
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.stdout, 'skills.json (store) is valid: 1 skill, for Claude Code and Codex.\n  x  local skills/x\n');
   const j = JSON.parse(run(w.work, ['skills', 'check', '--global', '--json'], w.env).stdout);
-  assert.equal(j.format, 'bowerloom/skills-manifest-check/v1beta2'); assert.equal(j.scope, 'store'); assert.equal(j.skills[0].source, 'store');
+  assert.equal(j.format, 'bowerloom/skills-manifest-check/v1beta3'); assert.equal(j.scope, 'store'); assert.equal(j.skills[0].source, 'store');
   assert.equal(errorCode(run(w.work, ['skills', 'check', '--global', '--global'], w.env).stderr), 'USAGE');
 });
 

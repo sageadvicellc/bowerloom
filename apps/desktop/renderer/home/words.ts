@@ -1,0 +1,211 @@
+/**
+ * Every word a person reads in the Bowerloom 0.8 home app and its card kit, in one frozen table. A screen takes its words from here and nowhere else,
+ * so one test can hold them all to the rules: a label has at most 5 words, a hint at most 12, a popover at most 25, and the banned words never appear.
+ * The storyboard (knowledge-base/specs/2026-10-24-bowerloom-0-8-first-five-minutes.md, section 8) sets the vocabulary.
+ * Words that a helper builds from a number ("10 agents", "2 of 6") are built by the functions at the bottom, which the same test runs.
+ */
+import { BANNED } from '../../shared/home/textbudget.js';
+import { CARD_WORDS } from '../../shared/home/cards.js';
+import { BAR_WORDS } from '../../shared/home/savebar.js';
+import { DETAIL_WORDS } from '../../shared/home/details.js';
+
+/** The words and phrases that must not reach a screen (case-insensitive, whole words). The check itself is `assertTextBudget`. */
+export { BANNED };
+
+const deepFreeze = <T extends object>(value: T): T => {
+  for (const inner of Object.values(value)) if (typeof inner === 'object' && inner !== null) deepFreeze(inner);
+  return Object.freeze(value);
+};
+
+export const WORDS = deepFreeze({
+  /** Names of things and buttons: at most 5 words each. */
+  label: {
+    appName: 'Bowerloom',
+    versionHistory: 'Version history',
+    add: 'Add',
+    help: 'Help',
+    skipToDetails: 'Skip to details',
+    hideDetails: 'Hide details',
+    showDetails: 'Show details',
+    hideNav: 'Hide navigation',
+    showNav: 'Show navigation',
+    mainMenu: 'Main menu',
+    libraryPages: 'Library pages',
+    navWorkspace: 'Workspace',
+    navMore: 'More',
+    sort: 'Sort',
+    readOnly: 'Read-only',
+    aboutReadOnly: 'About read-only mode',
+    reaches: 'Reaches',
+    madeBy: 'Made by',
+    release: 'Release',
+    viewAgents: 'Agents',
+    viewLibrary: 'Library',
+    viewSwitch: 'Pages',
+    showTour: 'Show me around',
+    preview: 'Preview',
+    aboutPreview: 'About this preview',
+    yourAgents: 'Your agents',
+    pickAnAgent: 'Pick an agent',
+    skills: 'Skills',
+    tools: 'Tools',
+    notes: 'Notes',
+    showWhere: 'Show where it lives',
+    hideWhere: 'Hide where it lives',
+    copyPath: 'Copy path',
+    copied: 'Copied',
+    showMore: 'Show more',
+    showLess: 'Show less',
+    save: 'Save',
+    saveBar: 'Save bar',
+    close: 'Close',
+    tour: 'Tour',
+    tourBack: 'Back',
+    tourNext: 'Next',
+    tourDone: 'Done',
+    tourSkip: 'Skip tour',
+    tourSteps: 'Tour steps',
+    tourMap: 'Map',
+    tourAgent: 'Agent',
+    tourDetails: 'Details',
+    tourAdd: 'Add',
+    tourSave: 'Save',
+    tourShare: 'Share',
+    tourHelp: 'Help',
+    stepWord: 'Step',
+    addDrawer: 'Add',
+    needsKeyBadge: CARD_WORDS.needsKey,
+    newBadge: CARD_WORDS.isNew,
+    gallery: 'Card kit',
+    galleryLight: 'Light',
+    galleryDark: 'Dark',
+    galleryCards: 'Cards',
+    galleryBadges: 'Badges',
+    galleryButtons: 'Buttons',
+    galleryShelf: 'A shelf',
+    galleryEmptyShelf: 'An empty shelf',
+    galleryLongShelf: 'A long shelf',
+    galleryTiles: 'Tiles',
+    galleryAgentCards: 'Agent tiles with counts',
+    galleryChips: 'Counts, tray closed',
+    galleryOpen: 'A tray open',
+    galleryLong: 'A long name',
+    galleryOwner: 'A row selected',
+    galleryNoTools: 'No tools',
+    galleryTray: 'A tray',
+    galleryInfoBadge: 'Good to know',
+    galleryHelp: 'A help popover',
+    galleryDrawer: 'A drawer',
+    galleryNormal: 'Normal',
+    galleryHover: 'Hovered',
+    gallerySelected: 'Selected',
+    galleryFocus: 'Focused',
+    galleryBadge: 'With a badge',
+    galleryPrimary: 'Primary',
+    galleryQuiet: 'Quiet',
+    galleryDisabled: 'Cannot press',
+    galleryAgent: 'Agent card',
+    gallerySkill: 'Skill card',
+    galleryTool: 'Tool card',
+    galleryNote: 'Note card',
+    sampleAgent: 'Meeting assistant',
+    sampleSkill: 'Summarize a meeting',
+    sampleTool: 'Search the web',
+    sampleNote: 'Client list',
+    sampleLongName: 'The Quarterly Review Of Everything',
+    remove: 'Remove',
+    sortBy: 'Sort by',
+    sortGroup: 'Order of the agents',
+    byName: 'Name',
+    byRecent: 'Recently changed',
+    wentBack: BAR_WORDS.back,
+    goBack: 'Go back',
+    goBackToThis: 'Go back to this',
+    discard: 'Undo all changes',
+    undo: 'Undo',
+    share: 'Share',
+    changesWaiting: 'Changes waiting',
+    wouldUpdate: 'Would update',
+    claudeCode: 'Claude Code',
+    codex: 'Codex',
+    openCode: 'OpenCode',
+    startPoint: CARD_WORDS.startPoint,
+    /** The details panel: the headings of its blocks, and its buttons. */
+    whatItDoes: 'What it does',
+    whereItWorks: 'Where it works',
+    whereItCameFrom: 'Where it came from',
+    usedBy: 'Used by',
+    whatItReaches: 'What it can reach',
+    howFarItGoes: 'How far it can go',
+    whatItCovers: 'What it covers',
+    someNotes: 'Some of the notes',
+    runsCode: 'Runs code',
+    backToAgent: 'Back to agent',
+    showFullText: 'Show the full text',
+    hideFullText: 'Hide the full text',
+    fullText: 'Full text',
+    removeFromThis: 'Remove from this agent',
+    kindSkill: DETAIL_WORDS.kindSkill,
+    kindTool: DETAIL_WORDS.kindTool,
+    kindNotes: DETAIL_WORDS.kindNotes,
+  },
+  /** One line under a label: at most 12 words. */
+  hint: {
+    stage: 'Pick one to see what it can do.',
+    panel: 'Its skills, tools, and notes show here.',
+    emptyShelf: 'Nothing here yet.',
+    saved: BAR_WORDS.saved,
+    tools: 'Tools let an agent reach outside services.',
+    addEmpty: 'Skills, tools, and notes will show here.',
+    historyEmpty: 'No history yet.',
+    /** Version history when the setup is only looked at, so nothing was ever saved. */
+    historyReadOnly: 'No history in read-only mode.',
+    pointsDirty: 'Changes you have not saved will go away.',
+    pointHere: 'You are here.',
+    saveClean: CARD_WORDS.saveClean,
+    saveDirty: CARD_WORDS.saveDirty,
+    sampleAgent: 'Summarizes meetings and writes replies.',
+    sampleLongAgentHint: 'Reads every long report, summarizes it and writes replies for everyone.',
+    sampleSkill: 'Turns a long meeting into a few clear points.',
+    sampleTool: 'Looks things up on the web for you.',
+    sampleNote: 'Names and details of your clients.',
+    agentNoSkills: CARD_WORDS.agentNoSkills,
+    skillFallback: CARD_WORDS.skillFallback,
+    toolFallback: CARD_WORDS.toolFallback,
+    noteFallback: CARD_WORDS.noteFallback,
+    galleryIntro: 'Every part of the kit, in every state, in both looks.',
+    galleryDrawerBody: 'This is where a drawer shows its content.',
+    noText: DETAIL_WORDS.noText,
+    keyReady: DETAIL_WORDS.keyReady,
+    needsKeyLine: DETAIL_WORDS.needsKeyLine,
+    noNotes: DETAIL_WORDS.noNotes,
+    noUsers: DETAIL_WORDS.noUsers,
+    noPrograms: DETAIL_WORDS.noPrograms,
+    copyBlocked: 'Copying is blocked here. Select the path and copy it.',
+    /** Why a control that would change the setup does nothing in read-only mode: its tooltip. */
+    readOnlyWhy: 'Read-only: your setup is not changed.',
+    /** The Save bar in read-only mode. */
+    readOnlyBar: 'Read-only. Nothing here changes your setup.',
+  },
+  /** The text behind a "?" button: at most 25 words, and the only place a technical term may appear. */
+  popover: {
+    help: 'New here? The tour shows where everything is, and you can replay it.',
+    preview: 'This is a preview. It sends nothing, stores nothing, and writes nothing to your computer.',
+    versionHistory: 'Version history lists the copies of your agents that you can go back to.',
+    connection: 'A connection lets an agent use another program. Its technical name is MCP.',
+    /** The "Read-only" mark: when the setup on show is the person's own, and when it is the made-up sample. */
+    readOnlyReal: 'You are looking at your setup. Nothing here changes it.',
+    readOnlySample: 'Read-only preview.',
+    /** The honest line about the app's own temporary files, said after `readOnlyReal` when the setup on show is the person's own. */
+    readOnlyTemp: 'The app keeps its own temporary files until you close it.',
+  },
+});
+
+/** "10 agents" or "1 agent". */
+export const agentsCount = (n: number): string => `${n} ${n === 1 ? 'agent' : 'agents'}`;
+/** "1 change" or "3 changes". */
+export const changesCount = (n: number): string => `${n} ${n === 1 ? 'change' : 'changes'}`;
+/** "Removed Write a reply.", the note after Remove. */
+export const removedNote = (name: string): string => `Removed ${name}.`;
+/** "Step 2 of 6", for a screen reader. */
+export const stepAnnouncement = (index: number, total: number): string => `${WORDS.label.stepWord} ${index} of ${total}`;

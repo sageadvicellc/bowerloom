@@ -28,11 +28,11 @@ function world(t) {
   const store = path.join(home, '.bowerloom'), folders = path.join(store, 'folders');
   const make = (rel, mode = 0o755) => { const dir = path.join(home, rel); fs.mkdirSync(dir, { recursive: true, mode }); for (let p = dir; p !== home; p = path.dirname(p)) fs.chmodSync(p, mode); return dir; };
   const project = { dir: path.join(base, 'project'), projectId: 'a'.repeat(32), birthtimeNs: '111' }, access = { projectId: project.projectId, birthtimeNs: '111' };
-  const allow = async (name, as = project) => { const plan = planFolderAllowWith(home, as, name, hooks); return applyFolderAllowWith(home, as, name, plan.revision, signal(), hooks); };
-  const grantNow = (name, pid = project.projectId, birth = project.birthtimeNs) => {
+  const allow = async (name, as = project, summary = 'heading') => { const plan = planFolderAllowWith(home, as, name, hooks, summary); return applyFolderAllowWith(home, as, name, plan.revision, signal(), hooks, summary); };
+  const grantNow = (name, pid = project.projectId, birth = project.birthtimeNs, summary = 'heading') => {
     const dir = path.join(folders, name + '.grants'); fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     const sha = createHash('sha256').update(fs.readFileSync(path.join(folders, name + '.json'))).digest('hex');
-    fs.writeFileSync(path.join(dir, pid), `{"format":"bowerloom/store-folder-grant/v1beta1","record":"${sha}","birth":"${birth}"}\n`, { mode: 0o644 });
+    fs.writeFileSync(path.join(dir, pid), `{"format":"bowerloom/store-folder-grant/v1beta1","record":"${sha}","birth":"${birth}"${summary === null ? '' : `,"summary":"${summary}"`}}\n`, { mode: 0o644 });
   };
   const add = async (name, target) => { const plan = planFolderAddWith(home, home, name, target, hooks); return applyFolderAddWith(home, home, name, target, plan.revision, signal(), hooks); };
   return { base, home, hooks, store, folders, make, add, allow, grantNow, project, access, record: name => path.join(folders, name + '.json') };
@@ -298,13 +298,15 @@ test('30. folder allow plans the absolute folder and the project, and writes a g
     `  Folder: ${path.join(w.home, 'My Notes/kb')} (~/My Notes/kb)`,
     `  Bowerloom reads the mode of the folder only. To see access control entries, run ls -led '${path.join(w.home, 'My Notes/kb')}'.`,
     '  A slice of this project that names it can copy text from it into .claude/skills. Bowerloom never writes the folder.',
+    '  Summary kind: heading. A slice that asks for another kind is held with FOLDER_NOT_ALLOWED until you run folder allow again with that kind.',
+    '  Warning: the first heading of each file in this folder will be copied into a skill file under .claude/skills in this project. Add .claude/skills to .gitignore to keep it out of git.',
     'This writes the store only. It changes no project, and it installs nothing.',
   ].join('\n'));
   assert.equal(fs.existsSync(isAllowedDir(w, 'kb')), false, 'planning writes nothing');
   await applyFolderAllowWith(w.home, w.project, 'kb', plan.revision, signal(), w.hooks);
   const sha = createHash('sha256').update(fs.readFileSync(w.record('kb'))).digest('hex');
   const grant = path.join(isAllowedDir(w, 'kb'), w.project.projectId);
-  assert.equal(fs.readFileSync(grant, 'utf8'), `{"format":"bowerloom/store-folder-grant/v1beta1","record":"${sha}","birth":"111"}\n`);
+  assert.equal(fs.readFileSync(grant, 'utf8'), `{"format":"bowerloom/store-folder-grant/v1beta1","record":"${sha}","birth":"111","summary":"heading"}\n`);
   assert.equal(fs.statSync(grant).mode & 0o777, 0o644); assert.equal(fs.statSync(isAllowedDir(w, 'kb')).mode & 0o777, 0o700);
   assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).ok, true);
 });
@@ -530,4 +532,47 @@ test('56. L2: a grants folder swapped between the second plan and the removal is
   }); syncBuiltinESMExports();
   try { await assert.rejects(applyFolderRemoveWith(w.home, 'kb', plan.revision, signal(), w.hooks), code('STALE_APPROVAL')); } finally { restoreAll(t); }
   assert.equal(swapped, true); assert.equal(fs.existsSync(w.record('kb')), true);
+});
+
+// ------------------------------------------------------------------------------------------ decision 5, option B: the grant records the summary kind
+test('G1. a grant records the summary kind, and a slice that asks for another kind is held with FOLDER_NOT_ALLOWED', async t => {
+  const w = world(t); w.make('kb'); await w.add('kb', '~/kb'); await w.allow('kb', w.project, 'frontmatter:title');
+  assert.match(fs.readFileSync(path.join(isAllowedDir(w, 'kb'), w.project.projectId), 'utf8'), /,"summary":"frontmatter:title"\}\n$/);
+  const ask = summary => resolveRegisteredFolderWith(w.home, 'kb', { ...w.access, summary }, w.hooks);
+  assert.equal(ask('frontmatter:title').ok, true);
+  for (const other of ['heading', 'frontmatter:Title', 'frontmatter:tit', 'frontmatter:title2']) assert.deepEqual(ask(other), { ok: false, code: 'FOLDER_NOT_ALLOWED', detail: 'kb', granted: 'frontmatter:title' }, other);
+  assert.equal(ask('none').ok, true, 'a slice with no summary copies no text');
+  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).ok, true, 'a caller that names no kind, such as the guard, needs the grant only');
+  for (const bad of ['', 'Heading', 'frontmatter:', 'frontmatter:a b', 'x'.repeat(5000)]) assert.equal(ask(bad).code, 'FOLDER_NOT_ALLOWED', JSON.stringify(bad));
+});
+test('G2. running folder allow again with a new kind replaces the kind', async t => {
+  const w = world(t); w.make('kb'); await w.add('kb', '~/kb'); await w.allow('kb');
+  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', { ...w.access, summary: 'frontmatter:title' }, w.hooks).code, 'FOLDER_NOT_ALLOWED');
+  await w.allow('kb', w.project, 'frontmatter:title');
+  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', { ...w.access, summary: 'frontmatter:title' }, w.hooks).ok, true);
+  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', { ...w.access, summary: 'heading' }, w.hooks).code, 'FOLDER_NOT_ALLOWED');
+});
+test('G3. a grant made without a kind fails closed: it needs folder allow again, for every caller', async t => {
+  const w = world(t); w.make('kb'); await w.add('kb', '~/kb'); w.grantNow('kb', w.project.projectId, '111', null);
+  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).code, 'FOLDER_NOT_ALLOWED');
+  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', { ...w.access, summary: 'heading' }, w.hooks).code, 'FOLDER_NOT_ALLOWED');
+  await w.allow('kb'); assert.equal(resolveRegisteredFolderWith(w.home, 'kb', { ...w.access, summary: 'heading' }, w.hooks).ok, true);
+});
+test('G5. a hold says why: no grant, a grant for another kind, or a grant made without a kind', async t => {
+  const w = world(t); w.make('kb'); await w.add('kb', '~/kb');
+  assert.deepEqual(resolveRegisteredFolderWith(w.home, 'kb', { ...w.access, summary: 'heading' }, w.hooks), { ok: false, code: 'FOLDER_NOT_ALLOWED', detail: 'kb' });
+  w.grantNow('kb', w.project.projectId, '111', null);
+  assert.deepEqual(resolveRegisteredFolderWith(w.home, 'kb', { ...w.access, summary: 'heading' }, w.hooks), { ok: false, code: 'FOLDER_NOT_ALLOWED', detail: 'kb', legacy: true });
+  await w.allow('kb', w.project, 'frontmatter:title');
+  assert.deepEqual(resolveRegisteredFolderWith(w.home, 'kb', { ...w.access, summary: 'heading' }, w.hooks), { ok: false, code: 'FOLDER_NOT_ALLOWED', detail: 'kb', granted: 'frontmatter:title' });
+});
+test('G4. folder allow refuses a summary kind that is not heading or frontmatter:<key>, and the kind is bound by the revision', async t => {
+  const w = world(t); w.make('kb'); await w.add('kb', '~/kb');
+  for (const bad of ['none', 'first', 'frontmatter:', 'frontmatter:a/b', 'frontmatter:' + 'k'.repeat(65), '', 'heading\n']) assert.throws(() => planFolderAllowWith(w.home, w.project, 'kb', w.hooks, bad), code('USAGE'), JSON.stringify(bad));
+  const a = planFolderAllowWith(w.home, w.project, 'kb', w.hooks, 'heading'), b = planFolderAllowWith(w.home, w.project, 'kb', w.hooks, 'frontmatter:title');
+  assert.notEqual(a.revision, b.revision);
+  await assert.rejects(applyFolderAllowWith(w.home, w.project, 'kb', a.revision, signal(), w.hooks, 'frontmatter:title'), code('STALE_APPROVAL'));
+  assert.match(renderFolderAllowReview(b), /\n {2}Summary kind: frontmatter:title\. /);
+  assert.match(renderFolderAllowReview(b), /\n {2}Warning: the values of the key title in the files of this folder will be copied into a skill file under \.claude\/skills in this project\. Add \.claude\/skills to \.gitignore to keep it out of git\.\n/);
+  assert.match(renderFolderAllowReview(a), /\n {2}Warning: the first heading of each file in this folder will be copied into a skill file under \.claude\/skills in this project\. Add \.claude\/skills to \.gitignore to keep it out of git\.\n/);
 });

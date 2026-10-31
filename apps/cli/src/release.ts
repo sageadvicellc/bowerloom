@@ -28,7 +28,7 @@ export function expectedInstallCommand(record: Record<string, unknown>, npm: Rec
 export function validateReleaseIdentity(value: unknown, metadata: unknown): { version: string; state: string; execution: string } {
   try {
     const record = object(value), pkg = object(metadata), npm = object(record.npm), capabilities = object(record.capabilities);
-    if (record.schema !== 'bowerloom/release/v1' || record.product !== 'Bowerloom' || record.release !== 'v0.7-beta'
+    if (record.schema !== 'bowerloom/release/v1' || record.product !== 'Bowerloom' || record.release !== 'v0.8-beta'
       || typeof record.version !== 'string' || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(record.version)
       || record.version !== pkg.version || npm.packageName !== 'bowerloom' || npm.packageName !== pkg.name
       || !['unreleased', 'published'].includes(String(record.state)) || typeof record.state !== 'string'

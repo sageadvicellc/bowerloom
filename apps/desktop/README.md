@@ -1,0 +1,108 @@
+# Bowerloom desktop (experimental)
+
+The desktop app of Bowerloom. It is experimental, and it is possibly not part of v1. The command line gives you every feature. The screens below show your skills, prompts, teams, helpers, knowledge folders, and which project uses what. The harness screens adopt a project and install its harness after a preview. Help > Report a problem builds a diagnostic bundle, and Help > Usage log shows the local event log.
+
+## Open it
+
+Copy one line into a terminal window. It works from any folder. The first time, it installs what it needs and builds the app, which takes a few minutes. After that it opens in seconds.
+
+Your own Bowerloom:
+
+```
+npm --prefix "<path-to-bowerloom>" run desktop
+```
+
+Made-up sample data, so you can see every state at once:
+
+```
+npm --prefix "<path-to-bowerloom>" run desktop:sample
+```
+
+Put the folder of your Bowerloom checkout between the quote marks.
+
+The first time you open your own Bowerloom, the app looks once at the folders right inside your home folder for ones that hold Bowerloom, and starts with those. Home shows what it is reading, with Remove and Add buttons, so you can change it. It never looks inside Documents or Desktop by itself. It reads a few levels deep inside each folder, finds projects set up the older way (a .bowerloom folder) as well as newer ones, and skips folders named examples, fixtures or test unless you turn that on in Settings. Nothing in those folders changes.
+
+## What each screen shows
+
+- **Home.** One sentence on what is set up, the counts of teams, skills, prompts, and projects, and a "Needs attention" list. Each item says what it means and what a person would do about it.
+- **Map.** Everything Bowerloom looks after as things you can move, in the shape of your own setup: this computer, the workspace, projects, context stores, teams, helpers, skills, prompts, reading lists and knowledge folders, with wires for what holds, uses, reads, owns, and comes from what. Drag a thing to arrange it, drag a box to select several, press **Tidy up** to lay it out from left to right, **Fit all** to see everything, **Undo** to take back a move, **Reset layout** to forget your places. Choose **This computer** (the shared library and the knowledge folders) or **Projects** to see one side. Click a thing for a panel with what it is, why it has a status, and what it is connected to. Use Tab and Enter to reach and open things, and the arrow keys (after Space) to move one. **Text outline** gives the same map as a list. Your places are kept by the viewer only.
+- **Knowledge graph.** A picture of a context store (for example your knowledge-base): each page is a dot, each link between pages is a line. Pages with more links are bigger. Pages with no links are drawn as rings. Point at a page to light up its neighbours, click it to open a panel with what it links to, what links to it, its tags, and a button to read its text. Search, filter by folder or tag, hide pages with no links, or show only the pages near the one you chose. Colour pages by folder or by tag. **Pause** stops the picture moving. **Show as a list** gives the same pages as a plain list you can use with the keyboard. The panel also says which Bowerloom items point at the store. The viewer reads only markdown files, follows no links to other places, and stops at 5,000 pages and 20,000 links, with a plain note when it does. Pages are read in the viewer's main part and the window gets only titles and links, never the text, until you press **Read this page**.
+- **Sketch** (a tab on the Map). A drawing board for a harness. Drag teams, helpers, skills and prompts from the shelf (or press Enter on one), pull a thread from one to the next (a team to a helper, a helper to a skill or a prompt), give the sketch a name and save it. A sketch is only a drawing. **Apply to a project** is switched off until the app can safely write.
+- **Library.** Your skills, prompts, and teams. Each row says where it came from (Yours, From GitHub, From npm), whether it is fixed to a version, and how many projects use it. Click one to read what is inside it. A helper with powerful settings gets a yellow warning.
+- **Projects.** Lists projects only. The workspace (the folder that holds the rest) and the context stores (the central knowledge) have their own places on the same screen. Each folder's page has "What kind of folder is this?", where you can change what the viewer guessed. Your choice is kept by the viewer only.  Each project with a status: Ready, Drifted, Lock problem, or Not set up. Open one to see what it uses, whether each item matches what was locked, what drifted and why, its helpers, its knowledge slices, and its project list and lock file in plain sentences. "Show the raw files" shows the files as they are.
+- **Knowledge folders.** Folders of notes outside your projects, which projects may read them, and a bar for each slice that compares what a helper reads at the start with reading everything.
+- **Storage.** Where your library is, whether it is shared on GitHub, whether a GitHub access key is set (never the key itself), and the saved copies and their sizes.
+- **Settings.** The folders the viewer searches for projects (adding or removing one only changes the viewer's own list), sample or your own data, light or dark, the version, and "Check for updates".
+
+## Motion
+
+Every duration, easing and distance of the app's motion is in one file, `renderer/motion-tokens.ts`, so you can retune it in one edit. The maintainer confirmed the weighting on 2026-10-24 (see the header of `renderer/motion-tokens.ts`): the map is mostly restraint and speed, with a little playfulness only when you drop or connect something or tidy up; the knowledge graph is the gentle settling of the graph; panels are short and polished. If your computer is set to reduce motion, everything is instant.
+
+## Prototype
+
+A clickable prototype of Bowerloom 0.8, with six screens: setup, harness, skills, agents, knowledge, and versions. Every action is simulated in memory, so nothing is written, and a restart resets it. It runs with a temporary data folder that is removed when you close it. Open it with:
+
+```
+npm --prefix "<repo>" run desktop:prototype
+```
+
+## The 0.8 home app: a sample world, or your own setup
+
+Two commands open the same app. Use `npm --prefix "<repo>" run desktop:prototype:v2` for a made-up sample world. It reads nothing from your computer. Use `npm --prefix "<repo>" run desktop:prototype:real` for your own setup, read only. It needs a real home folder (the `HOME` variable).
+
+The install sheet shows Claude Code and Codex, and shows OpenCode, Pi, and DeepSeek Harness with a Preview tag. Bowerloom 0.8.0-beta.1 supports Claude Code and Codex. The three preview engines can be installed to only when the app starts with `BOWERLOOM_PREVIEW_ENGINES=1`. Reading and removing work for all five. The sample world locks the three too: they show the tag, unticked and disabled. The sample cannot turn them on; only the e2e specs that install to OpenCode do, with a launch argument.
+
+What real mode reads, in plain English:
+
+1. It looks in the tool folders of your home folder: Claude Code, Codex and OpenCode. It also notices a Hermes folder, but Hermes is not an engine of Bowerloom 0.8, so the harness preview does not show what is in it. It says how many things it left out. You can also pick a folder, and it finds the projects inside it.
+2. Question one shows the places it found with counts, and no file names. Question two, "Read what is inside?", reads only the places you ticked.
+3. It reads names, descriptions, structure and the names of keys, plus the text of the skills and agents you tick. Known key and password shapes are hidden. That check goes by shape, so look at anything private before you share it.
+4. You then choose which agents go on the map. "Find more" does the same again in the right column and adds to what you have.
+5. Every control that would change your setup is shown and held back, with the reason. Nothing is saved, and the Library's web sources are samples.
+6. The app writes no changes to your files. It keeps its own temporary files and deletes them when it closes.
+7. If the real address is opened by the other command, it says "Real mode needs the real launch command."
+
+The tests run real mode on a made-up home folder (`tests/fixtures-real`), never on yours.
+
+## Make a harness from a folder, and install it (harness-first view)
+
+The harness-first view (`desktop:prototype:v3` for the sample, `desktop:prototype:v3:real` for your own folders) has two sheets on the Projects screen. In the sample they run on made-up folders and write nothing.
+
+- **From a folder** makes a harness from the files your interfaces already use. It shows what it found and where, the copies that differ (you pick one), the rules that differ by interface, and everything it leaves out, with the reason. Before it writes, you read and tick each approval (a hook or a server that runs a command, a secret it replaced) and each acknowledgement (a rule it does not carry). It writes only into the folder's `.bowerloom` folder.
+- **Install from a folder** writes the folder's harness into each interface's own files. First it lists any rule that an interface carries weaker than the harness asks, and you tick each one. Then it shows, for each interface and each part, a dot and a word (Exact, Translated, Weakened, Absent) with the reason, what waits for your trust, and every command and file of code it will write, in full. When the folder has both AGENTS.md and a CLAUDE.md that differ, it shows which interface reads which, with Accept AGENTS.md as the default. You approve the plan by its number, and only then can you write. Undo opens the removal plan, which you approve the same way. A run that stopped part way gets a recovery plan.
+
+On your own folders the main process does the work with Bowerloom's own packages. It plans without writing, and writes only the plan you approved: it plans again and stops if anything changed. The window gets plain words and paths inside the folder, never your full paths. Bowerloom keeps its records in its private state folder (`$XDG_STATE_HOME/bowerloom`, else `~/.local/state/bowerloom`), in the same place the command line uses: one `harness` folder per project. A record the earlier app kept under `desktop/` moves there once, when you choose the folder. If both exist, the app stops and says so, and changes nothing. To open a tidy-up report of a notes folder, the main process copies the report into a new private folder in the system temporary folder and opens the copy, never the report itself. The copy goes on the next open, and when the app quits.
+
+When AGENTS.md and CLAUDE.md differ, **Merge** moves the CLAUDE.md text into the harness instructions. It shows its own plan, and writes only after you approve it and say yes again. The install that follows uses Accept AGENTS.md. When only a file's mode changed after Bowerloom wrote it, the file shows **Restore mode** and **Keep new mode**. Keep new mode is refused when the new mode lets others write the file.
+
+## Where the viewer may write
+
+The viewer writes in only two places. One is its own folder (its settings, and later your sketches). The other is the **sandbox**, a folder made only for trying things. It never writes in your real folders. A short piece of code, the write boundary, checks every place before anything is written there. It refuses a path with "..", a path through a shortcut (a link), a path outside the allowed folders, your home folder, any folder that holds your home folder, any of your real folders, and any folder that does not carry the mark the viewer puts in the sandbox. The list of allowed folders is fixed in the program. The settings file cannot change it, and neither can anything in the window.
+
+Widening the places the viewer may write is not available. A later version will do it only with an explicit, confirmed step. Until then the viewer has no way to change a Bowerloom file of yours.
+
+## The sandbox
+
+A copy of the shape of your own setup, made of invented content, in the folder `Sage Advice Sandbox` next to `Sage Advice`. It has its own pretend home with its own shared library, so you can try everything without touching the real ones. A banner on every screen says "Sandbox: safe to break".
+
+- `npm --prefix "<repo>" run desktop:sandbox` makes it if it is missing and opens the viewer on it.
+- `npm --prefix "<repo>" run sandbox:reset` deletes it and builds it again. It refuses to delete anything unless the folder is exactly the sandbox folder and carries the viewer's mark, and has no shortcut that leads outside.
+
+## What is not built yet
+
+- No buttons that change anything. This is a viewer only.
+- Updates are off until the first release. The footer says "Updates turn on after the first release".
+- The app is not signed with a Developer ID. The macOS build carries only a self-made local signature, which the safety switches need in order to start. A signed installer needs an Apple Developer ID certificate. macOS will not let an unsigned app update itself.
+- Windows and Linux installers are set up in the build settings but have not been built or tried.
+
+## For developers
+
+All commands run from the repository root, or with `npm --prefix <repo>`.
+
+- `npm run desktop` opens the app. `npm run desktop:sample` opens it with sample data. `npm run desktop:dev` is the same as sample.
+- `npm run desktop:test` runs the viewer tests (security rules, folder scan, read functions against the sample, and what each screen says).
+- `npm run desktop:build` makes the macOS app, with a local signature only, in `apps/desktop/release`. It never publishes. In `apps/desktop`, `npm run verify:fuses` checks the built app's safety switches.
+- In `apps/desktop`: `npm run screenshots` launches the app and saves every screen, light and dark, into `screenshots/`.
+- `npm run sample:make` rebuilds `sample-data/` with the real Bowerloom commands (run `npm run build` at the root first).
+
+Design colors and sizes live in one file, `renderer/tokens.css`, so the Sage brand can replace them later. The app reads Bowerloom's own functions inside one process. It starts no command line, opens no port, and sends nothing over the network.

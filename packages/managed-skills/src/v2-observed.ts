@@ -132,7 +132,7 @@ export function locateV2(v: ManagedItemRequest, closure: ItemClosure, extra: { i
 const byPath = <T extends { path: string }>(rows: T[]): T[] => [...rows].sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)));
 /**
  * A cache closure as v1 `material` checks it, normalized to content only. Third-party bytes are hashed and copied.
- * The machine cache is keyed on content (Hanna, global skill cache): its receipt names the skill, not the entry that
+ * The machine cache is keyed on content (the maintainer, global skill cache): its receipt names the skill, not the entry that
  * asked for it, so one operation serves the same pin under any id. The check is on what the key covers, a well-formed
  * skill name; the closure takes the item's own id, so the project records the id its skills.json gives. The caller
  * that chose the selector binds the name and the pin (project-sync checks the receipt against skills.json).

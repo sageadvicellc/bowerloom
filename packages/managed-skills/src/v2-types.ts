@@ -4,6 +4,7 @@
  */
 import type { AcquiredSkillCacheSelector } from '../../skill-sources/src/cache.js';
 import type { Identity, FilePin, JournalRecord } from './observed-types.js';
+import type { OldEngineId } from '../../skill-manifest/src/engine.js';
 export type { Identity, FilePin, JournalRecord };
 
 /**
@@ -14,7 +15,6 @@ export type { Identity, FilePin, JournalRecord };
 export type ItemSurfaceId = 'canonical' | 'catalog' | 'projection-claude' | 'projection-codex' | 'command-claude' | 'agent-claude';
 export type SurfaceId = ItemSurfaceId | 'ignore' | 'legacy';
 export type SurfaceKind = 'directory' | 'file';
-export type Harness = 'claude' | 'codex';
 export interface SurfaceV2 { id: SurfaceId; kind: SurfaceKind; path: string; pins: FilePin[] | null }
 export interface MaterialV2 { id: SurfaceId; kind: SurfaceKind; files: { path: string; text: string; sha256: string; mode: number }[] }
 export interface ItemRef { kind: 'skill' | 'prompt' | 'agent' | 'slice'; id: string }
@@ -35,9 +35,9 @@ export type SliceRequestRoot = { kind: 'project' } | { kind: 'registered'; name:
  * How the planner finds a registered root: the store lookup of project-context, passed in because managed-skills reads no
  * store. It returns the root, or the hold of the slice.
  */
-export type RegisteredLookup = (name: string, path: string) =>
+export type RegisteredLookup = (name: string, path: string, summary?: string) =>
   | { ok: true; dir: string; identity: RootIdentity; recordSha256: string }
-  | { ok: false; code: 'SLICE_ROOT_MISSING' | 'SLICE_ROOT_UNSAFE' | 'FOLDER_NOT_ALLOWED'; detail: string; cause?: string };
+  | { ok: false; code: 'SLICE_ROOT_MISSING' | 'SLICE_ROOT_UNSAFE' | 'FOLDER_NOT_ALLOWED'; detail: string; cause?: string; granted?: string; legacy?: boolean };
 export type ItemSource = { kind: 'cache'; selector: AcquiredSkillCacheSelector } | { kind: 'local'; path: string } | { kind: 'prompt'; name: string }
   | { kind: 'agent'; team: string; name: string; guard: AgentGuardSource | null } | { kind: 'slice'; name: string; root: SliceRequestRoot }
   | { kind: 'store'; path: string; storeDir: string } | { kind: 'store-prompt'; name: string; storeDir: string };
@@ -45,7 +45,13 @@ export type ItemSource = { kind: 'cache'; selector: AcquiredSkillCacheSelector }
 export type SliceCatalogRoot = { kind: 'project'; path: string } | { kind: 'registered'; name: string; path: string; id: string };
 export interface LegacyRef { stateDir: string; operationKey: string }
 export interface ManagedItemRequest {
-  operation: 'install' | 'update' | 'migrate'; projectDir: string; stateDir: string; item: ItemRef; harnesses: Harness[];
+  operation: 'install' | 'update' | 'migrate'; projectDir: string; stateDir: string; item: ItemRef;
+  /**
+   * The engines to place copies for, as the stored plan, journal, receipt and catalog spell them: `claude` and `codex`.
+   * This field and its name are part of the hashed records of a managed copy, so they keep the old form (step 0 of 0.8).
+   * project-sync maps them to and from `WriterEngine`.
+   */
+  harnesses: OldEngineId[];
   source: ItemSource; expectedPreviousRevision: string | null; minFreeBytes: number; legacy: LegacyRef | null;
 }
 export interface InventoryRow { path: string; sha256: string; bytes: number }
@@ -69,7 +75,7 @@ export interface ItemClosure {
   sourceSha256?: string;
 }
 /** The bound v1beta1 install of a migrate operation. The v1 state folder is read, never written. */
-export interface LegacyCore { stateDir: string; operationKey: string; receiptRevision: string; receiptPin: FilePin; harness: Harness }
+export interface LegacyCore { stateDir: string; operationKey: string; receiptRevision: string; receiptPin: FilePin; harness: OldEngineId }
 export interface PlanCoreV2 {
   request: ManagedItemRequest; bindings: { path: string; identity: Identity }[];
   closure: ItemClosure; before: SurfaceV2[]; previous: ManagedItemReceipt | null; previousReceiptPin: FilePin | null;
@@ -90,7 +96,7 @@ export interface MigratedFrom { format: 'bowerloom/observed-managed-skill-receip
 export interface ManagedItemReceipt {
   format: 'bowerloom/managed-item-receipt/v1beta2'; state: 'committed' | 'rolled-back'; item: ItemRef;
   operationKey: string; planRevision: string; previousRevision: string | null;
-  projectDir: string; stateDir: string; harnesses: Harness[]; installed: SurfaceV2[]; restoredPrevious: ManagedItemReceipt | null;
+  projectDir: string; stateDir: string; harnesses: OldEngineId[]; installed: SurfaceV2[]; restoredPrevious: ManagedItemReceipt | null;
   migratedFrom: MigratedFrom | null; executionAuthorized: false; revision: string;
 }
 export interface UpToDateV2 { format: 'bowerloom/managed-item-up-to-date/v1beta2'; status: 'up-to-date'; item: ItemRef; previousRevision: string; writesAuthorized: false; executionAuthorized: false }

@@ -1,6 +1,6 @@
 # Trellis release plan
 
-Hanna added `v0.7-alpha` on October 1, 2026. Codex is its first harness. The milestone enables founder testing, a baseline for beta comparisons, and marketing preparation before beta.
+The maintainer added `v0.7-alpha` on October 1, 2026. Codex is its first harness. The milestone enables founder testing, a baseline for beta comparisons, and marketing preparation before beta.
 
 The canonical release sequence is `v0.7-alpha`, `v0.7-beta`, `v1-beta`, and `v1-rc`. A release candidate is a build proposed for final acceptance. Legacy names such as `Sagespec v3` remain historical references. Current plans use the canonical release names.
 
@@ -12,7 +12,7 @@ The [revised alpha](alpha-revision-02.md) governs the current toolkit, recipe, l
 
 | Milestone | Purpose | Required evidence |
 |---|---|---|
-| v0.7-alpha | Give Hanna a usable Codex-first release on this Mac | A complete local workflow, live control tests, reviewable results, test instructions, and known limits |
+| v0.7-alpha | Give the maintainer a usable Codex-first release on this Mac | A complete local workflow, live control tests, reviewable results, test instructions, and known limits |
 | Alpha use | Establish the beta baseline and enable a marketing and social crew | Repeatable test records, defects, separate crew state, and reviewable campaign drafts |
 | v0.7-beta | Support Codex and Claude Code with two tested demonstration paths | Live controls on both harnesses, both demos, alpha comparisons, and recovery instructions |
 | Sagespec configuration | Apply Trellis to private Labs processes | Private permissions, data boundaries, and accepted reusable recipe behavior |
@@ -49,13 +49,13 @@ This record does not start that crew or appoint its lead. Sagespec product devel
 
 ## Active alpha implementation
 
-Hanna approved the [alpha build packet](alpha-build-approval.md) on October 1, 2026. Bounded Codex-first implementation is active. Approval does not accept a release or resolve later customer-policy choices.
+The maintainer approved the [alpha build packet](alpha-build-approval.md) on October 1, 2026. Bounded Codex-first implementation is active. Approval does not accept a release or resolve later customer-policy choices.
 
 The [language direction](language-and-tutorials.md) introduces Endor-inspired tutorials and demo names. The alpha story starts with an independent treehouse. Beta adds the shared village and scoped bridges. These names explain the existing architecture without changing its permissions.
 
 ## Bowerloom beta import scope
 
-On October 2, Hanna assigned Claude and Codex settings converters to `v0.7-beta`.
+On October 2, the maintainer assigned Claude and Codex settings converters to `v0.7-beta`.
 The converters bring supported harness settings into the portable `.bowerloom/` setup.
 They must show the proposed mapping and unsupported fields before writing files. They must preserve the original settings and require explicit conflict resolution.
 Credentials, tokens, and private session history stay outside the default import. Automatic context capture remains separate later work.

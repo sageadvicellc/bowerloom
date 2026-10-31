@@ -1,4 +1,5 @@
 import { canonicalJson, DefinitionError, oneLine, shellArg } from '../../../packages/contracts/src/index.js';
+import { ENGINE_IDS, ENGINE_NAMES, isEngine } from '../../../packages/skill-manifest/src/engine.js';
 
 /**
  * The first screen a person sees, and the plain-words refusals. Output only: nothing here reads or writes a file.
@@ -56,6 +57,21 @@ export function shortHelp(): string {
 
 /** Full help for one command, keyed by the command word. `init` has its own text in main.ts. */
 export const TOPICS: Readonly<Record<string, string>> = {
+  report: [
+    'Usage:', '  bowerloom report [--template bug|fidelity-gap|engine-change] [--json]', '',
+    'Prints a problem report that you can read in full: the Bowerloom version, your system, the Claude Code and Codex versions,',
+    'the newest error code, and the newest 20 lines of the usage log, which hold no names, paths, or file contents.',
+    'Then it prints a link that opens a GitHub issue with the report filled in. Nothing is sent. You choose whether to open the link.',
+    'A home folder path or a token that appears in the report is replaced before it is shown.',
+  ].join('\n') + '\n',
+  events: [
+    'Usage:', '  bowerloom events [--json]', '  bowerloom events summary [--with-notes] [--out <absolute-file>] [--json]', '',
+    'Bowerloom keeps a usage log on this computer, in events/events.jsonl in its state folder. It records which scenario ran, whether it finished or was refused,',
+    'and error codes. It records no names, paths, or file contents. It never leaves this computer on its own.',
+    'events shows the newest 50 lines. events summary counts the last 7 days. --out writes the summary to a new file that only you can read; it never replaces a file.',
+    'Notes you typed in an after-apply check stay in the log, and join a summary only with --with-notes.',
+    'Set BOWERLOOM_EVENT_LOG=off to stop all writing.',
+  ].join('\n') + '\n',
   store: [
     'Usage:', '  bowerloom store status [--json]',
     '  bowerloom store migrate [--skill <id>]... [--prompt <id>]... [--team <id>]... [--all] [--commit <sha>] [--approve <revision>] [--json]',
@@ -206,7 +222,7 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'skills check reads .bowerloom/skills.json and checks every pin, offline. It writes nothing.',
     'skills check --global checks the pins in the store.', '',
     '  bowerloom skills sync [--offline] [--team <team>] [--frozen] [--max-github-requests <n>] [--approve <revision>] [--json]',
-    'skills sync installs every skill in skills.json for Claude Code and Codex (the harnesses skills.json names):',
+    'skills sync installs every skill in skills.json for Claude Code and Codex (the engines skills.json names):',
     'into .bowerloom/managed, .claude/skills and .agents/skills. Those copies stay on this machine; commit skills.json.',
     'It fetches only pins that are not in the private cache yet, and checks every byte against its pin first.',
     '--offline refuses before any change if a pin still needs fetching. --team syncs only that team\'s skills.',
@@ -271,7 +287,7 @@ export const TOPICS: Readonly<Record<string, string>> = {
     '  bowerloom context measure [--agent <role>]... [--team <team>] [--from <folder>] [--baseline <folder>] [--bytes-per-token <number>] [--user] [--json]',
     '  bowerloom context guard --agent <role> --explain <path> [--tool Read|Grep|Glob] [--slice <id>]...',
     '  bowerloom folder add <folder-name> <path> [--approve <revision>] [--json]',
-    '  bowerloom folder allow <folder-name> [--approve <revision>] [--json]',
+    '  bowerloom folder allow <folder-name> [heading|frontmatter:<key>] [--approve <revision>] [--json]',
     '  bowerloom folder deny <folder-name> [--approve <revision>] [--json]',
     '  bowerloom folder list [--json]',
     '  bowerloom folder remove <folder-name> [--approve <revision>] [--json]', '',
@@ -294,7 +310,9 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'with root: { registered: <folder-name> } and --registered on slice create. Bowerloom reads it and never writes it.',
     'The folder must be yours, below your home folder, outside iCloud folders, and not writable by other users.',
     'folder allow, run in a project, lets that project read the folder after you approve a plan that names it. Every other project',
-    'stays shut out until you allow it. folder deny takes the grant back. folder remove deletes the record and its grants only.',
+    'stays shut out until you allow it. The grant also records the summary kind, heading by default. A slice that asks for another',
+    'summary kind is held with FOLDER_NOT_ALLOWED until you run folder allow again with that kind. A grant made before the kind',
+    'was recorded needs folder allow again. folder deny takes the grant back. folder remove deletes the record and its grants only.',
     'The folder stays. A slice of a registered folder copies text from it into .claude/skills, so keep that folder out of git.',
     'The commands that change something show the plan first. Agents pass --approve <revision> or --json.', '',
   ].join('\n'),
@@ -366,7 +384,7 @@ export function promptStopped(applied?: string): DefinitionError {
   stoppedAtPrompt.add(error); return error;
 }
 export const isPromptStopped = (error: unknown): error is DefinitionError => typeof error === 'object' && error !== null && stoppedAtPrompt.has(error);
-const codeOf = (error: unknown): string | null =>
+export const codeOf = (error: unknown): string | null =>
   error !== null && typeof error === 'object' && 'code' in error && typeof error.code === 'string' && /^[A-Z_]{1,100}$/.test(error.code) ? error.code : null;
 
 /**
@@ -437,7 +455,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   STORE_UNREADABLE: { sentence: 'A folder that cannot be read cannot be checked, so Bowerloom does not use it.', next: 'ls -ld ~ ~/.bowerloom' },
   STORE_IN_CLOUD_FOLDER: { sentence: 'Cloud sync changes file times and moves files, which breaks the checks that keep the store safe.', next: 'Move the home folder setup out of iCloud. The store must stay at ~/.bowerloom.' },
   STORE_STATE_NESTED: { sentence: 'Bowerloom keeps the cache outside the store, so a store inside the state folder, or the reverse, is refused.', next: 'Set XDG_STATE_HOME to a folder outside ~/.bowerloom.' },
-  // Round 1 of the reviews of PR 101 (Hanna's choice C on #97): the words of the errors.md row, so the terminal and the docs agree.
+  // Round 1 of the reviews of PR 101 (the maintainer's choice C on #97): the words of the errors.md row, so the terminal and the docs agree.
   STORE_WRITE_FAILED: { sentence: 'Bowerloom failed to write to the store. The disk refused the write, and the message names the system error, such as ENOSPC.', next: 'df -h ~ && ls -ld ~/.bowerloom' },
   STORE_LOCKED: { sentence: 'Two commands must not change the store at the same time, so nothing was changed.', next: 'When the other command is done, run this one again.' },
   STORE_NOT_A_PROJECT: { sentence: 'The store holds definitions only, so a folder inside it cannot be a project.', next: 'Run the command in a project folder outside ~/.bowerloom.' },
@@ -457,14 +475,14 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   // Review F1 of PR 97.
   GITHUB_TOKEN_SSO_REQUIRED: { sentence: 'An organization that uses single sign-on refuses a token until it is authorized for that organization.', next: "Authorize the token for the organization on GitHub, under the token's settings, then run the command again." },
   CONFIG_ITEM_SELECTED: { sentence: 'This project already picks that item from that source.', next: 'bowerloom ls' },
-  // Spec 08, section 5. Review C2 of PR 98 (Hanna's choice C on #97): each sentence says why, and the next step is the table's.
+  // Spec 08, section 5. Review C2 of PR 98 (the maintainer's choice C on #97): each sentence says why, and the next step is the table's.
   MIGRATE_ITEM_NOT_FOUND: { sentence: 'store migrate moves only items that this project defines in .bowerloom, with their files in place.', next: 'bowerloom ls' },
   MIGRATE_ITEM_UNSUPPORTED: { sentence: 'A store item holds only md, txt, json, yaml, yml, csv, and license files, within the size limits.', next: 'bowerloom help store' },
   MIGRATE_ID_EXISTS: { sentence: 'Bowerloom never overwrites a store item, so an item with the same id and other bytes cannot move.', next: 'Rename the project item, or remove the store item yourself.' },
   MIGRATE_RESERVED: { sentence: 'Setup made these items for this project, so they stay in it.', next: 'bowerloom store migrate --all skips them.' },
   MIGRATE_TEAM_MISSING: { sentence: 'The store keeps the team tag, so that team must be in the store.', next: 'Add --team <name> to move that team too.' },
   MIGRATE_LIMIT: { sentence: 'This beta keeps the store record small: 512 items and 1 MiB at most.', next: 'Remove items from the store, or move fewer items.' },
-  // Spec 09, section 5, with review M4 of PR 99 (Hanna's choice C on #97): each sentence says why.
+  // Spec 09, section 5, with review M4 of PR 99 (the maintainer's choice C on #97): each sentence says why.
   CACHE_ENTRY_NOT_FOUND: { sentence: 'cache prune --entry deletes only an entry that cache list shows, so the text must start one of its ids.', next: 'bowerloom cache list' },
   CACHE_ENTRY_BUSY: { sentence: 'Bowerloom never deletes an entry while another command holds it. An owner lock older than a day does not count.', next: 'When the other command is done, run this one again.' },
   CACHE_PRUNE_FAILED: { sentence: 'Bowerloom deletes only private folders of this user, one at a time, and stops at the first one it cannot delete.', next: 'bowerloom cache list, then run the command again without --approve' },
@@ -499,6 +517,10 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   MANIFEST_PIN_NOT_EXACT: { sentence: 'A pin that can move would install different files on different machines.', next: 'bowerloom help skills' },
   MANIFEST_LICENSE_UNSUPPORTED: { sentence: 'This beta installs MIT and Apache-2.0 skills only.', next: 'bowerloom help skills' },
   MANIFEST_DUPLICATE_ID: { sentence: 'Each skill needs its own id.', next: 'git diff .bowerloom/skills.json' },
+  // Step 0 of 0.8: an engine the code knows by name, but cannot write files for yet.
+  ENGINE_NO_WRITER: { sentence: 'Bowerloom writes files for Claude Code and Codex only, for now.', next: 'name claude-code or codex' },
+  // Beta.1: OpenCode, Pi, and DeepSeek Harness install only with BOWERLOOM_PREVIEW_ENGINES=1. The words that name the engine are in wordsFor.
+  ENGINE_PREVIEW: { sentence: 'This engine is a preview engine in this beta.', next: 'Install for claude-code or codex, or set BOWERLOOM_PREVIEW_ENGINES=1 to try it.' },
   MANIFEST_LIMIT: { sentence: 'This beta keeps skills.json small: 128 skills and 1 MiB at most.', next: 'bowerloom skills check' },
   SKILLS_ADD_SPEC_INVALID: { sentence: 'The source names a package or repository, an exact pin, and the skill folder.', next: 'bowerloom help skills' },
   SKILLS_ADD_EXISTS: { sentence: 'skills.json already holds a skill with this id or this source.', next: 'To move that id to another version or commit, add --replace: bowerloom skills add <source> --id <id> --replace.' },
@@ -575,7 +597,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   FOLDER_NOT_FOUND: { sentence: 'Only a registered folder can be used or removed.', next: 'bowerloom folder list' },
   FOLDER_UNSAFE: { sentence: 'Bowerloom reads only folders that you own and that no other user can change.', next: 'ls -ld <folder>' },
   FOLDER_IN_CLOUD: { sentence: 'Cloud sync changes file times and moves files, which breaks the checks that keep a folder safe.', next: 'mv <folder> ~/Projects/' },
-  FOLDER_NOT_ALLOWED: { sentence: 'A registered folder is shared with the projects you allow, one by one.', next: 'bowerloom folder allow <folder-name>' },
+  FOLDER_NOT_ALLOWED: { sentence: 'A registered folder is shared with the projects you allow, one by one, for one summary kind each.', next: 'bowerloom folder allow <folder-name> heading' },
   FOLDER_INVALID: { sentence: 'Bowerloom reads folder records strictly, so a hand edit can break one.', next: 'bowerloom folder list' },
   // Round 2 of the reviews of PR 101: true for every raise site. A network failure carries its own next step.
   // Round 3: each raise site carries the next step of its cause, so this one prints only for an error that carries none.
@@ -589,7 +611,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   SKILLS_STATE_STRAY_ENTRY: { sentence: 'Bowerloom keeps only its own operation folders there, and changes nothing it did not make.', next: 'move the named entry out of the private state folder with mv' },
   SKILLS_RECOVER_NOTHING: { sentence: 'Nothing of this item is unfinished.', next: 'bowerloom status' },
   SKILLS_MIGRATE_NOTHING: { sentence: 'The project has no .bowerloom-skills folder.', next: 'bowerloom skills sync' },
-  SKILLS_MIGRATE_STATE_INVALID: { sentence: 'Migrate needs the private state folder the earlier install was made with.', next: 'bowerloom help skills' },
+  SKILLS_MIGRATE_STATE_INVALID: { sentence: 'Migrate needs the private state folder the earlier install was made with, and an earlier install in the project (.bowerloom-skills) that is not damaged.', next: 'bowerloom help skills' },
   SKILLS_MIGRATE_NOT_IN_MANIFEST: { sentence: 'skills.json must pin the installed skill before it can be migrated.', next: 'bowerloom skills check' },
   MANAGED_SKILL_LEGACY_PRESENT: { sentence: 'Skills from an earlier Bowerloom must be migrated before sync can manage this project.', next: 'bowerloom skills migrate plan --state <earlier-state-folder>' },
   MANAGED_SKILL_RECOVERY_REQUIRED: { sentence: 'A change was interrupted inside one skill, and Bowerloom changes nothing else until it is recovered.', next: 'bowerloom skills recover plan --item <id>' },
@@ -604,6 +626,63 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   MANAGED_SKILL_ABORTED: { sentence: 'The change stopped before it finished. Status shows any item that needs recovery.', next: 'bowerloom status' },
   MANAGED_SKILL_TIMEOUT: { sentence: 'A step ran past its time limit, so Bowerloom stopped it. Status shows any item that needs recovery.', next: 'bowerloom status' },
   MANAGED_SKILL_REFUSED: { sentence: 'A safety check of the copies failed, so Bowerloom changed nothing more.', next: 'bowerloom status' },
+  // Step 5 of 0.8, the harness commands: the adoption codes (packages/adoption/src/refusal.ts), the install codes
+  // (packages/project-sync/src/portable-files.ts), and the shared state codes (harness-state.ts). Each sentence says why, and
+  // the errors.md rows say the same words. tests/harness-refusal-words.test.ts fails for a code with no entry here.
+  ADOPTION_USAGE: { sentence: 'Bowerloom checks every adoption option before it writes, and one of them is not valid.', next: 'bowerloom help harness' },
+  ADOPTION_PROJECT_UNSAFE: { sentence: 'Adoption reads only a real folder that you own, with no link in its path.', next: 'cd <real-project-folder>' },
+  ADOPTION_DEFINED: { sentence: 'This folder already has a 0.8 harness, and adoption writes a new one only.', next: 'bowerloom harness install' },
+  ADOPTION_FOLDER_OCCUPIED: { sentence: 'The .bowerloom folder holds a name that adoption does not know, so adoption cannot read the folder whole.', next: 'Move that name out of .bowerloom, then run bowerloom harness adopt again.' },
+  ADOPTION_LEGACY_SKILL: { sentence: 'A 0.7 skill holds a field that a 0.8 harness cannot carry, and adoption never edits a skill in place.', next: 'Edit the skill to remove the field, then run bowerloom harness adopt again.' },
+  ADOPTION_OPENCODE_VERSION: { sentence: 'Adoption reads OpenCode files of version 1.18.30 only.', next: 'Check the OpenCode version, then run bowerloom harness adopt again.' },
+  ADOPTION_DSH_TAG: { sentence: 'Adoption reads DeepSeek Harness at tag 0.2.2-alpha.2 only, until a person rechecks the format.', next: 'Check the tag of DeepSeek Harness, then run bowerloom harness adopt again.' },
+  ADOPTION_CHOICE_INVALID: { sentence: 'A choice names a conflict or a variant that the plan does not have, or gives a name that is not a valid id.', next: 'Run bowerloom harness adopt with no choices to see the conflicts, then pass --pick or --rename for them.' },
+  ADOPTION_CHOICE_REQUIRED: { sentence: 'Two items share a name and differ, and adoption does not pick one for you.', next: 'Add --pick <conflict>=<variant> or --rename <conflict>:<variant>=<id> for each conflict.' },
+  ADOPTION_DEFINITION_INVALID: { sentence: 'The harness that adoption would write does not load, so adoption writes nothing.', next: 'bowerloom harness adopt --json' },
+  ADOPTION_STALE_APPROVAL: { sentence: 'A file changed after you approved the plan, and Bowerloom writes only the plan you saw.', next: 'run the same command again, without --approve, to see the new plan' },
+  ADOPTION_PATH_UNSAFE: { sentence: 'Adoption will not write through a link, over a file that is not yours, or into a folder it does not expect.', next: 'ls -la .bowerloom' },
+  ADOPTION_PARTIAL: { sentence: 'Adoption stopped part way and could not remove every file it wrote. The message lists the files left over.', next: 'bowerloom harness recover --adoption' },
+  ADOPTION_STATE_UNSAFE: { sentence: 'Bowerloom keeps its record of a harness in a private folder that only you can change, outside the project.', next: 'check the private state folder: $XDG_STATE_HOME/bowerloom when XDG_STATE_HOME is set, else ~/.local/state/bowerloom' },
+  ADOPTION_RECOVERY_REQUIRED: { sentence: 'An earlier adoption stopped part way, and Bowerloom changes nothing else until it is recovered.', next: 'bowerloom harness recover --adoption' },
+  ADOPTION_RECOVER_NOTHING: { sentence: 'No adoption of this folder is unfinished.', next: 'bowerloom harness status' },
+  // A save runs only in the app (0.8.0-beta.1), so the command line names the app to recover it.
+  SAVE_RECOVERY_REQUIRED: { sentence: 'A save of the harness in the Bowerloom app stopped part way, and Bowerloom changes nothing else until it is recovered.', next: 'Open this folder in the Bowerloom app and choose Finish a stopped harness.' },
+  ADOPTION_APPROVAL_REQUIRED: { sentence: 'Some items need your confirmation, and you did not confirm every one.', next: 'Add --confirm <part/id> for each item the message lists.' },
+  ADOPTION_ACKNOWLEDGEMENT_REQUIRED: { sentence: 'Adoption did not read some entries, and one of them could hold a deny, an ask, or a sandbox value that limits access.', next: 'Add --acknowledge <id> for each entry the message lists.' },
+  ADOPTION_AT_IMPORT: { sentence: 'The instructions use an @path import. Only Claude Code expands one, so the other engines read it as text.', next: 'Replace the @path line with the text it imports, then run the command again.' },
+  ADOPTION_TOO_LARGE: { sentence: 'The folder holds more files, bytes, entries, or levels than adoption reads in one run.', next: 'Remove files that the harness does not need, or adopt a smaller folder.' },
+  ADOPTION_ABORTED: { sentence: 'A stop request ended the run, and adoption removed every file it had written.', next: 'run the same command again' },
+  ADOPTION_MERGE_NOTHING: { sentence: 'Merge has no work: the folder has no CLAUDE.md, its CLAUDE.md is empty or already follows AGENTS.md, or the harness instructions already hold its text.', next: 'bowerloom harness status' },
+  ADOPTION_INSTRUCTIONS_TOO_LARGE: { sentence: 'The merged instructions would pass 32 KiB, where Codex stops loading instructions.', next: 'Shorten CLAUDE.md or .bowerloom/instructions/AGENTS.md, then run bowerloom harness merge again.' },
+  PORTABLE_USAGE: { sentence: 'Bowerloom checks every install option before it writes, and one of them is not valid.', next: 'bowerloom help harness' },
+  PORTABLE_DEFINITION_INVALID: { sentence: 'The harness does not load, so Bowerloom installs nothing.', next: 'bowerloom harness status' },
+  PORTABLE_AT_IMPORT: { sentence: 'AGENTS.md uses an @path import. Only Claude Code expands one, so Codex and OpenCode read it as text.', next: 'Replace the @path line in .bowerloom/instructions/AGENTS.md with the text it imports.' },
+  PORTABLE_INSTRUCTIONS_TOO_LARGE: { sentence: 'AGENTS.md passes 32 KiB, where Codex stops loading instructions.', next: 'Shorten .bowerloom/instructions/AGENTS.md, then run the command again.' },
+  PORTABLE_ENGINE_NOT_LISTED: { sentence: 'You named an engine that harness.json does not list.', next: 'Pass --engine with an engine that harness.json lists.' },
+  PORTABLE_MERGE_NOT_BUILT: { sentence: 'Install never edits the harness, and Merge changes the instructions in it.', next: 'bowerloom harness merge, then bowerloom harness install --reconcile accept-agents' },
+  PORTABLE_MANAGED_COPY: { sentence: 'A 0.7 sync manages that copy, and install would change its content, so the 0.7 sync owns it.', next: 'For a skill, run bowerloom harness adopt. For a prompt, keep the engine copy as it is, or remove the 0.7 prompt with the 0.7 command, then run the command again.' },
+  PORTABLE_CASE_CLASH: { sentence: 'Two paths differ only in letter case, and many file systems treat them as one.', next: 'Rename one of the two paths the message lists.' },
+  PORTABLE_FIDELITY: { sentence: 'An engine would carry an entry more weakly than the harness says, and nothing records that you accept the loss.', next: 'For each line the message lists that you accept, run bowerloom harness accept <line-key>, then plan again.' },
+  PORTABLE_PATH_OCCUPIED: { sentence: 'A target holds files that Bowerloom did not write, and Bowerloom never overwrites them.', next: 'Move those files aside, then run the command again.' },
+  PORTABLE_PATH_UNSAFE: { sentence: 'A path is a link, is not a plain file or folder of yours, or is larger than 1 MiB.', next: 'Check each path the message names with ls -la.' },
+  PORTABLE_DRIFT: { sentence: 'A file that Bowerloom wrote, or was about to replace, changed since the plan.', next: 'bowerloom harness drift' },
+  PORTABLE_RECOVERY_REQUIRED: { sentence: 'An earlier install or removal stopped part way, and Bowerloom changes nothing else until it is recovered.', next: 'bowerloom harness recover' },
+  PORTABLE_PARTIAL: { sentence: 'The run stopped part way, and some files are not as planned. The message lists them.', next: 'bowerloom harness recover' },
+  PORTABLE_LOCK_LOST: { sentence: 'Bowerloom lost the project lock during the run, so it stopped and touched nothing more.', next: 'bowerloom harness recover' },
+  PORTABLE_NOTHING_PROJECTED: { sentence: 'No install is recorded for this folder, so there is nothing to remove.', next: 'bowerloom harness status' },
+  PORTABLE_RECOVER_NOTHING: { sentence: 'No install or removal is unfinished, and you named no path to keep or restore.', next: 'bowerloom harness drift' },
+  PORTABLE_STATE_UNSAFE: { sentence: 'Bowerloom keeps its record of an install in a private folder that only you can change, outside the project.', next: 'check the private state folder: $XDG_STATE_HOME/bowerloom when XDG_STATE_HOME is set, else ~/.local/state/bowerloom' },
+  PORTABLE_STATE_INVALID: { sentence: 'The record that the message names is damaged, or a saved copy that it needs is gone.', next: 'Move the file the message names aside in the private state folder, then run the command again. If the message says a saved copy is gone, run bowerloom harness recover with --keep <path> for each path.' },
+  PORTABLE_STATE_FOREIGN: { sentence: 'The private state folder holds the record of another folder, and Bowerloom never uses it for this one.', next: 'Run the command from the folder that made the record.' },
+  PORTABLE_ENGINE_VERSION: { sentence: 'Bowerloom writes engine files only for versions it has checked.', next: 'Set the engine version in harness.json to a version the message names, then run the command again.' },
+  PORTABLE_CONFLICT: { sentence: 'A file that Bowerloom would add entries to holds an entry of the same name, or a setting that changes what the entries mean. Bowerloom never edits your entries.', next: 'Rename one of the two entries, then run the command again.' },
+  PORTABLE_ENV_DEFAULT: { sentence: 'No engine is documented to expand a default such as ${NAME:-x}, so Bowerloom never copies it as text.', next: 'Write ${NAME} with no default, then run the command again.' },
+  PORTABLE_TARGET_INVALID: { sentence: 'A file that Bowerloom would add entries to is not valid JSON, TOML, or UTF-8 text, so Bowerloom cannot keep its bytes as they are.', next: 'Fix the file the message names, then run the command again.' },
+  PORTABLE_UNSAFE_VALUE: { sentence: 'A value would change meaning in the engine file, because the engine replaces it or reads it as code.', next: 'Edit the value the message names, then run the command again.' },
+  PORTABLE_MODE_UNSAFE: { sentence: 'A mode that lets the group or others write a file is never recorded.', next: 'bowerloom harness recover --restore-mode <path>, or run chmod go-w <path> first and then --record-mode <path>.' },
+  PORTABLE_ORDER_UNSAFE: { sentence: 'OpenCode moves a whole-number key to the front of its object, so the order of its last-match rules would change.', next: 'Rename the key or pattern so that it is not a whole number.' },
+  HARNESS_STATE_TWO_RECORDS: { sentence: 'Two private records exist for this folder, one from the earlier app and one shared, and Bowerloom does not pick one.', next: 'Move the record you do not want aside in the private state folder: $XDG_STATE_HOME/bowerloom when XDG_STATE_HOME is set, else ~/.local/state/bowerloom. Then run the command again.' },
+  HARNESS_APPROVAL_STALE: { sentence: 'The entry that this approval names changed, or is gone, since the line was shown.', next: 'Plan again with bowerloom harness install, then run bowerloom harness accept <line-key> for the new line.' },
 };
 // Only for an error a new command raised (newCommandRefusal).
 const GATE_REFUSALS: Readonly<Record<GateCode, Words>> = {
@@ -618,6 +697,8 @@ const GENERIC: Words = { sentence: 'Nothing more is known about this refusal bey
 export interface RefusalDetail {
   /** The local port of a lock slot collision, when the error names one. */
   readonly port?: number;
+  /** The engine an ENGINE_NO_WRITER refusal names. Only a known engine id is kept. */
+  readonly engine?: string;
   /** True only for an error from newCommandRefusal. */
   readonly raisedByNewCommand?: boolean;
   /** A fixed hint name the error carries, for words that are more exact than its code alone. */
@@ -645,6 +726,8 @@ function wordsFor(code: string, detail: RefusalDetail): Words {
   if (code === 'MANIFEST_UNSAFE' && detail.hint === LEFTOVER_TEMP_LINK) {
     return { sentence: 'An interrupted write left a second link to skills.json, the temporary file .bowerloom/.skills.json.*.tmp. Check that both name the same file, then remove the temporary one.', next: 'ls -li .bowerloom/skills.json .bowerloom/.skills.json.*.tmp' };
   }
+  if (code === 'ENGINE_NO_WRITER' && typeof detail.engine === 'string' && ENGINE_IDS.includes(detail.engine as never)) return { sentence: `Bowerloom has no writer for ${detail.engine} yet. It writes files for Claude Code and Codex only, for now.`, next: 'name claude-code or codex' };
+  if (code === 'ENGINE_PREVIEW' && typeof detail.engine === 'string' && isEngine(detail.engine)) return { sentence: `${ENGINE_NAMES[detail.engine]} is a preview engine in this beta.`, next: REFUSALS.ENGINE_PREVIEW!.next };
   if ((code === 'PROJECT_LOCK_SLOT_COLLISION' || code === 'MANAGED_SKILL_LOCK_SLOT_COLLISION') && validPort(detail.port)) {
     return { sentence: `The lock uses local port ${detail.port}. Another program listens on it, or another Bowerloom command is too busy to answer.`, next: `lsof -nP -iTCP:${detail.port} -sTCP:LISTEN` };
   }
@@ -676,7 +759,8 @@ export function reportFailure(error: unknown, tty: boolean): { text: string; exi
   const next = error instanceof DefinitionError && 'next' in error && typeof (error as { next?: unknown }).next === 'string' ? oneLine((error as { next: string }).next) : undefined;
   // Round 5 of the reviews of PR 99, L-1: a fix is the bare command of a refusal, in its own JSON field.
   const fix = error instanceof DefinitionError && 'fix' in error && typeof (error as { fix?: unknown }).fix === 'string' ? oneLine((error as { fix: string }).fix) : undefined;
-  const detail: RefusalDetail = { raisedByNewCommand: marked(error), ...(validPort(port) ? { port } : {}), ...(hint === LEFTOVER_TEMP_LINK || hint === STORE_LIMIT || hint === PARTIAL ? { hint } : {}), ...(next !== undefined ? { next } : {}) };
+  const engine = error instanceof DefinitionError && 'engine' in error ? (error as { engine?: unknown }).engine : undefined;
+  const detail: RefusalDetail = { raisedByNewCommand: marked(error), ...(validPort(port) ? { port } : {}), ...(typeof engine === 'string' ? { engine } : {}), ...(hint === LEFTOVER_TEMP_LINK || hint === STORE_LIMIT || hint === PARTIAL ? { hint } : {}), ...(next !== undefined ? { next } : {}) };
   const exitCode = exitCodeFor(marked(error) ? error : safe) as Exclude<ExitCode, 0>;
   // An error that carries its own next step gives it to agents too, as `next`; every other envelope is unchanged.
   return { text: tty ? renderRefusal(safe.code, safe.message, detail) : `${JSON.stringify({ error: { code: safe.code, message: safe.message, ...(next !== undefined ? { next } : {}), ...(fix !== undefined ? { fix } : {}), ...(hint === PARTIAL ? { partial: true } : {}) } })}\n`, exitCode };

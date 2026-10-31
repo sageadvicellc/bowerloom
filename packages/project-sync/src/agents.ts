@@ -58,7 +58,7 @@ export interface AgentItem {
   itemId: string;
   state: AgentState;
   action: 'install' | 'update' | 'none' | 'hold';
-  harnesses: ['claude'];
+  engines: ['claude-code'];
   expected: { files: InventoryRow[]; surfaces: ItemSurface[]; source: { kind: 'agent'; path: string; guard: string[] | null } | null };
   before: SyncItem['before'];
   previousReceiptRevision: string | null;
@@ -214,7 +214,7 @@ export function agentSurfaces(project: string, id: string): { id: ItemSurface['i
 }
 
 const heldItem = (s: ScannedAgent, context: AgentContext = EMPTY_CONTEXT, hold: Hold | null = s.hold): AgentItem => ({
-  id: s.role, team: s.team, itemId: 'agent_' + s.role, state: 'held', action: 'hold', harnesses: ['claude'],
+  id: s.role, team: s.team, itemId: 'agent_' + s.role, state: 'held', action: 'hold', engines: ['claude-code'],
   expected: { files: [], surfaces: [], source: null }, before: [], previousReceiptRevision: null, history: 0, hold: oneHold(hold), notices: [], newNotices: [], installed: null, sourceSha256: null,
   builtin: false, userCopy: false, capabilities: null, enforcement: [], context,
 });
@@ -311,7 +311,7 @@ export function classifyAgent(project: string, itemsRoot: string, s: ScannedAgen
   if (hold !== null) { action = 'hold'; if (state !== 'drift') state = 'held'; }
   const notices = agentNotices(s.parsed), had = action === 'update' && previous !== null ? installedCopy(project, role, s.team) : null, newOnes = had === null ? [] : notices.filter(n => !had.notices.includes(n));
   return {
-    id: role, team: s.team, itemId, state, action, harnesses: ['claude'],
+    id: role, team: s.team, itemId, state, action, engines: ['claude-code'],
     expected: { files, surfaces: surfaces.map(x => ({ id: x.id, path: relative(project, x.path) })), source: { kind: 'agent', path: sourcePath, guard: context.guard } }, before,
     previousReceiptRevision: previous?.revision ?? null, history: ops.length, hold: oneHold(hold), notices, newNotices: newOnes, installed: action === 'hold' && previous !== null ? installedCopy(project, role, s.team) : null, sourceSha256: hash, builtin: isBuiltinAgentName(role),
     userCopy: userCopy(role), capabilities: null, enforcement: [], context,
@@ -326,7 +326,7 @@ export function orphanAgent(project: string, itemsRoot: string, id: string): Age
   let previous: ManagedItemReceipt | null = null, code: string | null = null;
   try { previous = currentV2(project, join(itemsRoot, 'agent_' + id), { kind: 'agent', id }); } catch (e) { code = managedCode(e); }
   const base: AgentItem = {
-    id, team: null, itemId: 'agent_' + id, state: 'orphaned', action: 'none', harnesses: ['claude'], expected: { files: [], surfaces: [], source: null }, before: [],
+    id, team: null, itemId: 'agent_' + id, state: 'orphaned', action: 'none', engines: ['claude-code'], expected: { files: [], surfaces: [], source: null }, before: [],
     previousReceiptRevision: previous?.revision ?? null, history: 0, hold: null, notices: [], newNotices: [], installed: installedCopy(project, id, 'unknown'), sourceSha256: null, builtin: false, userCopy: false, capabilities: null, enforcement: [], context: EMPTY_CONTEXT,
   };
   if (code === null) return base;

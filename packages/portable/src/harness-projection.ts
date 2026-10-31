@@ -1,12 +1,18 @@
-/** Local file layouts only. No native discovery, execution or model binding. */
-export type Harness = 'codex' | 'claude';
+/**
+ * Local file layouts only. No native discovery, execution or model binding.
+ *
+ * The plan and the receipt of an installation are hashed and kept, so they store the engine as they always did: `harness`,
+ * with `claude` for Claude Code. `projectionFor` takes that id and the current one, `claude-code`.
+ */
+import { engineFromOldId, isEngine } from '../../skill-manifest/src/engine.js';
+import type { OldEngineId } from '../../skill-manifest/src/engine.js';
 export type AdapterVersion = 'codex/local-skills/v1alpha1' | 'claude/project-skills/v1alpha1';
 interface GuidancePlan {
   revision: string; bundleRevision: string; schemaVersion: string; adapterVersion: AdapterVersion;
   selected: string[]; dependencies: string[];
 }
 interface HarnessProjection {
-  readonly harness: Harness; readonly version: AdapterVersion; readonly skillRoot: string;
+  readonly harness: OldEngineId; readonly version: AdapterVersion; readonly skillRoot: string;
   guidance(plan: GuidancePlan): string;
 }
 const codex: HarnessProjection = Object.freeze({
@@ -36,7 +42,9 @@ Origin hashes and projections are in .bowerloom/installation-receipt.json. No gl
 `,
 });
 export function projectionFor(harness: string): HarnessProjection | undefined {
-  if (harness === 'codex') return codex;
-  if (harness === 'claude') return claude;
+  // `claude-code` is the current id of Claude Code and `claude` the old one; both name the same projection.
+  const engine = isEngine(harness) ? harness : engineFromOldId(harness);
+  if (engine === 'codex') return codex;
+  if (engine === 'claude-code') return claude;
   return undefined;
 }

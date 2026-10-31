@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "bowerloom/v1alpha1",
+  "parts": [
+    {
+      "id": "personal-assistant",
+      "kind": "skill",
+      "files": [
+        "skills/personal-assistant/SKILL.md",
+        "skills/personal-assistant/profile.json"
+      ],
+      "dependsOn": [],
+      "requiredControls": [
+        "installer-local-files-only",
+        "installer-explicit-review"
+      ]
+    },
+    {
+      "id": "first-team",
+      "kind": "team",
+      "files": [
+        "teams/first-team/assets/brief.json",
+        "teams/first-team/assets/milestones.md",
+        "teams/first-team/assets/working-agreement.md",
+        "teams/first-team/maps/relay.json",
+        "teams/first-team/maps/vines.json",
+        "teams/first-team/prompts/lead.md",
+        "teams/first-team/prompts/maker.md",
+        "teams/first-team/prompts/reviewer.md",
+        "teams/first-team/skills/bounded-draft.md",
+        "teams/first-team/team.yaml"
+      ],
+      "dependsOn": [
+        "personal-assistant"
+      ],
+      "requiredControls": [
+        "installer-explicit-review"
+      ]
+    }
+  ]
+}

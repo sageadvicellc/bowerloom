@@ -1,0 +1,15 @@
+{
+  "format": "bowerloom/project/v1beta1",
+  "engines": [
+    "claude-code",
+    "codex"
+  ],
+  "skills": [
+    {
+      "id": "house-style",
+      "source": "store"
+    }
+  ],
+  "prompts": [],
+  "teams": []
+}

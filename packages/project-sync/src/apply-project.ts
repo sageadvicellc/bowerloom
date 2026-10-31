@@ -1,11 +1,11 @@
 /**
  * `bowerloom apply [--harness claude|codex|both]` (build plan 01, M6). It puts the project's skills and prompts in
- * place for the chosen harnesses from what this machine already holds: pinned skills from the private cache, local
+ * place for the chosen engines from what this machine already holds: pinned skills from the private cache, local
  * skills and prompts from `.bowerloom/`. It never fetches; a pin that is not cached refuses SKILLS_OFFLINE and names
- * `skills sync`. It adds copies for the chosen harnesses and never removes one. It never edits AGENTS.md or
+ * `skills sync`. It adds copies for the chosen engines and never removes one. It never edits AGENTS.md or
  * CLAUDE.md: the plan carries a pointer a person can add there instead (owner, answer 5).
  *
- * The plan binds the `skills sync` plan of the same skills (computed offline, for the chosen harnesses) and every
+ * The plan binds the `skills sync` plan of the same skills (computed offline, for the chosen engines) and every
  * prompt's inventory, surfaces, before-pins and previous receipt. Apply reuses the M5 locked run: under one held
  * project lock it plans again, refuses STALE_APPROVAL unless the revision is equal, builds every child plan
  * (phase B, no project write), then applies each child with a revision planned right before it in the same run.
@@ -17,7 +17,9 @@ import { exists, names } from '../../managed-skills/src/observed.js';
 import { MANAGED_ROOT, MARKER_V2, catalogItem, ignoreState } from '../../managed-skills/src/v2-observed.js';
 import { legacyPresent } from '../../managed-skills/src/migrate.js';
 import { temporary } from '../../managed-skills/src/observed.js';
-import type { Harness, ManagedItemRequest } from '../../managed-skills/src/v2-types.js';
+import type { ManagedItemRequest } from '../../managed-skills/src/v2-types.js';
+import { ENGINE_IDS, isEngine, isWriterEngine, writerEngines } from '../../skill-manifest/src/engine.js';
+import type { Engine, WriterEngine } from '../../skill-manifest/src/engine.js';
 import type { Identity } from '../../managed-skills/src/observed-types.js';
 import { readManifestState } from '../../skill-manifest/src/add.js';
 import { MANIFEST_LIMITS, isId, parseManifest } from '../../skill-manifest/src/schema.js';
@@ -50,19 +52,19 @@ import { homedir } from 'node:os';
 import type { PromptItem } from './prompts.js';
 import { ALLOW_FLAG, agentRequest, checkAgentChild, checkClaudeFolders, classifyAgent, orphanAgent, scanAgents } from './agents.js';
 import type { AgentItem } from './agents.js';
-import { agentsMayBeTracked, checkSliceChild, listSlices, registeredLookup, scanSlices, sliceRequest } from './slices.js';
+import { agentsMayBeTracked, checkSliceChild, checkSliceGrant, listSlices, registeredLookup, scanSlices, sliceRequest } from './slices.js';
 import type { SliceItem, SliceTreeHook } from './slices.js';
 import { readSliceTree } from '../../managed-skills/src/local-source.js';
 import { managedCode, offlineBecause, outward, syncError } from './refusal.js';
 
-export const APPLY_PLAN_FORMAT = 'bowerloom/project-apply-plan/v1beta2' as const;
-export const APPLY_RESULT_FORMAT = 'bowerloom/project-apply-result/v1beta2' as const;
+export const APPLY_PLAN_FORMAT = 'bowerloom/project-apply-plan/v1beta3' as const;
+export const APPLY_RESULT_FORMAT = 'bowerloom/project-apply-result/v1beta3' as const;
 /**
- * What apply prints in place of an edit to AGENTS.md or CLAUDE.md, for the harnesses it adds copies for (review
+ * What apply prints in place of an edit to AGENTS.md or CLAUDE.md, for the engines it adds copies for (review
  * freeze finding 9). Fixed text: it names no path of this machine.
  */
-export function applyPointer(harnesses: readonly Harness[]): string {
-  const claude = harnesses.includes('claude'), codex = harnesses.includes('codex');
+export function applyPointer(engines: readonly WriterEngine[]): string {
+  const claude = engines.includes('claude-code'), codex = engines.includes('codex');
   if (claude && !codex) return [
     'Bowerloom never edits AGENTS.md or CLAUDE.md. To point Claude Code at these copies, add a line like this to CLAUDE.md yourself:',
     '  Project skills are in .claude/skills. Prompts are Claude Code commands in .claude/commands. Agents are in .claude/agents. Context slices are skills named slice-<name> in .claude/skills.',
@@ -76,8 +78,8 @@ export function applyPointer(harnesses: readonly Harness[]): string {
     '  Project skills are in .claude/skills and .agents/skills. Prompts are Claude Code commands in .claude/commands, and Codex skills named prompt-<name>. Agents are in .claude/agents. Context slices are skills named slice-<name> in .claude/skills.',
   ].join('\n');
 }
-/** The pointer for both harnesses, the default. */
-export const APPLY_POINTER = applyPointer(['claude', 'codex']);
+/** The pointer for both engines, the default. */
+export const APPLY_POINTER = applyPointer(['claude-code', 'codex']);
 
 export interface ApplyInput {
   project: ProjectContext; stateRoot: string;
@@ -85,8 +87,8 @@ export interface ApplyInput {
   home?: string;
   /** `--frozen`: only what bowerloom.lock.json records; fetches what this machine lacks (spec 06, 3.16). */
   frozen?: boolean;
-  /** Sorted, unique, not empty: the harnesses to add copies for. */
-  harnesses: Harness[];
+  /** Sorted, unique, not empty: the engines to add copies for. */
+  engines: WriterEngine[];
   /** Only this team's skills and prompts (`up --team`). Null or absent: every skill and prompt. */
   team?: string | null;
   /** `<role>:<64 hex>` allowances from `--allow-agent`. An agent that sets bypassPermissions, hooks or mcpServers installs only with its own. */
@@ -114,8 +116,8 @@ export interface ApplyPlan {
   /** Locked authored teams a frozen apply puts in the store cache, so that team adopt can read them. */
   storeFetch: StoreFetch[];
   notes: string[];
-  harnesses: Harness[]; team: string | null;
-  /** The offline `skills sync` plan of the same skills for these harnesses; null when there is no skills.json. */
+  engines: WriterEngine[]; team: string | null;
+  /** The offline `skills sync` plan of the same skills for these engines; null when there is no skills.json. */
   skills: SyncPlan | null;
   prompts: PromptItem[];
   /** The team agents of this project, planned for Claude Code only (spec 01a). Empty under `--harness codex`. */
@@ -124,7 +126,7 @@ export interface ApplyPlan {
   allow: string[];
   /** The context slices of this project, planned for Claude Code only (spec 05). Empty under `--harness codex`. */
   slices: SliceItem[];
-  /** True when the harnesses include Codex and at least one slice is registered: Codex slices are not projected in this beta. */
+  /** True when the engines include Codex and at least one slice is registered: Codex slices are not projected in this beta. */
   codexSlicesSkipped: boolean;
   /** File names in `.bowerloom/slices` that no receipt lists: apply skips them. */
   unregisteredSlices: string[];
@@ -132,7 +134,7 @@ export interface ApplyPlan {
   agentsMayBeTracked: boolean;
   /** True when a slice of a registered folder is installed or updated and `.claude/skills` may be committed: the index holds text of that folder. */
   skillsMayBeTracked: boolean;
-  /** True when the harnesses include Codex and at least one agent file exists: Codex agents are not projected in this beta. */
+  /** True when the engines include Codex and at least one agent file exists: Codex agents are not projected in this beta. */
   codexAgentsSkipped: boolean;
   privateState: { root: string; projectId: string; cacheRoot: string; storeCacheRoot: string; itemsRoot: string; create: string[]; pins: { path: string; identity: Identity }[] };
   managed: { ignore: 'absent' | 'exact' };
@@ -143,7 +145,7 @@ export interface ApplyPlan {
 }
 export interface ApplyItemRef { kind: 'skill' | 'prompt' | 'agent' | 'slice'; id: string; origin: 'store' | 'project' | null; resolvedFrom: 'store' | 'lock' | 'project' }
 export interface ApplyResult {
-  format: typeof APPLY_RESULT_FORMAT; planRevision: string; harnesses: Harness[];
+  format: typeof APPLY_RESULT_FORMAT; planRevision: string; engines: WriterEngine[];
   applied: (ApplyItemRef & { action: 'install' | 'update'; receiptRevision: string })[];
   held: (ApplyItemRef & { code: string; next: string })[];
   upToDate: ApplyItemRef[]; orphaned: ApplyItemRef[];
@@ -165,9 +167,35 @@ function plainSkillIds(dir: string): Set<string> {
   return out;
 }
 
-function harnessSet(value: unknown): Harness[] {
-  if (!Array.isArray(value) || value.length < 1 || value.length > 2 || !value.every((h, i) => (h === 'claude' || h === 'codex') && (i === 0 || value[i - 1] < h))) return usage();
-  return [...value] as Harness[];
+/** The engines of an apply: sorted, unique, not empty, each an engine id. An engine with no writer is refused by name, never skipped. */
+function engineSet(value: unknown): WriterEngine[] {
+  if (!Array.isArray(value) || value.length < 1 || value.length > ENGINE_IDS.length || !value.every(isEngine)) return usage();
+  // The refusal comes first, so a list with an engine that has no writer is named whatever its order. Then the order is checked.
+  const writers = writerEngines(value);
+  if (!value.every((h, i) => i === 0 || value[i - 1]! < h)) return usage();
+  return writers;
+}
+/**
+ * The engines that the project's own files name: bowerloom.json, or skills.json in a project that has none. Null when no
+ * file can be read here. Any trouble with the files is left to the commands that read them.
+ */
+function declaredEngines(project: ProjectContext): readonly Engine[] | null {
+  try {
+    const config = readConfig(project);
+    if (config.state === 'valid') return config.config.engines;
+    if (config.state === 'absent') { const state = readManifestState(project.dir); if (state.file !== null) return parseManifest(state.file.bytes, MANIFEST_LIMITS).engines; }
+  } catch { /* The commands that read the files report their trouble. */ }
+  return null;
+}
+
+/** The engines the project's files list that Bowerloom has no writer for, in the order of the list. Reads only; never refuses. */
+export function nonWriterEngines(project: ProjectContext): Engine[] {
+  return (declaredEngines(project) ?? []).filter(engine => !isWriterEngine(engine));
+}
+/** Refuses by name when the project's files list an engine with no writer. Reads only. Used by commands that start before any plan, such as `up`. */
+export function requireDeclaredWriters(project: ProjectContext): void {
+  const declared = declaredEngines(project);
+  if (declared !== null) writerEngines(declared);
 }
 
 /** No item may take a place another item takes, and no new copy may land on something Bowerloom did not install. */
@@ -195,7 +223,7 @@ function selectedTeams(project: ProjectContext, resolved: Resolved | null): Set<
 /** Plans the apply. Reads only, and never the network. Every refusal here comes before any write anywhere. */
 export async function observeApply(input: ApplyInput): Promise<Observed> {
   try {
-    const harnesses = harnessSet(input?.harnesses), team = input.team ?? null, project = input.project, dir = project.dir, frozen = input.frozen === true, maxRequests = requestLimit(input.maxGithubRequests);
+    const engines = engineSet(input?.engines), team = input.team ?? null, project = input.project, dir = project.dir, frozen = input.frozen === true, maxRequests = requestLimit(input.maxGithubRequests);
     if (team !== null && !isId(team)) throw manifestRefusal('TEAM_NOT_FOUND');
     checkProjectAncestry(project);
     const agentsOnly = input.agentsOnly === true, home = input.home ?? homedir();
@@ -208,11 +236,15 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
     if (!agentsOnly) try { ignore = ignoreState(dir); } catch (e) { throw syncError(managedCode(e), 'The file .bowerloom/managed/.gitignore must hold exactly one line, a single *.'); }
     const layout = stateLayout(input);
     const resolved = agentsOnly ? null : resolveProject({ project, home, frozen });
+    // A file that names an engine with no writer is refused by name, whatever engines the command asked for. Nothing is skipped.
+    // A plan of agents only is the exception: it writes nothing and reads Claude Code agents only, so it runs, and the
+    // commands that call it print a note for each such engine (`nonWriterEngines`).
+    if (resolved !== null) writerEngines(resolved.engines);
     if (resolved !== null) requireReadableLock(resolved);
-    // Skills: the sync planner, for the chosen harnesses. Offline unless frozen: a plain apply never fetches.
+    // Skills: the sync planner, for the chosen engines. Offline unless frozen: a plain apply never fetches.
     let skills: SyncPlan | null = null, entries: ReadonlyMap<string, Entry> = new Map();
     if (resolved !== null && resolved.manifest !== null && (resolved.mode === 'legacy' || resolved.skills.length > 0)) {
-      const observed = await observeSync({ project, stateRoot: input.stateRoot, home, frozen, team, offline: !frozen, apply: { harnesses }, maxGithubRequests: maxRequests, githubToken: tokenSource }, resolved);
+      const observed = await observeSync({ project, stateRoot: input.stateRoot, home, frozen, team, offline: !frozen, apply: { engines }, maxGithubRequests: maxRequests, githubToken: tokenSource }, resolved);
       skills = observed.plan; entries = observed.entries;
     }
     // Prompts: legacy, every registered prompt of the team; config, every listed prompt of the team, from where it resolves.
@@ -221,13 +253,13 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
     let listedPrompts: string[] = [];
     if (resolved !== null && resolved.mode === 'legacy') {
       const registered = registeredPrompts(dir); listedPrompts = registered.map(p => p.id);
-      prompts.push(...registered.filter(p => inTeam(p.teams)).map(p => classifyPrompt(dir, layout.itemsRoot, p.id, p.teams, harnesses)));
+      prompts.push(...registered.filter(p => inTeam(p.teams)).map(p => classifyPrompt(dir, layout.itemsRoot, p.id, p.teams, engines)));
     } else if (resolved !== null) {
       listedPrompts = resolved.prompts.map(p => p.id);
       for (const r of resolved.prompts) {
         if (!inTeam(r.teams)) continue;
-        if (r.hold !== null) { prompts.push(heldPrompt(dir, r.id, r.teams, harnesses, r.hold, r)); continue; }
-        const item = classifyPrompt(dir, layout.itemsRoot, r.id, r.teams, harnesses, { origin: r.origin, via: r.via, resolvedFrom: r.resolvedFrom, storeDir: resolved.store.context?.dir ?? null, lockPin: r.lockPin, storeCacheRoot: layout.storeCacheRoot, notes: cacheNotes, offline: !frozen });
+        if (r.hold !== null) { prompts.push(heldPrompt(dir, r.id, r.teams, engines, r.hold, r)); continue; }
+        const item = classifyPrompt(dir, layout.itemsRoot, r.id, r.teams, engines, { origin: r.origin, via: r.via, resolvedFrom: r.resolvedFrom, storeDir: resolved.store.context?.dir ?? null, lockPin: r.lockPin, storeCacheRoot: layout.storeCacheRoot, notes: cacheNotes, offline: !frozen });
         // A plain apply never fetches: a prompt from the lock that this machine does not hold is held, and the others install.
         if (!frozen && item.storeCache === 'missing' && (item.action === 'install' || item.action === 'update')) { item.action = 'hold'; item.hold = offlineHold('prompt', item.id); }
         prompts.push(item);
@@ -243,7 +275,7 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
     const allow = [...new Set(input.allow ?? [])].sort();
     if (allow.some(a => typeof a !== 'string' || !ALLOW_FLAG.test(a))) throw new DefinitionError('USAGE', 'Use --allow-agent <role>:<the 64 hex characters of the agent file\'s sha256>.');
     const selected = selectedTeams(project, resolved);
-    const scan = scanAgents(dir), claude = harnesses.includes('claude'), agents: AgentItem[] = [];
+    const scan = scanAgents(dir), claude = engines.includes('claude-code'), agents: AgentItem[] = [];
     const scanned = scan.entries.filter(e => selected === null || (e.team !== null && selected.has(e.team)));
     // Slices (spec 05): the listing and the limit are checked whatever the harness says; the trees are read for Claude Code only.
     const catalogNames = exists(catalogs) ? names(catalogs) : [];
@@ -303,11 +335,11 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
       store: resolved !== null ? storeBinding(resolved, fromStore) : null, network: { hosts, requests, maxRequests, credentials }, storeFetch,
       // Review F5: the skills planner's own notes (a store cache entry that fails verification) join the resolver's.
       notes: [...new Set([...(resolved?.notes ?? []), ...(skills?.notes ?? []).filter(n => n !== FROZEN_LINE), ...cacheNotes])].concat(frozen ? [FROZEN_LINE] : []),
-      harnesses, team, skills, prompts, slices, agents, allow, codexSlicesSkipped: harnesses.includes('codex') && registeredSliceCount > 0, unregisteredSlices: sliceScan.unregistered,
+      engines, team, skills, prompts, slices, agents, allow, codexSlicesSkipped: engines.includes('codex') && registeredSliceCount > 0, unregisteredSlices: sliceScan.unregistered,
       agentsMayBeTracked: agentWork.some(a => a.context.guard !== null) && agentsMayBeTracked(dir),
-      skillsMayBeTracked: sliceWork.some(sl => sl.copies !== null && sl.copies.summary !== 'none') && agentsMayBeTracked(dir, home, 'skills'), codexAgentsSkipped: harnesses.includes('codex') && scan.fileCount > 0,
+      skillsMayBeTracked: sliceWork.some(sl => sl.copies !== null && sl.copies.summary !== 'none') && agentsMayBeTracked(dir, home, 'skills'), codexAgentsSkipped: engines.includes('codex') && scan.fileCount > 0,
       privateState: { root: layout.root, projectId: project.projectId, cacheRoot: layout.cacheRoot, storeCacheRoot: layout.storeCacheRoot, itemsRoot: layout.itemsRoot, create, pins: layout.pins },
-      managed: { ignore }, actionable: skillWork.length + promptWork.length + sliceWork.length + agentWork.length > 0 || storeFetch.some(f => f.storeCache === 'missing'), pointer: applyPointer(harnesses),
+      managed: { ignore }, actionable: skillWork.length + promptWork.length + sliceWork.length + agentWork.length > 0 || storeFetch.some(f => f.storeCache === 'missing'), pointer: applyPointer(engines),
       writesAuthorized: false as const, executionAuthorized: false as const,
     };
     // The skills part is bound through its own revision (syncBinding) and the shared folders by path only, so a
@@ -334,13 +366,13 @@ export interface ApplyDeps { managed?: ManagedPort; acquirer?: Acquirer; storeTr
  * Round 9 of the reviews of PR 101: the command that makes this plan again, with each flag that changes it. `bowerloom up`
  * is the command of a team run.
  */
-export function applyRerun(input: Pick<ApplyInput, 'frozen' | 'harnesses' | 'team' | 'allow' | 'maxGithubRequests'>): string {
+export function applyRerun(input: Pick<ApplyInput, 'frozen' | 'engines' | 'team' | 'allow' | 'maxGithubRequests'>): string {
   // Round 10: only validated values print. Anything else prints no command, but words that name it.
-  const allowed = input.allow ?? [], ok = allowed.every(a => ALLOW_VALUE.test(a)) && input.harnesses.every(h => h === 'claude' || h === 'codex') && printableMax(input.maxGithubRequests);
+  const allowed = input.allow ?? [], ok = allowed.every(a => ALLOW_VALUE.test(a)) && input.engines.every(h => h === 'claude-code' || h === 'codex') && printableMax(input.maxGithubRequests);
   if (input.team) return ok && PLAIN_ID.test(input.team) ? command(['bowerloom up --team', input.team, ...allowed.flatMap(a => ['--allow-agent', a])].join(' ')) : 'the same bowerloom up command';
   if (!ok) return 'the same bowerloom apply command';
   const allow = allowed.flatMap(a => ['--allow-agent', a]);
-  const harness = input.harnesses.length === 1 ? ['--harness', input.harnesses[0]!] : [];
+  const harness = input.engines.length === 1 ? ['--harness', input.engines[0]!] : [];
   return command(['bowerloom apply', ...harness, ...allow, ...(input.frozen ? ['--frozen'] : []), ...(input.maxGithubRequests !== undefined ? ['--max-github-requests', String(input.maxGithubRequests)] : [])].join(' '));
 }
 /**
@@ -407,6 +439,7 @@ export async function applyProjectApply(input: ApplyInput, revision: string, sig
       }
       for (const item of slices) {
         if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...slices.map(s => s.itemId), ...agents.map(a => a.itemId)], rerun);
+        checkSliceGrant(item, registeredLookup(input.home ?? homedir(), input.project.projectId, input.project.identity.birthtimeNs, input.stateRoot));
         const req: ManagedItemRequest = sliceRequest(dir, plan.privateState.itemsRoot, item);
         let child; try { child = await managed.plan(req, { signal }); } catch (e) {
           if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...slices.map(s => s.itemId), ...agents.map(a => a.itemId)], rerun);
@@ -436,7 +469,7 @@ export async function applyProjectApply(input: ApplyInput, revision: string, sig
       };
       const skills = plan.skills?.items ?? [];
       return {
-        format: APPLY_RESULT_FORMAT, planRevision: plan.revision, harnesses: plan.harnesses,
+        format: APPLY_RESULT_FORMAT, planRevision: plan.revision, engines: plan.engines,
         applied: applied.map(a => ({ ...refOf(a.id), action: a.action, receiptRevision: a.receiptRevision })),
         held: [...skills.filter(i => i.action === 'hold').map(i => ({ kind: 'skill' as const, id: i.id, code: i.hold!.code, next: i.hold!.next, ...originOf(i) })), ...(got?.review ?? []).map(id => ({ kind: 'skill' as const, id, ...reviewHold(rerun), ...originOf(skills.find(i => i.id === id)!) })), ...plan.prompts.filter(p => p.action === 'hold').map(p => ({ kind: 'prompt' as const, id: p.id, code: p.hold!.code, next: p.hold!.next, ...originOf(p) })), ...review, ...plan.slices.filter(s => s.action === 'hold').map(s => ({ kind: 'slice' as const, id: s.id, code: s.hold!.code, next: s.hold!.next, ...project })), ...plan.agents.filter(a => a.action === 'hold').map(a => ({ kind: 'agent' as const, id: a.id, code: a.hold!.code, next: a.hold!.next, ...project }))],
         upToDate: [...skills.filter(i => i.state === 'up-to-date' && i.action === 'none').map(i => ({ kind: 'skill' as const, id: i.id, ...originOf(i) })), ...plan.prompts.filter(p => p.state === 'up-to-date' && p.action === 'none').map(p => ({ kind: 'prompt' as const, id: p.id, ...originOf(p) })), ...plan.slices.filter(s => s.state === 'up-to-date' && s.action === 'none').map(s => ({ kind: 'slice' as const, id: s.id, ...project })), ...plan.agents.filter(a => a.state === 'up-to-date' && a.action === 'none').map(a => ({ kind: 'agent' as const, id: a.id, ...project }))],

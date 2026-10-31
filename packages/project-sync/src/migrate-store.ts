@@ -27,7 +27,7 @@ import { AUTHORING_FOLDER, itemPath, readAuthoringState, receiptOf, recordText, 
 import type { AuthoredItem, AuthoringState } from '../../project-authoring/src/state.js';
 import { writeReceiptRecord } from '../../project-authoring/src/receipt-write.js';
 import { readConfig } from '../../project-config/src/config.js';
-import { CONFIG_FILE, serializeConfig } from '../../project-config/src/schema.js';
+import { CONFIG_FILE, serializeConfigFrom } from '../../project-config/src/schema.js';
 import type { ConfigEntry, ProjectConfig } from '../../project-config/src/schema.js';
 import { LOCK_FILE, LOCK_FORMAT, LOCK_LISTS, lockAgrees, lockItem, lockSourceLabel, parseLock, readLock, serializeLock } from '../../project-config/src/lock.js';
 import type { LockItem, ProjectLock } from '../../project-config/src/lock.js';
@@ -550,7 +550,7 @@ async function build(input: MigrateInput, mode: Mode): Promise<StoreMigratePlan>
       const list = nextConfig[LIST[i.kind]], e = list.find(x => x.id === i.id);
       if (e) { e.source = 'store'; delete e.via; } else { list.push({ id: i.id, source: 'store' }); list.sort((a, b) => byteOrder(a.id, b.id)); adds.push(pairOf(i)); }
     }
-    const text = serializeConfig(nextConfig);
+    const text = serializeConfigFrom(config, nextConfig);
     configStep = { before: configRead.state === 'valid' ? { sha256: configRead.sha256, bytes: configRead.bytes } : null, after: { sha256: sha(text), bytes: Buffer.byteLength(text) }, text, created: configRead.state !== 'valid', adds };
   }
   let oldLock: ProjectLock | null = null, lockRead: Read | null = null;

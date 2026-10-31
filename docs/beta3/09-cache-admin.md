@@ -432,7 +432,7 @@ Update `tests/help-human.test.ts` (the help loops at lines 79 and 84 gain `'cach
 7. The pin that a sync fetched and a prune removed. Pause sync after phase A with a hook, prune the pin, then resume. Expect `SKILLS_CACHE_RECOVERY_REQUIRED` and no `managed-pending.json`. If a pending record remains, report it in the pull request. Do not change sync in this spec.
 8. The cost of `cache list`. Measure it on 64 real entries. If it takes more than a second, report it in the pull request.
 
-## New decision for Hanna
+## New decision for the maintainer
 
 Topic: `cache prune --unreferenced` outside a project.
 
