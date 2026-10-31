@@ -104,7 +104,7 @@ function errorTables(){
 }
 // Round 1 of the reviews of PR 101, M1: the tables of the project commands. The setup table and the plumbing tables
 // below them hold other words for some of the same codes, such as STALE_APPROVAL.
-export const PROJECT_TABLES=['Project and approval refusals','Store and config refusals','Lock refusals','Skills and sync refusals','Context slice refusals'];
+export const PROJECT_TABLES=['Project and approval refusals','Store and config refusals','Lock refusals','Skills and sync refusals','Context slice refusals','Harness refusals'];
 /** The row of each code in the project tables. A code sits in one project table only. */
 function errorRows(){
   const tables=errorTables(),rows=new Map();
