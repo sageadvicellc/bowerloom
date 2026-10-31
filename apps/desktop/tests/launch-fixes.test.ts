@@ -71,7 +71,7 @@ test('a new temporary data folder is private and fresh, and only such a folder i
 
 test('main.ts gives a made-up launch its own temporary data folder before the app is ready, removes it on quit, and leaves the app on the person\'s own folders with the normal one', () => {
   const main = strip(read('main/main.ts'));
-  assert.match(main, /if \(launch\.temporaryData\) \{\s*const choice = chooseUserData\(userDataArg\(argv\), tmpdir\(\)\)/);
+  assert.match(main, /if \(launch\.temporaryData\) \{\s*try \{\s*const choice = chooseUserData\(userDataArg\(argv\), tmpdir\(\)\)/);
   assert.match(main, /app\.setPath\('userData', /);
   assert.ok(main.indexOf("app.setPath('userData'") > -1 && main.indexOf("app.setPath('userData'") < main.indexOf('app.whenReady()'), 'set before the app is ready');
   assert.equal([...main.matchAll(/app\.setPath\(/g)].length, 1, 'the one place that moves the data folder is the made-up launch');
@@ -191,4 +191,26 @@ test('main.ts shows an error box and exits when the start fails or the page does
   assert.equal([...main.matchAll(/window\.loadURL\([^;]*\)\.catch\(startupFailed\)/g)].length, loads, 'every loadURL call has a catch');
   assert.doesNotMatch(main, /void window\.loadURL/);
   assert.match(main, /removeAndReport\(/, 'the quit clean-up says when it could not remove the folder');
+});
+
+// ---- review fixes: a window that dies or fails to load ends in the same box, a failed temporary folder is a failed start, and the home-folder error speaks to a person
+
+test('a window whose page process died, or whose page did not load, ends in the failed-start box, and a cancelled load or a clean exit does not', () => {
+  const main = strip(read('main/main.ts'));
+  assert.match(main, /webContents\.on\('render-process-gone', \(_event, details\) => \{ if \(details\.reason !== 'clean-exit'\) startupFailed\(/);
+  assert.match(main, /webContents\.on\('did-fail-load', \(_event, code, description, _url, isMainFrame\) => \{ if \(isMainFrame && code !== -3\) startupFailed\(/, 'only the main frame, and not a cancelled load (-3)');
+  assert.match(main, /function startupFailed\(error: unknown, title = 'Bowerloom could not start'\)/);
+  assert.match(main, /dialog\.showErrorBox\(title, message\)/); assert.match(main, /app\.exit\(1\)/);
+});
+
+test('making the temporary data folder is inside the guard of a failed start', () => {
+  const main = strip(read('main/main.ts'));
+  const block = main.slice(main.indexOf('if (launch.temporaryData) {'), main.indexOf('let window: BrowserWindow | null'));
+  assert.match(block, /^if \(launch\.temporaryData\) \{\s*try \{[\s\S]*makeTempDataDir\(\)[\s\S]*\} catch \(error\) \{ startupFailed\(error\); \}\s*\}/, 'the folder is made inside a try that ends in startupFailed');
+});
+
+test('the home-folder error is worded for a person on any launch, not for a reader that no longer has a name', () => {
+  const main = strip(read('main/main.ts'));
+  assert.match(main, /Bowerloom needs a home folder to look in\. HOME is not set to a folder that exists\./);
+  assert.doesNotMatch(main, /real setup reader/i);
 });

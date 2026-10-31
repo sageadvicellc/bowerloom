@@ -395,7 +395,7 @@ test('main.ts: the readers are registered only for the launches that plan them, 
   assert.match(main, /window\.loadURL\(`\$\{indexUrl\}\$\{launch\.hash\}`\)\.catch\(startupFailed\)/);
   assert.equal([...main.matchAll(/ipcMain\.handle/g)].length, 0, 'main.ts answers no channel itself: the handlers of main/real-ipc.ts and main/engine-ipc.ts check the sender');
   assert.doesNotMatch(main, /openLink|controller/, 'main.ts opens no outside link and has no controller');
-  assert.match(main, /The real setup reader needs a home folder/);
+  assert.match(main, /Bowerloom needs a home folder to look in/);
   assert.doesNotMatch(main, /real\.html/, 'every launch serves the same page');
   assert.match(main, /const url = new URL\(request\.url\), file = url\.host === APP_HOST \? resolveAppFile\(rendererDir, url\.pathname\) : null;/, 'one line picks the file, for every launch');
 });

@@ -38,13 +38,15 @@ leaveDock(app, argv);
 // this keeps the promise when the app is started without it. Not caught: a hard kill (SIGKILL, a crash, a power cut) leaves the folder, and the browser engine writes a few small
 // files (Local State, Preferences) after the quit event. The folder holds only browser settings and cache, and the system clears its temporary folder.
 if (launch.temporaryData) {
-  const choice = chooseUserData(userDataArg(argv), tmpdir());
-  const dir = choice.action === 'keep' ? choice.dir : makeTempDataDir();
-  if (choice.action === 'make') app.setPath('userData', dir);
-  // Says on stderr when the folder is still there after the attempt, so the person can delete it.
-  const cleanUp = (): void => { removeAndReport(dir); };
-  app.once('quit', cleanUp);
-  process.once('exit', cleanUp);
+  try {
+    const choice = chooseUserData(userDataArg(argv), tmpdir());
+    const dir = choice.action === 'keep' ? choice.dir : makeTempDataDir();
+    if (choice.action === 'make') app.setPath('userData', dir);
+    // Says on stderr when the folder is still there after the attempt, so the person can delete it.
+    const cleanUp = (): void => { removeAndReport(dir); };
+    app.once('quit', cleanUp);
+    process.once('exit', cleanUp);
+  } catch (error) { startupFailed(error); }
 }
 
 let window: BrowserWindow | null = null;
@@ -64,10 +66,10 @@ function hardenContents(contents: Electron.WebContents): void {
 }
 
 /** A start that failed, or a page that did not load, must not leave a process with no window and no word. Say so on stderr and in a box, then exit with an error. */
-function startupFailed(error: unknown): void {
+function startupFailed(error: unknown, title = 'Bowerloom could not start'): void {
   const message = error instanceof Error ? error.message : String(error);
-  process.stderr.write(`Bowerloom could not start: ${message}\n`);
-  try { dialog.showErrorBox('Bowerloom could not start', message); } catch { /* no box could be shown; stderr has the message */ }
+  process.stderr.write(`${title}: ${message}\n`);
+  try { dialog.showErrorBox(title, message); } catch { /* no box could be shown; stderr has the message */ }
   app.exit(1);
 }
 
@@ -80,6 +82,9 @@ function createWindow(): void {
   });
   // A bridge that does not load must stop here, not open as a window that looks as if it could read: a failed preload ends in the same box as any other failed start.
   if (launch.preload === 'real') window.webContents.on('preload-error', (_event, _path, error) => startupFailed(error));
+  // A window whose page process died, or whose page did not load, must not stay open and blank: it ends in the same box. A clean exit and a cancelled load (code -3) are not failures.
+  window.webContents.on('render-process-gone', (_event, details) => { if (details.reason !== 'clean-exit') startupFailed(new Error(`The window stopped (${details.reason}). Open Bowerloom again.`), 'Bowerloom stopped'); });
+  window.webContents.on('did-fail-load', (_event, code, description, _url, isMainFrame) => { if (isMainFrame && code !== -3) startupFailed(new Error(`The window could not load its page (${description}).`)); });
   window.once('ready-to-show', () => { if (window !== null) revealWindow(window, argv); });
   // The app is called "Bowerloom" from the first moment: the page title it loads with never reaches the title bar.
   window.on('page-title-updated', event => event.preventDefault());
@@ -128,7 +133,7 @@ app.whenReady().then(async () => {
   ]));
   if (launch.realReader) {
     const home = usableHome(homedir(), path => realFolderFollowing(path) !== null);
-    if (home === null) throw new Error('The real setup reader needs a home folder. HOME is not set to a folder that exists.');
+    if (home === null) throw new Error('Bowerloom needs a home folder to look in. HOME is not set to a folder that exists.');
     registerRealIpc({
       ipc: ipcMain, appIndexUrl: indexUrl, home,
       chooseFolder: async () => {
