@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { tmpdir, userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { TestContext } from 'node:test';
@@ -186,6 +186,54 @@ test('Spec P check 7: install to claude-code, codex and opencode gives fidelity 
   // Accepting a line again is harmless: the receipt already holds it.
   const again = bl(w, ['accept', refused[0]!.key]);
   assert.equal(again.status, 0, again.stderr);
+});
+
+/** Every `who` value that a JSON file under a folder holds, at any depth. */
+function whoValues(root: string): string[] {
+  const out: string[] = [];
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) { value.forEach(visit); return; }
+    if (typeof value !== 'object' || value === null) return;
+    for (const [k, v] of Object.entries(value)) { if (k === 'who' && typeof v === 'string') out.push(v); else visit(v); }
+  };
+  const walk = (dir: string): void => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, e.name);
+      if (e.isDirectory()) walk(full);
+      else if (e.isFile()) { try { visit(JSON.parse(readFileSync(full, 'utf8'))); } catch { /* not JSON */ } }
+    }
+  };
+  walk(root);
+  return out;
+}
+
+test('an approved line is shown with its time and never the account name, and the record stores a fixed word instead of the account name', t => {
+  const w = world(t);
+  adopt(w);
+  const name = userInfo().username;
+  const first = json<{ refused: Refused[] }>(bl(w, ['install', '--json']).stdout);
+  for (const line of first.refused) assert.equal(bl(w, ['accept', line.key]).status, 0);
+  // The drafts on disk, before an install records them.
+  const drafts = whoValues(stateRoot(w));
+  assert.ok(drafts.length >= first.refused.length, 'each accepted line left a draft');
+  assert.ok(drafts.every(v => v === 'local user'), drafts.join(','));
+  const human = bl(w, ['install']);
+  assert.equal(human.status, 3, human.stderr);
+  const approved = human.stdout.split('\n').filter(l => l.startsWith('  approved  '));
+  assert.equal(approved.length, first.refused.length);
+  for (const line of approved) {
+    assert.match(line, /^ {2}approved {2}\S+ at \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/, line);
+    assert.ok(!line.includes(name), 'the account name is not in the line');
+    assert.ok(!/\bby\b/.test(line), line);
+  }
+  // The receipt, once installed.
+  const revision = /Revision: ([a-f0-9]{64})/.exec(human.stdout)?.[1];
+  assert.ok(revision !== undefined);
+  assert.equal(bl(w, ['install', '--approve', revision!, '--json']).status, 0);
+  const recorded = whoValues(stateRoot(w));
+  assert.ok(recorded.length >= first.refused.length);
+  assert.ok(recorded.every(v => v === 'local user'), recorded.join(','));
+  assert.ok(!recorded.some(v => v === name));
 });
 
 test('Install takes over files equal in bytes or meaning: it records them, writes nothing to them, and removal leaves them as they were', t => {

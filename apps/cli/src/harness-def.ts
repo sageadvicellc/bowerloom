@@ -15,7 +15,6 @@
  *   when adoption writes harness.json.
  */
 import { lstatSync, realpathSync } from 'node:fs';
-import { userInfo } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import { recordScenario } from './events.js';
@@ -257,7 +256,7 @@ function renderInstall(p: PortablePlan): string {
   if (p.previewNotice !== null) out.push(p.previewNotice);
   for (const c of changing) out.push(`  ${c.action.padEnd(7)} ${c.path}`);
   for (const l of p.loss.filter(x => x.result !== 'exact')) out.push(`  ${l.result.padEnd(10)} ${lineName(l)}`);
-  for (const a of p.approved) out.push(`  approved  ${lineName(a)} by ${a.who} at ${a.when}`);
+  for (const a of p.approved) out.push(`  approved  ${lineName(a)} at ${a.when}`);
   for (const t of p.trust.filter(x => x.state === 'pending trust')) out.push(`Pending trust (${t.engine}): ${t.path}. ${t.reason}`);
   for (const r of p.review) {
     out.push(`Read before it is written: ${r.path} (${r.engine}, ${r.kind}${r.part !== undefined && r.entry !== undefined ? `, ${r.part}/${r.entry}` : ''}).`, `  runs: ${shown(r.text)}`);
@@ -503,7 +502,8 @@ async function accept(c: Ctx, f: Flags, json: boolean, write: (text: string) => 
   // A line the receipt already records, for this entry as it is now, needs no draft: a new draft would change the next install.
   const recorded = (readPortableReceipt(portableIo(c))?.approvals ?? []).find(a => lineName(a) === lineName(line!) && a.result === line!.result && a.entryHash === hash);
   if (recorded !== undefined) { write(json ? newCommandJson(plain({ accepted: true, key, recorded: true, draft: recorded })) : `${plainText(key)} is already approved in the installed record.\n`); return 0; }
-  const who = (() => { try { return userInfo().username || 'local user'; } catch { return 'local user'; } })();
+  // The record needs a name of 1 to 256 characters. It holds a fixed word, never the account name of this computer (owner decision, 2026-10-31).
+  const who = 'local user';
   const draft = await addApprovalDraftLocked(c.dirs, c.dir, {
     part: line!.part as FidelityApproval['part'], entry: line!.entry, ...(line!.field !== undefined ? { field: line!.field } : {}), engine: line!.engine as EngineId,
     result: line!.result, entryHash: hash, who: who.slice(0, 256),

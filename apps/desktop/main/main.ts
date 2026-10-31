@@ -1,7 +1,7 @@
 /** Electron entry. Opens one window onto the app's page. The launch (main/launch.ts) decides which bridge the window gets and which calls main answers. */
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, protocol, session, shell } from 'electron';
 import { readFile } from 'node:fs/promises';
-import { homedir, tmpdir, userInfo } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launchOf } from './launch.js';
@@ -176,7 +176,7 @@ app.whenReady().then(async () => {
     // The adopt and install sheets of the harness-first window. They plan read-only, and write only through the packages, with the revision of a plan the person approved.
     if (launch.engineCalls) {
       const engine = registerEngineIpc({
-        ipc: ipcMain, appIndexUrl: indexUrl, home, stateRoot: engineStateRoot(home), who: userInfo().username || 'this Mac',
+        ipc: ipcMain, appIndexUrl: indexUrl, home, stateRoot: engineStateRoot(home), who: 'this Mac',
         // Beta.1: OpenCode, Pi, and DeepSeek Harness install only when the app starts with BOWERLOOM_PREVIEW_ENGINES=1. The window gets one yes or no, never the environment.
         previewEngines: enginePreviewSwitch(),
         // The local usage log: lines about what was done, never a name or a path. BOWERLOOM_EVENT_LOG=off turns it off.

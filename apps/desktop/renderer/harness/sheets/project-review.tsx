@@ -15,7 +15,7 @@ import { useRef } from 'react';
 import type { KeyboardEvent, ReactElement } from 'react';
 import { isPreviewEngine } from '../../../shared/engine/engines.js';
 import { ENGINE_NAMES, writesFile } from '../../../shared/engine/types.js';
-import type { ApproveLineView, ChangeView, MergeView, ModeChoice, ProjectView, Reconcile, RecoveryView, RemovalView } from '../../../shared/engine/types.js';
+import type { ApprovedView, ApproveLineView, ChangeView, MergeView, ModeChoice, ProjectView, Reconcile, RecoveryView, RemovalView } from '../../../shared/engine/types.js';
 import { shortRevision } from '../../../shared/engine/gates.js';
 import { StateDot } from '../parts/controls.js';
 import {
@@ -123,6 +123,22 @@ function Changes({ changes, title }: { changes: readonly ChangeView[]; title: st
   );
 }
 
+/**
+ * The approved weaker rules. A row says when the approval was made and never who made it: the record keeps a name field, and what it holds is not shown
+ * (owner decision, 2026-10-31: the computer's user name is not shown).
+ */
+export function ApprovedList({ lines }: { lines: readonly ApprovedView[] }): ReactElement {
+  return (
+    <ul className="hxe-rows">
+      {lines.map(a => (
+        <li key={`${a.part}${a.entry}${a.field ?? ''}${a.engine}`} className="hxe-row" data-earlier={a.earlier ? '' : undefined}>
+          <p className="hxe-row-title"><span className="hxe-name">{partName(a.part)} {entryName(a.entry, a.field)}</span><span className="hxe-muted">{ENGINE_NAMES[a.engine]} · {RESULT_WORDS[a.result]} · {a.earlier ? W.hint.approvedEarlier : W.hint.approvedNow} · {a.when}</span></p>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export interface PlanReviewProps {
   plan: ProjectView;
   writeClaudeMd: boolean;
@@ -215,13 +231,7 @@ export function PlanReview({ plan, writeClaudeMd, approvedRevision, held, onWrit
       )}
       {plan.approved.length === 0 ? null : (
         <Section title={W.label.approved} count={String(plan.approved.length)} slot="approved">
-          <ul className="hxe-rows">
-            {plan.approved.map(a => (
-              <li key={`${a.part}${a.entry}${a.field ?? ''}${a.engine}`} className="hxe-row" data-earlier={a.earlier ? '' : undefined}>
-                <p className="hxe-row-title"><span className="hxe-name">{partName(a.part)} {entryName(a.entry, a.field)}</span><span className="hxe-muted">{ENGINE_NAMES[a.engine]} · {RESULT_WORDS[a.result]} · {a.earlier ? W.hint.approvedEarlier : W.hint.approvedNow} · {a.who} · {a.when}</span></p>
-              </li>
-            ))}
-          </ul>
+          <ApprovedList lines={plan.approved} />
         </Section>
       )}
       <Changes changes={plan.changes} title={W.label.changes} />
