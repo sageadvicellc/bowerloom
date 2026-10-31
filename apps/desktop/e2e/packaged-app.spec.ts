@@ -18,6 +18,7 @@ import { buildShellHome } from '../tests/fixtures-real/shell-home.js';
 import type { ShellHome } from '../tests/fixtures-real/shell-home.js';
 import { desktop } from './harness-page.js';
 import { hiddenArgs } from './hidden.js';
+import { isCleanExit, newestSourceOf, waitForExit } from './packaged-support.js';
 import { removeTempDirs, tempDir } from './temp-dirs.js';
 
 const folder = process.arch === 'arm64' ? 'mac-arm64' : 'mac';
@@ -25,33 +26,10 @@ const bundle = join(desktop, 'release', folder, 'Bowerloom.app');
 const binary = join(bundle, 'Contents', 'MacOS', 'Bowerloom');
 const missing = process.platform !== 'darwin' ? 'the packaged app check runs on macOS' : !existsSync(binary) ? `no build in ${join('release', folder)}: run npm run desktop:build first` : false;
 
-/** The newest change time, in milliseconds, of any file under `dir` (a missing folder counts as 0). */
-function newestChange(dir: string): number {
-  if (!existsSync(dir)) return 0;
-  let newest = 0;
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name === '.build' || entry.name === 'release') continue;
-    const path = join(dir, entry.name);
-    newest = Math.max(newest, entry.isDirectory() ? newestChange(path) : statSync(path).mtimeMs);
-  }
-  return newest;
-}
-
-/** The sources that the build holds: the app, and the packages that tools/bundle.mjs bundles into it. A build made before the newest of them does not show what the source says. */
-function newestSource(): number {
-  const packages = join(desktop, '..', '..', 'packages');
-  return Math.max(
-    ...['main', 'preload', 'renderer', 'shared'].map(dir => newestChange(join(desktop, dir))),
-    statSync(join(desktop, 'tools', 'bundle.mjs')).mtimeMs,
-    ...readdirSync(packages).map(name => newestChange(join(packages, name, 'src'))),
-    statSync(join(desktop, 'package.json')).mtimeMs,
-  );
-}
-
 let fixture: ShellHome | null = null, child: ChildProcess | null = null, browser: Browser | null = null;
 test.afterAll(async () => {
   try { await browser?.close(); } catch { /* already gone */ }
-  if (child !== null && child.exitCode === null) { child.kill('SIGTERM'); await new Promise<void>(resolve => { child!.once('exit', () => resolve()); setTimeout(resolve, 5000); }); }
+  if (child !== null && child.exitCode === null && child.signalCode === null) { child.kill('SIGTERM'); await waitForExit(child, 5000); }
   fixture?.cleanup(); removeTempDirs();
 });
 
@@ -70,7 +48,7 @@ test('the built app opens the harness-first app on the person\'s own folders, wi
   test.skip(missing !== false, String(missing));
   test.setTimeout(240_000);
   // A build older than the source would pass this spec and say nothing about the source. Build first: npm run desktop:build.
-  const builtAt = statSync(join(bundle, 'Contents', 'Resources', 'app.asar')).mtimeMs, changedAt = newestSource();
+  const builtAt = statSync(join(bundle, 'Contents', 'Resources', 'app.asar')).mtimeMs, changedAt = newestSourceOf(desktop);
   expect(builtAt, 'the build in release/ is older than the source: run npm run desktop:build').toBeGreaterThan(changedAt);
   // The safety switches of the build itself, read from the built binary.
   const fuses = spawnSync(process.execPath, [join(desktop, 'tools', 'check-fuses.mjs'), binary], { encoding: 'utf8' });
@@ -113,13 +91,14 @@ test('the built app opens the harness-first app on the person\'s own folders, wi
   await p.getByRole('button', { name: 'Find my files', exact: true }).click();
   await expect(p.getByRole('heading', { level: 1, name: 'Found 4 places' })).toBeVisible();
   expect(await p.locator('body').innerText()).not.toContain(fixture.root);
-  // The made-up launch would have made and removed a data folder of its own; this one is the one it was given. It is closed the way a person closes it, with the quit of the
-  // application, so the browser engine writes its profile (Local State) before the process ends. The AppleEvent quit needs no permission for an app this process started; if the
-  // system refuses it, the spec falls back to a termination signal, which Electron also treats as a quit, and says so in the report.
-  const exited = new Promise<number | null>(resolve => child!.once('exit', code => resolve(code)));
-  const quit = spawnSync('osascript', ['-e', `tell application ${JSON.stringify(bundle)} to quit`], { encoding: 'utf8', timeout: 30_000 });
-  if (quit.status !== 0) { test.info().annotations.push({ type: 'quit', description: `AppleEvent quit refused (${quit.stderr.trim()}); closed with SIGTERM` }); child.kill('SIGTERM'); }
-  expect(await exited, 'the app quits cleanly').toBe(0);
+  // The made-up launch would have made and removed a data folder of its own; this one is the one it was given. It is closed by its process id with SIGTERM, which Electron treats as
+  // a quit, so the browser engine writes its profile (Local State) before the process ends. No AppleEvent is used: the first AppleEvent from a terminal can raise a one-time
+  // Automation prompt, and a quit by bundle path could reach another copy of Bowerloom that the person has open. The wait is bounded, so an app that does not end fails the spec
+  // with words instead of stalling it. A process that ends by the SIGTERM itself (code null, signal SIGTERM) counts as clean too.
+  process.kill(child.pid!, 'SIGTERM');
+  const ended = await waitForExit(child, 30_000);
+  if (ended === 'timeout') { try { process.kill(child.pid!, 'SIGKILL'); } catch { /* already gone */ } }
+  expect(isCleanExit(ended, true), `the app quits cleanly (it ended with ${JSON.stringify(ended)})`).toBe(true);
   expect(existsSync(userData)).toBe(true);
   expect(existsSync(join(userData, 'Local State')), 'the browser profile was written before the app ended').toBe(true);
   expect(readdirSync(userData).length).toBeGreaterThan(0);
