@@ -7,12 +7,15 @@
  *    result word, the partial notice, pending trust, the code and commands to read, and the drift report with Accept AGENTS.md as the default. Merge
  *    moves its CLAUDE.md into the harness once; the install that follows accepts AGENTS.md.
  *  - `garden` holds an install that stopped part way: only a recovery plan can run.
+ * Each folder that holds a harness can also save its own harness (option C): agents, skills and interfaces, edited by id, with save points and "Go back".
+ * A skill is copied from the harness of another sample folder. Save points keep a made-up time, one minute apart.
  */
 import type {
-  AdoptChoices, AdoptRecovered, AdoptRecoveryView, AdoptView, AdoptWritten, Answer, ApproveLineView, ChangeView, EngineBridge, EngineId, EveryEnginePart, FolderInfo, LossView,
-  MergeView, MergeWritten, ProjectAnswer, ProjectInput, ProjectView, ProjectWritten, Recovered, RecoveryChoices, RecoveryView, Refusal, RemovalView, Removed,
+  AdoptChoices, AdoptRecovered, AdoptRecoveryView, AdoptView, AdoptWritten, Answer, ApproveLineView, ChangeView, DefinitionView, EngineBridge, EngineId, EveryEnginePart, FolderInfo, LossView,
+  MergeView, MergeWritten, ProjectAnswer, ProjectInput, ProjectView, ProjectWritten, Recovered, RecoveryChoices, RecoveryView, Refusal, RemovalView, Removed, RestoreView, SaveChangeView,
+  SaveEdit, SaveView, SaveWritten, SetAsideView, SetAsideWritten, VersionView,
 } from './types.js';
-import { EVERY_ENGINE_PARTS, writesFile } from './types.js';
+import { ENGINE_NAMES, EVERY_ENGINE_PARTS, SAVE_MAIN_WORDS, writesFile } from './types.js';
 import { approveKey, lossByEngine, unmappedHashBody } from './view.js';
 
 /** The packages' own words for the refusals the sample can give (packages/adoption/src/refusal.ts, packages/project-sync/src/portable-files.ts). */
@@ -30,6 +33,12 @@ export const SAMPLE_MESSAGES = Object.freeze({
   PORTABLE_RECOVERY_REQUIRED: 'An earlier projection or removal stopped part way. Nothing was changed. Recover it first.',
   PORTABLE_NOTHING_PROJECTED: 'This project has no projection receipt, so there is nothing to remove.',
   PORTABLE_RECOVER_NOTHING: 'No projection or removal of this project is unfinished, and no path to keep was named.',
+  SAVE_STALE: 'The definition changed after the save was planned, or the approval is for another plan. Nothing more was written. Plan again to see the new plan.',
+  VERSION_UNKNOWN: 'The store holds no such version for this folder. Nothing was changed.',
+  VERSION_STALE: 'The version store changed after the plan to set it aside. Nothing was moved. Plan again.',
+  VERSION_NOTHING: 'There is no version store to set aside. Nothing was changed.',
+  SAVE_NO_DEFINITION: SAVE_MAIN_WORDS.SAVE_NO_DEFINITION,
+  SAVE_SOURCE_MISSING: SAVE_MAIN_WORDS.SAVE_SOURCE_MISSING,
 } as const);
 type SampleCode = keyof typeof SAMPLE_MESSAGES;
 const refuse = (code: SampleCode, paths: readonly string[] = []): { ok: false; refusal: Refusal } => ({ ok: false, refusal: { code, message: SAMPLE_MESSAGES[code], paths } });
@@ -280,7 +289,55 @@ export function sampleEngineFixtures(): { adopt: AdoptView; approveLines: Approv
   };
 }
 
-interface SampleFolder { info: FolderInfo; adopted: boolean; projected: boolean; written: string | null; stopped: boolean; merged: boolean }
+interface SampleFolder {
+  info: FolderInfo; adopted: boolean; projected: boolean; written: string | null; stopped: boolean; merged: boolean;
+  /** The folder's own harness as the editor draws it, or null when it has none. Save points, oldest first. */
+  def: DefinitionView | null; versions: { entry: Omit<VersionView, 'current'>; def: DefinitionView }[]; counter: number;
+}
+
+// ---- the save step of the sample: each folder's own harness, in memory -----------------------------------------------------------
+
+const skillOf = (id: string, description: string): DefinitionView['skills'][number] => ({ id, name: id, description });
+const agentOf = (id: string, description: string, skills: readonly string[]): DefinitionView['agents'][number] => ({ id, name: id, description, skills });
+/** The made-up harness of each sample folder that holds one. `inbox-tools` gets its own after the sample adoption. */
+const SAMPLE_DEFS: Readonly<Record<string, DefinitionView>> = Object.freeze({
+  [SAMPLE_FOLDERS.defined]: {
+    id: 'weekly-report', description: 'Drafts the weekly report.', engines: ['claude-code', 'codex', 'opencode'], instructions: true,
+    skills: [skillOf('check-facts', 'Checks each figure in a draft.'), skillOf('draft-outline', 'Outlines the report.')],
+    agents: [agentOf('editor', 'Edits the draft.', []), agentOf('writer', 'Writes the draft.', ['draft-outline'])],
+  },
+  [SAMPLE_FOLDERS.stopped]: {
+    id: 'garden', description: 'Keeps the garden notes.', engines: ['claude-code', 'codex'], instructions: true,
+    skills: [skillOf('water-plants', 'Plans the watering.')], agents: [agentOf('gardener', 'Looks after the beds.', ['water-plants'])],
+  },
+  [SAMPLE_FOLDERS.adopt]: {
+    id: 'inbox-tools', description: 'Adopted from the engine files of this project.', engines: ['claude-code', 'codex'], instructions: true,
+    skills: [skillOf('sort-mail', 'Sorts the inbox.')], agents: [agentOf('triage', 'Triages new mail.', [])],
+  },
+});
+/** The files of a sample harness, each as a text that stands for its bytes, so a change list compares two harnesses as the save plan compares two file sets. */
+function sampleFiles(d: DefinitionView): Map<string, string> {
+  const out = new Map<string, string>([['harness.json', JSON.stringify({ id: d.id, engines: d.engines })]]);
+  for (const k of d.skills) out.set(`skills/${k.id}/SKILL.md`, JSON.stringify(k));
+  for (const a of d.agents) out.set(`agents/${a.id}.md`, JSON.stringify(a));
+  return out;
+}
+const byText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+/** The change list as the save plan orders it: creates and updates, then deletes, then harness.json, each group in path order. */
+function sampleChanges(from: DefinitionView, to: DefinitionView): SaveChangeView[] {
+  const a = sampleFiles(from), b = sampleFiles(to), writes: SaveChangeView[] = [], deletes: SaveChangeView[] = [];
+  let harness: SaveChangeView | null = null;
+  for (const path of [...new Set([...a.keys(), ...b.keys()])].sort(byText)) {
+    const was = a.get(path), now = b.get(path);
+    if (was === now) continue;
+    const change: SaveChangeView = { path: `.bowerloom/${path}`, action: was === undefined ? 'create' : now === undefined ? 'delete' : 'update' };
+    if (path === 'harness.json') harness = change; else if (change.action === 'delete') deletes.push(change); else writes.push(change);
+  }
+  return [...writes, ...deletes, ...(harness === null ? [] : [harness])];
+}
+const sameDef = (a: DefinitionView, b: DefinitionView): boolean => JSON.stringify([...sampleFiles(a)]) === JSON.stringify([...sampleFiles(b)]);
+/** The words of the definition package for an id the folder does not hold (packages/harness-definition, `editDefinition`). */
+const editRefusal = (what: string, id: string, tail = ''): { ok: false; refusal: Refusal } => ({ ok: false, refusal: { code: 'EDIT_UNKNOWN_ID', message: `The folder holds no ${what} "${id}"${tail}.`, paths: [] } });
 
 /** The CLAUDE.md of the sample folder that differs from its AGENTS.md. */
 export const SAMPLE_CLAUDE = '# Weekly report\n\nDraft the report on Friday. Keep each section under 200 words.\n';
@@ -291,7 +348,7 @@ const choicesOf = (c: readonly string[] | RecoveryChoices): RecoveryChoices => (
 export function createSampleEngine({ previewEngines = false }: { previewEngines?: boolean } = {}): EngineBridge {
   const folders = new Map<string, SampleFolder>();
   const add = (id: string, name: string, extra: Partial<FolderInfo>): void => {
-    folders.set(id, { info: { id, label: `~/Projects/${name}`, name, hasDefinition: false, engines: [], previewEngines, installedEngines: [], problem: null, projected: false, unfinished: { projection: false, adoption: false }, ...extra }, adopted: false, projected: false, written: null, stopped: extra.unfinished?.projection === true, merged: false });
+    folders.set(id, { info: { id, label: `~/Projects/${name}`, name, hasDefinition: false, engines: [], previewEngines, installedEngines: [], problem: null, projected: false, unfinished: { projection: false, adoption: false }, ...extra }, adopted: false, projected: false, written: null, stopped: extra.unfinished?.projection === true, merged: false, def: extra.hasDefinition === true ? SAMPLE_DEFS[id] ?? null : null, versions: [], counter: 0 });
   };
   add(SAMPLE_FOLDERS.adopt, 'inbox-tools', {});
   add(SAMPLE_FOLDERS.defined, 'weekly-report', { hasDefinition: true, engines: ['claude-code', 'codex', 'opencode'] });
@@ -316,6 +373,61 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
     return ok({ kind: 'plan', plan: projectFixture(input, f.projected, f.written) });
   }
 
+  /** The harness after the edits, as main would make it, or a refusal in the packages' words. */
+  function edited(f: SampleFolder, edits: readonly SaveEdit[]): Answer<DefinitionView> {
+    if (f.def === null) return refuse('SAVE_NO_DEFINITION');
+    let d: DefinitionView = f.def;
+    for (const e of edits) {
+      if (e.kind === 'set-agent') {
+        if (!d.agents.some(a => a.id === e.id)) return editRefusal('agent', e.id);
+        const ghost = e.skills.find(k => !d.skills.some(x => x.id === k));
+        if (ghost !== undefined) return editRefusal('skill', ghost, ' to link');
+        d = { ...d, agents: d.agents.map(a => (a.id === e.id ? { ...a, skills: [...e.skills] } : a)) };
+      } else if (e.kind === 'remove-skill') {
+        if (!d.skills.some(x => x.id === e.id)) return editRefusal('skill', e.id);
+        d = { ...d, skills: d.skills.filter(x => x.id !== e.id), agents: d.agents.map(a => ({ ...a, skills: a.skills.filter(k => k !== e.id) })) };
+      } else if (e.kind === 'add-skill') {
+        const source = get(e.from).def?.skills.find(x => x.id === e.id);
+        if (source === undefined) return refuse('SAVE_SOURCE_MISSING');
+        if (d.skills.some(x => x.id === e.id)) return { ok: false, refusal: { code: 'EDIT_DUPLICATE_ID', message: `The folder already holds a skill "${e.id}".`, paths: [] } };
+        d = { ...d, skills: [...d.skills, source].sort((a, b) => byText(a.id, b.id)) };
+      } else {
+        d = { ...d, engines: (Object.keys(ENGINE_NAMES) as EngineId[]).filter(x => e.engines.includes(x)) };
+      }
+    }
+    return ok(d);
+  }
+  function savePlan(f: SampleFolder, edits: readonly SaveEdit[]): Answer<SaveView & { after: DefinitionView }> {
+    const a = edited(f, edits);
+    if (!a.ok) return a;
+    const changes = sampleChanges(f.def!, a.value);
+    return ok({ folder: f.info.label, changes, definition: a.value, noop: changes.length === 0, revision: sampleRevision(`save ${f.info.id} ${JSON.stringify(f.def)} ${JSON.stringify(a.value)}`), after: a.value });
+  }
+  const versionView = (f: SampleFolder, v: SampleFolder['versions'][number]): VersionView => ({ ...v.entry, current: f.def !== null && sameDef(v.def, f.def) });
+  /** Keeps a save point, as main does: the harness as it was first when the newest one is not it, then what was written. */
+  function keep(f: SampleFolder, d: DefinitionView, label: string): string {
+    f.counter += 1;
+    const id = `v${f.counter}`;
+    // The sample has no clock: each save point is one minute after the last, from a fixed time.
+    f.versions.push({ entry: { id, created: new Date(Date.UTC(2026, 9, 28, 9, f.counter)).toISOString().replace(/\.\d{3}Z$/, 'Z'), label, files: sampleFiles(d).size }, def: d });
+    return id;
+  }
+  function write(f: SampleFolder, plan: SaveView & { after: DefinitionView }, label: string): SaveWritten {
+    if (plan.noop) return { written: [], version: null };
+    const newest = f.versions[f.versions.length - 1];
+    if (newest === undefined || !sameDef(newest.def, f.def!)) keep(f, f.def!, f.versions.length === 0 ? 'As it was before the first save' : 'As it was before this save');
+    f.def = plan.after;
+    return { written: plan.changes.map(c => c.path), version: keep(f, plan.after, label) };
+  }
+  function restorePlan(f: SampleFolder, version: string): Answer<RestoreView & { after: DefinitionView }> {
+    if (f.def === null) return refuse('SAVE_NO_DEFINITION');
+    const v = f.versions.find(x => x.entry.id === version);
+    if (v === undefined) return refuse('VERSION_UNKNOWN');
+    const changes = sampleChanges(f.def, v.def);
+    return ok({ folder: f.info.label, changes, definition: v.def, noop: changes.length === 0, revision: sampleRevision(`restore ${f.info.id} ${version} ${JSON.stringify(f.def)}`), version: versionView(f, v), after: v.def });
+  }
+  const strip = <T extends { after: DefinitionView }>(v: T): Omit<T, 'after'> => { const { after: _after, ...rest } = v; return rest; };
+
   function mergePlan(f: SampleFolder): Answer<MergeView> {
     if (f.stopped) return refuse('PORTABLE_RECOVERY_REQUIRED');
     if (!f.info.hasDefinition || f.merged || f.projected) return refuse('ADOPTION_MERGE_NOTHING');
@@ -339,7 +451,7 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
       if (plan.conflicts.some(c => c.picked === null)) return refuse('ADOPTION_CHOICE_REQUIRED');
       if (plan.unmapped.some(u => u.gate === 'acknowledge' && !u.acknowledged)) return refuse('ADOPTION_ACKNOWLEDGEMENT_REQUIRED');
       if (plan.approvals.some(a => !approvals.some(x => x.key === a.key && x.hash === a.hash))) return refuse('ADOPTION_APPROVAL_REQUIRED');
-      f.adopted = true;
+      f.adopted = true; f.def = SAMPLE_DEFS[f.info.id] ?? null;
       return ok({ written: plan.files.map(file => `.bowerloom/${file.path}`) });
     })()),
     planAdoptionRecovery: id => settle((get(id), refuse('ADOPTION_RECOVER_NOTHING')) as Answer<AdoptRecoveryView>),
@@ -395,5 +507,39 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
     })()),
     // The sample writes nothing, not even a usage line.
     recordCheck: () => settle(false),
+    planSave: (id, edits) => settle(((): Answer<SaveView> => { const a = savePlan(get(id), edits); return a.ok ? ok(strip(a.value)) : a; })()),
+    runSave: (id, revision, edits) => settle(((): Answer<SaveWritten> => {
+      const f = get(id), a = savePlan(f, edits);
+      if (!a.ok) return a;
+      if (a.value.revision !== revision) return refuse('SAVE_STALE');
+      return ok(write(f, a.value, `Saved ${a.value.changes.length} ${a.value.changes.length === 1 ? 'change' : 'changes'}`));
+    })()),
+    listVersions: id => settle(((): Answer<readonly VersionView[]> => {
+      const f = get(id);
+      if (f.def === null) return refuse('SAVE_NO_DEFINITION');
+      return ok([...f.versions].reverse().map(v => versionView(f, v)));
+    })()),
+    planRestore: (id, version) => settle(((): Answer<RestoreView> => { const a = restorePlan(get(id), version); return a.ok ? ok(strip(a.value)) : a; })()),
+    runRestore: (id, revision, version) => settle(((): Answer<SaveWritten> => {
+      const f = get(id), a = restorePlan(f, version);
+      if (!a.ok) return a;
+      if (a.value.revision !== revision) return refuse('SAVE_STALE');
+      return ok(write(f, a.value, `Went back to ${version}`));
+    })()),
+    // The sample's save points live in memory and are never damaged. Setting them aside starts a new list; the counter goes on, as nothing is deleted.
+    planSetAside: id => settle(((): Answer<SetAsideView> => {
+      const f = get(id);
+      if (f.def === null) return refuse('SAVE_NO_DEFINITION');
+      if (f.versions.length === 0) return refuse('VERSION_NOTHING');
+      return ok({ folder: f.info.label, damaged: false, revision: sampleRevision(`set-aside ${f.versions.map(v => v.entry.id).join(',')}`) });
+    })()),
+    runSetAside: (id, revision) => settle(((): Answer<SetAsideWritten> => {
+      const f = get(id);
+      if (f.def === null) return refuse('SAVE_NO_DEFINITION');
+      if (f.versions.length === 0) return refuse('VERSION_NOTHING');
+      if (revision !== sampleRevision(`set-aside ${f.versions.map(v => v.entry.id).join(',')}`)) return refuse('VERSION_STALE');
+      f.versions = [];
+      return ok({ name: 'versions-set-aside-sample' });
+    })()),
   };
 }

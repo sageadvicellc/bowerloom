@@ -29,7 +29,7 @@ import {
 import type { FileState } from '../../project-sync/src/portable-files.js';
 import { stateExists } from '../../project-sync/src/portable-state.js';
 import { INSTRUCTIONS_LIMIT, atImports, readClaude } from '../../project-sync/src/portable.js';
-import { adoptionStopped, checkState, readJournal } from './journal.js';
+import { adoptionStopped, checkState, readJournal, saveStopped } from './journal.js';
 import { AdoptionRefusal, refuse } from './refusal.js';
 
 export const MERGE_HEADING = 'From CLAUDE.md' as const;
@@ -48,13 +48,17 @@ const ADOPTION_STOPPED_WORDS = 'An adoption stopped part way, so install, remove
 export function refuseWhileMergeStopped(stateDir: string): void {
   if (mergeStopped(stateDir)) throw new DefinitionError('ADOPTION_RECOVERY_REQUIRED', MERGE_STOPPED_WORDS);
 }
+/** A save runs only in the app, so its recovery is there too. */
+const SAVE_STOPPED_WORDS = 'A save of the harness in the Bowerloom app stopped part way, so install, remove, accept, adoption, and merge wait until it is recovered. Open this folder in the app and choose Finish a stopped harness. Nothing was changed.';
 /**
- * Refuses ADOPTION_RECOVERY_REQUIRED while an adoption or a merge is stopped (journal files in the adoption state
- * folder). The install, the removal, and an accepted line must not run on a half-written or half-merged definition.
+ * Refuses while an adoption, a merge, or a save is stopped (journal files in the adoption state folder): an adoption or a
+ * merge as ADOPTION_RECOVERY_REQUIRED, a save as SAVE_RECOVERY_REQUIRED, in that order. The install, the removal, and an
+ * accepted line must not run on a half-written, half-merged, or half-saved definition.
  */
 export function refuseWhileStopped(stateDir: string): void {
   if (adoptionStopped(stateDir)) throw new DefinitionError('ADOPTION_RECOVERY_REQUIRED', ADOPTION_STOPPED_WORDS);
   refuseWhileMergeStopped(stateDir);
+  if (saveStopped(stateDir)) throw new DefinitionError('SAVE_RECOVERY_REQUIRED', SAVE_STOPPED_WORDS);
 }
 
 const INSTRUCTIONS = '.bowerloom/instructions/AGENTS.md';
@@ -158,7 +162,7 @@ function mergedRevision(def: Definition, root: string, replaced: ReadonlyMap<str
 interface Planned { readonly plan: InstructionMergePlan; readonly bytes: ReadonlyMap<string, Buffer>; readonly originals: ReadonlyMap<string, Buffer> }
 
 function planMerge(projectDir: string, stateDir: string): Planned {
-  if (readJournal(stateDir, projectDir) !== null || readMergeJournal(stateDir, projectDir) !== null) refuse('ADOPTION_RECOVERY_REQUIRED');
+  if (readJournal(stateDir, projectDir) !== null || readMergeJournal(stateDir, projectDir) !== null || saveStopped(stateDir)) refuse('ADOPTION_RECOVERY_REQUIRED');
   const root = join(projectDir, '.bowerloom');
   const loaded = loadDefinition(root);
   if (!loaded.ok) return invalid(loaded.problems);

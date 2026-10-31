@@ -383,6 +383,47 @@ test('Decision D4A: recover --adoption puts back a merge that stopped part way',
   assert.equal(nothing.status, 1); assert.equal(errorCode(nothing.stderr), 'ADOPTION_RECOVER_NOTHING');
 });
 
+test('a save the app stopped part way holds install, remove, accept, merge, and adopt, and status reports it', async t => {
+  const w = world(t);
+  adopt(w);
+  // A save that dies after its only write, in its own process, leaves its journal, as a save from the app would.
+  const dirs = harnessStateDirs(stateRoot(w), w.dir);
+  const savePath = fileURLToPath(new URL('../packages/adoption/src/save.js', import.meta.url));
+  const defPath = fileURLToPath(new URL('../packages/harness-definition/src/index.js', import.meta.url));
+  const script = join(w.base, 'stop-a-save.mjs');
+  writeFileSync(script, [
+    `const save = await import(${JSON.stringify(savePath)});`,
+    `const { loadDefinition } = await import(${JSON.stringify(defPath)});`,
+    `const input = { projectDir: ${JSON.stringify(w.dir)}, stateDir: ${JSON.stringify(dirs.adoption)} };`,
+    `const def = loadDefinition(${JSON.stringify(join(w.dir, '.bowerloom'))}).definition;`,
+    'const target = def.files.map(f => f.path !== "harness.json" ? f : { ...f, bytes: Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(f.bytes).toString("utf8")), description: "Saved in the app." }, null, 2) + "\\n") });',
+    'const plan = save.planSave(input, target);',
+    'await save.applySaveWith(input, plan.revision, target, new AbortController().signal, { afterWrite: () => process.exit(9) });',
+  ].join('\n'));
+  const crashed = spawnSync(process.execPath, [script], { encoding: 'utf8', env: { ...baseEnv(), ...w.env } });
+  assert.equal(crashed.status, 9, crashed.stderr);
+  const definition = snapshot(join(w.dir, '.bowerloom'));
+
+  const status = bl(w, ['status', '--json']);
+  assert.equal(status.status, 0, status.stderr);
+  assert.equal(json<{ unfinished: { save: boolean } }>(status.stdout).unfinished.save, true);
+  assert.match(bl(w, ['status']).stdout, /A save of the harness stopped part way\./);
+  for (const args of [['install', '--json'], ['remove', '--json'], ['accept', 'skills/review@claude-code:0123456789ab', '--json'], ['merge', '--json'], ['adopt', ...ENGINES, '--json']]) {
+    const r = bl(w, args);
+    assert.equal(r.status, 1, `${args[0]}: ${r.stderr}${r.stdout}`);
+    assert.equal(errorCode(r.stderr), 'SAVE_RECOVERY_REQUIRED', args[0]);
+  }
+  assert.match(bl(w, ['install']).stderr, /Finish a stopped harness/);
+  assert.deepEqual(snapshot(join(w.dir, '.bowerloom')), definition, 'nothing changed while the save is stopped');
+
+  // The app takes the save back; status then reports nothing stopped.
+  const { planSaveRecovery, runSaveRecovery } = await import('../packages/adoption/src/index.js');
+  const io = { projectDir: w.dir, stateDir: dirs.adoption };
+  await runSaveRecovery(io, planSaveRecovery(io).revision, 'undo');
+  assert.equal(json<{ unfinished: { save: boolean } }>(bl(w, ['status', '--json']).stdout).unfinished.save, false);
+  assert.doesNotMatch(bl(w, ['status']).stdout, /A save of the harness stopped/);
+});
+
 test('Decision D3A: the record of the earlier app is moved on the first command, and removal works on it', async t => {
   const w = world(t);
   // The earlier app kept its record at <state>/desktop/<sha256(folder), 32 hex>/{adoption,portable}.

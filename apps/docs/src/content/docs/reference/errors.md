@@ -316,6 +316,7 @@ The `bowerloom harness` commands adopt a folder into a 0.8 harness and install i
 | `ADOPTION_STATE_UNSAFE` | Bowerloom keeps its record of a harness in a private folder that only you can change, outside the project. | check the private state folder: `$XDG_STATE_HOME/bowerloom` when `XDG_STATE_HOME` is set, else `~/.local/state/bowerloom` |
 | `ADOPTION_RECOVERY_REQUIRED` | An earlier adoption stopped part way, and Bowerloom changes nothing else until it is recovered. | `bowerloom harness recover --adoption` |
 | `ADOPTION_RECOVER_NOTHING` | No adoption of this folder is unfinished. | `bowerloom harness status` |
+| `SAVE_RECOVERY_REQUIRED` | A save of the harness in the Bowerloom app stopped part way, and Bowerloom changes nothing else until it is recovered. | Open this folder in the Bowerloom app and choose Finish a stopped harness. |
 | `ADOPTION_APPROVAL_REQUIRED` | Some items need your confirmation, and you did not confirm every one. | Add `--confirm <part/id>` for each item the message lists. |
 | `ADOPTION_ACKNOWLEDGEMENT_REQUIRED` | Adoption did not read some entries, and one of them could hold a deny, an ask, or a sandbox value that limits access. | Add `--acknowledge <id>` for each entry the message lists. |
 | `ADOPTION_AT_IMPORT` | The instructions use an `@path` import. Only Claude Code expands one, so the other engines read it as text. | Replace the `@path` line with the text it imports, then run the command again. |

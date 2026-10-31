@@ -8,6 +8,11 @@ export { applyAdoption } from './apply.js';
 export { applyAdoptionRecovery, planAdoptionRecovery, JOURNAL, JOURNAL_FORMAT, RECOVERY_PLAN_FORMAT } from './journal.js';
 export type { AdoptionRecoveryPlan, AdoptionRecoveryResult, RecoveryInput } from './journal.js';
 export type { AdoptionResult } from './apply.js';
+export {
+  SAVE_JOURNAL, SAVE_JOURNAL_LIMIT, SAVE_PAYLOAD_LIMIT, SAVE_PLAN_FORMAT, SAVE_RECOVERY_FORMAT, SAVE_REFUSAL_CODES, SaveRefusal, applySave, planSave, planSaveRecovery,
+  refuseWhileSaveStopped, runSaveRecovery, saveStopped,
+} from './save.js';
+export type { SaveChange, SaveCode, SaveInput, SavePlan, SaveRecoveryMode, SaveRecoveryPlan, SaveRecoveryResult, SaveResult, SaveTarget } from './save.js';
 export { ADOPTION_PLAN_FORMAT, EVERY_ENGINE_PARTS } from './model.js';
 export type {
   AdoptionChoice, AdoptionPlan, Conflict, Difference, EveryEngine, EveryEnginePart, Gate, ItemPart, ManagedConversion, Missed, Place, PlanEngine, PlanItem, PlannedFile, SecretLine,

@@ -12,7 +12,7 @@ import { CANCELLED, NOT_THE_PLAN_SHOWN } from '../shared/engine/types.js';
 import type { Refusal } from '../shared/engine/types.js';
 
 /** The kinds of plan a write can name. */
-export type PlanKind = 'adoption' | 'projection' | 'removal' | 'recovery' | 'adoption-recovery' | 'merge';
+export type PlanKind = 'adoption' | 'projection' | 'removal' | 'recovery' | 'adoption-recovery' | 'merge' | 'save' | 'restore' | 'set-aside';
 
 /** Main's record of the last plan it returned: its revision, the choices it was made with (canonical JSON), and the words of the dialog. */
 export interface ShownPlan { readonly revision: string; readonly choices: string; readonly ask: Ask | null }
@@ -47,6 +47,16 @@ export const ASK = Object.freeze({
   /** Merge (decision D4A): a definition edit only. CLAUDE.md changes later, in the install that accepts AGENTS.md. */
   merge: (label: string, n: number, rev: string): Ask => ({ title: 'Merge CLAUDE.md into the harness', message: `Write ${files(n)} into ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. CLAUDE.md does not change yet. ${again}` }),
   mergeRecovery: (label: string, n: number, rev: string): Ask => ({ title: 'Finish a stopped harness', message: `Put back ${files(n)} that a stopped merge changed in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. ${again}` }),
+  /** A save of the folder's own harness (option C). It changes only `.bowerloom`; the interfaces' files change later, in an install of its own. */
+  save: (label: string, n: number, rev: string): Ask => ({ title: 'Save the harness', message: `Change ${files(n)} in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. Bowerloom keeps a save point, so you can go back. Installed files do not change until you install. ${again}` }),
+  /** "Go back": a save whose target is a stored save point. */
+  restore: (label: string, n: number, version: string, rev: string): Ask => ({ title: 'Go back to a save point', message: `Go back to ${version} and change ${files(n)} in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. Bowerloom keeps the harness as it is now as a save point too. Installed files do not change until you install. ${again}` }),
+  /** Sets a folder's old save points aside: the record is renamed in Bowerloom's private folder; nothing in the folder changes and nothing is deleted. */
+  setAside: (label: string, rev: string): Ask => ({ title: 'Set the old save points aside', message: `Set the old save points of ${label} aside and start a new record?`, detail: `From plan ${rev.slice(0, 8)}. Bowerloom renames its record to a dated name in its private folder and deletes nothing. Go back then starts from the next save. ${again}` }),
+  /** A stopped save is taken back; a save that finished and only left its note (`done`) is kept, and changes no file. */
+  saveRecovery: (label: string, n: number, rev: string, done = false): Ask => (done
+    ? { title: 'Finish a stopped harness', message: `Keep the finished save in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. The save stays, and Bowerloom clears its note. No file changes. ${again}` }
+    : { title: 'Finish a stopped harness', message: `Put back ${files(n)} that a stopped save changed in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. ${again}` }),
 });
 
 /** Session records of the last plan of each kind, per folder. A plan that fails clears its kind, so a stale plan can never be written. */

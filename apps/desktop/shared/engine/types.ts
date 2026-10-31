@@ -166,9 +166,17 @@ export interface AdoptApproval { readonly key: string; readonly hash: string }
 
 /** The recovery of a stopped run in the `.bowerloom` folder: an adoption that stopped part way, or a Merge that did (decision D4A). */
 export interface AdoptRecoveryView {
-  /** `adoption`: the stopped run made a new harness; recovery removes its files. `merge`: the stopped run was a Merge; recovery puts the files back. */
-  readonly kind: 'adoption' | 'merge';
+  /**
+   * `adoption`: the stopped run made a new harness; recovery removes its files. `merge`: the stopped run was a Merge; recovery puts the files back.
+   * `save`: the stopped run was a save of the harness; recovery takes it back, putting each file as it was before, unless the save was done (`done`).
+   */
+  readonly kind: 'adoption' | 'merge' | 'save';
   readonly journal: 'ok' | 'damaged';
+  /**
+   * A save only: true when the save finished and only its note was left (a whole journal, every file the save's target, none changed since). Recovery
+   * then changes no file: the save stays, and Bowerloom clears its note. `remove` and `restore` are empty.
+   */
+  readonly done?: boolean;
   readonly check: readonly string[];
   readonly remove: readonly string[];
   /** Files that go back to the bytes the stopped Merge replaced. Empty for an adoption. */
@@ -177,7 +185,16 @@ export interface AdoptRecoveryView {
   readonly dirs: readonly string[];
   readonly revision: string;
 }
-export interface AdoptRecovered { readonly removed: readonly string[]; readonly restored: readonly string[]; readonly kept: readonly string[]; readonly leftFolders: readonly string[] }
+/**
+ * What a recovery of a stopped harness did. `revision` is the harness revision after it, or null when the folder's harness does not load (after an adoption is
+ * taken back, null also when no harness is left). `check` lists the files a person checks by hand: every file of a damaged journal, and every file the
+ * recovery kept because it changed since the stop.
+ */
+export interface AdoptRecovered {
+  readonly removed: readonly string[]; readonly restored: readonly string[]; readonly kept: readonly string[]; readonly leftFolders: readonly string[];
+  readonly revision: string | null;
+  readonly check: readonly string[];
+}
 
 // ---- the projection -------------------------------------------------------------------------------------------------------
 
@@ -324,6 +341,71 @@ export interface MergeView {
 }
 export interface MergeWritten { readonly written: readonly string[] }
 
+// ---- the save step (0.8.0-beta.1, option C) ---------------------------------------------------------------------------------
+
+/**
+ * One edit of one folder's own harness, as the window sends it. Ids only: never a path, never file text, never bytes. Main turns each edit into an edit of the
+ * definition (packages/harness-definition, `editDefinition`) and reads every byte it writes itself.
+ *  - `set-agent`: the skills an agent uses, by skill id. The agent's tools stay as they are.
+ *  - `remove-skill`: the skill goes from the harness, and from every agent that used it.
+ *  - `add-skill`: copies the skill `id` from the harness of another folder the person chose (`from`, a folder id). Main reads the skill there again.
+ *  - `set-engines`: the interfaces the harness lists. An engine kept keeps its version and model.
+ */
+export type SaveEdit =
+  | { readonly kind: 'set-agent'; readonly id: string; readonly skills: readonly string[] }
+  | { readonly kind: 'remove-skill'; readonly id: string }
+  | { readonly kind: 'add-skill'; readonly id: string; readonly from: string }
+  | { readonly kind: 'set-engines'; readonly engines: readonly EngineId[] };
+/** The most edits one save takes. */
+export const SAVE_EDIT_LIMIT = 200;
+
+/** One folder's harness as the editor draws it: its skills, its agents with the skills each uses, and its interfaces. Text is never sent. */
+export interface DefinitionView {
+  readonly id: string;
+  readonly description: string;
+  readonly engines: readonly EngineId[];
+  readonly skills: readonly { readonly id: string; readonly name: string; readonly description: string }[];
+  readonly agents: readonly { readonly id: string; readonly name: string; readonly description: string; readonly skills: readonly string[] }[];
+  /** True when the harness holds instructions (AGENTS.md). */
+  readonly instructions: boolean;
+}
+/** One file a save changes, as `.bowerloom/<path>`. */
+export interface SaveChangeView { readonly path: string; readonly action: 'create' | 'update' | 'delete' }
+/**
+ * The save plan: the files it changes in `.bowerloom`, and the harness as it will be. With no edits it is a read of the folder's harness as it is now, and
+ * `noop` is true. `revision` is what the write names.
+ */
+export interface SaveView {
+  readonly folder: string;
+  readonly changes: readonly SaveChangeView[];
+  readonly definition: DefinitionView;
+  readonly noop: boolean;
+  readonly revision: string;
+}
+/** One save point of a folder, newest first in a list. `current` is true when the folder's harness is that save point now. */
+export interface VersionView {
+  readonly id: string;
+  /** UTC, to the second. */
+  readonly created: string;
+  readonly label: string;
+  readonly files: number;
+  readonly current: boolean;
+}
+/** The plan of "Go back": a save whose target is the files of one save point. */
+export interface RestoreView extends SaveView { readonly version: VersionView }
+/**
+ * What a save or a go-back wrote, as `.bowerloom/<path>`, and the save point it recorded (null when nothing changed). `warnings`: the write is done, and
+ * something after it did not finish, such as recording the save point.
+ */
+export interface SaveWritten { readonly written: readonly string[]; readonly version: string | null; readonly warnings?: readonly string[] }
+/**
+ * The plan of "Set the old save points aside": the folder's save point record is renamed to a dated name in Bowerloom's private folder, and nothing is deleted.
+ * `damaged` is true when the record cannot be read. `revision` is what the write names.
+ */
+export interface SetAsideView { readonly folder: string; readonly damaged: boolean; readonly revision: string }
+/** The dated name the old save points were set aside under, in Bowerloom's private folder. */
+export interface SetAsideWritten { readonly name: string }
+
 // ---- the calls ------------------------------------------------------------------------------------------------------------
 
 /**
@@ -351,6 +433,20 @@ export interface EngineBridge {
   planMerge(folderId: string): Promise<Answer<MergeView>>;
   /** Writes the Merge plan shown last, after main's own dialog. */
   runMerge(folderId: string, revision: string): Promise<Answer<MergeWritten>>;
+  /** Plans a save of the folder's own harness with these edits. Reads only. With no edits, it reads the harness as it is. */
+  planSave(folderId: string, edits: readonly SaveEdit[]): Promise<Answer<SaveView>>;
+  /** Writes the save plan shown last, with the same edits, after main's own dialog. It keeps a save point first. Install is a separate step. */
+  runSave(folderId: string, revision: string, edits: readonly SaveEdit[]): Promise<Answer<SaveWritten>>;
+  /** The save points of the folder, newest first. A damaged record is a refusal, never an empty list. */
+  listVersions(folderId: string): Promise<Answer<readonly VersionView[]>>;
+  /** Plans "Go back" to one save point. Reads only. */
+  planRestore(folderId: string, version: string): Promise<Answer<RestoreView>>;
+  /** Writes the go-back plan shown last, for the same save point, after main's own dialog. */
+  runRestore(folderId: string, revision: string, version: string): Promise<Answer<SaveWritten>>;
+  /** Plans setting the folder's old save points aside, so a damaged record never locks the person out. Reads only. */
+  planSetAside(folderId: string): Promise<Answer<SetAsideView>>;
+  /** Sets the old save points aside, for the plan shown last, after main's own dialog. Nothing is deleted. */
+  runSetAside(folderId: string, revision: string): Promise<Answer<SetAsideWritten>>;
   /**
    * Records the answer to "Did this do what you wanted?" in the local usage log on this computer. `note` is the person's own words, at most 500 characters, or
    * null. True when it was recorded. Nothing leaves the computer. The sample records nothing and answers false.
@@ -368,12 +464,14 @@ export const CHECK_NOTE_LIMIT = 500;
 export const ENGINE_CALLS = Object.freeze([
   'folders', 'chooseFolder', 'planAdoption', 'runAdoption', 'planAdoptionRecovery', 'runAdoptionRecovery',
   'planProjection', 'runProjection', 'planRemoval', 'runRemoval', 'planRecovery', 'runRecovery', 'planMerge', 'runMerge', 'recordCheck',
+  'planSave', 'runSave', 'listVersions', 'planRestore', 'runRestore', 'planSetAside', 'runSetAside',
 ] as const);
 export type EngineCall = (typeof ENGINE_CALLS)[number];
 /** How many arguments each call takes. A call with another count is refused before anything runs. */
 export const ENGINE_ARITY: Readonly<Record<EngineCall, number>> = Object.freeze({
   folders: 0, chooseFolder: 0, planAdoption: 2, runAdoption: 4, planAdoptionRecovery: 1, runAdoptionRecovery: 2,
   planProjection: 2, runProjection: 3, planRemoval: 1, runRemoval: 2, planRecovery: 2, runRecovery: 3, planMerge: 1, runMerge: 2, recordCheck: 2,
+  planSave: 2, runSave: 3, listVersions: 1, planRestore: 2, runRestore: 3, planSetAside: 1, runSetAside: 2,
 });
 /** One channel per call, apart from every other channel of the app. */
 export const ENGINE_CHANNELS: Readonly<Record<EngineCall, string>> = Object.freeze(Object.fromEntries(ENGINE_CALLS.map(c => [c, `bowerloom-engine:${c}`])) as Record<EngineCall, string>);
@@ -382,3 +480,17 @@ export const ENGINE_CALL_REFUSALS = Object.freeze(['NOT_ALLOWED', 'BAD_ARGUMENT'
 /** Refusals of main itself, with words, before a package runs: the write is not the plan main showed last (U16), or the person said no in main's own dialog. */
 export const NOT_THE_PLAN_SHOWN = 'NOT_THE_PLAN_SHOWN';
 export const CANCELLED = 'CANCELLED';
+/**
+ * Refusals of main itself for the save step, with words: the folder holds no harness to save yet, or the folder a skill is copied from does not hold it.
+ * The package refusals (SAVE_*, EDIT_*, VERSION_*) come with the packages' own words.
+ */
+export const SAVE_NO_DEFINITION = 'SAVE_NO_DEFINITION';
+export const SAVE_SOURCE_MISSING = 'SAVE_SOURCE_MISSING';
+/** The save points before and after the save could not both be kept, so the save would leave Go back with no entry for it. */
+export const SAVE_POINT_TOO_LARGE = 'SAVE_POINT_TOO_LARGE';
+/** The words of those refusals, the same in main and in the sample. */
+export const SAVE_MAIN_WORDS: Readonly<Record<typeof SAVE_NO_DEFINITION | typeof SAVE_SOURCE_MISSING | typeof SAVE_POINT_TOO_LARGE, string>> = Object.freeze({
+  SAVE_NO_DEFINITION: 'This folder has no harness yet, so there is nothing to save. Make one first with New harness from a folder. Nothing was written.',
+  SAVE_SOURCE_MISSING: 'The folder to copy from does not hold that skill, or its harness does not load. Nothing was written.',
+  SAVE_POINT_TOO_LARGE: 'This harness is too large for Bowerloom to keep a save point before and after this save, so Go back would have no entry for it. Nothing was written.',
+});

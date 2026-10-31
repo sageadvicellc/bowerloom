@@ -34,6 +34,31 @@ export function definedFolder(home: string, name = 'defined'): string {
   return dir;
 }
 
+/**
+ * A folder with a 0.8 definition that has agents: `writer` uses the skill `review`, `reader` uses none, and the skill `outline` is used by no agent. Only
+ * instructions, skills and agents, for Claude Code and Codex, so a save and an install have nothing to approve.
+ */
+export function teamFolder(home: string, name = 'team'): string {
+  const dir = join(home, 'Projects', name);
+  put(dir, '.bowerloom/harness.json', json({ format: 'bowerloom/harness/v1beta1', id: name, description: 'A team harness.', engines: [{ id: 'claude-code', version: '2.1.310' }, { id: 'codex' }], parts: { 'system-prompt': 'instructions/AGENTS.md', skills: 'skills/', subagents: 'agents/' } }));
+  put(dir, '.bowerloom/instructions/AGENTS.md', '# Team\n\nUse npm.\n');
+  put(dir, '.bowerloom/skills/review/SKILL.md', '---\nname: review\ndescription: Reviews a change.\n---\n\nReview it.\n');
+  put(dir, '.bowerloom/skills/outline/SKILL.md', '---\nname: outline\ndescription: Outlines a draft.\n---\n\nOutline it.\n');
+  put(dir, '.bowerloom/agents/writer.md', '---\nname: writer\ndescription: Writes the draft.\nskills:\n  - review\n---\n\nWrite the draft.\n');
+  put(dir, '.bowerloom/agents/reader.md', '---\nname: reader\ndescription: Reads the sources.\n---\n\nRead the sources.\n');
+  return dir;
+}
+
+/** A folder with a skill `summarize` of two files, one of them a script, to copy into another folder's harness. */
+export function sourceFolder(home: string, name = 'source'): string {
+  const dir = join(home, 'Projects', name);
+  put(dir, '.bowerloom/harness.json', json({ format: 'bowerloom/harness/v1beta1', id: name, description: 'A source harness.', engines: [{ id: 'claude-code' }], parts: { skills: 'skills/' } }));
+  put(dir, '.bowerloom/skills/summarize/SKILL.md', '---\nname: summarize\ndescription: Summarizes a page.\n---\n\nRun scripts/count.sh, then summarize.\n');
+  put(dir, '.bowerloom/skills/summarize/scripts/count.sh', '#!/bin/sh\nwc -w "$1"\n');
+  chmodSync(join(dir, '.bowerloom/skills/summarize/scripts/count.sh'), 0o755);
+  return dir;
+}
+
 /** A home folder for a test: private, with no tool folders. */
 export function homeFolder(base: string): string {
   const home = join(base, 'home');

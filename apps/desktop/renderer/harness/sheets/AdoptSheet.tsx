@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Stepper } from '../../home/kit/Stepper.js';
 import { adoptCanWrite, approvalsToSend, shortRevision, toggleEveryEngine } from '../../../shared/engine/gates.js';
-import type { AdoptChoices, AdoptRecoveryView, AdoptView, EveryEnginePart, FolderInfo } from '../../../shared/engine/types.js';
+import type { AdoptChoices, AdoptRecovered, AdoptRecoveryView, AdoptView, EveryEnginePart, FolderInfo } from '../../../shared/engine/types.js';
 import { Sheet } from '../parts/Sheet.js';
 import { HButton, StateDot } from '../parts/controls.js';
 import { useEngine } from '../engine.js';
@@ -26,7 +26,7 @@ import { useHeldFocus } from './use-held-focus.js';
 
 const W = ENGINE_WORDS;
 type Step = 'folder' | 'review' | 'confirm' | 'recover' | 'done';
-type Done = { kind: 'made'; written: readonly string[] } | { kind: 'recover'; removed: readonly string[]; restored: readonly string[]; kept: readonly string[]; leftFolders: readonly string[] };
+type Done = { kind: 'made'; written: readonly string[] } | ({ kind: 'recover'; recovered: AdoptRecoveryView['kind'] } & AdoptRecovered);
 /** A new folder starts with nothing picked, acknowledged or ticked, and no part used for every engine (D8B: off by default). */
 const NO_CHOICES: AdoptChoices = { picks: {}, acknowledged: [], everyEngine: [] };
 const BODY_NAME: Readonly<Record<Step, string>> = { folder: W.label.bodyFolder, review: W.label.bodyReview, confirm: W.label.bodyConfirm, recover: W.label.bodyReview, done: W.label.bodyResult };
@@ -118,7 +118,8 @@ export function AdoptSheet({ open, folderId, onClose }: { open: boolean; folderI
   };
   const recover = (): void => {
     if (engine === null || folder === undefined || recovery === null || recoveryOk !== recovery.revision) return;
-    void call.write(W.label.writing, () => engine.runAdoptionRecovery(folder.id, recovery.revision), r => { setDone({ kind: 'recover', ...r }); setStep('done'); });
+    const recovered = recovery.kind;
+    void call.write(W.label.writing, () => engine.runAdoptionRecovery(folder.id, recovery.revision), r => { setDone({ ...r, kind: 'recover', recovered }); setStep('done'); });
   };
 
   const stepIndex = step === 'folder' ? 0 : step === 'confirm' ? 2 : step === 'done' ? 3 : 1;
@@ -151,27 +152,62 @@ export function AdoptSheet({ open, folderId, onClose }: { open: boolean; folderI
           {step === 'review' && view !== null ? <AdoptReview view={view} held={held} onPick={pickVariant} onEveryEngine={everyEngine} /> : null}
           {step === 'confirm' && view !== null ? <AdoptConfirm view={view} ticked={ticked} held={held} onTick={tick} onAcknowledge={acknowledge} onPick={pickVariant} /> : null}
           {step === 'recover' && recovery !== null ? (
-            <>
-              <p className="hxi-sum">{W.paragraph.recoverIntro}</p>
-              <p className="hxe-notice"><StateDot tone={recovery.journal === 'ok' ? 'quiet' : 'bad'}><span data-journal="">{recovery.journal === 'ok' ? W.hint.journalOk : W.hint.journalDamaged}</span></StateDot></p>
-              {recovery.check.length === 0 ? null : <Section title={W.label.checkByHand} count={String(recovery.check.length)} slot="check"><ul className="hxe-places">{recovery.check.map(p => <li key={p} className="hxe-mono">{p}</li>)}</ul></Section>}
-              <Section title={W.label.changes} count={String(recovery.remove.length + recovery.restore.length + recovery.kept.length)} slot="remove">
-                <ul className="hxi-files">{recovery.remove.map(p => <li key={p} className="hxi-file" data-file={p}><span className="hxi-file-path">{p}</span><StateDot tone={CHANGE_TONE.delete}>{CHANGE_WORDS.delete}</StateDot></li>)}</ul>
-                {/* A stopped Merge replaced files: recovery puts each one back (D4A). */}
-                <ul className="hxi-files">{recovery.restore.map(p => <li key={p} className="hxi-file" data-file={p}><span className="hxi-file-path">{p}</span><StateDot tone={CHANGE_TONE.restore}>{CHANGE_WORDS.restore}</StateDot></li>)}</ul>
-                <ul className="hxi-files">{recovery.kept.map(k => <li key={k.path} className="hxi-file" data-file={k.path}><span className="hxi-file-path">{k.path}</span><StateDot tone="quiet">{k.reason === 'changed' ? W.hint.keptChanged : W.hint.keptUnsafe}</StateDot></li>)}</ul>
-              </Section>
-              {recovery.dirs.length === 0 ? null : <Section title={W.label.foldersRemoved} count={String(recovery.dirs.length)} slot="dirs"><ul className="hxe-places">{recovery.dirs.map(d => <li key={d} className="hxe-mono">{d}</li>)}</ul></Section>}
-              <ul className="hxe-ticks hxe-approve" data-approve-plan=""><TickRow slot="revision" checked={recoveryOk === recovery.revision} disabled={held} label={approvePlanWords(shortRevision(recovery.revision))} name={W.label.recoverAdoptTitle} onChange={on => setRecoveryOk(on ? recovery.revision : null)} /></ul>
-            </>
+            <RecoveryPlan recovery={recovery} held={held} approved={recoveryOk === recovery.revision} onApprove={on => setRecoveryOk(on ? recovery.revision : null)} />
           ) : null}
           {step === 'done' && done !== null ? (
             done.kind === 'made'
               ? <ResultStep nothing={done.written.length === 0} lists={[{ title: W.label.writtenFiles, files: done.written }]}>{engine === null ? null : <AfterApplyCheck record={(a, n) => engine.recordCheck(a, n)} />}</ResultStep>
-              : <ResultStep nothing={done.removed.length + done.restored.length === 0} lists={[{ title: W.label.removedFiles, files: done.removed }, { title: W.label.restoredFiles, files: done.restored }, { title: W.label.keptFiles, files: done.kept, note: W.hint.keptWhy }, { title: W.label.leftFolders, files: done.leftFolders, note: W.hint.leftBehindWhy }]} />
+              : <RecoveredResult kind={done.recovered} done={done} />
           ) : null}
         </div>
       )}
     </Sheet>
+  );
+}
+
+/**
+ * The recovery plan of a stopped harness: what it removes, puts back and keeps, the folders it removes, and the one tick that approves the revision. A save
+ * that finished and only left its note says so instead: the save stays, and no file is listed, because none changes.
+ */
+export function RecoveryPlan({ recovery, held, approved, onApprove }: { recovery: AdoptRecoveryView; held: boolean; approved: boolean; onApprove(on: boolean): void }): ReactElement {
+  return (
+    <>
+      {recovery.done === true ? <p className="hxi-sum" data-save-done="">{W.hint.saveDone}</p> : <p className="hxi-sum">{W.paragraph.recoverIntro}</p>}
+      <p className="hxe-notice"><StateDot tone={recovery.journal === 'ok' ? 'quiet' : 'bad'}><span data-journal="">{recovery.journal === 'ok' ? W.hint.journalOk : W.hint.journalDamaged}</span></StateDot></p>
+      {recovery.check.length === 0 ? null : <Section title={W.label.checkByHand} count={String(recovery.check.length)} slot="check"><ul className="hxe-places">{recovery.check.map(p => <li key={p} className="hxe-mono">{p}</li>)}</ul></Section>}
+      {recovery.done === true ? null : (
+        <Section title={W.label.changes} count={String(recovery.remove.length + recovery.restore.length + recovery.kept.length)} slot="remove">
+          <ul className="hxi-files">{recovery.remove.map(p => <li key={p} className="hxi-file" data-file={p}><span className="hxi-file-path">{p}</span><StateDot tone={CHANGE_TONE.delete}>{CHANGE_WORDS.delete}</StateDot></li>)}</ul>
+          {/* A stopped Merge replaced files: recovery puts each one back (D4A). */}
+          <ul className="hxi-files">{recovery.restore.map(p => <li key={p} className="hxi-file" data-file={p}><span className="hxi-file-path">{p}</span><StateDot tone={CHANGE_TONE.restore}>{CHANGE_WORDS.restore}</StateDot></li>)}</ul>
+          <ul className="hxi-files">{recovery.kept.map(k => <li key={k.path} className="hxi-file" data-file={k.path}><span className="hxi-file-path">{k.path}</span><StateDot tone="quiet">{k.reason === 'changed' ? W.hint.keptChanged : W.hint.keptUnsafe}</StateDot></li>)}</ul>
+        </Section>
+      )}
+      {recovery.dirs.length === 0 ? null : <Section title={W.label.foldersRemoved} count={String(recovery.dirs.length)} slot="dirs"><ul className="hxe-places">{recovery.dirs.map(d => <li key={d} className="hxe-mono">{d}</li>)}</ul></Section>}
+      <ul className="hxe-ticks hxe-approve" data-approve-plan=""><TickRow slot="revision" checked={approved} disabled={held} label={approvePlanWords(shortRevision(recovery.revision))} name={W.label.recoverAdoptTitle} onChange={onApprove} /></ul>
+    </>
+  );
+}
+
+/**
+ * The result of a recovery of a stopped harness: the files it removed, put back and kept, and the folders it left. When the harness does not load after it,
+ * the result says so and lists each file to check by hand, so a recovery never reads as a success over a broken harness. An adoption taken back leaves no
+ * harness at all, which is no warning unless files are left to check.
+ */
+export function RecoveredResult({ kind, done }: { kind: AdoptRecoveryView['kind']; done: AdoptRecovered }): ReactElement {
+  const broken = done.revision === null && (kind !== 'adoption' || done.check.length > 0);
+  return (
+    <ResultStep nothing={done.removed.length + done.restored.length === 0} lists={[{ title: W.label.removedFiles, files: done.removed }, { title: W.label.restoredFiles, files: done.restored }, { title: W.label.keptFiles, files: done.kept, note: W.hint.keptWhy }, { title: W.label.leftFolders, files: done.leftFolders, note: W.hint.leftBehindWhy }]}>
+      {broken ? (
+        <div data-not-loading="">
+          <p className="hxe-notice" role="status"><StateDot tone="bad">{W.hint.notLoading}</StateDot></p>
+          {done.check.length === 0 ? null : (
+            <Section title={W.label.checkHere} count={String(done.check.length)} slot="check-after">
+              <ul className="hxe-places">{done.check.map(p => <li key={p} className="hxe-mono" data-check-file={p}>{p}</li>)}</ul>
+            </Section>
+          )}
+        </div>
+      ) : null}
+    </ResultStep>
   );
 }

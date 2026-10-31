@@ -90,6 +90,16 @@ export function adoptionStopped(stateDir: string): boolean {
   try { fs.lstatSync(join(stateDir, JOURNAL)); return true; } catch (e) { return (e as NodeJS.ErrnoException).code !== 'ENOENT'; }
 }
 
+/** The journal of a save of the definition (save.ts). It sits beside the adoption and merge journals. */
+export const SAVE_JOURNAL = 'save-pending.json';
+/**
+ * True when a save stopped part way: its journal file is in the adoption state folder, whether it can be read or not.
+ * It lives here, not in save.ts, so the merge and adoption planners and `refuseWhileStopped` check it with no import cycle.
+ */
+export function saveStopped(stateDir: string): boolean {
+  try { fs.lstatSync(join(stateDir, SAVE_JOURNAL)); return true; } catch (e) { return (e as NodeJS.ErrnoException).code !== 'ENOENT'; }
+}
+
 export function removeJournal(stateDir: string): void {
   try { fs.unlinkSync(join(stateDir, JOURNAL)); } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; }
 }

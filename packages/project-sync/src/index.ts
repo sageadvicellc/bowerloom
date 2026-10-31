@@ -66,3 +66,12 @@ export { HARNESS_MOVED_FORMAT, HARNESS_STATE_REFUSAL_CODES, HarnessStateRefusal,
 export type { HarnessStateCode, HarnessStateDirs, LegacySettle } from './harness-state.js';
 export { APPROVAL_DRAFTS_FORMAT, addApprovalDraft, addApprovalDraftLocked, dropApprovalDrafts, dropApprovalDraftsLocked, readApprovalDrafts } from './harness-approvals.js';
 export type { AddApprovalDraftOptions, ApprovalDraftInput, ReadApprovalDraftsOptions } from './harness-approvals.js';
+// Bowerloom 0.8, save step, lane D: the version store behind "Go back". The test hook entry point recordVersionWith is not
+// exported here.
+export {
+  VERSION_FORMAT, VERSION_LIMITS, VERSION_REFUSAL_CODES, VersionRefusal, checkVersionsFit, listVersions, planSetAsideVersions, readVersion, recordVersion, setAsideVersions,
+} from './versions.js';
+export type { SetAsidePlan, SetAsideResult, StoredVersion, VersionCode, VersionEntry, VersionFile, VersionFiles, VersionMeta } from './versions.js';
+// The save step in the desktop app: the version store under the project lock, for a caller that holds no lock.
+export { recordVersionLocked, setAsideVersionsLocked } from './versions-locked.js';
+export type { KeepVersion } from './versions-locked.js';

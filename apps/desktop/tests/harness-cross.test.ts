@@ -154,7 +154,7 @@ test('the app adopts, the command line installs, the app sees the folder install
   const status = await cli(w, ['status', '--json']);
   assert.equal(status.code, 0, status.out);
   assert.equal(status.json.projected, false); assert.equal(status.json.drafts, 0); assert.equal(status.json.receipt, null);
-  assert.deepEqual(status.json.unfinished, { projection: false, adoption: false, merge: false });
+  assert.deepEqual(status.json.unfinished, { projection: false, adoption: false, merge: false, save: false });
   const gone = await cli(w, ['remove', '--json']);
   assert.equal(gone.code, 1); assert.equal(gone.error?.code, 'PORTABLE_NOTHING_PROJECTED');
   const drift = await cli(w, ['drift', '--json']);
