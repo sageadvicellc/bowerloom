@@ -451,6 +451,58 @@ test('recovery keeps a file that changed after the crash, and then refuses to fi
   assert.equal(fs.existsSync(journalAt(p)), false);
 });
 
+test('under umask 002, an undo that stopped part way and is run again finishes cleanly', async t => {
+  const old = process.umask(0o002);
+  t.after(() => process.umask(old));
+  const p = saving(t);
+  // Files a person made under umask 002 are 0664. The undo puts them back without group write, as 0644.
+  const originals = ['harness.json', 'instructions/AGENTS.md', 'skills/review/references/notes.md'];
+  for (const rel of originals) fs.chmodSync(path.join(p.def, rel), 0o664);
+  const before = Object.fromEntries(originals.map(rel => [rel, fs.readFileSync(path.join(p.def, rel), 'utf8')]));
+  const target = mixed(p);
+  const plan = planSave(p.save(), target), err = crash();
+  await assert.rejects(applySaveWith(p.save(), plan.revision, target, signal(), { afterWrite: rel => { if (rel === 'harness.json') throw err; } }), e => e === err);
+  // The first undo stops part way: the folder of the created skill is locked, so its file cannot go; the other three files are put back.
+  const lint = path.join(p.def, 'skills/lint');
+  fs.chmodSync(lint, 0o555);
+  t.after(() => { try { fs.chmodSync(lint, 0o755); } catch { /* gone */ } });
+  await assert.rejects(runSaveRecovery(p.save(), planSaveRecovery(p.save()).revision, 'undo'), code('SAVE_PARTIAL'));
+  fs.chmodSync(lint, 0o755);
+  for (const rel of originals) assert.equal(modeOf(p, rel), 0o644, `${rel} is back without group write`);
+  // Run again: a file put back at its old bytes counts as put back, not as changed by hand.
+  const again = planSaveRecovery(p.save());
+  assert.deepEqual(again.kept, []);
+  assert.deepEqual(again.undo, [{ path: 'skills/lint/SKILL.md', action: 'delete' }]);
+  const r = await runSaveRecovery(p.save(), again.revision, 'undo');
+  assert.deepEqual(r.kept, []);
+  assert.deepEqual(r.undone, ['skills/lint/SKILL.md']);
+  assert.equal(fs.existsSync(lint), false);
+  assert.equal(fs.existsSync(journalAt(p)), false);
+  assert.equal(saveStopped(p.adoptState), false);
+  for (const rel of originals) assert.equal(fs.readFileSync(path.join(p.def, rel), 'utf8'), before[rel], rel);
+});
+
+test('under umask 002, a finish after an undo that stopped part way writes the steps it lists', async t => {
+  const old = process.umask(0o002);
+  t.after(() => process.umask(old));
+  const p = saving(t);
+  for (const rel of ['harness.json', 'instructions/AGENTS.md', 'skills/review/references/notes.md']) fs.chmodSync(path.join(p.def, rel), 0o664);
+  const target = mixed(p);
+  const plan = planSave(p.save(), target), err = crash();
+  await assert.rejects(applySaveWith(p.save(), plan.revision, target, signal(), { afterWrite: rel => { if (rel === 'harness.json') throw err; } }), e => e === err);
+  const lint = path.join(p.def, 'skills/lint');
+  fs.chmodSync(lint, 0o555);
+  t.after(() => { try { fs.chmodSync(lint, 0o755); } catch { /* gone */ } });
+  await assert.rejects(runSaveRecovery(p.save(), planSaveRecovery(p.save()).revision, 'undo'), code('SAVE_PARTIAL'));
+  fs.chmodSync(lint, 0o755);
+  const again = planSaveRecovery(p.save());
+  assert.equal(again.finishable, true);
+  const r = await runSaveRecovery(p.save(), again.revision, 'finish');
+  assert.deepEqual(r.finished, again.finish.map(f => f.path));
+  assert.equal(r.revision, plan.targetRevision);
+  assert.equal(fs.existsSync(journalAt(p)), false);
+});
+
 test('a damaged save journal is only cleared, and the plan lists the files to check by hand', async t => {
   const p = saving(t);
   fs.mkdirSync(p.adoptState, { recursive: true, mode: 0o700 });

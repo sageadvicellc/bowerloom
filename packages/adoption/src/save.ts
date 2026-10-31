@@ -162,6 +162,14 @@ const inProject = (rel: string): string => `${DEF}/${rel}`;
 const inDef = (rel: string): string => rel.startsWith(`${DEF}/`) ? rel.slice(DEF.length + 1) : rel;
 /** A mode the save writes from its journal: group and world write cleared, so a forged or odd mode never opens a file to others. */
 const safeMode = (mode: number): number => mode & 0o777 & ~0o022;
+/**
+ * The state compare of save recovery: the same bytes, and the same mode once group and world write are cleared on both sides. A file the save or its undo
+ * wrote from the journal holds `safeMode` of the recorded mode, so a 0664 original put back as 0644 still counts as put back. Only recovery uses it: a
+ * plan and an apply compare the full mode, as `sameState` does.
+ */
+/** How a write compares a file's state with the one it expects: `sameState` by default, `sameSaved` in recovery. */
+type SameState = (a: FileState | null, b: FileState | null) => boolean;
+const sameSaved: SameState = (a, b) => a === null ? b === null : b !== null && a.sha256 === b.sha256 && safeMode(a.mode) === safeMode(b.mode);
 
 // ---- stopped runs ------------------------------------------------------------------------------------------------------
 
@@ -453,7 +461,7 @@ interface StepEvents {
  * Runs journal steps in order: each step must find its file at the state before. The folders the deletes emptied go
  * just before `harness.json` is written, or after the last step when the save does not write it.
  */
-function runSteps(projectDir: string, journal: SaveJournal, steps: readonly JournalStep[], on: StepEvents): void {
+function runSteps(projectDir: string, journal: SaveJournal, steps: readonly JournalStep[], on: StepEvents, same: SameState = sameState): void {
   let cleared = false;
   const clear = (): void => {
     cleared = true;
@@ -463,10 +471,10 @@ function runSteps(projectDir: string, journal: SaveJournal, steps: readonly Jour
   for (const step of steps) {
     if (step.path === inProject(HARNESS) && !cleared) clear();
     on.before(step);
-    if (step.to === null) removeChecked(projectDir, step.path, step.from!, () => on.placed(step), () => on.beforeUnlink?.(step));
+    if (step.to === null) removeChecked(projectDir, step.path, step.from!, () => on.placed(step), () => on.beforeUnlink?.(step), same);
     else {
       for (const d of checkAncestors(projectDir, step.path)) makeDir(projectDir, d, made => on.made(made));
-      place(projectDir, step.path, Buffer.from(step.bytes!, 'base64'), safeMode(step.to.mode), step.from, () => on.placed(step));
+      place(projectDir, step.path, Buffer.from(step.bytes!, 'base64'), safeMode(step.to.mode), step.from, () => on.placed(step), same);
     }
     on.after(step);
   }
@@ -477,12 +485,12 @@ function runSteps(projectDir: string, journal: SaveJournal, steps: readonly Jour
  * Writes bytes at a project path through the checked write layer. Just before the link or rename, the path must still
  * hold `expected` (null: nothing), else it refuses PORTABLE_DRIFT. A new file is linked into place.
  */
-function place(projectDir: string, rel: string, bytes: Uint8Array, mode: number, expected: FileState | null, onPlaced: () => void = () => {}): void {
+function place(projectDir: string, rel: string, bytes: Uint8Array, mode: number, expected: FileState | null, onPlaced: () => void = () => {}, same: SameState = sameState): void {
   writeAbs(join(projectDir, rel), bytes, mode, {
     exclusive: expected === null, label: rel, onPlaced,
     recheck: () => {
       checkAncestors(projectDir, rel, true);
-      if (!sameState(readProject(projectDir, rel)?.state ?? null, expected)) throw new PortableRefusal('PORTABLE_DRIFT', [rel]);
+      if (!same(readProject(projectDir, rel)?.state ?? null, expected)) throw new PortableRefusal('PORTABLE_DRIFT', [rel]);
     },
   });
 }
@@ -495,7 +503,7 @@ const sameNode = (a: fs.Stats, b: fs.Stats): boolean => a.dev === b.dev && a.ino
  * else the remove refuses. Node has no unlinkat(), so the unlink still goes by path: this narrows the gap between the
  * check and the unlink to two system calls, and does not close it.
  */
-function removeChecked(projectDir: string, rel: string, expected: FileState, onRemoved: () => void = () => {}, beforeUnlink: () => void = () => {}): void {
+function removeChecked(projectDir: string, rel: string, expected: FileState, onRemoved: () => void = () => {}, beforeUnlink: () => void = () => {}, same: SameState = sameState): void {
   const abs = join(projectDir, rel), parent = dirname(abs);
   const drift = (): never => { throw new PortableRefusal('PORTABLE_DRIFT', [rel]); };
   const unsafe = (): never => { throw new PortableRefusal('PORTABLE_PATH_UNSAFE', [rel]); };
@@ -510,7 +518,7 @@ function removeChecked(projectDir: string, rel: string, expected: FileState, onR
     const fileNow = (): fs.Stats | null => { try { return fs.lstatSync(abs); } catch { return null; } };
     if (!parentHeld()) unsafe();
     const held = fileNow();
-    if (held === null || !sameState(readProject(projectDir, rel)?.state ?? null, expected)) return drift();
+    if (held === null || !same(readProject(projectDir, rel)?.state ?? null, expected)) return drift();
     const read = fileNow();
     if (read === null || !sameNode(read, held)) drift();
     beforeUnlink();
@@ -529,17 +537,17 @@ function removeChecked(projectDir: string, rel: string, expected: FileState, onR
  * old state is left. Any other file is left over and returned, as is a created folder that cannot be removed for a
  * reason other than holding files. Paths are relative to the project.
  */
-function putBack(projectDir: string, files: readonly JournalStep[], dirs: readonly string[]): string[] {
+function putBack(projectDir: string, files: readonly JournalStep[], dirs: readonly string[], same: SameState = sameState): string[] {
   const left: string[] = [];
   for (const f of [...files].reverse()) {
     try {
       const now = readProject(projectDir, f.path)?.state ?? null;
-      if (sameState(now, f.from)) continue;
-      if (!sameState(now, f.to)) { left.push(f.path); continue; }
-      if (f.from === null) removeChecked(projectDir, f.path, f.to!);
+      if (same(now, f.from)) continue;
+      if (!same(now, f.to)) { left.push(f.path); continue; }
+      if (f.from === null) removeChecked(projectDir, f.path, f.to!, undefined, undefined, same);
       else {
         for (const d of checkAncestors(projectDir, f.path)) makeDir(projectDir, d);
-        place(projectDir, f.path, Buffer.from(f.original!, 'base64'), safeMode(f.from.mode), f.to);
+        place(projectDir, f.path, Buffer.from(f.original!, 'base64'), safeMode(f.from.mode), f.to, undefined, same);
       }
     } catch { left.push(f.path); }
   }
@@ -697,8 +705,8 @@ function recoveryPlan(projectDir: string, stateDir: string): { readonly plan: Sa
     const rel = inDef(f.path);
     let now: FileState | null;
     try { now = readProject(projectDir, f.path)?.state ?? null; } catch (e) { if (e instanceof PortableRefusal) { kept.push({ path: rel, reason: 'unsafe' }); continue; } throw e; }
-    if (sameState(now, f.to)) undo.push({ path: rel, action: f.from === null ? 'delete' : f.to === null ? 'recreate' : 'restore' });
-    else if (sameState(now, f.from)) finish.push({ path: rel, action: f.from === null ? 'create' : f.to === null ? 'delete' : 'update' });
+    if (sameSaved(now, f.to)) undo.push({ path: rel, action: f.from === null ? 'delete' : f.to === null ? 'recreate' : 'restore' });
+    else if (sameSaved(now, f.from)) finish.push({ path: rel, action: f.from === null ? 'create' : f.to === null ? 'delete' : 'update' });
     else kept.push({ path: rel, reason: 'changed' });
   }
   const body = {
@@ -729,7 +737,7 @@ export async function runSaveRecovery(input: SaveInput, revision: string, mode: 
 
     if (mode === 'undo') {
       const want = new Set(plan.undo.map(u => inProject(u.path)));
-      const left = putBack(projectDir, journal.files.filter(f => want.has(f.path)), []);
+      const left = putBack(projectDir, journal.files.filter(f => want.has(f.path)), [], sameSaved);
       if (left.length) refuse('SAVE_PARTIAL', left.map(inDef));
       const leftFolders = removeEmptyDirs(projectDir, journal.dirs).map(d => inDef(d.path));
       removeSaveJournal(stateDir);
@@ -740,7 +748,7 @@ export async function runSaveRecovery(input: SaveInput, revision: string, mode: 
     try {
       runSteps(projectDir, journal, journal.files.filter(f => want.has(f.path)), {
         before: () => { if (signal.aborted) refuse('SAVE_ABORTED'); }, placed: () => {}, after: () => {}, made: () => {},
-      });
+      }, sameSaved);
     } catch (error) {
       if (error instanceof SaveRefusal) throw error;
       return mapPortable(error);
