@@ -240,7 +240,7 @@ function sourceFormats(){
   return [...out].sort();
 }
 test('D8. every format string new since beta.2 appears in the beta.3 release notes',()=>{
-  // after-beta3-formats.json holds the formats that 0.8 bumped (step 0, the engine rename). They belong to the 0.8 notes, not to beta.3.
+  // after-beta3-formats.json holds the formats that 0.8 added or bumped. They belong to the 0.8 notes, not to beta.3.
   const old=new Set(JSON.parse(read(resolve(import.meta.dirname,'beta2-formats.json')))),later=new Set(JSON.parse(read(resolve(import.meta.dirname,'after-beta3-formats.json')))),section=betaThree();
   const source=sourceFormats();
   assert.deepEqual([...later].filter(f=>!source.includes(f)),[],'every format in after-beta3-formats.json is in the source');
