@@ -135,6 +135,23 @@ test('a folder whose history has no first commit, or whose git settings were ref
   assert.ok(panel.includes(NOTES.hint.noCommit));
 });
 
+test('notes kept in a larger repository: the step ends ready and says so, with no history offer, and the panel says where the history comes from', () => {
+  const parent: NotesView = { ...READING, history: 'parent' };
+  const done = step({ kind: 'done', view: parent, how: 'parent' });
+  assert.match(done, /data-notes-done="parent"/);
+  assert.ok(done.includes(NOTES.hint.parent));
+  assert.doesNotMatch(done, /data-notes-offer|data-start-history/);
+  const panel = renderToStaticMarkup(createElement(NotesPanel, { cards: notesCards(DEF, [], { n1: { ok: true, value: parent } }), held: false, hasKeeper: true, onUse: noop, onFresh: noop, onAddKeeper: noop }));
+  assert.ok(panel.includes(NOTES.hint.parentHistory));
+  assert.match(panel, /data-history="parent"/);
+  assert.ok(panel.includes('Last change 2026-10-28'), 'the last change is the larger repository\'s, for this folder');
+  assert.doesNotMatch(panel, /data-start-history/);
+  // Start fresh in a folder inside a larger repository is refused with words and what to do next.
+  const refused = step({ kind: 'starter', view: { ...parent, pages: 0 }, plan: null }, { refusal: { code: 'NOTES_PARENT_REPOSITORY', message: 'This folder already has history in a larger repository.', paths: [] } });
+  assert.match(refused, /data-refusal="NOTES_PARENT_REPOSITORY"/);
+  assert.ok(refused.includes(NOTES_REFUSAL_WORDS.NOTES_PARENT_REPOSITORY!));
+});
+
 test('a history start that stopped part way gets its own advice, apart from a starter that stopped part way', () => {
   const partial = { code: 'NOTES_PARTIAL', message: 'The step stopped part way. The paths listed were written and are left as they are. .git.', paths: ['.git'] };
   const plan: NotesHistoryPlanView = { notes: '~/Documents/Reading list', files: [{ path: 'index.md', kind: 'file' }], count: 1, hidden: 0, revision: 'r'.repeat(64) };

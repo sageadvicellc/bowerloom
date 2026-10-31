@@ -4,7 +4,8 @@
  * - The page count is every `*.md` name of a plain file, outside hidden folders, without following any link. It stops
  *   at an entry bound and a time bound, and says when it stopped early. A folder it cannot list leaves it incomplete.
  * - The latest report date comes from `reports/YYYY-MM-DD-*.md` names, in a real `reports` folder.
- * - The last commit time comes from `git log -1 --format=%ct`, when `.git` is a real folder and its own config passes runGit's check.
+ * - The last commit time comes from `git log -1 --format=%ct`, when `.git` is a real folder and its own config passes runGit's check. A folder inside a
+ *   larger repository (repo.ts finds it by a walk of plain folders) reads that repository's log for the folder only: `-- <prefix>`.
  */
 import fs from 'node:fs';
 import { join } from 'node:path';
@@ -13,6 +14,7 @@ import { uid, verifiedFolder } from './folder.js';
 import { findGit, runGit } from './git.js';
 import { commitTime } from './history.js';
 import { isNotesRefusal, refuse } from './refusal.js';
+import { findRepository } from './repo.js';
 import type { NotesOptions } from './starter.js';
 
 export const NOTES_SUMMARY_FORMAT = 'bowerloom/notes-summary/v1beta1' as const;
@@ -29,14 +31,17 @@ export interface SummaryOptions extends NotesOptions {
 
 /**
  * - `git`: `.git` is a real folder and git log read its last commit.
+ * - `parent`: the folder sits inside a larger repository, whose `.git` is a real folder, and git log read it for this folder only. `lastCommitAt` is null
+ *   when no commit of that repository touched the folder yet. Bowerloom never starts a repository there.
  * - `no-commit`: `.git` is a real folder, and git log found no commit, or git cannot read it as a repository. A history start that stopped part way
  *   leaves this; it is never ready.
  * - `none`: the folder has no `.git`.
  * - `git-missing`: the folder has `.git`, and git is not installed.
  * - `refused`: the repository's own git settings could make git start a program (NOTES_GIT_CONFIG), so no git command ran.
- * - `unreadable`: `.git` is not a real folder of yours, or git stopped on a timeout or the output cap.
+ * - `unreadable`: the nearest `.git` is not a real folder of yours, the folder's place in a larger repository is not a plain path, or git stopped on a
+ *   timeout or the output cap.
  */
-export type NotesHistory = 'git' | 'no-commit' | 'none' | 'git-missing' | 'refused' | 'unreadable';
+export type NotesHistory = 'git' | 'parent' | 'no-commit' | 'none' | 'git-missing' | 'refused' | 'unreadable';
 
 export interface NotesSummary {
   readonly format: typeof NOTES_SUMMARY_FORMAT;
@@ -104,17 +109,17 @@ function latestReport(dir: string, maxEntries: number): Pick<NotesSummary, 'late
 }
 
 async function history(dir: string, options: SummaryOptions): Promise<Pick<NotesSummary, 'history' | 'lastCommitAt'>> {
-  try {
-    const st = fs.lstatSync(join(dir, '.git'));
-    if (st.isSymbolicLink() || !st.isDirectory() || st.uid !== uid()) return { history: 'unreadable', lastCommitAt: null };
-  } catch (e) {
-    return { history: (e as NodeJS.ErrnoException).code === 'ENOENT' ? 'none' : 'unreadable', lastCommitAt: null };
-  }
+  const repo = findRepository(dir, options);
+  if (repo.kind === 'none') return { history: 'none', lastCommitAt: null };
+  if (repo.kind === 'not-plain' || repo.kind === 'unknown' || (repo.kind === 'parent' && repo.prefix === null)) return { history: 'unreadable', lastCommitAt: null };
   let git;
   try { git = findGit(options.gitCandidates === undefined ? {} : { candidates: options.gitCandidates }); } catch { return { history: 'git-missing', lastCommitAt: null }; }
+  const run = { timeoutMs: options.timeoutMs ?? SUMMARY_LIMITS.gitTimeoutMs, ...(options.outputBytes === undefined ? {} : { outputBytes: options.outputBytes }) };
   try {
-    const out = await runGit(git, dir, { op: 'log-time' }, { timeoutMs: options.timeoutMs ?? SUMMARY_LIMITS.gitTimeoutMs, ...(options.outputBytes === undefined ? {} : { outputBytes: options.outputBytes }) });
-    return { history: 'git', lastCommitAt: commitTime(out) };
+    if (repo.kind === 'self') return { history: 'git', lastCommitAt: commitTime(await runGit(git, dir, { op: 'log-time' }, run)) };
+    // The larger repository's log, for this folder only. No output: no commit of that repository touched the folder yet.
+    const out = await runGit(git, repo.root, { op: 'log-time', prefix: repo.prefix! }, run);
+    return { history: 'parent', lastCommitAt: out === '' ? null : commitTime(out) };
   } catch (e) {
     if (isNotesRefusal(e, 'NOTES_GIT_FAILED')) return { history: 'no-commit', lastCommitAt: null };
     if (isNotesRefusal(e, 'NOTES_GIT_CONFIG')) return { history: 'refused', lastCommitAt: null };

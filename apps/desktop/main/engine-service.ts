@@ -388,7 +388,8 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
 
   const notesById = new Map<string, Notes>();
   let notesCount = 0;
-  const notesOptions: NotesOptions = deps.notesOptions ?? {};
+  // The walk for a larger repository that holds a notes folder stops at the home folder main was given, so a repository at home is never the notes' history.
+  const notesOptions: NotesOptions = { home: realHome, ...deps.notesOptions };
   /**
    * Gives a notes folder its id, once per folder. `label` is how the window names it: the `~` form, or a source's stored form under its harness. The
    * folder need not exist yet: a source a harness records may point at a folder that is gone, and its read then says so.

@@ -70,6 +70,36 @@ export function walkPages(dir) {
   return n;
 }
 
+/** Commits the listed paths (or everything) as the test, at a fixed time, with no hook and no signing. `dir` is the repository root. */
+export function commitAt(dir, message, when, paths = null) {
+  const env = {
+    PATH: '/usr/bin:/bin', LC_ALL: 'C', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', GIT_DIR: path.join(dir, '.git'), GIT_WORK_TREE: dir,
+    GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 'test@localhost', GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 'test@localhost', GIT_AUTHOR_DATE: when, GIT_COMMITTER_DATE: when,
+  };
+  const run = args => execFileSync(GIT.path, args, { cwd: dir, env, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
+  run(paths === null ? ['add', '-A'] : ['add', '--', ...paths]);
+  run(['-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', message, ...(paths === null ? [] : ['--', ...paths])]);
+}
+
+/**
+ * A larger repository that holds a wiki folder, as a clone of a hosted repository looks: a remote address and fetch rule, and `extensions.worktreeConfig`.
+ * The wiki is `<root>/<wiki>`; one commit touches it at `wikiAt`, and a later one touches only a file outside it at `outsideAt`.
+ */
+export function parentRepo(t, { wiki = 'knowledge-base', wikiAt = '2024-03-05T12:00:00Z', outsideAt = '2024-06-01T12:00:00Z' } = {}) {
+  const base = tempDir(t), root = path.join(base, 'repo'), dir = path.join(root, wiki);
+  put(root, 'README.md', '# Repo\n');
+  put(dir, 'index.md'); put(dir, 'pages/a.md'); put(dir, 'pages/b.md');
+  ownGit(root, ['init', '-q']);
+  for (const [k, v] of [
+    ['core.repositoryformatversion', '1'], ['extensions.worktreeConfig', 'true'], ['remote.origin.url', 'ssh://example.invalid/repo'],
+    ['remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*'],
+  ]) ownGit(root, ['config', k, v]);
+  commitAt(root, 'wiki and readme', wikiAt);
+  put(root, 'src/code.txt', 'code\n');
+  commitAt(root, 'code outside the wiki', outsideAt);
+  return { base, root, dir, wikiAt, outsideAt };
+}
+
 /** Writes an executable script owned by this user, mode 0755. Used as a stand-in git. */
 export function script(dir, name, body) {
   const abs = path.join(dir, name);

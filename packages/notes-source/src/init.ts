@@ -14,6 +14,7 @@ import { MAX_PATH_BYTES, plainRelative, verifiedFolder } from './folder.js';
 import { COMMIT_MESSAGES, findGit } from './git.js';
 import { firstCommit } from './history.js';
 import { refuse } from './refusal.js';
+import { refuseInsideRepository } from './repo.js';
 import type { NotesOptions } from './starter.js';
 
 export const GIT_INIT_PLAN_FORMAT = 'bowerloom/notes-git-init-plan/v1beta1' as const;
@@ -53,6 +54,8 @@ function buildPlan(dir: unknown, options: GitInitOptions): GitInitPlan {
   let gitThere = true;
   try { fs.lstatSync(join(folder.abs, '.git')); } catch (e) { if (errno(e) !== 'ENOENT') refuse('NOTES_PATH_UNSAFE', ['.git']); gitThere = false; }
   if (gitThere) refuse('NOTES_ALREADY_REPOSITORY');
+  // A folder inside a larger repository already has its history there. Bowerloom never starts a repository nested in it.
+  refuseInsideRepository(folder.abs, options);
   const files: { path: string; kind: 'file' | 'link' }[] = [], marks: string[] = [];
   let hidden = 0, entries = 0;
   const stack: { rel: string; depth: number }[] = [{ rel: '', depth: 0 }];
@@ -86,7 +89,8 @@ function buildPlan(dir: unknown, options: GitInitOptions): GitInitPlan {
 
 /**
  * Plans version history for a linked folder with no `.git`. Reads names and file states only; never opens a file.
- * Refuses NOTES_PATH_UNSAFE, NOTES_FOLDER_MISSING, NOTES_ALREADY_REPOSITORY, NOTES_NESTED_REPOSITORY, NOTES_GIT_FILES,
+ * Refuses NOTES_PATH_UNSAFE, NOTES_FOLDER_MISSING, NOTES_ALREADY_REPOSITORY, NOTES_PARENT_REPOSITORY (a folder above holds a `.git`),
+ * NOTES_NESTED_REPOSITORY, NOTES_GIT_FILES,
  * NOTES_NOTHING_TO_COMMIT, NOTES_TOO_LARGE, or NOTES_GIT_MISSING.
  */
 export function planGitInit(dir: string, options: GitInitOptions = {}): GitInitPlan {

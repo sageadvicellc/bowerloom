@@ -4,7 +4,8 @@
 // and `~` labels only. Real packages and real git on synthetic folders; a test that needs git skips with the reason when it is not installed.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, symlinkSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createEngineService, EngineCallRefusal, refusalOf } from '../main/engine-service.js';
 import type { EngineService } from '../main/engine-service.js';
@@ -169,6 +170,49 @@ test('Use my notes with no history: the plan lists every file the first commit a
   assert.equal(s.asks.at(-1)!.message, 'Start version history in ~/Documents/notes with 6 files?');
   assert.equal(value(await s.service.notesSummary(v.id)).history, 'git');
   assert.equal(refusal(await s.service.planNotesHistory(v.id)).code, 'NOTES_ALREADY_REPOSITORY');
+});
+
+/** The test's own git, with no user or system config, run at a repository root; the commit time is fixed. */
+function ownGit(root: string, args: readonly string[], when = '2024-03-05T12:00:00Z'): string {
+  return execFileSync(findGit().path, [...args], {
+    cwd: root, encoding: 'utf8', shell: false, stdio: ['ignore', 'pipe', 'pipe'],
+    env: { PATH: '/usr/bin:/bin', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', GIT_DIR: join(root, '.git'), GIT_WORK_TREE: root, GIT_AUTHOR_NAME: 'T', GIT_AUTHOR_EMAIL: 't@localhost', GIT_COMMITTER_NAME: 'T', GIT_COMMITTER_EMAIL: 't@localhost', GIT_AUTHOR_DATE: when, GIT_COMMITTER_DATE: when },
+  });
+}
+
+test('notes inside a larger repository: the read shows its history for the folder only; no history start and no starter there', { skip: gitMissing }, async t => {
+  const s = setup(t);
+  const root = join(s.home, 'Projects', 'big');
+  const dir = join(root, 'knowledge-base');
+  for (const [rel, text] of [['README.md', '# Big\n'], ['knowledge-base/index.md', '# Index\n'], ['knowledge-base/pages/one.md', '# One\n']] as const) {
+    mkdirSync(join(root, rel, '..'), { recursive: true }); writeFileSync(join(root, rel), text);
+  }
+  ownGit(root, ['init', '-q']);
+  for (const [k, v] of [['core.repositoryformatversion', '1'], ['extensions.worktreeConfig', 'true'], ['remote.origin.url', 'ssh://example.invalid/big']] as const) ownGit(root, ['config', k, v]);
+  ownGit(root, ['add', '-A']); ownGit(root, ['-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'one']);
+  writeFileSync(join(root, 'README.md'), '# Big, later\n');
+  ownGit(root, ['add', '-A'], '2024-06-01T12:00:00Z'); ownGit(root, ['-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'outside'], '2024-06-01T12:00:00Z');
+  const v = await chooseNotes(s, dir);
+  assert.equal(v.history, 'parent');
+  assert.equal(v.lastCommitAt, '2024-03-05T12:00:00Z', 'the newer commit outside the folder is not counted');
+  assert.equal(v.pages, 2);
+  noPath(s, v);
+  assert.equal(refusal(await s.service.planNotesHistory(v.id)).code, 'NOTES_PARENT_REPOSITORY');
+  const empty = join(root, 'new-notes'); mkdirSync(empty);
+  const fresh = await chooseNotes(s, empty, 'start');
+  assert.equal(refusal(await s.service.planCreateNotes(fresh.id)).code, 'NOTES_PARENT_REPOSITORY');
+  assert.deepEqual(readdirSync(empty), [], 'no file and no nested repository');
+  assert.equal(existsSync(join(dir, '.git')), false);
+  assert.deepEqual(s.asks, [], 'nothing was asked, so nothing was written');
+});
+
+test('the walk for a larger repository stops at the home folder main was given', { skip: gitMissing }, async t => {
+  const s = setup(t);
+  ownGit(s.base, ['init', '-q']);
+  const dir = myNotes(s.home);
+  const v = await chooseNotes(s, dir);
+  assert.equal(v.history, 'none', 'a repository above home is not the notes\' history');
+  assert.equal(value(await s.service.planNotesHistory(v.id)).count, 5);
 });
 
 test('add-from-kit: the keeper and its six skills, read by main from the shipped kit, with the kit\'s pinned version in sources.json', async t => {

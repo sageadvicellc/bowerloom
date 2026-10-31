@@ -15,6 +15,8 @@ import { COMMIT_MESSAGES, findGit } from './git.js';
 import type { GitRunOptions } from './git.js';
 import { firstCommit } from './history.js';
 import { NotesRefusal, refuse } from './refusal.js';
+import { refuseInsideRepository } from './repo.js';
+import type { RepositoryOptions } from './repo.js';
 
 export const STARTER_PLAN_FORMAT = 'bowerloom/notes-starter-plan/v1beta1' as const;
 export const STARTER_LIMITS = Object.freeze({ files: 256, fileBytes: 1024 * 1024, totalBytes: 8 * 1024 * 1024, depth: 8 });
@@ -22,7 +24,7 @@ export const STARTER_LIMITS = Object.freeze({ files: 256, fileBytes: 1024 * 1024
 /** One file of the starter template. */
 export interface TemplateFile { readonly path: string; readonly bytes: Uint8Array }
 
-export interface NotesOptions extends GitRunOptions {
+export interface NotesOptions extends GitRunOptions, RepositoryOptions {
   /** The paths to look for git instead of the fixed ones. Tests pass these; the app passes nothing. */
   readonly gitCandidates?: readonly string[];
 }
@@ -76,10 +78,12 @@ function foldersOf(files: readonly TemplateFile[]): string[] {
   return [...set].sort(byBytes);
 }
 
-function buildPlan(dir: unknown, templateFiles: unknown): { plan: StarterPlan; files: TemplateFile[] } {
+function buildPlan(dir: unknown, templateFiles: unknown, options: NotesOptions): { plan: StarterPlan; files: TemplateFile[] } {
   const target = targetFolder(dir);
   const files = checkTemplate(templateFiles);
   if (target.existing && fs.readdirSync(target.abs).length > 0) refuse('NOTES_NOT_EMPTY');
+  // Inside a larger repository the starter would be a repository nested in it. Bowerloom refuses, and writes nothing: the person picks a folder outside it.
+  refuseInsideRepository(target.abs, options);
   const body = {
     format: STARTER_PLAN_FORMAT, dir: target.abs, createsFolder: target.existing === null, folders: foldersOf(files),
     files: files.map(f => ({ path: f.path, bytes: f.bytes.length, sha256: sha(f.bytes) })), message: COMMIT_MESSAGES.starter,
@@ -90,10 +94,11 @@ function buildPlan(dir: unknown, templateFiles: unknown): { plan: StarterPlan; f
 
 /**
  * Plans a starter wiki in `dir`, an absent folder whose parent exists, or an empty folder. Reads only. Refuses
- * NOTES_PATH_UNSAFE, NOTES_FOLDER_MISSING, NOTES_NOT_EMPTY, NOTES_TEMPLATE_INVALID, or NOTES_GIT_MISSING.
+ * NOTES_PATH_UNSAFE, NOTES_FOLDER_MISSING, NOTES_NOT_EMPTY, NOTES_PARENT_REPOSITORY (the folder sits inside a larger repository),
+ * NOTES_TEMPLATE_INVALID, or NOTES_GIT_MISSING.
  */
 export function planStarter(dir: string, templateFiles: readonly TemplateFile[], options: NotesOptions = {}): StarterPlan {
-  const { plan } = buildPlan(dir, templateFiles);
+  const { plan } = buildPlan(dir, templateFiles, options);
   git(options);
   return plan;
 }
@@ -105,7 +110,7 @@ export function planStarter(dir: string, templateFiles: readonly TemplateFile[],
  */
 export async function applyStarter(dir: string, revision: string, templateFiles: readonly TemplateFile[], options: NotesOptions = {}): Promise<StarterResult> {
   const binary = git(options);
-  const { plan, files } = buildPlan(dir, templateFiles);
+  const { plan, files } = buildPlan(dir, templateFiles, options);
   if (plan.revision !== revision) refuse('NOTES_STALE');
   const target = plan.dir, written: string[] = [];
   try {

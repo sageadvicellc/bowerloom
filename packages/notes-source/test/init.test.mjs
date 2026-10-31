@@ -47,13 +47,13 @@ test('init on a linked folder gives exactly one commit of the listed files and a
   assert.equal(fs.readFileSync(path.join(dir, 'pages/one.md'), 'utf8'), before);
 });
 
-test('a folder inside another repository gets its own repository, and the outer one is untouched', { skip: needsGit }, async t => {
+test('a folder inside another repository gets no repository of its own, and the outer one is untouched', { skip: needsGit }, async t => {
   const outer = tempDir(t);
   execFileSync(GIT.path, ['init', '-q'], { cwd: outer, env: { PATH: '/usr/bin:/bin', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' } });
   const dir = path.join(outer, 'wiki'); put(dir, 'index.md');
-  const plan = planGitInit(dir);
-  await applyGitInit(dir, plan.revision);
-  assert.equal(ownGit(dir, ['rev-list', '--count', 'HEAD']), '1');
+  assert.throws(() => planGitInit(dir), refusal('NOTES_PARENT_REPOSITORY'));
+  await assert.rejects(applyGitInit(dir, 'a'.repeat(64)), refusal('NOTES_PARENT_REPOSITORY'));
+  assert.equal(fs.existsSync(path.join(dir, '.git')), false);
   assert.throws(() => ownGit(outer, ['rev-parse', 'HEAD']), 'the outer repository still has no commit');
 });
 

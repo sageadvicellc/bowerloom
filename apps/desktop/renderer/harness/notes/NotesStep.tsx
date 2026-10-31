@@ -1,7 +1,8 @@
 /**
  * The notes step (first five minutes, section 4 step 3; spec 6.9 "Link or create"): one question, "Where do you keep your notes?", and two buttons.
- *  - "Use my notes" opens main's notes chooser. A folder with a history is ready. A folder with none gets an offer to start one, with the list of files the first
- *    record holds; "Not now" leaves it as it is, and the keeper then only reports.
+ *  - "Use my notes" opens main's notes chooser. A folder with a history is ready, and so is a folder inside a larger repository, whose history is that
+ *    repository's: it never gets the offer. A folder with none gets an offer to start one, with the list of files the first record holds; "Not now" leaves it
+ *    as it is, and the keeper then only reports.
  *  - "Start fresh" opens the chooser for an empty folder, shows the starter files, then one button, "Create".
  * Each write runs only after main's own dialog, for the plan shown last. The step is drawn in the first run and in the Notes panel: both reach the same
  * component, and each gets the chosen folder through `onDone`, which also keeps it for this window (notes-session.tsx).
@@ -20,7 +21,7 @@ import { useNotesSession } from './notes-session.js';
 import './notes.css';
 
 /** How a finished step left the notes. */
-export type NotesEnd = 'ready' | 'created' | 'report-only' | 'no-commit' | 'git-missing' | 'refused' | 'unreadable';
+export type NotesEnd = 'ready' | 'parent' | 'created' | 'report-only' | 'no-commit' | 'git-missing' | 'refused' | 'unreadable';
 export type NotesPhase =
   | { readonly kind: 'ask' }
   | { readonly kind: 'offer'; readonly view: NotesView; readonly plan: NotesHistoryPlanView | null }
@@ -30,7 +31,7 @@ export type NotesPhase =
 /** The most file names the history offer lists on screen. The count says how many in all. */
 const LIST_LIMIT = 12;
 const END_WORDS: Readonly<Record<NotesEnd, string>> = Object.freeze({
-  ready: NOTES.hint.ready, created: NOTES.hint.created, 'report-only': NOTES.hint.reportOnly, 'no-commit': NOTES.hint.noCommit, 'git-missing': NOTES.hint.gitMissing,
+  ready: NOTES.hint.ready, parent: NOTES.hint.parent, created: NOTES.hint.created, 'report-only': NOTES.hint.reportOnly, 'no-commit': NOTES.hint.noCommit, 'git-missing': NOTES.hint.gitMissing,
   refused: NOTES.hint.refused, unreadable: NOTES.hint.unreadable,
 });
 
@@ -105,7 +106,7 @@ export function NotesStepView({ phase, busy, refusal, refusalId, held, onUse, on
       {phase.kind === 'done' ? (
         <div data-notes-done={phase.how}>
           <p className="hxn-folder"><span className="hxn-folder-name">{phase.view.name}</span> <span className="hxe-muted">{pagesWords(phase.view.pages, phase.view.complete)}</span></p>
-          <p className="hxe-text"><StateDot tone={phase.how === 'ready' || phase.how === 'created' ? 'good' : 'quiet'}>{END_WORDS[phase.how]}</StateDot></p>
+          <p className="hxe-text"><StateDot tone={phase.how === 'ready' || phase.how === 'parent' || phase.how === 'created' ? 'good' : 'quiet'}>{END_WORDS[phase.how]}</StateDot></p>
           {phase.clean === false ? <p className="hxe-text" data-not-clean=""><StateDot tone="warn">{NOTES.hint.notClean}</StateDot></p> : null}
           <HButton size="small" disabled={off} onClick={onAgain}>{NOTES.label.chooseAgain}</HButton>
         </div>

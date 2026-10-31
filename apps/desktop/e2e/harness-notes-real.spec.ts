@@ -7,7 +7,8 @@
  * git on a day that is not today, start the app again, and check that the Notes panel shows the page count and the last-change day the test read itself.
  *
  * "link": Use my notes on a folder that has pages and no history. The history offer lists the files the first commit holds. Accepting it makes one commit
- * and leaves every file as it was; declining it leaves no `.git` and writes nothing.
+ * and leaves every file as it was; declining it leaves no `.git` and writes nothing. A wiki folder inside a larger repository gets no offer: the Notes panel
+ * shows the larger repository's history for that folder only, and nothing is written.
  *
  * Every expected value is read by this test from files and from its own git (a scrubbed environment), never from the app's code or its answers. If git is
  * not where Bowerloom looks for it, the file skips with the reason.
@@ -259,6 +260,70 @@ test('link: an existing wiki with no history gets the offer; accepting it makes 
   expect(git(wiki, ['ls-files']).split('\n').filter(Boolean).sort()).toEqual(visible);
   // Every file is byte for byte as it was, and the hidden ones are still there.
   const bytesAfter = snapshot(wiki);
+  expect([...bytesAfter.keys()]).toEqual([...bytesBefore.keys()]);
+  for (const [path, bytes] of bytesBefore) expect(bytesAfter.get(path)!.equals(bytes), path).toBe(true);
+});
+
+test('link: a wiki folder inside a larger repository shows that history in the panel, for the folder only, and gets no history offer', async () => {
+  test.setTimeout(180_000);
+  home = newHome();
+  // A larger repository as a clone of a hosted one looks: a remote address and worktreeConfig. The wiki is its knowledge-base folder. A later commit
+  // touches only a file outside the wiki, so the wiki's last change is the earlier day.
+  const root = join(home, 'Projects', 'big-repo'), wiki = join(root, 'knowledge-base');
+  put(root, 'README.md', '# Big repo\n');
+  put(wiki, 'index.md', '# Wiki\n');
+  put(wiki, 'pages/soil.md', '# Soil\n');
+  put(wiki, 'pages/deep/roots.md', '# Roots\n');
+  git(root, ['init', '-q']);
+  for (const [key, val] of [['core.repositoryformatversion', '1'], ['extensions.worktreeConfig', 'true'], ['remote.origin.url', 'ssh://example.invalid/big-repo']]) git(root, ['config', key!, val!]);
+  commitAll(root, 'Add the wiki', '2024-03-05');
+  put(root, 'src/app.txt', 'code\n');
+  commitAll(root, 'Code outside the wiki', '2024-06-01');
+  expect(lastCommitDay(root)).toBe('2024-06-01');
+  const wikiDay = new Date(Number(git(root, ['log', '-1', '--format=%ct', '--', 'knowledge-base']).trim()) * 1000).toISOString().slice(0, 10);
+  expect(wikiDay).toBe('2024-03-05');
+  const pages = countMarkdown(wiki);
+  expect(pages).toBe(3);
+  const head = git(root, ['rev-parse', 'HEAD']).trim();
+  const bytesBefore = snapshot(root);
+  const harnessDir = teamFolder(home);
+  await start('notes');
+  const p = page();
+
+  // Use my notes: the folder is ready at once. No offer to start a history, and nothing is asked.
+  await h.pick(wiki);
+  await p.getByRole('button', { name: 'Use my notes', exact: true }).click();
+  const done = p.locator('[data-notes-done="parent"]');
+  await expect(done).toBeVisible();
+  await expect(done).toContainText('Your notes are ready. Their history is in a larger repository.');
+  await expect(p.locator('[data-notes-offer]')).toHaveCount(0);
+  await expect(p.locator('[data-start-history]')).toHaveCount(0);
+  await expect(p.locator('[data-home]')).not.toContainText(home);
+  expect(await h.asked(), 'no write was asked').toEqual([]);
+
+  // The Notes panel in My agents shows the history: the wiki's own last change, read by the test from its own git, and where the history comes from.
+  await p.getByRole('button', { name: 'Build my Notes keeper', exact: true }).click();
+  const s = saveSheet(p);
+  await expect(s).toBeVisible();
+  await h.pick(harnessDir);
+  await s.getByRole('button', { name: 'Choose a folder', exact: true }).click();
+  await expect(s.locator('.hxi-card', { hasText: 'team' })).toHaveAttribute('aria-pressed', 'true');
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  await tour(p).getByRole('button', { name: 'Skip tour', exact: true }).click();
+  const card = s.locator('[data-section="notes"] [data-card]');
+  await expect(card).toHaveCount(1);
+  await expect(card.locator('[data-pages]')).toHaveText(`${pages} pages`);
+  await expect(card.locator('[data-last-change]')).toHaveText(`Last change ${wikiDay}`);
+  await expect(card.locator('[data-history="parent"]')).toHaveText('Its history comes from a larger repository.');
+  await expect(s.locator('[data-notes-offer]')).toHaveCount(0);
+  await expect(s.locator('[data-start-history]')).toHaveCount(0);
+  await expect(s).not.toContainText(home);
+
+  // Nothing was written: no nested repository, no new commit, every file as it was.
+  expect(existsSync(join(wiki, '.git')), 'no repository inside the larger one').toBe(false);
+  expect(git(root, ['rev-parse', 'HEAD']).trim()).toBe(head);
+  expect(git(root, ['status', '--porcelain'])).toBe('');
+  const bytesAfter = snapshot(root);
   expect([...bytesAfter.keys()]).toEqual([...bytesBefore.keys()]);
   for (const [path, bytes] of bytesBefore) expect(bytesAfter.get(path)!.equals(bytes), path).toBe(true);
 });

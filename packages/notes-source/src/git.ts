@@ -5,15 +5,19 @@
  *   dialog, so only the Command Line Tools and Xcode gits count. The binary must be a plain executable file, owned by
  *   root or by you, that nobody else can write.
  * - Every argv is one of five fixed forms, behind fixed hardening options, and is checked against that allowlist just
- *   before the start. A sixth form, the key names of the repository's own config, runs only inside runGit. Nothing else
- *   ever runs. The hardening forbids every transport (`protocol.allow=never`), and the environment turns lazy fetches
- *   off, so git never reaches a remote.
- * - A repository whose own config sets a key that can start a program or reach a remote (an extension, such as a partial
- *   clone, an ssh command, a remote address, a protocol rule, or an include) is refused before any command but init.
+ *   before the start. The log form may end with `-- <prefix>`, the notes folder's place in a larger repository. Two more
+ *   forms, the key names of the repository's own config and of its worktree config, run only inside runGit. Nothing else
+ *   ever runs. The hardening forbids every transport (`protocol.allow=never`), sets no ssh command, and the environment
+ *   turns lazy fetches off, so git never reaches a remote.
+ * - A repository whose own config sets a key that can start a program (an ssh command or proxy, a partial clone or other
+ *   extension, a protocol rule, an include, or a remote's helper program) is refused before any command but init. A
+ *   remote's address and fetch rule, `extensions.worktreeConfig`, and `extensions.objectFormat` are allowed: a clone of a
+ *   hosted repository has them, and with every transport off they reach nothing.
  * - The process starts with `shell: false`, the verified folder as cwd, and a minimal environment that holds no
  *   variable of the caller: no HOME, so no global or XDG config, plus `GIT_CONFIG_GLOBAL=/dev/null` and
  *   `GIT_CONFIG_NOSYSTEM=1`. Pathspecs are literal. Every form except init pins `GIT_DIR` and `GIT_WORK_TREE` to the
- *   folder, so a repository above it is never found.
+ *   repository folder it is given, so git's own discovery never runs. A notes folder inside a larger repository is read
+ *   through that repository's root, which repo.ts finds by a walk of plain folders, with the notes folder as the pathspec.
  * - A timeout and an output cap stop a call. The child runs in its own process group, and the whole group is killed.
  */
 import { spawn } from 'node:child_process';
@@ -108,6 +112,7 @@ export const GIT_HARDENING: readonly string[] = Object.freeze([
   '-c', 'user.email=bowerloom@localhost',
   '-c', 'init.defaultBranch=main',
   '-c', 'protocol.allow=never',
+  '-c', 'core.sshCommand=false',
 ]);
 
 export const GIT_LIMITS = Object.freeze({
@@ -121,12 +126,15 @@ export const GIT_LIMITS = Object.freeze({
   maxOutputBytes: 4 * 1024 * 1024,
 });
 
-/** One of the five commands Bowerloom runs. */
+/**
+ * One of the five commands Bowerloom runs. `log-time` with a `prefix` reads the last commit that touched that folder only: the notes folder's place in a
+ * larger repository, relative to its root.
+ */
 export type GitCommand =
   | { readonly op: 'init' }
   | { readonly op: 'add'; readonly paths: readonly string[] }
   | { readonly op: 'commit'; readonly message: CommitMessage }
-  | { readonly op: 'log-time' }
+  | { readonly op: 'log-time'; readonly prefix?: string }
   | { readonly op: 'status' };
 
 const FIXED: Readonly<Record<'init' | 'log-time' | 'status', readonly string[]>> = Object.freeze({
@@ -135,10 +143,11 @@ const FIXED: Readonly<Record<'init' | 'log-time' | 'status', readonly string[]>>
   status: ['status', '--porcelain'],
 });
 /**
- * The sixth form, which only runGit itself starts, before every command but init: the key names of the repository's own config file, with no include
- * followed. It is never a GitCommand, so no caller can ask for it.
+ * The forms only runGit itself starts, before every command but init: the key names of the repository's own config file, and, when that file turns
+ * `extensions.worktreeConfig` on, of its worktree config file too, each with no include followed. Neither is ever a GitCommand, so no caller can ask for it.
  */
 const CONFIG_KEYS: readonly string[] = Object.freeze(['config', '--local', '--no-includes', '--name-only', '--list', '-z']);
+const WORKTREE_CONFIG_KEYS: readonly string[] = Object.freeze(['config', '--worktree', '--no-includes', '--name-only', '--list', '-z']);
 
 const keysAre = (value: object, keys: readonly string[]): boolean => {
   const own = Object.keys(value).sort();
@@ -151,6 +160,7 @@ export function gitArgv(command: unknown): string[] {
   const c = command as Record<string, unknown>;
   let tail: string[];
   if ((c.op === 'init' || c.op === 'log-time' || c.op === 'status') && keysAre(c, ['op'])) tail = [...FIXED[c.op]];
+  else if (c.op === 'log-time' && keysAre(c, ['op', 'prefix']) && plainRelative(c.prefix)) tail = [...FIXED['log-time'], '--', c.prefix];
   else if (c.op === 'add' && keysAre(c, ['op', 'paths']) && Array.isArray(c.paths)) tail = ['add', '--', ...(c.paths as unknown[]).map(p => typeof p === 'string' ? p : refuse('NOTES_GIT_ARGV'))];
   else if (c.op === 'commit' && keysAre(c, ['op', 'message']) && typeof c.message === 'string') tail = ['commit', '-q', '-m', c.message];
   else return refuse('NOTES_GIT_ARGV');
@@ -161,13 +171,15 @@ export function gitArgv(command: unknown): string[] {
 
 const same = (a: readonly unknown[], b: readonly string[]): boolean => a.length === b.length && a.every((v, i) => v === b[i]);
 
-/** Refuses NOTES_GIT_ARGV unless argv is exactly the hardening options and one of the five forms. */
+/** Refuses NOTES_GIT_ARGV unless argv is exactly the hardening options and one of the five forms (or runGit's own config forms). */
 export function checkGitArgv(argv: unknown): void {
   if (!Array.isArray(argv) || argv.some(a => typeof a !== 'string')) refuse('NOTES_GIT_ARGV');
   const list = argv as string[];
   if (!same(list.slice(0, GIT_HARDENING.length), GIT_HARDENING)) refuse('NOTES_GIT_ARGV');
   const tail = list.slice(GIT_HARDENING.length);
-  if (Object.values(FIXED).some(form => same(tail, form)) || same(tail, CONFIG_KEYS)) return;
+  if (Object.values(FIXED).some(form => same(tail, form)) || same(tail, CONFIG_KEYS) || same(tail, WORKTREE_CONFIG_KEYS)) return;
+  const log = FIXED['log-time'];
+  if (tail.length === log.length + 2 && same(tail.slice(0, log.length), log) && tail[log.length] === '--' && plainRelative(tail[log.length + 1])) return;
   if (tail.length === 4 && tail[0] === 'commit' && tail[1] === '-q' && tail[2] === '-m' && MESSAGE_SET.has(tail[3]!)) return;
   if (tail.length >= 3 && tail[0] === 'add' && tail[1] === '--') {
     const paths = tail.slice(2);
@@ -222,32 +234,51 @@ export function checkGitDir(dir: string): void {
   if (st.isSymbolicLink() || !st.isDirectory() || st.uid !== uid()) refuse('NOTES_PATH_UNSAFE', ['.git']);
 }
 
+/** The extensions a notes repository may set: neither makes git start a program or fetch anything. */
+const SAFE_EXTENSIONS: ReadonlySet<string> = new Set(['extensions.worktreeconfig', 'extensions.objectformat']);
+
 /**
  * True for a config key a notes repository may not set, by its name as `git config --name-only` prints it (section and key in lowercase). Each one can
- * make git start a program or reach a remote: an extension (a partial clone fetches missing objects lazily), an ssh command or proxy, a remote's address
- * or helper, a protocol rule (it would override `protocol.allow=never`), or an include (it would bring in keys this check never saw).
+ * make git start a program or reach a remote: an extension other than worktreeConfig and objectFormat (a partial clone fetches missing objects lazily), a
+ * promisor remote or its filter, an ssh command, proxy, or variant, a remote's helper program (`vcs`, `uploadpack`, `receivepack`) and those sections, a
+ * protocol rule (it would override `protocol.allow=never`), or an include (it would bring in keys this check never saw). A remote's address, push address,
+ * and fetch rule are allowed: every transport is off, so they reach nothing.
  */
 export function riskyConfigKey(key: string): boolean {
   const k = key.toLowerCase();
+  if (SAFE_EXTENSIONS.has(k)) return false;
+  if (k.startsWith('remote.')) return /\.(?:vcs|uploadpack|receivepack|promisor|partialclonefilter)$/.test(k);
   return k.startsWith('extensions.') || k.startsWith('protocol.') || k.startsWith('include.') || k.startsWith('includeif.')
-    || k === 'core.sshcommand' || k === 'core.gitproxy' || k === 'ssh.variant'
-    || (k.startsWith('remote.') && /\.(?:url|pushurl|vcs|uploadpack|receivepack)$/.test(k));
+    || k.startsWith('uploadpack.') || k.startsWith('receivepack.')
+    || k === 'core.sshcommand' || k === 'core.gitproxy' || k === 'ssh.variant';
 }
 
 /**
- * Refuses NOTES_GIT_CONFIG when the repository's own config file sets a risky key (riskyConfigKey), and NOTES_GIT_FAILED when git cannot list it. The list is read by git
- * itself, under the same hardening, with includes off, so the keys are the ones git would see; only key names are read, never a value.
+ * Refuses NOTES_GIT_CONFIG when the repository's own config file sets a risky key (riskyConfigKey), and NOTES_GIT_FAILED when git cannot list it. When that
+ * file turns `extensions.worktreeConfig` on, git reads the worktree config file too, so its keys are checked the same way. Each list is read by git itself,
+ * under the same hardening, with includes off, so the keys are the ones git would see; only key names are read, never a value.
  */
 async function checkRepoConfig(file: string, dir: string, timeoutMs: number, cap: number): Promise<void> {
-  const argv = [...GIT_HARDENING, ...CONFIG_KEYS];
-  checkGitArgv(argv);
-  // A list git cannot make (a broken repository) refuses NOTES_GIT_FAILED, as the command itself would: nothing else runs.
-  const out = await spawnGit(file, argv, dir, gitEnvironment(dir, 'status'), timeoutMs, cap);
-  if (out.split('\0').some(key => riskyConfigKey(key.trim()))) refuse('NOTES_GIT_CONFIG');
+  const keys = async (form: readonly string[]): Promise<string[]> => {
+    const argv = [...GIT_HARDENING, ...form];
+    checkGitArgv(argv);
+    // A list git cannot make (a broken repository) refuses NOTES_GIT_FAILED, as the command itself would: nothing else runs.
+    return (await spawnGit(file, argv, dir, gitEnvironment(dir, 'status'), timeoutMs, cap)).split('\0').map(k => k.trim().toLowerCase());
+  };
+  const local = await keys(CONFIG_KEYS);
+  if (local.some(riskyConfigKey)) refuse('NOTES_GIT_CONFIG');
+  if (!local.includes('extensions.worktreeconfig')) return;
+  // Git lists a worktree config file only when it is there; with none, git reads nothing more.
+  try { fs.lstatSync(join(dir, '.git', 'config.worktree')); } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return;
+    refuse('NOTES_GIT_FAILED');
+  }
+  if ((await keys(WORKTREE_CONFIG_KEYS)).some(riskyConfigKey)) refuse('NOTES_GIT_CONFIG');
 }
 
 /**
- * Runs one allowed git command in a verified folder and returns its stdout. Every command but init needs `.git` to be
+ * Runs one allowed git command in a verified folder and returns its stdout. `dir` is the repository's own folder: the notes folder, or the root of the
+ * larger repository that holds it, with the notes folder as the log's prefix. Every command but init needs `.git` to be
  * a real folder of yours, and its own config file to set no risky key (NOTES_GIT_CONFIG), checked just before. Refuses
  * NOTES_GIT_TIMEOUT, NOTES_GIT_OUTPUT, NOTES_GIT_FAILED (a non-zero exit), or NOTES_GIT_MISSING (the binary is gone).
  * Git's own messages are never passed on: they can hold paths.

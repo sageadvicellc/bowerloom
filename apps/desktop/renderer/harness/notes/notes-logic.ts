@@ -7,13 +7,15 @@ import { KEEPER_FIRST_SKILL, keeperOf, sourceFor } from '../../../shared/harness
 import type { BuildProgress } from '../words-notes.js';
 
 /**
- * What a chosen notes folder needs next: nothing (it keeps a history), an offer to start its history, or words that the keeper only reports. A `.git` with no
+ * What a chosen notes folder needs next: nothing (it keeps a history, its own or a larger repository's), an offer to start its history, or words that the
+ * keeper only reports. A folder inside a larger repository (`parent`) is ready and never gets the offer: its history is that repository's. A `.git` with no
  * first commit (a history start that stopped part way, or a repository git cannot read) is never ready: Bowerloom does not finish it, and says so in words.
  */
-export type AfterChoose = 'ready' | 'offer-history' | 'no-commit' | 'git-missing' | 'refused' | 'unreadable';
+export type AfterChoose = 'ready' | 'parent' | 'offer-history' | 'no-commit' | 'git-missing' | 'refused' | 'unreadable';
 export function afterChoose(view: NotesView): AfterChoose {
   switch (view.history) {
     case 'git': return 'ready';
+    case 'parent': return 'parent';
     case 'none': return 'offer-history';
     case 'no-commit': return 'no-commit';
     case 'git-missing': return 'git-missing';

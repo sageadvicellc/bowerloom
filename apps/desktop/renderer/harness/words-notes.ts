@@ -36,6 +36,8 @@ export const NOTES = deepFreeze({
     unreadable: 'Bowerloom cannot read this folder\'s history.',
     noCommit: 'Its history has no first commit. Finish it with git.',
     refused: 'Its git settings could start a program, so Bowerloom stopped.',
+    parent: 'Your notes are ready. Their history is in a larger repository.',
+    parentHistory: 'Its history comes from a larger repository.',
     ready: 'Your notes are ready.',
     created: 'Your notes are ready, with a history from the start.',
     moreKinds: 'More kinds of notes are coming.',

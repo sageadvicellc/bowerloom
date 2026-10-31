@@ -22,6 +22,12 @@ test('after a folder is chosen: notes with a history are ready; none offers to s
   assert.equal(afterChoose(view({ history: 'unreadable' })), 'unreadable');
 });
 
+test('after a folder is chosen: notes kept in a larger repository are ready, and never get the offer to start a history', () => {
+  assert.equal(afterChoose(view({ history: 'parent' })), 'parent');
+  assert.equal(afterChoose(view({ history: 'parent', lastCommitAt: null })), 'parent', 'even before the larger repository committed the folder');
+  assert.notEqual(afterChoose(view({ history: 'parent' })), 'offer-history');
+});
+
 test('after a folder is chosen: a .git with no first commit is never ready, and a refused git config is never ready', () => {
   assert.equal(afterChoose(view({ history: 'no-commit', lastCommitAt: null })), 'no-commit');
   assert.equal(afterChoose(view({ history: 'refused', lastCommitAt: null })), 'refused');

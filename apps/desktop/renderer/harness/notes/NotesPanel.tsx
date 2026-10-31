@@ -24,9 +24,9 @@ export interface NotesPanelProps {
   step?: ReactNode;
 }
 
-/** Why a folder's history is not ready, in words. */
+/** Where a folder's history comes from when it is not its own repository, or why it is not ready, in words. */
 const HISTORY_WORDS: Readonly<Record<Exclude<NotesView['history'], 'git'>, string>> = Object.freeze({
-  none: NOTES.hint.reportOnly, 'no-commit': NOTES.hint.noCommit, 'git-missing': NOTES.hint.gitMissing, refused: NOTES.hint.refused, unreadable: NOTES.hint.unreadable,
+  parent: NOTES.hint.parentHistory, none: NOTES.hint.reportOnly, 'no-commit': NOTES.hint.noCommit, 'git-missing': NOTES.hint.gitMissing, refused: NOTES.hint.refused, unreadable: NOTES.hint.unreadable,
 });
 
 /** The lines of one card: what Bowerloom read of the folder, or why it could not. */
@@ -41,7 +41,7 @@ function linesOf(card: NotesCard): ReactNode[] {
     <span data-last-change="">{lastChangeWords(v.lastCommitAt)}</span>,
     readers,
     <span data-report="">{reportWords(v.latestReport, v.reportsComplete)}</span>,
-    ...(v.history === 'git' ? [] : [<StateDot key="h" tone={v.history === 'none' ? 'quiet' : 'warn'}>{HISTORY_WORDS[v.history]}</StateDot>]),
+    ...(v.history === 'git' ? [] : [<span key="h" data-history={v.history}><StateDot tone={v.history === 'none' || v.history === 'parent' ? 'quiet' : 'warn'}>{HISTORY_WORDS[v.history]}</StateDot></span>]),
     ...(card.attached ? [] : [<StateDot key="a" tone="quiet">{NOTES.hint.notAttached}</StateDot>]),
   ];
 }

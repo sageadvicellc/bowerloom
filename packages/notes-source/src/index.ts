@@ -9,3 +9,5 @@ export { GIT_INIT_LIMITS, GIT_INIT_PLAN_FORMAT, applyGitInit, planGitInit } from
 export type { GitInitOptions, GitInitPlan, GitInitResult } from './init.js';
 export { NOTES_SUMMARY_FORMAT, SUMMARY_LIMITS, readNotesSummary } from './summary.js';
 export type { NotesHistory, NotesSummary, SummaryOptions } from './summary.js';
+export { findRepository } from './repo.js';
+export type { Repository, RepositoryOptions } from './repo.js';
