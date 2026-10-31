@@ -38,7 +38,7 @@ test('Projects shows the five rows of the design with their statuses and the but
   await expect(rows).toHaveCount(5);
   await expect(rows.nth(0)).toContainText('bowerloom');
   await expect(rows.nth(0)).toContainText('Weekly report crew');
-  await expect(rows.nth(0)).toContainText('~/Sage Advice/code/internal-tools/bowerloom');
+  await expect(rows.nth(0)).toContainText('~/Workshop/code/bowerloom');
   for (const words of ['Claude Code installed', 'Codex out of date', 'OpenCode not installed']) await expect(rows.nth(0)).toContainText(words);
   await expect(rows.nth(0).getByRole('button', { name: /^Update/ })).toBeVisible();
   await expect(rows.nth(1)).toContainText('Claude Code installed');
@@ -169,7 +169,7 @@ test('Assign to project walks the three steps at one sheet height: pick the fold
   const cards = s.locator('.hxi-card');
   await expect(cards).toHaveCount(5);
   await expect(cards.nth(0)).toHaveAttribute('aria-pressed', 'true');
-  await expect(cards.nth(0)).toContainText('~/Sage Advice/code/internal-tools/bowerloom');
+  await expect(cards.nth(0)).toContainText('~/Workshop/code/bowerloom');
   await expect(s.getByRole('button', { name: 'Add a folder', exact: true })).toBeVisible();
   const heights: number[] = [];
   const height = async (): Promise<number> => Math.round((await s.boundingBox())!.height);

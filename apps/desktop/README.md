@@ -38,14 +38,6 @@ The first time you open your own Bowerloom, the app looks once at the folders ri
 
 Every duration, easing and distance of the app's motion is in one file, `renderer/motion-tokens.ts`, so you can retune it in one edit. The maintainer confirmed the weighting on 2026-10-24 (see the header of `renderer/motion-tokens.ts`): the map is mostly restraint and speed, with a little playfulness only when you drop or connect something or tidy up; the knowledge graph is the gentle settling of the graph; panels are short and polished. If your computer is set to reduce motion, everything is instant.
 
-## Prototype
-
-A clickable prototype of Bowerloom 0.8, with six screens: setup, harness, skills, agents, knowledge, and versions. Every action is simulated in memory, so nothing is written, and a restart resets it. It runs with a temporary data folder that is removed when you close it. Open it with:
-
-```
-npm --prefix "<repo>" run desktop:prototype
-```
-
 ## The 0.8 home app: a sample world, or your own setup
 
 Two commands open the same app. Use `npm --prefix "<repo>" run desktop:prototype:v2` for a made-up sample world. It reads nothing from your computer. Use `npm --prefix "<repo>" run desktop:prototype:real` for your own setup, read only. It needs a real home folder (the `HOME` variable).

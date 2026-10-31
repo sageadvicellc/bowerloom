@@ -132,10 +132,10 @@ test('a link to a file is not a skipped shortcut; a link to a folder is, and is 
 
 test('discovery looks only at the immediate children of home, never at iCloud places or hidden folders, and never goes deeper', t => {
   const home = tempDir(t);
-  mkdirSync(join(home, 'Sage Advice', '.bowerloom'), { recursive: true }); mkdirSync(join(home, 'Documents', '.bowerloom'), { recursive: true }); mkdirSync(join(home, 'Desktop', '.bowerloom'), { recursive: true }); mkdirSync(join(home, 'Library', '.bowerloom'), { recursive: true });
+  mkdirSync(join(home, 'Workshop', '.bowerloom'), { recursive: true }); mkdirSync(join(home, 'Documents', '.bowerloom'), { recursive: true }); mkdirSync(join(home, 'Desktop', '.bowerloom'), { recursive: true }); mkdirSync(join(home, 'Library', '.bowerloom'), { recursive: true });
   mkdirSync(join(home, '.hidden', '.bowerloom'), { recursive: true }); mkdirSync(join(home, 'Work', 'deeper', '.bowerloom'), { recursive: true }); project(join(home, 'Plain')); mkdirSync(join(home, 'Empty'));
   symlinkSync(join(home, 'Plain'), join(home, 'LinkToPlain'));
-  assert.deepEqual(discoverNearby(home).map(d => d.slice(home.length)), ['/Plain', '/Sage Advice']);
+  assert.deepEqual(discoverNearby(home).map(d => d.slice(home.length)), ['/Plain', '/Workshop']);
   for (const name of ['Documents', 'Desktop', 'Library']) assert.ok(NEVER_LOOK.has(name), name);
   assert.deepEqual(discoverNearby(join(home, 'gone')), []);
   const many = tempDir(t); for (let i = 0; i < DISCOVER_LIMITS.results + 5; i++) project(join(many, `p${String(i).padStart(2, '0')}`));
