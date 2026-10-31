@@ -26,6 +26,8 @@ describe('bundleTargetIdentity and writeBundleFile (lane A)', () => {
   test.todo('the temporary file is gone after every failure');
   test.todo('the temporary file has mode 0600 from creation, and its name differs between runs');
   test.todo('the CLI path never replaces a file');
+  test.todo('a target volume without hard links (link fails with EPERM, ENOTSUP, EXDEV or EMLINK): copyFile with COPYFILE_EXCL is used, a file made in between is never replaced, and a failed copy removes only the file this call made');
+  test.todo('the temporary file name starts with a dot and ends in .part');
 });
 
 describe('encodeBundle and decodeBundle (lane A)', () => {
@@ -36,6 +38,8 @@ describe('encodeBundle and decodeBundle (lane A)', () => {
   test.todo('skills/x/run.sh with no execute bit is listed as code and needs the acknowledgement');
   test.todo('a file that begins with #! anywhere in the bundle is listed as code');
   test.todo('a notes source named constructor links and leaves out correctly');
+  test.todo('change the command in a bundle: the acknowledgement changes; a summary hand-edited in the window with the old sha256 is never used (lane C builds it from the held bundle)');
+  test.todo('helper.node, setup.hta, a Mach-O file named helper and run.sh.txt with #! are listed as code in a real bundle, base64 records included');
   test.todo('a hostile bundle with a 10 MB path: the refusal message stays under 3 KB');
   test.todo('a definition at its limits that passes 48 MiB of JSON: base64 is chosen per record when smaller, then BUNDLE_TOO_LARGE if still over');
   test.todo('decode and encode yield between files: the event loop runs during a maximum-size bundle');

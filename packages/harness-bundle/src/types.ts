@@ -95,8 +95,8 @@ export interface BundleTool {
   readonly sha256: string;
 }
 /**
- * A file that can run (`codeWhy` in code-files.ts): it has an execute bit, it is `hooks.json`, it is under `scripts/`, its name ends in a code extension (`.sh`, `.py`,
- * `.js`, …) anywhere in the bundle, or its first bytes are `#!`. `sha256` is of its decoded bytes.
+ * A file that can run (`codeWhy` in code-files.ts). Every file of a bundle is code unless it passes the allowlist of data: a named data extension, valid UTF-8 for a
+ * text one, and first bytes that are not `#!` or the magic of a program. `sha256` is of its decoded bytes.
  */
 export interface BundleCodeFile {
   readonly path: string;

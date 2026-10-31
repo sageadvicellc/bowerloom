@@ -15,6 +15,8 @@ const commands = [
   ['landing', ['run', 'build', '--workspace', 'apps/landing']],
   ['dependencies', ['audit', '--omit=dev', '--audit-level=high', '--json']],
 ];
+// The release gate: with BOWERLOOM_RELEASE_GATE=1 the run also fails while a contract stub ('not built') is left in a file that ships (tools/check-not-built.mjs).
+if (process.env.BOWERLOOM_RELEASE_GATE === '1') commands.push(['not-built', ['run', 'check:not-built']]);
 for (const [name, args] of commands) {
   const started = performance.now();
   const result = await new Promise((done) => {

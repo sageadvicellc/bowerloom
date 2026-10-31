@@ -10,15 +10,21 @@ import { SHIPPED, findNotBuilt } from '../check-not-built.mjs';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
-test('the checker finds a stub by file and line, in a folder and in a file, and skips a file that is not there', t => {
+test('the checker finds a stub by file and line in .ts, .tsx, .mjs and .js, in subfolders, in single, double and backtick quotes, and skips test folders, other files and a file that is not there', t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bowerloom-notbuilt-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   fs.mkdirSync(path.join(root, 'pkg/src'), { recursive: true });
   fs.writeFileSync(path.join(root, 'pkg/src/a.ts'), "export const a = 1;\nconst notBuilt = () => { throw new Error('not built'); };\n");
   fs.writeFileSync(path.join(root, 'pkg/src/b.ts'), 'export const b = "not built";\nexport const c = 2;\n');
   fs.writeFileSync(path.join(root, 'pkg/src/c.mjs'), "throw new Error('not built');\n");
+  fs.mkdirSync(path.join(root, 'pkg/src/deep/er'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'pkg/src/deep/er/d.tsx'), 'export const x = `not built`;\n');
+  fs.writeFileSync(path.join(root, 'pkg/src/deep/e.js'), 'throw new Error("not built");\n');
+  fs.writeFileSync(path.join(root, 'pkg/src/deep/notes.md'), "'not built'\n");
+  fs.mkdirSync(path.join(root, 'pkg/src/test'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'pkg/src/test/t.mjs'), "assert('not built');\n");
   fs.writeFileSync(path.join(root, 'one.ts'), "// not built is only a comment word\nexport const d = 3;\n");
-  assert.deepEqual(findNotBuilt(root, ['pkg/src', 'one.ts', 'missing.ts']), ['pkg/src/a.ts:2', 'pkg/src/b.ts:1']);
+  assert.deepEqual(findNotBuilt(root, ['pkg/src', 'one.ts', 'missing.ts']), ['pkg/src/a.ts:2', 'pkg/src/b.ts:1', 'pkg/src/c.mjs:1', 'pkg/src/deep/e.js:1', 'pkg/src/deep/er/d.tsx:1']);
   assert.deepEqual(findNotBuilt(root, ['one.ts']), []);
 });
 

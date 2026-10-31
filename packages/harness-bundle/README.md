@@ -26,7 +26,7 @@ Built now, because they depend on nothing else: `addressOf(url)` and `codeWhy(pa
 ## Addresses and files that run
 
 - A tool's host is the host a client would really reach. `addressOf` masks each `${NAME}`, parses the address with `URL`, and shows `hostname` plus `:port`. So `https://github.com:${TOKEN}@evil.example/` shows `evil.example` and the flag `credentials`; a backslash address shows the host a client reads and the flag `backslash`; `https://[::1]:8080/` shows `[::1]:8080`; an address that does not parse shows `unreadable address`.
-- A file can run when it has an execute bit, is `hooks.json`, is under `scripts/`, has a code extension (`.sh`, `.py`, `.js`, `.mjs`, `.ts`, `.rb`, `.pl`, `.ps1`, `.bat`, `.cmd` and similar, in any case), or begins with `#!`, anywhere in the bundle. So `skills/x/run.sh` with no execute bit is listed and ticked.
+- A file is data only when it passes an allowlist; every other file can run and is listed with its hash. Data: a name that ends in `.md .markdown .txt .json .jsonc .yaml .yml .toml .csv .tsv` (valid UTF-8 bytes) or `.png .jpg .jpeg .gif .webp .ico .pdf .woff .woff2 .ttf .otf`, in any case, with no trailing space or dot, and whose first bytes (after an optional UTF-8 byte order mark) are not `#!`, ELF, Mach-O, PE (`MZ`) or WebAssembly. So `skills/x/run.sh`, `helper.node`, `setup.hta`, a file with no extension, an `.svg`, `a.sh ` and a Mach-O file named `helper` are all listed and ticked, and `run.sh.txt` is data until it begins with `#!`. The execute bit, `hooks.json` and `scripts/` count first. Missing bytes count as code; the function never throws.
 - `readBundleFile(absPath)`, `bundleTargetIdentity(absPath)` and `writeBundleFile(absPath, bytes, options)`. All async.
 
 Built now, because they depend on the summary only: `exportAcknowledgement(summary, revision)`, `importAcknowledgement(summary, executables, revision)` and `importChoicesOf(raw, names)`.
@@ -64,6 +64,7 @@ A bundle from another person is data. Reading one starts no program and loads no
 
 - The app's main process (lane C) validates every argument of every share call before it uses one: a bundle id against `SHARE_BUNDLE_ID` and looked up by the exact string in a `Map`, never by `Number()`; the choices shape with `importChoicesOf`; every notes id against the ids main gave out; the name and count limits; the revision and the acknowledgement as 64 lowercase hex characters (or null where allowed).
 - Main enforces `SAVE_EXECUTABLE_UNACKNOWLEDGED` itself. `applySave` does not check an acknowledgement.
+- Main computes the acknowledgement from the summary of the bundle it holds, built in the same call by `inspectBundle`, and never from a summary or a field the window sent. The hash covers each tool's `sha256` and not its shown fields (`command`, `host`, `addressFlags`), so a summary with edited shown fields and the old `sha256` gives the same hash; the rule keeps that from mattering.
 - Main compares the acknowledgement it computes now with the one it receives, with the plan revision and the bundle hash it holds, and writes only when all three match.
 - Main passes `replace` only when the file existed when the save dialog returned, the person agreed to replace it, and `bundleTargetIdentity` still gives the same identity. Main passes the real path of the target folder (`realpath`), so the person sees the folder that is written.
 - The command line never replaces a file.
@@ -72,8 +73,9 @@ A bundle from another person is data. Reading one starts no program and loads no
 
 - `readBundleFile`: `O_RDONLY | O_NOFOLLOW | O_NONBLOCK`; `fstat` on the descriptor before any read (a folder also opens with `O_RDONLY`); a regular file of the user, at most 48 MiB; read at most one byte past the size; a short read or a read past the size refuses; the identity and size are compared again after the read.
 - `bundleTargetIdentity`: `lstat` with `bigint: true`. The identity is `dev`, `ino`, `size`, `mtimeNs` and `birthtimeNs`, because an inode number can be reused soon after a delete.
-- `writeBundleFile`: resolve the parent with `realpath` once and refuse if it is not the folder given; write the temporary file in that folder with a random name of at least 64 bits, created with `O_CREAT | O_EXCL | O_NOFOLLOW` and mode 0600 at creation; remove it on any failure.
+- `writeBundleFile`: resolve the parent with `realpath` once and refuse if it is not the folder given; write the temporary file in that folder with a name that starts with a dot and ends in `.part` (a sync folder skips it) and holds at least 64 random bits, created with `O_CREAT | O_EXCL | O_NOFOLLOW` and mode 0600 at creation; remove it on any failure.
   - Without `replace`: `link(tmp, target)` then unlink the temporary name. `link` fails with EEXIST when anything is there, so a file made in between is never replaced. Never "check, then rename".
+  - Where `link` fails with EPERM, ENOTSUP, EXDEV or EMLINK (exFAT and FAT sticks, some network shares and sync folders have no hard links): `copyFile(tmp, target, COPYFILE_EXCL)`, then unlink the temporary file. `COPYFILE_EXCL` refuses when the target exists (`BUNDLE_EXISTS`). If the copy fails part way, remove the target only when it is still the file this call made. Never `rename` without `replace`.
   - With `replace`: read the identity again right before the `rename` and refuse if it differs. A short window remains between that read and the rename.
 - Tests lane A must add are listed as `todo` tests in `test/hostile-todo.test.mjs`. A second review runs them.
 

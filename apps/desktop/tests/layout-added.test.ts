@@ -2,11 +2,11 @@
 // (`addPart`) and the real Builder's folder drafts (`copySkill` and the other steps) both use `settleAdded`. Made-up data only.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { graphOf } from '../shared/harness/layout.js';
+import { graphOf, settleAdded } from '../shared/harness/layout.js';
 import { SAMPLE_IDS, createSampleWorld } from '../shared/harness/sample.js';
 import { harnessById } from '../shared/harness/status.js';
 import { addPart, removePart } from '../shared/harness/store.js';
-import { copySkill, definitionWorld, draftView } from '../shared/harness/save-draft.js';
+import { copySkill, definitionWorld, draftView, linkSkill } from '../shared/harness/save-draft.js';
 import { folderDraftsReduce } from '../renderer/harness/folder-draft.js';
 import type { FolderDrafts } from '../renderer/harness/folder-draft.js';
 import type { DefinitionView } from '../shared/engine/types.js';
@@ -89,4 +89,39 @@ test('undo, redo and a second copy move no card; the copied skill keeps its plac
   for (const n of start.nodes) assert.deepEqual(graphAt(d).nodes.find(x => x.id === n.id), n, `${n.id} after undo`);
   d = folderDraftsReduce(d, { kind: 'redo', folder: 'folder-1' });
   assert.deepEqual(graphAt(d).nodes.find(n => n.id === 'skill:tie-knots'), one, 'redo puts the copy where it was');
+});
+
+test('copy A, undo, copy B, copy A again: the cards never share a place', () => {
+  let d: FolderDrafts = folderDraftsReduce({}, { kind: 'loaded', folder: 'folder-1', base: BASE, versions: null });
+  d = folderDraftsReduce(d, { kind: 'change', folder: 'folder-1', next: draft => copySkill(BASE, draft, copy('tie-knots'), true) });
+  d = folderDraftsReduce(d, { kind: 'undo', folder: 'folder-1' });
+  assert.equal(Object.hasOwn(d['folder-1']!.positions, 'skill:tie-knots'), false, 'the place of a card that left is dropped');
+  d = folderDraftsReduce(d, { kind: 'change', folder: 'folder-1', next: draft => copySkill(BASE, draft, copy('coil-rope'), true) });
+  d = folderDraftsReduce(d, { kind: 'change', folder: 'folder-1', next: draft => copySkill(BASE, draft, copy('tie-knots'), true) });
+  const nodes = graphAt(d).nodes.filter(n => n.kind !== 'agent');
+  assert.ok(nodes.some(n => n.id === 'skill:tie-knots') && nodes.some(n => n.id === 'skill:coil-rope'));
+  for (let i = 0; i < nodes.length; i += 1) for (let j = i + 1; j < nodes.length; j += 1) {
+    const a = nodes[i]!, b = nodes[j]!;
+    assert.ok(a.y >= b.y + b.h || b.y >= a.y + a.h, `${a.id} and ${b.id} overlap`);
+  }
+});
+
+test('a saved place that overlaps a card now is not kept for a card that returns', () => {
+  const at = { x: 440, y: 40 };
+  const empty = { nodes: [], edges: [], bounds: { left: 0, top: 0, right: 0, bottom: 0 } };
+  const node = (id: string, p: { x: number; y: number }) => ({ id, kind: 'skill' as const, name: id, summary: '', missing: false, isNew: false, x: p.x, y: p.y, w: 216, h: 60 });
+  const taken = { ...empty, nodes: [node('skill:there', at)] };
+  const back = { ...empty, nodes: [node('skill:there', at), node('skill:old', at)] };
+  assert.deepEqual(settleAdded(taken, back, { 'skill:old': at }).place['skill:old'], { x: 440, y: 116 }, 'placed again, below');
+  const free = { ...empty, nodes: [node('skill:there', at), node('skill:old', { x: 440, y: 400 })] };
+  assert.equal(settleAdded(taken, free, { 'skill:old': { x: 440, y: 400 } }).place['skill:old'], undefined, 'a free saved place is kept');
+  assert.deepEqual(settleAdded(taken, empty, { 'skill:there': at }).forget, ['skill:there'], 'a card that leaves is forgotten');
+});
+
+test('a link edit keeps the same nodes, so the reducer builds no graph and returns the positions as they were', () => {
+  let d: FolderDrafts = folderDraftsReduce({}, { kind: 'loaded', folder: 'folder-1', base: BASE, versions: null });
+  d = folderDraftsReduce(d, { kind: 'move', folder: 'folder-1', node: 'skill:check-facts', at: { x: 1, y: 2 } });
+  const positions = d['folder-1']!.positions;
+  d = folderDraftsReduce(d, { kind: 'change', folder: 'folder-1', next: draft => linkSkill(BASE, draft, 'editor', 'check-facts', true) });
+  assert.equal(d['folder-1']!.positions, positions, 'the same object');
 });

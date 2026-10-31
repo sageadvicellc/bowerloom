@@ -532,7 +532,9 @@ export interface SetAsideWritten { readonly name: string }
  *
  * Main (Task 1 lane C) must, for every share call: check the number and type of every argument before it uses one (a bundle id against SHARE_BUNDLE_ID and by exact
  * string; a folder id and a notes id against the ids main gave out; the choices shape, with at most SHARE_NOTES_LIMIT names of at most SHARE_NAME_LIMIT characters;
- * a revision and an acknowledgement as 64 lowercase hex characters or, for the acknowledgement, null); refuse a bad one as BAD_ARGUMENT before anything runs; enforce
+ * a revision and an acknowledgement as 64 lowercase hex characters or, for the acknowledgement, null); refuse a bad one as BAD_ARGUMENT before anything runs; build every
+ * summary it sends or hashes from the bundle it holds, in the same call, never from a field the window sent (the acknowledgement hashes a tool's `sha256`, not its shown
+ * text); enforce
  * SAVE_EXECUTABLE_UNACKNOWLEDGED itself (the save does not check an acknowledgement); compare the acknowledgement it computes now with the one it receives; and bind a
  * write to the plan it showed last, the bundle's own hash and the choices. The temporary file of an export has a random name, is created exclusively, and
  * replaces an existing file only when the person agreed to replace the very file that `bundleTargetIdentity` still finds.
@@ -570,10 +572,11 @@ export interface ShareTool {
   readonly flags: readonly ('credentials' | 'backslash' | 'scheme' | 'unreadable')[];
 }
 /**
- * A file that can run: it has an execute bit, it is `hooks.json`, it is under `scripts/`, its name ends in a code extension (`.sh`, `.py`, `.js`, …), or its first bytes
- * are `#!`. `path` is relative to `.bowerloom`.
+ * A file that can run: it has an execute bit, it is `hooks.json`, it is under `scripts/`, it begins with `#!` (`shebang`) or with the bytes of a program (`binary`), its
+ * name ends in a code extension (`extension`), or it is anything that is not a named kind of data (`not-data`: no extension, another extension, text that is not UTF-8).
+ * `path` is relative to `.bowerloom`.
  */
-export interface ShareCodeFile { readonly path: string; readonly why: 'executable' | 'hook' | 'script' | 'extension' | 'shebang' }
+export interface ShareCodeFile { readonly path: string; readonly why: 'executable' | 'hook' | 'script' | 'shebang' | 'binary' | 'extension' | 'not-data' }
 /** Where a reference goes: the tool, the field of it, and the host that field reaches (null when the tool has no url). */
 export interface ShareSink { readonly tool: string; readonly field: 'env' | 'header' | 'arg' | 'url' | 'command'; readonly host: string | null }
 /**

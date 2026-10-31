@@ -20,7 +20,7 @@ export { BUNDLE_FILE_SUFFIX, BUNDLE_FORMAT, BUNDLE_LIMITS, EXPORT_PLAN_FORMAT, I
 export { exportAcknowledgement, importAcknowledgement } from './ack.js';
 export { UNREADABLE_ADDRESS, addressOf } from './address.js';
 export type { AddressFlag, AddressRead } from './address.js';
-export { CODE_EXTENSIONS, codeWhy } from './code-files.js';
+export { BINARY_DATA_EXTENSIONS, CODE_EXTENSIONS, DATA_EXTENSIONS, TEXT_DATA_EXTENSIONS, codeWhy } from './code-files.js';
 export type { CodeWhy } from './code-files.js';
 export { importChoicesOf } from './choices.js';
 
@@ -75,10 +75,13 @@ export function bundleTargetIdentity(absPath: string): Promise<BundleFileIdentit
  * Writes a new file, async.
  *  - The parent folder is resolved ONCE with `realpath`. If it is not the folder the caller gave (a link on the way), the write refuses `BUNDLE_FILE_UNSAFE`: the
  *    caller passes the real path of the folder, so a person who chose a linked folder sees the real one first.
- *  - The temporary file is in that resolved folder. Its name has at least 64 random bits, and it is created with `O_CREAT | O_EXCL | O_WRONLY | O_NOFOLLOW` and
- *    mode 0600 at creation (never by `chmod` afterwards). It is removed when anything fails.
+ *  - The temporary file is in that resolved folder. Its name starts with a dot and ends in `.part` (so a sync folder skips it) and holds at least 64 random bits, and
+ *    it is created with `O_CREAT | O_EXCL | O_WRONLY | O_NOFOLLOW` and mode 0600 at creation (never by `chmod` afterwards). It is removed when anything fails.
  *  - Without `options.replace`: the file is put in place with `link(tmp, target)`, which fails with EEXIST when anything is there (`BUNDLE_EXISTS`, the file there
  *    untouched), and then the temporary name is unlinked. It is never "check, then rename", because a file made between the two would be replaced without a question.
+ *  - Where `link` fails with EPERM, ENOTSUP, EXDEV or EMLINK (an exFAT or FAT stick, some network shares and sync folders have no hard links), the writer uses
+ *    `copyFile(tmp, target, COPYFILE_EXCL)` and then unlinks the temporary file. `COPYFILE_EXCL` fails when the target exists (`BUNDLE_EXISTS`). If the copy fails part
+ *    way, the writer removes the target only when it is still the file this call made (the identity is compared). It never falls back to `rename` without `replace`.
  *  - With `options.replace` (the identity from `bundleTargetIdentity`, taken when the save dialog returned and after the person agreed to replace that file): the
  *    identity is read again with `lstat` right before the `rename`, and a different file there refuses `BUNDLE_FILE_UNSAFE`. A short window remains between that read
  *    and the rename; the README names it.

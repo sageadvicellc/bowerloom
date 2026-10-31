@@ -102,7 +102,7 @@ export function addPart(state: HarnessState, harnessId: string, partId: string, 
     positions: ref === undefined || at === undefined ? h.positions : { ...Object.fromEntries(Object.entries(h.positions).filter(([k]) => k !== ref.id)), [partId]: { x: at.x, y: at.y } },
   }));
   // Nothing else moves, and the new part is placed once, below the lowest card of its column, and the place is saved (layout.ts, `settleAdded`).
-  const grown = harnessById(added, harnessId)!, pins = settleAdded(before, graphOf(added, grown), grown.positions);
+  const grown = harnessById(added, harnessId)!, pins = settleAdded(before, graphOf(added, grown), grown.positions).place;
   const next = withHarness(added, harnessId, h => ({ ...h, positions: { ...h.positions, ...pins } }));
   const undo: UndoStep[] = [{ op: 'remove-part', harnessId, partId }, ...(ref === undefined ? [] : [{ op: 'restore-missing', harnessId, missing: [ref], links: moved } as UndoStep])];
   return record(next, stamp, { text: `Added ${part.name} to ${harness.name}`, manifest: 'changed', undo });

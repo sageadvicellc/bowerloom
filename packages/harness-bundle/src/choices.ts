@@ -15,13 +15,14 @@ const plain = (v: unknown): v is Record<string, unknown> => {
   const proto = Object.getPrototypeOf(v) as unknown;
   return proto === Object.prototype || proto === null;
 };
-const TEXT_ODD = new RegExp('[' + String.fromCharCode(0) + '-' + String.fromCharCode(0x1f) + String.fromCharCode(0x7f) + String.fromCharCode(0x2028, 0x2029) + String.fromCharCode(0x202a) + '-' + String.fromCharCode(0x202e) + String.fromCharCode(0x2066) + '-' + String.fromCharCode(0x2069) + ']');
+/** A control character (`Cc`, NEL among them), a format character (`Cf`: bidirectional marks, zero-width characters, the byte order mark) or a line or paragraph separator. */
+const TEXT_ODD = new RegExp('[\\p{Cc}\\p{Cf}' + String.fromCharCode(0x2028, 0x2029) + ']', 'u');
 
 /**
  * `raw` is plain input: `{ link?: Record<string, string> | Map<string, string>, leave?: string[] | Set<string> }`, or null or undefined for no choices.
  * `names` are the notes names the bundle lists. Refuses `BUNDLE_USAGE` for: a root that is not a plain object; a key other than `link` and `leave`; a name the
  * bundle does not list; a name in both; a repeated name in `leave`; a link value that is not a non-empty string of at most BUNDLE_LIMITS.pathChars characters
- * without a control, bidirectional or line-separator character; more than BUNDLE_LIMITS.notesNames names in all (counted before anything is copied); a name longer
+ * without a control (`Cc`), format (`Cf`) or line-separator character; more than BUNDLE_LIMITS.notesNames names in all (counted before anything is copied); a name longer
  * than BUNDLE_LIMITS.nameChars; and any input whose property read throws. The refusal names no value. Names not in `link` or `leave` are left out.
  */
 export function importChoicesOf(raw: unknown, names: readonly string[]): ImportChoices {

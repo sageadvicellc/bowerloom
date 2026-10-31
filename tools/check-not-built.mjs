@@ -18,14 +18,20 @@ export const SHIPPED = Object.freeze([
   'apps/desktop/shared/harness/overview.ts',
   'apps/desktop/shared/harness/overview-layout.ts',
 ]);
-const STUB = /['"]not built['"]/;
+const STUB = /['"`]not built['"`]/;
+const SOURCE = /\.(?:ts|tsx|mjs|js)$/;
+const SKIP = new Set(['node_modules', 'dist', '.build', 'test', 'tests']);
 
 function files(root, rel) {
   const at = path.join(root, rel);
   let stat;
   try { stat = fs.statSync(at); } catch { return []; }
   if (stat.isFile()) return [rel];
-  return fs.readdirSync(at).sort().flatMap(name => (name.endsWith('.ts') ? [path.posix.join(rel, name)] : []));
+  return fs.readdirSync(at, { withFileTypes: true }).sort((x, y) => (x.name < y.name ? -1 : 1)).flatMap(entry => {
+    const child = path.posix.join(rel, entry.name);
+    if (entry.isDirectory()) return SKIP.has(entry.name) ? [] : files(root, child);
+    return entry.isFile() && SOURCE.test(entry.name) ? [child] : [];
+  });
 }
 
 /** The lines (as `file:line`) that hold a `'not built'` stub under `root`. A file that is not there is skipped. */

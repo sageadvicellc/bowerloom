@@ -64,9 +64,20 @@ export function folderDraftsReduce(s: FolderDrafts, a: FolderDraftAction): Folde
   if (a.kind !== 'change' && a.kind !== 'push' && a.kind !== 'undo' && a.kind !== 'redo' && a.kind !== 'discard') return out;
   const was = entryOf(s, a.folder), now = entryOf(out, a.folder);
   if (was === undefined || now === undefined || was.base === null || now.base === null || was.stack === now.stack) return out;
-  const graph = (e: FolderEntry): ReturnType<typeof graphOf> => { const w = definitionWorld(draftView(e.base!, e.stack.present)); return graphOf(w.state, w.harness, now.positions); };
-  const pins = settleAdded(graph(was), graph(now), now.positions);
-  return Object.keys(pins).length === 0 ? out : put(out, a.folder, { ...now, positions: { ...now.positions, ...pins } });
+  // Most edits (a link, a text) keep the same nodes: compare the ids first and build no graph.
+  const wasView = draftView(was.base, was.stack.present), nowView = draftView(now.base, now.stack.present);
+  if (sameNodes(wasView, nowView)) return out;
+  const graph = (view: DefinitionView): ReturnType<typeof graphOf> => { const w = definitionWorld(view); return graphOf(w.state, w.harness, now.positions); };
+  const { place, forget } = settleAdded(graph(wasView), graph(nowView), now.positions);
+  if (Object.keys(place).length === 0 && forget.length === 0) return out;
+  const positions = Object.fromEntries(Object.entries({ ...now.positions, ...place }).filter(([id]) => !forget.includes(id)));
+  return put(out, a.folder, { ...now, positions });
+}
+
+/** True when two views would draw the same nodes: the same agents, skills and notes sources, by id. */
+function sameNodes(a: DefinitionView, b: DefinitionView): boolean {
+  const ids = (v: DefinitionView): string => JSON.stringify([v.agents.map(x => x.id), v.skills.map(x => x.id), v.sources.map(x => x.name)]);
+  return a === b || ids(a) === ids(b);
 }
 
 function reduceDrafts(s: FolderDrafts, a: FolderDraftAction): FolderDrafts {

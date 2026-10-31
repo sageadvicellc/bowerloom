@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
-  BUNDLE_CODES, BUNDLE_FILE_SUFFIX, CODE_EXTENSIONS, UNREADABLE_ADDRESS, addressOf, codeWhy, BUNDLE_FORMAT, BUNDLE_LIMITS, BUNDLE_MESSAGES, BundleRefusal, EXPORT_PLAN_FORMAT, HIGH_RISK_SINK_FIELDS, IMPORT_PLAN_FORMAT, PATH_SHOWN_CHARS,
+  BUNDLE_CODES, BUNDLE_FILE_SUFFIX, CODE_EXTENSIONS, DATA_EXTENSIONS, UNREADABLE_ADDRESS, addressOf, codeWhy, BUNDLE_FORMAT, BUNDLE_LIMITS, BUNDLE_MESSAGES, BundleRefusal, EXPORT_PLAN_FORMAT, HIGH_RISK_SINK_FIELDS, IMPORT_PLAN_FORMAT, PATH_SHOWN_CHARS,
   bundleTargetIdentity, decodeBundle, encodeBundle, exportAcknowledgement, importAcknowledgement, importChoicesOf, inspectBundle, isEmptyHarness, readBundleFile, shownPath,
   targetFromBundle, writeBundleFile,
 } from '../../../dist/packages/harness-bundle/src/index.js';
@@ -102,6 +102,12 @@ test('an import of only an mcp.json with a stdio server needs a tick, and the ti
   assert.notEqual(importAcknowledgement({ ...summary, tools: [stdio({ command: 'sh', sha256: sha('c') })] }, [], 'a'.repeat(64)), ack);
 });
 
+test('the acknowledgement is of the whole entry hash, not of the shown text: main must build the summary from the held bundle, never from the window', () => {
+  const a = stdio({ command: 'sh' }), b = stdio({ command: 'a-harmless-name', host: 'good.example', addressFlags: [] });
+  assert.equal(importAcknowledgement({ ...empty(), tools: [a] }, [], 'a'.repeat(64)), importAcknowledgement({ ...empty(), tools: [b] }, [], 'a'.repeat(64)),
+    'shown fields with the same sha256 give the same hash, so the lane C duty (summary from the held bundle, same call) is what makes the tick mean what was shown');
+});
+
 test('an empty bundle and a bundle of skills need no tick; a remote server does, even with no reference, and its host is bound', () => {
   const http = (host, h) => ({ name: 'docs', kind: 'mcp', transport: 'http', runsCode: false, host, sha256: sha(h) });
   assert.equal(importAcknowledgement(empty(), [], 'a'.repeat(64)), null);
@@ -176,21 +182,59 @@ test('the host shown is the host a client reaches: userinfo, a backslash, IPv6, 
   assert.deepEqual(addressOf(5), { host: UNREADABLE_ADDRESS, flags: ['unreadable'] });
 });
 
-test('a file runs by its bit, its name, its extension or its first line, anywhere in the bundle', () => {
+test('a forged placeholder is unreadable: percent-encoded or upper-case text cannot pose as a reference', () => {
+  const unreadable = { host: UNREADABLE_ADDRESS, flags: ['unreadable'] };
+  assert.deepEqual(addressOf('https://%71xrefq0q.evil.example/'), unreadable);
+  assert.deepEqual(addressOf('https://QXREFQ0Q.evil.example/?k=${GITHUB_TOKEN}'), unreadable);
+  assert.deepEqual(addressOf('https://evil.example/qxrefq5q'), unreadable);
+  assert.deepEqual(addressOf('https://evil.example/?a=${A}&b=${B}'), { host: 'evil.example', flags: [] }, 'real references in order still pass');
+  assert.deepEqual(addressOf('https://${A}.${B}.example/'), { host: '${A}.${B}.example', flags: [] });
+});
+
+test('a space or a control character anywhere in an address is unreadable: URL would drop it and join two names', () => {
+  const unreadable = { host: UNREADABLE_ADDRESS, flags: ['unreadable'] };
+  for (const bad of ['https://good.example\r\n.evil.example/', 'https://good.example\t.evil.example/', ' https://good.example/', 'https://good.example/ ', 'https://good.example/a b', 'https://good.example/\u0000', 'https://good.example/\u007f']) assert.deepEqual(addressOf(bad), unreadable, JSON.stringify(bad));
+});
+
+test('a file is data only when it passes the allowlist; everything else can run', () => {
   const text = t => new TextEncoder().encode(t);
-  assert.equal(codeWhy('skills/x/run.sh', text('echo hi\n'), false), 'extension', 'a script in a skill folder with no execute bit');
-  assert.equal(codeWhy('skills/x/helper.PY', text('print(1)\n'), false), 'extension');
-  assert.equal(codeWhy('skills/x/tool', text('#!/usr/bin/env node\n'), false), 'shebang');
-  assert.equal(codeWhy('skills/x/tool', text('# a heading\n'), false), null);
-  assert.equal(codeWhy('skills/x/SKILL.md', text('---\n---\n'), false), null);
-  assert.equal(codeWhy('skills/x/tool', text('echo'), true), 'executable');
-  assert.equal(codeWhy('hooks.json', text('{}'), false), 'hook');
-  assert.equal(codeWhy('scripts/anything.txt', text('x'), false), 'script');
-  assert.equal(codeWhy('skills/x/sh', text('x'), false), null, 'a name that is only an extension is not one');
-  for (const ext of ['.sh', '.py', '.js', '.mjs', '.ts', '.rb', '.pl', '.ps1', '.bat', '.cmd']) assert.ok(CODE_EXTENSIONS.includes(ext), ext);
-  const bytes = new Uint8Array([0x23, 0x21, 0xff, 0x00]);
-  assert.equal(codeWhy('assets/blob.bin', bytes, false), 'shebang', 'a binary file that begins with #! counts');
-  assert.equal(codeWhy('assets/blob.bin', new Uint8Array([0x23]), false), null);
+  const bytes = (...b) => new Uint8Array(b);
+  const why = (path, data, exec = false) => codeWhy(path, typeof data === 'string' ? text(data) : data, exec);
+  // data
+  for (const path of ['skills/x/SKILL.md', 'a.markdown', 'a.TXT', 'cfg.json', 'cfg.jsonc', 'a.yaml', 'a.yml', 'a.toml', 'a.csv', 'a.tsv', 'Notes.MD', 'a.b.md']) assert.equal(why(path, '# title\n'), null, path);
+  for (const path of ['img.png', 'img.JPG', 'a.jpeg', 'a.gif', 'a.webp', 'a.ico', 'a.pdf', 'f.woff', 'f.woff2', 'f.ttf', 'f.otf']) assert.equal(why(path, bytes(0x89, 0x50, 0x4e, 0x47, 0xff, 0xfe)), null, path);
+  // the bit, the name, the folder
+  assert.equal(why('skills/x/tool', 'echo', true), 'executable');
+  assert.equal(why('hooks.json', '{}'), 'hook');
+  assert.equal(why('scripts/anything.txt', 'x'), 'script');
+  // extensions that run
+  for (const path of ['skills/x/run.sh', 'helper.PY', 'a.js', 'a.jsx', 'a.tsx', 'a.node', 'setup.hta', 'a.wasm', 'a.msi', 'a.pkg', 'a.dmg', 'a.lnk', 'a.desktop', 'a.plist', 'a.com', 'a.scr', 'a.pyc', 'a.class', 'a.go', 'a.rs', 'a.svg', 'a.ipynb']) assert.equal(why(path, 'x'), 'extension', path);
+  // everything else
+  for (const path of ['Makefile', 'Dockerfile', 'skills/x/helper', 'a.unknown', 'a.html', 'a.xml', '.env']) assert.equal(why(path, 'x'), 'not-data', path);
+  assert.equal(why('a.sh ', 'x'), 'not-data', 'a trailing space');
+  assert.equal(why('a.md.', '# t'), 'not-data', 'a trailing dot');
+  assert.equal(why('a.md ', '# t'), 'not-data');
+  assert.equal(why('a.sh.md', '# t'), null, 'the last extension counts');
+  assert.equal(why('a.md.sh', '# t'), 'extension', 'a double extension: the last one counts');
+  // first bytes
+  assert.equal(why('run.sh.txt', '#!/bin/sh\necho\n'), 'shebang', 'data by name, code by its first line');
+  assert.equal(why('run.sh.txt', 'echo hi\n'), null, 'data by name and by its bytes');
+  assert.equal(why('notes.md', bytes(0xef, 0xbb, 0xbf, 0x23, 0x21, 0x2f)), 'shebang', 'a byte order mark, then #!');
+  assert.equal(why('notes.md', bytes(0xef, 0xbb, 0xbf, 0x23, 0x20)), null, 'a byte order mark and a heading is text');
+  assert.equal(why('skills/x/tool', '#!/usr/bin/env node\n'), 'shebang');
+  for (const [name, magic] of [['ELF', [0x7f, 0x45, 0x4c, 0x46]], ['Mach-O 32', [0xfe, 0xed, 0xfa, 0xce]], ['Mach-O 64', [0xfe, 0xed, 0xfa, 0xcf]], ['Mach-O 32 reverse', [0xce, 0xfa, 0xed, 0xfe]], ['Mach-O 64 reverse', [0xcf, 0xfa, 0xed, 0xfe]], ['Mach-O fat', [0xca, 0xfe, 0xba, 0xbe]], ['PE', [0x4d, 0x5a, 0x90, 0x00]], ['WebAssembly', [0x00, 0x61, 0x73, 0x6d]]]) {
+    assert.equal(why('skills/x/helper', bytes(...magic, 1, 2, 3)), 'binary', name);
+    assert.equal(why('pic.png', bytes(...magic, 1, 2, 3)), 'binary', `${name} under a data name`);
+    assert.equal(why('pic.png', bytes(0xef, 0xbb, 0xbf, ...magic)), 'binary', `${name} after a byte order mark`);
+  }
+  assert.equal(why('assets/blob.bin', bytes(0x23)), 'not-data');
+  // text that is not UTF-8 is not data
+  assert.equal(why('notes.md', bytes(0x23, 0x20, 0xff, 0xfe, 0x00)), 'not-data');
+  assert.equal(why('cfg.json', bytes(0xc3, 0x28)), 'not-data');
+  // missing bytes never throw
+  for (const bad of [null, undefined, 'text', 5, {}]) assert.equal(codeWhy('notes.md', bad, false), 'not-data');
+  assert.equal(codeWhy('notes.md', null, true), 'executable');
+  assert.ok(CODE_EXTENSIONS.includes('.sh') && DATA_EXTENSIONS.includes('.md') && !DATA_EXTENSIONS.includes('.svg'));
 });
 
 // ---- choices -----------------------------------------------------------------------------------------------------------------
@@ -220,6 +264,7 @@ test('choices: a root that is not a plain object, a count that is too big, and a
   no(new Proxy({}, { getPrototypeOf() { throw new Error('trap'); } }));
   no({ link: { wiki: 'a\u202eb' } });
   no({ link: { wiki: 'a\u2028b' } });
+  for (const ch of ['\u200e', '\u200f', '\u061c', '\u200b', '\ufeff', '\u0085', '\u2066', '\u0007']) no({ link: { wiki: `a${ch}b` } });
   // 5 million items: refused from the length, with no copy.
   const big = { length: 5_000_000 };
   Object.setPrototypeOf(big, Array.prototype);
