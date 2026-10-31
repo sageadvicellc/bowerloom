@@ -166,11 +166,9 @@ test('Journey 1, adopt by copy: a project is adopted with the choices and approv
     await expect(conflict).toContainText('Using AGENTS.md.');
   });
 
-  await test.step('1.4d what adopt leaves out is listed with its reason (a finding: a Codex agent with multi-line instructions is not adopted)', async () => {
-    // FINDING. A Codex agent file written the usual way, with `developer_instructions = """ ... """`, is outside the subset of TOML that adoption reads (TOML_UNSUPPORTED). It is listed, not lost, but the agent is not adopted.
-    const left = s.locator('[data-unmapped=".codex/agents/signal-reader.toml"]');
-    await expect(left).toHaveCount(1);
-    await expect(left).toContainText('TOML_UNSUPPORTED');
+  await test.step('1.4d a Codex agent whose instructions sit in a multi-line string is adopted, not left out', async () => {
+    await expect(s.locator('[data-unmapped=".codex/agents/signal-reader.toml"]')).toHaveCount(0);
+    await expect(s.locator('[data-item="subagents/signal-reader"]')).toHaveCount(1);
   });
 
   let written: string[];
@@ -197,7 +195,8 @@ test('Journey 1, adopt by copy: a project is adopted with the choices and approv
     expect(harness['instructions/AGENTS.md']).toBe(original['AGENTS.md']);
     expect(harness['skills/timetable-check/SKILL.md']).toBe(original['.claude/skills/timetable-check/SKILL.md']);
     expect(harness['skills/chart-check/SKILL.md']).toBe(original['.claude/skills/chart-check/SKILL.md']);
-    expect(Object.keys(harness).filter(f => f.startsWith('agents/')), 'the Codex agent with multi-line text is not adopted').toEqual(['agents/dock-clerk.md']);
+    expect(Object.keys(harness).filter(f => f.startsWith('agents/')), 'the Codex agent with multi-line text is adopted').toEqual(['agents/dock-clerk.md', 'agents/signal-reader.md']);
+    expect(harness['agents/signal-reader.md']).toContain('Read each flag. Say what it means.');
     // A tool keeps the name of its variable, never a value (spec principle 3).
     const mcp = JSON.parse(harness['mcp.json']!) as { servers: { name: string; env?: Record<string, string> }[] };
     expect(mcp.servers.map(x => x.name)).toEqual(['tide-feed']);

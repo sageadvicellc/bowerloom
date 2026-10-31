@@ -2,10 +2,17 @@
  * The TOML subset that adoption reads from Codex files (`.codex/config.toml`, `.codex/agents/*.toml`).
  *
  * Read: comments, `[table]` and `[[array.of.tables]]` headers, bare, quoted, and dotted keys, basic strings with the
- * escapes `\" \\ \b \f \n \r \t \uXXXX \UXXXXXXXX`, literal strings, decimal integers, decimal floats, booleans, arrays
- * of one scalar type (they may span lines and end with a comma), arrays of inline tables, and inline tables.
+ * escapes `\" \\ \b \f \n \r \t \uXXXX \UXXXXXXXX`, literal strings, multi-line basic (`"""`) and multi-line literal
+ * (`'''`) strings, decimal integers, decimal floats, booleans, arrays of one scalar type (they may span lines and end
+ * with a comma), arrays of inline tables, and inline tables.
  *
- * Refused: multi-line strings, dates and times, hex, octal, binary, underscores in numbers, `inf` and `nan`, mixed
+ * Multi-line strings follow TOML 1.0. A line break right after the opener is dropped. One or two quotes may sit inside,
+ * and up to two more may sit before the closer. A line break inside reads as a line feed, also when the file has a
+ * carriage return and a line feed. In a basic string, a backslash at the end of a line drops that line break and all
+ * white space up to the next visible character. Only tab and line feed may appear as control characters. A string
+ * that is never closed is refused with the line of its opener.
+ *
+ * Refused: dates and times, hex, octal, binary, underscores in numbers, `inf` and `nan`, mixed
  * arrays, a key or table defined twice, and the key `__proto__`. Nesting deeper than 64 is TOML_TOO_DEEP, refused before
  * it recurses further. A refusal names its kind and never repeats the input.
  * Adoption lists a refused file with the reason; it never guesses at a form it does not read.
@@ -157,8 +164,8 @@ class Parser {
   private value(depth: number): JsonValue {
     this.deep(depth);
     const c = this.peek();
-    if (c === '"') { if (this.s.startsWith('"""', this.i)) this.fail(); return this.basic(); }
-    if (c === "'") { if (this.s.startsWith("'''", this.i)) this.fail(); return this.literal(); }
+    if (c === '"') return this.s.startsWith('"""', this.i) ? this.multi('"') : this.basic();
+    if (c === "'") return this.s.startsWith("'''", this.i) ? this.multi("'") : this.literal();
     if (c === '[') return this.array(depth + 1);
     if (c === '{') return this.inline(depth + 1);
     const m = /^(?:true|false|[+-]?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)(?=[ \t\r\n,\]}#]|$)/.exec(this.s.slice(this.i, this.i + 64));
@@ -179,19 +186,69 @@ class Parser {
       if (c === '' || c === '\n' || c === '\r') this.fail();
       this.i++;
       if (c === '"') return out;
-      if (c === '\\') {
-        const e = this.peek(); this.i++;
-        const simple: Record<string, string> = { '"': '"', '\\': '\\', b: '\b', f: '\f', n: '\n', r: '\r', t: '\t' };
-        if (Object.hasOwn(simple, e)) { out += simple[e]; continue; }
-        const width = e === 'u' ? 4 : e === 'U' ? 8 : 0;
-        const hex = this.s.slice(this.i, this.i + width);
-        if (width === 0 || !new RegExp(`^[0-9A-Fa-f]{${width}}$`).test(hex)) this.fail();
-        const point = Number.parseInt(hex, 16);
-        if (point > 0x10ffff || (point >= 0xd800 && point <= 0xdfff)) this.fail();
-        out += String.fromCodePoint(point); this.i += width; continue;
-      }
+      if (c === '\\') { out += this.escape(); continue; }
       if (/[\0-\x08\x0a-\x1f\x7f]/.test(c)) this.fail();
       out += c;
+    }
+  }
+
+  /** The text of the escape after a backslash that was just read. Leaves the position after the escape. */
+  private escape(): string {
+    const e = this.peek(); this.i++;
+    const simple: Record<string, string> = { '"': '"', '\\': '\\', b: '\b', f: '\f', n: '\n', r: '\r', t: '\t' };
+    if (Object.hasOwn(simple, e)) return simple[e]!;
+    const width = e === 'u' ? 4 : e === 'U' ? 8 : 0;
+    const hex = this.s.slice(this.i, this.i + width);
+    if (width === 0 || !new RegExp(`^[0-9A-Fa-f]{${width}}$`).test(hex)) this.fail();
+    const point = Number.parseInt(hex, 16);
+    if (point > 0x10ffff || (point >= 0xd800 && point <= 0xdfff)) this.fail();
+    this.i += width;
+    return String.fromCodePoint(point);
+  }
+
+  /** A multi-line string, basic (`quote` is a double quote) or literal (a single quote). The position is at the opener. */
+  private multi(quote: '"' | "'"): string {
+    const opener = this.i;
+    this.i += 3;
+    if (this.peek() === '\n') this.i++;
+    else if (this.peek() === '\r' && this.s[this.i + 1] === '\n') this.i += 2;
+    let out = '';
+    for (;;) {
+      if (this.i >= this.s.length) throw new TomlFault('TOML_UNSUPPORTED', opener);
+      const c = this.s[this.i]!;
+      if (c === quote) {
+        // A run of one or two quotes is content. A run of three ends the string. Up to two more quotes before the closer are content. A longer run is refused.
+        let run = 1;
+        while (run < 6 && this.s[this.i + run] === quote) run++;
+        if (run >= 6) this.fail();
+        this.i += run;
+        if (run < 3) { out += quote.repeat(run); continue; }
+        return out + quote.repeat(run - 3);
+      }
+      if (c === '\\' && quote === '"') {
+        let j = this.i + 1;
+        while (this.s[j] === ' ' || this.s[j] === '\t') j++;
+        if (this.s[j] === '\n' || (this.s[j] === '\r' && this.s[j + 1] === '\n')) {
+          // A backslash at the end of a line: the line break and all white space after it are dropped.
+          this.i = j;
+          for (;;) {
+            const w = this.s[this.i];
+            if (w === ' ' || w === '\t' || w === '\n') this.i++;
+            else if (w === '\r' && this.s[this.i + 1] === '\n') this.i += 2;
+            else break;
+          }
+          continue;
+        }
+        this.i++;
+        out += this.escape();
+        continue;
+      }
+      if (c === '\r') {
+        if (this.s[this.i + 1] !== '\n') this.fail();
+        out += '\n'; this.i += 2; continue;
+      }
+      if (c !== '\n' && c !== '\t' && /[\0-\x1f\x7f]/.test(c)) this.fail();
+      out += c; this.i++;
     }
   }
 

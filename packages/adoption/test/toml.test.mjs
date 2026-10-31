@@ -51,7 +51,7 @@ test('a repeated key or table is refused', () => {
 
 test('forms outside the subset are refused, never guessed', () => {
   for (const text of [
-    's = """multi\nline"""\n', "s = '''raw'''\n", 'd = 1979-05-27T07:32:00Z\n', 'n = 0x1f\n', 'n = 1_000\n', 'n = inf\n',
+    'd = 1979-05-27T07:32:00Z\n', 'n = 0x1f\n', 'n = 1_000\n', 'n = inf\n',
     'bare\n', '[bad table\n', 'x = "unterminated\n', 'x = [1, "a"]\n', 'x = { a = 1\n', 'x = "\\u{1F600}"\n', '__proto__ = 1\n',
   ]) assert.equal(no(text).code, 'TOML_UNSUPPORTED', text);
 });
