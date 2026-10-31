@@ -11,6 +11,7 @@ const CALL_WORDS: Readonly<Record<string, string>> = Object.freeze({
   NOT_ALLOWED: 'This window may not ask for that.',
   BAD_ARGUMENT: 'The sheet sent something Bowerloom does not take. Close the sheet and open it again.',
   UNKNOWN_FOLDER: 'Bowerloom no longer knows that folder. Choose it again.',
+  UNKNOWN_BUNDLE: 'Bowerloom no longer holds that file. Choose it again.',
   FAILED: 'Bowerloom could not finish this. Nothing more was changed.',
 });
 

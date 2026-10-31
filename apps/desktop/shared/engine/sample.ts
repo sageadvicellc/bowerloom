@@ -633,6 +633,13 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
     })()),
     // The sample writes nothing, not even a usage line.
     recordCheck: () => settle(false),
+    // STAGE 1: Task 1 lane D builds these six in memory. Until then they throw `not built`.
+    planExport: () => Promise.reject(new Error('not built')),
+    runExport: () => Promise.reject(new Error('not built')),
+    chooseBundle: () => Promise.reject(new Error('not built')),
+    planImport: () => Promise.reject(new Error('not built')),
+    runImport: () => Promise.reject(new Error('not built')),
+    discardBundle: () => Promise.reject(new Error('not built')),
     planSave: (id, edits) => settle(((): Answer<SaveView> => { const a = savePlan(get(id), edits); return a.ok ? ok(strip(a.value)) : a; })()),
     runSave: (id, revision, sent) => settle(((): Answer<SaveWritten> => {
       const request: SaveRequest = Array.isArray(sent) ? { edits: sent as readonly SaveEdit[], acknowledged: null } : sent as SaveRequest;

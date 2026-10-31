@@ -82,7 +82,7 @@ const CODE_NAMES: Readonly<Record<string, readonly string[]>> = Object.freeze({
   'renderer/harness/screens/Interfaces.tsx': times('interfaces', 2), 'renderer/harness/screens/Projects.tsx': times('interfaces', 1), 'renderer/harness/sheets/InstallSheet.tsx': times('interfaces', 5), 'renderer/harness/sheets/ProjectSheet.tsx': times('interfaces', 8),
   'shared/harness/builder-draft.ts': times('last-interface', 2), 'shared/harness/route.ts': times('interfaces', 8), 'shared/harness/status.ts': times('interfaces', 1),
   'shared/harness/store.ts': [...times('set-interface', 4), ...times('interface', 4)], 'shared/harness/types.ts': times('set-interface', 1),
-  'shared/engine/types.ts': [...times('mcp', 3), 'apply'], 'main/engine-consent.ts': ['mcp', 'mcp.json'],
+  'shared/engine/types.ts': [...times('mcp', 4), 'apply'], 'main/engine-consent.ts': ['mcp', 'mcp.json'],
 });
 /** The text pieces of a source file: its string literals and its JSX text, without comments and import paths. */
 function textPieces(source: string): string[] {
