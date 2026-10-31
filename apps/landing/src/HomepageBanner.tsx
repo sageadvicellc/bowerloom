@@ -29,5 +29,5 @@ function BannerImage({ source, fallback, alt, children }: { source: Artwork; fal
 
 export default function HomepageBanner({ children }: { children?: ReactNode }) {
   return <BannerImage source={circuit} fallback={nativeFrame}
-    alt="Hanna and robot helpers in a sunlit forest workshop, surrounded by connected labs.">{children}</BannerImage>;
+    alt="A person and two small robot helpers in a sunlit forest workshop.">{children}</BannerImage>;
 }

@@ -1,6 +1,6 @@
 /* The image fades into the active theme ground; copy is below the art. */
 .homepage-banner { position: relative; isolation: isolate; overflow: hidden; min-height: 220px; width: 100%; background: radial-gradient(ellipse at 50% 30%, var(--ui-surface), var(--ui-bg) 76%); }
-.homepage-banner > img { display: block; width: 100%; height: auto; opacity: 0; transition: opacity 400ms ease; }
+.homepage-banner > img { display: block; width: 100%; height: auto; opacity: 0; transition: opacity 400ms cubic-bezier(.23, 1, .32, 1); }
 .homepage-banner[data-artwork="ready"] > img { opacity: 1; }
 /* A short soft edge hides the line where the lagging art is clipped. Depth on scroll lives in hero-parallax.css. */
 .homepage-banner::after { content: ''; position: absolute; z-index: 1; inset: 0; pointer-events: none; background: linear-gradient(to bottom, transparent 84%, var(--ui-bg) 100%); }

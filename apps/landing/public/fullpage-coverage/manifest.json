@@ -9,7 +9,7 @@
       "path": "/fullpage-coverage/hero.jpg",
       "sha256": "64a32adeaddd4bdac71fe4c235058394c8b0458c98d0b2fc170fc674e18bc84c",
       "frameSeconds": 0.5,
-      "alt": "Decorative workshop illustration. Hanna and S4-G3 at the hologram"
+      "alt": "Decorative workshop illustration. A person and a robot helper at the hologram"
     },
     {
       "id": "portable-teams",
@@ -30,7 +30,7 @@
       "path": "/fullpage-coverage/build.jpg",
       "sha256": "293af93583a291cbfeb6f0a3e969f7ae11bc20d9263812c78ecfc8cae37dbe34",
       "frameSeconds": 5.5,
-      "alt": "Decorative workshop illustration. H4N-N4 builds while S4-G3 assists Hanna"
+      "alt": "Decorative workshop illustration. One robot helper builds while another assists a person"
     },
     {
       "id": "questions",

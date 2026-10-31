@@ -41,14 +41,14 @@ export default function AnimationSplash({ reducedMotion, onEnter }: { reducedMot
   return <dialog className="animation-splash" ref={dialog} aria-labelledby="splash-title" onCancel={event => { event.preventDefault(); onEnter(); }}>
     <div className="splash-heading"><div><img className="splash-wordmark" src="/brand/rose-conservatory/bowerloom-wordmark-plain-cream.svg" alt="Bowerloom" /><p id="splash-title">A moment in the workshop</p></div><button autoFocus type="button" className="splash-play" onClick={onEnter}>Skip animation</button></div>
     <div className="splash-frame">
-      {showVideo ? <video ref={video} style={state === 'ended' ? { display: 'none' } : undefined} src={cinematicJourney.scenes[0].clip} poster={cinematicJourney.openingPoster} muted playsInline preload="auto" aria-label="Hanna and robot helpers in a forest workshop" /> : <img src={cinematicJourney.openingPoster} alt="Hanna and a robot helper review a plan in a forest workshop." />}
-      {showVideo && state === 'ended' && <img className="splash-resting-poster" src={splashRestingFrame.poster} alt="Hanna, S4-G3, and H4N-N4 together at the forest workshop." />}
+      {showVideo ? <video ref={video} style={state === 'ended' ? { display: 'none' } : undefined} src={cinematicJourney.scenes[0].clip} poster={cinematicJourney.openingPoster} muted playsInline preload="auto" aria-label="A person and two small robot helpers in a forest workshop" /> : <img src={cinematicJourney.openingPoster} alt="A person and a robot helper review a plan in a forest workshop." />}
+      {showVideo && state === 'ended' && <img className="splash-resting-poster" src={splashRestingFrame.poster} alt="A person and two small robot helpers together at the forest workshop." />}
     </div>
     <div className="splash-controls">
       <button type="button" className="button primary" onClick={onEnter}>Enter site <span aria-hidden="true">↗</span></button>
       <button type="button" className="splash-play" onClick={state === 'playing' ? () => playback.current?.pause() : play}>{state === 'playing' ? 'Pause animation' : state === 'ended' ? 'Replay animation' : 'Play animation'}</button>
       <p role="status">{failed ? 'Animation unavailable. You can enter the site now.' : reducedMotion && !requested ? 'Still view follows your reduced-motion preference.' : state === 'blocked' ? 'Your browser paused autoplay. Choose Play animation or Enter site.' : state === 'ended' ? 'You can replay this eight-second illustration or enter the site.' : 'You can enter the site at any time.'}</p>
     </div>
-    <p className="splash-boundary">An illustrated visit to Bowerloom Labs.</p>
+    <p className="splash-boundary">An illustrated visit to the Bowerloom workshop.</p>
   </dialog>;
 }

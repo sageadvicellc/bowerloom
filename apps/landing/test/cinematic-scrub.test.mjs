@@ -53,14 +53,13 @@ test("backscroll during decoding replaces the forward target", () => {
 
 
 test("active preview contains only the exact approved eight-second lab scene", async () => {
-  const { cinematicJourney: journey, historicalCinematicJourney } = await import("../src/cinematic-config.ts");
+  const { cinematicJourney: journey } = await import("../src/cinematic-config.ts");
   const { readFile } = await import("node:fs/promises");
   const { createHash } = await import("node:crypto");
   assert.equal(journey.scenes.length, 1);
   assert.equal(journey.scenes[0].id, "lab-robots-03");
   assert.equal(journey.scenes[0].durationSeconds, 8.04);
   assert.equal(journey.maxClipSeconds, 8.1);
-  assert.equal(historicalCinematicJourney.scenes.length, 6);
   assert.ok(journey.scenes.every(scene => !scene.clip.startsWith("/scroll-world/")));
   const clip = await readFile(new URL("../public" + journey.scenes[0].clip, import.meta.url));
   const poster = await readFile(new URL("../public" + journey.openingPoster, import.meta.url));

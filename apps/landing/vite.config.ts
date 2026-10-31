@@ -8,9 +8,9 @@ import social from "../../release/social-preview.json" with {type: "json"};
 const escapeHtml = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 const metadata: Record<string, string> = {
   RELEASE_TITLE: `${release.product} · ${readerRelease.label}`,
-  RELEASE_DESCRIPTION: `${readerRelease.capabilities.setup} ${readerRelease.capabilities.execution}`,
+  RELEASE_DESCRIPTION: `${readerRelease.description} ${readerRelease.availability}`,
   RELEASE_STATUS: readerRelease.label,
-  RELEASE_AVAILABILITY: readerRelease.capabilities.execution,
+  RELEASE_AVAILABILITY: readerRelease.availability,
   DOCS_PATH: new URL(release.urls.docs).pathname,
   SOCIAL_TITLE: social.title,
   SOCIAL_DESCRIPTION: social.description,
