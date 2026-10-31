@@ -6,7 +6,7 @@
  *  - `weekly-report` holds a definition for Claude Code, Codex and OpenCode, and its own CLAUDE.md: the plan asks for two approvals, then shows every
  *    result word, the partial notice, pending trust, the code and commands to read, and the drift report with Accept AGENTS.md as the default. Merge
  *    moves its CLAUDE.md into the harness once; the install that follows accepts AGENTS.md.
- *  - `garden` holds an install that stopped part way: only a recovery plan can run.
+ *  - `reading` holds an install that stopped part way: only a recovery plan can run.
  * Each folder that holds a harness can also save its own harness (option C): agents, skills and interfaces, edited by id, with save points and "Go back".
  * A skill is copied from the harness of another sample folder. Save points keep a made-up time, one minute apart.
  * Notes (spec 6.9): two made-up notes folders answer main's notes chooser. `Reading list` holds pages and no history yet, so the history offer shows;
@@ -65,7 +65,7 @@ export function sampleRevision(text: string): string {
   return out.slice(0, 64);
 }
 
-export const SAMPLE_FOLDERS = Object.freeze({ adopt: 'sample-inbox-tools', defined: 'sample-weekly-report', stopped: 'sample-garden' });
+export const SAMPLE_FOLDERS = Object.freeze({ adopt: 'sample-inbox-tools', defined: 'sample-weekly-report', stopped: 'sample-reading' });
 /** The made-up notes folders: `use` holds pages and no history; `start` is empty, for "Start fresh". */
 export const SAMPLE_NOTES = Object.freeze({ use: 'sample-notes', start: 'sample-new-notes' });
 
@@ -347,17 +347,17 @@ const SAMPLE_DEFS: Readonly<Record<string, DefinitionView>> = Object.freeze({
     agents: [agentOf('editor', 'Edits the draft.', []), agentOf('writer', 'Writes the draft.', ['draft-outline'])], sources: [], kits: [],
   },
   [SAMPLE_FOLDERS.stopped]: {
-    id: 'garden', description: 'Keeps the garden notes.', engines: ['claude-code', 'codex'], instructions: true,
-    skills: [skillOf('soil-check', 'Checks the soil with a small script.'), skillOf('water-plants', 'Plans the watering.')], agents: [agentOf('gardener', 'Looks after the beds.', ['water-plants'])], sources: [], kits: [],
+    id: 'reading', description: 'Keeps the reading notes.', engines: ['claude-code', 'codex'], instructions: true,
+    skills: [skillOf('shelf-check', 'Checks the shelf with a small script.'), skillOf('pick-books', 'Picks the next books.')], agents: [agentOf('librarian', 'Looks after the shelves.', ['pick-books'])], sources: [], kits: [],
   },
   [SAMPLE_FOLDERS.adopt]: {
     id: 'inbox-tools', description: 'Adopted from the engine files of this project.', engines: ['claude-code', 'codex'], instructions: true,
     skills: [skillOf('sort-mail', 'Sorts the inbox.')], agents: [agentOf('triage', 'Triages new mail.', [])], sources: [], kits: [],
   },
 });
-/** The other files of a sample skill, beside its SKILL.md, each relative to the skill folder: `soil-check` carries a script that can run. */
+/** The other files of a sample skill, beside its SKILL.md, each relative to the skill folder: `shelf-check` carries a script that can run. */
 const SAMPLE_SKILL_FILES: Readonly<Record<string, readonly { readonly path: string; readonly executable: boolean }[]>> = Object.freeze({
-  'soil-check': Object.freeze([{ path: 'scripts/soil-check.sh', executable: true }]),
+  'shelf-check': Object.freeze([{ path: 'scripts/shelf-check.sh', executable: true }]),
 });
 /** True for a sample file that can run as a program. */
 const sampleExecutable = (path: string): boolean => {
@@ -416,7 +416,7 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
   };
   add(SAMPLE_FOLDERS.adopt, 'inbox-tools', {});
   add(SAMPLE_FOLDERS.defined, 'weekly-report', { hasDefinition: true, engines: ['claude-code', 'codex', 'opencode'] });
-  add(SAMPLE_FOLDERS.stopped, 'garden', { hasDefinition: true, engines: ['claude-code', 'codex'], unfinished: { projection: true, adoption: false } });
+  add(SAMPLE_FOLDERS.stopped, 'reading', { hasDefinition: true, engines: ['claude-code', 'codex'], unfinished: { projection: true, adoption: false } });
   const notes = new Map<string, SampleNotes>([
     [SAMPLE_NOTES.use, { view: { id: SAMPLE_NOTES.use, label: '~/Documents/Reading list', name: 'Reading list', suggestedName: 'reading-list', pages: SAMPLE_NOTE_FILES.length, complete: true, history: 'none', lastCommitAt: null, latestReport: null, reportsComplete: true }, files: SAMPLE_NOTE_FILES, hidden: 1 }],
     [SAMPLE_NOTES.start, { view: { id: SAMPLE_NOTES.start, label: '~/Documents/Notes', name: 'Notes', suggestedName: 'notes', pages: 0, complete: true, history: 'none', lastCommitAt: null, latestReport: null, reportsComplete: true }, files: [], hidden: 0 }],

@@ -206,8 +206,8 @@ test('sample save: a link is a set-agent edit, a stale revision is refused, a sa
   const none = await e.planSave(SAMPLE_FOLDERS.adopt, []);
   assert.ok(!none.ok); assert.equal(none.refusal.code, 'SAVE_NO_DEFINITION');
   // A skill copied from another sample folder, then removed again, and the interfaces.
-  const copy = value(await e.planSave(id, [{ kind: 'add-skill', id: 'water-plants', from: SAMPLE_FOLDERS.stopped }, { kind: 'set-engines', engines: ['claude-code', 'codex'] }]));
-  assert.deepEqual(copy.changes.map(c => [c.path, c.action]), [['.bowerloom/skills/water-plants/SKILL.md', 'create'], ['.bowerloom/harness.json', 'update']]);
+  const copy = value(await e.planSave(id, [{ kind: 'add-skill', id: 'pick-books', from: SAMPLE_FOLDERS.stopped }, { kind: 'set-engines', engines: ['claude-code', 'codex'] }]));
+  assert.deepEqual(copy.changes.map(c => [c.path, c.action]), [['.bowerloom/skills/pick-books/SKILL.md', 'create'], ['.bowerloom/harness.json', 'update']]);
   assert.deepEqual(copy.definition.engines, ['claude-code', 'codex']);
   const ghost = await e.planSave(id, [{ kind: 'add-skill', id: 'ghost', from: SAMPLE_FOLDERS.stopped }]);
   assert.ok(!ghost.ok); assert.equal(ghost.refusal.code, 'SAVE_SOURCE_MISSING');

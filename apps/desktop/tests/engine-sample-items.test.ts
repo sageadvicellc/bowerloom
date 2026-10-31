@@ -35,13 +35,13 @@ test('the sample stops using notes as main does: the review names the agents tha
 
 test('the sample copy of a skill with a script from another folder: marked files, the folder named, and Save waits for the acknowledgement', async () => {
   const e = createSampleEngine();
-  const edits: SaveEdit[] = [{ kind: 'add-skill', id: 'soil-check', from: SAMPLE_FOLDERS.stopped }];
+  const edits: SaveEdit[] = [{ kind: 'add-skill', id: 'shelf-check', from: SAMPLE_FOLDERS.stopped }];
   const plan = value(await e.planSave(ID, edits));
   assert.deepEqual(plan.changes, [
-    { path: '.bowerloom/skills/soil-check/SKILL.md', action: 'create', from: '~/Projects/garden' },
-    { path: '.bowerloom/skills/soil-check/scripts/soil-check.sh', action: 'create', executable: true, from: '~/Projects/garden' },
+    { path: '.bowerloom/skills/shelf-check/SKILL.md', action: 'create', from: '~/Projects/reading' },
+    { path: '.bowerloom/skills/shelf-check/scripts/shelf-check.sh', action: 'create', executable: true, from: '~/Projects/reading' },
   ]);
-  assert.deepEqual(plan.copiedExecutables, [{ path: '.bowerloom/skills/soil-check/scripts/soil-check.sh', from: '~/Projects/garden' }]);
+  assert.deepEqual(plan.copiedExecutables, [{ path: '.bowerloom/skills/shelf-check/scripts/shelf-check.sh', from: '~/Projects/reading' }]);
   assert.match(plan.acknowledge ?? '', /^[a-f0-9]{64}$/);
   const bare = refusal(await e.runSave(ID, plan.revision, edits));
   assert.equal(bare.code, 'SAVE_EXECUTABLE_UNACKNOWLEDGED');
@@ -49,7 +49,7 @@ test('the sample copy of a skill with a script from another folder: marked files
   const done = value(await e.runSave(ID, plan.revision, { edits, acknowledged: plan.acknowledge }));
   assert.deepEqual(done.written, plan.changes.map(c => c.path));
   // The copy of a skill with no script asks nothing.
-  const plain = value(await e.planSave(ID, [{ kind: 'add-skill', id: 'water-plants', from: SAMPLE_FOLDERS.stopped }]));
+  const plain = value(await e.planSave(ID, [{ kind: 'add-skill', id: 'pick-books', from: SAMPLE_FOLDERS.stopped }]));
   assert.equal(plain.acknowledge, null);
 });
 
@@ -61,7 +61,7 @@ test('the sample save plan has every field of main\'s, the new ones too', async 
   next = sourceFolder(home);
   const src = value(await service.chooseFolder());
   const real = value(await service.planSave(f.id, [{ kind: 'add-skill', id: 'summarize', from: src.id }]));
-  const sample = value(await createSampleEngine().planSave(ID, [{ kind: 'add-skill', id: 'soil-check', from: SAMPLE_FOLDERS.stopped }]));
+  const sample = value(await createSampleEngine().planSave(ID, [{ kind: 'add-skill', id: 'shelf-check', from: SAMPLE_FOLDERS.stopped }]));
   assert.deepEqual(Object.keys(sample).sort(), Object.keys(real).sort());
   assert.deepEqual(Object.keys(sample.copiedExecutables[0]!).sort(), Object.keys(real.copiedExecutables[0]!).sort());
 });

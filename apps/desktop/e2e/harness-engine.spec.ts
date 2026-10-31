@@ -265,8 +265,8 @@ test('a stopped folder: the plan refuses in its own words and offers the recover
   const p = page();
   await p.getByRole('button', { name: 'Install from a folder', exact: true }).click();
   const s = installSheet(p);
-  await s.locator('[data-folder="sample-garden"]').click();
-  await expect(s.locator('[data-folder="sample-garden"]')).toContainText('An install stopped part way here.');
+  await s.locator('[data-folder="sample-reading"]').click();
+  await expect(s.locator('[data-folder="sample-reading"]')).toContainText('An install stopped part way here.');
   await s.getByRole('button', { name: 'Plan a recovery', exact: true }).click();
   const r = installSheet(p, 'Finish a stopped install');
   await expect(r).toContainText('Take the stopped run back');
