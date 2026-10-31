@@ -6,8 +6,7 @@
  */
 import { BUNDLE_LIMITS, commitImport, parseBundle, previewImport } from './bundle.js';
 import { describeRule } from './slicerule.js';
-import { ACCESS_WORDS } from './harnessmodel.js';
-import type { Bundle, ImportClash, ImportGrant, ImportPreview, SecretSlot, ToolKind, World } from './types.js';
+import type { AccessClass, Bundle, ImportClash, ImportGrant, ImportPreview, SecretSlot, ToolKind, World } from './types.js';
 
 /** What the file holds and does not hold. Skill text, agent text and file locations are in it as written, so the promise says so. */
 /** Said once, under the list of tool references: what "MCP" is. */
@@ -50,6 +49,9 @@ export const nothingToExportWords = (ticked: number): string => (ticked === 0
   : 'Project overrides are not exported; this harness has no items of its own.');
 
 /** "Planner may use Search: read and write." One access class an import would give. */
+/** What each access class means, in the words of the import preview. */
+const ACCESS_WORDS: Readonly<Record<AccessClass, string>> = Object.freeze({ 'read-only': 'read only', 'read-write': 'read and write' });
+
 export const grantWords = (g: ImportGrant): string => `${g.agent} may use ${g.tool}: ${ACCESS_WORDS[g.access]}.`;
 
 export interface ExportTool { readonly id: string; readonly name: string; readonly kindWords: string; readonly secretWords: string | null }

@@ -52,8 +52,8 @@ const HOME_NAME = 'Your home folder';
 /** Plain names for the folders of the sample world, by the folder's own name. A folder the table does not know is named by its own name, as words. A Map, because a person's folder can be called constructor or __proto__. */
 const FOLDER_NAMES: ReadonlyMap<string, string> = new Map([['Reedmarsh', 'Client site'], ['Copperfen', 'Holiday trips']]);
 
-const pathsOf = (world: World, agents: readonly AgentItem[]): string[] =>
-  [...new Set(agents.flatMap(a => a.foundAt.map(f => placeIdOf(world, a, f))))].sort();
+const pathsOf = (agents: readonly AgentItem[]): string[] =>
+  [...new Set(agents.flatMap(a => a.foundAt.map(placeIdOf)))].sort();
 
 /** The places that hold at least one agent of the person: the home folder first, then the others by name. `committed` is the saved world, to tell which agents have unsaved changes. */
 export function findPlaces(world: World, committed: World = world): FindPlace[] {
@@ -63,7 +63,7 @@ export function findPlaces(world: World, committed: World = world): FindPlace[] 
     const here = owned.filter(a => a.scopeId === scope.id);
     if (here.length === 0) continue;
     const name = scope.parentId === null ? HOME_NAME : (FOLDER_NAMES.get(scope.name) ?? itemTitle(scope.name));
-    places.push({ id: scope.id, name, agents: here.length, agentIds: here.map(a => a.id), paths: pathsOf(world, here), unsaved: here.filter(a => waiting.has(a.id)).length });
+    places.push({ id: scope.id, name, agents: here.length, agentIds: here.map(a => a.id), paths: pathsOf(here), unsaved: here.filter(a => waiting.has(a.id)).length });
   }
   const homeFirst = (p: FindPlace): number => (p.name === HOME_NAME ? 0 : 1);
   return places.sort((a, b) => homeFirst(a) - homeFirst(b) || a.name.localeCompare(b.name));
