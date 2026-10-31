@@ -16,6 +16,8 @@ export interface WindowFailureDeps {
   /** The error box of the system. It may throw when no box can be shown. */
   readonly showBox: (title: string, message: string) => void;
   readonly setExitCode: (code: number) => void;
+  /** Marks the app as ending, just before the quit. The close guard (main/close-guard.ts) then skips its box, so a window with unsaved changes cannot stop this quit. */
+  readonly markEnding: () => void;
   /** `app.quit()`. Never `app.exit`. */
   readonly quit: () => void;
 }
@@ -33,6 +35,7 @@ export function windowFailure(deps: WindowFailureDeps): (error: Error, title: st
     }
     try { deps.showBox(title, deps.engine === null ? error.message : `${error.message} ${SAVING_WORDS}`); } catch { /* no box could be shown; stderr has the message */ }
     deps.setExitCode(1);
+    deps.markEnding();
     deps.quit();
   };
 }

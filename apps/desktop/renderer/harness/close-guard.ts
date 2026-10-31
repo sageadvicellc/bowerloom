@@ -1,6 +1,6 @@
 /**
  * The window's half of the close guard (owner decision Q1A). While any folder holds unsaved changes, the page holds its own unload with a `beforeunload` handler, so
- * closing the window, Cmd+W, Cmd+Q and a reload do not drop the changes without a word. Main asks the question in a native box (main/close-guard.ts); this half
+ * closing the window, Cmd+Q and a reload do not drop the changes without a word. Main asks the question in a native box (main/close-guard.ts); this half
  * cannot answer it. It also says how many changes it holds in the page title, which main reads and the title bar never shows. With no change it sets no handler.
  */
 import { useEffect } from 'react';

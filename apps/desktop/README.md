@@ -67,4 +67,13 @@ All commands run from the repository root, or with `npm --prefix <repo>`.
 - `npm run desktop:build` makes the macOS app, with a local signature only, in `apps/desktop/release`. It never publishes. In `apps/desktop`, `npm run verify:fuses` checks the built app's safety switches.
 - In `apps/desktop`, `npm run e2e` runs the end-to-end specs. Take the lock `/tmp/bowerloom-test.lock` around a run. Every e2e run is hidden: no window shows, no other app loses focus, and the Dock shows no icon. `e2e/hidden.ts` adds the switch `--e2e-hidden` to every start, and gives the windows that a spec opens from the main process the same rule. The switch changes only whether a window is shown. To watch a run, set `BOWERLOOM_E2E_SHOW=1`, for example `BOWERLOOM_E2E_SHOW=1 npm run e2e -- e2e/window-hidden.spec.ts`. A run that watches shows the windows and may take focus. The spec `e2e/packaged-app.spec.ts` launches the built app from `release/` when one is there.
 
+Manual check of the close question, on a Mac. The e2e specs answer the box with a stub and cannot press real keys, so check the real box by hand after a change to `main/close-guard.ts` or the app menu:
+
+1. Run `npm run desktop:sample`. Open a folder in the Builder and tick one box, so the page says "1 change, not saved yet."
+2. Press Cmd+Q. A box asks "Discard 1 change?" with the note "Your changes are not saved. If you go on, they are lost." Choose Keep editing: the window and the change stay, and the app keeps running. Press Cmd+Q again and choose Discard: the app quits.
+3. Open it again and make a change. Click the red close button of the window. The same box appears. Keep editing keeps the window. Discard closes it.
+4. Make a change, minimize the window to the Dock, and choose Quit from the Dock icon. The window comes back and the box shows on it.
+5. Press Cmd+W. This build's Window menu has no Close item, so Cmd+W does nothing. Note what you see.
+6. Undo the change so the page says "No change yet." Cmd+Q now quits with no box.
+
 Design colors and sizes live in one file, `renderer/tokens.css`, so the Sage brand can replace them later. The app reads Bowerloom's own functions inside one process. It opens no port and sends nothing over the network. The only programs it starts are git, for notes folders, and the version command of each engine, for the problem report.

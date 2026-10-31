@@ -11,7 +11,7 @@
  * - Undo and Redo step through the unsaved changes. Saved changes go back through the Save points drawer (Go back), reviewed in the save sheet.
  * - Save opens the save sheet on its review step; its Done step offers Install. "Assign to project" opens the install sheet of the folder.
  * - Leaving the folder with unsaved changes asks "Discard N changes?" (owner decision Q1A). So does Go back, which drops the draft before it opens the review.
- *   Closing the window, Cmd+W, Cmd+Q and a reload ask it too, in main's own box (close-guard.ts here, main/close-guard.ts there).
+ *   Closing the window, Cmd+Q and a reload ask it too, in main's own box (close-guard.ts here, main/close-guard.ts there).
  * Runs, Start and the interface switch stay in the sample screens; the Builder has none of them.
  */
 import { useEffect, useRef, useState } from 'react';

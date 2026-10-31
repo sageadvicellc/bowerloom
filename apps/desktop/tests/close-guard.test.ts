@@ -1,4 +1,4 @@
-// The close guard (owner decision Q1A): closing the window, Cmd+Q, Cmd+W or a reload with unsaved Builder changes asks "Discard N changes?" in a native box.
+// The close guard (owner decision Q1A): closing the window, Cmd+Q or a reload with unsaved Builder changes asks "Discard N changes?" in a native box.
 // The window sets a `beforeunload` handler while any folder holds changes (renderer/harness/close-guard.ts). Electron cancels the unload without a word unless main
 // handles `will-prevent-unload` (main/close-guard.ts), so main asks in its own box and the window cannot skip it or answer it. The tools come in as arguments, so
 // this runs with no Electron and no browser.
@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { CLOSE_BUTTONS, closeGuard, closeQuestion } from '../main/close-guard.js';
+import { CLOSE_BUTTONS, bringForBox, closeGuard, closeQuestion } from '../main/close-guard.js';
 import type { AskClose } from '../main/close-guard.js';
 import { CLOSE_WORDS, TITLE_NAME, changesInTitle, discardWords, titleWithChanges } from '../shared/harness/close-words.js';
 import { installCloseGuard } from '../renderer/harness/close-guard.js';
@@ -115,6 +115,12 @@ test('the words are the screen\'s own, and obey the limits and the banned words'
   assert.doesNotMatch(CLOSE_WORDS.note, /n't|'s|'re|'ll|'ve/);
 });
 
+test('the note is true for a reload and for a window close with the app open: it says the changes are lost, not that Bowerloom closes', () => {
+  assert.doesNotMatch(CLOSE_WORDS.note, /Closing Bowerloom/);
+  assert.match(CLOSE_WORDS.note, /not saved/);
+  assert.match(CLOSE_WORDS.note, /lost/);
+});
+
 // ---- main's handler
 
 interface Probe { asked: ReturnType<typeof closeQuestion>[]; prevented: number; handler(): void }
@@ -124,7 +130,7 @@ function probe(answer: number | Error, title: string): Probe {
     asked, prevented: 0,
     handler() {
       const ask: AskClose = options => { asked.push(options as ReturnType<typeof closeQuestion>); if (answer instanceof Error) throw answer; return answer; };
-      closeGuard({ title: () => title, ask })({ preventDefault: () => { p.prevented++; } });
+      closeGuard({ title: () => title, ask, ending: () => false, reveal: () => undefined })({ preventDefault: () => { p.prevented++; } });
     },
   };
   return p;
@@ -162,11 +168,43 @@ test('a page that lies about its count cannot change the words, skip the box, or
 
 test('the question is asked once for each event, with the title read at that moment', () => {
   let title = titleWithChanges('Bowerloom', 1), asks = 0;
-  const handler = closeGuard({ title: () => title, ask: o => { asks++; assert.match(o.title, /^Discard \d+ changes?\?$/); return 0; } });
+  const handler = closeGuard({ ending: () => false, reveal: () => undefined, title: () => title, ask: o => { asks++; assert.match(o.title, /^Discard \d+ changes?\?$/); return 0; } });
   handler({ preventDefault() { /* kept */ } });
   title = titleWithChanges('Bowerloom', 9);
   handler({ preventDefault() { /* kept */ } });
   assert.equal(asks, 2);
+});
+
+test('while the app is ending, the box is skipped and the unload goes on: a failed page cannot be held by Keep editing', () => {
+  let ending = false, asks = 0, prevented = 0;
+  const handler = closeGuard({ title: () => titleWithChanges('Bowerloom', 2), ask: () => { asks++; return 0; }, ending: () => ending, reveal: () => undefined });
+  handler({ preventDefault: () => { prevented++; } });
+  assert.deepEqual([asks, prevented], [1, 0], 'before: asks, and Keep editing keeps the window');
+  ending = true;
+  handler({ preventDefault: () => { prevented++; } });
+  assert.deepEqual([asks, prevented], [1, 1], 'ending: no box, the unload goes on');
+});
+
+test('the window is brought forward before the box: restored if minimized, shown if hidden, and the box still shows if that fails', () => {
+  const calls: string[] = [];
+  const handler = (win: { minimized: boolean; visible: boolean; throws?: boolean }): void => {
+    const w = {
+      isMinimized: () => win.minimized, restore: () => { calls.push('restore'); }, isVisible: () => win.visible,
+      show: () => { calls.push('show'); if (win.throws === true) throw new Error('gone'); },
+    };
+    closeGuard({ title: () => titleWithChanges('Bowerloom', 1), ask: () => { calls.push('ask'); return 0; }, ending: () => false, reveal: () => bringForBox(w, true) })({ preventDefault() { /* kept */ } });
+  };
+  handler({ minimized: true, visible: true }); assert.deepEqual(calls.splice(0), ['restore', 'ask']);
+  handler({ minimized: false, visible: false }); assert.deepEqual(calls.splice(0), ['show', 'ask']);
+  handler({ minimized: true, visible: false }); assert.deepEqual(calls.splice(0), ['restore', 'show', 'ask']);
+  handler({ minimized: false, visible: true }); assert.deepEqual(calls.splice(0), ['ask'], 'a window in plain view is left alone');
+  handler({ minimized: false, visible: false, throws: true }); assert.deepEqual(calls.splice(0), ['show', 'ask'], 'a window that cannot be shown does not stop the box');
+});
+
+test('a hidden e2e run (canShow false) restores a minimized window but never shows a hidden one', () => {
+  const calls: string[] = [];
+  bringForBox({ isMinimized: () => false, restore: () => { calls.push('restore'); }, isVisible: () => false, show: () => { calls.push('show'); } }, false);
+  assert.deepEqual(calls, []);
 });
 
 // ---- the window's handler
@@ -217,6 +255,8 @@ test('main handles will-prevent-unload with the guard and a synchronous box; the
   assert.match(main, /'will-prevent-unload'/);
   assert.match(main, /closeGuard\(/);
   assert.match(main, /showMessageBoxSync\(/);
+  assert.match(main, /ending: \(\) => closeEnding/, 'a failed window ends the app without the box');
+  assert.match(main, /reveal: \(\) => bringForBox\(win, !e2eHidden\(argv\)\)/, 'the window is brought forward before the box');
   assert.equal([...main.matchAll(/ipcMain\.\w+/g)].length, 0);
   const guard = strip(read('main/close-guard.ts'));
   assert.doesNotMatch(guard, /ipcMain|ipcRenderer|executeJavaScript|process\.env|require\(/);

@@ -1,5 +1,5 @@
 /**
- * The close guard (owner decision Q1A) in the real window on the sample launch: with unsaved Builder changes, closing the window, Cmd+W, Cmd+Q and a reload ask "Discard N changes?" in main's own native box. Keep editing keeps the window, and the quit stops. Discard lets the window close, and the quit go on.
+ * The close guard (owner decision Q1A) in the real window on the sample launch: with unsaved Builder changes, closing the window, Quit from the application menu (Cmd+Q) and a reload ask "Discard N changes?" in main's own native box. Keep editing keeps the window, and the quit stops. Discard lets the window close, and the quit go on.
  * With no change, nothing asks. The native box is stubbed in the main process (e2e/hidden.ts `answerCloseQuestion`): a test answers it, and reads what it was asked.
  * Each test starts its own app, because a closed window cannot be opened again from the page.
  */
@@ -39,8 +39,18 @@ async function change(p: Page): Promise<void> {
 
 const windows = (h: Harness): Promise<number> => h.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter(w => !w.isDestroyed()).length);
 const closeWindow = (h: Harness): Promise<void> => h.app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0]!.close(); });
-/** Cmd+Q: the Quit item of the app menu is the role `quit`, which on macOS calls the system's terminate, and Electron answers that with `app.quit()` (every window closes through its unload first). */
-const quit = (h: Harness): Promise<void> => h.app.evaluate(({ app }) => { app.quit(); });
+/**
+ * Chooses Quit from the application menu, which is what Cmd+Q does. On macOS the menu's Quit item (role `quit`) is a native item: its action is the system's `terminate:`, sent to the
+ * application, and Electron answers it by closing every window through its unload (as `app.quit()` does). A JS `click` on the item does nothing on macOS (roles are handled natively), and a key press
+ * through `webContents.sendInputEvent` goes to the page, not the menu. So this checks that the item exists with its accelerator, then sends the same `terminate:` action the item sends.
+ */
+const chooseQuit = (h: Harness): Promise<{ found: boolean; accelerator: string }> => h.app.evaluate(({ Menu }) => {
+  const find = (items: Electron.MenuItem[]): Electron.MenuItem | null => { for (const i of items) { if (i.role === 'quit') return i; const inner = i.submenu ? find(i.submenu.items) : null; if (inner !== null) return inner; } return null; };
+  const item = find(Menu.getApplicationMenu()?.items ?? []);
+  if (item === null) return { found: false, accelerator: '' };
+  Menu.sendActionToFirstResponder('terminate:');
+  return { found: true, accelerator: String(item.accelerator ?? '') };
+});
 const settle = (ms = 700): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
 
 test('the page title carries the count for main, and the window title bar keeps the name', async () => {
@@ -59,7 +69,7 @@ test('closing the window with a change asks "Discard 1 change?": Keep editing ke
   await closeWindow(x);
   await expect.poll(async () => (await closeAsks(x.app)).length).toBe(1);
   const [ask] = await closeAsks(x.app);
-  expect(ask).toEqual({ title: 'Discard 1 change?', detail: 'Your changes are not saved. Closing Bowerloom drops them.', buttons: ['Keep editing', 'Discard'], defaultId: 0, cancelId: 0 });
+  expect(ask).toEqual({ title: 'Discard 1 change?', detail: 'Your changes are not saved. If you go on, they are lost.', buttons: ['Keep editing', 'Discard'], defaultId: 0, cancelId: 0 });
   await settle();
   expect(await windows(x)).toBe(1);
   await expect(count(x.page)).toContainText('1 change, not saved yet.');
@@ -94,7 +104,8 @@ test('a change that was undone asks nothing when the window closes', async () =>
   expect(await closeAsks(x.app)).toEqual([]);
 });
 
-test('Cmd+W, which closes the window the same way, asks too: Keep editing stays, Discard closes', async () => {
+test('a window that stayed after Keep editing asks again at the next close, and Discard closes it', async () => {
+  // This build's Window menu has no Close item, so Cmd+W is not bound; the close button and `window.close()` are the paths (see the manual check in apps/desktop/README.md).
   const x = await start(0);
   await change(x.page);
   await closeWindow(x);
@@ -122,31 +133,31 @@ test('a reload with a change asks: Keep editing keeps the page and the change, D
   await expect(count(x.page)).toContainText('No change yet.');
 });
 
-test('Quit (Cmd+Q) with a change asks, and no quit happens while the window refuses to close', async () => {
+test('Quit from the application menu (Cmd+Q) with a change asks, and no quit happens while the window refuses to close', async () => {
   const x = await start(0);
   await change(x.page);
   let closed = false;
   x.app.on('close', () => { closed = true; });
-  await quit(x);
+  expect(await chooseQuit(x)).toEqual({ found: true, accelerator: 'CommandOrControl+Q' });
   await expect.poll(async () => (await closeAsks(x.app)).length).toBe(1);
   await settle(1000);
   expect(closed).toBe(false);
   expect(await windows(x)).toBe(1);
   await expect(count(x.page)).toContainText('1 change, not saved yet.');
-  // The app is still alive, and a second Quit asks again. Discard ends it.
+  // The app is still alive, and a second Cmd+Q asks again. Discard ends it.
   await answerCloseQuestion(x.app, 1);
   const gone = x.app.waitForEvent('close');
-  await quit(x);
+  await chooseQuit(x);
   await gone;
   expect(closed).toBe(true);
 });
 
-test('Quit (Cmd+Q) with no change quits at once and asks nothing', async () => {
+test('Quit from the application menu (Cmd+Q) with no change quits at once and asks nothing', async () => {
   const x = await start(0);
   await fresh(x.page, BUILDER);
   await expect(count(x.page)).toContainText('No change yet.');
   // The stub answers Keep editing: if main asked, the window would stay and the quit would not happen.
   const gone = x.app.waitForEvent('close');
-  await quit(x);
+  await chooseQuit(x);
   await gone;
 });

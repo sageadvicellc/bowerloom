@@ -21,6 +21,7 @@ function fakes(engine: { idle(): Promise<void> } | null) {
     say: text => { events.push(`say:${text.trim()}`); },
     showBox: (title, message) => { events.push('box'); boxes.push({ title, message }); },
     setExitCode: code => { events.push(`code:${code}`); },
+    markEnding: () => { events.push('ending'); },
     quit: () => { events.push('quit'); },
   });
   return { events, boxes, handler };
@@ -42,7 +43,7 @@ test('with a write in progress, the box and the quit wait for the engine to be i
   assert.match(f.boxes[0]!.message, /^The window stopped \(crashed\)\. Open Bowerloom again\./);
   assert.ok(f.boxes[0]!.message.endsWith(SAVING_WORDS));
   assert.equal(SAVING_WORDS, 'If you were saving or installing, open the folder again to see what was written.');
-  assert.deepEqual(f.events.filter(e => !e.startsWith('say:')), ['box', 'code:1', 'quit'], 'the box first, then the exit code, then the quit');
+  assert.deepEqual(f.events.filter(e => !e.startsWith('say:')), ['box', 'code:1', 'ending', 'quit'], 'the box first, then the exit code, then the mark that the app is ending, then the quit');
 });
 
 test('a second failure while the first waits adds no second box and no second quit', async () => {
@@ -79,9 +80,19 @@ test('a launch with no engine calls waits for nothing and does not mention savin
 
 test('a box that throws still quits', async () => {
   const events: string[] = [];
-  const handler = windowFailure({ engine: null, say: () => undefined, showBox: () => { throw new Error('no box'); }, setExitCode: () => undefined, quit: () => { events.push('quit'); } });
+  const handler = windowFailure({ engine: null, say: () => undefined, showBox: () => { throw new Error('no box'); }, setExitCode: () => undefined, markEnding: () => { events.push('ending'); }, quit: () => { events.push('quit'); } });
   await handler(new Error('x'), 'Bowerloom stopped');
-  assert.deepEqual(events, ['quit']);
+  assert.deepEqual(events, ['ending', 'quit']);
+});
+
+test('the app is marked as ending before the quit, so the close question is skipped and a window with drafts cannot stop the quit', async () => {
+  const f = fakes(null);
+  await f.handler(new Error('The page did not load.'), 'Bowerloom could not start');
+  const ending = f.events.indexOf('ending'), quit = f.events.indexOf('quit');
+  assert.ok(ending >= 0 && ending < quit, 'marked, then quit');
+  // A second failure does not mark or quit again.
+  await f.handler(new Error('again'), 'Bowerloom stopped');
+  assert.equal(f.events.filter(e => e === 'ending').length, 1);
 });
 
 test('the real engine service is not idle while a call runs, and is idle after: the serial queue is the signal', async t => {
@@ -125,6 +136,7 @@ test('main.ts: a dead or unloadable window goes through windowFailure and app.qu
   const dead = main.slice(main.indexOf("on('render-process-gone'"), main.indexOf("window.once('ready-to-show'"));
   assert.doesNotMatch(dead, /startupFailed|app\.exit/, 'neither window event ends the process at once');
   assert.match(main, /quit: \(\) => app\.quit\(\)/);
+  assert.match(main, /markEnding: \(\) => \{ closeEnding = true; \}/, 'the failure marks the close guard before it quits');
   assert.match(main, /get engine\(\) \{ return engineForExit; \}/);
   assert.match(main, /engineForExit = engine;/, 'the engine of the launch is the one waited for');
   // The only app.exit calls: the refused start (code 2) and startupFailed (code 1).

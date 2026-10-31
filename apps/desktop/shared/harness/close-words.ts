@@ -1,5 +1,5 @@
 /**
- * The words of the close guard (owner decision Q1A): closing the window, Cmd+Q, Cmd+W or a reload while a folder holds unsaved Builder changes asks "Discard N changes?".
+ * The words of the close guard (owner decision Q1A): closing the window, Cmd+Q or a reload while a folder holds unsaved Builder changes asks "Discard N changes?".
  * The window and main both read this file, so the question has one set of words. Main asks in its own box (main/close-guard.ts); the window only holds the unload
  * (renderer/harness/close-guard.ts) and says how many changes it holds, in its page title. The count is a number inside a fixed sentence: nothing else the window
  * writes ever reaches the box.
@@ -12,7 +12,7 @@ export const TITLE_NAME = 'Bowerloom';
 export const CLOSE_WORDS = Object.freeze({
   keep: 'Keep editing',
   discard: 'Discard',
-  note: 'Your changes are not saved. Closing Bowerloom drops them.',
+  note: 'Your changes are not saved. If you go on, they are lost.',
   /** The question when the window did not say how many changes it holds. */
   unknown: 'Discard your changes?',
 });
