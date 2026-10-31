@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {parseArticle, loadArticles, renderArticlePage, renderIndexPage, renderSitemap, renderRobots, buildFiles, articlesPlugin} from '../build/articles.ts';
 import {renderMarkdown, safeHref} from '../build/markdown.ts';
-import {release} from '../src/release.ts';
+const release = JSON.parse(readFileSync(new URL('../../../release/beta.json', import.meta.url), 'utf8'));
 import social from '../../../release/social-preview.json' with {type: 'json'};
 
 const site = {site: release.urls.site, docs: release.urls.docs, repository: release.urls.repository, image: social.image};

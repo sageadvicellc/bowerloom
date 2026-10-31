@@ -1,8 +1,16 @@
 import type { ReactNode } from 'react';
-import { app, arrivalNote, commandLine, engines, howItWorks, install, installView, questions, whatItDoes } from './content';
-import { releasesUrl } from './release';
+import { app, commandLine, engines, howItWorks, install, installView, questions, whatItDoes } from './content';
+import { installAvailable, releasesUrl } from './release';
 import ProductText from './ProductText';
 import ScreenshotSlot from './ScreenshotSlot';
+
+/**
+ * A command, with each hyphenated word kept whole when the line wraps on a narrow screen.
+ * The spans add no characters, so a selection still copies the command exactly as written.
+ */
+function Command({ text }: { text: string }) {
+  return <>{text.split(/(\s+)/).map((part, index) => (part.includes('-') ? <span key={index} className="no-break">{part}</span> : part))}</>;
+}
 
 export function ExternalLink({ href, children }: { href: string; children: ReactNode }) {
   return <a href={href} target="_blank" rel="noopener noreferrer">{children} <span aria-hidden="true">↗</span><span className="sr-only"> (opens in a new tab)</span></a>;
@@ -59,15 +67,13 @@ export function AppSection() {
 }
 
 export function CommandLineSection() {
-  const view = installView();
   return <section id="command-line" className="band" aria-labelledby="command-line-title">
     <div className="band-inner split">
       <div>
         <h2 id="command-line-title">{commandLine.heading}</h2>
         <p className="band-lede"><ProductText>{commandLine.body}</ProductText></p>
-        <pre className="command-block" tabIndex={0} aria-label="Bowerloom commands"><code>{commandLine.commands.join('\n')}</code></pre>
+        <pre className="command-block" tabIndex={0} aria-label="Bowerloom commands"><code><Command text={commandLine.commands.join('\n')} /></code></pre>
         <p>{commandLine.note}</p>
-        {view.command === null && <p className="availability-note">{arrivalNote}</p>}
       </div>
       <ScreenshotSlot slot="cli-plan" />
     </div>
@@ -87,26 +93,28 @@ export function EnginesSection() {
   </section>;
 }
 
-export function InstallSection() {
-  const view = installView();
+/** The app card leads while the command is not published, because it holds the only install that works today. */
+export function InstallSection({ available = installAvailable }: { available?: boolean }) {
+  const view = installView(available);
+  const commandCard = <div key="cli" id="install-cli" className="install-card">
+    <h3>{install.commandLineTitle}</h3>
+    {view.command && <pre className="command-block" tabIndex={0} aria-label="Install command"><code><Command text={view.command} /></code></pre>}
+    <p><ProductText>{view.text}</ProductText></p>
+  </div>;
+  const appCard = <div key="app" id="install-app" className="install-card">
+    <h3>{install.appTitle}</h3>
+    <p>{install.appIntro}</p>
+    <ol className="install-steps">
+      {install.appSteps.map(step => <li key={step}><ProductText>{step}</ProductText></li>)}
+    </ol>
+    <p>{install.appUpdate}</p>
+    <a className="button primary" href={releasesUrl} target="_blank" rel="noopener noreferrer">Get the app (beta)<span className="sr-only"> (opens in a new tab)</span></a>
+  </div>;
   return <section id="install" className="band" aria-labelledby="install-title">
     <div className="band-inner">
       <h2 id="install-title">{install.heading}</h2>
-      <div className="install-grid">
-        <div id="install-cli" className="install-card">
-          <h3>{install.commandLineTitle}</h3>
-          {view.command && <pre className="command-block" tabIndex={0} aria-label="Install command"><code>{view.command}</code></pre>}
-          <p><ProductText>{view.text}</ProductText></p>
-        </div>
-        <div id="install-app" className="install-card">
-          <h3>{install.appTitle}</h3>
-          <p>{install.appIntro}</p>
-          <ol className="install-steps">
-            {install.appSteps.map(step => <li key={step}><ProductText>{step}</ProductText></li>)}
-          </ol>
-          <p>{install.appUpdate}</p>
-          <a className="button primary" href={releasesUrl} target="_blank" rel="noopener noreferrer">Get the app (beta)<span className="sr-only"> (opens in a new tab)</span></a>
-        </div>
+      <div className="install-grid" data-command={view.command === null ? 'unpublished' : 'published'}>
+        {view.command === null ? [appCard, commandCard] : [commandCard, appCard]}
       </div>
     </div>
   </section>;

@@ -1,7 +1,9 @@
 import { defineConfig } from "vite";
 import {fileURLToPath} from "node:url";
 import react from "@vitejs/plugin-react";
-import {release, readerRelease} from "./src/release.ts";
+import {readerRelease} from "./src/release.ts";
+import {releaseFieldsPlugin} from "./build/release-fields.ts";
+import release from "../../release/beta.json" with {type: "json"};
 import {articlesPlugin} from "./build/articles.ts";
 import social from "../../release/social-preview.json" with {type: "json"};
 
@@ -29,7 +31,7 @@ export const renderMetadata = (html: string, values: Record<string, string> = me
     Object.hasOwn(values, key) ? escapeHtml(values[key]) : match);
 
 export default defineConfig({
-  plugins: [react(), {
+  plugins: [releaseFieldsPlugin(), react(), {
     name: "shared-release-metadata",
     transformIndexHtml: html => renderMetadata(html),
   }, articlesPlugin({

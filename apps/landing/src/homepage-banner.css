@@ -2,6 +2,14 @@
 .homepage-banner { position: relative; isolation: isolate; overflow: hidden; min-height: 220px; width: 100%; background: radial-gradient(ellipse at 50% 30%, var(--ui-surface), var(--ui-bg) 76%); }
 .homepage-banner > img { display: block; width: 100%; height: auto; opacity: 0; transition: opacity 400ms cubic-bezier(.23, 1, .32, 1); }
 .homepage-banner[data-artwork="ready"] > img { opacity: 1; }
+/* On desktop the picture is cropped so the headline and both buttons sit above the fold. 530px is the header, the hero copy, and a little room. */
+@media (min-width: 761px) {
+  .homepage-banner > img { max-height: clamp(220px, calc(100svh - 530px), 460px); object-fit: cover; object-position: center 62%; }
+}
+/* On a short screen the strip is thin, so the crop moves up to keep the faces in it. */
+@media (min-width: 761px) and (max-height: 800px) {
+  .homepage-banner > img { object-position: center 50%; }
+}
 /* A short soft edge hides the line where the lagging art is clipped. Depth on scroll lives in hero-parallax.css. */
 .homepage-banner::after { content: ''; position: absolute; z-index: 1; inset: 0; pointer-events: none; background: linear-gradient(to bottom, transparent 84%, var(--ui-bg) 100%); }
 .normal-site .normal-hero { display: block; max-width: 1440px; min-height: 0; padding: 0; overflow: visible; background: var(--ui-bg); }

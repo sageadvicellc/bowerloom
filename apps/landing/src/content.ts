@@ -1,10 +1,10 @@
-import { installAvailable, release } from './release.ts';
+import { installAvailable, installCommand, repositoryUrl } from './release.ts';
 
 /**
  * Page copy for 0.8.0-beta.1, approved on 2026-10-31. Backticks mark inline code.
  * Keep the wording as approved. Change it only with the owner.
  */
-export const repository = release.urls.repository;
+export const repository = repositoryUrl;
 const branch = `${repository}/blob/main`;
 export const destinations = {
   readme: `${branch}/README.md`,
@@ -99,7 +99,7 @@ const needs = "needs Node 24.11 or a later 24.x, and npm 11.";
  */
 export function installView(available: boolean = installAvailable): { command: string | null; text: string } {
   return available
-    ? { command: release.npm.installCommand, text: `This ${needs} To update, run the same command again. Do not use \`npm update -g\`.` }
+    ? { command: installCommand, text: `This ${needs} To update, run the same command again. Do not use \`npm update -g\`.` }
     : { command: null, text: `${arrivalNote} The command line ${needs}` };
 }
 

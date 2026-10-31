@@ -8,7 +8,7 @@ import ThemeSplash from "./ThemeSplash";
 import { rememberThemeSplash, shouldShowThemeSplash, splashMediaFor, type SplashMedia } from "./theme-splash";
 import "./hero-parallax.css";
 import "./page.css";
-import HomepageBanner from "./HomepageBanner";
+import Hero from "./Hero";
 import SectionCompanion from "./SectionCompanion";
 import FooterCompanion from "./FooterCompanion";
 import { AppSection, CommandLineSection, EnginesSection, ExternalLink, FaqSection, HowItWorks, InstallSection, WhatItDoes } from "./Sections";
@@ -78,17 +78,7 @@ export default function App() {
         </span>
       </header>
       <main id="main" tabIndex={-1}>
-        <section className="hero normal-hero" aria-labelledby="hero-title">
-          <HomepageBanner />
-          <div className="hero-copy">
-            <p className="eyebrow">{hero.Eyebrow}</p>
-            <h1 id="hero-title">{hero.H1}</h1>
-            <p className="hero-description">{hero.Body}</p>
-            <a className="button primary" href={releasesUrl} target="_blank" rel="noopener noreferrer">{hero["Primary CTA"]}<span className="sr-only"> (opens in a new tab)</span></a>
-            <a className="hero-secondary" href="#install-cli">{hero["Secondary link"]}</a>
-            <p className="hero-note">{hero.Note}</p>
-          </div>
-        </section>
+        <Hero />
         <SectionCompanion unit="s4" side="right"><WhatItDoes /></SectionCompanion>
         <SectionCompanion unit="h4n" side="left"><HowItWorks /></SectionCompanion>
         <AppSection />

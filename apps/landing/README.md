@@ -15,7 +15,7 @@ npm run build --workspace apps/landing
 
 `src/content.ts` holds the approved page copy. Change it only with the owner. Inline code sits in backticks.
 
-`src/release.ts` reads `release/beta.json` and never writes it. Two rules come from it:
+`src/release.ts` reads `release/beta.json` and never writes it. It exports only what the page needs, and `build/release-fields.ts` drops every other field from the bundle, so the page holds no version, identity, or evidence text. Two rules come from it:
 
 - The label reads "Open beta" with no version number.
 - The npm install command shows only when the record says the package is published. Until then, the command line and install sections say the command arrives when the beta publishes.
@@ -24,7 +24,7 @@ The download button links to the releases page on GitHub and names no file.
 
 ## Screenshots
 
-The real 0.8 screenshots arrive after the launch change lands. Each slot uses one placeholder, `src/ScreenshotSlot.tsx`. `src/screenshots.ts` lists every slot, its caption, and the screen it needs. To fill a slot, swap the placeholder in that slot for the image. Keep the caption.
+The real 0.8 screenshots arrive after the launch change lands. Each slot uses one placeholder, `src/ScreenshotSlot.tsx`. `src/screenshots.ts` lists every slot, its caption, and the screen it needs. The frame is `aria-hidden`, so the caption alone carries the meaning for a screen reader. To fill a slot, swap the frame for the image. Keep the caption.
 
 ## Visual system
 

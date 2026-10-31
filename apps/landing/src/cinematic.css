@@ -60,7 +60,7 @@
 .product-section p + p { margin-top: 14px; }
 .cinematic-theme .recipe-section { padding-top: 56px; padding-bottom: 56px; }
 
-.faq-list summary { cursor: pointer; font: 14px/1.6 var(--ui-font); min-height: 44px; padding: 10px 0; color: var(--ui-text); }
+.faq-list summary { cursor: pointer; font: 500 18px/1.5 var(--ui-font); min-height: 56px; padding: 10px 0; color: var(--ui-text); }
 
 .faq-section h2 { margin-bottom: 24px; }
 .faq-list { max-width: 92ch; }
