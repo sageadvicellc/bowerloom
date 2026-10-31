@@ -1,14 +1,15 @@
 /**
- * The graph of the builder (S3). Agents sit in a column at the left and every other part in a column at the right, joined by curves.
- * Press a node to select it: the node and its neighbours stay bright and the rest fade. Drag a node to move it; the curves follow, and the place is saved in the manifest when you let go
- * (the arrow keys move the focused node by 8 units, 32 with Shift). Drag the background to pan; Ctrl and the wheel (or a pinch) zoom about the pointer, the wheel alone pans.
+ * The graph of a folder's harness, in the Builder and in the save sheet's edit. Agents sit in a column at the left and every other part in a column at the right, joined by curves.
+ * Press a node to select it: the node and its neighbours stay bright and the rest fade. Drag a node to move it; the curves follow, and the place is kept for the session when you let go
+ * (the arrow keys move the focused node by 8 units, 32 with Shift). Drag to link: a skill or a notes card dropped on an agent asks `onDrop` to link them, and goes back to its place
+ * when they are linked; any other drag moves the node. Drag the background to pan; Ctrl and the wheel (or a pinch) zoom about the pointer, the wheel alone pans.
  * The buttons at the top right zoom in, zoom out and fit the graph; the small map at the foot shows the whole graph and the window, and a press on it moves the window there.
- * To link: select an agent and press the circle at its right edge, then press a part. The link is saved in the manifest; the agent's file does not change. Escape or a press on the background stops linking.
- * A missing part is a dashed node with a Fix button beside it. Nothing here writes to a disk. All text comes from the person's own files and is drawn as plain text.
+ * To link with the keyboard: select an agent and press the circle at its right edge, then press a part. A link is a draft until Save. Escape or a press on the background stops linking.
+ * Nothing here writes to a disk. All text comes from the person's own files and is drawn as plain text.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactElement } from 'react';
-import { FIT_FOOT, ZOOM_STEP, brightIds, centerOnMiniMap, edgePath, fitView, graphOf, miniMap, zoomAt } from '../../../../shared/harness/layout.js';
+import { FIT_FOOT, ZOOM_STEP, brightIds, centerOnMiniMap, dropLinkTarget, edgePath, fitView, graphOf, miniMap, zoomAt } from '../../../../shared/harness/layout.js';
 import type { GraphNode, View } from '../../../../shared/harness/layout.js';
 import type { Harness, HarnessState, Point } from '../../../../shared/harness/types.js';
 import { HIcon, KIND_ICON } from '../../icons.js';
@@ -28,18 +29,21 @@ export interface GraphProps {
   onLinkStart(agentId: string): void;
   onLinkTarget(partId: string): void;
   onLinkCancel(): void;
-  onFix(missingId: string): void;
+  /** A skill or a notes card dropped on an agent. True when they were linked, so the node goes back to its place. Left out, every drag moves the node. */
+  onDrop?(dragged: string, agent: string): boolean;
 }
 
 const DRAG_START = 4;
 const MAP = { w: 140, h: 92 } as const;
 
-export function Graph({ state, harness, selectedId, linkingId, matchIds, onSelect, onMove, onLinkStart, onLinkTarget, onLinkCancel, onFix }: GraphProps): ReactElement {
+export function Graph({ state, harness, selectedId, linkingId, matchIds, onSelect, onMove, onLinkStart, onLinkTarget, onLinkCancel, onDrop }: GraphProps): ReactElement {
   const host = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [view, setView] = useState<View>({ x: 0, y: 0, k: 1 });
   const fitted = useRef(false);
   const [moved, setMoved] = useState<Readonly<Record<string, Point>>>({});
+  // The agent under a skill or a notes card that is being dragged, which a drop would link.
+  const [dropOn, setDropOn] = useState<string | null>(null);
   const graph = useMemo(() => graphOf(state, harness, moved), [state, harness, moved]);
   const nodeById = useMemo(() => new Map(graph.nodes.map(n => [n.id, n])), [graph]);
   const latest = useRef({ view, graph, size });
@@ -129,6 +133,12 @@ export function Graph({ state, harness, selectedId, linkingId, matchIds, onSelec
     d.moved = true;
     const k = latest.current.view.k;
     setMoved(m => ({ ...m, [d.id]: { x: d.from.x + dx / k, y: d.from.y + dy / k } }));
+    if (onDrop !== undefined) setDropOn(dropLinkTarget(latest.current.graph.nodes, d.id, toWorld(e.clientX, e.clientY)));
+  };
+  /** A point of the window in graph units. */
+  const toWorld = (clientX: number, clientY: number): Point => {
+    const box = host.current?.getBoundingClientRect(), v = latest.current.view;
+    return { x: (clientX - (box?.left ?? 0) - v.x) / v.k, y: (clientY - (box?.top ?? 0) - v.y) / v.k };
   };
   const upNode = (e: ReactPointerEvent<HTMLElement>, node: GraphNode): void => {
     const d = drag.current;
@@ -137,7 +147,11 @@ export function Graph({ state, harness, selectedId, linkingId, matchIds, onSelec
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
     if (d.moved) {
       const at = latest.current.graph.nodes.find(n => n.id === d.id);
+      const agent = onDrop === undefined ? null : dropLinkTarget(latest.current.graph.nodes, d.id, toWorld(e.clientX, e.clientY));
       setMoved(m => { const rest = { ...m }; delete rest[d.id]; return rest; });
+      setDropOn(null);
+      // Dropped on an agent and linked: the node goes back to where it was. Any other drag moves it.
+      if (agent !== null && onDrop!(d.id, agent)) return;
       if (at !== undefined) onMove(d.id, { x: at.x, y: at.y });
       return;
     }
@@ -181,10 +195,10 @@ export function Graph({ state, harness, selectedId, linkingId, matchIds, onSelec
           const candidate = linkingId !== null && node.id !== linkingId && node.kind !== 'agent' && bright?.has(node.id) === true;
           return (
             <div key={node.id} className="hx-node" data-node={node.id} data-kind={node.kind} data-selected={selected ? '' : undefined} data-faded={isBright ? undefined : ''} data-missing={node.missing ? '' : undefined}
-              data-candidate={candidate ? '' : undefined} data-dragging={moved[node.id] === undefined ? undefined : ''}
+              data-candidate={candidate ? '' : undefined} data-dragging={moved[node.id] === undefined ? undefined : ''} data-drop={dropOn === node.id ? '' : undefined}
               style={{ left: node.x, top: node.y, width: node.w, height: node.h }}
               role="button" tabIndex={0} aria-pressed={selected} aria-label={node.missing ? `${node.name}. ${node.summary}` : nodeName(node.name, node.kind, node.summary)}
-              onPointerDown={e => downNode(e, node)} onPointerMove={moveNode} onPointerUp={e => upNode(e, node)} onPointerCancel={() => { drag.current = null; setMoved({}); }} onKeyDown={e => keyNode(e, node)}>
+              onPointerDown={e => downNode(e, node)} onPointerMove={moveNode} onPointerUp={e => upNode(e, node)} onPointerCancel={() => { drag.current = null; setMoved({}); setDropOn(null); }} onKeyDown={e => keyNode(e, node)}>
               <span className="hx-tile" aria-hidden="true"><HIcon name={node.missing ? 'warning-triangle' : KIND_ICON[node.kind]} size={20} /></span>
               <span className="hx-node-text"><span className="hx-node-name">{node.name}</span><span className="hx-node-sum">{node.summary}</span></span>
               {node.isNew ? <span className="hx-node-new" aria-label={WORDS.label.new} /> : null}
@@ -194,11 +208,6 @@ export function Graph({ state, harness, selectedId, linkingId, matchIds, onSelec
             </div>
           );
         })}
-        {graph.nodes.filter(n => n.missing).map(n => (
-          <div key={`fix-${n.id}`} className="hx-fix" data-control="" style={{ left: n.x + n.w + 8, top: n.y + n.h / 2 - 16 }}>
-            <HButton size="small" onClick={() => onFix(n.id)} aria-label={`${WORDS.label.fix} ${n.name}`}>{WORDS.label.fix}</HButton>
-          </div>
-        ))}
       </div>
 
       {linkAgent === undefined ? null : (
@@ -222,10 +231,7 @@ export function Graph({ state, harness, selectedId, linkingId, matchIds, onSelec
         </svg>
       </div>
 
-      <ul className="hx-legend" data-control="" aria-label={WORDS.label.legend}>
-        <li><span className="hx-legend-dot" aria-hidden="true" />{WORDS.hint.legendNew}</li>
-        <li><span className="hx-legend-dash" aria-hidden="true" />{WORDS.hint.legendMissing}</li>
-      </ul>
+      {onDrop === undefined ? null : <p className="hx-legend" data-control="" data-drop-hint="">{WORDS.hint.dropToLink}</p>}
     </div>
   );
 }

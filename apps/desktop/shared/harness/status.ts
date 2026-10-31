@@ -62,7 +62,8 @@ export const harnessesHolding = (state: HarnessState, partId: string): Harness[]
 export function routeGone(state: HarnessState, route: Route): boolean {
   switch (route.name) {
     case 'harnesses': return route.id !== undefined && harnessById(state, route.id) === undefined;
-    case 'builder': return harnessById(state, route.id) === undefined;
+    // The Builder names a folder, which this world does not hold; the Builder sends an id main does not know to the folder list itself.
+    case 'builder': return false;
     case 'file': return partById(state, route.partId) === undefined;
     case 'library': return route.partId !== undefined && partById(state, route.partId) === undefined;
     case 'projects': return route.id !== undefined && projectById(state, route.id) === undefined;

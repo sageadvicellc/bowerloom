@@ -4,6 +4,10 @@
  */
 [data-home] .hx-sheet[data-slot="save"][data-tall] { height: min(43.75rem, calc(100% - 1.375rem)); }
 [data-home] .hxs-graph { position: relative; display: flex; height: 18rem; border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); overflow: hidden; }
+/* The Builder draws the same editor in the window: the graph takes most of the height, and Redo is Undo's arrow turned around. */
+[data-home] [data-screen="builder"] .hxs-graph { height: max(24rem, calc(100vh - 16rem)); }
+[data-home] .hxb-body { display: flex; flex-direction: column; gap: var(--hm-space-3); }
+[data-home] .hx-redo svg { transform: scaleX(-1); }
 [data-home] .hxs-agent { margin: 0 0 var(--hm-space-3); padding: var(--hm-space-2) var(--hm-space-3); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); }
 [data-home] .hxs-agent-name { padding: 0 var(--hm-space-1); font-weight: 600; color: var(--text); }
 [data-home] .hxs-ticks { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--hm-space-2) var(--hm-space-4); }

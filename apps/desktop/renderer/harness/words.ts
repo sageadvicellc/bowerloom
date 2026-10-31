@@ -28,11 +28,13 @@ export const WORDS = deepFreeze({
     kindAgent: 'Agent', kindSkill: 'Skill', kindTool: 'Tool', kindContext: 'Context', detailsPanel: 'Details', mainRegion: 'Main', partsList: 'Parts',
     emptyTitle: 'This harness is empty', pickHarness: 'Pick a harness', addPartTitle: 'Add a part', previewNot: 'Not in this preview', fixSheetAdd: 'Add to harness',
     linkTo: 'Link to...', undo: 'Undo', installed: 'Installed.', toast: 'Notice', harness: 'Harness',
+    // The Builder of one folder's harness.
+    redo: 'Redo', unlink: 'Unlink', save: 'Save', discard: 'Discard', keepEditing: 'Keep editing', builderTools: 'Changes', linksHere: 'Links',
   },
   /** Short lines: at most 12 words each. */
   hint: {
     pickToSee: 'Pick one to see what holds.',
-    removeNote: 'This does not delete the file.',
+    removeNote: 'Remove deletes the skill\'s files when you save.',
     readOnlyRelease: 'Read-only in this release',
     legendNew: 'New in this harness', legendMissing: 'Missing. Fix shows the change first.',
     missingNode: 'Missing. Needed.', newMark: 'New',
@@ -43,7 +45,8 @@ export const WORDS = deepFreeze({
     nothingToAdd: 'Every part of this kind is in the harness.', previewOnly: 'Not in this preview.',
     libraryAddHint: 'Pick the harness that gets this part.', helpOne: 'A harness is a saved bundle of your AI helpers.', libraryEmpty: 'Nothing in the Library matches.',
     fileHidden: 'Secrets in this file are hidden here.',
-    noHarness: 'That harness is not here.', noPart: 'That part is not here.', noFile: 'That file is not in the sample.', alreadyIn: 'Already in it.', notInstalledYet: 'Not installed in a project yet.',
+    noHarness: 'That harness is not here.', noFolder: 'That folder is not open. Choose it again.',
+    dropToLink: 'Drag a skill onto an agent to link them.', noLinks: 'Nothing linked yet.', discardNote: 'Your unsaved changes to this folder go.', noPart: 'That part is not here.', noFile: 'That file is not in the sample.', alreadyIn: 'Already in it.', notInstalledYet: 'Not installed in a project yet.',
   },
   /** A short paragraph or a popover: at most 25 words each. */
   paragraph: {
@@ -87,6 +90,12 @@ export const addName = (name: string): string => `Add ${name}`;
 export const installTitle = (name: string): string => `Install ${name}`;
 /** "Skill from Caveman plug-in, version 1.2". */
 export const fromWords = (kind: PartKind, source: string, version: string | undefined): string => `${KIND_NAME[kind]} from ${source}${version === undefined ? '' : `, version ${version}`}`;
+/** "Discard 3 changes?": the question when the person leaves a folder with unsaved changes (owner decision Q1A). */
+export const discardWords = (n: number): string => `Discard ${n} ${n === 1 ? 'change' : 'changes'}?`;
+/** "Unlink editor and check-facts": the name of the Unlink button of one link. */
+export const unlinkName = (agent: string, part: string): string => `${WORDS.label.unlink} ${agent} and ${part}`;
+/** "Open weekly-report in the builder". */
+export const openFolderName = (name: string): string => `Open ${name} in the builder`;
 /** "Pick a part to link from Researcher." */
 export const linkFromWords = (name: string): string => `Pick a part to link from ${name}.`;
 /** "Add Spreadsheet to Weekly report crew": the name of a button in the drawer. */

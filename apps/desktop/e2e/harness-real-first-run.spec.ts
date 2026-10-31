@@ -177,31 +177,25 @@ test('"Yes, read them" reads the ticked folders and opens the Read list: a count
   await shot(p, 'real-3-read');
 });
 
-test('"Make a harness from this" opens the app on a harness made from the files, and the graph draws the links the files name', async () => {
+test('"Make a harness from this" opens the app on a harness made from the files; the Builder refuses a harness from a scan in words and opens "From a folder"', async () => {
   const p = page();
   await p.locator('.hxf-card', { hasText: 'Your Claude Code folder' }).getByRole('button', { name: 'Make a harness from this' }).click();
   await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
   await expect(p.locator('.hx-row-harness')).toHaveCount(1);
   await expect(p.locator('.hx-row[data-selected]')).toContainText('Claude Code folder');
-  await p.getByRole('button', { name: 'Open in builder', exact: true }).click();
-  await expect(node('Ledger keeper')).toBeVisible();
-  await expect(node('Pantry check')).toBeVisible();
-  await expect(node('Shared tally')).toBeVisible();
-  // The agent names two skills and one connection: those are links. Nothing is linked that no file names.
-  const edges = await p.locator('.hx-edge').count();
-  expect(edges).toBeGreaterThanOrEqual(2);
-  expect(edges).toBeLessThan(await p.locator('.hx-node').count());
-  await node('Ledger keeper').click();
-  await expect(p.getByRole('complementary').getByRole('heading', { level: 2, name: 'Ledger keeper' })).toBeVisible();
-  await expect(p.getByRole('complementary')).toContainText('~/.claude/agents/ledger-keeper.md');
-  // Where it works is not known: the page says where it was found and "Not checked", never a list of programs.
-  const aside = p.getByRole('complementary');
-  await expect(aside.locator('[data-not-checked]')).toContainText('Found in your Claude Code folder');
-  await expect(aside.locator('[data-not-checked]')).toContainText('Not checked');
-  await expect(aside.locator('[data-model-badge]')).toContainText('Claude Code only');
-  for (const program of ['Codex', 'OpenCode', 'Hermes']) await expect(aside.locator('#hx-works-in + *'), program).not.toContainText(program);
+  // Where it runs is not known: the list says "Not checked", never a list of programs.
+  const runsIn = p.locator('section', { has: p.locator('#hx-runs-in') });
+  await expect(runsIn).toContainText('Not checked');
+  // The Builder edits one folder's harness (beta.1): a harness from a scan is refused in words, and the sheet that makes one from a folder opens.
+  await p.getByRole('complementary').getByRole('button', { name: 'Open in builder', exact: true }).click();
+  await expect(p.locator('[data-toast]')).toContainText('Each folder holds one harness. Make a new one from a folder.');
+  const sheet = p.getByRole('dialog', { name: 'New harness from a folder' });
+  await expect(sheet).toBeVisible();
   await everyStep('builder', false);
   await shot(p, 'real-4-builder');
+  await sheet.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(p.locator('.hx-row-harness')).toHaveCount(1);
 });
 
 test('the file view draws the file as text: markup and an order stay words, the key is hidden, and nothing in the page runs', async () => {
@@ -265,18 +259,17 @@ async function lastHarnessNumber(p: Page): Promise<number> {
   return Number(found![1]);
 }
 
-test('with a harness made, "Start from a scan" has a way out: "Not now" keeps every harness', async () => {
+test('with a harness made, New harness opens "From a folder", and Cancel keeps every harness as it was', async () => {
   const p = page();
   await p.evaluate(() => { location.hash = '#prototype-v3/harnesses'; });
   await expect(p.locator('.hx-row-harness')).toHaveCount(1);
   await p.getByRole('button', { name: 'New harness', exact: true }).click();
-  await expect(p.getByRole('heading', { level: 1, name: 'New harness' })).toBeVisible();
-  await p.getByRole('button', { name: 'Start from a scan', exact: true }).click();
-  await expect(p.getByRole('heading', { level: 1, name: /^Found \d+ places?$/ })).toBeVisible();
-  await expect(p.getByRole('button', { name: 'Looks right', exact: true })).toBeFocused();
-  await p.getByRole('button', { name: 'Not now', exact: true }).click();
+  await expect(p.locator('[data-toast]')).toContainText('Each folder holds one harness. Make a new one from a folder.');
+  const sheet = p.getByRole('dialog', { name: 'New harness from a folder' });
+  await expect(sheet).toBeVisible();
+  await sheet.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
-  await expect(p.locator('.hx-row-harness')).toHaveCount(2);
+  await expect(p.locator('.hx-row-harness')).toHaveCount(1);
   await expect(p.locator('.hx-row-harness', { hasText: 'Claude Code folder' })).toHaveCount(1);
   await everyStep('not-now', false);
 });
@@ -303,7 +296,8 @@ test('a second read asks first: "Cancel" keeps every harness, "Yes, read them" s
   const p = page();
   await p.evaluate(() => { location.hash = '#prototype-v3/harnesses'; });
   const before = await p.locator('.hx-row-harness').count();
-  expect(before).toBe(2);
+  // One harness from the scan: New harness makes none (it opens "From a folder").
+  expect(before).toBe(1);
   // A note with an old "Undo" is on its way when the read starts: it must not outlive the old world.
   await p.getByRole('button', { name: 'Assign to project', exact: true }).first().click();
   await expect(p.locator('[data-toast]')).toContainText('Not in this preview.');

@@ -64,7 +64,7 @@ function Details({ state, part, onAdd }: { state: HarnessState; part: Part; onAd
         <h3 className="hx-h3" id="hx-lib-used">{WORDS.label.usedIn}</h3>
         {held.length === 0 ? <p className="hx-text hx-muted">{WORDS.hint.noneUsed}</p> : (
           <ul className="hx-box-list">
-            {held.map(h => <li key={h.id} className="hx-box hx-box-press"><Tile name="harness" size="small" /><button type="button" className="hx-box-main" onClick={() => go({ name: 'builder', id: h.id, view: 'graph' })}>{h.name}</button></li>)}
+            {held.map(h => <li key={h.id} className="hx-box hx-box-press"><Tile name="harness" size="small" /><button type="button" className="hx-box-main" onClick={() => go({ name: 'harnesses', id: h.id })}>{h.name}</button></li>)}
           </ul>
         )}
       </section>

@@ -59,7 +59,7 @@ function Screens({ route, bridge, realMode }: { route: Route; bridge: RealBridge
     case 'read': return <ReadSources />;
     case 'notes': return <NotesFirstRun />;
     case 'harnesses': return <HarnessList id={route.id ?? null} />;
-    case 'builder': return <Builder key={route.id} id={route.id} view={route.view} />;
+    case 'builder': return <Builder key={route.id} id={route.id} />;
     case 'file': return <FileView partId={route.partId} />;
     case 'library': return <Library kind={route.kind} partId={route.partId ?? null} />;
     case 'projects': return <Projects id={route.id ?? null} />;

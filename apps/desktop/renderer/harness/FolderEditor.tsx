@@ -226,6 +226,8 @@ export interface EditStepProps {
   world: NonNullable<ReturnType<typeof definitionWorld>>; linkingId: string | null; selectedId: string | null;
   onDraft(next: (d: SaveDraft) => SaveDraft): void; onLinkStart(id: string): void; onLinkTarget(id: string): void; onLinkCancel(): void; onSelect(id: string | null): void;
   onMove(id: string, at: Point): void; onGoBack(version: string): void;
+  /** A skill or a notes card dropped on an agent (the Builder): true when they were linked. Left out, every drag moves the node. */
+  onDrop?(dragged: string, agent: string): boolean;
   /** False in the Builder, which keeps the save points in a drawer. */
   savePoints?: boolean;
   setAside?: SetAsideParts;
@@ -234,7 +236,7 @@ export interface EditStepProps {
 }
 
 /** The draft of one folder's harness: the graph, the skills of each agent, the skills, the interfaces, and the save points (unless `savePoints` is false). */
-export function EditStep({ base, now, draft, count, held, versions, world, linkingId, selectedId, onDraft, onLinkStart, onLinkTarget, onLinkCancel, onSelect, onMove, onGoBack, savePoints = true, setAside, notes, copy }: EditStepProps): ReactElement {
+export function EditStep({ base, now, draft, count, held, versions, world, linkingId, selectedId, onDraft, onLinkStart, onLinkTarget, onLinkCancel, onSelect, onMove, onGoBack, onDrop, savePoints = true, setAside, notes, copy }: EditStepProps): ReactElement {
   const engines = ENGINE_IDS.filter(e => base.engines.includes(e) || !isPreviewEngine(e));
   const sum = <p className="hxi-sum" data-draft={count}><StateDot tone={count === 0 ? 'quiet' : 'warn'}>{draftWords(count)}</StateDot> <span className="hxe-muted">{W.hint.draftNote}</span></p>;
   return (
@@ -249,7 +251,7 @@ export function EditStep({ base, now, draft, count, held, versions, world, linki
         <p className="hxe-text hxe-muted">{now.agents.length === 0 ? W.hint.noAgentsHere : W.hint.linkHint}</p>
         <div className="hxs-graph" data-tour="map">
           <Graph state={world.state} harness={world.harness} selectedId={selectedId} linkingId={linkingId} matchIds={null} onSelect={onSelect} onMove={onMove}
-            onLinkStart={onLinkStart} onLinkTarget={onLinkTarget} onLinkCancel={onLinkCancel} onFix={() => undefined} />
+            onLinkStart={onLinkStart} onLinkTarget={onLinkTarget} onLinkCancel={onLinkCancel} {...(onDrop === undefined ? {} : { onDrop })} />
         </div>
       </Section>
       {notes === undefined || notes.keeper === null ? null : (
