@@ -24,7 +24,7 @@ const WITH_KIT: DefinitionView = {
   agents: [...BASE.agents, { id: KEEPER_AGENT, name: KEEPER_AGENT, description: 'Looks after a folder of notes.', skills: KIT_SKILLS, notes: [] }].sort((a, b) => a.id.localeCompare(b.id)),
   kits: [{ id: KEEPER_KIT, version: '0.1.0', skills: [...KIT_SKILLS].sort() }],
 };
-const GARDEN: SourceView = { name: 'garden-notes', kind: 'wiki-folder', label: '~/Documents/Garden notes', notesId: 'n1' };
+const READING: SourceView = { name: 'reading-list', kind: 'wiki-folder', label: '~/Documents/Reading list', notesId: 'n1' };
 
 test('the keeper comes from the kit as one add-from-kit edit, and starts with no skill linked', () => {
   const d = addKit(BASE, EMPTY_DRAFT, WITH_KIT);
@@ -57,54 +57,54 @@ test('the storyboard: the first skill is linked on its own, then one button link
 test('a notes card on the keeper\'s Notes shelf is set-source then set-agent notes; taking it off drops both', () => {
   let d = addKit(BASE, EMPTY_DRAFT, WITH_KIT);
   d = linkRest(BASE, d, KEEPER_AGENT, KIT_SKILLS);
-  d = attachNotes(BASE, d, KEEPER_AGENT, GARDEN, true);
+  d = attachNotes(BASE, d, KEEPER_AGENT, READING, true);
   assert.deepEqual(draftEdits(BASE, d), [
     { kind: 'add-from-kit', kit: KEEPER_KIT },
-    { kind: 'set-source', name: 'garden-notes', notesId: 'n1' },
-    { kind: 'set-agent', id: KEEPER_AGENT, notes: ['garden-notes'] },
+    { kind: 'set-source', name: 'reading-list', notesId: 'n1' },
+    { kind: 'set-agent', id: KEEPER_AGENT, notes: ['reading-list'] },
   ]);
   const now = draftView(BASE, d);
-  assert.deepEqual(now.sources, [GARDEN]);
-  assert.deepEqual(keeperOf(now)?.notes, ['garden-notes']);
+  assert.deepEqual(now.sources, [READING]);
+  assert.deepEqual(keeperOf(now)?.notes, ['reading-list']);
   // The same card twice is one attach.
-  assert.deepEqual(attachNotes(BASE, d, KEEPER_AGENT, GARDEN, true), d);
+  assert.deepEqual(attachNotes(BASE, d, KEEPER_AGENT, READING, true), d);
   // Off again: no agent reads it, so the source the draft added goes too.
-  const off = attachNotes(BASE, d, KEEPER_AGENT, GARDEN, false);
+  const off = attachNotes(BASE, d, KEEPER_AGENT, READING, false);
   assert.deepEqual(draftEdits(BASE, off), [{ kind: 'add-from-kit', kit: KEEPER_KIT }]);
   assert.deepEqual(draftView(BASE, off).sources, []);
 });
 
 test('notes attach to any agent, and a second agent on the same notes adds no second source', () => {
-  let d = attachNotes(BASE, EMPTY_DRAFT, 'editor', GARDEN, true);
-  d = attachNotes(BASE, d, 'writer', GARDEN, true);
+  let d = attachNotes(BASE, EMPTY_DRAFT, 'editor', READING, true);
+  d = attachNotes(BASE, d, 'writer', READING, true);
   assert.deepEqual(draftEdits(BASE, d), [
-    { kind: 'set-source', name: 'garden-notes', notesId: 'n1' },
-    { kind: 'set-agent', id: 'editor', notes: ['garden-notes'] },
-    { kind: 'set-agent', id: 'writer', notes: ['garden-notes'] },
+    { kind: 'set-source', name: 'reading-list', notesId: 'n1' },
+    { kind: 'set-agent', id: 'editor', notes: ['reading-list'] },
+    { kind: 'set-agent', id: 'writer', notes: ['reading-list'] },
   ]);
   // One agent lets go: the source stays, because the other still reads it.
-  assert.deepEqual(draftView(BASE, attachNotes(BASE, d, 'editor', GARDEN, false)).sources, [GARDEN]);
+  assert.deepEqual(draftView(BASE, attachNotes(BASE, d, 'editor', READING, false)).sources, [READING]);
   // An unknown agent changes nothing.
-  assert.deepEqual(attachNotes(BASE, EMPTY_DRAFT, 'nobody', GARDEN, true), EMPTY_DRAFT);
+  assert.deepEqual(attachNotes(BASE, EMPTY_DRAFT, 'nobody', READING, true), EMPTY_DRAFT);
 });
 
 test('a source the harness holds already is attached by its own name, with no set-source', () => {
-  const saved: DefinitionView = { ...BASE, sources: [GARDEN] };
-  const d = attachNotes(saved, EMPTY_DRAFT, 'editor', { ...GARDEN, name: 'other-name' }, true);
-  assert.deepEqual(draftEdits(saved, d), [{ kind: 'set-agent', id: 'editor', notes: ['garden-notes'] }]);
+  const saved: DefinitionView = { ...BASE, sources: [READING] };
+  const d = attachNotes(saved, EMPTY_DRAFT, 'editor', { ...READING, name: 'other-name' }, true);
+  assert.deepEqual(draftEdits(saved, d), [{ kind: 'set-agent', id: 'editor', notes: ['reading-list'] }]);
 });
 
 test('sourceFor names a chosen folder: its own source when held, its suggested name when free, and a new name when that name is taken', () => {
-  const view = { ...BASE, sources: [GARDEN] };
-  assert.deepEqual(sourceFor(view, { id: 'n1', label: '~/Documents/Garden notes', suggestedName: 'garden-notes' }), GARDEN);
+  const view = { ...BASE, sources: [READING] };
+  assert.deepEqual(sourceFor(view, { id: 'n1', label: '~/Documents/Reading list', suggestedName: 'reading-list' }), READING);
   assert.deepEqual(sourceFor(BASE, { id: 'n2', label: '~/Notes', suggestedName: 'notes' }), { name: 'notes', kind: 'wiki-folder', label: '~/Notes', notesId: 'n2' });
-  assert.equal(sourceFor(view, { id: 'n3', label: '~/Other/Garden notes', suggestedName: 'garden-notes' }).name, 'garden-notes-2');
+  assert.equal(sourceFor(view, { id: 'n3', label: '~/Other/Reading list', suggestedName: 'reading-list' }).name, 'reading-list-2');
 });
 
 test('removing the kit takes back the add and every edit of its agent and skills', () => {
   let d = addKit(BASE, EMPTY_DRAFT, WITH_KIT);
   d = linkSkill(BASE, d, KEEPER_AGENT, KEEPER_FIRST_SKILL, true);
-  d = attachNotes(BASE, d, KEEPER_AGENT, GARDEN, true);
+  d = attachNotes(BASE, d, KEEPER_AGENT, READING, true);
   d = linkSkill(BASE, d, 'editor', 'check-facts', true);
   d = removeSkill(BASE, d, 'refine-report', true);
   const back = removeKit(BASE, d);
@@ -115,20 +115,20 @@ test('a removed kit skill leaves the keeper\'s shelf and the edits keep main\'s 
   let d = addKit(BASE, EMPTY_DRAFT, WITH_KIT);
   d = linkRest(BASE, d, KEEPER_AGENT, KIT_SKILLS);
   d = removeSkill(BASE, d, 'refine-report', true);
-  d = attachNotes(BASE, d, KEEPER_AGENT, GARDEN, true);
+  d = attachNotes(BASE, d, KEEPER_AGENT, READING, true);
   assert.deepEqual(draftEdits(BASE, d).map(e => e.kind), ['add-from-kit', 'set-source', 'set-agent', 'remove-skill']);
   assert.deepEqual(keeperOf(draftView(BASE, d))?.skills, KIT_SKILLS.filter(s => s !== 'refine-report'));
 });
 
 test('the map shows the notes as a card beside the agents: a part of its own, linked to each agent that reads it, and a graph link maps back', () => {
-  const d = attachNotes(BASE, EMPTY_DRAFT, 'editor', GARDEN, true);
+  const d = attachNotes(BASE, EMPTY_DRAFT, 'editor', READING, true);
   const pending: SourceView = { name: 'notes', kind: 'wiki-folder', label: '~/Notes', notesId: 'n2' };
   const { state, harness } = definitionWorld(draftView(BASE, d), [pending]);
   const notesParts = state.parts.filter(p => p.kind === 'context');
-  assert.deepEqual(notesParts.map(p => p.id), ['notes:garden-notes', 'notes:notes']);
+  assert.deepEqual(notesParts.map(p => p.id), ['notes:reading-list', 'notes:notes']);
   assert.ok(notesParts.every(p => !p.path.startsWith('~') && !p.summary.includes('~')), 'a path is never a label');
-  assert.ok(harness.links.some(l => l.from === 'agent:editor' && l.to === 'notes:garden-notes'));
-  assert.equal(partNotes('notes:garden-notes'), 'garden-notes');
+  assert.ok(harness.links.some(l => l.from === 'agent:editor' && l.to === 'notes:reading-list'));
+  assert.equal(partNotes('notes:reading-list'), 'reading-list');
   assert.equal(partNotes('skill:x'), null);
   assert.equal(graphOf(state, harness).nodes.length, 6);
 });

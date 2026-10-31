@@ -240,9 +240,9 @@ test('the sample\'s notes keeper is the kit main ships: its version, its agent, 
 test('the sample notes answers have every field of main\'s: the chooser, the panel read, the save with the kit and a source, and both plans', { skip: gitMissing }, async t => {
   const home = homeFolder(tempDir(t, 'bowerloom-engine-sample-notes-'));
   const dir = teamFolder(home);
-  const notesDir = join(home, 'Documents', 'Garden notes');
-  mkdirSync(join(notesDir, 'beds'), { recursive: true });
-  writeFileSync(join(notesDir, 'index.md'), '# Garden\n'); writeFileSync(join(notesDir, 'beds', 'east-bed.md'), '# East\n');
+  const notesDir = join(home, 'Documents', 'Reading list');
+  mkdirSync(join(notesDir, 'books'), { recursive: true });
+  writeFileSync(join(notesDir, 'index.md'), '# Reading\n'); writeFileSync(join(notesDir, 'books', 'essays.md'), '# Essays\n');
   const empty = join(home, 'Documents', 'Notes'); mkdirSync(empty);
   let notes = notesDir;
   const service = createEngineService({ home, stateRoot: join(home, '.local', 'state', 'bowerloom'), chooseFolder: async () => dir, confirm: async () => true, who: 't', chooseNotesFolder: async () => notes, kitsDir: () => KITS });
@@ -253,8 +253,8 @@ test('the sample notes answers have every field of main\'s: the chooser, the pan
   assert.deepEqual(sameShape(realNotes, sampleNotes), []);
   assert.deepEqual(Object.keys(realNotes).sort(), Object.keys(sampleNotes).sort());
   assert.deepEqual(sameShape(value(await service.notesSummary(realNotes.id)), value(await e.notesSummary(sampleNotes.id))), []);
-  const realEdits: SaveEdit[] = [{ kind: 'add-from-kit', kit: 'wiki-keeper' }, { kind: 'set-source', name: 'garden', notesId: realNotes.id }, { kind: 'set-agent', id: 'notes-keeper', notes: ['garden'] }];
-  const sampleEdits: SaveEdit[] = [{ kind: 'add-from-kit', kit: 'wiki-keeper' }, { kind: 'set-source', name: 'garden', notesId: sampleNotes.id }, { kind: 'set-agent', id: 'notes-keeper', notes: ['garden'] }];
+  const realEdits: SaveEdit[] = [{ kind: 'add-from-kit', kit: 'wiki-keeper' }, { kind: 'set-source', name: 'reading', notesId: realNotes.id }, { kind: 'set-agent', id: 'notes-keeper', notes: ['reading'] }];
+  const sampleEdits: SaveEdit[] = [{ kind: 'add-from-kit', kit: 'wiki-keeper' }, { kind: 'set-source', name: 'reading', notesId: sampleNotes.id }, { kind: 'set-agent', id: 'notes-keeper', notes: ['reading'] }];
   const real = value(await service.planSave(f.id, realEdits));
   const sample = value(await e.planSave(SAMPLE_FOLDERS.defined, sampleEdits));
   assert.deepEqual(sameShape(real, sample), []);
@@ -322,4 +322,18 @@ test('sample notes: link shows pages and no history; history starts once by revi
   const gone = value(await e.planSave(id, [{ kind: 'remove-source', name: 'notes' }]));
   assert.deepEqual(gone.definition.agents.find(a => a.id === 'notes-keeper')!.notes, []);
   assert.deepEqual(gone.changes.map(c => c.path).sort(), ['.bowerloom/agents/notes-keeper.md', '.bowerloom/knowledge.json']);
+});
+
+test('the made-up notes folders read as a reading list, never as a private product name', async () => {
+  const e = createSampleEngine();
+  for (const purpose of ['use', 'start'] as const) {
+    const a = await e.chooseNotesFolder(purpose);
+    assert.ok(a !== null && a.ok);
+    assert.doesNotMatch(JSON.stringify(a.value), /garden/i);
+  }
+  const plan = await e.planNotesHistory(SAMPLE_NOTES.use);
+  assert.ok(plan.ok);
+  assert.doesNotMatch(JSON.stringify(plan.value), /garden|bed|compost|pest/i);
+  const use = await e.chooseNotesFolder('use');
+  assert.equal(use !== null && use.ok ? use.value.name : '', 'Reading list');
 });

@@ -9,7 +9,7 @@
  *  - `garden` holds an install that stopped part way: only a recovery plan can run.
  * Each folder that holds a harness can also save its own harness (option C): agents, skills and interfaces, edited by id, with save points and "Go back".
  * A skill is copied from the harness of another sample folder. Save points keep a made-up time, one minute apart.
- * Notes (spec 6.9): two made-up notes folders answer main's notes chooser. `Garden notes` holds pages and no history yet, so the history offer shows;
+ * Notes (spec 6.9): two made-up notes folders answer main's notes chooser. `Reading list` holds pages and no history yet, so the history offer shows;
  * `Notes` is empty, so "Start fresh" shows the starter files of the notes keeper kit. The ready-made notes keeper is added from the same made-up copy of
  * the kit's agent and skills (tests/engine-sample.test.ts holds it to the kit main ships), and notes attach to an agent through the save.
  */
@@ -87,10 +87,10 @@ export const SAMPLE_KIT = Object.freeze({
     { path: 'pages/README.md', bytes: 431 }, { path: 'reports/README.md', bytes: 402 }, { path: 'sources/README.md', bytes: 433 },
   ]),
 });
-/** The pages of the made-up `Garden notes`, for its history plan. One hidden folder stays out of the first commit. */
+/** The pages of the made-up `Reading list`, for its history plan. One hidden folder stays out of the first commit. */
 const SAMPLE_NOTE_FILES: readonly string[] = Object.freeze([
-  'beds/east-bed.md', 'beds/herb-spiral.md', 'beds/north-bed.md', 'compost.md', 'frost-dates.md', 'index.md', 'log.md', 'pests/aphids.md', 'pests/slugs.md',
-  'plans/2026-spring.md', 'plans/2026-winter.md', 'seed-list.md', 'tools.md', 'watering.md',
+  'articles/long-reads.md', 'articles/saved-links.md', 'books/essays.md', 'books/history.md', 'books/science.md', 'finished.md', 'index.md', 'log.md',
+  'notes/2026-spring.md', 'notes/2026-winter.md', 'podcasts.md', 'queue.md', 'quotes.md', 'wishlist.md',
 ]);
 
 const PLUGIN = `// Bowerloom generated this OpenCode plugin from the hooks of a harness definition. Read it before you approve the plan:
@@ -398,7 +398,7 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
   add(SAMPLE_FOLDERS.defined, 'weekly-report', { hasDefinition: true, engines: ['claude-code', 'codex', 'opencode'] });
   add(SAMPLE_FOLDERS.stopped, 'garden', { hasDefinition: true, engines: ['claude-code', 'codex'], unfinished: { projection: true, adoption: false } });
   const notes = new Map<string, SampleNotes>([
-    [SAMPLE_NOTES.use, { view: { id: SAMPLE_NOTES.use, label: '~/Documents/Garden notes', name: 'Garden notes', suggestedName: 'garden-notes', pages: SAMPLE_NOTE_FILES.length, complete: true, history: 'none', lastCommitAt: null, latestReport: null, reportsComplete: true }, files: SAMPLE_NOTE_FILES, hidden: 1 }],
+    [SAMPLE_NOTES.use, { view: { id: SAMPLE_NOTES.use, label: '~/Documents/Reading list', name: 'Reading list', suggestedName: 'reading-list', pages: SAMPLE_NOTE_FILES.length, complete: true, history: 'none', lastCommitAt: null, latestReport: null, reportsComplete: true }, files: SAMPLE_NOTE_FILES, hidden: 1 }],
     [SAMPLE_NOTES.start, { view: { id: SAMPLE_NOTES.start, label: '~/Documents/Notes', name: 'Notes', suggestedName: 'notes', pages: 0, complete: true, history: 'none', lastCommitAt: null, latestReport: null, reportsComplete: true }, files: [], hidden: 0 }],
   ]);
   /** A notes folder by id; an id the sample never gave is refused as main refuses it. */

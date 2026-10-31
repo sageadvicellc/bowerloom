@@ -23,11 +23,11 @@ const WITH_KIT: DefinitionView = {
   ...BASE, skills: [...BASE.skills, ...KIT.map(id => ({ id, name: id, description: id }))],
   agents: [...BASE.agents, { id: KEEPER_AGENT, name: KEEPER_AGENT, description: 'Keeps notes.', skills: KIT, notes: [] }], kits: [{ id: KEEPER_KIT, version: '0.1.0', skills: [...KIT] }],
 };
-const GARDEN: NotesView = { id: 'n1', label: '~/Documents/Garden notes', name: 'Garden notes', suggestedName: 'garden-notes', pages: 14, complete: true, history: 'none', lastCommitAt: null, latestReport: null, reportsComplete: true };
+const READING: NotesView = { id: 'n1', label: '~/Documents/Reading list', name: 'Reading list', suggestedName: 'reading-list', pages: 14, complete: true, history: 'none', lastCommitAt: null, latestReport: null, reportsComplete: true };
 
 function draw(withKit: boolean): string {
   const draft = withKit ? addKit(BASE, EMPTY_DRAFT, WITH_KIT) : EMPTY_DRAFT;
-  const now = draftView(BASE, draft), cards = notesCards(now, [GARDEN], {});
+  const now = draftView(BASE, draft), cards = notesCards(now, [READING], {});
   const notes: EditNotes = {
     cards, keeper: keeperOf(now), offered: keeperSkills(BASE, draft).map(id => now.skills.find(s => s.id === id)!), fromKit: withKit, way: null,
     onWay: noop, onAddKeeper: noop, onLink: noop, onLinkRest: noop, onAttach: noop, onRemoveKit: noop, onHelp: noop,
@@ -41,14 +41,14 @@ function draw(withKit: boolean): string {
 test('before the keeper: the map holds the notes card, Help replays the tour, and the Notes panel offers the keeper', () => {
   const html = draw(false);
   assert.match(html, /data-tour="map"/); assert.match(html, /data-tour="help"/); assert.match(html, /data-tour="notes"/);
-  assert.match(html, /data-node="notes:garden-notes"/);
+  assert.match(html, /data-node="notes:reading-list"/);
   assert.match(html, /aria-label="Help: replay the tour"/, 'the visible word Help is part of its name');
   assert.match(html, /data-section="notes"/);
   assert.match(html, /data-add-keeper=""/);
   assert.doesNotMatch(html, /data-tour="keeper"/);
   // The notes each agent reads, as tick boxes: the keyboard path of the drag onto a Notes shelf.
   assert.match(html, /data-section="agent-notes"/);
-  assert.match(html, /aria-label="Garden notes: editor"/);
+  assert.match(html, /aria-label="Reading list: editor"/);
   assert.ok(!html.includes('~/Documents'), 'no path is a label');
 });
 
@@ -72,13 +72,13 @@ test('the save bar holds the count and the one button, and the tour lights it', 
 });
 
 test('the review lists the notes each agent will read', () => {
-  const definition: DefinitionView = { ...WITH_KIT, sources: [{ name: 'garden-notes', kind: 'wiki-folder', label: '~/Documents/Garden notes', notesId: 'n1' }], agents: WITH_KIT.agents.map(a => (a.id === KEEPER_AGENT ? { ...a, notes: ['garden-notes'] } : a)) };
+  const definition: DefinitionView = { ...WITH_KIT, sources: [{ name: 'reading-list', kind: 'wiki-folder', label: '~/Documents/Reading list', notesId: 'n1' }], agents: WITH_KIT.agents.map(a => (a.id === KEEPER_AGENT ? { ...a, notes: ['reading-list'] } : a)) };
   const html = renderToStaticMarkup(createElement(SaveReview, {
     shown: { kind: 'save', view: { folder: '~/Projects/weekly-report', changes: [{ path: '.bowerloom/knowledge.json', action: 'create' }], definition, noop: false, revision: 'a'.repeat(64) }, edits: [] },
     approved: false, held: false, onApprove: noop,
   }));
   assert.match(html, /data-agent-notes-after="notes-keeper"/);
-  assert.ok(html.includes('Notes: garden-notes'));
+  assert.ok(html.includes('Notes: reading-list'));
 });
 
 test('the review warns when the keeper is saved with no skills', () => {

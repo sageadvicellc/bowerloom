@@ -76,7 +76,7 @@ export const moreWords = (n: number): string => `And ${n} more.`;
 export const hiddenWords = (n: number): string => `${plural(n, 'hidden name stays', 'hidden names stay')} out.`;
 /** "Add add-source to the Notes keeper": the name of a skill card's Add button. */
 export const addToKeeperName = (skill: string): string => `Add ${skill} to the Notes keeper`;
-/** "Put Garden notes on the Notes shelf": the name of a notes card's Add button. */
+/** "Put Reading list on the Notes shelf": the name of a notes card's Add button. */
 export const onShelfName = (notes: string): string => `Put ${notes} on the Notes shelf`;
 /** "Take add-source off the Notes keeper". */
 export const takeOffName = (item: string): string => `Take ${item} off the Notes keeper`;

@@ -186,7 +186,7 @@ test('create: Start fresh makes the starter files and one commit; the keeper is 
   await h.app.close();
 
   // 8. The dashboard. The test adds pages (one nested, one in a hidden folder that is not counted) and a report, and commits them on a day that is not today.
-  put(notes, 'pages/garden.md', '# Garden\n');
+  put(notes, 'pages/reading.md', '# Reading\n');
   put(notes, 'pages/deep/roots.md', '# Roots\n');
   put(notes, 'pages/picture.png', 'not a page');
   put(notes, '.hidden/skipped.md', '# Hidden\n');

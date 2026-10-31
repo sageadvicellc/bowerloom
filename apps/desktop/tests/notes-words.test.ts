@@ -54,7 +54,7 @@ test('the tour: the six sentences of section 9 in order, at most 12 words each, 
 test('the words built from a number, a date or a name obey the same rules, and a path is never one of them', () => {
   const built = [
     pagesWords(14, true), pagesWords(1, true), pagesWords(500, false), lastChangeWords('2026-10-28T09:30:00Z'), lastChangeWords(null), usedByWords([]), usedByWords(['notes-keeper', 'editor']),
-    reportWords({ date: '2026-10-29', path: 'reports/2026-10-29-refine.md' }), hiddenWords(1), hiddenWords(3), addToKeeperName('add-source'), onShelfName('Garden notes'),
+    reportWords({ date: '2026-10-29', path: 'reports/2026-10-29-refine.md' }), hiddenWords(1), hiddenWords(3), addToKeeperName('add-source'), onShelfName('Reading list'),
     buildHint({ first: 'add-source', firstDone: false, restDone: false, notesDone: false, hasNotes: true }),
     buildHint({ first: 'add-source', firstDone: true, restDone: false, notesDone: false, hasNotes: true }),
     buildHint({ first: 'add-source', firstDone: true, restDone: true, notesDone: false, hasNotes: true }),

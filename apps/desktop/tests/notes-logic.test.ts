@@ -6,7 +6,7 @@ import { addThenNext, afterChoose, writtenView, buildProgress, notesCards, notes
 import { EMPTY_DRAFT, KEEPER_AGENT, attachNotes, draftView } from '../shared/harness/save-draft.js';
 import type { DefinitionView, NotesView } from '../shared/engine/types.js';
 
-const view = (over: Partial<NotesView> = {}): NotesView => ({ id: 'n1', label: '~/Documents/Garden notes', name: 'Garden notes', suggestedName: 'garden-notes', pages: 14, complete: true, history: 'git', lastCommitAt: '2026-10-28T09:30:00Z', latestReport: null, reportsComplete: true, ...over });
+const view = (over: Partial<NotesView> = {}): NotesView => ({ id: 'n1', label: '~/Documents/Reading list', name: 'Reading list', suggestedName: 'reading-list', pages: 14, complete: true, history: 'git', lastCommitAt: '2026-10-28T09:30:00Z', latestReport: null, reportsComplete: true, ...over });
 const KIT = ['add-source', 'file-page', 'answer-from-notes'];
 const DEF: DefinitionView = {
   id: 'team', description: 'A team.', engines: ['claude-code'], instructions: true,
@@ -31,14 +31,14 @@ test('the cards: each source of the harness first, then each chosen folder that 
   const chosen = [view(), view({ id: 'n0', name: 'Old', suggestedName: 'old' })];
   const now = draftView(DEF, attachNotes(DEF, EMPTY_DRAFT, 'editor', DEF.sources[0]!, true));
   const cards = notesCards(now, chosen, { n0: { ok: true, value: view({ id: 'n0', name: 'Old', pages: 3 }) } });
-  assert.deepEqual(cards.map(c => [c.key, c.attached, c.name]), [['n0', true, 'Old'], ['n1', false, 'Garden notes']]);
+  assert.deepEqual(cards.map(c => [c.key, c.attached, c.name]), [['n0', true, 'Old'], ['n1', false, 'Reading list']]);
   // The folder chosen in this window is the newest read of it, so it wins over an older read of the panel.
   const pages = (c: (typeof cards)[number]): number | null => (c.summary !== null && c.summary.ok ? c.summary.value.pages : null);
   assert.equal(pages(cards[0]!), 14);
   assert.equal(pages(notesCards(now, [], { n0: { ok: true, value: view({ id: 'n0', name: 'Old', pages: 3 }) } })[0]!), 3);
   assert.deepEqual(cards[0]!.readers, ['editor']);
   assert.deepEqual(cards[1]!.readers, []);
-  assert.equal(cards[1]!.source.name, 'garden-notes');
+  assert.equal(cards[1]!.source.name, 'reading-list');
   assert.equal(cards[1]!.summary?.ok, true, 'a chosen folder carries its own summary');
   // A source with no summary read yet is named by its source name, never by its folder path.
   const bare = notesCards(DEF, [], {});
@@ -60,7 +60,7 @@ test('the build progress follows the keeper: first skill, the rest, then the not
 });
 
 test('the panel reads every source the harness holds that is not being read now, a chosen folder too, so opening the sheet again reads again', () => {
-  const two: DefinitionView = { ...DEF, sources: [...DEF.sources, { name: 'garden-notes', kind: 'wiki-folder', label: '~/Documents/Garden notes', notesId: 'n1' }] };
+  const two: DefinitionView = { ...DEF, sources: [...DEF.sources, { name: 'reading-list', kind: 'wiki-folder', label: '~/Documents/Reading list', notesId: 'n1' }] };
   assert.deepEqual(notesToRead(two, new Set()), ['n0', 'n1'], 'n1 is a chosen folder: it is read again too');
   assert.deepEqual(notesToRead(two, new Set(['n0'])), ['n1']);
   assert.deepEqual(notesToRead(two, new Set(['n0', 'n1'])), []);
@@ -73,7 +73,7 @@ test('a fresh read replaces the snapshot of a chosen folder; a refusal or a fold
   assert.equal(readReplaces(chosen, 'n1', { ok: false, refusal: { code: 'FAILED', message: 'x', paths: [] } }), null);
   assert.equal(readReplaces(chosen, 'n9', { ok: true, value: view({ id: 'n9' }) }), null);
   // With the snapshot replaced, the card shows the fresh read.
-  const now: DefinitionView = { ...DEF, sources: [{ name: 'garden-notes', kind: 'wiki-folder', label: '~/Documents/Garden notes', notesId: 'n1' }] };
+  const now: DefinitionView = { ...DEF, sources: [{ name: 'reading-list', kind: 'wiki-folder', label: '~/Documents/Reading list', notesId: 'n1' }] };
   const card = notesCards(now, [fresh], { n1: { ok: true, value: fresh } })[0]!;
   assert.equal(card.summary?.ok && card.summary.value.pages, 20);
 });
