@@ -180,6 +180,8 @@ test('"Yes, read them" reads the ticked folders and opens the Read list: a count
 test('"Make a harness from this" opens the app on a harness made from the files; the Builder refuses a harness from a scan in words and opens "From a folder"', async () => {
   const p = page();
   await p.locator('.hxf-card', { hasText: 'Your Claude Code folder' }).getByRole('button', { name: 'Make a harness from this' }).click();
+  await expect(p.getByRole('heading', { level: 1, name: 'Overview', exact: true })).toBeVisible();
+  await p.locator('[data-nav-key="harnesses"]').click();
   await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
   await expect(p.locator('.hx-row-harness')).toHaveCount(1);
   await expect(p.locator('.hx-row[data-selected]')).toContainText('Claude Code folder');
@@ -336,10 +338,14 @@ test('a second read asks first: "Cancel" keeps every harness, "Yes, read them" s
   await p.getByRole('button', { name: 'Yes, read them', exact: true }).click();
   await expect(p.getByRole('heading', { level: 1, name: /^Read \d+ sources?\. Make a harness from each\.$/ })).toBeVisible({ timeout: 20_000 });
   await p.locator('.hxf-card', { hasText: 'Your Codex folder' }).getByRole('button', { name: 'Make a harness from this' }).click();
+  await expect(p.getByRole('heading', { level: 1, name: 'Overview', exact: true })).toBeVisible();
+  await p.locator('[data-nav-key="harnesses"]').click();
   await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
   await expect(p.locator('.hx-row-harness'), 'the old harnesses are gone').toHaveCount(1);
   await expect(p.locator('.hx-row-harness')).toContainText('Codex folder');
   await expect(p.locator('[data-toast]'), 'the old note with its Undo is gone').toHaveCount(0);
+  // The Overview came first, so the address names no harness yet: pick the one just made.
+  await p.locator('.hx-row-harness', { hasText: 'Codex folder' }).getByRole('button', { name: 'Codex folder', exact: true }).click();
   expect(await lastHarnessNumber(p), 'an id of the old world is not used again').toBeGreaterThan(Math.max(...oldNumbers));
   await everyStep('replaced', false);
 });

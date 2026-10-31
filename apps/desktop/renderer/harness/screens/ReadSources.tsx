@@ -27,7 +27,8 @@ export function ReadSources(): ReactElement {
   useEffect(() => { primary.current?.focus({ preventScroll: true }); }, []);
   const ui = useUi(), making = useRef(false);
   // A second press while the first is still going does nothing; a make that gave nothing says so and leaves the screen as it is.
-  const made = (id: string): void => go({ name: 'harnesses', id });
+  // The first screen after the read is the Overview: every place the read found, in one graph. The harnesses just made are on the Harnesses screen, one press away.
+  const made = (): void => go({ name: 'overview' });
   const none = (): void => ui.showToast(FLOW.hint.nothingMade);
   const makeOne = (id: string): void => makeOnce(making, () => makeSources(store, [id]), made, none);
   const makeEvery = (): void => makeOnce(making, () => makeSources(store, kept.map(s => s.id)), made, none);
@@ -55,7 +56,7 @@ export function ReadSources(): ReactElement {
       <div className="hxf-actions">
         {kept.length === 0 ? null : <HButton ref={primary} variant="primary" onClick={makeEvery}>{makeAll(kept.length)}</HButton>}
         <HButton icon="page" data-set-up-notes="" onClick={() => go({ name: 'notes' })}>{NOTES.label.setUpNotes}</HButton>
-        <HButton onClick={() => go({ name: 'harnesses' })}>{FLOW.label.notNow}</HButton>
+        <HButton onClick={() => go({ name: 'overview' })}>{FLOW.label.notNow}</HButton>
       </div>
       {/* The first screens have no shell, so this one holds its own layer for "Nothing was made." */}
       <div id="hx-layer" />

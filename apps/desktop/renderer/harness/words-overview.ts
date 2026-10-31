@@ -52,10 +52,11 @@ export const alsoInWords = (n: number): string => `Also in ${plural(n, 'place', 
 /** "Uses 3 skills". */
 export const usesWords = (n: number, kind: PartKind): string => `Uses ${plural(n, KIND_NAME[kind][0], KIND_NAME[kind][1])}`;
 /** The accessible name of a node: its name, its kind, its place, then what is true of it. "Check facts, skill, Your Claude Code folder, uses 2 tools, shared with 1 place". */
-export function nodeName(input: { name: string; kind: PartKind; toolKind?: OverviewToolKind; group: string; uses: number; usesKind?: PartKind; runsCode?: boolean; sharedWith: number }): string {
+export function nodeName(input: { name: string; kind: PartKind; toolKind?: OverviewToolKind; group: string; uses: number; usesKind?: PartKind; usesLine?: string; runsCode?: boolean; sharedWith: number }): string {
   const kind = input.kind === 'tool' && input.toolKind !== undefined ? { mcp: 'connection', prompt: 'saved prompt', hook: 'hook' }[input.toolKind] : KIND_NAME[input.kind][0];
   const tail = [
-    input.uses > 0 ? usesWords(input.uses, input.usesKind ?? 'skill').toLowerCase() : null,
+    // `usesLine` ("uses 2 skills, 1 tool") says it when an agent uses more than one kind of part.
+    input.usesLine !== undefined ? input.usesLine : input.uses > 0 ? usesWords(input.uses, input.usesKind ?? 'skill').toLowerCase() : null,
     input.runsCode === true ? 'runs code' : null,
     input.sharedWith > 0 ? `shared with ${plural(input.sharedWith, 'place', 'places')}` : null,
   ].filter((x): x is string => x !== null);
@@ -65,3 +66,20 @@ export function nodeName(input: { name: string; kind: PartKind; toolKind?: Overv
 export const selectedWords = (name: string | null): string => (name === null ? 'Nothing selected' : `Selected ${name}`);
 /** "and 12 more", for a list cut short. */
 export const moreWords = (n: number): string => `and ${n} more`;
+
+/** "uses 2 skills, 1 tool": what an agent uses, by kind, in the order skill, tool, set of notes. Null when it uses nothing. */
+export function usesLineWords(counts: Partial<Readonly<Record<PartKind, number>>>): string | null {
+  const parts = (['agent', 'skill', 'tool', 'context'] as const).filter(k => (counts[k] ?? 0) > 0).map(k => plural(counts[k] ?? 0, KIND_NAME[k][0], KIND_NAME[k][1]));
+  return parts.length === 0 ? null : `uses ${parts.join(', ')}`;
+}
+/** "1 place", "4 places": the count after the title. */
+export const placesWords = (n: number): string => plural(n, 'place', 'places');
+/** The name of a kind of part, for the line under a name in the details: a tool is told apart by its kind ("Connection", "Saved prompt", "Hook"). */
+export function kindWords(kind: PartKind, toolKind?: OverviewToolKind): string {
+  if (kind === 'tool' && toolKind !== undefined) return { mcp: OVERVIEW.label.kindMcp, prompt: OVERVIEW.label.kindPrompt, hook: OVERVIEW.label.kindHook }[toolKind];
+  return { agent: 'Agent', skill: 'Skill', tool: 'Tool', context: 'Set of notes' }[kind];
+}
+/** "Open Your Claude Code folder in the builder" is `openFolderName` in words.ts. This is the name of the other button: "Choose the folder for alpha". */
+export const chooseFolderName = (place: string): string => `Choose the folder for ${place}`;
+/** The name of a place's expand and collapse button: "Collapse alpha". */
+export const toggleName = (place: string, open: boolean): string => `${open ? OVERVIEW.label.collapse : OVERVIEW.label.expand} ${place}`;

@@ -78,6 +78,8 @@ test('real mode words: Welcome, Runs, Help, Projects, Library, Install history a
     await p.getByRole('button', { name: 'Yes, read them', exact: true }).click();
     await expect(p.getByRole('heading', { level: 1, name: /^Read \d+ sources?\. Make a harness from each\.$/ })).toBeVisible({ timeout: 20_000 });
     await p.locator('.hxf-card', { hasText: 'Your Claude Code folder' }).getByRole('button', { name: 'Make a harness from this' }).click();
+    await expect(p.getByRole('heading', { level: 1, name: 'Overview', exact: true })).toBeVisible();
+    await p.locator('[data-nav-key="harnesses"]').click();
     await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
   });
   await test.step('Projects: "Add a folder" and "Assign harness" say "Not in beta.1", and Install from a folder is still there', async () => {
