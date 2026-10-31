@@ -11,7 +11,7 @@ import * as save from '../../../dist/packages/adoption/src/save.js';
 import { JOURNAL, saveStopped as journalSaveStopped } from '../../../dist/packages/adoption/src/journal.js';
 import { MERGE_JOURNAL, planInstructionMerge, refuseWhileStopped } from '../../../dist/packages/adoption/src/merge.js';
 import { INSTRUCTIONS, json, project, skill } from '../../project-sync/test/portable-fixture.mjs';
-import { code, snapshot } from './fixture.mjs';
+import { code, sha, snapshot } from './fixture.mjs';
 
 const { SAVE_JOURNAL, SAVE_REFUSAL_CODES, planSaveRecovery, refuseWhileSaveStopped, runSaveRecovery, saveStopped } = save;
 const signal = () => new AbortController().signal;
@@ -451,6 +451,58 @@ test('recovery keeps a file that changed after the crash, and then refuses to fi
   assert.equal(fs.existsSync(journalAt(p)), false);
 });
 
+test('under umask 002, an undo that stopped part way and is run again finishes cleanly', async t => {
+  const old = process.umask(0o002);
+  t.after(() => process.umask(old));
+  const p = saving(t);
+  // Files a person made under umask 002 are 0664. The undo puts them back without group write, as 0644.
+  const originals = ['harness.json', 'instructions/AGENTS.md', 'skills/review/references/notes.md'];
+  for (const rel of originals) fs.chmodSync(path.join(p.def, rel), 0o664);
+  const before = Object.fromEntries(originals.map(rel => [rel, fs.readFileSync(path.join(p.def, rel), 'utf8')]));
+  const target = mixed(p);
+  const plan = planSave(p.save(), target), err = crash();
+  await assert.rejects(applySaveWith(p.save(), plan.revision, target, signal(), { afterWrite: rel => { if (rel === 'harness.json') throw err; } }), e => e === err);
+  // The first undo stops part way: the folder of the created skill is locked, so its file cannot go; the other three files are put back.
+  const lint = path.join(p.def, 'skills/lint');
+  fs.chmodSync(lint, 0o555);
+  t.after(() => { try { fs.chmodSync(lint, 0o755); } catch { /* gone */ } });
+  await assert.rejects(runSaveRecovery(p.save(), planSaveRecovery(p.save()).revision, 'undo'), code('SAVE_PARTIAL'));
+  fs.chmodSync(lint, 0o755);
+  for (const rel of originals) assert.equal(modeOf(p, rel), 0o644, `${rel} is back without group write`);
+  // Run again: a file put back at its old bytes counts as put back, not as changed by hand.
+  const again = planSaveRecovery(p.save());
+  assert.deepEqual(again.kept, []);
+  assert.deepEqual(again.undo, [{ path: 'skills/lint/SKILL.md', action: 'delete' }]);
+  const r = await runSaveRecovery(p.save(), again.revision, 'undo');
+  assert.deepEqual(r.kept, []);
+  assert.deepEqual(r.undone, ['skills/lint/SKILL.md']);
+  assert.equal(fs.existsSync(lint), false);
+  assert.equal(fs.existsSync(journalAt(p)), false);
+  assert.equal(saveStopped(p.adoptState), false);
+  for (const rel of originals) assert.equal(fs.readFileSync(path.join(p.def, rel), 'utf8'), before[rel], rel);
+});
+
+test('under umask 002, a finish after an undo that stopped part way writes the steps it lists', async t => {
+  const old = process.umask(0o002);
+  t.after(() => process.umask(old));
+  const p = saving(t);
+  for (const rel of ['harness.json', 'instructions/AGENTS.md', 'skills/review/references/notes.md']) fs.chmodSync(path.join(p.def, rel), 0o664);
+  const target = mixed(p);
+  const plan = planSave(p.save(), target), err = crash();
+  await assert.rejects(applySaveWith(p.save(), plan.revision, target, signal(), { afterWrite: rel => { if (rel === 'harness.json') throw err; } }), e => e === err);
+  const lint = path.join(p.def, 'skills/lint');
+  fs.chmodSync(lint, 0o555);
+  t.after(() => { try { fs.chmodSync(lint, 0o755); } catch { /* gone */ } });
+  await assert.rejects(runSaveRecovery(p.save(), planSaveRecovery(p.save()).revision, 'undo'), code('SAVE_PARTIAL'));
+  fs.chmodSync(lint, 0o755);
+  const again = planSaveRecovery(p.save());
+  assert.equal(again.finishable, true);
+  const r = await runSaveRecovery(p.save(), again.revision, 'finish');
+  assert.deepEqual(r.finished, again.finish.map(f => f.path));
+  assert.equal(r.revision, plan.targetRevision);
+  assert.equal(fs.existsSync(journalAt(p)), false);
+});
+
 test('a damaged save journal is only cleared, and the plan lists the files to check by hand', async t => {
   const p = saving(t);
   fs.mkdirSync(p.adoptState, { recursive: true, mode: 0o700 });
@@ -486,6 +538,183 @@ test('a journal that names a path outside the definition, or bytes that do not m
   fs.writeFileSync(journalAt(p), good);
   fs.chmodSync(journalAt(p), 0o644);
   assert.throws(() => planSaveRecovery(p.save()), code('SAVE_STATE_UNSAFE'), 'a journal others can read is refused');
+});
+
+// ---- the journal bytes the recovery trusts (review L1, L5) ----------------------------------------------------------------
+
+/** A crash after write `at` of the mixed save: the project, the plan, and the journal it left, parsed. */
+async function crashedAt(t, at) {
+  const p = saving(t);
+  const target = mixed(p);
+  const plan = planSave(p.save(), target), err = crash(), last = plan.changes[at].path;
+  await assert.rejects(applySaveWith(p.save(), plan.revision, target, signal(), { afterWrite: rel => { if (rel === last) throw err; } }), e => e === err);
+  return { p, plan, journal: () => JSON.parse(fs.readFileSync(journalAt(p), 'utf8')) };
+}
+/** Writes a journal back as the save writes it: private, two-space JSON. */
+const writeJournal = (p, j) => fs.writeFileSync(journalAt(p), JSON.stringify(j, null, 2) + '\n', { mode: 0o600 });
+/** Sets a journal step's saved bytes and the hash they stand for. `side` is 'from' (original) or 'to' (bytes). */
+function forgeStep(j, rel, side, text) {
+  const f = j.files.find(s => s.path === `.bowerloom/${rel}`);
+  const bytes = Buffer.from(text);
+  f[side === 'from' ? 'original' : 'bytes'] = bytes.toString('base64');
+  f[side] = { ...f[side], sha256: sha(bytes) };
+}
+/** A synthetic token shape, built at run time so no file holds one. */
+const fakeToken = () => `${['gh', 'p_'].join('')}${'a1'.repeat(18)}`;
+/** Every file under a folder whose bytes hold `text`. */
+const holding = (dir, text) => fs.readdirSync(dir, { recursive: true }).filter(rel => {
+  const at = path.join(dir, rel);
+  return fs.lstatSync(at).isFile() && fs.readFileSync(at, 'utf8').includes(text);
+});
+
+test('the recovery plan revision covers the exact journal bytes: the plan names their sha256', async t => {
+  const { p } = await crashedAt(t, 0);
+  const rec = planSaveRecovery(p.save());
+  assert.equal(rec.journalSha256, sha(fs.readFileSync(journalAt(p))));
+  // The same journal in another layout is other bytes, so another plan.
+  const j = JSON.parse(fs.readFileSync(journalAt(p), 'utf8'));
+  fs.writeFileSync(journalAt(p), JSON.stringify(j), { mode: 0o600 });
+  const again = planSaveRecovery(p.save());
+  assert.equal(again.journalSha256, sha(fs.readFileSync(journalAt(p))));
+  assert.notEqual(again.revision, rec.revision);
+});
+
+test('a journal swapped after the recovery plan and before the run is refused as stale, and nothing is written', async t => {
+  const swaps = [
+    // Undo would restore other bytes: the step is still a restore of the same path, so paths and actions alone match.
+    { at: 0, mode: 'undo', swap: j => forgeStep(j, 'instructions/AGENTS.md', 'from', `${INSTRUCTIONS}\nForged after the plan.\n`) },
+    // Finish would create other bytes: the step is still a create of the same path.
+    { at: 0, mode: 'finish', swap: j => forgeStep(j, 'skills/lint/SKILL.md', 'to', skill('lint', '', 'Forged after the plan.\n')) },
+    // Even the same journal in another layout is not the journal approved.
+    { at: 1, mode: 'undo', swap: j => j, compact: true },
+  ];
+  for (const { at, mode, swap, compact } of swaps) {
+    const { p, journal } = await crashedAt(t, at);
+    const rec = planSaveRecovery(p.save());
+    const j = journal(); swap(j);
+    if (compact) fs.writeFileSync(journalAt(p), JSON.stringify(j), { mode: 0o600 }); else writeJournal(p, j);
+    const before = snapshot(p.base);
+    await assert.rejects(runSaveRecovery(p.save(), rec.revision, mode), code('SAVE_STALE'), `${mode} after write ${at}`);
+    assert.deepEqual(snapshot(p.base), before, 'nothing is written, and the journal stays');
+    assert.deepEqual(holding(p.def, 'Forged after the plan'), []);
+    assert.equal(await lockIsFree(p.dir), 'free');
+  }
+});
+
+test('a journal whose original or bytes hold a secret is refused: it counts as damaged, and recovery writes no byte of it', async t => {
+  const token = fakeToken();
+  for (const { at, rel, side, text } of [
+    { at: 0, rel: 'instructions/AGENTS.md', side: 'from', text: `${INSTRUCTIONS}\ntoken: ${token}\n` },
+    { at: 0, rel: 'skills/lint/SKILL.md', side: 'to', text: skill('lint', '', `token: ${token}\n`) },
+  ]) {
+    const { p, journal } = await crashedAt(t, at);
+    const j = journal(); forgeStep(j, rel, side, text); writeJournal(p, j);
+    const rec = planSaveRecovery(p.save());
+    assert.equal(rec.journal, 'damaged', `${side} of ${rel}`);
+    assert.deepEqual(rec.undo, []); assert.deepEqual(rec.finish, []); assert.equal(rec.finishable, false);
+    assert.ok(!JSON.stringify(rec).includes(token), 'the plan never repeats the value');
+    await assert.rejects(runSaveRecovery(p.save(), rec.revision, 'finish'), code('SAVE_FINISH_BLOCKED'));
+    const r = await runSaveRecovery(p.save(), rec.revision, 'undo');
+    assert.deepEqual(r.undone, []);
+    assert.deepEqual(holding(p.def, token), [], 'no file holds the secret');
+    assert.equal(fs.existsSync(journalAt(p)), false, 'the journal is cleared');
+  }
+});
+
+test('a mode restored from the journal loses group and world write: 0777 comes back as 0755', async t => {
+  // Undo: the file was 0777 before the save, and the journal holds that mode.
+  {
+    const p = scripted(t);
+    fs.chmodSync(path.join(p.def, 'scripts/check.sh'), 0o777);
+    const target = current(p);
+    target.set('scripts/check.sh', { bytes: Buffer.from('#!/bin/sh\necho two\n'), executable: true });
+    target.set('scripts/notes.txt', Buffer.from('Notes, edited.\n'));
+    const plan = planSave(p.save(), target), err = crash();
+    await assert.rejects(applySaveWith(p.save(), plan.revision, target, signal(), { afterWrite: rel => { if (rel === 'scripts/notes.txt') throw err; } }), e => e === err);
+    assert.equal(JSON.parse(fs.readFileSync(journalAt(p), 'utf8')).files[0].from.mode, 0o777);
+    await runSaveRecovery(p.save(), planSaveRecovery(p.save()).revision, 'undo');
+    assert.equal(fs.readFileSync(path.join(p.def, 'scripts/check.sh'), 'utf8'), '#!/bin/sh\necho one\n', 'the bytes are back');
+    assert.equal(modeOf(p, 'scripts/check.sh'), 0o755);
+  }
+  // Finish: a journal that names 0777 for a step the save had not reached.
+  {
+    const p = scripted(t);
+    const target = current(p);
+    target.set('scripts/check.sh', { bytes: Buffer.from('#!/bin/sh\necho two\n'), executable: true });
+    target.set('scripts/notes.txt', { bytes: Buffer.from('Notes, edited.\n'), executable: true });
+    const plan = planSave(p.save(), target), err = crash();
+    await assert.rejects(applySaveWith(p.save(), plan.revision, target, signal(), { afterWrite: rel => { if (rel === 'scripts/check.sh') throw err; } }), e => e === err);
+    const j = JSON.parse(fs.readFileSync(journalAt(p), 'utf8'));
+    j.files.find(f => f.path === '.bowerloom/scripts/notes.txt').to.mode = 0o777;
+    writeJournal(p, j);
+    const rec = planSaveRecovery(p.save());
+    assert.deepEqual(rec.finish.map(f => f.path), ['scripts/notes.txt']);
+    await runSaveRecovery(p.save(), rec.revision, 'finish');
+    assert.equal(fs.readFileSync(path.join(p.def, 'scripts/notes.txt'), 'utf8'), 'Notes, edited.\n');
+    assert.equal(modeOf(p, 'scripts/notes.txt'), 0o755);
+  }
+});
+
+test('a save whose journal would pass the read limit is refused as too large, and writes nothing', async t => {
+  const p = saving(t);
+  const target = mixed(p);
+  const plan = planSave(p.save(), target);
+  const before = snapshot(p.base);
+  // The test hook lowers the limit; a real journal passes it only with thousands of long paths.
+  await assert.rejects(applySaveWith(p.save(), plan.revision, target, signal(), { journalLimit: 1024 }), code('SAVE_TOO_LARGE'));
+  assert.deepEqual(snapshot(p.base), before, 'no file, no journal, not even the state folder');
+  assert.equal(saveStopped(p.adoptState), false, 'the folder is not blocked');
+  assert.equal(await lockIsFree(p.dir), 'free');
+  const r = await applySaveWith(p.save(), plan.revision, target, signal(), { journalLimit: save.SAVE_JOURNAL_LIMIT * 2 });
+  assert.equal(r.revision, plan.targetRevision, 'the hook can only lower the limit');
+});
+
+test('a journal over the read limit counts as damaged, so recovery clears it and the folder is not blocked for good', async t => {
+  const p = saving(t);
+  fs.mkdirSync(p.adoptState, { recursive: true, mode: 0o700 });
+  // A sparse file one byte over the limit: private, plain, and this user's.
+  const fd = fs.openSync(journalAt(p), 'wx', 0o600);
+  try { fs.ftruncateSync(fd, save.SAVE_JOURNAL_LIMIT + 1); } finally { fs.closeSync(fd); }
+  assert.throws(() => planSave(p.save(), current(p)), code('SAVE_RECOVERY_REQUIRED'));
+  const rec = planSaveRecovery(p.save());
+  assert.equal(rec.journal, 'damaged');
+  assert.deepEqual(rec.check, ['harness.json', 'instructions/AGENTS.md', 'skills/review/SKILL.md', 'skills/review/references/notes.md']);
+  assert.match(rec.journalSha256, /^[a-f0-9]{64}$/);
+  await assert.rejects(runSaveRecovery(p.save(), rec.revision, 'finish'), code('SAVE_FINISH_BLOCKED'));
+  const before = content(p.def);
+  await runSaveRecovery(p.save(), rec.revision, 'undo');
+  assert.deepEqual(content(p.def), before, 'clearing writes no file');
+  assert.equal(saveStopped(p.adoptState), false);
+  const target = mixed(p);
+  await applySave(p.save(), planSave(p.save(), target).revision, target);
+  assert.equal(fs.existsSync(journalAt(p)), false, 'a save runs again');
+  // An oversized journal others can read is still unsafe, not damaged.
+  fs.writeFileSync(journalAt(p), ''); fs.truncateSync(journalAt(p), save.SAVE_JOURNAL_LIMIT + 1); fs.chmodSync(journalAt(p), 0o644);
+  assert.throws(() => planSaveRecovery(p.save()), code('SAVE_STATE_UNSAFE'));
+});
+
+test('a delete never follows its folder or file swapped after the check: the save stops, and the file elsewhere stays', async t => {
+  const rel = 'skills/review/references/notes.md';
+  for (const kind of ['folder', 'file']) {
+    const p = saving(t);
+    const target = mixed(p);
+    const plan = planSave(p.save(), target);
+    const outside = path.join(p.base, 'outside'); fs.mkdirSync(outside);
+    fs.writeFileSync(path.join(outside, 'notes.md'), 'Review notes.\n');
+    let swapped = false;
+    await assert.rejects(applySaveWith(p.save(), plan.revision, target, signal(), {
+      beforeUnlink: at => {
+        if (at !== rel) return;
+        swapped = true;
+        const ref = path.join(p.def, 'skills/review/references');
+        if (kind === 'folder') { fs.renameSync(ref, path.join(p.base, 'moved')); fs.symlinkSync(outside, ref); }
+        else { const copy = path.join(ref, 'copy.tmp'); fs.writeFileSync(copy, 'Review notes.\n'); fs.renameSync(copy, path.join(ref, 'notes.md')); }
+      },
+    }), e => ['SAVE_STALE', 'SAVE_PATH_UNSAFE', 'SAVE_PARTIAL'].includes(e.code), kind);
+    assert.ok(swapped, 'the hook ran just before the unlink');
+    assert.equal(fs.readFileSync(path.join(outside, 'notes.md'), 'utf8'), 'Review notes.\n', `${kind}: the file behind the link stays`);
+    if (kind === 'file') assert.equal(fs.readFileSync(path.join(p.def, rel), 'utf8'), 'Review notes.\n', 'the swapped-in file stays');
+  }
 });
 
 // ---- unsafe paths ----------------------------------------------------------------------------------------------------------

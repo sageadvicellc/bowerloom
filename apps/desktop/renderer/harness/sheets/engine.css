@@ -1,7 +1,7 @@
 /*
  * The adopt and install sheets (renderer/harness/sheets/AdoptSheet.tsx, ProjectSheet.tsx). Every rule starts at [data-home] and uses the preview's tokens only:
  * the brand's version 2 is in progress, so no colour or size here is new. Text is 14 px or more and every control is 32 px or more.
- * Motion (design-motion-principles, Create mode, the weighting Hanna confirmed on 2026-10-24: Emil leads busy actions): ticking, hovering and picking are frequent,
+ * Motion (design-motion-principles, Create mode, the weighting the maintainer confirmed on 2026-10-24: Emil leads busy actions): ticking, hovering and picking are frequent,
  * so they change colour only, in the hover time of the motion tokens, and nothing travels. The sheet itself keeps the sheet motion of Sheet.tsx. With "reduce
  * motion" on, nothing here moves at all. The busy line has a still dot, never a looping one.
  */

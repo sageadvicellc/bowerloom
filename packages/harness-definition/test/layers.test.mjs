@@ -33,7 +33,7 @@ const rule = (id, effect, pattern = id, extra = {}) => ({ id, action: 'shell', p
 /** A layer approval for a change that `by` makes. `target` is the replaced item, for replace. */
 const approval = (by, part, entry, change, item, target, extra = {}) => ({
   part, entry, change, folder: by.folder, entryHash: entryHash(item), ...(target ? { targetHash: entryHash(target) } : {}),
-  who: 'Hanna Sage', when: '2026-10-28T14:00:00Z', reason: 'Reviewed.', ...extra,
+  who: 'Robin Example', when: '2026-10-28T14:00:00Z', reason: 'Reviewed.', ...extra,
 });
 const find = (def, key, id) => def.entries[key].find(e => e.id === id);
 

@@ -58,7 +58,7 @@ test('the words the storyboard asks for are fine, including "This project only"'
   assert.equal(problems('<p>The project folder</p>').length, 1, 'project alone is still banned');
 });
 
-test('"Undo" is a plain word of the screens since Hanna chose it (2026-10-25): the note after Remove, the Undo beside each change, "Undo all changes"', () => {
+test('"Undo" is a plain word of the screens since the maintainer chose it (2026-10-25): the note after Remove, the Undo beside each change, "Undo all changes"', () => {
   ok('<button>Undo</button><button>Undo all changes</button><p>Removed Write a reply.</p><p>Undo the later change first.</p>');
 });
 

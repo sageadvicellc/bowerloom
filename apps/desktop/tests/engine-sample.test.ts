@@ -13,7 +13,7 @@ import { readFrontmatter } from '../../../packages/harness-definition/src/index.
 import { SAMPLE_FOLDERS, SAMPLE_KIT, SAMPLE_MESSAGES, SAMPLE_NOTES, createSampleEngine, sampleEngineFixtures } from '../shared/engine/sample.js';
 import { createEngineService } from '../main/engine-service.js';
 import { loadKit } from '../main/kit.js';
-import { KIT_MAIN_WORDS, SAVE_MAIN_WORDS } from '../shared/engine/types.js';
+import { KIT_MAIN_WORDS, REPORT_MAIN_WORDS, SAVE_MAIN_WORDS } from '../shared/engine/types.js';
 import type { Answer, ProjectAnswer, ProjectInput, SaveEdit } from '../shared/engine/types.js';
 import { DESKTOP, tempDir } from './support.js';
 import { definedFolder, engineFolder, homeFolder, teamFolder } from './helpers-engine/folders.js';
@@ -43,6 +43,7 @@ test('the sample\'s words for each refusal are the packages\' own words', () => 
   for (const [code, words] of Object.entries(SAMPLE_MESSAGES)) {
     if (Object.hasOwn(SAVE_MAIN_WORDS, code)) { assert.equal(SAVE_MAIN_WORDS[code as keyof typeof SAVE_MAIN_WORDS], words, code); continue; }
     if (Object.hasOwn(KIT_MAIN_WORDS, code)) { assert.equal(KIT_MAIN_WORDS[code as keyof typeof KIT_MAIN_WORDS], words, code); continue; }
+    if (Object.hasOwn(REPORT_MAIN_WORDS, code)) { assert.equal(REPORT_MAIN_WORDS[code as keyof typeof REPORT_MAIN_WORDS], words, code); continue; }
     if (code.startsWith('NOTES_')) { assert.equal(new NotesRefusal(code as NotesCode).message, words, code); continue; }
     const made = code.startsWith('ADOPTION_') ? new AdoptionRefusal(code as AdoptionCode) : code.startsWith('SAVE_') ? new SaveRefusal(code as SaveCode)
       : code.startsWith('VERSION_') ? new VersionRefusal(code as VersionCode) : new PortableRefusal(code as PortableCode);
@@ -205,8 +206,8 @@ test('sample save: a link is a set-agent edit, a stale revision is refused, a sa
   const none = await e.planSave(SAMPLE_FOLDERS.adopt, []);
   assert.ok(!none.ok); assert.equal(none.refusal.code, 'SAVE_NO_DEFINITION');
   // A skill copied from another sample folder, then removed again, and the interfaces.
-  const copy = value(await e.planSave(id, [{ kind: 'add-skill', id: 'water-plants', from: SAMPLE_FOLDERS.stopped }, { kind: 'set-engines', engines: ['claude-code', 'codex'] }]));
-  assert.deepEqual(copy.changes.map(c => [c.path, c.action]), [['.bowerloom/skills/water-plants/SKILL.md', 'create'], ['.bowerloom/harness.json', 'update']]);
+  const copy = value(await e.planSave(id, [{ kind: 'add-skill', id: 'pick-books', from: SAMPLE_FOLDERS.stopped }, { kind: 'set-engines', engines: ['claude-code', 'codex'] }]));
+  assert.deepEqual(copy.changes.map(c => [c.path, c.action]), [['.bowerloom/skills/pick-books/SKILL.md', 'create'], ['.bowerloom/harness.json', 'update']]);
   assert.deepEqual(copy.definition.engines, ['claude-code', 'codex']);
   const ghost = await e.planSave(id, [{ kind: 'add-skill', id: 'ghost', from: SAMPLE_FOLDERS.stopped }]);
   assert.ok(!ghost.ok); assert.equal(ghost.refusal.code, 'SAVE_SOURCE_MISSING');

@@ -10,6 +10,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { TOUR_SEEN_KEY } from '../renderer/harness/tour/seen.js';
 import { animationsDone } from './proto-wait.js';
 import { tempDir } from './proto-temp.js';
 
@@ -25,8 +26,11 @@ export const APP = '#prototype-v3/harnesses';
 export const WELCOME = '#prototype-v3';
 export const WEEKLY = 'harness-weekly-report-crew';
 
-/** Builds the bundle fresh from the source in this folder, starts the app with --prototype-v3 and waits for the first window. */
-export async function launchHarness({ samplePreviewEngines = false }: { samplePreviewEngines?: boolean } = {}): Promise<Harness> {
+/**
+ * Builds the bundle fresh from the source in this folder, starts the app with --prototype-v3 and waits for the first window. The guided tour starts on its
+ * own at first use; a spec that is not about it starts with the tour seen, in the window's session store (it lasts through `fresh`), unless `freshTour`.
+ */
+export async function launchHarness({ samplePreviewEngines = false, freshTour = false }: { samplePreviewEngines?: boolean; freshTour?: boolean } = {}): Promise<Harness> {
   const built = spawnSync(process.execPath, [join(desktop, 'tools', 'bundle.mjs')], { cwd: desktop, encoding: 'utf8' });
   if (built.status !== 0 || !existsSync(join(desktop, 'dist', 'main.mjs'))) throw new Error(`The bundle did not build.\n${built.stdout}\n${built.stderr}`);
   const userData = tempDir('bowerloom-prototype-e2e-');
@@ -34,6 +38,7 @@ export async function launchHarness({ samplePreviewEngines = false }: { samplePr
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
   await page.waitForSelector('[data-home]');
+  if (!freshTour) await page.evaluate(key => sessionStorage.setItem(key, '1'), TOUR_SEEN_KEY);
   return { app, page };
 }
 

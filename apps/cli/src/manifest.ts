@@ -13,7 +13,7 @@
  * inside `withStoreForWrite`, which makes the store when it is absent. The cache stays in the private state folder.
  *
  * After the approved write, skills add keeps the bytes it verified in the machine's skills cache, which the plan
- * names (Hanna, global skill cache). A seed that fails leaves the pin written and is reported, in words and in JSON.
+ * names (the maintainer, global skill cache). A seed that fails leaves the pin written and is reported, in words and in JSON.
  */
 import { lstatSync, realpathSync } from 'node:fs';
 import { dirname } from 'node:path';

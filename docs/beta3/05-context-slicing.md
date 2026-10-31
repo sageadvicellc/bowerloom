@@ -2,14 +2,14 @@
 
 ## 1. Header
 
-- Source issue: sageadvicellc/bowerloom#86, https://github.com/sageadvicellc/bowerloom/issues/86. Hanna set the scope and the decisions on 2026-10-22, in a chat session. The issue records them.
+- Source issue: sageadvicellc/bowerloom#86, https://github.com/sageadvicellc/bowerloom/issues/86. The maintainer set the scope and the decisions on 2026-10-22, in a chat session. The issue records them.
 - Binding decisions, as the issue words them:
   - Decision 1, delivery: "Apply writes one generated skill per slice, `.claude/skills/slice-<id>/SKILL.md`, which lists paths and titles. An agent preloads it through its existing `skills` key and reads files where they are. A page edit is live at once. Only titles are copied."
   - Decision 2, roots outside the project: "A slice can name a root outside its layer, such as the knowledge base, through a named root registered in the store (spec 03). This builds after the store foundation."
   - Decision 3, read guard: "`bowerloom context guard`, added as a per-agent `PreToolUse` hook, blocks Read, Grep, and Glob outside the agent's slices. It needs workspace trust. Shell access stays a documented gap, and the plan notes it."
   - Decision 4, create command: "Add `bowerloom slice create <id>`, with a plan, like `skill create`. `bowerloom context show` previews what a slice selects."
-  - Decision 5 of the registered-folder round, option B, https://github.com/sageadvicellc/bowerloom/issues/86#issuecomment-6342862841 (Hanna, 2026-10-23): "The grant also records the summary kind. `folder allow` names `heading` or `frontmatter:<key>`. A slice that asks for a different kind is held with `FOLDER_NOT_ALLOWED` until you run `folder allow` again."
-- Defaults that the issue records, and that bind this spec until Hanna overrides one:
+  - Decision 5 of the registered-folder round, option B, https://github.com/sageadvicellc/bowerloom/issues/86#issuecomment-6342862841 (the maintainer, 2026-10-23): "The grant also records the summary kind. `folder allow` names `heading` or `frontmatter:<key>`. A slice that asks for a different kind is held with `FOLDER_NOT_ALLOWED` until you run `folder allow` again."
+- Defaults that the issue records, and that bind this spec until the maintainer overrides one:
   - An agent names a slice with `skills: slice-<id>`. There is no new frontmatter key.
   - An agent with slices and without `omitClaudeMd: true` gets a plan note.
   - An agent that names an unknown `slice-` skill gets a warning, not a refusal.
@@ -19,7 +19,7 @@
   - Index summaries: the first heading of each file.
   - The plan binds the rendered index and the member paths, not the hash of each file body. A page edit does not make an approved plan stale.
   - The baseline of the measure is every non-hidden `.md` file under the deepest common folder of the slice roots.
-- Pending owner decisions on #86. The build uses the default of each, and the pull request records each as a lettered decision for Hanna (section 13):
+- Pending owner decisions on #86. The build uses the default of each, and the pull request records each as a lettered decision for the maintainer (section 13):
   - Pending decision 1, what the guard fences. Default A: only the root of each guarded slice is fenced.
   - Pending decision 2, https://github.com/sageadvicellc/bowerloom/issues/86#issuecomment-6334298823. Default B: apply writes the project's real path into the guard arguments, and the plan prints a note when `.claude/agents` may not be git-ignored.
 - Settled by the tech lead: two pull requests from two branches.
@@ -55,7 +55,7 @@ Terms used below. Each term keeps one meaning in this spec.
 
 Today an agent learns about a knowledge base in two ways. It loads the always-on files at start, which are CLAUDE.md or AGENTS.md and their imports. Then it reads whatever it decides to read. Nothing limits an agent to the part of the knowledge base that its role needs. Nothing measures what each agent loads.
 
-Hanna's words in the issue: "Strapping all agents with our knowledge-base is a bad idea for both large scale companies and refinement of harnesses. Let's make sure beta.3 includes the ability to slice context without duplicating storage of it. We'll want to ensure a technically sound solution and measure our context usage per agent against a larger agent strapped with our entire knowledge-base."
+The maintainer's words in the issue: "Strapping all agents with our knowledge-base is a bad idea for both large scale companies and refinement of harnesses. Let's make sure beta.3 includes the ability to slice context without duplicating storage of it. We'll want to ensure a technically sound solution and measure our context usage per agent against a larger agent strapped with our entire knowledge-base."
 
 Facts from the Sage Advice workbench, counted by hand with `wc -c` on 2026-10-22. They are examples, not tool output:
 
@@ -1809,7 +1809,7 @@ Each item names the check and the fallback. The builder runs the check first.
 1. **Exec form (`args`) and `onFailure` in agent frontmatter.** The hooks page documents both, and says that subagents use the same format in frontmatter. No page shows them in a subagent file. Check: a trusted scratch project, a guarded agent, and `bowerloom-guard` removed from `PATH`. The Read must be blocked. Fallback for `args`: shell form, `command: bowerloom-guard --agent ... --root ...`, with each argument in single quotes and each `'` written as `'\''`. A project path that holds a control character holds the agent. Fallback for `onFailure`: the guard turns every internal error into a deny. Only a guard that cannot start lets a call through. The docs page says so.
 2. **Nested subagents.** Whether a subagent's frontmatter hooks fire for the tool calls of a subagent that it starts is not documented. Section 3.9.4 treats it as not guarded. Check: the scratch run with a guarded agent that starts a general-purpose subagent. If the hook fires, remove `nested agents` from the read-gap note.
 3. **A trusted folder under `claude -p`.** The hooks page says a `-p` session does not count as accepting the trust dialog. It does not say whether a folder trusted earlier in an interactive session lets frontmatter hooks run under `-p`. Check: trust a scratch folder interactively, then run the guarded agent with `claude -p`. Fallback: the docs say that the guard does not run in `-p`, Routines, or CI.
-4. **Comments and key order survive `yaml` 2.9.1 `Document` round trips.** Check: test 10.9.4. Fallback: when the source has no `hooks` key, append the guard block as text before the closing fence. When it has one, use the `Document` path and accept the formatting change. Tell Hanna in the pull request.
+4. **Comments and key order survive `yaml` 2.9.1 `Document` round trips.** Check: test 10.9.4. Fallback: when the source has no `hooks` key, append the guard block as text before the closing fence. When it has one, use the `Document` path and accept the formatting change. Tell the maintainer in the pull request.
 5. **Grep and Glob on hidden files.** The docs do not say whether the Grep and Glob tools search hidden files. The covered rule excludes folders with hidden entries, so either answer is safe. No fallback is needed.
 6. **Preloading a `user-invocable: false` skill.** The skills page says the field hides a skill from the menu and that Claude can still use it. The sub-agents page says preloading draws from the skills Claude can invoke. Check: the scratch run, asking the agent to quote its index. Fallback: drop `user-invocable: false` from the index. Each slice then also shows in the `/` menu.
 7. **Whether preloaded skill text includes its frontmatter.** Not documented. The measure counts the whole file, an upper bound, and says so in `assumptions`. No fallback is needed.
@@ -1827,7 +1827,7 @@ Each item names the check and the fallback. The builder runs the check first.
 19. **An agent run as the main session.** Check: `claude --agent <role>` in a trusted scratch folder, then a Read of a non-member. Fallback: document the observed behavior in section 3.9.4 item 20.
 20. **The YAML parser Claude Code uses for agent frontmatter.** Not documented. Every `args` element is a double-quoted scalar so that a strict or a loose parser reads the same strings. Check: the scratch run with a project path that holds a space, a `'`, and a `#`. Fallback: hold an agent whose project path holds a character the check shows is read wrongly, with `AGENT_GUARD_CONFLICT`.
 
-## 13. New decision for Hanna
+## 13. New decision for the maintainer
 
 All three decisions are posted on #86 and pending. The build uses the default of decisions 1 and 2, and choice A of decision 3. The Part A pull request records all three as lettered decisions.
 
@@ -1848,7 +1848,7 @@ https://github.com/sageadvicellc/bowerloom/issues/86#issuecomment-6334298823
 
 ### Decision 3: a guarded agent in a git worktree
 
-A worktree holds its own copies of every tracked file, outside the guarded folders, so the guard cannot fence them. This decision has no default. The build uses A until Hanna answers.
+A worktree holds its own copies of every tracked file, outside the guarded folders, so the guard cannot fence them. This decision has no default. The build uses A until the maintainer answers.
 
 - A (built): Hold an agent that has a guard list and sets `isolation: worktree`, with `AGENT_GUARD_WORKTREE`.
 - B: Install the agent, and print a plan note that its guard does not fence the worktree's copies.

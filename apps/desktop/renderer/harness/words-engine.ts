@@ -41,6 +41,7 @@ export const ENGINE_WORDS = deepFreeze({
     removeSkill: 'Remove', keepSkill: 'Keep', savePoints: 'Save points', goBack: 'Go back', goBackTitle: 'Back to a save point', nowMark: 'Now',
     setAside: 'Set old save points aside', planSetAside: 'Review setting them aside', checkHere: 'Check these files',
     saved: 'Saved', savePoint: 'Save point', noAgents: 'No agents', noSkills: 'No skills',
+    copySkills: 'Skills from another folder', copyAdd: 'Add', copyTakeOut: 'Take out', copiedMark: 'Copied',
   },
   hint: {
     pickFolder: 'Pick the folder Bowerloom reads.', samplePick: 'Sample folders. Nothing is read or written.', readOnly: 'Bowerloom only reads until you approve.',
@@ -75,6 +76,11 @@ export const ENGINE_WORDS = deepFreeze({
     noAgentsHere: 'This harness has no agents to link skills to.', currentPoint: 'The harness is this save point now.', pointKept: 'Save point kept:',
     setAsideNote: 'Nothing is deleted. Go back starts again from the next save.', setAsideDone: 'The old save points were set aside as',
     notLoading: 'The harness does not load now. Check these files by hand.',
+    canRun: 'Can run as a program.', modeOnly: 'Only its permission to run changes.',
+    onlyModes: 'Only whether files can run changes. No text changes.',
+    ackExecutables: 'I read the files that can run, from another folder.',
+    copyPick: 'Pick a folder whose skill you want here.', noOtherFolders: 'No other folder with skills yet. Choose one.',
+    heldHere: 'This harness has it already.', copyNoSkills: 'That folder has no skills.',
   },
   paragraph: {
     adoptIntro: 'Bowerloom reads the files your interfaces use and proposes a harness. It writes only into .bowerloom, and only after you approve.',
@@ -244,6 +250,7 @@ export const SAVE_REFUSAL_WORDS: Readonly<Record<string, string>> = Object.freez
   KNOWLEDGE_PATH_UNSAFE: 'Choose a notes folder inside your home folder.',
   KNOWLEDGE_PATH_ESCAPES: 'Choose the notes folder again, then save.',
   KNOWLEDGE_PATH_OUTSIDE: 'Move the notes into your home folder, then choose them again.',
+  SAVE_EXECUTABLE_UNACKNOWLEDGED: 'Tick that you read the files that can run, then save.',
 });
 
 /** What to do next after each refusal of the notes calls (spec 6.9), under the refusal's own words. The package's NOTES_ codes and main's, each once. */
@@ -270,6 +277,10 @@ export const NOTES_REFUSAL_WORDS: Readonly<Record<string, string>> = Object.free
   KIT_INVALID: 'Install Bowerloom again to repair the notes keeper.',
   NOT_A_FOLDER: 'Choose a folder, not a file.',
   NOTES_NOT_CHOSEN: 'Choose this folder with Use my notes first.',
+  REPORT_NONE: 'Ask the Notes keeper for a tidy-up report first.',
+  REPORT_NOT_SHOWN: 'Close this sheet and open it again to read the notes.',
+  REPORT_UNSAFE: 'Check the reports folder by hand. Bowerloom opens no link.',
+  REPORT_OPEN_FAILED: 'Open the report from the notes folder by hand.',
 });
 /**
  * What to do after a notes write stopped part way (NOTES_PARTIAL), by the step that stopped: the starter wrote files into an empty folder; the history start
@@ -289,6 +300,12 @@ const plain = (n: number, one: string, many: string): string => `${n} ${n === 1 
 export const saveFilesWords = (n: number): string => `Save ${plain(n, 'file', 'files')}`;
 /** "Go back to v2". */
 export const goBackWords = (id: string): string => `Go back to ${id}`;
+/** "From ~/Projects/source": where a copied file or skill comes from. */
+export const fromWords = (label: string): string => `From ${label}`;
+/** "Add summarize from ~/Projects/source": the name of a copy's Add button. */
+export const copyAddName = (skill: string, label: string): string => `Add ${skill} from ${label}`;
+/** "Take summarize out": the name of the button that takes a copy out of the draft. */
+export const copyTakeOutName = (skill: string): string => `Take ${skill} out`;
 /** "2 changes, not saved yet." */
 export const draftWords = (n: number): string => (n === 0 ? 'No change yet.' : `${plain(n, 'change', 'changes')}, not saved yet.`);
 /** "2026-10-30 12:00 UTC, 3 files": when a save point was kept, and how many files it holds. */

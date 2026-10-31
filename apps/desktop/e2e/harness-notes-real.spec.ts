@@ -213,7 +213,8 @@ test('create: Start fresh makes the starter files and one commit; the keeper is 
   await expect(card).toHaveCount(1);
   await expect(card.locator('[data-pages]')).toHaveText(`${pages} pages`);
   await expect(card.locator('[data-last-change]')).toHaveText(`Last change ${day}`);
-  await expect(card.locator('[data-report]')).toHaveText(`Tidy-up report ${reportDate}`);
+  // The report line is a button that opens the report through main (e2e/harness-window-items-real.spec.ts opens one); here it is only read.
+  await expect(card.locator('[data-open-report]')).toHaveText(`Tidy-up report ${reportDate}`);
   await expect(card.locator('[data-readers]')).toHaveText('Read by notes-keeper');
   await card.getByRole('button', { name: 'Show details' }).click();
   await expect(card).toContainText('~/Documents/field-notes');

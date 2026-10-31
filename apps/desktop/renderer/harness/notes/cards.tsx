@@ -31,14 +31,16 @@ export interface ItemCardProps {
   /** Rows shown under "Show details": a path may sit here, never on the card itself. */
   details?: readonly { readonly label: string; readonly value: string }[];
   tour?: string | undefined;
+  /** True for a notes card the draft stops using: it stays on the panel, marked, until the person saves or keeps it. */
+  stopped?: boolean;
 }
 
-export function ItemCard({ kind, id, name, lines = [], draggable = false, action, details = [], tour }: ItemCardProps): ReactElement {
+export function ItemCard({ kind, id, name, lines = [], draggable = false, action, details = [], tour, stopped = false }: ItemCardProps): ReactElement {
   const [open, setOpen] = useState(false);
   const detailsId = useId();
   const start = (e: DragEvent<HTMLLIElement>): void => { e.dataTransfer.setData(TYPE(kind), id); e.dataTransfer.setData('text/plain', name); e.dataTransfer.effectAllowed = 'copy'; };
   return (
-    <li className="hxn-card" data-card={id} data-kind={kind} draggable={draggable ? true : undefined} data-tour={tour} onDragStart={draggable ? start : undefined}>
+    <li className="hxn-card" data-card={id} data-kind={kind} draggable={draggable ? true : undefined} data-tour={tour} data-stopped={stopped ? '' : undefined} onDragStart={draggable ? start : undefined}>
       <div className="hxn-card-row">
         <Tile name={ICON[kind]} />
         <span className="hxn-card-text">

@@ -15,11 +15,15 @@
  * - The journal, `save-pending.json` in the adoption state folder, is written before the first write. It holds the
  *   state before and after of each file (hash and mode), the bytes it replaces, and the bytes it writes. A failure puts every original
  *   back; a crash leaves the journal, and every later save plan refuses SAVE_RECOVERY_REQUIRED until a person approves
- *   a save recovery, which either undoes the save or finishes it.
+ *   a save recovery, which either undoes the save or finishes it. A save never writes a journal past the read limit.
+ * - The recovery reads the journal once, under the lock, and its revision covers the sha256 of those exact bytes. A
+ *   journal over the read limit, or one with a secret in any byte it would write, is damaged: the recovery only clears
+ *   it and lists the files to check by hand. A mode written from the journal loses group and world write.
  * - This copies the reviewed journal pattern of `merge.ts`, as the save plan asks, rather than sharing one.
  * - Every write goes through the portable projection's write layer: the folders above the path are checked just before
  *   the write, a new file is linked into place, and a replaced or deleted file must still hold the planned bytes.
  */
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 import { DefinitionError, oneLine } from '../../contracts/src/index.js';
@@ -27,7 +31,7 @@ import { DEFINITION_LIMITS, INCOMPLETE_RULES, LEGACY_NAMES, loadDefinition, load
 import type { DefinitionFile, Problem } from '../../harness-definition/src/index.js';
 import { withProjectLock } from '../../project-context/src/index.js';
 import {
-  PortableRefusal, byBytes, caseClashes, checkAncestors, makeDir, readProject, removeEmptyDirs, revisionOf, sameState, sha, syncDir, uid, writeAbs,
+  PortableRefusal, byBytes, caseClashes, checkAncestors, makeDir, readProject, removeEmptyDirs, revisionOf, sameState, sha, uid, writeAbs,
 } from '../../project-sync/src/portable-files.js';
 import type { FileState } from '../../project-sync/src/portable-files.js';
 import { checkPaths, stateExists } from '../../project-sync/src/portable-state.js';
@@ -54,7 +58,7 @@ const MESSAGES = {
   SAVE_RECOVERY_REQUIRED: 'An earlier adoption, merge, or save of this folder stopped part way, and its journal is in the state folder. Recover it first. Nothing was changed.',
   SAVE_PARTIAL: 'The save stopped part way and could not put every original back. The journal stays in the state folder, so plan a save recovery. The paths listed are left over.',
   SAVE_PATH_UNSAFE: 'A path the save would read or write is outside .bowerloom, hidden, a 0.7 name, a link, not yours, or clashes with another path in letter case or Unicode form. Nothing more was changed.',
-  SAVE_TOO_LARGE: 'The target holds more than a definition may: the limits match the definition loader (files, bytes per file, total bytes, folder depth), and the bytes a save replaces and writes together are at most 32 MiB. Nothing was written.',
+  SAVE_TOO_LARGE: 'The target holds more than a definition may: the limits match the definition loader (files, bytes per file, total bytes, folder depth), the bytes a save replaces and writes together are at most 32 MiB, and its journal is at most 48 MiB. Nothing was written.',
   SAVE_STATE_UNSAFE: 'The state folder must be a normalized absolute path outside the project, and a private folder of yours (mode 0700) when it exists. The journal in it must be private too.',
   SAVE_ABORTED: 'The save was stopped. It put back every file it had written.',
   SAVE_RECOVER_NOTHING: 'No save of this folder is unfinished, so there is nothing to recover.',
@@ -129,7 +133,14 @@ export interface SaveResult {
   readonly journalLeft: boolean;
 }
 /** Test hooks. Not exported from the package index. An error with `crash: true` stands for a killed process. Paths are relative to `.bowerloom`. */
-export interface SaveHooks { readonly beforeWrite?: (rel: string) => void; readonly afterWrite?: (rel: string) => void }
+export interface SaveHooks {
+  readonly beforeWrite?: (rel: string) => void;
+  readonly afterWrite?: (rel: string) => void;
+  /** Runs after a delete's checks, just before the last identity check and the unlink. */
+  readonly beforeUnlink?: (rel: string) => void;
+  /** A lower journal limit than SAVE_JOURNAL_LIMIT. A higher one is ignored. */
+  readonly journalLimit?: number;
+}
 
 /** A journal step. `path` is relative to the project; `original` and `bytes` are base64. */
 interface JournalStep { readonly path: string; readonly from: FileState | null; readonly to: FileState | null; readonly original: string | null; readonly bytes: string | null }
@@ -149,6 +160,16 @@ const DEF_REVISION = /^sha256:[a-f0-9]{64}$/;
 const LEGACY = new Set<string>(LEGACY_NAMES);
 const inProject = (rel: string): string => `${DEF}/${rel}`;
 const inDef = (rel: string): string => rel.startsWith(`${DEF}/`) ? rel.slice(DEF.length + 1) : rel;
+/** A mode the save writes from its journal: group and world write cleared, so a forged or odd mode never opens a file to others. */
+const safeMode = (mode: number): number => mode & 0o777 & ~0o022;
+/**
+ * The state compare of save recovery: the same bytes, and the same mode once group and world write are cleared on both sides. A file the save or its undo
+ * wrote from the journal holds `safeMode` of the recorded mode, so a 0664 original put back as 0644 still counts as put back. Only recovery uses it: a
+ * plan and an apply compare the full mode, as `sameState` does.
+ */
+/** How a write compares a file's state with the one it expects: `sameState` by default, `sameSaved` in recovery. */
+type SameState = (a: FileState | null, b: FileState | null) => boolean;
+const sameSaved: SameState = (a, b) => a === null ? b === null : b !== null && a.sha256 === b.sha256 && safeMode(a.mode) === safeMode(b.mode);
 
 // ---- stopped runs ------------------------------------------------------------------------------------------------------
 
@@ -394,7 +415,10 @@ export async function applySaveWith(input: SaveInput, revision: string, target: 
     const journal: SaveJournal = {
       format: SAVE_JOURNAL_FORMAT, projectDir, planRevision: plan.revision, targetRevision: plan.targetRevision, files: steps, dirs, emptied: plan.emptied.map(inProject),
     };
-    writeSaveJournal(stateDir, journal);
+    // A journal the recovery could not read would block the folder, so one past the read limit is never written.
+    const encoded = Buffer.from(JSON.stringify(journal, null, 2) + '\n');
+    if (encoded.length > Math.min(SAVE_JOURNAL_LIMIT, hooks.journalLimit ?? SAVE_JOURNAL_LIMIT)) refuse('SAVE_TOO_LARGE');
+    writeSaveJournal(stateDir, encoded);
 
     const written: JournalStep[] = [], created: string[] = [];
     const fail = (error: unknown): never => {
@@ -412,6 +436,7 @@ export async function applySaveWith(input: SaveInput, revision: string, target: 
         placed: step => { written.push(step); },
         after: step => { hooks.afterWrite?.(inDef(step.path)); },
         made: d => { created.push(d); },
+        beforeUnlink: step => { hooks.beforeUnlink?.(inDef(step.path)); },
       });
       const loaded = loadDefinition(join(projectDir, DEF));
       if (!loaded.ok) return invalid(loaded.problems);
@@ -430,12 +455,13 @@ interface StepEvents {
   readonly placed: (step: JournalStep) => void;
   readonly after: (step: JournalStep) => void;
   readonly made: (dir: string) => void;
+  readonly beforeUnlink?: (step: JournalStep) => void;
 }
 /**
  * Runs journal steps in order: each step must find its file at the state before. The folders the deletes emptied go
  * just before `harness.json` is written, or after the last step when the save does not write it.
  */
-function runSteps(projectDir: string, journal: SaveJournal, steps: readonly JournalStep[], on: StepEvents): void {
+function runSteps(projectDir: string, journal: SaveJournal, steps: readonly JournalStep[], on: StepEvents, same: SameState = sameState): void {
   let cleared = false;
   const clear = (): void => {
     cleared = true;
@@ -445,10 +471,10 @@ function runSteps(projectDir: string, journal: SaveJournal, steps: readonly Jour
   for (const step of steps) {
     if (step.path === inProject(HARNESS) && !cleared) clear();
     on.before(step);
-    if (step.to === null) removeChecked(projectDir, step.path, step.from!, () => on.placed(step));
+    if (step.to === null) removeChecked(projectDir, step.path, step.from!, () => on.placed(step), () => on.beforeUnlink?.(step), same);
     else {
       for (const d of checkAncestors(projectDir, step.path)) makeDir(projectDir, d, made => on.made(made));
-      place(projectDir, step.path, Buffer.from(step.bytes!, 'base64'), step.to.mode, step.from, () => on.placed(step));
+      place(projectDir, step.path, Buffer.from(step.bytes!, 'base64'), safeMode(step.to.mode), step.from, () => on.placed(step), same);
     }
     on.after(step);
   }
@@ -459,22 +485,50 @@ function runSteps(projectDir: string, journal: SaveJournal, steps: readonly Jour
  * Writes bytes at a project path through the checked write layer. Just before the link or rename, the path must still
  * hold `expected` (null: nothing), else it refuses PORTABLE_DRIFT. A new file is linked into place.
  */
-function place(projectDir: string, rel: string, bytes: Uint8Array, mode: number, expected: FileState | null, onPlaced: () => void = () => {}): void {
+function place(projectDir: string, rel: string, bytes: Uint8Array, mode: number, expected: FileState | null, onPlaced: () => void = () => {}, same: SameState = sameState): void {
   writeAbs(join(projectDir, rel), bytes, mode, {
     exclusive: expected === null, label: rel, onPlaced,
     recheck: () => {
       checkAncestors(projectDir, rel, true);
-      if (!sameState(readProject(projectDir, rel)?.state ?? null, expected)) throw new PortableRefusal('PORTABLE_DRIFT', [rel]);
+      if (!same(readProject(projectDir, rel)?.state ?? null, expected)) throw new PortableRefusal('PORTABLE_DRIFT', [rel]);
     },
   });
 }
-/** Removes a project file after the ancestry check, only while it still holds `expected`. A file already gone is drift. */
-function removeChecked(projectDir: string, rel: string, expected: FileState, onRemoved: () => void = () => {}): void {
-  if (checkAncestors(projectDir, rel).length) throw new PortableRefusal('PORTABLE_DRIFT', [rel]);
-  if (!sameState(readProject(projectDir, rel)?.state ?? null, expected)) throw new PortableRefusal('PORTABLE_DRIFT', [rel]);
-  fs.unlinkSync(join(projectDir, rel));
-  onRemoved();
-  syncDir(dirname(join(projectDir, rel)));
+const sameNode = (a: fs.Stats, b: fs.Stats): boolean => a.dev === b.dev && a.ino === b.ino;
+/**
+ * Removes a project file after the ancestry check, only while it still holds `expected`. A file already gone is drift.
+ *
+ * The parent folder is opened once, without following a link, and must be the folder the ancestry check passed. Just
+ * before the unlink, the parent path must still name that folder, and the file path the file whose bytes were checked;
+ * else the remove refuses. Node has no unlinkat(), so the unlink still goes by path: this narrows the gap between the
+ * check and the unlink to two system calls, and does not close it.
+ */
+function removeChecked(projectDir: string, rel: string, expected: FileState, onRemoved: () => void = () => {}, beforeUnlink: () => void = () => {}, same: SameState = sameState): void {
+  const abs = join(projectDir, rel), parent = dirname(abs);
+  const drift = (): never => { throw new PortableRefusal('PORTABLE_DRIFT', [rel]); };
+  const unsafe = (): never => { throw new PortableRefusal('PORTABLE_PATH_UNSAFE', [rel]); };
+  let dirFd: number;
+  try { dirFd = fs.openSync(parent, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_DIRECTORY); } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'ENOENT' ? drift() : unsafe();
+  }
+  try {
+    if (checkAncestors(projectDir, rel).length) drift();
+    const dir = fs.fstatSync(dirFd);
+    const parentHeld = (): boolean => { try { const st = fs.lstatSync(parent); return st.isDirectory() && !st.isSymbolicLink() && sameNode(st, dir); } catch { return false; } };
+    const fileNow = (): fs.Stats | null => { try { return fs.lstatSync(abs); } catch { return null; } };
+    if (!parentHeld()) unsafe();
+    const held = fileNow();
+    if (held === null || !same(readProject(projectDir, rel)?.state ?? null, expected)) return drift();
+    const read = fileNow();
+    if (read === null || !sameNode(read, held)) drift();
+    beforeUnlink();
+    if (!parentHeld()) unsafe();
+    const last = fileNow();
+    if (last === null || !sameNode(last, held)) drift();
+    fs.unlinkSync(abs);
+    onRemoved();
+    fs.fsyncSync(dirFd);
+  } finally { fs.closeSync(dirFd); }
 }
 
 /**
@@ -483,17 +537,17 @@ function removeChecked(projectDir: string, rel: string, expected: FileState, onR
  * old state is left. Any other file is left over and returned, as is a created folder that cannot be removed for a
  * reason other than holding files. Paths are relative to the project.
  */
-function putBack(projectDir: string, files: readonly JournalStep[], dirs: readonly string[]): string[] {
+function putBack(projectDir: string, files: readonly JournalStep[], dirs: readonly string[], same: SameState = sameState): string[] {
   const left: string[] = [];
   for (const f of [...files].reverse()) {
     try {
       const now = readProject(projectDir, f.path)?.state ?? null;
-      if (sameState(now, f.from)) continue;
-      if (!sameState(now, f.to)) { left.push(f.path); continue; }
-      if (f.from === null) removeChecked(projectDir, f.path, f.to!);
+      if (same(now, f.from)) continue;
+      if (!same(now, f.to)) { left.push(f.path); continue; }
+      if (f.from === null) removeChecked(projectDir, f.path, f.to!, undefined, undefined, same);
       else {
         for (const d of checkAncestors(projectDir, f.path)) makeDir(projectDir, d);
-        place(projectDir, f.path, Buffer.from(f.original!, 'base64'), f.from.mode, f.to);
+        place(projectDir, f.path, Buffer.from(f.original!, 'base64'), safeMode(f.from.mode), f.to, undefined, same);
       }
     } catch { left.push(f.path); }
   }
@@ -503,32 +557,43 @@ function putBack(projectDir: string, files: readonly JournalStep[], dirs: readon
 
 // ---- the journal -------------------------------------------------------------------------------------------------------
 
-function writeSaveJournal(stateDir: string, journal: SaveJournal): void {
+/** Writes the journal's encoded bytes, which the caller has checked against the read limit. */
+function writeSaveJournal(stateDir: string, encoded: Buffer): void {
   if (!fs.existsSync(stateDir)) fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
   try { stateExists(stateDir); } catch { refuse('SAVE_STATE_UNSAFE'); }
-  writeAbs(join(stateDir, SAVE_JOURNAL), Buffer.from(JSON.stringify(journal, null, 2) + '\n'), 0o600);
+  writeAbs(join(stateDir, SAVE_JOURNAL), encoded, 0o600);
 }
 function removeSaveJournal(stateDir: string): void {
   try { fs.unlinkSync(join(stateDir, SAVE_JOURNAL)); } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; }
 }
 
 /**
- * The journal bytes: a plain private file of this user, no link, one link, at most SAVE_JOURNAL_LIMIT. The portable
- * layer reads at most 1 MiB, and a save journal holds whole files, so this read copies its checks with a larger bound.
+ * The journal file: a plain private file of this user, no link, one link. The portable layer reads at most 1 MiB, and a
+ * save journal holds whole files, so this read copies its checks with a larger bound. `bytes` is null when the file is
+ * over SAVE_JOURNAL_LIMIT: it is not held in memory, and the recovery counts it damaged. `sha256` is the hash of the
+ * exact bytes in either case, read through the one open file, so the recovery plan revision covers them.
  */
-function readJournalBytes(abs: string): Buffer | null {
+function readJournalBytes(abs: string): { readonly bytes: Buffer | null; readonly sha256: string } | null {
   let st: fs.Stats;
   try { st = fs.lstatSync(abs); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null; return refuse('SAVE_STATE_UNSAFE'); }
-  if (!st.isFile() || st.nlink !== 1 || st.uid !== uid() || st.size > SAVE_JOURNAL_LIMIT || (st.mode & 0o077) !== 0) refuse('SAVE_STATE_UNSAFE');
+  if (!st.isFile() || st.nlink !== 1 || st.uid !== uid() || (st.mode & 0o077) !== 0) refuse('SAVE_STATE_UNSAFE');
   let fd: number;
   try { fd = fs.openSync(abs, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK); } catch { return refuse('SAVE_STATE_UNSAFE'); }
   try {
     const open = fs.fstatSync(fd);
-    if (!open.isFile() || open.ino !== st.ino || open.dev !== st.dev || open.size > SAVE_JOURNAL_LIMIT || open.nlink !== 1) refuse('SAVE_STATE_UNSAFE');
-    const bytes = Buffer.alloc(open.size); let at = 0;
-    while (at < bytes.length) { const n = fs.readSync(fd, bytes, at, bytes.length - at, null); if (n === 0) break; at += n; }
+    if (!open.isFile() || open.ino !== st.ino || open.dev !== st.dev || open.nlink !== 1) refuse('SAVE_STATE_UNSAFE');
+    const whole = open.size <= SAVE_JOURNAL_LIMIT;
+    // A journal within the limit is read whole; one over it is only hashed, a chunk at a time.
+    const buf = Buffer.alloc(whole ? open.size : 1024 * 1024), hash = createHash('sha256');
+    let at = 0;
+    while (at < open.size) {
+      const n = whole ? fs.readSync(fd, buf, at, buf.length - at, null) : fs.readSync(fd, buf, 0, Math.min(buf.length, open.size - at), null);
+      if (n === 0) break;
+      if (!whole) hash.update(buf.subarray(0, n));
+      at += n;
+    }
     if (at !== open.size || fs.readSync(fd, Buffer.alloc(1), 0, 1, null) !== 0) refuse('SAVE_STATE_UNSAFE');
-    return bytes;
+    return whole ? { bytes: buf, sha256: sha(buf) } : { bytes: null, sha256: hash.digest('hex') };
   } finally { fs.closeSync(fd); }
 }
 
@@ -540,16 +605,24 @@ const backed = (state: unknown, bytes: unknown): boolean => state === null ? byt
   : fileState(state) && typeof bytes === 'string' && bytes.length <= Math.ceil(DEFINITION_LIMITS.fileBytes / 3) * 4 && sha(Buffer.from(bytes, 'base64')) === state.sha256;
 const pathList = (v: unknown): v is string[] => Array.isArray(v) && v.length <= JOURNAL_ENTRIES && v.every(journalPath) && new Set(v).size === v.length;
 
+/** One read of the journal: the checked journal, or `{ damaged: true }`, and the sha256 of the exact bytes read. */
+interface JournalRead { readonly journal: SaveJournal | { readonly damaged: true }; readonly sha256: string }
 /**
- * The save journal, checked against its strict shape: paths inside `.bowerloom` only, and saved bytes that hash to the
- * states they stand for. `{ damaged: true }` when it is there and cannot be trusted.
+ * The save journal, read once and checked against its strict shape: paths inside `.bowerloom` only, saved bytes that
+ * hash to the states they stand for, and no secret in any byte that undo or finish would write. `{ damaged: true }`
+ * when it is there and cannot be trusted, which includes a journal over SAVE_JOURNAL_LIMIT.
  */
-function readSaveJournal(stateDir: string, projectDir: string): SaveJournal | { readonly damaged: true } | null {
+function readSaveJournal(stateDir: string, projectDir: string): JournalRead | null {
   let exists: boolean;
   try { exists = stateExists(stateDir); } catch { return refuse('SAVE_STATE_UNSAFE'); }
   if (!exists) return null;
-  const bytes = readJournalBytes(join(stateDir, SAVE_JOURNAL));
-  if (bytes === null) return null;
+  const read = readJournalBytes(join(stateDir, SAVE_JOURNAL));
+  if (read === null) return null;
+  return { journal: checkJournal(read.bytes, projectDir), sha256: read.sha256 };
+}
+/** The journal in `bytes`, checked; `{ damaged: true }` for null bytes (over the limit) or any failed check. */
+function checkJournal(bytes: Buffer | null, projectDir: string): SaveJournal | { readonly damaged: true } {
+  if (bytes === null) return { damaged: true };
   let v: unknown;
   try { v = JSON.parse(bytes.toString('utf8')); } catch { return { damaged: true }; }
   const ok = closed(v, ['format', 'projectDir', 'planRevision', 'targetRevision', 'files', 'dirs', 'emptied']) && v.format === SAVE_JOURNAL_FORMAT
@@ -560,7 +633,13 @@ function readSaveJournal(stateDir: string, projectDir: string): SaveJournal | { 
       && backed(f.from, f.original) && backed(f.to, f.bytes))
     && new Set((v.files as { path: string }[]).map(f => f.path)).size === v.files.length
     && pathList(v.dirs) && pathList(v.emptied);
-  return ok ? v as unknown as SaveJournal : { damaged: true };
+  if (!ok) return { damaged: true };
+  const journal = v as unknown as SaveJournal;
+  // A save writes only bytes the loader passed, and the loader refuses a secret, so a journal byte that holds one was
+  // never written by a save. Every saved byte is scanned, whichever of undo and finish would write it.
+  const saved: DefinitionFile[] = journal.files.flatMap(f => [f.original, f.bytes].filter((b): b is string => b !== null)
+    .map(b => ({ path: inDef(f.path), bytes: Buffer.from(b, 'base64') })));
+  return scanSecrets(saved).length ? { damaged: true } : journal;
 }
 
 // ---- recovery ----------------------------------------------------------------------------------------------------------
@@ -583,6 +662,8 @@ export interface SaveRecoveryPlan {
   readonly kept: readonly { readonly path: string; readonly reason: 'changed' | 'unsafe' }[];
   /** True when finish may run: the journal is whole and no file is kept. */
   readonly finishable: boolean;
+  /** The sha256 of the exact journal bytes the plan read. The revision covers it, so a journal changed since is stale. */
+  readonly journalSha256: string;
   /** Folders the save made (undo removes each that is empty), and folders it empties (finish removes them). */
   readonly dirs: readonly string[];
   readonly emptied: readonly string[];
@@ -604,17 +685,19 @@ export interface SaveRecoveryResult {
 /** The recovery plan of a stopped save. Reads only. Paths are relative to `.bowerloom`. */
 export function planSaveRecovery(input: SaveInput): SaveRecoveryPlan {
   const { projectDir, stateDir } = checkInput(input);
-  return recoveryPlan(projectDir, stateDir);
+  return recoveryPlan(projectDir, stateDir).plan;
 }
-function recoveryPlan(projectDir: string, stateDir: string): SaveRecoveryPlan {
-  const journal = readSaveJournal(stateDir, projectDir);
-  if (journal === null) return refuse('SAVE_RECOVER_NOTHING');
+/** The recovery plan, and the journal it was made from: one read, which the run uses too. `journal` is null when damaged. */
+function recoveryPlan(projectDir: string, stateDir: string): { readonly plan: SaveRecoveryPlan; readonly journal: SaveJournal | null } {
+  const read = readSaveJournal(stateDir, projectDir);
+  if (read === null) return refuse('SAVE_RECOVER_NOTHING');
+  const { journal, sha256: journalSha256 } = read;
   if ('damaged' in journal) {
     const body = {
       format: SAVE_RECOVERY_FORMAT, projectDir, journal: 'damaged' as const, check: definitionFiles(projectDir), planRevision: null, targetRevision: null,
-      undo: [], finish: [], kept: [], finishable: false, dirs: [], emptied: [], writesAuthorized: false as const,
+      undo: [], finish: [], kept: [], finishable: false, journalSha256, dirs: [], emptied: [], writesAuthorized: false as const,
     };
-    return { ...body, revision: revisionOf(body) };
+    return { plan: { ...body, revision: revisionOf(body) }, journal: null };
   }
   const undo: { path: string; action: 'restore' | 'delete' | 'recreate' }[] = [], finish: { path: string; action: 'create' | 'update' | 'delete' }[] = [];
   const kept: { path: string; reason: 'changed' | 'unsafe' }[] = [];
@@ -622,15 +705,16 @@ function recoveryPlan(projectDir: string, stateDir: string): SaveRecoveryPlan {
     const rel = inDef(f.path);
     let now: FileState | null;
     try { now = readProject(projectDir, f.path)?.state ?? null; } catch (e) { if (e instanceof PortableRefusal) { kept.push({ path: rel, reason: 'unsafe' }); continue; } throw e; }
-    if (sameState(now, f.to)) undo.push({ path: rel, action: f.from === null ? 'delete' : f.to === null ? 'recreate' : 'restore' });
-    else if (sameState(now, f.from)) finish.push({ path: rel, action: f.from === null ? 'create' : f.to === null ? 'delete' : 'update' });
+    if (sameSaved(now, f.to)) undo.push({ path: rel, action: f.from === null ? 'delete' : f.to === null ? 'recreate' : 'restore' });
+    else if (sameSaved(now, f.from)) finish.push({ path: rel, action: f.from === null ? 'create' : f.to === null ? 'delete' : 'update' });
     else kept.push({ path: rel, reason: 'changed' });
   }
   const body = {
     format: SAVE_RECOVERY_FORMAT, projectDir, journal: 'ok' as const, check: [], planRevision: journal.planRevision, targetRevision: journal.targetRevision,
-    undo: undo.reverse(), finish, kept, finishable: kept.length === 0, dirs: journal.dirs.map(inDef), emptied: journal.emptied.map(inDef), writesAuthorized: false as const,
+    undo: undo.reverse(), finish, kept, finishable: kept.length === 0, journalSha256, dirs: journal.dirs.map(inDef), emptied: journal.emptied.map(inDef),
+    writesAuthorized: false as const,
   };
-  return { ...body, revision: revisionOf(body) };
+  return { plan: { ...body, revision: revisionOf(body) }, journal };
 }
 
 /**
@@ -644,16 +728,16 @@ export async function runSaveRecovery(input: SaveInput, revision: string, mode: 
   if (typeof revision !== 'string' || !HEX.test(revision)) refuse('SAVE_STALE');
   const { projectDir, stateDir } = checkInput(input);
   return withProjectLock(projectDir, signal, async () => {
-    const plan = recoveryPlan(projectDir, stateDir);
+    // The one read of the journal, inside the lock: the revision covers its exact bytes, and the run writes from this read.
+    const { plan, journal } = recoveryPlan(projectDir, stateDir);
     if (plan.revision !== revision) refuse('SAVE_STALE');
     if (mode === 'finish' && !plan.finishable) refuse('SAVE_FINISH_BLOCKED', plan.kept.map(k => k.path));
     const reload = (): string | null => { const r = loadDefinition(join(projectDir, DEF)); return r.ok ? r.definition.revision : null; };
-    if (plan.journal === 'damaged') { removeSaveJournal(stateDir); return { mode, undone: [], finished: [], kept: [], leftFolders: [], revision: reload() }; }
-    const journal = readSaveJournal(stateDir, projectDir) as SaveJournal;
+    if (journal === null) { removeSaveJournal(stateDir); return { mode, undone: [], finished: [], kept: [], leftFolders: [], revision: reload() }; }
 
     if (mode === 'undo') {
       const want = new Set(plan.undo.map(u => inProject(u.path)));
-      const left = putBack(projectDir, journal.files.filter(f => want.has(f.path)), []);
+      const left = putBack(projectDir, journal.files.filter(f => want.has(f.path)), [], sameSaved);
       if (left.length) refuse('SAVE_PARTIAL', left.map(inDef));
       const leftFolders = removeEmptyDirs(projectDir, journal.dirs).map(d => inDef(d.path));
       removeSaveJournal(stateDir);
@@ -664,7 +748,7 @@ export async function runSaveRecovery(input: SaveInput, revision: string, mode: 
     try {
       runSteps(projectDir, journal, journal.files.filter(f => want.has(f.path)), {
         before: () => { if (signal.aborted) refuse('SAVE_ABORTED'); }, placed: () => {}, after: () => {}, made: () => {},
-      });
+      }, sameSaved);
     } catch (error) {
       if (error instanceof SaveRefusal) throw error;
       return mapPortable(error);

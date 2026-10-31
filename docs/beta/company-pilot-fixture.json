@@ -6,9 +6,9 @@
   "liveAccountsCreated": false,
   "people": [
     {
-      "id": "cast-hanna",
-      "displayName": "Hanna (test persona)",
-      "email": "hanna@example.test"
+      "id": "cast-robin",
+      "displayName": "Robin (test persona)",
+      "email": "robin@example.test"
     },
     {
       "id": "cast-miki",

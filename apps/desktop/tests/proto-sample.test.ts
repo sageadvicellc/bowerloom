@@ -1,6 +1,7 @@
 // The seeded sample world of the prototype (spec 11, "Prototype rules"): scale, determinism, the four planted cases and a clean reference check.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRng } from '../shared/proto/rng.js';
@@ -264,10 +265,30 @@ test('every name in the world is made of words from the invented lists', () => {
   for (const name of names) for (const t of tokens(name)) assert.ok(KNOWN.has(t), `"${t}" in "${name}" is not in the invented lists`);
 });
 
+// The real names are kept out of this file on purpose: the list holds the sha256 of each lowercased word, so the repository does not spell them out.
+const REAL_WORD_HASHES = new Set([
+  'b0d95c5ce67c5daa6f260599c718ee0f11e8a2908d1f77d7f43c1024d41a3551',
+  '7e5d4325a44714fc86a9b6989e41e966a7297bfe7e913c15fb9ab19588e33d61',
+  '3a4ad37e305ff3bb775fb38a93345aa1f29961fcf88e9415a093d9e6eec8c65a',
+  '23eeb69c681dfdb8eacc7ce9e55ea007d41c2dd5273848c597f1b3e49dbd86e1',
+  'f300f10844ecfc75f12a0deb789ce9ddb41209c38307e65436e81d43ad4658d9',
+  '333cf441e801498cbdf69da7c8388373813ce38f0b1f330f8480b81a97aefa9b',
+  '3b9c2144ccfa84fcb90406914c128f88f7bd23cd42161c591ec6fb9258e8d8a2',
+  '177a7ea3611fe6b138557deaf44941614b66c0ece1766308044c8b65c8ba2123',
+  'b5679ea7383b47df1553f6c89e6d73d26aab70e5ea2b4344fed5c66553ef4a67',
+  'c70eca6b0f88f44d81a41311647e50fda1ac454ec04ffd442b0eb4743a993131',
+  '7d3194f79e645c42e4396dda38be04766810ec6a00d00aced3ffc2a0a1f1a9ef',
+  '2f7875656a69466cfdff4d57082ce7bbb1ef49284e5b5d26de2d0e0662e0ba31',
+  '5b79d0d574eedd091c02692026ecfa1c617af2432c0a9b401e623e67d78a179c',
+  'c0b0109d9439de57fe3cf03abeccbc52f4c98170c732d3b69af5e6395ace574e',
+  '1b250ea199bec73d392caad39d1167d6edc43c81f20edead86eea52c52b94fc1',
+  '14fa01effbe8567b0cea4798dea7bf85b3b598777878e7e971401d24f56ab8d3',
+]);
+const realWords = (text: string): string[] => (text.match(/\w+/g) ?? []).filter(w => REAL_WORD_HASHES.has(createHash('sha256').update(w.toLowerCase()).digest('hex')));
+
 test('the invented lists hold no real name from the project, the practice or its clients', () => {
-  const real = /\b(bowerloom|sage|trellis|garden|greenhouse|haube|fearless|metrics|hanna|anthropic|openai|ecc|figma|github|projection|brandkit|garden)\b/i;
-  for (const [key, list] of Object.entries(SAMPLE_WORDS)) for (const w of list) assert.doesNotMatch(w, real, `${key}: ${w}`);
-  assert.doesNotMatch(JSON.stringify(world), real);
+  for (const [key, list] of Object.entries(SAMPLE_WORDS)) for (const w of list) assert.deepEqual(realWords(w), [], `${key}: ${w}`);
+  assert.deepEqual(realWords(JSON.stringify(world)), []);
 });
 
 test('the sample world is not rendered with a secret value, an e-mail address, a web address or a home folder other than /Users/sample', () => {

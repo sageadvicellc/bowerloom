@@ -28,7 +28,7 @@ export function entryChange(entry: HistoryEntry): string {
   return entry.manifest === 'created' ? 'manifest created' : entry.manifest === 'changed' ? 'manifest changed' : 'settings changed';
 }
 
-/** The second line of an entry: "Today 10:40 · Hanna · this Mac · 10 files written". */
+/** The second line of an entry: "Today 10:40 · Robin · this Mac · 10 files written". */
 export const entryMeta = (entry: HistoryEntry): string => [stampWords(entry.stamp), entry.person, entry.computer, entryChange(entry)].join(' · ');
 
 /** Splits a list of entries (newest first) into the days they fall on, keeping the order. */

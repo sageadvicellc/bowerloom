@@ -46,7 +46,7 @@ export interface ManifestChangePlan {
   /** The exact new bytes of skills.json. */
   text: string;
   /**
-   * The machine's skills cache, when `skills add` keeps the bytes it verified there after the write (Hanna, global
+   * The machine's skills cache, when `skills add` keeps the bytes it verified there after the write (the maintainer, global
    * skill cache). Named so the approval covers it. Absent for a change that keeps no bytes.
    */
   cache?: { root: string };

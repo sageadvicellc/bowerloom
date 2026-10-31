@@ -3,6 +3,7 @@
 // source. The page list of spec 5.1 (PAGE_GROUPS) is typed here, and D4 checks that each of its codes is a REFUSALS key.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {readFileSync,readdirSync,statSync} from 'node:fs';
 import {resolve,join,relative} from 'node:path';
 
@@ -227,7 +228,7 @@ test('D7a. the beta.3 notes open with one plain sentence and carry no review or 
   assert.equal(body[0],'## 0.7.0-beta.3');
   assert.match(body[1],/^This release [^*`#-][^\n]*\.$/,'a sentence opens the section, as it does for beta.2');
   assert.equal(body[2],'**New commands**');
-  assert.doesNotMatch(section,/\b(?:review round|round \d|PR \d|pull request|track \d+|spec \d+|Hanna|owner decision|TODO|TBD)\b/i);
+  assert.doesNotMatch(section,/\b(?:review round|round \d|PR \d|pull request|track \d+|spec \d+|the maintainer|owner decision|TODO|TBD)\b/i);
 });
 
 const FORMAT=/bowerloom\/[a-z-]+\/v1(?:alpha|beta)[0-9]+/g;
@@ -271,8 +272,40 @@ test('D10. outside code and the refusal table, the page has no semicolon and non
   assert.deepEqual(offenders,[]);
 });
 
-test('D11. the page names neither Fearless nor Advanced Metrics',()=>{
-  assert.doesNotMatch(page(),/Fearless|Advanced Metrics/i);
+// The client names are kept out of this public file on purpose: the list holds the sha256 of each lowercased name, one word or two words joined by
+// one space, so the repository does not spell them out.
+const CLIENT_NAME_HASHES=new Set([
+  '3b9c2144ccfa84fcb90406914c128f88f7bd23cd42161c591ec6fb9258e8d8a2',
+  'fc55bb3bd07c9275be787ec3bca0a0d0e8408378b45c07666b3543735138e8cb',
+]);
+const sha256=text=>createHash('sha256').update(text).digest('hex');
+/** The words of the text, and each pair of words in a row, whose sha256 is a client name's. */
+export function clientNames(text){
+  const words=text.toLowerCase().match(/[\p{L}\p{N}]+/gu)??[];
+  const out=[];
+  for(let i=0;i<words.length;i++){
+    if(CLIENT_NAME_HASHES.has(sha256(words[i])))out.push(i);
+    if(i+1<words.length&&CLIENT_NAME_HASHES.has(sha256(`${words[i]} ${words[i+1]}`)))out.push(i);
+  }
+  return out;
+}
+
+test('D11. the page names no client of the practice',()=>{
+  assert.deepEqual(clientNames(page()),[]);
+});
+
+test('D11a. the client-name check finds a name by its hash, and passes plain words',()=>{
+  // The test builds a name from its hash list only: a name whose hash is not listed is never reported, so it checks the method with a stand-in.
+  CLIENT_NAME_HASHES.add(sha256('example'));
+  CLIENT_NAME_HASHES.add(sha256('example co'));
+  try{
+    assert.deepEqual(clientNames('Built for Example Co. today.'),[2,2]);
+    assert.deepEqual(clientNames('An EXAMPLE here.'),[1]);
+    assert.deepEqual(clientNames('Plain words about a store and a lock.'),[]);
+  }finally{
+    CLIENT_NAME_HASHES.delete(sha256('example'));
+    CLIENT_NAME_HASHES.delete(sha256('example co'));
+  }
 });
 
 test('D12. the project folder line of cli.md names bowerloom.json',()=>{
@@ -413,7 +446,7 @@ test('D29. no docs page and not the README names a private path',()=>{
   }
 });
 
-// Round 1 of the reviews of PR 101, D (Hanna's choice C on #97): an errors.md row uses the words the terminal prints.
+// Round 1 of the reviews of PR 101, D (the maintainer's choice C on #97): an errors.md row uses the words the terminal prints.
 // The meaning cell holds the sentence of human.ts, and the next-step cell holds its next step, backticks aside. A sentence
 // starts with a capital letter in a cell, so the first letter is compared without its case.
 // Each code listed here is not compared, for the reason given.

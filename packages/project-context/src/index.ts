@@ -269,7 +269,7 @@ export async function withProjectLock<T>(root: string, signal: AbortSignal, work
 
 const CACHE_LOCK_FORMAT = 'bowerloom-cache-lock/v1';
 /**
- * The one lock slot of a skills cache folder (Hanna, global skill cache). It is keyed like the project lock, on the
+ * The one lock slot of a skills cache folder (the maintainer, global skill cache). It is keyed like the project lock, on the
  * folder's device and inode, with its own format, so it never shares a key with a project lock.
  */
 export function cacheLockSlot(cacheRoot: string): LockSlot { return slotOf(CACHE_LOCK_FORMAT, cacheRoot); }

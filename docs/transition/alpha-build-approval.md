@@ -1,10 +1,10 @@
 # Alpha build approval
 
-Status: approved by Hanna on October 1, 2026, at candidate 4c8ae90f98964aa1325185adc51ffa1c22b9738e. Implementation is active. Release acceptance remains pending.
+Status: approved by the maintainer on October 1, 2026, at candidate 4c8ae90f98964aa1325185adc51ffa1c22b9738e. Implementation is active. Release acceptance remains pending.
 
 ## Approval scope
 
-Hanna approved development of the Codex-first `v0.7-alpha` on this Mac using the defaults below. The team prepares the monorepo and delivers a usable local workflow with repeatable acceptance instructions. The full v1 specification remains the direction. Later release choices do not need to block this bounded build.
+The maintainer approved development of the Codex-first `v0.7-alpha` on this Mac using the defaults below. The team prepares the monorepo and delivers a usable local workflow with repeatable acceptance instructions. The full v1 specification remains the direction. Later release choices do not need to block this bounded build.
 
 Approval authorizes implementation, necessary local development dependencies, synthetic integration tests, and admitted Codex sessions through the existing subscription. It also authorizes routine engineering choices within these boundaries. This approval includes no paid infrastructure, paid API fallback, product release, public site launch, or repository retirement.
 
@@ -53,13 +53,13 @@ Marketing preparation can use the accepted alpha before beta. Starting that crew
 
 ## Operating order
 
-Agents own task branches, independent review, tests, and integration into `feature/trellis-v1`. Hanna alone reviews and merges into `main`. The team delivers the daily review at 9 a.m. America/New_York and reports material blockers when they arise. The Mac and Codex must remain available for scheduled work.
+Agents own task branches, independent review, tests, and integration into `feature/trellis-v1`. The maintainer alone reviews and merges into `main`. The team delivers the daily review at 9 a.m. America/New_York and reports material blockers when they arise. The Mac and Codex must remain available for scheduled work.
 
-Hanna approved this packet and opened the alpha implementation campaign. Approval does not accept a release or authorize a merge into `main`. Retirement readiness is an alpha objective, while archival retains the cutover gates.
+The maintainer approved this packet and opened the alpha implementation campaign. Approval does not accept a release or authorize a merge into `main`. Retirement readiness is an alpha objective, while archival retains the cutover gates.
 
 ## Capacity amendment
 
-On October 1, Hanna changed this campaign reserve to 5 percent. Continue until alpha is ready for demo and review or usage reaches 95 percent.
+On October 1, the maintainer changed this campaign reserve to 5 percent. Continue until alpha is ready for demo and review or usage reaches 95 percent.
 
 This instruction supersedes the earlier 25 percent reserve for this campaign. Preserve held allowances and room for active lead, worker, and review work.
 

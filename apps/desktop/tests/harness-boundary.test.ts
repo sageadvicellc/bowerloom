@@ -114,13 +114,20 @@ test('the preview source never reaches the bridge, a file, the network, storage 
   assert.ok(files.length >= 30, `${files.length} files`);
   const banned: [string, RegExp][] = [['window.bowerloom', /window\.bowerloom|\bbowerloom\./], ['a node: import', /['"`]node:[a-z]/], ['fetch', /\bfetch\(|XMLHttpRequest|WebSocket/], ['storage', /localStorage|sessionStorage|indexedDB|document\.cookie/],
     ['markup from text', /innerHTML|outerHTML|insertAdjacentHTML|dangerouslySetInnerHTML|document\.write/], ['eval', /\beval\(|new Function\(/], ['Math.random', /Math\.random/], ['an outside link', /href=["']https?:|window\.open\(|<a\b[^>]*\btarget=/]];
+  // One exception: the tour keeps "seen" in this window's sessionStorage (memory only, gone with the window), in renderer/harness/tour/seen.ts alone. It
+  // writes nothing to disk: localStorage, indexedDB and cookies stay banned there too.
+  const SEEN = 'renderer/harness/tour/seen.ts';
   for (const { file, text } of files) {
     const code = strip(text);
-    for (const [name, pattern] of banned) assert.doesNotMatch(code, pattern, `${file} uses ${name}`);
+    for (const [name, pattern] of banned) {
+      if (name === 'storage' && file.endsWith(SEEN)) { assert.doesNotMatch(code, /localStorage|indexedDB|document\.cookie/, `${file} uses storage on disk`); continue; }
+      assert.doesNotMatch(code, pattern, `${file} uses ${name}`);
+    }
     if (!file.endsWith('renderer/harness/clock.ts')) assert.doesNotMatch(code, /\bDate\b/, `${file} reads the clock`);
   }
   for (const { file, text } of sources('shared/harness')) assert.doesNotMatch(strip(text), /from ['"](react|react-dom)/, file);
   assert.match(strip(read('renderer/harness/clock.ts')), /new Date\(\)/);
+  assert.equal([...strip(read(SEEN)).matchAll(/sessionStorage/g)].length, 2, 'the tour reads one store, sessionStorage, in one place');
 });
 
 test('the store imports nothing that could write: no file system, no network, no timer of its own but the default one', () => {

@@ -21,7 +21,7 @@ const published = (): Record<string, string> => {
   return out;
 };
 
-test('the header says Hanna confirmed the weighting on 2026-10-24, and no longer says unconfirmed', () => {
+test('the header says the maintainer confirmed the weighting on 2026-10-24, and no longer says unconfirmed', () => {
   const source = readFileSync(join(DESKTOP, 'renderer', 'motion-tokens.ts'), 'utf8'), header = source.slice(0, source.indexOf('export interface Transition'));
   assert.doesNotMatch(header, /UNCONFIRMED|OWNER TO CHOOSE/i);
   assert.match(header, /2026-10-24/); assert.match(header, /spec section 7/i);

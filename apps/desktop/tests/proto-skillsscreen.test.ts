@@ -16,6 +16,7 @@ import { describePlacement, groupSkills, skillRows } from '../shared/proto/skill
 import { createStore } from '../shared/proto/store.js';
 import type { SkillItem } from '../shared/proto/types.js';
 import { DESKTOP } from './support.js';
+import { clientNames } from './client-names.js';
 
 const COMMAND = /\bbowerloom (ls|status|use|unuse|lock|apply|skills|skill|prompt|team|store|folder|slice|context|cache|up|help)\b|\bnpm (run|install)\b|\bgit (push|init|add|commit|remote)\b|\bcd \S|\bchmod\b|--[a-z]{3,}|terminal|command line|\$ /i;
 const BANNED_WORD = /\bhelpers?\b|\bteams?\b/i;
@@ -160,7 +161,7 @@ test('the words are plain: no helper, no team, no command line, no em-dash, and 
   words.push(textOf(renderToStaticMarkup(createElement(SkillsScreen, { world }))));
   for (const w of words) { assert.doesNotMatch(w, COMMAND, w.slice(0, 80)); assert.doesNotMatch(w, BANNED_WORD, w.slice(0, 80)); assert.doesNotMatch(w, /—/); }
   assert.doesNotMatch(render(), /<h[1-6][^>]*>[^<]*\/Users\//, 'a heading is never a path');
-  assert.doesNotMatch(render(), /Fearless|Advanced Metrics/);
+  assert.deepEqual(clientNames(textOf(render())), []);
 });
 
 test('the style sheet uses tokens only: no colour value, no time value, the motion tokens for hover and the drop settle, and a reduce-motion rule', () => {

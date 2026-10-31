@@ -132,7 +132,7 @@ test('Install changes the statuses on Projects and on the Harness list, adds one
   await expect(entries).toHaveCount(5);
   await expect(entries.nth(0)).toContainText('Installed Weekly report crew in bowerloom');
   await expect(entries.nth(0)).toContainText('Today');
-  await expect(entries.nth(0)).toContainText('Hanna · this Mac · 9 files written');
+  await expect(entries.nth(0)).toContainText('Robin · this Mac · 9 files written');
   // The older install of the same project and harness waits for the newer one.
   await expect(entries.nth(1)).toContainText('Undo the newer change first');
   await expect(entries.nth(1).getByRole('button', { name: /^Undo/ })).toBeDisabled();
@@ -304,10 +304,10 @@ test('Version history lists the sample entries newest first, grouped by day, eac
   await expect(rows).toHaveCount(4);
   // The first two are minutes old (Today, or Yesterday just after midnight); the other two are from the day before.
   await expect(rows.nth(0)).toContainText('Installed Weekly report crew in bowerloom');
-  await expect(rows.nth(0)).toContainText(/(Today|Yesterday) \d\d:\d\d · Hanna · this Mac · 10 files written/);
-  await expect(rows.nth(1)).toContainText(/(Today|Yesterday) \d\d:\d\d · Hanna · this Mac · manifest changed/);
-  await expect(rows.nth(2)).toContainText('Yesterday 16:30 · Hanna · this Mac · manifest changed');
-  await expect(rows.nth(3)).toContainText('Yesterday 16:02 · Hanna · this Mac · manifest created');
+  await expect(rows.nth(0)).toContainText(/(Today|Yesterday) \d\d:\d\d · Robin · this Mac · 10 files written/);
+  await expect(rows.nth(1)).toContainText(/(Today|Yesterday) \d\d:\d\d · Robin · this Mac · manifest changed/);
+  await expect(rows.nth(2)).toContainText('Yesterday 16:30 · Robin · this Mac · manifest changed');
+  await expect(rows.nth(3)).toContainText('Yesterday 16:02 · Robin · this Mac · manifest created');
   await expect(p.getByRole('button', { name: /^Undo/ })).toHaveCount(4);
   // The newest change of a harness goes first: the link and the harness wait for the part that was added after them.
   await expect(rows.nth(0).getByRole('button', { name: /^Undo/ })).toBeEnabled();

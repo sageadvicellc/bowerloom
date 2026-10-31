@@ -114,7 +114,7 @@ test('after the install the statuses change on every screen, one history entry s
   const entry = done.history[0]!;
   assert.equal(entry.text, 'Installed Weekly report crew in bowerloom');
   assert.equal(entry.filesWritten, 9, 'ten files are listed; the conflicting one is kept as the person\'s own, so it is not written');
-  assert.equal(entryMeta(entry), 'Today 10:50 · Hanna · this Mac · 9 files written');
+  assert.equal(entryMeta(entry), 'Today 10:50 · Robin · this Mac · 9 files written');
   assert.equal(done.history.length, w.history.length + 1);
   const back = undoEntry(done, entry.id, FIXED_NOW);
   assert.equal(projectStatus(back, bowerloom)!.words, 'Codex out of date');
@@ -144,10 +144,10 @@ test('the history screen groups the entries by day, newest first, and each says 
   assert.deepEqual(days.map(d => d.day), ['Today', 'Yesterday']);
   assert.deepEqual(days[0]!.entries.map(e => e.text), ['Installed Weekly report crew in bowerloom', 'Added Spreadsheet to Weekly report crew']);
   assert.deepEqual(days[1]!.entries.map(e => e.text), ['Linked Writer to Translate in Weekly report crew', 'Made Weekly report crew from a scan']);
-  assert.deepEqual(w.history.map(e => entryMeta(e)), ['Today 10:40 · Hanna · this Mac · 10 files written', 'Today 10:12 · Hanna · this Mac · manifest changed', 'Yesterday 16:30 · Hanna · this Mac · manifest changed', 'Yesterday 16:02 · Hanna · this Mac · manifest created']);
+  assert.deepEqual(w.history.map(e => entryMeta(e)), ['Today 10:40 · Robin · this Mac · 10 files written', 'Today 10:12 · Robin · this Mac · manifest changed', 'Yesterday 16:30 · Robin · this Mac · manifest changed', 'Yesterday 16:02 · Robin · this Mac · manifest created']);
   const off = setInterfaceOn(w, 'codex', false, FIXED_NOW);
   assert.equal(off.history[0]!.text, 'Turned off Codex');
-  assert.equal(entryMeta(off.history[0]!), 'Today 10:50 · Hanna · this Mac · settings changed');
+  assert.equal(entryMeta(off.history[0]!), 'Today 10:50 · Robin · this Mac · settings changed');
 });
 
 test('the words of the first-run, Projects, install, Interfaces and history screens obey the rules: limits, no banned word', () => {

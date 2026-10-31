@@ -162,7 +162,8 @@ test('add-skill copies a whole skill from another chosen folder: main reads it t
   assert.deepEqual(plan.changes.map(c => [c.path, c.action]), [
     ['.bowerloom/agents/reader.md', 'update'], ['.bowerloom/skills/summarize/SKILL.md', 'create'], ['.bowerloom/skills/summarize/scripts/count.sh', 'create'],
   ]);
-  value(await s.service.runSave(f.id, plan.revision, edits));
+  // The script can run, and comes from another folder, so the save is written with the person's acknowledgement of it.
+  value(await s.service.runSave(f.id, plan.revision, { edits, acknowledged: plan.acknowledge }));
   assert.match(read(dir, 'skills/summarize/SKILL.md'), /Summarizes a page/);
   const loaded = loadDefinition(join(dir, '.bowerloom'));
   assert.ok(loaded.ok);

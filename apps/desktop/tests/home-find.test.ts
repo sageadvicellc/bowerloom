@@ -255,4 +255,4 @@ test('a program that is not on the computer does not make an agent "more than on
   assert.equal(multiProgramAgents(none), 0);
 });
 
-// Wave F: Hanna dropped "N work in more than one app" and the note about the apps (the first scan shows agents with tags, no counts per app): the words are gone (tests/home-find-agents.test.ts).
+// Wave F: the maintainer dropped "N work in more than one app" and the note about the apps (the first scan shows agents with tags, no counts per app): the words are gone (tests/home-find-agents.test.ts).

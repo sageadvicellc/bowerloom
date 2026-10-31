@@ -31,17 +31,17 @@ No experiment establishes a working Trellis release, authenticated permissions, 
 
 ## Founder clarification
 
-On October 1, Hanna limited the sole-merger rule to `main`. The [working order](working-order.md) records team authority over feature branches.
+On October 1, the maintainer limited the sole-merger rule to `main`. The [working order](working-order.md) records team authority over feature branches.
 
 The current candidate includes that instruction after the independent review. The manifest records the amendment separately. Research observations and experiment sources remain unchanged.
 
-Hanna also selected the framework monorepo and retirement of the five dispersed module repositories. The [cutover plan](monorepo-cutover.md) records preservation and retirement gates. This decision follows the independent research review.
+The maintainer also selected the framework monorepo and retirement of the five dispersed module repositories. The [cutover plan](monorepo-cutover.md) records preservation and retirement gates. This decision follows the independent research review.
 
-Hanna added Codex-first `v0.7-alpha` for testing, beta baseline measurements, and marketing preparation before beta. The [release plan](release-plan.md) records that decision and the proposed acceptance criteria. This amendment adds no new experiment result.
+The maintainer added Codex-first `v0.7-alpha` for testing, beta baseline measurements, and marketing preparation before beta. The [release plan](release-plan.md) records that decision and the proposed acceptance criteria. This amendment adds no new experiment result.
 
-Hanna approved Codex and Claude Code for `v0.7-beta` and standardized the later releases as `v1-beta` and `v1-rc`. Sagespec is the flagship for automation of her entire business. Historical names do not override the current release plan.
+The maintainer approved Codex and Claude Code for `v0.7-beta` and standardized the later releases as `v1-beta` and `v1-rc`. Sagespec is the flagship for automation of the maintainer's entire business. Historical names do not override the current release plan.
 
-Hanna required independent personal use and simultaneous company participation for beta. Multiple employees share one company server while their personal installations retain autonomy. Proposed access, outage, and reconnection tests remain unimplemented. The focused storage and recovery comparison records the resulting open architecture choice.
+The maintainer required independent personal use and simultaneous company participation for beta. Multiple employees share one company server while their personal installations retain autonomy. Proposed access, outage, and reconnection tests remain unimplemented. The focused storage and recovery comparison records the resulting open architecture choice.
 
 ## Shared durability follow-up
 
@@ -59,4 +59,4 @@ The current direction supersedes the earlier comparison's optional-Supabase and 
 
 The founder requested Endor-inspired nomenclature and tutorials. The [language direction](language-and-tutorials.md) records that request and proposed vocabulary. The [alpha build packet](alpha-build-approval.md) bundles recommended defaults for the next campaign. It separates the immediate implementation decision from later release gates.
 
-Hanna approved the alpha build on October 1, 2026, at candidate `4c8ae90f98964aa1325185adc51ffa1c22b9738e`. Implementation is active. Approval adds no runtime evidence and does not pass the release gates.
+The maintainer approved the alpha build on October 1, 2026, at candidate `4c8ae90f98964aa1325185adc51ffa1c22b9738e`. Implementation is active. Approval adds no runtime evidence and does not pass the release gates.

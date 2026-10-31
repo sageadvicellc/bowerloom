@@ -42,7 +42,7 @@ function report(src, lines = []) {
 const lost = (part, entry, engine, result, extra = {}) => ({ part, entry, engine, result, reason: 'The engine cannot carry it.', ...extra });
 const approve = (src, part, entry, engine, result, extra = {}) => {
   const item = [...src.entries.rules, ...src.entries.sandbox, ...src.entries.hooks, ...src.entries.subagents].find(e => e.id === entry);
-  return { part, entry, engine, result, entryHash: entryHash(item), who: 'Hanna Sage', when: '2026-10-28T14:00:00Z', reason: 'Pi runs in a disposable container.', ...extra };
+  return { part, entry, engine, result, entryHash: entryHash(item), who: 'Robin Example', when: '2026-10-28T14:00:00Z', reason: 'Pi runs in a disposable container.', ...extra };
 };
 const judge = (src, lines, approvals = []) => checkFidelity(src, report(src, lines), approvals, { now: NOW });
 

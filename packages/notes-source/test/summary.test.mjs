@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { applyGitInit, planGitInit, readNotesSummary } from '../../../dist/packages/notes-source/src/index.js';
+import { applyGitInit, planGitInit, readLatestReport, readNotesSummary } from '../../../dist/packages/notes-source/src/index.js';
 import { GIT, needsGit, ownGit, put, refusal, script, tempDir, walkPages } from './fixture.mjs';
 
 /** A wiki with every case the count must get right. */
@@ -172,4 +172,22 @@ test('an init stopped before its first commit reads as no-commit', { skip: needs
   ownGit(dir, ['add', '--', 'index.md']);
   const s = await readNotesSummary(dir);
   assert.equal(s.history, 'no-commit');
+});
+
+test('readLatestReport reads the reports folder alone, by the same rule as the summary, and refuses a folder that is not a plain folder', async t => {
+  const dir = wiki(t);
+  put(dir, 'reports/2026-10-01-refine.md'); put(dir, 'reports/2026-10-15-refine.md');
+  fs.symlinkSync(path.join(dir, 'index.md'), path.join(dir, 'reports', '2026-11-20-refine.md'));
+  const r = readLatestReport(dir);
+  assert.deepEqual(r, { latestReport: { date: '2026-10-15', path: 'reports/2026-10-15-refine.md' }, reportsComplete: true });
+  const s = await readNotesSummary(dir);
+  assert.deepEqual(r, { latestReport: s.latestReport, reportsComplete: s.reportsComplete });
+  assert.equal(readLatestReport(dir, { maxEntries: 1 }).reportsComplete, false);
+  const none = tempDir(t); put(none, 'index.md');
+  assert.deepEqual(readLatestReport(none), { latestReport: null, reportsComplete: true });
+  assert.throws(() => readLatestReport(path.join(none, 'gone')), refusal('NOTES_FOLDER_MISSING'));
+  const link = path.join(tempDir(t), 'link');
+  fs.symlinkSync(dir, link);
+  assert.throws(() => readLatestReport(link), refusal('NOTES_PATH_UNSAFE'));
+  assert.throws(() => readLatestReport(dir, { maxEntries: 0 }), refusal('NOTES_USAGE'));
 });

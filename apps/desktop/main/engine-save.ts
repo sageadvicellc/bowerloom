@@ -11,6 +11,7 @@
  *    `sources.json` names leaves that record in the same save.
  * Nothing here talks to the window: engine-service.ts calls these, inside its gate.
  */
+import { createHash } from 'node:crypto';
 import { lstatSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
@@ -23,7 +24,7 @@ import type { VersionEntry } from '../../../packages/project-sync/src/index.js';
 import type { HarnessStateDirs } from '../../../packages/project-sync/src/harness-state.js';
 import { ENGINE_IDS } from '../shared/engine/engines.js';
 import { KIT_ALREADY_ADDED, KIT_IDS, KIT_INVALID, KIT_MAIN_WORDS, KIT_MARKETPLACE, SAVE_MAIN_WORDS, SAVE_NO_DEFINITION, SAVE_POINT_TOO_LARGE, SAVE_SOURCE_MISSING, SOURCE_NAME_TAKEN } from '../shared/engine/types.js';
-import type { DefinitionView, EngineId, KitId, SaveEdit, SourceView, VersionView } from '../shared/engine/types.js';
+import type { CopiedExecutableView, DefinitionView, EngineId, KitId, SaveChangeView, SaveEdit, SourceView, StoppedSourceView, VersionView } from '../shared/engine/types.js';
 import type { Kit } from './kit.js';
 
 /** The one folder key of a project's save points: the state layout is per project already, so a project has one list. */
@@ -145,8 +146,10 @@ const NO_NOTES: NotesEditDeps = {
  * call's own refusal for an id main does not know. Each source folder is asked for and loaded once per call. A refusal of `editDefinition` keeps its code
  * and its words. Edits over the copy bounds (`copiesOk`) are EDIT_TOO_LARGE.
  */
-export function targetOf(def: Definition, edits: readonly SaveEdit[], sourceDir: (folderId: string) => string, notes: NotesEditDeps = NO_NOTES): DefinitionFile[] {
+export function targetOf(def: Definition, edits: readonly SaveEdit[], sourceDir: (folderId: string) => string, notes: NotesEditDeps = NO_NOTES, origins?: Map<string, string>): DefinitionFile[] {
   if (!copiesOk(edits)) throw new DefinitionError('EDIT_TOO_LARGE', `One save copies at most ${ADD_SKILL_LIMIT} skills, each from one folder once, and adds each kit once. Nothing was written.`);
+  // Which folder each copied file comes from, by skill id: the last copy of an id wins, and a removal or a kit's skill of that id takes it away.
+  const copiedFrom = new Map<string, string>();
   const out: DefinitionEdit[] = [];
   const sources = new Map<string, { dir: string; loaded: ReturnType<typeof loadDefinition> }>();
   const source = (folderId: string): { dir: string; loaded: ReturnType<typeof loadDefinition> } => {
@@ -172,7 +175,7 @@ export function targetOf(def: Definition, edits: readonly SaveEdit[], sourceDir:
             borrowed.set(name, next); out.push({ kind: 'set-borrowed', source: next });
           }
         }
-        out.push({ kind: 'remove-skill', id: e.id }); copied.delete(e.id); break;
+        out.push({ kind: 'remove-skill', id: e.id }); copied.delete(e.id); copiedFrom.delete(e.id); break;
       }
       case 'set-engines': out.push({ kind: 'set-engines', engines: e.engines.map(id => engineOf(def, id)) }); break;
       case 'set-source': {
@@ -193,6 +196,7 @@ export function targetOf(def: Definition, edits: readonly SaveEdit[], sourceDir:
           const main = skill.files.find(f => f.path === 'SKILL.md')!;
           out.push({ kind: 'add-skill', id: skill.id, text: Buffer.from(main.bytes).toString('utf8') });
           copied.set(skill.id, skill.files.filter(f => f.path !== 'SKILL.md').map(f => ({ path: `skills/${skill.id}/${f.path}`, bytes: f.bytes, executable: f.executable === true })));
+          copiedFrom.delete(skill.id);
         }
         out.push({ kind: 'add-agent', id: kit.agent.id, text: kit.agent.text });
         const record: SourceRecord = {
@@ -209,6 +213,7 @@ export function targetOf(def: Definition, edits: readonly SaveEdit[], sourceDir:
         const main = files.find(f => f.path === 'SKILL.md')!;
         out.push({ kind: 'add-skill', id: e.id, text: Buffer.from(main.bytes).toString('utf8') });
         copied.set(e.id, files.filter(f => f.path !== 'SKILL.md').map(f => ({ path: `skills/${e.id}/${f.path}`, bytes: f.bytes, executable: f.executable === true })));
+        copiedFrom.set(e.id, e.from);
         break;
       }
     }
@@ -218,7 +223,52 @@ export function targetOf(def: Definition, edits: readonly SaveEdit[], sourceDir:
   // The other files of a copied skill go with it, unless a later edit removed the skill. The save plan loads and scans the whole set again.
   const have = new Set(r.files.map(f => f.path));
   const extra = [...copied].filter(([id]) => have.has(`skills/${id}/SKILL.md`)).flatMap(([, files]) => files).filter(f => !have.has(f.path));
-  return [...r.files, ...extra].sort(byPath);
+  const all = [...r.files, ...extra].sort(byPath);
+  if (origins !== undefined) {
+    for (const f of all) {
+      const id = /^skills\/([^/]+)\//.exec(f.path)?.[1];
+      const from = id === undefined ? undefined : copiedFrom.get(id);
+      if (from !== undefined) origins.set(f.path, from);
+    }
+  }
+  return all;
+}
+
+/** The marks of one change of a save plan, as the window reads them (`SaveChangeView`): only those that hold. */
+export interface PlanChange {
+  readonly path: string; readonly action: 'create' | 'update' | 'delete';
+  readonly before: { readonly sha256: string; readonly mode: number } | null; readonly after: { readonly sha256: string; readonly mode: number } | null;
+}
+/**
+ * The change list of a save plan for the window, each path as `.bowerloom/<path>` through `scrub`: `executable` when the file it writes can run as a program,
+ * `modeOnly` when the bytes stay and only the execute bit changes, and `from` with the label of the folder a copied file comes from (`fromOf`).
+ */
+export function changeViews(changes: readonly PlanChange[], fromOf: (rel: string) => string | undefined, scrub: (s: string) => string): SaveChangeView[] {
+  return changes.map(c => {
+    const executable = c.after !== null && (c.after.mode & 0o111) !== 0;
+    const modeOnly = c.action === 'update' && c.before !== null && c.after !== null && c.before.sha256 === c.after.sha256;
+    const from = c.action === 'delete' ? undefined : fromOf(c.path);
+    return { path: scrub(`.bowerloom/${c.path}`), action: c.action, ...(executable ? { executable: true as const } : {}), ...(from === undefined ? {} : { from }), ...(modeOnly ? { modeOnly: true as const } : {}) };
+  });
+}
+/** The files that can run that a save copies from another folder, in the order of the change list. */
+export const copiedExecutables = (views: readonly SaveChangeView[]): CopiedExecutableView[] =>
+  views.filter(v => v.executable === true && v.from !== undefined).map(v => ({ path: v.path, from: v.from! }));
+/** The hash an acknowledgement of those files names: the plan's revision and every file with its folder, so it covers that plan only. Null for none. */
+export const acknowledgeOf = (revision: string, files: readonly CopiedExecutableView[]): string | null =>
+  (files.length === 0 ? null : createHash('sha256').update(JSON.stringify({ revision, files: files.map(f => [f.path, f.from]) })).digest('hex'));
+
+/**
+ * The notes sources the edits stop using (`remove-source`), each with its label and the names of the agents that read it in the harness as it is now, in
+ * the order of the agents. A name the harness does not hold is left out: the definition package refuses that edit with its own words.
+ */
+export function stoppedSources(def: Definition, edits: readonly SaveEdit[], sourceOf: SourceOf = storedOnly): StoppedSourceView[] {
+  const names = [...new Set(edits.filter((e): e is Extract<SaveEdit, { kind: 'remove-source' }> => e.kind === 'remove-source').map(e => e.name))];
+  return names.flatMap(name => {
+    const src = def.knowledge.find(k => k.name === name);
+    if (src === undefined) return [];
+    return [{ name, label: sourceOf(src).label, agents: def.entries.subagents.filter(a => (a.notes ?? []).includes(name)).map(a => a.name) }];
+  });
 }
 
 /**

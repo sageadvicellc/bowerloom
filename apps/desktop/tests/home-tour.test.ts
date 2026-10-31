@@ -76,7 +76,7 @@ test('the seven steps are the storyboard steps and "Share and history", in order
     'These are your AI agents, from every tool.', 'Click an agent to see what it can do.', 'Skills show what the agent you picked can do.',
     'Add skills, tools, and notes here.', 'This bar shows your changes. Press Save to keep them.', 'Share your agents or go back in time here.', 'Replay this tour any time.',
   ]);
-  for (const s of TOUR_STEPS) { assert.ok(countWords(s.text) <= 12, s.text); assert.equal((s.text.match(/[.!?]/g) ?? []).length, s.id === 'save' ? 2 : 1, s.id === 'save' ? 'Hanna set the bar step as two short sentences (2026-10-25)' : 'one sentence'); assert.deepEqual(assertTextBudget(`<p>${s.text}</p>`), []); }
+  for (const s of TOUR_STEPS) { assert.ok(countWords(s.text) <= 12, s.text); assert.equal((s.text.match(/[.!?]/g) ?? []).length, s.id === 'save' ? 2 : 1, s.id === 'save' ? 'the maintainer set the bar step as two short sentences (2026-10-25)' : 'one sentence'); assert.deepEqual(assertTextBudget(`<p>${s.text}</p>`), []); }
   assert.equal(new Set(TOUR_STEPS.map(s => s.id)).size, 7);
   assert.equal(Object.isFrozen(TOUR_STEPS), true);
 });

@@ -5,6 +5,8 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DESKTOP } from './support.js';
+import { createHash } from 'node:crypto';
+import { CLIENT_NAME_HASHES, clientNames } from './client-names.js';
 
 const TOOL = join(DESKTOP, 'tools', 'personas');
 const PERSONAS = ['persona-layperson.md', 'persona-senior-dev.md', 'persona-designer.md', 'persona-it-security.md'];
@@ -157,10 +159,18 @@ test('every Markdown file of the tool passes the Simple English lint: short sent
   for (const file of files) assert.deepEqual(lint(read(file)), [], file);
 });
 
+test('the client-name check finds a listed name by its hash, as one word or two, and passes plain words', () => {
+  const stand = new Set([createHash('sha256').update('example').digest('hex'), createHash('sha256').update('example co').digest('hex')]);
+  assert.deepEqual(clientNames('Built for Example Co. today.', stand), [2, 2]);
+  assert.deepEqual(clientNames('An EXAMPLE here.', stand), [1]);
+  assert.deepEqual(clientNames('Plain words about a run.', stand), []);
+  assert.equal(CLIENT_NAME_HASHES.size, 2);
+});
+
 test('no Markdown file of the tool names the vendors that client material must not name, or holds a link', () => {
   for (const file of ['REPORT-FORMAT.md', 'RUN.md', 'subagent-brief.md', ...PERSONAS.map(f => join('personas', f))]) {
     const text = read(file);
-    assert.doesNotMatch(text, /Fearless|Advanced Metrics/i, file);
+    assert.deepEqual(clientNames(text), [], file);
     assert.doesNotMatch(text, /https?:\/\//, file);
   }
 });

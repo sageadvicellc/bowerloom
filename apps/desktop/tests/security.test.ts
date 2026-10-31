@@ -94,9 +94,9 @@ test('the main process calls no command that writes Bowerloom data and starts no
   assert.match(read('main/reader.ts'), /runProjectStatus\(\['status', '--json'\]/);
 });
 
-test('only five main files write a file: the settings, the sample copy, the sandbox, the sketches, and the usage summary the person saves, the first four behind the write boundary', () => {
+test('only six main files write a file: the settings, the sample copy, the sandbox, the sketches, the usage summary the person saves, and the private copy of a tidy-up report; the first four behind the write boundary', () => {
   const writers = sources('main').filter(({ text }) => /\b(writeFileSync|writeFile|mkdirSync|rmSync|cpSync|chmodSync|renameSync|unlinkSync|appendFileSync|copyFileSync|symlinkSync)\b/.test(strip(text))).map(f => f.file).sort();
-  assert.deepEqual(writers, ['main/config.ts', 'main/diagnostics-dialogs.ts', 'main/sample.ts', 'main/sandbox.ts', 'main/sketches.ts']);
+  assert.deepEqual(writers, ['main/config.ts', 'main/diagnostics-dialogs.ts', 'main/notes-report.ts', 'main/sample.ts', 'main/sandbox.ts', 'main/sketches.ts']);
   assert.match(read('main/sample.ts'), /isInside\(realpathSync\(appDir\), target\)/);
 });
 
@@ -178,5 +178,7 @@ test('only main/engine-service.ts calls the packages\' writes of adoption and th
   const service = strip(read('main/engine-service.ts'));
   assert.doesNotMatch(service, /\b(writeFileSync|writeFile|mkdirSync|rmSync|unlinkSync|renameSync)\b/, 'the service itself writes no file');
   // The engine calls are registered for the harness-first window on the person's own folders only.
-  assert.match(strip(read('main/main.ts')), /if \(prototypeV3Real\) \{\s*registerEngineIpc\(/);
+  assert.match(strip(read('main/main.ts')), /if \(prototypeV3Real\) \{\s*const engine = registerEngineIpc\(/);
+  // Main's private copies of tidy-up reports go when the app quits.
+  assert.match(strip(read('main/main.ts')), /app\.once\('quit', \(\) => engine\.clearReportCopies\(\)\)/);
 });

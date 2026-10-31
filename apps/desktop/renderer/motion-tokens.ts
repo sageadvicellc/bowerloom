@@ -1,7 +1,7 @@
 /**
  * Motion tokens: every duration, easing, distance and spring of the app, in one place, so they can be retuned in one edit.
  *
- * CONFIRMED. Hanna set the weighting on 2026-10-24 (spec section 7 of the Bowerloom 0.8 spec). The design-motion-principles skill names three lenses:
+ * CONFIRMED. The maintainer set the weighting on 2026-10-24 (spec section 7 of the Bowerloom 0.8 spec). The design-motion-principles skill names three lenses:
  * Emil Kowalski (restraint and speed), Jakub Krehel (production polish), and Jhey Tompkins (play). Checked against the apple-design rules
  * (purposeful, brief, cancellable, never the only carrier of meaning, reduced motion honoured). The weighting:
  *   Whole product ........................ Jakub leads, with Emil on the busy actions.
