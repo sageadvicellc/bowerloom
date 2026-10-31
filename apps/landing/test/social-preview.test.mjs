@@ -2,15 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import config, * as metadataModule from '../vite.config.ts';
+import { hero } from '../src/content.ts';
 
-const TAGLINE = 'Set up the skills, prompts, and teams your agents use, and approve every change.';
+const TAGLINE = 'Define your skills, agents, tools, rules, and context once. Bowerloom installs them into Claude Code and Codex.';
 const read = path => readFile(new URL(path, import.meta.url), 'utf8');
 const preview = async () => JSON.parse(await read('../../../release/social-preview.json'));
 const meta = html => new Map([...html.matchAll(/<meta\s+(?:property|name)="([^"]+)"\s+content="([^"]*)"\s*\/?>/g)].map(match => [match[1], match[2]]));
 
 test('one preview record uses the approved landing message and public image', async () => {
   const social = await preview();
-  assert.match(social.title, /^Bowerloom · /);
+  assert.equal(social.title, `Bowerloom · ${hero.H1}`);
   assert.equal(social.description, TAGLINE);
   assert.equal(social.siteName, 'Bowerloom');
   assert.equal(social.type, 'website');

@@ -1,6 +1,6 @@
 ---
 title: "Build with your agent"
-description: "Set up the skills, prompts, and teams your agents use, and approve every change."
+description: "Define your skills, agents, tools, rules, and context once. Bowerloom installs them into Claude Code and Codex."
 section: "Start here"
 order: 0
 ---
