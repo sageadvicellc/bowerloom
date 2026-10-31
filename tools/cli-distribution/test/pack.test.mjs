@@ -11,7 +11,7 @@ import {collect,stage,pack,imports,lockedDependencies,verifyBundleFiles,flatDepe
 import {tarBytes,putInCache,integrityOf,cachePath,syntheticClosure,lockOf,registryUrl,entryFor,manifestEntry} from './bundle-fixture.mjs';
 import childProcess from 'node:child_process';
 import {statSync} from 'node:fs';
-const TAGLINE='Set up the skills, prompts, and teams your agents use, and approve every change.';
+const TAGLINE='Define your skills, agents, tools, rules, and context once. Bowerloom installs them into Claude Code and Codex.';
 const repo=resolve(dirname(fileURLToPath(import.meta.url)),'../../..');
 function area(t) {const path=realpathSync(mkdtempSync(join(tmpdir(),'bowerloom-pack-proof-')));chmodSync(path,0o700);t.after(()=>rmSync(path,{recursive:true,force:true}));return path;}
 function fixture(t) {
@@ -313,7 +313,7 @@ test('an unreleased npm-beta-stream record packs as a public release candidate w
  const candidate=collect({repoDir:root,releaseCandidate:true}),manifest=JSON.parse(candidate.files.get('package.json'));
  assert.deepEqual(manifest,candidate.manifest);
  assert.equal(manifest.private,false);assert.equal(manifest.version,pkg.version);assert.equal(manifest.version,r.version);
- assert.equal(manifest.description,'An agent environment manager. Set up the skills, prompts, and teams your agents use, and approve every change.');
+ assert.equal(manifest.description,TAGLINE);
  assert.deepEqual(manifest.repository,{type:'git',url:'git+'+r.urls.repository+'.git'});
  assert.equal(manifest.homepage,r.urls.site);
  assert.deepEqual(manifest.bugs,{url:r.urls.repository+'/issues'});
@@ -760,9 +760,11 @@ test('collect with a bundle names the first bundled license that fails, and with
  assert.throws(()=>collect({repoDir:root,bundle:true}),/^Error: Bundled license not allowed: ajv GPL-3.0-only$/);
  assert.doesNotThrow(()=>collect({repoDir:root}));
 });
-test('the release candidate description ends with the approved tagline',t=>{
+test('the release candidate description is the approved hero sentence',t=>{
  const {root}=betaStreamRecord(t,'unreleased');
- assert.ok(collect({repoDir:root,releaseCandidate:true}).manifest.description.endsWith(TAGLINE));
+ assert.equal(collect({repoDir:root,releaseCandidate:true}).manifest.description,TAGLINE);
+ // The landing hero, the social preview record, and the package description say one sentence.
+ assert.equal(JSON.parse(readFileSync(join(repo,'release/social-preview.json'),'utf8')).description,TAGLINE);
 });
 
 // Offline proofs: pack needs the cache, the install does not.
