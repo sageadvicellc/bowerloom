@@ -2,7 +2,7 @@
 // The harness mount imports the kit sheets first and in a fixed order, so that order never depends on which screen imports a kit part first.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { cssOfEntry } from './fixtures-real/css-bundle.js';
 import { DESKTOP } from './support.js';
@@ -35,4 +35,20 @@ test('in the style sheet that the build of the page emits, the kit step rule com
   assert.ok(kit.index < firstRun.index, 'the rules tie in weight, so the later one wins: the first-run rule must be later');
   // The same must hold for every rule that the first-run steps restyle on a kit step.
   assert.equal([...css.matchAll(/\[data-home\] \.kit-step\[data-state=(?:"next"|next)\]/g)].length, 1, 'one kit rule');
+});
+
+test('the card, shelf, tray, save bar and drawer-column rules are gone, and no source names the classes they styled', () => {
+  const sheet = (file: string): string => readFileSync(join(DESKTOP, 'renderer', 'home', file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const kit = sheet('kit/kit.css'), home = sheet('home.css');
+  assert.doesNotMatch(kit, /\.kit-(?:card|shelf|tray)/, 'kit.css holds no card, shelf or tray rule');
+  assert.doesNotMatch(home, /\.hm-(?:tile|tray-slot|savebar)\b/, 'home.css holds no tile, tray slot or save bar rule');
+  assert.doesNotMatch(home, /\.hm-body\[data-(?:drawer|moving)\]/, 'nothing sets data-drawer or data-moving on the body of a screen');
+  // The live rules of the same blocks are still there.
+  assert.match(home, /\.hm-body\[data-details="closed"\] \{ grid-template-columns: minmax\(0, 1fr\); \}/);
+  assert.match(kit, /@keyframes kit-arrive /, 'kit-arrive is still used by the notes chips');
+  // The page code names none of them either: a class that a source names again needs its rule back, so this fails first.
+  const sources = readdirSync(join(DESKTOP, 'renderer'), { recursive: true, withFileTypes: true }).filter(e => e.isFile() && /\.(?:tsx?|html)$/.test(e.name))
+    .map(e => readFileSync(join((e as unknown as { parentPath: string }).parentPath, e.name), 'utf8')).join('\n');
+  assert.doesNotMatch(sources, /\b(?:kit-card|kit-shelf|kit-tray|hm-tile\b|hm-tray-slot|hm-savebar)/);
+  assert.doesNotMatch(sources, /data-drawer/);
 });

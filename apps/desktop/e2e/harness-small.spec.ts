@@ -177,7 +177,7 @@ test('every control of every screen draws a focus ring when the keyboard reaches
         if (el === null || el === document.body) return null;
         const key = `${el.tagName}.${el.className}.${el.getAttribute('aria-label') ?? el.textContent?.slice(0, 30) ?? ''}`;
         const ring = (x: Element | null): boolean => { if (x === null) return false; const s = getComputedStyle(x); return (s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) >= 2) || /rgb.*0px 0px 0px [2-9]/.test(s.boxShadow); };
-        const host = el.closest('.hx-row, .hx-lrow, .hx-box, .hxe-tick, .hxi-card, .kit-card, .hxf-card');
+        const host = el.closest('.hx-row, .hx-lrow, .hx-box, .hxe-tick, .hxi-card, .hxf-card');
         return { key, ok: ring(el) || ring(host) || ring(el.parentElement) };
       });
       if (found === null) continue;
@@ -200,7 +200,7 @@ test('every button of every screen changes when the pointer is on it', async () 
     for (const b of buttons.slice(0, 40)) {
       const look = (): Promise<string> => b.evaluate(el => {
         const pick = (x: Element): string => { const s = getComputedStyle(x); return [s.backgroundColor, s.borderColor, s.color, s.boxShadow, s.textDecorationLine, s.opacity].join('|'); };
-        const host = el.closest('.hx-row, .hx-lrow, .hx-box, .hxi-card, .kit-card, .hxf-card');
+        const host = el.closest('.hx-row, .hx-lrow, .hx-box, .hxi-card, .hxf-card');
         // The navigation shows its hover as one soft box that glides under the pointer (renderer/home/shell/shell.css).
         const glide = el.closest('.hm-nav') === null ? '' : String(document.querySelector('.hm-nav-glide')?.hasAttribute('data-on'));
         return `${pick(el)}#${host === null ? '' : pick(host)}#${glide}`;

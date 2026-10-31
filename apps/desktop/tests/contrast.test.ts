@@ -32,7 +32,6 @@ const homeVars = (block: string): Record<string, string> => { const v: Record<st
 const homeNumber = (block: string, name: string): number => Number(new RegExp(`--${name}:\\s*([0-9.]+)`).exec(block)![1]);
 const homeLightBlock = homeBlock(/^\[data-home\] \{([\s\S]*?)\n\}/m), homeDarkBlock = homeBlock(/^\[data-theme="dark"\] \[data-home\], \[data-home\]\[data-theme="dark"\] \{([\s\S]*?)\n\}/m);
 const homeLight = { ...light, ...homeVars(homeLightBlock) }, homeDark = { ...dark, ...homeVars(homeDarkBlock) };
-const homeKitCss = readFileSync(join(DESKTOP, 'renderer', 'home', 'kit', 'kit.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 const mixHex = (top: string, under: string, amount: number): string => '#' + [1, 3, 5].map(i => Math.round(parseInt(top.slice(i, i + 2), 16) * amount + parseInt(under.slice(i, i + 2), 16) * (1 - amount)).toString(16).padStart(2, '0')).join('');
 
 test('the home tokens only reach the home app: every selector starts at [data-home], with a dark variant for each look', () => {
@@ -113,7 +112,6 @@ for (const [name, vars, block] of [['light', homeLight, homeLightBlock], ['dark'
     // A selected card is a highlight with no check mark, so the edge and the tint are all that tell it apart. The edge touches the page (bg), a neighbouring card
     // (surface), the tile and the chips inside the card (surface-2) and its own tint (accent-soft); a selected row sits on the tint of its owner card as well.
     for (const against of ['bg', 'surface', 'surface-2', 'accent-soft']) assert.ok(ratio(vars['accent-strong']!, vars[against]!) >= 3, `selected edge on ${against} is ${ratio(vars['accent-strong']!, vars[against]!).toFixed(2)}`);
-    assert.match(homeKitCss, /\.kit-card\[data-selected\][^{]*\{[^}]*border-width: 2px;/, 'the selected edge is 2 px');
   });
   test(`${name} theme, home app: the glyph on its tile is 4.5 to 1, and the edge of a chip or a tile is 3 to 1 on the card and (in the accent edge it takes there) on a selected card`, () => {
     assert.ok(ratio(vars['accent-strong']!, vars['surface-2']!) >= 4.5, `glyph on tile is ${ratio(vars['accent-strong']!, vars['surface-2']!).toFixed(2)}`);
@@ -128,7 +126,6 @@ for (const [name, vars, block] of [['light', homeLight, homeLightBlock], ['dark'
       for (const against of ['bg', 'surface', 'surface-2', 'accent-soft']) assert.ok(ratio(vars[`hm-ac-${accent}`]!, vars[against]!) >= 3, `hm-ac-${accent} on ${against} is ${ratio(vars[`hm-ac-${accent}`]!, vars[against]!).toFixed(2)}`);
     }
     // The accent is never behind words (it is an edge and a bar), so the text of a tile keeps the contrast of its card.
-    assert.doesNotMatch(homeKitCss, /\.kit-card\[data-size="tile"\]\s*\{[^}]*background(-color)?:\s*var\(--ac\)/, 'the tile itself is not filled with its accent');
     for (const [fg, bg] of [['text', 'surface'], ['text', 'accent-soft'], ['text-muted', 'surface'], ['text-muted', 'accent-soft']] as const) assert.ok(ratio(vars[fg]!, vars[bg]!) >= 4.5, `${fg} on ${bg}`);
   });
   test(`${name} theme, home app: the ring around the lit target is 3 to 1 against the dimmed page`, () => {
@@ -229,18 +226,4 @@ test('every word in the home style sheets is 14 px or more: each font size is a 
     }
   }
   assert.ok(seen > 15, `${seen} font sizes checked`);
-});
-
-test('a row and a tile have one size each, from tokens: the row is --hm-row-h high, the tile --hm-tile-w by --hm-tile-h, and neither grows with its words', () => {
-  const row = kitRules.find(r => /\.kit-card\[data-size="small"\]\s*$/.test(r.selector))!, tile = kitRules.find(r => /\.kit-card\[data-size="tile"\]\s*$/.test(r.selector))!;
-  assert.equal(declared(row.body, 'height'), 'var(--hm-row-h)'); assert.equal(declared(row.body, 'width'), '100%');
-  assert.equal(declared(tile.body, 'width'), 'var(--hm-tile-w)'); assert.equal(declared(tile.body, 'height'), 'var(--hm-tile-h)');
-  assert.doesNotMatch(row.body + tile.body, /min-height|max-height/, 'a fixed height, not a height that can grow');
-  assert.equal(declared(row.body, 'min-width'), 'var(--hm-row-min-w)', 'a row never gets narrower than 176 px, whatever holds it'); assert.doesNotMatch(tile.body, /min-width/);
-  // The counts never wrap and never leave the tile, but the ring of a focused count is not cut: the line is clipped with a margin, not hidden.
-  const summary = kitRules.find(r => /\.kit-summary\s*$/.test(r.selector))!;
-  assert.equal(declared(summary.body, 'white-space'), 'nowrap'); assert.equal(declared(summary.body, 'overflow'), 'clip'); assert.match(declared(summary.body, 'overflow-clip-margin') ?? '', /^4px$/);
-  // The name, the hint and the job are one line each, clipped with an ellipsis.
-  const main = kitRules.find(r => /\.kit-card-main\s*$/.test(r.selector))!, hint = kitRules.find(r => /\.kit-card-hint\s*$/.test(r.selector))!;
-  for (const rule of [main, hint]) { assert.equal(declared(rule.body, 'white-space'), 'nowrap'); assert.equal(declared(rule.body, 'text-overflow'), 'ellipsis'); }
 });
