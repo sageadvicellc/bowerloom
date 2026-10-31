@@ -35,7 +35,7 @@ function draw(withKit: boolean): string {
   };
   return renderToStaticMarkup(createElement(EditStep, {
     base: BASE, now, draft, count: draftCount(BASE, draft), held: false, versions: { ok: true, value: [] }, world: definitionWorld(now, cards.filter(c => !c.attached).map(c => c.source)),
-    linkingId: null, selectedId: null, onDraft: noop, onLinkStart: noop, onLinkTarget: noop, onLinkCancel: noop, onSelect: noop, onMove: noop, onGoBack: noop, notes,
+    linkingId: null, selectedId: null, onAction: noop, onLinkStart: noop, onLinkTarget: noop, onLinkCancel: noop, onSelect: noop, onMove: noop, onGoBack: noop, notes,
   }));
 }
 

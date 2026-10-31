@@ -5,6 +5,8 @@
  *   the interfaces, and the save points with Go back. The Builder leaves the save points out and keeps them in a drawer.
  * - `useFolderEditor` holds what the editor reads from main besides the draft: the Notes panel's reads of each notes folder, the Notes keeper added from the
  *   kit (a plan of `add-from-kit` alone, which writes nothing), and the skills of another folder. It resets when the folder changes.
+ * - Every gesture of the editor goes through `act`, which is `builderAction` on the folder's draft: a gesture the draft refuses says why, in words, to whoever
+ *   draws the editor (`onRefused`), and the draft stays as it was. A tick, a link, a copy and a removal are one path.
  * Nothing here writes. The draft becomes a closed list of ids at Save; the window never sends a path or file text.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -14,15 +16,16 @@ import { ENGINE_NAMES } from '../../shared/engine/types.js';
 import type { Answer, DefinitionView, EngineBridge, FolderInfo, NotesView, Refusal, SetAsideView, VersionView } from '../../shared/engine/types.js';
 import type { SaveDraft, SkillCopy } from '../../shared/harness/save-draft.js';
 import {
-  KEEPER_AGENT, KEEPER_KIT, attachNotes, canCopy, copySkill, definitionWorld, draftCount, draftStart, draftView, keeperAdded, keeperOf, keeperSkills, linkRest, linkSkill, removeKit,
-  removeSkill, setDraftEngines, stopSource, stoppedSources,
+  KEEPER_AGENT, KEEPER_KIT, agentPartId, canCopy, definitionWorld, draftCount, draftStart, draftView, keeperOf, keeperSkills, linkRest, notesPartId, skillPartId, stoppedSources,
 } from '../../shared/harness/save-draft.js';
+import { BUILDER_REFUSALS, builderAction } from '../../shared/harness/builder-draft.js';
+import type { BuilderAction, BuilderOpens } from '../../shared/harness/builder-draft.js';
 import type { Point } from '../../shared/harness/types.js';
 import { HButton, StateDot } from './parts/controls.js';
 import { Graph } from './screens/builder/Graph.js';
 import { ENGINE_WORDS, SAVE_REFUSAL_WORDS, copyAddName, copyTakeOutName, draftWords, fromWords, goBackWords, savePointLine } from './words-engine.js';
 import { RefusalNote, Section } from './sheets/engine-parts.js';
-import { chooseFolderCall } from './sheets/use-call.js';
+import { callRefusal, chooseFolderCall, useCall } from './sheets/use-call.js';
 import type { Call } from './sheets/use-call.js';
 import { KeeperBuild } from './notes/KeeperBuild.js';
 import { NotesPanel } from './notes/NotesPanel.js';
@@ -31,6 +34,7 @@ import { addThenNext, buildProgress, notesCards, notesToRead, readReplaces } fro
 import type { NotesCard } from './notes/notes-logic.js';
 import { useNotesSession } from './notes/notes-session.js';
 import { NOTES } from './words-notes.js';
+import { WORDS } from './words.js';
 
 const W = ENGINE_WORDS;
 
@@ -46,12 +50,15 @@ export interface FolderEditorInput {
   readonly base: DefinitionView | null;
   readonly draft: SaveDraft;
   readonly positions: Readonly<Record<string, Point>>;
-  /** A change made with a save-draft function, recorded on the folder's undo stack. */
-  onDraft(next: (d: SaveDraft) => SaveDraft): void;
-  /** A draft made from an answer that came after a render (the Notes keeper from the kit). */
+  /** A draft a gesture made, recorded on the folder's undo stack. */
   onPush(draft: SaveDraft): void;
+  /** A gesture the draft refused, or dropped while a call ran: its words, and the sheet it opens. */
+  onRefused(refusal: { readonly words: string; readonly opens: BuilderOpens }): void;
   onHelp(): void;
 }
+
+/** A refusal of a read the editor made on its own (the Notes keeper from the kit, the skills of another folder), with the number that moves the focus to it. */
+export interface EditorRefusal { readonly key: string; readonly refusal: Refusal; readonly id: number }
 
 export interface FolderEditor {
   readonly now: DefinitionView | null;
@@ -66,12 +73,21 @@ export interface FolderEditor {
   readonly opened: string | null;
   /** Adds the Notes keeper from the kit as a draft, then runs `then` once it is in the draft. */
   addKeeper(then?: () => void): void;
+  /**
+   * One gesture, through `builderAction` on the draft as it is now. True when it changed the draft. A refused one says why through `onRefused`, and so does
+   * one made while a call runs (the controls are off then, so this is for a key or a drop).
+   */
+  act(action: BuilderAction): boolean;
+  /** The words of the editor's own calls that run now, or null. They never share a lane with the sheet's: one cannot drop another. */
+  readonly busy: string | null;
+  /** The refusals of those calls. */
+  readonly refusals: readonly EditorRefusal[];
   /** Forgets every read of the folder: a new folder, or the sheet opened again, never shows an old read. */
   reset(): void;
 }
 
 /** What the editor of one folder reads from main besides the draft, and the parts it hands `EditStep`. */
-export function useFolderEditor({ engine, call, folder, folders, onFolders, base, draft, positions, onDraft, onPush, onHelp }: FolderEditorInput): FolderEditor {
+export function useFolderEditor({ engine, call, folder, folders, onFolders, base, draft, positions, onPush, onRefused, onHelp }: FolderEditorInput): FolderEditor {
   const session = useNotesSession();
   const [summaries, setSummaries] = useState<Readonly<Record<string, Answer<NotesView>>>>({});
   const [notesWay, setNotesWay] = useState<'use' | 'start' | null>(null);
@@ -83,8 +99,13 @@ export function useFolderEditor({ engine, call, folder, folders, onFolders, base
   const draftNow = useRef(draft);
   draftNow.current = draft;
   const held = call.writing;
+  // The keeper's plan and the plan of another folder's skills each have their own lane: a plan's newest call wins its lane, so on one shared lane the second
+  // would drop the first without a word.
+  const keeperCall = useCall(), copyCall = useCall();
 
-  const reset = (): void => { reading.current = new Set(); setSummaries({}); setNotesWay(null); setCopyFrom(null); setCopyRead({}); setOpened(null); };
+  const reset = (): void => {
+    reading.current = new Set(); setSummaries({}); setNotesWay(null); setCopyFrom(null); setCopyRead({}); setOpened(null); keeperCall.clear(); copyCall.clear();
+  };
   const folderId = folder?.id ?? null;
   useEffect(() => { reset(); }, [folderId]);
 
@@ -100,15 +121,19 @@ export function useFolderEditor({ engine, call, folder, folders, onFolders, base
   const keeper = now === null ? null : keeperOf(now);
   const progress = now === null ? null : buildProgress(now, offeredIds, cards);
 
+  /** A read of one notes folder: its answer, or, when the call throws, a refusal that keeps the real code. */
+  const summaryOf = (bridge: EngineBridge, id: string): Promise<Answer<NotesView>> => bridge.notesSummary(id).catch((error: unknown): Answer<NotesView> => {
+    const r = callRefusal(error);
+    return { ok: false, refusal: r.code === 'FAILED' ? { ...r, message: NOTES.hint.noSummary } : r };
+  });
   // The Notes panel reads each source the harness holds once for each folder: names and counts only. A fresh read of a folder chosen in this window replaces
-  // its snapshot.
+  // its snapshot. The folder is a dependency: the reset above starts the reads again for it, so a folder opened again never keeps an empty panel.
   useEffect(() => {
     if (engine === null || now === null) return;
     for (const id of notesToRead(now, reading.current)) {
       reading.current.add(id);
       const mine = reading.current;
-      const failed: Answer<NotesView> = { ok: false, refusal: { code: 'FAILED', message: NOTES.hint.noSummary, paths: [] } };
-      void engine.notesSummary(id).catch(() => failed).then(a => {
+      void summaryOf(engine, id).then(a => {
         // A read that started before a reset, or before another folder, is dropped.
         if (reading.current !== mine) return;
         setSummaries(m => ({ ...m, [id]: a }));
@@ -116,7 +141,28 @@ export function useFolderEditor({ engine, call, folder, folders, onFolders, base
         if (fresh !== null) session.choose(fresh);
       });
     }
-  }, [engine, now, session.chosen]);
+  }, [engine, now, session.chosen, folderId]);
+
+  /** Every gesture, applied to the draft as it is now. */
+  const apply = (action: BuilderAction): boolean => {
+    if (base === null) return false;
+    const r = builderAction(base, draftNow.current, action, cards.filter(c => !c.attached).map(c => c.source), folder?.id);
+    if (r.ok) { draftNow.current = r.draft; onPush(r.draft); return true; }
+    onRefused({ words: r.words, opens: r.opens });
+    return false;
+  };
+  const working = call.writing || call.busy !== null || keeperCall.busy !== null || copyCall.busy !== null;
+  const act = (action: BuilderAction): boolean => {
+    if (working) { onRefused({ words: WORDS.hint.stillWorking, opens: null }); return false; }
+    return apply(action);
+  };
+  /** A change the draft functions make that has no gesture of its own: nothing changing says so in words. */
+  const change = (next: (d: SaveDraft) => SaveDraft): void => {
+    if (working) { onRefused({ words: WORDS.hint.stillWorking, opens: null }); return; }
+    const after = next(draftNow.current);
+    if (after === draftNow.current) { onRefused({ words: BUILDER_REFUSALS['no-change'], opens: null }); return; }
+    draftNow.current = after; onPush(after);
+  };
 
   /**
    * Adds the Notes keeper from the kit as a draft: main plans the harness with the kit added (reads only), and the draft keeps that answer to draw the keeper
@@ -126,10 +172,10 @@ export function useFolderEditor({ engine, call, folder, folders, onFolders, base
   const addKeeper = (then?: () => void): void => {
     if (keeper !== null) { then?.(); return; }
     if (engine === null || folder === undefined || base === null) return;
-    const id = folder.id, from = base;
+    const id = folder.id;
     void addThenNext(
-      onValue => call.plan(W.label.planning, () => engine.planSave(id, [{ kind: 'add-from-kit', kit: KEEPER_KIT }]), v => onValue(v.definition)),
-      view => { const next = keeperAdded(from, draftNow.current, view); if (next === null) return false; draftNow.current = next; onPush(next); return true; },
+      onValue => keeperCall.plan(W.label.planning, () => engine.planSave(id, [{ kind: 'add-from-kit', kit: KEEPER_KIT }]), v => onValue(v.definition)),
+      view => apply({ kind: 'add-keeper', view }),
       () => then?.(),
     );
   };
@@ -141,8 +187,8 @@ export function useFolderEditor({ engine, call, folder, folders, onFolders, base
     if (engine === null) return;
     setOpened(null);
     void call.write(NOTES.label.opening, () => engine.openNotesReport(notesId), r => setOpened(r.path)).finally(() => {
-      void engine.notesSummary(notesId).catch(() => null).then(a => {
-        if (a === null) return;
+      // A re-read that fails shows as the card's own failure, never as an old count that may be wrong now.
+      void summaryOf(engine, notesId).then(a => {
         setSummaries(m => ({ ...m, [notesId]: a }));
         const fresh = readReplaces(session.chosen, notesId, a);
         if (fresh !== null) session.choose(fresh);
@@ -152,12 +198,12 @@ export function useFolderEditor({ engine, call, folder, folders, onFolders, base
   const notes: EditNotes = {
     cards, keeper, offered: offeredIds.map(id => now?.skills.find(s => s.id === id) ?? { id, name: id, description: '' }), fromKit: draft.kit !== null,
     way: notesWay, onWay: setNotesWay, onAddKeeper: () => addKeeper(),
-    onLink: (skill, on) => { if (base !== null) onDraft(d => linkSkill(base, d, KEEPER_AGENT, skill, on)); },
-    onLinkRest: () => { if (base !== null) onDraft(d => linkRest(base, d, KEEPER_AGENT, offeredIds)); },
-    onAttach: (agent, card, on) => { if (base !== null) onDraft(d => attachNotes(base, d, agent, card.source, on)); },
-    onRemoveKit: () => { if (base !== null) onDraft(d => removeKit(base, d)); },
+    onLink: (skill, on) => { act({ kind: on ? 'link' : 'unlink', a: agentPartId(KEEPER_AGENT), b: skillPartId(skill) }); },
+    onLinkRest: () => { if (base !== null) change(d => linkRest(base, d, KEEPER_AGENT, offeredIds)); },
+    onAttach: (agent, card, on) => { act({ kind: on ? 'link' : 'unlink', a: agentPartId(agent), b: notesPartId(card.source.name) }); },
+    onRemoveKit: () => { act({ kind: 'remove', part: agentPartId(KEEPER_AGENT) }); },
     onHelp,
-    onStop: (card, on) => { if (base !== null) onDraft(d => stopSource(base, d, card.source.name, on)); },
+    onStop: (card, on) => { act({ kind: on ? 'remove' : 'keep', part: notesPartId(card.source.name) }); },
     onOpenReport: card => openReport(card.key),
   };
   /** Skills from another folder: the folders that hold a harness, a read of one folder's skills, and copies into the draft by id. */
@@ -168,20 +214,24 @@ export function useFolderEditor({ engine, call, folder, folders, onFolders, base
       if (engine === null) return;
       setCopyFrom(id);
       // The other folder's harness as main reads it (a plan with no edits, which writes nothing): its skills by id, name and description.
-      void call.plan(W.label.planning, () => engine.planSave(id, []), v => setCopyRead(m => ({ ...m, [id]: { ok: true, value: v.definition.skills } })));
+      void copyCall.plan(W.label.planning, () => engine.planSave(id, []), v => setCopyRead(m => ({ ...m, [id]: { ok: true, value: v.definition.skills } })));
     },
     onChoose: () => {
       if (engine === null || held) return;
-      void call.plan(W.label.chooseFolder, () => chooseFolderCall(engine), got => { if (got !== null) onFolders(got.list); });
+      void copyCall.plan(W.label.chooseFolder, () => chooseFolderCall(engine), got => { if (got !== null) onFolders(got.list); });
     },
     onCopy: (skill, on) => {
       const from = folders.find(f => f.id === copyFrom);
       if (from === undefined) return;
       const c: SkillCopy = { id: skill.id, from: from.id, fromLabel: from.label, name: skill.name, description: skill.description };
-      onDraft(d => copySkill(base, d, c, on));
+      act(on ? { kind: 'copy-skill', copy: c } : { kind: 'remove', part: skillPartId(skill.id) });
     },
   };
-  return { now, world, count, cards, keeper, progress, notes, copy, opened, addKeeper, reset };
+  const refusals: EditorRefusal[] = [];
+  if (keeperCall.refusal !== null) refusals.push({ key: 'keeper', refusal: keeperCall.refusal, id: keeperCall.refusalId });
+  if (copyCall.refusal !== null) refusals.push({ key: 'copy', refusal: copyCall.refusal, id: copyCall.refusalId });
+  const busy = keeperCall.busy ?? copyCall.busy;
+  return { now, world, count, cards, keeper, progress, notes, copy, opened, addKeeper, act, busy, refusals, reset };
 }
 
 /** What the edit needs to draw notes and the keeper, and to change them. Left out (a markup test of the skills alone), the edit draws neither. */
@@ -224,7 +274,8 @@ export interface CopyParts {
 export interface EditStepProps {
   base: DefinitionView; now: DefinitionView; draft: SaveDraft; count: number; held: boolean; versions: Answer<readonly VersionView[]> | null;
   world: NonNullable<ReturnType<typeof definitionWorld>>; linkingId: string | null; selectedId: string | null;
-  onDraft(next: (d: SaveDraft) => SaveDraft): void; onLinkStart(id: string): void; onLinkTarget(id: string): void; onLinkCancel(): void; onSelect(id: string | null): void;
+  /** One gesture of the editor, through `builderAction` (the hook's `act`). */
+  onAction(action: BuilderAction): void; onLinkStart(id: string): void; onLinkTarget(id: string): void; onLinkCancel(): void; onSelect(id: string | null): void;
   onMove(id: string, at: Point): void; onGoBack(version: string): void;
   /** A skill or a notes card dropped on an agent (the Builder): a link to make. Left out, every drag moves the node. */
   onDrop?(dragged: string, agent: string): void;
@@ -236,7 +287,7 @@ export interface EditStepProps {
 }
 
 /** The draft of one folder's harness: the graph, the skills of each agent, the skills, the interfaces, and the save points (unless `savePoints` is false). */
-export function EditStep({ base, now, draft, count, held, versions, world, linkingId, selectedId, onDraft, onLinkStart, onLinkTarget, onLinkCancel, onSelect, onMove, onGoBack, onDrop, savePoints = true, setAside, notes, copy }: EditStepProps): ReactElement {
+export function EditStep({ base, now, draft, count, held, versions, world, linkingId, selectedId, onAction, onLinkStart, onLinkTarget, onLinkCancel, onSelect, onMove, onGoBack, onDrop, savePoints = true, setAside, notes, copy }: EditStepProps): ReactElement {
   const engines = ENGINE_IDS.filter(e => base.engines.includes(e) || !isPreviewEngine(e));
   const sum = <p className="hxi-sum" data-draft={count}><StateDot tone={count === 0 ? 'quiet' : 'warn'}>{draftWords(count)}</StateDot> <span className="hxe-muted">{W.hint.draftNote}</span></p>;
   return (
@@ -274,7 +325,7 @@ export function EditStep({ base, now, draft, count, held, versions, world, linki
                     <li key={s.id}>
                       <label className="hxs-tick" data-skill={s.id}>
                         <input type="checkbox" className="hxi-check" disabled={held} checked={a.skills.includes(s.id)} aria-label={`${s.name}: ${a.name}`}
-                          onChange={e => { const on = e.currentTarget.checked; onDraft(d => linkSkill(base, d, a.id, s.id, on)); }} />
+                          onChange={e => { const on = e.currentTarget.checked; onAction({ kind: on ? 'link' : 'unlink', a: agentPartId(a.id), b: skillPartId(s.id) }); }} />
                         <span>{s.name}</span>
                       </label>
                     </li>
@@ -314,8 +365,8 @@ export function EditStep({ base, now, draft, count, held, versions, world, linki
                 <span className="hxi-file-path">{s.name}</span>
                 {gone ? <StateDot tone="warn">{W.hint.removedMark}</StateDot> : copied !== undefined ? <StateDot tone="quiet">{fromWords(copied.fromLabel)}</StateDot> : <span className="hxe-muted hxs-desc" title={s.description}>{s.description}</span>}
                 {copied !== undefined
-                  ? <HButton size="small" disabled={held} aria-label={copyTakeOutName(s.name)} onClick={() => onDraft(d => removeSkill(base, d, s.id, true))}>{W.label.copyTakeOut}</HButton>
-                  : <HButton size="small" disabled={held} aria-label={`${gone ? W.label.keepSkill : W.label.removeSkill}: ${s.name}`} onClick={() => onDraft(d => removeSkill(base, d, s.id, !gone))}>{gone ? W.label.keepSkill : W.label.removeSkill}</HButton>}
+                  ? <HButton size="small" disabled={held} aria-label={copyTakeOutName(s.name)} onClick={() => onAction({ kind: 'remove', part: skillPartId(s.id) })}>{W.label.copyTakeOut}</HButton>
+                  : <HButton size="small" disabled={held} aria-label={`${gone ? W.label.keepSkill : W.label.removeSkill}: ${s.name}`} onClick={() => onAction({ kind: gone ? 'keep' : 'remove', part: skillPartId(s.id) })}>{gone ? W.label.keepSkill : W.label.removeSkill}</HButton>}
               </li>
             );
           })}
@@ -328,7 +379,7 @@ export function EditStep({ base, now, draft, count, held, versions, world, linki
             <li key={e}>
               <label className="hxs-tick" data-engine={e}>
                 <input type="checkbox" className="hxi-check" disabled={held} checked={now.engines.includes(e)}
-                  onChange={ev => { const on = ev.currentTarget.checked; onDraft(d => setDraftEngines(base, d, on ? [...now.engines, e] : now.engines.filter(x => x !== e))); }} />
+                  onChange={ev => { const on = ev.currentTarget.checked; onAction({ kind: 'set-engines', engines: on ? [...now.engines, e] : now.engines.filter(x => x !== e) }); }} />
                 <span>{ENGINE_NAMES[e]}</span>
               </label>
             </li>
@@ -387,6 +438,25 @@ export interface SetAsideParts { readonly view: SetAsideView | null; readonly do
 const SET_ASIDE_CODES: ReadonlySet<string> = new Set(['VERSION_CORRUPT', 'PORTABLE_STATE_UNSAFE']);
 
 /**
+ * "Set old save points aside" for a record main refuses to read: the button that plans it (when `refusal` is one set-aside can clear), the plan with the one
+ * button that writes it, and the dated name once it is done. The sheet and the Builder both draw it, so a person is never locked out of either.
+ */
+export function SetAsideBlock({ refusal, held, setAside }: { refusal: Refusal | null; held: boolean; setAside: SetAsideParts }): ReactElement {
+  return (
+    <>
+      {refusal !== null && SET_ASIDE_CODES.has(refusal.code) && setAside.view === null ? <HButton size="small" disabled={held} data-set-aside="" onClick={setAside.plan}>{W.label.planSetAside}</HButton> : null}
+      {setAside.view !== null ? (
+        <div data-set-aside-plan={setAside.view.revision.slice(0, 8)}>
+          <p className="hxe-text">{W.hint.setAsideNote}</p>
+          <HButton size="small" variant="primary" disabled={held} data-run-set-aside="" onClick={setAside.run}>{W.label.setAside}</HButton>
+        </div>
+      ) : null}
+      {setAside.done != null ? <p className="hxe-text" data-set-aside-done={setAside.done}><StateDot tone="good">{W.hint.setAsideDone}</StateDot> {setAside.done}</p> : null}
+    </>
+  );
+}
+
+/**
  * The save points, newest first, each with "Go back". A damaged record shows its refusal; it is never drawn as "no save point yet", and it offers to set the
  * old save points aside, planned first and written after main's own dialog, so a person is never locked out.
  */
@@ -397,14 +467,7 @@ export function SavePoints({ versions, held, onGoBack, setAside }: { versions: A
     <Section title={W.label.savePoints} {...(versions !== null && versions.ok ? { count: String(list.length) } : {})} slot="save-points">
       {refusal !== null ? <RefusalNote refusal={refusal}>{null}</RefusalNote> : null}
       {refusal !== null && SAVE_REFUSAL_WORDS[refusal.code] !== undefined ? <p className="hxe-text" data-next-step="">{SAVE_REFUSAL_WORDS[refusal.code]}</p> : null}
-      {setAside !== undefined && refusal !== null && SET_ASIDE_CODES.has(refusal.code) && setAside.view === null ?<HButton size="small" disabled={held} data-set-aside="" onClick={setAside.plan}>{W.label.planSetAside}</HButton> : null}
-      {setAside !== undefined && setAside.view !== null ? (
-        <div data-set-aside-plan={setAside.view.revision.slice(0, 8)}>
-          <p className="hxe-text">{W.hint.setAsideNote}</p>
-          <HButton size="small" variant="primary" disabled={held} data-run-set-aside="" onClick={setAside.run}>{W.label.setAside}</HButton>
-        </div>
-      ) : null}
-      {setAside?.done != null ? <p className="hxe-text" data-set-aside-done={setAside.done}><StateDot tone="good">{W.hint.setAsideDone}</StateDot> {setAside.done}</p> : null}
+      {setAside === undefined ? null : <SetAsideBlock refusal={refusal} held={held} setAside={setAside} />}
       {versions !== null && versions.ok && list.length === 0 ? <p className="hxe-text hxe-muted">{W.hint.noSavePoints}</p> : null}
       {list.length === 0 ? null : (
         <ul className="hxi-files" aria-label={W.label.savePoints}>

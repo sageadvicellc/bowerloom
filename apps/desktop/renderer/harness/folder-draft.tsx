@@ -40,6 +40,9 @@ export type FolderDraftAction =
   | { readonly kind: 'move'; readonly folder: string; readonly node: string; readonly at: Point };
 
 const sameHarness = (a: DefinitionView, b: DefinitionView): boolean => a === b || JSON.stringify(a) === JSON.stringify(b);
+/** True when reading `base` for a folder starts its draft again with changes in it: the harness is not the one the draft was made on. */
+export const loadDropsDraft = (entry: FolderEntry, base: DefinitionView): boolean =>
+  entry.base !== null && !sameHarness(entry.base, base) && draftCount(entry.base, entry.stack.present) > 0;
 const put = (s: FolderDrafts, folder: string, entry: FolderEntry): FolderDrafts => ({ ...s, [folder]: entry });
 /** The folder's own entry, or undefined. A name like `__proto__` or `constructor` never reaches the prototype's property. */
 export const entryOf = (s: FolderDrafts, folder: string): FolderEntry | undefined => (Object.hasOwn(s, folder) ? s[folder] : undefined);

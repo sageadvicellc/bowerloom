@@ -295,6 +295,10 @@ export const agentPart = (partId: string): string | null => (partId.startsWith(A
 export const partSkill = (partId: string): string | null => (partId.startsWith(SKILL) ? partId.slice(SKILL.length) : null);
 /** The source name of a notes card of the world, or null. */
 export const partNotes = (partId: string): string | null => (partId.startsWith(NOTES) ? partId.slice(NOTES.length) : null);
+/** The part id of an agent. */
+export const agentPartId = (id: string): string => `${AGENT}${id}`;
+/** The part id of a skill. */
+export const skillPartId = (id: string): string => `${SKILL}${id}`;
 /** The part id of a notes card. */
 export const notesPartId = (name: string): string => `${NOTES}${name}`;
 

@@ -31,10 +31,13 @@ for (const name of ENGINE_CALLS) {
   });
 }
 (window as unknown as { __driver: Driver }).__driver = driver;
+// A page opened with ?auto={"folders":[...]} answers those calls at once from the start, so a screen that reads on mount is never left waiting.
+const seeded = new URLSearchParams(location.search).get('auto');
+if (seeded !== null) Object.assign(driver.auto, JSON.parse(seeded) as Driver['auto']);
 
 const params = new URLSearchParams(location.search);
 applyMotionTokens();
-location.hash = '#prototype-v3/projects';
+location.hash = params.get('hash') ?? '#prototype-v3/projects';
 const root = document.createElement('div');
 document.body.append(root);
 const noBridge = params.get('bridge') === 'none';

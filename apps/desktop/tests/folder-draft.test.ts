@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { EMPTY_FOLDER, FolderDraftProvider, folderDraftsReduce, useFolderDraft } from '../renderer/harness/folder-draft.js';
+import { EMPTY_FOLDER, FolderDraftProvider, folderDraftsReduce, loadDropsDraft, useFolderDraft } from '../renderer/harness/folder-draft.js';
 import type { FolderDrafts } from '../renderer/harness/folder-draft.js';
 import { EMPTY_DRAFT, linkSkill, removeSkill } from '../shared/harness/save-draft.js';
 import { UNDO_LIMIT, canRedo, canUndo, undoCount } from '../shared/harness/draft-undo.js';
@@ -134,4 +134,14 @@ test('a folder named like an Object property is a folder like any other: it read
   }
   const html = renderToStaticMarkup(createElement(FolderDraftProvider, null, createElement(Show, { folder: '__proto__' }), createElement(Show, { folder: 'constructor' })));
   assert.equal((html.match(/data-base="none">0</g) ?? []).length, 2);
+});
+
+test('reading a harness that differs from the one a draft was made on drops a draft with changes, and only then', () => {
+  const changed: DefinitionView = { ...BASE, agents: BASE.agents.map(a => (a.id === 'editor' ? { ...a, skills: ['check-facts'] } : a)) };
+  const withDraft = folderDraftsReduce(loaded({}, A), { kind: 'change', folder: A, next: d => link(d) })[A]!;
+  const clean = loaded({}, A)[A]!;
+  assert.equal(loadDropsDraft(withDraft, changed), true, 'changes, and another harness');
+  assert.equal(loadDropsDraft(withDraft, { ...BASE }), false, 'the same harness read again keeps the draft');
+  assert.equal(loadDropsDraft(clean, changed), false, 'nothing to lose');
+  assert.equal(loadDropsDraft(EMPTY_FOLDER, changed), false, 'a folder not read yet');
 });

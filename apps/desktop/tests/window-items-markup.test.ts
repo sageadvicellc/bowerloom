@@ -126,7 +126,7 @@ test('the edit offers skills from another folder: each folder by its label, its 
   };
   const html = renderToStaticMarkup(createElement(EditStep, {
     base: BASE, now, draft, count: draftCount(BASE, draft), held: false, versions: { ok: true, value: [] }, world: definitionWorld(now), linkingId: null, selectedId: null,
-    onDraft: noop, onLinkStart: noop, onLinkTarget: noop, onLinkCancel: noop, onSelect: noop, onMove: noop, onGoBack: noop, copy,
+    onAction: noop, onLinkStart: noop, onLinkTarget: noop, onLinkCancel: noop, onSelect: noop, onMove: noop, onGoBack: noop, copy,
   }));
   assert.match(html, /data-section="copy-skills"/);
   assert.match(html, /data-copy-from="folder-2"[^>]*aria-pressed="true"/);

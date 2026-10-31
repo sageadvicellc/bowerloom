@@ -40,6 +40,8 @@ test('the Fix sheet is gone: a missing part is not fixed in beta.1', () => {
   assert.throws(() => readFileSync(join(DESKTOP, 'renderer/harness/screens/builder/FixSheet.tsx')), /ENOENT/);
   const builder = readFileSync(join(DESKTOP, 'renderer/harness/screens/Builder.tsx'), 'utf8');
   assert.doesNotMatch(builder, /FixSheet|fixMissingPart|useHarnessStore/);
-  assert.match(builder, /builderAction\(/);
+  // Every gesture goes through the editor's act, which is builderAction on the draft; the Builder holds no reducer of its own.
+  assert.match(builder, /editor\.act\(/);
+  assert.match(readFileSync(join(DESKTOP, 'renderer/harness/FolderEditor.tsx'), 'utf8'), /builderAction\(/);
   assert.match(builder, /useFolderDraft\(/);
 });
