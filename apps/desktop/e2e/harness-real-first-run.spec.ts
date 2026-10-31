@@ -236,7 +236,7 @@ test('Install and Start are not in beta.1: a note says so and no sheet opens; th
   await expect(pop).toContainText('Bowerloom is in beta. It reads your own folders and writes only after you approve what it will write.');
   await expect(pop).toContainText('Not in beta.1');
   await expect(pop).not.toContainText(/preview|full app/i);
-  await expect(pop.locator('li')).toHaveText(['Start', 'Compare', 'Runs', 'Assign to project, in the Harnesses list', 'Assign harness, Install, Update and Review, in Projects', 'Add, in the Library', 'Add a folder, in Projects']);
+  await expect(pop.locator('li')).toHaveText(['Start', 'Compare', 'Runs', 'Assign to project, in the Harnesses details', 'Assign harness, Install, Update and Review, in Projects', 'Add (the plus button), in the Library', 'Add a folder, in Projects']);
   await everyStep('preview', false);
   await shot(p, 'real-6-preview');
   await p.keyboard.press('Escape');

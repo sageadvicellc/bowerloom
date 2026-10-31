@@ -5,7 +5,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { DESIGN_WORDS, HARNESS_BANNED, LIMITS, bannedHere, countWords } from '../shared/harness/words.js';
 import { BANNED, bannedIn } from '../shared/home/textbudget.js';
-import { KIND_NAME, KIND_PLURAL, WORDS, addName, addTo, addToWords, fixName, fromWords, helpLines, notYetWords, detailsName, harnessListHint, installTitle, linkFromWords, missingKind, namedBy, nodeName, partsCount, projectsHint, startName, tabWords, willUse } from '../renderer/harness/words.js';
+import { KIND_NAME, KIND_PLURAL, WORDS, addName, addTo, addToWords, fixName, fromWords, helpLines, notYetWords, detailsName, harnessListHint, installTitle, linkFromWords, missingKind, namedBy, nodeName, partsCount, projectsHint, startName, tabWords, willUse, welcomeGoLine } from '../renderer/harness/words.js';
 import { FLOW, historyLines, welcomeLines } from '../renderer/harness/words-flow.js';
 import { RUN_WORDS, bringTipWords, bringToastWords, noRunsWords } from '../renderer/harness/runs-words.js';
 import { ASK } from '../main/engine-consent.js';
@@ -143,7 +143,7 @@ test('the real words (the preview on the person\'s own folders) are frozen, with
     for (const [key, text] of entries) { assert.ok(countWords(text) <= limit, `${group}.${key}: ${text}`); assert.equal(bannedHere(text), null, `${group}.${key}`); assert.equal(text, text.trim(), `${group}.${key}`); }
   }
   for (const line of REAL.notInBeta) { assert.ok(countWords(line) <= LIMITS.popover, line); assert.equal(bannedHere(line), null, line); }
-  assert.deepEqual(REAL.notInBeta, ['Start', 'Compare', 'Runs', 'Assign to project, in the Harnesses list', 'Assign harness, Install, Update and Review, in Projects', 'Add, in the Library', 'Add a folder, in Projects']);
+  assert.deepEqual(REAL.notInBeta, ['Start', 'Compare', 'Runs', 'Assign to project, in the Harnesses details', 'Assign harness, Install, Update and Review, in Projects', 'Add (the plus button), in the Library', 'Add a folder, in Projects']);
   assert.ok(!REAL.notInBeta.some(line => /^Install from a folder$|^From a folder$/.test(line)), 'Install from a folder works, so it is not on the list');
   assert.deepEqual([REAL.label.beta, REAL.label.aboutBeta, REAL.label.notInBeta, WORDS.hint.notInBeta], ['Beta', 'About this beta', 'Not in beta.1', 'Not in beta.1.']);
   assert.equal(notYetWords(true), 'Not in beta.1.'); assert.equal(notYetWords(false), 'Not in this preview.');
@@ -172,18 +172,18 @@ test('the words the real screens build from a number or a code obey the same rul
 });
 
 test('the words that depend on the mode never say that a blocked feature works in real mode, and the sample keeps its words', () => {
-  const real = [...helpLines(true), ...welcomeLines(true), ...historyLines(true, 0), noRunsWords(true), bringTipWords(true), bringToastWords(true)];
+  const real = [...helpLines(true), ...welcomeLines(true), welcomeGoLine(true), ...historyLines(true, 0), noRunsWords(true), bringTipWords(true), bringToastWords(true)];
   for (const text of real) {
     assert.equal(bannedHere(text), null, text);
-    assert.doesNotMatch(text, /Press Start|run it in any engine|undo an install in Install history|You can undo in Install history/i, text);
+    assert.doesNotMatch(text, /Press Start|press Install|run it in any engine|undo an install in Install history|You can undo in Install history/i, text);
   }
   for (const text of [...welcomeLines(true), ...historyLines(true, 0), noRunsWords(true), bringToastWords(true), bringTipWords(true)]) assert.ok(countWords(text) <= LIMITS.hint, text);
   for (const text of helpLines(true)) assert.ok(countWords(text) <= LIMITS.paragraph, text);
   assert.equal(noRunsWords(true), 'Runs are not in beta.1.');
   assert.equal(welcomeLines(true)[1], 'Running one is not in beta.1.');
   assert.equal(helpLines(true)[1], 'Build one from your agents and skills. Running one is not in beta.1.');
-  assert.equal(helpLines(true)[3], 'Bowerloom only reads until you approve a write. To undo a folder install, press Undo when it finishes.');
-  assert.deepEqual(historyLines(true, 0), ['Nothing is listed yet. Installs from Projects are not in beta.1.', 'To undo a folder install, press Undo when it finishes.']);
+  assert.equal(helpLines(true)[3], 'Bowerloom only reads until you approve a write. To undo a folder install, press Undo, then approve the removal.');
+  assert.deepEqual(historyLines(true, 0), ['Nothing is listed yet. Installs from Projects are not in beta.1.', 'To undo a folder install, press Undo, then approve the removal.']);
   assert.equal(bringToastWords(true), 'Not in beta.1.'); assert.equal(bringTipWords(true), 'Brings the engine window forward. Not in beta.1.');
   // The sample keeps the words of the pictures.
   assert.deepEqual(helpLines(false), [WORDS.paragraph.helpOne, WORDS.paragraph.helpTwo, WORDS.paragraph.helpThree, WORDS.paragraph.helpFour]);

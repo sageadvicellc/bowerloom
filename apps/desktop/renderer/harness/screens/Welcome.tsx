@@ -8,7 +8,7 @@ import { KitIcon } from '../../home/kit/icons.js';
 import { HButton } from '../parts/controls.js';
 import { FirstRunFrame } from '../parts/FirstRunFrame.js';
 import { go } from '../router.js';
-import { WORDS } from '../words.js';
+import { WORDS, welcomeGoLine } from '../words.js';
 import { FLOW, welcomeLines } from '../words-flow.js';
 import { useHarnessState } from '../session.js';
 import './first-run.css';
@@ -16,7 +16,8 @@ import './first-run.css';
 export function Welcome(): ReactElement {
   const button = useRef<HTMLButtonElement>(null);
   // The state of a launch on the person's own folders holds what the reader said, even before the first read.
-  const [lineOne, lineTwo] = welcomeLines(useHarnessState().real !== undefined);
+  const real = useHarnessState().real !== undefined;
+  const [lineOne, lineTwo] = welcomeLines(real);
   useEffect(() => { button.current?.focus(); }, []);
   return (
     <FirstRunFrame slot="welcome">
@@ -25,7 +26,7 @@ export function Welcome(): ReactElement {
       <p className="hxf-lead"><span>{lineOne}</span> <span>{lineTwo}</span></p>
       <p className="hxf-plain">{WORDS.hint.helpOne}</p>
       <HButton ref={button} icon="search" variant="primary" onClick={() => go({ name: 'choose' })}>{FLOW.label.findMyFiles}</HButton>
-      <p className="hxf-plain hxf-go">{WORDS.paragraph.welcomeLine}</p>
+      <p className="hxf-plain hxf-go">{welcomeGoLine(real)}</p>
     </FirstRunFrame>
   );
 }

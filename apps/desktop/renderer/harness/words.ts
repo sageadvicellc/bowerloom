@@ -61,7 +61,9 @@ export const WORDS = deepFreeze({
     helpFour: 'Bowerloom only reads until you press Install. You can undo an install in Install history.',
     /** The same two lines on the person's own folders, where running and the install list are not in beta.1. */
     helpTwoReal: 'Build one from your agents and skills. Running one is not in beta.1.',
-    helpFourReal: 'Bowerloom only reads until you approve a write. To undo a folder install, press Undo when it finishes.',
+    helpThreeReal: 'Open a harness in the builder to change what it holds.',
+    helpFourReal: 'Bowerloom only reads until you approve a write. To undo a folder install, press Undo, then approve the removal.',
+    welcomeLineReal: 'Bowerloom only reads. It writes only after you approve what it will write.',
   },
   /** The list of the Preview mark's popover: each line at most 25 words. */
   notInPreview: ['The confirm sheet for a community skill', 'Real files', 'Real runs'],
@@ -77,8 +79,10 @@ export const notYetWords = (real: boolean): string => (real ? WORDS.hint.notInBe
 /** The four lines of Help. On the person's own folders (`real`) the lines about running and about the install list say what is true there. */
 export const helpLines = (real: boolean): readonly string[] => {
   const p = WORDS.paragraph;
-  return real ? [p.helpOne, p.helpTwoReal, p.helpThree, p.helpFourReal] : [p.helpOne, p.helpTwo, p.helpThree, p.helpFour];
+  return real ? [p.helpOne, p.helpTwoReal, p.helpThreeReal, p.helpFourReal] : [p.helpOne, p.helpTwo, p.helpThree, p.helpFour];
 };
+/** The line under the Welcome button. On the person's own folders Install from Projects is not in beta.1, so it names the approval instead. */
+export const welcomeGoLine = (real: boolean): string => (real ? WORDS.paragraph.welcomeLineReal : WORDS.paragraph.welcomeLine);
 /** "Show details for Writer": the name of a Show details button, which holds a file path. The shown words stay "Show details", so the name still contains them. */
 export const detailsName = (open: boolean, subject: string): string => `${open ? WORDS.label.hideDetails : WORDS.label.showDetails} for ${subject}`;
 /** "Missing skill", the line under the name of a missing part. */

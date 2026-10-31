@@ -16,7 +16,7 @@ const page = (): Page => h.page;
 const text = (): Promise<string> => page().locator('body').innerText();
 
 /** What no screen of this mode may say, because the thing it says is blocked or has no list. */
-const FALSE_CLAIMS = /Press Start|run it in any engine|undo an install in Install history|You can undo in Install history|Newest first\. Undo puts back/i;
+const FALSE_CLAIMS = /Press Start|press Install|run it in any engine|undo an install in Install history|You can undo in Install history|Newest first\. Undo puts back/i;
 async function noFalseClaim(label: string): Promise<void> {
   expect(await text(), `${label}: a claim that a blocked feature works`).not.toMatch(FALSE_CLAIMS);
 }
@@ -51,7 +51,7 @@ test('real mode words: Welcome, Runs, Help, Projects, Library, Install history a
     await go('#prototype-v3/help');
     await expect(p.getByRole('heading', { level: 1, name: 'Help', exact: true })).toBeVisible();
     await expect(p.getByText('Build one from your agents and skills. Running one is not in beta.1.')).toBeVisible();
-    await expect(p.getByText('Bowerloom only reads until you approve a write. To undo a folder install, press Undo when it finishes.')).toBeVisible();
+    await expect(p.getByText('Bowerloom only reads until you approve a write. To undo a folder install, press Undo, then approve the removal.')).toBeVisible();
     await noFalseClaim('help');
   });
   await test.step('Runs: an empty list says runs are not in beta.1, and does not point to Start', async () => {
@@ -65,7 +65,7 @@ test('real mode words: Welcome, Runs, Help, Projects, Library, Install history a
     await go('#prototype-v3/history');
     await expect(p.getByRole('heading', { level: 1, name: 'Install history', exact: true })).toBeVisible();
     await expect(p.getByText('Nothing is listed yet. Installs from Projects are not in beta.1.')).toBeVisible();
-    await expect(p.getByText('To undo a folder install, press Undo when it finishes.')).toBeVisible();
+    await expect(p.getByText('To undo a folder install, press Undo, then approve the removal.')).toBeVisible();
     await noFalseClaim('history');
   });
   await go('#prototype-v3/choose');
@@ -117,7 +117,7 @@ test('real mode words: Welcome, Runs, Help, Projects, Library, Install history a
     await go('#prototype-v3/harnesses');
     await p.getByRole('button', { name: 'About this beta', exact: true }).click();
     const lines = await p.locator('.hx-preview-pop li').allInnerTexts();
-    expect(lines).toEqual(['Start', 'Compare', 'Runs', 'Assign to project, in the Harnesses list', 'Assign harness, Install, Update and Review, in Projects', 'Add, in the Library', 'Add a folder, in Projects']);
+    expect(lines).toEqual(['Start', 'Compare', 'Runs', 'Assign to project, in the Harnesses details', 'Assign harness, Install, Update and Review, in Projects', 'Add (the plus button), in the Library', 'Add a folder, in Projects']);
     for (const line of lines) expect(line).not.toMatch(/from a folder/i);
     await p.keyboard.press('Escape');
   });

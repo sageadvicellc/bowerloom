@@ -40,7 +40,7 @@ export const FLOW = deepFreeze({
     pickToContinue: 'Pick one to continue.',
     removeNote: 'This does not delete your files. It removes only what Bowerloom wrote.',
     yourFileNone: 'Not in this preview.', historyHint: 'Newest first. Undo puts back what the change replaced.',
-    historyEmptyReal: 'Nothing is listed yet. Installs from Projects are not in beta.1.', historyUndoReal: 'To undo a folder install, press Undo when it finishes.',
+    historyEmptyReal: 'Nothing is listed yet. Installs from Projects are not in beta.1.', historyUndoReal: 'To undo a folder install, press Undo, then approve the removal.',
     lookedAgain: 'Looked again. Nothing changed.', noneOffered: 'No engine is switched on. Turn one on in Engines.',
     nothingMade: 'Nothing was made.',
     pickInterface: 'Pick at least one engine.', undoFirst: 'Undo the newer change first', noProject: 'That project is not here.',
