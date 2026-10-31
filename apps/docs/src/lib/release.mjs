@@ -42,10 +42,17 @@ export function releaseReference(r) {
 export function systemSupport(r) {
   return releasePresentation(r).platforms;
 }
+export function installPublished(r) {
+  return r.npm.published === true && r.state === 'published';
+}
 export function releaseSections(r) {
   const reader=releasePresentation(r);
   const status=`${reader.label} · ${reader.version}\n\n${reader.capabilities.execution}`;
-  const install=`Install the beta CLI with Node \`${r.requirements.node}\` and npm \`${r.requirements.npm}\`.\n\n\`\`\`sh\n${reader.setupCommands}\n\`\`\`\n\nFirst-team setup does not need Docker. The separate local backend requires Docker Desktop and its own plan and approval.\n\n${systemSupport(r)}`;
+  const docker='Harness commands and first-team setup do not need Docker. The separate local backend requires Docker Desktop and its own plan and approval.';
+  // The install command shows only after npm publishes the package. Until then the block says it arrives later.
+  const install=installPublished(r)
+    ? `Install the beta CLI with Node \`${r.requirements.node}\` and npm \`${r.requirements.npm}\`.\n\n\`\`\`sh\n${reader.setupCommands}\n\`\`\`\n\n${reader.installNote}\n\n${docker}\n\n${systemSupport(r)}`
+    : `Bowerloom needs Node \`${r.requirements.node}\` and npm \`${r.requirements.npm}\`. The npm package \`${r.npm.packageName}\` is not published yet. The install command arrives when the beta publishes, under the \`${r.npm.distTag}\` dist-tag.\n\n${docker}\n\n${systemSupport(r)}`;
   const support=`${status}\n\n| Capability | Current boundary |\n| --- | --- |\n${Object.entries(reader.capabilities).map(([key,value])=>`| ${key==='skills'?'Portable skills':key[0].toUpperCase()+key.slice(1)} | ${value} |`).join('\n')}\n\n${systemSupport(r)}\n\n${reader.beyondSetup} ${reader.unattended}`;
   return {status,install,support};
 }

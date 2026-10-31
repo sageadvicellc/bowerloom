@@ -10,6 +10,7 @@ This reference describes `0.8.0-beta.1` for the operations that integrate or rev
 | Find | Page |
 | --- | --- |
 | A command family or flag | [CLI reference](/docs/cli/) |
+| A harness command | [Harness commands](/docs/cli/#harness) |
 | A setup file or brief field | [Files and configuration](/docs/configuration/) |
 | A status field or refusal | [Status and error reference](/docs/reference/errors/) |
 

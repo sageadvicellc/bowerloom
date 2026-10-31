@@ -1,9 +1,11 @@
 ---
 title: "Integrate your first team"
-description: "Prepare your project for a team with bowerloom up, and approve each step."
-section: "Learn"
+description: "Legacy 0.7. Prepare your project for a team with bowerloom up, and approve each step."
+section: "Legacy 0.7 team setup"
 order: 3
 ---
+
+> **Legacy (0.7).** This page describes the team setup flow of Bowerloom 0.7. Its commands are still in the CLI help of 0.8.0-beta.1. The current path is [Adopt and install a harness](/docs/guides/adopt-and-install/).
 
 Integrate a team with the project you already use. First [map your existing workflow](/docs/guides/integrate-workflow/) and compare it with a fixed profile. Then run `bowerloom up --team <name> --goal <goal>` in the project folder. Each step adds only `.bowerloom` and the skill copies. It shows its exact plan first. It writes after you approve that plan. Your other project files stay as they are.
 
