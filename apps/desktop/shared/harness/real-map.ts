@@ -191,6 +191,9 @@ export function partOfItem(item: HarnessItem, sourceId: string, sourceLabel: str
     path: path.split('/').map(plain).join('/'), source: sourceLabel, origin: sourceId,
     ...(plug?.version === undefined ? {} : { version: plug.version }), fileText, cannotUse: [], inLibrary: true,
     ...(model === undefined || plain(model.badge) === '' ? {} : { badge: cut(plain(model.badge), 40) }),
+    // The Overview reads these two. `contentHash` is the hash of the file text the reader kept for the part (a skill's SKILL.md), so two places with equal text read as one shared skill.
+    ...(item.kind === 'tool' ? { toolKind: item.toolKind } : {}),
+    ...(first === undefined || item.kind === 'context-slice' ? {} : { contentHash: first.contentHash }),
   };
 }
 
@@ -198,7 +201,23 @@ export function partOfItem(item: HarnessItem, sourceId: string, sourceLabel: str
 
 const FACE_ORDER: readonly string[] = [...INTERFACE_IDS, 'notes'];
 
-interface Where { readonly key: string; readonly name: string; readonly label: string; readonly interfaceName: string; readonly harnessName: string; readonly order: readonly [number, number, string] }
+interface Where {
+  readonly key: string; readonly name: string; readonly label: string; readonly interfaceName: string; readonly harnessName: string; readonly order: readonly [number, number, string];
+  /** `home` for the home folder, `project` for any other folder. */
+  readonly scope: 'home' | 'project';
+  /** The folder in `~` form, never a full path (see `folderLabelOf`). */
+  readonly folder: string;
+}
+
+/**
+ * The folder of a scope for the Overview: `~` for the home folder, `~/Projects/alpha` for a folder under it. A folder outside the home folder has a full path on the scope,
+ * and a full path never goes into the window's model, so only its last name is kept, after `…/`. That label matches no folder main knows, so the place is not marked "In Bowerloom".
+ */
+export function folderLabelOf(path: string): string {
+  if (path === '~' || path.startsWith('~/')) return path;
+  const last = path.split(/[\\/]/).filter(part => part !== '').at(-1) ?? '';
+  return last === '' ? '…' : `…/${last}`;
+}
 
 /** Why an item with no program the preview knows is left out: only Bowerloom's own folder holds it, or it is in a program the preview has no room for. */
 const leftOutWhy = (item: HarnessItem): 'bowerloom' | 'hermes' | 'unknown' => {
@@ -212,19 +231,20 @@ const thingsWord = (n: number): string => `${n} ${n === 1 ? 'thing' : 'things'}`
 function whereIs(item: HarnessItem, scopes: readonly Scope[]): Where | null {
   // Known limit: an item whose scope id is not in the list falls back to the first scope (index 0), so it can be shown under the wrong folder.
   const scopeAt = Math.max(0, scopes.findIndex(s => s.id === item.scopeId)), scope = scopes[scopeAt], home = scope === undefined || scope.kind === 'global', folder = scope === undefined ? '' : cut(plain(scope.name), NAME_CHARS);
+  const place = { scope: home ? 'home' : 'project', folder: home ? '~' : folderLabelOf(scope?.path ?? '') } as const;
   if (item.kind === 'context-slice') {
-    return { key: `${item.scopeId}|notes`, name: home ? 'Your notes' : `${folder} (notes)`, label: home ? 'Your notes' : `${folder} notes`, interfaceName: 'Notes', harnessName: home ? 'Your notes' : `${folder} notes`, order: [scopeAt, FACE_ORDER.indexOf('notes'), ''] };
+    return { key: `${item.scopeId}|notes`, name: home ? 'Your notes' : `${folder} (notes)`, label: home ? 'Your notes' : `${folder} notes`, interfaceName: 'Notes', harnessName: home ? 'Your notes' : `${folder} notes`, order: [scopeAt, FACE_ORDER.indexOf('notes'), ''], ...place };
   }
   const face = faceOf(item);
   if (face === null) return null;
   const app = adapterOf(face).label, first = foundIn(item, face)!, plug = pluginOf(first.path), order = FACE_ORDER.indexOf(face);
   if (plug !== null) {
     const name = titled(plug.name);
-    return { key: `${item.scopeId}|${face}|${plug.name}`, name: `${name} (plug-in)`, label: `${name} plug-in`, interfaceName: app, harnessName: `${name} plug-in`, order: [scopeAt, order, plug.name] };
+    return { key: `${item.scopeId}|${face}|${plug.name}`, name: `${name} (plug-in)`, label: `${name} plug-in`, interfaceName: app, harnessName: `${name} plug-in`, order: [scopeAt, order, plug.name], ...place };
   }
   return home
-    ? { key: `${item.scopeId}|${face}|`, name: `Your ${app} folder`, label: `Your ${app} folder`, interfaceName: app, harnessName: `${app} folder`, order: [scopeAt, order, ''] }
-    : { key: `${item.scopeId}|${face}|`, name: `${folder} (${app})`, label: `${folder} (${app})`, interfaceName: app, harnessName: `${folder} ${app}`, order: [scopeAt, order, ''] };
+    ? { key: `${item.scopeId}|${face}|`, name: `Your ${app} folder`, label: `Your ${app} folder`, interfaceName: app, harnessName: `${app} folder`, order: [scopeAt, order, ''], ...place }
+    : { key: `${item.scopeId}|${face}|`, name: `${folder} (${app})`, label: `${folder} (${app})`, interfaceName: app, harnessName: `${folder} ${app}`, order: [scopeAt, order, ''], ...place };
 }
 
 /** The links an agent's definition makes: to the skills it names, the connections it uses and the notes it reads. A link to a part that is not held is dropped. */
@@ -306,7 +326,7 @@ export function realToHarnessState(result: RealResult, places: readonly RealPlac
   const held = new Set(parts.map(p => p.id));
   const sources: ScanSource[] = ordered.map(w => {
     const members = keep.filter(p => p.where.key === w.key), links = members.flatMap(p => linksOf(p.item, held, world));
-    return { id: sourceIds.get(w.key)!, name: w.name, interfaceName: w.interfaceName, harnessName: w.harnessName, partIds: members.map(p => p.item.id), links };
+    return { id: sourceIds.get(w.key)!, name: w.name, interfaceName: w.interfaceName, harnessName: w.harnessName, partIds: members.map(p => p.item.id), links, scope: w.scope, label: w.folder };
   });
 
   // The notes this file writes come first: the screen shows the first few and hides the rest, and these say what is missing from the list.

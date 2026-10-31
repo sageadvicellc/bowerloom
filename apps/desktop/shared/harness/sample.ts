@@ -4,8 +4,9 @@
  * No status is written down here. Each one is computed from the install data (status.ts), so every screen says the same thing.
  * A few parts are held by a harness and are not listed in the Library tabs (`inLibrary: false`): the pictures give some harnesses more tools and context than the Library lists.
  */
+import { hashText } from '../world/sample.js';
 import { autoLinks } from './links.js';
-import type { Harness, HarnessState, HistoryEntry, Install, Interface, InterfaceId, Part, PartKind, Point, Project, Run, ScanSource, Stamp } from './types.js';
+import type { Harness, HarnessState, HistoryEntry, Install, Interface, InterfaceId, Link, Part, PartKind, Point, Project, Run, ScanSource, Stamp } from './types.js';
 
 export const slugOf = (name: string): string => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
@@ -217,9 +218,9 @@ function sampleHistory(now: Stamp): readonly HistoryEntry[] {
 }
 
 const SOURCES: readonly ScanSource[] = [
-  { id: ORIGIN.caveman, name: 'Caveman (plug-in)', interfaceName: 'Claude Code', harnessName: 'Caveman plug-in', partIds: PARTS.filter(p => p.origin === ORIGIN.caveman).map(p => p.id) },
-  { id: ORIGIN.claude, name: 'Your Claude Code folder', interfaceName: 'Claude Code', harnessName: 'Claude Code folder', partIds: PARTS.filter(p => p.origin === ORIGIN.claude).map(p => p.id) },
-  { id: ORIGIN.codex, name: 'Your Codex folder', interfaceName: 'Codex', harnessName: 'Codex folder', partIds: PARTS.filter(p => p.origin === ORIGIN.codex).map(p => p.id) },
+  { id: ORIGIN.caveman, name: 'Caveman (plug-in)', interfaceName: 'Claude Code', harnessName: 'Caveman plug-in', partIds: PARTS.filter(p => p.origin === ORIGIN.caveman).map(p => p.id), scope: 'home', label: '~' },
+  { id: ORIGIN.claude, name: 'Your Claude Code folder', interfaceName: 'Claude Code', harnessName: 'Claude Code folder', partIds: PARTS.filter(p => p.origin === ORIGIN.claude).map(p => p.id), scope: 'home', label: '~' },
+  { id: ORIGIN.codex, name: 'Your Codex folder', interfaceName: 'Codex', harnessName: 'Codex folder', partIds: PARTS.filter(p => p.origin === ORIGIN.codex).map(p => p.id), scope: 'home', label: '~' },
 ];
 
 /**
@@ -240,3 +241,45 @@ export const SAMPLE_IDS = Object.freeze({
   weekly: WEEKLY.id, caveman: CAVEMAN_PACK.id, inbox: INBOX_HELPER.id, research: RESEARCH_DESK.id,
   bowerloom: 'project-bowerloom', siteRedesign: 'project-site-redesign', notes: 'project-notes', garden: 'project-garden', archive: 'project-archive',
 });
+
+// ---- A made-up world of several places, for the Overview of the preview (Task 2). Nothing here is real: the places, names and texts are invented.
+
+const placeId = (slug: string, kind: PartKind, name: string): string => `${slug}-${kind}-${slugOf(name)}`;
+
+/**
+ * The sample world with three project places beside the home folder, so the Overview shows a home and three folders. `createSampleWorld` itself is not changed.
+ *  - Every skill carries a `contentHash` (a hash of its text). "Check facts" is in the home folder, in `alpha` and in `beta` with the same text, so it reads as shared.
+ *  - The two sample tools are connections (`toolKind: 'mcp'`). `alpha` has a hook, so the "Runs code" mark shows, and `gamma` holds one set of notes only.
+ *  - Each project has its own `ScanSource` with `scope: 'project'` and a `~` label. The home sources are the three the sample has.
+ */
+export function createSampleOverviewState(now: Stamp = SAMPLE_NOW): HarnessState {
+  const base = createSampleWorld(now);
+  const home = base.parts.map((p): Part => (p.kind === 'skill' ? { ...p, contentHash: hashText(p.fileText) } : p.kind === 'tool' ? { ...p, toolKind: 'mcp' } : p));
+  const checkFacts = home.find(p => p.id === 'skill-check-facts')!;
+  const made = (slug: string, kind: PartKind, row: Row, opts: { toolKind?: 'mcp' | 'prompt' | 'hook' } = {}): Part => {
+    const part = make(kind, row, `src-${slug}`);
+    return { ...part, id: placeId(slug, kind, row[0]), ...(kind === 'tool' && opts.toolKind !== undefined ? { toolKind: opts.toolKind } : {}), ...(kind === 'skill' ? { contentHash: hashText(part.fileText) } : {}) };
+  };
+  const shared = (slug: string): Part => ({ ...checkFacts, id: placeId(slug, 'skill', checkFacts.name), origin: `src-${slug}` });
+  const alpha: Part[] = [
+    made('alpha', 'agent', ['Reviewer', 'Reviews changes.', 'Reads a change and says what is risky.']), made('alpha', 'agent', ['Release helper', 'Prepares releases.', 'Gathers the notes for a release.']),
+    shared('alpha'), made('alpha', 'skill', ['Alpha checklist', 'Lists the checks.', 'The checks for the alpha folder.']),
+    made('alpha', 'tool', ['Format on save', 'Runs a formatter.', 'Runs a command when a file is saved.'], { toolKind: 'hook' }), made('alpha', 'tool', ['Tracker', 'Reads tasks.', 'Reads tasks from the tracker.'], { toolKind: 'mcp' }),
+    made('alpha', 'context', ['Alpha plan', 'Plan pages.', 'The plan pages of alpha.']),
+  ];
+  const beta: Part[] = [
+    made('beta', 'agent', ['Doc writer', 'Writes docs.', 'Writes the guide for beta.']), shared('beta'), made('beta', 'skill', ['Beta glossary', 'Lists terms.', 'The terms of beta.']),
+    made('beta', 'tool', ['Saved prompt', 'A saved prompt.', 'A prompt kept for beta.'], { toolKind: 'prompt' }),
+  ];
+  const gamma: Part[] = [made('gamma', 'context', ['Gamma notes', 'Notes pages.', 'A few pages of notes.'])];
+  const link = (slug: string, agent: string, ...to: readonly [PartKind, string][]) => to.map(([kind, name]) => ({ from: placeId(slug, 'agent', agent), to: placeId(slug, kind, name) }));
+  const source = (slug: string, name: string, label: string, parts: readonly Part[], links: readonly Link[]): ScanSource =>
+    ({ id: `src-${slug}`, name, interfaceName: 'Claude Code', harnessName: `${name} Claude Code`, partIds: parts.map(p => p.id), links, scope: 'project', label });
+  const sources: ScanSource[] = [
+    ...base.sources,
+    source('alpha', 'alpha (Claude Code)', '~/Projects/alpha', alpha, [...link('alpha', 'Reviewer', ['skill', 'Check facts'], ['tool', 'Format on save'], ['tool', 'Tracker']), ...link('alpha', 'Release helper', ['skill', 'Alpha checklist'], ['context', 'Alpha plan'])]),
+    source('beta', 'beta (Claude Code)', '~/Projects/beta', beta, link('beta', 'Doc writer', ['skill', 'Check facts'], ['skill', 'Beta glossary'])),
+    { ...source('gamma', 'gamma notes', '~/Projects/gamma', gamma, []), interfaceName: 'Notes', harnessName: 'gamma notes' },
+  ];
+  return { ...base, parts: [...home, ...alpha, ...beta, ...gamma], sources, chosenSourceIds: sources.map(s => s.id) };
+}

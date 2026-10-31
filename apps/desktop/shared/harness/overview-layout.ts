@@ -4,11 +4,14 @@
  * "List" view shows. Units are graph units, as in layout.ts. It reuses `GraphNode`, `Graph`, `View`, `Bounds`, `fitView`, `zoomAt`, `miniMap`, `centerOnMiniMap` and
  * `edgePath` from layout.ts; it does not change them (Task 0a owns that file).
  *
- * STAGE 1: the types and signatures are final. The functions throw `not built` until Task 2 lane G builds them.
+ * Pure: no DOM, no clock, no random number. Every order is fixed, so the same input gives an equal output. A layout is indexed once, in a weak table keyed by the layout
+ * object, so `visibleOf`, `neighbourOf` and `sharedEdgesOf` do not scan the whole layout on every call; the table is a cache and never changes an answer.
  */
 import type { PartKind } from './types.js';
+import { NODE_SIZE } from './layout.js';
 import type { Bounds, Graph, GraphNode, View } from './layout.js';
-import type { Overview, OverviewCounts, OverviewNode, OverviewToolKind } from './overview.js';
+import { OVERVIEW_LIMITS } from './overview.js';
+import type { Overview, OverviewCounts, OverviewGroup, OverviewNode, OverviewToolKind } from './overview.js';
 
 /** A node with its place. It is a `GraphNode`, so `edgePath` draws its edges. `x` and `y` are absolute graph units. */
 export interface LaidNode extends GraphNode {
@@ -41,12 +44,85 @@ export interface OverviewLayout {
   readonly map: Graph;
 }
 
+/** The height of a place's header strip. */
+const HEADER_H = 64;
+/** The space between two places, and between the last card and the foot of a place. */
+const GAP = 32, BODY_PAD = 16;
+/** The most columns of places. The grid is the square root of the number of places, rounded up, and never wider than this. */
+const MAX_COLUMNS = 4;
+// The default slots of the Builder (layout.ts keeps these private): the agents' column at the left, every other part's column at the right. A test pins them to `graphOf`.
+const LEFT_X = 48, RIGHT_X = 440, RIGHT_TOP = 40, RIGHT_PITCH = 76, AGENT_GAP = 12, AGENT_TOP = 70;
+
+interface Local { readonly node: OverviewNode; readonly x: number; readonly y: number; readonly w: number; readonly h: number }
+
+/** The cards of one open place, in coordinates from the top left of the place box, and the height the box needs. */
+function bodyOf(group: OverviewGroup): { readonly cards: readonly Local[]; readonly height: number } {
+  if (group.nodes.length === 0) return { cards: [], height: HEADER_H };
+  const shift = HEADER_H + BODY_PAD - RIGHT_TOP;
+  const slot = new Map<string, number>();
+  let other = 0;
+  for (const n of group.nodes) if (n.kind !== 'agent') { slot.set(n.id, RIGHT_TOP + other * RIGHT_PITCH); other += 1; }
+  const targets = new Map<string, number[]>();
+  for (const e of group.edges) { const y = slot.get(e.to); if (y !== undefined) { const list = targets.get(e.from) ?? []; list.push(y + NODE_SIZE.other.h / 2); targets.set(e.from, list); } }
+  const cards: Local[] = [];
+  let floor = Number.NEGATIVE_INFINITY, agents = 0, bottom = 0;
+  for (const n of group.nodes) {
+    let card: Local;
+    if (n.kind === 'agent') {
+      const ys = targets.get(n.id);
+      const wanted = ys !== undefined && ys.length > 0 ? ys.reduce((a, b) => a + b, 0) / ys.length - NODE_SIZE.agent.h / 2 : AGENT_TOP + agents * (NODE_SIZE.agent.h + AGENT_GAP);
+      const y = Math.max(wanted, floor);
+      floor = y + NODE_SIZE.agent.h + AGENT_GAP; agents += 1;
+      card = { node: n, x: LEFT_X, y: y + shift, w: NODE_SIZE.agent.w, h: NODE_SIZE.agent.h };
+    } else card = { node: n, x: RIGHT_X, y: slot.get(n.id)! + shift, w: NODE_SIZE.other.w, h: NODE_SIZE.other.h };
+    cards.push(card);
+    if (card.y + card.h > bottom) bottom = card.y + card.h;
+  }
+  return { cards, height: bottom + BODY_PAD };
+}
+
 /**
- * The layout of the Overview. `expanded` holds the ids of the groups drawn open. Deterministic: clusters sit in a grid of columns of OVERVIEW_LIMITS.clusterWidth,
- * filled in group order, each row as tall as its tallest box. The nodes of an expanded place use NODE_SIZE and the default slots of layout.ts. For 2,000 parts in
- * 30 groups it takes under 50 ms. STAGE 1: throws `not built`.
+ * The layout of the Overview. `expanded` holds the ids of the groups drawn open; an id that is no group is ignored. Deterministic: places sit in a grid of columns of
+ * OVERVIEW_LIMITS.clusterWidth (the square root of the number of places, rounded up, at most 4 columns), filled in group order, each row as tall as its tallest box. The
+ * cards of an open place use NODE_SIZE and the default slots of the Builder: an agent level with the middle of the parts it uses, and never closer than a gap to the agent above.
  */
-export function layoutOf(overview: Overview, expanded: ReadonlySet<string>): OverviewLayout { void overview; void expanded; throw new Error('not built'); }
+export function layoutOf(overview: Overview, expanded: ReadonlySet<string>): OverviewLayout {
+  const groups = overview.groups;
+  const columns = Math.min(MAX_COLUMNS, Math.max(1, Math.ceil(Math.sqrt(groups.length))));
+  const bodies = groups.map(g => (expanded.has(g.id) ? bodyOf(g) : null));
+  const rowHeights: number[] = [];
+  bodies.forEach((body, i) => { const row = Math.floor(i / columns), h = body === null ? HEADER_H : body.height; rowHeights[row] = Math.max(rowHeights[row] ?? 0, h); });
+  const rowTops: number[] = [];
+  let top = 0;
+  for (const h of rowHeights) { rowTops.push(top); top += h + GAP; }
+  const clusters: LaidCluster[] = [], nodes: LaidNode[] = [], edges: LaidEdge[] = [];
+  let right = 0, bottom = 0;
+  groups.forEach((g, i) => {
+    const x = (i % columns) * (OVERVIEW_LIMITS.clusterWidth + GAP), y = rowTops[Math.floor(i / columns)]!, body = bodies[i] ?? null;
+    const w = OVERVIEW_LIMITS.clusterWidth, h = body === null ? HEADER_H : body.height;
+    const ids: string[] = [];
+    if (body !== null) {
+      for (const c of body.cards) {
+        const n = c.node;
+        ids.push(n.id);
+        nodes.push({
+          id: n.id, kind: n.kind, name: n.name, summary: n.summary, missing: false, isNew: false, x: x + c.x, y: y + c.y, w: c.w, h: c.h,
+          groupId: g.id, ...(n.toolKind === undefined ? {} : { toolKind: n.toolKind }), ...(n.runsCode === undefined ? {} : { runsCode: n.runsCode }), sharedWith: n.sharedWith,
+        });
+      }
+      for (const e of g.edges) edges.push({ id: e.id, from: e.from, to: e.to, groupId: g.id });
+    }
+    clusters.push({ id: g.id, x, y, w, h, expanded: body !== null, header: { x, y, w, h: HEADER_H }, nodeIds: ids });
+    if (x + w > right) right = x + w;
+    if (y + h > bottom) bottom = y + h;
+  });
+  const bounds: Bounds = groups.length === 0 ? { left: 0, top: 0, right: 0, bottom: 0 } : { left: 0, top: 0, right, bottom };
+  const map: Graph = {
+    nodes: clusters.map((c, i) => ({ id: c.id, kind: 'context' as PartKind, name: groups[i]!.name, summary: '', missing: false, isNew: false, x: c.x, y: c.y, w: c.w, h: c.h })),
+    edges: [], bounds,
+  };
+  return { clusters, nodes, edges, bounds, map };
+}
 
 /**
  * The ids of the groups to open on first draw. The home group (scope `home`, the first group) is ALWAYS open, however many nodes it holds: it is the person's own
@@ -54,7 +130,18 @@ export function layoutOf(overview: Overview, expanded: ReadonlySet<string>): Ove
  * opened while the nodes drawn in all open groups stay under OVERVIEW_LIMITS.expandedNodes; the first one that would pass it stays closed, and so do the rest.
  * An Overview with no home group opens by the same rule from the first group.
  */
-export function defaultExpanded(overview: Overview): ReadonlySet<string> { void overview; throw new Error('not built'); }
+export function defaultExpanded(overview: Overview): ReadonlySet<string> {
+  const open = new Set<string>();
+  let total = 0, start = 0;
+  const first = overview.groups[0];
+  if (first !== undefined && first.scope === 'home') { open.add(first.id); total = first.nodes.length; start = 1; }
+  // A place opens while the total stays within the limit; the first that would pass it stays closed, and so do the rest.
+  for (const g of overview.groups.slice(start)) {
+    if (total + g.nodes.length > OVERVIEW_LIMITS.expandedNodes) break;
+    open.add(g.id); total += g.nodes.length;
+  }
+  return open;
+}
 
 /**
  * What the page draws now. `detail` is `nodes` at zoom OVERVIEW_LIMITS.detailZoom and above, and `boxes` under it (expanded places draw as boxes with counts only,
@@ -70,22 +157,100 @@ export interface OverviewVisible {
 /**
  * The clusters, nodes and edges that meet a window of `width` by `height` screen pixels seen through `view`, plus `margin` graph units on every side (default
  * OVERVIEW_LIMITS.cullMargin). `selected` is a node id that stays in the set even when it is out of view. It counts inside the cap: when the nodes in view fill
- * OVERVIEW_LIMITS.domNodes, the selected node takes the place of the last one, so `nodes.length` is at most domNodes. STAGE 1: throws `not built`.
+ * OVERVIEW_LIMITS.domNodes, the selected node takes the place of the last one, so `nodes.length` is at most domNodes.
+ * When more nodes are in view than the cap, the ones nearest the middle of the window stay. An edge is kept when at least one of its ends is in `nodes`, so a long edge across the window is drawn;
+ * `clusters` are the boxes that meet the window (the selected node's own box is not added when it is out of view).
  */
 export function visibleOf(layout: OverviewLayout, view: View, width: number, height: number, margin?: number, selected?: string | null): OverviewVisible {
-  void layout; void view; void width; void height; void margin; void selected; throw new Error('not built');
+  const k = Number.isFinite(view.k) && view.k > 0 ? view.k : 1;
+  const m = margin ?? OVERVIEW_LIMITS.cullMargin;
+  const x0 = -view.x / k - m, y0 = -view.y / k - m, x1 = (Math.max(0, width) - view.x) / k + m, y1 = (Math.max(0, height) - view.y) / k + m;
+  const meets = (r: { x: number; y: number; w: number; h: number }): boolean => r.x < x1 && r.x + r.w > x0 && r.y < y1 && r.y + r.h > y0;
+  const clusters = layout.clusters.filter(meets);
+  const detail: OverviewVisible['detail'] = view.k >= OVERVIEW_LIMITS.detailZoom ? 'nodes' : 'boxes';
+  if (detail === 'boxes') return { detail, clusters: clusters.map(c => c.id), nodes: [], edges: [] };
+  const index = indexOf(layout);
+  const inView: LaidNode[] = [];
+  for (const c of clusters) if (c.expanded) for (const n of index.byGroup.get(c.id) ?? []) if (meets(n)) inView.push(n);
+  let chosen = inView;
+  const cap = OVERVIEW_LIMITS.domNodes;
+  const picked = selected === undefined || selected === null ? undefined : index.byId.get(selected);
+  if (inView.length > cap) {
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    const near = (n: LaidNode): number => (n.x + n.w / 2 - cx) ** 2 + (n.y + n.h / 2 - cy) ** 2;
+    chosen = inView.map(n => ({ n, d: near(n), at: index.order.get(n.id)! })).sort((a, b) => a.d - b.d || a.at - b.at).slice(0, cap).map(e => e.n);
+  }
+  if (picked !== undefined && !chosen.includes(picked)) {
+    // The selected node stays, inside the cap: it takes the place of the last (the farthest) one.
+    chosen = chosen.length >= cap ? [...chosen.slice(0, cap - 1), picked] : [...chosen, picked];
+  }
+  chosen = [...chosen].sort((a, b) => index.order.get(a.id)! - index.order.get(b.id)!);
+  const ids = new Set(chosen.map(n => n.id));
+  const edges: string[] = [];
+  for (const c of clusters) if (c.expanded) for (const e of index.edgesByGroup.get(c.id) ?? []) if (ids.has(e.from) || ids.has(e.to)) edges.push(e.id);
+  return { detail, clusters: clusters.map(c => c.id), nodes: chosen.map(n => n.id), edges };
 }
 
-/** The thin dotted edges drawn for the selected node only: from it to each copy of the same skill in other places, in group order. Empty for a node that is not shared. STAGE 1: throws `not built`. */
-export function sharedEdgesOf(layout: OverviewLayout, nodeId: string): readonly LaidEdge[] { void layout; void nodeId; throw new Error('not built'); }
+/** What `visibleOf`, `neighbourOf` and `sharedEdgesOf` look up, built once for each layout object. */
+interface Index {
+  readonly byId: ReadonlyMap<string, LaidNode>;
+  readonly order: ReadonlyMap<string, number>;
+  readonly byGroup: ReadonlyMap<string, readonly LaidNode[]>;
+  readonly edgesByGroup: ReadonlyMap<string, readonly LaidEdge[]>;
+}
+const INDEXES = new WeakMap<OverviewLayout, Index>();
+function indexOf(layout: OverviewLayout): Index {
+  const known = INDEXES.get(layout);
+  if (known !== undefined) return known;
+  const byId = new Map<string, LaidNode>(), order = new Map<string, number>(), byGroup = new Map<string, LaidNode[]>(), edgesByGroup = new Map<string, LaidEdge[]>();
+  layout.nodes.forEach((n, i) => {
+    byId.set(n.id, n); order.set(n.id, i);
+    const list = byGroup.get(n.groupId) ?? []; list.push(n); byGroup.set(n.groupId, list);
+  });
+  for (const e of layout.edges) { const list = edgesByGroup.get(e.groupId) ?? []; list.push(e); edgesByGroup.set(e.groupId, list); }
+  const made: Index = { byId, order, byGroup, edgesByGroup };
+  INDEXES.set(layout, made);
+  return made;
+}
+
+/** The thin dotted edges drawn for the selected node only: from it to each copy of the same skill in other places, in group order. Empty for a node that is not shared.
+ * Only copies that are laid (in an open place) get an edge. A laid node does not carry its content hash, so a copy is found in another place as the skill that is shared with
+ * the same set of places and has the same name; with no such name, as the only skill shared with that set. The edge id is `<node>~<copy>`; its `groupId` is the node's place. */
+export function sharedEdgesOf(layout: OverviewLayout, nodeId: string): readonly LaidEdge[] {
+  const index = indexOf(layout), node = index.byId.get(nodeId);
+  if (node === undefined || node.sharedWith.length === 0) return [];
+  const sig = (n: LaidNode): string => [...n.sharedWith, n.groupId].sort().join('\u0000');
+  const mine = sig(node), out: LaidEdge[] = [];
+  for (const groupId of node.sharedWith) {
+    const same = (index.byGroup.get(groupId) ?? []).filter(n => n.kind === 'skill' && n.sharedWith.length > 0 && sig(n) === mine);
+    const named = same.filter(n => n.name === node.name);
+    const copy = named.length > 0 ? named[0] : same.length === 1 ? same[0] : undefined;
+    if (copy !== undefined) out.push({ id: `${node.id}~${copy.id}`, from: node.id, to: copy.id, groupId: node.groupId });
+  }
+  return out;
+}
 
 export type Direction = 'up' | 'down' | 'left' | 'right';
 /**
  * The nearest node from `id` in a direction, for the arrow keys. `among` limits the choice to those node ids (the visible set); with none, every laid node counts.
- * Null when there is none. Ties go to the smaller id, so the move is the same every time. STAGE 1: throws `not built`.
+ * Null when there is none. Ties go to the smaller id, so the move is the same every time.
+ * A node counts when its middle is on the far side of this node's middle in that direction. The nearest wins by the distance along the move plus twice the distance across it,
+ * so a key press stays in its column or row first and then goes on to the next place.
  */
 export function neighbourOf(layout: OverviewLayout, id: string, direction: Direction, among?: ReadonlySet<string>): string | null {
-  void layout; void id; void direction; void among; throw new Error('not built');
+  const index = indexOf(layout), from = index.byId.get(id);
+  if (from === undefined) return null;
+  const fx = from.x + from.w / 2, fy = from.y + from.h / 2;
+  let best: LaidNode | null = null, bestCost = Number.POSITIVE_INFINITY;
+  for (const n of among === undefined ? layout.nodes : [...among].map(a => index.byId.get(a)).filter((n): n is LaidNode => n !== undefined)) {
+    if (n.id === id) continue;
+    const dx = n.x + n.w / 2 - fx, dy = n.y + n.h / 2 - fy;
+    const along = direction === 'right' ? dx : direction === 'left' ? -dx : direction === 'down' ? dy : -dy;
+    if (along <= 0) continue;
+    const cost = along + 2 * Math.abs(direction === 'left' || direction === 'right' ? dy : dx);
+    if (cost < bestCost || (cost === bestCost && best !== null && n.id < best.id)) { best = n; bestCost = cost; }
+  }
+  return best === null ? null : best.id;
 }
 
 /** One kind of part in a place of the List view. */
@@ -101,5 +266,11 @@ export interface OverviewListGroup {
   readonly counts: OverviewCounts;
   readonly sections: readonly OverviewListSection[];
 }
-/** The List view's data, in group order. STAGE 1: throws `not built`. */
-export function listOf(overview: Overview): readonly OverviewListGroup[] { void overview; throw new Error('not built'); }
+/** The List view's data, in group order. */
+export function listOf(overview: Overview): readonly OverviewListGroup[] {
+  const kinds: readonly PartKind[] = ['agent', 'skill', 'tool', 'context'];
+  return overview.groups.map(g => ({
+    id: g.id, name: g.name, label: g.label, scope: g.scope, inBowerloom: g.inBowerloom, folderId: g.folderId, counts: g.counts,
+    sections: kinds.map(kind => ({ kind, nodes: g.nodes.filter(n => n.kind === kind) })).filter(s => s.nodes.length > 0),
+  }));
+}
