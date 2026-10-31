@@ -11,6 +11,12 @@ import { ReadNotes, hasNotes } from './ReadNotes.js';
 import { REAL, nothingReadLine } from './words-real.js';
 import './real.css';
 
+/** The words of the screen with no bridge. The screen has no way on, so it offers the one thing a person can do (close the window) and points to the Help menu. */
+export const NO_BRIDGE_WORDS = Object.freeze({ close: 'Close Bowerloom', help: 'To tell us, choose Help, then Report a problem.' });
+
+/** Closes the window of the page. The page has no bridge here, so this is all it can do; on macOS the app itself stays open until Quit. */
+export const closeWindow = (): void => { window.close(); };
+
 export function NothingFound({ nothingRead, readNotes = null, busy, onAdd, onSample, onLeave }: { nothingRead: boolean; readNotes?: RealNotes | null; busy: boolean; onAdd(): void; onSample(): void; onLeave?: (() => void) | undefined }): ReactElement {
   const add = useRef<HTMLButtonElement>(null);
   useEffect(() => { add.current?.focus({ preventScroll: true }); }, []);
@@ -45,9 +51,15 @@ export function ReadFailed({ code, onRetry, onSample, onLeave }: { code: string;
 
 /** A real launch whose bridge is missing or partial. It says so in plain words and offers no way on: the sample is not a stand-in for the person's own folders. */
 export function NoBridge(): ReactElement {
+  const close = useRef<HTMLButtonElement>(null);
+  useEffect(() => { close.current?.focus({ preventScroll: true }); }, []);
   return (
     <div className="hxr-nothing" role="alert" data-error="NO_BRIDGE">
       <p className="hxf-line">{reasonWords('NO_BRIDGE')}</p>
+      <p className="hxf-line">{NO_BRIDGE_WORDS.help}</p>
+      <div className="hxf-actions">
+        <HButton ref={close} variant="primary" onClick={closeWindow}>{NO_BRIDGE_WORDS.close}</HButton>
+      </div>
     </div>
   );
 }

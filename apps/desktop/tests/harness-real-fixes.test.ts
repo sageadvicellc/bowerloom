@@ -14,7 +14,7 @@ import { runRead } from '../renderer/harness/real/read-run.js';
 import { firstState, reduceChoose } from '../renderer/harness/real/state.js';
 import type { ChooseAction, ChooseState } from '../renderer/harness/real/state.js';
 import { chooseKind } from '../renderer/harness/real/mode.js';
-import { NoBridge, NothingFound } from '../renderer/harness/real/Nothing.js';
+import { NO_BRIDGE_WORDS, NoBridge, NothingFound, closeWindow } from '../renderer/harness/real/Nothing.js';
 import { ChooseLines, NOTES_SHOWN, PlaceNotes, ReadNotes, visibleNotes } from '../renderer/harness/real/ReadNotes.js';
 import { PlaceRow } from '../renderer/harness/real/PlaceRow.js';
 import { REAL, limitsLine, nothingReadLine, skippedLine } from '../renderer/harness/real/words-real.js';
@@ -113,6 +113,17 @@ test('a real launch without its bridge shows the no-bridge error and never the s
   const html = markup(createElement(NoBridge));
   assert.ok(html.includes(reasonWords('NO_BRIDGE'))); assert.ok(html.includes('data-error="NO_BRIDGE"')); assert.doesNotMatch(html, /sample/i);
   assert.equal(bannedHere(reasonWords('NO_BRIDGE')), null);
+  // The screen is not a dead end: it has an action that closes the window, and it points to the Help menu entry that reports a problem.
+  assert.match(html, /<button[^>]*>[^<]*Close Bowerloom/); assert.ok(html.includes(NO_BRIDGE_WORDS.help)); assert.match(NO_BRIDGE_WORDS.help, /Help.*Report a problem/);
+  for (const text of [NO_BRIDGE_WORDS.close, NO_BRIDGE_WORDS.help]) { assert.equal(bannedHere(text), null, text); assert.ok(countWords(text) <= LIMITS.hint, text); }
+});
+
+test('the Close Bowerloom action closes the window of the page', () => {
+  const closed: string[] = [];
+  const seen = globalThis as unknown as { window?: { close(): void } };
+  seen.window = { close: () => { closed.push('closed'); } };
+  try { closeWindow(); } finally { delete seen.window; }
+  assert.deepEqual(closed, ['closed']);
 });
 
 // ---- 4: the notes
