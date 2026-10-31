@@ -145,7 +145,9 @@ export function TourCard({ state, hint = null, onNext, onBack, onSkip }: TourOve
     const focusin = (e: FocusEvent): void => {
       if (pop.current === null || !(e.target instanceof Node) || pop.current.contains(e.target)) return;
       const area = mode.current.waiting && mode.current.litId !== null ? findTarget(mode.current.litId) : null;
-      if (area !== null && area.contains(e.target)) return;
+      // A press in the lit area on something that takes no focus gives it to a box around the area (the sheet's body): that press is the person's, and a
+      // focus moved away now would stop the drag it starts.
+      if (area !== null && (area.contains(e.target) || e.target.contains(area))) return;
       (next.current ?? pop.current.querySelector<HTMLElement>('button'))?.focus();
     };
     window.addEventListener('keydown', key, true);

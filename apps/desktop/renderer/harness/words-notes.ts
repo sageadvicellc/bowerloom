@@ -15,13 +15,13 @@ export const NOTES = deepFreeze({
   /** Names of things and buttons: at most 5 words each. */
   label: {
     notes: 'Notes', keeper: 'Notes keeper', useMine: 'Use my notes', startFresh: 'Start fresh', create: 'Create', chooseAgain: 'Choose another folder',
-    startHistory: 'Start its history', notNow: 'Not now', showDetails: 'Show details', hideDetails: 'Hide details', starterFiles: 'Starter files',
+    startHistory: 'Start its history', declineHistory: 'No history for now', notNow: 'Not now', showDetails: 'Show details', hideDetails: 'Hide details', starterFiles: 'Starter files',
     historyFiles: 'Files it records', addKeeper: 'Add the Notes keeper', addRest: 'Add the other skills', add: 'Add', skillsShelf: 'Skills',
-    notesShelf: 'Notes', kitSkills: 'Ready-made skills', yourNotes: 'Your notes', addNotes: 'Add notes', help: 'Help', replay: 'Replay the tour',
+    notesShelf: 'Notes', kitSkills: 'Ready-made skills', yourNotes: 'Your notes', addNotes: 'Add notes', help: 'Help', replay: 'Help: replay the tour',
     notesEachAgent: 'Notes each agent reads', buildKeeper: 'Build my Notes keeper', setUpNotes: 'Set up my notes', showAround: 'Show me around',
     tour: 'Tour', tourSteps: 'Tour steps', tourSkip: 'Skip tour', tourBack: 'Back', tourNext: 'Next', tourDone: 'Done', whatNext: 'What next',
     stepMap: 'Agents', stepNotes: 'Notes', stepKeeper: 'Keeper', stepShelves: 'Shelves', stepSave: 'Save', stepHelp: 'Help', stepNext: 'What next',
-    takeOff: 'Take off', folder: 'Folder', latestReport: 'Latest report', notesSteps: 'Notes steps', building: 'Build the keeper',
+    takeOff: 'Take off', reading: 'Reading the folder', writing: 'Writing', folder: 'Folder', latestReport: 'Latest report', notesSteps: 'Notes steps', building: 'Build the keeper',
   },
   /** Short lines: at most 12 words each. */
   hint: {
@@ -62,6 +62,8 @@ export const lastChangeWords = (at: string | null): string => (at === null ? 'No
 export const usedByWords = (agents: readonly string[]): string => (agents.length === 0 ? 'No agent reads these yet.' : `Read by ${agents.join(', ')}`);
 /** "Tidy-up report 2026-10-29", or "No tidy-up report yet." The report's path sits behind "Show details". */
 export const reportWords = (latest: { readonly date: string; readonly path: string } | null): string => (latest === null ? 'No tidy-up report yet.' : `Tidy-up report ${latest.date}`);
+/** "And 3 more.": the file names past the list's end. */
+export const moreWords = (n: number): string => `And ${n} more.`;
 /** "2 hidden names stay out." */
 export const hiddenWords = (n: number): string => `${plural(n, 'hidden name stays', 'hidden names stay')} out.`;
 /** "Add add-source to the Notes keeper": the name of a skill card's Add button. */

@@ -42,6 +42,8 @@ const same = (a: readonly string[], b: readonly string[]): boolean => a.length =
 const has = (def: DefinitionView, skill: string): boolean => def.skills.some(s => s.id === skill);
 /** The harness the draft starts from: as main read it, or with the kit added when the draft adds one. */
 const startOf = (base: DefinitionView, draft: SaveDraft): DefinitionView => draft.kit?.view ?? base;
+/** The same, for the editor: the skills it lists, removed ones included, are this harness's. */
+export const draftStart = startOf;
 
 /** The skills an agent uses in the draft, in the agent's own order with each new link at the end, without the removed ones. */
 function skillsOf(base: DefinitionView, draft: SaveDraft, agent: string): string[] {

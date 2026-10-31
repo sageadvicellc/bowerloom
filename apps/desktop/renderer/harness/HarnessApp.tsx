@@ -39,6 +39,8 @@ import { AdoptSheet } from './sheets/AdoptSheet.js';
 import { ProjectSheet } from './sheets/ProjectSheet.js';
 import { SaveSheet } from './sheets/SaveSheet.js';
 import { EngineProvider } from './engine.js';
+import { NotesProvider } from './notes/notes-session.js';
+import { NotesFirstRun } from './notes/NotesFirstRun.js';
 import { createSampleEngine } from '../../shared/engine/sample.js';
 import { SAMPLE_PREVIEW_ATTRIBUTE } from '../../shared/engine/sample-switch.js';
 import type { EngineBridge } from '../../shared/engine/types.js';
@@ -54,6 +56,7 @@ function Screens({ route, bridge, realMode }: { route: Route; bridge: RealBridge
       return choose.kind === 'real' ? <RealChoose bridge={choose.bridge} /> : choose.kind === 'no-bridge' ? <NoBridgeScreen /> : <ChooseSources />;
     }
     case 'read': return <ReadSources />;
+    case 'notes': return <NotesFirstRun />;
     case 'harnesses': return <HarnessList id={route.id ?? null} />;
     case 'builder': return <Builder key={route.id} id={route.id} view={route.view} />;
     case 'file': return <FileView partId={route.partId} />;
@@ -75,7 +78,7 @@ function Overlays(): ReactElement {
       <StartSheet open={ui.start.open} harnessId={ui.start.harnessId} projectId={ui.start.projectId} onClose={ui.closeStart} />
       <AdoptSheet open={ui.adopt.open} folderId={ui.adopt.folderId} onClose={ui.closeAdopt} />
       <ProjectSheet open={ui.projectSheet.open} folderId={ui.projectSheet.folderId} mode={ui.projectSheet.mode} keep={ui.projectSheet.keep} onClose={ui.closeProject} />
-      <SaveSheet open={ui.saveSheet.open} folderId={ui.saveSheet.folderId} onClose={ui.closeSave} />
+      <SaveSheet open={ui.saveSheet.open} folderId={ui.saveSheet.folderId} tour={ui.saveSheet.tour} onClose={ui.closeSave} />
       <Toast />
     </>
   );
@@ -99,5 +102,5 @@ export function HarnessApp({ store: given, real = null, realMode = real !== null
   useEffect(() => () => store.dispose(), [store]);
   // The adopt and install sheets: the sample answers in memory and writes nothing; real mode uses the window's engine bridge, or none (the sheets then say so).
   const [engine] = useState<EngineBridge | null>(() => (givenEngine !== undefined ? givenEngine : realMode ? null : createSampleEngine({ previewEngines: document.body.getAttribute(SAMPLE_PREVIEW_ATTRIBUTE) === '1' })));
-  return <HarnessProvider store={store}><EngineProvider engine={engine}><UiProvider><Routes bridge={real} realMode={realMode} /></UiProvider></EngineProvider></HarnessProvider>;
+  return <HarnessProvider store={store}><EngineProvider engine={engine}><UiProvider><NotesProvider><Routes bridge={real} realMode={realMode} /></NotesProvider></UiProvider></EngineProvider></HarnessProvider>;
 }
