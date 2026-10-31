@@ -232,8 +232,8 @@ test('storedKnowledgePath refuses an absolute path outside home, a .. that escap
 
 // ---- the edits ----------------------------------------------------------------------------------------------------------
 
-test('EDIT_KINDS holds set-source and remove-source', () => {
-  assert.deepEqual([...EDIT_KINDS], ['set-skill', 'add-skill', 'remove-skill', 'set-agent', 'set-instructions', 'set-engines', 'set-source', 'remove-source']);
+test('EDIT_KINDS holds set-source and remove-source, then the kit edits', () => {
+  assert.deepEqual([...EDIT_KINDS], ['set-skill', 'add-skill', 'remove-skill', 'set-agent', 'set-instructions', 'set-engines', 'set-source', 'remove-source', 'add-agent', 'set-borrowed', 'remove-borrowed']);
 });
 
 test('set-source creates knowledge.json when the folder had none, and touches nothing else', () => {

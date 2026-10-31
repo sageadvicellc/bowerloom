@@ -22,11 +22,13 @@ import { decodeText, isRecord, parseStrictJson, readFrontmatter, toLf } from './
 import { loadDefinitionFiles } from './load.js';
 import { safeName } from './secrets.js';
 import { isKnowledgeKind, isKnowledgePath } from './knowledge.js';
-import type { Definition, DefinitionFile, EngineTarget, JsonValue, KnowledgeSource, Problem } from './types.js';
-import { DEFINITION_LIMITS, KNOWLEDGE_FILE, KNOWLEDGE_KINDS, isId } from './words.js';
+import type { Definition, DefinitionFile, EngineTarget, JsonValue, KnowledgeSource, Problem, SourceRecord } from './types.js';
+import { DEFINITION_LIMITS, KNOWLEDGE_FILE, KNOWLEDGE_KINDS, OVERRIDABLE_PARTS, isId } from './words.js';
 
 /** The kinds of edit, one set for every caller. */
-export const EDIT_KINDS = Object.freeze(['set-skill', 'add-skill', 'remove-skill', 'set-agent', 'set-instructions', 'set-engines', 'set-source', 'remove-source'] as const);
+export const EDIT_KINDS = Object.freeze([
+  'set-skill', 'add-skill', 'remove-skill', 'set-agent', 'set-instructions', 'set-engines', 'set-source', 'remove-source', 'add-agent', 'set-borrowed', 'remove-borrowed',
+] as const);
 
 /**
  * One edit of one folder's definition.
@@ -44,6 +46,13 @@ export const EDIT_KINDS = Object.freeze(['set-skill', 'add-skill', 'remove-skill
  *   folder, or `~/<path>`.
  * - `remove-source`: removes a source from `knowledge.json`, and its name from the `notes` of each agent, as
  *   `remove-skill` does for skills. A `notes` list left empty is removed. The last source removed deletes the file.
+ * - `add-agent`: creates `agents/<id>.md` with the text given, and lists the subagents part in `harness.json` when it was
+ *   not listed. A ready-made kit brings its agent this way.
+ * - `set-borrowed`: records borrowed items in `sources.json` (harness definition spec, section 7): a name, a marketplace, a
+ *   pinned version, and the items. It adds the record, creating the file and listing the plugins part, or replaces the
+ *   record of the same name in place. Every other record and the `adopted` list stay.
+ * - `remove-borrowed`: removes the record of that name. When no record and no adopted skill is left, the file goes, and so
+ *   does its pointer in `harness.json`.
  */
 export type DefinitionEdit =
   | { readonly kind: 'set-skill'; readonly id: string; readonly text: string }
@@ -56,7 +65,10 @@ export type DefinitionEdit =
   | { readonly kind: 'set-instructions'; readonly text: string }
   | { readonly kind: 'set-engines'; readonly engines: readonly EngineTarget[] }
   | { readonly kind: 'set-source'; readonly source: KnowledgeSource }
-  | { readonly kind: 'remove-source'; readonly name: string };
+  | { readonly kind: 'remove-source'; readonly name: string }
+  | { readonly kind: 'add-agent'; readonly id: string; readonly text: string }
+  | { readonly kind: 'set-borrowed'; readonly source: SourceRecord }
+  | { readonly kind: 'remove-borrowed'; readonly name: string };
 
 /** What a result does to one path, compared with the definition given. */
 export interface EditChange {
@@ -138,12 +150,14 @@ function apply(def: Definition, edits: readonly DefinitionEdit[]): EditResult {
   const work: Work = new Map(def.files.map(f => [f.path, { bytes: Buffer.from(f.bytes), executable: f.executable === true }]));
   const harness = new HarnessDraft(work);
   const knowledge = new KnowledgeDraft(work);
+  const borrowed = new BorrowedDraft(work, harness);
   edits.forEach((edit, i) => {
-    try { applyOne(work, harness, knowledge, snapshot(edit)); } catch (error) {
+    try { applyOne(work, harness, knowledge, borrowed, snapshot(edit)); } catch (error) {
       if (error instanceof Refusal && error.edit === undefined) throw new Refusal(error.code, error.message, i, error.problems);
       throw error;
     }
   });
+  borrowed.flush();
   harness.flush();
   knowledge.flush();
 
@@ -186,6 +200,9 @@ const SHAPES: Readonly<Record<(typeof EDIT_KINDS)[number], { required: readonly 
   'set-engines': { required: ['engines'], optional: [] },
   'set-source': { required: ['source'], optional: [] },
   'remove-source': { required: ['name'], optional: [] },
+  'add-agent': { required: ['id', 'text'], optional: [] },
+  'set-borrowed': { required: ['source'], optional: [] },
+  'remove-borrowed': { required: ['name'], optional: [] },
 };
 
 const isPlain = (value: unknown): value is Record<string, unknown> => {
@@ -261,7 +278,7 @@ function sourceOf(value: unknown): KnowledgeSource {
 
 // ---- the edits ------------------------------------------------------------------------------------------------------
 
-function applyOne(work: Work, harness: HarnessDraft, knowledge: KnowledgeDraft, edit: Record<string, unknown> & { kind: (typeof EDIT_KINDS)[number] }): void {
+function applyOne(work: Work, harness: HarnessDraft, knowledge: KnowledgeDraft, borrowed: BorrowedDraft, edit: Record<string, unknown> & { kind: (typeof EDIT_KINDS)[number] }): void {
   switch (edit.kind) {
     case 'set-skill': {
       const id = idOf(edit.id, 'skill'), body = textOf(edit.text, 'skill');
@@ -327,7 +344,49 @@ function applyOne(work: Work, harness: HarnessDraft, knowledge: KnowledgeDraft, 
       for (const path of [...work.keys()]) if (AGENT_FILE.test(path)) rewriteAgent(work, path, data => unlinkNotes(data, name));
       return;
     }
+    case 'add-agent': {
+      const id = idOf(edit.id, 'agent'), body = textOf(edit.text, 'agent');
+      const at = `agents/${id}.md`;
+      if (work.has(at)) throw new Refusal('EDIT_DUPLICATE_ID', `The folder already holds an agent ${safeName(id)}.`);
+      work.set(at, { bytes: Buffer.from(body, 'utf8'), executable: false });
+      harness.part('subagents', 'agents/');
+      return;
+    }
+    case 'set-borrowed':
+      borrowed.set(borrowedOf(edit.source));
+      return;
+    case 'remove-borrowed': {
+      const name = edit.name;
+      if (typeof name !== 'string' || name === '' || name.length > 256) throw new Refusal('EDIT_BAD_EDIT', 'A remove-borrowed edit needs the name of a record.');
+      if (!borrowed.has(name)) throw new Refusal('EDIT_UNKNOWN_ID', `The folder holds no borrowed record ${safeName(name)}.`);
+      borrowed.remove(name);
+      return;
+    }
   }
+}
+
+/**
+ * A record of a `set-borrowed` edit: exactly a name, a marketplace, a version, and one or more items, each exactly a part
+ * that can be borrowed and an id. The loader checks the rest of the result: a pinned version, and that each item exists.
+ */
+function borrowedOf(value: unknown): SourceRecord {
+  const bad = (why: string) => new Refusal('EDIT_BAD_EDIT', why);
+  if (!isPlain(value)) throw bad('A set-borrowed edit needs a source: an object with a name, a marketplace, a version, and items.');
+  const keys = Object.keys(value);
+  if (keys.length !== 4 || !['name', 'marketplace', 'version', 'items'].every(k => keys.includes(k))) throw bad('A borrowed record has exactly a name, a marketplace, a version, and items.');
+  const { name, marketplace, version, items } = value;
+  for (const [what, v] of [['name', name], ['marketplace', marketplace], ['version', version]] as const) {
+    if (typeof v !== 'string' || v === '' || v.length > 256) throw bad(`The ${what} of a borrowed record must be text of 1 to 256 characters.`);
+  }
+  const list = listOf(items, 'items list');
+  if (list.length === 0) throw bad('A borrowed record lists one item or more.');
+  const refs = list.map(item => {
+    if (!isPlain(item) || Object.keys(item).length !== 2 || !(OVERRIDABLE_PARTS as readonly unknown[]).includes(item.part) || !isId(item.id)) {
+      throw bad(`Each borrowed item has exactly a part (${OVERRIDABLE_PARTS.join(', ')}) and an id.`);
+    }
+    return { part: item.part as SourceRecord['items'][number]['part'], id: item.id };
+  });
+  return { name: name as string, marketplace: marketplace as string, version: version as string, items: refs };
 }
 
 /** The paths of one skill folder, in the working copy. */
@@ -432,6 +491,63 @@ class HarnessDraft {
     if (canonicalJson(this.value) === canonicalJson(this.original)) return;
     const was = this.work.get(HARNESS)!;
     this.work.set(HARNESS, { bytes: Buffer.from(JSON.stringify(this.value, null, 2) + '\n', 'utf8'), executable: was.executable });
+  }
+}
+
+/**
+ * `sources.json` as a list of borrowed records that edits change. `flush` writes it only when its meaning changed, so an
+ * edit that nets out keeps the original bytes. It deletes the file, and its pointer, when no record and no adopted skill
+ * is left. A file that is not valid stays as it is for the loader to refuse; a borrowed edit of it is refused.
+ */
+class BorrowedDraft {
+  private static readonly FILE = 'sources.json';
+  private readonly original: JsonValue | null;
+  private readonly value: Obj | null;
+  private records: Obj[];
+  private touched = false;
+  constructor(private readonly work: Work, private readonly harness: HarnessDraft) {
+    const file = work.get(BorrowedDraft.FILE);
+    const text = file ? decodeText(file.bytes) : null;
+    const parsed = text === null ? null : parseStrictJson(text);
+    const ok = parsed?.ok === true && isRecord(parsed.value) && Array.isArray(parsed.value.sources) ? parsed.value : null;
+    this.value = ok;
+    this.original = ok === null ? null : JSON.parse(JSON.stringify(ok)) as JsonValue;
+    this.records = ok === null ? [] : (ok.sources as JsonValue[]).map(s => s as Obj);
+  }
+
+  private usable(): void {
+    if (this.work.has(BorrowedDraft.FILE) && this.value === null) throw new Refusal('EDIT_INVALID', 'sources.json is not valid.');
+  }
+
+  has(name: string): boolean { return this.records.some(r => isRecord(r) && r.name === name); }
+
+  set(record: SourceRecord): void {
+    this.usable();
+    this.touched = true;
+    const next = JSON.parse(JSON.stringify(record)) as Obj;
+    const at = this.records.findIndex(r => isRecord(r) && r.name === record.name);
+    if (at >= 0) this.records[at] = next; else this.records.push(next);
+  }
+
+  remove(name: string): void {
+    this.usable();
+    this.touched = true;
+    this.records = this.records.filter(r => !isRecord(r) || r.name !== name);
+  }
+
+  flush(): void {
+    if (!this.touched) return;
+    const had = this.work.get(BorrowedDraft.FILE);
+    const next: Obj = { ...(this.value ?? {}), sources: this.records as unknown as JsonValue };
+    if (this.original !== null && canonicalJson(next) === canonicalJson(this.original)) return;
+    const adopted = Array.isArray(next.adopted) && next.adopted.length > 0;
+    if (this.records.length === 0 && !adopted) {
+      if (had) this.work.delete(BorrowedDraft.FILE);
+      this.harness.part('plugins', null);
+      return;
+    }
+    this.work.set(BorrowedDraft.FILE, { bytes: Buffer.from(JSON.stringify(next, null, 2) + '\n', 'utf8'), executable: had?.executable ?? false });
+    this.harness.part('plugins', BorrowedDraft.FILE);
   }
 }
 
