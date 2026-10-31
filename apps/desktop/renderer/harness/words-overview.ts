@@ -2,9 +2,10 @@
  * The fixed words of the Overview (Task 2): the read-only graph of every place the first read found. The same shape and limits as WORDS in words.ts: a label at most
  * 5 words, a hint at most 12, a paragraph at most 25, no banned word. Words that WORDS already holds are not repeated here: "Overview" (`WORDS.label.overview`),
  * "Open in builder", "Graph view", "List view", "Zoom in", "Zoom out", "Fit to window", "Small map", and the kind names. The keys and the text are final; lane H builds the
- * screen from them. tests/overview-words.test.ts holds the table and the builders to the rules.
+ * screen from them. tests/overview-contract.test.ts holds the table and the builders to the rules.
  */
 import type { PartKind } from '../../shared/harness/types.js';
+import { FLOW } from './words-flow.js';
 import type { OverviewCounts, OverviewToolKind } from '../../shared/harness/overview.js';
 
 const deepFreeze = <T extends object>(value: T): T => {
@@ -22,7 +23,7 @@ export const OVERVIEW = deepFreeze({
   },
   /** Short lines: at most 12 words each. */
   hint: {
-    empty: 'Nothing was found yet. Press Find my files.',
+    empty: `Nothing was found yet. Press ${FLOW.label.findMyFiles}.`,
     emptyPlace: 'Nothing was found in this place.',
     readOnly: 'Read-only. Open a place in the builder to change it.',
     wrongFolder: 'That is not the folder shown.',

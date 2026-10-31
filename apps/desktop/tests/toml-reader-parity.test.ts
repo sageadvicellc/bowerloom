@@ -17,6 +17,8 @@ const FILES: Readonly<Record<string, string>> = {
   'basic-multi.toml': agent('basic-multi', `${Q3}\nRead the diff.\nReport "each" finding.\n${Q3}`),
   'basic-folded.toml': agent('basic-folded', `${Q3}\\\n  Read the diff, \\\n  then report.${Q3}`),
   'literal-multi.toml': agent('literal-multi', `${S3}\nUse C:\\work and \\n as text.\n${S3}`),
+  // A file saved with CR LF line endings, with comments before, after and around a multi-line string.
+  'crlf-comments.toml': `# top\nname = "crlf-comments"\ndescription = "The crlf-comments." # why\ndeveloper_instructions = ${Q3}\nRead the diff.\nStop.\n${Q3} # the end\n`.replace(/\n/g, '\r\n'),
   'quotes-before-closer.toml': agent('quotes-before-closer', `${Q3}ends with a "quote${'"'.repeat(4)}`),
 };
 const REFUSED: Readonly<Record<string, string>> = {

@@ -48,12 +48,18 @@ export interface OverviewLayout {
  */
 export function layoutOf(overview: Overview, expanded: ReadonlySet<string>): OverviewLayout { void overview; void expanded; throw new Error('not built'); }
 
-/** The ids of the groups to open on first draw: the home, then the others in group order, while the nodes drawn in all open groups stay under OVERVIEW_LIMITS.expandedNodes. */
+/**
+ * The ids of the groups to open on first draw. The home group (scope `home`, the first group) is ALWAYS open, however many nodes it holds: it is the person's own
+ * library, and it may hold more than OVERVIEW_LIMITS.expandedNodes alone (a thousand library agents is a case). The other groups follow in group order and are
+ * opened while the nodes drawn in all open groups stay under OVERVIEW_LIMITS.expandedNodes; the first one that would pass it stays closed, and so do the rest.
+ * An Overview with no home group opens by the same rule from the first group.
+ */
 export function defaultExpanded(overview: Overview): ReadonlySet<string> { void overview; throw new Error('not built'); }
 
 /**
  * What the page draws now. `detail` is `nodes` at zoom OVERVIEW_LIMITS.detailZoom and above, and `boxes` under it (expanded places draw as boxes with counts only,
- * and `nodes` and `edges` are empty). `nodes` never holds more than OVERVIEW_LIMITS.domNodes ids. `edges` are the edges inside expanded places that are in view.
+ * and `nodes` and `edges` are empty). `nodes` never holds more than OVERVIEW_LIMITS.domNodes ids, the selected node included. `edges` are the edges inside expanded
+ * places that are in view.
  */
 export interface OverviewVisible {
   readonly detail: 'nodes' | 'boxes';
@@ -63,7 +69,8 @@ export interface OverviewVisible {
 }
 /**
  * The clusters, nodes and edges that meet a window of `width` by `height` screen pixels seen through `view`, plus `margin` graph units on every side (default
- * OVERVIEW_LIMITS.cullMargin). `selected` is a node id that stays in the set even when it is out of view. STAGE 1: throws `not built`.
+ * OVERVIEW_LIMITS.cullMargin). `selected` is a node id that stays in the set even when it is out of view. It counts inside the cap: when the nodes in view fill
+ * OVERVIEW_LIMITS.domNodes, the selected node takes the place of the last one, so `nodes.length` is at most domNodes. STAGE 1: throws `not built`.
  */
 export function visibleOf(layout: OverviewLayout, view: View, width: number, height: number, margin?: number, selected?: string | null): OverviewVisible {
   void layout; void view; void width; void height; void margin; void selected; throw new Error('not built');

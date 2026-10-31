@@ -53,7 +53,15 @@ class Parser {
   private deep(depth: number): void { if (depth > TOML_MAX_DEPTH) this.fail('TOML_TOO_DEEP'); }
   private peek(): string { return this.s[this.i] ?? ''; }
   private spaces(): void { while (this.peek() === ' ' || this.peek() === '\t') this.i++; }
-  private comment(): void { if (this.peek() === '#') { while (this.i < this.s.length && this.peek() !== '\n') { if (/[\0-\x08\x0a-\x1f\x7f]/.test(this.peek()) && this.peek() !== '\n') this.fail(); this.i++; } } }
+  /** A comment runs to the end of the line. A carriage return that begins a CR LF ends it too, so a file with CR LF line endings reads as one with LF. */
+  private comment(): void {
+    if (this.peek() !== '#') return;
+    while (this.i < this.s.length && this.peek() !== '\n') {
+      if (this.peek() === '\r' && this.s[this.i + 1] === '\n') return;
+      if (/[\0-\x08\x0a-\x1f\x7f]/.test(this.peek())) this.fail();
+      this.i++;
+    }
+  }
   private endOfLine(): void {
     this.spaces(); this.comment();
     if (this.peek() === '\r' && this.s[this.i + 1] === '\n') this.i++;

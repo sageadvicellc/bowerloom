@@ -51,7 +51,11 @@ export interface Part {
   readonly inLibrary: boolean;
   /** Real mode, a tool only: what kind of tool the reader found. Optional until Task 2 lane G fills it (shared/harness/real-map.ts). */
   readonly toolKind?: 'mcp' | 'prompt' | 'hook';
-  /** Real mode: a hash of the file text the reader gave, which says that two skills in two places are the same skill (the Overview marks them shared). Optional until Task 2 lane G fills it. */
+  /**
+   * Real mode: the content hash of the file the reader read for this part (`FoundAt.contentHash`, a hash of that file's text). For a skill it is the hash of its
+   * SKILL.md text only: the reader reads no script beside it, so two skills with equal SKILL.md text and different scripts read as the same skill, and the Overview
+   * says "same text", not "same files". Equal hashes mark skills shared. Optional until Task 2 lane G fills it.
+   */
   readonly contentHash?: string;
 }
 

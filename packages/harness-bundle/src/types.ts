@@ -37,7 +37,7 @@ export interface BundleEnvelope {
   readonly harness: string;
   /** `bowerloom@<version>`. Informational. Never trusted and never shown as a fact. */
   readonly generator: string;
-  /** `sha256:<hex>`: `computeRevision` of the decoded files. It catches damage and edits. It is not a signature. */
+  /** `sha256:` plus `computeRevision` of the decoded files (the one prefixed revision form; every plan revision is bare hex). It catches damage and edits. It is not a signature. */
   readonly revision: string;
   readonly files: readonly BundleFileRecord[];
   readonly knowledge: readonly BundleSource[];
@@ -61,6 +61,13 @@ export interface DecodedBundle {
 
 // ---- what a bundle holds, for the person to read ---------------------------------------------------------------------------
 
+/**
+ * A tool the bundle holds, with what a person must read before it may run: the text of the command, the arguments, the host, the hook text. Every text is cut
+ * to BUNDLE_LIMITS.displayChars (arguments: BUNDLE_LIMITS.displayArgs, each cut the same way) and is plain text for the screen; `sha256` covers the WHOLE entry as
+ * the file holds it, so an acknowledgement binds the full text and not the cut one.
+ *  - MCP server over stdio: `command` and `args`. Over http: `host`.
+ *  - Hook: `event` and `command` (the hook's command text).
+ */
 export interface BundleTool {
   readonly name: string;
   readonly kind: 'mcp' | 'hook';
@@ -68,20 +75,46 @@ export interface BundleTool {
   readonly transport?: McpTransport;
   /** True for a hook, and for an MCP server that starts a program (`command`). */
   readonly runsCode: boolean;
+  /** The program of an MCP server, or the command of a hook. */
+  readonly command?: string;
+  /** The arguments of an MCP server, as written, at most BUNDLE_LIMITS.displayArgs of them. */
+  readonly args?: readonly string[];
+  /** The host of an MCP server's `url`: the text after `://` up to the next `/`, `?`, `#` or `:`. It is shown as written, so it may itself hold a `${NAME}` reference. */
+  readonly host?: string;
+  /** For a hook, the event it runs on. */
+  readonly event?: string;
+  /** Lowercase hex SHA-256 of the canonical JSON of the whole entry (the server or the hook). */
+  readonly sha256: string;
 }
-/** A file that can run: it has an execute bit, it is a hook's file, or it is under `scripts/`. */
+/** A file that can run: it has an execute bit, it is a hook's file, or it is under `scripts/`. `sha256` is of its decoded bytes. */
 export interface BundleCodeFile {
   readonly path: string;
   readonly why: 'executable' | 'hook' | 'script';
+  readonly sha256: string;
+}
+/** Where a `${NAME}` or keychain reference goes: a field of a tool, and the host that field reaches. */
+export type BundleSinkField = 'env' | 'header' | 'arg' | 'url' | 'command';
+/**
+ * The fields that can send a value anywhere the file chooses: a URL, an argument, a command. A reference in one of these needs an acknowledgement. A reference
+ * in `env` or `header` only travels to the tool's own process or its own host, which the sink shows.
+ */
+export const HIGH_RISK_SINK_FIELDS: readonly BundleSinkField[] = Object.freeze(['arg', 'url', 'command'] as const);
+export interface BundleSink {
+  /** The name of the MCP server or the hook id. */
+  readonly tool: string;
+  readonly field: BundleSinkField;
+  /** The host the tool's `url` reaches, when it has one. */
+  readonly host?: string;
 }
 /**
- * A reference the importer must supply: `${NAME}` in an MCP server's env, headers, args, url or command, or in a hook command (`kind: 'env'`), or a
- * `{ "keychain": "<entry>" }` reference (`kind: 'keychain'`). Names only, never a value. `usedBy` names the tools that use it. Duplicates are merged.
+ * A reference that the file READS from the importer's computer and PASSES to a tool: `${NAME}` in an MCP server's env, headers, args, url or command, or in a
+ * hook command (`kind: 'env'`), or a `{ "keychain": "<entry>" }` reference (`kind: 'keychain'`). The name may already be set on this computer, so the screen never
+ * tells a person to add it without showing where it goes. Names only, never a value. Duplicates are merged: one entry per name, with every sink.
  */
 export interface BundleSecret {
   readonly kind: 'env' | 'keychain';
   readonly name: string;
-  readonly usedBy: readonly string[];
+  readonly sinks: readonly BundleSink[];
 }
 /** A notes source the agents read by name. A bundle holds the name only. */
 export interface BundleNote {
@@ -97,8 +130,13 @@ export interface BundleBorrowed {
 }
 /** Text that looks like an absolute path or a home path. Reported, never rewritten. `line` counts from 1 and is absent for a file with no lines. */
 export interface BundleForeignPath {
+  /** The bundle file the text is in. */
   readonly path: string;
   readonly line?: number;
+  /** The text that matched, cut to BUNDLE_LIMITS.displayChars. */
+  readonly text: string;
+  /** Lowercase hex SHA-256 of the whole matched text. */
+  readonly sha256: string;
 }
 export interface BundleCounts {
   readonly skills: number;
@@ -143,15 +181,20 @@ export interface EncodedBundle {
 }
 
 /**
- * What the importer decides about the notes names a bundle lists. A name in neither list is left out (decision T1-D3 A: leave out by default).
+ * What the importer decides about the notes names a bundle lists. A name in neither collection is left out (decision T1-D3 A: leave out by default).
  *  - `link`: source name to the stored path of a notes folder, in the form `storedKnowledgePath` returns (relative to the harness folder, `.`, or `~/...`).
  *  - `leave`: names to leave out, which removes the name from every agent's `notes`.
- * A name not in the bundle, a name in both lists, or a duplicate is `BUNDLE_USAGE`.
+ * The names come from a bundle, so they are untrusted keys (`constructor` is a valid name). The collections are a `Map` and a `Set` so a lookup never reaches
+ * the object prototype. `importChoicesOf` builds this from plain input and checks it; `targetFromBundle` takes only this form. A name not in the bundle, a name
+ * in both, a duplicate, a value that is not a string, or more than BUNDLE_LIMITS.notesNames names is `BUNDLE_USAGE`.
  */
 export interface ImportChoices {
-  readonly link: Readonly<Record<string, string>>;
-  readonly leave: readonly string[];
+  readonly link: ReadonlyMap<string, string>;
+  readonly leave: ReadonlySet<string>;
 }
+
+/** The identity of a file on disk: what `writeBundleFile` compares before it replaces a file. */
+export interface BundleFileIdentity { readonly dev: number; readonly ino: number }
 
 // ---- command-line plan output (`--json`) -----------------------------------------------------------------------------------
 
@@ -163,9 +206,9 @@ export interface ExportPlan {
   readonly file: string;
   readonly bytes: number;
   readonly summary: BundleSummary;
-  /** `sha256:<hex>` of the bundle bytes. The approval names it. */
+  /** The lowercase hex SHA-256 of the bundle bytes, 64 characters with no prefix. The approval names it. It is the same form as the app's `ExportView.revision`. */
   readonly revision: string;
-  /** The hash an approval of foreign paths names, or null when the bundle has none. */
+  /** The hash an approval of foreign paths names (`exportAcknowledgement`), or null when the bundle has none. */
   readonly acknowledge: string | null;
 }
 /** The plan of `bowerloom harness import`. The write is a save of the folder's harness, so `changes` are `.bowerloom` paths. */
@@ -176,9 +219,9 @@ export interface ImportPlan {
   readonly file: string;
   readonly summary: BundleSummary;
   readonly changes: readonly { readonly path: string; readonly action: 'create' | 'update' | 'delete' }[];
-  /** The save plan's revision. */
+  /** The save plan's revision, lowercase hex with no prefix, the form of every save plan revision. */
   readonly revision: string;
-  /** The hash of the files that can run, the files copied with an execute bit, and the foreign paths together, or null when all three are empty. */
+  /** The hash of `importAcknowledgement` (tools that run code, references in a url, argument or command, files that can run, executables, foreign paths), or null when all are empty. */
   readonly acknowledge: string | null;
 }
 

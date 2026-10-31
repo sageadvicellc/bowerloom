@@ -529,9 +529,19 @@ export interface SetAsideWritten { readonly name: string }
  * path, never file bytes, and never an environment value. Main owns both native dialogs (the save dialog of export, the open dialog of import) and each write
  * question. A bundle the person opens is read once in main and held there under an id (`bundle-<n>`); the window names it by that id only.
  * packages/harness-bundle holds the format and the checks (its README states the trust boundary).
+ *
+ * Main (Task 1 lane C) must, for every share call: check the number and type of every argument before it uses one (a bundle id against SHARE_BUNDLE_ID and by exact
+ * string; a folder id and a notes id against the ids main gave out; the choices shape, with at most SHARE_NOTES_LIMIT names of at most SHARE_NAME_LIMIT characters;
+ * a revision and an acknowledgement as 64 lowercase hex characters or, for the acknowledgement, null); refuse a bad one as BAD_ARGUMENT before anything runs; enforce
+ * SAVE_EXECUTABLE_UNACKNOWLEDGED itself (the save does not check an acknowledgement); compare the acknowledgement it computes now with the one it receives; and bind a
+ * write to the plan it showed last, the bundle's own hash and the choices. The temporary file of an export has a random name, is created exclusively, and
+ * replaces an existing file only when the person agreed to replace the very file that `bundleTargetIdentity` still finds.
  */
 
-/** The id main gives a bundle it holds. Apart from the folder ids and the notes ids, so one can never stand for another. */
+/**
+ * The id main gives a bundle it holds. Apart from the folder ids and the notes ids, so one can never stand for another. Main looks a bundle up by the EXACT string
+ * in a Map, never by `Number()` of its digits: `bundle-01` is a well-formed id that names nothing, and it must not alias `bundle-1`.
+ */
 export const SHARE_BUNDLE_ID = /^bundle-[0-9]{1,6}$/;
 /** The rows of one list in a preview that main sends; the rest are counted in `more`. The same as BUNDLE_LIMITS.listRows. */
 export const SHARE_LIST_LIMIT = 200;
@@ -540,23 +550,38 @@ export const SHARE_HELD_BUNDLES = 2;
 /** The most notes names a choice may name, and the longest name. The same as BUNDLE_LIMITS.notesNames and nameChars. */
 export const SHARE_NOTES_LIMIT = 200;
 export const SHARE_NAME_LIMIT = 200;
+/** The longest text of a command, host, hook or foreign-path hit that a summary carries, and the most arguments of a tool. The same as BUNDLE_LIMITS.displayChars and displayArgs. */
+export const SHARE_TEXT_LIMIT = 200;
+export const SHARE_ARGS_LIMIT = 20;
 
 /** One list of a preview: at most SHARE_LIST_LIMIT rows, and how many more there are ("and 12 more"). */
 export interface ShareList<T> { readonly rows: readonly T[]; readonly more: number }
-/** A tool the bundle holds. `transport` is for an MCP server and null for a hook. `runsCode` is true for a hook and for an MCP server that starts a program. */
-export interface ShareTool { readonly name: string; readonly kind: 'mcp' | 'hook'; readonly transport: string | null; readonly runsCode: boolean }
+/**
+ * A tool the bundle holds, with what a person reads before it may run. `transport` is for an MCP server and null for a hook. `runsCode` is true for a hook and for
+ * an MCP server that starts a program. `command` is the program of a stdio server or the command of a hook, `args` the arguments of a server (at most SHARE_ARGS_LIMIT),
+ * `host` the host of a server's url, `event` the event of a hook; each is null (or empty) when the tool has none. Every text is cut to SHARE_TEXT_LIMIT, drawn as plain
+ * text, and passed through `visible()` in main. The acknowledgement binds the whole entry in main; the window sees the cut text only.
+ */
+export interface ShareTool {
+  readonly name: string; readonly kind: 'mcp' | 'hook'; readonly transport: string | null; readonly runsCode: boolean;
+  readonly command: string | null; readonly args: readonly string[]; readonly host: string | null; readonly event: string | null;
+}
 /** A file that can run: it has an execute bit, it is a hook's file, or it is under `scripts/`. `path` is relative to `.bowerloom`. */
 export interface ShareCodeFile { readonly path: string; readonly why: 'executable' | 'hook' | 'script' }
+/** Where a reference goes: the tool, the field of it, and the host that field reaches (null when the tool has no url). */
+export interface ShareSink { readonly tool: string; readonly field: 'env' | 'header' | 'arg' | 'url' | 'command'; readonly host: string | null }
 /**
- * A value the importer must supply: an environment variable (`env`) or a keychain entry (`keychain`), by name. Never a value. `usedBy` names the tools that use
- * it. Bowerloom did not check whether it exists on this computer (decision T1-D8 A), and the screen says so.
+ * A reference the file reads from THIS computer and passes to a tool: an environment variable (`env`) or a keychain entry (`keychain`), by name. Never a value. The
+ * name may be set on this computer already, so the sheet says that the file passes these values to these tools, lists each sink, and never tells a person to add one
+ * without showing where it goes. A reference in a url, an argument or a command (field `url`, `arg`, `command`) needs the acknowledgement. Bowerloom did not check
+ * whether the name exists on this computer (decision T1-D8 A), and the screen says so.
  */
-export interface ShareSecret { readonly kind: 'env' | 'keychain'; readonly name: string; readonly usedBy: readonly string[] }
+export interface ShareSecret { readonly kind: 'env' | 'keychain'; readonly name: string; readonly sinks: readonly ShareSink[] }
 /** A notes name the agents read. A bundle holds the name only. */
 export interface ShareNote { readonly name: string; readonly readBy: readonly string[] }
 export interface ShareBorrowed { readonly name: string; readonly marketplace: string; readonly version: string }
-/** A file of the bundle that holds text looking like a path of another computer, and the line. Reported, never rewritten. */
-export interface ShareForeignPath { readonly path: string; readonly line: number | null }
+/** A file of the bundle that holds text looking like a path of another computer, the line, and the text that matched (cut to SHARE_TEXT_LIMIT). Reported, never rewritten. */
+export interface ShareForeignPath { readonly path: string; readonly line: number | null; readonly text: string }
 /** What a bundle holds, as the Export and Import sheets list it. Every string from a file passed `visible()` in main first. */
 export interface ShareSummary {
   /** The harness id. */
@@ -574,8 +599,9 @@ export interface ShareSummary {
 
 /**
  * The plan of "Export": what the file holds, and nothing written. `file` is the file name main suggests to the save dialog (`<id>.bowerloom.json`), never a path.
- * `revision` is the lowercase hex SHA-256 of the bundle bytes; equal harness files give an equal revision. `acknowledge` is the hash of the foreign paths, or
- * null when there are none: when it is not null, `runExport` writes only with it (EXPORT_NEEDS_ACKNOWLEDGEMENT otherwise).
+ * `revision` is the lowercase hex SHA-256 of the bundle bytes, 64 characters with no prefix; equal harness files give an equal revision. `acknowledge` is the
+ * package's `exportAcknowledgement(summary, revision)` (64 lowercase hex characters), or null when there are no foreign paths: when it is not null, `runExport`
+ * writes only with it (EXPORT_NEEDS_ACKNOWLEDGEMENT otherwise).
  */
 export interface ExportView {
   readonly folder: string;
@@ -597,26 +623,30 @@ export interface BundleView {
   readonly summary: ShareSummary;
 }
 /**
- * What the importer decides about the notes names, as the window sends it: `link` maps a source name to a notes folder id main gave out (`chooseNotesFolder`),
+ * What the importer decides about the notes names, as the window sends it (the package's own `ImportChoices` is another type: a name to a STORED PATH, in a Map
+ * and a Set, which main builds from this after it maps each notes id to a stored path): `link` maps a source name to a notes folder id main gave out (`chooseNotesFolder`),
  * never a path; `leave` lists names to leave out. A name in neither list is left out (decision T1-D3 A). A name the bundle does not hold, or in both lists, is
- * BAD_ARGUMENT. At most SHARE_NOTES_LIMIT names in all.
+ * BAD_ARGUMENT. At most SHARE_NOTES_LIMIT names in all, each at most SHARE_NAME_LIMIT characters. Names are untrusted keys (`constructor` is a valid name, and `__proto__`
+ * can arrive as an own key): main reads only own properties, copies them into a Map and a Set, checks that every value is a string, and never indexes the object by a name.
  */
-export interface ImportChoices { readonly link: Readonly<Record<string, string>>; readonly leave: readonly string[] }
+export interface ImportNoteChoices { readonly link: Readonly<Record<string, string>>; readonly leave: readonly string[] }
 /** One notes name and what the plan does with it. `label` is the linked folder in `~` form, or null when the name is left out. */
-export interface ImportNoteChoice { readonly name: string; readonly choice: 'link' | 'leave'; readonly label: string | null; readonly readBy: readonly string[] }
+export interface ImportNoteRow { readonly name: string; readonly choice: 'link' | 'leave'; readonly label: string | null; readonly readBy: readonly string[] }
 /**
  * The plan of "Import": a save plan (`changes` lists every `.bowerloom` file as create or update; `definition` is the harness as it will be) plus the bundle's
  * summary. It extends SaveView, whose fields mean the same, with these notes:
  *  - `copiedExecutables` lists the files the import writes with an execute bit; `from` is the bundle's file name.
- *  - `acknowledge` is the hash of the code files, the copied executables and the foreign paths together, or null when all three are empty. When it is not
- *    null, `runImport` writes only with it (IMPORT_NEEDS_ACKNOWLEDGEMENT otherwise). The sheet may show one tick or two; the call carries the hash once.
+ *  - `acknowledge` is the package's `importAcknowledgement(summary, executables, revision)` (64 lowercase hex characters): it binds this plan's revision and
+ *    every tool that runs code, every reference in a url, argument or command, every file that can run, every executable and every foreign path, or it is null
+ *    when all are empty. When it is not null, `runImport` writes only with it (IMPORT_NEEDS_ACKNOWLEDGEMENT otherwise). The sheet may show one tick or two; the
+ *    call carries the hash once.
  *  - `removedSources` is always empty: an import stops using nothing.
- * `revision` is the save plan's revision. The write also names the bundle id and the choices, and main binds the plan to the bundle's own hash.
+ * `revision` is the save plan's revision, lowercase hex with no prefix. The write also names the bundle id and the choices, and main binds the plan to the bundle's own hash.
  */
 export interface ImportView extends SaveView {
   readonly bundleId: string;
   readonly summary: ShareSummary;
-  readonly notes: readonly ImportNoteChoice[];
+  readonly notes: readonly ImportNoteRow[];
 }
 
 // ---- the calls ------------------------------------------------------------------------------------------------------------
@@ -697,12 +727,12 @@ export interface EngineBridge {
    */
   chooseBundle(): Promise<Answer<BundleView> | null>;
   /** Plans an import of a held bundle into a folder. Reads only. A folder with a harness that is not empty is IMPORT_FOLDER_HAS_HARNESS; one with none is SAVE_NO_DEFINITION. */
-  planImport(folderId: string, bundleId: string, choices: ImportChoices): Promise<Answer<ImportView>>;
+  planImport(folderId: string, bundleId: string, choices: ImportNoteChoices): Promise<Answer<ImportView>>;
   /**
    * Writes the import plan shown last, with the same bundle and choices, after main's own dialog. It is a save: a save point is kept before and after. Install is a
    * separate step that is offered and never started. `acknowledged` is the plan's `acknowledge` hash, or null when the plan has none.
    */
-  runImport(folderId: string, revision: string, bundleId: string, choices: ImportChoices, acknowledged: string | null): Promise<Answer<SaveWritten>>;
+  runImport(folderId: string, revision: string, bundleId: string, choices: ImportNoteChoices, acknowledged: string | null): Promise<Answer<SaveWritten>>;
   /** Drops a held bundle. True when main held it. */
   discardBundle(bundleId: string): Promise<boolean>;
   /**
@@ -771,10 +801,10 @@ export const IMPORT_FOLDER_HAS_HARNESS = 'IMPORT_FOLDER_HAS_HARNESS';
 export const IMPORT_NEEDS_ACKNOWLEDGEMENT = 'IMPORT_NEEDS_ACKNOWLEDGEMENT';
 export const EXPORT_NEEDS_ACKNOWLEDGEMENT = 'EXPORT_NEEDS_ACKNOWLEDGEMENT';
 export const SHARE_MAIN_WORDS: Readonly<Record<typeof EXPORT_NO_DEFINITION | typeof IMPORT_FOLDER_HAS_HARNESS | typeof IMPORT_NEEDS_ACKNOWLEDGEMENT | typeof EXPORT_NEEDS_ACKNOWLEDGEMENT, string>> = Object.freeze({
-  EXPORT_NO_DEFINITION: 'This folder has no harness yet, so there is nothing to put in a file. Make one first with New harness from a folder. Nothing was written.',
-  IMPORT_FOLDER_HAS_HARNESS: 'This folder has a harness with parts in it already. A file goes only into a folder with no harness, or with an empty one. Nothing was written.',
-  IMPORT_NEEDS_ACKNOWLEDGEMENT: 'This file holds files that can run, or paths from another computer. Tick that you read them, then go on. Nothing was written.',
-  EXPORT_NEEDS_ACKNOWLEDGEMENT: 'These files hold a path from this computer. Tick that you read them, then go on. Nothing was written.',
+  EXPORT_NO_DEFINITION: 'This folder has no harness yet, so there is nothing to export. Make one first with New harness from a folder. Nothing was written.',
+  IMPORT_FOLDER_HAS_HARNESS: 'This folder has a harness with parts in it already. An import goes only into a folder with no harness, or with an empty one. Nothing was written.',
+  IMPORT_NEEDS_ACKNOWLEDGEMENT: 'This file holds tools or files that can run, or paths from another computer. Tick that you read them, then import. Nothing was written.',
+  EXPORT_NEEDS_ACKNOWLEDGEMENT: 'These files hold a path from this computer. Tick that you read them, then export. Nothing was written.',
 });
 /**
  * Refusals of main itself for a ready-made kit, with words: the kit that ships with Bowerloom is missing or damaged (KIT_INVALID, whose message goes on

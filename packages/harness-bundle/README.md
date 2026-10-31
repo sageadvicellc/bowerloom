@@ -2,27 +2,41 @@
 
 The harness bundle of Bowerloom 0.8: the one file a harness travels in (spec section 6.7). This package encodes a loaded definition into a bundle, decodes and checks a bundle, says what it holds, builds the target files of an import, and reads and writes the bundle file with bounds. `bowerloom harness export` and `bowerloom harness import` and the app's Export and Import sheets all call it.
 
-Status: stage 1, the contract. The types, constants, codes and words here are final. The functions in `src/index.ts` throw `not built` until stage 2 lane A builds them.
+Status: stage 1, the contract. The types, constants, codes and words here are final. `importAcknowledgement`, `exportAcknowledgement` and `importChoicesOf` are built. The other functions in `src/index.ts` throw `not built` until stage 2 lane A builds them.
 
 ## The file
 
 - Format `bowerloom/harness-bundle/v1beta1`. UTF-8 JSON, one object, no compression, no archive. 2-space indent and one final line feed, so it reads and diffs as text.
 - Keys in this order: `format`, `harness`, `generator`, `revision`, `files`, `knowledge`. The shapes are in `src/types.ts` (`BundleEnvelope`, `BundleFileRecord`).
-- A file record has `path`, `size`, `sha256`, `encoding` (`utf8` or `base64`), `data`, and `executable: true` only when the file has an execute bit. Files sort by path in byte order.
+- A file record has `path`, `size`, `sha256`, `encoding` (`utf8` or `base64`), `data`, and `executable: true` only when the file has an execute bit. Files sort by path in byte order. `encodeBundle` writes a record as `base64` when that is smaller than the escaped text.
 - The file never holds `knowledge.json` (paths stay on the computer they belong to), a secret value, the home path of the exporter, or a path the exporter added. A notes source travels as a kind and a name.
 - Unknown keys anywhere are refused. A key such as `type`, `link`, `target`, `mode` or `owner` fails.
-- `revision` is `sha256:` plus the definition revision of the decoded files. It catches damage and edits. It is not a signature: a person who forges a bundle can set a matching revision. Validation, not the hash, is the defence.
+- `revision` is `sha256:` plus the definition revision of the decoded files. It catches damage and edits. It is not a signature: a person who forges a bundle can set a matching revision. Validation, not the hash, is the defence. It is the one prefixed revision. Every plan revision (`ExportPlan`, `ImportPlan`, the app's views) is bare lowercase hex.
 - `generator` is informational. Bowerloom never trusts it.
 
 ## What stage 2 builds
 
-- `encodeBundle(def, options)` and `decodeBundle(bytes)`. Both are pure.
-- `inspectBundle(bundle)`: counts, tools, files that run code, secrets to add, notes names, borrowed items, and text that holds a path of another computer.
-- `targetFromBundle(bundle, choices)`: the files an import writes. A notes name is linked to a stored path or left out. A name in neither list is left out.
-- `isEmptyHarness(def)`, `exportAcknowledgement(summary)`, `importAcknowledgement(summary, executables)`.
-- `readBundleFile(absPath)` and `writeBundleFile(absPath, bytes, options)`.
+- `encodeBundle(def, options)` and `decodeBundle(bytes)`. Both are async and pure. They yield between files, so the main process is never held.
+- `inspectBundle(bundle)`: counts, tools (with their command, arguments, host, hook text and a hash of the whole entry), files that run code (with hashes), the references the file reads from this computer and where each one goes, notes names, borrowed items, and text that holds a path of another computer (with the text and its hash).
+- `targetFromBundle(bundle, choices)`: the files an import writes. A notes name is linked to a stored path or left out. A name in neither is left out.
+- `isEmptyHarness(def)`.
+- `readBundleFile(absPath)`, `bundleTargetIdentity(absPath)` and `writeBundleFile(absPath, bytes, options)`. All async.
+
+Built now, because they depend on the summary only: `exportAcknowledgement(summary, revision)`, `importAcknowledgement(summary, executables, revision)` and `importChoicesOf(raw, names)`.
 
 An import is a save. The only write is `applySave` in `packages/adoption`, under the project lock, with its journal. This package never writes a harness file.
+
+## Acknowledgements
+
+A tick covers what the person was shown, and the hash binds it.
+
+- `importAcknowledgement` hashes the save plan's revision and: every tool that runs code (a stdio MCP server, a hook) by kind, name and the hash of its whole entry, so a bundle with only an `mcp.json` still needs a tick; every reference in a url, an argument or a command; every file that can run by path and hash; every file written with an execute bit; and every foreign-path hit by path, line and the hash of its text. It is null when all of them are empty.
+- `exportAcknowledgement` hashes the plan's revision and the foreign-path hits. It is null when there are none.
+- A reference in an `env` value or a header alone needs no tick. Its sinks still show on screen.
+
+## References are a way out for values
+
+A `${NAME}` reference tells the engine to read a value from this computer and give it to the tool. The name may be set on this computer already. A hostile file can place `${GITHUB_TOKEN}` in a url, an argument or a command, and the value goes to the host the file names. So the summary lists each reference with its sinks: the tool, the field (`env`, `header`, `arg`, `url`, `command`) and the host. The screen says that the file reads these values from this computer and passes them to these tools. It never tells a person to create a variable without showing where it goes. The package does not read an environment variable or the keychain, and it does not check that a listed name exists.
 
 ## Trust boundary
 
@@ -32,17 +46,28 @@ A bundle from another person is data. Reading one starts no program and loads no
 - The path grammar is at least as strict as `planSave`'s `plainPath`: no empty, `.`, `..` or hidden segment, no backslash, no control, format, bidirectional or line-separator character, at most 1,024 characters and 255 bytes per segment, no 0.7 top-level name, no `knowledge.json`, depth at most 16, and no two paths equal under case or Unicode folding.
 - A bundle path is only ever a key into `.bowerloom`. No other code turns one into a file system path.
 - A hook, a script, an executable file and an MCP command are data. The package spawns nothing, evaluates nothing and imports nothing at run time. A static test checks the source for `child_process`, `vm`, `eval`, `Function(` and `import(`.
-- Secrets: a literal secret value refuses the bundle (`BUNDLE_SECRET_FOUND`) on export and on import. References stay: `${NAME}` and `{ "keychain": "<entry>" }`. They are listed under secrets to add. The package never reads an environment variable or the keychain, and it does not check that a listed secret exists.
+- Secrets: a literal secret value refuses the bundle (`BUNDLE_SECRET_FOUND`) on export and on import. References stay: `${NAME}` and `{ "keychain": "<entry>" }`. They are listed with their sinks.
+- Notes names are untrusted keys. `constructor` is a valid name. Choices are a `Map` and a `Set` (`ImportChoices`), built by `importChoicesOf` from own properties only.
+- Refusals: a message holds the table sentence and at most 20 paths. Each path is cut to 120 characters with an ellipsis, and its control, format and line-separator characters are escaped. So a path in a message is quoted text of bounded size. It is not a promise that no text from the file appears. No other text from a file is repeated, and `BundleRefusal.paths` holds the shortened form only.
 - Display: every string that came from a file is for a person to read, so the app passes it through `visible()` in main and the command line through `plainText()`.
-- Race windows, named as `save.ts` names its own: the bundle file can change between the `lstat` and the read (the inode and size are checked after the read), and the export folder can change between the temporary file and the rename.
+- The read: `readBundleFile` opens with `O_NOFOLLOW | O_NONBLOCK`, calls `fstat` on the descriptor, and refuses anything that is not a regular file of the user. A file of another user is refused too (a shared volume may hit this; the words say "that you own").
+- Race windows, named as `save.ts` names its own: the bundle file can change between the open and the end of the read (the identity and size are checked after the read), and the export folder can change between the temporary file and the rename (the target identity is checked again right before it).
+
+## What the callers must do
+
+- The app's main process (lane C) validates every argument of every share call before it uses one: a bundle id against `SHARE_BUNDLE_ID` and looked up by the exact string in a `Map`, never by `Number()`; the choices shape with `importChoicesOf`; every notes id against the ids main gave out; the name and count limits; the revision and the acknowledgement as 64 lowercase hex characters (or null where allowed).
+- Main enforces `SAVE_EXECUTABLE_UNACKNOWLEDGED` itself. `applySave` does not check an acknowledgement.
+- Main compares the acknowledgement it computes now with the one it receives, with the plan revision and the bundle hash it holds, and writes only when all three match.
+- The temporary file of an export has a random name and is created with exclusive create. Main passes `replace` only when the file existed when the save dialog returned, the person agreed to replace it, and `bundleTargetIdentity` still gives the same identity.
+- The command line never replaces a file.
 
 ## Limits
 
-`BUNDLE_LIMITS` in `src/index.ts`: bundle file 48 MiB; 4,096 files; 1 MiB per file; 32 MiB in all; 16 path segments; 1,024 characters per path and 255 bytes per segment; JSON depth 6; 200 notes names of up to 200 characters; 200 rows per preview list; 2 decoded bundles held in memory.
+`BUNDLE_LIMITS` in `src/limits.ts`: bundle file 48 MiB; 4,096 files; 1 MiB per file; 32 MiB in all; 16 path segments; 1,024 characters per path and 255 bytes per segment; JSON depth 6; 200 notes names of up to 200 characters; 200 rows per preview list; 2 decoded bundles held in memory; 200 characters of any command, host, hook or foreign-path text in a summary, and 20 arguments of a tool. A definition at its own limits can pass 48 MiB once JSON escapes are counted. `encodeBundle` then refuses `BUNDLE_TOO_LARGE`, so export never writes a file that import refuses.
 
 ## Codes
 
-Every refusal is a `BundleRefusal` with one of these codes. The words are `BUNDLE_MESSAGES` in `src/codes.ts`. A message never repeats a value from a file. The command line copies each sentence into `apps/cli/src/human.ts`, and `apps/docs/src/content/docs/reference/errors.md` repeats the same sentences. Save refusals (`SAVE_*`) pass through unchanged.
+Every refusal is a `BundleRefusal` with one of these codes. The words are `BUNDLE_MESSAGES` in `src/codes.ts`. The command line copies each sentence into `apps/cli/src/human.ts`, and `apps/docs/src/content/docs/reference/errors.md` repeats the same sentences. Save refusals (`SAVE_*`) pass through unchanged.
 
 | Code | When | Words |
 | --- | --- | --- |
@@ -53,11 +78,11 @@ Every refusal is a `BundleRefusal` with one of these codes. The words are `BUNDL
 | `BUNDLE_PATH_UNSAFE` | A path is not a plain path inside the harness. | This file names a path that is not a plain path inside the harness. Nothing was written. |
 | `BUNDLE_SECRET_FOUND` | A file holds a literal secret value. | A file holds what looks like a secret value. A harness never carries one. Nothing was written. |
 | `BUNDLE_INVALID` | The decoded files do not load as a harness. The loader's problems come with it, by path and code. | The files in this bundle do not make a harness that loads. Nothing was written. |
-| `BUNDLE_FILE_UNSAFE` | The bundle file is a link, not a regular file, not yours, or changed while it was read. A write target is a link or a folder. | The bundle file is a link, is not a plain file of yours, or changed while it was read. Nothing was read or written. |
+| `BUNDLE_FILE_UNSAFE` | The bundle file is a link, not a regular file, not owned by the user, or changed while it was read. A write target is a link or a folder, or is not the file the person agreed to replace. | The bundle file is a link, is not a plain file that you own, or changed while it was read. Nothing was read or written. |
 | `BUNDLE_EXISTS` | The command line would write over a file that exists. | A file exists at that place already. Bowerloom does not replace it. Nothing was written. |
-| `IMPORT_FOLDER_HAS_HARNESS` | The folder's harness has an entry, instructions, a source or knowledge. | This folder has a harness with parts in it already. A file goes only into a folder with no harness, or with an empty one. Nothing was written. |
-| `IMPORT_NEEDS_ACKNOWLEDGEMENT` | An import has files that can run or paths from another computer, and the acknowledgement is missing or not the one the plan showed. | This file holds files that can run, or paths from another computer. Tick that you read them, then go on. Nothing was written. |
-| `EXPORT_NEEDS_ACKNOWLEDGEMENT` | An export has text that holds a path of this computer, and the acknowledgement is missing or not the one the plan showed. | These files hold a path from this computer. Tick that you read them, then go on. Nothing was written. |
+| `IMPORT_FOLDER_HAS_HARNESS` | The folder's harness has an entry, instructions, a source or knowledge. | This folder has a harness with parts in it already. An import goes only into a folder with no harness, or with an empty one. Nothing was written. |
+| `IMPORT_NEEDS_ACKNOWLEDGEMENT` | An import has tools or files that can run, references in a url, argument or command, or paths from another computer, and the acknowledgement is missing or not the one the plan showed. | This file holds tools or files that can run, or paths from another computer. Tick that you read them, then import. Nothing was written. |
+| `EXPORT_NEEDS_ACKNOWLEDGEMENT` | An export has text that holds a path of this computer, and the acknowledgement is missing or not the one the plan showed. | These files hold a path from this computer. Tick that you read them, then export. Nothing was written. |
 
 ## Tests
 

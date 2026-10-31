@@ -19,11 +19,11 @@ import { buildInstallPlan, installButtonWords, planSummary } from '../shared/har
 import { DESKTOP } from './support.js';
 
 test('the preview\'s rule is the home rule less the words the design is built on, and every other banned word stays', () => {
-  assert.deepEqual([...DESIGN_WORDS].sort(), ['conflict', 'harness', 'helper', 'plan', 'project', 'scan', 'version']);
+  assert.deepEqual([...DESIGN_WORDS].sort(), ['conflict', 'export', 'harness', 'helper', 'import', 'plan', 'project', 'scan', 'version']);
   assert.ok(DESIGN_WORDS.every(w => BANNED.includes(w)), 'each design word was banned at home');
   assert.deepEqual([...HARNESS_BANNED], BANNED.filter(w => !DESIGN_WORDS.includes(w)));
-  for (const word of ['global', 'scope', 'slice', 'apply', 'adopt', 'export', 'import', 'team', 'grant', 'wire', 'ghost', 'lasso', 'mcp', 'token']) assert.notEqual(bannedHere(`the ${word} here`), null, word);
-  for (const word of ['harness', 'project', 'conflict', 'scan', 'helper', 'plans', 'version']) { assert.equal(bannedHere(`the ${word} here`), null, word); assert.notEqual(bannedIn(`the ${word} here`), null, `${word} stays banned at home`); }
+  for (const word of ['global', 'scope', 'slice', 'apply', 'adopt', 'team', 'grant', 'wire', 'ghost', 'lasso', 'mcp', 'token']) assert.notEqual(bannedHere(`the ${word} here`), null, word);
+  for (const word of ['harness', 'project', 'conflict', 'scan', 'helper', 'plans', 'version', 'export', 'import']) { assert.equal(bannedHere(`the ${word} here`), null, word); assert.notEqual(bannedIn(`the ${word} here`), null, `${word} stays banned at home`); }
   assert.equal(bannedHere('Install history'), null);
   assert.notEqual(bannedHere('Pick an interface'), null, 'the screens say engine, so interface is banned again');
   assert.equal(bannedHere('Pick an engine'), null);

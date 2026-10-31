@@ -58,6 +58,20 @@ export function graphOf(state: HarnessState, harness: Harness, moved: Readonly<R
   return { nodes, edges, bounds: boundsOf(nodes, harness.missing.length > 0 ? FIX_ROOM : 0) };
 }
 
+/**
+ * The place for a part that is added to a harness, worked out once at add time and then saved in `positions`: below the lowest card of its column. An agent goes
+ * below the last agent, any other part below the last other part. `graph` is the graph before the part is added. Saving it keeps `graphOf` free of any rule that
+ * looks at another node's place: the part never moves when others are added or removed or dragged.
+ */
+export function nextSlot(graph: Graph, kind: PartKind): Point {
+  if (kind === 'agent') {
+    const agents = graph.nodes.filter(n => n.kind === 'agent');
+    return { x: LEFT_X, y: agents.length === 0 ? AGENT_TOP : Math.max(...agents.map(n => n.y + n.h)) + AGENT_GAP };
+  }
+  const others = graph.nodes.filter(n => n.kind !== 'agent');
+  return { x: RIGHT_X, y: others.length === 0 ? RIGHT_TOP : Math.max(...others.map(n => n.y)) + RIGHT_PITCH };
+}
+
 export function boundsOf(nodes: readonly GraphNode[], extraRight = 0): Bounds {
   if (nodes.length === 0) return { left: 0, top: 0, right: 0, bottom: 0 };
   return {

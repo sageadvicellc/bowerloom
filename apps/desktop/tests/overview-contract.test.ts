@@ -12,6 +12,7 @@ import type { Part, ScanSource } from '../shared/harness/types.js';
 import { LIMITS, countWords } from '../shared/home/textbudget.js';
 import { bannedHere } from '../shared/harness/words.js';
 import { WORDS } from '../renderer/harness/words.js';
+import { FLOW } from '../renderer/harness/words-flow.js';
 import { OVERVIEW, alsoInWords, countsWords, moreWords, nodeName, selectedWords, usesWords } from '../renderer/harness/words-overview.js';
 
 test('the Overview route: #app/overview and #sample/overview go both ways, and its navigation key is overview', () => {
@@ -58,6 +59,8 @@ test('the words: the navigation label, the table within the limits, no banned wo
   for (const [key, text] of Object.entries(OVERVIEW.hint)) { assert.ok(countWords(text) <= LIMITS.hint, `hint.${key}: ${text}`); assert.equal(bannedHere(text), null, `hint.${key}: ${text}`); }
   for (const [key, text] of Object.entries(OVERVIEW.paragraph)) { assert.ok(countWords(text) <= LIMITS.paragraph, `paragraph.${key}: ${text}`); assert.equal(bannedHere(text), null, `paragraph.${key}: ${text}`); }
   assert.equal(OVERVIEW.hint.wrongFolder, 'That is not the folder shown.');
+  assert.equal(OVERVIEW.hint.empty, 'Nothing was found yet. Press Find my files.');
+  assert.ok(OVERVIEW.hint.empty.includes(FLOW.label.findMyFiles), 'the button name comes from words-flow.ts');
 });
 
 test('the word builders', () => {

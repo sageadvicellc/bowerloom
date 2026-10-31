@@ -324,3 +324,33 @@ test('a Codex agent file larger than 1 MiB is listed, not read, even when its bo
   assert.match(plan.unmapped.find(u => u.path === '.codex/agents/huge.toml').reason, /1 MiB/);
   assert.equal(plan.items.some(i => i.part === 'subagents'), false);
 });
+
+// ---- CR LF files with comments ------------------------------------------------------------------------------------------------
+
+test('a file with CR LF line endings reads as one with LF: a comment before CR LF is a comment', () => {
+  assert.deepEqual(ok('# top\r\nname = "x"\r\n'), { name: 'x' });
+  assert.deepEqual(ok('a = 1 # why\r\nb = 2\r\n'), { a: 1, b: 2 });
+  assert.deepEqual(ok('# only a comment\r\n'), {});
+  assert.deepEqual(ok('# last line has none\r\na = 1 # no line break at the end'), { a: 1 });
+  assert.deepEqual(ok('args = [\r\n  "a", # one\r\n  "b", # two\r\n]\r\n'), { args: ['a', 'b'] });
+  assert.deepEqual(ok(`a = ${Q3}\r\nline\r\n${Q3} # after a multi-line string\r\nb = ${S3}raw${S3} # and a literal\r\n`), { a: 'line\n', b: 'raw' });
+  assert.deepEqual(ok('[t] # table\r\nx = 1\r\n[[u]] # array\r\ny = 2\r\n'), { t: { x: 1 }, u: [{ y: 2 }] });
+  // A carriage return that does not begin CR LF is still refused, in a comment as anywhere.
+  no('a = 1 # bad\rb = 2\n');
+  no('# bad \r');
+  no('a = 1 # \x00\r\n');
+});
+
+test('a Codex agent file saved with CR LF, with comments around a multi-line body, is adopted with LF line breaks', async t => {
+  const crlf = text => text.replace(/\n/g, '\r\n');
+  const p = project(t, {
+    '.codex/agents/windows.toml': crlf(`# written on another system\nname = "windows"\ndescription = "Saved with CR LF." # a comment\ndeveloper_instructions = ${Q3}\nRead the diff.\nReport each finding.\n${Q3} # the end\n`),
+  });
+  const input = p.input({ engines: [{ id: 'codex' }] });
+  const plan = planAdoption(input);
+  assert.deepEqual(plan.unmapped.filter(u => u.path.startsWith('.codex/agents/')), [], 'nothing is left out');
+  await applyAdoption(input, plan.revision, plan.approvalsRequired);
+  const r = loadDefinition(p.def);
+  assert.equal(r.ok, true, JSON.stringify(r.problems));
+  assert.equal(r.definition.entries.subagents[0].body, 'Read the diff.\nReport each finding.\n');
+});
