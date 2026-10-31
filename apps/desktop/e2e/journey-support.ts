@@ -29,6 +29,7 @@ export function newMadeUpHome({ history = false }: { history?: boolean } = {}): 
 export async function startApp(home: MadeUpHome, route: string, { freshTour = false }: { freshTour?: boolean } = {}): Promise<RealHarness> {
   const h = await launchReal(home.home, { XDG_STATE_HOME: join(home.home, '.local', 'state') }, false, { freshTour });
   await h.page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });
+  await h.page.waitForLoadState('load');
   await h.page.evaluate(r => { location.hash = `#app/${r}`; location.reload(); }, route);
   await h.page.waitForLoadState('domcontentloaded');
   await h.page.waitForSelector('[data-home]');

@@ -7,6 +7,8 @@
   "bowerloom/definition-save-recovery-plan/v1beta1",
   "bowerloom/harness-bundle/v1beta1",
   "bowerloom/harness-drift/v1beta1",
+  "bowerloom/harness-export-plan/v1beta1",
+  "bowerloom/harness-import-plan/v1beta1",
   "bowerloom/harness-status/v1beta1",
   "bowerloom/harness/v1beta1",
   "bowerloom/instruction-merge-pending/v1beta1",

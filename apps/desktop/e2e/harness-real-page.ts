@@ -52,7 +52,8 @@ export async function launchReal(home: string, env: Record<string, string> = {},
   });
   const page = await app.firstWindow();
   const dialogs: string[] = [];
-  page.on('dialog', d => { dialogs.push(d.message()); void d.dismiss(); });
+  // A page dialog can only be a beforeunload prompt. A reload may close it before dismiss() reaches it, so a failed dismiss is not an error; the type is kept so a test can see it.
+  page.on('dialog', d => { dialogs.push(`${d.type()}: ${d.message()}`); void d.dismiss().catch(() => undefined); });
   await page.waitForLoadState('domcontentloaded');
   await page.waitForSelector('[data-home]');
   if (!freshTour) await page.evaluate(key => sessionStorage.setItem(key, '1'), TOUR_SEEN_KEY);

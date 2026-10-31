@@ -19,11 +19,11 @@ import { buildInstallPlan, installButtonWords, planSummary } from '../shared/har
 import { DESKTOP } from './support.js';
 
 test('the preview\'s rule is the home rule less the words the design is built on, and every other banned word stays', () => {
-  assert.deepEqual([...DESIGN_WORDS].sort(), ['conflict', 'harness', 'helper', 'plan', 'project', 'scan', 'version']);
+  assert.deepEqual([...DESIGN_WORDS].sort(), ['conflict', 'export', 'harness', 'helper', 'import', 'plan', 'project', 'scan', 'version']);
   assert.ok(DESIGN_WORDS.every(w => BANNED.includes(w)), 'each design word was banned at home');
   assert.deepEqual([...HARNESS_BANNED], BANNED.filter(w => !DESIGN_WORDS.includes(w)));
-  for (const word of ['global', 'scope', 'slice', 'apply', 'adopt', 'export', 'import', 'team', 'grant', 'wire', 'ghost', 'lasso', 'mcp', 'token']) assert.notEqual(bannedHere(`the ${word} here`), null, word);
-  for (const word of ['harness', 'project', 'conflict', 'scan', 'helper', 'plans', 'version']) { assert.equal(bannedHere(`the ${word} here`), null, word); assert.notEqual(bannedIn(`the ${word} here`), null, `${word} stays banned at home`); }
+  for (const word of ['global', 'scope', 'slice', 'apply', 'adopt', 'team', 'grant', 'wire', 'ghost', 'lasso', 'mcp', 'token']) assert.notEqual(bannedHere(`the ${word} here`), null, word);
+  for (const word of ['harness', 'project', 'conflict', 'scan', 'helper', 'plans', 'version', 'export', 'import']) { assert.equal(bannedHere(`the ${word} here`), null, word); assert.notEqual(bannedIn(`the ${word} here`), null, `${word} stays banned at home`); }
   assert.equal(bannedHere('Install history'), null);
   assert.notEqual(bannedHere('Pick an interface'), null, 'the screens say engine, so interface is banned again');
   assert.equal(bannedHere('Pick an engine'), null);
@@ -81,8 +81,8 @@ const CODE_NAMES: Readonly<Record<string, readonly string[]>> = Object.freeze({
   'renderer/harness/HarnessApp.tsx': times('interfaces', 1), 'renderer/harness/Navigation.tsx': times('interfaces', 3), 'renderer/harness/Shell.tsx': times('interfaces', 1), 'renderer/harness/ui.tsx': times('interfaces', 2),
   'renderer/harness/screens/Interfaces.tsx': times('interfaces', 2), 'renderer/harness/screens/Projects.tsx': times('interfaces', 1), 'renderer/harness/sheets/InstallSheet.tsx': times('interfaces', 5), 'renderer/harness/sheets/ProjectSheet.tsx': times('interfaces', 8),
   'shared/harness/builder-draft.ts': times('last-interface', 2), 'shared/harness/route.ts': times('interfaces', 8), 'shared/harness/status.ts': times('interfaces', 1),
-  'shared/harness/store.ts': [...times('set-interface', 4), ...times('interface', 4)], 'shared/harness/types.ts': times('set-interface', 1),
-  'shared/engine/types.ts': [...times('mcp', 3), 'apply'], 'main/engine-consent.ts': ['mcp', 'mcp.json'],
+  'shared/harness/store.ts': [...times('set-interface', 4), ...times('interface', 4)], 'shared/harness/types.ts': ['set-interface', 'mcp'], 'shared/harness/overview.ts': ['mcp'],
+  'shared/engine/types.ts': [...times('mcp', 4), 'apply'], 'main/engine-consent.ts': ['mcp', 'mcp.json'],
 });
 /** The text pieces of a source file: its string literals and its JSX text, without comments and import paths. */
 function textPieces(source: string): string[] {

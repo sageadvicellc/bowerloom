@@ -11,7 +11,8 @@
 import { createContext, useCallback, useContext, useMemo, useReducer } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import type { Answer, DefinitionView, VersionView } from '../../shared/engine/types.js';
-import { draftCount } from '../../shared/harness/save-draft.js';
+import { definitionWorld, draftCount, draftView } from '../../shared/harness/save-draft.js';
+import { graphOf, settleAdded } from '../../shared/harness/layout.js';
 import type { SaveDraft } from '../../shared/harness/save-draft.js';
 import { canRedo, canUndo, pushDraft, redoDraft, resetDraft, startDraft, undoCount, undoDraft } from '../../shared/harness/draft-undo.js';
 import type { DraftStack } from '../../shared/harness/draft-undo.js';
@@ -53,8 +54,31 @@ export const entryOf = (s: FolderDrafts, folder: string): FolderEntry | undefine
 /** The stack after a step: the same state when the stack did not change, so React draws nothing. */
 const withStack = (s: FolderDrafts, folder: string, entry: FolderEntry, stack: DraftStack): FolderDrafts => (stack === entry.stack ? s : put(s, folder, { ...entry, stack }));
 
-/** The next drafts of the folders. A change, an undo or a discard of a folder not read yet changes nothing. */
+/**
+ * The next drafts of the folders. A change, an undo or a discard of a folder not read yet changes nothing. A step that adds or takes away a node also records, in the
+ * in-memory places, the place of each new node (below the lowest card of its column) and the place of each node that would move, so a copied skill never lands on a card
+ * the person dragged, and no card moves because another came or went (layout.ts, `settleAdded`).
+ */
 export function folderDraftsReduce(s: FolderDrafts, a: FolderDraftAction): FolderDrafts {
+  const out = reduceDrafts(s, a);
+  if (a.kind !== 'change' && a.kind !== 'push' && a.kind !== 'undo' && a.kind !== 'redo' && a.kind !== 'discard') return out;
+  const was = entryOf(s, a.folder), now = entryOf(out, a.folder);
+  if (was === undefined || now === undefined || was.base === null || now.base === null || was.stack === now.stack) return out;
+  // Most edits (a link, a text) keep the same nodes: compare the ids first and build no graph.
+  const wasView = draftView(was.base, was.stack.present), nowView = draftView(now.base, now.stack.present);
+  if (sameNodes(wasView, nowView)) return out;
+  const graph = (view: DefinitionView): ReturnType<typeof graphOf> => { const w = definitionWorld(view); return graphOf(w.state, w.harness, now.positions); };
+  const place = settleAdded(graph(wasView), graph(nowView), now.positions);
+  return Object.keys(place).length === 0 ? out : put(out, a.folder, { ...now, positions: { ...now.positions, ...place } });
+}
+
+/** True when two views would draw the same nodes: the same agents, skills and notes sources, by id. */
+function sameNodes(a: DefinitionView, b: DefinitionView): boolean {
+  const ids = (v: DefinitionView): string => JSON.stringify([v.agents.map(x => x.id), v.skills.map(x => x.id), v.sources.map(x => x.name)]);
+  return a === b || ids(a) === ids(b);
+}
+
+function reduceDrafts(s: FolderDrafts, a: FolderDraftAction): FolderDrafts {
   const entry = entryOf(s, a.folder);
   switch (a.kind) {
     case 'loaded': {

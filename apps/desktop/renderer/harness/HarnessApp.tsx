@@ -58,6 +58,8 @@ function Screens({ route, bridge, realMode }: { route: Route; bridge: RealBridge
     }
     case 'read': return <ReadSources />;
     case 'notes': return <NotesFirstRun />;
+    // STAGE 1 of Task 2: the Overview screen is not built. Until lane H adds it, the address shows the folder list.
+    case 'overview': return <HarnessList id={null} />;
     case 'harnesses': return <HarnessList id={route.id ?? null} />;
     case 'builder': return <Builder key={route.id} id={route.id} />;
     case 'file': return <FileView partId={route.partId} />;

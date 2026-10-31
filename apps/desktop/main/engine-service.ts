@@ -61,7 +61,7 @@ import { EVERY_ENGINE_PARTS, RECONCILE, SAVE_EDIT_LIMIT } from '../shared/engine
 import type {
   AdoptApproval, AdoptChoices, AdoptRecovered, AdoptRecoveryView, AdoptView, AdoptWritten, Answer, ApproveLineView, EngineId, EveryEnginePart, FolderInfo, MergeView, MergeWritten,
   DefinitionView, ProjectAnswer, ProjectInput, ProjectWritten, Recovered, RecoveryChoices, RecoveryView, Refusal, RemovalView, Removed, ReportOpened, RestoreView, SaveChangeView, SaveEdit,
-  SaveRequest, SaveView, SaveWritten, SetAsideView, SetAsideWritten, VersionView,
+  SaveRequest, SaveView, SaveWritten, SetAsideView, SetAsideWritten, VersionView, BundleView, ExportView, ExportWritten, ImportView,
 } from '../shared/engine/types.js';
 import { REPORT_MAIN_WORDS, REPORT_NONE, REPORT_NOT_SHOWN, REPORT_OPEN_FAILED, SAVE_EXECUTABLE_UNACKNOWLEDGED, SAVE_MAIN_WORDS } from '../shared/engine/types.js';
 import { checkedReport, createReportCopies, newestReport } from './notes-report.js';
@@ -116,7 +116,7 @@ export interface EngineServiceDeps {
 
 /** A call the service refuses before it reaches a package: the window gets only the short code. */
 export class EngineCallRefusal extends Error {
-  constructor(readonly code: 'BAD_ARGUMENT' | 'UNKNOWN_FOLDER') { super(code); this.name = 'EngineCallRefusal'; }
+  constructor(readonly code: 'BAD_ARGUMENT' | 'UNKNOWN_FOLDER' | 'UNKNOWN_BUNDLE') { super(code); this.name = 'EngineCallRefusal'; }
 }
 
 interface Folder {
@@ -306,6 +306,13 @@ export interface EngineService {
   planNotesHistory(notesId: unknown): Promise<Answer<NotesHistoryPlanView>>;
   runNotesHistory(notesId: unknown, revision: unknown): Promise<Answer<NotesWritten>>;
   openNotesReport(notesId: unknown): Promise<Answer<ReportOpened>>;
+  /** Export and import (journey 4). STAGE 1: these six throw `not built` until Task 1 lane C builds main/engine-bundle.ts and wires it here. */
+  planExport(folderId: unknown): Promise<Answer<ExportView>>;
+  runExport(folderId: unknown, revision: unknown, acknowledged: unknown): Promise<Answer<ExportWritten>>;
+  chooseBundle(): Promise<Answer<BundleView> | null>;
+  planImport(folderId: unknown, bundleId: unknown, choices: unknown): Promise<Answer<ImportView>>;
+  runImport(folderId: unknown, revision: unknown, bundleId: unknown, choices: unknown, acknowledged: unknown): Promise<Answer<SaveWritten>>;
+  discardBundle(bundleId: unknown): Promise<boolean>;
   /** Removes main's private copies of tidy-up reports. Main calls it at quit. Not a call of the window. */
   clearReportCopies(): void;
   /**
@@ -1154,6 +1161,12 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
         return { path: n.scrub(place.rel) };
       });
     }),
+    planExport: () => Promise.reject(new Error('not built')),
+    runExport: () => Promise.reject(new Error('not built')),
+    chooseBundle: () => Promise.reject(new Error('not built')),
+    planImport: () => Promise.reject(new Error('not built')),
+    runImport: () => Promise.reject(new Error('not built')),
+    discardBundle: () => Promise.reject(new Error('not built')),
     clearReportCopies: () => reportCopies.clear(),
     idle: async () => { let seen: Promise<unknown>; do { seen = chain; await seen; } while (seen !== chain); },
   };

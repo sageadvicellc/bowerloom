@@ -143,7 +143,7 @@ test('Codex agent files become subagents; feature switches are a tool limit the 
 });
 
 test('a TOML form outside the subset is listed with the reason, not guessed', t => {
-  const p = project(t, { '.codex/config.toml': 'model = """multi"""\n' });
+  const p = project(t, { '.codex/config.toml': 'model = 1979-05-27T07:32:00Z\n' });
   const plan = planAdoption(p.input({ engines: [{ id: 'codex' }] }));
   assert.match(reasonAt(plan, '.codex/config.toml'), /TOML/);
 });

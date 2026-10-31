@@ -30,23 +30,24 @@ export function graphOf(state: HarnessState, harness: Harness, moved: Readonly<R
     ...partsOf(state, harness).map(p => ({ id: p.id, kind: p.kind, name: p.name, summary: p.summary, missing: false, isNew: harness.newPartIds.includes(p.id) })),
     ...harness.missing.map(m => ({ id: m.id, kind: m.kind, name: m.name, summary: 'Missing. Needed.', missing: true, isNew: false })),
   ];
-  const saved = (id: string): Point | undefined => moved[id] ?? harness.positions[id];
-  const places = new Map<string, Point>();
-  for (const e of entries) { const p = saved(e.id); if (p !== undefined) places.set(e.id, p); }
-  // The other parts, in a column at the right, one slot each.
-  let cursor = Math.max(RIGHT_TOP - RIGHT_PITCH, ...entries.filter(e => e.kind !== 'agent' && places.has(e.id)).map(e => places.get(e.id)!.y));
-  for (const e of entries) if (e.kind !== 'agent' && !places.has(e.id)) { cursor += RIGHT_PITCH; places.set(e.id, { x: RIGHT_X, y: cursor }); }
-  // The agents, in a column at the left, each level with the middle of the parts it uses, and never closer than a gap to the one above.
-  const linked = (id: string): number[] => harness.links.filter(l => l.from === id && places.has(l.to)).map(l => places.get(l.to)!.y + NODE_SIZE.other.h / 2);
-  let floor = Math.max(Number.NEGATIVE_INFINITY, ...entries.filter(e => e.kind === 'agent' && places.has(e.id)).map(e => places.get(e.id)!.y + NODE_SIZE.agent.h + AGENT_GAP));
-  let slot = 0;
+  // Default places first. They depend on the list of parts and their links only, never on a saved or dragged place, so moving one node moves that node and no other.
+  const defaults = new Map<string, Point>();
+  // The other parts, in a column at the right, one slot each, by their index among the other parts.
+  let other = 0;
+  for (const e of entries) if (e.kind !== 'agent') { defaults.set(e.id, { x: RIGHT_X, y: RIGHT_TOP + other * RIGHT_PITCH }); other += 1; }
+  // The agents, in a column at the left, each level with the middle of the default places of the parts it uses, and never closer than a gap to the agent above.
+  const linked = (id: string): number[] => harness.links.filter(l => l.from === id && defaults.has(l.to)).map(l => defaults.get(l.to)!.y + NODE_SIZE.other.h / 2);
+  let floor = Number.NEGATIVE_INFINITY, slot = 0;
   for (const e of entries) {
-    if (e.kind !== 'agent' || places.has(e.id)) continue;
+    if (e.kind !== 'agent') continue;
     const ys = linked(e.id);
     const wanted = ys.length > 0 ? ys.reduce((a, b) => a + b, 0) / ys.length - NODE_SIZE.agent.h / 2 : AGENT_TOP + slot * (NODE_SIZE.agent.h + AGENT_GAP);
     const y = Math.max(wanted, floor);
-    places.set(e.id, { x: LEFT_X, y }); floor = y + NODE_SIZE.agent.h + AGENT_GAP; slot += 1;
+    defaults.set(e.id, { x: LEFT_X, y }); floor = y + NODE_SIZE.agent.h + AGENT_GAP; slot += 1;
   }
+  // Then the saved places, then the places being dragged, each one an override of one node.
+  const places = new Map<string, Point>(defaults);
+  for (const e of entries) { const p = moved[e.id] ?? harness.positions[e.id]; if (p !== undefined) places.set(e.id, p); }
   const nodes: GraphNode[] = entries.map(e => {
     const at = places.get(e.id)!, size = e.kind === 'agent' ? NODE_SIZE.agent : NODE_SIZE.other;
     return { ...e, x: at.x, y: at.y, w: size.w, h: size.h };
@@ -55,6 +56,57 @@ export function graphOf(state: HarnessState, harness: Harness, moved: Readonly<R
   const missingIds = new Set(harness.missing.map(m => m.id));
   const edges: GraphEdge[] = harness.links.filter(l => known.has(l.from) && known.has(l.to)).map(l => ({ id: `${l.from}>${l.to}`, from: l.from, to: l.to, missing: missingIds.has(l.to) }));
   return { nodes, edges, bounds: boundsOf(nodes, harness.missing.length > 0 ? FIX_ROOM : 0) };
+}
+
+/**
+ * The place for a part that is added to a harness, worked out once at add time and then saved in `positions`: below the lowest card of its column. An agent goes
+ * below the last agent, any other part below the last other part. `graph` is the graph before the part is added. Saving it keeps `graphOf` free of any rule that
+ * looks at another node's place: the part never moves when others are added or removed or dragged.
+ */
+export function nextSlot(graph: Pick<Graph, 'nodes'>, kind: PartKind): Point {
+  if (kind === 'agent') {
+    const agents = graph.nodes.filter(n => n.kind === 'agent');
+    return { x: LEFT_X, y: agents.length === 0 ? AGENT_TOP : Math.max(...agents.map(n => n.y + n.h)) + AGENT_GAP };
+  }
+  const others = graph.nodes.filter(n => n.kind !== 'agent');
+  return { x: RIGHT_X, y: others.length === 0 ? RIGHT_TOP : Math.max(...others.map(n => n.y)) + RIGHT_PITCH };
+}
+
+/**
+ * What to save when a change adds parts to a graph or takes some away, so that nothing moves by itself. `before` and `after` are the graph of the same harness before
+ * and after the change, with the places the person saved or dragged in both (`saved`). It returns the places to add to `saved`:
+ *  - every node that is in both graphs, has no saved place, and would move (the default slot is an index, so a part added or removed ahead of it shifts it): it keeps its place;
+ *  - every new node that has no saved place: below the lowest card of its column, one after another (`nextSlot`).
+ * Pure. A node with a saved place is not changed, with one exception: a node that comes back keeps its saved place only when no node is there now (a place that
+ * would overlap is replaced by the next slot). A node that leaves the graph is pinned at its last place (a dragged place is already saved), so a node that comes
+ * back, as undo brings it, returns where it was. When the two graphs hold the same nodes (a link was made or removed), the result is empty: a link is allowed to move
+ * an agent that has no place of its own, because an agent's default level follows the parts it uses.
+ */
+export function settleAdded(before: Graph, after: Graph, saved: Readonly<Record<string, Point>>): Record<string, Point> {
+  const out: Record<string, Point> = {};
+  const now = new Map(after.nodes.map(n => [n.id, n]));
+  if (before.nodes.length === after.nodes.length && before.nodes.every(n => now.has(n.id))) return out;
+  for (const n of before.nodes) if (!now.has(n.id) && !Object.hasOwn(saved, n.id)) out[n.id] = { x: n.x, y: n.y };
+  const overlaps = (a: GraphNode, list: readonly GraphNode[]): boolean => list.some(b => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h);
+  const running: GraphNode[] = [];
+  for (const n of before.nodes) {
+    const a = now.get(n.id);
+    if (a === undefined) continue;
+    if (!Object.hasOwn(saved, n.id) && (a.x !== n.x || a.y !== n.y)) out[n.id] = { x: n.x, y: n.y };
+    running.push(n);
+  }
+  const was = new Set(before.nodes.map(n => n.id));
+  for (const n of after.nodes) {
+    if (was.has(n.id)) continue;
+    if (Object.hasOwn(saved, n.id)) {
+      const placed = { ...n, ...saved[n.id]! };
+      if (!overlaps(placed, running)) { running.push(placed); continue; }
+    }
+    const at = nextSlot({ nodes: running }, n.kind);
+    out[n.id] = at;
+    running.push({ ...n, x: at.x, y: at.y });
+  }
+  return out;
 }
 
 export function boundsOf(nodes: readonly GraphNode[], extraRight = 0): Bounds {

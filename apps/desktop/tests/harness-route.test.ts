@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { BASE, REAL_BASE, baseOf, formatRoute, isFirstRun, isHarnessHash, isRealHash, navKeyOf, parseRoute } from '../shared/harness/route.js';
 import type { Route } from '../shared/harness/route.js';
 import { SAMPLE_IDS, createSampleWorld } from '../shared/harness/sample.js';
-import { addPart, setNodePosition } from '../shared/harness/store.js';
+import { addPart, removePart, setNodePosition } from '../shared/harness/store.js';
 import { ZOOM_MAX, ZOOM_MIN, boundsOf, brightIds, centerOnMiniMap, edgePath, fitView, graphOf, miniMap, toGraph, zoomAt } from '../shared/harness/layout.js';
 import { harnessById } from '../shared/harness/status.js';
 
@@ -87,7 +87,18 @@ test('a harness with no saved places gets default places: agents level with thei
   assert.deepEqual(rest.map(n => n.y), rest.map((_, i) => 40 + i * 76));
   assert.ok(rest.every(n => n.x === 440) && agents.every(n => n.x === 48));
   const added = addPart(createSampleWorld(), SAMPLE_IDS.weekly, 'tool-notes-search', NOW), g2 = graphOf(added, harnessById(added, SAMPLE_IDS.weekly)!);
+  // The place is worked out once, when the part is added, and saved: below the lowest card of the column.
   assert.equal(g2.nodes.find(n => n.id === 'tool-notes-search')!.y, 724);
+  assert.deepEqual(harnessById(added, SAMPLE_IDS.weekly)!.positions['tool-notes-search'], { x: 440, y: 724 });
+  assert.equal(g2.nodes.find(n => n.id === 'missing-translate')!.y, 648, 'a saved place is kept');
+  // It never moves when another part is added or removed, or when a card is dragged.
+  const second = createSampleWorld().parts.find(p => p.kind !== 'agent' && p.id !== 'tool-notes-search' && !harnessById(createSampleWorld(), SAMPLE_IDS.weekly)!.partIds.includes(p.id))!.id;
+  const twice = addPart(added, SAMPLE_IDS.weekly, second, NOW), g3 = graphOf(twice, harnessById(twice, SAMPLE_IDS.weekly)!);
+  assert.equal(g3.nodes.find(n => n.id === 'tool-notes-search')!.y, 724);
+  assert.equal(g3.nodes.find(n => n.id === second)?.y, 800, 'the next one goes below that');
+  const gone = removePart(twice, SAMPLE_IDS.weekly, second, NOW), g4 = graphOf(gone, harnessById(gone, SAMPLE_IDS.weekly)!);
+  assert.equal(g4.nodes.find(n => n.id === 'tool-notes-search')!.y, 724);
+  assert.equal(graphOf(added, harnessById(added, SAMPLE_IDS.weekly)!, { 'skill-draft-outline': { x: 0, y: 900 } }).nodes.find(n => n.id === 'tool-notes-search')!.y, 724);
   const empty = graphOf(s, { ...h, partIds: [], links: [], missing: [] });
   assert.deepEqual(empty.bounds, { left: 0, top: 0, right: 0, bottom: 0 }); assert.equal(boundsOf([]).right, 0);
 });

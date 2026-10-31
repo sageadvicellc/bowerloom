@@ -157,11 +157,7 @@ test('Journey 2: join a skill to an agent, save, install to Claude Code and Code
   });
 });
 
-// KNOWN FAILURE, found by this journey. The spec says "drags a skill to an agent". In a folder whose parts have no saved places, the Builder lays out a skill that is being dragged first:
-// every other skill and every agent is placed below it (shared/harness/layout.ts, `graphOf`: the dragged skill's place raises the cursor for the others), so the agent runs away from the
-// pointer and the drop misses. Playwright runs this test as an expected failure. When the Builder is fixed, the test passes, Playwright reports it, and `test.fail` is removed.
-test('Journey 2, drag: dropping the skill knot-guide on the agent tallyman links them (known failure: the agent moves away while the skill is dragged)', async () => {
-  test.fail(true, 'The agents are laid out below the dragged skill, so the drop misses. See the comment above.');
+test('Journey 2, drag: dropping the skill knot-guide on the agent tallyman links them', async () => {
   test.setTimeout(120_000);
   const home = newMadeUpHome();
   h = await startApp(home, 'harnesses');

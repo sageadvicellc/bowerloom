@@ -10,6 +10,7 @@
  */
 import { buildInstallPlan } from './files.js';
 import { autoLinks } from './links.js';
+import { graphOf, settleAdded } from './layout.js';
 import { harnessById, installOf, interfaceById, partById, projectById } from './status.js';
 import type {
   ConflictChoice, Harness, HarnessState, HistoryEntry, Install, InstallState, InterfaceId, Link, MissingRef, Point, Rating, Run, Stamp, UndoStep,
@@ -92,12 +93,19 @@ export function addPart(state: HarnessState, harnessId: string, partId: string, 
   if (harness === undefined || part === undefined || harness.partIds.includes(partId)) return state;
   const ref = harness.missing.find(m => m.kind === part.kind && m.name.toLowerCase() === part.name.toLowerCase());
   const moved = ref === undefined ? [] : harness.links.filter(l => l.to === ref.id);
-  const next = withHarness(state, harnessId, h => ({
+  // The part that fills a missing card takes the card's place, saved or not.
+  const before = graphOf(state, harness), at = ref === undefined ? undefined : harness.positions[ref.id] ?? before.nodes.find(n => n.id === ref.id);
+  const added = withHarness(state, harnessId, h => ({
     ...h, partIds: [...h.partIds, partId], newPartIds: [...h.newPartIds, partId],
     missing: ref === undefined ? h.missing : h.missing.filter(m => m.id !== ref.id),
     links: ref === undefined ? h.links : h.links.map(l => (l.to === ref.id ? { ...l, to: partId } : l)),
-    positions: ref === undefined || h.positions[ref.id] === undefined ? h.positions : { ...Object.fromEntries(Object.entries(h.positions).filter(([k]) => k !== ref.id)), [partId]: h.positions[ref.id]! },
+    positions: ref === undefined || at === undefined ? h.positions : { ...Object.fromEntries(Object.entries(h.positions).filter(([k]) => k !== ref.id)), [partId]: { x: at.x, y: at.y } },
   }));
+  // Nothing else moves, and the new part is placed once, below the lowest card of its column, and the place is saved (layout.ts, `settleAdded`).
+  // The store undoes by its own steps, so a card that left (the missing card that the part now fills) keeps no place of its own.
+  const grown = harnessById(added, harnessId)!, graph = graphOf(added, grown), here = new Set(graph.nodes.map(n => n.id));
+  const pins = Object.fromEntries(Object.entries(settleAdded(before, graph, grown.positions)).filter(([id]) => here.has(id)));
+  const next = withHarness(added, harnessId, h => ({ ...h, positions: { ...h.positions, ...pins } }));
   const undo: UndoStep[] = [{ op: 'remove-part', harnessId, partId }, ...(ref === undefined ? [] : [{ op: 'restore-missing', harnessId, missing: [ref], links: moved } as UndoStep])];
   return record(next, stamp, { text: `Added ${part.name} to ${harness.name}`, manifest: 'changed', undo });
 }
