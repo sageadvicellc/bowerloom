@@ -16,12 +16,12 @@ import { useUi } from '../ui.js';
 import type { Ui } from '../ui.js';
 import { HButton, HIconButton, StateDot } from '../parts/controls.js';
 import { HIcon, Tile } from '../icons.js';
-import { RUN_WORDS, bringName, compareTitle, firstSentence } from '../runs-words.js';
+import { RUN_WORDS, bringName, bringTipWords, bringToastWords, compareTitle, firstSentence, noRunsWords } from '../runs-words.js';
 import { WORDS } from '../words.js';
 import './runs.css';
 
-/** The preview opens no window: it says what the full app would do. */
-const bringToFront = (ui: Ui): void => ui.showToast(RUN_WORDS.hint.bringToast);
+/** Nothing opens a window yet: the note says so in the words of the mode (the sample, or the person's own folders). */
+const bringToFront = (ui: Ui, state: HarnessState): void => ui.showToast(bringToastWords(state.real !== undefined));
 
 function RunRow({ state, run, selected, ui }: { state: HarnessState; run: Run; selected: boolean; ui: Ui }): ReactElement {
   return (
@@ -32,7 +32,7 @@ function RunRow({ state, run, selected, ui }: { state: HarnessState; run: Run; s
         <span className="hx-row-meta">{runMeta(state, run)}</span>
       </div>
       <StateDot tone={runTone(run.status)} className="hx-row-state">{runStatusWords(run.status)}</StateDot>
-      <span className="hx-row-action"><HIconButton icon="fit" label={bringName(runName(state, run))} tip={RUN_WORDS.hint.bringTip} side="below-end" onClick={() => bringToFront(ui)} /></span>
+      <span className="hx-row-action"><HIconButton icon="fit" label={bringName(runName(state, run))} tip={bringTipWords(state.real !== undefined)} side="below-end" onClick={() => bringToFront(ui, state)} /></span>
     </li>
   );
 }
@@ -77,7 +77,7 @@ function Details({ state, run, ui }: { state: HarnessState; run: Run; ui: Ui }):
         <p className="hx-text">{stampAtWords(run.started)}</p>
       </section>
       <div className="hx-actions">
-        <HButton icon="fit" variant="primary" onClick={() => bringToFront(ui)}>{RUN_WORDS.label.bringFront}</HButton>
+        <HButton icon="fit" variant="primary" onClick={() => bringToFront(ui, state)}>{RUN_WORDS.label.bringFront}</HButton>
         {group === null ? null : <HButton icon="columns" onClick={() => go({ name: 'compare', group })}>{RUN_WORDS.label.openCompare}</HButton>}
       </div>
       <p className="hx-text hx-muted">{RUN_WORDS.paragraph.chatNote}</p>
@@ -111,7 +111,7 @@ export function Runs({ id }: { id: string | null }): ReactElement {
           <input type="search" value={query} autoFocus placeholder={WORDS.label.search} aria-label={WORDS.label.search} onChange={e => setQuery(e.target.value)} />
         </label>
       )}
-      {state.runs.length === 0 ? <p className="kit-hint hx-hint">{RUN_WORDS.hint.noRuns}</p> : null}
+      {state.runs.length === 0 ? <p className="kit-hint hx-hint">{noRunsWords(state.real !== undefined)}</p> : null}
       {state.runs.length > 0 && shown.length === 0 ? <p className="kit-hint hx-hint">{WORDS.hint.noMatch}</p> : null}
       {shown.length === 0 ? null : (
         <ul className="hx-rows hr-list" aria-label={RUN_WORDS.label.runsList}>

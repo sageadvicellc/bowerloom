@@ -69,7 +69,7 @@ export const BUILDER_REFUSALS = Object.freeze({
   'skill-here': 'This harness has a skill with that name already.',
   'copy-limit': `One save copies at most ${COPY_LIMIT} skills.`,
   'same-folder': 'That skill is in this folder already.',
-  'last-interface': 'Keep at least one interface.',
+  'last-interface': 'Keep at least one engine.',
   'no-change': 'Nothing changed.',
 } as const);
 export type BuilderRefusal = keyof typeof BUILDER_REFUSALS;

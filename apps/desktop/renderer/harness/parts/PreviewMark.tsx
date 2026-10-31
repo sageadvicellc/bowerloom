@@ -1,6 +1,6 @@
 /**
- * The "Preview" mark at the foot of the navigation: plain words and a dot. Its popover says that this is a preview on sample data (or, on the person's own folders, that it reads them, changes none and writes nothing), that nothing is written to the disk, that the full app
- * opens the interface when you press Start, and lists what is not in this preview. Escape or a press elsewhere closes it and the focus stays on the mark.
+ * The "Preview" mark at the foot of the navigation: plain words and a dot. On the sample it says "Preview" and that this is sample data and nothing is written to the disk. On the person's own folders it says "Beta", that Bowerloom reads
+ * their folders and writes only after they approve, and lists what is not in beta.1. Escape or a press elsewhere closes it and the focus stays on the mark.
  */
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
@@ -15,6 +15,8 @@ export function PreviewMark({ rail }: { rail: boolean }): ReactElement {
   // On the person's own folders the state holds what the reader said; the sample (and the sample opened from real mode) holds nothing there.
   const real = useHarnessState().real !== undefined;
   const id = useId();
+  // On the person's own folders the app is a beta. Only the sample is a preview.
+  const markName = real ? REAL.label.beta : WORDS.label.preview, aboutName = real ? REAL.label.aboutBeta : WORDS.label.aboutPreview;
   const wrap = useRef<HTMLSpanElement>(null), trigger = useRef<HTMLButtonElement>(null);
   const shown = usePresence(open);
   useEffect(() => {
@@ -29,19 +31,19 @@ export function PreviewMark({ rail }: { rail: boolean }): ReactElement {
   }, [open]);
   return (
     <span className="kit-help hx-preview" ref={wrap} data-place="above">
-      <Tooltip text={WORDS.label.preview} side="right" off={!rail}>
+      <Tooltip text={markName} side="right" off={!rail}>
         {aria => (
-          <button ref={trigger} type="button" className="kit-status kit-help-text" data-tone="info" data-no-drag="" data-preview-mark="" aria-label={WORDS.label.aboutPreview} aria-expanded={open} aria-controls={id} onClick={() => setOpen(o => !o)} {...aria}>
-            <span className="kit-dot" aria-hidden="true" /><span>{WORDS.label.preview}</span>
+          <button ref={trigger} type="button" className="kit-status kit-help-text" data-tone="info" data-no-drag="" data-preview-mark="" aria-label={aboutName} aria-expanded={open} aria-controls={id} onClick={() => setOpen(o => !o)} {...aria}>
+            <span className="kit-dot" aria-hidden="true" /><span>{markName}</span>
           </button>
         )}
       </Tooltip>
       {shown.mounted ? (
-        <div className="kit-popover hx-preview-pop" id={id} role="group" aria-label={WORDS.label.aboutPreview} data-budget="popover" data-leaving={shown.leaving ? '' : undefined}>
-          <p>{real ? REAL.paragraph.previewAbout : WORDS.paragraph.previewAbout}</p>
-          <p>{WORDS.paragraph.previewFull}</p>
-          <h3 className="hx-pop-head">{WORDS.label.previewNot}</h3>
-          <ul className="hx-pop-list" data-real={real ? '' : undefined}>{(real ? REAL.notInPreview : WORDS.notInPreview).map(line => <li key={line}>{line}</li>)}</ul>
+        <div className="kit-popover hx-preview-pop" id={id} role="group" aria-label={aboutName} data-budget="popover" data-leaving={shown.leaving ? '' : undefined}>
+          <p>{real ? REAL.paragraph.betaAbout : WORDS.paragraph.previewAbout}</p>
+          {real ? null : <p>{WORDS.paragraph.previewFull}</p>}
+          <h3 className="hx-pop-head">{real ? REAL.label.notInBeta : WORDS.label.previewNot}</h3>
+          <ul className="hx-pop-list" data-real={real ? '' : undefined}>{(real ? REAL.notInBeta : WORDS.notInPreview).map(line => <li key={line}>{line}</li>)}</ul>
         </div>
       ) : null}
     </span>

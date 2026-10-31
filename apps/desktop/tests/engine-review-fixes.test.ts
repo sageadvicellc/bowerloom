@@ -82,7 +82,7 @@ test('item 8: the dialog says how many lines the person approved, and says nothi
   const plan = planOf(value(await service.planProjection(id, input)));
   value(await service.runProjection(id, plan.revision, input));
   const text = s.asked.at(-1)!;
-  assert.match(text.detail, /You approved 2 lines that an interface carries more weakly than the harness says\./);
+  assert.match(text.detail, /You approved 2 lines that an engine carries more weakly than the harness says\./);
   // The same folder installed again with nothing changed is a no-op: no dialog. A different folder without any weaker line has no count.
   const clean = definedFolder(s.home, 'plain');
   const second = await chosen(s, clean);

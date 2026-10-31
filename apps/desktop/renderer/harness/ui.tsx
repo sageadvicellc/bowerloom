@@ -2,7 +2,7 @@
  * What the screens share besides the harness world: which sheets are open (the install sheet and the start sheet are opened from several screens), the harness picked in the list,
  * the toast ("Installed. Undo"), and the shell (the details column and the navigation). All of it lives in memory.
  *
- * On the person's own folders (the state holds `real`) `openInstall` and `openStart` show the note "Not in this preview." and open nothing.
+ * On the person's own folders (the state holds `real`) `openInstall` and `openStart` show the note "Not in beta.1." and open nothing.
  * The next builders plug in here: `openInstall({ projectId, harnessId, step })` opens the install sheet at a step, `openStart({ harnessId, projectId })` opens the start sheet,
  * `showToast(text, action)` shows a note with one action, and `pickedHarnessId` is the harness the Harness list has selected.
  */
@@ -116,8 +116,8 @@ export function UiProvider({ children }: { children?: ReactNode }): ReactElement
   const ui = useMemo<Ui>(() => ({
     install,
     openInstall: (request = {}) => {
-      // On the person's own folders nothing can be installed in this preview: a note says so and no sheet opens.
-      if (harnessStore.getState().real !== undefined) { showToast(WORDS.hint.previewOnly); return; }
+      // On the person's own folders this install is not in beta.1 (the folder install sheet is): a note says so and no sheet opens.
+      if (harnessStore.getState().real !== undefined) { showToast(WORDS.hint.notInBeta); return; }
       setInstall(current => {
         const projectId = request.projectId === undefined ? current.projectId : request.projectId, harnessId = request.harnessId === undefined ? current.harnessId : request.harnessId;
         return { open: true, projectId, harnessId, step: request.step ?? (projectId === null ? 'project' : 'interfaces'), interfaceIds: request.interfaceIds ?? null };
@@ -127,7 +127,7 @@ export function UiProvider({ children }: { children?: ReactNode }): ReactElement
     closeInstall: () => setInstall(current => ({ ...current, open: false })),
     start,
     openStart: request => {
-      if (harnessStore.getState().real !== undefined) { showToast(WORDS.hint.previewOnly); return; }
+      if (harnessStore.getState().real !== undefined) { showToast(WORDS.hint.notInBeta); return; }
       setStart({ open: true, harnessId: request.harnessId, projectId: request.projectId ?? null });
     },
     closeStart: () => setStart(current => ({ ...current, open: false })),

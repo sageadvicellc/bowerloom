@@ -40,7 +40,7 @@ test('Welcome says what the design says, has no navigation, and "Find my files" 
   expect(await p.evaluate(() => typeof (window as unknown as { bowerloom?: unknown }).bowerloom)).toBe('undefined');
   await expect(p.getByRole('heading', { level: 1, name: 'Bowerloom', exact: true })).toBeVisible();
   await expect(p.getByText('Build a harness from your agents and skills.')).toBeVisible();
-  await expect(p.getByText('Then run it in any interface you use.')).toBeVisible();
+  await expect(p.getByText('Then run it in any engine you use.')).toBeVisible();
   await expect(p.getByText('A harness is a saved bundle of your AI helpers.')).toBeVisible();
   await expect(p.getByText('Bowerloom only reads. Nothing changes until you press Install.')).toBeVisible();
   await expect(p.getByRole('navigation')).toHaveCount(0);
@@ -145,7 +145,7 @@ test('Read sources shows the three sources; "Make a harness from this" makes one
   await expect(p.locator('.hx-row-harness')).toHaveCount(5);
   await expect(p.locator('.hx-row[data-selected]')).toContainText('Codex folder');
   await expect(p.locator('.hx-row[data-selected]')).toContainText('2 agents · 5 skills');
-  await p.getByRole('link', { name: 'Version history', exact: true }).or(p.getByRole('button', { name: 'Version history', exact: true })).first().click();
+  await p.getByRole('link', { name: 'Install history', exact: true }).or(p.getByRole('button', { name: 'Install history', exact: true })).first().click();
   await expect(p.locator('.hxh-row').first()).toContainText('Made Codex folder from a scan');
 });
 

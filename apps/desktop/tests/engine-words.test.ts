@@ -39,7 +39,7 @@ test('the words built from a number or a name read right and obey the rules', ()
   assert.equal(conflictWords('AGENTS.md', 2), 'Two copies of AGENTS.md differ.');
   assert.equal(countsWords({ exact: 3, translated: 0, weakened: 1, absent: 1 }), '3 exact, 1 weakened, 1 absent');
   assert.equal(countsWords({ exact: 0, translated: 0, weakened: 0, absent: 0 }), 'Nothing to install');
-  assert.equal(engineList(['Claude Code', 'Codex', 'OpenCode']), 'Claude Code, Codex and OpenCode'); assert.equal(engineList(null), 'Every interface'); assert.equal(engineList(['Codex']), 'Codex');
+  assert.equal(engineList(['Claude Code', 'Codex', 'OpenCode']), 'Claude Code, Codex and OpenCode'); assert.equal(engineList(null), 'Every engine'); assert.equal(engineList(['Codex']), 'Codex');
   assert.equal(hiddenWords('Codex', 'CLAUDE.md'), 'Codex does not read CLAUDE.md.'); assert.equal(hiddenWords('DeepSeek Harness', null), 'DeepSeek Harness reads both files.');
   assert.equal(waitingWords({ conflict: 1, acknowledge: 2, block: 0, problem: 0, approval: 3 }), '1 copy to pick, 2 acknowledgements, 3 approvals');
   assert.equal(waitingWords({ conflict: 0, acknowledge: 0, block: 0, problem: 0, approval: 0 }), 'Nothing is waiting.');

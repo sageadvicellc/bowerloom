@@ -209,7 +209,7 @@ test('M3: a tick the draft refuses says why in words and changes nothing', async
   const only = p.locator('[data-engine="claude-code"] input');
   await expect(only).toBeChecked();
   await only.click();
-  await expect(p.getByText('Keep at least one interface.')).toBeVisible();
+  await expect(p.getByText('Keep at least one engine.')).toBeVisible();
   await expect(only).toBeChecked();
   await expect(count(p)).toContainText('No change yet.');
 });

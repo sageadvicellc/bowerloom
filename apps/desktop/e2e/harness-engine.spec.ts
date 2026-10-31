@@ -108,13 +108,13 @@ test('Decision D8B: "Use for every engine" is one tick per part, off by default,
   await expect(section).toContainText('1 of 3 ticked');
   await expect(hooks).toContainText('1 item now reaches every engine.');
   await expect(hooks.getByRole('checkbox')).toBeChecked();
-  await expect(hook).toContainText('Every interface');
+  await expect(hook).toContainText('Every engine');
   await expect(hook).toContainText('Used for every engine');
   // By keyboard: Space ticks the servers box too, and the plan follows.
   await s.getByRole('checkbox', { name: 'Use for every engine: Servers' }).focus();
   await p.keyboard.press('Space');
   await expect(section).toContainText('2 of 3 ticked');
-  await expect(s.locator('[data-item="mcp/search"]')).toContainText('Every interface');
+  await expect(s.locator('[data-item="mcp/search"]')).toContainText('Every engine');
   await shot(p, 'E2c-adopt-every-engine');
   // Taking a tick back plans again without it.
   await s.getByRole('checkbox', { name: 'Use for every engine: Servers' }).uncheck();

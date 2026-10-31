@@ -147,7 +147,7 @@ test('the Start button says why it is off, beside it', async () => {
   await expect(sheet.getByText('Write an instruction to start.')).toHaveCount(0);
   await expect(start).toBeEnabled();
   await sheet.locator('[data-iface="claude-code"] input').uncheck();
-  await expect(sheet.getByText('Tick an interface to start.')).toBeVisible();
+  await expect(sheet.getByText('Tick an engine to start.')).toBeVisible();
   await expect(start).toBeDisabled();
 });
 

@@ -61,7 +61,7 @@ function changeWords(n: number, marks: SaveMarks, lead = ''): string {
   return `${lead === '' ? 'Change' : `${lead}, change`} ${files(changes)} and delete ${files(deletes)}`;
 }
 /** What the person approved in this sheet, so the dialog says how many weaker lines the yes covers. Nothing when none were ticked. */
-const approvedLines = (n: number): string => (n === 0 ? '' : `You approved ${n} ${n === 1 ? 'line' : 'lines'} that an interface carries more weakly than the harness says. `);
+const approvedLines = (n: number): string => (n === 0 ? '' : `You approved ${n} ${n === 1 ? 'line' : 'lines'} that an engine carries more weakly than the harness says. `);
 
 /** The words of each dialog, from main's own counts. */
 export const ASK = Object.freeze({
