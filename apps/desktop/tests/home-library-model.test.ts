@@ -2,9 +2,9 @@
 // details with where each thing came from.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { reduceStore } from '../shared/proto/store.js';
-import type { StoreState } from '../shared/proto/store.js';
-import type { World } from '../shared/proto/types.js';
+import { reduceStore } from '../shared/world/store.js';
+import type { StoreState } from '../shared/world/store.js';
+import type { World } from '../shared/world/types.js';
 import { ownedAgents } from '../shared/home/cards.js';
 import {
   LIBRARY_KINDS, agentSplit, agentSplitLine, copyDraft, notUsedCount, daysBackOf, hasLine, libraryCounts, libraryDetails, libraryRows, listLibrary, matchesSearch, mineName, removePlan, sortRows, takesOffLine, updateOf, usedByLine, agentsFor, entryOf,

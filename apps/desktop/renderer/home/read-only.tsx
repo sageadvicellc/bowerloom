@@ -8,8 +8,8 @@
  */
 import { createContext, useContext, useMemo } from 'react';
 import type { ReactElement, ReactNode } from 'react';
-import type { Store } from '../../shared/proto/store.js';
-import { ProtoProvider } from '../proto/session.js';
+import type { Store } from '../../shared/world/store.js';
+import { ProtoProvider } from '../common/session.js';
 import { Button } from './kit/Button.js';
 import type { ButtonProps } from './kit/Button.js';
 import { IconButton } from './kit/IconButton.js';

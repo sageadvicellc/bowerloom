@@ -79,7 +79,7 @@ export const savedAs = (path: string): string => `Saved in the project as ${path
 export const conflictTitle = (path: string): string => `Conflict: ${path} already exists. Pick one.`;
 /** "Settled. Keep mine." */
 export const settledWords = (choice: string): string => `Settled. ${choice}.`;
-/** "7 new files, 2 updates and 1 conflict, in ~/Sage Advice/code/internal-tools/bowerloom. Bowerloom writes only these files." */
+/** "7 new files, 2 updates and 1 conflict, in ~/Workshop/code/bowerloom. Bowerloom writes only these files." */
 export const reviewLine = (summary: string, projectPath: string): string => `${summary}, in ${projectPath}. Bowerloom writes only these files.`;
 /** "Install Weekly report crew in bowerloom": the name of a button. */
 export const installAction = (harness: string, project: string): string => `Install ${harness} in ${project}`;

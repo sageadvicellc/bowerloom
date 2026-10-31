@@ -10,8 +10,8 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { assertTextBudget } from '../shared/home/textbudget.js';
 import { sharedFileSample } from '../renderer/home/add/add-sample-file.js';
-import { removeTempDirs, tempDir } from './proto-temp.js';
-import { animationsDone, framesPainted } from './proto-wait.js';
+import { removeTempDirs, tempDir } from './temp-dirs.js';
+import { animationsDone, framesPainted } from './page-wait.js';
 import { SIZES, THEMES, fresh, launchHome, resize, setLook, shot } from './home-page.js';
 import type { Home } from './home-page.js';
 

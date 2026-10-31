@@ -5,7 +5,7 @@
  */
 import { useEffect, useReducer, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import type { World } from '../../../shared/proto/types.js';
+import type { World } from '../../../shared/world/types.js';
 import type { RealBridge, RealPlace, RealResult } from '../../../shared/real/types.js';
 import { codeOf, getBridge } from './bridge.js';
 import { agentsTicked, realReduce, selectedIds, startState } from './flow.js';

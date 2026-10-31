@@ -7,8 +7,8 @@
  * Rules held here: a name has at most 5 words and a hint at most 12 (the text budget of the screens). Text from a file is data: it is cut and cleaned, never run, and
  * never read as markup. Pure: no clock, no random number, no file.
  */
-import type { AgentItem, HarnessItem, InterfaceId, Slice, WikiPage, World } from '../proto/types.js';
-import { matchPages } from '../proto/slicerule.js';
+import type { AgentItem, HarnessItem, InterfaceId, Slice, WikiPage, World } from '../world/types.js';
+import { matchPages } from '../world/slicerule.js';
 import { countWords } from '../home/textbudget.js';
 import { PROGRAM_NAMES, PROGRAM_ORDER } from '../home/plain-details.js';
 import { itemTitle } from '../home/titles.js';

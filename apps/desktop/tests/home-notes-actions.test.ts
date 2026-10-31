@@ -1,12 +1,12 @@
 // "Use these notes" is one store action and one change on the Save bar: a new saved choice, its item and the agent's pointer count once.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createStore, isDirty, reduceStore } from '../shared/proto/store.js';
-import type { StoreState } from '../shared/proto/store.js';
-import { generateWorld } from '../shared/proto/sample.js';
-import { validateWorld } from '../shared/proto/sample.js';
-import type { AgentItem, World } from '../shared/proto/types.js';
-import { matchPages } from '../shared/proto/slicerule.js';
+import { createStore, isDirty, reduceStore } from '../shared/world/store.js';
+import type { StoreState } from '../shared/world/store.js';
+import { generateWorld } from '../shared/world/sample.js';
+import { validateWorld } from '../shared/world/sample.js';
+import type { AgentItem, World } from '../shared/world/types.js';
+import { matchPages } from '../shared/world/slicerule.js';
 import { absorbedSlices, chooseNotesAction, notesName, notesWouldChange } from '../shared/home/notes-actions.js';
 import { EMPTY_SELECTION, makeBasis, selectionFromSlice, toChoice, toggleHand, toggleLeaveOut, toggleTopic } from '../shared/home/notes-model.js';
 import type { Selection } from '../shared/home/notes-model.js';

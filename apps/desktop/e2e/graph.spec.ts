@@ -1,15 +1,16 @@
 /**
- * The knowledge graph, in the real window, on the sandbox's made-up wiki: the picture loads, filters and search work, a page opens
- * in the panel, the list view is a keyboard-friendly alternative, no network, and no policy violation. Screenshots (sandbox only).
+ * The knowledge graph, in the real window. The sample's notes have no links, so the test adds a small invented wiki to the
+ * sample's "team-notes" folder (in the app's own temporary copy) before it opens the graph. It checks that the picture loads,
+ * that filters and search work, that a page opens in the panel, that the list view is a keyboard-friendly alternative, that
+ * nothing reaches the network, and that the graph library breaks no policy of the page. Screenshots in light and dark.
  */
 import { _electron as electron, expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import electronPath from 'electron';
-import { spawnSync } from 'node:child_process';
-import { mkdirSync, realpathSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { removeTempDirs, tempDir } from './proto-temp.js';
+import { removeTempDirs, tempDir } from './temp-dirs.js';
 
 // Every folder this file made in the temp folder goes when its tests are done, also when one failed.
 test.afterAll(() => { removeTempDirs(); });
@@ -19,35 +20,48 @@ const shots = join(desktop, 'screenshots');
 mkdirSync(shots, { recursive: true });
 const nav = (page: Page, label: string) => page.locator('nav.nav').getByRole('button', { name: label });
 
-async function launch(extraEnv: Record<string, string>): Promise<{ app: ElectronApplication; page: Page; violations: string[] }> {
+const TOPICS = 24, PEOPLE = 12, LOOSE = 4;
+/** Writes an invented wiki into one folder: topics that link in a chain and to people, people who link back, a few pages with no link at all. 40 pages in all, with tags. */
+function writeWiki(folder: string): void {
+  const put = (rel: string, text: string): void => { const path = join(folder, rel); mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, text); };
+  const two = (n: number): string => String(n).padStart(2, '0');
+  for (let i = 1; i <= TOPICS; i++) {
+    const next = i < TOPICS ? `[[topic-${two(i + 1)}]]` : '[[topic-01]]';
+    put(`topics/topic-${two(i)}.md`, `---\ntitle: Topic ${two(i)}\ntags: [${i % 2 === 0 ? 'harbor' : 'garden'}]\n---\n\n# Topic ${two(i)}\n\nSee ${next} and [[person-${two((i % PEOPLE) + 1)}]]. #lantern\n`);
+  }
+  for (let i = 1; i <= PEOPLE; i++) put(`people/person-${two(i)}.md`, `# Person ${two(i)}\n\nWrites about [[topic-${two(i)}]]. See also [the index](../index.md).\n`);
+  for (let i = 1; i <= LOOSE; i++) put(`loose/loose-${i}.md`, `# Loose ${i}\n\nA page that links nowhere.\n`);
+  put('index.md', '# Index\n\nStart at [[topic-01]].\n');
+}
+
+async function launch(): Promise<{ app: ElectronApplication; page: Page; violations: string[]; userData: string }> {
   const userData = tempDir('bowerloom-viewer-e2e-');
-  const app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--sandbox', `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1', ...extraEnv } });
+  const app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--sample-data', `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
   const page = await app.firstWindow();
   const violations: string[] = [];
   page.on('console', m => { if (m.type() === 'error' || /Content Security Policy|Refused to/.test(m.text())) violations.push(m.text()); });
   page.on('pageerror', e => violations.push(`pageerror: ${e.message}`));
   await page.waitForLoadState('domcontentloaded');
-  return { app, page, violations };
+  await page.evaluate(() => document.addEventListener('securitypolicyviolation', e => { (window as unknown as { __csp: string[] }).__csp = [...((window as unknown as { __csp?: string[] }).__csp ?? []), `${e.violatedDirective}: ${e.blockedURI}`]; }));
+  return { app, page, violations, userData };
 }
-const sandboxRoot = (): string => {
-  const box = join(realpathSync(tempDir('bowerloom-e2e-graph-')), 'Graph Sandbox');
-  const made = spawnSync(process.execPath, [join(desktop, 'tools', 'make-sandbox.mjs')], { encoding: 'utf8', env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', BOWERLOOM_VIEWER_SANDBOX: box } });
-  expect(made.status, made.stderr + made.stdout).toBe(0);
-  return box;
-};
 const snap = async (page: Page, name: string, theme: string): Promise<void> => { await page.waitForTimeout(4200); await page.screenshot({ path: join(shots, `${name}-${theme}.png`), scale: 'css' }); };
 
 for (const theme of ['light', 'dark'] as const) {
   test(`the knowledge graph in ${theme}: loads the wiki, filters, search, the panel, the list view, and no policy violation`, async () => {
     test.setTimeout(300_000);
-    const box = sandboxRoot();
-    const { app, page, violations } = await launch({ BOWERLOOM_VIEWER_SANDBOX: box });
+    const { app, page, violations, userData } = await launch();
     try {
+      // The app has copied the sample by now; its team-notes folder is where the invented wiki goes.
+      await expect(nav(page, 'Settings')).toBeVisible();
+      await expect.poll(() => page.locator('nav.nav button').count()).toBeGreaterThan(5);
+      writeWiki(join(userData, 'sample', 'home', 'Notes', 'team-notes'));
       await nav(page, 'Settings').click();
       await page.getByRole('button', { name: theme === 'dark' ? 'Dark' : 'Light', exact: true }).click();
       const labels = await page.locator('nav.nav button').allInnerTexts(); expect(labels.map(l => l.split('\n')[0])[2]).toBe('Knowledge graph');
       await nav(page, 'Knowledge graph').click();
       await expect(page.getByRole('heading', { name: 'Knowledge graph', exact: true })).toBeVisible();
+      await page.getByLabel('Context store').selectOption({ label: 'team-notes (knowledge folder)' });
       await expect(page.locator('.kg-status')).toContainText(/\d+ pages, \d+ links, \d+ with no links/, { timeout: 20_000 });
       await expect(page.locator('.kg-canvas canvas').first()).toBeVisible();
       const status = await page.locator('.kg-status').innerText(); const pages = Number(/^(\d+) pages/.exec(status)![1]); expect(pages).toBeGreaterThanOrEqual(40);

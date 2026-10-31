@@ -3,9 +3,9 @@
  * to the newest point: "just now", "1 save ago", "2 saves ago", and "when you began" for the first. What changed comes from `diffVersions` between a
  * point and the one it grew from. Pure: no React, no DOM, no clock.
  */
-import type { Version, World } from '../proto/types.js';
-import { diffVersions } from '../proto/versions-diff.js';
-import type { DiffChange } from '../proto/versions-diff.js';
+import type { Version, World } from '../world/types.js';
+import { diffVersions } from '../world/versions-diff.js';
+import type { DiffChange } from '../world/versions-diff.js';
 import type { NameOf } from './add-model.js';
 import { BAR_NAMES, barSentence, changeSentence } from './changes.js';
 import type { Change } from './changes.js';

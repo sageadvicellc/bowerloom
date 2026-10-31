@@ -1,6 +1,6 @@
 /** Plain data that crosses from the main process to the window. JSON only: no class, no function, no path the window can ask for. */
 
-export type Mode = 'sample' | 'real' | 'sandbox';
+export type Mode = 'sample' | 'real';
 export type ItemKind = 'skill' | 'prompt' | 'team';
 export type Origin = 'yours' | 'github' | 'npm';
 /** What a Bowerloom folder is: a `workspace` that holds other layers, a `project`, or the central `context-store` of knowledge. */
@@ -169,8 +169,6 @@ export interface GraphResult { ok: boolean; graph: KnowledgeGraph | null; messag
 export interface PageResult { text: string | null; note: string | null }
 export interface SettingsResult { settings: AppSettings; /** A plain sentence when the change could not be made or kept, else null. */ message: string | null }
 export interface AppInfo { version: string; mode: Mode | null; storePath: string; updates: { enabled: boolean; status: string }; platform: string; firstRun: boolean;
-  /** The sandbox folder, and whether it has been made. */
-  sandbox: { path: string; exists: boolean };
   /** A plain sentence about the viewer's own settings file (damaged, unreadable, could not be saved), or null. */
   notice: string | null }
 

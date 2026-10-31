@@ -17,7 +17,7 @@ function sources(dir: string): { file: string; text: string }[] {
 test('main.ts: --prototype-v3 is one more prototype mode: no preload, no IPC, a temporary data folder, no outside link, and its own address', () => {
   const main = strip(read('main/main.ts'));
   assert.match(main, /const prototypeV3 = argv\.includes\('--prototype-v3'\);/);
-  assert.match(main, /const prototypeMode = argv\.includes\('--prototype'\) \|\| prototypeV2 \|\| prototypeReal \|\| prototypeV3 \|\| prototypeV3Real;/);
+  assert.match(main, /const prototypeMode = prototypeV2 \|\| prototypeReal \|\| prototypeV3 \|\| prototypeV3Real;/);
   assert.match(main, /else if \(prototypeV3 \|\| prototypeV3Real\) window\.loadURL\(`\$\{indexUrl\}\$\{prototypeV3Real \? '#prototype-v3-real' : '#prototype-v3'\}`\)\.catch\(startupFailed\);/, 'the real flag opens its own address and the sample flag the sample one');
   assert.match(main, /windowOptions\(prototypeV2 \|\| prototypeReal \|\| prototypeV3 \|\| prototypeV3Real\)/);
   assert.doesNotMatch(main, /prototypeV3\s*\?[^\n]*preload/);
@@ -72,7 +72,7 @@ test('the launcher and the root script know --prototype-v3, keep one mode at a t
   const root = JSON.parse(read('../../package.json')) as { scripts: Record<string, string> };
   assert.equal(root.scripts['desktop:prototype:v3'], 'node apps/desktop/tools/run.mjs --prototype-v3');
   assert.equal(root.scripts['desktop:prototype:v2'], 'node apps/desktop/tools/run.mjs --prototype-v2');
-  for (const other of ['--sample-data', '--real-data', '--sandbox', '--prototype', '--prototype-v2', '--prototype-real', '--prototype-v3-real']) {
+  for (const other of ['--sample-data', '--real-data', '--prototype-v2', '--prototype-real', '--prototype-v3-real']) {
     const r = spawnSync(process.execPath, [join(DESKTOP, 'tools', 'run.mjs'), '--prototype-v3', other], { env: { PATH: process.env.PATH ?? '', HOME: '/tmp' }, encoding: 'utf8', timeout: 30000 });
     assert.equal(r.status, 2, other); assert.match(r.stderr, /not more/); assert.doesNotMatch(r.stdout, /Installing|Building/);
   }
@@ -90,7 +90,7 @@ test('the launcher and the root script know --prototype-v3-real: one mode at a t
     const r = spawnSync(process.execPath, [join(DESKTOP, 'tools', 'run.mjs'), ...args], { env: { PATH: process.env.PATH ?? '', ...env }, encoding: 'utf8', timeout: 30000 });
     return { status: r.status, stdout: r.stdout, stderr: r.stderr };
   };
-  for (const other of ['--sample-data', '--real-data', '--sandbox', '--prototype', '--prototype-v2', '--prototype-v3', '--prototype-real']) {
+  for (const other of ['--sample-data', '--real-data', '--prototype-v2', '--prototype-v3', '--prototype-real']) {
     const r = run(['--prototype-v3-real', other], { HOME: '/tmp' });
     assert.equal(r.status, 2, other); assert.match(r.stderr, /not more/); assert.doesNotMatch(r.stdout, /Installing|Building/);
   }

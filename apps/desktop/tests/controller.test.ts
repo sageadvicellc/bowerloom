@@ -177,15 +177,15 @@ test('the controller reports a refused save in plain words and keeps the old val
 });
 
 test('first real-data launch with no saved folder: it looks near the person once, saves what it finds, and shows it; nothing is clicked', async t => {
-  const home = tempDir(t); mkdirSync(join(home, 'Sage Advice', '.bowerloom'), { recursive: true, mode: 0o755 }); mkdirSync(join(home, 'Sage Advice', 'code', '.bowerloom'), { recursive: true }); mkdirSync(join(home, 'Documents', 'Hidden', '.bowerloom'), { recursive: true });
+  const home = tempDir(t); mkdirSync(join(home, 'Workshop', '.bowerloom'), { recursive: true, mode: 0o755 }); mkdirSync(join(home, 'Workshop', 'code', '.bowerloom'), { recursive: true }); mkdirSync(join(home, 'Documents', 'Hidden', '.bowerloom'), { recursive: true });
   const h = host(t, { home, forcedMode: 'real' }), c = createController(h.host);
   assert.deepEqual((await c.getSettings()).roots, []);
   const snap = await c.getSnapshot();
-  assert.deepEqual((await c.getSettings()).roots, [join(home, 'Sage Advice')]); assert.equal((await c.getSettings()).discovered, true);
-  assert.deepEqual(snap.projects.map(p => p.name), ['Sage Advice', 'code'], 'the folder itself and the layer inside it are both found');
-  assert.deepEqual(loadSettings(h.app).settings.roots, [join(home, 'Sage Advice')], 'it was saved');
+  assert.deepEqual((await c.getSettings()).roots, [join(home, 'Workshop')]); assert.equal((await c.getSettings()).discovered, true);
+  assert.deepEqual(snap.projects.map(p => p.name), ['Workshop', 'code'], 'the folder itself and the layer inside it are both found');
+  assert.deepEqual(loadSettings(h.app).settings.roots, [join(home, 'Workshop')], 'it was saved');
   // The person removes it: it is not added back on the next look.
-  await c.removeRoot(join(home, 'Sage Advice')); const again = await c.getSnapshot(); assert.equal(again.projects.length, 0); assert.deepEqual((await c.getSettings()).roots, []);
+  await c.removeRoot(join(home, 'Workshop')); const again = await c.getSnapshot(); assert.equal(again.projects.length, 0); assert.deepEqual((await c.getSettings()).roots, []);
   // A second launch with the saved settings does not look again.
   assert.deepEqual((await createController(h.host).getSettings()).roots, []);
 });

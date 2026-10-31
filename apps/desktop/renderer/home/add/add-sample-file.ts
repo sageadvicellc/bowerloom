@@ -3,10 +3,10 @@
  * that is already there with the same text, and a skill that is there with other text. Opening it in the Add test page's world shows all three
  * answers: what will be added, what is already here, and what has two different copies. Every path in it is invented and never shown.
  */
-import { bundleText } from '../../../shared/proto/export-flow.js';
-import { hashText } from '../../../shared/proto/sample.js';
+import { bundleText } from '../../../shared/world/export-flow.js';
+import { hashText } from '../../../shared/world/sample.js';
 import { HOME_SCOPE_ID } from './add-demo-world.js';
-import type { AgentItem, Bundle, FoundAt, SkillItem } from '../../../shared/proto/types.js';
+import type { AgentItem, Bundle, FoundAt, SkillItem } from '../../../shared/world/types.js';
 
 const at = (text: string): FoundAt => ({ interface: 'claude-code', path: 'skills/shared/SKILL.md', contentHash: hashText(text), text });
 const skill = (id: string, name: string, description: string, text: string): SkillItem => ({ id, kind: 'skill', name, scopeId: HOME_SCOPE_ID, library: null, description, foundAt: [at(text)] });

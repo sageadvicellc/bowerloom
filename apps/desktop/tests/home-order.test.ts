@@ -3,9 +3,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SORT_MODES, agentForTour, sortAgents, touch } from '../shared/home/order.js';
 import { agentCard, ownedAgents } from '../shared/home/cards.js';
-import { generateWorld } from '../shared/proto/sample.js';
-import type { AgentItem } from '../shared/proto/types.js';
-import { agent, makeWorld } from './proto-testworld.js';
+import { generateWorld } from '../shared/world/sample.js';
+import type { AgentItem } from '../shared/world/types.js';
+import { agent, makeWorld } from './testworld.js';
 
 const world = generateWorld(1);
 const agents = ownedAgents(world);

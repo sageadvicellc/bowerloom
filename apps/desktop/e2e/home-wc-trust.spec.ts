@@ -9,8 +9,8 @@ import type { Locator, Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { assertTextBudget, countWords } from '../shared/home/textbudget.js';
-import { removeTempDirs } from './proto-temp.js';
-import { animationsDone } from './proto-wait.js';
+import { removeTempDirs } from './temp-dirs.js';
+import { animationsDone } from './page-wait.js';
 import { SAVED, ensurePicked, fresh, launchHome, resize, setLook, skipTour } from './home-page.js';
 import type { Home } from './home-page.js';
 

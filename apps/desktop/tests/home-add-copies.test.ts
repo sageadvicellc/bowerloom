@@ -1,11 +1,11 @@
 // "Two different copies": the copies of an item as the side-by-side view needs them, and the one store action that keeps a copy.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createStore, isDirty, reduceStore } from '../shared/proto/store.js';
+import { createStore, isDirty, reduceStore } from '../shared/world/store.js';
 import { itemBadge } from '../shared/home/cards.js';
 import { copiesLookAlike, copiesOf, hasCopies, keepCopyAction } from '../shared/home/add-copies.js';
 import { entriesFor } from '../shared/home/add-model.js';
-import { generateWorld, CASE_IDS } from '../shared/proto/sample.js';
+import { generateWorld, CASE_IDS } from '../shared/world/sample.js';
 import { addDemoWorld, DEMO } from '../renderer/home/add/add-demo-world.js';
 
 const demo = () => createStore(addDemoWorld()).getState();

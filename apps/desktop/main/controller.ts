@@ -12,8 +12,6 @@ import { readGuarded } from '../../../packages/project-authoring/src/files.js';
 import { storeRootOf } from '../../../packages/project-context/src/index.js';
 import { MAX_ROOTS, loadSettings, parseLayout, saveSettings } from './config.js';
 import { SketchError, deleteSketch, listSketches, loadSketch, saveSketch } from './sketches.js';
-import { SANDBOX_DIR } from './boundary.js';
-import { sandboxExists, sandboxPaths } from './sandbox.js';
 import { discoverNearby } from './discover.js';
 import { readItemContent } from './content.js';
 import { buildGraph, readPage } from './graph.js';
@@ -41,8 +39,6 @@ export interface Host {
   copyText?(text: string): void;
   /** A launch flag that fixes the mode for this run. */
   forcedMode: Mode | null;
-  /** Where the sandbox is. Default: the one constant. Tests only. */
-  sandboxDir?: string;
   /** The real home folder and the environment names the viewer is allowed to pass on. */
   home?: string;
   env?: NodeJS.ProcessEnv;
@@ -97,11 +93,6 @@ export function createController(host: Host): Controller {
       sample ??= seedSample(host.appDir, host.sampleDir);
       return { mode, home: sample.home, env: sample.env, roots: [sample.projects], roles: settings.roles };
     }
-    if (mode === 'sandbox') {
-      const sb = sandboxPaths(host.sandboxDir ?? SANDBOX_DIR);
-      if (!sandboxExists(sb.root)) throw new Error('The sandbox has not been made yet. Run the sandbox command first.');
-      return { mode, home: sb.home, env: { HOME: sb.home, XDG_STATE_HOME: sb.state }, roots: [sb.workspace], roles: settings.roles };
-    }
     if (mode === 'real') {
       const home = realHome(), state = host.env?.XDG_STATE_HOME ?? process.env.XDG_STATE_HOME;
       const env: NodeJS.ProcessEnv = { HOME: home };
@@ -134,7 +125,7 @@ export function createController(host: Host): Controller {
   const info = (): AppInfo => {
     let storePath = '';
     try { const c = readContext(); storePath = c === null ? '' : storeRootOf(c.home); } catch { storePath = ''; }
-    return { version: host.version, mode, storePath, updates, platform: host.platform, firstRun: mode === null, notice, sandbox: { path: host.sandboxDir ?? SANDBOX_DIR, exists: sandboxExists(host.sandboxDir ?? SANDBOX_DIR) } };
+    return { version: host.version, mode, storePath, updates, platform: host.platform, firstRun: mode === null, notice };
   };
 
   return {
@@ -178,8 +169,7 @@ export function createController(host: Host): Controller {
       }
     },
     async chooseMode(next) {
-      if (next !== 'sample' && next !== 'real' && next !== 'sandbox') throw new Error('Unknown choice.');
-      if (next === 'sandbox' && !sandboxExists(host.sandboxDir ?? SANDBOX_DIR)) throw new Error('The sandbox has not been made yet. Run the sandbox command first.');
+      if (next !== 'sample' && next !== 'real') throw new Error('Unknown choice.');
       mode = next; forget();
       if (host.forcedMode === null && next === 'real') { const r = persist({ ...settings, mode: 'real' }); if (r.message !== null) notice = r.message; }
       if (next === 'sample') sample = null;

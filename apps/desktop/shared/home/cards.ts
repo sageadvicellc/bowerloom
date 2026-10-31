@@ -2,8 +2,8 @@
  * Pure helpers behind the cards of the home app: the words on a card, its one badge, the three shelves of an agent, and the Save bar. No React, no DOM.
  * The sample data names things like files ("velvet-weaver"); a card shows them as words ("Velvet Weaver").
  */
-import type { AgentItem, HarnessItem, Slice, ToolItem, WikiPage, World } from '../proto/types.js';
-import { joinWords } from '../proto/words.js';
+import type { AgentItem, HarnessItem, Slice, ToolItem, WikiPage, World } from '../world/types.js';
+import { joinWords } from '../world/words.js';
 import { isRealId, realPlainById } from '../real/plain-fallback.js';
 import { isSampleNote, plainOf, skillDoes } from './plain.js';
 import { itemTitle } from './titles.js';

@@ -5,7 +5,7 @@
  * from `WORDS`, so each stays one word in one place. No word here says "slice", "token" or "folder": a person picks notes, and notes sit in topics.
  */
 import type { SizeBand } from '../../../shared/home/notes-model.js';
-import { joinWords } from '../../../shared/proto/words.js';
+import { joinWords } from '../../../shared/world/words.js';
 import { countWords } from '../../../shared/home/textbudget.js';
 import { WORDS } from '../words.js';
 

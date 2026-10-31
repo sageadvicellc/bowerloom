@@ -1,15 +1,14 @@
 /**
- * The map and the sketch board, in the real window, on the sandbox (made by the real tool in a temporary place) and on the sample.
- * Also: the page's policy is not broken by any library, and the screenshots of the map in light and dark.
+ * The map and the sketch board, in the real window, on the sample. Also: the page's policy is not broken by any library,
+ * and the screenshots of the map in light and dark.
  */
 import { _electron as electron, expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import electronPath from 'electron';
-import { spawnSync } from 'node:child_process';
-import { mkdirSync, realpathSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { removeTempDirs, tempDir } from './proto-temp.js';
+import { removeTempDirs, tempDir } from './temp-dirs.js';
 
 // Every folder this file made in the temp folder goes when its tests are done, also when one failed.
 test.afterAll(() => { removeTempDirs(); });
@@ -31,12 +30,6 @@ async function launch(args: string[], extraEnv: Record<string, string> = {}): Pr
   return { app, page, violations };
 }
 
-const sandboxRoot = (): string => {
-  const box = join(realpathSync(tempDir('bowerloom-e2e-map-')), 'Map Sandbox');
-  const made = spawnSync(process.execPath, [join(desktop, 'tools', 'make-sandbox.mjs')], { encoding: 'utf8', env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', BOWERLOOM_VIEWER_SANDBOX: box } });
-  expect(made.status, made.stderr + made.stdout).toBe(0);
-  return box;
-};
 const snap = async (page: Page, name: string, theme: string): Promise<void> => { await page.waitForTimeout(450); await page.screenshot({ path: join(shots, `${name}-${theme}.png`), scale: 'css' }); };
 /** Opens the "More" menu of the map toolbar if it is shut. */
 const more = async (page: Page, on = true): Promise<void> => { const d = page.locator('#bw-page-map details.bw-more'), open = (await d.getAttribute('open')) !== null; if (open !== on) await d.locator(':scope > summary').click(); };
@@ -45,8 +38,7 @@ const nodeCount = (page: Page) => page.locator('#bw-page-map .react-flow__node')
 for (const theme of ['light', 'dark'] as const) {
   test(`the map in ${theme}: nodes, wires, filters, search, the panel, dragging, tidy up, and the saved places`, async () => {
     test.setTimeout(300_000);
-    const box = sandboxRoot();
-    const { app, page, violations } = await launch(['--sandbox'], { BOWERLOOM_VIEWER_SANDBOX: box });
+    const { app, page, violations } = await launch(['--sample-data']);
     try {
       await nav(page, 'Settings').click();
       await page.getByRole('button', { name: theme === 'dark' ? 'Dark' : 'Light', exact: true }).click();
@@ -82,17 +74,17 @@ for (const theme of ['light', 'dark'] as const) {
 
       // Search keeps what matches and what is next to it, and dims the rest.
       const total = await nodeCount(page);
-      await page.getByRole('searchbox', { name: 'Find something on the map' }).fill('site-app');
-      await page.waitForTimeout(500); expect(await nodeCount(page)).toBeLessThan(total); await expect(page.locator('#bw-page-map .bw-node', { hasText: 'site-app' }).first()).toBeVisible();
+      await page.getByRole('searchbox', { name: 'Find something on the map' }).fill('newsletter');
+      await page.waitForTimeout(500); expect(await nodeCount(page)).toBeLessThan(total); await expect(page.locator('#bw-page-map .bw-node', { hasText: 'newsletter' }).first()).toBeVisible();
       await page.getByRole('searchbox', { name: 'Find something on the map' }).fill('');
 
       // Hovering says one plain line; clicking opens the panel with the reasons.
-      const site = page.locator('#bw-page-map .react-flow__node', { hasText: 'site-app' }).first();
+      const site = page.locator('#bw-page-map .react-flow__node', { hasText: 'newsletter' }).first();
       await site.hover(); await expect(page.locator('#bw-page-map .bw-status')).toContainText('Project (Drifted)');
-      await site.click(); await expect(page.locator('#bw-page-map .bw-panel.open')).toBeVisible(); await expect(page.locator('#bw-page-map .bw-panel h2')).toHaveText('site-app'); await expect(page.locator('#bw-page-map .bw-panel')).toContainText('Why');
+      await site.click(); await expect(page.locator('#bw-page-map .bw-panel.open')).toBeVisible(); await expect(page.locator('#bw-page-map .bw-panel h2')).toHaveText('newsletter'); await expect(page.locator('#bw-page-map .bw-panel')).toContainText('Why');
       await snap(page, 'M3-map-panel', theme);
       // The panel takes the keyboard when it opens, says so for a screen reader, and Close gives the keyboard back to the thing.
-      await expect(page.locator('#bw-page-map .bw-panel h2')).toBeFocused(); await expect(page.locator('p.sr-only[role="status"]')).toContainText('Opened Project site-app');
+      await expect(page.locator('#bw-page-map .bw-panel h2')).toBeFocused(); await expect(page.locator('p.sr-only[role="status"]')).toContainText('Opened Project newsletter');
       await page.getByRole('button', { name: 'Close the details' }).click(); await expect(page.locator('#bw-page-map .bw-panel.open')).toHaveCount(0);
       await expect(site).toBeFocused();
 
@@ -102,20 +94,20 @@ for (const theme of ['light', 'dark'] as const) {
       await page.waitForTimeout(700);
       const box1 = (await site.boundingBox())!; expect(Math.abs(box1.x - box0.x) + Math.abs(box1.y - box0.y)).toBeGreaterThan(40);
       const kept = await page.evaluate(async () => (await (window as unknown as { bowerloom: { getSettings(): Promise<{ mapLayout: Record<string, { x: number; y: number }> }> } }).bowerloom.getSettings()).mapLayout);
-      expect(Object.keys(kept).some(k => k.includes('site-app'))).toBe(true);
+      expect(Object.keys(kept).some(k => k.includes('newsletter'))).toBe(true);
 
       // Every move can be taken back.
       await page.getByRole('button', { name: 'Undo' }).click(); await page.waitForTimeout(600);
       const box2 = (await site.boundingBox())!; expect(Math.abs(box2.x - box0.x) + Math.abs(box2.y - box0.y)).toBeLessThan(8);
       // Two drags in quick succession are both kept, and so is a move made with the arrow keys.
-      const other = page.locator('#bw-page-map .react-flow__node', { hasText: 'archive-app' }).first(), ob0 = (await other.boundingBox())!;
+      const other = page.locator('#bw-page-map .react-flow__node', { hasText: 'old-archive' }).first(), ob0 = (await other.boundingBox())!;
       await page.mouse.move(ob0.x + 40, ob0.y + 20); await page.mouse.down(); await page.mouse.move(ob0.x + 100, ob0.y + 80, { steps: 4 }); await page.mouse.up();
       const sb = (await site.boundingBox())!; await page.mouse.move(sb.x + 40, sb.y + 20); await page.mouse.down(); await page.mouse.move(sb.x + 90, sb.y + 70, { steps: 4 }); await page.mouse.up();
       await page.waitForTimeout(900);
       const both = await page.evaluate(async () => Object.keys((await (window as unknown as { bowerloom: { getSettings(): Promise<{ mapLayout: Record<string, unknown> }> } }).bowerloom.getSettings()).mapLayout));
-      expect(both.some(k => k.includes('site-app')) && both.some(k => k.includes('archive-app')), both.join(',')).toBe(true);
+      expect(both.some(k => k.includes('newsletter')) && both.some(k => k.includes('old-archive')), both.join(',')).toBe(true);
       const xBefore = await page.evaluate(async () => (await (window as unknown as { bowerloom: { getSettings(): Promise<{ mapLayout: Record<string, { x: number }> }> } }).bowerloom.getSettings()).mapLayout);
-      const key0 = Object.keys(xBefore).find(k => k.includes('site-app'))!;
+      const key0 = Object.keys(xBefore).find(k => k.includes('newsletter'))!;
       // The arrow keys move a chosen thing.
       await site.focus(); await page.keyboard.press('Enter'); await page.keyboard.press('Escape'); await site.focus();
       const boxK = (await site.boundingBox())!;
@@ -123,7 +115,7 @@ for (const theme of ['light', 'dark'] as const) {
       const box3 = (await site.boundingBox())!; expect(box3.x).toBeGreaterThan(boxK.x + 4);
       await page.waitForTimeout(700);
       const afterKeys = await page.evaluate(async () => (await (window as unknown as { bowerloom: { getSettings(): Promise<{ mapLayout: Record<string, { x: number }> }> } }).bowerloom.getSettings()).mapLayout);
-      const siteKey = Object.keys(afterKeys).find(k => k.includes('site-app'))!; expect(afterKeys[siteKey]!.x, 'a key move is saved like a drag').toBeGreaterThan(xBefore[key0]!.x);
+      const siteKey = Object.keys(afterKeys).find(k => k.includes('newsletter'))!; expect(afterKeys[siteKey]!.x, 'a key move is saved like a drag').toBeGreaterThan(xBefore[key0]!.x);
       await page.getByRole('button', { name: 'Undo' }).click(); await page.waitForTimeout(500);
       // Tidy up, fit all, reset layout.
       await page.getByRole('button', { name: 'Tidy up' }).click(); await page.waitForTimeout(700);
@@ -146,6 +138,7 @@ for (const theme of ['light', 'dark'] as const) {
     } finally { await app.close(); }
   });
 }
+
 
 for (const theme of ['light', 'dark'] as const) {
   test(`the sketch board in ${theme}: drag from the shelf, thread, name, save, open, delete; it cannot be applied`, async () => {

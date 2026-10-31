@@ -4,7 +4,7 @@
  * the machine the preview runs on, and a stored name that reads like a made-up word pair is written as the plain name of the thing ("write-a-reply"). One path for
  * each program, the first place it was found there. Pure: no React, no DOM.
  */
-import type { HarnessItem, InterfaceId, World } from '../proto/types.js';
+import type { HarnessItem, InterfaceId, World } from '../world/types.js';
 import { realPlacesOf } from '../real/plain-fallback.js';
 import { PROGRAM_NAMES, PROGRAM_ORDER } from './plain-details.js';
 

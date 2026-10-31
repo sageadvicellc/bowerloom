@@ -157,10 +157,10 @@ const RESEARCH_DESK = otherHarness('harness-research-desk', 'Research desk', 'Fi
 ]);
 
 const PROJECTS: readonly Project[] = [
-  { id: 'project-bowerloom', name: 'bowerloom', path: '~/Sage Advice/code/internal-tools/bowerloom' },
+  { id: 'project-bowerloom', name: 'bowerloom', path: '~/Workshop/code/bowerloom' },
   { id: 'project-site-redesign', name: 'site-redesign', path: '~/Projects/site-redesign' },
   { id: 'project-notes', name: 'notes', path: '~/Documents/notes' },
-  { id: 'project-garden', name: 'garden', path: '~/Sage Advice/code/internal-tools/garden' },
+  { id: 'project-garden', name: 'garden', path: '~/Workshop/code/garden' },
   { id: 'project-archive', name: 'archive', path: '~/Documents/archive' },
 ];
 

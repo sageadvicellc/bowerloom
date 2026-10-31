@@ -38,14 +38,6 @@ The first time you open your own Bowerloom, the app looks once at the folders ri
 
 Every duration, easing and distance of the app's motion is in one file, `renderer/motion-tokens.ts`, so you can retune it in one edit. The maintainer confirmed the weighting on 2026-10-24 (see the header of `renderer/motion-tokens.ts`): the map is mostly restraint and speed, with a little playfulness only when you drop or connect something or tidy up; the knowledge graph is the gentle settling of the graph; panels are short and polished. If your computer is set to reduce motion, everything is instant.
 
-## Prototype
-
-A clickable prototype of Bowerloom 0.8, with six screens: setup, harness, skills, agents, knowledge, and versions. Every action is simulated in memory, so nothing is written, and a restart resets it. It runs with a temporary data folder that is removed when you close it. Open it with:
-
-```
-npm --prefix "<repo>" run desktop:prototype
-```
-
 ## The 0.8 home app: a sample world, or your own setup
 
 Two commands open the same app. Use `npm --prefix "<repo>" run desktop:prototype:v2` for a made-up sample world. It reads nothing from your computer. Use `npm --prefix "<repo>" run desktop:prototype:real` for your own setup, read only. It needs a real home folder (the `HOME` variable).
@@ -77,16 +69,9 @@ When AGENTS.md and CLAUDE.md differ, **Merge** moves the CLAUDE.md text into the
 
 ## Where the viewer may write
 
-The viewer writes in only two places. One is its own folder (its settings, and later your sketches). The other is the **sandbox**, a folder made only for trying things. It never writes in your real folders. A short piece of code, the write boundary, checks every place before anything is written there. It refuses a path with "..", a path through a shortcut (a link), a path outside the allowed folders, your home folder, any folder that holds your home folder, any of your real folders, and any folder that does not carry the mark the viewer puts in the sandbox. The list of allowed folders is fixed in the program. The settings file cannot change it, and neither can anything in the window.
+The viewer writes in one place: its own folder (its settings, the copy of the sample data, and your sketches). A short piece of code, the write boundary, checks every place before anything is written there. It refuses a path with "..", a path through a shortcut (a link), and a path outside that folder. The allowed folder is fixed in the program. The settings file cannot change it, and neither can anything in the window.
 
-Widening the places the viewer may write is not available. A later version will do it only with an explicit, confirmed step. Until then the viewer has no way to change a Bowerloom file of yours.
-
-## The sandbox
-
-A copy of the shape of your own setup, made of invented content, in the folder `Sage Advice Sandbox` next to `Sage Advice`. It has its own pretend home with its own shared library, so you can try everything without touching the real ones. A banner on every screen says "Sandbox: safe to break".
-
-- `npm --prefix "<repo>" run desktop:sandbox` makes it if it is missing and opens the viewer on it.
-- `npm --prefix "<repo>" run sandbox:reset` deletes it and builds it again. It refuses to delete anything unless the folder is exactly the sandbox folder and carries the viewer's mark, and has no shortcut that leads outside.
+Apart from the steps you approve on your own folders (see above), the viewer has no way to change a Bowerloom file of yours.
 
 ## What is not built yet
 

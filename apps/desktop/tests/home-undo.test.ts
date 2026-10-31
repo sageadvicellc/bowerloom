@@ -1,9 +1,9 @@
 // Undo for one change, alone: the store remembers the edits that made the draft, `withdraw` replays the others, and the Save bar's list says which rows can go alone.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createStore, draftActions, reduceStore, snapshotOf } from '../shared/proto/store.js';
-import type { StoreAction, StoreState } from '../shared/proto/store.js';
-import type { AgentItem } from '../shared/proto/types.js';
+import { createStore, draftActions, reduceStore, snapshotOf } from '../shared/world/store.js';
+import type { StoreAction, StoreState } from '../shared/world/store.js';
+import type { AgentItem } from '../shared/world/types.js';
 import { UNDO_WORDS, changeEntries, placeOf, stillInDraft } from '../shared/home/change-undo.js';
 import { libraryChangeCount } from '../shared/home/library-changes.js';
 import { addToAgentAction, planAdd, removeFromLibraryAction } from '../shared/home/library-actions.js';
@@ -19,7 +19,7 @@ import { readSharedFile } from '../shared/home/add-file.js';
 import { plainName } from '../shared/home/add-model.js';
 import { importFileAction } from '../renderer/home/store-actions.js';
 import { buildShare } from '../shared/home/share-model.js';
-import { bundleText } from '../shared/proto/export-flow.js';
+import { bundleText } from '../shared/world/export-flow.js';
 
 const fresh = (): StoreState => { const w = withStartPoint(libraryWorld()); return { committed: w, draft: w, undoStack: [], redoStack: [], headVersionId: w.versions[0]!.id }; };
 const act = (s: StoreState, a: StoreAction | null): StoreState => { assert.ok(a !== null); return reduceStore(s, a); };

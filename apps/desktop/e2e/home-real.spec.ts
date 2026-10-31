@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { FAKE_SECRET, FAKE_TOKEN_IN_TEXT, buildFixture } from '../tests/fixtures-real/build.js';
 import type { Fixture } from '../tests/fixtures-real/build.js';
 import { fingerprint } from '../tests/fixtures-real/fingerprint.js';
-import { removeTempDirs, tempDir } from './proto-temp.js';
+import { removeTempDirs, tempDir } from './temp-dirs.js';
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const shots = process.env.HOME_REAL_SHOTS ?? null;

@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { placesOfItem } from '../shared/home/where-it-lives.js';
 import { PROGRAM_ORDER } from '../shared/home/plain-details.js';
-import type { McpTool } from '../shared/proto/types.js';
+import type { McpTool } from '../shared/world/types.js';
 
 const server = (program: (typeof PROGRAM_ORDER)[number]): McpTool => ({
   id: 'tool-mcp-x', kind: 'tool', toolKind: 'mcp', name: 'x', scopeId: 'scope-global', library: null, secret: null,

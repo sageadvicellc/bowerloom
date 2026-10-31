@@ -4,7 +4,7 @@
  * `onLeave` is "Not now" (back to Welcome); `onDone` is called once, when the reading ends, with the agents the person did not tick: they stay off the map.
  */
 import type { ReactElement } from 'react';
-import type { World } from '../../../shared/proto/types.js';
+import type { World } from '../../../shared/world/types.js';
 import { KitIcon } from '../kit/icons.js';
 import { WORDS } from '../words.js';
 import { RealFind } from '../real/RealFind.js';

@@ -17,7 +17,7 @@ import type { ShellHome } from '../tests/fixtures-real/shell-home.js';
 import { shot } from './harness-page.js';
 import { launchReal } from './harness-real-page.js';
 import type { RealHarness } from './harness-real-page.js';
-import { removeTempDirs } from './proto-temp.js';
+import { removeTempDirs } from './temp-dirs.js';
 
 let fixture: ShellHome, h: RealHarness, before: string;
 const page = (): Page => h.page;

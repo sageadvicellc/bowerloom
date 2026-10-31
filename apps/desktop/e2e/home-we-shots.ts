@@ -5,7 +5,7 @@
 import type { Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { animationsDone } from './proto-wait.js';
+import { animationsDone } from './page-wait.js';
 import { resize, setLook } from './home-page.js';
 
 export const WE_SHOTS = process.env.HOME_WE_SHOTS ?? null;

@@ -46,7 +46,7 @@ test('putting the tools in line is idempotent, changes only the agents that held
 
 // ---- Two things added to two agents keep a word about where.
 import { barSentence } from '../shared/home/changes.js';
-import { reduceStore } from '../shared/proto/store.js';
+import { reduceStore } from '../shared/world/store.js';
 import { libraryChangeList } from '../shared/home/library-changes.js';
 import { barSaid } from '../shared/home/change-undo.js';
 import { countWords } from '../shared/home/textbudget.js';
@@ -105,7 +105,7 @@ import { flaggedIds, lookItems, looksLikeKey } from '../shared/home/share-look.j
 import { PLAIN_KEY_NAMES, withPlainKeys } from '../shared/home/library-sample.js';
 import { buildShare, keyNamesIn, planShare, shareableAgents } from '../shared/home/share-model.js';
 import { plainNameOf } from '../shared/home/plain-names.js';
-import { generateWorld } from '../shared/proto/sample.js';
+import { generateWorld } from '../shared/world/sample.js';
 
 test('the text of a tool in Look inside is its plain name and the name of its key, with no made-up word pair that reads like a password', () => {
   const offered = shareableAgents(world).map(a => a.id);

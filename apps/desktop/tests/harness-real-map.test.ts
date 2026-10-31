@@ -17,7 +17,7 @@ import { harnessById, routeGone } from '../shared/harness/status.js';
 import { LIMITS, bannedHere, countWords } from '../shared/harness/words.js';
 import { INTERFACE_IDS } from '../shared/harness/types.js';
 import type { HarnessState, Part, Stamp } from '../shared/harness/types.js';
-import type { HarnessItem } from '../shared/proto/types.js';
+import type { HarnessItem } from '../shared/world/types.js';
 import { FAKE_SECRET, FAKE_TOKEN_IN_TEXT, buildFixture } from './fixtures-real/build.js';
 import type { Fixture } from './fixtures-real/build.js';
 import { tempDir } from './support.js';

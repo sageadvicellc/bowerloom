@@ -2,7 +2,6 @@
 // One command to open the viewer, from any folder:
 //   npm --prefix <repo> run desktop           (your own Bowerloom)
 //   npm --prefix <repo> run desktop:sample    (made-up sample data)
-//   npm --prefix <repo> run desktop:prototype (the Bowerloom 0.8 clickable prototype: all in memory, with a temporary data folder)
 //   npm --prefix <repo> run desktop:prototype:v2 (the 0.8 home app, agents first: the same promises)
 //   npm --prefix <repo> run desktop:prototype:v3 (the 0.8 harness-first preview: sample data, nothing written, the same promises)
 //   npm --prefix <repo> run desktop:prototype:real (the 0.8 preview on YOUR setup: it reads your tool folders and changes nothing; needs a real HOME)
@@ -21,10 +20,10 @@ export { makePrototypeDataDir, removePrototypeDataDir };
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const repo = join(desktop, '..', '..');
-const KNOWN = new Set(['--sample-data', '--real-data', '--sandbox', '--prototype', '--prototype-v2', '--prototype-v3', '--prototype-real', '--prototype-v3-real', '--build-only']);
-const MODES = new Set(['--sample-data', '--real-data', '--sandbox', '--prototype', '--prototype-v2', '--prototype-v3', '--prototype-real', '--prototype-v3-real']);
+const KNOWN = new Set(['--sample-data', '--real-data', '--prototype-v2', '--prototype-v3', '--prototype-real', '--prototype-v3-real', '--build-only']);
+const MODES = new Set(['--sample-data', '--real-data', '--prototype-v2', '--prototype-v3', '--prototype-real', '--prototype-v3-real']);
 // The prototypes start with a fresh temporary data folder and write nothing else.
-const PROTOTYPES = ['--prototype', '--prototype-v2', '--prototype-v3'];
+const PROTOTYPES = ['--prototype-v2', '--prototype-v3'];
 // The real-setup preview has the same lock (a fresh temporary data folder, nothing written to the real app data) and adds a read-only bridge. It needs a real home folder.
 export const REAL_FLAG = '--prototype-real';
 // The harness-first preview on the person's own setup has the same lock, the same bridge and the same promise.
@@ -133,8 +132,8 @@ function step(text, command, argv, cwd, env) {
 function main() {
   const args = process.argv.slice(2);
   const unknown = args.filter(a => !KNOWN.has(a));
-  if (unknown.length) fail(`I do not know ${unknown.map(a => `"${a}"`).join(', ')}. Use --sample-data to open the sample, --real-data to open your own Bowerloom, --prototype, --prototype-v2 or --prototype-v3 to open a clickable prototype, --prototype-real or --prototype-v3-real to open a preview on your own setup (read-only), or --build-only to only build.`, 2);
-  if (args.filter(a => MODES.has(a)).length > 1) fail('Choose one of --sample-data, --real-data, --sandbox, --prototype, --prototype-v2, --prototype-v3, --prototype-real and --prototype-v3-real, not more.', 2);
+  if (unknown.length) fail(`I do not know ${unknown.map(a => `"${a}"`).join(', ')}. Use --sample-data to open the sample, --real-data to open your own Bowerloom, --prototype-v2 or --prototype-v3 to open a clickable preview, --prototype-real or --prototype-v3-real to open a preview on your own setup (read-only), or --build-only to only build.`, 2);
+  if (args.filter(a => MODES.has(a)).length > 1) fail('Choose one of --sample-data, --real-data, --prototype-v2, --prototype-v3, --prototype-real and --prototype-v3-real, not more.', 2);
   const onRealSetup = REAL_FLAGS.some(flag => args.includes(flag));
   if (onRealSetup && realHome() === null) fail('The real setup preview needs a home folder, and HOME is not set to a folder that exists. Nothing was read.', 2);
 
@@ -147,8 +146,6 @@ function main() {
   step('Building the viewer...', process.execPath, [join(desktop, 'tools', 'bundle.mjs')], desktop, process.env);
   if (args.includes('--build-only')) process.exit(0);
 
-  // The sandbox is made once if it is missing. Its own tool checks everything before it writes.
-  if (args.includes('--sandbox')) step('Making the sandbox if it is missing...', process.execPath, [join(desktop, 'tools', 'make-sandbox.mjs')], desktop, process.env);
   console.log('\nOpening the viewer...');
   const electron = electronBinary(desktop);
   if (electron === null) fail('The app window is not installed. Run the command again.', 1);

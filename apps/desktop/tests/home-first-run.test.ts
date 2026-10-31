@@ -9,9 +9,9 @@ import { FIND_WORDS, foundTitle, readProgress, readSummary, readingNow } from '.
 import { Welcome } from '../renderer/home/first-run/Welcome.js';
 import { FindScreen } from '../renderer/home/first-run/FindScreen.js';
 import { HomeApp } from '../renderer/home/HomeApp.js';
-import { ProtoProvider } from '../renderer/proto/session.js';
-import { loadWorld } from '../renderer/proto/world.js';
-import { createStore } from '../shared/proto/store.js';
+import { ProtoProvider } from '../renderer/common/session.js';
+import { loadWorld } from '../renderer/common/world.js';
+import { createStore } from '../shared/world/store.js';
 import { withSampleCopies } from '../shared/home/sample-copies.js';
 import { LIMITS, assertTextBudget, bannedIn, countWords } from '../shared/home/textbudget.js';
 import { DESKTOP } from './support.js';

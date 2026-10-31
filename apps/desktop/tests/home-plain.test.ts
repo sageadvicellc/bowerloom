@@ -3,11 +3,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PLAIN_AGENTS, PLAIN_NOTES, PLAIN_SKILLS, PLAIN_TOOLS, agentRecency, plainOf, skillDoes } from '../shared/home/plain.js';
 import { CARD_WORDS, agentCard, ownedAgents, shelvesOf } from '../shared/home/cards.js';
-import { generateWorld } from '../shared/proto/sample.js';
-import { reduceStore, createStore } from '../shared/proto/store.js';
-import type { AgentItem, ToolItem } from '../shared/proto/types.js';
+import { generateWorld } from '../shared/world/sample.js';
+import { reduceStore, createStore } from '../shared/world/store.js';
+import type { AgentItem, ToolItem } from '../shared/world/types.js';
 import { LIMITS, assertTextBudget, bannedIn, countWords } from '../shared/home/textbudget.js';
-import { agent, makeWorld } from './proto-testworld.js';
+import { agent, makeWorld } from './testworld.js';
 
 const world = generateWorld(1);
 const ids = (kind: string): string[] => world.items.filter(i => i.kind === kind && (kind !== 'tool' || (i as ToolItem).toolKind !== 'hook')).map(i => i.id);

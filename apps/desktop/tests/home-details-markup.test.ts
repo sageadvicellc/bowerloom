@@ -10,7 +10,7 @@ import { detailsOf } from '../shared/home/details.js';
 import type { Selected } from '../shared/home/details.js';
 import { ownedAgents } from '../shared/home/cards.js';
 import { skillTextOf } from '../shared/home/plain-details.js';
-import { generateWorld } from '../shared/proto/sample.js';
+import { generateWorld } from '../shared/world/sample.js';
 import { assertTextBudget, extractText } from '../shared/home/textbudget.js';
 
 const world = generateWorld(1);

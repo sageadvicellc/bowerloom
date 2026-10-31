@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { APP_INDEX, CSP, EXTERNAL_HOSTS, allowRequest, decideNavigation, isAllowedExternal, resolveAppFile, webPreferences } from '../main/security.js';
+import { APP_INDEX, CSP, EXTERNAL_HOSTS, allowRequest, decideNavigation, isAllowedExternal, isAllowedSender, resolveAppFile, webPreferences } from '../main/security.js';
 import { join as joinPath } from 'node:path';
 import { CHANNELS } from '../shared/channels.js';
 import { DESKTOP } from './support.js';
@@ -94,9 +94,9 @@ test('the main process calls no command that writes Bowerloom data and starts no
   assert.match(read('main/reader.ts'), /runProjectStatus\(\['status', '--json'\]/);
 });
 
-test('only six main files write a file: the settings, the sample copy, the sandbox, the sketches, the usage summary the person saves, and the private copy of a tidy-up report; the first four behind the write boundary', () => {
+test('only five main files write a file: the settings, the sample copy, the sketches, the usage summary the person saves, and the private copy of a tidy-up report; the first three behind the write boundary', () => {
   const writers = sources('main').filter(({ text }) => /\b(writeFileSync|writeFile|mkdirSync|rmSync|cpSync|chmodSync|renameSync|unlinkSync|appendFileSync|copyFileSync|symlinkSync)\b/.test(strip(text))).map(f => f.file).sort();
-  assert.deepEqual(writers, ['main/config.ts', 'main/diagnostics-dialogs.ts', 'main/notes-report.ts', 'main/sample.ts', 'main/sandbox.ts', 'main/sketches.ts']);
+  assert.deepEqual(writers, ['main/config.ts', 'main/diagnostics-dialogs.ts', 'main/notes-report.ts', 'main/sample.ts', 'main/sketches.ts']);
   assert.match(read('main/sample.ts'), /isInside\(realpathSync\(appDir\), target\)/);
 });
 
@@ -104,9 +104,9 @@ test('the page never builds markup from text: no innerHTML, no eval, no document
   for (const { file, text } of [...sources('renderer'), ...sources('shared')]) assert.doesNotMatch(strip(text), /innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval\(|new Function\(|setAttribute\(\s*['"]on|srcdoc|dangerouslySetInnerHTML/, file);
 });
 
-test('process.env is read in exactly four places (the token state, the settings of the run, the sandbox folder constant, and the state folder and preview switch of the install sheets), and the token value never leaves its module', () => {
+test('process.env is read in exactly three places (the token state, the settings of the run, and the state folder and preview switch of the install sheets), and the token value never leaves its module', () => {
   const users = sources('main').filter(({ text }) => /process\.env/.test(strip(text))).map(f => f.file).sort();
-  assert.deepEqual(users, ['main/boundary.ts', 'main/controller.ts', 'main/engine-state.ts', 'main/token.ts']);
+  assert.deepEqual(users, ['main/controller.ts', 'main/engine-state.ts', 'main/token.ts']);
   // The install sheets read two variables and nothing else of the environment: XDG_STATE_HOME, and BOWERLOOM_PREVIEW_ENGINES (beta.1: only the exact value 1 turns preview engines on; only a yes or no leaves the file). The usage log and the problem report read two more, PATH (to find the engines' version commands) and BOWERLOOM_EVENT_LOG (the off switch), and pass on nothing else.
   assert.deepEqual([...strip(read('main/engine-state.ts')).matchAll(/process\.env(\.\w+)?/g)].map(m => m[0]), ['process.env.XDG_STATE_HOME', 'process.env.BOWERLOOM_PREVIEW_ENGINES', 'process.env.PATH', 'process.env.BOWERLOOM_EVENT_LOG']);
   const token = read('main/token.ts');
@@ -138,14 +138,14 @@ test('the libraries add no inline style element: the bundler removes the two tha
   const css = read('renderer/graph.css'); assert.match(css, /force-graph-container canvas/); assert.match(css, /float-tooltip-kap/);
 });
 
-// ---- The prototypes (--prototype, --prototype-v2 and the harness-first --prototype-v3) share one list: every property of the first holds for the others.
-const PROTOTYPE_FLAGS = ['--prototype', '--prototype-v2', '--prototype-v3'] as const;
+// ---- The previews (--prototype-v2 and the harness-first --prototype-v3) share one list: every property of the first holds for the others.
+const PROTOTYPE_FLAGS = ['--prototype-v2', '--prototype-v3'] as const;
 
 test('each prototype flag puts the window in the same locked mode: no preload, no IPC, no outside link, no real data folder', () => {
   const main = strip(read('main/main.ts'));
   for (const flag of PROTOTYPE_FLAGS) assert.match(main, new RegExp(`argv\\.includes\\('${flag}'\\)`), flag);
   // One switch carries all four promises, so the second flag cannot have a different one.
-  assert.match(main, /const prototypeMode = argv\.includes\('--prototype'\) \|\| prototypeV2 \|\| prototypeReal \|\| prototypeV3 \|\| prototypeV3Real;/);
+  assert.match(main, /const prototypeMode = prototypeV2 \|\| prototypeReal \|\| prototypeV3 \|\| prototypeV3Real;/);
   assert.match(main, /webPreferences\(prototypeMode \? undefined : join\(root, 'preload\.cjs'\), app\.isPackaged\)/);
   assert.match(main, /isAllowedSender\(prototypeMode,/);
   assert.equal([...main.matchAll(/&& !prototypeMode\) void controller\.openLink|!prototypeMode\) void controller\.openLink/g)].length, 2, 'both link paths ask prototypeMode first');
@@ -155,7 +155,7 @@ test('each prototype flag puts the window in the same locked mode: no preload, n
 });
 
 test('the page of the home app is the app\'s own page: navigation inside it is allowed, and nothing else leaves', () => {
-  for (const hash of ['#prototype', '#prototype-v2', '#prototype-v2/kit', '#prototype-v3', '#prototype-v3-real', '#prototype-v3-real/choose', '#prototype-v3/builder/harness-weekly-report-crew/list']) assert.equal(decideNavigation(`${APP_INDEX}${hash}`, APP_INDEX), 'allow-app', hash);
+  for (const hash of ['#prototype-v2', '#prototype-v2/kit', '#prototype-v3', '#prototype-v3-real', '#prototype-v3-real/choose', '#prototype-v3/builder/harness-weekly-report-crew/list']) assert.equal(decideNavigation(`${APP_INDEX}${hash}`, APP_INDEX), 'allow-app', hash);
   assert.equal(decideNavigation('https://example.com/#prototype-v2', APP_INDEX), 'block');
   const preload = strip(read('preload/preload.ts'));
   assert.doesNotMatch(preload, /prototype/i);
@@ -181,4 +181,17 @@ test('only main/engine-service.ts calls the packages\' writes of adoption and th
   assert.match(strip(read('main/main.ts')), /if \(prototypeV3Real\) \{\s*const engine = registerEngineIpc\(/);
   // Main's private copies of tidy-up reports go when the app quits.
   assert.match(strip(read('main/main.ts')), /app\.once\('quit', \(\) => engine\.clearReportCopies\(\)\)/);
+});
+
+test('outside the preview modes only the app\'s own page is answered, and the guard checks the sender before it runs the handler', () => {
+  assert.equal(isAllowedSender(false, APP_INDEX, APP_INDEX), true);
+  assert.equal(isAllowedSender(false, `${APP_INDEX}#x`, APP_INDEX), true);
+  assert.equal(isAllowedSender(false, null, APP_INDEX), false);
+  assert.equal(isAllowedSender(false, 'https://example.com/', APP_INDEX), false);
+  assert.equal(isAllowedSender(false, 'file:///etc/passwd', APP_INDEX), false);
+  const main = strip(read('main/main.ts'));
+  assert.equal([...main.matchAll(/ipcMain\.handle/g)].length, 1, 'one guard');
+  const guard = main.slice(main.indexOf('const guarded'), main.indexOf("guarded('getInfo'"));
+  assert.ok(guard.indexOf('isAllowedSender(') > -1, 'the guard asks');
+  assert.ok(guard.indexOf('isAllowedSender(') < guard.indexOf('handler('), 'the sender check comes before the handler');
 });

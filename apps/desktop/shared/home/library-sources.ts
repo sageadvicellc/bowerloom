@@ -3,8 +3,8 @@
  * addresses (it is never fetched, never turned into a link on the page, never used as markup), and the screen says so in plain words. Pure: no React, no DOM,
  * no clock, no random number. Names, authors and addresses are invented (example.com hosts), and every line of text obeys the word rules of the home screens.
  */
-import type { LibraryNewItem, LibrarySourceInfo } from '../proto/store-library.js';
-import type { ToolKind } from '../proto/types.js';
+import type { LibraryNewItem, LibrarySourceInfo } from '../world/store-library.js';
+import type { ToolKind } from '../world/types.js';
 import { reachLine } from './library-model.js';
 import { ACCESS_WORDS } from './plain-details.js';
 import { makeText } from './library-text.js';

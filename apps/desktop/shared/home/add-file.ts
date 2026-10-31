@@ -3,11 +3,11 @@
  * 0.7 prototype (`openExportedFile` for the check and the preview, `commitImport` for what would land), so what the person is shown is what happens.
  * The result never carries a file path: the preview's file list is not passed on. Pure: no React, no DOM, no clock.
  */
-import { BUNDLE_LIMITS, commitImport } from '../proto/bundle.js';
-import { reduceStore } from '../proto/store.js';
-import type { StoreAction, StoreState } from '../proto/store.js';
-import { openExportedFile } from '../proto/export-flow.js';
-import type { Bundle, HarnessItem, ImportPreview, World } from '../proto/types.js';
+import { BUNDLE_LIMITS, commitImport } from '../world/bundle.js';
+import { reduceStore } from '../world/store.js';
+import type { StoreAction, StoreState } from '../world/store.js';
+import { openExportedFile } from '../world/export-flow.js';
+import type { Bundle, HarnessItem, ImportPreview, World } from '../world/types.js';
 
 export type FileThingKind = 'skill' | 'agent' | 'tool' | 'note';
 

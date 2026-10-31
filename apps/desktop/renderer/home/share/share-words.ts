@@ -7,7 +7,7 @@
  */
 import type { ShareCounts } from '../../../shared/home/share-model.js';
 import { kindCount } from '../add/add-words.js';
-import { joinWords } from '../../../shared/proto/words.js';
+import { joinWords } from '../../../shared/world/words.js';
 import { WORDS } from '../words.js';
 import { countWords } from '../../../shared/home/textbudget.js';
 

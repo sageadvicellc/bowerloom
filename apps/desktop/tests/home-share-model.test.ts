@@ -1,9 +1,9 @@
 // Share: what goes in a copy of the person's agents, what is left out, and the round trip into "From a shared file". Pure logic, no screen.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateWorld } from '../shared/proto/sample.js';
-import { parseBundle } from '../shared/proto/bundle.js';
-import type { AgentItem, McpTool, World } from '../shared/proto/types.js';
+import { generateWorld } from '../shared/world/sample.js';
+import { parseBundle } from '../shared/world/bundle.js';
+import type { AgentItem, McpTool, World } from '../shared/world/types.js';
 import { withSampleCopies } from '../shared/home/sample-copies.js';
 import { ownedAgents } from '../shared/home/cards.js';
 import { FILE_KIND_ORDER, countOf, readSharedFile } from '../shared/home/add-file.js';

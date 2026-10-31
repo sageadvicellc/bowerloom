@@ -7,7 +7,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import type { AgentItem } from '../../../shared/proto/types.js';
+import type { AgentItem } from '../../../shared/world/types.js';
 import { agentCard } from '../../../shared/home/cards.js';
 import {
   addsOf, alreadyOf, clearHand, isEmpty, makeBasis, previewOf, ruleLines, sameSelection, selectionFromSlice, toChoice, toggleHand, toggleKeep, toggleLeaveOut, toggleTopic,
@@ -15,7 +15,7 @@ import {
 import type { Selection } from '../../../shared/home/notes-model.js';
 import { chooseNotesAction, notesWouldChange } from '../../../shared/home/notes-actions.js';
 import type { Topic } from '../../../shared/home/notes-topics.js';
-import { useProtoStore } from '../../proto/session.js';
+import { useProtoStore } from '../../common/session.js';
 import { Button } from '../kit/Button.js';
 import { Glyph } from '../kit/Glyph.js';
 import { Drawer } from '../kit/Drawer.js';

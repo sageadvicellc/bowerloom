@@ -5,7 +5,7 @@
  * additions or removals is one sentence ("Added 7 items"). They are drop-in replacements for `listChanges`, `changeCount` and `barSentence` on a screen that
  * shows the Library. Pure: no React, no DOM.
  */
-import type { World } from '../proto/types.js';
+import type { World } from '../world/types.js';
 import { agentCard, itemTitle, noteWords } from './cards.js';
 import { barSentence, listChanges } from './changes.js';
 import type { Change } from './changes.js';

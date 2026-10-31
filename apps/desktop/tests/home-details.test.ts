@@ -6,10 +6,10 @@ import { NOTE_TITLES, agentOfSelected, bodyLines, detailsOf, programsOf, removeF
 import type { AgentDetails, NoteDetails, SkillDetails, ToolDetails } from '../shared/home/details.js';
 import { CARD_WORDS, chipLabel, chipsOf, ownedAgents, shelvesOf } from '../shared/home/cards.js';
 import { PLAIN_SKILLS } from '../shared/home/plain.js';
-import { generateWorld } from '../shared/proto/sample.js';
-import type { World } from '../shared/proto/types.js';
+import { generateWorld } from '../shared/world/sample.js';
+import type { World } from '../shared/world/types.js';
 import { LIMITS, assertTextBudget, bannedIn, countWords } from '../shared/home/textbudget.js';
-import { found, skill } from './proto-testworld.js';
+import { found, skill } from './testworld.js';
 
 const world = generateWorld(1);
 const agents = ownedAgents(world);

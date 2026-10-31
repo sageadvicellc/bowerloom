@@ -9,13 +9,12 @@ import { ICONS, h, icon } from './dom.js';
 import { applyMotionTokens } from './motion-tokens.js';
 import { mapHost, renderMap } from './map/mount.js';
 import { disposeKnowledge, knowledgeHost } from './graph/knowledge.js';
-import { mountPrototype } from './proto/mount.js';
 import { isHomeHash, mountHome } from './home/mount.js';
 import { isHarnessHash, mountHarness } from './harness/mount.js';
 
 declare global { interface Window { bowerloom: ViewerApi } }
-// The prototype page has no bridge (main.ts leaves the preload out there), so `window.bowerloom` is missing then. This stand-in keeps the top of
-// this file from failing, and any call on it is refused. The prototype is mounted at the bottom and never calls it.
+// The home app and the harness-first preview have no bridge (main.ts leaves the preload out there), so `window.bowerloom` is missing then. This stand-in keeps the top of
+// this file from failing, and any call on it is refused. Those pages are mounted at the bottom and never call it.
 const api: ViewerApi = window.bowerloom ?? new Proxy({} as ViewerApi, { get: () => () => Promise.reject(new Error('This page has no bridge.')) });
 
 type Screen = Link['screen'];
@@ -309,10 +308,9 @@ function settingsScreen(s: Snapshot): HTMLElement {
       h('div', { class: 'row-list' }, ...s.projects.map(p => h('div', { class: 'row static-row' }, h('span', { class: 'title', text: p.name }),
         h('span', { class: 'chips', role: 'group', aria: { label: `Kind of folder: ${p.name}` } }, ...(['project', 'workspace', 'context-store'] as FolderRole[]).map(role => h('button', { type: 'button', class: p.role === role ? 'btn' : 'btn secondary', aria: { pressed: String(p.role === role) }, on: { click: () => { void (async () => { settled(await act('Saving your choice', () => api.setRole(p.key, role))); await reload(); })(); } } }, ROLE_WORDS[role].label))))))) : null,
     h('div', { class: 'card' }, h('h2', { text: 'What you are looking at' }),
-      h('p', { text: info.mode === 'sample' ? 'Sample data, made to show every state.' : info.mode === 'sandbox' ? 'The sandbox: invented content in its own pretend home, safe to break.' : 'Your own Bowerloom.' }), h('p', { class: 'tech', text: info.storePath }),
-      h('div', { class: 'chips' }, ...(['real', 'sample', 'sandbox'] as const).filter(m => m !== info.mode && (m !== 'sandbox' || info.sandbox.exists)).map(m =>
-        button(m === 'real' ? 'Look at my Bowerloom' : m === 'sample' ? 'Try the sample data' : 'Open the sandbox', async () => { state.info = (await act('Switching', () => api.chooseMode(m))) ?? state.info; state.history = []; await reload(); go({ screen: 'home' }, true); }, 'btn secondary'))),
-      !info.sandbox.exists ? h('p', { class: 'small muted', text: 'There is no sandbox yet. It is made by the sandbox command (see the README).' }) : null),
+      h('p', { text: info.mode === 'sample' ? 'Sample data, made to show every state.' : 'Your own Bowerloom.' }), h('p', { class: 'tech', text: info.storePath }),
+      h('div', { class: 'chips' }, ...(['real', 'sample'] as const).filter(m => m !== info.mode).map(m =>
+        button(m === 'real' ? 'Look at my Bowerloom' : 'Try the sample data', async () => { state.info = (await act('Switching', () => api.chooseMode(m))) ?? state.info; state.history = []; await reload(); go({ screen: 'home' }, true); }, 'btn secondary')))),
     h('div', { class: 'card' }, h('h2', { text: 'Appearance' }), h('div', { class: 'chips' }, theme('system', 'Match my computer'), theme('light', 'Light'), theme('dark', 'Dark'))),
     h('div', { class: 'card' }, h('h2', { text: 'About' }), h('dl', { class: 'kv' }, h('dt', { text: 'Version' }), h('dd', { text: info.version }), h('dt', { text: 'Updates' }), h('dd', { text: info.updates.status })),
       button('Check for updates', async () => { const r = await act('Checking for updates', () => api.checkForUpdates()); if (r !== null) { state.notice = r.status; state.info = (await act('Reading the version', () => api.getInfo())) ?? state.info; } render(); }, 'btn secondary'), state.notice ? h('p', { role: 'status', text: state.notice }) : null,
@@ -344,9 +342,9 @@ function shell(content: HTMLElement, banner: HTMLElement | null = null): HTMLEle
     return b;
   }));
   return h('div', { class: 'shell' },
-    h('aside', { class: 'sidebar' }, h('div', { class: 'brand' }, icon(ICONS.leaf, 28), 'Bowerloom'), info.mode === 'sandbox' ? h('div', { class: 'sandbox-badge', role: 'note' }, 'Sandbox: safe to break') : null, nav, button('Look again', () => { void reload(); }, 'btn secondary')),
+    h('aside', { class: 'sidebar' }, h('div', { class: 'brand' }, icon(ICONS.leaf, 28), 'Bowerloom'), nav, button('Look again', () => { void reload(); }, 'btn secondary')),
     h('main', { id: 'main' }, banner, content),
-    h('footer', { class: 'footer' }, h('span', { text: `Bowerloom ${info.version}` }), h('span', { text: info.updates.status }), h('span', { class: 'spacer' }), h('span', { text: info.mode === 'sample' ? 'Showing sample data' : info.mode === 'sandbox' ? 'Sandbox: safe to break' : 'Showing your own Bowerloom' })));
+    h('footer', { class: 'footer' }, h('span', { text: `Bowerloom ${info.version}` }), h('span', { text: info.updates.status }), h('span', { class: 'spacer' }), h('span', { text: info.mode === 'sample' ? 'Showing sample data' : 'Showing your own Bowerloom' })));
 }
 
 function body(): HTMLElement {
@@ -420,7 +418,6 @@ async function reload(): Promise<void> {
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
 applyMotionTokens();
 window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', () => applyMotionTokens());
-// The clickable prototype of Bowerloom 0.8 opens on the address #prototype. It keeps everything in memory and skips the normal start.
 // The 0.8 home app opens on #prototype-v2 (and its kit gallery on #prototype-v2/kit). It shares the in-memory sample and has no bridge either.
 // The harness-first preview opens on #prototype-v3 (launch mode --prototype-v3), the same way: no bridge, in memory.
-if (location.hash === '#prototype') { applyTheme(); mountPrototype(root); } else if (isHarnessHash(location.hash)) { applyTheme(); mountHarness(root); } else if (isHomeHash(location.hash)) { applyTheme(); mountHome(root); } else void reload();
+if (isHarnessHash(location.hash)) { applyTheme(); mountHarness(root); } else if (isHomeHash(location.hash)) { applyTheme(); mountHome(root); } else void reload();

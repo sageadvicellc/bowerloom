@@ -1,36 +1,11 @@
 /**
- * The write boundary. The viewer writes nowhere except two kinds of place:
- *   1. its own settings and sketches, inside its own userData folder (`assertAppWritable`), and
- *   2. the sandbox, a folder made only for trying things (`assertWritable`).
- * Every write calls one of these two first. Neither can be widened by the settings file or by any message from the window: the
- * allowed roots are fixed here, in code. Widening them is a future, confirmed mechanism that does not exist yet (`widenWriteRoots`
- * refuses, and its test says so).
+ * The write boundary. The viewer writes only inside its own userData folder: its settings, the copy of the sample, and its sketches
+ * (`assertAppWritable`). Every write calls it first. It cannot be widened by the settings file or by any message from the window: the
+ * allowed folder is fixed in code.
  */
-import { lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { lstatSync } from 'node:fs';
 import type { Stats } from 'node:fs';
-import { homedir } from 'node:os';
-import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
-
-export const SENTINEL_NAME = '.bowerloom-sandbox';
-export const SENTINEL_TEXT = 'bowerloom viewer sandbox v1: this folder was made by the viewer, and may be deleted and rebuilt by it.\n';
-/** The hard-coded name of the one sandbox folder, under the person's home folder. */
-export const SANDBOX_NAME = 'Sage Advice Sandbox';
-
-/** True when this is the installed app, not a run from source. (The same test as Electron's `app.isPackaged`, without Electron.) */
-export const isPackagedRuntime = (proc: { versions: { electron?: string | undefined }; defaultApp?: boolean | undefined } = process): boolean => typeof proc.versions.electron === 'string' && proc.defaultApp !== true;
-
-/**
- * Where the sandbox is. The environment variable is for tests and for running from source only: the installed app ignores it, so
- * nothing in the environment can point the viewer's delete at another folder.
- */
-export function sandboxDirFor(options: { env: NodeJS.ProcessEnv; home: string; packaged: boolean }): string {
-  const named = options.env.BOWERLOOM_VIEWER_SANDBOX;
-  return !options.packaged && typeof named === 'string' && named !== '' ? named : join(options.home, SANDBOX_NAME);
-}
-/** The one sandbox: read once, here. */
-export const SANDBOX_DIR: string = sandboxDirFor({ env: process.env, home: homedir(), packaged: isPackagedRuntime() });
-/** True when the folder came from the environment, not from the fixed place. */
-export const SANDBOX_OVERRIDDEN: boolean = SANDBOX_DIR !== join(homedir(), SANDBOX_NAME);
+import { isAbsolute, join, resolve, sep } from 'node:path';
 
 export class BoundaryError extends Error {
   readonly code: string;
@@ -67,84 +42,9 @@ function noLinksBelow(root: string, target: string): void {
     const stat = lstatOrNull(at);
     if (stat === null) return;
     if (stat.isSymbolicLink()) refuse('LINK', 'A shortcut (link) is on the way, so the viewer will not write there.');
-    if (rootDev !== undefined && stat.dev !== rootDev) refuse('MOUNT', 'Another disk is attached inside the sandbox, so the viewer will not write there.');
+    if (rootDev !== undefined && stat.dev !== rootDev) refuse('MOUNT', 'Another disk is attached inside the viewer\'s own folder, so the viewer will not write there.');
   }
 }
-
-export interface BoundaryOptions {
-  /** The folders that may be written, each one a sandbox. */
-  roots: readonly string[];
-  /** The person's real folders: no allowed root may be, or be inside, one of them. */
-  protectedPaths?: readonly string[];
-  /** The home folder. Default: the real one. */
-  home?: string;
-}
-
-export interface Boundary {
-  readonly roots: readonly string[];
-  /** Returns the real path that may be written, or throws a BoundaryError. */
-  assertWritable(path: unknown): string;
-  /** Checks one root alone: used before creating or deleting the sandbox. Returns its real path. */
-  checkRoot(root: string): string;
-}
-
-export function createBoundary(options: BoundaryOptions): Boundary {
-  const roots = Object.freeze([...options.roots]);
-  const protectedPaths = options.protectedPaths ?? [];
-  const home = (() => { try { return realpathSync(options.home ?? homedir()); } catch { return resolve(options.home ?? homedir()); } })();
-
-  /** A root is safe when it is a real folder, made by the tool (its sentinel), and nowhere near the person's real work. */
-  function checkRoot(root: string): string {
-    const lexical = plainAbsolute(root);
-    const stat = lstatOrNull(lexical);
-    if (stat === null) return refuse('NO_ROOT', 'The sandbox folder is not there.');
-    if (stat.isSymbolicLink() || !stat.isDirectory()) return refuse('ROOT_NOT_FOLDER', 'The sandbox must be a real folder, not a link.');
-    const real = realpathSync(lexical);
-    if (real === sep || real === home || inside(real, home)) return refuse('ROOT_TOO_BROAD', 'The sandbox cannot be the home folder, or a folder that holds it.');
-    if (dirname(real) === real) return refuse('ROOT_TOO_BROAD', 'The sandbox cannot be the top of the disk.');
-    if (!/sandbox/i.test(basename(real))) return refuse('ROOT_NAME', 'The sandbox folder must have "Sandbox" in its name.');
-    for (const p of protectedPaths) {
-      let protectedReal = p; try { protectedReal = realpathSync(p); } catch { /* not there */ }
-      if (real === protectedReal || inside(protectedReal, real) || inside(real, protectedReal)) return refuse('ROOT_IS_REAL', 'The sandbox cannot be, hold, or sit inside one of your real folders.');
-    }
-    for (const marker of ['.bowerloom', 'bowerloom.json', 'bowerloom.lock.json']) if (lstatOrNull(join(real, marker)) !== null) return refuse('ROOT_IS_REAL', 'A folder that is itself a Bowerloom folder cannot be the sandbox.');
-    const sentinel = lstatOrNull(join(real, SENTINEL_NAME));
-    if (sentinel === null || !sentinel.isFile() || sentinel.isSymbolicLink()) return refuse('NO_SENTINEL', 'This folder does not carry the mark that the viewer made it, so it is not touched.');
-    let text = ''; try { text = readFileSync(join(real, SENTINEL_NAME), 'utf8'); } catch { return refuse('NO_SENTINEL', 'The mark of the sandbox cannot be read.'); }
-    if (text !== SENTINEL_TEXT) return refuse('NO_SENTINEL', 'The mark of the sandbox is not the one the viewer writes.');
-    return real;
-  }
-
-  function assertWritable(path: unknown): string {
-    const target = plainAbsolute(path);
-    for (const root of roots) {
-      let realRoot: string;
-      try { realRoot = checkRoot(root); } catch (error) { if (error instanceof BoundaryError && (error.code === 'NO_ROOT' || error.code === 'NO_SENTINEL')) continue; throw error; }
-      // The target may be written as the root's own folder name or as its real place: both are compared with the real root.
-      const lexicalRoot = resolve(root);
-      let rel: string | null = null;
-      if (inside(lexicalRoot, target)) rel = target.slice(lexicalRoot.length); else if (inside(realRoot, target)) rel = target.slice(realRoot.length);
-      if (rel === null) continue;
-      noLinksBelow(realRoot, join(realRoot, rel));
-      // The deepest folder that exists must really be inside the real root.
-      let existing = join(realRoot, rel);
-      while (lstatOrNull(existing) === null) { const up = dirname(existing); if (up === existing) break; existing = up; }
-      const realExisting = realpathSync(existing);
-      if (realExisting !== realRoot && !inside(realRoot, realExisting)) return refuse('OUTSIDE', 'That place is outside the sandbox.');
-      return join(realRoot, rel);
-    }
-    return refuse('OUTSIDE', 'That place is outside the folders the viewer may write in.');
-  }
-
-  return Object.freeze({ roots, assertWritable, checkRoot });
-}
-
-/**
- * The boundary of the running app: the sandbox only. The person's real folders are protected by name: the Sage Advice folder
- * and whatever the app is told to read are never roots.
- */
-export const boundary: Boundary = createBoundary({ roots: [SANDBOX_DIR], protectedPaths: [join(homedir(), 'Sage Advice')] });
-export const assertWritable = (path: unknown): string => boundary.assertWritable(path);
 
 /**
  * The viewer's own settings and sketches live in its userData folder. A write there must be a plain file or folder directly inside
@@ -158,6 +58,3 @@ export function assertAppWritable(userData: string, path: unknown): string {
   noLinksBelow(root, target);
   return target;
 }
-
-/** Widening the places the viewer may write is a future mechanism, with its own confirmation. Today it does not exist. */
-export function widenWriteRoots(): never { throw new BoundaryError('NOT_IMPLEMENTED', 'Widening the places the viewer may write is not available. A future version will ask for explicit confirmation.'); }

@@ -9,11 +9,11 @@ import type { Locator, Page } from '@playwright/test';
 import { assertTextBudget } from '../shared/home/textbudget.js';
 import { planShare, shareableAgents } from '../shared/home/share-model.js';
 import { withSampleCopies } from '../shared/home/sample-copies.js';
-import { generateWorld } from '../shared/proto/sample.js';
+import { generateWorld } from '../shared/world/sample.js';
 import { withLibrarySamples } from '../shared/home/library-sample.js';
 import { countsLine, leftOutLine } from '../renderer/home/share/share-words.js';
-import { removeTempDirs } from './proto-temp.js';
-import { animationsDone, framesPainted } from './proto-wait.js';
+import { removeTempDirs } from './temp-dirs.js';
+import { animationsDone, framesPainted } from './page-wait.js';
 import { SIZES, THEMES, ensurePicked, fresh, keyToNav, launchHome, rectOf, resize, setLook, shot, skipTour } from './home-page.js';
 import type { Home } from './home-page.js';
 

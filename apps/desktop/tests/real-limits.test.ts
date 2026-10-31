@@ -12,7 +12,7 @@ import { listDir, makeBudget, mustStop, newTally, readText, walkFiles } from '..
 import { registerRealIpc } from '../main/real-ipc.js';
 import type { RealEvent } from '../main/real-ipc.js';
 import { APP_INDEX } from '../main/security.js';
-import { hashText, validateWorld } from '../shared/proto/sample.js';
+import { hashText, validateWorld } from '../shared/world/sample.js';
 import { buildRealResult } from '../shared/real/map-world.js';
 import type { PlaceRead, StampedRecord } from '../shared/real/place.js';
 import { parseToml } from '../shared/real/toml.js';

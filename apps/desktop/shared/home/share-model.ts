@@ -1,13 +1,13 @@
 /**
  * The logic behind Share in the 0.8 home app: which agents can go in a copy, what a copy holds, what it leaves out, and how big it is. A copy is built
- * from the same bundle logic as the 0.7 export (`buildBundle` in shared/proto/bundle.ts, the text in export-flow.ts), so it is the same file that
+ * from the same bundle logic as the 0.7 export (`buildBundle` in shared/world/bundle.ts, the text in export-flow.ts), so it is the same file that
  * "Open a shared file" reads (shared/home/add-file.ts). It is agent first: a copy holds the agents the person ticks, the skills those agents use, the
  * tools they use (as a name and the name of the key, never a value) and the sets of notes they read (as a rule, never a page). Everything else stays out.
  * Pure: no React, no DOM, no clock, no file. The prototype writes nothing; the screen keeps the text in memory.
  */
-import { buildBundle } from '../proto/bundle.js';
-import { bundleText } from '../proto/export-flow.js';
-import type { AgentItem, Bundle, BundleItem, World } from '../proto/types.js';
+import { buildBundle } from '../world/bundle.js';
+import { bundleText } from '../world/export-flow.js';
+import type { AgentItem, Bundle, BundleItem, World } from '../world/types.js';
 import { ownedAgents } from './cards.js';
 
 /** The agents a person can put in a copy: the ones they own, in name order, minus the ones Find skipped (the map does not show those either). */

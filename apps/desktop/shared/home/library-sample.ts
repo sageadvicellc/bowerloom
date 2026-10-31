@@ -5,9 +5,9 @@
  * `withLibrarySamples` puts the pieces into the home app's world: plain names for the three hooks, one source with an update waiting, and the item that has it.
  * Pure: no React, no DOM, no clock, no random number.
  */
-import type { AgentItem, HarnessItem, World } from '../proto/types.js';
-import { globalScope } from '../proto/common.js';
-import { hashText } from '../proto/sample.js';
+import type { AgentItem, HarnessItem, World } from '../world/types.js';
+import { globalScope } from '../world/common.js';
+import { hashText } from '../world/sample.js';
 import { makeText } from './library-text.js';
 import { plainOf } from './plain.js';
 

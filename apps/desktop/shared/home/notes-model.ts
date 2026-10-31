@@ -3,13 +3,13 @@
  * A person works with three things: TOPICS switched on (with parts "left out"), single notes ticked BY HAND, and, when the agent already reads notes that
  * were chosen another way (by kind, label or link), that set "kept from before". The rule keeps its three handles (spec 6.9): a topic is a folder, a part
  * left out turns the topic into its other parts, a hand pick is a seed page, and "kept from before" is the page types, tags and link reach of the old rule.
- * So `matchPages` (shared/proto/slicerule.ts) counts it, with no second matcher, and a page is in the choice when ANY handle picks it.
+ * So `matchPages` (shared/world/slicerule.ts) counts it, with no second matcher, and a page is in the choice when ANY handle picks it.
  * Pure: no React, no DOM, no clock, no random number. Nothing here changes its input.
  */
-import type { SliceRule, Slice, WikiPage } from '../proto/types.js';
-import { memoMatch } from '../proto/slice-preview.js';
-import { matchPages } from '../proto/slicerule.js';
-import { joinWords } from '../proto/words.js';
+import type { SliceRule, Slice, WikiPage } from '../world/types.js';
+import { memoMatch } from '../world/slice-preview.js';
+import { matchPages } from '../world/slicerule.js';
+import { joinWords } from '../world/words.js';
 import { buildTopics, partOf, plainTitles, topicOf } from './notes-topics.js';
 import type { Topic } from './notes-topics.js';
 import { countWords } from './textbudget.js';

@@ -2,8 +2,8 @@
  * The names of the store's own actions are code, not screen words, so they live here, away from the screens. The screens call these builders and never
  * write an action name themselves.
  */
-import type { StoreAction } from '../../shared/proto/store.js';
-import type { Bundle } from '../../shared/proto/types.js';
+import type { StoreAction } from '../../shared/world/store.js';
+import type { Bundle } from '../../shared/world/types.js';
 
 /** Writes the draft down as a save point. `madeAt` is the time in words, read from the screen's own clock when the person pressed Save ("Today, 8:42 AM"); the store never reads a clock. */
 export const saveAction = (label: string, madeAt?: string): StoreAction => (madeAt === undefined ? { type: 'apply', label } : { type: 'apply', label, madeAt });

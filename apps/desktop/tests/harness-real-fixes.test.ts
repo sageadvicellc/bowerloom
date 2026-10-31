@@ -19,7 +19,7 @@ import { ChooseLines, NOTES_SHOWN, PlaceNotes, ReadNotes, visibleNotes } from '.
 import { PlaceRow } from '../renderer/harness/real/PlaceRow.js';
 import { REAL, limitsLine, nothingReadLine, skippedLine } from '../renderer/harness/real/words-real.js';
 import { reasonWords } from '../renderer/home/real/words.js';
-import { crashLine } from '../renderer/proto/error-boundary.js';
+import { crashLine } from '../renderer/common/error-boundary.js';
 import { makeOnce, makeSources } from '../renderer/harness/screens/read-make.js';
 import { FLOW } from '../renderer/harness/words-flow.js';
 

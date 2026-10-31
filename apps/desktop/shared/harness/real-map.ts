@@ -10,8 +10,8 @@
  *  - nothing is claimed about which program a part works in (the reader cannot prove it): every part has no limit (`cannotUse` is empty) and the screens say "Not checked";
  *  - the file text is scrubbed a second time (it is cheap) and cut to its first 60 lines (a display choice that its file page says, not a problem to count). It is only ever drawn as plain text.
  */
-import type { HarnessItem, Scope, WikiPage, World } from '../proto/types.js';
-import { hashText } from '../proto/sample.js';
+import type { HarnessItem, Scope, WikiPage, World } from '../world/types.js';
+import { hashText } from '../world/sample.js';
 import { adapterOf } from '../real/adapters.js';
 import { tallyWords } from '../real/place.js';
 import { cleanLine, cut, scrubText } from '../real/redact.js';

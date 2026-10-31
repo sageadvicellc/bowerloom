@@ -5,9 +5,9 @@
  * "ghp_", an Amazon key id, a long run of mixed letters and digits, a "password=" line, a private key block); it can miss a key and can flag a harmless string,
  * and the sheet says what it found, not that the file is safe. Pure: no React, no DOM, no clock.
  */
-import type { Bundle, WikiPage } from '../proto/types.js';
+import type { Bundle, WikiPage } from '../world/types.js';
 import { buildTopics } from './notes-topics.js';
-import { joinWords } from '../proto/words.js';
+import { joinWords } from '../world/words.js';
 
 export type LookKind = 'skill' | 'agent' | 'tool' | 'note';
 

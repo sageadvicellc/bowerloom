@@ -17,9 +17,9 @@
  */
 import type {
   AccessClass, AgentItem, ContextSliceItem, FoundAt, InterfaceId, InterfaceInfo, Scope, SkillItem, Slice, ToolAttachment, ToolItem, WikiPage, World,
-} from '../proto/types.js';
-import { hashText } from '../proto/sample.js';
-import { INTERFACE_WORDS } from '../proto/words.js';
+} from '../world/types.js';
+import { hashText } from '../world/sample.js';
+import { INTERFACE_WORDS } from '../world/words.js';
 import { adapterOf, isKnownInterface, secretNameOf } from './adapters.js';
 import { parseFrontmatter } from './frontmatter.js';
 import { tallyWords, topicsOf } from './place.js';

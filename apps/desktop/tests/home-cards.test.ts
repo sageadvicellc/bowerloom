@@ -2,9 +2,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { AGENT_ACCENTS, agentAccent, agentHint, agentTitle, holdSegments, holdWidths, HOLD_MIN, itemBadge, itemTitle, ownedAgents, saveBarModel, shelvesOf, visibleCount, SHELF_LIMIT } from '../shared/home/cards.js';
-import { CASE_IDS, generateWorld } from '../shared/proto/sample.js';
-import type { AgentItem, HarnessItem, World } from '../shared/proto/types.js';
-import { agent, found, makeWorld, mcp, skill } from './proto-testworld.js';
+import { CASE_IDS, generateWorld } from '../shared/world/sample.js';
+import type { AgentItem, HarnessItem, World } from '../shared/world/types.js';
+import { agent, found, makeWorld, mcp, skill } from './testworld.js';
 import { assertTextBudget, countWords } from '../shared/home/textbudget.js';
 
 const world = generateWorld(1);

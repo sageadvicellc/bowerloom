@@ -1,8 +1,8 @@
 // What the Save bar says about changes made on the Library page: one change for one press, the names a row shows, and one sentence for a long run.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { reduceStore } from '../shared/proto/store.js';
-import type { StoreAction, StoreState } from '../shared/proto/store.js';
+import { reduceStore } from '../shared/world/store.js';
+import type { StoreAction, StoreState } from '../shared/world/store.js';
 import { changeCount } from '../shared/home/savebar.js';
 import { listChanges } from '../shared/home/changes.js';
 import { libraryChangeCount, libraryChangeList, librarySentence } from '../shared/home/library-changes.js';

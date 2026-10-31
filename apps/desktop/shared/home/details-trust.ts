@@ -3,7 +3,7 @@
  * for a skill that came from outside, who made it and which release it is; for a tool, what it reaches (a host, "This computer only", or nothing) and whether it can only
  * read or can change things. A skill the person made has none of this to show: "Made by you" says it. Pure: no React, no DOM, no clock.
  */
-import type { World } from '../proto/types.js';
+import type { World } from '../world/types.js';
 import { libraryDetails } from './library-model.js';
 
 /** Who made a skill and which release it is. */

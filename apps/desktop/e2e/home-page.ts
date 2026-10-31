@@ -1,5 +1,5 @@
 /**
- * Shared set-up for the home app e2e specs (Electron started with --prototype-v2 and a temporary data folder from proto-temp.ts). One launch per spec file,
+ * Shared set-up for the home app e2e specs (Electron started with --prototype-v2 and a temporary data folder from temp-dirs.ts). One launch per spec file,
  * a viewport override to the sizes the review needs, the theme, and screenshots when HOME_U0_SHOTS names a folder (outside the repo).
  */
 import { _electron as electron, expect } from '@playwright/test';
@@ -9,8 +9,8 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { animationsDone } from './proto-wait.js';
-import { tempDir } from './proto-temp.js';
+import { animationsDone } from './page-wait.js';
+import { tempDir } from './temp-dirs.js';
 
 export const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const shotsDir = process.env.HOME_U0_SHOTS ?? null;

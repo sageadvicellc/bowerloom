@@ -4,11 +4,11 @@
  * The lines come from `diffLines` in setup-diff.ts. A copy is compared with one other copy: the first copy with the second, every later copy with
  * the first. For two copies the marks are symmetric: a line is marked in a copy when the other copy does not have it. No file path is ever returned.
  */
-import type { HarnessItem } from '../proto/types.js';
-import type { StoreAction } from '../proto/store.js';
-import { conflictCopies, distinctTexts } from '../proto/conflicts.js';
-import { diffLines } from '../proto/setup-diff.js';
-import type { DiffLine } from '../proto/setup-diff.js';
+import type { HarnessItem } from '../world/types.js';
+import type { StoreAction } from '../world/store.js';
+import { conflictCopies, distinctTexts } from '../world/conflicts.js';
+import { diffLines } from '../world/setup-diff.js';
+import type { DiffLine } from '../world/setup-diff.js';
 import { sampleCopyDays } from './sample-copies.js';
 
 /** True when the item has two or more different texts. */

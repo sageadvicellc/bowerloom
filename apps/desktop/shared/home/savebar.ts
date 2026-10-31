@@ -5,8 +5,8 @@
  * Modes: `clean` (nothing waits), `dirty` (changes wait), `saved` (the last thing that happened was a save, and "Go back" undoes it), `back`
  * (the last thing that happened was "Go back"). The bar knows which one by the number of save points, a logical clock the store already keeps.
  */
-import type { AgentItem, HarnessItem, World } from '../proto/types.js';
-import { snapshotOf } from '../proto/store.js';
+import type { AgentItem, HarnessItem, World } from '../world/types.js';
+import { snapshotOf } from '../world/store.js';
 import { CARD_WORDS } from './cards.js';
 import { absorbedSlices, isAbsorbedItem } from './notes-actions.js';
 

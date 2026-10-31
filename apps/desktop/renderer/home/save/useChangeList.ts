@@ -3,7 +3,7 @@
  * carry a Save bar use it, so the list works the same on the map, on the Library page and on the Library test page.
  */
 import { useEffect, useMemo, useState } from 'react';
-import type { StoreAction, StoreState } from '../../../shared/proto/store.js';
+import type { StoreAction, StoreState } from '../../../shared/world/store.js';
 import { changeEntries } from '../../../shared/home/change-undo.js';
 import type { ChangeEntry } from '../../../shared/home/change-undo.js';
 

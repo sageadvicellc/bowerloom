@@ -2,11 +2,11 @@
 // The card on the shelf and the sentence on the Save bar use the same name. The set keeps its stored name; only the words on screen change.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createStore, reduceStore } from '../shared/proto/store.js';
-import type { StoreState } from '../shared/proto/store.js';
-import { generateWorld } from '../shared/proto/sample.js';
-import type { AgentItem, Slice, World } from '../shared/proto/types.js';
-import { matchPages } from '../shared/proto/slicerule.js';
+import { createStore, reduceStore } from '../shared/world/store.js';
+import type { StoreState } from '../shared/world/store.js';
+import { generateWorld } from '../shared/world/sample.js';
+import type { AgentItem, Slice, World } from '../shared/world/types.js';
+import { matchPages } from '../shared/world/slicerule.js';
 import { chooseNotesAction } from '../shared/home/notes-actions.js';
 import { EMPTY_SELECTION, makeBasis, toChoice, toggleHand, toggleTopic } from '../shared/home/notes-model.js';
 import type { Selection } from '../shared/home/notes-model.js';

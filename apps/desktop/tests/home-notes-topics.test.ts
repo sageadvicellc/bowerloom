@@ -1,10 +1,10 @@
 // The topics of "Choose notes": 700 pages of the seed-1 world become a few plain topics with parts, counts and plain titles.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateWorld } from '../shared/proto/sample.js';
-import type { WikiPage } from '../shared/proto/types.js';
+import { generateWorld } from '../shared/world/sample.js';
+import type { WikiPage } from '../shared/world/types.js';
 import { OTHER_NOTES, buildTopics, partOf, plainTitles, topicOf } from '../shared/home/notes-topics.js';
-import { SAMPLE_WORDS } from '../shared/proto/sample.js';
+import { SAMPLE_WORDS } from '../shared/world/sample.js';
 import { bannedIn, countWords } from '../shared/home/textbudget.js';
 
 const world = generateWorld(1);

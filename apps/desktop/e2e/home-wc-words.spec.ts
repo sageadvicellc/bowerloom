@@ -14,9 +14,9 @@ import { withLibrarySamples } from '../shared/home/library-sample.js';
 import { planShare, shareableAgents } from '../shared/home/share-model.js';
 import { withSampleCopies } from '../shared/home/sample-copies.js';
 import { withStarterAgents } from '../shared/home/starters.js';
-import { generateWorld } from '../shared/proto/sample.js';
-import { removeTempDirs } from './proto-temp.js';
-import { animationsDone } from './proto-wait.js';
+import { generateWorld } from '../shared/world/sample.js';
+import { removeTempDirs } from './temp-dirs.js';
+import { animationsDone } from './page-wait.js';
 import { WELCOME_PAGE, ensurePicked, fresh, launchHome, resize, setLook, skipTour } from './home-page.js';
 import type { Home } from './home-page.js';
 
