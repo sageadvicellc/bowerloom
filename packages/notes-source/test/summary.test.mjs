@@ -72,6 +72,17 @@ test('the latest report comes from reports/YYYY-MM-DD-*.md names only', async t 
   assert.deepEqual(s.latestReport, { date: '2026-10-15', path: 'reports/2026-10-15-refine.md' });
 });
 
+test('the latest report says when its listing stopped early', async t => {
+  const dir = wiki(t);
+  for (let i = 1; i <= 9; i++) put(dir, `reports/2026-10-0${i}-refine.md`);
+  const whole = await readNotesSummary(dir);
+  assert.equal(whole.reportsComplete, true);
+  const cut = await readNotesSummary(dir, { maxEntries: 3 });
+  assert.equal(cut.reportsComplete, false, 'the reports folder holds more names than the bound');
+  const none = tempDir(t); put(none, 'index.md');
+  assert.equal((await readNotesSummary(none)).reportsComplete, true, 'no reports folder is a whole listing of nothing');
+});
+
 test('a missing report folder, or one that is a link, gives no latest report', async t => {
   const dir = tempDir(t); put(dir, 'index.md');
   assert.equal((await readNotesSummary(dir)).latestReport, null);

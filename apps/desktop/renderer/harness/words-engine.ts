@@ -238,6 +238,7 @@ export const SAVE_REFUSAL_WORDS: Readonly<Record<string, string>> = Object.freez
   VERSION_NOTHING: 'There are no save points to set aside.',
   SAVE_POINT_TOO_LARGE: 'Make the harness smaller, then save again.',
   EDIT_UNSAFE_PATH: 'Choose the notes folder again, then save.',
+  SOURCE_NAME_TAKEN: 'Give these notes another name, then save.',
   KIT_INVALID: 'Install Bowerloom again to repair the notes keeper.',
   KIT_ALREADY_ADDED: 'The notes keeper is here already. Nothing to add.',
   KNOWLEDGE_PATH_UNSAFE: 'Choose a notes folder inside your home folder.',

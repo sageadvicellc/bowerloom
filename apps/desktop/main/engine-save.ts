@@ -22,7 +22,7 @@ import { checkVersionsFit, listVersions, recordVersionLocked } from '../../../pa
 import type { VersionEntry } from '../../../packages/project-sync/src/index.js';
 import type { HarnessStateDirs } from '../../../packages/project-sync/src/harness-state.js';
 import { ENGINE_IDS } from '../shared/engine/engines.js';
-import { KIT_ALREADY_ADDED, KIT_IDS, KIT_INVALID, KIT_MAIN_WORDS, KIT_MARKETPLACE, SAVE_MAIN_WORDS, SAVE_NO_DEFINITION, SAVE_POINT_TOO_LARGE, SAVE_SOURCE_MISSING } from '../shared/engine/types.js';
+import { KIT_ALREADY_ADDED, KIT_IDS, KIT_INVALID, KIT_MAIN_WORDS, KIT_MARKETPLACE, SAVE_MAIN_WORDS, SAVE_NO_DEFINITION, SAVE_POINT_TOO_LARGE, SAVE_SOURCE_MISSING, SOURCE_NAME_TAKEN } from '../shared/engine/types.js';
 import type { DefinitionView, EngineId, KitId, SaveEdit, SourceView, VersionView } from '../shared/engine/types.js';
 import type { Kit } from './kit.js';
 
@@ -158,6 +158,8 @@ export function targetOf(def: Definition, edits: readonly SaveEdit[], sourceDir:
   const copied = new Map<string, DefinitionFile[]>();
   // The records of `sources.json` as the edits so far leave them, by name, so a removed skill leaves its record in the same save.
   const borrowed = new Map<string, SourceRecord>(def.sources.map(r => [r.name, r]));
+  // The stored path of each source name as the edits so far leave it, so one name never stands for two folders.
+  const named = new Map<string, string>(def.knowledge.map(k => [k.name, k.path]));
   for (const e of edits) {
     switch (e.kind) {
       case 'set-agent': out.push({ kind: 'set-agent', id: e.id, ...(e.skills === undefined ? {} : { skills: [...e.skills] }), ...(e.notes === undefined ? {} : { notes: [...e.notes] }) }); break;
@@ -173,12 +175,20 @@ export function targetOf(def: Definition, edits: readonly SaveEdit[], sourceDir:
         out.push({ kind: 'remove-skill', id: e.id }); copied.delete(e.id); break;
       }
       case 'set-engines': out.push({ kind: 'set-engines', engines: e.engines.map(id => engineOf(def, id)) }); break;
-      case 'set-source': out.push({ kind: 'set-source', source: { kind: 'wiki-folder', name: e.name, path: notes.sourcePath(e.notesId) } }); break;
-      case 'remove-source': out.push({ kind: 'remove-source', name: e.name }); break;
+      case 'set-source': {
+        const path = notes.sourcePath(e.notesId), held = named.get(e.name);
+        if (held !== undefined && held !== path) throw new DefinitionError(SOURCE_NAME_TAKEN, SAVE_MAIN_WORDS.SOURCE_NAME_TAKEN);
+        named.set(e.name, path);
+        out.push({ kind: 'set-source', source: { kind: 'wiki-folder', name: e.name, path } }); break;
+      }
+      case 'remove-source': named.delete(e.name); out.push({ kind: 'remove-source', name: e.name }); break;
       case 'add-from-kit': {
         // Every byte comes from the kit main ships, read and validated now; the window named the kit only.
         const kit = notes.kit(e.kit);
-        if (borrowed.has(kit.id)) throw new DefinitionError(KIT_ALREADY_ADDED, KIT_MAIN_WORDS.KIT_ALREADY_ADDED);
+        // The kit is there already only when its record is of the kit marketplace; a borrowed record of that name from elsewhere is a clash of names.
+        const held = borrowed.get(kit.id);
+        if (held?.marketplace === KIT_MARKETPLACE) throw new DefinitionError(KIT_ALREADY_ADDED, KIT_MAIN_WORDS.KIT_ALREADY_ADDED);
+        if (held !== undefined) throw new DefinitionError('EDIT_DUPLICATE_ID', `The harness already borrows a source named ${kit.id} from elsewhere. Nothing was written.`);
         for (const skill of kit.skills) {
           const main = skill.files.find(f => f.path === 'SKILL.md')!;
           out.push({ kind: 'add-skill', id: skill.id, text: Buffer.from(main.bytes).toString('utf8') });

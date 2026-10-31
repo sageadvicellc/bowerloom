@@ -12,7 +12,10 @@ import type { Ask } from '../main/engine-consent.js';
 import { NotesRefusal, findGit } from '../../../packages/notes-source/src/index.js';
 import { loadDefinition } from '../../../packages/harness-definition/src/index.js';
 import type { Answer, FolderInfo, NotesPurpose, NotesView, SaveEdit } from '../shared/engine/types.js';
-import { ENGINE_ARITY, ENGINE_CALLS, KIT_MAIN_WORDS, NOTES_PLAN_LIST_LIMIT } from '../shared/engine/types.js';
+import { ENGINE_ARITY, ENGINE_CALLS, KIT_MAIN_WORDS, KIT_MARKETPLACE, NOTES_PLAN_LIST_LIMIT, SOURCE_NAME_TAKEN } from '../shared/engine/types.js';
+import type { KitId } from '../shared/engine/types.js';
+import { currentDefinition, targetOf } from '../main/engine-save.js';
+import { loadKit } from '../main/kit.js';
 import { DESKTOP, tempDir } from './support.js';
 import { filesOf, homeFolder, teamFolder } from './helpers-engine/folders.js';
 
@@ -357,4 +360,36 @@ test('refusalOf passes the step that stopped a notes write part way through to t
   assert.equal(r.step, 'NOTES_GIT_TIMEOUT');
   assert.equal(refusalOf(new NotesRefusal('NOTES_STALE'), same).step, undefined, 'no step, no field');
   assert.equal(refusalOf({ code: 'NOTES_PARTIAL', message: 'x', step: 'not a code' }, same).step, undefined, 'only a code passes');
+});
+
+test('set-source refuses a name the harness holds already for another folder, and takes the same name for the same folder', async t => {
+  const s = setup(t);
+  const dir = teamFolder(s.home);
+  const f = await savedWiki(s, dir);
+  const other = await chooseNotes(s, myNotes(s.home, 'other'));
+  const r = refusal(await s.service.planSave(f.id, [{ kind: 'set-source', name: 'wiki', notesId: other.id }]));
+  assert.equal(r.code, SOURCE_NAME_TAKEN);
+  noPath(s, r);
+  // Two edits of one save that give one name two folders are refused too.
+  const another = await chooseNotes(s, myNotes(s.home, 'another'));
+  assert.equal(refusal(await s.service.planSave(f.id, [{ kind: 'set-source', name: 'fresh', notesId: other.id }, { kind: 'set-source', name: 'fresh', notesId: another.id }])).code, SOURCE_NAME_TAKEN);
+  // The same folder under its own name, and a name freed by remove-source in the same save, are taken.
+  const same = value(await s.service.planSave(f.id, [])).definition.sources[0]!;
+  assert.equal(value(await s.service.planSave(f.id, [{ kind: 'set-source', name: 'wiki', notesId: same.notesId }])).noop, true);
+  assert.equal((await s.service.planSave(f.id, [{ kind: 'remove-source', name: 'wiki' }, { kind: 'set-source', name: 'wiki', notesId: other.id }])).ok, true);
+});
+
+test('add-from-kit says the kit is there already only for a record of the kit marketplace; a borrowed record of the same name from elsewhere is a name clash', t => {
+  const dir = teamFolder(homeFolder(tempDir(t, 'bowerloom-kit-')));
+  const def = currentDefinition(dir);
+  const record = (marketplace: string) => ({ name: 'wiki-keeper', marketplace, version: '1.0.0', items: [{ part: 'skills' as const, id: 'review' }] });
+  const deps = { sourcePath: () => 'notes', kit: (id: KitId) => loadKit(KITS, id) };
+  const codeOf = (d: typeof def): string => { try { targetOf(d, [{ kind: 'add-from-kit', kit: 'wiki-keeper' }], () => dir, deps); return 'none'; } catch (e) { return (e as { code: string }).code; } };
+  assert.equal(codeOf({ ...def, sources: [record(KIT_MARKETPLACE)] }), 'KIT_ALREADY_ADDED');
+  assert.equal(codeOf({ ...def, sources: [record('another-marketplace')] }), 'EDIT_DUPLICATE_ID');
+});
+
+test('the notes view says whether the reports listing was whole', async t => {
+  const s = setup(t);
+  assert.equal((await chooseNotes(s, myNotes(s.home))).reportsComplete, true);
 });

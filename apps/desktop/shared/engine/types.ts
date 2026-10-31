@@ -354,7 +354,8 @@ export interface MergeWritten { readonly written: readonly string[] }
  *  - `set-engines`: the interfaces the harness lists. An engine kept keeps its version and model.
  *  - `set-agent` with `notes`: the notes sources an agent reads, by source name. `skills` and `notes` may each be left out; one of them is there.
  *  - `set-source`: attaches the notes folder `notesId` (an id main gave out, never a path) as the source `name`. Main stores its path itself, relative
- *    when it sits inside the folder and in `~` form otherwise. A source of the same name is replaced.
+ *    when it sits inside the folder and in `~` form otherwise. The same name for the same folder is no change; a name the harness holds for another
+ *    folder is refused (SOURCE_NAME_TAKEN).
  *  - `remove-source`: the source goes from the harness, and from the notes of every agent that read it.
  *  - `add-from-kit`: adds a ready-made kit that ships with Bowerloom: its agent and its skills, read by main from the kit itself, with the kit's pinned
  *    version recorded in `sources.json`. The window names the kit only.
@@ -430,6 +431,8 @@ export interface NotesView {
   /** UTC, to the second, or null. */
   readonly lastCommitAt: string | null;
   readonly latestReport: { readonly date: string; readonly path: string } | null;
+  /** False when the listing of `reports/` stopped early, so a newer report may be unread. */
+  readonly reportsComplete: boolean;
 }
 /** The plan of "Start fresh": the starter files of the kit, each relative to the notes folder, and one first commit. */
 export interface NotesStarterView {
@@ -588,8 +591,11 @@ export const SAVE_NO_DEFINITION = 'SAVE_NO_DEFINITION';
 export const SAVE_SOURCE_MISSING = 'SAVE_SOURCE_MISSING';
 /** The save points before and after the save could not both be kept, so the save would leave Go back with no entry for it. */
 export const SAVE_POINT_TOO_LARGE = 'SAVE_POINT_TOO_LARGE';
+/** A set-source whose name the harness holds already for another notes folder. */
+export const SOURCE_NAME_TAKEN = 'SOURCE_NAME_TAKEN';
 /** The words of those refusals, the same in main and in the sample. */
-export const SAVE_MAIN_WORDS: Readonly<Record<typeof SAVE_NO_DEFINITION | typeof SAVE_SOURCE_MISSING | typeof SAVE_POINT_TOO_LARGE, string>> = Object.freeze({
+export const SAVE_MAIN_WORDS: Readonly<Record<typeof SAVE_NO_DEFINITION | typeof SAVE_SOURCE_MISSING | typeof SAVE_POINT_TOO_LARGE | typeof SOURCE_NAME_TAKEN, string>> = Object.freeze({
+  SOURCE_NAME_TAKEN: 'The harness has notes of that name for another folder already. Nothing was written.',
   SAVE_NO_DEFINITION: 'This folder has no harness yet, so there is nothing to save. Make one first with New harness from a folder. Nothing was written.',
   SAVE_SOURCE_MISSING: 'The folder to copy from does not hold that skill, or its harness does not load. Nothing was written.',
   SAVE_POINT_TOO_LARGE: 'This harness is too large for Bowerloom to keep a save point before and after this save, so Go back would have no entry for it. Nothing was written.',

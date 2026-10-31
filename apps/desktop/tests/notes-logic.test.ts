@@ -6,7 +6,7 @@ import { addThenNext, afterChoose, writtenView, buildProgress, notesCards, notes
 import { EMPTY_DRAFT, KEEPER_AGENT, attachNotes, draftView } from '../shared/harness/save-draft.js';
 import type { DefinitionView, NotesView } from '../shared/engine/types.js';
 
-const view = (over: Partial<NotesView> = {}): NotesView => ({ id: 'n1', label: '~/Documents/Garden notes', name: 'Garden notes', suggestedName: 'garden-notes', pages: 14, complete: true, history: 'git', lastCommitAt: '2026-10-28T09:30:00Z', latestReport: null, ...over });
+const view = (over: Partial<NotesView> = {}): NotesView => ({ id: 'n1', label: '~/Documents/Garden notes', name: 'Garden notes', suggestedName: 'garden-notes', pages: 14, complete: true, history: 'git', lastCommitAt: '2026-10-28T09:30:00Z', latestReport: null, reportsComplete: true, ...over });
 const KIT = ['add-source', 'file-page', 'answer-from-notes'];
 const DEF: DefinitionView = {
   id: 'team', description: 'A team.', engines: ['claude-code'], instructions: true,

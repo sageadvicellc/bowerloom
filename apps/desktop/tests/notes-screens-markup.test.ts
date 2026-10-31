@@ -15,7 +15,7 @@ import type { DefinitionView, NotesHistoryPlanView, NotesStarterView, NotesView 
 import { KEEPER_AGENT } from '../shared/harness/save-draft.js';
 
 const noop = (): void => undefined;
-const GARDEN: NotesView = { id: 'n1', label: '~/Documents/Garden notes', name: 'Garden notes', suggestedName: 'garden-notes', pages: 14, complete: true, history: 'git', lastCommitAt: '2026-10-28T09:30:00Z', latestReport: { date: '2026-10-29', path: 'reports/2026-10-29-refine.md' } };
+const GARDEN: NotesView = { id: 'n1', label: '~/Documents/Garden notes', name: 'Garden notes', suggestedName: 'garden-notes', pages: 14, complete: true, history: 'git', lastCommitAt: '2026-10-28T09:30:00Z', latestReport: { date: '2026-10-29', path: 'reports/2026-10-29-refine.md' }, reportsComplete: true };
 const step = (phase: Parameters<typeof NotesStepView>[0]['phase'], over: Partial<Parameters<typeof NotesStepView>[0]> = {}): string => renderToStaticMarkup(createElement(NotesStepView, {
   phase, busy: null, refusal: null, refusalId: 0, held: false, onUse: noop, onFresh: noop, onStartHistory: noop, onDecline: noop, onCreate: noop, onAgain: noop, ...over,
 }));
@@ -157,4 +157,14 @@ test('a write that left the folder unclean says so, and a step that stopped part
   const html = step({ kind: 'offer', view: { ...GARDEN, history: 'none' }, plan }, { refusal: partial, refusalId: 1 });
   assert.match(html, /data-next-step-cause="NOTES_GIT_MISSING"/);
   assert.ok(html.includes(NOTES_REFUSAL_WORDS.NOTES_GIT_MISSING!));
+});
+
+test('a keeper the draft adds from the kit can be taken out again; a saved keeper has no such button', () => {
+  const cards = notesCards(DEF, [], {});
+  const draw = (fromKit: boolean): string => renderToStaticMarkup(createElement(KeeperBuild, {
+    keeper: { name: KEEPER_AGENT, skills: [], notes: [] }, offered: DEF.skills, cards, held: false, fromKit, onLink: noop, onLinkRest: noop, onAttach: noop, onRemoveKit: noop,
+  }));
+  assert.match(draw(true), /data-remove-keeper=""/);
+  assert.ok(draw(true).includes(NOTES.label.removeKeeper));
+  assert.doesNotMatch(draw(false), /data-remove-keeper/);
 });

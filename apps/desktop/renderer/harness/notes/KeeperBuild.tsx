@@ -23,6 +23,8 @@ export interface KeeperBuildProps {
   onLink(skill: string, on: boolean): void;
   onLinkRest(): void;
   onAttach(card: NotesCard, on: boolean): void;
+  /** Takes the keeper this draft adds from the kit back out of the draft. Shown only while the keeper is a draft. */
+  onRemoveKit?(): void;
 }
 
 /** The ids that are new on a shelf since the last draw, so they rise in once. */
@@ -36,7 +38,7 @@ function useArrived(ids: readonly string[]): readonly string[] {
   return arrived;
 }
 
-export function KeeperBuild({ keeper, offered, cards, held, fromKit, onLink, onLinkRest, onAttach }: KeeperBuildProps): ReactElement {
+export function KeeperBuild({ keeper, offered, cards, held, fromKit, onLink, onLinkRest, onAttach, onRemoveKit }: KeeperBuildProps): ReactElement {
   const linked = offered.filter(s => keeper.skills.includes(s.id));
   // A skill the keeper uses that the kit does not offer still shows on its shelf.
   const others = keeper.skills.filter(id => !offered.some(s => s.id === id)).map(id => ({ id, name: id }));
@@ -54,6 +56,7 @@ export function KeeperBuild({ keeper, offered, cards, held, fromKit, onLink, onL
             <span className="hxn-keeper-name">{NOTES.label.keeper}</span>
             <span className="hxn-card-sub">{fromKit ? NOTES.hint.keeperDraft : keeper.name}</span>
           </span>
+          {fromKit && onRemoveKit !== undefined ? <HButton size="small" variant="text" disabled={held} data-remove-keeper="" onClick={onRemoveKit}>{NOTES.label.removeKeeper}</HButton> : null}
         </div>
         <div className="hxn-shelves" data-tour="shelves">
           <Shelf shelf="skills" title={NOTES.label.skillsShelf} items={[...linked.map(s => ({ id: s.id, name: s.name })), ...others]} empty={NOTES.hint.dropSkill} held={held}

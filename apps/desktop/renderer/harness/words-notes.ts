@@ -17,11 +17,11 @@ export const NOTES = deepFreeze({
     notes: 'Notes', keeper: 'Notes keeper', useMine: 'Use my notes', startFresh: 'Start fresh', create: 'Create', chooseAgain: 'Choose another folder',
     startHistory: 'Start its history', declineHistory: 'No history for now', notNow: 'Not now', showDetails: 'Show details', hideDetails: 'Hide details', starterFiles: 'Starter files',
     historyFiles: 'Files it records', addKeeper: 'Add the Notes keeper', addRest: 'Add the other skills', add: 'Add', skillsShelf: 'Skills',
-    notesShelf: 'Notes', kitSkills: 'Ready-made skills', yourNotes: 'Your notes', addNotes: 'Add notes', help: 'Help', replay: 'Help: replay the tour',
+    notesShelf: 'Notes', kitSkills: 'Ready-made skills', yourNotes: 'Your notes', help: 'Help', replay: 'Help: replay the tour',
     notesEachAgent: 'Notes each agent reads', buildKeeper: 'Build my Notes keeper', setUpNotes: 'Set up my notes', showAround: 'Show me around',
-    tour: 'Tour', tourSteps: 'Tour steps', tourSkip: 'Skip tour', tourBack: 'Back', tourNext: 'Next', tourDone: 'Done', whatNext: 'What next',
+    tour: 'Tour', tourSteps: 'Tour steps', tourSkip: 'Skip tour', tourBack: 'Back', tourNext: 'Next', tourDone: 'Done',
     stepMap: 'Agents', stepNotes: 'Notes', stepKeeper: 'Keeper', stepShelves: 'Shelves', stepSave: 'Save', stepHelp: 'Help', stepNext: 'What next',
-    takeOff: 'Take off', reading: 'Reading the folder', writing: 'Writing', folder: 'Folder', latestReport: 'Latest report', notesSteps: 'Notes steps', building: 'Build the keeper',
+    takeOff: 'Take off', removeKeeper: 'Take the keeper out', reading: 'Reading the folder', writing: 'Writing', folder: 'Folder', latestReport: 'Latest report', building: 'Build the keeper',
   },
   /** Short lines: at most 12 words each. */
   hint: {
@@ -48,8 +48,6 @@ export const NOTES = deepFreeze({
     dropSkill: 'Drop a skill here.',
     dropNotes: 'Drop your notes here.',
     shelvesNote: 'Drag a card onto a shelf, or press its Add button.',
-    sampleNotes: 'Sample notes. Nothing is read or written.',
-    nextLead: 'Three ideas for your Notes keeper.',
     helpLives: 'Help sits at the top of this sheet.',
     noSummary: 'Bowerloom could not read these notes now.',
     firstRunNote: 'Next, build an agent that looks after them.',
@@ -64,8 +62,14 @@ export const pagesWords = (n: number, complete: boolean): string => (complete ? 
 export const lastChangeWords = (at: string | null): string => (at === null ? 'No history yet' : `Last change ${at.slice(0, 10)}`);
 /** "Read by notes-keeper, editor", or "No agent reads these yet." */
 export const usedByWords = (agents: readonly string[]): string => (agents.length === 0 ? 'No agent reads these yet.' : `Read by ${agents.join(', ')}`);
-/** "Tidy-up report 2026-10-29", or "No tidy-up report yet." The report's path sits behind "Show details". */
-export const reportWords = (latest: { readonly date: string; readonly path: string } | null): string => (latest === null ? 'No tidy-up report yet.' : `Tidy-up report ${latest.date}`);
+/**
+ * "Tidy-up report 2026-10-29", or "No tidy-up report yet." When the listing of the reports stopped early (`complete` false), the date is the newest read:
+ * "Tidy-up report 2026-10-29 or later", or "No tidy-up report in the part read." The report's path sits behind "Show details".
+ */
+export function reportWords(latest: { readonly date: string; readonly path: string } | null, complete = true): string {
+  if (latest === null) return complete ? 'No tidy-up report yet.' : 'No tidy-up report in the part read.';
+  return complete ? `Tidy-up report ${latest.date}` : `Tidy-up report ${latest.date} or later`;
+}
 /** "And 3 more.": the file names past the list's end. */
 export const moreWords = (n: number): string => `And ${n} more.`;
 /** "2 hidden names stay out." */

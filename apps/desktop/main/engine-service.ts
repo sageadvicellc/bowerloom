@@ -435,7 +435,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     return {
       id: n.id, label: n.label, name: n.name, suggestedName: suggestedSourceName(n.name), pages: s.pages, complete: s.complete, history: s.history,
       lastCommitAt: s.lastCommitAt === null ? null : isoSeconds(new Date(s.lastCommitAt)),
-      latestReport: s.latestReport === null ? null : { date: s.latestReport.date, path: n.scrub(s.latestReport.path) },
+      latestReport: s.latestReport === null ? null : { date: s.latestReport.date, path: n.scrub(s.latestReport.path) }, reportsComplete: s.reportsComplete,
     };
   }
   /** The shipped kit, loaded and validated now. With no kit folder it is refused, never empty. */

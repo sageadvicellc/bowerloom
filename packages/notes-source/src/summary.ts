@@ -48,6 +48,8 @@ export interface NotesSummary {
   readonly lastCommitAt: string | null;
   /** The newest report by the date in its name, or null. */
   readonly latestReport: { readonly date: string; readonly path: string } | null;
+  /** False when the listing of `reports/` stopped at the entry bound or failed part way, so a newer report may be unread. */
+  readonly reportsComplete: boolean;
 }
 
 const MD = /\.md$/i;
@@ -79,25 +81,26 @@ function validDate(y: string, m: string, d: string): boolean {
   return t.getUTCFullYear() === Number(y) && t.getUTCMonth() === Number(m) - 1 && t.getUTCDate() === Number(d);
 }
 
-function latestReport(dir: string, maxEntries: number): NotesSummary['latestReport'] {
+function latestReport(dir: string, maxEntries: number): Pick<NotesSummary, 'latestReport' | 'reportsComplete'> {
   const abs = join(dir, 'reports');
   try {
     const st = fs.lstatSync(abs);
-    if (st.isSymbolicLink() || !st.isDirectory() || st.uid !== uid()) return null;
-  } catch { return null; }
-  let best: { date: string; name: string } | null = null;
+    if (st.isSymbolicLink() || !st.isDirectory() || st.uid !== uid()) return { latestReport: null, reportsComplete: true };
+  } catch { return { latestReport: null, reportsComplete: true }; }
+  let best: { date: string; name: string } | null = null, complete = true;
   let handle: fs.Dir;
-  try { handle = fs.opendirSync(abs); } catch { return null; }
+  try { handle = fs.opendirSync(abs); } catch { return { latestReport: null, reportsComplete: false }; }
   try {
     let n = 0;
-    for (let entry = handle.readSync(); entry !== null && ++n <= maxEntries; entry = handle.readSync()) {
+    for (let entry = handle.readSync(); entry !== null; entry = handle.readSync()) {
+      if (++n > maxEntries) { complete = false; break; }
       const m = REPORT.exec(entry.name);
       if (!m || !entry.isFile() || !validDate(m[1]!, m[2]!, m[3]!)) continue;
       const date = `${m[1]}-${m[2]}-${m[3]}`;
       if (!best || date > best.date || (date === best.date && byBytes(entry.name, best.name) > 0)) best = { date, name: entry.name };
     }
-  } catch { /* a listing that fails part way keeps what it read */ } finally { handle.closeSync(); }
-  return best ? { date: best.date, path: `reports/${best.name}` } : null;
+  } catch { complete = false; /* a listing that fails part way keeps what it read */ } finally { handle.closeSync(); }
+  return { latestReport: best ? { date: best.date, path: `reports/${best.name}` } : null, reportsComplete: complete };
 }
 
 async function history(dir: string, options: SummaryOptions): Promise<Pick<NotesSummary, 'history' | 'lastCommitAt'>> {
@@ -132,6 +135,6 @@ export async function readNotesSummary(dir: string, options: SummaryOptions = {}
   const clock = options.clock ?? (() => performance.now());
   const { pages, complete } = countPages(folder.abs, maxEntries, budget, clock);
   return {
-    format: NOTES_SUMMARY_FORMAT, pages, complete, ...(await history(folder.abs, options)), latestReport: latestReport(folder.abs, maxEntries),
+    format: NOTES_SUMMARY_FORMAT, pages, complete, ...(await history(folder.abs, options)), ...latestReport(folder.abs, maxEntries),
   };
 }

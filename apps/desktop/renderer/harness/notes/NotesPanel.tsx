@@ -40,7 +40,7 @@ function linesOf(card: NotesCard): ReactNode[] {
     <span data-pages={v.pages}>{pagesWords(v.pages, v.complete)}</span>,
     <span data-last-change="">{lastChangeWords(v.lastCommitAt)}</span>,
     readers,
-    <span data-report="">{reportWords(v.latestReport)}</span>,
+    <span data-report="">{reportWords(v.latestReport, v.reportsComplete)}</span>,
     ...(v.history === 'git' ? [] : [<StateDot key="h" tone={v.history === 'none' ? 'quiet' : 'warn'}>{HISTORY_WORDS[v.history]}</StateDot>]),
     ...(card.attached ? [] : [<StateDot key="a" tone="quiet">{NOTES.hint.notAttached}</StateDot>]),
   ];

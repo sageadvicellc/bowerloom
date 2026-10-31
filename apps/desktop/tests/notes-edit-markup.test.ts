@@ -23,14 +23,14 @@ const WITH_KIT: DefinitionView = {
   ...BASE, skills: [...BASE.skills, ...KIT.map(id => ({ id, name: id, description: id }))],
   agents: [...BASE.agents, { id: KEEPER_AGENT, name: KEEPER_AGENT, description: 'Keeps notes.', skills: KIT, notes: [] }], kits: [{ id: KEEPER_KIT, version: '0.1.0', skills: [...KIT] }],
 };
-const GARDEN: NotesView = { id: 'n1', label: '~/Documents/Garden notes', name: 'Garden notes', suggestedName: 'garden-notes', pages: 14, complete: true, history: 'none', lastCommitAt: null, latestReport: null };
+const GARDEN: NotesView = { id: 'n1', label: '~/Documents/Garden notes', name: 'Garden notes', suggestedName: 'garden-notes', pages: 14, complete: true, history: 'none', lastCommitAt: null, latestReport: null, reportsComplete: true };
 
 function draw(withKit: boolean): string {
   const draft = withKit ? addKit(BASE, EMPTY_DRAFT, WITH_KIT) : EMPTY_DRAFT;
   const now = draftView(BASE, draft), cards = notesCards(now, [GARDEN], {});
   const notes: EditNotes = {
     cards, keeper: keeperOf(now), offered: keeperSkills(BASE, draft).map(id => now.skills.find(s => s.id === id)!), fromKit: withKit, way: null,
-    onWay: noop, onAddKeeper: noop, onLink: noop, onLinkRest: noop, onAttach: noop, onHelp: noop,
+    onWay: noop, onAddKeeper: noop, onLink: noop, onLinkRest: noop, onAttach: noop, onRemoveKit: noop, onHelp: noop,
   };
   return renderToStaticMarkup(createElement(EditStep, {
     base: BASE, now, draft, count: draftCount(BASE, draft), held: false, versions: { ok: true, value: [] }, world: definitionWorld(now, cards.filter(c => !c.attached).map(c => c.source)),

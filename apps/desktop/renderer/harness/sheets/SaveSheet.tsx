@@ -20,7 +20,7 @@ import { ENGINE_NAMES } from '../../../shared/engine/types.js';
 import type { Answer, DefinitionView, EngineId, FolderInfo, NotesView, Refusal, RestoreView, SaveEdit, SaveView, SaveWritten, SetAsideView, VersionView } from '../../../shared/engine/types.js';
 import {
   EMPTY_DRAFT, KEEPER_AGENT, KEEPER_KIT, agentPart, attachNotes, definitionWorld, draftCount, draftEdits, draftView, keeperOf, keeperSkills, linkRest, linkSkill,
-  draftStart, keeperAdded, partNotes, partSkill, removeSkill, setDraftEngines,
+  draftStart, keeperAdded, partNotes, partSkill, removeKit, removeSkill, setDraftEngines,
 } from '../../../shared/harness/save-draft.js';
 import type { SaveDraft } from '../../../shared/harness/save-draft.js';
 import type { Point } from '../../../shared/harness/types.js';
@@ -259,6 +259,7 @@ export function SaveSheet({ open, folderId, tour: tourAsked = false, onClose }: 
     onLink: (skill, on) => { if (base !== null) setDraft(d => linkSkill(base, d, KEEPER_AGENT, skill, on)); },
     onLinkRest: () => { if (base !== null) setDraft(d => linkRest(base, d, KEEPER_AGENT, offeredIds)); },
     onAttach: (agent, card, on) => { if (base !== null) setDraft(d => attachNotes(base, d, agent, card.source, on)); },
+    onRemoveKit: () => { if (base !== null) setDraft(d => removeKit(base, d)); },
     onHelp: () => tourDo('replay'),
   };
   /** Next on the tour: before the keeper step, the keeper is added from the kit, so the step lights it. */
@@ -345,6 +346,8 @@ export interface EditNotes {
   onLink(skill: string, on: boolean): void;
   onLinkRest(): void;
   onAttach(agent: string, card: NotesCard, on: boolean): void;
+  /** Takes the keeper the draft adds from the kit back out. */
+  onRemoveKit(): void;
   onHelp(): void;
 }
 
@@ -378,7 +381,7 @@ export function EditStep({ base, now, draft, count, held, versions, world, linki
       </Section>
       {notes === undefined || notes.keeper === null ? null : (
         <KeeperBuild keeper={notes.keeper} offered={notes.offered} cards={notes.cards} held={held} fromKit={notes.fromKit}
-          onLink={notes.onLink} onLinkRest={notes.onLinkRest} onAttach={(card, on) => notes.onAttach(KEEPER_AGENT, card, on)} />
+          onLink={notes.onLink} onLinkRest={notes.onLinkRest} onAttach={(card, on) => notes.onAttach(KEEPER_AGENT, card, on)} onRemoveKit={notes.onRemoveKit} />
       )}
       {notes === undefined ? null : (
         <NotesPanel cards={notes.cards} held={held} hasKeeper={notes.keeper !== null} onUse={() => notes.onWay('use')} onFresh={() => notes.onWay('start')} onAddKeeper={notes.onAddKeeper}

@@ -398,8 +398,8 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
   add(SAMPLE_FOLDERS.defined, 'weekly-report', { hasDefinition: true, engines: ['claude-code', 'codex', 'opencode'] });
   add(SAMPLE_FOLDERS.stopped, 'garden', { hasDefinition: true, engines: ['claude-code', 'codex'], unfinished: { projection: true, adoption: false } });
   const notes = new Map<string, SampleNotes>([
-    [SAMPLE_NOTES.use, { view: { id: SAMPLE_NOTES.use, label: '~/Documents/Garden notes', name: 'Garden notes', suggestedName: 'garden-notes', pages: SAMPLE_NOTE_FILES.length, complete: true, history: 'none', lastCommitAt: null, latestReport: null }, files: SAMPLE_NOTE_FILES, hidden: 1 }],
-    [SAMPLE_NOTES.start, { view: { id: SAMPLE_NOTES.start, label: '~/Documents/Notes', name: 'Notes', suggestedName: 'notes', pages: 0, complete: true, history: 'none', lastCommitAt: null, latestReport: null }, files: [], hidden: 0 }],
+    [SAMPLE_NOTES.use, { view: { id: SAMPLE_NOTES.use, label: '~/Documents/Garden notes', name: 'Garden notes', suggestedName: 'garden-notes', pages: SAMPLE_NOTE_FILES.length, complete: true, history: 'none', lastCommitAt: null, latestReport: null, reportsComplete: true }, files: SAMPLE_NOTE_FILES, hidden: 1 }],
+    [SAMPLE_NOTES.start, { view: { id: SAMPLE_NOTES.start, label: '~/Documents/Notes', name: 'Notes', suggestedName: 'notes', pages: 0, complete: true, history: 'none', lastCommitAt: null, latestReport: null, reportsComplete: true }, files: [], hidden: 0 }],
   ]);
   /** A notes folder by id; an id the sample never gave is refused as main refuses it. */
   const notesGet = (id: string): SampleNotes => { const n = notes.get(id); if (n === undefined) throw new Error('UNKNOWN_FOLDER'); return n; };

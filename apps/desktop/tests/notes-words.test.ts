@@ -3,7 +3,10 @@
 // and no word the home rule bans (so "harness", "plan" and "version" stay off these screens too).
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { LIMITS, bannedIn, countWords } from '../shared/home/textbudget.js';
+import { DESKTOP } from './support.js';
 import {
   NOTES, NEXT_IDEAS, TOUR_STEPS, addToKeeperName, buildHint, hiddenWords, lastChangeWords, onShelfName, pagesWords, reportWords, usedByWords,
 } from '../renderer/harness/words-notes.js';
@@ -63,4 +66,22 @@ test('the words built from a number, a date or a name obey the same rules, and a
   assert.equal(lastChangeWords('2026-10-28T09:30:00Z'), 'Last change 2026-10-28'); assert.equal(lastChangeWords(null), 'No history yet');
   assert.equal(usedByWords([]), 'No agent reads these yet.'); assert.equal(usedByWords(['notes-keeper']), 'Read by notes-keeper');
   assert.equal(buildHint({ first: 'add-source', firstDone: false, restDone: false, notesDone: false, hasNotes: true }), 'Drag add-source onto Skills, or press its Add button.');
+});
+
+test('a report listing that stopped early says so: the date is the newest read, and no report read is not "none"', () => {
+  const latest = { date: '2026-10-29', path: 'reports/2026-10-29-refine.md' };
+  assert.equal(reportWords(latest, true), reportWords(latest));
+  assert.equal(reportWords(latest, false), 'Tidy-up report 2026-10-29 or later');
+  assert.equal(reportWords(null, false), 'No tidy-up report in the part read.');
+  for (const text of [reportWords(latest, false), reportWords(null, false)]) { assert.ok(countWords(text) <= LIMITS.hint, text); assert.equal(bannedIn(text), null, text); }
+});
+
+test('every fixed word of the notes screens is drawn somewhere: no word is left unused', () => {
+  const files: string[] = [];
+  const walk = (dir: string): void => { for (const e of readdirSync(dir, { withFileTypes: true })) { const p = join(dir, e.name); if (e.isDirectory()) walk(p); else if (/\.tsx?$/.test(e.name) && !e.name.startsWith('words-notes')) files.push(readFileSync(p, 'utf8')); } };
+  walk(join(DESKTOP, 'renderer')); walk(join(DESKTOP, 'shared'));
+  const own = readFileSync(join(DESKTOP, 'renderer', 'harness', 'words-notes.ts'), 'utf8').split('} as const);')[1] ?? '';
+  const text = files.join('\n') + own;
+  const unused = (['label', 'hint'] as const).flatMap(group => Object.keys(NOTES[group]).filter(k => !new RegExp(`NOTES\\.${group}\\.${k}\\b`).test(text)).map(k => `${group}.${k}`));
+  assert.deepEqual(unused, []);
 });
