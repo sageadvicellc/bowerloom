@@ -7,6 +7,7 @@ import type { SpawnSyncReturns } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { FLAGS, launchOf } from '../main/launch.js';
+import { E2E_HIDDEN_FLAG } from '../main/window-options.js';
 import { BASE, REAL_BASE } from '../shared/harness/route.js';
 import { DESKTOP } from './support.js';
 
@@ -33,8 +34,45 @@ test('the preview engines open only for the sample, and only with their own argu
   assert.equal(launchOf(['--sample-preview-engines']).samplePreviewEngines, false, 'never the launch on the person\'s own folders');
 });
 
+test('the preview switch without --sample is refused with words, and it never opens the app on the person\'s own folders', () => {
+  for (const argv of [['--sample-preview-engines'], ['--sample-preview-engines', '--no-sandbox'], ['--no-sandbox', '--sample-preview-engines']]) {
+    const l = launchOf(argv);
+    assert.equal(l.kind, 'refused', JSON.stringify(argv));
+    assert.match(l.refusal ?? '', /"--sample-preview-engines" works only together with --sample/);
+    assert.deepEqual({ preload: l.preload, realReader: l.realReader, engineCalls: l.engineCalls, samplePreviewEngines: l.samplePreviewEngines }, { preload: 'none', realReader: false, engineCalls: false, samplePreviewEngines: false });
+  }
+});
+
+test('a dash that is not the keyboard hyphen counts as a hyphen: a look-alike flag is refused, never taken for an argument of Chromium', () => {
+  const dashes = ['\u2010', '\u2011', '\u2012', '\u2013', '\u2014', '\u2015', '\u2212'];
+  for (const d of dashes) {
+    for (const arg of [`${d}${d}sample`, `-${d}sample`, `${d}${d}sample-preview-engines`, `${d}${d}Sample`, `${d}${d}smaple`, `${d}${d}home-real`, `${d}${d}sample=1`]) {
+      const l = launchOf([arg]);
+      assert.equal(l.kind, 'refused', JSON.stringify(arg));
+      assert.deepEqual({ preload: l.preload, realReader: l.realReader, engineCalls: l.engineCalls }, { preload: 'none', realReader: false, engineCalls: false });
+    }
+  }
+  // A look-alike flag next to the real one does not pass as the real one.
+  assert.equal(launchOf([FLAGS.sample, '\u2014\u2014sample-preview-engines']).kind, 'refused');
+  // Real hyphens still work, and a dash inside a value is not a flag.
+  assert.equal(launchOf([FLAGS.sample]).kind, 'sample');
+  assert.equal(launchOf([`--user-data-dir=/some\u2014where`]).kind, 'app');
+});
+
+test('a bare word or a short form of a mode flag is refused: sample, sam, sa, demo, mock, fake, test', () => {
+  for (const word of ['sample', 'Sample', 'sam', 'sa', 'demo', 'mock', 'fake', 'test']) {
+    for (const arg of [word, `-${word}`, `--${word}`, `--${word}=1`].filter(a => a !== FLAGS.sample)) {
+      const l = launchOf([arg]);
+      assert.equal(l.kind, 'refused', arg);
+      assert.match(l.refusal ?? '', /does not know/, arg);
+    }
+  }
+  // Only the whole word counts: a longer name that starts the same way, and the flags of Chromium, are left alone.
+  for (const arg of ['--test-type', '--testing-flag', '--demonstration', 'tests', 'samples-dir', '/path/sample/app', '--sa-key=1']) assert.equal(launchOf([arg]).kind, 'app', arg);
+});
+
 test('the start fails closed: a flag that looks like a mode flag but is not exactly known is refused, and never opens the app on the person\'s own folders', () => {
-  const refused = ['--sample=1', '--sample=', '--Sample', '--SAMPLE', '--smaple', '--sampel', '--samle', '--sample-data', '--sample_preview_engines', '--Sample-Preview-Engines', '--home-sample', '--home-real', '--home', '-sample', '---sample', '--samples'];
+  const refused = ['--sample=1', 'sample', '--sample=', '--Sample', '--SAMPLE', '--smaple', '--sampel', '--samle', '--sample-data', '--sample_preview_engines', '--Sample-Preview-Engines', '--home-sample', '--home-real', '--home', '-sample', '---sample', '--samples'];
   for (const arg of refused) {
     const l = launchOf([arg]);
     assert.equal(l.kind, 'refused', arg);
@@ -48,8 +86,8 @@ test('the start fails closed: a flag that looks like a mode flag but is not exac
 
 test('flags that are exactly known, and arguments that are not mode flags, are not refused', () => {
   assert.equal(launchOf([FLAGS.sample, '--sample-preview-engines']).kind, 'sample');
-  assert.equal(launchOf(['--sample-preview-engines']).kind, 'app', 'the preview switch alone is known and changes nothing');
-  for (const arg of ['/path/to/app', '--user-data-dir=/somewhere', '--no-sandbox', '--remote-debugging-port=0', '--inspect', '--enable-logging', '--prototype-v2', '--prototype-real', '--real-data', 'sample', 'homepage', '-x']) {
+  assert.equal(launchOf(['--sample-preview-engines']).kind, 'refused', 'the preview switch alone is refused: it belongs to the sample');
+  for (const arg of ['/path/to/app', '--user-data-dir=/somewhere', '--no-sandbox', '--remote-debugging-port=0', '--inspect', '--enable-logging', '--prototype-v2', '--prototype-real', '--real-data', 'homepage', '-x', '--e2e-hidden', '--test-type']) {
     assert.equal(launchOf([arg]).kind, 'app', arg);
     assert.equal(launchOf([arg]).refusal, null, arg);
   }
@@ -58,7 +96,7 @@ test('flags that are exactly known, and arguments that are not mode flags, are n
 });
 
 test('every plan keeps the reader, the engine calls and the bridge together: all three on for the app, all three off for the sample and a refused start', () => {
-  for (const argv of [[], [FLAGS.sample], [FLAGS.sample, '--sample-preview-engines'], ['--smaple'], ['--unknown-chromium-flag']]) {
+  for (const argv of [[], [FLAGS.sample], [FLAGS.sample, '--sample-preview-engines'], ['--smaple'], ['--sample-preview-engines'], ['--unknown-chromium-flag']]) {
     const l = launchOf(argv);
     assert.equal(l.realReader, l.engineCalls, JSON.stringify(argv));
     assert.equal(l.realReader, l.preload === 'real', `${JSON.stringify(argv)}: the bridge file is loaded exactly when main answers its calls`);
@@ -72,9 +110,9 @@ test('main registers the reader and the engine calls for the plan that loads the
   assert.match(read('preload/real-preload.ts'), /exposes both objects or neither/, 'the bridge file says why one never loads without the other');
 });
 
-test('a refused start tells main to exit with the words, before any window opens', () => {
+test('a refused start tells main to exit with the words, before any window opens, and nothing after it runs', () => {
   const main = read('main/main.ts');
-  assert.match(main, /if \(launch\.refusal !== null\) \{ process\.stderr\.write\(`\$\{launch\.refusal\}\\n`\); app\.exit\(2\); \}/);
+  assert.match(main, /if \(launch\.refusal !== null\) \{ process\.stderr\.write\(`\$\{launch\.refusal\}\\n`\); app\.exit\(2\); process\.exit\(2\); \}/, 'app.exit does not stop the script, so process.exit(2) ends it on the spot');
   assert.ok(main.indexOf('launch.refusal') < main.indexOf('protocol.handle'), 'the check comes before the page is served');
   assert.ok(main.indexOf('launch.refusal') < main.indexOf('createWindow()'), 'and before the window opens');
 });
@@ -98,9 +136,9 @@ test('the built app exits with code 2 and the words on stderr for a misspelled o
   const { electronBinary } = await import(`${join(DESKTOP, 'tools', 'run.mjs')}`) as { electronBinary(desktop: string, platform: string): string | null };
   const binary = electronBinary(DESKTOP, process.platform);
   if (binary === null || !existsSync(join(DESKTOP, 'dist', 'main.mjs'))) { t.skip('the app window or the built bundle is not here'); return; }
-  for (const flag of ['--smaple', '--Sample', '--sample=1', '--home-real']) {
-    const r: SpawnSyncReturns<string> = spawnSync(binary, [DESKTOP, flag], { encoding: 'utf8', timeout: 60000, env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
+  for (const flag of ['--smaple', '--Sample', '--sample=1', '--home-real', '--sample-preview-engines', '\u2014\u2014sample', 'sample']) {
+    const r: SpawnSyncReturns<string> = spawnSync(binary, [DESKTOP, flag, E2E_HIDDEN_FLAG], { encoding: 'utf8', timeout: 60000, env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
     assert.equal(r.status, 2, `${flag}: ${r.stderr}`);
-    assert.match(r.stderr, new RegExp(`Bowerloom does not know "${flag}"`), flag);
+    assert.match(r.stderr, flag === '--sample-preview-engines' ? /works only together with --sample/ : new RegExp(`Bowerloom does not know "${flag}"`), flag);
   }
 });

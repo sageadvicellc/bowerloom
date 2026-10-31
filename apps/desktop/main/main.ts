@@ -32,9 +32,10 @@ const argv = process.argv.slice(1);
 // What this start is: the app on the person's own folders (no flag), or the sample (--sample). A flag that looks like a mode flag and is not exactly known refuses the start: it never falls
 // through to the app on the person's own folders. See main/launch.ts.
 const launch = launchOf(argv);
-if (launch.refusal !== null) { process.stderr.write(`${launch.refusal}\n`); app.exit(2); }
-// A test start with --e2e-hidden shows no window and no Dock icon (main/window-options.ts). It changes nothing else.
+// A test start with --e2e-hidden shows no window and no Dock icon (main/window-options.ts). It changes nothing else. It comes first so that a refused test start shows no icon either.
 leaveDock(app, argv);
+// app.exit does not stop this script, so process.exit(2) ends it on the spot: nothing below runs for a refused start.
+if (launch.refusal !== null) { process.stderr.write(`${launch.refusal}\n`); app.exit(2); process.exit(2); }
 // The app on the person's own folders keeps Electron's normal data folder, which lasts between starts. The made-up launch (the sample) writes nothing to the real app data,
 // whoever starts it: it keeps its own temporary data folder (or the one it was given, when that is one of its own), and removes it when the app quits. The launcher does the same;
 // this keeps the promise when the app is started without it. Not caught: a hard kill (SIGKILL, a crash, a power cut) leaves the folder, and the browser engine writes a few small
