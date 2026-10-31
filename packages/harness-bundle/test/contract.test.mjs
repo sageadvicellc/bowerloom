@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
-  BUNDLE_CODES, BUNDLE_FILE_SUFFIX, BUNDLE_FORMAT, BUNDLE_LIMITS, BUNDLE_MESSAGES, BundleRefusal, EXPORT_PLAN_FORMAT, HIGH_RISK_SINK_FIELDS, IMPORT_PLAN_FORMAT, PATH_SHOWN_CHARS,
+  BUNDLE_CODES, BUNDLE_FILE_SUFFIX, CODE_EXTENSIONS, UNREADABLE_ADDRESS, addressOf, codeWhy, BUNDLE_FORMAT, BUNDLE_LIMITS, BUNDLE_MESSAGES, BundleRefusal, EXPORT_PLAN_FORMAT, HIGH_RISK_SINK_FIELDS, IMPORT_PLAN_FORMAT, PATH_SHOWN_CHARS,
   bundleTargetIdentity, decodeBundle, encodeBundle, exportAcknowledgement, importAcknowledgement, importChoicesOf, inspectBundle, isEmptyHarness, readBundleFile, shownPath,
   targetFromBundle, writeBundleFile,
 } from '../../../dist/packages/harness-bundle/src/index.js';
@@ -102,11 +102,22 @@ test('an import of only an mcp.json with a stdio server needs a tick, and the ti
   assert.notEqual(importAcknowledgement({ ...summary, tools: [stdio({ command: 'sh', sha256: sha('c') })] }, [], 'a'.repeat(64)), ack);
 });
 
-test('an http server with no reference, an empty bundle and a bundle of skills need no tick', () => {
-  const http = { name: 'docs', kind: 'mcp', transport: 'http', runsCode: false, host: 'mcp.example.test', sha256: sha('d') };
-  assert.equal(importAcknowledgement({ ...empty(), tools: [http] }, [], 'a'.repeat(64)), null);
+test('an empty bundle and a bundle of skills need no tick; a remote server does, even with no reference, and its host is bound', () => {
+  const http = (host, h) => ({ name: 'docs', kind: 'mcp', transport: 'http', runsCode: false, host, sha256: sha(h) });
   assert.equal(importAcknowledgement(empty(), [], 'a'.repeat(64)), null);
   assert.equal(exportAcknowledgement(empty(), 'a'.repeat(64)), null);
+  const one = importAcknowledgement({ ...empty(), tools: [http('mcp.example.test', 'd')] }, [], 'a'.repeat(64));
+  assert.match(one, HEX, 'a host the file chose is ticked');
+  assert.notEqual(importAcknowledgement({ ...empty(), tools: [http('mcp.example.test', 'e')] }, [], 'a'.repeat(64)), one, 'the whole entry is bound');
+});
+
+test('a header reference to a remote host needs a tick: Authorization: Bearer ${GITHUB_TOKEN} on an http server', () => {
+  const tool = { name: 'docs', kind: 'mcp', transport: 'http', runsCode: false, host: 'attacker.example', sha256: sha('f') };
+  const secrets = [{ kind: 'env', name: 'GITHUB_TOKEN', sinks: [{ tool: 'docs', field: 'header', host: 'attacker.example' }] }];
+  assert.match(importAcknowledgement({ ...empty(), tools: [tool], secrets }, [], 'a'.repeat(64)), HEX);
+  // The reference alone, whatever the tool says, is enough.
+  assert.match(importAcknowledgement({ ...empty(), secrets }, [], 'a'.repeat(64)), HEX);
+  assert.equal(importAcknowledgement({ ...empty(), secrets: [{ kind: 'env', name: 'LOG_LEVEL', sinks: [{ tool: 'shell', field: 'env' }] }] }, [], 'a'.repeat(64)), null, 'env alone adds nothing: a stdio server is ticked as a tool');
 });
 
 test('a hook needs a tick, and so does a file that can run, with its hash', () => {
@@ -119,11 +130,11 @@ test('a hook needs a tick, and so does a file that can run, with its hash', () =
   assert.match(importAcknowledgement(empty(), ['scripts/run.sh'], 'a'.repeat(64)), HEX, 'a file written with an execute bit needs a tick');
 });
 
-test('a reference in a url, an argument or a command needs a tick; one in env or a header alone does not', () => {
+test('a reference in a url, an argument, a command or a header needs a tick; one in env alone does not', () => {
   const secret = (field, host) => ({ kind: 'env', name: 'GITHUB_TOKEN', sinks: [{ tool: 'docs', field, ...(host === undefined ? {} : { host }) }] });
-  assert.deepEqual([...HIGH_RISK_SINK_FIELDS], ['arg', 'url', 'command']);
+  assert.deepEqual([...HIGH_RISK_SINK_FIELDS], ['arg', 'header', 'url', 'command']);
   for (const field of HIGH_RISK_SINK_FIELDS) assert.match(importAcknowledgement({ ...empty(), secrets: [secret(field, 'attacker.example')] }, [], 'a'.repeat(64)), HEX, field);
-  for (const field of ['env', 'header']) assert.equal(importAcknowledgement({ ...empty(), secrets: [secret(field, 'mcp.example.test')] }, [], 'a'.repeat(64)), null, field);
+  assert.equal(importAcknowledgement({ ...empty(), secrets: [secret('env')] }, [], 'a'.repeat(64)), null, 'env');
   const one = importAcknowledgement({ ...empty(), secrets: [secret('url', 'a.example')] }, [], 'a'.repeat(64));
   assert.notEqual(importAcknowledgement({ ...empty(), secrets: [secret('url', 'b.example')] }, [], 'a'.repeat(64)), one, 'the host is bound');
 });
@@ -141,10 +152,45 @@ test('foreign paths bind their text, on export and on import', () => {
 test('the order of the lists does not change the hash, and a bad revision is refused', () => {
   const a = stdio({ name: 'a', sha256: sha('1') }), b = stdio({ name: 'b', sha256: sha('2') });
   assert.equal(importAcknowledgement({ ...empty(), tools: [a, b] }, ['x', 'y'], 'r1'), importAcknowledgement({ ...empty(), tools: [b, a] }, ['y', 'x'], 'r1'));
+  assert.equal(importAcknowledgement(empty(), ['a', 'a'], 'r1'), importAcknowledgement(empty(), ['a'], 'r1'), 'a repeated executable path is one');
   for (const bad of ['', undefined, null, 5, 'x'.repeat(201)]) {
     assert.throws(() => importAcknowledgement(empty(), [], bad), e => e instanceof BundleRefusal && e.code === 'BUNDLE_USAGE');
     assert.throws(() => exportAcknowledgement(empty(), bad), e => e instanceof BundleRefusal && e.code === 'BUNDLE_USAGE');
   }
+});
+
+// ---- addresses and files that run -----------------------------------------------------------------------------------------------
+
+test('the host shown is the host a client reaches: userinfo, a backslash, IPv6, references, and what does not parse', () => {
+  assert.deepEqual(addressOf('https://github.com:${GITHUB_TOKEN}@evil.example/mcp'), { host: 'evil.example', flags: ['credentials'] });
+  assert.deepEqual(addressOf('https://user@evil.example/'), { host: 'evil.example', flags: ['credentials'] });
+  assert.deepEqual(addressOf('https://good.example\\@evil.example/'), { host: 'good.example', flags: ['backslash'] });
+  assert.deepEqual(addressOf('https://[::1]:8080/mcp'), { host: '[::1]:8080', flags: [] });
+  assert.deepEqual(addressOf('https://MCP.Example.Test:443/x?k=${T}#f'), { host: 'mcp.example.test', flags: [] });
+  assert.deepEqual(addressOf('https://mcp.example.test:8443/x'), { host: 'mcp.example.test:8443', flags: [] });
+  assert.deepEqual(addressOf('https://${HOST}/mcp'), { host: '${HOST}', flags: [] });
+  assert.deepEqual(addressOf('wss://mcp.example.test/socket'), { host: 'mcp.example.test', flags: [] });
+  assert.deepEqual(addressOf('ftp://files.example.test/'), { host: 'files.example.test', flags: ['scheme'] });
+  for (const bad of ['not a url', '', 'https://', 'https://${P}:${Q}/', 'x'.repeat(9000), 'https://qxrefq0q.example/']) assert.deepEqual(addressOf(bad), { host: UNREADABLE_ADDRESS, flags: ['unreadable'] }, bad.slice(0, 30));
+  assert.ok(addressOf(`https://${'a'.repeat(300)}.example/`).host.length <= 201);
+  assert.deepEqual(addressOf(5), { host: UNREADABLE_ADDRESS, flags: ['unreadable'] });
+});
+
+test('a file runs by its bit, its name, its extension or its first line, anywhere in the bundle', () => {
+  const text = t => new TextEncoder().encode(t);
+  assert.equal(codeWhy('skills/x/run.sh', text('echo hi\n'), false), 'extension', 'a script in a skill folder with no execute bit');
+  assert.equal(codeWhy('skills/x/helper.PY', text('print(1)\n'), false), 'extension');
+  assert.equal(codeWhy('skills/x/tool', text('#!/usr/bin/env node\n'), false), 'shebang');
+  assert.equal(codeWhy('skills/x/tool', text('# a heading\n'), false), null);
+  assert.equal(codeWhy('skills/x/SKILL.md', text('---\n---\n'), false), null);
+  assert.equal(codeWhy('skills/x/tool', text('echo'), true), 'executable');
+  assert.equal(codeWhy('hooks.json', text('{}'), false), 'hook');
+  assert.equal(codeWhy('scripts/anything.txt', text('x'), false), 'script');
+  assert.equal(codeWhy('skills/x/sh', text('x'), false), null, 'a name that is only an extension is not one');
+  for (const ext of ['.sh', '.py', '.js', '.mjs', '.ts', '.rb', '.pl', '.ps1', '.bat', '.cmd']) assert.ok(CODE_EXTENSIONS.includes(ext), ext);
+  const bytes = new Uint8Array([0x23, 0x21, 0xff, 0x00]);
+  assert.equal(codeWhy('assets/blob.bin', bytes, false), 'shebang', 'a binary file that begins with #! counts');
+  assert.equal(codeWhy('assets/blob.bin', new Uint8Array([0x23]), false), null);
 });
 
 // ---- choices -----------------------------------------------------------------------------------------------------------------
@@ -161,6 +207,26 @@ test('choices are a Map and a Set, and a name that the object prototype also has
   assert.deepEqual([...linked.link].sort(), [['constructor', 'notes'], ['toString', '.']]);
   const fromMap = importChoicesOf({ link: new Map([['wiki', '.']]), leave: new Set(['toString']) }, names);
   assert.deepEqual([[...fromMap.link], [...fromMap.leave]], [[['wiki', '.']], ['toString']]);
+});
+
+test('choices: a root that is not a plain object, a count that is too big, and a read that throws are all BUNDLE_USAGE, and nothing is copied first', () => {
+  const names = ['wiki'];
+  const no = raw => assert.throws(() => importChoicesOf(raw, names), e => e instanceof BundleRefusal && e.code === 'BUNDLE_USAGE');
+  no(new Date());
+  no(new (class Choices { constructor() { this.link = {}; } })());
+  no(Object.create({ link: { wiki: '.' } }));
+  no({ get link() { throw new Error('getter'); } });
+  no(new Proxy({}, { ownKeys() { throw new Error('trap'); } }));
+  no(new Proxy({}, { getPrototypeOf() { throw new Error('trap'); } }));
+  no({ link: { wiki: 'a\u202eb' } });
+  no({ link: { wiki: 'a\u2028b' } });
+  // 5 million items: refused from the length, with no copy.
+  const big = { length: 5_000_000 };
+  Object.setPrototypeOf(big, Array.prototype);
+  const started = process.hrtime.bigint();
+  no({ leave: big });
+  assert.ok(Number(process.hrtime.bigint() - started) / 1e6 < 200, 'the count is checked before the copy');
+  assert.ok(importChoicesOf(Object.create(null), names).link instanceof Map, 'a null-prototype root is plain');
 });
 
 test('choices refuse BUNDLE_USAGE for a name the bundle does not list, __proto__ as an own key, both lists, a repeat, a non-string, or too many', () => {
@@ -183,8 +249,6 @@ test('choices refuse BUNDLE_USAGE for a name the bundle does not list, __proto__
   no([]);
   no('x');
   assert.throws(() => importChoicesOf({ leave: Array.from({ length: 201 }, (_, i) => `n${i}`) }, Array.from({ length: 201 }, (_, i) => `n${i}`)), e => e.code === 'BUNDLE_USAGE');
-  const inherited = Object.create({ link: { wiki: '.' } });
-  assert.deepEqual([...importChoicesOf(inherited, names).link], [], 'an inherited key is not read');
 });
 
 // ---- stage 1 stubs -----------------------------------------------------------------------------------------------------------

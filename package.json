@@ -35,6 +35,7 @@
     "test:diagnostics": "npm run build && node tools/run-node-tests.mjs --test-timeout=120000 packages/diagnostics/test/*.test.mjs",
     "test:adoption": "npm run build && node tools/run-node-tests.mjs --test-timeout=120000 packages/adoption/test/*.test.mjs",
     "test:team": "npm run build && node tools/run-node-tests.mjs --test-timeout=120000 packages/team/test/*.test.mjs",
+    "check:not-built": "node tools/check-not-built.mjs",
     "test:harness-bundle": "npm run build && node tools/run-node-tests.mjs --test-timeout=120000 packages/harness-bundle/test/*.test.mjs",
     "test:notes-source": "npm run build && node tools/run-node-tests.mjs --test-timeout=120000 packages/notes-source/test/*.test.mjs",
     "trellis": "node dist/apps/cli/src/main.js",

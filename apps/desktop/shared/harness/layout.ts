@@ -63,13 +63,43 @@ export function graphOf(state: HarnessState, harness: Harness, moved: Readonly<R
  * below the last agent, any other part below the last other part. `graph` is the graph before the part is added. Saving it keeps `graphOf` free of any rule that
  * looks at another node's place: the part never moves when others are added or removed or dragged.
  */
-export function nextSlot(graph: Graph, kind: PartKind): Point {
+export function nextSlot(graph: Pick<Graph, 'nodes'>, kind: PartKind): Point {
   if (kind === 'agent') {
     const agents = graph.nodes.filter(n => n.kind === 'agent');
     return { x: LEFT_X, y: agents.length === 0 ? AGENT_TOP : Math.max(...agents.map(n => n.y + n.h)) + AGENT_GAP };
   }
   const others = graph.nodes.filter(n => n.kind !== 'agent');
   return { x: RIGHT_X, y: others.length === 0 ? RIGHT_TOP : Math.max(...others.map(n => n.y)) + RIGHT_PITCH };
+}
+
+/**
+ * What to save when a change adds parts to a graph or takes some away, so that nothing moves by itself. `before` and `after` are the graph of the same harness before
+ * and after the change, with the places the person saved or dragged in both (`saved`). It returns the places to add to `saved`:
+ *  - every node that is in both graphs, has no saved place, and would move (the default slot is an index, so a part added or removed ahead of it shifts it): it keeps its place;
+ *  - every new node that has no saved place: below the lowest card of its column, one after another (`nextSlot`).
+ * Pure. A node with a saved place is never in the result. When the two graphs hold the same nodes (a link was made or removed), the result is empty: a link is
+ * allowed to move an agent that has no place of its own, because an agent's default level follows the parts it uses.
+ */
+export function settleAdded(before: Graph, after: Graph, saved: Readonly<Record<string, Point>>): Record<string, Point> {
+  const out: Record<string, Point> = {};
+  const now = new Map(after.nodes.map(n => [n.id, n]));
+  if (before.nodes.length === after.nodes.length && before.nodes.every(n => now.has(n.id))) return out;
+  const running: GraphNode[] = [];
+  for (const n of before.nodes) {
+    const a = now.get(n.id);
+    if (a === undefined) continue;
+    if (!Object.hasOwn(saved, n.id) && (a.x !== n.x || a.y !== n.y)) out[n.id] = { x: n.x, y: n.y };
+    running.push(n);
+  }
+  const was = new Set(before.nodes.map(n => n.id));
+  for (const n of after.nodes) {
+    if (was.has(n.id)) continue;
+    if (Object.hasOwn(saved, n.id)) { running.push({ ...n, ...saved[n.id]! }); continue; }
+    const at = nextSlot({ nodes: running }, n.kind);
+    out[n.id] = at;
+    running.push({ ...n, x: at.x, y: at.y });
+  }
+  return out;
 }
 
 export function boundsOf(nodes: readonly GraphNode[], extraRight = 0): Bounds {

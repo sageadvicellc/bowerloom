@@ -57,7 +57,7 @@ test('the words main shares with the package are the package words, sentence for
 });
 
 test('the window sees what a tool runs and where a reference goes, and the choices type is the window one', () => {
-  const tool: ShareTool = { name: 'shell', kind: 'mcp', transport: 'stdio', runsCode: true, command: 'sh', args: ['-c', 'echo'], host: null, event: null };
+  const tool: ShareTool = { name: 'shell', kind: 'mcp', transport: 'stdio', runsCode: true, command: 'sh', args: ['-c', 'echo'], host: null, event: null, flags: [] };
   const secret: ShareSecret = { kind: 'env', name: 'GITHUB_TOKEN', sinks: [{ tool: 'docs', field: 'url', host: 'mcp.example.test' }] };
   const choices: ImportNoteChoices = { link: { wiki: 'notes-1' }, leave: ['other'] };
   assert.deepEqual([tool.runsCode, secret.sinks[0]!.field, Object.keys(choices.link)], [true, 'url', ['wiki']]);

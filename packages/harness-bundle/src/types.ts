@@ -3,6 +3,8 @@
  * command line both build on them. Stage 2 lanes fill in the functions of `index.ts`; they do not change a name or a shape here without a new contract commit.
  */
 import type { DefinitionFile, EngineId, KnowledgeKind, McpTransport, Problem } from '../../harness-definition/src/index.js';
+import type { AddressFlag } from './address.js';
+import type { CodeWhy } from './code-files.js';
 
 // ---- the file --------------------------------------------------------------------------------------------------------------
 
@@ -67,6 +69,7 @@ export interface DecodedBundle {
  * the file holds it, so an acknowledgement binds the full text and not the cut one.
  *  - MCP server over stdio: `command` and `args`. Over http: `host`.
  *  - Hook: `event` and `command` (the hook's command text).
+ * A tool needs a tick when it runs code (`runsCode`) OR reaches a host (`host` is set): a remote server is a host the file chose (decision R2-L2).
  */
 export interface BundleTool {
   readonly name: string;
@@ -79,31 +82,39 @@ export interface BundleTool {
   readonly command?: string;
   /** The arguments of an MCP server, as written, at most BUNDLE_LIMITS.displayArgs of them. */
   readonly args?: readonly string[];
-  /** The host of an MCP server's `url`: the text after `://` up to the next `/`, `?`, `#` or `:`. It is shown as written, so it may itself hold a `${NAME}` reference. */
+  /**
+   * The host a client would reach for the server's `url`, from `addressOf`: parsed with `URL` after each `${NAME}` is masked, shown as `hostname` plus `:port` when
+   * the port is not the scheme's own, with the references as written. If the address cannot be read, the fixed text `unreadable address`.
+   */
   readonly host?: string;
+  /** What is odd about the address (credentials in it, a backslash, an odd scheme, unreadable). Absent when nothing is. Each flag is shown on screen. */
+  readonly addressFlags?: readonly AddressFlag[];
   /** For a hook, the event it runs on. */
   readonly event?: string;
   /** Lowercase hex SHA-256 of the canonical JSON of the whole entry (the server or the hook). */
   readonly sha256: string;
 }
-/** A file that can run: it has an execute bit, it is a hook's file, or it is under `scripts/`. `sha256` is of its decoded bytes. */
+/**
+ * A file that can run (`codeWhy` in code-files.ts): it has an execute bit, it is `hooks.json`, it is under `scripts/`, its name ends in a code extension (`.sh`, `.py`,
+ * `.js`, …) anywhere in the bundle, or its first bytes are `#!`. `sha256` is of its decoded bytes.
+ */
 export interface BundleCodeFile {
   readonly path: string;
-  readonly why: 'executable' | 'hook' | 'script';
+  readonly why: CodeWhy;
   readonly sha256: string;
 }
 /** Where a `${NAME}` or keychain reference goes: a field of a tool, and the host that field reaches. */
 export type BundleSinkField = 'env' | 'header' | 'arg' | 'url' | 'command';
 /**
- * The fields that can send a value anywhere the file chooses: a URL, an argument, a command. A reference in one of these needs an acknowledgement. A reference
- * in `env` or `header` only travels to the tool's own process or its own host, which the sink shows.
+ * The fields that can send a value where the file chooses: a URL, an argument, a command, or a header (a header goes to the host the file names, which may be anyone's).
+ * A reference in one of these needs an acknowledgement. `env` is left out because it applies to a stdio server only, which runs code and is ticked as a tool.
  */
-export const HIGH_RISK_SINK_FIELDS: readonly BundleSinkField[] = Object.freeze(['arg', 'url', 'command'] as const);
+export const HIGH_RISK_SINK_FIELDS: readonly BundleSinkField[] = Object.freeze(['arg', 'header', 'url', 'command'] as const);
 export interface BundleSink {
   /** The name of the MCP server or the hook id. */
   readonly tool: string;
   readonly field: BundleSinkField;
-  /** The host the tool's `url` reaches, when it has one. */
+  /** The host the tool's `url` reaches, as `addressOf` reads it, when it has one. */
   readonly host?: string;
 }
 /**
@@ -193,8 +204,18 @@ export interface ImportChoices {
   readonly leave: ReadonlySet<string>;
 }
 
-/** The identity of a file on disk: what `writeBundleFile` compares before it replaces a file. */
-export interface BundleFileIdentity { readonly dev: number; readonly ino: number }
+/**
+ * The identity of a file on disk: what `writeBundleFile` compares before it replaces a file. Read with `bigint: true`, so a large inode number loses nothing.
+ * Equal means every field is equal. Inode numbers can be reused soon after a delete, so the birth time, the size and the modification time are part of it.
+ * `birthtimeNs` is 0n where the file system keeps none.
+ */
+export interface BundleFileIdentity {
+  readonly dev: bigint;
+  readonly ino: bigint;
+  readonly size: bigint;
+  readonly mtimeNs: bigint;
+  readonly birthtimeNs: bigint;
+}
 
 // ---- command-line plan output (`--json`) -----------------------------------------------------------------------------------
 

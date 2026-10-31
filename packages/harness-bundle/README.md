@@ -20,6 +20,13 @@ Status: stage 1, the contract. The types, constants, codes and words here are fi
 - `inspectBundle(bundle)`: counts, tools (with their command, arguments, host, hook text and a hash of the whole entry), files that run code (with hashes), the references the file reads from this computer and where each one goes, notes names, borrowed items, and text that holds a path of another computer (with the text and its hash).
 - `targetFromBundle(bundle, choices)`: the files an import writes. A notes name is linked to a stored path or left out. A name in neither is left out.
 - `isEmptyHarness(def)`.
+
+Built now, because they depend on nothing else: `addressOf(url)` and `codeWhy(path, bytes, executable)`.
+
+## Addresses and files that run
+
+- A tool's host is the host a client would really reach. `addressOf` masks each `${NAME}`, parses the address with `URL`, and shows `hostname` plus `:port`. So `https://github.com:${TOKEN}@evil.example/` shows `evil.example` and the flag `credentials`; a backslash address shows the host a client reads and the flag `backslash`; `https://[::1]:8080/` shows `[::1]:8080`; an address that does not parse shows `unreadable address`.
+- A file can run when it has an execute bit, is `hooks.json`, is under `scripts/`, has a code extension (`.sh`, `.py`, `.js`, `.mjs`, `.ts`, `.rb`, `.pl`, `.ps1`, `.bat`, `.cmd` and similar, in any case), or begins with `#!`, anywhere in the bundle. So `skills/x/run.sh` with no execute bit is listed and ticked.
 - `readBundleFile(absPath)`, `bundleTargetIdentity(absPath)` and `writeBundleFile(absPath, bytes, options)`. All async.
 
 Built now, because they depend on the summary only: `exportAcknowledgement(summary, revision)`, `importAcknowledgement(summary, executables, revision)` and `importChoicesOf(raw, names)`.
@@ -30,13 +37,13 @@ An import is a save. The only write is `applySave` in `packages/adoption`, under
 
 A tick covers what the person was shown, and the hash binds it.
 
-- `importAcknowledgement` hashes the save plan's revision and: every tool that runs code (a stdio MCP server, a hook) by kind, name and the hash of its whole entry, so a bundle with only an `mcp.json` still needs a tick; every reference in a url, an argument or a command; every file that can run by path and hash; every file written with an execute bit; and every foreign-path hit by path, line and the hash of its text. It is null when all of them are empty.
+- `importAcknowledgement` hashes the save plan's revision and: every tool that runs code (a stdio MCP server, a hook) or reaches a host (a remote MCP server) by kind, name and the hash of its whole entry, so a bundle with only an `mcp.json` still needs a tick; every reference in a url, an argument, a command or a header; every file that can run by path and hash; every file written with an execute bit (a sorted, unique list); and every foreign-path hit by path, line and the hash of its text. It is null when all of them are empty.
 - `exportAcknowledgement` hashes the plan's revision and the foreign-path hits. It is null when there are none.
-- A reference in an `env` value or a header alone needs no tick. Its sinks still show on screen.
+- A reference in an `env` value alone needs no tick: `env` applies to a stdio server, which runs code and is ticked as a tool. A reference in a header does need one, because a header goes to the host the file names. Every sink shows on screen.
 
 ## References are a way out for values
 
-A `${NAME}` reference tells the engine to read a value from this computer and give it to the tool. The name may be set on this computer already. A hostile file can place `${GITHUB_TOKEN}` in a url, an argument or a command, and the value goes to the host the file names. So the summary lists each reference with its sinks: the tool, the field (`env`, `header`, `arg`, `url`, `command`) and the host. The screen says that the file reads these values from this computer and passes them to these tools. It never tells a person to create a variable without showing where it goes. The package does not read an environment variable or the keychain, and it does not check that a listed name exists.
+A `${NAME}` reference tells the engine to read a value from this computer and give it to the tool. The name may be set on this computer already. A hostile file can place `${GITHUB_TOKEN}` in a url, an argument, a command or a header, and the value goes to the host the file names. So the summary lists each reference with its sinks: the tool, the field (`env`, `header`, `arg`, `url`, `command`) and the host. The screen says that the file reads these values from this computer and passes them to these tools. It never tells a person to create a variable without showing where it goes. The package does not read an environment variable or the keychain, and it does not check that a listed name exists.
 
 ## Trust boundary
 
@@ -58,8 +65,17 @@ A bundle from another person is data. Reading one starts no program and loads no
 - The app's main process (lane C) validates every argument of every share call before it uses one: a bundle id against `SHARE_BUNDLE_ID` and looked up by the exact string in a `Map`, never by `Number()`; the choices shape with `importChoicesOf`; every notes id against the ids main gave out; the name and count limits; the revision and the acknowledgement as 64 lowercase hex characters (or null where allowed).
 - Main enforces `SAVE_EXECUTABLE_UNACKNOWLEDGED` itself. `applySave` does not check an acknowledgement.
 - Main compares the acknowledgement it computes now with the one it receives, with the plan revision and the bundle hash it holds, and writes only when all three match.
-- The temporary file of an export has a random name and is created with exclusive create. Main passes `replace` only when the file existed when the save dialog returned, the person agreed to replace it, and `bundleTargetIdentity` still gives the same identity.
+- Main passes `replace` only when the file existed when the save dialog returned, the person agreed to replace it, and `bundleTargetIdentity` still gives the same identity. Main passes the real path of the target folder (`realpath`), so the person sees the folder that is written.
 - The command line never replaces a file.
+
+## The file functions: what lane A builds to
+
+- `readBundleFile`: `O_RDONLY | O_NOFOLLOW | O_NONBLOCK`; `fstat` on the descriptor before any read (a folder also opens with `O_RDONLY`); a regular file of the user, at most 48 MiB; read at most one byte past the size; a short read or a read past the size refuses; the identity and size are compared again after the read.
+- `bundleTargetIdentity`: `lstat` with `bigint: true`. The identity is `dev`, `ino`, `size`, `mtimeNs` and `birthtimeNs`, because an inode number can be reused soon after a delete.
+- `writeBundleFile`: resolve the parent with `realpath` once and refuse if it is not the folder given; write the temporary file in that folder with a random name of at least 64 bits, created with `O_CREAT | O_EXCL | O_NOFOLLOW` and mode 0600 at creation; remove it on any failure.
+  - Without `replace`: `link(tmp, target)` then unlink the temporary name. `link` fails with EEXIST when anything is there, so a file made in between is never replaced. Never "check, then rename".
+  - With `replace`: read the identity again right before the `rename` and refuse if it differs. A short window remains between that read and the rename.
+- Tests lane A must add are listed as `todo` tests in `test/hostile-todo.test.mjs`. A second review runs them.
 
 ## Limits
 
@@ -81,7 +97,7 @@ Every refusal is a `BundleRefusal` with one of these codes. The words are `BUNDL
 | `BUNDLE_FILE_UNSAFE` | The bundle file is a link, not a regular file, not owned by the user, or changed while it was read. A write target is a link or a folder, or is not the file the person agreed to replace. | The bundle file is a link, is not a plain file that you own, or changed while it was read. Nothing was read or written. |
 | `BUNDLE_EXISTS` | The command line would write over a file that exists. | A file exists at that place already. Bowerloom does not replace it. Nothing was written. |
 | `IMPORT_FOLDER_HAS_HARNESS` | The folder's harness has an entry, instructions, a source or knowledge. | This folder has a harness with parts in it already. An import goes only into a folder with no harness, or with an empty one. Nothing was written. |
-| `IMPORT_NEEDS_ACKNOWLEDGEMENT` | An import has tools or files that can run, references in a url, argument or command, or paths from another computer, and the acknowledgement is missing or not the one the plan showed. | This file holds tools or files that can run, or paths from another computer. Tick that you read them, then import. Nothing was written. |
+| `IMPORT_NEEDS_ACKNOWLEDGEMENT` | An import has tools that run code or reach a host, files that can run, references in a url, argument, command or header, or paths from another computer, and the acknowledgement is missing or not the one the plan showed. | This file holds tools or files that can run, values it reads from this computer, or paths from another computer. Tick that you read them, then import. Nothing was written. |
 | `EXPORT_NEEDS_ACKNOWLEDGEMENT` | An export has text that holds a path of this computer, and the acknowledgement is missing or not the one the plan showed. | These files hold a path from this computer. Tick that you read them, then export. Nothing was written. |
 
 ## Tests

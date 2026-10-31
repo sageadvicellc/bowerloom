@@ -18,7 +18,7 @@ export const BUNDLE_MESSAGES = Object.freeze({
   BUNDLE_FILE_UNSAFE: 'The bundle file is a link, is not a plain file that you own, or changed while it was read. Nothing was read or written.',
   BUNDLE_EXISTS: 'A file exists at that place already. Bowerloom does not replace it. Nothing was written.',
   IMPORT_FOLDER_HAS_HARNESS: 'This folder has a harness with parts in it already. An import goes only into a folder with no harness, or with an empty one. Nothing was written.',
-  IMPORT_NEEDS_ACKNOWLEDGEMENT: 'This file holds tools or files that can run, or paths from another computer. Tick that you read them, then import. Nothing was written.',
+  IMPORT_NEEDS_ACKNOWLEDGEMENT: 'This file holds tools or files that can run, values it reads from this computer, or paths from another computer. Tick that you read them, then import. Nothing was written.',
   EXPORT_NEEDS_ACKNOWLEDGEMENT: 'These files hold a path from this computer. Tick that you read them, then export. Nothing was written.',
 } as const);
 

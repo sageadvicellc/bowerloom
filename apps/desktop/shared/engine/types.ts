@@ -559,21 +559,27 @@ export interface ShareList<T> { readonly rows: readonly T[]; readonly more: numb
 /**
  * A tool the bundle holds, with what a person reads before it may run. `transport` is for an MCP server and null for a hook. `runsCode` is true for a hook and for
  * an MCP server that starts a program. `command` is the program of a stdio server or the command of a hook, `args` the arguments of a server (at most SHARE_ARGS_LIMIT),
- * `host` the host of a server's url, `event` the event of a hook; each is null (or empty) when the tool has none. Every text is cut to SHARE_TEXT_LIMIT, drawn as plain
+ * `host` the host a client would really reach for a server's url (the package's `addressOf`), `event` the event of a hook; each is null (or empty) when the tool has none.
+ * `flags` says what is odd about the address: `credentials` (a user name or password in it), `backslash`, `scheme` (not http, https, ws or wss), `unreadable`. A tool that
+ * runs code or reaches a host is in the acknowledgement. Every text is cut to SHARE_TEXT_LIMIT, drawn as plain
  * text, and passed through `visible()` in main. The acknowledgement binds the whole entry in main; the window sees the cut text only.
  */
 export interface ShareTool {
   readonly name: string; readonly kind: 'mcp' | 'hook'; readonly transport: string | null; readonly runsCode: boolean;
   readonly command: string | null; readonly args: readonly string[]; readonly host: string | null; readonly event: string | null;
+  readonly flags: readonly ('credentials' | 'backslash' | 'scheme' | 'unreadable')[];
 }
-/** A file that can run: it has an execute bit, it is a hook's file, or it is under `scripts/`. `path` is relative to `.bowerloom`. */
-export interface ShareCodeFile { readonly path: string; readonly why: 'executable' | 'hook' | 'script' }
+/**
+ * A file that can run: it has an execute bit, it is `hooks.json`, it is under `scripts/`, its name ends in a code extension (`.sh`, `.py`, `.js`, …), or its first bytes
+ * are `#!`. `path` is relative to `.bowerloom`.
+ */
+export interface ShareCodeFile { readonly path: string; readonly why: 'executable' | 'hook' | 'script' | 'extension' | 'shebang' }
 /** Where a reference goes: the tool, the field of it, and the host that field reaches (null when the tool has no url). */
 export interface ShareSink { readonly tool: string; readonly field: 'env' | 'header' | 'arg' | 'url' | 'command'; readonly host: string | null }
 /**
  * A reference the file reads from THIS computer and passes to a tool: an environment variable (`env`) or a keychain entry (`keychain`), by name. Never a value. The
  * name may be set on this computer already, so the sheet says that the file passes these values to these tools, lists each sink, and never tells a person to add one
- * without showing where it goes. A reference in a url, an argument or a command (field `url`, `arg`, `command`) needs the acknowledgement. Bowerloom did not check
+ * without showing where it goes. A reference in a url, an argument, a command or a header (field `url`, `arg`, `command`, `header`) needs the acknowledgement. Bowerloom did not check
  * whether the name exists on this computer (decision T1-D8 A), and the screen says so.
  */
 export interface ShareSecret { readonly kind: 'env' | 'keychain'; readonly name: string; readonly sinks: readonly ShareSink[] }
@@ -803,7 +809,7 @@ export const EXPORT_NEEDS_ACKNOWLEDGEMENT = 'EXPORT_NEEDS_ACKNOWLEDGEMENT';
 export const SHARE_MAIN_WORDS: Readonly<Record<typeof EXPORT_NO_DEFINITION | typeof IMPORT_FOLDER_HAS_HARNESS | typeof IMPORT_NEEDS_ACKNOWLEDGEMENT | typeof EXPORT_NEEDS_ACKNOWLEDGEMENT, string>> = Object.freeze({
   EXPORT_NO_DEFINITION: 'This folder has no harness yet, so there is nothing to export. Make one first with New harness from a folder. Nothing was written.',
   IMPORT_FOLDER_HAS_HARNESS: 'This folder has a harness with parts in it already. An import goes only into a folder with no harness, or with an empty one. Nothing was written.',
-  IMPORT_NEEDS_ACKNOWLEDGEMENT: 'This file holds tools or files that can run, or paths from another computer. Tick that you read them, then import. Nothing was written.',
+  IMPORT_NEEDS_ACKNOWLEDGEMENT: 'This file holds tools or files that can run, values it reads from this computer, or paths from another computer. Tick that you read them, then import. Nothing was written.',
   EXPORT_NEEDS_ACKNOWLEDGEMENT: 'These files hold a path from this computer. Tick that you read them, then export. Nothing was written.',
 });
 /**

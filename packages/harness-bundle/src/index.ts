@@ -18,6 +18,10 @@ export { BUNDLE_CODES, BUNDLE_MESSAGES, BundleRefusal, PATH_SHOWN_CHARS, shownPa
 export type { BundleCode } from './codes.js';
 export { BUNDLE_FILE_SUFFIX, BUNDLE_FORMAT, BUNDLE_LIMITS, EXPORT_PLAN_FORMAT, IMPORT_PLAN_FORMAT } from './limits.js';
 export { exportAcknowledgement, importAcknowledgement } from './ack.js';
+export { UNREADABLE_ADDRESS, addressOf } from './address.js';
+export type { AddressFlag, AddressRead } from './address.js';
+export { CODE_EXTENSIONS, codeWhy } from './code-files.js';
+export type { CodeWhy } from './code-files.js';
 export { importChoicesOf } from './choices.js';
 
 const notBuilt = async (): Promise<never> => { throw new Error('not built'); };
@@ -44,8 +48,8 @@ export function inspectBundle(bundle: DecodedBundle): BundleSummary { void bundl
 
 /**
  * The target file set of an import: the bundle's files, with each notes name linked or left out as `choices` says (a name in neither is left out), by
- * `editDefinition`'s `set-source` and `remove-source`. It loads once written. Pure. Rejects input that did not come from `importChoicesOf` by reading only own
- * properties of a Map and a Set. Throws `BundleRefusal` (`BUNDLE_USAGE`, `BUNDLE_INVALID`).
+ * `editDefinition`'s `set-source` and `remove-source`. It loads once written. Pure. It takes only the Map and Set form that `importChoicesOf` builds, and reads no
+ * property of a plain object. Throws `BundleRefusal` (`BUNDLE_USAGE`, `BUNDLE_INVALID`).
  */
 export function targetFromBundle(bundle: DecodedBundle, choices: ImportChoices): readonly DefinitionFile[] { void bundle; void choices; return notBuiltSync(); }
 
@@ -53,24 +57,32 @@ export function targetFromBundle(bundle: DecodedBundle, choices: ImportChoices):
 export function isEmptyHarness(def: Definition): boolean { void def; return notBuiltSync(); }
 
 /**
- * Reads a bundle file with bounds, async. It opens with `O_RDONLY | O_NOFOLLOW | O_NONBLOCK` (so a FIFO or a stalled device cannot hang the open), calls
- * `fstat` on the DESCRIPTOR (a regular file, owned by the user, at most `BUNDLE_LIMITS.fileBytes`), reads at most one byte past that size and refuses when the
- * file grew, and compares the identity and size after the read. A link, a device, a pipe, a folder or a file of another user is `BUNDLE_FILE_UNSAFE`; a file
- * past the limit is `BUNDLE_TOO_LARGE`. `absPath` is absolute.
+ * Reads a bundle file with bounds, async. It opens with `O_RDONLY | O_NOFOLLOW | O_NONBLOCK` (so a FIFO or a stalled device cannot hang the open; the flag
+ * has no effect on a regular file), and calls `fstat` on the DESCRIPTOR before any read: a folder also opens with `O_RDONLY`, so this check is required. It must be a
+ * regular file, owned by the user, at most `BUNDLE_LIMITS.fileBytes`. It reads at most one byte past the size; a read that ends before the size, or one that
+ * returns a byte past it, refuses. It compares the identity and size after the read. A link, a device, a pipe, a folder, a file of another user, or a file that
+ * changed while read is `BUNDLE_FILE_UNSAFE`; a file past the limit is `BUNDLE_TOO_LARGE`. `absPath` is absolute.
  */
 export function readBundleFile(absPath: string): Promise<Uint8Array> { void absPath; return notBuilt(); }
 
 /**
- * The identity of the plain file at `absPath` (a link is not followed), or null when nothing is there. A link, a folder or another kind of file is
- * `BUNDLE_FILE_UNSAFE`. Main calls it when the save dialog returns, and passes the result as `replace` if the person agreed to replace that file.
+ * The identity of the plain file at `absPath` (a link is not followed; `lstat` with `bigint: true`), or null when nothing is there. A link, a folder or another
+ * kind of file is `BUNDLE_FILE_UNSAFE`. Main calls it when the save dialog returns, and passes the result as `replace` if the person agreed to replace that file.
  */
 export function bundleTargetIdentity(absPath: string): Promise<BundleFileIdentity | null> { void absPath; return notBuilt(); }
 
 /**
- * Writes a new file, async: a temporary file in the same folder, its name random and created with exclusive create (`O_EXCL`), mode 0600, then a rename. The
- * temporary file is removed when anything fails. A link or a folder at the path is `BUNDLE_FILE_UNSAFE`. A plain file already at the path is `BUNDLE_EXISTS`,
- * unless `options.replace` names its identity (from `bundleTargetIdentity`, taken when the save dialog returned and after the person agreed to replace it):
- * the writer checks the identity again right before the rename and refuses `BUNDLE_FILE_UNSAFE` when the file there is another one. `absPath` is absolute.
+ * Writes a new file, async.
+ *  - The parent folder is resolved ONCE with `realpath`. If it is not the folder the caller gave (a link on the way), the write refuses `BUNDLE_FILE_UNSAFE`: the
+ *    caller passes the real path of the folder, so a person who chose a linked folder sees the real one first.
+ *  - The temporary file is in that resolved folder. Its name has at least 64 random bits, and it is created with `O_CREAT | O_EXCL | O_WRONLY | O_NOFOLLOW` and
+ *    mode 0600 at creation (never by `chmod` afterwards). It is removed when anything fails.
+ *  - Without `options.replace`: the file is put in place with `link(tmp, target)`, which fails with EEXIST when anything is there (`BUNDLE_EXISTS`, the file there
+ *    untouched), and then the temporary name is unlinked. It is never "check, then rename", because a file made between the two would be replaced without a question.
+ *  - With `options.replace` (the identity from `bundleTargetIdentity`, taken when the save dialog returned and after the person agreed to replace that file): the
+ *    identity is read again with `lstat` right before the `rename`, and a different file there refuses `BUNDLE_FILE_UNSAFE`. A short window remains between that read
+ *    and the rename; the README names it.
+ *  - A link or a folder at the path is `BUNDLE_FILE_UNSAFE`. `absPath` is absolute.
  */
 export function writeBundleFile(absPath: string, bytes: Uint8Array, options?: { readonly replace?: BundleFileIdentity }): Promise<void> {
   void absPath; void bytes; void options; return notBuilt();
