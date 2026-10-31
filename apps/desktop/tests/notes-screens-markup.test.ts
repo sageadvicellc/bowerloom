@@ -165,6 +165,8 @@ test('a keeper the draft adds from the kit can be taken out again; a saved keepe
     keeper: { name: KEEPER_AGENT, skills: [], notes: [] }, offered: DEF.skills, cards, held: false, fromKit, onLink: noop, onLinkRest: noop, onAttach: noop, onRemoveKit: noop,
   }));
   assert.match(draw(true), /data-remove-keeper=""/);
+  const html = draw(true);
+  assert.ok(html.indexOf('data-add-skill=') < html.indexOf('data-remove-keeper'), 'the first control of the build stays a skill\'s Add button');
   assert.ok(draw(true).includes(NOTES.label.removeKeeper));
   assert.doesNotMatch(draw(false), /data-remove-keeper/);
 });

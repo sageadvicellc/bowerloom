@@ -56,7 +56,6 @@ export function KeeperBuild({ keeper, offered, cards, held, fromKit, onLink, onL
             <span className="hxn-keeper-name">{NOTES.label.keeper}</span>
             <span className="hxn-card-sub">{fromKit ? NOTES.hint.keeperDraft : keeper.name}</span>
           </span>
-          {fromKit && onRemoveKit !== undefined ? <HButton size="small" variant="text" disabled={held} data-remove-keeper="" onClick={onRemoveKit}>{NOTES.label.removeKeeper}</HButton> : null}
         </div>
         <div className="hxn-shelves" data-tour="shelves">
           <Shelf shelf="skills" title={NOTES.label.skillsShelf} items={[...linked.map(s => ({ id: s.id, name: s.name })), ...others]} empty={NOTES.hint.dropSkill} held={held}
@@ -89,6 +88,8 @@ export function KeeperBuild({ keeper, offered, cards, held, fromKit, onLink, onL
           </>
         )}
         <p className="hxe-text hxe-muted">{NOTES.hint.shelvesNote}</p>
+        {/* Last, so the first control of the build stays the first skill's Add button. */}
+        {fromKit && onRemoveKit !== undefined ? <HButton size="small" variant="text" disabled={held} data-remove-keeper="" onClick={onRemoveKit}>{NOTES.label.removeKeeper}</HButton> : null}
       </div>
     </section>
   );
