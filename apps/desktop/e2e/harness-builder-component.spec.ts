@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { desktop } from './harness-page.js';
 import type { DefinitionView, FolderInfo } from '../shared/engine/types.js';
-import { removeTempDirs, tempDir } from './proto-temp.js';
+import { removeTempDirs, tempDir } from './temp-dirs.js';
 
 let app: ElectronApplication, page: Page, html: string;
 
