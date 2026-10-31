@@ -138,7 +138,7 @@ test('the install plan first asks for each weakened enforced line, then plans wi
   assert.equal(full.kind, 'plan');
   const plan = (full as Extract<ProjectAnswer, { kind: 'plan' }>).plan;
   assert.equal(plan.approved.length, 2);
-  assert.ok(plan.approved.every(a => a.who === 'tester' && a.when === '2026-10-28T12:00:00Z'));
+  assert.ok(plan.approved.every(a => a.when === '2026-10-28T12:00:00Z' && !('who' in a)));
   assert.deepEqual(filesOf(dir), before, 'planning wrote nothing');
   checkPlan(plan, home);
 });

@@ -223,7 +223,7 @@ test('an approved line is shown with its time and never the account name, and th
   assert.equal(approved.length, first.refused.length);
   for (const line of approved) {
     assert.match(line, /^ {2}approved {2}\S+ at \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/, line);
-    assert.ok(!line.includes(name), 'the account name is not in the line');
+    assert.ok(!line.includes(name) && !line.includes('zq-test-user-91'), 'the account name is not in the line');
     assert.ok(!/\bby\b/.test(line), line);
   }
   // The receipt, once installed.
@@ -234,6 +234,52 @@ test('an approved line is shown with its time and never the account name, and th
   assert.ok(recorded.length >= first.refused.length);
   assert.ok(recorded.every(v => v === 'local user'), recorded.join(','));
   assert.ok(!recorded.some(v => v === name));
+});
+
+/** The files of this name under a folder. */
+function filesNamed(root: string, name: string): string[] {
+  const out: string[] = [];
+  for (const e of readdirSync(root, { withFileTypes: true })) {
+    const full = join(root, e.name);
+    if (e.isDirectory()) out.push(...filesNamed(full, name)); else if (e.isFile() && e.name === name) out.push(full);
+  }
+  return out;
+}
+
+test('records from an older build hold an account name, and no command prints it, in words or in --json, from a draft or from the receipt', t => {
+  const w = world(t);
+  adopt(w);
+  const old = 'zq-test-user-91';
+  const first = json<{ refused: Refused[] }>(bl(w, ['install', '--json']).stdout);
+  for (const line of first.refused) assert.equal(bl(w, ['accept', line.key]).status, 0);
+  // Seed the drafts as the older build wrote them, with an account name in the name field.
+  const [drafts] = filesNamed(stateRoot(w), 'approvals.json');
+  assert.ok(drafts !== undefined);
+  const seeded = readFileSync(drafts, 'utf8').replaceAll('"local user"', JSON.stringify(old));
+  assert.ok(seeded.includes(old));
+  writeFileSync(drafts, seeded, { mode: 0o600 });
+  // From a draft: the plan in words and in JSON, and a second accept of a line with a draft.
+  for (const args of [['install'], ['install', '--json'], ['accept', first.refused[0]!.key, '--json'], ['accept', first.refused[0]!.key]]) {
+    const out = bl(w, args);
+    assert.ok(out.status === 0 || out.status === 3, `${args.join(' ')}: ${out.stderr}`);
+    assert.ok(!out.stdout.includes(old) && !out.stderr.includes(old), `${args.join(' ')} prints the name of an older record`);
+  }
+  const plan = json<{ revision: string; plan: { approved: Record<string, unknown>[] } }>(bl(w, ['install', '--json']).stdout);
+  assert.equal(plan.plan.approved.length, first.refused.length);
+  assert.ok(plan.plan.approved.every(a => !('who' in a) && typeof a.when === 'string'), 'each approved entry keeps its fields but the name');
+  // The install records the drafts, name and all, in the receipt. The receipt now holds the older name.
+  const applied = bl(w, ['install', '--approve', plan.revision, '--json']);
+  assert.equal(applied.status, 0, applied.stderr);
+  assert.ok(!applied.stdout.includes(old));
+  assert.ok(whoValues(stateRoot(w)).includes(old), 'the receipt kept the record as it was: the revision covers the name, so it is not rewritten');
+  // From the receipt: an accept of a recorded line, and the plan of an install that has nothing to change.
+  for (const args of [['accept', first.refused[0]!.key, '--json'], ['accept', first.refused[0]!.key], ['install', '--json'], ['install'], ['status', '--json'], ['status']]) {
+    const out = bl(w, args);
+    assert.ok(out.status === 0 || out.status === 3, `${args.join(' ')}: ${out.stderr}`);
+    assert.ok(!out.stdout.includes(old) && !out.stderr.includes(old), `${args.join(' ')} prints the name of an older record`);
+  }
+  const recorded = json<{ draft: Record<string, unknown> }>(bl(w, ['accept', first.refused[0]!.key, '--json']).stdout);
+  assert.ok(!('who' in recorded.draft) && typeof recorded.draft.when === 'string');
 });
 
 test('Install takes over files equal in bytes or meaning: it records them, writes nothing to them, and removal leaves them as they were', t => {

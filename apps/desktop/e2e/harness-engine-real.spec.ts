@@ -126,7 +126,12 @@ test('Install a folder\'s harness: approve the weaker rules, read the plan, appr
   // The record is in the layout the command line shares (decision 7B): <state root>/<project id>/harness/portable, and no desktop/ folder.
   const root = join(home, '.local', 'state', 'bowerloom');
   expect(existsSync(join(root, 'desktop'))).toBe(false);
-  expect(readdirSync(root).filter(id => existsSync(join(root, id, 'harness', 'portable', 'receipt.json')))).toHaveLength(1);
+  const ids = readdirSync(root).filter(id => existsSync(join(root, id, 'harness', 'portable', 'receipt.json')));
+  expect(ids).toHaveLength(1);
+  // The record the app wrote holds the fixed word in the name field, never the account name of this computer.
+  const receipt = JSON.parse(readFileSync(join(root, ids[0]!, 'harness', 'portable', 'receipt.json'), 'utf8')) as { approvals: { who: string }[] };
+  expect(receipt.approvals).toHaveLength(2);
+  expect(receipt.approvals.map(a => a.who)).toEqual(['this Mac', 'this Mac']);
   await s.getByRole('button', { name: 'Undo', exact: true }).click();
   const r = p.getByRole('dialog', { name: 'Remove what Bowerloom wrote' });
   await expect(r.locator('[data-file="CLAUDE.md"]')).toContainText('Puts yours back');

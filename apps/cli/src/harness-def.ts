@@ -447,11 +447,15 @@ function refuseFidelity(c: Ctx, error: unknown, json: boolean, write: (text: str
 async function clearDrafts(c: Ctx, recorded?: readonly FidelityApproval[]): Promise<string[]> {
   try { await dropApprovalDraftsLocked(c.dirs, c.dir, recorded, c.signal); return []; } catch (error) { return [`approval drafts not cleared (${codeOf(error)}); run bowerloom harness status`]; }
 }
-/** A plan as it is printed: without the private state folder, which the revision still covers. */
+/** An approval as it is printed: without its name field. A record from an older build may hold the account name of the computer, and no output shows it. */
+const unnamed = <A extends object>(approval: A): Omit<A, 'who'> => { const { who: _who, ...rest } = approval as A & { who?: unknown }; return rest; };
+/** A plan as it is printed: without the private state folder, which the revision still covers, and without the names of its approvals. */
 const printable = <P>(plan: P): P => {
-  if (plan === null || typeof plan !== 'object' || !Object.hasOwn(plan, 'stateDir')) return plan;
-  const { stateDir: _stateDir, ...rest } = plan as P & { stateDir?: unknown };
-  return rest as P;
+  if (plan === null || typeof plan !== 'object') return plan;
+  const hasState = Object.hasOwn(plan, 'stateDir'), approved = (plan as { approved?: unknown }).approved;
+  if (!hasState && !Array.isArray(approved)) return plan;
+  const { stateDir: _stateDir, ...rest } = plan as P & { stateDir?: unknown; approved?: unknown };
+  return (Array.isArray(approved) ? { ...rest, approved: approved.map(a => unnamed(a as object)) } : rest) as P;
 };
 
 async function install(c: Ctx, f: Flags, approval: { approve?: string; json: boolean }, io: ApprovalIo, write: (text: string) => void): Promise<number> {
@@ -501,15 +505,13 @@ async function accept(c: Ctx, f: Flags, json: boolean, write: (text: string) => 
   const hash = entryHash(entryOf(def!, line!.part, line!.entry)!);
   // A line the receipt already records, for this entry as it is now, needs no draft: a new draft would change the next install.
   const recorded = (readPortableReceipt(portableIo(c))?.approvals ?? []).find(a => lineName(a) === lineName(line!) && a.result === line!.result && a.entryHash === hash);
-  if (recorded !== undefined) { write(json ? newCommandJson(plain({ accepted: true, key, recorded: true, draft: recorded })) : `${plainText(key)} is already approved in the installed record.\n`); return 0; }
-  // The record needs a name of 1 to 256 characters. It holds a fixed word, never the account name of this computer (owner decision, 2026-10-31).
-  const who = 'local user';
+  if (recorded !== undefined) { write(json ? newCommandJson(plain({ accepted: true, key, recorded: true, draft: unnamed(recorded) })) : `${plainText(key)} is already approved in the installed record.\n`); return 0; }
   const draft = await addApprovalDraftLocked(c.dirs, c.dir, {
     part: line!.part as FidelityApproval['part'], entry: line!.entry, ...(line!.field !== undefined ? { field: line!.field } : {}), engine: line!.engine as EngineId,
-    result: line!.result, entryHash: hash, who: who.slice(0, 256),
+    result: line!.result, entryHash: hash, who: 'local user', // A fixed word: the record needs a name, and it never holds the account name of this computer (owner decision, 2026-10-31).
     reason: `Accepted with bowerloom harness accept after reading this line: ${line!.reason}`.slice(0, 4096),
   }, { definition: def! }, c.signal);
-  write(json ? newCommandJson(plain({ accepted: true, key, draft })) : `Accepted ${plainText(key)}. Run bowerloom harness install to see the plan.\n`);
+  write(json ? newCommandJson(plain({ accepted: true, key, draft: unnamed(draft) })) : `Accepted ${plainText(key)}. Run bowerloom harness install to see the plan.\n`);
   return 0;
 }
 

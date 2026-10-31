@@ -237,7 +237,7 @@ export interface InstructionDriftView {
 /** `mode`: the bytes are the ones Bowerloom wrote and only the file mode changed (decision D5A). */
 export interface DriftLineView { readonly path: string; readonly reason: 'changed' | 'missing' | 'unsafe' | 'mode' }
 export interface ApprovedView {
-  readonly part: string; readonly entry: string; readonly field: string | null; readonly engine: EngineId; readonly result: 'weakened' | 'absent'; readonly who: string; readonly when: string; readonly reason: string;
+  readonly part: string; readonly entry: string; readonly field: string | null; readonly engine: EngineId; readonly result: 'weakened' | 'absent'; readonly when: string; readonly reason: string;
   /** True for an approval recorded by an earlier install and reused for the unchanged entry; false for one ticked in this sheet. */
   readonly earlier: boolean;
 }

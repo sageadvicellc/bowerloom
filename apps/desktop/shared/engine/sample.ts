@@ -307,7 +307,7 @@ function projectFixture(input: ProjectInput, projected: boolean, written: string
     },
     reconcile: projected ? null : input.reconcile,
     driftLines: [],
-    approved: APPROVE.filter(l => engines.includes(l.engine)).map(l => ({ part: l.part, entry: l.entry, field: l.field, engine: l.engine, result: 'weakened' as const, who: 'you', when: '2026-10-28T09:00:00Z', reason: `Approved in the Bowerloom app after reading this line: ${l.reason}`, earlier: false })),
+    approved: APPROVE.filter(l => engines.includes(l.engine)).map(l => ({ part: l.part, entry: l.entry, field: l.field, engine: l.engine, result: 'weakened' as const, when: '2026-10-28T09:00:00Z', reason: `Approved in the Bowerloom app after reading this line: ${l.reason}`, earlier: false })),
     changes,
     offers: [],
     ignored: [],
