@@ -71,6 +71,14 @@ test('the build turns on the safe fuses: no run-as-node, no NODE_OPTIONS, no ins
   assert.match(pkg.devDependencies['@electron/fuses']!, /^\d+\.\d+\.\d+$/);
 });
 
+test('the fuse check expects every fuse that the build sets, with the same on or off state, and Cookie Encryption is one of them', async () => {
+  const { EXPECTED_BY_NAME } = await import(`${join(DESKTOP, 'tools', 'check-fuses.mjs')}`) as { EXPECTED_BY_NAME: Record<string, boolean> };
+  const config = (pkg.build as { electronFuses: Record<string, boolean> }).electronFuses;
+  const asName = (key: string): string => key[0]!.toUpperCase() + key.slice(1);
+  assert.deepEqual(EXPECTED_BY_NAME, Object.fromEntries(Object.entries(config).map(([key, on]) => [asName(key), on])), 'a fuse set in package.json and missing from the check passes unchecked');
+  assert.equal(EXPECTED_BY_NAME.EnableCookieEncryption, true);
+});
+
 test('the built binary has those fuses (checked when a macOS build is present)', { skip: !existsSync(join(DESKTOP, 'release', 'mac-arm64', 'Bowerloom.app')) ? 'no macOS build in release/' : false }, () => {
   const r = spawnSync(process.execPath, [join(DESKTOP, 'tools', 'check-fuses.mjs')], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr + r.stdout);
