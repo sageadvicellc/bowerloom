@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { release, installAvailable, readerRelease, releasesUrl, docsPath } from '../src/release.ts';
 import { hero, whatItDoes, howItWorks, app, commandLine, engines, install, questions, installView, destinations } from '../src/content.ts';
 import { screenshotSlots } from '../src/screenshots.ts';
@@ -82,7 +83,8 @@ test('the app install steps match the approved order', () => {
 });
 
 test('the old 0.7 pages, anchors, and words are gone', async () => {
-  for (const name of ['LabsWorkflow.tsx', 'TutorialBuilder.tsx', 'labs-roles.ts', 'tutorial.ts', 'labs.css', 'tutorial.css', 'Workshop.tsx', 'StaticWorkshop.tsx', 'CinematicWorld.tsx']) {
+  for (const name of ['LabsWorkflow.tsx', 'TutorialBuilder.tsx', 'labs-roles.ts', 'tutorial.ts', 'labs.css', 'tutorial.css', 'Workshop.tsx', 'StaticWorkshop.tsx', 'CinematicWorld.tsx',
+    'AnimationSplash.tsx', 'CinematicIntro.tsx', 'cinematic-config.ts', 'cinematic-scrub.ts', 'fullpage-media.ts', 'fullpage-scroll.ts', 'intro-controller.ts', 'intro-media.ts', 'splash-playback.ts', 'intro.css']) {
     await assert.rejects(read('src/' + name), name);
   }
   for (const [name, text] of await sources()) {
@@ -92,9 +94,36 @@ test('the old 0.7 pages, anchors, and words are gone', async () => {
   assert.doesNotMatch(text, /\b(?:Relay|Roots|Vines|Workbench|Sagespec|Labs workflow|tutorial)\b/i);
 });
 
-test('no image text names a person', async () => {
-  for (const [name, text] of await sources()) assert.doesNotMatch(text, /Hanna/, name);
-  for (const path of ['public/fullpage-coverage/manifest.json', 'public/panel-units/manifest.json']) assert.doesNotMatch(await read(path), /Hanna/, path);
+// The owner's name stays out of this public file: the set holds the sha256 of each lowercased name, one word or two words joined by one space.
+// It is kept apart from the client-name set in the desktop and docs tests, which guards a different list.
+const OWNER_NAME_HASHES = new Set([
+  'b5679ea7383b47df1553f6c89e6d73d26aab70e5ea2b4344fed5c66553ef4a67',
+  '0bf4c90a3e7e57c697947017f622b24a5563af0ae973914ba9ebdcb903fa3ebd',
+]);
+const sha256 = text => createHash('sha256').update(text).digest('hex');
+/** The word positions where a listed name starts: a word, or a pair of words in a row. */
+const ownerNames = (text, hashes = OWNER_NAME_HASHES) => {
+  const words = text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+  const found = [];
+  for (let i = 0; i < words.length; i++) {
+    if (hashes.has(sha256(words[i]))) found.push(i);
+    if (i + 1 < words.length && hashes.has(sha256(`${words[i]} ${words[i + 1]}`))) found.push(i);
+  }
+  return found;
+};
+
+test('the owner-name check finds a listed word and a listed pair, and passes other text', () => {
+  const stand = new Set([sha256('example'), sha256('example co')]);
+  assert.deepEqual(ownerNames('Made by EXAMPLE Co, not by anyone else.', stand), [2, 2]);
+  assert.deepEqual(ownerNames('Made by Example, with a sample.', stand), [2]);
+  assert.deepEqual(ownerNames('Bowerloom installs into Claude Code and Codex.', stand), []);
+  assert.deepEqual(ownerNames('', stand), []);
+});
+
+test('no page source, copy, or image text names a person', async () => {
+  for (const [name, text] of await sources()) assert.deepEqual(ownerNames(text), [], name);
+  assert.deepEqual(ownerNames(JSON.stringify({ hero, whatItDoes, howItWorks, app, commandLine, engines, install, questions, screenshotSlots })), []);
+  assert.deepEqual(ownerNames(await read('public/panel-units/manifest.json')), [], 'public/panel-units/manifest.json');
 });
 
 test('every navigation link and hero link points at a section that exists', async () => {
@@ -105,8 +134,6 @@ test('every navigation link and hero link points at a section that exists', asyn
   const targets = [...(nav + app + sections).matchAll(/href="#([^"]+)"/g)].map(match => match[1]);
   assert.ok(targets.length >= 5);
   for (const target of targets) assert.ok(ids.has(target), `#${target} has a section`);
-  const regions = await read('src/cinematic-config.ts');
-  for (const match of regions.matchAll(/"selector": "#([^"]+)"/g)) assert.ok(ids.has(match[1]), `region #${match[1]}`);
 });
 
 test('every screenshot slot is used once, uses one placeholder, and names the screen it needs', async () => {

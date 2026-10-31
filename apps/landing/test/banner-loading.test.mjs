@@ -10,14 +10,11 @@ test('network failure and decode failure trigger exactly one fallback',async()=>
 test('replaced or unmounted banner ignores pending decode and cached callbacks',async()=>{const image=new Picture();image.complete=true;image.naturalWidth=1920;let done;image.decode=()=>new Promise(resolve=>done=resolve);const w=watch(image);await flush();w.dispose();done();await flush();assert.deepEqual(w.events,[]);const cached=watch(image);cached.dispose();await flush();assert.deepEqual(cached.events,[]);});
 test('new load becomes ready without animation dependency and disposal removes listeners',async()=>{const image=new Picture(),w=watch(image);image.naturalWidth=1920;image.dispatchEvent(new Event('load'));await flush();assert.deepEqual(w.events,['ready']);w.dispose();image.dispatchEvent(new Event('error'));assert.deepEqual(w.events,['ready']);});
 
-test('canonical banner alternatives are available and match the exact approved stills',async()=>{
-  const {readFile}=await import('node:fs/promises'),{createHash}=await import('node:crypto');
-  for(const [name,bytes,hash] of [['labs.jpg',142015,'dd0d210520c64fefa41c93f5ed6d01abe96daa017fd2bad8b7f3139b7ef1effb'],['hero.jpg',103248,'64a32adeaddd4bdac71fe4c235058394c8b0458c98d0b2fc170fc674e18bc84c']]){
-    const data=await readFile(new URL('../public/banner/'+name,import.meta.url));assert.equal(data.length,bytes);assert.equal(createHash('sha256').update(data).digest('hex'),hash);
-  }
+test('the banner uses the two approved stills, and the page mounts three companions', async () => {
+  const {readFile,readdir}=await import('node:fs/promises');
   const app=await readFile(new URL('../src/App.tsx',import.meta.url),'utf8');
-  assert.doesNotMatch(app,/cinematicJourney.openingPoster|animation-review/);
   assert.equal((app.match(/<SectionCompanion /g)||[]).length,3);
   const banner=await readFile(new URL('../src/HomepageBanner.tsx',import.meta.url),'utf8');
   assert.match(banner,/width=\{selected.width\} height=\{selected.height\}/);assert.match(banner,/\/banner\/lab-circuit-hero.png/);assert.match(banner,/\/banner\/lab-hero-source-1920.png/);
+  assert.deepEqual((await readdir(new URL('../public/banner/',import.meta.url))).sort(),['lab-circuit-hero.png','lab-hero-source-1920.png']);
 });

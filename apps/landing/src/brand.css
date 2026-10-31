@@ -94,11 +94,12 @@
   background: var(--brand-ground); color: var(--brand-ink); border-color: var(--brand-line);
 }
 :root .site-footer :is(p, .footer-note), :root .site-footer > div { font: 14px/1.65 var(--ui-font); color: var(--ui-muted); }
+:root .site-footer > div { color: var(--ui-text); }
 :root .site-footer .brand-wordmark { width: 204px; }
-:root .hero-description, :root .hero-note, :root .hero-footer, :root .scene-caption, :root .scene-bottom { color: var(--ui-muted); }
-:root .hero-copy h1, :root .section-heading h2 { color: var(--ui-text); }
-:root .scene-caption, :root .scene-bottom, :root .hero-footer, :root .hero-note { font-family: var(--ui-font); font-size: 14px; }
-:root .release-label > span, :root .status-dot { box-shadow: none; }
+:root .hero-description, :root .hero-note { color: var(--ui-muted); }
+:root .hero-copy h1 { color: var(--ui-text); }
+:root .hero-note { font-family: var(--ui-font); font-size: 14px; }
+:root .release-label > span { box-shadow: none; }
 @media (max-width: 1280px) and (min-width: 1101px) {
   :root .site-header { gap: 14px; padding-inline: 3%; }
   :root .site-header .brand-mascot { display: none; }

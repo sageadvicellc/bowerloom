@@ -6,7 +6,6 @@ import BrandIdentity from "./BrandIdentity";
 import ThemeControl from "./ThemeControl";
 import ThemeSplash from "./ThemeSplash";
 import { rememberThemeSplash, shouldShowThemeSplash, splashMediaFor, type SplashMedia } from "./theme-splash";
-import "./splash.css";
 import "./hero-parallax.css";
 import "./page.css";
 import HomepageBanner from "./HomepageBanner";

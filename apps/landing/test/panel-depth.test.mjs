@@ -70,3 +70,13 @@ test('mobile S4 foreground contains both grips but excludes the central chest st
   for(const width of [140,180]){const offset=width*420/640;assert.equal(offset/(width*960/640)*960,420);assert.ok(offset-(width*960/640)*.37>0);}
   assert.match(css,/\.companion-s4 \.companion-robot-front \{ clip-path: var\(--companion-grip\)/);
 });
+test('panel units contain exactly the two current Brand derivatives with retained provenance', async () => {
+  const manifest = JSON.parse(await readFile(new URL('../public/panel-units/manifest.json', import.meta.url)));
+  assert.equal(manifest.assets.length, 2); assert.equal(manifest.higgsfieldCredits, 0);
+  assert.equal(manifest.sourcePng.length, 2);
+  assert.deepEqual(manifest.assets.map(a => a.path).sort(), ['/panel-units/h4n-ochre-wave.webp', '/panel-units/s4-rose-peek.webp']);
+  for (const asset of manifest.assets) {
+    const data = await readFile(new URL('../public' + asset.path, import.meta.url));
+    assert.equal(data.length, asset.bytes); assert.equal(createHash('sha256').update(data).digest('hex'), asset.sha256);
+  }
+});
