@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DESKTOP, tempDir } from './support.js';
+import { buildFixture } from './fixtures-real/build.js';
 
 const NETWORK = /^(net|https?|http2|dns|dns\/promises|tls|dgram)$/;
 /** Modules of the bundle that import a network module, with what they import. A new entry here must be argued for. */
@@ -98,4 +99,16 @@ test('the denial also catches a NAMED import, which a patch of the default objec
   assert.match(r.stdout, /CAUGHT 10/, r.stderr); assert.equal(readFileSync(log, 'utf8').trim().split('\n').length, 10);
   // Without the sync step the named imports would be the real ones: the harness itself proves the sync is what catches them.
   assert.match(readFileSync(join(DESKTOP, 'tests', 'helpers', 'deny.mjs'), 'utf8'), /syncBuiltinESMExports\(\);\s*$/);
+});
+
+test('the reader of the person\'s setup, run on a made-up home folder with every process start and network call denied, finishes and records no hit', t => {
+  const fixture = buildFixture(); t.after(() => fixture.cleanup());
+  const log = join(tempDir(t, 'bowerloom-deny-log-'), 'hits.log');
+  const runner = join(DESKTOP, '.build', 'helpers', 'scan-run.mjs');
+  assert.equal(existsSync(runner), true, 'npm test builds tests/helpers/scan-run.ts first');
+  const r = spawnSync(process.execPath, ['--import', join(DESKTOP, 'tests', 'helpers', 'deny.mjs'), runner, fixture.home, fixture.work], { encoding: 'utf8', timeout: 60000, env: { PATH: process.env.PATH ?? '', DENY_LOG: log } });
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout) as { places: number; counts: { agents: number; skills: number; tools: number } };
+  assert.ok(out.places >= 3 && out.counts.skills > 0 && out.counts.agents > 0, `the reader really read the folders: ${r.stdout}`);
+  assert.equal(existsSync(log), false, 'no process was started and no connection was made');
 });
