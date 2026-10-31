@@ -15,10 +15,12 @@
  *  - knows notes folders (spec 6.9) only by the id it handed out, from its own notes chooser or from a source a harness records, and plans and writes
  *    "Start fresh" (the shipped kit's starter wiki) and version history for linked notes through the same gate, with packages/notes-source. Attaching
  *    notes to an agent, and adding the ready-made notes keeper from its kit (main/kit.ts), are save edits.
- * Nothing here writes a file itself. The handler takes its tools as arguments, so a test runs it on synthetic folders with no Electron.
+ * Nothing here writes a file itself, but for main's private copy of a tidy-up report (main/notes-report.ts), in a fresh private folder outside every folder
+ * of the person. The handler takes its tools as arguments, so a test runs it on synthetic folders with no Electron.
  */
 import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join } from 'node:path';
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import { NotesRefusal, applyGitInit, applyStarter, planGitInit, planStarter, readNotesSummary } from '../../../packages/notes-source/src/index.js';
@@ -62,7 +64,7 @@ import type {
   SaveRequest, SaveView, SaveWritten, SetAsideView, SetAsideWritten, VersionView,
 } from '../shared/engine/types.js';
 import { REPORT_MAIN_WORDS, REPORT_NONE, REPORT_NOT_SHOWN, REPORT_OPEN_FAILED, SAVE_EXECUTABLE_UNACKNOWLEDGED, SAVE_MAIN_WORDS } from '../shared/engine/types.js';
-import { checkedReport, newestReport } from './notes-report.js';
+import { checkedReport, createReportCopies, newestReport } from './notes-report.js';
 import { adoptRecoveryView, adoptionView, approveKey, approveLine, keepsFile, mergeRecoveryView, mergeView, projectView, recoveryView, removalView } from '../shared/engine/view.js';
 import { ASK, ShownPlans, approvalText, cancelled, canonical, hashOf, notTheShownPlan, openCancelled } from './engine-consent.js';
 import type { Ask, SaveMarks } from './engine-consent.js';
@@ -105,6 +107,11 @@ export interface EngineServiceDeps {
    * tidy-up report of a notes folder reaches it. Default: none, and the call is refused in words.
    */
   readonly openPath?: (path: string) => Promise<string>;
+  /**
+   * The folder that holds main's private copies of tidy-up reports, asked at each open. Main opens a copy, never the report itself (main/notes-report.ts).
+   * Default: the system temporary folder, which is the person's own on macOS.
+   */
+  readonly reportCopies?: () => string;
 }
 
 /** A call the service refuses before it reaches a package: the window gets only the short code. */
@@ -299,6 +306,8 @@ export interface EngineService {
   planNotesHistory(notesId: unknown): Promise<Answer<NotesHistoryPlanView>>;
   runNotesHistory(notesId: unknown, revision: unknown): Promise<Answer<NotesWritten>>;
   openNotesReport(notesId: unknown): Promise<Answer<ReportOpened>>;
+  /** Removes main's private copies of tidy-up reports. Main calls it at quit. Not a call of the window. */
+  clearReportCopies(): void;
 }
 
 /**
@@ -329,6 +338,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
   const shown = new Map<string, Map<string, Shown>>();
   const made = new Map<string, Map<string, FidelityApproval>>();
   const plans = new ShownPlans();
+  const reportCopies = createReportCopies(deps.reportCopies ?? tmpdir);
   let chain: Promise<unknown> = Promise.resolve();
   let count = 0;
 
@@ -1122,15 +1132,33 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
       if (!found.ok) return found;
       if (!(await deps.confirm(ASK.openReport(n.label, found.value.rel)))) return openCancelled();
       return answer(n, async () => {
-        // Checked once more after the dialog, right before it opens: the path is still a plain file of its own inside the notes folder.
+        // Checked once more after the dialog, right before it opens: the path is still a plain file of its own inside the notes folder. Then main copies that
+        // one file, through one open that follows no link, into a private folder of its own, and opens the copy: a swap after the check opens nothing else.
         const place = checkedReport(n.dir, found.value.rel);
         if (deps.openPath === undefined) throw new DefinitionError(REPORT_OPEN_FAILED, REPORT_MAIN_WORDS.REPORT_OPEN_FAILED);
+        const copy = reportCopies.copy(place);
         let failed: string;
-        try { failed = await deps.openPath(place.abs); } catch { failed = 'failed'; }
-        if (failed !== '') throw new DefinitionError(REPORT_OPEN_FAILED, REPORT_MAIN_WORDS.REPORT_OPEN_FAILED);
+        try { failed = await deps.openPath(copy); } catch (error) { failed = error instanceof Error && error.message !== '' ? error.message : 'The opener stopped with no reason.'; }
+        if (failed !== '') {
+          const reason = openFailure(failed, copy, n.scrub);
+          record({ kind: 'scenario', step: 'notes-report', outcome: 'refused', code: REPORT_OPEN_FAILED, reason });
+          throw new DefinitionError(REPORT_OPEN_FAILED, `${REPORT_MAIN_WORDS.REPORT_OPEN_FAILED} Your computer said: ${reason}`);
+        }
         record({ kind: 'scenario', step: 'notes-report', outcome: 'done' });
         return { path: n.scrub(place.rel) };
       });
     }),
+    clearReportCopies: () => reportCopies.clear(),
   };
+}
+
+/** The most characters of an opener's reason main shows and records. */
+const OPEN_REASON_LIMIT = 300;
+/**
+ * The reason an opener gave, made safe to show and record: one line, the copy's path named in words, the person's paths replaced, hidden characters written
+ * out, and at most OPEN_REASON_LIMIT characters.
+ */
+export function openFailure(reason: string, copy: string, scrub: Scrub): string {
+  const text = scrub(reason.split(copy).join('the copy of the report').replace(/[\r\n\t]+/g, ' ').trim());
+  return text.length > OPEN_REASON_LIMIT ? `${text.slice(0, OPEN_REASON_LIMIT).replace(/[\ud800-\udbff]$/, '')}...` : text === '' ? 'no reason given' : text;
 }

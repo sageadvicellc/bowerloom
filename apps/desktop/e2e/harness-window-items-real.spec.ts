@@ -1,8 +1,8 @@
 /**
  * The window items on real folders (Electron started with --prototype-v3-real, HOME and XDG_STATE_HOME pointed at a made-up folder). Main runs the packages;
  * its file opener is stubbed and keeps each path it was given; its write question is answered yes by the test and kept.
- *  - Items 1 and 2: a harness whose agents read a notes folder. The Notes panel's report line opens the newest tidy-up report through main, which passes the
- *    report's own path to its opener. "Stop using these notes" drafts a removal; the review names the agents that lose the notes; Save writes it, and the
+ *  - Items 1 and 2: a harness whose agents read a notes folder. The Notes panel's report line opens the newest tidy-up report through main, which copies the
+ *    report into a private folder of its own and passes that copy to its opener. "Stop using these notes" drafts a removal; the review names the agents that lose the notes; Save writes it, and the
  *    notes folder is byte for byte as it was.
  *  - Items 4 and 5: "Skills from another folder" copies a skill with a script from a second folder. The review marks the script as a file that can run and
  *    names its folder; Save waits for the acknowledgement; main's question names the script; the script is written with its execute bit.
@@ -12,7 +12,7 @@
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { createEngineService } from '../main/engine-service.js';
 import type { Answer, SaveEdit } from '../shared/engine/types.js';
 import { filesOf, sourceFolder, teamFolder } from '../tests/helpers-engine/folders.js';
@@ -73,7 +73,7 @@ test('items 1 and 2: the report line opens the newest tidy-up report through mai
   await start();
   const s = await openEdit(dir, 'team');
 
-  // 2. The report line is a button named by its date. Main asks first, then passes the report's own path to its opener.
+  // 2. The report line is a button named by its date. Main asks first, then passes a private copy of the report to its opener, never the report itself.
   const card = s.locator('[data-section="notes"] [data-card]');
   await expect(card).toHaveCount(1);
   const report = card.locator('[data-open-report]');
@@ -81,7 +81,13 @@ test('items 1 and 2: the report line opens the newest tidy-up report through mai
   await expect(report).toHaveAccessibleName('Open the tidy-up report of 2026-10-27');
   await report.click();
   await expect(s.locator('[data-report-opened]')).toHaveAttribute('data-report-opened', 'reports/2026-10-27-refine.md');
-  expect(await h.opened()).toEqual([join(realpathSync(notes), 'reports', '2026-10-27-refine.md')]);
+  const opened = await h.opened();
+  expect(opened).toHaveLength(1);
+  expect(basename(opened[0]!)).toBe('report.md');
+  expect(opened[0]!.startsWith(realpathSync(notes))).toBe(false);
+  expect(readFileSync(opened[0]!, 'utf8')).toBe('# Report\n');
+  expect(statSync(opened[0]!).mode & 0o777).toBe(0o600);
+  expect(statSync(dirname(opened[0]!)).mode & 0o777).toBe(0o700);
   expect((await h.asked()).at(-1)!.message).toBe('Open reports/2026-10-27-refine.md from ~/Documents/notes?');
   await expect(s).not.toContainText(home);
 

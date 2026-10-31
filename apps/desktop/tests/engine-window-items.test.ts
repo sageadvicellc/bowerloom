@@ -6,10 +6,11 @@
 // refusals with words. Real packages on synthetic folders.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { chmodSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { createEngineService, EngineCallRefusal } from '../main/engine-service.js';
 import type { EngineService } from '../main/engine-service.js';
+import { ASK } from '../main/engine-consent.js';
 import type { Ask } from '../main/engine-consent.js';
 import type { Answer, FolderInfo, NotesView, SaveEdit } from '../shared/engine/types.js';
 import { ENGINE_ARITY, ENGINE_CALLS, REPORT_MAIN_WORDS, SAVE_MAIN_WORDS } from '../shared/engine/types.js';
@@ -21,20 +22,36 @@ const value = <T>(a: Answer<T> | null): T => { assert.ok(a !== null, 'an answer'
 const refusal = <T>(a: Answer<T>): { code: string; message: string; paths: readonly string[] } => { assert.equal(a.ok, false, 'a refusal'); return (a as Extract<Answer<T>, { ok: false }>).refusal; };
 
 interface Setup {
-  home: string; service: EngineService; asks: Ask[]; opened: string[];
-  say(yes: boolean): void; pick(dir: string | null): void; pickNotes(dir: string | null): void; openAnswer(text: string): void;
+  home: string; service: EngineService; asks: Ask[]; opened: string[]; copies: string; seen: { path: string; text: string; mode: number; dirMode: number }[];
+  records: Readonly<Record<string, unknown>>[];
+  say(yes: boolean): void; pick(dir: string | null): void; pickNotes(dir: string | null): void; openAnswer(text: string): void; openThrows(error: Error | null): void;
 }
 function setup(t: test.TestContext, { opener = true }: { opener?: boolean } = {}): Setup {
   const home = homeFolder(tempDir(t, 'bowerloom-items-'));
-  let next: string | null = null, notes: string | null = null, yes = true, openText = '';
-  const asks: Ask[] = [], opened: string[] = [];
+  const copies = join(home, '.copies');
+  mkdirSync(copies);
+  let next: string | null = null, notes: string | null = null, yes = true, openText = '', openError: Error | null = null;
+  const asks: Ask[] = [], opened: string[] = [], seen: Setup['seen'] = [], records: Readonly<Record<string, unknown>>[] = [];
   const service = createEngineService({
     home, stateRoot: join(home, '.local', 'state', 'bowerloom'), who: 'tester', now: () => WHEN,
     chooseFolder: async () => next, confirm: async ask => { asks.push(ask); return yes; }, chooseNotesFolder: async () => notes,
-    ...(opener ? { openPath: async (p: string) => { opened.push(p); return openText; } } : {}),
+    record: input => { records.push(input); return true; }, reportCopies: () => copies,
+    ...(opener ? {
+      openPath: async (p: string) => {
+        opened.push(p);
+        seen.push({ path: p, text: readFileSync(p, 'utf8'), mode: statSync(p).mode & 0o777, dirMode: statSync(dirname(p)).mode & 0o777 });
+        if (openError !== null) throw openError;
+        return openText;
+      },
+    } : {}),
   });
-  return { home, service, asks, opened, say: v => { yes = v; }, pick: d => { next = d; }, pickNotes: d => { notes = d; }, openAnswer: v => { openText = v; } };
+  return {
+    home, service, asks, opened, copies, seen, records, say: v => { yes = v; }, pick: d => { next = d; }, pickNotes: d => { notes = d; }, openAnswer: v => { openText = v; },
+    openThrows: e => { openError = e; },
+  };
 }
+/** True when `path` is main's private copy of a report: report.md in a folder of its own right under the copies folder. */
+const isCopy = (s: Setup, path: string): boolean => basename(path) === 'report.md' && dirname(dirname(path)) === s.copies;
 async function choose(s: Setup, dir: string): Promise<FolderInfo> { s.pick(dir); return value(await s.service.chooseFolder()); }
 async function chooseNotes(s: Setup, dir: string): Promise<NotesView> { s.pickNotes(dir); return value(await s.service.chooseNotesFolder('use')); }
 /** A notes folder: two pages and two tidy-up reports, the newer one dated 2026-10-27. */
@@ -54,14 +71,16 @@ test('openNotesReport is a listed call with one argument, so the preload and the
   assert.equal(ENGINE_ARITY.openNotesReport, 1);
 });
 
-test('the tidy-up report: main finds the newest report itself, asks in its own dialog, and opens that file; the window gets its relative path only', async t => {
+test('the tidy-up report: main finds the newest report itself, asks in its own dialog, and opens a private copy of it; the window gets its relative path only', async t => {
   const s = setup(t);
   const dir = myNotes(s.home), before = filesOf(dir);
   const n = await chooseNotes(s, dir);
   assert.deepEqual(n.latestReport, { date: '2026-10-27', path: 'reports/2026-10-27-refine.md' });
   const r = value(await s.service.openNotesReport(n.id));
   assert.deepEqual(r, { path: 'reports/2026-10-27-refine.md' });
-  assert.deepEqual(s.opened, [join(dir, 'reports', '2026-10-27-refine.md')]);
+  assert.equal(s.opened.length, 1);
+  assert.ok(isCopy(s, s.opened[0]!), s.opened[0]);
+  assert.deepEqual(s.seen.map(o => [o.text, o.mode, o.dirMode]), [['# Report\n', 0o600, 0o700]], 'the copy holds the bytes of the report, private to the person');
   assert.equal(s.asks.length, 1);
   assert.deepEqual(s.asks[0], {
     title: 'Open the tidy-up report', message: 'Open reports/2026-10-27-refine.md from ~/Documents/notes?',
@@ -95,7 +114,9 @@ test('the tidy-up report: only the report main showed last opens; a newer one wr
   const again = value(await s.service.notesSummary(n.id));
   assert.equal(again.latestReport?.path, 'reports/2026-10-29-refine.md');
   assert.deepEqual(value(await s.service.openNotesReport(n.id)), { path: 'reports/2026-10-29-refine.md' });
-  assert.deepEqual(s.opened, [join(dir, 'reports', '2026-10-29-refine.md')]);
+  assert.equal(s.opened.length, 1);
+  assert.ok(isCopy(s, s.opened[0]!));
+  assert.equal(s.seen[0]!.text, '# Newer\n');
 });
 
 test('the tidy-up report: no report, a closed dialog, and an opener that fails are each a refusal in words', async t => {
@@ -117,8 +138,90 @@ test('the tidy-up report: no report, a closed dialog, and an opener that fails a
   s.openAnswer('No application knows how to open this file.');
   const failed = refusal(await s.service.openNotesReport(n.id));
   assert.equal(failed.code, 'REPORT_OPEN_FAILED');
-  assert.equal(failed.message, REPORT_MAIN_WORDS.REPORT_OPEN_FAILED);
+  assert.ok(failed.message.startsWith(REPORT_MAIN_WORDS.REPORT_OPEN_FAILED), failed.message);
   assert.equal(s.opened.length, 1);
+});
+
+test('an openPath failure is recorded with its reason and shown in words', async t => {
+  const s = setup(t);
+  const n = await chooseNotes(s, myNotes(s.home));
+  s.records.length = 0;
+  s.openAnswer('No application knows how to open this file.');
+  const said = refusal(await s.service.openNotesReport(n.id));
+  assert.equal(said.code, 'REPORT_OPEN_FAILED');
+  assert.equal(said.message, `${REPORT_MAIN_WORDS.REPORT_OPEN_FAILED} Your computer said: No application knows how to open this file.`);
+  assert.deepEqual(s.records, [{ source: 'app', kind: 'scenario', step: 'notes-report', outcome: 'refused', code: 'REPORT_OPEN_FAILED', reason: 'No application knows how to open this file.' }]);
+
+  // An opener that throws: its message is the reason. A reason that names the copy, or hides text, is shown with the copy named in words and the hidden
+  // characters written out, and never with a path of the person.
+  s.records.length = 0;
+  s.openAnswer('');
+  s.openThrows(new Error(`Cannot open ${join(s.copies, 'x')}‮ now`));
+  const thrown = refusal(await s.service.openNotesReport(n.id));
+  assert.equal(thrown.code, 'REPORT_OPEN_FAILED');
+  assert.ok(thrown.message.startsWith(`${REPORT_MAIN_WORDS.REPORT_OPEN_FAILED} Your computer said: Cannot open `), thrown.message);
+  assert.ok(thrown.message.includes('[U+202E]'), thrown.message);
+  noHome(s, thrown);
+  assert.equal(s.records.length, 1);
+  assert.equal(s.records[0]!.code, 'REPORT_OPEN_FAILED');
+  assert.equal(typeof s.records[0]!.reason, 'string');
+  assert.equal(String(s.records[0]!.reason).includes(s.home), false);
+});
+
+test('a swap to a link after the check opens nothing outside the copy: main opens its own copy, and the copy keeps the bytes it read', async t => {
+  const s = setup(t);
+  const dir = myNotes(s.home), other = join(s.home, 'Documents', 'elsewhere');
+  mkdirSync(other, { recursive: true }); writeFileSync(join(other, 'run.md'), '#!/bin/sh\necho ran\n', { mode: 0o755 });
+  const n = await chooseNotes(s, dir);
+  value(await s.service.openNotesReport(n.id));
+  const report = join(dir, 'reports', '2026-10-27-refine.md');
+  // The report swapped for a link to something that runs, once main has copied it: what was opened is still the copy, with the report's bytes.
+  rmSync(report); symlinkSync(join(other, 'run.md'), report);
+  assert.equal(s.opened.length, 1);
+  assert.ok(isCopy(s, s.opened[0]!));
+  assert.equal(readFileSync(s.opened[0]!, 'utf8'), '# Report\n');
+  assert.equal(s.opened.includes(report), false);
+  assert.equal(s.opened.includes(join(other, 'run.md')), false);
+});
+
+test('an executable .md report is refused, and nothing opens', async t => {
+  const s = setup(t);
+  const dir = myNotes(s.home);
+  const n = await chooseNotes(s, dir);
+  chmodSync(join(dir, 'reports', '2026-10-27-refine.md'), 0o755);
+  const r = refusal(await s.service.openNotesReport(n.id));
+  assert.equal(r.code, 'REPORT_UNSAFE');
+  assert.deepEqual(s.opened, []);
+  assert.deepEqual(s.asks, [], 'no dialog either');
+});
+
+test('a right-to-left override in the report name is refused before the dialog, and nothing opens', async t => {
+  const s = setup(t);
+  const dir = myNotes(s.home);
+  writeFileSync(join(dir, 'reports', '2026-10-29-‮dm.etoN.md'), '# Report\n');
+  const n = await chooseNotes(s, dir);
+  assert.equal(n.latestReport?.date, '2026-10-29');
+  const r = refusal(await s.service.openNotesReport(n.id));
+  assert.equal(r.code, 'REPORT_UNSAFE');
+  assert.deepEqual(s.opened, []);
+  assert.deepEqual(s.asks, [], 'no dialog either');
+});
+
+test('the dialog shows a report name through visible(): a hidden character is written out', () => {
+  assert.equal(ASK.openReport('~/Documents/notes', 'reports/2026-10-29-‮dm.etoN.md').message, 'Open reports/2026-10-29-[U+202E]dm.etoN.md from ~/Documents/notes?');
+  assert.equal(ASK.openReport('~/Documents/no​tes', 'reports/a.md').message, 'Open reports/a.md from ~/Documents/no[U+200B]tes?');
+});
+
+test('the private copy of a report goes on the next open, and every copy goes when main clears them at quit', async t => {
+  const s = setup(t);
+  const n = await chooseNotes(s, myNotes(s.home));
+  value(await s.service.openNotesReport(n.id));
+  value(await s.service.openNotesReport(n.id));
+  assert.equal(s.opened.length, 2);
+  assert.equal(existsSync(dirname(s.opened[0]!)), false, 'the first copy went on the next open');
+  assert.equal(existsSync(s.opened[1]!), true);
+  s.service.clearReportCopies();
+  assert.deepEqual(readdirSync(s.copies), []);
 });
 
 test('the tidy-up report: with no opener in main, it is refused in words and nothing runs', async t => {
@@ -165,7 +268,7 @@ test('the tidy-up report of a source a harness records opens too: its id is one 
   const opened: string[] = [];
   const later = createEngineService({
     home: s.home, stateRoot: join(s.home, '.local', 'state', 'bowerloom'), who: 'tester', now: () => WHEN, chooseFolder: async () => dir, confirm: async () => true,
-    openPath: async p => { opened.push(p); return ''; },
+    openPath: async p => { opened.push(p); return ''; }, reportCopies: () => s.copies,
   });
   const g = value(await later.chooseFolder());
   const source = value(await later.planSave(g.id, [])).definition.sources[0]!;
@@ -174,7 +277,9 @@ test('the tidy-up report of a source a harness records opens too: its id is one 
   assert.equal(refusal(await later.openNotesReport(source.notesId)).code, 'REPORT_NOT_SHOWN');
   assert.equal(value(await later.notesSummary(source.notesId)).latestReport?.path, 'reports/2026-10-27-refine.md');
   assert.deepEqual(value(await later.openNotesReport(source.notesId)), { path: 'reports/2026-10-27-refine.md' });
-  assert.deepEqual(opened, [join(notes, 'reports', '2026-10-27-refine.md')]);
+  assert.equal(opened.length, 1);
+  assert.ok(isCopy(s, opened[0]!), opened[0]);
+  assert.equal(readFileSync(opened[0]!, 'utf8'), '# Report\n');
 });
 
 // ---- item 1: stop using notes ----------------------------------------------------------------------------------------------------

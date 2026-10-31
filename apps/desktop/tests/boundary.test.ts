@@ -97,7 +97,7 @@ test('the viewer\'s source writes a file in only a short list of modules, and ea
   const all = [...sourceFiles('main'), ...sourceFiles('shared'), ...sourceFiles('preload'), ...sourceFiles('renderer')];
   const writers = all.filter(f => WRITE.test(strip(readFileSync(join(DESKTOP, f), 'utf8'))) || (/^renderer\//.test(f) && /node:fs/.test(readFileSync(join(DESKTOP, f), 'utf8')))).sort();
   // The usage summary is the one file the person names: main writes it only to the path the native save dialog returned, for its owner only.
-  const allowed = Object.keys(WRITERS).concat(['main/sandbox.ts', 'main/sketches.ts', 'main/diagnostics-dialogs.ts']);
+  const allowed = Object.keys(WRITERS).concat(['main/sandbox.ts', 'main/sketches.ts', 'main/diagnostics-dialogs.ts', 'main/notes-report.ts']);
   for (const w of writers) assert.ok(allowed.includes(w), `${w} writes a file but is not in the list`);
   for (const [file, need] of Object.entries(WRITERS)) assert.match(strip(readFileSync(join(DESKTOP, file), 'utf8')), need, `${file} must ask the boundary before it writes`);
   for (const file of ['main/sandbox.ts', 'main/sketches.ts']) { try { assert.match(strip(readFileSync(join(DESKTOP, file), 'utf8')), /assert(App)?Writable\(/, file); } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; } }
@@ -106,6 +106,15 @@ test('the viewer\'s source writes a file in only a short list of modules, and ea
   assert.match(saves, /writeFileSync\(path, text, \{ mode: 0o600 \}\)/, 'and a new file is for its owner only');
   assert.equal((saves.match(/writeFileSync\(/g) ?? []).length, 1, 'one write call');
   assert.equal(all.some(f => f.startsWith('main/boundary')), true);
+  // The private copy of a tidy-up report is written only into a fresh folder main makes itself (mkdtemp, never a path from elsewhere), as one new file that
+  // follows no link, and only the folders main made are removed.
+  const copies = strip(readFileSync(join(DESKTOP, 'main/notes-report.ts'), 'utf8'));
+  assert.equal((copies.match(/mkdtempSync\(/g) ?? []).length, 1);
+  assert.match(copies, /const dir = mkdtempSync\(join\(root\(\), REPORT_COPY_PREFIX\)\);\s*made\.push\(dir\);/);
+  assert.match(copies, /openSync\(path, constants\.O_WRONLY \| constants\.O_CREAT \| constants\.O_EXCL \| constants\.O_NOFOLLOW, 0o600\)/);
+  assert.match(copies, /for \(const dir of made\.splice\(0\)\) \{\s*try \{ rmSync\(dir,/);
+  assert.equal((copies.match(/rmSync\(/g) ?? []).length, 1);
+  assert.doesNotMatch(copies, /\b(writeFileSync|renameSync|unlinkSync|copyFileSync|cpSync|symlinkSync|chmodSync)\b/);
 });
 
 test('in packages/diagnostics only src/log.ts writes a file, and it writes only below the event log folder', () => {

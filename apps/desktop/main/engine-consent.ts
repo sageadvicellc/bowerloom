@@ -10,6 +10,7 @@ import { canonicalJson } from '../../../packages/contracts/src/index.js';
 import type { AdoptionPlan } from '../../../packages/adoption/src/index.js';
 import { CANCELLED, NOT_THE_PLAN_SHOWN } from '../shared/engine/types.js';
 import type { Refusal } from '../shared/engine/types.js';
+import { visible } from '../shared/engine/scrub.js';
 
 /** The kinds of plan a write can name. */
 export type PlanKind = 'adoption' | 'projection' | 'removal' | 'recovery' | 'adoption-recovery' | 'merge' | 'save' | 'restore' | 'set-aside' | 'notes-starter' | 'notes-history';
@@ -69,8 +70,8 @@ export const ASK = Object.freeze({
   save: (label: string, n: number, rev: string, marks: SaveMarks = {}): Ask => ({ title: 'Save the harness', message: `Change ${files(n)} in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. ${marksLine(marks)}Bowerloom keeps a save point, so you can go back. Installed files do not change until you install. ${again}` }),
   /** "Go back": a save whose target is a stored save point. */
   restore: (label: string, n: number, version: string, rev: string, marks: SaveMarks = {}): Ask => ({ title: 'Go back to a save point', message: `Go back to ${version} and change ${files(n)} in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. ${marksLine(marks)}Bowerloom keeps the harness as it is now as a save point too. Installed files do not change until you install. ${again}` }),
-  /** Opens the newest tidy-up report of a notes folder in the app the computer uses for it. Nothing is written. */
-  openReport: (label: string, path: string): Ask => ({ title: 'Open the tidy-up report', message: `Open ${path} from ${label}?`, detail: 'It opens in the app your computer uses for .md files. Bowerloom changes nothing in the notes folder.', button: 'Open' }),
+  /** Opens a private copy of the newest tidy-up report of a notes folder in the app the computer uses for it. Nothing in the notes folder is written. */
+  openReport: (label: string, path: string): Ask => ({ title: 'Open the tidy-up report', message: `Open ${visible(path)} from ${visible(label)}?`, detail: 'It opens in the app your computer uses for .md files. Bowerloom changes nothing in the notes folder.', button: 'Open' }),
   /** Sets a folder's old save points aside: the record is renamed in Bowerloom's private folder; nothing in the folder changes and nothing is deleted. */
   setAside: (label: string, rev: string): Ask => ({ title: 'Set the old save points aside', message: `Set the old save points of ${label} aside and start a new record?`, detail: `From plan ${rev.slice(0, 8)}. Bowerloom renames its record to a dated name in its private folder and deletes nothing. Go back then starts from the next save. ${again}` }),
   /** A stopped save is taken back; a save that finished and only left its note (`done`) is kept, and changes no file. */
