@@ -35,7 +35,8 @@ Every plan reads only. Every apply plans again and refuses `NOTES_STALE` unless 
 - The environment holds nothing of the caller's: no `HOME`, `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_NOSYSTEM=1`, `GIT_NO_LAZY_FETCH=1`, `GIT_PROTOCOL_FROM_USER=0`, literal pathspecs, and a minimal `PATH`. Every form but init pins `GIT_DIR` and `GIT_WORK_TREE` to the folder.
 - Before every form but init, git lists the key names of the repository's own config, with includes off (`config --local --no-includes --name-only --list -z`). When that config sets `extensions.worktreeConfig` and the worktree config file is there, its key names are listed and checked too (`config --worktree ...`).
 - The check is an allowlist of key families. Every key outside it is refused `NOTES_GIT_CONFIG`, and no other command runs. The summary then shows the history as `refused`. The allowed families:
-  - `core.*`, except `sshCommand`, `gitProxy`, `fsmonitor`, `hooksPath`, `pager`, `askPass`, `alternateRefsCommand`, `editor`, `worktree`, `excludesFile`, and `attributesFile`
+  - `core.*`, except `sshCommand`, `gitProxy`, `fsmonitor`, `pager`, `askPass`, `alternateRefsCommand`, `editor`, `worktree`, `excludesFile`, and `attributesFile`. `core.hooksPath` is allowed, because the command line's `core.hooksPath=/dev/null` outranks it, so no hook of the repository runs
+  - `lfs.repositoryFormatVersion`, git-lfs's version marker, and no other `lfs.*` key
   - a remote's `url`, `pushurl`, `fetch`, and `tagOpt`
   - `branch.*`, `user.*`, `index.*`, `init.*`, `pack.*`, `pull.*`, `push.*`, `fetch.*`, `color.*`, `advice.*`, and `rerere.*`
   - `extensions.worktreeConfig` and `extensions.objectFormat`

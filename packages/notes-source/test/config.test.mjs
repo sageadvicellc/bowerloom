@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { GIT_HARDENING, gitEnvironment, riskyConfigKey, runGit } from '../../../dist/packages/notes-source/src/git.js';
+import { COMMIT_MESSAGES, GIT_HARDENING, gitEnvironment, riskyConfigKey, runGit } from '../../../dist/packages/notes-source/src/git.js';
 import { readNotesSummary } from '../../../dist/packages/notes-source/src/index.js';
 import { execFileSync } from 'node:child_process';
 import { GIT, commitAt, needsGit, ownGit, put, refusal, script, tempDir } from './fixture.mjs';
@@ -133,6 +133,7 @@ test('the config check runs under the same hardening and with no include followe
 test('the key names alone: only the allowed families pass, and every other key is refused', () => {
   const allowed = [
     'core.repositoryformatversion', 'core.filemode', 'core.bare', 'core.logallrefupdates', 'core.ignorecase', 'core.precomposeunicode', 'core.autocrlf', 'core.symlinks',
+    'core.hookspath', 'lfs.repositoryformatversion', 'LFS.RepositoryFormatVersion',
     'remote.origin.url', 'remote.origin.pushurl', 'remote.origin.fetch', 'remote.up.stream.url', 'branch.main.remote', 'branch.main.merge', 'branch.feature/x.y.rebase',
     'branch.autosetupmerge', 'extensions.worktreeconfig', 'extensions.objectformat', 'user.name', 'user.email', 'user.signingkey', 'gc.auto', 'pack.threads',
     'index.version', 'init.defaultbranch', 'pull.rebase', 'push.default', 'fetch.prune', 'merge.ff', 'merge.conflictstyle', 'merge.ours.name', 'color.ui',
@@ -143,13 +144,15 @@ test('the key names alone: only the allowed families pass, and every other key i
     // A filter or diff driver runs a program on file content, even for status.
     'filter.x.process', 'filter.x.clean', 'filter.x.smudge', 'filter.lfs.required', 'diff.x.textconv', 'diff.external',
     // The core keys that name a program, a hook folder, or another place to read.
-    'core.sshcommand', 'core.gitproxy', 'core.fsmonitor', 'core.hookspath', 'core.pager', 'core.askpass', 'core.alternaterefscommand', 'core.editor', 'core.worktree',
+    'core.sshcommand', 'core.gitproxy', 'core.fsmonitor', 'core.pager', 'core.askpass', 'core.alternaterefscommand', 'core.editor', 'core.worktree',
     'core.excludesfile', 'core.attributesfile', 'core.x.y',
     // Keys inside an allowed family that start a program or read a path.
     'merge.x.driver', 'submodule.lib.update', 'log.mailmap', 'log.showsignature', 'gc.recentobjectshook', 'status.submodulesummary',
     // Families that are not on the list.
     'mailmap.file', 'mailmap.blob', 'gpg.program', 'commit.template', 'commit.gpgsign', 'credential.helper', 'http.proxy', 'alias.x', 'pager.log', 'sequence.editor',
-    'remote.origin.prune', 'remote.origin.proxy', 'remote.origin.mirror', 'notes.displayref', 'lfs.url', 'maintenance.auto', 'trailer.x.command',
+    'remote.origin.prune', 'remote.origin.proxy', 'remote.origin.mirror', 'notes.displayref', 'maintenance.auto', 'trailer.x.command',
+    // Only the version marker of git-lfs passes; every other lfs key stays refused.
+    'lfs.url', 'lfs.standalonetransferagent', 'lfs.customtransfer.x.path', 'lfs.extension.x.clean', 'lfs.repositoryformatversion.x', 'lfs.repositoryformatversionx',
     '', 'core', 'remote.url', 'branch',
   ];
   for (const key of refused) assert.equal(riskyConfigKey(key), true, JSON.stringify(key));
@@ -198,4 +201,60 @@ test('a typical clone, with the default core keys, a remote, branch keys, and us
   assert.equal(await runGit(GIT, dir, { op: 'status' }), '');
   const s = await readNotesSummary(dir);
   assert.deepEqual([s.history, s.lastCommitAt], ['git', '2024-01-01T00:00:00.000Z']);
+});
+
+/** Every hook git can run for init, add, commit, status, and log, and a few more. Each one leaves a mark and fails, so a hook that ran also stops its command. */
+const HOOKS = ['pre-commit', 'prepare-commit-msg', 'commit-msg', 'post-commit', 'reference-transaction', 'post-index-change', 'post-checkout', 'pre-auto-gc',
+  'post-rewrite', 'fsmonitor-watchman', 'pre-merge-commit', 'post-merge'];
+
+test('a hooks path set by the repository passes the check, and no hook runs in any form Bowerloom runs', { skip: needsGit }, async t => {
+  const dir = tempDir(t), hooks = tempDir(t);
+  const marker = path.join(hooks, 'ran');
+  for (const name of HOOKS) script(hooks, name, `echo "$0" >> "${marker}"; exit 1`);
+  put(dir, 'index.md');
+  ownGit(dir, ['init', '-q']);
+  ownGit(dir, ['config', 'core.hooksPath', hooks]);
+  await runGit(GIT, dir, { op: 'init' });
+  await runGit(GIT, dir, { op: 'add', paths: ['index.md'] });
+  await runGit(GIT, dir, { op: 'commit', message: COMMIT_MESSAGES.history });
+  assert.equal(await runGit(GIT, dir, { op: 'status' }), '');
+  assert.match(await runGit(GIT, dir, { op: 'log-time' }), /^\d+\n$/);
+  assert.equal((await readNotesSummary(dir)).history, 'git');
+  assert.equal(ownGit(dir, ['log', '-1', '--format=%s']), COMMIT_MESSAGES.history);
+  assert.equal(fs.existsSync(marker), false, 'no hook from the repository\'s hooks path ran');
+  // The fixture is live: the test's own commit, with no override, runs the repository's pre-commit hook, which stops it.
+  put(dir, 'pages/a.md');
+  ownGit(dir, ['add', '--', 'pages/a.md']);
+  assert.throws(() => ownGit(dir, ['-c', 'user.name=Test', '-c', 'user.email=test@localhost', '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'two']));
+  assert.equal(fs.existsSync(marker), true, 'the test\'s own commit ran a hook, so the check above is not empty');
+});
+
+/** The local config keys, apart from branch keys, of a real wiki repository: a clone with a hooks path, worktreeConfig, and git-lfs's version marker. */
+const REAL_KEYS = [
+  ['core.bare', 'false'], ['core.filemode', 'true'], ['core.hookspath', '.githooks'], ['core.ignorecase', 'true'], ['core.logallrefupdates', 'true'],
+  ['core.precomposeunicode', 'true'], ['core.repositoryformatversion', '1'], ['extensions.worktreeconfig', 'true'], ['lfs.repositoryformatversion', '0'],
+  ['remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*'], ['remote.origin.url', 'ssh://example.invalid/repo'], ['user.email', 'test@localhost'], ['user.name', 'Test'],
+];
+
+test('a repository with exactly the key set of a real wiki, with a remote, reads fine, as its own wiki and as a larger repository', { skip: needsGit }, async t => {
+  const root = tempDir(t), wiki = path.join(root, 'knowledge-base');
+  put(root, 'README.md'); put(wiki, 'index.md'); put(wiki, 'pages/a.md');
+  const marker = path.join(tempDir(t), 'ran');
+  fs.mkdirSync(path.join(root, '.githooks'));
+  script(path.join(root, '.githooks'), 'pre-commit', `echo "$0" >> "${marker}"; exit 1`);
+  ownGit(root, ['init', '-q']);
+  for (const [k, v] of REAL_KEYS) ownGit(root, ['config', k, v]);
+  ownGit(root, ['config', 'branch.main.remote', 'origin']);
+  ownGit(root, ['config', 'branch.main.merge', 'refs/heads/main']);
+  const keys = ownGit(root, ['config', '--local', '--name-only', '--list']).split('\n').filter(k => !k.startsWith('branch.'));
+  assert.deepEqual([...new Set(keys)].sort(), REAL_KEYS.map(([k]) => k).sort(), 'the repository holds exactly the key set');
+  commitAt(root, 'one', '2024-01-01T00:00:00Z');
+  assert.equal(await runGit(GIT, root, { op: 'status' }), '');
+  const own = await readNotesSummary(root);
+  assert.deepEqual([own.history, own.lastCommitAt], ['git', '2024-01-01T00:00:00.000Z']);
+  const inner = await readNotesSummary(wiki);
+  assert.deepEqual([inner.history, inner.lastCommitAt], ['parent', '2024-01-01T00:00:00.000Z']);
+  assert.equal(fs.existsSync(marker), false, 'the repository\'s own hooks never ran');
+  ownGit(root, ['config', 'lfs.url', 'ssh://example.invalid/lfs']);
+  assert.equal((await readNotesSummary(wiki)).history, 'refused', 'any other lfs key is still refused');
 });

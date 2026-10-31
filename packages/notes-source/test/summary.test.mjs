@@ -147,7 +147,7 @@ test('a linked repository\'s own config cannot make the summary run a program, e
   const commit = execFileSync(GIT.path, ['hash-object', '-t', 'commit', '-w', '--stdin'], { cwd: dir, env, input: body }).toString().trim();
   ownGit(dir, ['update-ref', 'HEAD', commit]);
   assert.equal((await readNotesSummary(dir)).lastCommitAt, '2026-01-01T00:00:00.000Z', 'the signed commit reads with a plain config');
-  const keys = [['log.showSignature', 'true'], ['gpg.program', hostile], ['gpg.openpgp.program', hostile], ['core.fsmonitor', hostile], ['core.pager', hostile], ['core.hooksPath', bin]];
+  const keys = [['log.showSignature', 'true'], ['gpg.program', hostile], ['gpg.openpgp.program', hostile], ['core.fsmonitor', hostile], ['core.pager', hostile]];
   for (const [k, v] of keys) {
     ownGit(dir, ['config', k, v]);
     const s = await readNotesSummary(dir);

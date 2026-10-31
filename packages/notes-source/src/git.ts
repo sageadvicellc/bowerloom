@@ -248,17 +248,20 @@ const ALLOWED_KEYS: readonly RegExp[] = Object.freeze([
   /^remote\..+\.(?:url|pushurl|fetch|tagopt)$/,
   /^branch\..+$/,
   /^extensions\.(?:worktreeconfig|objectformat)$/,
+  // git-lfs's version marker only. Every other lfs key stays refused, and so does every filter, which is the only way git starts git-lfs.
+  /^lfs\.repositoryformatversion$/,
   /^(?:user|gc|pack|index|init|pull|push|fetch|merge|color|advice|status|log|rerere|submodule)\..+$/,
 ]);
 
 /**
  * The keys inside an allowed family that are refused all the same. Each one names a program (an ssh command or proxy, an fsmonitor, a pager, an askpass
- * or editor program, an alternate refs command, a merge driver, a gc hook, a signature check through gpg), a hook folder, another work tree, or a file
- * outside the repository to read (an excludes or attributes file, a mailmap). A submodule's `update` may be a `!` command; only key names are read, never a
- * value, so every `update` is refused. A submodule summary starts git inside a submodule, whose own config is never checked.
+ * or editor program, an alternate refs command, a merge driver, a gc hook, a signature check through gpg), another work tree, or a file outside the
+ * repository to read (an excludes or attributes file, a mailmap). A submodule's `update` may be a `!` command; only key names are read, never a value, so
+ * every `update` is refused. A submodule summary starts git inside a submodule, whose own config is never checked. `core.hooksPath` is allowed, since many
+ * repositories set one: `-c core.hooksPath=/dev/null` in GIT_HARDENING outranks it on every call, so no hook of the repository ever runs.
  */
 const UNSAFE_KEYS: readonly RegExp[] = Object.freeze([
-  /^core\.(?:sshcommand|gitproxy|fsmonitor|hookspath|pager|askpass|alternaterefscommand|editor|worktree|excludesfile|attributesfile)$/,
+  /^core\.(?:sshcommand|gitproxy|fsmonitor|pager|askpass|alternaterefscommand|editor|worktree|excludesfile|attributesfile)$/,
   /^merge\..+\.driver$/,
   /^submodule\..+\.update$/,
   /^log\.(?:mailmap|showsignature)$/,
