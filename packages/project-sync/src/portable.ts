@@ -805,7 +805,8 @@ function lossReport(
           : { result: 'exact' as const, reason: engine === 'pi' ? 'Pi reads AGENTS.md, and AGENTS.md hides CLAUDE.md.' : 'The engine reads AGENTS.md as written.' };
         loss.push({ part, entry: 'AGENTS.md', engine, ...line });
       } else if (part === 'memory') {
-        loss.push({ part, entry: 'instructions', engine, result: 'translated', reason: 'Standing facts project as instructions in AGENTS.md. Engine-written memory is runtime state and is not projected.' });
+        const notes = def.knowledge.length ? ' A knowledge source reaches an agent that lists it as a notes section in that agent\'s instructions.' : '';
+        loss.push({ part, entry: 'instructions', engine, result: 'translated', reason: `Standing facts project as instructions in AGENTS.md. Engine-written memory is runtime state and is not projected.${notes}` });
       } else if (part === 'tool-guidance') {
         const pointers = def.harness.parts['tool-guidance'] ?? [];
         if (pointers.length === 0) none(part, engine);
