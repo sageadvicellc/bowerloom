@@ -132,10 +132,16 @@ export function removeKit(base: DefinitionView, draft: SaveDraft): SaveDraft {
 /** The Notes keeper in a harness as the draft draws it, or null. */
 export const keeperOf = (view: DefinitionView): DefinitionView['agents'][number] | null => view.agents.find(a => a.id === KEEPER_AGENT) ?? null;
 
-/** The skills the keeper's Skills shelf offers, in the kit's own order: the kit's when the draft adds it, else the ones the saved keeper uses. */
+/**
+ * The skills the keeper's Skills shelf offers. When the draft adds the kit, the kit's agent's own list, in its order. For a saved keeper, the skills it uses,
+ * then the rest of the skills its kit record (`sources.json`) names, so a keeper saved with fewer skills is offered the others again. A skill removed in the
+ * draft, or one the harness no longer holds, is not offered.
+ */
 export function keeperSkills(base: DefinitionView, draft: SaveDraft): readonly string[] {
-  const start = keeperOf(startOf(base, draft));
-  return start === null ? [] : start.skills.filter(s => !draft.removed.includes(s));
+  const start = startOf(base, draft), keeper = keeperOf(start);
+  if (keeper === null) return [];
+  const record = draft.kit === null ? start.kits.find(k => k.id === KEEPER_KIT)?.skills ?? [] : [];
+  return [...new Set([...keeper.skills, ...record])].filter(s => has(start, s) && !draft.removed.includes(s));
 }
 
 // ---- notes

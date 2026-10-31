@@ -22,7 +22,7 @@ const WITH_KIT: DefinitionView = {
   ...BASE,
   skills: [...BASE.skills, ...KIT_SKILLS.map(id => ({ id, name: id, description: `${id} words.` }))].sort((a, b) => a.id.localeCompare(b.id)),
   agents: [...BASE.agents, { id: KEEPER_AGENT, name: KEEPER_AGENT, description: 'Looks after a folder of notes.', skills: KIT_SKILLS, notes: [] }].sort((a, b) => a.id.localeCompare(b.id)),
-  kits: [{ id: KEEPER_KIT, version: '0.1.0' }],
+  kits: [{ id: KEEPER_KIT, version: '0.1.0', skills: [...KIT_SKILLS].sort() }],
 };
 const GARDEN: SourceView = { name: 'garden-notes', kind: 'wiki-folder', label: '~/Documents/Garden notes', notesId: 'n1' };
 
@@ -32,7 +32,7 @@ test('the keeper comes from the kit as one add-from-kit edit, and starts with no
   assert.equal(draftCount(BASE, d), 2);
   const now = draftView(BASE, d);
   assert.deepEqual(keeperOf(now)?.skills, []);
-  assert.deepEqual(now.kits, [{ id: KEEPER_KIT, version: '0.1.0' }]);
+  assert.deepEqual(now.kits, [{ id: KEEPER_KIT, version: '0.1.0', skills: [...KIT_SKILLS].sort() }]);
   assert.deepEqual(keeperSkills(BASE, d), KIT_SKILLS, 'the kit\'s own order, for the shelf');
   // Adding it twice is one add; a harness that holds the kit already takes none.
   assert.deepEqual(addKit(BASE, d, WITH_KIT), d);
@@ -131,4 +131,21 @@ test('the map shows the notes as a card beside the agents: a part of its own, li
   assert.equal(partNotes('notes:garden-notes'), 'garden-notes');
   assert.equal(partNotes('skill:x'), null);
   assert.equal(graphOf(state, harness).nodes.length, 6);
+});
+
+test('a saved keeper is offered every skill of its kit record that the harness holds, not only the ones it uses, minus the ones removed', () => {
+  // The keeper was saved with one skill linked; the kit's record names all six, and the harness holds all six.
+  const saved: DefinitionView = { ...WITH_KIT, agents: WITH_KIT.agents.map(a => (a.id === KEEPER_AGENT ? { ...a, skills: ['add-source'] } : a)) };
+  const offered = keeperSkills(saved, EMPTY_DRAFT);
+  assert.deepEqual([...offered].sort(), [...KIT_SKILLS].sort());
+  assert.equal(offered[0], 'add-source', 'the skills the keeper uses come first');
+  // A skill removed in the draft is not offered; nor is one the record names that the harness no longer holds.
+  assert.equal(keeperSkills(saved, removeSkill(saved, EMPTY_DRAFT, 'check-notes', true)).includes('check-notes'), false);
+  const gone: DefinitionView = { ...saved, skills: saved.skills.filter(s => s.id !== 'log-change') };
+  assert.equal(keeperSkills(gone, EMPTY_DRAFT).includes('log-change'), false);
+  // With no kit record, the keeper's own skills are the offer.
+  assert.deepEqual(keeperSkills({ ...saved, kits: [] }, EMPTY_DRAFT), ['add-source']);
+  // "Add the other skills" then links the rest.
+  const d = linkRest(saved, EMPTY_DRAFT, KEEPER_AGENT, offered);
+  assert.equal(keeperOf(draftView(saved, d))?.skills.length, KIT_SKILLS.length);
 });

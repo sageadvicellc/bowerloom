@@ -395,8 +395,11 @@ export interface DefinitionView {
   readonly instructions: boolean;
   /** The notes sources the harness records (knowledge.json), in file order. */
   readonly sources: readonly SourceView[];
-  /** The shipped kits the harness holds items of, each with the version `sources.json` pinned. */
-  readonly kits: readonly { readonly id: KitId; readonly version: string }[];
+  /**
+   * The shipped kits the harness holds items of, each with the version `sources.json` pinned and the skills its record names, in the record's order. A skill
+   * removed in a save leaves the record in the same save, so these are the kit's skills the harness still holds.
+   */
+  readonly kits: readonly { readonly id: KitId; readonly version: string; readonly skills: readonly string[] }[];
 }
 
 // ---- notes (spec 6.9) --------------------------------------------------------------------------------------------------------

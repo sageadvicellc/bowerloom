@@ -453,11 +453,15 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
           ...d,
           skills: [...d.skills, ...SAMPLE_KIT.skills.map(k => skillOf(k.id, k.description))].sort((a, b) => byText(a.id, b.id)),
           agents: [...d.agents, { ...agentOf(SAMPLE_KIT.agent.id, SAMPLE_KIT.agent.description, SAMPLE_KIT.agent.skills) }].sort((a, b) => byText(a.id, b.id)),
-          kits: [...d.kits, { id: SAMPLE_KIT.id, version: SAMPLE_KIT.version }],
+          kits: [...d.kits, { id: SAMPLE_KIT.id, version: SAMPLE_KIT.version, skills: SAMPLE_KIT.skills.map(k => k.id) }],
         };
       } else if (e.kind === 'remove-skill') {
         if (!d.skills.some(x => x.id === e.id)) return editRefusal('skill', e.id);
-        d = { ...d, skills: d.skills.filter(x => x.id !== e.id), agents: d.agents.map(a => ({ ...a, skills: a.skills.filter(k => k !== e.id) })) };
+        // A kit's record leaves with its last skill, as the real save drops it from sources.json.
+        d = {
+          ...d, skills: d.skills.filter(x => x.id !== e.id), agents: d.agents.map(a => ({ ...a, skills: a.skills.filter(k => k !== e.id) })),
+          kits: d.kits.map(k => ({ ...k, skills: k.skills.filter(x => x !== e.id) })).filter(k => k.skills.length > 0),
+        };
       } else if (e.kind === 'add-skill') {
         const source = get(e.from).def?.skills.find(x => x.id === e.id);
         if (source === undefined) return refuse('SAVE_SOURCE_MISSING');

@@ -12,7 +12,7 @@ const DEF: DefinitionView = {
   id: 'team', description: 'A team.', engines: ['claude-code'], instructions: true,
   skills: KIT.map(id => ({ id, name: id, description: id })),
   agents: [{ id: KEEPER_AGENT, name: KEEPER_AGENT, description: 'Keeps notes.', skills: [], notes: [] }, { id: 'editor', name: 'editor', description: 'Edits.', skills: [], notes: [] }],
-  sources: [{ name: 'old-notes', kind: 'wiki-folder', label: '~/Old', notesId: 'n0' }], kits: [{ id: 'wiki-keeper', version: '0.1.0' }],
+  sources: [{ name: 'old-notes', kind: 'wiki-folder', label: '~/Old', notesId: 'n0' }], kits: [{ id: 'wiki-keeper', version: '0.1.0', skills: KIT }],
 };
 
 test('after a folder is chosen: notes with a history are ready; none offers to start one; git missing and an unreadable history say so', () => {

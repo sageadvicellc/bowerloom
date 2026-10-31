@@ -501,6 +501,7 @@ export function SaveReview({ shown, approved, held, onApprove }: { shown: Shown;
         {v.definition.agents.length === 0 ? <p className="hxe-text hxe-muted">{W.label.noAgents}</p> : (
           <ul className="hxe-places">{v.definition.agents.map(a => <li key={a.id} data-agent-after={a.id}><span className="hxe-mono">{a.name}</span> <span className="hxe-muted">{a.skills.length === 0 ? W.label.noSkills : a.skills.join(', ')}</span>{a.notes.length === 0 ? null : <span className="hxe-muted" data-agent-notes-after={a.id}> · {NOTES.label.notes}: {a.notes.join(', ')}</span>}</li>)}</ul>
         )}
+        {keeperOf(v.definition)?.skills.length === 0 ? <p className="hxe-text" data-keeper-no-skills=""><StateDot tone="warn">{NOTES.hint.keeperNoSkills}</StateDot></p> : null}
         <p className="hxe-text hxe-muted">{W.label.interfacesHere}: {v.definition.engines.map((e: EngineId) => ENGINE_NAMES[e]).join(', ')}</p>
       </Section>
       {v.noop ? null : (

@@ -43,6 +43,7 @@ export const NOTES = deepFreeze({
     notAttached: 'Not on a shelf yet.',
     noKeeper: 'Add the ready-made Notes keeper to look after your notes.',
     keeperDraft: 'From the ready-made kit. It stays a draft until you save.',
+    keeperNoSkills: 'The Notes keeper has no skills, so it can do nothing yet.',
     dropSkill: 'Drop a skill here.',
     dropNotes: 'Drop your notes here.',
     shelvesNote: 'Drag a card onto a shelf, or press its Add button.',

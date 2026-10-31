@@ -57,7 +57,8 @@ const storedOnly: SourceOf = s => ({ name: s.name, kind: s.kind, label: s.path, 
 
 /** The shipped kits a definition holds items of: each record of `sources.json` from the kit marketplace, with its pinned version. */
 export function kitsOf(def: Definition): DefinitionView['kits'] {
-  return def.sources.filter(r => r.marketplace === KIT_MARKETPLACE && (KIT_IDS as readonly string[]).includes(r.name)).map(r => ({ id: r.name as KitId, version: r.version }));
+  return def.sources.filter(r => r.marketplace === KIT_MARKETPLACE && (KIT_IDS as readonly string[]).includes(r.name))
+    .map(r => ({ id: r.name as KitId, version: r.version, skills: r.items.filter(i => i.part === 'skills').map(i => i.id) }));
 }
 
 /** The harness as the editor draws it. Ids, names and the one-line descriptions only; no file text, and no path but a source's label. */

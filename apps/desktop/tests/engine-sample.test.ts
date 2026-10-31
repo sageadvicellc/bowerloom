@@ -316,7 +316,7 @@ test('sample notes: link shows pages and no history; history starts once by revi
   const now = value(await e.planSave(id, [])).definition;
   assert.deepEqual(now.sources, [{ name: 'notes', kind: 'wiki-folder', label: '~/Documents/Notes', notesId: fresh.id }]);
   assert.deepEqual(now.agents.find(a => a.id === 'notes-keeper')!.notes, ['notes']);
-  assert.deepEqual(now.kits, [{ id: 'wiki-keeper', version: SAMPLE_KIT.version }]);
+  assert.deepEqual(now.kits, [{ id: 'wiki-keeper', version: SAMPLE_KIT.version, skills: SAMPLE_KIT.skills.map(k => k.id) }]);
   const twice = refusalOf(await e.planSave(id, [{ kind: 'add-from-kit', kit: 'wiki-keeper' }]));
   assert.deepEqual([twice.code, twice.message], ['KIT_ALREADY_ADDED', KIT_MAIN_WORDS.KIT_ALREADY_ADDED]);
   const gone = value(await e.planSave(id, [{ kind: 'remove-source', name: 'notes' }]));

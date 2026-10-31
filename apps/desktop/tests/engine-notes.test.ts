@@ -183,7 +183,7 @@ test('add-from-kit: the keeper and its six skills, read by main from the shipped
   assert.deepEqual(keeper.skills, ['add-source', 'file-page', 'answer-from-notes', 'check-notes', 'log-change', 'refine-report']);
   assert.deepEqual(keeper.notes, []);
   const version = (JSON.parse(readFileSync(join(KITS, 'wiki-keeper', 'kit.json'), 'utf8')) as { version: string }).version;
-  assert.deepEqual(plan.definition.kits, [{ id: 'wiki-keeper', version }]);
+  assert.deepEqual(plan.definition.kits, [{ id: 'wiki-keeper', version, skills: KIT_SKILLS }], 'the skills of the kit\'s record, in its order');
   value(await s.service.runSave(f.id, plan.revision, KEEPER));
   for (const id of KIT_SKILLS) assert.ok(readFileSync(join(dir, '.bowerloom', 'skills', id, 'SKILL.md')).equals(readFileSync(join(KITS, 'wiki-keeper', 'skills', id, 'SKILL.md'))), id);
   assert.ok(readFileSync(join(dir, '.bowerloom', 'agents', 'notes-keeper.md')).equals(readFileSync(join(KITS, 'wiki-keeper', 'agents', 'notes-keeper.md'))));

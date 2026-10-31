@@ -23,7 +23,7 @@ const DEF: DefinitionView = {
   id: 'team', description: 'A team.', engines: ['claude-code', 'codex'], instructions: true,
   skills: ['add-source', 'file-page', 'check-notes'].map(id => ({ id, name: id, description: `${id} words.` })),
   agents: [{ id: KEEPER_AGENT, name: KEEPER_AGENT, description: 'Keeps notes.', skills: ['add-source'], notes: ['garden-notes'] }, { id: 'editor', name: 'editor', description: 'Edits.', skills: [], notes: [] }],
-  sources: [{ name: 'garden-notes', kind: 'wiki-folder', label: '~/Documents/Garden notes', notesId: 'n1' }], kits: [{ id: 'wiki-keeper', version: '0.1.0' }],
+  sources: [{ name: 'garden-notes', kind: 'wiki-folder', label: '~/Documents/Garden notes', notesId: 'n1' }], kits: [{ id: 'wiki-keeper', version: '0.1.0', skills: ['add-source', 'check-notes', 'file-page'] }],
 };
 
 test('the notes step asks one question with two buttons', () => {

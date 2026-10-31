@@ -21,7 +21,7 @@ const BASE: DefinitionView = {
 };
 const WITH_KIT: DefinitionView = {
   ...BASE, skills: [...BASE.skills, ...KIT.map(id => ({ id, name: id, description: id }))],
-  agents: [...BASE.agents, { id: KEEPER_AGENT, name: KEEPER_AGENT, description: 'Keeps notes.', skills: KIT, notes: [] }], kits: [{ id: KEEPER_KIT, version: '0.1.0' }],
+  agents: [...BASE.agents, { id: KEEPER_AGENT, name: KEEPER_AGENT, description: 'Keeps notes.', skills: KIT, notes: [] }], kits: [{ id: KEEPER_KIT, version: '0.1.0', skills: [...KIT] }],
 };
 const GARDEN: NotesView = { id: 'n1', label: '~/Documents/Garden notes', name: 'Garden notes', suggestedName: 'garden-notes', pages: 14, complete: true, history: 'none', lastCommitAt: null, latestReport: null };
 
@@ -79,4 +79,15 @@ test('the review lists the notes each agent will read', () => {
   }));
   assert.match(html, /data-agent-notes-after="notes-keeper"/);
   assert.ok(html.includes('Notes: garden-notes'));
+});
+
+test('the review warns when the keeper is saved with no skills', () => {
+  const review = (skills: string[]): string => renderToStaticMarkup(createElement(SaveReview, {
+    shown: { kind: 'save', view: { folder: '~/Projects/weekly-report', changes: [{ path: '.bowerloom/agents/notes-keeper.md', action: 'create' }], definition: { ...WITH_KIT, agents: WITH_KIT.agents.map(a => (a.id === KEEPER_AGENT ? { ...a, skills } : a)) }, noop: false, revision: 'a'.repeat(64) }, edits: [] },
+    approved: false, held: false, onApprove: noop,
+  }));
+  const none = review([]);
+  assert.match(none, /data-keeper-no-skills=""/);
+  assert.ok(none.includes(NOTES.hint.keeperNoSkills));
+  assert.doesNotMatch(review(['add-source']), /data-keeper-no-skills/);
 });
