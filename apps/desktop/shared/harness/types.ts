@@ -49,6 +49,10 @@ export interface Part {
   readonly badge?: string;
   /** False for a part that a harness holds but the Library tabs do not list. */
   readonly inLibrary: boolean;
+  /** Real mode, a tool only: what kind of tool the reader found. Optional until Task 2 lane G fills it (shared/harness/real-map.ts). */
+  readonly toolKind?: 'mcp' | 'prompt' | 'hook';
+  /** Real mode: a hash of the file text the reader gave, which says that two skills in two places are the same skill (the Overview marks them shared). Optional until Task 2 lane G fills it. */
+  readonly contentHash?: string;
 }
 
 /** An agent uses a skill, a tool or a piece of context. The link is kept in the harness manifest, never in the agent's file. */
@@ -149,6 +153,10 @@ export interface ScanSource {
   readonly partIds: readonly string[];
   /** The links the files themselves name (real mode): an agent to the skills and connections it uses. Absent in the sample, where a harness made from the source gets one automatic link for each part. */
   readonly links?: readonly Link[];
+  /** Real mode: `home` for the home folder, `project` for a work folder or a folder the person picked. Optional until Task 2 lane G fills it (shared/harness/real-map.ts). */
+  readonly scope?: 'home' | 'project';
+  /** Real mode: the folder the source was found in, written with `~` for the home folder (`~`, `~/Projects/alpha`). Never a full path. Optional until Task 2 lane G fills it. */
+  readonly label?: string;
 }
 
 /** What the reader of the person's own folders reports, kept beside the world (real mode only). */

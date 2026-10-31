@@ -14,7 +14,7 @@ export const WORDS = deepFreeze({
   /** Names of things and buttons: at most 5 words each. */
   label: {
     appName: 'Bowerloom', newHarness: 'New harness', workspace: 'Workspace', mainMenu: 'Main menu', libraryPages: 'Library pages',
-    harnesses: 'Harnesses', library: 'Library', agents: 'Agents', skills: 'Skills', tools: 'Tools', context: 'Context', projects: 'Projects', runs: 'Runs', interfaces: 'Engines',
+    overview: 'Overview', harnesses: 'Harnesses', library: 'Library', agents: 'Agents', skills: 'Skills', tools: 'Tools', context: 'Context', projects: 'Projects', runs: 'Runs', interfaces: 'Engines',
     installHistory: 'Install history', help: 'Help', preview: 'Preview', aboutPreview: 'About this preview',
     hideNav: 'Hide navigation', showNav: 'Show navigation', hideDetails: 'Hide details', showDetails: 'Show details',
     search: 'Search', close: 'Close', cancel: 'Cancel', add: 'Add', sort: 'Sort', sortGroup: 'Order of the list',
