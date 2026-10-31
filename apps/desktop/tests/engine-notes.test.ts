@@ -4,7 +4,7 @@
 // and `~` labels only. Real packages and real git on synthetic folders; a test that needs git skips with the reason when it is not installed.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createEngineService, EngineCallRefusal } from '../main/engine-service.js';
 import type { EngineService } from '../main/engine-service.js';
@@ -279,4 +279,73 @@ test('the save edits for notes take ids only: a path, a missing or unknown notes
   const r = refusal(await s.service.planSave(f.id, [{ kind: 'set-source', name: 'far', notesId: outside.id }]));
   assert.equal(r.code, 'KNOWLEDGE_PATH_OUTSIDE');
   noPath(s, r);
+});
+
+// ---- a source a harness records is read only, and only where its stored path says (S2) ----------------------------------------------------------
+
+/** Saves `dir/wiki` as the source `wiki` of the harness in `dir`, through the save step, and returns the folder. */
+async function savedWiki(s: Setup, dir: string): Promise<FolderInfo> {
+  const f = await choose(s, dir);
+  const wiki = join(dir, 'wiki');
+  mkdirSync(join(wiki, 'pages'), { recursive: true }); writeFileSync(join(wiki, 'index.md'), '# Index\n');
+  const near = await chooseNotes(s, wiki);
+  const edits: SaveEdit[] = [{ kind: 'set-source', name: 'wiki', notesId: near.id }];
+  value(await s.service.runSave(f.id, value(await s.service.planSave(f.id, edits)).revision, edits));
+  return f;
+}
+
+test('a recorded source whose folder became a link to another folder is refused, and the other folder is never read or labelled as the source', async t => {
+  const s = setup(t);
+  const dir = teamFolder(s.home);
+  await savedWiki(s, dir);
+  // The stored path is still `wiki`, but `wiki` is now a link to a folder elsewhere in home that holds pages of its own.
+  const elsewhere = join(s.home, 'private-notes');
+  mkdirSync(elsewhere); for (const n of ['a.md', 'b.md', 'c.md']) writeFileSync(join(elsewhere, n), '# x\n');
+  renameSync(join(dir, 'wiki'), join(dir, 'wiki-old'));
+  symlinkSync(elsewhere, join(dir, 'wiki'));
+  // A new launch of the app reads the harness again.
+  const w = createEngineService({ home: s.home, stateRoot: join(s.home, '.local', 'state', 'bowerloom'), who: 'tester', now: () => WHEN, chooseFolder: async () => dir, confirm: async () => true, kitsDir: () => KITS });
+  const f = value(await w.chooseFolder());
+  const src = value(await w.planSave(f.id, [])).definition.sources[0]!;
+  assert.equal(src.label, '~/Projects/team/wiki');
+  const read = refusal(await w.notesSummary(src.notesId));
+  assert.equal(read.code, 'NOTES_PATH_UNSAFE');
+  noPath(s, read);
+  assert.equal(JSON.stringify(read).includes('private-notes'), false, 'the other folder is never named');
+});
+
+test('a source stored as ~/.ssh does not load, so no notes id is handed out for it and nothing reads it', async t => {
+  const s = setup(t);
+  const dir = teamFolder(s.home);
+  await savedWiki(s, dir);
+  mkdirSync(join(s.home, '.ssh')); writeFileSync(join(s.home, '.ssh', 'notes.md'), '# not notes\n');
+  writeFileSync(join(dir, '.bowerloom', 'knowledge.json'), `${JSON.stringify({ sources: [{ kind: 'wiki-folder', name: 'keys', path: '~/.ssh' }] }, null, 2)}\n`);
+  const w = createEngineService({ home: s.home, stateRoot: join(s.home, '.local', 'state', 'bowerloom'), who: 'tester', now: () => WHEN, chooseFolder: async () => dir, confirm: async () => true, kitsDir: () => KITS });
+  const f = value(await w.chooseFolder());
+  const r = refusal(await w.planSave(f.id, []));
+  assert.equal(r.code, 'SAVE_DEFINITION_INVALID');
+  await assert.rejects(w.notesSummary('notes-1'), (e: unknown) => e instanceof EngineCallRefusal && e.code === 'UNKNOWN_FOLDER');
+});
+
+test('a source read from knowledge.json gets a read-only id: its summary reads, and the history and starter plans are refused until the folder is chosen here', async t => {
+  const s = setup(t);
+  const dir = teamFolder(s.home);
+  await savedWiki(s, dir);
+  const w = createEngineService({
+    home: s.home, stateRoot: join(s.home, '.local', 'state', 'bowerloom'), who: 'tester', now: () => WHEN, chooseFolder: async () => dir, confirm: async () => true, kitsDir: () => KITS,
+    chooseNotesFolder: async () => join(dir, 'wiki'),
+  });
+  const f = value(await w.chooseFolder());
+  const src = value(await w.planSave(f.id, [])).definition.sources[0]!;
+  assert.equal(value(await w.notesSummary(src.notesId)).pages, 1, 'the summary of a recorded source reads');
+  for (const r of [refusal(await w.planNotesHistory(src.notesId)), refusal(await w.planCreateNotes(src.notesId))]) {
+    assert.equal(r.code, 'NOTES_NOT_CHOSEN');
+    noPath(s, r);
+  }
+  assert.equal((await w.runNotesHistory(src.notesId, 'a'.repeat(64))).ok, false, 'no write runs for a read-only id');
+  // Chosen with main's own chooser in this window, the same folder may be planned.
+  const chosen = value(await w.chooseNotesFolder('use'));
+  assert.equal(chosen.id, src.notesId);
+  const plan = await w.planNotesHistory(chosen.id);
+  assert.notEqual(plan.ok ? 'ok' : plan.refusal.code, 'NOTES_NOT_CHOSEN');
 });

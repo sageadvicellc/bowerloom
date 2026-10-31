@@ -6,7 +6,7 @@
  * - `.`: the harness folder itself, the folder that holds `.bowerloom`.
  * - `<a>/<b>`: a folder inside the harness folder, relative to it.
  * - `~/<a>/<b>`: a folder inside the home folder.
- * No form is absolute, and no segment is empty, `.`, or `..`. A backslash, a backtick, and a control character are
+ * No form is absolute, and no segment is empty, `.`, `..`, or hidden (it starts with a dot). A backslash, a backtick, and a control character are
  * refused, so a path is safe to quote in the projected notes section.
  */
 import path from 'node:path';
@@ -18,7 +18,8 @@ import type { KnowledgeKind } from './words.js';
 export const KNOWLEDGE_PATH_MAX = 1024;
 const ODD = /[\0-\x1f\x7f\\`]/;
 const DRIVE = /^[A-Za-z]:/;
-const plain = (p: string): boolean => p.split('/').every(seg => seg !== '' && seg !== '.' && seg !== '..');
+/** Plain segments: none empty, `.`, or `..`, and none hidden, so a source never names a key folder such as `.ssh`, nor `.bowerloom` or `.git`. */
+const plain = (p: string): boolean => p.split('/').every(seg => seg !== '' && !seg.startsWith('.'));
 
 /** True when a value is a stored source path: `.`, a plain relative path, or `~/` and a plain relative path. */
 export function isKnowledgePath(value: unknown): value is string {
@@ -52,8 +53,8 @@ const strip = (p: string): string => (p.length > 1 && p.endsWith('/') ? p.slice(
  * - A folder inside `root` is stored relative to it (`.` for `root` itself). Another folder inside `home` is stored in
  *   `~` form. Any other absolute folder is refused `KNOWLEDGE_PATH_OUTSIDE`.
  * - A relative path whose `..` leaves `root`, and a `~` path whose `..` leaves `home`, are refused `KNOWLEDGE_PATH_ESCAPES`.
- * - `home` itself, `~user`, a drive letter, a backslash, a backtick, and a control character are refused
- *   `KNOWLEDGE_PATH_UNSAFE`.
+ * - `home` itself, a hidden folder or one inside a hidden folder, `~user`, a drive letter, a backslash, a backtick, and a control character are
+ *   refused `KNOWLEDGE_PATH_UNSAFE`.
  */
 export function storedKnowledgePath(input: unknown, where: { readonly root: string; readonly home: string } | null | undefined): KnowledgePathResult {
   if (where === null || typeof where !== 'object' || !absolute(where.root) || !absolute(where.home)) {
@@ -83,6 +84,9 @@ export function storedKnowledgePath(input: unknown, where: { readonly root: stri
   else if (target === home) return no('KNOWLEDGE_PATH_UNSAFE', 'The home folder itself cannot be a notes folder. Pick a folder inside it.');
   else if (within(home, target)) stored = `~/${below(home, target)}`;
   else return no('KNOWLEDGE_PATH_OUTSIDE', 'The folder is outside the harness folder and outside the home folder, so it has no stored form.');
+  if (stored !== '.' && stored.replace(/^~\//, '').split('/').some(seg => seg.startsWith('.'))) {
+    return no('KNOWLEDGE_PATH_UNSAFE', 'The folder is a hidden folder, or sits inside one, such as a folder of keys or settings. Pick a folder that is not hidden.');
+  }
   return isKnowledgePath(stored) ? { ok: true, path: stored } : no('KNOWLEDGE_PATH_UNSAFE', `The stored folder path must be at most ${KNOWLEDGE_PATH_MAX} characters.`);
 }
 
@@ -116,7 +120,7 @@ export function checkKnowledge(value: JsonValue, fail: (code: string, message: s
     if (!isId(name)) { good = false; fail('INVALID_ID', `${where}.name must be lowercase letters, digits, and single hyphens, up to 64 characters.`); }
     if (!isKnowledgePath(at)) {
       good = false;
-      fail('KNOWLEDGE_PATH', `${where}.path must be a folder inside the harness folder, relative to it, or a folder in ~/ form. It cannot be absolute, hold "..", or hold a backslash, a backtick, or a control character.`);
+      fail('KNOWLEDGE_PATH', `${where}.path must be a folder inside the harness folder, relative to it, or a folder in ~/ form. It cannot be absolute, hold "..", name a hidden folder, or hold a backslash, a backtick, or a control character.`);
     }
     if (!good) { ok = false; return; }
     if (names.has(name as string)) { ok = false; fail('DUPLICATE_ID', `${where} repeats the name ${name as string} of an earlier source.`); return; }

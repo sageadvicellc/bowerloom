@@ -97,7 +97,7 @@ test('an agent lists the sources it reads with notes, by name', () => {
 });
 
 test('a path is relative inside the folder or in ~ form; every other path is refused', () => {
-  const good = ['.', 'notes', 'docs/notes', 'a.b/c-d_e', '~/notes', '~/notes/team', '~/.wiki'];
+  const good = ['.', 'notes', 'docs/notes', 'a.b/c-d_e', '~/notes', '~/notes/team', '~/wiki.d'];
   for (const p of good) {
     assert.equal(isKnowledgePath(p), true, p);
     ok(fullFiles({ 'knowledge.json': knowledge({ ...WIKI, path: p }) }));
@@ -105,6 +105,8 @@ test('a path is relative inside the folder or in ~ form; every other path is ref
   const bad = [
     '', '/srv/notes', '//notes', 'C:/notes', 'c:\\notes', '\\\\share\\notes', '../notes', 'a/../../b', 'a/../b', './notes', 'a/./b',
     'a//b', 'notes/', '~', '~/', '~other/notes', '~/../notes', '~/a/../../b', 'a\\b', 'a`b', 'a\nb', 'a\u0000b', 'x'.repeat(1025),
+    // A hidden folder anywhere on the way: a key folder, the harness's own folder, a repository's own folder.
+    '~/.ssh', '~/.wiki', '~/notes/.git', '.bowerloom', 'docs/.hidden/notes', '~/.config/notes',
   ];
   for (const p of bad) {
     assert.equal(isKnowledgePath(p), false, JSON.stringify(p));
@@ -382,4 +384,15 @@ test('the edits do not change the definition or the edits they are given', () =>
   done(def, edits);
   assert.deepEqual(def.files.map(f => Buffer.from(f.bytes).toString('base64')), before);
   assert.deepEqual(def.knowledge.map(s => s.name), ['wiki']);
+});
+
+test('storedKnowledgePath refuses a folder in a hidden folder, such as ~/.ssh, and its words never repeat the path', () => {
+  const where = { root: '/fixture/home/work/project', home: '/fixture/home' };
+  for (const input of ['/fixture/home/.ssh', '~/.ssh', '/fixture/home/.config/notes', '/fixture/home/work/project/.bowerloom', '.git']) {
+    const r = storedKnowledgePath(input, where);
+    assert.equal(r.ok, false, input);
+    assert.equal(r.code, 'KNOWLEDGE_PATH_UNSAFE', input);
+    assert.match(r.message, /hidden/i, input);
+    assert.equal(r.message.includes('.ssh'), false);
+  }
 });

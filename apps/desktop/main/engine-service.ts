@@ -21,7 +21,7 @@ import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, isAbsolute, join } from 'node:path';
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
-import { applyGitInit, applyStarter, planGitInit, planStarter, readNotesSummary } from '../../../packages/notes-source/src/index.js';
+import { NotesRefusal, applyGitInit, applyStarter, planGitInit, planStarter, readNotesSummary } from '../../../packages/notes-source/src/index.js';
 import type { NotesOptions } from '../../../packages/notes-source/src/index.js';
 import {
   applyAdoption, applyAdoptionRecovery, applySave, planAdoptionRecovery, planSave as packagePlanSave, planSaveRecovery, refuseWhileSaveStopped, runSaveRecovery, saveStopped,
@@ -48,7 +48,7 @@ import { checkProjectPath } from '../../../packages/project-context/src/index.js
 import { ANSWERS, NOTE_LIMIT } from '../../../packages/diagnostics/src/index.js';
 import type { Answer as CheckAnswer } from '../../../packages/diagnostics/src/index.js';
 import { labelOf, makeScrub, visible } from '../shared/engine/scrub.js';
-import { KIT_IDS, KIT_INVALID, KIT_MAIN_WORDS, NOTES_PLAN_LIST_LIMIT, NOTES_PURPOSES } from '../shared/engine/types.js';
+import { KIT_IDS, KIT_INVALID, KIT_MAIN_WORDS, NOTES_MAIN_WORDS, NOTES_NOT_CHOSEN, NOTES_PLAN_LIST_LIMIT, NOTES_PURPOSES } from '../shared/engine/types.js';
 import type { KitId, NotesHistoryPlanView, NotesPurpose, NotesStarterView, NotesView, NotesWritten } from '../shared/engine/types.js';
 import { loadKit } from './kit.js';
 import type { Kit } from './kit.js';
@@ -278,8 +278,13 @@ export interface EngineService {
   runNotesHistory(notesId: unknown, revision: unknown): Promise<Answer<NotesWritten>>;
 }
 
-/** A notes folder main knows, by the id it handed out. `dir` stays in main. */
-interface Notes { readonly id: string; readonly dir: string; readonly label: string; readonly name: string; readonly scrub: Scrub }
+/**
+ * A notes folder main knows, by the id it handed out. `dir` stays in main. `chosen` is true once the person picked it with main's own notes chooser in this
+ * window: only then may Bowerloom plan or write the starter or the history there. A source read from `knowledge.json` alone is read-only. `unsafe` is true
+ * for a source whose stored path does not lead to that folder itself (a link on the way, or a folder Bowerloom refuses): its read is refused, and nothing
+ * there is read.
+ */
+interface Notes { readonly id: string; readonly dir: string; readonly label: string; readonly name: string; readonly scrub: Scrub; readonly chosen: boolean; readonly unsafe: boolean }
 /** What the gate keys a plan by: a folder or a notes folder. */
 type Keyed = { readonly id: string; readonly scrub: Scrub };
 
@@ -386,18 +391,35 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
    * Gives a notes folder its id, once per folder. `label` is how the window names it: the `~` form, or a source's stored form under its harness. The
    * folder need not exist yet: a source a harness records may point at a folder that is gone, and its read then says so.
    */
-  function registerNotes(dir: string, label?: string): Notes {
+  function registerNotes(dir: string, how: { readonly label?: string; readonly chosen: boolean; readonly unsafe?: boolean }): Notes {
     let real = dir;
-    try { real = realpathSync(dir); } catch { real = dir; }
-    for (const n of notesById.values()) if (n.dir === real) return n;
+    if (how.unsafe !== true) { try { real = realpathSync(dir); } catch { real = dir; } }
+    for (const n of notesById.values()) {
+      if (n.dir !== real || n.unsafe !== (how.unsafe === true)) continue;
+      if (!how.chosen || n.chosen) return n;
+      // Chosen now with main's own chooser: the same id, and from now on it may be planned and written.
+      const up: Notes = { ...n, chosen: true };
+      notesById.set(n.id, up);
+      return up;
+    }
     notesCount += 1;
     const id = `notes-${notesCount}`;
-    const shown = visible(label ?? labelOf(real, homes.find(h => real === h || real.startsWith(`${h}/`)) ?? deps.home));
+    const shown = visible(how.label ?? labelOf(real, homes.find(h => real === h || real.startsWith(`${h}/`)) ?? deps.home));
     const scrub = makeScrub([{ path: real, as: shown }, { path: dir, as: shown }, ...homes.map(path => ({ path, as: '~' }))]);
-    const n: Notes = { id, dir: real, label: shown, name: visible(basename(real)), scrub };
+    const n: Notes = { id, dir: real, label: shown, name: visible(basename(real)), scrub, chosen: how.chosen, unsafe: how.unsafe === true };
     notesById.set(id, n);
     return n;
   }
+  /** Refuses NOTES_NOT_CHOSEN for a notes folder the person did not pick with main's own chooser in this window. */
+  const chosenOnly = (n: Notes): void => { if (!n.chosen) throw new DefinitionError(NOTES_NOT_CHOSEN, NOTES_MAIN_WORDS.NOTES_NOT_CHOSEN); };
+  /**
+   * True when the folder a source's stored path names is that folder itself: Bowerloom takes it as a project path, and its real path is the joined path, so
+   * no link on the way points it somewhere else. A folder that is not there yet passes: its read says it is missing.
+   */
+  const sourceIsPlain = (abs: string): boolean => {
+    try { checkProjectPath(abs, deps.home); } catch { return false; }
+    try { return realpathSync(abs) === abs; } catch (error) { return (error as NodeJS.ErrnoException).code === 'ENOENT'; }
+  };
   const notesOf = (id: unknown): Notes => {
     if (typeof id !== 'string' || !NOTES_ID.test(id)) return bad();
     const n = notesById.get(id);
@@ -406,6 +428,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
   };
   /** The Notes panel's read of one folder: names and counts only, through packages/notes-source, which never opens a page. */
   async function notesView(n: Notes): Promise<NotesView> {
+    if (n.unsafe) throw new NotesRefusal('NOTES_PATH_UNSAFE');
     const s = await readNotesSummary(n.dir, notesOptions);
     return {
       id: n.id, label: n.label, name: n.name, suggestedName: suggestedSourceName(n.name), pages: s.pages, complete: s.complete, history: s.history,
@@ -424,12 +447,14 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     const home = src.path.startsWith('~/');
     const abs = src.path === '.' ? f.dir : home ? join(realHome, src.path.slice(2)) : join(f.dir, src.path);
     const label = src.path === '.' ? f.label : home ? src.path : `${f.label}/${src.path}`;
-    return { name: src.name, kind: src.kind, label: visible(label), notesId: registerNotes(abs, label).id };
+    // A source the harness records is read only: its id plans and writes nothing until the person chooses the folder here.
+    return { name: src.name, kind: src.kind, label: visible(label), notesId: registerNotes(abs, { label, chosen: false, unsafe: !sourceIsPlain(abs) }).id };
   };
   /** What the notes edits of a save need: the stored path of a notes folder, relative to this harness folder or in `~` form, and the shipped kit. */
   const notesEdits = (f: Folder): NotesEditDeps => ({
     sourcePath: notesId => {
       const n = notesOf(notesId);
+      if (n.unsafe) throw new NotesRefusal('NOTES_PATH_UNSAFE');
       const r = storedKnowledgePath(n.dir, { root: f.dir, home: realHome });
       if (!r.ok) throw new DefinitionError(r.code, r.message);
       return r.path;
@@ -973,7 +998,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
         const dir = realpathSync(picked);
         if (!lstatSync(dir).isDirectory()) return bad();
         checkProjectPath(dir, deps.home);
-        const n = registerNotes(dir);
+        const n = registerNotes(dir, { chosen: true });
         return await answer(n, () => notesView(n));
       } catch (error) {
         if (error instanceof EngineCallRefusal) return { ok: false, refusal: { code: 'NOT_A_FOLDER', message: 'That is not a folder Bowerloom can use. Choose a folder.', paths: [] } } as const;
@@ -987,6 +1012,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     planCreateNotes: id => serial(async () => {
       const n = notesOf(id);
       return planned(n, 'notes-starter', () => {
+        chosenOnly(n);
         const kit = kitNow('wiki-keeper');
         const plan = planStarter(n.dir, kit.starter, notesOptions);
         const value: NotesStarterView = {
@@ -1008,6 +1034,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     planNotesHistory: id => serial(async () => {
       const n = notesOf(id);
       return planned(n, 'notes-history', () => {
+        chosenOnly(n);
         const plan = planGitInit(n.dir, notesOptions);
         const value: NotesHistoryPlanView = {
           notes: n.label, files: plan.files.slice(0, NOTES_PLAN_LIST_LIMIT).map(f => ({ path: n.scrub(f.path), kind: f.kind })), count: plan.files.length, hidden: plan.hidden,

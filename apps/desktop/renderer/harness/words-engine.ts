@@ -267,6 +267,7 @@ export const NOTES_REFUSAL_WORDS: Readonly<Record<string, string>> = Object.free
   NOTES_PARTIAL: 'Check the files listed, then start again in an empty folder.',
   KIT_INVALID: 'Install Bowerloom again to repair the notes keeper.',
   NOT_A_FOLDER: 'Choose a folder, not a file.',
+  NOTES_NOT_CHOSEN: 'Choose this folder with Use my notes first.',
 });
 /**
  * What to do after a notes write stopped part way (NOTES_PARTIAL), by the step that stopped: the starter wrote files into an empty folder; the history start

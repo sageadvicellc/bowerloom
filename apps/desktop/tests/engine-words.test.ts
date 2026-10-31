@@ -85,7 +85,7 @@ test('save step: every new refusal code has words for what to do next, inside th
 });
 
 test('notes: every refusal of the notes calls has words for what to do next, inside the hint limit and free of banned words', () => {
-  const codes: string[] = [...NOTES_REFUSAL_CODES, 'KIT_INVALID', 'NOT_A_FOLDER'];
+  const codes: string[] = [...NOTES_REFUSAL_CODES, 'KIT_INVALID', 'NOT_A_FOLDER', 'NOTES_NOT_CHOSEN'];
   assert.deepEqual(codes.filter(c => NOTES_REFUSAL_WORDS[c] === undefined), [], 'every code has words');
   assert.deepEqual(Object.keys(NOTES_REFUSAL_WORDS).filter(c => !codes.includes(c)), [], 'no words for a code that does not exist');
   for (const [code, text] of Object.entries(NOTES_REFUSAL_WORDS)) {

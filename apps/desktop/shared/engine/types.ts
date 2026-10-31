@@ -599,3 +599,11 @@ export const KIT_MAIN_WORDS: Readonly<Record<typeof KIT_INVALID | typeof KIT_ALR
   KIT_INVALID: 'The ready-made notes keeper that ships with Bowerloom is missing or damaged, so Bowerloom will not use it. Nothing was written.',
   KIT_ALREADY_ADDED: 'This harness holds the notes keeper already. Nothing was written.',
 });
+/**
+ * A refusal of main itself for a notes folder: Bowerloom plans and writes the starter or the history only in a folder the person chose with main's own notes
+ * chooser in this window. A source read from a harness's `knowledge.json` is read-only.
+ */
+export const NOTES_NOT_CHOSEN = 'NOTES_NOT_CHOSEN';
+export const NOTES_MAIN_WORDS: Readonly<Record<typeof NOTES_NOT_CHOSEN, string>> = Object.freeze({
+  NOTES_NOT_CHOSEN: 'Bowerloom changes a notes folder only after you choose it here with "Use my notes" or "Start fresh". Nothing was changed.',
+});
