@@ -30,23 +30,24 @@ export function graphOf(state: HarnessState, harness: Harness, moved: Readonly<R
     ...partsOf(state, harness).map(p => ({ id: p.id, kind: p.kind, name: p.name, summary: p.summary, missing: false, isNew: harness.newPartIds.includes(p.id) })),
     ...harness.missing.map(m => ({ id: m.id, kind: m.kind, name: m.name, summary: 'Missing. Needed.', missing: true, isNew: false })),
   ];
-  const saved = (id: string): Point | undefined => moved[id] ?? harness.positions[id];
-  const places = new Map<string, Point>();
-  for (const e of entries) { const p = saved(e.id); if (p !== undefined) places.set(e.id, p); }
-  // The other parts, in a column at the right, one slot each.
-  let cursor = Math.max(RIGHT_TOP - RIGHT_PITCH, ...entries.filter(e => e.kind !== 'agent' && places.has(e.id)).map(e => places.get(e.id)!.y));
-  for (const e of entries) if (e.kind !== 'agent' && !places.has(e.id)) { cursor += RIGHT_PITCH; places.set(e.id, { x: RIGHT_X, y: cursor }); }
-  // The agents, in a column at the left, each level with the middle of the parts it uses, and never closer than a gap to the one above.
-  const linked = (id: string): number[] => harness.links.filter(l => l.from === id && places.has(l.to)).map(l => places.get(l.to)!.y + NODE_SIZE.other.h / 2);
-  let floor = Math.max(Number.NEGATIVE_INFINITY, ...entries.filter(e => e.kind === 'agent' && places.has(e.id)).map(e => places.get(e.id)!.y + NODE_SIZE.agent.h + AGENT_GAP));
-  let slot = 0;
+  // Default places first. They depend on the list of parts and their links only, never on a saved or dragged place, so moving one node moves that node and no other.
+  const defaults = new Map<string, Point>();
+  // The other parts, in a column at the right, one slot each, by their index among the other parts.
+  let other = 0;
+  for (const e of entries) if (e.kind !== 'agent') { defaults.set(e.id, { x: RIGHT_X, y: RIGHT_TOP + other * RIGHT_PITCH }); other += 1; }
+  // The agents, in a column at the left, each level with the middle of the default places of the parts it uses, and never closer than a gap to the agent above.
+  const linked = (id: string): number[] => harness.links.filter(l => l.from === id && defaults.has(l.to)).map(l => defaults.get(l.to)!.y + NODE_SIZE.other.h / 2);
+  let floor = Number.NEGATIVE_INFINITY, slot = 0;
   for (const e of entries) {
-    if (e.kind !== 'agent' || places.has(e.id)) continue;
+    if (e.kind !== 'agent') continue;
     const ys = linked(e.id);
     const wanted = ys.length > 0 ? ys.reduce((a, b) => a + b, 0) / ys.length - NODE_SIZE.agent.h / 2 : AGENT_TOP + slot * (NODE_SIZE.agent.h + AGENT_GAP);
     const y = Math.max(wanted, floor);
-    places.set(e.id, { x: LEFT_X, y }); floor = y + NODE_SIZE.agent.h + AGENT_GAP; slot += 1;
+    defaults.set(e.id, { x: LEFT_X, y }); floor = y + NODE_SIZE.agent.h + AGENT_GAP; slot += 1;
   }
+  // Then the saved places, then the places being dragged, each one an override of one node.
+  const places = new Map<string, Point>(defaults);
+  for (const e of entries) { const p = moved[e.id] ?? harness.positions[e.id]; if (p !== undefined) places.set(e.id, p); }
   const nodes: GraphNode[] = entries.map(e => {
     const at = places.get(e.id)!, size = e.kind === 'agent' ? NODE_SIZE.agent : NODE_SIZE.other;
     return { ...e, x: at.x, y: at.y, w: size.w, h: size.h };
