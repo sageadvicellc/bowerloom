@@ -79,7 +79,7 @@ test('the built app opens the harness-first app on the person\'s own folders, wi
   expect(p.url()).toBe('app://viewer/index.html#app');
   // The harness-first app, on the person's own folders: its Welcome screen, its one bridge, and nothing of the old viewer.
   await expect(p.getByRole('heading', { level: 1, name: 'Bowerloom', exact: true })).toBeVisible();
-  await expect(p.getByText('Bowerloom only reads. Nothing changes until you press Install.')).toBeVisible();
+  await expect(p.getByText('Bowerloom only reads. It writes only after you approve what it will write.')).toBeVisible();
   const facts = await p.evaluate(() => ({
     viewerBridge: typeof (window as unknown as { bowerloom?: unknown }).bowerloom,
     readerBridge: Object.keys((window as unknown as { bowerloomReal: object }).bowerloomReal).sort(),

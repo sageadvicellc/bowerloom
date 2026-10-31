@@ -76,7 +76,7 @@ test('the window is the real preview: only the read-only bridge with three calls
   expect(facts).toEqual({ keys: ['discoverPlaces', 'pickFolder', 'readSelected'], kinds: ['function', 'function', 'function'], frozen: true, normal: 'undefined' });
   expect(await p.title()).toBe('Bowerloom');
   await expect(p.getByRole('heading', { level: 1, name: 'Bowerloom', exact: true })).toBeVisible();
-  await expect(p.getByText('Bowerloom only reads. Nothing changes until you press Install.')).toBeVisible();
+  await expect(p.getByText('Bowerloom only reads. It writes only after you approve what it will write.')).toBeVisible();
   await expect(p.getByRole('button', { name: 'Find my files', exact: true })).toBeFocused();
   await everyStep('welcome');
 });
