@@ -1,8 +1,8 @@
 /**
  * The graph of a folder's harness, in the Builder and in the save sheet's edit. Agents sit in a column at the left and every other part in a column at the right, joined by curves.
  * Press a node to select it: the node and its neighbours stay bright and the rest fade. Drag a node to move it; the curves follow, and the place is kept for the session when you let go
- * (the arrow keys move the focused node by 8 units, 32 with Shift). Drag to link: a skill or a notes card dropped on an agent asks `onDrop` to link them, and goes back to its place
- * when they are linked; any other drag moves the node. Drag the background to pan; Ctrl and the wheel (or a pinch) zoom about the pointer, the wheel alone pans.
+ * (the arrow keys move the focused node by 8 units, 32 with Shift). Drag to link: a skill or a notes card dropped on an agent asks `onDrop` to link them, and goes back to its place,
+ * linked or refused; any other drag moves the node. Drag the background to pan; Ctrl and the wheel (or a pinch) zoom about the pointer, the wheel alone pans.
  * The buttons at the top right zoom in, zoom out and fit the graph; the small map at the foot shows the whole graph and the window, and a press on it moves the window there.
  * To link with the keyboard: select an agent and press the circle at its right edge, then press a part. A link is a draft until Save. Escape or a press on the background stops linking.
  * Nothing here writes to a disk. All text comes from the person's own files and is drawn as plain text.
@@ -29,8 +29,8 @@ export interface GraphProps {
   onLinkStart(agentId: string): void;
   onLinkTarget(partId: string): void;
   onLinkCancel(): void;
-  /** A skill or a notes card dropped on an agent. True when they were linked, so the node goes back to its place. Left out, every drag moves the node. */
-  onDrop?(dragged: string, agent: string): boolean;
+  /** A skill or a notes card dropped on an agent: a link to make. The node goes back to its place either way. Left out, every drag moves the node. */
+  onDrop?(dragged: string, agent: string): void;
 }
 
 const DRAG_START = 4;
@@ -150,8 +150,8 @@ export function Graph({ state, harness, selectedId, linkingId, matchIds, onSelec
       const agent = onDrop === undefined ? null : dropLinkTarget(latest.current.graph.nodes, d.id, toWorld(e.clientX, e.clientY));
       setMoved(m => { const rest = { ...m }; delete rest[d.id]; return rest; });
       setDropOn(null);
-      // Dropped on an agent and linked: the node goes back to where it was. Any other drag moves it.
-      if (agent !== null && onDrop!(d.id, agent)) return;
+      // Dropped on an agent: a link, made or refused in words, and the node goes back to where it was. Any other drag moves it.
+      if (agent !== null) { onDrop!(d.id, agent); return; }
       if (at !== undefined) onMove(d.id, { x: at.x, y: at.y });
       return;
     }

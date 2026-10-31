@@ -226,8 +226,8 @@ export interface EditStepProps {
   world: NonNullable<ReturnType<typeof definitionWorld>>; linkingId: string | null; selectedId: string | null;
   onDraft(next: (d: SaveDraft) => SaveDraft): void; onLinkStart(id: string): void; onLinkTarget(id: string): void; onLinkCancel(): void; onSelect(id: string | null): void;
   onMove(id: string, at: Point): void; onGoBack(version: string): void;
-  /** A skill or a notes card dropped on an agent (the Builder): true when they were linked. Left out, every drag moves the node. */
-  onDrop?(dragged: string, agent: string): boolean;
+  /** A skill or a notes card dropped on an agent (the Builder): a link to make. Left out, every drag moves the node. */
+  onDrop?(dragged: string, agent: string): void;
   /** False in the Builder, which keeps the save points in a drawer. */
   savePoints?: boolean;
   setAside?: SetAsideParts;

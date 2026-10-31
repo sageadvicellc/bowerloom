@@ -120,12 +120,15 @@ test('a skill selected offers Remove, which says it deletes the files at Save, a
   await expect(node('skill:check-facts')).toBeVisible();
 });
 
-test('a refused gesture says why in words, and the draft does not change', async () => {
+test('a refused drop says why in words, the draft does not change, and the node goes back to its place', async () => {
   const p = page();
   await openWeekly(p);
-  await drag(p, node('skill:draft-outline'), await middle(node('agent:writer')));
+  const outline = node('skill:draft-outline'), before = (await outline.boundingBox())!;
+  await drag(p, outline, await middle(node('agent:writer')));
   await expect(p.getByText('That link is there already.')).toBeVisible();
   await expect(count(p)).toContainText('No change yet.');
+  const after = (await outline.boundingBox())!;
+  expect(Math.round(after.x - before.x)).toBe(0); expect(Math.round(after.y - before.y)).toBe(0);
 });
 
 test('the keyboard links too: "Link to..." in the details, then Enter on the part with the focus', async () => {

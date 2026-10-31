@@ -166,7 +166,7 @@ export function Builder({ id }: { id: string }): ReactElement {
           <EditStep base={base!} now={editor.now!} draft={draft} count={count} held={held || busy} versions={fd.entry.versions} world={editor.world!} linkingId={linkingId}
             selectedId={selectedId} savePoints={false} onDraft={fd.change} onLinkStart={toggleLink} onLinkTarget={onLinkTarget} onLinkCancel={() => setLinkingId(null)}
             onSelect={next => { setSelectedId(next); if (next === null) setLinkingId(null); }} onMove={fd.move} onGoBack={() => undefined}
-            onDrop={(dragged, agent) => act({ kind: 'link', a: dragged, b: agent })}
+            onDrop={(dragged, agent) => { act({ kind: 'link', a: dragged, b: agent }); }}
             notes={editor.notes} {...(editor.copy === undefined ? {} : { copy: editor.copy })} />
         ) : null}
       </div>
