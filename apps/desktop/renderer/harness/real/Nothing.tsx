@@ -13,7 +13,7 @@ import { REAL, nothingReadLine } from './words-real.js';
 import './real.css';
 
 /** The words of the screen with no bridge. The screen has no way on, so it offers the one thing a person can do (close the window) and points to the Help menu. */
-export const NO_BRIDGE_WORDS = Object.freeze({ close: 'Close Bowerloom', help: 'To tell us, choose Help, then Report a problem.' });
+export const NO_BRIDGE_WORDS = Object.freeze({ close: 'Close this window', help: 'To tell us, choose Help, then Report a problem.' });
 
 /** Closes the window of the page. The page has no bridge here, so this is all it can do; on macOS the app itself stays open until Quit. */
 export const closeWindow = (): void => { window.close(); };
