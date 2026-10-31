@@ -1,6 +1,6 @@
 /**
  * A file path is out of sight until "Show details" is pressed (Library, Projects, File view), by one shared disclosure. The button is a real button: Enter and Space open and close it,
- * the focus stays on it, aria-expanded and aria-controls follow it, and its name says what it opens. The sample launch (--prototype-v3) is used: it has parts and projects with paths.
+ * the focus stays on it, aria-expanded and aria-controls follow it, and its name says what it opens. The sample launch (--sample) is used: it has parts and projects with paths.
  */
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
@@ -44,7 +44,7 @@ async function exercise(p: Page, box: Locator, pathText: RegExp): Promise<void> 
 
 test('Library: the path of the picked part is behind "Show details"', async () => {
   const p = page();
-  await fresh(p, '#prototype-v3/library/skill');
+  await fresh(p, '#sample/library/skill');
   const panel = p.getByRole('complementary');
   await expect(panel.getByRole('heading', { level: 3, name: 'File', exact: true })).toBeVisible();
   expect(await p.evaluate(() => document.body.innerText), 'a closed path is not in the text a person sees').not.toMatch(/skills\/[a-z-]+\/SKILL\.md/);
@@ -53,7 +53,7 @@ test('Library: the path of the picked part is behind "Show details"', async () =
 
 test('Projects: the path of each project is behind "Show details", in the row and in the details column', async () => {
   const p = page();
-  await fresh(p, '#prototype-v3/projects');
+  await fresh(p, '#sample/projects');
   await expect(p.locator('.hxp-row').first().locator('[data-path-disclosure]')).toHaveCount(1);
   expect(await p.evaluate(() => document.body.innerText), 'a closed path is not in the text a person sees').not.toMatch(/~\/|\/Users\//);
   await exercise(p, p.locator('.hxp-row').first(), /~\/|\/Users\//);
@@ -62,9 +62,9 @@ test('Projects: the path of each project is behind "Show details", in the row an
 
 test('File view: the path is behind "Show details" and the title is the file name', async () => {
   const p = page();
-  await fresh(p, '#prototype-v3/library/skill');
+  await fresh(p, '#sample/library/skill');
   const id = (await p.locator('[data-part]').first().getAttribute('data-part'))!;
-  await fresh(p, `#prototype-v3/file/${id}`);
+  await fresh(p, `#sample/file/${id}`);
   await expect(p.getByRole('heading', { level: 1, name: 'SKILL.md' })).toBeVisible();
   await expect(p.getByText('Read-only', { exact: true })).toBeVisible();
   await expect(p.getByText('Read-only in this release')).toHaveCount(0);
@@ -73,7 +73,7 @@ test('File view: the path is behind "Show details" and the title is the file nam
 
 test('Projects: the row\'s button is named "in the list", apart from the details column\'s, and both start with the shown words', async () => {
   const p = page();
-  await fresh(p, '#prototype-v3/projects');
+  await fresh(p, '#sample/projects');
   const row = p.locator('.hxp-row').first(), name = (await row.locator('.hx-row-main').innerText()).trim();
   const inRow = row.locator('[data-path-disclosure] > button'), inDetails = p.getByRole('complementary').locator('[data-path-disclosure] > button');
   await expect(inRow).toHaveAccessibleName(`Show details for ${name} in the list`);
@@ -90,7 +90,7 @@ async function emptyPart(p: Page, box: Locator): Promise<{ x: number; y: number 
 
 test('Projects: a press on the empty part of a row picks the row, and a press on its Show details does not', async () => {
   const p = page();
-  await fresh(p, '#prototype-v3/projects');
+  await fresh(p, '#sample/projects');
   const rows = p.locator('.hxp-row');
   expect(await rows.count()).toBeGreaterThanOrEqual(3);
   await expect(rows.nth(0)).toHaveAttribute('data-selected', '');
