@@ -61,7 +61,7 @@ import type {
   DefinitionView, ProjectAnswer, ProjectInput, ProjectWritten, Recovered, RecoveryChoices, RecoveryView, Refusal, RemovalView, Removed, ReportOpened, RestoreView, SaveChangeView, SaveEdit,
   SaveRequest, SaveView, SaveWritten, SetAsideView, SetAsideWritten, VersionView,
 } from '../shared/engine/types.js';
-import { REPORT_MAIN_WORDS, REPORT_NOT_SHOWN, REPORT_OPEN_FAILED, SAVE_EXECUTABLE_UNACKNOWLEDGED, SAVE_MAIN_WORDS } from '../shared/engine/types.js';
+import { REPORT_MAIN_WORDS, REPORT_NONE, REPORT_NOT_SHOWN, REPORT_OPEN_FAILED, SAVE_EXECUTABLE_UNACKNOWLEDGED, SAVE_MAIN_WORDS } from '../shared/engine/types.js';
 import { checkedReport, newestReport } from './notes-report.js';
 import { adoptRecoveryView, adoptionView, approveKey, approveLine, keepsFile, mergeRecoveryView, mergeView, projectView, recoveryView, removalView } from '../shared/engine/view.js';
 import { ASK, ShownPlans, approvalText, cancelled, canonical, hashOf, notTheShownPlan, openCancelled } from './engine-consent.js';
@@ -1115,7 +1115,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
       const found = await answer(n, () => {
         if (n.unsafe) throw new NotesRefusal('NOTES_PATH_UNSAFE');
         const rel = newestReport(n.dir);
-        if (rel === null && shownReports.get(n.id) === null) throw new DefinitionError('REPORT_NONE', REPORT_MAIN_WORDS.REPORT_NONE);
+        if (rel === null && shownReports.get(n.id) === null) throw new DefinitionError(REPORT_NONE, REPORT_MAIN_WORDS.REPORT_NONE);
         if (rel === null || !shownReports.has(n.id) || shownReports.get(n.id) !== rel) throw new DefinitionError(REPORT_NOT_SHOWN, REPORT_MAIN_WORDS.REPORT_NOT_SHOWN);
         return checkedReport(n.dir, rel);
       });
