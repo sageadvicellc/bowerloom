@@ -200,17 +200,25 @@ test('a file is data only when it passes the allowlist; everything else can run'
   const text = t => new TextEncoder().encode(t);
   const bytes = (...b) => new Uint8Array(b);
   const why = (path, data, exec = false) => codeWhy(path, typeof data === 'string' ? text(data) : data, exec);
-  // data
-  for (const path of ['skills/x/SKILL.md', 'a.markdown', 'a.TXT', 'cfg.json', 'cfg.jsonc', 'a.yaml', 'a.yml', 'a.toml', 'a.csv', 'a.tsv', 'Notes.MD', 'a.b.md']) assert.equal(why(path, '# title\n'), null, path);
-  for (const path of ['img.png', 'img.JPG', 'a.jpeg', 'a.gif', 'a.webp', 'a.ico', 'a.pdf', 'f.woff', 'f.woff2', 'f.ttf', 'f.otf']) assert.equal(why(path, bytes(0x89, 0x50, 0x4e, 0x47, 0xff, 0xfe)), null, path);
+  const PNG = bytes(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a), JPG = bytes(0xff, 0xd8, 0xff, 0xe0), GIF = bytes(0x47, 0x49, 0x46, 0x38, 0x39, 0x61);
+  const WEBP = bytes(0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 0x57, 0x45, 0x42, 0x50), ICO = bytes(0, 0, 1, 0, 1, 0), WOFF = bytes(0x77, 0x4f, 0x46, 0x46, 0), WOFF2 = bytes(0x77, 0x4f, 0x46, 0x32, 0);
+  const TTF = bytes(0, 1, 0, 0, 0), TTF2 = bytes(0x74, 0x72, 0x75, 0x65, 0), OTF = bytes(0x4f, 0x54, 0x54, 0x4f, 0);
+  // text data
+  for (const path of ['skills/x/SKILL.md', 'a.markdown', 'a.TXT', 'a.rst', 'cfg.json', 'cfg.jsonc', 'a.yaml', 'a.yml', 'a.toml', 'a.csv', 'a.tsv', 'style.css', 'Notes.MD', 'a.b.md', 'README', 'LICENSE', 'notice', 'skills/x/License', 'README.md', 'LICENSE.txt']) assert.equal(why(path, '# title\n'), null, path);
+  // binary data, each with its own signature
+  for (const [path, data] of [['a.png', PNG], ['a.JPG', JPG], ['a.jpeg', JPG], ['a.gif', GIF], ['a.webp', WEBP], ['a.ico', ICO], ['f.woff', WOFF], ['f.woff2', WOFF2], ['f.ttf', TTF], ['f.ttf', TTF2], ['f.otf', OTF]]) assert.equal(why(path, data), null, path);
+  // an image or a font that is not its own kind is listed
+  for (const [path, data] of [['a.png', JPG], ['a.jpg', PNG], ['a.gif', text('GIF')], ['a.webp', bytes(0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 0x57, 0x41, 0x56, 0x45)], ['a.png', text('PK\u0003\u0004zip')], ['a.woff', text('echo hi\n')], ['a.ico', bytes(1, 2, 3, 4)], ['a.png', bytes()]]) assert.equal(why(path, data), 'binary', path);
   // the bit, the name, the folder
   assert.equal(why('skills/x/tool', 'echo', true), 'executable');
   assert.equal(why('hooks.json', '{}'), 'hook');
   assert.equal(why('scripts/anything.txt', 'x'), 'script');
+  // manifests that run commands
+  for (const path of ['package.json', 'skills/x/Package.JSON', 'pyproject.toml', 'Cargo.toml', 'composer.json', 'docker-compose.yml', 'docker-compose.yaml', 'docker-compose.override.yml', 'compose.yml', 'compose.yaml', 'Taskfile.yml', 'Taskfile.yaml', 'justfile', 'Makefile', 'Dockerfile']) assert.equal(why(path, '{}'), 'manifest', path);
   // extensions that run
-  for (const path of ['skills/x/run.sh', 'helper.PY', 'a.js', 'a.jsx', 'a.tsx', 'a.node', 'setup.hta', 'a.wasm', 'a.msi', 'a.pkg', 'a.dmg', 'a.lnk', 'a.desktop', 'a.plist', 'a.com', 'a.scr', 'a.pyc', 'a.class', 'a.go', 'a.rs', 'a.svg', 'a.ipynb']) assert.equal(why(path, 'x'), 'extension', path);
+  for (const path of ['skills/x/run.sh', 'helper.PY', 'a.js', 'a.jsx', 'a.tsx', 'a.cjs', 'a.mts', 'a.node', 'setup.hta', 'a.wasm', 'a.msi', 'a.pkg', 'a.dmg', 'a.lnk', 'a.desktop', 'a.plist', 'a.com', 'a.scr', 'a.pyc', 'a.class', 'a.go', 'a.rs', 'a.svg', 'a.html', 'a.pdf', 'a.ipynb']) assert.equal(why(path, 'x'), 'extension', path);
   // everything else
-  for (const path of ['Makefile', 'Dockerfile', 'skills/x/helper', 'a.unknown', 'a.html', 'a.xml', '.env']) assert.equal(why(path, 'x'), 'not-data', path);
+  for (const path of ['skills/x/helper', 'a.unknown', 'a.xml', '.env', 'READMEFIRST', 'license-mit']) assert.equal(why(path, 'x'), 'not-data', path);
   assert.equal(why('a.sh ', 'x'), 'not-data', 'a trailing space');
   assert.equal(why('a.md.', '# t'), 'not-data', 'a trailing dot');
   assert.equal(why('a.md ', '# t'), 'not-data');
@@ -220,21 +228,28 @@ test('a file is data only when it passes the allowlist; everything else can run'
   assert.equal(why('run.sh.txt', '#!/bin/sh\necho\n'), 'shebang', 'data by name, code by its first line');
   assert.equal(why('run.sh.txt', 'echo hi\n'), null, 'data by name and by its bytes');
   assert.equal(why('notes.md', bytes(0xef, 0xbb, 0xbf, 0x23, 0x21, 0x2f)), 'shebang', 'a byte order mark, then #!');
+  assert.equal(why('notes.md', bytes(0xef, 0xbb, 0xbf, 0xef, 0xbb, 0xbf, 0x23, 0x21, 0x2f)), 'shebang', 'two byte order marks, then #!');
   assert.equal(why('notes.md', bytes(0xef, 0xbb, 0xbf, 0x23, 0x20)), null, 'a byte order mark and a heading is text');
   assert.equal(why('skills/x/tool', '#!/usr/bin/env node\n'), 'shebang');
-  for (const [name, magic] of [['ELF', [0x7f, 0x45, 0x4c, 0x46]], ['Mach-O 32', [0xfe, 0xed, 0xfa, 0xce]], ['Mach-O 64', [0xfe, 0xed, 0xfa, 0xcf]], ['Mach-O 32 reverse', [0xce, 0xfa, 0xed, 0xfe]], ['Mach-O 64 reverse', [0xcf, 0xfa, 0xed, 0xfe]], ['Mach-O fat', [0xca, 0xfe, 0xba, 0xbe]], ['PE', [0x4d, 0x5a, 0x90, 0x00]], ['WebAssembly', [0x00, 0x61, 0x73, 0x6d]]]) {
+  for (const [name, magic] of [['ELF', [0x7f, 0x45, 0x4c, 0x46]], ['Mach-O 32', [0xfe, 0xed, 0xfa, 0xce]], ['Mach-O 64', [0xfe, 0xed, 0xfa, 0xcf]], ['Mach-O 32 reverse', [0xce, 0xfa, 0xed, 0xfe]], ['Mach-O 64 reverse', [0xcf, 0xfa, 0xed, 0xfe]], ['Mach-O fat', [0xca, 0xfe, 0xba, 0xbe]], ['WebAssembly', [0x00, 0x61, 0x73, 0x6d]]]) {
     assert.equal(why('skills/x/helper', bytes(...magic, 1, 2, 3)), 'binary', name);
     assert.equal(why('pic.png', bytes(...magic, 1, 2, 3)), 'binary', `${name} under a data name`);
     assert.equal(why('pic.png', bytes(0xef, 0xbb, 0xbf, ...magic)), 'binary', `${name} after a byte order mark`);
+    assert.equal(why('notes.md', bytes(...magic, 0x20, 0x68, 0x69)), 'binary', `${name} in a text file`);
   }
+  assert.equal(why('skills/x/helper', bytes(0x4d, 0x5a, 0x90, 0x00)), 'binary', 'PE in a file that is not text');
+  assert.equal(why('pic.png', bytes(0x4d, 0x5a, 0x90, 0x00)), 'binary', 'PE under a data name');
+  assert.equal(why('notes.md', 'MZ-5 notes on the pump\n'), null, 'a text note that begins with MZ is a note');
+  assert.equal(why('README', 'MZ readme\n'), null);
   assert.equal(why('assets/blob.bin', bytes(0x23)), 'not-data');
-  // text that is not UTF-8 is not data
+  // text that is not UTF-8, or holds a NUL, is not data
   assert.equal(why('notes.md', bytes(0x23, 0x20, 0xff, 0xfe, 0x00)), 'not-data');
+  assert.equal(why('notes.md', 'a\u0000b'), 'not-data', 'a NUL in a text file');
   assert.equal(why('cfg.json', bytes(0xc3, 0x28)), 'not-data');
   // missing bytes never throw
   for (const bad of [null, undefined, 'text', 5, {}]) assert.equal(codeWhy('notes.md', bad, false), 'not-data');
   assert.equal(codeWhy('notes.md', null, true), 'executable');
-  assert.ok(CODE_EXTENSIONS.includes('.sh') && DATA_EXTENSIONS.includes('.md') && !DATA_EXTENSIONS.includes('.svg'));
+  assert.ok(CODE_EXTENSIONS.includes('.sh') && DATA_EXTENSIONS.includes('.md') && DATA_EXTENSIONS.includes('.css') && !DATA_EXTENSIONS.includes('.svg') && !DATA_EXTENSIONS.includes('.pdf'));
 });
 
 // ---- choices -----------------------------------------------------------------------------------------------------------------
@@ -265,6 +280,9 @@ test('choices: a root that is not a plain object, a count that is too big, and a
   no({ link: { wiki: 'a\u202eb' } });
   no({ link: { wiki: 'a\u2028b' } });
   for (const ch of ['\u200e', '\u200f', '\u061c', '\u200b', '\ufeff', '\u0085', '\u2066', '\u0007']) no({ link: { wiki: `a${ch}b` } });
+  // The joiners that ordinary words in Persian and Indic scripts need are allowed.
+  assert.equal(importChoicesOf({ link: { wiki: '~/\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645' } }, names).link.get('wiki'), '~/\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645');
+  assert.equal(importChoicesOf({ link: { wiki: '~/\u0915\u200d\u0937' } }, names).link.get('wiki'), '~/\u0915\u200d\u0937');
   // 5 million items: refused from the length, with no copy.
   const big = { length: 5_000_000 };
   Object.setPrototypeOf(big, Array.prototype);

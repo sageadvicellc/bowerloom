@@ -15,8 +15,8 @@ const plain = (v: unknown): v is Record<string, unknown> => {
   const proto = Object.getPrototypeOf(v) as unknown;
   return proto === Object.prototype || proto === null;
 };
-/** A control character (`Cc`, NEL among them), a format character (`Cf`: bidirectional marks, zero-width characters, the byte order mark) or a line or paragraph separator. */
-const TEXT_ODD = new RegExp('[\\p{Cc}\\p{Cf}' + String.fromCharCode(0x2028, 0x2029) + ']', 'u');
+/** A control character (`Cc`, NEL among them), a format character (`Cf`: bidirectional marks, zero-width space, the byte order mark) or a line or paragraph separator. The joiners U+200C and U+200D stay: Persian, Indic and other scripts need them inside ordinary words (as `oneLine` keeps them). */
+const TEXT_ODD = new RegExp('\\p{Cc}|(?![' + String.fromCharCode(0x200c, 0x200d) + '])\\p{Cf}|[' + String.fromCharCode(0x2028, 0x2029) + ']', 'u');
 
 /**
  * `raw` is plain input: `{ link?: Record<string, string> | Map<string, string>, leave?: string[] | Set<string> }`, or null or undefined for no choices.

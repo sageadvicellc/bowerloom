@@ -19,7 +19,7 @@ export const SHIPPED = Object.freeze([
   'apps/desktop/shared/harness/overview-layout.ts',
 ]);
 const STUB = /['"`]not built['"`]/;
-const SOURCE = /\.(?:ts|tsx|mjs|js)$/;
+const SOURCE = /\.(?:ts|tsx|mts|cts|mjs|cjs|js)$/;
 const SKIP = new Set(['node_modules', 'dist', '.build', 'test', 'tests']);
 
 function files(root, rel) {

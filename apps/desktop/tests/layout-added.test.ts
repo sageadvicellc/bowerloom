@@ -6,7 +6,7 @@ import { graphOf, settleAdded } from '../shared/harness/layout.js';
 import { SAMPLE_IDS, createSampleWorld } from '../shared/harness/sample.js';
 import { harnessById } from '../shared/harness/status.js';
 import { addPart, removePart } from '../shared/harness/store.js';
-import { copySkill, definitionWorld, draftView, linkSkill } from '../shared/harness/save-draft.js';
+import { copySkill, definitionWorld, draftView, linkSkill, removeSkill } from '../shared/harness/save-draft.js';
 import { folderDraftsReduce } from '../renderer/harness/folder-draft.js';
 import type { FolderDrafts } from '../renderer/harness/folder-draft.js';
 import type { DefinitionView } from '../shared/engine/types.js';
@@ -95,7 +95,6 @@ test('copy A, undo, copy B, copy A again: the cards never share a place', () => 
   let d: FolderDrafts = folderDraftsReduce({}, { kind: 'loaded', folder: 'folder-1', base: BASE, versions: null });
   d = folderDraftsReduce(d, { kind: 'change', folder: 'folder-1', next: draft => copySkill(BASE, draft, copy('tie-knots'), true) });
   d = folderDraftsReduce(d, { kind: 'undo', folder: 'folder-1' });
-  assert.equal(Object.hasOwn(d['folder-1']!.positions, 'skill:tie-knots'), false, 'the place of a card that left is dropped');
   d = folderDraftsReduce(d, { kind: 'change', folder: 'folder-1', next: draft => copySkill(BASE, draft, copy('coil-rope'), true) });
   d = folderDraftsReduce(d, { kind: 'change', folder: 'folder-1', next: draft => copySkill(BASE, draft, copy('tie-knots'), true) });
   const nodes = graphAt(d).nodes.filter(n => n.kind !== 'agent');
@@ -106,16 +105,37 @@ test('copy A, undo, copy B, copy A again: the cards never share a place', () => 
   }
 });
 
-test('a saved place that overlaps a card now is not kept for a card that returns', () => {
+test('a saved place that overlaps a card now is not kept for a card that returns; a card that leaves is pinned where it was', () => {
   const at = { x: 440, y: 40 };
   const empty = { nodes: [], edges: [], bounds: { left: 0, top: 0, right: 0, bottom: 0 } };
   const node = (id: string, p: { x: number; y: number }) => ({ id, kind: 'skill' as const, name: id, summary: '', missing: false, isNew: false, x: p.x, y: p.y, w: 216, h: 60 });
   const taken = { ...empty, nodes: [node('skill:there', at)] };
   const back = { ...empty, nodes: [node('skill:there', at), node('skill:old', at)] };
-  assert.deepEqual(settleAdded(taken, back, { 'skill:old': at }).place['skill:old'], { x: 440, y: 116 }, 'placed again, below');
+  assert.deepEqual(settleAdded(taken, back, { 'skill:old': at })['skill:old'], { x: 440, y: 116 }, 'placed again, below');
   const free = { ...empty, nodes: [node('skill:there', at), node('skill:old', { x: 440, y: 400 })] };
-  assert.equal(settleAdded(taken, free, { 'skill:old': { x: 440, y: 400 } }).place['skill:old'], undefined, 'a free saved place is kept');
-  assert.deepEqual(settleAdded(taken, empty, { 'skill:there': at }).forget, ['skill:there'], 'a card that leaves is forgotten');
+  assert.equal(settleAdded(taken, free, { 'skill:old': { x: 440, y: 400 } })['skill:old'], undefined, 'a free saved place is kept');
+  assert.deepEqual(settleAdded(taken, empty, {})['skill:there'], at, 'a card that leaves is pinned at its last place');
+  assert.equal(settleAdded(taken, empty, { 'skill:there': { x: 700, y: 300 } })['skill:there'], undefined, 'a dragged place is already saved');
+});
+
+const FIVE: DefinitionView = { ...BASE, skills: ['s1', 's2', 's3', 's4', 's5'].map(id => ({ id, name: id, description: 'A skill.' })) };
+const placeIn = (drafts: FolderDrafts, id: string): [number, number] => { const n = graphAt(drafts).nodes.find(x => x.id === id)!; return [n.x, n.y]; };
+
+test('remove a card, then undo: it returns where it was, and a dragged place comes back too', () => {
+  let d: FolderDrafts = folderDraftsReduce({}, { kind: 'loaded', folder: 'folder-1', base: FIVE, versions: null });
+  const start = graphAt(d);
+  const original = placeIn(d, 'skill:s2');
+  d = folderDraftsReduce(d, { kind: 'change', folder: 'folder-1', next: draft => removeSkill(FIVE, draft, 's2', true) });
+  assert.equal(graphAt(d).nodes.some(n => n.id === 'skill:s2'), false);
+  for (const n of start.nodes.filter(x => x.id !== 'skill:s2')) assert.deepEqual(placeIn(d, n.id), [n.x, n.y], `${n.id} did not move`);
+  d = folderDraftsReduce(d, { kind: 'undo', folder: 'folder-1' });
+  assert.deepEqual(placeIn(d, 'skill:s2'), original, 'back at its first place');
+  for (const n of start.nodes) assert.deepEqual(placeIn(d, n.id), [n.x, n.y], `${n.id} after undo`);
+  // A dragged place.
+  d = folderDraftsReduce(d, { kind: 'move', folder: 'folder-1', node: 'skill:s2', at: { x: 700, y: 300 } });
+  d = folderDraftsReduce(d, { kind: 'change', folder: 'folder-1', next: draft => removeSkill(FIVE, draft, 's2', true) });
+  d = folderDraftsReduce(d, { kind: 'undo', folder: 'folder-1' });
+  assert.deepEqual(placeIn(d, 'skill:s2'), [700, 300], 'back where the person dragged it');
 });
 
 test('a link edit keeps the same nodes, so the reducer builds no graph and returns the positions as they were', () => {

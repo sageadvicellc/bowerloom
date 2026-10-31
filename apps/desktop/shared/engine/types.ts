@@ -573,10 +573,11 @@ export interface ShareTool {
 }
 /**
  * A file that can run: it has an execute bit, it is `hooks.json`, it is under `scripts/`, it begins with `#!` (`shebang`) or with the bytes of a program (`binary`), its
- * name ends in a code extension (`extension`), or it is anything that is not a named kind of data (`not-data`: no extension, another extension, text that is not UTF-8).
- * `path` is relative to `.bowerloom`.
+ * name ends in a code extension (`extension`), it is a manifest of commands such as `package.json` (`manifest`), or it is anything that is not a named kind of data
+ * (`not-data`: no extension, another extension, text that is not UTF-8 or holds a NUL; an image or font whose bytes are not its kind is `binary`). The list is a screen,
+ * not a proof: a text file can still hold commands. `path` is relative to `.bowerloom`.
  */
-export interface ShareCodeFile { readonly path: string; readonly why: 'executable' | 'hook' | 'script' | 'shebang' | 'binary' | 'extension' | 'not-data' }
+export interface ShareCodeFile { readonly path: string; readonly why: 'executable' | 'hook' | 'script' | 'shebang' | 'binary' | 'manifest' | 'extension' | 'not-data' }
 /** Where a reference goes: the tool, the field of it, and the host that field reaches (null when the tool has no url). */
 export interface ShareSink { readonly tool: string; readonly field: 'env' | 'header' | 'arg' | 'url' | 'command'; readonly host: string | null }
 /**

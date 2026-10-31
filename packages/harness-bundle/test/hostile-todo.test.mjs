@@ -26,7 +26,8 @@ describe('bundleTargetIdentity and writeBundleFile (lane A)', () => {
   test.todo('the temporary file is gone after every failure');
   test.todo('the temporary file has mode 0600 from creation, and its name differs between runs');
   test.todo('the CLI path never replaces a file');
-  test.todo('a target volume without hard links (link fails with EPERM, ENOTSUP, EXDEV or EMLINK): copyFile with COPYFILE_EXCL is used, a file made in between is never replaced, and a failed copy removes only the file this call made');
+  test.todo('a target volume without hard links (link fails with EPERM, ENOTSUP, EOPNOTSUPP, ENOSYS, EXDEV or EMLINK): the target is opened with O_CREAT|O_EXCL|O_NOFOLLOW at 0600, a file made in between is never replaced (BUNDLE_EXISTS), and a failed write unlinks the target only while its dev and ino equal the identity taken');
+  test.todo('the no-link path leaves no temporary file, and a crash mid-write leaves a truncated file that the importer refuses (revision mismatch)');
   test.todo('the temporary file name starts with a dot and ends in .part');
 });
 
@@ -37,6 +38,7 @@ describe('encodeBundle and decodeBundle (lane A)', () => {
   test.todo('an IPv6 address keeps its brackets and port');
   test.todo('skills/x/run.sh with no execute bit is listed as code and needs the acknowledgement');
   test.todo('a file that begins with #! anywhere in the bundle is listed as code');
+  test.todo('package.json, a compose file, Makefile and a .png that holds a zip are listed as code in a real bundle');
   test.todo('a notes source named constructor links and leaves out correctly');
   test.todo('change the command in a bundle: the acknowledgement changes; a summary hand-edited in the window with the old sha256 is never used (lane C builds it from the held bundle)');
   test.todo('helper.node, setup.hta, a Mach-O file named helper and run.sh.txt with #! are listed as code in a real bundle, base64 records included');

@@ -102,7 +102,9 @@ export function addPart(state: HarnessState, harnessId: string, partId: string, 
     positions: ref === undefined || at === undefined ? h.positions : { ...Object.fromEntries(Object.entries(h.positions).filter(([k]) => k !== ref.id)), [partId]: { x: at.x, y: at.y } },
   }));
   // Nothing else moves, and the new part is placed once, below the lowest card of its column, and the place is saved (layout.ts, `settleAdded`).
-  const grown = harnessById(added, harnessId)!, pins = settleAdded(before, graphOf(added, grown), grown.positions).place;
+  // The store undoes by its own steps, so a card that left (the missing card that the part now fills) keeps no place of its own.
+  const grown = harnessById(added, harnessId)!, graph = graphOf(added, grown), here = new Set(graph.nodes.map(n => n.id));
+  const pins = Object.fromEntries(Object.entries(settleAdded(before, graph, grown.positions)).filter(([id]) => here.has(id)));
   const next = withHarness(added, harnessId, h => ({ ...h, positions: { ...h.positions, ...pins } }));
   const undo: UndoStep[] = [{ op: 'remove-part', harnessId, partId }, ...(ref === undefined ? [] : [{ op: 'restore-missing', harnessId, missing: [ref], links: moved } as UndoStep])];
   return record(next, stamp, { text: `Added ${part.name} to ${harness.name}`, manifest: 'changed', undo });

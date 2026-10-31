@@ -68,10 +68,8 @@ export function folderDraftsReduce(s: FolderDrafts, a: FolderDraftAction): Folde
   const wasView = draftView(was.base, was.stack.present), nowView = draftView(now.base, now.stack.present);
   if (sameNodes(wasView, nowView)) return out;
   const graph = (view: DefinitionView): ReturnType<typeof graphOf> => { const w = definitionWorld(view); return graphOf(w.state, w.harness, now.positions); };
-  const { place, forget } = settleAdded(graph(wasView), graph(nowView), now.positions);
-  if (Object.keys(place).length === 0 && forget.length === 0) return out;
-  const positions = Object.fromEntries(Object.entries({ ...now.positions, ...place }).filter(([id]) => !forget.includes(id)));
-  return put(out, a.folder, { ...now, positions });
+  const place = settleAdded(graph(wasView), graph(nowView), now.positions);
+  return Object.keys(place).length === 0 ? out : put(out, a.folder, { ...now, positions: { ...now.positions, ...place } });
 }
 
 /** True when two views would draw the same nodes: the same agents, skills and notes sources, by id. */

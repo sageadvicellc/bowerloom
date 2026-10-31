@@ -77,16 +77,16 @@ export function nextSlot(graph: Pick<Graph, 'nodes'>, kind: PartKind): Point {
  * and after the change, with the places the person saved or dragged in both (`saved`). It returns the places to add to `saved`:
  *  - every node that is in both graphs, has no saved place, and would move (the default slot is an index, so a part added or removed ahead of it shifts it): it keeps its place;
  *  - every new node that has no saved place: below the lowest card of its column, one after another (`nextSlot`).
- * Pure. A node with a saved place is not changed, with two exceptions: a node that comes back keeps its saved place only when no node is there now (a place that
- * would overlap is replaced by the next slot), and `forget` lists the saved places of nodes that left the graph in this step, for the caller to drop (a node that
- * returns is placed again from the graph as it is then). When the two graphs hold the same nodes (a link was made or removed), the result is empty: a link is
- * allowed to move an agent that has no place of its own, because an agent's default level follows the parts it uses.
+ * Pure. A node with a saved place is not changed, with one exception: a node that comes back keeps its saved place only when no node is there now (a place that
+ * would overlap is replaced by the next slot). A node that leaves the graph is pinned at its last place (a dragged place is already saved), so a node that comes
+ * back, as undo brings it, returns where it was. When the two graphs hold the same nodes (a link was made or removed), the result is empty: a link is allowed to move
+ * an agent that has no place of its own, because an agent's default level follows the parts it uses.
  */
-export function settleAdded(before: Graph, after: Graph, saved: Readonly<Record<string, Point>>): { readonly place: Record<string, Point>; readonly forget: readonly string[] } {
+export function settleAdded(before: Graph, after: Graph, saved: Readonly<Record<string, Point>>): Record<string, Point> {
   const out: Record<string, Point> = {};
   const now = new Map(after.nodes.map(n => [n.id, n]));
-  if (before.nodes.length === after.nodes.length && before.nodes.every(n => now.has(n.id))) return { place: out, forget: [] };
-  const forget = before.nodes.filter(n => !now.has(n.id) && Object.hasOwn(saved, n.id)).map(n => n.id);
+  if (before.nodes.length === after.nodes.length && before.nodes.every(n => now.has(n.id))) return out;
+  for (const n of before.nodes) if (!now.has(n.id) && !Object.hasOwn(saved, n.id)) out[n.id] = { x: n.x, y: n.y };
   const overlaps = (a: GraphNode, list: readonly GraphNode[]): boolean => list.some(b => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h);
   const running: GraphNode[] = [];
   for (const n of before.nodes) {
@@ -106,7 +106,7 @@ export function settleAdded(before: Graph, after: Graph, saved: Readonly<Record<
     out[n.id] = at;
     running.push({ ...n, x: at.x, y: at.y });
   }
-  return { place: out, forget };
+  return out;
 }
 
 export function boundsOf(nodes: readonly GraphNode[], extraRight = 0): Bounds {

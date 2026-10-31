@@ -95,8 +95,9 @@ export interface BundleTool {
   readonly sha256: string;
 }
 /**
- * A file that can run (`codeWhy` in code-files.ts). Every file of a bundle is code unless it passes the allowlist of data: a named data extension, valid UTF-8 for a
- * text one, and first bytes that are not `#!` or the magic of a program. `sha256` is of its decoded bytes.
+ * A file that can run (`codeWhy` in code-files.ts). Every file of a bundle is code unless it passes the allowlist of data: a named data extension, valid UTF-8 with no
+ * NUL for a text one or the kind's own signature for an image or a font, a name that is not a manifest, and first bytes that are not `#!` or the magic of a program.
+ * The list is a screen, not a proof: a tick means "I read what was listed". `sha256` is of its decoded bytes.
  */
 export interface BundleCodeFile {
   readonly path: string;
