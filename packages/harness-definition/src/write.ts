@@ -366,14 +366,16 @@ function applyOne(work: Work, harness: HarnessDraft, knowledge: KnowledgeDraft, 
 }
 
 /**
- * A record of a `set-borrowed` edit: exactly a name, a marketplace, a version, and one or more items, each exactly a part
- * that can be borrowed and an id. The loader checks the rest of the result: a pinned version, and that each item exists.
+ * A record of a `set-borrowed` edit: exactly a name, a marketplace, a version, `claimed: true` when a 0.7 catalog only
+ * claims it, and one or more items, each exactly a part that can be borrowed and an id. The loader checks the rest of the result: a pinned version, and that each item exists.
  */
 function borrowedOf(value: unknown): SourceRecord {
   const bad = (why: string) => new Refusal('EDIT_BAD_EDIT', why);
   if (!isPlain(value)) throw bad('A set-borrowed edit needs a source: an object with a name, a marketplace, a version, and items.');
   const keys = Object.keys(value);
-  if (keys.length !== 4 || !['name', 'marketplace', 'version', 'items'].every(k => keys.includes(k))) throw bad('A borrowed record has exactly a name, a marketplace, a version, and items.');
+  const claimed = Object.hasOwn(value, 'claimed');
+  if (keys.length !== (claimed ? 5 : 4) || !['name', 'marketplace', 'version', 'items'].every(k => keys.includes(k))) throw bad('A borrowed record has exactly a name, a marketplace, a version, and items, and may say it is claimed.');
+  if (claimed && value.claimed !== true) throw bad('A borrowed record that is claimed says claimed: true.');
   const { name, marketplace, version, items } = value;
   for (const [what, v] of [['name', name], ['marketplace', marketplace], ['version', version]] as const) {
     if (typeof v !== 'string' || v === '' || v.length > 256) throw bad(`The ${what} of a borrowed record must be text of 1 to 256 characters.`);
@@ -386,7 +388,7 @@ function borrowedOf(value: unknown): SourceRecord {
     }
     return { part: item.part as SourceRecord['items'][number]['part'], id: item.id };
   });
-  return { name: name as string, marketplace: marketplace as string, version: version as string, items: refs };
+  return { name: name as string, marketplace: marketplace as string, version: version as string, ...(claimed ? { claimed: true as const } : {}), items: refs };
 }
 
 /** The paths of one skill folder, in the working copy. */

@@ -89,6 +89,14 @@ test('set-borrowed refuses a range, an item the folder does not hold, and a malf
   refused(def, [{ kind: 'set-borrowed', source: { ...KIT, path: '/x' } }], 'EDIT_BAD_EDIT');
   refused(def, [{ kind: 'set-borrowed', source: { ...KIT, items: [] } }], 'EDIT_BAD_EDIT');
   refused(def, [{ kind: 'set-borrowed', source: { ...KIT, items: [{ part: 'skills', id: 'outline', extra: 1 }] } }], 'EDIT_BAD_EDIT');
+  refused(def, [{ kind: 'set-borrowed', source: { ...KIT, claimed: false, items: [{ part: 'skills', id: 'outline' }] } }], 'EDIT_BAD_EDIT');
+});
+
+test('set-borrowed keeps claimed: true for a record a 0.7 catalog only claims', () => {
+  const def = load(small());
+  const r = done(def, [{ kind: 'set-borrowed', source: { ...KIT, claimed: true, items: [{ part: 'skills', id: 'outline' }] } }]);
+  assert.equal(JSON.parse(text(r, 'sources.json')).sources[0].claimed, true);
+  assert.equal(reload(r).sources[0].claimed, true);
 });
 
 test('remove-borrowed drops the record; the last record gone deletes sources.json and its pointer, unless adopted skills keep it', () => {
