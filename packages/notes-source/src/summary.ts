@@ -37,7 +37,8 @@ export interface SummaryOptions extends NotesOptions {
  *   leaves this; it is never ready.
  * - `none`: the folder has no `.git`.
  * - `git-missing`: the folder has `.git`, and git is not installed.
- * - `refused`: the repository's own git settings could make git start a program (NOTES_GIT_CONFIG), so no git command ran.
+ * - `refused`: the repository's own git settings hold a key outside the allowlist, or its git folder points at another folder (NOTES_GIT_CONFIG), so no
+ *   git command ran.
  * - `unreadable`: the nearest `.git` is not a real folder of yours, the folder's place in a larger repository is not a plain path, or git stopped on a
  *   timeout or the output cap.
  */

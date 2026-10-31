@@ -9,10 +9,12 @@
  *   forms, the key names of the repository's own config and of its worktree config, run only inside runGit. Nothing else
  *   ever runs. The hardening forbids every transport (`protocol.allow=never`), sets no ssh command, and the environment
  *   turns lazy fetches off, so git never reaches a remote.
- * - A repository whose own config sets a key that can start a program (an ssh command or proxy, a partial clone or other
- *   extension, a protocol rule, an include, or a remote's helper program) is refused before any command but init. A
- *   remote's address and fetch rule, `extensions.worktreeConfig`, and `extensions.objectFormat` are allowed: a clone of a
- *   hosted repository has them, and with every transport off they reach nothing.
+ * - A repository's own config is checked against an allowlist of key families before any command but init: `core`,
+ *   `branch`, `user`, and the other everyday families, a remote's address and fetch rule, `extensions.worktreeConfig`, and
+ *   `extensions.objectFormat`. Any other key is refused, and so is a key in those families that names a program, a hook
+ *   folder, or a file outside the repository. A clone of a hosted repository passes; a filter, a diff driver, a mailmap,
+ *   an include, or a partial clone does not. A git folder with a non-empty alternates file or a commondir file is
+ *   refused too, by lstat alone, since each makes git read another folder.
  * - The process starts with `shell: false`, the verified folder as cwd, and a minimal environment that holds no
  *   variable of the caller: no HOME, so no global or XDG config, plus `GIT_CONFIG_GLOBAL=/dev/null` and
  *   `GIT_CONFIG_NOSYSTEM=1`. Pathspecs are literal. Every form except init pins `GIT_DIR` and `GIT_WORK_TREE` to the
@@ -99,8 +101,9 @@ export type CommitMessage = typeof COMMIT_MESSAGES[keyof typeof COMMIT_MESSAGES]
 const MESSAGE_SET: ReadonlySet<string> = new Set(Object.values(COMMIT_MESSAGES));
 
 /**
- * The options in front of every git call. They switch off hooks, fsmonitor, signing, and signature checks, and fix the
- * author and the first branch name, whatever a repository's own config says.
+ * The options in front of every git call. They switch off hooks, fsmonitor, signing, signature checks, and the mailmap
+ * (which reads `.mailmap` and any file the config names), and fix the author and the first branch name, whatever a
+ * repository's own config says.
  */
 export const GIT_HARDENING: readonly string[] = Object.freeze([
   '-c', 'core.hooksPath=/dev/null',
@@ -108,6 +111,7 @@ export const GIT_HARDENING: readonly string[] = Object.freeze([
   '-c', 'core.autocrlf=false',
   '-c', 'commit.gpgsign=false',
   '-c', 'log.showSignature=false',
+  '-c', 'log.mailmap=false',
   '-c', 'user.name=Bowerloom',
   '-c', 'user.email=bowerloom@localhost',
   '-c', 'init.defaultBranch=main',
@@ -234,23 +238,60 @@ export function checkGitDir(dir: string): void {
   if (st.isSymbolicLink() || !st.isDirectory() || st.uid !== uid()) refuse('NOTES_PATH_UNSAFE', ['.git']);
 }
 
-/** The extensions a notes repository may set: neither makes git start a program or fetch anything. */
-const SAFE_EXTENSIONS: ReadonlySet<string> = new Set(['extensions.worktreeconfig', 'extensions.objectformat']);
+/**
+ * The key families a notes repository's own config may set, by the name `git config --name-only` prints (lowercased here). Any key that matches none is
+ * refused. Each family holds settings a clone or a person sets for everyday work, and none of them names a program, a hook, or another path to read, once
+ * UNSAFE_KEYS below is taken out. A remote's address, push address, fetch rule, and tag option are allowed: every transport is off, so they reach nothing.
+ */
+const ALLOWED_KEYS: readonly RegExp[] = Object.freeze([
+  /^core\.[^.]+$/,
+  /^remote\..+\.(?:url|pushurl|fetch|tagopt)$/,
+  /^branch\..+$/,
+  /^extensions\.(?:worktreeconfig|objectformat)$/,
+  /^(?:user|gc|pack|index|init|pull|push|fetch|merge|color|advice|status|log|rerere|submodule)\..+$/,
+]);
 
 /**
- * True for a config key a notes repository may not set, by its name as `git config --name-only` prints it (section and key in lowercase). Each one can
- * make git start a program or reach a remote: an extension other than worktreeConfig and objectFormat (a partial clone fetches missing objects lazily), a
- * promisor remote or its filter, an ssh command, proxy, or variant, a remote's helper program (`vcs`, `uploadpack`, `receivepack`) and those sections, a
- * protocol rule (it would override `protocol.allow=never`), or an include (it would bring in keys this check never saw). A remote's address, push address,
- * and fetch rule are allowed: every transport is off, so they reach nothing.
+ * The keys inside an allowed family that are refused all the same. Each one names a program (an ssh command or proxy, an fsmonitor, a pager, an askpass
+ * or editor program, an alternate refs command, a merge driver, a gc hook, a signature check through gpg), a hook folder, another work tree, or a file
+ * outside the repository to read (an excludes or attributes file, a mailmap). A submodule's `update` may be a `!` command; only key names are read, never a
+ * value, so every `update` is refused. A submodule summary starts git inside a submodule, whose own config is never checked.
+ */
+const UNSAFE_KEYS: readonly RegExp[] = Object.freeze([
+  /^core\.(?:sshcommand|gitproxy|fsmonitor|hookspath|pager|askpass|alternaterefscommand|editor|worktree|excludesfile|attributesfile)$/,
+  /^merge\..+\.driver$/,
+  /^submodule\..+\.update$/,
+  /^log\.(?:mailmap|showsignature)$/,
+  /^gc\.recentobjectshook$/,
+  /^status\.submodulesummary$/,
+]);
+
+/**
+ * True for a config key a notes repository may not set: every key outside the allowed families (ALLOWED_KEYS), and the unsafe keys inside them
+ * (UNSAFE_KEYS). So a filter or diff driver, a credential helper, an alias, a pager, a gpg program, a mailmap, an include, a protocol rule, a promisor
+ * remote, or any extension but worktreeConfig and objectFormat is refused, and so is any key git adds later, until it is on the list.
  */
 export function riskyConfigKey(key: string): boolean {
+  if (typeof key !== 'string') return true;
   const k = key.toLowerCase();
-  if (SAFE_EXTENSIONS.has(k)) return false;
-  if (k.startsWith('remote.')) return /\.(?:vcs|uploadpack|receivepack|promisor|partialclonefilter)$/.test(k);
-  return k.startsWith('extensions.') || k.startsWith('protocol.') || k.startsWith('include.') || k.startsWith('includeif.')
-    || k.startsWith('uploadpack.') || k.startsWith('receivepack.')
-    || k === 'core.sshcommand' || k === 'core.gitproxy' || k === 'ssh.variant';
+  return !ALLOWED_KEYS.some(r => r.test(k)) || UNSAFE_KEYS.some(r => r.test(k));
+}
+
+/**
+ * Refuses NOTES_GIT_CONFIG when the repository's git folder points git at another place to read: a non-empty `objects/info/alternates` file (objects
+ * from any folder), or a `commondir` file (the config, refs, and objects of another folder). An alternates entry that is not a plain file, such as a FIFO
+ * or a link, is refused too. Each is checked by lstat and size only, and never opened, so a FIFO there cannot hang the check.
+ */
+export function checkGitStore(dir: string): void {
+  const entry = (rel: string): fs.Stats | null => {
+    try { return fs.lstatSync(join(dir, '.git', rel)); } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      return refuse('NOTES_GIT_CONFIG');
+    }
+  };
+  if (entry('commondir') !== null) refuse('NOTES_GIT_CONFIG');
+  const alternates = entry(join('objects', 'info', 'alternates'));
+  if (alternates !== null && (!alternates.isFile() || alternates.size > 0)) refuse('NOTES_GIT_CONFIG');
 }
 
 /**
@@ -262,8 +303,9 @@ async function checkRepoConfig(file: string, dir: string, timeoutMs: number, cap
   const keys = async (form: readonly string[]): Promise<string[]> => {
     const argv = [...GIT_HARDENING, ...form];
     checkGitArgv(argv);
-    // A list git cannot make (a broken repository) refuses NOTES_GIT_FAILED, as the command itself would: nothing else runs.
-    return (await spawnGit(file, argv, dir, gitEnvironment(dir, 'status'), timeoutMs, cap)).split('\0').map(k => k.trim().toLowerCase());
+    // A list git cannot make (a broken repository) refuses NOTES_GIT_FAILED, as the command itself would: nothing else runs. Each name ends in a NUL, so
+    // the last piece is empty and is not a key.
+    return (await spawnGit(file, argv, dir, gitEnvironment(dir, 'status'), timeoutMs, cap)).split('\0').map(k => k.trim().toLowerCase()).filter(k => k !== '');
   };
   const local = await keys(CONFIG_KEYS);
   if (local.some(riskyConfigKey)) refuse('NOTES_GIT_CONFIG');
@@ -289,7 +331,7 @@ export async function runGit(git: GitBinary, dir: string, command: GitCommand, o
   const cap = limit(options.outputBytes, GIT_LIMITS.outputBytes, GIT_LIMITS.maxOutputBytes);
   const argv = gitArgv(command);
   verifiedFolder(dir);
-  if (command.op !== 'init') { checkGitDir(dir); await checkRepoConfig(git.path, dir, timeoutMs, cap); }
+  if (command.op !== 'init') { checkGitDir(dir); checkGitStore(dir); await checkRepoConfig(git.path, dir, timeoutMs, cap); }
   checkGitArgv(argv);
   return spawnGit(git.path, argv, dir, gitEnvironment(dir, command.op), timeoutMs, cap);
 }

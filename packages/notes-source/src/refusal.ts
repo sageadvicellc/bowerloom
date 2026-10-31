@@ -19,7 +19,7 @@ const MESSAGES = {
   NOTES_TOO_LARGE: 'The folder holds more entries than Bowerloom lists in one preview. Nothing was changed.',
   NOTES_GIT_MISSING: 'Git is not installed. On a Mac, install the Command Line Tools for Xcode, then try again.',
   NOTES_GIT_ARGV: 'Bowerloom refused to run a git command that is not one of its fixed forms.',
-  NOTES_GIT_CONFIG: 'The repository\'s own git settings name an ssh command or proxy, a partial clone, a protocol rule, an include, or an extension, which could make git start a program. Bowerloom runs no git command there. Nothing was changed.',
+  NOTES_GIT_CONFIG: 'The repository\'s own git settings hold a setting Bowerloom does not allow, such as a filter, an ssh command, a mailmap, or an include, or point git at another folder, which could make git start a program or read outside the repository. Bowerloom runs no git command there. Nothing was changed.',
   NOTES_GIT_TIMEOUT: 'Git took too long, so Bowerloom stopped it.',
   NOTES_GIT_OUTPUT: 'Git printed more than Bowerloom reads, so Bowerloom stopped it.',
   NOTES_GIT_FAILED: 'Git stopped with an error.',

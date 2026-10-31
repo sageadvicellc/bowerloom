@@ -6,7 +6,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { GIT_HARDENING, gitEnvironment, riskyConfigKey, runGit } from '../../../dist/packages/notes-source/src/git.js';
 import { readNotesSummary } from '../../../dist/packages/notes-source/src/index.js';
-import { GIT, needsGit, ownGit, put, refusal, script, tempDir } from './fixture.mjs';
+import { execFileSync } from 'node:child_process';
+import { GIT, commitAt, needsGit, ownGit, put, refusal, script, tempDir } from './fixture.mjs';
 
 /**
  * A partial clone whose HEAD names a commit that is not in the folder. A plain `git log -1` fetches it lazily from the
@@ -84,7 +85,7 @@ test('a repository cloned from a remote, with worktreeConfig and objectFormat se
 });
 
 test('with worktreeConfig on, a risky key in the worktree config is refused too', { skip: needsGit }, async t => {
-  for (const [key, value] of [['core.sshCommand', '/bin/false'], ['include.path', '/dev/null'], ['remote.origin.promisor', 'true']]) {
+  for (const [key, value] of [['core.sshCommand', '/bin/false'], ['include.path', '/dev/null'], ['remote.origin.promisor', 'true'], ['filter.x.process', '/bin/false'], ['mailmap.file', '/dev/null']]) {
     const dir = tempDir(t); put(dir, 'index.md');
     ownGit(dir, ['init', '-q']);
     ownGit(dir, ['config', 'core.repositoryformatversion', '1']);
@@ -125,4 +126,76 @@ test('the config check runs under the same hardening and with no include followe
   ownGit(dir, ['config', 'include.path', other]);
   await assert.rejects(runGit(GIT, dir, { op: 'log-time' }), refusal('NOTES_GIT_CONFIG'));
   assert.equal(fs.existsSync(marker), false);
+});
+
+// ---- the allowlist of key families -------------------------------------------------------------------------------------
+
+test('the key names alone: only the allowed families pass, and every other key is refused', () => {
+  const allowed = [
+    'core.repositoryformatversion', 'core.filemode', 'core.bare', 'core.logallrefupdates', 'core.ignorecase', 'core.precomposeunicode', 'core.autocrlf', 'core.symlinks',
+    'remote.origin.url', 'remote.origin.pushurl', 'remote.origin.fetch', 'remote.up.stream.url', 'branch.main.remote', 'branch.main.merge', 'branch.feature/x.y.rebase',
+    'branch.autosetupmerge', 'extensions.worktreeconfig', 'extensions.objectformat', 'user.name', 'user.email', 'user.signingkey', 'gc.auto', 'pack.threads',
+    'index.version', 'init.defaultbranch', 'pull.rebase', 'push.default', 'fetch.prune', 'merge.ff', 'merge.conflictstyle', 'merge.ours.name', 'color.ui',
+    'advice.detachedhead', 'status.showuntrackedfiles', 'log.date', 'rerere.enabled', 'submodule.recurse', 'submodule.lib.url', 'submodule.lib.path',
+  ];
+  for (const key of allowed) assert.equal(riskyConfigKey(key), false, key);
+  const refused = [
+    // A filter or diff driver runs a program on file content, even for status.
+    'filter.x.process', 'filter.x.clean', 'filter.x.smudge', 'filter.lfs.required', 'diff.x.textconv', 'diff.external',
+    // The core keys that name a program, a hook folder, or another place to read.
+    'core.sshcommand', 'core.gitproxy', 'core.fsmonitor', 'core.hookspath', 'core.pager', 'core.askpass', 'core.alternaterefscommand', 'core.editor', 'core.worktree',
+    'core.excludesfile', 'core.attributesfile', 'core.x.y',
+    // Keys inside an allowed family that start a program or read a path.
+    'merge.x.driver', 'submodule.lib.update', 'log.mailmap', 'log.showsignature', 'gc.recentobjectshook', 'status.submodulesummary',
+    // Families that are not on the list.
+    'mailmap.file', 'mailmap.blob', 'gpg.program', 'commit.template', 'commit.gpgsign', 'credential.helper', 'http.proxy', 'alias.x', 'pager.log', 'sequence.editor',
+    'remote.origin.prune', 'remote.origin.proxy', 'remote.origin.mirror', 'notes.displayref', 'lfs.url', 'maintenance.auto', 'trailer.x.command',
+    '', 'core', 'remote.url', 'branch',
+  ];
+  for (const key of refused) assert.equal(riskyConfigKey(key), true, JSON.stringify(key));
+});
+
+/** A repository with one committed page, whose own config then names a filter that writes a marker file, applied to every file by `.gitattributes`. */
+function filtered(t, kind) {
+  const dir = tempDir(t), bin = tempDir(t);
+  const marker = path.join(bin, 'ran');
+  const run = script(bin, 'filter', `echo "$0" >> "${marker}"; cat`);
+  put(dir, 'index.md');
+  ownGit(dir, ['init', '-q']);
+  commitAt(dir, 'one', '2024-01-01T00:00:00Z');
+  put(dir, '.gitattributes', '* filter=x\n');
+  ownGit(dir, ['config', `filter.x.${kind}`, run]);
+  // A newer time on the page makes status hash it again, through the filter.
+  const later = new Date('2030-01-01T00:00:00Z'); fs.utimesSync(path.join(dir, 'index.md'), later, later);
+  return { dir, marker };
+}
+
+test('a repository whose config names a filter process, applied by .gitattributes, is refused, and the filter never runs', { skip: needsGit }, async t => {
+  for (const kind of ['process', 'clean']) {
+    const { dir, marker } = filtered(t, kind);
+    await assert.rejects(runGit(GIT, dir, { op: 'status' }), refusal('NOTES_GIT_CONFIG'), kind);
+    await assert.rejects(runGit(GIT, dir, { op: 'log-time' }), refusal('NOTES_GIT_CONFIG'), kind);
+    assert.equal((await readNotesSummary(dir)).history, 'refused', kind);
+    assert.equal(fs.existsSync(marker), false, `${kind}: the filter named by the repository config did not run`);
+    // The fixture is live: the test's own git, with no check in front, does run the filter.
+    try { ownGit(dir, ['status', '--porcelain']); } catch { /* a failed filter may fail the status */ }
+    assert.equal(fs.existsSync(marker), true, `${kind}: the test's own status ran the filter, so the check above is not empty`);
+  }
+});
+
+test('a typical clone, with the default core keys, a remote, branch keys, and user keys, still reads fine', { skip: needsGit }, async t => {
+  const src = tempDir(t), dir = path.join(tempDir(t), 'clone');
+  put(src, 'index.md');
+  ownGit(src, ['init', '-q']);
+  commitAt(src, 'one', '2024-01-01T00:00:00Z');
+  execFileSync(GIT.path, ['clone', '-q', '--', src, dir], { env: { PATH: '/usr/bin:/bin', LC_ALL: 'C', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }, stdio: 'ignore' });
+  ownGit(dir, ['config', 'user.name', 'Test']);
+  ownGit(dir, ['config', 'user.email', 'test@localhost']);
+  const keys = ownGit(dir, ['config', '--local', '--name-only', '--list']).split('\n');
+  for (const want of [/^core\./, /^remote\.origin\.url$/, /^remote\.origin\.fetch$/, /^branch\.[^.]+\.remote$/, /^branch\.[^.]+\.merge$/, /^user\.name$/]) {
+    assert.ok(keys.some(k => want.test(k)), `the clone sets ${want}: ${keys.join(', ')}`);
+  }
+  assert.equal(await runGit(GIT, dir, { op: 'status' }), '');
+  const s = await readNotesSummary(dir);
+  assert.deepEqual([s.history, s.lastCommitAt], ['git', '2024-01-01T00:00:00.000Z']);
 });

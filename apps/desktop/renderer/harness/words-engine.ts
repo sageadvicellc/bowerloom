@@ -262,7 +262,7 @@ export const NOTES_REFUSAL_WORDS: Readonly<Record<string, string>> = Object.free
   NOTES_TOO_LARGE: 'Start the history by hand with git for this folder.',
   NOTES_GIT_MISSING: 'Install the Command Line Tools for Xcode, then try again.',
   NOTES_GIT_ARGV: 'Report a problem from the Help menu.',
-  NOTES_GIT_CONFIG: 'Remove the ssh, partial clone, or include settings from its git config.',
+  NOTES_GIT_CONFIG: 'Remove the filter, ssh, mailmap, or include settings from its git config.',
   NOTES_GIT_TIMEOUT: 'Try again. If it stops again, report a problem.',
   NOTES_GIT_OUTPUT: 'Report a problem from the Help menu.',
   NOTES_GIT_FAILED: 'Try again. If it fails again, report a problem.',

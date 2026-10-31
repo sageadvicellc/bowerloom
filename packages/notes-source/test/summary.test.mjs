@@ -135,7 +135,7 @@ test('a missing folder refuses NOTES_FOLDER_MISSING and a linked folder NOTES_PA
   await assert.rejects(readNotesSummary('wiki'), refusal('NOTES_PATH_UNSAFE'));
 });
 
-test('a linked repository\'s own config cannot make the summary run a program, even for a signed commit', { skip: needsGit }, async t => {
+test('a linked repository\'s own config cannot make the summary run a program, even for a signed commit: each key is refused', { skip: needsGit }, async t => {
   const dir = tempDir(t), bin = tempDir(t); put(dir, 'index.md');
   const marker = path.join(bin, 'ran');
   const hostile = script(bin, 'hostile', `echo "$0" >> "${marker}"; exit 1`);
@@ -146,12 +146,16 @@ test('a linked repository\'s own config cannot make the summary run a program, e
     + 'gpgsig -----BEGIN PGP SIGNATURE-----\n \n abc\n -----END PGP SIGNATURE-----\n\nSigned\n';
   const commit = execFileSync(GIT.path, ['hash-object', '-t', 'commit', '-w', '--stdin'], { cwd: dir, env, input: body }).toString().trim();
   ownGit(dir, ['update-ref', 'HEAD', commit]);
-  for (const [k, v] of [['log.showSignature', 'true'], ['gpg.program', hostile], ['gpg.openpgp.program', hostile], ['core.fsmonitor', hostile], ['core.pager', hostile], ['core.hooksPath', bin]]) {
+  assert.equal((await readNotesSummary(dir)).lastCommitAt, '2026-01-01T00:00:00.000Z', 'the signed commit reads with a plain config');
+  const keys = [['log.showSignature', 'true'], ['gpg.program', hostile], ['gpg.openpgp.program', hostile], ['core.fsmonitor', hostile], ['core.pager', hostile], ['core.hooksPath', bin]];
+  for (const [k, v] of keys) {
     ownGit(dir, ['config', k, v]);
+    const s = await readNotesSummary(dir);
+    assert.deepEqual([s.history, s.lastCommitAt], ['refused', null], k);
+    ownGit(dir, ['config', '--unset', k]);
   }
-  const s = await readNotesSummary(dir);
-  assert.equal(s.history, 'git');
-  assert.equal(s.lastCommitAt, '2026-01-01T00:00:00.000Z');
+  for (const [k, v] of keys) ownGit(dir, ['config', k, v]);
+  assert.equal((await readNotesSummary(dir)).history, 'refused');
   assert.equal(fs.existsSync(marker), false, 'no program named by the repository config ran');
 });
 
