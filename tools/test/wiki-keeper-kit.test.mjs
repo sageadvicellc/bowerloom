@@ -1,12 +1,17 @@
 // The notes keeper kit: one agent, six skills, and a starter wiki template. These tests load the kit through the harness
 // definition loader and lint the skill text for the two rules every changing skill must keep: a clean-tree check first, and
-// exactly one commit at the end. The kit text is public, so a last test checks it holds no path, link, or address.
+// exactly one commit at the end. A wiki may be its own repository or a folder inside a larger one, so the check and the commit
+// are limited to the wiki folder; the last tests run the skills' own commands with real git in a larger repository. The kit
+// text is public, so a test checks it holds no path, link, or address.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { loadDefinitionFiles } from '../../dist/packages/harness-definition/src/index.js';
+import { findGit } from '../../dist/packages/notes-source/src/index.js';
 
 const KIT = fileURLToPath(new URL('../../kits/wiki-keeper/', import.meta.url));
 const SKILLS = ['add-source', 'file-page', 'answer-from-notes', 'check-notes', 'log-change', 'refine-report'];
@@ -96,13 +101,20 @@ test('every skill has a one-line purpose that starts with a verb and fits the li
   }
 });
 
+/** The clean check every changing skill runs: limited to the wiki folder, so a change elsewhere in a larger repository does not count. */
+const STATUS = 'git status --porcelain -- .';
+/** The paths of a `git add -- <paths>` or a `git commit -F - -- <paths> <<'MSG'` line. */
+const addPaths = line => line.replace(/^git add -- /, '').split(' ');
+const commitPaths = line => /^git commit -F - -- (.+) <<'MSG'$/.exec(line)?.[1].split(' ') ?? null;
+
 test('a skill that changes a page starts with the clean-tree check and ends with one commit', () => {
   for (const id of CHANGING) {
     const text = skillText(id);
     const code = codeLines(text);
-    const status = code.findIndex(l => l === 'git status --porcelain');
+    const status = code.findIndex(l => l === STATUS);
     const commits = code.filter(l => /^git commit\b/.test(l));
-    assert.notEqual(status, -1, `${id}: runs git status --porcelain in a code block`);
+    assert.notEqual(status, -1, `${id}: runs ${STATUS} in a code block`);
+    assert.equal(code.filter(l => /^git status\b/.test(l) && l !== STATUS).length, 0, `${id}: every status is limited to the wiki folder`);
     assert.equal(commits.length, 1, `${id}: exactly one git commit line`);
     assert.ok(status < code.findIndex(l => /^git commit\b/.test(l)), `${id}: the check comes before the commit`);
     assert.ok(code.findIndex(l => /^git add\b/.test(l)) > status, `${id}: nothing is staged before the check`);
@@ -113,15 +125,32 @@ test('a skill that changes a page starts with the clean-tree check and ends with
   }
 });
 
-test('a skill that changes a page stops with a report when the folder is not a git repository', () => {
+test('a skill that changes a page stops with a report when the folder is not inside a git work tree', () => {
   for (const id of CHANGING) {
     const text = skillText(id);
-    assert.match(text, /not a git repository/i, `${id}: names the case`);
+    assert.match(text, /not inside a git work tree/i, `${id}: names the case`);
     assert.match(text, /change nothing/i, `${id}: changes nothing in that case`);
-    // The wiki must be its own repository: a `.git` folder at its root, and git status must work. No other git command is needed for the check.
-    assert.match(text, /`\.git` folder at (?:its|the) root/i, `${id}: checks for .git at the wiki root`);
-    assert.match(text, /git status --porcelain`? fails/i, `${id}: a failing status means no repository`);
+    // The wiki may be its own repository or a folder inside a larger one. The status check itself tells: it fails outside a work tree. No other git command is needed.
+    assert.match(text, /git status --porcelain -- \.`? fails/i, `${id}: a failing status means no work tree`);
+    assert.match(text, /larger repository/i, `${id}: says the wiki may sit inside a larger repository`);
+    assert.doesNotMatch(text, /`\.git` folder at (?:its|the) root/i, `${id}: no longer asks for .git at the wiki root`);
   }
+});
+
+test('a changing skill commits exactly the paths it staged, so other staged changes in a larger repository stay out', () => {
+  for (const id of CHANGING) {
+    const code = codeLines(skillText(id));
+    const adds = code.filter(l => /^git add\b/.test(l)), commit = code.find(l => /^git commit\b/.test(l));
+    assert.equal(adds.length, 1, `${id}: one staging line`);
+    assert.deepEqual(commitPaths(commit), addPaths(adds[0]), `${id}: the commit names the staged paths: ${commit}`);
+  }
+  for (const id of ['add-source', 'file-page']) assert.match(skillText(id), /both lines/i, `${id}: an extra page goes on the staging line and the commit line`);
+});
+
+test('the log skill reads the history of the wiki folder only', () => {
+  const logs = codeLines(skillText('log-change')).filter(l => /^git log\b/.test(l));
+  assert.ok(logs.length >= 2);
+  for (const line of logs) assert.match(line, / -- \.$/, line);
 });
 
 // ---- every git command in the kit, in prose and in code, against one allowlist -------------------------------------------
@@ -144,18 +173,20 @@ function gitCommands(text) {
 
 /** The allowlist. Anything else, in prose or in code, fails. */
 const ALLOWED = [
-  /^git status --porcelain$/,
+  /^git status --porcelain -- \.$/,
   /^git add --(?!.*\s(?:-A|--all|\.|-f|--force|-u|--update)(?:\s|$)) \S.*$/,
-  /^git commit -F - <<'MSG'$/,
+  /^git commit -F - --(?!.*\s(?:-\S*|\.)(?:\s|$)) \S.* <<'MSG'$/,
   /^git log(?:\s+(?!--output|--ext-diff|-p\b|--patch)\S+)*$/,
 ];
 const allowed = cmd => ALLOWED.some(r => r.test(cmd));
 
 test('the allowlist itself refuses the commands that change history, the tree, or a remote', () => {
-  for (const cmd of ['git status --porcelain', 'git add -- pages/a.md log.md', "git commit -F - <<'MSG'", 'git log', 'git log --format="%ad %s" --date=short -n 50', 'git log -1 --stat --format="%s" <commit>']) {
+  for (const cmd of ['git status --porcelain -- .', 'git add -- pages/a.md log.md', "git commit -F - -- pages/a.md log.md <<'MSG'", 'git log', 'git log --format="%ad %s" --date=short -n 50 -- .',
+    'git log -1 --stat --format="%s" <commit> -- .']) {
     assert.ok(allowed(cmd), cmd);
   }
   for (const cmd of ['git add -A', 'git add .', 'git add -- .', 'git add -- -A', 'git commit -a', 'git commit -m "x"', 'git commit --amend', 'git commit -F - --amend', 'git rm a.md',
+    "git commit -F - <<'MSG'", "git commit -F - -- . <<'MSG'", "git commit -F - -- a.md --amend <<'MSG'", "git commit -F - -- a.md -a <<'MSG'", 'git status --porcelain',
     'git restore a.md', 'git switch main', 'git gc', 'git push', 'git reset --hard', 'git show --stat HEAD', 'git rev-parse --show-toplevel', 'git status',
     'git log --output=x', 'git -c core.pager=sh log', 'git checkout -- a.md', 'git stash', 'git clean -fd']) {
     assert.ok(!allowed(cmd), cmd);
@@ -178,7 +209,7 @@ test('a changing skill commits with a quoted heredoc, one message line, and tell
     const text = skillText(id);
     const code = codeLines(text);
     const at = code.findIndex(l => /^git commit\b/.test(l));
-    assert.equal(code[at], "git commit -F - <<'MSG'", `${id}: the message comes on stdin, never inside quotes on the command line`);
+    assert.match(code[at], /^git commit -F - -- \S.* <<'MSG'$/, `${id}: the message comes on stdin, never inside quotes on the command line`);
     assert.match(code[at + 1], /^[a-z][a-z -]*: [<A-Za-z][A-Za-z0-9 <>-]*$/, `${id}: one plain message line`);
     assert.equal(code[at + 2], 'MSG', `${id}: the heredoc ends on the next line`);
     assert.match(text, /letters, digits, spaces, and hyphens/i, `${id}: the title is reduced to plain characters`);
@@ -262,5 +293,80 @@ test('the kit holds only plain Markdown and JSON, no hidden file, and no link', 
     assert.match(rel, /\.(?:md|json)$/, rel);
     assert.ok(!rel.split('/').some(p => p.startsWith('.')), rel);
     assert.ok(!fs.lstatSync(path.join(KIT, rel)).isSymbolicLink(), rel);
+  }
+});
+
+// ---- the skills' own commands, with real git, in a wiki inside a larger repository ------------------------------------------
+
+const REAL_GIT = (() => { try { return findGit(); } catch { return null; } })();
+const needsGit = REAL_GIT ? false : 'git is not installed at a path Bowerloom trusts, so the kit commands are not run here';
+
+/**
+ * A larger repository, cloned-style (a remote address and worktreeConfig), with the wiki at `knowledge-base/`. After its first commit, a file outside the
+ * wiki is changed and another is staged, as a person's own work in progress in that repository would be.
+ */
+function largerRepo(t) {
+  const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'bowerloom-kit-repo-')));
+  t.after(() => fs.rmSync(base, { recursive: true, force: true }));
+  const root = path.join(base, 'repo'), wiki = path.join(root, 'knowledge-base');
+  const env = {
+    PATH: `${path.dirname(REAL_GIT.path)}:/usr/bin:/bin`, LC_ALL: 'C', HOME: base, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', GIT_TERMINAL_PROMPT: '0',
+    GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 'test@localhost', GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 'test@localhost',
+  };
+  const write = (rel, text) => { fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true }); fs.writeFileSync(path.join(root, rel), text); };
+  const run = (cwd, args) => execFileSync(REAL_GIT.path, args, { cwd, env, encoding: 'utf8', shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
+  // A skill's lines run as the agent runs them: through a shell, in the wiki folder, with git found on PATH and its own discovery.
+  const sh = (cwd, script) => execFileSync('/bin/sh', ['-c', script], { cwd, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  for (const rel of ['README.md', 'out.md', 'knowledge-base/index.md', 'knowledge-base/log.md', 'knowledge-base/AGENTS.md']) write(rel, `# ${rel}\n`);
+  run(root, ['init', '-q']);
+  run(root, ['config', 'core.repositoryformatversion', '1']);
+  run(root, ['config', 'extensions.worktreeConfig', 'true']);
+  run(root, ['config', 'remote.origin.url', 'ssh://example.invalid/repo']);
+  run(root, ['add', '-A']);
+  run(root, ['commit', '-q', '-m', 'first']);
+  write('out.md', '# changed outside the wiki\n');
+  write('staged.md', '# staged outside the wiki\n');
+  run(root, ['add', '--', 'staged.md']);
+  return { base, root, wiki, write, run, sh };
+}
+
+/** A skill line with its placeholders filled: today's date, and each `<name>` as a plain name. */
+const fill = line => line.replace(/YYYY-MM-DD/g, '2026-01-02').replace(/<([^>]+)>/g, (_, name) => name.replace(/\s+/g, '-'));
+
+test('the clean check of every changing skill ignores a change outside the wiki, sees one inside it, and fails outside a work tree', { skip: needsGit }, t => {
+  const repo = largerRepo(t);
+  assert.notEqual(repo.run(repo.root, ['status', '--porcelain']), '', 'the larger repository has changes outside the wiki');
+  for (const id of CHANGING) {
+    const line = codeLines(skillText(id)).find(l => /^git status\b/.test(l));
+    assert.equal(repo.sh(repo.wiki, line), '', `${id}: a change outside the wiki does not stop the skill`);
+  }
+  repo.write('knowledge-base/pages/draft.md', '# draft\n');
+  for (const id of CHANGING) {
+    const line = codeLines(skillText(id)).find(l => /^git status\b/.test(l));
+    // Git names an untracked folder rather than each file in it.
+    assert.match(repo.sh(repo.wiki, line), /^\?\? knowledge-base\/pages\/$/m, `${id}: a change inside the wiki stops the skill`);
+  }
+  const outside = path.join(repo.base, 'not-a-repo'); fs.mkdirSync(outside);
+  assert.throws(() => repo.sh(outside, STATUS), 'outside a work tree the check fails, so the skill changes nothing');
+});
+
+test('the commit of every changing skill holds only its own paths, and a file staged elsewhere in the larger repository stays staged', { skip: needsGit }, t => {
+  for (const id of CHANGING) {
+    const repo = largerRepo(t);
+    const code = codeLines(skillText(id));
+    const add = fill(code.find(l => /^git add\b/.test(l)));
+    const at = code.findIndex(l => /^git commit\b/.test(l));
+    const commit = [fill(code[at]), fill(code[at + 1]), code[at + 2]];
+    const paths = addPaths(add);
+    for (const rel of paths) repo.write(`knowledge-base/${rel}`, `# ${id} wrote ${rel}\n`);
+    repo.sh(repo.wiki, [add, ...commit].join('\n') + '\n');
+    const committed = repo.run(repo.root, ['show', '--name-only', '--format=', 'HEAD']).split('\n').filter(Boolean).sort();
+    assert.deepEqual(committed, paths.map(p => `knowledge-base/${p}`).sort(), `${id}: the commit holds exactly its paths`);
+    assert.equal(repo.run(repo.root, ['log', '-1', '--format=%s']).trim(), commit[1], `${id}: one plain message line`);
+    assert.equal(repo.run(repo.root, ['rev-list', '--count', 'HEAD']).trim(), '2', `${id}: one commit`);
+    const status = repo.run(repo.root, ['status', '--porcelain']);
+    assert.match(status, /^A {2}staged\.md$/m, `${id}: the other staged file is still staged`);
+    assert.match(status, /^ M out\.md$/m, `${id}: the other change is left as it was`);
+    assert.equal(repo.sh(repo.wiki, STATUS), '', `${id}: the wiki is clean after the commit`);
   }
 });

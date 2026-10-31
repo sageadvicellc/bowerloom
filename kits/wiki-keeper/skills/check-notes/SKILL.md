@@ -5,7 +5,7 @@ description: Checks the wiki for problems and reports them without fixing anythi
 
 # Check the notes
 
-This skill looks for problems in the wiki and reports them. It changes nothing. It writes no file and makes no commit. It works the same in a folder that is not a git repository.
+This skill looks for problems in the wiki and reports them. It changes nothing. It writes no file and makes no commit. It works the same in a folder that is not inside a git work tree.
 
 Read `AGENTS.md` at the root of the wiki first. It states the page fields and the link style. If it disagrees with this skill, `AGENTS.md` wins.
 

@@ -11,14 +11,14 @@ This skill writes one file: `reports/YYYY-MM-DD-refine.md`, with today's date. I
 
 ## Before you start
 
-Check that the wiki folder holds a `.git` folder at its root. Then run this command in the wiki folder.
+The wiki is a git repository of its own, or a folder inside a larger repository. Either way, run this command in the wiki folder. The `-- .` limits it to the wiki folder, so a change elsewhere in a larger repository does not count.
 
 ```bash
-git status --porcelain
+git status --porcelain -- .
 ```
 
-- If there is no `.git` folder at the root, or `git status --porcelain` fails, the folder is not a git repository. Change nothing. You may still study the notes and show the person the report in the chat. Do not save a file.
-- If the command prints anything, the working tree is not empty. Stop. Tell the person which files are waiting, and ask them to commit those changes or set them aside.
+- If `git status --porcelain -- .` fails, the folder is not inside a git work tree. Change nothing. You may still study the notes and show the person the report in the chat. Do not save a file.
+- If the command prints anything, the working tree of the wiki is not empty. Stop. Tell the person which files are waiting, and ask them to commit those changes or set them aside.
 
 Then read `AGENTS.md` at the root of the wiki. It states the page fields and the link style. If it disagrees with this skill, `AGENTS.md` wins.
 
@@ -60,16 +60,16 @@ This is the only file you write. Change no other file or page. Do not edit `inde
 
 ## Finish with one commit
 
-Stage only the report. Then make one commit. The message holds only letters, digits, spaces, and hyphens after the colon, on one line. It reaches git through a quoted heredoc, so nothing in it runs.
+Stage only the report. Then make one commit of only the report. The message holds only letters, digits, spaces, and hyphens after the colon, on one line. It reaches git through a quoted heredoc, so nothing in it runs.
 
 ```bash
 git add -- reports/YYYY-MM-DD-refine.md
-git commit -F - <<'MSG'
+git commit -F - -- reports/YYYY-MM-DD-refine.md <<'MSG'
 refine report: YYYY-MM-DD
 MSG
 ```
 
-Use today's date in both lines. Never skip a check or amend. If the commit fails, leave the file as it is and tell the person what went wrong.
+Use today's date in all three lines. Run both lines in the wiki folder. The commit names the exact paths it takes, so nothing else that is staged in a larger repository goes into it. Never skip a check or amend. If the commit fails, leave the file as it is and tell the person what went wrong.
 
 ## Tell the person
 

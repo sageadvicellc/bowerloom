@@ -1,6 +1,6 @@
 # How this wiki works
 
-This folder is a wiki: a set of short notes written in Markdown. It is also a git repository. Git keeps every version of every file, so you can compare changes and undo them.
+This folder is a wiki: a set of short notes written in Markdown. Its history is kept in git, as a repository of its own or as a folder inside a larger repository. Git keeps every version of every file, so you can compare changes and undo them.
 
 An agent reads this file first. A person can read it too. If you change a rule here, the agent follows the new rule.
 
@@ -77,4 +77,4 @@ Example:
 
 ## Changes
 
-Every change to this wiki is one commit. The commit message says what changed. An agent stops if the folder has changes that are not committed yet.
+Every change to this wiki is one commit. The commit message says what changed. An agent stops if this folder has changes that are not committed yet. It looks only at this folder, and each commit holds only the files it changed here.

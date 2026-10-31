@@ -7,7 +7,7 @@ description: Answers a question from the pages in the wiki and cites each page i
 
 The wiki exists so that a question is answered once and stays answered. Answer from the pages. Do not answer from memory.
 
-This skill changes nothing. It writes no file and makes no commit. It works the same in a folder that is not a git repository.
+This skill changes nothing. It writes no file and makes no commit. It works the same in a folder that is not inside a git work tree.
 
 ## Steps
 

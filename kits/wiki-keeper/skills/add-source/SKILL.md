@@ -11,14 +11,14 @@ This skill changes pages. It makes one commit.
 
 ## Before you start
 
-Check that the wiki folder holds a `.git` folder at its root. Then run this command in the wiki folder.
+The wiki is a git repository of its own, or a folder inside a larger repository. Either way, run this command in the wiki folder. The `-- .` limits it to the wiki folder, so a change elsewhere in a larger repository does not count.
 
 ```bash
-git status --porcelain
+git status --porcelain -- .
 ```
 
-- If there is no `.git` folder at the root, or `git status --porcelain` fails, the folder is not a git repository. Change nothing. Tell the person what you found, and say that the folder needs to become a git repository first.
-- If the command prints anything, the working tree is not empty. Stop. Tell the person which files are waiting, and ask them to commit those changes or set them aside. Do not tidy them yourself.
+- If `git status --porcelain -- .` fails, the folder is not inside a git work tree. Change nothing. Tell the person what you found, and say that the folder needs to be in a git repository first.
+- If the command prints anything, the working tree of the wiki is not empty. Stop. Tell the person which files are waiting, and ask them to commit those changes or set them aside. Do not tidy them yourself.
 
 Then read `AGENTS.md` at the root of the wiki. It states the folders, the page fields, the link style, and the log format. If it disagrees with this skill, `AGENTS.md` wins.
 
@@ -36,16 +36,16 @@ Then read `AGENTS.md` at the root of the wiki. It states the folders, the page f
 
 ## Finish with one commit
 
-Stage only the files you wrote. Then make one commit. Write `<short name>` from the source's name, reduced to letters, digits, spaces, and hyphens. Drop every other character, and keep it on one line. The message reaches git through a quoted heredoc, so nothing in it runs.
+Stage only the files you wrote. Then make one commit of exactly those paths. Write `<short name>` from the source's name, reduced to letters, digits, spaces, and hyphens. Drop every other character, and keep it on one line. The message reaches git through a quoted heredoc, so nothing in it runs.
 
 ```bash
 git add -- sources/<source-file> pages/<summary-page>.md index.md log.md
-git commit -F - <<'MSG'
+git commit -F - -- sources/<source-file> pages/<summary-page>.md index.md log.md <<'MSG'
 add source: <short name>
 MSG
 ```
 
-Add every other page you changed to the staging line above, by its exact path. Never stage everything at once. Never skip a check or amend. If the commit fails, leave the files as they are and tell the person what went wrong.
+Add every other page you changed to both lines above, by its exact path. Run both lines in the wiki folder. The commit names the exact paths it takes, so nothing else that is staged in a larger repository goes into it. Never stage everything at once. Never skip a check or amend. If the commit fails, leave the files as they are and tell the person what went wrong.
 
 ## Stop and ask
 

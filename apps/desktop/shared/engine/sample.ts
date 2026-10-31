@@ -83,7 +83,7 @@ export const SAMPLE_KIT = Object.freeze({
   ]),
   /** The starter template, each file with its size in bytes. */
   starter: Object.freeze([
-    { path: 'AGENTS.md', bytes: 2809 }, { path: 'index.md', bytes: 302 }, { path: 'log.md', bytes: 203 },
+    { path: 'AGENTS.md', bytes: 2963 }, { path: 'index.md', bytes: 302 }, { path: 'log.md', bytes: 203 },
     { path: 'pages/README.md', bytes: 431 }, { path: 'reports/README.md', bytes: 402 }, { path: 'sources/README.md', bytes: 433 },
   ]),
 });
