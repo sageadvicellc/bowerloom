@@ -10,6 +10,7 @@ import { BUNDLE_FORMAT } from '../../../packages/harness-bundle/src/index.js';
 import { filesOf } from './helpers-engine/folders.js';
 import { NO_CHOICES, emptyHarnessFolder, exists, plainFolder, put, quietFolder, refused, richFolder, shareSetup, value } from './helpers-engine/share.js';
 import type { Share } from './helpers-engine/share.js';
+import { SHARE_MAIN_WORDS } from '../shared/engine/types.js';
 import type { ImportView } from '../shared/engine/types.js';
 
 const sha = (bytes: Uint8Array | string): string => createHash('sha256').update(bytes).digest('hex');
@@ -273,7 +274,8 @@ test('import: a folder whose harness has parts is refused, and says so in folder
   const bundle = value(await b.service.chooseBundle());
   const r = refused(await b.service.planImport(f.id, bundle.bundleId, NO_CHOICES));
   assert.equal(r.code, 'IMPORT_FOLDER_HAS_HARNESS');
-  assert.equal(r.message, 'This folder has a harness with parts in it already. An import goes only into a folder with no harness, or with an empty one. Nothing was written.');
+  assert.ok(r.message.startsWith(SHARE_MAIN_WORDS.IMPORT_FOLDER_HAS_HARNESS), r.message);
+  assert.ok(['skills', 'agents', 'hooks', 'tools'].every(part => r.paths.includes(part)), `the refusal names what it found: ${r.paths.join(', ')}`);
   const none = (await b.choose(plainFolder(b.home)));
   assert.equal(none.holdsParts, undefined, 'left out when main read no harness');
 });

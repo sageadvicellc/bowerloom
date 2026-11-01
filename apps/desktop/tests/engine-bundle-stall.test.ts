@@ -81,10 +81,10 @@ test('stall: a bundle of 500 small text files never holds the main thread (4,000
   }, HANG_GUARD_MS);
 });
 
-test('stall: hostile YAML that the loader accepts (15 skills with a frontmatter block of about 60 KiB each, 5,000 keys) never holds the main thread', { timeout: 300_000 }, async t => {
+test('stall: hostile YAML that the loader accepts (7 skills, a frontmatter block of about 60 KiB each, 3,000 keys; the package work budget for YAML is 512 KiB) never holds the main thread', { timeout: 300_000 }, async t => {
   await through(t, 'hostile yaml', async b => {
     const files = [file('harness.json', harness({ 'system-prompt': 'instructions/AGENTS.md', skills: 'skills/' })), file('instructions/AGENTS.md', '# Stall\n')];
-    for (let s = 0; s < 15; s += 1) {
+    for (let s = 0; s < 7; s += 1) {
       const keys = Array.from({ length: 3000 }, (_, i) => `  field${i}: v${i}`).join('\n');
       files.push(file(`skills/yaml-${s}/SKILL.md`, `---\nname: yaml-${s}\ndescription: Hostile YAML.\nmetadata:\n${keys}\n---\n\nBody.\n`));
     }

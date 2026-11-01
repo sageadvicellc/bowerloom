@@ -123,7 +123,7 @@ export interface EngineServiceDeps {
   readonly chooseBundleSave?: (suggested: string) => Promise<string | null>;
   /** The worker that decodes, encodes, plans and writes bundles (main/engine-bundle-worker.ts, bundled beside the main file). Default: `bundle-worker.mjs` next to this code. */
   readonly bundleWorker?: () => string | URL;
-  /** The longest a decode, encode or plan takes, and the longest a write takes, in milliseconds. Defaults: 2 minutes and 10 minutes. */
+  /** The longest a decode (with its inspection), encode or plan takes, and the longest a write takes, in milliseconds. Defaults: 20 seconds and 10 minutes. */
   readonly bundleTimeoutMs?: number;
   readonly bundleWriteTimeoutMs?: number;
   /** The longest the read of a bundle file may take (default 30 seconds), so a file on a stalled volume does not hold every engine call. */
@@ -824,7 +824,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
   const share = createShare({
     host: createBundleHost({
       file: deps.bundleWorker ?? (() => new URL('./bundle-worker.mjs', import.meta.url)),
-      timeoutMs: deps.bundleTimeoutMs ?? 120_000, writeTimeoutMs: deps.bundleWriteTimeoutMs ?? 600_000,
+      timeoutMs: deps.bundleTimeoutMs ?? 20_000, writeTimeoutMs: deps.bundleWriteTimeoutMs ?? 600_000,
       // A stopped worker goes to the usage log as its cause only, never a name or a path.
       report: (cause, write) => record({ kind: 'scenario', step: write ? 'bundle-worker-write' : 'bundle-worker', outcome: 'refused', code: cause }),
     }),

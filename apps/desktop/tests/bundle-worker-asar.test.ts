@@ -26,10 +26,12 @@ test('the worker file of export and import loads and answers from inside an asar
   writeFileSync(join(app, 'main.mjs'), [
     "import { app } from 'electron';",
     "import { Worker } from 'node:worker_threads';",
+    "import { writeSync } from 'node:fs';",
     'app.dock?.hide();',
     'app.whenReady().then(() => {',
+    '  writeSync(1, "READY\\n");',
     "  const w = new Worker(new URL('./bundle-worker.mjs', import.meta.url));",
-    '  const done = (code, text) => { process.stdout.write(`${text}\\n`); w.terminate().finally(() => app.exit(code)); };',
+    '  const done = (code, text) => { writeSync(1, `${text}\\n`); w.terminate().finally(() => app.exit(code)); };',
     "  w.on('message', m => done(m.ok ? 0 : 3, `ANSWER ${JSON.stringify({ ok: m.ok, inAsar: import.meta.url.includes('.asar') })}`));",
     "  w.on('error', e => done(2, `ERROR ${String(e)}`));",
     "  w.postMessage({ id: 1, job: { op: 'drop', key: 'bundle-1' } });",
@@ -39,7 +41,14 @@ test('the worker file of export and import loads and answers from inside an asar
   const asar = require('@electron/asar') as { createPackage(src: string, dest: string): Promise<void> };
   const archive = join(work, 'app.asar');
   await asar.createPackage(app, archive);
-  const r = spawnSync(electron, [archive], { encoding: 'utf8', timeout: 90_000, env: { PATH: process.env.PATH ?? '', ELECTRON_DISABLE_SECURITY_WARNINGS: '1', HOME: work } });
-  assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
-  assert.match(r.stdout, /ANSWER \{"ok":true,"inAsar":true\}/);
+  // A bare Electron sometimes does not get as far as "ready" on this machine (about one start in ten stalls before the app code runs, whatever the app is). That is Electron's
+  // start, not the worker: such an attempt prints no READY and is tried again, up to four times. An attempt that printed READY must end with the worker's answer.
+  let last = { status: null as number | null, stdout: '', stderr: '' };
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    const r = spawnSync(electron, [archive], { encoding: 'utf8', timeout: 15_000, env: { PATH: process.env.PATH ?? '', ELECTRON_DISABLE_SECURITY_WARNINGS: '1', HOME: work } });
+    last = { status: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+    if (r.status === 0 || r.stdout?.includes('READY')) break;
+  }
+  assert.equal(last.status, 0, `${last.stdout}\n${last.stderr}`);
+  assert.match(last.stdout, /ANSWER \{"ok":true,"inAsar":true\}/);
 });

@@ -15,7 +15,7 @@ import { lstatSync, readdirSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { canonicalJson, DefinitionError } from '../../../packages/contracts/src/index.js';
 import {
-  BundleRefusal, decodeBundle, encodeBundle, importAcknowledgement, inspectBundle, isEmptyHarness, targetFromBundle,
+  BundleRefusal, EMPTY_HARNESS_DESCRIPTION, assertEmptyHarness, decodeBundle, encodeBundle, importAcknowledgement, inspectBundle, targetFromBundle,
 } from '../../../packages/harness-bundle/src/index.js';
 import type { BundleSummary, DecodedBundle, ImportChoices } from '../../../packages/harness-bundle/src/index.js';
 import { HARNESS_FORMAT, LEGACY_NAMES, loadDefinition } from '../../../packages/harness-definition/src/index.js';
@@ -26,7 +26,7 @@ import { removeJournal, writeJournal } from '../../../packages/adoption/src/jour
 import { withProjectLock } from '../../../packages/project-context/src/index.js';
 import { PortableRefusal, checkAncestors, makeDir, readAbs, removeEmptyDirs, sha, writeAbs } from '../../../packages/project-sync/src/portable-files.js';
 import type { HarnessStateDirs } from '../../../packages/project-sync/src/harness-state.js';
-import { EXPORT_NO_DEFINITION, IMPORT_FOLDER_HAS_HARNESS, IMPORT_NEEDS_ACKNOWLEDGEMENT, NOT_THE_PLAN_SHOWN, SAVE_NO_DEFINITION, SHARE_HELD_BUNDLES, SHARE_MAIN_WORDS } from '../shared/engine/types.js';
+import { EXPORT_NO_DEFINITION, IMPORT_NEEDS_ACKNOWLEDGEMENT, NOT_THE_PLAN_SHOWN, SAVE_NO_DEFINITION, SHARE_HELD_BUNDLES, SHARE_MAIN_WORDS } from '../shared/engine/types.js';
 import type { DefinitionView } from '../shared/engine/types.js';
 import { afterSaveWarnings, currentDefinition, keepAfter, keepBefore, keepable, saveCodeOf, targetView } from './engine-save.js';
 import type { PlanChange } from './engine-save.js';
@@ -109,8 +109,6 @@ async function encode(job: Extract<Job, { op: 'encode' }>): Promise<EncodedView>
 // ---- plan -------------------------------------------------------------------------------------------------------------------
 
 const LEGACY = new Set<string>(LEGACY_NAMES);
-/** The description "Make an empty harness here" writes; the package counts a harness with this description and no parts as empty (a test keeps the two equal). */
-const EMPTY_HARNESS_DESCRIPTION = 'Adopted from the engine files of this project.';
 const DEF = '.bowerloom';
 const byPath = (a: { path: string }, b: { path: string }): number => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path));
 const hex = (bytes: Uint8Array | string): string => createHash('sha256').update(bytes).digest('hex');
@@ -166,7 +164,8 @@ function build(job: { readonly key: string; readonly choices: WireChoices } & Fo
   let changes: PlanChange[], revision: string;
   if (exists) {
     const current = currentDefinition(job.projectDir);
-    if (!isEmptyHarness(current)) throw new DefinitionError(IMPORT_FOLDER_HAS_HARNESS, SHARE_MAIN_WORDS.IMPORT_FOLDER_HAS_HARNESS);
+    // A harness with parts or settings is refused, and the refusal names each part or setting it found.
+    assertEmptyHarness(current);
     const plan = packagePlanSave(io, target);
     if (plan.changes.length > 0) keepable(current.files, target);
     changes = plan.changes.map(c => ({ path: c.path, action: c.action, before: c.before === null ? null : { sha256: c.before.sha256, mode: c.before.mode }, after: c.after === null ? null : { sha256: c.after.sha256, mode: c.after.mode } }));

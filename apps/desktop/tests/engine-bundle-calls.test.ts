@@ -509,7 +509,7 @@ test('quit during a write: close() settles the call with a refusal and does not 
 test('the native question of an import names deletes as well as writes, and the harness made empty has the description the package counts as empty', async () => {
   const { ASK } = await import('../main/engine-consent.js');
   const { emptyHarnessFile } = await import('../main/engine-bundle-work.js');
-  const { EMPTY_HARNESS_DESCRIPTION } = await import('../../../packages/harness-bundle/src/target.js');
+  const { EMPTY_HARNESS_DESCRIPTION } = await import('../../../packages/harness-bundle/src/index.js');
   const rev = 'f'.repeat(64);
   assert.match(ASK.importBundle('~/x', 5, rev, { deletes: 2 }).message, /^Write 3 files and delete 2 files into ~\/x\/\.bowerloom\?$/);
   assert.match(ASK.importBundle('~/x', 1, rev, { deletes: 1 }).message, /^Delete 1 file in ~\/x\/\.bowerloom\?$/);
