@@ -109,10 +109,47 @@ export function overviewOf(state: HarnessState, folders: readonly FolderInfo[]):
 const KIND_ORDER: readonly PartKind[] = ['agent', 'skill', 'tool', 'context'];
 /** Compares by code unit, so the order is the same on every computer and in every language setting. */
 const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
-/** A full path in a text (two or more `/name` parts at a word start, or a drive path) is cut down to its last name. A `~/` path and a word like and/or are left as they are. */
-const FULL_PATH = /(?<=^|[\s(\x22\x27\x60=:,;])(?:(?:\/[^\s/\x22\x27\x60),;]+){2,}\/?|[A-Za-z]:[\\/][^\s\x22\x27\x60),;]*)/g;
+/*
+ * A full path in a text is cut down to its last name, and the home folder of a person to `~`. What counts as a full path:
+ *  - a rooted path of two or more names (`/etc/hosts`), a drive path (`C:\x`), a UNC path (`\\server\share`), either slash, and `file://` in front;
+ *  - it starts at the start of the text, or after a space or one of ( " ' ` = : , ; [ < { | >, and it ends at a space or at one of " ' ` < > [ ] { } | ) , ;
+ *  - a name in the middle of a path may hold spaces when each word after the first starts with a capital letter or a digit (`Hanna Sage`, `Sage Advice`), so the home folder
+ *    name does not survive; the last name may not hold a space.
+ *  - `/Users/<name>`, `/home/<name>` and `C:\Users\<name>` with nothing after them are `~`. A full stop, `!` or `?` at the end of a path is not part of it.
+ *  - The name of a home folder is cut first, in any case, when a separator follows it (see `HOME_FOLDER`).
+ * `~/…` paths, URLs with a host, and words like and/or are left as they are. Known false hits, kept: `GET /v1/messages` reads as a path of two names, and `a:/b` as a drive.
+ * The pattern is written with escapes for the quote characters, because the banned-word scan of the sources reads a quote inside a pattern as the start of a string.
+ */
+const SEP = String.raw`[\\/]`;
+const STOPS = String.raw`\\/\x22\x27\x60<>\[\]{}|),;`;
+const SEG = String.raw`[^\s${STOPS}]`;
+/** The last character of a name in a path: not a full stop, `!` or `?`, so the end of a sentence stays outside the path. */
+const END = String.raw`[^\s${STOPS}.!?]`;
+const SEGS = `${SEG}+(?: [A-Z0-9]${SEG}*)*`;
+const LAST = `${SEG}*${END}`;
+const HOME_NAME = `${LAST}(?: [A-Z0-9]${LAST})*`;
+const ROOT = String.raw`(?:[A-Za-z]:[\\/]|\\\\|[\\/])`;
+const START = String.raw`(?<=^|[\s(\x22\x27\x60=:,;\[<{|>])`;
+const FULL_PATH = new RegExp(
+  `${START}(?:file:\\/\\/)?(?:` +
+  [`${ROOT}(?:${SEGS}${SEP}){2,}${LAST}${SEP}?`, `${ROOT}(?:[Uu]sers|[Hh]ome)${SEP}${HOME_NAME}${SEP}?`, `${ROOT}${SEGS}${SEP}${LAST}${SEP}?`, `[A-Za-z]:${SEP}${LAST}${SEP}?`].join('|') + ')',
+  'g',
+);
+/**
+ * The name of a home folder, before the cut: what follows `/Users/`, `/home/` or `C:\Users\` up to the next separator, in any case, when a separator does follow. It is at most 60
+ * characters and 4 words, does not start or end with a space, and holds no quote, bracket, comma or semicolon. So `/Users/my projects/x` loses the whole name, and
+ * `/Users/hanna and /etc/hosts` (the name would end with a space) is two paths. A home folder with no separator after it is left to the pattern above.
+ */
+const HOME_FOLDER = new RegExp(
+  `${START}((?:file:\\/\\/)?${ROOT}(?:[^\\s${STOPS}]+${SEP}){0,6}(?:[Uu]sers|[Hh]ome)${SEP})([^\\s${STOPS}](?:[^${STOPS}]{0,58}[^\\s${STOPS}])?)(?=${SEP})`,
+  'g',
+);
 function shortPaths(text: string): string {
-  return text.replace(FULL_PATH, found => `…/${found.split(/[\\/]/).filter(x => x !== '').at(-1) ?? ''}`);
+  const named = text.replace(HOME_FOLDER, (found, front: string, name: string) => (name.split(/\s+/).length <= 4 ? `${front}_` : found));
+  return named.replace(FULL_PATH, found => {
+    const names = found.replace(/^file:\/\//, '').replace(/^[A-Za-z]:(?=[\\/])/, '').split(/[\\/]/).filter(x => x !== '');
+    return names.length === 2 && /^(?:users|home)$/i.test(names[0]!) ? '~' : `…/${names.at(-1) ?? ''}`;
+  });
 }
 const shown = (text: string): string => shortPaths(cleanLine(text));
 /** A label is the folder in `~` form. A full path (a slash, a back slash or a drive at the front) is cut down to its last name. */

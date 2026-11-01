@@ -297,7 +297,10 @@ export function validateWorld(world: World): string[] {
       if (seen.has(f.interface)) problems.push(`item ${item.id} found twice in ${f.interface}`);
       seen.add(f.interface);
       if (f.path === '') problems.push(`item ${item.id} has an empty path`);
-      if (f.contentHash !== hashText(f.text)) problems.push(`item ${item.id} has a wrong hash in ${f.interface}`);
+      // The hash is of the whole text that was read. It is the hash of the text shown, unless the reader cut the text (it ends with the cut mark; the hash is then of the longer
+      // text, so only its shape is checked) or the file had no readable text (the hash is empty).
+      const cut = /\[cut: \d+ characters in all\]$/.test(f.text);
+      if (f.contentHash !== hashText(f.text) && f.contentHash !== '' && !(cut && /^[0-9a-f]{16}$/.test(f.contentHash))) problems.push(`item ${item.id} has a wrong hash in ${f.interface}`);
     }
     if (item.library !== null) {
       const source = libraries.get(item.library.library);
