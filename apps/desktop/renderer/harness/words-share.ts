@@ -30,7 +30,6 @@ export const SHARE = deepFreeze({
     exportWrites: 'Nothing is written until you choose where to save.',
     exportDone: 'The file is written. Nothing else changed.', savedWhere: 'Saved where you chose.',
     fileFoot: 'Bowerloom reads the file once. Nothing is written yet.', folderFoot: 'Nothing is written yet. Pick the folder that gets it.',
-    doneFoot: 'Nothing is installed. Nothing has run.',
     secretsExport: 'The file names these values. It never holds them.',
     secretsImport: 'The file passes these values from this computer to these tools.',
     secretsGo: 'They go to the tools and hosts shown.',
@@ -60,7 +59,7 @@ export const SHARE = deepFreeze({
     tickFirst: 'I read the lists shown. More are not shown.',
     blockNone: 'Ready. Press the button to go on.',
     blockBoth: 'Tick both boxes to import.', blockRead: 'Tick the first box to import.', blockWrite: 'Tick the second box to import.', blockPlanning: 'Planning. Then tick again.',
-    blockExport: 'Tick the box to export.', blockOne: 'Tick the box to import.', blockNoop: 'The folder already matches. Nothing to import.',
+    blockExport: 'Tick the box to export.', blockOne: 'Tick the box to import.', planFailed: 'The plan could not be made. Plan again.', sudoLine: 'This starts with admin rights.', blockNoop: 'The folder already matches. Nothing to import.',
     shellLine: 'This runs a command line. Read it in full.', toolsNote: 'This list is a guide. Read each command.',
   },
   paragraph: {
@@ -144,33 +143,67 @@ const EVENT_WORDS: Readonly<Record<string, string>> = Object.freeze({
 export const eventWords = (event: string): string | null => (Object.hasOwn(EVENT_WORDS, event) ? EVENT_WORDS[event]! : null);
 const DOWNLOADERS = new Set(['npx', 'uvx', 'pipx', 'bunx']);
 const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish']);
-const baseName = (command: string): string => command.split('/').pop() ?? command;
-/** The program a command line really starts: `env` and its VAR=value words and flags are skipped. */
-function realCommand(command: string, args: readonly string[]): { command: string; args: readonly string[] } {
-  let c = baseName(command), rest = args;
-  while (c === 'env') {
-    const at = rest.findIndex(a => !a.startsWith('-') && !a.includes('='));
-    if (at < 0) return { command: c, args: [] };
-    c = baseName(rest[at]!); rest = rest.slice(at + 1);
+/** The name of a program without its folder (a path may use / or \\) and without a Windows extension, in lower case. */
+const baseName = (command: string): string => (command.split(/[\\/]/).pop() ?? command).replace(/\.(?:cmd|exe|bat|com)$/i, '').toLowerCase();
+/** Options of `env` and `sudo` that take a value in the next word. */
+const TAKES_VALUE = new Set(['-u', '--unset', '-C', '--chdir', '-P', '--default-path', '-g', '--group', '-h', '--host', '-p', '--prompt', '-r', '--role', '-t', '--type', '-D', '--chdir']);
+/**
+ * The program a command line really starts. `env` and `sudo` are skipped with their options (the value of `-u`, `-C`, `-P` and the like is not the program), the words of `env -S`
+ * are split, and a VAR=value word is skipped. A word that is not text is ignored, so one bad row cannot stop the review from drawing.
+ */
+function realCommand(command: string, args: readonly unknown[]): { command: string; args: readonly string[]; wrappers: readonly string[] } {
+  let c = baseName(command), rest: string[] = args.filter((a): a is string => typeof a === 'string');
+  const wrappers: string[] = [];
+  for (let guard = 0; guard < 64 && (c === 'env' || c === 'sudo' || c === 'doas'); guard += 1) {
+    let at = 0;
+    while (at < rest.length) {
+      const a = rest[at]!;
+      if (c === 'env' && (a === '-S' || a === '--split-string')) { rest = [...(rest[at + 1] ?? '').split(/\s+/).filter(x => x !== ''), ...rest.slice(at + 2)]; at = 0; continue; }
+      if (c === 'env' && a.startsWith('-S') && a.length > 2) { rest = [...a.slice(2).split(/\s+/).filter(x => x !== ''), ...rest.slice(at + 1)]; at = 0; continue; }
+      if (a === '--') { at += 1; break; }
+      if (a.startsWith('-')) { at += TAKES_VALUE.has(a) ? 2 : 1; continue; }
+      if (c === 'env' && a.includes('=')) { at += 1; continue; }
+      break;
+    }
+    wrappers.push(c);
+    const next = rest[at];
+    if (next === undefined) return { command: c, args: [], wrappers };
+    c = baseName(next); rest = rest.slice(at + 1);
   }
-  return { command: c, args: rest };
+  return { command: c, args: rest, wrappers };
 }
 /**
- * True when the command fetches code before it runs: npx, uvx, pipx, bunx, `npm exec`, `pnpm dlx`, `yarn dlx`, `bun x`, `deno run`, `uv run`, `docker run`, also behind `env`.
- * A hint beside the command, never a gate: silence is not safety.
+ * True when the command fetches code before it runs: npx, uvx, pipx, bunx, `npm exec`, `pnpm dlx`, `yarn dlx`, `bun x`, `deno run`, `uv run`, `docker run`, also behind `env` or
+ * `sudo`. A hint beside the command, never a gate: silence is not safety.
  */
-export const downloadsCode = (command: string | null, args: readonly string[]): boolean => {
-  if (command === null) return false;
+export const downloadsCode = (command: string | null, args: readonly unknown[]): boolean => {
+  if (typeof command !== 'string') return false;
   const r = realCommand(command, args), first = r.args[0];
   if (DOWNLOADERS.has(r.command)) return true;
   return (r.command === 'docker' && first === 'run') || (r.command === 'npm' && first === 'exec') || ((r.command === 'pnpm' || r.command === 'yarn') && first === 'dlx')
     || (r.command === 'bun' && first === 'x') || (r.command === 'deno' && first === 'run') || (r.command === 'uv' && first === 'run');
 };
-/** True when the command is a shell given a command line (`sh -c`, `bash -c`), which runs text the person must read in full. */
-export const runsShellLine = (command: string | null, args: readonly string[]): boolean => {
-  if (command === null) return false;
+/** The flags that hand an interpreter a piece of code or a command line to run. */
+const INLINE: Readonly<Record<string, RegExp>> = Object.freeze({
+  node: /^(?:-e|--eval|-p|--print)$/, ruby: /^-e$/, perl: /^-e$/, php: /^-r$/, cmd: /^\/[ck]$/i, powershell: /^-(?:c|command|e|ec|enc|encodedcommand)$/i, pwsh: /^-(?:c|command|e|ec|enc|encodedcommand)$/i,
+});
+/**
+ * True when the command hands a shell or an interpreter a command line or code to run (`sh -c`, `bash -lc`, `node -e`, `python -c`, `cmd /c`, `powershell -Command`), text the
+ * person must read in full.
+ */
+export const runsShellLine = (command: string | null, args: readonly unknown[]): boolean => {
+  if (typeof command !== 'string') return false;
+  const r = realCommand(command, args), name = /^python[0-9.]*$/.test(r.command) ? 'python' : r.command;
+  if (SHELLS.has(name)) return r.args.some(a => /^-[a-z]*c[a-z]*$/.test(a));
+  if (name === 'python') return r.args.some(a => /^-[a-z]*c$/.test(a));
+  const re = Object.hasOwn(INLINE, name) ? INLINE[name] : undefined;
+  return re !== undefined && r.args.some(a => re.test(a));
+};
+/** True when the command starts with `sudo` or `doas`: it runs with admin rights. */
+export const runsAsAdmin = (command: string | null, args: readonly unknown[]): boolean => {
+  if (typeof command !== 'string') return false;
   const r = realCommand(command, args);
-  return SHELLS.has(r.command) && r.args.some(a => /^-[a-z]*c[a-z]*$/.test(a));
+  return r.wrappers.includes('sudo') || r.wrappers.includes('doas');
 };
 /** Where a reference goes: the tool, the field of it, and the host. A program with no host can send the value anywhere. */
 export function sinkWords(sink: ShareSink): string {
@@ -205,9 +238,8 @@ export function importTickWords(summary: ShareSummary): string {
   const h = hiddenCounts(summary), cut = (['tools', 'codeFiles', 'secrets', 'foreignPaths'] as const).filter(key => h[key] > 0);
   const paths = summary.foreignPaths.rows.length > 0 || h.foreignPaths > 0;
   if (cut.length === 1) {
-    const key = cut[0]!;
-    const read = paths && key !== 'foreignPaths' ? `I read ${SHARE_LIST_LIMIT} ${LIST_NAMES[key]} and the paths.` : `I read the first ${SHARE_LIST_LIMIT} ${LIST_NAMES[key]}.`;
-    return `${read} ${h[key]} more are not shown.`;
+    const key = cut[0]!, name = LIST_NAMES[key];
+    return paths && key !== 'foreignPaths' ? `I read ${SHARE_LIST_LIMIT} ${name} and the paths. ${h[key]} ${name} are not shown.` : `I read ${SHARE_LIST_LIMIT} ${name} and the rest shown. ${h[key]} are not shown.`;
   }
   if (cut.length > 1) return SHARE.hint.tickFirst;
   return paths ? SHARE.hint.tickReadPaths : SHARE.hint.tickRead;

@@ -12,7 +12,7 @@ import { SHARE_LIST_LIMIT } from '../../../shared/engine/types.js';
 import type { ShareList, ShareSecret, ShareSummary, ShareTool } from '../../../shared/engine/types.js';
 import { HButton, StateDot } from '../parts/controls.js';
 import {
-  CODE_WHY_WORDS, FLAG_WORDS, SHARE, downloadsCode, eventWords, hiddenCounts, hiddenWords, jumpName, moreWords, runsShellLine, secretKindWords, sinkWords, summaryLine, transportWords,
+  CODE_WHY_WORDS, FLAG_WORDS, SHARE, downloadsCode, eventWords, hiddenCounts, hiddenWords, jumpName, moreWords, runsAsAdmin, runsShellLine, secretKindWords, sinkWords, summaryLine, transportWords,
 } from '../words-share.js';
 import './engine.css';
 import './share.css';
@@ -82,7 +82,7 @@ export function useScrolls(scroller: RefObject<HTMLElement | null>, dep: unknown
 
 function ToolRow({ tool }: { tool: ShareTool }): ReactElement {
   const words = tool.kind === 'hook' ? (tool.event === null ? null : eventWords(tool.event)) : transportWords(tool.transport);
-  const downloads = tool.kind !== 'hook' && downloadsCode(tool.command, tool.args), shell = runsShellLine(tool.command, tool.args);
+  const downloads = tool.kind !== 'hook' && downloadsCode(tool.command, tool.args), shell = runsShellLine(tool.command, tool.args), admin = runsAsAdmin(tool.command, tool.args);
   // A program that is started says so once, in the badge; the transport line is for a tool that reaches an address.
   const startsProgram = tool.kind !== 'hook' && tool.runsCode;
   return (
@@ -95,6 +95,7 @@ function ToolRow({ tool }: { tool: ShareTool }): ReactElement {
       {startsProgram && words !== null ? null : words === null ? (tool.transport === null ? null : <span className="hxsh-line hxe-muted" data-transport="">{SHARE.label.server}: <Full mono>{tool.transport}</Full></span>) : <span className="hxsh-line" data-transport="">{words}</span>}
       {downloads ? <span className="hxsh-line" data-downloads=""><StateDot tone="warn">{SHARE.hint.downloads}</StateDot></span> : null}
       {shell ? <span className="hxsh-line" data-shell=""><StateDot tone="warn">{SHARE.hint.shellLine}</StateDot></span> : null}
+      {admin ? <span className="hxsh-line" data-admin=""><StateDot tone="bad">{SHARE.hint.sudoLine}</StateDot></span> : null}
       {tool.command === null ? null : <span className="hxsh-line" data-command=""><span className="hxe-muted">{SHARE.label.command}</span> <Full mono>{tool.command}</Full></span>}
       {tool.args.length === 0 ? null : (
         <ol className="hxsh-args" aria-label={SHARE.label.arguments}>

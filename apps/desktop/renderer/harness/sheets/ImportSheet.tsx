@@ -222,7 +222,8 @@ export function ImportSheet({ open, onClose }: ImportSheetProps): ReactElement |
   const [done, setDone] = useState<{ view: ImportView; written: SaveWritten } | null>(null);
   const [lastPlan, setLastPlan] = useState<(() => void) | null>(null);
   const [announce, setAnnounce] = useState('');
-  const intro = useRef<HTMLParagraphElement>(null), body = useRef<HTMLDivElement>(null), writeButton = useRef<HTMLButtonElement>(null), status = useRef<HTMLParagraphElement>(null);
+  const intro = useRef<HTMLParagraphElement>(null), body = useRef<HTMLDivElement>(null), writeButton = useRef<HTMLButtonElement>(null);
+  const [nudge, setNudge] = useState(0);
   const heldId = useRef<string | null>(null), openRef = useRef(false), epoch = useRef(0), engineRef = useRef<EngineBridge | null>(null), focusStep = useRef(false), refocus = useRef<{ kind: 'link' | 'leave'; name: string } | null>(null);
   const held = call.writing, planning = call.busy !== null || list.busy !== null;
   const scrolls = useScrolls(body, shown ?? done ?? bundle ?? step);
@@ -345,8 +346,12 @@ export function ImportSheet({ open, onClose }: ImportSheetProps): ReactElement |
   const needsRead = shown !== null && shown.acknowledge !== null && acked !== shown.acknowledge;
   const writable = shown !== null && !stale && !shown.noop && approved === shown.revision && !needsRead;
   const write = (): void => {
-    // A press on a blocked button says why: the focus moves to the line that names what blocks it.
-    if (!writable || planning) { status.current?.focus({ preventScroll: true }); return; }
+    // A press on a blocked button shows why: the focus goes to the first box that is not ticked; with none, it stays on the button and the live line is said again.
+    if (!writable || planning) {
+      const box = body.current?.querySelector<HTMLElement>('[data-tick] input:not(:checked)');
+      if (box !== null && box !== undefined) box.focus(); else setNudge(n => n + 1);
+      return;
+    }
     if (engine === null || picked === null || bundle === null || shown === null) return;
     const id = picked, view = shown, bundleId = bundle.bundleId, choices = choicesOf(bundle.summary.notes.rows.map(n => n.name), links), ack = view.acknowledge === null ? null : acked;
     void call.write(W.label.writing, () => engine.runImport(id, view.revision, bundleId, choices, ack), written => { setDone({ view, written }); go('done'); });
@@ -358,8 +363,11 @@ export function ImportSheet({ open, onClose }: ImportSheetProps): ReactElement |
   };
   const close = (): void => { if (!held) onClose(); };
 
-  const blockText = step !== 'review' || shown === null ? '' : importBlockWords({ planning: stale || planning, needsRead, approved: approved === shown.revision, hasRead: shown.acknowledge !== null, noop: shown.noop });
-  const footNote = step === 'file' ? SHARE.hint.fileFoot : step === 'folder' ? SHARE.hint.folderFoot : step === 'done' ? SHARE.hint.doneFoot : blockText === '' ? SHARE.hint.folderFoot : blockText;
+  // A refused re-plan leaves the old plan dimmed and locked: the line says the plan could not be made, not that one is still coming.
+  const failed = stale && call.refusal !== null && !cancelled && !planning;
+  const blockText = step !== 'review' || shown === null ? '' : failed ? SHARE.hint.planFailed : importBlockWords({ planning: stale || planning, needsRead, approved: approved === shown.revision, hasRead: shown.acknowledge !== null, noop: shown.noop });
+  // The foot says what matters now: a closed dialog, what blocks the button, or what the step does. Done says nothing: its first line already says nothing is installed.
+  const footNote = step === 'done' ? '' : cancelled && step === 'review' ? SHARE.hint.cancelledImport : step === 'file' ? SHARE.hint.fileFoot : step === 'folder' ? SHARE.hint.folderFoot : blockText === '' ? SHARE.hint.folderFoot : blockText;
   const pickedInfo = folders.find(f => f.id === picked);
   const folderOk = pickedInfo !== undefined && !importFolderLine(pickedInfo).off;
 
@@ -390,7 +398,7 @@ export function ImportSheet({ open, onClose }: ImportSheetProps): ReactElement |
   return (
     <Sheet open={open} title={SHARE.label.importTitle} onClose={close} width={880} tall dataSlot="import" head={head} note={footNote} actions={actions}>
       <div className="hxe-body" role="region" ref={body} tabIndex={scrolls ? 0 : -1} aria-label={BODY_NAME[step]} aria-busy={planning}>
-        <p className="hxsh-sr" role="status" id={blockId} ref={status} tabIndex={-1}>{blockText}</p>
+        <p className="hxsh-sr" role="status" id={blockId} key={nudge}>{blockText}</p>
         <p className="hxsh-sr" role="status" data-announce="">{announce}</p>
         {step === 'file' ? (
           <>

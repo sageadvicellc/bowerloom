@@ -134,6 +134,7 @@ test('Export: a dialog closed without a yes is a calm note, not an error: no red
   await answer(p, (await waiting(p, 'runExport')).id, refused('CANCELLED', 'Nothing was written. The confirmation was closed without a yes.'));
   await expect(s.getByRole('alert')).toHaveCount(0);
   await expect(s.locator('[data-cancelled]')).toHaveText('You did not save. Nothing was written.');
+  await expect(s.locator('.hx-sheet-note'), 'the foot says it too, where the person is looking').toHaveText('You did not save. Nothing was written.');
   await expect(s.getByText('CANCELLED')).toHaveCount(0);
   await expect(button).toBeFocused();
   await expect(button).toBeEnabled();
@@ -163,8 +164,8 @@ test('Export: the foot says what blocks the button, the button keeps the focus, 
   await expect(s.locator('.hx-sheet-note')).toHaveText('Tick the box to export.');
   await button.focus();
   await button.click({ force: true });
-  // A press on a blocked button moves the focus to the line that says why.
-  await expect(s.locator('.hxsh-sr').first()).toBeFocused();
+  // A press on a blocked button moves the focus to the first box that is not ticked, which is the cause.
+  await expect(s.locator('[data-acknowledge-paths] input')).toBeFocused();
   expect(await made(p, 'runExport'), 'a held button does nothing').toHaveLength(0);
   await expect(button).toHaveAccessibleDescription('Tick the box to export.');
   await s.locator('[data-acknowledge-paths] input').scrollIntoViewIfNeeded();
@@ -283,7 +284,7 @@ test('Import: the whole way: folder, plan, two ticks, the write names the bundle
   await shot(p, 'share-import-review');
   await write.focus();
   await write.click({ force: true });
-  await expect(s.locator('.hxsh-sr').first()).toBeFocused();
+  await expect(s.locator('[data-acknowledge-import] input')).toBeFocused();
   expect(await made(p, 'runImport'), 'a held button does nothing').toHaveLength(0);
   await s.locator('[data-approve-plan] input').scrollIntoViewIfNeeded();
   await shot(p, 'share-import-ticks-unticked');
@@ -302,6 +303,7 @@ test('Import: the whole way: folder, plan, two ticks, the write names the bundle
   await answer(p, run.id, ok({ written: importPlan.changes.map(c => c.path), version: 'v2' }));
   await expect(s.getByRole('region', { name: 'Import done' })).toBeFocused();
   await expect(s.locator('[data-done-status]')).toHaveText('Nothing is installed. Nothing has run.');
+  await expect(s.locator('.hx-sheet-note'), 'said once, at the top').toHaveText('');
   await expect(s.locator('[data-imported]')).toContainText('Imported 10 files into ~/Projects/inbox-tools.');
   await expect(s.locator('[data-version-kept="v2"]')).toBeVisible();
   await expect(s.locator('[data-section="share-secrets"] [data-secret]')).toHaveCount(2);
@@ -348,6 +350,19 @@ test('Import: Link a folder keeps the old plan on screen, dimmed, until the new 
   expect((await waiting(p, 'planImport')).args).toEqual(['folder-1', bundle.bundleId, NO_NOTES]);
 });
 
+test('Import: a re-plan that is refused leaves the old plan locked and the foot says the plan could not be made', async () => {
+  const p = await open(listQuery());
+  const s = await toReview(p);
+  await s.getByRole('button', { name: 'Leave out: yard-wiki', exact: true }).focus();
+  await s.getByRole('button', { name: 'Link a folder: yard-wiki', exact: true }).click();
+  const notes: NotesView = { id: 'notes-1', label: '~/Documents/Reading list', name: 'Reading list', suggestedName: 'reading-list', pages: 3, complete: true, history: 'none', lastCommitAt: null, latestReport: null, reportsComplete: true };
+  await answer(p, (await waiting(p, 'chooseNotesFolder')).id, ok(notes));
+  await answer(p, (await waiting(p, 'planImport')).id, refused('SAVE_STALE', 'The folder changed after the plan. Nothing was written.'));
+  await expect(s.getByRole('alert')).toBeVisible();
+  await expect(s.locator('.hx-sheet-note')).toHaveText('The plan could not be made. Plan again.');
+  await expect(s.locator('[data-approve-plan] input')).toBeDisabled();
+});
+
 test('Import: a closed notes chooser changes nothing', async () => {
   const p = await open(listQuery());
   const s = await toReview(p);
@@ -368,11 +383,13 @@ test('Import: a closed approval dialog is a calm note, not an error, and the foc
   await answer(p, (await waiting(p, 'runImport')).id, refused('CANCELLED', 'Nothing was written. The confirmation was closed without a yes.'));
   await expect(s.getByRole('alert')).toHaveCount(0);
   await expect(s.locator('[data-cancelled]')).toHaveText('You did not approve. Nothing was written.');
+  await expect(s.locator('.hx-sheet-note'), 'the foot says it too, where the person is looking').toHaveText('You did not approve. Nothing was written.');
   await expect(write).toBeFocused();
   await shot(p, 'share-import-cancelled');
   // The note goes away with the next thing the person does.
   await s.locator('[data-approve-plan] input').uncheck();
   await expect(s.locator('[data-cancelled]')).toHaveCount(0);
+  await expect(s.locator('.hx-sheet-note')).not.toHaveText('You did not approve. Nothing was written.');
 });
 
 test('Import: a folder whose harness has parts is marked refused and cannot be picked; one that main refuses at plan time shows the code\'s words and what to do next', async () => {

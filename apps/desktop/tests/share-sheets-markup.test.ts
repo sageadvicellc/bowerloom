@@ -99,6 +99,9 @@ test('a secret name under a tick is never cut, and a shell command line is flagg
   assert.ok(out.includes(`>${long}<`));
   assert.doesNotMatch(out, /data-secret="[^"]*"[^>]*>[\s\S]*?data-cut/);
   assert.match(out, /data-shell=""/);
+  const admin = html(createElement(ShareSummaryView, { summary: { ...blank, tools: { rows: [tool({ command: 'sudo', args: ['npx', 'x'] })], more: 0 } }, side: 'import' }));
+  assert.match(admin, /data-admin=""/);
+  assert.ok(admin.includes('This starts with admin rights.') && admin.includes('This downloads code at start.'));
   assert.ok(out.includes('This runs a command line. Read it in full.'));
 });
 
@@ -208,7 +211,7 @@ test('the import ticks are in words a person can act on: what runs, where values
   assert.doesNotMatch(calm, /data-acknowledge-import/);
   assert.match(calm, /data-approve-plan/);
   const cut = html(createElement(ImportReview, { view: { ...view, summary: { ...view.summary, tools: { rows: view.summary.tools.rows, more: 12 } } }, ...reviewProps }));
-  assert.match(cut, /aria-label="I read 200 tools and the paths\. 12 more are not shown: Import rope-yard"/, 'a cut list is named in the tick');
+  assert.match(cut, /aria-label="I read 200 tools and the paths\. 12 tools are not shown: Import rope-yard"/, 'a cut list is named in the tick');
   assert.match(cut, /data-hidden="12"/);
 });
 

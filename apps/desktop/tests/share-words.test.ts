@@ -7,7 +7,7 @@ import { bannedIn } from '../shared/home/textbudget.js';
 import { BUNDLE_MESSAGES } from '../../../packages/harness-bundle/src/index.js';
 import { SHARE_MAIN_WORDS } from '../shared/engine/types.js';
 import {
-  CODE_WHY_WORDS, FLAG_WORDS, SHARE, SHARE_REFUSAL_WORDS, approveImportName, approveImportWords, downloadsCode, eventWords, jumpName, runsShellLine, exportFileWords, fileSizeWords, hiddenCounts, hiddenWords, importBlockWords,
+  CODE_WHY_WORDS, FLAG_WORDS, SHARE, SHARE_REFUSAL_WORDS, approveImportName, approveImportWords, downloadsCode, eventWords, jumpName, runsAsAdmin, runsShellLine, exportFileWords, fileSizeWords, hiddenCounts, hiddenWords, importBlockWords,
   importFilesWords, importTickWords, importedWords, makesHarnessWords, moreWords, notesButtonName, notesChoiceName, readFileWords, secretKindWords, sinkWords, summaryLine, transportWords, writesCount,
 } from '../renderer/harness/words-share.js';
 import type { ShareSummary } from '../shared/engine/types.js';
@@ -82,17 +82,27 @@ test('what a tool does, in words: a transport, a hook event, and a command that 
   for (const [command, args, down] of [['npx', ['-y', 'x'], true], ['uvx', [], true], ['pipx', ['run', 'x'], true], ['bunx', [], true], ['/usr/local/bin/npx', [], true], ['docker', ['run', 'img'], true],
     ['env', ['npx', 'x'], true], ['env', ['-i', 'A=1', 'npx', 'x'], true], ['npm', ['exec', 'x'], true], ['pnpm', ['dlx', 'x'], true], ['yarn', ['dlx', 'x'], true], ['bun', ['x', 'y'], true], ['deno', ['run', 'u'], true], ['uv', ['run', 'x'], true],
     ['docker', ['ps'], false], ['node', ['server.js'], false], ['npm', ['install'], false], ['env', [], false], [null, [], false]] as const) assert.equal(downloadsCode(command, args), down, `${command} ${args.join(' ')}`);
-  for (const [command, args, shell] of [['sh', ['-c', 'x'], true], ['bash', ['-lc', 'x'], true], ['/bin/zsh', ['-c', 'x'], true], ['env', ['sh', '-c', 'x'], true], ['sh', ['script.sh'], false], ['node', ['-c', 'x'], false], [null, [], false]] as const) assert.equal(runsShellLine(command, args), shell, `${command} ${args.join(' ')}`);
+  for (const [command, args, shell] of [['sh', ['-c', 'x'], true], ['bash', ['-lc', 'x'], true], ['/bin/zsh', ['-c', 'x'], true], ['env', ['sh', '-c', 'x'], true], ['sh', ['script.sh'], false], ['node', ['-c', 'x'], false], [null, [], false],
+    ['node', ['-e', 'x'], true], ['node', ['--eval', 'x'], true], ['node', ['server.js'], false], ['python', ['-c', 'x'], true], ['python3.12', ['-c', 'x'], true], ['python3', ['-m', 'http.server'], false],
+    ['ruby', ['-e', 'x'], true], ['perl', ['-e', 'x'], true], ['php', ['-r', 'x'], true], ['cmd', ['/c', 'x'], true], ['CMD.EXE', ['/K', 'x'], true], ['C:\\Windows\\System32\\cmd.exe', ['/c', 'x'], true],
+    ['powershell', ['-Command', 'x'], true], ['pwsh.exe', ['-c', 'x'], true], ['powershell', ['-File', 'x.ps1'], false], ['sudo', ['sh', '-c', 'x'], true], ['env', ['-S', 'sh -c x'], true]] as const) assert.equal(runsShellLine(command, args), shell, `${command} ${args.join(' ')}`);
+  // `env` and `sudo` options that take a value, a split string, a Windows path and extension, and a word that is not text.
+  for (const [command, args, down] of [['env', ['-u', 'HOME', 'npx', 'x'], true], ['env', ['--unset', 'A', 'npx', 'x'], true], ['env', ['-C', '/tmp', 'npx', 'x'], true], ['env', ['--chdir', '/tmp', 'npx'], true], ['env', ['-P', '/bin', 'npx'], true],
+    ['env', ['-S', 'npx -y evil'], true], ['env', ['-Snpx -y evil'], true], ['env', ['-u', 'A', 'node', 'x.js'], false], ['C:\\x\\npx.cmd', ['x'], true], ['npx.exe', [], true], ['NPX', [], true], ['sudo', ['npx', 'x'], true],
+    ['sudo', ['-u', 'root', 'npx', 'x'], true], ['env', ['A=1', 'sudo', 'npx', 'x'], true], ['env', [1, 2, null, { a: 1 }], false], ['npx', [1, 2], true]] as const) assert.equal(downloadsCode(command, args as readonly unknown[]), down, `${command} ${args.join(' ')}`);
+  assert.equal(downloadsCode(5 as unknown as string, []), false);
+  assert.equal(runsShellLine(5 as unknown as string, []), false);
+  for (const [command, args, admin] of [['sudo', ['x'], true], ['doas', ['x'], true], ['env', ['A=1', 'sudo', 'x'], true], ['/usr/bin/sudo', [], true], ['node', [], false], ['env', ['node'], false], [null, [], false]] as const) assert.equal(runsAsAdmin(command, args), admin, `${command} ${args.join(' ')}`);
   assert.equal(SHARE.label.runsCode, 'Starts a program');
 });
 
 test('the first tick says what it covers; when a list was cut it names the cut, so a tick never claims more than was shown', () => {
   assert.equal(importTickWords(BLANK), 'I read what runs and where my values go.');
   assert.equal(importTickWords({ ...BLANK, foreignPaths: { rows: [{ path: 'a', line: 1, text: 'x' }], more: 0 } }), 'I read what runs, where my values go and the paths.');
-  assert.equal(importTickWords({ ...BLANK, tools: { rows: [], more: 12 } }), 'I read the first 200 tools. 12 more are not shown.');
-  assert.equal(importTickWords({ ...BLANK, codeFiles: { rows: [], more: 3 } }), 'I read the first 200 files. 3 more are not shown.');
-  assert.equal(importTickWords({ ...BLANK, tools: { rows: [], more: 12 }, foreignPaths: { rows: [{ path: 'a', line: 1, text: 'x' }], more: 0 } }), 'I read 200 tools and the paths. 12 more are not shown.');
-  assert.equal(importTickWords({ ...BLANK, foreignPaths: { rows: [], more: 4 } }), 'I read the first 200 paths. 4 more are not shown.');
+  assert.equal(importTickWords({ ...BLANK, tools: { rows: [], more: 12 } }), 'I read 200 tools and the rest shown. 12 are not shown.');
+  assert.equal(importTickWords({ ...BLANK, codeFiles: { rows: [], more: 3 } }), 'I read 200 files and the rest shown. 3 are not shown.');
+  assert.equal(importTickWords({ ...BLANK, tools: { rows: [], more: 12 }, foreignPaths: { rows: [{ path: 'a', line: 1, text: 'x' }], more: 0 } }), 'I read 200 tools and the paths. 12 tools are not shown.');
+  assert.equal(importTickWords({ ...BLANK, foreignPaths: { rows: [], more: 4 } }), 'I read 200 paths and the rest shown. 4 are not shown.');
   assert.equal(importTickWords({ ...BLANK, tools: { rows: [], more: 1 }, secrets: { rows: [], more: 1 } }), 'I read the lists shown. More are not shown.');
   assert.deepEqual(hiddenCounts({ ...BLANK, tools: { rows: [], more: 12 }, foreignPaths: { rows: [], more: 2 } }), { tools: 12, codeFiles: 0, secrets: 0, foreignPaths: 2, total: 14 });
   for (const text of [importTickWords(BLANK), SHARE.hint.tickExport, SHARE.hint.tickFirst, importTickWords({ ...BLANK, tools: { rows: [], more: 12 }, foreignPaths: { rows: [{ path: 'a', line: 1, text: 'x' }], more: 0 } }), importTickWords({ ...BLANK, codeFiles: { rows: [], more: 3 } })]) assert.ok(countWords(text) <= LIMITS.hint, text);
@@ -119,5 +129,6 @@ test('the line of counts leaves out the zeros, and the foot line says what block
   assert.equal(importBlockWords({ planning: true, needsRead: true, approved: true }), 'Planning. Then tick again.');
   assert.equal(importBlockWords({ planning: false, needsRead: false, approved: true }), 'Ready. Press the button to go on.');
   assert.equal(SHARE.hint.approvalCleared, 'Approval cleared. Tick again before you import.');
-  assert.equal(SHARE.hint.doneFoot, 'Nothing is installed. Nothing has run.');
+  assert.equal(SHARE.hint.notInstalled, 'Nothing is installed. Nothing has run.');
+  assert.equal(SHARE.hint.planFailed, 'The plan could not be made. Plan again.');
 });
