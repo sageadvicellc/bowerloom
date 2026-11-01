@@ -151,6 +151,9 @@ export function exportChange(r: ExportRequest): PlannedChange<CliExportPlan> {
     const loaded = loadDefinition(join(r.dir, DEF));
     if (!loaded.ok) {
       if (loaded.problems.some(p => p.code === 'FOLDER_MISSING')) return usage('This folder has no harness to export. Run bowerloom harness adopt first.');
+      // A secret value in a file is its own refusal, as it is on import. The problem names the file and the rule, never the value.
+      const secrets = loaded.problems.filter(p => p.code === 'SECRET_VALUE');
+      if (secrets.length) throw new BundleRefusal('BUNDLE_SECRET_FOUND', [...new Set(secrets.map(p => p.path))], loaded.problems);
       throw new BundleRefusal('BUNDLE_INVALID', [...new Set(loaded.problems.map(p => p.path))], loaded.problems);
     }
     const user = userName();

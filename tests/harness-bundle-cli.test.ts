@@ -500,6 +500,18 @@ test('export needs --output and a harness that loads', t => {
   assert.equal(existsSync(w.out), false);
 });
 
+test('export refuses a literal secret value with BUNDLE_SECRET_FOUND, names the file, and never prints the value', t => {
+  const w = world(t);
+  const token = `ghp_${'q7'.repeat(18)}`;
+  put(w.src, richFiles({ 'mcp.json': json({ servers: [{ name: 'gh', transport: 'stdio', command: 'tool', env: { GITHUB_TOKEN: token } }] }) }));
+  const r = bl(w, ['export', '--output', w.out], w.src);
+  assert.equal(r.status, 1, r.stderr);
+  assert.equal(errorCode(r.stderr), 'BUNDLE_SECRET_FOUND');
+  assert.match(parse<{ error: { message: string } }>(r.stderr).error.message, /mcp\.json/);
+  assert.equal(r.stderr.includes(token) || r.stdout.includes(token), false);
+  assert.equal(existsSync(w.out), false);
+});
+
 // ---- notes ---------------------------------------------------------------------------------------------------------------
 
 test('notes names are left out by default; --link links one with its stored path; --leave says so; a name the file lacks is BUNDLE_USAGE', t => {
