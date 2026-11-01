@@ -2,12 +2,14 @@
 // computer, and misuse. Hostile input is in hostile.test.mjs and hostile-todo.test.mjs.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {
-  BUNDLE_FORMAT, decodeBundle, encodeBundle, importAcknowledgement, exportAcknowledgement, importChoicesOf, inspectBundle, isEmptyHarness, targetFromBundle,
+  BUNDLE_FORMAT, EMPTY_HARNESS_DESCRIPTION, assertEmptyHarness, decodeBundle, encodeBundle, harnessPartsFound, importAcknowledgement, exportAcknowledgement, importChoicesOf, inspectBundle, isEmptyHarness,
+  targetFromBundle,
 } from '../../../dist/packages/harness-bundle/src/index.js';
 import { loadDefinitionFiles, scanSecrets } from '../../../dist/packages/harness-definition/src/index.js';
 import { exportDefinitionBundle } from '../../../dist/packages/project-sync/src/index.js';
-import { bundleOf, definitionOf, filesOf, json, parsed, refusal, richMap, sha, smallMap } from './fixture.mjs';
+import { bundleOf, bytesOf, definitionOf, envelopeOf, filesOf, json, parsed, refusal, richMap, sha, smallMap } from './fixture.mjs';
 
 const same = (a, b, label) => {
   assert.deepEqual(a.map(f => f.path), b.map(f => f.path), `${label}: the same paths`);
@@ -312,22 +314,51 @@ test('a hook that downloads and runs a script is data: it is listed, flagged, bo
   assert.equal(JSON.parse(Buffer.from(target.find(f => f.path === 'hooks.json').bytes).toString('utf8')).hooks[0].command, command, 'the text is written as it is, never changed or run');
 });
 
-test('long text in a summary is cut: a command, a host, arguments and a foreign path', async () => {
-  const long = 'x'.repeat(4000);
-  const map = smallMap({ mcp: 'mcp.json' }, { 'mcp.json': json({ servers: [
-    { name: 'a', transport: 'stdio', command: long, args: [`b${'y'.repeat(2000)}`, ...Array.from({ length: 29 }, (_, i) => `a${i}`)] },
-    { name: 'b', transport: 'http', url: `https://${'h'.repeat(300)}.example/` },
-  ] }) });
+test('a tool is shown whole: a command of 4,000 characters and 64 arguments appear in full, and the summary equals the entry', async () => {
+  const command = 'x'.repeat(4000);
+  const args = Array.from({ length: 64 }, (_, i) => `--option-${i}=value-${i}`);
+  const map = smallMap({ mcp: 'mcp.json', hooks: 'hooks.json' }, {
+    'mcp.json': json({ servers: [{ name: 'a', transport: 'stdio', command, args: args.slice(0, 21) }, { name: 'b', transport: 'stdio', command: 'tool', args }, { name: 'c', transport: 'http', url: `https://${'h'.repeat(300)}.example/` }] }),
+    'hooks.json': json({ hooks: [{ id: 'long', event: 'PreToolUse', matcher: 'Bash', command: 'y'.repeat(4000), strength: 'advisory' }] }),
+  });
   const { decoded } = await bundleOf(map);
-  const [a, b] = inspectBundle(decoded).tools;
-  assert.equal(Array.from(a.command).length, 201);
-  assert.equal(a.args.length, 20);
-  assert.ok(a.args.every(x => Array.from(x).length <= 201));
-  assert.equal(Array.from(a.args[0]).length, 201, 'the long argument is cut');
-  assert.ok(b.host.length <= 201);
+  const [a, b, c, hook] = inspectBundle(decoded).tools;
+  assert.equal(a.command, command, 'the whole command');
+  assert.deepEqual(a.args, args.slice(0, 21), 'a tool with 21 arguments shows all 21');
+  assert.deepEqual(b.args, args, 'and a tool with 64 shows all 64');
+  assert.equal(hook.command, 'y'.repeat(4000), 'a hook command is whole too');
+  assert.ok(c.host.length <= 201, 'the host is still cut');
   assert.match(a.sha256, /^[0-9a-f]{64}$/);
-  const other = smallMap({ mcp: 'mcp.json' }, { 'mcp.json': json({ servers: [{ name: 'a', transport: 'stdio', command: `${long}y`, args: [`b${'y'.repeat(2000)}`, ...Array.from({ length: 29 }, (_, i) => `a${i}`)] }] }) });
-  assert.notEqual(inspectBundle((await bundleOf(other)).decoded).tools[0].sha256, a.sha256, 'the hash covers the whole text, not the cut one');
+});
+
+test('a tool whose command or arguments are too long to show in full is refused BUNDLE_INVALID, on decode and on encode, and the words say so', async () => {
+  const tooLong = ['x'.repeat(4001)];
+  const cases = [
+    ['an MCP command of 4,001 characters', smallMap({ mcp: 'mcp.json' }, { 'mcp.json': json({ servers: [{ name: 'a', transport: 'stdio', command: tooLong[0] }] }) }), 'mcp.json: a'],
+    ['a server with 65 arguments', smallMap({ mcp: 'mcp.json' }, { 'mcp.json': json({ servers: [{ name: 'a', transport: 'stdio', command: 'tool', args: Array.from({ length: 65 }, (_, i) => `a${i}`) }] }) }), 'mcp.json: a'],
+    ['a hook command of 4,001 characters', smallMap({ hooks: 'hooks.json' }, { 'hooks.json': json({ hooks: [{ id: 'h', event: 'PreToolUse', matcher: 'Bash', command: tooLong[0], strength: 'advisory' }] }) }), 'hooks.json: h'],
+  ];
+  for (const [label, map, where] of cases) {
+    const def = definitionOf(map);
+    const e = await refusal(assert, encodeBundle(def), 'BUNDLE_INVALID');
+    assert.match(e.message, /too long to show in full/, label);
+    assert.ok(e.paths[0].includes(where), label);
+    assert.ok(e.problems.some(p => p.code === 'TOOL_TEXT_TOO_LONG'), label);
+    // A forged bundle of the same files is refused on decode in the same way.
+    const records = def.files.filter(f => f.path !== 'knowledge.json').map(f => ({ path: f.path, size: f.bytes.length, sha256: sha(f.bytes), encoding: 'utf8', data: Buffer.from(f.bytes).toString('utf8') }));
+    const d = await refusal(assert, decodeBundle(bytesOf(envelopeOf(records))), 'BUNDLE_INVALID');
+    assert.match(d.message, /too long to show in full/, label);
+    assert.equal(d.message.includes(tooLong[0]), false, 'the command is not repeated');
+  }
+  // The limits themselves: exactly 4,000 characters and 64 arguments pass.
+  assert.ok(await bundleOf(smallMap({ mcp: 'mcp.json' }, { 'mcp.json': json({ servers: [{ name: 'a', transport: 'stdio', command: 'x'.repeat(4000), args: Array.from({ length: 64 }, (_, i) => `a${i}`) }] }) })));
+});
+
+test('a different command of the same length changes the acknowledgement, and the whole text is in the summary the person reads', async () => {
+  const mk = tail => bundleOf(smallMap({ mcp: 'mcp.json' }, { 'mcp.json': json({ servers: [{ name: 'a', transport: 'stdio', command: 'x'.repeat(3990) + tail }] }) }));
+  const one = inspectBundle((await mk('0123456789')).decoded), two = inspectBundle((await mk('9876543210')).decoded);
+  assert.equal(one.tools[0].command.endsWith('0123456789'), true, 'the end of a long command is shown');
+  assert.notEqual(importAcknowledgement(one, [], 'a'.repeat(64)), importAcknowledgement(two, [], 'a'.repeat(64)));
 });
 
 test('the files helper keeps order and execute bits', () => {
@@ -343,4 +374,30 @@ test('project-sync re-exports the encoder of this package, so the two cannot dri
   assert.ok(Buffer.from(viaProjectSync.bytes).equals(Buffer.from(direct.bytes)), 'the same bytes');
   assert.equal(viaProjectSync.sha256, direct.sha256);
   assert.equal(decoded.harness, def.harness.id);
+});
+
+test('a harness with settings only is not empty: the description constant is one value, and the refusal names what it found', () => {
+  const adoption = fs.readFileSync(new URL('../../adoption/src/plan.ts', import.meta.url), 'utf8');
+  assert.match(adoption, /EMPTY_HARNESS_DESCRIPTION/, 'adoption writes the constant, not a copy of its text');
+  assert.doesNotMatch(adoption, /'Adopted from the engine files of this project\.'/);
+  assert.equal(EMPTY_HARNESS_DESCRIPTION, 'Adopted from the engine files of this project.');
+  const bare = (extra = {}) => definitionOf({ 'harness.json': json({ format: 'bowerloom/harness/v1beta1', id: 'demo', description: EMPTY_HARNESS_DESCRIPTION, engines: [{ id: 'claude-code' }, { id: 'codex' }], parts: {}, ...extra }) });
+  assert.deepEqual(harnessPartsFound(bare()), []);
+  assert.doesNotThrow(() => assertEmptyHarness(bare()));
+  const cases = [
+    [bare({ description: 'Notes for the rope yard.' }), ['a description you wrote']],
+    [bare({ engines: [{ id: 'codex', model: 'model-a' }] }), ['an engine with a version or a model']],
+    [bare({ engines: [{ id: 'claude-code', version: '1.2.3' }, { id: 'codex' }] }), ['an engine with a version or a model']],
+    [bare({ overrides: [{ part: 'skills', id: 'review', action: 'hide' }] }), ['an override']],
+  ];
+  for (const [def, expected] of cases) {
+    assert.deepEqual(harnessPartsFound(def), expected);
+    assert.equal(isEmptyHarness(def), false, 'settings only: not empty');
+    assert.throws(() => assertEmptyHarness(def), err => err.name === 'BundleRefusal' && err.code === 'IMPORT_FOLDER_HAS_HARNESS' && JSON.stringify(err.paths) === JSON.stringify(expected));
+  }
+  const rich = harnessPartsFound(definitionOf(richMap()));
+  for (const part of ['skills', 'agents', 'guardrails', 'hooks', 'tools', 'instructions', 'borrowed sources', 'scripts', 'engine files', 'a description you wrote']) assert.ok(rich.includes(part), part);
+  assert.deepEqual(harnessPartsFound(null), ['a harness that cannot be read'], 'fails closed');
+  assert.deepEqual(harnessPartsFound({ entries: null }), ['a harness that cannot be read']);
+  assert.throws(() => assertEmptyHarness(bare({ description: 'x' })), e => e.message.endsWith('a description you wrote.'));
 });

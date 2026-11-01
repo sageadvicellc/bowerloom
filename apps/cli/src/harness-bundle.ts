@@ -26,11 +26,10 @@ import {
 } from '../../../packages/harness-definition/src/index.js';
 import type { DefinitionFile } from '../../../packages/harness-definition/src/index.js';
 import {
-  BUNDLE_LIMITS, BundleRefusal, EXPORT_PLAN_FORMAT, IMPORT_PLAN_FORMAT, bundleTargetIdentity, decodeBundle, encodeBundle, exportAcknowledgement, importAcknowledgement,
-  importChoicesOf, inspectBundle, isEmptyHarness, readBundleFile, targetFromBundle, writeBundleFile,
+  BUNDLE_LIMITS, BundleRefusal, EMPTY_HARNESS_DESCRIPTION, EXPORT_PLAN_FORMAT, IMPORT_PLAN_FORMAT, assertEmptyHarness, bundleTargetIdentity, decodeBundle, encodeBundle, exportAcknowledgement, importAcknowledgement,
+  importChoicesOf, inspectBundle, readBundleFile, targetFromBundle, writeBundleFile,
 } from '../../../packages/harness-bundle/src/index.js';
 import type { BundleFileIdentity, BundleSummary, ExportPlan, ImportPlan } from '../../../packages/harness-bundle/src/index.js';
-import { EMPTY_HARNESS_DESCRIPTION } from '../../../packages/harness-bundle/src/target.js';
 import { withProjectLock } from '../../../packages/project-context/src/index.js';
 import type { PlannedChange } from '../../../packages/project-context/src/types.js';
 import { checkPaths, stateExists } from '../../../packages/project-sync/src/portable-state.js';
@@ -51,6 +50,11 @@ function shown(text: string, max = 200): string {
   const chars = [...flat];
   return chars.length <= max ? flat : `${chars.slice(0, max).join('')}... (${chars.length - max} more characters; --json shows what the file holds)`;
 }
+/**
+ * A command or an argument of a tool, whole: the acknowledgement binds the whole entry, so no part of it is cut here. An argument with a space, a quote or nothing in it
+ * is written in quotes, so the boundaries show. Control characters are written out when the whole review is printed.
+ */
+const whole = (text: string): string => (text === '' || /[\s"']/.test(text) ? JSON.stringify(text) : text);
 /** At most `BUNDLE_LIMITS.listRows` rows of a list, then one line for the rest. */
 function rows(list: readonly string[]): string[] {
   const max = BUNDLE_LIMITS.listRows;
@@ -64,10 +68,10 @@ function summaryLines(s: BundleSummary, notesLine: (name: string, readBy: readon
   if (s.tools.length) {
     out.push('Tools. Each one runs a program or reaches a host:');
     out.push(...rows(s.tools.map(t => {
-      if (t.kind === 'hook') return `  hook ${t.name}${t.event !== undefined ? ` on ${t.event}` : ''}: runs ${shown(t.command ?? '')}`;
+      if (t.kind === 'hook') return `  hook ${t.name}${t.event !== undefined ? ` on ${t.event}` : ''}: runs ${t.command ?? ''}`;
       const flags = t.addressFlags?.length ? ` (${t.addressFlags.join(', ')})` : '';
       return t.command !== undefined
-        ? `  MCP server ${t.name} (${t.transport ?? 'stdio'}): runs ${shown([t.command, ...(t.args ?? [])].join(' '))}`
+        ? `  MCP server ${t.name} (${t.transport ?? 'stdio'}): runs ${[t.command, ...(t.args ?? [])].map(whole).join(' ')}`
         : `  MCP server ${t.name} (${t.transport ?? 'http'}): reaches ${shown(t.host ?? 'no host')}${flags}`;
     })));
   }
@@ -305,7 +309,8 @@ function folderState(dir: string): { readonly kind: 'empty' } | { readonly kind:
   }
   const loaded = loadDefinition(def);
   if (!loaded.ok) throw new SaveRefusal('SAVE_DEFINITION_INVALID', [...new Set(loaded.problems.map(p => `${p.path} (${p.code})`))], loaded.problems);
-  if (!isEmptyHarness(loaded.definition)) throw new BundleRefusal('IMPORT_FOLDER_HAS_HARNESS');
+  // Names what it found, parts or settings, in the refusal.
+  assertEmptyHarness(loaded.definition);
   return { kind: 'empty' };
 }
 

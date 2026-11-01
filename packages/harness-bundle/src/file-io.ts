@@ -6,14 +6,16 @@
  *    and puts it in place with `link` (so a file made in between is never replaced), or, where hard links do not exist, by creating the target itself with `O_EXCL`;
  *  - a replace compares the identity of the target right before the rename.
  * Errors are mapped by the code of the system error (`failure`): a link, a folder, a device, a changed file or a bad name is `BUNDLE_FILE_UNSAFE`; a full disk, a missing
- * permission, a read-only disk and the like are `BUNDLE_FILE_FAILED`, with a plain-words reason; an error with no system code is a bug and passes on unchanged. The text of a
- * system error, which may name a path, is never passed on: only its code is kept, as `cause`.
+ * permission, a read-only disk and the like are `BUNDLE_FILE_FAILED`, with a plain-words reason; an error with no system code is a defect: it is logged (its class name, as a
+ * process warning) and also becomes a `BUNDLE_FILE_FAILED` with the class name as `cause`, so no stray error type and no path text reaches the caller. The text of an error,
+ * which may name a path, is never passed on: only its code or class name is kept, as `cause`.
+ * The package deletes nothing but the temporary `.part` file of the call that made it (and, in the no-link path, the target it created itself, by identity).
  * The functions take plain input (a path string, bytes) and return plain output, import nothing of Electron, and are safe to call from a worker thread.
  */
 import { randomBytes } from 'node:crypto';
 import fs, { constants } from 'node:fs';
 import path from 'node:path';
-import { BundleRefusal } from './codes.js';
+import { BundleRefusal, causeOf } from './codes.js';
 import { BUNDLE_LIMITS } from './limits.js';
 import type { BundleFileIdentity } from './types.js';
 
@@ -64,12 +66,17 @@ const usage = (): never => { throw new BundleRefusal('BUNDLE_USAGE'); };
 
 /**
  * Turns an error of a file call into a refusal. A refusal passes on. A system error is `BUNDLE_FILE_UNSAFE` for a link, a folder or a device, else `BUNDLE_FILE_FAILED`.
- * An error with no system code is a defect, not a file fault, and passes on unchanged so that it shows.
+ * An error with no system code is a defect, not a file fault: it is logged as a process warning (the class name only) and becomes `BUNDLE_FILE_FAILED` with the class name as
+ * `cause`. Its message, which may hold a path, is dropped.
  */
 function failure(error: unknown): never {
   if (error instanceof BundleRefusal) throw error;
   const code = codeOf(error);
-  if (code === undefined) throw error;
+  if (code === undefined) {
+    const kind = causeOf(error);
+    process.emitWarning(`harness-bundle: a file call failed with a defect (${kind}).`, { type: 'BundleDefectWarning' });
+    throw new BundleRefusal('BUNDLE_FILE_FAILED', [], [], kind);
+  }
   throw new BundleRefusal(UNSAFE_CODES.has(code) ? 'BUNDLE_FILE_UNSAFE' : 'BUNDLE_FILE_FAILED', [], [], code);
 }
 
@@ -171,8 +178,6 @@ export async function bundleTargetIdentity(absPath: string): Promise<BundleFileI
 
 /** The name of a temporary file: a dot first (a sync folder skips it), `.part` last, and 96 random bits between. */
 const temporaryName = (): string => `.bowerloom-${randomBytes(12).toString('hex')}.part`;
-const STALE_TEMPORARY = /^\.bowerloom-[0-9a-f]{24}\.part$/;
-const A_DAY_MS = 24 * 60 * 60 * 1000;
 
 export async function writeBundleFile(absPath: string, bytes: Uint8Array, options?: { readonly replace?: BundleFileIdentity }): Promise<void> {
   const file = absolute(absPath);
@@ -198,7 +203,6 @@ export async function writeBundleFile(absPath: string, bytes: Uint8Array, option
   if (replace === undefined && present !== null) throw new BundleRefusal('BUNDLE_EXISTS');
   if (replace !== undefined && (present === null || !same(identityOf(present), replace))) return unsafe();
 
-  await sweepStale(parent);
   let made = false;
   try {
     await createTemporary(temporary, bytes);
@@ -226,23 +230,6 @@ async function lstatOrNull(p: string): Promise<fs.BigIntStats | null> {
     if (codeOf(error) === 'ENOENT') return null;
     return failure(error);
   }
-}
-
-/**
- * Removes the `.part` files that an earlier write of ours left in this folder (a crash, a kill): only a name of exactly our form, only a plain file of this user, only one
- * older than a day. It never fails the write; a file it cannot remove is a warning with the code of the error.
- */
-async function sweepStale(folder: string): Promise<void> {
-  try {
-    const mine = typeof process.getuid === 'function' ? BigInt(process.getuid()) : undefined;
-    for (const entry of await fs.promises.readdir(folder)) {
-      if (!STALE_TEMPORARY.test(entry)) continue;
-      const at = path.join(folder, entry);
-      const st = await fs.promises.lstat(at, { bigint: true }).catch(() => null);
-      if (st === null || !st.isFile() || (mine !== undefined && st.uid !== mine) || Date.now() - Number(st.mtimeMs) < A_DAY_MS) continue;
-      await removeFile(at);
-    }
-  } catch (error) { warnCleanup('looking for old temporary files', error); }
 }
 
 /** Creates the temporary file (new, not through a link, mode 0600 from creation), writes all the bytes, and syncs. It removes the file on any failure. */
@@ -326,8 +313,9 @@ async function createInPlace(temporary: string, target: string, bytes: Uint8Arra
     open = false;
   } catch (error) {
     if (open) await fh.close().catch((e: unknown) => warnCleanup('closing the target', e));
+    // Removed only by identity. If the identity was never taken (the stat failed), the file is left, and the warning says so: a file we cannot name is not ours to delete.
     if (created !== undefined) await removeIfStillMine(target, created, written, BigInt(bytes.length));
-    else await removeFile(target);
+    else process.emitWarning('harness-bundle: a file may remain at the target of a failed write (its identity was not read).', { type: 'BundleCleanupWarning' });
     throw error;
   }
   await removeFile(temporary);

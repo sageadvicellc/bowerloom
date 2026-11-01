@@ -3,9 +3,10 @@
  */
 import { editDefinition } from '../../harness-definition/src/index.js';
 import { KNOWLEDGE_FILE } from '../../harness-definition/src/index.js';
+import { EMPTY_HARNESS_DESCRIPTION } from '../../harness-definition/src/defaults.js';
 import type { Definition, DefinitionEdit, DefinitionFile, EditRefusalCode } from '../../harness-definition/src/index.js';
-import { BundleRefusal } from './codes.js';
-import { causeOf, loadBundleParts, recallLoaded } from './codec.js';
+import { BundleRefusal, causeOf } from './codes.js';
+import { loadBundleParts, recallLoaded } from './codec.js';
 import { BUNDLE_LIMITS } from './limits.js';
 import type { DecodedBundle, ImportChoices } from './types.js';
 
@@ -64,22 +65,43 @@ export function targetFromBundle(bundle: DecodedBundle, choices: ImportChoices):
   }
 }
 
-/** The harness.json of a harness made empty by "Make an empty harness here": adoption writes this description when the person gives none. */
-export const EMPTY_HARNESS_DESCRIPTION = 'Adopted from the engine files of this project.';
+export { EMPTY_HARNESS_DESCRIPTION };
 
 /**
- * True when the definition holds no entry, no instructions, no source and no knowledge. Scripts, engine files and converted skills count as parts too, because the save an
- * import makes would delete them. So do the settings of `harness.json` that the person made: a description other than the one "Make an empty harness here" writes, an engine
- * with a version or a model, an override, and the settings of a skill. The list of engines alone does not count (a new harness lists the engines found). An object that is
- * not a definition is not empty.
+ * What a harness holds that an import would overwrite, in plain words, in a fixed order; an empty list means the harness is empty. Parts: skills, agents, guardrails (rules and
+ * sandbox), hooks, tools, instructions, notes sources, borrowed sources, scripts, engine files. Settings of `harness.json` that a person made: a description other than the one
+ * "Make an empty harness here" writes (`EMPTY_HARNESS_DESCRIPTION`), an engine with a version or a model, an override, and the settings of a skill. A plain list of engines does
+ * not count, because a new harness lists the engines found. The check fails closed: a value that is not a definition, or one that cannot be read, gives `['a harness that cannot be read']`.
  */
-export function isEmptyHarness(def: Definition): boolean {
+export function harnessPartsFound(def: Definition): readonly string[] {
   try {
     const e = def.entries, h = def.harness;
-    return e.skills.length === 0 && e.subagents.length === 0 && e.rules.length === 0 && e.sandbox.length === 0 && e.hooks.length === 0 && e.mcp.length === 0
-      && def.instructions === undefined && def.sources.length === 0 && def.adopted.length === 0 && def.knowledge.length === 0
-      && def.scripts.length === 0 && Object.values(def.enginePrivate).every(list => list === undefined || list.length === 0)
-      && h.description === EMPTY_HARNESS_DESCRIPTION && h.overrides.length === 0 && Object.keys(h.skills).length === 0
-      && h.engines.every(x => x.version === undefined && x.model === undefined);
-  } catch { return false; }
+    const found: string[] = [];
+    if (e.skills.length > 0) found.push('skills');
+    if (e.subagents.length > 0) found.push('agents');
+    if (e.rules.length > 0 || e.sandbox.length > 0) found.push('guardrails');
+    if (e.hooks.length > 0) found.push('hooks');
+    if (e.mcp.length > 0) found.push('tools');
+    if (def.instructions !== undefined) found.push('instructions');
+    if (def.knowledge.length > 0) found.push('notes sources');
+    if (def.sources.length > 0 || def.adopted.length > 0) found.push('borrowed sources');
+    if (def.scripts.length > 0) found.push('scripts');
+    if (Object.values(def.enginePrivate).some(list => list !== undefined && list.length > 0)) found.push('engine files');
+    if (h.description !== EMPTY_HARNESS_DESCRIPTION) found.push('a description you wrote');
+    if (h.engines.some(x => x.version !== undefined || x.model !== undefined)) found.push('an engine with a version or a model');
+    if (h.overrides.length > 0) found.push('an override');
+    if (Object.keys(h.skills).length > 0) found.push('settings of a skill');
+    return found;
+  } catch { return ['a harness that cannot be read']; }
+}
+
+/** True when the harness holds no part and no setting that an import would overwrite (`harnessPartsFound` is empty). */
+export function isEmptyHarness(def: Definition): boolean {
+  return harnessPartsFound(def).length === 0;
+}
+
+/** Refuses `IMPORT_FOLDER_HAS_HARNESS` unless the harness is empty, and names what it found (`harnessPartsFound`) in the refusal's paths. */
+export function assertEmptyHarness(def: Definition): void {
+  const found = harnessPartsFound(def);
+  if (found.length > 0) throw new BundleRefusal('IMPORT_FOLDER_HAS_HARNESS', found);
 }

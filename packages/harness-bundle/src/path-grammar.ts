@@ -1,8 +1,8 @@
 /**
  * The path grammar of a bundle. A bundle path is only ever a key into `.bowerloom`, and it must be at least as strict as `plainPath` of `packages/adoption/src/save.ts`,
- * because the save is the only write: whatever this accepts, `plainPath` accepts too (a test reads both). It adds four things: a lone surrogate, a name that ends in a dot
- * or a space or is a Windows device name (two names collapse on Windows and on some network shares), a name that clashes under the shared fold (`foldName`, also used by the
- * save), and the one top-level file that never travels (`knowledge.json`, in any case).
+ * because the save is the only write: whatever this accepts, `plainPath` accepts too (a test reads both). It adds three things: a lone surrogate, a name that ends in a dot
+ * or a space (two names collapse on Windows and on some network shares), a name that clashes under the shared fold (`foldName`, also used by the
+ * save), and the one top-level file that never travels (`knowledge.json`, in any case). Windows device names (`con.md`) are not refused: the save accepts them, so one rule serves both.
  */
 import { DEFINITION_LIMITS, KNOWLEDGE_FILE, LEGACY_NAMES } from '../../harness-definition/src/index.js';
 import { foldName } from '../../harness-definition/src/fold.js';
@@ -12,8 +12,6 @@ import { isWellFormedText } from './well-formed.js';
 const LEGACY = new Set<string>(LEGACY_NAMES);
 /** Control (`Cc`), format (`Cf`: bidirectional marks, zero-width characters, the byte order mark), line and paragraph separators, and the backslash. */
 const ODD = /[\p{Cc}\p{Cf}\u2028\u2029\\]/u;
-/** A Windows device name, with or without an extension, after the fold (so a superscript digit counts as the digit). */
-const DEVICE = /^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\..*)?$/;
 
 /** True when `p` is a plain path inside `.bowerloom`, by the rules in the README. Never throws. */
 export function isBundlePath(p: unknown): p is string {
@@ -21,7 +19,7 @@ export function isBundlePath(p: unknown): p is string {
   if (foldName(p) === KNOWLEDGE_FILE) return false;
   const parts = p.split('/');
   if (parts.length - 1 > DEFINITION_LIMITS.depth || LEGACY.has(parts[0]!)) return false;
-  return parts.every(s => s !== '' && s !== '.' && s !== '..' && !s.startsWith('.') && !/[. ]$/.test(s) && Buffer.byteLength(s) <= BUNDLE_LIMITS.segmentBytes && !DEVICE.test(foldName(s)));
+  return parts.every(s => s !== '' && s !== '.' && s !== '..' && !s.startsWith('.') && !/[. ]$/.test(s) && Buffer.byteLength(s) <= BUNDLE_LIMITS.segmentBytes);
 }
 
 /** Sorts paths by the bytes of their UTF-8 form, the order of a bundle's `files`. */

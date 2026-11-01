@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ENGINE_ARITY, ENGINE_CALLS, ENGINE_CALL_REFUSALS, ENGINE_CHANNELS, SHARE_ARGS_LIMIT, SHARE_BUNDLE_ID, SHARE_HELD_BUNDLES, SHARE_LIST_LIMIT, SHARE_MAIN_WORDS, SHARE_NAME_LIMIT,
-  SHARE_NOTES_LIMIT, SHARE_TEXT_LIMIT,
+  SHARE_COMMAND_LIMIT, SHARE_NOTES_LIMIT, SHARE_TEXT_LIMIT,
 } from '../shared/engine/types.js';
 import type { ImportNoteChoices, ShareSecret, ShareTool } from '../shared/engine/types.js';
 import { BUNDLE_LIMITS, BUNDLE_MESSAGES } from '../../../packages/harness-bundle/src/index.js';
@@ -47,7 +47,8 @@ test('the window limits equal the package limits', () => {
   assert.equal(SHARE_NOTES_LIMIT, BUNDLE_LIMITS.notesNames);
   assert.equal(SHARE_NAME_LIMIT, BUNDLE_LIMITS.nameChars);
   assert.equal(SHARE_TEXT_LIMIT, BUNDLE_LIMITS.displayChars);
-  assert.equal(SHARE_ARGS_LIMIT, BUNDLE_LIMITS.displayArgs);
+  assert.equal(SHARE_ARGS_LIMIT, BUNDLE_LIMITS.toolArgs);
+  assert.equal(SHARE_COMMAND_LIMIT, BUNDLE_LIMITS.commandChars);
 });
 
 test('the words main shares with the package are the package words, sentence for sentence', () => {

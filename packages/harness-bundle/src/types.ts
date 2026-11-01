@@ -64,9 +64,10 @@ export interface DecodedBundle {
 // ---- what a bundle holds, for the person to read ---------------------------------------------------------------------------
 
 /**
- * A tool the bundle holds, with what a person must read before it may run: the text of the command, the arguments, the host, the hook text. Every text is cut
- * to BUNDLE_LIMITS.displayChars (arguments: BUNDLE_LIMITS.displayArgs, each cut the same way) and is plain text for the screen; `sha256` covers the WHOLE entry as
- * the file holds it, so an acknowledgement binds the full text and not the cut one.
+ * A tool the bundle holds, with what a person must read before it may run: the text of the command, the arguments, the host, the hook text. The command and every argument
+ * are WHOLE (a bundle whose command or arguments pass BUNDLE_LIMITS.commandChars and BUNDLE_LIMITS.toolArgs is refused, so nothing is cut); the host is cut to
+ * BUNDLE_LIMITS.displayChars. All are plain text for the screen; `sha256` covers the whole entry as the file holds it, so an acknowledgement binds the full text, and the
+ * full text is what the person saw.
  *  - MCP server over stdio: `command` and `args`. Over http: `host`.
  *  - Hook: `event` and `command` (the hook's command text).
  * A tool needs a tick when it runs code (`runsCode`) OR reaches a host (`host` is set): a remote server is a host the file chose (decision R2-L2).
@@ -80,7 +81,7 @@ export interface BundleTool {
   readonly runsCode: boolean;
   /** The program of an MCP server, or the command of a hook. */
   readonly command?: string;
-  /** The arguments of an MCP server, as written, at most BUNDLE_LIMITS.displayArgs of them. */
+  /** The arguments of an MCP server, as written, all of them (at most BUNDLE_LIMITS.toolArgs). */
   readonly args?: readonly string[];
   /**
    * The host a client would reach for the server's `url`, from `addressOf`: parsed with `URL` after each `${NAME}` is masked, shown as `hostname` plus `:port` when

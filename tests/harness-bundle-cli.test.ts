@@ -16,8 +16,7 @@ import type { ImportRequest } from '../apps/cli/src/harness-bundle.js';
 import { privateStateRoot } from '../packages/project-context/src/index.js';
 import { harnessStateDirs } from '../packages/project-sync/src/index.js';
 import { NotesRefusal, readNotesSummary } from '../packages/notes-source/src/index.js';
-import { BUNDLE_CODES, BUNDLE_FORMAT, isEmptyHarness, BUNDLE_MESSAGES, EXPORT_PLAN_FORMAT, IMPORT_PLAN_FORMAT } from '../packages/harness-bundle/src/index.js';
-import { EMPTY_HARNESS_DESCRIPTION } from '../packages/harness-bundle/src/target.js';
+import { BUNDLE_CODES, BUNDLE_FORMAT, EMPTY_HARNESS_DESCRIPTION, isEmptyHarness, BUNDLE_MESSAGES, EXPORT_PLAN_FORMAT, IMPORT_PLAN_FORMAT } from '../packages/harness-bundle/src/index.js';
 import { computeRevision, loadDefinition } from '../packages/harness-definition/src/index.js';
 
 const sha = (b: Uint8Array | string): string => createHash('sha256').update(b).digest('hex');
@@ -248,6 +247,7 @@ test('a harness with a description of its own is not an empty one, and import re
   const r = bl(w, ['import', w.out], w.dst);
   assert.equal(r.status, 1, r.stderr);
   assert.equal(errorCode(r.stderr), 'IMPORT_FOLDER_HAS_HARNESS');
+  assert.match(parse<{ error: { message: string } }>(r.stderr).error.message, /a description you wrote\.$/, 'the refusal names the settings it found');
 });
 
 test('an existing .bowerloom with only 0.7 files and hidden clutter counts as a missing harness, and those files stay', t => {
@@ -938,4 +938,13 @@ test('a notes folder that is a link is stored by name and refused by the notes r
   mkdirSync(join(elsewhere, 'inner'));
   symlinkSync(elsewhere, join(w.dst, 'hop'));
   await assert.rejects(readNotesSummary(join(w.dst, 'hop', 'inner')), (e: unknown) => e instanceof NotesRefusal && e.code === 'NOTES_PATH_UNSAFE');
+});
+
+test('a tool is shown whole in the plan: a long command and long arguments are never cut', t => {
+  const w = world(t);
+  const longArg = `--flag=${'x1'.repeat(150)}-end`;
+  put(w.src, richFiles({ 'mcp.json': json({ servers: [{ name: 'long', transport: 'stdio', command: 'tool', args: ['-y', longArg, 'two words', ''] }] }) }));
+  const out = bl(w, ['export', '--output', w.out], w.src).stdout;
+  assert.ok(out.includes(`runs tool -y ${longArg} "two words" ""`), 'the whole command line, with its argument boundaries');
+  assert.doesNotMatch(out, /more characters/);
 });
