@@ -123,7 +123,7 @@ function NotesChoices({ notes, held, onLink, onLeave, onLeaveAll }: { notes: rea
   return (
     <>
       <details className="hxsh-notes" open={open} onToggle={e => setOpen(e.currentTarget.open)}>
-        <summary>{SHARE.label.notesChoice} <span className="hxe-count">{notes.length}</span></summary>
+        <summary>{notes.length === 1 ? '1 name' : `${notes.length} names`}</summary>
         <ul className="hxsh-list" aria-label={SHARE.label.notesChoice}>
           {notes.map(row => <NoteChoice key={row.name} row={row} held={held} onLink={onLink} onLeave={onLeave} />)}
         </ul>
@@ -222,7 +222,7 @@ export function ImportSheet({ open, onClose }: ImportSheetProps): ReactElement |
   const [done, setDone] = useState<{ view: ImportView; written: SaveWritten } | null>(null);
   const [lastPlan, setLastPlan] = useState<(() => void) | null>(null);
   const [announce, setAnnounce] = useState('');
-  const intro = useRef<HTMLParagraphElement>(null), body = useRef<HTMLDivElement>(null), writeButton = useRef<HTMLButtonElement>(null);
+  const intro = useRef<HTMLParagraphElement>(null), body = useRef<HTMLDivElement>(null), writeButton = useRef<HTMLButtonElement>(null), status = useRef<HTMLParagraphElement>(null);
   const heldId = useRef<string | null>(null), openRef = useRef(false), epoch = useRef(0), engineRef = useRef<EngineBridge | null>(null), focusStep = useRef(false), refocus = useRef<{ kind: 'link' | 'leave'; name: string } | null>(null);
   const held = call.writing, planning = call.busy !== null || list.busy !== null;
   const scrolls = useScrolls(body, shown ?? done ?? bundle ?? step);
@@ -263,8 +263,12 @@ export function ImportSheet({ open, onClose }: ImportSheetProps): ReactElement |
     const attr = want.kind === 'link' ? 'data-note-link' : 'data-note-leave';
     [...(body.current?.querySelectorAll<HTMLElement>(`[${attr}]`) ?? [])].find(el => el.getAttribute(attr) === want.name)?.focus({ preventScroll: true });
   }, [shown, stale]);
+  // A refusal ends the wait for a focus return: the next plan must not pull the focus to a button the person left.
+  useEffect(() => { if (call.refusal !== null) refocus.current = null; }, [call.refusalId]);
   // A closed save dialog is a choice, not a fault: the focus goes back to Import.
   const cancelled = call.refusal?.code === CANCELLED;
+  /** The calm note of a closed dialog goes away with the next thing the person does. */
+  const dismiss = (): void => { if (cancelled) call.clear(); };
   useEffect(() => { if (cancelled) writeButton.current?.focus({ preventScroll: true }); }, [cancelled, call.refusalId]);
   useHeldFocus(planning && !cancelled, body);
 
@@ -341,7 +345,9 @@ export function ImportSheet({ open, onClose }: ImportSheetProps): ReactElement |
   const needsRead = shown !== null && shown.acknowledge !== null && acked !== shown.acknowledge;
   const writable = shown !== null && !stale && !shown.noop && approved === shown.revision && !needsRead;
   const write = (): void => {
-    if (engine === null || picked === null || bundle === null || shown === null || !writable || planning) return;
+    // A press on a blocked button says why: the focus moves to the line that names what blocks it.
+    if (!writable || planning) { status.current?.focus({ preventScroll: true }); return; }
+    if (engine === null || picked === null || bundle === null || shown === null) return;
     const id = picked, view = shown, bundleId = bundle.bundleId, choices = choicesOf(bundle.summary.notes.rows.map(n => n.name), links), ack = view.acknowledge === null ? null : acked;
     void call.write(W.label.writing, () => engine.runImport(id, view.revision, bundleId, choices, ack), written => { setDone({ view, written }); go('done'); });
   };
@@ -352,7 +358,7 @@ export function ImportSheet({ open, onClose }: ImportSheetProps): ReactElement |
   };
   const close = (): void => { if (!held) onClose(); };
 
-  const blockText = step !== 'review' || shown === null ? '' : importBlockWords({ planning: stale || planning, needsRead, approved: approved === shown.revision });
+  const blockText = step !== 'review' || shown === null ? '' : importBlockWords({ planning: stale || planning, needsRead, approved: approved === shown.revision, hasRead: shown.acknowledge !== null, noop: shown.noop });
   const footNote = step === 'file' ? SHARE.hint.fileFoot : step === 'folder' ? SHARE.hint.folderFoot : step === 'done' ? SHARE.hint.doneFoot : blockText === '' ? SHARE.hint.folderFoot : blockText;
   const pickedInfo = folders.find(f => f.id === picked);
   const folderOk = pickedInfo !== undefined && !importFolderLine(pickedInfo).off;
@@ -384,7 +390,7 @@ export function ImportSheet({ open, onClose }: ImportSheetProps): ReactElement |
   return (
     <Sheet open={open} title={SHARE.label.importTitle} onClose={close} width={880} tall dataSlot="import" head={head} note={footNote} actions={actions}>
       <div className="hxe-body" role="region" ref={body} tabIndex={scrolls ? 0 : -1} aria-label={BODY_NAME[step]} aria-busy={planning}>
-        <p className="hxsh-sr" role="status" id={blockId}>{blockText}</p>
+        <p className="hxsh-sr" role="status" id={blockId} ref={status} tabIndex={-1}>{blockText}</p>
         <p className="hxsh-sr" role="status" data-announce="">{announce}</p>
         {step === 'file' ? (
           <>
@@ -411,7 +417,7 @@ export function ImportSheet({ open, onClose }: ImportSheetProps): ReactElement |
         {step === 'file' && bundle !== null ? <BundleBody bundle={bundle} /> : null}
         {step === 'review' && shown !== null ? (
           <ImportReview view={shown} stale={stale} approved={approved === shown.revision} acknowledged={shown.acknowledge !== null && acked === shown.acknowledge} held={held}
-            onApprove={on => setApproved(on ? shown.revision : null)} onAcknowledge={on => setAcked(on ? shown.acknowledge : null)} onLink={onLink} onLeave={onLeave} onLeaveAll={onLeaveAll} />
+            onApprove={on => { dismiss(); setApproved(on ? shown.revision : null); }} onAcknowledge={on => { dismiss(); setAcked(on ? shown.acknowledge : null); }} onLink={name => { dismiss(); onLink(name); }} onLeave={name => { dismiss(); onLeave(name); }} onLeaveAll={() => { dismiss(); onLeaveAll(); }} />
         ) : null}
         {step === 'done' && done !== null ? (
           <div data-done="">

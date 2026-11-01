@@ -7,7 +7,7 @@ import { bannedIn } from '../shared/home/textbudget.js';
 import { BUNDLE_MESSAGES } from '../../../packages/harness-bundle/src/index.js';
 import { SHARE_MAIN_WORDS } from '../shared/engine/types.js';
 import {
-  CODE_WHY_WORDS, FLAG_WORDS, SHARE, SHARE_REFUSAL_WORDS, approveImportName, approveImportWords, downloadsCode, eventWords, exportFileWords, fileSizeWords, hiddenCounts, hiddenWords, importBlockWords,
+  CODE_WHY_WORDS, FLAG_WORDS, SHARE, SHARE_REFUSAL_WORDS, approveImportName, approveImportWords, downloadsCode, eventWords, jumpName, runsShellLine, exportFileWords, fileSizeWords, hiddenCounts, hiddenWords, importBlockWords,
   importFilesWords, importTickWords, importedWords, makesHarnessWords, moreWords, notesButtonName, notesChoiceName, readFileWords, secretKindWords, sinkWords, summaryLine, transportWords, writesCount,
 } from '../renderer/harness/words-share.js';
 import type { ShareSummary } from '../shared/engine/types.js';
@@ -80,7 +80,9 @@ test('what a tool does, in words: a transport, a hook event, and a command that 
   assert.equal(eventWords('PostToolUse'), 'Runs after each tool use.');
   assert.equal(eventWords('constructor'), null, 'an event named like a property of Object is not a known one');
   for (const [command, args, down] of [['npx', ['-y', 'x'], true], ['uvx', [], true], ['pipx', ['run', 'x'], true], ['bunx', [], true], ['/usr/local/bin/npx', [], true], ['docker', ['run', 'img'], true],
-    ['docker', ['ps'], false], ['node', ['server.js'], false], [null, [], false]] as const) assert.equal(downloadsCode(command, args), down, `${command} ${args.join(' ')}`);
+    ['env', ['npx', 'x'], true], ['env', ['-i', 'A=1', 'npx', 'x'], true], ['npm', ['exec', 'x'], true], ['pnpm', ['dlx', 'x'], true], ['yarn', ['dlx', 'x'], true], ['bun', ['x', 'y'], true], ['deno', ['run', 'u'], true], ['uv', ['run', 'x'], true],
+    ['docker', ['ps'], false], ['node', ['server.js'], false], ['npm', ['install'], false], ['env', [], false], [null, [], false]] as const) assert.equal(downloadsCode(command, args), down, `${command} ${args.join(' ')}`);
+  for (const [command, args, shell] of [['sh', ['-c', 'x'], true], ['bash', ['-lc', 'x'], true], ['/bin/zsh', ['-c', 'x'], true], ['env', ['sh', '-c', 'x'], true], ['sh', ['script.sh'], false], ['node', ['-c', 'x'], false], [null, [], false]] as const) assert.equal(runsShellLine(command, args), shell, `${command} ${args.join(' ')}`);
   assert.equal(SHARE.label.runsCode, 'Starts a program');
 });
 
@@ -88,17 +90,19 @@ test('the first tick says what it covers; when a list was cut it names the cut, 
   assert.equal(importTickWords(BLANK), 'I read what runs and where my values go.');
   assert.equal(importTickWords({ ...BLANK, foreignPaths: { rows: [{ path: 'a', line: 1, text: 'x' }], more: 0 } }), 'I read what runs, where my values go and the paths.');
   assert.equal(importTickWords({ ...BLANK, tools: { rows: [], more: 12 } }), 'I read the first 200 tools. 12 more are not shown.');
-  assert.equal(importTickWords({ ...BLANK, codeFiles: { rows: [], more: 3 } }), 'I read the first 200 files that run. 3 more are not shown.');
+  assert.equal(importTickWords({ ...BLANK, codeFiles: { rows: [], more: 3 } }), 'I read the first 200 files. 3 more are not shown.');
+  assert.equal(importTickWords({ ...BLANK, tools: { rows: [], more: 12 }, foreignPaths: { rows: [{ path: 'a', line: 1, text: 'x' }], more: 0 } }), 'I read 200 tools and the paths. 12 more are not shown.');
+  assert.equal(importTickWords({ ...BLANK, foreignPaths: { rows: [], more: 4 } }), 'I read the first 200 paths. 4 more are not shown.');
   assert.equal(importTickWords({ ...BLANK, tools: { rows: [], more: 1 }, secrets: { rows: [], more: 1 } }), 'I read the lists shown. More are not shown.');
   assert.deepEqual(hiddenCounts({ ...BLANK, tools: { rows: [], more: 12 }, foreignPaths: { rows: [], more: 2 } }), { tools: 12, codeFiles: 0, secrets: 0, foreignPaths: 2, total: 14 });
-  for (const text of [importTickWords(BLANK), SHARE.hint.tickExport, SHARE.hint.tickFirst]) assert.ok(countWords(text) <= LIMITS.hint, text);
+  for (const text of [importTickWords(BLANK), SHARE.hint.tickExport, SHARE.hint.tickFirst, importTickWords({ ...BLANK, tools: { rows: [], more: 12 }, foreignPaths: { rows: [{ path: 'a', line: 1, text: 'x' }], more: 0 } }), importTickWords({ ...BLANK, codeFiles: { rows: [], more: 3 } })]) assert.ok(countWords(text) <= LIMITS.hint, text);
   assert.equal(SHARE.hint.tickExport, 'I accept these paths from this computer in the file.');
 });
 
 test('the second tick names the files and the folder and says install is separate; a folder with no harness is made one in the same approval', () => {
   assert.equal(approveImportWords(10, '~/Projects/alpha', false), 'Write these 10 files into ~/Projects/alpha. Install is separate.');
   assert.equal(approveImportWords(1, '~/x', true), 'Make a harness and write this file into ~/x. Install is separate.');
-  assert.equal(makesHarnessWords(10), 'Makes an empty harness here, then writes 10 files.');
+  assert.equal(makesHarnessWords(10), 'Makes the harness. Writes 10 files in all.');
   assert.equal(importedWords(10, '~/Projects/alpha'), 'Imported 10 files into ~/Projects/alpha.');
 });
 
@@ -108,6 +112,10 @@ test('the line of counts leaves out the zeros, and the foot line says what block
   assert.equal(importBlockWords({ planning: false, needsRead: true, approved: false }), 'Tick both boxes to import.');
   assert.equal(importBlockWords({ planning: false, needsRead: true, approved: true }), 'Tick the first box to import.');
   assert.equal(importBlockWords({ planning: false, needsRead: false, approved: false }), 'Tick the second box to import.');
+  assert.equal(importBlockWords({ planning: false, needsRead: false, approved: false, hasRead: false }), 'Tick the box to import.', 'a plan with one box says one box');
+  assert.equal(importBlockWords({ planning: false, needsRead: false, approved: false, hasRead: true }), 'Tick the second box to import.');
+  assert.equal(importBlockWords({ planning: false, needsRead: false, approved: false, hasRead: false, noop: true }), 'The folder already matches. Nothing to import.');
+  assert.equal(jumpName('3 tools'), '3 tools. Go to the list.');
   assert.equal(importBlockWords({ planning: true, needsRead: true, approved: true }), 'Planning. Then tick again.');
   assert.equal(importBlockWords({ planning: false, needsRead: false, approved: true }), 'Ready. Press the button to go on.');
   assert.equal(SHARE.hint.approvalCleared, 'Approval cleared. Tick again before you import.');

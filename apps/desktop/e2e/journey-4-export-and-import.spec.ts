@@ -16,12 +16,14 @@ test.beforeAll(() => { test.setTimeout(240_000); bundleOnce(); });
 test.afterAll(() => { removeTempDirs(); });
 test.afterEach(async () => { await h?.app.close().catch(() => undefined); });
 
-test('Journey 4 (lane D): the Harnesses list offers "Import from a file", the Builder header offers one "Export", and the bridge holds the six share calls', async () => {
+test('Journey 4 (lane D): the Harnesses list offers one "Import from a file", the Builder header offers one "Export", and the bridge holds the six share calls', async () => {
   test.setTimeout(180_000);
   const home = newMadeUpHome();
   h = await startApp(home, 'harnesses');
   const p = h.page;
-  await expect(p.locator('[data-section="folders"]').getByRole('button', { name: 'Import from a file', exact: true })).toBeEnabled();
+  // One entry: in the Folders block, or in the empty state of the list when there is no harness yet.
+  await expect(p.getByRole('button', { name: 'Import from a file', exact: true })).toHaveCount(1);
+  await expect(p.getByRole('button', { name: 'Import from a file', exact: true })).toBeEnabled();
   await openInBuilder(h, home.rope, 'rope-yard');
   await expect(p.getByRole('button', { name: 'Export', exact: true })).toBeVisible();
   await expect(p.getByRole('button', { name: /^Export/ }), 'the header has the only Export button').toHaveCount(1);

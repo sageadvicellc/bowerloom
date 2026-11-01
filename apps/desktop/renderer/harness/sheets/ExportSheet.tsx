@@ -61,7 +61,7 @@ export function ExportSheet({ open, folderId, unsaved = false, onClose }: Export
   const [view, setView] = useState<ExportView | null>(null);
   const [acked, setAcked] = useState<string | null>(null);
   const [done, setDone] = useState<ExportWritten | null>(null);
-  const body = useRef<HTMLDivElement>(null), first = useRef(true), button = useRef<HTMLButtonElement>(null);
+  const body = useRef<HTMLDivElement>(null), first = useRef(true), button = useRef<HTMLButtonElement>(null), status = useRef<HTMLParagraphElement>(null);
   const held = call.writing, busy = call.busy !== null;
   const scrolls = useScrolls(body, view ?? done);
 
@@ -91,7 +91,9 @@ export function ExportSheet({ open, folderId, unsaved = false, onClose }: Export
   const writable = view !== null && (view.acknowledge === null || acked === view.acknowledge);
   const blocked = view === null ? null : writable ? null : SHARE.hint.blockExport;
   const write = (): void => {
-    if (engine === null || folderId === null || view === null || !writable || busy) return;
+    // A press on a blocked button says why: the focus moves to the line that names what blocks it.
+    if (!writable || busy) { status.current?.focus({ preventScroll: true }); return; }
+    if (engine === null || folderId === null || view === null) return;
     const revision = view.revision, ack = view.acknowledge === null ? null : acked;
     void call.write(W.label.writing, () => engine.runExport(folderId, revision, ack), setDone);
   };
@@ -110,14 +112,14 @@ export function ExportSheet({ open, folderId, unsaved = false, onClose }: Export
   return (
     <Sheet open={open} title={SHARE.label.exportTitle} onClose={() => { if (!held) onClose(); }} width={880} tall dataSlot="export" note={foot} actions={actions}>
       <div className="hxe-body" role="region" ref={body} tabIndex={scrolls ? 0 : -1} aria-label={done === null ? SHARE.label.bodyExport : SHARE.label.bodyExported} aria-busy={busy}>
-        <p className="hxsh-sr" role="status" id={blockId}>{blocked ?? ''}</p>
+        <p className="hxsh-sr" role="status" id={blockId} ref={status} tabIndex={-1}>{blocked ?? ''}</p>
         {engine === null ? <p className="hxe-text" data-no-bridge="">{W.hint.noBridge}</p> : null}
         {engine !== null && folderId === null ? <p className="hxe-text" data-no-folder="">{WORDS.hint.noFolder}</p> : null}
         {busy ? <Busy words={call.busy!} /> : null}
         {cancelled ? <p className="hxe-text" role="status" data-cancelled="">{SHARE.hint.cancelledExport}</p> : null}
         {refusal}
         {nextWords === undefined ? null : <p className="hxe-text" data-next-step="">{nextWords}</p>}
-        {view !== null && done === null ? <ExportBody view={view} unsaved={unsaved} acked={view.acknowledge !== null && acked === view.acknowledge} held={held} onAck={on => setAcked(on ? view.acknowledge : null)} /> : null}
+        {view !== null && done === null ? <ExportBody view={view} unsaved={unsaved} acked={view.acknowledge !== null && acked === view.acknowledge} held={held} onAck={on => { if (cancelled) call.clear(); setAcked(on ? view.acknowledge : null); }} /> : null}
         {done !== null ? <ExportDone written={done} /> : null}
       </div>
     </Sheet>

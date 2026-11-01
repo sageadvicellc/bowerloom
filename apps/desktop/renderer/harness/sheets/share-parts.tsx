@@ -12,7 +12,7 @@ import { SHARE_LIST_LIMIT } from '../../../shared/engine/types.js';
 import type { ShareList, ShareSecret, ShareSummary, ShareTool } from '../../../shared/engine/types.js';
 import { HButton, StateDot } from '../parts/controls.js';
 import {
-  CODE_WHY_WORDS, FLAG_WORDS, SHARE, downloadsCode, eventWords, hiddenCounts, hiddenWords, moreWords, secretKindWords, sinkWords, summaryLine, transportWords,
+  CODE_WHY_WORDS, FLAG_WORDS, SHARE, downloadsCode, eventWords, hiddenCounts, hiddenWords, jumpName, moreWords, runsShellLine, secretKindWords, sinkWords, summaryLine, transportWords,
 } from '../words-share.js';
 import './engine.css';
 import './share.css';
@@ -82,7 +82,9 @@ export function useScrolls(scroller: RefObject<HTMLElement | null>, dep: unknown
 
 function ToolRow({ tool }: { tool: ShareTool }): ReactElement {
   const words = tool.kind === 'hook' ? (tool.event === null ? null : eventWords(tool.event)) : transportWords(tool.transport);
-  const downloads = tool.kind !== 'hook' && downloadsCode(tool.command, tool.args);
+  const downloads = tool.kind !== 'hook' && downloadsCode(tool.command, tool.args), shell = runsShellLine(tool.command, tool.args);
+  // A program that is started says so once, in the badge; the transport line is for a tool that reaches an address.
+  const startsProgram = tool.kind !== 'hook' && tool.runsCode;
   return (
     <li className="hxsh-row" data-tool={tool.name} data-kind={tool.kind} data-runs-code={tool.runsCode ? '' : undefined}>
       <span className="hxsh-row-head">
@@ -90,11 +92,12 @@ function ToolRow({ tool }: { tool: ShareTool }): ReactElement {
         <span className="hxe-muted">{tool.kind === 'hook' ? SHARE.label.hook : SHARE.label.server}</span>
         {tool.runsCode ? <StateDot tone="warn">{SHARE.label.runsCode}</StateDot> : null}
       </span>
-      {words === null ? (tool.transport === null ? null : <span className="hxsh-line hxe-muted" data-transport="">{SHARE.label.server}: <Full mono>{tool.transport}</Full></span>) : <span className="hxsh-line" data-transport="">{words}</span>}
+      {startsProgram && words !== null ? null : words === null ? (tool.transport === null ? null : <span className="hxsh-line hxe-muted" data-transport="">{SHARE.label.server}: <Full mono>{tool.transport}</Full></span>) : <span className="hxsh-line" data-transport="">{words}</span>}
       {downloads ? <span className="hxsh-line" data-downloads=""><StateDot tone="warn">{SHARE.hint.downloads}</StateDot></span> : null}
+      {shell ? <span className="hxsh-line" data-shell=""><StateDot tone="warn">{SHARE.hint.shellLine}</StateDot></span> : null}
       {tool.command === null ? null : <span className="hxsh-line" data-command=""><span className="hxe-muted">{SHARE.label.command}</span> <Full mono>{tool.command}</Full></span>}
       {tool.args.length === 0 ? null : (
-        <ol className="hxsh-args" aria-label={SHARE.label.arguments} tabIndex={tool.args.length > 6 ? 0 : undefined}>
+        <ol className="hxsh-args" aria-label={SHARE.label.arguments}>
           {tool.args.map((arg, i) => <li key={i} data-arg={i}><Full mono>{arg}</Full></li>)}
         </ol>
       )}
@@ -108,7 +111,7 @@ function ToolRow({ tool }: { tool: ShareTool }): ReactElement {
 function SecretRow({ secret }: { secret: ShareSecret }): ReactElement {
   return (
     <li className="hxsh-row" data-secret={secret.name} data-kind={secret.kind}>
-      <span className="hxsh-row-head"><Name mono>{secret.name}</Name><span className="hxe-muted">{secretKindWords(secret)}</span></span>
+      <span className="hxsh-row-head"><Full mono>{secret.name}</Full><span className="hxe-muted">{secretKindWords(secret)}</span></span>
       <Capped list={{ rows: secret.sinks, more: 0 }} label={SHARE.label.usedBy} empty={SHARE.hint.noSinks}
         render={(sink, i) => <li key={`${sink.tool}:${sink.field}:${i}`} className="hxsh-line" data-sink={sink.field}><Full>{sinkWords(sink)}</Full></li>} />
     </li>
@@ -154,7 +157,7 @@ export function CheckBlock({ summary, side, ids }: CheckBlockProps): ReactElemen
       <h3 className="hxe-head" id={`${ids.tools}-check`}>{SHARE.label.checkHead}</h3>
       {items.length === 0 ? <p className="hxe-text" data-nothing="">{SHARE.hint.nothingRuns}</p> : (
         <ul className="hxsh-check-list">
-          {items.map(item => <li key={item.key}><HButton size="small" data-jump={item.key} onClick={() => jump(item.id)}>{item.words}</HButton></li>)}
+          {items.map(item => <li key={item.key}><HButton size="small" data-jump={item.key} aria-label={jumpName(item.words)} onClick={() => jump(item.id)}>{item.words}</HButton></li>)}
         </ul>
       )}
       {hidden.total === 0 ? null : <p className="hxe-text" role="status" data-hidden={hidden.total}><StateDot tone="bad">{hiddenWords(hidden.total)}</StateDot></p>}
@@ -185,6 +188,7 @@ export function ShareSummaryView({ summary, side, notes = true }: ShareSummaryVi
       {hasTools ? (
         <ShareSection id={ids.tools} title={SHARE.label.toolsHead} count={String(totalOf(summary.tools))} slot="share-tools">
           <Capped list={summary.tools} label={SHARE.label.toolsHead} empty="" render={(tool, i) => <ToolRow key={`${tool.kind}:${tool.name}:${i}`} tool={tool} />} />
+          <p className="hxe-text hxe-muted">{SHARE.hint.toolsNote}</p>
         </ShareSection>
       ) : null}
       {hasSecrets ? <SecretsSection summary={summary} side={side} id={ids.secrets} /> : null}

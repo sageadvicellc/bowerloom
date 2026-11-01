@@ -48,6 +48,8 @@ test('the summary is one line of counts, then a check block, then the lists in t
   assert.ok(out.includes('Check before you go on'));
   for (const jump of ['tools', 'secrets', 'code', 'paths']) assert.match(out, new RegExp(`data-jump="${jump}"`));
   assert.ok(out.includes('3 tools') && out.includes('2 values go to tools') && out.includes('3 files can run') && out.includes('1 path from another computer'));
+  for (const name of ['3 tools. Go to the list.', '2 values go to tools. Go to the list.', '3 files can run. Go to the list.', '1 path from another computer. Go to the list.']) assert.ok(out.includes(`aria-label="${name}"`), name);
+  assert.ok(out.includes('This list is a guide. Read each command.'));
   assert.match(out, /<h3 class="hxe-head" id="[^"]+-h" tabindex="-1"><span>Values it reads<\/span>/, 'a heading a jump can focus');
   assert.ok(out.includes('The file passes these values from this computer to these tools.') && out.includes('They go to the tools and hosts shown.') && out.includes('Bowerloom did not check that these exist.'));
   assert.doesNotMatch(out, /\badd\b/i);
@@ -56,7 +58,10 @@ test('the summary is one line of counts, then a check block, then the lists in t
 test('a tool says what it does in words: where it starts a program, what it downloads, what a hook runs on, and where a value goes', async () => {
   const out = html(createElement(ShareSummaryView, { summary: await summaryOf(), side: 'import' }));
   assert.match(out, /data-tool="stock-db"[^>]*data-runs-code=""/);
-  assert.ok(out.includes('Starts a program on this computer.') && out.includes('Connects to a web address.'));
+  assert.ok(out.includes('Connects to a web address.'));
+  assert.doesNotMatch(out, /Starts a program on this computer/, 'a program that starts says so once, in the badge');
+  assert.ok(out.includes('Tool server') && out.includes('Hook, runs on its own'));
+  assert.doesNotMatch(out, />Server<|>Hook</);
   assert.ok(out.includes('This downloads code at start.'), 'npx fetches code');
   assert.equal([...out.matchAll(/This downloads code at start/g)].length, 1, 'only the npx server');
   assert.equal([...out.matchAll(/Starts a program</g)].length, 2, 'two tools start a program');
@@ -78,14 +83,23 @@ test('everything a tick covers is shown in full: 20 arguments of 200 characters,
   for (const arg of args) assert.ok(out.includes(`>${arg}<`), `argument ${arg.slice(0, 2)} is whole in the markup`);
   assert.equal([...out.matchAll(/data-arg="/g)].length, 20, 'one line each');
   assert.ok(out.includes(`>${host}<`), 'the host is whole');
-  assert.match(out, /<ol class="hxsh-args" aria-label="Arguments" tabindex="0">/, 'a long list of arguments has its own scroll and a Tab stop');
+  assert.match(out, /<ol class="hxsh-args" aria-label="Arguments">/, 'the list is shown whole: no inner scroll box, so no Tab stop');
+  const argsRule = /\.hxsh-args \{([^}]*)\}/.exec(css)![1]!;
+  assert.doesNotMatch(argsRule, /max-height|overflow/, 'a long list of arguments is not hidden behind an inner scroll');
   // The CSS never clamps or hides what is read under a tick.
   const full = /\.hxsh-full \{([^}]*)\}/.exec(css)![1]!;
   assert.doesNotMatch(full, /line-clamp|overflow: hidden|text-overflow|max-height/);
   assert.match(full, /overflow-wrap: anywhere/);
   assert.doesNotMatch(out, /hxsh-cut/);
-  // Short argument lists need no Tab stop.
-  assert.doesNotMatch(html(createElement(ShareSummaryView, { summary: { ...blank, tools: { rows: [tool({ args: ['a', 'b'] })], more: 0 } }, side: 'import' })), /tabindex="0"/);
+});
+
+test('a secret name under a tick is never cut, and a shell command line is flagged', () => {
+  const long = 'S'.repeat(150);
+  const out = html(createElement(ShareSummaryView, { summary: { ...blank, secrets: { rows: [{ kind: 'env', name: long, sinks: [{ tool: 'docs', field: 'env', host: null }] }], more: 0 }, tools: { rows: [tool({ command: 'sh', args: ['-c', 'echo hi'] })], more: 0 } }, side: 'import' }));
+  assert.ok(out.includes(`>${long}<`));
+  assert.doesNotMatch(out, /data-secret="[^"]*"[^>]*>[\s\S]*?data-cut/);
+  assert.match(out, /data-shell=""/);
+  assert.ok(out.includes('This runs a command line. Read it in full.'));
 });
 
 test('only a name is cut, and a button says whether it is open; a short name has no button', () => {
@@ -171,7 +185,7 @@ test('the import review: the folder it writes into, the plan line for a new harn
   const at = (needle: string): number => { const i = out.indexOf(needle); assert.ok(i >= 0, needle); return i; };
   assert.match(out, new RegExp(`data-target="${view.folder.replace(/[~/]/g, m => `\\${m}`)}"`));
   assert.ok(out.includes('Into'));
-  assert.ok(out.includes('Makes an empty harness here, then writes 10 files.') && view.makesHarness === true);
+  assert.ok(out.includes('Makes the harness. Writes 10 files in all.') && view.makesHarness === true);
   const order = ['data-target=', 'data-makes-harness', 'data-check=', 'data-section="share-tools"', 'data-section="share-secrets"', 'data-section="share-code"', 'data-section="share-paths"', 'data-section="import-notes"', 'data-section="import-writes"', 'data-acknowledge-import', 'data-approve-plan'];
   order.reduce((from, needle) => { const i = out.indexOf(needle, from); assert.ok(i >= from, needle); return i; }, 0);
   assert.ok(at('data-section="import-writes"') > at('data-section="share-paths"'));
@@ -194,7 +208,7 @@ test('the import ticks are in words a person can act on: what runs, where values
   assert.doesNotMatch(calm, /data-acknowledge-import/);
   assert.match(calm, /data-approve-plan/);
   const cut = html(createElement(ImportReview, { view: { ...view, summary: { ...view.summary, tools: { rows: view.summary.tools.rows, more: 12 } } }, ...reviewProps }));
-  assert.match(cut, /aria-label="I read the first 200 tools\. 12 more are not shown: Import rope-yard"/, 'a cut list is named in the tick');
+  assert.match(cut, /aria-label="I read 200 tools and the paths\. 12 more are not shown: Import rope-yard"/, 'a cut list is named in the tick');
   assert.match(cut, /data-hidden="12"/);
 });
 
@@ -204,7 +218,7 @@ test('while a new plan is on its way the old one stays, dimmed and busy, and the
   assert.match(out, /class="hxsh-stale" data-import-review="" aria-busy="true"/);
   assert.equal([...out.matchAll(/<input[^>]*disabled=""/g)].length, 2);
   assert.doesNotMatch(html(createElement(ImportReview, { view, ...reviewProps })), /hxsh-stale/);
-  assert.match(css, /\.hxsh-stale \{ opacity: 0\.55; \}/);
+  assert.match(css, /\.hxsh-stale \{ opacity: 0\.7; \}/);
 });
 
 test('the files it writes: those that run first, ten shown, a button for the rest that says whether it is open', async () => {
@@ -289,7 +303,7 @@ test('the sheets\' fixed words are within the text budget', async () => {
   for (const [name, markup] of pages) {
     // The preview's rule: "export", "import", "harness", "plan" and the other design words are allowed here, and every other banned word is not. The tick boxes' spoken
     // names are the engine sheets' own pattern (the visible words, a colon, the item), so their length is not held to a label.
-    const problems = assertTextBudget(markup, { own }).filter(p => !/^Label "(?:I |Write |Make a harness)/.test(p)).filter(p => { const m = /^The word "([^"]+)" is banned/.exec(p); return m === null || !DESIGN_WORDS.includes(m[1]!.toLowerCase()); });
+    const problems = assertTextBudget(markup, { own }).filter(p => !/^Label "(?:I |Write |Make a harness|\d+ )/.test(p)).filter(p => { const m = /^The word "([^"]+)" is banned/.exec(p); return m === null || !DESIGN_WORDS.includes(m[1]!.toLowerCase()); });
     assert.deepEqual(problems, [], name);
     // The names of the files Bowerloom writes (mcp.json) are the person's own files, as on the save sheet, so they are taken out before the words are read.
     for (const piece of extractText(markup)) assert.equal(bannedHere(own.reduce((t, c) => t.split(c).join(' '), piece.text)), null, `${name}: ${piece.text}`);

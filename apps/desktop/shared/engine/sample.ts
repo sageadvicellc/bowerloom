@@ -21,8 +21,9 @@ import type {
   VersionView,
 } from './types.js';
 import {
-  ENGINE_NAMES, EVERY_ENGINE_PARTS, KIT_MAIN_WORDS, NOTES_PURPOSES, REPORT_MAIN_WORDS, SAVE_MAIN_WORDS, SHARE_BUNDLE_ID, SHARE_HELD_BUNDLES, SHARE_LIST_LIMIT, SHARE_MAIN_WORDS, SHARE_NAME_LIMIT, SHARE_NOTES_LIMIT, writesFile,
+  ENGINE_NAMES, EVERY_ENGINE_PARTS, KIT_MAIN_WORDS, NOTES_PURPOSES, REPORT_MAIN_WORDS, SAVE_MAIN_WORDS, SHARE_BUNDLE_ID, SHARE_HELD_BUNDLES, SHARE_MAIN_WORDS, SHARE_NAME_LIMIT, SHARE_NOTES_LIMIT, writesFile,
 } from './types.js';
+import { capRiskFirst, codeRisk, secretRisk, toolRisk } from './share-risk.js';
 import { approveKey, lossByEngine, unmappedHashBody } from './view.js';
 
 /** The packages' own words for the refusals the sample can give (packages/adoption/src/refusal.ts, packages/project-sync/src/portable-files.ts). */
@@ -433,20 +434,8 @@ const BUNDLE_DEFINITION: DefinitionView = Object.freeze({
   agents: [{ id: 'clerk', name: 'clerk', description: 'Handles the orders.', skills: ['check-orders', 'tally-stock'], notes: ['yard-wiki'] }], sources: [], kits: [],
 });
 const list = <T>(rows: readonly T[]): { readonly rows: readonly T[]; readonly more: number } => ({ rows, more: 0 });
-/**
- * Puts the rows with the highest risk first (stable among equals), then cuts the list at SHARE_LIST_LIMIT and counts what the cut left out, so a cut never hides a row that
- * runs code or reaches a host behind harmless ones. Main does the same for the lists of a bundle it holds (shared/engine/types.ts, `planImport`).
- */
-export function capRiskFirst<T>(rows: readonly T[], risk: (row: T) => number): { readonly rows: readonly T[]; readonly more: number } {
-  const sorted = rows.map((row, i) => ({ row, i, r: risk(row) })).sort((a, b) => b.r - a.r || a.i - b.i).map(x => x.row);
-  return { rows: sorted.slice(0, SHARE_LIST_LIMIT), more: Math.max(0, sorted.length - SHARE_LIST_LIMIT) };
-}
-/** A tool that starts a program ranks above one that reaches a host, which ranks above the rest; an odd address adds one. */
-export const toolRisk = (t: ShareTool): number => (t.runsCode ? 4 : 0) + (t.host !== null ? 2 : 0) + (t.flags.length > 0 ? 1 : 0);
-/** A file that runs ranks above a manifest or a code name, which rank above a file that is only not plain data. */
-export const codeRisk = (f: ShareCodeFile): number => ({ executable: 5, hook: 5, script: 4, shebang: 4, binary: 4, manifest: 3, extension: 2, 'not-data': 1 })[f.why];
-/** A value in an address, an argument, a command or a header goes further than one in an environment value; a named host ranks above none. */
-export const secretRisk = (s: ShareSecret): number => Math.max(0, ...s.sinks.map(k => ({ url: 4, arg: 3, command: 3, header: 3, env: 1 })[k.field] + (k.host !== null ? 1 : 0)));
+// The risky-first rule is shared with main (shared/engine/share-risk.ts); the tests of the sample reach it from here.
+export { capRiskFirst, codeRisk, secretRisk, toolRisk };
 /** What the made-up bundle holds: two tools that can reach or run something, a hook, two scripts, two values read from this computer, a notes name, and one foreign path. */
 const BUNDLE_SUMMARY: ShareSummary = Object.freeze({
   harness: 'rope-yard', engines: ['claude-code', 'codex'] as EngineId[], instructions: true,
@@ -691,11 +680,13 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
     const makes = f.def === null, from = f.def ?? emptyDef(f.info.name);
     const sources: SourceView[] = [...links].map(([name, id]) => { const n = notesGet(id).view; return { name, kind: 'wiki-folder' as const, label: n.label, notesId: n.id }; });
     const after: DefinitionView = { ...BUNDLE_DEFINITION, sources, agents: BUNDLE_DEFINITION.agents.map(a => ({ ...a, notes: a.notes.filter(n => links.has(n)) })) };
+    // harness.json is a create only when the folder has no harness; an empty harness already has one, so the plan updates it.
     const changes: SaveChangeView[] = [...BUNDLE_FILES].sort((a, b) => (a.path === 'harness.json' ? 1 : b.path === 'harness.json' ? -1 : byText(a.path, b.path)))
-      .map(file => ({ path: `.bowerloom/${file.path}`, action: 'create' as const, ...(file.executable ? { executable: true as const } : {}) }));
+      .map(file => ({ path: `.bowerloom/${file.path}`, action: file.path === 'harness.json' && !makes ? 'update' as const : 'create' as const, ...(file.executable ? { executable: true as const } : {}) }));
     const copied: CopiedExecutableView[] = changes.filter(c => c.executable === true).map(c => ({ path: c.path, from: bundle.view.name }));
     const summary = bundle.view.summary;
-    const revision = sampleRevision(`import ${f.info.id} ${bundle.view.bundleId} ${JSON.stringify([...links])}`);
+    // The folder's harness state is part of the revision: a harness made between the plan and the write is another plan.
+    const revision = sampleRevision(`import ${f.info.id} ${bundle.view.bundleId} ${makes ? 'no-harness' : 'empty-harness'} ${JSON.stringify([...links])}`);
     const notes: ImportNoteRow[] = summary.notes.rows.map(n => {
       const id = links.get(n.name);
       return { name: n.name, choice: id === undefined ? 'leave' as const : 'link' as const, label: id === undefined ? null : notesGet(id).view.label, readBy: n.readBy };

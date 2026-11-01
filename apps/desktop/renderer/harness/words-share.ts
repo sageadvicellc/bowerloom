@@ -21,7 +21,7 @@ export const SHARE = deepFreeze({
     checkHead: 'Check before you go on',
     toolsHead: 'Tools it uses', codeHead: 'Files that can run', secretsHead: 'Values it reads', notesHead: 'Notes folders', borrowedHead: 'Borrowed items',
     pathsOther: 'Paths from another computer', pathsHere: 'Paths from this computer', writesHead: 'Files it writes', notesChoice: 'Notes folders to link',
-    server: 'Server', hook: 'Hook', variable: 'Variable', keychain: 'Keychain entry', runsCode: 'Starts a program', reaches: 'Reaches', event: 'Event', command: 'Command', arguments: 'Arguments',
+    server: 'Tool server', hook: 'Hook, runs on its own', variable: 'Variable', keychain: 'Keychain entry', runsCode: 'Starts a program', reaches: 'Reaches', event: 'Event', command: 'Command', arguments: 'Arguments',
     link: 'Link a folder', change: 'Change folder', leave: 'Leave out', leaveAll: 'Leave all out', linkedTo: 'Linked to', readBy: 'Read by', line: 'Line', usedBy: 'Used by',
     showAll: 'Show all', showLess: 'Show less', showAllFiles: 'Show all files', showFewer: 'Show fewer files',
     exported: 'Exported', openingFile: 'Opening the file',
@@ -45,11 +45,9 @@ export const SHARE = deepFreeze({
     unsavedNote: 'Your unsaved changes are not in the file.',
     nothingRuns: 'Nothing here runs. No value leaves this computer.',
     notInstalled: 'Nothing is installed. Nothing has run.',
-   
     holdsParts: 'Has a harness. Choose an empty folder.', emptyHarness: 'Has an empty harness.', noHarnessYet: 'No harness yet. Import makes one.', harnessUnknown: 'Has a harness. It must be empty.',
     noSinks: 'No tool is named.', noFile: 'Choose a file to go on.', noFolderPicked: 'Pick a folder to go on.',
     noFolders: 'No folder yet. Choose one to start.', chooseFolderHint: 'Pick the folder that gets the harness.',
-   
     cancelledExport: 'You did not save. Nothing was written.', cancelledImport: 'You did not approve. Nothing was written.',
     approvalCleared: 'Approval cleared. Tick again before you import.',
     credentials: 'The address holds a user name or password.', backslash: 'The address uses a backslash.', scheme: 'The address is not a web address.', unreadable: 'The address cannot be read.',
@@ -62,7 +60,8 @@ export const SHARE = deepFreeze({
     tickFirst: 'I read the lists shown. More are not shown.',
     blockNone: 'Ready. Press the button to go on.',
     blockBoth: 'Tick both boxes to import.', blockRead: 'Tick the first box to import.', blockWrite: 'Tick the second box to import.', blockPlanning: 'Planning. Then tick again.',
-    blockExport: 'Tick the box to export.',
+    blockExport: 'Tick the box to export.', blockOne: 'Tick the box to import.', blockNoop: 'The folder already matches. Nothing to import.',
+    shellLine: 'This runs a command line. Read it in full.', toolsNote: 'This list is a guide. Read each command.',
   },
   paragraph: {
     exportIntro: 'Export writes the saved harness to one file. You choose where it goes.',
@@ -144,11 +143,34 @@ const EVENT_WORDS: Readonly<Record<string, string>> = Object.freeze({
 /** The words for a hook event, or null for one that is not known. The raw event is shown beside it. */
 export const eventWords = (event: string): string | null => (Object.hasOwn(EVENT_WORDS, event) ? EVENT_WORDS[event]! : null);
 const DOWNLOADERS = new Set(['npx', 'uvx', 'pipx', 'bunx']);
-/** True when the command fetches code before it runs: npx, uvx, pipx, bunx, or docker run. */
+const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish']);
+const baseName = (command: string): string => command.split('/').pop() ?? command;
+/** The program a command line really starts: `env` and its VAR=value words and flags are skipped. */
+function realCommand(command: string, args: readonly string[]): { command: string; args: readonly string[] } {
+  let c = baseName(command), rest = args;
+  while (c === 'env') {
+    const at = rest.findIndex(a => !a.startsWith('-') && !a.includes('='));
+    if (at < 0) return { command: c, args: [] };
+    c = baseName(rest[at]!); rest = rest.slice(at + 1);
+  }
+  return { command: c, args: rest };
+}
+/**
+ * True when the command fetches code before it runs: npx, uvx, pipx, bunx, `npm exec`, `pnpm dlx`, `yarn dlx`, `bun x`, `deno run`, `uv run`, `docker run`, also behind `env`.
+ * A hint beside the command, never a gate: silence is not safety.
+ */
 export const downloadsCode = (command: string | null, args: readonly string[]): boolean => {
   if (command === null) return false;
-  const base = command.split('/').pop() ?? command;
-  return DOWNLOADERS.has(base) || (base === 'docker' && args[0] === 'run');
+  const r = realCommand(command, args), first = r.args[0];
+  if (DOWNLOADERS.has(r.command)) return true;
+  return (r.command === 'docker' && first === 'run') || (r.command === 'npm' && first === 'exec') || ((r.command === 'pnpm' || r.command === 'yarn') && first === 'dlx')
+    || (r.command === 'bun' && first === 'x') || (r.command === 'deno' && first === 'run') || (r.command === 'uv' && first === 'run');
+};
+/** True when the command is a shell given a command line (`sh -c`, `bash -c`), which runs text the person must read in full. */
+export const runsShellLine = (command: string | null, args: readonly string[]): boolean => {
+  if (command === null) return false;
+  const r = realCommand(command, args);
+  return SHELLS.has(r.command) && r.args.some(a => /^-[a-z]*c[a-z]*$/.test(a));
 };
 /** Where a reference goes: the tool, the field of it, and the host. A program with no host can send the value anywhere. */
 export function sinkWords(sink: ShareSink): string {
@@ -174,32 +196,40 @@ export function hiddenCounts(summary: ShareSummary): { tools: number; codeFiles:
   const tools = hiddenIn(summary.tools), codeFiles = hiddenIn(summary.codeFiles), secrets = hiddenIn(summary.secrets), foreignPaths = hiddenIn(summary.foreignPaths);
   return { tools, codeFiles, secrets, foreignPaths, total: tools + codeFiles + secrets + foreignPaths };
 }
-const LIST_NAMES = { tools: 'tools', codeFiles: 'files that run', secrets: 'values', foreignPaths: 'paths' } as const;
+const LIST_NAMES = { tools: 'tools', codeFiles: 'files', secrets: 'values', foreignPaths: 'paths' } as const;
 /**
  * The words of the first tick of an import, from what the summary holds. When a list was cut, the tick says so, so a tick never claims more than was shown: one cut
  * list is named with its count, and more than one says the lists shown were read.
  */
 export function importTickWords(summary: ShareSummary): string {
   const h = hiddenCounts(summary), cut = (['tools', 'codeFiles', 'secrets', 'foreignPaths'] as const).filter(key => h[key] > 0);
-  if (cut.length === 1) return `I read the first ${SHARE_LIST_LIMIT} ${LIST_NAMES[cut[0]!]}. ${h[cut[0]!]} more are not shown.`;
+  const paths = summary.foreignPaths.rows.length > 0 || h.foreignPaths > 0;
+  if (cut.length === 1) {
+    const key = cut[0]!;
+    const read = paths && key !== 'foreignPaths' ? `I read ${SHARE_LIST_LIMIT} ${LIST_NAMES[key]} and the paths.` : `I read the first ${SHARE_LIST_LIMIT} ${LIST_NAMES[key]}.`;
+    return `${read} ${h[key]} more are not shown.`;
+  }
   if (cut.length > 1) return SHARE.hint.tickFirst;
-  return summary.foreignPaths.rows.length > 0 ? SHARE.hint.tickReadPaths : SHARE.hint.tickRead;
+  return paths ? SHARE.hint.tickReadPaths : SHARE.hint.tickRead;
 }
 /** The line that counts the rows a cut hides. */
 export const hiddenWords = (n: number): string => `${n} more ${n === 1 ? 'row is' : 'rows are'} not shown.`;
 /** The words of the tick that approves a write: how many files, into which folder, and that install is separate. */
 export const approveImportWords = (n: number, folder: string, makes: boolean): string => `${makes ? 'Make a harness and write' : 'Write'} ${n === 1 ? 'this file' : `these ${n} files`} into ${folder}. Install is separate.`;
 /** The plan line for a folder with no harness. */
-export const makesHarnessWords = (n: number): string => `Makes an empty harness here, then writes ${plural(n, 'file', 'files')}.`;
+export const makesHarnessWords = (n: number): string => `Makes the harness. Writes ${plural(n, 'file', 'files')} in all.`;
 /** The first line of the Done step. */
 export const importedWords = (n: number, folder: string): string => `Imported ${plural(n, 'file', 'files')} into ${folder}.`;
 /** The status line after a file is read. */
 export const readFileWords = (name: string, files: number, tools: number): string => `Read ${name}. ${plural(files, 'file', 'files')}, ${plural(tools, 'tool', 'tools')}.`;
 /** The words of what blocks the import button now. */
-export function importBlockWords(opts: { planning: boolean; needsRead: boolean; approved: boolean }): string {
+export function importBlockWords(opts: { planning: boolean; needsRead: boolean; approved: boolean; hasRead?: boolean; noop?: boolean }): string {
+  if (opts.noop === true) return SHARE.hint.blockNoop;
   if (opts.planning) return SHARE.hint.blockPlanning;
   if (opts.needsRead && !opts.approved) return SHARE.hint.blockBoth;
   if (opts.needsRead) return SHARE.hint.blockRead;
-  if (!opts.approved) return SHARE.hint.blockWrite;
+  if (!opts.approved) return opts.hasRead === false ? SHARE.hint.blockOne : SHARE.hint.blockWrite;
   return SHARE.hint.blockNone;
 }
+/** The line that jumps to a list: what it counts, and what pressing it does. */
+export const jumpName = (words: string): string => `${words}. Go to the list.`;

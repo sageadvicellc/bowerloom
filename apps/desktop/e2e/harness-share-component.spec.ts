@@ -11,7 +11,7 @@ import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { desktop, shot } from './harness-page.js';
+import { desktop, shot, shotsDir } from './harness-page.js';
 import { SAMPLE_FOLDERS, SAMPLE_NOTES, createSampleEngine } from '../shared/engine/sample.js';
 import type { BundleView, ExportView, FolderInfo, ImportNoteChoices, ImportView, NotesView, SaveView } from '../shared/engine/types.js';
 import { extraWindowOptions, launchElectron } from './hidden.js';
@@ -163,11 +163,15 @@ test('Export: the foot says what blocks the button, the button keeps the focus, 
   await expect(s.locator('.hx-sheet-note')).toHaveText('Tick the box to export.');
   await button.focus();
   await button.click({ force: true });
-  await expect(button).toBeFocused();
+  // A press on a blocked button moves the focus to the line that says why.
+  await expect(s.locator('.hxsh-sr').first()).toBeFocused();
   expect(await made(p, 'runExport'), 'a held button does nothing').toHaveLength(0);
   await expect(button).toHaveAccessibleDescription('Tick the box to export.');
+  await s.locator('[data-acknowledge-paths] input').scrollIntoViewIfNeeded();
+  await shot(p, 'share-export-ticks-unticked');
   await s.locator('[data-acknowledge-paths] input').check();
   await expect(s.locator('.hx-sheet-note')).not.toHaveText('Tick the box to export.');
+  await shot(p, 'share-export-ticks-ticked');
   await expect(s.locator('[data-unsaved]')).toHaveCount(0);
 });
 
@@ -249,6 +253,7 @@ test('Import: a check block at the top jumps to each list and puts the focus on 
   const s = sheet(p, 'Import a harness');
   await s.getByRole('button', { name: 'Choose a file', exact: true }).click();
   await answer(p, (await waiting(p, 'chooseBundle')).id, ok(bundle));
+  await expect(s.getByRole('button', { name: '3 tools. Go to the list.', exact: true })).toBeVisible();
   await s.locator('[data-jump="paths"]').click();
   await expect(s.locator('[data-section="share-paths"] h3')).toBeFocused();
   await s.locator('[data-jump="secrets"]').click();
@@ -272,19 +277,22 @@ test('Import: the whole way: folder, plan, two ticks, the write names the bundle
   await expect(s.locator('.hx-sheet-note')).toHaveText('Tick both boxes to import.');
   await expect(write).toHaveAccessibleDescription('Tick both boxes to import.');
   await expect(s.locator('[data-target]')).toContainText('~/Projects/inbox-tools');
-  await expect(s.locator('[data-makes-harness]')).toContainText('Makes an empty harness here, then writes 10 files.');
+  await expect(s.locator('[data-makes-harness]')).toContainText('Makes the harness. Writes 10 files in all.');
   await expect(s.locator('[data-file]')).toHaveCount(10);
   await expect(s.locator('[data-file][data-executable]')).toHaveCount(2);
   await shot(p, 'share-import-review');
   await write.focus();
   await write.click({ force: true });
-  await expect(write).toBeFocused();
+  await expect(s.locator('.hxsh-sr').first()).toBeFocused();
   expect(await made(p, 'runImport'), 'a held button does nothing').toHaveLength(0);
+  await s.locator('[data-approve-plan] input').scrollIntoViewIfNeeded();
+  await shot(p, 'share-import-ticks-unticked');
   await s.locator('[data-approve-plan] input').check();
   await expect(s.locator('.hx-sheet-note')).toHaveText('Tick the first box to import.');
   await expect(write).toBeDisabled();
   await s.locator('[data-acknowledge-import] input').check();
   await expect(s.locator('.hx-sheet-note')).toHaveText('Ready. Press the button to go on.');
+  await shot(p, 'share-import-ticks-ticked');
   await expect(write).toBeEnabled();
   await write.click();
   const run = await waiting(p, 'runImport');
@@ -298,7 +306,8 @@ test('Import: the whole way: folder, plan, two ticks, the write names the bundle
   await expect(s.locator('[data-version-kept="v2"]')).toBeVisible();
   await expect(s.locator('[data-section="share-secrets"] [data-secret]')).toHaveCount(2);
   await expect(s.getByRole('button', { name: 'Install it', exact: true })).toBeVisible();
-  await shot(p, 'share-import-done');
+  await s.locator('.hx-sheet-body').evaluate(el => { el.scrollTop = 0; });
+  await shot(p, 'share-import-done-top');
   expect(await made(p, 'planProjection'), 'Install is offered and never started').toHaveLength(0);
   await s.getByRole('button', { name: 'Close', exact: true }).last().click();
   expect((await waiting(p, 'discardBundle')).args).toEqual([bundle.bundleId]);
@@ -325,6 +334,8 @@ test('Import: Link a folder keeps the old plan on screen, dimmed, until the new 
   await expect(s.locator('[data-approve-plan] input')).not.toBeChecked();
   await expect(s.locator('[data-approve-plan] input')).toBeDisabled();
   await expect(s.locator('.hx-sheet-note')).toHaveText('Planning. Then tick again.');
+  await s.locator('[data-note-choice="yard-wiki"]').scrollIntoViewIfNeeded();
+  await shot(p, 'share-import-stale');
   await answer(p, second.id, ok({ ...importLinked, notes: [{ name: 'yard-wiki', choice: 'link', label: '~/Documents/Reading list', readBy: ['clerk'] }] }));
   await expect(s.locator('[data-import-review]')).toHaveAttribute('aria-busy', 'false');
   await expect(s.locator('[data-announce]')).toHaveText('Approval cleared. Tick again before you import.');
@@ -358,6 +369,10 @@ test('Import: a closed approval dialog is a calm note, not an error, and the foc
   await expect(s.getByRole('alert')).toHaveCount(0);
   await expect(s.locator('[data-cancelled]')).toHaveText('You did not approve. Nothing was written.');
   await expect(write).toBeFocused();
+  await shot(p, 'share-import-cancelled');
+  // The note goes away with the next thing the person does.
+  await s.locator('[data-approve-plan] input').uncheck();
+  await expect(s.locator('[data-cancelled]')).toHaveCount(0);
 });
 
 test('Import: a folder whose harness has parts is marked refused and cannot be picked; one that main refuses at plan time shows the code\'s words and what to do next', async () => {
@@ -418,8 +433,8 @@ test('Import: a file chosen while the sheet closes is dropped the moment it arri
 
 test('Import: a long list stays inside the sheet: 250 values show 200 rows and "and 50 more", the check block counts the 50, and a 200-character name is cut with Show all', async () => {
   const p = await open(listQuery());
-  const rows = Array.from({ length: 200 }, (_, i) => ({ kind: 'env' as const, name: i === 0 ? 'V'.repeat(200) : `VALUE_${i}`, sinks: [{ tool: 'docs', field: 'env' as const, host: null }] }));
-  const big: BundleView = { ...bundle, summary: { ...bundle.summary, secrets: { rows, more: 50 } } };
+  const rows = Array.from({ length: 200 }, (_, i) => ({ kind: 'env' as const, name: `VALUE_${i}`, sinks: [{ tool: 'docs', field: 'env' as const, host: null }] }));
+  const big: BundleView = { ...bundle, summary: { ...bundle.summary, secrets: { rows, more: 50 }, notes: { rows: [{ name: 'W'.repeat(200), readBy: ['clerk'] }], more: 0 } } };
   await p.getByRole('button', { name: 'Import from a file', exact: true }).click();
   const s = sheet(p, 'Import a harness');
   await s.getByRole('button', { name: 'Choose a file', exact: true }).click();
@@ -427,10 +442,16 @@ test('Import: a long list stays inside the sheet: 250 values show 200 rows and "
   await expect(s.locator('[data-secret]')).toHaveCount(200);
   await expect(s.locator('[data-more="50"]')).toHaveText('and 50 more');
   await expect(s.locator('[data-hidden="50"]')).toBeVisible();
-  const show = s.locator('[data-secret]').first().getByRole('button', { name: 'Show all', exact: true });
+  // A name under a tick (a value's name) is never cut; a notes name is a name, and is cut with a button.
+  await expect(s.locator('[data-secret]').first().getByRole('button')).toHaveCount(0);
+  const note = s.locator('[data-note]').first();
+  await note.scrollIntoViewIfNeeded();
+  const show = note.getByRole('button', { name: 'Show all', exact: true });
   await expect(show).toHaveAttribute('aria-expanded', 'false');
+  await shot(p, 'share-import-long-name');
   await show.click();
-  await expect(s.locator('[data-secret]').first().getByRole('button', { name: 'Show less', exact: true })).toHaveAttribute('aria-expanded', 'true');
+  await expect(note.getByRole('button', { name: 'Show less', exact: true })).toHaveAttribute('aria-expanded', 'true');
+  await shot(p, 'share-import-long-name-open');
   const widths = await s.evaluate(el => { const body = el.querySelector('.hx-sheet-body')!; return { client: body.clientWidth, scroll: body.scrollWidth }; });
   expect(widths.scroll, 'nothing is wider than the body').toBeLessThanOrEqual(widths.client);
 });
@@ -439,8 +460,8 @@ const LONG_ARGS = Array.from({ length: 20 }, (_, i) => `${String(i).padStart(2, 
 const LONG_HOST = `${'h'.repeat(180)}.example.test`;
 const longBundle = (): BundleView => ({ ...bundle, summary: { ...bundle.summary, tools: { rows: [{ name: 'long', kind: 'mcp' as const, transport: 'stdio', runsCode: true, command: 'node', args: LONG_ARGS, host: LONG_HOST, event: null, flags: [] }, ...bundle.summary.tools.rows], more: 0 } } });
 
-test('Import: a command with 20 arguments of 200 characters and a 200-character host is shown whole, one argument to a line, before any tick, and nothing widens the sheet', async () => {
-  const p = await open(listQuery());
+test('Import: a command with 20 arguments of 200 characters and a 200-character host is shown whole, one argument to a line, with no inner scroll, and nothing widens the sheet', async () => {
+  const p = await open(listQuery(), { width: 1280, height: 2600 });
   await p.getByRole('button', { name: 'Import from a file', exact: true }).click();
   const s = sheet(p, 'Import a harness');
   await s.getByRole('button', { name: 'Choose a file', exact: true }).click();
@@ -452,13 +473,15 @@ test('Import: a command with 20 arguments of 200 characters and a 200-character 
   await expect(row.locator('[data-host]')).toContainText(LONG_HOST);
   const widths = await s.evaluate(el => { const body = el.querySelector('.hx-sheet-body')!; return { client: body.clientWidth, scroll: body.scrollWidth }; });
   expect(widths.scroll).toBeLessThanOrEqual(widths.client);
-  // The list of arguments has its own scroll and a Tab stop, and the last argument can be reached.
-  const args = row.locator('.hxsh-args');
-  await args.focus();
-  await expect(args).toBeFocused();
-  await row.locator('[data-arg="19"]').scrollIntoViewIfNeeded();
-  await expect(row.locator('[data-arg="19"]')).toBeVisible();
-  await shot(p, 'share-import-long-command');
+  // The list of arguments is not a scroll box: it is as tall as its lines, so the last argument is never hidden below an inner scroll position.
+  const box = await row.locator('.hxsh-args').evaluate(el => ({ client: el.clientHeight, scroll: el.scrollHeight, overflow: getComputedStyle(el).overflowY }));
+  expect(box.scroll).toBeLessThanOrEqual(box.client);
+  expect(box.overflow).toBe('visible');
+  // The sheet is as tall as the window here, so the whole command can be seen in one picture.
+  await p.addStyleTag({ content: '[data-home] .hx-sheet[data-slot="import"][data-tall] { height: auto !important; max-height: none !important; } [data-home] .hx-sheet-body { overflow: visible !important; max-height: none !important; }' });
+  await row.scrollIntoViewIfNeeded();
+  // The row is taller than the screen, so the picture is of the row itself.
+  if (shotsDir !== null) await row.screenshot({ path: join(shotsDir, 'share-import-long-command-whole.png') });
 });
 
 test('Import: the review at 1440 by 900 and at 390 by 844 keeps every control inside the sheet', async () => {
@@ -477,6 +500,7 @@ test('Import: the review at 1440 by 900 and at 390 by 844 keeps every control in
 test('Import: the entry is in the Folders block; with no bridge it stays, held, and says why', async () => {
   const p = await open(listQuery());
   await expect(p.locator('[data-section="folders"]').getByRole('button', { name: 'Import from a file', exact: true })).toBeEnabled();
+  await expect(p.getByRole('button', { name: 'Import from a file', exact: true }), 'one entry, not two').toHaveCount(1);
   await p.close();
   const q = await open('?bridge=none&hash=' + encodeURIComponent('#sample/harnesses'));
   const entry = q.getByRole('button', { name: 'Import from a file', exact: true });

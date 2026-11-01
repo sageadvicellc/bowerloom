@@ -177,6 +177,7 @@ test('import: the write names the plan shown last and the acknowledgement; then 
   const e = createSampleEngine();
   const b = await bundleOf(e);
   const id = SAMPLE_FOLDERS.adopt;
+  const e0 = createSampleEngine(), fresh = value(await e0.planImport(id, (await bundleOf(e0)).bundleId, NONE));
   // No plan was shown yet, so even the right revision is refused.
   const other = createSampleEngine(), early = value(await other.planImport(id, (await bundleOf(other)).bundleId, LINK));
   assert.equal(refusal(await e.runImport(id, early.revision, b.bundleId, LINK, early.acknowledge)).code, 'NOT_THE_PLAN_SHOWN');
@@ -202,6 +203,12 @@ test('import: the write names the plan shown last and the acknowledgement; then 
   assert.equal((await e.folders()).find(f => f.id === id)!.holdsParts, false);
   const again = value(await e.planImport(id, b.bundleId, NONE));
   assert.equal(again.makesHarness, false, 'the harness is there and empty: no harness to make');
+  // harness.json is an update when an empty harness exists, and a create only when none does.
+  assert.equal(again.changes.at(-1)!.action, 'update');
+  assert.ok(again.changes.slice(0, -1).every(c => c.action === 'create'));
+  assert.equal(plan.changes.at(-1)!.action, 'create');
+  // The folder's harness state is part of the plan: the same choices on a folder with no harness and on one with an empty harness are not the same plan.
+  assert.notEqual(again.revision, fresh.revision);
 });
 
 test('the sample\'s NOT_THE_PLAN_SHOWN sentence is main\'s own', () => {
