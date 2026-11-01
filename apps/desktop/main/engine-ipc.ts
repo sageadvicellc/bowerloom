@@ -23,7 +23,8 @@ export function registerEngineIpc(deps: EngineIpcDeps): EngineService {
     deps.ipc.handle(ENGINE_CHANNELS[call], async (event, ...args) => {
       const frame = event.senderFrame;
       if (frame === null || frame.parent !== null || !isAllowedRealSender(true, frame.url, deps.appIndexUrl)) throw new Error('NOT_ALLOWED');
-      if (args.length !== ENGINE_ARITY[call]) throw new Error('BAD_ARGUMENT');
+      // One call takes one optional argument (additive): chooseFolder may name the label of the folder the window wants.
+      if (args.length !== ENGINE_ARITY[call] && !(call === 'chooseFolder' && args.length === 1)) throw new Error('BAD_ARGUMENT');
       try {
         return await (service[call] as (...a: unknown[]) => Promise<unknown>)(...args);
       } catch (error) {

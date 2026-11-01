@@ -686,8 +686,12 @@ export interface ImportView extends SaveView {
 export interface EngineBridge {
   readonly mode: 'sample' | 'real';
   folders(): Promise<readonly FolderInfo[]>;
-  /** Opens the system folder chooser. Null when the person closed it. The sample has no chooser and answers null. */
-  chooseFolder(): Promise<Answer<FolderInfo> | null>;
+  /**
+   * Opens the system folder chooser. Null when the person closed it. The sample has no chooser and answers null. `expectedLabel` (optional, additive): the label of the
+   * folder the window wants, as a place it already shows. A pick with another label is refused as NOT_THE_FOLDER_SHOWN before main registers it, so a folder the window did
+   * not accept never gets an id or appears in `folders()`. Left out, any folder is taken.
+   */
+  chooseFolder(expectedLabel?: string): Promise<Answer<FolderInfo> | null>;
   planAdoption(folderId: string, choices: AdoptChoices): Promise<Answer<AdoptView>>;
   /** `approvals` are the plan's own approvals the person ticked, each with the hash of what they read. */
   runAdoption(folderId: string, revision: string, choices: AdoptChoices, approvals: readonly AdoptApproval[]): Promise<Answer<AdoptWritten>>;

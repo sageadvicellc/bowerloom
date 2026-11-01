@@ -13,7 +13,7 @@ import type { Refusal } from '../shared/engine/types.js';
 import { visible } from '../shared/engine/scrub.js';
 
 /** The kinds of plan a write can name. */
-export type PlanKind = 'adoption' | 'projection' | 'removal' | 'recovery' | 'adoption-recovery' | 'merge' | 'save' | 'restore' | 'set-aside' | 'notes-starter' | 'notes-history';
+export type PlanKind = 'adoption' | 'projection' | 'removal' | 'recovery' | 'adoption-recovery' | 'merge' | 'save' | 'restore' | 'set-aside' | 'notes-starter' | 'notes-history' | 'export' | 'import';
 
 /** Main's record of the last plan it returned: its revision, the choices it was made with (canonical JSON), and the words of the dialog. */
 export interface ShownPlan { readonly revision: string; readonly choices: string; readonly ask: Ask | null }
@@ -88,6 +88,16 @@ export const ASK = Object.freeze({
   saveRecovery: (label: string, n: number, rev: string, done = false): Ask => (done
     ? { title: 'Finish a stopped harness', message: `Keep the finished save in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. The save stays, and Bowerloom clears its note. No file changes. ${again}` }
     : { title: 'Finish a stopped harness', message: `Put back ${files(n)} that a stopped save changed in ${label}/.bowerloom?`, detail: `From plan ${rev.slice(0, 8)}. ${again}` }),
+  /** Export (journey 4): one new file with the harness of a folder. The dialog names the file the person chose in the save dialog, from main's own record. */
+  exportBundle: (label: string, name: string, bytes: number, rev: string, replacing: boolean, where: string): Ask => ({
+    title: 'Export the harness', message: `${replacing ? 'Replace' : 'Write'} the file ${visible(name)} (${bytes} ${bytes === 1 ? 'byte' : 'bytes'}) in ${visible(where)} with the harness of ${label}?`,
+    detail: `From plan ${rev.slice(0, 8)}. ${replacing ? 'You chose to replace this file. ' : ''}Bowerloom writes one file and changes nothing in ${label}. The file holds no secret value and no notes folder path. ${again}`,
+  }),
+  /** Import (journey 4): the files of a bundle into a folder with no harness, or an empty one, as one save. */
+  importBundle: (label: string, n: number, rev: string, marks: SaveMarks = {}, makes = false): Ask => ({
+    title: 'Import a harness', message: `${makes ? 'Make an empty harness and write' : 'Write'} ${files(n)} into ${label}/.bowerloom?`,
+    detail: `From plan ${rev.slice(0, 8)}. ${makes ? 'This folder has no harness, so Bowerloom makes an empty one first. ' : ''}${marksLine(marks)}Nothing in the file runs now, and nothing is installed. Bowerloom keeps a save point, so you can go back. ${again}`,
+  }),
   /** "Start fresh" (spec 6.9): the kit's starter files into an empty notes folder, and one first commit. */
   notesStarter: (label: string, n: number, rev: string): Ask => ({ title: 'Start your notes', message: `Write ${files(n)} into ${label} and start its history?`, detail: `From plan ${rev.slice(0, 8)}. Bowerloom makes one first commit with git, and changes nothing else. ${again}` }),
   /** Version history for linked notes: git init, and one first commit of the files listed. No page changes. */
