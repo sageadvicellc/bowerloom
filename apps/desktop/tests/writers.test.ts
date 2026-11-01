@@ -11,10 +11,16 @@ const strip = (text: string): string => text.replace(/\/\*[\s\S]*?\*\//g, '').re
 function sourceFiles(dir: string): string[] { return readdirSync(join(DESKTOP, dir), { recursive: true, withFileTypes: true }).filter(e => e.isFile() && /\.tsx?$/.test(e.name)).map(e => join(dir, (e as unknown as { parentPath: string }).parentPath.slice(join(DESKTOP, dir).length), e.name).replace(/\\/g, '/')); }
 const read = (file: string): string => strip(readFileSync(join(DESKTOP, file), 'utf8'));
 
-test('the app\'s source writes a file in only two modules of main: the usage summary the person saves, and the private copy of a tidy-up report', () => {
+test('the app\'s source writes a file in only three modules of main: the usage summary the person saves, the private copy of a tidy-up report, and the undo of the empty harness an import makes', () => {
   const all = [...sourceFiles('main'), ...sourceFiles('shared'), ...sourceFiles('preload'), ...sourceFiles('renderer')];
   const writers = all.filter(f => WRITE.test(read(f)) || (/^renderer\//.test(f) && /node:fs/.test(readFileSync(join(DESKTOP, f), 'utf8')))).sort();
-  assert.deepEqual(writers, ['main/diagnostics-dialogs.ts', 'main/notes-report.ts']);
+  assert.deepEqual(writers, ['main/diagnostics-dialogs.ts', 'main/engine-bundle-work.ts', 'main/notes-report.ts']);
+  // The work module of export and import (it runs on a worker thread): its one call that changes a file by itself is `unlinkSync`, in the undo of the empty harness it made
+  // a moment before, only while the file still holds the bytes it wrote. Every other write goes through the portable file layer and the journaled save of the packages.
+  const work = read('main/engine-bundle-work.ts');
+  assert.equal((work.match(/\bunlinkSync\(/g) ?? []).length, 1);
+  assert.match(work, /if \(placed && now !== null && now\.state\.sha256 === digest && checkAncestors\(projectDir, rel\)\.length === 0\) unlinkSync\(join\(projectDir, rel\)\)/);
+  assert.doesNotMatch(work, /\b(writeFileSync|writeFile|mkdirSync|rmSync|renameSync|copyFileSync|cpSync|symlinkSync|chmodSync|appendFileSync)\b/);
   // The usage summary is the one file the person names: main writes it only to the path the native save dialog returned, for its owner only.
   const saves = read('main/diagnostics-dialogs.ts');
   assert.match(saves, /deps\.showSave\([\s\S]*\(deps\.writeFile \?\? writePrivate\)\(picked\.filePath,/, 'the summary goes only where the save dialog said');

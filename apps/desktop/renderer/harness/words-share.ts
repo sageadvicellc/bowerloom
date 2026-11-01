@@ -96,6 +96,7 @@ export const SHARE_REFUSAL_WORDS: Readonly<Record<string, string>> = Object.free
   BUNDLE_SECRET_FOUND: 'Do not use this file. Ask for one with no secret value.',
   BUNDLE_INVALID: 'Ask for a file that loads, or fix the files named.',
   BUNDLE_FILE_UNSAFE: 'Choose a plain file of your own.',
+  BUNDLE_FILE_FAILED: 'Check the disk and the folder, then try again.',
   BUNDLE_EXISTS: 'Choose another name.',
   IMPORT_FOLDER_HAS_HARNESS: 'Choose another folder, or an empty one.',
   IMPORT_NEEDS_ACKNOWLEDGEMENT: 'Tick that you read them, then import.',

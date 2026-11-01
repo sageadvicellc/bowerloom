@@ -97,9 +97,15 @@ test('the main process calls no command that writes Bowerloom data outside the e
   const forbidden = /\b(applyFolder\w+|applyConfigChange|applyLockUpdate|applySync|applyProjectApply|applyCachePrune|applyStoreMigrate|applyMigrate|applyItemRecovery|applyReceiptClean|runApplyCommand|runUseCommand|runLockCommand|runCacheCommand|runStoreCommand|runFolderCommand|runUpCommand|runSyncCommand|runCreateCommand|runAdoptCommand|withStoreForWrite|withProjectLock|withCacheLock)\b/;
   for (const { file, text } of [...sources('main'), ...sources('shared'), ...sources('preload')]) {
     const code = strip(text);
-    assert.doesNotMatch(code, forbidden, `${file} calls a write command`);
-    assert.doesNotMatch(code, /child_process|worker_threads|node:net|node:http|node:https|(?<![.\w])(spawn|exec|fork)\(|createServer|\.listen\(/, `${file} starts a process or a server`);
+    // Export and import (journey 4): the work module takes the project lock to make the empty harness of a folder that has none, then writes the save (packages/adoption
+    // `applySave`) on a worker thread, so a bundle never holds the main thread. The host starts that thread and nothing else. No other file of main may do either.
+    const lockers = ['main/engine-bundle-work.ts'], threads = ['main/engine-bundle.ts', 'main/engine-bundle-worker.ts'];
+    assert.doesNotMatch(lockers.includes(file) ? code.replace(/\bwithProjectLock\b/g, '') : code, forbidden, `${file} calls a write command`);
+    assert.doesNotMatch(threads.includes(file) ? code.replace(/\bworker_threads\b/g, '') : code, /child_process|worker_threads|node:net|node:http|node:https|(?<![.\w])(spawn|exec|fork)\(|createServer|\.listen\(/, `${file} starts a process or a server`);
   }
+  // The work module takes the lock in one place, and the host starts a Worker in one place.
+  assert.equal((strip(read('main/engine-bundle-work.ts')).match(/\bwithProjectLock\(/g) ?? []).length, 1);
+  assert.equal((strip(read('main/engine-bundle.ts')).match(/new Worker\(/g) ?? []).length, 1);
 });
 
 test('the files the app\'s own source can write are held by tests/writers.test.ts, and the old viewer writers are gone', () => {
@@ -183,7 +189,9 @@ test('only main/engine-service.ts calls the packages\' writes of adoption and th
   // The engine calls are registered for the app on the person's own folders only, never for the sample.
   assert.match(strip(read('main/main.ts')), /if \(launch\.engineCalls\) \{\s*const engine = registerEngineIpc\(/);
   // Main's private copies of tidy-up reports go when the app quits.
-  assert.match(strip(read('main/main.ts')), /app\.once\('quit', \(\) => engine\.clearReportCopies\(\)\)/);
+  assert.match(strip(read('main/main.ts')), /app\.once\('quit', \(\) => \{ engine\.clearReportCopies\(\); engine\.close\(\); \}\)/);
+  // The one other caller of the save's write is the worker of export and import, which writes an import as the same journaled save.
+  assert.deepEqual(sources('main').filter(({ text }) => /\bapplySave\b/.test(strip(text))).map(f => f.file), ['main/engine-bundle-work.ts', 'main/engine-service.ts']);
 });
 
 test('the guard of each reader checks the sender before it runs the handler', () => {
