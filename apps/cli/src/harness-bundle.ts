@@ -29,7 +29,7 @@ import {
   BUNDLE_LIMITS, BundleRefusal, EMPTY_HARNESS_DESCRIPTION, EXPORT_PLAN_FORMAT, IMPORT_PLAN_FORMAT, assertEmptyHarness, bundleTargetIdentity, decodeBundle, encodeBundle, exportAcknowledgement, importAcknowledgement,
   importChoicesOf, inspectBundle, readBundleFile, targetFromBundle, writeBundleFile,
 } from '../../../packages/harness-bundle/src/index.js';
-import type { BundleFileIdentity, BundleSummary, ExportPlan, ImportPlan } from '../../../packages/harness-bundle/src/index.js';
+import type { BundleFileIdentity, BundleSummary, BundleTool, ExportPlan, ImportPlan } from '../../../packages/harness-bundle/src/index.js';
 import { withProjectLock } from '../../../packages/project-context/src/index.js';
 import type { PlannedChange } from '../../../packages/project-context/src/types.js';
 import { checkPaths, stateExists } from '../../../packages/project-sync/src/portable-state.js';
@@ -68,11 +68,13 @@ function summaryLines(s: BundleSummary, notesLine: (name: string, readBy: readon
   if (s.tools.length) {
     out.push('Tools. Each one runs a program or reaches a host:');
     out.push(...rows(s.tools.map(t => {
+      // Everything a tool runs or sends is shown whole: the environment of a server can start code (NODE_OPTIONS, LD_PRELOAD), and a header or a path goes to the host.
+      const pairs = (label: string, list: BundleTool['env']): string[] => (list ?? []).map(x => `\n    ${label} ${x.name}=${whole(x.value)}`);
       if (t.kind === 'hook') return `  hook ${t.name}${t.event !== undefined ? ` on ${t.event}` : ''}: runs ${t.command ?? ''}`;
       const flags = t.addressFlags?.length ? ` (${t.addressFlags.join(', ')})` : '';
       return t.command !== undefined
-        ? `  MCP server ${t.name} (${t.transport ?? 'stdio'}): runs ${[t.command, ...(t.args ?? [])].map(whole).join(' ')}`
-        : `  MCP server ${t.name} (${t.transport ?? 'http'}): reaches ${shown(t.host ?? 'no host')}${flags}`;
+        ? `  MCP server ${t.name} (${t.transport ?? 'stdio'}): runs ${[t.command, ...(t.args ?? [])].map(whole).join(' ')}${pairs('env', t.env).join('')}`
+        : `  MCP server ${t.name} (${t.transport ?? 'http'}): reaches ${shown(t.host ?? 'no host')}${t.path ?? ''}${flags}${pairs('header', t.headers).join('')}`;
     })));
   }
   if (s.codeFiles.length) {

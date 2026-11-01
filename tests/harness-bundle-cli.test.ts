@@ -92,7 +92,7 @@ function snapshot(root: string): Record<string, string> {
 }
 
 interface ExportBody { approvalRequired: boolean; code: string; revision: string; plan: { format: string; harness: string; file: string; bytes: number; revision: string; acknowledge: string | null; summary: Summary; bundleSha256: string; replaces: { bytes: number; modified: string } | null } }
-interface Summary { harness: string; counts: Record<string, number>; tools: { name: string; kind: string; runsCode: boolean; command?: string; host?: string }[]; codeFiles: { path: string; why: string }[]; secrets: { kind: string; name: string; sinks: { tool: string; field: string }[] }[]; notes: { name: string }[]; foreignPaths: { path: string; line?: number }[] }
+interface Summary { harness: string; counts: Record<string, number>; tools: { name: string; kind: string; runsCode: boolean; command?: string; host?: string; env?: { name: string; value: string }[]; headers?: { name: string; value: string }[]; path?: string }[]; codeFiles: { path: string; why: string }[]; secrets: { kind: string; name: string; sinks: { tool: string; field: string }[] }[]; notes: { name: string }[]; foreignPaths: { path: string; line?: number }[] }
 interface ImportBody { approvalRequired: boolean; revision: string; plan: { format: string; harness: string; folder: string; file: string; summary: Summary; changes: { path: string; action: string }[]; revision: string; acknowledge: string | null; bundleSha256: string; makesEmptyHarness: boolean } }
 
 /** Exports the harness of `w.src`: plans (exit 3), then approves. Returns the revision. */
@@ -676,9 +676,15 @@ test('text from a bundle never reaches the terminal as a control character, and 
 test('the plan never prints a secret value, and a reference is listed by name only', t => {
   const w = world(t);
   put(w.src, richFiles());
-  const out = bl(w, ['export', '--output', w.out], w.src).stdout;
-  assert.match(out, /DOCS_TOKEN/);
-  assert.doesNotMatch(out, /Bearer /);
+  // The values on this computer are never read: a variable that is set stays out of the plan, in the text and in --json.
+  const canary = `canary-${'z9'.repeat(8)}`;
+  const env = { ...w.env, DOCS_TOKEN: canary, GITHUB_TOKEN: canary, PROJECT_DIR: canary };
+  for (const args of [['export', '--output', w.out], ['export', '--output', w.out, '--json']]) {
+    const r = run(w.src, ['harness', ...args], env);
+    assert.equal(r.status, 3, r.stderr);
+    assert.match(r.stdout, /DOCS_TOKEN/);
+    assert.equal(r.stdout.includes(canary) || r.stderr.includes(canary), false);
+  }
 });
 
 test('nothing in the harness bundle commands runs a program: the source holds no spawn, exec, fork, eval, vm or dynamic import', () => {
@@ -947,4 +953,31 @@ test('a tool is shown whole in the plan: a long command and long arguments are n
   const out = bl(w, ['export', '--output', w.out], w.src).stdout;
   assert.ok(out.includes(`runs tool -y ${longArg} "two words" ""`), 'the whole command line, with its argument boundaries');
   assert.doesNotMatch(out, /more characters/);
+});
+
+test('the plan shows a server environment, its headers and the path of its url whole, in the text and in --json', t => {
+  const w = world(t);
+  const long = `/tools/${'seg-'.repeat(80)}end?mode=full#frag`;
+  const preload = `${'lib-'.repeat(60)}.so`;
+  put(w.src, richFiles({ 'mcp.json': json({ servers: [
+    { name: 'local', transport: 'stdio', command: 'tool', args: ['serve'], env: { NODE_OPTIONS: '--require ./hook.js', LD_PRELOAD: preload, TOKEN: '${LOCAL_TOKEN}', QUOTE: 'a "b" c' } },
+    { name: 'remote', transport: 'http', url: `https://remote.example.com${long}`, headers: { Authorization: 'Bearer ${REMOTE_TOKEN}', 'X-Mode': 'all', 'X-Key': { keychain: 'remote-key' } } },
+  ] }) }));
+  const out = bl(w, ['export', '--output', w.out], w.src).stdout;
+  for (const line of [
+    'env NODE_OPTIONS="--require ./hook.js"', `env LD_PRELOAD=${preload}`, 'env TOKEN=${LOCAL_TOKEN}', 'env QUOTE="a \\"b\\" c"',
+    `reaches remote.example.com${long}`, 'header Authorization="Bearer ${REMOTE_TOKEN}"', 'header X-Mode=all', 'header X-Key=',
+  ]) assert.ok(out.includes(line), line);
+  assert.doesNotMatch(out, /more characters/);
+  const tools = parse<ExportBody>(bl(w, ['export', '--output', w.out, '--json'], w.src).stdout).plan.summary.tools;
+  const local = tools.find(x => x.name === 'local')!, remote = tools.find(x => x.name === 'remote')!;
+  assert.deepEqual(local.env!.map(x => x.name), ['NODE_OPTIONS', 'LD_PRELOAD', 'TOKEN', 'QUOTE']);
+  assert.equal(local.env!.find(x => x.name === 'LD_PRELOAD')!.value, preload);
+  assert.equal(remote.path, long);
+  assert.deepEqual(remote.headers!.map(x => x.name), ['Authorization', 'X-Mode', 'X-Key']);
+  // The same lists show in the import plan, whose acknowledgement covers the tool.
+  exportOut(w);
+  const imp = bl(w, ['import', w.out], w.dst).stdout;
+  assert.ok(imp.includes(`env LD_PRELOAD=${preload}`));
+  assert.ok(imp.includes(`reaches remote.example.com${long}`));
 });
