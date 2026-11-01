@@ -12,7 +12,7 @@ import { BUNDLE_FORMAT, BUNDLE_LIMITS } from './limits.js';
 import { clashingPaths, isBundlePath, sortByBytes } from './path-grammar.js';
 import { JsonFault, parseStrictJson } from './strict-json.js';
 import type { JsonNode } from './strict-json.js';
-import { safeLine, sha256Hex, summarize } from './summary.js';
+import { checkToolText, safeLine, sha256Hex, summarize } from './summary.js';
 import { turnTaker } from './turn.js';
 import { checkWorkBudget } from './work-budget.js';
 import { isWellFormedText } from './well-formed.js';
@@ -54,7 +54,7 @@ export function loadBundleParts(files: readonly DefinitionFile[], knowledge: rea
     bytes: Buffer.from(`${JSON.stringify({ sources: knowledge.map(k => ({ kind: k.kind, name: k.name, path: `bundle-notes/${k.name}` })) }, null, 2)}\n`, 'utf8'),
   }];
   const loaded = loadDefinitionFiles([...files, ...placeholder], '');
-  if (loaded.ok) return loaded.definition;
+  if (loaded.ok) { checkToolText(loaded.definition); return loaded.definition; }
   const problems = loaded.problems.slice(0, DEFINITION_LIMITS.problems).map(p => ({ code: safeLine(p.code), path: safeLine(p.path), message: safeLine(p.message) }));
   const where = (codes: readonly string[]): string[] => [...new Set(problems.filter(p => codes.includes(p.code)).map(p => p.path))];
   if (where(['SECRET_VALUE']).length > 0) return refuse('BUNDLE_SECRET_FOUND', where(['SECRET_VALUE']), problems);

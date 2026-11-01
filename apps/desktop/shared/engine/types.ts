@@ -552,19 +552,22 @@ export const SHARE_HELD_BUNDLES = 2;
 /** The most notes names a choice may name, and the longest name. The same as BUNDLE_LIMITS.notesNames and nameChars. */
 export const SHARE_NOTES_LIMIT = 200;
 export const SHARE_NAME_LIMIT = 200;
-/** The longest text of a command, host, hook or foreign-path hit that a summary carries, and the most arguments of a tool. The same as BUNDLE_LIMITS.displayChars and displayArgs. */
+/** The longest text of a host or a foreign-path hit that a summary carries (BUNDLE_LIMITS.displayChars). A tool's command and arguments are never cut: see SHARE_COMMAND_LIMIT. */
 export const SHARE_TEXT_LIMIT = 200;
-export const SHARE_ARGS_LIMIT = 20;
+/** The most arguments of a tool, all shown (BUNDLE_LIMITS.toolArgs). A bundle with more is refused. */
+export const SHARE_ARGS_LIMIT = 64;
+/** The longest command or argument of a tool, shown whole (BUNDLE_LIMITS.commandChars). A bundle with a longer one is refused. */
+export const SHARE_COMMAND_LIMIT = 4000;
 
 /** One list of a preview: at most SHARE_LIST_LIMIT rows, and how many more there are ("and 12 more"). */
 export interface ShareList<T> { readonly rows: readonly T[]; readonly more: number }
 /**
  * A tool the bundle holds, with what a person reads before it may run. `transport` is for an MCP server and null for a hook. `runsCode` is true for a hook and for
- * an MCP server that starts a program. `command` is the program of a stdio server or the command of a hook, `args` the arguments of a server (at most SHARE_ARGS_LIMIT),
+ * an MCP server that starts a program. `command` is the program of a stdio server or the command of a hook (whole, at most SHARE_COMMAND_LIMIT), `args` the arguments of a server (all of them, at most SHARE_ARGS_LIMIT),
  * `host` the host a client would really reach for a server's url (the package's `addressOf`), `event` the event of a hook; each is null (or empty) when the tool has none.
  * `flags` says what is odd about the address: `credentials` (a user name or password in it), `backslash`, `scheme` (not http, https, ws or wss), `unreadable`. A tool that
- * runs code or reaches a host is in the acknowledgement. Every text is cut to SHARE_TEXT_LIMIT, drawn as plain
- * text, and passed through `visible()` in main. The acknowledgement binds the whole entry in main; the window sees the cut text only.
+ * runs code or reaches a host is in the acknowledgement. The command and the arguments are whole; the host is cut to SHARE_TEXT_LIMIT. Every text is drawn as plain
+ * text and passed through `visible()` in main. The acknowledgement binds the whole entry in main, and the window sees the whole command and arguments.
  */
 export interface ShareTool {
   readonly name: string; readonly kind: 'mcp' | 'hook'; readonly transport: string | null; readonly runsCode: boolean;

@@ -31,8 +31,8 @@ test('the limits reuse the definition loader limits and add the bundle ones', ()
     { files: DEFINITION_LIMITS.files, entryBytes: DEFINITION_LIMITS.fileBytes, totalBytes: DEFINITION_LIMITS.totalBytes, depth: DEFINITION_LIMITS.depth },
   );
   assert.deepEqual(
-    { fileBytes: BUNDLE_LIMITS.fileBytes, pathChars: BUNDLE_LIMITS.pathChars, segmentBytes: BUNDLE_LIMITS.segmentBytes, jsonDepth: BUNDLE_LIMITS.jsonDepth, notesNames: BUNDLE_LIMITS.notesNames, nameChars: BUNDLE_LIMITS.nameChars, listRows: BUNDLE_LIMITS.listRows, heldBundles: BUNDLE_LIMITS.heldBundles, displayChars: BUNDLE_LIMITS.displayChars, displayArgs: BUNDLE_LIMITS.displayArgs },
-    { fileBytes: 48 * 1024 * 1024, pathChars: 1024, segmentBytes: 255, jsonDepth: 6, notesNames: 200, nameChars: 200, listRows: 200, heldBundles: 2, displayChars: 200, displayArgs: 20 },
+    { fileBytes: BUNDLE_LIMITS.fileBytes, pathChars: BUNDLE_LIMITS.pathChars, segmentBytes: BUNDLE_LIMITS.segmentBytes, jsonDepth: BUNDLE_LIMITS.jsonDepth, notesNames: BUNDLE_LIMITS.notesNames, nameChars: BUNDLE_LIMITS.nameChars, listRows: BUNDLE_LIMITS.listRows, heldBundles: BUNDLE_LIMITS.heldBundles, displayChars: BUNDLE_LIMITS.displayChars, commandChars: BUNDLE_LIMITS.commandChars, toolArgs: BUNDLE_LIMITS.toolArgs },
+    { fileBytes: 48 * 1024 * 1024, pathChars: 1024, segmentBytes: 255, jsonDepth: 6, notesNames: 200, nameChars: 200, listRows: 200, heldBundles: 2, displayChars: 200, commandChars: 4000, toolArgs: 64 },
   );
   assert.ok(BUNDLE_LIMITS.fileBytes > BUNDLE_LIMITS.totalBytes, 'the file limit is above the content limit; a definition at its limits can still pass it, and encodeBundle then refuses');
 });
