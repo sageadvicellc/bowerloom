@@ -144,7 +144,8 @@ function isInside(dir: string, inside: string): boolean {
   let want;
   try { want = statSync(inside); } catch { return false; }
   for (let at = dir; ;) {
-    try { const st = statSync(at); if (st.dev === want.dev && st.ino === want.ino) return true; } catch { return false; }
+    // A folder up the chain that cannot be read is treated as inside: the place is refused rather than trusted.
+    try { const st = statSync(at); if (st.dev === want.dev && st.ino === want.ino) return true; } catch { return true; }
     const up = dirname(at);
     if (up === at) return false;
     at = up;
