@@ -33,6 +33,10 @@ export interface SaveSheetState {
   /** The step it opens on: the folder step, or the review of the folder's draft (the Builder's Save), or of a go-back to `restore` (its Go back). */
   readonly start: 'folder' | 'review'; readonly restore: string | null;
 }
+/** The Export sheet: one folder's saved harness, to one file. */
+export interface ExportSheetState { readonly open: boolean; readonly folderId: string | null; /** True when the Builder holds changes that are not saved: the file does not hold them. */ readonly unsaved: boolean }
+/** The Import sheet: one file, into one folder with no harness or an empty one. The file and the folder are picked in the sheet. */
+export interface ImportSheetState { readonly open: boolean }
 export interface ToastState { readonly id: number; readonly text: string; readonly action: { readonly label: string; readonly run: () => void } | null }
 
 export interface Ui {
@@ -59,6 +63,14 @@ export interface Ui {
   readonly saveSheet: SaveSheetState;
   openSave(request?: { folderId?: string | null; tour?: boolean; start?: 'folder' | 'review'; restore?: string | null }): void;
   closeSave(): void;
+  /** The Export sheet of a folder's harness. It opens in either launch: it plans read-only, and main asks before it writes a file. */
+  readonly exportSheet: ExportSheetState;
+  openExport(request?: { folderId?: string | null; unsaved?: boolean }): void;
+  closeExport(): void;
+  /** The Import sheet. It opens in either launch: main opens the file dialog, and asks before it writes. */
+  readonly importSheet: ImportSheetState;
+  openImport(): void;
+  closeImport(): void;
   /** The harness the Harness list has selected, or null. */
   readonly pickedHarnessId: string | null;
   pickHarness(id: string | null): void;
@@ -90,6 +102,8 @@ export function UiProvider({ children }: { children?: ReactNode }): ReactElement
   const [adopt, setAdopt] = useState<AdoptState>({ open: false, folderId: null });
   const [projectSheet, setProjectSheet] = useState<ProjectSheetState>({ open: false, folderId: null, mode: 'install', keep: [] });
   const [saveSheet, setSaveSheet] = useState<SaveSheetState>({ open: false, folderId: null, tour: false, start: 'folder', restore: null });
+  const [exportSheet, setExportSheet] = useState<ExportSheetState>({ open: false, folderId: null, unsaved: false });
+  const [importSheet, setImportSheet] = useState<ImportSheetState>({ open: false });
   const [toast, setToast] = useState<ToastState | null>(null);
   const [layers, setLayers] = useState(0);
   const counter = useRef(0), timer = useRef<number | null>(null), held = useRef(false), shown = useRef(false);
@@ -140,6 +154,12 @@ export function UiProvider({ children }: { children?: ReactNode }): ReactElement
     saveSheet,
     openSave: (request = {}) => setSaveSheet({ open: true, folderId: request.folderId ?? null, tour: request.tour ?? false, start: request.start ?? 'folder', restore: request.restore ?? null }),
     closeSave: () => setSaveSheet(current => ({ ...current, open: false })),
+    exportSheet,
+    openExport: (request = {}) => setExportSheet({ open: true, folderId: request.folderId ?? null, unsaved: request.unsaved ?? false }),
+    closeExport: () => setExportSheet(current => ({ ...current, open: false })),
+    importSheet,
+    openImport: () => setImportSheet({ open: true }),
+    closeImport: () => setImportSheet({ open: false }),
     pickedHarnessId: picked, pickHarness: setPicked,
     replaceWorld: next => {
       harnessStore.loadWorld(next);
@@ -149,7 +169,7 @@ export function UiProvider({ children }: { children?: ReactNode }): ReactElement
       if (route !== null && routeGone(harnessStore.getState(), route)) go({ name: 'harnesses' });
     },
     toast, showToast, hideToast, holdToast, layers, pushLayer,
-  }), [install, start, adopt, projectSheet, saveSheet, picked, toast, showToast, hideToast, holdToast, layers, pushLayer, harnessStore]);
+  }), [install, start, adopt, projectSheet, saveSheet, exportSheet, importSheet, picked, toast, showToast, hideToast, holdToast, layers, pushLayer, harnessStore]);
   return <Context value={ui}>{children}</Context>;
 }
 

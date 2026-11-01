@@ -42,6 +42,11 @@ export interface FolderInfo {
   readonly name: string;
   /** True when the folder holds `.bowerloom/harness.json`. */
   readonly hasDefinition: boolean;
+  /**
+   * True when the folder's harness has an entry, instructions, a source or knowledge, so an import is refused there (IMPORT_FOLDER_HAS_HARNESS); false when the harness is
+   * empty; left out when main did not read it. Main fills it from the harness it loads. The Import sheet marks such a folder as refused before the person goes on.
+   */
+  readonly holdsParts?: boolean;
   /** The engines harness.json lists, when it loads. */
   readonly engines: readonly EngineId[];
   /**
@@ -651,12 +656,25 @@ export interface ImportNoteRow { readonly name: string; readonly choice: 'link' 
  *    when all are empty. When it is not null, `runImport` writes only with it (IMPORT_NEEDS_ACKNOWLEDGEMENT otherwise). The sheet may show one tick or two; the
  *    call carries the hash once.
  *  - `removedSources` is always empty: an import stops using nothing.
+ *  - `makesHarness` (decision of 2026-10-31): true when the folder has no harness. The one plan then makes the empty harness AND writes the bundle's files, and the one
+ *    approval covers both; `changes` lists `.bowerloom/harness.json` as a create like every other file. False or left out when the folder's harness is empty already.
+ *  - What a folder with no harness leaves (for lane C). The save point "before" is the EMPTY harness (`harness.json` alone, no parts), because that is what the write makes first;
+ *    Go back to it returns the folder to an empty harness, never to "no harness at all". The write is one journaled save: when it fails after the empty harness was made, the
+ *    folder holds a valid empty harness and none of the bundle's files, never half of them, and the journal says what to do (SAVE_PARTIAL, SAVE_RECOVERY_REQUIRED).
+ *  - `harness.json` is `create` in `changes` only when the folder has no harness; for a harness that exists and is empty it is `update`.
+ *  - The folder's harness state (none, or empty) is part of `revision`. A harness made between the plan and the write is another plan: the write is NOT_THE_PLAN_SHOWN, never an
+ *    overwrite.
+ *  - `acknowledge` hashes EVERY row of the bundle (every tool, code file, reference and foreign path), shown or not. The summary lists are cut at SHARE_LIST_LIMIT after
+ *    `capRiskFirst` (shared/engine/share-risk.ts, one rule for the sample and main) puts the rows that run or reach a host first; the cut changes what is shown, and the sheet says
+ *    so beside the tick.
  * `revision` is the save plan's revision, lowercase hex with no prefix. The write also names the bundle id and the choices, and main binds the plan to the bundle's own hash.
  */
 export interface ImportView extends SaveView {
   readonly bundleId: string;
   readonly summary: ShareSummary;
   readonly notes: readonly ImportNoteRow[];
+  /** True when the folder has no harness and this plan makes an empty one first, under the same approval. Additive: left out reads as false. */
+  readonly makesHarness?: boolean;
 }
 
 // ---- the calls ------------------------------------------------------------------------------------------------------------
@@ -736,7 +754,11 @@ export interface EngineBridge {
    * closed the dialog. A file that fails a check is a refusal with the package's words (BUNDLE_*), and nothing is held.
    */
   chooseBundle(): Promise<Answer<BundleView> | null>;
-  /** Plans an import of a held bundle into a folder. Reads only. A folder with a harness that is not empty is IMPORT_FOLDER_HAS_HARNESS; one with none is SAVE_NO_DEFINITION. */
+  /**
+   * Plans an import of a held bundle into a folder. Reads only. A folder with a harness that has parts is IMPORT_FOLDER_HAS_HARNESS. A folder with no harness is a valid
+   * target (decision of 2026-10-31): the plan makes the empty harness and writes the files under one approval (`ImportView.makesHarness`), so SAVE_NO_DEFINITION is no
+   * longer an answer of this call. Lists in the summary are cut at SHARE_LIST_LIMIT after the rows that run code or reach a host are put first, so a cut never hides one.
+   */
   planImport(folderId: string, bundleId: string, choices: ImportNoteChoices): Promise<Answer<ImportView>>;
   /**
    * Writes the import plan shown last, with the same bundle and choices, after main's own dialog. It is a save: a save point is kept before and after. Install is a
