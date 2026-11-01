@@ -115,12 +115,13 @@ test('a second projection of the same definition writes nothing new', async t =>
 // ---- the export bundle (spec 6.7) -----------------------------------------------------------------------------------------
 
 /** The bundle file of a definition, decoded again: the form an importer holds. */
-const bundleOf = async def => decodeBundle((await exportDefinitionBundle(def)).bytes);
+const WHERE = { home: '/nonexistent-home', user: 'tester-account' };
+const bundleOf = async def => decodeBundle((await exportDefinitionBundle(def, WHERE)).bytes);
 
 test('the export bundle carries each source by kind and name only, and never its path', async t => {
   const p = notesProject(t);
   const def = definitionOf(p);
-  const encoded = await exportDefinitionBundle(def);
+  const encoded = await exportDefinitionBundle(def, WHERE);
   const bundle = await decodeBundle(encoded.bytes);
   assert.equal(bundle.format, BUNDLE_FORMAT);
   assert.equal(bundle.harness, 'demo');

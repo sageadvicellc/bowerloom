@@ -6,15 +6,16 @@
  *   can run, every `${NAME}` value the file reads from this computer and where it goes, and every path from another computer.
  * - Export writes one new file with `--output`. It never replaces a file unless `--replace` is given, and then only the file it saw when it planned: the identity of
  *   that file (`bundleTargetIdentity`) is part of the revision, so an approval names it, and the writer reads it again right before the rename. Its revision is the
- *   SHA-256 of the file's bytes; with `--replace` over an existing file it is the SHA-256 of those bytes and that identity together.
+ *   SHA-256 of a record of the bundle's hash, the real path of the target, and the identity of the file it replaces (null for a new file), so an approval names where
+ *   the file goes. A target inside the `.bowerloom` folder of the exported harness is refused. The plan names the real path, not only the text that was typed.
  * - Import writes only into a folder whose harness is empty or missing. A missing harness is made empty inside the same plan and the same approval: the plan lists the
  *   files the import creates, and the approved revision covers them. The write itself is a save of the harness (`applySave`, under the project lock, with its journal).
- *   The command line keeps no save points: they belong to the app.
+ *   The command line keeps no save points, so a CLI import has no Go back. To undo an import into a new folder, remove its `.bowerloom` folder.
  * - A notes name is left out by default. `--link <name>=<folder>` links one. A name is a key from the file, so it is never used as an object property here.
  * - Nothing here runs an engine, a model, a hook, a script or a tool of the bundle. The bundle is data. The only program-like value is printed as plain text.
  * - No secret value appears: the file holds none, and a summary lists names only.
  */
-import { lstatSync, readdirSync, realpathSync, unlinkSync } from 'node:fs';
+import { lstatSync, readdirSync, realpathSync, statSync, unlinkSync } from 'node:fs';
 import { userInfo } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
@@ -112,6 +113,32 @@ function outputTarget(cwd: string, given: string | undefined): string {
 }
 const sameIdentity = (a: BundleFileIdentity | null, b: BundleFileIdentity | null): boolean =>
   a === null || b === null ? a === b : a.dev === b.dev && a.ino === b.ino && a.size === b.size && a.mtimeNs === b.mtimeNs && a.birthtimeNs === b.birthtimeNs;
+/** An error with a next step of its own, which the refusal printer shows in place of the generic one. */
+function withNext<E extends Error>(error: E, next: string): E {
+  Object.defineProperty(error, 'next', { value: next, enumerable: false, configurable: true });
+  return error;
+}
+const idOf = (path: string): string | null => { try { const st = statSync(path); return `${st.dev}:${st.ino}`; } catch { return null; } };
+/**
+ * Refuses a target that is, or sits below, the `.bowerloom` folder of the harness being exported. A file there breaks the harness, and `--replace` over `harness.json`
+ * destroys it. Each ancestor is compared with that folder by device and inode, not by name, so a case-insensitive volume or a link on the way cannot hide it.
+ */
+function refuseInsideDefinition(dir: string, target: string): void {
+  const def = idOf(join(dir, DEF));
+  if (def === null) return;
+  for (let at = target; ; at = dirname(at)) {
+    if (idOf(at) === def) throw withNext(new BundleRefusal('BUNDLE_USAGE'), 'Pick a --output file outside the .bowerloom folder of the harness.');
+    if (dirname(at) === at) return;
+  }
+}
+/** The words of a refused export target: the code is the package's, the message says it is the place to save, not a bundle file that is read. */
+function targetUnsafe(error: unknown): unknown {
+  if (error instanceof BundleRefusal && error.code === 'BUNDLE_FILE_UNSAFE') {
+    return withNext(new DefinitionError('BUNDLE_FILE_UNSAFE', 'The place to save the file is a link, a folder, or not a plain file that you own, or it changed while the command ran. Nothing was written.'),
+      'Pick a file name in a folder you own, with no link in its path. The file must not be a link or a folder.');
+  }
+  return error;
+}
 const userName = (): string | undefined => { try { return userInfo().username; } catch { return undefined; } };
 const acknowledgement = (given: string | undefined): string | undefined => {
   if (given !== undefined && !HEX64.test(given)) usage('--acknowledge takes the 64-character hash from the plan.');
@@ -133,12 +160,14 @@ export interface ExportRequest {
 
 /** The plan of an export. The extra fields are for a reader of `--json`: the hash of the bundle bytes, and the file that `--replace` would replace. */
 export interface CliExportPlan extends ExportPlan {
+  /** The file that is written: `file` as a real path. The revision names it. */
+  readonly target: string;
   readonly bundleSha256: string;
   readonly replaces: { readonly bytes: number; readonly modified: string } | null;
 }
 
 export function exportReview(p: CliExportPlan): string {
-  const out = [`Export the harness ${p.harness} to ${p.file}: ${count(p.bytes, 'byte')} in the file. Nothing is written until you approve.`];
+  const out = [`Export the harness ${p.harness} to ${p.target}: ${count(p.bytes, 'byte')} in the file. Nothing is written until you approve.`];
   out.push(...summaryLines(p.summary, (name, readBy) => `  ${name}${readBy.length ? `, read by ${readBy.join(', ')}` : ''}`));
   if (p.replaces !== null) out.push(`The file exists (${count(p.replaces.bytes, 'byte')}, changed ${p.replaces.modified}). It is replaced only if it is still that same file when you approve.`);
   if (p.acknowledge !== null) out.push(`Read the paths above. To go on, run the command again with --acknowledge ${p.acknowledge} and --approve.`);
@@ -159,16 +188,17 @@ export function exportChange(r: ExportRequest): PlannedChange<CliExportPlan> {
     }
     const user = userName();
     const encoded = await encodeBundle(loaded.definition, { home: r.home, ...(user !== undefined ? { user } : {}) });
-    identity = await bundleTargetIdentity(target);
+    refuseInsideDefinition(r.dir, target);
+    try { identity = await bundleTargetIdentity(target); } catch (error) { throw targetUnsafe(error); }
     if (identity !== null && !r.replace) throw new BundleRefusal('BUNDLE_EXISTS');
     // A second plan (the prompt, then the apply) must find the same file at the target as the first one saw.
     if (seen !== null && !sameIdentity(seen.identity, identity)) throw stale();
     seen ??= { identity };
     bytes = encoded.bytes;
-    // Each CLI run is its own process, so an approval can name the file it replaces only through the revision.
-    const revision = identity === null ? encoded.sha256 : sha(JSON.stringify(['bowerloom/export-replace/v1', encoded.sha256, [identity.dev, identity.ino, identity.size, identity.mtimeNs, identity.birthtimeNs].map(String)]));
+    // Each CLI run is its own process, so an approval can name the file it writes, and the file it replaces, only through the revision.
+    const revision = sha(JSON.stringify(['bowerloom/export/v2', encoded.sha256, target, identity === null ? null : [identity.dev, identity.ino, identity.size, identity.mtimeNs, identity.birthtimeNs].map(String)]));
     return {
-      format: EXPORT_PLAN_FORMAT, harness: loaded.definition.harness.id, file: r.output!, bytes: encoded.bytes.length, summary: encoded.summary,
+      format: EXPORT_PLAN_FORMAT, harness: loaded.definition.harness.id, file: r.output!, target, bytes: encoded.bytes.length, summary: encoded.summary,
       revision, acknowledge: exportAcknowledgement(encoded.summary, revision), bundleSha256: encoded.sha256,
       replaces: identity === null ? null : { bytes: Number(identity.size), modified: new Date(Number(identity.mtimeNs / 1_000_000n)).toISOString() },
     };
@@ -180,8 +210,8 @@ export function exportChange(r: ExportRequest): PlannedChange<CliExportPlan> {
       if (p.revision !== revision) throw stale();
       if (p.acknowledge !== null && ack !== p.acknowledge) throw new BundleRefusal('EXPORT_NEEDS_ACKNOWLEDGEMENT');
       if (p.acknowledge === null && ack !== undefined) usage('This plan has nothing to acknowledge. Run the command again without --acknowledge.');
-      await writeBundleFile(target, bytes, identity === null ? {} : { replace: identity });
-      return { written: p.file, bytes: p.bytes, replaced: identity !== null };
+      try { await writeBundleFile(target, bytes, identity === null ? {} : { replace: identity }); } catch (error) { throw targetUnsafe(error); }
+      return { written: p.target, bytes: p.bytes, replaced: identity !== null };
     },
   };
 }
@@ -203,8 +233,16 @@ export interface ImportRequest {
   readonly leave: readonly string[];
   readonly acknowledge: string | undefined;
   readonly signal: AbortSignal;
-  /** Seams for tests. Production code sets none. `afterEmpty` runs once the empty harness is on disk, before the save is planned. */
-  readonly hooks?: { readonly afterEmpty?: () => void };
+}
+
+let afterEmptyHook: (() => void) | undefined;
+/**
+ * A seam for tests, and nothing else: `fn` runs once the empty harness is on disk, before the save is planned. It can be set only when `NODE_ENV` is `test`, as the
+ * file seams of the package can. No argument or variable of the binary reaches it.
+ */
+export function setImportTestHook(name: 'afterEmpty', fn: (() => void) | undefined): void {
+  if (process.env.NODE_ENV !== 'test' || name !== 'afterEmpty') throw new Error('The import seam is for tests only.');
+  afterEmptyHook = fn;
 }
 
 /** The plan of an import. The extra fields are for a reader of `--json`: the hash of the bundle file, and whether the plan makes the empty harness first. */
@@ -318,6 +356,7 @@ export function importReview(p: CliImportPlan): string {
   out.push(`The import writes ${count(p.changes.length, 'file')} in .bowerloom:`);
   out.push(...rows(p.changes.map(c => `  ${c.action.padEnd(6)} ${c.path}`)));
   out.push('The import installs nothing. Run bowerloom harness install afterward to see that plan.');
+  out.push(`The command line keeps no save points, so there is no Go back. To undo an import into a new folder, remove ${p.folder}/.bowerloom.`);
   if (p.acknowledge !== null) out.push(`Read the tools, files, values, and paths above. To go on, run the command again with --acknowledge ${p.acknowledge} and --approve.`);
   return out.join('\n');
 }
@@ -369,30 +408,39 @@ export function importChange(r: ImportRequest): PlannedChange<CliImportPlan> {
     return plan;
   }
 
-  /** Puts the empty harness in place under the project lock, and returns what undoes it. */
+  /** What this command did to the folder so far, so a failure undoes exactly that. */
+  const done = { madeDir: false, wrote: false };
+  /** Puts the empty harness in place under the project lock. */
   async function makeEmpty(h: Held): Promise<void> {
     const rel = `${DEF}/harness.json`;
     await withProjectLock(r.dir, r.signal, async () => {
       try {
         if (readProject(r.dir, rel) !== null) throw stale();
-        for (const d of checkAncestors(r.dir, rel)) makeDir(r.dir, d);
+        for (const d of checkAncestors(r.dir, rel)) { makeDir(r.dir, d); if (d === DEF) done.madeDir = true; }
         writeAbs(join(r.dir, rel), h.empty!, 0o644, { exclusive: true, label: rel, recheck: () => { checkAncestors(r.dir, rel, true); } });
+        done.wrote = true;
       } catch (error) { mapPortable(error); }
     });
   }
-  /** Takes the empty harness out again, only while it is still exactly the bytes this command wrote. Returns false when it could not. */
-  async function takeEmptyOut(h: Held): Promise<boolean> {
+  /**
+   * Undoes `makeEmpty`. A stop request does not stop the cleanup: it runs with a signal of its own. The harness file goes only while it is still exactly the bytes
+   * this command wrote, and `.bowerloom` goes only when this command made it and it is empty. `changed`: the file is not ours any more, and it is left alone.
+   */
+  async function takeEmptyOut(h: Held): Promise<'removed' | 'changed' | 'failed'> {
     const rel = `${DEF}/harness.json`;
     try {
-      await withProjectLock(r.dir, r.signal, async () => {
-        const now = readProject(r.dir, rel);
-        if (now === null) return;
-        if (!now.bytes.equals(Buffer.from(h.empty!))) throw new Error('changed');
-        unlinkSync(join(r.dir, rel));
-        if (!h.dirExists) removeEmptyDirs(r.dir, [DEF]);
+      return await withProjectLock(r.dir, new AbortController().signal, async () => {
+        if (done.wrote) {
+          const now = readProject(r.dir, rel);
+          if (now !== null) {
+            if (!now.bytes.equals(Buffer.from(h.empty!))) return 'changed' as const;
+            unlinkSync(join(r.dir, rel));
+          }
+        }
+        if (done.madeDir) removeEmptyDirs(r.dir, [DEF]);
+        return 'removed' as const;
       });
-      return true;
-    } catch { return false; }
+    } catch { return 'failed'; }
   }
 
   return {
@@ -411,9 +459,9 @@ export function importChange(r: ImportRequest): PlannedChange<CliImportPlan> {
         const done = await applySave(input, p.revision, h.target, r.signal);
         return { written: done.written.map(w => `${DEF}/${w}`), revision: done.revision, warnings: [...(done.journalLeft ? ['The save finished, but its journal could not be removed. Recover it in the Bowerloom app before another save.'] : []), ...notes] };
       }
-      await makeEmpty(h);
       try {
-        r.hooks?.afterEmpty?.();
+        await makeEmpty(h);
+        afterEmptyHook?.();
         const second = planSave(input, h.target);
         // The folder must still be exactly what the plan showed: the empty harness, and nothing else. A file that appeared in between would be updated or deleted.
         const created = second.changes.filter(c => c.path !== 'harness.json');
@@ -427,11 +475,13 @@ export function importChange(r: ImportRequest): PlannedChange<CliImportPlan> {
       } catch (error) {
         // A save that stopped part way keeps its journal, and its files are not the empty harness: leave all of it for the recovery.
         if ((error as { code?: unknown } | null)?.code === 'SAVE_PARTIAL' || (error as { crash?: unknown } | null)?.crash === true) throw error;
-        if (!(await takeEmptyOut(h))) {
-          const code = (error as { code?: unknown } | null)?.code;
-          throw new DefinitionError(typeof code === 'string' ? code : 'IO_ERROR', `${plainText(String((error as { message?: unknown } | null)?.message ?? ''))} The empty harness.json this command made is still in .bowerloom. Remove it by hand, or import again.`);
-        }
-        throw error;
+        const outcome = await takeEmptyOut(h);
+        if (outcome === 'removed') throw error;
+        const code = (error as { code?: unknown } | null)?.code;
+        const said = plainText(String((error as { message?: unknown } | null)?.message ?? ''));
+        throw new DefinitionError(typeof code === 'string' ? code : 'IO_ERROR', outcome === 'changed'
+          ? `${said} The file .bowerloom/harness.json changed while the import ran, so it was left alone.`
+          : `${said} Bowerloom could not take out the empty .bowerloom/harness.json it made. Check that file with bowerloom harness status before you import again.`);
       }
     },
   };

@@ -11,10 +11,11 @@ import type { TestContext } from 'node:test';
 import { errorCode, run, world as baseWorld } from './support/config-cli.js';
 import type { World } from './support/config-cli.js';
 import { renderRefusal } from '../apps/cli/src/human.js';
-import { importChange } from '../apps/cli/src/harness-bundle.js';
+import { importChange, setImportTestHook } from '../apps/cli/src/harness-bundle.js';
 import type { ImportRequest } from '../apps/cli/src/harness-bundle.js';
 import { privateStateRoot } from '../packages/project-context/src/index.js';
 import { harnessStateDirs } from '../packages/project-sync/src/index.js';
+import { NotesRefusal, readNotesSummary } from '../packages/notes-source/src/index.js';
 import { BUNDLE_CODES, BUNDLE_FORMAT, isEmptyHarness, BUNDLE_MESSAGES, EXPORT_PLAN_FORMAT, IMPORT_PLAN_FORMAT } from '../packages/harness-bundle/src/index.js';
 import { EMPTY_HARNESS_DESCRIPTION } from '../packages/harness-bundle/src/target.js';
 import { computeRevision, loadDefinition } from '../packages/harness-definition/src/index.js';
@@ -145,7 +146,8 @@ test('export plans with exit 3 and writes nothing; the approved run writes one n
 
   const body = exportOut(w);
   const bytes = readFileSync(w.out);
-  assert.equal(sha(bytes), body.revision, 'the revision is the SHA-256 of the file');
+  assert.equal(sha(bytes), body.plan.bundleSha256, 'the plan names the SHA-256 of the file');
+  assert.notEqual(body.revision, body.plan.bundleSha256, 'and the revision also names where it goes');
   assert.equal(lstatSync(w.out).mode & 0o777, 0o600);
   const doc = parse<{ format: string; harness: string; files: { path: string }[] }>(bytes.toString('utf8'));
   assert.equal(doc.format, BUNDLE_FORMAT);
@@ -217,8 +219,8 @@ test('export(import(export(x))) is byte for byte equal', t => {
   assert.equal(bl(w, ['import', w.out, '--approve', planned.revision], w.dst).status, 0);
   const second = join(w.home, 'again.json');
   const replanned = parse<ExportBody>(bl(w, ['export', '--output', second, '--json'], w.dst).stdout);
-  assert.equal(replanned.plan.revision, first.plan.revision);
-  assert.equal(replanned.plan.revision, sha(bytes), 'with no file to replace the revision is the hash of the bytes');
+  assert.equal(replanned.plan.bundleSha256, first.plan.bundleSha256);
+  assert.equal(replanned.plan.bundleSha256, sha(bytes));
   assert.equal(bl(w, ['export', '--output', second, '--approve', replanned.revision], w.dst).status, 0);
   assert.ok(readFileSync(second).equals(bytes));
 });
@@ -308,7 +310,7 @@ test('--json: the export plan and the import plan carry the contract fields and 
   const body = parse<ExportBody>(planned.stdout);
   assert.deepEqual(Object.keys(body).sort(), ['approvalRequired', 'code', 'plan', 'revision']);
   assert.equal(body.code, 'APPROVAL_REQUIRED');
-  assert.deepEqual(Object.keys(body.plan).sort(), ['acknowledge', 'bundleSha256', 'bytes', 'file', 'format', 'harness', 'replaces', 'revision', 'summary']);
+  assert.deepEqual(Object.keys(body.plan).sort(), ['acknowledge', 'bundleSha256', 'bytes', 'file', 'format', 'harness', 'replaces', 'revision', 'summary', 'target']);
   assert.equal(body.plan.replaces, null);
   assert.equal(body.plan.format, EXPORT_PLAN_FORMAT);
   assert.equal(body.plan.file, w.out);
@@ -681,7 +683,9 @@ test('the plan never prints a secret value, and a reference is listed by name on
 
 test('nothing in the harness bundle commands runs a program: the source holds no spawn, exec, fork, eval, vm or dynamic import', () => {
   const source = readFileSync(new URL('../../apps/cli/src/harness-bundle.ts', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-  for (const word of ['child_process', 'spawn', 'execFile', 'execSync', 'fork(', 'eval(', 'new Function', 'node:vm', 'import(', 'process.env']) assert.equal(source.includes(word), false, word);
+  for (const word of ['child_process', 'spawn', 'execFile', 'execSync', 'fork(', 'eval(', 'new Function', 'node:vm', 'import(']) assert.equal(source.includes(word), false, word);
+  // The one read of the environment is the guard of the test seam.
+  assert.deepEqual(source.match(/process\.env\.\w+/g), ['process.env.NODE_ENV']);
 });
 
 test('the help topic lists export and import, and a bad flag is a usage error', t => {
@@ -723,18 +727,55 @@ test('a state folder the save would refuse is found when the plan is made, befor
   }
 });
 
-async function failAfterEmpty(w: W, dir: string, hook: () => void): Promise<{ error: Error; seen: boolean }> {
+async function failAfterEmpty(w: W, dir: string, hook: () => void, controller = new AbortController()): Promise<{ error: Error; seen: boolean }> {
   put(w.src, plainFiles());
   exportOut(w);
   let seen = false;
-  const change = importChange(request(w, dir, w.out, { hooks: { afterEmpty: () => { seen = existsSync(join(dir, '.bowerloom', 'harness.json')); hook(); } } }));
-  const plan = await change.plan();
-  assert.equal(plan.makesEmptyHarness, true);
-  let error: Error | undefined;
-  try { await change.apply(plan.revision); } catch (e) { error = e as Error; }
-  assert.ok(error, 'the import was refused');
-  return { error: error!, seen };
+  const before = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'test';
+  try {
+    setImportTestHook('afterEmpty', () => { seen = existsSync(join(dir, '.bowerloom', 'harness.json')); hook(); });
+    const change = importChange(request(w, dir, w.out, { signal: controller.signal }));
+    const plan = await change.plan();
+    assert.equal(plan.makesEmptyHarness, true);
+    let error: Error | undefined;
+    try { await change.apply(plan.revision); } catch (e) { error = e as Error; }
+    assert.ok(error, 'the import was refused');
+    return { error: error!, seen };
+  } finally {
+    setImportTestHook('afterEmpty', undefined);
+    if (before === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = before;
+  }
 }
+
+test('the import seam refuses to be set outside a test', () => {
+  const before = process.env.NODE_ENV;
+  try {
+    for (const value of [undefined, 'production']) {
+      if (value === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = value;
+      assert.throws(() => setImportTestHook('afterEmpty', () => {}), /for tests only/);
+    }
+  } finally { if (before === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = before; }
+});
+
+test('a stop request after the empty harness was made does not stop the cleanup: nothing is left when no .bowerloom existed', async t => {
+  const w = world(t);
+  const controller = new AbortController();
+  const { error, seen } = await failAfterEmpty(w, w.dst, () => controller.abort(), controller);
+  assert.equal(seen, true);
+  assert.ok(error);
+  assert.equal(existsSync(join(w.dst, '.bowerloom')), false, 'the empty harness and the folder this command made are gone');
+  assert.deepEqual(snapshot(w.dst), {});
+});
+
+test('a stop request in a folder that had a .bowerloom takes out the empty harness and keeps the folder', async t => {
+  const w = world(t);
+  mkdirSync(join(w.dst, '.bowerloom'));
+  writeFileSync(join(w.dst, '.bowerloom', 'skills.json'), '{"keep":"me"}\n');
+  const controller = new AbortController();
+  await failAfterEmpty(w, w.dst, () => controller.abort(), controller);
+  assert.deepEqual(readdirSync(join(w.dst, '.bowerloom')), ['skills.json']);
+});
 
 test('a failure after the empty harness was made takes it out again, and the .bowerloom folder this command made with it', async t => {
   const w = world(t);
@@ -779,7 +820,8 @@ test('a harness.json that someone else wrote in that window is not replaced and 
   const theirs = HARNESS('theirs');
   const { error } = await failAfterEmpty(w, w.dst, () => { writeFileSync(join(w.dst, '.bowerloom', 'harness.json'), theirs); });
   assert.equal((error as { code?: string }).code, 'STALE_APPROVAL');
-  assert.match(error.message, /still in \.bowerloom/);
+  assert.match(error.message, /changed while the import ran, so it was left alone/);
+  assert.doesNotMatch(error.message, /by hand/);
   assert.equal(readFileSync(join(w.dst, '.bowerloom', 'harness.json'), 'utf8'), theirs);
 });
 
@@ -793,4 +835,107 @@ test('importChange: a plan made twice for the same inputs has the same revision,
   assert.equal(a.revision, b.revision);
   assert.notEqual(a.revision, c.revision);
   assert.match(a.revision, HEX64);
+});
+
+// ---- review fixes: the target, the path in the revision, the words --------------------------------------------------------
+
+test('export refuses a target inside the .bowerloom folder of the harness, for a new file and for --replace over harness.json, by device and inode', t => {
+  const w = world(t);
+  put(w.src, plainFiles());
+  const def = join(w.src, '.bowerloom');
+  const before = snapshot(w.src);
+  const viaLink = join(w.home, 'def-link');
+  symlinkSync(def, viaLink);
+  const cases: string[][] = [
+    ['--output', join(def, 'leak.json')], ['--output', join(def, 'skills', 'leak.json')], ['--output', join(def, 'harness.json'), '--replace'], ['--output', '.bowerloom/leak.json'],
+    ['--output', join(viaLink, 'leak.json')], ['--output', join(viaLink, 'harness.json'), '--replace'], ['--output', join(def, '..', '.bowerloom', 'leak.json')],
+    // A name in other letter case reaches the same folder on a case-insensitive volume: the ancestors are compared by identity, not by name.
+    ['--output', join(w.src, '.BOWERLOOM', 'leak.json')],
+  ];
+  for (const args of cases) {
+    const r = bl(w, ['export', ...args], w.src);
+    const folded = args.some(a => a.includes('.BOWERLOOM'));
+    if (folded && !existsSync(join(w.src, '.BOWERLOOM'))) { assert.equal(r.status, 2, 'a name that is not there is a usage error'); continue; }
+    assert.equal(r.status, 1, `${args.join(' ')}: ${r.stderr}${r.stdout}`);
+    assert.equal(errorCode(r.stderr), 'BUNDLE_USAGE');
+    assert.equal(parse<{ error: { message: string } }>(r.stderr).error.message, BUNDLE_MESSAGES.BUNDLE_USAGE);
+    assert.match(parse<{ error: { next: string } }>(r.stderr).error.next, /outside the \.bowerloom folder/);
+  }
+  assert.deepEqual(snapshot(w.src), before, 'the harness is untouched');
+  // A folder next to it is fine, and so is a file in the project folder itself.
+  const fine = parse<ExportBody>(bl(w, ['export', '--output', join(w.src, 'beside.json'), '--json'], w.src).stdout);
+  assert.equal(bl(w, ['export', '--output', join(w.src, 'beside.json'), '--approve', fine.revision], w.src).status, 0);
+  assert.equal(bl(w, ['status'], w.src).status, 0);
+});
+
+test('the revision names the target path: the same approval does not write to another file', t => {
+  const w = world(t);
+  put(w.src, plainFiles());
+  const a = join(w.home, 'a.json'), b = join(w.home, 'b.json');
+  const planned = parse<ExportBody>(bl(w, ['export', '--output', a, '--json'], w.src).stdout);
+  const r = bl(w, ['export', '--output', b, '--approve', planned.revision], w.src);
+  assert.equal(r.status, 1, r.stderr); assert.equal(errorCode(r.stderr), 'STALE_APPROVAL');
+  assert.equal(existsSync(b) || existsSync(a), false);
+  assert.equal(bl(w, ['export', '--output', a, '--approve', planned.revision], w.src).status, 0);
+});
+
+test('the plan prints the real path of the target, and --json carries it', t => {
+  const w = world(t);
+  put(w.src, plainFiles());
+  const real = join(w.home, 'real-folder');
+  mkdirSync(real);
+  symlinkSync(real, join(w.home, 'link-folder'));
+  const typed = join(w.home, 'link-folder', 'x.json');
+  const human = bl(w, ['export', '--output', typed], w.src);
+  assert.match(human.stdout, new RegExp(`to ${join(real, 'x.json').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:`));
+  const body = parse<ExportBody & { plan: { target: string } }>(bl(w, ['export', '--output', typed, '--json'], w.src).stdout);
+  assert.equal(body.plan.file, typed);
+  assert.equal(body.plan.target, join(real, 'x.json'));
+});
+
+test('a refused export target says it is the place to save, not a bundle file that is read', t => {
+  const w = world(t);
+  put(w.src, plainFiles());
+  const folder = join(w.home, 'a-folder');
+  mkdirSync(folder);
+  const r = bl(w, ['export', '--output', folder, '--replace'], w.src);
+  assert.equal(errorCode(r.stderr), 'BUNDLE_FILE_UNSAFE');
+  const error = parse<{ error: { message: string; next: string } }>(r.stderr).error;
+  assert.match(error.message, /^The place to save the file is a link, a folder/);
+  assert.doesNotMatch(error.message, /bundle file/);
+  assert.match(error.next, /Pick a file name/);
+  // The import of a link keeps the words about the bundle file.
+  const link = join(w.home, 'l.json');
+  symlinkSync(folder, link);
+  assert.ok(errorCode(bl(w, ['import', link], w.dst).stderr) === 'BUNDLE_FILE_UNSAFE');
+  assert.equal(parse<{ error: { message: string } }>(bl(w, ['import', link], w.dst).stderr).error.message, BUNDLE_MESSAGES.BUNDLE_FILE_UNSAFE);
+});
+
+test('the import plan and the help say there is no Go back from the command line, and how to undo an import into a new folder', t => {
+  const w = world(t);
+  put(w.src, plainFiles());
+  exportOut(w);
+  const plan = bl(w, ['import', w.out], w.dst);
+  assert.match(plan.stdout, /no save points, so there is no Go back\. To undo an import into a new folder, remove .*\/dst\/\.bowerloom\./);
+  const help = run(w.work, ['help', 'harness'], w.env).stdout;
+  assert.match(help, /an import has no Go back/);
+  assert.match(help, /remove its \.bowerloom folder/);
+});
+
+test('a notes folder that is a link is stored by name and refused by the notes reader, which follows no link', async t => {
+  const w = world(t);
+  put(w.src, NOTES);
+  exportOut(w);
+  const elsewhere = join(w.home, 'elsewhere');
+  mkdirSync(elsewhere);
+  symlinkSync(elsewhere, join(w.dst, 'docs'));
+  const body = parse<ImportBody>(bl(w, ['import', w.out, '--link', 'wiki=docs', '--json'], w.dst).stdout);
+  assert.equal(bl(w, ['import', w.out, '--link', 'wiki=docs', '--approve', body.revision], w.dst).status, 0);
+  const stored = parse<{ sources: { path: string }[] }>(readFileSync(join(w.dst, '.bowerloom', 'knowledge.json'), 'utf8')).sources[0]!.path;
+  assert.equal(stored, 'docs');
+  await assert.rejects(readNotesSummary(join(w.dst, stored)), (e: unknown) => e instanceof NotesRefusal && e.code === 'NOTES_PATH_UNSAFE');
+  // A link in the middle of the path is refused too.
+  mkdirSync(join(elsewhere, 'inner'));
+  symlinkSync(elsewhere, join(w.dst, 'hop'));
+  await assert.rejects(readNotesSummary(join(w.dst, 'hop', 'inner')), (e: unknown) => e instanceof NotesRefusal && e.code === 'NOTES_PATH_UNSAFE');
 });

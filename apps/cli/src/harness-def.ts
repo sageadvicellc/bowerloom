@@ -89,7 +89,8 @@ export const HARNESS_HELP = [
   'Import reads a file made by export, and writes only into a folder whose harness is empty or missing. A missing harness is made empty in the same plan and approval.',
   'A notes name is left out unless you link it: --link <name>=<folder>, with a folder inside the harness folder or inside your home folder. --leave <name> leaves it out, which is the default.',
   'Import runs nothing from the file and installs nothing. The plan lists the same things as export, and needs --acknowledge <hash> when the file holds tools,',
-  'files that can run, values it reads from this computer, or paths from another computer. The command line keeps no save points.',
+  'files that can run, values it reads from this computer, or paths from another computer. The command line keeps no save points, so an import has no Go back:',
+  'to undo an import into a new folder, remove its .bowerloom folder. Export refuses a file inside the .bowerloom folder of the harness it exports.',
   'Every write prints a plan and its revision first. Run the same command with --approve <revision> to apply it.',
   'No command runs an engine. Engine versions come from harness.json.', '',
 ].join('\n');

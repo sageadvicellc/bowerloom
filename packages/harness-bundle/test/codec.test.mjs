@@ -337,9 +337,10 @@ test('the files helper keeps order and execute bits', () => {
 
 test('project-sync re-exports the encoder of this package, so the two cannot drift apart', async () => {
   // The packaging allowlist of the command line lists this package, so project-sync no longer keeps an export of its own.
-  const { def, decoded, encoded } = await bundleOf(notesMap());
-  const viaProjectSync = await exportDefinitionBundle(def);
-  assert.ok(Buffer.from(viaProjectSync.bytes).equals(Buffer.from(encoded.bytes)), 'the same bytes');
-  assert.equal(viaProjectSync.sha256, encoded.sha256);
+  const { def, decoded } = await bundleOf(notesMap());
+  const where = { home: '/nonexistent-home', user: 'tester-account' };
+  const viaProjectSync = await exportDefinitionBundle(def, where), direct = await encodeBundle(def, where);
+  assert.ok(Buffer.from(viaProjectSync.bytes).equals(Buffer.from(direct.bytes)), 'the same bytes');
+  assert.equal(viaProjectSync.sha256, direct.sha256);
   assert.equal(decoded.harness, def.harness.id);
 });
