@@ -172,7 +172,7 @@ test('export a made-up harness in one app and import it in another: into a folde
   await b.pick(fileA);
   const again = await ok<{ bundleId: string }>(p, 'chooseBundle');
   const plan2 = await ok<{ revision: string; acknowledge: string | null; makesHarness?: boolean; changes: { path: string; action: string }[] }>(p, 'planImport', f2.id, again.bundleId, NO_CHOICES);
-  expect(plan2.makesHarness).toBeUndefined();
+  expect(plan2.makesHarness).toBe(false);
   expect(plan2.changes.find(c => c.path === '.bowerloom/harness.json')!.action).toBe('update');
   await ok(p, 'runImport', f2.id, plan2.revision, again.bundleId, NO_CHOICES, plan2.acknowledge);
   expect(readTree(join(emptyDir, '.bowerloom'))).toEqual(sourceFiles);

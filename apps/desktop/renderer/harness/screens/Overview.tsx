@@ -22,7 +22,7 @@ import { useHarnessState } from '../session.js';
 import { useUi } from '../ui.js';
 import { HButton, HIconButton } from '../parts/controls.js';
 import { RefusalNote } from '../sheets/engine-parts.js';
-import { chooseFolderCall, foldersCall, useCall } from '../sheets/use-call.js';
+import { chooseWanted, foldersCall, useCall } from '../sheets/use-call.js';
 import { ENGINE_WORDS } from '../words-engine.js';
 import { FLOW } from '../words-flow.js';
 import { WORDS } from '../words.js';
@@ -71,8 +71,9 @@ export function Overview(): ReactElement {
     open: g => { if (g.folderId !== null) go({ name: 'builder', id: g.folderId }); },
     choose: g => {
       if (engine === null) return;
-      // A closed chooser is no answer. A folder that is not the one shown is refused in words, and nothing else happens.
-      void choosing.plan(ENGINE_WORDS.label.chooseFolder, () => chooseFolderCall(engine), got => {
+      // A closed chooser is no answer. A folder that is not the one shown is refused in words, and nothing else happens. The place's label goes to main, which refuses another
+      // folder before it registers it (so it never joins the list). A place cut down to `…/name` has no full label to send: the screen compares it after the pick, as before.
+      void choosing.plan(ENGINE_WORDS.label.chooseFolder, () => chooseWanted(engine, g.label, () => ui.showToast(OVERVIEW.hint.wrongFolder)), got => {
         if (got === null) return;
         setFolders(got.list);
         if (!chosenMatches(g, got.info.label)) { ui.showToast(OVERVIEW.hint.wrongFolder); return; }

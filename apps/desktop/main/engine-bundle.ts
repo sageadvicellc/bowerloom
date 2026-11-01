@@ -1,21 +1,20 @@
 /**
  * Export and import of a harness (0.8.0-beta.1, journey 4) in the main process: the six share calls of shared/engine/types.ts.
  *  - The window never holds a path, file bytes or an environment value. It names a folder by the id main gave it, a bundle by `bundle-<n>`, and a notes folder by its
- *    notes id. Every argument is checked here before anything is looked up (a bundle id by exact string in a Map, the choices by own properties into a Map and a Set,
- *    a revision and an acknowledgement as 64 lowercase hex characters).
+ *    notes id. The SHAPE of every argument is checked first, before any lookup (a bundle id by exact string, the choices by own properties, a revision and an
+ *    acknowledgement as 64 lowercase hex characters); then the folder, the bundle and the names are looked up.
  *  - Main owns both native dialogs (the save dialog of export, the open dialog of import) and each write question. A bundle file is read once; what is previewed
  *    and written is what was decoded from those bytes.
- *  - The heavy work (decode, inspect, encode, the target of an import, the plan and the write) runs in a worker thread (engine-bundle-work.ts), with a timeout. A worker
- *    that stops is a refusal in words, never a crash, and the bundles it held are gone (UNKNOWN_BUNDLE).
+ *  - The heavy work (decode, inspect, encode, the target of an import, the plan and the write) runs in a worker thread (engine-bundle-work.ts, started by
+ *    engine-bundle-host.ts), with a timeout. A worker that stops is a refusal in words, never a crash, and the bundles it held are gone (UNKNOWN_BUNDLE).
  *  - Every summary that reaches the window, and every acknowledgement hash, is built here or in the worker from the bundle main holds, in the same call, never from a field
  *    the window sent. Every string that came from a file passes `visible()` (through the folder's scrub) before it leaves.
  *  - An import is a save. Its write is the journaled save of packages/adoption, with a save point before and after (engine-bundle-work.ts). It is the only write.
  *    Export writes one new file with `writeBundleFile`, and replaces a file only with the identity the save dialog found.
  */
-import { realpathSync } from 'node:fs';
+import { realpathSync, statSync } from 'node:fs';
 import { userInfo } from 'node:os';
-import { basename, dirname, isAbsolute, join, sep } from 'node:path';
-import { Worker } from 'node:worker_threads';
+import { basename, dirname, isAbsolute, join } from 'node:path';
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import {
   BUNDLE_FILE_SUFFIX, BundleRefusal, bundleTargetIdentity, exportAcknowledgement, importChoicesOf, readBundleFile, writeBundleFile,
@@ -34,89 +33,18 @@ import type {
 import type { HarnessStateDirs } from '../../../packages/project-sync/src/harness-state.js';
 import { ASK, cancelled, canonical, notTheShownPlan } from './engine-consent.js';
 import type { Ask, SaveMarks, ShownPlan, ShownPlans } from './engine-consent.js';
-import { UNKNOWN_BUNDLE_MARK } from './engine-bundle-work.js';
-import type { DecodedView, EncodedView, Job, PlanResult, WireChoices, WriteResult } from './engine-bundle-work.js';
+import { UNKNOWN_BUNDLE_MARK } from './engine-bundle-mark.js';
+import { CodedRefusal } from './engine-bundle-host.js';
+import type { BundleHost } from './engine-bundle-host.js';
+import type { DecodedView, EncodedView, PlanResult, WireChoices, WriteResult } from './engine-bundle-work.js';
 import { copiedExecutables, changeViews } from './engine-save.js';
 import type { SourceOf } from './engine-save.js';
-import type { PlainRefusal } from './engine-bundle-worker.js';
 
-// ---- the worker -------------------------------------------------------------------------------------------------------------
-
-/** A refusal with a code and words, as `refusalOf` reads one. */
-export class CodedRefusal extends Error {
-  constructor(readonly code: string, message: string, readonly paths: readonly string[] = []) { super(message); this.name = 'CodedRefusal'; }
-}
-const STOPPED_READ = 'Bowerloom stopped reading this file before it finished, so it took nothing. Nothing was written. Try again, or choose another file.';
-const STOPPED_WRITE = 'The step that writes stopped before it finished. Nothing more was changed. If a save is left unfinished, use Finish a stopped harness.';
-const TIMED_OUT = 'This took longer than Bowerloom allows, so it stopped. Nothing more was changed.';
-
-export interface BundleHostOptions {
-  /** The worker's file: a path or a URL. Asked when a worker starts. */
-  readonly file: () => string | URL;
-  /** The longest a decode, an encode or a plan may take, in milliseconds. */
-  readonly timeoutMs: number;
-  /** The longest a write may take. A write that times out is stopped like a crash: its journal says what to do. */
-  readonly writeTimeoutMs: number;
-}
-export interface BundleHost {
-  /** Changes when the worker restarts: what it held is gone. */
-  generation(): number;
-  call<T>(job: Job, options?: { readonly transfer?: ArrayBuffer[]; readonly timeoutMs?: number }): Promise<T>;
-  /** Sends a job only if a worker is running. Never starts one and never throws. */
-  tell(job: Job): void;
-  close(): void;
-}
-
-interface Waiting { readonly worker: Worker; readonly resolve: (value: never) => void; readonly reject: (error: unknown) => void; readonly timer: NodeJS.Timeout; readonly write: boolean }
-
-function revive(refusal: PlainRefusal): unknown {
-  if (refusal.kind === 'bundle') return BundleRefusal.fromPlain(refusal.value);
-  if (refusal.kind === 'coded') return new CodedRefusal(refusal.code, refusal.message, refusal.paths);
-  return new CodedRefusal('FAILED', 'Bowerloom could not finish this. Nothing more was changed.');
-}
-
-export function createBundleHost(options: BundleHostOptions): BundleHost {
-  let worker: Worker | null = null;
-  let generation = 0, next = 1;
-  const waiting = new Map<number, Waiting>();
-
-  const failAll = (stopped: Worker, words: (write: boolean) => string): void => {
-    if (worker === stopped) { worker = null; generation += 1; }
-    // Only the jobs this worker held: a worker that was closed and replaced must not fail the jobs of the new one when its exit arrives.
-    for (const [id, w] of [...waiting]) { if (w.worker !== stopped) continue; clearTimeout(w.timer); waiting.delete(id); w.reject(new CodedRefusal('FAILED', words(w.write))); }
-  };
-  const start = (): Worker => {
-    const w = new Worker(options.file(), { resourceLimits: { maxOldGenerationSizeMb: 2048 } });
-    w.unref();
-    w.on('message', (m: { id: number; ok: boolean; value?: unknown; refusal?: PlainRefusal }) => {
-      const found = waiting.get(m.id);
-      if (found === undefined) return;
-      clearTimeout(found.timer); waiting.delete(m.id);
-      if (m.ok) found.resolve(m.value as never); else found.reject(revive(m.refusal ?? { kind: 'bug' }));
-    });
-    // A worker that cannot start, or dies, is a refusal for every call waiting on it. Nothing here throws into the main process.
-    w.on('error', () => failAll(w, write => (write ? STOPPED_WRITE : STOPPED_READ)));
-    w.on('exit', () => failAll(w, write => (write ? STOPPED_WRITE : STOPPED_READ)));
-    return w;
-  };
-  return {
-    generation: () => generation,
-    call: <T,>(job: Job, opts: { readonly transfer?: ArrayBuffer[]; readonly timeoutMs?: number } = {}): Promise<T> => new Promise<T>((resolve, reject) => {
-      const write = job.op === 'write';
-      let w: Worker;
-      try { w = worker ?? (worker = start()); } catch { reject(new CodedRefusal('FAILED', write ? STOPPED_WRITE : STOPPED_READ)); return; }
-      const id = next; next += 1;
-      const timer = setTimeout(() => {
-        failAll(w, () => TIMED_OUT);
-        void w.terminate().catch(() => undefined);
-      }, opts.timeoutMs ?? (write ? options.writeTimeoutMs : options.timeoutMs));
-      waiting.set(id, { worker: w, resolve: resolve as (value: never) => void, reject, timer, write });
-      try { w.postMessage({ id, job }, opts.transfer ?? []); } catch { clearTimeout(timer); waiting.delete(id); reject(new CodedRefusal('FAILED', write ? STOPPED_WRITE : STOPPED_READ)); }
-    }),
-    tell: job => { try { worker?.postMessage({ id: 0, job }); } catch { /* the worker is gone; what it held is gone too */ } },
-    close: () => { const w = worker; worker = null; generation += 1; if (w !== null) void w.terminate().catch(() => undefined); },
-  };
-}
+/** A save place inside the harness folder's own `.bowerloom`, refused by main, in main's own words (a code of main, as EXPORT_NO_DEFINITION is). */
+export const EXPORT_TARGET_IN_HARNESS = 'EXPORT_TARGET_IN_HARNESS';
+export const EXPORT_TARGET_IN_HARNESS_WORDS = 'That place is inside the folder .bowerloom of this harness, and a file there would break the harness. Choose a place outside it, such as your Desktop. Nothing was written.';
+/** The read of a bundle file that does not end in time. */
+const READ_TIMED_OUT = 'Reading the file took longer than Bowerloom allows, so it stopped. Nothing was read or written. Check that the disk or the network folder answers, then try again.';
 
 // ---- views ------------------------------------------------------------------------------------------------------------------
 
@@ -126,17 +54,19 @@ const plainList = <T,>(rows: readonly T[]): ShareList<T> => ({ rows: rows.slice(
 /**
  * What a bundle holds, for the window: every string passed through `scrub` (which writes hidden characters out and replaces this computer's paths), every list cut at
  * SHARE_LIST_LIMIT with the rows that run code or reach a host first (`capRiskFirst`, the rule the sample uses too). Built from the package's own summary.
+ * What a person ticks is never cut here: the command, the arguments, the host and the event of a tool are shown whole (the package refuses a bundle whose text passes
+ * its display limits, so a tick never covers text the window did not show).
  */
 export function shareSummary(s: BundleSummary, scrub: Scrub): ShareSummary {
   const t = (text: string): string => cut(scrub(text));
   return {
     harness: t(s.harness), engines: [...s.engines], instructions: s.instructions, counts: { ...s.counts },
     tools: capRiskFirst(s.tools.map(x => ({
-      name: t(x.name), kind: x.kind, transport: x.transport ?? null, runsCode: x.runsCode, command: x.command === undefined ? null : t(x.command),
-      args: (x.args ?? []).slice(0, 20).map(t), host: x.host === undefined ? null : t(x.host), event: x.event === undefined ? null : t(x.event), flags: [...(x.addressFlags ?? [])],
+      name: t(x.name), kind: x.kind, transport: x.transport ?? null, runsCode: x.runsCode, command: x.command === undefined ? null : scrub(x.command),
+      args: (x.args ?? []).map(a => scrub(a)), host: x.host === undefined ? null : scrub(x.host), event: x.event === undefined ? null : scrub(x.event), flags: [...(x.addressFlags ?? [])],
     })), toolRisk),
     codeFiles: capRiskFirst(s.codeFiles.map(x => ({ path: t(x.path), why: x.why })), codeRisk),
-    secrets: capRiskFirst(s.secrets.map(x => ({ kind: x.kind, name: t(x.name), sinks: x.sinks.map(k => ({ tool: t(k.tool), field: k.field, host: k.host === undefined ? null : t(k.host) })) })), secretRisk),
+    secrets: capRiskFirst(s.secrets.map(x => ({ kind: x.kind, name: t(x.name), sinks: x.sinks.map(k => ({ tool: t(k.tool), field: k.field, host: k.host === undefined ? null : scrub(k.host) })) })), secretRisk),
     notes: plainList(s.notes.map(n => ({ name: t(n.name), readBy: n.readBy.map(t) }))),
     borrowed: plainList(s.borrowed.map(b => ({ name: t(b.name), marketplace: t(b.marketplace), version: t(b.version) }))),
     foreignPaths: plainList(s.foreignPaths.map(p => ({ path: t(p.path), line: p.line ?? null, text: t(p.text) }))),
@@ -147,6 +77,7 @@ export function shareSummary(s: BundleSummary, scrub: Scrub): ShareSummary {
 
 const HEX64 = /^[a-f0-9]{64}$/;
 const NOTES_ID = /^notes-[0-9]{1,6}$/;
+const FOLDER_ID = /^folder-[0-9]{1,6}$/;
 const plain = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v) && (Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null);
 
 /** What the share calls need of the service. The service owns the folders, the plans and the gate. */
@@ -163,13 +94,14 @@ export interface ShareEnv {
   readonly chooseBundleOpen: () => Promise<string | null>;
   readonly chooseBundleSave: (suggested: string) => Promise<string | null>;
   readonly confirm: (ask: Ask) => Promise<boolean>;
-  /** Throws the call's own short refusal (BAD_ARGUMENT or UNKNOWN_BUNDLE) or answers from the service. */
+  /** The longest a read of a bundle file may take, in milliseconds. */
+  readonly readTimeoutMs: number;
+  /** Throws the call's own short refusal (BAD_ARGUMENT or UNKNOWN_BUNDLE). */
   readonly bad: () => never;
   readonly unknownBundle: () => never;
   readonly folderOf: (id: unknown) => ShareFolder;
   readonly answer: <T>(f: { readonly id: string; readonly scrub: Scrub } | null, run: () => Promise<T> | T) => Promise<Answer<T>>;
   readonly written: <T>(f: ShareFolder, kind: 'import', revision: string, choices: unknown, run: () => Promise<T>) => Promise<Answer<T>>;
-  readonly scenarioOf: <T>(f: ShareFolder, spec: { step: string }, run: () => Promise<T>) => Promise<T>;
   readonly whileStopped: (f: ShareFolder) => void;
   /** The stored path of a notes folder, by the id main gave it (throws its own refusal). */
   readonly sourcePathOf: (f: ShareFolder, notesId: string) => string;
@@ -177,6 +109,7 @@ export interface ShareEnv {
   readonly notesLabel: (notesId: string) => string;
   readonly sourceViewOf: (f: ShareFolder) => SourceOf;
   readonly scrubbed: (f: ShareFolder, d: DefinitionView) => DefinitionView;
+  /** Clears every plan a write of this folder makes stale. Called after any import write, done or refused. */
   readonly afterImport: (f: ShareFolder) => void;
   readonly record: (input: Readonly<Record<string, unknown>>) => void;
 }
@@ -185,6 +118,8 @@ interface Held {
   readonly id: string; readonly name: string; readonly bytes: number; readonly sha256: string; readonly harness: string; readonly summary: BundleSummary;
   readonly noteNames: ReadonlySet<string>; readonly generation: number;
 }
+/** The notes choices after the shape check and before the names are looked up. */
+interface ChoicesShape { readonly link: readonly (readonly [string, string])[]; readonly leave: readonly string[] }
 /** What a window sent as the notes choices, checked: notes names the bundle holds, each linked to a notes id main gave out, or left out. */
 interface Choices { readonly link: ReadonlyMap<string, string>; readonly leave: ReadonlySet<string> }
 
@@ -195,11 +130,26 @@ export interface ShareCalls {
   planImport(folderId: unknown, bundleId: unknown, choices: unknown): Promise<Answer<ImportView>>;
   runImport(folderId: unknown, revision: unknown, bundleId: unknown, choices: unknown, acknowledged: unknown): Promise<Answer<SaveWritten>>;
   discardBundle(bundleId: unknown): Promise<boolean>;
-  close(): void;
+  close(): Promise<void>;
 }
 
 const refusal = (code: string, message: string): { ok: false; refusal: { code: string; message: string; paths: readonly string[] } } => ({ ok: false, refusal: { code, message, paths: [] } });
 const staleWords = (): string => notTheShownPlan().refusal.message;
+const codeOf = (error: unknown): string => { const c = (error as { code?: unknown } | null)?.code; return typeof c === 'string' && /^[A-Z][A-Z0-9_]{2,63}$/.test(c) ? c : 'FAILED'; };
+/** The refusals that say "this is not the plan shown" or "tick first": a stale or unticked plan is not a failure of the product, and the usage log leaves it out. */
+const UNRECORDED = new Set([NOT_THE_PLAN_SHOWN, EXPORT_NEEDS_ACKNOWLEDGEMENT, IMPORT_NEEDS_ACKNOWLEDGEMENT]);
+
+/** True when `dir` is `inside` or a folder below it, compared by device and inode of each folder up the chain, so a case variant or a link cannot slip by. */
+function isInside(dir: string, inside: string): boolean {
+  let want;
+  try { want = statSync(inside); } catch { return false; }
+  for (let at = dir; ;) {
+    try { const st = statSync(at); if (st.dev === want.dev && st.ino === want.ino) return true; } catch { return false; }
+    const up = dirname(at);
+    if (up === at) return false;
+    at = up;
+  }
+}
 
 export function createShare(env: ShareEnv): ShareCalls {
   const held = new Map<string, Held>();
@@ -207,33 +157,60 @@ export function createShare(env: ShareEnv): ShareCalls {
   /** What the last export plan of each folder offered: the file name and its size, for main's question. */
   const facts = new Map<string, { readonly file: string; readonly bytes: number }>();
 
+  /** Runs a step and writes its line of the usage log: the step and the code only, never a name or a path. A stale or unticked plan writes none. */
+  async function recorded<T>(step: string, run: () => Promise<T>): Promise<T> {
+    try { const r = await run(); env.record({ kind: 'scenario', step, outcome: 'done' }); return r; } catch (error) {
+      const code = codeOf(error);
+      if (!UNRECORDED.has(code)) env.record({ kind: 'scenario', step, outcome: 'refused', code });
+      throw error;
+    }
+  }
+
+  // ---- the shape of each argument, before any lookup
   const revisionArg = (v: unknown): string => (typeof v === 'string' && HEX64.test(v) ? v : env.bad());
   const ackArg = (v: unknown): string | null => (v === null ? null : revisionArg(v));
-  const bundleOf = (id: unknown): Held => {
-    if (typeof id !== 'string' || !SHARE_BUNDLE_ID.test(id)) return env.bad();
+  const folderArg = (v: unknown): string => (typeof v === 'string' && FOLDER_ID.test(v) ? v : env.bad());
+  const bundleArg = (v: unknown): string => (typeof v === 'string' && SHARE_BUNDLE_ID.test(v) ? v : env.bad());
+  /**
+   * The shape of the notes choices: a plain object with exactly `link` and `leave`; at most SHARE_NOTES_LIMIT names in all, each at most SHARE_NAME_LIMIT characters; a link to
+   * an id in the form of a notes id; no name twice in `leave`. Own properties only, read without indexing by a name.
+   */
+  const choicesShape = (raw: unknown): ChoicesShape => {
+    if (!plain(raw) || Object.keys(raw).length !== 2 || !Object.hasOwn(raw, 'link') || !Object.hasOwn(raw, 'leave')) return env.bad();
+    const linkIn = raw.link, leaveIn = raw.leave;
+    if (!plain(linkIn) || !Array.isArray(leaveIn)) return env.bad();
+    const entries = Object.entries(linkIn);
+    if (entries.length + leaveIn.length > SHARE_NOTES_LIMIT) return env.bad();
+    const link: [string, string][] = [];
+    for (const [name, id] of entries) {
+      if (name.length > SHARE_NAME_LIMIT || typeof id !== 'string' || !NOTES_ID.test(id)) return env.bad();
+      link.push([name, id]);
+    }
+    const leave: string[] = [];
+    for (const name of leaveIn as unknown[]) {
+      if (typeof name !== 'string' || name.length > SHARE_NAME_LIMIT) return env.bad();
+      leave.push(name);
+    }
+    if (new Set(leave).size !== leave.length) return env.bad();
+    return { link, leave };
+  };
+  // ---- the lookups, after every shape is known
+  const bundleOf = (id: string): Held => {
     const b = held.get(id);
     if (b === undefined) return env.unknownBundle();
     // The worker restarted since: it no longer holds this bundle.
     if (b.generation !== env.host.generation()) { held.delete(id); return env.unknownBundle(); }
     return b;
   };
-  /**
-   * The notes choices, before any lookup: a plain object with exactly `link` and `leave`; at most SHARE_NOTES_LIMIT names in all, each at most SHARE_NAME_LIMIT characters
-   * and a name the bundle holds; a link to a notes id main gave out; no name twice or in both. Own properties only, copied into a Map and a Set.
-   */
-  const choicesArg = (b: Held, raw: unknown): Choices => {
-    if (!plain(raw) || Object.keys(raw).length !== 2 || !Object.hasOwn(raw, 'link') || !Object.hasOwn(raw, 'leave')) return env.bad();
-    const linkIn = raw.link, leaveIn = raw.leave;
-    if (!plain(linkIn) || !Array.isArray(leaveIn)) return env.bad();
-    const entries = Object.entries(linkIn);
-    if (entries.length + leaveIn.length > SHARE_NOTES_LIMIT) return env.bad();
+  /** The names a bundle holds, each linked to a notes id main gave out or left out; a name in both lists, or one the bundle does not hold, is refused. */
+  const choicesFor = (b: Held, shape: ChoicesShape): Choices => {
     const link = new Map<string, string>(), leave = new Set<string>();
-    for (const [name, id] of entries) {
-      if (name.length > SHARE_NAME_LIMIT || !b.noteNames.has(name) || typeof id !== 'string' || !NOTES_ID.test(id) || !env.hasNotes(id)) return env.bad();
+    for (const [name, id] of shape.link) {
+      if (!b.noteNames.has(name) || !env.hasNotes(id)) return env.bad();
       link.set(name, id);
     }
-    for (const name of leaveIn as unknown[]) {
-      if (typeof name !== 'string' || name.length > SHARE_NAME_LIMIT || !b.noteNames.has(name) || link.has(name) || leave.has(name)) return env.bad();
+    for (const name of shape.leave) {
+      if (!b.noteNames.has(name) || link.has(name)) return env.bad();
       leave.add(name);
     }
     return { link, leave };
@@ -253,7 +230,7 @@ export function createShare(env: ShareEnv): ShareCalls {
   // ---- export -------------------------------------------------------------------------------------------------------------
 
   async function planExport(folderId: unknown): Promise<Answer<ExportView>> {
-    const f = env.folderOf(folderId);
+    const f = env.folderOf(folderArg(folderId));
     env.plans.clear(f.id, 'export'); facts.delete(f.id);
     return env.answer(f, async () => {
       env.whileStopped(f);
@@ -267,23 +244,27 @@ export function createShare(env: ShareEnv): ShareCalls {
     });
   }
 
-  /** Where the person chose to save: an absolute path whose folder is resolved now, outside the harness folder's `.bowerloom`, and the identity of a file already there. */
+  /**
+   * Where the person chose to save: an absolute path whose folder is resolved now (with the system's own case, so a case variant of a name is the same folder), not inside
+   * the harness folder's `.bowerloom` (compared by device and inode up the chain of folders), and the identity of a file already there.
+   */
   async function exportTarget(f: ShareFolder, picked: unknown): Promise<{ path: string; name: string; where: string; identity: Awaited<ReturnType<typeof bundleTargetIdentity>> }> {
     if (typeof picked !== 'string' || !isAbsolute(picked) || picked.includes('\u0000')) throw new BundleRefusal('BUNDLE_USAGE');
     const name = basename(picked);
     if (name === '' || name === '.' || name === '..' || Buffer.byteLength(name) > 255) throw new BundleRefusal('BUNDLE_USAGE');
     let parent: string;
-    try { parent = realpathSync(dirname(picked)); } catch (error) {
-      throw new BundleRefusal('BUNDLE_FILE_FAILED', [], [], typeof (error as NodeJS.ErrnoException).code === 'string' ? (error as NodeJS.ErrnoException).code : undefined);
+    try { parent = realpathSync.native(dirname(picked)); } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      throw new BundleRefusal('BUNDLE_FILE_FAILED', [], [], typeof code === 'string' ? code : undefined);
     }
-    const inside = join(f.dir, '.bowerloom');
-    if (parent === inside || parent.startsWith(`${inside}${sep}`)) throw new BundleRefusal('BUNDLE_USAGE');
+    if (isInside(parent, join(f.dir, '.bowerloom'))) throw new DefinitionError(EXPORT_TARGET_IN_HARNESS, EXPORT_TARGET_IN_HARNESS_WORDS);
     const path = join(parent, name);
     return { path, name, where: env.scrubAll(parent), identity: await bundleTargetIdentity(path) };
   }
 
   async function runExport(folderId: unknown, revision: unknown, acknowledged: unknown): Promise<Answer<ExportWritten>> {
-    const f = env.folderOf(folderId), rev = revisionArg(revision), ack = ackArg(acknowledged);
+    const folder = folderArg(folderId), rev = revisionArg(revision), ack = ackArg(acknowledged);
+    const f = env.folderOf(folder);
     const stopped = await env.answer(f, () => env.whileStopped(f));
     if (!stopped.ok) return stopped;
     const shown = env.plans.peek(f.id, 'export'), fact = facts.get(f.id);
@@ -298,7 +279,7 @@ export function createShare(env: ShareEnv): ShareCalls {
     const { path, name, where, identity } = target.value;
     if (!(await env.confirm(ASK.exportBundle(f.label, name, fact.bytes, rev, identity !== null, where)))) return cancelled();
     env.plans.clear(f.id, 'export');
-    return env.answer(f, () => env.scenarioOf(f, { step: 'export' }, async () => {
+    return env.answer(f, () => recorded('export', async () => {
       // The file is encoded again now; when the harness changed since the plan, it is not the plan shown, and nothing is written.
       const e = await env.host.call<EncodedView>({ op: 'encode', projectDir: f.dir, home: env.home, user: env.user, wantBytes: true });
       if (e.sha256 !== rev || e.bytes === null) throw new DefinitionError(NOT_THE_PLAN_SHOWN, staleWords());
@@ -311,12 +292,19 @@ export function createShare(env: ShareEnv): ShareCalls {
 
   // ---- import: choose the file -------------------------------------------------------------------------------------------
 
+  /** Reads the bundle file with a timer, so a file on a stalled volume does not hold the queue of every engine call. The read itself ends when the system lets it. */
+  async function readWithin(path: string): Promise<Uint8Array> {
+    let timer: NodeJS.Timeout | undefined;
+    const late = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new CodedRefusal('FAILED', READ_TIMED_OUT, [], 'READ_TIMED_OUT')), env.readTimeoutMs); });
+    try { return await Promise.race([readBundleFile(path), late]); } finally { clearTimeout(timer); }
+  }
+
   async function chooseBundle(): Promise<Answer<BundleView> | null> {
     const picked = await env.chooseBundleOpen();
     if (picked === null) return null;
-    return env.answer(null, async () => {
+    return env.answer(null, () => recorded('bundle-open', async () => {
       if (typeof picked !== 'string' || !isAbsolute(picked) || picked.includes('\u0000')) throw new BundleRefusal('BUNDLE_USAGE');
-      const read = await readBundleFile(picked);
+      const read = await readWithin(picked);
       // The worker takes the buffer itself. A view onto a larger buffer is copied first, so no other view is cut off.
       const bytes = read.byteOffset === 0 && read.byteLength === read.buffer.byteLength ? read : Uint8Array.from(read);
       counter += 1;
@@ -326,15 +314,20 @@ export function createShare(env: ShareEnv): ShareCalls {
       held.set(id, { id, name, bytes: d.bytes, sha256: d.sha256, harness: d.harness, summary: d.summary, noteNames: new Set(d.summary.notes.map(n => n.name)), generation: env.host.generation() });
       while (held.size > SHARE_HELD_BUNDLES) { const old = held.keys().next().value!; held.delete(old); env.host.tell({ op: 'drop', key: old }); }
       return { bundleId: id, name, bytes: d.bytes, harness: env.scrubAll(d.harness), summary: shareSummary(d.summary, env.scrubAll) } satisfies BundleView;
-    });
+    }));
   }
 
   // ---- import: plan and write ---------------------------------------------------------------------------------------------
 
-  const marksOf = (r: PlanResult): SaveMarks => ({ executables: r.changes.filter(c => r.executables.includes(c.path)).map(c => `.bowerloom/${c.path}`), modeOnly: [], deletes: r.changes.filter(c => c.action === 'delete').length });
+  /** The files that can run, as the native question names them: each path written out and cut, so a long or look-alike name cannot fill or fool the question. */
+  const marksOf = (r: PlanResult): SaveMarks => ({
+    executables: r.changes.filter(c => r.executables.includes(c.path)).map(c => cut(env.scrubAll(`.bowerloom/${c.path}`))),
+    modeOnly: [], deletes: r.changes.filter(c => c.action === 'delete').length,
+  });
 
   async function planImport(folderId: unknown, bundleId: unknown, choices: unknown): Promise<Answer<ImportView>> {
-    const f = env.folderOf(folderId), b = bundleOf(bundleId), c = choicesArg(b, choices);
+    const folder = folderArg(folderId), bundle = bundleArg(bundleId), shape = choicesShape(choices);
+    const f = env.folderOf(folder), b = bundleOf(bundle), c = choicesFor(b, shape);
     env.plans.clear(f.id, 'import');
     return env.answer(f, async () => {
       env.whileStopped(f);
@@ -349,8 +342,7 @@ export function createShare(env: ShareEnv): ShareCalls {
       });
       const value: ImportView = {
         folder: f.label, changes, definition: env.scrubbed(f, { ...r.outline, sources }), noop: changes.length === 0, revision: r.revision, removedSources: [],
-        copiedExecutables: copiedExecutables(changes), acknowledge: r.acknowledge, bundleId: b.id, summary: shareSummary(b.summary, f.scrub), notes,
-        ...(r.makes ? { makesHarness: true } : {}),
+        copiedExecutables: copiedExecutables(changes), acknowledge: r.acknowledge, bundleId: b.id, summary: shareSummary(b.summary, f.scrub), notes, makesHarness: r.makes,
       };
       const ask: Ask | null = value.noop ? null : ASK.importBundle(f.label, r.changes.length, r.revision, marksOf(r), r.makes);
       env.plans.set(f.id, 'import', { revision: r.revision, choices: canonical(recordOf(b, c, r.acknowledge)), ask } satisfies ShownPlan);
@@ -359,43 +351,52 @@ export function createShare(env: ShareEnv): ShareCalls {
   }
 
   async function runImport(folderId: unknown, revision: unknown, bundleId: unknown, choices: unknown, acknowledged: unknown): Promise<Answer<SaveWritten>> {
-    const f = env.folderOf(folderId), rev = revisionArg(revision), b = bundleOf(bundleId), c = choicesArg(b, choices), ack = ackArg(acknowledged);
+    const folder = folderArg(folderId), rev = revisionArg(revision), bundle = bundleArg(bundleId), shape = choicesShape(choices), ack = ackArg(acknowledged);
+    const f = env.folderOf(folder), b = bundleOf(bundle), c = choicesFor(b, shape);
     const stopped = await env.answer(f, () => env.whileStopped(f));
     if (!stopped.ok) return stopped;
-    // A plan that asks for an acknowledgement is written only with it, before any dialog. A plan that is not the one shown is refused below, as every write is.
+    // The acknowledgement the plan shown last asks for, before any dialog: the one it names, or none. A plan that is not the one shown is refused below, as every write is.
     const shown = env.plans.peek(f.id, 'import');
     if (shown !== null && shown.revision === rev) {
       const want = JSON.parse(shown.choices) as { bundle: string; acknowledged: string | null };
-      if (canonical({ ...want, acknowledged: null }) === canonical(recordOf(b, c, null)) && want.acknowledged !== null && want.acknowledged !== ack) {
+      if (canonical({ ...want, acknowledged: null }) === canonical(recordOf(b, c, null)) && want.acknowledged !== ack) {
         return refusal(IMPORT_NEEDS_ACKNOWLEDGEMENT, SHARE_MAIN_WORDS.IMPORT_NEEDS_ACKNOWLEDGEMENT);
       }
     }
-    return env.written(f, 'import', rev, recordOf(b, c, ack), () => env.scenarioOf(f, { step: 'import' }, async () => {
-      const r = await env.host.call<WriteResult>({
-        op: 'write', key: b.id, choices: wireOf(f, b, c), revision: rev, acknowledged: ack, dirs: f.dirs, now: env.now().toISOString(), projectDir: f.dir, adoptState: f.adoptState,
-      }).catch(unknownAsCall);
-      env.afterImport(f);
-      const warnings = r.warnings.map(w => f.scrub(w));
-      return { written: r.written.map(p => f.scrub(`.bowerloom/${p}`)), version: r.version, ...(warnings.length > 0 ? { warnings } : {}) } satisfies SaveWritten;
+    return env.written(f, 'import', rev, recordOf(b, c, ack), () => recorded('import', async () => {
+      try {
+        const r = await env.host.call<WriteResult>({
+          op: 'write', key: b.id, choices: wireOf(f, b, c), revision: rev, acknowledged: ack, dirs: f.dirs, now: env.now().toISOString(), projectDir: f.dir, adoptState: f.adoptState,
+        }).catch(unknownAsCall);
+        if (r.pointCode !== null) env.record({ kind: 'scenario', step: 'save-point', outcome: 'refused', code: r.pointCode });
+        const warnings = r.warnings.map(w => f.scrub(w));
+        return { written: r.written.map(p => f.scrub(`.bowerloom/${p}`)), version: r.version, ...(warnings.length > 0 ? { warnings } : {}) } satisfies SaveWritten;
+      } finally {
+        // Done or refused, no plan shown before this write can be written now: the folder may have changed.
+        env.afterImport(f);
+      }
     }));
   }
   /** A bundle the worker no longer holds is the call's own short refusal, as a bundle id main never gave. */
   function unknownAsCall(error: unknown): never {
-    if ((error instanceof CodedRefusal && error.code === UNKNOWN_BUNDLE_MARK) || (error as { code?: unknown } | null)?.code === UNKNOWN_BUNDLE_MARK) return env.unknownBundle();
+    if ((error as { code?: unknown } | null)?.code === UNKNOWN_BUNDLE_MARK) return env.unknownBundle();
     throw error;
   }
 
   async function discardBundle(bundleId: unknown): Promise<boolean> {
-    if (typeof bundleId !== 'string' || !SHARE_BUNDLE_ID.test(bundleId)) return env.bad();
-    const had = held.delete(bundleId);
-    if (had) env.host.tell({ op: 'drop', key: bundleId });
+    const id = bundleArg(bundleId);
+    const had = held.delete(id);
+    if (had) env.host.tell({ op: 'drop', key: id });
     return had;
   }
 
   return { planExport, runExport, chooseBundle, planImport, runImport, discardBundle, close: () => env.host.close() };
 }
 
-/** The user name of the account that runs the app, matched literally in the files of an export. Empty when the system gives none. */
+/** The user name of the account that runs the app, matched literally in the files of an export. Empty when the system gives none, and then the log says so. */
 export function accountName(): string {
-  try { return userInfo().username; } catch { return ''; }
+  try { return userInfo().username; } catch (error) {
+    console.error('Bowerloom could not read the user name of this account, so an export matches paths by shape only.', error instanceof Error ? error.message : String(error));
+    return '';
+  }
 }

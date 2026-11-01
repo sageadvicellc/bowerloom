@@ -276,6 +276,7 @@ export const NOTES_REFUSAL_WORDS: Readonly<Record<string, string>> = Object.free
   NOTES_PARTIAL: 'Check the files listed, then start again in an empty folder.',
   KIT_INVALID: 'Install Bowerloom again to repair the notes keeper.',
   NOT_A_FOLDER: 'Choose a folder, not a file.',
+  NOT_THE_FOLDER_SHOWN: 'Choose the folder that the screen names.',
   NOTES_NOT_CHOSEN: 'Choose this folder with Use my notes first.',
   REPORT_NONE: 'Ask the Notes keeper for a tidy-up report first.',
   REPORT_NOT_SHOWN: 'Close this sheet and open it again to read the notes.',

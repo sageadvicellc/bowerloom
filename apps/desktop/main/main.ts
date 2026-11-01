@@ -220,7 +220,7 @@ app.whenReady().then(async () => {
       });
       engineForExit = engine;
       // Main's private copies of tidy-up reports go when the app quits. A copy left by a hard kill stays in the person's own temporary folder.
-      app.once('quit', () => { engine.clearReportCopies(); engine.close(); });
+      app.once('quit', () => { try { engine.clearReportCopies(); } finally { void engine.close(); } });
     }
   }
   createWindow();

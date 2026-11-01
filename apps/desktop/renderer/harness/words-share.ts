@@ -102,6 +102,8 @@ export const SHARE_REFUSAL_WORDS: Readonly<Record<string, string>> = Object.free
   IMPORT_NEEDS_ACKNOWLEDGEMENT: 'Tick that you read them, then import.',
   EXPORT_NEEDS_ACKNOWLEDGEMENT: 'Tick that you read them, then export.',
   EXPORT_NO_DEFINITION: 'Make a harness first with New harness from a folder.',
+  EXPORT_TARGET_IN_HARNESS: 'Choose the place to save again, outside the harness folder.',
+  FAILED: 'Try again. If it fails again, report a problem.',
   SAVE_NO_DEFINITION: 'Choose the folder again, then plan the import again.',
   SAVE_STALE: 'The folder changed since. Plan the import again.',
   SAVE_EXECUTABLE_UNACKNOWLEDGED: 'Tick that you read the files that can run, then import.',

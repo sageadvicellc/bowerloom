@@ -19,8 +19,11 @@ import { INCOMPLETE_RULES, editDefinition, loadDefinition, loadDefinitionFiles, 
 import type { Definition, DefinitionEdit, DefinitionFile, EngineTarget, KnowledgeSource, SourceRecord } from '../../../packages/harness-definition/src/index.js';
 import { SaveRefusal } from '../../../packages/adoption/src/index.js';
 import type { SaveRecoveryPlan } from '../../../packages/adoption/src/index.js';
-import { checkVersionsFit, listVersions, recordVersionLocked } from '../../../packages/project-sync/src/index.js';
-import type { VersionEntry } from '../../../packages/project-sync/src/index.js';
+// The version store is imported from its own modules, not from the package barrel: the worker of export and import (main/engine-bundle-work.ts) reaches this file, and the
+// barrel would link the skill installer and its network code into the worker for no reason (tests/bundle-worker-static.test.ts holds what the worker links).
+import { checkVersionsFit, listVersions } from '../../../packages/project-sync/src/versions.js';
+import type { VersionEntry } from '../../../packages/project-sync/src/versions.js';
+import { recordVersionLocked } from '../../../packages/project-sync/src/versions-locked.js';
 import type { HarnessStateDirs } from '../../../packages/project-sync/src/harness-state.js';
 import { ENGINE_IDS } from '../shared/engine/engines.js';
 import { KIT_ALREADY_ADDED, KIT_IDS, KIT_INVALID, KIT_MAIN_WORDS, KIT_MARKETPLACE, SAVE_MAIN_WORDS, SAVE_NO_DEFINITION, SAVE_POINT_TOO_LARGE, SAVE_SOURCE_MISSING, SOURCE_NAME_TAKEN } from '../shared/engine/types.js';

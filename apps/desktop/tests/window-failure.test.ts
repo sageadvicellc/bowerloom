@@ -144,5 +144,5 @@ test('main.ts: a dead or unloadable window goes through windowFailure and app.qu
   assert.deepEqual(exits, ['2', '1']);
   const startup = main.slice(main.indexOf('function startupFailed'), main.indexOf('let engineForExit'));
   assert.match(startup, /app\.exit\(1\)/);
-  assert.match(main, /app\.once\('quit', \(\) => \{ engine\.clearReportCopies\(\); engine\.close\(\); \}\)/, 'before-quit and quit still run for the report copies and stop the worker');
+  assert.match(main, /app\.once\('quit', \(\) => \{ try \{ engine\.clearReportCopies\(\); \} finally \{ void engine\.close\(\); \} \}\)/, 'before-quit and quit still run for the report copies and stop the worker');
 });

@@ -2,7 +2,7 @@
 // fails, a worker that stops, and the folder chooser that registers nothing the window did not accept. Real packages and the real worker thread; made-up values only.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadDefinition } from '../../../packages/harness-definition/src/index.js';
 import { harnessStateDirs } from '../../../packages/project-sync/src/harness-state.js';
@@ -95,7 +95,7 @@ test('a plan for a folder with no harness is no longer the plan once a harness a
   assert.deepEqual(readdirSync(join(dir, '.bowerloom')), ['harness.json']);
   // Planning again is a plan for an empty harness: harness.json is an update.
   const again = value(await b.service.planImport(folderId, bundleId, NO_CHOICES));
-  assert.equal(again.makesHarness, undefined);
+  assert.equal(again.makesHarness, false);
   assert.notEqual(again.revision, plan.revision, 'the folder\'s harness state is part of the revision');
 });
 
@@ -265,33 +265,78 @@ test('a folder whose .bowerloom holds something that is not a harness part is re
   assert.deepEqual(readdirSync(join(dir, '.bowerloom')), ['notes-of-mine.txt']);
 });
 
-test('a write that fails after the empty harness was made leaves a valid empty harness and none of the files, and the folder can be imported into again', async t => {
-  const { b, file, dir } = await pair(t, 'fails');
-  // The work runs here without a worker thread so the save point store can be made to fail at the exact step after the empty harness exists.
-  const { run } = await import('../main/engine-bundle-work.js');
-  const f = (await b.service.folders())[0]!;
+/**
+ * The work of an import run here, without a worker thread, so a test can make the save fail at the exact step after the empty harness exists. The state folder of the
+ * folder is the one the service uses.
+ */
+async function inProcess(t: test.TestContext, name: string, key: string): Promise<{ b: Share; dir: string; dirs: ReturnType<typeof harnessStateDirs>; io: { projectDir: string; adoptState: string }; choices: { link: Map<string, string>; leave: Set<string> }; work: typeof import('../main/engine-bundle-work.js'); plan: { revision: string; acknowledge: string | null; makes: boolean } }> {
+  const { b, file, dir } = await pair(t, name);
+  const work = await import('../main/engine-bundle-work.js');
   const dirs = harnessStateDirs(join(b.home, '.local', 'state', 'bowerloom'), dir);
   const io = { projectDir: dir, adoptState: dirs.adoption };
   const choices = { link: new Map<string, string>(), leave: new Set<string>() };
-  await run({ op: 'decode', key: 'bundle-77', bytes: readFileSync(file) });
-  const plan = await run({ op: 'plan', key: 'bundle-77', choices, ...io }) as { revision: string; acknowledge: string | null; makes: boolean };
+  await work.run({ op: 'decode', key, bytes: readFileSync(file) });
+  const plan = await work.run({ op: 'plan', key, choices, ...io }) as { revision: string; acknowledge: string | null; makes: boolean };
   assert.equal(plan.makes, true);
-  const broken = join(b.base, 'unwritable');
-  mkdirSync(broken, { mode: 0o500 });
-  t.after(() => { try { chmodSync(broken, 0o700); } catch { /* the folder is gone already */ } });
-  let thrown: unknown = null;
-  try { await run({ op: 'write', key: 'bundle-77', choices, revision: plan.revision, acknowledged: plan.acknowledge, dirs: { ...dirs, base: join(broken, 'harness') }, now: '2026-10-31T12:00:00Z', ...io }); } catch (error) { thrown = error; }
-  assert.ok(thrown !== null, 'the write failed');
-  // A valid harness with no parts, and none of the bundle\'s files.
-  const loaded = loadDefinition(join(dir, '.bowerloom'));
+  return { b, dir, dirs, io, choices, work, plan };
+}
+const write = (x: Awaited<ReturnType<typeof inProcess>>, key: string, dirs = x.dirs): Promise<unknown> =>
+  x.work.run({ op: 'write', key, choices: x.choices, revision: x.plan.revision, acknowledged: x.plan.acknowledge, dirs, now: '2026-10-31T12:00:00Z', ...x.io });
+const failure = async (run: Promise<unknown>): Promise<{ code: string; message: string; paths: string[] }> => {
+  try { await run; } catch (error) { return error as { code: string; message: string; paths: string[] }; }
+  throw new Error('the write did not fail');
+};
+
+test('a write that fails after the empty harness was made leaves a valid empty harness and none of the files; the words say so; the folder can be imported into again', async t => {
+  const x = await inProcess(t, 'fails', 'bundle-71');
+  const f = (await x.b.service.folders())[0]!;
+  // The save point store cannot be kept: its folder is a plain file. No permission trick, so it fails the same for any user.
+  const notAFolder = join(x.b.base, 'store-is-a-file');
+  writeFileSync(notAFolder, 'x');
+  const error = await failure(write(x, 'bundle-71', { ...x.dirs, base: notAFolder }));
+  assert.match(error.code, /^[A-Z][A-Z0-9_]{2,63}$/, 'a refusal with a code');
+  assert.match(error.message, /No file of the bundle was written\. An empty harness was made in this folder first, and it stays\.$/);
+  assert.doesNotMatch(error.message, /Nothing (more )?was (written|changed)/, 'the words are true of the folder');
+  const loaded = loadDefinition(join(x.dir, '.bowerloom'));
   assert.equal(loaded.ok, true, 'the harness loads');
-  if (loaded.ok) assert.deepEqual(loaded.definition.files.map(x => x.path), ['harness.json']);
-  assert.deepEqual(readdirSync(join(dir, '.bowerloom')), ['harness.json']);
-  assert.equal((await b.service.folders()).find(x => x.id === f.id)!.unfinished.adoption, false, 'no stopped run is left behind');
-  // The folder is not stuck: the next plan is for an empty harness that exists.
-  const again = (await run({ op: 'plan', key: 'bundle-77', choices, ...io })) as { makes: boolean; changes: { path: string; action: string }[] };
+  if (loaded.ok) assert.deepEqual(loaded.definition.files.map(file => file.path), ['harness.json']);
+  assert.deepEqual(readdirSync(join(x.dir, '.bowerloom')), ['harness.json']);
+  assert.equal((await x.b.service.folders()).find(y => y.id === f.id)!.unfinished.adoption, false, 'no stopped run is left behind');
+  const again = (await x.work.run({ op: 'plan', key: 'bundle-71', choices: x.choices, ...x.io })) as { makes: boolean; changes: { path: string; action: string }[] };
   assert.equal(again.makes, false);
   assert.equal(again.changes.find(c => c.path === 'harness.json')!.action, 'update');
+});
+
+test('the undo of the empty harness: when the file it made is not the file it wrote, SAVE_PARTIAL keeps the journal and the folder is recovered by "Finish a stopped harness"', async t => {
+  const x = await inProcess(t, 'partial', 'bundle-72');
+  const { emptyHarnessHooks } = x.work;
+  // Someone changes the file just after it is placed, so the load fails and the undo finds bytes that are not its own.
+  emptyHarnessHooks.afterPlace = () => { writeFileSync(join(x.dir, '.bowerloom', 'harness.json'), '{ not json', { mode: 0o644 }); };
+  t.after(() => { delete emptyHarnessHooks.afterPlace; });
+  const error = await failure(write(x, 'bundle-72'));
+  delete emptyHarnessHooks.afterPlace;
+  assert.equal(error.code, 'SAVE_PARTIAL');
+  assert.deepEqual(error.paths, ['.bowerloom/harness.json']);
+  const f = (await x.b.service.folders())[0]!;
+  assert.equal(f.unfinished.adoption, true, 'the journal stays: the folder is a stopped run');
+  assert.equal(refused(await x.b.service.planImport(f.id, 'bundle-1', NO_CHOICES)).code, 'ADOPTION_RECOVERY_REQUIRED');
+  // The recovery plan lists the file and puts the folder back.
+  const plan = value(await x.b.service.planAdoptionRecovery(f.id));
+  const done = value(await x.b.service.runAdoptionRecovery(f.id, plan.revision));
+  assert.ok(done);
+  assert.equal((await x.b.service.folders())[0]!.unfinished.adoption, false);
+});
+
+test('a stopped run that appears after main looked is found inside the lock: the empty harness is not made, and the other run\'s journal is not overwritten or removed', async t => {
+  const x = await inProcess(t, 'foreign', 'bundle-73');
+  mkdirSync(x.dirs.adoption, { recursive: true, mode: 0o700 });
+  const journal = join(x.dirs.adoption, 'adoption-pending.json');
+  const mine = '{"foreign":"journal of another run"}';
+  writeFileSync(journal, mine, { mode: 0o600 });
+  const error = await failure(write(x, 'bundle-73'));
+  assert.equal(error.code, 'ADOPTION_RECOVERY_REQUIRED');
+  assert.equal(readFileSync(journal, 'utf8'), mine, 'the journal of the other run is as it was');
+  assert.equal(existsSync(join(x.dir, '.bowerloom')), false, 'nothing was made');
 });
 
 // ---- the usage log --------------------------------------------------------------------------------------------------------------
@@ -315,7 +360,7 @@ test('a worker that stops, cannot start, answers nothing in time or fails is a r
   writeFileSync(quit, 'process.exit(3);\n');
   writeFileSync(hang, "import { parentPort } from 'node:worker_threads';\nparentPort.on('message', () => {});\n");
   writeFileSync(boom, "import { parentPort } from 'node:worker_threads';\nparentPort.on('message', ({ id }) => { parentPort.postMessage({ id, ok: false, refusal: { kind: 'bug' } }); });\n");
-  for (const [name, file, words] of [['quit', quit, /stopped reading this file/], ['missing', join(dir, 'missing.mjs'), /stopped reading this file/], ['boom', boom, /could not finish this/]] as const) {
+  for (const [name, file, words] of [['quit', quit, /part of Bowerloom that reads harness files stopped/], ['missing', join(dir, 'missing.mjs'), /could not start the part that reads harness files/], ['boom', boom, /could not finish this/]] as const) {
     const a = shareSetup(t, `worker-${name}`, { bundleWorker: () => file });
     const f = await a.choose(richFolder(a.home));
     const began = Date.now();
@@ -374,4 +419,100 @@ test('the channel of chooseFolder takes the one optional argument and no more; e
   assert.equal(await reason(ENGINE_CHANNELS.chooseBundle, 'x'), 'BAD_ARGUMENT');
   assert.equal(await reason(ENGINE_CHANNELS.planImport, 'folder-1', 'bundle-1'), 'BAD_ARGUMENT');
   assert.equal(await reason(ENGINE_CHANNELS.planImport, 'folder-1', 'bundle-1', { link: {}, leave: [] }), 'UNKNOWN_FOLDER');
+});
+
+// ---- order of checks, parity with the sample, timeouts and quit --------------------------------------------------------------
+
+test('every argument is checked in shape before any lookup: a bad later argument is BAD_ARGUMENT even when the folder or the bundle is unknown', async t => {
+  const { b, folderId, bundleId } = await pair(t, 'order');
+  const hex = 'a'.repeat(64);
+  assert.equal(await codeOf(() => b.service.runImport('folder-999', 'xyz', bundleId, NO_CHOICES, null)), 'BAD_ARGUMENT');
+  assert.equal(await codeOf(() => b.service.runImport(folderId, hex, 'bundle-99', { link: {}, leave: 'x' }, null)), 'BAD_ARGUMENT');
+  assert.equal(await codeOf(() => b.service.runImport(folderId, hex, 'bundle-99', NO_CHOICES, 'nope')), 'BAD_ARGUMENT');
+  assert.equal(await codeOf(() => b.service.planImport('folder-999', 'bundle-99', null)), 'BAD_ARGUMENT');
+  assert.equal(await codeOf(() => b.service.runExport('folder-999', hex, 'nope')), 'BAD_ARGUMENT');
+  // With every shape right, the lookups come: the folder, then the bundle.
+  assert.equal(await codeOf(() => b.service.runImport('folder-999', hex, 'bundle-99', NO_CHOICES, null)), 'UNKNOWN_FOLDER');
+  assert.equal(await codeOf(() => b.service.runImport(folderId, hex, 'bundle-99', NO_CHOICES, null)), 'UNKNOWN_BUNDLE');
+});
+
+test('an acknowledgement for a plan that asked for none is refused like the sample refuses it (IMPORT_NEEDS_ACKNOWLEDGEMENT), before any question', async t => {
+  const { b, folderId, bundleId } = await pair(t, 'ack-extra');
+  const plan = value(await b.service.planImport(folderId, bundleId, NO_CHOICES));
+  assert.equal(plan.acknowledge, null);
+  assert.equal(refused(await b.service.runImport(folderId, plan.revision, bundleId, NO_CHOICES, 'd'.repeat(64))).code, 'IMPORT_NEEDS_ACKNOWLEDGEMENT');
+  assert.equal(b.asks.length, 0);
+  value(await b.service.runImport(folderId, plan.revision, bundleId, NO_CHOICES, null));
+});
+
+test('a stale plan and an unticked plan leave no line in the usage log; a done import and a refused one do', async t => {
+  const { b, folderId, bundleId } = await pair(t, 'log-stale', richFolder);
+  const plan = value(await b.service.planImport(folderId, bundleId, NO_CHOICES));
+  refused(await b.service.runImport(folderId, plan.revision, bundleId, NO_CHOICES, null));
+  refused(await b.service.runImport(folderId, 'e'.repeat(64), bundleId, NO_CHOICES, plan.acknowledge));
+  assert.equal(b.records.filter(r => r.step === 'import').length, 0);
+  value(await b.service.runImport(folderId, plan.revision, bundleId, NO_CHOICES, plan.acknowledge));
+  assert.deepEqual(b.records.filter(r => r.step === 'import').map(r => r.outcome), ['done']);
+});
+
+test('a bundle file whose read does not end in time is a refusal that frees the queue (here the limit is 1 ms and the file is 30 MiB)', async t => {
+  const b = shareSetup(t, 'read-timeout', { bundleReadTimeoutMs: 1 });
+  const big = join(b.base, 'big.json');
+  writeFileSync(big, '');
+  truncateSync(big, 30 * 1024 * 1024);
+  b.open = big;
+  const r = refused(await b.service.chooseBundle());
+  assert.equal(r.code, 'FAILED');
+  assert.equal(r.step, 'READ_TIMED_OUT');
+  assert.match(r.message, /took longer than Bowerloom allows/);
+  assert.deepEqual(await b.service.folders(), [], 'the queue answers the next call');
+});
+
+test('a write that outlives its limit is stopped in words that point to "Finish a stopped harness"; the bundle it held is gone; the next call has a new worker', async t => {
+  const a = shareSetup(t, 'wtimeout-a'), b = shareSetup(t, 'wtimeout-b', { bundleWriteTimeoutMs: 1 });
+  const file = await exportTo(a, richFolder(a.home), 'w.bowerloom.json');
+  b.open = file;
+  const f = await b.choose(plainFolder(b.home, 'target'));
+  const bundle = value(await b.service.chooseBundle());
+  const plan = value(await b.service.planImport(f.id, bundle.bundleId, NO_CHOICES));
+  const r = refused(await b.service.runImport(f.id, plan.revision, bundle.bundleId, NO_CHOICES, plan.acknowledge));
+  assert.equal(r.code, 'FAILED');
+  assert.equal(r.step, 'WORKER_TIMED_OUT');
+  assert.match(r.message, /Finish a stopped harness/);
+  assert.doesNotMatch(r.message, /Nothing was written/);
+  // The worker that held the bundle is gone: the bundle is not held, and a new choice goes to a new worker.
+  assert.equal(await codeOf(() => b.service.planImport(f.id, bundle.bundleId, NO_CHOICES)), 'UNKNOWN_BUNDLE');
+  assert.equal(value(await b.service.chooseBundle()).summary.counts.files, bundle.summary.counts.files);
+  assert.ok(b.records.some(x => x.step === 'bundle-worker-write' && x.code === 'WORKER_TIMED_OUT'), 'the usage log names the cause');
+});
+
+test('quit during a write: close() settles the call with a refusal and does not hang; a folder left half-made is recovered', async t => {
+  const a = shareSetup(t, 'quit-a'), b = shareSetup(t, 'quit-b');
+  b.open = await exportTo(a, richFolder(a.home), 'q.bowerloom.json');
+  const f = await b.choose(plainFolder(b.home, 'target'));
+  const bundle = value(await b.service.chooseBundle());
+  const plan = value(await b.service.planImport(f.id, bundle.bundleId, NO_CHOICES));
+  // The yes arrives, the write starts, and the app quits a few milliseconds later.
+  b.beforeYes = () => { setTimeout(() => { void b.service.close(); }, 30); };
+  const began = Date.now();
+  const r = await b.service.runImport(f.id, plan.revision, bundle.bundleId, NO_CHOICES, plan.acknowledge);
+  assert.ok(Date.now() - began < 20_000, 'it settled');
+  if (!r.ok) assert.match(r.refusal.message, /Finish a stopped harness|Nothing was written/);
+  // Whatever state the folder is in, the service answers, and a stopped run is the recoverable kind.
+  const info = (await b.service.folders())[0]!;
+  if (info.unfinished.adoption) {
+    const recovery = value(await b.service.planAdoptionRecovery(info.id));
+    value(await b.service.runAdoptionRecovery(info.id, recovery.revision));
+  }
+});
+
+test('the native question of an import names deletes as well as writes, and the harness made empty has the description the package counts as empty', async () => {
+  const { ASK } = await import('../main/engine-consent.js');
+  const { emptyHarnessFile } = await import('../main/engine-bundle-work.js');
+  const { EMPTY_HARNESS_DESCRIPTION } = await import('../../../packages/harness-bundle/src/target.js');
+  const rev = 'f'.repeat(64);
+  assert.match(ASK.importBundle('~/x', 5, rev, { deletes: 2 }).message, /^Write 3 files and delete 2 files into ~\/x\/\.bowerloom\?$/);
+  assert.match(ASK.importBundle('~/x', 1, rev, { deletes: 1 }).message, /^Delete 1 file in ~\/x\/\.bowerloom\?$/);
+  assert.match(ASK.importBundle('~/x', 4, rev, {}, true).message, /^Make an empty harness and write 4 files into ~\/x\/\.bowerloom\?$/);
+  assert.equal((JSON.parse(Buffer.from(emptyHarnessFile('/p/some-folder').bytes).toString('utf8')) as { description: string }).description, EMPTY_HARNESS_DESCRIPTION);
 });

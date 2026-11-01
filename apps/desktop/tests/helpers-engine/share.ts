@@ -23,7 +23,7 @@ export function value<T>(a: Answer<T> | null): T {
   if (!a.ok) throw new Error(`refused: ${a.refusal.code} ${a.refusal.message}`);
   return a.value;
 }
-export function refused<T>(a: Answer<T> | null): { code: string; message: string; paths: readonly string[] } {
+export function refused<T>(a: Answer<T> | null): { code: string; message: string; paths: readonly string[]; step?: string } {
   if (a === null) throw new Error('expected a refusal, got null');
   if (a.ok) throw new Error('expected a refusal, got an answer');
   return a.refusal;

@@ -26,13 +26,13 @@ const ALLOWED_NETWORK_MODULES: Record<string, string[]> = {
  *  - the notes source runs git (spec 6.9: every notes folder is a git repository, and Bowerloom starts one with a preview): one module, git found by fixed
  *    path only, five fixed argument forms, no shell, a minimal environment with no HOME and no git config, a timeout and an output cap, and only after
  *    main's own dialog or for the Notes panel's read of the last commit time (packages/notes-source/src/git.ts).
- *  - export and import start one worker thread (journey 4): the host in main/engine-bundle.ts starts `bundle-worker.mjs`, a file the build makes from
+ *  - export and import start one worker thread (journey 4): the host in main/engine-bundle-host.ts starts `bundle-worker.mjs`, a file the build makes from
  *    main/engine-bundle-worker.ts, with a timeout and a refusal when it dies. It is a thread of this process, not a program: it runs only the code of
  *    packages/harness-bundle and the save packages, on bytes main gives it, so a bundle is decoded off the main thread. It starts nothing else.
  * Nothing else of the bundle starts a process.
  */
 const ALLOWED_PROCESS_MODULES: Record<string, string[]> = {
-  '../../packages/diagnostics/src/report.ts': ['child_process'], '../../packages/notes-source/src/git.ts': ['child_process'], 'main/engine-bundle.ts': ['worker_threads'],
+  '../../packages/diagnostics/src/report.ts': ['child_process'], '../../packages/notes-source/src/git.ts': ['child_process'], 'main/engine-bundle-host.ts': ['worker_threads'],
 };
 
 const BARE = '(?:node:)?';

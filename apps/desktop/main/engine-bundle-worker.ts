@@ -21,6 +21,8 @@ export function plainRefusal(error: unknown): PlainRefusal {
   if (e !== null && typeof e === 'object' && typeof e.code === 'string' && CODE.test(e.code) && typeof e.message === 'string') {
     return { kind: 'coded', code: e.code, message: e.message.slice(0, 4000), paths: Array.isArray(e.paths) ? e.paths.filter((p): p is string => typeof p === 'string').slice(0, 50).map(p => p.slice(0, 1200)) : [] };
   }
+  // An error with no code and words is a bug of Bowerloom, not a refusal. The window gets only "FAILED"; the stack goes to the log of the app, so the cause is not lost.
+  console.error('Bowerloom: a job of export or import failed with an error it does not know.', error instanceof Error ? error.stack ?? error.message : String(error));
   return { kind: 'bug' };
 }
 
@@ -35,9 +37,13 @@ if (parentPort !== null) {
   const port = parentPort;
   port.on('message', (message: { id: number; job: Job }) => {
     const { id, job } = message;
-    run(job).then(
-      value => { port.postMessage({ id, ok: true, value }, transferable(value)); },
-      (error: unknown) => { port.postMessage({ id, ok: false, refusal: plainRefusal(error) }); },
-    );
+    const answer = (value: unknown): void => {
+      try { port.postMessage({ id, ok: true, value }, transferable(value)); } catch (error) {
+        // The value could not be cloned or sent: the job is still answered, so the host never waits for its timer.
+        console.error('Bowerloom: the answer of a job of export or import could not be sent.', error instanceof Error ? error.stack ?? error.message : String(error));
+        port.postMessage({ id, ok: false, refusal: { kind: 'bug' } satisfies PlainRefusal });
+      }
+    };
+    run(job).then(answer, (error: unknown) => { port.postMessage({ id, ok: false, refusal: plainRefusal(error) }); });
   });
 }

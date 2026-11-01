@@ -119,8 +119,18 @@ test('export: a file chosen inside the harness\'s own .bowerloom is refused, and
   const f = await a.choose(dir);
   const plan = value(await a.service.planExport(f.id));
   a.save = join(dir, '.bowerloom', 'x.bowerloom.json');
-  assert.equal(refused(await a.service.runExport(f.id, plan.revision, null)).code, 'BUNDLE_USAGE');
+  const inside = refused(await a.service.runExport(f.id, plan.revision, null));
+  assert.equal(inside.code, 'EXPORT_TARGET_IN_HARNESS');
+  assert.match(inside.message, /Choose a place outside it/, 'main\'s own words, not "close the sheet and open it again"');
   assert.equal(exists(a.save), false);
+  assert.equal(a.asks.length, 0, 'no question for a place that is refused');
+  // A folder below .bowerloom, and the same place written with other letter case (the same folder on a case-insensitive disk), are the same refusal.
+  a.save = join(dir, '.bowerloom', 'skills', 'y.bowerloom.json');
+  assert.equal(refused(await a.service.runExport(f.id, plan.revision, null)).code, 'EXPORT_TARGET_IN_HARNESS');
+  a.save = join(dir, '.BOWERLOOM', 'z.bowerloom.json');
+  const cased = refused(await a.service.runExport(f.id, plan.revision, null));
+  assert.ok(['EXPORT_TARGET_IN_HARNESS', 'BUNDLE_FILE_FAILED'].includes(cased.code), cased.code);
+  assert.equal(exists(join(dir, '.bowerloom', 'z.bowerloom.json')), false);
   const { symlinkSync, mkdirSync } = await import('node:fs');
   mkdirSync(join(a.base, 'real-place'));
   symlinkSync(join(a.base, 'real-place'), join(a.base, 'linked-place'));
@@ -240,7 +250,7 @@ test('import into a folder with an empty harness: harness.json is an update, and
   assert.equal(f.holdsParts, false);
   const bundle = value(await b.service.chooseBundle());
   const plan = value(await b.service.planImport(f.id, bundle.bundleId, NO_CHOICES));
-  assert.equal(plan.makesHarness, undefined);
+  assert.equal(plan.makesHarness, false, 'a folder with an empty harness makes none, as the sample says');
   assert.equal(plan.changes.find(c => c.path === '.bowerloom/harness.json')!.action, 'update');
   assert.equal(plan.acknowledge, null, 'nothing runs, nothing is read from this computer, no path');
   const written = value(await b.service.runImport(f.id, plan.revision, bundle.bundleId, NO_CHOICES, null));

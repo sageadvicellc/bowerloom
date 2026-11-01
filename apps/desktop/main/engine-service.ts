@@ -54,7 +54,8 @@ import { labelOf, makeScrub, visible } from '../shared/engine/scrub.js';
 import { KIT_IDS, KIT_INVALID, KIT_MAIN_WORDS, NOTES_MAIN_WORDS, NOTES_NOT_CHOSEN, NOTES_PLAN_LIST_LIMIT, NOTES_PURPOSES } from '../shared/engine/types.js';
 import type { KitId, NotesHistoryPlanView, NotesPurpose, NotesStarterView, NotesView, NotesWritten } from '../shared/engine/types.js';
 import { loadKit } from './kit.js';
-import { accountName, createBundleHost, createShare } from './engine-bundle.js';
+import { accountName, createShare } from './engine-bundle.js';
+import { createBundleHost } from './engine-bundle-host.js';
 import type { Kit } from './kit.js';
 import type { Scrub } from '../shared/engine/scrub.js';
 import { ENGINE_IDS, isEngineId, isPreviewEngine } from '../shared/engine/engines.js';
@@ -125,6 +126,8 @@ export interface EngineServiceDeps {
   /** The longest a decode, encode or plan takes, and the longest a write takes, in milliseconds. Defaults: 2 minutes and 10 minutes. */
   readonly bundleTimeoutMs?: number;
   readonly bundleWriteTimeoutMs?: number;
+  /** The longest the read of a bundle file may take (default 30 seconds), so a file on a stalled volume does not hold every engine call. */
+  readonly bundleReadTimeoutMs?: number;
 }
 
 /** A call the service refuses before it reaches a package: the window gets only the short code. */
@@ -329,8 +332,8 @@ export interface EngineService {
   discardBundle(bundleId: unknown): Promise<boolean>;
   /** Removes main's private copies of tidy-up reports. Main calls it at quit. Not a call of the window. */
   clearReportCopies(): void;
-  /** Stops the worker thread of export and import. Main calls it at quit. Not a call of the window. */
-  close(): void;
+  /** Stops the worker thread of export and import and resolves when it has ended. Main calls it at quit. Not a call of the window. */
+  close(): Promise<void>;
   /**
    * Resolves when no call is running or waiting in the serial queue, however each one ended. Main waits for it before it ends a window that died after start-up,
    * so a write in progress is never cut off. It never rejects. Not a call of the window.
@@ -425,12 +428,12 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     return answer(f, run);
   };
 
+  /** The label of a folder as the window gets it: `~` for the home folder and below it, with hidden characters written out. */
+  const labelFor = (dir: string): string => visible(labelOf(dir, homes.find(h => dir === h || dir.startsWith(`${h}/`)) ?? deps.home));
   /**
    * Gives a chosen folder its id, once. Before the first read of its record, the record of the earlier app moves into the shared layout, under the project
    * lock (decision 7B). When both records exist, the package refuses HARNESS_STATE_TWO_RECORDS: the folder gets no id, and the refusal reaches the window.
    */
-  /** The label of a folder as the window gets it: `~` for the home folder and below it, with hidden characters written out. */
-  const labelFor = (dir: string): string => visible(labelOf(dir, homes.find(h => dir === h || dir.startsWith(`${h}/`)) ?? deps.home));
   async function register(dir: string): Promise<Folder> {
     for (const f of byId.values()) if (f.dir === dir) return f;
     const dirs = harnessStateDirs(deps.stateRoot, dir);
@@ -763,6 +766,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     skills: d.skills.map(x => ({ id: x.id, name: f.scrub(x.name), description: f.scrub(x.description) })),
     agents: d.agents.map(a => ({ ...a, name: f.scrub(a.name), description: f.scrub(a.description) })),
     sources: d.sources.map(x => ({ ...x, label: f.scrub(x.label) })),
+    kits: d.kits.map(k => ({ ...k, version: f.scrub(k.version), skills: k.skills.map(f.scrub) })),
   });
   /**
    * The save plan as the window reads it. `made` is what a save of edits adds: the folder each copied file comes from (`origins`, by folder id), the edits
@@ -821,11 +825,14 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     host: createBundleHost({
       file: deps.bundleWorker ?? (() => new URL('./bundle-worker.mjs', import.meta.url)),
       timeoutMs: deps.bundleTimeoutMs ?? 120_000, writeTimeoutMs: deps.bundleWriteTimeoutMs ?? 600_000,
+      // A stopped worker goes to the usage log as its cause only, never a name or a path.
+      report: (cause, write) => record({ kind: 'scenario', step: write ? 'bundle-worker-write' : 'bundle-worker', outcome: 'refused', code: cause }),
     }),
+    readTimeoutMs: deps.bundleReadTimeoutMs ?? 30_000,
     now, home: realHome, user: accountName(), plans, scrubAll: makeScrub(homes.map(path => ({ path, as: '~' }))),
     chooseBundleOpen: deps.chooseBundleOpen ?? (async () => null), chooseBundleSave: deps.chooseBundleSave ?? (async () => null), confirm: deps.confirm,
     bad, unknownBundle: () => { throw new EngineCallRefusal('UNKNOWN_BUNDLE'); },
-    folderOf, answer, written, scenarioOf, whileStopped,
+    folderOf, answer, written, whileStopped,
     sourcePathOf: (f, notesId) => notesEdits(folderOf(f.id)).sourcePath(notesId),
     hasNotes: id => notesById.has(id), notesLabel: id => notesOf(id).label,
     sourceViewOf: f => sourceViewOf(folderOf(f.id)), scrubbed: (f, d) => scrubbed(folderOf(f.id), d),
