@@ -1,11 +1,14 @@
 /**
  * The bounded reading and writing of a bundle file. The README states the rules; the contract is in the comments of `index.ts`. In short:
- *  - a read opens with `O_NOFOLLOW | O_NONBLOCK`, asks the DESCRIPTOR what it is (a folder also opens read-only), refuses anything but a regular file of the user,
+ *  - a read opens with `O_NOFOLLOW | O_NONBLOCK | O_NOCTTY`, asks the DESCRIPTOR what it is (a folder also opens read-only), refuses anything but a regular file of the user,
  *    reads at most one byte past the size from `fstat`, and checks the file again after the read, by descriptor and by path;
- *  - a write resolves the parent folder once, writes a dot-prefixed `.part` file at mode 0600 in that folder in one call, and puts it in place with `link` (so a file
- *    made in between is never replaced), or, where hard links do not exist, by creating the target itself with `O_EXCL`;
+ *  - a write resolves the parent folder once, writes a dot-prefixed `.part` file at mode 0600 in that folder (the whole content, in as many write calls as the system needs),
+ *    and puts it in place with `link` (so a file made in between is never replaced), or, where hard links do not exist, by creating the target itself with `O_EXCL`;
  *  - a replace compares the identity of the target right before the rename.
- * Every failure is a `BundleRefusal`. The text of an operating system error, which may name a path, is never passed on.
+ * Errors are mapped by the code of the system error (`failure`): a link, a folder, a device, a changed file or a bad name is `BUNDLE_FILE_UNSAFE`; a full disk, a missing
+ * permission, a read-only disk and the like are `BUNDLE_FILE_FAILED`, with a plain-words reason; an error with no system code is a bug and passes on unchanged. The text of a
+ * system error, which may name a path, is never passed on: only its code is kept, as `cause`.
+ * The functions take plain input (a path string, bytes) and return plain output, import nothing of Electron, and are safe to call from a worker thread.
  */
 import { randomBytes } from 'node:crypto';
 import fs, { constants } from 'node:fs';
@@ -16,7 +19,7 @@ import type { BundleFileIdentity } from './types.js';
 
 /**
  * Seams for the tests, and nothing else. Production code never sets one. A test sets a function here to change the world at an exact point (swap a file, grow it, make
- * `link` fail) and clears it after. This object is not exported from the package index.
+ * `link` fail) and clears it after. They are set only through `setFileIoHook`, which throws unless `NODE_ENV` is `test`, and this module does not export the table.
  */
 export interface FileIoHooks {
   /** In a read: after `fstat` of the descriptor, before the first byte is read. */
@@ -31,17 +34,73 @@ export interface FileIoHooks {
   afterTargetCreated?: (absPath: string) => void | Promise<void>;
   /** In the no-link write: after the bytes are written, before the descriptor is closed. */
   afterWrite?: (absPath: string) => void | Promise<void>;
+  /** In every write call: the number of bytes the system takes this time (to simulate a short write). Return a number from 1 up to `wanted`. */
+  writeLimit?: (wanted: number) => number;
+  /** In the removal of a file: throw an error with a `code` to simulate a failed `unlink`. */
+  unlink?: (file: string) => void | Promise<void>;
 }
-export const fileIoHooks: FileIoHooks = {};
+const hooks: FileIoHooks = {};
+export function setFileIoHook<K extends keyof FileIoHooks>(name: K, fn: FileIoHooks[K] | undefined): void {
+  if (process.env.NODE_ENV !== 'test') throw new Error('The file seams are for tests only.');
+  if (fn === undefined) delete hooks[name]; else hooks[name] = fn;
+}
+export function clearFileIoHooks(): void {
+  if (process.env.NODE_ENV !== 'test') throw new Error('The file seams are for tests only.');
+  for (const k of Object.keys(hooks)) delete hooks[k as keyof FileIoHooks];
+}
 
-const unsafe = (): never => { throw new BundleRefusal('BUNDLE_FILE_UNSAFE'); };
+// ---- errors -------------------------------------------------------------------------------------------------------------------
+
+/** The system error code of an error (`ENOSPC`), or undefined: an error with no code is not a system error. */
+const codeOf = (error: unknown): string | undefined => {
+  const code = (error as NodeJS.ErrnoException | null | undefined)?.code;
+  return typeof code === 'string' && /^E[A-Z0-9]{2,20}$/.test(code) ? code : undefined;
+};
+/** System errors that mean "this is not the plain file you think": a link, a folder where a file goes, a file where a folder goes, a device. */
+const UNSAFE_CODES = new Set(['ELOOP', 'ENOTDIR', 'EISDIR', 'ENXIO', 'ENODEV']);
+
+const unsafe = (cause?: string): never => { throw new BundleRefusal('BUNDLE_FILE_UNSAFE', [], [], cause); };
 const usage = (): never => { throw new BundleRefusal('BUNDLE_USAGE'); };
-const codeOf = (error: unknown): string | undefined => (error as NodeJS.ErrnoException | null)?.code;
+
+/**
+ * Turns an error of a file call into a refusal. A refusal passes on. A system error is `BUNDLE_FILE_UNSAFE` for a link, a folder or a device, else `BUNDLE_FILE_FAILED`.
+ * An error with no system code is a defect, not a file fault, and passes on unchanged so that it shows.
+ */
+function failure(error: unknown): never {
+  if (error instanceof BundleRefusal) throw error;
+  const code = codeOf(error);
+  if (code === undefined) throw error;
+  throw new BundleRefusal(UNSAFE_CODES.has(code) ? 'BUNDLE_FILE_UNSAFE' : 'BUNDLE_FILE_FAILED', [], [], code);
+}
+
+/** A cleanup that failed: the code only, to the process warnings (a log), never the path. */
+function warnCleanup(what: string, error: unknown): void {
+  process.emitWarning(`harness-bundle: ${what} failed (${codeOf(error) ?? 'no system code'}).`, { type: 'BundleCleanupWarning' });
+}
+
+/** Removes a file we made: three tries, 0 ms, 20 ms and 100 ms apart. A file that is already gone is done. Returns true when it is gone. */
+async function removeFile(file: string): Promise<boolean> {
+  for (const wait of [0, 20, 100]) {
+    if (wait > 0) await new Promise<void>(resolve => setTimeout(resolve, wait));
+    try {
+      await hooks.unlink?.(file);
+      await fs.promises.unlink(file);
+      return true;
+    } catch (error) {
+      if (codeOf(error) === 'ENOENT') return true;
+      if (wait === 100) warnCleanup('removing a file of ours', error);
+    }
+  }
+  return false;
+}
+
+// ---- shared -------------------------------------------------------------------------------------------------------------------
 
 /** The chunk of one read call. Each call is a turn of the event loop. */
 const CHUNK = 4 * 1024 * 1024;
 /** The errors of `link` that mean "this volume has no hard links". */
 const NO_LINK = new Set(['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS', 'EXDEV', 'EMLINK']);
+const NOCTTY = constants.O_NOCTTY ?? 0;
 
 const absolute = (absPath: unknown): string => {
   if (typeof absPath !== 'string' || absPath.length === 0 || absPath.includes('\0') || !path.isAbsolute(absPath)) return usage();
@@ -63,14 +122,14 @@ export async function readBundleFile(absPath: string): Promise<Uint8Array> {
   const file = absolute(absPath);
   let fh: fs.promises.FileHandle;
   try {
-    fh = await fs.promises.open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-  } catch { return unsafe(); }
+    fh = await fs.promises.open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK | NOCTTY);
+  } catch (error) { return failure(error); }
   try {
     const first = await fh.stat({ bigint: true });
     if (!first.isFile()) return unsafe();
     if (typeof process.getuid === 'function' && first.uid !== BigInt(process.getuid())) return unsafe();
     if (first.size > BigInt(BUNDLE_LIMITS.fileBytes)) throw new BundleRefusal('BUNDLE_TOO_LARGE');
-    await fileIoHooks.afterStat?.(file);
+    await hooks.afterStat?.(file);
     const size = Number(first.size);
     const buffer = Buffer.allocUnsafe(size + 1);
     let have = 0;
@@ -81,7 +140,7 @@ export async function readBundleFile(absPath: string): Promise<Uint8Array> {
     }
     // A short read, or a byte past the size: the file changed under us.
     if (have !== size) return unsafe();
-    await fileIoHooks.afterRead?.(file);
+    await hooks.afterRead?.(file);
     const last = await fh.stat({ bigint: true });
     if (!last.isFile() || !same(identityOf(first), identityOf(last))) return unsafe();
     // The path must still name this file: a swap during the read shows here.
@@ -89,10 +148,9 @@ export async function readBundleFile(absPath: string): Promise<Uint8Array> {
     if (!named.isFile() || named.dev !== first.dev || named.ino !== first.ino) return unsafe();
     return buffer.subarray(0, size);
   } catch (error) {
-    if (error instanceof BundleRefusal) throw error;
-    return unsafe();
+    return failure(error);
   } finally {
-    await fh.close().catch(() => undefined);
+    await fh.close().catch((error: unknown) => warnCleanup('closing the bundle file', error));
   }
 }
 
@@ -103,7 +161,7 @@ export async function bundleTargetIdentity(absPath: string): Promise<BundleFileI
   let st: fs.BigIntStats;
   try { st = await fs.promises.lstat(file, { bigint: true }); } catch (error) {
     if (codeOf(error) === 'ENOENT') return null;
-    return unsafe();
+    return failure(error);
   }
   if (!st.isFile()) return unsafe(); // a link (even a dangling one), a folder, or another kind of file
   return identityOf(st);
@@ -113,6 +171,8 @@ export async function bundleTargetIdentity(absPath: string): Promise<BundleFileI
 
 /** The name of a temporary file: a dot first (a sync folder skips it), `.part` last, and 96 random bits between. */
 const temporaryName = (): string => `.bowerloom-${randomBytes(12).toString('hex')}.part`;
+const STALE_TEMPORARY = /^\.bowerloom-[0-9a-f]{24}\.part$/;
+const A_DAY_MS = 24 * 60 * 60 * 1000;
 
 export async function writeBundleFile(absPath: string, bytes: Uint8Array, options?: { readonly replace?: BundleFileIdentity }): Promise<void> {
   const file = absolute(absPath);
@@ -127,7 +187,7 @@ export async function writeBundleFile(absPath: string, bytes: Uint8Array, option
   // The parent folder is resolved once. If it is not the folder given, a link lies on the way.
   const given = path.dirname(file);
   let parent: string;
-  try { parent = await fs.promises.realpath(given); } catch { return unsafe(); }
+  try { parent = await fs.promises.realpath(given); } catch (error) { return failure(error); }
   if (parent !== given) return unsafe();
   const target = path.join(parent, name);
   const temporary = path.join(parent, temporaryName());
@@ -138,13 +198,15 @@ export async function writeBundleFile(absPath: string, bytes: Uint8Array, option
   if (replace === undefined && present !== null) throw new BundleRefusal('BUNDLE_EXISTS');
   if (replace !== undefined && (present === null || !same(identityOf(present), replace))) return unsafe();
 
+  await sweepStale(parent);
   let made = false;
   try {
     await createTemporary(temporary, bytes);
     made = true;
-    await fileIoHooks.afterTemp?.(file);
+    await hooks.afterTemp?.(file);
     if (replace === undefined) {
       await putInPlace(temporary, target, bytes);
+      made = false; // `putInPlace` has removed the temporary name, or has warned that it could not
     } else {
       // Right before the rename: the file there must still be the one the person agreed to replace.
       const now = await lstatOrNull(target);
@@ -153,45 +215,68 @@ export async function writeBundleFile(absPath: string, bytes: Uint8Array, option
       made = false;
     }
   } catch (error) {
-    if (error instanceof BundleRefusal) throw error;
-    return unsafe();
+    return failure(error);
   } finally {
-    if (made) await fs.promises.unlink(temporary).catch(() => undefined);
+    if (made) await removeFile(temporary);
   }
 }
 
 async function lstatOrNull(p: string): Promise<fs.BigIntStats | null> {
   try { return await fs.promises.lstat(p, { bigint: true }); } catch (error) {
     if (codeOf(error) === 'ENOENT') return null;
-    return unsafe();
+    return failure(error);
   }
 }
 
-/** Creates the temporary file (new, not through a link, mode 0600 from creation), writes the bytes in one call, and syncs. */
-async function createTemporary(temporary: string, bytes: Uint8Array): Promise<void> {
-  const fh = await fs.promises.open(temporary, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600);
+/**
+ * Removes the `.part` files that an earlier write of ours left in this folder (a crash, a kill): only a name of exactly our form, only a plain file of this user, only one
+ * older than a day. It never fails the write; a file it cannot remove is a warning with the code of the error.
+ */
+async function sweepStale(folder: string): Promise<void> {
   try {
+    const mine = typeof process.getuid === 'function' ? BigInt(process.getuid()) : undefined;
+    for (const entry of await fs.promises.readdir(folder)) {
+      if (!STALE_TEMPORARY.test(entry)) continue;
+      const at = path.join(folder, entry);
+      const st = await fs.promises.lstat(at, { bigint: true }).catch(() => null);
+      if (st === null || !st.isFile() || (mine !== undefined && st.uid !== mine) || Date.now() - Number(st.mtimeMs) < A_DAY_MS) continue;
+      await removeFile(at);
+    }
+  } catch (error) { warnCleanup('looking for old temporary files', error); }
+}
+
+/** Creates the temporary file (new, not through a link, mode 0600 from creation), writes all the bytes, and syncs. It removes the file on any failure. */
+async function createTemporary(temporary: string, bytes: Uint8Array): Promise<void> {
+  let fh: fs.promises.FileHandle | undefined;
+  try {
+    fh = await fs.promises.open(temporary, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW | NOCTTY, 0o600);
     await writeAll(fh, bytes);
     await fh.sync();
+    await fh.close();
+    fh = undefined;
   } catch (error) {
-    await fh.close().catch(() => undefined);
-    await fs.promises.unlink(temporary).catch(() => undefined);
+    if (fh !== undefined) await fh.close().catch((e: unknown) => warnCleanup('closing a temporary file', e));
+    await removeFile(temporary);
     throw error;
   }
-  await fh.close();
 }
 
-/** One write call. A short write is a failure: the file would be incomplete. */
+/** Writes all the bytes, in as many calls as the system needs (it may take less than asked for a large buffer on a network share). A call that takes none is a failure. */
 async function writeAll(fh: fs.promises.FileHandle, bytes: Uint8Array): Promise<void> {
-  if (bytes.length === 0) return;
-  const { bytesWritten } = await fh.write(bytes, 0, bytes.length, 0);
-  if (bytesWritten !== bytes.length) throw new Error('short write');
+  let done = 0;
+  while (done < bytes.length) {
+    const wanted = bytes.length - done;
+    const limit = hooks.writeLimit?.(wanted);
+    const { bytesWritten } = await fh.write(bytes, done, limit === undefined ? wanted : Math.max(1, Math.min(limit, wanted)), done);
+    if (bytesWritten === 0) throw Object.assign(new Error('The system took no bytes.'), { code: 'EIO' });
+    done += bytesWritten;
+  }
 }
 
 /** Puts the finished temporary file at `target` without ever replacing anything, then removes the temporary name. */
 async function putInPlace(temporary: string, target: string, bytes: Uint8Array): Promise<void> {
   try {
-    if (fileIoHooks.link !== undefined) await fileIoHooks.link(temporary, target);
+    if (hooks.link !== undefined) await hooks.link(temporary, target);
     else await fs.promises.link(temporary, target);
   } catch (error) {
     const code = codeOf(error);
@@ -199,7 +284,7 @@ async function putInPlace(temporary: string, target: string, bytes: Uint8Array):
     if (code !== undefined && NO_LINK.has(code)) return createInPlace(temporary, target, bytes);
     throw error;
   }
-  await fs.promises.unlink(temporary).catch(() => undefined);
+  await removeFile(temporary);
 }
 
 /** `link` found something at the target: a link or a folder is unsafe (a dangling link too); a file is the answer "it exists". */
@@ -211,39 +296,41 @@ async function exists(target: string): Promise<never> {
 
 /**
  * The write for a volume with no hard links. The target itself is created with `O_EXCL | O_NOFOLLOW` at 0600, so nothing is replaced and a link is not followed. The
- * identity of what was created is taken from its descriptor. If anything fails, the target is removed only while the path still names that file: same device, inode, size
- * and birth time. This path is not atomic. The file is visible under its final name while it is written, and a crash can leave a truncated one, which the importer refuses.
+ * identity of what was created is taken from its descriptor. If anything fails, the target is removed only while the path still names that file: same device, inode, birth
+ * time and size. This path is not atomic. The file is visible under its final name while it is written, and a crash can leave a truncated one, which the importer refuses.
+ * If the removal is declined or fails, a partial file can stay at the final name; that is a warning with the code of the error, and the importer refuses the file.
  */
 async function createInPlace(temporary: string, target: string, bytes: Uint8Array): Promise<void> {
   let fh: fs.promises.FileHandle;
   try {
-    fh = await fs.promises.open(target, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600);
+    fh = await fs.promises.open(target, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW | NOCTTY, 0o600);
   } catch (error) {
     const code = codeOf(error);
     if (code === 'EEXIST') return exists(target);
-    if (code === 'ELOOP') return unsafe();
     throw error;
   }
   let open = true;
-  // What was created: its device, inode and birth time come from the descriptor. Its size is known exactly once the write call has returned (before that it holds
-  // at most the bytes asked for), so a file that someone else made longer is not taken for ours.
-  const created = await fh.stat({ bigint: true });
+  // What was created: its device, inode and birth time come from the descriptor. Its size is known exactly once the write has finished (before that it holds at most the
+  // bytes asked for), so a file that someone else made longer is not taken for ours.
+  let created: fs.BigIntStats | undefined;
   let written: bigint | null = 0n;
   try {
-    await fileIoHooks.afterTargetCreated?.(target);
+    created = await fh.stat({ bigint: true });
+    await hooks.afterTargetCreated?.(target);
     written = null;
     await writeAll(fh, bytes);
     written = BigInt(bytes.length);
-    await fileIoHooks.afterWrite?.(target);
+    await hooks.afterWrite?.(target);
     await fh.sync();
     await fh.close();
     open = false;
   } catch (error) {
-    if (open) await fh.close().catch(() => undefined);
-    await removeIfStillMine(target, created, written, BigInt(bytes.length));
+    if (open) await fh.close().catch((e: unknown) => warnCleanup('closing the target', e));
+    if (created !== undefined) await removeIfStillMine(target, created, written, BigInt(bytes.length));
+    else await removeFile(target);
     throw error;
   }
-  await fs.promises.unlink(temporary).catch(() => undefined);
+  await removeFile(temporary);
 }
 
 /**
@@ -255,5 +342,5 @@ async function removeIfStillMine(target: string, mine: fs.BigIntStats, written: 
   if (now === null || !now.isFile()) return;
   if (now.dev !== mine.dev || now.ino !== mine.ino || (now.birthtimeNs ?? 0n) !== (mine.birthtimeNs ?? 0n)) return;
   if (written !== null ? now.size !== written : now.size > most) return;
-  await fs.promises.unlink(target).catch(() => undefined);
+  await removeFile(target);
 }

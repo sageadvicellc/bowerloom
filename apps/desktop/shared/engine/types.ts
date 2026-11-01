@@ -832,11 +832,12 @@ export const EXPORT_NO_DEFINITION = 'EXPORT_NO_DEFINITION';
 export const IMPORT_FOLDER_HAS_HARNESS = 'IMPORT_FOLDER_HAS_HARNESS';
 export const IMPORT_NEEDS_ACKNOWLEDGEMENT = 'IMPORT_NEEDS_ACKNOWLEDGEMENT';
 export const EXPORT_NEEDS_ACKNOWLEDGEMENT = 'EXPORT_NEEDS_ACKNOWLEDGEMENT';
-export const SHARE_MAIN_WORDS: Readonly<Record<typeof EXPORT_NO_DEFINITION | typeof IMPORT_FOLDER_HAS_HARNESS | typeof IMPORT_NEEDS_ACKNOWLEDGEMENT | typeof EXPORT_NEEDS_ACKNOWLEDGEMENT, string>> = Object.freeze({
+export const SHARE_MAIN_WORDS: Readonly<Record<typeof EXPORT_NO_DEFINITION | typeof IMPORT_FOLDER_HAS_HARNESS | typeof IMPORT_NEEDS_ACKNOWLEDGEMENT | typeof EXPORT_NEEDS_ACKNOWLEDGEMENT | 'BUNDLE_FILE_FAILED', string>> = Object.freeze({
   EXPORT_NO_DEFINITION: 'This folder has no harness yet, so there is nothing to export. Make one first with New harness from a folder. Nothing was written.',
   IMPORT_FOLDER_HAS_HARNESS: 'This folder has a harness with parts in it already. An import goes only into a folder with no harness, or with an empty one. Nothing was written.',
   IMPORT_NEEDS_ACKNOWLEDGEMENT: 'This file holds tools or files that can run, values it reads from this computer, or paths from another computer. Tick that you read them, then import. Nothing was written.',
   EXPORT_NEEDS_ACKNOWLEDGEMENT: 'These files hold a path from this computer. Tick that you read them, then export. Nothing was written.',
+  BUNDLE_FILE_FAILED: 'The file could not be read or written. The disk may be full or read-only, the name may be too long, or you may lack permission. Nothing was read or written.',
 });
 /**
  * Refusals of main itself for a ready-made kit, with words: the kit that ships with Bowerloom is missing or damaged (KIT_INVALID, whose message goes on

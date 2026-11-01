@@ -3,13 +3,16 @@
  * bounded reading and writing of the file. The command line (`bowerloom harness export` and `import`) and the app both call it.
  *
  * Stage 2 lane A built every function here to the contract of stage 1. The types, the constants, the codes and their words did not change. The functions that read or
- * hash a large input are async and take turns of the event loop, so the main process is never held (decision of the stage 1 security review). README.md states the
- * trust boundary, the callers' duties, and the code table.
+ * hash a large input are async and take turns of the event loop between files. That shortens the stalls of the loops; it does not remove the stalls of the steps that
+ * are one synchronous call (the load as a harness with its secret scan, the summary, the revision): for a bundle of tens of megabytes these take seconds. So the app runs
+ * these functions in a worker thread or a utility process, never on the main thread. Every function takes plain input (strings, bytes, plain objects) and gives plain output
+ * (a refusal crosses a boundary as `toJSON()` and comes back with `BundleRefusal.fromPlain`), and imports nothing of Electron. README.md states the trust boundary, the
+ * callers' duties, Where to run it, and the code table.
  */
 import type { Definition, DefinitionFile } from '../../harness-definition/src/index.js';
 import { decodeBundle as decode, encodeBundle as encode } from './codec.js';
 import * as io from './file-io.js';
-import { definitionOf, isEmptyHarness as isEmpty, targetFromBundle as target } from './target.js';
+import { bundleFilesOf, definitionOf, isEmptyHarness as isEmpty, targetFromBundle as target } from './target.js';
 import { summarize } from './summary.js';
 import type { BundleFileIdentity, BundleSummary, DecodedBundle, EncodedBundle, EncodeOptions, ImportChoices } from './types.js';
 
@@ -18,7 +21,7 @@ export type {
   BundleSecret, BundleSink, BundleSinkField, BundleSource, BundleSummary, BundleTool, DecodedBundle, EncodedBundle, EncodeOptions, ExportPlan, ImportChoices, ImportPlan,
 } from './types.js';
 export { HIGH_RISK_SINK_FIELDS } from './types.js';
-export { BUNDLE_CODES, BUNDLE_MESSAGES, BundleRefusal, PATH_SHOWN_CHARS, shownPath } from './codes.js';
+export { BUNDLE_CODES, BUNDLE_MESSAGES, BundleRefusal, FILE_FAILED_REASONS, PATH_SHOWN_CHARS, shownPath } from './codes.js';
 export type { BundleCode } from './codes.js';
 export { BUNDLE_FILE_SUFFIX, BUNDLE_FORMAT, BUNDLE_LIMITS, EXPORT_PLAN_FORMAT, IMPORT_PLAN_FORMAT } from './limits.js';
 export { exportAcknowledgement, importAcknowledgement } from './ack.js';
@@ -30,7 +33,7 @@ export { importChoicesOf } from './choices.js';
 
 /**
  * The bundle of a loaded definition: every file but `knowledge.json`, the source names, the summary, and the hash of the bytes. Deterministic. Async, so a large
- * definition does not hold the caller. Each record is `utf8` or, when that is smaller, `base64`. Refuses `BUNDLE_SECRET_FOUND` when a file holds a secret value,
+ * definition shortens its stalls. Each record is `utf8` or, when that is smaller, `base64`. Refuses `BUNDLE_SECRET_FOUND` when a file holds a secret value,
  * `BUNDLE_INVALID` when the definition does not load again from its own files, and `BUNDLE_TOO_LARGE` when a limit passes or when the output passes
  * `BUNDLE_LIMITS.fileBytes`. It reads no disk.
  */
@@ -39,7 +42,7 @@ export function encodeBundle(def: Definition, options?: EncodeOptions): Promise<
 /**
  * Reads the bytes of a bundle file once and checks everything before it returns: size, strict JSON with no duplicate key, depth, the closed shape, the format,
  * every path, every declared size and hash against the decoded bytes (the base64 length is checked before decoding), the revision, the secret scan, and that
- * the files load as a harness with a placeholder source for each notes name. Async, and it yields between files, so the main process is not held. Rejects with
+ * the files load as a harness with a placeholder source for each notes name. Async, and it yields between files (the load of the files is one synchronous call; see the header). Rejects with
  * `BundleRefusal`; no other error type for any input.
  */
 export function decodeBundle(bytes: Uint8Array): Promise<DecodedBundle> { return decode(bytes); }
@@ -47,7 +50,7 @@ export function decodeBundle(bytes: Uint8Array): Promise<DecodedBundle> { return
 /** What the decoded bundle holds, for a person to read. The same summary `encodeBundle` returns. Pure. */
 export function inspectBundle(bundle: DecodedBundle): BundleSummary {
   const def = definitionOf(bundle);
-  return summarize(def, bundle.files, bundle.knowledge);
+  return summarize(def, bundleFilesOf(def), bundle.knowledge);
 }
 
 /**

@@ -100,7 +100,7 @@ const FOREIGN = new RegExp(
 const STANDARD_INTERPRETER = /^\/(?:usr\/)?(?:local\/)?bin\/(?:env|sh|bash|zsh|dash|python3?|node|perl|ruby)$/;
 const strictUtf8 = new TextDecoder('utf-8', { fatal: true });
 const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-/** Most hits listed for one file, and for the whole bundle. A bundle past the total ends its list with one line that says so (and the acknowledgement covers it). */
+/** Most hits listed for one file, and for the whole bundle. A file past its cap ends its list with one line that says so; a bundle past the total ends the whole list with one. The acknowledgement covers the line. */
 const HITS_PER_FILE = 100, HITS_IN_ALL = 1000;
 export const MORE_PATHS = 'More paths of this kind were found and are not listed.';
 
@@ -114,9 +114,11 @@ function foreignPaths(files: readonly DefinitionFile[], options: EncodeOptions |
   ];
   const re = literal.length > 0 ? new RegExp(`${FOREIGN.source}|${literal.join('|')}`, 'g') : new RegExp(FOREIGN.source, 'g');
   for (const file of files) {
+    // Text that is not UTF-8, or holds a NUL (UTF-8 with a stray byte, a script with a trailing NUL), is read as bytes: a path is made of ASCII, which survives.
     let text: string;
-    try { text = strictUtf8.decode(file.bytes); } catch { continue; }
-    if (text.includes('\0')) continue;
+    try { text = strictUtf8.decode(file.bytes); if (text.includes('\0')) throw new Error('NUL'); } catch {
+      text = Buffer.from(file.bytes.buffer, file.bytes.byteOffset, file.bytes.length).toString('latin1').replace(/\0/g, ' ');
+    }
     const seen = new Set<string>();
     let line = 1, scanned = 0, perFile = 0;
     for (const m of text.matchAll(re)) {
@@ -128,9 +130,11 @@ function foreignPaths(files: readonly DefinitionFile[], options: EncodeOptions |
       const key = `${line}\0${hit}`;
       if (seen.has(key)) continue;
       seen.add(key);
+      // The cap of a file ends the list of that file, with one line that says so; the next file is scanned. Only the cap of the whole bundle ends the scan.
       if (perFile >= HITS_PER_FILE || found.length >= HITS_IN_ALL) {
         found.push({ path: file.path, text: MORE_PATHS, sha256: sha256Hex(MORE_PATHS) });
-        return found;
+        if (found.length >= HITS_IN_ALL) return found;
+        break;
       }
       perFile += 1;
       found.push({ path: file.path, line, text: cut(hit), sha256: sha256Hex(hit) });
