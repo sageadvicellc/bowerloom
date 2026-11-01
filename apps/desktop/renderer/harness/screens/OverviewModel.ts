@@ -6,6 +6,8 @@
 import type { PartKind } from '../../../shared/harness/types.js';
 import { ZOOM_MAX } from '../../../shared/harness/layout.js';
 import type { Bounds, View } from '../../../shared/harness/layout.js';
+export { NO_INSETS, OVERLAY_INSETS, revealView } from './reveal-view.js';
+export type { Insets } from './reveal-view.js';
 import { OVERVIEW_LIMITS } from '../../../shared/harness/overview.js';
 import type { Overview, OverviewGroup, OverviewNode } from '../../../shared/harness/overview.js';
 import { defaultExpanded } from '../../../shared/harness/overview-layout.js';
@@ -150,27 +152,6 @@ export function overviewFit(bounds: Bounds, width: number, height: number, pad =
 export function overviewZoomAt(view: View, factor: number, cx: number, cy: number): View {
   const k = clampK(view.k * factor), real = k / view.k;
   return { k, x: cx - (cx - view.x) * real, y: cy - (cy - view.y) * real };
-}
-
-/** Window edges that the buttons, the small map and the legend cover, in pixels: a card is brought clear of them. */
-export interface Insets { readonly top: number; readonly right: number; readonly bottom: number; readonly left: number }
-export const NO_INSETS: Insets = Object.freeze({ top: 0, right: 0, bottom: 0, left: 0 });
-/** What the graph's own overlays cover: the zoom buttons at the right, the small map and the legend at the foot. */
-export const OVERLAY_INSETS: Insets = Object.freeze({ top: 0, right: 64, bottom: 110, left: 0 });
-
-/**
- * The view that brings a card fully into a window of `width` by `height`, with `pad` pixels to spare and clear of `insets`, moving as little as it can. The same view (the same object) when the card
- * is in already. A card larger than the window keeps its top left in view.
- */
-export function revealView(view: View, rect: { x: number; y: number; w: number; h: number }, width: number, height: number, pad = 24, insets: Insets = NO_INSETS): View {
-  const left = rect.x * view.k + view.x, top = rect.y * view.k + view.y, right = left + rect.w * view.k, bottom = top + rect.h * view.k;
-  const room = { left: pad + insets.left, top: pad + insets.top, right: width - pad - insets.right, bottom: height - pad - insets.bottom };
-  let dx = 0, dy = 0;
-  if (right > room.right) dx = room.right - right;
-  if (left + dx < room.left) dx = room.left - left;
-  if (bottom > room.bottom) dy = room.bottom - bottom;
-  if (top + dy < room.top) dy = room.top - top;
-  return dx === 0 && dy === 0 ? view : { k: view.k, x: view.x + dx, y: view.y + dy };
 }
 
 /** The place next to this one for the arrow keys on a header: left and right step through the places in order, up and down move a row of the grid. Null at an end. */

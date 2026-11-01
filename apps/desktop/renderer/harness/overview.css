@@ -10,7 +10,7 @@
 [data-home] .hxo-box[data-lit] { border-color: var(--accent-strong); box-shadow: inset 0 0 0 1px var(--accent-strong); }
 [data-home] .hxo-box[data-boxed] { background: color-mix(in srgb, var(--accent-soft) 45%, var(--surface-2)); }
 [data-home] .hxo-edges { z-index: 1; }
-[data-home] .hxo-node { z-index: 2; cursor: pointer; touch-action: manipulation; }
+[data-home] .hxo-node { z-index: 2; cursor: pointer; touch-action: none; }
 [data-home] .hxo-node:active { cursor: pointer; }
 [data-home] .hxo-node[data-lit] { background: var(--accent-soft); border-color: var(--accent-strong); border-style: dashed; }
 [data-home] .hxo-node[data-marked] .hx-node-text { padding-right: 2.25rem; }
@@ -37,9 +37,9 @@
 [data-home] .hxo-label { flex: none; }
 [data-home] .hxo-counts { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 [data-home] .hxo-tools { display: inline-flex; align-items: center; gap: var(--hm-space-3); flex: none; }
-/* The graph is scaled by its zoom; the header's controls are scaled back up by --hxo-up (set by the graph, at most 1.5), so at the detail zoom a button stays 24 px or more on screen. */
+/* The graph is scaled by its zoom; the header's controls are scaled back up by --hxo-up (set by the graph, 0.9 / zoom, at most 1.8), so at the detail zoom a button stays 24 px or more on screen. */
 [data-home] .hxo-world .hxo-toggle, [data-home] .hxo-world .hxo-tools { zoom: var(--hxo-up, 1); }
-[data-home] .hxo-world[data-detail="boxes"] .hxo-toggle { min-height: min(64px, calc(24px / var(--hxo-k, 1))); }
+[data-home] .hxo-world[data-detail="boxes"] .hxo-toggle { zoom: 1; min-height: min(64px, calc(24px / var(--hxo-k, 1))); }
 [data-home] .hxo-mark { white-space: nowrap; font-size: var(--hm-text-base); }
 /* An open place under the detail zoom: a box with its counts, drawn larger so they can be read. */
 [data-home] .hxo-world[data-detail="boxes"] .hxo-name { font-size: calc(var(--hm-text-title) * var(--hxo-boost, 1)); }
@@ -67,7 +67,8 @@
 [data-home] .hxo-place-body { padding: var(--hm-space-2) var(--hm-space-4) var(--hm-space-3); display: flex; flex-direction: column; gap: var(--hm-space-3); }
 [data-home] .hxo-place-body[hidden] { display: none; }
 [data-home] .hxo-kind { font-size: var(--hm-text-section); }
-[data-home] .hxo-row { content-visibility: auto; contain-intrinsic-size: auto 2.5rem; gap: var(--hm-space-1) var(--hm-space-3); flex-wrap: wrap; }
+[data-home] .hxo-row:not(:focus-within) { content-visibility: auto; contain-intrinsic-size: auto 2.5rem; }
+[data-home] .hxo-row { gap: var(--hm-space-1) var(--hm-space-3); flex-wrap: wrap; }
 [data-home] .hxo-row-icon { display: inline-flex; flex: none; color: var(--accent-strong); }
 [data-home] .hxo-row-marks { position: relative; display: inline-flex; gap: var(--hm-space-2); flex: none; }
 [data-home] .hxo-row[data-lit] { background: var(--accent-soft); border-style: dashed; border-color: var(--accent-strong); }

@@ -4,7 +4,7 @@
  * is a button that selects it, and the details column shows the same details as for a card of the graph. It is the default view in a window under OVERVIEW_LIMITS.smallScreen wide.
  * Closed places draw no parts, so a long scan stays short on the page. Read-only.
  */
-import { memo, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import type { PartKind } from '../../../shared/harness/types.js';
 import { listOf } from '../../../shared/harness/overview-layout.js';
@@ -59,6 +59,13 @@ export function OverviewList({ overview, expanded, index, selectedId, onSelect, 
     return found === undefined || found.node.shareKey === undefined ? null : new Set(overview.sharedKeys.get(found.node.shareKey) ?? []);
   }, [overview, index, selectedId]);
   // How many rows of each kind of each place are drawn: LIST_ROWS, and more after "Show more". The selected part is always among them.
+  const focusLast = useRef<string | null>(null);
+  useEffect(() => {
+    const id = focusLast.current;
+    if (id === null) return;
+    focusLast.current = null;
+    document.querySelector<HTMLElement>(`[data-node="${CSS.escape(id)}"] .hx-row-main`)?.focus();
+  });
   const [more, setMore] = useState<ReadonlyMap<string, number>>(() => new Map());
   const label = (group: { name: string }, node: OverviewNode): string => {
     const line = usesLineWords(usesCounts(index, node.id));
@@ -99,7 +106,11 @@ export function OverviewList({ overview, expanded, index, selectedId, onSelect, 
                         })}
                       </ul>
                       {shown >= section.nodes.length ? null : (
-                        <HButton size="small" data-show-more={key} aria-label={showMoreName(section.nodes.length - shown, g.name)} onClick={() => setMore(m => new Map(m).set(key, (m.get(key) ?? 0) + LIST_ROWS))}>{OVERVIEW.label.showMore}</HButton>
+                        <HButton size="small" data-show-more={key} aria-label={showMoreName(section.nodes.length - shown, g.name)} onClick={() => {
+                          // When this press draws the last rows the button goes, so the focus goes to the last row, not to the page.
+                          if (Math.min(section.nodes.length, Math.max(LIST_ROWS + (more.get(key) ?? 0) + LIST_ROWS, picked + 1)) >= section.nodes.length) focusLast.current = section.nodes.at(-1)!.id;
+                          setMore(m => new Map(m).set(key, (m.get(key) ?? 0) + LIST_ROWS));
+                        }}>{OVERVIEW.label.showMore}</HButton>
                       )}
                     </section>
                   );

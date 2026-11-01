@@ -3,6 +3,7 @@
  * (an offset and a zoom), the first fit once the size is known, and these gestures:
  *  - Ctrl and the wheel (a pinch on a trackpad) zoom about the pointer; the wheel alone pans. The listener is not passive, so the page itself does not scroll.
  *  - Drag the background to pan. A press on the background that does not move calls `onBackground`. A press on a node or a control (`[data-node]`, `[data-control]`) never pans.
+ *  - A focused card is brought into the window by `reveal` (a screen calls it from its focus handler; see builder/Graph.tsx and OverviewGraph.tsx).
  *  - The stage never scrolls: it is `overflow: hidden`, and the browser scrolls such a box to show a focused child (a Tab onto a card out of view). That would leave the picture
  *    where the view state does not say it is, so `onScroll` puts the scroll back at 0 and a caller reveals the focused card through the view instead.
  * Every move of the view goes through `setView`, which keeps `latest.current.view` equal to the view at once (two wheel events in one frame add up) and tells `onView` the new
@@ -12,6 +13,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, RefObject, UIEvent as ReactUIEvent } from 'react';
 import { FIT_FOOT, fitView, zoomAt } from '../../../shared/harness/layout.js';
 import type { Bounds, View } from '../../../shared/harness/layout.js';
+import { NO_INSETS, revealView } from './reveal-view.js';
+import type { Insets } from './reveal-view.js';
 
 const DRAG_START = 4;
 const PAD = 16;
@@ -47,6 +50,8 @@ export interface PanZoom {
   latest: RefObject<{ view: View; size: { w: number; h: number } }>;
   setView(next: View): void;
   fit(): void;
+  /** Brings a card (a rectangle in graph units) into the window through the view, clear of `insets`. Nothing moves when it is in already. */
+  reveal(rect: { x: number; y: number; w: number; h: number }, insets?: Insets): void;
   zoomBy(factor: number): void;
   /** The middle of the stage, in window pixels. */
   centre(): { x: number; y: number };
@@ -79,6 +84,10 @@ export function usePanZoom(options: PanZoomOptions): PanZoom {
     opts.current.onView?.(next, before);
   }, []);
   const fit = useCallback((): void => { const { size: s } = latest.current; setView(fitOf(opts.current.bounds, s.w, s.h)); }, [setView]);
+  const reveal = useCallback((rect: { x: number; y: number; w: number; h: number }, insets: Insets = NO_INSETS): void => {
+    const { view: v, size: s } = latest.current;
+    setView(revealView(v, rect, s.w, s.h, 24, insets));
+  }, [setView]);
   const centre = useCallback((): { x: number; y: number } => ({ x: latest.current.size.w / 2, y: latest.current.size.h / 2 }), []);
   const zoomBy = useCallback((factor: number): void => {
     const c = centre(), zoom = opts.current.zoom ?? zoomAt;
@@ -123,11 +132,11 @@ export function usePanZoom(options: PanZoomOptions): PanZoom {
   const swallow = useRef(false);
   const handlers: PanZoom['handlers'] = {
     onPointerDown: e => {
+      swallow.current = false;
       const target = e.target as HTMLElement;
       if (e.button !== 0 || target.closest('[data-control]') !== null) return;
       const onNode = target.closest('[data-node]') !== null;
       if (onNode && opts.current.panFromNodes !== true) return;
-      swallow.current = false;
       pan.current = { x: e.clientX, y: e.clientY, view: latest.current.view, moved: false, pointer: e.pointerId, onNode };
       // A press on the background is captured at once. A press on a card is captured only once it becomes a drag, so a plain click still reaches the card.
       if (!onNode) e.currentTarget.setPointerCapture(e.pointerId);
@@ -153,5 +162,5 @@ export function usePanZoom(options: PanZoomOptions): PanZoom {
     onScroll: e => { const el = e.currentTarget; if (el.scrollLeft !== 0 || el.scrollTop !== 0) { el.scrollLeft = 0; el.scrollTop = 0; } },
     onClickCapture: e => { if (swallow.current) { swallow.current = false; e.stopPropagation(); e.preventDefault(); } },
   };
-  return { host, size, view, latest, setView, fit, zoomBy, centre, handlers };
+  return { host, size, view, latest, setView, fit, reveal, zoomBy, centre, handlers };
 }

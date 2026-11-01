@@ -151,3 +151,22 @@ test('a drag that starts on a card pans the view, and the click that ends it sel
   await p.mouse.click(now.x + now.width / 2, now.y + now.height / 2);
   expect(await p.locator('[data-node][data-selected]').count()).toBe(1);
 });
+
+test('at the smallest detail zoom (0.5) the place button is still 24 px high, and in boxes mode every header toggle stays inside its box', async () => {
+  const p = page();
+  await intoDetail(p);
+  const box = (await p.locator('.hxo-canvas').boundingBox())!;
+  await p.mouse.move(box.x + 300, box.y + 300);
+  await p.keyboard.down('Control');
+  for (let i = 0; i < 40 && (await scale(p)) > 0.52; i += 1) await p.mouse.wheel(0, 8);
+  await p.keyboard.up('Control');
+  const k = await scale(p);
+  expect(k).toBeGreaterThanOrEqual(0.5); expect(k).toBeLessThan(0.56);
+  const heights = await p.locator('.hxo-world [data-choose-folder], .hxo-world [data-open-builder]').evaluateAll(els => els.map(e => e.getBoundingClientRect().height));
+  expect(heights.length).toBeGreaterThan(0);
+  for (const hgt of heights) expect(hgt).toBeGreaterThanOrEqual(23.5);
+  await p.getByRole('button', { name: 'Fit to window' }).click();
+  expect(await scale(p)).toBeLessThan(0.5);
+  const pairs = await p.locator('[data-cluster]').evaluateAll(els => els.map(e => { const b = e.getBoundingClientRect(), t = e.querySelector('[data-place-toggle]')!.getBoundingClientRect(); return { top: t.top - b.top, bottom: b.bottom - t.bottom, left: t.left - b.left, right: b.right - t.right }; }));
+  for (const d of pairs) { expect(d.top).toBeGreaterThanOrEqual(-0.5); expect(d.bottom).toBeGreaterThanOrEqual(-0.5); expect(d.left).toBeGreaterThanOrEqual(-0.5); expect(d.right).toBeGreaterThanOrEqual(-0.5); }
+});

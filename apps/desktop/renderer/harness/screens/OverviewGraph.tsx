@@ -110,8 +110,12 @@ export function OverviewGraph({ overview, expanded, index, selectedId, fitKey, o
   });
 
   // A part chosen from the details: bring it into the window, and zoom in when the parts are not drawn.
+  const handled = useRef(reveal?.n ?? 0);
   useEffect(() => {
-    const node = reveal === null ? undefined : nodeById.get(reveal.id);
+    // A part chosen before this graph was drawn (the person was on the List) is not chased: only a choice made while it is on screen.
+    if (reveal === null || reveal.n === handled.current) return;
+    handled.current = reveal.n;
+    const node = nodeById.get(reveal.id);
     if (node === undefined) return;
     const k = Math.max(pz.latest.current.view.k, OVERVIEW_LIMITS.detailZoom), { w, h } = pz.latest.current.size;
     const here = pz.latest.current.view, moved = revealView(here, node, w, h, 24, OVERLAY_INSETS);
@@ -165,7 +169,7 @@ export function OverviewGraph({ overview, expanded, index, selectedId, fitKey, o
     if (!target.matches(':focus-visible')) return;
     const card = target.closest<HTMLElement>('[data-node]')?.getAttribute('data-node');
     const rect = card !== null && card !== undefined ? nodeById.get(card) : cluster === null || cluster === undefined ? undefined : clusterById.get(cluster)?.header;
-    if (rect !== undefined) pz.setView(revealView(pz.latest.current.view, rect, pz.latest.current.size.w, pz.latest.current.size.h, 24, OVERLAY_INSETS));
+    if (rect !== undefined) pz.reveal(rect, OVERLAY_INSETS);
   };
 
   const map = useMemo(() => miniMap(layout.map, view, size.w, size.h, MAP.w, MAP.h), [layout, view, size]);
@@ -184,7 +188,7 @@ export function OverviewGraph({ overview, expanded, index, selectedId, fitKey, o
   return (
     <div className="hx-canvas hxo-canvas" ref={host} role="group" aria-label={WORDS.label.graph} aria-describedby="hxo-keys" data-view="graph" onKeyDown={keyStage} onFocusCapture={focusedIn} {...pz.handlers}>
       {onPageNodes.length === 0 ? null : <button type="button" className="hxo-skip" data-control="" onClick={() => els.current.get(nodeKey(tabbable ?? ''))?.focus({ preventScroll: true })}>{OVERVIEW.label.skipToParts}</button>}
-      <div className="hx-world hxo-world" data-detail={visible.detail} style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})`, ['--hxo-boost' as string]: Math.min(2.2, Math.max(1, 0.9 / view.k)), ['--hxo-up' as string]: Math.min(1.5, Math.max(1, 0.75 / view.k)), ['--hxo-k' as string]: view.k }}>
+      <div className="hx-world hxo-world" data-detail={visible.detail} style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})`, ['--hxo-boost' as string]: Math.min(2.2, Math.max(1, 0.9 / view.k)), ['--hxo-up' as string]: Math.min(1.8, Math.max(1, 0.9 / view.k)), ['--hxo-k' as string]: view.k }}>
         {visible.clusters.map(id => {
           const c = clusterById.get(id), g = groupById.get(id);
           if (c === undefined || g === undefined) return null;

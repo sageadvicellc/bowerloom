@@ -8,13 +8,14 @@
  * Nothing here writes to a disk. All text comes from the person's own files and is drawn as plain text.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactElement } from 'react';
+import type { FocusEvent as ReactFocusEvent, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactElement } from 'react';
 import { ZOOM_STEP, brightIds, centerOnMiniMap, dropLinkTarget, edgePath, graphOf, miniMap } from '../../../../shared/harness/layout.js';
 import type { GraphNode, View } from '../../../../shared/harness/layout.js';
 import type { Harness, HarnessState, Point } from '../../../../shared/harness/types.js';
 import { HIcon, KIND_ICON } from '../../icons.js';
 import { HButton, HIconButton } from '../../parts/controls.js';
 import { WORDS, linkFromWords, nodeName } from '../../words.js';
+import { OVERLAY_INSETS } from '../reveal-view.js';
 import { usePanZoom } from '../usePanZoom.js';
 
 export interface GraphProps {
@@ -56,6 +57,13 @@ export function Graph({ state, harness, selectedId, linkingId, matchIds, onSelec
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
   }, [linkingId, onLinkCancel]);
+
+  // A key that brings the focus to a card out of the window (a Tab) shows it through the view: the stage never scrolls (usePanZoom resets that), and the card stays clear of the zoom buttons and the small map.
+  const focusedIn = (e: ReactFocusEvent<HTMLElement>): void => {
+    if (!e.target.matches(':focus-visible')) return;
+    const id = e.target.closest<HTMLElement>('[data-node]')?.getAttribute('data-node'), card = id === null || id === undefined ? undefined : nodeById.get(id);
+    if (card !== undefined) pz.reveal(card, OVERLAY_INSETS);
+  };
 
   const bright = useMemo(() => {
     if (linkingId !== null) {
@@ -126,7 +134,7 @@ export function Graph({ state, harness, selectedId, linkingId, matchIds, onSelec
 
   return (
     <div className="hx-canvas" ref={host} role="group" aria-label={WORDS.label.graph} data-linking={linkingId === null ? undefined : ''}
-      {...pz.handlers}>
+      onFocusCapture={focusedIn} {...pz.handlers}>
       <div className="hx-world" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}>
         <svg className="hx-edges" width="1" height="1" aria-hidden="true" focusable="false">
           {graph.edges.map(edge => {
