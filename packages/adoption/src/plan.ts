@@ -25,6 +25,7 @@ import {
   ENGINE_IDS, GUARDRAIL_ACTIONS, HARNESS_FORMAT, LEGACY_NAMES, REVISION_PREFIX, adoptedPaths, isEngineId, isId, isServerName, loadDefinition, scanSecrets,
   skillContentHash,
 } from '../../harness-definition/src/index.js';
+import { EMPTY_HARNESS_DESCRIPTION } from '../../harness-definition/src/defaults.js';
 import type { AdoptedFrom, EngineId, GuardrailAction, JsonValue, Problem } from '../../harness-definition/src/index.js';
 import { atImports } from '../../project-sync/src/portable.js';
 import { byBytes, revisionOf, sha } from '../../project-sync/src/portable-files.js';
@@ -192,7 +193,7 @@ function checkInput(input: AdoptionInput) {
   if (h?.description !== undefined && (typeof h.description !== 'string' || h.description.trim() === '' || [...h.description].length > 1024 || CONTROL.test(h.description))) refuse('ADOPTION_USAGE');
   const slug = basename(projectDir).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64).replace(/-+$/, '');
   const harnessId = h?.id ?? (isId(slug) ? slug : 'adopted');
-  const description = h?.description ?? 'Adopted from the engine files of this project.';
+  const description = h?.description ?? EMPTY_HARNESS_DESCRIPTION;
   const choices = input.choices ?? {};
   if (choices === null || typeof choices !== 'object' || Array.isArray(choices)) refuse('ADOPTION_USAGE');
   const everyEngine: unknown = input.everyEngine === undefined ? [] : input.everyEngine;

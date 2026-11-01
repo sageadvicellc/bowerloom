@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import { canonicalJson, oneLine } from '../../contracts/src/index.js';
 import type { Definition, DefinitionFile, HookEntry, McpServer } from '../../harness-definition/src/index.js';
 import { addressOf } from './address.js';
+import { BundleRefusal } from './codes.js';
 import { codeWhy } from './code-files.js';
 import { BUNDLE_LIMITS } from './limits.js';
 import type {
@@ -71,8 +72,9 @@ function mcpTool(server: McpServer, secrets: Secrets): BundleTool {
   if (server.command !== undefined) secrets.text(server.command, server.name, 'command', host?.host);
   return {
     name: server.name, kind: 'mcp', transport: server.transport, runsCode,
-    ...(server.command !== undefined ? { command: cut(server.command) } : {}),
-    ...(server.args !== undefined ? { args: server.args.slice(0, BUNDLE_LIMITS.displayArgs).map(a => cut(a)) } : {}),
+    // Whole, never cut: `checkToolText` has refused a bundle whose command or arguments are too long to show.
+    ...(server.command !== undefined ? { command: server.command } : {}),
+    ...(server.args !== undefined ? { args: [...server.args] } : {}),
     ...(host !== undefined ? { host: host.host } : {}),
     ...(host !== undefined && host.flags.length > 0 ? { addressFlags: host.flags } : {}),
     sha256: entryHash(server),
@@ -81,7 +83,25 @@ function mcpTool(server: McpServer, secrets: Secrets): BundleTool {
 
 function hookTool(hook: HookEntry, secrets: Secrets): BundleTool {
   secrets.text(hook.command, hook.id, 'command', undefined);
-  return { name: hook.id, kind: 'hook', runsCode: true, command: cut(hook.command), event: hook.event, sha256: entryHash(hook) };
+  return { name: hook.id, kind: 'hook', runsCode: true, command: hook.command, event: hook.event, sha256: entryHash(hook) };
+}
+
+/**
+ * Refuses `BUNDLE_INVALID` when a tool could not be shown whole: an MCP command, an argument or a hook command of more than `BUNDLE_LIMITS.commandChars` characters, or a server
+ * with more than `BUNDLE_LIMITS.toolArgs` arguments. The acknowledgement binds the whole entry of a tool that runs code or reaches a host, so what a person reads must be the
+ * whole entry. The refusal names each tool by the words "a tool's command or arguments are too long to show in full", and its problems carry the same words by code.
+ */
+export function checkToolText(def: Definition): void {
+  const long: string[] = [];
+  const over = (text: string | undefined): boolean => text !== undefined && text.length > BUNDLE_LIMITS.commandChars;
+  for (const s of def.entries.mcp) if (over(s.command) || (s.args?.length ?? 0) > BUNDLE_LIMITS.toolArgs || (s.args ?? []).some(a => over(a))) long.push(`mcp.json: ${s.name}`);
+  for (const h of def.entries.hooks) if (over(h.command)) long.push(`hooks.json: ${h.id}`);
+  if (long.length === 0) return;
+  throw new BundleRefusal(
+    'BUNDLE_INVALID',
+    long.map(l => `a tool's command or arguments are too long to show in full (${l})`),
+    [{ code: 'TOOL_TEXT_TOO_LONG', path: long[0]!.split(':')[0]!, message: `A tool's command is too long to show in full: at most ${BUNDLE_LIMITS.commandChars} characters, and ${BUNDLE_LIMITS.toolArgs} arguments.` }],
+  );
 }
 
 // ---- paths of another computer --------------------------------------------------------------------------------------------------

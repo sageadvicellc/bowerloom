@@ -20,7 +20,10 @@ export const BUNDLE_FILE_SUFFIX = '.bowerloom.json' as const;
  *  - `notesNames`, `nameChars`: the notes names a bundle may list, and the length of a name.
  *  - `listRows`: the rows of one list in a preview; the rest are counted ("and N more").
  *  - `heldBundles`: the decoded bundles main holds in memory at once.
- *  - `displayChars`, `displayArgs`: the text of a command, host, hook or foreign-path hit that a summary carries (cut to this), and the arguments of a tool.
+ *  - `displayChars`: the text of a host or a foreign-path hit that a summary carries (cut to this).
+ *  - `commandChars`, `toolArgs`: a tool that runs code or reaches a host is shown WHOLE, because the acknowledgement binds the whole entry and a person must not tick text they
+ *    did not see. So a command (an MCP command or a hook command) or an argument of more than `commandChars` characters, or a tool with more than `toolArgs` arguments, is
+ *    not cut: the bundle is refused `BUNDLE_INVALID`, with words that say the command is too long to show in full.
  *  - `yamlBytes`, `scanUnits`: budgets of the loader's work (see `work-budget.ts`): the bytes it parses as YAML, and the places where its secret scan tries a pattern.
  */
 export const BUNDLE_LIMITS = Object.freeze({
@@ -37,7 +40,8 @@ export const BUNDLE_LIMITS = Object.freeze({
   listRows: 200,
   heldBundles: 2,
   displayChars: 200,
-  displayArgs: 20,
-  yamlBytes: 1024 * 1024,
-  scanUnits: 4_000_000,
+  commandChars: 4000,
+  toolArgs: 64,
+  yamlBytes: 512 * 1024,
+  scanUnits: 3_000_000,
 });

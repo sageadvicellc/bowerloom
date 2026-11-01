@@ -12,7 +12,7 @@
 import type { Definition, DefinitionFile } from '../../harness-definition/src/index.js';
 import { decodeBundle as decode, encodeBundle as encode } from './codec.js';
 import * as io from './file-io.js';
-import { bundleFilesOf, definitionOf, isEmptyHarness as isEmpty, targetFromBundle as target } from './target.js';
+import { assertEmptyHarness as assertEmpty, bundleFilesOf, definitionOf, harnessPartsFound as partsFound, isEmptyHarness as isEmpty, targetFromBundle as target } from './target.js';
 import { summarize } from './summary.js';
 import type { BundleFileIdentity, BundleSummary, DecodedBundle, EncodedBundle, EncodeOptions, ImportChoices } from './types.js';
 
@@ -30,6 +30,7 @@ export type { AddressFlag, AddressRead } from './address.js';
 export { BINARY_DATA_EXTENSIONS, CODE_EXTENSIONS, DATA_EXTENSIONS, TEXT_DATA_EXTENSIONS, codeWhy } from './code-files.js';
 export type { CodeWhy } from './code-files.js';
 export { importChoicesOf } from './choices.js';
+export { EMPTY_HARNESS_DESCRIPTION } from './target.js';
 
 /**
  * The bundle of a loaded definition: every file but `knowledge.json`, the source names, the summary, and the hash of the bytes. Deterministic. Async, so a large
@@ -60,11 +61,21 @@ export function inspectBundle(bundle: DecodedBundle): BundleSummary {
  */
 export function targetFromBundle(bundle: DecodedBundle, choices: ImportChoices): readonly DefinitionFile[] { return target(bundle, choices); }
 
-/** True when the definition holds no entry, no instructions, no source and no knowledge: only an empty harness, which an import may fill. Pure. */
+/**
+ * True when the harness holds nothing an import would overwrite: no entry, no instructions, no source, no knowledge, no script, no engine file, and none of the settings a
+ * person made in `harness.json` (a description other than `EMPTY_HARNESS_DESCRIPTION`, an engine with a version or a model, an override, the settings of a skill). A harness
+ * with settings only is NOT empty: an import refuses it. Fails closed, and pure.
+ */
 export function isEmptyHarness(def: Definition): boolean { return isEmpty(def); }
 
+/** What a harness holds that an import would overwrite, as plain labels (`skills`, `a description you wrote`, …). Empty when the harness is empty. Pure. */
+export function harnessPartsFound(def: Definition): readonly string[] { return partsFound(def); }
+
+/** Refuses `IMPORT_FOLDER_HAS_HARNESS` unless the harness is empty. The refusal names, in its `paths`, each part or setting found. Pure. */
+export function assertEmptyHarness(def: Definition): void { assertEmpty(def); }
+
 /**
- * Reads a bundle file with bounds, async. It opens with `O_RDONLY | O_NOFOLLOW | O_NONBLOCK` (so a FIFO or a stalled device cannot hang the open; the flag
+ * Reads a bundle file with bounds, async. It opens with `O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_NOCTTY` (so a FIFO or a stalled device cannot hang the open; the flag
  * has no effect on a regular file), and calls `fstat` on the DESCRIPTOR before any read: a folder also opens with `O_RDONLY`, so this check is required. It must be a
  * regular file, owned by the user, at most `BUNDLE_LIMITS.fileBytes`. It reads at most one byte past the size; a read that ends before the size, or one that
  * returns a byte past it, refuses. It compares the identity and size after the read. A link, a device, a pipe, a folder, a file of another user, or a file that
