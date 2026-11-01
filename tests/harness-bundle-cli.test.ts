@@ -15,8 +15,9 @@ import { importChange } from '../apps/cli/src/harness-bundle.js';
 import type { ImportRequest } from '../apps/cli/src/harness-bundle.js';
 import { privateStateRoot } from '../packages/project-context/src/index.js';
 import { harnessStateDirs } from '../packages/project-sync/src/index.js';
-import { BUNDLE_CODES, BUNDLE_FORMAT, BUNDLE_MESSAGES, EXPORT_PLAN_FORMAT, IMPORT_PLAN_FORMAT } from '../packages/harness-bundle/src/index.js';
-import { computeRevision } from '../packages/harness-definition/src/index.js';
+import { BUNDLE_CODES, BUNDLE_FORMAT, isEmptyHarness, BUNDLE_MESSAGES, EXPORT_PLAN_FORMAT, IMPORT_PLAN_FORMAT } from '../packages/harness-bundle/src/index.js';
+import { EMPTY_HARNESS_DESCRIPTION } from '../packages/harness-bundle/src/target.js';
+import { computeRevision, loadDefinition } from '../packages/harness-definition/src/index.js';
 
 const sha = (b: Uint8Array | string): string => createHash('sha256').update(b).digest('hex');
 const HEX64 = /^[a-f0-9]{64}$/;
@@ -25,8 +26,8 @@ const parse = <T = Record<string, unknown>>(text: string): T => JSON.parse(text)
 
 // ---- made-up harnesses ---------------------------------------------------------------------------------------------------
 
-const HARNESS = (id = 'demo', parts: Record<string, unknown> = {}): string => json({
-  format: 'bowerloom/harness/v1beta1', id, description: 'A demo harness.', engines: [{ id: 'claude-code' }, { id: 'codex' }], parts,
+const HARNESS = (id = 'demo', parts: Record<string, unknown> = {}, description = 'A demo harness.'): string => json({
+  format: 'bowerloom/harness/v1beta1', id, description, engines: [{ id: 'claude-code' }, { id: 'codex' }], parts,
 });
 const skill = (name: string): string => `---\nname: ${name}\ndescription: Does ${name}.\n---\n\nBody of ${name}.\n`;
 const agent = (name: string, extra = ''): string => `---\nname: ${name}\ndescription: A reader.\n${extra}---\n\nRead the files and report.\n`;
@@ -226,7 +227,7 @@ test('import goes into a folder with an empty harness; its revision is the save 
   const w = world(t);
   put(w.src, plainFiles());
   exportOut(w);
-  put(w.dst, { 'harness.json': HARNESS('empty') });
+  put(w.dst, { 'harness.json': HARNESS('empty', {}, EMPTY_HARNESS_DESCRIPTION) });
   const planned = bl(w, ['import', w.out, '--json'], w.dst);
   assert.equal(planned.status, 3, planned.stderr);
   const body = parse<ImportBody>(planned.stdout);
@@ -235,6 +236,16 @@ test('import goes into a folder with an empty harness; its revision is the save 
   assert.equal(bl(w, ['import', w.out, '--approve', body.revision], w.dst).status, 0);
   assert.equal(readFileSync(join(w.dst, '.bowerloom', 'harness.json'), 'utf8'), plainFiles()['harness.json']);
   assert.equal(readFileSync(join(w.dst, '.bowerloom', 'skills/review/SKILL.md'), 'utf8'), skill('review'));
+});
+
+test('a harness with a description of its own is not an empty one, and import refuses it', t => {
+  const w = world(t);
+  put(w.src, plainFiles());
+  exportOut(w);
+  put(w.dst, { 'harness.json': HARNESS('mine', {}, 'My own words about this harness.') });
+  const r = bl(w, ['import', w.out], w.dst);
+  assert.equal(r.status, 1, r.stderr);
+  assert.equal(errorCode(r.stderr), 'IMPORT_FOLDER_HAS_HARNESS');
 });
 
 test('an existing .bowerloom with only 0.7 files and hidden clutter counts as a missing harness, and those files stay', t => {
@@ -605,6 +616,16 @@ test('every refusal code of the bundle is reachable from the command line with i
   const existing = join(w.home, 'exists.json');
   writeFileSync(existing, 'in the way\n');
   check('BUNDLE_EXISTS', bl(w, ['export', '--output', existing], w.src), w.home, snapshot(w.home));
+  // A folder that cannot be written: the plan is made, and the write fails with the plain-words code of a failed file.
+  const locked = join(w.home, 'locked');
+  mkdirSync(locked);
+  const lockedPlan = parse<ExportBody>(bl(w, ['export', '--output', join(locked, 'x.json'), '--json'], w.src).stdout);
+  chmodSync(locked, 0o555);
+  t.after(() => { try { chmodSync(locked, 0o755); } catch { /* gone */ } });
+  const failed = bl(w, ['export', '--output', join(locked, 'x.json'), '--approve', lockedPlan.revision], w.src);
+  check('BUNDLE_FILE_FAILED', failed, locked, {});
+  assert.match(parse<{ error: { message: string } }>(failed.stderr).error.message, /permission/);
+  chmodSync(locked, 0o755);
   check('IMPORT_FOLDER_HAS_HARNESS', bl(w, ['import', w.out], w.src), w.src, snapshot(w.src));
   // IMPORT_NEEDS_ACKNOWLEDGEMENT and EXPORT_NEEDS_ACKNOWLEDGEMENT have their own tests above. Reach them here again, so this one test names every code.
   const plan = parse<ImportBody>(bl(w, ['import', w.out, '--json'], w.dst).stdout);
@@ -690,7 +711,7 @@ test('a state folder the save would refuse is found when the plan is made, befor
   exportOut(w);
   for (const dir of [w.dst, join(w.home, 'Projects', 'empty')]) {
     mkdirSync(dir, { recursive: true });
-    if (dir !== w.dst) put(dir, { 'harness.json': HARNESS('empty') });
+    if (dir !== w.dst) put(dir, { 'harness.json': HARNESS('empty', {}, EMPTY_HARNESS_DESCRIPTION) });
     mkdirSync(stateOf(w, dir), { recursive: true, mode: 0o755 });
     chmodSync(stateOf(w, dir), 0o755);
     const before = snapshot(dir);
@@ -717,8 +738,14 @@ async function failAfterEmpty(w: W, dir: string, hook: () => void): Promise<{ er
 
 test('a failure after the empty harness was made takes it out again, and the .bowerloom folder this command made with it', async t => {
   const w = world(t);
-  const { error, seen } = await failAfterEmpty(w, w.dst, () => { throw new Error('stopped for the test'); });
+  let empty = false;
+  const { error, seen } = await failAfterEmpty(w, w.dst, () => {
+    const loaded = loadDefinition(join(w.dst, '.bowerloom'));
+    empty = loaded.ok && isEmptyHarness(loaded.definition);
+    throw new Error('stopped for the test');
+  });
   assert.equal(seen, true, 'the empty harness was on disk when the hook ran');
+  assert.equal(empty, true, 'and the package counts it as empty, as the app does');
   assert.match(error.message, /stopped for the test/);
   assert.equal(existsSync(join(w.dst, '.bowerloom')), false);
   assert.deepEqual(snapshot(w.dst), {});

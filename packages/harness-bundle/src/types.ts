@@ -177,9 +177,9 @@ export interface BundleSummary {
 // ---- calls -----------------------------------------------------------------------------------------------------------------
 
 export interface EncodeOptions {
-  /** The exporting computer's home folder, matched literally in file text in addition to the shape of a path. */
+  /** The exporting computer's home folder, matched literally in file text in addition to the shape of a path. A value of one character (such as `/`) is ignored. */
   readonly home?: string;
-  /** The exporting computer's user name, matched literally in file text. */
+  /** The exporting computer's user name, matched literally in file text, as a whole word. A name of fewer than 3 characters is ignored, because it would match ordinary words. */
   readonly user?: string;
   /** Written into `generator`. Default: `bowerloom`. */
   readonly generator?: string;

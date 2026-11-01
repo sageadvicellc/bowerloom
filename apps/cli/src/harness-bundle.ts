@@ -29,6 +29,7 @@ import {
   importChoicesOf, inspectBundle, isEmptyHarness, readBundleFile, targetFromBundle, writeBundleFile,
 } from '../../../packages/harness-bundle/src/index.js';
 import type { BundleFileIdentity, BundleSummary, ExportPlan, ImportPlan } from '../../../packages/harness-bundle/src/index.js';
+import { EMPTY_HARNESS_DESCRIPTION } from '../../../packages/harness-bundle/src/target.js';
 import { withProjectLock } from '../../../packages/project-context/src/index.js';
 import type { PlannedChange } from '../../../packages/project-context/src/types.js';
 import { checkPaths, stateExists } from '../../../packages/project-sync/src/portable-state.js';
@@ -273,7 +274,7 @@ function folderState(dir: string): { readonly kind: 'empty' } | { readonly kind:
 /** The harness that a missing one is made into first: the bundle's id and engines, and no part. The bundle's own `harness.json` replaces it in the same save. */
 function emptyHarnessBytes(summary: BundleSummary): Uint8Array {
   const bytes = Buffer.from(`${JSON.stringify({
-    format: HARNESS_FORMAT, id: summary.harness, description: 'An empty harness for an import.', engines: summary.engines.map(id => ({ id })), parts: {},
+    format: HARNESS_FORMAT, id: summary.harness, description: EMPTY_HARNESS_DESCRIPTION, engines: summary.engines.map(id => ({ id })), parts: {},
   }, null, 2)}\n`, 'utf8');
   if (!loadDefinitionFiles([{ path: 'harness.json', bytes }], '').ok) throw new BundleRefusal('BUNDLE_INVALID');
   return bytes;

@@ -21,6 +21,7 @@ export const BUNDLE_FILE_SUFFIX = '.bowerloom.json' as const;
  *  - `listRows`: the rows of one list in a preview; the rest are counted ("and N more").
  *  - `heldBundles`: the decoded bundles main holds in memory at once.
  *  - `displayChars`, `displayArgs`: the text of a command, host, hook or foreign-path hit that a summary carries (cut to this), and the arguments of a tool.
+ *  - `yamlBytes`, `scanUnits`: budgets of the loader's work (see `work-budget.ts`): the bytes it parses as YAML, and the places where its secret scan tries a pattern.
  */
 export const BUNDLE_LIMITS = Object.freeze({
   fileBytes: 48 * 1024 * 1024,
@@ -37,4 +38,6 @@ export const BUNDLE_LIMITS = Object.freeze({
   heldBundles: 2,
   displayChars: 200,
   displayArgs: 20,
+  yamlBytes: 1024 * 1024,
+  scanUnits: 4_000_000,
 });

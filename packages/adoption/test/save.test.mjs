@@ -745,6 +745,16 @@ test('two paths that differ only in case or Unicode form are refused; a file whe
   assert.throws(() => planSave(p.save(), c), code('SAVE_PATH_UNSAFE'));
 });
 
+test('names that a case-insensitive volume joins, by the full fold, are refused: sharp s and ss, a final sigma, the rounded Cyrillic letters, a capital sharp s', t => {
+  const p = saving(t);
+  for (const [one, two] of [['strasse', 'stra\u00dfe'], ['\u03b1\u03c3', '\u03b1\u03c2'], ['\u0432', '\u1c80'], ['ss', '\u1e9e'], ['STRASSE', 'stra\u00dfe']]) {
+    const target = current(p);
+    target.set(`skills/review/references/${one}.md`, Buffer.from('one\n'));
+    target.set(`skills/review/references/${two}.md`, Buffer.from('two\n'));
+    assert.throws(() => planSave(p.save(), target), code('SAVE_PATH_UNSAFE'), `${one} and ${two}`);
+  }
+});
+
 test('a symbolic link at a target path, in a folder above one, or as .bowerloom itself is refused', async t => {
   const p = saving(t);
   const outside = path.join(p.base, 'outside');

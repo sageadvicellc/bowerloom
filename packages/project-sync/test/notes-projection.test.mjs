@@ -4,8 +4,8 @@
 // Synthetic values only: every source path is relative or in ~ form.
 import test from 'node:test';
 import { loadDefinition } from '../../../dist/packages/harness-definition/src/index.js';
-import { decodeBundle } from '../../../dist/packages/harness-bundle/src/index.js';
-import { DEFINITION_BUNDLE_FORMAT, NOTES_HEADING, exportDefinitionBundle, notesSection, planPortable } from '../../../dist/packages/project-sync/src/index.js';
+import { BUNDLE_FORMAT, decodeBundle } from '../../../dist/packages/harness-bundle/src/index.js';
+import { NOTES_HEADING, exportDefinitionBundle, notesSection, planPortable } from '../../../dist/packages/project-sync/src/index.js';
 import { assert, json, projectNow, snapshot } from './portable-fixture.mjs';
 import { PINNED, agentFile, lockedProject, read } from './locked-fixture.mjs';
 
@@ -122,7 +122,7 @@ test('the export bundle carries each source by kind and name only, and never its
   const def = definitionOf(p);
   const encoded = await exportDefinitionBundle(def);
   const bundle = await decodeBundle(encoded.bytes);
-  assert.equal(bundle.format, DEFINITION_BUNDLE_FORMAT);
+  assert.equal(bundle.format, BUNDLE_FORMAT);
   assert.equal(bundle.harness, 'demo');
   assert.deepEqual(bundle.knowledge.map(k => ({ ...k })), [{ kind: 'wiki-folder', name: 'wiki' }, { kind: 'wiki-folder', name: 'team-notes' }]);
   for (const k of bundle.knowledge) assert.deepEqual(Object.keys(k).sort(), ['kind', 'name']);

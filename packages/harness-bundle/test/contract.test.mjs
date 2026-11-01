@@ -39,7 +39,7 @@ test('the limits reuse the definition loader limits and add the bundle ones', ()
 
 test('every code has plain words that name what was written and repeat no value', () => {
   assert.deepEqual([...BUNDLE_CODES], Object.keys(BUNDLE_MESSAGES));
-  assert.equal(BUNDLE_CODES.length, 12);
+  assert.equal(BUNDLE_CODES.length, 13);
   for (const code of BUNDLE_CODES) {
     const words = BUNDLE_MESSAGES[code];
     assert.match(words, /^[A-Z][^\n]*\.$/, code);

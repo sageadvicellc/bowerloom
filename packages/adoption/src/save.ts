@@ -29,6 +29,7 @@ import { dirname, isAbsolute, join } from 'node:path';
 import { DefinitionError, oneLine } from '../../contracts/src/index.js';
 import { DEFINITION_LIMITS, INCOMPLETE_RULES, LEGACY_NAMES, loadDefinition, loadDefinitionFiles, scanSecrets } from '../../harness-definition/src/index.js';
 import type { DefinitionFile, Problem } from '../../harness-definition/src/index.js';
+import { foldName } from '../../harness-definition/src/fold.js';
 import { withProjectLock } from '../../project-context/src/index.js';
 import {
   PortableRefusal, byBytes, caseClashes, checkAncestors, makeDir, readProject, removeEmptyDirs, revisionOf, sameState, sha, uid, writeAbs,
@@ -238,7 +239,7 @@ function checkClashes(paths: readonly string[]): void {
   for (const rel of paths) {
     const parts = rel.split('/');
     for (let i = 1; i <= parts.length; i++) {
-      const prefix = parts.slice(0, i).join('/'), key = prefix.normalize('NFC').toLowerCase();
+      const prefix = parts.slice(0, i).join('/'), key = foldName(prefix);
       const seen = folded.get(key);
       if (seen !== undefined && seen !== prefix) refuse('SAVE_PATH_UNSAFE', [seen, prefix]);
       folded.set(key, prefix);
