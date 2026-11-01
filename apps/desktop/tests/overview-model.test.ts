@@ -135,7 +135,7 @@ test('a source made before the Overview has no scope or label: it reads as a pro
 
 test('"In Bowerloom" is a folder main knows with the same ~ label and a harness; the id comes with it', () => {
   const state = createSampleOverviewState();
-  const folders = [folder('f-b', '~/Projects/beta', true), folder('f-a', '~/Projects/alpha', true), folder('f-g', '~/Projects/gamma', false), folder('f-x', '~/Elsewhere', true)];
+  const folders = [folder('f-b', '~/Projects/inbox-tools', true), folder('f-a', '~/Projects/weekly-report', true), folder('f-g', '~/Projects/gamma', false), folder('f-x', '~/Elsewhere', true)];
   const o = overviewOf(state, folders);
   const by = (id: string) => o.groups.find(g => g.id === id)!;
   assert.deepEqual([by('src-alpha').inBowerloom, by('src-alpha').folderId], [true, 'f-a']);
@@ -181,7 +181,7 @@ test('the Overview is deterministic, and the order of the parts and links in the
 test('the model does not change the state it reads', () => {
   const state = createSampleOverviewState();
   const before = JSON.stringify(state);
-  overviewOf(state, [folder('f', '~/Projects/alpha', true)]);
+  overviewOf(state, [folder('f', '~/Projects/weekly-report', true)]);
   assert.equal(JSON.stringify(state), before);
 });
 

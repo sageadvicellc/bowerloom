@@ -135,23 +135,16 @@ export function layoutOf(overview: Overview, expanded: ReadonlySet<string>): Ove
   return { clusters, nodes, edges, bounds, map };
 }
 
+/** A home place with more parts than this starts closed. */
+export const HOME_OPEN_MAX = 40;
 /**
- * The ids of the groups to open on first draw. The home group (scope `home`, the first group) is ALWAYS open, however many nodes it holds: it is the person's own
- * library, and it may hold more than OVERVIEW_LIMITS.expandedNodes alone (a thousand library agents is a case). The other groups follow in group order and are
- * opened while the nodes drawn in all open groups stay under OVERVIEW_LIMITS.expandedNodes; the first one that would pass it stays closed, and so do the rest.
- * An Overview with no home group opens by the same rule from the first group.
+ * The ids of the groups to open on first draw (owner decision, 2026-10-31): every place starts closed, so the first sight is every place as a box with its counts, and the home
+ * (the first group, when its scope is `home`) starts open, unless it holds more than HOME_OPEN_MAX parts, and then it starts closed too. Nothing else opens by itself: a person
+ * opens a place by its header, or all of them with "Expand all". An Overview with no home group opens nothing.
  */
 export function defaultExpanded(overview: Overview): ReadonlySet<string> {
-  const open = new Set<string>();
-  let total = 0, start = 0;
   const first = overview.groups[0];
-  if (first !== undefined && first.scope === 'home') { open.add(first.id); total = first.nodes.length; start = 1; }
-  // A place opens while the total stays within the limit; the first that would pass it stays closed, and so do the rest.
-  for (const g of overview.groups.slice(start)) {
-    if (total + g.nodes.length > OVERVIEW_LIMITS.expandedNodes) break;
-    open.add(g.id); total += g.nodes.length;
-  }
-  return open;
+  return first !== undefined && first.scope === 'home' && first.nodes.length <= HOME_OPEN_MAX ? new Set([first.id]) : new Set();
 }
 
 /**

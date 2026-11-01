@@ -4,7 +4,7 @@
  * Nothing here writes: the Overview is read-only, and the only way out of it is a route (the builder) or the system folder chooser.
  */
 import type { PartKind } from '../../../shared/harness/types.js';
-import { fitView } from '../../../shared/harness/layout.js';
+import { ZOOM_MAX } from '../../../shared/harness/layout.js';
 import type { Bounds, View } from '../../../shared/harness/layout.js';
 import { OVERVIEW_LIMITS } from '../../../shared/harness/overview.js';
 import type { Overview, OverviewGroup, OverviewNode } from '../../../shared/harness/overview.js';
@@ -35,8 +35,9 @@ export function indexOverview(overview: Overview): OverviewIndex {
     groups.set(group.id, group);
     for (const node of group.nodes) { nodes.set(node.id, { node, group }); count += 1; }
     for (const e of group.edges) {
-      uses.set(e.from, [...(uses.get(e.from) ?? []), e.to]);
-      usedBy.set(e.to, [...(usedBy.get(e.to) ?? []), e.from]);
+      const out = uses.get(e.from) ?? [], into = usedBy.get(e.to) ?? [];
+      out.push(e.to); into.push(e.from);
+      uses.set(e.from, out); usedBy.set(e.to, into);
     }
   }
   return { nodes: count, node: id => nodes.get(id), group: id => groups.get(id), uses: id => uses.get(id) ?? [], usedBy: id => usedBy.get(id) ?? [] };
@@ -90,10 +91,12 @@ export const placeAction = (group: OverviewGroup): 'open' | 'choose' => (isHomeL
 const lastName = (text: string): string => text.split(/[\\/]/).filter(x => x !== '' && x !== '…').at(-1) ?? '';
 /**
  * True when the folder the person chose (the label main gives back) is the folder the place shows. A place under home has a `~` label and must match it exactly. A place outside
- * home has a label cut down to `…/name` (the window never holds the full path), so only the last name can be compared: a folder with that name passes, any other is refused.
+ * home has a label cut down to `…/name` (the window never holds the full path), so only the last name can be compared: a folder outside home with that name passes, any other is refused,
+ * and so is any folder under home.
  */
 export function chosenMatches(group: OverviewGroup, chosenLabel: string): boolean {
-  if (group.label.startsWith('…')) { const want = lastName(group.label); return want !== '' && lastName(chosenLabel) === want; }
+  // A place cut down to `…/name` came from a path outside home, so a folder under home can never be it.
+  if (group.label.startsWith('…')) { if (isHomeLabel(chosenLabel)) return false; const want = lastName(group.label); return want !== '' && lastName(chosenLabel) === want; }
   return chosenLabel === group.label;
 }
 
@@ -128,27 +131,45 @@ export function litPlaces(overview: Overview, index: OverviewIndex, selectedId: 
 
 // ---- The window --------------------------------------------------------------------------------------------------------------------------------------------
 
+/** The Overview's own zoom floor, for fit and zoom out. The Builder's floor (layout.ts, 0.4) is not changed. */
+export const OVERVIEW_ZOOM_MIN = 0.15;
+const clampK = (k: number): number => Math.min(ZOOM_MAX, Math.max(OVERVIEW_ZOOM_MIN, k));
 /**
- * The view the graph opens on. The whole graph in the window when it fits at OVERVIEW_LIMITS.detailZoom or more, so the parts are drawn. When it does not (a wide scan, or places
- * that are open and tall), the smallest zoom that still draws the parts, with the top left of the graph in the corner: the headers of the first row show, and "Fit to window" shows
- * the whole of it as boxes.
+ * The view that shows the whole graph in a window, at most life size, never under OVERVIEW_ZOOM_MIN, with `pad` around it and `foot` kept free at the foot. When the graph does not
+ * fit even at the floor, its top left is in the corner (the headers of the first row show) and not the middle of it.
  */
-export function firstView(bounds: Bounds, width: number, height: number, pad = 16, foot = 0): View {
-  const fit = fitView(bounds, width, height, pad, foot), k = OVERVIEW_LIMITS.detailZoom;
-  return fit.k >= k ? fit : { k, x: pad - bounds.left * k, y: pad - bounds.top * k };
+export function overviewFit(bounds: Bounds, width: number, height: number, pad = 16, foot = 0): View {
+  const w = bounds.right - bounds.left, h = bounds.bottom - bounds.top, room = height - foot;
+  if (w <= 0 || h <= 0 || width <= 0 || room <= 0) return { x: 0, y: 0, k: 1 };
+  const k = clampK(Math.min((width - 2 * pad) / w, (room - 2 * pad) / h, 1));
+  const x = width - w * k >= 2 * pad ? (width - w * k) / 2 - bounds.left * k : pad - bounds.left * k;
+  const y = room - h * k >= 2 * pad ? (room - h * k) / 2 - bounds.top * k : pad - bounds.top * k;
+  return { x, y, k };
+}
+/** Zooms by `factor` about the window point (cx, cy), which stays where it is, between OVERVIEW_ZOOM_MIN and the Builder's top zoom. */
+export function overviewZoomAt(view: View, factor: number, cx: number, cy: number): View {
+  const k = clampK(view.k * factor), real = k / view.k;
+  return { k, x: cx - (cx - view.x) * real, y: cy - (cy - view.y) * real };
 }
 
+/** Window edges that the buttons, the small map and the legend cover, in pixels: a card is brought clear of them. */
+export interface Insets { readonly top: number; readonly right: number; readonly bottom: number; readonly left: number }
+export const NO_INSETS: Insets = Object.freeze({ top: 0, right: 0, bottom: 0, left: 0 });
+/** What the graph's own overlays cover: the zoom buttons at the right, the small map and the legend at the foot. */
+export const OVERLAY_INSETS: Insets = Object.freeze({ top: 0, right: 64, bottom: 110, left: 0 });
+
 /**
- * The view that brings a card fully into a window of `width` by `height`, with `pad` pixels to spare, moving as little as it can. The same view (the same object) when the card
+ * The view that brings a card fully into a window of `width` by `height`, with `pad` pixels to spare and clear of `insets`, moving as little as it can. The same view (the same object) when the card
  * is in already. A card larger than the window keeps its top left in view.
  */
-export function revealView(view: View, rect: { x: number; y: number; w: number; h: number }, width: number, height: number, pad = 24): View {
+export function revealView(view: View, rect: { x: number; y: number; w: number; h: number }, width: number, height: number, pad = 24, insets: Insets = NO_INSETS): View {
   const left = rect.x * view.k + view.x, top = rect.y * view.k + view.y, right = left + rect.w * view.k, bottom = top + rect.h * view.k;
+  const room = { left: pad + insets.left, top: pad + insets.top, right: width - pad - insets.right, bottom: height - pad - insets.bottom };
   let dx = 0, dy = 0;
-  if (right > width - pad) dx = width - pad - right;
-  if (left + dx < pad) dx = pad - left;
-  if (bottom > height - pad) dy = height - pad - bottom;
-  if (top + dy < pad) dy = pad - top;
+  if (right > room.right) dx = room.right - right;
+  if (left + dx < room.left) dx = room.left - left;
+  if (bottom > room.bottom) dy = room.bottom - bottom;
+  if (top + dy < room.top) dy = room.top - top;
   return dx === 0 && dy === 0 ? view : { k: view.k, x: view.x + dx, y: view.y + dy };
 }
 

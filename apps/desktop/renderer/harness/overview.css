@@ -1,7 +1,7 @@
 /*
  * The Overview (Task 2): the boxes of the places, their headers, the marks, and the List view. The cards, curves, zoom buttons and small map are the Builder's own (harness.css:
  * .hx-canvas, .hx-world, .hx-edges, .hx-edge, .hx-node, .hx-tile, .hx-zoom, .hx-map), so this file adds only what the Builder has not. Every rule starts at [data-home].
- * There is no new transition: a card, a curve and a box change colour and opacity with the Builder's own motion tokens, which are zero under reduced motion. Text is 14 px or more.
+ * There is no new transition: a card, a curve and a box change colour and opacity with the Builder's own motion tokens, which are zero under reduced motion. Text is 14 px or more at life size; the header controls are scaled back up so a button stays 24 px or more at the detail zoom and above. Under it the List is the equivalent control.
  */
 
 /* ---- The graph: a box for each place. It sits under the curves (z 1) and the cards (z 2). */
@@ -18,7 +18,11 @@
 [data-home] .hxo-marks > span { display: inline-flex; }
 /* The dotted curves of a selected shared skill, to its copies. */
 [data-home] .hx-edge.hxo-shared { stroke: var(--accent-strong); stroke-width: 2; stroke-dasharray: 2 6; stroke-linecap: round; opacity: 1; }
-[data-home] .hxo-canvas { cursor: grab; }
+[data-home] .hxo-canvas { cursor: grab; overflow: clip; }
+/* "Skip to the parts": hidden until the keyboard reaches it, so a long run of headers can be passed. */
+[data-home] .hxo-skip { position: absolute; left: var(--hm-space-3); top: var(--hm-space-3); z-index: 6; padding: var(--hm-space-2) var(--hm-space-4); font: inherit; font-size: var(--hm-text-name); font-weight: 600; color: var(--text); background: var(--surface); border: 2px solid var(--accent-strong); border-radius: var(--hm-radius-small); cursor: pointer; }
+[data-home] .hxo-skip:not(:focus) { width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); border: 0; white-space: nowrap; }
+[data-home] .hxo-skip:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 
 /* The header of a place: a button that opens and closes it, and at the right the mark and the one button. */
 [data-home] .hxo-head, [data-home] .hxo-place-head { display: flex; align-items: center; gap: var(--hm-space-3); box-sizing: border-box; padding: 0 var(--hm-space-3) 0 var(--hm-space-2); min-width: 0; }
@@ -33,6 +37,9 @@
 [data-home] .hxo-label { flex: none; }
 [data-home] .hxo-counts { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 [data-home] .hxo-tools { display: inline-flex; align-items: center; gap: var(--hm-space-3); flex: none; }
+/* The graph is scaled by its zoom; the header's controls are scaled back up by --hxo-up (set by the graph, at most 1.5), so at the detail zoom a button stays 24 px or more on screen. */
+[data-home] .hxo-world .hxo-toggle, [data-home] .hxo-world .hxo-tools { zoom: var(--hxo-up, 1); }
+[data-home] .hxo-world[data-detail="boxes"] .hxo-toggle { min-height: min(64px, calc(24px / var(--hxo-k, 1))); }
 [data-home] .hxo-mark { white-space: nowrap; font-size: var(--hm-text-base); }
 /* An open place under the detail zoom: a box with its counts, drawn larger so they can be read. */
 [data-home] .hxo-world[data-detail="boxes"] .hxo-name { font-size: calc(var(--hm-text-title) * var(--hxo-boost, 1)); }
@@ -60,7 +67,7 @@
 [data-home] .hxo-place-body { padding: var(--hm-space-2) var(--hm-space-4) var(--hm-space-3); display: flex; flex-direction: column; gap: var(--hm-space-3); }
 [data-home] .hxo-place-body[hidden] { display: none; }
 [data-home] .hxo-kind { font-size: var(--hm-text-section); }
-[data-home] .hxo-row { gap: var(--hm-space-1) var(--hm-space-3); flex-wrap: wrap; }
+[data-home] .hxo-row { content-visibility: auto; contain-intrinsic-size: auto 2.5rem; gap: var(--hm-space-1) var(--hm-space-3); flex-wrap: wrap; }
 [data-home] .hxo-row-icon { display: inline-flex; flex: none; color: var(--accent-strong); }
 [data-home] .hxo-row-marks { position: relative; display: inline-flex; gap: var(--hm-space-2); flex: none; }
 [data-home] .hxo-row[data-lit] { background: var(--accent-soft); border-style: dashed; border-color: var(--accent-strong); }

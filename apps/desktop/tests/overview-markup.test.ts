@@ -16,7 +16,7 @@ import { createSampleOverviewState } from '../shared/harness/sample.js';
 import type { HarnessState, Link, Part, PartKind, ScanSource } from '../shared/harness/types.js';
 import { OverviewDetails } from '../renderer/harness/screens/OverviewDetails.js';
 import { OverviewGraph } from '../renderer/harness/screens/OverviewGraph.js';
-import { OverviewList } from '../renderer/harness/screens/OverviewList.js';
+import { LIST_ROWS, OverviewList } from '../renderer/harness/screens/OverviewList.js';
 import { expandedOf, indexOverview } from '../renderer/harness/screens/OverviewModel.js';
 import { PlaceAction, PlaceMark } from '../renderer/harness/screens/OverviewParts.js';
 import type { PlaceTools } from '../renderer/harness/screens/OverviewParts.js';
@@ -94,7 +94,11 @@ test('each place is a group with a name and a header button in the tab order tha
   for (const group of o.groups) assert.ok(g.includes(`role="group" aria-label="Place: ${unescapeSafe(group.name)}"`), group.name);
   const toggles = [...g.matchAll(/<button type="button" class="hxo-toggle"[^>]*>/g)].map(m => m[0]);
   assert.equal(toggles.length, o.groups.length);
-  for (const t of toggles) { assert.match(t, /aria-expanded="(true|false)"/); assert.doesNotMatch(t, /tabindex/, 'a real button, in the tab order'); }
+  for (const t of toggles) assert.match(t, /aria-expanded="(true|false)"/);
+  // One header is the tab stop and the arrow keys move between the others; every header is a real button.
+  assert.equal(toggles.filter(t => t.includes('tabindex="0"')).length, 1);
+  assert.equal(toggles.filter(t => t.includes('tabindex="-1"')).length, toggles.length - 1);
+  assert.ok(g.includes('class="hxo-skip"') && g.includes('Skip to the parts'), 'a way past the run of headers');
   assert.equal(toggles.filter(t => t.includes('aria-expanded="true"')).length, 1);
   assert.ok(toggles[0]!.includes(`data-place-toggle="${o.groups[0]!.id}"`));
   assert.match(toggles[0]!, /aria-label="Collapse Caveman \(plug-in\), ~, /);
@@ -197,27 +201,30 @@ test('the page never holds more boxes and cards than the cap, whatever the zoom 
 test('a place outside home shows no "In Bowerloom" and offers "Choose this folder"; a known place under home offers "Open in builder"', () => {
   const source: ScanSource = { id: 'out', name: 'ledger', interfaceName: 'Claude Code', harnessName: 'h', partIds: [], scope: 'project', label: '/Volumes/B/ledger' };
   const state = { ...createSampleOverviewState(), sources: [...createSampleOverviewState().sources, source] } as HarnessState;
-  const o = overviewOf(state, [folder('folder-3', '/Volumes/B/ledger', true), folder('folder-7', '~/Projects/alpha', true)]);
-  const out = o.groups.find(g => g.id === 'out')!, alpha = o.groups.find(g => g.label === '~/Projects/alpha')!, beta = o.groups.find(g => g.label === '~/Projects/beta')!;
+  const o = overviewOf(state, [folder('folder-3', '/Volumes/B/ledger', true), folder('folder-7', '~/Projects/weekly-report', true)]);
+  const out = o.groups.find(g => g.id === 'out')!, alpha = o.groups.find(g => g.label === '~/Projects/weekly-report')!, beta = o.groups.find(g => g.label === '~/Projects/inbox-tools')!;
   const html = (g: OverviewGroup): string => renderToStaticMarkup(place(g));
   assert.ok(!html(out).includes('In Bowerloom') && !html(out).includes('Not in Bowerloom'), 'nothing is said about a place outside home');
   assert.ok(html(out).includes('Choose this folder') && !html(out).includes('Open in builder'));
-  assert.ok(html(out).includes('aria-label="Choose the folder for ledger"'));
+  assert.ok(html(out).includes('aria-label="Choose this folder, ledger"'));
   assert.ok(html(alpha).includes('In Bowerloom') && html(alpha).includes('Open in builder') && html(alpha).includes('data-open-builder="folder-7"'));
-  assert.ok(html(alpha).includes('aria-label="Open alpha (Claude Code) in the builder"'));
+  assert.ok(html(alpha).includes('aria-label="Open in builder, alpha (Claude Code)"'));
   assert.ok(html(beta).includes('Not in Bowerloom yet') && html(beta).includes('Choose this folder'));
   // Every view draws the same.
-  for (const view of [graph(o), list(o)]) { assert.ok(view.includes('Choose the folder for ledger')); assert.equal((view.match(/data-open-builder="folder-7"/g) ?? []).length, 1); }
+  for (const view of [graph(o), list(o)]) { assert.ok(view.includes('Choose this folder, ledger')); assert.equal((view.match(/data-open-builder="folder-7"/g) ?? []).length, 1); }
   // With no engine bridge there is nothing to ask, so no button is drawn.
   assert.equal(renderToStaticMarkup(createElement(PlaceAction, { group: alpha, tools: { ...TOOLS, available: false } })), '');
-  // The chooser is off while it is open.
-  assert.match(renderToStaticMarkup(createElement(PlaceAction, { group: beta, tools: { ...TOOLS, busy: true } })), /disabled=""/);
+  // The chooser is off while it is open: marked off for a screen reader, and still a button that keeps the focus (`disabled` would drop it).
+  const busy = renderToStaticMarkup(createElement(PlaceAction, { group: beta, tools: { ...TOOLS, busy: true } }));
+  assert.match(busy, /aria-disabled="true"/); assert.doesNotMatch(busy, / disabled=""/);
+  // A place that is not the one header tab stop is left out of the tab order.
+  assert.match(renderToStaticMarkup(createElement(PlaceAction, { group: beta, tools: TOOLS, focusable: false })), /tabindex="-1"/);
 });
 
 // ---- the details and the empty views
 
 test('the details of a part: name, kind, summary, the places it is in with their buttons, and what it uses', () => {
-  const o = sample([folder('folder-7', '~/Projects/alpha', true)]), index = indexOverview(o), copies = sharedIds(o);
+  const o = sample([folder('folder-7', '~/Projects/weekly-report', true)]), index = indexOverview(o), copies = sharedIds(o);
   const alphaCopy = copies.find(id => id.startsWith('src-alpha/'))!;
   const html = renderToStaticMarkup(createElement(OverviewDetails, { overview: o, index, selectedId: alphaCopy, onSelect: noop, place }));
   assert.ok(html.includes(`data-details-node="${alphaCopy}"`));
@@ -235,10 +242,10 @@ test('the details of a part: name, kind, summary, the places it is in with their
   const hook = o.groups.find(g => g.id === 'src-alpha')!.nodes.find(n => n.runsCode === true)!;
   const hookHtml = renderToStaticMarkup(createElement(OverviewDetails, { overview: o, index, selectedId: hook.id, onSelect: noop, place }));
   assert.ok(hookHtml.includes('Hook') && hookHtml.includes('data-runs-code=""'));
-  // Nothing selected: what the screen is and the read-only line (the places are in the graph and the list).
+  // Nothing selected: what the screen is and the read-only line and every place.
   const none = renderToStaticMarkup(createElement(OverviewDetails, { overview: o, index, selectedId: null, onSelect: noop, place }));
   assert.ok(none.includes('data-details-empty') && none.includes(OVERVIEW.paragraph.intro) && none.includes(OVERVIEW.hint.readOnly));
-  assert.equal((none.match(/data-place-row=/g) ?? []).length, 0);
+  assert.equal((none.match(/data-place-row=/g) ?? []).length, o.groups.length, 'every place, with its mark and its button, for the places the graph draws as boxes');
   // An id the Overview does not hold is the same as none.
   assert.ok(renderToStaticMarkup(createElement(OverviewDetails, { overview: o, index, selectedId: 'no/such', onSelect: noop, place })).includes('data-details-empty'));
 });
@@ -262,6 +269,22 @@ test('the default open places are drawn open and the rest shut', () => {
   const g = graph(o, {}, open);
   const opened = [...g.matchAll(/<div class="hxo-box"[^>]*>/g)].map(m => m[0]).filter(t => t.includes('data-open=""'));
   assert.equal(opened.length, open.size);
+});
+
+test('the List draws a limited number of rows of each kind with "Show more", and always the selected part', () => {
+  const o = overviewOf(bigState(1, 600), []);
+  const skills = o.groups[0]!.nodes.filter(n => n.kind === 'skill');
+  assert.ok(skills.length > LIST_ROWS * 2);
+  const l = list(o);
+  const rows = attr(l, 'data-node');
+  assert.ok(rows.length < o.groups[0]!.nodes.length, `${rows.length} rows of ${o.groups[0]!.nodes.length}`);
+  assert.equal((l.match(/data-show-more=/g) ?? []).length, 4, 'every kind runs past the limit');
+  assert.ok(l.includes('aria-label="Show more, '));
+  const last = skills.at(-1)!;
+  assert.ok(!rows.includes(last.id));
+  assert.ok(attr(list(o, { selectedId: last.id }), 'data-node').includes(last.id), 'the selected part is drawn although it is past the limit');
+  // A closed place draws none.
+  assert.equal(attr(list(o, {}, new Set()), 'data-node').length, 0);
 });
 
 // ---- the source

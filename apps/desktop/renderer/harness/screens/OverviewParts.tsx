@@ -7,8 +7,8 @@
 import type { ReactElement } from 'react';
 import type { OverviewGroup } from '../../../shared/harness/overview.js';
 import { HButton, StateDot } from '../parts/controls.js';
-import { WORDS, openFolderName } from '../words.js';
-import { OVERVIEW, chooseFolderName } from '../words-overview.js';
+import { WORDS } from '../words.js';
+import { OVERVIEW, chooseFolderName, openInBuilderName } from '../words-overview.js';
 import { placeAction, placeStatus } from './OverviewModel.js';
 
 /** What the screen lets a place do. */
@@ -29,10 +29,12 @@ export function PlaceMark({ group }: { group: OverviewGroup }): ReactElement | n
 }
 
 /** The one button of a place, or nothing when the window cannot ask main. */
-export function PlaceAction({ group, tools }: { group: OverviewGroup; tools: PlaceTools }): ReactElement | null {
+export function PlaceAction({ group, tools, focusable = true }: { group: OverviewGroup; tools: PlaceTools; focusable?: boolean }): ReactElement | null {
   if (!tools.available) return null;
+  // The name begins with the words on the button, then names the place (Label in Name). While the chooser is open the button is marked off and ignores a press, and keeps the focus.
+  const tab = focusable ? {} : { tabIndex: -1 };
   if (placeAction(group) === 'open') {
-    return <HButton icon="harness" size="small" data-open-builder={group.folderId ?? undefined} aria-label={openFolderName(group.name)} onClick={() => tools.open(group)}>{WORDS.label.openInBuilder}</HButton>;
+    return <HButton icon="harness" size="small" {...tab} data-open-builder={group.folderId ?? undefined} aria-label={openInBuilderName(group.name)} onClick={() => tools.open(group)}>{WORDS.label.openInBuilder}</HButton>;
   }
-  return <HButton icon="folder" size="small" data-choose-folder={group.id} aria-label={chooseFolderName(group.name)} disabled={tools.busy} onClick={() => tools.choose(group)}>{OVERVIEW.label.chooseThisFolder}</HButton>;
+  return <HButton icon="folder" size="small" {...tab} data-choose-folder={group.id} aria-label={chooseFolderName(group.name)} aria-disabled={tools.busy ? 'true' : undefined} onClick={() => { if (!tools.busy) tools.choose(group); }}>{OVERVIEW.label.chooseThisFolder}</HButton>;
 }

@@ -52,6 +52,11 @@ export function OverviewDetails({ overview, index, selectedId, onSelect, place }
         <DetailsHead tile={<Tile name="globe" size="large" />} title={WORDS.label.overview} subtitle={placesWords(overview.groups.length)} />
         <p className="hx-text">{OVERVIEW.paragraph.intro}</p>
         <p className="hx-text hx-muted">{OVERVIEW.hint.readOnly}</p>
+        {/* Every place with its mark and its button, so a place can be acted on at any zoom, also when the graph draws it as a box. */}
+        <section className="hx-block" aria-labelledby="hxo-places-h">
+          <h3 className="hx-h3" id="hxo-places-h">{OVERVIEW.label.places}</h3>
+          <ul className="hx-box-list">{overview.groups.map(g => <PlaceRow key={g.id} group={g} place={place} />)}</ul>
+        </section>
       </div>
     );
   }

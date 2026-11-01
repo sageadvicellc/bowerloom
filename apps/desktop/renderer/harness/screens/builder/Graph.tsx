@@ -7,14 +7,15 @@
  * To link with the keyboard: select an agent and press the circle at its right edge, then press a part. A link is a draft until Save. Escape or a press on the background stops linking.
  * Nothing here writes to a disk. All text comes from the person's own files and is drawn as plain text.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactElement } from 'react';
-import { FIT_FOOT, ZOOM_STEP, brightIds, centerOnMiniMap, dropLinkTarget, edgePath, fitView, graphOf, miniMap, zoomAt } from '../../../../shared/harness/layout.js';
+import { ZOOM_STEP, brightIds, centerOnMiniMap, dropLinkTarget, edgePath, graphOf, miniMap } from '../../../../shared/harness/layout.js';
 import type { GraphNode, View } from '../../../../shared/harness/layout.js';
 import type { Harness, HarnessState, Point } from '../../../../shared/harness/types.js';
 import { HIcon, KIND_ICON } from '../../icons.js';
 import { HButton, HIconButton } from '../../parts/controls.js';
 import { WORDS, linkFromWords, nodeName } from '../../words.js';
+import { usePanZoom } from '../usePanZoom.js';
 
 export interface GraphProps {
   state: HarnessState;
@@ -37,46 +38,16 @@ const DRAG_START = 4;
 const MAP = { w: 140, h: 92 } as const;
 
 export function Graph({ state, harness, selectedId, linkingId, matchIds, onSelect, onMove, onLinkStart, onLinkTarget, onLinkCancel, onDrop }: GraphProps): ReactElement {
-  const host = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ w: 0, h: 0 });
-  const [view, setView] = useState<View>({ x: 0, y: 0, k: 1 });
-  const fitted = useRef(false);
-  const [moved, setMoved] = useState<Readonly<Record<string, Point>>>({});
   // The agent under a skill or a notes card that is being dragged, which a drop would link.
   const [dropOn, setDropOn] = useState<string | null>(null);
+  const [moved, setMoved] = useState<Readonly<Record<string, Point>>>({});
   const graph = useMemo(() => graphOf(state, harness, moved), [state, harness, moved]);
   const nodeById = useMemo(() => new Map(graph.nodes.map(n => [n.id, n])), [graph]);
+  // The size of the stage, the view, the wheel, the drag of the background and the first fit are the pan and zoom hook's (shared with the Overview's graph).
+  const pz = usePanZoom({ bounds: graph.bounds, onBackground: () => { if (linkingId !== null) onLinkCancel(); else onSelect(null); } });
+  const { host, size, view } = pz;
   const latest = useRef({ view, graph, size });
   latest.current = { view, graph, size };
-
-  // The size of the stage, and the first fit once it is known.
-  useEffect(() => {
-    const el = host.current;
-    if (el === null) return undefined;
-    const read = (): void => {
-      const box = el.getBoundingClientRect();
-      setSize({ w: box.width, h: box.height });
-      if (!fitted.current && box.width > 0 && box.height > 0) { fitted.current = true; setView(fitView(latest.current.graph.bounds, box.width, box.height, 16, FIT_FOOT)); }
-    };
-    read();
-    const observer = new ResizeObserver(read);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  // Ctrl and the wheel (a pinch on a trackpad) zoom about the pointer; the wheel alone pans. The listener is not passive, so the page itself does not scroll.
-  useEffect(() => {
-    const el = host.current;
-    if (el === null) return undefined;
-    const wheel = (e: WheelEvent): void => {
-      e.preventDefault();
-      const box = el.getBoundingClientRect();
-      if (e.ctrlKey || e.metaKey) setView(v => zoomAt(v, Math.exp(-e.deltaY * 0.01), e.clientX - box.left, e.clientY - box.top));
-      else setView(v => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
-    };
-    el.addEventListener('wheel', wheel, { passive: false });
-    return () => el.removeEventListener('wheel', wheel);
-  }, []);
 
   // Escape stops linking.
   useEffect(() => {
@@ -93,29 +64,6 @@ export function Graph({ state, harness, selectedId, linkingId, matchIds, onSelec
     }
     return brightIds(graph.edges, selectedId) ?? matchIds;
   }, [linkingId, harness.links, graph, selectedId, matchIds]);
-
-  // ---- Pan: drag the background. A press without a drag selects nothing.
-  const pan = useRef<{ x: number; y: number; view: View; moved: boolean } | null>(null);
-  const downBackground = (e: ReactPointerEvent<HTMLDivElement>): void => {
-    if (e.button !== 0 || (e.target as HTMLElement).closest('[data-node], [data-control]') !== null) return;
-    pan.current = { x: e.clientX, y: e.clientY, view, moved: false };
-    e.currentTarget.setPointerCapture(e.pointerId);
-  };
-  const moveBackground = (e: ReactPointerEvent<HTMLDivElement>): void => {
-    const p = pan.current;
-    if (p === null) return;
-    const dx = e.clientX - p.x, dy = e.clientY - p.y;
-    if (!p.moved && Math.hypot(dx, dy) < DRAG_START) return;
-    p.moved = true;
-    setView({ k: p.view.k, x: p.view.x + dx, y: p.view.y + dy });
-  };
-  const upBackground = (e: ReactPointerEvent<HTMLDivElement>): void => {
-    const p = pan.current;
-    pan.current = null;
-    if (p === null) return;
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
-    if (!p.moved) { if (linkingId !== null) onLinkCancel(); else onSelect(null); }
-  };
 
   // ---- Drag a node.
   const drag = useRef<{ id: string; x: number; y: number; from: Point; moved: boolean } | null>(null);
@@ -173,14 +121,12 @@ export function Graph({ state, harness, selectedId, linkingId, matchIds, onSelec
     onMove(node.id, { x: node.x + delta[0]!, y: node.y + delta[1]! });
   };
 
-  const fit = useCallback((): void => setView(fitView(latest.current.graph.bounds, latest.current.size.w, latest.current.size.h, 16, FIT_FOOT)), []);
-  const centre = (): { x: number; y: number } => ({ x: latest.current.size.w / 2, y: latest.current.size.h / 2 });
   const map = useMemo(() => miniMap(graph, view, size.w, size.h, MAP.w, MAP.h), [graph, view, size]);
   const linkAgent = linkingId === null ? undefined : nodeById.get(linkingId);
 
   return (
     <div className="hx-canvas" ref={host} role="group" aria-label={WORDS.label.graph} data-linking={linkingId === null ? undefined : ''}
-      onPointerDown={downBackground} onPointerMove={moveBackground} onPointerUp={upBackground} onPointerCancel={() => { pan.current = null; }}>
+      {...pz.handlers}>
       <div className="hx-world" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}>
         <svg className="hx-edges" width="1" height="1" aria-hidden="true" focusable="false">
           {graph.edges.map(edge => {
@@ -218,13 +164,13 @@ export function Graph({ state, harness, selectedId, linkingId, matchIds, onSelec
       )}
 
       <div className="hx-zoom" data-control="" role="group" aria-label={WORDS.label.zoomControls}>
-        <HIconButton icon="zoom-in" label={WORDS.label.zoomIn} side="left" onClick={() => { const c = centre(); setView(v => zoomAt(v, ZOOM_STEP, c.x, c.y)); }} />
-        <HIconButton icon="zoom-out" label={WORDS.label.zoomOut} side="left" onClick={() => { const c = centre(); setView(v => zoomAt(v, 1 / ZOOM_STEP, c.x, c.y)); }} />
-        <HIconButton icon="fit" label={WORDS.label.fitView} side="left" onClick={fit} />
+        <HIconButton icon="zoom-in" label={WORDS.label.zoomIn} side="left" onClick={() => pz.zoomBy(ZOOM_STEP)} />
+        <HIconButton icon="zoom-out" label={WORDS.label.zoomOut} side="left" onClick={() => pz.zoomBy(1 / ZOOM_STEP)} />
+        <HIconButton icon="fit" label={WORDS.label.fitView} side="left" onClick={pz.fit} />
       </div>
 
       <div className="hx-map" data-control="" role="group" aria-label={WORDS.label.smallMap} style={{ width: MAP.w, height: MAP.h }}
-        onPointerDown={e => { const box = e.currentTarget.getBoundingClientRect(); setView(v => centerOnMiniMap(map, v, size.w, size.h, e.clientX - box.left, e.clientY - box.top)); }}>
+        onPointerDown={e => { const box = e.currentTarget.getBoundingClientRect(); pz.setView(centerOnMiniMap(map, pz.latest.current.view, size.w, size.h, e.clientX - box.left, e.clientY - box.top)); }}>
         <svg width={MAP.w} height={MAP.h} aria-hidden="true" focusable="false">
           {map.bars.map(b => <rect key={b.id} className="hx-map-bar" data-selected={b.id === selectedId ? '' : undefined} x={b.x} y={b.y} width={Math.max(2, b.w)} height={Math.max(2, b.h)} rx={1} />)}
           <rect className="hx-map-window" x={map.window.x} y={map.window.y} width={Math.max(0, map.window.w)} height={Math.max(0, map.window.h)} />

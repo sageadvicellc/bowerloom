@@ -250,7 +250,7 @@ const placeId = (slug: string, kind: PartKind, name: string): string => `${slug}
  * The sample world with three project places beside the home folder, so the Overview shows a home and three folders. `createSampleWorld` itself is not changed.
  *  - Every skill carries a `contentHash` (a hash of its text). "Check facts" is in the home folder, in `alpha` and in `beta` with the same text, so it reads as shared.
  *  - The two sample tools are connections (`toolKind: 'mcp'`). `alpha` has a hook, so the "Runs code" mark shows, and `gamma` holds one set of notes only.
- *  - Each project has its own `ScanSource` with `scope: 'project'` and a `~` label. The home sources are the three the sample has.
+ *  - Each project has its own `ScanSource` with `scope: 'project'` and a `~` label; `alpha` and `beta` sit in the folders the sample engine knows (`weekly-report`, which holds a harness, and `inbox-tools`, which does not), so the Overview can show "In Bowerloom" in the sample. The home sources are the three the sample has.
  */
 export function createSampleOverviewState(now: Stamp = SAMPLE_NOW): HarnessState {
   const base = createSampleWorld(now);
@@ -277,8 +277,8 @@ export function createSampleOverviewState(now: Stamp = SAMPLE_NOW): HarnessState
     ({ id: `src-${slug}`, name, interfaceName: 'Claude Code', harnessName: `${name} Claude Code`, partIds: parts.map(p => p.id), links, scope: 'project', label });
   const sources: ScanSource[] = [
     ...base.sources,
-    source('alpha', 'alpha (Claude Code)', '~/Projects/alpha', alpha, [...link('alpha', 'Reviewer', ['skill', 'Check facts'], ['tool', 'Format on save'], ['tool', 'Tracker']), ...link('alpha', 'Release helper', ['skill', 'Alpha checklist'], ['context', 'Alpha plan'])]),
-    source('beta', 'beta (Claude Code)', '~/Projects/beta', beta, link('beta', 'Doc writer', ['skill', 'Check facts'], ['skill', 'Beta glossary'])),
+    source('alpha', 'alpha (Claude Code)', '~/Projects/weekly-report', alpha, [...link('alpha', 'Reviewer', ['skill', 'Check facts'], ['tool', 'Format on save'], ['tool', 'Tracker']), ...link('alpha', 'Release helper', ['skill', 'Alpha checklist'], ['context', 'Alpha plan'])]),
+    source('beta', 'beta (Claude Code)', '~/Projects/inbox-tools', beta, link('beta', 'Doc writer', ['skill', 'Check facts'], ['skill', 'Beta glossary'])),
     { ...source('gamma', 'gamma notes', '~/Projects/gamma', gamma, []), interfaceName: 'Notes', harnessName: 'gamma notes' },
   ];
   return { ...base, parts: [...home, ...alpha, ...beta, ...gamma], sources, chosenSourceIds: sources.map(s => s.id) };

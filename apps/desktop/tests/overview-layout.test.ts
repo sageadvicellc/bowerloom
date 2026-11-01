@@ -6,7 +6,7 @@ import { NODE_SIZE, edgePath, fitView, graphOf, miniMap } from '../shared/harnes
 import type { View } from '../shared/harness/layout.js';
 import { OVERVIEW_LIMITS, overviewOf } from '../shared/harness/overview.js';
 import type { Overview } from '../shared/harness/overview.js';
-import { defaultExpanded, layoutOf, listOf, neighbourOf, sharedEdgesOf, visibleOf } from '../shared/harness/overview-layout.js';
+import { HOME_OPEN_MAX, defaultExpanded, layoutOf, listOf, neighbourOf, sharedEdgesOf, visibleOf } from '../shared/harness/overview-layout.js';
 import type { Direction, LaidNode, OverviewLayout } from '../shared/harness/overview-layout.js';
 import { createSampleOverviewState } from '../shared/harness/sample.js';
 import type { Harness, HarnessState, Link, Part, PartKind, ScanSource } from '../shared/harness/types.js';
@@ -124,7 +124,7 @@ test('cards use the Builder sizes, and the slots are the Builder slots: the same
 
 test('the layout is deterministic and does not change what it reads', () => {
   const o = overviewOf(bigState(12, 60), NO_FOLDERS), before = JSON.stringify(o, (_k, v) => (v instanceof Map ? [...v] : v));
-  const open = defaultExpanded(o);
+  const open = all(o);
   assert.deepEqual(layoutOf(o, open), layoutOf(o, open));
   assert.deepEqual(layoutOf(o, new Set(open)), layoutOf(o, open));
   assert.equal(JSON.stringify(o, (_k, v) => (v instanceof Map ? [...v] : v)), before);
@@ -161,31 +161,19 @@ function sized(spec: readonly (readonly ['home' | 'project', number])[]): Overvi
   return overviewOf(state, NO_FOLDERS);
 }
 
-test('the home place is always open, however many nodes it holds; the others open while the total stays within the limit', () => {
-  const limit = OVERVIEW_LIMITS.expandedNodes;
-  assert.deepEqual([...defaultExpanded(sized([['home', 900], ['project', 10]]))], ['g0']);
-  assert.deepEqual([...defaultExpanded(sized([['home', 10], ['project', 100], ['project', 40]]))], ['g0', 'g1', 'g2']);
-  // The total of the open places never passes the limit, except by the home place alone.
-  const o = sized([['home', 20], ['project', 100], ['project', 60], ['project', 30]]);
-  assert.deepEqual([...defaultExpanded(o)], ['g0', 'g1']);
-  const total = (ids: ReadonlySet<string>): number => o.groups.filter(g => ids.has(g.id)).reduce((n, g) => n + g.nodes.length, 0);
-  assert.ok(total(defaultExpanded(o)) <= limit);
-  // Exactly at the limit is open; one more is closed.
-  assert.deepEqual([...defaultExpanded(sized([['home', limit - 10], ['project', 10]]))], ['g0', 'g1']);
-  assert.deepEqual([...defaultExpanded(sized([['home', limit - 10], ['project', 11]]))], ['g0']);
+test('every place starts closed; the home starts open while it holds no more than the home limit, and then it starts closed too', () => {
+  assert.deepEqual([...defaultExpanded(sized([['home', 10], ['project', 5], ['project', 3]]))], ['g0']);
+  assert.deepEqual([...defaultExpanded(sized([['home', HOME_OPEN_MAX], ['project', 1]]))], ['g0'], 'exactly at the limit is open');
+  assert.deepEqual([...defaultExpanded(sized([['home', HOME_OPEN_MAX + 1], ['project', 1]]))], [], 'one more is closed');
+  assert.deepEqual([...defaultExpanded(sized([['home', 900], ['project', 10]]))], []);
+  assert.deepEqual([...defaultExpanded(sized([['home', 0], ['project', 0]]))], ['g0']);
+  assert.equal(HOME_OPEN_MAX, 40);
 });
 
-test('the first place that would pass the limit stays closed, and so do all that follow, even a small one', () => {
-  const o = sized([['home', 100], ['project', 60], ['project', 20], ['project', 1]]);
-  assert.deepEqual([...defaultExpanded(o)], ['g0'], 'g1 would make 160, so g2 and g3 stay closed too');
-  assert.deepEqual([...defaultExpanded(sized([['home', 100], ['project', 49], ['project', 1]]))], ['g0', 'g1', 'g2']);
-});
-
-test('with no home place the same rule runs from the first place; an empty Overview opens nothing', () => {
-  assert.deepEqual([...defaultExpanded(sized([['project', 100], ['project', 40], ['project', 20]]))], ['g0', 'g1']);
-  assert.deepEqual([...defaultExpanded(sized([['project', 400], ['project', 1]]))], [], 'a first place over the limit is not forced open');
+test('only the first group counts as the home; with no home place nothing opens, and an empty Overview opens nothing', () => {
+  assert.deepEqual([...defaultExpanded(sized([['project', 3], ['project', 2], ['project', 1]]))], []);
+  assert.deepEqual([...defaultExpanded(sized([['home', 5], ['home', 5], ['project', 1]]))], ['g0'], 'a second home place stays closed');
   assert.deepEqual([...defaultExpanded({ groups: [], sharedKeys: new Map() })], []);
-  assert.deepEqual([...defaultExpanded(sized([['home', 0], ['project', 0]]))], ['g0', 'g1']);
 });
 
 // ---- visibleOf
@@ -464,7 +452,7 @@ test('3,000 parts in 40 places lay out well inside the budget', () => {
   const c0 = performance.now(); const expanded = defaultExpanded(o); const c1 = performance.now();
   const v0 = performance.now(); const visible = visibleOf(layout, { x: 0, y: 0, k: 0.5 }, 1600, 900); const v1 = performance.now();
   const n0 = performance.now(); neighbourOf(layout, layout.nodes[1500]!.id, 'right'); const n1 = performance.now();
-  assert.equal(layout.nodes.length, 3000); assert.ok(visible.nodes.length + visible.clusters.length <= OVERVIEW_LIMITS.domNodes); assert.ok(expanded.size >= 1);
+  assert.equal(layout.nodes.length, 3000); assert.ok(visible.nodes.length + visible.clusters.length <= OVERVIEW_LIMITS.domNodes); assert.ok(expanded.size === 0, 'a home of 75 parts starts closed, so nothing opens');
   console.log(`overview timing: overviewOf ${(t1 - t0).toFixed(1)} ms, layoutOf median of 7 ${median.toFixed(1)} ms (min ${times[0]!.toFixed(1)}, max ${times[6]!.toFixed(1)}), defaultExpanded ${(c1 - c0).toFixed(2)} ms, first visibleOf ${(v1 - v0).toFixed(1)} ms, neighbourOf ${(n1 - n0).toFixed(2)} ms`);
   // The target is 100 ms on the development machine. The bound is wide, so a slow or busy machine does not fail the gate; a layout that went quadratic would.
   assert.ok(median < 500, `layoutOf took ${median.toFixed(1)} ms`);
@@ -472,8 +460,8 @@ test('3,000 parts in 40 places lay out well inside the budget', () => {
 });
 
 test('one open place with 3,000 parts (a big library) lays out fast, and the page still holds no more than the cap', () => {
-  const o = overviewOf(bigState(1, 3000), NO_FOLDERS), open = defaultExpanded(o);
-  assert.deepEqual([...open], [o.groups[0]!.id], 'the home place is open although it holds 3,000');
+  const o = overviewOf(bigState(1, 3000), NO_FOLDERS), open = all(o);
+  assert.deepEqual([...defaultExpanded(o)], [], 'a home of 3,000 parts starts closed');
   const s = performance.now(), layout = layoutOf(o, open), took = performance.now() - s;
   const v0 = performance.now(), visible = visibleOf(layout, { x: 0, y: 0, k: 0.5 }, 1600, 900), v1 = performance.now();
   console.log(`overview timing, one place of 3,000: layoutOf ${took.toFixed(1)} ms, visibleOf ${(v1 - v0).toFixed(1)} ms`);

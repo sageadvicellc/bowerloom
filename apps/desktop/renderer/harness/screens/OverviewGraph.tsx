@@ -5,16 +5,18 @@
  *
  * Scale. `visibleOf` decides what is on the page, so the page never holds more than OVERVIEW_LIMITS.domNodes boxes and cards at any zoom. Under OVERVIEW_LIMITS.detailZoom an open place
  * draws as a box with its counts and no cards.
- * Mouse and touch. Drag the background to pan. Ctrl and the wheel (or a pinch) zoom about the pointer, the wheel alone pans. The buttons at the top right zoom and fit; the small map
+ * First view. Every place starts closed but a small home, and the graph is fitted down to the Overview's own zoom floor (0.15), so the first sight is every place as a box with its counts.
+ * Mouse and touch. Drag the background, or a card, to pan (the click that ends a drag selects nothing). Ctrl and the wheel (or a pinch) zoom about the pointer, the wheel alone pans. The buttons at the top right zoom and fit; the small map
  * at the foot shows the places and the window, and a press on it moves the window there. A press on a card selects it; a press on the background clears.
- * Keyboard. Each place header is a real button in the tab order: Enter or Space opens and closes the place, and the arrow keys move to the next place. The cards are one tab stop:
+ * Keyboard. Each place header is a real button: one of them is the tab stop, the arrow keys move to the next place, and Enter or Space opens and closes it; "Skip to the parts" jumps over them. The cards are one tab stop:
  * the arrow keys move to the nearest card on the page in that direction (the window follows it), Enter or Space selects, Escape clears, and + - 0 zoom in, zoom out and fit.
  * Selecting a shared skill lights every copy and draws thin dotted curves to the copies that are on the page.
+ * The stage never scrolls: a focused header or card is brought into the window through the view, clear of the buttons and the small map (see usePanZoom.ts).
  * All text comes from the person's own files and is drawn as plain text.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactElement, ReactNode } from 'react';
-import { FIT_FOOT, ZOOM_STEP, centerOnMiniMap, edgePath, fitView, miniMap, zoomAt } from '../../../shared/harness/layout.js';
+import type { FocusEvent as ReactFocusEvent, KeyboardEvent as ReactKeyboardEvent, ReactElement, ReactNode } from 'react';
+import { FIT_FOOT, ZOOM_STEP, centerOnMiniMap, edgePath, miniMap } from '../../../shared/harness/layout.js';
 import type { GraphNode, View } from '../../../shared/harness/layout.js';
 import { OVERVIEW_LIMITS } from '../../../shared/harness/overview.js';
 import type { Overview, OverviewGroup } from '../../../shared/harness/overview.js';
@@ -24,8 +26,9 @@ import { HIcon, KIND_ICON } from '../icons.js';
 import { HIconButton } from '../parts/controls.js';
 import { WORDS } from '../words.js';
 import { OVERVIEW, alsoInWords, countsWords, nodeName, toggleName, usesLineWords } from '../words-overview.js';
-import { brightOf, firstView, litPlaces, neighbourPlace, revealView, usesCounts } from './OverviewModel.js';
+import { OVERLAY_INSETS, brightOf, litPlaces, neighbourPlace, overviewFit, overviewZoomAt, revealView, usesCounts } from './OverviewModel.js';
 import type { OverviewIndex } from './OverviewModel.js';
+import { usePanZoom } from './usePanZoom.js';
 
 export interface OverviewGraphProps {
   overview: Overview;
@@ -38,8 +41,10 @@ export interface OverviewGraphProps {
   onSelect(id: string | null): void;
   /** The header of a place was pressed. */
   onToggle(groupId: string): void;
-  /** The mark and the button of a place, drawn at the right of its header. */
-  place(group: OverviewGroup): ReactNode;
+  /** The mark and the button of a place, drawn at the right of its header. `focusable` is false for a place that is not the graph's one header tab stop. */
+  place(group: OverviewGroup, focusable: boolean): ReactNode;
+  /** A part to bring into the window (the person chose it from the details): the graph moves to it, and zooms in when the parts are not drawn. `n` makes the same part count again. */
+  reveal?: { readonly id: string; readonly n: number } | null;
   /** The size of the stage before it is measured (the page, a test). */
   initialSize?: { readonly w: number; readonly h: number };
   /** The view before the first fit (a test). Left out, the graph starts fitted to the window. */
@@ -48,29 +53,37 @@ export interface OverviewGraphProps {
 
 const MAP = { w: 140, h: 92 } as const;
 const FIRST_SIZE = { w: 1200, h: 720 } as const;
-const DRAG_START = 4;
 const ARROWS: Readonly<Record<string, Direction>> = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
 const nodeKey = (id: string): string => `node:${id}`;
 const headKey = (id: string): string => `head:${id}`;
 
-export function OverviewGraph({ overview, expanded, index, selectedId, fitKey, onSelect, onToggle, place, initialSize, initialView }: OverviewGraphProps): ReactElement {
-  const host = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState<{ w: number; h: number }>(() => ({ ...(initialSize ?? FIRST_SIZE) }));
+export function OverviewGraph({ overview, expanded, index, selectedId, fitKey, onSelect, onToggle, place, reveal = null, initialSize, initialView }: OverviewGraphProps): ReactElement {
   const layout = useMemo(() => layoutOf(overview, expanded), [overview, expanded]);
-  const [view, setView] = useState<View>(() => initialView ?? firstView(layout.bounds, size.w, size.h, 16, FIT_FOOT));
   const [focusId, setFocusId] = useState<string | null>(null);
-  const fitted = useRef(initialSize !== undefined || initialView !== undefined);
+  const [headFocus, setHeadFocus] = useState<string | null>(null);
   const nodeById = useMemo(() => new Map(layout.nodes.map(n => [n.id, n] as const)), [layout]);
   const edgeById = useMemo(() => new Map(layout.edges.map(e => [e.id, e] as const)), [layout]);
   const clusterById = useMemo(() => new Map(layout.clusters.map(c => [c.id, c] as const)), [layout]);
   const groupById = useMemo(() => new Map(overview.groups.map(g => [g.id, g] as const)), [overview]);
   const clusterIds = useMemo(() => layout.clusters.map(c => c.id), [layout]);
   const columns = useMemo(() => { const first = layout.clusters[0]; return first === undefined ? 1 : layout.clusters.filter(c => c.y === first.y).length; }, [layout]);
-  const latest = useRef({ view, layout, size });
-  latest.current = { view, layout, size };
   // The elements that can take the focus, by key, and the one that should take it when it is drawn.
   const els = useRef(new Map<string, HTMLElement>());
   const pending = useRef<string | null>(null);
+
+  // Pan, zoom, fit, the wheel and the size of the stage are the hook's (shared with the Builder's graph). The Overview fits down to its own zoom floor. A move of the view that leaves
+  // the detail zoom while a card has the focus (a wheel, a pinch, a key) is about to take the card off the page, so the focus goes to the header of its place first.
+  const pz = usePanZoom({
+    bounds: layout.bounds, fit: (b, w, h) => overviewFit(b, w, h, 16, FIT_FOOT), zoom: overviewZoomAt, size0: initialSize ?? FIRST_SIZE, ...(initialView === undefined ? {} : { view0: initialView }),
+    fitOnMeasure: initialSize === undefined && initialView === undefined, fitKey, panFromNodes: true, onBackground: () => onSelect(null),
+    onView: next => {
+      if (next.k >= OVERVIEW_LIMITS.detailZoom) return;
+      const active = document.activeElement instanceof HTMLElement ? document.activeElement.getAttribute('data-node') : null;
+      const node = active === null ? undefined : nodeById.get(active);
+      if (node !== undefined) pending.current = headKey(node.groupId);
+    },
+  });
+  const { host, size, view } = pz;
 
   const visible = useMemo(() => visibleOf(layout, view, size.w, size.h, undefined, selectedId), [layout, view, size, selectedId]);
   const onPage = useMemo(() => new Set(visible.nodes), [visible]);
@@ -85,79 +98,33 @@ export function OverviewGraph({ overview, expanded, index, selectedId, fitKey, o
   const sharedEdges = useMemo<readonly LaidEdge[]>(() => (selectedId === null ? [] : sharedEdgesOf(layout, selectedId).filter(e => onPage.has(e.from) && onPage.has(e.to))), [layout, selectedId, onPage]);
   const tabbable = focusId !== null && onPage.has(focusId) ? focusId : selectedId !== null && onPage.has(selectedId) ? selectedId : visible.nodes[0] ?? null;
   const boxes = visible.detail === 'boxes';
+  const onPageNodes = visible.nodes;
   const capped = visible.clusters.length + visible.nodes.length >= OVERVIEW_LIMITS.domNodes;
 
-  // The size of the stage, and the first fit once it is known.
-  useEffect(() => {
-    const el = host.current;
-    if (el === null) return undefined;
-    const read = (): void => {
-      const box = el.getBoundingClientRect();
-      if (box.width <= 0 || box.height <= 0) return;
-      setSize(s => (s.w === box.width && s.h === box.height ? s : { w: box.width, h: box.height }));
-      if (!fitted.current) { fitted.current = true; setView(firstView(latest.current.layout.bounds, box.width, box.height, 16, FIT_FOOT)); }
-    };
-    read();
-    const observer = new ResizeObserver(read);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  // Fit again when the set of places changes or "Expand all" and "Collapse all" are pressed. Not on the first draw, which is fitted already.
-  const lastFit = useRef(fitKey);
-  useEffect(() => { if (lastFit.current !== fitKey) { lastFit.current = fitKey; setView(firstView(latest.current.layout.bounds, latest.current.size.w, latest.current.size.h, 16, FIT_FOOT)); } }, [fitKey]);
-
-  // Ctrl and the wheel (a pinch on a trackpad) zoom about the pointer; the wheel alone pans. The listener is not passive, so the page itself does not scroll.
-  useEffect(() => {
-    const el = host.current;
-    if (el === null) return undefined;
-    const wheel = (e: WheelEvent): void => {
-      e.preventDefault();
-      const box = el.getBoundingClientRect();
-      if (e.ctrlKey || e.metaKey) setView(v => zoomAt(v, Math.exp(-e.deltaY * 0.01), e.clientX - box.left, e.clientY - box.top));
-      else setView(v => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
-    };
-    el.addEventListener('wheel', wheel, { passive: false });
-    return () => el.removeEventListener('wheel', wheel);
-  }, []);
-
-  // A key that moved the focus to something that was not drawn yet: take the focus when it is.
+  // A key that moved the focus to something that was not drawn yet: it takes the focus once it is drawn. The wish lasts one draw.
   useEffect(() => {
     const key = pending.current;
     if (key === null) return;
-    const el = els.current.get(key);
-    if (el !== undefined) { pending.current = null; el.focus({ preventScroll: true }); }
+    pending.current = null;
+    els.current.get(key)?.focus({ preventScroll: true });
   });
 
-  // ---- Pan: drag the background. A press without a drag clears the selection.
-  const pan = useRef<{ x: number; y: number; view: View; moved: boolean } | null>(null);
-  const downBackground = (e: ReactPointerEvent<HTMLDivElement>): void => {
-    if (e.button !== 0 || (e.target as HTMLElement).closest('[data-node], [data-control]') !== null) return;
-    pan.current = { x: e.clientX, y: e.clientY, view, moved: false };
-    e.currentTarget.setPointerCapture(e.pointerId);
-  };
-  const moveBackground = (e: ReactPointerEvent<HTMLDivElement>): void => {
-    const p = pan.current;
-    if (p === null) return;
-    const dx = e.clientX - p.x, dy = e.clientY - p.y;
-    if (!p.moved && Math.hypot(dx, dy) < DRAG_START) return;
-    p.moved = true;
-    setView({ k: p.view.k, x: p.view.x + dx, y: p.view.y + dy });
-  };
-  const upBackground = (e: ReactPointerEvent<HTMLDivElement>): void => {
-    const p = pan.current;
-    pan.current = null;
-    if (p === null) return;
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
-    if (!p.moved) onSelect(null);
-  };
+  // A part chosen from the details: bring it into the window, and zoom in when the parts are not drawn.
+  useEffect(() => {
+    const node = reveal === null ? undefined : nodeById.get(reveal.id);
+    if (node === undefined) return;
+    const k = Math.max(pz.latest.current.view.k, OVERVIEW_LIMITS.detailZoom), { w, h } = pz.latest.current.size;
+    const here = pz.latest.current.view, moved = revealView(here, node, w, h, 24, OVERLAY_INSETS);
+    if (moved === here && k === here.k) return;
+    pz.setView({ k, x: w / 2 - (node.x + node.w / 2) * k, y: h / 2 - (node.y + node.h / 2) * k });
+  }, [reveal?.n, reveal?.id]);
 
   // ---- Keys. The cards: arrows, Enter and Space. The headers: arrows between places. The stage: Escape, + - 0.
   const moveToNode = (to: string): void => {
     const target = nodeById.get(to);
     if (target === undefined) return;
     setFocusId(to);
-    setView(v => revealView(v, target, latest.current.size.w, latest.current.size.h));
+    pz.setView(revealView(pz.latest.current.view, target, pz.latest.current.size.w, pz.latest.current.size.h, 24, OVERLAY_INSETS));
     pending.current = nodeKey(to);
     const el = els.current.get(nodeKey(to));
     if (el !== undefined) { pending.current = null; el.focus({ preventScroll: true }); }
@@ -177,26 +144,28 @@ export function OverviewGraph({ overview, expanded, index, selectedId, fitKey, o
     const to = neighbourPlace(clusterIds, cluster.id, e.key as 'ArrowLeft', columns);
     const target = to === null ? undefined : clusterById.get(to);
     if (to === null || target === undefined) return;
-    setView(v => revealView(v, target.header, latest.current.size.w, latest.current.size.h));
+    pz.setView(revealView(pz.latest.current.view, target.header, pz.latest.current.size.w, pz.latest.current.size.h, 24, OVERLAY_INSETS));
     pending.current = headKey(to);
     const el = els.current.get(headKey(to));
     if (el !== undefined) { pending.current = null; el.focus({ preventScroll: true }); }
   };
-  const centre = (): { x: number; y: number } => ({ x: latest.current.size.w / 2, y: latest.current.size.h / 2 });
-  /** Moves the view. When it leaves the detail zoom while a card has the focus, the card is about to leave the page, so the focus goes to the header of its place and the keys keep working. */
-  const moveView = (next: View): void => {
-    setView(next);
-    if (next.k >= OVERVIEW_LIMITS.detailZoom) return;
-    const active = document.activeElement instanceof HTMLElement ? document.activeElement.getAttribute('data-node') : null;
-    const node = active === null ? undefined : nodeById.get(active);
-    if (node !== undefined) pending.current = headKey(node.groupId);
-  };
-  const zoomBy = (factor: number): void => { const c = centre(); moveView(zoomAt(latest.current.view, factor, c.x, c.y)); };
-  const fitAll = (): void => moveView(fitView(latest.current.layout.bounds, latest.current.size.w, latest.current.size.h, 16, FIT_FOOT));
   const keyStage = (e: ReactKeyboardEvent<HTMLElement>): void => {
     if (e.altKey || e.ctrlKey || e.metaKey) return;
     if (e.key === 'Escape') { if (selectedId !== null) { e.preventDefault(); onSelect(null); } return; }
-    if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomBy(ZOOM_STEP); } else if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomBy(1 / ZOOM_STEP); } else if (e.key === '0') { e.preventDefault(); fitAll(); }
+    if (e.key === '+' || e.key === '=') { e.preventDefault(); pz.zoomBy(ZOOM_STEP); } else if (e.key === '-' || e.key === '_') { e.preventDefault(); pz.zoomBy(1 / ZOOM_STEP); } else if (e.key === '0') { e.preventDefault(); pz.fit(); }
+  };
+
+  // A key that brings the focus to a header or a card (a Tab, a screen reader) shows it through the view, never by scrolling the stage, and clear of the buttons and the small map.
+  // The header that has the focus is the one header tab stop.
+  const headStop = headFocus !== null && visible.clusters.includes(headFocus) ? headFocus : visible.clusters[0] ?? null;
+  const focusedIn = (e: ReactFocusEvent<HTMLElement>): void => {
+    const target = e.target;
+    const cluster = target.closest<HTMLElement>('[data-cluster]')?.getAttribute('data-cluster');
+    if (cluster !== null && cluster !== undefined) setHeadFocus(cluster);
+    if (!target.matches(':focus-visible')) return;
+    const card = target.closest<HTMLElement>('[data-node]')?.getAttribute('data-node');
+    const rect = card !== null && card !== undefined ? nodeById.get(card) : cluster === null || cluster === undefined ? undefined : clusterById.get(cluster)?.header;
+    if (rect !== undefined) pz.setView(revealView(pz.latest.current.view, rect, pz.latest.current.size.w, pz.latest.current.size.h, 24, OVERLAY_INSETS));
   };
 
   const map = useMemo(() => miniMap(layout.map, view, size.w, size.h, MAP.w, MAP.h), [layout, view, size]);
@@ -213,9 +182,9 @@ export function OverviewGraph({ overview, expanded, index, selectedId, fitKey, o
   };
 
   return (
-    <div className="hx-canvas hxo-canvas" ref={host} role="group" aria-label={WORDS.label.graph} aria-describedby="hxo-keys" data-view="graph" onKeyDown={keyStage}
-      onPointerDown={downBackground} onPointerMove={moveBackground} onPointerUp={upBackground} onPointerCancel={() => { pan.current = null; }}>
-      <div className="hx-world hxo-world" data-detail={visible.detail} style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})`, ['--hxo-boost' as string]: Math.min(2.2, Math.max(1, 0.9 / view.k)) }}>
+    <div className="hx-canvas hxo-canvas" ref={host} role="group" aria-label={WORDS.label.graph} aria-describedby="hxo-keys" data-view="graph" onKeyDown={keyStage} onFocusCapture={focusedIn} {...pz.handlers}>
+      {onPageNodes.length === 0 ? null : <button type="button" className="hxo-skip" data-control="" onClick={() => els.current.get(nodeKey(tabbable ?? ''))?.focus({ preventScroll: true })}>{OVERVIEW.label.skipToParts}</button>}
+      <div className="hx-world hxo-world" data-detail={visible.detail} style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})`, ['--hxo-boost' as string]: Math.min(2.2, Math.max(1, 0.9 / view.k)), ['--hxo-up' as string]: Math.min(1.5, Math.max(1, 0.75 / view.k)), ['--hxo-k' as string]: view.k }}>
         {visible.clusters.map(id => {
           const c = clusterById.get(id), g = groupById.get(id);
           if (c === undefined || g === undefined) return null;
@@ -224,14 +193,14 @@ export function OverviewGraph({ overview, expanded, index, selectedId, fitKey, o
             <div key={id} className="hxo-box" role="group" aria-label={`${OVERVIEW.label.placeGroup}: ${g.name}`} data-cluster={id} data-open={open ? '' : undefined} data-boxed={open && boxes ? '' : undefined}
               data-home={g.scope === 'home' ? '' : undefined} data-lit={lit.has(id) ? '' : undefined} style={{ left: c.x, top: c.y, width: c.w, height: c.h }}>
               <div className="hxo-head" style={{ height: c.header.h }}>
-                <button type="button" className="hxo-toggle" data-control="" data-place-toggle={id} aria-expanded={open} aria-label={`${toggleName(g.name, open)}, ${g.label}, ${countsWords(g.counts)}`} ref={register(headKey(id))} onKeyDown={e => keyHead(e, c)} onClick={() => onToggle(id)}>
+                <button type="button" className="hxo-toggle" data-control="" data-place-toggle={id} aria-expanded={open} aria-label={`${toggleName(g.name, open)}, ${g.label}, ${countsWords(g.counts)}`} ref={register(headKey(id))} tabIndex={headStop === id ? 0 : -1} onKeyDown={e => keyHead(e, c)} onClick={() => onToggle(id)}>
                   <span className="hxo-chev" data-open={open ? '' : undefined} aria-hidden="true"><HIcon name="chevron" size={16} /></span>
                   <span className="hxo-text">
                     <span className="hxo-name">{g.name}</span>
                     <span className="hxo-sub"><span className="hxo-label">{g.label}</span><span className="hxo-counts">{countsWords(g.counts)}</span></span>
                   </span>
                 </button>
-                {boxes ? null : <span className="hxo-tools" data-control="">{place(g)}</span>}
+                {boxes ? null : <span className="hxo-tools" data-control="">{place(g, headStop === id)}</span>}
               </div>
               {open && boxes ? <p className="hxo-boxcount" aria-hidden="true">{countsWords(g.counts)}</p> : null}
             </div>
@@ -276,13 +245,13 @@ export function OverviewGraph({ overview, expanded, index, selectedId, fitKey, o
       </div>
 
       <div className="hx-zoom" data-control="" role="group" aria-label={WORDS.label.zoomControls}>
-        <HIconButton icon="zoom-in" label={WORDS.label.zoomIn} side="left" onClick={() => zoomBy(ZOOM_STEP)} />
-        <HIconButton icon="zoom-out" label={WORDS.label.zoomOut} side="left" onClick={() => zoomBy(1 / ZOOM_STEP)} />
-        <HIconButton icon="fit" label={WORDS.label.fitView} side="left" onClick={fitAll} />
+        <HIconButton icon="zoom-in" label={WORDS.label.zoomIn} side="left" onClick={() => pz.zoomBy(ZOOM_STEP)} />
+        <HIconButton icon="zoom-out" label={WORDS.label.zoomOut} side="left" onClick={() => pz.zoomBy(1 / ZOOM_STEP)} />
+        <HIconButton icon="fit" label={WORDS.label.fitView} side="left" onClick={pz.fit} />
       </div>
 
       <div className="hx-map" data-control="" role="group" aria-label={WORDS.label.smallMap} style={{ width: MAP.w, height: MAP.h }}
-        onPointerDown={e => { const box = e.currentTarget.getBoundingClientRect(); setView(v => centerOnMiniMap(map, v, size.w, size.h, e.clientX - box.left, e.clientY - box.top)); }}>
+        onPointerDown={e => { const box = e.currentTarget.getBoundingClientRect(); pz.setView(centerOnMiniMap(map, pz.latest.current.view, size.w, size.h, e.clientX - box.left, e.clientY - box.top)); }}>
         <svg width={MAP.w} height={MAP.h} aria-hidden="true" focusable="false">
           {map.bars.map(b => <rect key={b.id} className="hx-map-bar" data-selected={lit.has(b.id) || selectedNode?.groupId === b.id ? '' : undefined} x={b.x} y={b.y} width={Math.max(2, b.w)} height={Math.max(2, b.h)} rx={1} />)}
           <rect className="hx-map-window" x={map.window.x} y={map.window.y} width={Math.max(0, map.window.w)} height={Math.max(0, map.window.h)} />

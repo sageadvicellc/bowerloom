@@ -19,7 +19,7 @@ export const OVERVIEW = deepFreeze({
     graphList: 'Graph or list', expandAll: 'Expand all', collapseAll: 'Collapse all', expand: 'Expand', collapse: 'Collapse', chooseThisFolder: 'Choose this folder',
     inBowerloom: 'In Bowerloom', notInBowerloom: 'Not in Bowerloom yet', shared: 'Shared', runsCode: 'Runs code', home: 'Home', place: 'Place', places: 'Places',
     liveRegion: 'Selection', placeGroup: 'Place', nodeList: 'Parts in this place', details: 'Details', selectedPart: 'Selected part', alsoFoundIn: 'Also found in',
-    uses: 'Uses', usedBy: 'Used by', kindMcp: 'Connection', kindPrompt: 'Saved prompt', kindHook: 'Hook',
+    uses: 'Uses', usedBy: 'Used by', kindMcp: 'Connection', kindPrompt: 'Saved prompt', kindHook: 'Hook', skipToParts: 'Skip to the parts', showMore: 'Show more',
   },
   /** Short lines: at most 12 words each. */
   hint: {
@@ -64,6 +64,8 @@ export function nodeName(input: { name: string; kind: PartKind; toolKind?: Overv
 }
 /** The line the polite live region says when a node is selected, or when nothing is. */
 export const selectedWords = (name: string | null): string => (name === null ? 'Nothing selected' : `Selected ${name}`);
+/** "Show 40 more": the button that draws more rows of a long list. */
+export const showMoreName = (n: number, place: string): string => `${OVERVIEW.label.showMore}, ${n} left, ${place}`;
 /** "and 12 more", for a list cut short. */
 export const moreWords = (n: number): string => `and ${n} more`;
 
@@ -79,7 +81,8 @@ export function kindWords(kind: PartKind, toolKind?: OverviewToolKind): string {
   if (kind === 'tool' && toolKind !== undefined) return { mcp: OVERVIEW.label.kindMcp, prompt: OVERVIEW.label.kindPrompt, hook: OVERVIEW.label.kindHook }[toolKind];
   return { agent: 'Agent', skill: 'Skill', tool: 'Tool', context: 'Set of notes' }[kind];
 }
-/** "Open Your Claude Code folder in the builder" is `openFolderName` in words.ts. This is the name of the other button: "Choose the folder for alpha". */
-export const chooseFolderName = (place: string): string => `Choose the folder for ${place}`;
+/** The names of a place's two buttons begin with the words on them, then say which place: "Open in builder, alpha" and "Choose this folder, alpha". */
+export const openInBuilderName = (place: string): string => `Open in builder, ${place}`;
+export const chooseFolderName = (place: string): string => `${OVERVIEW.label.chooseThisFolder}, ${place}`;
 /** The name of a place's expand and collapse button: "Collapse alpha". */
 export const toggleName = (place: string, open: boolean): string => `${open ? OVERVIEW.label.collapse : OVERVIEW.label.expand} ${place}`;

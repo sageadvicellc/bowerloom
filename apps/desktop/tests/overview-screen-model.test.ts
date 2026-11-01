@@ -1,15 +1,17 @@
 // The decisions of the Overview screen apart from the screen (Task 2 lane H): the view, the open places, what a place offers, the bright set of a selection, the window that
 // follows a key, and the words the screen builds. Pure data, no DOM.
 import test from 'node:test';
+import { performance } from 'node:perf_hooks';
 import assert from 'node:assert/strict';
 import { OVERVIEW_LIMITS, overviewOf } from '../shared/harness/overview.js';
 import type { FolderInfo } from '../shared/engine/types.js';
 import { createSampleOverviewState } from '../shared/harness/sample.js';
 import type { HarnessState, Part, PartKind, ScanSource } from '../shared/harness/types.js';
 import { LIMITS, bannedHere, countWords } from '../shared/harness/words.js';
-import { OVERVIEW, chooseFolderName, kindWords, nodeName, placesWords, toggleName, usesLineWords } from '../renderer/harness/words-overview.js';
+import { OVERVIEW, chooseFolderName, kindWords, openInBuilderName, nodeName, placesWords, toggleName, usesLineWords } from '../renderer/harness/words-overview.js';
+import { fitView, zoomAt } from '../shared/harness/layout.js';
 import {
-  allOverrides, brightOf, canExpandAll, chosenMatches, copiesOf, expandedOf, indexOverview, isHomeLabel, litPlaces, neighbourPlace, placeAction, placeStatus, placesOf, revealView,
+  OVERVIEW_ZOOM_MIN, OVERLAY_INSETS, overviewFit, overviewZoomAt, allOverrides, brightOf, canExpandAll, chosenMatches, copiesOf, expandedOf, indexOverview, isHomeLabel, litPlaces, neighbourPlace, placeAction, placeStatus, placesOf, revealView,
   toggledOverrides, usesCounts, viewFor,
 } from '../renderer/harness/screens/OverviewModel.js';
 
@@ -76,28 +78,29 @@ test('a place outside home never says it is in Bowerloom, even when main knows a
 });
 
 test('a place under home says In Bowerloom with a harness and Open in builder; without one it says not yet and offers Choose this folder', () => {
-  const known = sample([folder('folder-7', '~/Projects/alpha', true)]);
-  const alpha = known.groups.find(g => g.label === '~/Projects/alpha')!, beta = known.groups.find(g => g.label === '~/Projects/beta')!;
+  const known = sample([folder('folder-7', '~/Projects/weekly-report', true)]);
+  const alpha = known.groups.find(g => g.label === '~/Projects/weekly-report')!, beta = known.groups.find(g => g.label === '~/Projects/inbox-tools')!;
   assert.equal(placeStatus(alpha), 'in'); assert.equal(placeAction(alpha), 'open'); assert.equal(alpha.folderId, 'folder-7');
   assert.equal(placeStatus(beta), 'not-in'); assert.equal(placeAction(beta), 'choose');
   // A folder main knows that holds no harness is not "In Bowerloom".
-  const bare = sample([folder('folder-8', '~/Projects/alpha', false)]).groups.find(g => g.label === '~/Projects/alpha')!;
+  const bare = sample([folder('folder-8', '~/Projects/weekly-report', false)]).groups.find(g => g.label === '~/Projects/weekly-report')!;
   assert.equal(placeStatus(bare), 'not-in'); assert.equal(placeAction(bare), 'choose');
   assert.equal(isHomeLabel('~'), true); assert.equal(isHomeLabel('~/Projects'), true); assert.equal(isHomeLabel('~x'), false); assert.equal(isHomeLabel('…/app'), false); assert.equal(isHomeLabel('Your Claude Code folder'), false);
 });
 
 test('the folder the person chose must be the folder shown: the exact label under home, the same last name outside it', () => {
   const o = sample();
-  const alpha = o.groups.find(g => g.label === '~/Projects/alpha')!;
-  assert.equal(chosenMatches(alpha, '~/Projects/alpha'), true);
-  assert.equal(chosenMatches(alpha, '~/Projects/beta'), false);
+  const alpha = o.groups.find(g => g.label === '~/Projects/weekly-report')!;
+  assert.equal(chosenMatches(alpha, '~/Projects/weekly-report'), true);
+  assert.equal(chosenMatches(alpha, '~/Projects/inbox-tools'), false);
   assert.equal(chosenMatches(alpha, '~/Other/alpha'), false);
   assert.equal(chosenMatches(alpha, '/Volumes/X/alpha'), false);
   const outside = { ...alpha, label: '…/app' };
   assert.equal(chosenMatches(outside, '/Volumes/B/app'), true);
   assert.equal(chosenMatches(outside, 'C:\\Work\\app'), true);
   assert.equal(chosenMatches(outside, '/Volumes/B/other'), false);
-  assert.equal(chosenMatches(outside, '~/app'), true, 'the last name is all the window can compare');
+  assert.equal(chosenMatches(outside, '~/app'), false, 'a folder under home is never a place that was found outside it');
+  assert.equal(chosenMatches(outside, '~'), false);
   assert.equal(chosenMatches({ ...alpha, label: '…' }, '…'), false, 'a label with no name matches nothing');
   const home = o.groups[0]!;
   assert.equal(home.label, '~'); assert.equal(chosenMatches(home, '~'), true); assert.equal(chosenMatches(home, '~/x'), false);
@@ -187,7 +190,8 @@ test('the words the screen builds obey the rules of the preview', () => {
   assert.equal(usesLineWords({ skill: 1 }), 'uses 1 skill');
   assert.equal(usesLineWords({ skill: 2, tool: 1, context: 3 }), 'uses 2 skills, 1 tool, 3 sets of notes');
   assert.equal(kindWords('tool', 'hook'), OVERVIEW.label.kindHook);
-  assert.equal(chooseFolderName('alpha'), 'Choose the folder for alpha');
+  assert.equal(chooseFolderName('alpha'), 'Choose this folder, alpha'); assert.equal(openInBuilderName('alpha'), 'Open in builder, alpha');
+  for (const name of [chooseFolderName('a'), openInBuilderName('a')]) assert.ok(name.startsWith(name.startsWith('Open') ? 'Open in builder' : 'Choose this folder'), 'Label in Name');
   assert.equal(toggleName('alpha', true), 'Collapse alpha'); assert.equal(toggleName('alpha', false), 'Expand alpha');
 });
 
@@ -195,4 +199,51 @@ test('a node name that has a line of uses says it once, in place of the single-k
   assert.equal(nodeName({ name: 'Reviewer', kind: 'agent', group: 'alpha', uses: 0, usesLine: 'uses 1 skill, 2 tools', sharedWith: 0 }), 'Reviewer, agent, alpha, uses 1 skill, 2 tools');
   assert.equal(nodeName({ name: 'Tidy', kind: 'agent', group: 'alpha', uses: 2, usesKind: 'skill', sharedWith: 0 }), 'Tidy, agent, alpha, uses 2 skills');
   assert.equal(nodeName({ name: 'Format', kind: 'tool', toolKind: 'hook', group: 'alpha', uses: 0, runsCode: true, sharedWith: 2 }), 'Format, hook, alpha, runs code, shared with 2 places');
+});
+
+// ---- the zoom floor, the insets, the first view
+
+test('the Overview fits and zooms out down to its own floor, and never shows the middle of a graph that does not fit', () => {
+  assert.equal(OVERVIEW_ZOOM_MIN, 0.15);
+  const wide = { left: 0, top: 0, right: 4 * 752, bottom: 11400 };
+  // The Builder's floor crops it: 0.4 is as far as it goes.
+  assert.equal(fitView(wide, 890, 800, 16, 44).k, 0.4);
+  const fit = overviewFit(wide, 890, 800, 16, 44);
+  assert.ok(fit.k < 0.4 && fit.k >= OVERVIEW_ZOOM_MIN, `k ${fit.k}`);
+  // At the floor the top left is in the corner, so the headers of the first row show.
+  const tall = overviewFit({ left: 0, top: 0, right: 700, bottom: 100000 }, 890, 800, 16, 44);
+  assert.equal(tall.k, OVERVIEW_ZOOM_MIN); assert.equal(tall.y, 16);
+  // A graph that fits is centred, never larger than life.
+  const small = overviewFit({ left: 0, top: 0, right: 100, bottom: 100 }, 800, 600, 16, 44);
+  assert.equal(small.k, 1); assert.ok(small.x > 16 && small.y > 16);
+  assert.deepEqual(overviewFit({ left: 0, top: 0, right: 0, bottom: 0 }, 800, 600), { x: 0, y: 0, k: 1 });
+  // Zoom out goes below 0.4 here and stops at the floor; the top is the Builder's, and the point under the pointer stays.
+  const out = overviewZoomAt({ x: 10, y: 20, k: 0.4 }, 1 / 1.2, 200, 100);
+  assert.ok(out.k < 0.4 && out.k > OVERVIEW_ZOOM_MIN);
+  assert.ok(Math.abs((200 - out.x) / out.k - (200 - 10) / 0.4) < 1e-9);
+  assert.equal(overviewZoomAt({ x: 0, y: 0, k: 0.16 }, 0.5, 0, 0).k, OVERVIEW_ZOOM_MIN);
+  assert.equal(overviewZoomAt({ x: 0, y: 0, k: 1.9 }, 2, 0, 0).k, zoomAt({ x: 0, y: 0, k: 1.9 }, 2, 0, 0).k);
+  assert.equal(zoomAt({ x: 0, y: 0, k: 0.4 }, 0.5, 0, 0).k, 0.4, 'the Builder keeps its own floor');
+});
+
+test('a card is brought clear of the zoom buttons, the small map and the legend', () => {
+  const view = { x: 0, y: 0, k: 1 };
+  // Under the small map: 100 px from the foot of a 600 px window.
+  const card = { x: 40, y: 500, w: 200, h: 60 };
+  assert.equal(revealView(view, card, 800, 600), view, 'with no insets the card counts as in view');
+  const clear = revealView(view, card, 800, 600, 24, OVERLAY_INSETS);
+  assert.ok(clear.y + 500 + 60 <= 600 - 24 - OVERLAY_INSETS.bottom + 1e-9, `y ${clear.y}`);
+  // Under the zoom buttons at the right.
+  const right = revealView(view, { x: 700, y: 100, w: 90, h: 40 }, 800, 600, 24, OVERLAY_INSETS);
+  assert.ok(700 + 90 + right.x <= 800 - 24 - OVERLAY_INSETS.right + 1e-9, `x ${right.x}`);
+});
+
+test('the index of a place with thousands of links is built in one pass (no copy of the list on each edge)', () => {
+  const parts: Part[] = [part('a', 'agent', 'Agent')], ids = ['a'], links: { from: string; to: string }[] = [];
+  for (let i = 0; i < 20000; i += 1) { parts.push(part(`s${i}`, 'skill', `s${i}`)); ids.push(`s${i}`); links.push({ from: 'a', to: `s${i}` }); }
+  const source: ScanSource = { id: 'h', name: 'Home', interfaceName: 'Claude Code', harnessName: 'h', partIds: ids, links, scope: 'home', label: '~' };
+  const o = overviewOf({ ...createSampleOverviewState(), parts, sources: [source] } as HarnessState, []);
+  const t = performance.now(), index = indexOverview(o), took = performance.now() - t;
+  assert.equal(index.uses('h/a').length, 20000);
+  assert.ok(took < 1000, `indexOverview took ${took.toFixed(0)} ms`);
 });

@@ -47,7 +47,9 @@ export function Overview(): ReactElement {
   const list = useCall(), choosing = useCall();
   const sheetOpen = ui.adopt.open || ui.saveSheet.open || ui.projectSheet.open;
   // The folders main knows, read when the screen opens and when a sheet closes. A read that fails shows its refusal and leaves the places without a mark.
-  useEffect(() => { if (engine !== null && !sheetOpen) void list.plan(ENGINE_WORDS.label.planning, () => foldersCall(engine), setFolders); }, [engine, sheetOpen]);
+  useEffect(() => { if (engine !== null && !sheetOpen) void list.plan(ENGINE_WORDS.label.planning, () => foldersCall(engine), setFolders); }, [engine, sheetOpen, list.plan]);
+  // Leaving the screen drops a call still in flight, so a chooser that closes later does not move a person who has gone elsewhere.
+  useEffect(() => () => { list.clear(); choosing.clear(); }, [list.clear, choosing.clear]);
   const overview = useMemo(() => overviewOf(source, folders), [source, folders]);
   const index = useMemo(() => indexOverview(overview), [overview]);
   const [chosen, setChosen] = useState<OverviewView | null>(null);
@@ -78,7 +80,20 @@ export function Overview(): ReactElement {
       });
     },
   };
-  const place = (g: OverviewGroup): ReactElement => <><PlaceMark group={g} /><PlaceAction group={g} tools={tools} /></>;
+  const place = (g: OverviewGroup, focusable = true): ReactElement => <><PlaceMark group={g} /><PlaceAction group={g} tools={tools} focusable={focusable} /></>;
+  // A part chosen from the details (what an agent uses, who uses a part): its place opens, it is selected, and the view moves to it.
+  const [reveal, setReveal] = useState<{ id: string; n: number } | null>(null);
+  const choose = (id: string): void => {
+    const found = index.node(id);
+    if (found !== undefined && !expanded.has(found.group.id)) setOverrides(current => toggledOverrides(current, found.group.id, false));
+    setSelectedId(id);
+    setReveal(r => ({ id, n: (r?.n ?? 0) + 1 }));
+  };
+  useEffect(() => {
+    if (view !== 'list' || reveal === null) return;
+    const frame = requestAnimationFrame(() => document.querySelector(`[data-node="${CSS.escape(reveal.id)}"]`)?.scrollIntoView({ block: 'nearest' }));
+    return () => cancelAnimationFrame(frame);
+  }, [reveal?.n, view]);
 
   const empty = overview.groups.length === 0;
   const keyViews = (e: ReactKeyboardEvent<HTMLElement>): void => {
@@ -104,7 +119,7 @@ export function Overview(): ReactElement {
 
   return (
     <Screen slot="overview" title={WORDS.label.overview} count={placesWords(overview.groups.length)} flush={view === 'graph' && !empty} tools={empty ? undefined : bar}
-      details={empty ? undefined : <OverviewDetails overview={overview} index={index} selectedId={selected === undefined ? null : selectedId} onSelect={setSelectedId} place={place} />}>
+      details={empty ? undefined : <OverviewDetails overview={overview} index={index} selectedId={selected === undefined ? null : selectedId} onSelect={choose} place={place} />}>
       {list.refusal === null ? null : <RefusalNote refusal={list.refusal} focusId={list.refusalId}>{null}</RefusalNote>}
       {choosing.refusal === null ? null : <RefusalNote refusal={choosing.refusal} focusId={choosing.refusalId}>{null}</RefusalNote>}
       {empty ? (
@@ -114,11 +129,11 @@ export function Overview(): ReactElement {
         </div>
       ) : view === 'graph' ? (
         <OverviewGraph overview={overview} expanded={expanded} index={index} selectedId={selected === undefined ? null : selectedId} fitKey={`${overview.groups.map(g => g.id).join(',')}|${fitTick}`}
-          onSelect={setSelectedId} onToggle={toggle} place={place} />
+          onSelect={setSelectedId} onToggle={toggle} place={place} reveal={reveal} />
       ) : (
         <OverviewList overview={overview} expanded={expanded} index={index} selectedId={selected === undefined ? null : selectedId} onSelect={setSelectedId} onToggle={toggle} place={place} />
       )}
-      <p className="hm-sr" role="status" aria-live="polite" data-live="">{selectedWords(selected?.node.name ?? null)}</p>
+      <p className="hm-sr" role="status" aria-live="polite" data-live="">{selectedWords(selected === undefined ? null : `${selected.node.name}, ${selected.group.name}`)}</p>
     </Screen>
   );
 }
