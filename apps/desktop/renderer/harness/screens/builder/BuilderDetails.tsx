@@ -16,7 +16,6 @@ import { HButton, StateDot } from '../../parts/controls.js';
 import { KIND_NAME, WORDS, unlinkName } from '../../words.js';
 import { ENGINE_WORDS } from '../../words-engine.js';
 import { NOTES } from '../../words-notes.js';
-import { SHARE } from '../../words-share.js';
 
 export interface BuilderDetailsProps {
   /** The harness as the draft makes it. */
@@ -31,8 +30,6 @@ export interface BuilderDetailsProps {
   /** Starts (or stops) linking from an agent, for the keyboard. */
   onLinkStart(agentId: string): void;
   onAct(action: BuilderAction): void;
-  /** Opens the Export sheet for this folder's saved harness. Left out, the panel offers no Export. */
-  onExport?(): void;
 }
 
 interface Row { readonly id: string; readonly name: string; readonly kind: 'agent' | 'skill' | 'context' }
@@ -57,7 +54,7 @@ function Links({ title, owner, rows, held, onSelect, onAct }: { title: string; o
   );
 }
 
-export function BuilderDetails({ now, start, draft, selectedId, linkingId, held, onSelect, onLinkStart, onAct, onExport }: BuilderDetailsProps): ReactElement {
+export function BuilderDetails({ now, start, draft, selectedId, linkingId, held, onSelect, onLinkStart, onAct }: BuilderDetailsProps): ReactElement {
   const agentId = selectedId === null ? null : agentPart(selectedId), skillId = selectedId === null ? null : partSkill(selectedId), notesName = selectedId === null ? null : partNotes(selectedId);
   const agent = agentId === null ? undefined : now.agents.find(a => a.id === agentId);
   const skill = skillId === null ? undefined : start.skills.find(s => s.id === skillId);
@@ -100,13 +97,6 @@ export function BuilderDetails({ now, start, draft, selectedId, linkingId, held,
     <>
       <h2 className="kit-heading hx-dtitle" id="hm-panel-title" tabIndex={-1}>{WORDS.label.nothingSelected}</h2>
       <p className="hx-text hx-muted" data-budget="paragraph">{WORDS.hint.dropToLink}</p>
-      {onExport === undefined ? null : (
-        <section className="hx-block" aria-labelledby="hx-share" data-share="">
-          <h3 className="hx-h3" id="hx-share">{SHARE.label.exportShare}</h3>
-          <p className="hx-text hx-muted">{SHARE.hint.exportWrites}</p>
-          <div className="hx-actions"><HButton icon="share" disabled={held} aria-label={SHARE.label.exportThis} data-details-export="" onClick={onExport}>{SHARE.label.export}</HButton></div>
-        </section>
-      )}
     </>
   );
 }

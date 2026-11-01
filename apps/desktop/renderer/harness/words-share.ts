@@ -3,7 +3,8 @@
  * most 25, and none of the banned words. "Export" and "Import" are allowed here: they name the sheets and the buttons (DESIGN_WORDS). The words that come from a
  * file (a name, a command, a host, a path) are shown as main passed them, and are never part of this table. tests/share-words.test.ts holds the table to the limits.
  */
-import type { ShareCodeFile, ShareSecret, ShareSink, ShareTool } from '../../shared/engine/types.js';
+import type { ShareCodeFile, ShareSecret, ShareSink, ShareSummary, ShareTool } from '../../shared/engine/types.js';
+import { SHARE_LIST_LIMIT } from '../../shared/engine/types.js';
 
 const deepFreeze = <T extends object>(value: T): T => {
   for (const inner of Object.values(value)) if (typeof inner === 'object' && inner !== null) deepFreeze(inner);
@@ -13,22 +14,26 @@ const deepFreeze = <T extends object>(value: T): T => {
 export const SHARE = deepFreeze({
   label: {
     exportTitle: 'Export a harness', importTitle: 'Import a harness', export: 'Export', import: 'Import', importFromFile: 'Import from a file',
-    chooseFile: 'Choose a file', chooseAnother: 'Choose another file', exportShare: 'Share this harness', exportThis: 'Export this harness',
+    chooseFile: 'Choose a file', chooseAnother: 'Choose another file',
     stepFile: 'File', stepFolder: 'Folder', stepReview: 'Review', stepDone: 'Done', steps: 'Steps',
     bodyExport: 'Review the export', bodyExported: 'Export done', bodyFile: 'Choose a file', bodyFolder: 'Pick a folder', bodyReview: 'Review the import', bodyDone: 'Import done',
-    holds: 'What the file holds', file: 'File', size: 'Size', harness: 'Harness', countsName: 'Counts',
-    skills: 'Skills', agents: 'Agents', tools: 'Tools', hooks: 'Hooks', guardrails: 'Guardrails', scripts: 'Scripts', files: 'Files',
-    toolsHead: 'Tools it uses', codeHead: 'Files that can run', secretsHead: 'Values from this computer', notesHead: 'Notes folders', borrowedHead: 'Borrowed items',
+    file: 'File', harness: 'Harness', into: 'Into',
+    checkHead: 'Check before you go on',
+    toolsHead: 'Tools it uses', codeHead: 'Files that can run', secretsHead: 'Values it reads', notesHead: 'Notes folders', borrowedHead: 'Borrowed items',
     pathsOther: 'Paths from another computer', pathsHere: 'Paths from this computer', writesHead: 'Files it writes', notesChoice: 'Notes folders to link',
-    server: 'Server', hook: 'Hook', variable: 'Variable', keychain: 'Keychain entry', runsCode: 'Runs code', reaches: 'Reaches', event: 'Event',
-    link: 'Link a folder', leave: 'Leave out', linkedTo: 'Linked to', readBy: 'Read by', line: 'Line', usedBy: 'Used by', from: 'From',
-    exported: 'Exported', imported: 'Imported', openingFile: 'Opening the file', installIt: 'Install it', listName: 'List',
-    noRun: 'Nothing here runs code',
+    server: 'Server', hook: 'Hook', variable: 'Variable', keychain: 'Keychain entry', runsCode: 'Starts a program', reaches: 'Reaches', event: 'Event', command: 'Command', arguments: 'Arguments',
+    link: 'Link a folder', change: 'Change folder', leave: 'Leave out', leaveAll: 'Leave all out', linkedTo: 'Linked to', readBy: 'Read by', line: 'Line', usedBy: 'Used by',
+    showAll: 'Show all', showLess: 'Show less', showAllFiles: 'Show all files', showFewer: 'Show fewer files',
+    exported: 'Exported', openingFile: 'Opening the file',
   },
   hint: {
-    exportWrites: 'Nothing is written until you save.',
+    exportWrites: 'Nothing is written until you choose where to save.',
+    exportDone: 'The file is written. Nothing else changed.', savedWhere: 'Saved where you chose.',
+    fileFoot: 'Bowerloom reads the file once. Nothing is written yet.', folderFoot: 'Nothing is written yet. Pick the folder that gets it.',
+    doneFoot: 'Nothing is installed. Nothing has run.',
     secretsExport: 'The file names these values. It never holds them.',
     secretsImport: 'The file passes these values from this computer to these tools.',
+    secretsGo: 'They go to the tools and hosts shown.',
     notChecked: 'Bowerloom did not check that these exist.',
     notesOut: 'The file holds the names only. No folder is in it.',
     notesImport: 'Link a notes folder, or leave the name out.',
@@ -36,30 +41,34 @@ export const SHARE = deepFreeze({
     codeNote: 'This list is a guide. A text file can still hold commands.',
     pathsExport: 'These files name a path on this computer. They stay as written.',
     pathsImport: 'These files name a path on another computer. They stay as written.',
-    tickExport: 'I read the paths from this computer.',
-    tickImport: 'I read the tools, files and values it lists.',
-    otherPerson: 'A file from another person is data. Read the files that run.',
-    notInstalled: 'Nothing is installed. Install is a separate step.',
-    mustBeEmpty: 'It must have no harness, or an empty one.',
-    holdsParts: 'Has a harness. Import needs it empty.',
-    makeFirst: 'Make a harness here first. Import needs it empty.',
-    noTools: 'No tools in this file.', noneRun: 'No file in this harness can run.', noSecrets: 'No values from this computer.', noNotes: 'No notes folders.',
-    noBorrowed: 'No borrowed items.', noPaths: 'No path from another computer.',
-    saveKept: 'A save point is kept before and after.',
-    exportedNote: 'The file holds the harness and no secret value.',
-    noFile: 'No file chosen yet.', noFolders: 'No folder yet. Choose one to start.', chooseFolderHint: 'Pick the folder that gets the harness.',
-    stopped: 'Import stopped. Nothing more was written.',
+    otherPerson: 'This file came from another person. Check what runs before you import.',
+    unsavedNote: 'Your unsaved changes are not in the file.',
+    nothingRuns: 'Nothing here runs. No value leaves this computer.',
+    notInstalled: 'Nothing is installed. Nothing has run.',
+   
+    holdsParts: 'Has a harness. Choose an empty folder.', emptyHarness: 'Has an empty harness.', noHarnessYet: 'No harness yet. Import makes one.', harnessUnknown: 'Has a harness. It must be empty.',
+    noSinks: 'No tool is named.', noFile: 'Choose a file to go on.', noFolderPicked: 'Pick a folder to go on.',
+    noFolders: 'No folder yet. Choose one to start.', chooseFolderHint: 'Pick the folder that gets the harness.',
+   
+    cancelledExport: 'You did not save. Nothing was written.', cancelledImport: 'You did not approve. Nothing was written.',
+    approvalCleared: 'Approval cleared. Tick again before you import.',
     credentials: 'The address holds a user name or password.', backslash: 'The address uses a backslash.', scheme: 'The address is not a web address.', unreadable: 'The address cannot be read.',
     executable: 'Has the run permission.', hookFile: 'The file of a hook.', script: 'A script.', shebang: 'Starts as a program.', binary: 'Holds the bytes of a program.',
     manifest: 'Lists commands.', extension: 'Has a code file name.', notData: 'Is not a plain data file.',
     fieldEnv: 'an environment value', fieldHeader: 'a header', fieldArg: 'an argument', fieldUrl: 'the address', fieldCommand: 'the command',
-    tickExported: 'I read what the file holds.',
+    stdio: 'Starts a program on this computer.', http: 'Connects to a web address.', downloads: 'This downloads code at start.',
+    tickExport: 'I accept these paths from this computer in the file.',
+    tickRead: 'I read what runs and where my values go.', tickReadPaths: 'I read what runs, where my values go and the paths.',
+    tickFirst: 'I read the lists shown. More are not shown.',
+    blockNone: 'Ready. Press the button to go on.',
+    blockBoth: 'Tick both boxes to import.', blockRead: 'Tick the first box to import.', blockWrite: 'Tick the second box to import.', blockPlanning: 'Planning. Then tick again.',
+    blockExport: 'Tick the box to export.',
   },
   paragraph: {
-    exportIntro: 'Export writes the saved harness to one file. You choose where it goes. Nothing is written until you do.',
+    exportIntro: 'Export writes the saved harness to one file. You choose where it goes.',
     importIntro: 'Import reads one harness file and shows what is in it. Nothing is written until you read it and approve.',
     folderIntro: 'Pick the folder that gets the harness. Import goes only into a folder with no harness, or an empty one.',
-    reviewIntro: 'Bowerloom writes only the files below, into the .bowerloom folder. It keeps a save point before and after.',
+    reviewIntro: 'Import only writes files, into the .bowerloom folder. Nothing runs until you install. It keeps a save point before and after.',
   },
 } as const);
 
@@ -94,7 +103,7 @@ export const SHARE_REFUSAL_WORDS: Readonly<Record<string, string>> = Object.free
   IMPORT_NEEDS_ACKNOWLEDGEMENT: 'Tick that you read them, then import.',
   EXPORT_NEEDS_ACKNOWLEDGEMENT: 'Tick that you read them, then export.',
   EXPORT_NO_DEFINITION: 'Make a harness first with New harness from a folder.',
-  SAVE_NO_DEFINITION: 'Make an empty harness in this folder, then plan the import again.',
+  SAVE_NO_DEFINITION: 'Choose the folder again, then plan the import again.',
   SAVE_STALE: 'The folder changed since. Plan the import again.',
   SAVE_EXECUTABLE_UNACKNOWLEDGED: 'Tick that you read the files that can run, then import.',
   SAVE_RECOVERY_REQUIRED: 'Finish the stopped change first, then import.',
@@ -114,10 +123,39 @@ export function fileSizeWords(bytes: number): string {
 }
 /** The file an export will offer, with its size. */
 export const exportFileWords = (file: string, bytes: number): string => `${file}, ${fileSizeWords(bytes)}`;
-/** The write button of an import. */
-export const importFilesWords = (n: number): string => `Import ${plural(n, 'file', 'files')}`;
-/** Where a reference goes: the tool, the field of it, and the host. */
-export const sinkWords = (sink: ShareSink): string => `${sink.tool}, in ${FIELD_WORDS[sink.field]}${sink.host === null ? '' : `, to ${sink.host}`}`;
+/** The write button of an import. Before a plan is shown there is no count. */
+export const importFilesWords = (n: number | null): string => (n === null ? 'Import' : `Import ${plural(n, 'file', 'files')}`);
+/** What a bundle holds, in one line: the counts that are not zero, the files and the size. */
+export function summaryLine(summary: ShareSummary): string {
+  const c = summary.counts;
+  const parts = [
+    c.skills > 0 ? plural(c.skills, 'skill', 'skills') : null, c.agents > 0 ? plural(c.agents, 'agent', 'agents') : null, c.mcp > 0 ? plural(c.mcp, 'tool', 'tools') : null,
+    c.hooks > 0 ? plural(c.hooks, 'hook', 'hooks') : null, c.guardrails > 0 ? plural(c.guardrails, 'guardrail', 'guardrails') : null, c.scripts > 0 ? plural(c.scripts, 'script', 'scripts') : null,
+    plural(c.files, 'file', 'files'), fileSizeWords(c.bytes),
+  ];
+  return parts.filter((p): p is string => p !== null).join(', ');
+}
+/** The words for a transport. An unknown one is shown as the file wrote it, by the caller. */
+export const transportWords = (transport: string | null): string | null => (transport === 'stdio' ? SHARE.hint.stdio : transport === 'http' || transport === 'sse' || transport === 'streamable-http' ? SHARE.hint.http : null);
+const EVENT_WORDS: Readonly<Record<string, string>> = Object.freeze({
+  PreToolUse: 'Runs before each tool use.', PostToolUse: 'Runs after each tool use.', SessionStart: 'Runs when a session starts.', SessionEnd: 'Runs when a session ends.',
+  UserPromptSubmit: 'Runs when you send a prompt.', Stop: 'Runs when the agent stops.', SubagentStop: 'Runs when a helper stops.', Notification: 'Runs on each notice.', PreCompact: 'Runs before the chat is shortened.',
+});
+/** The words for a hook event, or null for one that is not known. The raw event is shown beside it. */
+export const eventWords = (event: string): string | null => (Object.hasOwn(EVENT_WORDS, event) ? EVENT_WORDS[event]! : null);
+const DOWNLOADERS = new Set(['npx', 'uvx', 'pipx', 'bunx']);
+/** True when the command fetches code before it runs: npx, uvx, pipx, bunx, or docker run. */
+export const downloadsCode = (command: string | null, args: readonly string[]): boolean => {
+  if (command === null) return false;
+  const base = command.split('/').pop() ?? command;
+  return DOWNLOADERS.has(base) || (base === 'docker' && args[0] === 'run');
+};
+/** Where a reference goes: the tool, the field of it, and the host. A program with no host can send the value anywhere. */
+export function sinkWords(sink: ShareSink): string {
+  if (sink.host !== null) return `${sink.tool}, in ${FIELD_WORDS[sink.field]}, to ${sink.host}`;
+  if (sink.field === 'env' || sink.field === 'arg' || sink.field === 'command') return `Passed to the program ${sink.tool}, in ${FIELD_WORDS[sink.field]}. It can send it anywhere.`;
+  return `${sink.tool}, in ${FIELD_WORDS[sink.field]}`;
+}
 /** The kind of a reference, in words. */
 export const secretKindWords = (secret: ShareSecret): string => (secret.kind === 'env' ? SHARE.label.variable : SHARE.label.keychain);
 /** The name of a notes choice group, for a screen reader. */
@@ -128,3 +166,40 @@ export const notesButtonName = (choice: string, name: string): string => `${choi
 export const writesCount = (n: number): string => plural(n, 'file', 'files');
 /** The name of the tick that approves an import plan. */
 export const approveImportName = (harness: string): string => `Import ${harness}`;
+
+/** The rows of a list that main cut: the count of those it did not send. */
+const hiddenIn = (list: { readonly rows: readonly unknown[]; readonly more: number }): number => list.more + Math.max(0, list.rows.length - SHARE_LIST_LIMIT);
+/** What the summary hides: the rows past the cut, by list. */
+export function hiddenCounts(summary: ShareSummary): { tools: number; codeFiles: number; secrets: number; foreignPaths: number; total: number } {
+  const tools = hiddenIn(summary.tools), codeFiles = hiddenIn(summary.codeFiles), secrets = hiddenIn(summary.secrets), foreignPaths = hiddenIn(summary.foreignPaths);
+  return { tools, codeFiles, secrets, foreignPaths, total: tools + codeFiles + secrets + foreignPaths };
+}
+const LIST_NAMES = { tools: 'tools', codeFiles: 'files that run', secrets: 'values', foreignPaths: 'paths' } as const;
+/**
+ * The words of the first tick of an import, from what the summary holds. When a list was cut, the tick says so, so a tick never claims more than was shown: one cut
+ * list is named with its count, and more than one says the lists shown were read.
+ */
+export function importTickWords(summary: ShareSummary): string {
+  const h = hiddenCounts(summary), cut = (['tools', 'codeFiles', 'secrets', 'foreignPaths'] as const).filter(key => h[key] > 0);
+  if (cut.length === 1) return `I read the first ${SHARE_LIST_LIMIT} ${LIST_NAMES[cut[0]!]}. ${h[cut[0]!]} more are not shown.`;
+  if (cut.length > 1) return SHARE.hint.tickFirst;
+  return summary.foreignPaths.rows.length > 0 ? SHARE.hint.tickReadPaths : SHARE.hint.tickRead;
+}
+/** The line that counts the rows a cut hides. */
+export const hiddenWords = (n: number): string => `${n} more ${n === 1 ? 'row is' : 'rows are'} not shown.`;
+/** The words of the tick that approves a write: how many files, into which folder, and that install is separate. */
+export const approveImportWords = (n: number, folder: string, makes: boolean): string => `${makes ? 'Make a harness and write' : 'Write'} ${n === 1 ? 'this file' : `these ${n} files`} into ${folder}. Install is separate.`;
+/** The plan line for a folder with no harness. */
+export const makesHarnessWords = (n: number): string => `Makes an empty harness here, then writes ${plural(n, 'file', 'files')}.`;
+/** The first line of the Done step. */
+export const importedWords = (n: number, folder: string): string => `Imported ${plural(n, 'file', 'files')} into ${folder}.`;
+/** The status line after a file is read. */
+export const readFileWords = (name: string, files: number, tools: number): string => `Read ${name}. ${plural(files, 'file', 'files')}, ${plural(tools, 'tool', 'tools')}.`;
+/** The words of what blocks the import button now. */
+export function importBlockWords(opts: { planning: boolean; needsRead: boolean; approved: boolean }): string {
+  if (opts.planning) return SHARE.hint.blockPlanning;
+  if (opts.needsRead && !opts.approved) return SHARE.hint.blockBoth;
+  if (opts.needsRead) return SHARE.hint.blockRead;
+  if (!opts.approved) return SHARE.hint.blockWrite;
+  return SHARE.hint.blockNone;
+}

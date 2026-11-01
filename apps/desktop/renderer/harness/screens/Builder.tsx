@@ -176,7 +176,7 @@ export function Builder({ id }: { id: string }): ReactElement {
       </div>
       <HIconButton ref={pointsButton} icon="save-clock" label={W.label.savePoints} side="below" aria-expanded={drawer} data-builder-points="" onClick={() => setDrawer(o => !o)} />
       <HIconButton icon="folder" label={WORDS.label.assignToProject} side="below" onClick={() => ui.openProject({ folderId: id })} />
-      <HButton icon="share" data-builder-export="" disabled={busy} onClick={() => ui.openExport({ folderId: id })}>{SHARE.label.export}</HButton>
+      <HButton icon="share" data-builder-export="" disabled={busy} onClick={() => ui.openExport({ folderId: id, unsaved: count > 0 })}>{SHARE.label.export}</HButton>
       <HButton variant="primary" data-builder-save="" disabled={count === 0 || busy} onClick={() => ui.openSave({ folderId: id, start: 'review' })}>{WORDS.label.save}</HButton>
     </>
   ) : undefined;
@@ -185,7 +185,7 @@ export function Builder({ id }: { id: string }): ReactElement {
     <Screen slot="builder" title={title} {...(ready ? { count: draftWords(count) } : {})} tools={tools}
       details={!ready ? undefined : (
         <BuilderDetails now={editor.now!} start={draftStart(base!, draft)} draft={draft} selectedId={selectedId} linkingId={linkingId} held={held || busy}
-          onSelect={setSelectedId} onAct={act} onExport={() => ui.openExport({ folderId: id })}
+          onSelect={setSelectedId} onAct={act}
           onLinkStart={agentId => { toggleLink(agentId); requestAnimationFrame(() => document.querySelector<HTMLElement>('.hx-node[data-candidate]')?.focus()); }} />
       )}
       drawer={!ready ? undefined : (

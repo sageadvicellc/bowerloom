@@ -17,10 +17,11 @@ import type {
   AdoptChoices, AdoptRecovered, AdoptRecoveryView, AdoptView, AdoptWritten, Answer, ApproveLineView, BundleView, ChangeView, CopiedExecutableView, DefinitionView, EngineBridge, EngineId,
   EveryEnginePart, ExportView, ExportWritten, FolderInfo, ImportNoteChoices, ImportNoteRow, ImportView, LossView, MergeView, MergeWritten, NotesHistoryPlanView, NotesStarterView,
   NotesView, NotesWritten, ProjectAnswer, ProjectInput, ProjectView, ProjectWritten, Recovered, RecoveryChoices, RecoveryView, Refusal, RemovalView, Removed, ReportOpened, RestoreView,
-  SaveChangeView, SaveEdit, SaveRequest, SaveView, SaveWritten, SetAsideView, SetAsideWritten, ShareForeignPath, ShareSummary, SourceView, StoppedSourceView, VersionView,
+  SaveChangeView, SaveEdit, SaveRequest, SaveView, SaveWritten, SetAsideView, SetAsideWritten, ShareCodeFile, ShareForeignPath, ShareSecret, ShareSummary, ShareTool, SourceView, StoppedSourceView,
+  VersionView,
 } from './types.js';
 import {
-  ENGINE_NAMES, EVERY_ENGINE_PARTS, KIT_MAIN_WORDS, NOTES_PURPOSES, REPORT_MAIN_WORDS, SAVE_MAIN_WORDS, SHARE_BUNDLE_ID, SHARE_HELD_BUNDLES, SHARE_MAIN_WORDS, SHARE_NAME_LIMIT, SHARE_NOTES_LIMIT, writesFile,
+  ENGINE_NAMES, EVERY_ENGINE_PARTS, KIT_MAIN_WORDS, NOTES_PURPOSES, REPORT_MAIN_WORDS, SAVE_MAIN_WORDS, SHARE_BUNDLE_ID, SHARE_HELD_BUNDLES, SHARE_LIST_LIMIT, SHARE_MAIN_WORDS, SHARE_NAME_LIMIT, SHARE_NOTES_LIMIT, writesFile,
 } from './types.js';
 import { approveKey, lossByEngine, unmappedHashBody } from './view.js';
 
@@ -432,22 +433,36 @@ const BUNDLE_DEFINITION: DefinitionView = Object.freeze({
   agents: [{ id: 'clerk', name: 'clerk', description: 'Handles the orders.', skills: ['check-orders', 'tally-stock'], notes: ['yard-wiki'] }], sources: [], kits: [],
 });
 const list = <T>(rows: readonly T[]): { readonly rows: readonly T[]; readonly more: number } => ({ rows, more: 0 });
+/**
+ * Puts the rows with the highest risk first (stable among equals), then cuts the list at SHARE_LIST_LIMIT and counts what the cut left out, so a cut never hides a row that
+ * runs code or reaches a host behind harmless ones. Main does the same for the lists of a bundle it holds (shared/engine/types.ts, `planImport`).
+ */
+export function capRiskFirst<T>(rows: readonly T[], risk: (row: T) => number): { readonly rows: readonly T[]; readonly more: number } {
+  const sorted = rows.map((row, i) => ({ row, i, r: risk(row) })).sort((a, b) => b.r - a.r || a.i - b.i).map(x => x.row);
+  return { rows: sorted.slice(0, SHARE_LIST_LIMIT), more: Math.max(0, sorted.length - SHARE_LIST_LIMIT) };
+}
+/** A tool that starts a program ranks above one that reaches a host, which ranks above the rest; an odd address adds one. */
+export const toolRisk = (t: ShareTool): number => (t.runsCode ? 4 : 0) + (t.host !== null ? 2 : 0) + (t.flags.length > 0 ? 1 : 0);
+/** A file that runs ranks above a manifest or a code name, which rank above a file that is only not plain data. */
+export const codeRisk = (f: ShareCodeFile): number => ({ executable: 5, hook: 5, script: 4, shebang: 4, binary: 4, manifest: 3, extension: 2, 'not-data': 1 })[f.why];
+/** A value in an address, an argument, a command or a header goes further than one in an environment value; a named host ranks above none. */
+export const secretRisk = (s: ShareSecret): number => Math.max(0, ...s.sinks.map(k => ({ url: 4, arg: 3, command: 3, header: 3, env: 1 })[k.field] + (k.host !== null ? 1 : 0)));
 /** What the made-up bundle holds: two tools that can reach or run something, a hook, two scripts, two values read from this computer, a notes name, and one foreign path. */
 const BUNDLE_SUMMARY: ShareSummary = Object.freeze({
   harness: 'rope-yard', engines: ['claude-code', 'codex'] as EngineId[], instructions: true,
   counts: { skills: 2, agents: 1, mcp: 2, hooks: 1, guardrails: 1, scripts: 2, files: BUNDLE_FILES.length, bytes: BUNDLE_FILES.reduce((n, f) => n + f.bytes, 0) },
-  tools: list([
+  tools: capRiskFirst<ShareTool>([
     { name: 'stock-db', kind: 'mcp' as const, transport: 'stdio', runsCode: true, command: 'npx', args: ['-y', 'stock-db-server@2.0.1', '--yard', 'north'], host: null, event: null, flags: [] },
     { name: 'orders-api', kind: 'mcp' as const, transport: 'http', runsCode: false, command: null, args: [], host: 'orders.example.test', event: null, flags: [] },
     { name: 'format-check', kind: 'hook' as const, transport: null, runsCode: true, command: './scripts/format-check.sh', args: [], host: null, event: 'PostToolUse', flags: [] },
-  ]),
-  codeFiles: list([
+  ], toolRisk),
+  codeFiles: capRiskFirst<ShareCodeFile>([
     { path: 'hooks.json', why: 'hook' as const }, { path: 'scripts/format-check.sh', why: 'executable' as const }, { path: 'skills/tally-stock/scripts/tally.sh', why: 'executable' as const },
-  ]),
-  secrets: list([
+  ], codeRisk),
+  secrets: capRiskFirst<ShareSecret>([
     { kind: 'env' as const, name: 'ORDERS_KEY', sinks: [{ tool: 'orders-api', field: 'header' as const, host: 'orders.example.test' }] },
     { kind: 'env' as const, name: 'YARD_REGION', sinks: [{ tool: 'stock-db', field: 'env' as const, host: null }] },
-  ]),
+  ], secretRisk),
   notes: list([{ name: 'yard-wiki', readBy: ['clerk'] }]),
   borrowed: list([]),
   foreignPaths: list<ShareForeignPath>([{ path: 'instructions/AGENTS.md', line: 12, text: 'Older notes live in /Users/example/yard-notes' }]),
@@ -472,7 +487,7 @@ function exportSummary(d: DefinitionView): ShareSummary {
   return {
     harness: d.id, engines: [...d.engines], instructions: d.instructions,
     counts: { skills: d.skills.length, agents: d.agents.length, mcp: 0, hooks: 0, guardrails: 0, scripts: code.length, files: files.size, bytes },
-    tools: list([]), codeFiles: list(code.map(path => ({ path, why: 'executable' as const }))), secrets: list([]),
+    tools: list([]), codeFiles: capRiskFirst<ShareCodeFile>(code.map(path => ({ path, why: 'executable' as const })), codeRisk), secrets: list([]),
     notes: list(d.sources.map(x => ({ name: x.name, readBy: d.agents.filter(a => a.notes.includes(x.name)).map(a => a.name) }))), borrowed: list([]),
     // The made-up script of `shelf-check` names a path of the exporting computer, so the sample shows the tick.
     foreignPaths: list<ShareForeignPath>(code.filter(path => path.includes('shelf-check')).map(path => ({ path, line: 3, text: 'cd /home/example/shelf' }))),
@@ -499,7 +514,7 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
   const notesGet = (id: string): SampleNotes => { const n = notes.get(id); if (n === undefined) throw new Error('UNKNOWN_FOLDER'); return n; };
   /** The time of the sample's first commit: fixed, as the sample has no clock. */
   const COMMITTED = '2026-10-28T09:30:00Z';
-  const info = (f: SampleFolder): FolderInfo => ({ ...f.info, projected: f.projected, unfinished: { projection: f.stopped, adoption: false }, hasDefinition: f.info.hasDefinition || f.adopted, engines: f.adopted ? ['claude-code', 'codex'] : f.info.engines });
+  const info = (f: SampleFolder): FolderInfo => ({ ...f.info, projected: f.projected, unfinished: { projection: f.stopped, adoption: false }, hasDefinition: f.info.hasDefinition || f.adopted, engines: f.adopted ? ['claude-code', 'codex'] : f.info.engines, ...(f.def === null ? {} : { holdsParts: !emptyHarness(f.def) }) });
   const get = (id: string): SampleFolder => { const f = folders.get(id); if (f === undefined) throw new Error('UNKNOWN_FOLDER'); return f; };
   const settle = async <T>(value: T): Promise<T> => value;
 
@@ -619,11 +634,27 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
   // ---- export and import, in memory. Nothing is read, nothing is written, and the sample has no dialogs: it answers as main does once the person has said yes.
   const bundles = new Map<string, SampleBundle>();
   let bundleCounter = 0;
+  /** The plan each folder was shown last, as main keeps it (`ShownPlans`): a write names that plan, or it is refused. */
+  const shownExport = new Map<string, string>(), shownImport = new Map<string, string>();
+  /** The share calls reject, as the real bridge does, and never throw at once. */
+  const asCall = <T>(fn: () => T): Promise<T> => Promise.resolve().then(fn);
+  const folderArg = (id: unknown): SampleFolder => { if (typeof id !== 'string') return badArgument(); return get(id); };
+  const hexArg = (v: unknown, nullable: boolean): string | null => {
+    if (v === null && nullable) return null;
+    if (typeof v !== 'string' || !/^[0-9a-f]{64}$/.test(v)) return badArgument();
+    return v;
+  };
   const bundleGet = (id: unknown): SampleBundle => {
     if (typeof id !== 'string' || !SHARE_BUNDLE_ID.test(id)) return badArgument();
     const b = bundles.get(id);
     if (b === undefined) throw new Error('UNKNOWN_BUNDLE');
     return b;
+  };
+  /** The shape of the notes choices, checked before any lookup. */
+  const choicesShape = (choices: unknown): ImportNoteChoices => {
+    const c = choices as ImportNoteChoices | null;
+    if (typeof c !== 'object' || c === null || typeof c.link !== 'object' || c.link === null || !Array.isArray(c.leave)) return badArgument();
+    return c;
   };
 
   function exportPlan(f: SampleFolder): Answer<ExportView> {
@@ -639,23 +670,25 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
 
   /** The notes choices as the window sent them, checked as main checks them: own properties only, known names, a notes id main gave out, no name twice. */
   function noteChoices(bundle: SampleBundle, choices: ImportNoteChoices): Map<string, string> {
-    if (typeof choices !== 'object' || choices === null || typeof choices.link !== 'object' || choices.link === null || !Array.isArray(choices.leave)) return badArgument();
     const names = new Set(bundle.view.summary.notes.rows.map(n => n.name)), links = new Map<string, string>();
     const entries = Object.entries(choices.link);
     if (entries.length + choices.leave.length > SHARE_NOTES_LIMIT) return badArgument();
     for (const [name, id] of entries) {
       if (!names.has(name) || typeof id !== 'string' || name.length > SHARE_NAME_LIMIT) return badArgument();
-      notesGet(id);
+      if (!notes.has(id)) return badArgument();
       links.set(name, id);
     }
     for (const name of choices.leave) if (typeof name !== 'string' || !names.has(name) || links.has(name) || name.length > SHARE_NAME_LIMIT) return badArgument();
     return links;
   }
-  /** The plan of an import of the made-up bundle. In the sample a folder with no harness counts as a new empty one, because the sample's "New harness from a folder" writes parts. */
+  /**
+   * The plan of an import of the made-up bundle. A folder with no harness is a valid target (decision of 2026-10-31): the plan makes the empty harness and writes the files
+   * under one approval. A harness with parts is refused.
+   */
   function importPlan(f: SampleFolder, bundle: SampleBundle, choices: ImportNoteChoices): Answer<ImportView & { after: DefinitionView; from: DefinitionView }> {
     const links = noteChoices(bundle, choices);
     if (f.def !== null && !emptyHarness(f.def)) return refuseShare('IMPORT_FOLDER_HAS_HARNESS');
-    const from = f.def ?? emptyDef(f.info.name);
+    const makes = f.def === null, from = f.def ?? emptyDef(f.info.name);
     const sources: SourceView[] = [...links].map(([name, id]) => { const n = notesGet(id).view; return { name, kind: 'wiki-folder' as const, label: n.label, notesId: n.id }; });
     const after: DefinitionView = { ...BUNDLE_DEFINITION, sources, agents: BUNDLE_DEFINITION.agents.map(a => ({ ...a, notes: a.notes.filter(n => links.has(n)) })) };
     const changes: SaveChangeView[] = [...BUNDLE_FILES].sort((a, b) => (a.path === 'harness.json' ? 1 : b.path === 'harness.json' ? -1 : byText(a.path, b.path)))
@@ -671,7 +704,7 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
     return ok({
       folder: f.info.label, changes, definition: after, noop: false, revision, removedSources: [], copiedExecutables: copied,
       acknowledge: asks ? sampleRevision(`import-ack ${revision} ${JSON.stringify([summary.tools.rows, summary.codeFiles.rows, summary.secrets.rows, summary.foreignPaths.rows, copied])}`) : null,
-      bundleId: bundle.view.bundleId, summary, notes, after, from,
+      bundleId: bundle.view.bundleId, summary, notes, makesHarness: makes, after, from,
     });
   }
   const importStrip = <T extends { after: DefinitionView; from: DefinitionView }>(v: T): Omit<T, 'after' | 'from'> => { const { after: _after, from: _from, ...rest } = v; return rest; };
@@ -767,38 +800,52 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
     })()),
     // The sample writes nothing, not even a usage line.
     recordCheck: () => settle(false),
-    planExport: id => settle(exportPlan(get(id))),
-    runExport: (id, revision, acknowledged) => settle(((): Answer<ExportWritten> => {
-      const f = get(id), plan = exportPlan(f);
+    planExport: id => asCall(() => {
+      const f = folderArg(id), plan = exportPlan(f);
+      if (plan.ok) shownExport.set(f.info.id, plan.value.revision); else shownExport.delete(f.info.id);
+      return plan;
+    }),
+    runExport: (id, revision, acknowledged) => asCall((): Answer<ExportWritten> => {
+      const f = folderArg(id), rev = hexArg(revision, false), ack = hexArg(acknowledged, true), plan = exportPlan(f);
       if (!plan.ok) return plan;
-      if (plan.value.revision !== revision) return refuseShare('NOT_THE_PLAN_SHOWN');
-      if (plan.value.acknowledge !== null && acknowledged !== plan.value.acknowledge) return refuseShare('EXPORT_NEEDS_ACKNOWLEDGEMENT');
+      if (plan.value.revision !== rev || shownExport.get(f.info.id) !== rev) return refuseShare('NOT_THE_PLAN_SHOWN');
+      if (plan.value.acknowledge !== ack) return refuseShare('EXPORT_NEEDS_ACKNOWLEDGEMENT');
+      shownExport.delete(f.info.id);
       // The sample opens no save dialog and writes no file: it answers the name the plan offered and its size.
       return ok({ name: plan.value.file, bytes: plan.value.bytes });
-    })()),
+    }),
     // The sample has no open dialog: it answers the one made-up bundle, and holds at most SHARE_HELD_BUNDLES of them, the oldest dropped first.
-    chooseBundle: () => settle(((): Answer<BundleView> => {
+    chooseBundle: () => asCall((): Answer<BundleView> => {
       bundleCounter += 1;
       const view: BundleView = { bundleId: `bundle-${bundleCounter}`, name: BUNDLE_NAME, bytes: BUNDLE_BYTES, harness: BUNDLE_SUMMARY.harness, summary: BUNDLE_SUMMARY };
       bundles.set(view.bundleId, { view });
       while (bundles.size > SHARE_HELD_BUNDLES) bundles.delete(bundles.keys().next().value!);
       return ok(view);
-    })()),
-    planImport: (id, bundleId, choices) => settle(((): Answer<ImportView> => {
+    }),
+    planImport: (id, bundleId, choices) => asCall((): Answer<ImportView> => {
+      if (typeof id !== 'string') return badArgument();
+      if (typeof bundleId !== 'string' || !SHARE_BUNDLE_ID.test(bundleId)) return badArgument();
+      choicesShape(choices);
       const f = get(id), b = bundleGet(bundleId), plan = importPlan(f, b, choices);
+      if (plan.ok) shownImport.set(f.info.id, `${bundleId} ${plan.value.revision}`); else shownImport.delete(f.info.id);
       return plan.ok ? ok(importStrip(plan.value)) : plan;
-    })()),
-    runImport: (id, revision, bundleId, choices, acknowledged) => settle(((): Answer<SaveWritten> => {
+    }),
+    runImport: (id, revision, bundleId, choices, acknowledged) => asCall((): Answer<SaveWritten> => {
+      if (typeof id !== 'string') return badArgument();
+      const rev = hexArg(revision, false), ack = hexArg(acknowledged, true);
+      if (typeof bundleId !== 'string' || !SHARE_BUNDLE_ID.test(bundleId)) return badArgument();
+      choicesShape(choices);
       const f = get(id), b = bundleGet(bundleId), plan = importPlan(f, b, choices);
       if (!plan.ok) return plan;
-      if (plan.value.revision !== revision) return refuseShare('NOT_THE_PLAN_SHOWN');
-      if (plan.value.acknowledge !== null && acknowledged !== plan.value.acknowledge) return refuseShare('IMPORT_NEEDS_ACKNOWLEDGEMENT');
+      if (plan.value.revision !== rev || shownImport.get(f.info.id) !== `${bundleId} ${rev}`) return refuseShare('NOT_THE_PLAN_SHOWN');
+      if (plan.value.acknowledge !== ack) return refuseShare('IMPORT_NEEDS_ACKNOWLEDGEMENT');
+      shownImport.delete(f.info.id);
       // A save: the harness as it was is kept first, then what was written.
       keep(f, plan.value.from, f.versions.length === 0 ? 'As it was before the first save' : 'As it was before this save');
       f.def = plan.value.after; f.adopted = true;
       return ok({ written: plan.value.changes.map(c => c.path), version: keep(f, plan.value.after, `Imported ${plan.value.changes.length} files`) });
-    })()),
-    discardBundle: id => settle(typeof id === 'string' && SHARE_BUNDLE_ID.test(id) ? bundles.delete(id) : badArgument()),
+    }),
+    discardBundle: id => asCall((): boolean => (typeof id === 'string' && SHARE_BUNDLE_ID.test(id) ? bundles.delete(id) : badArgument())),
     planSave: (id, edits) => settle(((): Answer<SaveView> => { const a = savePlan(get(id), edits); return a.ok ? ok(strip(a.value)) : a; })()),
     runSave: (id, revision, sent) => settle(((): Answer<SaveWritten> => {
       const request: SaveRequest = Array.isArray(sent) ? { edits: sent as readonly SaveEdit[], acknowledged: null } : sent as SaveRequest;

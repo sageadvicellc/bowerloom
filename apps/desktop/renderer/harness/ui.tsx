@@ -34,7 +34,7 @@ export interface SaveSheetState {
   readonly start: 'folder' | 'review'; readonly restore: string | null;
 }
 /** The Export sheet: one folder's saved harness, to one file. */
-export interface ExportSheetState { readonly open: boolean; readonly folderId: string | null }
+export interface ExportSheetState { readonly open: boolean; readonly folderId: string | null; /** True when the Builder holds changes that are not saved: the file does not hold them. */ readonly unsaved: boolean }
 /** The Import sheet: one file, into one folder with no harness or an empty one. The file and the folder are picked in the sheet. */
 export interface ImportSheetState { readonly open: boolean }
 export interface ToastState { readonly id: number; readonly text: string; readonly action: { readonly label: string; readonly run: () => void } | null }
@@ -65,7 +65,7 @@ export interface Ui {
   closeSave(): void;
   /** The Export sheet of a folder's harness. It opens in either launch: it plans read-only, and main asks before it writes a file. */
   readonly exportSheet: ExportSheetState;
-  openExport(request?: { folderId?: string | null }): void;
+  openExport(request?: { folderId?: string | null; unsaved?: boolean }): void;
   closeExport(): void;
   /** The Import sheet. It opens in either launch: main opens the file dialog, and asks before it writes. */
   readonly importSheet: ImportSheetState;
@@ -102,7 +102,7 @@ export function UiProvider({ children }: { children?: ReactNode }): ReactElement
   const [adopt, setAdopt] = useState<AdoptState>({ open: false, folderId: null });
   const [projectSheet, setProjectSheet] = useState<ProjectSheetState>({ open: false, folderId: null, mode: 'install', keep: [] });
   const [saveSheet, setSaveSheet] = useState<SaveSheetState>({ open: false, folderId: null, tour: false, start: 'folder', restore: null });
-  const [exportSheet, setExportSheet] = useState<ExportSheetState>({ open: false, folderId: null });
+  const [exportSheet, setExportSheet] = useState<ExportSheetState>({ open: false, folderId: null, unsaved: false });
   const [importSheet, setImportSheet] = useState<ImportSheetState>({ open: false });
   const [toast, setToast] = useState<ToastState | null>(null);
   const [layers, setLayers] = useState(0);
@@ -155,7 +155,7 @@ export function UiProvider({ children }: { children?: ReactNode }): ReactElement
     openSave: (request = {}) => setSaveSheet({ open: true, folderId: request.folderId ?? null, tour: request.tour ?? false, start: request.start ?? 'folder', restore: request.restore ?? null }),
     closeSave: () => setSaveSheet(current => ({ ...current, open: false })),
     exportSheet,
-    openExport: (request = {}) => setExportSheet({ open: true, folderId: request.folderId ?? null }),
+    openExport: (request = {}) => setExportSheet({ open: true, folderId: request.folderId ?? null, unsaved: request.unsaved ?? false }),
     closeExport: () => setExportSheet(current => ({ ...current, open: false })),
     importSheet,
     openImport: () => setImportSheet({ open: true }),
