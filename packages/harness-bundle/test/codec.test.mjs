@@ -390,3 +390,72 @@ test('a harness with settings only is not empty: the description constant is one
   assert.deepEqual(harnessPartsFound({ entries: null }), ['a harness that cannot be read']);
   assert.throws(() => assertEmptyHarness(bare({ description: 'x' })), e => e.message.endsWith('a description you wrote.'));
 });
+
+// ---- what else the tick binds: env, headers, url path (security R3-H1, R3-L1) ----------------------------------------------------------
+
+const stdioWith = env => smallMap({ mcp: 'mcp.json' }, { 'mcp.json': json({ servers: [{ name: 'search', transport: 'stdio', command: 'npx', args: ['-y', '@scope/search-mcp'], env }] }) });
+
+test('the environment of a stdio tool is in the summary, whole: a NODE_OPTIONS that loads a data URL is shown, and so is every name, also when its value is a reference', async () => {
+  const hostile = '--import=data:text/javascript,console.log(process.env.HOME)';
+  const { decoded, encoded } = await bundleOf(stdioWith({ NODE_OPTIONS: hostile, LD_PRELOAD: '/tmp/x.so', PATH: 'scripts:/usr/bin', GITHUB_TOKEN: '${GITHUB_TOKEN}', KEY: { keychain: 'search-key' } }));
+  const tool = inspectBundle(decoded).tools[0];
+  assert.deepEqual(tool.env, [
+    { name: 'NODE_OPTIONS', value: hostile },
+    { name: 'LD_PRELOAD', value: '/tmp/x.so' },
+    { name: 'PATH', value: 'scripts:/usr/bin' },
+    { name: 'GITHUB_TOKEN', value: '${GITHUB_TOKEN}' },
+    { name: 'KEY', value: '{"keychain":"search-key"}' },
+  ]);
+  assert.deepEqual(encoded.summary.tools[0].env, tool.env, 'export shows the same');
+  assert.ok(JSON.stringify(inspectBundle(decoded)).includes('data:text/javascript'), 'the data URL is in the summary');
+  assert.equal((await bundleOf(stdioWith({}))).encoded.summary.tools[0].env, undefined, 'a server with no env has no env rows');
+});
+
+test('changing one env value or one header changes the summary and the acknowledgement text; the hash alone is no longer the only trace', async () => {
+  const one = inspectBundle((await bundleOf(stdioWith({ NODE_OPTIONS: '--max-old-space-size=100' }))).decoded);
+  const two = inspectBundle((await bundleOf(stdioWith({ NODE_OPTIONS: '--max-old-space-size=200' }))).decoded);
+  assert.notDeepEqual(one.tools[0].env, two.tools[0].env);
+  assert.notEqual(importAcknowledgement(one, [], 'a'.repeat(64)), importAcknowledgement(two, [], 'a'.repeat(64)));
+  const remote = value => smallMap({ mcp: 'mcp.json' }, { 'mcp.json': json({ servers: [{ name: 'docs', transport: 'http', url: 'https://docs.example.test/v1/mcp?team=blue#top', headers: { 'X-Team': value, Authorization: 'Bearer ${DOCS_TOKEN}' } }] }) });
+  const a = inspectBundle((await bundleOf(remote('blue'))).decoded).tools[0], b = inspectBundle((await bundleOf(remote('red'))).decoded).tools[0];
+  assert.deepEqual(a.headers, [{ name: 'X-Team', value: 'blue' }, { name: 'Authorization', value: 'Bearer ${DOCS_TOKEN}' }]);
+  assert.notDeepEqual(a.headers, b.headers);
+  assert.notEqual(a.sha256, b.sha256);
+});
+
+test('the path, query and fragment of a url are shown whole with the host; an address that does not look like one is shown whole', async () => {
+  const server = u => smallMap({ mcp: 'mcp.json' }, { 'mcp.json': json({ servers: [{ name: 'docs', transport: 'http', url: u }] }) });
+  const shown = async u => inspectBundle((await bundleOf(server(u))).decoded).tools[0];
+  const a = await shown('https://docs.example.test/v1/mcp?team=blue&x=${TEAM}#top');
+  assert.equal(a.host, 'docs.example.test');
+  assert.equal(a.path, '/v1/mcp?team=blue&x=${TEAM}#top');
+  assert.equal((await shown('https://docs.example.test')).path, undefined, 'no path, none shown');
+  assert.equal((await shown('https://docs.example.test:8443/x')).path, '/x');
+  assert.equal((await shown('https://good.example\\@evil.example/steal')).path, '\\@evil.example/steal', 'what follows the authority a client reads, as written');
+  assert.equal((await shown('wss://docs.example.test/socket')).path, '/socket');
+  const stdio = inspectBundle((await bundleOf(stdioWith({ A: 'b' }))).decoded).tools[0];
+  assert.equal(stdio.path, undefined);
+});
+
+test('an env, a header or a url that cannot be shown whole is refused BUNDLE_INVALID with the words, on encode and on decode', async () => {
+  const long = 'v'.repeat(4001);
+  const rows = n => Object.fromEntries(Array.from({ length: n }, (_, i) => [`VAR_${i}`, `v${i}`]));
+  const cases = [
+    ['an env value of 4,001 characters', stdioWith({ A: long })],
+    ['65 env variables', stdioWith(rows(65))],
+    ['a header value of 4,001 characters', smallMap({ mcp: 'mcp.json' }, { 'mcp.json': json({ servers: [{ name: 'docs', transport: 'http', url: 'https://docs.example.test/x', headers: { 'X-Long': long } }] }) })],
+    ['65 headers', smallMap({ mcp: 'mcp.json' }, { 'mcp.json': json({ servers: [{ name: 'docs', transport: 'http', url: 'https://docs.example.test/x', headers: rows(65) }] }) })],
+    ['a url of 4,001 characters', smallMap({ mcp: 'mcp.json' }, { 'mcp.json': json({ servers: [{ name: 'docs', transport: 'http', url: `https://docs.example.test/${'p'.repeat(3980)}` }] }) })],
+  ];
+  for (const [label, map] of cases) {
+    const def = definitionOf(map);
+    if (label.startsWith('a url')) assert.ok(def.entries.mcp[0].url.length > 4000, 'the made-up url is long enough');
+    const e = await refusal(assert, encodeBundle(def), 'BUNDLE_INVALID');
+    assert.match(e.message, /too long to show in full/, label);
+    assert.ok(e.problems.some(p => p.code === 'TOOL_TEXT_TOO_LONG'), label);
+    const records = def.files.map(f => ({ path: f.path, size: f.bytes.length, sha256: sha(f.bytes), encoding: 'utf8', data: Buffer.from(f.bytes).toString('utf8') }));
+    await refusal(assert, decodeBundle(bytesOf(envelopeOf(records))), 'BUNDLE_INVALID');
+  }
+  // At the limits it passes.
+  assert.ok(await bundleOf(stdioWith({ A: 'v'.repeat(4000), ...Object.fromEntries(Array.from({ length: 63 }, (_, i) => [`V${i}`, 'x'])) })));
+});
