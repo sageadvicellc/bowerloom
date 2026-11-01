@@ -326,13 +326,12 @@ test('the files helper keeps order and execute bits', () => {
   assert.deepEqual(files.map(f => [f.path, f.executable]), [['a', false], ['scripts/lint.sh', true]]);
 });
 
-test('the in-memory bundle of project-sync names the same format, and holds the same files and source names as the bundle file', async () => {
-  // project-sync keeps its own small export (the packaged CLI may not import this package until the packaging allowlist lists it); the two must not drift apart.
+test('project-sync re-exports the format string and the encoder of this package, so the two cannot drift apart', async () => {
+  // The packaging allowlist of the command line lists this package now, so project-sync no longer keeps its own export.
   assert.equal(DEFINITION_BUNDLE_FORMAT, BUNDLE_FORMAT);
-  const { def, decoded } = await bundleOf(notesMap());
-  const memory = exportDefinitionBundle(def);
-  assert.equal(memory.format, decoded.format);
-  assert.equal(memory.harness, decoded.harness);
-  assert.deepEqual(memory.knowledge.map(k => ({ ...k })), decoded.knowledge.map(k => ({ ...k })));
-  same(memory.files, decoded.files, 'project-sync and the bundle file');
+  const { def, decoded, encoded } = await bundleOf(notesMap());
+  const viaProjectSync = await exportDefinitionBundle(def);
+  assert.ok(Buffer.from(viaProjectSync.bytes).equals(Buffer.from(encoded.bytes)), 'the same bytes');
+  assert.equal(viaProjectSync.sha256, encoded.sha256);
+  assert.equal(decoded.harness, def.harness.id);
 });

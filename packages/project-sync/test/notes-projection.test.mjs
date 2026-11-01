@@ -4,6 +4,7 @@
 // Synthetic values only: every source path is relative or in ~ form.
 import test from 'node:test';
 import { loadDefinition } from '../../../dist/packages/harness-definition/src/index.js';
+import { decodeBundle } from '../../../dist/packages/harness-bundle/src/index.js';
 import { DEFINITION_BUNDLE_FORMAT, NOTES_HEADING, exportDefinitionBundle, notesSection, planPortable } from '../../../dist/packages/project-sync/src/index.js';
 import { assert, json, projectNow, snapshot } from './portable-fixture.mjs';
 import { PINNED, agentFile, lockedProject, read } from './locked-fixture.mjs';
@@ -113,10 +114,14 @@ test('a second projection of the same definition writes nothing new', async t =>
 
 // ---- the export bundle (spec 6.7) -----------------------------------------------------------------------------------------
 
-test('the export bundle carries each source by kind and name only, and never its path', t => {
+/** The bundle file of a definition, decoded again: the form an importer holds. */
+const bundleOf = async def => decodeBundle((await exportDefinitionBundle(def)).bytes);
+
+test('the export bundle carries each source by kind and name only, and never its path', async t => {
   const p = notesProject(t);
   const def = definitionOf(p);
-  const bundle = exportDefinitionBundle(def);
+  const encoded = await exportDefinitionBundle(def);
+  const bundle = await decodeBundle(encoded.bytes);
   assert.equal(bundle.format, DEFINITION_BUNDLE_FORMAT);
   assert.equal(bundle.harness, 'demo');
   assert.deepEqual(bundle.knowledge.map(k => ({ ...k })), [{ kind: 'wiki-folder', name: 'wiki' }, { kind: 'wiki-folder', name: 'team-notes' }]);
@@ -128,12 +133,15 @@ test('the export bundle carries each source by kind and name only, and never its
   const flat = JSON.stringify({ ...bundle, files: bundle.files.map(f => ({ ...f, bytes: Buffer.from(f.bytes).toString('utf8') })) });
   assert.equal(flat.includes('~/notes/team'), false);
   assert.equal(flat.includes('"path":"notes"'), false);
+  const file = Buffer.from(encoded.bytes).toString('utf8');
+  assert.equal(file.includes('~/notes/team'), false, 'the bundle file holds no source path');
+  assert.equal(file.includes('knowledge.json'), false);
 });
 
-test('the export bundle of a harness with no source has no knowledge and every file', t => {
+test('the export bundle of a harness with no source has no knowledge and every file', async t => {
   const p = notesProject(t, { linked: false });
   const def = definitionOf(p);
-  const bundle = exportDefinitionBundle(def);
+  const bundle = await bundleOf(def);
   assert.deepEqual(bundle.knowledge, []);
   assert.deepEqual(bundle.files.map(f => f.path), def.files.map(f => f.path));
   for (const [i, f] of bundle.files.entries()) assert.ok(Buffer.from(f.bytes).equals(Buffer.from(def.files[i].bytes)));
