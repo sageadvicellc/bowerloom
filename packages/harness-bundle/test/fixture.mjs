@@ -1,5 +1,7 @@
 // Helpers for the harness-bundle tests: made-up harnesses (the files of the definition tests), bundles built from them, and a way to forge a bundle that is
 // well formed except for one thing. Every value is fake. A helper that makes a folder removes it through `tempDir(t)`, which registers the removal with the test.
+// The file seams of the package answer only when NODE_ENV is `test`.
+process.env.NODE_ENV = 'test';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';

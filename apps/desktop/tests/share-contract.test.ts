@@ -51,7 +51,7 @@ test('the window limits equal the package limits', () => {
 });
 
 test('the words main shares with the package are the package words, sentence for sentence', () => {
-  for (const code of ['IMPORT_FOLDER_HAS_HARNESS', 'IMPORT_NEEDS_ACKNOWLEDGEMENT', 'EXPORT_NEEDS_ACKNOWLEDGEMENT'] as const) assert.equal(SHARE_MAIN_WORDS[code], BUNDLE_MESSAGES[code], code);
+  for (const code of ['IMPORT_FOLDER_HAS_HARNESS', 'IMPORT_NEEDS_ACKNOWLEDGEMENT', 'EXPORT_NEEDS_ACKNOWLEDGEMENT', 'BUNDLE_FILE_FAILED'] as const) assert.equal(SHARE_MAIN_WORDS[code], BUNDLE_MESSAGES[code], code);
   assert.match(SHARE_MAIN_WORDS.EXPORT_NO_DEFINITION, /nothing to export\. .*Nothing was written\.$/);
   for (const words of Object.values(SHARE_MAIN_WORDS)) assert.doesNotMatch(words, /[\u0000-\u001f]/);
 });

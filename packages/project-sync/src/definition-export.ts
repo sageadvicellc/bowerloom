@@ -8,7 +8,8 @@
 import type { Definition, DefinitionFile, KnowledgeKind } from '../../harness-definition/src/index.js';
 import { KNOWLEDGE_FILE } from '../../harness-definition/src/index.js';
 
-export const DEFINITION_BUNDLE_FORMAT = 'bowerloom/harness-bundle/v1beta1' as const;
+/** The kind of this in-memory shape. It is not a format string and not the format of the bundle file (`packages/harness-bundle`), which has an envelope, a revision and hashes. */
+export const DEFINITION_EXPORT_KIND = 'definition-export' as const;
 
 /** A knowledge source as it leaves in a bundle: what it is and what it is called, not where it is. */
 export interface BundledSource {
@@ -17,7 +18,7 @@ export interface BundledSource {
 }
 
 export interface DefinitionBundle {
-  readonly format: typeof DEFINITION_BUNDLE_FORMAT;
+  readonly kind: typeof DEFINITION_EXPORT_KIND;
   /** The id of the harness. */
   readonly harness: string;
   /** Every file of the definition but `knowledge.json`, in the definition's order, with its bytes and execute bit. */
@@ -27,7 +28,7 @@ export interface DefinitionBundle {
 
 export function exportDefinitionBundle(def: Definition): DefinitionBundle {
   return {
-    format: DEFINITION_BUNDLE_FORMAT,
+    kind: DEFINITION_EXPORT_KIND,
     harness: def.harness.id,
     files: def.files.filter(f => f.path !== KNOWLEDGE_FILE).map(f => ({ path: f.path, bytes: Uint8Array.from(f.bytes), ...(f.executable ? { executable: true } : {}) })),
     knowledge: def.knowledge.map(k => ({ kind: k.kind, name: k.name })),

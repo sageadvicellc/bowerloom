@@ -4,7 +4,7 @@
  */
 import { createHash } from 'node:crypto';
 import {
-  DEFINITION_LIMITS, KNOWLEDGE_FILE, computeRevision, isId, isKnowledgeKind, loadDefinitionFiles,
+  DEFINITION_LIMITS, KNOWLEDGE_FILE, computeRevision, isId, isKnowledgeKind, loadDefinitionFiles, scanSecrets,
 } from '../../harness-definition/src/index.js';
 import type { Definition, DefinitionFile, Problem } from '../../harness-definition/src/index.js';
 import { BundleRefusal } from './codes.js';
@@ -14,6 +14,7 @@ import { JsonFault, parseStrictJson } from './strict-json.js';
 import type { JsonNode } from './strict-json.js';
 import { safeLine, sha256Hex, summarize } from './summary.js';
 import { turnTaker } from './turn.js';
+import { checkWorkBudget } from './work-budget.js';
 import { isWellFormedText } from './well-formed.js';
 import type { BundleEncoding, BundleFileRecord, BundleSource, BundleSummary, DecodedBundle, EncodedBundle, EncodeOptions } from './types.js';
 
@@ -21,10 +22,32 @@ const refuse = (code: ConstructorParameters<typeof BundleRefusal>[0], paths: rea
   throw new BundleRefusal(code, paths, problems);
 };
 
-/** The loaded definition of each decoded bundle that this module made, so a second look (`inspectBundle`, `targetFromBundle`) does not load a large bundle again. */
+/**
+ * The loaded definition of each decoded bundle that `decodeBundle` issued, so a second look (`inspectBundle`, `targetFromBundle`) does not load a large bundle again. Only
+ * `decodeBundle` adds to it, and its bundles are frozen; any other object of the type is loaded again each time and never remembered.
+ */
 const loadedOf = new WeakMap<object, Definition>();
-export const rememberLoaded = (bundle: DecodedBundle, def: Definition): void => { loadedOf.set(bundle, def); };
 export const recallLoaded = (bundle: DecodedBundle): Definition | undefined => loadedOf.get(bundle);
+
+/** The kind of an internal fault for the log: the code of a system error, else the class name of the error. Never a message, never a path. */
+export function causeOf(error: unknown): string {
+  const code = (error as { code?: unknown } | null)?.code;
+  if (typeof code === 'string' && /^E[A-Z0-9]{2,20}$/.test(code)) return code;
+  const name = (error as { constructor?: { name?: unknown } } | null)?.constructor?.name;
+  return typeof name === 'string' && /^[A-Za-z0-9_]{1,40}$/.test(name) ? name : 'Error';
+}
+
+/**
+ * Looks for a secret in the file names, with the same scan as the file contents: a name such as `scripts/ghp_…sh` would travel in the bundle and the summary. One name is one
+ * line. Refuses `BUNDLE_SECRET_FOUND` and names the paths at fault.
+ */
+function checkNames(paths: readonly string[]): void {
+  const lines = paths.map(p => p.replace(/[\r\n]/g, ' '));
+  const found = scanSecrets([{ path: 'names.txt', bytes: Buffer.from(lines.join('\n'), 'utf8') }]);
+  const at = [...new Set(found.map(f => paths[(f.line ?? 1) - 1]).filter((p): p is string => p !== undefined))];
+  // The refusal does not name the file: its name is the secret.
+  if (at.length > 0) refuse('BUNDLE_SECRET_FOUND', at.map(() => '(a file name, not shown)'));
+}
 
 // ---- loading ------------------------------------------------------------------------------------------------------------------
 
@@ -67,18 +90,21 @@ export async function decodeBundle(bytes: Uint8Array): Promise<DecodedBundle> {
   } catch (error) {
     // Any other fault (a bug, or a limit of the runtime) still reaches the caller as a refusal, never as a stray error type.
     if (error instanceof BundleRefusal) throw error;
-    throw new BundleRefusal('BUNDLE_FORMAT');
+    throw new BundleRefusal('BUNDLE_FORMAT', [], [], causeOf(error));
   }
 }
 
 async function decode(bytes: Uint8Array): Promise<DecodedBundle> {
   const turn = turnTaker();
+  // The hash and the length are of the bytes as they are now, before the first turn of the event loop: a caller that changes the buffer later cannot make them describe
+  // other content than the text that is parsed below.
   // 1. The bytes: a size, no byte order mark, strict UTF-8.
   if (!(bytes instanceof Uint8Array)) return refuse('BUNDLE_USAGE');
   if (bytes.length > BUNDLE_LIMITS.fileBytes) return refuse('BUNDLE_TOO_LARGE');
   if (bytes.length === 0 || (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf)) return refuse('BUNDLE_FORMAT');
   let text: string;
   try { text = utf8.decode(bytes); } catch { return refuse('BUNDLE_FORMAT'); }
+  const fileSha256 = sha256Hex(bytes), fileLength = bytes.length;
 
   // 2. Strict JSON, bounded in depth and in the number of values.
   let root: JsonNode;
@@ -123,7 +149,9 @@ async function decode(bytes: Uint8Array): Promise<DecodedBundle> {
     const wait = turn(); if (wait) await wait;
   }
 
-  // 6. The secret scan and the load, in one pass of the loader (SECRET_VALUE is BUNDLE_SECRET_FOUND, the rest BUNDLE_INVALID).
+  // 6. The bound on the loader's work, the secret scan of the names, then the secret scan of the contents and the load, in one pass of the loader (SECRET_VALUE is BUNDLE_SECRET_FOUND, the rest BUNDLE_INVALID).
+  await checkWorkBudget(files);
+  checkNames(files.map(f => f.path));
   const def = loadBundleParts(files, knowledge);
   if (def.harness.id !== harness) return refuse('BUNDLE_DAMAGED');
 
@@ -135,18 +163,18 @@ async function decode(bytes: Uint8Array): Promise<DecodedBundle> {
     harness,
     generator,
     revision,
-    sha256: sha256Hex(bytes),
-    bytes: bytes.length,
+    sha256: fileSha256,
+    bytes: fileLength,
     files: Object.freeze(files.map(f => Object.freeze(f))),
     knowledge: Object.freeze(knowledge.map(k => Object.freeze(k))),
   });
-  rememberLoaded(decoded, def);
+  loadedOf.set(decoded, def);
   return decoded;
 }
 
-interface Record_ extends Omit<BundleFileRecord, 'executable'> { readonly executable?: true }
+interface RecordInput extends Omit<BundleFileRecord, 'executable'> { readonly executable?: true }
 
-function recordsOf(value: JsonNode | undefined): Record_[] {
+function recordsOf(value: JsonNode | undefined): RecordInput[] {
   if (!Array.isArray(value)) return refuse('BUNDLE_FORMAT');
   if (value.length > BUNDLE_LIMITS.files) return refuse('BUNDLE_TOO_LARGE');
   return value.map(item => {
@@ -174,7 +202,7 @@ function knowledgeOf(value: JsonNode | undefined): BundleSource[] {
 }
 
 /** The bytes of one record. The length of the text is checked against the declared size before anything is allocated. A mismatch is `BUNDLE_DAMAGED`. */
-function decodeData(r: Record_): Buffer {
+function decodeData(r: RecordInput): Buffer {
   if (r.encoding === 'utf8') {
     if (r.data.length > r.size || Buffer.byteLength(r.data, 'utf8') !== r.size) return refuse('BUNDLE_DAMAGED', [r.path]);
     return Buffer.from(r.data, 'utf8');
@@ -207,6 +235,16 @@ function encodingOf(bytes: Uint8Array): { encoding: BundleEncoding; data: string
 const indent = (text: string, by: string): string => text.split('\n').join(`\n${by}`);
 
 export async function encodeBundle(def: unknown, options?: EncodeOptions): Promise<EncodedBundle> {
+  try {
+    return await encode(def, options);
+  } catch (error) {
+    // Only a refusal leaves, as from `decodeBundle`. Any other fault is a defect or a limit of the runtime; its kind is kept in `cause`.
+    if (error instanceof BundleRefusal) throw error;
+    throw new BundleRefusal('BUNDLE_INVALID', [], [], causeOf(error));
+  }
+}
+
+async function encode(def: unknown, options?: EncodeOptions): Promise<EncodedBundle> {
   const turn = turnTaker();
   const opts = optionsOf(options);
   const { files, knowledge } = partsOf(def);
@@ -224,6 +262,8 @@ export async function encodeBundle(def: unknown, options?: EncodeOptions): Promi
     if (total > BUNDLE_LIMITS.totalBytes) return refuse('BUNDLE_TOO_LARGE');
   }
   const sorted = sortByBytes(files, f => f.path);
+  await checkWorkBudget(sorted);
+  checkNames(sorted.map(f => f.path));
   const loaded = loadBundleParts(sorted, knowledge);
   const revision = computeRevision(sorted);
 
