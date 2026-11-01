@@ -2,11 +2,10 @@
 // Every value is made up. The fuzz at the end mutates a valid bundle 500 times and holds to one rule: a refusal, or a bundle whose every path is plain.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import {
   BUNDLE_LIMITS, BundleRefusal, decodeBundle, importChoicesOf, inspectBundle, targetFromBundle,
 } from '../../../dist/packages/harness-bundle/src/index.js';
-import { LEGACY_NAMES } from '../../../dist/packages/harness-definition/src/index.js';
+import { plainPath as savePlainPath } from '../../../dist/packages/adoption/src/save.js';
 import { bundleOf, bytesOf, envelopeOf, json, mend, parsed, record, refusal, richMap, sha, smallMap } from './fixture.mjs';
 
 const MIB = 1024 * 1024;
@@ -245,19 +244,8 @@ test('a bundle that does not load as a harness is BUNDLE_INVALID, with the loade
 
 // ---- the fuzz ----------------------------------------------------------------------------------------------------------------
 
-/**
- * The `plainPath` of packages/adoption/src/save.ts, taken from its source text and run, so a change there changes this test. (The function is not exported; its source is a
- * single function of plain JavaScript once the types are cut.)
- */
-const LEGACY = new Set(LEGACY_NAMES);
-const plainPath = (() => {
-  const source = fs.readFileSync(new URL('../../adoption/src/save.ts', import.meta.url), 'utf8');
-  const start = source.indexOf('function plainPath(rel: unknown): rel is string {');
-  assert.ok(start >= 0, 'save.ts still has plainPath');
-  const end = source.indexOf('\n}\n', start);
-  const body = source.slice(start, end + 3).replace('function plainPath(rel: unknown): rel is string {', 'return (rel) => {').replace(/\n}\n$/, '\n};').replaceAll('!)', ')').replaceAll(']!', ']');
-  return new Function('LEGACY', 'DEFINITION_LIMITS', body)(LEGACY, { depth: 16 });
-})();
+/** The `plainPath` of packages/adoption/src/save.ts itself (exported for this test), so a change there changes this test. */
+const plainPath = savePlainPath;
 function random(seed) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) >>> 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 
 test('fuzz: 500 mutations of a valid bundle end in a BundleRefusal or in a bundle whose every path passes plainPath, with no other error and no hang', async () => {

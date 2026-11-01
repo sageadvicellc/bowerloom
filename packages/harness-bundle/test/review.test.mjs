@@ -13,7 +13,7 @@ import {
 } from '../../../dist/packages/harness-bundle/src/index.js';
 import { clearFileIoHooks, setFileIoHook } from '../../../dist/packages/harness-bundle/src/file-io.js';
 import { clashingPaths, isBundlePath } from '../../../dist/packages/harness-bundle/src/path-grammar.js';
-import { causeOf } from '../../../dist/packages/harness-bundle/src/codec.js';
+import { causeOf } from '../../../dist/packages/harness-bundle/src/codes.js';
 import { scanUnits, yamlBytes } from '../../../dist/packages/harness-bundle/src/work-budget.js';
 import { foldName } from '../../../dist/packages/harness-definition/src/fold.js';
 import { bundleOf, bytesOf, definitionOf, envelopeOf, json, record, refusal, richMap, sha, smallMap, tempDir } from './fixture.mjs';
@@ -71,6 +71,39 @@ test('hostile case 1, 40 skills with 5,500 frontmatter keys each (2.2 MiB of YAM
   assert.ok(r.longest < 1000, `the main thread was held for ${Math.round(r.longest)} ms`);
 });
 
+test('hostile case 3, the first line after the fence is ---x: 1: the block is counted whole and refused BUNDLE_TOO_LARGE', async () => {
+  const block = Array.from({ length: 5500 }, (_, i) => `  k${i}: v`).join('\n');
+  const records = [record('harness.json', smallMap({ skills: 'skills/' })['harness.json'])];
+  for (let i = 0; i < 20; i += 1) records.push(record(`skills/s${i}/SKILL.md`, `---\n---x: 1\nname: s${i}\ndescription: A skill.\nmetadata:\n${block}\n---\n\nBody.\n`));
+  const r = await inWorker(copyOf(bytesOf(envelopeOf(records))));
+  report('20 skills behind a ---x: 1 line', r);
+  assert.equal(r.answer.ok, false);
+  assert.equal(r.answer.refusal.code, 'BUNDLE_TOO_LARGE');
+  assert.ok(r.ms < 30_000 && r.longest < 1000);
+});
+
+test('hostile cases 4 and 5, a?a=a?a with NEL or a control character inside the line, and 31 MiB of name: value lines: refused', async () => {
+  for (const c of ['\u0085', '\u0001', '\u000e']) {
+    const line = `${`a?a=a?a${c}`.repeat(500)}\n`;
+    const body = line.repeat(Math.floor((MIB - 16) / line.length));
+    const records = [record('harness.json', smallMap({ scripts: 'scripts/' })['harness.json'])];
+    for (let i = 0; i < 31; i += 1) records.push(record(`scripts/f${i}.txt`, body));
+    const r = await inWorker(copyOf(bytesOf(envelopeOf(records))));
+    report(`31 MiB of a?a=a?a + ${JSON.stringify(c)}`, r);
+    assert.equal(r.answer.ok, false, JSON.stringify(c));
+    assert.equal(r.answer.refusal.code, 'BUNDLE_TOO_LARGE', JSON.stringify(c));
+    assert.ok(r.ms < 30_000 && r.longest < 1000);
+  }
+  // name: value lines cost the scan too. 31 MiB of `token: abc` is just under the budget and is bounded at about two seconds; 31 MiB of `k: v` is over it.
+  const edge = await inWorker(copyOf(textBundle('token: abc ', 31)));
+  report('31 MiB of token: abc (at the edge)', edge);
+  assert.ok(edge.ms < 30_000 && edge.longest < 1000);
+  const over = await inWorker(copyOf(textBundle('k: v ', 31)));
+  report('31 MiB of k: v', over);
+  assert.equal(over.answer.ok, false);
+  assert.equal(over.answer.refusal.code, 'BUNDLE_TOO_LARGE');
+});
+
 test('hostile case 2, 31 MiB of a?a=a?a= text: refused BUNDLE_TOO_LARGE before the loader runs, and the main thread is not held', async () => {
   const bytes = textBundle('a?a=', 31);
   assert.ok(bytes.length > 31 * MIB && bytes.length < BUNDLE_LIMITS.fileBytes);
@@ -82,17 +115,17 @@ test('hostile case 2, 31 MiB of a?a=a?a= text: refused BUNDLE_TOO_LARGE before t
   assert.ok(r.longest < 1000, `the main thread was held for ${Math.round(r.longest)} ms`);
 });
 
-test('the worst bundles that pass the budgets are accepted, and cost the loader about two seconds, off the main thread', async () => {
-  // Frontmatter: 15 skills of 5,500 keys is 0.8 MiB of YAML, under the 1 MiB budget.
-  const yaml = await inWorker(copyOf(skillBundle(15, 5500)));
-  report('15 skills x 5,500 keys (accepted)', yaml);
+test('the worst bundles that pass the budgets are accepted, and cost the loader a few seconds, off the main thread', async () => {
+  // Frontmatter: 8 skills of 5,500 keys is 0.43 MiB of YAML, under the 512 KiB budget.
+  const yaml = await inWorker(copyOf(skillBundle(8, 5500)));
+  report('8 skills x 5,500 keys (accepted)', yaml);
   assert.equal(yaml.answer.ok, true, JSON.stringify(yaml.answer.refusal));
-  assert.equal(yaml.answer.summary.counts.skills, 15);
+  assert.equal(yaml.answer.summary.counts.skills, 8);
   assert.ok(yaml.answer.ms < 60_000);
   assert.ok(yaml.longest < 1000);
-  // Scan: 7 files of a?a=a?a= text is 3.5 million places for the scan, under the 4 million budget.
-  const scan = await inWorker(copyOf(textBundle('a?a=', 7)));
-  report('7 MiB of a?a= (accepted)', scan);
+  // Scan: 3 files of a?a=a?a= text is 2.4 million places for the scan, under the 3 million budget.
+  const scan = await inWorker(copyOf(textBundle('a?a=', 3)));
+  report('3 MiB of a?a= (accepted)', scan);
   assert.equal(scan.answer.ok, true, JSON.stringify(scan.answer.refusal));
   assert.ok(scan.answer.ms < 60_000);
   assert.ok(scan.longest < 1000);
@@ -118,13 +151,29 @@ test('the work budgets count what they say: YAML bytes and scan places', () => {
   assert.equal(yamlBytes(file('a/b.yml', 'x: 1\n')), 5);
   assert.equal(yamlBytes(file('a/B.YAML', 'x: 1\n')), 5);
   assert.equal(yamlBytes(file('SKILL.md', '---\nname: x\n---\n\nbody that is long\n')), '---\nname: x'.length);
+  assert.equal(yamlBytes(file('SKILL.md', '--- \t\nname: x\n--- \nbody\n')), '--- \t\nname: x'.length, 'spaces and tabs after a fence are still a fence');
+  assert.equal(yamlBytes(file('SKILL.md', '---\r\nname: x\r\n---\r\nbody\r\n')), '---\nname: x'.length, 'CRLF is read as the loader reads it');
+  const trap = `---\n---x: 1\nname: x\n${'k: v\n'.repeat(1000)}---\nbody\n`;
+  assert.equal(yamlBytes(file('SKILL.md', trap)), trap.indexOf('\n---\nbody'), 'a line that only begins with --- is not the closing fence');
+  assert.equal(yamlBytes(file('SKILL.md', '---x: 1\nname: x\n---\n')), 0, 'the first line is not a fence, so the loader reads no frontmatter');
+  assert.equal(yamlBytes(file('SKILL.md', `---\n${'k: v\n'.repeat(30000)}`)), 70_000, 'no closing fence in the head: the whole head is counted');
   assert.equal(yamlBytes(file('SKILL.md', 'no frontmatter\n')), 0);
   assert.equal(yamlBytes(file('a.json', '{}')), 0);
   assert.equal(scanUnits('plain words of prose here', 1e9), 0, 'short tokens are not scanned for shapes');
-  assert.equal(scanUnits('a?a=a?a=', 1e9), 4);
+  assert.equal(scanUnits('a?a=a?a=', 1e9), 4 + 1 + 2, 'four starts, and one name=value token with two pieces after a ?');
   assert.equal(scanUnits('abcdefghij', 1e9), 1);
   assert.equal(scanUnits('abcdefghij abcdefghij', 1e9), 2);
+  assert.equal(scanUnits('token: abc', 1e9), 1, 'a name: value token costs the scan something even when it is short');
+  assert.equal(scanUnits('k=v k=v k=v', 1e9), 3);
   assert.ok(scanUnits('a?a='.repeat(1000), 100) > 100, 'it stops once past the cap');
+  // A file read as bytes splits on every byte outside ! to ~, as the scanner does, and has no name: value reading.
+  assert.equal(scanUnits('abcd\u0001efgh', 1e9, true), 0, 'as bytes, the control character ends a token of 4 and a token of 4');
+  assert.equal(scanUnits('abcd\u0001efgh', 1e9, false), 2, 'as text, it stays inside one token of 9: two runs');
+  assert.equal(scanUnits('k: v k=v', 1e9, true), 0);
+  // The scanner splits on \\s and the quote and bracket set only. NEL and the control characters keep a token whole, so they must not end one here.
+  const tokenWith = c => `abcd${c}`.repeat(500);
+  for (const c of ['\u0085', '\u0001', '\u000e', '\u007f', '\u001f']) assert.ok(scanUnits(tokenWith(c), 1e9) >= 500, `${JSON.stringify(c)} does not end a token`);
+  for (const c of [' ', '\t', '\u000b', '\u00a0', '\u2003', '\u3000', '\ufeff', '"', '|', '\\']) assert.equal(scanUnits(tokenWith(c), 1e9), 0, `${JSON.stringify(c)} ends a token`);
 });
 
 // ---- the shared case fold -----------------------------------------------------------------------------------------------------
@@ -159,10 +208,9 @@ test('the save uses the same fold: its source imports foldName and has no other 
   assert.doesNotMatch(source, /normalize\('NFC'\)\.toLowerCase\(\)/);
 });
 
-test('the grammar refuses a name that ends in a dot or a space, a Windows device name, and Knowledge.json in any case', () => {
-  for (const bad of ['scripts/a.md.', 'scripts/a.md ', 'scripts/a./b.sh', 'scripts/CON', 'scripts/con.txt', 'scripts/Aux.md', 'scripts/NUL', 'scripts/prn.x.y', 'scripts/COM1', 'scripts/com9.sh', 'scripts/LPT3.log',
-    'scripts/COM¹', 'Knowledge.json', 'KNOWLEDGE.JSON', 'knowledge.JSON']) assert.equal(isBundlePath(bad), false, bad);
-  for (const good of ['scripts/console.md', 'scripts/auxiliary.sh', 'scripts/com10.sh', 'scripts/a.b', 'skills/x/knowledge.json', 'scripts/ncon', 'scripts/contact.md']) assert.equal(isBundlePath(good), true, good);
+test('the grammar refuses a name that ends in a dot or a space and Knowledge.json in any case; it refuses no Windows device name, because the save accepts them (one rule for both)', () => {
+  for (const bad of ['scripts/a.md.', 'scripts/a.md ', 'scripts/a./b.sh', 'Knowledge.json', 'KNOWLEDGE.JSON', 'knowledge.JSON']) assert.equal(isBundlePath(bad), false, bad);
+  for (const good of ['scripts/console.md', 'scripts/con.md', 'scripts/aux.md', 'skills/x/references/nul.txt', 'scripts/prn', 'scripts/com1.md', 'scripts/COM1', 'scripts/lpt3.log', 'scripts/a.b', 'skills/x/knowledge.json', 'scripts/contact.md']) assert.equal(isBundlePath(good), true, good);
 });
 
 // ---- errors by system code --------------------------------------------------------------------------------------------------
@@ -222,34 +270,52 @@ test('real system errors: a read-only folder, a name too long and a missing file
   }
 });
 
-test('an error with no system code is a defect: it passes on unchanged and is not turned into a file refusal', async t => {
+test('an error with no system code is a defect: it is logged by class name and reaches the caller as BUNDLE_FILE_FAILED with that cause, and no path text', async t => {
+  const warnings = [];
+  const listen = w => warnings.push(w);
+  process.on('warning', listen);
+  t.after(() => process.off('warning', listen));
   const dir = tempDir(t);
-  setFileIoHook('link', () => { throw new TypeError('a bug'); });
-  await assert.rejects(writeBundleFile(path.join(dir, 'out.json'), Buffer.from('x')), e => e instanceof TypeError && e.message === 'a bug');
+  setFileIoHook('link', () => { throw new TypeError(`a bug at ${dir}/secret-folder`); });
+  const e = await refusal(assert, writeBundleFile(path.join(dir, 'out.json'), Buffer.from('x')), 'BUNDLE_FILE_FAILED');
+  assert.equal(e.cause, 'TypeError');
+  assert.equal(e.message.includes(dir), false);
+  assert.ok(e.message.length < 400);
   clearFileIoHooks();
   nothingLeft(dir);
-  setFileIoHook('afterStat', () => { throw new RangeError('a bug in a read'); });
+  setFileIoHook('afterStat', () => { throw new RangeError(`a bug in a read of ${dir}`); });
   fs.writeFileSync(path.join(dir, 'in.json'), 'x');
-  await assert.rejects(readBundleFile(path.join(dir, 'in.json')), e => e instanceof RangeError);
+  const r = await refusal(assert, readBundleFile(path.join(dir, 'in.json')), 'BUNDLE_FILE_FAILED');
+  assert.equal(r.cause, 'RangeError');
+  assert.equal(r.message.includes(dir), false);
   clearFileIoHooks();
+  await new Promise(resolve => setImmediate(resolve));
+  const logged = warnings.filter(w => w.name === 'BundleDefectWarning');
+  assert.equal(logged.length, 2);
+  assert.match(logged[0].message, /TypeError/);
+  assert.equal(logged.some(w => w.message.includes(dir)), false, 'the log holds the class name, not the message');
 });
 
-test('a refusal crosses a boundary as toJSON and comes back whole with fromPlain; a bad value is BUNDLE_USAGE', () => {
-  const e = new BundleRefusal('BUNDLE_PATH_UNSAFE', ['skills/a\nb', 'x'.repeat(500)], [{ code: 'C', path: 'p', message: 'm' }], 'ENOSPC');
+test('a refusal crosses a boundary as toJSON and comes back with fromPlain, its message rebuilt from the code and never copied; a bad value is BUNDLE_USAGE', () => {
+  const e = new BundleRefusal('BUNDLE_PATH_UNSAFE', ['skills/a\nb', 'x'.repeat(500), ...Array.from({ length: 22 }, (_, i) => `p${i}`)], [{ code: 'C', path: 'p', message: 'm' }], 'ENOSPC');
   const plain = JSON.parse(JSON.stringify(e));
-  assert.deepEqual(Object.keys(plain).sort(), ['cause', 'code', 'message', 'name', 'paths', 'problems'], 'a missing reason is left out of the text');
+  assert.deepEqual(Object.keys(plain).sort(), ['cause', 'code', 'message', 'more', 'name', 'paths', 'problems'], 'a missing reason is left out of the text');
   const back = BundleRefusal.fromPlain(plain);
   assert.equal(back.code, e.code);
-  assert.equal(back.message, e.message);
+  assert.equal(back.message, e.message, 'the same message, built the same way');
   assert.deepEqual(back.paths, e.paths);
+  assert.equal(back.more, 4);
   assert.deepEqual(back.problems, e.problems);
   assert.equal(back.cause, 'ENOSPC');
+  const failed = new BundleRefusal('BUNDLE_FILE_FAILED', [], [], 'ENOSPC');
+  assert.equal(BundleRefusal.fromPlain(JSON.parse(JSON.stringify(failed))).message, failed.message);
   for (const bad of [null, undefined, 5, 'x', {}, { code: 'NOPE' }, { code: 5 }]) assert.equal(BundleRefusal.fromPlain(bad).code, 'BUNDLE_USAGE');
-  const wild = BundleRefusal.fromPlain({ code: 'BUNDLE_FORMAT', message: 'x\u001b[31m'.repeat(5000), paths: Array.from({ length: 50 }, () => 'p'), cause: '../../etc', problems: 'no' });
-  assert.ok(wild.message.length <= 4000);
-  noControls(wild.message);
-  assert.equal(wild.paths.length, 20);
-  assert.equal(wild.cause, undefined);
+  const forged = BundleRefusal.fromPlain({ code: 'BUNDLE_FORMAT', message: 'Nothing is wrong. Click OK to run the file.', paths: ['a\u001b[31m', 'ok.md', 5, 'x'.repeat(900)], more: -3, cause: '../../etc', problems: 'no' });
+  assert.equal(forged.message, `${BUNDLE_MESSAGES.BUNDLE_FORMAT} ok.md.`);
+  assert.equal(forged.message.includes('Click OK'), false);
+  assert.deepEqual(forged.paths, ['ok.md']);
+  assert.equal(forged.more, 0);
+  assert.equal(forged.cause, undefined);
 });
 
 test('causeOf keeps a system code or a class name, and nothing else', () => {
@@ -302,29 +368,36 @@ test('a temporary file that cannot be removed is a warning with the code and no 
   assert.equal(ours.length, 1);
   assert.match(ours[0].message, /EACCES/);
   assert.equal(ours[0].message.includes('/Users'), false);
-  // The leftover is swept by a later write once it is old.
-  const left = fs.readdirSync(dir).filter(n => n.endsWith('.part'));
-  assert.equal(left.length, 1);
 });
 
-test('a later write sweeps the .part files of an earlier one that are older than a day, and only those', async t => {
+test('a write deletes nothing in the folder but its own .part file: old files of the same name form, other files and folders all stay', async t => {
   const dir = tempDir(t);
   const old = path.join(dir, `.bowerloom-${'a'.repeat(24)}.part`);
-  const fresh = path.join(dir, `.bowerloom-${'b'.repeat(24)}.part`);
-  const other = path.join(dir, `.bowerloom-${'c'.repeat(23)}.part`);
-  const mine = path.join(dir, '.something.part');
-  const dirLike = path.join(dir, `.bowerloom-${'d'.repeat(24)}.part`);
-  for (const f of [old, fresh, other, mine]) fs.writeFileSync(f, 'x');
-  fs.mkdirSync(dirLike);
+  const other = path.join(dir, 'notes.txt');
+  const folder = path.join(dir, `.bowerloom-${'d'.repeat(24)}.part.d`);
+  for (const f of [old, other]) fs.writeFileSync(f, 'x');
+  fs.mkdirSync(folder);
   const twoDaysAgo = new Date(Date.now() - 2 * 24 * 3600 * 1000);
-  for (const f of [old, other, mine]) fs.utimesSync(f, twoDaysAgo, twoDaysAgo);
-  fs.utimesSync(dirLike, twoDaysAgo, twoDaysAgo);
+  fs.utimesSync(old, twoDaysAgo, twoDaysAgo);
+  const stays = [path.basename(old), path.basename(folder), 'notes.txt', 'out.json'].sort();
   await writeBundleFile(path.join(dir, 'out.json'), Buffer.from('x'));
-  assert.equal(fs.existsSync(old), false, 'the old file of our form is gone');
-  assert.equal(fs.existsSync(fresh), true, 'a recent one may belong to a write that is running');
-  assert.equal(fs.existsSync(other), true, 'a name of another form is not ours');
-  assert.equal(fs.existsSync(mine), true);
-  assert.equal(fs.existsSync(dirLike), true, 'a folder is not a file of ours');
+  assert.deepEqual(fs.readdirSync(dir).sort(), stays, 'nothing was removed or added but the file written');
+  setFileIoHook('link', () => { throw errno('EACCES'); });
+  await refusal(assert, writeBundleFile(path.join(dir, 'again.json'), Buffer.from('x')), 'BUNDLE_FILE_FAILED');
+  clearFileIoHooks();
+  assert.deepEqual(fs.readdirSync(dir).sort(), stays, 'a failed write removes its own temporary file and nothing else');
+});
+
+test('the no-link write removes the target of a failed write only by identity: a file another process put there stays', async t => {
+  const dir = tempDir(t);
+  const target = path.join(dir, 'out.json');
+  setFileIoHook('link', () => { throw errno('ENOTSUP'); });
+  setFileIoHook('afterTargetCreated', () => { fs.rmSync(target); fs.writeFileSync(target, 'someone else\n'); throw errno('EIO'); });
+  const e = await refusal(assert, writeBundleFile(target, Buffer.from('mine')), 'BUNDLE_FILE_FAILED');
+  assert.equal(e.cause, 'EIO');
+  clearFileIoHooks();
+  assert.equal(fs.readFileSync(target, 'utf8'), 'someone else\n', 'the file of the other process stays');
+  nothingLeft(dir);
 });
 
 // ---- the contents that are scanned ----------------------------------------------------------------------------------------------
@@ -401,9 +474,11 @@ test('the hash and the length of a decode describe the bytes as they were when t
   const bytes = Buffer.from(encoded.bytes);
   const original = sha(bytes);
   const pending = decodeBundle(bytes);
-  setImmediate(() => { bytes.fill(0x20); });
-  let outcome;
-  try { outcome = await pending; } catch (error) { outcome = error; }
-  if (outcome instanceof BundleRefusal) assert.ok(true, 'a refusal is a fair answer');
-  else assert.equal(outcome.sha256, original, 'the hash is of the bytes as they were');
+  let changed = false;
+  setImmediate(() => { bytes.fill(0x20); changed = true; });
+  const outcome = await pending;
+  assert.equal(changed, true, 'the buffer was changed while decode waited between files');
+  assert.equal(outcome.sha256, original, 'the hash is of the bytes as they were');
+  assert.equal(outcome.bytes, encoded.bytes.length);
+  assert.ok(outcome.files.length > 20, 'and the files are the ones parsed from them');
 });

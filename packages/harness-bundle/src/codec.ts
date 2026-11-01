@@ -7,7 +7,7 @@ import {
   DEFINITION_LIMITS, KNOWLEDGE_FILE, computeRevision, isId, isKnowledgeKind, loadDefinitionFiles, scanSecrets,
 } from '../../harness-definition/src/index.js';
 import type { Definition, DefinitionFile, Problem } from '../../harness-definition/src/index.js';
-import { BundleRefusal } from './codes.js';
+import { BundleRefusal, causeOf } from './codes.js';
 import { BUNDLE_FORMAT, BUNDLE_LIMITS } from './limits.js';
 import { clashingPaths, isBundlePath, sortByBytes } from './path-grammar.js';
 import { JsonFault, parseStrictJson } from './strict-json.js';
@@ -28,14 +28,6 @@ const refuse = (code: ConstructorParameters<typeof BundleRefusal>[0], paths: rea
  */
 const loadedOf = new WeakMap<object, Definition>();
 export const recallLoaded = (bundle: DecodedBundle): Definition | undefined => loadedOf.get(bundle);
-
-/** The kind of an internal fault for the log: the code of a system error, else the class name of the error. Never a message, never a path. */
-export function causeOf(error: unknown): string {
-  const code = (error as { code?: unknown } | null)?.code;
-  if (typeof code === 'string' && /^E[A-Z0-9]{2,20}$/.test(code)) return code;
-  const name = (error as { constructor?: { name?: unknown } } | null)?.constructor?.name;
-  return typeof name === 'string' && /^[A-Za-z0-9_]{1,40}$/.test(name) ? name : 'Error';
-}
 
 /**
  * Looks for a secret in the file names, with the same scan as the file contents: a name such as `scripts/ghp_…sh` would travel in the bundle and the summary. One name is one

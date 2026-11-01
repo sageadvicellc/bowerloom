@@ -38,6 +38,6 @@ export const BUNDLE_LIMITS = Object.freeze({
   heldBundles: 2,
   displayChars: 200,
   displayArgs: 20,
-  yamlBytes: 1024 * 1024,
-  scanUnits: 4_000_000,
+  yamlBytes: 512 * 1024,
+  scanUnits: 3_000_000,
 });

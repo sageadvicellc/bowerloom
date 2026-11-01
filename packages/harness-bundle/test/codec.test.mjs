@@ -2,11 +2,12 @@
 // computer, and misuse. Hostile input is in hostile.test.mjs and hostile-todo.test.mjs.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {
-  BUNDLE_FORMAT, decodeBundle, encodeBundle, importAcknowledgement, exportAcknowledgement, importChoicesOf, inspectBundle, isEmptyHarness, targetFromBundle,
+  BUNDLE_FORMAT, EMPTY_HARNESS_DESCRIPTION, assertEmptyHarness, decodeBundle, encodeBundle, harnessPartsFound, importAcknowledgement, exportAcknowledgement, importChoicesOf, inspectBundle, isEmptyHarness,
+  targetFromBundle,
 } from '../../../dist/packages/harness-bundle/src/index.js';
 import { loadDefinitionFiles, scanSecrets } from '../../../dist/packages/harness-definition/src/index.js';
-import { DEFINITION_EXPORT_KIND, exportDefinitionBundle } from '../../../dist/packages/project-sync/src/index.js';
 import { bundleOf, definitionOf, filesOf, json, parsed, refusal, richMap, sha, smallMap } from './fixture.mjs';
 
 const same = (a, b, label) => {
@@ -335,16 +336,28 @@ test('the files helper keeps order and execute bits', () => {
   assert.deepEqual(files.map(f => [f.path, f.executable]), [['a', false], ['scripts/lint.sh', true]]);
 });
 
-test('the in-memory bundle of project-sync names the same format, and holds the same files and source names as the bundle file', async () => {
-  // project-sync keeps its own small export (the packaged CLI may not import this package until the packaging allowlist lists it); the two must not drift apart.
-  // It is not the bundle file, so it does not carry the format string of the file (review L12): it names its own kind.
-  assert.equal(DEFINITION_EXPORT_KIND, 'definition-export');
-  const { def, decoded } = await bundleOf(notesMap());
-  const memory = exportDefinitionBundle(def);
-  assert.equal(memory.kind, DEFINITION_EXPORT_KIND);
-  assert.equal(Object.hasOwn(memory, 'format'), false);
-  assert.notEqual(memory.kind, BUNDLE_FORMAT);
-  assert.equal(memory.harness, decoded.harness);
-  assert.deepEqual(memory.knowledge.map(k => ({ ...k })), decoded.knowledge.map(k => ({ ...k })));
-  same(memory.files, decoded.files, 'project-sync and the bundle file');
+test('a harness with settings only is not empty: the description constant is one value, and the refusal names what it found', () => {
+  const adoption = fs.readFileSync(new URL('../../adoption/src/plan.ts', import.meta.url), 'utf8');
+  assert.match(adoption, /EMPTY_HARNESS_DESCRIPTION/, 'adoption writes the constant, not a copy of its text');
+  assert.doesNotMatch(adoption, /'Adopted from the engine files of this project\.'/);
+  assert.equal(EMPTY_HARNESS_DESCRIPTION, 'Adopted from the engine files of this project.');
+  const bare = (extra = {}) => definitionOf({ 'harness.json': json({ format: 'bowerloom/harness/v1beta1', id: 'demo', description: EMPTY_HARNESS_DESCRIPTION, engines: [{ id: 'claude-code' }, { id: 'codex' }], parts: {}, ...extra }) });
+  assert.deepEqual(harnessPartsFound(bare()), []);
+  assert.doesNotThrow(() => assertEmptyHarness(bare()));
+  const cases = [
+    [bare({ description: 'Notes for the rope yard.' }), ['a description you wrote']],
+    [bare({ engines: [{ id: 'codex', model: 'model-a' }] }), ['an engine with a version or a model']],
+    [bare({ engines: [{ id: 'claude-code', version: '1.2.3' }, { id: 'codex' }] }), ['an engine with a version or a model']],
+    [bare({ overrides: [{ part: 'skills', id: 'review', action: 'hide' }] }), ['an override']],
+  ];
+  for (const [def, expected] of cases) {
+    assert.deepEqual(harnessPartsFound(def), expected);
+    assert.equal(isEmptyHarness(def), false, 'settings only: not empty');
+    assert.throws(() => assertEmptyHarness(def), err => err.name === 'BundleRefusal' && err.code === 'IMPORT_FOLDER_HAS_HARNESS' && JSON.stringify(err.paths) === JSON.stringify(expected));
+  }
+  const rich = harnessPartsFound(definitionOf(richMap()));
+  for (const part of ['skills', 'agents', 'guardrails', 'hooks', 'tools', 'instructions', 'borrowed sources', 'scripts', 'engine files', 'a description you wrote']) assert.ok(rich.includes(part), part);
+  assert.deepEqual(harnessPartsFound(null), ['a harness that cannot be read'], 'fails closed');
+  assert.deepEqual(harnessPartsFound({ entries: null }), ['a harness that cannot be read']);
+  assert.throws(() => assertEmptyHarness(bare({ description: 'x' })), e => e.message.endsWith('a description you wrote.'));
 });

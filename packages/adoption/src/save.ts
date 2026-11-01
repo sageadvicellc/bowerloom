@@ -221,7 +221,7 @@ function readTarget(target: unknown): Map<string, { bytes: Buffer; executable: b
  * control, format (zero-width, direction), or line separator character, no backslash, not under a 0.7 name, and within
  * the loader's depth.
  */
-function plainPath(rel: unknown): rel is string {
+export function plainPath(rel: unknown): rel is string {
   if (typeof rel !== 'string' || rel.length === 0 || rel.length > 1024 || /[\p{Cc}\p{Cf}\u2028\u2029\\]/u.test(rel)) return false;
   const parts = rel.split('/');
   if (parts.length - 1 > DEFINITION_LIMITS.depth || LEGACY.has(parts[0]!)) return false;
