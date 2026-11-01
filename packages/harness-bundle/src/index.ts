@@ -17,7 +17,7 @@ import { summarize } from './summary.js';
 import type { BundleFileIdentity, BundleSummary, DecodedBundle, EncodedBundle, EncodeOptions, ImportChoices } from './types.js';
 
 export type {
-  BundleBorrowed, BundleCodeFile, BundleCounts, BundleEncoding, BundleEnvelope, BundleFileIdentity, BundleFileRecord, BundleForeignPath, BundleNote, BundleProblems,
+  BundleBorrowed, BundleCodeFile, BundleCounts, BundleEncoding, BundleEnvelope, BundleFileIdentity, BundleFileRecord, BundleForeignPath, BundleNameValue, BundleNote, BundleProblems,
   BundleSecret, BundleSink, BundleSinkField, BundleSource, BundleSummary, BundleTool, DecodedBundle, EncodedBundle, EncodeOptions, ExportPlan, ImportChoices, ImportPlan,
 } from './types.js';
 export { HIGH_RISK_SINK_FIELDS } from './types.js';

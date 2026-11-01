@@ -573,7 +573,16 @@ export interface ShareTool {
   readonly name: string; readonly kind: 'mcp' | 'hook'; readonly transport: string | null; readonly runsCode: boolean;
   readonly command: string | null; readonly args: readonly string[]; readonly host: string | null; readonly event: string | null;
   readonly flags: readonly ('credentials' | 'backslash' | 'scheme' | 'unreadable')[];
+  /**
+   * What else is bound by the acknowledgement and must be shown, from the package's `BundleTool` (additive; absent means none): the variables of a stdio server (`env`, values
+   * whole: `NODE_OPTIONS`, `LD_PRELOAD`, `PATH` and the like start code, and a name is shown also when its value is a `${NAME}` reference), the headers of a remote server
+   * (`headers`), and the path, query and fragment of its url (`path`). Each value is at most SHARE_COMMAND_LIMIT characters and each list at most SHARE_ARGS_LIMIT rows; the
+   * package refuses a bundle past that, so nothing is cut.
+   */
+  readonly env?: readonly ShareNameValue[]; readonly headers?: readonly ShareNameValue[]; readonly path?: string | null;
 }
+/** One variable of a stdio server's environment, or one header, with its value as the file holds it. */
+export interface ShareNameValue { readonly name: string; readonly value: string }
 /**
  * A file that can run: it has an execute bit, it is `hooks.json`, it is under `scripts/`, it begins with `#!` (`shebang`) or with the bytes of a program (`binary`), its
  * name ends in a code extension (`extension`), it is a manifest of commands such as `package.json` (`manifest`), or it is anything that is not a named kind of data
