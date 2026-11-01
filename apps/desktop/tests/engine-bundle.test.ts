@@ -279,3 +279,22 @@ test('import: a folder whose harness has parts is refused, and says so in folder
   const none = (await b.choose(plainFolder(b.home)));
   assert.equal(none.holdsParts, undefined, 'left out when main read no harness');
 });
+
+test('a tool is shown whole: a long command and long arguments are not cut, and the variables of a stdio server and the headers and path of a remote one are shown, because the tick binds them', async t => {
+  const a = shareSetup(t, 'whole-a'), b = shareSetup(t, 'whole-b');
+  const longArg = `--note=${'x'.repeat(400)}`;
+  const mcp = JSON.stringify({ servers: [
+    { name: 'stock-db', transport: 'stdio', command: 'npx', args: ['-y', 'stock-db-server@2.0.1', ...Array.from({ length: 30 }, (_, i) => `--flag-${i}`), longArg], env: { NODE_OPTIONS: '--require ./preload.js', YARD_REGION: '${YARD_REGION}' } },
+    { name: 'orders-api', transport: 'http', url: 'https://orders.example.test/v1/mcp?mode=full#top', headers: { 'X-Mode': 'full', 'X-Key': '${ORDERS_KEY}' } },
+  ] });
+  const file = await exportTo(a, richFolder(a.home, 'whole-yard', { '.bowerloom/mcp.json': mcp }), 'whole.bowerloom.json');
+  b.open = file;
+  const bundle = value(await b.service.chooseBundle());
+  const stdio = bundle.summary.tools.rows.find(x => x.name === 'stock-db')!, remote = bundle.summary.tools.rows.find(x => x.name === 'orders-api')!;
+  assert.equal(stdio.args.length, 33, 'every argument');
+  assert.equal(stdio.args.at(-1), longArg, 'the long argument whole');
+  assert.deepEqual(stdio.env, [{ name: 'NODE_OPTIONS', value: '--require ./preload.js' }, { name: 'YARD_REGION', value: '${YARD_REGION}' }]);
+  assert.deepEqual(remote.headers, [{ name: 'X-Mode', value: 'full' }, { name: 'X-Key', value: '${ORDERS_KEY}' }]);
+  assert.equal(remote.path, '/v1/mcp?mode=full#top');
+  assert.equal(JSON.stringify(bundle).includes(b.base), false);
+});

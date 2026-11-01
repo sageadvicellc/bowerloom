@@ -64,6 +64,10 @@ export function shareSummary(s: BundleSummary, scrub: Scrub): ShareSummary {
     tools: capRiskFirst(s.tools.map(x => ({
       name: t(x.name), kind: x.kind, transport: x.transport ?? null, runsCode: x.runsCode, command: x.command === undefined ? null : scrub(x.command),
       args: (x.args ?? []).map(a => scrub(a)), host: x.host === undefined ? null : scrub(x.host), event: x.event === undefined ? null : scrub(x.event), flags: [...(x.addressFlags ?? [])],
+      // What else the tick binds is shown whole too: the variables of a stdio server, the headers and the path of a remote one (additive; left out when the tool has none).
+      ...(x.env === undefined ? {} : { env: x.env.map(v => ({ name: scrub(v.name), value: scrub(v.value) })) }),
+      ...(x.headers === undefined ? {} : { headers: x.headers.map(v => ({ name: scrub(v.name), value: scrub(v.value) })) }),
+      ...(x.path === undefined ? {} : { path: scrub(x.path) }),
     })), toolRisk),
     codeFiles: capRiskFirst(s.codeFiles.map(x => ({ path: t(x.path), why: x.why })), codeRisk),
     secrets: capRiskFirst(s.secrets.map(x => ({ kind: x.kind, name: t(x.name), sinks: x.sinks.map(k => ({ tool: t(k.tool), field: k.field, host: k.host === undefined ? null : scrub(k.host) })) })), secretRisk),
