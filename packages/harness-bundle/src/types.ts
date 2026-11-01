@@ -72,6 +72,11 @@ export interface DecodedBundle {
  *  - Hook: `event` and `command` (the hook's command text).
  * A tool needs a tick when it runs code (`runsCode`) OR reaches a host (`host` is set): a remote server is a host the file chose (decision R2-L2).
  */
+/** One variable of an MCP server's `env` or one header, by name, with its value as the file holds it: a literal whole, a `${NAME}` as written, a keychain reference as its JSON. */
+export interface BundleNameValue {
+  readonly name: string;
+  readonly value: string;
+}
 export interface BundleTool {
   readonly name: string;
   readonly kind: 'mcp' | 'hook';
@@ -83,6 +88,16 @@ export interface BundleTool {
   readonly command?: string;
   /** The arguments of an MCP server, as written, all of them (at most BUNDLE_LIMITS.toolArgs). */
   readonly args?: readonly string[];
+  /**
+   * The environment of a stdio server, one row for each variable, in file order, values WHOLE (at most BUNDLE_LIMITS.toolArgs rows of BUNDLE_LIMITS.commandChars characters). It
+   * is part of what runs: `NODE_OPTIONS`, `LD_PRELOAD`, `DYLD_INSERT_LIBRARIES`, `PATH`, `BASH_ENV` and `JAVA_TOOL_OPTIONS` start code. A name is shown also when its value is a
+   * `${NAME}` reference. Absent when the server has no env.
+   */
+  readonly env?: readonly BundleNameValue[];
+  /** The headers of a remote server, in file order, values whole, under the same limits. They go to the host the file names. Absent when there are none. */
+  readonly headers?: readonly BundleNameValue[];
+  /** The path, query and fragment of a remote server's url, as written, whole (at most BUNDLE_LIMITS.commandChars characters); the host is in `host`. Absent when the url has none. */
+  readonly path?: string;
   /**
    * The host a client would reach for the server's `url`, from `addressOf`: parsed with `URL` after each `${NAME}` is masked, shown as `hostname` plus `:port` when
    * the port is not the scheme's own, with the references as written. If the address cannot be read, the fixed text `unreadable address`.

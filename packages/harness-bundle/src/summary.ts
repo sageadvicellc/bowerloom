@@ -11,7 +11,7 @@ import { BundleRefusal } from './codes.js';
 import { codeWhy } from './code-files.js';
 import { BUNDLE_LIMITS } from './limits.js';
 import type {
-  BundleCodeFile, BundleForeignPath, BundleNote, BundleSecret, BundleSink, BundleSinkField, BundleSource, BundleSummary, BundleTool, EncodeOptions,
+  BundleCodeFile, BundleForeignPath, BundleNameValue, BundleNote, BundleSecret, BundleSink, BundleSinkField, BundleSource, BundleSummary, BundleTool, EncodeOptions,
 } from './types.js';
 
 export const sha256Hex = (bytes: Uint8Array | string): string => createHash('sha256').update(bytes).digest('hex');
@@ -62,6 +62,16 @@ class Secrets {
 
 // ---- tools --------------------------------------------------------------------------------------------------------------------
 
+/** A variable or a header as a row: the value as the file holds it, a keychain reference as its JSON. */
+const rowsOf = (map: Readonly<Record<string, unknown>> | undefined): BundleNameValue[] =>
+  Object.entries(map ?? {}).map(([name, v]) => ({ name, value: typeof v === 'string' ? v : JSON.stringify(v) }));
+
+/** What follows the authority of an address: path, query and fragment, as written. An address that does not look like `scheme://authority…` is returned whole, so nothing is hidden. */
+function pathOf(url: string): string {
+  const m = /^[A-Za-z][A-Za-z0-9+.-]*:\/\/[^/?#\\]*/.exec(url);
+  return m === null ? url : url.slice(m[0].length);
+}
+
 function mcpTool(server: McpServer, secrets: Secrets): BundleTool {
   const host = server.url !== undefined ? addressOf(server.url) : undefined;
   const runsCode = server.transport === 'stdio' || server.command !== undefined;
@@ -75,6 +85,9 @@ function mcpTool(server: McpServer, secrets: Secrets): BundleTool {
     // Whole, never cut: `checkToolText` has refused a bundle whose command or arguments are too long to show.
     ...(server.command !== undefined ? { command: server.command } : {}),
     ...(server.args !== undefined ? { args: [...server.args] } : {}),
+    ...(server.env !== undefined && Object.keys(server.env).length > 0 ? { env: rowsOf(server.env) } : {}),
+    ...(server.headers !== undefined && Object.keys(server.headers).length > 0 ? { headers: rowsOf(server.headers) } : {}),
+    ...(server.url !== undefined && pathOf(server.url) !== '' ? { path: pathOf(server.url) } : {}),
     ...(host !== undefined ? { host: host.host } : {}),
     ...(host !== undefined && host.flags.length > 0 ? { addressFlags: host.flags } : {}),
     sha256: entryHash(server),
@@ -87,20 +100,24 @@ function hookTool(hook: HookEntry, secrets: Secrets): BundleTool {
 }
 
 /**
- * Refuses `BUNDLE_INVALID` when a tool could not be shown whole: an MCP command, an argument or a hook command of more than `BUNDLE_LIMITS.commandChars` characters, or a server
- * with more than `BUNDLE_LIMITS.toolArgs` arguments. The acknowledgement binds the whole entry of a tool that runs code or reaches a host, so what a person reads must be the
+ * Refuses `BUNDLE_INVALID` when a tool could not be shown whole: an MCP command, an argument, a hook command, a variable or header name or value, or a url of more than
+ * `BUNDLE_LIMITS.commandChars` characters, or a server with more than `BUNDLE_LIMITS.toolArgs` arguments, variables or headers. The acknowledgement binds the whole entry of a tool that runs code or reaches a host, so what a person reads must be the
  * whole entry. The refusal names each tool by the words "a tool's command or arguments are too long to show in full", and its problems carry the same words by code.
  */
 export function checkToolText(def: Definition): void {
   const long: string[] = [];
   const over = (text: string | undefined): boolean => text !== undefined && text.length > BUNDLE_LIMITS.commandChars;
-  for (const s of def.entries.mcp) if (over(s.command) || (s.args?.length ?? 0) > BUNDLE_LIMITS.toolArgs || (s.args ?? []).some(a => over(a))) long.push(`mcp.json: ${s.name}`);
+  const rowsOver = (map: Readonly<Record<string, unknown>> | undefined): boolean =>
+    rowsOf(map).length > BUNDLE_LIMITS.toolArgs || rowsOf(map).some(r => over(r.name) || over(r.value));
+  for (const s of def.entries.mcp) {
+    if (over(s.command) || (s.args?.length ?? 0) > BUNDLE_LIMITS.toolArgs || (s.args ?? []).some(a => over(a)) || over(s.url) || rowsOver(s.env) || rowsOver(s.headers)) long.push(`mcp.json: ${s.name}`);
+  }
   for (const h of def.entries.hooks) if (over(h.command)) long.push(`hooks.json: ${h.id}`);
   if (long.length === 0) return;
   throw new BundleRefusal(
     'BUNDLE_INVALID',
     long.map(l => `a tool's command or arguments are too long to show in full (${l})`),
-    [{ code: 'TOOL_TEXT_TOO_LONG', path: long[0]!.split(':')[0]!, message: `A tool's command is too long to show in full: at most ${BUNDLE_LIMITS.commandChars} characters, and ${BUNDLE_LIMITS.toolArgs} arguments.` }],
+    [{ code: 'TOOL_TEXT_TOO_LONG', path: long[0]!.split(':')[0]!, message: `A tool's command is too long to show in full: at most ${BUNDLE_LIMITS.commandChars} characters in a text, and ${BUNDLE_LIMITS.toolArgs} arguments, variables or headers.` }],
   );
 }
 
