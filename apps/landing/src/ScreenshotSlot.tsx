@@ -66,7 +66,13 @@ export function ShotDialog({ id, loaded, ref, onClose }: { id: ScreenshotSlotId;
   };
   return <dialog ref={ref} className="screenshot-dialog" data-screenshot-dialog={item.id} aria-label={item.alt} onClose={onClose} onPointerDown={press} onClick={backdrop} onKeyDown={trap}>
     <div className="screenshot-dialog-bar">
-      <p className="screenshot-dialog-caption">{item.caption}</p>
+      <div className="screenshot-dialog-text">
+        <p className="screenshot-dialog-caption">{item.caption}</p>
+        <p className="screenshot-pinch">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M9 9L4 4M4 4h4.5M4 4v4.5M15 15l5 5M20 20h-4.5M20 20v-4.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          Pinch to zoom
+        </p>
+      </div>
       <form method="dialog"><button type="submit" className="screenshot-close" aria-label="Close"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg></button></form>
     </div>
     <div className="screenshot-scroll" tabIndex={0} role="group" aria-label="Screenshot, scrolls">

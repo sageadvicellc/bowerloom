@@ -89,6 +89,8 @@
 .screenshot-dialog::backdrop { background: rgb(24 20 28 / .5); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
 .screenshot-dialog-bar { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 12px 10px 20px; border-bottom: 1px solid var(--ui-border); background: var(--ui-surface); }
 .screenshot-dialog-bar form { margin: 0; }
+.screenshot-dialog-text { min-width: 0; }
+.screenshot-pinch { display: none; }
 .screenshot-dialog-caption { display: -webkit-box; min-width: 0; margin: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font: 14px/1.5 var(--ui-font); color: var(--ui-muted); }
 .screenshot-close { display: inline-grid; place-items: center; flex: none; width: 44px; height: 44px; min-width: 44px; min-height: 44px; padding: 0; border: 1px solid var(--ui-border); border-radius: 50%; background: var(--ui-surface); color: var(--ui-text); cursor: pointer; }
 .screenshot-close:hover { border-color: var(--ui-primary); }
@@ -96,6 +98,7 @@
 .screenshot-scroll:focus-visible { outline-offset: -2px; }
 /* The scroll area stays inside the dialog. A picture wider than a phone is 960 px wide, so the words in it can be read, and the area scrolls sideways. */
 .screenshot-scroll { flex: 1 1 auto; min-height: 0; padding: 16px; overflow: auto; overscroll-behavior: contain; background: var(--ui-bg); }
+.screenshot-scroll, .screenshot-full { touch-action: pan-x pan-y pinch-zoom; }
 .screenshot-full { display: block; width: max(100%, 960px); height: auto; border: 1px solid var(--ui-border); border-radius: 10px; box-sizing: border-box; }
 .screenshot-full[data-shot-theme='dark'], [data-theme='dark'] .screenshot-full[data-shot-theme='light'] { display: none; }
 [data-theme='dark'] .screenshot-full[data-shot-theme='dark'] { display: block; }
@@ -151,6 +154,8 @@ html:has(.screenshot-dialog[open]) { overflow: hidden; scrollbar-gutter: stable;
 @media (max-width: 760px) {
   /* In the lightbox the picture fits the dialog width on a phone, so it does not look cropped. */
   .screenshot-full { width: 100%; }
+  /* The picture fits the width here, so the hint tells a phone visitor that two fingers zoom in. */
+  .screenshot-pinch { display: flex; align-items: center; gap: 6px; margin: 4px 0 0; font: 500 13px/1.4 var(--ui-font); color: var(--ui-primary); }
   .band-inner { padding: 44px 6%; }
   .recipe-section h2, .band h2, .faq-section h2 { font-size: 30px; }
   .install-card { padding: 22px; }

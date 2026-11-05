@@ -126,24 +126,29 @@ dom('the Enlarge buttons have different names that start with their visible text
   await context.close();
 });
 
-dom('the status slot shows the npm note while idle, and Copied takes the same slot at the same height', async () => {
+dom('the npm note is plain text outside the live region, and Copied takes the same slot at the same height', async () => {
   const { page, context } = await open({ permissions: ['clipboard-read', 'clipboard-write'] });
   const button = page.locator('.copy-button');
   const status = page.locator('.copy-status');
+  const noteEl = page.locator('.copy-note');
   assert.equal(await status.getAttribute('role'), 'status');
-  const note = (await status.innerText()).trim();
+  const note = (await noteEl.innerText()).trim();
   assert.match(note, /not on npm yet/);
-  const slot = await status.boundingBox();
+  assert.equal(await noteEl.evaluate(el => el.closest('[role="status"], [aria-live]') === null), true, 'the note is not in a live region, so it is never read out again');
+  assert.equal((await status.innerText()).trim(), '', 'the live region is empty while idle');
+  const slot = await page.locator('.copy-slot').boundingBox();
   const card = await page.locator('.install-card-cli').boundingBox();
   const terminal = await page.locator('.terminal').boundingBox();
   assert.ok(slot.y - (terminal.y + terminal.height) < 20, 'no dead gap between the terminal and the note');
   await button.click();
   await page.waitForFunction(() => document.querySelector('.copy-status').innerText.trim() === 'Copied');
+  assert.equal(await noteEl.count(), 0, 'Copied replaces the note in the slot');
   assert.equal((await button.innerText()).split('\n')[0].trim(), 'Copied');
   assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'npm install -g bowerloom@beta');
-  assert.equal((await status.boundingBox()).height, slot.height, 'the slot keeps its height');
+  assert.equal((await page.locator('.copy-slot').boundingBox()).height, slot.height, 'the slot keeps its height');
   assert.equal((await page.locator('.install-card-cli').boundingBox()).height, card.height, 'the card does not move');
-  await page.waitForFunction(text => document.querySelector('.copy-status').innerText.trim() === text, note, { timeout: 5000 });
+  await page.waitForFunction(text => document.querySelector('.copy-note')?.innerText.trim() === text, note, { timeout: 5000 });
+  assert.equal((await status.innerText()).trim(), '', 'back at idle the live region is empty, so nothing is announced');
   assert.equal((await button.innerText()).split('\n')[0].trim(), 'Copy');
   await context.close();
 });
@@ -151,16 +156,38 @@ dom('the status slot shows the npm note while idle, and Copied takes the same sl
 dom('a clipboard that refuses shows the failure words in the same slot, then the note comes back', async () => {
   const { page, context } = await open();
   await page.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new Error('denied')) } }); });
-  const note = (await page.locator('.copy-status').innerText()).trim();
+  const note = (await page.locator('.copy-note').innerText()).trim();
   const before = await page.locator('.install-card-cli').boundingBox();
-  const slot = await page.locator('.copy-status').boundingBox();
+  const slot = await page.locator('.copy-slot').boundingBox();
   await page.locator('.copy-button').click();
   await page.waitForFunction(() => document.querySelector('.copy-status').innerText.includes('Copy failed'));
   assert.match(await page.locator('.copy-status').innerText(), /Copy failed\. Select the command\./);
-  assert.equal((await page.locator('.copy-status').boundingBox()).height, slot.height);
+  assert.equal((await page.locator('.copy-slot').boundingBox()).height, slot.height);
   assert.equal((await page.locator('.install-card-cli').boundingBox()).height, before.height, 'the failure text takes the same slot');
-  await page.waitForFunction(text => document.querySelector('.copy-status').innerText.trim() === text, note, { timeout: 5000 });
+  await page.waitForFunction(text => document.querySelector('.copy-note')?.innerText.trim() === text, note, { timeout: 5000 });
   await context.close();
+});
+
+dom('the pinch hint shows on a phone only, and the picture and its scroll area allow pinch zoom', async () => {
+  const phone = await open({ viewport: { width: 390, height: 844 } });
+  await enlarge(phone.page);
+  const read = () => phone.page.evaluate(() => ({
+    hint: getComputedStyle(document.querySelector('.screenshot-dialog[open] .screenshot-pinch')).display,
+    scroll: getComputedStyle(document.querySelector('.screenshot-dialog[open] .screenshot-scroll')).touchAction,
+    image: getComputedStyle([...document.querySelectorAll('.screenshot-dialog[open] .screenshot-full')].find(img => img.offsetParent !== null)).touchAction,
+    meta: document.querySelector('meta[name="viewport"]').content,
+  }));
+  const small = await read();
+  assert.notEqual(small.hint, 'none');
+  // The browser writes `pan-x pan-y pinch-zoom` as `manipulation`. Both allow a pinch.
+  assert.match(small.scroll, /pinch-zoom|manipulation/);
+  assert.match(small.image, /pinch-zoom|manipulation/);
+  assert.doesNotMatch(small.meta, /user-scalable|maximum-scale/);
+  await phone.context.close();
+  const wide = await open({ viewport: { width: 1280, height: 800 } });
+  await enlarge(wide.page);
+  assert.equal(await wide.page.evaluate(() => getComputedStyle(document.querySelector('.screenshot-dialog[open] .screenshot-pinch')).display), 'none', 'no hint on a wide screen');
+  await wide.context.close();
 });
 
 dom('a double press still returns to idle once, after the last press', async () => {

@@ -250,9 +250,12 @@ test('the install section shows the command with a copy button, with the app fir
       assert.ok(text(html).includes(release.npm.installCommand), `command shown, available=${available}`);
       assert.equal(codeText(html.slice(html.indexOf('<pre'))), release.npm.installCommand, 'wrapping markup adds no characters to the copied command');
       assert.match(html, /<button type="button" class="copy-button"[^>]*>[\s\S]*?Copy[\s\S]*?<\/button>/);
-      const slot = html.match(/<p class="copy-status"[^>]*>([\s\S]*?)<\/p>/);
-      assert.ok(slot[0].includes('role="status"') && slot[0].includes('aria-live="polite"'));
-      assert.equal(slot[1], available ? '' : installView(false).pendingNote, 'one status slot: the npm note while idle, nothing once the package is published');
+      const status = html.match(/<p class="copy-status"[^>]*>([\s\S]*?)<\/p>/);
+      assert.ok(status[0].includes('role="status"') && status[0].includes('aria-live="polite"'));
+      assert.equal(status[1], '', 'the live region is empty at first, so nothing is announced on load');
+      const note = html.match(/<p class="copy-note">([\s\S]*?)<\/p>/);
+      assert.equal(note?.[1] ?? null, available ? null : installView(false).pendingNote, 'the npm note is plain text in the slot, and only until the package is published');
+      assert.ok(html.indexOf('class="copy-note"') < 0 || html.indexOf('class="copy-note"') < html.indexOf('class="copy-status"'));
       assert.ok(!html.includes('pending-note'), 'no separate note, so no dead gap');
       assert.ok(html.includes('aria-label="Install command"'));
       assert.ok(html.indexOf('id="install-app"') < html.indexOf('id="install-cli"'), 'the app download stays the primary path');
@@ -299,4 +302,11 @@ test('a screenshot slot shows both themes\' images with a size, late loading, an
     assert.match(html, new RegExp(`<span id="[^"]+" class="screenshot-caption-text">${slot.caption.replaceAll("'", "&#x27;").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}<\/span>`));
     assert.doesNotMatch(html, /Screenshot to come|aria-hidden="true">Screenshot/);
   } finally { await page.close(); }
+});
+
+test('a new command resets the copy state to idle when the controller is made', async () => {
+  const source = await read('src/Sections.tsx');
+  const effect = source.slice(source.indexOf('useEffect(() => {\n    // A new command'), source.indexOf('}, [command]);'));
+  assert.ok(effect.indexOf("setState('idle')") > -1 && effect.indexOf("setState('idle')") < effect.indexOf('createCopyController('), 'the state resets before the new controller starts');
+  assert.match(effect, /return \(\) => \{ run\.dispose\(\);/, 'the old controller is disposed');
 });

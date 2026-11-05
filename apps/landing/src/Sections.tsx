@@ -95,14 +95,16 @@ export function EnginesSection() {
 }
 
 /**
- * The install command in a small terminal, with a copy button and one status slot under it. While idle the slot holds the note it is given (the pending-npm note, or nothing).
- * "Copied" or the failure words take the same slot, at the same height, so the page does not move. One timer puts the slot back to idle. A new press clears the old timer,
+ * The install command in a small terminal, with a copy button and one slot under it. While idle the slot holds the note it is given (the pending-npm note, or nothing), as plain text.
+ * "Copied" or the failure words, in a live region, take the same slot at the same height, so the page does not move. One timer puts the slot back to idle. A new press clears the old timer,
  * and a copy that finishes after the page left sets no timer (see `createCopyController`).
  */
 export function InstallCommand({ command, idleNote = null }: { command: string; idleNote?: string | null }) {
   const [state, setState] = useState<CopyState>('idle');
   const controller = useRef<ReturnType<typeof createCopyController> | null>(null);
   useEffect(() => {
+    // A new command starts from idle, so a Copied that belonged to the old command never lingers.
+    setState('idle');
     const run = createCopyController({ text: command, clipboard: () => (typeof navigator === 'undefined' ? null : navigator.clipboard), set: setState });
     controller.current = run;
     return () => { run.dispose(); controller.current = null; };
@@ -119,7 +121,11 @@ export function InstallCommand({ command, idleNote = null }: { command: string; 
         </button>
       </div>
     </div>
-    <p className="copy-status" role="status" aria-live="polite" data-note={idleNote ? 'yes' : 'no'}>{state === 'idle' ? idleNote ?? '' : copyLabel(state)}</p>
+    <div className="copy-slot" data-note={idleNote ? 'yes' : 'no'}>
+      {/* The npm note is plain text. Only the status line below is a live region, so the note is never read out again when the state returns to idle. */}
+      {state === 'idle' && idleNote ? <p className="copy-note">{idleNote}</p> : null}
+      <p className="copy-status" role="status" aria-live="polite">{state === 'idle' ? '' : copyLabel(state)}</p>
+    </div>
   </>;
 }
 

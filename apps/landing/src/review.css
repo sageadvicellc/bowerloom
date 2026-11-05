@@ -64,9 +64,10 @@
 .copy-button:hover { background: var(--ui-text); border-color: var(--ui-text); color: var(--ui-bg); }
 .copy-button:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 3px; }
 .copy-button[data-state='copied'] { background: var(--ui-surface); color: var(--ui-primary); }
-.install-card p.copy-status { min-height: 1.6em; margin: -6px 0 12px; font: 14px/1.6 var(--ui-font); color: var(--ui-muted); }
-/* With the pending-npm note the slot keeps room for two lines, so "Copied" and the failure words take the same height. */
-.install-card p.copy-status[data-note='yes'] { min-height: 3.2em; }
+/* One slot under the terminal. With the pending-npm note it keeps room for two lines, so "Copied" and the failure words take the same height. */
+.copy-slot { min-height: 1.6em; margin: -6px 0 12px; font: 14px/1.6 var(--ui-font); }
+.copy-slot[data-note='yes'] { min-height: 3.2em; }
+.install-card p.copy-status, .install-card p.copy-note { margin: 0; font: inherit; color: var(--ui-muted); }
 @media (max-width: 900px) { .install-grid { grid-template-columns: minmax(0, 1fr); } }
 
 /* Motion. Rare, so it may charm: the sparkle settles in once on load. Opacity and transform only. The copy button presses in. Nothing loops. */

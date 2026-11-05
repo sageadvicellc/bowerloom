@@ -130,10 +130,29 @@ test('the style sheet scrolls inside the dialog, reserves the picture\'s size, a
   assert.match(css, /prefers-reduced-motion: reduce\) \{\s*\.screenshot-open \.screenshot-image \{ transition: none; \}/);
 });
 
-test('the picture is wide enough to read on a phone and scrolls sideways inside the dialog', async () => {
+test('on a wide screen the picture is 960 px or wider and scrolls inside the dialog; on a phone it fits the dialog and a Pinch to zoom hint shows, and pinch zoom stays allowed', async () => {
   const css = await read('src/page.css');
-  assert.match(css, /\.screenshot-full \{[^}]*width: max\(100%, 960px\)/);
+  assert.match(css, /\.screenshot-full \{[^}]*width: max\(100%, 960px\)/, 'wide: a reading width that scrolls sideways');
+  assert.match(css, /\.screenshot-scroll \{[^}]*overflow: auto/);
   assert.match(css, /\.screenshot-dialog \{[^}]*width: min\(1180px, calc\(100vw - 64px\)\)/);
+  const phone = css.slice(css.indexOf('@media (max-width: 760px) {', css.indexOf('screenshot-full')));
+  const block = phone.slice(0, phone.indexOf('\n}\n'));
+  assert.match(block, /\.screenshot-full \{ width: 100%; \}/, 'phone: the picture fits the dialog width');
+  assert.match(block, /\.screenshot-pinch \{ display: flex;/, 'phone: the hint shows');
+  assert.match(css, /\.screenshot-pinch \{ display: none; \}/, 'wide: the hint is hidden');
+  assert.match(css, /\.screenshot-scroll, \.screenshot-full \{ touch-action: pan-x pan-y pinch-zoom; \}/, 'two fingers can zoom the picture');
+  assert.doesNotMatch(css, /touch-action: none/);
+  const html = await read('index.html');
+  assert.doesNotMatch(html, /user-scalable|maximum-scale/, 'the page never blocks pinch zoom');
+});
+
+test('the dialog shows a short hint with an icon hidden from screen readers', async () => {
+  const page = await loadPage();
+  try {
+    const html = renderToStaticMarkup(createElement(page.slot.ShotDialog, { id: 'builder-graph', loaded: false }));
+    assert.match(html, /<p class="screenshot-pinch"><svg[^>]*aria-hidden="true"[^>]*>[\s\S]*?<\/svg>Pinch to zoom<\/p>/);
+    assert.ok(html.indexOf('screenshot-dialog-caption') < html.indexOf('screenshot-pinch'));
+  } finally { await page.close(); }
 });
 
 test('each shot has its own short title, so the Enlarge buttons have different names', () => {
