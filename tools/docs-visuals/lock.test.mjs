@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, rmdirSync, writeFileSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmdirSync, writeFileSync, unlinkSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -52,12 +52,12 @@ test('a lock folder removed by hand during the run does not turn a good run into
   assert.equal(withLock(lock, () => { unlinkSync(join(lock, 'owner')); rmdirSync(lock); return 'ok'; }), 'ok');
 });
 
-test('a reclaim that finds a new owner puts the lock back untouched', () => {
+test('a reclaim that finds a new owner puts the owner file back, and the lock folder never leaves its path', () => {
   const lock = lockPath();
   mkdirSync(lock);
   writeFileSync(join(lock, 'owner'), String(process.ppid));
   assert.equal(reclaimStale(lock, 999999), false);
-  assert.equal(existsSync(join(lock, 'owner')), true, 'the live lock is back in place');
+  assert.equal(readdirSync(lock).join(), 'owner', 'the live lock is back in place with nothing left aside');
   unlinkSync(join(lock, 'owner'));
   rmdirSync(lock);
 });
@@ -66,4 +66,16 @@ test('a reclaim that loses the race to another waiter counts the stale lock as g
   const lock = lockPath();
   assert.equal(reclaimStale(lock, 999999), true);
   assert.equal(existsSync(lock), false);
+});
+
+test('an owner of 0 or a negative number is treated as foreign and only waited for', () => {
+  for (const value of ['0', '-1', 'not a pid']) {
+    const lock = lockPath();
+    mkdirSync(lock);
+    writeFileSync(join(lock, 'owner'), value);
+    assert.throws(() => withLock(lock, () => assert.fail('must not run'), { timeoutMs: 60, pollMs: 20 }), error => error.message.includes(lock), value);
+    assert.equal(existsSync(join(lock, 'owner')), true, value);
+    unlinkSync(join(lock, 'owner'));
+    rmdirSync(lock);
+  }
 });
