@@ -102,3 +102,28 @@ export async function saveFromBuilder(h: RealHarness): Promise<Record<string, st
   await expect(s.locator('[data-version-kept]')).toBeVisible();
   return listed;
 }
+
+/**
+ * Main's save dialog, answered by the test (the system dialog cannot be driven). `saveAt(h, path)` sets the path it answers; `saveAt(h, null)` closes it. The dialog the
+ * Export sheet opens is the only one stubbed, and main's own write question stays the one `launchReal` records.
+ */
+export async function stubSaveDialog(h: RealHarness): Promise<void> {
+  await h.app.evaluate(({ dialog }) => {
+    const g = globalThis as unknown as { __save: string | null };
+    g.__save = null;
+    dialog.showSaveDialog = (async () => (g.__save === null ? { canceled: true, filePath: '' } : { canceled: false, filePath: g.__save })) as unknown as typeof dialog.showSaveDialog;
+  });
+}
+export const saveAt = (h: RealHarness, path: string | null): Promise<void> => h.app.evaluate((_e, p) => { (globalThis as unknown as { __save: string | null }).__save = p; }, path);
+
+/** Starts a second app on a second made-up computer: its own HOME, state folder and data folder. The save dialog is stubbed. The caller closes it. */
+export async function startSecondApp(route = 'harnesses'): Promise<{ home: MadeUpHome; h: RealHarness }> {
+  const home = newMadeUpHome();
+  const h = await startApp(home, route);
+  await stubSaveDialog(h);
+  return { home, h };
+}
+
+/** The sheets of journey 4, by their names. */
+export const exportSheet = (p: Page): Locator => p.getByRole('dialog', { name: 'Export a harness' });
+export const importSheet = (p: Page): Locator => p.getByRole('dialog', { name: 'Import a harness' });
