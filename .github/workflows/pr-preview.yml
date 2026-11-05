@@ -80,7 +80,7 @@ jobs:
           while [ "$SECONDS" -lt 600 ]; do
             attempt=$((attempt + 1))
             set +e
-            LIST_JSON="$("$VERCEL" list "$VERCEL_PROJECT" --scope "$VERCEL_SCOPE" \
+            LIST_JSON="$(env -u GH_TOKEN "$VERCEL" list "$VERCEL_PROJECT" --scope "$VERCEL_SCOPE" \
               --environment preview --meta "githubCommitSha=${HEAD_SHA}" --json 2>"$ERR_FILE")"
             RC=$?
             set -e
@@ -88,7 +88,7 @@ jobs:
             if [ "$RC" -ne 0 ] || ! jq -e '.deployments | type == "array"' >/dev/null 2>&1 <<<"$LIST_JSON"; then
               FAILS=$((FAILS + 1))
               cat "$ERR_FILE" >&2 || true
-              if grep -qiE 'unauthori[sz]ed|forbidden|invalid token|not authorized|not authenticated|\b40[13]\b|scope' "$ERR_FILE"; then
+              if grep -qiE 'unauthori[sz]ed|forbidden|invalid token|not valid|not authorized|not authenticated|\b40[13]\b|scope.*(not|denied|invalid)' "$ERR_FILE"; then
                 echo "::error::The Vercel CLI failed on authentication or scope (exit ${RC})."
                 exit 1
               fi
@@ -134,7 +134,7 @@ jobs:
           fi
 
           ALIAS_HOST="pr-${PR_NUMBER}.${PREVIEW_DOMAIN}"
-          "$VERCEL" alias set "$DEPLOY_URL" "$ALIAS_HOST" --scope "$VERCEL_SCOPE"
+          env -u GH_TOKEN "$VERCEL" alias set "$DEPLOY_URL" "$ALIAS_HOST" --scope "$VERCEL_SCOPE"
 
           MARKER="<!-- bowerloom-pr-preview -->"
           BODY="${MARKER}
@@ -192,13 +192,17 @@ jobs:
           ALIAS_HOST="pr-${PR_NUMBER}.${PREVIEW_DOMAIN}"
 
           set +e
-          OUT="$("$VERCEL" alias rm "$ALIAS_HOST" --yes --scope "$VERCEL_SCOPE" 2>&1)"
+          OUT="$(env -u GH_TOKEN "$VERCEL" alias rm "$ALIAS_HOST" --yes --scope "$VERCEL_SCOPE" 2>&1)"
           RC=$?
           set -e
 
           if [ "$RC" -eq 0 ]; then
             echo "Removed ${ALIAS_HOST}."
-          elif grep -qiE 'not found|does not exist|no alias' <<<"$OUT"; then
+          elif grep -qiE 'scope|team|project|token|unauthori|forbidden|not valid' <<<"$OUT"; then
+            printf '%s\n' "$OUT" >&2
+            echo "::error::Removing ${ALIAS_HOST} failed on a scope, team, project or token error (exit ${RC})."
+            exit 1
+          elif grep -qiE 'not found|does not exist|no alias' <<<"$OUT" && grep -qF "$ALIAS_HOST" <<<"$OUT"; then
             echo "::notice::${ALIAS_HOST} is already gone."
           else
             printf '%s\n' "$OUT" >&2

@@ -22,3 +22,5 @@ The workflow is `.github/workflows/pr-preview.yml`. It needs the `VERCEL_TOKEN` 
 ## Accepted risk
 
 Anyone with write access to this repository can change the workflow on a branch. A changed workflow can read `VERCEL_TOKEN` and use the team token. Who owns the token is the owner's choice. The CLI install runs with install scripts off and in a step that holds no secret.
+
+The Vercel CLI runs with `GH_TOKEN` removed from its environment. Its dependencies can still read `VERCEL_TOKEN`, because the CLI needs it. A compromised dependency of the pinned CLI version could therefore use the team token. This risk stays.
