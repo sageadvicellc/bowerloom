@@ -77,7 +77,7 @@ Before you tick the boxes, read the whole review. For each tool it shows:
 
 An environment variable is a named value that a program reads when it starts. A value can change how a program starts. `NODE_OPTIONS` and `LD_PRELOAD` are two examples. Read each one.
 
-The app marks a variable that can change how a program starts. Two marks are possible. "This makes the program load extra code." is for names such as `NODE_OPTIONS` and `LD_PRELOAD`. "This sends the program's traffic through another host." is for the proxy names `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY`. The command line does not mark each name. It prints one line under the tools instead: "An environment value can change how a program starts or where its traffic goes. Read each one."
+The app marks a variable that can change how a program starts. Two marks are possible. "This makes the program load extra code." is for names such as `NODE_OPTIONS` and `LD_PRELOAD`. "This sends the program's traffic through another host." is for the proxy names `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY`. The names match in any letter case. The command line does not mark each name. It prints one line under the tools instead: "An environment value can change how a program starts or where its traffic goes. Read each one."
 
 The review also lists the files that can run: hooks, scripts, files with the run permission, files that start as programs, and files that hold the bytes of a program. The list is a guide. A text file can still hold commands.
 
