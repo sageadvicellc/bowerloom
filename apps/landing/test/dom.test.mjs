@@ -517,8 +517,10 @@ dom('the dark theme shows the dark painted frame, and the light one is never fet
   const { page, context } = await open({ viewport: { width: 1280, height: 800 }, colorScheme: 'dark' });
   const requests = [];
   page.on('request', request => { if (request.url().includes('/frame/')) requests.push(request.url()); });
+  const frame = page.waitForResponse(response => response.url().includes('/frame/frame-dark.webp'));
   await page.locator('[data-screenshot-slot="builder-graph"] .screenshot-enlarge').click();
   await page.waitForFunction(() => document.querySelector('.screenshot-dialog[open]'));
+  assert.equal((await frame).status(), 200, 'the dark frame file loads');
   await page.waitForTimeout(800);
   const source = await page.evaluate(() => getComputedStyle(document.querySelector('.screenshot-dialog[open] .screenshot-device'), '::after').borderImageSource);
   assert.match(source, /\/frame\/frame-dark\.webp/);

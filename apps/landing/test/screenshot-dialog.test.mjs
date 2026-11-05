@@ -196,6 +196,7 @@ test('the dialog is a clear box holding a column; the device is a painted frame 
   assert.match(after, /position: absolute; inset: 0;/);
   assert.match(after, /z-index: 1;/);
   assert.match(after, /pointer-events: none;/);
+  assert.match(after, /border-color: transparent;/, 'a frame image that fails to load leaves no solid border over the picture');
   assert.match(after, /border-image: var\(--frame\) var\(--cut-t\) var\(--cut-r\) var\(--cut-b\) var\(--cut-l\) \/ calc\(var\(--cut-t\) \* var\(--s\) \* 1px\) calc\(var\(--cut-r\) \* var\(--s\) \* 1px\) calc\(var\(--cut-b\) \* var\(--s\) \* 1px\) calc\(var\(--cut-l\) \* var\(--s\) \* 1px\) stretch;/);
   assert.match(css, /\.screenshot-scroll \{[^}]*position: relative;/, 'the picture is a layer under the frame');
   assert.match(css, /\.deco \{[^}]*pointer-events: none;/);
