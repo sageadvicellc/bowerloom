@@ -16,9 +16,9 @@ const sources = async () => {
   return Promise.all(names.map(async name => [name, await read('src/' + name)]));
 };
 
-test('the hero carries the revised 0.8 message: a tag, the nest headline, and one sentence that matches the README', () => {
+test('the hero carries the revised 0.8 message: a tag, the sewing headline, and one sentence that matches the README', () => {
   assert.equal(hero.Eyebrow, 'Open beta · macOS');
-  assert.equal(hero.H1, 'A cozy nest for your agents');
+  assert.equal(hero.H1, 'Sew a harness that you can use anywhere');
   assert.equal(hero.Body, 'Set up your skills, agents, tools, rules, and context once. Bowerloom tucks them into Claude Code and Codex.');
   assert.equal(hero['Results lead'], 'Each part is marked:');
   assert.deepEqual(hero.Results, ['Exact', 'Translated', 'Weakened', 'Absent']);
@@ -222,13 +222,13 @@ test('the page renders: both buttons go to the right place, and the command line
   } finally { await page.close(); }
 });
 
-test('the hero shows the tag, the nest headline, one sentence, the engine tags, the result chips, and the Builder screenshot', async () => {
+test('the hero shows the tag, the sewing headline, one sentence, the engine tags, the result chips, and the Builder screenshot', async () => {
   const page = await loadPage();
   try {
     const html = renderToStaticMarkup(createElement(page.hero.default));
     assert.match(html, /<p class="release-tag">[\s\S]*?Open beta · macOS<\/p>/, 'the label is a tag that adds the platform');
     assert.ok(!html.includes('class="eyebrow"'));
-    assert.match(html, /<h1 id="hero-title">A cozy nest for your agents<\/h1>/);
+    assert.match(html, /<h1 id="hero-title">Sew a harness that you can use anywhere<\/h1>/);
     assert.ok(html.includes(`<p class="hero-description">${hero.Body}</p>`));
     assert.equal((html.match(/class="release-tag-sparkle"/g) ?? []).length, 1, 'at most one sparkle');
     for (const name of engines.supported) assert.ok(html.includes(`<li>${name}</li>`), name);
@@ -278,7 +278,7 @@ test('the features section is one engine item with its screenshot, the steps are
     assert.equal((how.match(/<li>/g) ?? []).length, 4);
     assert.ok(how.includes('Go back to a save point') && how.includes('In the app, each save keeps a save point'));
     const engineHtml = renderToStaticMarkup(createElement(page.sections.EnginesSection));
-    assert.ok(engineHtml.indexOf('class="engine-nest"') > -1 && engineHtml.indexOf('class="engine-nest"') < engineHtml.indexOf('class="engine-list"'), 'a nest line sits over the engine tags');
+    assert.ok(engineHtml.indexOf('class="engine-lead"') > -1 && engineHtml.indexOf('class="engine-lead"') < engineHtml.indexOf('class="engine-list"'), 'a lead-in line sits over the engine tags');
     const app = await read('src/App.tsx');
     assert.ok(app.indexOf('<AppSection />') < app.indexOf('<EnginesSection />') && app.indexOf('<EnginesSection />') < app.indexOf('<CommandLineSection />'), 'engines follow the app features');
   } finally { await page.close(); }

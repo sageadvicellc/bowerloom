@@ -17,9 +17,8 @@
 .cinematic-theme :is(h1, h2, h3) { color: var(--ui-text); }
 .cinematic-theme :is(.site-footer p, .footer-note, nav a span) { color: var(--ui-muted); }
 
-.cinematic-theme :is(.site-header, .site-footer, .release-label) { border-color: var(--ui-border); }
+.cinematic-theme :is(.site-header, .site-footer) { border-color: var(--ui-border); }
 
-.cinematic-theme .release-label { background: var(--trellis-soft-accent-2); color: var(--ui-text); }
 .cinematic-theme :where(button, a, input, textarea, select):focus-visible {
   outline: 2px solid var(--ui-primary);
   outline-offset: 3px;
@@ -29,7 +28,7 @@
 .cinematic-theme .eyebrow { color: var(--trellis-link); }
 
 /* Founder-requested mono floor; heading and body type stay unchanged. */
-.cinematic-theme :is(.eyebrow, .release-label, .hero-note, .site-footer p, .footer-note) {
+.cinematic-theme :is(.eyebrow, .hero-note, .site-footer p, .footer-note) {
   font-size: var(--trellis-mono-label-size);
   line-height: 1.6;
 }
@@ -72,14 +71,12 @@
 @media (max-width: 1100px) {
   .cinematic-theme nav { gap: 20px; }
   .cinematic-theme .site-header { gap: 20px; }
-  .cinematic-theme .release-label { margin-left: 0; }
 }
 @media (max-width: 760px) {
   .site-header { height: auto; min-height: 75px; flex-wrap: wrap; padding-top: 20px; padding-bottom: 12px; }
   nav { order: 2; width: 100%; margin: 0; flex-wrap: wrap; gap: 0 20px; }
   nav > a { min-height: 44px; display: inline-flex; align-items: center; }
   nav > a:first-child { display: inline-flex; }
-  .release-label { display: inline-flex; margin-left: auto; padding: 6px 8px; font-size: 13px; }
   .product-section, .faq-section { padding: 36px 6%; }
   .product-section { display: block; }
   .product-section h2 { margin-bottom: 22px; }

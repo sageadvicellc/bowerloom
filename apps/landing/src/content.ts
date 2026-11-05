@@ -3,7 +3,7 @@ import { installAvailable, installCommand, repositoryUrl } from './release.ts';
 /**
  * Page copy for 0.8.0-beta.1. Backticks mark inline code.
  * The owner approved the wording on 2026-10-31 and revised the hero, the journey, and the step titles after the preview review.
- * The voice is warm and a little cute, built from the bowerbird, the bower, the nest, and the loom. Keep the wording. Change it only with the owner.
+ * The voice is warm and a little cute, built from the bowerbird, the bower, the loom, and a little sewing. Keep the wording. Change it only with the owner.
  */
 export const repository = repositoryUrl;
 const branch = `${repository}/blob/main`;
@@ -18,7 +18,7 @@ export const destinations = {
 
 export const hero = {
   "Eyebrow": "Open beta · macOS",
-  "H1": "A cozy nest for your agents",
+  "H1": "Sew a harness that you can use anywhere",
   "Body": "Set up your skills, agents, tools, rules, and context once. Bowerloom tucks them into Claude Code and Codex.",
   "Results lead": "Each part is marked:",
   "Results": ["Exact", "Translated", "Weakened", "Absent"],
@@ -71,7 +71,7 @@ export const commandLine = {
 export const engines = {
   heading: "Two engines now. Three in preview.",
   body: "This beta supports Claude Code and Codex. OpenCode, Pi, and DeepSeek Harness are preview engines. Bowerloom can read and remove all five. To install into a preview engine, set `BOWERLOOM_PREVIEW_ENGINES=1`.",
-  nestLine: "Pick the homes your harness will move into.",
+  lead: "Pick the engines you want to sew it into.",
   supported: ["Claude Code", "Codex"],
   preview: ["OpenCode", "Pi", "DeepSeek Harness"],
 } as const;

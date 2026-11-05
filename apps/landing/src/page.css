@@ -124,7 +124,7 @@ html:has(.screenshot-dialog[open]) { overflow: hidden; scrollbar-gutter: stable;
   .screenshot-open .screenshot-image { transition: none; }
 }
 
-/* Hero spacing on desktop. The banner height is capped in homepage-banner.css, so the tag and the headline sit on the first screen. */
+/* Hero spacing on desktop. The banner is 70svh tall (homepage-banner.css), and the tag and the headline follow it. */
 @media (min-width: 761px) {
   .normal-site .normal-hero .hero-copy { padding-top: 20px; }
   .normal-site .normal-hero h1 { margin: 20px 0 16px; }

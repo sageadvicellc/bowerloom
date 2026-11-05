@@ -16,9 +16,5 @@
 @media (max-width: 1280px) {
   .site-header .desktop-navigation { display: none; }
   .site-header .mobile-menu-toggle { display: inline-flex; margin-left: auto; order: 3; }
-  .site-header .release-label { margin-left: auto; }
   .cinematic-theme .site-header, .site-header { flex-wrap: nowrap; height: 76px; min-height: 76px; padding-block: 0; gap: 16px; }
-}
-@media (max-width: 760px) {
-  .site-header .release-label { display: none; }
 }

@@ -74,9 +74,6 @@ export default function App() {
         </a>
         <SiteNavigation />
         <ThemeControl />
-        <span className="release-label">
-          <span /> {readerRelease.label}
-        </span>
       </header>
       <main id="main" tabIndex={-1}>
         <Hero />

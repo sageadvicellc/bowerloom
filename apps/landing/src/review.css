@@ -1,4 +1,4 @@
-/* Landing review pass. A cozy, warm layer on the existing Rose Conservatory and After Hours palettes: soft shadows, rounded tags, and one small sparkle.
+/* Landing review pass. A warm layer on the existing Rose Conservatory and After Hours palettes: soft shadows, rounded tags, and one small sparkle.
    Same fonts, same colors. Everything here reads the existing tokens. */
 
 /* Hero: the picture leads at full height, then the tag, the headline, two short lines, the buttons, and the app screenshot. */
@@ -43,7 +43,7 @@
 @media (max-width: 760px) { .steps { grid-template-columns: minmax(0, 1fr); } }
 
 /* Engines: rounded tags that sit under the app features. */
-.engine-nest { margin: 0 0 14px; font: italic 500 20px/1.4 var(--trellis-reading-font); color: var(--ui-primary); }
+.engine-lead { margin: 0 0 14px; font: italic 500 20px/1.4 var(--trellis-reading-font); color: var(--ui-primary); }
 .engine-list li { box-shadow: 0 1px 2px rgb(55 58 50 / .06), 0 8px 18px -12px rgb(55 58 50 / .3); }
 [data-theme='dark'] .engine-list li { box-shadow: 0 1px 2px rgb(0 0 0 / .3), 0 8px 18px -12px rgb(0 0 0 / .6); }
 

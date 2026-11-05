@@ -201,3 +201,32 @@ dom('a double press still returns to idle once, after the last press', async () 
   await page.waitForFunction(() => !document.querySelector('.copy-button').innerText.includes('Copied'), null, { timeout: 5000 });
   await context.close();
 });
+
+dom('the banner is 70% of the view height at phone, tablet, and desktop widths, and the picture covers the whole banner at scroll 0 and at 300 px, with and without motion', async () => {
+  const measure = page => page.evaluate(() => {
+    const banner = document.querySelector('.homepage-banner').getBoundingClientRect();
+    const img = document.querySelector('.homepage-banner > img').getBoundingClientRect();
+    return { banner: { top: banner.top, bottom: banner.bottom, left: banner.left, right: banner.right, height: banner.height }, img: { top: img.top, bottom: img.bottom, left: img.left, right: img.right }, transform: getComputedStyle(document.querySelector('.homepage-banner > img')).transform };
+  });
+  const covers = (m, label) => {
+    assert.ok(m.img.top <= m.banner.top + 0.5, `${label}: the picture reaches the top of the banner (${m.img.top} vs ${m.banner.top})`);
+    assert.ok(m.img.bottom >= m.banner.bottom - 0.5, `${label}: the picture reaches the bottom of the banner (${m.img.bottom} vs ${m.banner.bottom})`);
+    assert.ok(m.img.left <= m.banner.left + 0.5 && m.img.right >= m.banner.right - 0.5, `${label}: the picture spans the banner width`);
+  };
+  for (const [width, height] of [[390, 844], [834, 1194], [1024, 768], [1440, 900]]) {
+    for (const reducedMotion of ['no-preference', 'reduce']) {
+      const { page, context } = await open({ viewport: { width, height }, reducedMotion });
+      await page.waitForSelector('.homepage-banner[data-artwork="ready"]');
+      const start = await measure(page);
+      assert.ok(Math.abs(start.banner.height - height * 0.7) < 1, `${width}x${height}: banner ${start.banner.height}`);
+      covers(start, `${width}x${height} ${reducedMotion} at scroll 0`);
+      await page.evaluate(() => window.scrollTo(0, 300));
+      await page.waitForTimeout(400);
+      const scrolled = await measure(page);
+      covers(scrolled, `${width}x${height} ${reducedMotion} at 300 px`);
+      if (reducedMotion === 'reduce') assert.equal(scrolled.transform, 'none', `${width}x${height}: no offset under reduced motion`);
+      else assert.notEqual(scrolled.transform, 'none', `${width}x${height}: the scroll moves the picture`);
+      await context.close();
+    }
+  }
+});

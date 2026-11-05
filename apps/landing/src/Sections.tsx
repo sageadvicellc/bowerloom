@@ -85,7 +85,7 @@ export function EnginesSection() {
     <div className="band-inner">
       <h2 id="engines-title">{engines.heading}</h2>
       <p className="band-lede"><ProductText>{engines.body}</ProductText></p>
-      <p className="engine-nest">{engines.nestLine}</p>
+      <p className="engine-lead">{engines.lead}</p>
       <ul className="engine-list" aria-label="Engines">
         {engines.supported.map(name => <li key={name} data-support="supported"><span className="engine-name">{name}</span><span className="engine-status">Supported</span></li>)}
         {engines.preview.map(name => <li key={name} data-support="preview"><span className="engine-name">{name}</span><span className="engine-status">Preview</span></li>)}
