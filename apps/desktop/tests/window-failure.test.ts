@@ -119,7 +119,9 @@ test('the real engine service is not idle while a call runs, and is idle after: 
   const service = createEngineService({ home, stateRoot: join(home, '.local', 'state', 'bowerloom'), chooseFolder: () => new Promise<string | null>(resolve => { open = resolve; }), confirm: async () => true, who: 'tester' });
   let idle = false;
   await service.idle();
+  assert.equal(service.busy(), false, 'no call: not busy');
   const call = service.chooseFolder();
+  assert.equal(service.busy(), true, 'a call is queued the moment it is made: busy reads true at once');
   const waiting = service.idle().then(() => { idle = true; });
   await settle(); await settle();
   assert.equal(idle, false, 'a running call keeps the engine busy');
@@ -128,6 +130,7 @@ test('the real engine service is not idle while a call runs, and is idle after: 
   open(null);
   await call; await second; await waiting;
   assert.equal(idle, true);
+  assert.equal(service.busy(), false, 'busy falls with idle');
   let again = false;
   await service.idle().then(() => { again = true; });
   assert.equal(again, true, 'an idle engine answers at once');

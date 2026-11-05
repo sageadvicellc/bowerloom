@@ -339,6 +339,8 @@ export interface EngineService {
    * so a write in progress is never cut off. It never rejects. Not a call of the window.
    */
   idle(): Promise<void>;
+  /** True while a call runs or waits in the serial queue. The same fact as `idle`, read at once: a quit that finds it false is not held. */
+  busy(): boolean;
 }
 
 /**
@@ -371,6 +373,8 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
   const plans = new ShownPlans();
   const reportCopies = createReportCopies(deps.reportCopies ?? tmpdir);
   let chain: Promise<unknown> = Promise.resolve();
+  /** Calls that are running or waiting in the serial queue. */
+  let pending = 0;
   let count = 0;
 
   /**
@@ -394,8 +398,11 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
 
   /** One call at a time, in the order they came. */
   const serial = <T>(run: () => Promise<T>): Promise<T> => {
+    pending += 1;
     const next = chain.then(run, run);
     chain = next.catch(() => undefined);
+    // The count falls when the call has ended, however it ended, so `busy` and `idle` agree.
+    chain = chain.then(() => { pending -= 1; });
     return next;
   };
   const folderOf = (id: unknown): Folder => {
@@ -1217,6 +1224,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     discardBundle: bundleId => serial(() => share.discardBundle(bundleId)),
     close: () => share.close(),
     clearReportCopies: () => reportCopies.clear(),
+    busy: () => pending > 0,
     idle: async () => { let seen: Promise<unknown>; do { seen = chain; await seen; } while (seen !== chain); },
   };
 }

@@ -10,13 +10,15 @@ import { DESKTOP } from './support.js';
 const settle = (): Promise<void> => new Promise(resolve => setImmediate(resolve));
 const later = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
 
-function harness(idle: (() => Promise<void>) | null, options: { waitMs?: number; boxAfterMs?: number; ending?: boolean } = {}) {
+function harness(idle: (() => Promise<void>) | null, options: { waitMs?: number; boxAfterMs?: number; ending?: boolean; busy?: boolean; backstopMs?: number } = {}) {
   const events: string[] = [], logs: string[] = [];
   let prevented = 0;
   let handler!: ReturnType<typeof quitHold>;
   handler = quitHold({
-    engine: idle === null ? null : { idle },
+    engine: idle === null ? null : { idle, busy: () => options.busy !== false },
     ending: () => options.ending === true,
+    exit: code => { events.push(`exit:${code}`); },
+    ...(options.backstopMs === undefined ? {} : { backstopMs: options.backstopMs }),
     showBox: words => { events.push(`box:${words.title}`); },
     // app.quit() runs before-quit again.
     quit: () => { events.push('quit'); handler({ preventDefault: () => { prevented += 1; events.push('prevented-again'); } }); },
@@ -24,8 +26,9 @@ function harness(idle: (() => Promise<void>) | null, options: { waitMs?: number;
     ...(options.waitMs === undefined ? {} : { waitMs: options.waitMs }),
     ...(options.boxAfterMs === undefined ? {} : { boxAfterMs: options.boxAfterMs }),
   });
+  const hold = handler;
   const press = (): void => { handler({ preventDefault: () => { prevented += 1; events.push('prevented'); } }); };
-  return { events, logs, press, prevented: () => prevented };
+  return { events, logs, press, hold, prevented: () => prevented };
 }
 
 test('the words of the box say a save is finishing, name the bound, and say what happens after', () => {
@@ -94,7 +97,7 @@ test('a box that cannot be shown is logged and the wait goes on', async () => {
   let release: () => void = () => undefined;
   let handler!: ReturnType<typeof quitHold>;
   handler = quitHold({
-    engine: { idle: () => new Promise<void>(resolve => { release = resolve; }) }, ending: () => false, boxAfterMs: 5, waitMs: 5_000,
+    engine: { idle: () => new Promise<void>(resolve => { release = resolve; }), busy: () => true }, ending: () => false, boxAfterMs: 5, waitMs: 5_000,
     showBox: () => { throw new Error('no box'); }, quit: () => { events.push('quit'); handler({ preventDefault: () => { events.push('again'); } }); }, log: text => { logs.push(text); },
   });
   handler({ preventDefault: () => { events.push('prevented'); } });
@@ -114,9 +117,74 @@ test('a quit that was cancelled afterwards (the close question said Keep editing
 
 test('main.ts wires before-quit to the hold, with the engine of the launch and the failed-window mark', () => {
   const main = readFileSync(join(DESKTOP, 'main/main.ts'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-  assert.match(main, /app\.on\('before-quit', quitHold\(\{/);
-  const block = main.slice(main.indexOf("app.on('before-quit'"), main.indexOf('function createWindow'));
+  assert.match(main, /const quitHeld = quitHold\(\{/);
+  assert.match(main, /app\.on\('before-quit', quitHeld\)/);
+  const block = main.slice(main.indexOf('const quitHeld'), main.indexOf('function createWindow'));
   assert.match(block, /get engine\(\) \{ return engineForExit; \}/);
   assert.match(block, /ending: \(\) => closeEnding/);
   assert.match(block, /quit: \(\) => app\.quit\(\)/);
+});
+
+test('an idle engine is never held: no preventDefault, no box, no quit of its own (the signal quit of the built app depends on this)', async () => {
+  const h = harness(async () => undefined, { busy: false });
+  h.press(); await settle();
+  assert.deepEqual(h.events, [], 'the quit goes on by itself');
+  assert.equal(h.prevented(), 0);
+});
+
+test('backstop: a held quit that closes every window and never reaches will-quit ends the app with exit(0) after the backstop time, and logs it', async () => {
+  const h = harness(async () => undefined, { backstopMs: 40 });
+  h.press(); await settle(); await settle();
+  assert.deepEqual(h.events, ['prevented', 'quit']);
+  h.hold.windowsClosed();
+  assert.equal(h.events.filter(e => e === 'quit').length, 2, 'the windows are closed and will-quit has not come: the quit is asked once more');
+  await later(20);
+  assert.equal(h.events.includes('exit:0'), false, 'not before the time');
+  await later(50);
+  assert.equal(h.events.at(-1), 'exit:0');
+  assert.match(h.logs.at(-1)!, /did not reach will-quit in 0\.04 seconds, so the app exits now/);
+});
+
+test('a quit that began as a signal: after the windows close without will-quit, the second ask goes through and is not held again', async () => {
+  const h = harness(async () => undefined);
+  h.press(); await settle(); await settle();
+  h.hold.windowsClosed();
+  assert.deepEqual(h.events, ['prevented', 'quit', 'quit']);
+  assert.equal(h.prevented(), 1, 'only the first quit was stopped');
+});
+
+test('backstop: it does not fire on a normal quit that reaches will-quit', async () => {
+  const h = harness(async () => undefined, { backstopMs: 30 });
+  h.press(); await settle(); await settle();
+  h.hold.windowsClosed();
+  h.hold.reachedWillQuit();
+  await later(80);
+  assert.equal(h.events.some(e => e.startsWith('exit')), false);
+  assert.deepEqual(h.logs, []);
+});
+
+test('backstop: it does not fire for a quit that was never held, or for a held quit that a window cancelled (the window stays open, so no window-all-closed)', async () => {
+  const idle = harness(async () => undefined, { busy: false, backstopMs: 20 });
+  idle.press(); idle.hold.windowsClosed();
+  const cancelled = harness(async () => undefined, { backstopMs: 20 });
+  cancelled.press(); await settle(); await settle();
+  await later(70);
+  assert.equal(idle.events.some(e => e.startsWith('exit')), false);
+  assert.equal(cancelled.events.some(e => e.startsWith('exit')), false, 'Keep editing keeps the app and its drafts');
+});
+
+test('backstop: a new quit cancels the timer of the old one', async () => {
+  const h = harness(async () => undefined, { backstopMs: 40 });
+  h.press(); await settle(); await settle();
+  h.hold.windowsClosed();
+  h.press(); await settle(); await settle();
+  await later(80);
+  assert.equal(h.events.some(e => e.startsWith('exit')), false);
+});
+
+test('main.ts wires will-quit and window-all-closed to the hold, and the exit to app.exit', () => {
+  const main = readFileSync(join(DESKTOP, 'main/main.ts'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  assert.match(main, /app\.on\('will-quit', quitHeld\.reachedWillQuit\)/);
+  assert.match(main, /app\.on\('window-all-closed', quitHeld\.windowsClosed\)/);
+  assert.match(main, /exit: code => app\.exit\(code\)/);
 });

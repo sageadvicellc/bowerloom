@@ -19,8 +19,8 @@ export const QUIT_WORDS = Object.freeze({
 });
 
 export interface QuitHoldDeps {
-  /** The engine's idle signal, or null for a launch that has no engine calls (nothing can be writing). Read at each quit. */
-  readonly engine: { idle(): Promise<void> } | null;
+  /** The engine's idle signal and its synchronous check, or null for a launch that has no engine calls (nothing can be writing). Read at each quit. */
+  readonly engine: { idle(): Promise<void>; busy(): boolean } | null;
   /** True once the app is ending on its own (a window that failed, main/window-failure.ts). That path has its own bound, so this one stands aside. */
   readonly ending: () => boolean;
   /** Shows the native box without waiting for an answer. It may throw when no box can be shown. */
@@ -31,12 +31,25 @@ export interface QuitHoldDeps {
   readonly log?: (text: string, cause?: unknown) => void;
   readonly waitMs?: number;
   readonly boxAfterMs?: number;
+  /** Backstop: ends the app at once (`app.exit(0)`). Used only when a quit that the hold started has not reached `will-quit` in `backstopMs`. */
+  readonly exit?: (code: number) => void;
+  /** How long the quit that the hold started may take to reach `will-quit`. Default QUIT_BACKSTOP_MS. */
+  readonly backstopMs?: number;
 }
 
+/** The handler of `before-quit`; `reachedWillQuit` is for the `will-quit` event and stops the backstop; `windowsClosed` is for `window-all-closed` and starts it. */
+export type QuitHold = ((event: { preventDefault(): void }) => void) & { readonly reachedWillQuit: () => void; readonly windowsClosed: () => void };
+
+/** After the hold lets a held quit go on and every window is closed, the app must reach `will-quit` within this time, or the backstop ends it. */
+export const QUIT_BACKSTOP_MS = 5_000;
+
 /** The handler of `before-quit`. */
-export function quitHold(deps: QuitHoldDeps): (event: { preventDefault(): void }) => void {
+export function quitHold(deps: QuitHoldDeps): QuitHold {
   const log = deps.log ?? ((text, cause) => { console.error(text, cause === undefined ? '' : cause instanceof Error ? cause.message : String(cause)); });
   let letThrough = false, holding = false;
+  let backstop: NodeJS.Timeout | undefined;
+  /** True from the moment the hold lets a quit go on until that quit reaches will-quit (or a new quit starts). */
+  let continuing = false;
 
   const pause = (ms: number): { done: Promise<'late'>; stop: () => void } => {
     let timer: NodeJS.Timeout | undefined;
@@ -56,14 +69,40 @@ export function quitHold(deps: QuitHoldDeps): (event: { preventDefault(): void }
     } finally { rest.stop(); }
   }
 
-  return event => {
+  const handler = (event: { preventDefault(): void }): void => {
     // The quit this hold started comes back here once; the next quit holds again.
     if (letThrough) { letThrough = false; return; }
     const engine = deps.engine;
     if (engine === null || deps.ending()) return;
+    // An idle engine has nothing to finish, so the quit is never held: a held quit that is re-started later does not always end the app (a quit that began as a signal).
+    if (!engine.busy()) return;
     event.preventDefault();
     if (holding) return;
+    continuing = false; clearTimeout(backstop);
     holding = true;
-    void wait(engine).finally(() => { holding = false; letThrough = true; deps.quit(); });
+    void wait(engine).finally(() => {
+      holding = false; letThrough = true;
+      continuing = true;
+      deps.quit();
+    });
   };
+  /**
+   * Every window is closed. For a quit that the hold let go on, will-quit must follow at once. When the held quit began as a signal (SIGTERM), Electron does not go on after the
+   * windows close: it emits window-all-closed and waits. So the quit is asked once more here, and it goes on. If it does not within the backstop time, the app would stay open with no window, so the
+   * backstop ends it. A quit that a window cancelled (Keep editing) never gets here, because that window stays open.
+   */
+  const windowsClosed = (): void => {
+    if (!continuing) return;
+    clearTimeout(backstop);
+    backstop = setTimeout(() => {
+      continuing = false; letThrough = false;
+      log(`Bowerloom: the quit did not reach will-quit in ${(deps.backstopMs ?? QUIT_BACKSTOP_MS) / 1000} seconds, so the app exits now.`);
+      (deps.exit ?? (() => undefined))(0);
+    }, deps.backstopMs ?? QUIT_BACKSTOP_MS);
+    backstop.unref();
+    // Found by experiment: Electron closed the windows of this quit and then emitted window-all-closed instead of going on to will-quit. A second quit from here goes on.
+    letThrough = true;
+    deps.quit();
+  };
+  return Object.assign(handler, { reachedWillQuit: () => { continuing = false; clearTimeout(backstop); }, windowsClosed });
 }

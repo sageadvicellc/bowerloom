@@ -18,7 +18,7 @@ import { reportProblem, showUsageLog } from './diagnostics-dialogs.js';
 import type { DialogDeps } from './diagnostics-dialogs.js';
 import { execFileRunner } from '../../../packages/diagnostics/src/index.js';
 import { withSamplePreviewEngines } from '../shared/engine/sample-switch.js';
-import { e2eHidden, leaveDock, revealWindow, windowOptions } from './window-options.js';
+import { e2eHidden, leaveDock, quietDialogs, revealWindow, windowOptions } from './window-options.js';
 import { windowFailure } from './window-failure.js';
 import { bringForBox, closeGuard } from './close-guard.js';
 import { quitHold } from './quit-hold.js';
@@ -37,6 +37,8 @@ const argv = process.argv.slice(1);
 const launch = launchOf(argv);
 // A test start with --e2e-hidden shows no window and no Dock icon (main/window-options.ts). It changes nothing else. It comes first so that a refused test start shows no icon either.
 leaveDock(app, argv);
+// A hidden start shows no native box: every box writes to stderr and answers with the choice that keeps data (main/window-options.ts). It comes before any box can show.
+quietDialogs(dialog, argv, text => { process.stderr.write(text); });
 // app.exit does not stop this script, so process.exit(2) ends it on the spot: nothing below runs for a refused start.
 if (launch.refusal !== null) { process.stderr.write(`${launch.refusal}\n`); app.exit(2); process.exit(2); }
 // The app on the person's own folders keeps Electron's normal data folder, which lasts between starts. The made-up launch (the sample) writes nothing to the real app data,
@@ -100,7 +102,7 @@ const windowEnded = windowFailure({
 function windowFailed(error: Error, title: string): Promise<void> { return windowEnded(error, title); }
 
 // A quit while the engine works (an import or an export writing) waits for it, up to a bound, with a box (main/quit-hold.ts).
-app.on('before-quit', quitHold({
+const quitHeld = quitHold({
   get engine() { return engineForExit; },
   ending: () => closeEnding,
   showBox: words => {
@@ -108,7 +110,12 @@ app.on('before-quit', quitHold({
     void (window === null ? dialog.showMessageBox(options) : dialog.showMessageBox(window, options)).catch((error: unknown) => { console.error('Bowerloom: the box about a save that is finishing failed.', error instanceof Error ? error.message : String(error)); });
   },
   quit: () => app.quit(),
-}));
+  // The backstop: a quit that the hold started and that never reached will-quit ends here. app.exit skips will-quit and quit, but the process-exit hooks still run.
+  exit: code => app.exit(code),
+});
+app.on('before-quit', quitHeld);
+app.on('will-quit', quitHeld.reachedWillQuit);
+app.on('window-all-closed', quitHeld.windowsClosed);
 
 function createWindow(): void {
   window = new BrowserWindow({
