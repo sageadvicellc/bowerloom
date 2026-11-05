@@ -92,7 +92,7 @@ function snapshot(root: string): Record<string, string> {
 }
 
 interface ExportBody { approvalRequired: boolean; code: string; revision: string; plan: { format: string; harness: string; file: string; bytes: number; revision: string; acknowledge: string | null; summary: Summary; bundleSha256: string; replaces: { bytes: number; modified: string } | null } }
-interface Summary { harness: string; counts: Record<string, number>; tools: { name: string; kind: string; runsCode: boolean; command?: string; host?: string; env?: { name: string; value: string }[]; headers?: { name: string; value: string }[]; path?: string }[]; codeFiles: { path: string; why: string }[]; secrets: { kind: string; name: string; sinks: { tool: string; field: string }[] }[]; notes: { name: string }[]; foreignPaths: { path: string; line?: number }[] }
+interface Summary { harness: string; counts: Record<string, number>; tools: { name: string; kind: string; runsCode: boolean; command?: string; host?: string; hiddenFields?: string[]; env?: { name: string; value: string }[]; headers?: { name: string; value: string }[]; path?: string }[]; codeFiles: { path: string; why: string }[]; secrets: { kind: string; name: string; sinks: { tool: string; field: string }[] }[]; notes: { name: string }[]; foreignPaths: { path: string; line?: number }[] }
 interface ImportBody { approvalRequired: boolean; revision: string; plan: { format: string; harness: string; folder: string; file: string; summary: Summary; changes: { path: string; action: string }[]; revision: string; acknowledge: string | null; bundleSha256: string; makesEmptyHarness: boolean } }
 
 /** Exports the harness of `w.src`: plans (exit 3), then approves. Returns the revision. */
@@ -980,4 +980,37 @@ test('the plan shows a server environment, its headers and the path of its url w
   const imp = bl(w, ['import', w.out], w.dst).stdout;
   assert.ok(imp.includes(`env LD_PRELOAD=${preload}`));
   assert.ok(imp.includes(`reaches remote.example.com${long}`));
+});
+
+test('the plan names the engine settings a tool carries that it does not list, and notes that an environment value can change how a program starts', t => {
+  const w = world(t);
+  put(w.src, richFiles({ 'mcp.json': json({ servers: [
+    { name: 'local', transport: 'stdio', command: 'tool', timeout: 5000, 'x-claude-code': { note: 'kept' }, env: { NODE_OPTIONS: '--require ./hook.js' } },
+    { name: 'plain', transport: 'http', url: 'https://plain.example.com/mcp' },
+  ] }) }));
+  const human = bl(w, ['export', '--output', w.out], w.src).stdout;
+  const local = human.slice(human.indexOf('MCP server local'), human.indexOf('MCP server plain'));
+  const line = local.split('\n').find(l => l.includes('Carries engine settings'))!;
+  assert.ok(line, 'the line is under the tool');
+  assert.match(line, /^ {4}Carries engine settings that are not listed here: [a-z0-9-]+(?:, [a-z0-9-]+)*\.$/);
+  assert.ok(line.includes('timeout') && line.includes('x-claude-code'), line);
+  assert.match(human, /An environment value can change how a program starts or where its traffic goes\./);
+  const plain = human.split('\n').find(l => l.includes('MCP server plain'))!;
+  assert.ok(plain);
+  const after = human.slice(human.indexOf(plain) + plain.length).split('\n')[1] ?? '';
+  assert.doesNotMatch(after, /Carries engine settings/, 'a tool with nothing hidden has no such line');
+  const hooks = human.split('\n').filter(l => l.includes('Carries engine settings'));
+  assert.ok(hooks.length >= 2, 'the hook of the rich harness carries a timeout too');
+  const tools = parse<ExportBody>(bl(w, ['export', '--output', w.out, '--json'], w.src).stdout).plan.summary.tools;
+  assert.ok(tools.find(x => x.name === 'local')!.hiddenFields!.includes('timeout'));
+  assert.equal(tools.find(x => x.name === 'plain')!.hiddenFields, undefined);
+  // No env value: no note.
+  put(w.src, { 'mcp.json': json({ servers: [{ name: 'plain', transport: 'http', url: 'https://plain.example.com/mcp' }] }) });
+  assert.doesNotMatch(bl(w, ['export', '--output', w.out], w.src).stdout, /An environment value can change/);
+  // The import plan prints the same lines.
+  put(w.src, { 'mcp.json': json({ servers: [{ name: 'local', transport: 'stdio', command: 'tool', timeout: 5000, env: { LD_PRELOAD: 'libx.so' } }] }) });
+  exportOut(w);
+  const imp = bl(w, ['import', w.out], w.dst).stdout;
+  assert.match(imp, /Carries engine settings that are not listed here: [^\n]*timeout/);
+  assert.match(imp, /An environment value can change how a program starts/);
 });

@@ -115,6 +115,7 @@ The Overview is the first screen after the read. It shows every place Bowerloom 
 
 - A place under your home folder marked **In Bowerloom** has a harness, and **Open in builder** opens it. Every other place has **Choose this folder**. It asks you to pick that folder. If you pick another, the app says "That is not the folder shown" and adds nothing.
 - A place marked **Not in Bowerloom yet** has files but no harness. A folder outside your home folder always reads this way, even if it holds a harness.
+- A folder that already holds a harness that Bowerloom has not opened gets a place of its own, named after the harness with **(Bowerloom)** added. It has **Choose this folder**, like any place the app has not opened. If the files of that harness cannot be read, the place says "Bowerloom could not read this harness."
 - Select a part to see what it uses, what uses it, and the other places where it is found. A part that runs code says so.
 - Use **Graph or list** to switch the view. The arrow keys move, Enter selects, and Escape clears.
 - The Overview is read-only. It changes no file. Open a place in the builder to change it.

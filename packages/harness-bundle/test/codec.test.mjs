@@ -491,4 +491,10 @@ test('a server id that is not the name the row shows is listed as hidden; the sa
   assert.deepEqual(mcpHiddenFields({ ...base, id: 'docs' }), []);
   assert.deepEqual(mcpHiddenFields({ ...base, id: 'docs-2' }), ['id']);
   assert.deepEqual(mcpHiddenFields({ ...base, id: 'docs-2', timeout: 3 }), ['id', 'timeout']);
+  // A hook: the id, the event and the command are drawn, so none of the three is listed. Only the fields the loader requires or keeps besides them are.
+  const hookMap = hook => smallMap({ hooks: 'hooks.json' }, { 'hooks.json': json({ hooks: [hook] }) });
+  const { tools } = inspectBundle((await bundleOf(hookMap({ id: 'on-edit', event: 'PostToolUse', command: 'true', strength: 'advisory' }))).decoded);
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'on-edit');
+  assert.deepEqual(tools[0].hiddenFields, ['strength'], 'the id, the event and the command are shown, so only the strength is listed');
 });
