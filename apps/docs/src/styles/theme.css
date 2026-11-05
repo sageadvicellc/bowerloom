@@ -1,6 +1,7 @@
 @import 'tailwindcss';
 @import 'fumadocs-ui/css/neutral.css';
 @import 'fumadocs-ui/css/preset.css';
+@import './visuals.css';
 @source '../components';
 @font-face{font-family:Newsreader;src:url('/fonts/newsreader/roman.ttf') format('truetype');font-weight:200 800;font-style:normal;font-display:swap}
 @font-face{font-family:Newsreader;src:url('/fonts/newsreader/italic.ttf') format('truetype');font-weight:200 800;font-style:italic;font-display:swap}

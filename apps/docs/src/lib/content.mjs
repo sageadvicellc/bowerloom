@@ -5,6 +5,7 @@ import {releasePresentation} from '../../../landing/src/release.ts';
 import {readRelease, expandRelease, releaseReference} from './release.mjs';
 import {missingLegacyAliases} from './html-ids.mjs';
 import {sourcePaths} from './build-paths.mjs';
+import {applyVisuals, readVisualManifest} from './visuals.mjs';
 import legacy from './legacy-routes.json' with {type:'json'};
 
 const contentRoot = sourcePaths.content;
@@ -68,9 +69,17 @@ export function getDocuments() {
   // One frozen content snapshot per static build; preview serves that build.
   return documentPromise ??= readDocuments();
 }
+export function createDocsRenderer() {
+  return createMarkdownProcessor({syntaxHighlight:'shiki',smartypants:false,shikiConfig:{themes:{light:'github-light',dark:'github-dark'},defaultColor:false}});
+}
+// A visual line becomes figure markup for the page and plain text for the Markdown routes, llms files, and search.
+export function prepareVisualSource(resolved,{file,manifest}) {
+  return {htmlSource:applyVisuals(resolved,{file,manifest,mode:'html'}),text:applyVisuals(resolved,{file,manifest,mode:'text'})};
+}
 async function readDocuments() {
   const release = await readRelease();
-  const renderer = await createMarkdownProcessor({syntaxHighlight:'shiki',smartypants:false,shikiConfig:{themes:{light:'github-light',dark:'github-dark'},defaultColor:false}});
+  const manifest = await readVisualManifest();
+  const renderer = await createDocsRenderer();
   const documents=[];
   for(const file of await collect(contentRoot)) {
     const raw = await readFile(new URL(file,contentRoot),'utf8');
@@ -82,13 +91,14 @@ async function readDocuments() {
     const url = slug==='404'?'/docs/404.html':'/docs/'+(slug?slug+'/':'');
     const resolved = normalizeNotices(expandRelease(content,release)).trim()+'\n';
     if(/\/Users\/|file:\/\/|BEGIN PRIVATE KEY|<script\b|\bon(?:click|error|load)\s*=/i.test(resolved))throw new Error(`Unsafe or private documentation content: ${file}`);
-    const rendered = await renderer.render(resolved);
-    const markdown = `# ${meta.title}\n\n${meta.description?meta.description+'\n\n':''}Canonical page: https://bowerloom.ai${url}\n\n${releaseReference(release)}\n\n${resolved}`;
+    const {htmlSource,text:resolvedText} = prepareVisualSource(resolved,{file,manifest});
+    const rendered = await renderer.render(htmlSource);
+    const markdown = `# ${meta.title}\n\n${meta.description?meta.description+'\n\n':''}Canonical page: https://bowerloom.ai${url}\n\n${releaseReference(release)}\n\n${resolvedText}`;
     const old = legacy.builtRows.find(row=>'/docs/'+row.path.replace(/index\.html$/,'')===url);
     const aliases = missingLegacyAliases(old?.ids??[],rendered.code);
     const group = meta.section ?? knownGroups.find(([,slugs])=>slugs.includes(slug||'index'))?.[0] ?? (slug.includes('/')?slug.split('/')[0].replaceAll('-',' '):'More guides');
     documents.push({file,slug,url,title:meta.title,description:meta.description??'',group,order:Number.isFinite(meta.order)?meta.order:100,
-      markdown,body:resolved,html:rendered.code,headings:rendered.metadata.headings,aliases,copy:pairedCopy(markdown),
+      markdown,body:resolvedText,html:rendered.code,headings:rendered.metadata.headings,aliases,copy:pairedCopy(markdown),
       contentHash:digest(markdown),markdownUrl:slug==='404'?null:'/docs/'+(slug||'index')+'.md',release:{version:release.version,statusLabel:releasePresentation(release).label,reference:releaseReference(release)},hidden:slug==='404'||meta.compatibility===true});
   }
   const urls=new Set();for(const doc of documents){if(urls.has(doc.url))throw new Error('Duplicate document route.');urls.add(doc.url);}

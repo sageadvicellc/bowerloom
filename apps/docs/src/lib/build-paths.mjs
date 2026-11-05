@@ -3,7 +3,7 @@
 // the original docs source root. Direct Node checks retain their source URL.
 export function documentationSources(moduleUrl,configuredRoot) {
   const root=configuredRoot?new URL(configuredRoot):new URL('../../',moduleUrl);
-  return {release:new URL('../../release/beta.json',root),content:new URL('src/content/docs/',root)};
+  return {release:new URL('../../release/beta.json',root),content:new URL('src/content/docs/',root),visuals:new URL('src/visuals/manifest.json',root),publicVisuals:new URL('public/visuals/',root)};
 }
 export const sourcePaths=documentationSources(import.meta.url,
   typeof __BOWERLOOM_DOCS_SOURCE_ROOT__==='string'?__BOWERLOOM_DOCS_SOURCE_ROOT__:undefined);
