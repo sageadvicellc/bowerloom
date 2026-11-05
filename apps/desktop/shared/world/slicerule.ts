@@ -50,39 +50,6 @@ export function countMatches(rule: SliceRule, seeds: readonly string[], pages: r
   return matchPages(rule, seeds, pages).size;
 }
 
-/** The pages of a matched set, in the order of the page list. */
-export function selectPages(matched: ReadonlySet<string>, pages: readonly WikiPage[]): WikiPage[] {
-  return pages.filter(p => matched.has(p.id));
-}
-
-/**
- * A rough count of the tokens (the small pieces of text a model reads) in a set of pages.
- * PLACEHOLDER: spec 6.9 gives no formula. This sums ceil(bytes / 4) per page. The real source of the estimate is the 0.7 estimator in
- * packages/context-slices/src/estimate.ts. It is not imported here, so the prototype stays free of it.
- */
-export function estimateTokens(pages: readonly WikiPage[]): number {
-  let total = 0;
-  for (const p of pages) total += Math.ceil(p.bytes / 4);
-  return total;
-}
-
-/**
- * The links that leave the slice: from a matched page to a page that exists and is not matched. These are the dashed lines.
- * In page order, then link order. A repeated link counts once. A link to the page itself or to a page that does not exist is dropped.
- */
-export function cutLinks(matched: ReadonlySet<string>, pages: readonly WikiPage[]): readonly { from: string; to: string }[] {
-  const ids = new Set(pages.map(p => p.id)), out: { from: string; to: string }[] = [];
-  for (const p of pages) {
-    if (!matched.has(p.id)) continue;
-    const seen = new Set<string>();
-    for (const to of p.links) {
-      if (to === p.id || !ids.has(to) || matched.has(to) || seen.has(to)) continue;
-      seen.add(to); out.push({ from: p.id, to });
-    }
-  }
-  return out;
-}
-
 /** How many matched pages joined the slice since the last visit. */
 export function joinedSince(matched: ReadonlySet<string>, pages: readonly WikiPage[]): number {
   let n = 0;

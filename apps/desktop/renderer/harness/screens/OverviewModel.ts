@@ -1,5 +1,5 @@
 /**
- * What the Overview screen decides, apart from the screen (Task 2, lane H): which view shows, which places are open, what a place offers, which cards stay bright, and how a
+ * What the Overview screen decides, apart from the screen: which view shows, which places are open, what a place offers, which cards stay bright, and how a
  * move of the keyboard keeps a card in the window. Pure: no DOM, no clock. The model it reads is shared/harness/overview.ts and its layout is shared/harness/overview-layout.ts.
  * Nothing here writes: the Overview is read-only, and the only way out of it is a route (the builder) or the system folder chooser.
  */

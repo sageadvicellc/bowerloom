@@ -514,5 +514,5 @@ test('the native question of an import names deletes as well as writes, and the 
   assert.match(ASK.importBundle('~/x', 5, rev, { deletes: 2 }).message, /^Write 3 files and delete 2 files into ~\/x\/\.bowerloom\?$/);
   assert.match(ASK.importBundle('~/x', 1, rev, { deletes: 1 }).message, /^Delete 1 file in ~\/x\/\.bowerloom\?$/);
   assert.match(ASK.importBundle('~/x', 4, rev, {}, true).message, /^Make an empty harness and write 4 files into ~\/x\/\.bowerloom\?$/);
-  assert.equal((JSON.parse(Buffer.from(emptyHarnessFile('/p/some-folder').bytes).toString('utf8')) as { description: string }).description, EMPTY_HARNESS_DESCRIPTION);
+  assert.equal((JSON.parse(Buffer.from(emptyHarnessFile('/p/some-folder', ['claude-code']).bytes).toString('utf8')) as { description: string }).description, EMPTY_HARNESS_DESCRIPTION);
 });

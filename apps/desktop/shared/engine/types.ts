@@ -535,7 +535,7 @@ export interface SetAsideWritten { readonly name: string }
  * question. A bundle the person opens is read once in main and held there under an id (`bundle-<n>`); the window names it by that id only.
  * packages/harness-bundle holds the format and the checks (its README states the trust boundary).
  *
- * Main (Task 1 lane C) must, for every share call: check the number and type of every argument before it uses one (a bundle id against SHARE_BUNDLE_ID and by exact
+ * Main must, for every share call: check the number and type of every argument before it uses one (a bundle id against SHARE_BUNDLE_ID and by exact
  * string; a folder id and a notes id against the ids main gave out; the choices shape, with at most SHARE_NOTES_LIMIT names of at most SHARE_NAME_LIMIT characters;
  * a revision and an acknowledgement as 64 lowercase hex characters or, for the acknowledgement, null); refuse a bad one as BAD_ARGUMENT before anything runs; build every
  * summary it sends or hashes from the bundle it holds, in the same call, never from a field the window sent (the acknowledgement hashes a tool's `sha256`, not its shown
@@ -672,7 +672,7 @@ export interface ImportNoteRow { readonly name: string; readonly choice: 'link' 
  *  - `removedSources` is always empty: an import stops using nothing.
  *  - `makesHarness` (decision of 2026-10-31): true when the folder has no harness. The one plan then makes the empty harness AND writes the bundle's files, and the one
  *    approval covers both; `changes` lists `.bowerloom/harness.json` as a create like every other file. False or left out when the folder's harness is empty already.
- *  - What a folder with no harness leaves (for lane C). The save point "before" is the EMPTY harness (`harness.json` alone, no parts), because that is what the write makes first;
+ *  - What a folder with no harness leaves. The save point "before" is the EMPTY harness (`harness.json` alone, no parts), because that is what the write makes first;
  *    Go back to it returns the folder to an empty harness, never to "no harness at all". The write is one journaled save: when it fails after the empty harness was made, the
  *    folder holds a valid empty harness and none of the bundle's files, never half of them, and the journal says what to do (SAVE_PARTIAL, SAVE_RECOVERY_REQUIRED).
  *  - `harness.json` is `create` in `changes` only when the folder has no harness; for a harness that exists and is empty it is `update`.

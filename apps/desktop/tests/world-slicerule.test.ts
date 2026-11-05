@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { cutLinks, countMatches, describeRule, estimateTokens, joinedSince, matchPages, selectPages } from '../shared/world/slicerule.js';
+import { countMatches, describeRule, joinedSince, matchPages } from '../shared/world/slicerule.js';
 import { generateWorld } from '../shared/world/sample.js';
 import type { SliceRule, WikiPage } from '../shared/world/types.js';
 import { DESKTOP } from './support.js';
@@ -100,50 +100,6 @@ test('countMatches is the size of the matched set', () => {
   const r = rule({ folders: ['alpha'], pageTypesAndTags: { types: [], tags: ['blue'] } });
   assert.equal(countMatches(r, [], PAGES), matchPages(r, [], PAGES).size);
   assert.equal(countMatches(r, [], PAGES), 4);
-});
-
-test('selectPages keeps the page order and drops the rest', () => {
-  assert.deepEqual(selectPages(new Set(['c1', 'a1']), PAGES).map(p => p.id), ['a1', 'c1']);
-  assert.deepEqual(selectPages(new Set(), PAGES), []);
-});
-
-test('estimateTokens is ceil(bytes / 4) per page, summed (a placeholder rule)', () => {
-  assert.equal(estimateTokens([]), 0);
-  assert.equal(estimateTokens([page('q', 'f', 'note', [], [], 1000)]), 250);
-  assert.equal(estimateTokens([page('q', 'f', 'note', [], [], 1001), page('r', 'f', 'note', [], [], 3), page('s', 'f', 'note', [], [], 0)]), 251 + 1 + 0);
-});
-
-// ---- Cut links ----
-
-test('cutLinks lists the links that leave the slice, in page order, with no dangling or self link', () => {
-  const all = new Set(['a1', 'a2', 'b2']);
-  assert.deepEqual(cutLinks(all, PAGES), [{ from: 'a2', to: 'b1' }, { from: 'b2', to: 'c1' }]);
-  assert.deepEqual(cutLinks(new Set(), PAGES), []);
-  assert.deepEqual(cutLinks(new Set(PAGES.map(p => p.id)), PAGES), []);
-  const dup = [page('d1', 'f', 'note', [], ['d2', 'd2', 'd1']), page('d2', 'f', 'note', [], [])];
-  assert.deepEqual(cutLinks(new Set(['d1']), dup), [{ from: 'd1', to: 'd2' }], 'a repeated link counts once, a self link never');
-});
-
-test('cutLinks on a generated world: every link is inside, leaving, entering or outside, and entering is the leaving of the rest', () => {
-  const world = generateWorld(3), pages = world.wikiPages;
-  for (const slice of world.slices) {
-    const matched = matchPages(slice.rule, slice.seeds, pages);
-    const rest = new Set(pages.map(p => p.id).filter(id => !matched.has(id)));
-    const ids = new Set(pages.map(p => p.id));
-    let inside = 0, leaving = 0, entering = 0, outside = 0;
-    for (const p of pages) for (const to of new Set(p.links)) {
-      if (!ids.has(to) || to === p.id) continue;
-      const a = matched.has(p.id), b = matched.has(to);
-      if (a && b) inside += 1; else if (a) leaving += 1; else if (b) entering += 1; else outside += 1;
-    }
-    const cut = cutLinks(matched, pages), back = cutLinks(rest, pages);
-    assert.equal(cut.length, leaving, slice.id);
-    assert.equal(back.length, entering, slice.id);
-    assert.equal(inside + leaving + entering + outside, new Set(pages.flatMap(p => [...new Set(p.links)].filter(t => ids.has(t) && t !== p.id).map(t => `${p.id}>${t}`))).size);
-    for (const c of cut) assert.ok(matched.has(c.from) && !matched.has(c.to), `${c.from}>${c.to}`);
-    for (const c of back) assert.ok(!matched.has(c.from) && matched.has(c.to), `${c.from}>${c.to}`);
-    assert.ok(inside + leaving + entering + outside > 0);
-  }
 });
 
 // ---- joinedSince ----

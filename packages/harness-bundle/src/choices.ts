@@ -2,7 +2,7 @@
  * The choices of an import, checked. Notes names come from a bundle, so they are untrusted keys: `constructor` is a valid name, and a plain-object lookup of it
  * reaches the object prototype. This module reads plain input with own-property reads only (`Object.hasOwn`, `Object.keys`), checks every count BEFORE it copies
  * anything, and hands back a Map and a Set. Nothing but a `BundleRefusal` escapes: a getter or a Proxy that throws is `BUNDLE_USAGE` too.
- * Built, not a stub: it depends on nothing else, and the tests of stage 1 use it.
+ * It depends on nothing else.
  */
 import { BundleRefusal } from './codes.js';
 import { BUNDLE_LIMITS } from './limits.js';

@@ -1,5 +1,5 @@
 /**
- * Edits one loaded definition and gives the full target file set (save step, lane B). The function is pure: it reads the
+ * Edits one loaded definition and gives the full target file set. The function is pure: it reads the
  * definition it is given, touches no disk, and changes neither the definition nor the edits.
  *
  * The edits are a closed set (`DefinitionEdit`), applied in order to a working copy of the files. A file that no edit

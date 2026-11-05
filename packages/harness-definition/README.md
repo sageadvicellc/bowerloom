@@ -1,6 +1,6 @@
 # harness-definition
 
-The harness definition core of Bowerloom 0.8. It holds what Bowerloom stores before any part moves into an engine. Every later lane imports it.
+The harness definition core of Bowerloom 0.8. It holds what Bowerloom stores before any part moves into an engine. Every other package that reads or writes a harness imports it.
 
 Specs: `2026-10-27-bowerloom-harness-definition.md`, and sections 2 to 4 of `2026-10-27-bowerloom-locked-in-parts.md`.
 

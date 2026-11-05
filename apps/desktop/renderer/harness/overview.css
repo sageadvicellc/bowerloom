@@ -1,5 +1,5 @@
 /*
- * The Overview (Task 2): the boxes of the places, their headers, the marks, and the List view. The cards, curves, zoom buttons and small map are the Builder's own (harness.css:
+ * The Overview: the boxes of the places, their headers, the marks, and the List view. The cards, curves, zoom buttons and small map are the Builder's own (harness.css:
  * .hx-canvas, .hx-world, .hx-edges, .hx-edge, .hx-node, .hx-tile, .hx-zoom, .hx-map), so this file adds only what the Builder has not. Every rule starts at [data-home].
  * There is no new transition: a card, a curve and a box change colour and opacity with the Builder's own motion tokens, which are zero under reduced motion. Text is 14 px or more at life size; the header controls are scaled back up so a button stays 24 px or more at the detail zoom and above. Under it the List is the equivalent control.
  */

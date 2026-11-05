@@ -13,7 +13,7 @@
  * then `not-data` for every other file.
  *
  * This list is a screen, not a proof. A tick means "I read what was listed". A text file can still hold commands that a tool may run when an agent is told to
- * run it (`curl x | sh` in a note), and nothing here detects that. Built, not a stub: the tests of stage 1 use it, and lane A calls it for every record.
+ * run it (`curl x | sh` in a note), and nothing here detects that.
  */
 
 /** Extensions of files that hold text and nothing that runs. The bytes must be valid UTF-8 with no NUL. `.svg` and `.html` are not here: they can hold script. */
