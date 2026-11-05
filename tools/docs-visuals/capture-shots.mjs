@@ -15,7 +15,7 @@ const lock = '/tmp/bowerloom-test.lock';
 /** Runs a command and returns its exit status. It never exits the process, so the lock is always released. */
 const run = (command, args, cwd, env = {}) => spawnSync(command, args, { cwd, stdio: 'inherit', env: { ...process.env, ...env } }).status ?? 1;
 
-// This script is synchronous, so a signal ends it at once. A lock left that way names a process that is gone, and the next run reclaims it (see lock.mjs).
+// This script is synchronous, so a signal ends it at once and leaves the lock folder; the next run's timeout message names it (see lock.mjs).
 let status = run('npm', ['run', 'build'], root);
 if (status === 0) {
   try {
