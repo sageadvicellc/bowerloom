@@ -1,5 +1,5 @@
 // Goal 2 of the 0.8 build, as pure logic and as static checks of the styles: the graph fits above its legend, every control the sheets add has a hover and a
-// focus style, the leaf stands in the rail, and the Preview mark no longer says the 900 by 600 layouts are missing.
+// focus style, the brand mark stands in the rail, and the Preview mark no longer says the 900 by 600 layouts are missing.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -29,14 +29,14 @@ test('the sheet styles move nothing: colour only, and none with reduced motion',
   assert.match(engine, /@media \(prefers-reduced-motion: reduce\) \{\s*\[data-home\] \.hxe-tick \{ transition: none !important; \}/);
 });
 
-test('the sage leaf stands in the rail as well as in the open navigation; its name stays for a screen reader', () => {
+test('the brand mark (the S4-G3 mascot, as on the website) stands in the rail as well as in the open navigation; its name stays for a screen reader', () => {
   const harness = css('renderer/harness/harness.css');
   assert.match(harness, /\[data-home\]\[data-shell="harness"\] \.hm-nav\[data-mode="rail"\] \.hm-brand \{ display: flex;/);
   assert.match(harness, /\[data-home\]\[data-shell="harness"\] \.hm-nav\[data-mode="rail"\] \.hm-brand > span \{ position: absolute; width: 1px; height: 1px;/);
   // The rules that touch the shared kit or the shared navigation are held to the harness-first shell, so the home app looks as it did.
   assert.equal(harness.split('\n').filter(l => /^\[data-home\] \.(?:kit-button|hm-nav|hm-brand)/.test(l)).length, 0, 'no rule of the preview restyles the shared kit or navigation for the home app');
   assert.match(css('renderer/harness/Shell.tsx'), /data-home="" data-shell="harness"/);
-  assert.match(css('renderer/harness/Navigation.tsx'), /<div className="hm-brand"><HIcon name="leaf"/);
+  assert.match(css('renderer/harness/Navigation.tsx'), /<div className="hm-brand"><BrandMark size=\{26\} \/>/);
 });
 
 test('the Preview mark no longer lists the 900 by 600 layouts as missing', () => {

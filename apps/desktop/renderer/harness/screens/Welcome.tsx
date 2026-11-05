@@ -1,10 +1,10 @@
 /**
- * S1.1, Welcome. The leaf, the name, one sentence in two lines, what a harness is, the one button, and one quiet line that says Bowerloom only reads. "Find my files" goes to Choose sources.
+ * S1.1, Welcome. The mascot, the name, one sentence in two lines, what a harness is, the one button, and one quiet line that says Bowerloom only reads. "Find my files" goes to Choose sources.
  * The button has the focus when the screen opens, so Enter goes straight on.
  */
 import { useEffect, useRef } from 'react';
 import type { ReactElement } from 'react';
-import { KitIcon } from '../../home/kit/icons.js';
+import { BrandMark } from '../../home/kit/BrandMark.js';
 import { HButton } from '../parts/controls.js';
 import { FirstRunFrame } from '../parts/FirstRunFrame.js';
 import { go } from '../router.js';
@@ -21,7 +21,7 @@ export function Welcome(): ReactElement {
   useEffect(() => { button.current?.focus(); }, []);
   return (
     <FirstRunFrame slot="welcome">
-      <span className="hxf-leaf" aria-hidden="true"><KitIcon name="leaf" size={24} /></span>
+      <span className="hxf-leaf" aria-hidden="true"><BrandMark size={72} /></span>
       <h1 className="hxf-name" tabIndex={-1}>{WORDS.label.appName}</h1>
       <p className="hxf-lead"><span>{lineOne}</span> <span>{lineTwo}</span></p>
       <p className="hxf-plain">{WORDS.hint.helpOne}</p>

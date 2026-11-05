@@ -8,7 +8,7 @@
 [data-home].hx-first[data-screen="welcome"] .hx-first-main { max-width: 42rem; padding: 0 var(--hm-space-5); }
 
 /* Welcome */
-[data-home] .hxf-leaf { color: var(--accent-strong); display: inline-flex; margin-bottom: var(--hm-space-5); }
+[data-home] .hxf-leaf { display: inline-flex; margin-bottom: var(--hm-space-5); }
 [data-home] .hxf-name { margin: 0; font-size: var(--hm-text-display); line-height: 1.25; font-weight: 600; outline-offset: 6px; border-radius: var(--hm-radius-small); }
 [data-home] .hxf-lead { margin: 0; font-size: var(--hm-text-title); line-height: 1.6667; font-weight: 600; }
 [data-home] .hxf-lead span { display: block; }
