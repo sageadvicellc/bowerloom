@@ -3,8 +3,8 @@
  *
  * It runs on the made-up home (tools/made-up-home.ts). Two steps are NOT run here:
  *   - "installs with the one terminal command" is outside the app (it is the terminal), so a test of the app cannot run it. `e2e/packaged-app.spec.ts` starts a built app when one is there.
- *   - "sees everything as one graph" is NOT BUILT in beta.1 as the spec words it: the Builder draws the graph of one folder's harness (agents and skills), never the home and every project together.
- * What runs: the scan in its two questions, the ticks, the read, and "adopt by copy" of two projects, which is how the scan's finds reach the graph of a folder. Every count and every byte is
+ * "Sees everything as one graph" is step 1.5: the Overview is the first screen after the read, and it shows every place found (owner decision, every place closed and the home open).
+ * What runs: the scan in its two questions, the ticks, the read, the Overview, and "adopt by copy" of two projects, which is how the scan's finds reach the graph of a folder. Every count and every byte is
  * read from the files by the test.
  */
 import { expect, test } from '@playwright/test';
@@ -127,8 +127,111 @@ test.fixme('Journey 1, step 1.1: install with the one terminal command (outside 
   // The spec starts the journey with an install from a terminal. The app has no part in it, and a test of the app must not open a terminal. The packaged app has its own spec (e2e/packaged-app.spec.ts).
 });
 
-test.fixme('Journey 1, step 1.5: see everything as one graph (NOT BUILT in beta.1: the Builder draws one folder\'s agents and skills, not the home and every project together)', () => {
-  // Beta.1 keeps one harness for each folder (spec 6.3, decided 2026-10-30), and the Harnesses list shows the scan's finds as rows. The next test shows the graph of one adopted folder.
+test('Journey 1, step 1.5: the first screen after the read is the Overview; every place is shown closed but the home, a shared skill lights its copies, the List shows the same, and "Open in builder" reaches the Builder', async () => {
+  test.setTimeout(240_000);
+  const home = newMadeUpHome(), root = home.home;
+  h = await startApp(home, 'projects');
+  const p = h.page, s = adoptSheet(p);
+  // A place is "In Bowerloom" when main knows its folder and the folder holds a harness, so kite-workshop is adopted first (the same steps as the second adopt test below).
+  await test.step('1.5a a project holds a harness, so the Overview can mark it', async () => {
+    await p.getByRole('button', { name: 'From a folder', exact: true }).click();
+    await h.pick(home.kite);
+    await s.getByRole('button', { name: 'Choose a folder', exact: true }).click();
+    await s.getByRole('button', { name: 'Next', exact: true }).click();
+    await s.getByRole('button', { name: 'Next', exact: true }).click();
+    await s.getByRole('button', { name: /^Write \d+ files$/ }).click();
+    await expect(s.locator('[data-done]')).toBeVisible();
+    await s.getByRole('button', { name: 'Close', exact: true }).last().click();
+    await s.waitFor({ state: 'detached' });
+  });
+
+  await test.step('1.5b read the home and the projects; "Not now" on the read leads to the Overview', async () => {
+    await p.evaluate(() => { location.hash = '#app/overview'; });
+    await p.getByRole('button', { name: 'Find my files', exact: true }).click();
+    await h.pick(home.projects);
+    await p.getByRole('button', { name: 'Add a folder', exact: true }).click();
+    await p.getByRole('button', { name: 'Looks right', exact: true }).click();
+    await p.getByRole('button', { name: 'Yes, read them', exact: true }).click();
+    await expect(p.locator('[data-count]')).toContainText('parts in all', { timeout: 20_000 });
+    await p.getByRole('button', { name: 'Not now', exact: true }).click();
+    await expect(p.getByRole('heading', { level: 1, name: 'Overview', exact: true })).toBeVisible();
+  });
+
+  const toggle = (name: string) => p.locator('[data-place-toggle]', { hasText: name });
+  await test.step('1.5c every place is shown with its name, its ~ label and its counts, all closed but the home', async () => {
+    await expect(p.getByText(/^7 places$/).first()).toBeVisible();
+    const toggles = p.locator('[data-place-toggle]');
+    await expect(toggles).toHaveCount(7);
+    const claudeHome = { agent: names(join(root, '.claude', 'agents')).length, skill: skillDirs(join(root, '.claude', 'skills')), tool: serverCount(join(root, '.claude.json')) + hookCount(join(root, '.claude', 'settings.json')) };
+    const claudeOf = (name: string) => ({ agent: names(join(home.projects, name, '.claude', 'agents')).length, skill: skillDirs(join(home.projects, name, '.claude', 'skills')), tool: serverCount(join(home.projects, name, '.mcp.json')) + hookCount(join(home.projects, name, '.claude', 'settings.json')) });
+    const words = (c: { agent: number; skill: number; tool: number }): string => [['agent', c.agent], ['skill', c.skill], ['tool', c.tool]].filter(([, n]) => (n as number) > 0).map(([w, n]) => plural(n as number, w as string)).join(', ');
+    const rows: [string, string, string][] = [
+      ['Your Claude Code folder', '~', words(claudeHome)],
+      ['Your Codex folder', '~', plural(names(join(root, '.codex', 'agents')).length, 'agent')],
+      ['ferry-schedule (Claude Code)', '~/Projects/ferry-schedule', words(claudeOf('ferry-schedule'))],
+      ['kite-workshop (Claude Code)', '~/Projects/kite-workshop', words(claudeOf('kite-workshop'))],
+      ['ferry-schedule (notes)', '~/Projects/ferry-schedule', '1 set of notes'],
+    ];
+    for (const [name, label, counts] of rows) {
+      const aria = await toggle(name).first().getAttribute('aria-label');
+      expect(aria, name).toContain(`, ${label}, ${counts}`);
+    }
+    expect(await p.locator('[data-place-toggle][aria-expanded="true"]').count(), 'only the home is open').toBe(1);
+    await expect(toggle('Your Claude Code folder')).toHaveAttribute('aria-expanded', 'true');
+    expect(await p.locator('body').innerText(), 'no absolute path is on the page').not.toContain(root);
+  });
+
+  await test.step('1.5d the places in Bowerloom are told from the others, and the others offer a folder chooser', async () => {
+    const marks = await p.locator('.hxo-mark').allInnerTexts();
+    expect(marks.filter(m => m === 'In Bowerloom'), 'the two places of the adopted folder').toHaveLength(2);
+    expect(marks.filter(m => m === 'Not in Bowerloom yet')).toHaveLength(5);
+    await expect(p.getByRole('button', { name: 'Open in builder, kite-workshop (Claude Code)', exact: true })).toBeVisible();
+    await expect(p.getByRole('button', { name: 'Open in builder, ferry-schedule (Claude Code)', exact: true })).toHaveCount(0);
+    await expect(p.getByRole('button', { name: 'Choose this folder, ferry-schedule (Claude Code)', exact: true }).first()).toBeVisible();
+  });
+
+  await test.step('1.5e open a place, select a skill that is in two places, and see its copies lit', async () => {
+    await toggle('ferry-schedule (Claude Code)').click();
+    await expect(toggle('ferry-schedule (Claude Code)')).toHaveAttribute('aria-expanded', 'true');
+    const scale = (): Promise<number> => p.locator('.hxo-world').evaluate(el => Number(/scale\(([\d.]+)\)/.exec((el as HTMLElement).style.transform)?.[1] ?? 'NaN'));
+    const cluster = (await p.locator('[data-cluster][data-home]').first().boundingBox())!;
+    await p.mouse.move(cluster.x + cluster.width / 2, cluster.y + Math.min(cluster.height / 2, 60));
+    await p.keyboard.down('Control');
+    for (let i = 0; i < 40 && (await scale()) < 0.6; i += 1) await p.mouse.wheel(0, -30);
+    await p.keyboard.up('Control');
+    const homeId = (await p.locator('[data-cluster][data-home]').first().getAttribute('data-cluster'))!;
+    const skills = p.locator(`[data-node][data-kind="skill"][data-place="${homeId}"]`);
+    await expect(skills.first()).toBeVisible();
+    let picked = '';
+    for (let i = 0; i < await skills.count() && picked === ''; i += 1) {
+      await skills.nth(i).click();
+      if (await p.locator('[data-details-node] [data-shared]').count() > 0) picked = (await skills.nth(i).getAttribute('data-node'))!;
+    }
+    expect(picked, 'the home holds a skill that another place holds too').not.toBe('');
+    await expect(p.locator('[data-details-node] [data-shared]')).toContainText(/^Shared\. Also in 1 place$/);
+    await expect(p.locator(`[data-node="${picked}"][data-selected]`)).toHaveCount(1);
+    await expect(p.locator('[data-cluster][data-lit]'), 'the place that holds the copy is lit').toHaveCount(1);
+  });
+
+  await test.step('1.5f the List shows the same places and the same selection', async () => {
+    await p.getByRole('radio', { name: 'List view' }).click();
+    await expect(p.locator('[data-view="list"]')).toBeVisible();
+    await expect(p.locator('li[data-place]')).toHaveCount(7);
+    await expect(p.locator('li[data-place][data-open]'), 'the home and the place opened above').toHaveCount(2);
+    await expect(p.locator('li.hxo-row[data-selected]')).toHaveCount(1);
+    // The lit places are the home, which holds the selection, and the place of the copy. The copy is a row of the second; it is open when it is the place opened above.
+    const lit = p.locator('li[data-place][data-lit]');
+    await expect(lit, 'the home and the place that holds the copy are lit').toHaveCount(2);
+    await expect(lit.locator('[data-place-toggle]').nth(1)).toHaveAttribute('aria-expanded', 'true');
+    await expect(p.locator('li.hxo-row[data-lit]'), 'the copy is lit in the List too').toHaveCount(1);
+    expect(await p.locator('body').innerText()).not.toContain(root);
+  });
+
+  await test.step('1.5g "Open in builder" on a place in Bowerloom reaches the Builder of that folder', async () => {
+    await p.getByRole('button', { name: 'Open in builder, kite-workshop (Claude Code)', exact: true }).click();
+    await expect(p.getByRole('heading', { level: 1, name: 'kite-workshop', exact: true })).toBeVisible();
+    await expect(p.locator('.hx-node').first()).toBeVisible();
+  });
 });
 
 test('Journey 1, adopt by copy: a project is adopted with the choices and approvals the plan asks for, the original files stay as they were, and the folder\'s graph shows what was adopted', async () => {
