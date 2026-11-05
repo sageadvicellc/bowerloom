@@ -63,7 +63,8 @@ export function closeGuard(deps: CloseGuardDeps): (event: { preventDefault(): vo
     if (deps.ending()) { event.preventDefault(); return; }
     try { deps.reveal(); } catch { /* the window cannot be brought forward; ask anyway */ }
     let answer: number;
-    try { answer = deps.ask(closeQuestion(changesInTitle(deps.title()))); } catch { return; }
+    // A box that throws keeps the window, as any answer but Discard does. It is logged, so a Cmd+Q that does nothing is not silent.
+    try { answer = deps.ask(closeQuestion(changesInTitle(deps.title()))); } catch (error) { console.error('Bowerloom: the question about unsaved changes could not be shown, so the window stays open.', error instanceof Error ? error.message : String(error)); return; }
     // Only the second button lets the unload go on; every other answer keeps the window.
     if (answer === 1) event.preventDefault();
   };

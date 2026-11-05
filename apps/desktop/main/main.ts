@@ -21,6 +21,7 @@ import { withSamplePreviewEngines } from '../shared/engine/sample-switch.js';
 import { e2eHidden, leaveDock, revealWindow, windowOptions } from './window-options.js';
 import { windowFailure } from './window-failure.js';
 import { bringForBox, closeGuard } from './close-guard.js';
+import { quitHold } from './quit-hold.js';
 import type { EngineService } from './engine-service.js';
 import { APP_HOST, APP_INDEX, APP_SCHEME, allowRequest, chooseUserData, decideNavigation, makeTempDataDir, removeAndReport, resolveAppFile, userDataArg, webPreferences } from './security.js';
 
@@ -98,6 +99,17 @@ const windowEnded = windowFailure({
 });
 function windowFailed(error: Error, title: string): Promise<void> { return windowEnded(error, title); }
 
+// A quit while the engine works (an import or an export writing) waits for it, up to a bound, with a box (main/quit-hold.ts).
+app.on('before-quit', quitHold({
+  get engine() { return engineForExit; },
+  ending: () => closeEnding,
+  showBox: words => {
+    const options: Electron.MessageBoxOptions = { type: 'info', title: words.title, message: words.message, detail: words.detail, buttons: [words.button], defaultId: 0, noLink: true };
+    void (window === null ? dialog.showMessageBox(options) : dialog.showMessageBox(window, options)).catch((error: unknown) => { console.error('Bowerloom: the box about a save that is finishing failed.', error instanceof Error ? error.message : String(error)); });
+  },
+  quit: () => app.quit(),
+}));
+
 function createWindow(): void {
   window = new BrowserWindow({
     ...windowOptions(), useContentSize: true, show: false,
@@ -147,7 +159,10 @@ app.whenReady().then(async () => {
       const bytes = await readFile(file);
       const body = launch.samplePreviewEngines && url.pathname === '/index.html' ? withSamplePreviewEngines(bytes.toString('utf8'), true) : bytes;
       return new Response(body, { headers: { 'content-type': type } });
-    } catch { return new Response('Not found', { status: 404 }); }
+    } catch (error) {
+      console.error(`Bowerloom: a file of the app could not be read (${typeof (error as { code?: unknown } | null)?.code === 'string' ? String((error as { code: string }).code) : 'no code'}).`);
+      return new Response('Not found', { status: 404 });
+    }
   });
   // No request leaves the machine: the session cancels everything that is not one of the app's own files.
   session.defaultSession.webRequest.onBeforeRequest((details, callback) => callback({ cancel: !allowRequest(details.url, root) }));

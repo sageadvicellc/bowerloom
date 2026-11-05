@@ -81,9 +81,11 @@ export interface BundleHost {
 
 interface Waiting { readonly worker: WorkerLike; readonly resolve: (value: never) => void; readonly reject: (error: unknown) => void; readonly timer: NodeJS.Timeout; readonly write: boolean }
 
-function revive(refusal: PlainRefusal): unknown {
+function revive(refusal: PlainRefusal, write: boolean): unknown {
   if (refusal.kind === 'bundle') return BundleRefusal.fromPlain(refusal.value);
   if (refusal.kind === 'coded') return new CodedRefusal(refusal.code, refusal.message, refusal.paths);
+  // A bug during a write may come after the first file was placed, so the words never say that nothing was changed: they are the words of a stopped write.
+  if (write) return new CodedRefusal('FAILED', WORKER_WORDS.WORKER_CRASHED.write, [], 'WORKER_CRASHED');
   return new CodedRefusal('FAILED', 'Bowerloom could not finish this. Nothing more was changed.');
 }
 const errorCode = (error: unknown): string => { const c = (error as { code?: unknown } | null)?.code; return typeof c === 'string' && /^[A-Z0-9_]{1,60}$/.test(c) ? c : 'none'; };
@@ -126,13 +128,17 @@ export function createBundleHost(options: BundleHostOptions): BundleHost {
       const found = waiting.get(m.id);
       if (found === undefined) return;
       clearTimeout(found.timer); waiting.delete(m.id);
-      if (m.ok) found.resolve(m.value as never); else found.reject(revive(m.refusal ?? { kind: 'bug' }));
+      if (m.ok) found.resolve(m.value as never); else found.reject(revive(m.refusal ?? { kind: 'bug' }, found.write));
     });
     w.on('error', error => {
       const cause: WorkerCause = errorCode(error) === 'ERR_WORKER_OUT_OF_MEMORY' ? 'WORKER_OUT_OF_MEMORY' : !answered && startFailure(error) ? 'WORKER_NOT_STARTED' : 'WORKER_CRASHED';
       failAll(w, cause, error);
     });
-    w.on('exit', () => failAll(w, 'WORKER_CRASHED'));
+    w.on('exit', code => {
+      // A thread that ends while it holds no job is not a refusal, but it is not silent either: the bundles it held are gone.
+      if (worker === w && ![...waiting.values()].some(x => x.worker === w)) console.error(`Bowerloom: the helper thread of export and import ended while idle (exit code ${String(code)}). The files it held are gone.`);
+      failAll(w, 'WORKER_CRASHED');
+    });
     // A message the host cannot read means the worker and the host no longer agree: the thread is stopped, as for a crash.
     w.on('messageerror', error => { failAll(w, 'WORKER_CRASHED', error); retire(w); });
     return w;

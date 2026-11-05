@@ -184,7 +184,7 @@ export const HARNESS_PARTS_MAX = 1000, HARNESS_DIR_MAX = 1000, HARNESS_BYTES_MAX
  */
 export function harnessOf(dir: string, records: readonly StampedRecord[], tally: Tally, budget: Budget): RealHarness | null {
   if (!isThere(join(dir, 'harness.json'))) return null;
-  const none: RealHarness = { readable: false, engines: [], parts: [], links: [] };
+  const none = unreadableHarness();
   let spent = 0;
   const read = (abs: string): string => {
     const got = readText(abs, dir, tally, budget);
@@ -232,8 +232,19 @@ export function harnessOf(dir: string, records: readonly StampedRecord[], tally:
     }
     if (parts.length > HARNESS_PARTS_MAX) throw new Error('limit');
     return { readable: true, engines, parts, links };
-  } catch { return none; }
+  } catch (error) {
+    // The known ways a harness is unreadable: bad JSON, the wrong shape, a name used twice, a limit, a file that cannot be read. Anything else is a fault of Bowerloom or of
+    // the disk: it is still shown as unreadable, and the log names its class and code (never a path) so it is not lost.
+    if (error instanceof SyntaxError || (error instanceof Error && error.constructor === Error && KNOWN_UNREADABLE.has(error.message))) return none;
+    const code = (error as { code?: unknown } | null)?.code;
+    console.error(`Bowerloom: the reader met an error it does not know while it read a harness (${error instanceof Error ? error.constructor.name : typeof error}${typeof code === 'string' && /^[A-Z0-9_]{1,40}$/.test(code) ? `, ${code}` : ''}).`);
+    return none;
+  }
 }
+/** The messages of the errors `harnessOf` throws on purpose. */
+const KNOWN_UNREADABLE: ReadonlySet<string> = new Set(['shape', 'limit', 'twice', 'unreadable']);
+/** A harness that is there and cannot be read. */
+export const unreadableHarness = (): RealHarness => ({ readable: false, engines: [], parts: [], links: [] });
 const summaryOf = (description: string, fallback: string): string => {
   const line = safeText(description, 200), at = line.search(/[.!?](?=\s|$)/), one = cut(at < 0 ? line : line.slice(0, at + 1), 40);
   return one === '' ? fallback : one;
@@ -302,7 +313,9 @@ export function readPlace(place: PlaceInternal, home: string, withText: boolean,
   }
   const apps = [...new Set([...place.folders.map(p => p.app), ...place.files.map(p => p.app)])];
   const own = withText && place.kind !== 'home' ? place.folders.find(p => p.app === 'bowerloom') : undefined;
-  const harness = own === undefined || realFolderFollowing(own.abs) !== own.abs ? null : harnessOf(own.abs, records, tally, budget);
+  // A `.bowerloom` that is a link, or that is not the folder found at the start, is unreadable: it is never shown as "no harness here".
+  const ownChanged = own !== undefined && (realFolder(join(place.realRoot, own.name)) === null || realFolderFollowing(own.abs) !== own.abs);
+  const harness = own === undefined ? null : ownChanged ? unreadableHarness() : harnessOf(own.abs, records, tally, budget);
   const names = [...place.folders.map(p => p.name), ...place.files.map(p => p.name)];
   return { place: { id: place.id, kind: place.kind, label: place.label, path: shortPath(place.root, home), apps }, records, notes, notesLeftOut, partlyRead, ...(harness === null ? {} : { harness }), folders: names, tally };
 }

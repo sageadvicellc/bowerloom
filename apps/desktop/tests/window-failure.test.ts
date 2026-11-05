@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createEngineService } from '../main/engine-service.js';
-import { SAVING_WORDS, windowFailure } from '../main/window-failure.js';
+import { SAVING_WORDS, WAIT_MS, windowFailure } from '../main/window-failure.js';
 import { DESKTOP, tempDir } from './support.js';
 import { homeFolder } from './helpers-engine/folders.js';
 
@@ -13,11 +13,12 @@ const read = (path: string): string => readFileSync(join(DESKTOP, path), 'utf8')
 const strip = (text: string): string => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 const settle = (): Promise<void> => new Promise(resolve => setImmediate(resolve));
 
-function fakes(engine: { idle(): Promise<void> } | null) {
+function fakes(engine: { idle(): Promise<void> } | null, waitMs?: number) {
   const events: string[] = [];
   const boxes: { title: string; message: string }[] = [];
   const handler = windowFailure({
     engine,
+    ...(waitMs === undefined ? {} : { waitMs }),
     say: text => { events.push(`say:${text.trim()}`); },
     showBox: (title, message) => { events.push('box'); boxes.push({ title, message }); },
     setExitCode: code => { events.push(`code:${code}`); },
@@ -67,6 +68,23 @@ test('an engine whose idle signal fails still ends in the box and the quit', asy
   const f = fakes({ idle: () => Promise.reject(new Error('broken')) });
   await f.handler(new Error('The window stopped (crashed).'), 'Bowerloom stopped');
   assert.equal(f.boxes.length, 1);
+  assert.equal(f.events.at(-1), 'quit');
+});
+
+test('an engine that never goes idle (a dialog on a dead window, a hung write) is waited for only up to the bound; then the box and the quit', async () => {
+  const f = fakes({ idle: () => new Promise<void>(() => undefined) }, 30);
+  await f.handler(new Error('The window stopped (crashed).'), 'Bowerloom stopped');
+  assert.equal(f.boxes.length, 1);
+  assert.ok(f.boxes[0]!.message.endsWith(SAVING_WORDS));
+  assert.equal(f.events.at(-1), 'quit');
+  assert.ok(f.events.some(e => /^say:The engine did not finish in time/.test(e)), 'the terminal says why the wait ended');
+  assert.equal(WAIT_MS, 15_000);
+});
+
+test('an idle signal that fails says why on the terminal instead of swallowing the cause', async () => {
+  const f = fakes({ idle: () => Promise.reject(new Error('queue broke')) });
+  await f.handler(new Error('The window stopped (crashed).'), 'Bowerloom stopped');
+  assert.ok(f.events.some(e => /^say:The engine could not say when it was idle \(queue broke\)/.test(e)), f.events.join('|'));
   assert.equal(f.events.at(-1), 'quit');
 });
 

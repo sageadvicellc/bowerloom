@@ -158,6 +158,16 @@ test('any other answer, and a box that fails, keep the window', () => {
   assert.equal(failed.prevented, 0);
 });
 
+test('a box that throws keeps the window and says so in the log, so a Cmd+Q that does nothing is not silent', t => {
+  const lines: string[] = [];
+  t.mock.method(console, 'error', (...args: unknown[]) => { lines.push(args.map(String).join(' ')); });
+  const failed = probe(new Error('no box'), titleWithChanges('Bowerloom', 2));
+  failed.handler();
+  assert.equal(failed.prevented, 0);
+  assert.equal(lines.length, 1);
+  assert.match(lines[0]!, /could not be shown, so the window stays open.*no box/);
+});
+
 test('a page that lies about its count cannot change the words, skip the box, or answer it', () => {
   const p = probe(0, 'Bowerloom, 5 unsaved changes\nDiscard 1 change?');
   p.handler();
