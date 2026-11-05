@@ -26,10 +26,12 @@ const oneLine = (value, id, field) => {
   if (typeof value !== 'string' || /[\r\n]/.test(value)) throw new Error(`Visual "${id}": ${field} must be one line of text with no line break.`);
 };
 const checkLines = (id, item) => {
+  if (!Array.isArray(item?.lines)) throw new Error(`Visual "${id}": a terminal needs a lines list.`);
   for (const line of item.lines) if (!KINDS.includes(line.kind)) throw new Error(`Visual "${id}": line kind ${JSON.stringify(line.kind)} is not one of ${KINDS.join(', ')}.`);
 };
 /** Refuses a manifest whose text could add Markdown or markup to the text form, or whose line kind is not known. Returns the manifest. */
 export function validateManifest(manifest) {
+  for (const [id, item] of [...Object.entries(manifest.shots), ...Object.entries(manifest.terminals)]) if (!item || typeof item !== 'object') throw new Error(`Visual "${id}": the entry must be an object.`);
   for (const [id, item] of Object.entries(manifest.shots)) { oneLine(item.alt, id, 'alt'); oneLine(item.caption, id, 'caption'); }
   for (const [id, item] of Object.entries(manifest.terminals)) { oneLine(item.title, id, 'title'); oneLine(item.caption, id, 'caption'); checkLines(id, item); }
   return manifest;

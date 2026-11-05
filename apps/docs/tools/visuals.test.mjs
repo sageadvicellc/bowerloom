@@ -366,7 +366,7 @@ const types = {'.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript
 test('on a built page the system theme decides, and only that theme loads', async context => {
   if (skipReason) { if (process.env.CI) assert.fail(`CI needs a browser: ${skipReason}`); return context.skip(skipReason); }
   const {execFileSync} = await import('node:child_process');
-  execFileSync('npm', ['run', 'build'], {cwd: fileURLToPath(new URL('..', import.meta.url)), stdio: 'ignore'});
+  execFileSync('npm', ['run', 'build'], {cwd: fileURLToPath(new URL('..', import.meta.url)), stdio: 'ignore', timeout: 180_000});
   const files = async dir => (await readdir(dir, {withFileTypes: true, recursive: true})).filter(e => e.isFile() && e.name === 'index.html').map(e => join(e.parentPath, e.name));
   let pagePath = null;
   for (const file of await files(fileURLToPath(dist))) if ((await readFile(file, 'utf8')).includes('visual-shot')) { pagePath = '/docs/' + file.slice(fileURLToPath(dist).length).replace(/index\.html$/, ''); break; }
@@ -381,7 +381,8 @@ test('on a built page the system theme decides, and only that theme loads', asyn
   await new Promise(done => http.listen(0, '127.0.0.1', done));
   let browser;
   try {
-    browser = await chromium.launch({headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined});
+    try { browser = await chromium.launch({headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined}); }
+    catch (error) { if (/Executable doesn't exist|browserType\.launch/.test(String(error.message)) && !process.env.CI) return context.skip('Chromium is not installed for Playwright'); throw error; }
     for (const scheme of ['dark', 'light']) {
       const other = scheme === 'dark' ? 'light' : 'dark';
       const page = await (await browser.newContext({colorScheme: scheme, viewport: {width: 1280, height: 900}})).newPage();
@@ -400,4 +401,18 @@ test('on a built page the system theme decides, and only that theme loads', asyn
       assert(seen.every(url => url.endsWith(`-${scheme}.webp`)), `${scheme} after opening: ${seen.join()}`);
     }
   } finally { await browser?.close(); await new Promise(done => http.close(done)); }
+});
+
+test('the build refuses a page whose visual carries a private path or a file link', () => {
+  const shot = {alt: 'A screen.', caption: 'Saved in /Users/someone/projects.', width: 1600, height: 1000};
+  const terminal = {title: 'bowerloom status', caption: 'Status.', lines: [{kind: 'cmd', text: 'bowerloom status'}, {kind: 'out', text: 'Read file:///tmp/x'}]};
+  for (const manifest of [{shots: {'leaky-shot': shot}, terminals: {}}, {shots: {}, terminals: {'leaky-terminal': terminal}}]) {
+    const id = Object.keys({...manifest.shots, ...manifest.terminals})[0];
+    assert.throws(() => prepareVisualSource(`# Page\n\n::visual{id="${id}"}\n`, {file: 'leaky.md', manifest}), /Unsafe or private documentation content: leaky\.md/);
+  }
+});
+
+test('a malformed manifest entry fails with the visual named', () => {
+  assert.throws(() => validateManifest({shots: {'odd-shot': null}, terminals: {}}), /Visual "odd-shot"/);
+  assert.throws(() => validateManifest({shots: {}, terminals: {'odd-term': {title: 'x', caption: 'y'}}}), /Visual "odd-term": a terminal needs a lines list/);
 });
