@@ -6,7 +6,7 @@
  * One limit: a SIGTERM sent to the capture script alone can leave its Playwright child running while the lock reads as stale. Ctrl-C reaches both, because they share a
  * process group.
  */
-import { mkdirSync, readFileSync, renameSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, renameSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const sleep = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -20,11 +20,26 @@ const removeFolder = folder => { quietly(() => unlinkSync(join(folder, 'owner'))
  * and, when two waiters race, only one of them moves it. If the moved file names another owner (a new lock made between the check and the move), it is put back.
  * Returns true when the stale lock is gone or another waiter already took it.
  */
+/**
+ * Finishes a reclaim that a waiter started and could not end (it was stopped after moving the owner file aside). Such a folder holds only `owner.stale-<pid>-<time>`
+ * files. When every one of those waiters is gone, the folder is removed. An empty folder, or any other file, still means another tool and is left alone.
+ */
+export function finishAbandonedReclaim(lock) {
+  let names;
+  try { names = readdirSync(lock); } catch { return false; }
+  const leftovers = names.map(name => /^owner\.stale-(\d+)-\d+$/.exec(name));
+  if (!names.length || leftovers.some(match => !match)) return false;
+  if (leftovers.some(match => alive(Number(match[1])))) return false;
+  for (const name of names) quietly(() => unlinkSync(join(lock, name)));
+  quietly(() => rmdirSync(lock));
+  return true;
+}
+
 export function reclaimStale(lock, deadPid) {
   const owner = join(lock, 'owner');
   const aside = join(lock, `owner.stale-${process.pid}-${Date.now()}`);
   try { renameSync(owner, aside); } catch (error) { if (error?.code === 'ENOENT') return true; throw error; }
-  if (ownerOf(lock, aside) !== deadPid) { renameSync(aside, owner); return false; }
+  if (ownerOf(lock, aside) !== deadPid) { quietly(() => renameSync(aside, owner)); return false; }
   quietly(() => unlinkSync(aside));
   quietly(() => rmdirSync(lock));
   return true;
@@ -38,6 +53,7 @@ export function withLock(lock, fn, { timeoutMs = 10 * 60 * 1000, pollMs = 5000 }
       if (error?.code !== 'EEXIST') throw error;
       const owner = ownerOf(lock);
       if (owner !== null && owner !== process.pid && !alive(owner) && reclaimStale(lock, owner)) continue;
+      if (owner === null && finishAbandonedReclaim(lock)) continue;
       if (Date.now() >= deadline) throw new Error(`Another run holds the lock ${lock}, and it was not released within ${Math.round(timeoutMs / 1000)} seconds. If no run is going, remove that folder by hand.`);
       sleep(pollMs);
       continue;
@@ -45,5 +61,6 @@ export function withLock(lock, fn, { timeoutMs = 10 * 60 * 1000, pollMs = 5000 }
     try { writeFileSync(join(lock, 'owner'), String(process.pid)); } catch (error) { try { removeFolder(lock); } catch { /* the write error below is the one to report */ } throw error; }
     break;
   }
-  try { return fn(); } finally { if (ownerOf(lock) === process.pid) removeFolder(lock); }
+  // A release that meets a waiter mid-reclaim (ENOTEMPTY) leaves the lock to heal on the next run; it never replaces the result or the error of `fn`.
+  try { return fn(); } finally { if (ownerOf(lock) === process.pid) { try { removeFolder(lock); } catch (error) { if (!['ENOTEMPTY', 'EEXIST'].includes(error?.code)) throw error; } } }
 }

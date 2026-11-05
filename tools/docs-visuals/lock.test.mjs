@@ -79,3 +79,31 @@ test('an owner of 0 or a negative number is treated as foreign and only waited f
     rmdirSync(lock);
   }
 });
+
+test('a reclaim stopped half way is finished once its waiter is gone, and a live one is left alone', () => {
+  const gone = spawnSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' }).stdout;
+  const lock = lockPath();
+  mkdirSync(lock);
+  writeFileSync(join(lock, `owner.stale-${gone}-1`), '12345');
+  assert.equal(withLock(lock, () => 'ran', { timeoutMs: 1000, pollMs: 20 }), 'ran');
+  assert.equal(existsSync(lock), false);
+  const busy = lockPath();
+  mkdirSync(busy);
+  writeFileSync(join(busy, `owner.stale-${process.ppid}-1`), '12345');
+  assert.throws(() => withLock(busy, () => assert.fail('must not run'), { timeoutMs: 60, pollMs: 20 }), error => error.message.includes(busy));
+  assert.equal(existsSync(busy), true);
+  unlinkSync(join(busy, `owner.stale-${process.ppid}-1`));
+  rmdirSync(busy);
+});
+
+test('an empty lock folder, or one holding other files, is never removed', () => {
+  for (const extra of [null, 'notes.txt']) {
+    const lock = lockPath();
+    mkdirSync(lock);
+    if (extra) writeFileSync(join(lock, extra), 'x');
+    assert.throws(() => withLock(lock, () => assert.fail('must not run'), { timeoutMs: 60, pollMs: 20 }), error => error.message.includes(lock));
+    assert.equal(existsSync(lock), true);
+    if (extra) unlinkSync(join(lock, extra));
+    rmdirSync(lock);
+  }
+});
