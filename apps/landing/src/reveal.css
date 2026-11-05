@@ -1,0 +1,81 @@
+/* Reveal on scroll. Nothing is hidden until the script puts `js-reveal` on <html>, so without JavaScript the whole page shows.
+   Only transform, opacity and clip-path move, so nothing shifts the layout.
+   The hidden look has no transition. The transition sits on the revealed look, so the first paint never animates. */
+
+/* Fallback curves, close to the springs. Where linear() works, the script writes --spring-soft and --spring-text on <html>, and these two lines hand them on. */
+:root {
+  --reveal-ease-soft: cubic-bezier(.34, 1.32, .5, 1);
+  --reveal-ease-text: cubic-bezier(.22, 1, .36, 1);
+  --reveal-dur-soft: 640ms;
+  --reveal-dur-text: 440ms;
+}
+@supports (transition-timing-function: linear(0, 1)) {
+  :root {
+    --reveal-ease-soft: var(--spring-soft, cubic-bezier(.34, 1.32, .5, 1));
+    --reveal-ease-text: var(--spring-text, cubic-bezier(.22, 1, .36, 1));
+    --reveal-dur-soft: var(--spring-soft-duration, 640ms);
+    --reveal-dur-text: var(--spring-text-duration, 440ms);
+  }
+}
+
+/* The stitch: a dashed line under each section heading. It shows by default and is drawn in left to right once the heading is revealed. */
+.product-section h2, .recipe-section h2, .band h2, .faq-section h2 { position: relative; }
+:is(.product-section, .recipe-section, .band, .faq-section) h2::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -12px;
+  width: 112px;
+  height: 2px;
+  background: repeating-linear-gradient(90deg, var(--ui-primary) 0 8px, transparent 8px 14px);
+  pointer-events: none;
+}
+
+html.js-reveal [data-reveal] { opacity: 0; }
+html.js-reveal [data-reveal='text'] { transform: translate3d(0, 14px, 0); }
+html.js-reveal [data-reveal='card'] { transform: translate3d(0, 24px, 0) scale(.98); }
+html.js-reveal h2[data-reveal]::after { clip-path: inset(0 100% 0 0); }
+
+/* The revealed-state transitions apply only where motion is allowed, so reduced motion cannot lose on specificity. */
+@media (prefers-reduced-motion: no-preference) {
+  html.js-reveal [data-reveal][data-revealed] {
+    opacity: 1;
+    transform: none;
+    transition-property: opacity, transform;
+    transition-delay: var(--reveal-delay, 0ms);
+  }
+  html.js-reveal [data-reveal='text'][data-revealed] {
+    transition-duration: 320ms, var(--reveal-dur-text);
+    transition-timing-function: cubic-bezier(.23, 1, .32, 1), var(--reveal-ease-text);
+  }
+  html.js-reveal [data-reveal='card'][data-revealed] {
+    transition-duration: 380ms, var(--reveal-dur-soft);
+    transition-timing-function: cubic-bezier(.23, 1, .32, 1), var(--reveal-ease-soft);
+  }
+  html.js-reveal h2[data-reveal][data-revealed]::after {
+    clip-path: inset(0);
+    transition: clip-path 520ms cubic-bezier(.65, 0, .35, 1) calc(var(--reveal-delay, 0ms) + 160ms);
+  }
+}
+
+/* A focus or a link jump lands on visible content with no motion. :target is a second guard for a jump the script has not seen yet. */
+html.js-reveal [data-reveal][data-reveal-now],
+html.js-reveal h2[data-reveal][data-reveal-now]::after,
+html.js-reveal :target [data-reveal],
+html.js-reveal :target[data-reveal],
+html.js-reveal :target h2[data-reveal]::after,
+html.js-reveal h2:target[data-reveal]::after {
+  transition: none;
+  transition-delay: 0ms;
+}
+html.js-reveal :target [data-reveal], html.js-reveal :target[data-reveal] { opacity: 1; transform: none; }
+html.js-reveal :target h2[data-reveal]::after, html.js-reveal h2:target[data-reveal]::after, html.js-reveal h2[data-reveal][data-reveal-now]::after { clip-path: inset(0); }
+
+@media (prefers-reduced-motion: reduce) {
+  html.js-reveal [data-reveal] { opacity: 1; transform: none; transition: none; }
+  html.js-reveal h2[data-reveal]::after { clip-path: none; transition: none; }
+}
+@media print {
+  html.js-reveal [data-reveal] { opacity: 1 !important; transform: none !important; transition: none !important; }
+  html.js-reveal h2[data-reveal]::after { clip-path: none !important; transition: none !important; }
+}

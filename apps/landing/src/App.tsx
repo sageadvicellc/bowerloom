@@ -1,5 +1,5 @@
 import { readerRelease, docsPath, releasesUrl } from './release';
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { destinations, hero, repository } from "./content";
 import SiteNavigation, { NavCta } from "./SiteNavigation";
 import BrandIdentity from "./BrandIdentity";
@@ -9,6 +9,8 @@ import { rememberThemeSplash, shouldShowThemeSplash, splashMediaFor, type Splash
 import "./hero-parallax.css";
 import "./page.css";
 import "./review.css";
+import "./reveal.css";
+import { initReveal } from "./reveal";
 import Hero from "./Hero";
 import SectionCompanion from "./SectionCompanion";
 import FooterCompanion from "./FooterCompanion";
@@ -54,6 +56,8 @@ export default function App() {
     document.documentElement.classList.add("cinematic-theme");
     return () => document.documentElement.classList.remove("cinematic-theme");
   }, []);
+  // Runs before the first paint, so what is on screen is marked as shown before the hiding class goes on.
+  useLayoutEffect(() => initReveal(), []);
   const reduced = useReducedMotion();
   // The header shrinks to a thin glass bar once the page has scrolled 48 px, and grows back below 16 px.
   const enterSentinel = useRef<HTMLDivElement>(null);

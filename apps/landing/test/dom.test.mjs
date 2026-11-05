@@ -49,6 +49,15 @@ async function open(options = {}) {
   await page.goto(base, { waitUntil: 'networkidle' });
   return { page, context };
 }
+// Measuring tests wait for the scroll reveal to finish, so a box is never read while a card is still rising.
+const settleReveals = async page => {
+  for (const id of ['engines', 'install']) {
+    await page.evaluate(section => document.getElementById(section).scrollIntoView({ behavior: 'instant', block: 'center' }), id);
+    await page.waitForFunction(section => [...document.querySelectorAll(`#${section} [data-reveal]`)].every(el => el.hasAttribute('data-revealed') && getComputedStyle(el).transform === 'none'), id, { timeout: 5000 });
+  }
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+};
+const settleInstall = async page => { await page.locator('#install').scrollIntoViewIfNeeded(); await page.evaluate(() => document.querySelector('#install').scrollIntoView({ behavior: 'instant', block: 'center' })); await page.waitForFunction(() => [...document.querySelectorAll('#install .install-card')].every(el => getComputedStyle(el).transform === 'none')); };
 const active = page => page.evaluate(() => document.activeElement?.className || document.activeElement?.tagName);
 const dialogOpen = page => page.locator(`[data-screenshot-dialog="${SHOT}"]`).evaluate(dialog => dialog.open);
 async function enlarge(page) {
@@ -128,6 +137,7 @@ dom('the Enlarge buttons have different names that start with their visible text
 
 dom('the npm note is plain text outside the live region, and Copied takes the same slot at the same height', async () => {
   const { page, context } = await open({ permissions: ['clipboard-read', 'clipboard-write'] });
+  await settleInstall(page);
   const button = page.locator('.copy-button');
   const status = page.locator('.copy-status');
   const noteEl = page.locator('.copy-note');
@@ -155,6 +165,7 @@ dom('the npm note is plain text outside the live region, and Copied takes the sa
 
 dom('a clipboard that refuses shows the failure words in the same slot, then the note comes back', async () => {
   const { page, context } = await open();
+  await settleInstall(page);
   await page.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new Error('denied')) } }); });
   const note = (await page.locator('.copy-note').innerText()).trim();
   const before = await page.locator('.install-card-cli').boundingBox();
@@ -192,6 +203,7 @@ dom('the pinch hint shows on a phone only, and the picture and its scroll area a
 
 dom('a double press still returns to idle once, after the last press', async () => {
   const { page, context } = await open({ permissions: ['clipboard-read', 'clipboard-write'] });
+  await settleInstall(page);
   const button = page.locator('.copy-button');
   await button.click();
   await page.waitForTimeout(1500);
@@ -449,6 +461,7 @@ dom('icon buttons have no box at rest and a 44 px target, and every button, tag,
   assert.equal(closeFacts.bg, 'rgba(0, 0, 0, 0)'); assert.equal(closeFacts.border, '0px'); assert.ok(closeFacts.w >= 44 && closeFacts.h >= 44);
   await phone.context.close();
   const wide = await open({ viewport: { width: 1280, height: 800 } });
+  await settleReveals(wide.page);
   const github = await wide.page.evaluate(() => { const el = document.querySelector('.nav-github'); const style = getComputedStyle(el); const box = el.getBoundingClientRect(); return { bg: style.backgroundColor, border: style.borderTopWidth, w: box.width, h: box.height }; });
   assert.deepEqual([github.bg, github.border], ['rgba(0, 0, 0, 0)', '0px']); assert.ok(github.w >= 44 && github.h >= 44);
   const radii = await wide.page.evaluate(() => Object.fromEntries(['.hero-copy .button.primary', '.nav-cta-bar', '.copy-button', '.screenshot-enlarge', '.release-tag', '.hero-engines li', '.hero-results li', '.engine-list li', '.engine-status'].map(sel => [sel, getComputedStyle(document.querySelector(sel)).borderTopLeftRadius])));
@@ -530,4 +543,143 @@ dom('link text on the real glass, sampled over the hero photo at scroll 60 and 3
     }
     await context.close();
   }
+});
+
+// Reveal on scroll (src/reveal.ts, src/reveal.css).
+const CARD = '#install .install-card-app';
+const state = (page, selector) => page.locator(selector).first().evaluate(el => { const s = getComputedStyle(el); return { opacity: Number(s.opacity), transform: s.transform, revealed: el.hasAttribute('data-revealed') }; });
+const jump = (page, y) => page.evaluate(top => window.scrollTo({ top, behavior: 'instant' }), y);
+const top = (page, selector) => page.locator(selector).first().evaluate(el => el.getBoundingClientRect().top + window.scrollY);
+
+dom('reveal: elements below the fold start hidden and reveal after scrolling', async () => {
+  const { page, context } = await open({ reducedMotion: 'no-preference' });
+  assert.equal(await page.evaluate(() => document.documentElement.classList.contains('js-reveal')), true);
+  const before = await state(page, CARD);
+  assert.equal(before.opacity, 0);
+  assert.notEqual(before.transform, 'none');
+  assert.equal(before.revealed, false);
+  await jump(page, (await top(page, CARD)) - 300);
+  await page.waitForFunction(selector => document.querySelector(selector).hasAttribute('data-revealed'), CARD);
+  await page.waitForFunction(selector => getComputedStyle(document.querySelector(selector)).opacity === '1' && getComputedStyle(document.querySelector(selector)).transform === 'none', CARD, { timeout: 3000 });
+  await context.close();
+});
+
+dom('reveal: content above the fold is visible at load, with no hidden state and no transition', async () => {
+  const { page, context } = await open({ reducedMotion: 'no-preference' });
+  const facts = await page.evaluate(() => {
+    const near = [...document.querySelectorAll('[data-reveal]')].filter(el => el.getBoundingClientRect().top < window.innerHeight && el.getBoundingClientRect().bottom > 0);
+    return near.map(el => { const s = getComputedStyle(el); return { opacity: s.opacity, transform: s.transform, revealed: el.hasAttribute('data-revealed'), duration: s.transitionDuration }; });
+  });
+  for (const fact of facts) assert.deepEqual(fact, { opacity: '1', transform: 'none', revealed: true, duration: '0s' });
+  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.normal-hero')).opacity), '1', 'the hero is not touched');
+  await context.close();
+});
+
+dom('reveal: each element is revealed once and does not hide again when scrolling back up', async () => {
+  const { page, context } = await open({ reducedMotion: 'no-preference' });
+  await jump(page, (await top(page, CARD)) - 300);
+  await page.waitForFunction(selector => { const el = document.querySelector(selector); return el.hasAttribute('data-revealed') && getComputedStyle(el).opacity === '1' && getComputedStyle(el).transform === 'none'; }, CARD);
+  await jump(page, 0);
+  await page.waitForTimeout(150);
+  assert.deepEqual(await state(page, CARD), { opacity: 1, transform: 'none', revealed: true });
+  await jump(page, (await top(page, CARD)) - 300);
+  await page.waitForTimeout(150);
+  assert.deepEqual(await state(page, CARD), { opacity: 1, transform: 'none', revealed: true });
+  await context.close();
+});
+
+dom('reveal: cards in one group stagger by 60 ms and the delay stops at 300 ms', async () => {
+  const { page, context } = await open({ viewport: { width: 1280, height: 800 }, reducedMotion: 'no-preference' });
+  await jump(page, (await top(page, '#engines .engine-list')) - 400);
+  await page.waitForFunction(() => document.querySelector('#engines .engine-list li:last-child')?.hasAttribute('data-revealed'));
+  const delays = await page.evaluate(() => [...document.querySelectorAll('#engines [data-revealed]')].map(el => el.style.getPropertyValue('--reveal-delay')));
+  assert.ok(delays.every(delay => /^\d+ms$/.test(delay) && Number.parseInt(delay) % 60 === 0 && Number.parseInt(delay) <= 300), delays.join(' '));
+  await context.close();
+});
+
+dom('reveal: only transform and opacity move on a revealed element, and the page does not shift', async () => {
+  const { page, context } = await open({ reducedMotion: 'no-preference' });
+  await page.evaluate(() => { window.__shift = 0; new PerformanceObserver(list => { for (const entry of list.getEntries()) if (!entry.hadRecentInput) window.__shift += entry.value; }).observe({ type: 'layout-shift', buffered: false }); });
+  const height = await page.evaluate(() => document.documentElement.scrollHeight);
+  for (const y of [800, 1600, 2400, 3200, 4800, 6400]) { await jump(page, y); await page.waitForTimeout(120); }
+  const props = await page.evaluate(() => [...new Set([...document.querySelectorAll('[data-revealed]')].flatMap(el => getComputedStyle(el).transitionProperty.split(', ')))].sort());
+  assert.deepEqual(props, ['opacity', 'transform']);
+  const stitch = await page.evaluate(() => [...new Set([...document.querySelectorAll('h2[data-revealed]')].map(el => getComputedStyle(el, '::after').transitionProperty))]);
+  assert.deepEqual(stitch, ['clip-path']);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollHeight), height, 'the document height does not change');
+  assert.equal(await page.evaluate(() => window.__shift), 0, 'no layout shift');
+  await context.close();
+});
+
+dom('reveal: reduced motion shows everything with no transform and no transition', async () => {
+  const { page, context } = await open({ reducedMotion: 'reduce' });
+  const facts = await page.evaluate(() => [...document.querySelectorAll('[data-reveal]')].map(el => { const s = getComputedStyle(el); return { opacity: s.opacity, transform: s.transform, duration: s.transitionDuration }; }));
+  assert.ok(facts.length > 20);
+  for (const fact of facts) assert.deepEqual(fact, { opacity: '1', transform: 'none', duration: '0s' });
+  await jump(page, (await top(page, CARD)) - 300);
+  await page.waitForFunction(selector => document.querySelector(selector).hasAttribute('data-revealed'), CARD);
+  const after = await page.evaluate(() => [...document.querySelectorAll('[data-reveal]')].map(el => { const s = getComputedStyle(el); return { duration: s.transitionDuration, delay: s.transitionDelay, stitch: getComputedStyle(el, '::after').transitionDuration }; }));
+  assert.ok(after.every(fact => fact.duration === '0s' && fact.delay === '0s' && fact.stitch === '0s'), 'no transition remains after the reveal');
+  await context.close();
+});
+
+dom('reveal: a malformed hash does not stop the page from rendering, and the content is visible', async () => {
+  for (const hash of ['#%', '#%E0%A4%A', '#no-such-id', '#a[b', '#%20']) {
+    const { page, context } = await open({ reducedMotion: 'no-preference' });
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto(`${base}${hash}`, { waitUntil: 'networkidle' });
+    assert.ok(await page.locator('h1').first().isVisible(), `${hash}: the page renders`);
+    assert.equal(await page.evaluate(() => document.documentElement.classList.contains('js-reveal')), true, `${hash}: the script ran`);
+    await page.evaluate(() => { location.hash = '#%E0%A4%A'; });
+    await page.waitForTimeout(100);
+    assert.deepEqual(errors, [], `${hash}: no script error`);
+    await jump(page, (await top(page, CARD)) - 300);
+    await page.waitForFunction(selector => getComputedStyle(document.querySelector(selector)).opacity === '1', CARD);
+    await context.close();
+  }
+});
+
+dom('reveal: with JavaScript off nothing is hidden, and without the class every target shows', async () => {
+  const off = await open({ javaScriptEnabled: false });
+  assert.equal(await off.page.evaluate(() => document.documentElement.classList.contains('js-reveal')), false);
+  await off.context.close();
+  const { page, context } = await open({ reducedMotion: 'no-preference' });
+  await page.evaluate(() => document.documentElement.classList.remove('js-reveal'));
+  const facts = await page.evaluate(() => [...document.querySelectorAll('[data-reveal]')].map(el => { const s = getComputedStyle(el); return `${s.opacity}|${s.transform}`; }));
+  assert.ok(facts.length > 20);
+  assert.ok(facts.every(fact => fact === '1|none'), 'every target is visible before the script adds the class');
+  await context.close();
+});
+
+dom('reveal: a jump to #install shows the install card at once, with no transition', async () => {
+  const { page, context } = await open({ reducedMotion: 'no-preference' });
+  assert.equal((await state(page, CARD)).opacity, 0);
+  await page.evaluate(() => { location.hash = '#install'; });
+  await page.waitForFunction(selector => document.querySelector(selector).hasAttribute('data-revealed'), CARD);
+  assert.deepEqual(await state(page, CARD), { opacity: 1, transform: 'none', revealed: true });
+  await context.close();
+  const direct = await open({ reducedMotion: 'no-preference' });
+  await direct.page.goto(`${base}#install`, { waitUntil: 'networkidle' });
+  assert.equal((await state(direct.page, CARD)).opacity, 1, 'a deep link shows the card');
+  await direct.context.close();
+});
+
+dom('reveal: keyboard focus on a hidden element reveals it at once', async () => {
+  const { page, context } = await open({ reducedMotion: 'no-preference' });
+  assert.equal((await state(page, '#install-cli')).opacity, 0);
+  await page.keyboard.press('Tab');
+  await page.locator('#install-cli .command-block').focus();
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Tab');
+  assert.deepEqual(await state(page, '#install-cli'), { opacity: 1, transform: 'none', revealed: true });
+  await context.close();
+});
+
+dom('reveal: print shows everything', async () => {
+  const { page, context } = await open({ reducedMotion: 'no-preference' });
+  await page.emulateMedia({ media: 'print' });
+  const facts = await page.evaluate(() => [...document.querySelectorAll('[data-reveal]')].map(el => { const s = getComputedStyle(el); return `${s.opacity}|${s.transform}`; }));
+  assert.ok(facts.every(fact => fact === '1|none'));
+  await context.close();
 });

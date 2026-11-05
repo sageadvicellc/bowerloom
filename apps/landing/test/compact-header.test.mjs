@@ -59,13 +59,14 @@ test('the glass has an opaque fallback without backdrop-filter and under reduced
   assert.match(css, /@media \(prefers-reduced-transparency: reduce\) \{\s*\.site-header-shell > \.site-header::before \{ background: var\(--ui-surface\); -webkit-backdrop-filter: none; backdrop-filter: none; \}/);
 });
 
-test('the change animates only transform and opacity, in 220 ms with ease-out, and only without a reduced-motion preference', async () => {
+test('the change animates only transform and opacity, in 250 ms with a gentle ease-out, and only without a reduced-motion preference', async () => {
   const css = await read('src/navigation.css');
-  const gate = css.indexOf('@media (prefers-reduced-motion: no-preference) {\n  .site-header-shell');
+  const gate = css.indexOf('@media (prefers-reduced-motion: no-preference) {\n  :root { --header-ease');
   const block = css.slice(gate, css.indexOf('\n}\n', gate));
   const props = [...block.matchAll(/transition: ([^;]*);/g)].flatMap(m => m[1].replace(/cubic-bezier\([^)]*\)/g, 'curve').split(',').map(part => part.trim().split(/\s+/)[0]));
   assert.deepEqual([...new Set(props)].sort(), ['opacity', 'transform'], 'only compositor properties: the bar moves and the glass fades, and no layout changes');
-  assert.ok(block.includes('220ms'));
+  assert.ok(block.includes('--header-time: 250ms') && block.includes('--header-ease: cubic-bezier(.3, .5, .2, 1)'));
+  assert.equal((block.match(/transition: (?:transform|opacity) var\(--header-time\) var\(--header-ease\)/g) ?? []).length, 3, 'the bar, the glass, and the wordmark share one curve');
   assert.equal((css.replace(block, '').match(/transition:/g) ?? []).length, 1, 'only the stitch draw-in sits in another gate');
 });
 
@@ -73,4 +74,23 @@ test('jumps and keyboard focus keep room under the thin bar with one scroll-padd
   const css = await read('src/navigation.css');
   assert.match(css, /html \{ scroll-padding-top: calc\(var\(--header-compact-h\) \+ 16px\); \}/);
   for (const name of ['navigation.css', 'page.css', 'review.css']) assert.doesNotMatch(await read('src/' + name), /scroll-margin-top/, name);
+});
+
+/** The progress of a cubic Bezier easing at time `x` (0 to 1), solved by bisection. */
+const bezier = (x1, y1, x2, y2) => x => {
+  const point = (t, a, b) => 3 * (1 - t) ** 2 * t * a + 3 * (1 - t) * t * t * b + t ** 3;
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 50; i++) { const mid = (lo + hi) / 2; if (point(mid, x1, x2) < x) lo = mid; else hi = mid; }
+  return point((lo + hi) / 2, y1, y2);
+};
+
+test('the easing never moves the bar more than 8 px in one 60 Hz frame, even on the tallest bar: the old curve moved 8.1 px in its first frame and read as a snap', async () => {
+  const css = await read('src/navigation.css');
+  const [x1, y1, x2, y2] = css.match(/--header-ease: cubic-bezier\(([^)]*)\)/)[1].split(',').map(Number);
+  const time = Number(css.match(/--header-time: (\d+)ms/)[1]);
+  const travel = (100 - 48) / 2;
+  const worst = (curve, duration = time) => { let prev = 0, most = 0; for (let t = 1000 / 60; t < duration + 17; t += 1000 / 60) { const v = curve(Math.min(t / duration, 1)); most = Math.max(most, (v - prev) * travel); prev = v; } return most; };
+  assert.ok(worst(bezier(x1, y1, x2, y2)) < 6, `worst frame ${worst(bezier(x1, y1, x2, y2)).toFixed(2)} px`);
+  assert.ok(worst(bezier(.23, 1, .32, 1), 220) > 8, 'the old curve over 220 ms, for comparison, did jump');
+  assert.ok(time >= 200 && time <= 300);
 });

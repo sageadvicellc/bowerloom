@@ -69,10 +69,13 @@
 @media (prefers-reduced-transparency: reduce) {
   .site-header-shell > .site-header::before { background: var(--ui-surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
+/* The bar moves 14 to 26 px and the glass fades in, once, when the class changes. The curve eases out but starts gently: the earlier curve (.23, 1, .32, 1) moved
+   31% of the way in the first frame, an 8 px jump on a desktop bar, which read as a snap. This one moves 3 px in the first frame and at most 4.5 px in any frame. */
 @media (prefers-reduced-motion: no-preference) {
-  .site-header-shell > .site-header { transition: transform 220ms cubic-bezier(.23, 1, .32, 1); }
-  .site-header-shell > .site-header::before { transition: opacity 220ms cubic-bezier(.23, 1, .32, 1); }
-  .site-header-shell > .site-header .brand { transition: transform 220ms cubic-bezier(.23, 1, .32, 1); }
+  :root { --header-ease: cubic-bezier(.3, .5, .2, 1); --header-time: 250ms; }
+  .site-header-shell > .site-header { transition: transform var(--header-time) var(--header-ease); }
+  .site-header-shell > .site-header::before { transition: opacity var(--header-time) var(--header-ease); }
+  .site-header-shell > .site-header .brand { transition: transform var(--header-time) var(--header-ease); }
 }
 /* A jump to a section, and keyboard focus moving to a control, land below the thin bar (WCAG 2.4.11). This one rule covers both. */
 html { scroll-padding-top: calc(var(--header-compact-h) + 16px); }
