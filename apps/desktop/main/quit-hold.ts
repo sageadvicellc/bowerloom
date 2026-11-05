@@ -91,8 +91,8 @@ export function quitHold(deps: QuitHoldDeps): QuitHold {
       // The quit asks before-quit at once. If it did not, the pass-through must not wait for some later quit.
       letThrough = false;
     }).catch((error: unknown) => {
-      // deps.quit threw: the quit did not go on, so nothing is let through later, and the log says so.
-      holding = false; letThrough = false; continuing = false;
+      // deps.quit threw: the quit did not go on, so nothing is let through later, no quit has begun (a share write is not refused), and the log says so.
+      holding = false; letThrough = false; continuing = false; begun = false;
       log('Bowerloom: the quit could not be started again after the wait.', error);
     });
   };

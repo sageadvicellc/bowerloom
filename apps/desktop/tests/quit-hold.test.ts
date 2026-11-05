@@ -257,6 +257,19 @@ test('a wait that fails after the quit began clears the pass-through and logs, s
   assert.match(logs.join('\n'), /quit failed/);
   handler({ preventDefault: () => { events.push('prevented-2'); } });
   assert.equal(events.at(-1), 'prevented-2', 'the next quit is held, not let through');
+  assert.equal(handler.begun(), true, 'the second press began a quit again');
+});
+
+test('a quit that throws when it is started again leaves no quit begun, so a later share write is not refused', async () => {
+  let handler!: ReturnType<typeof quitHold>;
+  handler = quitHold({
+    engine: { idle: async () => undefined, busy: () => true }, ending: () => false, exit: () => undefined, showBox: () => undefined,
+    quit: () => { throw new Error('quit failed'); }, log: () => undefined,
+  });
+  handler({ preventDefault: () => undefined });
+  assert.equal(handler.begun(), true);
+  await settle(); await settle();
+  assert.equal(handler.begun(), false);
 });
 
 test('main.ts logs a failed clean-up before the backstop exit, logs a missing engine, and keeps an error listener on stderr', () => {

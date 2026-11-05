@@ -282,7 +282,8 @@ export function createShare(env: ShareEnv): ShareCalls {
 
   /** A write that comes back from its dialog after a quit began: nothing is written, and one stderr line says why. */
   function quitRefused(what: 'export' | 'import'): ReturnType<typeof refusal> {
-    env.quitLog(`Bowerloom: a quit has begun, so the ${what} was not written.\n`);
+    // A log that throws must not turn the refusal into a failure.
+    try { env.quitLog(`Bowerloom: a quit has begun, so the ${what} was not written.\n`); } catch { /* the refusal still stands */ }
     return refusal(QUIT_BEGUN, QUIT_BEGUN_WORDS);
   }
 

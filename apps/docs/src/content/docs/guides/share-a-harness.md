@@ -112,3 +112,4 @@ The command line keeps no save points, so a command line import has no Go back. 
 - `SAVE_NO_DEFINITION`: choose the folder again, then plan the import again.
 - `SAVE_STALE`: the folder changed since the plan. Plan the import again.
 - `SAVE_RECOVERY_REQUIRED`: finish the stopped change first, then import.
+- `QUIT_BEGUN`: Bowerloom was closing, so nothing was written. Open Bowerloom again, then share again.

@@ -570,3 +570,15 @@ test('an import whose question is answered after a quit began writes nothing, re
   assert.equal(existsSync(join(dir, '.bowerloom', 'harness.json')), false, 'nothing was written');
   assert.equal(lines.length, 1);
 });
+
+test('a quit log that throws does not turn the QUIT_BEGUN refusal into a failure', async t => {
+  let begun = false;
+  const a = shareSetup(t, 'quit-log-throws', { quitBegun: () => begun, quitLog: () => { throw new Error('log failed'); } });
+  const f = await a.choose(quietFolder(a.home));
+  const plan = value(await a.service.planExport(f.id));
+  a.save = join(a.base, 'late2.bowerloom.json');
+  a.beforeYes = () => { begun = true; };
+  const r = await a.service.runExport(f.id, plan.revision, plan.acknowledge);
+  assert.equal(r.ok === false && r.refusal.code, 'QUIT_BEGUN');
+  assert.equal(existsSync(a.save), false);
+});

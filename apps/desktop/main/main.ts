@@ -22,6 +22,7 @@ import { e2eHidden, leaveDock, quietDialogs, revealWindow, windowOptions } from 
 import { windowFailure } from './window-failure.js';
 import { bringForBox, closeGuard } from './close-guard.js';
 import { quitHold } from './quit-hold.js';
+import { stderrErrorHandler } from './stderr-guard.js';
 import type { EngineService } from './engine-service.js';
 import { APP_HOST, APP_INDEX, APP_SCHEME, allowRequest, chooseUserData, decideNavigation, makeTempDataDir, removeAndReport, resolveAppFile, userDataArg, webPreferences } from './security.js';
 
@@ -35,8 +36,8 @@ const argv = process.argv.slice(1);
 // What this start is: the app on the person's own folders (no flag), or the sample (--sample). A flag that looks like a mode flag and is not exactly known refuses the start: it never falls
 // through to the app on the person's own folders. See main/launch.ts.
 const launch = launchOf(argv);
-// A write to a closed stderr (a parent that went away) is an async EPIPE; without a listener it would crash main.
-process.stderr.on('error', () => { /* nothing can be logged; the app goes on */ });
+// A write to a closed stderr (a parent that went away) is an async EPIPE; without a listener it would crash main. EPIPE is ignored; any other code is tried once on the console, then ignored.
+process.stderr.on('error', stderrErrorHandler());
 // A test start with --e2e-hidden shows no window and no Dock icon (main/window-options.ts). It changes nothing else. It comes first so that a refused test start shows no icon either.
 leaveDock(app, argv);
 // A hidden start shows no native box: every box writes to stderr and answers with the choice that keeps data (main/window-options.ts). It comes before any box can show.
