@@ -94,6 +94,10 @@ export interface EngineServiceDeps {
    * environment (main/engine-state.ts). Default: false. It reaches the window as one answer per folder, never as the environment.
    */
   readonly previewEngines?: boolean;
+  /** True once a quit has begun (main/quit-hold.ts). A share call that comes back from its dialog then writes nothing and is refused QUIT_BEGUN. Default: never. */
+  readonly quitBegun?: () => boolean;
+  /** Writes the one line a refused share write leaves. Default: stderr. */
+  readonly quitLog?: (text: string) => void;
   /**
    * Writes one line of the local usage log (packages/diagnostics). It never reaches the window. The service calls it inside a try, so a recorder that
    * throws changes no result. Default: records nothing.
@@ -339,6 +343,8 @@ export interface EngineService {
    * so a write in progress is never cut off. It never rejects. Not a call of the window.
    */
   idle(): Promise<void>;
+  /** True while a call runs or waits in the serial queue. It agrees with `idle`. An open share dialog is not busy: a file chooser can stay open for minutes, and a quit does not wait for it (see `quitBegun`). Read at once: a quit that finds it false is not held. */
+  busy(): boolean;
 }
 
 /**
@@ -371,6 +377,8 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
   const plans = new ShownPlans();
   const reportCopies = createReportCopies(deps.reportCopies ?? tmpdir);
   let chain: Promise<unknown> = Promise.resolve();
+  /** Calls that are running or waiting in the serial queue. */
+  let pending = 0;
   let count = 0;
 
   /**
@@ -394,7 +402,10 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
 
   /** One call at a time, in the order they came. */
   const serial = <T>(run: () => Promise<T>): Promise<T> => {
-    const next = chain.then(run, run);
+    pending += 1;
+    // The count falls in the call itself, however it ended, before its caller hears of the end, so `busy` is never true after `idle` could have settled.
+    const counted = async (): Promise<T> => { try { return await run(); } finally { pending -= 1; } };
+    const next = chain.then(counted, counted);
     chain = next.catch(() => undefined);
     return next;
   };
@@ -835,6 +846,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     chooseBundleOpen: deps.chooseBundleOpen ?? (async () => null), chooseBundleSave: deps.chooseBundleSave ?? (async () => null), confirm: deps.confirm,
     bad, unknownBundle: () => { throw new EngineCallRefusal('UNKNOWN_BUNDLE'); },
     folderOf, answer, serial, whileStopped,
+    quitBegun: deps.quitBegun ?? (() => false), quitLog: deps.quitLog ?? (text => { process.stderr.write(text); }),
     sourcePathOf: (f, notesId) => notesEdits(folderOf(f.id)).sourcePath(notesId),
     hasNotes: id => notesById.has(id), notesLabel: id => notesOf(id).label,
     sourceViewOf: f => sourceViewOf(folderOf(f.id)), scrubbed: (f, d) => scrubbed(folderOf(f.id), d),
@@ -1217,6 +1229,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     discardBundle: bundleId => serial(() => share.discardBundle(bundleId)),
     close: () => share.close(),
     clearReportCopies: () => reportCopies.clear(),
+    busy: () => pending > 0,
     idle: async () => { let seen: Promise<unknown>; do { seen = chain; await seen; } while (seen !== chain); },
   };
 }

@@ -112,6 +112,10 @@ export interface ShareEnv {
    * checked again inside the queue, after the dialog, so a plan that changed meanwhile is never written.
    */
   readonly serial: <T>(run: () => Promise<T>) => Promise<T>;
+  /** True once a quit has begun. A write that comes back from its dialog then does not start. */
+  readonly quitBegun: () => boolean;
+  /** Writes one line to stderr. */
+  readonly quitLog: (text: string) => void;
   readonly whileStopped: (f: ShareFolder) => void;
   /** The stored path of a notes folder, by the id main gave it (throws its own refusal). */
   readonly sourcePathOf: (f: ShareFolder, notesId: string) => string;
@@ -143,6 +147,9 @@ export interface ShareCalls {
   close(): Promise<void>;
 }
 
+/** The refusal of a write that was about to start after a quit began. The quit does not wait for a dialog, so the write must not start behind it. */
+export const QUIT_BEGUN = 'QUIT_BEGUN';
+const QUIT_BEGUN_WORDS = 'Bowerloom is quitting, so nothing was written. Open it again and share again.';
 const refusal = (code: string, message: string): { ok: false; refusal: { code: string; message: string; paths: readonly string[] } } => ({ ok: false, refusal: { code, message, paths: [] } });
 const staleWords = (): string => notTheShownPlan().refusal.message;
 const codeOf = (error: unknown): string => { const c = (error as { code?: unknown } | null)?.code; return typeof c === 'string' && /^[A-Z][A-Z0-9_]{2,63}$/.test(c) ? c : 'FAILED'; };
@@ -273,6 +280,13 @@ export function createShare(env: ShareEnv): ShareCalls {
     return { path, name, where: env.scrubAll(parent), identity: await bundleTargetIdentity(path) };
   }
 
+  /** A write that comes back from its dialog after a quit began: nothing is written, and one stderr line says why. */
+  function quitRefused(what: 'export' | 'import'): ReturnType<typeof refusal> {
+    // A log that throws must not turn the refusal into a failure.
+    try { env.quitLog(`Bowerloom: a quit has begun, so the ${what} was not written.\n`); } catch { /* the refusal still stands */ }
+    return refusal(QUIT_BEGUN, QUIT_BEGUN_WORDS);
+  }
+
   async function runExport(folderId: unknown, revision: unknown, acknowledged: unknown): Promise<Answer<ExportWritten>> {
     const folder = folderArg(folderId), rev = revisionArg(revision), ack = ackArg(acknowledged);
     const f = env.folderOf(folder);
@@ -302,6 +316,7 @@ export function createShare(env: ShareEnv): ShareCalls {
     // The question is asked with the size main recorded for this plan; the plan is checked again below, in the queue, once the person has said yes.
     if (!(await env.confirm(ASK.exportBundle(f.label, name, fact.bytes, rev, identity !== null, where)))) return cancelled();
     return env.serial(async () => {
+      if (env.quitBegun()) return quitRefused('export');
       const still = env.plans.peek(f.id, 'export');
       if (still === null || still.revision !== rev) return notTheShownPlan();
       const again = await env.answer(f, () => env.whileStopped(f));
@@ -403,6 +418,7 @@ export function createShare(env: ShareEnv): ShareCalls {
     // Main's own question, with words from its record of the plan. The queue is free while it is open.
     if (first.value.ask !== null && !(await env.confirm(first.value.ask))) return cancelled();
     return env.serial(async () => {
+      if (env.quitBegun()) return quitRefused('import');
       // After the yes: the plan must still be the one the person approved. A plan made, or a write done, while the question was open makes this refuse.
       if (env.plans.match(f.id, 'import', rev, record) === null) return notTheShownPlan();
       const again = await env.answer(f, () => env.whileStopped(f));

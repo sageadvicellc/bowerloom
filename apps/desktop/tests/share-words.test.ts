@@ -52,6 +52,7 @@ test('the next-step lines have no banned word, are short, and the codes the pack
   for (const [code, text] of Object.entries(SHARE_REFUSAL_WORDS)) { assert.equal(bannedHere(text), null, code); assert.ok(countWords(text) <= LIMITS.hint, code); }
   for (const code of [...Object.keys(BUNDLE_MESSAGES), ...Object.keys(SHARE_MAIN_WORDS)]) assert.ok(code in SHARE_REFUSAL_WORDS || NEXT_IN_OWN_WORDS.has(code), `${code} has a next step`);
   assert.ok('CANCELLED' in SHARE_REFUSAL_WORDS && 'NOT_THE_PLAN_SHOWN' in SHARE_REFUSAL_WORDS);
+  assert.equal(SHARE_REFUSAL_WORDS.QUIT_BEGUN, 'Open Bowerloom again, then share again.');
 });
 
 test('every reason a file can run, and every address flag, has words', () => {

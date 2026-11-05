@@ -273,3 +273,26 @@ test('main handles will-prevent-unload with the guard and a synchronous box; the
   const renderer = strip(read('renderer/harness/close-guard.ts'));
   assert.doesNotMatch(renderer, /ipcRenderer|bridge|getBridge|engine/i);
 });
+
+test('kept is called when the window stays (Keep editing, another answer, a box that fails) and not when Discard lets the unload go on or the app is ending', t => {
+  t.mock.method(console, 'error', () => undefined);
+  const run = (ask: () => number, ending = false): number => {
+    let kept = 0;
+    closeGuard({ title: () => titleWithChanges('Bowerloom', 2), ask, ending: () => ending, reveal: () => undefined, kept: () => { kept++; } })({ preventDefault() { /* the unload goes on */ } });
+    return kept;
+  };
+  assert.equal(run(() => 0), 1, 'Keep editing');
+  assert.equal(run(() => 7), 1, 'another answer');
+  assert.equal(run(() => { throw new Error('no box'); }), 1, 'a box that fails');
+  assert.equal(run(() => 1), 0, 'Discard');
+  assert.equal(run(() => 0, true), 0, 'the app is ending on its own');
+});
+
+test('a kept callback that throws changes nothing: the window still stays and no error leaves the guard', t => {
+  const errors = t.mock.method(console, 'error', () => undefined);
+  let prevented = 0;
+  const guard = closeGuard({ title: () => titleWithChanges('Bowerloom', 2), ask: () => 0, ending: () => false, reveal: () => undefined, kept: () => { throw new Error('the hold broke'); } });
+  assert.doesNotThrow(() => guard({ preventDefault() { prevented++; } }));
+  assert.equal(prevented, 0, 'Keep editing leaves the unload cancelled by Electron itself');
+  assert.ok(errors.mock.calls.some(c => String(c.arguments.join(' ')).includes('the hold broke')), 'the failure is logged');
+});

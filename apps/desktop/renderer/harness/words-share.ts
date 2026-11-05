@@ -109,6 +109,7 @@ export const SHARE_REFUSAL_WORDS: Readonly<Record<string, string>> = Object.free
   SAVE_EXECUTABLE_UNACKNOWLEDGED: 'Tick that you read the files that can run, then import.',
   SAVE_RECOVERY_REQUIRED: 'Finish the stopped change first, then import.',
   NOT_THE_PLAN_SHOWN: 'The plan changed. Plan again, then approve it.',
+  QUIT_BEGUN: 'Open Bowerloom again, then share again.',
   CANCELLED: 'Nothing was written. Press the button again when you are ready.',
 });
 

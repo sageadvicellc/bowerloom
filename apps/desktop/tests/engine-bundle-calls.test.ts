@@ -516,3 +516,69 @@ test('the native question of an import names deletes as well as writes, and the 
   assert.match(ASK.importBundle('~/x', 4, rev, {}, true).message, /^Make an empty harness and write 4 files into ~\/x\/\.bowerloom\?$/);
   assert.equal((JSON.parse(Buffer.from(emptyHarnessFile('/p/some-folder', ['claude-code']).bytes).toString('utf8')) as { description: string }).description, EMPTY_HARNESS_DESCRIPTION);
 });
+
+// ---- a quit that began while a dialog was open ------------------------------------------------------------------------------
+
+test('busy() is false while a share dialog is open (the hold does not wait on a file chooser) and true while a queued call runs', async t => {
+  let release: (v: string | null) => void = () => undefined;
+  const a = shareSetup(t, 'busy', { chooseBundleSave: () => new Promise<string | null>(resolve => { release = resolve; }) });
+  const f = await a.choose(quietFolder(a.home));
+  const plan = value(await a.service.planExport(f.id));
+  assert.equal(a.service.busy(), false);
+  const running = a.service.runExport(f.id, plan.revision, plan.acknowledge);
+  await new Promise(resolve => setTimeout(resolve, 50));
+  assert.equal(a.service.busy(), false, 'the save dialog is open and the queue is empty: busy and idle agree');
+  await a.service.idle();
+  release(null);
+  await running;
+  assert.equal(a.service.busy(), false);
+});
+
+test('an export whose dialog comes back after a quit began writes nothing, returns QUIT_BEGUN, and logs one line', async t => {
+  const lines: string[] = [];
+  let begun = false;
+  const a = shareSetup(t, 'quit-export', { quitBegun: () => begun, quitLog: text => { lines.push(text); } });
+  const f = await a.choose(quietFolder(a.home));
+  const plan = value(await a.service.planExport(f.id));
+  a.save = join(a.base, 'late.bowerloom.json');
+  a.beforeYes = () => { begun = true; };
+  const r = await a.service.runExport(f.id, plan.revision, plan.acknowledge);
+  assert.equal(r.ok, false);
+  assert.equal(r.ok === false && r.refusal.code, 'QUIT_BEGUN');
+  assert.match(r.ok === false ? r.refusal.message : '', /quitting/i);
+  assert.equal(existsSync(a.save), false, 'nothing was written');
+  assert.equal(lines.length, 1);
+  assert.match(lines[0]!, /quit has begun/);
+  assert.equal(a.service.busy(), false);
+});
+
+test('an import whose question is answered after a quit began writes nothing, returns QUIT_BEGUN, and logs one line', async t => {
+  const lines: string[] = [];
+  let begun = false;
+  const a = shareSetup(t, 'quit-import-a');
+  const file = await exportTo(a, quietFolder(a.home), 'one.bowerloom.json');
+  const b = shareSetup(t, 'quit-import-b', { quitBegun: () => begun, quitLog: text => { lines.push(text); } });
+  b.open = file;
+  const dir = plainFolder(b.home, 'target');
+  const f = await b.choose(dir);
+  const bundle = value(await b.service.chooseBundle());
+  const plan = value(await b.service.planImport(f.id, bundle.bundleId, NO_CHOICES));
+  b.beforeYes = () => { begun = true; };
+  const r = await b.service.runImport(f.id, plan.revision, bundle.bundleId, NO_CHOICES, plan.acknowledge);
+  assert.equal(r.ok, false);
+  assert.equal(r.ok === false && r.refusal.code, 'QUIT_BEGUN');
+  assert.equal(existsSync(join(dir, '.bowerloom', 'harness.json')), false, 'nothing was written');
+  assert.equal(lines.length, 1);
+});
+
+test('a quit log that throws does not turn the QUIT_BEGUN refusal into a failure', async t => {
+  let begun = false;
+  const a = shareSetup(t, 'quit-log-throws', { quitBegun: () => begun, quitLog: () => { throw new Error('log failed'); } });
+  const f = await a.choose(quietFolder(a.home));
+  const plan = value(await a.service.planExport(f.id));
+  a.save = join(a.base, 'late2.bowerloom.json');
+  a.beforeYes = () => { begun = true; };
+  const r = await a.service.runExport(f.id, plan.revision, plan.acknowledge);
+  assert.equal(r.ok === false && r.refusal.code, 'QUIT_BEGUN');
+  assert.equal(existsSync(a.save), false);
+});
