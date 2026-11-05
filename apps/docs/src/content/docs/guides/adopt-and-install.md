@@ -31,6 +31,8 @@ bowerloom harness status
 
 `status` changes nothing. It says whether the folder has a harness, which engines it lists, whether an install is recorded, and whether a run stopped part way. If the folder has no harness, it says `Next: bowerloom harness adopt`.
 
+::visual{id="cli-harness-status"}
+
 ### 2. Adopt the files you have
 
 ```sh
@@ -55,6 +57,8 @@ bowerloom harness adopt --approve <revision>
 
 Add the same `--pick`, `--rename`, `--acknowledge`, `--every-engine`, and `--confirm` flags that you used for the plan. If a file changed after you saw the plan, Bowerloom refuses with `ADOPTION_STALE_APPROVAL` and writes nothing. If the folder already has a harness, adopt refuses with `ADOPTION_DEFINED`.
 
+::visual{id="cli-harness-adopt"}
+
 ### 3. Install the harness
 
 ```sh
@@ -62,6 +66,8 @@ bowerloom harness install
 ```
 
 Install writes the engine files from `.bowerloom`. The plan lists each file with its action, and it lists every part that an engine does not carry exactly, with the word `translated`, `weakened`, or `absent`. It also prints any code or command that an engine will run, in full, so that you can read it first.
+
+::visual{id="cli-harness-install"}
 
 By default install covers each supported engine that the harness lists. To choose, add `--engine <id>` once for each engine. `OpenCode`, `Pi`, and `DeepSeek Harness` install only with `BOWERLOOM_PREVIEW_ENGINES=1` set. Without it, naming one refuses with `ENGINE_PREVIEW`.
 
@@ -101,6 +107,8 @@ bowerloom harness drift --check
 
 `drift` lists the files that Bowerloom wrote and that changed since. `drift --check` does the same and fails with `PORTABLE_DRIFT`, exit 1, when a file changed or when `CLAUDE.md` does not follow `AGENTS.md`. It fails with `PORTABLE_NOTHING_PROJECTED` when nothing is installed. Use it in a script or a CI job. Add `--json` for the machine form.
 
+::visual{id="cli-harness-drift"}
+
 ### 6. Undo
 
 ```sh
@@ -109,6 +117,8 @@ bowerloom harness remove --approve <revision>
 ```
 
 Remove puts back every file that install replaced, and deletes the files that install created. A file that you changed since is kept, and the result says so.
+
+::visual{id="cli-harness-remove"}
 
 ### 7. Recover a run that stopped
 

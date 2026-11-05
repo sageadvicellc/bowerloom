@@ -24,6 +24,8 @@ An import installs nothing and runs nothing. Run `bowerloom harness install` aft
 
 In the app, open a harness in the Builder and press **Export** in the header. A sheet opens. A sheet is a panel on top of the screen. It shows what the file would hold. Choose where to save. The file holds the saved harness, so changes you have not saved are not in it. The sheet asks for a tick only when the files hold a path from this computer. A place inside the `.bowerloom` folder of the harness is refused, because a file there would break the harness. Choose a place outside the harness folder.
 
+::visual{id="app-export-sheet"}
+
 On the command line, run the command in the folder:
 
 ```sh
@@ -31,6 +33,8 @@ bowerloom harness export --output harness.json
 ```
 
 This prints the plan and writes nothing. A revision is the number of a plan. Run the command again with it:
+
+::visual{id="cli-harness-export"}
 
 ```sh
 bowerloom harness export --output harness.json --approve <revision>
@@ -55,6 +59,8 @@ bowerloom harness import harness.json
 ```
 
 This prints the plan and writes nothing. Run it again with the flags the plan asks for:
+
+::visual{id="cli-harness-import"}
 
 ```sh
 bowerloom harness import harness.json --acknowledge <hash> --approve <revision>

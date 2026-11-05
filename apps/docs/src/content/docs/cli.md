@@ -30,6 +30,8 @@ bowerloom help advanced
 
 `bowerloom --help` lists the commands you use first. `bowerloom help <command>` shows the full help of one command. These commands have it: `up`, `ls`, `status`, `store`, `use`, `unuse`, `lock`, and `receipt`. So do `cache`, `skills`, `apply`, `context`, `team`, `skill`, `prompt`, `init`, `report`, and `events`. `bowerloom help harness` shows the harness commands, which the short help leaves out. `bowerloom help slice` and `bowerloom help folder` show the help of `context`. `bowerloom help advanced` lists every form, including the request-file forms and the plumbing commands below. A command followed by `--help` shows the same text as `help <command>`.
 
+::visual{id="cli-help"}
+
 Bare `bowerloom` prints the short help. An unknown command prints `Unknown command <word>. Run bowerloom help.` The help heading reads `open beta`.
 
 The version output reads `Bowerloom 0.8.0-beta.1`. Command syntax does not grant execution permission.
@@ -105,6 +107,12 @@ The store keeps a `.gitignore` that leaves out `folders/` and the other files of
 
 `bowerloom status --installation <private.json>` still reads a prepared session. See [Historical demo and session](#historical-demo).
 
+::visual{id="cli-up"}
+
+::visual{id="cli-ls"}
+
+::visual{id="cli-status"}
+
 ## Store and lock
 
 - `~/.bowerloom/store.json` marks your store.
@@ -145,6 +153,8 @@ bowerloom slice create <name> [--root <folder>] [--registered <folder-name>] [--
 ```
 
 `team adopt` copies a team from your store into this project, at `.bowerloom/teams/<id>`, and lists it in `bowerloom.json` as a project item. A team that `bowerloom.json` lists from the store switches to the project copy. A team it does not list yet is added, and store skills and prompts tagged to the team stay store items. The project then owns the copy; later store changes do not reach it. In a project with `bowerloom.json`, the create commands also add the new skill, prompt, or team to it. A context slice is a project item only: `bowerloom.json`, the store, and the lock never hold it.
+
+::visual{id="cli-skill-create"}
 
 Agents use these commands most. They write inside `.bowerloom` only, or inside your store with `--global`. You and your agents own the files they make.
 
@@ -193,6 +203,8 @@ bowerloom apply [--harness claude|codex|both] [--allow-agent <role>:<hash>]... [
 ```
 
 `--frozen` installs only what `bowerloom.lock.json` records, as `npm ci` does. It refuses if the lock file and `bowerloom.json` disagree. It ignores your store. It fetches what this machine does not hold yet, from the hosts the plan names. Plain apply never fetches. A store skill or prompt fetched from the lock that sets `allowed-tools`, registers hooks, or runs `!` shell lines is held with `ITEM_REVIEW_REQUIRED`, unless the approved plan showed it. Run `bowerloom apply --frozen` again to review it. `--max-github-requests <n>` lets one run make up to n GitHub requests, at most 5000. The default is 1000.
+
+::visual{id="cli-apply"}
 
 A store in a private GitHub repository needs `BOWERLOOM_GITHUB_TOKEN`. Six commands read it: `apply --frozen`, `skills sync`, the sync step of `up`, `use`, `lock update`, and `store migrate`. Each reads it only for a store item that needs the store repository. Then the plan shows a `Credentials:` line that names each repository that gets the token, and its `Network:` line says that store items use your GitHub token. The token goes only to `api.github.com`, for those repositories. Pinned skills are fetched without credentials. A plain `apply` never reads the variable. If the variable is set or removed between the plan and `--approve`, the run refuses `STALE_APPROVAL`. See [Trust and security boundaries](/docs/security/#the-github-token-for-a-private-store).
 
