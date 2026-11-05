@@ -100,6 +100,9 @@ test('empty state is plain, linked, and a valid page with its own metadata', () 
   assert.equal(metaOf(html, 'og:type'), 'website');
   assert.ok(metaOf(html, 'description'));
   assert.doesNotMatch(html, /<li>|<article/);
+  assert.match(html, /<meta name="robots" content="noindex">/, 'an empty index is hidden from search while Articles is out of the navigation');
+  assert.doesNotMatch(renderIndexPage(site, [parseArticle('one.md', fm({}))]), /name="robots"/, 'an index with articles can be indexed');
+  assert.doesNotMatch(renderSitemap(site, []), /\/articles\//, 'the sitemap leaves out an empty index');
 });
 
 test('index lists published articles with links, titles, and bylines', () => {
@@ -223,7 +226,7 @@ test('sitemap lists home, index, and each article with lastmod, and escapes XML'
   const odd = renderSitemap({...site, site: 'https://a.test/?x=1&y=2'}, []);
   assert.match(odd, /&amp;y=2/);
   const empty = renderSitemap(site, []);
-  assert.equal((empty.match(/<url>/g) ?? []).length, 2);
+  assert.equal((empty.match(/<url>/g) ?? []).length, 1, 'with no articles the sitemap lists the home page only');
   assert.doesNotMatch(empty, /lastmod/);
 });
 

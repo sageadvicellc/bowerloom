@@ -82,7 +82,6 @@
 .screenshot-enlarge:hover { border-color: var(--ui-primary); color: var(--ui-primary); }
 .screenshot-enlarge:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 3px; }
 
-/* The enlarged view: a native modal dialog. It is as wide as the window allows and no taller than it. The bar stays; the picture scrolls under it. */
 /* The enlarged view: a native modal dialog that holds a small solarpunk device. The dialog itself is clear. A header bar with the X sits above the device, and the
    device is a painted metal frame around the picture, with ivy and a flower that scale with it. --s is the scale: large windows 0.5, windows up to 1000 px wide 0.4,
    phones 0.3. The dialog's side padding holds the plants that reach past the frame, so nothing makes the page wider.
@@ -97,7 +96,7 @@
 /* A soft blur and a dim tone behind the dialog. A browser that cannot blur the backdrop still gets the dim tone. */
 .screenshot-dialog::backdrop { background: rgb(24 20 28 / .5); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
 /* The column is as wide as the device, and as wide as the window height allows: the picture is 16:10, so its width follows the height that is left. */
-.screenshot-column { margin-inline: auto; width: min(1100px, 100%, calc((100dvh - ((var(--hole-t) + var(--hole-b) + 80) * var(--s) * 1px + 104px)) * 1.6 + (var(--hole-l) + var(--hole-r)) * var(--s) * 1px)); }
+.screenshot-column { margin-inline: auto; width: min(1100px, 100%, calc((100dvh - ((var(--hole-t) + var(--hole-b) + 96) * var(--s) * 1px + 104px)) * 1.6 + (var(--hole-l) + var(--hole-r)) * var(--s) * 1px)); }
 .screenshot-dialog-bar { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 12px 10px 20px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-surface); box-shadow: 0 12px 32px -16px rgb(20 16 24 / .5); }
 .screenshot-dialog-bar form { margin: 0; }
 .screenshot-dialog-text { min-width: 0; }
@@ -109,7 +108,7 @@
 /* The scroll area stays inside the dialog. A picture wider than a phone is 960 px wide, so the words in it can be read, and the area scrolls sideways. */
 /* The device. The picture fills the frame's screen opening: the padding is the opening's inset. The frame is a nine-slice overlay on top of the picture, so the
    corners keep their size, the straight edges stretch, and any size works. The overlay never takes a click. The picture sits inside at 16:10. */
-.screenshot-device { position: relative; box-sizing: border-box; margin-block: calc(40px * var(--s) + 8px) calc(40px * var(--s)); padding: calc(var(--hole-t) * var(--s) * 1px) calc(var(--hole-r) * var(--s) * 1px) calc(var(--hole-b) * var(--s) * 1px) calc(var(--hole-l) * var(--s) * 1px); }
+.screenshot-device { position: relative; box-sizing: border-box; margin-block: calc(40px * var(--s) + 8px) calc(56px * var(--s)); padding: calc(var(--hole-t) * var(--s) * 1px) calc(var(--hole-r) * var(--s) * 1px) calc(var(--hole-b) * var(--s) * 1px) calc(var(--hole-l) * var(--s) * 1px); }
 .screenshot-device::after { content: ''; position: absolute; inset: 0; z-index: 1; box-sizing: border-box; pointer-events: none; border-style: solid; border-width: calc(var(--cut-t) * var(--s) * 1px) calc(var(--cut-r) * var(--s) * 1px) calc(var(--cut-b) * var(--s) * 1px) calc(var(--cut-l) * var(--s) * 1px); border-image: var(--frame) var(--cut-t) var(--cut-r) var(--cut-b) var(--cut-l) / calc(var(--cut-t) * var(--s) * 1px) calc(var(--cut-r) * var(--s) * 1px) calc(var(--cut-b) * var(--s) * 1px) calc(var(--cut-l) * var(--s) * 1px) stretch; }
 .screenshot-scroll { position: relative; min-height: 0; overflow: hidden; background: var(--ui-surface); }
 /* The ivy hangs from the top left corner over the left edge, and the flower sits on the bottom right corner. Both are above the frame. */

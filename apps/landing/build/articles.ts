@@ -228,7 +228,9 @@ ${articles.map(a => `<li><h2><a href="/articles/${e(a.slug)}/">${e(a.title)}</a>
   const description = 'Articles from the Bowerloom project.';
   const main = `<h1>Articles</h1>\n${list}`;
   const jsonLd = { '@context': 'https://schema.org', '@type': 'CollectionPage', name: 'Bowerloom articles', url: indexUrl(site), description };
-  return page(site, { title: 'Articles · Bowerloom', description, canonical: indexUrl(site), ogType: 'website', jsonLd, main });
+  // While there are no articles, the index is out of the navigation, so search engines are asked not to list it either.
+  const extra = articles.length === 0 ? ['<meta name="robots" content="noindex">'] : undefined;
+  return page(site, { title: 'Articles · Bowerloom', description, canonical: indexUrl(site), ogType: 'website', jsonLd, main, extra });
 }
 
 const xml = (v: string) => v.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&apos;');
@@ -238,7 +240,7 @@ export function renderSitemap(site: SiteInfo, articles: Article[]): string {
   const entry = (loc: string, lastmod?: string) => `  <url><loc>${xml(loc)}</loc>${lastmod ? `<lastmod>${xml(lastmod)}</lastmod>` : ''}</url>`;
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${[entry(base(site) + '/'), entry(indexUrl(site), latest), ...articles.map(a => entry(articleUrl(site, a.slug), a.updated ?? a.date))].join('\n')}
+${[entry(base(site) + '/'), ...(articles.length ? [entry(indexUrl(site), latest)] : []), ...articles.map(a => entry(articleUrl(site, a.slug), a.updated ?? a.date))].join('\n')}
 </urlset>
 `;
 }
