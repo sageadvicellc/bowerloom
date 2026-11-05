@@ -186,7 +186,7 @@ test('main.ts wires will-quit and window-all-closed to the hold, and the exit to
   const main = readFileSync(join(DESKTOP, 'main/main.ts'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
   assert.match(main, /app\.on\('will-quit', quitHeld\.reachedWillQuit\)/);
   assert.match(main, /app\.on\('window-all-closed', quitHeld\.windowsClosed\)/);
-  assert.match(main, /exit: code => \{ try \{ engineForExit\?\.clearReportCopies\(\); \} finally \{ app\.exit\(code\); \} \}/, 'the backstop runs the clean-up of the quit event first');
+  assert.match(main, /exit: code => \{[\s\S]*?clearReportCopies\(\)[\s\S]*?app\.exit\(code\);/, 'the backstop runs the clean-up of the quit event first');
   assert.match(main, /kept: \(\) => \{ quitHeld\.cancelled\(\);/, 'a window that keeps its changes ends the held quit');
 });
 
@@ -233,4 +233,38 @@ test('the pass-through does not stay set: a quit that did not reach before-quit 
   handler({ preventDefault: () => { events.push('prevented-3'); } });
   assert.equal(events.at(-1), 'prevented-3');
   busy = false;
+});
+
+test('begun() is true from the first quit until a window keeps its changes, and then false again', async () => {
+  const h = harness(async () => undefined, { busy: false });
+  assert.equal(h.hold.begun(), false);
+  h.press();
+  assert.equal(h.hold.begun(), true, 'an idle quit has begun too: a share call back from its dialog must not write');
+  h.hold.cancelled();
+  assert.equal(h.hold.begun(), false, 'Keep editing ends the quit; share writes work again');
+});
+
+test('a wait that fails after the quit began clears the pass-through and logs, so no later quit is let through by accident', async () => {
+  const events: string[] = [], logs: string[] = [];
+  let handler!: ReturnType<typeof quitHold>;
+  handler = quitHold({
+    engine: { idle: async () => undefined, busy: () => true }, ending: () => false, exit: () => undefined, showBox: () => undefined,
+    quit: () => { events.push('quit'); throw new Error('quit failed'); },
+    log: (text, cause) => { logs.push(`${text} ${cause instanceof Error ? cause.message : ''}`); },
+  });
+  handler({ preventDefault: () => { events.push('prevented'); } });
+  await settle(); await settle();
+  assert.match(logs.join('\n'), /quit failed/);
+  handler({ preventDefault: () => { events.push('prevented-2'); } });
+  assert.equal(events.at(-1), 'prevented-2', 'the next quit is held, not let through');
+});
+
+test('main.ts logs a failed clean-up before the backstop exit, logs a missing engine, and keeps an error listener on stderr', () => {
+  const main = readFileSync(join(DESKTOP, 'main/main.ts'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  const exit = main.slice(main.indexOf('exit: code'), main.indexOf('});', main.indexOf('exit: code')));
+  assert.match(exit, /catch \(error\)/);
+  assert.match(exit, /engineForExit === null/);
+  assert.match(exit, /app\.exit\(code\)/);
+  assert.match(main, /process\.stderr\.on\('error'/);
+  assert.ok(main.indexOf("process.stderr.on('error'") < main.indexOf('leaveDock(app, argv)'), 'the listener comes first');
 });

@@ -58,6 +58,11 @@ export function bringForBox(win: BoxWindow, canShow: boolean): void {
   if (canShow && !win.isVisible()) win.show();
 }
 
+/** `kept` belongs to the quit hold; if it throws, the window still stays and the failure is logged. */
+function keptSafely(deps: CloseGuardDeps): void {
+  try { deps.kept?.(); } catch (error) { console.error('Bowerloom: the quit hold could not be told that the window stayed.', error instanceof Error ? error.message : String(error)); }
+}
+
 /** The handler of `will-prevent-unload`. */
 export function closeGuard(deps: CloseGuardDeps): (event: { preventDefault(): void }) => void {
   return event => {
@@ -66,8 +71,8 @@ export function closeGuard(deps: CloseGuardDeps): (event: { preventDefault(): vo
     try { deps.reveal(); } catch { /* the window cannot be brought forward; ask anyway */ }
     let answer: number;
     // A box that throws keeps the window, as any answer but Discard does. It is logged, so a Cmd+Q that does nothing is not silent.
-    try { answer = deps.ask(closeQuestion(changesInTitle(deps.title()))); } catch (error) { console.error('Bowerloom: the question about unsaved changes could not be shown, so the window stays open.', error instanceof Error ? error.message : String(error)); deps.kept?.(); return; }
+    try { answer = deps.ask(closeQuestion(changesInTitle(deps.title()))); } catch (error) { console.error('Bowerloom: the question about unsaved changes could not be shown, so the window stays open.', error instanceof Error ? error.message : String(error)); keptSafely(deps); return; }
     // Only the second button lets the unload go on; every other answer keeps the window.
-    if (answer === 1) event.preventDefault(); else deps.kept?.();
+    if (answer === 1) event.preventDefault(); else keptSafely(deps);
   };
 }

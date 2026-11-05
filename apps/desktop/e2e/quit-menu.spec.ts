@@ -4,7 +4,7 @@
  * A click on the menu's `quit` item does nothing on macOS (roles are handled natively), so the test sends the same `terminate:` action the item sends.
  *  - An idle engine: the quit ends the app.
  *  - An unsaved draft: the close question is quieted to "Keep editing", so the app stays.
- *  - A busy engine (a file dialog is open), then Keep editing, then the last window closes: on macOS the app stays alive, and no backstop ends it.
+ *  - A busy engine (a slow call in the queue) holds the quit with its box, then Keep editing, then the last window closes: on macOS the app stays alive, and no backstop ends it.
  * Every test ends every process it started.
  */
 import { _electron as electron, expect, test } from '@playwright/test';
@@ -88,21 +88,32 @@ test('an unsaved draft with the quiet close question: Quit keeps the app and its
   expect(await Promise.race([done, wait(15_000).then(() => 'timeout' as const)])).toBe(0);
 });
 
-test('a busy engine, then Keep editing, then the last window closes: the app stays alive, and no backstop ends it', async () => {
+/** How long the stubbed folder chooser keeps the queued engine call open. It must pass the hold's box delay (400 ms) with room to spare. */
+const SLOW_CALL_MS = 2500;
+/** The backstop of the quit hold (main/quit-hold.ts, QUIT_BACKSTOP_MS). */
+const BACKSTOP_MS = 5000;
+
+test('a busy engine holds the quit with its box, then Keep editing, then the last window closes: the app stays alive, and no backstop ends it', async () => {
   const p = await start();
-  // A file dialog that never answers makes the engine busy (the call is open). It is a stub, so no box shows.
-  await app!.evaluate(({ dialog }) => { dialog.showOpenDialog = (() => new Promise(() => undefined)) as unknown as typeof dialog.showOpenDialog; });
-  await p.evaluate(() => { void (window as unknown as { bowerloomEngine: { chooseBundle(): Promise<unknown> } }).bowerloomEngine.chooseBundle(); });
+  // A real call in the serial queue that is slow: the folder chooser is stubbed (so no box shows) to answer "cancelled" after SLOW_CALL_MS. The engine is busy until then.
+  await app!.evaluate(({ dialog }, ms) => { dialog.showOpenDialog = (() => new Promise(resolve => setTimeout(() => resolve({ canceled: true, filePaths: [] }), ms))) as unknown as typeof dialog.showOpenDialog; }, SLOW_CALL_MS);
+  await p.evaluate(() => { void (window as unknown as { bowerloomEngine: { chooseFolder(): Promise<unknown> } }).bowerloomEngine.chooseFolder(); });
   await draft(p, true);
   await terminate(app!);
+  // Proof that the hold ran: the quit was stopped and the hold's box was asked for (the hidden start writes it to stderr). The close question, which comes only after the hold lets the quit go, has not come yet.
+  await expect.poll(() => stderr, { timeout: 15_000 }).toContain('Bowerloom is finishing a save');
+  expect(stderr, 'the close question comes after the hold, not before').not.toContain('a window kept its unsaved changes');
+  expect(alive(app!), 'the quit was held, not carried out').toBe(true);
+  // When the call ends the hold lets the quit go on, the window asks about its draft, and Keep editing ends the quit.
   await expect.poll(() => stderr, { timeout: 15_000 }).toContain('a window kept its unsaved changes');
   expect(alive(app!)).toBe(true);
   expect(await windows(app!)).toBe(1);
-  // The draft is gone and the last window closes. On macOS the app stays, and the backstop (5 s) must not end it.
+  // The draft is gone and the last window closes. On macOS the app stays, and the backstop must not end it.
   await draft(p, false);
   await app!.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0]!.close(); });
   await expect.poll(() => windows(app!)).toBe(0);
-  await wait(7000);
+  // Nothing happens when the backstop does not fire, so there is no signal to poll for. The wait is the backstop time plus a margin, so a backstop that fired would show.
+  await wait(BACKSTOP_MS + 1500);
   expect(alive(app!), 'the app stays alive after its last window closes').toBe(true);
   expect(stderr).not.toContain('did not reach will-quit');
 });

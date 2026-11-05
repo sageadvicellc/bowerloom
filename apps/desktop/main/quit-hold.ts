@@ -41,7 +41,7 @@ export interface QuitHoldDeps {
 }
 
 /** The handler of `before-quit`; `reachedWillQuit` is for the `will-quit` event and stops the backstop; `windowsClosed` is for `window-all-closed` and starts it; `cancelled` is for a window that kept its unsaved changes, which ends the quit. */
-export type QuitHold = ((event: { preventDefault(): void }) => void) & { readonly reachedWillQuit: () => void; readonly windowsClosed: () => void; readonly cancelled: () => void };
+export type QuitHold = ((event: { preventDefault(): void }) => void) & { readonly reachedWillQuit: () => void; readonly windowsClosed: () => void; readonly cancelled: () => void; readonly begun: () => boolean };
 
 /** After the hold lets a held quit go on and every window is closed, the app must reach `will-quit` within this time, or the backstop ends it. */
 export const QUIT_BACKSTOP_MS = 5_000;
@@ -49,7 +49,7 @@ export const QUIT_BACKSTOP_MS = 5_000;
 /** The handler of `before-quit`. */
 export function quitHold(deps: QuitHoldDeps): QuitHold {
   const log = deps.log ?? ((text, cause) => { console.error(text, cause === undefined ? '' : cause instanceof Error ? cause.message : String(cause)); });
-  let letThrough = false, holding = false;
+  let letThrough = false, holding = false, begun = false;
   let backstop: NodeJS.Timeout | undefined;
   /** True from the moment the hold lets a quit go on until that quit reaches will-quit (or a new quit starts). */
   let continuing = false;
@@ -73,6 +73,7 @@ export function quitHold(deps: QuitHoldDeps): QuitHold {
   }
 
   const handler = (event: { preventDefault(): void }): void => {
+    begun = true;
     // The quit this hold started comes back here once; the next quit holds again.
     if (letThrough) { letThrough = false; return; }
     const engine = deps.engine;
@@ -89,6 +90,10 @@ export function quitHold(deps: QuitHoldDeps): QuitHold {
       deps.quit();
       // The quit asks before-quit at once. If it did not, the pass-through must not wait for some later quit.
       letThrough = false;
+    }).catch((error: unknown) => {
+      // deps.quit threw: the quit did not go on, so nothing is let through later, and the log says so.
+      holding = false; letThrough = false; continuing = false;
+      log('Bowerloom: the quit could not be started again after the wait.', error);
     });
   };
   /**
@@ -111,6 +116,6 @@ export function quitHold(deps: QuitHoldDeps): QuitHold {
     letThrough = false;
   };
   /** A window kept its unsaved changes (Keep editing): the quit is over. The app stays, and a later close of the last window must not end it. */
-  const cancelled = (): void => { continuing = false; letThrough = false; clearTimeout(backstop); };
-  return Object.assign(handler, { reachedWillQuit: () => { continuing = false; letThrough = false; clearTimeout(backstop); }, windowsClosed, cancelled });
+  const cancelled = (): void => { begun = false; continuing = false; letThrough = false; clearTimeout(backstop); };
+  return Object.assign(handler, { reachedWillQuit: () => { continuing = false; letThrough = false; clearTimeout(backstop); }, windowsClosed, cancelled, begun: () => begun });
 }

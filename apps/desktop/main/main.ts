@@ -35,6 +35,8 @@ const argv = process.argv.slice(1);
 // What this start is: the app on the person's own folders (no flag), or the sample (--sample). A flag that looks like a mode flag and is not exactly known refuses the start: it never falls
 // through to the app on the person's own folders. See main/launch.ts.
 const launch = launchOf(argv);
+// A write to a closed stderr (a parent that went away) is an async EPIPE; without a listener it would crash main.
+process.stderr.on('error', () => { /* nothing can be logged; the app goes on */ });
 // A test start with --e2e-hidden shows no window and no Dock icon (main/window-options.ts). It changes nothing else. It comes first so that a refused test start shows no icon either.
 leaveDock(app, argv);
 // A hidden start shows no native box: every box writes to stderr and answers with the choice that keeps data (main/window-options.ts). It comes before any box can show.
@@ -111,7 +113,13 @@ const quitHeld = quitHold({
   },
   quit: () => app.quit(),
   // The backstop: a quit that the hold started and that never reached will-quit ends here with code 1. app.exit skips will-quit and quit, so the clean-up of the quit event runs first.
-  exit: code => { try { engineForExit?.clearReportCopies(); } finally { app.exit(code); } },
+  exit: code => {
+    try {
+      if (engineForExit === null) process.stderr.write('Bowerloom: no engine to clean up before the backstop exit.\n');
+      else engineForExit.clearReportCopies();
+    } catch (error) { process.stderr.write(`Bowerloom: the clean-up before the backstop exit failed: ${error instanceof Error ? error.message : String(error)}\n`); }
+    app.exit(code);
+  },
 });
 app.on('before-quit', quitHeld);
 app.on('will-quit', quitHeld.reachedWillQuit);
@@ -202,6 +210,8 @@ app.whenReady().then(async () => {
         ipc: ipcMain, appIndexUrl: indexUrl, home, stateRoot: engineStateRoot(home), who: APPROVER_NAME,
         // Beta.1: OpenCode, Pi, and DeepSeek Harness install only when the app starts with BOWERLOOM_PREVIEW_ENGINES=1. The window gets one yes or no, never the environment.
         previewEngines: enginePreviewSwitch(),
+        // A share write that comes back from its dialog after a quit began is refused (main/engine-bundle.ts).
+        quitBegun: () => quitHeld.begun(),
         // The local usage log: lines about what was done, never a name or a path. BOWERLOOM_EVENT_LOG=off turns it off.
         record: createRecorder({ stateRoot: engineStateRoot(home), env: diagnosticsEnv(), home }),
         // Main's own question before every write (U16): words main builds from its record of the plan; the window cannot word or skip it.

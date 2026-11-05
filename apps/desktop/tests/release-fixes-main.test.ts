@@ -210,9 +210,9 @@ test('a .bowerloom that is a link is unreadable, not "no harness here"', async t
   assert.deepEqual(g!.nodes, []);
 });
 
-// ---- busy covers a share call that waits on a native dialog
+// ---- busy and idle agree: an open share dialog is not work in the queue, so a quit does not wait for it
 
-test('busy() is true while the open dialog of an import is up, and while a write question is up, and false again after', async t => {
+test('busy() is false while the open dialog of an import is up and while a write question is up; the quit does not wait for a dialog', async t => {
   const { file } = await pair(t, 'busy');
   let answer: (path: string | null) => void = () => undefined;
   let yes: (v: boolean) => void = () => undefined;
@@ -221,7 +221,7 @@ test('busy() is true while the open dialog of an import is up, and while a write
   assert.equal(b.service.busy(), false);
   const choosing = b.service.chooseBundle();
   await tick();
-  assert.equal(b.service.busy(), true, 'the open dialog is work in progress for a quit');
+  assert.equal(b.service.busy(), false, 'an open dialog can stay open for minutes; the hold would say a save is finishing, which would be untrue');
   answer(file);
   const bundle = value(await choosing);
   assert.equal(b.service.busy(), false);
@@ -229,7 +229,7 @@ test('busy() is true while the open dialog of an import is up, and while a write
   const plan = value(await b.service.planImport(f.id, bundle.bundleId, NO_CHOICES));
   const writing = b.service.runImport(f.id, plan.revision, bundle.bundleId, NO_CHOICES, plan.acknowledge);
   while (!asked) await tick();
-  assert.equal(b.service.busy(), true, 'the write question, and the write that follows it');
+  assert.equal(b.service.busy(), false, 'the write question is a dialog too');
   yes(true);
   value(await writing);
   assert.equal(b.service.busy(), false);
