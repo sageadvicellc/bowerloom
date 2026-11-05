@@ -24,6 +24,8 @@
 .hero-chips ul { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .hero-engines li, .hero-results li { padding: 4px 12px; border: 1px solid var(--ui-border); border-radius: 999px; background: var(--ui-surface); color: var(--ui-text); font: 600 13px/1.5 var(--ui-font); box-shadow: 0 1px 2px rgb(55 58 50 / .06); }
 .hero-engines li { border-color: var(--ui-primary); }
+.hero-results-group { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 10px; }
+.hero-results-lead { font: 500 13px/1.5 var(--ui-font); color: var(--ui-muted); }
 .hero-results li { display: inline-flex; align-items: center; gap: 7px; font-weight: 500; }
 .hero-results li::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--brand-foliage); }
 .hero-results [data-result='translated']::before { background: var(--brand-water); }
@@ -62,12 +64,10 @@
 .copy-button:hover { background: var(--ui-text); border-color: var(--ui-text); color: var(--ui-bg); }
 .copy-button:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 3px; }
 .copy-button[data-state='copied'] { background: var(--ui-surface); color: var(--ui-primary); }
-.copy-status { min-height: 3.2em; margin: -6px 0 10px; font: 14px/1.6 var(--ui-font); color: var(--ui-muted); }
-.pending-note { margin: 0 0 12px; font: 14px/1.6 var(--ui-font); color: var(--ui-muted); }
-.install-card .pending-note { display: inline-block; padding: 4px 12px; border-radius: 999px; background: var(--ui-surface); border: 1px solid var(--ui-border); font-size: 14px; }
+.install-card p.copy-status { min-height: 1.6em; margin: -6px 0 12px; font: 14px/1.6 var(--ui-font); color: var(--ui-muted); }
+/* With the pending-npm note the slot keeps room for two lines, so "Copied" and the failure words take the same height. */
+.install-card p.copy-status[data-note='yes'] { min-height: 3.2em; }
 @media (max-width: 900px) { .install-grid { grid-template-columns: minmax(0, 1fr); } }
-/* On a phone the command line card leads, because the app is for macOS. */
-@media (max-width: 760px) { .install-card-cli { order: -1; } }
 
 /* Motion. Rare, so it may charm: the sparkle settles in once on load. Opacity and transform only. The copy button presses in. Nothing loops. */
 @media (prefers-reduced-motion: no-preference) {

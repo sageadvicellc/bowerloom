@@ -20,6 +20,7 @@ export const hero = {
   "Eyebrow": "Open beta · macOS",
   "H1": "A cozy nest for your agents",
   "Body": "Set up your skills, agents, tools, rules, and context once. Bowerloom tucks them into Claude Code and Codex.",
+  "Results lead": "Each part is marked:",
   "Results": ["Exact", "Translated", "Weakened", "Absent"],
   "Primary CTA": "Get the app (beta)",
   "Secondary link": "Install the command line",

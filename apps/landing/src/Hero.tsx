@@ -23,13 +23,16 @@ export default function Hero() {
         <ul className="hero-engines" aria-label="Supported engines">
           {engines.supported.map(name => <li key={name}>{name}</li>)}
         </ul>
-        <ul className="hero-results" aria-label="Results the preview gives each part">
-          {hero.Results.map(name => <li key={name} data-result={name.toLowerCase()}>{name}</li>)}
-        </ul>
+        <div className="hero-results-group">
+          <span className="hero-results-lead">{hero["Results lead"]}</span>
+          <ul className="hero-results" aria-label="Results the preview gives each part">
+            {hero.Results.map(name => <li key={name} data-result={name.toLowerCase()}>{name}</li>)}
+          </ul>
+        </div>
       </div>
     </div>
     <div className="hero-showcase">
-      <ScreenshotSlot slot="builder-graph" />
+      <ScreenshotSlot slot="builder-graph" priority />
     </div>
   </section>;
 }

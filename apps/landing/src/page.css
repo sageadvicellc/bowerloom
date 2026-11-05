@@ -149,6 +149,8 @@ html:has(.screenshot-dialog[open]) { overflow: hidden; scrollbar-gutter: stable;
   .split > div { min-width: 0; }
 }
 @media (max-width: 760px) {
+  /* In the lightbox the picture fits the dialog width on a phone, so it does not look cropped. */
+  .screenshot-full { width: 100%; }
   .band-inner { padding: 44px 6%; }
   .recipe-section h2, .band h2, .faq-section h2 { font-size: 30px; }
   .install-card { padding: 22px; }

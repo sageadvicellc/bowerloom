@@ -20,6 +20,7 @@ test('the hero carries the revised 0.8 message: a tag, the nest headline, and on
   assert.equal(hero.Eyebrow, 'Open beta · macOS');
   assert.equal(hero.H1, 'A cozy nest for your agents');
   assert.equal(hero.Body, 'Set up your skills, agents, tools, rules, and context once. Bowerloom tucks them into Claude Code and Codex.');
+  assert.equal(hero['Results lead'], 'Each part is marked:');
   assert.deepEqual(hero.Results, ['Exact', 'Translated', 'Weakened', 'Absent']);
   assert.equal(hero['Primary CTA'], 'Get the app (beta)');
   assert.equal(hero['Secondary link'], 'Install the command line');
@@ -157,14 +158,15 @@ test('every screenshot slot is used once, has one image per theme, and says what
     assert.ok(slot.caption.length > 20 && slot.capture.length > 20, slot.id);
     assert.ok(slot.alt.length > 60 && slot.alt !== slot.caption, `${slot.id}: the alt text says what the picture shows`);
     assert.ok(Number.isInteger(slot.width) && Number.isInteger(slot.height) && slot.width / slot.height > 1.4 && slot.width / slot.height < 1.7, `${slot.id}: a size that suits a 16:10 slot`);
-    // The hero repeats the Builder graph, so it is the one shot that appears twice.
-    assert.equal(uses(slot.id), slot.id === 'builder-graph' ? 2 : 1, slot.id);
+    assert.equal(uses(slot.id), 1, slot.id);
   }
-  assert.equal((sections.match(/<ScreenshotSlot /g) ?? []).length, screenshotSlots.length + 1);
+  assert.equal((sections.match(/<ScreenshotSlot /g) ?? []).length, screenshotSlots.length);
   assert.doesNotMatch(sections, /<img /, 'Sections use the slot component, not images');
   const slotSource = await read('src/ScreenshotSlot.tsx');
   assert.match(slotSource, /data-screenshot-slot/);
-  assert.match(slotSource, /loading="lazy"/);
+  assert.match(slotSource, /loading=\{priority \? 'eager' : 'lazy'\}/, 'every shot loads late except the one marked priority');
+  assert.match(await read('src/Hero.tsx'), /<ScreenshotSlot slot="builder-graph" priority \/>/, 'only the hero shot is a priority');
+  assert.equal((sections.match(/ priority\b/g) ?? []).length, 1);
   assert.match(slotSource, /width=\{item\.width\} height=\{item\.height\}/);
   assert.match(slotSource, /alt=\{item\.alt\}/);
   assert.doesNotMatch(slotSource + await read('src/page.css'), /Screenshot to come|screenshot-frame/, 'the placeholder is gone');
@@ -232,6 +234,7 @@ test('the hero shows the tag, the nest headline, one sentence, the engine tags, 
     for (const name of engines.supported) assert.ok(html.includes(`<li>${name}</li>`), name);
     for (const name of hero.Results) assert.ok(html.includes(`data-result="${name.toLowerCase()}">${name}</li>`), name);
     assert.ok(html.includes('data-screenshot-slot="builder-graph"'), 'the Builder graph sits in the hero');
+    assert.match(html, /<span class="hero-results-lead">Each part is marked:<\/span>/, 'a lead-in comes before the result chips');
     assert.ok(html.indexOf('class="homepage-banner"') < html.indexOf('id="hero-title"'), 'the image leads the header');
   } finally { await page.close(); }
 });
@@ -247,7 +250,10 @@ test('the install section shows the command with a copy button, with the app fir
       assert.ok(text(html).includes(release.npm.installCommand), `command shown, available=${available}`);
       assert.equal(codeText(html.slice(html.indexOf('<pre'))), release.npm.installCommand, 'wrapping markup adds no characters to the copied command');
       assert.match(html, /<button type="button" class="copy-button"[^>]*>[\s\S]*?Copy[\s\S]*?<\/button>/);
-      assert.match(html, /<p class="copy-status" role="status" aria-live="polite"><\/p>/, 'a fixed status slot, empty until a copy happens');
+      const slot = html.match(/<p class="copy-status"[^>]*>([\s\S]*?)<\/p>/);
+      assert.ok(slot[0].includes('role="status"') && slot[0].includes('aria-live="polite"'));
+      assert.equal(slot[1], available ? '' : installView(false).pendingNote, 'one status slot: the npm note while idle, nothing once the package is published');
+      assert.ok(!html.includes('pending-note'), 'no separate note, so no dead gap');
       assert.ok(html.includes('aria-label="Install command"'));
       assert.ok(html.indexOf('id="install-app"') < html.indexOf('id="install-cli"'), 'the app download stays the primary path');
       assert.ok(!html.includes('arrives when the beta publishes'));
@@ -264,7 +270,7 @@ test('the features section is one engine item with its screenshot, the steps are
     const html = renderToStaticMarkup(createElement(page.sections.WhatItDoes));
     assert.ok(html.includes('See what each engine can carry'));
     assert.ok(!html.includes('journey'), 'the three-step strip is gone, so the steps live only in How it works');
-    assert.ok(html.includes('data-screenshot-slot="fidelity-preview"'));
+    assert.ok(!html.includes('<img'), 'the features section holds text only; the install review sits with the app');
     const how = renderToStaticMarkup(createElement(page.sections.HowItWorks));
     assert.equal((how.match(/<li>/g) ?? []).length, 4);
     assert.ok(how.includes('Go back to a save point') && how.includes('In the app, each save keeps a save point'));
@@ -287,7 +293,7 @@ test('a screenshot slot shows both themes\' images with a size, late loading, an
       assert.ok(image, theme);
       assert.ok(image.includes(`src="/shots/${slot.id}-${theme}.webp"`), theme);
       assert.ok(image.includes(`width="${slot.width}"`) && image.includes(`height="${slot.height}"`), theme);
-      assert.ok(image.includes('loading="lazy"'), theme);
+      assert.ok(image.includes('loading="eager"') && /fetchPriority="high"/.test(image), `${theme}: the hero shot loads at once with high priority`);
       assert.ok(image.includes('alt="'), theme);
     }
     assert.match(html, new RegExp(`<span id="[^"]+" class="screenshot-caption-text">${slot.caption.replaceAll("'", "&#x27;").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}<\/span>`));

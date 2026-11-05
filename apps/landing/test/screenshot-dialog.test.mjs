@@ -20,7 +20,8 @@ test('every shot has an Enlarge button in the caption row, with the dialog named
       const html = renderToStaticMarkup(createElement(page.slot.default, { slot: item.id }));
       const buttons = tags(html, 'button');
       const enlarge = buttons.find(tag => tag.includes('class="screenshot-enlarge"'));
-      assert.ok(enlarge.includes('type="button"') && enlarge.includes('aria-haspopup="dialog"') && enlarge.includes('aria-label="Enlarge the screenshot"'), item.id);
+      assert.ok(enlarge.includes('type="button"') && enlarge.includes('aria-haspopup="dialog"') && enlarge.includes(`aria-label="Enlarge: ${item.title}"`), item.id);
+      assert.ok(`Enlarge: ${item.title}`.startsWith('Enlarge'), `${item.id}: the name starts with the visible text`);
       const id = /aria-describedby="([^"]+)"/.exec(enlarge)?.[1];
       assert.ok(id !== undefined && html.includes(`<span id="${id}" class="screenshot-caption-text">${escape(item.caption)}</span>`), `${item.id}: the caption describes the button, so it is read once`);
       assert.ok(html.indexOf('</button>') < html.indexOf('<figcaption') && html.indexOf('<figcaption') < html.indexOf(enlarge), `${item.id}: Enlarge sits in the caption row, under the picture`);
@@ -133,4 +134,28 @@ test('the picture is wide enough to read on a phone and scrolls sideways inside 
   const css = await read('src/page.css');
   assert.match(css, /\.screenshot-full \{[^}]*width: max\(100%, 960px\)/);
   assert.match(css, /\.screenshot-dialog \{[^}]*width: min\(1180px, calc\(100vw - 64px\)\)/);
+});
+
+test('each shot has its own short title, so the Enlarge buttons have different names', () => {
+  const titles = screenshotSlots.map(item => item.title);
+  assert.equal(new Set(titles).size, titles.length);
+  for (const title of titles) assert.ok(title.length > 3 && title.length < 30, title);
+});
+
+test('a priority slot loads both themes at once with high priority, and an ordinary slot stays lazy', async () => {
+  const page = await loadPage();
+  try {
+    const priority = renderToStaticMarkup(createElement(page.slot.default, { slot: 'builder-graph', priority: true }));
+    const ordinary = renderToStaticMarkup(createElement(page.slot.default, { slot: 'builder-graph' }));
+    const figure = html => html.slice(html.indexOf('<figure'), html.indexOf('</figure>'));
+    for (const tag of tags(figure(priority), 'img')) assert.ok(tag.includes('loading="eager"') && tag.includes('fetchPriority="high"'), tag);
+    for (const tag of tags(figure(ordinary), 'img')) assert.ok(tag.includes('loading="lazy"') && !tag.includes('fetchPriority'), tag);
+  } finally { await page.close(); }
+});
+
+test('on a phone the enlarged picture fits the dialog width, and on a wide screen it keeps its 960 px reading width', async () => {
+  const css = await read('src/page.css');
+  assert.match(css, /\.screenshot-full \{[^}]*width: max\(100%, 960px\)/);
+  const phone = css.slice(css.indexOf('@media (max-width: 760px) {', css.indexOf('screenshot-full')));
+  assert.match(phone.slice(0, phone.indexOf('\n}\n')), /\.screenshot-full \{ width: 100%; \}/);
 });

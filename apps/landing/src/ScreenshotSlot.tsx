@@ -4,15 +4,15 @@ import { screenshotSlots, shotSource, shotThemes, type ScreenshotSlotId } from '
 
 /**
  * One screenshot with its caption. Both the light and the dark file are in the page, and the style sheet shows the one that matches the theme
- * (the site's own theme control sets `data-theme`; with no script the system setting decides). Every image is below the first screen, so it loads late,
- * and an image that is not shown never loads. The files come from `apps/desktop/e2e/landing-shots.spec.ts`.
+ * (the site's own theme control sets `data-theme`; with no script the system setting decides). Every image but the hero's is below the first screen, so it loads late,
+ * and an image that is not shown never loads. A `priority` slot, the one in the hero, loads at once with high priority; both themes load then, because the page cannot know the theme before it runs. The files come from `apps/desktop/e2e/landing-shots.spec.ts`.
  *
  * The Enlarge button in the caption row opens the same file at full size in a native modal dialog (`showModal`). The dialog has an X at the top right, a blurred backdrop,
  * and closes on Escape, on the X, and on a click on the backdrop. Tab cycles inside it, and the focus goes back to the shot when it closes.
  * The dialog holds no image until the first time it opens, so a visit that never enlarges a shot loads
  * nothing extra. The dialog names itself with the alt text, so the image inside it carries an empty alt and a screen reader does not say the text twice.
  */
-export default function ScreenshotSlot({ slot }: { slot: ScreenshotSlotId }) {
+export default function ScreenshotSlot({ slot, priority = false }: { slot: ScreenshotSlotId; priority?: boolean }) {
   const item = screenshotSlots.find(entry => entry.id === slot)!;
   const dialog = useRef<HTMLDialogElement>(null);
   // Whichever control opened the dialog gets the focus back.
@@ -29,11 +29,11 @@ export default function ScreenshotSlot({ slot }: { slot: ScreenshotSlotId }) {
         {shotThemes.map(theme => <img
           key={theme} className="screenshot-image" data-shot-theme={theme}
           src={shotSource(item.id, theme)} width={item.width} height={item.height}
-          alt={item.alt} loading="lazy" decoding="async" />)}
+          alt={item.alt} loading={priority ? 'eager' : 'lazy'} fetchPriority={priority ? 'high' : undefined} decoding="async" />)}
       </button>
       <figcaption className="screenshot-meta">
         <span id={caption} className="screenshot-caption-text">{item.caption}</span>
-        <button type="button" className="screenshot-enlarge" aria-haspopup="dialog" aria-label="Enlarge the screenshot" aria-describedby={caption} onClick={open}>
+        <button type="button" className="screenshot-enlarge" aria-haspopup="dialog" aria-label={`Enlarge: ${item.title}`} aria-describedby={caption} onClick={open}>
           <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M15 15l5 5M10.5 8v5M8 10.5h5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
           <span aria-hidden="true">Enlarge</span>
         </button>

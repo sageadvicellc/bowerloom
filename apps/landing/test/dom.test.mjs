@@ -24,9 +24,14 @@ function loadChromium() {
 }
 const chromium = loadChromium();
 let skipReason = chromium ? null : 'no Playwright was found (set PLAYWRIGHT_CORE_PATH)';
+// In CI a missing browser is a failure, never a skip, so the lightbox and the copy button cannot go unchecked.
+const inCi = Boolean(process.env.CI);
 
-/** A browser test. It skips, with the reason, on a machine that has no headless Chromium. */
-const dom = (name, run) => test(name, async context => { if (skipReason) return context.skip(skipReason); await run(); });
+/** A browser test. It skips, with the reason, on a machine that has no headless Chromium, and fails when `CI` is set. */
+const dom = (name, run) => test(name, async context => {
+  if (skipReason) { if (inCi) assert.fail(`CI needs a browser for this test: ${skipReason}`); return context.skip(skipReason); }
+  await run();
+});
 const SHOT = 'builder-graph';
 let server, browser, base;
 before(async () => {
@@ -45,9 +50,9 @@ async function open(options = {}) {
   return { page, context };
 }
 const active = page => page.evaluate(() => document.activeElement?.className || document.activeElement?.tagName);
-const dialogOpen = page => page.locator(`[data-screenshot-dialog="${SHOT}"]`).first().evaluate(dialog => dialog.open);
+const dialogOpen = page => page.locator(`[data-screenshot-dialog="${SHOT}"]`).evaluate(dialog => dialog.open);
 async function enlarge(page) {
-  const trigger = page.locator(`[data-screenshot-slot="${SHOT}"] .screenshot-enlarge`).first();
+  const trigger = page.getByRole('button', { name: 'Enlarge: Builder graph' });
   await trigger.focus();
   await page.keyboard.press('Enter');
   await page.waitForFunction(selector => document.querySelector(selector)?.open, `[data-screenshot-dialog="${SHOT}"]`);
@@ -86,7 +91,7 @@ dom('a click on the backdrop closes the lightbox, and a click inside does not', 
 
 dom('a click on the picture opens it, and the focus returns to the picture button', async () => {
   const { page, context } = await open();
-  await page.locator(`[data-screenshot-slot="${SHOT}"] .screenshot-open`).first().click();
+  await page.locator(`[data-screenshot-slot="${SHOT}"] .screenshot-open`).click();
   await page.waitForFunction(selector => document.querySelector(selector)?.open, `[data-screenshot-dialog="${SHOT}"]`);
   await page.keyboard.press('Escape');
   assert.equal(await active(page), 'screenshot-open');
@@ -112,33 +117,60 @@ dom('with reduced motion the lightbox shows at once', async () => {
   await context.close();
 });
 
-dom('the copy button goes from Copy to Copied and back, and the status slot says what happened', async () => {
-  const { page, context } = await open({ permissions: ['clipboard-read', 'clipboard-write'] });
-  const button = page.locator('.copy-button');
-  const status = page.locator('.copy-status');
-  assert.equal((await button.innerText()).split('\n')[0].trim(), 'Copy');
-  assert.equal(await status.getAttribute('role'), 'status');
-  const before = await page.locator('.install-card-cli').boundingBox();
-  await button.click();
-  await page.waitForFunction(() => document.querySelector('.copy-button').innerText.includes('Copied'));
-  assert.equal((await button.innerText()).split('\n')[0].trim(), 'Copied');
-  await page.waitForFunction(() => document.querySelector('.copy-status').innerText.trim() === 'Copied');
-  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'npm install -g bowerloom@beta');
-  const during = await page.locator('.install-card-cli').boundingBox();
-  assert.equal(during.height, before.height, 'the card does not change height when the words change');
-  await page.waitForFunction(() => !document.querySelector('.copy-button').innerText.includes('Copied'), null, { timeout: 5000 });
-  assert.equal((await status.innerText()).trim(), '');
+dom('the Enlarge buttons have different names that start with their visible text', async () => {
+  const { page, context } = await open();
+  const names = await page.locator('.screenshot-enlarge').evaluateAll(buttons => buttons.map(button => ({ name: button.getAttribute('aria-label'), visible: button.innerText.trim() })));
+  assert.equal(names.length, 5);
+  assert.equal(new Set(names.map(entry => entry.name)).size, 5);
+  for (const entry of names) assert.ok(entry.name.startsWith(entry.visible), `${entry.name} starts with ${entry.visible}`);
   await context.close();
 });
 
-dom('a clipboard that refuses shows the failure words in the status slot, then goes back to idle', async () => {
+dom('the status slot shows the npm note while idle, and Copied takes the same slot at the same height', async () => {
+  const { page, context } = await open({ permissions: ['clipboard-read', 'clipboard-write'] });
+  const button = page.locator('.copy-button');
+  const status = page.locator('.copy-status');
+  assert.equal(await status.getAttribute('role'), 'status');
+  const note = (await status.innerText()).trim();
+  assert.match(note, /not on npm yet/);
+  const slot = await status.boundingBox();
+  const card = await page.locator('.install-card-cli').boundingBox();
+  const terminal = await page.locator('.terminal').boundingBox();
+  assert.ok(slot.y - (terminal.y + terminal.height) < 20, 'no dead gap between the terminal and the note');
+  await button.click();
+  await page.waitForFunction(() => document.querySelector('.copy-status').innerText.trim() === 'Copied');
+  assert.equal((await button.innerText()).split('\n')[0].trim(), 'Copied');
+  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'npm install -g bowerloom@beta');
+  assert.equal((await status.boundingBox()).height, slot.height, 'the slot keeps its height');
+  assert.equal((await page.locator('.install-card-cli').boundingBox()).height, card.height, 'the card does not move');
+  await page.waitForFunction(text => document.querySelector('.copy-status').innerText.trim() === text, note, { timeout: 5000 });
+  assert.equal((await button.innerText()).split('\n')[0].trim(), 'Copy');
+  await context.close();
+});
+
+dom('a clipboard that refuses shows the failure words in the same slot, then the note comes back', async () => {
   const { page, context } = await open();
   await page.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new Error('denied')) } }); });
+  const note = (await page.locator('.copy-status').innerText()).trim();
   const before = await page.locator('.install-card-cli').boundingBox();
+  const slot = await page.locator('.copy-status').boundingBox();
   await page.locator('.copy-button').click();
   await page.waitForFunction(() => document.querySelector('.copy-status').innerText.includes('Copy failed'));
-  assert.match(await page.locator('.copy-status').innerText(), /Copy failed\. Select the command and copy it\./);
-  assert.equal((await page.locator('.install-card-cli').boundingBox()).height, before.height, 'the failure text takes the reserved slot');
-  await page.waitForFunction(() => document.querySelector('.copy-status').innerText.trim() === '', null, { timeout: 5000 });
+  assert.match(await page.locator('.copy-status').innerText(), /Copy failed\. Select the command\./);
+  assert.equal((await page.locator('.copy-status').boundingBox()).height, slot.height);
+  assert.equal((await page.locator('.install-card-cli').boundingBox()).height, before.height, 'the failure text takes the same slot');
+  await page.waitForFunction(text => document.querySelector('.copy-status').innerText.trim() === text, note, { timeout: 5000 });
+  await context.close();
+});
+
+dom('a double press still returns to idle once, after the last press', async () => {
+  const { page, context } = await open({ permissions: ['clipboard-read', 'clipboard-write'] });
+  const button = page.locator('.copy-button');
+  await button.click();
+  await page.waitForTimeout(1500);
+  await button.click();
+  await page.waitForTimeout(1500);
+  assert.ok((await button.innerText()).includes('Copied'), 'the first timer was cleared, so the second press still shows Copied after 3 s');
+  await page.waitForFunction(() => !document.querySelector('.copy-button').innerText.includes('Copied'), null, { timeout: 5000 });
   await context.close();
 });

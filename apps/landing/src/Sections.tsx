@@ -3,7 +3,7 @@ import { app, commandLine, engines, howItWorks, install, installView, questions,
 import { installAvailable, releasesUrl } from './release';
 import ProductText from './ProductText';
 import ScreenshotSlot from './ScreenshotSlot';
-import { copyLabel, copyText, type CopyState } from './copy';
+import { copyLabel, createCopyController, type CopyState } from './copy';
 
 /**
  * A command, with each hyphenated word kept whole when the line wraps on a narrow screen.
@@ -24,7 +24,6 @@ export function WhatItDoes() {
     <div className="section-body">
       <p><ProductText>{whatItDoes.intro}</ProductText></p>
       <div className="feature-engine"><h3>{engineFeature.title}</h3><p><ProductText>{engineFeature.body}</ProductText></p></div>
-      <ScreenshotSlot slot="fidelity-preview" />
     </div>
   </section>;
 }
@@ -50,7 +49,7 @@ export function AppSection() {
       <p className="band-lede"><ProductText>{app.body}</ProductText></p>
       <div className="app-grid">
         <article>
-          <ScreenshotSlot slot="builder-graph" />
+          <ScreenshotSlot slot="fidelity-preview" />
           <h3>{builder.title}</h3><p><ProductText>{builder.body}</ProductText></p>
         </article>
         <article>
@@ -95,33 +94,31 @@ export function EnginesSection() {
 }
 
 /**
- * The install command in a small terminal, with a copy button and a fixed slot under it for what happened. The slot keeps its height,
- * so the page does not move when the words change. One timer puts the button back to idle. A new press clears the old timer, and leaving the page clears it too.
+ * The install command in a small terminal, with a copy button and one status slot under it. While idle the slot holds the note it is given (the pending-npm note, or nothing).
+ * "Copied" or the failure words take the same slot, at the same height, so the page does not move. One timer puts the slot back to idle. A new press clears the old timer,
+ * and a copy that finishes after the page left sets no timer (see `createCopyController`).
  */
-export function InstallCommand({ command }: { command: string }) {
+export function InstallCommand({ command, idleNote = null }: { command: string; idleNote?: string | null }) {
   const [state, setState] = useState<CopyState>('idle');
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const clear = () => { if (timer.current !== null) { clearTimeout(timer.current); timer.current = null; } };
-  useEffect(() => clear, []);
-  const copy = async () => {
-    const result = await copyText(command, typeof navigator === 'undefined' ? null : navigator.clipboard);
-    clear();
-    setState(result);
-    timer.current = setTimeout(() => { timer.current = null; setState('idle'); }, 2400);
-  };
+  const controller = useRef<ReturnType<typeof createCopyController> | null>(null);
+  useEffect(() => {
+    const run = createCopyController({ text: command, clipboard: () => (typeof navigator === 'undefined' ? null : navigator.clipboard), set: setState });
+    controller.current = run;
+    return () => { run.dispose(); controller.current = null; };
+  }, [command]);
   return <>
     <div className="terminal">
       <div className="terminal-bar" aria-hidden="true"><span /><span /><span /></div>
       <div className="terminal-body">
         <span className="terminal-prompt" aria-hidden="true">$</span>
         <pre className="command-block" tabIndex={0} aria-label="Install command"><code><Command text={command} /></code></pre>
-        <button type="button" className="copy-button" data-state={state} onClick={copy}>
+        <button type="button" className="copy-button" data-state={state} onClick={() => { void controller.current?.press(); }}>
           <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M5 15V6.5A2.5 2.5 0 0 1 7.5 4H15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
           <span>{state === 'copied' ? 'Copied' : 'Copy'}<span className="sr-only"> the install command</span></span>
         </button>
       </div>
     </div>
-    <p className="copy-status" role="status" aria-live="polite">{state === 'idle' ? '' : copyLabel(state)}</p>
+    <p className="copy-status" role="status" aria-live="polite" data-note={idleNote ? 'yes' : 'no'}>{state === 'idle' ? idleNote ?? '' : copyLabel(state)}</p>
   </>;
 }
 
@@ -139,8 +136,7 @@ export function InstallSection({ available = installAvailable }: { available?: b
   </div>;
   const commandCard = <div key="cli" id="install-cli" className="install-card install-card-cli">
     <h3>{install.commandLineTitle}</h3>
-    <InstallCommand command={view.command} />
-    {view.pendingNote && <p className="pending-note">{view.pendingNote}</p>}
+    <InstallCommand command={view.command} idleNote={view.pendingNote} />
     <p><ProductText>{view.text}</ProductText></p>
   </div>;
   return <section id="install" className="band" aria-labelledby="install-title">
