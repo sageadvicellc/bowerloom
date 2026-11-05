@@ -21,9 +21,9 @@
     "trellis-mcp": "dist/apps/mcp/src/main.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.31.0",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "jose": "6.2.12",
-    "tar": "7.5.20"
+    "tar": "7.5.22"
   },
   "scripts": {
     "build": "tsc",
