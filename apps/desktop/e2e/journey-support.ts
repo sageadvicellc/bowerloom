@@ -7,7 +7,7 @@
 import { expect } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildMadeUpHome } from '../tools/made-up-home.js';
 import type { MadeUpHome } from '../tools/made-up-home.js';
@@ -36,7 +36,7 @@ export async function startApp(home: MadeUpHome, route: string, { freshTour = fa
   return h;
 }
 
-/** Every file under a folder, relative path to text, read by the test itself. Hidden names are walked too. A missing folder is empty. */
+/** Every file under a folder, relative path to text, read by the test itself. Hidden names are walked too. A missing folder is empty. It records file contents only: for folders and modes, use `treeShape`. */
 export function readTree(root: string, { skip = [] as string[] } = {}): Record<string, string> {
   const out: Record<string, string> = {};
   const walk = (rel: string): void => {
@@ -44,6 +44,19 @@ export function readTree(root: string, { skip = [] as string[] } = {}): Record<s
       const r = rel === '' ? entry.name : `${rel}/${entry.name}`;
       if (skip.includes(entry.name)) continue;
       if (entry.isDirectory()) walk(r); else out[r] = readFileSync(join(root, r), 'utf8');
+    }
+  };
+  if (existsSync(root)) walk('');
+  return out;
+}
+/** Every folder (with a trailing slash) and every file under a root, each with its mode, so an empty folder or a changed mode left behind shows. A missing root is empty. */
+export function treeShape(root: string): string[] {
+  const out: string[] = [];
+  const walk = (rel: string): void => {
+    for (const entry of readdirSync(join(root, rel), { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      const r = rel === '' ? entry.name : `${rel}/${entry.name}`;
+      const mode = (lstatSync(join(root, r)).mode & 0o777).toString(8);
+      if (entry.isDirectory()) { out.push(`${r}/ ${mode}`); walk(r); } else out.push(`${r} ${mode}`);
     }
   };
   if (existsSync(root)) walk('');
@@ -120,7 +133,7 @@ export const saveAt = (h: RealHarness, path: string | null): Promise<void> => h.
 export async function startSecondApp(route = 'harnesses'): Promise<{ home: MadeUpHome; h: RealHarness }> {
   const home = newMadeUpHome();
   const h = await startApp(home, route);
-  await stubSaveDialog(h);
+  try { await stubSaveDialog(h); } catch (error) { await h.app.close().catch(() => undefined); throw error; }
   return { home, h };
 }
 

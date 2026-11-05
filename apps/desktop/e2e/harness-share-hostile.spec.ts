@@ -8,12 +8,12 @@
 import { expect, test } from '@playwright/test';
 import type { Locator } from '@playwright/test';
 import { mkdirSync, openSync, closeSync, ftruncateSync, existsSync, symlinkSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { computeRevision, loadDefinition } from '../../../packages/harness-definition/src/index.js';
 import { bundleOnce } from './harness-real-page.js';
 import type { RealHarness } from './harness-real-page.js';
-import { exportSheet, importSheet, newMadeUpHome, openInBuilder, readTree, saveAt, startApp, stubSaveDialog } from './journey-support.js';
+import { exportSheet, importSheet, newMadeUpHome, openInBuilder, readTree, saveAt, startApp, stubSaveDialog, treeShape } from './journey-support.js';
 import { removeTempDirs } from './temp-dirs.js';
 
 let h: RealHarness | null = null;
@@ -60,14 +60,14 @@ const CASES: Hostile[] = [
 ];
 
 /** A made-up computer with a folder that holds an empty harness, and the folder's files. */
-function target(): { home: ReturnType<typeof newMadeUpHome>; dir: string; before: Record<string, string>; scratch: string } {
+function target(): { home: ReturnType<typeof newMadeUpHome>; dir: string; before: Record<string, string>; shape: string[]; scratch: string } {
   const home = newMadeUpHome();
   const dir = join(home.projects, 'empty-place');
   mkdirSync(join(dir, '.bowerloom'), { recursive: true });
   writeFileSync(join(dir, '.bowerloom', 'harness.json'), json({ format: 'bowerloom/harness/v1beta1', id: 'empty-place', description: 'Adopted from the engine files of this project.', engines: [{ id: 'claude-code' }, { id: 'codex' }], parts: {} }));
   const scratch = join(home.home, 'Downloads');
   mkdirSync(scratch, { recursive: true });
-  return { home, dir, before: readTree(dir), scratch };
+  return { home, dir, before: readTree(dir), shape: treeShape(dir), scratch };
 }
 /** Opens the Import sheet and chooses a file. */
 async function chooseFile(app: RealHarness, file: string): Promise<Locator> {
@@ -81,10 +81,9 @@ async function chooseFile(app: RealHarness, file: string): Promise<Locator> {
 
 test('every hostile file is refused in words on the Import sheet, writes nothing, and leaves the harness loading', async () => {
   test.setTimeout(300_000);
-  const { home, dir, before, scratch } = target();
+  const { home, dir, before, shape, scratch } = target();
   h = await startApp(home, 'harnesses');
-  const p = h.page;
-  const projectsBefore = readTree(home.projects);
+  const projectsBefore = readTree(home.projects), projectsShape = treeShape(home.projects);
   for (const c of CASES) {
     await test.step(`${c.name}: ${c.code}`, async () => {
       const file = c.make(scratch);
@@ -105,6 +104,8 @@ test('every hostile file is refused in words on the Import sheet, writes nothing
       await expect(s.locator('[data-folder-status]')).toHaveCount(0);
       expect(readTree(dir), 'the folder is as it was').toEqual(before);
       expect(readTree(home.projects), 'nothing was written in the projects').toEqual(projectsBefore);
+      expect(treeShape(dir), 'no folder or mode changed in the folder').toEqual(shape);
+      expect(treeShape(home.projects), 'no folder or mode changed in the projects').toEqual(projectsShape);
       expect(loadDefinition(join(dir, '.bowerloom')).ok, 'the harness still loads').toBe(true);
       await s.getByRole('button', { name: 'Cancel', exact: true }).click();
       await expect(s).toBeHidden();
@@ -118,18 +119,24 @@ test('every hostile file is refused in words on the Import sheet, writes nothing
     await openInBuilder(h!, dir, 'empty-place');
     expect(readTree(dir)).toEqual(before);
   });
-  void p;
 });
 
-test('a tool environment that starts code is not refused as a file, but nothing is written until both boxes are ticked, and the call without the tick is refused in words', async () => {
+test('a tool environment that starts code is not refused as a file: nothing is written until both boxes are ticked, the call without the tick is refused in words, and with both ticks the files land', async () => {
   test.setTimeout(240_000);
-  const { home, dir, before, scratch } = target();
+  const { home, dir, before, shape, scratch } = target();
   h = await startApp(home, 'harnesses');
   const p = h.page;
-  const file = write(scratch, 'node-options.json', withTools([stdio({ args: ['tally-server.js'], env: { NODE_OPTIONS: '--require ./preload.js' } })]));
+  const bundleText = withTools([stdio({ args: ['tally-server.js'], env: { NODE_OPTIONS: '--require ./preload.js' } })]);
+  const file = write(scratch, 'node-options.json', bundleText);
   const s = await chooseFile(h, file);
   await expect(s.locator('[data-file-status]')).toHaveText('Read node-options.json. 3 files, 1 tool.');
   await expect(s.locator('[data-tool="tally-feed"]')).toContainText('Starts a program');
+  // The name and the value of the variable must show whole. The sheet does not draw them yet; this goes red when it does, so it can become a plain check.
+  const missing: string[] = [];
+  for (const text of ['NODE_OPTIONS', '--require ./preload.js']) {
+    try { await expect(s.locator('[data-tool="tally-feed"]')).toContainText(text, { timeout: 1500 }); } catch { missing.push(text); }
+  }
+  expect(missing, 'the texts the sheet does not show yet').toEqual(['NODE_OPTIONS', '--require ./preload.js']);
   const bundleId = (await s.locator('[data-bundle]').getAttribute('data-bundle'))!;
   await s.locator('[data-import-next]').click();
   await h.pick(dir);
@@ -146,6 +153,7 @@ test('a tool environment that starts code is not refused as a file, but nothing 
   await expect(review.locator('[data-acknowledge-import] input')).toBeFocused();
   await expect(review.locator('[data-acknowledge-import] input')).not.toBeChecked();
   expect(readTree(dir), 'a press without the ticks writes nothing').toEqual(before);
+  expect(treeShape(dir)).toEqual(shape);
   expect(await h.asked(), 'main asks nothing').toHaveLength(0);
   // The call itself, made without the tick, is refused in words.
   const refused = await p.evaluate(async ([folder, bundle]) => {
@@ -158,8 +166,20 @@ test('a tool environment that starts code is not refused as a file, but nothing 
   expect(refused!.code).toBe('IMPORT_NEEDS_ACKNOWLEDGEMENT');
   expect(refused!.message).toContain('Tick that you read them, then import. Nothing was written.');
   expect(readTree(dir)).toEqual(before);
+  expect(treeShape(dir)).toEqual(shape);
   expect(await h.asked()).toHaveLength(0);
   expect(loadDefinition(join(dir, '.bowerloom')).ok).toBe(true);
+  // With both boxes ticked the import goes through: the file is data, and the person has read it.
+  await review.locator('[data-acknowledge-import] input').check();
+  await review.locator('[data-approve-plan] input').check();
+  await expect(go).not.toHaveAttribute('aria-disabled', 'true');
+  await go.click();
+  await expect(s.locator('[data-done]')).toBeVisible();
+  const landed = readTree(join(dir, '.bowerloom'));
+  expect(Object.keys(landed).sort()).toEqual(['harness.json', 'instructions/AGENTS.md', 'mcp.json']);
+  expect(landed['mcp.json']).toContain('--require ./preload.js');
+  expect(loadDefinition(join(dir, '.bowerloom')).ok, 'the harness loads').toBe(true);
+  expect(await h.asked()).toHaveLength(1);
 });
 
 test('an export asked to save inside the harness folder is refused in words, writes nothing, and the harness still loads', async () => {
@@ -169,7 +189,7 @@ test('an export asked to save inside the harness folder is refused in words, wri
   mkdirSync(join(folder, '.bowerloom', 'instructions'), { recursive: true });
   writeFileSync(join(folder, '.bowerloom', 'harness.json'), json({ format: 'bowerloom/harness/v1beta1', id: 'rope-ledger', description: 'Checks the rope orders.', engines: [{ id: 'claude-code' }], parts: { 'system-prompt': 'instructions/AGENTS.md' } }));
   writeFileSync(join(folder, '.bowerloom', 'instructions', 'AGENTS.md'), '# Rope ledger\n\nCount the coils before you report.\n');
-  const before = readTree(folder);
+  const before = readTree(folder), shape = treeShape(folder);
   h = await startApp(home, 'harnesses');
   await stubSaveDialog(h);
   const p = h.page;
@@ -187,8 +207,8 @@ test('an export asked to save inside the harness folder is refused in words, wri
     await expect(s.locator('[data-next-step]')).toHaveText('Choose the place to save again, outside the harness folder.');
     expect(existsSync(inside), 'no file was written').toBe(false);
     expect(readTree(folder), 'the folder is as it was').toEqual(before);
+    expect(treeShape(folder), 'no folder or mode changed').toEqual(shape);
     expect(await h.asked(), 'main asked nothing').toHaveLength(0);
-    expect(dirname(inside).startsWith(join(folder, '.bowerloom'))).toBe(true);
   }
   expect(loadDefinition(join(folder, '.bowerloom')).ok, 'the harness still loads').toBe(true);
   await s.getByRole('button', { name: 'Cancel', exact: true }).click();

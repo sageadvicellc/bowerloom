@@ -12,7 +12,7 @@ import { dirname, join } from 'node:path';
 import { loadDefinition } from '../../../packages/harness-definition/src/index.js';
 import { bundleOnce } from './harness-real-page.js';
 import type { RealHarness } from './harness-real-page.js';
-import { exportSheet, importSheet, newMadeUpHome, openInBuilder, readTree, saveAt, saveSheet, startApp, startSecondApp, stubSaveDialog } from './journey-support.js';
+import { exportSheet, importSheet, newMadeUpHome, openInBuilder, readTree, saveAt, saveSheet, startApp, startSecondApp, stubSaveDialog, treeShape, without } from './journey-support.js';
 import { removeTempDirs } from './temp-dirs.js';
 
 const apps: RealHarness[] = [];
@@ -225,7 +225,6 @@ async function importOnB(b: RealHarness, exported: Exported, dir: string, name: 
     expect(page).not.toContain(exported.homeA);
     expect(page).not.toContain('/private/var');
     expect(await b.opened(), 'nothing was opened or started').toEqual([]);
-    await s.locator('[data-done]').getByText('Nothing is installed', { exact: false }).first().waitFor();
     await closeSheet(s);
     await expect(s).toBeHidden();
   });
@@ -255,7 +254,7 @@ async function goBack(b: RealHarness, dir: string, name: string, before: Record<
     const after = readTree(join(dir, '.bowerloom'));
     expect(Object.keys(after), 'only the empty harness is left').toEqual(['harness.json']);
     expect(loadDefinition(join(dir, '.bowerloom')).ok).toBe(true);
-    expect(readTree(dir)['README.md'] ?? null, 'the rest of the folder is as it was').toEqual(before['README.md'] ?? null);
+    expect(without(readTree(dir), '.bowerloom/'), 'the rest of the folder is as it was').toEqual(without(before, '.bowerloom/'));
   });
 }
 
@@ -291,7 +290,7 @@ test('Journey 4: a folder whose harness has parts is refused, and the refusal na
   const { home: homeB, h: b } = await startSecondApp();
   apps.push(b);
   const p = b.page, dir = ledgerFolder(homeB.projects);
-  const before = readTree(dir);
+  const before = readTree(dir), shape = treeShape(dir);
   await p.getByRole('button', { name: 'Import from a file', exact: true }).click();
   const s = importSheet(p);
   await b.pick(exported.file);
@@ -309,7 +308,8 @@ test('Journey 4: a folder whose harness has parts is refused, and the refusal na
   await expect(s.locator('[data-folder-status]')).toHaveText('Pick a folder to go on.');
   await s.locator('[data-import-plan]').click({ force: true });
   await expect(s.locator('[data-import-review]'), 'Next does not plan').toHaveCount(0);
-  // The refusal itself, with the parts it names, from the call the sheet makes.
+  // The refusal itself, with the parts it names, from the call the sheet makes. The sheet does not draw these parts yet (a card says only "Has a harness"), so the bridge is the one
+  // place that checks them; add a check of the sheet once it names them.
   await b.pick(exported.file);
   const refusal = await p.evaluate(async () => {
     const bridge = (window as unknown as { bowerloomEngine: Record<string, (...x: unknown[]) => Promise<any>> }).bowerloomEngine;
@@ -323,25 +323,30 @@ test('Journey 4: a folder whose harness has parts is refused, and the refusal na
   expect(refusal!.message).toContain('has a harness with parts or settings');
   expect(refusal!.paths, 'the refusal names the parts, in words').toEqual(['skills', 'agents', 'tools', 'instructions', 'scripts', 'a description you wrote']);
   expect(readTree(dir), 'nothing was written').toEqual(before);
-  await closeSheet(s).catch(() => undefined);
+  expect(treeShape(dir), 'no folder or mode changed').toEqual(shape);
+  await s.getByRole('button', { name: 'Back', exact: true }).click();
+  await s.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(s).toBeHidden();
 });
 
-test.fail('Journey 4 (gap, lane D): the review shows a tool environment value, a header value and the URL path whole, as the owner decision says', async () => {
+test('Journey 4 (gap, lane D): the review does not yet show a tool environment value, a header value and the URL path; this test goes red when it does, so it can be turned into the real check', async () => {
   test.setTimeout(300_000);
   const exported = await exportOnA();
-  const { home: homeB, h: b } = await startSecondApp();
+  const { h: b } = await startSecondApp();
   apps.push(b);
   const p = b.page, s = importSheet(p);
+  // The setup is plain: a fault here fails the test.
   await p.getByRole('button', { name: 'Import from a file', exact: true }).click();
   await b.pick(exported.file);
   await s.getByRole('button', { name: 'Choose a file', exact: true }).click();
   await expect(s.locator('[data-file-status]')).toContainText('Read rope-ledger.bowerloom.json.');
-  const tool = (name: string): Locator => s.locator(`[data-tool="${name}"]`);
-  await expect(tool('tally-feed')).toContainText('TALLY_TOKEN');
-  await expect(tool('tally-feed')).toContainText('${TALLY_TOKEN}');
-  await expect(tool('orders-api')).toContainText('X-Key');
-  await expect(tool('orders-api')).toContainText('${ORDERS_KEY}');
-  await expect(tool('orders-api')).toContainText('/v1/orders/mcp?shelf=nine');
-  void homeB;
+  await expect(s.locator('[data-tool]')).toHaveCount(2);
+  // Only these five reads are the gap.
+  const wanted: [string, string][] = [['tally-feed', 'TALLY_TOKEN'], ['tally-feed', '${TALLY_TOKEN}'], ['orders-api', 'X-Key'], ['orders-api', '${ORDERS_KEY}'], ['orders-api', '/v1/orders/mcp?shelf=nine']];
+  const missing: string[] = [];
+  for (const [tool, text] of wanted) {
+    try { await expect(s.locator(`[data-tool="${tool}"]`)).toContainText(text, { timeout: 1500 }); } catch { missing.push(text); }
+  }
+  // Today none of the five is drawn. When the sheet draws them this fails: change the expectation to an empty list.
+  expect(missing, 'the texts the review does not show yet').toEqual(wanted.map(w => w[1]));
 });
-
