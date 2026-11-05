@@ -253,6 +253,24 @@ test('0.8 diagnostics is an allowlisted runtime module with an optional manifest
  for(const file of ['packages/diagnostics/src/report.ts','apps/cli/src/diagnostics.ts','apps/cli/src/events.ts'])assert.ok(record.sourceFiles.some(f=>f.path===file),file);
 });
 
+// Bowerloom 0.8.0-beta.1: `bowerloom harness export` and `harness import` run the harness-bundle package, and project-sync re-exports its encoder, so it is a
+// runtime module of the CLI with no manifest of its own. The packed CLI reaches it through harness-def, and every package it reaches stays inside the allowlist.
+test('0.8 harness-bundle is an allowlisted runtime module that the packed CLI imports',()=>{
+ assert.ok(MODULES.includes('harness-bundle'));
+ assert.ok(Object.isFrozen(MODULES));assert.equal(new Set(MODULES).size,MODULES.length);
+ const record=collect({repoDir:repo}).record;
+ assert.equal(record.sourceManifests.some(m=>m.path==='packages/harness-bundle/package.json'),false);
+ for(const file of ['packages/harness-bundle/src/index.ts','packages/harness-bundle/src/codec.ts','packages/harness-bundle/src/file-io.ts','apps/cli/src/harness-bundle.ts','apps/cli/src/harness-def.ts'])assert.ok(record.sourceFiles.some(f=>f.path===file),file);
+ assert.equal(record.sourceFiles.some(f=>/^packages\/harness-bundle\/(test|README)/.test(f.path)),false,'no test and no README of the package travels');
+ const reached=new Set(record.sourceFiles.map(f=>/^packages\/([^/]+)\//.exec(f.path)?.[1]).filter(Boolean));
+ for(const name of reached)assert.ok(MODULES.includes(name),name);
+ assert.ok(reached.has('harness-bundle'));
+ // The CLI source itself imports the package: this is what makes it a runtime module of the packed CLI, not only a build input.
+ const cli=fs.readFileSync(join(repo,'apps/cli/src/harness-bundle.ts'),'utf8');
+ assert.match(cli,/packages\/harness-bundle\/src\/index\.js/);
+ assert.match(fs.readFileSync(join(repo,'apps/cli/src/harness-def.ts'),'utf8'),/from '\.\/harness-bundle\.js'/);
+});
+
 // Beta 0.7.0 Day 0: the project-layer packages are runtime modules with optional internal manifests.
 test('beta 0.7.0 project packages are allowlisted modules whose manifests are optional but validated when present',()=>{
  const added=['project-context','project-config','project-authoring','skill-manifest','project-sync','context-slices'];

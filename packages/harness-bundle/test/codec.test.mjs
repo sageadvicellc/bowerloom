@@ -8,6 +8,7 @@ import {
   targetFromBundle,
 } from '../../../dist/packages/harness-bundle/src/index.js';
 import { loadDefinitionFiles, scanSecrets } from '../../../dist/packages/harness-definition/src/index.js';
+import { exportDefinitionBundle } from '../../../dist/packages/project-sync/src/index.js';
 import { bundleOf, bytesOf, definitionOf, envelopeOf, filesOf, json, parsed, refusal, richMap, sha, smallMap } from './fixture.mjs';
 
 const same = (a, b, label) => {
@@ -363,6 +364,16 @@ test('a different command of the same length changes the acknowledgement, and th
 test('the files helper keeps order and execute bits', () => {
   const files = filesOf({ a: 'x', 'scripts/lint.sh': 'y', b: undefined });
   assert.deepEqual(files.map(f => [f.path, f.executable]), [['a', false], ['scripts/lint.sh', true]]);
+});
+
+test('project-sync re-exports the encoder of this package, so the two cannot drift apart', async () => {
+  // The packaging allowlist of the command line lists this package, so project-sync no longer keeps an export of its own.
+  const { def, decoded } = await bundleOf(notesMap());
+  const where = { home: '/nonexistent-home', user: 'tester-account' };
+  const viaProjectSync = await exportDefinitionBundle(def, where), direct = await encodeBundle(def, where);
+  assert.ok(Buffer.from(viaProjectSync.bytes).equals(Buffer.from(direct.bytes)), 'the same bytes');
+  assert.equal(viaProjectSync.sha256, direct.sha256);
+  assert.equal(decoded.harness, def.harness.id);
 });
 
 test('a harness with settings only is not empty: the description constant is one value, and the refusal names what it found', () => {

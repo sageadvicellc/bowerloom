@@ -1,6 +1,6 @@
 /**
- * `bowerloom harness status|adopt|install|accept|merge|drift|remove|recover`: the 0.8 harness commands (step 5,
- * decision D1A). The 0.7 `harness` forms all take `--synthetic` and keep their own handler (harness.ts); main.ts routes
+ * `bowerloom harness status|adopt|install|accept|merge|drift|remove|recover|export|import`: the 0.8 harness commands (step 5,
+ * decision D1A; export and import are the harness bundle, harness-bundle.ts). The 0.7 `harness` forms all take `--synthetic` and keep their own handler (harness.ts); main.ts routes
  * on that flag.
  *
  * - The folder is the working folder, or `--dir <absolute>`. There is no project discovery: adoption runs before
@@ -47,9 +47,10 @@ import { parseApprovalFlags, runWithApproval } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
 import { newCommandJson, plainText } from './human.js';
 import { terminalIo } from './manifest.js';
+import { exportChange, importChange } from './harness-bundle.js';
 
-export const HARNESS_DEF_USAGE = 'Use bowerloom harness status|adopt|install|accept|merge|drift|remove|recover [--dir <absolute-folder>]. See bowerloom help harness.';
-const VERBS = ['status', 'adopt', 'install', 'accept', 'merge', 'drift', 'remove', 'recover'] as const;
+export const HARNESS_DEF_USAGE = 'Use bowerloom harness status|adopt|install|accept|merge|drift|remove|recover|export|import [--dir <absolute-folder>]. See bowerloom help harness.';
+const VERBS = ['status', 'adopt', 'install', 'accept', 'merge', 'drift', 'remove', 'recover', 'export', 'import'] as const;
 type Verb = (typeof VERBS)[number];
 
 /** The help topic of the 0.8 harness commands (`bowerloom help harness`). It is not in the short help (0.8 spec 6.11). */
@@ -63,7 +64,9 @@ export const HARNESS_HELP = [
   '  bowerloom harness merge [--approve <revision>] [--json]',
   '  bowerloom harness drift [--check] [--json]',
   '  bowerloom harness remove [--approve <revision>] [--json]',
-  '  bowerloom harness recover [--adoption] [--keep <path>]... [--restore-mode <path>]... [--record-mode <path>]... [--approve <revision>] [--json]', '',
+  '  bowerloom harness recover [--adoption] [--keep <path>]... [--restore-mode <path>]... [--record-mode <path>]... [--approve <revision>] [--json]',
+  '  bowerloom harness export --output <file> [--replace] [--acknowledge <hash>] [--approve <revision>] [--json]',
+  '  bowerloom harness import <file> [--link <name>=<folder>]... [--leave <name>]... [--acknowledge <hash>] [--approve <revision>] [--json]', '',
   'Every command takes --dir <absolute-folder>; the default is the working folder.',
   'Any harness command settles the record of an older Bowerloom app once, before it reads: the record moves to the shared place.',
   'Status and drift change nothing and never wait for another command.',
@@ -80,6 +83,14 @@ export const HARNESS_HELP = [
   'A merge or an adoption that stopped part way blocks install, remove, and accept until harness recover --adoption settles it.',
   'A save of the harness that stopped part way in the Bowerloom app blocks install, remove, accept, adopt, and merge until the app recovers it.',
   'Remove puts back every file install replaced, and deletes the files it created.',
+  'Export writes the harness of the folder as one file, with no secret value and no path of a notes folder. It writes a new file only. --replace replaces the file that exists',
+  'when you plan, and only while it is still that file. The plan lists every tool, every file that can run, every ${NAME} value the file reads from this computer and where it',
+  'goes, and every path from another computer. When the plan has paths, run the command again with --acknowledge <hash> and --approve <revision>.',
+  'Import reads a file made by export, and writes only into a folder whose harness is empty or missing. A missing harness is made empty in the same plan and approval.',
+  'A notes name is left out unless you link it: --link <name>=<folder>, with a folder inside the harness folder or inside your home folder. --leave <name> leaves it out, which is the default.',
+  'Import runs nothing from the file and installs nothing. The plan lists the same things as export, and needs --acknowledge <hash> when the file holds tools,',
+  'files that can run, values it reads from this computer, or paths from another computer. The command line keeps no save points, so an import has no Go back:',
+  'to undo an import into a new folder, remove its .bowerloom folder. Export refuses a file inside the .bowerloom folder of the harness it exports.',
   'Every write prints a plan and its revision first. Run the same command with --approve <revision> to apply it.',
   'No command runs an engine. Engine versions come from harness.json.', '',
 ].join('\n');
@@ -648,6 +659,8 @@ const SPECS: Readonly<Record<Verb, FlagSpec & { readonly writes: boolean }>> = {
   drift: { writes: false, bool: ['--check'] },
   remove: { writes: true },
   recover: { writes: true, many: ['--keep', '--restore-mode', '--record-mode'], bool: ['--adoption'] },
+  export: { writes: true, one: ['--output', '--acknowledge'], bool: ['--replace'] },
+  import: { writes: true, positional: 1, many: ['--link', '--leave'], one: ['--acknowledge'] },
 };
 
 /**
@@ -695,6 +708,15 @@ async function dispatch(
       case 'drift': return drift(c, flags.bools.has('--check'), approval.json, write);
       case 'remove': return remove(c, a, io, write);
       case 'recover': return recover(c, flags, a, io, write);
+      case 'export': return approved(exportChange({ dir: c.dir, home: run.home, cwd: run.cwd, output: single(flags, '--output'), replace: flags.bools.has('--replace'), acknowledge: single(flags, '--acknowledge') }), a, io, write, c);
+      case 'import': {
+        // A stopped save is refused with its own code and words, as the other writes refuse it.
+        refuseWhileStopped(c.dirs.adoption);
+        return approved(importChange({
+          dir: c.dir, stateDir: c.dirs.adoption, home: run.home, cwd: run.cwd, file: flags.positional[0]!, link: all(flags, '--link'), leave: all(flags, '--leave'),
+          acknowledge: single(flags, '--acknowledge'), signal: run.signal,
+        }), a, io, write, c);
+      }
     }
   };
   // Usage events for the local log: S1 adopt, S2 install, S5 remove and recover. The log never changes a result.
