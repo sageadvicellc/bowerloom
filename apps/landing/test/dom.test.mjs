@@ -488,22 +488,38 @@ dom('with the modal open there is no horizontal overflow at 390, 834, and 1440 p
         ratio: shown.width / shown.height,
         decorations: decorations.map(el => ({ name: el.className, events: getComputedStyle(el).pointerEvents, alt: el.getAttribute('alt'), hidden: el.getAttribute('aria-hidden'), left: el.getBoundingClientRect().left, right: el.getBoundingClientRect().right })),
         scrollWidth: dialog.scrollWidth, clientWidth: dialog.clientWidth,
-        borderImage: getComputedStyle(dialog.querySelector('.screenshot-device')).borderImageSource,
+        borderImage: getComputedStyle(dialog.querySelector('.screenshot-device'), '::after').borderImageSource,
+        // The picture fills the device's content box exactly, so the frame's hole is never empty.
+        fill: (() => { const device = dialog.querySelector('.screenshot-device'), cs = getComputedStyle(device), d = device.getBoundingClientRect();
+          return { left: shown.left - (d.left + parseFloat(cs.paddingLeft)), right: (d.right - parseFloat(cs.paddingRight)) - shown.right, top: shown.top - (d.top + parseFloat(cs.paddingTop)), bottom: (d.bottom - parseFloat(cs.paddingBottom)) - shown.bottom }; })(),
       };
     });
     assert.ok(facts.docWidth <= width, `${width}: page ${facts.docWidth} px wide`);
     assert.ok(facts.dialogLeft >= 0 && facts.dialogRight <= width, `${width}: the dialog is inside the window`);
     assert.ok(facts.scrollWidth <= facts.clientWidth + 1, `${width}: the dialog has no sideways scroll`);
     assert.ok(Math.abs(facts.ratio - 1.6) < 0.01, `${width}: the picture ratio is ${facts.ratio}`);
-    assert.match(facts.borderImage, /\/frame\/bezel\.webp/);
-    assert.ok(facts.decorations.length >= 3, `${width}: decorations are shown`);
+    assert.match(facts.borderImage, /\/frame\/frame-light\.webp/);
+    for (const [side, gap] of Object.entries(facts.fill)) assert.ok(Math.abs(gap) < 1, `${width}: the picture fills the hole (${side} ${gap})`);
+    assert.deepEqual(facts.decorations.map(d => d.name), ['deco ivy', 'deco bloom'], `${width}: both plants are shown`);
     for (const d of facts.decorations) {
       assert.equal(d.events, 'none', d.name); assert.equal(d.alt, ''); assert.equal(d.hidden, 'true');
       assert.ok(d.left >= -0.5 && d.right <= width + 0.5, `${width}: ${d.name} stays inside the window (${d.left} to ${d.right})`);
     }
-    assert.equal(facts.decorations.some(d => /\bh[lr]\b/.test(d.name)), width > 760, `${width}: handles only above 760 px`);
     await context.close();
   }
+});
+
+dom('the dark theme shows the dark painted frame, and the light one is never fetched', async () => {
+  const { page, context } = await open({ viewport: { width: 1280, height: 800 }, colorScheme: 'dark' });
+  const requests = [];
+  page.on('request', request => { if (request.url().includes('/frame/')) requests.push(request.url()); });
+  await page.locator('[data-screenshot-slot="builder-graph"] .screenshot-enlarge').click();
+  await page.waitForFunction(() => document.querySelector('.screenshot-dialog[open]'));
+  await page.waitForTimeout(800);
+  const source = await page.evaluate(() => getComputedStyle(document.querySelector('.screenshot-dialog[open] .screenshot-device'), '::after').borderImageSource);
+  assert.match(source, /\/frame\/frame-dark\.webp/);
+  assert.ok(requests.some(url => url.includes('frame-dark.webp')) && !requests.some(url => url.includes('frame-light.webp')), requests.join(', '));
+  await context.close();
 });
 
 dom('nothing from the device frame loads until the modal first opens', async () => {
@@ -515,7 +531,7 @@ dom('nothing from the device frame loads until the modal first opens', async () 
   await page.locator('[data-screenshot-slot="builder-graph"] .screenshot-enlarge').click();
   await page.waitForFunction(() => document.querySelector('.screenshot-dialog[open]'));
   await page.waitForTimeout(800);
-  assert.ok(requests.some(url => url.includes('bezel.webp')) && requests.some(url => url.includes('corner-tl.webp')), 'the frame loads on first open');
+  assert.ok(requests.some(url => url.includes('frame-light.webp')) && requests.some(url => url.includes('ivy.webp')), 'the frame loads on first open');
   await context.close();
 });
 

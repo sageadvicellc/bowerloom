@@ -171,20 +171,54 @@ test('a priority slot loads both themes at once with high priority, and an ordin
   } finally { await page.close(); }
 });
 
-test('the dialog is a clear box holding a column; the device is a nine-slice border image whose slices scale with --s', async () => {
+/** The width and height of a WebP file, read from its header (the extended VP8X form, which a file with transparency uses). */
+async function webpSize(name) {
+  const bytes = await readFile(new URL(`../public/frame/${name}.webp`, import.meta.url));
+  assert.equal(bytes.toString('ascii', 0, 4), 'RIFF'); assert.equal(bytes.toString('ascii', 12, 16), 'VP8X', `${name} has transparency`);
+  return { width: bytes.readUIntLE(24, 3) + 1, height: bytes.readUIntLE(27, 3) + 1 };
+}
+/** The frame numbers of one theme rule: the image, the hole the picture fills, and the nine-slice cuts, in image pixels. */
+function frameVars(rule) {
+  const src = /--frame: url\(\/frame\/(frame-\w+)\.webp\);/.exec(rule)?.[1];
+  const nums = name => ['t', 'r', 'b', 'l'].map(side => Number(new RegExp(`--${name}-${side}: (\\d+);`).exec(rule)?.[1]));
+  return { src, hole: nums('hole'), cut: nums('cut') };
+}
+
+test('the dialog is a clear box holding a column; the device is a painted frame per theme, drawn as a nine-slice overlay that scales with --s', async () => {
   const css = await read('src/page.css');
   assert.match(css, /\.screenshot-dialog \{ --s: \.5;[^}]*background: transparent;[^}]*box-shadow: none;/);
   assert.match(css, /@media \(max-width: 1000px\) \{\s*\.screenshot-dialog \{ --s: \.4; \}/);
   assert.match(css, /@media \(max-width: 760px\) \{[^@]*\.screenshot-dialog \{ --s: \.3;/);
-  assert.match(css, /\.screenshot-device \{[^}]*border-image: url\(\/frame\/bezel\.webp\) 92 78 100 80 \/ calc\(92px \* var\(--s\)\) calc\(78px \* var\(--s\)\) calc\(100px \* var\(--s\)\) calc\(80px \* var\(--s\)\) stretch;/);
-  assert.match(css, /\.screenshot-device \{[^}]*border-width: calc\(92px \* var\(--s\)\) calc\(78px \* var\(--s\)\) calc\(100px \* var\(--s\)\) calc\(80px \* var\(--s\)\)/);
+  // The picture fills the frame's hole: the device's padding is the hole, in image pixels times --s.
+  assert.match(css, /\.screenshot-device \{[^}]*padding: calc\(var\(--hole-t\) \* var\(--s\) \* 1px\) calc\(var\(--hole-r\) \* var\(--s\) \* 1px\) calc\(var\(--hole-b\) \* var\(--s\) \* 1px\) calc\(var\(--hole-l\) \* var\(--s\) \* 1px\);/);
+  // The frame lies over the picture, so corner hardware can reach past the hole without a gap, and it never takes a click.
+  const after = /\.screenshot-device::after \{[^}]*\}/.exec(css)?.[0] ?? '';
+  assert.match(after, /position: absolute; inset: 0;/);
+  assert.match(after, /z-index: 1;/);
+  assert.match(after, /pointer-events: none;/);
+  assert.match(after, /border-image: var\(--frame\) var\(--cut-t\) var\(--cut-r\) var\(--cut-b\) var\(--cut-l\) \/ calc\(var\(--cut-t\) \* var\(--s\) \* 1px\) calc\(var\(--cut-r\) \* var\(--s\) \* 1px\) calc\(var\(--cut-b\) \* var\(--s\) \* 1px\) calc\(var\(--cut-l\) \* var\(--s\) \* 1px\) stretch;/);
+  assert.match(css, /\.screenshot-scroll \{[^}]*position: relative;/, 'the picture is a layer under the frame');
   assert.match(css, /\.deco \{[^}]*pointer-events: none;/);
-  const phone = css.slice(css.indexOf('@media (max-width: 760px) {', css.indexOf('.deco.ctl')));
-  assert.match(phone.slice(0, phone.indexOf('\n}\n')), /\.deco\.hl, \.deco\.hr \{ display: none; \}/, 'no handles on a phone');
-  assert.match(css, /\.screenshot-scroll \{[^}]*border-radius: calc\(14px \* var\(--s\)\)/, 'a small inner radius');
+  assert.doesNotMatch(css, /bezel\.webp|\.deco\.(?:tl|br|hl|hr|ctl)\b/, 'the old kit is gone');
 });
 
-test('the dialog markup has the bar, the device with the picture area, and the five decorations only after the first open', async () => {
+test('each theme names its own frame, and its hole and cuts fit inside that image', async () => {
+  const css = await read('src/page.css');
+  const light = frameVars(/\.screenshot-dialog \{ --s: \.5;[^}]*\}/.exec(css)?.[0] ?? '');
+  const dark = frameVars(/\[data-theme='dark'\] \.screenshot-dialog \{[^}]*\}/.exec(css)?.[0] ?? '');
+  const system = /@media \(prefers-color-scheme: dark\) \{\s*:root:not\(\[data-theme\]\) \.screenshot-dialog \{[^}]*\}/.exec(css)?.[0] ?? '';
+  assert.equal(light.src, 'frame-light'); assert.equal(dark.src, 'frame-dark');
+  assert.deepEqual(frameVars(system), dark, 'a visitor with no saved theme and a dark system gets the dark frame');
+  for (const theme of [light, dark]) {
+    const { width, height } = await webpSize(theme.src);
+    const [ht, hr, hb, hl] = theme.hole, [ct, cr, cb, cl] = theme.cut;
+    for (const v of [...theme.hole, ...theme.cut]) assert.ok(Number.isInteger(v) && v > 0, `${theme.src}: ${v}`);
+    assert.ok(ct >= ht && cr >= hr && cb >= hb && cl >= hl, `${theme.src}: each cut reaches at least the hole`);
+    assert.ok(ct + cb < height && cl + cr < width, `${theme.src}: the cuts leave a middle to stretch (${width}x${height})`);
+  }
+});
+
+test('the dialog markup has the bar, the device with the picture area, and the two plants only after the first open', async () => {
   const page = await loadPage();
   try {
     const closed = renderToStaticMarkup(createElement(page.slot.ShotDialog, { id: 'builder-graph', loaded: false }));
@@ -192,15 +226,15 @@ test('the dialog markup has the bar, the device with the picture area, and the f
     assert.equal(tags(closed, 'img').length, 0, 'nothing loads before the first open');
     const open = renderToStaticMarkup(createElement(page.slot.ShotDialog, { id: 'builder-graph', loaded: true }));
     const decorations = tags(open, 'img').filter(tag => tag.includes('class="deco '));
-    assert.deepEqual(decorations.map(tag => /class="deco (\w+)"/.exec(tag)[1]), ['tl', 'br', 'hl', 'hr', 'ctl']);
+    assert.deepEqual(decorations.map(tag => /class="deco (\w+)"/.exec(tag)[1]), ['ivy', 'bloom']);
     for (const tag of decorations) {
       assert.ok(tag.includes('alt=""') && tag.includes('aria-hidden="true"') && tag.includes('loading="lazy"'), tag);
-      assert.match(tag, /src="\/frame\/(?:corner-tl|corner-br|handle|controls)\.webp"/);
+      assert.match(tag, /src="\/frame\/(?:ivy|bloom)\.webp"/);
     }
     assert.ok(open.indexOf('class="screenshot-dialog-bar"') < open.indexOf('class="screenshot-device"'), 'the X bar sits above the device, clear of the decorations');
   } finally { await page.close(); }
 });
 
 test('the frame kit files are in public/frame', async () => {
-  for (const name of ['bezel', 'corner-tl', 'corner-br', 'handle', 'controls']) assert.ok((await readFile(new URL(`../public/frame/${name}.webp`, import.meta.url))).byteLength > 1000, name);
+  for (const name of ['frame-light', 'frame-dark', 'ivy', 'bloom']) assert.ok((await readFile(new URL(`../public/frame/${name}.webp`, import.meta.url))).byteLength > 1000, name);
 });
