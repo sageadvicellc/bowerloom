@@ -5,10 +5,8 @@
 @media (min-width: 901px) { .product-section > div:first-child { position: sticky; top: 32px; } }
 .section-body { min-width: 0; }
 .section-body > p:first-child { margin-top: 0; }
-.feature-list { list-style: none; margin: 32px 0 0; padding: 0; border-top: 1px solid var(--ui-border); }
-.feature-list li { padding: 22px 0; border-bottom: 1px solid var(--ui-border); }
-.feature-list h3, .install-card h3, .app-grid h3 { margin: 0 0 8px; font-size: 24px; line-height: 1.3; letter-spacing: -.02em; }
-.feature-list p, .app-grid p, .install-card p { margin: 0; }
+.install-card h3, .app-grid h3 { margin: 0 0 8px; font-size: 24px; line-height: 1.3; letter-spacing: -.02em; }
+.app-grid p, .install-card p { margin: 0; }
 .section-body .screenshot-slot { margin-top: 32px; }
 
 /* How it works */
@@ -33,8 +31,8 @@
 .app-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; }
 .app-grid article { min-width: 0; }
 .app-grid .screenshot-slot { margin-bottom: 20px; }
-/* The article text below each slot says the same thing, so the caption stays in the label only. */
-.app-grid .screenshot-slot figcaption { display: none; }
+/* The article text below each slot says the same thing, so the caption text hides there. The Enlarge button stays. */
+.app-grid .screenshot-caption-text { display: none; }
 
 .command-block { margin: 0 0 18px; padding: 18px 20px; overflow-x: auto; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm, 6px); background: var(--ui-bg); font: 15px/1.9 var(--ui-code-font, monospace); color: var(--ui-text); }
 .command-block code { font: inherit; white-space: pre; }
@@ -43,10 +41,10 @@
 
 /* Engines */
 .engine-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 12px; }
-.engine-list li { display: inline-flex; align-items: center; gap: 12px; min-height: 48px; padding: 8px 8px 8px 18px; border: 1px solid var(--ui-border); border-radius: 999px; background: var(--ui-surface); }
+.engine-list li { display: inline-flex; align-items: center; gap: 12px; min-height: 48px; padding: 8px 8px 8px 18px; border: 1px solid var(--ui-border); border-radius: var(--control-radius); background: var(--ui-surface); }
 .engine-list [data-support="supported"] { border-color: var(--ui-primary); }
 .engine-name { font: 500 20px/1.3 var(--trellis-reading-font, Georgia, serif); color: var(--ui-text); }
-.engine-status { padding: 4px 12px; border-radius: 999px; font: 13px/1.5 var(--ui-font); color: var(--ui-muted); background: var(--ui-bg); }
+.engine-status { padding: 4px 12px; border-radius: var(--control-radius); font: 13px/1.5 var(--ui-font); color: var(--ui-muted); background: var(--ui-bg); }
 .engine-list [data-support="supported"] .engine-status { color: var(--ui-primary-fg); background: var(--ui-primary); }
 
 /* Install */
@@ -60,7 +58,6 @@
 .install-steps li { padding-left: 4px; }
 .install-steps li + li { margin-top: 6px; }
 .install-card .button { margin-top: 24px; }
-#install-cli, #install-app { scroll-margin-top: 96px; }
 
 /* Screenshots: the light and the dark file are both in the page, and the one that matches the theme shows. */
 .screenshot-slot { margin: 0; }
@@ -71,29 +68,51 @@
   :root:not([data-theme]) .screenshot-image[data-shot-theme='light'] { display: none; }
   :root:not([data-theme]) .screenshot-image[data-shot-theme='dark'] { display: block; }
 }
-.screenshot-slot figcaption { margin-top: 10px; font: 14px/1.6 var(--ui-font); color: var(--ui-muted); }
+.screenshot-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; font: 14px/1.6 var(--ui-font); color: var(--ui-muted); }
+.screenshot-caption-text { min-width: 0; }
 
-/* Enlarge a screenshot. The shot is a button; it keeps the size of the image, so nothing moves. The hint sits on the image and takes no room. */
-.screenshot-open { position: relative; display: block; width: 100%; margin: 0; padding: 0; border: 0; border-radius: 12px; background: none; color: inherit; font: inherit; text-align: left; cursor: zoom-in; }
+/* Enlarge a screenshot. The picture is a pointer target that keeps the size of the image, so nothing moves. */
+.screenshot-open { display: block; width: 100%; margin: 0; padding: 0; border: 0; border-radius: 12px; background: none; color: inherit; font: inherit; text-align: left; cursor: zoom-in; }
 .screenshot-open:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 3px; }
 .screenshot-open .screenshot-image { transition: border-color 160ms cubic-bezier(.23, 1, .32, 1); }
 .screenshot-open:hover .screenshot-image { border-color: var(--ui-primary); }
-.screenshot-hint { position: absolute; right: 12px; bottom: 12px; padding: 4px 12px; border: 1px solid var(--ui-border); border-radius: 999px; background: var(--ui-surface); color: var(--ui-text); font: 13px/1.5 var(--ui-font); pointer-events: none; }
+/* Enlarge sits in the caption row, right-aligned, a 44 px target. */
+/* A secondary button: outlined, the same height, type, and corner as every other button. */
+.screenshot-enlarge { display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 8px; min-height: 44px; margin-left: auto; padding: 0 20px; border: 1px solid var(--ui-border); border-radius: var(--control-radius); background: var(--ui-surface); color: var(--ui-text); font: 600 14px/1.2 var(--ui-font); cursor: pointer; }
+.screenshot-enlarge:hover { border-color: var(--ui-primary); color: var(--ui-primary); }
+.screenshot-enlarge:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 3px; }
 
 /* The enlarged view: a native modal dialog. It is as wide as the window allows and no taller than it. The bar stays; the picture scrolls under it. */
-.screenshot-dialog { box-sizing: border-box; width: min(1600px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); margin: auto; padding: 0; overflow: hidden; border: 1px solid var(--ui-border); border-radius: 12px; background: var(--ui-bg); color: var(--ui-text); }
-.screenshot-dialog[open] { display: flex; flex-direction: column; }
-.screenshot-dialog::backdrop { background: rgb(0 0 0 / .64); }
-.screenshot-dialog-bar { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 8px 8px 18px; border-bottom: 1px solid var(--ui-border); }
+/* The enlarged view: a native modal dialog that holds a small solarpunk device. The dialog itself is clear. A header bar with the X sits above the device, and the
+   device is a nine-slice bezel around the picture with vines, handles, and studs that scale with it. --s is the scale: large windows 0.5, windows up to 1000 px wide 0.4,
+   phones 0.3. The dialog's side padding holds the decorations that reach past the bezel, so nothing makes the page wider. */
+.screenshot-dialog { --s: .5; box-sizing: border-box; width: min(1300px, calc(100vw - 16px)); max-width: none; max-height: calc(100dvh - 32px); margin: auto; padding: 0 calc(150px * var(--s)); overflow: auto; overscroll-behavior: contain; border: 0; border-radius: 0; background: transparent; color: var(--ui-text); box-shadow: none; }
+.screenshot-dialog[open] { display: block; }
+/* A soft blur and a dim tone behind the dialog. A browser that cannot blur the backdrop still gets the dim tone. */
+.screenshot-dialog::backdrop { background: rgb(24 20 28 / .5); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+/* The column is as wide as the device, and as wide as the window height allows: the picture is 16:10, so its width follows the height that is left. */
+.screenshot-column { margin-inline: auto; width: min(1100px, 100%, calc((100dvh - (414px * var(--s) + 104px)) * 1.6 + 158px * var(--s))); }
+.screenshot-dialog-bar { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 12px 10px 20px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-surface); box-shadow: 0 12px 32px -16px rgb(20 16 24 / .5); }
 .screenshot-dialog-bar form { margin: 0; }
+.screenshot-dialog-text { min-width: 0; }
+.screenshot-pinch { display: none; }
 .screenshot-dialog-caption { display: -webkit-box; min-width: 0; margin: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font: 14px/1.5 var(--ui-font); color: var(--ui-muted); }
-.screenshot-close { min-width: 44px; min-height: 44px; padding: 8px 18px; border: 1px solid var(--ui-border); border-radius: 6px; background: var(--ui-surface); color: var(--ui-text); font: 14px/1.4 var(--ui-font); cursor: pointer; }
-.screenshot-close:hover { border-color: var(--ui-primary); }
-.screenshot-close:focus-visible, .screenshot-scroll:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 2px; }
-.screenshot-scroll:focus-visible { outline-offset: -2px; }
+.screenshot-close { display: inline-grid; place-items: center; flex: none; width: 44px; height: 44px; min-width: 44px; min-height: 44px; padding: 0; border: 0; border-radius: var(--control-radius); background: transparent; color: var(--ui-text); cursor: pointer; }
+.screenshot-close:hover { color: var(--ui-primary); background: color-mix(in srgb, var(--ui-primary) 8%, transparent); }
+.screenshot-close:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 2px; }
 /* The scroll area stays inside the dialog. A picture wider than a phone is 960 px wide, so the words in it can be read, and the area scrolls sideways. */
-.screenshot-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; background: var(--ui-surface); }
-.screenshot-full { display: block; width: max(100%, 960px); height: auto; }
+/* The device. A nine-slice bezel: the corners keep their size and the straight edges stretch, so any size works. The picture sits inside it at 16:10. */
+.screenshot-device { position: relative; box-sizing: border-box; margin-block: calc(110px * var(--s) + 8px) calc(112px * var(--s)); border-style: solid; border-width: calc(92px * var(--s)) calc(78px * var(--s)) calc(100px * var(--s)) calc(80px * var(--s)); border-image: url(/frame/bezel.webp) 92 78 100 80 / calc(92px * var(--s)) calc(78px * var(--s)) calc(100px * var(--s)) calc(80px * var(--s)) stretch; }
+.screenshot-scroll { min-height: 0; overflow: hidden; border-radius: calc(14px * var(--s)); background: var(--ui-surface); }
+.deco { position: absolute; height: auto; max-width: none; pointer-events: none; user-select: none; }
+.deco.tl { width: calc(330px * var(--s)); left: calc(-104px * var(--s)); top: calc(-110px * var(--s)); }
+.deco.br { width: calc(330px * var(--s)); right: calc(-100px * var(--s)); bottom: calc(-112px * var(--s)); }
+.deco.hl, .deco.hr { width: calc(70px * var(--s)); top: 50%; translate: 0 -50%; }
+.deco.hl { left: calc(-148px * var(--s)); scale: -1 1; }
+.deco.hr { right: calc(-146px * var(--s)); }
+.deco.ctl { width: calc(150px * var(--s)); left: 50%; bottom: calc(-82px * var(--s)); translate: -50% 0; }
+.screenshot-scroll, .screenshot-full { touch-action: pan-x pan-y pinch-zoom; }
+.screenshot-full { display: block; width: 100%; aspect-ratio: 16 / 10; height: auto; object-fit: cover; }
 .screenshot-full[data-shot-theme='dark'], [data-theme='dark'] .screenshot-full[data-shot-theme='light'] { display: none; }
 [data-theme='dark'] .screenshot-full[data-shot-theme='dark'] { display: block; }
 @media (prefers-color-scheme: dark) {
@@ -118,13 +137,13 @@ html:has(.screenshot-dialog[open]) { overflow: hidden; scrollbar-gutter: stable;
   .screenshot-open .screenshot-image { transition: none; }
 }
 
-/* Hero actions. On desktop the headline and both buttons stay on the first screen: the banner takes what the copy leaves. */
+/* Hero spacing on desktop. The banner is 70svh tall (homepage-banner.css), and the tag and the headline follow it. */
 @media (min-width: 761px) {
   .normal-site .normal-hero .hero-copy { padding-top: 20px; }
   .normal-site .normal-hero h1 { margin: 20px 0 16px; }
   .normal-site .normal-hero .button.primary { margin-top: 24px; }
 }
-.hero-copy .button.primary { display: inline-flex; align-items: center; min-height: 48px; }
+.hero-copy .button.primary { display: inline-flex; align-items: center; }
 .normal-site .normal-hero .hero-note { margin-top: 12px; }
 
 /* FAQ: the chevron shows the open state. It changes at once, because a key press can also toggle it and keyboard actions stay instant. */
@@ -145,13 +164,21 @@ html:has(.screenshot-dialog[open]) { overflow: hidden; scrollbar-gutter: stable;
   .split, .install-grid { grid-template-columns: minmax(0, 1fr); gap: 32px; }
   .split > div { min-width: 0; }
 }
+@media (max-width: 1000px) {
+  .screenshot-dialog { --s: .4; }
+}
 @media (max-width: 760px) {
+  /* On a phone the frame is small and has no handles, and the hint tells a visitor that two fingers zoom in. */
+  .screenshot-dialog { --s: .3; padding-inline: calc(104px * var(--s)); }
+  .deco.hl, .deco.hr { display: none; }
+  /* The picture fits the width here, so the hint tells a phone visitor that two fingers zoom in. */
+  .screenshot-pinch { display: flex; align-items: center; gap: 6px; margin: 4px 0 0; font: 500 13px/1.4 var(--ui-font); color: var(--ui-primary); }
   .band-inner { padding: 44px 6%; }
   .recipe-section h2, .band h2, .faq-section h2 { font-size: 30px; }
   .install-card { padding: 22px; }
   /* Wrapping is only visual: a selection of the command still copies as the one line that was written. */
   .command-block code { white-space: pre-wrap; overflow-wrap: anywhere; }
-  .feature-list h3, .install-card h3, .app-grid h3, .steps h3 { font-size: 22px; }
+  .install-card h3, .app-grid h3, .steps h3 { font-size: 22px; }
   .engine-name { font-size: 18px; }
 }
 @media (prefers-reduced-motion: reduce) {

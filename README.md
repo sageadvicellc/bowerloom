@@ -12,6 +12,8 @@
   <a href="LICENSE"><img src="docs/assets/badge-license.svg" alt="Package license declaration: MIT" height="28"></a>
   <a href="package.json"><img src="docs/assets/badge-node.svg" alt="Node 24.11 through 24.x" height="28"></a>
   <a href="#install-bowerloom"><img src="docs/assets/badge-npm.svg" alt="npm 11" height="28"></a>
+  <a href="#how-it-works"><img src="docs/assets/badge-claude-code.svg" alt="Engine: Claude Code, supported" height="28"></a>
+  <a href="#how-it-works"><img src="docs/assets/badge-codex.svg" alt="Engine: Codex, supported" height="28"></a>
 </p>
 
 Bowerloom lets you define one harness and install it into Claude Code and Codex. A harness is the set of skills, agents, tools, rules, and context that surrounds a coding model. You keep one definition in a `.bowerloom` folder. Bowerloom writes the files of each engine from it.

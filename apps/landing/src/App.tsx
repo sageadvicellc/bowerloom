@@ -1,17 +1,21 @@
 import { readerRelease, docsPath, releasesUrl } from './release';
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { destinations, hero, repository } from "./content";
-import SiteNavigation from "./SiteNavigation";
+import SiteNavigation, { NavCta } from "./SiteNavigation";
 import BrandIdentity from "./BrandIdentity";
 import ThemeControl from "./ThemeControl";
 import ThemeSplash from "./ThemeSplash";
 import { rememberThemeSplash, shouldShowThemeSplash, splashMediaFor, type SplashMedia } from "./theme-splash";
 import "./hero-parallax.css";
 import "./page.css";
+import "./review.css";
+import "./reveal.css";
+import { initReveal } from "./reveal";
 import Hero from "./Hero";
 import SectionCompanion from "./SectionCompanion";
 import FooterCompanion from "./FooterCompanion";
 import { AppSection, CommandLineSection, EnginesSection, ExternalLink, FaqSection, HowItWorks, InstallSection, WhatItDoes } from "./Sections";
+import { watchCompact } from "./compact-header";
 import { INITIAL_ANCHOR_EVENT, scheduleInitialAnchor } from "./fullpage-anchor";
 
 function useReducedMotion() {
@@ -52,7 +56,14 @@ export default function App() {
     document.documentElement.classList.add("cinematic-theme");
     return () => document.documentElement.classList.remove("cinematic-theme");
   }, []);
+  // Runs before the first paint, so what is on screen is marked as shown before the hiding class goes on.
+  useLayoutEffect(() => initReveal(), []);
   const reduced = useReducedMotion();
+  // The header shrinks to a thin glass bar once the page has scrolled 48 px, and grows back below 16 px.
+  const enterSentinel = useRef<HTMLDivElement>(null);
+  const leaveSentinel = useRef<HTMLDivElement>(null);
+  const [compact, setCompact] = useState(false);
+  useEffect(() => (enterSentinel.current && leaveSentinel.current ? watchCompact(enterSentinel.current, leaveSentinel.current, setCompact) : undefined), []);
 
   useEffect(() => scheduleInitialAnchor(
     window.location.hash,
@@ -67,23 +78,25 @@ export default function App() {
       <a className="skip-link" href="#main">
         Skip to content
       </a>
-      <header className="site-header">
-        <a className="brand" href="#" aria-label="Bowerloom home">
-          <BrandIdentity />
-        </a>
-        <SiteNavigation />
-        <ThemeControl />
-        <span className="release-label">
-          <span /> {readerRelease.label}
-        </span>
-      </header>
+      <div className="header-sentinel header-sentinel-enter" ref={enterSentinel} aria-hidden="true" />
+      <div className="header-sentinel header-sentinel-leave" ref={leaveSentinel} aria-hidden="true" />
+      <div className="site-header-shell">
+        <header className={compact ? "site-header is-compact" : "site-header"}>
+          <a className="brand" href="#" aria-label="Bowerloom home">
+            <BrandIdentity />
+          </a>
+          <SiteNavigation />
+          <ThemeControl />
+          <NavCta />
+        </header>
+      </div>
       <main id="main" tabIndex={-1}>
         <Hero />
         <SectionCompanion unit="s4" side="right"><WhatItDoes /></SectionCompanion>
         <SectionCompanion unit="h4n" side="left"><HowItWorks /></SectionCompanion>
         <AppSection />
-        <CommandLineSection />
         <EnginesSection />
+        <CommandLineSection />
         <InstallSection />
         <SectionCompanion unit="s4-slate" side="right"><FaqSection /></SectionCompanion>
       </main>

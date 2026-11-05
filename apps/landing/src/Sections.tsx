@@ -1,8 +1,9 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { app, commandLine, engines, howItWorks, install, installView, questions, whatItDoes } from './content';
 import { installAvailable, releasesUrl } from './release';
 import ProductText from './ProductText';
 import ScreenshotSlot from './ScreenshotSlot';
+import { copyLabel, createCopyController, type CopyState } from './copy';
 
 /**
  * A command, with each hyphenated word kept whole when the line wraps on a narrow screen.
@@ -17,13 +18,12 @@ export function ExternalLink({ href, children }: { href: string; children: React
 }
 
 export function WhatItDoes() {
+  const [engineFeature] = whatItDoes.features;
   return <section id="what-it-does" className="product-section" aria-labelledby="what-it-does-title">
     <div><h2 id="what-it-does-title">{whatItDoes.heading}</h2></div>
     <div className="section-body">
       <p><ProductText>{whatItDoes.intro}</ProductText></p>
-      <ul className="feature-list">
-        {whatItDoes.features.map(item => <li key={item.title}><h3>{item.title}</h3><p><ProductText>{item.body}</ProductText></p></li>)}
-      </ul>
+      <div className="feature-engine"><h3>{engineFeature.title}</h3><p><ProductText>{engineFeature.body}</ProductText></p></div>
       <ScreenshotSlot slot="fidelity-preview" />
     </div>
   </section>;
@@ -50,7 +50,7 @@ export function AppSection() {
       <p className="band-lede"><ProductText>{app.body}</ProductText></p>
       <div className="app-grid">
         <article>
-          <ScreenshotSlot slot="builder-graph" />
+          <ScreenshotSlot slot="builder-agent" />
           <h3>{builder.title}</h3><p><ProductText>{builder.body}</ProductText></p>
         </article>
         <article>
@@ -85,6 +85,7 @@ export function EnginesSection() {
     <div className="band-inner">
       <h2 id="engines-title">{engines.heading}</h2>
       <p className="band-lede"><ProductText>{engines.body}</ProductText></p>
+      <p className="engine-lead">{engines.lead}</p>
       <ul className="engine-list" aria-label="Engines">
         {engines.supported.map(name => <li key={name} data-support="supported"><span className="engine-name">{name}</span><span className="engine-status">Supported</span></li>)}
         {engines.preview.map(name => <li key={name} data-support="preview"><span className="engine-name">{name}</span><span className="engine-status">Preview</span></li>)}
@@ -93,15 +94,45 @@ export function EnginesSection() {
   </section>;
 }
 
-/** The app card leads while the command is not published, because it holds the only install that works today. */
+/**
+ * The install command in a small terminal, with a copy button and one slot under it. While idle the slot holds the note it is given (the pending-npm note, or nothing), as plain text.
+ * "Copied" or the failure words, in a live region, take the same slot at the same height, so the page does not move. One timer puts the slot back to idle. A new press clears the old timer,
+ * and a copy that finishes after the page left sets no timer (see `createCopyController`).
+ */
+export function InstallCommand({ command, idleNote = null }: { command: string; idleNote?: string | null }) {
+  const [state, setState] = useState<CopyState>('idle');
+  const controller = useRef<ReturnType<typeof createCopyController> | null>(null);
+  useEffect(() => {
+    // A new command starts from idle, so a Copied that belonged to the old command never lingers.
+    setState('idle');
+    const run = createCopyController({ text: command, clipboard: () => (typeof navigator === 'undefined' ? null : navigator.clipboard), set: setState });
+    controller.current = run;
+    return () => { run.dispose(); controller.current = null; };
+  }, [command]);
+  return <>
+    <div className="terminal">
+      <div className="terminal-bar" aria-hidden="true"><span /><span /><span /></div>
+      <div className="terminal-body">
+        <span className="terminal-prompt" aria-hidden="true">$</span>
+        <pre className="command-block" tabIndex={0} aria-label="Install command"><code><Command text={command} /></code></pre>
+        <button type="button" className="copy-button" data-state={state} onClick={() => { void controller.current?.press(); }}>
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M5 15V6.5A2.5 2.5 0 0 1 7.5 4H15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+          <span>{state === 'copied' ? 'Copied' : 'Copy'}<span className="sr-only"> the install command</span></span>
+        </button>
+      </div>
+    </div>
+    <div className="copy-slot" data-note={idleNote ? 'yes' : 'no'}>
+      {/* The npm note is plain text. Only the status line below is a live region, so the note is never read out again when the state returns to idle. */}
+      {state === 'idle' && idleNote ? <p className="copy-note">{idleNote}</p> : null}
+      <p className="copy-status" role="status" aria-live="polite">{state === 'idle' ? '' : copyLabel(state)}</p>
+    </div>
+  </>;
+}
+
+/** The app card leads, because the app download is the main path. The command is always shown beside it, with a copy button. */
 export function InstallSection({ available = installAvailable }: { available?: boolean }) {
   const view = installView(available);
-  const commandCard = <div key="cli" id="install-cli" className="install-card">
-    <h3>{install.commandLineTitle}</h3>
-    {view.command && <pre className="command-block" tabIndex={0} aria-label="Install command"><code><Command text={view.command} /></code></pre>}
-    <p><ProductText>{view.text}</ProductText></p>
-  </div>;
-  const appCard = <div key="app" id="install-app" className="install-card">
+  const appCard = <div key="app" id="install-app" className="install-card install-card-app">
     <h3>{install.appTitle}</h3>
     <p>{install.appIntro}</p>
     <ol className="install-steps">
@@ -110,11 +141,17 @@ export function InstallSection({ available = installAvailable }: { available?: b
     <p>{install.appUpdate}</p>
     <a className="button primary" href={releasesUrl} target="_blank" rel="noopener noreferrer">Get the app (beta)<span className="sr-only"> (opens in a new tab)</span></a>
   </div>;
+  const commandCard = <div key="cli" id="install-cli" className="install-card install-card-cli">
+    <h3>{install.commandLineTitle}</h3>
+    <InstallCommand command={view.command} idleNote={view.pendingNote} />
+    <p><ProductText>{view.text}</ProductText></p>
+  </div>;
   return <section id="install" className="band" aria-labelledby="install-title">
     <div className="band-inner">
       <h2 id="install-title">{install.heading}</h2>
-      <div className="install-grid" data-command={view.command === null ? 'unpublished' : 'published'}>
-        {view.command === null ? [appCard, commandCard] : [commandCard, appCard]}
+      <p className="band-lede">{install.intro}</p>
+      <div className="install-grid" data-command={view.pending ? 'unpublished' : 'published'}>
+        {appCard}{commandCard}
       </div>
     </div>
   </section>;

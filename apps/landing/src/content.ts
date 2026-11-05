@@ -1,8 +1,9 @@
 import { installAvailable, installCommand, repositoryUrl } from './release.ts';
 
 /**
- * Page copy for 0.8.0-beta.1, approved on 2026-10-31. Backticks mark inline code.
- * Keep the wording as approved. Change it only with the owner.
+ * Page copy for 0.8.0-beta.1. Backticks mark inline code.
+ * The owner approved the wording on 2026-10-31 and revised the hero, the journey, and the step titles after the preview review.
+ * The voice is warm and a little cute, built from the bowerbird, the bower, the loom, and a little sewing. Keep the wording. Change it only with the owner.
  */
 export const repository = repositoryUrl;
 const branch = `${repository}/blob/main`;
@@ -16,9 +17,11 @@ export const destinations = {
 };
 
 export const hero = {
-  "Eyebrow": "Open beta",
-  "H1": "One setup, two engines",
-  "Body": "Define your skills, agents, tools, rules, and context once. Bowerloom installs them into Claude Code and Codex. Before it writes a file, it shows what each engine can carry and what it cannot.",
+  "Eyebrow": "Open beta · macOS",
+  "H1": "Sew a harness that you can use anywhere",
+  "Body": "Set up your skills, agents, tools, rules, and context once. Bowerloom tucks them into Claude Code and Codex.",
+  "Results lead": "Each part is marked:",
+  "Results": ["Exact", "Translated", "Weakened", "Absent"],
   "Primary CTA": "Get the app (beta)",
   "Secondary link": "Install the command line",
   "Note": "Free and open source under the MIT license. For macOS.",
@@ -29,18 +32,16 @@ export const whatItDoes = {
   intro: "Each coding agent keeps its own skills folder, agent files, tool list, and permission rules. A change in one does not reach the other. Bowerloom keeps one harness in a `.bowerloom` folder and writes each engine's files from it. A harness is the set of skills, agents, tools, rules, and context around a coding model.",
   features: [
     { title: "See what each engine can carry", body: "The preview marks each part of your harness, per engine, as Exact, Translated, Weakened, or Absent. If an engine carries a rule more weakly than you wrote it, Bowerloom holds that rule until you approve that line. An installed copy is never more permissive than its source." },
-    { title: "Read the plan before anything is written", body: "Every change that writes shows a plan first. Nothing is written until you approve that exact plan." },
-    { title: "Go back", body: "Each save keeps a save point. Go back restores the harness as it was then. Remove puts back every file an install replaced." },
-    { title: "Start from what you have", body: "Adopt reads your Claude Code and Codex files and builds one harness. It changes no engine file." },
   ],
 } as const;
 
 export const howItWorks = {
   heading: "How it works",
   steps: [
-    { title: "Adopt", body: "Bowerloom reads the Claude Code and Codex files in your project. It writes one harness into `.bowerloom` and nothing else." },
-    { title: "Preview", body: "Pick your engines. Bowerloom lists every file it plans to write and gives one result per part, per engine. Weaker rules wait for you, one line at a time." },
-    { title: "Install and watch", body: "You approve the plan by its revision. Bowerloom writes the engine files and records what it wrote. Drift lists the files that changed since." },
+    { title: "Gather what you already have", body: "Adopt reads the Claude Code and Codex files in your project. Bowerloom writes one harness into `.bowerloom` and nothing else." },
+    { title: "Preview what each engine can carry", body: "Pick your engines. Bowerloom lists every file it plans to write and gives one result per part, per engine. Weaker rules wait for you, one line at a time." },
+    { title: "Approve the plan, then watch for drift", body: "Nothing is written until you approve that exact plan by its revision. Bowerloom then writes the engine files and records what it wrote. Drift lists the files that changed since." },
+    { title: "Go back to a save point", body: "In the app, each save keeps a save point, and Go back restores it. On the command line, Remove puts back every file an install replaced." },
   ],
   boundary: "Setup does not start workers, grant runtime access, or authorize connected actions.",
 } as const;
@@ -70,12 +71,14 @@ export const commandLine = {
 export const engines = {
   heading: "Two engines now. Three in preview.",
   body: "This beta supports Claude Code and Codex. OpenCode, Pi, and DeepSeek Harness are preview engines. Bowerloom can read and remove all five. To install into a preview engine, set `BOWERLOOM_PREVIEW_ENGINES=1`.",
+  lead: "Pick the engines you want to sew it into.",
   supported: ["Claude Code", "Codex"],
   preview: ["OpenCode", "Pi", "DeepSeek Harness"],
 } as const;
 
 export const install = {
-  heading: "Install",
+  heading: "Make yourself at home",
+  intro: "Start with the app. The command line sits beside it, ready to copy.",
   commandLineTitle: "Command line",
   appTitle: "App",
   appIntro: "Apple did not sign or notarize the app, so macOS blocks it the first time you open it.",
@@ -89,18 +92,21 @@ export const install = {
   appUpdate: "The app does not update itself yet. When a new build is out, download it.",
 } as const;
 
-/** Shown wherever the command would be, until the release record says npm has it. */
-export const arrivalNote = "The install command arrives when the beta publishes.";
+/** Said once, beside the command, while the release record says npm does not have the package. */
+export const pendingNote = "The beta is not on npm yet. This command works once it is.";
 const needs = "needs Node 24.11 or a later 24.x, and npm 11.";
 
 /**
- * The npm command shows only after the release record says the package is published.
- * Until then the section says when the command arrives.
+ * The command always shows, with a copy button. The owner decided this on the preview review, even before npm has the package.
+ * While the release record says npm lacks the package, `pending` is true and the note says so, so the page stays honest.
  */
-export function installView(available: boolean = installAvailable): { command: string | null; text: string } {
-  return available
-    ? { command: installCommand, text: `This ${needs} To update, run the same command again. Do not use \`npm update -g\`.` }
-    : { command: null, text: `${arrivalNote} The command line ${needs}` };
+export function installView(available: boolean = installAvailable): { command: string; pending: boolean; text: string; pendingNote: string | null } {
+  return {
+    command: installCommand,
+    pending: !available,
+    pendingNote: available ? null : pendingNote,
+    text: available ? `This ${needs} To update, run the same command again. Do not use \`npm update -g\`.` : `The command line ${needs}`,
+  };
 }
 
 export const questions = [

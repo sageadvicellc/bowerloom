@@ -28,3 +28,31 @@ test('hero depth uses transforms on two planes, a scroll timeline, and a reduced
   assert.match(banner, /linear-gradient\(to bottom, transparent 84%, var\(--ui-bg\) 100%\)/);
   assert.doesNotMatch(banner, /banner-replay/);
 });
+
+test('the banner is 70% of the view height at every width, with the focal points set and no cap, tablet clamp, or phone min()', async () => {
+  const banner = await read('src/homepage-banner.css');
+  assert.match(banner, /\.homepage-banner \{ height: 70vh; height: 70svh; \}/, 'one rule for every width, with a vh fallback');
+  assert.doesNotMatch(banner, /max-height|aspect-ratio|clamp\(|min\(56svh|\(min-width: 761px\)/, 'the old caps are gone');
+  assert.match(banner, /\.homepage-banner > img \{[^}]*position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 58%;/, 'desktop focal point');
+  assert.match(banner, /@media \(max-width: 760px\) \{\s*\.homepage-banner > img \{ object-position: 55% 62%; \}/, 'phone focal point');
+  const heights = [...banner.matchAll(/\.homepage-banner \{[^}]*(?<![-\w])height:/g)];
+  assert.equal(heights.length, 1, 'no other rule sets the banner height');
+});
+
+test('the parallax reuses the one scroll timeline: the picture box reaches 18vh above the banner so no edge shows, and it exists only without a reduced-motion preference', async () => {
+  const css = await read('src/hero-parallax.css');
+  const gateAt = css.indexOf('@media (prefers-reduced-motion: no-preference)');
+  assert.ok(gateAt > -1);
+  const rule = css.match(/\.homepage-banner > img \{([^}]*)\}/)[1];
+  assert.ok(css.indexOf(rule) > gateAt, 'the picture rule sits inside the no-preference gate');
+  assert.match(rule, /inset: -18vh 0 auto 0;/);
+  assert.match(rule, /height: calc\(100% \+ 18vh\);/, 'an explicit height: an absolute picture with height auto keeps its own shape and leaves the banner uncovered');
+  // The picture slides down at most 18vh (the first keyframes test), and the box reaches 18vh above, so the travel never exposes the top edge.
+  const far = Number(css.match(/hero-depth-far \{[\s\S]*?translate3d\(0, ([\d.]+)vh, 0\); \}\n\}/)[1]);
+  assert.ok(far <= 18, `travel ${far}vh stays inside the 18vh the box reaches above`);
+  // Nothing outside the gate moves the picture, so under reduced motion it stays still: no animation property and no extended box.
+  const outside = css.slice(0, gateAt) + css.slice(css.indexOf('@keyframes hero-depth-far'));
+  assert.doesNotMatch(outside.replace(/\/\*[\s\S]*?\*\//g, ''), /homepage-banner > img|animation-timeline|scroll\(/);
+  assert.equal((css.match(/animation-timeline: scroll\(root block\)/g) ?? []).length, 2, 'one timeline for the picture and one for the copy, and no second mechanism');
+  assert.doesNotMatch(css, /addEventListener|requestAnimationFrame/);
+});
