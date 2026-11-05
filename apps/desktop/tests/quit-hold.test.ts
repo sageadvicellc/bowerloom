@@ -98,7 +98,7 @@ test('a box that cannot be shown is logged and the wait goes on', async () => {
   let handler!: ReturnType<typeof quitHold>;
   handler = quitHold({
     engine: { idle: () => new Promise<void>(resolve => { release = resolve; }), busy: () => true }, ending: () => false, boxAfterMs: 5, waitMs: 5_000,
-    showBox: () => { throw new Error('no box'); }, quit: () => { events.push('quit'); handler({ preventDefault: () => { events.push('again'); } }); }, log: text => { logs.push(text); },
+    exit: () => undefined, showBox: () => { throw new Error('no box'); }, quit: () => { events.push('quit'); handler({ preventDefault: () => { events.push('again'); } }); }, log: text => { logs.push(text); },
   });
   handler({ preventDefault: () => { events.push('prevented'); } });
   await later(30);
@@ -139,10 +139,10 @@ test('backstop: a held quit that closes every window and never reaches will-quit
   h.hold.windowsClosed();
   assert.equal(h.events.filter(e => e === 'quit').length, 2, 'the windows are closed and will-quit has not come: the quit is asked once more');
   await later(20);
-  assert.equal(h.events.includes('exit:0'), false, 'not before the time');
+  assert.equal(h.events.includes('exit:1'), false, 'not before the time');
   await later(50);
-  assert.equal(h.events.at(-1), 'exit:0');
-  assert.match(h.logs.at(-1)!, /did not reach will-quit in 0\.04 seconds, so the app exits now/);
+  assert.equal(h.events.at(-1), 'exit:1');
+  assert.match(h.logs.at(-1)!, /did not reach will-quit in 0\.04 seconds, so the app exits now \(engine busy: true\)/);
 });
 
 test('a quit that began as a signal: after the windows close without will-quit, the second ask goes through and is not held again', async () => {
@@ -186,5 +186,51 @@ test('main.ts wires will-quit and window-all-closed to the hold, and the exit to
   const main = readFileSync(join(DESKTOP, 'main/main.ts'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
   assert.match(main, /app\.on\('will-quit', quitHeld\.reachedWillQuit\)/);
   assert.match(main, /app\.on\('window-all-closed', quitHeld\.windowsClosed\)/);
-  assert.match(main, /exit: code => app\.exit\(code\)/);
+  assert.match(main, /exit: code => \{ try \{ engineForExit\?\.clearReportCopies\(\); \} finally \{ app\.exit\(code\); \} \}/, 'the backstop runs the clean-up of the quit event first');
+  assert.match(main, /kept: \(\) => \{ quitHeld\.cancelled\(\);/, 'a window that keeps its changes ends the held quit');
+});
+
+test('a held quit that a window cancels (Keep editing) is over: a later close of the last window quits nothing and arms no backstop', async () => {
+  const h = harness(async () => undefined, { backstopMs: 30 });
+  h.press(); await settle(); await settle();
+  assert.deepEqual(h.events, ['prevented', 'quit']);
+  h.hold.cancelled();
+  h.hold.windowsClosed();
+  await later(80);
+  assert.deepEqual(h.events, ['prevented', 'quit'], 'no second quit and no exit');
+  assert.deepEqual(h.logs, []);
+});
+
+test('cancelled also stops a backstop that is already running', async () => {
+  const h = harness(async () => undefined, { backstopMs: 40 });
+  h.press(); await settle(); await settle();
+  h.hold.windowsClosed();
+  h.hold.cancelled();
+  await later(90);
+  assert.equal(h.events.some(e => e.startsWith('exit')), false);
+});
+
+test('the backstop exits with code 1', async () => {
+  const h = harness(async () => undefined, { backstopMs: 20 });
+  h.press(); await settle(); await settle();
+  h.hold.windowsClosed();
+  await later(60);
+  assert.equal(h.events.at(-1), 'exit:1');
+});
+
+test('the pass-through does not stay set: a quit that did not reach before-quit leaves the next quit held, and will-quit clears it too', async () => {
+  const events: string[] = [];
+  let busy = true;
+  let handler!: ReturnType<typeof quitHold>;
+  // This quit does not call before-quit (it was swallowed).
+  handler = quitHold({ engine: { idle: async () => undefined, busy: () => busy }, ending: () => false, showBox: () => undefined, quit: () => { events.push('quit'); }, exit: () => undefined, log: () => undefined });
+  handler({ preventDefault: () => { events.push('prevented'); } }); await settle(); await settle();
+  handler({ preventDefault: () => { events.push('prevented-2'); } });
+  assert.deepEqual(events, ['prevented', 'quit', 'prevented-2'], 'the second quit is held, not let through');
+  await settle(); await settle();
+  handler.windowsClosed();
+  handler.reachedWillQuit();
+  handler({ preventDefault: () => { events.push('prevented-3'); } });
+  assert.equal(events.at(-1), 'prevented-3');
+  busy = false;
 });

@@ -42,6 +42,8 @@ export interface CloseGuardDeps {
   readonly ending: () => boolean;
   /** Brings the window forward before the box, because the box is a sheet on that window (see `bringForBox`). It may throw; the box shows anyway. */
   readonly reveal: () => void;
+  /** Called when the window stays, so the quit or the close that asked is over: Keep editing, any other answer, or a box that failed. Main logs it and tells the quit hold. */
+  readonly kept?: () => void;
 }
 
 /** The part of a window that `bringForBox` uses. */
@@ -64,8 +66,8 @@ export function closeGuard(deps: CloseGuardDeps): (event: { preventDefault(): vo
     try { deps.reveal(); } catch { /* the window cannot be brought forward; ask anyway */ }
     let answer: number;
     // A box that throws keeps the window, as any answer but Discard does. It is logged, so a Cmd+Q that does nothing is not silent.
-    try { answer = deps.ask(closeQuestion(changesInTitle(deps.title()))); } catch (error) { console.error('Bowerloom: the question about unsaved changes could not be shown, so the window stays open.', error instanceof Error ? error.message : String(error)); return; }
+    try { answer = deps.ask(closeQuestion(changesInTitle(deps.title()))); } catch (error) { console.error('Bowerloom: the question about unsaved changes could not be shown, so the window stays open.', error instanceof Error ? error.message : String(error)); deps.kept?.(); return; }
     // Only the second button lets the unload go on; every other answer keeps the window.
-    if (answer === 1) event.preventDefault();
+    if (answer === 1) event.preventDefault(); else deps.kept?.();
   };
 }

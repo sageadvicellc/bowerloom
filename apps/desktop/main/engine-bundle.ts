@@ -112,6 +112,8 @@ export interface ShareEnv {
    * checked again inside the queue, after the dialog, so a plan that changed meanwhile is never written.
    */
   readonly serial: <T>(run: () => Promise<T>) => Promise<T>;
+  /** Counts a call as busy for as long as it runs, outside the queue too, so a quit knows an open dialog and the write that follows it are work in progress. */
+  readonly track: <T>(run: () => Promise<T>) => Promise<T>;
   readonly whileStopped: (f: ShareFolder) => void;
   /** The stored path of a notes folder, by the id main gave it (throws its own refusal). */
   readonly sourcePathOf: (f: ShareFolder, notesId: string) => string;
@@ -436,7 +438,13 @@ export function createShare(env: ShareEnv): ShareCalls {
     return had;
   }
 
-  return { planExport, runExport, chooseBundle, planImport, runImport, discardBundle, close: () => env.host.close() };
+  // The three calls with a native dialog are busy from their first line to their last, dialogs included (`env.track`); the queue alone would miss the time a dialog is open.
+  return {
+    planExport, discardBundle, planImport, close: () => env.host.close(),
+    runExport: (folderId, revision, acknowledged) => env.track(() => runExport(folderId, revision, acknowledged)),
+    chooseBundle: () => env.track(() => chooseBundle()),
+    runImport: (folderId, revision, bundleId, choices, acknowledged) => env.track(() => runImport(folderId, revision, bundleId, choices, acknowledged)),
+  };
 }
 
 /** The user name of the account that runs the app, matched literally in the files of an export. Empty when the system gives none, and then the log says so. */

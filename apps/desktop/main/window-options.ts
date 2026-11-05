@@ -43,13 +43,14 @@ const answerOf = (o: { cancelId?: number }): number => (typeof o.cancelId === 'n
 
 /**
  * A hidden start (`--e2e-hidden`) shows no native box: a box would stop a test and put a message on a person's screen. In that mode each native box of `dialog` writes its title and
- * message to `say` (stderr) and answers with the safe choice, the one that keeps data: an error box shows nothing; a question answers its cancel button (index `cancelId`, 0 in every
- * question of the app: "Cancel", "Keep editing"); a file chooser is closed with no pick. A test that needs another answer replaces the function after the start, as before.
+ * message to `say` (stderr) and answers with the safe choice, the one that keeps data: an error box shows nothing; a question answers its `cancelId` (the button that cancels or keeps:
+ * "Cancel", "Keep editing"), or the first button when it has none; a file chooser is closed with no pick. A test that needs another answer replaces the function after the start, as before.
  * Does nothing when the start is not hidden. Returns whether it replaced the boxes.
  */
 export function quietDialogs(dialog: QuietDialog, argv: readonly string[], say: (text: string) => void): boolean {
   if (!e2eHidden(argv)) return false;
-  const told = (kind: string, title: string | undefined, message: string | undefined): void => { say(`Bowerloom box not shown (hidden start, ${kind}): ${[title, message].filter((t): t is string => t !== undefined && t !== '').join(': ')}\n`); };
+  // A closed stderr (EPIPE) must not turn a quiet box into a crash.
+  const told = (kind: string, title: string | undefined, message: string | undefined): void => { try { say(`Bowerloom box not shown (hidden start, ${kind}): ${[title, message].filter((t): t is string => t !== undefined && t !== '').join(': ')}\n`); } catch { /* nobody reads stderr */ } };
   dialog.showErrorBox = (title, content) => { told('error', title, content); };
   dialog.showMessageBox = (async (...args: unknown[]) => { const o = optionsOf(args); told('question', o.title, o.message); return { response: answerOf(o), checkboxChecked: false }; }) as QuietDialog['showMessageBox'];
   dialog.showMessageBoxSync = ((...args: unknown[]) => { const o = optionsOf(args); told('question', o.title, o.message); return answerOf(o); }) as QuietDialog['showMessageBoxSync'];

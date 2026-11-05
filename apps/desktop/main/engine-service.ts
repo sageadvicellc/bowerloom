@@ -339,7 +339,7 @@ export interface EngineService {
    * so a write in progress is never cut off. It never rejects. Not a call of the window.
    */
   idle(): Promise<void>;
-  /** True while a call runs or waits in the serial queue. The same fact as `idle`, read at once: a quit that finds it false is not held. */
+  /** True while a call runs or waits in the serial queue, or a share call is open (a native dialog included). Read at once: a quit that finds it false is not held. */
   busy(): boolean;
 }
 
@@ -404,6 +404,11 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     // The count falls when the call has ended, however it ended, so `busy` and `idle` agree.
     chain = chain.then(() => { pending -= 1; });
     return next;
+  };
+  /** Counts a call as busy while it runs, outside the serial queue too (a share call that waits on a native dialog). `busy()` reads it. */
+  const track = async <T>(run: () => Promise<T>): Promise<T> => {
+    pending += 1;
+    try { return await run(); } finally { pending -= 1; }
   };
   const folderOf = (id: unknown): Folder => {
     if (typeof id !== 'string' || !ID.test(id)) return bad();
@@ -841,7 +846,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     now, home: realHome, user: accountName(), plans, scrubAll: makeScrub(homes.map(path => ({ path, as: '~' }))),
     chooseBundleOpen: deps.chooseBundleOpen ?? (async () => null), chooseBundleSave: deps.chooseBundleSave ?? (async () => null), confirm: deps.confirm,
     bad, unknownBundle: () => { throw new EngineCallRefusal('UNKNOWN_BUNDLE'); },
-    folderOf, answer, serial, whileStopped,
+    folderOf, answer, serial, track, whileStopped,
     sourcePathOf: (f, notesId) => notesEdits(folderOf(f.id)).sourcePath(notesId),
     hasNotes: id => notesById.has(id), notesLabel: id => notesOf(id).label,
     sourceViewOf: f => sourceViewOf(folderOf(f.id)), scrubbed: (f, d) => scrubbed(folderOf(f.id), d),

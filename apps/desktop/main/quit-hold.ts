@@ -31,14 +31,17 @@ export interface QuitHoldDeps {
   readonly log?: (text: string, cause?: unknown) => void;
   readonly waitMs?: number;
   readonly boxAfterMs?: number;
-  /** Backstop: ends the app at once (`app.exit(0)`). Used only when a quit that the hold started has not reached `will-quit` in `backstopMs`. */
-  readonly exit?: (code: number) => void;
+  /**
+   * Backstop: ends the app at once. Used only when a quit that the hold started has not reached `will-quit` in `backstopMs`. It gets code 1, because the app did not quit as it
+   * should have. `app.exit` skips the `quit` event, so the caller does the clean-up of that event first (the report copies).
+   */
+  readonly exit: (code: number) => void;
   /** How long the quit that the hold started may take to reach `will-quit`. Default QUIT_BACKSTOP_MS. */
   readonly backstopMs?: number;
 }
 
-/** The handler of `before-quit`; `reachedWillQuit` is for the `will-quit` event and stops the backstop; `windowsClosed` is for `window-all-closed` and starts it. */
-export type QuitHold = ((event: { preventDefault(): void }) => void) & { readonly reachedWillQuit: () => void; readonly windowsClosed: () => void };
+/** The handler of `before-quit`; `reachedWillQuit` is for the `will-quit` event and stops the backstop; `windowsClosed` is for `window-all-closed` and starts it; `cancelled` is for a window that kept its unsaved changes, which ends the quit. */
+export type QuitHold = ((event: { preventDefault(): void }) => void) & { readonly reachedWillQuit: () => void; readonly windowsClosed: () => void; readonly cancelled: () => void };
 
 /** After the hold lets a held quit go on and every window is closed, the app must reach `will-quit` within this time, or the backstop ends it. */
 export const QUIT_BACKSTOP_MS = 5_000;
@@ -84,25 +87,30 @@ export function quitHold(deps: QuitHoldDeps): QuitHold {
       holding = false; letThrough = true;
       continuing = true;
       deps.quit();
+      // The quit asks before-quit at once. If it did not, the pass-through must not wait for some later quit.
+      letThrough = false;
     });
   };
   /**
    * Every window is closed. For a quit that the hold let go on, will-quit must follow at once. When the held quit began as a signal (SIGTERM), Electron does not go on after the
    * windows close: it emits window-all-closed and waits. So the quit is asked once more here, and it goes on. If it does not within the backstop time, the app would stay open with no window, so the
-   * backstop ends it. A quit that a window cancelled (Keep editing) never gets here, because that window stays open.
+   * backstop ends it. A quit that a window cancelled (Keep editing) is ended by `cancelled`, so a later close of the last window does not come here as a quit.
    */
   const windowsClosed = (): void => {
     if (!continuing) return;
     clearTimeout(backstop);
     backstop = setTimeout(() => {
       continuing = false; letThrough = false;
-      log(`Bowerloom: the quit did not reach will-quit in ${(deps.backstopMs ?? QUIT_BACKSTOP_MS) / 1000} seconds, so the app exits now.`);
-      (deps.exit ?? (() => undefined))(0);
+      log(`Bowerloom: the quit did not reach will-quit in ${(deps.backstopMs ?? QUIT_BACKSTOP_MS) / 1000} seconds, so the app exits now (engine busy: ${String(deps.engine?.busy() ?? false)}).`);
+      deps.exit(1);
     }, deps.backstopMs ?? QUIT_BACKSTOP_MS);
     backstop.unref();
     // Found by experiment: Electron closed the windows of this quit and then emitted window-all-closed instead of going on to will-quit. A second quit from here goes on.
     letThrough = true;
     deps.quit();
+    letThrough = false;
   };
-  return Object.assign(handler, { reachedWillQuit: () => { continuing = false; clearTimeout(backstop); }, windowsClosed });
+  /** A window kept its unsaved changes (Keep editing): the quit is over. The app stays, and a later close of the last window must not end it. */
+  const cancelled = (): void => { continuing = false; letThrough = false; clearTimeout(backstop); };
+  return Object.assign(handler, { reachedWillQuit: () => { continuing = false; letThrough = false; clearTimeout(backstop); }, windowsClosed, cancelled });
 }

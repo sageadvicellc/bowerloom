@@ -72,3 +72,11 @@ test('main.ts quiets the boxes before any box can show: right after the dock is 
   assert.ok(at < main.indexOf('if (launch.refusal !== null)'));
   assert.ok(at < main.indexOf('function startupFailed'), 'the replacement runs when the module starts, before any call of startupFailed');
 });
+
+test('a stderr that fails (EPIPE) does not turn a quiet box into a crash', async () => {
+  const { dialog } = fake();
+  quietDialogs(dialog, [E2E_HIDDEN_FLAG], () => { throw Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }); });
+  assert.doesNotThrow(() => dialog.showErrorBox('t', 'm'));
+  assert.equal((await dialog.showMessageBox({ cancelId: 0 } as never)).response, 0);
+  assert.equal(dialog.showMessageBoxSync({ cancelId: 0 } as never), 0);
+});

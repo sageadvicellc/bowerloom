@@ -209,3 +209,28 @@ test('a .bowerloom that is a link is unreadable, not "no harness here"', async t
   assert.equal(g!.note, HARNESS_UNREADABLE);
   assert.deepEqual(g!.nodes, []);
 });
+
+// ---- busy covers a share call that waits on a native dialog
+
+test('busy() is true while the open dialog of an import is up, and while a write question is up, and false again after', async t => {
+  const { file } = await pair(t, 'busy');
+  let answer: (path: string | null) => void = () => undefined;
+  let yes: (v: boolean) => void = () => undefined;
+  let asked = false;
+  const b = shareSetup(t, 'busy-b', { chooseBundleOpen: () => new Promise<string | null>(resolve => { answer = resolve; }), confirm: () => new Promise<boolean>(resolve => { asked = true; yes = resolve; }) });
+  assert.equal(b.service.busy(), false);
+  const choosing = b.service.chooseBundle();
+  await tick();
+  assert.equal(b.service.busy(), true, 'the open dialog is work in progress for a quit');
+  answer(file);
+  const bundle = value(await choosing);
+  assert.equal(b.service.busy(), false);
+  const f = await b.choose(plainFolder(b.home, 'target'));
+  const plan = value(await b.service.planImport(f.id, bundle.bundleId, NO_CHOICES));
+  const writing = b.service.runImport(f.id, plan.revision, bundle.bundleId, NO_CHOICES, plan.acknowledge);
+  while (!asked) await tick();
+  assert.equal(b.service.busy(), true, 'the write question, and the write that follows it');
+  yes(true);
+  value(await writing);
+  assert.equal(b.service.busy(), false);
+});

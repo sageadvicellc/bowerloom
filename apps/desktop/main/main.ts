@@ -110,8 +110,8 @@ const quitHeld = quitHold({
     void (window === null ? dialog.showMessageBox(options) : dialog.showMessageBox(window, options)).catch((error: unknown) => { console.error('Bowerloom: the box about a save that is finishing failed.', error instanceof Error ? error.message : String(error)); });
   },
   quit: () => app.quit(),
-  // The backstop: a quit that the hold started and that never reached will-quit ends here. app.exit skips will-quit and quit, but the process-exit hooks still run.
-  exit: code => app.exit(code),
+  // The backstop: a quit that the hold started and that never reached will-quit ends here with code 1. app.exit skips will-quit and quit, so the clean-up of the quit event runs first.
+  exit: code => { try { engineForExit?.clearReportCopies(); } finally { app.exit(code); } },
 });
 app.on('before-quit', quitHeld);
 app.on('will-quit', quitHeld.reachedWillQuit);
@@ -134,7 +134,7 @@ function createWindow(): void {
   // box, at once (this event is answered when the handler returns, so the box is the synchronous one). Closing the window, a reload and Cmd+Q (app.quit closes each window through
   // the same unload) all come here. The window has no channel to skip the box or answer it; it only names a count in its page title (main/close-guard.ts).
   const win = window;
-  win.webContents.on('will-prevent-unload', closeGuard({ title: () => win.webContents.getTitle(), ending: () => closeEnding, reveal: () => bringForBox(win, !e2eHidden(argv)), ask: options => dialog.showMessageBoxSync(win, { ...options, buttons: [...options.buttons] }) }));
+  win.webContents.on('will-prevent-unload', closeGuard({ title: () => win.webContents.getTitle(), ending: () => closeEnding, kept: () => { quitHeld.cancelled(); process.stderr.write('Bowerloom: a window kept its unsaved changes, so the close or quit stopped.\n'); }, reveal: () => bringForBox(win, !e2eHidden(argv)), ask: options => dialog.showMessageBoxSync(win, { ...options, buttons: [...options.buttons] }) }));
   // The app is called "Bowerloom" from the first moment: the page title it loads with never reaches the title bar.
   window.on('page-title-updated', event => event.preventDefault());
   window.on('closed', () => { window = null; });
