@@ -1,5 +1,5 @@
 /**
- * Takes the five screenshots of the landing page (apps/landing/src/screenshots.ts), light and dark, and writes them as WebP files to apps/landing/public/shots.
+ * Takes the six screenshots of the landing page (apps/landing/src/screenshots.ts), light and dark, and writes them as WebP files to apps/landing/public/shots.
  * Run it again after a change to the screens: `npm run shots --prefix apps/landing`, or by hand:
  *   LANDING_SHOTS=1 npx playwright test --config playwright.config.ts e2e/landing-shots.spec.ts      (from apps/desktop, after `npm run build` at the root)
  * Without LANDING_SHOTS=1 every test here is skipped, so a normal e2e run never rewrites the images. LANDING_SHOTS_DIR changes where they go.
@@ -225,6 +225,33 @@ test('builder-graph and save-files: the Builder with a skill linked to an agent,
   await expect(review.locator('[data-file=".bowerloom/agents/drafter.md"]')).toHaveAttribute('data-action', 'update');
   await expect(s.getByRole('button', { name: 'Save 2 files', exact: true })).toBeVisible();
   await snap(p, 'save-files');
+});
+
+test('builder-agent: the Builder with the agent drafter selected, its details open, and the skill it uses linked', async () => {
+  test.setTimeout(180_000);
+  home = newHome();
+  const dir = weeklyFolder(home, 'weekly', { hook: false, servers: [] });
+  const p = await start('harnesses', { width: 1100, height: 688 });
+  const folders = p.locator('[data-section="folders"]');
+  await h!.pick(dir);
+  await folders.getByRole('button', { name: 'Choose a folder', exact: true }).click();
+  await folders.getByRole('button', { name: /^Open .* in the builder$/ }).click();
+  await expect(p.getByRole('heading', { level: 1, name: 'weekly' })).toBeVisible();
+  await expect(node(p, 'agent:drafter')).toBeVisible();
+  await p.getByRole('button', { name: 'Zoom out', exact: true }).click();
+  await graphSettled(p);
+  const pane = (await p.locator('.hx-canvas').boundingBox())!;
+  await p.mouse.move(pane.x + pane.width * 0.3, pane.y + pane.height * 0.2);
+  await p.mouse.wheel(0, 110);
+  await graphSettled(p);
+  // Select the agent that already uses a skill: the details column shows what it does and the skill it uses, with Unlink. Nothing is changed, so nothing is waiting to be saved.
+  await node(p, 'agent:drafter').click();
+  const details = p.locator('[data-links="agent:drafter"]');
+  await expect(details).toContainText('outline');
+  await expect(details.getByRole('button', { name: 'Unlink drafter and outline', exact: true })).toBeVisible();
+  await p.mouse.move(1, 1);
+  await graphSettled(p);
+  await snap(p, 'builder-agent');
 });
 
 test('notes-keeper-tour: the first-run tour at the step that builds the Notes keeper', async () => {

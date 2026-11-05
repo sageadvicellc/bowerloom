@@ -120,8 +120,8 @@ dom('with reduced motion the lightbox shows at once', async () => {
 dom('the Enlarge buttons have different names that start with their visible text', async () => {
   const { page, context } = await open();
   const names = await page.locator('.screenshot-enlarge').evaluateAll(buttons => buttons.map(button => ({ name: button.getAttribute('aria-label'), visible: button.innerText.trim() })));
-  assert.equal(names.length, 5);
-  assert.equal(new Set(names.map(entry => entry.name)).size, 5);
+  assert.equal(names.length, 6);
+  assert.equal(new Set(names.map(entry => entry.name)).size, 6);
   for (const entry of names) assert.ok(entry.name.startsWith(entry.visible), `${entry.name} starts with ${entry.visible}`);
   await context.close();
 });

@@ -24,6 +24,7 @@ export function WhatItDoes() {
     <div className="section-body">
       <p><ProductText>{whatItDoes.intro}</ProductText></p>
       <div className="feature-engine"><h3>{engineFeature.title}</h3><p><ProductText>{engineFeature.body}</ProductText></p></div>
+      <ScreenshotSlot slot="fidelity-preview" />
     </div>
   </section>;
 }
@@ -49,7 +50,7 @@ export function AppSection() {
       <p className="band-lede"><ProductText>{app.body}</ProductText></p>
       <div className="app-grid">
         <article>
-          <ScreenshotSlot slot="fidelity-preview" />
+          <ScreenshotSlot slot="builder-agent" />
           <h3>{builder.title}</h3><p><ProductText>{builder.body}</ProductText></p>
         </article>
         <article>

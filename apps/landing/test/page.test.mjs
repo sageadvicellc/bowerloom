@@ -270,7 +270,7 @@ test('the features section is one engine item with its screenshot, the steps are
     const html = renderToStaticMarkup(createElement(page.sections.WhatItDoes));
     assert.ok(html.includes('See what each engine can carry'));
     assert.ok(!html.includes('journey'), 'the three-step strip is gone, so the steps live only in How it works');
-    assert.ok(!html.includes('<img'), 'the features section holds text only; the install review sits with the app');
+    assert.ok(html.includes('data-screenshot-slot="fidelity-preview"'), 'the install review sits with the engine feature it shows');
     const how = renderToStaticMarkup(createElement(page.sections.HowItWorks));
     assert.equal((how.match(/<li>/g) ?? []).length, 4);
     assert.ok(how.includes('Go back to a save point') && how.includes('In the app, each save keeps a save point'));

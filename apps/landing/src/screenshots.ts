@@ -1,5 +1,5 @@
 /**
- * The five screenshots of the page. Each has a light and a dark file in `public/shots`, named `<id>-light.webp` and `<id>-dark.webp`.
+ * The six screenshots of the page. Each has a light and a dark file in `public/shots`, named `<id>-light.webp` and `<id>-dark.webp`.
  * `apps/desktop/e2e/landing-shots.spec.ts` takes them (`npm run shots`), so they can be taken again after a change to the screens.
  * `title` is the short name of the shot, for the Enlarge button's name. `caption` is the text a reader sees. `alt` says what the picture shows, for a screen reader. `width` and `height` are the pixel size of the files.
  * `capture` says what the screen must show, for the person who takes the shot again.
@@ -20,6 +20,15 @@ export const screenshotSlots = [
     caption: 'The Builder shows one folder\'s harness as a graph.',
     alt: 'The Builder open on a harness named weekly. A graph shows two agents, checker and drafter, and three skills, outline, proofread, and summarize. Lines link drafter to outline and checker to summarize. The top bar shows Undo, Redo, and Save, and says 1 change, not saved yet.',
     capture: 'The Builder with a folder open. Show agents and skills as a graph, one skill linked to an agent, and the Undo, Redo, and Save controls.',
+    width: 2200,
+    height: 1376,
+  },
+  {
+    id: 'builder-agent',
+    title: 'Builder details',
+    caption: 'Select an agent to see what it does and the skills it uses.',
+    alt: 'The Builder with the agent drafter selected. The graph shows the drafter linked to the skill outline, and the checker, proofread, and summarize are dimmed. The details column names the agent drafter, says it writes the first draft of the report, offers a Link to button, and lists the skill outline under Uses with an Unlink button. The top bar says there is no change yet.',
+    capture: 'The Builder with the agent that already uses a skill selected. Show its details column with the Uses list and Unlink, and no change waiting to be saved.',
     width: 2200,
     height: 1376,
   },
