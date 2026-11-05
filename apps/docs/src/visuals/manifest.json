@@ -1,0 +1,802 @@
+{
+  "shots": {
+    "app-welcome": {
+      "alt": "The Bowerloom welcome screen. It says that Bowerloom only reads, and shows a Find my files button.",
+      "caption": "The welcome screen says that Bowerloom only reads. Press Find my files to start.",
+      "width": 2200,
+      "height": 1376
+    },
+    "app-find-files": {
+      "alt": "A list of the sources the app found, each with a tick box and a count of files, and a Looks right button.",
+      "caption": "The app lists what it found. Untick a source to skip it.",
+      "width": 2200,
+      "height": 1376
+    },
+    "app-install-history": {
+      "alt": "The Install history screen in the app, with the list of changes.",
+      "caption": "Install history lists each change, newest first.",
+      "width": 2200,
+      "height": 1376
+    },
+    "app-adopt-sheet": {
+      "alt": "The New harness from a folder sheet, showing the files it read and the approvals to tick.",
+      "caption": "The review step shows what the app read before it writes anything.",
+      "width": 2560,
+      "height": 1600
+    },
+    "app-install-review": {
+      "alt": "The install review sheet. Each part shows a dot and one of the words Exact, Translated, Weakened, or Absent.",
+      "caption": "The install review marks each part as Exact, Translated, Weakened, or Absent.",
+      "width": 2560,
+      "height": 1600
+    },
+    "app-builder": {
+      "alt": "The Builder graph. Agents sit on the left, skills on the right, and a line joins a skill to an agent.",
+      "caption": "The Builder shows agents on the left and skills on the right.",
+      "width": 2200,
+      "height": 1376
+    },
+    "app-save-review": {
+      "alt": "The Save review sheet with two changed files listed and a Save 2 files button.",
+      "caption": "The save review lists each file that the save changes.",
+      "width": 2200,
+      "height": 1376
+    },
+    "app-save-points": {
+      "alt": "The Save points list. Each row shows its number, what changed, its time, and its file count.",
+      "caption": "Each save point is a copy of the harness as it was.",
+      "width": 2200,
+      "height": 1376
+    },
+    "app-import-sheet": {
+      "alt": "The Import sheet, showing what the chosen file holds and the boxes to tick.",
+      "caption": "The import sheet shows what the file holds before it writes.",
+      "width": 2560,
+      "height": 1600
+    },
+    "app-overview": {
+      "alt": "The Overview screen, a graph of folders with their agents, skills, and tools.",
+      "caption": "The Overview shows every place the app found in one graph.",
+      "width": 2200,
+      "height": 1376
+    },
+    "app-engines": {
+      "alt": "The Engines screen, with one row for each engine and a switch on each row.",
+      "caption": "The Engines screen shows the health of each engine and its switch.",
+      "width": 2200,
+      "height": 1376
+    },
+    "app-export-sheet": {
+      "alt": "The Export sheet, showing the files the harness file will hold.",
+      "caption": "The export sheet shows what the file will hold.",
+      "width": 2560,
+      "height": 1600
+    },
+    "app-notes-tour": {
+      "alt": "The Notes keeper build sheet with the guided tour open at step 4 of 7.",
+      "caption": "The tour walks through the build of the Notes keeper.",
+      "width": 2200,
+      "height": 1376
+    },
+    "app-help": {
+      "alt": "The Help screen of the app.",
+      "caption": "The Help screen has the report and usage log entries.",
+      "width": 2200,
+      "height": 1376
+    }
+  },
+  "terminals": {
+    "cli-help": {
+      "title": "bowerloom --help",
+      "caption": "The short help lists the commands you use first.",
+      "lines": [
+        {
+          "kind": "cmd",
+          "text": "bowerloom --help"
+        },
+        {
+          "kind": "out",
+          "text": "Bowerloom 0.8.0-beta.1: open beta"
+        },
+        {
+          "kind": "out",
+          "text": "Setup does not start workers, grant runtime access, or authorize connected actions."
+        },
+        {
+          "kind": "out",
+          "text": ""
+        },
+        {
+          "kind": "out",
+          "text": "Set up agent teams, skills, and prompts for Claude Code and Codex."
+        },
+        {
+          "kind": "out",
+          "text": ""
+        },
+        {
+          "kind": "out",
+          "text": "Start here"
+        },
+        {
+          "kind": "out",
+          "text": "  bowerloom up --team <name>                   Prepare this project for a team. Shows each plan first."
+        },
+        {
+          "kind": "out",
+          "text": "  bowerloom ls [teams|skills|prompts|slices]   List what this project holds."
+        },
+        {
+          "kind": "out",
+          "text": "  bowerloom status                             Show whether this project is ready."
+        },
+        {
+          "kind": "out",
+          "text": "  bowerloom help context                       Give each agent its part of a knowledge base."
+        },
+        {
+          "kind": "out",
+          "text": ""
+        },
+        {
+          "kind": "out",
+          "text": "Skills and setup"
+        },
+        {
+          "kind": "out",
+          "text": "  bowerloom skills add npm:<package>@<version>:<path>"
+        },
+        {
+          "kind": "out",
+          "text": "  bowerloom skills add github:<owner>/<repo>@<40-char-commit>:<path>"
+        },
+        {
+          "kind": "out",
+          "text": "  bowerloom skills check                       Check the pins in .bowerloom/skills.json."
+        },
+        {
+          "kind": "out",
+          "text": "  bowerloom skills sync [--offline]            Install the pinned skills on this machine."
+        },
+        {
+          "kind": "out",
+          "text": "  bowerloom apply [--harness claude|codex|both]"
+        },
+        {
+          "kind": "out",
+          "text": ""
+        },
+        {
+          "kind": "out",
+          "text": "Create (mostly used by agents)"
+        },
+        {
+          "kind": "out",
+          "text": "  bowerloom team create <name> [--profile engineer|founder|research]"
+        },
+        {
+          "kind": "out",
+          "text": "  bowerloom skill create <name> [--team <team>]"
+        },
+        {
+          "kind": "out",
+          "text": "  bowerloom prompt create <name> [--team <team>]"
+        },
+        {
+          "kind": "out",
+          "text": ""
+        },
+        {
+          "kind": "out",
+          "text": "Every change shows a plan first. Agents pass --approve <revision> or --json."
+        },
+        {
+          "kind": "out",
+          "text": "No command here starts workers yet."
+        },
+        {
+          "kind": "out",
+          "text": ""
+        },
+        {
+          "kind": "out",
+          "text": "  bowerloom help <command>   bowerloom help advanced"
+        },
+        {
+          "kind": "out",
+          "text": "  bowerloom help store       Your store, ~/.bowerloom, and how a project uses it."
+        }
+      ]
+    },
+    "cli-up": {
+      "title": "bowerloom up",
+      "caption": "Up prints a plan and a revision, and writes nothing until you approve.",
+      "lines": [
+        {
+          "kind": "cmd",
+          "text": "bowerloom up --team first --goal \"Write the weekly report\""
+        },
+        {
+          "kind": "out",
+          "text": "Next step: init. Set up .bowerloom in this folder for team first."
+        },
+        {
+          "kind": "out",
+          "text": "  Project: sample"
+        },
+        {
+          "kind": "out",
+          "text": "  Goal: Write the weekly report"
+        },
+        {
+          "kind": "out",
+          "text": "  Folder: ~/projects/sample (an existing folder: adds .bowerloom only, and your files stay as they are)"
+        },
+        {
+          "kind": "out",
+          "text": "  Team: first (first-team)"
+        },
+        {
+          "kind": "out",
+          "text": "  Creates 20 setup files and a private installation receipt in .bowerloom."
+        },
+        {
+          "kind": "out",
+          "text": "Then each run shows the next step, if any: team, skills sync and apply, each with its own plan. Workers stay held."
+        },
+        {
+          "kind": "out",
+          "text": "This writes setup files only. It starts no workers and runs nothing."
+        },
+        {
+          "kind": "out",
+          "text": "Revision: <revision>"
+        },
+        {
+          "kind": "out",
+          "text": "Approval required. Run the same command again with --approve <revision>"
+        }
+      ]
+    },
+    "cli-ls": {
+      "title": "bowerloom ls",
+      "caption": "The list shows the teams, skills, prompts, and slices of the project.",
+      "lines": [
+        {
+          "kind": "cmd",
+          "text": "bowerloom ls"
+        },
+        {
+          "kind": "out",
+          "text": "Teams"
+        },
+        {
+          "kind": "out",
+          "text": "  first-team (first)  project"
+        },
+        {
+          "kind": "out",
+          "text": ""
+        },
+        {
+          "kind": "out",
+          "text": "Skills"
+        },
+        {
+          "kind": "out",
+          "text": "  personal-assistant  project"
+        },
+        {
+          "kind": "out",
+          "text": ""
+        },
+        {
+          "kind": "out",
+          "text": "Prompts"
+        },
+        {
+          "kind": "out",
+          "text": "  none yet"
+        },
+        {
+          "kind": "out",
+          "text": ""
+        },
+        {
+          "kind": "out",
+          "text": "Slices"
+        },
+        {
+          "kind": "out",
+          "text": "  none yet"
+        }
+      ]
+    },
+    "cli-skill-create": {
+      "title": "bowerloom skill create house-style",
+      "caption": "Each create command prints its plan first.",
+      "lines": [
+        {
+          "kind": "cmd",
+          "text": "bowerloom skill create house-style"
+        },
+        {
+          "kind": "out",
+          "text": "Create skill house-style in .bowerloom/skills/house-style"
+        },
+        {
+          "kind": "out",
+          "text": "  Teams: every team"
+        },
+        {
+          "kind": "out",
+          "text": "  Files: 1"
+        },
+        {
+          "kind": "out",
+          "text": "  skills.json: adds a local entry; a new file"
+        },
+        {
+          "kind": "out",
+          "text": "You and your agents own these files and can edit them."
+        },
+        {
+          "kind": "out",
+          "text": "This writes inside .bowerloom only. It starts no workers and runs nothing."
+        },
+        {
+          "kind": "out",
+          "text": "Revision: <revision>"
+        },
+        {
+          "kind": "out",
+          "text": "Approval required. Run the same command again with --approve <revision>"
+        }
+      ]
+    },
+    "cli-status": {
+      "title": "bowerloom status",
+      "caption": "Status says whether the project is ready.",
+      "lines": [
+        {
+          "kind": "cmd",
+          "text": "bowerloom status"
+        },
+        {
+          "kind": "out",
+          "text": "Project: ~/projects/sample"
+        },
+        {
+          "kind": "out",
+          "text": "Setup: ready"
+        },
+        {
+          "kind": "out",
+          "text": "Revision: <revision>"
+        },
+        {
+          "kind": "out",
+          "text": "Workers: none started (this beta starts none)"
+        }
+      ]
+    },
+    "cli-init-plan": {
+      "title": "bowerloom init plan",
+      "caption": "The plan lists the files before any is written.",
+      "lines": [
+        {
+          "kind": "cmd",
+          "text": "bowerloom init plan --mode new --target ~/projects/new-project --name \"Sample team\" --goal \"Review a synthetic team setup\" --profile engineer"
+        },
+        {
+          "kind": "out",
+          "text": "Bowerloom setup review — Engineer"
+        },
+        {
+          "kind": "out",
+          "text": "Project: Sample team"
+        },
+        {
+          "kind": "out",
+          "text": "Goal: Review a synthetic team setup"
+        },
+        {
+          "kind": "out",
+          "text": "Target: ~/projects/new-project (new workspace)"
+        },
+        {
+          "kind": "out",
+          "text": ""
+        },
+        {
+          "kind": "out",
+          "text": "Your existing personal agent remains your interface."
+        },
+        {
+          "kind": "out",
+          "text": "Proposed team: Engineering lead → Implementation maker → Code reviewer"
+        },
+        {
+          "kind": "out",
+          "text": "Engineering lead: Defines the implementation scope and checks. Proposed write: output/scope.md (proposed local write; separate action approval)"
+        },
+        {
+          "kind": "out",
+          "text": "Implementation maker: Drafts the change proposal and failure cases. Proposed write: output/draft.md (proposed local write; separate action approval)"
+        },
+        {
+          "kind": "out",
+          "text": "Code reviewer: Checks correctness, security, and test evidence. Proposed write: output/review.md (proposed local write; separate action approval)"
+        },
+        {
+          "kind": "out",
+          "text": ""
+        },
+        {
+          "kind": "out",
+          "text": "Access: supplied brief assets and accepted task outputs only. No context or settings imported."
+        },
+        {
+          "kind": "out",
+          "text": "Limits: at most 2 active workers; 25% capacity reserve; no paid fallback."
+        },
+        {
+          "kind": "out",
+          "text": "Installation identity: the reviewed Darwin policy accepts the saved birth time or its one directional floating-point conversion. Device, inode, owner, mode, paths and managed bytes must still match."
+        },
+        {
+          "kind": "out",
+          "text": "Project-root metadata changes can still invalidate existing enrollment and links. Active changes and recovery ownership stay exact."
+        },
+        {
+          "kind": "out",
+          "text": "Installation approval: create only the reviewed .bowerloom files. No workers, backend, network, or project execution."
+        },
+        {
+          "kind": "out",
+          "text": "Proposed task permissions are not granted by this approval. All future task writes require separate exact approval."
+        },
+        {
+          "kind": "out",
+          "text": ""
+        },
+        {
+          "kind": "out",
+          "text": "Creates 20 setup files and a private installation receipt in .bowerloom. Keep the receipt out of shared definitions."
+        },
+        {
+          "kind": "out",
+          "text": "Read startup-review.md for roles, access, limits, and expandable technical contents. Review setup text for private information before sharing."
+        },
+        {
+          "kind": "out",
+          "text": "For every file, content hash, and compiler detail, rerun this plan with --json before approval."
+        },
+        {
+          "kind": "out",
+          "text": "Exact approval revision: <revision>"
+        },
+        {
+          "kind": "out",
+          "text": "Review first. Apply with unchanged inputs and --approve followed by this exact revision."
+        },
+        {
+          "kind": "out",
+          "text": "Setup is ready for review. No team has started and no execution permission was granted."
+        }
+      ]
+    },
+    "cli-harness-status": {
+      "title": "bowerloom harness status",
+      "caption": "Status changes nothing and names the next step.",
+      "lines": [
+        {
+          "kind": "cmd",
+          "text": "bowerloom harness status"
+        },
+        {
+          "kind": "out",
+          "text": "No harness definition in this folder. Next: bowerloom harness adopt."
+        },
+        {
+          "kind": "out",
+          "text": "Nothing is installed."
+        },
+        {
+          "kind": "out",
+          "text": "Preview engines are off (set BOWERLOOM_PREVIEW_ENGINES=1 to turn them on)."
+        }
+      ]
+    },
+    "cli-harness-adopt": {
+      "title": "bowerloom harness adopt",
+      "caption": "The adopt plan lists the files it writes into .bowerloom.",
+      "lines": [
+        {
+          "kind": "cmd",
+          "text": "bowerloom harness adopt"
+        },
+        {
+          "kind": "out",
+          "text": "Adopt into .bowerloom: 5 files. Adoption changes no engine file."
+        },
+        {
+          "kind": "out",
+          "text": "  write .bowerloom/agents/drafter.md"
+        },
+        {
+          "kind": "out",
+          "text": "  write .bowerloom/harness.json"
+        },
+        {
+          "kind": "out",
+          "text": "  write .bowerloom/instructions/AGENTS.md"
+        },
+        {
+          "kind": "out",
+          "text": "  write .bowerloom/skills/outline/SKILL.md"
+        },
+        {
+          "kind": "out",
+          "text": "  write .bowerloom/skills/proofread/SKILL.md"
+        },
+        {
+          "kind": "out",
+          "text": "The plan is ready to apply."
+        },
+        {
+          "kind": "out",
+          "text": "Revision: <revision>"
+        },
+        {
+          "kind": "out",
+          "text": "Approval required. Run the same command again with --approve <revision>"
+        }
+      ]
+    },
+    "cli-harness-install": {
+      "title": "bowerloom harness install",
+      "caption": "The install plan lists each file it changes.",
+      "lines": [
+        {
+          "kind": "cmd",
+          "text": "bowerloom harness install"
+        },
+        {
+          "kind": "out",
+          "text": "Install to claude-code: 5 files to change."
+        },
+        {
+          "kind": "out",
+          "text": "  take-over .claude/agents/drafter.md"
+        },
+        {
+          "kind": "out",
+          "text": "  take-over .claude/skills/outline/SKILL.md"
+        },
+        {
+          "kind": "out",
+          "text": "  take-over .claude/skills/proofread/SKILL.md"
+        },
+        {
+          "kind": "out",
+          "text": "  create  AGENTS.md"
+        },
+        {
+          "kind": "out",
+          "text": "  replace CLAUDE.md"
+        },
+        {
+          "kind": "out",
+          "text": "Revision: <revision>"
+        },
+        {
+          "kind": "out",
+          "text": "Approval required. Run the same command again with --approve <revision>"
+        }
+      ]
+    },
+    "cli-harness-drift": {
+      "title": "bowerloom harness drift",
+      "caption": "Drift confirms that every written file is as written.",
+      "lines": [
+        {
+          "kind": "cmd",
+          "text": "bowerloom harness drift"
+        },
+        {
+          "kind": "out",
+          "text": "No drift: every file Bowerloom wrote is as it wrote it."
+        }
+      ]
+    },
+    "cli-harness-remove": {
+      "title": "bowerloom harness remove",
+      "caption": "Remove prints its own plan before it undoes the install.",
+      "lines": [
+        {
+          "kind": "cmd",
+          "text": "bowerloom harness remove"
+        },
+        {
+          "kind": "out",
+          "text": "Remove the installed files: 5 paths."
+        },
+        {
+          "kind": "out",
+          "text": "  keep    .claude/agents/drafter.md"
+        },
+        {
+          "kind": "out",
+          "text": "  keep    .claude/skills/outline/SKILL.md"
+        },
+        {
+          "kind": "out",
+          "text": "  keep    .claude/skills/proofread/SKILL.md"
+        },
+        {
+          "kind": "out",
+          "text": "  delete  AGENTS.md"
+        },
+        {
+          "kind": "out",
+          "text": "  restore CLAUDE.md"
+        },
+        {
+          "kind": "out",
+          "text": "Revision: <revision>"
+        },
+        {
+          "kind": "out",
+          "text": "Approval required. Run the same command again with --approve <revision>"
+        }
+      ]
+    },
+    "cli-harness-export": {
+      "title": "bowerloom harness export",
+      "caption": "The export plan says what the file will hold.",
+      "lines": [
+        {
+          "kind": "cmd",
+          "text": "bowerloom harness export --output harness.json"
+        },
+        {
+          "kind": "out",
+          "text": "Export the harness sample to ~/projects/sample/harness.json: 2662 bytes in the file. Nothing is written until you approve."
+        },
+        {
+          "kind": "out",
+          "text": "  7 files, 969 bytes: 3 skills, 2 agents, 0 MCP servers, 0 hooks, 0 rules, 0 scripts."
+        },
+        {
+          "kind": "out",
+          "text": "Revision: <revision>"
+        },
+        {
+          "kind": "out",
+          "text": "Approval required. Run the same command again with --approve <revision>"
+        }
+      ]
+    },
+    "cli-harness-import": {
+      "title": "bowerloom harness import harness.json",
+      "caption": "The import plan says what the file would write.",
+      "lines": [
+        {
+          "kind": "cmd",
+          "text": "bowerloom harness import harness.json"
+        },
+        {
+          "kind": "out",
+          "text": "Import the harness sample from harness.json into ~/projects/sample. Nothing is written until you approve."
+        },
+        {
+          "kind": "out",
+          "text": "This folder has no harness yet. The import makes an empty one first, in the same step."
+        },
+        {
+          "kind": "out",
+          "text": "  7 files, 969 bytes: 3 skills, 2 agents, 0 MCP servers, 0 hooks, 0 rules, 0 scripts."
+        },
+        {
+          "kind": "out",
+          "text": "The import writes 7 files in .bowerloom:"
+        },
+        {
+          "kind": "out",
+          "text": "  create agents/checker.md"
+        },
+        {
+          "kind": "out",
+          "text": "  create agents/drafter.md"
+        },
+        {
+          "kind": "out",
+          "text": "  create instructions/AGENTS.md"
+        },
+        {
+          "kind": "out",
+          "text": "  create skills/outline/SKILL.md"
+        },
+        {
+          "kind": "out",
+          "text": "  create skills/proofread/SKILL.md"
+        },
+        {
+          "kind": "out",
+          "text": "  create skills/summarize/SKILL.md"
+        },
+        {
+          "kind": "out",
+          "text": "  create harness.json"
+        },
+        {
+          "kind": "out",
+          "text": "The import installs nothing. Run bowerloom harness install afterward to see that plan."
+        },
+        {
+          "kind": "out",
+          "text": "The command line keeps no save points, so there is no Go back. To undo an import into a new folder, remove ~/projects/sample/.bowerloom."
+        },
+        {
+          "kind": "out",
+          "text": "Revision: <revision>"
+        },
+        {
+          "kind": "out",
+          "text": "Approval required. Run the same command again with --approve <revision>"
+        }
+      ]
+    },
+    "cli-apply": {
+      "title": "bowerloom apply",
+      "caption": "Apply prints a plan of the copies it will put in place.",
+      "lines": [
+        {
+          "kind": "cmd",
+          "text": "bowerloom apply"
+        },
+        {
+          "kind": "out",
+          "text": "Apply skills, prompts, and agents for Claude Code and Codex, and context slices for Claude Code"
+        },
+        {
+          "kind": "out",
+          "text": "  house-style    install your skill in .bowerloom/skills/house-style  [project]"
+        },
+        {
+          "kind": "out",
+          "text": "  weekly-update  install prompt: .claude/commands/weekly-update.md and .agents/skills/prompt-weekly-update  [project]"
+        },
+        {
+          "kind": "out",
+          "text": "Network: none. Apply never fetches. A pin that is not cached yet needs bowerloom skills sync first."
+        },
+        {
+          "kind": "out",
+          "text": "Copies go to .bowerloom/managed, .claude and .agents, and stay on this machine. Apply adds copies and removes none."
+        },
+        {
+          "kind": "out",
+          "text": "This copies text files only. It starts no workers and runs nothing."
+        },
+        {
+          "kind": "out",
+          "text": "Bowerloom never edits AGENTS.md or CLAUDE.md. To point your agents at these copies, add a line like this to AGENTS.md and CLAUDE.md yourself:"
+        },
+        {
+          "kind": "out",
+          "text": "  Project skills are in .claude/skills and .agents/skills. Prompts are Claude Code commands in .claude/commands, and Codex skills named prompt-<name>. Agents are in .claude/agents. Context slices are skills named slice-<name> in .claude/skills."
+        },
+        {
+          "kind": "out",
+          "text": "Revision: <revision>"
+        },
+        {
+          "kind": "out",
+          "text": "Approval required. Run the same command again with --approve <revision>"
+        }
+      ]
+    }
+  }
+}
