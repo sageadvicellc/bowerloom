@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { withLock } from './lock.mjs';
+import { reclaimStale, withLock } from './lock.mjs';
 
 const lockPath = () => join(mkdtempSync(join(tmpdir(), 'docs-visuals-lock-')), 'lock');
 
@@ -50,4 +50,20 @@ test('a lock held by a live process is never reclaimed', () => {
 test('a lock folder removed by hand during the run does not turn a good run into an error', () => {
   const lock = lockPath();
   assert.equal(withLock(lock, () => { unlinkSync(join(lock, 'owner')); rmdirSync(lock); return 'ok'; }), 'ok');
+});
+
+test('a reclaim that finds a new owner puts the lock back untouched', () => {
+  const lock = lockPath();
+  mkdirSync(lock);
+  writeFileSync(join(lock, 'owner'), String(process.ppid));
+  assert.equal(reclaimStale(lock, 999999), false);
+  assert.equal(existsSync(join(lock, 'owner')), true, 'the live lock is back in place');
+  unlinkSync(join(lock, 'owner'));
+  rmdirSync(lock);
+});
+
+test('a reclaim that loses the race to another waiter counts the stale lock as gone', () => {
+  const lock = lockPath();
+  assert.equal(reclaimStale(lock, 999999), true);
+  assert.equal(existsSync(lock), false);
 });

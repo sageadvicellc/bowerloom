@@ -15,10 +15,7 @@ const lock = '/tmp/bowerloom-test.lock';
 /** Runs a command and returns its exit status. It never exits the process, so the lock is always released. */
 const run = (command, args, cwd, env = {}) => spawnSync(command, args, { cwd, stdio: 'inherit', env: { ...process.env, ...env } }).status ?? 1;
 
-// Ctrl-C or SIGTERM reaches the child process too. The handlers keep this process alive until the child stops, so the lock is released in `finally` before the exit.
-let interrupted = false;
-for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { interrupted = true; });
-
+// This script is synchronous, so a signal ends it at once. A lock left that way names a process that is gone, and the next run reclaims it (see lock.mjs).
 let status = run('npm', ['run', 'build'], root);
 if (status === 0) {
   try {
@@ -28,6 +25,5 @@ if (status === 0) {
     status = 1;
   }
 }
-if (interrupted) status = 130;
 if (status === 0) status = run(process.execPath, [fileURLToPath(new URL('./manifest-shots.mjs', import.meta.url))], root);
 process.exit(status);
