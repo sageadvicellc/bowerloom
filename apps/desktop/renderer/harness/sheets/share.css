@@ -39,3 +39,7 @@
 [data-home] .hxsh-marks { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--hm-space-1) var(--hm-space-3); flex: none; margin-left: auto; }
 /* A held primary button (Next, Import, Export) keeps its dashed, muted look under the pointer: the kit's primary hover colour would otherwise paint it dark with muted text. */
 [data-home] .hx-sheet[data-slot="export"] .kit-button[data-variant="primary"][aria-disabled="true"]:hover, [data-home] .hx-sheet[data-slot="import"] .kit-button[data-variant="primary"][aria-disabled="true"]:hover { background: transparent; border-color: var(--hm-border); }
+/* The rows of a tool's environment or headers: name, sign and value on one wrapped line; every part isolates its own direction so a value cannot reorder the name. */
+[data-home] .hxsh-pairs { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+[data-home] .hxsh-pair { display: inline; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+[data-home] .hxsh-pair > .hxsh-name-wrap { display: inline; }

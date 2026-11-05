@@ -17,7 +17,7 @@ import { useEngine } from '../engine.js';
 import { ENGINE_WORDS } from '../words-engine.js';
 import { SHARE, SHARE_REFUSAL_WORDS, exportFileWords, fileSizeWords } from '../words-share.js';
 import { Busy, RefusalNote, TickRow } from './engine-parts.js';
-import { Full, Name, ShareSummaryView, useScrolls } from './share-parts.js';
+import { Full, Name, ShareSummaryView, firstOpenBox, useReannounce, useScrolls } from './share-parts.js';
 import { useCall } from './use-call.js';
 import { useHeldFocus } from './use-held-focus.js';
 import { WORDS } from '../words.js';
@@ -62,7 +62,7 @@ export function ExportSheet({ open, folderId, unsaved = false, onClose }: Export
   const [acked, setAcked] = useState<string | null>(null);
   const [done, setDone] = useState<ExportWritten | null>(null);
   const body = useRef<HTMLDivElement>(null), first = useRef(true), button = useRef<HTMLButtonElement>(null);
-  const [nudge, setNudge] = useState(0);
+  const live = useReannounce();
   const held = call.writing, busy = call.busy !== null;
   const scrolls = useScrolls(body, view ?? done);
 
@@ -94,8 +94,8 @@ export function ExportSheet({ open, folderId, unsaved = false, onClose }: Export
   const write = (): void => {
     // A press on a blocked button shows why: the focus goes to the first box that is not ticked; with none, it stays on the button and the live line is said again.
     if (!writable || busy) {
-      const box = body.current?.querySelector<HTMLElement>('[data-tick] input:not(:checked)');
-      if (box !== null && box !== undefined) box.focus(); else setNudge(n => n + 1);
+      const box = firstOpenBox(body.current);
+      if (box !== null) box.focus(); else live.nudge();
       return;
     }
     if (engine === null || folderId === null || view === null) return;
@@ -117,7 +117,7 @@ export function ExportSheet({ open, folderId, unsaved = false, onClose }: Export
   return (
     <Sheet open={open} title={SHARE.label.exportTitle} onClose={() => { if (!held) onClose(); }} width={880} tall dataSlot="export" note={foot} actions={actions}>
       <div className="hxe-body" role="region" ref={body} tabIndex={scrolls ? 0 : -1} aria-label={done === null ? SHARE.label.bodyExport : SHARE.label.bodyExported} aria-busy={busy}>
-        <p className="hxsh-sr" role="status" id={blockId} key={nudge}>{blocked ?? ''}</p>
+        <p className="hxsh-sr" role="status" id={blockId}>{live.quiet ? '' : blocked ?? ''}</p>
         {engine === null ? <p className="hxe-text" data-no-bridge="">{W.hint.noBridge}</p> : null}
         {engine !== null && folderId === null ? <p className="hxe-text" data-no-folder="">{WORDS.hint.noFolder}</p> : null}
         {busy ? <Busy words={call.busy!} /> : null}

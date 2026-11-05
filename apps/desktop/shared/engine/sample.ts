@@ -438,21 +438,29 @@ const BUNDLE_DEFINITION: DefinitionView = Object.freeze({
 const list = <T>(rows: readonly T[]): { readonly rows: readonly T[]; readonly more: number } => ({ rows, more: 0 });
 // The risky-first rule is shared with main (shared/engine/share-risk.ts); the tests of the sample reach it from here.
 export { capRiskFirst, codeRisk, secretRisk, toolRisk };
-/** What the made-up bundle holds: two tools that can reach or run something, a hook, two scripts, two values read from this computer, a notes name, and one foreign path. */
+/** What the made-up bundle holds: four tools that can reach or run something (one with env rows, one with headers and a path), a hook, two scripts, two values read from this computer, a notes name, and one foreign path. */
 const BUNDLE_SUMMARY: ShareSummary = Object.freeze({
   harness: 'rope-yard', engines: ['claude-code', 'codex'] as EngineId[], instructions: true,
-  counts: { skills: 2, agents: 1, mcp: 2, hooks: 1, guardrails: 1, scripts: 2, files: BUNDLE_FILES.length, bytes: BUNDLE_FILES.reduce((n, f) => n + f.bytes, 0) },
+  counts: { skills: 2, agents: 1, mcp: 4, hooks: 1, guardrails: 1, scripts: 2, files: BUNDLE_FILES.length, bytes: BUNDLE_FILES.reduce((n, f) => n + f.bytes, 0) },
   tools: capRiskFirst<ShareTool>([
     { name: 'stock-db', kind: 'mcp' as const, transport: 'stdio', runsCode: true, command: 'npx', args: ['-y', 'stock-db-server@2.0.1', '--yard', 'north'], host: null, event: null, flags: [] },
     { name: 'orders-api', kind: 'mcp' as const, transport: 'http', runsCode: false, command: null, args: [], host: 'orders.example.test', event: null, flags: [] },
     { name: 'format-check', kind: 'hook' as const, transport: null, runsCode: true, command: './scripts/format-check.sh', args: [], host: null, event: 'PostToolUse', flags: [] },
+    {
+      name: 'yard-search', kind: 'mcp' as const, transport: 'stdio', runsCode: true, command: 'node', args: ['./tools/yard-search.js'], host: null, event: null, flags: [],
+      env: [{ name: 'NODE_OPTIONS', value: '--require ./tools/preload.js' }, { name: 'YARD_REGION', value: '${YARD_REGION}' }],
+    },
+    {
+      name: 'reports-api', kind: 'mcp' as const, transport: 'http', runsCode: false, command: null, args: [], host: 'reports.example.test', event: null, flags: [],
+      headers: [{ name: 'Authorization', value: 'Bearer ${ORDERS_KEY}' }, { name: 'X-Yard', value: 'north' }], path: '/v2/reports?yard=north#latest',
+    },
   ], toolRisk),
   codeFiles: capRiskFirst<ShareCodeFile>([
     { path: 'hooks.json', why: 'hook' as const }, { path: 'scripts/format-check.sh', why: 'executable' as const }, { path: 'skills/tally-stock/scripts/tally.sh', why: 'executable' as const },
   ], codeRisk),
   secrets: capRiskFirst<ShareSecret>([
-    { kind: 'env' as const, name: 'ORDERS_KEY', sinks: [{ tool: 'orders-api', field: 'header' as const, host: 'orders.example.test' }] },
-    { kind: 'env' as const, name: 'YARD_REGION', sinks: [{ tool: 'stock-db', field: 'env' as const, host: null }] },
+    { kind: 'env' as const, name: 'ORDERS_KEY', sinks: [{ tool: 'orders-api', field: 'header' as const, host: 'orders.example.test' }, { tool: 'reports-api', field: 'header' as const, host: 'reports.example.test' }] },
+    { kind: 'env' as const, name: 'YARD_REGION', sinks: [{ tool: 'stock-db', field: 'env' as const, host: null }, { tool: 'yard-search', field: 'env' as const, host: null }] },
   ], secretRisk),
   notes: list([{ name: 'yard-wiki', readBy: ['clerk'] }]),
   borrowed: list([]),

@@ -118,7 +118,7 @@ test('import plan: every file is a create, a folder with no harness is made one 
   assert.equal(plan.acknowledge?.length, 64, 'tools that run code, files that can run, values and a foreign path all ask for the tick');
   assert.deepEqual(plan.summary.secrets.rows.map(s => s.name), ['ORDERS_KEY', 'YARD_REGION']);
   // Rows that run code come first, then the one that reaches a host.
-  assert.deepEqual(plan.summary.tools.rows.map(t => [t.name, t.runsCode, t.host]), [['stock-db', true, null], ['format-check', true, null], ['orders-api', false, 'orders.example.test']]);
+  assert.deepEqual(plan.summary.tools.rows.map(t => [t.name, t.runsCode, t.host]), [['stock-db', true, null], ['format-check', true, null], ['yard-search', true, null], ['orders-api', false, 'orders.example.test'], ['reports-api', false, 'reports.example.test']]);
   for (const list of [plan.summary.tools, plan.summary.codeFiles, plan.summary.secrets, plan.summary.notes, plan.summary.borrowed, plan.summary.foreignPaths]) assert.ok(list.rows.length <= SHARE_LIST_LIMIT);
   assert.equal(JSON.stringify(plan).includes('"after"'), false, 'the sample\'s own bookkeeping never reaches the window');
 });

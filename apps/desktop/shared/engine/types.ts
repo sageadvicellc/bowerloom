@@ -855,6 +855,8 @@ export const SHARE_MAIN_WORDS: Readonly<Record<typeof EXPORT_NO_DEFINITION | typ
   EXPORT_NEEDS_ACKNOWLEDGEMENT: 'These files hold a path from this computer. Tick that you read them, then export. Nothing was written.',
   BUNDLE_FILE_FAILED: 'The file could not be read or written. The disk may be full or read-only, the name may be too long, or you may lack permission. Nothing was read or written.',
 });
+/** The one sentence for a save place inside the harness's own folder. Main refuses with it, and the window shows it as it is (no second line follows it). */
+export const EXPORT_TARGET_IN_HARNESS_WORDS = 'That place is inside the folder .bowerloom of this harness, and a file there would break the harness. Choose a place outside it, such as your Desktop. Nothing was written.';
 /**
  * Refusals of main itself for a ready-made kit, with words: the kit that ships with Bowerloom is missing or damaged (KIT_INVALID, whose message goes on
  * with the reason), or the harness holds the kit already.

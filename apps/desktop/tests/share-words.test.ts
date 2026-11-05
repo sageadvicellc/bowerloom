@@ -7,9 +7,12 @@ import { bannedIn } from '../shared/home/textbudget.js';
 import { BUNDLE_MESSAGES } from '../../../packages/harness-bundle/src/index.js';
 import { SHARE_MAIN_WORDS } from '../shared/engine/types.js';
 import {
-  CODE_WHY_WORDS, FLAG_WORDS, SHARE, SHARE_REFUSAL_WORDS, approveImportName, approveImportWords, downloadsCode, eventWords, jumpName, runsAsAdmin, runsShellLine, exportFileWords, fileSizeWords, hiddenCounts, hiddenWords, importBlockWords,
+  CODE_WHY_WORDS, EXPORT_TARGET_IN_HARNESS_WORDS, FLAG_WORDS, changesStart, checkParts, fromThisComputer, SHARE, SHARE_REFUSAL_WORDS, approveImportName, approveImportWords, downloadsCode, eventWords, jumpName, runsAsAdmin, runsShellLine, exportFileWords, fileSizeWords, hiddenCounts, hiddenWords, importBlockWords,
   importFilesWords, importTickWords, importedWords, makesHarnessWords, moreWords, notesButtonName, notesChoiceName, readFileWords, secretKindWords, sinkWords, summaryLine, transportWords, writesCount,
 } from '../renderer/harness/words-share.js';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { DESKTOP } from './support.js';
 import type { ShareSummary } from '../shared/engine/types.js';
 
 test('SHARE is frozen all the way down; a label has at most 5 words, a hint 12, a paragraph 25, and none has a banned word', () => {
@@ -83,7 +86,8 @@ test('what a tool does, in words: a transport, a hook event, and a command that 
     ['env', ['npx', 'x'], true], ['env', ['-i', 'A=1', 'npx', 'x'], true], ['npm', ['exec', 'x'], true], ['pnpm', ['dlx', 'x'], true], ['yarn', ['dlx', 'x'], true], ['bun', ['x', 'y'], true], ['deno', ['run', 'u'], true], ['uv', ['run', 'x'], true],
     ['docker', ['ps'], false], ['node', ['server.js'], false], ['npm', ['install'], false], ['env', [], false], [null, [], false]] as const) assert.equal(downloadsCode(command, args), down, `${command} ${args.join(' ')}`);
   for (const [command, args, shell] of [['sh', ['-c', 'x'], true], ['bash', ['-lc', 'x'], true], ['/bin/zsh', ['-c', 'x'], true], ['env', ['sh', '-c', 'x'], true], ['sh', ['script.sh'], false], ['node', ['-c', 'x'], false], [null, [], false],
-    ['node', ['-e', 'x'], true], ['node', ['--eval', 'x'], true], ['node', ['server.js'], false], ['python', ['-c', 'x'], true], ['python3.12', ['-c', 'x'], true], ['python3', ['-m', 'http.server'], false],
+    ['node', ['-e', 'x'], true], ['node', ['--eval', 'x'], true], ['node', ['server.js'], false], ['python', ['-c', 'x'], true], ['python3.12', ['-c', 'x'], true], ['python3', ['-m', 'http.server'], true], ['deno', ['eval', 'x'], true], ['deno', ['run', 'x'], false], ['node', ['--eval=1'], true], ['node', ['--print=1'], true],
+    ['env', ['-iu', 'A', 'sh', '-c', 'x'], true], ['env', ['--split-string=sh -c x'], true], ['env', ['-iS', 'sh -c x'], true], ['env', ['-iu', 'A', 'node', 'x.js'], false],
     ['ruby', ['-e', 'x'], true], ['perl', ['-e', 'x'], true], ['php', ['-r', 'x'], true], ['cmd', ['/c', 'x'], true], ['CMD.EXE', ['/K', 'x'], true], ['C:\\Windows\\System32\\cmd.exe', ['/c', 'x'], true],
     ['powershell', ['-Command', 'x'], true], ['pwsh.exe', ['-c', 'x'], true], ['powershell', ['-File', 'x.ps1'], false], ['sudo', ['sh', '-c', 'x'], true], ['env', ['-S', 'sh -c x'], true]] as const) assert.equal(runsShellLine(command, args), shell, `${command} ${args.join(' ')}`);
   // `env` and `sudo` options that take a value, a split string, a Windows path and extension, and a word that is not text.
@@ -99,10 +103,10 @@ test('what a tool does, in words: a transport, a hook event, and a command that 
 test('the first tick says what it covers; when a list was cut it names the cut, so a tick never claims more than was shown', () => {
   assert.equal(importTickWords(BLANK), 'I read what runs and where my values go.');
   assert.equal(importTickWords({ ...BLANK, foreignPaths: { rows: [{ path: 'a', line: 1, text: 'x' }], more: 0 } }), 'I read what runs, where my values go and the paths.');
-  assert.equal(importTickWords({ ...BLANK, tools: { rows: [], more: 12 } }), 'I read 200 tools and the rest shown. 12 are not shown.');
-  assert.equal(importTickWords({ ...BLANK, codeFiles: { rows: [], more: 3 } }), 'I read 200 files and the rest shown. 3 are not shown.');
+  assert.equal(importTickWords({ ...BLANK, tools: { rows: [], more: 12 } }), 'I read the 200 tools shown. 12 are not shown.');
+  assert.equal(importTickWords({ ...BLANK, codeFiles: { rows: [], more: 3 } }), 'I read the 200 files shown. 3 are not shown.');
   assert.equal(importTickWords({ ...BLANK, tools: { rows: [], more: 12 }, foreignPaths: { rows: [{ path: 'a', line: 1, text: 'x' }], more: 0 } }), 'I read 200 tools and the paths. 12 tools are not shown.');
-  assert.equal(importTickWords({ ...BLANK, foreignPaths: { rows: [], more: 4 } }), 'I read 200 paths and the rest shown. 4 are not shown.');
+  assert.equal(importTickWords({ ...BLANK, foreignPaths: { rows: [], more: 4 } }), 'I read the 200 paths shown. 4 are not shown.');
   assert.equal(importTickWords({ ...BLANK, tools: { rows: [], more: 1 }, secrets: { rows: [], more: 1 } }), 'I read the lists shown. More are not shown.');
   assert.deepEqual(hiddenCounts({ ...BLANK, tools: { rows: [], more: 12 }, foreignPaths: { rows: [], more: 2 } }), { tools: 12, codeFiles: 0, secrets: 0, foreignPaths: 2, total: 14 });
   for (const text of [importTickWords(BLANK), SHARE.hint.tickExport, SHARE.hint.tickFirst, importTickWords({ ...BLANK, tools: { rows: [], more: 12 }, foreignPaths: { rows: [{ path: 'a', line: 1, text: 'x' }], more: 0 } }), importTickWords({ ...BLANK, codeFiles: { rows: [], more: 3 } })]) assert.ok(countWords(text) <= LIMITS.hint, text);
@@ -131,4 +135,34 @@ test('the line of counts leaves out the zeros, and the foot line says what block
   assert.equal(SHARE.hint.approvalCleared, 'Approval cleared. Tick again before you import.');
   assert.equal(SHARE.hint.notInstalled, 'Nothing is installed. Nothing has run.');
   assert.equal(SHARE.hint.planFailed, 'The plan could not be made. Plan again.');
+});
+
+test('the lows: admin and inline-code lines, a hook line is split, a wrapper nested past the guard is flagged', () => {
+  assert.equal(SHARE.hint.sudoLine, 'This runs with admin rights.');
+  assert.equal(SHARE.hint.shellLine, 'This runs text as code.');
+  assert.equal(SHARE.hint.changesStart, 'This changes how the program starts.');
+  const hook = checkParts({ kind: 'hook', command: 'sudo npx -y x', args: [] });
+  assert.deepEqual(hook, { command: 'sudo', args: ['npx', '-y', 'x'] });
+  assert.equal(runsAsAdmin(hook.command, hook.args), true);
+  assert.equal(downloadsCode(hook.command, hook.args), true);
+  assert.equal(runsShellLine(...Object.values(checkParts({ kind: 'hook', command: 'bash -c "x"', args: [] })) as [string, string[]]), true);
+  assert.deepEqual(checkParts({ kind: 'mcp', command: 'a b', args: ['c'] }), { command: 'a b', args: ['c'] });
+  const deep = Array(70).fill('env');
+  assert.equal(runsShellLine('env', deep.slice(1)), true);
+  assert.equal(downloadsCode('env', deep.slice(1)), true);
+  assert.equal(runsAsAdmin('env', deep.slice(1)), true);
+});
+
+test('names that change how a program starts, and values read from this computer', () => {
+  for (const name of ['NODE_OPTIONS', 'LD_PRELOAD', 'DYLD_INSERT_LIBRARIES', 'DYLD_LIBRARY_PATH', 'LD_LIBRARY_PATH', 'PATH', 'BASH_ENV', 'ENV', 'PYTHONSTARTUP', 'PYTHONPATH', 'JAVA_TOOL_OPTIONS', '_JAVA_OPTIONS', 'PERL5OPT', 'RUBYOPT', 'path']) assert.equal(changesStart(name), true, name);
+  for (const name of ['HOME', 'API_KEY', 'constructor']) assert.equal(changesStart(name), false, name);
+  assert.equal(fromThisComputer('${TOKEN}'), true); assert.equal(fromThisComputer('Bearer ${TOKEN}'), true); assert.equal(fromThisComputer('{"keychain":"e"}'), true); assert.equal(fromThisComputer('north'), false);
+});
+
+test('the refusal for a save place inside the harness is one sentence, the same in main and in the window', () => {
+  assert.match(EXPORT_TARGET_IN_HARNESS_WORDS, /^That place is inside the folder \.bowerloom of this harness/);
+  const main = readFileSync(join(DESKTOP, 'main', 'engine-bundle.ts'), 'utf8');
+  assert.doesNotMatch(main, /export const EXPORT_TARGET_IN_HARNESS_WORDS\s*=/, 'main holds no copy of its own');
+  assert.match(main, /EXPORT_TARGET_IN_HARNESS_WORDS\b[\s\S]*from '\.\.\/shared\/engine\/types\.js'/);
+  assert.equal('EXPORT_TARGET_IN_HARNESS' in SHARE_REFUSAL_WORDS, false, 'no second sentence under it');
 });
