@@ -15,6 +15,7 @@ import { bundleOnce } from './harness-real-page.js';
 import type { RealHarness } from './harness-real-page.js';
 import { exportSheet, importSheet, newMadeUpHome, openInBuilder, readTree, saveAt, startApp, stubSaveDialog, treeShape } from './journey-support.js';
 import { removeTempDirs } from './temp-dirs.js';
+import { EXPORT_TARGET_IN_HARNESS_WORDS } from '../shared/engine/types.js';
 
 let h: RealHarness | null = null;
 test.beforeAll(() => { test.setTimeout(240_000); bundleOnce(); });
@@ -204,7 +205,7 @@ test('an export asked to save inside the harness folder is refused in words, wri
     await expect(refusal).toHaveAttribute('data-refusal', 'EXPORT_TARGET_IN_HARNESS');
     const words = (await refusal.innerText()).replace(/\s+/g, ' ');
     expect(words).not.toContain(home.home);
-    expect(words).toContain('Choose a place outside it, such as your Desktop. Nothing was written.');
+    expect((await refusal.locator('p.hxe-text').innerText()).replace(/\s+/g, ' '), 'main\'s one sentence, whole').toBe(EXPORT_TARGET_IN_HARNESS_WORDS);
     await expect(s.locator('[data-next-step]')).toHaveCount(0);
     expect(existsSync(inside), 'no file was written').toBe(false);
     expect(readTree(folder), 'the folder is as it was').toEqual(before);

@@ -88,8 +88,13 @@ function hiddenOf(entry: object, shown: ReadonlySet<string>): string[] {
   }
   return out;
 }
-const MCP_SHOWN: ReadonlySet<string> = new Set(['id', 'name', 'transport', 'command', 'args', 'env', 'headers', 'url']);
+const MCP_SHOWN: ReadonlySet<string> = new Set(['name', 'transport', 'command', 'args', 'env', 'headers', 'url']);
 const HOOK_SHOWN: ReadonlySet<string> = new Set(['id', 'event', 'command']);
+
+/** The bound fields of a server that its row does not show. The row shows `name`; the `id` is bound too, so it is listed when it is not the same text. */
+export function mcpHiddenFields(server: McpServer): string[] {
+  return hiddenOf(server, MCP_SHOWN).filter(n => n !== 'id' || server.id !== server.name);
+}
 
 function mcpTool(server: McpServer, secrets: Secrets): BundleTool {
   const host = server.url !== undefined ? addressOf(server.url) : undefined;
@@ -99,6 +104,7 @@ function mcpTool(server: McpServer, secrets: Secrets): BundleTool {
   for (const a of server.args ?? []) secrets.text(a, server.name, 'arg', host?.host);
   if (server.url !== undefined) secrets.text(server.url, server.name, 'url', host?.host);
   if (server.command !== undefined) secrets.text(server.command, server.name, 'command', host?.host);
+  const hidden = mcpHiddenFields(server);
   return {
     name: server.name, kind: 'mcp', transport: server.transport, runsCode,
     // Whole, never cut: `checkToolText` has refused a bundle whose command or arguments are too long to show.
@@ -109,7 +115,7 @@ function mcpTool(server: McpServer, secrets: Secrets): BundleTool {
     ...(server.url !== undefined && pathOf(server.url) !== '' ? { path: pathOf(server.url) } : {}),
     ...(host !== undefined ? { host: host.host } : {}),
     ...(host !== undefined && host.flags.length > 0 ? { addressFlags: host.flags } : {}),
-    ...(hiddenOf(server, MCP_SHOWN).length > 0 ? { hiddenFields: hiddenOf(server, MCP_SHOWN) } : {}),
+    ...(hidden.length > 0 ? { hiddenFields: hidden } : {}),
     sha256: entryHash(server),
   };
 }

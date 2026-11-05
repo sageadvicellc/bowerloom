@@ -484,3 +484,11 @@ test('a tool lists the bound fields the summary does not show: timeout, enabled 
   assert.ok(['timeout', 'enabled', 'x-claude-code'].every(n => rich.hiddenFields.includes(n)), String(rich.hiddenFields));
   assert.notEqual(rich.sha256, plain.sha256);
 });
+
+test('a server id that is not the name the row shows is listed as hidden; the same text is not; a hook id stays shown', async () => {
+  const { mcpHiddenFields } = await import('../../../dist/packages/harness-bundle/src/summary.js');
+  const base = { name: 'docs', transport: 'http', url: 'https://docs.example.test/mcp', privateBlocks: {} };
+  assert.deepEqual(mcpHiddenFields({ ...base, id: 'docs' }), []);
+  assert.deepEqual(mcpHiddenFields({ ...base, id: 'docs-2' }), ['id']);
+  assert.deepEqual(mcpHiddenFields({ ...base, id: 'docs-2', timeout: 3 }), ['id', 'timeout']);
+});
