@@ -30,11 +30,14 @@ if (process.argv.includes('--check')) {
   }
 }
 if (process.argv.includes('--check') && !problems.length) {
-  // The docs build expands the install block. The README is read on GitHub, so its copy must equal the generated block.
+  // The docs build expands the install and support blocks. The README is read on GitHub, so its copies must equal the generated blocks.
   const release = await readRelease();
   const readme = await readFile(resolve(root, 'README.md'), 'utf8');
-  const block = readme.match(/<!-- release:install:start -->\n([\s\S]*?)\n<!-- release:install:end -->/);
-  if (!block || block[1] !== releaseSections(release).install) problems.push('RELEASE_BLOCK_STALE: README.md install block differs from the block that the release record generates.');
+  const generated = releaseSections(release);
+  for (const kind of ['install', 'support']) {
+    const block = readme.match(new RegExp(`<!-- release:${kind}:start -->\\n([\\s\\S]*?)\\n<!-- release:${kind}:end -->`));
+    if (!block || block[1] !== generated[kind]) problems.push(`RELEASE_BLOCK_STALE: README.md ${kind} block differs from the block that the release record generates.`);
+  }
 }
 if (problems.length) { console.error(problems.join('\n')); process.exit(1); }
 const documents = await getDocuments();
