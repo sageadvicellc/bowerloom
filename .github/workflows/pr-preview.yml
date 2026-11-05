@@ -1,0 +1,133 @@
+name: pr-preview
+
+# Gives each website pull request a stable preview address:
+# pr-<number>.preview.bowerloom.ai. This workflow never checks out code.
+
+on:
+  deployment_status:
+  pull_request:
+    types: [closed]
+    paths:
+      - "apps/landing/**"
+      - "release/**"
+
+permissions:
+  contents: read
+  pull-requests: write
+  deployments: read
+
+env:
+  # Exact Vercel CLI version. Change it here only.
+  VERCEL_CLI_VERSION: "65.11.0"
+  VERCEL_SCOPE: sageadvicellc
+  PREVIEW_DOMAIN: preview.bowerloom.ai
+
+jobs:
+  alias:
+    name: Alias the preview
+    if: >-
+      github.event_name == 'deployment_status' &&
+      github.event.deployment_status.state == 'success' &&
+      startsWith(github.event.deployment_status.environment, 'Preview') &&
+      contains(github.event.deployment_status.environment, 'bowerloom-preview')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: pr-preview-alias-${{ github.event.deployment.ref }}
+      cancel-in-progress: false
+    steps:
+      - name: Alias the deployment and comment on the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          REPO: ${{ github.repository }}
+          DEPLOY_REF: ${{ github.event.deployment.ref }}
+          DEPLOY_SHA: ${{ github.event.deployment.sha }}
+          DEPLOY_URL: ${{ github.event.deployment_status.environment_url }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "::notice::The VERCEL_TOKEN secret is not set. Skipping the preview alias."
+            exit 0
+          fi
+          echo "::add-mask::$VERCEL_TOKEN"
+
+          if ! [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::The deployment sha is not a full commit sha."
+            exit 1
+          fi
+          if ! [[ "$DEPLOY_URL" =~ ^https://[a-z0-9-]+-sageadvicellc\.vercel\.app$ ]]; then
+            echo "::error::The deployment URL is not a sageadvicellc Vercel address."
+            exit 1
+          fi
+
+          # Open pull requests that contain this commit. Keep only those whose
+          # head branch is in this repository and matches the deployed ref.
+          PR_NUMBER="$(gh api "repos/${REPO}/commits/${DEPLOY_SHA}/pulls" \
+            --jq "[.[] | select(.state == \"open\" and .head.repo.full_name == \"${REPO}\" and .head.ref == env.DEPLOY_REF and .head.sha == env.DEPLOY_SHA)] | first | .number // empty")"
+
+          if [ -z "$PR_NUMBER" ]; then
+            echo "::notice::No open same-repository pull request for this deployment. Nothing to do."
+            exit 0
+          fi
+          if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "::error::The pull request number is not numeric."
+            exit 1
+          fi
+
+          ALIAS_HOST="pr-${PR_NUMBER}.${PREVIEW_DOMAIN}"
+          npx --yes "vercel@${VERCEL_CLI_VERSION}" alias set "$DEPLOY_URL" "$ALIAS_HOST" \
+            --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
+
+          MARKER="<!-- bowerloom-pr-preview -->"
+          BODY="${MARKER}
+          Preview for this pull request: https://${ALIAS_HOST}
+
+          Latest build: ${DEPLOY_URL}
+          Commit: ${DEPLOY_SHA}
+
+          The preview needs a login to the Vercel team. Ask a team member if you cannot open it."
+
+          COMMENT_ID="$(gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments" \
+            --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" | head -n 1)"
+
+          if [ -n "$COMMENT_ID" ]; then
+            gh api --method PATCH "repos/${REPO}/issues/comments/${COMMENT_ID}" -f body="$BODY" > /dev/null
+            echo "Updated comment ${COMMENT_ID}."
+          else
+            gh api --method POST "repos/${REPO}/issues/${PR_NUMBER}/comments" -f body="$BODY" > /dev/null
+            echo "Posted a new comment."
+          fi
+
+  cleanup:
+    name: Remove the preview alias
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Remove the alias
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "::notice::The VERCEL_TOKEN secret is not set. Skipping the alias removal."
+            exit 0
+          fi
+          echo "::add-mask::$VERCEL_TOKEN"
+
+          if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "::error::The pull request number is not numeric."
+            exit 1
+          fi
+
+          ALIAS_HOST="pr-${PR_NUMBER}.${PREVIEW_DOMAIN}"
+          if ! npx --yes "vercel@${VERCEL_CLI_VERSION}" alias rm "$ALIAS_HOST" --yes \
+            --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"; then
+            echo "::notice::Could not remove ${ALIAS_HOST}. It may already be gone."
+          fi

@@ -334,6 +334,7 @@ Bring a small, reproducible change that the team can review.
 - Describe the problem and the result that you expect.
 - Include a focused example or meaningful test with your change.
 - Follow the [contributor guide](https://bowerloom.ai/docs/contributors/) for source changes and review.
+- Website changes get a [preview address](docs/pr-previews.md) on the pull request.
 
 Keep credentials, customer data, and private references out of public issues and pull requests.
 
