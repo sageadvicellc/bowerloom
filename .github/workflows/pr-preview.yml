@@ -4,9 +4,8 @@ name: pr-preview
 # pr-<number>.preview.bowerloom.ai. This workflow never checks out code.
 
 on:
-  deployment_status:
   pull_request:
-    types: [closed]
+    types: [opened, synchronize, reopened, closed]
     paths:
       - "apps/landing/**"
       - "release/**"
@@ -20,30 +19,28 @@ env:
   # Exact Vercel CLI version. Change it here only.
   VERCEL_CLI_VERSION: "65.11.0"
   VERCEL_SCOPE: sageadvicellc
+  VERCEL_PROJECT: bowerloom-preview
   PREVIEW_DOMAIN: preview.bowerloom.ai
 
 jobs:
   alias:
     name: Alias the preview
     if: >-
-      github.event_name == 'deployment_status' &&
-      github.event.deployment_status.state == 'success' &&
-      startsWith(github.event.deployment_status.environment, 'Preview') &&
-      contains(github.event.deployment_status.environment, 'bowerloom-preview')
+      github.event.action != 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     concurrency:
-      group: pr-preview-alias-${{ github.event.deployment.ref }}
-      cancel-in-progress: false
+      group: pr-preview-alias-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     steps:
-      - name: Alias the deployment and comment on the pull request
+      - name: Wait for the Vercel build, alias it, and comment
         env:
           GH_TOKEN: ${{ github.token }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           REPO: ${{ github.repository }}
-          DEPLOY_REF: ${{ github.event.deployment.ref }}
-          DEPLOY_SHA: ${{ github.event.deployment.sha }}
-          DEPLOY_URL: ${{ github.event.deployment_status.environment_url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
 
@@ -53,26 +50,41 @@ jobs:
           fi
           echo "::add-mask::$VERCEL_TOKEN"
 
-          if ! [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::The deployment sha is not a full commit sha."
+          if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "::error::The pull request number is not numeric."
             exit 1
+          fi
+          if ! [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::The head sha is not a full commit sha."
+            exit 1
+          fi
+
+          # Poll Vercel for a READY deployment of this commit. Vercel skips a
+          # build when the latest commit does not touch apps/landing or release/.
+          DEPLOY_URL=""
+          for attempt in $(seq 1 40); do
+            LIST_JSON="$(npx --yes "vercel@${VERCEL_CLI_VERSION}" list "$VERCEL_PROJECT" \
+              --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN" \
+              --meta "githubCommitSha=${HEAD_SHA}" --status READY --json 2>/dev/null || true)"
+            CANDIDATE="$(printf '%s' "$LIST_JSON" | jq -r \
+              '(if type == "object" then .deployments else . end) | if type == "array" then . else [] end | map(select(.url != null)) | first | .url // empty' 2>/dev/null || true)"
+            if [ -n "$CANDIDATE" ]; then
+              case "$CANDIDATE" in
+                https://*) DEPLOY_URL="$CANDIDATE" ;;
+                *) DEPLOY_URL="https://${CANDIDATE}" ;;
+              esac
+              break
+            fi
+            echo "Attempt ${attempt}: no ready deployment yet."
+            sleep 15
+          done
+
+          if [ -z "$DEPLOY_URL" ]; then
+            echo "::notice::No ready Vercel deployment for ${HEAD_SHA} within about 10 minutes. Vercel may have skipped the build. The pull request keeps its last alias."
+            exit 0
           fi
           if ! [[ "$DEPLOY_URL" =~ ^https://[a-z0-9-]+-sageadvicellc\.vercel\.app$ ]]; then
             echo "::error::The deployment URL is not a sageadvicellc Vercel address."
-            exit 1
-          fi
-
-          # Open pull requests that contain this commit. Keep only those whose
-          # head branch is in this repository and matches the deployed ref.
-          PR_NUMBER="$(gh api "repos/${REPO}/commits/${DEPLOY_SHA}/pulls" \
-            --jq "[.[] | select(.state == \"open\" and .head.repo.full_name == \"${REPO}\" and .head.ref == env.DEPLOY_REF and .head.sha == env.DEPLOY_SHA)] | first | .number // empty")"
-
-          if [ -z "$PR_NUMBER" ]; then
-            echo "::notice::No open same-repository pull request for this deployment. Nothing to do."
-            exit 0
-          fi
-          if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
-            echo "::error::The pull request number is not numeric."
             exit 1
           fi
 
@@ -85,7 +97,7 @@ jobs:
           Preview for this pull request: https://${ALIAS_HOST}
 
           Latest build: ${DEPLOY_URL}
-          Commit: ${DEPLOY_SHA}
+          Commit: ${HEAD_SHA}
 
           The preview needs a login to the Vercel team. Ask a team member if you cannot open it."
 
@@ -103,7 +115,7 @@ jobs:
   cleanup:
     name: Remove the preview alias
     if: >-
-      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
