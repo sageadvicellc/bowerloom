@@ -73,8 +73,11 @@ Before you tick the boxes, read the whole review. For each tool it shows:
 - The command, every argument, every environment variable, every header, and the address. A header is a line of text sent with a web request. Each is shown whole and never cut. A tool whose command or arguments are too long to show whole is refused.
 - Whether the tool starts a program on your computer or connects to a web address. A host is the computer at that address.
 - Whether the tool downloads code when it starts, starts with admin rights, or runs a command line.
+- The names of the engine settings the tool carries that the review does not list, such as a timeout. The line reads "Carries engine settings that are not listed here:" and then the names. A name is shown, not its value. The tick covers them too.
 
 An environment variable is a named value that a program reads when it starts. A value can change how a program starts. `NODE_OPTIONS` and `LD_PRELOAD` are two examples. Read each one.
+
+The app marks a variable that can change how a program starts. Two marks are possible. "This makes the program load extra code." is for names such as `NODE_OPTIONS` and `LD_PRELOAD`. "This sends the program's traffic through another host." is for the proxy names `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY`. The names match in any letter case. The command line does not mark each name. It prints one line under the tools instead: "An environment value can change how a program starts or where its traffic goes. Read each one."
 
 The review also lists the files that can run: hooks, scripts, files with the run permission, files that start as programs, and files that hold the bytes of a program. The list is a guide. A text file can still hold commands.
 

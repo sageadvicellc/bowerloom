@@ -67,14 +67,18 @@ function summaryLines(s: BundleSummary, notesLine: (name: string, readBy: readon
   out.push(`  ${count(c.files, 'file')}, ${count(c.bytes, 'byte')}: ${count(c.skills, 'skill')}, ${count(c.agents, 'agent')}, ${count(c.mcp, 'MCP server')}, ${count(c.hooks, 'hook')}, ${count(c.guardrails, 'rule')}, ${count(c.scripts, 'script')}.`);
   if (s.tools.length) {
     out.push('Tools. Each one runs a program or reaches a host:');
+    // The app marks each variable that changes how a program starts. Its word list lives in the renderer, which the packed CLI does not carry, so the CLI says it once.
+    if (s.tools.some(t => t.env !== undefined && t.env.length > 0)) out.push('  An environment value can change how a program starts or where its traffic goes. Read each one.');
     out.push(...rows(s.tools.map(t => {
       // Everything a tool runs or sends is shown whole: the environment of a server can start code (NODE_OPTIONS, LD_PRELOAD), and a header or a path goes to the host.
       const pairs = (label: string, list: BundleTool['env']): string[] => (list ?? []).map(x => `\n    ${label} ${x.name}=${whole(x.value)}`);
-      if (t.kind === 'hook') return `  hook ${t.name}${t.event !== undefined ? ` on ${t.event}` : ''}: runs ${t.command ?? ''}`;
+      // The names of the fields the acknowledgement binds and this list does not show (a timeout, an engine block). Names only; the words are the app's.
+      const hidden = t.hiddenFields === undefined || t.hiddenFields.length === 0 ? '' : `\n    Carries engine settings that are not listed here: ${t.hiddenFields.join(', ')}.`;
+      if (t.kind === 'hook') return `  hook ${t.name}${t.event !== undefined ? ` on ${t.event}` : ''}: runs ${t.command ?? ''}${hidden}`;
       const flags = t.addressFlags?.length ? ` (${t.addressFlags.join(', ')})` : '';
       return t.command !== undefined
-        ? `  MCP server ${t.name} (${t.transport ?? 'stdio'}): runs ${[t.command, ...(t.args ?? [])].map(whole).join(' ')}${pairs('env', t.env).join('')}`
-        : `  MCP server ${t.name} (${t.transport ?? 'http'}): reaches ${shown(t.host ?? 'no host')}${t.path ?? ''}${flags}${pairs('header', t.headers).join('')}`;
+        ? `  MCP server ${t.name} (${t.transport ?? 'stdio'}): runs ${[t.command, ...(t.args ?? [])].map(whole).join(' ')}${pairs('env', t.env).join('')}${hidden}`
+        : `  MCP server ${t.name} (${t.transport ?? 'http'}): reaches ${shown(t.host ?? 'no host')}${t.path ?? ''}${flags}${pairs('header', t.headers).join('')}${hidden}`;
     })));
   }
   if (s.codeFiles.length) {
