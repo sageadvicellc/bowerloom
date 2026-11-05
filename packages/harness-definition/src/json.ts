@@ -2,7 +2,7 @@
  * Strict JSON (section 8, rule 1) and YAML frontmatter (rule 2). The JSON parser is the codex-adapter `strictJson`: it
  * refuses duplicate keys, comments, trailing commas, and numbers that are not finite. Values come back as plain objects.
  */
-import { parseDocument } from 'yaml';
+import { isCollection, isMap, isPair, isScalar, isSeq, parseDocument } from 'yaml';
 import { AdapterError, strictJson } from '../../codex-adapter/src/safe.js';
 import { splitFrontmatter } from '../../context-slices/src/frontmatter.js';
 import { strictUtf8 } from '../../skill-sources/src/cache.js';
@@ -104,8 +104,13 @@ export function readFrontmatter(text: string): FrontmatterResult {
   if (split === null) return { ok: false, code: 'FRONTMATTER_MISSING', message: 'The file does not open with a --- frontmatter block that closes.' };
   const block = split.block;
   if (Buffer.byteLength(block) > DEFINITION_LIMITS.frontmatterBytes) return invalid('The frontmatter is larger than 64 KiB.');
-  const doc = parseDocument(block, { uniqueKeys: true });
-  if (doc.errors.length) return invalid('The frontmatter is not valid YAML, or repeats a key.');
+  // `uniqueKeys: true` makes the parser compare each key with every earlier key of its map, which costs time in the square of the key count (a 62 KiB block of 5,000
+  // keys took 340 ms). So the parser is told not to check, and `duplicateKey` checks in one pass with a set per map.
+  const doc = parseDocument(block, { uniqueKeys: false });
+  if (doc.errors.length) return invalid('The frontmatter is not valid YAML.');
+  const dup = duplicateKey(doc.contents);
+  if (dup === 'repeat') return invalid('The frontmatter repeats a key.');
+  if (dup === 'complex') return invalid('The frontmatter uses a key that is not plain text, a number, or a boolean.');
   if (doc.warnings.length) return invalid('The frontmatter holds a tag or a value that YAML cannot resolve.');
   let raw: unknown;
   try { raw = doc.toJS({ maxAliasCount: 0 }); } catch { return invalid('The frontmatter uses an alias, or a value that YAML cannot convert.'); }
@@ -118,3 +123,30 @@ export function readFrontmatter(text: string): FrontmatterResult {
   return { ok: true, data, body: split.rest };
 }
 function invalid(message: string): FrontmatterResult { return { ok: false, code: 'FRONTMATTER_INVALID', message }; }
+
+/**
+ * Looks for a repeated key in every map of a parsed YAML document, in time linear in the size of the document. Keys compare as the parser compared them: by type and
+ * value, so `1` and `"1"` differ. A key that is a map, a list, or an alias is `complex`: after conversion it would become text and could hide a repeat. The walk uses a
+ * list of work, not recursion, so nesting cannot overflow the stack.
+ */
+export function duplicateKey(root: unknown): 'repeat' | 'complex' | null {
+  const work: unknown[] = [root];
+  while (work.length > 0) {
+    const node = work.pop();
+    if (isMap(node)) {
+      const seen = new Set<string>();
+      for (const item of node.items) {
+        if (!isPair(item)) continue;
+        const key: unknown = item.key;
+        if (!isScalar(key)) return 'complex';
+        const id = `${typeof key.value}:${String(key.value)}`;
+        if (seen.has(id)) return 'repeat';
+        seen.add(id);
+        if (isCollection(item.value)) work.push(item.value);
+      }
+    } else if (isSeq(node)) {
+      for (const item of node.items) if (isCollection(item)) work.push(item);
+    }
+  }
+  return null;
+}

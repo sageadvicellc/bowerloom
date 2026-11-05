@@ -557,25 +557,37 @@ export const SHARE_HELD_BUNDLES = 2;
 /** The most notes names a choice may name, and the longest name. The same as BUNDLE_LIMITS.notesNames and nameChars. */
 export const SHARE_NOTES_LIMIT = 200;
 export const SHARE_NAME_LIMIT = 200;
-/** The longest text of a command, host, hook or foreign-path hit that a summary carries, and the most arguments of a tool. The same as BUNDLE_LIMITS.displayChars and displayArgs. */
+/** The longest text of a host or a foreign-path hit that a summary carries (BUNDLE_LIMITS.displayChars). A tool's command and arguments are never cut: see SHARE_COMMAND_LIMIT. */
 export const SHARE_TEXT_LIMIT = 200;
-export const SHARE_ARGS_LIMIT = 20;
+/** The most arguments of a tool, all shown (BUNDLE_LIMITS.toolArgs). A bundle with more is refused. */
+export const SHARE_ARGS_LIMIT = 64;
+/** The longest command or argument of a tool, shown whole (BUNDLE_LIMITS.commandChars). A bundle with a longer one is refused. */
+export const SHARE_COMMAND_LIMIT = 4000;
 
 /** One list of a preview: at most SHARE_LIST_LIMIT rows, and how many more there are ("and 12 more"). */
 export interface ShareList<T> { readonly rows: readonly T[]; readonly more: number }
 /**
  * A tool the bundle holds, with what a person reads before it may run. `transport` is for an MCP server and null for a hook. `runsCode` is true for a hook and for
- * an MCP server that starts a program. `command` is the program of a stdio server or the command of a hook, `args` the arguments of a server (at most SHARE_ARGS_LIMIT),
+ * an MCP server that starts a program. `command` is the program of a stdio server or the command of a hook (whole, at most SHARE_COMMAND_LIMIT), `args` the arguments of a server (all of them, at most SHARE_ARGS_LIMIT),
  * `host` the host a client would really reach for a server's url (the package's `addressOf`), `event` the event of a hook; each is null (or empty) when the tool has none.
  * `flags` says what is odd about the address: `credentials` (a user name or password in it), `backslash`, `scheme` (not http, https, ws or wss), `unreadable`. A tool that
- * runs code or reaches a host is in the acknowledgement. Every text is cut to SHARE_TEXT_LIMIT, drawn as plain
- * text, and passed through `visible()` in main. The acknowledgement binds the whole entry in main; the window sees the cut text only.
+ * runs code or reaches a host is in the acknowledgement. The command and the arguments are whole; the host is cut to SHARE_TEXT_LIMIT. Every text is drawn as plain
+ * text and passed through `visible()` in main. The acknowledgement binds the whole entry in main, and the window sees the whole command and arguments.
  */
 export interface ShareTool {
   readonly name: string; readonly kind: 'mcp' | 'hook'; readonly transport: string | null; readonly runsCode: boolean;
   readonly command: string | null; readonly args: readonly string[]; readonly host: string | null; readonly event: string | null;
   readonly flags: readonly ('credentials' | 'backslash' | 'scheme' | 'unreadable')[];
+  /**
+   * What else is bound by the acknowledgement and must be shown, from the package's `BundleTool` (additive; absent means none): the variables of a stdio server (`env`, values
+   * whole: `NODE_OPTIONS`, `LD_PRELOAD`, `PATH` and the like start code, and a name is shown also when its value is a `${NAME}` reference), the headers of a remote server
+   * (`headers`), and the path, query and fragment of its url (`path`). Each value is at most SHARE_COMMAND_LIMIT characters and each list at most SHARE_ARGS_LIMIT rows; the
+   * package refuses a bundle past that, so nothing is cut.
+   */
+  readonly env?: readonly ShareNameValue[]; readonly headers?: readonly ShareNameValue[]; readonly path?: string | null;
 }
+/** One variable of a stdio server's environment, or one header, with its value as the file holds it. */
+export interface ShareNameValue { readonly name: string; readonly value: string }
 /**
  * A file that can run: it has an execute bit, it is `hooks.json`, it is under `scripts/`, it begins with `#!` (`shebang`) or with the bytes of a program (`binary`), its
  * name ends in a code extension (`extension`), it is a manifest of commands such as `package.json` (`manifest`), or it is anything that is not a named kind of data
@@ -832,11 +844,12 @@ export const EXPORT_NO_DEFINITION = 'EXPORT_NO_DEFINITION';
 export const IMPORT_FOLDER_HAS_HARNESS = 'IMPORT_FOLDER_HAS_HARNESS';
 export const IMPORT_NEEDS_ACKNOWLEDGEMENT = 'IMPORT_NEEDS_ACKNOWLEDGEMENT';
 export const EXPORT_NEEDS_ACKNOWLEDGEMENT = 'EXPORT_NEEDS_ACKNOWLEDGEMENT';
-export const SHARE_MAIN_WORDS: Readonly<Record<typeof EXPORT_NO_DEFINITION | typeof IMPORT_FOLDER_HAS_HARNESS | typeof IMPORT_NEEDS_ACKNOWLEDGEMENT | typeof EXPORT_NEEDS_ACKNOWLEDGEMENT, string>> = Object.freeze({
+export const SHARE_MAIN_WORDS: Readonly<Record<typeof EXPORT_NO_DEFINITION | typeof IMPORT_FOLDER_HAS_HARNESS | typeof IMPORT_NEEDS_ACKNOWLEDGEMENT | typeof EXPORT_NEEDS_ACKNOWLEDGEMENT | 'BUNDLE_FILE_FAILED', string>> = Object.freeze({
   EXPORT_NO_DEFINITION: 'This folder has no harness yet, so there is nothing to export. Make one first with New harness from a folder. Nothing was written.',
-  IMPORT_FOLDER_HAS_HARNESS: 'This folder has a harness with parts in it already. An import goes only into a folder with no harness, or with an empty one. Nothing was written.',
+  IMPORT_FOLDER_HAS_HARNESS: 'This folder has a harness with parts or settings in it already. An import goes only into a folder with no harness, or with an empty one. Nothing was written.',
   IMPORT_NEEDS_ACKNOWLEDGEMENT: 'This file holds tools or files that can run, values it reads from this computer, or paths from another computer. Tick that you read them, then import. Nothing was written.',
   EXPORT_NEEDS_ACKNOWLEDGEMENT: 'These files hold a path from this computer. Tick that you read them, then export. Nothing was written.',
+  BUNDLE_FILE_FAILED: 'The file could not be read or written. The disk may be full or read-only, the name may be too long, or you may lack permission. Nothing was read or written.',
 });
 /**
  * Refusals of main itself for a ready-made kit, with words: the kit that ships with Bowerloom is missing or damaged (KIT_INVALID, whose message goes on

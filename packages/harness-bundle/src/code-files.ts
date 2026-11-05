@@ -28,7 +28,14 @@ export const DATA_NAMES: readonly string[] = Object.freeze(['readme', 'license',
 export const MANIFEST_NAMES: readonly string[] = Object.freeze([
   'package.json', 'pyproject.toml', 'cargo.toml', 'composer.json', 'taskfile.yml', 'taskfile.yaml', 'justfile', 'makefile', 'gnumakefile', 'dockerfile',
   'gemfile', 'rakefile', 'build.gradle', 'build.gradle.kts', 'pom.xml', 'cmakelists.txt', 'procfile', 'vagrantfile', 'jenkinsfile', 'tox.ini', 'setup.cfg',
+  // Round 5 (L5-1): configs of a runtime, a host or a pipeline that name commands to run, and sit under a data extension (.json, .toml, .yml, .txt).
+  'deno.json', 'deno.jsonc', 'requirements.txt', 'vercel.json', 'netlify.toml', 'action.yml', 'action.yaml', 'serverless.yml', 'serverless.yaml',
+  'azure-pipelines.yml', 'azure-pipelines.yaml', 'bitbucket-pipelines.yml', 'appveyor.yml', 'buildspec.yml', 'cloudbuild.yaml', 'cloudbuild.yml', 'amplify.yml',
+  'wrangler.toml', 'wrangler.json', 'wrangler.jsonc', 'fly.toml', 'render.yaml', 'railway.json', 'app.yaml', 'codemagic.yaml', 'turbo.json', 'nx.json', 'lerna.json',
+  'lefthook.yml', 'lefthook.yaml', 'mise.toml', 'devcontainer.json', 'bunfig.toml', 'skaffold.yaml', 'okteto.yml', 'helmfile.yaml', 'kustomization.yaml', 'kustomization.yml',
 ]);
+/** `requirements-dev.txt`, `requirements_test.txt` and the like: a list of packages to install, and an install runs their build scripts. */
+const REQUIREMENTS = /^requirements(?:[-_.][a-z0-9_.-]+)?\.txt$/;
 /** `docker-compose.yml`, `compose.yaml`, `docker-compose.override.yml` and the like. */
 const COMPOSE = /^(?:docker-)?compose(?:\.[^.]+)*\.ya?ml$/;
 
@@ -72,7 +79,7 @@ export function codeWhy(path: string, bytes: Uint8Array, executable: boolean): C
   if (path.startsWith('scripts/')) return 'script';
   const name = path.slice(path.lastIndexOf('/') + 1);
   const lower = name.toLowerCase();
-  if (MANIFEST_NAMES.includes(lower) || COMPOSE.test(lower)) return 'manifest';
+  if (MANIFEST_NAMES.includes(lower) || COMPOSE.test(lower) || REQUIREMENTS.test(lower)) return 'manifest';
   let at = 0;
   while (startsWith(bytes, at, [0xef, 0xbb, 0xbf])) at += 3;
   if (startsWith(bytes, at, [0x23, 0x21])) return 'shebang';

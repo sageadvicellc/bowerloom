@@ -64,13 +64,19 @@ export interface DecodedBundle {
 // ---- what a bundle holds, for the person to read ---------------------------------------------------------------------------
 
 /**
- * A tool the bundle holds, with what a person must read before it may run: the text of the command, the arguments, the host, the hook text. Every text is cut
- * to BUNDLE_LIMITS.displayChars (arguments: BUNDLE_LIMITS.displayArgs, each cut the same way) and is plain text for the screen; `sha256` covers the WHOLE entry as
- * the file holds it, so an acknowledgement binds the full text and not the cut one.
+ * A tool the bundle holds, with what a person must read before it may run: the text of the command, the arguments, the host, the hook text. The command and every argument
+ * are WHOLE (a bundle whose command or arguments pass BUNDLE_LIMITS.commandChars and BUNDLE_LIMITS.toolArgs is refused, so nothing is cut); the host is cut to
+ * BUNDLE_LIMITS.displayChars. All are plain text for the screen; `sha256` covers the whole entry as the file holds it, so an acknowledgement binds the full text, and the
+ * full text is what the person saw.
  *  - MCP server over stdio: `command` and `args`. Over http: `host`.
  *  - Hook: `event` and `command` (the hook's command text).
  * A tool needs a tick when it runs code (`runsCode`) OR reaches a host (`host` is set): a remote server is a host the file chose (decision R2-L2).
  */
+/** One variable of an MCP server's `env` or one header, by name, with its value as the file holds it: a literal whole, a `${NAME}` as written, a keychain reference as its JSON. */
+export interface BundleNameValue {
+  readonly name: string;
+  readonly value: string;
+}
 export interface BundleTool {
   readonly name: string;
   readonly kind: 'mcp' | 'hook';
@@ -80,8 +86,18 @@ export interface BundleTool {
   readonly runsCode: boolean;
   /** The program of an MCP server, or the command of a hook. */
   readonly command?: string;
-  /** The arguments of an MCP server, as written, at most BUNDLE_LIMITS.displayArgs of them. */
+  /** The arguments of an MCP server, as written, all of them (at most BUNDLE_LIMITS.toolArgs). */
   readonly args?: readonly string[];
+  /**
+   * The environment of a stdio server, one row for each variable, in file order, values WHOLE (at most BUNDLE_LIMITS.toolArgs rows of BUNDLE_LIMITS.commandChars characters). It
+   * is part of what runs: `NODE_OPTIONS`, `LD_PRELOAD`, `DYLD_INSERT_LIBRARIES`, `PATH`, `BASH_ENV` and `JAVA_TOOL_OPTIONS` start code. A name is shown also when its value is a
+   * `${NAME}` reference. Absent when the server has no env.
+   */
+  readonly env?: readonly BundleNameValue[];
+  /** The headers of a remote server, in file order, values whole, under the same limits. They go to the host the file names. Absent when there are none. */
+  readonly headers?: readonly BundleNameValue[];
+  /** The path, query and fragment of a remote server's url, as written, whole (at most BUNDLE_LIMITS.commandChars characters); the host is in `host`. Absent when the url has none. */
+  readonly path?: string;
   /**
    * The host a client would reach for the server's `url`, from `addressOf`: parsed with `URL` after each `${NAME}` is masked, shown as `hostname` plus `:port` when
    * the port is not the scheme's own, with the references as written. If the address cannot be read, the fixed text `unreadable address`.
@@ -177,9 +193,9 @@ export interface BundleSummary {
 // ---- calls -----------------------------------------------------------------------------------------------------------------
 
 export interface EncodeOptions {
-  /** The exporting computer's home folder, matched literally in file text in addition to the shape of a path. */
+  /** The exporting computer's home folder, matched literally in file text in addition to the shape of a path. A value of one character (such as `/`) is ignored. */
   readonly home?: string;
-  /** The exporting computer's user name, matched literally in file text. */
+  /** The exporting computer's user name, matched literally in file text, as a whole word. A name of fewer than 3 characters is ignored, because it would match ordinary words. */
   readonly user?: string;
   /** Written into `generator`. Default: `bowerloom`. */
   readonly generator?: string;

@@ -1,12 +1,11 @@
-// The stage 1 contract of the harness bundle: the constants, the code table and its words, the README that states the same table, the acknowledgements, and the
-// checked choices. Stage 2 lane A adds the behaviour tests beside this file. The "not built" test below goes when the functions are built.
+// The contract of the harness bundle: the constants, the code table and its words, the README that states the same table, the acknowledgements, and the checked
+// choices. The behaviour tests (codec, file functions, hostile input) sit beside this file.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
   BUNDLE_CODES, BUNDLE_FILE_SUFFIX, CODE_EXTENSIONS, DATA_EXTENSIONS, UNREADABLE_ADDRESS, addressOf, codeWhy, BUNDLE_FORMAT, BUNDLE_LIMITS, BUNDLE_MESSAGES, BundleRefusal, EXPORT_PLAN_FORMAT, HIGH_RISK_SINK_FIELDS, IMPORT_PLAN_FORMAT, PATH_SHOWN_CHARS,
-  bundleTargetIdentity, decodeBundle, encodeBundle, exportAcknowledgement, importAcknowledgement, importChoicesOf, inspectBundle, isEmptyHarness, readBundleFile, shownPath,
-  targetFromBundle, writeBundleFile,
+  exportAcknowledgement, importAcknowledgement, importChoicesOf, shownPath,
 } from '../../../dist/packages/harness-bundle/src/index.js';
 import { DEFINITION_LIMITS } from '../../../dist/packages/harness-definition/src/index.js';
 import { DefinitionError } from '../../../dist/packages/contracts/src/index.js';
@@ -32,15 +31,15 @@ test('the limits reuse the definition loader limits and add the bundle ones', ()
     { files: DEFINITION_LIMITS.files, entryBytes: DEFINITION_LIMITS.fileBytes, totalBytes: DEFINITION_LIMITS.totalBytes, depth: DEFINITION_LIMITS.depth },
   );
   assert.deepEqual(
-    { fileBytes: BUNDLE_LIMITS.fileBytes, pathChars: BUNDLE_LIMITS.pathChars, segmentBytes: BUNDLE_LIMITS.segmentBytes, jsonDepth: BUNDLE_LIMITS.jsonDepth, notesNames: BUNDLE_LIMITS.notesNames, nameChars: BUNDLE_LIMITS.nameChars, listRows: BUNDLE_LIMITS.listRows, heldBundles: BUNDLE_LIMITS.heldBundles, displayChars: BUNDLE_LIMITS.displayChars, displayArgs: BUNDLE_LIMITS.displayArgs },
-    { fileBytes: 48 * 1024 * 1024, pathChars: 1024, segmentBytes: 255, jsonDepth: 6, notesNames: 200, nameChars: 200, listRows: 200, heldBundles: 2, displayChars: 200, displayArgs: 20 },
+    { fileBytes: BUNDLE_LIMITS.fileBytes, pathChars: BUNDLE_LIMITS.pathChars, segmentBytes: BUNDLE_LIMITS.segmentBytes, jsonDepth: BUNDLE_LIMITS.jsonDepth, notesNames: BUNDLE_LIMITS.notesNames, nameChars: BUNDLE_LIMITS.nameChars, listRows: BUNDLE_LIMITS.listRows, heldBundles: BUNDLE_LIMITS.heldBundles, displayChars: BUNDLE_LIMITS.displayChars, commandChars: BUNDLE_LIMITS.commandChars, toolArgs: BUNDLE_LIMITS.toolArgs },
+    { fileBytes: 48 * 1024 * 1024, pathChars: 1024, segmentBytes: 255, jsonDepth: 6, notesNames: 200, nameChars: 200, listRows: 200, heldBundles: 2, displayChars: 200, commandChars: 4000, toolArgs: 64 },
   );
   assert.ok(BUNDLE_LIMITS.fileBytes > BUNDLE_LIMITS.totalBytes, 'the file limit is above the content limit; a definition at its limits can still pass it, and encodeBundle then refuses');
 });
 
 test('every code has plain words that name what was written and repeat no value', () => {
   assert.deepEqual([...BUNDLE_CODES], Object.keys(BUNDLE_MESSAGES));
-  assert.equal(BUNDLE_CODES.length, 12);
+  assert.equal(BUNDLE_CODES.length, 13);
   for (const code of BUNDLE_CODES) {
     const words = BUNDLE_MESSAGES[code];
     assert.match(words, /^[A-Z][^\n]*\.$/, code);
@@ -314,15 +313,20 @@ test('choices refuse BUNDLE_USAGE for a name the bundle does not list, __proto__
   assert.throws(() => importChoicesOf({ leave: Array.from({ length: 201 }, (_, i) => `n${i}`) }, Array.from({ length: 201 }, (_, i) => `n${i}`)), e => e.code === 'BUNDLE_USAGE');
 });
 
-// ---- stage 1 stubs -----------------------------------------------------------------------------------------------------------
-
-test('stage 1: the functions that lane A builds are declared and fail with "not built"; the async ones reject', async () => {
-  const sync = [() => inspectBundle({}), () => targetFromBundle({}, importChoicesOf(null, [])), () => isEmptyHarness({})];
-  for (const call of sync) assert.throws(call, /^Error: not built$/);
-  const async = [() => encodeBundle({}), () => decodeBundle(new Uint8Array()), () => readBundleFile('/x'), () => bundleTargetIdentity('/x'), () => writeBundleFile('/x', new Uint8Array())];
-  for (const call of async) {
-    const promise = call();
-    assert.ok(promise instanceof Promise, 'the function is async, so the main process is never held');
-    await assert.rejects(promise, /^Error: not built$/);
+test('round 5 (L5-1): configs of a runtime, a host or a pipeline are manifests, in any case and in a folder, with a data extension or not', () => {
+  const names = [
+    'deno.json', 'deno.jsonc', 'requirements.txt', 'vercel.json', 'netlify.toml', 'action.yml', 'action.yaml', 'serverless.yml', 'serverless.yaml', 'azure-pipelines.yml',
+    'azure-pipelines.yaml', 'bitbucket-pipelines.yml', 'appveyor.yml', 'buildspec.yml', 'cloudbuild.yaml', 'cloudbuild.yml', 'amplify.yml', 'wrangler.toml', 'wrangler.json',
+    'wrangler.jsonc', 'fly.toml', 'render.yaml', 'railway.json', 'app.yaml', 'codemagic.yaml', 'turbo.json', 'nx.json', 'lerna.json', 'lefthook.yml', 'lefthook.yaml',
+    'mise.toml', 'devcontainer.json', 'bunfig.toml', 'skaffold.yaml', 'okteto.yml', 'helmfile.yaml', 'kustomization.yaml', 'kustomization.yml',
+  ];
+  const bytes = new TextEncoder().encode('{}\n');
+  for (const name of names) {
+    assert.equal(codeWhy(name, bytes, false), 'manifest', name);
+    assert.equal(codeWhy(`skills/x/${name.toUpperCase()}`, bytes, false), 'manifest', `${name} in capitals, in a skill folder`);
   }
+  for (const name of ['requirements-dev.txt', 'requirements_test.txt', 'requirements.prod.txt', 'Requirements.TXT']) assert.equal(codeWhy(`skills/x/${name}`, bytes, false), 'manifest', name);
+  // A neighbour name stays data.
+  for (const name of ['requirements-notes.md', 'my-requirements.txt', 'vercel.md', 'deno.txt']) assert.equal(codeWhy(`skills/x/${name}`, new TextEncoder().encode('# t\n'), false), null, name);
+  assert.equal(codeWhy('skills/x/requirements.txt', bytes, false), 'manifest');
 });

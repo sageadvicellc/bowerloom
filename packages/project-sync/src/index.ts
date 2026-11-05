@@ -78,5 +78,5 @@ export type { KeepVersion } from './versions-locked.js';
 // Bowerloom 0.8, notes lane D: the notes section of an agent that lists knowledge sources, and the export bundle, which
 // carries each source by kind and name only.
 export { NOTES_HEADING, notesSection, withNotesSections } from './notes.js';
-export { DEFINITION_BUNDLE_FORMAT, exportDefinitionBundle } from './definition-export.js';
+export { DEFINITION_EXPORT_KIND, exportDefinitionBundle } from './definition-export.js';
 export type { BundledSource, DefinitionBundle } from './definition-export.js';
