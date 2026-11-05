@@ -15,6 +15,7 @@ import { bundleOnce } from './harness-real-page.js';
 import type { RealHarness } from './harness-real-page.js';
 import { exportSheet, importSheet, newMadeUpHome, openInBuilder, readTree, saveAt, startApp, stubSaveDialog, treeShape } from './journey-support.js';
 import { removeTempDirs } from './temp-dirs.js';
+import { EXPORT_TARGET_IN_HARNESS_WORDS } from '../shared/engine/types.js';
 
 let h: RealHarness | null = null;
 test.beforeAll(() => { test.setTimeout(240_000); bundleOnce(); });
@@ -136,7 +137,7 @@ test('a tool environment that starts code is not refused as a file: nothing is w
   for (const text of ['NODE_OPTIONS', '--require ./preload.js']) {
     try { await expect(s.locator('[data-tool="tally-feed"]')).toContainText(text, { timeout: 1500 }); } catch { missing.push(text); }
   }
-  expect(missing, 'the texts the sheet does not show yet').toEqual(['NODE_OPTIONS', '--require ./preload.js']);
+  expect(missing, 'the texts the sheet does not show yet').toEqual([]);
   const bundleId = (await s.locator('[data-bundle]').getAttribute('data-bundle'))!;
   await s.locator('[data-import-next]').click();
   await h.pick(dir);
@@ -204,7 +205,8 @@ test('an export asked to save inside the harness folder is refused in words, wri
     await expect(refusal).toHaveAttribute('data-refusal', 'EXPORT_TARGET_IN_HARNESS');
     const words = (await refusal.innerText()).replace(/\s+/g, ' ');
     expect(words).not.toContain(home.home);
-    await expect(s.locator('[data-next-step]')).toHaveText('Choose the place to save again, outside the harness folder.');
+    expect((await refusal.locator('p.hxe-text').innerText()).replace(/\s+/g, ' '), 'main\'s one sentence, whole').toBe(EXPORT_TARGET_IN_HARNESS_WORDS);
+    await expect(s.locator('[data-next-step]')).toHaveCount(0);
     expect(existsSync(inside), 'no file was written').toBe(false);
     expect(readTree(folder), 'the folder is as it was').toEqual(before);
     expect(treeShape(folder), 'no folder or mode changed').toEqual(shape);

@@ -26,7 +26,7 @@ import {
   notesChoiceName, readFileWords,
 } from '../words-share.js';
 import { Busy, RefusalNote, TickRow } from './engine-parts.js';
-import { Capped, Full, Name, SecretsSection, ShareSection, ShareSummaryView, totalOf, useScrolls } from './share-parts.js';
+import { Capped, Full, Name, SecretsSection, ShareSection, ShareSummaryView, firstOpenBox, totalOf, useReannounce, useScrolls } from './share-parts.js';
 import { ExportSheet } from './ExportSheet.js';
 import { chooseFolderCall, foldersCall, useCall } from './use-call.js';
 import { useHeldFocus } from './use-held-focus.js';
@@ -223,7 +223,7 @@ export function ImportSheet({ open, onClose }: ImportSheetProps): ReactElement |
   const [lastPlan, setLastPlan] = useState<(() => void) | null>(null);
   const [announce, setAnnounce] = useState('');
   const intro = useRef<HTMLParagraphElement>(null), body = useRef<HTMLDivElement>(null), writeButton = useRef<HTMLButtonElement>(null);
-  const [nudge, setNudge] = useState(0);
+  const live = useReannounce();
   const heldId = useRef<string | null>(null), openRef = useRef(false), epoch = useRef(0), engineRef = useRef<EngineBridge | null>(null), focusStep = useRef(false), refocus = useRef<{ kind: 'link' | 'leave'; name: string } | null>(null);
   const held = call.writing, planning = call.busy !== null || list.busy !== null;
   const scrolls = useScrolls(body, shown ?? done ?? bundle ?? step);
@@ -348,8 +348,8 @@ export function ImportSheet({ open, onClose }: ImportSheetProps): ReactElement |
   const write = (): void => {
     // A press on a blocked button shows why: the focus goes to the first box that is not ticked; with none, it stays on the button and the live line is said again.
     if (!writable || planning) {
-      const box = body.current?.querySelector<HTMLElement>('[data-tick] input:not(:checked)');
-      if (box !== null && box !== undefined) box.focus(); else setNudge(n => n + 1);
+      const box = firstOpenBox(body.current);
+      if (box !== null) box.focus(); else live.nudge();
       return;
     }
     if (engine === null || picked === null || bundle === null || shown === null) return;
@@ -398,7 +398,7 @@ export function ImportSheet({ open, onClose }: ImportSheetProps): ReactElement |
   return (
     <Sheet open={open} title={SHARE.label.importTitle} onClose={close} width={880} tall dataSlot="import" head={head} note={footNote} actions={actions}>
       <div className="hxe-body" role="region" ref={body} tabIndex={scrolls ? 0 : -1} aria-label={BODY_NAME[step]} aria-busy={planning}>
-        <p className="hxsh-sr" role="status" id={blockId} key={nudge}>{blockText}</p>
+        <p className="hxsh-sr" role="status" id={blockId}>{live.quiet ? '' : blockText}</p>
         <p className="hxsh-sr" role="status" data-announce="">{announce}</p>
         {step === 'file' ? (
           <>

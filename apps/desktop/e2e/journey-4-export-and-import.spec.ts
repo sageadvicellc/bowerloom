@@ -348,5 +348,5 @@ test('Journey 4 (gap, lane D): the review does not yet show a tool environment v
     try { await expect(s.locator(`[data-tool="${tool}"]`)).toContainText(text, { timeout: 1500 }); } catch { missing.push(text); }
   }
   // Today none of the five is drawn. When the sheet draws them this fails: change the expectation to an empty list.
-  expect(missing, 'the texts the review does not show yet').toEqual(wanted.map(w => w[1]));
+  expect(missing, 'the texts the review does not show yet').toEqual([]);
 });

@@ -585,6 +585,8 @@ export interface ShareTool {
    * package refuses a bundle past that, so nothing is cut.
    */
   readonly env?: readonly ShareNameValue[]; readonly headers?: readonly ShareNameValue[]; readonly path?: string | null;
+  /** The names of the fields the acknowledgement binds and the sheet does not show (`timeout`, `enabled`, `x-<engine>` and the like), from the package's `BundleTool.hiddenFields`. Absent means none. */
+  readonly hiddenFields?: readonly string[];
 }
 /** One variable of a stdio server's environment, or one header, with its value as the file holds it. */
 export interface ShareNameValue { readonly name: string; readonly value: string }
@@ -855,6 +857,8 @@ export const SHARE_MAIN_WORDS: Readonly<Record<typeof EXPORT_NO_DEFINITION | typ
   EXPORT_NEEDS_ACKNOWLEDGEMENT: 'These files hold a path from this computer. Tick that you read them, then export. Nothing was written.',
   BUNDLE_FILE_FAILED: 'The file could not be read or written. The disk may be full or read-only, the name may be too long, or you may lack permission. Nothing was read or written.',
 });
+/** The one sentence for a save place inside the harness's own folder. Main refuses with it, and the window shows it as it is (no second line follows it). */
+export const EXPORT_TARGET_IN_HARNESS_WORDS = 'That place is inside the folder .bowerloom of this harness, and a file there would break the harness. Choose a place outside it, such as your Desktop. Nothing was written.';
 /**
  * Refusals of main itself for a ready-made kit, with words: the kit that ships with Bowerloom is missing or damaged (KIT_INVALID, whose message goes on
  * with the reason), or the harness holds the kit already.

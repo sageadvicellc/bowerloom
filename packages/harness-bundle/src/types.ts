@@ -107,6 +107,11 @@ export interface BundleTool {
   readonly addressFlags?: readonly AddressFlag[];
   /** For a hook, the event it runs on. */
   readonly event?: string;
+  /**
+   * The names of the fields the hash of this entry binds and the summary does not show: `timeout`, `enabled`, `engines`, `matcher`, `strength`, and `x-<engine>` for each engine-private
+   * block. A screen says that the tool carries settings that are not listed, with these names. Absent when every bound field is shown.
+   */
+  readonly hiddenFields?: readonly string[];
   /** Lowercase hex SHA-256 of the canonical JSON of the whole entry (the server or the hook). */
   readonly sha256: string;
 }

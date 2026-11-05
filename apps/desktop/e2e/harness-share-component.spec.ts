@@ -229,14 +229,19 @@ test('Import: the file comes first; a closed dialog changes nothing; a status sa
   await expect(s.getByRole('alert')).toHaveCount(0);
   await s.getByRole('button', { name: 'Choose a file', exact: true }).click();
   await answer(p, (await waiting(p, 'chooseBundle')).id, ok(bundle));
-  await expect(s.locator('[data-file-status]')).toHaveText('Read rope-yard.bowerloom.json. 10 files, 3 tools.');
-  await expect(next).toHaveAccessibleDescription('Read rope-yard.bowerloom.json. 10 files, 3 tools.');
+  await expect(s.locator('[data-file-status]')).toHaveText('Read rope-yard.bowerloom.json. 10 files, 5 tools.');
+  await expect(next).toHaveAccessibleDescription('Read rope-yard.bowerloom.json. 10 files, 5 tools.');
   await expect(s.locator('[data-bundle-name]')).toContainText('rope-yard.bowerloom.json');
   await expect(s.locator('[data-other-person]')).toContainText('This file came from another person. Check what runs before you import.');
-  await expect(s.locator('[data-check]')).toContainText('3 tools');
+  await expect(s.locator('[data-check]')).toContainText('5 tools');
   await expect(s.locator('[data-tool="stock-db"]')).toContainText('npx');
   await expect(s.locator('[data-tool="stock-db"] [data-arg]')).toHaveCount(4);
   await expect(s.locator('[data-tool="orders-api"]')).toContainText('orders.example.test');
+  await expect(s.locator('[data-tool="yard-search"] [data-pair="NODE_OPTIONS"]')).toContainText('NODE_OPTIONS=--require ./tools/preload.js');
+  await expect(s.locator('[data-tool="yard-search"] [data-changes-start]')).toHaveCount(1);
+  await expect(s.locator('[data-tool="yard-search"] [data-pair="YARD_REGION"] [data-from-computer]')).toContainText('The value comes from this computer.');
+  await expect(s.locator('[data-tool="reports-api"] [data-pair="Authorization"]')).toContainText('Authorization: Bearer ${ORDERS_KEY}');
+  await expect(s.locator('[data-tool="reports-api"] [data-path]')).toContainText('/v2/reports?yard=north#latest');
   await expect(s.locator('[data-code-file]')).toHaveCount(3);
   await expect(s.locator('[data-secret="ORDERS_KEY"]')).toContainText('orders-api, in a header, to orders.example.test');
   await expect(s.locator('[data-section="share-secrets"]')).toContainText('The file passes these values from this computer to these tools.');
@@ -254,7 +259,7 @@ test('Import: a check block at the top jumps to each list and puts the focus on 
   const s = sheet(p, 'Import a harness');
   await s.getByRole('button', { name: 'Choose a file', exact: true }).click();
   await answer(p, (await waiting(p, 'chooseBundle')).id, ok(bundle));
-  await expect(s.getByRole('button', { name: '3 tools. Go to the list.', exact: true })).toBeVisible();
+  await expect(s.getByRole('button', { name: '5 tools. Go to the list.', exact: true })).toBeVisible();
   await s.locator('[data-jump="paths"]').click();
   await expect(s.locator('[data-section="share-paths"] h3')).toBeFocused();
   await s.locator('[data-jump="secrets"]').click();
@@ -505,7 +510,11 @@ test('Import: the review at 1440 by 900 and at 390 by 844 keeps every control in
   for (const [name, size] of [['1440x900', { width: 1440, height: 900 }], ['390x844', { width: 390, height: 844 }]] as const) {
     const p = await open(listQuery(), size);
     const s = await toReview(p);
+    await s.locator('[data-tool="yard-search"]').scrollIntoViewIfNeeded();
+    await expect(s.locator('[data-tool="reports-api"] [data-path]')).toBeVisible();
     await shot(p, `share-import-review-${name}`);
+    await s.locator('[data-tool="reports-api"] [data-path]').scrollIntoViewIfNeeded();
+    await shot(p, `share-import-review-headers-${name}`);
     const out = await s.evaluate(el => { const body = el.querySelector('.hx-sheet-body')!; const panel = el.getBoundingClientRect(); const bad = [...el.querySelectorAll('button, input')].filter(b => { const r = b.getBoundingClientRect(); return r.width > 0 && (r.right > panel.right + 1 || r.left < panel.left - 1); }); return { client: body.clientWidth, scroll: body.scrollWidth, bad: bad.length, panelRight: Math.round(panel.right), win: window.innerWidth }; });
     expect(out.scroll, name).toBeLessThanOrEqual(out.client);
     expect(out.bad, name).toBe(0);

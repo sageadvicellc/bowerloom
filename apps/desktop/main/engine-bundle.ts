@@ -25,7 +25,7 @@ import { capRiskFirst, codeRisk, secretRisk, toolRisk } from '../shared/engine/s
 import type { Scrub } from '../shared/engine/scrub.js';
 import {
   EXPORT_NEEDS_ACKNOWLEDGEMENT, IMPORT_NEEDS_ACKNOWLEDGEMENT, NOT_THE_PLAN_SHOWN, SHARE_BUNDLE_ID, SHARE_HELD_BUNDLES, SHARE_LIST_LIMIT, SHARE_MAIN_WORDS,
-  SHARE_NAME_LIMIT, SHARE_NOTES_LIMIT, SHARE_TEXT_LIMIT,
+  SHARE_NAME_LIMIT, SHARE_NOTES_LIMIT, SHARE_TEXT_LIMIT, EXPORT_TARGET_IN_HARNESS_WORDS,
 } from '../shared/engine/types.js';
 import type {
   Answer, BundleView, DefinitionView, ExportView, ExportWritten, ImportNoteRow, ImportView, SaveWritten, ShareList, ShareSummary, SourceView,
@@ -42,7 +42,7 @@ import type { SourceOf } from './engine-save.js';
 
 /** A save place inside the harness folder's own `.bowerloom`, refused by main, in main's own words (a code of main, as EXPORT_NO_DEFINITION is). */
 export const EXPORT_TARGET_IN_HARNESS = 'EXPORT_TARGET_IN_HARNESS';
-export const EXPORT_TARGET_IN_HARNESS_WORDS = 'That place is inside the folder .bowerloom of this harness, and a file there would break the harness. Choose a place outside it, such as your Desktop. Nothing was written.';
+export { EXPORT_TARGET_IN_HARNESS_WORDS };
 /** The read of a bundle file that does not end in time. */
 const READ_TIMED_OUT = 'Reading the file took longer than Bowerloom allows, so it stopped. Nothing was read or written. Check that the disk or the network folder answers, then try again.';
 
@@ -68,6 +68,7 @@ export function shareSummary(s: BundleSummary, scrub: Scrub): ShareSummary {
       ...(x.env === undefined ? {} : { env: x.env.map(v => ({ name: scrub(v.name), value: scrub(v.value) })) }),
       ...(x.headers === undefined ? {} : { headers: x.headers.map(v => ({ name: scrub(v.name), value: scrub(v.value) })) }),
       ...(x.path === undefined ? {} : { path: scrub(x.path) }),
+      ...(x.hiddenFields === undefined || x.hiddenFields.length === 0 ? {} : { hiddenFields: x.hiddenFields.map(n => scrub(n)) }),
     })), toolRisk),
     codeFiles: capRiskFirst(s.codeFiles.map(x => ({ path: t(x.path), why: x.why })), codeRisk),
     secrets: capRiskFirst(s.secrets.map(x => ({ kind: x.kind, name: t(x.name), sinks: x.sinks.map(k => ({ tool: t(k.tool), field: k.field, host: k.host === undefined ? null : scrub(k.host) })) })), secretRisk),

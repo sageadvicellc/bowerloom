@@ -38,7 +38,7 @@ const css = readFileSync(join(DESKTOP, 'renderer', 'harness', 'sheets', 'share.c
 
 test('the summary is one line of counts, then a check block, then the lists in the order a person must read them: tools, values, files that can run, paths', async () => {
   const out = html(createElement(ShareSummaryView, { summary: await summaryOf(), side: 'import' }));
-  assert.match(out, /data-summary-line="">[\s\S]*2 skills, 1 agent, 2 tools, 1 hook, 1 guardrail, 2 scripts, 10 files, 4\.8 KB/);
+  assert.match(out, /data-summary-line="">[\s\S]*2 skills, 1 agent, 4 tools, 1 hook, 1 guardrail, 2 scripts, 10 files, 4\.8 KB/);
   assert.doesNotMatch(out, /<dl|data-count=/, 'no grid of counts');
   const at = (needle: string): number => { const i = out.indexOf(needle); assert.ok(i >= 0, needle); return i; };
   assert.ok(at('data-check=""') < at('data-section="share-tools"'));
@@ -47,8 +47,8 @@ test('the summary is one line of counts, then a check block, then the lists in t
   assert.ok(at('data-section="share-code"') < at('data-section="share-paths"'));
   assert.ok(out.includes('Check before you go on'));
   for (const jump of ['tools', 'secrets', 'code', 'paths']) assert.match(out, new RegExp(`data-jump="${jump}"`));
-  assert.ok(out.includes('3 tools') && out.includes('2 values go to tools') && out.includes('3 files can run') && out.includes('1 path from another computer'));
-  for (const name of ['3 tools. Go to the list.', '2 values go to tools. Go to the list.', '3 files can run. Go to the list.', '1 path from another computer. Go to the list.']) assert.ok(out.includes(`aria-label="${name}"`), name);
+  assert.ok(out.includes('5 tools') && out.includes('2 values go to tools') && out.includes('3 files can run') && out.includes('1 path from another computer'));
+  for (const name of ['5 tools. Go to the list.', '2 values go to tools. Go to the list.', '3 files can run. Go to the list.', '1 path from another computer. Go to the list.']) assert.ok(out.includes(`aria-label="${name}"`), name);
   assert.ok(out.includes('This list is a guide. Read each command.'));
   assert.match(out, /<h3 class="hxe-head" id="[^"]+-h" tabindex="-1"><span>Values it reads<\/span>/, 'a heading a jump can focus');
   assert.ok(out.includes('The file passes these values from this computer to these tools.') && out.includes('They go to the tools and hosts shown.') && out.includes('Bowerloom did not check that these exist.'));
@@ -64,7 +64,7 @@ test('a tool says what it does in words: where it starts a program, what it down
   assert.doesNotMatch(out, />Server<|>Hook</);
   assert.ok(out.includes('This downloads code at start.'), 'npx fetches code');
   assert.equal([...out.matchAll(/This downloads code at start/g)].length, 1, 'only the npx server');
-  assert.equal([...out.matchAll(/Starts a program</g)].length, 2, 'two tools start a program');
+  assert.equal([...out.matchAll(/Starts a program</g)].length, 3, 'three tools start a program');
   assert.ok(out.includes('Runs after each tool use.') && out.includes('Event: <span class="hxsh-full hxe-mono"'), 'the raw event stays, in mono');
   assert.match(out, /Reaches: <span[^>]*>orders\.example\.test/);
   assert.ok(out.includes('orders-api, in a header, to orders.example.test'));
@@ -101,8 +101,8 @@ test('a secret name under a tick is never cut, and a shell command line is flagg
   assert.match(out, /data-shell=""/);
   const admin = html(createElement(ShareSummaryView, { summary: { ...blank, tools: { rows: [tool({ command: 'sudo', args: ['npx', 'x'] })], more: 0 } }, side: 'import' }));
   assert.match(admin, /data-admin=""/);
-  assert.ok(admin.includes('This starts with admin rights.') && admin.includes('This downloads code at start.'));
-  assert.ok(out.includes('This runs a command line. Read it in full.'));
+  assert.ok(admin.includes('This runs with admin rights.') && admin.includes('This downloads code at start.'));
+  assert.ok(out.includes('This runs text as code.'));
 });
 
 test('only a name is cut, and a button says whether it is open; a short name has no button', () => {
@@ -311,4 +311,32 @@ test('the sheets\' fixed words are within the text budget', async () => {
     // The names of the files Bowerloom writes (mcp.json) are the person's own files, as on the save sheet, so they are taken out before the words are read.
     for (const piece of extractText(markup)) assert.equal(bannedHere(own.reduce((t, c) => t.split(c).join(' '), piece.text)), null, `${name}: ${piece.text}`);
   }
+});
+
+test('a tool shows its env, headers and address path whole; names that start code are flagged and references say they come from this computer', () => {
+  const out = html(createElement(ShareSummaryView, {
+    summary: { ...blank, tools: { rows: [
+      tool({ name: 'a', env: [{ name: 'NODE_OPTIONS', value: '--require ./p.js' }, { name: 'REGION', value: '${REGION}' }, { name: 'PLAIN', value: 'north' }] }),
+      tool({ name: 'b', transport: 'http', runsCode: false, command: null, host: 'h.example.test', headers: [{ name: 'Authorization', value: 'Bearer ${K}' }], path: '/v2/x?y=1#z' }),
+      tool({ name: 'd', hiddenFields: ['timeout', 'x-codex'] }),
+      tool({ name: 'c', kind: 'hook', transport: null, command: 'sudo npx x', event: 'PostToolUse' }),
+    ], more: 0 } }, side: 'import',
+  }));
+  assert.match(out, /data-pair="NODE_OPTIONS"[\s\S]*?--require \.\/p\.js/);
+  assert.equal(out.split('data-changes-start=""').length - 1, 1, 'only NODE_OPTIONS starts code');
+  assert.ok(out.includes('This makes the program load extra code.'));
+  assert.equal(out.split('data-from-computer=""').length - 1, 2, 'a reference in env and one in a header');
+  assert.match(out, /data-pairs="headers"[\s\S]*Authorization[\s\S]*Bearer \$\{K\}/);
+  assert.match(out, /data-path=""[\s\S]*\/v2\/x\?y=1#z/);
+  assert.match(out, /data-tool="c"[\s\S]*data-admin=""/, 'a hook line is split before the admin check');
+  assert.doesNotMatch(out, /data-pair="PLAIN"[^]*?data-changes-start[^]*?data-pair="REGION"/);
+});
+
+test('a tool that carries fields the sheet does not list says so, with the names; a tool with none says nothing', () => {
+  const out = html(createElement(ShareSummaryView, { summary: { ...blank, tools: { rows: [tool({ name: 'a', hiddenFields: ['timeout', 'x-codex'] }), tool({ name: 'b' })], more: 0 } }, side: 'import' }));
+  assert.equal(out.split('data-hidden-fields=""').length - 1, 1);
+  assert.match(out, /data-tool="a"[\s\S]*Carries engine settings that are not listed here:[\s\S]*timeout, x-codex/);
+  const env = html(createElement(ShareSummaryView, { summary: { ...blank, tools: { rows: [tool({ env: [{ name: 'HTTPS_PROXY', value: 'http://p.example.test' }] })], more: 0 } }, side: 'import' }));
+  assert.ok(env.includes("This sends the program&#x27;s traffic through another host."));
+  assert.doesNotMatch(env, /hxsh-name-wrap[^>]*><span[^>]*>HTTPS_PROXY/, 'a variable name is shown whole, never cut');
 });

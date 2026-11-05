@@ -6,13 +6,13 @@
  * What a person must read under a tick is never cut: a command, each argument, a host, a path and a sink show in full, wrapped, one per line. Only a name is cut, to two
  * lines, with a "Show all" button that says whether it is open. Main passed every string through `visible()` before it got here, and the text is drawn as plain text.
  */
-import { useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { ReactElement, ReactNode, RefObject } from 'react';
 import { SHARE_LIST_LIMIT } from '../../../shared/engine/types.js';
-import type { ShareList, ShareSecret, ShareSummary, ShareTool } from '../../../shared/engine/types.js';
+import type { ShareList, ShareNameValue, ShareSecret, ShareSummary, ShareTool } from '../../../shared/engine/types.js';
 import { HButton, StateDot } from '../parts/controls.js';
 import {
-  CODE_WHY_WORDS, FLAG_WORDS, SHARE, downloadsCode, eventWords, hiddenCounts, hiddenWords, jumpName, moreWords, runsAsAdmin, runsShellLine, secretKindWords, sinkWords, summaryLine, transportWords,
+  CODE_WHY_WORDS, FLAG_WORDS, SHARE, checkParts, downloadsCode, envNameWords, fromThisComputer, eventWords, hiddenCounts, hiddenWords, jumpName, moreWords, runsAsAdmin, runsShellLine, secretKindWords, sinkWords, summaryLine, transportWords,
 } from '../words-share.js';
 import './engine.css';
 import './share.css';
@@ -80,9 +80,49 @@ export function useScrolls(scroller: RefObject<HTMLElement | null>, dep: unknown
   return scrolls;
 }
 
+/** The name-and-value rows of a tool (its environment or its headers): the name, the sign, and the value whole. Only the name can be cut, with "Show all". */
+function NameValueRows({ rows, label, sign, slot, startsCode = false }: { rows: readonly ShareNameValue[]; label: string; sign: string; slot: string; startsCode?: boolean }): ReactElement | null {
+  if (rows.length === 0) return null;
+  return (
+    <div className="hxsh-pairs" data-pairs={slot}>
+      <span className="hxe-muted">{label}</span>
+      <ul className="hxsh-args" aria-label={label}>
+        {rows.map((row, i) => (
+          <li key={`${row.name}:${i}`} data-pair={row.name} data-pair-index={i}>
+            <span className="hxsh-pair"><Full mono>{row.name}</Full><span className="hxe-mono">{sign}</span><Full mono>{row.value}</Full></span>
+            {startsCode && envNameWords(row.name) !== null ? <span className="hxsh-line" data-changes-start=""><StateDot tone="bad">{envNameWords(row.name)}</StateDot></span> : null}
+            {fromThisComputer(row.value) ? <span className="hxsh-line hxe-muted" data-from-computer="">{SHARE.hint.fromThisComputer}</span> : null}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * Says the live line again. `quiet` is true for one frame after `nudge()`: the line is empty, then it is set again on the next frame, so a screen reader hears it once more.
+ * The element stays mounted.
+ */
+export function useReannounce(): { quiet: boolean; nudge(): void } {
+  const [quiet, setQuiet] = useState(false), frame = useRef(0);
+  useEffect(() => () => cancelAnimationFrame(frame.current), []);
+  const nudge = useCallback((): void => {
+    setQuiet(true);
+    cancelAnimationFrame(frame.current);
+    frame.current = requestAnimationFrame(() => setQuiet(false));
+  }, []);
+  return { quiet, nudge };
+}
+
+/** The first box that is ticked off and can take the focus, or null. A press on a blocked button goes there. */
+export function firstOpenBox(root: HTMLElement | null): HTMLElement | null {
+  return root?.querySelector<HTMLElement>('[data-tick] input:not(:checked):not(:disabled)') ?? null;
+}
+
 function ToolRow({ tool }: { tool: ShareTool }): ReactElement {
+  const parts = checkParts(tool);
   const words = tool.kind === 'hook' ? (tool.event === null ? null : eventWords(tool.event)) : transportWords(tool.transport);
-  const downloads = tool.kind !== 'hook' && downloadsCode(tool.command, tool.args), shell = runsShellLine(tool.command, tool.args), admin = runsAsAdmin(tool.command, tool.args);
+  const downloads = parts.some(p => downloadsCode(p.command, p.args)), shell = parts.some(p => runsShellLine(p.command, p.args)), admin = parts.some(p => runsAsAdmin(p.command, p.args));
   // A program that is started says so once, in the badge; the transport line is for a tool that reaches an address.
   const startsProgram = tool.kind !== 'hook' && tool.runsCode;
   return (
@@ -102,8 +142,12 @@ function ToolRow({ tool }: { tool: ShareTool }): ReactElement {
           {tool.args.map((arg, i) => <li key={i} data-arg={i}><Full mono>{arg}</Full></li>)}
         </ol>
       )}
+      {tool.env === undefined ? null : <NameValueRows rows={tool.env} label={SHARE.label.environment} sign="=" slot="env" startsCode />}
+      {tool.headers === undefined ? null : <NameValueRows rows={tool.headers} label={SHARE.label.headers} sign=": " slot="headers" />}
+      {tool.path === undefined || tool.path === null ? null : <span className="hxsh-line" data-path=""><span className="hxe-muted">{SHARE.label.addressPath}</span> <Full mono>{tool.path}</Full></span>}
       {tool.event === null ? null : <span className="hxsh-line hxe-muted" data-event="">{SHARE.label.event}: <Full mono>{tool.event}</Full></span>}
       {tool.host === null ? null : <span className="hxsh-line" data-host="">{SHARE.label.reaches}: <Full mono>{tool.host}</Full></span>}
+      {tool.hiddenFields === undefined || tool.hiddenFields.length === 0 ? null : <span className="hxsh-line" data-hidden-fields=""><StateDot tone="warn">{SHARE.hint.hiddenFields}</StateDot> <Full mono>{tool.hiddenFields.join(', ')}</Full></span>}
       {tool.flags.map(flag => <span key={flag} className="hxsh-line" data-flag={flag}><StateDot tone="bad">{FLAG_WORDS[flag]}</StateDot></span>)}
     </li>
   );

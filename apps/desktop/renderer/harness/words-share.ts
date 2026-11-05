@@ -4,7 +4,10 @@
  * file (a name, a command, a host, a path) are shown as main passed them, and are never part of this table. tests/share-words.test.ts holds the table to the limits.
  */
 import type { ShareCodeFile, ShareSecret, ShareSink, ShareSummary, ShareTool } from '../../shared/engine/types.js';
-import { SHARE_LIST_LIMIT } from '../../shared/engine/types.js';
+import { EXPORT_TARGET_IN_HARNESS_WORDS, SHARE_LIST_LIMIT } from '../../shared/engine/types.js';
+
+/** The refusal for a save place inside the harness: main's own sentence, shown alone. */
+export { EXPORT_TARGET_IN_HARNESS_WORDS };
 
 const deepFreeze = <T extends object>(value: T): T => {
   for (const inner of Object.values(value)) if (typeof inner === 'object' && inner !== null) deepFreeze(inner);
@@ -21,6 +24,7 @@ export const SHARE = deepFreeze({
     checkHead: 'Check before you go on',
     toolsHead: 'Tools it uses', codeHead: 'Files that can run', secretsHead: 'Values it reads', notesHead: 'Notes folders', borrowedHead: 'Borrowed items',
     pathsOther: 'Paths from another computer', pathsHere: 'Paths from this computer', writesHead: 'Files it writes', notesChoice: 'Notes folders to link',
+    environment: 'Environment', headers: 'Headers', addressPath: 'Address path',
     server: 'Tool server', hook: 'Hook, runs on its own', variable: 'Variable', keychain: 'Keychain entry', runsCode: 'Starts a program', reaches: 'Reaches', event: 'Event', command: 'Command', arguments: 'Arguments',
     link: 'Link a folder', change: 'Change folder', leave: 'Leave out', leaveAll: 'Leave all out', linkedTo: 'Linked to', readBy: 'Read by', line: 'Line', usedBy: 'Used by',
     showAll: 'Show all', showLess: 'Show less', showAllFiles: 'Show all files', showFewer: 'Show fewer files',
@@ -59,8 +63,8 @@ export const SHARE = deepFreeze({
     tickFirst: 'I read the lists shown. More are not shown.',
     blockNone: 'Ready. Press the button to go on.',
     blockBoth: 'Tick both boxes to import.', blockRead: 'Tick the first box to import.', blockWrite: 'Tick the second box to import.', blockPlanning: 'Planning. Then tick again.',
-    blockExport: 'Tick the box to export.', blockOne: 'Tick the box to import.', planFailed: 'The plan could not be made. Plan again.', sudoLine: 'This starts with admin rights.', blockNoop: 'The folder already matches. Nothing to import.',
-    shellLine: 'This runs a command line. Read it in full.', toolsNote: 'This list is a guide. Read each command.',
+    blockExport: 'Tick the box to export.', blockOne: 'Tick the box to import.', planFailed: 'The plan could not be made. Plan again.', sudoLine: 'This runs with admin rights.', blockNoop: 'The folder already matches. Nothing to import.',
+    shellLine: 'This runs text as code.', changesStart: 'This makes the program load extra code.', proxyTraffic: "This sends the program's traffic through another host.", hiddenFields: 'Carries engine settings that are not listed here:', fromThisComputer: 'The value comes from this computer.', toolsNote: 'This list is a guide. Read each command.',
   },
   paragraph: {
     exportIntro: 'Export writes the saved harness to one file. You choose where it goes.',
@@ -102,7 +106,6 @@ export const SHARE_REFUSAL_WORDS: Readonly<Record<string, string>> = Object.free
   IMPORT_NEEDS_ACKNOWLEDGEMENT: 'Tick that you read them, then import.',
   EXPORT_NEEDS_ACKNOWLEDGEMENT: 'Tick that you read them, then export.',
   EXPORT_NO_DEFINITION: 'Make a harness first with New harness from a folder.',
-  EXPORT_TARGET_IN_HARNESS: 'Choose the place to save again, outside the harness folder.',
   FAILED: 'Try again. If it fails again, report a problem.',
   SAVE_NO_DEFINITION: 'Choose the folder again, then plan the import again.',
   SAVE_STALE: 'The folder changed since. Plan the import again.',
@@ -150,30 +153,59 @@ const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish']);
 const baseName = (command: string): string => (command.split(/[\\/]/).pop() ?? command).replace(/\.(?:cmd|exe|bat|com)$/i, '').toLowerCase();
 /** Options of `env` and `sudo` that take a value in the next word. */
 const TAKES_VALUE = new Set(['-u', '--unset', '-C', '--chdir', '-P', '--default-path', '-g', '--group', '-h', '--host', '-p', '--prompt', '-r', '--role', '-t', '--type', '-D', '--chdir']);
+/** The letters of a short option that take a value, by wrapper: `env -iu A` takes `A`, `env -iSx` splits `x`. */
+const CLUSTER_VALUE: Readonly<Record<string, string>> = Object.freeze({ env: 'uCPS', sudo: 'ughprtCD', doas: 'ucC' });
+/** The most wrappers followed. A line nested deeper is flagged, not passed. */
+const WRAPPER_GUARD = 64;
 /**
- * The program a command line really starts. `env` and `sudo` are skipped with their options (the value of `-u`, `-C`, `-P` and the like is not the program), the words of `env -S`
- * are split, and a VAR=value word is skipped. A word that is not text is ignored, so one bad row cannot stop the review from drawing.
+ * The program a command line really starts. `env` and `sudo` are skipped with their options (the value of `-u`, `-C`, `-P` and the like is not the program, also inside a
+ * cluster such as `-iu A`), the words of `env -S` and `--split-string=` are split, and a VAR=value word is skipped. A word that is not text is ignored, so one bad row cannot
+ * stop the review from drawing. `exhausted` is true when the wrappers went deeper than the guard: the callers treat that as flagged.
  */
-function realCommand(command: string, args: readonly unknown[]): { command: string; args: readonly string[]; wrappers: readonly string[] } {
+function realCommand(command: string, args: readonly unknown[]): { command: string; args: readonly string[]; wrappers: readonly string[]; exhausted: boolean } {
   let c = baseName(command), rest: string[] = args.filter((a): a is string => typeof a === 'string');
-  const wrappers: string[] = [];
-  for (let guard = 0; guard < 64 && (c === 'env' || c === 'sudo' || c === 'doas'); guard += 1) {
+  const wrappers: string[] = [], isWrapper = (name: string): boolean => name === 'env' || name === 'sudo' || name === 'doas';
+  const split = (text: string): string[] => text.split(/\s+/).filter(x => x !== '');
+  for (let guard = 0; guard < WRAPPER_GUARD && isWrapper(c); guard += 1) {
     let at = 0;
     while (at < rest.length) {
       const a = rest[at]!;
-      if (c === 'env' && (a === '-S' || a === '--split-string')) { rest = [...(rest[at + 1] ?? '').split(/\s+/).filter(x => x !== ''), ...rest.slice(at + 2)]; at = 0; continue; }
-      if (c === 'env' && a.startsWith('-S') && a.length > 2) { rest = [...a.slice(2).split(/\s+/).filter(x => x !== ''), ...rest.slice(at + 1)]; at = 0; continue; }
+      if (c === 'env' && (a === '-S' || a === '--split-string')) { rest = [...split(rest[at + 1] ?? ''), ...rest.slice(at + 2)]; at = 0; continue; }
+      if (c === 'env' && a.startsWith('--split-string=')) { rest = [...split(a.slice('--split-string='.length)), ...rest.slice(at + 1)]; at = 0; continue; }
+      if (c === 'env' && a.startsWith('-S') && a.length > 2) { rest = [...split(a.slice(2)), ...rest.slice(at + 1)]; at = 0; continue; }
       if (a === '--') { at += 1; break; }
-      if (a.startsWith('-')) { at += TAKES_VALUE.has(a) ? 2 : 1; continue; }
+      if (a.startsWith('-')) {
+        const cluster = /^-[A-Za-z]{2,}$/.test(a) ? [...a.slice(1)].findIndex(ch => (CLUSTER_VALUE[c] ?? '').includes(ch)) : -1;
+        if (cluster >= 0) {
+          const letter = a[cluster + 1]!;
+          // `-iSx y`: the rest of the cluster is the split string. `-iu A`: the next word is the value.
+          if (c === 'env' && letter === 'S' && cluster + 2 < a.length) { rest = [...split(a.slice(cluster + 2)), ...rest.slice(at + 1)]; at = 0; continue; }
+          if (c === 'env' && letter === 'S') { rest = [...split(rest[at + 1] ?? ''), ...rest.slice(at + 2)]; at = 0; continue; }
+          at += cluster + 2 === a.length ? 2 : 1; continue;
+        }
+        at += TAKES_VALUE.has(a) ? 2 : 1; continue;
+      }
       if (c === 'env' && a.includes('=')) { at += 1; continue; }
       break;
     }
     wrappers.push(c);
     const next = rest[at];
-    if (next === undefined) return { command: c, args: [], wrappers };
+    if (next === undefined) return { command: c, args: [], wrappers, exhausted: false };
     c = baseName(next); rest = rest.slice(at + 1);
   }
-  return { command: c, args: rest, wrappers };
+  return { command: c, args: rest, wrappers, exhausted: isWrapper(c) };
+}
+/**
+ * The command lines a tool's checks read, each as a program and its words. A hook holds a whole command line in `command`, so it is split on `;`, `&&`, `||` and `|` into
+ * simple commands, and each on white space; a server has the program in `command` and the words in `args`. A value that is not text gives no line, so one bad row cannot
+ * stop the review from drawing.
+ */
+export function checkParts(tool: Pick<ShareTool, 'kind' | 'command' | 'args'>): { command: string | null; args: readonly string[] }[] {
+  const args = Array.isArray(tool.args) ? tool.args.filter((a): a is string => typeof a === 'string') : [];
+  if (typeof tool.command !== 'string') return [{ command: null, args }];
+  if (tool.kind !== 'hook') return [{ command: tool.command, args }];
+  const lines = tool.command.split(/&&|\|\||;|\|/).map(line => line.split(/\s+/).filter(x => x !== '')).filter(words => words.length > 0);
+  return lines.length === 0 ? [{ command: tool.command, args }] : lines.map((words, i) => ({ command: words[0]!, args: i === lines.length - 1 ? [...words.slice(1), ...args] : words.slice(1) }));
 }
 /**
  * True when the command fetches code before it runs: npx, uvx, pipx, bunx, `npm exec`, `pnpm dlx`, `yarn dlx`, `bun x`, `deno run`, `uv run`, `docker run`, also behind `env` or
@@ -182,23 +214,26 @@ function realCommand(command: string, args: readonly unknown[]): { command: stri
 export const downloadsCode = (command: string | null, args: readonly unknown[]): boolean => {
   if (typeof command !== 'string') return false;
   const r = realCommand(command, args), first = r.args[0];
+  if (r.exhausted) return true;
   if (DOWNLOADERS.has(r.command)) return true;
   return (r.command === 'docker' && first === 'run') || (r.command === 'npm' && first === 'exec') || ((r.command === 'pnpm' || r.command === 'yarn') && first === 'dlx')
     || (r.command === 'bun' && first === 'x') || (r.command === 'deno' && first === 'run') || (r.command === 'uv' && first === 'run');
 };
 /** The flags that hand an interpreter a piece of code or a command line to run. */
 const INLINE: Readonly<Record<string, RegExp>> = Object.freeze({
-  node: /^(?:-e|--eval|-p|--print)$/, ruby: /^-e$/, perl: /^-e$/, php: /^-r$/, cmd: /^\/[ck]$/i, powershell: /^-(?:c|command|e|ec|enc|encodedcommand)$/i, pwsh: /^-(?:c|command|e|ec|enc|encodedcommand)$/i,
+  node: /^(?:-e|--eval\b(?:=.*)?|-p|--print(?:=.*)?)$/, ruby: /^-e$/, perl: /^-e$/, php: /^-r$/, cmd: /^\/[ck]$/i, powershell: /^-(?:c|command|e|ec|enc|encodedcommand)$/i, pwsh: /^-(?:c|command|e|ec|enc|encodedcommand)$/i,
 });
 /**
- * True when the command hands a shell or an interpreter a command line or code to run (`sh -c`, `bash -lc`, `node -e`, `python -c`, `cmd /c`, `powershell -Command`), text the
+ * True when the command hands a shell or an interpreter a command line or code to run (`sh -c`, `bash -lc`, `node -e`, `node --eval=`, `python -c`, `python -m`, `deno eval`, `cmd /c`, `powershell -Command`), text the
  * person must read in full.
  */
 export const runsShellLine = (command: string | null, args: readonly unknown[]): boolean => {
   if (typeof command !== 'string') return false;
   const r = realCommand(command, args), name = /^python[0-9.]*$/.test(r.command) ? 'python' : r.command;
+  if (r.exhausted) return true;
   if (SHELLS.has(name)) return r.args.some(a => /^-[a-z]*c[a-z]*$/.test(a));
-  if (name === 'python') return r.args.some(a => /^-[a-z]*c$/.test(a));
+  if (name === 'python') return r.args.some(a => /^-[A-Za-z]*[cm]$/.test(a));
+  if (name === 'deno') return /^eval$/.test(r.args[0] ?? '');
   const re = Object.hasOwn(INLINE, name) ? INLINE[name] : undefined;
   return re !== undefined && r.args.some(a => re.test(a));
 };
@@ -206,8 +241,25 @@ export const runsShellLine = (command: string | null, args: readonly unknown[]):
 export const runsAsAdmin = (command: string | null, args: readonly unknown[]): boolean => {
   if (typeof command !== 'string') return false;
   const r = realCommand(command, args);
+  if (r.exhausted) return true;
   return r.wrappers.includes('sudo') || r.wrappers.includes('doas');
 };
+/** The names of variables that make a program run extra code when it starts. */
+export const CODE_ENV_NAMES: ReadonlySet<string> = new Set([
+  'NODE_OPTIONS', 'LD_PRELOAD', 'DYLD_INSERT_LIBRARIES', 'DYLD_LIBRARY_PATH', 'LD_LIBRARY_PATH', 'PATH', 'BASH_ENV', 'ENV', 'PYTHONSTARTUP', 'PYTHONPATH', 'JAVA_TOOL_OPTIONS', '_JAVA_OPTIONS', 'PERL5OPT', 'RUBYOPT',
+  'NODE_PATH', 'NODE_EXTRA_CA_CERTS', 'PYTHONHOME', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'SSL_CERT_FILE', 'GIT_SSH_COMMAND', 'PROMPT_COMMAND', 'LD_AUDIT', 'DYLD_FRAMEWORK_PATH',
+]);
+/** The names that send the program's traffic through another host. */
+export const PROXY_ENV_NAMES: ReadonlySet<string> = new Set(['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY']);
+/** The line under a variable that changes how a program starts or where its traffic goes. */
+export const envNameWords = (name: string): string | null => (PROXY_ENV_NAMES.has(name.toUpperCase()) ? SHARE.hint.proxyTraffic : changesStart(name) ? SHARE.hint.changesStart : null);
+/** True when a variable name changes how a program starts. Windows names ignore case, so the check does too. */
+export const changesStart = (name: string): boolean => CODE_ENV_NAMES.has(name.toUpperCase());
+/** True when a value is read from this computer: a `${NAME}` reference or a keychain reference. */
+export function fromThisComputer(value: string): boolean {
+  const at = value.indexOf('${');
+  return (at >= 0 && value.indexOf('}', at + 2) >= 0) || /^\s*\{\s*"keychain"\s*:/.test(value);
+}
 /** Where a reference goes: the tool, the field of it, and the host. A program with no host can send the value anywhere. */
 export function sinkWords(sink: ShareSink): string {
   if (sink.host !== null) return `${sink.tool}, in ${FIELD_WORDS[sink.field]}, to ${sink.host}`;
@@ -242,7 +294,7 @@ export function importTickWords(summary: ShareSummary): string {
   const paths = summary.foreignPaths.rows.length > 0 || h.foreignPaths > 0;
   if (cut.length === 1) {
     const key = cut[0]!, name = LIST_NAMES[key];
-    return paths && key !== 'foreignPaths' ? `I read ${SHARE_LIST_LIMIT} ${name} and the paths. ${h[key]} ${name} are not shown.` : `I read ${SHARE_LIST_LIMIT} ${name} and the rest shown. ${h[key]} are not shown.`;
+    return paths && key !== 'foreignPaths' ? `I read ${SHARE_LIST_LIMIT} ${name} and the paths. ${h[key]} ${name} are not shown.` : `I read the ${SHARE_LIST_LIMIT} ${name} shown. ${h[key]} are not shown.`;
   }
   if (cut.length > 1) return SHARE.hint.tickFirst;
   return paths ? SHARE.hint.tickReadPaths : SHARE.hint.tickRead;
