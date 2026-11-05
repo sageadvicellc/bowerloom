@@ -12,7 +12,7 @@ import { SHARE_LIST_LIMIT } from '../../../shared/engine/types.js';
 import type { ShareList, ShareNameValue, ShareSecret, ShareSummary, ShareTool } from '../../../shared/engine/types.js';
 import { HButton, StateDot } from '../parts/controls.js';
 import {
-  CODE_WHY_WORDS, FLAG_WORDS, SHARE, changesStart, checkParts, downloadsCode, fromThisComputer, eventWords, hiddenCounts, hiddenWords, jumpName, moreWords, runsAsAdmin, runsShellLine, secretKindWords, sinkWords, summaryLine, transportWords,
+  CODE_WHY_WORDS, FLAG_WORDS, SHARE, checkParts, downloadsCode, envNameWords, fromThisComputer, eventWords, hiddenCounts, hiddenWords, jumpName, moreWords, runsAsAdmin, runsShellLine, secretKindWords, sinkWords, summaryLine, transportWords,
 } from '../words-share.js';
 import './engine.css';
 import './share.css';
@@ -89,8 +89,8 @@ function NameValueRows({ rows, label, sign, slot, startsCode = false }: { rows: 
       <ul className="hxsh-args" aria-label={label}>
         {rows.map((row, i) => (
           <li key={`${row.name}:${i}`} data-pair={row.name} data-pair-index={i}>
-            <span className="hxsh-pair"><Name mono>{row.name}</Name><span className="hxe-mono">{sign}</span><Full mono>{row.value}</Full></span>
-            {startsCode && changesStart(row.name) ? <span className="hxsh-line" data-changes-start=""><StateDot tone="bad">{SHARE.hint.changesStart}</StateDot></span> : null}
+            <span className="hxsh-pair"><Full mono>{row.name}</Full><span className="hxe-mono">{sign}</span><Full mono>{row.value}</Full></span>
+            {startsCode && envNameWords(row.name) !== null ? <span className="hxsh-line" data-changes-start=""><StateDot tone="bad">{envNameWords(row.name)}</StateDot></span> : null}
             {fromThisComputer(row.value) ? <span className="hxsh-line hxe-muted" data-from-computer="">{SHARE.hint.fromThisComputer}</span> : null}
           </li>
         ))}
@@ -122,7 +122,7 @@ export function firstOpenBox(root: HTMLElement | null): HTMLElement | null {
 function ToolRow({ tool }: { tool: ShareTool }): ReactElement {
   const parts = checkParts(tool);
   const words = tool.kind === 'hook' ? (tool.event === null ? null : eventWords(tool.event)) : transportWords(tool.transport);
-  const downloads = downloadsCode(parts.command, parts.args), shell = runsShellLine(parts.command, parts.args), admin = runsAsAdmin(parts.command, parts.args);
+  const downloads = parts.some(p => downloadsCode(p.command, p.args)), shell = parts.some(p => runsShellLine(p.command, p.args)), admin = parts.some(p => runsAsAdmin(p.command, p.args));
   // A program that is started says so once, in the badge; the transport line is for a tool that reaches an address.
   const startsProgram = tool.kind !== 'hook' && tool.runsCode;
   return (
@@ -147,6 +147,7 @@ function ToolRow({ tool }: { tool: ShareTool }): ReactElement {
       {tool.path === undefined || tool.path === null ? null : <span className="hxsh-line" data-path=""><span className="hxe-muted">{SHARE.label.addressPath}</span> <Full mono>{tool.path}</Full></span>}
       {tool.event === null ? null : <span className="hxsh-line hxe-muted" data-event="">{SHARE.label.event}: <Full mono>{tool.event}</Full></span>}
       {tool.host === null ? null : <span className="hxsh-line" data-host="">{SHARE.label.reaches}: <Full mono>{tool.host}</Full></span>}
+      {tool.hiddenFields === undefined || tool.hiddenFields.length === 0 ? null : <span className="hxsh-line" data-hidden-fields=""><StateDot tone="warn">{SHARE.hint.hiddenFields}</StateDot> <Full mono>{tool.hiddenFields.join(', ')}</Full></span>}
       {tool.flags.map(flag => <span key={flag} className="hxsh-line" data-flag={flag}><StateDot tone="bad">{FLAG_WORDS[flag]}</StateDot></span>)}
     </li>
   );

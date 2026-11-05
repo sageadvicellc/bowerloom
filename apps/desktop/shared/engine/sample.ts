@@ -452,7 +452,7 @@ const BUNDLE_SUMMARY: ShareSummary = Object.freeze({
     },
     {
       name: 'reports-api', kind: 'mcp' as const, transport: 'http', runsCode: false, command: null, args: [], host: 'reports.example.test', event: null, flags: [],
-      headers: [{ name: 'Authorization', value: 'Bearer ${ORDERS_KEY}' }, { name: 'X-Yard', value: 'north' }], path: '/v2/reports?yard=north#latest',
+      headers: [{ name: 'Authorization', value: 'Bearer ${ORDERS_KEY}' }, { name: 'X-Yard', value: 'north' }], path: '/v2/reports?yard=north#latest', hiddenFields: ['timeout', 'x-claude-code'],
     },
   ], toolRisk),
   codeFiles: capRiskFirst<ShareCodeFile>([

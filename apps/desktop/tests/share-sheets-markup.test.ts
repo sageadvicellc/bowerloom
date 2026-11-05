@@ -318,15 +318,25 @@ test('a tool shows its env, headers and address path whole; names that start cod
     summary: { ...blank, tools: { rows: [
       tool({ name: 'a', env: [{ name: 'NODE_OPTIONS', value: '--require ./p.js' }, { name: 'REGION', value: '${REGION}' }, { name: 'PLAIN', value: 'north' }] }),
       tool({ name: 'b', transport: 'http', runsCode: false, command: null, host: 'h.example.test', headers: [{ name: 'Authorization', value: 'Bearer ${K}' }], path: '/v2/x?y=1#z' }),
+      tool({ name: 'd', hiddenFields: ['timeout', 'x-codex'] }),
       tool({ name: 'c', kind: 'hook', transport: null, command: 'sudo npx x', event: 'PostToolUse' }),
     ], more: 0 } }, side: 'import',
   }));
   assert.match(out, /data-pair="NODE_OPTIONS"[\s\S]*?--require \.\/p\.js/);
   assert.equal(out.split('data-changes-start=""').length - 1, 1, 'only NODE_OPTIONS starts code');
-  assert.ok(out.includes('This changes how the program starts.'));
+  assert.ok(out.includes('This makes the program load extra code.'));
   assert.equal(out.split('data-from-computer=""').length - 1, 2, 'a reference in env and one in a header');
   assert.match(out, /data-pairs="headers"[\s\S]*Authorization[\s\S]*Bearer \$\{K\}/);
   assert.match(out, /data-path=""[\s\S]*\/v2\/x\?y=1#z/);
   assert.match(out, /data-tool="c"[\s\S]*data-admin=""/, 'a hook line is split before the admin check');
   assert.doesNotMatch(out, /data-pair="PLAIN"[^]*?data-changes-start[^]*?data-pair="REGION"/);
+});
+
+test('a tool that carries fields the sheet does not list says so, with the names; a tool with none says nothing', () => {
+  const out = html(createElement(ShareSummaryView, { summary: { ...blank, tools: { rows: [tool({ name: 'a', hiddenFields: ['timeout', 'x-codex'] }), tool({ name: 'b' })], more: 0 } }, side: 'import' }));
+  assert.equal(out.split('data-hidden-fields=""').length - 1, 1);
+  assert.match(out, /data-tool="a"[\s\S]*Carries engine settings that are not listed here:[\s\S]*timeout, x-codex/);
+  const env = html(createElement(ShareSummaryView, { summary: { ...blank, tools: { rows: [tool({ env: [{ name: 'HTTPS_PROXY', value: 'http://p.example.test' }] })], more: 0 } }, side: 'import' }));
+  assert.ok(env.includes("This sends the program&#x27;s traffic through another host."));
+  assert.doesNotMatch(env, /hxsh-name-wrap[^>]*><span[^>]*>HTTPS_PROXY/, 'a variable name is shown whole, never cut');
 });

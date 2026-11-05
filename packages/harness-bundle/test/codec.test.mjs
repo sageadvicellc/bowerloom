@@ -470,3 +470,17 @@ test('an env, a header or a url that cannot be shown whole is refused BUNDLE_INV
   // At the limits it passes.
   assert.ok(await bundleOf(stdioWith({ A: 'v'.repeat(4000), ...Object.fromEntries(Array.from({ length: 63 }, (_, i) => [`V${i}`, 'x'])) })));
 });
+
+test('a tool lists the bound fields the summary does not show: timeout, enabled and each engine-private block; a tool with none lists nothing', async () => {
+  const map = smallMap({ mcp: 'mcp.json' }, {
+    'mcp.json': json({ servers: [
+      { name: 'plain', transport: 'stdio', command: 'tool', args: ['a'] },
+      { name: 'rich', transport: 'http', url: 'https://docs.example.test/mcp', timeout: 5, enabled: false, 'x-claude-code': { cwd: '/tmp' } },
+    ] }),
+  });
+  const { decoded } = await bundleOf(map);
+  const [plain, rich] = inspectBundle(decoded).tools;
+  assert.equal(plain.hiddenFields, undefined, 'nothing hidden, nothing listed');
+  assert.ok(['timeout', 'enabled', 'x-claude-code'].every(n => rich.hiddenFields.includes(n)), String(rich.hiddenFields));
+  assert.notEqual(rich.sha256, plain.sha256);
+});

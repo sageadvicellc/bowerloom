@@ -64,7 +64,7 @@ export const SHARE = deepFreeze({
     blockNone: 'Ready. Press the button to go on.',
     blockBoth: 'Tick both boxes to import.', blockRead: 'Tick the first box to import.', blockWrite: 'Tick the second box to import.', blockPlanning: 'Planning. Then tick again.',
     blockExport: 'Tick the box to export.', blockOne: 'Tick the box to import.', planFailed: 'The plan could not be made. Plan again.', sudoLine: 'This runs with admin rights.', blockNoop: 'The folder already matches. Nothing to import.',
-    shellLine: 'This runs text as code.', changesStart: 'This changes how the program starts.', fromThisComputer: 'The value comes from this computer.', toolsNote: 'This list is a guide. Read each command.',
+    shellLine: 'This runs text as code.', changesStart: 'This makes the program load extra code.', proxyTraffic: "This sends the program's traffic through another host.", hiddenFields: 'Carries engine settings that are not listed here:', fromThisComputer: 'The value comes from this computer.', toolsNote: 'This list is a guide. Read each command.',
   },
   paragraph: {
     exportIntro: 'Export writes the saved harness to one file. You choose where it goes.',
@@ -196,13 +196,16 @@ function realCommand(command: string, args: readonly unknown[]): { command: stri
   return { command: c, args: rest, wrappers, exhausted: isWrapper(c) };
 }
 /**
- * The command and arguments a tool's checks read. A hook holds a whole command line in `command` (a program and its words), so it is split on white space first; a server
- * has the program in `command` and the words in `args`.
+ * The command lines a tool's checks read, each as a program and its words. A hook holds a whole command line in `command`, so it is split on `;`, `&&`, `||` and `|` into
+ * simple commands, and each on white space; a server has the program in `command` and the words in `args`. A value that is not text gives no line, so one bad row cannot
+ * stop the review from drawing.
  */
-export function checkParts(tool: Pick<ShareTool, 'kind' | 'command' | 'args'>): { command: string | null; args: readonly string[] } {
-  if (tool.kind !== 'hook' || tool.command === null) return { command: tool.command, args: tool.args };
-  const words = tool.command.split(/\s+/).filter(x => x !== '');
-  return words.length === 0 ? { command: tool.command, args: tool.args } : { command: words[0]!, args: [...words.slice(1), ...tool.args] };
+export function checkParts(tool: Pick<ShareTool, 'kind' | 'command' | 'args'>): { command: string | null; args: readonly string[] }[] {
+  const args = Array.isArray(tool.args) ? tool.args.filter((a): a is string => typeof a === 'string') : [];
+  if (typeof tool.command !== 'string') return [{ command: null, args }];
+  if (tool.kind !== 'hook') return [{ command: tool.command, args }];
+  const lines = tool.command.split(/&&|\|\||;|\|/).map(line => line.split(/\s+/).filter(x => x !== '')).filter(words => words.length > 0);
+  return lines.length === 0 ? [{ command: tool.command, args }] : lines.map((words, i) => ({ command: words[0]!, args: i === lines.length - 1 ? [...words.slice(1), ...args] : words.slice(1) }));
 }
 /**
  * True when the command fetches code before it runs: npx, uvx, pipx, bunx, `npm exec`, `pnpm dlx`, `yarn dlx`, `bun x`, `deno run`, `uv run`, `docker run`, also behind `env` or
@@ -229,7 +232,7 @@ export const runsShellLine = (command: string | null, args: readonly unknown[]):
   const r = realCommand(command, args), name = /^python[0-9.]*$/.test(r.command) ? 'python' : r.command;
   if (r.exhausted) return true;
   if (SHELLS.has(name)) return r.args.some(a => /^-[a-z]*c[a-z]*$/.test(a));
-  if (name === 'python') return r.args.some(a => /^-[a-z]*[cm]$/.test(a));
+  if (name === 'python') return r.args.some(a => /^-[A-Za-z]*[cm]$/.test(a));
   if (name === 'deno') return /^eval$/.test(r.args[0] ?? '');
   const re = Object.hasOwn(INLINE, name) ? INLINE[name] : undefined;
   return re !== undefined && r.args.some(a => re.test(a));
@@ -244,11 +247,19 @@ export const runsAsAdmin = (command: string | null, args: readonly unknown[]): b
 /** The names of variables that make a program run extra code when it starts. */
 export const CODE_ENV_NAMES: ReadonlySet<string> = new Set([
   'NODE_OPTIONS', 'LD_PRELOAD', 'DYLD_INSERT_LIBRARIES', 'DYLD_LIBRARY_PATH', 'LD_LIBRARY_PATH', 'PATH', 'BASH_ENV', 'ENV', 'PYTHONSTARTUP', 'PYTHONPATH', 'JAVA_TOOL_OPTIONS', '_JAVA_OPTIONS', 'PERL5OPT', 'RUBYOPT',
+  'NODE_PATH', 'NODE_EXTRA_CA_CERTS', 'PYTHONHOME', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'SSL_CERT_FILE', 'GIT_SSH_COMMAND', 'PROMPT_COMMAND', 'LD_AUDIT', 'DYLD_FRAMEWORK_PATH',
 ]);
+/** The names that send the program's traffic through another host. */
+export const PROXY_ENV_NAMES: ReadonlySet<string> = new Set(['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY']);
+/** The line under a variable that changes how a program starts or where its traffic goes. */
+export const envNameWords = (name: string): string | null => (PROXY_ENV_NAMES.has(name.toUpperCase()) ? SHARE.hint.proxyTraffic : changesStart(name) ? SHARE.hint.changesStart : null);
 /** True when a variable name changes how a program starts. Windows names ignore case, so the check does too. */
 export const changesStart = (name: string): boolean => CODE_ENV_NAMES.has(name.toUpperCase());
 /** True when a value is read from this computer: a `${NAME}` reference or a keychain reference. */
-export const fromThisComputer = (value: string): boolean => /\$\{[^}]*\}/.test(value) || /^\s*\{\s*"keychain"\s*:/.test(value);
+export function fromThisComputer(value: string): boolean {
+  const at = value.indexOf('${');
+  return (at >= 0 && value.indexOf('}', at + 2) >= 0) || /^\s*\{\s*"keychain"\s*:/.test(value);
+}
 /** Where a reference goes: the tool, the field of it, and the host. A program with no host can send the value anywhere. */
 export function sinkWords(sink: ShareSink): string {
   if (sink.host !== null) return `${sink.tool}, in ${FIELD_WORDS[sink.field]}, to ${sink.host}`;

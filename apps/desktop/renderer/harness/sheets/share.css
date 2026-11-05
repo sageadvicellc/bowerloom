@@ -42,4 +42,3 @@
 /* The rows of a tool's environment or headers: name, sign and value on one wrapped line; every part isolates its own direction so a value cannot reorder the name. */
 [data-home] .hxsh-pairs { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 [data-home] .hxsh-pair { display: inline; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
-[data-home] .hxsh-pair > .hxsh-name-wrap { display: inline; }

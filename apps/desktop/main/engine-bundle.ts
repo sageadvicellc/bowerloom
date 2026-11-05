@@ -68,6 +68,7 @@ export function shareSummary(s: BundleSummary, scrub: Scrub): ShareSummary {
       ...(x.env === undefined ? {} : { env: x.env.map(v => ({ name: scrub(v.name), value: scrub(v.value) })) }),
       ...(x.headers === undefined ? {} : { headers: x.headers.map(v => ({ name: scrub(v.name), value: scrub(v.value) })) }),
       ...(x.path === undefined ? {} : { path: scrub(x.path) }),
+      ...(x.hiddenFields === undefined || x.hiddenFields.length === 0 ? {} : { hiddenFields: x.hiddenFields.map(n => scrub(n)) }),
     })), toolRisk),
     codeFiles: capRiskFirst(s.codeFiles.map(x => ({ path: t(x.path), why: x.why })), codeRisk),
     secrets: capRiskFirst(s.secrets.map(x => ({ kind: x.kind, name: t(x.name), sinks: x.sinks.map(k => ({ tool: t(k.tool), field: k.field, host: k.host === undefined ? null : scrub(k.host) })) })), secretRisk),

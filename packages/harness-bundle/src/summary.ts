@@ -72,6 +72,25 @@ function pathOf(url: string): string {
   return m === null ? url : url.slice(m[0].length);
 }
 
+/**
+ * The names of the fields of an entry that its hash binds and the summary does not show: `timeout`, `enabled`, `engines`, `matcher`, `strength`, any other field the loader keeps,
+ * and one `x-<engine>` for each engine-private block. `shown` holds the fields the tool row draws. A field with no value is not listed.
+ */
+function hiddenOf(entry: object, shown: ReadonlySet<string>): string[] {
+  const out: string[] = [];
+  for (const [key, value] of Object.entries(entry) as [string, unknown][]) {
+    if (shown.has(key) || value === undefined) continue;
+    if (key === 'privateBlocks') {
+      if (typeof value === 'object' && value !== null) for (const engine of Object.keys(value)) out.push(`x-${engine}`);
+      continue;
+    }
+    out.push(key);
+  }
+  return out;
+}
+const MCP_SHOWN: ReadonlySet<string> = new Set(['id', 'name', 'transport', 'command', 'args', 'env', 'headers', 'url']);
+const HOOK_SHOWN: ReadonlySet<string> = new Set(['id', 'event', 'command']);
+
 function mcpTool(server: McpServer, secrets: Secrets): BundleTool {
   const host = server.url !== undefined ? addressOf(server.url) : undefined;
   const runsCode = server.transport === 'stdio' || server.command !== undefined;
@@ -90,13 +109,15 @@ function mcpTool(server: McpServer, secrets: Secrets): BundleTool {
     ...(server.url !== undefined && pathOf(server.url) !== '' ? { path: pathOf(server.url) } : {}),
     ...(host !== undefined ? { host: host.host } : {}),
     ...(host !== undefined && host.flags.length > 0 ? { addressFlags: host.flags } : {}),
+    ...(hiddenOf(server, MCP_SHOWN).length > 0 ? { hiddenFields: hiddenOf(server, MCP_SHOWN) } : {}),
     sha256: entryHash(server),
   };
 }
 
 function hookTool(hook: HookEntry, secrets: Secrets): BundleTool {
   secrets.text(hook.command, hook.id, 'command', undefined);
-  return { name: hook.id, kind: 'hook', runsCode: true, command: hook.command, event: hook.event, sha256: entryHash(hook) };
+  const hidden = hiddenOf(hook, HOOK_SHOWN);
+  return { name: hook.id, kind: 'hook', runsCode: true, command: hook.command, event: hook.event, ...(hidden.length > 0 ? { hiddenFields: hidden } : {}), sha256: entryHash(hook) };
 }
 
 /**

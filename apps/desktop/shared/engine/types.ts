@@ -585,6 +585,8 @@ export interface ShareTool {
    * package refuses a bundle past that, so nothing is cut.
    */
   readonly env?: readonly ShareNameValue[]; readonly headers?: readonly ShareNameValue[]; readonly path?: string | null;
+  /** The names of the fields the acknowledgement binds and the sheet does not show (`timeout`, `enabled`, `x-<engine>` and the like), from the package's `BundleTool.hiddenFields`. Absent means none. */
+  readonly hiddenFields?: readonly string[];
 }
 /** One variable of a stdio server's environment, or one header, with its value as the file holds it. */
 export interface ShareNameValue { readonly name: string; readonly value: string }

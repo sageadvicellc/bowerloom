@@ -80,7 +80,7 @@ The acknowledgement binds the whole entry of each tool that runs code or reaches
 - the headers of a remote server (`headers`, the same rows; they go to the host the file names);
 - the path, query and fragment of a remote server's url (`path`, as written, next to `host`). An address that does not look like `scheme://authority…` is shown whole as `path`, so nothing is hidden.
 
-`timeout` and `enabled` are bound by the hash and are not shown; they cannot start code.
+`timeout` and `enabled` are bound by the hash and are not shown; they cannot start code. So that nothing bound is silent, a tool lists the names of every bound field the summary does not show in `hiddenFields` (`timeout`, `enabled`, `engines`, `matcher`, `strength`, and `x-<engine>` for each engine-private block; absent when there are none). A screen says "Carries engine settings that are not listed here" with those names. The names are shown, never the values.
 
 If any text of these (a command, an argument, a variable or header name or value, a url, a hook command) is longer than 4,000 characters (`BUNDLE_LIMITS.commandChars`), or a server has more than 64 arguments, variables or headers (`toolArgs`), the bundle is refused `BUNDLE_INVALID` on decode and on encode. The refusal's paths read `a tool's command or arguments are too long to show in full (mcp.json: <name>)`, and its problems carry the code `TOOL_TEXT_TOO_LONG`. The command itself is not repeated. A host is still cut to 200 characters (a valid host name is shorter than that). The app's `SHARE_ARGS_LIMIT` is 64 and `SHARE_COMMAND_LIMIT` is 4000, and its views must not cut a command, an argument, a variable, a header or a path (`ShareTool.env`, `.headers` and `.path` carry them).
 

@@ -7,7 +7,7 @@ import { bannedIn } from '../shared/home/textbudget.js';
 import { BUNDLE_MESSAGES } from '../../../packages/harness-bundle/src/index.js';
 import { SHARE_MAIN_WORDS } from '../shared/engine/types.js';
 import {
-  CODE_WHY_WORDS, EXPORT_TARGET_IN_HARNESS_WORDS, FLAG_WORDS, changesStart, checkParts, fromThisComputer, SHARE, SHARE_REFUSAL_WORDS, approveImportName, approveImportWords, downloadsCode, eventWords, jumpName, runsAsAdmin, runsShellLine, exportFileWords, fileSizeWords, hiddenCounts, hiddenWords, importBlockWords,
+  CODE_WHY_WORDS, EXPORT_TARGET_IN_HARNESS_WORDS, FLAG_WORDS, changesStart, checkParts, envNameWords, fromThisComputer, SHARE, SHARE_REFUSAL_WORDS, approveImportName, approveImportWords, downloadsCode, eventWords, jumpName, runsAsAdmin, runsShellLine, exportFileWords, fileSizeWords, hiddenCounts, hiddenWords, importBlockWords,
   importFilesWords, importTickWords, importedWords, makesHarnessWords, moreWords, notesButtonName, notesChoiceName, readFileWords, secretKindWords, sinkWords, summaryLine, transportWords, writesCount,
 } from '../renderer/harness/words-share.js';
 import { readFileSync } from 'node:fs';
@@ -140,13 +140,22 @@ test('the line of counts leaves out the zeros, and the foot line says what block
 test('the lows: admin and inline-code lines, a hook line is split, a wrapper nested past the guard is flagged', () => {
   assert.equal(SHARE.hint.sudoLine, 'This runs with admin rights.');
   assert.equal(SHARE.hint.shellLine, 'This runs text as code.');
-  assert.equal(SHARE.hint.changesStart, 'This changes how the program starts.');
-  const hook = checkParts({ kind: 'hook', command: 'sudo npx -y x', args: [] });
-  assert.deepEqual(hook, { command: 'sudo', args: ['npx', '-y', 'x'] });
-  assert.equal(runsAsAdmin(hook.command, hook.args), true);
-  assert.equal(downloadsCode(hook.command, hook.args), true);
-  assert.equal(runsShellLine(...Object.values(checkParts({ kind: 'hook', command: 'bash -c "x"', args: [] })) as [string, string[]]), true);
-  assert.deepEqual(checkParts({ kind: 'mcp', command: 'a b', args: ['c'] }), { command: 'a b', args: ['c'] });
+  assert.equal(SHARE.hint.changesStart, 'This makes the program load extra code.');
+  assert.equal(SHARE.hint.hiddenFields, 'Carries engine settings that are not listed here:');
+  const flagged = (tool: Parameters<typeof checkParts>[0]) => {
+    const parts = checkParts(tool);
+    return { admin: parts.some(p => runsAsAdmin(p.command, p.args)), down: parts.some(p => downloadsCode(p.command, p.args)), shell: parts.some(p => runsShellLine(p.command, p.args)) };
+  };
+  assert.deepEqual(checkParts({ kind: 'hook', command: 'sudo npx -y x', args: [] }), [{ command: 'sudo', args: ['npx', '-y', 'x'] }]);
+  assert.deepEqual(flagged({ kind: 'hook', command: 'sudo npx -y x', args: [] }), { admin: true, down: true, shell: false });
+  assert.equal(flagged({ kind: 'hook', command: 'bash -c "x"', args: [] }).shell, true);
+  for (const line of ['true; sudo x', 'true && sudo x', 'false || sudo x', 'echo a | sudo tee b']) assert.equal(flagged({ kind: 'hook', command: line, args: [] }).admin, true, line);
+  assert.equal(flagged({ kind: 'hook', command: 'echo ok; npx x', args: [] }).down, true);
+  assert.equal(flagged({ kind: 'hook', command: 'echo a; echo b', args: [] }).admin, false);
+  assert.deepEqual(checkParts({ kind: 'mcp', command: 'a b', args: ['c'] }), [{ command: 'a b', args: ['c'] }]);
+  assert.deepEqual(checkParts({ kind: 'hook', command: 5 as unknown as string, args: 'x' as unknown as string[] }), [{ command: null, args: [] }]);
+  assert.equal(runsShellLine('python3', ['-Im', 'x']), true);
+  assert.equal(runsShellLine('python3', ['-IB', 'x']), false);
   const deep = Array(70).fill('env');
   assert.equal(runsShellLine('env', deep.slice(1)), true);
   assert.equal(downloadsCode('env', deep.slice(1)), true);
@@ -154,8 +163,10 @@ test('the lows: admin and inline-code lines, a hook line is split, a wrapper nes
 });
 
 test('names that change how a program starts, and values read from this computer', () => {
-  for (const name of ['NODE_OPTIONS', 'LD_PRELOAD', 'DYLD_INSERT_LIBRARIES', 'DYLD_LIBRARY_PATH', 'LD_LIBRARY_PATH', 'PATH', 'BASH_ENV', 'ENV', 'PYTHONSTARTUP', 'PYTHONPATH', 'JAVA_TOOL_OPTIONS', '_JAVA_OPTIONS', 'PERL5OPT', 'RUBYOPT', 'path']) assert.equal(changesStart(name), true, name);
+  for (const name of ['NODE_OPTIONS', 'LD_PRELOAD', 'DYLD_INSERT_LIBRARIES', 'DYLD_LIBRARY_PATH', 'LD_LIBRARY_PATH', 'PATH', 'BASH_ENV', 'ENV', 'PYTHONSTARTUP', 'PYTHONPATH', 'JAVA_TOOL_OPTIONS', '_JAVA_OPTIONS', 'PERL5OPT', 'RUBYOPT', 'NODE_PATH', 'NODE_EXTRA_CA_CERTS', 'PYTHONHOME', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'SSL_CERT_FILE', 'GIT_SSH_COMMAND', 'PROMPT_COMMAND', 'LD_AUDIT', 'DYLD_FRAMEWORK_PATH', 'path']) assert.equal(changesStart(name), true, name);
   for (const name of ['HOME', 'API_KEY', 'constructor']) assert.equal(changesStart(name), false, name);
+  assert.equal(envNameWords('https_proxy'), "This sends the program's traffic through another host."); assert.equal(envNameWords('NODE_OPTIONS'), SHARE.hint.changesStart); assert.equal(envNameWords('HOME'), null);
+  const started = Date.now(); assert.equal(fromThisComputer('${'.repeat(200_000)), false); assert.ok(Date.now() - started < 500, 'linear time');
   assert.equal(fromThisComputer('${TOKEN}'), true); assert.equal(fromThisComputer('Bearer ${TOKEN}'), true); assert.equal(fromThisComputer('{"keychain":"e"}'), true); assert.equal(fromThisComputer('north'), false);
 });
 
