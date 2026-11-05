@@ -15,10 +15,11 @@ import { cleanLine, cleanPath, cut, safeText } from '../shared/real/redact.js';
 import { hashText } from '../shared/world/sample.js';
 import { REAL_LIMITS } from '../shared/real/types.js';
 import type { RealApp, RealDiscovery, RealPlace, RealPlaceKind } from '../shared/real/types.js';
-import { addTally, couldNotRead, isThere, listDir, makeBudget, miss, mustStop, newTally, readHead, readText, realFolderFollowing, resolveInside, shortPath, walkFiles } from './real-fs.js';
+import { addTally, couldNotRead, isThere, listDir, makeBudget, miss, mustStop, newTally, readHead, readText, realFolder, realFolderFollowing, resolveInside, shortPath, walkFiles } from './real-fs.js';
 import type { Budget, Tally } from './real-fs.js';
 import { textOf, listOf } from '../shared/real/yaml.js';
 import { isPlainName } from './safe.js';
+import type { RealHarness, RealHarnessPart } from '../shared/real/types.js';
 
 /** Folders that are never entered while hunting for notes or work folders: dependencies, caches, build output, and the system's media folders. */
 export const SKIP_DIRS: ReadonlySet<string> = new Set([
@@ -169,6 +170,58 @@ function noteOf(rawRel: string, bytes: number, mtimeMs: number, head: string | n
   return { rel, folder, title: cut(plain(title, 4 * REAL_LIMITS.noteChars), REAL_LIMITS.noteChars), summary: cut(plain(summary, 4 * REAL_LIMITS.noteChars), REAL_LIMITS.noteChars), tags, type: plain(textOf(front.data.type), 30), bytes: Math.max(1, bytes), mtimeMs };
 }
 
+/** The most entries one list of a harness (connections, hooks, notes sources) may hold for the Overview. A longer list is a harness the reader could not read. */
+export const HARNESS_LIST_MAX = 200;
+
+/**
+ * What the reader sees of a folder's `.bowerloom` (read only: plain bounded JSON through the reader's own file reads; nothing is written and a link is never followed). Null when the
+ * folder has no `harness.json`. The engines come from `harness.json`, the connections from `mcp.json`, the hooks from `hooks.json` and the notes sources from `knowledge.json`; the
+ * skills and agents are the records the reader already found in the folder. A command, an argument, an env or header value, a url or a path is never kept. A file that is not valid
+ * JSON, is over a limit or cannot be read makes `readable: false` with no part.
+ */
+export function harnessOf(dir: string, records: readonly StampedRecord[], tally: Tally, budget: Budget): RealHarness | null {
+  if (!isThere(join(dir, 'harness.json'))) return null;
+  const none: RealHarness = { readable: false, engines: [], parts: [], links: [] };
+  const json = (name: string, required: boolean): unknown => {
+    if (!required && !isThere(join(dir, name))) return undefined;
+    const text = readText(join(dir, name), dir, tally, budget);
+    if (text === null) throw new Error('unreadable');
+    return JSON.parse(text) as unknown;
+  };
+  const object = (value: unknown): Record<string, unknown> => { if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('shape'); return value as Record<string, unknown>; };
+  const list = (value: unknown): readonly unknown[] => { if (value === undefined) return []; if (!Array.isArray(value) || value.length > HARNESS_LIST_MAX) throw new Error('shape'); return value; };
+  const text = (value: unknown): string => (typeof value === 'string' ? value : '');
+  try {
+    const head = object(json('harness.json', true));
+    const engines = list(head.engines).map(e => safeText(text(object(e).id), 40)).filter(id => id !== '').map(id => ADAPTERS.find(a => a.id === id)?.label ?? id);
+    const parts: RealHarnessPart[] = [], links: { from: string; to: string }[] = [];
+    const mine = records.filter(r => r.app === 'bowerloom');
+    const skillIds = new Map<string, string>(), noteIds = new Map<string, string>();
+    for (const r of mine.filter(x => x.kind === 'skill')) { const id = `harness-skill-${r.slug}`; skillIds.set(r.slug, id); parts.push({ id, kind: 'skill', name: safeText(r.name, 80) || safeText(r.slug, 80), summary: summaryOf(r.description, 'A skill.') }); }
+    const knowledge = json('knowledge.json', false);
+    if (knowledge !== undefined) for (const n of list(object(knowledge).sources)) { const name = safeText(text(object(n).name), 80); if (name === '') continue; const id = `harness-notes-${name}`; noteIds.set(name, id); parts.push({ id, kind: 'context', name, summary: 'A set of notes.' }); }
+    const mcp = json('mcp.json', false);
+    if (mcp !== undefined) for (const m of list(object(mcp).servers)) { const name = safeText(text(object(m).name), 80); if (name !== '') parts.push({ id: `harness-mcp-${name}`, kind: 'tool', name, summary: 'A connection.', toolKind: 'mcp' }); }
+    const hooks = json('hooks.json', false);
+    if (hooks !== undefined) for (const h of list(object(hooks).hooks)) { const name = safeText(text(object(h).id), 80); if (name !== '') parts.push({ id: `harness-hook-${name}`, kind: 'tool', name, summary: 'Runs on its own.', toolKind: 'hook' }); }
+    // The agents are the plain markdown files of `agents/`: the reader finds no agent in this folder by itself.
+    const agentFiles = realFolder(join(dir, 'agents')) !== null ? listDir(join(dir, 'agents'), tally, HARNESS_LIST_MAX + 1, dir).filter(e => e.isFile() && e.name.endsWith('.md')) : [];
+    if (agentFiles.length > HARNESS_LIST_MAX) throw new Error('limit');
+    for (const f of agentFiles) {
+      const slug = f.name.slice(0, -3), body = readText(join(dir, 'agents', f.name), dir, tally, budget);
+      if (body === null) throw new Error('unreadable');
+      const data = parseFrontmatter(body).data, id = `harness-agent-${slug}`;
+      parts.push({ id, kind: 'agent', name: safeText(textOf(data.name), 80) || safeText(slug, 80), summary: summaryOf(textOf(data.description), 'An agent.') });
+      for (const k of listOf(data.skills)) { const to = skillIds.get(k); if (to !== undefined) links.push({ from: id, to }); }
+    }
+    return { readable: true, engines, parts, links };
+  } catch { return none; }
+}
+const summaryOf = (description: string, fallback: string): string => {
+  const line = safeText(description, 200), at = line.search(/[.!?](?=\s|$)/), one = cut(at < 0 ? line : line.slice(0, at + 1), 40);
+  return one === '' ? fallback : one;
+};
+
 /**
  * Reads one place. `withText` false is step one: skills, agents and prompts are found by their paths and their files are not opened; only config files are opened, and only
  * their structure is kept. `withText` true is step two, after the person confirmed: the text of skills, agents and prompts is read too, and the head of each notes page.
@@ -231,8 +284,10 @@ export function readPlace(place: PlaceInternal, home: string, withText: boolean,
     }
   }
   const apps = [...new Set([...place.folders.map(p => p.app), ...place.files.map(p => p.app)])];
+  const own = withText && place.kind !== 'home' ? place.folders.find(p => p.app === 'bowerloom') : undefined;
+  const harness = own === undefined || realFolderFollowing(own.abs) !== own.abs ? null : harnessOf(own.abs, records, tally, budget);
   const names = [...place.folders.map(p => p.name), ...place.files.map(p => p.name)];
-  return { place: { id: place.id, kind: place.kind, label: place.label, path: shortPath(place.root, home), apps }, records, notes, notesLeftOut, partlyRead, folders: names, tally };
+  return { place: { id: place.id, kind: place.kind, label: place.label, path: shortPath(place.root, home), apps }, records, notes, notesLeftOut, partlyRead, ...(harness === null ? {} : { harness }), folders: names, tally };
 }
 
 /** The step-one entry for a place: counts and details, no text. */

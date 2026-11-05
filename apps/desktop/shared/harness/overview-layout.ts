@@ -278,13 +278,15 @@ export interface OverviewListGroup {
   readonly inBowerloom: boolean;
   readonly folderId: string | null;
   readonly counts: OverviewCounts;
+  /** The plain line of a place whose harness could not be read (`OverviewGroup.note`); absent otherwise. */
+  readonly note?: string;
   readonly sections: readonly OverviewListSection[];
 }
 /** The List view's data, in group order. */
 export function listOf(overview: Overview): readonly OverviewListGroup[] {
   const kinds: readonly PartKind[] = ['agent', 'skill', 'tool', 'context'];
   return overview.groups.map(g => ({
-    id: g.id, name: g.name, label: g.label, scope: g.scope, inBowerloom: g.inBowerloom, folderId: g.folderId, counts: g.counts,
+    id: g.id, name: g.name, label: g.label, scope: g.scope, inBowerloom: g.inBowerloom, folderId: g.folderId, counts: g.counts, ...(g.note === undefined ? {} : { note: g.note }),
     sections: kinds.map(kind => ({ kind, nodes: g.nodes.filter(n => n.kind === kind) })).filter(s => s.nodes.length > 0),
   }));
 }

@@ -80,11 +80,11 @@ export function OverviewList({ overview, expanded, index, selectedId, onSelect, 
             <li key={g.id} className="hxo-place" data-place={g.id} data-open={open ? '' : undefined} data-home={g.scope === 'home' ? '' : undefined} data-lit={lit.has(g.id) ? '' : undefined}>
               <div className="hxo-place-head">
                 <h2 className="hxo-place-title">
-                  <button type="button" className="hxo-toggle" data-place-toggle={g.id} aria-expanded={open} aria-controls={`hxo-body-${g.id}`} aria-label={`${toggleName(g.name, open)}, ${g.label}, ${countsWords(g.counts)}`} onClick={() => onToggle(g.id)}>
+                  <button type="button" className="hxo-toggle" data-place-toggle={g.id} aria-expanded={open} aria-controls={`hxo-body-${g.id}`} aria-label={`${toggleName(g.name, open)}, ${g.label}, ${g.note === undefined ? countsWords(g.counts) : OVERVIEW.hint.harnessUnreadable}`} onClick={() => onToggle(g.id)}>
                     <span className="hxo-chev" data-open={open ? '' : undefined} aria-hidden="true"><HIcon name="chevron" size={16} /></span>
                     <span className="hxo-text">
                       <span className="hxo-name">{g.name}</span>
-                      <span className="hxo-sub"><span className="hxo-label">{g.label}</span><span className="hxo-counts">{countsWords(g.counts)}</span></span>
+                      <span className="hxo-sub"><span className="hxo-label">{g.label}</span><span className="hxo-counts">{g.note === undefined ? countsWords(g.counts) : OVERVIEW.hint.harnessUnreadable}</span></span>
                     </span>
                   </button>
                 </h2>

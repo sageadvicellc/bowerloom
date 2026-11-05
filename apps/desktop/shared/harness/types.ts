@@ -164,6 +164,19 @@ export interface ScanSource {
   readonly label?: string;
 }
 
+/** A folder that holds a harness, read through the harness loader (real mode). The Overview shows it as a place; no screen of the read lists it. `label` is the folder in `~` form. */
+export interface HarnessPlace {
+  readonly id: string;
+  readonly name: string;
+  readonly label: string;
+  /** False when a file of the harness is not valid JSON, is over a limit or cannot be read; it then holds no part. */
+  readonly readable: boolean;
+  /** The programs the harness lists, by name. */
+  readonly engines: readonly string[];
+  readonly parts: readonly { readonly id: string; readonly kind: PartKind; readonly name: string; readonly summary: string; readonly toolKind?: 'mcp' | 'hook' }[];
+  readonly links: readonly Link[];
+}
+
 /** What the reader of the person's own folders reports, kept beside the world (real mode only). */
 export interface RealNotes {
   /** Things that were skipped: a file too big, a shortcut that leads away, a folder that would not open. */
@@ -199,6 +212,8 @@ export interface HarnessState {
   readonly nextId: number;
   /** Set only when the world was read from the person's own folders (the default launch). */
   readonly real?: RealNotes;
+  /** Real mode: the folders that hold a harness. Absent when there are none. Only the Overview reads it. */
+  readonly harnessPlaces?: readonly HarnessPlace[];
 }
 
 export type FileState = 'new' | 'update' | 'conflict' | 'same';

@@ -169,21 +169,29 @@ test('Journey 1, step 1.5: the first screen after the read is the Overview; ever
     const claudeOf = (name: string) => ({ agent: names(join(home.projects, name, '.claude', 'agents')).length, skill: skillDirs(join(home.projects, name, '.claude', 'skills')), tool: serverCount(join(home.projects, name, '.mcp.json')) + hookCount(join(home.projects, name, '.claude', 'settings.json')) });
     const words = (c: { agent: number; skill: number; tool: number }): string => [['agent', c.agent], ['skill', c.skill], ['tool', c.tool]].filter(([, n]) => (n as number) > 0).map(([w, n]) => plural(n as number, w as string)).join(', ');
     // The places the read finds, from the files: the two home folders, then for ferry-schedule and kite-workshop a place for each of Claude Code, Codex and notes that holds something.
-    // rope-yard is not a place: all it holds is a Bowerloom folder, which the read leaves out (step 1.3c). kite-workshop is the adopted folder, so its places are the ones in Bowerloom.
+    // A folder that holds a harness and that Bowerloom does not know is a place of its own, "<folder> (Bowerloom)", counted from the files of its .bowerloom. rope-yard is one; kite-workshop,
+    // the adopted folder, is known to the app, so it has no such place: its own places are the ones In Bowerloom.
+    const harnessOf = (dir: string): { agent: number; skill: number; tool: number; context: number } => {
+      const base = join(dir, '.bowerloom'), list = (file: string, key: string): number => (existsSync(join(base, file)) ? ((json(join(base, file))[key] as unknown[] | undefined) ?? []).length : 0);
+      return { agent: names(join(base, 'agents'), n => n.endsWith('.md')).length, skill: skillDirs(join(base, 'skills')), tool: list('mcp.json', 'servers') + list('hooks.json', 'hooks'), context: list('knowledge.json', 'sources') };
+    };
     const holds = (c: { agent: number; skill: number; tool: number }): number => (c.agent + c.skill + c.tool > 0 ? 1 : 0);
     const codexOf = (name: string): number => names(join(home.projects, name, '.codex', 'agents')).length;
     const placesOf = (name: string): number => holds(claudeOf(name)) + (codexOf(name) > 0 ? 1 : 0) + (topNotes(join(home.projects, name)) > 0 ? 1 : 0);
+    const unknownHarness = (name: string): number => (name === 'kite-workshop' || !existsSync(join(home.projects, name, '.bowerloom', 'harness.json')) ? 0 : 1);
     const homePlaces = holds(claudeHome) + (names(join(root, '.codex', 'agents')).length > 0 ? 1 : 0);
-    const total = homePlaces + placesOf('ferry-schedule') + placesOf('kite-workshop'), inBowerloom = placesOf('kite-workshop');
+    const total = homePlaces + placesOf('ferry-schedule') + placesOf('kite-workshop') + unknownHarness('ferry-schedule') + unknownHarness('rope-yard'), inBowerloom = placesOf('kite-workshop');
     totals = { total, inBowerloom };
     await expect(p.getByText(`${total} places`, { exact: true }).first()).toBeVisible();
     await expect(p.locator('[data-place-toggle]')).toHaveCount(total);
+    const harnessWords = (c: { agent: number; skill: number; tool: number; context: number }): string => [['agent', c.agent], ['skill', c.skill], ['tool', c.tool], ['set of notes', c.context]].filter(([, n]) => (n as number) > 0).map(([w, n]) => (w === 'set of notes' ? (n === 1 ? '1 set of notes' : `${n} sets of notes`) : plural(n as number, w as string))).join(', ');
     const rows: [string, string, string][] = [
       ['Your Claude Code folder', '~', words(claudeHome)],
       ['Your Codex folder', '~', plural(names(join(root, '.codex', 'agents')).length, 'agent')],
       ['ferry-schedule (Claude Code)', '~/Projects/ferry-schedule', words(claudeOf('ferry-schedule'))],
       ['kite-workshop (Claude Code)', '~/Projects/kite-workshop', words(claudeOf('kite-workshop'))],
       ['ferry-schedule (notes)', '~/Projects/ferry-schedule', '1 set of notes'],
+      ['rope-yard (Bowerloom)', '~/Projects/rope-yard', harnessWords(harnessOf(home.rope))],
     ];
     for (const [name, label, counts] of rows) {
       const aria = await toggle(name).first().getAttribute('aria-label');

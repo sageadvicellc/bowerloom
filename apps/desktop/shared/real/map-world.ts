@@ -230,5 +230,6 @@ export function buildRealResult(reads: readonly PlaceRead[], tally: BatchTally, 
     ...(texts.cut > 0 ? [`${texts.cut} long ${texts.cut === 1 ? 'text was' : 'texts were'} shortened.`] : []),
     ...tallyWords({ ...tally, tooBig: 0, binary: 0, unreadable: 0, linksOutside: 0, brokenLinks: 0 }),
   ];
-  return { world, others, counts, ages, stoppedEarly: tally.stoppedEarly, couldNotRead: sum, partlyRead, textsCut: texts.cut, notes, readOnly: true };
+  const harnessPlaces = reads.filter(r => r.harness !== undefined).map(r => ({ id: `harness-${shortHash(r.place.id)}`, name: cleanLine(r.place.label).slice(0, 60), path: cleanPath(r.place.path), harness: r.harness! }));
+  return { world, others, counts, ages, ...(harnessPlaces.length > 0 ? { harnessPlaces } : {}), stoppedEarly: tally.stoppedEarly, couldNotRead: sum, partlyRead, textsCut: texts.cut, notes, readOnly: true };
 }

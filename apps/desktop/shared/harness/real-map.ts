@@ -18,7 +18,7 @@ import { cleanLine, cut, scrubText } from '../real/redact.js';
 import type { RealPlace, RealResult } from '../real/types.js';
 import { createSampleWorld } from './sample.js';
 import { INTERFACE_IDS } from './types.js';
-import type { HarnessState, Interface, InterfaceId, Link, Part, PartKind, Project, ScanSource } from './types.js';
+import type { HarnessPlace, HarnessState, Interface, InterfaceId, Link, Part, PartKind, Project, ScanSource } from './types.js';
 
 /** The most lines of a file that go into `Part.fileText`. */
 export const FILE_LINES = 60;
@@ -290,6 +290,13 @@ export function sourceIdFor(key: string, used: ReadonlySet<string>): string {
   return id;
 }
 
+/** The folders that hold a harness, for the Overview: the folder in `~` form, the program names and the parts the loader read. */
+function harnessPlacesOf(result: RealResult): HarnessPlace[] {
+  return (result.harnessPlaces ?? []).map(h => ({
+    id: h.id, name: `${cut(plain(h.name), NAME_CHARS)} (Bowerloom)`, label: folderLabelOf(h.path), readable: h.harness.readable, engines: h.harness.engines, parts: h.harness.parts, links: h.harness.links,
+  }));
+}
+
 /**
  * The state of the preview for one read of the person's folders. `places` are the places that were read (the ones the person ticked): their work folders and picked folders become the projects,
  * and their home places say where each program was found. The sample's interface table gives the files each program would be written to.
@@ -343,6 +350,7 @@ export function realToHarnessState(result: RealResult, places: readonly RealPlac
   const onlyPartRead = result.notes.includes(PARTLY_READ_NOTE) || placeNotes.some(p => p.notes.includes(PARTLY_READ_NOTE));
   return {
     parts, harnesses: [], projects: projectsOf(places), installs: [], interfaces: interfacesOf(result, places), runs: [], history: [], sources, chosenSourceIds: sources.map(s => s.id),
+    ...(harnessPlacesOf(result).length > 0 ? { harnessPlaces: harnessPlacesOf(result) } : {}),
     nextId: 100, real: { couldNotRead: result.couldNotRead, stoppedEarly: result.stoppedEarly, notes: [...own, ...notes], textsCut: result.textsCut, ...(onlyPartRead ? { onlyPartRead } : {}), ...(placeNotes.length > 0 ? { places: placeNotes } : {}) },
   };
 }

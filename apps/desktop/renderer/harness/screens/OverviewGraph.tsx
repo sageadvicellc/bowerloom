@@ -197,11 +197,11 @@ export function OverviewGraph({ overview, expanded, index, selectedId, fitKey, o
             <div key={id} className="hxo-box" role="group" aria-label={`${OVERVIEW.label.placeGroup}: ${g.name}`} data-cluster={id} data-open={open ? '' : undefined} data-boxed={open && boxes ? '' : undefined}
               data-home={g.scope === 'home' ? '' : undefined} data-lit={lit.has(id) ? '' : undefined} style={{ left: c.x, top: c.y, width: c.w, height: c.h }}>
               <div className="hxo-head" style={{ height: c.header.h }}>
-                <button type="button" className="hxo-toggle" data-control="" data-place-toggle={id} aria-expanded={open} aria-label={`${toggleName(g.name, open)}, ${g.label}, ${countsWords(g.counts)}`} ref={register(headKey(id))} tabIndex={headStop === id ? 0 : -1} onKeyDown={e => keyHead(e, c)} onClick={() => onToggle(id)}>
+                <button type="button" className="hxo-toggle" data-control="" data-place-toggle={id} aria-expanded={open} aria-label={`${toggleName(g.name, open)}, ${g.label}, ${g.note === undefined ? countsWords(g.counts) : OVERVIEW.hint.harnessUnreadable}`} ref={register(headKey(id))} tabIndex={headStop === id ? 0 : -1} onKeyDown={e => keyHead(e, c)} onClick={() => onToggle(id)}>
                   <span className="hxo-chev" data-open={open ? '' : undefined} aria-hidden="true"><HIcon name="chevron" size={16} /></span>
                   <span className="hxo-text">
                     <span className="hxo-name">{g.name}</span>
-                    <span className="hxo-sub"><span className="hxo-label">{g.label}</span><span className="hxo-counts">{countsWords(g.counts)}</span></span>
+                    <span className="hxo-sub"><span className="hxo-label">{g.label}</span><span className="hxo-counts">{g.note === undefined ? countsWords(g.counts) : OVERVIEW.hint.harnessUnreadable}</span></span>
                   </span>
                 </button>
                 {boxes ? null : <span className="hxo-tools" data-control="">{place(g, headStop === id)}</span>}
