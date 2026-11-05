@@ -1,0 +1,34 @@
+/*
+ * The Bowerloom identity, the same as the website's: Rose Conservatory (light) and After Hours (dark), Newsreader for headings, Manrope for the interface.
+ * The `--brand-*` colours are a copy of apps/landing/src/brand.css. tests/brand-parity.test.ts fails when the two copies differ, so a change to the palette
+ * is made in both places. The font files are the website's own (apps/landing/public/fonts); tools/bundle.mjs copies them into the app, with their licences.
+ */
+@font-face { font-family: Newsreader; src: url('fonts/newsreader/roman.ttf') format('truetype'); font-weight: 200 800; font-style: normal; font-display: swap; }
+@font-face { font-family: Newsreader; src: url('fonts/newsreader/italic.ttf') format('truetype'); font-weight: 200 800; font-style: italic; font-display: swap; }
+@font-face { font-family: Manrope; src: url('fonts/manrope/font.ttf') format('truetype'); font-weight: 200 800; font-style: normal; font-display: swap; }
+:root, [data-theme="light"] {
+  --brand-ground: #F6EEE8;
+  --brand-surface: #FFF9F4;
+  --brand-ink: #373A32;
+  --brand-muted: #655D61;
+  --brand-rose: #DFA4AB;
+  --brand-foliage: #B9C6A0;
+  --brand-clay: #B36D4B;
+  --brand-water: #668B95;
+  --brand-line: #D5C9C8;
+  --brand-action: #80515B;
+  --brand-action-ink: #FFF9F4;
+}
+[data-theme="dark"] {
+  --brand-ground: #27262B;
+  --brand-surface: #343238;
+  --brand-ink: #F6EEE8;
+  --brand-muted: #D0BEC6;
+  --brand-rose: #E8B3BF;
+  --brand-foliage: #C5D4AC;
+  --brand-clay: #E0A17D;
+  --brand-water: #A0C5CD;
+  --brand-line: #665B63;
+  --brand-action: #E8B3BF;
+  --brand-action-ink: #27262B;
+}

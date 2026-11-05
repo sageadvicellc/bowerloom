@@ -18,6 +18,8 @@ import { wireSkipLink } from '../home/route-latch.js';
 import { getBridge } from '../home/real/bridge.js';
 import { HarnessApp } from './HarnessApp.js';
 import { getEngineBridge } from './real/engine-bridge.js';
+// The website's look on the app's parts. It loads after every screen's own sheet, so it wins a tie of specificity.
+import './brand-layer.css';
 
 export { isHarnessHash };
 

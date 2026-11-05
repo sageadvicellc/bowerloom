@@ -48,6 +48,12 @@ When AGENTS.md and CLAUDE.md differ, **Merge** moves the CLAUDE.md text into the
 
 Apart from the steps you approve on your own folders (see above), the app has no way to change a Bowerloom file of yours. The app also writes a local usage log of what was done, with no name and no path (`BOWERLOOM_EVENT_LOG=off` turns it off), and it moves the state record of an earlier version into the private state folder of Bowerloom. Two small writes remain in the main process: the usage summary, which goes only to the path you pick in the save dialog, and the private copy of a tidy-up report, which the app removes when it closes. The browser engine keeps its own profile folder (window settings and cache) between starts. `tests/writers.test.ts` and `tests/writers-imports.test.ts` hold the list of files that can write.
 
+## Look
+
+The app has the look of the website, bowerloom.ai: the Rose Conservatory colours in light, After Hours in dark, Newsreader for headings and Manrope for everything else. The colours are in `renderer/brand.css`, a copy of the website's, and `tests/brand-parity.test.ts` fails when the two copies differ. The font files are the website's own; the build copies them into the app with their licences. `renderer/harness/brand-layer.css` puts the look on the app's parts.
+
+To see every screen in light and dark, run `SCREEN_SHOTS=<a folder outside the repo> npx playwright test --config playwright.config.ts e2e/screen-tour-shots.spec.ts` from this folder. The window stays hidden.
+
 ## Motion
 
 Every duration, easing and distance of the app's motion is in one file, `renderer/motion-tokens.ts`, so you can retune it in one edit. If your computer is set to reduce motion, everything is instant.

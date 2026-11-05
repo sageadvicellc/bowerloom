@@ -1,9 +1,12 @@
 /*
- * Design tokens. Every colour, size, and space the app uses is named here and nowhere else, so the Sage brand (version 2,
- * still in progress) can replace this one file. These values are a restrained placeholder with a sage-green accent.
+ * Design tokens. Every colour, size, and space the app uses is named here and nowhere else. The colours are the website's Rose Conservatory (light) and
+ * After Hours (dark) palettes (brand.css). The page, surface, text, muted text, action and action text are the brand values themselves; tests/brand-parity.test.ts
+ * holds them equal. The other values are tints and deeper shades of the same colours, made so that every text meets 4.5 to 1 and every edge and dot 3 to 1
+ * (tests/contrast.test.ts).
  */
 :root {
-  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-body: Manrope, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-heading: Newsreader, "New York", Georgia, serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --text-base: 1.0625rem;
   --text-small: 0.9375rem;
@@ -17,15 +20,15 @@
 }
 :root, [data-theme="light"] {
   color-scheme: light;
-  --bg: #f6f5f0; --surface: #ffffff; --surface-2: #efeee7; --text: #1d2420; --text-muted: #46514b; --border: #d6d4c9;
-  --accent: #3b6a50; --accent-strong: #2c5039; --accent-contrast: #ffffff; --accent-soft: #e2eee6;
-  --good-bg: #e0eee5; --good-fg: #1d4a31; --warn-bg: #fbedc9; --warn-fg: #664400; --bad-bg: #f8ddd8; --bad-fg: #82201a; --quiet-bg: #e8e7df; --quiet-fg: #3a443e;
-  --focus: #1f5fbf; --shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 6px 18px rgb(0 0 0 / 0.05);
+  --bg: #f6eee8; --surface: #fff9f4; --surface-2: #f1e6df; --text: #373a32; --text-muted: #655d61; --border: #d5c9c8;
+  --accent: #80515b; --accent-strong: #6a414b; --accent-contrast: #fff9f4; --accent-soft: #f6e1e4;
+  --good-bg: #e9eedd; --good-fg: #4f5f35; --warn-bg: #f6e3d6; --warn-fg: #8c4a2a; --bad-bg: #f6e1e4; --bad-fg: #8e2f3e; --quiet-bg: #efe6e0; --quiet-fg: #4f4a4d;
+  --focus: #80515b; --shadow: 0 1px 2px rgb(55 58 50 / 0.08), 0 8px 22px -12px rgb(128 81 91 / 0.3);
 }
 [data-theme="dark"] {
   color-scheme: dark;
-  --bg: #141a17; --surface: #1c2420; --surface-2: #232d28; --text: #e8eee9; --text-muted: #b0bcb4; --border: #34413a;
-  --accent: #8fc4a3; --accent-strong: #a9d6bb; --accent-contrast: #0f1a14; --accent-soft: #233a2d;
-  --good-bg: #21392b; --good-fg: #bde5cc; --warn-bg: #3d3216; --warn-fg: #f2d78e; --bad-bg: #4a2421; --bad-fg: #ffb9ad; --quiet-bg: #2a332e; --quiet-fg: #c5cfc8;
-  --focus: #8fbcff; --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 18px rgb(0 0 0 / 0.3);
+  --bg: #27262b; --surface: #343238; --surface-2: #3d3a41; --text: #f6eee8; --text-muted: #d0bec6; --border: #665b63;
+  --accent: #e8b3bf; --accent-strong: #f2cdd5; --accent-contrast: #27262b; --accent-soft: #4a3b42;
+  --good-bg: #353b2e; --good-fg: #c5d4ac; --warn-bg: #42332c; --warn-fg: #e0a17d; --bad-bg: #4a2a31; --bad-fg: #f4a3ae; --quiet-bg: #38353c; --quiet-fg: #d0bec6;
+  --focus: #e8b3bf; --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 22px -12px rgb(0 0 0 / 0.6);
 }
