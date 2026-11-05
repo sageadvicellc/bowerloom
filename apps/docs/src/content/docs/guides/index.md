@@ -13,6 +13,7 @@ Start with your current project and the workflow you want to organize. [Map its 
 | --- | --- |
 | Adopt your files and install a harness for Claude Code and Codex | [Adopt and install a harness](/docs/guides/adopt-and-install/) |
 | Point agents at your notes, or add the Notes keeper | [Notes and the Notes keeper](/docs/guides/notes/) |
+| Move a harness to another computer | [Share a harness](/docs/guides/share-a-harness/) |
 | Build, save, and install on screen | [Desktop app (beta)](/docs/app/) |
 | Map a manual or one-to-one agent workflow (0.7) | [Map your existing workflow](/docs/guides/integrate-workflow/) |
 | Add a team specification to an existing project (0.7) | [Existing project](/docs/guides/existing-project/) |

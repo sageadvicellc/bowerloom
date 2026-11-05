@@ -24,6 +24,7 @@ You can use Bowerloom 0.8.0-beta.1 in two ways. Both do the same adopt, install,
 | Adopt your files and install for Claude Code and Codex | [Adopt and install a harness](/docs/guides/adopt-and-install/) |
 | See what each engine receives, and the Codex permission profile | [Codex and Claude Code](/docs/harnesses/) |
 | Point agents at your notes, or add the Notes keeper | [Notes and the Notes keeper](/docs/guides/notes/) |
+| Move a harness to another computer | [Share a harness](/docs/guides/share-a-harness/) |
 | Add pinned skills from npm or GitHub | [Add third-party skills](/docs/guides/add-skills/) |
 | Find a command, flag, or error | [Reference](/docs/reference/) |
 

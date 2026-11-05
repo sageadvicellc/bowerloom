@@ -7,7 +7,7 @@
 import { expect } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildMadeUpHome } from '../tools/made-up-home.js';
 import type { MadeUpHome } from '../tools/made-up-home.js';
@@ -36,7 +36,7 @@ export async function startApp(home: MadeUpHome, route: string, { freshTour = fa
   return h;
 }
 
-/** Every file under a folder, relative path to text, read by the test itself. Hidden names are walked too. A missing folder is empty. */
+/** Every file under a folder, relative path to text, read by the test itself. Hidden names are walked too. A missing folder is empty. It records file contents only: for folders and modes, use `treeShape`. */
 export function readTree(root: string, { skip = [] as string[] } = {}): Record<string, string> {
   const out: Record<string, string> = {};
   const walk = (rel: string): void => {
@@ -44,6 +44,19 @@ export function readTree(root: string, { skip = [] as string[] } = {}): Record<s
       const r = rel === '' ? entry.name : `${rel}/${entry.name}`;
       if (skip.includes(entry.name)) continue;
       if (entry.isDirectory()) walk(r); else out[r] = readFileSync(join(root, r), 'utf8');
+    }
+  };
+  if (existsSync(root)) walk('');
+  return out;
+}
+/** Every folder (with a trailing slash) and every file under a root, each with its mode, so an empty folder or a changed mode left behind shows. A missing root is empty. */
+export function treeShape(root: string): string[] {
+  const out: string[] = [];
+  const walk = (rel: string): void => {
+    for (const entry of readdirSync(join(root, rel), { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      const r = rel === '' ? entry.name : `${rel}/${entry.name}`;
+      const mode = (lstatSync(join(root, r)).mode & 0o777).toString(8);
+      if (entry.isDirectory()) { out.push(`${r}/ ${mode}`); walk(r); } else out.push(`${r} ${mode}`);
     }
   };
   if (existsSync(root)) walk('');
@@ -102,3 +115,28 @@ export async function saveFromBuilder(h: RealHarness): Promise<Record<string, st
   await expect(s.locator('[data-version-kept]')).toBeVisible();
   return listed;
 }
+
+/**
+ * Main's save dialog, answered by the test (the system dialog cannot be driven). `saveAt(h, path)` sets the path it answers; `saveAt(h, null)` closes it. The dialog the
+ * Export sheet opens is the only one stubbed, and main's own write question stays the one `launchReal` records.
+ */
+export async function stubSaveDialog(h: RealHarness): Promise<void> {
+  await h.app.evaluate(({ dialog }) => {
+    const g = globalThis as unknown as { __save: string | null };
+    g.__save = null;
+    dialog.showSaveDialog = (async () => (g.__save === null ? { canceled: true, filePath: '' } : { canceled: false, filePath: g.__save })) as unknown as typeof dialog.showSaveDialog;
+  });
+}
+export const saveAt = (h: RealHarness, path: string | null): Promise<void> => h.app.evaluate((_e, p) => { (globalThis as unknown as { __save: string | null }).__save = p; }, path);
+
+/** Starts a second app on a second made-up computer: its own HOME, state folder and data folder. The save dialog is stubbed. The caller closes it. */
+export async function startSecondApp(route = 'harnesses'): Promise<{ home: MadeUpHome; h: RealHarness }> {
+  const home = newMadeUpHome();
+  const h = await startApp(home, route);
+  try { await stubSaveDialog(h); } catch (error) { await h.app.close().catch(() => undefined); throw error; }
+  return { home, h };
+}
+
+/** The sheets of journey 4, by their names. */
+export const exportSheet = (p: Page): Locator => p.getByRole('dialog', { name: 'Export a harness' });
+export const importSheet = (p: Page): Locator => p.getByRole('dialog', { name: 'Import a harness' });
