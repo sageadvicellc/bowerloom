@@ -40,7 +40,9 @@ test('rope-yard, which holds a harness and was never opened, is a place with its
   assert.deepEqual(rope.nodes.filter(n => n.kind === 'skill').map(n => n.name), ['coil-count', 'knot-guide', 'splice']);
   assert.equal(rope.inBowerloom, false); assert.equal(rope.folderId, null); assert.equal(rope.note, undefined);
   // foreman names splice.
-  assert.deepEqual(rope.edges.map(e => e.id), [`${rope.id}/harness-agent-foreman>${rope.id}/harness-skill-splice`]);
+  const idOf = (name: string): string => rope.nodes.find(n => n.name === name)!.id;
+  assert.deepEqual(rope.edges.map(e => e.id), [`${idOf('foreman')}>${idOf('splice')}`]);
+  assert.ok(rope.nodes.every(n => /^[^/]+\/harness-(?:agent|skill|notes|mcp|hook)-\d+$/.test(n.id)), 'an id is a kind and a number, never a name');
   // A folder main knows gets no place of this kind: its own place already reads In Bowerloom.
   const known = overviewOf(state, [folder('f1', '~/Projects/rope-yard')]);
   assert.equal(known.groups.some(g => g.id === rope.id), false);
@@ -64,7 +66,7 @@ test('the read screen is not changed: the folder with a harness is no source, an
   assert.equal(state.chosenSourceIds.length, state.sources.length);
 });
 
-test('every place is closed by default but the home, also with the new place', async t => {
+test('a harness place follows the same budget as a project: the home is open, and a small place opens by the budget', async t => {
   const made = buildMadeUpHome(tempDir(t));
   const o = overviewOf(await read(made.home, [made.projects]), []);
   const open = defaultExpanded(o);
@@ -159,4 +161,56 @@ test('the reader keeps no command, argument, env, header, url or path of the har
   const g = o.groups.find(x => x.label === '~/work/k')!;
   assert.deepEqual(g.nodes.map(n => [n.kind, n.name]), [['tool', 'web'], ['context', 'tide-notes']]);
   assert.doesNotMatch(JSON.stringify(o), /SECRET|hanna/);
+});
+
+test('a part id is a kind and a number: a name that is a path never reaches an id', async t => {
+  const { home, work } = homeWith(t, {
+    'p/.bowerloom/harness.json': harnessJson(),
+    'p/.bowerloom/mcp.json': JSON.stringify({ servers: [{ name: '/Users/hanna/.ssh/id_rsa', transport: 'stdio', command: 'x' }] }),
+    'p/.bowerloom/agents/Users\u202eodd.md': '---\nname: x\n---\n',
+  });
+  mkdirSync(join(home, '.claude'), { recursive: true });
+  const state = await read(home, [work]);
+  assert.deepEqual(state.harnessPlaces![0]!.parts.map(x => x.id).sort(), ['harness-agent-1', 'harness-mcp-1']);
+  assert.doesNotMatch(JSON.stringify(overviewOf(state, [])), /Users|hanna|\u202e/);
+});
+
+test('a name used twice in mcp.json, hooks.json or knowledge.json makes the place unreadable, as the loader would refuse it', async t => {
+  const dup = (key: string, name: string): string => JSON.stringify({ [key]: [{ [name]: 'same', transport: 'stdio', command: 'x' }, { [name]: 'same', transport: 'stdio', command: 'x' }] });
+  const { home, work } = homeWith(t, {
+    'm/.bowerloom/harness.json': harnessJson(), 'm/.bowerloom/mcp.json': dup('servers', 'name'),
+    'k/.bowerloom/harness.json': harnessJson(), 'k/.bowerloom/knowledge.json': dup('sources', 'name'),
+    'h/.bowerloom/harness.json': harnessJson(), 'h/.bowerloom/hooks.json': dup('hooks', 'id'),
+  });
+  mkdirSync(join(home, '.claude'), { recursive: true });
+  const o = overviewOf(await read(home, [work]), []);
+  for (const n of ['m', 'k', 'h']) assert.equal(o.groups.find(g => g.label === `~/work/${n}`)?.note, HARNESS_UNREADABLE, n);
+});
+
+test('an agents folder with many other files, too many agents, too many parts or too many bytes is unreadable, never cut short', async t => {
+  const files: Record<string, string> = { 'many/.bowerloom/harness.json': harnessJson(), 'agents/.bowerloom/harness.json': harnessJson(), 'parts/.bowerloom/harness.json': harnessJson(), 'bytes/.bowerloom/harness.json': harnessJson(), 'ok/.bowerloom/harness.json': harnessJson(), 'ok/.bowerloom/agents/real.md': '---\nname: real\n---\n' };
+  for (let i = 0; i < 1100; i += 1) files[`many/.bowerloom/agents/f${i}.txt`] = 'x';
+  files['many/.bowerloom/agents/real.md'] = '---\nname: real\n---\n';
+  for (let i = 0; i < 201; i += 1) files[`agents/.bowerloom/agents/a${i}.md`] = '---\nname: a\n---\n';
+  files['parts/.bowerloom/mcp.json'] = JSON.stringify({ servers: Array.from({ length: 200 }, (_, i) => ({ name: `m${i}`, transport: 'stdio', command: 'x' })) });
+  files['parts/.bowerloom/hooks.json'] = JSON.stringify({ hooks: Array.from({ length: 200 }, (_, i) => ({ id: `h${i}`, event: 'PostToolUse', command: 'x', strength: 'advisory' })) });
+  files['parts/.bowerloom/knowledge.json'] = JSON.stringify({ sources: Array.from({ length: 200 }, (_, i) => ({ kind: 'wiki', name: `n${i}`, path: `p${i}` })) });
+  for (let i = 0; i < 160; i += 1) files[`parts/.bowerloom/agents/a${i}.md`] = '---\nname: a\n---\n';
+  for (let i = 0; i < 300; i += 1) files[`parts/.bowerloom/skills/s${i}/SKILL.md`] = '---\nname: s\n---\n';
+  for (let i = 0; i < 5; i += 1) files[`bytes/.bowerloom/agents/b${i}.md`] = `---\nname: b\n---\n${'x'.repeat(600 * 1024)}`;
+  const { home, work } = homeWith(t, files);
+  mkdirSync(join(home, '.claude'), { recursive: true });
+  const o = overviewOf(await read(home, [work]), []);
+  const by = (n: string) => o.groups.find(g => g.label === `~/work/${n}`);
+  for (const n of ['many', 'agents', 'parts', 'bytes']) assert.equal(by(n)?.note, HARNESS_UNREADABLE, n);
+  assert.equal(by('ok')?.note, undefined); assert.equal(by('ok')?.counts.agent, 1);
+});
+
+test('a harness skill with the same text as a skill elsewhere is shared with it', async t => {
+  const made = buildMadeUpHome(tempDir(t));
+  const o = overviewOf(await read(made.home, [made.projects]), []);
+  const rope = o.groups.find(g => g.label === '~/Projects/rope-yard')!;
+  const coil = rope.nodes.find(n => n.name === 'coil-count')!;
+  assert.ok(coil.sharedWith.length > 0 && coil.shareKey !== undefined, 'coil-count is also in the home folder with the same text');
+  assert.equal(rope.nodes.find(n => n.name === 'splice')!.sharedWith.length, 0);
 });

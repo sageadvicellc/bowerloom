@@ -206,7 +206,7 @@ export function OverviewGraph({ overview, expanded, index, selectedId, fitKey, o
                 </button>
                 {boxes ? null : <span className="hxo-tools" data-control="">{place(g, headStop === id)}</span>}
               </div>
-              {open && boxes ? <p className="hxo-boxcount" aria-hidden="true">{countsWords(g.counts)}</p> : null}
+              {open && boxes ? <p className="hxo-boxcount" aria-hidden="true">{g.note === undefined ? countsWords(g.counts) : OVERVIEW.hint.harnessUnreadable}</p> : null}
             </div>
           );
         })}

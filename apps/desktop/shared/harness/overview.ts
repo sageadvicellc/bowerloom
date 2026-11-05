@@ -117,12 +117,12 @@ export function overviewOf(state: HarnessState, folders: readonly FolderInfo[]):
 
 function harnessGroupOf(place: HarnessPlace, index: number, folders: readonly FolderInfo[]): { index: number; group: OverviewGroup; hashes: ReadonlyMap<string, string> } {
   const partList: Part[] = place.parts.map(p => ({
-    id: p.id, kind: p.kind, name: p.name, summary: p.summary, description: '', path: '', source: '', origin: place.id, fileText: '', cannotUse: [], inLibrary: true, ...(p.toolKind === undefined ? {} : { toolKind: p.toolKind }),
+    id: p.id, kind: p.kind, name: p.name, summary: p.summary, description: '', path: '', source: '', origin: place.id, fileText: '', cannotUse: [], inLibrary: true, ...(p.toolKind === undefined ? {} : { toolKind: p.toolKind }), ...(p.contentHash === undefined ? {} : { contentHash: p.contentHash }),
   }));
   const source: ScanSource = { id: place.id, name: place.name, interfaceName: '', harnessName: place.name, partIds: partList.map(p => p.id), links: place.links, scope: 'project', label: place.label };
   const built = groupOf(source, new Map(partList.map(p => [p.id, p])), folders);
   const group: OverviewGroup = { ...built.group, programs: place.engines.map(shown), ...(place.readable ? {} : { note: HARNESS_UNREADABLE }) };
-  return { index, group, hashes: new Map() };
+  return { index, group, hashes: built.hashes };
 }
 
 const KIND_ORDER: readonly PartKind[] = ['agent', 'skill', 'tool', 'context'];

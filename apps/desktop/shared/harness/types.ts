@@ -169,11 +169,11 @@ export interface HarnessPlace {
   readonly id: string;
   readonly name: string;
   readonly label: string;
-  /** False when a file of the harness is not valid JSON, is over a limit or cannot be read; it then holds no part. */
+  /** False when a file of the harness is not valid JSON, is over a limit or cannot be read; it then holds no part. That covers JSON, shape, repeated names and limits only: the full rules of the harness loader are not checked, so "Choose this folder" may still be refused later. A skill carries the hash of its text, so it is shared with an equal skill elsewhere. */
   readonly readable: boolean;
   /** The programs the harness lists, by name. */
   readonly engines: readonly string[];
-  readonly parts: readonly { readonly id: string; readonly kind: PartKind; readonly name: string; readonly summary: string; readonly toolKind?: 'mcp' | 'hook' }[];
+  readonly parts: readonly { readonly id: string; readonly kind: PartKind; readonly name: string; readonly summary: string; readonly toolKind?: 'mcp' | 'hook'; readonly contentHash?: string }[];
   readonly links: readonly Link[];
 }
 

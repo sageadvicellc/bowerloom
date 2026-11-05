@@ -89,10 +89,10 @@ export interface RealPicked extends RealDiscovery { readonly cancelled: boolean 
 export interface RealOther { readonly app: string; readonly kind: RealKind; readonly name: string; readonly hint: string; readonly place: string }
 
 /** One part of a harness found in a folder: a skill, an agent, a tool (a connection or a hook) or a set of notes. Names and summaries are scrubbed one-line texts. */
-export interface RealHarnessPart { readonly id: string; readonly kind: 'agent' | 'skill' | 'tool' | 'context'; readonly name: string; readonly summary: string; readonly toolKind?: 'mcp' | 'hook' }
+export interface RealHarnessPart { readonly id: string; readonly kind: 'agent' | 'skill' | 'tool' | 'context'; readonly name: string; readonly summary: string; readonly toolKind?: 'mcp' | 'hook'; readonly contentHash?: string }
 /**
  * What the reader saw in a folder's `.bowerloom` as plain bounded JSON (read only). `readable` is false when a file is not valid JSON, is over a limit or cannot be read; the harness then holds no part. `engines` are
- * the program names. `links` join an agent to the skills and notes it names, by part id.
+ * the program names. `links` join an agent to the skills it names, by part id.
  */
 export interface RealHarness {
   readonly readable: boolean;
