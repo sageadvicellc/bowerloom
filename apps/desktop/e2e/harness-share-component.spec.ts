@@ -421,6 +421,45 @@ test('Import: a folder whose harness has parts is marked refused and cannot be p
   await expect(s.getByRole('alert')).toHaveCount(0);
 });
 
+test('Import: after UNKNOWN_BUNDLE the sheet goes back to the file step, says to choose the file again, and offers no Plan again', async () => {
+  const p = await open(listQuery());
+  const s = await toFolderStep(p);
+  await s.locator('[data-folder="folder-1"]').click();
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  await answer(p, (await waiting(p, 'planImport')).id, refused('UNKNOWN_BUNDLE', 'Bowerloom no longer holds that file. Choose it again.'));
+  await expect(s.getByRole('button', { name: 'Choose a file', exact: true })).toBeVisible();
+  await expect(s.locator('[data-bundle]')).toHaveCount(0);
+  await expect(s.getByRole('alert')).toContainText('Bowerloom no longer holds that file. Choose it again.');
+  await expect(s.getByRole('button', { name: 'Plan again', exact: true })).toHaveCount(0);
+  await expect(s.getByRole('button', { name: 'Next', exact: true })).toHaveAttribute('aria-disabled', 'true');
+  // Choosing the file again works.
+  await s.getByRole('button', { name: 'Choose a file', exact: true }).click();
+  await answer(p, (await waiting(p, 'chooseBundle')).id, ok(bundle));
+  await expect(s.locator(`[data-bundle="${bundle.bundleId}"]`)).toBeVisible();
+});
+
+test('Import: a stopped helper thread names its cause in the next step: it does not say "try again", and it points to a stopped save', async () => {
+  const p = await open(listQuery());
+  const s = await toFolderStep(p);
+  await s.locator('[data-folder="folder-1"]').click();
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  const words = 'The part of Bowerloom that writes an import stopped before it finished. The folder may hold a stopped save. Use Finish a stopped harness to put it back.';
+  await answer(p, (await waiting(p, 'planImport')).id, { ok: false, refusal: { code: 'FAILED', message: words, paths: [], step: 'WORKER_CRASHED' } });
+  await expect(s.getByRole('alert')).toContainText(words);
+  await expect(s.locator('[data-next-step]')).toHaveText('Open the folder again. Finish any stopped save first.');
+});
+
+test('Import: a folder list that fails shows its refusal on the file step, not only after Next', async () => {
+  const p = await open(listQuery());
+  await p.evaluate(() => { delete (window as unknown as { __driver: { auto: Record<string, unknown> } }).__driver.auto.folders; });
+  await p.getByRole('button', { name: 'Import from a file', exact: true }).click();
+  const s = sheet(p, 'Import a harness');
+  await p.evaluate(id => { (window as unknown as { __driver: { fail(i: number, m: string): void } }).__driver.fail(id, 'the list failed'); }, (await waiting(p, 'folders')).id);
+  await expect(s.getByRole('button', { name: 'Choose a file', exact: true })).toBeVisible();
+  await expect(s.getByRole('alert')).toBeVisible();
+  await expect(s.getByRole('alert')).toContainText('Bowerloom could not finish this');
+});
+
 test('Import: a file the package refuses is shown in its own words and holds nothing; Escape closes the sheet and drops the bundle', async () => {
   const p = await open(listQuery());
   await p.getByRole('button', { name: 'Import from a file', exact: true }).click();

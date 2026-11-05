@@ -58,6 +58,10 @@ export const FILE_FAILED_REASONS: Readonly<Record<string, string>> = Object.free
   ENFILE: 'Too many files are open.',
 });
 const OTHER_REASON = 'The system refused the file.';
+/** The `cause` of a `BUNDLE_FILE_FAILED` for a write that failed after the file was created, on a volume with no hard links, and could not remove it. */
+export const PARTIAL_LEFT = 'PARTIAL_LEFT';
+const PARTIAL_LEFT_WORDS = 'A partial file may remain at the place you chose. Delete it by hand.';
+const NOTHING_WRITTEN = ' Nothing was read or written.';
 
 /** The kind of a fault for a log: the code of a system error, else the class name of the error. Never a message, never a path. */
 export function causeOf(error: unknown): string {
@@ -69,11 +73,11 @@ export function causeOf(error: unknown): string {
 
 /** The plain-words reason of a file failure, by the code of the system error. */
 const reasonOf = (code: BundleCode, cause: string | undefined): string | undefined =>
-  code === 'BUNDLE_FILE_FAILED' ? (cause !== undefined ? FILE_FAILED_REASONS[cause] : undefined) ?? OTHER_REASON : undefined;
+  code === 'BUNDLE_FILE_FAILED' ? (cause === PARTIAL_LEFT ? PARTIAL_LEFT_WORDS : cause !== undefined ? FILE_FAILED_REASONS[cause] : undefined) ?? OTHER_REASON : undefined;
 
 /** The message of a refusal, true by construction: the table sentence, the reason, then the shortened paths and how many more there were. */
 const messageOf = (code: BundleCode, reason: string | undefined, shown: readonly string[], more: number): string =>
-  `${BUNDLE_MESSAGES[code]}${reason !== undefined ? ` ${reason}` : ''}${shown.length > 0 ? ` ${shown.join(', ')}${more > 0 ? `, and ${more} more` : ''}.` : ''}`;
+  `${reason === PARTIAL_LEFT_WORDS ? BUNDLE_MESSAGES[code].replace(NOTHING_WRITTEN, '') : BUNDLE_MESSAGES[code]}${reason !== undefined ? ` ${reason}` : ''}${shown.length > 0 ? ` ${shown.join(', ')}${more > 0 ? `, and ${more} more` : ''}.` : ''}`;
 
 /**
  * A refusal of the bundle package. `paths` are bundle paths (relative to `.bowerloom`) or, for the file codes, nothing. `problems` are the loader's, by path

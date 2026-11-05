@@ -1,10 +1,9 @@
 #!/usr/bin/env node
-// The release gate for the contract stubs of Task 1 (export and import) and Task 2 (the Overview). Each stub answers `throw new Error('not built')`
-// until its lane builds it. This check fails while one is left in a file that ships, so a release never carries a feature that only pretends to work.
+// The release gate for contract stubs. A stub answers `throw new Error('not built')` until the feature behind it is built. This check fails while one is left in a file that ships, so a release never carries a feature that only pretends to work.
 //   node tools/check-not-built.mjs          prints each file that still holds a stub, and exits 1 when there is one
 //   npm run check:not-built                 the same
 //   BOWERLOOM_RELEASE_GATE=1 npm test       the same check runs as a test (tools/test/check-not-built.test.mjs); without the variable that test is skipped
-// Run it in the gate lane before the release pull request. It reads source files only and runs nothing.
+// Run it before the release pull request. It reads source files only and runs nothing.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +13,10 @@ export const SHIPPED = Object.freeze([
   'packages/harness-bundle/src',
   'apps/desktop/main/engine-service.ts',
   'apps/desktop/main/engine-bundle.ts',
+  'apps/desktop/main/engine-bundle-host.ts',
+  'apps/desktop/main/engine-bundle-work.ts',
+  'apps/cli/src/harness-bundle.ts',
+  'apps/desktop/renderer',
   'apps/desktop/shared/engine/sample.ts',
   'apps/desktop/shared/harness/overview.ts',
   'apps/desktop/shared/harness/overview-layout.ts',

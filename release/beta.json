@@ -77,7 +77,7 @@
       "No harness command runs an engine or a model.",
       "OpenCode, Pi, and DeepSeek Harness are preview engines in this beta. Adopt, drift, status, and remove work for them, and install needs BOWERLOOM_PREVIEW_ENGINES=1.",
       "The save step, save points, Go back, and the notes actions run in the desktop app only. The command line does not have them.",
-      "The desktop app is not signed with an Apple Developer ID and is not notarized. Updates stay off until the first release.",
+      "The desktop app is not signed with an Apple Developer ID and is not notarized. Each download has a SHA-256 hash. Check it before you open the app. Updates stay off until the first release.",
       "Import writes into a folder whose harness is missing or empty. It does not check that the values it lists exist on this computer.",
       "Windows and Linux are not supported in this beta.",
       "Team sync, signing and automatic updates, other knowledge bases, and more engines are named for later releases. They are not promises."

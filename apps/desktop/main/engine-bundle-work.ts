@@ -113,11 +113,11 @@ const DEF = '.bowerloom';
 const byPath = (a: { path: string }, b: { path: string }): number => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path));
 const hex = (bytes: Uint8Array | string): string => createHash('sha256').update(bytes).digest('hex');
 
-/** The harness.json of an empty harness: no part, the two common engines, and the description that marks a harness as made empty. The same bytes at the plan and at the write. */
-export function emptyHarnessFile(projectDir: string): DefinitionFile {
+/** The harness.json of an empty harness: no part, the engines of the bundle (as the command line does), and the description that marks a harness as made empty. The same bytes at the plan and at the write. */
+export function emptyHarnessFile(projectDir: string, engines: readonly string[]): DefinitionFile {
   const slug = projectDir.slice(projectDir.lastIndexOf('/') + 1).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64).replace(/-+$/, '');
   const id = /^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug) ? slug : 'imported';
-  const json = { format: HARNESS_FORMAT, id, description: EMPTY_HARNESS_DESCRIPTION, engines: [{ id: 'claude-code' }, { id: 'codex' }], parts: {} };
+  const json = { format: HARNESS_FORMAT, id, description: EMPTY_HARNESS_DESCRIPTION, engines: engines.map(id => ({ id })), parts: {} };
   return { path: 'harness.json', bytes: Buffer.from(`${JSON.stringify(json, null, 2)}\n`), executable: false };
 }
 
@@ -172,7 +172,7 @@ function build(job: { readonly key: string; readonly choices: WireChoices } & Fo
     revision = plan.revision;
   } else {
     checkDefinitionFolder(job.projectDir);
-    const empty = emptyHarnessFile(job.projectDir);
+    const empty = emptyHarnessFile(job.projectDir, h.summary.engines);
     keepable([empty], target);
     const sorted = [...target].sort(byPath);
     const mode = (f: DefinitionFile): number => (f.executable === true ? 0o755 : 0o644);
@@ -197,13 +197,13 @@ export const emptyHarnessHooks: { afterPlace?: () => void } = {};
  * adoption journal so a stopped run is recovered by the same "Finish a stopped harness" step. The file is created exclusively, so a harness made since the plan is never
  * overwritten. It must load afterwards. On any failure it removes what it made.
  */
-async function makeEmptyHarness(projectDir: string, stateDir: string, revision: string): Promise<void> {
+async function makeEmptyHarness(projectDir: string, stateDir: string, revision: string, engines: readonly string[]): Promise<void> {
   await withProjectLock(projectDir, new AbortController().signal, async () => {
     if (harnessExists(projectDir)) throw new DefinitionError(NOT_THE_PLAN_SHOWN, 'This is not the plan Bowerloom showed last for this folder, with these choices. Nothing was written. Plan again.');
     // Inside the lock: a run that stopped part way since main looked keeps its journal. This write never overwrites or removes another run's record.
     refuseWhileStopped(stateDir);
     checkDefinitionFolder(projectDir);
-    const file = emptyHarnessFile(projectDir), rel = `${DEF}/harness.json`, digest = sha(file.bytes);
+    const file = emptyHarnessFile(projectDir, engines), rel = `${DEF}/harness.json`, digest = sha(file.bytes);
     const dirs = checkAncestors(projectDir, rel);
     const created: string[] = [];
     let placed = false;
@@ -265,7 +265,7 @@ async function write(job: Extract<Job, { op: 'write' }>): Promise<WriteResult> {
   const { target, io } = built;
   const at = new Date(job.now);
   let saveRevision = job.revision;
-  if (built.result.makes) await makeEmptyHarness(job.projectDir, job.adoptState, job.revision);
+  if (built.result.makes) await makeEmptyHarness(job.projectDir, job.adoptState, job.revision, heldOf(job.key).summary.engines);
   try {
     if (built.result.makes) {
       // The save plans against the empty harness that now exists. It must write exactly the files the person was shown.

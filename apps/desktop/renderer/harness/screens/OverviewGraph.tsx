@@ -1,5 +1,5 @@
 /**
- * The graph of the Overview (Task 2): every place the first read found, each as a box with a header, in a fixed grid, and inside an open place the Builder's two columns (agents at
+ * The graph of the Overview: every place the first read found, each as a box with a header, in a fixed grid, and inside an open place the Builder's two columns (agents at
  * the left, every other part at the right). It draws the Builder's own cards, curves, buttons and small map (the classes of harness.css and the functions of shared/harness/layout.ts);
  * only the boxes are new. It is read-only: nothing drags, nothing is saved, and there is no animation loop.
  *

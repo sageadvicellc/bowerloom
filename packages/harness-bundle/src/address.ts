@@ -2,7 +2,7 @@
  * The address a tool reaches, read the way a client reads it. A summary names the host a `${NAME}` reference goes to, and a person ticks on that name, so it must be
  * the host a client would really use. A text cut at `/` or `:` shows a trusted name for `https://github.com:${TOKEN}@evil.example/`, where the real host is
  * `evil.example` and the value goes in the URL password. So the address is parsed with the WHATWG `URL` (what Node and browsers use) after every `${NAME}` is replaced
- * by a placeholder that no address holds, and the placeholders are put back when the host is shown. Built, not a stub: the tests of stage 1 use it, and lane A calls it.
+ * by a placeholder that no address holds, and the placeholders are put back when the host is shown.
  */
 import { BUNDLE_LIMITS } from './limits.js';
 

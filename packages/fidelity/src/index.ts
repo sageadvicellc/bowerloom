@@ -1,5 +1,5 @@
 /**
- * The fidelity engine of Bowerloom 0.8 (step 2, lane B): the neutral guardrail model, its translation into each engine,
+ * The fidelity engine of Bowerloom 0.8: the neutral guardrail model, its translation into each engine,
  * a matcher per engine, and the loss report judged by the contract. Pure functions: no file writes, no engine runs.
  * Spec: 2026-10-27-bowerloom-locked-in-parts.md, sections 2, 3, 8, 10, 11, and 12. README.md states the readings.
  */
@@ -32,7 +32,7 @@ export { NOT_WRITTEN } from './translation.js';
 export type { EngineDefault, SandboxForm, Translation, Written } from './translation.js';
 export { engineDecision, judgeGuardrails, projectGuardrails, translateGuardrails } from './project.js';
 export type { EngineForm, GuardrailEntries, GuardrailProjection, GuardrailSource, GuardrailTranslation } from './project.js';
-// Step 3, lane B: the translations of MCP servers, subagents, and hooks (locked-in parts spec, sections 5 to 7).
+// The translations of MCP servers, subagents, and hooks (locked-in parts spec, sections 5 to 7).
 export { JsExpression, PermissionPairs, addPrivate, envDefaultIn, openCodeSubstitution, holdsEnvDefault, referenceParts, references, stringsOf } from './locked-common.js';
 export type { LockedProblem } from './locked-common.js';
 export { DSH_MCP_PLUGIN, translateMcp } from './locked-mcp.js';

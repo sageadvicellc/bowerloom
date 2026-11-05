@@ -15,7 +15,7 @@
 import { randomBytes } from 'node:crypto';
 import fs, { constants } from 'node:fs';
 import path from 'node:path';
-import { BundleRefusal, causeOf } from './codes.js';
+import { BundleRefusal, PARTIAL_LEFT, causeOf } from './codes.js';
 import { BUNDLE_LIMITS } from './limits.js';
 import type { BundleFileIdentity } from './types.js';
 
@@ -314,8 +314,11 @@ async function createInPlace(temporary: string, target: string, bytes: Uint8Arra
   } catch (error) {
     if (open) await fh.close().catch((e: unknown) => warnCleanup('closing the target', e));
     // Removed only by identity. If the identity was never taken (the stat failed), the file is left, and the warning says so: a file we cannot name is not ours to delete.
-    if (created !== undefined) await removeIfStillMine(target, created, written, BigInt(bytes.length));
+    let left = created === undefined;
+    if (created !== undefined) left = await removeIfStillMine(target, created, written, BigInt(bytes.length));
     else process.emitWarning('harness-bundle: a file may remain at the target of a failed write (its identity was not read).', { type: 'BundleCleanupWarning' });
+    // A partial file may stay at the final name: the refusal says so (cause PARTIAL_LEFT), so the person is never told that nothing was written.
+    if (left) throw new BundleRefusal('BUNDLE_FILE_FAILED', [], [], PARTIAL_LEFT);
     throw error;
   }
   await removeFile(temporary);
@@ -323,12 +326,13 @@ async function createInPlace(temporary: string, target: string, bytes: Uint8Arra
 
 /**
  * Removes `target` only while it is still the file that was created: same device, inode and birth time, and a size that is ours (`written` when it is known, else
- * anything up to `most`, the length of the bytes asked for).
+ * anything up to `most`, the length of the bytes asked for). True when a file of ours may remain (the removal was declined or failed).
  */
-async function removeIfStillMine(target: string, mine: fs.BigIntStats, written: bigint | null, most: bigint): Promise<void> {
+async function removeIfStillMine(target: string, mine: fs.BigIntStats, written: bigint | null, most: bigint): Promise<boolean> {
   const now = await lstatOrNull(target).catch(() => null);
-  if (now === null || !now.isFile()) return;
-  if (now.dev !== mine.dev || now.ino !== mine.ino || (now.birthtimeNs ?? 0n) !== (mine.birthtimeNs ?? 0n)) return;
-  if (written !== null ? now.size !== written : now.size > most) return;
-  await removeFile(target);
+  if (now === null || !now.isFile()) return false;
+  if (now.dev !== mine.dev || now.ino !== mine.ino || (now.birthtimeNs ?? 0n) !== (mine.birthtimeNs ?? 0n)) return false;
+  // Declined: the file is ours by identity, but its size is not one we wrote. It stays.
+  if (written !== null ? now.size !== written : now.size > most) return true;
+  return !(await removeFile(target));
 }

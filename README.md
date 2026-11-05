@@ -68,6 +68,7 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 | Remove | Remove puts back every file that an install replaced and deletes the files that the install created. |
 | Save | The save step in the desktop app writes a change to the harness of a folder after you approve it, and keeps a save point before and after. Go back returns the harness to an earlier save point. |
 | Notes | In the desktop app, a new or empty notes folder can start from the starter wiki of the Notes keeper kit. A linked notes folder with no version history can get it. The Notes keeper kit holds one agent and six skills that look after a folder of notes. |
+| Share | Export writes a harness to one file that holds no secret value that Bowerloom can find and no notes folder path, and import reads such a file into a folder whose harness is missing or empty, in the app and on the command line. |
 | Portable skills | Pin skills from npm or GitHub with skills add, then install them for Claude Code and Codex with skills sync. |
 | Desktop | The desktop app is a main part of this release, and it is a beta. It does the same adopt, install, and remove steps as the command line, and adds the Builder, the screen where you edit a harness, with the save step and save points. Apple did not sign the macOS app. |
 | Execution | Setup does not start workers, grant runtime access, or authorize connected actions. |
@@ -79,7 +80,8 @@ Limits of this beta:
 - No harness command runs an engine or a model.
 - OpenCode, Pi, and DeepSeek Harness are preview engines in this beta. Adopt, drift, status, and remove work for them, and install needs BOWERLOOM_PREVIEW_ENGINES=1.
 - The save step, save points, Go back, and the notes actions run in the desktop app only. The command line does not have them.
-- The desktop app is not signed with an Apple Developer ID and is not notarized. Updates stay off until the first release.
+- The desktop app is not signed with an Apple Developer ID and is not notarized. Each download has a SHA-256 hash. Check it before you open the app. Updates stay off until the first release.
+- Import writes into a folder whose harness is missing or empty. It does not check that the values it lists exist on this computer.
 - Windows and Linux are not supported in this beta.
 - Team sync, signing and automatic updates, other knowledge bases, and more engines are named for later releases. They are not promises.
 <!-- release:support:end -->
@@ -90,7 +92,7 @@ Limits of this beta:
 - Keep your project out of iCloud Drive folders. Project commands refuse a project in a cloud-synced folder with `PROJECT_IN_CLOUD_FOLDER`.
 - The desktop app is a beta. The Builder, the save step, and Save points exist only in the app. The adopt, install, drift, and remove steps work in both.
 - Beta.1 supports Claude Code and Codex. OpenCode, Pi, and DeepSeek Harness are preview engines. They install only with `BOWERLOOM_PREVIEW_ENGINES=1`.
-- Apple did not sign this build. [Open the unsigned app](#open-the-unsigned-app) gives the steps to open it.
+- Apple did not sign or notarize this build. Each download has a SHA-256 hash. Check it before you open the app. [Open the unsigned app](#open-the-unsigned-app) gives the steps to open it.
 
 ## Install Bowerloom
 
@@ -118,7 +120,7 @@ From a source checkout, `npm run desktop` opens the app on your own folders. `np
 
 The desktop app is open source. Apple did not sign or notarize it. The first time you open it, macOS blocks it and shows a warning. You can read the source in this repository before you open it.
 
-1. Download the app from the GitHub release page of Bowerloom 0.8.0-beta.1. Move `Bowerloom.app` to your Applications folder.
+1. Download the app from the GitHub release page of Bowerloom 0.8.0-beta.1. Check the download against its SHA-256 hash, which is listed with it. Move `Bowerloom.app` to your Applications folder.
 2. Open the app once. macOS shows a warning. Close the warning.
 3. Open the Apple menu, then System Settings.
 4. Click Privacy & Security, then scroll down to Security.

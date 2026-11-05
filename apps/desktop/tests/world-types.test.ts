@@ -77,10 +77,6 @@ test('every exported type has a doc comment on the line above it', () => {
   lines.forEach((line, i) => { if (/^export (type|interface) /.test(line)) assert.match(lines[i - 1] ?? '', /\*\/\s*$/, line); });
 });
 
-test('the placeholder access class names are marked as open in the doc comment', () => {
-  assert.match(typesSource, /\/\*\*(?:(?!\*\/)[\s\S])*(placeholder|still open)(?:(?!\*\/)[\s\S])*\*\/\s*export type AccessClass/i);
-});
-
 test('createEmptyWorld returns a World with one global scope, three interfaces and empty collections', () => {
   const w = createEmptyWorld();
   assert.deepEqual(Object.keys(w).sort(), ['interfaces', 'items', 'libraries', 'overrides', 'scopes', 'slices', 'versions', 'wikiPages']);

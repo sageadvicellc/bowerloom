@@ -1,6 +1,6 @@
 /**
- * The shapes of the harness bundle: the file one harness travels in (0.8 spec, section 6.7). These are the contract of Task 1, journey 4. The app and the
- * command line both build on them. Stage 2 lanes fill in the functions of `index.ts`; they do not change a name or a shape here without a new contract commit.
+ * The shapes of the harness bundle: the file one harness travels in (0.8 spec, section 6.7). These are the contract of the bundle (journey 4). The app and the
+ * command line both build on them. A name or a shape here changes only with a new contract.
  */
 import type { DefinitionFile, EngineId, KnowledgeKind, McpTransport, Problem } from '../../harness-definition/src/index.js';
 import type { AddressFlag } from './address.js';

@@ -242,7 +242,7 @@ export const SAMPLE_IDS = Object.freeze({
   bowerloom: 'project-bowerloom', siteRedesign: 'project-site-redesign', notes: 'project-notes', garden: 'project-garden', archive: 'project-archive',
 });
 
-// ---- A made-up world of several places, for the Overview of the preview (Task 2). Nothing here is real: the places, names and texts are invented.
+// ---- A made-up world of several places, for the Overview of the preview. Nothing here is real: the places, names and texts are invented.
 
 const placeId = (slug: string, kind: PartKind, name: string): string => `${slug}-${kind}-${slugOf(name)}`;
 

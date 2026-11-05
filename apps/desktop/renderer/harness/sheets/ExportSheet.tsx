@@ -15,7 +15,7 @@ import { Sheet } from '../parts/Sheet.js';
 import { HButton, StateDot } from '../parts/controls.js';
 import { useEngine } from '../engine.js';
 import { ENGINE_WORDS } from '../words-engine.js';
-import { SHARE, SHARE_REFUSAL_WORDS, exportFileWords, fileSizeWords } from '../words-share.js';
+import { SHARE, exportFileWords, fileSizeWords, nextWordsOf } from '../words-share.js';
 import { Busy, RefusalNote, TickRow } from './engine-parts.js';
 import { Full, Name, ShareSummaryView, firstOpenBox, useReannounce, useScrolls } from './share-parts.js';
 import { useCall } from './use-call.js';
@@ -103,7 +103,7 @@ export function ExportSheet({ open, folderId, unsaved = false, onClose }: Export
     void call.write(W.label.writing, () => engine.runExport(folderId, revision, ack), setDone);
   };
 
-  const nextWords = call.refusal === null || cancelled ? undefined : SHARE_REFUSAL_WORDS[call.refusal.code];
+  const nextWords = call.refusal === null || cancelled ? undefined : nextWordsOf(call.refusal);
   const refusal = call.refusal === null || cancelled ? null : (
     <RefusalNote refusal={call.refusal} focusId={call.refusalId}>
       {folderId !== null && engine !== null ? <HButton data-plan-again="" disabled={held} onClick={plan}>{W.label.planAgain}</HButton> : null}

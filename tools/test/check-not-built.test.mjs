@@ -28,10 +28,10 @@ test('the checker finds a stub by file and line in .ts, .tsx, .mjs and .js, in s
   assert.deepEqual(findNotBuilt(root, ['one.ts']), []);
 });
 
-test('the shipped list names the package, the two desktop stub files and the Overview contract', () => {
+test('the shipped list names the package, the desktop main files and the window code of export and import, the command line file and the Overview contract', () => {
   assert.deepEqual([...SHIPPED], [
-    'packages/harness-bundle/src', 'apps/desktop/main/engine-service.ts', 'apps/desktop/main/engine-bundle.ts', 'apps/desktop/shared/engine/sample.ts',
-    'apps/desktop/shared/harness/overview.ts', 'apps/desktop/shared/harness/overview-layout.ts',
+    'packages/harness-bundle/src', 'apps/desktop/main/engine-service.ts', 'apps/desktop/main/engine-bundle.ts', 'apps/desktop/main/engine-bundle-host.ts', 'apps/desktop/main/engine-bundle-work.ts',
+    'apps/cli/src/harness-bundle.ts', 'apps/desktop/renderer', 'apps/desktop/shared/engine/sample.ts', 'apps/desktop/shared/harness/overview.ts', 'apps/desktop/shared/harness/overview-layout.ts',
   ]);
 });
 

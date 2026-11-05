@@ -20,7 +20,12 @@ export interface WindowFailureDeps {
   readonly markEnding: () => void;
   /** `app.quit()`. Never `app.exit`. */
   readonly quit: () => void;
+  /** The most milliseconds to wait for the engine to be idle. Default WAIT_MS. After it the box shows and the app quits, and the journal of a stopped write is recovered at the next open. */
+  readonly waitMs?: number;
 }
+
+/** How long a dead window waits for the engine: a person may be looking at a dialog of a window that no longer exists, and a write is held to its own timer. */
+export const WAIT_MS = 15_000;
 
 /** One handler for the whole window. The first failure wins; later ones (a dead process is often followed by a failed load) add no second box. */
 export function windowFailure(deps: WindowFailureDeps): (error: Error, title: string) => Promise<void> {
@@ -31,7 +36,15 @@ export function windowFailure(deps: WindowFailureDeps): (error: Error, title: st
     deps.say(`${title}: ${error.message}\n`);
     if (deps.engine !== null) {
       deps.say('Bowerloom is finishing the work it has started before it closes.\n');
-      try { await deps.engine.idle(); } catch { /* the signal failed: show the box anyway */ }
+      let timer: NodeJS.Timeout | undefined;
+      const late = new Promise<'late'>(resolve => { timer = setTimeout(() => { resolve('late'); }, deps.waitMs ?? WAIT_MS); });
+      try {
+        const result = await Promise.race([deps.engine.idle().then(() => 'idle' as const), late]);
+        if (result === 'late') deps.say('The engine did not finish in time. Bowerloom closes now; a stopped write is recovered when the folder is opened again.\n');
+      } catch (error) {
+        // The signal failed: show the box anyway, and say why.
+        deps.say(`The engine could not say when it was idle (${error instanceof Error ? error.message : String(error)}).\n`);
+      } finally { clearTimeout(timer); }
     }
     try { deps.showBox(title, deps.engine === null ? error.message : `${error.message} ${SAVING_WORDS}`); } catch { /* no box could be shown; stderr has the message */ }
     deps.setExitCode(1);

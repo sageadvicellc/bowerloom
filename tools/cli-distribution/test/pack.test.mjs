@@ -305,7 +305,7 @@ test('routine packaging missing compiled/source loader cannot become a partial a
 test('skills CLI reaches exact source/cache/manager closure with locked tar runtime and no proof material',()=>{
  const result=collect({repoDir:repo});
  for(const path of ['dist/apps/cli/src/skills.js','dist/packages/skill-sources/src/npm.js','dist/packages/skill-sources/src/cache.js','dist/packages/skill-sources/src/validation.js','dist/packages/managed-skills/src/observed.js','dist/packages/managed-skills/src/transaction.js']){assert.ok(result.files.has(path),path);assert.ok(result.record.sourceFiles.some(row=>row.path===path.replace(/^dist\//,'').replace(/\.js$/,'.ts')),path);}
- assert.equal(result.manifest.dependencies.tar,'7.5.20');const lock=JSON.parse(result.files.get('npm-shrinkwrap.json'));assert.equal(lock.packages['node_modules/tar'].version,'7.5.20');
+ assert.equal(result.manifest.dependencies.tar,'7.5.22');const lock=JSON.parse(result.files.get('npm-shrinkwrap.json'));assert.equal(lock.packages['node_modules/tar'].version,'7.5.22');
  for(const path of result.files.keys())assert.ok(!/(?:^|\/)(?:work|test|tests|fixtures)(?:\/)|\.bowerloom-skills|owner\.lock/.test(path),path);
 });
 test('skills collection refuses missing reachable source or compiled modules',()=>{

@@ -1,5 +1,5 @@
 /**
- * The Overview model (Task 2, journey 1 step 1.5): every place the first read found, drawn together in one read-only graph. This file is the contract of the model.
+ * The Overview model (journey 1 step 1.5): every place the first read found, drawn together in one read-only graph. This file is the contract of the model.
  * `overviewOf` turns the scan result already in the window (`HarnessState`, built by real-map.ts) and the folders main knows into groups of nodes. It asks main for
  * nothing, so it works right after the scan and after a restart (decision T2-D2 A). The layout, the culling, the arrow-key moves and the list are in
  * overview-layout.ts. Pure: no file, no clock, no random number, and no absolute path in any string it returns.

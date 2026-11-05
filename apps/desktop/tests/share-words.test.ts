@@ -8,12 +8,15 @@ import { BUNDLE_MESSAGES } from '../../../packages/harness-bundle/src/index.js';
 import { SHARE_MAIN_WORDS } from '../shared/engine/types.js';
 import {
   CODE_WHY_WORDS, EXPORT_TARGET_IN_HARNESS_WORDS, FLAG_WORDS, changesStart, checkParts, envNameWords, fromThisComputer, SHARE, SHARE_REFUSAL_WORDS, approveImportName, approveImportWords, downloadsCode, eventWords, jumpName, runsAsAdmin, runsShellLine, exportFileWords, fileSizeWords, hiddenCounts, hiddenWords, importBlockWords,
-  importFilesWords, importTickWords, importedWords, makesHarnessWords, moreWords, notesButtonName, notesChoiceName, readFileWords, secretKindWords, sinkWords, summaryLine, transportWords, writesCount,
+  importFilesWords, importTickWords, importedWords, nextWordsOf, WORKER_NEXT_WORDS, makesHarnessWords, moreWords, notesButtonName, notesChoiceName, readFileWords, secretKindWords, sinkWords, summaryLine, transportWords, writesCount,
 } from '../renderer/harness/words-share.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DESKTOP } from './support.js';
 import type { ShareSummary } from '../shared/engine/types.js';
+
+// These three refusals end with the step to take in their own words, so a second line under them would say the same thing twice.
+const NEXT_IN_OWN_WORDS = new Set(['EXPORT_NEEDS_ACKNOWLEDGEMENT', 'IMPORT_NEEDS_ACKNOWLEDGEMENT', 'EXPORT_NO_DEFINITION']);
 
 test('SHARE is frozen all the way down; a label has at most 5 words, a hint 12, a paragraph 25, and none has a banned word', () => {
   assert.equal(Object.isFrozen(SHARE), true); assert.equal(Object.isFrozen(SHARE.label), true);
@@ -47,7 +50,7 @@ test('the words say "passes these values from this computer to these tools", nev
 
 test('the next-step lines have no banned word, are short, and the codes the package and main give are covered', () => {
   for (const [code, text] of Object.entries(SHARE_REFUSAL_WORDS)) { assert.equal(bannedHere(text), null, code); assert.ok(countWords(text) <= LIMITS.hint, code); }
-  for (const code of [...Object.keys(BUNDLE_MESSAGES), ...Object.keys(SHARE_MAIN_WORDS)]) assert.ok(code in SHARE_REFUSAL_WORDS, `${code} has a next step`);
+  for (const code of [...Object.keys(BUNDLE_MESSAGES), ...Object.keys(SHARE_MAIN_WORDS)]) assert.ok(code in SHARE_REFUSAL_WORDS || NEXT_IN_OWN_WORDS.has(code), `${code} has a next step`);
   assert.ok('CANCELLED' in SHARE_REFUSAL_WORDS && 'NOT_THE_PLAN_SHOWN' in SHARE_REFUSAL_WORDS);
 });
 
@@ -176,4 +179,13 @@ test('the refusal for a save place inside the harness is one sentence, the same 
   assert.doesNotMatch(main, /export const EXPORT_TARGET_IN_HARNESS_WORDS\s*=/, 'main holds no copy of its own');
   assert.match(main, /EXPORT_TARGET_IN_HARNESS_WORDS\b[\s\S]*from '\.\.\/shared\/engine\/types\.js'/);
   assert.equal('EXPORT_TARGET_IN_HARNESS' in SHARE_REFUSAL_WORDS, false, 'no second sentence under it');
+});
+
+test('the next step under a stopped helper thread is keyed on the cause, never says "try again", and the three self-ending refusals have none', () => {
+  for (const [cause, text] of Object.entries(WORKER_NEXT_WORDS)) { assert.equal(bannedHere(text), null, cause); assert.ok(countWords(text) <= LIMITS.hint, cause); assert.doesNotMatch(text, /try again/i, cause); }
+  for (const cause of ['WORKER_CRASHED', 'WORKER_OUT_OF_MEMORY', 'WORKER_NOT_STARTED', 'WORKER_TIMED_OUT']) assert.equal(nextWordsOf({ code: 'FAILED', step: cause }), WORKER_NEXT_WORDS[cause], cause);
+  assert.equal(nextWordsOf({ code: 'FAILED' }), SHARE_REFUSAL_WORDS.FAILED, 'a failure with no cause keeps the general line');
+  assert.equal(nextWordsOf({ code: 'FAILED', step: 'SOMETHING_ELSE' }), SHARE_REFUSAL_WORDS.FAILED, 'a step main did not name falls back to the code');
+  for (const code of NEXT_IN_OWN_WORDS) assert.equal(nextWordsOf({ code }), undefined, code);
+  assert.equal(nextWordsOf({ code: 'constructor' }), undefined, 'a code is looked up by own name only');
 });

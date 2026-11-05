@@ -407,6 +407,8 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
   const answer = async <T>(f: Keyed | null, run: () => Promise<T> | T): Promise<Answer<T>> => {
     try { return { ok: true, value: await run() }; } catch (error) {
       if (error instanceof EngineCallRefusal) throw error;
+      // An error with no code and words is a bug of Bowerloom. The window gets only "FAILED"; the cause goes to the log of the app, so it is not lost.
+      if (typeof (error as { code?: unknown } | null)?.code !== 'string') console.error('Bowerloom: a call failed with an error it does not know.', error instanceof Error ? error.stack ?? error.message : String(error));
       return { ok: false, refusal: refusalOf(error, f?.scrub ?? makeScrub(homes.map(path => ({ path, as: '~' })))) };
     }
   };
@@ -832,7 +834,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     now, home: realHome, user: accountName(), plans, scrubAll: makeScrub(homes.map(path => ({ path, as: '~' }))),
     chooseBundleOpen: deps.chooseBundleOpen ?? (async () => null), chooseBundleSave: deps.chooseBundleSave ?? (async () => null), confirm: deps.confirm,
     bad, unknownBundle: () => { throw new EngineCallRefusal('UNKNOWN_BUNDLE'); },
-    folderOf, answer, written, whileStopped,
+    folderOf, answer, serial, whileStopped,
     sourcePathOf: (f, notesId) => notesEdits(folderOf(f.id)).sourcePath(notesId),
     hasNotes: id => notesById.has(id), notesLabel: id => notesOf(id).label,
     sourceViewOf: f => sourceViewOf(folderOf(f.id)), scrubbed: (f, d) => scrubbed(folderOf(f.id), d),
@@ -1207,10 +1209,11 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
       });
     }),
     planExport: id => serial(() => share.planExport(id)),
-    runExport: (id, revision, acknowledged) => serial(() => share.runExport(id, revision, acknowledged)),
-    chooseBundle: () => serial(() => share.chooseBundle()),
+    // The three calls with a native dialog take the queue themselves, only for the steps outside the dialogs (main/engine-bundle.ts).
+    runExport: (id, revision, acknowledged) => share.runExport(id, revision, acknowledged),
+    chooseBundle: () => share.chooseBundle(),
     planImport: (id, bundleId, choices) => serial(() => share.planImport(id, bundleId, choices)),
-    runImport: (id, revision, bundleId, choices, acknowledged) => serial(() => share.runImport(id, revision, bundleId, choices, acknowledged)),
+    runImport: (id, revision, bundleId, choices, acknowledged) => share.runImport(id, revision, bundleId, choices, acknowledged),
     discardBundle: bundleId => serial(() => share.discardBundle(bundleId)),
     close: () => share.close(),
     clearReportCopies: () => reportCopies.clear(),

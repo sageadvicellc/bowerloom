@@ -47,8 +47,7 @@ interface ItemBase { readonly id: string; readonly name: string; readonly scopeI
 export interface SkillItem extends ItemBase { readonly kind: 'skill'; readonly description: string }
 
 /**
- * How much an agent may do with an attached tool.
- * PLACEHOLDER VALUES: the real class names are still open (spec 6.13 says "such as read-only or read-write"). Do not show these strings as final words.
+ * How much an agent may do with an attached tool: it only reads, or it reads and writes.
  */
 export type AccessClass = 'read-only' | 'read-write';
 

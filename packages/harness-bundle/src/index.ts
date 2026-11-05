@@ -2,7 +2,7 @@
  * The harness bundle of Bowerloom 0.8: the one file a harness travels in (spec section 6.7), its encode, decode and inspection, the target of an import, and the
  * bounded reading and writing of the file. The command line (`bowerloom harness export` and `import`) and the app both call it.
  *
- * Stage 2 lane A built every function here to the contract of stage 1. The types, the constants, the codes and their words did not change. The functions that read or
+ * Every function here keeps to the contract of `types.ts` and `codes.ts`. The functions that read or
  * hash a large input are async and take turns of the event loop between files. That shortens the stalls of the loops; it does not remove the stalls of the steps that
  * are one synchronous call (the load as a harness with its secret scan, the summary, the revision): for a bundle of tens of megabytes these take seconds. So the app runs
  * these functions in a worker thread or a utility process, never on the main thread. Every function takes plain input (strings, bytes, plain objects) and gives plain output

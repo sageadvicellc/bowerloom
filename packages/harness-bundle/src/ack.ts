@@ -1,5 +1,5 @@
 /**
- * The acknowledgements: the hashes a person's tick names. They are built, not stubs, because they depend on the summary only, and the tests of stage 1 use them.
+ * The acknowledgements: the hashes a person's tick names. They depend on the summary only.
  * A tick covers what the person was shown. So the hash binds the plan (`revision`) and the content of each thing shown: the whole entry of each tool that
  * runs code (`BundleTool.sha256`), the `(path, sha256)` of each file that can run, and each foreign-path hit with the hash of its text. A change to any of them
  * changes the hash, and main refuses a write whose acknowledgement is not the one it computes now (IMPORT_NEEDS_ACKNOWLEDGEMENT, EXPORT_NEEDS_ACKNOWLEDGEMENT).

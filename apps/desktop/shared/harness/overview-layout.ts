@@ -1,13 +1,13 @@
 /**
- * The geometry of the Overview as plain data (Task 2): one box for each place, in a fixed grid; inside an expanded place the Builder's two columns (agents at the
+ * The geometry of the Overview as plain data: one box for each place, in a fixed grid; inside an expanded place the Builder's two columns (agents at the
  * left, every other part at the right, the slots of layout.ts); the cull that keeps the page under OVERVIEW_LIMITS.domNodes; the arrow-key move; and the list the
  * "List" view shows. Units are graph units, as in layout.ts. It reuses `GraphNode`, `Graph`, `View`, `Bounds`, `fitView`, `zoomAt`, `miniMap`, `centerOnMiniMap` and
- * `edgePath` from layout.ts; it does not change them (Task 0a owns that file).
+ * `edgePath` from layout.ts; it does not change them.
  *
  * Pure: no DOM, no clock, no random number. Every order is fixed, so the same input gives an equal output. A layout is indexed once, in a weak table keyed by the layout
  * object, so `visibleOf`, `neighbourOf` and `sharedEdgesOf` do not scan the whole layout on every call; the table is a cache and never changes an answer.
  *
- * Notes for the screen (lane H):
+ * Notes for the screen:
  *  - A place header holds no card, so the arrow keys never reach it, and under OVERVIEW_LIMITS.detailZoom there are no cards at all. Draw each header as a real button in the
  *    tab order, and let Enter and Space on it open or close the place.
  *  - Pass `among = new Set(visible.nodes)` to `neighbourOf`, so a key press goes only to a card that is on the page, and scroll the focused card into view.

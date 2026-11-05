@@ -106,7 +106,12 @@ export interface ShareEnv {
   readonly unknownBundle: () => never;
   readonly folderOf: (id: unknown) => ShareFolder;
   readonly answer: <T>(f: { readonly id: string; readonly scrub: Scrub } | null, run: () => Promise<T> | T) => Promise<Answer<T>>;
-  readonly written: <T>(f: ShareFolder, kind: 'import', revision: string, choices: unknown, run: () => Promise<T>) => Promise<Answer<T>>;
+  /**
+   * The serial queue of the engine. The share calls that open a native dialog (the open dialog, the save dialog, a write question) take it only for the steps that touch a
+   * folder or the worker, never across a dialog, so a person looking at a dialog blocks no other call and a window that died has nothing to wait for. The plan a write names is
+   * checked again inside the queue, after the dialog, so a plan that changed meanwhile is never written.
+   */
+  readonly serial: <T>(run: () => Promise<T>) => Promise<T>;
   readonly whileStopped: (f: ShareFolder) => void;
   /** The stored path of a notes folder, by the id main gave it (throws its own refusal). */
   readonly sourcePathOf: (f: ShareFolder, notesId: string) => string;
@@ -271,29 +276,47 @@ export function createShare(env: ShareEnv): ShareCalls {
   async function runExport(folderId: unknown, revision: unknown, acknowledged: unknown): Promise<Answer<ExportWritten>> {
     const folder = folderArg(folderId), rev = revisionArg(revision), ack = ackArg(acknowledged);
     const f = env.folderOf(folder);
-    const stopped = await env.answer(f, () => env.whileStopped(f));
-    if (!stopped.ok) return stopped;
-    const shown = env.plans.peek(f.id, 'export'), fact = facts.get(f.id);
-    if (shown === null || fact === undefined || shown.revision !== rev) return notTheShownPlan();
-    // The acknowledgement the plan asked for, before any dialog.
-    if ((JSON.parse(shown.choices) as { acknowledged: string | null }).acknowledged !== ack) return refusal(EXPORT_NEEDS_ACKNOWLEDGEMENT, SHARE_MAIN_WORDS.EXPORT_NEEDS_ACKNOWLEDGEMENT);
-    // Main's own save dialog: the window gets the file name back only.
+    // First step, in the queue: the folder is not stopped, the plan is the one shown, and the acknowledgement is the one it asked for. No dialog yet.
+    const first = await env.serial(async (): Promise<Answer<{ readonly file: string; readonly bytes: number }>> => {
+      const stopped = await env.answer(f, () => env.whileStopped(f));
+      if (!stopped.ok) return stopped;
+      const shown = env.plans.peek(f.id, 'export'), fact = facts.get(f.id);
+      if (shown === null || fact === undefined || shown.revision !== rev) return notTheShownPlan();
+      // The acknowledgement the plan asked for, before any dialog.
+      if ((JSON.parse(shown.choices) as { acknowledged: string | null }).acknowledged !== ack) return refusal(EXPORT_NEEDS_ACKNOWLEDGEMENT, SHARE_MAIN_WORDS.EXPORT_NEEDS_ACKNOWLEDGEMENT);
+      return { ok: true, value: { file: fact.file, bytes: fact.bytes } };
+    });
+    if (!first.ok) return first;
+    const fact = first.value;
+    // Main's own save dialog: the window gets the file name back only. The queue is free while it is open.
     const picked = await env.chooseBundleSave(fact.file);
     if (picked === null) return cancelled();
-    const target = await env.answer(f, () => exportTarget(f, picked));
+    // After the dialog, in the queue: the plan must still be the one shown, before any question is asked about it.
+    const target = await env.serial(async () => {
+      const still = env.plans.peek(f.id, 'export');
+      if (still === null || still.revision !== rev) return notTheShownPlan();
+      return env.answer(f, () => exportTarget(f, picked));
+    });
     if (!target.ok) return target;
     const { path, name, where, identity } = target.value;
+    // The question is asked with the size main recorded for this plan; the plan is checked again below, in the queue, once the person has said yes.
     if (!(await env.confirm(ASK.exportBundle(f.label, name, fact.bytes, rev, identity !== null, where)))) return cancelled();
-    env.plans.clear(f.id, 'export');
-    return env.answer(f, () => recorded('export', async () => {
-      // The file is encoded again now; when the harness changed since the plan, it is not the plan shown, and nothing is written.
-      const e = await env.host.call<EncodedView>({ op: 'encode', projectDir: f.dir, home: env.home, user: env.user, wantBytes: true });
-      if (e.sha256 !== rev || e.bytes === null) throw new DefinitionError(NOT_THE_PLAN_SHOWN, staleWords());
-      if (exportAcknowledgement(e.summary, rev) !== ack) throw new DefinitionError(EXPORT_NEEDS_ACKNOWLEDGEMENT, SHARE_MAIN_WORDS.EXPORT_NEEDS_ACKNOWLEDGEMENT);
-      // `replace` only with the identity of the file the dialog found, which the package compares again right before the rename.
-      await writeBundleFile(path, e.bytes, identity === null ? undefined : { replace: identity });
-      return { name: f.scrub(name), bytes: e.bytes.length };
-    }));
+    return env.serial(async () => {
+      const still = env.plans.peek(f.id, 'export');
+      if (still === null || still.revision !== rev) return notTheShownPlan();
+      const again = await env.answer(f, () => env.whileStopped(f));
+      if (!again.ok) return again;
+      env.plans.clear(f.id, 'export');
+      return env.answer(f, () => recorded('export', async () => {
+        // The file is encoded again now; when the harness changed since the plan, it is not the plan shown, and nothing is written.
+        const e = await env.host.call<EncodedView>({ op: 'encode', projectDir: f.dir, home: env.home, user: env.user, wantBytes: true });
+        if (e.sha256 !== rev || e.bytes === null) throw new DefinitionError(NOT_THE_PLAN_SHOWN, staleWords());
+        if (exportAcknowledgement(e.summary, rev) !== ack) throw new DefinitionError(EXPORT_NEEDS_ACKNOWLEDGEMENT, SHARE_MAIN_WORDS.EXPORT_NEEDS_ACKNOWLEDGEMENT);
+        // `replace` only with the identity of the file the dialog found, which the package compares again right before the rename.
+        await writeBundleFile(path, e.bytes, identity === null ? undefined : { replace: identity });
+        return { name: f.scrub(name), bytes: e.bytes.length };
+      }));
+    });
   }
 
   // ---- import: choose the file -------------------------------------------------------------------------------------------
@@ -306,9 +329,10 @@ export function createShare(env: ShareEnv): ShareCalls {
   }
 
   async function chooseBundle(): Promise<Answer<BundleView> | null> {
+    // The open dialog runs outside the queue; the read and the decode run inside it.
     const picked = await env.chooseBundleOpen();
     if (picked === null) return null;
-    return env.answer(null, () => recorded('bundle-open', async () => {
+    return env.serial(() => env.answer(null, () => recorded('bundle-open', async () => {
       if (typeof picked !== 'string' || !isAbsolute(picked) || picked.includes('\u0000')) throw new BundleRefusal('BUNDLE_USAGE');
       const read = await readWithin(picked);
       // The worker takes the buffer itself. A view onto a larger buffer is copied first, so no other view is cut off.
@@ -320,7 +344,7 @@ export function createShare(env: ShareEnv): ShareCalls {
       held.set(id, { id, name, bytes: d.bytes, sha256: d.sha256, harness: d.harness, summary: d.summary, noteNames: new Set(d.summary.notes.map(n => n.name)), generation: env.host.generation() });
       while (held.size > SHARE_HELD_BUNDLES) { const old = held.keys().next().value!; held.delete(old); env.host.tell({ op: 'drop', key: old }); }
       return { bundleId: id, name, bytes: d.bytes, harness: env.scrubAll(d.harness), summary: shareSummary(d.summary, env.scrubAll) } satisfies BundleView;
-    }));
+    })));
   }
 
   // ---- import: plan and write ---------------------------------------------------------------------------------------------
@@ -359,29 +383,45 @@ export function createShare(env: ShareEnv): ShareCalls {
   async function runImport(folderId: unknown, revision: unknown, bundleId: unknown, choices: unknown, acknowledged: unknown): Promise<Answer<SaveWritten>> {
     const folder = folderArg(folderId), rev = revisionArg(revision), bundle = bundleArg(bundleId), shape = choicesShape(choices), ack = ackArg(acknowledged);
     const f = env.folderOf(folder), b = bundleOf(bundle), c = choicesFor(b, shape);
-    const stopped = await env.answer(f, () => env.whileStopped(f));
-    if (!stopped.ok) return stopped;
-    // The acknowledgement the plan shown last asks for, before any dialog: the one it names, or none. A plan that is not the one shown is refused below, as every write is.
-    const shown = env.plans.peek(f.id, 'import');
-    if (shown !== null && shown.revision === rev) {
-      const want = JSON.parse(shown.choices) as { bundle: string; acknowledged: string | null };
-      if (canonical({ ...want, acknowledged: null }) === canonical(recordOf(b, c, null)) && want.acknowledged !== ack) {
-        return refusal(IMPORT_NEEDS_ACKNOWLEDGEMENT, SHARE_MAIN_WORDS.IMPORT_NEEDS_ACKNOWLEDGEMENT);
+    const record = recordOf(b, c, ack);
+    // First step, in the queue: the folder is not stopped, the acknowledgement is the one the plan shown last asks for, and the plan is the one shown. No dialog yet.
+    const first = await env.serial(async (): Promise<Answer<{ readonly ask: Ask | null }>> => {
+      const stopped = await env.answer(f, () => env.whileStopped(f));
+      if (!stopped.ok) return stopped;
+      // The acknowledgement the plan shown last asks for, before any dialog: the one it names, or none. A plan that is not the one shown is refused below, as every write is.
+      const shown = env.plans.peek(f.id, 'import');
+      if (shown !== null && shown.revision === rev) {
+        const want = JSON.parse(shown.choices) as { bundle: string; acknowledged: string | null };
+        if (canonical({ ...want, acknowledged: null }) === canonical(recordOf(b, c, null)) && want.acknowledged !== ack) {
+          return refusal(IMPORT_NEEDS_ACKNOWLEDGEMENT, SHARE_MAIN_WORDS.IMPORT_NEEDS_ACKNOWLEDGEMENT);
+        }
       }
-    }
-    return env.written(f, 'import', rev, recordOf(b, c, ack), () => recorded('import', async () => {
-      try {
-        const r = await env.host.call<WriteResult>({
-          op: 'write', key: b.id, choices: wireOf(f, b, c), revision: rev, acknowledged: ack, dirs: f.dirs, now: env.now().toISOString(), projectDir: f.dir, adoptState: f.adoptState,
-        }).catch(unknownAsCall);
-        if (r.pointCode !== null) env.record({ kind: 'scenario', step: 'save-point', outcome: 'refused', code: r.pointCode });
-        const warnings = r.warnings.map(w => f.scrub(w));
-        return { written: r.written.map(p => f.scrub(`.bowerloom/${p}`)), version: r.version, ...(warnings.length > 0 ? { warnings } : {}) } satisfies SaveWritten;
-      } finally {
-        // Done or refused, no plan shown before this write can be written now: the folder may have changed.
-        env.afterImport(f);
-      }
-    }));
+      const match = env.plans.match(f.id, 'import', rev, record);
+      return match === null ? notTheShownPlan() : { ok: true, value: { ask: match.ask } };
+    });
+    if (!first.ok) return first;
+    // Main's own question, with words from its record of the plan. The queue is free while it is open.
+    if (first.value.ask !== null && !(await env.confirm(first.value.ask))) return cancelled();
+    return env.serial(async () => {
+      // After the yes: the plan must still be the one the person approved. A plan made, or a write done, while the question was open makes this refuse.
+      if (env.plans.match(f.id, 'import', rev, record) === null) return notTheShownPlan();
+      const again = await env.answer(f, () => env.whileStopped(f));
+      if (!again.ok) return again;
+      env.plans.clear(f.id, 'import');
+      return env.answer(f, () => recorded('import', async () => {
+        try {
+          const r = await env.host.call<WriteResult>({
+            op: 'write', key: b.id, choices: wireOf(f, b, c), revision: rev, acknowledged: ack, dirs: f.dirs, now: env.now().toISOString(), projectDir: f.dir, adoptState: f.adoptState,
+          }).catch(unknownAsCall);
+          if (r.pointCode !== null) env.record({ kind: 'scenario', step: 'save-point', outcome: 'refused', code: r.pointCode });
+          const warnings = r.warnings.map(w => f.scrub(w));
+          return { written: r.written.map(p => f.scrub(`.bowerloom/${p}`)), version: r.version, ...(warnings.length > 0 ? { warnings } : {}) } satisfies SaveWritten;
+        } finally {
+          // Done or refused, no plan shown before this write can be written now: the folder may have changed.
+          env.afterImport(f);
+        }
+      }));
+    });
   }
   /** A bundle the worker no longer holds is the call's own short refusal, as a bundle id main never gave. */
   function unknownAsCall(error: unknown): never {

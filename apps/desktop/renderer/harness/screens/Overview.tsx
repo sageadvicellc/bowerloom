@@ -1,5 +1,5 @@
 /**
- * The Overview (Task 2, journey 1 step 1.5): every place the first read found, in one read-only graph, and the first screen after the read. It is built from the world already in the
+ * The Overview (journey 1 step 1.5): every place the first read found, in one read-only graph, and the first screen after the read. It is built from the world already in the
  * window (`overviewOf` in shared/harness/overview.ts) and the folders main knows (`engine.folders()`); it asks main for nothing else and writes nothing.
  * - Two views of the same data: the Graph (OverviewGraph.tsx) and the List (OverviewList.tsx), switched by a radio group. A window under OVERVIEW_LIMITS.smallScreen wide starts on the List.
  * - A place opens and closes by its header (the same state in both views). "Expand all" is off above OVERVIEW_LIMITS.expandAllMax parts.
