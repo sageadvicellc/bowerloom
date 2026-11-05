@@ -54,7 +54,7 @@ test('the commands: one to open the app, one for the sample, one for development
 test('the one-command launcher works from another folder: it installs what is missing, builds, and stops before the window with --build-only', () => {
   const r = spawnSync(process.execPath, [join(DESKTOP, 'tools', 'run.mjs'), '--build-only'], { cwd: tmpdir(), encoding: 'utf8', timeout: 240000 });
   assert.equal(r.status, 0, r.stderr + r.stdout); assert.match(r.stdout, /Building the app/);
-  for (const f of ['dist/main.mjs', 'dist/preload-real.cjs', 'dist/renderer/app.js', 'dist/renderer/index.html', 'dist/renderer/tokens.css', 'dist/renderer/styles.css']) assert.equal(existsSync(join(DESKTOP, f)), true, f);
+  for (const f of ['dist/main.mjs', 'dist/bundle-worker.mjs', 'dist/preload-real.cjs', 'dist/renderer/app.js', 'dist/renderer/index.html', 'dist/renderer/tokens.css', 'dist/renderer/styles.css']) assert.equal(existsSync(join(DESKTOP, f)), true, f);
 });
 
 test('the colors and sizes live in one tokens file', () => {

@@ -56,7 +56,7 @@ const PRELOAD_POLICY: Policy = {
 const SHELL_ENTRIES = ['renderer/app.ts'];
 const SHELL_POLICY: Policy = {
   page: true,
-  allowFile: rel => /^(?:renderer|shared)\/[\w./-]+\.(?:tsx?|css)$/.test(rel) || /(?:^|\/)packages\/harness-definition\/src\/words\.ts$/.test(rel),
+  allowFile: rel => /^(?:renderer|shared)\/[\w./-]+\.(?:tsx?|css)$/.test(rel) || /(?:^|\/)packages\/harness-definition\/src\/(?:words|defaults)\.ts$/.test(rel),
   deadOk: {},
   modules: { react: '*', 'react/jsx-runtime': '*', 'react-dom': '*', 'react-dom/client': '*' },
   extraNames: /^(?:innerHTML|outerHTML|insertAdjacentHTML|dangerouslySetInnerHTML|localStorage|sessionStorage|indexedDB|openDatabase|bowerloomReal)$/,

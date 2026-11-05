@@ -95,7 +95,7 @@ test('the handler has one channel per call, apart from every other channel, and 
   assert.equal(await reason(ENGINE_CHANNELS.folders, { senderFrame: { url: 'https://example.com/', parent: null } }), 'NOT_ALLOWED');
   assert.equal(await reason(ENGINE_CHANNELS.folders, { senderFrame: { url: APP_INDEX, parent: {} } }), 'NOT_ALLOWED');
   assert.equal(await reason(ENGINE_CHANNELS.folders, { senderFrame: null }), 'NOT_ALLOWED');
-  for (const call of ENGINE_CALLS) assert.equal(await reason(ENGINE_CHANNELS[call], page, ...Array(ENGINE_ARITY[call] + 1).fill('x')), 'BAD_ARGUMENT', call);
+  for (const call of ENGINE_CALLS) assert.equal(await reason(ENGINE_CHANNELS[call], page, ...Array(ENGINE_ARITY[call] + (call === 'chooseFolder' ? 2 : 1)).fill('x')), 'BAD_ARGUMENT', call);
   assert.equal(await reason(ENGINE_CHANNELS.planRemoval, page, 'folder-1'), 'UNKNOWN_FOLDER');
   assert.equal(await reason(ENGINE_CHANNELS.planRemoval, page, '../x'), 'BAD_ARGUMENT');
   assert.equal(await reason(ENGINE_CHANNELS.folders, page), 'ok');

@@ -193,6 +193,17 @@ app.whenReady().then(async () => {
           const result = window === null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(window, options);
           return result.canceled || result.filePaths[0] === undefined ? null : result.filePaths[0];
         },
+        // Main's own dialogs for export and import (journey 4). Each answers a path to main only. A bundle file is a .json; the save dialog suggests <harness id>.bowerloom.json.
+        chooseBundleOpen: async () => {
+          const options: Electron.OpenDialogOptions = { title: 'Choose a harness file', buttonLabel: 'Read this file', properties: ['openFile'], filters: [{ name: 'Harness file', extensions: ['json'] }] };
+          const result = window === null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(window, options);
+          return result.canceled || result.filePaths[0] === undefined ? null : result.filePaths[0];
+        },
+        chooseBundleSave: async suggested => {
+          const options: Electron.SaveDialogOptions = { title: 'Save the harness file', buttonLabel: 'Save', defaultPath: suggested, showsTagField: false, filters: [{ name: 'Harness file', extensions: ['json'] }] };
+          const result = window === null ? await dialog.showSaveDialog(options) : await dialog.showSaveDialog(window, options);
+          return result.canceled || result.filePath === undefined || result.filePath === '' ? null : result.filePath;
+        },
         // Main's own notes chooser: its words come from main, never from the window. "Start fresh" lets the person make a new folder in it.
         chooseNotesFolder: async purpose => {
           const words = NOTES_DIALOG[purpose];
@@ -209,7 +220,7 @@ app.whenReady().then(async () => {
       });
       engineForExit = engine;
       // Main's private copies of tidy-up reports go when the app quits. A copy left by a hard kill stays in the person's own temporary folder.
-      app.once('quit', () => engine.clearReportCopies());
+      app.once('quit', () => { try { engine.clearReportCopies(); } finally { void engine.close(); } });
     }
   }
   createWindow();

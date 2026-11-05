@@ -13,11 +13,14 @@ if (process.argv.includes('--tests')) {
   rmSync(join(here, '.build'), { recursive: true, force: true });
   const entries = readdirSync(join(here, 'tests')).filter(f => f.endsWith('.test.ts')).map(f => join(here, 'tests', f));
   const helpers = readdirSync(join(here, 'tests/helpers')).filter(f => f.endsWith('.ts')).map(f => join(here, 'tests/helpers', f));
+  // The worker thread of export and import sits beside the bundled tests, where `new URL('./bundle-worker.mjs', import.meta.url)` finds it.
+  await build({ ...common, entryPoints: [join(here, 'main/engine-bundle-worker.ts')], outfile: join(here, '.build/tests/bundle-worker.mjs'), format: 'esm', platform: 'node', external: ['electron'], banner: { js: banner } });
   await build({ ...common, entryPoints: helpers, outdir: join(here, '.build/helpers'), outExtension: { '.js': '.mjs' }, format: 'esm', platform: 'node', external: ['electron'], banner: { js: banner } });
   await build({ ...common, entryPoints: entries, outdir: join(here, '.build/tests'), outExtension: { '.js': '.mjs' }, format: 'esm', platform: 'node', external: ['electron'], banner: { js: banner } });
 } else {
   rmSync(join(here, 'dist'), { recursive: true, force: true });
   await build({ ...common, entryPoints: [join(here, 'main/main.ts')], outfile: join(here, 'dist/main.mjs'), format: 'esm', platform: 'node', external: ['electron'], banner: { js: banner } });
+  await build({ ...common, entryPoints: [join(here, 'main/engine-bundle-worker.ts')], outfile: join(here, 'dist/bundle-worker.mjs'), format: 'esm', platform: 'node', external: ['electron'], banner: { js: banner } });
   await build({ ...common, entryPoints: [join(here, 'preload/real-preload.ts')], outfile: join(here, 'dist/preload-real.cjs'), format: 'cjs', platform: 'node', external: ['electron'] });
   await build({ ...common, entryPoints: [join(here, 'renderer/app.ts')], outfile: join(here, 'dist/renderer/app.js'), format: 'iife', platform: 'browser', target: 'chrome140', jsx: 'automatic', loader: { '.css': 'css' }, define: { 'process.env.NODE_ENV': '"production"' }, legalComments: 'none' });
   mkdirSync(join(here, 'dist/renderer'), { recursive: true });

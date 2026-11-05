@@ -23,6 +23,8 @@ import type {
 import {
   ENGINE_NAMES, EVERY_ENGINE_PARTS, KIT_MAIN_WORDS, NOTES_PURPOSES, REPORT_MAIN_WORDS, SAVE_MAIN_WORDS, SHARE_BUNDLE_ID, SHARE_HELD_BUNDLES, SHARE_MAIN_WORDS, SHARE_NAME_LIMIT, SHARE_NOTES_LIMIT, writesFile,
 } from './types.js';
+// The constant sits in its own module of harness-definition, with no code and no import, so the page bundle gets one string and not the package.
+import { EMPTY_HARNESS_DESCRIPTION } from '../../../../packages/harness-definition/src/defaults.js';
 import { capRiskFirst, codeRisk, secretRisk, toolRisk } from './share-risk.js';
 import { approveKey, lossByEngine, unmappedHashBody } from './view.js';
 
@@ -158,7 +160,7 @@ function adoptFixture(): AdoptView {
   const search = place('.mcp.json', '/mcpServers/search', ['claude-code'], 'Claude Code .mcp.json');
   return {
     folder: '~/Projects/inbox-tools',
-    harness: { id: 'inbox-tools', description: 'Adopted from the engine files of this project.' },
+    harness: { id: 'inbox-tools', description: EMPTY_HARNESS_DESCRIPTION },
     engines: [{ id: 'claude-code', version: null, model: null, detected: true }, { id: 'codex', version: null, model: 'gpt-5', detected: true }],
     read: 9,
     items: [
@@ -361,7 +363,7 @@ const SAMPLE_DEFS: Readonly<Record<string, DefinitionView>> = Object.freeze({
     skills: [skillOf('shelf-check', 'Checks the shelf with a small script.'), skillOf('pick-books', 'Picks the next books.')], agents: [agentOf('librarian', 'Looks after the shelves.', ['pick-books'])], sources: [], kits: [],
   },
   [SAMPLE_FOLDERS.adopt]: {
-    id: 'inbox-tools', description: 'Adopted from the engine files of this project.', engines: ['claude-code', 'codex'], instructions: true,
+    id: 'inbox-tools', description: EMPTY_HARNESS_DESCRIPTION, engines: ['claude-code', 'codex'], instructions: true,
     skills: [skillOf('sort-mail', 'Sorts the inbox.')], agents: [agentOf('triage', 'Triages new mail.', [])], sources: [], kits: [],
   },
 });

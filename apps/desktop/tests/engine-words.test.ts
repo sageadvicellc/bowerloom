@@ -86,7 +86,7 @@ test('save step: every new refusal code has words for what to do next, inside th
 
 test('notes: every refusal of the notes calls has words for what to do next, inside the hint limit and free of banned words', () => {
   // The tidy-up report's own refusals of main (REPORT_MAIN_WORDS) are shown with the notes words too.
-  const codes: string[] = [...NOTES_REFUSAL_CODES, 'KIT_INVALID', 'NOT_A_FOLDER', 'NOTES_NOT_CHOSEN', ...Object.keys(REPORT_MAIN_WORDS)];
+  const codes: string[] = [...NOTES_REFUSAL_CODES, 'KIT_INVALID', 'NOT_A_FOLDER', 'NOT_THE_FOLDER_SHOWN', 'NOTES_NOT_CHOSEN', ...Object.keys(REPORT_MAIN_WORDS)];
   assert.deepEqual(codes.filter(c => NOTES_REFUSAL_WORDS[c] === undefined), [], 'every code has words');
   assert.deepEqual(Object.keys(NOTES_REFUSAL_WORDS).filter(c => !codes.includes(c)), [], 'no words for a code that does not exist');
   for (const [code, text] of Object.entries(NOTES_REFUSAL_WORDS)) {

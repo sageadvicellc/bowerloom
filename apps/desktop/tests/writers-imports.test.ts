@@ -42,6 +42,8 @@ export function fsImports(js: string): { names: string[]; opaque: string[] } {
 
 const FS_ALLOWED: Readonly<Record<string, readonly string[]>> = {
   'main/diagnostics-dialogs.ts': ['writeFileSync'],
+  'main/engine-bundle-work.ts': ['lstatSync', 'readdirSync', 'unlinkSync'],
+  'main/engine-bundle.ts': ['realpathSync', 'statSync'],
   'main/engine-save.ts': ['lstatSync', 'readdirSync'],
   'main/engine-service.ts': ['lstatSync', 'readFileSync', 'realpathSync'],
   'main/kit.ts': ['lstatSync', 'readFileSync', 'readdirSync'],
