@@ -1,6 +1,6 @@
 {
-  "title": "Bowerloom · Own your AI skills, agents, and connections",
-  "description": "Set up the skills, prompts, and teams your agents use, and approve every change.",
+  "title": "Bowerloom · One setup, two engines",
+  "description": "Define your skills, agents, tools, rules, and context once. Bowerloom installs them into Claude Code and Codex.",
   "siteName": "Bowerloom",
   "type": "website",
   "image": {

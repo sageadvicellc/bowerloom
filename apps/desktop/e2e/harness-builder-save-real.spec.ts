@@ -1,5 +1,5 @@
 /**
- * The Builder on a real folder (Electron started with --prototype-v3-real, HOME and XDG_STATE_HOME pointed at a made-up folder). The main process runs the
+ * The Builder on a real folder (Electron started with no flag, HOME and XDG_STATE_HOME pointed at a made-up folder). The main process runs the
  * packages: open the folder in the Builder from the folder list, drag the skill `outline` onto the agent `reader` with real pointer events, save through the
  * save sheet's review, install to Claude Code and Codex, close the app, start it again on the same home, open the folder again, go back to the "as it was"
  * save point from the Builder's Save points drawer, and compare the definition bytes with the bytes before the edit.
@@ -26,7 +26,7 @@ test.afterEach(async () => { await h?.app.close().catch(() => undefined); });
 async function start(): Promise<void> {
   h = await launchReal(home, { XDG_STATE_HOME: join(home, '.local', 'state') }, false);
   await page().emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });
-  await page().evaluate(() => { location.hash = '#prototype-v3-real/harnesses'; location.reload(); });
+  await page().evaluate(() => { location.hash = '#app/harnesses'; location.reload(); });
   await page().waitForLoadState('domcontentloaded');
   await page().waitForSelector('[data-home]');
 }
@@ -132,7 +132,7 @@ test('the Builder on a real folder: drag a skill onto an agent, save, install to
   await h.app.close();
   await start();
   const q = page();
-  await q.evaluate(() => { location.hash = '#prototype-v3-real/builder/folder-1'; });
+  await q.evaluate(() => { location.hash = '#app/builder/folder-1'; });
   await expect(q.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
 
   // 6. Open the folder again, and go back to the save point kept as it was before the first save.

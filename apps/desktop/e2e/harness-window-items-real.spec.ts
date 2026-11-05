@@ -1,5 +1,5 @@
 /**
- * The window items on real folders (Electron started with --prototype-v3-real, HOME and XDG_STATE_HOME pointed at a made-up folder). Main runs the packages;
+ * The window items on real folders (Electron started with no flag, HOME and XDG_STATE_HOME pointed at a made-up folder). Main runs the packages;
  * its file opener is stubbed and keeps each path it was given; its write question is answered yes by the test and kept.
  *  - Items 1 and 2: a harness whose agents read a notes folder. The Notes panel's report line opens the newest tidy-up report through main, which copies the
  *    report into a private folder of its own and passes that copy to its opener. "Stop using these notes" drafts a removal; the review names the agents that lose the notes; Save writes it, and the
@@ -32,7 +32,7 @@ const stateOf = (dir: string): string => join(dir, '.local', 'state');
 async function start(): Promise<void> {
   h = await launchReal(home, { XDG_STATE_HOME: stateOf(home) }, false);
   await page().emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });
-  await page().evaluate(() => { location.hash = '#prototype-v3-real/projects'; location.reload(); });
+  await page().evaluate(() => { location.hash = '#app/projects'; location.reload(); });
   await page().waitForLoadState('domcontentloaded');
   await page().waitForSelector('[data-home]');
 }

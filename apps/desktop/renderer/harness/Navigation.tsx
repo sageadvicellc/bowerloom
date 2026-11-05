@@ -1,6 +1,6 @@
 /**
  * The left navigation of the preview, drawn as a branching tree like the home app's (renderer/home/shell/Sidebar.tsx): the collapse button and the app mark, "New harness" (the one primary item),
- * the section "Workspace" with Harnesses, Library (a folder: Agents, Skills, Tools and Context hang off a thin branch line), Projects and Runs; and at the foot Interfaces, Version history,
+ * the section "Workspace" with Overview, Harnesses, Library (a folder: Agents, Skills, Tools and Context hang off a thin branch line), Projects and Runs; and at the foot Interfaces, Install history,
  * Help and the "Preview" mark. It has three looks: open (232 px), a rail (48 px, icons only, each with a tooltip) and hidden (under 900 px, where the toggle in the top row opens it over the page).
  * The place you are on is a soft fill with `aria-current="page"`, never a tick. A kind of the Library that is open says `aria-current="true"` and has no fill of its own: the design fills Library. The items are one Tab stop with the arrow keys inside; the collapse button and the Preview mark are Tab stops of their own.
  */
@@ -17,6 +17,7 @@ import type { NavKey } from '../../shared/harness/route.js';
 import { HIcon, KIND_ICON } from './icons.js';
 import type { HarnessIconName } from './icons.js';
 import { PreviewMark } from './parts/PreviewMark.js';
+import { go } from './router.js';
 import { KIND_PLURAL, WORDS } from './words.js';
 
 export interface NavigationProps {
@@ -26,6 +27,8 @@ export interface NavigationProps {
   current: NavKey | null;
   onToggle(): void;
   onNewHarness(): void;
+  /** Left out, the item goes to the Overview itself (the shell does not need to know it). */
+  onOverview?(): void;
   onHarnesses(): void;
   onLibrary(kind: PartKind | null): void;
   onProjects(): void;
@@ -80,7 +83,7 @@ export function Navigation(p: NavigationProps): ReactElement {
   const [workShut, setWorkShut] = useState(false);
   useEffect(() => { if (current !== null && current.startsWith('library')) setLibOpen(true); }, [current]);
   const workOpen = rail || !workShut;
-  const keys = ['new', ...(rail ? [] : ['sec-work']), ...(workOpen ? ['harnesses', 'library', ...(libOpen ? PART_KINDS.map(k => `lib-${k}`) : []), 'projects', 'runs'] : []), 'interfaces', 'history', 'help'];
+  const keys = ['new', ...(rail ? [] : ['sec-work']), ...(workOpen ? ['overview', 'harnesses', 'library', ...(libOpen ? PART_KINDS.map(k => `lib-${k}`) : []), 'projects', 'runs'] : []), 'interfaces', 'history', 'help'];
   const here = current === null ? null : current.startsWith('library') ? 'library' : current;
   const stop = last !== null && keys.includes(last) ? last : here !== null && keys.includes(here) ? here : 'new';
   const seen = (e: ReactFocusEvent<HTMLElement>): void => { const key = e.target instanceof HTMLElement ? e.target.getAttribute('data-nav-key') : null; if (key !== null) setLast(key); };
@@ -138,6 +141,7 @@ export function Navigation(p: NavigationProps): ReactElement {
           )}
           <Fold id="hm-nav-work" open={workOpen}>
             <ul className="hm-nav-list">
+              <li><Item {...item} navKey="overview" icon="globe" label={WORDS.label.overview} current={here === 'overview'} onClick={p.onOverview ?? (() => go({ name: 'overview' }))} /></li>
               <li><Item {...item} navKey="harnesses" icon="harness" label={WORDS.label.harnesses} current={here === 'harnesses'} onClick={p.onHarnesses} /></li>
               <li>
                 <Item {...item} navKey="library" icon="library" label={WORDS.label.library} folder current={here === 'library'} expanded={libOpen} controls="hm-nav-library" onClick={() => p.onLibrary(null)} />
@@ -157,7 +161,7 @@ export function Navigation(p: NavigationProps): ReactElement {
       <div className="hm-nav-low">
         <ul className="hm-nav-list">
           <li><Item {...item} navKey="interfaces" icon="monitor" label={WORDS.label.interfaces} current={here === 'interfaces'} onClick={p.onInterfaces} /></li>
-          <li><Item {...item} navKey="history" icon="clock" label={WORDS.label.versionHistory} current={here === 'history'} onClick={p.onHistory} /></li>
+          <li><Item {...item} navKey="history" icon="clock" label={WORDS.label.installHistory} current={here === 'history'} onClick={p.onHistory} /></li>
           <li><Item {...item} navKey="help" icon="help" label={WORDS.label.help} current={here === 'help'} onClick={p.onHelp} /></li>
         </ul>
         <div className="hm-preview" data-preview=""><PreviewMark rail={rail} /></div>

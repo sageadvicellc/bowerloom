@@ -268,7 +268,7 @@ export function planLocked(ctx: LockedContext): LockedPlan {
     // The keys of a guardrail entry's private block that the writer carries, by entry (checks 1 and 9 of step 3).
     const carried = new Map<string, readonly string[]>();
     const m = translateMcp(engine, view.mcp);
-    // Notes lane D: an agent that lists knowledge sources gets the notes section at the end of its instructions.
+    // An agent that lists knowledge sources gets the notes section at the end of its instructions.
     const s = translateSubagents(engine, withNotesSections(view.subagents, ctx.def.knowledge), { servers: view.mcp.map(x => x.name) });
     const subagentLines: LossLine[] = [...s.lines];
     for (const a of view.subagents) {

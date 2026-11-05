@@ -77,10 +77,12 @@ test('a storage read that throws is "not seen", and it is told on the console wi
   assert.equal(warned.mock.callCount(), 2);
 });
 
-test('the comment of seen.ts says where sessionStorage lands: the temporary app data folder, not memory', () => {
+test('the comment of seen.ts says whose store holds the tour state: the window\'s session, not memory and not a temporary folder of every launch', () => {
   const text = readFileSync(join(DESKTOP, 'renderer', 'harness', 'tour', 'seen.ts'), 'utf8');
   assert.doesNotMatch(text, /held in memory, survives/);
-  assert.match(text, /temporary app data folder/);
+  assert.match(text, /belongs to the window's session/);
+  assert.doesNotMatch(text, /in this launch \(--sample and the default launch\) its app data is a temporary folder/, 'the default launch keeps a lasting profile folder');
+  assert.match(text, /a temporary one for the sample/);
 });
 
 test('a stored value other than "1" is not seen', () => {

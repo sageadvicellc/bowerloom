@@ -1,5 +1,5 @@
 /**
- * The data of the harness-first preview (`--prototype-v3`). Plain data only: no React, no clock, no file. Everything is in memory, so nothing is written anywhere.
+ * The data of the harness-first preview (`--sample`). Plain data only: no React, no clock, no file. Everything is in memory, so nothing is written anywhere.
  * A harness is a saved list of parts (agents, skills, tools, context). It is installed into a project, once for each interface (Claude Code, Codex, OpenCode).
  */
 
@@ -49,6 +49,15 @@ export interface Part {
   readonly badge?: string;
   /** False for a part that a harness holds but the Library tabs do not list. */
   readonly inLibrary: boolean;
+  /** Real mode, a tool only: what kind of tool the reader found. Set by the real reader (real-map.ts) and by the Overview sample. */
+  readonly toolKind?: 'mcp' | 'prompt' | 'hook';
+  /**
+   * Real mode: the content hash of the file the reader read for this part (`FoundAt.contentHash`, a hash of the whole text of that file, also when the reader cut
+   * the text it keeps). It is absent when the file had no readable text. For a skill it is the hash of its SKILL.md text only: the reader reads no script beside it,
+   * so two skills with equal SKILL.md text and different scripts read as the same skill, and the Overview says "same text", not "same files". Equal hashes mark
+   * skills shared. The real reader fills it (real-map.ts), and so does the Overview sample; the plain sample world has none.
+   */
+  readonly contentHash?: string;
 }
 
 /** An agent uses a skill, a tool or a piece of context. The link is kept in the harness manifest, never in the agent's file. */
@@ -149,6 +158,23 @@ export interface ScanSource {
   readonly partIds: readonly string[];
   /** The links the files themselves name (real mode): an agent to the skills and connections it uses. Absent in the sample, where a harness made from the source gets one automatic link for each part. */
   readonly links?: readonly Link[];
+  /** Real mode: `home` for the home folder, `project` for a work folder or a folder the person picked. Set by the real reader (real-map.ts) and by the Overview sample. */
+  readonly scope?: 'home' | 'project';
+  /** Real mode: the folder the source was found in, written with `~` for the home folder (`~`, `~/Projects/alpha`). Never a full path. Set by the real reader; a source without it reads as a project named by its name. */
+  readonly label?: string;
+}
+
+/** A folder that holds a harness, read through the harness loader (real mode). The Overview shows it as a place; no screen of the read lists it. `label` is the folder in `~` form. */
+export interface HarnessPlace {
+  readonly id: string;
+  readonly name: string;
+  readonly label: string;
+  /** False when a file of the harness is not valid JSON, is over a limit or cannot be read; it then holds no part. That covers JSON, shape, repeated names and limits only: the full rules of the harness loader are not checked, so "Choose this folder" may still be refused later. A skill carries the hash of its text, so it is shared with an equal skill elsewhere. */
+  readonly readable: boolean;
+  /** The programs the harness lists, by name. */
+  readonly engines: readonly string[];
+  readonly parts: readonly { readonly id: string; readonly kind: PartKind; readonly name: string; readonly summary: string; readonly toolKind?: 'mcp' | 'hook'; readonly contentHash?: string }[];
+  readonly links: readonly Link[];
 }
 
 /** What the reader of the person's own folders reports, kept beside the world (real mode only). */
@@ -184,8 +210,10 @@ export interface HarnessState {
   readonly chosenSourceIds: readonly string[];
   /** A counter for the ids of new things, so the store needs no random number and no clock. */
   readonly nextId: number;
-  /** Set only when the world was read from the person's own folders (`--prototype-v3-real`). */
+  /** Set only when the world was read from the person's own folders (the default launch). */
   readonly real?: RealNotes;
+  /** Real mode: the folders that hold a harness. Absent when there are none. Only the Overview reads it. */
+  readonly harnessPlaces?: readonly HarnessPlace[];
 }
 
 export type FileState = 'new' | 'update' | 'conflict' | 'same';

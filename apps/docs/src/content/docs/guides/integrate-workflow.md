@@ -1,9 +1,11 @@
 ---
 title: "Map your existing workflow"
-description: "Turn manual or one-to-one agent work into a specification for your current project."
-section: "Learn"
+description: "Legacy 0.7. Turn manual or one-to-one agent work into a specification for your current project."
+section: "Legacy 0.7 team setup"
 order: 2.5
 ---
+
+> **Legacy (0.7).** This page describes the team setup flow of Bowerloom 0.7. Its commands are still in the CLI help of 0.8.0-beta.1. The current path is [Adopt and install a harness](/docs/guides/adopt-and-install/).
 
 Start with a process you already perform manually or with one agent. Describe its inputs, decisions, outputs, and handoffs before choosing a team profile. Bowerloom gives that process a specification in files that follow you, with proposed roles, access, and review points. The beta's setup installer governs the approved file write. It does not import project contents, generate an arbitrary graph, or execute the workflow.
 

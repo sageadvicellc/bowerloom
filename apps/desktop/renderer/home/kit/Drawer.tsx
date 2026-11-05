@@ -7,7 +7,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { MOTION, ms } from '../../motion-tokens.js';
-import { WORDS } from '../words.js';
+import { WORDS } from '../../harness/words.js';
 import { IconButton } from './IconButton.js';
 import { drawerStep } from './drawer-phase.js';
 import { currentControl, giveBackFocus } from './focus.js';

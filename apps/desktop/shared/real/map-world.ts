@@ -87,7 +87,8 @@ function placeMembers(members: readonly Located[], nowMs: number, fold: boolean,
     if (seen.has(face)) continue;
     seen.add(face);
     const text = textOf(m);
-    foundAt.push({ interface: face, path: joinPath(m.read.place.path, m.rec.relPath), contentHash: hashText(text), text });
+    // The hash is of the whole text the reader read, not of the shown text, which may be cut. A file with no readable text has no hash (an empty string), so two such files never read as one.
+    foundAt.push({ interface: face, path: joinPath(m.read.place.path, m.rec.relPath), contentHash: m.rec.text === '' ? '' : hashText(m.rec.text), text });
     days.push(m.rec.mtimeMs > 0 ? Math.max(0, Math.floor((nowMs - m.rec.mtimeMs) / DAY_MS)) : 0);
   }
   return { foundAt, days, extra };
@@ -229,5 +230,6 @@ export function buildRealResult(reads: readonly PlaceRead[], tally: BatchTally, 
     ...(texts.cut > 0 ? [`${texts.cut} long ${texts.cut === 1 ? 'text was' : 'texts were'} shortened.`] : []),
     ...tallyWords({ ...tally, tooBig: 0, binary: 0, unreadable: 0, linksOutside: 0, brokenLinks: 0 }),
   ];
-  return { world, others, counts, ages, stoppedEarly: tally.stoppedEarly, couldNotRead: sum, partlyRead, textsCut: texts.cut, notes, readOnly: true };
+  const harnessPlaces = reads.filter(r => r.harness !== undefined).map(r => ({ id: `harness-${shortHash(r.place.id)}`, name: cleanLine(r.place.label).slice(0, 60), path: cleanPath(r.place.path), harness: r.harness! }));
+  return { world, others, counts, ages, ...(harnessPlaces.length > 0 ? { harnessPlaces } : {}), stoppedEarly: tally.stoppedEarly, couldNotRead: sum, partlyRead, textsCut: texts.cut, notes, readOnly: true };
 }

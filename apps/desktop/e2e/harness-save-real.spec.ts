@@ -1,5 +1,5 @@
 /**
- * Journey 2 of the save step, on a real folder (Electron started with --prototype-v3-real, HOME and XDG_STATE_HOME pointed at a made-up folder). The main
+ * Journey 2 of the save step, on a real folder (Electron started with no flag, HOME and XDG_STATE_HOME pointed at a made-up folder). The main
  * process runs the packages: open a folder that holds a harness definition, link a skill to an agent, save, install to Claude Code and Codex, close the app,
  * start it again on the same home, go back to the "as it was" save point, and compare the definition bytes with the bytes before the edit.
  * Every expected value below is read from the files by this test, never from the app's code or its answers.
@@ -25,7 +25,7 @@ test.afterEach(async () => { await h?.app.close().catch(() => undefined); });
 async function start(): Promise<void> {
   h = await launchReal(home, { XDG_STATE_HOME: join(home, '.local', 'state') }, false);
   await page().emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });
-  await page().evaluate(() => { location.hash = '#prototype-v3-real/projects'; location.reload(); });
+  await page().evaluate(() => { location.hash = '#app/projects'; location.reload(); });
   await page().waitForLoadState('domcontentloaded');
   await page().waitForSelector('[data-home]');
 }

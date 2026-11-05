@@ -1,5 +1,5 @@
 /**
- * S11, Version history. Every change the preview made, newest first and grouped by day. Each row says what changed, then the time, the person, the computer and what it wrote. "Undo" puts back what the change
+ * S11, Install history. Every change the preview made, newest first and grouped by day. Each row says what changed, then the time, the person, the computer and what it wrote. "Undo" puts back what the change
  * replaced (`store.undo`). The change stays in the list, marked "Undone", and the undo is a new row. A row that is itself an undo cannot be undone.
  * Only the newest change of one install or one harness can be undone: an older row has Undo off, with "Undo the newer change first" beside it. An undo that cannot apply says why in a note.
  */
@@ -14,7 +14,7 @@ import { undoNow } from '../undo-note.js';
 import { HButton, StateDot } from '../parts/controls.js';
 import { HIcon } from '../icons.js';
 import { WORDS } from '../words.js';
-import { FLOW, undoName } from '../words-flow.js';
+import { FLOW, historyLines, undoName } from '../words-flow.js';
 import './history.css';
 
 function Row({ entry, held, onUndo }: { entry: HistoryEntry; held: boolean; onUndo(): void }): ReactElement {
@@ -41,8 +41,8 @@ export function History(): ReactElement {
     requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-history="${id}"]`)?.focus({ preventScroll: true }));
   };
   return (
-    <Screen slot="history" title={WORDS.label.versionHistory}>
-      <p className="kit-hint hx-hint">{FLOW.hint.historyHint}</p>
+    <Screen slot="history" title={WORDS.label.installHistory}>
+      {historyLines(state.real !== undefined, state.history.length).map(line => <p key={line} className="kit-hint hx-hint">{line}</p>)}
       <div className="hxh-days">
         {groupByDay(state.history).map(group => (
           <section key={group.day} className="hxh-day" aria-label={group.day}>

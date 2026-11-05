@@ -1,4 +1,4 @@
-// The silent-failure fixes of the preview on the person's own folders (--prototype-v3-real): a read that holds nothing keeps what the reader said, a throw while a read is finished ends on the
+// The silent-failure fixes of the preview on the person's own folders (the default launch): a read that holds nothing keeps what the reader said, a throw while a read is finished ends on the
 // error screen, the launch mode is explicit, notes are not hidden, a folder added twice is said, and a failing listener, make or crash text is not silent. No file is read; no real folder is used.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -14,12 +14,12 @@ import { runRead } from '../renderer/harness/real/read-run.js';
 import { firstState, reduceChoose } from '../renderer/harness/real/state.js';
 import type { ChooseAction, ChooseState } from '../renderer/harness/real/state.js';
 import { chooseKind } from '../renderer/harness/real/mode.js';
-import { NoBridge, NothingFound } from '../renderer/harness/real/Nothing.js';
+import { NO_BRIDGE_WORDS, NoBridge, NothingFound, closeWindow } from '../renderer/harness/real/Nothing.js';
 import { ChooseLines, NOTES_SHOWN, PlaceNotes, ReadNotes, visibleNotes } from '../renderer/harness/real/ReadNotes.js';
 import { PlaceRow } from '../renderer/harness/real/PlaceRow.js';
 import { REAL, limitsLine, nothingReadLine, skippedLine } from '../renderer/harness/real/words-real.js';
 import { reasonWords } from '../renderer/home/real/words.js';
-import { crashLine } from '../renderer/common/error-boundary.js';
+import { CRASH_TITLE, crashLine } from '../renderer/common/error-boundary.js';
 import { makeOnce, makeSources } from '../renderer/harness/screens/read-make.js';
 import { FLOW } from '../renderer/harness/words-flow.js';
 
@@ -113,6 +113,17 @@ test('a real launch without its bridge shows the no-bridge error and never the s
   const html = markup(createElement(NoBridge));
   assert.ok(html.includes(reasonWords('NO_BRIDGE'))); assert.ok(html.includes('data-error="NO_BRIDGE"')); assert.doesNotMatch(html, /sample/i);
   assert.equal(bannedHere(reasonWords('NO_BRIDGE')), null);
+  // The screen is not a dead end: it has an action that closes the window, and it points to the Help menu entry that reports a problem.
+  assert.match(html, /<button[^>]*>[^<]*Close this window/); assert.equal(NO_BRIDGE_WORDS.close, 'Close this window', 'the button closes the window, not the app: on macOS the app stays open until Quit'); assert.ok(html.includes(NO_BRIDGE_WORDS.help)); assert.match(NO_BRIDGE_WORDS.help, /Help.*Report a problem/);
+  for (const text of [NO_BRIDGE_WORDS.close, NO_BRIDGE_WORDS.help]) { assert.equal(bannedHere(text), null, text); assert.ok(countWords(text) <= LIMITS.hint, text); }
+});
+
+test('the Close this window action closes the window of the page', () => {
+  const closed: string[] = [];
+  const seen = globalThis as unknown as { window?: { close(): void } };
+  seen.window = { close: () => { closed.push('closed'); } };
+  try { closeWindow(); } finally { delete seen.window; }
+  assert.deepEqual(closed, ['closed']);
 });
 
 // ---- 4: the notes
@@ -168,8 +179,12 @@ test('loadWorld tells every listener even when one throws, and logs the error', 
 });
 
 test('the crash text is true in both modes: the sample is named only in the sample', () => {
-  assert.match(crashLine(false), /sample data/); assert.doesNotMatch(crashLine(true), /sample/i); assert.match(crashLine(true), /folders were not changed/);
-  assert.equal(bannedHere(crashLine(true)), null);
+  assert.match(crashLine(false), /sample data/); assert.doesNotMatch(crashLine(true), /sample/i);
+  // On the person's own folders a write may have finished before the window stopped, so the words never say that nothing was saved or that the folders were not changed.
+  assert.equal(crashLine(true), 'Reload to start again. If you were saving or installing, open the folder again to see what was written.');
+  for (const text of [CRASH_TITLE, crashLine(true), crashLine(false)]) { assert.doesNotMatch(text, /prototype/i, text); assert.equal(bannedHere(text), null, text); assert.ok(countWords(text) <= LIMITS.paragraph, text); }
+  assert.doesNotMatch(`${CRASH_TITLE} ${crashLine(true)}`, /nothing was saved|not changed|were not|no change/i, 'no claim that a real write did not happen');
+  assert.match(crashLine(false), /Nothing was written/, 'the sample writes nothing, so it can say so');
 });
 
 test('making a harness runs once for a double click, says "Nothing was made." when nothing came, and then works again', () => {

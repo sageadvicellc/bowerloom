@@ -1,5 +1,5 @@
 /**
- * Choose, on the person's own folders (`--prototype-v3-real`). It takes the place of the sample's Choose screen and has the same frame, the same steps (Look, Choose, Read) and the same list rows.
+ * Choose, on the person's own folders (the default launch). It takes the place of the sample's Choose screen and has the same frame, the same steps (Look, Choose, Read) and the same list rows.
  * Question one: the folders the reader found, each with a tick and a count, "Show details", and "Add a folder" (the system chooser, through the bridge). Question two: "Read what is inside?",
  * the only way anything is opened. Then a bar while the ticked folders are read, the state is made from the answer (`realToHarnessState`), and the app goes to Read.
  * The steps are the home app's machine (it cannot skip a question). The only calls to the outside are the three of the bridge it is given.

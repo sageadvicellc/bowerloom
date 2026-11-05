@@ -1,5 +1,5 @@
 /**
- * The main-process side of adoption and the projection for the harness-first window (--prototype-v3-real). It is the only place the window's adopt and install
+ * The main-process side of adoption and the projection for the harness-first window (the default launch). It is the only place the window's adopt and install
  * sheets reach the packages. It:
  *  - knows folders only by the id it handed out when the person chose the folder in the system chooser, so the window never names a path;
  *  - plans with the packages and hands back plain views (shared/engine/view.ts) with every path of the person written as `~` or the folder's label;
@@ -45,6 +45,7 @@ import { harnessStateDirs, settleLegacyState } from '../../../packages/project-s
 import type { HarnessStateDirs } from '../../../packages/project-sync/src/harness-state.js';
 import { addApprovalDraftLocked, dropApprovalDraftsLocked, readApprovalDrafts } from '../../../packages/project-sync/src/harness-approvals.js';
 import { entryHash, isId, loadDefinition, storedKnowledgePath } from '../../../packages/harness-definition/src/index.js';
+import { isEmptyHarness } from '../../../packages/harness-bundle/src/index.js';
 import type { Definition, DefinitionFile, FidelityApproval } from '../../../packages/harness-definition/src/index.js';
 import { checkProjectPath } from '../../../packages/project-context/src/index.js';
 import { ANSWERS, NOTE_LIMIT } from '../../../packages/diagnostics/src/index.js';
@@ -53,6 +54,8 @@ import { labelOf, makeScrub, visible } from '../shared/engine/scrub.js';
 import { KIT_IDS, KIT_INVALID, KIT_MAIN_WORDS, NOTES_MAIN_WORDS, NOTES_NOT_CHOSEN, NOTES_PLAN_LIST_LIMIT, NOTES_PURPOSES } from '../shared/engine/types.js';
 import type { KitId, NotesHistoryPlanView, NotesPurpose, NotesStarterView, NotesView, NotesWritten } from '../shared/engine/types.js';
 import { loadKit } from './kit.js';
+import { accountName, createShare } from './engine-bundle.js';
+import { createBundleHost } from './engine-bundle-host.js';
 import type { Kit } from './kit.js';
 import type { Scrub } from '../shared/engine/scrub.js';
 import { ENGINE_IDS, isEngineId, isPreviewEngine } from '../shared/engine/engines.js';
@@ -61,7 +64,7 @@ import { EVERY_ENGINE_PARTS, RECONCILE, SAVE_EDIT_LIMIT } from '../shared/engine
 import type {
   AdoptApproval, AdoptChoices, AdoptRecovered, AdoptRecoveryView, AdoptView, AdoptWritten, Answer, ApproveLineView, EngineId, EveryEnginePart, FolderInfo, MergeView, MergeWritten,
   DefinitionView, ProjectAnswer, ProjectInput, ProjectWritten, Recovered, RecoveryChoices, RecoveryView, Refusal, RemovalView, Removed, ReportOpened, RestoreView, SaveChangeView, SaveEdit,
-  SaveRequest, SaveView, SaveWritten, SetAsideView, SetAsideWritten, VersionView,
+  SaveRequest, SaveView, SaveWritten, SetAsideView, SetAsideWritten, VersionView, BundleView, ExportView, ExportWritten, ImportView,
 } from '../shared/engine/types.js';
 import { REPORT_MAIN_WORDS, REPORT_NONE, REPORT_NOT_SHOWN, REPORT_OPEN_FAILED, SAVE_EXECUTABLE_UNACKNOWLEDGED, SAVE_MAIN_WORDS } from '../shared/engine/types.js';
 import { checkedReport, createReportCopies, newestReport } from './notes-report.js';
@@ -91,6 +94,10 @@ export interface EngineServiceDeps {
    * environment (main/engine-state.ts). Default: false. It reaches the window as one answer per folder, never as the environment.
    */
   readonly previewEngines?: boolean;
+  /** True once a quit has begun (main/quit-hold.ts). A share call that comes back from its dialog then writes nothing and is refused QUIT_BEGUN. Default: never. */
+  readonly quitBegun?: () => boolean;
+  /** Writes the one line a refused share write leaves. Default: stderr. */
+  readonly quitLog?: (text: string) => void;
   /**
    * Writes one line of the local usage log (packages/diagnostics). It never reaches the window. The service calls it inside a try, so a recorder that
    * throws changes no result. Default: records nothing.
@@ -112,11 +119,24 @@ export interface EngineServiceDeps {
    * Default: the system temporary folder, which is the person's own on macOS.
    */
   readonly reportCopies?: () => string;
+  /**
+   * Main's own dialogs for export and import (journey 4). `chooseBundleOpen` opens the system open dialog for one bundle file; `chooseBundleSave` opens the save dialog with the
+   * file name main suggests. Each answers the path the person chose, to main only, or null when the dialog was closed. Default: closed.
+   */
+  readonly chooseBundleOpen?: () => Promise<string | null>;
+  readonly chooseBundleSave?: (suggested: string) => Promise<string | null>;
+  /** The worker that decodes, encodes, plans and writes bundles (main/engine-bundle-worker.ts, bundled beside the main file). Default: `bundle-worker.mjs` next to this code. */
+  readonly bundleWorker?: () => string | URL;
+  /** The longest a decode (with its inspection), encode or plan takes, and the longest a write takes, in milliseconds. Defaults: 20 seconds and 10 minutes. */
+  readonly bundleTimeoutMs?: number;
+  readonly bundleWriteTimeoutMs?: number;
+  /** The longest the read of a bundle file may take (default 30 seconds), so a file on a stalled volume does not hold every engine call. */
+  readonly bundleReadTimeoutMs?: number;
 }
 
 /** A call the service refuses before it reaches a package: the window gets only the short code. */
 export class EngineCallRefusal extends Error {
-  constructor(readonly code: 'BAD_ARGUMENT' | 'UNKNOWN_FOLDER') { super(code); this.name = 'EngineCallRefusal'; }
+  constructor(readonly code: 'BAD_ARGUMENT' | 'UNKNOWN_FOLDER' | 'UNKNOWN_BUNDLE') { super(code); this.name = 'EngineCallRefusal'; }
 }
 
 interface Folder {
@@ -277,7 +297,8 @@ export function shownLine(raw: RawLine, entry: object | undefined, s: Scrub): Sh
 
 export interface EngineService {
   folders(): Promise<FolderInfo[]>;
-  chooseFolder(): Promise<Answer<FolderInfo> | null>;
+  /** `expectedLabel` (optional): the label of the folder the window wants. A pick whose label is another is refused before it is registered. */
+  chooseFolder(expectedLabel?: unknown): Promise<Answer<FolderInfo> | null>;
   planAdoption(folderId: unknown, choices: unknown): Promise<Answer<AdoptView>>;
   runAdoption(folderId: unknown, revision: unknown, choices: unknown, approvals: unknown): Promise<Answer<AdoptWritten>>;
   planAdoptionRecovery(folderId: unknown): Promise<Answer<AdoptRecoveryView>>;
@@ -306,8 +327,24 @@ export interface EngineService {
   planNotesHistory(notesId: unknown): Promise<Answer<NotesHistoryPlanView>>;
   runNotesHistory(notesId: unknown, revision: unknown): Promise<Answer<NotesWritten>>;
   openNotesReport(notesId: unknown): Promise<Answer<ReportOpened>>;
+  /** Export and import (journey 4), built in main/engine-bundle.ts. */
+  planExport(folderId: unknown): Promise<Answer<ExportView>>;
+  runExport(folderId: unknown, revision: unknown, acknowledged: unknown): Promise<Answer<ExportWritten>>;
+  chooseBundle(): Promise<Answer<BundleView> | null>;
+  planImport(folderId: unknown, bundleId: unknown, choices: unknown): Promise<Answer<ImportView>>;
+  runImport(folderId: unknown, revision: unknown, bundleId: unknown, choices: unknown, acknowledged: unknown): Promise<Answer<SaveWritten>>;
+  discardBundle(bundleId: unknown): Promise<boolean>;
   /** Removes main's private copies of tidy-up reports. Main calls it at quit. Not a call of the window. */
   clearReportCopies(): void;
+  /** Stops the worker thread of export and import and resolves when it has ended. Main calls it at quit. Not a call of the window. */
+  close(): Promise<void>;
+  /**
+   * Resolves when no call is running or waiting in the serial queue, however each one ended. Main waits for it before it ends a window that died after start-up,
+   * so a write in progress is never cut off. It never rejects. Not a call of the window.
+   */
+  idle(): Promise<void>;
+  /** True while a call runs or waits in the serial queue. It agrees with `idle`. An open share dialog is not busy: a file chooser can stay open for minutes, and a quit does not wait for it (see `quitBegun`). Read at once: a quit that finds it false is not held. */
+  busy(): boolean;
 }
 
 /**
@@ -340,6 +377,8 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
   const plans = new ShownPlans();
   const reportCopies = createReportCopies(deps.reportCopies ?? tmpdir);
   let chain: Promise<unknown> = Promise.resolve();
+  /** Calls that are running or waiting in the serial queue. */
+  let pending = 0;
   let count = 0;
 
   /**
@@ -363,7 +402,10 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
 
   /** One call at a time, in the order they came. */
   const serial = <T>(run: () => Promise<T>): Promise<T> => {
-    const next = chain.then(run, run);
+    pending += 1;
+    // The count falls in the call itself, however it ended, before its caller hears of the end, so `busy` is never true after `idle` could have settled.
+    const counted = async (): Promise<T> => { try { return await run(); } finally { pending -= 1; } };
+    const next = chain.then(counted, counted);
     chain = next.catch(() => undefined);
     return next;
   };
@@ -376,6 +418,8 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
   const answer = async <T>(f: Keyed | null, run: () => Promise<T> | T): Promise<Answer<T>> => {
     try { return { ok: true, value: await run() }; } catch (error) {
       if (error instanceof EngineCallRefusal) throw error;
+      // An error with no code and words is a bug of Bowerloom. The window gets only "FAILED"; the cause goes to the log of the app, so it is not lost.
+      if (typeof (error as { code?: unknown } | null)?.code !== 'string') console.error('Bowerloom: a call failed with an error it does not know.', error instanceof Error ? error.stack ?? error.message : String(error));
       return { ok: false, refusal: refusalOf(error, f?.scrub ?? makeScrub(homes.map(path => ({ path, as: '~' })))) };
     }
   };
@@ -397,6 +441,8 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     return answer(f, run);
   };
 
+  /** The label of a folder as the window gets it: `~` for the home folder and below it, with hidden characters written out. */
+  const labelFor = (dir: string): string => visible(labelOf(dir, homes.find(h => dir === h || dir.startsWith(`${h}/`)) ?? deps.home));
   /**
    * Gives a chosen folder its id, once. Before the first read of its record, the record of the earlier app moves into the shared layout, under the project
    * lock (decision 7B). When both records exist, the package refuses HARNESS_STATE_TWO_RECORDS: the folder gets no id, and the refusal reaches the window.
@@ -407,7 +453,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     await settleLegacyState(dirs, dir, new AbortController().signal);
     count += 1;
     // The label reaches the window and main's own dialog, so a hidden character in a folder name is written out first (W2).
-    const id = `folder-${count}`, label = visible(labelOf(dir, homes.find(h => dir === h || dir.startsWith(`${h}/`)) ?? deps.home));
+    const id = `folder-${count}`, label = labelFor(dir);
     const state = '(the private state folder)';
     const scrub = makeScrub([{ path: dir, as: label }, ...homes.map(path => ({ path, as: '~' })), { path: dirs.base, as: state }, { path: dirs.legacy, as: state }]);
     const f: Folder = { id, dir, label, scrub, dirs, adoptState: dirs.adoption, portableState: dirs.portable };
@@ -541,10 +587,10 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
   function info(f: Folder): FolderInfo {
     let hasDefinition = false;
     try { hasDefinition = lstatSync(join(f.dir, '.bowerloom', 'harness.json')).isFile(); } catch { hasDefinition = false; }
-    let engines: EngineId[] = [], problem: string | null = null;
+    let engines: EngineId[] = [], problem: string | null = null, holdsParts: boolean | undefined;
     if (hasDefinition) {
       const loaded = loadDefinition(join(f.dir, '.bowerloom'));
-      if (loaded.ok) engines = ENGINE_IDS.filter(e => loaded.definition.harness.engines.some(x => x.id === e));
+      if (loaded.ok) { engines = ENGINE_IDS.filter(e => loaded.definition.harness.engines.some(x => x.id === e)); holdsParts = !isEmptyHarness(loaded.definition); }
       else problem = f.scrub(loaded.problems[0]?.message ?? 'The harness definition does not load.');
     }
     const io = { projectDir: f.dir, stateDir: f.portableState };
@@ -554,7 +600,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     try { projection = pendingExists(f.portableState); } catch { projection = false; }
     try { adoption = readJournal(f.adoptState, f.dir) !== null; } catch { adoption = false; }
     adoption ||= mergeIsStopped(f) || saveIsStopped(f);
-    return { id: f.id, label: f.label, name: f.scrub(basename(f.dir)), hasDefinition, engines, previewEngines, installedEngines, problem, projected, unfinished: { projection, adoption } };
+    return { id: f.id, label: f.label, name: f.scrub(basename(f.dir)), hasDefinition, ...(holdsParts === undefined ? {} : { holdsParts }), engines, previewEngines, installedEngines, problem, projected, unfinished: { projection, adoption } };
   }
 
   const adoptInput = (f: Folder, picks: AdoptChoices['picks'], acknowledged: readonly string[], everyEngine: readonly EveryEnginePart[]): AdoptionInput => ({
@@ -733,6 +779,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     skills: d.skills.map(x => ({ id: x.id, name: f.scrub(x.name), description: f.scrub(x.description) })),
     agents: d.agents.map(a => ({ ...a, name: f.scrub(a.name), description: f.scrub(a.description) })),
     sources: d.sources.map(x => ({ ...x, label: f.scrub(x.label) })),
+    kits: d.kits.map(k => ({ ...k, version: f.scrub(k.version), skills: k.skills.map(f.scrub) })),
   });
   /**
    * The save plan as the window reads it. `made` is what a save of edits adds: the folder each copied file comes from (`origins`, by folder id), the edits
@@ -773,7 +820,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
       await keepBefore(f.dir, f.dirs, at);
     }
     const r = await applySave(saveIo(f), rev, target);
-    plans.clear(f.id, 'projection'); plans.clear(f.id, 'save'); plans.clear(f.id, 'restore');
+    plans.clear(f.id, 'projection'); plans.clear(f.id, 'save'); plans.clear(f.id, 'restore'); plans.clear(f.id, 'import');
     if (r.written.length === 0) { const w = afterSaveWarnings(r.journalLeft, null); return { written: [], version: null, ...(w.length ? { warnings: w } : {}) }; }
     let version: string | null = null, pointError: unknown = null;
     try { version = await keepAfter(f.dir, f.dirs, target, r.revision, label(r.written.length), at); } catch (error) {
@@ -786,9 +833,32 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
   /** The revision of the folder's harness now, or null when it does not load. */
   const revisionNow = (f: Folder): string | null => { const r = loadDefinition(join(f.dir, '.bowerloom')); return r.ok ? r.definition.revision : null; };
 
+  // ---- export and import (journey 4): main/engine-bundle.ts. The heavy work runs in a worker thread.
+  const share = createShare({
+    host: createBundleHost({
+      file: deps.bundleWorker ?? (() => new URL('./bundle-worker.mjs', import.meta.url)),
+      timeoutMs: deps.bundleTimeoutMs ?? 20_000, writeTimeoutMs: deps.bundleWriteTimeoutMs ?? 600_000,
+      // A stopped worker goes to the usage log as its cause only, never a name or a path.
+      report: (cause, write) => record({ kind: 'scenario', step: write ? 'bundle-worker-write' : 'bundle-worker', outcome: 'refused', code: cause }),
+    }),
+    readTimeoutMs: deps.bundleReadTimeoutMs ?? 30_000,
+    now, home: realHome, user: accountName(), plans, scrubAll: makeScrub(homes.map(path => ({ path, as: '~' }))),
+    chooseBundleOpen: deps.chooseBundleOpen ?? (async () => null), chooseBundleSave: deps.chooseBundleSave ?? (async () => null), confirm: deps.confirm,
+    bad, unknownBundle: () => { throw new EngineCallRefusal('UNKNOWN_BUNDLE'); },
+    folderOf, answer, serial, whileStopped,
+    quitBegun: deps.quitBegun ?? (() => false), quitLog: deps.quitLog ?? (text => { process.stderr.write(text); }),
+    sourcePathOf: (f, notesId) => notesEdits(folderOf(f.id)).sourcePath(notesId),
+    hasNotes: id => notesById.has(id), notesLabel: id => notesOf(id).label,
+    sourceViewOf: f => sourceViewOf(folderOf(f.id)), scrubbed: (f, d) => scrubbed(folderOf(f.id), d),
+    afterImport: f => { plans.clear(f.id, 'projection'); plans.clear(f.id, 'save'); plans.clear(f.id, 'restore'); plans.clear(f.id, 'import'); },
+    record,
+  });
+
   return {
     folders: () => serial(async () => [...byId.values()].map(info)),
-    chooseFolder: () => serial(async () => {
+    chooseFolder: expected => serial(async () => {
+      // The label the window wants, when it sends one (additive): a pick with another label is refused before the folder is registered or given an id.
+      const want = expected === undefined ? undefined : typeof expected === 'string' && expected.length > 0 && expected.length <= 4096 && !expected.includes('\u0000') ? expected : bad();
       const picked = await deps.chooseFolder();
       if (picked === null) return null;
       const s = makeScrub(homes.map(path => ({ path, as: '~' })));
@@ -797,6 +867,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
         const dir = realpathSync(picked);
         if (!lstatSync(dir).isDirectory()) return bad();
         checkProjectPath(dir, deps.home);
+        if (want !== undefined && labelFor(dir) !== want) return { ok: false, refusal: { code: 'NOT_THE_FOLDER_SHOWN', message: 'That is not the folder shown. Bowerloom did not add it.', paths: [] } } as const;
         return { ok: true, value: info(await register(dir)) } as const;
       } catch (error) {
         if (error instanceof EngineCallRefusal) return { ok: false, refusal: { code: 'NOT_A_FOLDER', message: 'That is not a folder Bowerloom can use. Choose a folder.', paths: [] } } as const;
@@ -1149,7 +1220,17 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
         return { path: n.scrub(place.rel) };
       });
     }),
+    planExport: id => serial(() => share.planExport(id)),
+    // The three calls with a native dialog take the queue themselves, only for the steps outside the dialogs (main/engine-bundle.ts).
+    runExport: (id, revision, acknowledged) => share.runExport(id, revision, acknowledged),
+    chooseBundle: () => share.chooseBundle(),
+    planImport: (id, bundleId, choices) => serial(() => share.planImport(id, bundleId, choices)),
+    runImport: (id, revision, bundleId, choices, acknowledged) => share.runImport(id, revision, bundleId, choices, acknowledged),
+    discardBundle: bundleId => serial(() => share.discardBundle(bundleId)),
+    close: () => share.close(),
     clearReportCopies: () => reportCopies.clear(),
+    busy: () => pending > 0,
+    idle: async () => { let seen: Promise<unknown>; do { seen = chain; await seen; } while (seen !== chain); },
   };
 }
 

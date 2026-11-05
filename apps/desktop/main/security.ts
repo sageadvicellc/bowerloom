@@ -20,10 +20,10 @@ export const CSP = [
   "frame-src 'none'",
 ].join('; ');
 
-// The prototype's data folder rules are shared with the launcher, which cannot load TypeScript. See prototype-dir.mjs.
-export { PROTOTYPE_PREFIX, chooseUserData, isPrototypeDataPath, makePrototypeDataDir, mayRemovePrototypeDir, removeAndReport, removePrototypeDataDir, userDataArg } from './prototype-dir.mjs';
+// The temporary data folder rules of the made-up launches are shared with the launcher, which cannot load TypeScript. See temp-data.mjs.
+export { E2E_PREFIX, SAMPLE_PREFIX, TEMP_PREFIXES, chooseUserData, isTempDataPath, makeTempDataDir, mayRemoveTempDir, removeAndReport, removeTempDataDir, userDataArg } from './temp-data.mjs';
 
-/** The window's settings. `preload` is the bridge script; the prototype page gets none (pass undefined), so it has no `window.bowerloom` at all. */
+/** The window's settings. `preload` is the bridge script; a made-up launch gets none (pass undefined), so its page has no bridge at all. */
 export const webPreferences = (preload: string | undefined, packaged = false) => ({
   contextIsolation: true,
   nodeIntegration: false,
@@ -80,16 +80,8 @@ export function decideNavigation(url: string, appIndexUrl: string): 'allow-app' 
 }
 
 /**
- * Whether the page that sent an IPC call may be answered. In prototype mode the answer is always no, for every channel: the prototype page
- * keeps everything in memory and gets no IPC. Otherwise only the app's own page (any hash) is answered. `frameUrl` is null when there is no sender frame.
- */
-export function isAllowedSender(prototypeMode: boolean, frameUrl: string | null, appIndexUrl: string): boolean {
-  return !prototypeMode && frameUrl !== null && decideNavigation(frameUrl, appIndexUrl) === 'allow-app';
-}
-
-/**
- * Real mode (--prototype-real) only: whether the page that sent a call to the real-setup reader may be answered. The answer is yes only in real mode, and only for the app's
- * own page (any hash). `isAllowedSender` is not changed: in every prototype mode it still refuses every channel of the normal bridge. `frameUrl` is null when there is no sender frame.
+ * Whether the page that sent a call to the real-setup reader may be answered. The answer is yes only in real mode, and only for the app's
+ * own page (any hash). `frameUrl` is null when there is no sender frame.
  */
 export function isAllowedRealSender(realMode: boolean, frameUrl: string | null, appIndexUrl: string): boolean {
   return realMode && frameUrl !== null && decideNavigation(frameUrl, appIndexUrl) === 'allow-app';

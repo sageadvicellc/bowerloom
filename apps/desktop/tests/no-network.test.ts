@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { DESKTOP, SAMPLE_DIR, tempDir } from './support.js';
+import { DESKTOP, tempDir } from './support.js';
+import { buildFixture } from './fixtures-real/build.js';
 
 const NETWORK = /^(net|https?|http2|dns|dns\/promises|tls|dgram)$/;
 /** Modules of the bundle that import a network module, with what they import. A new entry here must be argued for. */
@@ -19,15 +20,20 @@ const ALLOWED_NETWORK_MODULES: Record<string, string[]> = {
 };
 
 /**
- * Modules of the bundle that may start a process, with what they import. Two:
+ * Modules of the bundle that may start a process or a thread, with what they import. Three:
  *  - the problem report asks each engine for its version (`claude --version`), with execFile and no shell, a 3 second limit, and a minimal environment
  *    (packages/diagnostics/src/report.ts);
  *  - the notes source runs git (spec 6.9: every notes folder is a git repository, and Bowerloom starts one with a preview): one module, git found by fixed
  *    path only, five fixed argument forms, no shell, a minimal environment with no HOME and no git config, a timeout and an output cap, and only after
  *    main's own dialog or for the Notes panel's read of the last commit time (packages/notes-source/src/git.ts).
+ *  - export and import start one worker thread (journey 4): the host in main/engine-bundle-host.ts starts `bundle-worker.mjs`, a file the build makes from
+ *    main/engine-bundle-worker.ts, with a timeout and a refusal when it dies. It is a thread of this process, not a program: it runs only the code of
+ *    packages/harness-bundle and the save packages, on bytes main gives it, so a bundle is decoded off the main thread. It starts nothing else.
  * Nothing else of the bundle starts a process.
  */
-const ALLOWED_PROCESS_MODULES: Record<string, string[]> = { '../../packages/diagnostics/src/report.ts': ['child_process'], '../../packages/notes-source/src/git.ts': ['child_process'] };
+const ALLOWED_PROCESS_MODULES: Record<string, string[]> = {
+  '../../packages/diagnostics/src/report.ts': ['child_process'], '../../packages/notes-source/src/git.ts': ['child_process'], 'main/engine-bundle-host.ts': ['worker_threads'],
+};
 
 const BARE = '(?:node:)?';
 const WORKERS = /^(child_process|worker_threads|cluster)$/;
@@ -70,7 +76,7 @@ test('the bundled main file never loads child_process, worker_threads, or cluste
   for (const [module, imports] of byModule) { const net = [...imports].filter(i => NETWORK.test(i)).sort(); if (net.length) found[module] = net; }
   assert.deepEqual(found, ALLOWED_NETWORK_MODULES, 'a module that can reach the network is new: check that the viewer cannot call it, then list it');
   for (const module of Object.keys(found)) assert.ok(module.startsWith('../../packages/'), module);
-  assert.equal([...code.matchAll(/import\("electron-updater"\)/g)].length, 1, 'the updater is loaded in one place, and only when updates are on');
+  assert.equal([...code.matchAll(/electron-updater/g)].length, 0, 'the app loads no updater: updates are not part of this build');
 });
 
 test('the scan itself sees every way of loading: bare names, require(), import(), and fetch', () => {
@@ -80,24 +86,15 @@ test('the scan itself sees every way of loading: bare names, require(), import()
   assert.match(sample, /(?<![.\w])(?:globalThis|global|self|window)\.fetch\(/); assert.match(sample.split('\n')[6]!, /(?<![.\w])fetch\(/);
 });
 
-for (const mode of ['sample', 'real'] as const) {
-  test(`reading the ${mode} data, as the app does, starts no process and opens no connection or server`, t => {
-    const log = join(tempDir(t, 'bowerloom-viewer-deny-log-'), 'hits.log'), app = tempDir(t, 'bowerloom-viewer-deny-');
-    const r = spawnSync(process.execPath, ['--import', join(DESKTOP, 'tests', 'helpers', 'deny.mjs'), join(DESKTOP, '.build', 'helpers', 'read-sample.mjs'), SAMPLE_DIR, mode, app], { encoding: 'utf8', timeout: 120000, env: { ...process.env, DENY_LOG: log } });
-    assert.equal(r.status, 0, r.stderr + r.stdout); assert.match(r.stdout, new RegExp(`READ 4 projects \\(${mode}\\)`));
-    assert.equal(existsSync(log) ? readFileSync(log, 'utf8') : '', '', 'nothing was denied, so nothing was tried');
-  });
-}
-
 test('the denial really denies: a process start, a connection, a server, a lookup, and a fetch are caught, by require', t => {
-  const log = join(tempDir(t, 'bowerloom-viewer-deny-log-'), 'hits.log');
+  const log = join(tempDir(t, 'bowerloom-deny-log-'), 'hits.log');
   const code = "const cp = require('node:child_process'); const net = require('node:net'); const dns = require('node:dns'); let n = 0; for (const f of [() => cp.spawnSync('ls'), () => net.connect(80, 'localhost'), () => net.createServer().listen(0), () => fetch('http://localhost'), () => dns.promises.lookup('localhost'), () => require('node:dgram').createSocket('udp4'), () => require('node:http2').connect('http://localhost')]) { try { f(); } catch { n++; } } console.log('CAUGHT ' + n);";
   const r = spawnSync(process.execPath, ['--import', join(DESKTOP, 'tests', 'helpers', 'deny.mjs'), '-e', code], { encoding: 'utf8', env: { ...process.env, DENY_LOG: log } });
   assert.match(r.stdout, /CAUGHT 7/); assert.equal(readFileSync(log, 'utf8').trim().split('\n').length, 7);
 });
 
 test('the denial also catches a NAMED import, which a patch of the default object alone would miss', t => {
-  const log = join(tempDir(t, 'bowerloom-viewer-deny-log-'), 'hits.log');
+  const log = join(tempDir(t, 'bowerloom-deny-log-'), 'hits.log');
   const code = [
     "import { spawn, execFileSync } from 'node:child_process';", "import { request } from 'node:https';", "import { get } from 'node:http';", "import { connect, createServer } from 'node:net';",
     "import { lookup } from 'node:dns';", "import { promises } from 'node:dns';", "import { createSocket } from 'node:dgram';", "import { connect as h2 } from 'node:http2';",
@@ -107,4 +104,16 @@ test('the denial also catches a NAMED import, which a patch of the default objec
   assert.match(r.stdout, /CAUGHT 10/, r.stderr); assert.equal(readFileSync(log, 'utf8').trim().split('\n').length, 10);
   // Without the sync step the named imports would be the real ones: the harness itself proves the sync is what catches them.
   assert.match(readFileSync(join(DESKTOP, 'tests', 'helpers', 'deny.mjs'), 'utf8'), /syncBuiltinESMExports\(\);\s*$/);
+});
+
+test('the reader of the person\'s setup, run on a made-up home folder with every process start and network call denied, finishes and records no hit', t => {
+  const fixture = buildFixture(); t.after(() => fixture.cleanup());
+  const log = join(tempDir(t, 'bowerloom-deny-log-'), 'hits.log');
+  const runner = join(DESKTOP, '.build', 'helpers', 'scan-run.mjs');
+  assert.equal(existsSync(runner), true, 'npm test builds tests/helpers/scan-run.ts first');
+  const r = spawnSync(process.execPath, ['--import', join(DESKTOP, 'tests', 'helpers', 'deny.mjs'), runner, fixture.home, fixture.work], { encoding: 'utf8', timeout: 60000, env: { PATH: process.env.PATH ?? '', DENY_LOG: log } });
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout) as { places: number; counts: { agents: number; skills: number; tools: number } };
+  assert.ok(out.places >= 3 && out.counts.skills > 0 && out.counts.agents > 0, `the reader really read the folders: ${r.stdout}`);
+  assert.equal(existsSync(log), false, 'no process was started and no connection was made');
 });

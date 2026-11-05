@@ -12,7 +12,7 @@ import { gzipSync } from 'node:zlib';
 import { Header } from 'tar/header';
 import { planNpmAcquisition, acquireNpmSkill, verifyNpmPayload, enumerateNpmTar, NpmAcquisitionError } from '../../../dist/packages/skill-sources/src/npm.js';
 
-// Lead decision, DECISIONS-01.md item 7, variant A. Real npm tarballs, and node-tar 7.5.20 which this repo pins, write
+// Lead decision, DECISIONS-01.md item 7, variant A. Real npm tarballs, and node-tar 7.5.22 which this repo pins, write
 // numeric fields as digits at full width, then a space and a NUL ("000644 \0"), and the checksum as six digits, a space
 // and a NUL ("012510 \0"). The fixtures here come from the pinned node-tar Header encoder, with the fields npm sets.
 const hash = b => createHash('sha256').update(b).digest('hex');

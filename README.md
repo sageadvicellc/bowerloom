@@ -16,6 +16,8 @@
 
 Bowerloom lets you define one harness and install it into Claude Code and Codex. A harness is the set of skills, agents, tools, rules, and context that surrounds a coding model. You keep one definition in a `.bowerloom` folder. Bowerloom writes the files of each engine from it.
 
+You can work in the command line or in the desktop app. The desktop app is a main part of Bowerloom 0.8.0-beta.1, next to the command line, and it is a beta.
+
 Every change shows a preview first. Bowerloom writes nothing until you approve the exact plan. It keeps a record of what it wrote, so you can see drift and undo an install. When an engine cannot carry a part of your harness, the preview says so, part by part. An installed copy is never more permissive than its source.
 
 [Main site](https://bowerloom.ai) · [Documentation](https://bowerloom.ai/docs/) · [Report a problem](#report-a-problem)
@@ -58,48 +60,74 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 
 | Capability | Current boundary |
 | --- | --- |
-| Harness | Adopt the Claude Code and Codex files of a project into one `.bowerloom` definition. Then install it into both engines after a preview. |
-| Fidelity | The preview reports each part as exact, translated, weakened, or absent, per engine. A weaker rule needs your approval, line by line. |
-| Recovery | Drift lists changed files. Remove puts back what an install replaced. |
-| Portable skills | Pin skills from npm or GitHub with skills add. Then install them for Claude Code and Codex with skills sync. |
+| Setup | Define one harness in a .bowerloom folder, then install it into Claude Code and Codex. A harness is the set of skills, agents, tools, rules, and context that surrounds a coding model. Every change to your files shows a plan first and writes only after you approve the exact plan. |
+| Adopt | Adopt reads the engine files of a folder and builds one harness definition from them. It writes only .bowerloom and changes no engine file. |
+| Install | Install writes the files of each engine from .bowerloom. Claude Code and Codex are supported. OpenCode, Pi, and DeepSeek Harness are preview engines, and install writes to them only when BOWERLOOM_PREVIEW_ENGINES=1 is set. |
+| Fidelity | The install plan reports each part of the harness, per engine, as exact, translated, weakened, or absent. A rule that an engine carries more weakly than the harness says is refused until you accept that line. |
+| Drift | Drift lists the files that Bowerloom wrote and that changed since the install. Drift --check fails when a file changed. |
+| Remove | Remove puts back every file that an install replaced and deletes the files that the install created. |
+| Save | The save step in the desktop app writes a change to the harness of a folder after you approve it, and keeps a save point before and after. Go back returns the harness to an earlier save point. |
+| Notes | In the desktop app, a new or empty notes folder can start from the starter wiki of the Notes keeper kit. A linked notes folder with no version history can get it. The Notes keeper kit holds one agent and six skills that look after a folder of notes. |
+| Share | Export writes a harness to one file that holds no secret value that Bowerloom can find and no notes folder path, and import reads such a file into a folder whose harness is missing or empty, in the app and on the command line. |
+| Portable skills | Pin skills from npm or GitHub with skills add, then install them for Claude Code and Codex with skills sync. |
+| Desktop | The desktop app is a main part of this release, and it is a beta. It does the same adopt, install, and remove steps as the command line, and adds the Builder, the screen where you edit a harness, with the save step and save points. Apple did not sign the macOS app. |
 | Execution | Setup does not start workers, grant runtime access, or authorize connected actions. |
 
-These guides use macOS arm64 and Node 24.11.0. Other host systems are outside this documented installation path.
+These guides use macOS arm64 and Node 24.11.0. Windows and Linux are named for later releases. Other systems remain under review.
+
+Limits of this beta:
+
+- No harness command runs an engine or a model.
+- OpenCode, Pi, and DeepSeek Harness are preview engines in this beta. Adopt, drift, status, and remove work for them, and install needs BOWERLOOM_PREVIEW_ENGINES=1.
+- The save step, save points, Go back, and the notes actions run in the desktop app only. The command line does not have them.
+- The desktop app is not signed with an Apple Developer ID and is not notarized. Each download has a SHA-256 hash. Check it before you open the app. Updates stay off until the first release.
+- Import writes into a folder whose harness is missing or empty. It does not check that the values it lists exist on this computer.
+- Windows and Linux are not supported in this beta.
+- Team sync, signing and automatic updates, other knowledge bases, and more engines are named for later releases. They are not promises.
 <!-- release:support:end -->
 
 ## Beta limits
 
 - Pinned skills come from public sources only. A store in a private GitHub repository needs `BOWERLOOM_GITHUB_TOKEN`. Only MIT and Apache-2.0 skills install.
 - Keep your project out of iCloud Drive folders. Project commands refuse a project in a cloud-synced folder with `PROJECT_IN_CLOUD_FOLDER`.
-- The desktop app is experimental. It is possibly not part of v1. Every feature in this README also works in the command line.
-- Apple did not sign this build. [Open the unsigned app](#open-the-unsigned-app) gives the steps to open it.
+- The desktop app is a beta. The Builder, the save step, and Save points exist only in the app. The adopt, install, drift, and remove steps work in both.
+- Beta.1 supports Claude Code and Codex. OpenCode, Pi, and DeepSeek Harness are preview engines. They install only with `BOWERLOOM_PREVIEW_ENGINES=1`.
+- Apple did not sign or notarize this build. Each download has a SHA-256 hash. Check it before you open the app. [Open the unsigned app](#open-the-unsigned-app) gives the steps to open it.
 
 ## Install Bowerloom
 
-Bowerloom is an open beta on npm as `bowerloom`, under the `beta` dist-tag. It is open source under the MIT license. Install it with Node `>=24.11.0 <25` and npm `11`.
+<!-- release:install:start -->
+Bowerloom needs Node `>=24.11.0 <25` and npm `11`. The npm package `bowerloom` is not published yet. The install command arrives when the beta publishes, under the `beta` dist-tag.
 
-```sh
-npm install -g bowerloom@beta
-bowerloom --version
-bowerloom --help
-```
+Harness commands and first-team setup do not need Docker. The separate local backend requires Docker Desktop and its own plan and approval.
 
-Updates are not automatic. To update, run `npm install -g bowerloom@beta` again. Do not use `npm update -g bowerloom`, because npm then updates to the `latest` tag and can downgrade a beta. If you have a release file, install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.8.0-beta.1.tgz`.
+These guides use macOS arm64 and Node 24.11.0. Windows and Linux are named for later releases. Other systems remain under review.
+<!-- release:install:end -->
+
+Bowerloom is open source under the MIT license.
+
+If you have a release file, install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.8.0-beta.1.tgz`. Then run `bowerloom --version` and `bowerloom --help`.
 
 If npm refuses with a permission error, do not use `sudo`. Set a user prefix for global packages instead. The [install guide](https://bowerloom.ai/docs/start/) shows the steps.
+
+## The desktop app
+
+The desktop app is a beta, and it is a main part of this release. It does the adopt, install, and remove steps on screen, after a preview and an approval. It also has the Builder, which shows a harness as a graph of agents and skills, and the save step, which saves a change to the harness after you review and approve it. Each save keeps a save point. Go back returns the harness to a save point, and Set aside starts a new record of save points. Notes and the ready-made Notes keeper kit let agents read a folder of notes. The [desktop app guide](https://bowerloom.ai/docs/app/) covers each screen.
+
+From a source checkout, `npm run desktop` opens the app on your own folders. `npm run desktop:sample` opens it on invented sample folders, and reads and writes nothing on your computer.
 
 ## Open the unsigned app
 
 The desktop app is open source. Apple did not sign or notarize it. The first time you open it, macOS blocks it and shows a warning. You can read the source in this repository before you open it.
 
-1. Move `Bowerloom.app` to your Applications folder.
+1. Download the app from the GitHub release page of Bowerloom 0.8.0-beta.1. Check the download against its SHA-256 hash, which is listed with it. Move `Bowerloom.app` to your Applications folder.
 2. Open the app once. macOS shows a warning. Close the warning.
 3. Open the Apple menu, then System Settings.
 4. Click Privacy & Security, then scroll down to Security.
 5. Click Open Anyway next to the message about Bowerloom. The button is available for about an hour after step 2.
 6. If macOS asks for your login password, enter it. Then click Open.
 
-After this, the app opens like any other app. If you do not want to allow an unsigned app, use the command line. It gives you every feature.
+After this, the app opens like any other app. If you do not want to allow an unsigned app, use the command line. It covers the adopt, install, drift, and remove steps.
 
 ## Report a problem
 

@@ -24,6 +24,7 @@ import { NoBridgeScreen, RealChoose } from './real/RealChoose.js';
 import { chooseKind } from './real/mode.js';
 import { blankRealState } from './real/blank.js';
 import { HarnessList } from './screens/HarnessList.js';
+import { Overview } from './screens/Overview.js';
 import { Builder } from './screens/Builder.js';
 import { FileView } from './screens/FileView.js';
 import { Library } from './screens/Library.js';
@@ -38,14 +39,15 @@ import { StartSheet } from './sheets/StartSheet.js';
 import { AdoptSheet } from './sheets/AdoptSheet.js';
 import { ProjectSheet } from './sheets/ProjectSheet.js';
 import { SaveSheet } from './sheets/SaveSheet.js';
+import { ShareSheets } from './sheets/ImportSheet.js';
 import { EngineProvider } from './engine.js';
 import { NotesProvider } from './notes/notes-session.js';
 import { NotesFirstRun } from './notes/NotesFirstRun.js';
 import { FolderDraftProvider } from './folder-draft.js';
+import { useCloseGuard } from './close-guard.js';
 import { createSampleEngine } from '../../shared/engine/sample.js';
 import { SAMPLE_PREVIEW_ATTRIBUTE } from '../../shared/engine/sample-switch.js';
 import type { EngineBridge } from '../../shared/engine/types.js';
-import { WORDS } from './words.js';
 
 /** The screen a route names. */
 function Screens({ route, bridge, realMode }: { route: Route; bridge: RealBridge | null; realMode: boolean }): ReactElement {
@@ -58,6 +60,7 @@ function Screens({ route, bridge, realMode }: { route: Route; bridge: RealBridge
     }
     case 'read': return <ReadSources />;
     case 'notes': return <NotesFirstRun />;
+    case 'overview': return <Overview />;
     case 'harnesses': return <HarnessList id={route.id ?? null} />;
     case 'builder': return <Builder key={route.id} id={route.id} />;
     case 'file': return <FileView partId={route.partId} />;
@@ -80,6 +83,7 @@ function Overlays(): ReactElement {
       <AdoptSheet open={ui.adopt.open} folderId={ui.adopt.folderId} onClose={ui.closeAdopt} />
       <ProjectSheet open={ui.projectSheet.open} folderId={ui.projectSheet.folderId} mode={ui.projectSheet.mode} keep={ui.projectSheet.keep} onClose={ui.closeProject} />
       <SaveSheet open={ui.saveSheet.open} folderId={ui.saveSheet.folderId} tour={ui.saveSheet.tour} start={ui.saveSheet.start} restore={ui.saveSheet.restore} onClose={ui.closeSave} />
+      <ShareSheets />
       <Toast />
     </>
   );
@@ -87,13 +91,14 @@ function Overlays(): ReactElement {
 
 function Routes({ bridge, realMode }: { bridge: RealBridge | null; realMode: boolean }): ReactElement {
   const route = useRoute();
-  useEffect(() => { document.title = WORDS.label.appName; }, [route]);
+  // The title is the app's name, and carries the count of unsaved changes for main (which keeps the title bar to the name). The close guard holds the unload while there are any.
+  useCloseGuard();
   if (isFirstRun(route)) return <Screens route={route} bridge={bridge} realMode={realMode} />;
   return <Shell route={route} overlays={<Overlays />}><Screens route={route} bridge={bridge} realMode={realMode} /></Shell>;
 }
 
 /**
- * `realMode` is true for the launch on the person's own folders (`--prototype-v3-real`, the address `#prototype-v3-real`); `real` is its read-only bridge, null when the window has none or a partial one.
+ * `realMode` is true for the launch on the person's own folders (the default launch, the address `#app`); `real` is its read-only bridge, null when the window has none or a partial one.
  * In real mode Choose reads the person's folders and the world starts empty; with no bridge Choose shows the no-bridge error, and never the sample. Without `realMode`, a bridge makes it real (a caller that gives only the bridge).
  */
 export function HarnessApp({ store: given, real = null, realMode = real !== null, engine: givenEngine }: { store?: HarnessStore; real?: RealBridge | null; realMode?: boolean; engine?: EngineBridge | null | undefined }): ReactElement {

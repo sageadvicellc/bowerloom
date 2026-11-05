@@ -1,5 +1,5 @@
 /**
- * The adopt and install sheets in the real window, on the sample launch (--prototype-v3): synthetic folders in memory, nothing read or written.
+ * The adopt and install sheets in the real window, on the sample launch (--sample): synthetic folders in memory, nothing read or written.
  * "New harness from a folder": the conflict to pick, the reasons of what is not carried over, the words of every approval and acknowledgement, each ticked
  * one by one, and "Write N files" blocked until the last one. "Install a folder's harness": the weaker rules to approve first, then every result word with its
  * reason, the partial notice, pending trust, code shown in full, the drift report with Accept AGENTS.md as the default, the plan approval that a changed choice
@@ -13,7 +13,7 @@ import type { Harness } from './harness-page.js';
 
 let h: Harness;
 const page = (): Page => h.page;
-const PROJECTS = '#prototype-v3/projects';
+const PROJECTS = '#sample/projects';
 
 // These specs install to OpenCode, a preview engine in beta.1, so the sample launch turns the preview switch on (main's launch argument; the default demo has it off).
 test.beforeAll(async () => { test.setTimeout(240_000); h = await launchHarness({ samplePreviewEngines: true }); });
@@ -108,13 +108,13 @@ test('Decision D8B: "Use for every engine" is one tick per part, off by default,
   await expect(section).toContainText('1 of 3 ticked');
   await expect(hooks).toContainText('1 item now reaches every engine.');
   await expect(hooks.getByRole('checkbox')).toBeChecked();
-  await expect(hook).toContainText('Every interface');
+  await expect(hook).toContainText('Every engine');
   await expect(hook).toContainText('Used for every engine');
   // By keyboard: Space ticks the servers box too, and the plan follows.
   await s.getByRole('checkbox', { name: 'Use for every engine: Servers' }).focus();
   await p.keyboard.press('Space');
   await expect(section).toContainText('2 of 3 ticked');
-  await expect(s.locator('[data-item="mcp/search"]')).toContainText('Every interface');
+  await expect(s.locator('[data-item="mcp/search"]')).toContainText('Every engine');
   await shot(p, 'E2c-adopt-every-engine');
   // Taking a tick back plans again without it.
   await s.getByRole('checkbox', { name: 'Use for every engine: Servers' }).uncheck();
@@ -175,6 +175,7 @@ test('Install: approve each weaker rule first, then read every result word, the 
   await expect(plugin).toContainText('A Bowerloom hook blocked this action.');
   await expect(s.locator('[data-path=".mcp.json"] .hxe-env')).toContainText('read from a variable when it runs');
   await expect(s.locator('[data-section="approved"] li')).toHaveCount(3);
+  for (const row of await s.locator('[data-section="approved"] li').all()) await expect(row).toContainText(/approved now · \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/);
   // The drift report.
   const drift = s.locator('[data-section="drift"]');
   await expect(drift).toContainText('AGENTS.md and CLAUDE.md differ');

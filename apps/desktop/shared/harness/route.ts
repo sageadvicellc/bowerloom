@@ -1,13 +1,13 @@
 /**
- * The addresses of the harness-first preview. The page address is the router: `#prototype-v3/builder/folder-2` is the Builder, on the folder main calls `folder-2`.
+ * The addresses of the harness-first preview. The page address is the router: `#sample/builder/folder-2` is the Builder, on the folder main calls `folder-2`.
  * Pure: a route is plain data, and `parseRoute` and `formatRoute` go both ways. An address that is not the preview's own (the skip link's `#main`) parses to null, which leaves the page as it is.
  */
 import type { PartKind } from './types.js';
 import { PART_KINDS } from './types.js';
 
-export const BASE = '#prototype-v3';
-/** The address of the launch on the person's own folders (`--prototype-v3-real`). The page is told its mode by this address, never by whether a bridge is there. */
-export const REAL_BASE = '#prototype-v3-real';
+export const BASE = '#sample';
+/** The address of the launch on the person's own folders (the default launch). The page is told its mode by this address, never by whether a bridge is there. */
+export const REAL_BASE = '#app';
 
 export type Route =
   | { readonly name: 'welcome' }
@@ -15,6 +15,8 @@ export type Route =
   | { readonly name: 'read' }
   /** The notes step of the first run: "Where do you keep your notes?" */
   | { readonly name: 'notes' }
+  /** The Overview: every place the first read found, in one read-only graph. */
+  | { readonly name: 'overview' }
   | { readonly name: 'harnesses'; readonly id?: string }
   /** The Builder of one folder's harness, by the id main gave the folder. An id main does not know (after a new start) shows the folder list. */
   | { readonly name: 'builder'; readonly id: string }
@@ -60,6 +62,7 @@ export function parseRoute(hash: string): Route | null {
   switch (name) {
     case undefined: case '': return { name: 'welcome' };
     case 'choose': return { name: 'choose' };
+    case 'overview': return { name: 'overview' };
     case 'read': return { name: 'read' };
     case 'notes': return { name: 'notes' };
     case 'harnesses': return id === undefined ? { name: 'harnesses' } : { name: 'harnesses', id };
@@ -86,7 +89,7 @@ const seg = (value: string): string => encodeURIComponent(value);
 export function formatRoute(route: Route, base: string = BASE): string {
   switch (route.name) {
     case 'welcome': return base;
-    case 'choose': case 'read': case 'notes': case 'history': case 'help': return `${base}/${route.name}`;
+    case 'choose': case 'read': case 'notes': case 'overview': case 'history': case 'help': return `${base}/${route.name}`;
     case 'harnesses': case 'projects': case 'runs': case 'interfaces': return route.id === undefined ? `${base}/${route.name}` : `${base}/${route.name}/${seg(route.id)}`;
     case 'builder': return `${base}/builder/${seg(route.id)}`;
     case 'file': return `${base}/file/${seg(route.partId)}`;
@@ -96,9 +99,10 @@ export function formatRoute(route: Route, base: string = BASE): string {
 }
 
 /** Which item of the navigation a route belongs to. The builder and the file view belong to the place they were opened from. */
-export type NavKey = 'harnesses' | 'library' | 'library-agent' | 'library-skill' | 'library-tool' | 'library-context' | 'projects' | 'runs' | 'interfaces' | 'history' | 'help';
+export type NavKey = 'overview' | 'harnesses' | 'library' | 'library-agent' | 'library-skill' | 'library-tool' | 'library-context' | 'projects' | 'runs' | 'interfaces' | 'history' | 'help';
 export function navKeyOf(route: Route): NavKey | null {
   switch (route.name) {
+    case 'overview': return 'overview';
     case 'harnesses': case 'builder': return 'harnesses';
     case 'file': case 'library': return route.name === 'library' ? `library-${route.kind}` : 'library';
     case 'projects': return 'projects';

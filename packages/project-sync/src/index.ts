@@ -55,18 +55,18 @@ export type { DriftLine, PortableApplyResult, PortableRecoveryPlan, PortableReco
 export { PORTABLE_REFUSAL_CODES, PortableRefusal } from './portable-files.js';
 export type { FileAfter, FileState, LeftBehind, LeftReason, PortableCode } from './portable-files.js';
 export { PORTABLE_RECEIPT_FORMAT, PORTABLE_RECEIPT_FORMAT_V2, PORTABLE_RECEIPT_FORMAT_V3 } from './portable-state.js';
-// Bowerloom 0.8, step 3, lane B: the locked-in writers inside the same plan.
+// The locked-in writers inside the same plan.
 export { CODEX_PROFILE, CODEX_PROFILE_BASE, DSH_PATCH, LOCKED_PARTS, OPENCODE_PLUGIN, PINNED_VERSIONS, renderPlugin } from './locked.js';
 export type { CodexTrust, LockedPart, ReviewItem, TrustLine } from './locked.js';
 export { LOCKED_DIRS, LOCKED_FILES, SUBAGENT_DIRS } from './portable-files.js';
 export type { PortableEngine, PortableReceipt, ReceiptFile, ReceiptSource } from './portable-state.js';
-// Bowerloom 0.8, step 5, lane A: the shared state layout and the approval drafts. The test hook entry point
+// The shared state layout and the approval drafts. The test hook entry point
 // settleLegacyStateWith is not exported here.
 export { HARNESS_MOVED_FORMAT, HARNESS_STATE_REFUSAL_CODES, HarnessStateRefusal, harnessStateDirs, settleLegacyState } from './harness-state.js';
 export type { HarnessStateCode, HarnessStateDirs, LegacySettle } from './harness-state.js';
 export { APPROVAL_DRAFTS_FORMAT, addApprovalDraft, addApprovalDraftLocked, dropApprovalDrafts, dropApprovalDraftsLocked, readApprovalDrafts } from './harness-approvals.js';
 export type { AddApprovalDraftOptions, ApprovalDraftInput, ReadApprovalDraftsOptions } from './harness-approvals.js';
-// Bowerloom 0.8, save step, lane D: the version store behind "Go back". The test hook entry point recordVersionWith is not
+// The version store behind "Go back". The test hook entry point recordVersionWith is not
 // exported here.
 export {
   VERSION_FORMAT, VERSION_LIMITS, VERSION_REFUSAL_CODES, VersionRefusal, checkVersionsFit, listVersions, planSetAsideVersions, readVersion, recordVersion, setAsideVersions,
@@ -75,8 +75,8 @@ export type { SetAsidePlan, SetAsideResult, StoredVersion, VersionCode, VersionE
 // The save step in the desktop app: the version store under the project lock, for a caller that holds no lock.
 export { recordVersionLocked, setAsideVersionsLocked } from './versions-locked.js';
 export type { KeepVersion } from './versions-locked.js';
-// Bowerloom 0.8, notes lane D: the notes section of an agent that lists knowledge sources, and the export bundle, which
+// The notes section of an agent that lists knowledge sources, and the export bundle, which
 // carries each source by kind and name only.
 export { NOTES_HEADING, notesSection, withNotesSections } from './notes.js';
-export { DEFINITION_BUNDLE_FORMAT, exportDefinitionBundle } from './definition-export.js';
+export { exportDefinitionBundle } from './definition-export.js';
 export type { BundledSource, DefinitionBundle } from './definition-export.js';

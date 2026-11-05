@@ -1,5 +1,5 @@
 /**
- * The first three screens of the harness-first preview in the real window (Electron started with --prototype-v3): Welcome, Choose sources (a short look first, then three sources with ticks),
+ * The first three screens of the harness-first preview in the real window (Electron started with --sample): Welcome, Choose sources (a short look first, then three sources with ticks),
  * Read sources, and then the app. "Make a harness from this", "Make all 3" and "Not now" each open the app. Text is 14 px or more and a button is 32 px.
  */
 import { expect, test } from '@playwright/test';
@@ -40,7 +40,7 @@ test('Welcome says what the design says, has no navigation, and "Find my files" 
   expect(await p.evaluate(() => typeof (window as unknown as { bowerloom?: unknown }).bowerloom)).toBe('undefined');
   await expect(p.getByRole('heading', { level: 1, name: 'Bowerloom', exact: true })).toBeVisible();
   await expect(p.getByText('Build a harness from your agents and skills.')).toBeVisible();
-  await expect(p.getByText('Then run it in any interface you use.')).toBeVisible();
+  await expect(p.getByText('Then run it in any engine you use.')).toBeVisible();
   await expect(p.getByText('A harness is a saved bundle of your AI helpers.')).toBeVisible();
   await expect(p.getByText('Bowerloom only reads. Nothing changes until you press Install.')).toBeVisible();
   await expect(p.getByRole('navigation')).toHaveCount(0);
@@ -141,11 +141,15 @@ test('Read sources shows the three sources; "Make a harness from this" makes one
   expect(new Set(m.buttons)).toEqual(new Set([32]));
   await shot(p, 'S1.3-make-harnesses');
   await p.locator('.hxf-card', { hasText: 'Your Codex folder' }).getByRole('button', { name: 'Make a harness from this' }).click();
+  await expect(p.getByRole('heading', { level: 1, name: 'Overview', exact: true })).toBeVisible();
+  await p.locator('[data-nav-key="harnesses"]').click();
   await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
   await expect(p.locator('.hx-row-harness')).toHaveCount(5);
+  // The Overview came first, so no row is picked for the person: pick the one just made.
+  await p.locator('.hx-row-harness', { hasText: 'Codex folder' }).getByRole('button', { name: 'Codex folder', exact: true }).click();
   await expect(p.locator('.hx-row[data-selected]')).toContainText('Codex folder');
   await expect(p.locator('.hx-row[data-selected]')).toContainText('2 agents · 5 skills');
-  await p.getByRole('link', { name: 'Version history', exact: true }).or(p.getByRole('button', { name: 'Version history', exact: true })).first().click();
+  await p.getByRole('link', { name: 'Install history', exact: true }).or(p.getByRole('button', { name: 'Install history', exact: true })).first().click();
   await expect(p.locator('.hxh-row').first()).toContainText('Made Codex folder from a scan');
 });
 
@@ -153,12 +157,16 @@ test('"Make all 3" makes three harnesses, "Not now" opens the app on the sample'
   const p = page();
   await toRead(p);
   await p.getByRole('button', { name: 'Make all 3', exact: true }).click();
+  await expect(p.getByRole('heading', { level: 1, name: 'Overview', exact: true })).toBeVisible();
+  await p.locator('[data-nav-key="harnesses"]').click();
   await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
   await expect(p.locator('.hx-row-harness')).toHaveCount(7);
   await expect(p.getByRole('navigation')).toBeVisible();
   await fresh(p, WELCOME);
   await toRead(p);
   await p.getByRole('button', { name: 'Not now', exact: true }).click();
+  await expect(p.getByRole('heading', { level: 1, name: 'Overview', exact: true })).toBeVisible();
+  await p.locator('[data-nav-key="harnesses"]').click();
   await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
   await expect(p.locator('.hx-row-harness')).toHaveCount(4);
 });

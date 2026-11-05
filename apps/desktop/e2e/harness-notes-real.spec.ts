@@ -1,5 +1,5 @@
 /**
- * Journey 5 on real folders (Electron started with --prototype-v3-real, HOME and XDG_STATE_HOME pointed at a made-up folder, real git from the machine).
+ * Journey 5 on real folders (Electron started with no flag, HOME and XDG_STATE_HOME pointed at a made-up folder, real git from the machine).
  *
  * "create": Start fresh in a new folder, check the starter files on disk against the kit's own bytes, check that the folder is a repository with exactly one
  * commit and a clean tree, build the Notes keeper with the tour and save it into a harness folder, check `knowledge.json` and the agent's `notes` on disk,
@@ -44,7 +44,7 @@ const put = (root: string, rel: string, text: string): void => { mkdirSync(dirna
 async function start(route: string): Promise<void> {
   h = await launchReal(home, { XDG_STATE_HOME: join(home, '.local', 'state') }, false);
   await page().emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });
-  await page().evaluate(r => { location.hash = `#prototype-v3-real/${r}`; location.reload(); }, route);
+  await page().evaluate(r => { location.hash = `#app/${r}`; location.reload(); }, route);
   await page().waitForLoadState('domcontentloaded');
   await page().waitForSelector('[data-home]');
 }

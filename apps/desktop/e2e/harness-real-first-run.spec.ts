@@ -1,5 +1,5 @@
 /**
- * The harness-first preview on the person's own folders, in the real window (Electron started with --prototype-v3-real and HOME pointed at a made-up folder, tests/fixtures-real/shell-home.ts).
+ * The harness-first preview on the person's own folders, in the real window (Electron started with no flag and HOME pointed at a made-up folder, tests/fixtures-real/shell-home.ts).
  * Walk: Welcome, the folders found (with counts, details and "Add a folder"), "Read what is inside?" (nothing is read before "Yes, read them"), the read, the Read list with its count line,
  * "Make a harness from this", the builder graph with the links the files name, the file view, the Library, and the parts that are not in this preview (Install, Start) and the Preview mark.
  * The checks that hold at every step: the made-up key values are nowhere in the page, file text is drawn as text, text is 14 px or more, a button is 32 px, no alert is raised, the bridge has
@@ -76,7 +76,7 @@ test('the window is the real preview: only the read-only bridge with three calls
   expect(facts).toEqual({ keys: ['discoverPlaces', 'pickFolder', 'readSelected'], kinds: ['function', 'function', 'function'], frozen: true, normal: 'undefined' });
   expect(await p.title()).toBe('Bowerloom');
   await expect(p.getByRole('heading', { level: 1, name: 'Bowerloom', exact: true })).toBeVisible();
-  await expect(p.getByText('Bowerloom only reads. Nothing changes until you press Install.')).toBeVisible();
+  await expect(p.getByText('Bowerloom only reads. It writes only after you approve what it will write.')).toBeVisible();
   await expect(p.getByRole('button', { name: 'Find my files', exact: true })).toBeFocused();
   await everyStep('welcome');
 });
@@ -180,6 +180,8 @@ test('"Yes, read them" reads the ticked folders and opens the Read list: a count
 test('"Make a harness from this" opens the app on a harness made from the files; the Builder refuses a harness from a scan in words and opens "From a folder"', async () => {
   const p = page();
   await p.locator('.hxf-card', { hasText: 'Your Claude Code folder' }).getByRole('button', { name: 'Make a harness from this' }).click();
+  await expect(p.getByRole('heading', { level: 1, name: 'Overview', exact: true })).toBeVisible();
+  await p.locator('[data-nav-key="harnesses"]').click();
   await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
   await expect(p.locator('.hx-row-harness')).toHaveCount(1);
   await expect(p.locator('.hx-row[data-selected]')).toContainText('Claude Code folder');
@@ -200,7 +202,7 @@ test('"Make a harness from this" opens the app on a harness made from the files;
 
 test('the file view draws the file as text: markup and an order stay words, the key is hidden, and nothing in the page runs', async () => {
   const p = page();
-  await p.evaluate(() => { location.hash = '#prototype-v3/library/skill'; });
+  await p.evaluate(() => { location.hash = '#sample/library/skill'; });
   await expect(p.getByRole('heading', { level: 1, name: 'Library', exact: true }).or(p.getByRole('heading', { level: 1, name: 'Skills', exact: true }))).toBeVisible();
   await expect(p.getByText('Tidy notes').first()).toBeVisible();
   await p.getByText('Tidy notes').first().click();
@@ -214,27 +216,29 @@ test('the file view draws the file as text: markup and an order stay words, the 
   await shot(p, 'real-5-file');
 });
 
-test('Install and Start are not in this preview: a note says so and no sheet opens; the Preview mark says what this preview does', async () => {
+test('Install and Start are not in beta.1: a note says so and no sheet opens; the Beta mark says what Bowerloom does and what is not in beta.1', async () => {
   const p = page();
-  await p.evaluate(() => { location.hash = '#prototype-v3/harnesses'; });
+  await p.evaluate(() => { location.hash = '#sample/harnesses'; });
   await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
   await p.getByRole('button', { name: 'Assign to project', exact: true }).first().click();
-  await expect(p.locator('[data-toast]')).toContainText('Not in this preview.');
+  await expect(p.locator('[data-toast]')).toContainText('Not in beta.1.');
   await expect(p.locator('[aria-modal="true"]')).toHaveCount(0);
   const start = p.getByRole('button', { name: 'Start', exact: true });
   await expect(start, 'the details column of the selected harness has a Start button').toHaveCount(1);
   await start.click();
-  await expect(p.locator('[data-toast]')).toContainText('Not in this preview.');
+  await expect(p.locator('[data-toast]')).toContainText('Not in beta.1.');
   await expect(p.locator('[aria-modal="true"]')).toHaveCount(0);
   // The list says "Not checked" for where the harness runs, and names no program.
   const runsIn = p.locator('section', { has: p.locator('#hx-runs-in') });
   await expect(runsIn).toContainText('Not checked');
   for (const program of ['Claude Code', 'Codex', 'OpenCode', 'Hermes']) await expect(runsIn, program).not.toContainText(program);
-  await p.getByRole('button', { name: 'About this preview', exact: true }).click();
+  await p.getByRole('button', { name: 'About this beta', exact: true }).click();
   const pop = p.locator('.hx-preview-pop');
-  await expect(pop).toContainText('This preview reads your own folders. It writes only after you approve a plan in Projects.');
-  await expect(pop).toContainText('Not in this preview');
-  await expect(pop.locator('li')).toHaveText(['Assign to project', 'Start', 'Compare', 'Runs']);
+  await expect(p.locator('[data-preview-mark]')).toHaveText('Beta');
+  await expect(pop).toContainText('Bowerloom is in beta. It reads your own folders and writes only after you approve what it will write.');
+  await expect(pop).toContainText('Not in beta.1');
+  await expect(pop).not.toContainText(/preview|full app/i);
+  await expect(pop.locator('li')).toHaveText(['Start', 'Compare', 'Runs', 'Assign to project, in the Harnesses details', 'Assign harness, Install, Update and Review, in Projects', 'Add (the plus button), in the Library', 'Add a folder, in Projects']);
   await everyStep('preview', false);
   await shot(p, 'real-6-preview');
   await p.keyboard.press('Escape');
@@ -243,8 +247,8 @@ test('Install and Start are not in this preview: a note says so and no sheet ope
 
 test('Interfaces says Bowerloom has not checked which parts a program can use, and keeps the sample\'s claim out', async () => {
   const p = page();
-  await p.evaluate(() => { location.hash = '#prototype-v3/interfaces/codex'; });
-  await expect(p.getByRole('heading', { level: 1, name: 'Interfaces', exact: true })).toBeVisible();
+  await p.evaluate(() => { location.hash = '#sample/interfaces/codex'; });
+  await expect(p.getByRole('heading', { level: 1, name: 'Engines', exact: true })).toBeVisible();
   const details = p.getByRole('complementary');
   await expect(details).toContainText('Bowerloom has not checked which parts this program can use.');
   await expect(details).not.toContainText('Tools that only Claude Code supports');
@@ -252,7 +256,7 @@ test('Interfaces says Bowerloom has not checked which parts a program can use, a
   await everyStep('interfaces', false);
 });
 
-/** The number at the end of the harness id in the address, such as 103 for #prototype-v3/harnesses/harness-103. */
+/** The number at the end of the harness id in the address, such as 103 for #sample/harnesses/harness-103. */
 async function lastHarnessNumber(p: Page): Promise<number> {
   const hash = await p.evaluate(() => location.hash), found = /harness-(\d+)/.exec(hash);
   expect(found, hash).not.toBeNull();
@@ -261,7 +265,7 @@ async function lastHarnessNumber(p: Page): Promise<number> {
 
 test('with a harness made, New harness opens "From a folder", and Cancel keeps every harness as it was', async () => {
   const p = page();
-  await p.evaluate(() => { location.hash = '#prototype-v3/harnesses'; });
+  await p.evaluate(() => { location.hash = '#sample/harnesses'; });
   await expect(p.locator('.hx-row-harness')).toHaveCount(1);
   await p.getByRole('button', { name: 'New harness', exact: true }).click();
   await expect(p.locator('[data-toast]')).toContainText('Each folder holds one harness. Make a new one from a folder.');
@@ -276,7 +280,7 @@ test('with a harness made, New harness opens "From a folder", and Cancel keeps e
 
 test('"Add a folder" on the list does not pull the focus to "Looks right"', async () => {
   const p = page();
-  await p.evaluate(() => { location.hash = '#prototype-v3/choose'; });
+  await p.evaluate(() => { location.hash = '#sample/choose'; });
   await expect(p.getByRole('heading', { level: 1, name: /^Found \d+ places?$/ })).toBeVisible();
   const before = await p.locator('.hxf-card').count();
   await h.pick(fixture.cellar);
@@ -294,20 +298,20 @@ test('"Add a folder" on the list does not pull the focus to "Looks right"', asyn
 
 test('a second read asks first: "Cancel" keeps every harness, "Yes, read them" starts over, and new ids keep climbing', async () => {
   const p = page();
-  await p.evaluate(() => { location.hash = '#prototype-v3/harnesses'; });
+  await p.evaluate(() => { location.hash = '#sample/harnesses'; });
   const before = await p.locator('.hx-row-harness').count();
   // One harness from the scan: New harness makes none (it opens "From a folder").
   expect(before).toBe(1);
   // A note with an old "Undo" is on its way when the read starts: it must not outlive the old world.
   await p.getByRole('button', { name: 'Assign to project', exact: true }).first().click();
-  await expect(p.locator('[data-toast]')).toContainText('Not in this preview.');
-  await p.evaluate(() => { location.hash = '#prototype-v3/choose'; });
+  await expect(p.locator('[data-toast]')).toContainText('Not in beta.1.');
+  await p.evaluate(() => { location.hash = '#sample/choose'; });
   await expect(p.getByRole('heading', { level: 1, name: /^Found \d+ places?$/ })).toBeVisible();
   await p.locator('.hxf-card', { hasText: 'Hermes at home' }).getByRole('checkbox').uncheck();
   await p.getByRole('button', { name: 'Looks right', exact: true }).click();
   const consent = p.locator('[data-consent]');
   await expect(p.getByRole('heading', { level: 1, name: 'Read what is inside?' })).toBeFocused();
-  await expect(consent.locator('[data-replace]')).toHaveText('Reading again starts this preview over. It changes nothing on your computer.');
+  await expect(consent.locator('[data-replace]')).toHaveText('Reading again starts over. It changes nothing on your computer.');
   await expect(p.getByRole('button', { name: 'Not now', exact: true })).toHaveCount(0);
   await expect(consent.locator('li[data-place]', { hasText: 'Claude Code at home' })).toBeVisible();
   await everyStep('replace-consent');
@@ -318,7 +322,7 @@ test('a second read asks first: "Cancel" keeps every harness, "Yes, read them" s
   await expect(p.locator('.hx-row-harness')).toHaveCount(before);
   await expect(p.locator('.hx-row-harness', { hasText: 'Claude Code folder' })).toHaveCount(1);
   // Escape does the same as Cancel.
-  await p.evaluate(() => { location.hash = '#prototype-v3/choose'; });
+  await p.evaluate(() => { location.hash = '#sample/choose'; });
   await expect(p.getByRole('heading', { level: 1, name: /^Found \d+ places?$/ })).toBeVisible();
   await p.getByRole('button', { name: 'Looks right', exact: true }).click();
   await expect(p.locator('[data-replace]')).toBeVisible();
@@ -328,16 +332,20 @@ test('a second read asks first: "Cancel" keeps every harness, "Yes, read them" s
   const oldest = await p.locator('[data-harness]').evaluateAll(rows => rows.map(r => r.getAttribute('data-harness') ?? ''));
   const oldNumbers = oldest.map(id => Number(/(\d+)$/.exec(id)?.[1] ?? 0));
   // Confirm: the preview starts over, with the new read only.
-  await p.evaluate(() => { location.hash = '#prototype-v3/choose'; });
+  await p.evaluate(() => { location.hash = '#sample/choose'; });
   await expect(p.getByRole('heading', { level: 1, name: /^Found \d+ places?$/ })).toBeVisible();
   await p.getByRole('button', { name: 'Looks right', exact: true }).click();
   await p.getByRole('button', { name: 'Yes, read them', exact: true }).click();
   await expect(p.getByRole('heading', { level: 1, name: /^Read \d+ sources?\. Make a harness from each\.$/ })).toBeVisible({ timeout: 20_000 });
   await p.locator('.hxf-card', { hasText: 'Your Codex folder' }).getByRole('button', { name: 'Make a harness from this' }).click();
+  await expect(p.getByRole('heading', { level: 1, name: 'Overview', exact: true })).toBeVisible();
+  await p.locator('[data-nav-key="harnesses"]').click();
   await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
   await expect(p.locator('.hx-row-harness'), 'the old harnesses are gone').toHaveCount(1);
   await expect(p.locator('.hx-row-harness')).toContainText('Codex folder');
   await expect(p.locator('[data-toast]'), 'the old note with its Undo is gone').toHaveCount(0);
+  // The Overview came first, so the address names no harness yet: pick the one just made.
+  await p.locator('.hx-row-harness', { hasText: 'Codex folder' }).getByRole('button', { name: 'Codex folder', exact: true }).click();
   expect(await lastHarnessNumber(p), 'an id of the old world is not used again').toBeGreaterThan(Math.max(...oldNumbers));
   await everyStep('replaced', false);
 });

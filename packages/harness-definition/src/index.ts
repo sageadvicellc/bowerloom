@@ -1,7 +1,7 @@
 /**
  * The harness definition core of Bowerloom 0.8: what Bowerloom stores, before any part moves into an engine.
  * Specs: 2026-10-27-bowerloom-harness-definition.md, and the fidelity rule of 2026-10-27-bowerloom-locked-in-parts.md.
- * README.md in this package states the trust boundary and the rules for the later lanes.
+ * README.md in this package states the trust boundary and the rules for the code that builds on this package.
  */
 export {
   DEFINITION_LIMITS, ENGINE_IDS, GUARDRAIL_ACTIONS, GUARDRAIL_EFFECTS, HARNESS_FORMAT, KNOWLEDGE_FILE, KNOWLEDGE_KINDS, LEGACY_NAMES, LOSS_PARTS, MCP_TRANSPORTS,

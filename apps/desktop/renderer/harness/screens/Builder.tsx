@@ -11,6 +11,7 @@
  * - Undo and Redo step through the unsaved changes. Saved changes go back through the Save points drawer (Go back), reviewed in the save sheet.
  * - Save opens the save sheet on its review step; its Done step offers Install. "Assign to project" opens the install sheet of the folder.
  * - Leaving the folder with unsaved changes asks "Discard N changes?" (owner decision Q1A). So does Go back, which drops the draft before it opens the review.
+ *   Closing the window, Cmd+Q and a reload ask it too, in main's own box (close-guard.ts here, main/close-guard.ts there).
  * Runs, Start and the interface switch stay in the sample screens; the Builder has none of them.
  */
 import { useEffect, useRef, useState } from 'react';
@@ -34,6 +35,7 @@ import { DiscardSheet } from './builder/DiscardSheet.js';
 import { SavePointsDrawer } from './builder/SavePointsDrawer.js';
 import { ENGINE_WORDS, NOTES_REFUSAL_WORDS, SAVE_REFUSAL_WORDS, draftWords } from '../words-engine.js';
 import { WORDS } from '../words.js';
+import { SHARE } from '../words-share.js';
 import '../sheets/engine.css';
 import '../sheets/save.css';
 import '../notes/notes.css';
@@ -174,6 +176,7 @@ export function Builder({ id }: { id: string }): ReactElement {
       </div>
       <HIconButton ref={pointsButton} icon="save-clock" label={W.label.savePoints} side="below" aria-expanded={drawer} data-builder-points="" onClick={() => setDrawer(o => !o)} />
       <HIconButton icon="folder" label={WORDS.label.assignToProject} side="below" onClick={() => ui.openProject({ folderId: id })} />
+      <HButton icon="share" data-builder-export="" disabled={busy} onClick={() => ui.openExport({ folderId: id, unsaved: count > 0 })}>{SHARE.label.export}</HButton>
       <HButton variant="primary" data-builder-save="" disabled={count === 0 || busy} onClick={() => ui.openSave({ folderId: id, start: 'review' })}>{WORDS.label.save}</HButton>
     </>
   ) : undefined;

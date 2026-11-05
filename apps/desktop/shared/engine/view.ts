@@ -153,7 +153,7 @@ export function projectView(plan: PortablePlan, folder: string, driftLines: read
     },
     reconcile: plan.reconcile,
     driftLines: driftLines.map(d => ({ path: s(d.path), reason: d.reason })),
-    approved: plan.approved.map(a => ({ part: a.part, entry: s(a.entry), field: a.field === undefined ? null : s(a.field), engine: a.engine as EngineId, result: a.result, who: s(a.who), when: a.when, reason: s(a.reason), earlier: earlier(a) })),
+    approved: plan.approved.map(a => ({ part: a.part, entry: s(a.entry), field: a.field === undefined ? null : s(a.field), engine: a.engine as EngineId, result: a.result, when: a.when, reason: s(a.reason), earlier: earlier(a) })),
     changes: plan.changes.map(c => changeView(c, s)),
     takenOver: plan.takenOver.map(x => ({ path: s(x.path), entry: x.entry === undefined ? null : s(x.entry) })),
     offers: plan.offers.map(o => ({ action: o.action, reason: s(o.reason) })),

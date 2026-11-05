@@ -5,9 +5,8 @@
  * a refusal taking the focus (U9), Plan again (U10), a failed folder list, no bridge, and a chooser that throws (U11), and the words of Confirm (U12).
  * Step 5: the two actions of a mode drift line and the plain refusal of Keep new mode (D5A), and the recovery of a stopped Merge (D4A).
  */
-import { _electron as electron, expect, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
-import electronPath from 'electron';
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -15,6 +14,7 @@ import { pathToFileURL } from 'node:url';
 import { desktop, shot } from './harness-page.js';
 import { sampleEngineFixtures } from '../shared/engine/sample.js';
 import type { AdoptView, FolderInfo, ProjectInput } from '../shared/engine/types.js';
+import { extraWindowOptions, launchElectron } from './hidden.js';
 import { removeTempDirs, tempDir } from './temp-dirs.js';
 
 let app: ElectronApplication, page: Page, html: string;
@@ -30,15 +30,15 @@ test.beforeAll(async () => {
   if (bundle.status !== 0) throw new Error(bundle.stderr);
   html = join(out, 'sheets.html');
   writeFileSync(html, `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="${pathToFileURL(join(desktop, 'dist/renderer/tokens.css')).href}"><link rel="stylesheet" href="${pathToFileURL(join(out, 'sheets.css')).href}"></head><body><script src="${pathToFileURL(join(out, 'sheets.js')).href}"></script></body></html>`);
-  const userData = tempDir('bowerloom-prototype-e2e-sheets-');
-  app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--prototype-v3', `--user-data-dir=${userData}`] });
+  const userData = tempDir('bowerloom-e2e-sheets-');
+  app = await launchElectron(desktop, ['--sample', `--user-data-dir=${userData}`]);
   await app.firstWindow();
 });
 test.afterAll(async () => { await app?.close(); removeTempDirs(); });
 
 async function open(query = ''): Promise<Page> {
   const before = app.windows().length;
-  await app.evaluate(({ BrowserWindow }, url) => { const w = new BrowserWindow({ width: 1280, height: 800, show: true, webPreferences: { contextIsolation: true, sandbox: true, partition: 'sheets-test' } }); void w.loadURL(url); }, `${pathToFileURL(html).href}${query}`);
+  await app.evaluate(({ BrowserWindow }, { url, options }) => { const w = new BrowserWindow({ width: 1280, height: 800, ...options, webPreferences: { contextIsolation: true, sandbox: true, partition: 'sheets-test' } }); void w.loadURL(url); }, { url: `${pathToFileURL(html).href}${query}`, options: extraWindowOptions() });
   await expect.poll(() => app.windows().length).toBe(before + 1);
   page = app.windows()[before]!;
   await page.waitForFunction(() => (window as unknown as { __ready?: boolean }).__ready === true);
@@ -258,7 +258,7 @@ test('beta.1: a harness that lists preview engines only cannot go on while the s
   await p.getByRole('button', { name: 'Install from a folder', exact: true }).click();
   const s = sheet(p, 'Install a folder\'s harness');
   await s.getByRole('button', { name: 'Next', exact: true }).click();
-  await expect(s.getByText('This harness lists preview interfaces only', { exact: false })).toBeVisible();
+  await expect(s.getByText('This harness lists preview engines only', { exact: false })).toBeVisible();
   for (const id of ['opencode', 'pi']) await expect(s.locator(`[data-engine="${id}"] input`)).toBeDisabled();
   await expect(s.getByRole('button', { name: 'Next', exact: true })).toBeDisabled();
 });

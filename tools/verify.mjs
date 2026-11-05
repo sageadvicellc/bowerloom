@@ -9,7 +9,10 @@ const report = { sourceRevision: execFileSync('git', ['rev-parse', 'HEAD'], { en
   sourceDirty: Boolean(execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim()),
   startedAt: new Date().toISOString(), scope: 'Offline regressions, landing build, and production dependency audit. Live services are separate.',
   checks: [], passed: false };
+// The release gate comes first, because it is instant: with BOWERLOOM_RELEASE_GATE=1 the run fails while a contract stub ('not built') is left in a file that ships (tools/check-not-built.mjs).
+const gate = process.env.BOWERLOOM_RELEASE_GATE === '1' ? [['not-built', ['run', 'check:not-built']]] : [];
 const commands = [
+  ...gate,
   ['typecheck', ['run', 'typecheck']],
   ['regressions', ['test']],
   ['landing', ['run', 'build', '--workspace', 'apps/landing']],

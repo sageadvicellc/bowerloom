@@ -16,7 +16,8 @@ import { hashText, validateWorld } from '../shared/world/sample.js';
 import { buildRealResult } from '../shared/real/map-world.js';
 import type { PlaceRead, StampedRecord } from '../shared/real/place.js';
 import { parseToml } from '../shared/real/toml.js';
-import { REAL_CHANNELS, REAL_HASH, REAL_LIMITS } from '../shared/real/types.js';
+import { REAL_BASE } from '../shared/harness/route.js';
+import { REAL_CHANNELS, REAL_LIMITS } from '../shared/real/types.js';
 import { DESKTOP, tempDir } from './support.js';
 
 const put = (file: string, text: string | Buffer): void => { mkdirSync(join(file, '..'), { recursive: true }); writeFileSync(file, text); };
@@ -66,7 +67,7 @@ test('a call that would read more than the byte cap stops early, says so, and th
   assert.equal(result.textsCut, records.length, 'every text was cut, and the count says so');
   const payload = JSON.stringify(result).length;
   assert.ok(payload < 1_000_000, `the result is ${payload} bytes`);
-  assert.deepEqual(validateWorld(result.world), [], 'a cut text still matches its own hash');
+  assert.deepEqual(validateWorld(result.world), [], 'a cut text has the hash of the whole text, and the world is still valid');
 });
 
 test('a file count and a byte count are taken one file at a time, and a spent budget refuses every later file', () => {
@@ -106,7 +107,8 @@ test('the text that goes to the page is capped for each text and for the whole r
   const payload = JSON.stringify(result).length;
   assert.ok(payload < 12_000_000, `the result is ${payload} bytes (stated cap: ${REAL_LIMITS.resultTextChars} characters of text, then ${REAL_LIMITS.minExcerptChars} for each item)`);
   assert.equal(result.textsCut, count);
-  for (const item of result.world.items) for (const f of item.foundAt) assert.equal(f.contentHash, hashText(f.text));
+  // The hash is of the whole text that was read, so a text that was cut has the hash of more than the part that is shown (an uncut text has the hash of what it shows).
+  for (const item of result.world.items) for (const f of item.foundAt) { assert.match(f.contentHash, /^[0-9a-f]{16}$/); if (/\[cut: \d+ characters in all\]$/.test(f.text)) assert.notEqual(f.contentHash, hashText(f.text)); else assert.equal(f.contentHash, hashText(f.text)); }
   assert.match(texts[0]!, /\[cut: \d+ characters in all\]$/);
 });
 
@@ -275,7 +277,7 @@ test('while the folder chooser is open no other call starts, and a closed choose
     ipc: { handle: (channel, listener) => { handlers.set(channel, listener); } }, appIndexUrl: APP_INDEX, home,
     chooseFolder: () => new Promise<string | null>(resolve => { answer = resolve; }),
   });
-  const page: RealEvent = { senderFrame: { url: `${APP_INDEX}${REAL_HASH}`, parent: null } };
+  const page: RealEvent = { senderFrame: { url: `${APP_INDEX}${REAL_BASE}`, parent: null } };
   const call = (channel: string, ...args: unknown[]): Promise<unknown> => Promise.resolve(handlers.get(channel)!(page, ...args));
   const pick = call(REAL_CHANNELS.pickFolder);
   await new Promise(resolve => setImmediate(resolve));

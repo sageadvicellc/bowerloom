@@ -1,5 +1,5 @@
 /**
- * Every fixed word a person reads on the screens that run on their own folders (`--prototype-v3-real`), in one frozen table of the same shape as WORDS: a label has at most 5 words, a hint 12, a paragraph or a popover 25,
+ * Every fixed word a person reads on the screens that run on their own folders (the default launch, with no flag), in one frozen table of the same shape as WORDS: a label has at most 5 words, a hint 12, a paragraph or a popover 25,
  * and no banned word appears (tests/harness-words.test.ts holds the table and the builders at the bottom to that). Words that are the same as the home app's reader (the places, the counts) are taken from its table, so they cannot drift.
  * A file path or a name from a file is never a word here: it is the person's own text, drawn as text.
  */
@@ -38,10 +38,12 @@ export const REAL = deepFreeze({
     showFewerNotes: 'Show fewer notes',
     toolFolders: REAL_WORDS.hint.detailsTools,
     topics: REAL_WORDS.hint.detailsTopics,
-    previewNot: 'Not in this preview',
+    notInBeta: 'Not in beta.1',
+    beta: 'Beta',
+    aboutBeta: 'About this beta',
     cancel: 'Cancel',
     notesFirstLines: 'first lines of notes pages',
-    replaceTitle: 'Start this preview over?',
+    replaceTitle: 'Read your folders again?',
     notChecked: 'Not checked',
   },
   hint: {
@@ -63,17 +65,19 @@ export const REAL = deepFreeze({
     consentLinks: 'Linked folders are followed to where they point.',
     nextStep: 'Pick a smaller folder to read all of it.',
     detailsFrom: 'These notes are from the first look at each folder.',
-    replaceLine: 'Reading again starts this preview over. It changes nothing on your computer.',
+    replaceLine: 'Reading again starts over. It changes nothing on your computer.',
   },
   paragraph: {
     chooseLine: 'To count what each folder holds, Bowerloom opened settings files and read names and structure. It reads text only in folders you keep ticked.',
     consentNotes: 'It looks through the whole folder for notes pages. It reads the first lines of up to 2000 of them.',
     readLine: 'A harness is a saved list of agents and skills. Bowerloom stores it as one small file in the project you install it to.',
-    previewAbout: 'This preview reads your own folders. It writes only after you approve a plan in Projects.',
-    previewFull: 'In the full app, Start opens the interface for you.',
+    betaAbout: 'Bowerloom is in beta. It reads your own folders and writes only after you approve what it will write.',
   },
-  /** The list of the Preview mark's popover in this mode: what the person cannot do yet. */
-  notInPreview: ['Assign to project', 'Start', 'Compare', 'Runs'],
+  /**
+   * The list of the Beta mark's popover in this mode: every control that is not in beta.1. Install from a folder and Edit from a folder work, so no line is worded
+   * so that it could mean them: the lines that share a name with a working control say where the blocked one is.
+   */
+  notInBeta: ['Start', 'Compare', 'Runs', 'Assign to project, in the Harnesses details', 'Assign harness, Install, Update and Review, in Projects', 'Add (the plus button), in the Library', 'Add a folder, in Projects'],
 } as const);
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;

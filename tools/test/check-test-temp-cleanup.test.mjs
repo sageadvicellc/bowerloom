@@ -23,7 +23,7 @@ const CLEAN = LEAKS + "t.after(() => fs.rmSync(dir, { recursive: true, force: tr
 
 test('a file is a test file when it is named .test or .spec, or sits in a test, tests or e2e folder', () => {
   for (const file of ['a/b.test.mjs', 'a/b.spec.ts', 'tests/support/x.ts', 'packages/p/test/fixture.mjs', 'apps/d/e2e/page.ts']) assert.equal(isTestFile(file), true, file);
-  for (const file of ['packages/p/src/index.ts', 'tools/check.mjs', 'tests/notes.md', 'apps/d/main/prototype-dir.mjs']) assert.equal(isTestFile(file), false, file);
+  for (const file of ['packages/p/src/index.ts', 'tools/check.mjs', 'tests/notes.md', 'apps/d/main/temp-data.mjs']) assert.equal(isTestFile(file), false, file);
 });
 
 test('a test that makes a temp folder with no removal, or with no place to run it, is named', () => {

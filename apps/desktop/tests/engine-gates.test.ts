@@ -11,7 +11,6 @@ import { registerEngineIpc } from '../main/engine-ipc.js';
 import type { RealEvent } from '../main/real-ipc.js';
 import { APP_INDEX } from '../main/security.js';
 import { REAL_CHANNELS } from '../shared/real/types.js';
-import { CHANNELS } from '../shared/channels.js';
 import { sampleEngineFixtures } from '../shared/engine/sample.js';
 
 const adopt = (): AdoptView => structuredClone(sampleEngineFixtures().adopt);
@@ -87,16 +86,16 @@ test('the handler has one channel per call, apart from every other channel, and 
   const handlers = new Map<string, (event: RealEvent, ...args: unknown[]) => unknown>();
   registerEngineIpc({ ipc: { handle: (c, l) => { handlers.set(c, l); } }, appIndexUrl: APP_INDEX, home: '/nonexistent-home', stateRoot: '/nonexistent-home/.local/state/bowerloom', chooseFolder: async () => null, confirm: async () => false, who: 't' });
   assert.deepEqual([...handlers.keys()].sort(), Object.values(ENGINE_CHANNELS).sort());
-  assert.equal(ENGINE_CALLS.length, 29);
+  assert.equal(ENGINE_CALLS.length, 35);
   for (const channel of Object.values(ENGINE_CHANNELS)) {
-    assert.ok(!(Object.values(REAL_CHANNELS) as string[]).includes(channel) && !(Object.values(CHANNELS) as string[]).includes(channel), channel);
+    assert.ok(!(Object.values(REAL_CHANNELS) as string[]).includes(channel) && !channel.startsWith('viewer:'), channel);
   }
   const page: RealEvent = { senderFrame: { url: APP_INDEX, parent: null } };
   const reason = async (channel: string, event: RealEvent, ...args: unknown[]): Promise<string> => { try { await handlers.get(channel)!(event, ...args); return 'ok'; } catch (e) { return (e as Error).message; } };
   assert.equal(await reason(ENGINE_CHANNELS.folders, { senderFrame: { url: 'https://example.com/', parent: null } }), 'NOT_ALLOWED');
   assert.equal(await reason(ENGINE_CHANNELS.folders, { senderFrame: { url: APP_INDEX, parent: {} } }), 'NOT_ALLOWED');
   assert.equal(await reason(ENGINE_CHANNELS.folders, { senderFrame: null }), 'NOT_ALLOWED');
-  for (const call of ENGINE_CALLS) assert.equal(await reason(ENGINE_CHANNELS[call], page, ...Array(ENGINE_ARITY[call] + 1).fill('x')), 'BAD_ARGUMENT', call);
+  for (const call of ENGINE_CALLS) assert.equal(await reason(ENGINE_CHANNELS[call], page, ...Array(ENGINE_ARITY[call] + (call === 'chooseFolder' ? 2 : 1)).fill('x')), 'BAD_ARGUMENT', call);
   assert.equal(await reason(ENGINE_CHANNELS.planRemoval, page, 'folder-1'), 'UNKNOWN_FOLDER');
   assert.equal(await reason(ENGINE_CHANNELS.planRemoval, page, '../x'), 'BAD_ARGUMENT');
   assert.equal(await reason(ENGINE_CHANNELS.folders, page), 'ok');

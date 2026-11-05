@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as typesModule from '../shared/world/types.js';
-import { createEmptyWorld } from '../renderer/common/fakeApi.js';
+import { createEmptyWorld } from '../renderer/common/empty-world.js';
 import type {
   AccessClass, AgentDefinition, AgentItem, Bundle, BundleItem, ContextSliceItem, Enforcement, FoundAt, HarnessItem, HarnessItemKind, HookTool,
   ImportClash, ImportFile, ImportGrant, ImportPreview, InstalledState, InterfaceExtra, InterfaceId, InterfaceInfo, LibraryRef, LibrarySource, McpTool,
@@ -75,10 +75,6 @@ test('every exported type name has a compile-time sample, and every sample names
 test('every exported type has a doc comment on the line above it', () => {
   const lines = typesSource.split('\n');
   lines.forEach((line, i) => { if (/^export (type|interface) /.test(line)) assert.match(lines[i - 1] ?? '', /\*\/\s*$/, line); });
-});
-
-test('the placeholder access class names are marked as open in the doc comment', () => {
-  assert.match(typesSource, /\/\*\*(?:(?!\*\/)[\s\S])*(placeholder|still open)(?:(?!\*\/)[\s\S])*\*\/\s*export type AccessClass/i);
 });
 
 test('createEmptyWorld returns a World with one global scope, three interfaces and empty collections', () => {

@@ -1,16 +1,15 @@
 /**
- * Shared set-up for the harness-first preview on the person's own folders (Electron started with --prototype-v3-real and HOME pointed at a made-up folder). Nothing of the person's own folders
+ * Shared set-up for the harness-first preview on the person's own folders (Electron started with no flag and HOME pointed at a made-up folder). Nothing of the person's own folders
  * is read: the launched app sees only the folder it is given. The system folder chooser cannot be driven from a test, so the main process gets one that answers with the folder set by `pick`.
  * The specs run one at a time on this machine: take the lock before a run (`until mkdir /tmp/bowerloom-test.lock 2>/dev/null; do sleep 5; done`) and release it after.
  */
-import { _electron as electron } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
-import electronPath from 'electron';
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { TOUR_SEEN_KEY } from '../renderer/harness/tour/seen.js';
 import { desktop } from './harness-page.js';
+import { launchElectron } from './hidden.js';
 import { tempDir } from './temp-dirs.js';
 
 export interface RealHarness {
@@ -29,14 +28,14 @@ export function bundleOnce(): void {
 }
 
 /**
- * Starts the app with --prototype-v3-real on the given HOME (and any other variable given, such as XDG_STATE_HOME) and waits for the first window. It builds
+ * Starts the app with no flag on the given HOME (and any other variable given, such as XDG_STATE_HOME) and waits for the first window. It builds
  * the bundle first unless `bundle` is false. The guided tour starts on its own at first use; a spec that is not about it starts with the tour seen, in the
  * window's session store, unless `freshTour` is true.
  */
 export async function launchReal(home: string, env: Record<string, string> = {}, bundle = true, { freshTour = false }: { freshTour?: boolean } = {}): Promise<RealHarness> {
   if (bundle) bundleOnce();
-  const userData = tempDir('bowerloom-prototype-e2e-');
-  const app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--prototype-v3-real', `--user-data-dir=${userData}`], env: { ...process.env, HOME: home, ELECTRON_DISABLE_SECURITY_WARNINGS: '1', ...env } });
+  const userData = tempDir('bowerloom-e2e-');
+  const app = await launchElectron(desktop, [`--user-data-dir=${userData}`], { ...process.env, HOME: home, ELECTRON_DISABLE_SECURITY_WARNINGS: '1', ...env });
   await app.evaluate(({ dialog }) => {
     (globalThis as unknown as { __pick: string | null }).__pick = null;
     dialog.showOpenDialog = (async () => { const pick = (globalThis as unknown as { __pick: string | null }).__pick; return pick === null ? { canceled: true, filePaths: [] } : { canceled: false, filePaths: [pick] }; }) as unknown as typeof dialog.showOpenDialog;
@@ -53,7 +52,8 @@ export async function launchReal(home: string, env: Record<string, string> = {},
   });
   const page = await app.firstWindow();
   const dialogs: string[] = [];
-  page.on('dialog', d => { dialogs.push(d.message()); void d.dismiss(); });
+  // A page dialog can only be a beforeunload prompt. A reload may close it before dismiss() reaches it, so a failed dismiss is not an error; the type is kept so a test can see it.
+  page.on('dialog', d => { dialogs.push(`${d.type()}: ${d.message()}`); void d.dismiss().catch(() => undefined); });
   await page.waitForLoadState('domcontentloaded');
   await page.waitForSelector('[data-home]');
   if (!freshTour) await page.evaluate(key => sessionStorage.setItem(key, '1'), TOUR_SEEN_KEY);

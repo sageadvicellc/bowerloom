@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Reads the fuses of a built app and fails unless they are the ones this app promises:
-//   run as plain Node: off, NODE_OPTIONS: off, --inspect arguments: off, asar integrity check: on, load only from the asar: on.
+//   run as plain Node: off, NODE_OPTIONS: off, --inspect arguments: off, cookie encryption: on, asar integrity check: on, load only from the asar: on, extra file privileges: off.
 // Usage: node tools/check-fuses.mjs [path to the app executable]. Default: the macOS arm64 build in release/.
 import { FuseState, FuseV1Options, getCurrentFuseWire } from '@electron/fuses';
 import { existsSync } from 'node:fs';
@@ -9,12 +9,16 @@ import { fileURLToPath } from 'node:url';
 
 export const EXPECTED = Object.freeze({
   [FuseV1Options.RunAsNode]: FuseState.DISABLE,
+  [FuseV1Options.EnableCookieEncryption]: FuseState.ENABLE,
   [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: FuseState.DISABLE,
   [FuseV1Options.EnableNodeCliInspectArguments]: FuseState.DISABLE,
   [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: FuseState.ENABLE,
   [FuseV1Options.OnlyLoadAppFromAsar]: FuseState.ENABLE,
   [FuseV1Options.GrantFileProtocolExtraPrivileges]: FuseState.DISABLE,
 });
+
+/** The same list by fuse name, as on or off. tests/packaging.test.ts holds it against the `electronFuses` settings of package.json. */
+export const EXPECTED_BY_NAME = Object.freeze(Object.fromEntries(Object.entries(EXPECTED).map(([option, want]) => [FuseV1Options[option], want === FuseState.ENABLE])));
 
 export async function checkFuses(executable) {
   const wire = await getCurrentFuseWire(executable);

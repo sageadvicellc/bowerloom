@@ -9,7 +9,7 @@ import { isRemovable, removeTempDirs, tempDir } from '../e2e/temp-dirs.js';
 const scratch = (): string => mkdtempSync(join(tmpdir(), 'bl-temp-test-'));
 
 test('a folder made by tempDir is removed, with what is inside it', () => {
-  const dir = tempDir('bowerloom-proto-unit-');
+  const dir = tempDir('bowerloom-e2e-unit-');
   writeFileSync(join(dir, 'a.txt'), 'x');
   mkdirSync(join(dir, 'nested'));
   assert.deepEqual(removeTempDirs(), [dir]);
@@ -18,9 +18,9 @@ test('a folder made by tempDir is removed, with what is inside it', () => {
 });
 
 test('a folder that was already there is left alone', () => {
-  const old = mkdtempSync(join(tmpdir(), 'bowerloom-proto-unit-old-'));
+  const old = mkdtempSync(join(tmpdir(), 'bowerloom-e2e-unit-old-'));
   try {
-    const mine = tempDir('bowerloom-proto-unit-');
+    const mine = tempDir('bowerloom-e2e-unit-');
     assert.deepEqual(removeTempDirs(), [mine]);
     assert.equal(existsSync(old), true);
   } finally { rmSync(old, { recursive: true, force: true }); }
@@ -29,23 +29,23 @@ test('a folder that was already there is left alone', () => {
 test('isRemovable refuses a wrong prefix, a short prefix, a nested folder, a link, a file and a folder outside the temp folder', () => {
   const root = scratch();
   try {
-    const ok = join(root, 'bowerloom-proto-x1'), nestedParent = join(root, 'other');
-    mkdirSync(ok); mkdirSync(nestedParent); mkdirSync(join(nestedParent, 'bowerloom-proto-x2'));
-    assert.equal(isRemovable(ok, 'bowerloom-proto-', root), true);
+    const ok = join(root, 'bowerloom-e2e-x1'), nestedParent = join(root, 'other');
+    mkdirSync(ok); mkdirSync(nestedParent); mkdirSync(join(nestedParent, 'bowerloom-e2e-x2'));
+    assert.equal(isRemovable(ok, 'bowerloom-e2e-', root), true);
     assert.equal(isRemovable(ok, 'bowerloom-other-', root), false, 'the name must start with the prefix');
     assert.equal(isRemovable(ok, 'b', root), false, 'a short prefix is refused');
-    assert.equal(isRemovable(join(root, 'bowerloom-proto-'), 'bowerloom-proto-', root), false, 'a folder that is missing');
-    assert.equal(isRemovable(join(nestedParent, 'bowerloom-proto-x2'), 'bowerloom-proto-', root), false, 'only a folder directly inside the root');
-    symlinkSync(ok, join(root, 'bowerloom-proto-link'));
-    assert.equal(isRemovable(join(root, 'bowerloom-proto-link'), 'bowerloom-proto-', root), false, 'a link is never followed');
-    writeFileSync(join(root, 'bowerloom-proto-file'), 'x');
-    assert.equal(isRemovable(join(root, 'bowerloom-proto-file'), 'bowerloom-proto-', root), false, 'a file');
-    assert.equal(isRemovable(ok, 'bowerloom-proto-', nestedParent), false, 'a folder in another root');
+    assert.equal(isRemovable(join(root, 'bowerloom-e2e-'), 'bowerloom-e2e-', root), false, 'a folder that is missing');
+    assert.equal(isRemovable(join(nestedParent, 'bowerloom-e2e-x2'), 'bowerloom-e2e-', root), false, 'only a folder directly inside the root');
+    symlinkSync(ok, join(root, 'bowerloom-e2e-link'));
+    assert.equal(isRemovable(join(root, 'bowerloom-e2e-link'), 'bowerloom-e2e-', root), false, 'a link is never followed');
+    writeFileSync(join(root, 'bowerloom-e2e-file'), 'x');
+    assert.equal(isRemovable(join(root, 'bowerloom-e2e-file'), 'bowerloom-e2e-', root), false, 'a file');
+    assert.equal(isRemovable(ok, 'bowerloom-e2e-', nestedParent), false, 'a folder in another root');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test('a folder that cannot be removed is warned about, and the others are still removed', { skip: process.platform === 'win32' || (typeof process.getuid === 'function' && process.getuid() === 0) }, () => {
-  const stuck = tempDir('bowerloom-proto-unit-stuck-'), fine = tempDir('bowerloom-proto-unit-fine-');
+  const stuck = tempDir('bowerloom-e2e-unit-stuck-'), fine = tempDir('bowerloom-e2e-unit-fine-');
   const inner = join(stuck, 'locked'); mkdirSync(inner); writeFileSync(join(inner, 'f'), 'x'); chmodSync(inner, 0o500);
   const warned: string[] = [];
   try {
@@ -56,7 +56,7 @@ test('a folder that cannot be removed is warned about, and the others are still 
 });
 
 test('a made folder that no longer passes the checks is warned about, not skipped in silence', () => {
-  const dir = tempDir('bowerloom-proto-unit-swap-');
+  const dir = tempDir('bowerloom-e2e-unit-swap-');
   rmSync(dir, { recursive: true, force: true }); writeFileSync(dir, 'a file took its place');
   const warned: string[] = [];
   try { assert.deepEqual(removeTempDirs(text => warned.push(text)), []); assert.equal(warned.length, 1); assert.match(warned[0]!, /Delete it yourself\./); }

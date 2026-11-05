@@ -18,9 +18,9 @@ test('preview art is byte-identical to the four Brand handoff assets with native
 });
 test('slate FAQ uses its own original pose while rose and H4N appearances remain', async () => {
   const app=await read('src/App.tsx'),companion=await read('src/SectionCompanion.tsx');
-  assert.match(app, /unit="s4-slate" side="right"><section className="faq-section"/);
-  assert.match(app, /unit="s4" side="right"><section className="product-section"/);
-  assert.match(app, /unit="h4n" side="left"><LabsWorkflow/);
+  assert.match(app, /unit="s4-slate" side="right"><FaqSection \/>/);
+  assert.match(app, /unit="s4" side="right"><WhatItDoes \/>/);
+  assert.match(app, /unit="h4n" side="left"><HowItWorks \/>/);
   assert.match(companion, /width: 1148, height: 1370/);
   assert.match(css, /companion-s4-slate \.companion-robot-front \{ clip-path: var\(--companion-grip\)/);
   // 47% of the natural pose meets the rim; foreground fingers end at 56.5%, clear of text.

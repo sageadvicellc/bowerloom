@@ -1,5 +1,5 @@
 /**
- * Adoption of Bowerloom 0.8 (step 3, lane A): reads a project's engine files and writes a harness definition by copy.
+ * Adoption of Bowerloom 0.8: reads a project's engine files and writes a harness definition by copy.
  * Spec: 2026-10-27-bowerloom-harness-definition.md, sections 8, 10, 11, 12, and 13. README.md states the mappings.
  */
 export { planAdoption } from './plan.js';

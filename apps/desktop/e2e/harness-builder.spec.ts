@@ -1,5 +1,5 @@
 /**
- * The Builder of one folder's harness, in the real window on the sample launch (--prototype-v3): the sample engine's folders, in memory, nothing read or
+ * The Builder of one folder's harness, in the real window on the sample launch (--sample): the sample engine's folders, in memory, nothing read or
  * written. The folder list, drag to link with real pointer events, a drag that only moves, Unlink, Undo and Redo, a refusal in words, Save through the save
  * sheet's review and its Install, the Save points drawer with Go back, "Discard N changes?" when leaving, New harness opening "From a folder", a folder with
  * no harness, and an id main does not know. Set HARNESS_SHOTS to a folder to save screenshots.
@@ -13,7 +13,7 @@ import type { Harness } from './harness-page.js';
 let h: Harness;
 const page = (): Page => h.page;
 const WEEKLY = 'sample-weekly-report';
-const BUILDER = `#prototype-v3/builder/${WEEKLY}`;
+const BUILDER = `#sample/builder/${WEEKLY}`;
 const node = (id: string): Locator => page().locator(`.hx-node[data-node="${id}"]`);
 const count = (p: Page): Locator => p.locator('[data-draft]');
 const tick = (p: Page, agent: string, skill: string): Locator => p.locator(`[data-agent="${agent}"]`).getByRole('checkbox', { name: `${skill}: ${agent}` });
@@ -41,13 +41,13 @@ async function openWeekly(p: Page): Promise<void> {
 
 test('the folder list opens a folder in the Builder, which draws its harness as a graph with no change yet', async () => {
   const p = page();
-  await fresh(p, '#prototype-v3/harnesses');
+  await fresh(p, '#sample/harnesses');
   const folders = p.locator('[data-section="folders"]');
   await expect(folders.locator('[data-folder-row]')).toHaveCount(3);
   await expect(folders.getByRole('button', { name: 'Open weekly-report in the builder', exact: true })).toBeVisible();
   await expect(folders.locator('[data-folder-row="sample-inbox-tools"]').getByRole('button', { name: 'From a folder', exact: true })).toBeVisible();
   await folders.getByRole('button', { name: 'Open weekly-report in the builder', exact: true }).click();
-  await expect(p).toHaveURL(new RegExp(`#prototype-v3/builder/${WEEKLY}$`));
+  await expect(p).toHaveURL(new RegExp(`#sample/builder/${WEEKLY}$`));
   await expect(p.getByRole('heading', { level: 1, name: 'weekly-report' })).toBeVisible();
   for (const id of ['agent:editor', 'agent:writer', 'skill:check-facts', 'skill:draft-outline']) await expect(node(id)).toBeVisible();
   await expect(p.locator('.hx-edge')).toHaveCount(1);
@@ -258,7 +258,7 @@ test('New harness is refused in words and opens "From a folder"; a folder with n
   const adopt = p.getByRole('dialog', { name: 'New harness from a folder' });
   await expect(adopt).toBeVisible();
   await adopt.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await fresh(p, '#prototype-v3/builder/sample-inbox-tools');
+  await fresh(p, '#sample/builder/sample-inbox-tools');
   await expect(p.locator('[data-no-harness]')).toContainText('No harness here yet.');
   await p.locator('[data-no-harness]').getByRole('button', { name: 'From a folder', exact: true }).click();
   await expect(p.getByRole('dialog', { name: 'New harness from a folder' })).toBeVisible();
@@ -266,11 +266,80 @@ test('New harness is refused in words and opens "From a folder"; a folder with n
 
 test('a store harness\'s "Open in builder" opens "From a folder", and an id main does not know goes back to the folder list', async () => {
   const p = page();
-  await fresh(p, '#prototype-v3/harnesses');
+  await fresh(p, '#sample/harnesses');
   await p.getByRole('complementary').getByRole('button', { name: 'Open in builder', exact: true }).click();
   await expect(p.getByRole('dialog', { name: 'New harness from a folder' })).toBeVisible();
   await p.keyboard.press('Escape');
-  await fresh(p, '#prototype-v3/builder/folder-99');
+  await fresh(p, '#sample/builder/folder-99');
   await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
   await expect(p.getByText('That folder is not open. Choose it again.')).toBeVisible();
+});
+
+// ---- the pan and zoom of the graph (usePanZoom.ts, shared with the Overview's graph)
+
+const worldOf = (p: Page): Promise<string> => p.locator('.hx-world').evaluate(el => (el as HTMLElement).style.transform);
+const zoomOf = async (p: Page): Promise<number> => Number(/scale\(([\d.]+)\)/.exec(await worldOf(p))![1]);
+const stageScroll = (p: Page): Promise<[number, number]> => p.locator('.hx-canvas').evaluate(el => [el.scrollLeft, el.scrollTop]);
+async function ctrlWheel(p: Page, delta: number, times: number): Promise<void> {
+  await p.keyboard.down('Control');
+  for (let i = 0; i < times; i += 1) await p.mouse.wheel(0, delta);
+  await p.keyboard.up('Control');
+}
+
+test('the wheel pans, Ctrl and the wheel zoom between 0.4 and 2 about the pointer, the background drags the view, Fit comes back, and the stage never scrolls', async () => {
+  const p = page();
+  await openWeekly(p);
+  const box = (await p.locator('.hx-canvas').boundingBox())!, centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  const t0 = await worldOf(p), k0 = await zoomOf(p);
+  await p.mouse.move(centre.x, centre.y);
+  await p.mouse.wheel(30, 50);
+  expect(await worldOf(p), 'the wheel pans').not.toBe(t0);
+  expect(await zoomOf(p)).toBeCloseTo(k0, 6);
+  await ctrlWheel(p, -200, 20);
+  expect(await zoomOf(p), 'the top zoom').toBeCloseTo(2, 6);
+  await ctrlWheel(p, 200, 30);
+  expect(await zoomOf(p), 'the Builder keeps its own floor').toBeCloseTo(0.4, 6);
+  await p.getByRole('button', { name: 'Fit to window' }).click();
+  expect(await zoomOf(p)).toBeCloseTo(k0, 6);
+  // A drag of the background pans (the corner at the foot right holds no card).
+  const t1 = await worldOf(p);
+  await p.mouse.move(box.x + box.width - 30, box.y + box.height - 60); await p.mouse.down(); await p.mouse.move(box.x + box.width - 90, box.y + box.height - 100, { steps: 5 }); await p.mouse.up();
+  expect(await worldOf(p)).not.toBe(t1);
+  // The stage is overflow hidden: whatever scrolls it is put back at once.
+  await ctrlWheel(p, -200, 20);
+  await p.locator('.hx-canvas').evaluate(el => { el.scrollLeft = 80; el.scrollTop = 80; });
+  await expect.poll(() => stageScroll(p)).toEqual([0, 0]);
+});
+
+test('a card dragged moves and comes back, a skill dropped on an agent links them: the drags still work through the shared pan and zoom, also after a zoom', async () => {
+  const p = page();
+  await openWeekly(p);
+  await p.mouse.move(640, 400);
+  await ctrlWheel(p, -100, 3);
+  expect(await zoomOf(p)).toBeGreaterThan(1);
+  const skill = node('skill:check-facts'), agent = node('agent:writer');
+  await skill.scrollIntoViewIfNeeded().catch(() => undefined);
+  await p.getByRole('button', { name: 'Fit to window' }).click();
+  const before = await worldOf(p);
+  await drag(p, skill, await middle(agent));
+  await expect(count(p)).not.toContainText('No change yet.');
+  expect(await worldOf(p), 'a card drag does not pan the view').toBe(before);
+});
+
+test('a Tab onto a card that is out of the window brings it into the window through the view, and the stage does not scroll', async () => {
+  const p = page();
+  await openWeekly(p);
+  const canvas = p.locator('.hx-canvas'), box = (await canvas.boundingBox())!;
+  await p.mouse.move(box.x + 40, box.y + 40);
+  await ctrlWheel(p, -200, 20);
+  await p.keyboard.press('Tab');
+  const nodes = p.locator('.hx-node');
+  let out = -1;
+  for (let i = 0; i < await nodes.count() && out < 0; i += 1) { const b = (await nodes.nth(i).boundingBox())!; if (b.x + b.width > box.x + box.width || b.y + b.height > box.y + box.height) out = i; }
+  expect(out, 'a card is out of the window').toBeGreaterThanOrEqual(0);
+  await nodes.nth(out).focus();
+  expect(await stageScroll(p)).toEqual([0, 0]);
+  const b = (await nodes.nth(out).boundingBox())!;
+  expect(b.x).toBeGreaterThanOrEqual(box.x); expect(b.y).toBeGreaterThanOrEqual(box.y);
+  expect(b.x + b.width).toBeLessThanOrEqual(box.x + box.width - 64 + 1); expect(b.y + b.height).toBeLessThanOrEqual(box.y + box.height + 1);
 });

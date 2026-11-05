@@ -1,5 +1,5 @@
 /**
- * The adopt and install sheets on a person's own folders (Electron started with --prototype-v3-real, HOME and XDG_STATE_HOME pointed at a made-up folder).
+ * The adopt and install sheets on a person's own folders (Electron started with no flag, HOME and XDG_STATE_HOME pointed at a made-up folder).
  * The main process runs the packages: the plans are real, nothing is written while the person reads, and the writes land only after each approval, through
  * the packages, in the chosen folder and the private state folder under the made-up home. Undo is a removal plan, and it puts the folder back byte for byte.
  * Each test gets its own made-up home, its own state root and its own app: one test's folders, records, approval drafts, window size and answers to main's
@@ -8,6 +8,7 @@
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { chmodSync, existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { userInfo } from 'node:os';
 import { join } from 'node:path';
 import { definedFolder, engineFolder, filesOf } from '../tests/helpers-engine/folders.js';
 import { bundleOnce, launchReal } from './harness-real-page.js';
@@ -26,7 +27,7 @@ test.beforeEach(async () => {
   chmodSync(home, 0o700);
   h = await launchReal(home, { XDG_STATE_HOME: join(home, '.local', 'state') }, false);
   await page().emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });
-  await page().evaluate(() => { location.hash = '#prototype-v3-real/projects'; location.reload(); });
+  await page().evaluate(() => { location.hash = '#app/projects'; location.reload(); });
   await page().waitForLoadState('domcontentloaded');
   await page().waitForSelector('[data-home]');
 });
@@ -109,6 +110,9 @@ test('Install a folder\'s harness: approve the weaker rules, read the plan, appr
   await expect(s.locator('[data-review="code"][data-path=".codex/rules/bowerloom.rules"] pre')).toContainText('decision = "forbidden"');
   await expect(s.locator('[data-engine="codex"] [data-part="mcp"]')).toContainText('Absent');
   await expect(s.locator('[data-section="approved"] li')).toHaveCount(2);
+  // Each approved row says when, and never the account name of this computer (owner decision, 2026-10-31).
+  for (const row of await s.locator('[data-section="approved"] li').all()) await expect(row).toContainText(/approved now · \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/);
+  expect(await s.locator('[data-section="approved"]').innerText()).not.toContain(userInfo().username);
   await expect(s).not.toContainText(home);
   expect(filesOf(dir), 'nothing written while the person reads').toEqual(before);
   await shot(p, 'R3-real-install-plan');
@@ -122,7 +126,12 @@ test('Install a folder\'s harness: approve the weaker rules, read the plan, appr
   // The record is in the layout the command line shares (decision 7B): <state root>/<project id>/harness/portable, and no desktop/ folder.
   const root = join(home, '.local', 'state', 'bowerloom');
   expect(existsSync(join(root, 'desktop'))).toBe(false);
-  expect(readdirSync(root).filter(id => existsSync(join(root, id, 'harness', 'portable', 'receipt.json')))).toHaveLength(1);
+  const ids = readdirSync(root).filter(id => existsSync(join(root, id, 'harness', 'portable', 'receipt.json')));
+  expect(ids).toHaveLength(1);
+  // The record the app wrote holds the fixed word in the name field, never the account name of this computer.
+  const receipt = JSON.parse(readFileSync(join(root, ids[0]!, 'harness', 'portable', 'receipt.json'), 'utf8')) as { approvals: { who: string }[] };
+  expect(receipt.approvals).toHaveLength(2);
+  expect(receipt.approvals.map(a => a.who)).toEqual(['this Mac', 'this Mac']);
   await s.getByRole('button', { name: 'Undo', exact: true }).click();
   const r = p.getByRole('dialog', { name: 'Remove what Bowerloom wrote' });
   await expect(r.locator('[data-file="CLAUDE.md"]')).toContainText('Puts yours back');

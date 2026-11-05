@@ -31,7 +31,7 @@ export type HarnessItemKind = 'skill' | 'agent' | 'tool' | 'context-slice';
 /** The three kinds of tool in beta.1. Plugins are not a tool kind (spec 6.13). */
 export type ToolKind = 'mcp' | 'prompt' | 'hook';
 
-/** One place an item was found: in which interface, at which invented path, with a hash of the text and the text itself. One skill can be found in three interfaces with different text. */
+/** One place an item was found: in which interface, at which invented path, with a hash of the text and the text itself. The hash is of the whole text that was read: it equals the hash of `text` unless the reader cut `text` (it then ends with a cut mark and the hash is of the longer text), and it is empty when the file had no readable text. One skill can be found in three interfaces with different text. */
 export interface FoundAt { readonly interface: InterfaceId; readonly path: string; readonly contentHash: string; readonly text: string }
 
 /** Marks an item that comes from an installed library. It is read-only, pinned to a version, and shows a newer version when one is waiting. */
@@ -47,8 +47,7 @@ interface ItemBase { readonly id: string; readonly name: string; readonly scopeI
 export interface SkillItem extends ItemBase { readonly kind: 'skill'; readonly description: string }
 
 /**
- * How much an agent may do with an attached tool.
- * PLACEHOLDER VALUES: the real class names are still open (spec 6.13 says "such as read-only or read-write"). Do not show these strings as final words.
+ * How much an agent may do with an attached tool: it only reads, or it reads and writes.
  */
 export type AccessClass = 'read-only' | 'read-write';
 

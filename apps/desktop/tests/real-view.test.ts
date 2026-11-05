@@ -1,11 +1,8 @@
-// The screens and the order of the two questions of the real-setup reader: words held to the text budget, the machine that cannot skip a step, and the markup that draws text as text.
+// The words and the order of the two questions of the real-setup reader: words held to the text budget, and the machine that cannot skip a step.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
-import { LIMITS, assertTextBudget, bannedIn, countWords } from '../shared/home/textbudget.js';
+import { LIMITS, bannedIn, countWords } from '../shared/home/textbudget.js';
 import type { RealDiscovery, RealPlace } from '../shared/real/types.js';
-import { RealView } from '../renderer/home/real/RealLoader.js';
 import { agentsTicked, realReduce, selectedIds, startState } from '../renderer/home/real/flow.js';
 import type { RealAction, RealState } from '../renderer/home/real/flow.js';
 import { KIND_WORDS, REAL_WORDS, countsLine, couldNotReadLine, foundPlaces, readSummary, reasonWords } from '../renderer/home/real/words.js';
@@ -78,37 +75,4 @@ test('a failure shows its code, and Try again goes back to where it came from', 
   const back = run([{ type: 'retry' }], reading);
   assert.deepEqual([back.step, back.ticked], ['places', ['a']], 'the ticks are kept');
   assert.equal(codeOf(new Error("Error invoking remote method 'x': Error: BUSY")), 'BUSY'); assert.equal(codeOf('whatever'), 'FAILED'); assert.equal(codeOf(null), 'FAILED');
-});
-
-const view = (state: RealState, details = false): string => renderToStaticMarkup(createElement(RealView, { state, details, busyPick: false, onAction: () => undefined }));
-
-test('every screen is within the text budget, says Read-only, and keeps the paths behind Show details', () => {
-  const places = run([{ type: 'find' }, { type: 'found', found: { ...found(place('a'), place('b', { kind: 'picked', appLabel: 'Notes', apps: [], counts: { agents: 0, skills: 0, tools: 0, hooks: 0, notes: 12 }, details: { path: '~/work/b', folders: [], topics: [{ name: 'docs', count: 12 }], notes: ['1 file over 2 MB was skipped.'] } })), couldNotRead: 3, stoppedEarly: true } }]);
-  const screens: [string, string][] = [
-    ['start', view(startState())], ['looking', view(run([{ type: 'find' }]))], ['places', view(places)], ['details', view(places, true)], ['confirm', view(run([{ type: 'looksRight' }], places))],
-    ['reading', view(run([{ type: 'looksRight' }, { type: 'yes' }], places))], ['error', view(run([{ type: 'fail', code: 'BUSY' }], places))], ['empty', view(run([{ type: 'find' }, { type: 'found', found: found() }]))],
-  ];
-  for (const [name, markup] of screens) {
-    assert.deepEqual(assertTextBudget(markup), [], name);
-    assert.match(markup, /Read-only/, `${name} says Read-only`);
-    assert.match(markup, /Your files are not changed\./, `${name} says the files are not changed`);
-    assert.match(markup, /temporary files/, `${name} says the app keeps temporary files`);
-    assert.doesNotMatch(markup, /Nothing is changed or saved/, `${name} does not claim that nothing is saved`);
-    assert.doesNotMatch(markup, /innerHTML|dangerouslySetInnerHTML/, name);
-  }
-  assert.doesNotMatch(screens.find(([n]) => n === 'places')![1], /~\/a|~\/work/, 'no path before Show details');
-  assert.match(screens.find(([n]) => n === 'details')![1], /~\/a/);
-  assert.match(screens.find(([n]) => n === 'places')![1], /Could not read 3 things\./);
-  assert.match(screens.find(([n]) => n === 'places')![1], /stopped early/);
-  const confirm = screens.find(([n]) => n === 'confirm')![1];
-  assert.match(confirm, /It reads the text of what you tick\./);
-  assert.match(confirm, /Known key and password shapes are hidden, but check anything private\./);
-  assert.doesNotMatch(confirm, /never copied|never/i, 'the page does not promise that no key is copied: the hiding is by known shape');
-});
-
-test('text from a file is drawn as text: a markup string in a folder name comes out escaped', () => {
-  const hostile = place('x', { label: '<img src=x onerror=alert(1)>', appLabel: '<b>Claude</b>' });
-  const markup = view(run([{ type: 'find' }, { type: 'found', found: found(hostile) }]), true);
-  assert.doesNotMatch(markup, /<img|<b>Claude/);
-  assert.match(markup, /&lt;img src=x onerror=alert\(1\)&gt;/);
 });

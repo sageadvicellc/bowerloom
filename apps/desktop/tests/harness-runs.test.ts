@@ -178,8 +178,8 @@ test('the words of Start, Runs and Compare obey the limits and the banned-word r
   // The words that are copied from the pictures.
   assert.equal(RUN_WORDS.label.bringFront, 'Bring window to the front'); assert.equal(RUN_WORDS.label.openCompare, 'Open compare'); assert.equal(RUN_WORDS.label.saveRating, 'Save rating and notes'); assert.equal(RUN_WORDS.label.closeCompare, 'Close compare');
   assert.equal(RUN_WORDS.hint.saved, 'Saved on this computer, in Bowerloom. Your project files do not change.');
-  assert.equal(RUN_WORDS.paragraph.startNote, 'Bowerloom opens each interface with your instruction. It never reads the chat.');
-  assert.equal(RUN_WORDS.paragraph.chatNote, 'Bowerloom does not read or keep the chat. Read it in the interface window.');
+  assert.equal(RUN_WORDS.paragraph.startNote, 'Bowerloom opens each engine with your instruction. It never reads the chat.');
+  assert.equal(RUN_WORDS.paragraph.chatNote, 'Bowerloom does not read or keep the chat. Read it in the engine window.');
 });
 
 test('the heading of a group holds the first sentence of the instruction, as in the design', () => {

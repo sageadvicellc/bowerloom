@@ -11,7 +11,8 @@
 import { createContext, useCallback, useContext, useMemo, useReducer } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import type { Answer, DefinitionView, VersionView } from '../../shared/engine/types.js';
-import { draftCount } from '../../shared/harness/save-draft.js';
+import { definitionWorld, draftCount, draftView } from '../../shared/harness/save-draft.js';
+import { graphOf, settleAdded } from '../../shared/harness/layout.js';
 import type { SaveDraft } from '../../shared/harness/save-draft.js';
 import { canRedo, canUndo, pushDraft, redoDraft, resetDraft, startDraft, undoCount, undoDraft } from '../../shared/harness/draft-undo.js';
 import type { DraftStack } from '../../shared/harness/draft-undo.js';
@@ -44,13 +45,40 @@ const sameHarness = (a: DefinitionView, b: DefinitionView): boolean => a === b |
 export const loadDropsDraft = (entry: FolderEntry, base: DefinitionView): boolean =>
   entry.base !== null && !sameHarness(entry.base, base) && draftCount(entry.base, entry.stack.present) > 0;
 const put = (s: FolderDrafts, folder: string, entry: FolderEntry): FolderDrafts => ({ ...s, [folder]: entry });
+/** How many unsaved changes one folder's draft holds: none before its harness is read. */
+const countOf = (entry: FolderEntry): number => (entry.base === null ? 0 : draftCount(entry.base, entry.stack.present));
+/** The unsaved changes of every folder together: the N of "Discard N changes?" when the window closes (renderer/harness/close-guard.ts). */
+export const totalChangeCount = (s: FolderDrafts): number => Object.values(s).reduce((sum, entry) => sum + countOf(entry), 0);
 /** The folder's own entry, or undefined. A name like `__proto__` or `constructor` never reaches the prototype's property. */
 export const entryOf = (s: FolderDrafts, folder: string): FolderEntry | undefined => (Object.hasOwn(s, folder) ? s[folder] : undefined);
 /** The stack after a step: the same state when the stack did not change, so React draws nothing. */
 const withStack = (s: FolderDrafts, folder: string, entry: FolderEntry, stack: DraftStack): FolderDrafts => (stack === entry.stack ? s : put(s, folder, { ...entry, stack }));
 
-/** The next drafts of the folders. A change, an undo or a discard of a folder not read yet changes nothing. */
+/**
+ * The next drafts of the folders. A change, an undo or a discard of a folder not read yet changes nothing. A step that adds or takes away a node also records, in the
+ * in-memory places, the place of each new node (below the lowest card of its column) and the place of each node that would move, so a copied skill never lands on a card
+ * the person dragged, and no card moves because another came or went (layout.ts, `settleAdded`).
+ */
 export function folderDraftsReduce(s: FolderDrafts, a: FolderDraftAction): FolderDrafts {
+  const out = reduceDrafts(s, a);
+  if (a.kind !== 'change' && a.kind !== 'push' && a.kind !== 'undo' && a.kind !== 'redo' && a.kind !== 'discard') return out;
+  const was = entryOf(s, a.folder), now = entryOf(out, a.folder);
+  if (was === undefined || now === undefined || was.base === null || now.base === null || was.stack === now.stack) return out;
+  // Most edits (a link, a text) keep the same nodes: compare the ids first and build no graph.
+  const wasView = draftView(was.base, was.stack.present), nowView = draftView(now.base, now.stack.present);
+  if (sameNodes(wasView, nowView)) return out;
+  const graph = (view: DefinitionView): ReturnType<typeof graphOf> => { const w = definitionWorld(view); return graphOf(w.state, w.harness, now.positions); };
+  const place = settleAdded(graph(wasView), graph(nowView), now.positions);
+  return Object.keys(place).length === 0 ? out : put(out, a.folder, { ...now, positions: { ...now.positions, ...place } });
+}
+
+/** True when two views would draw the same nodes: the same agents, skills and notes sources, by id. */
+function sameNodes(a: DefinitionView, b: DefinitionView): boolean {
+  const ids = (v: DefinitionView): string => JSON.stringify([v.agents.map(x => x.id), v.skills.map(x => x.id), v.sources.map(x => x.name)]);
+  return a === b || ids(a) === ids(b);
+}
+
+function reduceDrafts(s: FolderDrafts, a: FolderDraftAction): FolderDrafts {
   const entry = entryOf(s, a.folder);
   switch (a.kind) {
     case 'loaded': {
@@ -113,6 +141,13 @@ export function useFolderDrafts(): { readonly drafts: FolderDrafts; dispatch(a: 
   return ctx;
 }
 
+/** The unsaved changes of every folder together. */
+export function useChangeCount(): number {
+  const ctx = useContext(Context);
+  if (ctx === null) throw new Error('The folder drafts are missing. Draw the screen inside FolderDraftProvider.');
+  return useMemo(() => totalChangeCount(ctx.drafts), [ctx.drafts]);
+}
+
 export function useFolderDraft(folder: string | null): FolderDraft {
   const ctx = useContext(Context);
   if (ctx === null) throw new Error('The folder drafts are missing. Draw the screen inside FolderDraftProvider.');
@@ -122,7 +157,7 @@ export function useFolderDraft(folder: string | null): FolderDraft {
   return useMemo<FolderDraft>(() => {
     const f = folder ?? '';
     return {
-      entry, draft: entry.stack.present, count: entry.base === null ? 0 : draftCount(entry.base, entry.stack.present),
+      entry, draft: entry.stack.present, count: countOf(entry),
       canUndo: canUndo(entry.stack), canRedo: canRedo(entry.stack), undoCount: undoCount(entry.stack),
       loaded: (base, versions) => send({ kind: 'loaded', folder: f, base, versions }),
       setVersions: versions => send({ kind: 'versions', folder: f, versions }),

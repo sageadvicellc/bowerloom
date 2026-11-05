@@ -42,7 +42,7 @@ function toml(ctx: Context, path: string, part: Parameters<Context['r']['miss']>
   if (parsed === null || !parsed.ok) {
     const why = parsed === null ? 'This file is not UTF-8 text.'
       : parsed.code === 'TOML_TOO_DEEP' ? `Line ${parsed.line} nests keys, arrays, or tables deeper than 64 (TOML_TOO_DEEP). The file is not adopted.`
-        : `Line ${parsed.line} uses a TOML form outside the subset adoption reads (${parsed.code}): multi-line strings, dates, and number forms such as hex are not read. The file is not adopted.`;
+        : `Line ${parsed.line} uses a TOML form outside the subset adoption reads (${parsed.code}): dates and number forms such as hex are not read. The file is not adopted.`;
     ctx.r.miss(path, part, why, undefined, gate);
     if (guard) lose(ctx, ENGINE, guard);
     return null;

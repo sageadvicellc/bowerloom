@@ -1,5 +1,5 @@
 /**
- * Types and limits of the read-only reader of a real setup (the `--prototype-real` mode of the 0.8 preview).
+ * Types and limits of the read-only reader of a real setup (the default launch of the app).
  * Everything here is plain data. The reader looks at the person's tool folders, and shows names, descriptions, structure and the NAMES of keys. For the skills and agents the person ticks it also keeps their text
  * (up to `excerptChars` of each file). Key and password shapes that it knows are hidden from that text; the check goes by shape, so it is best effort. It never writes. The bridge that the page gets has exactly three calls (see `RealBridge`).
  */
@@ -88,6 +88,21 @@ export interface RealPicked extends RealDiscovery { readonly cancelled: boolean 
 /** A thing found in a program the 0.8 world has no room for yet (Hermes, Bowerloom's own folder). Name and hint only. */
 export interface RealOther { readonly app: string; readonly kind: RealKind; readonly name: string; readonly hint: string; readonly place: string }
 
+/** One part of a harness found in a folder: a skill, an agent, a tool (a connection or a hook) or a set of notes. Names and summaries are scrubbed one-line texts. */
+export interface RealHarnessPart { readonly id: string; readonly kind: 'agent' | 'skill' | 'tool' | 'context'; readonly name: string; readonly summary: string; readonly toolKind?: 'mcp' | 'hook'; readonly contentHash?: string }
+/**
+ * What the reader saw in a folder's `.bowerloom` as plain bounded JSON (read only). `readable` is false when a file is not valid JSON, is over a limit or cannot be read; the harness then holds no part. `engines` are
+ * the program names. `links` join an agent to the skills it names, by part id.
+ */
+export interface RealHarness {
+  readonly readable: boolean;
+  readonly engines: readonly string[];
+  readonly parts: readonly RealHarnessPart[];
+  readonly links: readonly { readonly from: string; readonly to: string }[];
+}
+/** A folder that holds a harness: the place's name, its folder (with `~` for the home folder) and what the loader read. */
+export interface RealHarnessPlace { readonly id: string; readonly name: string; readonly path: string; readonly harness: RealHarness }
+
 /** The answer to step two: the world the home screens read, built from the selected places only. */
 export interface RealResult {
   readonly world: World;
@@ -103,6 +118,8 @@ export interface RealResult {
   readonly textsCut: number;
   readonly notes: readonly string[];
   readonly readOnly: true;
+  /** The folders that hold a harness, read through the harness loader. Absent when there are none. */
+  readonly harnessPlaces?: readonly RealHarnessPlace[];
 }
 
 /** The three calls the page gets, and nothing else. `window.bowerloomReal` is this object, frozen. */
@@ -121,7 +138,3 @@ export const REAL_CHANNELS = Object.freeze({
   pickFolder: 'bowerloom-real:pick-folder',
   readSelected: 'bowerloom-real:read-selected',
 } as const);
-
-/** The page address of the real mode, and of the bare list that the test harness draws. */
-export const REAL_HASH = '#prototype-v2/real';
-export const REAL_HARNESS_HASH = '#prototype-v2/real-harness';

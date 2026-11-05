@@ -1,5 +1,5 @@
 /**
- * The harness-first preview on the person's own folders when there is nothing to find (Electron started with --prototype-v3-real and HOME pointed at an empty folder). "Nothing found yet" says so
+ * The harness-first preview on the person's own folders when there is nothing to find (Electron started with no flag and HOME pointed at an empty folder). "Nothing found yet" says so
  * in plain words and offers "Add a folder" and "Use the sample". A folder that is added brings the list back; the chooser closed with no folder adds nothing and says so; "Use the sample" opens
  * the sample's own sources, so the person can still look around, and in that case the Preview mark says it is the sample. The empty folder is the same, byte for byte, before and after.
  */
@@ -26,7 +26,7 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => { try { await h?.app.close(); } finally { other?.cleanup(); removeTempDirs(); } });
 test.beforeEach(async () => {
-  await page().evaluate(() => { location.hash = '#prototype-v3-real'; location.reload(); });
+  await page().evaluate(() => { location.hash = '#app'; location.reload(); });
   await page().waitForLoadState('domcontentloaded');
   await page().waitForSelector('[data-home]');
   await h.pick(null);
@@ -69,6 +69,8 @@ test('"Use the sample" opens the sample sources; the Preview mark then says it i
   await expect(p.getByRole('heading', { level: 1, name: 'Read 3 sources. Make a harness from each.' })).toBeVisible();
   await expect(p.locator('[data-count]')).toHaveCount(0);
   await p.getByRole('button', { name: 'Make all 3', exact: true }).click();
+  await expect(p.getByRole('heading', { level: 1, name: 'Overview', exact: true })).toBeVisible();
+  await p.locator('[data-nav-key="harnesses"]').click();
   await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
   await p.getByRole('button', { name: 'About this preview', exact: true }).click();
   await expect(p.locator('.hx-preview-pop')).toContainText('This is a preview. It runs on sample data. Nothing is written to your disk.');
@@ -80,12 +82,14 @@ test('"Use the sample" asks first once harnesses exist: "Cancel" and "Not now" k
   await p.getByRole('button', { name: 'Use the sample', exact: true }).click();
   await expect(p.locator('[data-replace-confirm]'), 'a first run replaces nothing, so it does not ask').toHaveCount(0);
   await p.getByRole('button', { name: 'Make all 3', exact: true }).click();
+  await expect(p.getByRole('heading', { level: 1, name: 'Overview', exact: true })).toBeVisible();
+  await p.locator('[data-nav-key="harnesses"]').click();
   await expect(p.locator('.hx-row-harness')).toHaveCount(7);
-  await p.evaluate(() => { location.hash = '#prototype-v3/choose'; });
+  await p.evaluate(() => { location.hash = '#sample/choose'; });
   await expect(p.getByRole('heading', { level: 1, name: 'Nothing found yet' })).toBeVisible();
   await p.getByRole('button', { name: 'Use the sample', exact: true }).click();
   const ask = p.locator('[data-replace-confirm]');
-  await expect(ask).toContainText('Reading again starts this preview over. It changes nothing on your computer.');
+  await expect(ask).toContainText('Reading again starts over. It changes nothing on your computer.');
   await expect(p.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
   await p.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(ask).toHaveCount(0);
@@ -93,11 +97,13 @@ test('"Use the sample" asks first once harnesses exist: "Cancel" and "Not now" k
   await p.getByRole('button', { name: 'Not now', exact: true }).click();
   await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
   await expect(p.locator('.hx-row-harness')).toHaveCount(7);
-  await p.evaluate(() => { location.hash = '#prototype-v3/choose'; });
+  await p.evaluate(() => { location.hash = '#sample/choose'; });
   await p.getByRole('button', { name: 'Use the sample', exact: true }).click();
   await p.locator('[data-replace-confirm]').getByRole('button', { name: 'Use the sample', exact: true }).click();
   await expect(p.getByRole('heading', { level: 1, name: 'Read 3 sources. Make a harness from each.' })).toBeVisible();
   await p.getByRole('button', { name: 'Not now', exact: true }).click();
+  await expect(p.getByRole('heading', { level: 1, name: 'Overview', exact: true })).toBeVisible();
+  await p.locator('[data-nav-key="harnesses"]').click();
   await expect(p.locator('.hx-row-harness')).toHaveCount(4);
 });
 

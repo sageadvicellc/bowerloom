@@ -7,7 +7,7 @@
  * "Choose a folder". This is the folder list the Builder goes back to when its folder is not open (after a new start).
  * An address that names no harness shows "That harness is not here", not the first harness.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import type { ReactElement } from 'react';
 import { harnessCountsWords, harnessStatus, installLine, installsOfHarness, projectById, runsIn } from '../../../shared/harness/status.js';
 import type { Harness, HarnessState } from '../../../shared/harness/types.js';
@@ -26,6 +26,7 @@ import { RefusalNote, folderLine } from '../sheets/engine-parts.js';
 import { chooseFolderCall, foldersCall, useCall } from '../sheets/use-call.js';
 import { ENGINE_WORDS } from '../words-engine.js';
 import { openFolderName } from '../words.js';
+import { SHARE } from '../words-share.js';
 
 function Row({ harness, state, selected, onPick, onStart }: { harness: Harness; state: HarnessState; selected: boolean; onPick(): void; onStart(): void }): ReactElement {
   const status = harnessStatus(state, harness.id);
@@ -106,8 +107,23 @@ export function HarnessList({ id }: { id: string | null }): ReactElement {
         {rows.map(h => <Row key={h.id} harness={h} state={state} selected={selected?.id === h.id} onPick={() => pick(h.id)} onStart={() => { pick(h.id); ui.openStart({ harnessId: h.id }); }} />)}
       </ul>
       {rows.length === 0 ? <p className="kit-hint hx-hint">{WORDS.hint.noMatch}</p> : null}
-      <Folders />
+      {state.harnesses.length === 0 ? <div className="hx-actions" data-empty-import=""><ImportEntry /></div> : null}
+      <Folders empty={state.harnesses.length === 0} />
     </Screen>
+  );
+}
+
+/**
+ * "Import from a file": opens the Import sheet. With no engine bridge (the window cannot reach Bowerloom) it stays, held, and says why, so the entry never vanishes without
+ * a reason. It is in the Folders block and in the empty state of the list.
+ */
+function ImportEntry(): ReactElement {
+  const engine = useEngine(), ui = useUi(), why = useId();
+  return (
+    <>
+      <HButton icon="page" data-import-file="" aria-disabled={engine === null ? true : undefined} aria-describedby={engine === null ? why : undefined} onClick={() => { if (engine !== null) ui.openImport(); }}>{SHARE.label.importFromFile}</HButton>
+      {engine === null ? <p className="hx-text hx-muted" id={why} data-import-why="">{ENGINE_WORDS.hint.noBridge}</p> : null}
+    </>
   );
 }
 
@@ -115,12 +131,19 @@ export function HarnessList({ id }: { id: string | null }): ReactElement {
  * "Folders": each folder main knows, by its name and its line (the interfaces its harness lists, or "No harness here yet"), with the way into the Builder.
  * A folder that holds no harness opens "From a folder", which makes one. "Choose a folder" opens the system chooser.
  */
-function Folders(): ReactElement | null {
+function Folders({ empty }: { empty: boolean }): ReactElement | null {
   const engine = useEngine(), ui = useUi(), call = useCall();
   const [folders, setFolders] = useState<readonly FolderInfo[]>([]);
-  const sheetOpen = ui.adopt.open || ui.saveSheet.open || ui.projectSheet.open;
+  const sheetOpen = ui.adopt.open || ui.saveSheet.open || ui.projectSheet.open || ui.importSheet.open;
   useEffect(() => { if (engine !== null && !sheetOpen) void call.plan(ENGINE_WORDS.label.planning, () => foldersCall(engine), setFolders); }, [engine, sheetOpen]);
-  if (engine === null) return null;
+  if (engine === null) {
+    return (
+      <section className="hx-block hx-folders" aria-labelledby="hx-folders" data-section="folders">
+        <h2 className="hx-h3" id="hx-folders">{ENGINE_WORDS.label.folders}</h2>
+        {empty ? null : <ImportEntry />}
+      </section>
+    );
+  }
   const choose = (): void => { void call.plan(ENGINE_WORDS.label.chooseFolder, () => chooseFolderCall(engine), got => { if (got !== null) setFolders(got.list); }); };
   return (
     <section className="hx-block hx-folders" aria-labelledby="hx-folders" data-section="folders">
@@ -144,7 +167,10 @@ function Folders(): ReactElement | null {
           ))}
         </ul>
       )}
-      <div className="hx-actions"><HButton icon="folder" data-choose-folder="" disabled={call.busy !== null} onClick={choose}>{ENGINE_WORDS.label.chooseFolder}</HButton></div>
+      <div className="hx-actions">
+        <HButton icon="folder" data-choose-folder="" disabled={call.busy !== null} onClick={choose}>{ENGINE_WORDS.label.chooseFolder}</HButton>
+        {empty ? null : <ImportEntry />}
+      </div>
     </section>
   );
 }

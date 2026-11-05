@@ -15,7 +15,7 @@ import { useUi } from '../ui.js';
 import { useNow } from '../useNow.js';
 import { HButton, HIconButton, StateDot } from '../parts/controls.js';
 import { Tile } from '../icons.js';
-import { RUN_WORDS, stillRunning } from '../runs-words.js';
+import { RUN_WORDS, bringToastWords, stillRunning } from '../runs-words.js';
 import './compare.css';
 
 interface Draft { readonly rating: Rating | null; readonly notes: string }
@@ -87,7 +87,7 @@ export function Compare({ group }: { group: string }): ReactElement {
         {runs.map(run => (
           <Column key={run.id} state={state} run={run} draft={draftOf(run)} now={now}
             onRating={rating => change(run, { rating: draftOf(run).rating === rating ? null : rating })} onNotes={notes => change(run, { notes })}
-            onBring={() => ui.showToast(RUN_WORDS.hint.bringToast)} />
+            onBring={() => ui.showToast(bringToastWords(state.real !== undefined))} />
         ))}
       </div>
       <div className="hc-foot">

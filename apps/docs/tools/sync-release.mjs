@@ -3,12 +3,14 @@
 import {readFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {getDocuments} from '../src/lib/content.mjs';
-import {readRelease} from '../src/lib/release.mjs';
+import {readRelease,releaseSections} from '../src/lib/release.mjs';
 const root = resolve(import.meta.dirname, '../../..');
 const docs = 'apps/docs/src/content/docs/';
 const markers = {
-  'README.md': ['support'],
+  'README.md': ['support', 'install'],
   [docs + 'status.md']: ['support'],
+  [docs + 'start.md']: ['install'],
+  [docs + 'beta-guide.md']: ['install'],
   ...Object.fromEntries(['revision', 'stop', 'cli', 'backend', 'mcp', 'releases'].map(x => [docs + x + '.md', ['status']])),
 };
 const problems = [];
@@ -25,6 +27,16 @@ if (process.argv.includes('--check')) {
       const starts = text.split(`<!-- release:${kind}:start -->`).length - 1, ends = text.split(`<!-- release:${kind}:end -->`).length - 1;
       if (starts !== 1 || ends !== 1) problems.push(`RELEASE_MARKER_UNPAIRED: ${file} needs one release:${kind}:start and one release:${kind}:end marker, found ${starts} and ${ends}.`);
     }
+  }
+}
+if (process.argv.includes('--check') && !problems.length) {
+  // The docs build expands the install and support blocks. The README is read on GitHub, so its copies must equal the generated blocks.
+  const release = await readRelease();
+  const readme = await readFile(resolve(root, 'README.md'), 'utf8');
+  const generated = releaseSections(release);
+  for (const kind of ['install', 'support']) {
+    const block = readme.match(new RegExp(`<!-- release:${kind}:start -->\\n([\\s\\S]*?)\\n<!-- release:${kind}:end -->`));
+    if (!block || block[1] !== generated[kind]) problems.push(`RELEASE_BLOCK_STALE: README.md ${kind} block differs from the block that the release record generates.`);
   }
 }
 if (problems.length) { console.error(problems.join('\n')); process.exit(1); }

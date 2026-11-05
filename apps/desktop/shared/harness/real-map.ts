@@ -1,5 +1,5 @@
 /**
- * Turns what the real-setup reader found (a `RealResult`) into the state of the harness-first preview (`--prototype-v3-real`). Pure: no file, no clock, no random number.
+ * Turns what the real-setup reader found (a `RealResult`) into the state of the harness-first preview (the default launch). Pure: no file, no clock, no random number.
  *
  * The reader already hands over a `World` whose items carry their file path (written with `~`) and their text, which is cut to a limit and has every known key shape hidden.
  * This file reshapes it for the harness screens:
@@ -18,7 +18,7 @@ import { cleanLine, cut, scrubText } from '../real/redact.js';
 import type { RealPlace, RealResult } from '../real/types.js';
 import { createSampleWorld } from './sample.js';
 import { INTERFACE_IDS } from './types.js';
-import type { HarnessState, Interface, InterfaceId, Link, Part, PartKind, Project, ScanSource } from './types.js';
+import type { HarnessPlace, HarnessState, Interface, InterfaceId, Link, Part, PartKind, Project, ScanSource } from './types.js';
 
 /** The most lines of a file that go into `Part.fileText`. */
 export const FILE_LINES = 60;
@@ -191,6 +191,9 @@ export function partOfItem(item: HarnessItem, sourceId: string, sourceLabel: str
     path: path.split('/').map(plain).join('/'), source: sourceLabel, origin: sourceId,
     ...(plug?.version === undefined ? {} : { version: plug.version }), fileText, cannotUse: [], inLibrary: true,
     ...(model === undefined || plain(model.badge) === '' ? {} : { badge: cut(plain(model.badge), 40) }),
+    // The Overview reads these two. `contentHash` is the hash of the whole text of the file the reader read for the part (a skill's SKILL.md), and is absent when the file had no readable text, so two places with equal text read as one shared skill.
+    ...(item.kind === 'tool' ? { toolKind: item.toolKind } : {}),
+    ...(first === undefined || item.kind === 'context-slice' || first.contentHash === '' ? {} : { contentHash: first.contentHash }),
   };
 }
 
@@ -198,7 +201,23 @@ export function partOfItem(item: HarnessItem, sourceId: string, sourceLabel: str
 
 const FACE_ORDER: readonly string[] = [...INTERFACE_IDS, 'notes'];
 
-interface Where { readonly key: string; readonly name: string; readonly label: string; readonly interfaceName: string; readonly harnessName: string; readonly order: readonly [number, number, string] }
+interface Where {
+  readonly key: string; readonly name: string; readonly label: string; readonly interfaceName: string; readonly harnessName: string; readonly order: readonly [number, number, string];
+  /** `home` for the home folder, `project` for any other folder. */
+  readonly scope: 'home' | 'project';
+  /** The folder in `~` form, never a full path (see `folderLabelOf`). */
+  readonly folder: string;
+}
+
+/**
+ * The folder of a scope for the Overview: `~` for the home folder, `~/Projects/alpha` for a folder under it. A folder outside the home folder has a full path on the scope,
+ * and a full path never goes into the window's model, so only its last name is kept, after `…/`. That label matches no folder main knows, so the place is not marked "In Bowerloom".
+ */
+export function folderLabelOf(path: string): string {
+  if (path === '~' || path.startsWith('~/')) return path;
+  const last = path.split(/[\\/]/).filter(part => part !== '').at(-1) ?? '';
+  return last === '' ? '…' : `…/${last}`;
+}
 
 /** Why an item with no program the preview knows is left out: only Bowerloom's own folder holds it, or it is in a program the preview has no room for. */
 const leftOutWhy = (item: HarnessItem): 'bowerloom' | 'hermes' | 'unknown' => {
@@ -212,19 +231,20 @@ const thingsWord = (n: number): string => `${n} ${n === 1 ? 'thing' : 'things'}`
 function whereIs(item: HarnessItem, scopes: readonly Scope[]): Where | null {
   // Known limit: an item whose scope id is not in the list falls back to the first scope (index 0), so it can be shown under the wrong folder.
   const scopeAt = Math.max(0, scopes.findIndex(s => s.id === item.scopeId)), scope = scopes[scopeAt], home = scope === undefined || scope.kind === 'global', folder = scope === undefined ? '' : cut(plain(scope.name), NAME_CHARS);
+  const place = { scope: home ? 'home' : 'project', folder: home ? '~' : folderLabelOf(scope?.path ?? '') } as const;
   if (item.kind === 'context-slice') {
-    return { key: `${item.scopeId}|notes`, name: home ? 'Your notes' : `${folder} (notes)`, label: home ? 'Your notes' : `${folder} notes`, interfaceName: 'Notes', harnessName: home ? 'Your notes' : `${folder} notes`, order: [scopeAt, FACE_ORDER.indexOf('notes'), ''] };
+    return { key: `${item.scopeId}|notes`, name: home ? 'Your notes' : `${folder} (notes)`, label: home ? 'Your notes' : `${folder} notes`, interfaceName: 'Notes', harnessName: home ? 'Your notes' : `${folder} notes`, order: [scopeAt, FACE_ORDER.indexOf('notes'), ''], ...place };
   }
   const face = faceOf(item);
   if (face === null) return null;
   const app = adapterOf(face).label, first = foundIn(item, face)!, plug = pluginOf(first.path), order = FACE_ORDER.indexOf(face);
   if (plug !== null) {
     const name = titled(plug.name);
-    return { key: `${item.scopeId}|${face}|${plug.name}`, name: `${name} (plug-in)`, label: `${name} plug-in`, interfaceName: app, harnessName: `${name} plug-in`, order: [scopeAt, order, plug.name] };
+    return { key: `${item.scopeId}|${face}|${plug.name}`, name: `${name} (plug-in)`, label: `${name} plug-in`, interfaceName: app, harnessName: `${name} plug-in`, order: [scopeAt, order, plug.name], ...place };
   }
   return home
-    ? { key: `${item.scopeId}|${face}|`, name: `Your ${app} folder`, label: `Your ${app} folder`, interfaceName: app, harnessName: `${app} folder`, order: [scopeAt, order, ''] }
-    : { key: `${item.scopeId}|${face}|`, name: `${folder} (${app})`, label: `${folder} (${app})`, interfaceName: app, harnessName: `${folder} ${app}`, order: [scopeAt, order, ''] };
+    ? { key: `${item.scopeId}|${face}|`, name: `Your ${app} folder`, label: `Your ${app} folder`, interfaceName: app, harnessName: `${app} folder`, order: [scopeAt, order, ''], ...place }
+    : { key: `${item.scopeId}|${face}|`, name: `${folder} (${app})`, label: `${folder} (${app})`, interfaceName: app, harnessName: `${folder} ${app}`, order: [scopeAt, order, ''], ...place };
 }
 
 /** The links an agent's definition makes: to the skills it names, the connections it uses and the notes it reads. A link to a part that is not held is dropped. */
@@ -270,6 +290,13 @@ export function sourceIdFor(key: string, used: ReadonlySet<string>): string {
   return id;
 }
 
+/** The folders that hold a harness, for the Overview: the folder in `~` form, the program names and the parts the loader read. */
+function harnessPlacesOf(result: RealResult): HarnessPlace[] {
+  return (result.harnessPlaces ?? []).map(h => ({
+    id: h.id, name: `${cut(plain(h.name), NAME_CHARS)} (Bowerloom)`, label: folderLabelOf(h.path), readable: h.harness.readable, engines: h.harness.engines, parts: h.harness.parts, links: h.harness.links,
+  }));
+}
+
 /**
  * The state of the preview for one read of the person's folders. `places` are the places that were read (the ones the person ticked): their work folders and picked folders become the projects,
  * and their home places say where each program was found. The sample's interface table gives the files each program would be written to.
@@ -306,7 +333,7 @@ export function realToHarnessState(result: RealResult, places: readonly RealPlac
   const held = new Set(parts.map(p => p.id));
   const sources: ScanSource[] = ordered.map(w => {
     const members = keep.filter(p => p.where.key === w.key), links = members.flatMap(p => linksOf(p.item, held, world));
-    return { id: sourceIds.get(w.key)!, name: w.name, interfaceName: w.interfaceName, harnessName: w.harnessName, partIds: members.map(p => p.item.id), links };
+    return { id: sourceIds.get(w.key)!, name: w.name, interfaceName: w.interfaceName, harnessName: w.harnessName, partIds: members.map(p => p.item.id), links, scope: w.scope, label: w.folder };
   });
 
   // The notes this file writes come first: the screen shows the first few and hides the rest, and these say what is missing from the list.
@@ -323,6 +350,7 @@ export function realToHarnessState(result: RealResult, places: readonly RealPlac
   const onlyPartRead = result.notes.includes(PARTLY_READ_NOTE) || placeNotes.some(p => p.notes.includes(PARTLY_READ_NOTE));
   return {
     parts, harnesses: [], projects: projectsOf(places), installs: [], interfaces: interfacesOf(result, places), runs: [], history: [], sources, chosenSourceIds: sources.map(s => s.id),
+    ...(harnessPlacesOf(result).length > 0 ? { harnessPlaces: harnessPlacesOf(result) } : {}),
     nextId: 100, real: { couldNotRead: result.couldNotRead, stoppedEarly: result.stoppedEarly, notes: [...own, ...notes], textsCut: result.textsCut, ...(onlyPartRead ? { onlyPartRead } : {}), ...(placeNotes.length > 0 ? { places: placeNotes } : {}) },
   };
 }

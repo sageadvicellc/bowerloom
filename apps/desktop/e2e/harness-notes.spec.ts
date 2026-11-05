@@ -1,5 +1,5 @@
 /**
- * Journey 5 on the sample launch (--prototype-v3): the notes step and the tour that builds the Notes keeper. Nothing is read or written on disk; the made-up
+ * Journey 5 on the sample launch (--sample): the notes step and the tour that builds the Notes keeper. Nothing is read or written on disk; the made-up
  * folders answer. The notes step: "Start fresh" shows the starter files and "Create" makes them. "Build my Notes keeper" opens the edit of a folder's agents
  * with the guided tour: the keeper is added from the kit, the person drags the first skill onto Skills, presses "Add the other skills", and puts the notes on
  * the Notes shelf. The review lists the files, Save keeps them, the Notes panel shows the folder, and "What next" ends the tour. A second test does the whole
@@ -14,7 +14,7 @@ import { kitSkillIds, kitStarter, keyPress, tabTo } from './harness-notes-suppor
 
 let h: Harness;
 const page = (): Page => h.page;
-const NOTES_ROUTE = '#prototype-v3/notes';
+const NOTES_ROUTE = '#sample/notes';
 const NOTES_ID = 'sample-new-notes';
 
 test.beforeAll(async () => { test.setTimeout(240_000); h = await launchHarness(); });

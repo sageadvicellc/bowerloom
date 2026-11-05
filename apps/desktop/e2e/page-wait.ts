@@ -1,5 +1,5 @@
 /**
- * Waits for the prototype e2e specs. Each one waits on a state that can be read from the page (a picture that has stopped moving, animations that
+ * Waits for the e2e specs. Each one waits on a state that can be read from the page (a picture that has stopped moving, animations that
  * have finished, a frame that has been painted), never on a fixed number of milliseconds. A wait that does not end fails with a plain message.
  */
 import type { Page } from '@playwright/test';

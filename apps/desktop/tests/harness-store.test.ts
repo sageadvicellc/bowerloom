@@ -351,8 +351,8 @@ test('install and startRuns say why they changed nothing: unknown or empty harne
   const s = world(), empty = createHarness(s, NOW);
   const bad = [
     [{ projectId: archive, harnessId: 'harness-nope', interfaceIds: ['codex'] }, 'that harness is not here'], [{ projectId: 'project-nope', harnessId: inbox, interfaceIds: ['codex'] }, 'that project is not here'],
-    [{ projectId: archive, harnessId: empty.harnessId, interfaceIds: ['codex'] }, 'that harness is empty'], [{ projectId: archive, harnessId: inbox, interfaceIds: [] }, 'no interface is picked'],
-    [{ projectId: archive, harnessId: inbox, interfaceIds: ['opencode'] }, 'no interface that is switched on and found is picked'],
+    [{ projectId: archive, harnessId: empty.harnessId, interfaceIds: ['codex'] }, 'that harness is empty'], [{ projectId: archive, harnessId: inbox, interfaceIds: [] }, 'no engine is picked'],
+    [{ projectId: archive, harnessId: inbox, interfaceIds: ['opencode'] }, 'no engine that is switched on and found is picked'],
   ] as const;
   for (const [request, why] of bad) {
     assert.equal(installProblem(empty.state, request), why, why); assert.equal(install(empty.state, request, NOW), empty.state, why);
@@ -362,7 +362,7 @@ test('install and startRuns say why they changed nothing: unknown or empty harne
   }
   assert.equal(startProblem(s, { harnessId: inbox, projectId: archive, interfaceIds: ['codex'], instruction: '  ' }), 'the instruction is empty');
   const off = setInterfaceOn(s, 'codex', false, NOW);
-  assert.equal(installProblem(off, { projectId: archive, harnessId: inbox, interfaceIds: ['codex'] }), 'no interface that is switched on and found is picked');
+  assert.equal(installProblem(off, { projectId: archive, harnessId: inbox, interfaceIds: ['codex'] }), 'no engine that is switched on and found is picked');
   assert.equal(install(off, { projectId: archive, harnessId: inbox, interfaceIds: ['codex'] }, NOW), off);
   assert.deepEqual(installOf(install(off, { projectId: archive, harnessId: inbox, interfaceIds: ['claude-code', 'codex'] }, NOW), archive, inbox)!.states, { 'claude-code': 'installed' }, 'an interface that is off is left out');
   assert.equal(installProblem(s, { projectId: archive, harnessId: inbox, interfaceIds: ['codex'] }), null); assert.equal(startProblem(s, { harnessId: inbox, projectId: archive, interfaceIds: ['codex'], instruction: 'Go.' }), null);

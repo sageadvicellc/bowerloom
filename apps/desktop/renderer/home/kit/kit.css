@@ -1,9 +1,6 @@
 /*
- * The card kit. Two shapes and no pills. An agent is a TILE: one width and one height for every agent (--hm-tile-w, --hm-tile-h), whatever the name or the counts.
- * A skill, tool or note is a ROW: one height (--hm-row-h) wherever it is drawn (the tray, the details panel, the Add drawer, Choose notes). A row leads with a
- * rounded tile and the glyph of its kind; a tile leads with a thin edge in its accent colour. A state ("2 different copies", "needs a key") is a small dot and short words with no fill and no border, so it is never colour
- * alone: the words always say it. Everything is scoped to [data-home]. A 1 px edge is seen at 3 to 1, a selected card is a tint with a 2 px accent edge (never a check
- * mark, which would say "a choice to make"), and a disabled button is dashed and says why beside it.
+ * The kit. No pills. A state ("2 different copies", "needs a key") is a small dot and short words with no fill and no border, so it is never colour
+ * alone: the words always say it. Everything is scoped to [data-home]. A 1 px edge is seen at 3 to 1, and a disabled button is dashed and says why beside it.
  * Timing comes from the motion tokens (published by applyMotionTokens), which are 0 when the person asked for less motion.
  */
 [data-home] .kit-icon { flex: none; }
@@ -79,69 +76,9 @@
 [data-home] button.kit-status.kit-help-text { min-height: var(--hm-control-h); margin: 0; padding: 0 var(--hm-space-3); color: var(--text); }
 [data-home] button.kit-status.kit-help-text[aria-expanded="true"] { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
 
-/* ---- Card: the edge, the tint of a selection and the arrival ring are the same for a tile and a row. */
-[data-home] .kit-card {
-  position: relative; box-sizing: border-box; container-type: inline-size;
-  background: var(--surface); color: var(--text);
-  border: 1px solid var(--hm-border); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow);
-  transition: border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), box-shadow var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), transform var(--motion-home-press-ms, 0ms) var(--motion-home-press-ease, ease-out);
-}
-/* The card is pressed when its name (the button that covers it) is pressed; the Remove button and the status have presses of their own. */
-@media (prefers-reduced-motion: no-preference) {
-  [data-home] .kit-card:has(.kit-card-main:active) { transform: scale(var(--motion-home-press-scale, 1)); }
-}
-[data-home] .kit-card:hover, [data-home] .kit-card[data-demo="hover"] { border-color: var(--accent-strong); box-shadow: var(--hm-shadow-lift); }
-/* A selected card is a highlight and nothing more: a filled tint and a real 2 px accent edge. The border grows by 1 px and the padding shrinks by 1 px, so
-   nothing inside the card moves. The edge is seen at 3 to 1 against the page, the neighbouring cards and the tint (tests/contrast.test.ts). */
-[data-home] .kit-card[data-selected], [data-home] .kit-card[data-owner] { background: var(--accent-soft); border-color: var(--accent-strong); border-width: 2px; box-shadow: var(--hm-shadow); }
-/* The tile whose tray is open keeps the 2 px accent edge, with no tint, so it is clear which agent the list belongs to. */
-[data-home] .kit-card[data-tray] { border-color: var(--accent-strong); border-width: 2px; }
-[data-home] .kit-card:has(.kit-card-main:focus-visible), [data-home] .kit-card[data-demo="focus"] { outline: 3px solid var(--focus); outline-offset: 2px; }
 [data-home] .kit-tile { display: inline-flex; align-items: center; justify-content: center; flex: none; width: var(--hm-row-tile); height: var(--hm-row-tile); border-radius: var(--hm-radius-small); background: var(--surface-2); color: var(--accent-strong); border: 1px solid var(--hm-border); box-sizing: border-box; }
 [data-home] .kit-tile[data-size="large"] { width: 2.25rem; height: 2.25rem; }
 [data-home] .kit-tile[data-size="small"] { width: var(--hm-tile-glyph); height: var(--hm-tile-glyph); }
-[data-home] .kit-card-main {
-  /* The name is the button, and its ::after covers the whole card, so the whole card can be pressed. One line, with an ellipsis; the whole name is in the details panel. */
-  all: unset; box-sizing: border-box; display: block; min-width: 0; cursor: pointer; touch-action: manipulation;
-  font-size: var(--hm-text-name); font-weight: 600; line-height: 1.25; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-[data-home] .kit-card-main::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
-
-/* A ROW: a 28 px tile, the name over one line of hint, and the words of a state at the end of the second line. The height is one token for every row. */
-[data-home] .kit-card[data-size="small"] { display: flex; align-items: center; gap: var(--hm-space-3); width: 100%; min-width: var(--hm-row-min-w); height: var(--hm-row-h); padding: 0 var(--hm-space-3); }
-[data-home] .kit-card[data-size="small"][data-selected], [data-home] .kit-card[data-size="small"][data-owner], [data-home] .kit-card[data-size="small"][data-tray] { padding: 0 calc(var(--hm-space-3) - 1px); }
-[data-home] .kit-card-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
-[data-home] .kit-card-line { display: flex; align-items: center; gap: var(--hm-space-2); min-width: 0; min-height: 1.2rem; }
-[data-home] .kit-card-line > .kit-card-main { flex: 1 1 0; }
-[data-home] .kit-card-hint { flex: 1 1 0; min-width: 0; margin: 0; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-[data-home] .kit-card-badge { flex: 0 1 auto; min-width: 0; position: relative; z-index: 1; margin-left: auto; max-width: 100%; }
-/* "Remove" is an icon button (a circle with a minus) at the end of the card, centred on it: the name and the hint keep the rest of the width. It sits above the name button that covers the card. */
-[data-home] .kit-card-remove { flex: none; position: relative; z-index: 1; margin-right: calc(-1 * var(--hm-space-2)); }
-/* A row that has a state says the state in place of the hint: the two together would leave the hint a few letters. The hint is in the details panel. */
-[data-home] .kit-card-hint:has(~ .kit-card-badge) { display: none; }
-/* A TILE: the agent. Five fixed lines from the top: the apps it works with, the name, the job, a thin bar of what it holds, then one line of counts. Each child names its
-   own grid row, so a tile with no apps keeps the room of that line and the names of a row of tiles stay level. Nothing wraps and nothing opens inside it, so every tile has the
-   same width and the same height. The name is the button that covers the tile; the counts sit above it (z-index 1). The accent (one of four, by a hash of the agent's id) is the
-   thin edge at the top and the fill of the bar; it is never behind any words, so the text contrast is that of the card. */
-[data-home] .kit-card[data-size="tile"] {
-  --ac: var(--hm-ac-blue);
-  display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 1.25rem auto auto var(--hm-dot) minmax(0, 1fr); row-gap: 2px; align-items: center; align-content: start;
-  width: var(--hm-tile-w); height: var(--hm-tile-h); padding: calc(var(--hm-space-3) + 1px) var(--hm-space-3) 0;
-}
-[data-home] .kit-card[data-accent="green"] { --ac: var(--hm-ac-green); }
-[data-home] .kit-card[data-accent="orange"] { --ac: var(--hm-ac-orange); }
-[data-home] .kit-card[data-accent="red"] { --ac: var(--hm-ac-red); }
-[data-home] .kit-card[data-size="tile"][data-selected], [data-home] .kit-card[data-size="tile"][data-owner], [data-home] .kit-card[data-size="tile"][data-tray] { padding: var(--hm-space-3) calc(var(--hm-space-3) - 1px) 0; }
-[data-home] .kit-card[data-size="tile"]::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--ac); border-radius: calc(var(--hm-radius) - 1px) calc(var(--hm-radius) - 1px) 0 0; pointer-events: none; }
-[data-home] .kit-card[data-size="tile"] > .kit-card-apps { grid-row: 1; }
-[data-home] .kit-card[data-size="tile"] > .kit-card-main { grid-row: 2; }
-[data-home] .kit-card[data-size="tile"] .kit-card-hint { grid-row: 3; flex: none; }
-[data-home] .kit-card[data-size="tile"] > .kit-hold { grid-row: 4; }
-/* The apps: plain words joined by small dots, in one line that ends in an ellipsis. Not a button, so it takes no press: the name button under it covers the tile. */
-[data-home] .kit-card-apps { display: flex; align-items: center; gap: var(--hm-space-2); min-width: 0; overflow: hidden; white-space: nowrap; font-size: var(--hm-text-small); line-height: 1.4; font-weight: 500; color: var(--text-muted); pointer-events: none; }
-[data-home] .kit-card-app { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-[data-home] .kit-card-app:only-child, [data-home] .kit-card-app:first-child { flex-shrink: 0; max-width: 100%; }
-[data-home] .kit-card-app-dot { flex: none; width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
 /* What it holds: one thin bar split into skills, tools and notes by their counts. The parts are three tints of the accent, darkest first, in the order of the counts below, and a
    hairline of the card between them; the words for it are the counts, so the bar is decoration. An agent with nothing shows the empty track. */
 [data-home] .kit-hold { height: var(--hm-dot); margin-top: var(--hm-space-2); box-sizing: border-box; border: 1px solid var(--hm-border); border-radius: 2px; background: var(--surface-2); overflow: hidden; }
@@ -161,59 +98,8 @@
 [data-home] .kit-count:hover { background: color-mix(in srgb, var(--text) 9%, transparent); text-decoration: underline; text-underline-offset: 3px; }
 [data-home] .kit-count[aria-expanded="true"] { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; background: var(--surface); }
 [data-home] .kit-count:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
-[data-home] .kit-card[data-selected] .kit-count[aria-expanded="true"], [data-home] .kit-card[data-owner] .kit-count[aria-expanded="true"] { background: var(--surface); }
 
-/*
- * A card that was just added. Its look (a soft fill and a ring) is there at once and stays for 5 s, which the page times; the motion only says where it came from.
- * A new shelf card rises 6 px and settles in 220 ms with the strong ease-out. Its ring is drawn in 180 ms, held, and fades over 400 ms so it is gone by 5 s, and the
- * fill goes with it, so nothing pops off when the mark is taken away. An agent card gets the ring and no rise: it is not new. Under reduce motion every animation here is
- * off (the rule at the foot of this file), and the mark is simply there for 5 s.
- */
-[data-home] .kit-card[data-fresh] {
-  background: var(--accent-soft); border-color: var(--accent-strong); box-shadow: 0 0 0 3px var(--accent-strong), var(--hm-shadow-lift);
-  animation:
-    kit-ring-draw var(--motion-home-ring-draw-ms, 0ms) var(--motion-home-ring-draw-ease, ease-out) both,
-    kit-ring-fade var(--motion-home-ring-fade-ms, 0ms) var(--motion-home-ring-fade-delay, 0ms) var(--motion-home-ring-fade-ease, ease-in) forwards;
-}
-[data-home] .kit-card[data-fresh]:not([data-selected]) {
-  animation:
-    kit-ring-draw var(--motion-home-ring-draw-ms, 0ms) var(--motion-home-ring-draw-ease, ease-out) both,
-    kit-ring-fade var(--motion-home-ring-fade-ms, 0ms) var(--motion-home-ring-fade-delay, 0ms) var(--motion-home-ring-fade-ease, ease-in) forwards,
-    kit-fill-fade var(--motion-home-ring-fade-ms, 0ms) var(--motion-home-ring-fade-delay, 0ms) var(--motion-home-ring-fade-ease, ease-in) forwards;
-}
-[data-home] .kit-card[data-size="small"][data-fresh] {
-  animation:
-    kit-arrive var(--motion-home-arrive-ms, 0ms) var(--motion-home-arrive-ease, ease-out) both,
-    kit-ring-draw var(--motion-home-ring-draw-ms, 0ms) var(--motion-home-ring-draw-ease, ease-out) both,
-    kit-ring-fade var(--motion-home-ring-fade-ms, 0ms) var(--motion-home-ring-fade-delay, 0ms) var(--motion-home-ring-fade-ease, ease-in) forwards,
-    kit-fill-fade var(--motion-home-ring-fade-ms, 0ms) var(--motion-home-ring-fade-delay, 0ms) var(--motion-home-ring-fade-ease, ease-in) forwards;
-}
-[data-home] .kit-card[data-size="small"][data-fresh][data-selected] {
-  animation:
-    kit-arrive var(--motion-home-arrive-ms, 0ms) var(--motion-home-arrive-ease, ease-out) both,
-    kit-ring-draw var(--motion-home-ring-draw-ms, 0ms) var(--motion-home-ring-draw-ease, ease-out) both,
-    kit-ring-fade var(--motion-home-ring-fade-ms, 0ms) var(--motion-home-ring-fade-delay, 0ms) var(--motion-home-ring-fade-ease, ease-in) forwards;
-}
 @keyframes kit-arrive { from { opacity: 0; transform: translateY(var(--motion-home-arrive-travel, 0px)); } to { opacity: 1; transform: none; } }
-@keyframes kit-ring-draw { from { box-shadow: 0 0 0 0 var(--accent-strong), var(--hm-shadow-lift); } to { box-shadow: 0 0 0 3px var(--accent-strong), var(--hm-shadow-lift); } }
-@keyframes kit-ring-fade { from { box-shadow: 0 0 0 3px var(--accent-strong), var(--hm-shadow-lift); } to { box-shadow: 0 0 0 3px transparent, var(--hm-shadow); } }
-@keyframes kit-fill-fade { from { background-color: var(--accent-soft); border-color: var(--accent-strong); } to { background-color: var(--surface); border-color: var(--hm-border); } }
-
-/* ---- The tray: the list of one kind of one agent, directly under that tile's row of the grid and as wide as the row. It opens by letting its grid row grow from 0 to
-   its own height (the accordion token, 160 ms), pushing the later rows down; what is inside is clipped while it grows, and cannot be reached or seen while it is closed. */
-[data-home] .kit-tray { display: grid; grid-template-rows: 0fr; position: relative; transition: grid-template-rows var(--motion-home-accordion-ms, 0ms) var(--motion-home-accordion-ease, ease); }
-[data-home] .kit-tray[data-open] { grid-template-rows: 1fr; }
-[data-home] .kit-tray-inner { min-height: 0; overflow: hidden; visibility: hidden; transition: visibility 0s linear var(--motion-home-accordion-ms); }
-/* Opening shows the rows at once (the change takes the transition of the style it goes to, which is none); closing keeps them until the row has shrunk. */
-[data-home] .kit-tray[data-open] > .kit-tray-inner { visibility: visible; transition: none; }
-[data-home] .kit-tray-body { box-sizing: border-box; display: flex; flex-direction: column; align-items: flex-start; gap: var(--hm-space-2); margin-bottom: var(--hm-space-4); padding: var(--hm-space-3); background: var(--surface-2); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); }
-[data-home] .kit-tray-list { list-style: none; margin: 0; padding: 0; width: 100%; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--hm-tray-col)), 1fr)); gap: var(--hm-space-2) var(--hm-space-3); }
-[data-home] .kit-tray-list > li { min-width: 0; display: flex; }
-/* ---- Shelf */
-[data-home] .kit-shelf { display: flex; flex-direction: column; gap: var(--hm-space-2); align-items: flex-start; }
-[data-home] .kit-shelf-head { display: flex; flex-direction: column; align-items: flex-start; gap: var(--hm-space-1); }
-[data-home] .kit-shelf-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--hm-row-w)), 1fr)); gap: var(--hm-space-2); width: 100%; }
-[data-home] .kit-shelf-list > li { min-width: 0; display: flex; }
 
 /* ---- Tooltip: the words of an icon-only button, or the reason a button is held back. It sits 10 px clear of the button on the side asked for (left by default, in the free
    room beside a button at the right of a bar), takes no pointer, and is 14 px or more. It fades in with a 4 px slide from the button over the overlay time and out faster;
