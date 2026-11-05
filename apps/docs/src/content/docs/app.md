@@ -107,13 +107,14 @@ Every save keeps a save point, which is a copy of the harness as it was. The fir
 
 ## Export and import
 
-Press **Export** in the header of the Builder to write the saved harness to one file. Press **Import from a file** in the Folders block of Harnesses, or in the empty state when you have no harness, to read such a file. Each opens a sheet that shows what the file holds, and writes nothing until you tick the boxes and approve. Import goes only into a folder with no harness, or an empty one. [Share a harness](/docs/guides/share-a-harness/) covers what the file holds, what to read first, and the limits.
+Press **Export** in the header of the Builder to write the saved harness to one file. Press **Import from a file** in the Folders block of Harnesses, or in the empty state when you have no harness, to read such a file. Each opens a sheet that shows what the file holds. Import writes nothing until you tick the boxes and approve. Export asks for a tick only when the files hold a path from this computer. Import goes only into a folder with no harness, or an empty one. [Share a harness](/docs/guides/share-a-harness/) covers what the file holds, what to read first, and the limits.
 
 ## See everything in one graph
 
 The Overview is the first screen after the read. It shows every place Bowerloom found, in one graph or a list: your folders, the agents, skills, and tools in each, and the sets of notes they use. Every place starts closed, except your home, which is open. When there are more than 40 parts, the home starts closed too. Press **Expand** or **Collapse** on a place, or **Expand all** or **Collapse all**.
 
-- A place marked **In Bowerloom** already has a harness. **Open in builder** opens it. A place marked **Not in Bowerloom yet** has files but no harness.
+- A place under your home folder marked **In Bowerloom** has a harness, and **Open in builder** opens it. Every other place has **Choose this folder**. It asks you to pick that folder. If you pick another, the app says "That is not the folder shown" and adds nothing.
+- A place marked **Not in Bowerloom yet** has files but no harness. A folder outside your home folder always reads this way, even if it holds a harness.
 - Select a part to see what it uses, what uses it, and the other places where it is found. A part that runs code says so.
 - Use **Graph or list** to switch the view. The arrow keys move, Enter selects, and Escape clears.
 - The Overview is read-only. It changes no file. Open a place in the builder to change it.

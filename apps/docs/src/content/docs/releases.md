@@ -28,7 +28,7 @@ This release brings one setup for two engines. You keep one harness definition i
 - Install writes a Codex permission profile for the path rules and sandbox rules of a harness. [Codex and Claude Code](/docs/harnesses/#the-codex-permission-profile) explains it.
 - The desktop app is a main part of this release, next to the command line, and it is a beta. It has the Builder, the save step, Save points, Go back, and Set aside. Apple did not sign it. [Desktop app (beta)](/docs/app/) gives the steps to open it.
 - Notes and the Notes keeper kit let agents read a folder of notes, and add a ready-made agent that looks after it. [Notes and the Notes keeper](/docs/guides/notes/) explains them.
-- Export and Import move a harness in one file, in the app and with `bowerloom harness export` and `bowerloom harness import`. The file holds no secret value and no notes folder path. Import writes only into a folder whose harness is missing or empty. [Share a harness](/docs/guides/share-a-harness/) explains them.
+- Export and Import move a harness in one file, in the app and with `bowerloom harness export` and `bowerloom harness import`. The file holds no secret value that Bowerloom can find and no notes folder path. Import writes only into a folder whose harness is missing or empty. [Share a harness](/docs/guides/share-a-harness/) explains them.
 - The Overview in the app shows every place Bowerloom found in one read-only graph. [Desktop app (beta)](/docs/app/#see-everything-in-one-graph) describes it.
 - The npm package is not published yet. The install command arrives when the beta publishes.
 

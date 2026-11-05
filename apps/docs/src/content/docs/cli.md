@@ -286,7 +286,7 @@ Every command takes `--dir <absolute-folder>`. The default is the working folder
 | `merge` | Moves the text of `CLAUDE.md` into `.bowerloom/instructions/AGENTS.md`. `CLAUDE.md` does not change until the next install, which makes it the one line `@AGENTS.md`. |
 | `drift` | Lists the files that Bowerloom wrote and that changed since. With `--check` it fails when a file changed, when `CLAUDE.md` does not follow `AGENTS.md`, or when nothing is installed. |
 | `remove` | Puts back every file that install replaced, and deletes the files that install created. |
-| `export` | Writes the harness to one new bundle file, named by `--output`. It replaces a file only with `--replace`. The file holds no secret value and no notes folder path. |
+| `export` | Writes the harness to one new bundle file, named by `--output`. It replaces a file only with `--replace`. The file holds no secret value that Bowerloom can find and no notes folder path. |
 | `import` | Reads a bundle file and writes it into a folder whose harness is missing or empty. It installs nothing, and the command line keeps no save point for it. A file from another person is data: read the plan first. |
 | `recover` | Finishes or takes back a run that stopped part way. `--keep`, `--restore-mode`, and `--record-mode` settle changed files and modes. `--adoption` settles an adoption or a merge. |
 
