@@ -2,7 +2,7 @@
 // The build replaces that line before Markdown runs: with figure markup for the page, or with plain text for the
 // Markdown routes, the llms files, and search. The ids come from src/visuals/manifest.json. An id the manifest does
 // not hold stops the build and names the page and the id.
-import {readFile} from 'node:fs/promises';
+import {readFile, open} from 'node:fs/promises';
 import {sourcePaths} from './build-paths.mjs';
 
 const ID = '[a-z0-9]+(?:-[a-z0-9]+)*';
@@ -14,11 +14,26 @@ const escapeHtml = value => String(value).replace(/&/g, '&amp;').replace(/</g, '
 export const themeFiles = id => THEMES.map(theme => `${id}-${theme}.webp`);
 
 /** The manifest builder B writes. A missing file is an empty manifest, so a docs build with no visuals still passes. */
-export async function readVisualManifest(url = sourcePaths.visuals) {
+export async function readVisualManifest(url = sourcePaths.visuals, publicUrl = sourcePaths.publicVisuals) {
   let text;
   try { text = await readFile(url, 'utf8'); } catch (error) { if (error.code === 'ENOENT') return {shots: {}, terminals: {}}; throw error; }
   const parsed = JSON.parse(text);
-  return validateManifest({shots: parsed.shots ?? {}, terminals: parsed.terminals ?? {}});
+  const manifest = validateManifest({shots: parsed.shots ?? {}, terminals: parsed.terminals ?? {}});
+  for (const id of Object.keys(manifest.shots)) for (const theme of THEMES) await checkImage(id, theme, new URL(`${id}-${theme}.webp`, publicUrl));
+  return manifest;
+}
+
+/** A shot file must exist, hold bytes, and start with a WebP header (RIFF, a size, then WEBP). */
+async function checkImage(id, theme, url) {
+  let handle;
+  try { handle = await open(url, 'r'); } catch (error) { if (error.code === 'ENOENT') throw new Error(`Visual "${id}": the ${theme} image is missing (public/visuals/${id}-${theme}.webp).`); throw error; }
+  try {
+    const {size} = await handle.stat();
+    if (size === 0) throw new Error(`Visual "${id}": the ${theme} image is empty (public/visuals/${id}-${theme}.webp).`);
+    const head = Buffer.alloc(12);
+    await handle.read(head, 0, 12, 0);
+    if (head.toString('latin1', 0, 4) !== 'RIFF' || head.toString('latin1', 8, 12) !== 'WEBP') throw new Error(`Visual "${id}": the ${theme} image is not a WebP file (public/visuals/${id}-${theme}.webp).`);
+  } finally { await handle.close(); }
 }
 
 const KINDS = ['cmd', 'out', 'err'];
@@ -27,12 +42,16 @@ const oneLine = (value, id, field) => {
 };
 const checkLines = (id, item) => {
   if (!Array.isArray(item?.lines)) throw new Error(`Visual "${id}": a terminal needs a lines list.`);
+  for (const line of item.lines) if (typeof line?.text !== 'string' || /[\r\n]/.test(line.text)) throw new Error(`Visual "${id}": each line text must be one line of text with no line break.`);
   for (const line of item.lines) if (!KINDS.includes(line.kind)) throw new Error(`Visual "${id}": line kind ${JSON.stringify(line.kind)} is not one of ${KINDS.join(', ')}.`);
 };
 /** Refuses a manifest whose text could add Markdown or markup to the text form, or whose line kind is not known. Returns the manifest. */
 export function validateManifest(manifest) {
   for (const [id, item] of [...Object.entries(manifest.shots), ...Object.entries(manifest.terminals)]) if (!item || typeof item !== 'object') throw new Error(`Visual "${id}": the entry must be an object.`);
-  for (const [id, item] of Object.entries(manifest.shots)) { oneLine(item.alt, id, 'alt'); oneLine(item.caption, id, 'caption'); }
+  for (const [id, item] of Object.entries(manifest.shots)) {
+    oneLine(item.alt, id, 'alt'); oneLine(item.caption, id, 'caption');
+    for (const field of ['width', 'height']) if (!Number.isInteger(item[field]) || item[field] <= 0) throw new Error(`Visual "${id}": ${field} must be a positive whole number.`);
+  }
   for (const [id, item] of Object.entries(manifest.terminals)) { oneLine(item.title, id, 'title'); oneLine(item.caption, id, 'caption'); checkLines(id, item); }
   return manifest;
 }
@@ -82,7 +101,7 @@ export function applyVisuals(markdown, {file, manifest, mode, base = '/docs'}) {
     if (fence) return line;
     const match = line.match(DIRECTIVE);
     if (!match) {
-      if (ATTEMPT.test(line)) throw new Error(`Malformed visual directive in ${file}: ${line.trim()}. Write it as ::visual{id="some-id"}.`);
+      if (ATTEMPT.test(line) || line.includes('::visual{')) throw new Error(`Malformed visual directive in ${file}: ${line.trim()}. Write it as ::visual{id="some-id"}.`);
       return line;
     }
     return mode === 'html' ? renderVisualHtml(match[1], manifest, {file, base}) : renderVisualText(match[1], manifest, {file});

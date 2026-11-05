@@ -29,7 +29,11 @@ async function copyCommands(button, panel, host) {
   const label = button.dataset.label ??= button.textContent;
   const status = panel.querySelector('.vt-status');
   const say = (text, announce) => { button.textContent = text; if (status) status.textContent = announce; };
-  try { await host.navigator.clipboard.writeText(commandsFromPanel(panel)); say('Copied', 'Commands copied'); }
+  try {
+    const text = commandsFromPanel(panel);
+    if (!text) throw new Error('no commands');
+    await host.navigator.clipboard.writeText(text); say('Copied', 'Commands copied');
+  }
   catch { say('Select to copy', 'Select the commands to copy'); }
   host.setTimeout(() => { button.textContent = label; if (status) status.textContent = ''; }, 2000);
 }
@@ -102,8 +106,9 @@ export function mountVisuals(root, doc = document, {base = '/docs', host = doc.d
     const {dialog, sync} = viewer;
     let watcher = null;
     if (sync) { sync(); watcher = new host.MutationObserver(sync); watcher.observe(doc.documentElement, {attributes: true, attributeFilter: ['data-theme']}); }
-    dialog.addEventListener('close', () => { watcher?.disconnect(); opener.focus(); }, {once: true});
-    dialog.showModal();
+    const done = new AbortController();
+    dialog.addEventListener('close', () => { watcher?.disconnect(); opener.focus(); }, {once: true, signal: done.signal});
+    try { dialog.showModal(); } catch (error) { done.abort(); watcher?.disconnect(); throw error; }
   };
   const click = event => {
     const copy = event.target.closest?.('.vt-copy');

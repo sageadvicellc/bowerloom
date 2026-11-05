@@ -10,7 +10,9 @@ import {createServer} from 'vite';
 import {applyVisuals, terminalCopyText, readVisualManifest, renderVisualHtml, renderVisualText, validateManifest, commandsFromPanel, themeFiles} from '../src/lib/visuals.mjs';
 import {prepareVisualSource, createDocsRenderer, searchIndexes, unsafeContent} from '../src/lib/content.mjs';
 import {createServer as createHttpServer} from 'node:http';
-import {readdir} from 'node:fs/promises';
+import {readdir, mkdtemp, mkdir, writeFile, unlink, rmdir} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {pathToFileURL} from 'node:url';
 import {extname} from 'node:path';
 
 const manifest = JSON.parse(await readFile(new URL('./fixtures/visuals-manifest.json', import.meta.url), 'utf8'));
@@ -387,7 +389,9 @@ test('on a built page the system theme decides, and only that theme loads', asyn
       const other = scheme === 'dark' ? 'light' : 'dark';
       const page = await (await browser.newContext({colorScheme: scheme, viewport: {width: 1280, height: 900}})).newPage();
       const seen = [];
+      const answers = [];
       page.on('request', request => { if (request.url().includes('/docs/visuals/')) seen.push(request.url()); });
+      page.on('response', response => { if (/\/docs\/(visuals|frame)\//.test(response.url())) answers.push([response.url(), response.status()]); });
       await page.goto(`http://127.0.0.1:${http.address().port}${pagePath}`);
       await page.waitForSelector('.visual-enlarge:not([hidden])');
       for (const figure of await page.locator('.visual-shot').all()) await figure.scrollIntoViewIfNeeded();
@@ -395,10 +399,17 @@ test('on a built page the system theme decides, and only that theme loads', asyn
       assert(seen.length > 0, `${scheme}: a shot loaded`);
       assert(seen.every(url => url.endsWith(`-${scheme}.webp`)), `${scheme}: ${seen.join()}`);
       assert(!seen.some(url => url.endsWith(`-${other}.webp`)));
+      const frameLoaded = page.waitForResponse(response => response.url().includes('/docs/frame/frame-'));
       await page.locator('.visual-shot .visual-enlarge').first().click();
       await page.waitForSelector('dialog.visual-dialog[open] .visual-full');
+      await frameLoaded;
       await page.waitForLoadState('networkidle');
       assert(seen.every(url => url.endsWith(`-${scheme}.webp`)), `${scheme} after opening: ${seen.join()}`);
+      await page.waitForFunction(() => getComputedStyle(document.querySelector('dialog[open] .visual-device'), '::after').borderImageSource.includes('frame-'));
+      await page.waitForLoadState('networkidle');
+      assert(answers.some(([url]) => url.includes(`/docs/frame/frame-${scheme}.webp`)), `${scheme}: the frame file was requested under /docs: ${answers.map(a => a[0]).join()}`);
+      assert(answers.some(([url]) => url.includes('/docs/visuals/')), 'a shot response was seen');
+      assert.deepEqual(answers.filter(([, status]) => status !== 200), [], `${scheme}: every visuals and frame response is 200`);
     }
   } finally { await browser?.close(); await new Promise(done => http.close(done)); }
 });
@@ -415,4 +426,79 @@ test('the build refuses a page whose visual carries a private path or a file lin
 test('a malformed manifest entry fails with the visual named', () => {
   assert.throws(() => validateManifest({shots: {'odd-shot': null}, terminals: {}}), /Visual "odd-shot"/);
   assert.throws(() => validateManifest({shots: {}, terminals: {'odd-term': {title: 'x', caption: 'y'}}}), /Visual "odd-term": a terminal needs a lines list/);
+});
+
+test('a shot needs a positive whole width and height', () => {
+  const shot = extra => ({shots: {s1: {alt: 'a', caption: 'c', width: 10, height: 10, ...extra}}, terminals: {}});
+  validateManifest(shot({}));
+  for (const bad of [{width: undefined}, {width: 0}, {height: -1}, {height: 1.5}, {width: '2200'}, {height: NaN}])
+    assert.throws(() => validateManifest(shot(bad)), error => /s1/.test(error.message) && /width|height/.test(error.message), JSON.stringify(bad));
+});
+test('every terminal line text is one line', () => {
+  const term = text => ({shots: {}, terminals: {t1: {title: 't', caption: 'c', lines: [{kind: 'out', text}]}}});
+  validateManifest(term('fine'));
+  validateManifest(term(''));
+  for (const bad of ['a\nb', 'a\rb', undefined, 5]) assert.throws(() => validateManifest(term(bad)), /t1/);
+});
+test('the manifest reader checks the image files behind each shot', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'visuals-'));
+  const pub = join(dir, 'public');
+  await mkdir(pub);
+  const manifestFile = join(dir, 'manifest.json');
+  await writeFile(manifestFile, JSON.stringify({shots: {'one-shot': {alt: 'a', caption: 'c', width: 16, height: 10}}, terminals: {}}));
+  const webp = Buffer.concat([Buffer.from('RIFF'), Buffer.from([4, 0, 0, 0]), Buffer.from('WEBP'), Buffer.from('VP8 ')]);
+  const read = () => readVisualManifest(pathToFileURL(manifestFile), pathToFileURL(pub + '/'));
+  const files = ['one-shot-light.webp', 'one-shot-dark.webp'].map(name => join(pub, name));
+  try {
+    await assert.rejects(read(), error => /one-shot/.test(error.message) && /light/.test(error.message) && /missing/i.test(error.message));
+    await writeFile(files[0], webp);
+    await assert.rejects(read(), error => /one-shot/.test(error.message) && /dark/.test(error.message));
+    await writeFile(files[1], Buffer.alloc(0));
+    await assert.rejects(read(), error => /dark/.test(error.message) && /empty/i.test(error.message));
+    await writeFile(files[1], Buffer.from('<html>not an image, just a long page of text</html>'));
+    await assert.rejects(read(), error => /dark/.test(error.message) && /WebP/.test(error.message));
+    await writeFile(files[1], webp);
+    assert.deepEqual(Object.keys((await read()).shots), ['one-shot']);
+  } finally {
+    for (const file of files) await unlink(file).catch(() => {});
+    await unlink(manifestFile).catch(() => {});
+    await rmdir(pub).catch(() => {}); await rmdir(dir).catch(() => {});
+  }
+});
+test('a visual line inside a blockquote, a list, or a sentence fails instead of showing as text', () => {
+  for (const bad of ['> ::visual{id="app-builder"}', '- ::visual{id="app-builder"}', '1. ::visual{id="app-builder"}', 'See ::visual{id="app-builder"} here', '    ::visual{id="app-builder"}'])
+    assert.throws(() => html(bad), /visual directive/i, bad);
+  assert.equal(html('```\n> ::visual{id="app-builder"}\n```'), '```\n> ::visual{id="app-builder"}\n```');
+});
+
+dom('Copy says Select to copy when there is no command to copy', async ({browser, url}) => {
+  const {context, tab} = await open(browser, url);
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], {origin: new URL(url).origin}).catch(() => {});
+  await tab.evaluate(() => { for (const node of document.querySelectorAll('.vt-cmd')) node.remove(); });
+  await tab.locator('.vt-copy').click();
+  await tab.waitForFunction(() => document.querySelector('.vt-copy').textContent === 'Select to copy');
+  assert.match(await tab.locator('.vt-status').innerText(), /Select the commands to copy/);
+  await context.close();
+});
+dom('a showModal that throws leaves no stale close listener', async ({browser, url}) => {
+  const {context, tab} = await open(browser, url);
+  await tab.evaluate(() => {
+    window.__focus = 0;
+    const button = document.querySelector('.visual-shot .visual-enlarge');
+    const focus = button.focus.bind(button);
+    button.focus = () => { window.__focus++; focus(); };
+    window.__real = HTMLDialogElement.prototype.showModal;
+    HTMLDialogElement.prototype.showModal = () => { throw new Error('refused'); };
+  });
+  tab.on('pageerror', () => {});
+  await tab.locator('.visual-shot .visual-enlarge').click();
+  await tab.evaluate(() => { HTMLDialogElement.prototype.showModal = window.__real; });
+  await tab.locator('.visual-shot .visual-enlarge').click();
+  await tab.waitForSelector('dialog.visual-dialog[open]');
+  await tab.keyboard.press('Escape');
+  await tab.waitForSelector('dialog.visual-dialog[open]', {state: 'detached'});
+  await tab.waitForFunction(() => window.__focus >= 1);
+  await tab.waitForTimeout(150);
+  assert.equal(await tab.evaluate(() => window.__focus), 1);
+  await context.close();
 });
