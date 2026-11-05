@@ -39,7 +39,7 @@
 [data-home] .hx-state[data-tone="warn"] .hx-dot, [data-home] .hx-dot[data-tone="warn"] { background: var(--hm-amber); }
 [data-home] .hx-state[data-tone="bad"] .hx-dot, [data-home] .hx-dot[data-tone="bad"] { background: var(--hm-ac-red); }
 [data-home] .hx-state[data-tone="quiet"] .hx-dot, [data-home] .hx-dot[data-tone="quiet"] { background: var(--hx-quiet); }
-[data-home] .hx-state[data-tone="good"] .hx-dot, [data-home] .hx-dot[data-tone="good"] { background: var(--accent); }
+[data-home] .hx-state[data-tone="good"] .hx-dot, [data-home] .hx-dot[data-tone="good"] { background: var(--hm-ac-green); }
 [data-home] { --hx-quiet: #8e7e84; }
 [data-theme="dark"] [data-home], [data-home][data-theme="dark"] { --hx-quiet: #a89ba1; }
 

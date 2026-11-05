@@ -21,15 +21,19 @@ const SIZE = { width: 1280, height: 820 };
 let h: Harness;
 const page = (): Page => h.page;
 
-/** A style sheet to lay over every picture, to compare a proposed look with the current one: SCREEN_EXTRA_CSS names a file, which is copied into the built page after the start. */
+/** A style sheet to lay over every picture, to compare a proposed look with the current one: SCREEN_EXTRA_CSS names a .css file, which is copied into the built page (dist, never the source) after the start. A test-only switch. */
 const EXTRA_FILE = process.env.SCREEN_EXTRA_CSS ?? '';
 const EXTRA = EXTRA_FILE === '' ? '' : basename(EXTRA_FILE);
+if (EXTRA !== '' && !/^[\w.-]+\.css$/.test(EXTRA)) throw new Error('SCREEN_EXTRA_CSS must name a .css file. It is a test-only switch.');
 
 test.beforeAll(async () => {
   test.setTimeout(240_000); mkdirSync(OUT, { recursive: true }); h = await launchHarness(); await page().setViewportSize(SIZE);
   if (EXTRA_FILE !== '') copyFileSync(EXTRA_FILE, join(desktop, 'dist', 'renderer', EXTRA));
 });
-test.afterAll(async () => { try { await h?.app.close(); } finally { removeTempDirs(); } });
+test.afterAll(async () => {
+  if (missed.length > 0) console.warn(`The screen tour took no picture after these buttons, which it did not find: ${missed.join(', ')}`);
+  try { await h?.app.close(); } finally { removeTempDirs(); }
+});
 
 /** Writes `<name>-light.png` and `<name>-dark.png` of the page as it is now. */
 async function snap(p: Page, name: string): Promise<void> {
@@ -45,10 +49,13 @@ async function snap(p: Page, name: string): Promise<void> {
   await p.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });
 }
 
-/** Presses the first button with this name, when there is one. A screen without it is left as it is, and the picture shows that. */
+/** The buttons the tour looked for and did not find; each one costs a picture. They are said at the end, so a renamed button never drops a screen quietly. */
+const missed: string[] = [];
+
+/** Presses the first button with this name, when there is one that can be pressed. Otherwise it notes the miss and returns false. */
 async function press(p: Page, name: string | RegExp): Promise<boolean> {
   const button = p.getByRole('button', { name, exact: typeof name === 'string' }).first();
-  if (await button.count() === 0 || !(await button.isVisible()) || !(await button.isEnabled()) || await button.getAttribute('aria-disabled') === 'true') return false;
+  if (await button.count() === 0 || !(await button.isVisible()) || !(await button.isEnabled()) || await button.getAttribute('aria-disabled') === 'true') { missed.push(String(name)); return false; }
   await button.click();
   return true;
 }

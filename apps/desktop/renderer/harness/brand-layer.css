@@ -3,7 +3,7 @@
  * Newsreader names pages, sheets and things; Manrope carries the words; mono marks small labels. The action is plum and turns ink under the pointer. A dashed
  * stitch marks the place you are on. The sidebar is a tinted source list with a raised row for the current place, the details sit in a floating card, cards and
  * every button, tag and chip has the site's one sharp corner, and a sheet is a framed panel over a soft blur.
- * Colours come from tokens.css and brand.css only. This sheet loads last (renderer/harness/mount.tsx), so a rule here wins a tie with the sheet that first drew the part.
+ * Colours come from tokens.css and brand.css, except the mascot's side disks and the shadow and scrim tints, which are the site's own values. This sheet loads last (renderer/harness/mount.tsx), so a rule here wins a tie with the sheet that first drew the part.
  * Motion: the app's own tokens (renderer/motion-tokens.ts), which are 0 when the person asks for less motion. Only the stitch moves, and only under the pointer.
  */
 
@@ -33,7 +33,7 @@
 [data-home] .hxf-leaf { margin-bottom: var(--hm-space-3); }
 
 /* ---- State dots: a done or good state is foliage, as the site's "Exact"; the action colour is kept for actions. */
-[data-home] .hx-dot, [data-home] .hx-state[data-tone="good"] .hx-dot, [data-home] .hx-dot[data-tone="good"] { background: var(--hm-ac-green); }
+[data-home] .hx-dot { background: var(--hm-ac-green); }
 
 /* ---- Buttons. Every button, tag and chip has the site's one sharp corner; nothing is a pill. A text button is filled (the action: plum, ink under the pointer) or
    outlined (it takes the action colour under the pointer). An icon button has no box at all: no fill, no edge and no shadow at rest, a 44 px hit area, and under the
@@ -51,7 +51,7 @@
 [data-home] .kit-button[data-icon-only]::before { content: ''; position: absolute; inset: calc((var(--hm-control-h) - var(--hm-hit)) / 2); }
 [data-home] .kit-button[data-icon-only]:not([data-variant="primary"]):not([aria-disabled="true"]):hover { color: var(--accent); background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
 /* A pressed or open icon button says so with the action colour on its icon and the same faint tint; there is still no box. */
-[data-home] .kit-button[data-icon-only]:not([data-variant="primary"]):is([aria-pressed="true"], [aria-expanded="true"]) { color: var(--accent); background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
+[data-home] .kit-button[data-icon-only]:not([data-variant="primary"]):not([aria-disabled="true"]):is([aria-pressed="true"], [aria-expanded="true"]) { color: var(--accent); background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
 [data-home] .kit-button[data-icon-only]:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; border-radius: var(--hm-radius-sharp); }
 [data-home] .hx-seg, [data-home] .hx-seg .kit-button[data-icon-only], [data-home] .hx-tab { border-radius: var(--hm-radius-sharp); }
 [data-home] .hm-nav-item { border-radius: var(--hm-radius-sharp); }
