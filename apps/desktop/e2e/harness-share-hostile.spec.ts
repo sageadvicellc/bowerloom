@@ -204,7 +204,8 @@ test('an export asked to save inside the harness folder is refused in words, wri
     await expect(refusal).toHaveAttribute('data-refusal', 'EXPORT_TARGET_IN_HARNESS');
     const words = (await refusal.innerText()).replace(/\s+/g, ' ');
     expect(words).not.toContain(home.home);
-    await expect(s.locator('[data-next-step]')).toHaveText('Choose the place to save again, outside the harness folder.');
+    expect(words).toContain('Choose a place outside it, such as your Desktop. Nothing was written.');
+    await expect(s.locator('[data-next-step]')).toHaveCount(0);
     expect(existsSync(inside), 'no file was written').toBe(false);
     expect(readTree(folder), 'the folder is as it was').toEqual(before);
     expect(treeShape(folder), 'no folder or mode changed').toEqual(shape);
