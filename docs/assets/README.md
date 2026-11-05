@@ -9,7 +9,7 @@ The working README uses the wave as a reversible preview. The planner and ready 
 The maker illustration and workshop loop describe the visual world. They do not show software execution or prove product capabilities.
 The loop stays inside a collapsed details section, with a still image outside it. GitHub does not expose reliable GIF motion preferences.
 
-The active badges describe current package metadata. They contain no coverage or CI result claim.
+The active badges are local, flat, monospace tags in the for-the-badge style, drawn by hand so GitHub needs no external service. They describe current package metadata and the two supported engines. They contain no coverage or CI result claim.
 The former private-access badge remains as a historical asset. The current README does not use it.
 The MIT badge states the package declaration. It does not claim that a separate license file exists.
 

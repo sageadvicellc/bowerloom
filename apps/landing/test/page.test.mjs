@@ -16,11 +16,13 @@ const sources = async () => {
   return Promise.all(names.map(async name => [name, await read('src/' + name)]));
 };
 
-test('the hero carries the approved 0.8 message', () => {
+test('the hero carries the revised 0.8 message: a tag, the nest headline, and two short lines', () => {
   assert.equal(hero.Eyebrow, 'Open beta');
-  assert.equal(hero.H1, 'One setup, two engines');
-  assert.ok(hero.Body.startsWith('Define your skills, agents, tools, rules, and context once. Bowerloom installs them into Claude Code and Codex.'));
-  assert.ok(hero.Body.endsWith('what each engine can carry and what it cannot.'));
+  assert.equal(hero.H1, 'A cozy nest for your agents');
+  assert.ok(hero.Body.includes('Claude Code and Codex'));
+  assert.equal(hero.Detail, 'Before it writes a file, it shows what each engine can carry and what it cannot.');
+  for (const line of [hero.Body, hero.Detail]) assert.ok(line.split(/[.!?]\s/).every(sentence => sentence.split(/\s+/).length <= 20), line);
+  assert.ok(hero.Body.length + hero.Detail.length < 220, 'the description is one or two short lines');
   assert.equal(hero['Primary CTA'], 'Get the app (beta)');
   assert.equal(hero['Secondary link'], 'Install the command line');
   assert.equal(hero.Note, 'Free and open source under the MIT license. For macOS.');
@@ -39,11 +41,10 @@ test('the download button goes to the releases page and names no asset', () => {
 
 test('the page structure follows the approved outline', () => {
   assert.equal(whatItDoes.heading, 'Keep one definition. Install it everywhere.');
-  assert.equal(whatItDoes.features.length, 4);
-  assert.deepEqual(whatItDoes.features.map(feature => feature.title), [
-    'See what each engine can carry', 'Read the plan before anything is written', 'Go back', 'Start from what you have',
-  ]);
-  assert.deepEqual(howItWorks.steps.map(step => step.title), ['Adopt', 'Preview', 'Install and watch']);
+  assert.deepEqual(whatItDoes.features.map(feature => feature.title), ['See what each engine can carry']);
+  assert.deepEqual(whatItDoes.journey.steps.map(step => step.title), ['Start from what you have', 'Read the plan before anything is written', 'Go back']);
+  assert.deepEqual(howItWorks.steps.map(step => step.title), ['Adopt the files you already have', 'Preview what each engine can carry', 'Approve the plan, then watch for drift']);
+  for (const step of howItWorks.steps) assert.ok(step.title.split(/\s+/).length >= 3 && step.title.split(/\s+/).length <= 8, `${step.title}: a short, clear phrase`);
   assert.equal(howItWorks.boundary, 'Setup does not start workers, grant runtime access, or authorize connected actions.');
   assert.equal(app.heading, 'The app (beta)');
   assert.deepEqual(app.features.map(feature => feature.title), ['Builder', 'Save points', 'Notes keeper']);
@@ -62,16 +63,19 @@ test('the engines section says engines and the preview switch is exact', () => {
   assert.deepEqual(engines.preview, ['OpenCode', 'Pi', 'DeepSeek Harness']);
 });
 
-test('the npm command shows only after the release record says it is published', () => {
+test('the install command always shows, and the note about npm shows only until the release record says the package is published', () => {
   const before = installView(false);
-  assert.equal(before.command, null);
-  assert.match(before.text, /arrives when the beta publishes/);
+  assert.equal(before.command, release.npm.installCommand);
+  assert.equal(before.pending, true);
+  assert.match(before.pendingNote, /not on npm yet/);
+  assert.doesNotMatch(JSON.stringify(before), /arrives when the beta publishes/);
   const after = installView(true);
   assert.equal(after.command, release.npm.installCommand);
+  assert.equal(after.pending, false);
+  assert.equal(after.pendingNote, null);
   assert.equal(installCommand, release.npm.installCommand);
-  assert.doesNotMatch(after.text, /arrives when the beta publishes/);
   assert.match(after.text, /Do not use `npm update -g`\./);
-  assert.equal(installView().command === null, !installAvailable);
+  assert.equal(installView().pending, !installAvailable);
   assert.equal(installAvailable, release.npm.published && release.state === 'published');
 });
 
@@ -140,13 +144,13 @@ test('every navigation link and hero link points at a section that exists', asyn
   const heroSource = await read('src/Hero.tsx');
   const ids = new Set([...(sections + app + heroSource).matchAll(/\bid="([^"]+)"/g)].map(match => match[1]));
   const targets = [...(nav + app + sections).matchAll(/href="#([^"]+)"/g), ...heroSource.matchAll(/'#([a-z-]+)'/g)].map(match => match[1]);
-  assert.ok(targets.includes('install-cli') && targets.includes('command-line'), 'the hero names both command line targets');
+  assert.ok(targets.includes('install-cli'), 'the hero command line link goes to the install command');
   assert.ok(targets.length >= 5);
   for (const target of targets) assert.ok(ids.has(target), `#${target} has a section`);
 });
 
 test('every screenshot slot is used once, has one image per theme, and says what its screen shows', async () => {
-  const sections = await read('src/Sections.tsx');
+  const sections = (await read('src/Sections.tsx')) + (await read('src/Hero.tsx'));
   assert.equal(new Set(screenshotSlots.map(slot => slot.id)).size, screenshotSlots.length);
   assert.ok(screenshotSlots.length >= 4);
   for (const slot of screenshotSlots) {
@@ -201,16 +205,12 @@ test('new motion follows the principles: no looping, only transform and opacity,
 
 const links = html => [...html.matchAll(/<a [^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g)].map(match => ({ href: match[1], text: match[2].replace(/<[^>]+>/g, '').trim() }));
 
-test('the page renders: both buttons go to the releases page, and the command line link follows the npm gate', async () => {
+test('the page renders: both buttons go to the right place, and the command line link goes to the install command', async () => {
   const page = await loadPage();
   try {
-    const heroLinks = available => links(renderToStaticMarkup(createElement(page.hero.default, { available })));
-    const unpublished = heroLinks(false), published = heroLinks(true);
-    for (const list of [unpublished, published]) {
-      assert.equal(list.find(link => link.text.startsWith(hero['Primary CTA']))?.href, releasesUrl);
-    }
-    assert.equal(unpublished.find(link => link.text === hero['Secondary link'])?.href, '#command-line');
-    assert.equal(published.find(link => link.text === hero['Secondary link'])?.href, '#install-cli');
+    const heroLinks = links(renderToStaticMarkup(createElement(page.hero.default)));
+    assert.equal(heroLinks.find(link => link.text.startsWith(hero['Primary CTA']))?.href, releasesUrl);
+    assert.equal(heroLinks.find(link => link.text === hero['Secondary link'])?.href, '#install-cli');
     const install = available => renderToStaticMarkup(createElement(page.sections.InstallSection, { available }));
     for (const available of [false, true]) {
       const app = links(install(available)).find(link => link.text.startsWith('Get the app (beta)'));
@@ -219,35 +219,60 @@ test('the page renders: both buttons go to the releases page, and the command li
   } finally { await page.close(); }
 });
 
-test('the install command is absent while npm lacks the package, and present when it has it', async () => {
+test('the hero shows the open beta tag, the nest headline, two short lines, and the app screenshot', async () => {
+  const page = await loadPage();
+  try {
+    const html = renderToStaticMarkup(createElement(page.hero.default));
+    assert.match(html, /<p class="release-tag">[\s\S]*?Open beta<\/p>/, 'the label is a tag, not plain eyebrow text');
+    assert.ok(!html.includes('class="eyebrow"'));
+    assert.match(html, /<h1 id="hero-title">A cozy nest for your agents<\/h1>/);
+    assert.ok(html.includes(hero.Body) && html.includes(hero.Detail));
+    assert.equal((html.match(/class="release-tag-sparkle"/g) ?? []).length, 1, 'at most one sparkle');
+    assert.ok(html.includes('data-screenshot-slot="fidelity-preview"'), 'a visual of what the app does sits in the hero');
+    assert.ok(html.indexOf('class="homepage-banner"') < html.indexOf('id="hero-title"'), 'the image leads the header');
+  } finally { await page.close(); }
+});
+
+test('the install section shows the command with a copy button, with the app first, whether or not npm has the package', async () => {
   const page = await loadPage();
   try {
     const render = (name, props = {}) => renderToStaticMarkup(createElement(page.sections[name], props));
     const text = html => html.replace(/<[^>]+>/g, '');
-    const unpublished = render('InstallSection', { available: false });
-    assert.ok(!text(unpublished).includes(release.npm.installCommand), 'no npm command before publication');
-    assert.ok(!unpublished.includes('aria-label="Install command"'));
-    assert.match(unpublished, /The install command arrives when the beta publishes\./);
-    assert.equal((unpublished.match(/arrives when the beta publishes/g) ?? []).length, 1, 'the unpublished state is said once on the page');
-    assert.ok(unpublished.indexOf('id="install-app"') < unpublished.indexOf('id="install-cli"'), 'the app card leads while the command is unpublished');
-    const published = render('InstallSection', { available: true });
-    assert.ok(text(published).includes(release.npm.installCommand), 'the npm command shows after publication');
-    assert.ok(!published.includes('arrives when the beta publishes'));
-    assert.ok(published.indexOf('id="install-cli"') < published.indexOf('id="install-app"'));
-    const commandLineHtml = render('CommandLineSection');
-    assert.ok(!commandLineHtml.includes('arrives when the beta publishes'), 'the command line section does not repeat the note');
     const codeText = html => html.match(/<code>([\s\S]*?)<\/code>/)[1].replace(/<[^>]+>/g, '');
-    assert.equal(codeText(commandLineHtml.slice(commandLineHtml.indexOf('<pre'))), commandLine.commands.join('\n'), 'wrapping markup adds no characters to the copied command');
-    assert.equal(codeText(published.slice(published.indexOf('<pre'))), release.npm.installCommand);
+    for (const available of [false, true]) {
+      const html = render('InstallSection', { available });
+      assert.ok(text(html).includes(release.npm.installCommand), `command shown, available=${available}`);
+      assert.equal(codeText(html.slice(html.indexOf('<pre'))), release.npm.installCommand, 'wrapping markup adds no characters to the copied command');
+      assert.match(html, /<button type="button" class="copy-button"[^>]*>[\s\S]*?Copy[\s\S]*?<\/button>/);
+      assert.ok(html.includes('aria-label="Install command"'));
+      assert.ok(html.indexOf('id="install-app"') < html.indexOf('id="install-cli"'), 'the app download stays the primary path');
+      assert.ok(!html.includes('arrives when the beta publishes'));
+      assert.equal(html.includes('not on npm yet'), !available, 'the npm note shows only until the package is published');
+    }
+    const commandLineHtml = render('CommandLineSection');
+    assert.equal(codeText(commandLineHtml.slice(commandLineHtml.indexOf('<pre'))), commandLine.commands.join('\n'));
+  } finally { await page.close(); }
+});
+
+test('the features section is one engine item plus one three-step strip, and the engines sit beside the app section', async () => {
+  const page = await loadPage();
+  try {
+    const html = renderToStaticMarkup(createElement(page.sections.WhatItDoes));
+    assert.equal((html.match(/<li class="journey-step"/g) ?? []).length, 3);
+    for (const step of whatItDoes.journey.steps) assert.ok(html.includes(`<h4>${step.title}</h4>`) || html.includes(`>${step.title}<`), step.title);
+    assert.ok(html.includes('See what each engine can carry'));
+    assert.ok(!html.includes('<img'), 'the screenshot moved to the hero, so the imagery comes sooner');
+    const app = await read('src/App.tsx');
+    assert.ok(app.indexOf('<AppSection />') < app.indexOf('<EnginesSection />') && app.indexOf('<EnginesSection />') < app.indexOf('<CommandLineSection />'), 'engines follow the app features');
   } finally { await page.close(); }
 });
 
 test('a screenshot slot shows both themes\' images with a size, late loading, and alt text, and keeps its caption', async () => {
   const page = await loadPage();
   try {
-    const html = renderToStaticMarkup(createElement(page.sections.WhatItDoes));
+    const html = renderToStaticMarkup(createElement(page.hero.default));
     const [slot] = screenshotSlots;
-    const images = [...html.matchAll(/<img [^>]*>/g)].map(match => match[0]);
+    const images = [...html.matchAll(/<img [^>]*>/g)].map(match => match[0]).filter(tag => tag.includes('data-shot-theme'));
     assert.equal(images.length, 2, 'one image for each theme');
     for (const theme of ['light', 'dark']) {
       const image = images.find(tag => tag.includes(`data-shot-theme="${theme}"`));

@@ -1,0 +1,71 @@
+/* Landing review pass. A cozy, warm layer on the existing Rose Conservatory and After Hours palettes: soft shadows, rounded tags, and one small sparkle.
+   Same fonts, same colors. Everything here reads the existing tokens. */
+
+/* Hero: the picture leads at full height, then the tag, the headline, two short lines, the buttons, and the app screenshot. */
+.normal-site .normal-hero .hero-copy { padding-top: 8px; }
+.release-tag {
+  display: inline-flex; align-items: center; gap: 8px; margin: 0 auto; padding: 6px 16px 6px 12px;
+  border: 1px solid var(--ui-border); border-radius: 999px; background: var(--ui-surface); color: var(--ui-primary);
+  font: 600 13px/1.5 var(--ui-font); letter-spacing: .02em;
+  box-shadow: 0 1px 2px rgb(55 58 50 / .08), 0 6px 16px -8px rgb(128 81 91 / .35);
+}
+[data-theme='dark'] .release-tag { box-shadow: 0 1px 2px rgb(0 0 0 / .3), 0 6px 16px -8px rgb(0 0 0 / .5); }
+.release-tag-sparkle { flex: none; color: var(--ui-primary); }
+.normal-site .normal-hero h1 { margin: 16px 0 12px; }
+.normal-site .normal-hero .hero-description { max-width: 46ch; margin: 0 auto; font-size: 18px; line-height: 1.6; }
+.hero-showcase { max-width: 1120px; margin: 8px auto 0; padding: 0 5% 64px; }
+.hero-showcase .screenshot-image { border-radius: 16px; box-shadow: 0 28px 64px -28px rgb(55 58 50 / .45), 0 4px 14px rgb(55 58 50 / .08); }
+[data-theme='dark'] .hero-showcase .screenshot-image { box-shadow: 0 28px 64px -28px rgb(0 0 0 / .7), 0 4px 14px rgb(0 0 0 / .3); }
+.hero-showcase .screenshot-open { border-radius: 16px; }
+.hero-showcase figcaption { text-align: center; }
+
+/* Features: one engine item, then the three-step path. */
+.feature-engine { margin-top: 28px; padding: 22px 0; border-top: 1px solid var(--ui-border); }
+.feature-engine h3 { margin: 0 0 8px; font-size: 24px; line-height: 1.3; letter-spacing: -.02em; }
+.feature-engine p { margin: 0; }
+.journey { grid-column: 1 / -1; margin-top: 8px; padding: 22px; border: 1px solid var(--ui-border); border-radius: 20px; background: var(--ui-bg); box-shadow: 0 10px 28px -16px rgb(55 58 50 / .3); }
+[data-theme='dark'] .journey { box-shadow: 0 10px 28px -16px rgb(0 0 0 / .6); }
+.journey-title { margin: 0 0 16px; font: 600 14px/1.5 var(--ui-font); letter-spacing: .02em; color: var(--ui-primary); }
+.journey-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.journey-step { min-width: 0; }
+.journey-number { display: inline-grid; place-items: center; width: 28px; height: 28px; margin-bottom: 10px; border-radius: 50%; background: var(--ui-primary); color: var(--ui-primary-fg); font: 700 13px/1 var(--ui-font); }
+.journey-step h4 { margin: 0 0 6px; font: 500 20px/1.3 var(--trellis-reading-font); letter-spacing: -.01em; color: var(--ui-text); text-wrap: balance; }
+.journey-step p { margin: 0; font-size: 16px; line-height: 1.6; color: var(--ui-muted); }
+@media (max-width: 760px) { .journey-steps { grid-template-columns: minmax(0, 1fr); gap: 18px; } }
+
+/* Engines: rounded tags that sit under the app features. */
+.engine-list li { box-shadow: 0 1px 2px rgb(55 58 50 / .06), 0 8px 18px -12px rgb(55 58 50 / .3); }
+[data-theme='dark'] .engine-list li { box-shadow: 0 1px 2px rgb(0 0 0 / .3), 0 8px 18px -12px rgb(0 0 0 / .6); }
+
+/* Install: the app leads. The command sits in a small terminal with a copy button. */
+.band-inner > .band-lede + .install-grid { margin-top: 0; }
+.install-grid { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
+.install-card { border-radius: 20px; box-shadow: 0 10px 28px -18px rgb(55 58 50 / .35); }
+[data-theme='dark'] .install-card { box-shadow: 0 10px 28px -18px rgb(0 0 0 / .7); }
+.install-card-app { border-color: var(--ui-primary); }
+.terminal { margin: 0 0 16px; overflow: hidden; border: 1px solid var(--ui-border); border-radius: 14px; background: var(--ui-bg); box-shadow: 0 8px 22px -14px rgb(55 58 50 / .4); }
+.terminal-bar { display: flex; gap: 7px; padding: 10px 14px; border-bottom: 1px solid var(--ui-border); background: var(--ui-surface); }
+.terminal-bar span { width: 10px; height: 10px; border-radius: 50%; background: var(--brand-rose); }
+.terminal-bar span:nth-child(2) { background: var(--brand-clay); }
+.terminal-bar span:nth-child(3) { background: var(--brand-foliage); }
+.terminal-body { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; padding: 16px; }
+.terminal-prompt { flex: none; font: 600 15px/1.9 var(--ui-code-font); color: var(--ui-primary); }
+.install-card .terminal .command-block { flex: 1 1 200px; min-width: 0; margin: 0; padding: 0; border: 0; background: transparent; }
+.copy-button { display: inline-flex; flex: none; align-items: center; gap: 8px; min-height: 44px; padding: 8px 16px; border: 1px solid var(--ui-primary); border-radius: 999px; background: var(--ui-primary); color: var(--ui-primary-fg); font: 600 14px/1 var(--ui-code-font); cursor: pointer; }
+.copy-button:hover { background: var(--ui-text); border-color: var(--ui-text); color: var(--ui-bg); }
+.copy-button:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 3px; }
+.copy-button[data-state='copied'] { background: var(--ui-surface); color: var(--ui-primary); }
+.copy-failed, .pending-note { margin: 0 0 12px; font: 14px/1.6 var(--ui-font); color: var(--ui-muted); }
+.install-card .pending-note { display: inline-block; padding: 4px 12px; border-radius: 999px; background: var(--ui-surface); border: 1px solid var(--ui-border); font-size: 14px; }
+@media (max-width: 900px) { .install-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* Motion. Rare, so it may charm: the sparkle settles in once on load. Opacity and transform only. The copy button presses in. Nothing loops. */
+@media (prefers-reduced-motion: no-preference) {
+  .release-tag-sparkle { animation: sparkle-settle 900ms cubic-bezier(.23, 1, .32, 1) 400ms both; }
+  .copy-button { transition: transform 120ms cubic-bezier(.23, 1, .32, 1), background-color 160ms cubic-bezier(.23, 1, .32, 1); }
+  .copy-button:active { transform: scale(.97); }
+}
+@keyframes sparkle-settle {
+  from { opacity: 0; transform: rotate(-35deg) scale(.4); }
+  to { opacity: 1; transform: rotate(0) scale(1); }
+}

@@ -4,12 +4,21 @@ import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 const root=new URL('../../../',import.meta.url);
 const release=JSON.parse(await readFile(new URL('release/beta.json',root),'utf8'));
-test('release badges keep approved styles and match the shared beta version',async()=>{
+test('release badges are local flat monospace tags, one each for version, license, node, npm and the two supported engines',async()=>{
  const readme=await readFile(new URL('README.md',root),'utf8');
  const paragraph=readme.match(/<p>\s*<a href="https:\/\/bowerloom.ai\/docs\/releases\/">[\s\S]*?<\/p>/)?.[0];
- assert.ok(paragraph);assert.equal((paragraph.match(/<a /g)||[]).length,4);assert.doesNotMatch(paragraph,/<br|<div|<table|style=|badge-access/);
- const tags=[['version',new URL('releases/',release.urls.docs).href,null],['license','LICENSE','a8c84e87ee08ac19fd2dcbf1cd52fe9d209237723bd6b90df55f583c3c72a4f6'],['node','package.json','0478ed3a682dd9cf8c97bcfcb6d824395c465ce9d3fa1bcdc787cf813f23b0d7'],['npm','#install-bowerloom','32d786c3ee1eda3562c6fef83f592fb281f281ebcbc53441e20bad52f3a06705']];
- for(const[name,href,hash]of tags){assert.ok(paragraph.includes(`<a href="${href}"><img src="docs/assets/badge-${name}.svg"`));const bytes=await readFile(new URL(`docs/assets/badge-${name}.svg`,root));if(hash)assert.equal(createHash('sha256').update(bytes).digest('hex'),hash);else assert.ok(bytes.toString().includes(release.version));assert.match(bytes.toString(),/font-family="monospace"/);if(href.startsWith('#'))assert.match(readme,/^## Install Bowerloom$/m);else if(!href.startsWith('https:'))assert.ok((await readFile(new URL(href,root))).length);}
+ assert.ok(paragraph);assert.equal((paragraph.match(/<a /g)||[]).length,6);assert.doesNotMatch(paragraph,/<br|<div|<table|style=|badge-access|shields\.io/);
+ const tags=[['version',new URL('releases/',release.urls.docs).href],['license','LICENSE'],['node','package.json'],['npm','#install-bowerloom'],['claude-code','#how-it-works'],['codex','#how-it-works']];
+ for(const[name,href]of tags){
+  assert.ok(paragraph.includes(`<a href="${href}"><img src="docs/assets/badge-${name}.svg" alt="`),name);
+  const alt=paragraph.match(new RegExp(`badge-${name}\\.svg" alt="([^"]+)"`))?.[1];assert.ok(alt&&alt.length>3,`${name} keeps alt text`);
+  const svg=(await readFile(new URL(`docs/assets/badge-${name}.svg`,root))).toString();
+  assert.match(svg,/font-family="monospace"/,name);assert.match(svg,/shape-rendering="crispEdges"/,`${name}: pixel-sharp, square corners`);assert.doesNotMatch(svg.replace(/xmlns="[^"]*"/,''),/\brx=|<image|href=|https?:/,name);
+  assert.match(svg,/role="img" aria-label="[^"]{3,}"/,`${name}: the file names itself for a screen reader`);
+  if(href.startsWith('#'))assert.match(readme,new RegExp(`^## ${href==='#install-bowerloom'?'Install Bowerloom':'How it works'}$`,'m'));else if(!href.startsWith('https:'))assert.ok((await readFile(new URL(href,root))).length);
+ }
+ assert.ok((await readFile(new URL('docs/assets/badge-version.svg',root))).toString().toLowerCase().includes(release.version));
+ assert.match(paragraph,/Engine: Claude Code/);assert.match(paragraph,/Engine: Codex/);
  const pkg=JSON.parse(await readFile(new URL('package.json',root)));assert.equal(pkg.version,release.version);assert.match(pkg.engines.node,/24\.11/);
  assert.doesNotMatch(paragraph,/\/Users\/|file:\/\/|private alpha|beta released/i);
 });

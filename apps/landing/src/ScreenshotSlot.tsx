@@ -1,4 +1,5 @@
-import { useId, useRef, useState, type MouseEvent, type PointerEvent, type Ref } from 'react';
+import { useId, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type Ref } from 'react';
+import { closesOnBackdrop, tabTarget } from './lightbox';
 import { screenshotSlots, shotSource, shotThemes, type ScreenshotSlotId } from './screenshots';
 
 /**
@@ -6,8 +7,9 @@ import { screenshotSlots, shotSource, shotThemes, type ScreenshotSlotId } from '
  * (the site's own theme control sets `data-theme`; with no script the system setting decides). Every image is below the first screen, so it loads late,
  * and an image that is not shown never loads. The files come from `apps/desktop/e2e/landing-shots.spec.ts`.
  *
- * The shot is a button. It opens the same file at full size in a native modal dialog (`showModal`), which keeps the keyboard focus inside, closes on
- * Escape, and gives the focus back to the shot. The dialog holds no image until the first time it opens, so a visit that never enlarges a shot loads
+ * The shot is a button. It opens the same file at full size in a native modal dialog (`showModal`). The dialog has an X at the top right, a blurred backdrop,
+ * and closes on Escape, on the X, and on a click on the backdrop. Tab cycles inside it, and the focus goes back to the shot when it closes.
+ * The dialog holds no image until the first time it opens, so a visit that never enlarges a shot loads
  * nothing extra. The dialog names itself with the alt text, so the image inside it carries an empty alt and a screen reader does not say the text twice.
  */
 export default function ScreenshotSlot({ slot }: { slot: ScreenshotSlotId }) {
@@ -42,14 +44,23 @@ export function ShotDialog({ id, loaded, ref, onClose }: { id: ScreenshotSlotId;
   const pressedOnBackdrop = useRef(false);
   const press = (event: PointerEvent<HTMLDialogElement>) => { pressedOnBackdrop.current = event.target === event.currentTarget; };
   const backdrop = (event: MouseEvent<HTMLDialogElement>) => {
-    const close = pressedOnBackdrop.current && event.target === event.currentTarget;
+    const close = closesOnBackdrop(pressedOnBackdrop.current, event.target, event.currentTarget);
     pressedOnBackdrop.current = false;
     if (close) event.currentTarget.close();
   };
-  return <dialog ref={ref} className="screenshot-dialog" data-screenshot-dialog={item.id} aria-label={item.alt} onClose={onClose} onPointerDown={press} onClick={backdrop}>
+  // Escape closes the dialog in every browser, and Tab wraps between the X and the scroll area.
+  const trap = (event: KeyboardEvent<HTMLDialogElement>) => {
+    const dialog = event.currentTarget;
+    if (event.key === 'Escape') { event.preventDefault(); dialog.close(); return; }
+    if (event.key !== 'Tab') return;
+    const focusables = [...dialog.querySelectorAll<HTMLElement>('button:not([disabled]), [tabindex="0"]')];
+    const target = tabTarget(focusables, document.activeElement as HTMLElement | null, event.shiftKey);
+    if (target) { event.preventDefault(); target.focus(); }
+  };
+  return <dialog ref={ref} className="screenshot-dialog" data-screenshot-dialog={item.id} aria-label={item.alt} onClose={onClose} onPointerDown={press} onClick={backdrop} onKeyDown={trap}>
     <div className="screenshot-dialog-bar">
       <p className="screenshot-dialog-caption">{item.caption}</p>
-      <form method="dialog"><button type="submit" className="screenshot-close">Close</button></form>
+      <form method="dialog"><button type="submit" className="screenshot-close" aria-label="Close"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg></button></form>
     </div>
     <div className="screenshot-scroll" tabIndex={0} role="group" aria-label="Screenshot, scrolls">
       {loaded ? shotThemes.map(theme => <img

@@ -8,6 +8,7 @@ import ThemeSplash from "./ThemeSplash";
 import { rememberThemeSplash, shouldShowThemeSplash, splashMediaFor, type SplashMedia } from "./theme-splash";
 import "./hero-parallax.css";
 import "./page.css";
+import "./review.css";
 import Hero from "./Hero";
 import SectionCompanion from "./SectionCompanion";
 import FooterCompanion from "./FooterCompanion";
@@ -82,8 +83,8 @@ export default function App() {
         <SectionCompanion unit="s4" side="right"><WhatItDoes /></SectionCompanion>
         <SectionCompanion unit="h4n" side="left"><HowItWorks /></SectionCompanion>
         <AppSection />
-        <CommandLineSection />
         <EnginesSection />
+        <CommandLineSection />
         <InstallSection />
         <SectionCompanion unit="s4-slate" side="right"><FaqSection /></SectionCompanion>
       </main>

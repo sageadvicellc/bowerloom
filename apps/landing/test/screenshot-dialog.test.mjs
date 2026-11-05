@@ -55,7 +55,7 @@ test('the dialog has a visible Close button, a scroll area a keyboard can reach,
     const [item] = screenshotSlots;
     const html = renderToStaticMarkup(createElement(page.slot.default, { slot: item.id }));
     const dialog = html.slice(html.indexOf('<dialog'), html.indexOf('</dialog>'));
-    assert.match(dialog, /<form method="dialog"><button type="submit" class="screenshot-close">Close<\/button><\/form>/);
+    assert.match(dialog, /<form method="dialog"><button type="submit" class="screenshot-close" aria-label="Close"><svg[^>]*aria-hidden="true"/, 'an X button, named Close');
     assert.match(dialog, /class="screenshot-scroll" tabindex="0" role="group"/);
     assert.equal(tags(dialog, 'img').length, 0, 'a visit that never enlarges a shot loads nothing extra');
     assert.ok(!/<dialog[^>]*\sopen/.test(dialog), 'the dialog starts closed');
@@ -81,15 +81,25 @@ test('after the first open the dialog holds the full file of each theme at its o
   } finally { await page.close(); }
 });
 
-test('the component opens with showModal, keeps no custom focus trap, and gives the focus back', async () => {
+test('the component opens with showModal, traps Tab itself, closes on Escape and backdrop, and gives the focus back', async () => {
   // The code only: a word in a comment is not a focus trap.
   const source = (await read('src/ScreenshotSlot.tsx')).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   assert.match(source, /showModal\(\)/);
-  assert.doesNotMatch(source, /onKeyDown|keydown|focusin|onCancel/i, 'Escape and the focus trap are the dialog\'s own');
+  assert.match(source, /onKeyDown=\{trap\}/, 'Tab is kept inside the dialog');
+  assert.match(source, /tabTarget\(/);
+  assert.match(source, /event\.key === 'Escape'/, 'Escape closes the dialog in every browser');
   assert.match(source, /opener\.current\?\.focus\(\)/);
   assert.match(source, /onClose=\{/);
-  assert.match(source, /event\.target === event\.currentTarget/);
+  assert.match(source, /closesOnBackdrop\(/);
   assert.match(source, /onPointerDown=\{press\}/, 'a click closes only when the press began on the backdrop too');
+});
+
+test('the backdrop is blurred, the dialog casts a soft shadow, and the X sits at the top right', async () => {
+  const css = await read('src/page.css');
+  assert.match(css, /\.screenshot-dialog::backdrop \{[^}]*backdrop-filter: blur\(/);
+  assert.match(css, /\.screenshot-dialog \{[^}]*box-shadow:/);
+  assert.match(css, /\.screenshot-close \{[^}]*border-radius: 50%/);
+  assert.match(css, /\.screenshot-dialog-bar \{[^}]*justify-content: space-between/);
 });
 
 test('the style sheet scrolls inside the dialog, reserves the picture\'s size, and animates only opacity and transform, and not at all under reduced motion', async () => {
