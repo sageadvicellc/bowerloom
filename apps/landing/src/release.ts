@@ -26,7 +26,7 @@ export type ReleaseRecord = {
   npm: { installCommand: string; published: boolean };
   capabilities: {
     setup: string; adopt: string; install: string; fidelity: string; drift: string; remove: string;
-    save: string; notes: string; skills: string; desktop: string; execution: string; limits: string[];
+    save: string; notes: string; share: string; skills: string; desktop: string; execution: string; limits: string[];
   };
 };
 
@@ -44,7 +44,7 @@ export function releasePresentation(source: ReleaseRecord = record as unknown as
     installAvailable: published(source),
     capabilities: {
       setup: c.setup, adopt: c.adopt, install: c.install, fidelity: c.fidelity, drift: c.drift, remove: c.remove,
-      save: c.save, notes: c.notes, skills: c.skills, desktop: c.desktop, execution: c.execution,
+      save: c.save, notes: c.notes, share: c.share, skills: c.skills, desktop: c.desktop, execution: c.execution,
     },
     limits: c.limits,
   };

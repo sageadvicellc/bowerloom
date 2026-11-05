@@ -5,7 +5,7 @@ import { installAvailable, releasePresentation } from '../src/release.ts';
 
 const release = JSON.parse(await readFile(new URL('../../../release/beta.json', import.meta.url), 'utf8'));
 
-const keys = ['setup', 'adopt', 'install', 'fidelity', 'drift', 'remove', 'save', 'notes', 'skills', 'desktop', 'execution'];
+const keys = ['setup', 'adopt', 'install', 'fidelity', 'drift', 'remove', 'save', 'notes', 'share', 'skills', 'desktop', 'execution'];
 const record = {
   version: '9.9.9-test', release: 'v9-test', state: 'unreleased',
   npm: { installCommand: 'npm install -g example@beta', published: false },

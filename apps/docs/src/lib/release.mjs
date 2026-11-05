@@ -25,7 +25,7 @@ export function installCommandAccepted(r) {
   return expected !== null && typeof r.npm.installCommand === 'string' && expected.test(r.npm.installCommand);
 }
 // The 0.8 capability keys. Each holds a sentence, and limits holds a list of sentences.
-export const capabilityKeys = ['setup','adopt','install','fidelity','drift','remove','save','notes','skills','desktop','execution'];
+export const capabilityKeys = ['setup','adopt','install','fidelity','drift','remove','save','notes','share','skills','desktop','execution'];
 export const capabilitiesComplete = c => c && capabilityKeys.every(key => typeof c[key] === 'string' && c[key].length > 0)
   && Array.isArray(c.limits) && c.limits.length > 0 && c.limits.every(x => typeof x === 'string' && x.length > 0);
 export async function readRelease() {
