@@ -11,6 +11,7 @@ import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, re
 import { homedir, hostname, tmpdir, userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertStep } from './checks.mjs';
 import { weeklyFolder } from '../../apps/desktop/e2e/landing-shots-fixture.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
@@ -51,38 +52,38 @@ function emptyProject(home, name = 'sample') {
 /** The scenarios. A step with an `id` is recorded. A step with `approve` runs the command again with the revision of the step before, and is not recorded. */
 const SCENARIOS = [
   { setup: home => ({ cwd: weeklyFolder(home, 'sample', { hook: false, servers: [] }) }), steps: [
-    { id: 'cli-help', args: ['--help'] },
+    { id: 'cli-help', exit: 0, args: ['--help'] },
   ] },
   { setup: home => ({ cwd: rawProject(home) }), steps: [
-    { id: 'cli-harness-status', args: ['harness', 'status'] },
-    { id: 'cli-harness-adopt', args: ['harness', 'adopt'] },
+    { id: 'cli-harness-status', exit: 0, args: ['harness', 'status'] },
+    { id: 'cli-harness-adopt', exit: 3, args: ['harness', 'adopt'] },
     { approve: true },
-    { id: 'cli-harness-install', args: ['harness', 'install'] },
+    { id: 'cli-harness-install', exit: 3, args: ['harness', 'install'] },
     { approve: true },
-    { id: 'cli-harness-drift', args: ['harness', 'drift'] },
-    { id: 'cli-harness-remove', args: ['harness', 'remove'] },
+    { id: 'cli-harness-drift', exit: 0, args: ['harness', 'drift'] },
+    { id: 'cli-harness-remove', exit: 3, args: ['harness', 'remove'] },
   ] },
   { setup: home => ({ cwd: weeklyFolder(home, 'sample', { hook: false, servers: [] }) }), steps: [
-    { id: 'cli-harness-export', args: ['harness', 'export', '--output', 'harness.json'] },
+    { id: 'cli-harness-export', exit: 3, args: ['harness', 'export', '--output', 'harness.json'] },
     { approve: true },
     { move: 'harness.json' },
   ] },
   { setup: home => ({ cwd: emptyProject(home), prior: 'import' }), steps: [
-    { id: 'cli-harness-import', args: ['harness', 'import', 'harness.json'] },
+    { id: 'cli-harness-import', exit: 3, args: ['harness', 'import', 'harness.json'] },
   ] },
   { setup: home => ({ cwd: emptyProject(home) }), steps: [
-    { id: 'cli-up', args: ['up', '--team', 'first', '--goal', 'Write the weekly report'] },
+    { id: 'cli-up', exit: 3, args: ['up', '--team', 'first', '--goal', 'Write the weekly report'] },
+    { approve: true, exit: 4, stderr: 'allowed' },
+    { id: 'cli-ls', exit: 0, args: ['ls'] },
+    { id: 'cli-skill-create', exit: 3, args: ['skill', 'create', 'house-style'] },
     { approve: true },
-    { id: 'cli-ls', args: ['ls'] },
-    { id: 'cli-skill-create', args: ['skill', 'create', 'house-style'] },
+    { id: 'cli-status', exit: 0, args: ['status'] },
+    { exit: 3, args: ['prompt', 'create', 'weekly-update'] },
     { approve: true },
-    { id: 'cli-status', args: ['status'] },
-    { args: ['prompt', 'create', 'weekly-update'] },
-    { approve: true },
-    { id: 'cli-apply', args: ['apply'] },
+    { id: 'cli-apply', exit: 3, args: ['apply'] },
   ] },
   { setup: home => ({ cwd: emptyProject(home) }), steps: [
-    { id: 'cli-init-plan', args: ['init', 'plan', '--mode', 'new', '--target', '{home}/projects/new-project', '--name', 'Sample team', '--goal', 'Review a synthetic team setup', '--profile', 'engineer'] },
+    { id: 'cli-init-plan', exit: 0, args: ['init', 'plan', '--mode', 'new', '--target', '{home}/projects/new-project', '--name', 'Sample team', '--goal', 'Review a synthetic team setup', '--profile', 'engineer'] },
   ] },
 ];
 
@@ -127,8 +128,9 @@ try {
     for (const step of scenario.steps) {
       if (step.move !== undefined) { carried = join(mkdtempSync(join(home, 'carry-')), step.move); cpSync(join(cwd, step.move), carried); continue; }
       const args = step.approve ? [...last, '--approve', revision] : step.args.map(arg => arg.replaceAll('{home}', home));
-      const ran = spawnSync(process.execPath, [cli, ...args], { cwd, encoding: 'utf8', env });
-      if (step.approve) { if (![0, 4].includes(ran.status)) throw new Error(`The approve step failed: ${ran.stdout}${ran.stderr}`); continue; }
+      const ran = spawnSync(process.execPath, [cli, ...args], { cwd, encoding: 'utf8', env, timeout: 120_000 });
+      assertStep(step.id ?? titleOf(args), ran, { exit: step.exit ?? 0, stderr: step.stderr });
+      if (step.approve) continue;
       last = args;
       revision = /^Revision: ([0-9a-f]{64})$/m.exec(ran.stdout)?.[1] ?? null;
       if (step.id === undefined || !wanted.has(step.id)) continue;

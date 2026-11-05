@@ -158,6 +158,13 @@ const node = (p: Page, id: string): Locator => p.locator(`.hx-node[data-node="${
 const saveSheet = (p: Page): Locator => p.getByRole('dialog', { name: 'Edit a folder\'s harness' });
 
 
+/** Every recipe below goes through this table, so the check at the end compares the plan with the recipes that exist, not with a second list. */
+const RECIPES = new Set<string>();
+function recipe(ids: string[], title: string, body: () => Promise<void>): void {
+  for (const id of ids) RECIPES.add(id);
+  test(title, async () => { test.skip(!wanted(...ids)); await body(); });
+}
+
 const put = (dir: string, rel: string, text: string): void => { mkdirSync(dirname(join(dir, rel)), { recursive: true }); writeFileSync(join(dir, rel), text); };
 
 /** Opens the folder's harness in the Builder, zoomed out, with the graph at rest. */
@@ -212,24 +219,21 @@ async function firstRun(made: MadeUpHome, stop: 'welcome' | 'choose' | 'read' | 
 
 const away = (p: Page): Promise<void> => p.mouse.move(1, SMALL.height - 1);
 
-test('app-welcome: the welcome screen of a first start', async () => {
-  test.skip(!wanted('app-welcome'));
+recipe(['app-welcome'], 'app-welcome: the welcome screen of a first start', async () => {
   test.setTimeout(180_000);
   const p = await firstRun(madeUp(), 'welcome');
   await away(p);
   await snap(p, 'app-welcome');
 });
 
-test('app-find-files: the list of what the first read found', async () => {
-  test.skip(!wanted('app-find-files'));
+recipe(['app-find-files'], 'app-find-files: the list of what the first read found', async () => {
   test.setTimeout(180_000);
   const p = await firstRun(madeUp(), 'choose');
   await away(p);
   await snap(p, 'app-find-files');
 });
 
-test('app-overview, app-engines, app-install-history and app-help: the screens after the first run', async () => {
-  test.skip(!wanted('app-overview', 'app-engines', 'app-install-history', 'app-help'));
+recipe(['app-overview', 'app-engines', 'app-install-history', 'app-help'], 'app-overview, app-engines, app-install-history and app-help: the screens after the first run', async () => {
   test.setTimeout(240_000);
   const p = await firstRun(madeUp(), 'overview');
   const expand = p.getByRole('button', { name: 'Expand all', exact: true });
@@ -247,8 +251,7 @@ test('app-overview, app-engines, app-install-history and app-help: the screens a
   }
 });
 
-test('app-adopt-sheet: New harness from a folder, at the review step', async () => {
-  test.skip(!wanted('app-adopt-sheet'));
+recipe(['app-adopt-sheet'], 'app-adopt-sheet: New harness from a folder, at the review step', async () => {
   test.setTimeout(180_000);
   const dir = madeUp().ferry;
   const p = await start('projects', LARGE);
@@ -261,8 +264,7 @@ test('app-adopt-sheet: New harness from a folder, at the review step', async () 
   await snap(p, 'app-adopt-sheet');
 });
 
-test('app-install-review: the install review for both engines', async () => {
-  test.skip(!wanted('app-install-review'));
+recipe(['app-install-review'], 'app-install-review: the install review for both engines', async () => {
   test.setTimeout(180_000);
   home = newHome();
   const dir = weeklyFolder(home, 'weekly', { skills: [], agents: [], servers: ['plain', 'home'] });
@@ -287,8 +289,7 @@ test('app-install-review: the install review for both engines', async () => {
   await snap(p, 'app-install-review');
 });
 
-test('app-builder and app-save-review: the Builder with one link, then the Save review', async () => {
-  test.skip(!wanted('app-builder', 'app-save-review'));
+recipe(['app-builder', 'app-save-review'], 'app-builder and app-save-review: the Builder with one link, then the Save review', async () => {
   test.setTimeout(180_000);
   home = newHome();
   const dir = weeklyFolder(home, 'weekly', { hook: false, servers: [] });
@@ -311,8 +312,7 @@ test('app-builder and app-save-review: the Builder with one link, then the Save 
   if (wanted('app-save-review')) await snap(p, 'app-save-review');
 });
 
-test('app-save-points: the Save points list after two saves', async () => {
-  test.skip(!wanted('app-save-points'));
+recipe(['app-save-points'], 'app-save-points: the Save points list after two saves', async () => {
   test.setTimeout(180_000);
   home = newHome();
   const dir = weeklyFolder(home, 'weekly', { hook: false, servers: [] });
@@ -348,8 +348,7 @@ test('app-save-points: the Save points list after two saves', async () => {
   await snap(p, 'app-save-points');
 });
 
-test('app-export-sheet and app-import-sheet: the Export sheet, then the Import sheet with the file it wrote', async () => {
-  test.skip(!wanted('app-export-sheet', 'app-import-sheet'));
+recipe(['app-export-sheet', 'app-import-sheet'], 'app-export-sheet and app-import-sheet: the Export sheet, then the Import sheet with the file it wrote', async () => {
   test.setTimeout(180_000);
   home = newHome();
   const dir = weeklyFolder(home, 'weekly', { hook: false, servers: [] });
@@ -381,8 +380,7 @@ test('app-export-sheet and app-import-sheet: the Export sheet, then the Import s
   if (wanted('app-import-sheet')) await snap(p, 'app-import-sheet');
 });
 
-test('app-notes-tour: the first-run tour at the step that builds the Notes keeper', async () => {
-  test.skip(!wanted('app-notes-tour'));
+recipe(['app-notes-tour'], 'app-notes-tour: the first-run tour at the step that builds the Notes keeper', async () => {
   test.skip(GIT === null, NO_GIT_REASON);
   test.setTimeout(180_000);
   home = newHome();
@@ -414,7 +412,7 @@ test('app-notes-tour: the first-run tour at the step that builds the Notes keepe
 });
 
 test('every shot of the plan has a recipe', () => {
-  const recipes = new Set(['app-welcome', 'app-find-files', 'app-install-history', 'app-engines', 'app-help', 'app-overview', 'app-adopt-sheet', 'app-install-review', 'app-builder', 'app-save-review', 'app-save-points', 'app-export-sheet', 'app-import-sheet', 'app-notes-tour']);
-  expect(IDS.filter(id => !recipes.has(id)), 'a shot of the plan with no recipe').toEqual([]);
-  expect([...recipes].filter(id => !IDS.includes(id)), 'a recipe with no shot in the plan').toEqual([]);
+  expect(IDS.filter(id => !RECIPES.has(id)), 'a shot of the plan with no recipe').toEqual([]);
+  expect([...RECIPES].filter(id => !IDS.includes(id)), 'a recipe with no shot in the plan').toEqual([]);
+  expect(ONLY.filter(id => !IDS.includes(id)), 'DOCS_SHOTS_ONLY names an id that is not a shot of the plan').toEqual([]);
 });
