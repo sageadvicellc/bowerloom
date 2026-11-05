@@ -4,7 +4,7 @@
  */
 export function tabTarget<T>(focusables: readonly T[], active: T | null, backwards: boolean): T | null {
   if (focusables.length === 0) return null;
-  const first = focusables[0], last = focusables[focusables.length - 1];
+  const first = focusables[0] as T, last = focusables[focusables.length - 1] as T;
   const index = active === null ? -1 : focusables.indexOf(active);
   if (index === -1) return backwards ? last : first;
   if (backwards && active === first) return last;

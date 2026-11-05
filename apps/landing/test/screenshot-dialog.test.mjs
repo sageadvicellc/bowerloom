@@ -13,20 +13,24 @@ const read = path => readFile(new URL('../' + path, import.meta.url), 'utf8');
 const escape = text => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#x27;');
 const tags = (html, name) => [...html.matchAll(new RegExp(`<${name}\\b[^>]*>`, 'g'))].map(match => match[0]);
 
-test('every shot is a button that opens a dialog named by its alt text', async () => {
+test('every shot has an Enlarge button in the caption row, with the dialog named by its alt text', async () => {
   const page = await loadPage();
   try {
     for (const item of screenshotSlots) {
       const html = renderToStaticMarkup(createElement(page.slot.default, { slot: item.id }));
-      const [button] = tags(html, 'button');
-      assert.ok(button.includes('type="button"') && button.includes('class="screenshot-open"') && button.includes('aria-haspopup="dialog"'), item.id);
-      assert.ok(button.includes('aria-label="Enlarge the screenshot"'), `${item.id}: the button says what it does`);
-      const id = /aria-describedby="([^"]+)"/.exec(button)?.[1];
-      assert.ok(id !== undefined && html.includes(`<figcaption id="${id}">${escape(item.caption)}</figcaption>`), `${item.id}: the caption describes the button, so it is read once`);
+      const buttons = tags(html, 'button');
+      const enlarge = buttons.find(tag => tag.includes('class="screenshot-enlarge"'));
+      assert.ok(enlarge.includes('type="button"') && enlarge.includes('aria-haspopup="dialog"') && enlarge.includes('aria-label="Enlarge the screenshot"'), item.id);
+      const id = /aria-describedby="([^"]+)"/.exec(enlarge)?.[1];
+      assert.ok(id !== undefined && html.includes(`<span id="${id}" class="screenshot-caption-text">${escape(item.caption)}</span>`), `${item.id}: the caption describes the button, so it is read once`);
+      assert.ok(html.indexOf('</button>') < html.indexOf('<figcaption') && html.indexOf('<figcaption') < html.indexOf(enlarge), `${item.id}: Enlarge sits in the caption row, under the picture`);
+      const picture = buttons.find(tag => tag.includes('class="screenshot-open"'));
+      assert.ok(picture.includes('tabindex="-1"'), `${item.id}: the picture is a pointer target and the Enlarge button is the one tab stop`);
+      assert.ok(!html.includes('screenshot-hint'), `${item.id}: no hint sits on the image`);
       const [dialog] = tags(html, 'dialog');
       assert.ok(dialog.includes(`aria-label="${escape(item.alt)}"`), `${item.id}: the dialog is named by the alt text`);
       const inside = html.slice(html.indexOf('<button'), html.indexOf('</button>'));
-      assert.equal(tags(inside, 'img').length, 2, `${item.id}: both page images sit inside the button`);
+      assert.equal(tags(inside, 'img').length, 2, `${item.id}: both page images sit inside the picture button`);
     }
   } finally { await page.close(); }
 });
@@ -44,8 +48,8 @@ test('the shot in the page is unchanged: one image per theme, sized, lazy, with 
       assert.ok(image.includes(`src="${shotSource(item.id, theme)}"`) && image.includes(`width="${item.width}"`) && image.includes(`height="${item.height}"`), theme);
       assert.ok(image.includes('loading="lazy"') && image.includes(`alt="${escape(item.alt)}"`), theme);
     }
-    assert.match(figure, new RegExp(`<figcaption id="[^"]+">${escape(item.caption)}</figcaption>`));
-    assert.match(figure, /<span class="screenshot-hint" aria-hidden="true">Enlarge<\/span>/);
+    assert.match(figure, new RegExp(`<span id="[^"]+" class="screenshot-caption-text">${escape(item.caption)}</span>`));
+    assert.match(figure, /<span aria-hidden="true">Enlarge<\/span>/);
   } finally { await page.close(); }
 });
 
@@ -100,11 +104,12 @@ test('the backdrop is blurred, the dialog casts a soft shadow, and the X sits at
   assert.match(css, /\.screenshot-dialog \{[^}]*box-shadow:/);
   assert.match(css, /\.screenshot-close \{[^}]*border-radius: 50%/);
   assert.match(css, /\.screenshot-dialog-bar \{[^}]*justify-content: space-between/);
+  assert.match(css, /\.screenshot-dialog-bar \{[^}]*background: var\(--ui-surface\)/, 'the real X sits in its own header bar');
 });
 
 test('the style sheet scrolls inside the dialog, reserves the picture\'s size, and animates only opacity and transform, and not at all under reduced motion', async () => {
   const css = await read('src/page.css');
-  assert.match(css, /\.screenshot-dialog \{[^}]*max-height: calc\(100dvh - 32px\)/);
+  assert.match(css, /\.screenshot-dialog \{[^}]*max-height: calc\(100dvh - 64px\)/);
   assert.match(css, /\.screenshot-scroll \{[^}]*overflow: auto/);
   assert.match(css, /\.screenshot-scroll \{[^}]*min-height: 0/);
   assert.match(css, /\.screenshot-full \{[^}]*height: auto/);
@@ -127,5 +132,5 @@ test('the style sheet scrolls inside the dialog, reserves the picture\'s size, a
 test('the picture is wide enough to read on a phone and scrolls sideways inside the dialog', async () => {
   const css = await read('src/page.css');
   assert.match(css, /\.screenshot-full \{[^}]*width: max\(100%, 960px\)/);
-  assert.match(css, /\.screenshot-dialog \{[^}]*width: min\(1600px, calc\(100vw - 32px\)\)/);
+  assert.match(css, /\.screenshot-dialog \{[^}]*width: min\(1180px, calc\(100vw - 64px\)\)/);
 });

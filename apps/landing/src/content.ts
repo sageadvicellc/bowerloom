@@ -17,10 +17,10 @@ export const destinations = {
 };
 
 export const hero = {
-  "Eyebrow": "Open beta",
+  "Eyebrow": "Open beta · macOS",
   "H1": "A cozy nest for your agents",
-  "Body": "Set up your skills, agents, tools, and rules once. Bowerloom tucks them into Claude Code and Codex.",
-  "Detail": "Before it writes a file, it shows what each engine can carry and what it cannot.",
+  "Body": "Set up your skills, agents, tools, rules, and context once. Bowerloom tucks them into Claude Code and Codex.",
+  "Results": ["Exact", "Translated", "Weakened", "Absent"],
   "Primary CTA": "Get the app (beta)",
   "Secondary link": "Install the command line",
   "Note": "Free and open source under the MIT license. For macOS.",
@@ -32,23 +32,15 @@ export const whatItDoes = {
   features: [
     { title: "See what each engine can carry", body: "The preview marks each part of your harness, per engine, as Exact, Translated, Weakened, or Absent. If an engine carries a rule more weakly than you wrote it, Bowerloom holds that rule until you approve that line. An installed copy is never more permissive than its source." },
   ],
-  /** One short path in three steps. It replaces three separate items: adopt, read the plan, go back. */
-  journey: {
-    title: "Three small steps, all of them gentle",
-    steps: [
-      { title: "Start from what you have", body: "Adopt reads your Claude Code and Codex files and builds one harness. It changes no engine file." },
-      { title: "Read the plan before anything is written", body: "Every change that writes shows a plan first. Nothing is written until you approve that exact plan." },
-      { title: "Go back", body: "Each save keeps a save point, and Go back restores it. Remove puts back every file an install replaced." },
-    ],
-  },
 } as const;
 
 export const howItWorks = {
   heading: "How it works",
   steps: [
-    { title: "Adopt the files you already have", body: "Bowerloom reads the Claude Code and Codex files in your project. It writes one harness into `.bowerloom` and nothing else." },
+    { title: "Gather what you already have", body: "Adopt reads the Claude Code and Codex files in your project. Bowerloom writes one harness into `.bowerloom` and nothing else." },
     { title: "Preview what each engine can carry", body: "Pick your engines. Bowerloom lists every file it plans to write and gives one result per part, per engine. Weaker rules wait for you, one line at a time." },
-    { title: "Approve the plan, then watch for drift", body: "You approve the plan by its revision. Bowerloom writes the engine files and records what it wrote. Drift lists the files that changed since." },
+    { title: "Approve the plan, then watch for drift", body: "Nothing is written until you approve that exact plan by its revision. Bowerloom then writes the engine files and records what it wrote. Drift lists the files that changed since." },
+    { title: "Go back to a save point", body: "In the app, each save keeps a save point, and Go back restores it. On the command line, Remove puts back every file an install replaced." },
   ],
   boundary: "Setup does not start workers, grant runtime access, or authorize connected actions.",
 } as const;
@@ -78,12 +70,13 @@ export const commandLine = {
 export const engines = {
   heading: "Two engines now. Three in preview.",
   body: "This beta supports Claude Code and Codex. OpenCode, Pi, and DeepSeek Harness are preview engines. Bowerloom can read and remove all five. To install into a preview engine, set `BOWERLOOM_PREVIEW_ENGINES=1`.",
+  nestLine: "Pick the homes your harness will move into.",
   supported: ["Claude Code", "Codex"],
   preview: ["OpenCode", "Pi", "DeepSeek Harness"],
 } as const;
 
 export const install = {
-  heading: "Install",
+  heading: "Make yourself at home",
   intro: "Start with the app. The command line sits beside it, ready to copy.",
   commandLineTitle: "Command line",
   appTitle: "App",

@@ -7,7 +7,7 @@ import { screenshotSlots, shotSource, shotThemes, type ScreenshotSlotId } from '
  * (the site's own theme control sets `data-theme`; with no script the system setting decides). Every image is below the first screen, so it loads late,
  * and an image that is not shown never loads. The files come from `apps/desktop/e2e/landing-shots.spec.ts`.
  *
- * The shot is a button. It opens the same file at full size in a native modal dialog (`showModal`). The dialog has an X at the top right, a blurred backdrop,
+ * The Enlarge button in the caption row opens the same file at full size in a native modal dialog (`showModal`). The dialog has an X at the top right, a blurred backdrop,
  * and closes on Escape, on the X, and on a click on the backdrop. Tab cycles inside it, and the focus goes back to the shot when it closes.
  * The dialog holds no image until the first time it opens, so a visit that never enlarges a shot loads
  * nothing extra. The dialog names itself with the alt text, so the image inside it carries an empty alt and a screen reader does not say the text twice.
@@ -15,22 +15,29 @@ import { screenshotSlots, shotSource, shotThemes, type ScreenshotSlotId } from '
 export default function ScreenshotSlot({ slot }: { slot: ScreenshotSlotId }) {
   const item = screenshotSlots.find(entry => entry.id === slot)!;
   const dialog = useRef<HTMLDialogElement>(null);
-  const opener = useRef<HTMLButtonElement>(null);
+  // Whichever control opened the dialog gets the focus back.
+  const opener = useRef<HTMLButtonElement | null>(null);
   const [opened, setOpened] = useState(false);
   const caption = useId();
-  const open = () => { setOpened(true); dialog.current?.showModal(); };
+  const open = (event: MouseEvent<HTMLButtonElement>) => { opener.current = event.currentTarget; setOpened(true); dialog.current?.showModal(); };
   // The browser gives the focus back by itself. This line covers a browser that does not.
   const closed = () => { opener.current?.focus(); };
   return <>
     <figure className="screenshot-slot" data-screenshot-slot={item.id}>
-      <button ref={opener} type="button" className="screenshot-open" aria-haspopup="dialog" aria-label="Enlarge the screenshot" aria-describedby={caption} onClick={open}>
+      {/* The picture is a click target for a pointer and keeps its alt text for a screen reader. The Enlarge button under it is the one tab stop. */}
+      <button type="button" className="screenshot-open" tabIndex={-1} onClick={open}>
         {shotThemes.map(theme => <img
           key={theme} className="screenshot-image" data-shot-theme={theme}
           src={shotSource(item.id, theme)} width={item.width} height={item.height}
           alt={item.alt} loading="lazy" decoding="async" />)}
-        <span className="screenshot-hint" aria-hidden="true">Enlarge</span>
       </button>
-      <figcaption id={caption}>{item.caption}</figcaption>
+      <figcaption className="screenshot-meta">
+        <span id={caption} className="screenshot-caption-text">{item.caption}</span>
+        <button type="button" className="screenshot-enlarge" aria-haspopup="dialog" aria-label="Enlarge the screenshot" aria-describedby={caption} onClick={open}>
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M15 15l5 5M10.5 8v5M8 10.5h5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+          <span aria-hidden="true">Enlarge</span>
+        </button>
+      </figcaption>
     </figure>
     <ShotDialog id={item.id} loaded={opened} ref={dialog} onClose={closed} />
   </>;

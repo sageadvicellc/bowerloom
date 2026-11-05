@@ -16,13 +16,11 @@ const sources = async () => {
   return Promise.all(names.map(async name => [name, await read('src/' + name)]));
 };
 
-test('the hero carries the revised 0.8 message: a tag, the nest headline, and two short lines', () => {
-  assert.equal(hero.Eyebrow, 'Open beta');
+test('the hero carries the revised 0.8 message: a tag, the nest headline, and one sentence that matches the README', () => {
+  assert.equal(hero.Eyebrow, 'Open beta · macOS');
   assert.equal(hero.H1, 'A cozy nest for your agents');
-  assert.ok(hero.Body.includes('Claude Code and Codex'));
-  assert.equal(hero.Detail, 'Before it writes a file, it shows what each engine can carry and what it cannot.');
-  for (const line of [hero.Body, hero.Detail]) assert.ok(line.split(/[.!?]\s/).every(sentence => sentence.split(/\s+/).length <= 20), line);
-  assert.ok(hero.Body.length + hero.Detail.length < 220, 'the description is one or two short lines');
+  assert.equal(hero.Body, 'Set up your skills, agents, tools, rules, and context once. Bowerloom tucks them into Claude Code and Codex.');
+  assert.deepEqual(hero.Results, ['Exact', 'Translated', 'Weakened', 'Absent']);
   assert.equal(hero['Primary CTA'], 'Get the app (beta)');
   assert.equal(hero['Secondary link'], 'Install the command line');
   assert.equal(hero.Note, 'Free and open source under the MIT license. For macOS.');
@@ -42,8 +40,8 @@ test('the download button goes to the releases page and names no asset', () => {
 test('the page structure follows the approved outline', () => {
   assert.equal(whatItDoes.heading, 'Keep one definition. Install it everywhere.');
   assert.deepEqual(whatItDoes.features.map(feature => feature.title), ['See what each engine can carry']);
-  assert.deepEqual(whatItDoes.journey.steps.map(step => step.title), ['Start from what you have', 'Read the plan before anything is written', 'Go back']);
-  assert.deepEqual(howItWorks.steps.map(step => step.title), ['Adopt the files you already have', 'Preview what each engine can carry', 'Approve the plan, then watch for drift']);
+  assert.deepEqual(howItWorks.steps.map(step => step.title), ['Gather what you already have', 'Preview what each engine can carry', 'Approve the plan, then watch for drift', 'Go back to a save point']);
+  assert.match(howItWorks.steps[3].body, /^In the app, each save keeps a save point/);
   for (const step of howItWorks.steps) assert.ok(step.title.split(/\s+/).length >= 3 && step.title.split(/\s+/).length <= 8, `${step.title}: a short, clear phrase`);
   assert.equal(howItWorks.boundary, 'Setup does not start workers, grant runtime access, or authorize connected actions.');
   assert.equal(app.heading, 'The app (beta)');
@@ -52,6 +50,7 @@ test('the page structure follows the approved outline', () => {
   assert.ok(commandLine.commands.includes('bowerloom harness install --engine claude-code --engine codex'));
   assert.equal(commandLine.note, 'No harness command runs an engine or a model.');
   assert.equal(engines.heading, 'Two engines now. Three in preview.');
+  assert.equal(install.heading, 'Make yourself at home');
   assert.equal(install.appSteps.length, 5);
   assert.equal(questions.length, 6);
 });
@@ -151,15 +150,17 @@ test('every navigation link and hero link points at a section that exists', asyn
 
 test('every screenshot slot is used once, has one image per theme, and says what its screen shows', async () => {
   const sections = (await read('src/Sections.tsx')) + (await read('src/Hero.tsx'));
+  const uses = id => sections.split(`<ScreenshotSlot slot="${id}"`).length - 1;
   assert.equal(new Set(screenshotSlots.map(slot => slot.id)).size, screenshotSlots.length);
   assert.ok(screenshotSlots.length >= 4);
   for (const slot of screenshotSlots) {
     assert.ok(slot.caption.length > 20 && slot.capture.length > 20, slot.id);
     assert.ok(slot.alt.length > 60 && slot.alt !== slot.caption, `${slot.id}: the alt text says what the picture shows`);
     assert.ok(Number.isInteger(slot.width) && Number.isInteger(slot.height) && slot.width / slot.height > 1.4 && slot.width / slot.height < 1.7, `${slot.id}: a size that suits a 16:10 slot`);
-    assert.equal(sections.split(`<ScreenshotSlot slot="${slot.id}"`).length - 1, 1, slot.id);
+    // The hero repeats the Builder graph, so it is the one shot that appears twice.
+    assert.equal(uses(slot.id), slot.id === 'builder-graph' ? 2 : 1, slot.id);
   }
-  assert.equal((sections.match(/<ScreenshotSlot /g) ?? []).length, screenshotSlots.length);
+  assert.equal((sections.match(/<ScreenshotSlot /g) ?? []).length, screenshotSlots.length + 1);
   assert.doesNotMatch(sections, /<img /, 'Sections use the slot component, not images');
   const slotSource = await read('src/ScreenshotSlot.tsx');
   assert.match(slotSource, /data-screenshot-slot/);
@@ -219,16 +220,18 @@ test('the page renders: both buttons go to the right place, and the command line
   } finally { await page.close(); }
 });
 
-test('the hero shows the open beta tag, the nest headline, two short lines, and the app screenshot', async () => {
+test('the hero shows the tag, the nest headline, one sentence, the engine tags, the result chips, and the Builder screenshot', async () => {
   const page = await loadPage();
   try {
     const html = renderToStaticMarkup(createElement(page.hero.default));
-    assert.match(html, /<p class="release-tag">[\s\S]*?Open beta<\/p>/, 'the label is a tag, not plain eyebrow text');
+    assert.match(html, /<p class="release-tag">[\s\S]*?Open beta · macOS<\/p>/, 'the label is a tag that adds the platform');
     assert.ok(!html.includes('class="eyebrow"'));
     assert.match(html, /<h1 id="hero-title">A cozy nest for your agents<\/h1>/);
-    assert.ok(html.includes(hero.Body) && html.includes(hero.Detail));
+    assert.ok(html.includes(`<p class="hero-description">${hero.Body}</p>`));
     assert.equal((html.match(/class="release-tag-sparkle"/g) ?? []).length, 1, 'at most one sparkle');
-    assert.ok(html.includes('data-screenshot-slot="fidelity-preview"'), 'a visual of what the app does sits in the hero');
+    for (const name of engines.supported) assert.ok(html.includes(`<li>${name}</li>`), name);
+    for (const name of hero.Results) assert.ok(html.includes(`data-result="${name.toLowerCase()}">${name}</li>`), name);
+    assert.ok(html.includes('data-screenshot-slot="builder-graph"'), 'the Builder graph sits in the hero');
     assert.ok(html.indexOf('class="homepage-banner"') < html.indexOf('id="hero-title"'), 'the image leads the header');
   } finally { await page.close(); }
 });
@@ -244,6 +247,7 @@ test('the install section shows the command with a copy button, with the app fir
       assert.ok(text(html).includes(release.npm.installCommand), `command shown, available=${available}`);
       assert.equal(codeText(html.slice(html.indexOf('<pre'))), release.npm.installCommand, 'wrapping markup adds no characters to the copied command');
       assert.match(html, /<button type="button" class="copy-button"[^>]*>[\s\S]*?Copy[\s\S]*?<\/button>/);
+      assert.match(html, /<p class="copy-status" role="status" aria-live="polite"><\/p>/, 'a fixed status slot, empty until a copy happens');
       assert.ok(html.includes('aria-label="Install command"'));
       assert.ok(html.indexOf('id="install-app"') < html.indexOf('id="install-cli"'), 'the app download stays the primary path');
       assert.ok(!html.includes('arrives when the beta publishes'));
@@ -254,14 +258,18 @@ test('the install section shows the command with a copy button, with the app fir
   } finally { await page.close(); }
 });
 
-test('the features section is one engine item plus one three-step strip, and the engines sit beside the app section', async () => {
+test('the features section is one engine item with its screenshot, the steps are one list, and the engines follow the app features', async () => {
   const page = await loadPage();
   try {
     const html = renderToStaticMarkup(createElement(page.sections.WhatItDoes));
-    assert.equal((html.match(/<li class="journey-step"/g) ?? []).length, 3);
-    for (const step of whatItDoes.journey.steps) assert.ok(html.includes(`<h4>${step.title}</h4>`) || html.includes(`>${step.title}<`), step.title);
     assert.ok(html.includes('See what each engine can carry'));
-    assert.ok(!html.includes('<img'), 'the screenshot moved to the hero, so the imagery comes sooner');
+    assert.ok(!html.includes('journey'), 'the three-step strip is gone, so the steps live only in How it works');
+    assert.ok(html.includes('data-screenshot-slot="fidelity-preview"'));
+    const how = renderToStaticMarkup(createElement(page.sections.HowItWorks));
+    assert.equal((how.match(/<li>/g) ?? []).length, 4);
+    assert.ok(how.includes('Go back to a save point') && how.includes('In the app, each save keeps a save point'));
+    const engineHtml = renderToStaticMarkup(createElement(page.sections.EnginesSection));
+    assert.ok(engineHtml.indexOf('class="engine-nest"') > -1 && engineHtml.indexOf('class="engine-nest"') < engineHtml.indexOf('class="engine-list"'), 'a nest line sits over the engine tags');
     const app = await read('src/App.tsx');
     assert.ok(app.indexOf('<AppSection />') < app.indexOf('<EnginesSection />') && app.indexOf('<EnginesSection />') < app.indexOf('<CommandLineSection />'), 'engines follow the app features');
   } finally { await page.close(); }
@@ -271,7 +279,7 @@ test('a screenshot slot shows both themes\' images with a size, late loading, an
   const page = await loadPage();
   try {
     const html = renderToStaticMarkup(createElement(page.hero.default));
-    const [slot] = screenshotSlots;
+    const slot = screenshotSlots.find(entry => entry.id === 'builder-graph');
     const images = [...html.matchAll(/<img [^>]*>/g)].map(match => match[0]).filter(tag => tag.includes('data-shot-theme'));
     assert.equal(images.length, 2, 'one image for each theme');
     for (const theme of ['light', 'dark']) {
@@ -282,7 +290,7 @@ test('a screenshot slot shows both themes\' images with a size, late loading, an
       assert.ok(image.includes('loading="lazy"'), theme);
       assert.ok(image.includes('alt="'), theme);
     }
-    assert.match(html, new RegExp(`<figcaption id="[^"]+">${slot.caption.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}<\/figcaption>`));
+    assert.match(html, new RegExp(`<span id="[^"]+" class="screenshot-caption-text">${slot.caption.replaceAll("'", "&#x27;").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}<\/span>`));
     assert.doesNotMatch(html, /Screenshot to come|aria-hidden="true">Screenshot/);
   } finally { await page.close(); }
 });

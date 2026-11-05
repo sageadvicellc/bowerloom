@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { app, commandLine, engines, howItWorks, install, installView, questions, whatItDoes } from './content';
 import { installAvailable, releasesUrl } from './release';
 import ProductText from './ProductText';
@@ -24,15 +24,7 @@ export function WhatItDoes() {
     <div className="section-body">
       <p><ProductText>{whatItDoes.intro}</ProductText></p>
       <div className="feature-engine"><h3>{engineFeature.title}</h3><p><ProductText>{engineFeature.body}</ProductText></p></div>
-    </div>
-    <div className="journey" role="group" aria-labelledby="journey-title">
-      <p id="journey-title" className="journey-title">{whatItDoes.journey.title}</p>
-      <ol className="journey-steps">
-        {whatItDoes.journey.steps.map((step, index) => <li key={step.title} className="journey-step">
-          <span className="journey-number" aria-hidden="true">{index + 1}</span>
-          <h4>{step.title}</h4><p><ProductText>{step.body}</ProductText></p>
-        </li>)}
-      </ol>
+      <ScreenshotSlot slot="fidelity-preview" />
     </div>
   </section>;
 }
@@ -93,6 +85,7 @@ export function EnginesSection() {
     <div className="band-inner">
       <h2 id="engines-title">{engines.heading}</h2>
       <p className="band-lede"><ProductText>{engines.body}</ProductText></p>
+      <p className="engine-nest">{engines.nestLine}</p>
       <ul className="engine-list" aria-label="Engines">
         {engines.supported.map(name => <li key={name} data-support="supported"><span className="engine-name">{name}</span><span className="engine-status">Supported</span></li>)}
         {engines.preview.map(name => <li key={name} data-support="preview"><span className="engine-name">{name}</span><span className="engine-status">Preview</span></li>)}
@@ -101,21 +94,34 @@ export function EnginesSection() {
   </section>;
 }
 
-/** Copies the text it is given and says what happened in a live region. The button label changes at once, with no motion. */
-export function CopyButton({ text }: { text: string }) {
+/**
+ * The install command in a small terminal, with a copy button and a fixed slot under it for what happened. The slot keeps its height,
+ * so the page does not move when the words change. One timer puts the button back to idle. A new press clears the old timer, and leaving the page clears it too.
+ */
+export function InstallCommand({ command }: { command: string }) {
   const [state, setState] = useState<CopyState>('idle');
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clear = () => { if (timer.current !== null) { clearTimeout(timer.current); timer.current = null; } };
+  useEffect(() => clear, []);
   const copy = async () => {
-    const result = await copyText(text, typeof navigator === 'undefined' ? null : navigator.clipboard);
+    const result = await copyText(command, typeof navigator === 'undefined' ? null : navigator.clipboard);
+    clear();
     setState(result);
-    setTimeout(() => setState('idle'), 2400);
+    timer.current = setTimeout(() => { timer.current = null; setState('idle'); }, 2400);
   };
   return <>
-    <button type="button" className="copy-button" data-state={state} onClick={copy}>
-      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M5 15V6.5A2.5 2.5 0 0 1 7.5 4H15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
-      <span>{state === 'copied' ? 'Copied' : 'Copy'}<span className="sr-only"> the install command</span></span>
-    </button>
-    <span className="sr-only" role="status" aria-live="polite">{state === 'idle' ? '' : copyLabel(state)}</span>
-    {state === 'failed' && <span className="copy-failed">{copyLabel('failed')}</span>}
+    <div className="terminal">
+      <div className="terminal-bar" aria-hidden="true"><span /><span /><span /></div>
+      <div className="terminal-body">
+        <span className="terminal-prompt" aria-hidden="true">$</span>
+        <pre className="command-block" tabIndex={0} aria-label="Install command"><code><Command text={command} /></code></pre>
+        <button type="button" className="copy-button" data-state={state} onClick={copy}>
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M5 15V6.5A2.5 2.5 0 0 1 7.5 4H15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+          <span>{state === 'copied' ? 'Copied' : 'Copy'}<span className="sr-only"> the install command</span></span>
+        </button>
+      </div>
+    </div>
+    <p className="copy-status" role="status" aria-live="polite">{state === 'idle' ? '' : copyLabel(state)}</p>
   </>;
 }
 
@@ -133,14 +139,7 @@ export function InstallSection({ available = installAvailable }: { available?: b
   </div>;
   const commandCard = <div key="cli" id="install-cli" className="install-card install-card-cli">
     <h3>{install.commandLineTitle}</h3>
-    <div className="terminal">
-      <div className="terminal-bar" aria-hidden="true"><span /><span /><span /></div>
-      <div className="terminal-body">
-        <span className="terminal-prompt" aria-hidden="true">$</span>
-        <pre className="command-block" tabIndex={0} aria-label="Install command"><code><Command text={view.command} /></code></pre>
-        <CopyButton text={view.command} />
-      </div>
-    </div>
+    <InstallCommand command={view.command} />
     {view.pendingNote && <p className="pending-note">{view.pendingNote}</p>}
     <p><ProductText>{view.text}</ProductText></p>
   </div>;

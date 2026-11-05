@@ -2,7 +2,19 @@
 .homepage-banner { position: relative; isolation: isolate; overflow: hidden; min-height: 220px; width: 100%; background: radial-gradient(ellipse at 50% 30%, var(--ui-surface), var(--ui-bg) 76%); }
 .homepage-banner > img { display: block; width: 100%; height: auto; opacity: 0; transition: opacity 400ms cubic-bezier(.23, 1, .32, 1); }
 .homepage-banner[data-artwork="ready"] > img { opacity: 1; }
-/* The picture keeps its full height at every width: it is the focus of the header. The headline, the buttons, and the app screenshot follow it. */
+/* The picture is the focus of the header, and the tag and the headline sit on the first screen under it.
+   From 761 px up the banner keeps the picture's 16:9 shape but never grows taller than the screen minus a 100 px header and 200 px for the tag and headline.
+   The picture fills the box and crops evenly, with the focus low enough that the tree deck, the person, and the robots stay whole.
+   At 760 px and narrower the banner is a fixed-height window with its own crop. */
+.homepage-banner > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+@media (min-width: 761px) {
+  .homepage-banner { aspect-ratio: 1672 / 941; max-height: calc(100svh - 100px - 200px); }
+  .homepage-banner > img { object-position: 50% 58%; }
+}
+@media (max-width: 760px) {
+  .homepage-banner { height: min(56svh, 380px); }
+  .homepage-banner > img { object-position: 55% 62%; }
+}
 /* A short soft edge hides the line where the lagging art is clipped. Depth on scroll lives in hero-parallax.css. */
 .homepage-banner::after { content: ''; position: absolute; z-index: 1; inset: 0; pointer-events: none; background: linear-gradient(to bottom, transparent 84%, var(--ui-bg) 100%); }
 .normal-site .normal-hero { display: block; max-width: 1440px; min-height: 0; padding: 0; overflow: visible; background: var(--ui-bg); }
