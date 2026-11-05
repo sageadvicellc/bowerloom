@@ -108,7 +108,7 @@ test('Journey 3, step 3.3: the Go back review is the compare; it lists what chan
   await openInBuilder(h, home.rope, 'rope-yard');
   await linkSkillToAgent(p, 'knot-guide', 'tallyman');
   await saveFromBuilder(h);
-  const current = readTree(def), askedBefore = (await h.asked()).length;
+  const current = readTree(def), whole = readTree(home.rope), askedBefore = (await h.asked()).length;
   expect(changed(asItWas, current), 'the save changed the harness').not.toEqual([]);
   await saveSheet(p).getByRole('button', { name: 'Close', exact: true }).last().click();
   await p.getByRole('button', { name: 'Save points', exact: true }).click();
@@ -121,8 +121,11 @@ test('Journey 3, step 3.3: the Go back review is the compare; it lists what chan
   const listed = await back.locator('[data-file]').evaluateAll(els => els.map(e => (e.getAttribute('data-file') ?? '').replace(/^\.bowerloom\//, '')).sort());
   expect(listed, 'the review lists the files that differ between the current harness and the save point').toEqual(changed(current, asItWas));
   expect(readTree(def), 'nothing is written while the person reads').toEqual(current);
+  expect(readTree(home.rope), 'no file of the whole folder changes while the person reads').toEqual(whole);
   expect(await h.asked(), 'main asks nothing before the approval').toHaveLength(askedBefore);
   // Leaving the review without approval writes nothing either.
   await t.getByRole('button', { name: 'Close', exact: true }).last().click();
+  await expect(t).toBeHidden();
   expect(readTree(def), 'closing the review writes nothing').toEqual(current);
+  expect(readTree(home.rope), 'no file of the whole folder changes after Close').toEqual(whole);
 });
