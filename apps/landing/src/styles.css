@@ -17,7 +17,6 @@
 }
 html {
   scroll-behavior: smooth;
-  scroll-padding-top: 36px;
 }
 body {
   margin: 0;
@@ -167,13 +166,14 @@ h1 em {
   line-height: 1.7;
 }
 .button {
-  border-radius: 2px;
+  border-radius: var(--control-radius);
   display: inline-flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
-  gap: 32px;
-  padding: 17px 20px;
-  font: 12px var(--ui-font);
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 20px;
+  font: 600 14px/1.2 var(--ui-font);
   transition:
     background 0.2s cubic-bezier(.23, 1, .32, 1),
     transform 0.2s cubic-bezier(.23, 1, .32, 1);
@@ -276,9 +276,6 @@ h2 {
   }
 }
 @media (max-width: 760px) {
-  html {
-    scroll-padding-top: 20px;
-  }
   .site-header {
     height: 75px;
     padding: 0 6%;

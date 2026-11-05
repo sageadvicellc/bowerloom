@@ -43,6 +43,15 @@ export default function ScreenshotSlot({ slot, priority = false }: { slot: Scree
   </>;
 }
 
+/** The decorations of the device frame, from `public/frame`. Each is drawn at its own place by `page.css`. The left handle is the right one, mirrored there. */
+const frameParts = [
+  { name: 'tl', file: 'corner-tl.webp', width: 640, height: 633 },
+  { name: 'br', file: 'corner-br.webp', width: 640, height: 661 },
+  { name: 'hl', file: 'handle.webp', width: 220, height: 329 },
+  { name: 'hr', file: 'handle.webp', width: 220, height: 329 },
+  { name: 'ctl', file: 'controls.webp', width: 520, height: 333 },
+] as const;
+
 /** The enlarged view of one shot. `loaded` is false until the first time it opens, and then it holds the files of both themes (the style sheet shows the current one). */
 export function ShotDialog({ id, loaded, ref, onClose }: { id: ScreenshotSlotId; loaded: boolean; ref?: Ref<HTMLDialogElement>; onClose?: () => void }) {
   const item = screenshotSlots.find(entry => entry.id === id)!;
@@ -55,7 +64,7 @@ export function ShotDialog({ id, loaded, ref, onClose }: { id: ScreenshotSlotId;
     pressedOnBackdrop.current = false;
     if (close) event.currentTarget.close();
   };
-  // Escape closes the dialog in every browser, and Tab wraps between the X and the scroll area.
+  // Escape closes the dialog in every browser, and Tab stays on the X, the one control in the dialog.
   const trap = (event: KeyboardEvent<HTMLDialogElement>) => {
     const dialog = event.currentTarget;
     if (event.key === 'Escape') { event.preventDefault(); dialog.close(); return; }
@@ -65,21 +74,27 @@ export function ShotDialog({ id, loaded, ref, onClose }: { id: ScreenshotSlotId;
     if (target) { event.preventDefault(); target.focus(); }
   };
   return <dialog ref={ref} className="screenshot-dialog" data-screenshot-dialog={item.id} aria-label={item.alt} onClose={onClose} onPointerDown={press} onClick={backdrop} onKeyDown={trap}>
-    <div className="screenshot-dialog-bar">
-      <div className="screenshot-dialog-text">
-        <p className="screenshot-dialog-caption">{item.caption}</p>
-        <p className="screenshot-pinch">
-          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M9 9L4 4M4 4h4.5M4 4v4.5M15 15l5 5M20 20h-4.5M20 20v-4.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
-          Pinch to zoom
-        </p>
+    <div className="screenshot-column">
+      <div className="screenshot-dialog-bar">
+        <div className="screenshot-dialog-text">
+          <p className="screenshot-dialog-caption">{item.caption}</p>
+          <p className="screenshot-pinch">
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M9 9L4 4M4 4h4.5M4 4v4.5M15 15l5 5M20 20h-4.5M20 20v-4.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            Pinch to zoom
+          </p>
+        </div>
+        <form method="dialog"><button type="submit" className="screenshot-close" aria-label="Close"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg></button></form>
       </div>
-      <form method="dialog"><button type="submit" className="screenshot-close" aria-label="Close"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg></button></form>
-    </div>
-    <div className="screenshot-scroll" tabIndex={0} role="group" aria-label="Screenshot, scrolls">
-      {loaded ? shotThemes.map(theme => <img
-        key={theme} className="screenshot-full" data-shot-theme={theme}
-        src={shotSource(item.id, theme)} width={item.width} height={item.height}
-        alt="" loading="lazy" decoding="async" />) : null}
+      {/* The device: a nine-slice bezel (a border image) around the picture, and decorations that scale with it. Nothing here loads until the first open. */}
+      <div className="screenshot-device">
+        <div className="screenshot-scroll">
+          {loaded ? shotThemes.map(theme => <img
+            key={theme} className="screenshot-full" data-shot-theme={theme}
+            src={shotSource(item.id, theme)} width={item.width} height={item.height}
+            alt="" loading="lazy" decoding="async" />) : null}
+        </div>
+        {loaded ? frameParts.map(part => <img key={part.name} className={`deco ${part.name}`} src={`/frame/${part.file}`} width={part.width} height={part.height} alt="" aria-hidden="true" loading="lazy" decoding="async" />) : null}
+      </div>
     </div>
   </dialog>;
 }

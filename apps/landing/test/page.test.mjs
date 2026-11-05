@@ -143,7 +143,8 @@ test('every navigation link and hero link points at a section that exists', asyn
   const nav = await read('src/SiteNavigation.tsx');
   const heroSource = await read('src/Hero.tsx');
   const ids = new Set([...(sections + app + heroSource).matchAll(/\bid="([^"]+)"/g)].map(match => match[1]));
-  const targets = [...(nav + app + sections).matchAll(/href="#([^"]+)"/g), ...heroSource.matchAll(/'#([a-z-]+)'/g)].map(match => match[1]);
+  const { navSections } = await import('../src/nav-current.ts');
+  const targets = [...(nav + app + sections).matchAll(/href="#([^"]+)"/g), ...heroSource.matchAll(/'#([a-z-]+)'/g)].map(match => match[1]).concat(navSections);
   assert.ok(targets.includes('install-cli'), 'the hero command line link goes to the install command');
   assert.ok(targets.length >= 5);
   for (const target of targets) assert.ok(ids.has(target), `#${target} has a section`);

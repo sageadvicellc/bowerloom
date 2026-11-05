@@ -7,11 +7,12 @@ export async function loadPage() {
     root: fileURLToPath(new URL('..', import.meta.url)),
     logLevel: 'silent', appType: 'custom', server: { middlewareMode: true, hmr: false, watch: null },
   });
-  const [sections, hero, release, slot] = await Promise.all([
+  const [sections, hero, release, slot, nav] = await Promise.all([
     server.ssrLoadModule('/src/Sections.tsx'),
     server.ssrLoadModule('/src/Hero.tsx'),
     server.ssrLoadModule('/src/release.ts'),
     server.ssrLoadModule('/src/ScreenshotSlot.tsx'),
+    server.ssrLoadModule('/src/SiteNavigation.tsx'),
   ]);
-  return { sections, hero, release, slot, close: () => server.close() };
+  return { sections, hero, release, slot, nav, close: () => server.close() };
 }

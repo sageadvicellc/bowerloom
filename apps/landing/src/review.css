@@ -5,7 +5,7 @@
 .normal-site .normal-hero .hero-copy { padding-top: 4px; }
 .release-tag {
   display: inline-flex; align-items: center; gap: 8px; margin: 0 auto; padding: 6px 16px 6px 12px;
-  border: 1px solid var(--ui-border); border-radius: 999px; background: var(--ui-surface); color: var(--ui-primary);
+  border: 1px solid var(--ui-border); border-radius: var(--control-radius); background: var(--ui-surface); color: var(--ui-primary);
   font: 600 13px/1.5 var(--ui-font); letter-spacing: .02em;
   box-shadow: 0 1px 2px rgb(55 58 50 / .08), 0 6px 16px -8px rgb(128 81 91 / .35);
 }
@@ -22,7 +22,7 @@
 /* Hero chips: the two supported engines, then the four results the preview gives. */
 .hero-chips { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px 22px; margin: 18px auto 0; }
 .hero-chips ul { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 0; padding: 0; list-style: none; }
-.hero-engines li, .hero-results li { padding: 4px 12px; border: 1px solid var(--ui-border); border-radius: 999px; background: var(--ui-surface); color: var(--ui-text); font: 600 13px/1.5 var(--ui-font); box-shadow: 0 1px 2px rgb(55 58 50 / .06); }
+.hero-engines li, .hero-results li { padding: 4px 12px; border: 1px solid var(--ui-border); border-radius: var(--control-radius); background: var(--ui-surface); color: var(--ui-text); font: 600 13px/1.5 var(--ui-font); box-shadow: 0 1px 2px rgb(55 58 50 / .06); }
 .hero-engines li { border-color: var(--ui-primary); }
 .hero-results-group { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 10px; }
 .hero-results-lead { font: 500 13px/1.5 var(--ui-font); color: var(--ui-muted); }
@@ -60,7 +60,8 @@
 .terminal-body { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; padding: 16px; }
 .terminal-prompt { flex: none; font: 600 15px/1.9 var(--ui-code-font); color: var(--ui-primary); }
 .install-card .terminal .command-block { flex: 1 1 200px; min-width: 0; margin: 0; padding: 0; border: 0; background: transparent; }
-.copy-button { display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 8px; min-width: 116px; min-height: 44px; padding: 8px 16px; border: 1px solid var(--ui-primary); border-radius: 999px; background: var(--ui-primary); color: var(--ui-primary-fg); font: 600 14px/1 var(--ui-code-font); cursor: pointer; }
+/* A filled button: the same height, type, and corner as every other button. */
+.copy-button { display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 8px; min-width: 116px; min-height: 44px; padding: 0 20px; border: 1px solid var(--ui-primary); border-radius: var(--control-radius); background: var(--ui-primary); color: var(--ui-primary-fg); font: 600 14px/1.2 var(--ui-font); cursor: pointer; }
 .copy-button:hover { background: var(--ui-text); border-color: var(--ui-text); color: var(--ui-bg); }
 .copy-button:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 3px; }
 .copy-button[data-state='copied'] { background: var(--ui-surface); color: var(--ui-primary); }
