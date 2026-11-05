@@ -18,7 +18,21 @@ export async function readVisualManifest(url = sourcePaths.visuals) {
   let text;
   try { text = await readFile(url, 'utf8'); } catch (error) { if (error.code === 'ENOENT') return {shots: {}, terminals: {}}; throw error; }
   const parsed = JSON.parse(text);
-  return {shots: parsed.shots ?? {}, terminals: parsed.terminals ?? {}};
+  return validateManifest({shots: parsed.shots ?? {}, terminals: parsed.terminals ?? {}});
+}
+
+const KINDS = ['cmd', 'out', 'err'];
+const oneLine = (value, id, field) => {
+  if (typeof value !== 'string' || /[\r\n]/.test(value)) throw new Error(`Visual "${id}": ${field} must be one line of text with no line break.`);
+};
+const checkLines = (id, item) => {
+  for (const line of item.lines) if (!KINDS.includes(line.kind)) throw new Error(`Visual "${id}": line kind ${JSON.stringify(line.kind)} is not one of ${KINDS.join(', ')}.`);
+};
+/** Refuses a manifest whose text could add Markdown or markup to the text form, or whose line kind is not known. Returns the manifest. */
+export function validateManifest(manifest) {
+  for (const [id, item] of Object.entries(manifest.shots)) { oneLine(item.alt, id, 'alt'); oneLine(item.caption, id, 'caption'); }
+  for (const [id, item] of Object.entries(manifest.terminals)) { oneLine(item.title, id, 'title'); oneLine(item.caption, id, 'caption'); checkLines(id, item); }
+  return manifest;
 }
 
 export {terminalCopyText, commandsFromPanel} from './terminal-text.mjs';
@@ -40,14 +54,16 @@ export function renderVisualHtml(id, manifest, {file = 'a page', base = '/docs'}
     const image = (theme, src) => `<img class="visual-img" data-shot-theme="${theme}" src="${escapeHtml(src)}" width="${Number(item.width)}" height="${Number(item.height)}" alt="${escapeHtml(item.alt)}" loading="lazy" decoding="async"/>`;
     return `<figure class="visual visual-shot" data-visual="${id}"><span class="visual-frame">${image('light', light)}${image('dark', dark)}</span>${caption(item.caption, `Enlarge screenshot: ${item.caption}`)}</figure>`;
   }
+  checkLines(id, item);
   const lines = item.lines.map(line => `<samp class="vt-line vt-${line.kind}">${escapeHtml(line.text)}</samp>`).join('&#10;');
-  return `<figure class="visual visual-terminal" data-visual="${id}" role="group" aria-label="Terminal sample: ${escapeHtml(item.title)}"><div class="vt-panel"><div class="vt-bar"><span class="vt-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="vt-title">${escapeHtml(item.title)}</span><button type="button" class="vt-copy" hidden aria-label="Copy the commands from ${escapeHtml(item.title)}">Copy</button></div><pre class="vt-body" tabindex="0"><code>${lines}</code></pre></div>${caption(item.caption, `Enlarge terminal: ${item.title}`)}</figure>`;
+  return `<figure class="visual visual-terminal" data-visual="${id}" role="group" aria-label="Terminal sample: ${escapeHtml(item.title)}"><div class="vt-panel"><div class="vt-bar"><span class="vt-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="vt-title">${escapeHtml(item.title)}</span><button type="button" class="vt-copy" hidden aria-label="Copy the commands from ${escapeHtml(item.title)}">Copy</button><span class="vt-status" role="status"></span></div><pre class="vt-body" tabindex="0" role="region" aria-label="Terminal output: ${escapeHtml(item.title)}"><code>${lines}</code></pre></div>${caption(item.caption, `Enlarge terminal: ${item.title}`)}</figure>`;
 }
 
 /** The text form for the Markdown routes, the llms files, and search. */
 export function renderVisualText(id, manifest, {file = 'a page'} = {}) {
   const {kind, item} = lookup(id, manifest, file);
   if (kind === 'shot') return `[Screenshot: ${item.alt}] ${item.caption}`;
+  checkLines(id, item);
   const body = item.lines.map(line => (line.kind === 'cmd' ? '$ ' : '') + line.text);
   const longest = Math.max(2, ...body.map(line => Math.max(0, ...[...line.matchAll(/`+/g)].map(run => run[0].length))));
   const fence = '`'.repeat(longest + 1);
@@ -58,8 +74,9 @@ export function renderVisualText(id, manifest, {file = 'a page'} = {}) {
 export function applyVisuals(markdown, {file, manifest, mode, base = '/docs'}) {
   let fence = null;
   return markdown.split('\n').map(line => {
-    const marker = line.match(/^\s{0,3}(`{3,}|~{3,})/);
-    if (marker) { if (!fence) fence = marker[1]; else if (marker[1][0] === fence[0] && marker[1].length >= fence.length) fence = null; return line; }
+    const marker = line.match(/^\s{0,3}(`{3,}|~{3,})(.*)$/);
+    // A closing fence has no info string (CommonMark), so a line such as ```js inside a fence does not close it.
+    if (marker) { if (!fence) fence = marker[1]; else if (marker[1][0] === fence[0] && marker[1].length >= fence.length && !marker[2].trim()) fence = null; return line; }
     if (fence) return line;
     const match = line.match(DIRECTIVE);
     if (!match) {

@@ -16,7 +16,7 @@
 /* Terminal panel. Own colors per theme; every text color passes 4.5:1 on its background (checked in tools/visuals.test.mjs). */
 .vt-panel { --vt-bg: #FFF9F4; --vt-bar: #EFE3DA; --vt-fg: #373A32; --vt-out: #554F53; --vt-err: #9A4521; --vt-prompt: #7A4A55; --vt-title: #4F484C; display: flex; flex-direction: column; min-width: 0; max-width: 100%; overflow: hidden; border: 1px solid var(--brand-line); border-radius: 12px; background: var(--vt-bg); color: var(--vt-fg); }
 [data-theme='dark'] .vt-panel { --vt-bg: #1F1E23; --vt-bar: #2E2C33; --vt-fg: #F6EEE8; --vt-out: #CDC1C7; --vt-err: #F0AE86; --vt-prompt: #E8B3BF; --vt-title: #D8CAD0; }
-.vt-bar { display: flex; flex: none; align-items: center; gap: 12px; min-height: 44px; padding: 0 8px 0 14px; background: var(--vt-bar); border-bottom: 1px solid var(--brand-line); }
+.vt-bar { position: relative; display: flex; flex: none; align-items: center; gap: 12px; min-height: 44px; padding: 0 8px 0 14px; background: var(--vt-bar); border-bottom: 1px solid var(--brand-line); }
 .vt-dots { display: inline-flex; gap: 6px; }
 .vt-dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--brand-line); }
 .vt-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vt-title); font: 600 13px/1.2 var(--font-mono); }
@@ -81,3 +81,5 @@ html:has(.visual-dialog[open]) { overflow: hidden; scrollbar-gutter: stable; }
   .deco.hl, .deco.hr { display: none; }
   .visual-meta { flex-wrap: wrap; }
 }
+
+.vt-status { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }

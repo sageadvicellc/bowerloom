@@ -7,8 +7,11 @@ import {existsSync, realpathSync} from 'node:fs';
 import {dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createServer} from 'vite';
-import {applyVisuals, terminalCopyText, readVisualManifest, renderVisualHtml, commandsFromPanel, themeFiles} from '../src/lib/visuals.mjs';
-import {prepareVisualSource, createDocsRenderer, searchIndexes} from '../src/lib/content.mjs';
+import {applyVisuals, terminalCopyText, readVisualManifest, renderVisualHtml, renderVisualText, validateManifest, commandsFromPanel, themeFiles} from '../src/lib/visuals.mjs';
+import {prepareVisualSource, createDocsRenderer, searchIndexes, unsafeContent} from '../src/lib/content.mjs';
+import {createServer as createHttpServer} from 'node:http';
+import {readdir} from 'node:fs/promises';
+import {extname} from 'node:path';
 
 const manifest = JSON.parse(await readFile(new URL('./fixtures/visuals-manifest.json', import.meta.url), 'utf8'));
 const shotLine = '::visual{id="app-builder"}';
@@ -31,7 +34,7 @@ test('a terminal directive renders a labelled code sample with a title bar, line
   assert.match(out, /^<figure class="visual visual-terminal" data-visual="cli-plan" role="group" aria-label="Terminal sample: bowerloom plan">/);
   assert.match(out, /<span class="vt-title">bowerloom plan<\/span>/);
   assert.match(out, /<button type="button" class="vt-copy" hidden aria-label="Copy the commands from bowerloom plan">Copy<\/button>/);
-  assert.match(out, /<pre class="vt-body" tabindex="0"><code>/);
+  assert.match(out, /<pre class="vt-body" tabindex="0" role="region" aria-label="Terminal output: bowerloom plan"><code>/);
   assert.match(out, /<samp class="vt-line vt-cmd">bowerloom plan<\/samp>/);
   assert.match(out, /<samp class="vt-line vt-err">warning: no harness signed in<\/samp>/);
   assert.match(out, /Plan: 2 steps &lt;ready&gt; &amp; waiting/);
@@ -100,13 +103,52 @@ test('a visual in a page reaches the markdown, the llms text, and search as text
   const rendered = await renderer.render(prepared.htmlSource);
   assert.equal(rendered.code.split('<figure').length - 1, 2);
   assert.equal(rendered.code.split('<img ').length - 1, 2, 'the shot is an img with no script');
-  assert.match(rendered.code, /<pre class="vt-body" tabindex="0"><code>/, 'the terminal is a pre with no script');
+  assert.match(rendered.code, /<pre class="vt-body" tabindex="0" role="region" aria-label="Terminal output: bowerloom plan"><code>/, 'the terminal is a pre with no script');
   assert.doesNotMatch(rendered.code, /::visual/);
   assert.equal(rendered.metadata.headings.length, 2);
   const doc = {hidden: false, title: 'Start', description: '', url: '/docs/start/', body: prepared.text, markdown: prepared.text, headings: rendered.metadata.headings};
   const entries = searchIndexes([doc]);
   assert(entries.length >= 2);
   assert(entries.every(entry => !/::visual|<figure|<img|<span/.test(entry.content)));
+});
+test('the terminal has a status region for the Copy result and a labelled scroll region', () => {
+  const out = html(termLine);
+  assert.match(out, /<span class="vt-status" role="status"><\/span>/);
+  assert.match(out, /role="region" aria-label="Terminal output: bowerloom plan"/);
+});
+test('a line kind other than cmd, out, or err fails and names the id', () => {
+  const bad = {shots: {}, terminals: {evil: {title: 't', caption: 'c', lines: [{kind: 'x" onmouseover="y', text: 'a'}]}}};
+  assert.throws(() => renderVisualHtml('evil', bad, {file: 'a.md'}), error => /evil/.test(error.message) && /kind/.test(error.message));
+  assert.throws(() => renderVisualText('evil', bad, {file: 'a.md'}), /evil/);
+  assert.throws(() => validateManifest(bad), /evil/);
+});
+test('a newline in alt, caption, or title is refused when the manifest is read', () => {
+  for (const [group, id, field] of [['shots', 'a', 'alt'], ['shots', 'a', 'caption'], ['terminals', 'a', 'title'], ['terminals', 'a', 'caption']]) {
+    for (const bad of ['one\ntwo', 'one\rtwo']) {
+      const item = group === 'shots' ? {alt: 'x', caption: 'y', width: 1, height: 1} : {title: 'x', caption: 'y', lines: []};
+      assert.throws(() => validateManifest({shots: {}, terminals: {}, [group]: {[id]: {...item, [field]: bad}}}), error => error.message.includes(id) && error.message.includes(field), `${group} ${field}`);
+    }
+  }
+  validateManifest(manifest);
+});
+test('the real manifest text passes the private-content check in both forms', async () => {
+  const real = await readVisualManifest();
+  for (const id of [...Object.keys(real.shots), ...Object.keys(real.terminals)]) {
+    assert(!unsafeContent(renderVisualHtml(id, real)), `html ${id}`);
+    assert(!unsafeContent(renderVisualText(id, real)), `text ${id}`);
+  }
+  assert(unsafeContent('see /Users/someone/x'));
+  const leaky = {shots: {}, terminals: {t: {title: 't', caption: 'c', lines: [{kind: 'out', text: 'file:///tmp/x'}]}}};
+  assert(unsafeContent(renderVisualText('t', leaky)));
+});
+test('a fence line with an info string does not close an open fence', () => {
+  const text = '```md\n```js\n' + shotLine + '\n```\n' + shotLine;
+  const out = html(text);
+  const [inside, after] = out.split('\n```\n');
+  assert(inside.includes(shotLine), 'directive inside the fence stays literal');
+  assert(after.startsWith('<figure'), 'directive after the real close renders');
+  const tilde = '~~~\n~~~ x\n' + shotLine + '\n~~~\n';
+  assert.equal(html(tilde), tilde);
 });
 test('terminal colors pass 4.5:1 in both themes', async () => {
   const css = await readFile(new URL('../src/styles/visuals.css', import.meta.url), 'utf8');
@@ -211,7 +253,8 @@ dom('the shot opens in the framed viewer, loads both themes, traps Tab, closes o
   await button.press('Enter');
   const dialog = tab.locator('dialog.visual-dialog[open]');
   await dialog.waitFor();
-  assert.equal(await dialog.locator('img').count(), 2 + 2, 'two shots and two plants');
+  assert.equal(await dialog.locator('img').count(), 1 + 2, 'one shot and two plants');
+  assert.equal(await dialog.locator('.visual-full').getAttribute('data-shot-theme'), 'light');
   const frame = await tab.evaluate(() => getComputedStyle(document.querySelector('dialog.visual-dialog .visual-device'), '::after').borderImageSource);
   assert.match(frame, /frame-light\.webp/);
   await tab.keyboard.press('Tab'); await tab.keyboard.press('Tab');
@@ -219,7 +262,47 @@ dom('the shot opens in the framed viewer, loads both themes, traps Tab, closes o
   await tab.keyboard.press('Escape');
   await tab.waitForSelector('dialog.visual-dialog[open]', {state: 'detached'});
   assert.equal(await tab.evaluate(() => document.activeElement?.className), 'visual-enlarge');
-  assert(requests.some(r => r.includes('app-builder-dark')), 'the second theme loads on first open');
+  assert(!requests.some(r => r.includes('app-builder-dark')), 'the other theme is never requested');
+  await context.close();
+});
+dom('the viewer swaps to the other theme file when the theme changes while it is open', async ({browser, url, requests}) => {
+  const {context, tab} = await open(browser, url);
+  await tab.locator('.visual-shot .visual-enlarge').click();
+  await tab.waitForSelector('dialog.visual-dialog[open] .visual-full');
+  await tab.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
+  await tab.waitForFunction(() => document.querySelector('.visual-full')?.getAttribute('src')?.includes('-dark'));
+  assert.equal(await tab.locator('dialog .visual-full').count(), 1);
+  assert.equal(await tab.locator('dialog .visual-full').isVisible(), true);
+  assert(requests.some(r => r.includes('app-builder-dark')));
+  await context.close();
+});
+dom('Shift+Tab from the first control wraps to the last and stays in the viewer', async ({browser, url}) => {
+  const {context, tab} = await open(browser, url);
+  await tab.locator('.visual-terminal .visual-enlarge').click();
+  await tab.waitForSelector('dialog.visual-dialog[open]');
+  const names = () => tab.evaluate(() => document.activeElement.className);
+  await tab.evaluate(() => document.querySelector('dialog .visual-close').focus());
+  await tab.keyboard.press('Shift+Tab');
+  assert.equal(await tab.evaluate(() => document.activeElement.closest('dialog') !== null), true);
+  assert.equal(await names(), 'vt-body', 'wrapped to the last control');
+  await tab.keyboard.press('Tab');
+  assert.equal(await names(), 'visual-close', 'and forward again to the first');
+  await context.close();
+});
+dom('a refused clipboard shows Select to copy and announces it', async ({browser, url}) => {
+  const {context, tab} = await open(browser, url);
+  await tab.evaluate(() => { Object.defineProperty(navigator, 'clipboard', {value: {writeText: () => Promise.reject(new Error('denied'))}, configurable: true}); });
+  await tab.locator('.vt-copy').click();
+  await tab.waitForFunction(() => document.querySelector('.vt-copy').textContent === 'Select to copy');
+  assert.match(await tab.locator('.vt-status').innerText(), /Select the commands to copy/);
+  await context.close();
+});
+dom('a copy announces the result in the status region', async ({browser, url}) => {
+  const {context, tab} = await open(browser, url);
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], {origin: new URL(url).origin}).catch(() => {});
+  await tab.locator('.vt-copy').click();
+  await tab.waitForFunction(() => document.querySelector('.vt-status').textContent.length > 0);
+  assert.match(await tab.locator('.vt-status').innerText(), /Commands copied/);
   await context.close();
 });
 dom('the dark theme shows the dark shot and the dark frame', async ({browser, url}) => {
@@ -275,4 +358,46 @@ dom('the viewer has no motion under reduced motion and a short fade otherwise', 
     assert.equal(await tab.evaluate(() => getComputedStyle(document.querySelector('dialog.visual-dialog')).transitionDuration.split(',')[0].trim()), expected);
     await context.close();
   }
+});
+
+// A real built page: the system setting decides, with no saved theme, and only that theme's files load.
+const dist = new URL('../dist/', import.meta.url);
+const types = {'.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.json': 'application/json', '.ttf': 'font/ttf', '.png': 'image/png'};
+test('on a built page the system theme decides, and only that theme loads', async context => {
+  if (skipReason) { if (process.env.CI) assert.fail(`CI needs a browser: ${skipReason}`); return context.skip(skipReason); }
+  const {execFileSync} = await import('node:child_process');
+  execFileSync('npm', ['run', 'build'], {cwd: fileURLToPath(new URL('..', import.meta.url)), stdio: 'ignore'});
+  const files = async dir => (await readdir(dir, {withFileTypes: true, recursive: true})).filter(e => e.isFile() && e.name === 'index.html').map(e => join(e.parentPath, e.name));
+  let pagePath = null;
+  for (const file of await files(fileURLToPath(dist))) if ((await readFile(file, 'utf8')).includes('visual-shot')) { pagePath = '/docs/' + file.slice(fileURLToPath(dist).length).replace(/index\.html$/, ''); break; }
+  if (!pagePath) return context.skip('no built page holds a screenshot yet');
+  const root = fileURLToPath(dist);
+  const http = createHttpServer(async (request, response) => {
+    let path = decodeURIComponent(new URL(request.url, 'http://x').pathname);
+    if (!path.startsWith('/docs/')) { response.statusCode = 404; return response.end(); }
+    path = path.slice(6); if (path.endsWith('/')) path += 'index.html';
+    try { const body = await readFile(join(root, path)); response.setHeader('content-type', types[extname(path)] ?? 'application/octet-stream'); response.end(body); } catch { response.statusCode = 404; response.end(); }
+  });
+  await new Promise(done => http.listen(0, '127.0.0.1', done));
+  let browser;
+  try {
+    browser = await chromium.launch({headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined});
+    for (const scheme of ['dark', 'light']) {
+      const other = scheme === 'dark' ? 'light' : 'dark';
+      const page = await (await browser.newContext({colorScheme: scheme, viewport: {width: 1280, height: 900}})).newPage();
+      const seen = [];
+      page.on('request', request => { if (request.url().includes('/docs/visuals/')) seen.push(request.url()); });
+      await page.goto(`http://127.0.0.1:${http.address().port}${pagePath}`);
+      await page.waitForSelector('.visual-enlarge:not([hidden])');
+      for (const figure of await page.locator('.visual-shot').all()) await figure.scrollIntoViewIfNeeded();
+      await page.waitForLoadState('networkidle');
+      assert(seen.length > 0, `${scheme}: a shot loaded`);
+      assert(seen.every(url => url.endsWith(`-${scheme}.webp`)), `${scheme}: ${seen.join()}`);
+      assert(!seen.some(url => url.endsWith(`-${other}.webp`)));
+      await page.locator('.visual-shot .visual-enlarge').first().click();
+      await page.waitForSelector('dialog.visual-dialog[open] .visual-full');
+      await page.waitForLoadState('networkidle');
+      assert(seen.every(url => url.endsWith(`-${scheme}.webp`)), `${scheme} after opening: ${seen.join()}`);
+    }
+  } finally { await browser?.close(); await new Promise(done => http.close(done)); }
 });

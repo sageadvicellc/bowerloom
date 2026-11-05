@@ -27,9 +27,11 @@ const svg = (doc, markup) => { const holder = make(doc, 'span'); holder.innerHTM
 
 async function copyCommands(button, panel, host) {
   const label = button.dataset.label ??= button.textContent;
-  try { await host.navigator.clipboard.writeText(commandsFromPanel(panel)); button.textContent = 'Copied'; }
-  catch { button.textContent = 'Select to copy'; }
-  host.setTimeout(() => { button.textContent = label; }, 2000);
+  const status = panel.querySelector('.vt-status');
+  const say = (text, announce) => { button.textContent = text; if (status) status.textContent = announce; };
+  try { await host.navigator.clipboard.writeText(commandsFromPanel(panel)); say('Copied', 'Commands copied'); }
+  catch { say('Select to copy', 'Select the commands to copy'); }
+  host.setTimeout(() => { button.textContent = label; if (status) status.textContent = ''; }, 2000);
 }
 
 function buildViewer(figure, doc, base, onCopy) {
@@ -48,13 +50,22 @@ function buildViewer(figure, doc, base, onCopy) {
   form.append(close); bar.append(text, form);
   const device = make(doc, 'div', 'visual-device');
   const scroll = make(doc, 'div', 'visual-scroll');
+  let sync = null;
   if (terminal) {
     const panel = figure.querySelector('.vt-panel').cloneNode(true);
     scroll.append(panel);
   } else {
-    for (const source of figure.querySelectorAll('.visual-img')) {
-      scroll.append(make(doc, 'img', 'visual-full', {'data-shot-theme': source.dataset.shotTheme, src: source.getAttribute('src'), width: source.getAttribute('width'), height: source.getAttribute('height'), alt: '', loading: 'lazy', decoding: 'async'}));
-    }
+    // Only the current theme's file is fetched. `sync` swaps it when the page theme changes while the viewer is open.
+    const full = make(doc, 'img', 'visual-full', {alt: '', loading: 'lazy', decoding: 'async'});
+    sync = () => {
+      const theme = doc.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+      const source = figure.querySelector(`.visual-img[data-shot-theme="${theme}"]`);
+      full.dataset.shotTheme = theme;
+      full.setAttribute('width', source.getAttribute('width')); full.setAttribute('height', source.getAttribute('height'));
+      if (full.getAttribute('src') !== source.getAttribute('src')) full.setAttribute('src', source.getAttribute('src'));
+    };
+    sync();
+    scroll.append(full);
   }
   device.append(scroll);
   for (const plant of PLANTS) device.append(make(doc, 'img', `deco ${plant.name}`, {src: `${base}/frame/${plant.file}`, width: plant.width, height: plant.height, alt: '', 'aria-hidden': 'true', loading: 'lazy', decoding: 'async'}));
@@ -76,7 +87,7 @@ function buildViewer(figure, doc, base, onCopy) {
     const target = tabTarget(focusables, doc.activeElement, event.shiftKey);
     if (target) { event.preventDefault(); target.focus(); }
   });
-  return dialog;
+  return {dialog, sync};
 }
 
 /** Wires every visual under `root`. Returns a function that removes what it added. */
@@ -86,9 +97,12 @@ export function mountVisuals(root, doc = document, {base = '/docs', host = doc.d
   for (const node of root.querySelectorAll('.visual-enlarge, .vt-copy')) node.hidden = false;
   for (const figure of root.querySelectorAll('.visual')) figure.dataset.ready = '';
   const open = (figure, opener) => {
-    let dialog = viewers.get(figure);
-    if (!dialog) { dialog = buildViewer(figure, doc, base, onCopy); doc.body.append(dialog); viewers.set(figure, dialog); }
-    dialog.addEventListener('close', () => opener.focus(), {once: true});
+    let viewer = viewers.get(figure);
+    if (!viewer) { viewer = buildViewer(figure, doc, base, onCopy); doc.body.append(viewer.dialog); viewers.set(figure, viewer); }
+    const {dialog, sync} = viewer;
+    let watcher = null;
+    if (sync) { sync(); watcher = new host.MutationObserver(sync); watcher.observe(doc.documentElement, {attributes: true, attributeFilter: ['data-theme']}); }
+    dialog.addEventListener('close', () => { watcher?.disconnect(); opener.focus(); }, {once: true});
     dialog.showModal();
   };
   const click = event => {
@@ -102,7 +116,7 @@ export function mountVisuals(root, doc = document, {base = '/docs', host = doc.d
   root.addEventListener('click', click);
   return () => {
     root.removeEventListener('click', click);
-    for (const dialog of viewers.values()) { dialog.close?.(); dialog.remove(); }
+    for (const {dialog} of viewers.values()) { dialog.close?.(); dialog.remove(); }
     viewers.clear();
   };
 }

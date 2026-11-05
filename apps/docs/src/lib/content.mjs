@@ -73,8 +73,12 @@ export function createDocsRenderer() {
   return createMarkdownProcessor({syntaxHighlight:'shiki',smartypants:false,shikiConfig:{themes:{light:'github-light',dark:'github-dark'},defaultColor:false}});
 }
 // A visual line becomes figure markup for the page and plain text for the Markdown routes, llms files, and search.
+export const unsafeContent = text => /\/Users\/|file:\/\/|BEGIN PRIVATE KEY|<script\b|\bon(?:click|error|load)\s*=/i.test(text);
 export function prepareVisualSource(resolved,{file,manifest}) {
-  return {htmlSource:applyVisuals(resolved,{file,manifest,mode:'html'}),text:applyVisuals(resolved,{file,manifest,mode:'text'})};
+  const prepared = {htmlSource:applyVisuals(resolved,{file,manifest,mode:'html'}),text:applyVisuals(resolved,{file,manifest,mode:'text'})};
+  // The manifest text joins the page here, so it gets the same check as the page source.
+  if(unsafeContent(prepared.htmlSource)||unsafeContent(prepared.text))throw new Error(`Unsafe or private documentation content: ${file}`);
+  return prepared;
 }
 async function readDocuments() {
   const release = await readRelease();
@@ -90,7 +94,7 @@ async function readDocuments() {
     if(slug && !/^[a-z0-9]+(?:[-/][a-z0-9]+)*$/.test(slug))throw new Error(`Unsupported document route: ${file}`);
     const url = slug==='404'?'/docs/404.html':'/docs/'+(slug?slug+'/':'');
     const resolved = normalizeNotices(expandRelease(content,release)).trim()+'\n';
-    if(/\/Users\/|file:\/\/|BEGIN PRIVATE KEY|<script\b|\bon(?:click|error|load)\s*=/i.test(resolved))throw new Error(`Unsafe or private documentation content: ${file}`);
+    if(unsafeContent(resolved))throw new Error(`Unsafe or private documentation content: ${file}`);
     const {htmlSource,text:resolvedText} = prepareVisualSource(resolved,{file,manifest});
     const rendered = await renderer.render(htmlSource);
     const markdown = `# ${meta.title}\n\n${meta.description?meta.description+'\n\n':''}Canonical page: https://bowerloom.ai${url}\n\n${releaseReference(release)}\n\n${resolvedText}`;
