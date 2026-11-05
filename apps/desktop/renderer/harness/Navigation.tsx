@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { FocusEvent as ReactFocusEvent, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactElement, ReactNode } from 'react';
 import { IconButton } from '../home/kit/IconButton.js';
 import { Tooltip } from '../home/kit/Tooltip.js';
+import { BrandMark } from '../home/kit/BrandMark.js';
 import { branchGeometry, foldMove, glideBox, keyShortcuts, onMac, roveTarget, toggleTip } from '../home/shell/shell-state.js';
 import type { NavMode } from '../home/shell/shell-state.js';
 import '../home/shell/shell.css';
@@ -127,7 +128,7 @@ export function Navigation(p: NavigationProps): ReactElement {
       <span className="hm-nav-glide" ref={glide} aria-hidden="true" />
       <div className="hm-nav-top">
         <IconButton icon="sidebar-left" label={toggleName} tip={toggleTip(toggleName, 'nav', mac)} side="right" aria-expanded={open} aria-controls="hm-nav" aria-keyshortcuts={keyShortcuts('nav')} data-nav-toggle="" onClick={p.onToggle} />
-        <div className="hm-brand"><HIcon name="leaf" size={24} /><span>{WORDS.label.appName}</span></div>
+        <div className="hm-brand"><BrandMark size={26} /><span>{WORDS.label.appName}</span></div>
       </div>
       <div className="hm-nav-body" onScroll={hideGlide}>
         <ul className="hm-nav-list">

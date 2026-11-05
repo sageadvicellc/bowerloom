@@ -29,7 +29,7 @@ import { APP_HOST, APP_INDEX, APP_SCHEME, allowRequest, chooseUserData, decideNa
 const root = dirname(fileURLToPath(import.meta.url));
 const rendererDir = join(root, 'renderer');
 const indexUrl = APP_INDEX;
-const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.map': 'application/json; charset=utf-8' };
+const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.map': 'application/json; charset=utf-8', '.ttf': 'font/ttf' };
 protocol.registerSchemesAsPrivileged([{ scheme: APP_SCHEME, privileges: { standard: true, secure: true } }]);
 
 const argv = process.argv.slice(1);

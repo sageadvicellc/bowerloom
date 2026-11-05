@@ -40,8 +40,8 @@
 [data-home] .hx-state[data-tone="bad"] .hx-dot, [data-home] .hx-dot[data-tone="bad"] { background: var(--hm-ac-red); }
 [data-home] .hx-state[data-tone="quiet"] .hx-dot, [data-home] .hx-dot[data-tone="quiet"] { background: var(--hx-quiet); }
 [data-home] .hx-state[data-tone="good"] .hx-dot, [data-home] .hx-dot[data-tone="good"] { background: var(--accent); }
-[data-home] { --hx-quiet: #737870; }
-[data-theme="dark"] [data-home], [data-home][data-theme="dark"] { --hx-quiet: #9aa59d; }
+[data-home] { --hx-quiet: #8e7e84; }
+[data-theme="dark"] [data-home], [data-home][data-theme="dark"] { --hx-quiet: #a89ba1; }
 
 /* The tile that leads a row: a rounded square in the soft accent with the icon of its kind. */
 [data-home] .hx-tile { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 1.75rem; height: 1.75rem; border-radius: var(--hm-radius-small); background: var(--accent-soft); color: var(--accent-strong); }
@@ -235,8 +235,8 @@
 /* A missing part keeps its dashed amber edge and still answers the pointer. */
 [data-home] .hx-lrow[data-missing]:hover, [data-home] .hx-node[data-missing]:hover { border-color: var(--accent-strong); }
 /*
- * Goal 2: the sage leaf stays at the top of the navigation in its rail too (the harness-first shell only, [data-shell="harness"]; the home app keeps its own rail). The rail is 48 px, so the leaf stands under the toggle on its own line, and the
- * name stays in the page for a screen reader. The leaf is the practice's fixed mark; its size and colour are the navigation's own (temporary tokens).
+ * Goal 2: the brand mark stays at the top of the navigation in its rail too (the harness-first shell only, [data-shell="harness"]; the home app keeps its own rail). The rail is 48 px, so the mark stands under the toggle on its own line, and the
+ * name stays in the page for a screen reader. The mark is the S4-G3 mascot of the website (home/kit/BrandMark.tsx).
  */
 [data-home][data-shell="harness"] .hm-nav[data-mode="rail"] .hm-nav-top { flex-direction: column; justify-content: center; gap: var(--hm-space-1); padding: var(--hm-space-2) var(--hm-space-2) var(--hm-space-1); }
 [data-home][data-shell="harness"] .hm-nav[data-mode="rail"] .hm-brand { display: flex; justify-content: center; }

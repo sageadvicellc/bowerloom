@@ -1,0 +1,108 @@
+/*
+ * The website's look on the app (direction B, chosen on 2026-11-05): the site's palette, type and parts, and a warmer layout inside the macOS frame.
+ * Newsreader names pages, sheets and things; Manrope carries the words; mono marks small labels. The action is plum and turns ink under the pointer. A dashed
+ * stitch marks the place you are on. The sidebar is a tinted source list with a raised row for the current place, the details sit in a floating card, cards and
+ * every button, tag and chip has the site's one sharp corner, and a sheet is a framed panel over a soft blur.
+ * Colours come from tokens.css and brand.css only. This sheet loads last (renderer/harness/mount.tsx), so a rule here wins a tie with the sheet that first drew the part.
+ * Motion: the app's own tokens (renderer/motion-tokens.ts), which are 0 when the person asks for less motion. Only the stitch moves, and only under the pointer.
+ */
+
+/* ---- Type. Words stay 14 px or more. */
+[data-home] :is(h1, .hx-dtitle, .hx-sheet-title, .hxf-name, .hxf-title, .hm-brand > span, .hxf-brand > span) {
+  font-family: var(--font-heading); font-weight: 500; letter-spacing: -0.02em; font-optical-sizing: auto;
+}
+[data-home] .hm-topbar h1 { font-size: 1.625rem; line-height: 1.2; }
+[data-home] .hx-dtitle, [data-home] .hx-sheet-title { font-size: 1.375rem; }
+[data-home] .hxf-name { font-size: 2.5rem; line-height: 1.1; letter-spacing: -0.03em; }
+[data-home] .hxf-title { font-size: 1.5rem; }
+[data-home] .hm-brand > span { font-size: 1.25rem; }
+[data-home] .hm-nav-section { font-family: var(--font-mono); font-size: var(--hm-text-base); text-transform: uppercase; letter-spacing: 0.08em; }
+[data-home] .hx-box-kind { font-family: var(--font-mono); }
+/* The first line of a page is its lede: the reading face, in italic. */
+[data-home] .hx-stage > .hx-hint:first-child { font-family: var(--font-heading); font-style: italic; font-size: 1.125rem; line-height: 1.4; color: var(--text-muted); }
+/* A count beside a page title is a small tag, with the sharp corner of every tag. */
+[data-home] .hm-topbar .hx-count {
+  display: inline-flex; align-items: center; padding: 2px 10px; border: 1px solid var(--border); border-radius: var(--hm-radius-sharp);
+  background: var(--surface); color: var(--accent); font-size: var(--hm-text-base); font-weight: 600; box-shadow: 0 1px 2px rgb(55 58 50 / 0.06);
+}
+
+/* ---- The mark: the mascot keeps its own colours; its side disks are ink on a light page and foliage on a dark one, as on the site. */
+[data-home] .kit-brand-mark { flex: none; display: block; }
+[data-home] .kit-brand-mark-disks { fill: #373a32; }
+[data-theme="dark"] [data-home] .kit-brand-mark-disks, [data-home][data-theme="dark"] .kit-brand-mark-disks { fill: #c5d4ac; }
+[data-home] .hxf-leaf { margin-bottom: var(--hm-space-3); }
+
+/* ---- State dots: a done or good state is foliage, as the site's "Exact"; the action colour is kept for actions. */
+[data-home] .hx-dot, [data-home] .hx-state[data-tone="good"] .hx-dot, [data-home] .hx-dot[data-tone="good"] { background: var(--hm-ac-green); }
+
+/* ---- Buttons. Every button, tag and chip has the site's one sharp corner; nothing is a pill. A text button is filled (the action: plum, ink under the pointer) or
+   outlined (it takes the action colour under the pointer). An icon button has no box at all: no fill, no edge and no shadow at rest, a 44 px hit area, and under the
+   pointer its icon takes the action colour over a faint tint. Its focus ring keeps the sharp corner. */
+[data-home] .kit-button { border-radius: var(--hm-radius-sharp); }
+[data-home] .kit-button:not([data-icon-only]) { padding-inline: var(--hm-space-4); }
+[data-home] .kit-button[data-variant="text"] { padding-inline: var(--hm-space-3); }
+[data-home] .kit-button[data-variant="primary"]:not(:disabled):not([aria-disabled="true"]):hover,
+[data-home] .hm-nav-item[data-primary]:hover { background: var(--text); border-color: var(--text); color: var(--bg); }
+[data-home] .kit-button:not([data-variant="primary"]):not([data-variant="text"]):not([data-icon-only]):not(:disabled):not([aria-disabled="true"]):hover { background: var(--surface); border-color: var(--accent); color: var(--accent); }
+[data-home] .kit-button[data-icon-only]:not([data-variant="primary"]),
+[data-home] .kit-button[data-icon-only]:not([data-variant="primary"]):is(:hover, [aria-pressed="true"], [aria-expanded="true"], [aria-disabled="true"]),
+[data-home][data-shell="harness"] .kit-button[data-icon-only][aria-pressed="true"]:hover { background: transparent; border-color: transparent; box-shadow: none; }
+[data-home] .kit-button[data-icon-only] { position: relative; }
+[data-home] .kit-button[data-icon-only]::before { content: ''; position: absolute; inset: calc((var(--hm-control-h) - var(--hm-hit)) / 2); }
+[data-home] .kit-button[data-icon-only]:not([data-variant="primary"]):not([aria-disabled="true"]):hover { color: var(--accent); background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
+/* A pressed or open icon button says so with the action colour on its icon and the same faint tint; there is still no box. */
+[data-home] .kit-button[data-icon-only]:not([data-variant="primary"]):is([aria-pressed="true"], [aria-expanded="true"]) { color: var(--accent); background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
+[data-home] .kit-button[data-icon-only]:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; border-radius: var(--hm-radius-sharp); }
+[data-home] .hx-seg, [data-home] .hx-seg .kit-button[data-icon-only], [data-home] .hx-tab { border-radius: var(--hm-radius-sharp); }
+[data-home] .hm-nav-item { border-radius: var(--hm-radius-sharp); }
+[data-home] .hm-nav-glide { border-radius: var(--hm-radius-sharp); }
+
+/* ---- The sidebar: a source list on a rose-tinted ground. The current place is a raised row with the stitch under its words. */
+[data-home] .hm-nav { background: color-mix(in srgb, var(--bg) 70%, var(--accent-soft)); border-right-color: var(--border); }
+[data-home] .hm-nav-low { border-top-color: var(--border); }
+[data-home] .hm-nav-item[aria-current="page"] { background: var(--surface); font-weight: 600; box-shadow: 0 1px 2px rgb(55 58 50 / 0.08), 0 4px 12px -6px rgb(128 81 91 / 0.35); }
+/* In dark the surface is close to the tinted list, so the raised row also takes the second surface and a fine edge. */
+[data-theme="dark"] [data-home] .hm-nav-item[aria-current="page"] { background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--border), 0 4px 12px -6px rgb(0 0 0 / 0.6); }
+[data-home] .hm-nav-item[aria-current="page"] .kit-icon { color: var(--accent); }
+/* The stitch: short 2 px dashes in the action colour under the words. It is there at once for the current place and for keyboard focus; under the pointer it draws in
+   from the left in the hover time, because hovering is frequent and must stay quick. */
+[data-home] .hm-nav-label { position: relative; }
+[data-home] .hm-nav-label::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: -4px; height: 2px;
+  background: repeating-linear-gradient(90deg, var(--accent) 0 5px, transparent 5px 9px); clip-path: inset(0 100% 0 0);
+  transition: clip-path var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease-out);
+}
+[data-home] .hm-nav-item:not([data-primary]):is(:hover, :focus-visible, [aria-current="page"]) .hm-nav-label::after { clip-path: inset(0 0 0 0); }
+[data-home] .hm-nav-item:is(:focus-visible, [aria-current="page"]) .hm-nav-label::after { transition: none; }
+/* An open kind of the Library (Skills under Library) is not a second selection: Library keeps the raised row, and the kind takes the action colour and weight only. */
+[data-home] .hm-nav-item[aria-current="true"] { font-weight: 600; }
+[data-home] .hm-nav-item[aria-current="true"] .kit-icon { color: var(--accent); }
+
+/* ---- The top row: a soft tinted bar, a little taller, with the page title in the reading face. */
+[data-home] .hm-topbar { min-height: 3.5rem; background: color-mix(in srgb, var(--surface) 75%, var(--bg)); border-bottom-color: var(--border); }
+
+/* ---- The stage: more air. Cards take the site's round corner and a warm low shadow; the selected card keeps the surface and gains a plum edge. */
+[data-home] .hm-body { background: var(--bg); }
+[data-home] .hx-stage:not([data-flush]) { padding: var(--hm-space-6) 2rem; gap: var(--hm-space-5); }
+[data-home] .hx-row { border-radius: 1.25rem; border-color: var(--hm-border); box-shadow: 0 1px 2px rgb(55 58 50 / 0.06), 0 10px 28px -18px rgb(55 58 50 / 0.4); }
+[data-theme="dark"] [data-home] .hx-row { box-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 28px -18px rgb(0 0 0 / 0.7); }
+[data-home] .hx-row:hover { border-color: var(--accent); }
+[data-home] .hx-row[data-selected] { background: var(--surface); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent), 0 10px 28px -14px rgb(128 81 91 / 0.45); }
+[data-theme="dark"] [data-home] .hx-row[data-selected] { box-shadow: inset 0 0 0 1px var(--accent), 0 10px 28px -14px rgb(0 0 0 / 0.7); }
+[data-home] .hx-row[data-selected]:hover { box-shadow: inset 0 0 0 2px var(--accent), 0 10px 28px -14px rgb(128 81 91 / 0.45); }
+[data-home] .hx-tile { border-radius: var(--hm-radius-pill); }
+[data-home] .hx-folders .hx-rows + .hx-actions { margin-top: var(--hm-space-3); }
+
+/* ---- The details: a floating card inset from the window edge. Under 761 px of column it sits under the page, and keeps its corners. */
+[data-home] .hm-panel { margin: var(--hm-space-3) var(--hm-space-3) var(--hm-space-3) 0; border: 1px solid var(--hm-border); border-radius: 1.25rem; box-shadow: 0 10px 28px -18px rgb(55 58 50 / 0.4); }
+[data-theme="dark"] [data-home] .hm-panel { box-shadow: 0 10px 28px -18px rgb(0 0 0 / 0.7); }
+@container hmcol (max-width: 760px) {
+  [data-home] .hm-panel { margin: 0 var(--hm-space-3) var(--hm-space-3); border: 1px solid var(--hm-border); }
+}
+
+/* ---- The framed sheet: a rounded panel with an edge and a deep soft shadow, over a dim tone and a light blur. With reduced transparency the tone is plain. */
+[data-home] .hx-scrim { background: rgb(24 20 28 / 0.45); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+[data-home] .hx-sheet { border: 1px solid var(--border); border-radius: 1rem; box-shadow: var(--hm-shadow-lift); }
+@media (prefers-reduced-transparency: reduce) {
+  [data-home] .hx-scrim { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgb(24 20 28 / 0.6); }
+}

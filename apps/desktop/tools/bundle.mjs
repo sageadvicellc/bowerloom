@@ -24,5 +24,15 @@ if (process.argv.includes('--tests')) {
   await build({ ...common, entryPoints: [join(here, 'preload/real-preload.ts')], outfile: join(here, 'dist/preload-real.cjs'), format: 'cjs', platform: 'node', external: ['electron'] });
   await build({ ...common, entryPoints: [join(here, 'renderer/app.ts')], outfile: join(here, 'dist/renderer/app.js'), format: 'iife', platform: 'browser', target: 'chrome140', jsx: 'automatic', loader: { '.css': 'css' }, define: { 'process.env.NODE_ENV': '"production"' }, legalComments: 'none' });
   mkdirSync(join(here, 'dist/renderer'), { recursive: true });
-  for (const file of ['index.html', 'tokens.css', 'styles.css']) cpSync(join(here, 'renderer', file), join(here, 'dist/renderer', file));
+  for (const file of ['index.html', 'brand.css', 'tokens.css', 'styles.css']) cpSync(join(here, 'renderer', file), join(here, 'dist/renderer', file));
+  copyFonts();
+}
+
+/** The website's own font files and their licences (apps/landing/public/fonts), so the app and the site set the same type. Only Newsreader and Manrope are used. */
+function copyFonts() {
+  const fonts = join(here, '..', 'landing', 'public', 'fonts');
+  for (const [family, files] of [['newsreader', ['roman.ttf', 'italic.ttf', 'OFL.txt']], ['manrope', ['font.ttf', 'OFL.txt']]]) {
+    mkdirSync(join(here, 'dist/renderer/fonts', family), { recursive: true });
+    for (const file of files) cpSync(join(fonts, family, file), join(here, 'dist/renderer/fonts', family, file));
+  }
 }
