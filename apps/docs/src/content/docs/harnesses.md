@@ -59,6 +59,10 @@ Bowerloom writes no Codex allow rule from a neutral allow rule. A Codex allow ru
 
 Harness commands do not start models or grant execution authority. If the selected files are live and you are unsure of their scope, read the plan and stop before you approve.
 
+## Share a harness
+
+A harness travels in one bundle file. `bowerloom harness export` writes it and `bowerloom harness import` reads it, and the app has Export and Import. The file holds no secret value and no notes folder path. An import goes only into a folder whose harness is missing or empty. [Share a harness](/docs/guides/share-a-harness/) has the steps.
+
 ## The 0.7 skill and prompt copies
 
 `bowerloom skills sync` and `bowerloom apply` put pinned skills and prompts in place for Claude Code, Codex, or both. Skills go to `.claude/skills` and `.agents/skills`. A prompt becomes the Claude Code command `.claude/commands/<name>.md` and the Codex skill `.agents/skills/prompt-<name>`. `bowerloom up --team <name>` targets both by default. Pass `--harness claude`, `--harness codex`, or `--harness both` to `apply` to choose. [Add third-party skills](/docs/guides/add-skills/) explains the commands.

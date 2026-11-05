@@ -353,6 +353,19 @@ The `bowerloom harness` commands adopt a folder into a 0.8 harness and install i
 | `PORTABLE_ORDER_UNSAFE` | OpenCode moves a whole-number key to the front of its object, so the order of its last-match rules would change. | Rename the key or pattern so that it is not a whole number. |
 | `HARNESS_STATE_TWO_RECORDS` | Two private records exist for this folder, one from the earlier app and one shared, and Bowerloom does not pick one. | Move the record you do not want aside in the private state folder: `$XDG_STATE_HOME/bowerloom` when `XDG_STATE_HOME` is set, else `~/.local/state/bowerloom`. Then run the command again. |
 | `HARNESS_APPROVAL_STALE` | The entry that this approval names changed, or is gone, since the line was shown. | Plan again with `bowerloom harness install`, then run `bowerloom harness accept <line-key>` for the new line. |
+| `BUNDLE_USAGE` | The choices do not fit this file, or a value of the call is not allowed. Nothing was written. | Run the command again with --link and --leave names that the plan lists. |
+| `BUNDLE_FORMAT` | This is not a Bowerloom harness file, or it is a form Bowerloom does not read. Nothing was written. | Export the harness again with bowerloom harness export, then import that file. |
+| `BUNDLE_TOO_LARGE` | This file is larger than Bowerloom reads, or it holds more files or bytes than a harness may. Nothing was written. | Remove files the harness does not need, then export it again. |
+| `BUNDLE_DAMAGED` | This file does not match its own sizes or checksums, so it was changed or damaged. Nothing was written. | Export the harness again, or get the file again from the person who made it. |
+| `BUNDLE_PATH_UNSAFE` | This file names a path that is not a plain path inside the harness. Nothing was written. | Export the harness again with bowerloom harness export. Do not edit the file by hand. |
+| `BUNDLE_SECRET_FOUND` | A file holds what looks like a secret value. A harness never carries one. Nothing was written. | Replace the value with a ${NAME} reference in the harness, then export it again. For an import, ask the sender for a new file. |
+| `BUNDLE_INVALID` | The files in this bundle do not make a harness that loads. Nothing was written. | Run bowerloom harness status in the folder, or export the harness again. |
+| `BUNDLE_FILE_UNSAFE` | The bundle file is a link, is not a plain file that you own, or changed while it was read. Nothing was read or written. | Use a plain file that you own, in a folder with no link in its path. |
+| `BUNDLE_FILE_FAILED` | The file could not be read or written. The disk may be full or read-only, the name may be too long, or you may lack permission. Nothing was read or written. | Free some disk space, use a shorter file name, or pick a folder you can write to, then run the command again. |
+| `BUNDLE_EXISTS` | A file exists at that place already. Bowerloom does not replace it. Nothing was written. | Pick another file name for --output, or add --replace to replace the old file. |
+| `IMPORT_FOLDER_HAS_HARNESS` | This folder has a harness with parts or settings in it already. An import goes only into a folder with no harness, or with an empty one. Nothing was written. | Import into a new folder, or into a folder whose harness is empty. |
+| `IMPORT_NEEDS_ACKNOWLEDGEMENT` | This file holds tools or files that can run, values it reads from this computer, or paths from another computer. Tick that you read them, then import. Nothing was written. | Read the plan, then run the command again with --acknowledge <hash> and --approve <revision>. |
+| `EXPORT_NEEDS_ACKNOWLEDGEMENT` | These files hold a path from this computer. Tick that you read them, then export. Nothing was written. | Read the plan, then run the command again with --acknowledge <hash> and --approve <revision>. |
 
 ## Harness load problems
 

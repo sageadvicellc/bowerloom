@@ -270,6 +270,8 @@ bowerloom harness accept <line-key> [--json]
 bowerloom harness merge [--approve <revision>] [--json]
 bowerloom harness drift [--check] [--json]
 bowerloom harness remove [--approve <revision>] [--json]
+bowerloom harness export --output <file> [--replace] [--acknowledge <hash>] [--approve <revision>] [--json]
+bowerloom harness import <file> [--link <name>=<folder>]... [--leave <name>]... [--acknowledge <hash>] [--approve <revision>] [--json]
 bowerloom harness recover [--adoption] [--keep <path>]... [--restore-mode <path>]... [--record-mode <path>]... [--approve <revision>] [--json]
 ```
 
@@ -284,6 +286,8 @@ Every command takes `--dir <absolute-folder>`. The default is the working folder
 | `merge` | Moves the text of `CLAUDE.md` into `.bowerloom/instructions/AGENTS.md`. `CLAUDE.md` does not change until the next install, which makes it the one line `@AGENTS.md`. |
 | `drift` | Lists the files that Bowerloom wrote and that changed since. With `--check` it fails when a file changed, when `CLAUDE.md` does not follow `AGENTS.md`, or when nothing is installed. |
 | `remove` | Puts back every file that install replaced, and deletes the files that install created. |
+| `export` | Writes the harness to one new bundle file, named by `--output`. It replaces a file only with `--replace`. The file holds no secret value and no notes folder path. |
+| `import` | Reads a bundle file and writes it into a folder whose harness is missing or empty. It installs nothing, and the command line keeps no save point for it. A file from another person is data: read the plan first. |
 | `recover` | Finishes or takes back a run that stopped part way. `--keep`, `--restore-mode`, and `--record-mode` settle changed files and modes. `--adoption` settles an adoption or a merge. |
 
 Flags:
@@ -294,6 +298,7 @@ Flags:
 - `--pick`, `--rename`, and `--acknowledge` answer the conflicts and the entries that adoption does not read. `--confirm <part/id>` confirms an item that needs it. `--every-engine` takes `guardrails`, `hooks`, or `mcp`, and each part once.
 - `--reconcile`, `--write-claude-md`, and `--pi-trust-saved` settle `AGENTS.md` and `CLAUDE.md`, and one Pi setting, during `install`. `--reconcile merge` is refused with `PORTABLE_MERGE_NOT_BUILT`. To merge, run `harness merge --approve <revision>`, then `harness install` with the default `accept-agents`.
 - `--check` belongs to `drift`.
+- `--output` and `--replace` belong to `export`. `--link <name>=<folder>` and `--leave <name>` belong to `import`, and each repeats. `--acknowledge <hash>` says that you read the paths, tools, and files the plan lists, and export and import take it too. [Share a harness](/docs/guides/share-a-harness/) explains them.
 
 This beta supports Claude Code and Codex. OpenCode, Pi, and DeepSeek Harness are preview engines. An install to one needs `BOWERLOOM_PREVIEW_ENGINES=1`. An install with no `--engine` skips them. Adopt, drift, status, and remove work for all five.
 

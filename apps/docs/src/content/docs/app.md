@@ -105,6 +105,19 @@ Every save keeps a save point, which is a copy of the harness as it was. The fir
 - **Go back** on a row puts the harness as it was at that save point. Bowerloom also keeps the harness as it is now as a save point, so nothing is lost and the list only grows. Going back changes only `.bowerloom`, and you review and approve it first, as you do for a save.
 - **Set old save points aside** shows only when the app refuses the record of save points, because the record is not whole or is not safe to read. It starts a new record. It shows a review first. It deletes nothing, and **Go back** then starts again from the next save.
 
+## Export and import
+
+Press **Export** in the header of the Builder to write the saved harness to one file. Press **Import from a file** in the Folders block of Harnesses, or in the empty state when you have no harness, to read such a file. Each opens a sheet that shows what the file holds, and writes nothing until you tick the boxes and approve. Import goes only into a folder with no harness, or an empty one. [Share a harness](/docs/guides/share-a-harness/) covers what the file holds, what to read first, and the limits.
+
+## See everything in one graph
+
+The Overview is the first screen after the read. It shows every place Bowerloom found, in one graph or a list: your folders, the agents, skills, and tools in each, and the sets of notes they use. Every place starts closed, except your home, which is open. When there are more than 40 parts, the home starts closed too. Press **Expand** or **Collapse** on a place, or **Expand all** or **Collapse all**.
+
+- A place marked **In Bowerloom** already has a harness. **Open in builder** opens it. A place marked **Not in Bowerloom yet** has files but no harness.
+- Select a part to see what it uses, what uses it, and the other places where it is found. A part that runs code says so.
+- Use **Graph or list** to switch the view. The arrow keys move, Enter selects, and Escape clears.
+- The Overview is read-only. It changes no file. Open a place in the builder to change it.
+
 ## Notes
 
 The Notes panel and the Notes keeper kit are covered in [Notes and the Notes keeper](/docs/guides/notes/).
