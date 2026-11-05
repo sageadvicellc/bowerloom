@@ -16,21 +16,22 @@ export interface ProgressWindow {
 
 /**
  * Writes the header progress through `write` once now, once on resize, and once per animation frame after a scroll. The scroll listener is passive and only asks for a frame,
- * so many scroll events in one frame cost one read. `distance` returns how far the page scrolls before the bar is compact. Returns the function that stops watching.
+ * so many scroll events in one frame cost one read. `distance` returns how far the page scrolls before the bar is compact; it is read once at start and again on resize, and cached between, so a scroll frame touches no layout. Returns the function that stops watching.
  */
 export function watchHeaderProgress(options: { win: ProgressWindow; distance: () => number; write: (progress: number) => void }): () => void {
   const { win, distance, write } = options;
   let last = Number.NaN;
+  let span = distance();
   let frame: number | null = null;
   const update = () => {
     frame = null;
-    const next = headerProgress(win.scrollY, distance());
+    const next = headerProgress(win.scrollY, span);
     if (next === last) return;
     last = next;
     write(next);
   };
   const onScroll: Listener = () => { if (frame === null) frame = win.requestAnimationFrame(update); };
-  const onResize: Listener = () => update();
+  const onResize: Listener = () => { span = distance(); update(); };
   update();
   win.addEventListener('scroll', onScroll, { passive: true });
   win.addEventListener('resize', onResize);

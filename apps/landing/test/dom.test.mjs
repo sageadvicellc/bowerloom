@@ -344,7 +344,7 @@ const headerState = page => page.evaluate(() => {
   const brand = new DOMMatrixReadOnly(getComputedStyle(document.querySelector('.site-header .brand')).transform);
   const parts = ['.brand-mascot', '.brand-wordmark', '.desktop-navigation .nav-link', '.nav-github', '#site-theme', '.nav-cta-bar', '.mobile-menu-toggle'].flatMap(selector => [...document.querySelectorAll('.site-header ' + selector)].map(el => ({ selector, box: box(el) }))).filter(part => part.box);
   return {
-    p: Number(document.documentElement.style.getPropertyValue('--header-p') || getComputedStyle(document.documentElement).getPropertyValue('--header-p')),
+    p: Number(getComputedStyle(document.querySelector('.site-header-shell')).getPropertyValue('--header-p')),
     ty: matrix.f, scale: brand.a, glass: Number(getComputedStyle(header, '::before').opacity),
     edge: document.querySelector('.homepage-banner').getBoundingClientRect().top,
     parts,
@@ -411,11 +411,33 @@ dom('the header changes with no time-based easing: the value is the scroll posit
     const durations = await page.evaluate(() => ['.site-header', '.site-header .brand'].map(s => getComputedStyle(document.querySelector(s)).transitionDuration).concat(getComputedStyle(document.querySelector('.site-header'), '::before').transitionDuration));
     assert.deepEqual(durations, ['0s', '0s', '0s'], reducedMotion);
     await page.evaluate(() => scrollTo(0, 26));
-    await page.waitForFunction(() => document.documentElement.style.getPropertyValue('--header-p') !== '' && Number(document.documentElement.style.getPropertyValue('--header-p')) > 0.4);
+    await page.waitForFunction(() => Number(document.querySelector('.site-header-shell').style.getPropertyValue('--header-p')) > 0.4);
     const now = await headerState(page);
     assert.ok(Math.abs(now.p - 0.5) < 0.01 && Math.abs(now.glass - now.p) < 1e-3, `${reducedMotion}: the frame after the scroll already shows p ${now.p}`);
     await context.close();
   }
+});
+
+dom('a page loaded already scrolled never paints the full bar: --header-p is at its scrolled value on every frame once the page has scrolled', async () => {
+  const { page, context } = await open({ viewport: { width: 1280, height: 800 } });
+  await page.waitForSelector('.homepage-banner[data-artwork="ready"]');
+  await scrollTo(page, 400, 300);
+  await page.addInitScript(() => {
+    window.__frames = [];
+    const tick = () => {
+      const shell = document.querySelector('.site-header-shell');
+      window.__frames.push({ y: scrollY, p: shell ? Number(getComputedStyle(shell).getPropertyValue('--header-p')) : null });
+      if (window.__frames.length < 120) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForTimeout(1500);
+  const frames = await page.evaluate(() => window.__frames);
+  assert.ok(frames.some(f => f.y > 100), 'the browser restored the scroll position');
+  const bad = frames.filter(f => f.y >= 60 && f.p !== null && f.p < 1);
+  assert.deepEqual(bad, [], 'no frame shows a scrolled page with a see-through bar');
+  await context.close();
 });
 
 dom('the progress is set again on resize: the compact distance follows the header height', async () => {
@@ -534,6 +556,7 @@ dom('icon buttons have no box at rest and a 44 px target, and every button, tag,
   }
   await phone.page.locator('[data-screenshot-slot="builder-graph"] .screenshot-enlarge').click();
   await phone.page.waitForFunction(() => document.querySelector('.screenshot-dialog[open]'));
+  await phone.page.waitForFunction(() => getComputedStyle(document.querySelector('.screenshot-dialog[open]')).opacity === '1');
   const closeFacts = await iconFacts('.screenshot-dialog[open] .screenshot-close');
   assert.equal(closeFacts.bg, 'rgba(0, 0, 0, 0)'); assert.equal(closeFacts.border, '0px'); assert.ok(closeFacts.w >= 44 && closeFacts.h >= 44);
   await phone.context.close();

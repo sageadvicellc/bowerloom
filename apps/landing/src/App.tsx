@@ -60,12 +60,13 @@ export default function App() {
   useLayoutEffect(() => initReveal(), []);
   const reduced = useReducedMotion();
   // The header follows the scroll position: --header-p goes from 0 at the top to 1 at the compact distance, and the style sheet draws every part of the change from it.
+  // It starts in a layout effect, before the first paint, and writes on the shell so a scroll frame restyles only the header.
   const shell = useRef<HTMLDivElement>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = shell.current;
     if (!element) return undefined;
     const root = document.documentElement;
-    return watchHeaderProgress({ win: window, distance: () => compactDistance(root, element), write: progress => root.style.setProperty("--header-p", String(progress)) });
+    return watchHeaderProgress({ win: window, distance: () => compactDistance(root, element), write: progress => element.style.setProperty("--header-p", String(progress)) });
   }, []);
 
   useEffect(() => scheduleInitialAnchor(

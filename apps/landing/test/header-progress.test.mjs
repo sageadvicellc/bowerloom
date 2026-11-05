@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { headerProgress, watchHeaderProgress } from '../src/header-progress.ts';
+import { compactDistance, headerProgress, watchHeaderProgress } from '../src/header-progress.ts';
 
 const read = path => readFile(new URL('../' + path, import.meta.url), 'utf8');
 
@@ -59,11 +59,34 @@ test('a value that has not changed is not written again', () => {
   assert.deepEqual(f.written, [0, 1]);
 });
 
-test('the compact distance is the full header height minus the compact strip, from the style sheet, so the photo edge meets the strip exactly at p = 1', async () => {
+test('the script has no timers or observers, and the app starts it before paint and no longer uses the old class or sentinels', async () => {
   const code = (await read('src/header-progress.ts')).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   assert.doesNotMatch(code, /setTimeout|transition|IntersectionObserver/);
-  assert.match(await read('src/App.tsx'), /watchHeaderProgress/);
+  assert.match(await read('src/App.tsx'), /useLayoutEffect\(\(\) => \{[^}]*?watchHeaderProgress/s, 'the first write happens before paint');
   assert.doesNotMatch(await read('src/App.tsx'), /is-compact|header-sentinel|watchCompact/);
+});
+
+test('the compact distance is the shell height minus the compact strip read from the root style', () => {
+  const real = globalThis.getComputedStyle;
+  try {
+    globalThis.getComputedStyle = () => ({ getPropertyValue: name => (name === '--header-compact-h' ? ' 48px' : '') });
+    assert.equal(compactDistance({}, { offsetHeight: 100 }), 52);
+    assert.equal(compactDistance({}, { offsetHeight: 76 }), 28);
+    globalThis.getComputedStyle = () => ({ getPropertyValue: () => '' });
+    assert.equal(compactDistance({}, { offsetHeight: 76 }), 76, 'a missing strip height means no strip');
+  } finally { globalThis.getComputedStyle = real; }
+});
+
+test('the distance is read once at start and once per resize, never on a scroll frame', () => {
+  const f = fakeWindow(50);
+  let reads = 0;
+  watchHeaderProgress({ win: f.win, distance: () => { reads += 1; return f.state.distance; }, write: f.write });
+  assert.equal(reads, 1);
+  for (const y of [5, 15, 30, 45]) { f.win.scrollY = y; f.listeners.get('scroll').fn(); f.frames.shift()(); }
+  assert.equal(reads, 1, 'scroll frames use the cached distance');
+  f.state.distance = 20; f.listeners.get('resize').fn();
+  assert.equal(reads, 2);
+  assert.equal(f.written.at(-1), 1, 'the new distance applies after resize');
 });
 
 test('every part of the change is driven by --header-p, with only transform and opacity, and no time-based transition on the header', async () => {
