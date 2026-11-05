@@ -22,7 +22,7 @@ import { useEngine } from '../engine.js';
 import { useUi } from '../ui.js';
 import { CHANGE_TONE, CHANGE_WORDS, ENGINE_WORDS, engineList } from '../words-engine.js';
 import {
-  SHARE, SHARE_REFUSAL_WORDS, approveImportName, approveImportWords, fileSizeWords, importBlockWords, importFilesWords, importTickWords, importedWords, makesHarnessWords, notesButtonName,
+  SHARE, nextWordsOf, approveImportName, approveImportWords, fileSizeWords, importBlockWords, importFilesWords, importTickWords, importedWords, makesHarnessWords, notesButtonName,
   notesChoiceName, readFileWords,
 } from '../words-share.js';
 import { Busy, RefusalNote, TickRow } from './engine-parts.js';
@@ -272,6 +272,14 @@ export function ImportSheet({ open, onClose }: ImportSheetProps): ReactElement |
   const dismiss = (): void => { if (cancelled) call.clear(); };
   useEffect(() => { if (cancelled) writeButton.current?.focus({ preventScroll: true }); }, [cancelled, call.refusalId]);
   useHeldFocus(planning && !cancelled, body);
+  // After UNKNOWN_BUNDLE (the helper thread restarted) the file is gone, and planning it again would fail the same way: back to the file step, with the refusal shown there.
+  const lostFile = call.refusal?.code === 'UNKNOWN_BUNDLE';
+  useEffect(() => {
+    if (!lostFile || !open) return;
+    heldId.current = null;
+    setBundle(null); setLinks(new Map()); resetPlan(); setDone(null);
+    go('file');
+  }, [call.refusalId, lostFile]);
 
   /**
    * Plans the import of the bundle into the picked folder, with the notes choices as they are. The newest plan wins. With `keep`, the plan on screen stays, dimmed, until the
@@ -386,11 +394,11 @@ export function ImportSheet({ open, onClose }: ImportSheetProps): ReactElement |
     </>;
   }
 
-  const code = call.refusal?.code ?? list.refusal?.code;
-  const nextWords = code === undefined || cancelled ? undefined : SHARE_REFUSAL_WORDS[code];
+  const shownRefusal = call.refusal ?? list.refusal;
+  const nextWords = shownRefusal === null || cancelled ? undefined : nextWordsOf(shownRefusal);
   const refusal = call.refusal === null || cancelled ? null : (
     <RefusalNote refusal={call.refusal} focusId={call.refusalId}>
-      {lastPlan !== null ? <HButton data-plan-again="" onClick={lastPlan}>{W.label.planAgain}</HButton> : null}
+      {lastPlan !== null && !lostFile ? <HButton data-plan-again="" onClick={lastPlan}>{W.label.planAgain}</HButton> : null}
     </RefusalNote>
   );
   const listRefusal = list.refusal === null ? null : <RefusalNote refusal={list.refusal} focusId={list.refusalId}>{null}</RefusalNote>;
@@ -415,9 +423,9 @@ export function ImportSheet({ open, onClose }: ImportSheetProps): ReactElement |
             {folders.length === 0 ? null : <FolderList folders={folders} picked={picked} busy={planning || held} onPick={id => { setPicked(id); resetPlan(); call.clear(); }} />}
             {engine?.mode === 'sample' ? null : <div className="hxe-actions"><HButton icon="plus" data-choose-folder="" disabled={planning || held || engine === null} onClick={chooseFolder}>{W.label.chooseFolder}</HButton></div>}
             <p className="hxe-text hxe-muted" role="status" id={folderId} data-folder-status="">{folderOk ? '' : SHARE.hint.noFolderPicked}</p>
-            {listRefusal}
           </>
         ) : null}
+        {step === 'file' || step === 'folder' ? listRefusal : null}
         {planning ? <Busy words={call.busy ?? list.busy!} /> : null}
         {cancelled ? <p className="hxe-text" role="status" data-cancelled="">{SHARE.hint.cancelledImport}</p> : null}
         {refusal}

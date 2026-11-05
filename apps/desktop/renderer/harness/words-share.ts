@@ -89,7 +89,7 @@ const FIELD_WORDS: Readonly<Record<ShareSink['field'], string>> = Object.freeze(
 
 /**
  * What to do next after each refusal of the share calls, under the refusal's own words. The package codes (BUNDLE_*) and main's, each once. A code that is not here
- * shows its own words alone.
+ * shows its own words alone: that includes the three refusals whose own words already end with the step to take (a tick not made, or no harness to export).
  */
 export const SHARE_REFUSAL_WORDS: Readonly<Record<string, string>> = Object.freeze({
   BUNDLE_USAGE: 'Close the sheet and open it again.',
@@ -103,9 +103,6 @@ export const SHARE_REFUSAL_WORDS: Readonly<Record<string, string>> = Object.free
   BUNDLE_FILE_FAILED: 'Check the disk and the folder, then try again.',
   BUNDLE_EXISTS: 'Choose another name.',
   IMPORT_FOLDER_HAS_HARNESS: 'Choose another folder, or an empty one.',
-  IMPORT_NEEDS_ACKNOWLEDGEMENT: 'Tick that you read them, then import.',
-  EXPORT_NEEDS_ACKNOWLEDGEMENT: 'Tick that you read them, then export.',
-  EXPORT_NO_DEFINITION: 'Make a harness first with New harness from a folder.',
   FAILED: 'Try again. If it fails again, report a problem.',
   SAVE_NO_DEFINITION: 'Choose the folder again, then plan the import again.',
   SAVE_STALE: 'The folder changed since. Plan the import again.',
@@ -114,6 +111,23 @@ export const SHARE_REFUSAL_WORDS: Readonly<Record<string, string>> = Object.free
   NOT_THE_PLAN_SHOWN: 'The plan changed. Plan again, then approve it.',
   CANCELLED: 'Nothing was written. Press the button again when you are ready.',
 });
+
+/**
+ * What to do next after a worker thread stopped, keyed on the cause main puts in `refusal.step`. It does not say "try again": a write that stopped may have left a stopped
+ * save, and a plan is refused until that is finished.
+ */
+export const WORKER_NEXT_WORDS: Readonly<Record<string, string>> = Object.freeze({
+  WORKER_CRASHED: 'Open the folder again. Finish any stopped save first.',
+  WORKER_OUT_OF_MEMORY: 'Choose a smaller file. Finish any stopped save first.',
+  WORKER_NOT_STARTED: 'Close Bowerloom and open it again.',
+  WORKER_TIMED_OUT: 'Open the folder again. Finish any stopped save first.',
+});
+
+/** The next-step line under a refusal: by the cause of a stopped worker when it names one, else by the code. Undefined when the refusal's own words are enough. */
+export function nextWordsOf(refusal: { readonly code: string; readonly step?: string | undefined }): string | undefined {
+  if (refusal.step !== undefined && Object.hasOwn(WORKER_NEXT_WORDS, refusal.step)) return WORKER_NEXT_WORDS[refusal.step];
+  return Object.hasOwn(SHARE_REFUSAL_WORDS, refusal.code) ? SHARE_REFUSAL_WORDS[refusal.code] : undefined;
+}
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 
