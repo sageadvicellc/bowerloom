@@ -136,7 +136,7 @@ test('a tool environment that starts code is not refused as a file: nothing is w
   for (const text of ['NODE_OPTIONS', '--require ./preload.js']) {
     try { await expect(s.locator('[data-tool="tally-feed"]')).toContainText(text, { timeout: 1500 }); } catch { missing.push(text); }
   }
-  expect(missing, 'the texts the sheet does not show yet').toEqual(['NODE_OPTIONS', '--require ./preload.js']);
+  expect(missing, 'the texts the sheet does not show yet').toEqual([]);
   const bundleId = (await s.locator('[data-bundle]').getAttribute('data-bundle'))!;
   await s.locator('[data-import-next]').click();
   await h.pick(dir);
