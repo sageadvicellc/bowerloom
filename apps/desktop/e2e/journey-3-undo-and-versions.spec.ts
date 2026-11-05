@@ -1,9 +1,8 @@
 /**
  * Journey 3 (spec section 12): "Undo and versions". The person makes a bad edit, opens the history, compares two versions, and restores one.
  *
- * It runs on the made-up home (tools/made-up-home.ts), project `rope-yard`. The history is the Builder's "Save points" drawer. The step "compares two versions" is NOT BUILT in beta.1:
- * the drawer lists each save point with "Go back" and nothing else, and the only preview is the review of a go-back, which lists the files that would change against the folder as it is
- * now. That step is a `test.fixme` below, with an absence check that records what the drawer offers. Every other step runs for real, and each file is read from disk by the test.
+ * It runs on the made-up home (tools/made-up-home.ts), project `rope-yard`. The history is the Builder's "Save points" drawer. The step "compares two versions" is the review of a go-back
+ * (owner decision): it lists what changes between the current harness and the save point, and writes nothing until the person approves. Every step runs for real, and each file is read from disk by the test.
  */
 import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
@@ -100,25 +99,33 @@ test('Journey 3: make a bad edit, open the save points, and go back to an earlie
   });
 });
 
-test('Journey 3, compare: the save points drawer offers "Go back" for each point and no way to compare two of them', async () => {
+test('Journey 3, step 3.3: the Go back review is the compare; it lists what changes between the current harness and the save point, and nothing is written until the person approves', async () => {
   test.setTimeout(120_000);
-  const home = newMadeUpHome();
+  const home = newMadeUpHome(), def = join(home.rope, '.bowerloom');
+  const asItWas = readTree(def);
   h = await startApp(home, 'harnesses');
   const p = h.page;
   await openInBuilder(h, home.rope, 'rope-yard');
   await linkSkillToAgent(p, 'knot-guide', 'tallyman');
   await saveFromBuilder(h);
+  const current = readTree(def), whole = readTree(home.rope), askedBefore = (await h.asked()).length;
+  expect(changed(asItWas, current), 'the save changed the harness').not.toEqual([]);
   await saveSheet(p).getByRole('button', { name: 'Close', exact: true }).last().click();
   await p.getByRole('button', { name: 'Save points', exact: true }).click();
   const drawer = p.getByRole('dialog', { name: 'Save points' });
   await expect(drawer.locator('[data-version]')).toHaveCount(2);
-  const names = await drawer.getByRole('button').evaluateAll(els => els.map(e => e.getAttribute('aria-label') ?? e.textContent ?? ''));
-  expect(names.filter(n => !/^(Go back to |Close)/.test(n.trim())), 'no control but Go back and Close').toEqual([]);
-  await expect(drawer.getByRole('checkbox')).toHaveCount(0);
-  await expect(drawer.getByText(/compare|difference|diff\b|side by side/i)).toHaveCount(0);
-});
-
-test.fixme('Journey 3, step 3.3: compare two versions (NOT BUILT in beta.1: no screen shows the difference between two save points)', () => {
-  // The spec says "compares two versions". The Builder lists save points and restores one. It has no view of two save points side by side, and no list of the files that differ between them.
-  // The check above records what the drawer offers. Write the real test when the owner decides what "compare" means (see the report).
+  const start = (await drawer.locator('[data-version]').nth(1).getAttribute('data-version'))!;
+  await drawer.locator(`[data-version="${start}"]`).getByRole('button', { name: `Go back to ${start}`, exact: true }).click();
+  const t = saveSheet(p), back = t.locator('[data-save-review="restore"]');
+  await expect(back).toBeVisible();
+  const listed = await back.locator('[data-file]').evaluateAll(els => els.map(e => (e.getAttribute('data-file') ?? '').replace(/^\.bowerloom\//, '')).sort());
+  expect(listed, 'the review lists the files that differ between the current harness and the save point').toEqual(changed(current, asItWas));
+  expect(readTree(def), 'nothing is written while the person reads').toEqual(current);
+  expect(readTree(home.rope), 'no file of the whole folder changes while the person reads').toEqual(whole);
+  expect(await h.asked(), 'main asks nothing before the approval').toHaveLength(askedBefore);
+  // Leaving the review without approval writes nothing either.
+  await t.getByRole('button', { name: 'Close', exact: true }).last().click();
+  await expect(t).toBeHidden();
+  expect(readTree(def), 'closing the review writes nothing').toEqual(current);
+  expect(readTree(home.rope), 'no file of the whole folder changes after Close').toEqual(whole);
 });
