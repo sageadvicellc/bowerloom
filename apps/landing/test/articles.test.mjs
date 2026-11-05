@@ -254,9 +254,9 @@ test('the real content folder ships without articles and builds index, sitemap, 
   assert.deepEqual(emitted.sort(), ['articles/index.html', 'robots.txt', 'sitemap.xml']);
 });
 
-test('navigation links to the articles index', () => {
+test('the navigation does not link to Articles while there is no content planned for release', () => {
   const nav = readFileSync(new URL('../src/SiteNavigation.tsx', import.meta.url), 'utf8');
-  assert.match(nav, /<a href="\/articles\/"[^>]*>Articles<\/a>/);
+  assert.doesNotMatch(nav, /\/articles\/|>Articles</);
 });
 
 test('article headings never skip a level: # and ## both become h2 under the page h1, ### becomes h3', () => {

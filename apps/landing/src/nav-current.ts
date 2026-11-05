@@ -1,4 +1,4 @@
-/** The section anchors the navigation can mark as current, in page order. Docs and Articles are other pages, so they never appear here. */
+/** The section anchors the navigation can mark as current, in page order. Docs is another page, so it never appears here. */
 export const navSections = ['how-it-works', 'app', 'command-line', 'install'] as const;
 export type NavSection = typeof navSections[number];
 

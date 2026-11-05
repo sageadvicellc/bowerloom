@@ -16,8 +16,8 @@ test('the desktop bar is the four text links in order, then the GitHub icon, and
     const html = renderToStaticMarkup(createElement(page.nav.default));
     const bar = html.slice(html.indexOf('<nav class="desktop-navigation"'), html.indexOf('</nav>'));
     const links = anchors(bar);
-    assert.deepEqual(links.map(link => link.text), ['How it works', 'The app', 'Docs', 'Articles', ''], 'four text links, then the icon');
-    assert.deepEqual(links.map(link => link.href), ['#how-it-works', '#app', docsPath, '/articles/', repositoryUrl]);
+    assert.deepEqual(links.map(link => link.text), ['How it works', 'The app', 'Docs', ''], 'three text links, then the icon (Articles is hidden until there is content)');
+    assert.deepEqual(links.map(link => link.href), ['#how-it-works', '#app', docsPath, repositoryUrl]);
     assert.ok(!bar.includes('The command line') && !bar.includes('>Install<'), 'The command line and Install are not in the bar');
     const app = await read('src/App.tsx');
     const order = ['<BrandIdentity', '<SiteNavigation', '<ThemeControl', '<NavCta'].map(tag => app.indexOf(tag));
@@ -53,7 +53,7 @@ test('the drawer keeps every destination, including The command line and Install
     const html = renderToStaticMarkup(createElement(page.nav.default));
     const drawer = html.slice(html.indexOf('<nav aria-label="Mobile navigation">'), html.indexOf('</nav>', html.indexOf('<nav aria-label="Mobile navigation">')));
     const links = anchors(drawer);
-    assert.deepEqual(links.map(link => link.text), ['How it works', 'The app', 'The command line', 'Install', 'Articles', 'Docs', 'GitHub ↗', 'Get the app (beta) (opens in a new tab)']);
+    assert.deepEqual(links.map(link => link.text), ['How it works', 'The app', 'The command line', 'Install', 'Docs', 'GitHub ↗', 'Get the app (beta) (opens in a new tab)']);
     assert.deepEqual(links.slice(0, 4).map(link => link.href), ['#how-it-works', '#app', '#command-line', '#install']);
     assert.equal(links.at(-1).href, releasesUrl);
   } finally { await page.close(); }

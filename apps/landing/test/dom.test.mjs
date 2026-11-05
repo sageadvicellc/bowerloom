@@ -245,7 +245,7 @@ dom('the banner is 70% of the view height at phone, tablet, and desktop widths, 
 
 // Scroll so the middle of the section sits 42% down the screen, inside the 40% to 45% reading band. Late images move the page, so the aim is made twice.
 
-dom('the link of the section in view gets aria-current, and Docs, Articles, and GitHub never do', async () => {
+dom('the link of the section in view gets aria-current, and Docs and GitHub never do', async () => {
   const { page, context } = await open({ viewport: { width: 1280, height: 800 } });
   const current = () => page.evaluate(() => [...document.querySelectorAll('.desktop-navigation a[aria-current]')].map(a => a.textContent.trim()));
   const toSection = async id => {
@@ -266,7 +266,7 @@ dom('the link of the section in view gets aria-current, and Docs, Articles, and 
   await toSection('install');
   assert.equal(await page.locator('.mobile-drawer a[href="#install"]').getAttribute('aria-current'), 'true');
   assert.equal(await page.locator('.mobile-drawer a[href="#command-line"]').getAttribute('aria-current'), null, 'one at a time');
-  assert.equal(await page.locator('.desktop-navigation a:is([href="/docs/"], [href="/articles/"], .nav-github)[aria-current]').count(), 0);
+  assert.equal(await page.locator('.desktop-navigation a:is([href="/docs/"], .nav-github)[aria-current]').count(), 0);
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.waitForTimeout(400);
   assert.deepEqual(await current(), []);
@@ -281,11 +281,11 @@ dom('the stitch shows at once under reduced motion, on hover and on keyboard foc
   assert.match(await clip('Docs'), /inset\(0px\)/, 'drawn on hover with no delay');
   await page.mouse.move(2, 2);
   await page.keyboard.press('Tab');
-  await page.getByRole('link', { name: 'Articles', exact: true }).focus();
+  await page.getByRole('link', { name: 'The app', exact: true }).focus();
   await page.keyboard.press('Shift+Tab');
   await page.keyboard.press('Tab');
-  assert.match(await clip('Articles'), /inset\(0px\)/, 'drawn on keyboard focus');
-  assert.equal(await page.getByRole('link', { name: 'Articles', exact: true }).evaluate(el => getComputedStyle(el, '::after').transitionDuration), '0s', 'no transition under reduced motion');
+  assert.match(await clip('The app'), /inset\(0px\)/, 'drawn on keyboard focus');
+  assert.equal(await page.getByRole('link', { name: 'The app', exact: true }).evaluate(el => getComputedStyle(el, '::after').transitionDuration), '0s', 'no transition under reduced motion');
   await context.close();
 });
 
