@@ -103,7 +103,7 @@ The command line keeps no save points, so a command line import has no Go back. 
 [Errors](/docs/reference/errors/#harness-refusals) lists every `BUNDLE_*`, `IMPORT_*`, and `EXPORT_*` code of the command line, with its next step. The app can also show these codes, with these words:
 
 - `EXPORT_NO_DEFINITION`: the folder has no harness yet. Make a harness first with **New harness from a folder**.
-- `EXPORT_TARGET_IN_HARNESS`: the place to save is inside the harness folder. Choose a place outside the harness folder.
+- `EXPORT_TARGET_IN_HARNESS`: the place to save is inside the `.bowerloom` folder of the harness. A file there would break the harness. Choose a place outside the `.bowerloom` folder.
 - `NOT_THE_PLAN_SHOWN`: the plan changed. Plan again, then approve it.
 - `SAVE_EXECUTABLE_UNACKNOWLEDGED`: tick that you read the files that can run, then import.
 - `SAVE_NO_DEFINITION`: choose the folder again, then plan the import again.
