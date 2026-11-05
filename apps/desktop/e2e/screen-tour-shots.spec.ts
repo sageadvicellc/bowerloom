@@ -52,12 +52,16 @@ async function snap(p: Page, name: string): Promise<void> {
 /** The buttons the tour looked for and did not find; each one costs a picture. They are said at the end, so a renamed button never drops a screen quietly. */
 const missed: string[] = [];
 
-/** Presses the first button with this name, when there is one that can be pressed. Otherwise it notes the miss and returns false. */
-async function press(p: Page, name: string | RegExp): Promise<boolean> {
-  const button = p.getByRole('button', { name, exact: typeof name === 'string' }).first();
-  if (await button.count() === 0 || !(await button.isVisible()) || !(await button.isEnabled()) || await button.getAttribute('aria-disabled') === 'true') { missed.push(String(name)); return false; }
-  await button.click();
-  return true;
+/** Presses the first button that can be pressed among the names given, in order. When none can, it notes them all as one miss and returns false. */
+async function press(p: Page, ...names: Array<string | RegExp>): Promise<boolean> {
+  for (const name of names) {
+    const button = p.getByRole('button', { name, exact: typeof name === 'string' }).first();
+    if (await button.count() === 0 || !(await button.isVisible()) || !(await button.isEnabled()) || await button.getAttribute('aria-disabled') === 'true') continue;
+    await button.click();
+    return true;
+  }
+  missed.push(names.map(String).join(' or '));
+  return false;
 }
 
 const SCREENS: ReadonlyArray<readonly [string, string]> = [
@@ -95,7 +99,7 @@ test('the sheets and the tour', async () => {
   test.setTimeout(600_000);
   const p = page();
   await fresh(p, '#sample/harnesses/harness-weekly-report-crew');
-  if (await press(p, /^Install \d/) || await press(p, 'Update')) { await snap(p, '20-install-sheet'); await p.keyboard.press('Escape'); }
+  if (await press(p, /^Install \d/, 'Update')) { await snap(p, '20-install-sheet'); await p.keyboard.press('Escape'); }
   await fresh(p, '#sample/harnesses');
   if (await press(p, 'New harness')) { await snap(p, '21-new-harness-sheet'); await p.keyboard.press('Escape'); }
   await fresh(p, '#sample/harnesses/harness-weekly-report-crew');

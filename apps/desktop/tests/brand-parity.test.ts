@@ -68,12 +68,19 @@ test('the fonts are the website font files, served by the app itself, and the br
   assert.match(html, /font-src 'self'/, 'the policy still allows only the app\'s own fonts');
 });
 
-test('every button, tag and chip has the website\'s one sharp control corner, and no button is a pill', () => {
-  // The site names this corner `--control-radius` in apps/landing/src/brand.css (2 px). Until that token reaches this branch the site has no name for it, and the
-  // corner is held at the 2 px the site's controls use; once the site names it, the two must be equal.
-  const siteSharp = /--control-radius:\s*([0-9.]+px);/.exec(site)?.[1] ?? '2px';
+test('the sharp control corner is the website\'s --control-radius', t => {
+  // The site names this corner `--control-radius` in apps/landing/src/brand.css from PR 125 on. Until that token is on this branch there is nothing to compare,
+  // and the test says so as a skip, never as a pass. A rename or removal on the site turns it back into a visible skip.
+  const siteSharp = /--control-radius:\s*([0-9.]+px);/.exec(site)?.[1];
+  if (siteSharp === undefined) { t.skip('apps/landing/src/brand.css does not name --control-radius yet (it arrives with PR 125)'); return; }
+  assert.equal(/--hm-radius-sharp:\s*([0-9.]+px);/.exec(read(DESKTOP, 'renderer', 'home', 'home-tokens.css'))?.[1], siteSharp);
+});
+
+test('every button, tag and chip has one sharp 2 px corner, and no button is a pill', () => {
+  // The owner's decision of 2026-11-05: one sharp corner for every button, tag and chip, 2 px.
   const appSharp = /--hm-radius-sharp:\s*([0-9.]+px);/.exec(read(DESKTOP, 'renderer', 'home', 'home-tokens.css'))?.[1];
-  assert.equal(appSharp, siteSharp);
+  assert.ok(appSharp !== undefined, 'home-tokens.css names --hm-radius-sharp');
+  assert.equal(appSharp, '2px');
   const layer = read(DESKTOP, 'renderer', 'harness', 'brand-layer.css');
   assert.match(layer, /\[data-home\] \.kit-button \{ border-radius: var\(--hm-radius-sharp\); \}/);
   // A pill is only the round backdrop of an icon tile; no button, tag or chip uses it.
