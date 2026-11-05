@@ -3,7 +3,7 @@
  * Also the plain words about a place that went partly unread. Pure.
  */
 import type { RawRecord } from './adapters.js';
-import type { ProblemKind, RealApp, RealCounts, RealPlaceKind } from './types.js';
+import type { ProblemKind, RealApp, RealCounts, RealHarness, RealPlaceKind } from './types.js';
 
 /** A record with the time its file was last changed, in milliseconds (a number the main process read; the shared code never reads a clock). */
 export type StampedRecord = RawRecord & { readonly mtimeMs: number };
@@ -32,6 +32,8 @@ export interface PlaceRead {
   /** Pages found beyond the number handed on. */
   readonly notesLeftOut: number;
   readonly partlyRead: number;
+  /** Step two only: what the harness loader read in this folder's `.bowerloom`, when it has a `harness.json`. */
+  readonly harness?: RealHarness;
   /** The tool folders and files found, by name. */
   readonly folders: readonly string[];
   readonly tally: Readonly<{

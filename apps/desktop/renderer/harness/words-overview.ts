@@ -7,6 +7,7 @@
 import type { PartKind } from '../../shared/harness/types.js';
 import { FLOW } from './words-flow.js';
 import type { OverviewCounts, OverviewToolKind } from '../../shared/harness/overview.js';
+import { HARNESS_UNREADABLE } from '../../shared/harness/overview.js';
 
 const deepFreeze = <T extends object>(value: T): T => {
   for (const inner of Object.values(value)) if (typeof inner === 'object' && inner !== null) deepFreeze(inner);
@@ -32,6 +33,7 @@ export const OVERVIEW = deepFreeze({
     moreParts: 'More parts are out of view. Pan or zoom.',
     keys: 'Arrow keys move. Enter selects. Escape clears.',
     noRules: 'Rules are not shown yet.',
+    harnessUnreadable: HARNESS_UNREADABLE,
   },
   /** A short paragraph: at most 25 words each. */
   paragraph: {

@@ -6,7 +6,7 @@
  */
 import type { FolderInfo } from '../engine/types.js';
 import { cleanLine } from '../real/redact.js';
-import type { HarnessState, Part, PartKind, ScanSource } from './types.js';
+import type { HarnessPlace, HarnessState, Part, PartKind, ScanSource } from './types.js';
 
 /** The tool kinds the reader finds. Only a tool has one. */
 export type OverviewToolKind = 'mcp' | 'prompt' | 'hook';
@@ -70,6 +70,8 @@ export interface OverviewGroup {
   readonly inBowerloom: boolean;
   readonly folderId: string | null;
   readonly counts: OverviewCounts;
+  /** A plain line for the place, or absent. It is `HARNESS_UNREADABLE` for a folder whose harness could not be read (the place then has no node). */
+  readonly note?: string;
   readonly nodes: readonly OverviewNode[];
   readonly edges: readonly OverviewEdge[];
 }
@@ -83,6 +85,9 @@ export interface Overview {
   readonly sharedKeys: ReadonlyMap<string, readonly string[]>;
 }
 
+/** The line a place shows when the harness in its folder could not be read. */
+export const HARNESS_UNREADABLE = 'Bowerloom could not read this harness.';
+
 /**
  * The Overview of a scan. `folders` are the folders main knows now (`engine.folders()`); the window never holds a path, so the match to a folder is by `~` label.
  * Deterministic: the same inputs give an equal Overview. A scan with no parts gives groups with no nodes, or none. Throws nothing for any input of the right type.
@@ -93,17 +98,31 @@ export interface Overview {
  *  - A source's part ids that no part answers to are skipped; one part listed twice is shown once.
  *  - The reader keeps a skill of the home folder and the same skill of a project as two parts (an item is one scope, one kind and one name), so sharing is not found in the
  *    reader. Here two skills are the same when their `contentHash` is equal and not empty, in two or more groups. Two skills in one group stay two nodes.
+ *  - A folder that holds a harness (`HarnessState.harnessPlaces`) is a project place of its own, built from the parts the loader read. Its programs are the engines of the harness.
  *  - Home groups keep the order of the scan (the reader lists the programs in a fixed order). Project groups follow: most nodes first, then name, then id.
  */
 export function overviewOf(state: HarnessState, folders: readonly FolderInfo[]): Overview {
   const parts = new Map<string, Part>();
   for (const p of state.parts) if (!parts.has(p.id)) parts.set(p.id, p);
   const known = [...folders].filter(f => f.hasDefinition).sort((a, b) => compare(a.id, b.id));
-  const built = state.sources.map((source, index) => ({ index, ...groupOf(source, parts, known) }));
+  const made = state.sources.map((source, index) => ({ index, ...groupOf(source, parts, known) }));
+  // The folders that hold a harness and that main does not know: a place each (a folder main knows has its own place, which reads In Bowerloom).
+  const harnesses = (state.harnessPlaces ?? []).filter(h => !known.some(f => f.label === labelOf(h.label))).map((h, i) => harnessGroupOf(h, made.length + i, known));
+  const built = [...made, ...harnesses];
   const home = built.filter(b => b.group.scope === 'home');
   const projects = built.filter(b => b.group.scope !== 'home')
     .sort((a, b) => b.group.nodes.length - a.group.nodes.length || compare(a.group.name.toLowerCase(), b.group.name.toLowerCase()) || compare(a.group.name, b.group.name) || compare(a.group.id, b.group.id) || a.index - b.index);
   return markShared([...home, ...projects]);
+}
+
+function harnessGroupOf(place: HarnessPlace, index: number, folders: readonly FolderInfo[]): { index: number; group: OverviewGroup; hashes: ReadonlyMap<string, string> } {
+  const partList: Part[] = place.parts.map(p => ({
+    id: p.id, kind: p.kind, name: p.name, summary: p.summary, description: '', path: '', source: '', origin: place.id, fileText: '', cannotUse: [], inLibrary: true, ...(p.toolKind === undefined ? {} : { toolKind: p.toolKind }), ...(p.contentHash === undefined ? {} : { contentHash: p.contentHash }),
+  }));
+  const source: ScanSource = { id: place.id, name: place.name, interfaceName: '', harnessName: place.name, partIds: partList.map(p => p.id), links: place.links, scope: 'project', label: place.label };
+  const built = groupOf(source, new Map(partList.map(p => [p.id, p])), folders);
+  const group: OverviewGroup = { ...built.group, programs: place.engines.map(shown), ...(place.readable ? {} : { note: HARNESS_UNREADABLE }) };
+  return { index, group, hashes: built.hashes };
 }
 
 const KIND_ORDER: readonly PartKind[] = ['agent', 'skill', 'tool', 'context'];
