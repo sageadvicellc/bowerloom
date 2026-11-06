@@ -230,12 +230,17 @@ test('hidden characters and a command of the engine are refused in words before 
   const show = sheet.getByRole('button', { name: 'Show the command', exact: true });
   await sheet.locator('#hs-instruction').fill('fix\u200b the login');
   await expect(show).toBeDisabled();
-  await expect(sheet).toContainText('The instruction has hidden characters. Remove them and try again.');
+  await expect(sheet).toContainText('The instruction has a hidden character: U+200B (zero-width space) at position 4. Remove it and try again.');
+  await sheet.locator('#hs-instruction').fill('fix\u00a0the login');
+  await expect(sheet).toContainText('The instruction has a hidden character: U+00A0 (no-break space) at position 4. Remove it and try again.');
   await sheet.locator('#hs-instruction').fill('team \u{1F468}\u200d\u{1F4BB} ships');
   await expect(show).toBeEnabled();
   await sheet.locator('#hs-instruction').fill('update');
   await expect(show).toBeDisabled();
   await expect(sheet).toContainText("'update' is also a command of Claude Code. Add more words to your instruction.");
+  await sheet.locator('#hs-instruction').fill('help');
+  await expect(show).toBeDisabled();
+  await expect(sheet).toContainText("'help' is also a command of Claude Code. Add more words to your instruction.");
   await sheet.locator('#hs-instruction').fill('update the docs');
   await expect(show).toBeEnabled();
   expect(await clips()).toEqual([]);
@@ -251,4 +256,27 @@ test('a folder whose harness lists only a preview engine has no Start button', a
   await expect(row).toBeVisible();
   await expect(row.locator('[data-open-builder]')).toBeVisible();
   await expect(row.locator('[data-start-folder]'), 'only a preview engine: Start has no command for it').toHaveCount(0);
+});
+
+test('while a command is being built the choices are held, so an answer is never shown beside choices it was not made for', async () => {
+  const dir = teamFolder(home);
+  const sheet = await openStart(dir);
+  await installFromStart(sheet);
+  await sheet.locator('#hs-instruction').fill('fix the login');
+  // Main answers showStartCommand only when the test opens the gate.
+  await h.app.evaluate(({ ipcMain }) => {
+    const g = globalThis as unknown as { __open: () => void };
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, (...args: unknown[]) => Promise<unknown>> })._invokeHandlers;
+    const original = handlers.get('bowerloom-engine:showStartCommand')!;
+    const gate = new Promise<void>(resolve => { g.__open = resolve; });
+    handlers.set('bowerloom-engine:showStartCommand', async (...args: unknown[]) => { await gate; return original(...args); });
+  });
+  await sheet.getByRole('button', { name: 'Show the command', exact: true }).click();
+  await expect(sheet.locator('#hs-instruction')).toBeDisabled();
+  await expect(sheet.locator('#hs-project')).toBeDisabled();
+  await expect(sheet.locator('[data-engine="codex"] input')).toBeDisabled();
+  await expect(sheet.locator('[data-start-results]')).toHaveCount(0);
+  await h.app.evaluate(() => { (globalThis as unknown as { __open: () => void }).__open(); });
+  await expect(sheet.locator('[data-start-results]')).toBeVisible();
+  await expect(sheet.locator('#hs-instruction')).toBeEnabled();
 });

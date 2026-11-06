@@ -25,7 +25,7 @@ export const START = deepFreeze({
     ready: 'Install recorded', notInstalled: 'Not installed here', stopped: 'Install stopped part way',
     noFolders: 'No folder has a harness yet. Make one first.', loading: 'Looking at your folders.',
     copiedLine: 'Copied. Paste it into your Terminal.', noBridge: 'This window cannot reach Bowerloom. Close it and open the app again.',
-    hidden: 'The instruction has hidden characters. Remove them and try again.', notChecked: 'Not checked for changes since the install.',
+    notChecked: 'Not checked for changes since the install.',
     chooseProject: 'Choose a project', noneCanStart: 'No folder can start yet. Each reason is below.',
   },
   paragraph: {
@@ -48,7 +48,7 @@ export function whyWords(status: StartStatus): string | null {
     case 'no-engine': return START.hint.needEngine;
     case 'no-instruction': return START.hint.needInstruction;
     case 'too-long': return START.hint.tooLong;
-    case 'bad-text': return status.code === 'START_INSTRUCTION_DASH' ? START.hint.dash : status.code === 'START_INSTRUCTION_HIDDEN' ? START.hint.hidden : START.hint.chars;
+    case 'bad-text': return status.code === 'START_INSTRUCTION_DASH' ? START.hint.dash : status.code === 'START_INSTRUCTION_CHARACTERS' ? START.hint.chars : status.message;
     case 'subcommand': return subcommandWords(status.word, status.engine);
     case 'needs-install': return installFirstWords(status.engines);
     case 'ready': return null;

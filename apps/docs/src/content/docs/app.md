@@ -62,7 +62,7 @@ Under the menu, a **Beta** mark opens a short note about this beta. It lists the
 
 ## Start an engine in a folder
 
-**Start** shows the command that starts Claude Code or Codex in one of your folders, with your instruction already in it. Bowerloom never runs an engine. It builds the text of the command, and you paste it into your own Terminal.
+**Start** shows the command that starts Claude Code or Codex in one of your folders, with your instruction already in it. Bowerloom never runs an engine. It builds the text of the command, and you paste it into your own Terminal. Start is for the macOS Terminal.
 
 Open it from **Harnesses**. In the Folders block, press **Start** on a folder that holds a harness with Claude Code or Codex in it. That opens the sheet on that folder. The **Start** button in the details of a harness, and the play button on its row, open the same sheet with no folder chosen: a harness made from a scan is not in a project folder, so the sheet says so and you choose the project. Then:
 
@@ -78,8 +78,8 @@ Each command has the form `cd <folder> && claude '<instruction>'` or `cd <folder
 Bowerloom refuses to build a command, and says why, when:
 
 - the instruction is empty, is over 4,000 characters, or starts with a dash, because the engine would read it as an option;
-- the instruction holds a control character, or a hidden character such as a zero-width space or a tag character. Emoji are fine;
-- the instruction is one word that is also a command of the engine, such as `update`, because the engine would run that command;
+- the instruction holds a control character, a broken character (text cut in the middle of an emoji), or a hidden one, such as a no-break space, a zero-width space, a zero-width non-joiner, or a tag character. The message names the character and where it is. Emoji are fine. Bowerloom never changes your text, so you remove the character yourself;
+- the instruction is one word that is also a command of the engine, such as `update` or `help`, because the engine would run that command;
 - the folder name holds a hidden character, a line break, or a tab.
 
 Start starts no program, calls no model, makes no network request, and keeps no run record. It writes only the clipboard. Runs and Compare stay **Not in beta.1**.

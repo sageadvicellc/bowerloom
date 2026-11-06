@@ -117,6 +117,8 @@ export function StartRealSheet({ open, folderId, fromHarness, onClose }: StartRe
     setCopied(null);
     void call.write(START.label.copying, () => engine.startCommandToClipboard(folder, id, instruction), () => setCopied(id));
   };
+  // While Bowerloom works on a call, the choices are held: an answer (or a refusal) that comes back is always for the choices on screen.
+  const held = call.writing || call.busy !== null;
   const refusal = call.refusal !== null && call.refusalId !== passed ? call.refusal : null;
 
   return (
@@ -141,7 +143,7 @@ export function StartRealSheet({ open, folderId, fromHarness, onClose }: StartRe
                 <label className="hs-label" htmlFor="hs-project">{START.label.project}</label>
                 <div className="hs-select">
                   <span className="hs-select-icon" aria-hidden="true"><HIcon name="folder" size={18} /></span>
-                  <select id="hs-project" value={folder} disabled={call.writing} onChange={e => pickFolder(e.target.value)}>
+                  <select id="hs-project" value={folder} disabled={held} onChange={e => pickFolder(e.target.value)}>
                     <option value="">{START.hint.chooseProject}</option>
                     {folders.map(f => { const line = startFolderLine(f); return <option key={f.id} value={f.id} disabled={line.off && f.id !== folder}>{line.off ? `${f.name} (${line.words})` : f.name}</option>; })}
                   </select>
@@ -158,7 +160,7 @@ export function StartRealSheet({ open, folderId, fromHarness, onClose }: StartRe
                     return (
                       <li key={id} className="hs-iface-item" data-engine={id} data-state={state}>
                         <label className="hs-iface" data-checked={ticks.includes(id) ? '' : undefined}>
-                          <input type="checkbox" className="hs-check" checked={ticks.includes(id)} disabled={call.writing} onChange={() => tick(id)} />
+                          <input type="checkbox" className="hs-check" checked={ticks.includes(id)} disabled={held} onChange={() => tick(id)} />
                           <span className="hs-iface-text"><span className="hs-iface-name">{ENGINE_NAMES[id]}</span><StateDot tone={STATE_TONE[state]}>{STATE_WORDS[state]}</StateDot></span>
                         </label>
                       </li>
@@ -170,7 +172,7 @@ export function StartRealSheet({ open, folderId, fromHarness, onClose }: StartRe
               )}
               <div className="hs-field">
                 <label className="hs-label" htmlFor="hs-instruction">{START.label.instruction}</label>
-                <textarea id="hs-instruction" className="hs-text" rows={4} value={instruction} placeholder={START.hint.placeholder} disabled={call.writing}
+                <textarea id="hs-instruction" className="hs-text" rows={4} value={instruction} placeholder={START.hint.placeholder} disabled={held}
                   onChange={e => { setInstruction(e.target.value); changed(); }} aria-describedby="hs-limit" />
                 <p className="hxe-text hxe-muted" id="hs-limit" data-over={instruction.length > START_INSTRUCTION_LIMIT ? '' : undefined}>{START.hint.limit}</p>
               </div>
