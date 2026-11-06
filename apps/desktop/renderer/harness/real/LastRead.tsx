@@ -17,7 +17,7 @@ export function LastRead(): ReactElement | null {
     <div className="hxr-lastread" data-last-read="">
       <p className="hxr-count" data-last-read-time="">{savedAtLine(saved.readAtMs)}</p>
       {status === '' ? null : <p className="hxf-status hxr-lastread-status" role="status" {...(saved.changed ? { 'data-folder-changed': '' } : {})}>{status}</p>}
-      <HButton {...(saved.changed ? { variant: 'primary' as const } : {})} icon="search" onClick={saved.readAgain}>{REAL.label.readAgain}</HButton>
+      <HButton icon="search" onClick={saved.readAgain}>{REAL.label.readAgain}</HButton>
     </div>
   );
 }
