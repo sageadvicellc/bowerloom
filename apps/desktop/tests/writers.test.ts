@@ -11,10 +11,10 @@ const strip = (text: string): string => text.replace(/\/\*[\s\S]*?\*\//g, '').re
 function sourceFiles(dir: string): string[] { return readdirSync(join(DESKTOP, dir), { recursive: true, withFileTypes: true }).filter(e => e.isFile() && /\.tsx?$/.test(e.name)).map(e => join(dir, (e as unknown as { parentPath: string }).parentPath.slice(join(DESKTOP, dir).length), e.name).replace(/\\/g, '/')); }
 const read = (file: string): string => strip(readFileSync(join(DESKTOP, file), 'utf8'));
 
-test('the app\'s source writes a file in only three modules of main: the usage summary the person saves, the private copy of a tidy-up report, and the undo of the empty harness an import makes', () => {
+test('the app\'s source writes a file in only four modules of main: the usage summary the person saves, the private copy of a tidy-up report, the undo of the empty harness an import makes, and the saved read in the private state folder', () => {
   const all = [...sourceFiles('main'), ...sourceFiles('shared'), ...sourceFiles('preload'), ...sourceFiles('renderer')];
   const writers = all.filter(f => WRITE.test(read(f)) || (/^renderer\//.test(f) && /node:fs/.test(readFileSync(join(DESKTOP, f), 'utf8')))).sort();
-  assert.deepEqual(writers, ['main/diagnostics-dialogs.ts', 'main/engine-bundle-work.ts', 'main/notes-report.ts']);
+  assert.deepEqual(writers, ['main/diagnostics-dialogs.ts', 'main/engine-bundle-work.ts', 'main/notes-report.ts', 'main/scan-cache.ts']);
   // The work module of export and import (it runs on a worker thread): its one call that changes a file by itself is `unlinkSync`, in the undo of the empty harness it made
   // a moment before, only while the file still holds the bytes it wrote. Every other write goes through the portable file layer and the journaled save of the packages.
   const work = read('main/engine-bundle-work.ts');
@@ -35,6 +35,18 @@ test('the app\'s source writes a file in only three modules of main: the usage s
   assert.match(copies, /for \(const dir of made\.splice\(0\)\) \{\s*try \{ rmSync\(dir,/);
   assert.equal((copies.match(/rmSync\(/g) ?? []).length, 1);
   assert.doesNotMatch(copies, /\b(writeFileSync|renameSync|unlinkSync|copyFileSync|cpSync|symlinkSync|chmodSync)\b/);
+  // The saved read is written only below the private state folder, in a folder that is checked not to be a link, as a new temporary file for its owner only that follows no link,
+  // and is renamed over the old file. The only file it removes is the old read itself.
+  const kept = read('main/scan-cache.ts');
+  assert.match(kept, /export const cacheDir = \(stateRoot: string\): string => join\(stateRoot, FOLDER\)/);
+  assert.match(kept, /mkdirSync\(dir, \{ recursive: true, mode: 0o700 \}\)/);
+  assert.match(kept, /if \(folder\.isSymbolicLink\(\) \|\| !folder\.isDirectory\(\)\) return false;\s*chmodSync\(dir, 0o700\)/);
+  assert.match(kept, /openSync\(temp, constants\.O_WRONLY \| constants\.O_CREAT \| constants\.O_EXCL \| constants\.O_NOFOLLOW, 0o600\)/);
+  assert.match(kept, /renameSync\(temp, path\)/);
+  assert.equal((kept.match(/renameSync\(/g) ?? []).length, 1);
+  assert.equal((kept.match(/unlinkSync\(/g) ?? []).length, 2, 'the old read, and the temporary file of a save that failed');
+  assert.doesNotMatch(kept, /\b(writeFileSync|rmSync|copyFileSync|cpSync|symlinkSync|appendFileSync|rmdirSync)\b/);
+  assert.doesNotMatch(kept, /homedir|process\.cwd|tmpdir/, 'no path outside the state root');
 });
 
 test('the temporary data folder of a made-up launch is made and removed in one plain module, which the launcher shares', () => {

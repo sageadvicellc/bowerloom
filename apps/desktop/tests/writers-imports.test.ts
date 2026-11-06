@@ -50,6 +50,7 @@ const FS_ALLOWED: Readonly<Record<string, readonly string[]>> = {
   'main/main.ts': ['readFile'],
   'main/notes-report.ts': ['closeSync', 'constants', 'fchmodSync', 'fstatSync', 'lstatSync', 'mkdtempSync', 'openSync', 'readSync', 'realpathSync', 'rmSync', 'writeSync'],
   'main/real-fs.ts': ['closeSync', 'constants', 'fstatSync', 'lstatSync', 'opendirSync', 'openSync', 'readSync', 'realpathSync', 'statSync'],
+  'main/scan-cache.ts': ['chmodSync', 'closeSync', 'constants', 'fstatSync', 'fsyncSync', 'lstatSync', 'mkdirSync', 'openSync', 'readSync', 'renameSync', 'unlinkSync', 'writeSync'],
   'main/safe.ts': ['lstatSync', 'realpathSync'],
   'main/temp-data.mjs': ['chmodSync', 'existsSync', 'lstatSync', 'mkdtempSync', 'realpathSync', 'rmSync'],
 };
@@ -80,16 +81,17 @@ test('each file of main, shared, preload and the page imports exactly the node:f
   assert.deepEqual(found, Object.fromEntries(Object.entries(FS_ALLOWED).map(([file, names]) => [file, [...names].sort()])));
 });
 
-test('the files that can create, change or remove a file are the three listed, and each uses only the write names listed for it', () => {
+test('the files that can create, change or remove a file are the four listed, and each uses only the write names listed for it', () => {
   const WRITES = new Set(['writeFileSync', 'writeSync', 'fchmodSync', 'chmodSync', 'mkdtempSync', 'rmSync']);
   const writers = Object.entries(FS_ALLOWED).filter(([, names]) => names.some(name => WRITES.has(name))).map(([file, names]) => [file, names.filter(name => WRITES.has(name))]);
   assert.deepEqual(writers, [
     ['main/diagnostics-dialogs.ts', ['writeFileSync']],
     ['main/notes-report.ts', ['fchmodSync', 'mkdtempSync', 'rmSync', 'writeSync']],
+    ['main/scan-cache.ts', ['chmodSync', 'writeSync']],
     ['main/temp-data.mjs', ['chmodSync', 'mkdtempSync', 'rmSync']],
   ]);
-  // openSync can create a file when it is given the right flags: only the report copy passes O_CREAT, and the reader passes read flags only (tests/real-static.test.ts holds the flags).
-  assert.deepEqual(Object.entries(FS_ALLOWED).filter(([, names]) => names.includes('openSync')).map(([file]) => file), ['main/notes-report.ts', 'main/real-fs.ts']);
+  // openSync can create a file when it is given the right flags: only the report copy and the saved read pass O_CREAT (tests/writers.test.ts holds their flags), and the reader passes read flags only (tests/real-static.test.ts holds the flags).
+  assert.deepEqual(Object.entries(FS_ALLOWED).filter(([, names]) => names.includes('openSync')).map(([file]) => file), ['main/notes-report.ts', 'main/real-fs.ts', 'main/scan-cache.ts']);
   const reader = plainJs({ 'main/real-fs.ts': readFileSync(join(DESKTOP, 'main', 'real-fs.ts'), 'utf8') }, DESKTOP)['main/real-fs.ts']!;
   assert.equal(reader.error, undefined, reader.error);
   assert.deepEqual(tokenize(reader.js ?? '').filter(t => t.type === 'id' && /^O_(?:CREAT|WRONLY|RDWR|APPEND|TRUNC)$/.test(t.text)).map(t => t.text), [], 'the reader opens for reading only');
