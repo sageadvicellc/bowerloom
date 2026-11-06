@@ -10,7 +10,7 @@ const accepted=new Set(themes(landing));
 for(const token of themes(docs))assert(accepted.has(token),`Unapproved token ${token}`);
 assert.equal(themes(docs).length,22);
 for(const dir of ['newsreader','manrope'])for(const file of dir==='newsreader'?['roman.ttf','italic.ttf','OFL.txt']:['font.ttf','OFL.txt'])assert.deepEqual(await readFile(resolve(root,'docs/public/fonts',dir,file)),await readFile(resolve(root,'landing/public/fonts',dir,file)));
-for(const name of ['s4-g3-icon.svg','s4-g3-icon-dark.svg','bowerloom-wordmark-plain-ink.svg','bowerloom-wordmark-plain-cream.svg'])assert.deepEqual(await readFile(resolve(root,'docs/public/brand',name)),await readFile(resolve(root,'landing/public/brand/rose-conservatory',name)));
+for(const name of ['s4-g3-icon.svg','s4-g3-icon-dark.svg','bowerloom-wordmark-plain-ink.svg','bowerloom-wordmark-plain-cream.svg','bowerloom-wordmark-plain-ink.png','bowerloom-wordmark-plain-cream.png'])assert.deepEqual(await readFile(resolve(root,'docs/public/brand',name)),await readFile(resolve(root,'landing/public/brand/rose-conservatory',name)));
 const userPages=[...['index','start','setup','revision','stop','cli','backend','mcp','releases','beta-guide','troubleshooting','guides/add-skills','guides/item-sources'].map(page=>`docs/src/content/docs/${page}.md`),'../README.md'];
 for(const page of userPages){
  const text=await readFile(resolve(root,page),'utf8');
