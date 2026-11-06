@@ -56,11 +56,13 @@ export async function chooseFolderCall(engine: EngineBridge, expect?: string): P
 }
 
 /**
- * The chooser for one place the screen shows (the Overview): the label goes to main unless it is cut down (`…/name`, a place outside home). A pick that main refuses as not the
- * folder shown calls `onWrong` (the screen's own note) and is a closed chooser, not a failure: nothing was registered. Any other refusal passes on.
+ * The chooser for one place the screen shows (the Overview, Projects): the label goes to main, which refuses a pick that is not that folder (NOT_THE_FOLDER_SHOWN) before it registers it.
+ * A place under home has a `~` label and must match it exactly. A place outside home is shown cut down to `…/name`, so main can check only that the pick is outside home with that last
+ * name: two folders outside home with one last name cannot be told apart. A refused pick calls `onWrong` (the screen's own note) and is a closed chooser, not a failure: nothing was
+ * registered. Any other refusal passes on.
  */
 export async function chooseWanted(engine: EngineBridge, label: string, onWrong: () => void): Promise<Answer<{ info: FolderInfo; list: readonly FolderInfo[] } | null>> {
-  const answer = await chooseFolderCall(engine, label.startsWith('…') ? undefined : label);
+  const answer = await chooseFolderCall(engine, label);
   if (!answer.ok && answer.refusal.code === 'NOT_THE_FOLDER_SHOWN') { onWrong(); return { ok: true, value: null }; }
   return answer;
 }

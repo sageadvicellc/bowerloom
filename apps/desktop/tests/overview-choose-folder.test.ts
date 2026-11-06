@@ -34,7 +34,7 @@ test('chooseFolderCall sends the wanted label only when it has one; the other sh
   assert.deepEqual(wanted.calls, [['~/Projects/a']]);
 });
 
-test('chooseWanted: the right folder goes on; the wrong one is the note, not a failure, and registers nothing; a closed chooser is null; a cut label is not sent', async () => {
+test('chooseWanted: the right folder goes on; the wrong one is the note, not a failure, and registers nothing; a closed chooser is null; a cut label goes to main too, which compares it before it registers', async () => {
   const right = fake('~/Projects/a');
   const ok = await chooseWanted(right.engine, '~/Projects/a', () => assert.fail('no note for the right folder'));
   assert.ok(ok.ok && ok.value?.info.label === '~/Projects/a' && ok.value.list.length === 1);
@@ -46,9 +46,11 @@ test('chooseWanted: the right folder goes on; the wrong one is the note, not a f
   assert.deepEqual(wrong.registered, [], 'a refused pick stays out of the list');
   const closed = fake(null);
   assert.deepEqual(await chooseWanted(closed.engine, '~/Projects/a', () => assert.fail('no note')), { ok: true, value: null });
-  const cut = fake('~/Projects/anything');
-  await chooseWanted(cut.engine, '…/notes', () => assert.fail('the screen compares a cut label itself'));
-  assert.deepEqual(cut.calls, [[]]);
+  const cut = fake('/Volumes/disk/other');
+  let cutNoted = 0;
+  const cutAnswer = await chooseWanted(cut.engine, '…/notes', () => { cutNoted += 1; });
+  assert.deepEqual(cut.calls, [['…/notes']], 'main gets the cut label and compares it before it registers');
+  assert.deepEqual([cutAnswer, cutNoted, cut.registered], [{ ok: true, value: null }, 1, []]);
   // Any other refusal passes on as it is.
   const odd = { ...right.engine, chooseFolder: async () => ({ ok: false, refusal: { code: 'NOT_A_FOLDER', message: 'x', paths: [] } }) } as unknown as EngineBridge;
   const passed = await chooseWanted(odd, '~/Projects/a', () => assert.fail('no note'));

@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Stepper } from '../../home/kit/Stepper.js';
 import { projectCanWrite, untickedLines } from '../../../shared/engine/gates.js';
+import { planInput } from '../../../shared/harness/real-projects.js';
 import { isPreviewEngine } from '../../../shared/engine/engines.js';
 import { ENGINE_NAMES, writesFile } from '../../../shared/engine/types.js';
 import type { EngineId, FolderInfo, MergeView, ModeChoice, ProjectAnswer, ProjectInput, ProjectView, Reconcile, RecoveryChoices, RecoveryView, RemovalView } from '../../../shared/engine/types.js';
@@ -90,12 +91,13 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
     void call.plan(W.label.planning, () => foldersCall(engine), list => {
       setFolders(list);
       const usable = list.filter(f => !folderLine(f, 'install').off);
-      const id = folderId !== null && usable.some(f => f.id === folderId) ? folderId : usable[0]?.id ?? null;
+      // A folder that was asked for stays picked, even when it cannot be used: the sheet then says why in its own words. It is never swapped for another folder.
+      const id = folderId !== null ? (list.some(f => f.id === folderId) ? folderId : null) : usable[0]?.id ?? null;
       setPicked(id);
       setEngines(installable(list.find(f => f.id === id)));
       // Opened for one folder's removal or recovery (from Done, or from "Keep my versions"): the plan shows at once.
-      if (id !== null && folderId === id && openedMode !== 'install') { setStep('review'); planOther(id, openedMode, keepOnly(openedKeep)); }
-      else if (id !== null && folderId === id && start === 'review') setToReview(true);
+      if (id !== null && folderId === id && openedMode !== 'install' && !folderLine(list.find(f => f.id === id)!, 'install').off) { setStep('review'); planOther(id, openedMode, keepOnly(openedKeep)); }
+      else if (id !== null && folderId === id && start === 'review' && !folderLine(list.find(f => f.id === id)!, 'install').off) setToReview(true);
     });
   }, [open, engine]);
   useEffect(() => {
@@ -113,8 +115,11 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
   useEffect(() => {
     if (!toReview || folder === undefined || held) return;
     setToReview(false);
-    if (engines.length === 0) { setStep('interfaces'); return; }
-    resetPlans(); setStep('review'); planInstall(input([]));
+    // The plan is for the engines the folder was installed for, and keeps the person's CLAUDE.md as it is: the same plan the row measured. Engines it never covered stay out.
+    const seed = planInput(folder);
+    if (seed === null) { setStep('interfaces'); return; }
+    setEngines(seed.engines); setReconcile(seed.reconcile);
+    resetPlans(); setStep('review'); planInstall(seed);
   }, [toReview, folder, engines]);
 
   function planInstall(next: ProjectInput): void {
@@ -171,7 +176,7 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
     });
   };
   const next = (): void => {
-    if (folder === undefined || held) return;
+    if (folder === undefined || held || (step === 'folder' && folderLine(folder, 'install').off)) return;
     if (step === 'folder') { resetPlans(); setMode('install'); setStep('interfaces'); return; }
     // New interfaces start a new plan: no old answer, ticks or approvals are sent (U2, M8).
     resetPlans(); setStep('review'); planInstall(input([]));
@@ -212,7 +217,7 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
   const busy = call.busy !== null;
   const plan = answer?.kind === 'plan' ? answer.plan : null;
   let actions: ReactElement;
-  if (step === 'folder') actions = <><HButton onClick={onClose}>{W.label.cancel}</HButton><HButton variant="primary" disabled={folder === undefined || busy} onClick={next}>{W.label.next}</HButton></>;
+  if (step === 'folder') actions = <><HButton onClick={onClose}>{W.label.cancel}</HButton><HButton variant="primary" disabled={folder === undefined || busy || folderLine(folder, 'install').off} onClick={next}>{W.label.next}</HButton></>;
   else if (step === 'interfaces') actions = <><HButton onClick={() => back('folder')}>{W.label.back}</HButton><HButton variant="primary" disabled={engines.length === 0 || busy} onClick={next}>{W.label.next}</HButton></>;
   else if (step === 'done') {
     actions = <>{done?.kind === 'install' && !done.noop ? <HButton onClick={() => switchTo('remove')}>{W.label.undo}</HButton> : null}<HButton variant="primary" onClick={onClose}>{W.label.close}</HButton></>;

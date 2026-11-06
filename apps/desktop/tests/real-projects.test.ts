@@ -2,7 +2,7 @@
 // These tests hold the rules apart from the screen: which rows exist, what each row says, which button it gets, and what the sheet it opens is told.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { planInput, planStatus, projectRows, sameFolder } from '../shared/harness/real-projects.js';
+import { checkStatus, planInput, planStatus, projectRows, sameFolder } from '../shared/harness/real-projects.js';
 import type { PlanStatus } from '../shared/harness/real-projects.js';
 import type { Answer, FolderInfo, ProjectAnswer, ProjectView } from '../shared/engine/types.js';
 import type { HarnessPlace, Project } from '../shared/harness/types.js';
@@ -45,6 +45,41 @@ test('planInput: plans the installed engines without the locked preview ones, ke
   assert.equal(planInput(folder({ engines: [], installedEngines: [] })), null);
 });
 
+test('an installed folder with no engine to plan for reads Not checked, never installed', () => {
+  const [row] = projectRows({ projects: [project('~/Projects/alpha')] }, [folder({ projected: true, engines: [], installedEngines: [] })], none);
+  assert.deepEqual([row?.status, row?.state, row?.action], ['not-checked', null, null]);
+});
+
+test('checkStatus: an answer is its status; a plan that never answers, or throws, is a review', async () => {
+  assert.equal(await checkStatus(async () => planOf(view({ noop: true })), 1000), 'current');
+  assert.equal(await checkStatus(() => new Promise<never>(() => undefined), 20), 'review');
+  assert.equal(await checkStatus(async () => { throw new Error('FAILED'); }, 1000), 'review');
+});
+
+test('a harness that does not load, or a stopped run, carries its reason for the row to say', () => {
+  const [broken] = projectRows({ projects: [project('~/Projects/alpha')] }, [folder({ problem: 'The harness file is not valid.' })], none);
+  assert.deepEqual([broken?.problem, broken?.stopped], ['The harness file is not valid.', null]);
+  const [stopped] = projectRows({ projects: [project('~/Projects/alpha')] }, [folder({ projected: true, unfinished: { projection: true, adoption: false } })], none);
+  assert.deepEqual([stopped?.problem, stopped?.stopped], [null, 'install']);
+  const [adopt] = projectRows({ projects: [project('~/Projects/alpha')] }, [folder({ unfinished: { projection: false, adoption: true } })], none);
+  assert.equal(adopt?.stopped, 'make');
+});
+
+test('rows outside home pair with a folder only when no other row or folder shares the last name', () => {
+  const outside = (id: string, label: string): FolderInfo => folder({ id, label, name: 'x' });
+  const one = projectRows({ projects: [project('…/x', 'p1', 'x')] }, [outside('f1', '/Volumes/a/x')], none);
+  assert.deepEqual(one.map(r => [r.id, r.folderId]), [['p1', 'f1']]);
+  // Two folders with the name: neither is attached to the row, and each is a row of its own.
+  const twoFolders = projectRows({ projects: [project('…/x', 'p1', 'x')] }, [outside('f1', '/Volumes/a/x'), outside('f2', '/Volumes/b/x')], none);
+  assert.deepEqual(twoFolders.map(r => [r.id, r.folderId]), [['p1', null], ['f1', 'f1'], ['f2', 'f2']]);
+  // Two rows with the name: the folder is not attached to either.
+  const twoRows = projectRows({ projects: [project('…/x', 'p1', 'x'), project('…/x', 'p2', 'x')] }, [outside('f1', '/Volumes/a/x')], none);
+  assert.deepEqual(twoRows.map(r => [r.id, r.folderId]), [['p1', null], ['p2', null], ['f1', 'f1']]);
+  // A folder under home is never the row outside it.
+  const home = projectRows({ projects: [project('…/x', 'p1', 'x')] }, [folder({ id: 'f1', label: '~/x', name: 'x' })], none);
+  assert.deepEqual(home.map(r => [r.id, r.folderId]), [['p1', null], ['f1', 'f1']]);
+});
+
 test('a project with no harness gets Assign harness, and no state', () => {
   const [row] = projectRows({ projects: [project('~/Projects/alpha')] }, [], none);
   assert.equal(row?.hasHarness, false);
@@ -75,8 +110,10 @@ test('an installed folder follows its plan: current has no button, an update get
   assert.deepEqual([rows('current')[0]?.state, rows('current')[0]?.action], ['installed', null]);
   assert.deepEqual([rows('update')[0]?.state, rows('update')[0]?.action], ['out-of-date', 'update']);
   assert.deepEqual([rows('review')[0]?.state, rows('review')[0]?.action], ['conflict', 'review']);
-  // Before the plan has answered, the receipt is all that is known.
-  assert.deepEqual([rows(undefined)[0]?.state, rows(undefined)[0]?.action], ['installed', null]);
+  // Before the plan has answered, nothing is claimed: the row is checking, with no state, no dots and no button.
+  const pending = rows(undefined)[0];
+  assert.deepEqual([pending?.status, pending?.state, pending?.action, pending?.engines.length], ['checking', null, null, 0]);
+  assert.equal(rows('current')[0]?.status, 'known');
   assert.deepEqual(rows('update')[0]?.engines.map(e => e.state), ['out-of-date', 'out-of-date']);
 });
 

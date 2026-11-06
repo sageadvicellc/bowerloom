@@ -408,6 +408,20 @@ test('chooseFolder with the label the window wants: another folder is refused be
   for (const label of [3, '', null, {}, 'x'.repeat(5000), 'a\u0000b']) assert.equal(await codeOf(() => a.service.chooseFolder(label)), 'BAD_ARGUMENT', String(label));
 });
 
+test('chooseFolder with a cut label (a folder outside home shown as …/name): only an outside folder with that last name is registered; a folder under home or another name is refused first', async t => {
+  const a = shareSetup(t, 'choose-cut');
+  const outside = (name: string): string => { const dir = join(a.base, 'elsewhere', name); mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, 'README.md'), '# x\n'); return dir; };
+  const wanted = outside('wanted'), other = outside('other'), atHome = plainFolder(a.home, 'wanted');
+  for (const wrong of [other, atHome]) {
+    a.folder = wrong;
+    assert.equal(refused(await a.service.chooseFolder('…/wanted')).code, 'NOT_THE_FOLDER_SHOWN', wrong);
+  }
+  assert.deepEqual(await a.service.folders(), [], 'a refused pick stays out of folders()');
+  a.folder = wanted;
+  assert.equal(value(await a.service.chooseFolder('…/wanted')).name, 'wanted');
+  assert.equal((await a.service.folders()).length, 1);
+});
+
 test('the channel of chooseFolder takes the one optional argument and no more; every other call keeps its count', async () => {
   const handlers = new Map<string, (event: RealEvent, ...args: unknown[]) => unknown>();
   registerEngineIpc({ ipc: { handle: (c, l) => { handlers.set(c, l); } }, appIndexUrl: APP_INDEX, home: '/nonexistent-home', stateRoot: '/nonexistent-home/.local/state/bowerloom', chooseFolder: async () => null, confirm: async () => false, who: 't' });

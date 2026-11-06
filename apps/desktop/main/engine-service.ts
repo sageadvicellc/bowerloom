@@ -441,6 +441,14 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     return answer(f, run);
   };
 
+  /**
+   * True when the folder picked is the one the window shows. A folder under home must have the same `~` label. A folder outside home is shown cut down to `…/name` (the window
+   * holds no full path), so the pick must be outside home and have that last name: another name, or any folder under home, is not it.
+   */
+  const isTheFolderShown = (dir: string, want: string): boolean => {
+    if (!want.startsWith('…')) return labelFor(dir) === want;
+    return !labelFor(dir).startsWith('~') && `…/${basename(dir)}` === want;
+  };
   /** The label of a folder as the window gets it: `~` for the home folder and below it, with hidden characters written out. */
   const labelFor = (dir: string): string => visible(labelOf(dir, homes.find(h => dir === h || dir.startsWith(`${h}/`)) ?? deps.home));
   /**
@@ -600,7 +608,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     try { projection = pendingExists(f.portableState); } catch { projection = false; }
     try { adoption = readJournal(f.adoptState, f.dir) !== null; } catch { adoption = false; }
     adoption ||= mergeIsStopped(f) || saveIsStopped(f);
-    return { id: f.id, label: f.label, name: f.scrub(basename(f.dir)), hasDefinition, ...(holdsParts === undefined ? {} : { holdsParts }), engines, previewEngines, installedEngines, problem, projected, unfinished: { projection, adoption } };
+    return { id: f.id, label: f.label, name: visible(f.scrub(basename(f.dir))), hasDefinition, ...(holdsParts === undefined ? {} : { holdsParts }), engines, previewEngines, installedEngines, problem, projected, unfinished: { projection, adoption } };
   }
 
   const adoptInput = (f: Folder, picks: AdoptChoices['picks'], acknowledged: readonly string[], everyEngine: readonly EveryEnginePart[]): AdoptionInput => ({
@@ -867,7 +875,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
         const dir = realpathSync(picked);
         if (!lstatSync(dir).isDirectory()) return bad();
         checkProjectPath(dir, deps.home);
-        if (want !== undefined && labelFor(dir) !== want) return { ok: false, refusal: { code: 'NOT_THE_FOLDER_SHOWN', message: 'That is not the folder shown. Bowerloom did not add it.', paths: [] } } as const;
+        if (want !== undefined && !isTheFolderShown(dir, want)) return { ok: false, refusal: { code: 'NOT_THE_FOLDER_SHOWN', message: 'That is not the folder shown. Bowerloom did not add it.', paths: [] } } as const;
         return { ok: true, value: info(await register(dir)) } as const;
       } catch (error) {
         if (error instanceof EngineCallRefusal) return { ok: false, refusal: { code: 'NOT_A_FOLDER', message: 'That is not a folder Bowerloom can use. Choose a folder.', paths: [] } } as const;
