@@ -1,5 +1,5 @@
 /**
- * The Overview screen of the sample launch (Task 2 lane H review round): the first view, the focus that never scrolls the stage, the names of the buttons, the zoom floor, and the focus
+ * The Overview screen of the sample launch (Task 2 lane H review round), on the Graph view: the first view, the focus that never scrolls the stage, the names of the buttons, the zoom floor, and the focus
  * that stays on screen when the wheel zooms out. Hidden window; the lane's own checks. The made-up home and the full journey are the e2e of lane I.
  */
 import { expect, test } from '@playwright/test';
@@ -18,6 +18,9 @@ test.beforeEach(async () => {
   await p.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });
   await fresh(p, '#sample/overview');
   await expect(p.getByRole('heading', { level: 1, name: 'Overview', exact: true })).toBeVisible();
+  // The Grid is the first view of a wide window; these checks are about the Graph, so the Graph is chosen.
+  await p.getByRole('radio', { name: 'Graph view' }).click();
+  await expect(p.locator('.hxo-canvas')).toBeVisible();
 });
 
 const scale = (p: Page): Promise<number> => p.locator('.hxo-world').evaluate(el => Number(/scale\(([\d.]+)\)/.exec((el as HTMLElement).style.transform)?.[1] ?? 'NaN'));

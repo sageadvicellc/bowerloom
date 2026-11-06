@@ -25,9 +25,10 @@ const sample = (folders: readonly FolderInfo[] = []) => overviewOf(createSampleO
 
 test('the List is the default view in a window under the small-screen width, and a choice always wins', () => {
   assert.equal(viewFor(null, OVERVIEW_LIMITS.smallScreen - 1), 'list');
-  assert.equal(viewFor(null, OVERVIEW_LIMITS.smallScreen), 'graph');
+  assert.equal(viewFor(null, OVERVIEW_LIMITS.smallScreen), 'grid');
   assert.equal(viewFor(null, 390), 'list');
-  assert.equal(viewFor(null, 1440), 'graph');
+  assert.equal(viewFor(null, 1440), 'grid');
+  assert.equal(viewFor('grid', 390), 'grid');
   assert.equal(viewFor('graph', 390), 'graph');
   assert.equal(viewFor('list', 1440), 'list');
 });

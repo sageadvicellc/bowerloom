@@ -1,7 +1,7 @@
 /**
  * S2, the Harness list. Each harness is a row: its counts, its status (the worst state over its projects, computed from the install data), and a play button.
  * Picking a row goes to the address of that harness (`#harnesses/<id>`), so the address and the details column agree; the details show: where it runs, where it is installed, and three buttons.
- * "Start" and the play button open the start sheet for the harness of their row (the sample's sheet: it starts runs in memory), "Assign to project" opens the install sheet at its first step.
+ * "Start" and the play button open the start sheet for the harness of their row (the sample's sheet: it starts runs in memory), "Assign to project" opens the install sheet at its first step (in the sample; on the person's own folders it says the harness is not on disk and opens "From a folder").
  * On the person's own folders, each folder row that holds a harness has its own "Start": it opens the real Start sheet, which shows a command to paste into a Terminal and runs nothing.
  * "Open in builder" on such a harness is refused in words: the Builder edits one folder's harness, so it opens "From a folder", which makes one.
  * Under the rows, "Folders": each folder main knows, with "Open in builder" for one that holds a harness and "From a folder" for one that does not, and
@@ -48,6 +48,12 @@ function Row({ harness, state, selected, onPick, onStart }: { harness: Harness; 
 function Details({ harness, state }: { harness: Harness; state: HarnessState }): ReactElement {
   const ui = useUi();
   const installs = installsOfHarness(state, harness.id);
+  // On the person's own folders a harness made from a scan is not on disk: a folder holds its own harness, so the note says so and "From a folder" opens to make one (as Open in builder does).
+  const assign = (h: Harness): void => {
+    if (state.real === undefined) { ui.openInstall({ harnessId: h.id, projectId: null, step: 'project' }); return; }
+    ui.showToast(WORDS.hint.notOnDisk);
+    ui.openAdopt({});
+  };
   return (
     <>
       <DetailsHead tile={<Tile name="harness" size="large" />} title={harness.name} subtitle={WORDS.label.harness} />
@@ -70,7 +76,7 @@ function Details({ harness, state }: { harness: Harness; state: HarnessState }):
       <div className="hx-actions">
         <HButton icon="play" variant="primary" onClick={() => ui.openStart({ harnessId: harness.id })}>{WORDS.label.start}</HButton>
         <HButton icon="harness" onClick={() => { ui.showToast(BUILDER_REFUSALS['harness-from-scan']); ui.openAdopt({}); }}>{WORDS.label.openInBuilder}</HButton>
-        <HButton icon="folder" onClick={() => ui.openInstall({ harnessId: harness.id, projectId: null, step: 'project' })}>{WORDS.label.assignToProject}</HButton>
+        <HButton icon="folder" onClick={() => assign(harness)}>{WORDS.label.assignToProject}</HButton>
       </div>
     </>
   );

@@ -4,6 +4,8 @@
  * The sample launch answers the same calls from synthetic fixtures in memory (shared/engine/sample.ts) and writes nothing.
  */
 
+import type { SavedScanAnswer, SavedScanCheck } from '../real/saved-scan.js';
+
 /** The engine ids are the harness definition core's own list (shared/engine/engines.ts). Only the type is named here, so this file, which the bridge imports, pulls in no package. */
 import type { EngineId } from '../../../../packages/harness-definition/src/words.js';
 export type { EngineId };
@@ -39,6 +41,12 @@ export interface FolderInfo {
   readonly id: string;
   /** The folder, written with `~` for the home folder. */
   readonly label: string;
+  /**
+   * The same folder in the encoding the window's own paths have (the reader's `cleanPath`: a hidden character becomes a space, each part is trimmed). `label` is written out for a
+   * person (a hidden character is a mark such as `[U+200B]`), so the two never compare equal when a name hides something. The window pairs a row with a folder on this one text.
+   * Main fills it; left out, `label` is already clean (the sample).
+   */
+  readonly cleanLabel?: string;
   readonly name: string;
   /** True when the folder holds `.bowerloom/harness.json`. */
   readonly hasDefinition: boolean;
@@ -703,7 +711,8 @@ export interface EngineBridge {
   /**
    * Opens the system folder chooser. Null when the person closed it. The sample has no chooser and answers null. `expectedLabel` (optional, additive): the label of the
    * folder the window wants, as a place it already shows. A pick with another label is refused as NOT_THE_FOLDER_SHOWN before main registers it, so a folder the window did
-   * not accept never gets an id or appears in `folders()`. Left out, any folder is taken.
+   * not accept never gets an id or appears in `folders()`. A label that starts with `…` is a folder outside home cut down to `…/name`: the pick must be outside home with that last
+   * name. Left out, any folder is taken.
    */
   chooseFolder(expectedLabel?: string): Promise<Answer<FolderInfo> | null>;
   planAdoption(folderId: string, choices: AdoptChoices): Promise<Answer<AdoptView>>;
@@ -800,6 +809,13 @@ export interface EngineBridge {
    * `copied` true. The sample copies nothing.
    */
   startCommandToClipboard(folderId: string, engine: EngineId, instruction: string): Promise<Answer<StartCommandView>>;
+  /**
+   * What a launch asks first: the last read, kept on this computer, as the window got it (the places and the result), or `none` (nothing kept), or `damaged` with a short reason when
+   * the kept file cannot be used. It reads no folder. The sample has no kept read and answers `none`.
+   */
+  savedScan(): Promise<SavedScanAnswer>;
+  /** The cheap, read-only check that follows: whether the folders of the kept read changed since it was made (or could not be checked to the end). No file is opened. The sample answers `same`. */
+  checkSavedScan(): Promise<SavedScanCheck>;
 }
 
 /** The command Start shows. `command` is the line to paste; the copied line is the same with the folder's full path when `differs` is true. */
@@ -827,7 +843,7 @@ export const ENGINE_CALLS = Object.freeze([
   'planProjection', 'runProjection', 'planRemoval', 'runRemoval', 'planRecovery', 'runRecovery', 'planMerge', 'runMerge', 'recordCheck',
   'planSave', 'runSave', 'listVersions', 'planRestore', 'runRestore', 'planSetAside', 'runSetAside',
   'chooseNotesFolder', 'notesSummary', 'planCreateNotes', 'runCreateNotes', 'planNotesHistory', 'runNotesHistory', 'openNotesReport',
-  'planExport', 'runExport', 'chooseBundle', 'planImport', 'runImport', 'discardBundle',
+  'planExport', 'runExport', 'chooseBundle', 'planImport', 'runImport', 'discardBundle', 'savedScan', 'checkSavedScan',
   'showStartCommand', 'startCommandToClipboard',
 ] as const);
 export type EngineCall = (typeof ENGINE_CALLS)[number];
@@ -837,7 +853,7 @@ export const ENGINE_ARITY: Readonly<Record<EngineCall, number>> = Object.freeze(
   planProjection: 2, runProjection: 3, planRemoval: 1, runRemoval: 2, planRecovery: 2, runRecovery: 3, planMerge: 1, runMerge: 2, recordCheck: 2,
   planSave: 2, runSave: 3, listVersions: 1, planRestore: 2, runRestore: 3, planSetAside: 1, runSetAside: 2,
   chooseNotesFolder: 1, notesSummary: 1, planCreateNotes: 1, runCreateNotes: 2, planNotesHistory: 1, runNotesHistory: 2, openNotesReport: 1,
-  planExport: 1, runExport: 3, chooseBundle: 0, planImport: 3, runImport: 5, discardBundle: 1,
+  planExport: 1, runExport: 3, chooseBundle: 0, planImport: 3, runImport: 5, discardBundle: 1, savedScan: 0, checkSavedScan: 0,
   showStartCommand: 3, startCommandToClipboard: 3,
 });
 /** One channel per call, apart from every other channel of the app. */

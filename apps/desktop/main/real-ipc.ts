@@ -8,7 +8,7 @@
  * There is no write, no command, no network and no generic channel here. The handler takes its tools as arguments, so a test can run it with a fake and no Electron.
  */
 import { REAL_CHANNELS } from '../shared/real/types.js';
-import type { RealDiscovery, RealPicked, RealResult } from '../shared/real/types.js';
+import type { RealDiscovery, RealPicked, RealPlace, RealResult } from '../shared/real/types.js';
 import { buildRealResult } from '../shared/real/map-world.js';
 import { RealRefusal, createScanner } from './real-scan.js';
 import type { Scanner } from './real-scan.js';
@@ -26,6 +26,11 @@ export interface RealIpcDeps {
   /** Opens the system folder chooser and answers the chosen folder, or null when the person closed it. */
   readonly chooseFolder: () => Promise<string | null>;
   readonly now?: () => number;
+  /**
+   * Wraps the read of question two. It gets the places the window was shown for the ids it asked for (in that order) and the read itself, and answers what the read answers. The
+   * app uses it to keep the read (main/scan-session.ts). This file only calls it: it holds no way to write, and a read that the reader refuses never reaches it.
+   */
+  readonly keepRead?: (chosen: readonly RealPlace[], read: () => Promise<RealResult>) => Promise<RealResult>;
 }
 
 /** The home folder, if it is an absolute path to a folder that is there; else null. Real mode starts only with one. */
@@ -46,16 +51,24 @@ export function registerRealIpc(deps: RealIpcDeps): Scanner {
       try { return await run(args); } catch (error) { throw error instanceof RealRefusal ? new Error(error.code) : new Error('FAILED'); }
     });
   };
-  guarded(REAL_CHANNELS.discoverPlaces, 0, (): Promise<RealDiscovery> => scanner.discover());
+  // The places as the window was shown them, by id: the read of question two is kept with these (they are what the window holds), never with anything the window sends back.
+  const shown = new Map<string, RealPlace>();
+  const remember = <T extends RealDiscovery>(found: T): T => { for (const p of found.places) shown.set(p.id, p); return found; };
+  guarded(REAL_CHANNELS.discoverPlaces, 0, async (): Promise<RealDiscovery> => remember(await scanner.discover()));
   guarded(REAL_CHANNELS.pickFolder, 0, async (): Promise<RealPicked> => {
     // The chooser window opens inside the scanner's one-call-at-a-time guard, so no other call can start while it is open.
     const found = await scanner.pick(deps.chooseFolder);
     if (found === null) return { cancelled: true, places: [], stoppedEarly: false, couldNotRead: 0, notes: [], readOnly: true };
-    return { ...found, cancelled: false };
+    return { ...remember(found), cancelled: false };
   });
   guarded(REAL_CHANNELS.readSelected, 1, async ([ids]): Promise<RealResult> => {
-    const batch = await scanner.read(ids);
-    return buildRealResult(batch.reads, batch.tally, { nowMs: now(), foldExtraApps: true });
+    const read = async (): Promise<RealResult> => {
+      const batch = await scanner.read(ids);
+      return buildRealResult(batch.reads, batch.tally, { nowMs: now(), foldExtraApps: true });
+    };
+    // The reader checks the ids itself and refuses a bad list. Only a list of places the window was shown is handed to `keepRead`.
+    const chosen = Array.isArray(ids) && ids.length > 0 && ids.every(id => typeof id === 'string' && shown.has(id)) ? [...new Set(ids as string[])].map(id => shown.get(id)!) : null;
+    return deps.keepRead === undefined || chosen === null ? read() : deps.keepRead(chosen, read);
   });
   return scanner;
 }

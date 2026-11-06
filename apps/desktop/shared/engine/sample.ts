@@ -811,6 +811,9 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
     // Start in the sample builds the same line from a made-up home folder, and copies nothing.
     showStartCommand: (id, engine, instruction) => settle(sampleStart(id, engine, instruction)),
     startCommandToClipboard: (id, engine, instruction) => settle(sampleStart(id, engine, instruction)),
+    // The sample keeps no read: a launch of it always starts from the made-up folders.
+    savedScan: () => settle({ status: 'none' as const }),
+    checkSavedScan: () => settle('same' as const),
     planExport: id => asCall(() => {
       const f = folderArg(id), plan = exportPlan(f);
       if (plan.ok) shownExport.set(f.info.id, plan.value.revision); else shownExport.delete(f.info.id);

@@ -216,7 +216,7 @@ test('the file view draws the file as text: markup and an order stay words, the 
   await shot(p, 'real-5-file');
 });
 
-test('Install is not in beta.1: a note says so and no sheet opens; Start opens its sheet; the Beta mark says what Bowerloom does and what is not in beta.1', async () => {
+test('Start opens its sheet, and Assign to project says the harness is not on disk: a note says so and no sheet opens; the Beta mark says what Bowerloom does and what is not in beta.1', async () => {
   const p = page();
   await p.evaluate(() => { location.hash = '#sample/harnesses'; });
   await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
@@ -231,8 +231,11 @@ test('Install is not in beta.1: a note says so and no sheet opens; Start opens i
   await expect(p.locator('[data-toast]').filter({ hasText: 'Not in beta.1.' }), 'Start no longer says it is not in beta.1').toHaveCount(0);
   await p.keyboard.press('Escape');
   await expect(p.locator('[aria-modal="true"]')).toHaveCount(0);
+  // Assign to project says the harness is not on disk and opens "From a folder", which makes one. It writes nothing.
   await p.getByRole('button', { name: 'Assign to project', exact: true }).first().click();
-  await expect(p.locator('[data-toast]')).toContainText('Not in beta.1.');
+  await expect(p.locator('[data-toast]')).toContainText('This harness is not on disk. Make one from a folder.');
+  await expect(p.getByRole('dialog', { name: 'New harness from a folder' })).toBeVisible();
+  await p.keyboard.press('Escape');
   await expect(p.locator('[aria-modal="true"]')).toHaveCount(0);
   // The list says "Not checked" for where the harness runs, and names no program.
   const runsIn = p.locator('section', { has: p.locator('#hx-runs-in') });
@@ -244,7 +247,7 @@ test('Install is not in beta.1: a note says so and no sheet opens; Start opens i
   await expect(pop).toContainText('Bowerloom is in beta. It reads your own folders and writes only after you approve what it will write.');
   await expect(pop).toContainText('Not in beta.1');
   await expect(pop).not.toContainText(/preview|full app/i);
-  await expect(pop.locator('li')).toHaveText(['Compare', 'Runs', 'Assign to project, in the Harnesses details', 'Assign harness, Install, Update and Review, in Projects', 'Add (the plus button), in the Library', 'Add a folder, in Projects']);
+  await expect(pop.locator('li')).toHaveText(['Compare', 'Runs', 'Add (the plus button), in the Library']);
   await everyStep('preview', false);
   await shot(p, 'real-6-preview');
   await p.keyboard.press('Escape');
@@ -310,7 +313,8 @@ test('a second read asks first: "Cancel" keeps every harness, "Yes, read them" s
   expect(before).toBe(1);
   // A note with an old "Undo" is on its way when the read starts: it must not outlive the old world.
   await p.getByRole('button', { name: 'Assign to project', exact: true }).first().click();
-  await expect(p.locator('[data-toast]')).toContainText('Not in beta.1.');
+  await expect(p.locator('[data-toast]')).toContainText('This harness is not on disk. Make one from a folder.');
+  await p.keyboard.press('Escape');
   await p.evaluate(() => { location.hash = '#sample/choose'; });
   await expect(p.getByRole('heading', { level: 1, name: /^Found \d+ places?$/ })).toBeVisible();
   await p.locator('.hxf-card', { hasText: 'Hermes at home' }).getByRole('checkbox').uncheck();

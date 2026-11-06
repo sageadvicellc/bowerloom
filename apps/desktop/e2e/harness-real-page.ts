@@ -13,7 +13,9 @@ import { launchElectron } from './hidden.js';
 import { tempDir } from './temp-dirs.js';
 
 export interface RealHarness {
-  app: ElectronApplication; page: Page; pick(folder: string | null): Promise<void>; dialogs: string[];
+  app: ElectronApplication; page: Page;
+  /** The private state folder the app was given (XDG_STATE_HOME): the saved read is below it. A spec that gives none gets a temporary folder outside the made-up home. */
+  state: string; pick(folder: string | null): Promise<void>; dialogs: string[];
   /** The answer main's write question gets (true: Write), and the questions main asked. */
   confirm(yes: boolean): Promise<void>;
   asked(): Promise<{ message: string; detail: string }[]>;
@@ -35,7 +37,9 @@ export function bundleOnce(): void {
 export async function launchReal(home: string, env: Record<string, string> = {}, bundle = true, { freshTour = false }: { freshTour?: boolean } = {}): Promise<RealHarness> {
   if (bundle) bundleOnce();
   const userData = tempDir('bowerloom-e2e-');
-  const app = await launchElectron(desktop, [`--user-data-dir=${userData}`], { ...process.env, HOME: home, ELECTRON_DISABLE_SECURITY_WARNINGS: '1', ...env });
+  // The app keeps its last read in the state folder. Unless a spec names one, it is a temporary folder outside the made-up home, so a spec that checks the home is unchanged still holds.
+  const state = env.XDG_STATE_HOME ?? tempDir('bowerloom-state-');
+  const app = await launchElectron(desktop, [`--user-data-dir=${userData}`], { ...process.env, HOME: home, ELECTRON_DISABLE_SECURITY_WARNINGS: '1', ...env, XDG_STATE_HOME: state });
   await app.evaluate(({ dialog }) => {
     (globalThis as unknown as { __pick: string | null }).__pick = null;
     dialog.showOpenDialog = (async () => { const pick = (globalThis as unknown as { __pick: string | null }).__pick; return pick === null ? { canceled: true, filePaths: [] } : { canceled: false, filePaths: [pick] }; }) as unknown as typeof dialog.showOpenDialog;
@@ -58,7 +62,7 @@ export async function launchReal(home: string, env: Record<string, string> = {},
   await page.waitForSelector('[data-home]');
   if (!freshTour) await page.evaluate(key => sessionStorage.setItem(key, '1'), TOUR_SEEN_KEY);
   return {
-    app, page, dialogs, pick: folder => app.evaluate((_e, f) => { (globalThis as unknown as { __pick: string | null }).__pick = f; }, folder),
+    app, page, state, dialogs, pick: folder => app.evaluate((_e, f) => { (globalThis as unknown as { __pick: string | null }).__pick = f; }, folder),
     opened: () => app.evaluate(() => (globalThis as unknown as { __opened: string[] }).__opened),
     confirm: yes => app.evaluate((_e, y) => { (globalThis as unknown as { __answer: number }).__answer = y ? 1 : 0; }, yes),
     asked: () => app.evaluate(() => (globalThis as unknown as { __asked: { message: string; detail: string }[] }).__asked),

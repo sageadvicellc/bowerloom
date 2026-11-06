@@ -17,7 +17,7 @@ const deepFreeze = <T extends object>(value: T): T => {
 export const OVERVIEW = deepFreeze({
   /** Names of things and buttons: at most 5 words each. */
   label: {
-    graphList: 'Graph or list', expandAll: 'Expand all', collapseAll: 'Collapse all', expand: 'Expand', collapse: 'Collapse', chooseThisFolder: 'Choose this folder',
+    graphList: 'Grid, graph or list', gridView: 'Grid view', tiles: 'Tiles in this place', expandAll: 'Expand all', collapseAll: 'Collapse all', expand: 'Expand', collapse: 'Collapse', chooseThisFolder: 'Choose this folder',
     inBowerloom: 'In Bowerloom', notInBowerloom: 'Not in Bowerloom yet', shared: 'Shared', runsCode: 'Runs code', home: 'Home', place: 'Place', places: 'Places',
     liveRegion: 'Selection', placeGroup: 'Place', nodeList: 'Parts in this place', details: 'Details', selectedPart: 'Selected part', alsoFoundIn: 'Also found in',
     uses: 'Uses', usedBy: 'Used by', kindMcp: 'Connection', kindPrompt: 'Saved prompt', kindHook: 'Hook', skipToParts: 'Skip to the parts', showMore: 'Show more',
@@ -37,7 +37,7 @@ export const OVERVIEW = deepFreeze({
   },
   /** A short paragraph: at most 25 words each. */
   paragraph: {
-    intro: 'Every place Bowerloom found, in one graph. A place marked In Bowerloom already has a harness you can open in the builder.',
+    intro: 'Every place Bowerloom found, in one view. A place marked In Bowerloom already has a harness you can open in the builder.',
   },
 });
 
@@ -70,6 +70,10 @@ export const selectedWords = (name: string | null): string => (name === null ? '
 export const showMoreName = (n: number, place: string): string => `${OVERVIEW.label.showMore}, ${n} left, ${place}`;
 /** "and 12 more", for a list cut short. */
 export const moreWords = (n: number): string => `and ${n} more`;
+/** The name of the button that ends a tile cut short: it begins with the words on it, then says what is left and where it opens. "and 12 more, skills in alpha, show in list". */
+export const tileMoreName = (n: number, kind: string, place: string): string => `${moreWords(n)}, ${kind.toLowerCase()} in ${place}, show in list`;
+/** The name of a tile: "Skills, alpha, 12". */
+export const tileName = (kind: string, place: string, n: number): string => `${kind}, ${place}, ${n}`;
 
 /** "uses 2 skills, 1 tool": what an agent uses, by kind, in the order skill, tool, set of notes. Null when it uses nothing. */
 export function usesLineWords(counts: Partial<Readonly<Record<PartKind, number>>>): string | null {

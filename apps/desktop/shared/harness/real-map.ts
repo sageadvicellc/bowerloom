@@ -13,6 +13,7 @@
 import type { HarnessItem, Scope, WikiPage, World } from '../world/types.js';
 import { hashText } from '../world/sample.js';
 import { adapterOf } from '../real/adapters.js';
+import { scopeIdOfHarnessPlace } from '../real/map-world.js';
 import { tallyWords } from '../real/place.js';
 import { cleanLine, cut, scrubText } from '../real/redact.js';
 import type { RealPlace, RealResult } from '../real/types.js';
@@ -168,7 +169,7 @@ function pageTitlesBySlice(world: World, places: readonly RealPlace[]): Map<stri
  */
 export function partOfItem(item: HarnessItem, sourceId: string, sourceLabel: string, world?: World, titles?: ReadonlyMap<string, readonly string[]>): Part {
   const face = faceOf(item), first = (face === null ? undefined : foundIn(item, face)) ?? item.foundAt[0];
-  const app = face === null ? 'Claude Code' : adapterOf(face).label, fallback = FALLBACK[fallbackKey(item)]!;
+  const app = face !== null ? adapterOf(face).label : first === undefined ? 'Claude Code' : adapterOf(first.interface).label, fallback = FALLBACK[fallbackKey(item)]!;
   const name = cut(plain(item.name), NAME_CHARS) || item.id;
   let description = '', summary = '', fileText = '', path = first?.path ?? '';
   if (item.kind === 'context-slice') {
@@ -207,6 +208,8 @@ interface Where {
   readonly scope: 'home' | 'project';
   /** The folder in `~` form, never a full path (see `folderLabelOf`). */
   readonly folder: string;
+  /** The id of the harness place of the same folder, when it holds a harness (readable or not): the Overview joins the two by it. */
+  readonly harnessPlaceId?: string;
 }
 
 /**
@@ -219,7 +222,7 @@ export function folderLabelOf(path: string): string {
   return last === '' ? '…' : `…/${last}`;
 }
 
-/** Why an item with no program the preview knows is left out: only Bowerloom's own folder holds it, or it is in a program the preview has no room for. */
+/** Why an item with no program the preview knows is left out or shown apart: only Bowerloom's own folder holds it, or it is in a program the preview has no room for. */
 const leftOutWhy = (item: HarnessItem): 'bowerloom' | 'hermes' | 'unknown' => {
   const faces = item.foundAt.map(f => f.interface as string);
   if (faces.every(f => f === 'bowerloom')) return 'bowerloom';
@@ -227,8 +230,12 @@ const leftOutWhy = (item: HarnessItem): 'bowerloom' | 'hermes' | 'unknown' => {
 };
 const thingsWord = (n: number): string => `${n} ${n === 1 ? 'thing' : 'things'}`;
 
-/** Which source an item belongs to: its scope, the first program it was found in, and the plug-in it came from. Null for an item with no program the preview knows (see `leftOutWhy`). */
-function whereIs(item: HarnessItem, scopes: readonly Scope[]): Where | null {
+/**
+ * Which source an item belongs to: its scope, the first program it was found in, and the plug-in it came from. An item that only a `.bowerloom` folder holds gets a source of its own for
+ * that folder. When the folder also holds a harness, the source names the harness place (`harnessOf`, by scope), and the Overview joins the two and lists a skill once. Null for any other item with no
+ * program the preview knows (see `leftOutWhy`).
+ */
+function whereIs(item: HarnessItem, scopes: readonly Scope[], harnessOf: ReadonlyMap<string, string>): Where | null {
   // Known limit: an item whose scope id is not in the list falls back to the first scope (index 0), so it can be shown under the wrong folder.
   const scopeAt = Math.max(0, scopes.findIndex(s => s.id === item.scopeId)), scope = scopes[scopeAt], home = scope === undefined || scope.kind === 'global', folder = scope === undefined ? '' : cut(plain(scope.name), NAME_CHARS);
   const place = { scope: home ? 'home' : 'project', folder: home ? '~' : folderLabelOf(scope?.path ?? '') } as const;
@@ -236,7 +243,11 @@ function whereIs(item: HarnessItem, scopes: readonly Scope[]): Where | null {
     return { key: `${item.scopeId}|notes`, name: home ? 'Your notes' : `${folder} (notes)`, label: home ? 'Your notes' : `${folder} notes`, interfaceName: 'Notes', harnessName: home ? 'Your notes' : `${folder} notes`, order: [scopeAt, FACE_ORDER.indexOf('notes'), ''], ...place };
   }
   const face = faceOf(item);
-  if (face === null) return null;
+  if (face === null) {
+    if (leftOutWhy(item) !== 'bowerloom' || home) return null;
+    const app = adapterOf('bowerloom').label;
+    return { key: `${item.scopeId}|bowerloom|`, name: `${folder} (${app})`, label: `${folder} (${app})`, interfaceName: app, harnessName: `${folder} ${app}`, order: [scopeAt, FACE_ORDER.length, ''], ...place, ...(harnessOf.has(item.scopeId) ? { harnessPlaceId: harnessOf.get(item.scopeId)! } : {}) };
+  }
   const app = adapterOf(face).label, first = foundIn(item, face)!, plug = pluginOf(first.path), order = FACE_ORDER.indexOf(face);
   if (plug !== null) {
     const name = titled(plug.name);
@@ -303,11 +314,13 @@ function harnessPlacesOf(result: RealResult): HarnessPlace[] {
  */
 export function realToHarnessState(result: RealResult, places: readonly RealPlace[]): HarnessState {
   const world = result.world, notes = result.notes.filter(n => n !== PARTLY_READ_NOTE && !COUNTED_NOTE.some(r => r.test(n)));
-  // Place each item in a source. An item that only Bowerloom's own folder holds is left out.
+  // Place each item in a source. An item that only a `.bowerloom` folder holds gets that folder's own source. A folder that holds a harness has a harness place as well: the source names it, and the
+  // Overview lists what both hold once (see `overviewOf`).
+  const harnessOf = new Map((result.harnessPlaces ?? []).map(h => [scopeIdOfHarnessPlace(h.id), h.id] as const));
   const placed: { item: HarnessItem; where: Where }[] = [];
   let leftOutBowerloom = 0, leftOutHermes = 0, leftOutUnknown = 0, hermesCopies = 0;
   for (const item of world.items) {
-    const where = whereIs(item, world.scopes);
+    const where = whereIs(item, world.scopes, harnessOf);
     if (where !== null) { placed.push({ item, where }); if (item.foundAt.some(f => (f.interface as string) === 'hermes')) hermesCopies += 1; }
     else if (leftOutWhy(item) === 'bowerloom') leftOutBowerloom += 1;
     else if (leftOutWhy(item) === 'hermes') leftOutHermes += 1;
@@ -333,7 +346,7 @@ export function realToHarnessState(result: RealResult, places: readonly RealPlac
   const held = new Set(parts.map(p => p.id));
   const sources: ScanSource[] = ordered.map(w => {
     const members = keep.filter(p => p.where.key === w.key), links = members.flatMap(p => linksOf(p.item, held, world));
-    return { id: sourceIds.get(w.key)!, name: w.name, interfaceName: w.interfaceName, harnessName: w.harnessName, partIds: members.map(p => p.item.id), links, scope: w.scope, label: w.folder };
+    return { id: sourceIds.get(w.key)!, name: w.name, interfaceName: w.interfaceName, harnessName: w.harnessName, partIds: members.map(p => p.item.id), links, scope: w.scope, label: w.folder, ...(w.harnessPlaceId === undefined ? {} : { harnessPlaceId: w.harnessPlaceId }) };
   });
 
   // The notes this file writes come first: the screen shows the first few and hides the rest, and these say what is missing from the list.
