@@ -18,7 +18,7 @@ import type {
   EveryEnginePart, ExportView, ExportWritten, FolderInfo, ImportNoteChoices, ImportNoteRow, ImportView, LossView, MergeView, MergeWritten, NotesHistoryPlanView, NotesStarterView,
   NotesView, NotesWritten, ProjectAnswer, ProjectInput, ProjectView, ProjectWritten, Recovered, RecoveryChoices, RecoveryView, Refusal, RemovalView, Removed, ReportOpened, RestoreView,
   SaveChangeView, SaveEdit, SaveRequest, SaveView, SaveWritten, SetAsideView, SetAsideWritten, ShareCodeFile, ShareForeignPath, ShareSecret, ShareSummary, ShareTool, SourceView, StoppedSourceView,
-  VersionView,
+  StartCommandView, VersionView,
 } from './types.js';
 import {
   ENGINE_NAMES, EVERY_ENGINE_PARTS, KIT_MAIN_WORDS, NOTES_PURPOSES, REPORT_MAIN_WORDS, SAVE_MAIN_WORDS, SHARE_BUNDLE_ID, SHARE_HELD_BUNDLES, SHARE_MAIN_WORDS, SHARE_NAME_LIMIT, SHARE_NOTES_LIMIT, writesFile,
@@ -27,6 +27,8 @@ import {
 import { EMPTY_HARNESS_DESCRIPTION } from '../../../../packages/harness-definition/src/defaults.js';
 import { capRiskFirst, codeRisk, secretRisk, toolRisk } from './share-risk.js';
 import { approveKey, lossByEngine, unmappedHashBody } from './view.js';
+import { startAnswer } from './start-answer.js';
+import { isStartEngine } from './start-command.js';
 
 /** The packages' own words for the refusals the sample can give (packages/adoption/src/refusal.ts, packages/project-sync/src/portable-files.ts). */
 export const SAMPLE_MESSAGES = Object.freeze({
@@ -516,6 +518,11 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
   const info = (f: SampleFolder): FolderInfo => ({ ...f.info, projected: f.projected, unfinished: { projection: f.stopped, adoption: false }, hasDefinition: f.info.hasDefinition || f.adopted, engines: f.adopted ? ['claude-code', 'codex'] : f.info.engines, ...(f.def === null ? {} : { holdsParts: !emptyHarness(f.def) }) });
   const get = (id: string): SampleFolder => { const f = folders.get(id); if (f === undefined) throw new Error('UNKNOWN_FOLDER'); return f; };
   const settle = async <T>(value: T): Promise<T> => value;
+  const sampleStart = (id: string, engine: string, instruction: string): Answer<StartCommandView> => {
+    const f = get(id);
+    if (!isStartEngine(engine)) throw new Error('BAD_ARGUMENT');
+    return startAnswer({ dir: `/home/sample${f.info.label.slice(1)}`, label: f.info.label, homes: ['/home/sample'], engine, instruction, copy: false, writeClipboard: undefined });
+  };
 
   function adoptPlan(choices: AdoptChoices): AdoptView {
     const base = withApprovals(withEveryEngine(adoptFixture(), choices.everyEngine ?? []));
@@ -801,6 +808,9 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
     })()),
     // The sample writes nothing, not even a usage line.
     recordCheck: () => settle(false),
+    // Start in the sample builds the same line from a made-up home folder, and copies nothing.
+    showStartCommand: (id, engine, instruction) => settle(sampleStart(id, engine, instruction)),
+    startCommandToClipboard: (id, engine, instruction) => settle(sampleStart(id, engine, instruction)),
     planExport: id => asCall(() => {
       const f = folderArg(id), plan = exportPlan(f);
       if (plan.ok) shownExport.set(f.info.id, plan.value.revision); else shownExport.delete(f.info.id);
