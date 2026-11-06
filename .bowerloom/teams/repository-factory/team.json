@@ -1,0 +1,51 @@
+{
+  "format": "bowerloom/team/v1beta1",
+  "id": "repository-factory",
+  "description": "Develop and support Bowerloom within its accepted release scope.",
+  "harness": "bowerloom",
+  "members": [
+    {
+      "id": "factory-lead",
+      "purpose": "Accept and route one bounded task.",
+      "engine": "claude-code",
+      "model": "sonnet",
+      "folder": ".",
+      "start": "manual",
+      "inbox": "hold",
+      "reports_to": "human"
+    },
+    {
+      "id": "factory-builder",
+      "purpose": "Complete the accepted repository change.",
+      "engine": "claude-code",
+      "model": "sonnet",
+      "folder": ".",
+      "start": "manual",
+      "inbox": "hold",
+      "reports_to": "factory-lead"
+    },
+    {
+      "id": "factory-reviewer",
+      "purpose": "Independently review the exact change and evidence.",
+      "engine": "claude-code",
+      "model": "sonnet",
+      "folder": ".",
+      "start": "manual",
+      "inbox": "hold",
+      "reports_to": "factory-lead"
+    },
+    {
+      "id": "factory-release",
+      "purpose": "Report release health and prepare an approved handoff.",
+      "engine": "claude-code",
+      "model": "sonnet",
+      "folder": ".",
+      "start": "manual",
+      "inbox": "hold",
+      "reports_to": "factory-lead"
+    }
+  ],
+  "limits": {
+    "activeMembers": 1
+  }
+}
