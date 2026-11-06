@@ -1,7 +1,8 @@
 /**
  * The Overview (journey 1 step 1.5): every place the first read found, in one read-only graph, and the first screen after the read. It is built from the world already in the
  * window (`overviewOf` in shared/harness/overview.ts) and the folders main knows (`engine.folders()`); it asks main for nothing else and writes nothing.
- * - Two views of the same data: the Graph (OverviewGraph.tsx) and the List (OverviewList.tsx), switched by a radio group. A window under OVERVIEW_LIMITS.smallScreen wide starts on the List.
+ * - Three views of the same data: the Grid (OverviewGrid.tsx, a bento of tiles that fit what each place holds), the Graph (OverviewGraph.tsx) and the List (OverviewList.tsx), switched by a
+ *   radio group. A window under OVERVIEW_LIMITS.smallScreen wide starts on the List; a wider one starts on the Grid.
  * - A place opens and closes by its header (the same state in both views). "Expand all" is off above OVERVIEW_LIMITS.expandAllMax parts.
  * - A part selected in either view fills the details column (OverviewDetails.tsx); selecting a shared skill lights every copy.
  * - Each place has one button. "Open in builder" goes to the builder of the folder main knows. "Choose this folder" opens the system chooser; the window then compares the label main
@@ -29,6 +30,7 @@ import { WORDS } from '../words.js';
 import { OVERVIEW, placesWords, selectedWords } from '../words-overview.js';
 import { OverviewDetails } from './OverviewDetails.js';
 import { OverviewGraph } from './OverviewGraph.js';
+import { OverviewGrid } from './OverviewGrid.js';
 import { OverviewList } from './OverviewList.js';
 import { allOverrides, canExpandAll, chosenMatches, expandedOf, indexOverview, toggledOverrides, viewFor } from './OverviewModel.js';
 import type { OverviewView } from './OverviewModel.js';
@@ -36,7 +38,9 @@ import { PlaceAction, PlaceMark } from './OverviewParts.js';
 import type { PlaceTools } from './OverviewParts.js';
 import '../overview.css';
 
-const VIEWS: readonly OverviewView[] = ['graph', 'list'];
+const VIEWS: readonly OverviewView[] = ['grid', 'graph', 'list'];
+const VIEW_ICON = { grid: 'columns', graph: 'harness', list: 'list' } as const;
+const VIEW_LABEL = { grid: OVERVIEW.label.gridView, graph: WORDS.label.graphView, list: WORDS.label.listView } as const;
 
 export function Overview(): ReactElement {
   const state = useHarnessState(), engine = useEngine(), ui = useUi(), width = useWindowWidth();
@@ -91,10 +95,24 @@ export function Overview(): ReactElement {
     setReveal(r => ({ id, n: (r?.n ?? 0) + 1 }));
   };
   useEffect(() => {
-    if (view !== 'list' || reveal === null) return;
+    if (view === 'graph' || reveal === null) return;
     const frame = requestAnimationFrame(() => document.querySelector(`[data-node="${CSS.escape(reveal.id)}"]`)?.scrollIntoView({ block: 'nearest' }));
     return () => cancelAnimationFrame(frame);
   }, [reveal?.n, view]);
+
+  // "and N more" on a tile of the Grid opens the List at that place, with its header in view and focused.
+  const [listAt, setListAt] = useState<string | null>(null);
+  const showList = (groupId: string): void => { setChosen('list'); setListAt(groupId); };
+  useEffect(() => {
+    if (view !== 'list' || listAt === null) return;
+    const frame = requestAnimationFrame(() => {
+      const head = document.querySelector<HTMLElement>(`[data-place-toggle="${CSS.escape(listAt)}"]`);
+      head?.scrollIntoView({ block: 'start' });
+      head?.focus({ preventScroll: true });
+      setListAt(null);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [listAt, view]);
 
   const empty = overview.groups.length === 0;
   const keyViews = (e: ReactKeyboardEvent<HTMLElement>): void => {
@@ -107,12 +125,12 @@ export function Overview(): ReactElement {
     requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-view-choice="${next}"]`)?.focus());
   };
   const viewButton = (which: OverviewView): ReactElement => (
-    <HIconButton icon={which === 'graph' ? 'harness' : 'list'} label={which === 'graph' ? WORDS.label.graphView : WORDS.label.listView} side="below" role="radio" aria-checked={view === which}
+    <HIconButton key={which} icon={VIEW_ICON[which]} label={VIEW_LABEL[which]} side="below" role="radio" aria-checked={view === which}
       tabIndex={view === which ? 0 : -1} data-view-choice={which} onClick={() => setChosen(which)} />
   );
   const bar = (
     <>
-      <div className="hx-seg hxo-views" role="radiogroup" aria-label={OVERVIEW.label.graphList} onKeyDown={keyViews}>{viewButton('graph')}{viewButton('list')}</div>
+      <div className="hx-seg hxo-views" role="radiogroup" aria-label={OVERVIEW.label.graphList} onKeyDown={keyViews}>{VIEWS.map(viewButton)}</div>
       <HIconButton icon={allOpen ? 'chevron-up' : 'chevron'} label={allOpen ? OVERVIEW.label.collapseAll : OVERVIEW.label.expandAll} side="below" {...(!allOpen && !expandable ? { tip: OVERVIEW.hint.tooManyToExpand, 'aria-disabled': 'true' as const } : {})} data-expand-all=""
         onClick={e => { if (!allOpen && !expandable) { e.preventDefault(); ui.showToast(OVERVIEW.hint.tooManyToExpand); return; } setAll(!allOpen); }} />
     </>
@@ -128,6 +146,8 @@ export function Overview(): ReactElement {
           <p className="hx-empty-title">{OVERVIEW.hint.empty}</p>
           <div className="hx-empty-actions"><HButton variant="primary" icon="folder" onClick={() => go({ name: 'choose' })}>{FLOW.label.findMyFiles}</HButton></div>
         </div>
+      ) : view === 'grid' ? (
+        <OverviewGrid overview={overview} expanded={expanded} index={index} selectedId={selected === undefined ? null : selectedId} onSelect={setSelectedId} onToggle={toggle} onShowList={showList} place={place} />
       ) : view === 'graph' ? (
         <OverviewGraph overview={overview} expanded={expanded} index={index} selectedId={selected === undefined ? null : selectedId} fitKey={`${overview.groups.map(g => g.id).join(',')}|${fitTick}`}
           onSelect={setSelectedId} onToggle={toggle} place={place} reveal={reveal} />

@@ -53,6 +53,10 @@ export const sameName = (name: string): string => name.toLowerCase().replace(/[^
 
 /** The first `n` hex digits of the fingerprint of a text. All 16 by default: an id must not meet another by chance, and a crafted pair of files must not be able to make it. */
 const shortHash = (text: string, n = 16): string => hashText(text).slice(0, n);
+/** The scope of a place and the harness place of the same place share one hash of the place id, so a harness place is matched to its scope by identity and never by path. */
+const SCOPE_PREFIX = 'scope-real-', HARNESS_PREFIX = 'harness-';
+/** The id of the scope that stands for the place whose harness place has this id. */
+export const scopeIdOfHarnessPlace = (harnessPlaceId: string): string => `${SCOPE_PREFIX}${harnessPlaceId.slice(HARNESS_PREFIX.length)}`;
 const joinPath = (place: string, rel: string): string => cleanPath(place.endsWith('/') ? `${place}${rel}` : `${place}/${rel}`);
 
 /**
@@ -111,7 +115,7 @@ export function buildRealResult(reads: readonly PlaceRead[], tally: BatchTally, 
   const scopeOf = new Map<string, string>();
   for (const r of reads) {
     if (r.place.kind === 'home') { scopeOf.set(r.place.id, GLOBAL_SCOPE.id); continue; }
-    const id = `scope-real-${shortHash(r.place.id)}`;
+    const id = `${SCOPE_PREFIX}${shortHash(r.place.id)}`;
     scopeOf.set(r.place.id, id);
     scopes.push({ id, kind: 'project', name: cleanLine(r.place.label).slice(0, 60), parentId: GLOBAL_SCOPE.id, path: cleanPath(r.place.path) });
   }
@@ -230,6 +234,6 @@ export function buildRealResult(reads: readonly PlaceRead[], tally: BatchTally, 
     ...(texts.cut > 0 ? [`${texts.cut} long ${texts.cut === 1 ? 'text was' : 'texts were'} shortened.`] : []),
     ...tallyWords({ ...tally, tooBig: 0, binary: 0, unreadable: 0, linksOutside: 0, brokenLinks: 0 }),
   ];
-  const harnessPlaces = reads.filter(r => r.harness !== undefined).map(r => ({ id: `harness-${shortHash(r.place.id)}`, name: cleanLine(r.place.label).slice(0, 60), path: cleanPath(r.place.path), harness: r.harness! }));
+  const harnessPlaces = reads.filter(r => r.harness !== undefined).map(r => ({ id: `${HARNESS_PREFIX}${shortHash(r.place.id)}`, name: cleanLine(r.place.label).slice(0, 60), path: cleanPath(r.place.path), harness: r.harness! }));
   return { world, others, counts, ages, ...(harnessPlaces.length > 0 ? { harnessPlaces } : {}), stoppedEarly: tally.stoppedEarly, couldNotRead: sum, partlyRead, textsCut: texts.cut, notes, readOnly: true };
 }
