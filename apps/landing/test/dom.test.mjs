@@ -245,7 +245,7 @@ dom('the banner is 70% of the view height at phone, tablet, and desktop widths, 
 
 // Scroll so the middle of the section sits 42% down the screen, inside the 40% to 45% reading band. Late images move the page, so the aim is made twice.
 
-dom('the link of the section in view gets aria-current, and Docs, Articles, and GitHub never do', async () => {
+dom('the link of the section in view gets aria-current, and Docs and GitHub never do', async () => {
   const { page, context } = await open({ viewport: { width: 1280, height: 800 } });
   const current = () => page.evaluate(() => [...document.querySelectorAll('.desktop-navigation a[aria-current]')].map(a => a.textContent.trim()));
   const toSection = async id => {
@@ -266,7 +266,7 @@ dom('the link of the section in view gets aria-current, and Docs, Articles, and 
   await toSection('install');
   assert.equal(await page.locator('.mobile-drawer a[href="#install"]').getAttribute('aria-current'), 'true');
   assert.equal(await page.locator('.mobile-drawer a[href="#command-line"]').getAttribute('aria-current'), null, 'one at a time');
-  assert.equal(await page.locator('.desktop-navigation a:is([href="/docs/"], [href="/articles/"], .nav-github)[aria-current]').count(), 0);
+  assert.equal(await page.locator('.desktop-navigation a:is([href="/docs/"], .nav-github)[aria-current]').count(), 0);
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.waitForTimeout(400);
   assert.deepEqual(await current(), []);
@@ -281,11 +281,11 @@ dom('the stitch shows at once under reduced motion, on hover and on keyboard foc
   assert.match(await clip('Docs'), /inset\(0px\)/, 'drawn on hover with no delay');
   await page.mouse.move(2, 2);
   await page.keyboard.press('Tab');
-  await page.getByRole('link', { name: 'Articles', exact: true }).focus();
+  await page.getByRole('link', { name: 'The app', exact: true }).focus();
   await page.keyboard.press('Shift+Tab');
   await page.keyboard.press('Tab');
-  assert.match(await clip('Articles'), /inset\(0px\)/, 'drawn on keyboard focus');
-  assert.equal(await page.getByRole('link', { name: 'Articles', exact: true }).evaluate(el => getComputedStyle(el, '::after').transitionDuration), '0s', 'no transition under reduced motion');
+  assert.match(await clip('The app'), /inset\(0px\)/, 'drawn on keyboard focus');
+  assert.equal(await page.getByRole('link', { name: 'The app', exact: true }).evaluate(el => getComputedStyle(el, '::after').transitionDuration), '0s', 'no transition under reduced motion');
   await context.close();
 });
 
@@ -571,9 +571,9 @@ dom('icon buttons have no box at rest and a 44 px target, and every button, tag,
   await wide.context.close();
 });
 
-dom('with the modal open there is no horizontal overflow at 390, 834, and 1440 px, the picture stays 16:10 inside the bezel, and the decorations ignore the pointer', async () => {
-  for (const [width, height] of [[390, 844], [834, 1194], [1440, 900]]) {
-    const { page, context } = await open({ viewport: { width, height } });
+dom('with the modal open there is no overflow at 390, 834, and 1440 px in either theme, the picture fills the frame at 16:10, the frame is drawn, and the decorations ignore the pointer', async () => {
+  for (const theme of ['light', 'dark']) for (const [width, height] of [[390, 844], [834, 1194], [1440, 900]]) {
+    const { page, context } = await open({ viewport: { width, height }, colorScheme: theme });
     await page.locator('[data-screenshot-slot="builder-graph"] .screenshot-enlarge').click();
     await page.waitForFunction(() => document.querySelector('.screenshot-dialog[open]'));
     await page.waitForFunction(() => [...document.querySelectorAll('.screenshot-dialog[open] img')].filter(img => img.offsetParent !== null).every(img => img.complete && img.naturalWidth > 0), null, { timeout: 8000 });
@@ -588,22 +588,59 @@ dom('with the modal open there is no horizontal overflow at 390, 834, and 1440 p
         ratio: shown.width / shown.height,
         decorations: decorations.map(el => ({ name: el.className, events: getComputedStyle(el).pointerEvents, alt: el.getAttribute('alt'), hidden: el.getAttribute('aria-hidden'), left: el.getBoundingClientRect().left, right: el.getBoundingClientRect().right })),
         scrollWidth: dialog.scrollWidth, clientWidth: dialog.clientWidth,
-        borderImage: getComputedStyle(dialog.querySelector('.screenshot-device')).borderImageSource,
+        borderImage: getComputedStyle(dialog.querySelector('.screenshot-device'), '::after').borderImageSource,
+        overlay: (() => { const cs = getComputedStyle(dialog.querySelector('.screenshot-device'), '::after'); return { top: parseFloat(cs.borderTopWidth), slice: cs.borderImageSlice }; })(),
+        scrollHeight: dialog.scrollHeight, clientHeight: dialog.clientHeight,
+        // The picture fills the device's content box exactly, so the frame's hole is never empty.
+        fill: (() => { const device = dialog.querySelector('.screenshot-device'), cs = getComputedStyle(device), d = device.getBoundingClientRect();
+          return { left: shown.left - (d.left + parseFloat(cs.paddingLeft)), right: (d.right - parseFloat(cs.paddingRight)) - shown.right, top: shown.top - (d.top + parseFloat(cs.paddingTop)), bottom: (d.bottom - parseFloat(cs.paddingBottom)) - shown.bottom }; })(),
       };
     });
     assert.ok(facts.docWidth <= width, `${width}: page ${facts.docWidth} px wide`);
     assert.ok(facts.dialogLeft >= 0 && facts.dialogRight <= width, `${width}: the dialog is inside the window`);
     assert.ok(facts.scrollWidth <= facts.clientWidth + 1, `${width}: the dialog has no sideways scroll`);
     assert.ok(Math.abs(facts.ratio - 1.6) < 0.01, `${width}: the picture ratio is ${facts.ratio}`);
-    assert.match(facts.borderImage, /\/frame\/bezel\.webp/);
-    assert.ok(facts.decorations.length >= 3, `${width}: decorations are shown`);
+    assert.match(facts.borderImage, new RegExp(`/frame/frame-${theme}\\.webp`));
+    assert.ok(facts.overlay.top > 0 && /^\d+ \d+ \d+ \d+$/.test(facts.overlay.slice), `${theme} ${width}: the frame overlay is drawn (${JSON.stringify(facts.overlay)})`);
+    assert.ok(facts.scrollHeight <= facts.clientHeight + 1, `${theme} ${width}: no vertical scroll from the plants (${facts.scrollHeight} > ${facts.clientHeight})`);
+    for (const [side, gap] of Object.entries(facts.fill)) assert.ok(Math.abs(gap) < 1, `${theme} ${width}: the picture fills the hole (${side} ${gap})`);
+    assert.deepEqual(facts.decorations.map(d => d.name), ['deco ivy', 'deco bloom'], `${width}: both plants are shown`);
     for (const d of facts.decorations) {
       assert.equal(d.events, 'none', d.name); assert.equal(d.alt, ''); assert.equal(d.hidden, 'true');
       assert.ok(d.left >= -0.5 && d.right <= width + 0.5, `${width}: ${d.name} stays inside the window (${d.left} to ${d.right})`);
     }
-    assert.equal(facts.decorations.some(d => /\bh[lr]\b/.test(d.name)), width > 760, `${width}: handles only above 760 px`);
     await context.close();
   }
+});
+
+dom('the dark theme shows the dark painted frame, and the light one is never fetched', async () => {
+  const { page, context } = await open({ viewport: { width: 1280, height: 800 }, colorScheme: 'dark' });
+  const requests = [];
+  page.on('request', request => { if (request.url().includes('/frame/')) requests.push(request.url()); });
+  const frame = page.waitForResponse(response => response.url().includes('/frame/frame-dark.webp'));
+  await page.locator('[data-screenshot-slot="builder-graph"] .screenshot-enlarge').click();
+  await page.waitForFunction(() => document.querySelector('.screenshot-dialog[open]'));
+  assert.equal((await frame).status(), 200, 'the dark frame file loads');
+  await page.waitForTimeout(800);
+  const source = await page.evaluate(() => getComputedStyle(document.querySelector('.screenshot-dialog[open] .screenshot-device'), '::after').borderImageSource);
+  assert.match(source, /\/frame\/frame-dark\.webp/);
+  assert.ok(requests.some(url => url.includes('frame-dark.webp')) && !requests.some(url => url.includes('frame-light.webp')), requests.join(', '));
+  await context.close();
+});
+
+dom('a saved light theme on a dark system shows the light frame, and the dark one is never fetched', async () => {
+  const { page, context } = await open({ viewport: { width: 1280, height: 800 }, colorScheme: 'dark' });
+  await page.evaluate(() => localStorage.setItem('bowerloom.theme', 'light'));
+  const requests = [];
+  page.on('request', request => { if (request.url().includes('/frame/')) requests.push(request.url()); });
+  await page.reload({ waitUntil: 'networkidle' });
+  assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light');
+  const frame = page.waitForResponse(response => response.url().includes('/frame/frame-light.webp'));
+  await page.locator('[data-screenshot-slot="builder-graph"] .screenshot-enlarge').click();
+  assert.equal((await frame).status(), 200);
+  assert.match(await page.evaluate(() => getComputedStyle(document.querySelector('.screenshot-dialog[open] .screenshot-device'), '::after').borderImageSource), /\/frame\/frame-light\.webp/);
+  assert.ok(!requests.some(url => url.includes('frame-dark.webp')), requests.join(', '));
+  await context.close();
 });
 
 dom('nothing from the device frame loads until the modal first opens', async () => {
@@ -615,7 +652,7 @@ dom('nothing from the device frame loads until the modal first opens', async () 
   await page.locator('[data-screenshot-slot="builder-graph"] .screenshot-enlarge').click();
   await page.waitForFunction(() => document.querySelector('.screenshot-dialog[open]'));
   await page.waitForTimeout(800);
-  assert.ok(requests.some(url => url.includes('bezel.webp')) && requests.some(url => url.includes('corner-tl.webp')), 'the frame loads on first open');
+  assert.ok(requests.some(url => url.includes('frame-light.webp')) && requests.some(url => url.includes('ivy.webp')), 'the frame loads on first open');
   await context.close();
 });
 
