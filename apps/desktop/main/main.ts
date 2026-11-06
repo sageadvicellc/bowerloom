@@ -1,5 +1,5 @@
 /** Electron entry. Opens one window onto the app's page. The launch (main/launch.ts) decides which bridge the window gets and which calls main answers. */
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, protocol, session, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, protocol, session, shell } from 'electron';
 import { readFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -19,6 +19,7 @@ import type { DialogDeps } from './diagnostics-dialogs.js';
 import { execFileRunner } from '../../../packages/diagnostics/src/index.js';
 import { withSamplePreviewEngines } from '../shared/engine/sample-switch.js';
 import { e2eHidden, leaveDock, quietDialogs, revealWindow, windowOptions } from './window-options.js';
+import { dockFolder, followAppearance } from './dock-icon.js';
 import { windowFailure } from './window-failure.js';
 import { bringForBox, closeGuard } from './close-guard.js';
 import { quitHold } from './quit-hold.js';
@@ -165,6 +166,8 @@ function diagnosticsDeps(): DialogDeps {
 app.on('web-contents-created', (_event, contents) => hardenContents(contents));
 
 app.whenReady().then(async () => {
+  // The Dock icon follows light and dark while the app runs (main/dock-icon.ts). A hidden test run has no Dock icon to set.
+  if (!e2eHidden(argv)) followAppearance({ dock: app.dock, theme: nativeTheme, folder: dockFolder({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, appRoot: root }), load: path => nativeImage.createFromPath(path) });
   // The page is served by the app itself, from its own renderer folder only.
   protocol.handle(APP_SCHEME, async request => {
     // Every launch serves the same page, index.html, with the same policy. A launch differs only in the address and in the bridge its window gets.

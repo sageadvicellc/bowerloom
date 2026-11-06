@@ -49,6 +49,10 @@
       {
         "from": "../../kits",
         "to": "kits"
+      },
+      {
+        "from": "build/dock",
+        "to": "dock"
       }
     ],
     "asar": true,

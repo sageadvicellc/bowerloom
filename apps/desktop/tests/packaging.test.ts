@@ -38,7 +38,7 @@ test('the build targets are macOS (dmg and zip), Windows (nsis), and Linux (AppI
   const b = pkg.build as { mac: { target: { target: string }[] }; win: { target: string[] }; linux: { target: string[] }; publish?: unknown; appId: string; extraResources: { from: string; to: string }[] };
   assert.deepEqual(b.mac.target.map(x => x.target).sort(), ['dmg', 'zip']); assert.deepEqual(b.win.target, ['nsis']); assert.deepEqual(b.linux.target, ['AppImage']);
   assert.equal(b.publish, undefined, 'no publish provider: the build writes no update feed and the app checks none');
-  assert.deepEqual(b.extraResources, [{ from: '../../kits', to: 'kits' }], 'the kits ship; the old viewer\'s sample data does not');
+  assert.deepEqual(b.extraResources, [{ from: '../../kits', to: 'kits' }, { from: 'build/dock', to: 'dock' }], 'the kits and the Dock icon pair ship; the old viewer\'s sample data does not');
   assert.equal(existsSync(join(DESKTOP, 'sample-data')), false, 'the viewer\'s sample world is gone');
   assert.match(pkg.scripts.build!, /--publish never/);
   for (const script of Object.values(pkg.scripts)) assert.doesNotMatch(script, /--publish always|publish onTag|npm publish/);
