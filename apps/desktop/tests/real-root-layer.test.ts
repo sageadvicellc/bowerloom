@@ -5,11 +5,13 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { createScanner } from '../main/real-scan.js';
 import { buildRealResult } from '../shared/real/map-world.js';
+import { overviewOf } from '../shared/harness/overview.js';
 import { realToHarnessState } from '../shared/harness/real-map.js';
 import { tempDir } from './support.js';
 import type { TestContext } from 'node:test';
 
 const put = (file: string, text: string): void => { mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, text); };
+const NOW = Date.UTC(2026, 10, 1);
 const doc = (name: string, description: string): string => `---\nname: ${name}\ndescription: ${description}\n---\nBody of ${name}.\n`;
 
 /** A workspace root that holds a `.bowerloom` layer, and a nested folder that holds its own. */
@@ -53,14 +55,43 @@ test('the harness state lists the skill, agent and prompt of a root .bowerloom l
   assert.equal(state.parts.some(p => /Claude Code/.test(p.description)), false, 'a Bowerloom part is not said to come from Claude Code');
 });
 
-test('a root layer that holds a harness is shown once, as a harness place, and not as a source as well', async t => {
-  const { home, root } = workspace(t), scanner = createScanner({ home });
+async function readState(home: string, root: string) {
+  const scanner = createScanner({ home }), found = await scanner.addFolder(root), batch = await scanner.read(found.places.map(p => p.id));
+  const result = buildRealResult(batch.reads, batch.tally, { nowMs: NOW, foldExtraApps: true });
+  return { result, state: realToHarnessState(result, found.places) };
+}
+/** How many nodes of the Overview have this name, in every group. */
+const shownTimes = (state: Awaited<ReturnType<typeof readState>>['state'], name: string): number => overviewOf(state, []).groups.reduce((n, g) => n + g.nodes.filter(x => x.name === name).length, 0);
+const names = (state: Awaited<ReturnType<typeof readState>>['state'], kind: 'skill' | 'agent' | 'tool'): string[] => state.parts.filter(p => p.kind === kind).map(p => p.name);
+
+test('a layer that holds a harness shows its skill once, in the harness place, and still lists the agent and prompt the harness does not hold', async t => {
+  const { home, root } = workspace(t);
   put(join(root, '.bowerloom', 'harness.json'), JSON.stringify({ engines: [{ id: 'claude-code' }] }));
-  const found = await scanner.addFolder(root);
-  const batch = await scanner.read(found.places.map(p => p.id));
-  const state = realToHarnessState(buildRealResult(batch.reads, batch.tally, { nowMs: Date.UTC(2026, 10, 1), foldExtraApps: true }), found.places);
-  assert.equal(state.sources.some(s => s.name === 'workspace (Bowerloom)'), false);
-  assert.ok(state.harnessPlaces?.some(h => h.parts.some(p => p.name === 'Root skill')), 'the harness place holds the skill');
-  assert.ok(state.sources.some(s => s.name === 'inner (Bowerloom)'), 'a nested layer with no harness still has its source');
-  assert.ok(state.real!.notes.some(n => /3 things in a Bowerloom folder are not shown\./.test(n)), state.real!.notes.join(' | '));
+  const { state } = await readState(home, root);
+  assert.equal(state.harnessPlaces?.some(h => h.parts.some(p => p.name === 'Root skill')), true, 'the harness place holds the skill');
+  assert.equal(shownTimes(state, 'Root skill'), 1, 'the skill is shown exactly once');
+  assert.equal(shownTimes(state, 'Root agent'), 1, 'the team agent is shown');
+  assert.equal(shownTimes(state, 'Root prompt'), 1, 'the prompt is shown');
+  assert.deepEqual(names(state, 'skill').sort(), ['Inner skill'], 'the skill the harness place shows is not listed a second time');
+  assert.equal(state.real!.notes.some(n => /Bowerloom folder/.test(n)), false, state.real!.notes.join(' | '));
+});
+
+test('a layer whose harness cannot be read is still listed by its own items', async t => {
+  const { home, root } = workspace(t);
+  put(join(root, '.bowerloom', 'harness.json'), '{ not json');
+  const { state } = await readState(home, root);
+  assert.equal(state.harnessPlaces?.some(h => !h.readable), true, 'the harness place is there and unreadable');
+  for (const want of ['Root skill', 'Root agent', 'Root prompt']) assert.equal(shownTimes(state, want), 1, want);
+});
+
+test('two folders whose cleaned paths are equal are told apart: the one without a harness keeps its items', async t => {
+  const home = tempDir(t, 'bowerloom-root-layer-'), root = join(home, 'work'), long = 'row-'.repeat(35);
+  put(join(root, `${long}one`, '.bowerloom', 'harness.json'), JSON.stringify({ engines: [{ id: 'claude-code' }] }));
+  put(join(root, `${long}one`, '.bowerloom', 'skills', 'held-skill', 'SKILL.md'), doc('Held skill', 'Shown by the harness place.'));
+  put(join(root, `${long}two`, '.bowerloom', 'skills', 'plain-skill', 'SKILL.md'), doc('Plain skill', 'Shown by its own source.'));
+  const { result, state } = await readState(home, root);
+  const paths = result.world.scopes.filter(s => s.kind === 'project' && /row-/.test(s.path)).map(s => s.path);
+  assert.equal(paths.length, 2); assert.equal(paths[0], paths[1], 'the two cleaned paths are equal');
+  assert.equal(shownTimes(state, 'Held skill'), 1);
+  assert.equal(shownTimes(state, 'Plain skill'), 1, names(state, 'skill').join(', '));
 });

@@ -58,11 +58,11 @@ test('the read is read only: no file of the made-up home changes', async t => {
   assert.deepEqual(digestTree(made.home), before);
 });
 
-test('the read screen is not changed: the folder with a harness is no source, and the Bowerloom files are still counted as left out', async t => {
+test('the read screen lists no source for a folder whose harness place shows all its parts, and says nothing is left out', async t => {
   const made = buildMadeUpHome(tempDir(t));
   const state = await read(made.home, [made.projects]);
   assert.ok(!state.sources.some(s => /rope-yard/.test(s.name)));
-  assert.ok(state.real!.notes.some(n => /in a Bowerloom folder (?:is|are) not shown\.$/.test(n)));
+  assert.ok(!state.real!.notes.some(n => /in a Bowerloom folder (?:is|are) not shown\.$/.test(n)), 'every skill is shown in the harness place, so none is left out');
   assert.equal(state.chosenSourceIds.length, state.sources.length);
 });
 
@@ -110,10 +110,13 @@ test('a harness that could not be read is a place with its name, a plain line an
   const { home, work } = homeWith(t, { 'broken/.bowerloom/harness.json': '{ not json', 'broken/.bowerloom/skills/one/SKILL.md': '---\nname: one\n---\n' });
   mkdirSync(join(home, '.claude'), { recursive: true });
   const state = await read(home, [work]);
-  const g = overviewOf(state, []).groups.find(x => x.label === '~/work/broken')!;
+  const here = overviewOf(state, []).groups.filter(x => x.label === '~/work/broken');
+  const g = here.find(x => x.note !== undefined)!;
   assert.ok(g);
   assert.equal(g.name, 'broken (Bowerloom)'); assert.equal(g.note, HARNESS_UNREADABLE);
   assert.deepEqual(g.nodes, []); assert.deepEqual(g.counts, { agent: 0, skill: 0, tool: 0, context: 0 }); assert.deepEqual(g.programs, []);
+  // The harness could not be read, so it shows nothing: the folder's own skill is listed by its own source and is not hidden behind the unreadable place.
+  assert.deepEqual(here.filter(x => x !== g).flatMap(x => x.nodes.map(n => n.name)), ['one']);
 });
 
 test('a folder with a .bowerloom and no harness.json is no harness place; a hand-made place keeps the privacy rules', () => {
@@ -148,6 +151,7 @@ test('a harness file that is not valid JSON, is over the list limit, or has the 
   for (const n of ['badmcp', 'bighooks', 'shape']) { assert.equal(by(n)?.note, HARNESS_UNREADABLE, n); assert.deepEqual(by(n)?.nodes, [], n); }
   // A folder without harness.json is no harness place. Its layer is listed like any other folder, by its own skills, and carries no unreadable note.
   assert.equal(by('nofile')?.name, 'nofile (Bowerloom)'); assert.deepEqual(by('nofile')?.nodes.map(n => n.name), ['one']); assert.equal(by('nofile')?.note, undefined);
+  assert.equal((await read(home, [work])).harnessPlaces?.some(h => /nofile/.test(h.name)), false, 'a folder without harness.json is no harness place');
   assert.equal(HARNESS_UNREADABLE, 'Bowerloom could not read this harness.');
 });
 
@@ -202,7 +206,8 @@ test('an agents folder with many other files, too many agents, too many parts or
   const { home, work } = homeWith(t, files);
   mkdirSync(join(home, '.claude'), { recursive: true });
   const o = overviewOf(await read(home, [work]), []);
-  const by = (n: string) => o.groups.find(g => g.label === `~/work/${n}`);
+  // A folder whose harness could not be read also has its own listing; the harness place is the group with the note.
+  const by = (n: string) => o.groups.filter(g => g.label === `~/work/${n}`).sort((a, b) => Number(b.note !== undefined) - Number(a.note !== undefined))[0];
   for (const n of ['many', 'agents', 'parts', 'bytes']) assert.equal(by(n)?.note, HARNESS_UNREADABLE, n);
   assert.equal(by('ok')?.note, undefined); assert.equal(by('ok')?.counts.agent, 1);
 });

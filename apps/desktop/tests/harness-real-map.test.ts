@@ -278,7 +278,7 @@ test('nothing found gives an empty state that the screens can draw', () => {
   assert.deepEqual(state.real, { couldNotRead: 0, stoppedEarly: false, notes: [], textsCut: 0 });
 });
 
-test('things found only in a Bowerloom folder are listed as a source of that folder, unless the folder holds a harness', async t => {
+test('things found only in a Bowerloom folder are listed as a source of that folder, unless the folder harness place shows them', async t => {
   const home = tempDir(t, 'bowerloom-v3-map-');
   put(join(home, 'work', 'proj', '.bowerloom', 'skills', 'inner', 'SKILL.md'), skillFile('Inner', 'Only Bowerloom has this.'));
   put(join(home, 'work', 'proj', '.claude', 'skills', 'outer', 'SKILL.md'), skillFile('Outer', 'Claude Code has this.'));
@@ -291,7 +291,8 @@ test('things found only in a Bowerloom folder are listed as a source of that fol
   assert.ok(inner, 'the skill of a Bowerloom folder is a part'); assert.ok(state.parts.some(p => p.name === 'Outer'));
   assert.equal(state.sources.find(s => s.partIds.includes(inner.id))?.name, 'proj (Bowerloom)');
   assert.equal(state.parts.some(p => p.name === 'Held'), false, 'a harness folder is shown once, as a place');
-  assert.ok(state.real!.notes.some(n => /^1 thing in a Bowerloom folder is not shown\.$/.test(n)), state.real!.notes.join(' | '));
+  assert.ok(state.harnessPlaces?.some(h => h.parts.some(p => p.name === 'Held')), 'the harness place shows it');
+  assert.equal(state.real!.notes.some(n => /in a Bowerloom folder/.test(n)), false, 'nothing is left out, so no note says so: ' + state.real!.notes.join(' | '));
   assert.equal(state.interfaces.some(i => (i.id as string) === 'bowerloom'), false);
 });
 
