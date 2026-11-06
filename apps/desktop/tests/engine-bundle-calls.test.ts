@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { loadDefinition } from '../../../packages/harness-definition/src/index.js';
 import { harnessStateDirs } from '../../../packages/project-sync/src/harness-state.js';
 import { registerEngineIpc } from '../main/engine-ipc.js';
+import { shortPath } from '../main/real-fs.js';
 import type { RealEvent } from '../main/real-ipc.js';
 import { APP_INDEX } from '../main/security.js';
 import { ENGINE_CHANNELS } from '../shared/engine/types.js';
@@ -406,6 +407,59 @@ test('chooseFolder with the label the window wants: another folder is refused be
   a.folder = null;
   assert.equal(await a.service.chooseFolder('~/Projects/wanted'), null);
   for (const label of [3, '', null, {}, 'x'.repeat(5000), 'a\u0000b']) assert.equal(await codeOf(() => a.service.chooseFolder(label)), 'BAD_ARGUMENT', String(label));
+});
+
+test('chooseFolder with a cut label (a folder outside home shown as …/name): only an outside folder with that last name is registered; a folder under home or another name is refused first', async t => {
+  const a = shareSetup(t, 'choose-cut');
+  const outside = (name: string): string => { const dir = join(a.base, 'elsewhere', name); mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, 'README.md'), '# x\n'); return dir; };
+  const wanted = outside('wanted'), other = outside('other'), atHome = plainFolder(a.home, 'wanted');
+  for (const wrong of [other, atHome]) {
+    a.folder = wrong;
+    assert.equal(refused(await a.service.chooseFolder('…/wanted')).code, 'NOT_THE_FOLDER_SHOWN', wrong);
+  }
+  assert.deepEqual(await a.service.folders(), [], 'a refused pick stays out of folders()');
+  a.folder = wanted;
+  assert.equal(value(await a.service.chooseFolder('…/wanted')).name, 'wanted');
+  assert.equal((await a.service.folders()).length, 1);
+});
+
+test('chooseFolder compares the label the window shows after the window cleaned it: a name with a hidden character is the folder shown, under home and outside it', async t => {
+  const a = shareSetup(t, 'choose-hidden');
+  const hidden = 'wan\u200Bted';
+  const atHome = plainFolder(a.home, hidden);
+  const outside = join(a.base, 'elsewhere', hidden);
+  mkdirSync(outside, { recursive: true });
+  writeFileSync(join(outside, 'README.md'), '# x\n');
+  // The window's own labels come from the reader, which writes a hidden character as a space.
+  a.folder = atHome;
+  assert.equal(value(await a.service.chooseFolder('~/Projects/wan ted')).name.includes('wan'), true);
+  a.folder = outside;
+  assert.equal(value(await a.service.chooseFolder('…/wan ted')).name.includes('wan'), true);
+  const full = outside.replace(/\u200B/g, ' ');
+  a.folder = outside;
+  assert.equal(value(await a.service.chooseFolder(full)).label.includes('wan'), true);
+  // A different name is still refused.
+  a.folder = atHome;
+  assert.equal(refused(await a.service.chooseFolder('…/other')).code, 'NOT_THE_FOLDER_SHOWN');
+});
+
+test('a folder carries its clean label: the same text the reader gives the window for that path, for hidden, leading, trailing, per-part and mixed-script names', async t => {
+  const a = shareSetup(t, 'clean-label');
+  const names = ['wan\u200Bted', '\u200Bwanted', 'wanted\u200B', 'pаypal', 'plain'];
+  for (const name of names) {
+    const dir = plainFolder(a.home, name);
+    a.folder = dir;
+    const info = value(await a.service.chooseFolder());
+    assert.equal(info.cleanLabel, shortPath(dir, a.home), name);
+    assert.equal(info.cleanLabel === info.label, name === 'plain', `${name}: the label is written out for a person, the clean label is not`);
+  }
+  // A folder nested under a hidden part is cleaned part by part.
+  const nested = join(plainFolder(a.home, 'wan\u200B'), 'x');
+  mkdirSync(nested, { recursive: true });
+  a.folder = nested;
+  assert.equal(value(await a.service.chooseFolder()).cleanLabel, shortPath(nested, a.home));
+  const listed = await a.service.folders();
+  assert.ok(listed.every(f => typeof f.cleanLabel === 'string' && !/\[U\+/.test(f.cleanLabel)));
 });
 
 test('the channel of chooseFolder takes the one optional argument and no more; every other call keeps its count', async () => {

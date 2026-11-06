@@ -46,7 +46,7 @@ export const WORDS = deepFreeze({
     nothingToAdd: 'Every part of this kind is in the harness.', previewOnly: 'Not in this preview.',
     libraryAddHint: 'Pick the harness that gets this part.', helpOne: 'A harness is a saved bundle of your AI helpers.', libraryEmpty: 'Nothing in the Library matches.',
     fileHidden: 'Secrets in this file are hidden here.',
-    noHarness: 'That harness is not here.', noFolder: 'That folder is not open. Choose it again.',
+    noHarness: 'That harness is not here.', notOnDisk: 'This harness is not on disk. Make one from a folder.', noFolder: 'That folder is not open. Choose it again.',
     dropToLink: 'Drag a skill onto an agent to link them.', noLinks: 'Nothing linked yet.', discardNote: 'Your unsaved changes to this folder go.', stillWorking: 'Bowerloom is still working. Try again in a moment.', draftDropped: 'This harness changed on disk. Your unsaved changes were dropped.', noPart: 'That part is not here.', noFile: 'That file is not in the sample.', alreadyIn: 'Already in it.', notInstalledYet: 'Not installed in a project yet.',
   },
   /** A short paragraph or a popover: at most 25 words each. */
@@ -59,7 +59,7 @@ export const WORDS = deepFreeze({
     helpOne: 'A harness is a saved bundle of your AI helpers.', helpTwo: 'Build one from your agents and skills. Then run it in any engine you use.',
     helpThree: 'Pick a harness to see where it is installed. Open it in the builder to change what it holds.',
     helpFour: 'Bowerloom only reads until you press Install. You can undo an install in Install history.',
-    /** The same two lines on the person's own folders, where running and the install list are not in beta.1. */
+    /** The same two lines on the person's own folders, where running is not in beta.1 and a folder install is undone in its own sheet. */
     helpTwoReal: 'Build one from your agents and skills. Running one is not in beta.1.',
     helpThreeReal: 'Open a harness in the builder to change what it holds.',
     helpFourReal: 'Bowerloom only reads until you approve a write. To undo a folder install, press Undo, then approve the removal.',
@@ -81,7 +81,7 @@ export const helpLines = (real: boolean): readonly string[] => {
   const p = WORDS.paragraph;
   return real ? [p.helpOne, p.helpTwoReal, p.helpThreeReal, p.helpFourReal] : [p.helpOne, p.helpTwo, p.helpThree, p.helpFour];
 };
-/** The line under the Welcome button. On the person's own folders Install from Projects is not in beta.1, so it names the approval instead. */
+/** The line under the Welcome button. On the person's own folders it names the approval instead, because nothing is written before it. */
 export const welcomeGoLine = (real: boolean): string => (real ? WORDS.paragraph.welcomeLineReal : WORDS.paragraph.welcomeLine);
 /** "Show details for Writer": the name of a Show details button, which holds a file path. The shown words stay "Show details", so the name still contains them. */
 export const detailsName = (open: boolean, subject: string): string => `${open ? WORDS.label.hideDetails : WORDS.label.showDetails} for ${subject}`;

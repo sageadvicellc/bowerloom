@@ -22,6 +22,7 @@ import { AdoptConfirm, AdoptReview } from './adopt-review.js';
 import { AfterApplyCheck } from './after-apply-check.js';
 import { Busy, FolderStep, RefusalNote, ResultStep, Section, TickRow, folderLine } from './engine-parts.js';
 import { chooseFolderCall, foldersCall, useCall } from './use-call.js';
+import { goneAfterChoose, goneRefusal, pickRequested } from './picked-folder.js';
 import { useHeldFocus } from './use-held-focus.js';
 
 const W = ENGINE_WORDS;
@@ -35,6 +36,8 @@ export function AdoptSheet({ open, folderId, onClose }: { open: boolean; folderI
   const engine = useEngine(), ui = useUi(), call = useCall();
   const [folders, setFolders] = useState<readonly FolderInfo[]>([]);
   const [picked, setPicked] = useState<string | null>(null);
+  /** True when the folder the sheet was opened for is no longer one main knows. */
+  const [gone, setGone] = useState(false);
   const [step, setStep] = useState<Step>('folder');
   const [choices, setChoices] = useState<AdoptChoices>(NO_CHOICES);
   const [ticked, setTicked] = useState<readonly string[]>([]);
@@ -52,12 +55,14 @@ export function AdoptSheet({ open, folderId, onClose }: { open: boolean; folderI
   // A sheet that opens starts again, with the folders Bowerloom knows now. A list that cannot be read is a refusal, never an empty list (U11).
   useEffect(() => {
     if (!open) return;
-    setStep('folder'); setFolders([]); setPicked(null); resetFolderState();
+    setStep('folder'); setFolders([]); setPicked(null); setGone(false); resetFolderState();
     if (engine === null) return;
     void call.plan(W.label.planning, () => foldersCall(engine), list => {
       setFolders(list);
-      const usable = list.filter(f => !folderLine(f, 'make').off);
-      setPicked(folderId !== null && usable.some(f => f.id === folderId) ? folderId : usable[0]?.id ?? null);
+      // A folder that was asked for stays picked, even when it cannot be used (it may have gained a harness since): the sheet says why, and never swaps in another folder.
+      // One that main no longer lists is said in words.
+      const got = pickRequested(list, folderId, f => !folderLine(f, 'make').off);
+      setPicked(got.id); setGone(got.gone);
     });
     // The sheet starts again only when it opens.
   }, [open, engine]);
@@ -83,17 +88,18 @@ export function AdoptSheet({ open, folderId, onClose }: { open: boolean; folderI
     setLastPlan(() => run);
     run();
   };
-  const pick = (id: string): void => { if (held || id === picked) return; setPicked(id); resetFolderState(); };
+  const pick = (id: string): void => { if (held || id === picked) return; setGone(false); setPicked(id); resetFolderState(); };
   const choose = (): void => {
     if (engine === null || held) return;
     void call.plan(W.label.chooseFolder, () => chooseFolderCall(engine), got => {
+      setGone(g => goneAfterChoose(g, got, f => !folderLine(f, 'make').off));
       if (got === null) return;
       setFolders(got.list);
       if (!folderLine(got.info, 'make').off) { setPicked(got.info.id); resetFolderState(); }
     });
   };
   const next = (): void => {
-    if (engine === null || folder === undefined || held) return;
+    if (engine === null || folder === undefined || held || (folderLine(folder, 'make').off)) return;
     setDone(null);
     if (folder.unfinished.adoption) {
       setStep('recover');
@@ -126,13 +132,13 @@ export function AdoptSheet({ open, folderId, onClose }: { open: boolean; folderI
   const head = <div className="hxi-steps"><Stepper steps={[W.label.stepFolder, W.label.stepReview, W.label.stepConfirm, W.label.stepResult]} current={stepIndex} label={W.label.steps} doneWord="done" /></div>;
   const busy = call.busy !== null;
   let actions: ReactElement;
-  if (step === 'folder') actions = <><HButton onClick={onClose}>{W.label.cancel}</HButton><HButton variant="primary" disabled={folder === undefined || busy} onClick={next}>{W.label.next}</HButton></>;
+  if (step === 'folder') actions = <><HButton onClick={onClose}>{W.label.cancel}</HButton><HButton variant="primary" disabled={folder === undefined || busy || folderLine(folder, 'make').off} onClick={next}>{W.label.next}</HButton></>;
   else if (step === 'review') actions = <><HButton disabled={held} onClick={() => back('folder')}>{W.label.back}</HButton><HButton variant="primary" disabled={view === null || busy} onClick={() => setStep('confirm')}>{W.label.next}</HButton></>;
   else if (step === 'confirm') actions = <><HButton disabled={held} onClick={() => back('review')}>{W.label.back}</HButton><HButton variant="primary" data-write="" disabled={view === null || busy || !adoptCanWrite(view, ticked)} onClick={write}>{writeFilesWords(view?.files.length ?? 0)}</HButton></>;
   else if (step === 'recover') actions = <><HButton disabled={held} onClick={() => back('folder')}>{W.label.back}</HButton><HButton variant="primary" data-write="" disabled={recovery === null || recoveryOk !== recovery.revision || busy} onClick={recover}>{W.label.finish}</HButton></>;
   else actions = <>{done?.kind === 'made' && folder !== undefined ? <HButton onClick={() => { onClose(); ui.openProject({ folderId: folder.id }); }}>{W.label.installIt}</HButton> : null}<HButton variant="primary" onClick={onClose}>{W.label.close}</HButton></>;
 
-  const refusal = call.refusal === null ? null : (
+  const refusal = call.refusal === null ? (gone && step === 'folder' ? <RefusalNote refusal={goneRefusal()} focusId={0}>{null}</RefusalNote> : null) : (
     <RefusalNote refusal={call.refusal} focusId={call.refusalId}>
       {lastPlan !== null && step !== 'folder' && step !== 'done' ? <HButton onClick={lastPlan}>{W.label.planAgain}</HButton> : null}
     </RefusalNote>

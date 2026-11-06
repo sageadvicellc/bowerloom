@@ -39,6 +39,12 @@ export interface FolderInfo {
   readonly id: string;
   /** The folder, written with `~` for the home folder. */
   readonly label: string;
+  /**
+   * The same folder in the encoding the window's own paths have (the reader's `cleanPath`: a hidden character becomes a space, each part is trimmed). `label` is written out for a
+   * person (a hidden character is a mark such as `[U+200B]`), so the two never compare equal when a name hides something. The window pairs a row with a folder on this one text.
+   * Main fills it; left out, `label` is already clean (the sample).
+   */
+  readonly cleanLabel?: string;
   readonly name: string;
   /** True when the folder holds `.bowerloom/harness.json`. */
   readonly hasDefinition: boolean;
@@ -703,7 +709,8 @@ export interface EngineBridge {
   /**
    * Opens the system folder chooser. Null when the person closed it. The sample has no chooser and answers null. `expectedLabel` (optional, additive): the label of the
    * folder the window wants, as a place it already shows. A pick with another label is refused as NOT_THE_FOLDER_SHOWN before main registers it, so a folder the window did
-   * not accept never gets an id or appears in `folders()`. Left out, any folder is taken.
+   * not accept never gets an id or appears in `folders()`. A label that starts with `…` is a folder outside home cut down to `…/name`: the pick must be outside home with that last
+   * name. Left out, any folder is taken.
    */
   chooseFolder(expectedLabel?: string): Promise<Answer<FolderInfo> | null>;
   planAdoption(folderId: string, choices: AdoptChoices): Promise<Answer<AdoptView>>;
