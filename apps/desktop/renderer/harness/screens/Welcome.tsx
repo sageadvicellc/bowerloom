@@ -11,6 +11,7 @@ import { go } from '../router.js';
 import { WORDS, welcomeGoLine } from '../words.js';
 import { FLOW, welcomeLines } from '../words-flow.js';
 import { useHarnessState } from '../session.js';
+import { SavedDamagedNote } from '../real/LastRead.js';
 import './first-run.css';
 
 export function Welcome(): ReactElement {
@@ -26,6 +27,7 @@ export function Welcome(): ReactElement {
       <p className="hxf-lead"><span>{lineOne}</span> <span>{lineTwo}</span></p>
       <p className="hxf-plain">{WORDS.hint.helpOne}</p>
       <HButton ref={button} icon="search" variant="primary" onClick={() => go({ name: 'choose' })}>{FLOW.label.findMyFiles}</HButton>
+      <SavedDamagedNote />
       <p className="hxf-plain hxf-go">{welcomeGoLine(real)}</p>
     </FirstRunFrame>
   );

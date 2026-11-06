@@ -10,7 +10,7 @@ import type { RealBridge, RealResult } from '../../../shared/real/types.js';
 import { createSampleWorld } from '../../../shared/harness/sample.js';
 import { codeOf } from '../../home/real/bridge.js';
 import { selectedIds } from '../../home/real/flow.js';
-import { realNow } from '../clock.js';
+import { realNow, realNowMs } from '../clock.js';
 import { HButton } from '../parts/controls.js';
 import { FirstRunFrame } from '../parts/FirstRunFrame.js';
 import { go } from '../router.js';
@@ -24,6 +24,7 @@ import { PlaceRow } from './PlaceRow.js';
 import { ChooseLines } from './ReadNotes.js';
 import { ReadProgress } from './Progress.js';
 import { runRead } from './read-run.js';
+import { useSavedScan } from './saved-scan.js';
 import { ReplaceConfirm } from './ReplaceConfirm.js';
 import { firstState, reduceChoose } from './state.js';
 import { REAL, foundPlaces } from './words-real.js';
@@ -43,15 +44,16 @@ export function NoBridgeScreen(): ReactElement {
 }
 
 export function RealChoose({ bridge }: { bridge: RealBridge }): ReactElement {
-  const ui = useUi(), world = useHarnessState();
+  const ui = useUi(), world = useHarnessState(), saved = useSavedScan();
   // A person who has made harnesses is not at a first run: a read, or the sample, would replace them, so it asks first and every step has a way out.
   const holds = world.harnesses.length > 0;
   const [asking, setAsking] = useState(false);
   const [state, send] = useReducer(reduceChoose, undefined, () => reduceChoose(firstState(), { type: 'find' }));
   const [details, setDetails] = useState(false), [busy, setBusy] = useState(false);
-  const live = useRef(true), latest = useRef(state), uiNow = useRef(ui), heading = useRef<HTMLHeadingElement>(null), primary = useRef<HTMLDivElement>(null);
+  const live = useRef(true), latest = useRef(state), uiNow = useRef(ui), savedNow = useRef(saved), heading = useRef<HTMLHeadingElement>(null), primary = useRef<HTMLDivElement>(null);
   latest.current = state;
   uiNow.current = ui;
+  savedNow.current = saved;
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
 
   // "Try again" from the first question starts it again.
@@ -67,7 +69,7 @@ export function RealChoose({ bridge }: { bridge: RealBridge }): ReactElement {
     const now = latest.current, ids = selectedIds(now), chosen = now.places.filter(p => ids.includes(p.id));
     // A call that throws at once, not by a rejected promise, ends on the error screen too.
     void runRead(new Promise<RealResult>(resolve => resolve(bridge.readSelected(ids))), chosen, {
-      apply: next => uiNow.current.replaceWorld(next), send, leave: () => go({ name: 'read' }), isLive: () => live.current,
+      apply: next => { uiNow.current.replaceWorld(next); savedNow.current.markRead(realNowMs()); }, send, leave: () => go({ name: 'read' }), isLive: () => live.current,
     });
   }, [state.step, bridge]);
   // A new step puts the focus on its main button (Enter goes on) when it has a list, and on its title otherwise. It runs again only when the step or the list appears or goes:

@@ -11,3 +11,6 @@ export function realNow(): Stamp {
   const at = new Date();
   return { daysAgo: 0, time: `${two(at.getHours())}:${two(at.getMinutes())}` };
 }
+
+/** Now, in milliseconds since 1970: the time shown as "Last read" after a read ends in this window. */
+export const realNowMs = (): number => Date.now();
