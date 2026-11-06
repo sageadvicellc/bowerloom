@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const social = JSON.parse(await readFile(resolve(root, 'release/social-preview.json'), 'utf8'));
+assert.ok(social.docs?.image, 'release/social-preview.json needs a docs card');
+assert.notEqual(social.docs.image.url, social.image.url, 'The docs card needs its own image');
 // The landing page carries the home card. Every docs page carries the docs card.
 const expectedFor = card => ({
   'og:title': card.title, 'og:description': card.description,
