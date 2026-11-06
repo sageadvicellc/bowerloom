@@ -51,7 +51,6 @@ Install history is the install undo list. Each row is one change, newest first, 
 
 Under the menu, a **Beta** mark opens a short note about this beta. It lists the controls that are **Not in beta.1**. Those controls show the words "Not in beta.1" and do nothing yet:
 
-- Start, on a harness
 - Compare
 - Runs
 - Assign to project, in the details of a harness
@@ -60,6 +59,23 @@ Under the menu, a **Beta** mark opens a short note about this beta. It lists the
 - Add a folder, in Projects
 
 **From a folder** and **Install from a folder** in Projects work, and so does the save step in the Builder. This page covers them below.
+
+## Start an engine in a folder
+
+**Start** shows the command that starts Claude Code or Codex in one of your folders, with your instruction already in it. Bowerloom never runs an engine. It builds the text of the command, and you paste it into your own Terminal.
+
+Open it from **Harnesses**. In the Folders block, press **Start** on a folder that holds a harness. Then:
+
+1. Pick the project. Only a folder that holds a harness can start.
+2. Tick the engines. Start has a command for Claude Code and for Codex.
+3. Write the instruction. It can hold up to 4,000 characters. It cannot start with a dash, because the engine would read it as an option.
+4. Press **Show the command**.
+
+If an engine is not installed in the folder, the install review opens first, and Start waits under it. When the review closes, the sheet shows the new state.
+
+Each command is one line, `cd <folder> && claude '<instruction>'` or `cd <folder> && codex '<instruction>'`. The instruction is quoted as one argument, so quotes, `$(...)`, backticks, `;`, `&&`, and new lines stay plain text. **Copy** puts the command on your clipboard. The window shows `~` for your home folder, and the copy holds the full path. Nothing else differs.
+
+Start starts no program, calls no model, makes no network request, and keeps no run record. It writes only the clipboard. Runs and Compare stay **Not in beta.1**.
 
 ## Make a harness from a folder
 
