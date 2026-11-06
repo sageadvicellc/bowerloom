@@ -11,6 +11,7 @@
 
 /** The engines Start has a command for, with the program name each vendor documents. */
 import { hasHiddenCharExcept } from './scrub.js';
+import { START_SUBCOMMANDS } from '../vendor/start-subcommands.js';
 
 export const START_ENGINES = Object.freeze(['claude-code', 'codex'] as const);
 export type StartEngineId = (typeof START_ENGINES)[number];
@@ -26,7 +27,7 @@ export const START_INSTRUCTION_LIMIT = 4000;
  */
 export function shQuote(text: string): string {
   if (text.includes('\u0000')) throw new RangeError('A shell argument cannot hold a NUL character.');
-  return `'${text.replace(/'/g, `'\\''`)}'`;
+  return `'${text.split("'").join("'\\''")}'`;
 }
 
 const PLAIN = /^[A-Za-z0-9_@%+=:,./-]+$/;
@@ -83,15 +84,7 @@ export function checkInstruction(value: unknown): InstructionProblem | null {
   return null;
 }
 
-/**
- * The commands of each engine, from the vendors' own pages (read 2026-11-06): the "CLI commands" table of https://code.claude.com/docs/en/cli-reference, and the "Command overview" table
- * of https://developers.openai.com/codex/cli/reference (with the aliases it names: `a`, `cloud-tasks`, `e`). An engine reads a first argument that equals one of these as that command,
- * even when it is quoted, so a one-word instruction that equals one is refused. `help` is not in either table, so it is not listed.
- */
-export const START_SUBCOMMANDS: Readonly<Record<StartEngineId, readonly string[]>> = Object.freeze({
-  'claude-code': Object.freeze(['agents', 'attach', 'auth', 'auto-mode', 'daemon', 'doctor', 'gateway', 'import', 'install', 'logs', 'mcp', 'plugin', 'purge', 'remote-control', 'respawn', 'rm', 'self-hosted-runner', 'setup-token', 'stop', 'ultrareview', 'update']),
-  codex: Object.freeze(['a', 'agents', 'app', 'app-server', 'apply', 'archive', 'cloud', 'cloud-tasks', 'completion', 'debug', 'delete', 'doctor', 'e', 'exec', 'execpolicy', 'features', 'fork', 'login', 'logout', 'mcp', 'plugin', 'queue', 'remote-control', 'resume', 'review', 'sandbox', 'unarchive', 'update']),
-});
+export { START_SUBCOMMANDS };
 
 const ENGINE_LABELS: Readonly<Record<StartEngineId, string>> = Object.freeze({ 'claude-code': 'Claude Code', codex: 'Codex' });
 
