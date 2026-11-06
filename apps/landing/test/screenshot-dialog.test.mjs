@@ -60,12 +60,12 @@ test('the dialog has a visible Close button, a scroll area a keyboard can reach,
     const [item] = screenshotSlots;
     const html = renderToStaticMarkup(createElement(page.slot.default, { slot: item.id }));
     const dialog = html.slice(html.indexOf('<dialog'), html.indexOf('</dialog>'));
-    assert.match(dialog, /<form method="dialog"><button type="submit" class="screenshot-close" aria-label="Close"><svg[^>]*aria-hidden="true"/, 'an X button, named Close');
+    assert.match(dialog, /<form class="screenshot-close-mount" method="dialog"><button type="submit" class="screenshot-close" aria-label="Close"><svg[^>]*aria-hidden="true"/, 'an X button, named Close');
     assert.match(dialog, /class="screenshot-scroll"/);
     assert.doesNotMatch(dialog.slice(dialog.indexOf('class="screenshot-scroll"'), dialog.indexOf('class="screenshot-scroll"') + 60), /tabindex|role=/, 'the picture area is not a keyboard stop: it does not scroll');
     assert.equal(tags(dialog, 'img').length, 0, 'a visit that never enlarges a shot loads nothing extra');
     assert.ok(!/<dialog[^>]*\sopen/.test(dialog), 'the dialog starts closed');
-    assert.ok(dialog.includes(`<p class="screenshot-dialog-caption">${escape(item.caption)}</p>`));
+    assert.ok(dialog.includes(`<div class="screenshot-plate"><p class="screenshot-dialog-caption">${escape(item.caption)}</p></div>`), 'the caption is on the plate');
   } finally { await page.close(); }
 });
 
@@ -100,14 +100,16 @@ test('the component opens with showModal, traps Tab itself, closes on Escape and
   assert.match(source, /onPointerDown=\{press\}/, 'a click closes only when the press began on the backdrop too');
 });
 
-test('the backdrop is blurred, the dialog box is clear, the header bar carries the soft shadow, and the X is a plain icon button in the bar', async () => {
+test('the backdrop is blurred, the dialog box is clear, and the caption plate and the X are parts of the frame', async () => {
   const css = await read('src/page.css');
   assert.match(css, /\.screenshot-dialog::backdrop \{[^}]*backdrop-filter: blur\(/);
-  assert.match(css, /\.screenshot-dialog \{[^}]*background: transparent;[^}]*box-shadow: none;/, 'the box itself casts no shadow: the device and the bar do the work');
-  assert.match(css, /\.screenshot-dialog-bar \{[^}]*box-shadow: 0 12px 32px -16px/, 'a soft shadow under the header bar');
-  assert.match(css, /\.screenshot-close \{[^}]*border-radius: var\(--control-radius\)[^}]*background: transparent/, 'a plain icon button on the one corner token');
-  assert.match(css, /\.screenshot-dialog-bar \{[^}]*justify-content: space-between/);
-  assert.match(css, /\.screenshot-dialog-bar \{[^}]*background: var\(--ui-surface\)/, 'the real X sits in its own header bar');
+  assert.match(css, /\.screenshot-dialog \{[^}]*background: transparent;[^}]*box-shadow: none;/, 'the box itself casts no shadow: the device does the work');
+  assert.doesNotMatch(css, /screenshot-dialog-bar/, 'no header bar above the device');
+  assert.match(css, /\.screenshot-plate \{[^}]*position: absolute;[^}]*top: calc\(\(var\(--rail-y\) \+ var\(--rail-h\) \/ 2 - 6\) \* var\(--s\) \* 1px\)/, 'the plate sits on the top rail');
+  assert.match(css, /\.screenshot-plate \{[^}]*left: calc\(var\(--cut-l\)[^}]*right: calc\(var\(--cut-r\)/, 'between the corner plates');
+  assert.match(css, /\.screenshot-dialog \.screenshot-dialog-caption \{[^}]*background: var\(--lcd\);[^}]*color: var\(--lcd-ink\)/, 'an LCD readout');
+  assert.match(css, /\.screenshot-close-mount \{[^}]*top: calc\(var\(--close-y\)[^}]*right: calc\(var\(--close-x\)/, 'the X is on the top right corner plate');
+  for (const theme of ['light', 'dark']) assert.match(css, new RegExp(`url\\(/frame/frame-${theme}\\.webp\\);[^}]*--rail-y: \\d+; --rail-h: \\d+; --close-x: \\d+; --close-y: \\d+;`), `${theme}: the frame names its rail and button spots`);
 });
 
 test('the style sheet reserves the picture\'s size, and animates only opacity and transform, and not at all under reduced motion', async () => {
@@ -219,11 +221,11 @@ test('each theme names its own frame, and its hole and cuts fit inside that imag
   }
 });
 
-test('the dialog markup has the bar, the device with the picture area, and the two plants only after the first open', async () => {
+test('the dialog markup has the device with its plate, its X, and the picture area, and the two plants only after the first open', async () => {
   const page = await loadPage();
   try {
     const closed = renderToStaticMarkup(createElement(page.slot.ShotDialog, { id: 'builder-graph', loaded: false }));
-    assert.ok(closed.includes('class="screenshot-column"') && closed.includes('class="screenshot-dialog-bar"') && closed.includes('class="screenshot-device"') && closed.includes('class="screenshot-scroll"'));
+    assert.ok(closed.includes('class="screenshot-column"') && closed.includes('class="screenshot-plate"') && closed.includes('class="screenshot-device"') && closed.includes('class="screenshot-scroll"'));
     assert.equal(tags(closed, 'img').length, 0, 'nothing loads before the first open');
     const open = renderToStaticMarkup(createElement(page.slot.ShotDialog, { id: 'builder-graph', loaded: true }));
     const decorations = tags(open, 'img').filter(tag => tag.includes('class="deco '));
@@ -232,7 +234,9 @@ test('the dialog markup has the bar, the device with the picture area, and the t
       assert.ok(tag.includes('alt=""') && tag.includes('aria-hidden="true"') && tag.includes('loading="lazy"'), tag);
       assert.match(tag, /src="\/frame\/(?:ivy|bloom)\.webp"/);
     }
-    assert.ok(open.indexOf('class="screenshot-dialog-bar"') < open.indexOf('class="screenshot-device"'), 'the X bar sits above the device, clear of the decorations');
+    const device = open.indexOf('class="screenshot-device"');
+    assert.ok(device < open.indexOf('class="screenshot-plate"') && device < open.indexOf('class="screenshot-close-mount"'), 'the plate and the X are parts of the device');
+    assert.ok(open.indexOf('class="screenshot-close"') < open.indexOf('class="screenshot-scroll"'), 'the X comes first, so focus starts on it');
   } finally { await page.close(); }
 });
 

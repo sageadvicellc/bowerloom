@@ -586,7 +586,7 @@ dom('icon buttons have no box at rest and a 44 px target, and every button, tag,
   await phone.page.waitForFunction(() => document.querySelector('.screenshot-dialog[open]'));
   await phone.page.waitForFunction(() => getComputedStyle(document.querySelector('.screenshot-dialog[open]')).opacity === '1');
   const closeFacts = await iconFacts('.screenshot-dialog[open] .screenshot-close');
-  assert.equal(closeFacts.bg, 'rgba(0, 0, 0, 0)'); assert.equal(closeFacts.border, '0px'); assert.ok(closeFacts.w >= 44 && closeFacts.h >= 44);
+  assert.notEqual(closeFacts.bg, 'rgba(0, 0, 0, 0)', 'the viewer X is a solid push button on the frame'); assert.ok(closeFacts.w >= 44 && closeFacts.h >= 44);
   await phone.context.close();
   const wide = await open({ viewport: { width: 1280, height: 800 } });
   await settleReveals(wide.page);
