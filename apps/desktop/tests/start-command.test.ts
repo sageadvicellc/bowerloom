@@ -261,6 +261,29 @@ test('zero-ink marks and code points with no meaning are refused: unassigned cod
   assert.equal(checkInstruction('a\u2d7fb')?.message, 'The instruction has a hidden character: U+2D7F (an invisible character) at position 2. Remove it and try again.');
 });
 
+test('a combining mark must sit on a visible base: marks after a space, a tab, a line feed, or the start are refused, even in runs of three', () => {
+  const trio = '\u0300\u0301\u0302';
+  const smuggle = `fix it${` ${trio}`.repeat(40)}`;
+  assert.equal(hiddenCode(smuggle), 'START_INSTRUCTION_HIDDEN');
+  assert.equal(checkInstruction(smuggle)?.message, 'The instruction has a hidden character: a combining mark with no letter to sit on at position 8. Remove it and try again.');
+  for (const text of [`\u0301fix`, `fix\u0020\u0301`, `fix\t\u0301`, `fix\n\u0301`, `fix \u093f`, `fix \u0301\u0301\u0301 it`]) assert.equal(hiddenCode(text), 'START_INSTRUCTION_HIDDEN', JSON.stringify(text));
+  // A spacing mark counts toward the cap too, so it cannot reset the run: a base, then a spacing mark and three more marks, is four.
+  assert.equal(hiddenCode('a\u093f\u0301\u0302\u0303'), 'START_INSTRUCTION_HIDDEN');
+  assert.equal(hiddenCode(`a${'\u093f\u0301\u0302\u0303'.repeat(10)}`), 'START_INSTRUCTION_HIDDEN');
+  // Ordinary text still passes: accents, text with an accent after a space-separated word, Vietnamese stacks, Hebrew, Arabic, Devanagari, and a mark on a digit, a symbol or punctuation.
+  for (const text of ['caf\u00e9 au lait', ' \u00e9', 'x \u00e9 y', 'ti\u1ebfng Vi\u1ec7t', 'e\u0323\u0302 and \u1ec7', '\u05e9\u05c1\u05b8\u05dc\u05d5\u05b9\u05dd Hebrew', '\u0645\u064f\u062d\u064e\u0645\u0651\u064e\u062f Arabic', '\u0915\u093f\u0924\u093e\u092c \u0939\u093f\u0928\u094d\u0926\u0940', '1\u0301 +\u0301 .\u0301']) assert.equal(checkInstruction(text), null, JSON.stringify(text));
+  assert.equal(hiddenPath('/Users/a/fix \u0300\u0301\u0302'), true);
+});
+
+test('an unassigned code point is refused in its own words, not called invisible', () => {
+  // A code point that every runtime reports as unassigned. A newer one, such as U+10D40 on Node 24, gets the same words, because the refusal keys off the property, not the number.
+  const unassigned = 0x378;
+  assert.equal(checkInstruction(`a${String.fromCodePoint(unassigned)}b`)?.message, 'The instruction has an unassigned character: U+0378 (this app cannot check it) at position 2. Remove it and try again.');
+  assert.equal(checkInstruction('a\u{10ffff}b')?.message, 'The instruction has an unassigned character: U+10FFFF (this app cannot check it) at position 2. Remove it and try again.');
+  // An assigned invisible character keeps its old words.
+  assert.equal(checkInstruction('x\u2060y')?.message, 'The instruction has a hidden character: U+2060 (an invisible character) at position 2. Remove it and try again.');
+});
+
 test('a stack of more than three combining marks is refused and named; one to three marks, NFD text, Thai and Hindi pass', () => {
   const stack = 'a\u0301\u0302\u0303\u0304';
   assert.equal(hiddenCode(stack), 'START_INSTRUCTION_HIDDEN');

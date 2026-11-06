@@ -83,8 +83,12 @@ const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f\u202
 const HIDING = /[\u2800\u2d7f\u{16fe4}\u{1d159}\p{Cn}\p{Default_Ignorable_Code_Point}\p{Cf}\p{Zs}\p{Zl}\p{Zp}\p{Cc}\p{Co}]/u;
 /** The emoji sequences of the Unicode standard (a family, a heart with its selector, a keycap, a flag, a skin tone). Only inside one is a joiner or a selector allowed. */
 const EMOJI = new RegExp('\\p{RGI_Emoji}', 'gv');
-/** A combining mark, and the most that may follow one letter in a row. */
-const MARK = /[\p{Mn}\p{Me}]/u;
+/** A combining mark of any kind (non-spacing, enclosing, spacing), and the most that may follow one base in a row. */
+const MARK = /\p{M}/u;
+/** What a mark may sit on: a letter, number, symbol or punctuation mark. A space, a tab, a line feed, a control, or the start of the text is no base, so a mark there has nothing to draw on. */
+const BASE = /[\p{L}\p{N}\p{S}\p{P}]/u;
+/** Code points the runtime's Unicode tables do not give a meaning (and noncharacters). Refused, but not called invisible: they may well show. */
+const UNASSIGNED = /\p{Cn}/u;
 const MAX_MARKS = 3;
 /** A surrogate with no partner: text cut in the middle of an emoji. A clipboard would turn it into U+FFFD, so the copy could never read back the same. */
 const BROKEN = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
@@ -92,18 +96,24 @@ const BROKEN = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\
 export const hasBrokenCharacter = (text: string): boolean => BROKEN.test(text);
 
 /** The first character that does not show, outside every real emoji sequence, with its place counted in characters from 1. A plain space, a tab and a line feed show, so they pass. */
-export function firstHidden(text: string): { readonly point: number; readonly position: number; readonly stack?: boolean } | null {
+export function firstHidden(text: string): { readonly point: number; readonly position: number; readonly stack?: boolean; readonly kind?: 'unassigned' | 'orphan' } | null {
   const spans = [...text.matchAll(EMOJI)].map(m => [m.index, m.index + m[0].length] as const);
-  let at = 0, position = 0, k = 0, run = 0, runStart = 0;
+  let at = 0, position = 0, k = 0, run = 0, runStart = 0, base = false;
   while (at < text.length) {
     while (k < spans.length && spans[k]![1] <= at) k += 1;
     position += 1;
     // A real emoji sequence counts as one character, and nothing in it hides.
-    if (k < spans.length && at >= spans[k]![0]) { at = spans[k]![1]; run = 0; continue; }
+    if (k < spans.length && at >= spans[k]![0]) { at = spans[k]![1]; run = 0; base = true; continue; }
     const ch = String.fromCodePoint(text.codePointAt(at)!);
-    if (ch !== ' ' && ch !== '\t' && ch !== '\n' && HIDING.test(ch)) return { point: ch.codePointAt(0)!, position };
-    // One to three marks on a letter are text (accents, Thai, Hindi). A longer stack carries hidden bits, so it is refused as a whole.
-    if (MARK.test(ch)) { if (run === 0) runStart = position; run += 1; if (run > MAX_MARKS) return { point: ch.codePointAt(0)!, position: runStart, stack: true }; } else run = 0;
+    if (ch !== ' ' && ch !== '\t' && ch !== '\n' && HIDING.test(ch)) return { point: ch.codePointAt(0)!, position, ...(UNASSIGNED.test(ch) ? { kind: 'unassigned' as const } : {}) };
+    // One to three marks on a visible base are text (accents, Thai, Hindi). A mark with no base (after a space, a tab, a line feed, or at the start) draws on nothing, so a run of them
+    // on blank cells would carry hidden bits: it is refused. A longer stack on a base is refused as a whole. A spacing mark counts in the run, so it cannot reset the count.
+    if (MARK.test(ch)) {
+      if (!base) return { point: ch.codePointAt(0)!, position, kind: 'orphan' };
+      if (run === 0) runStart = position;
+      run += 1;
+      if (run > MAX_MARKS) return { point: ch.codePointAt(0)!, position: runStart, stack: true };
+    } else { run = 0; base = BASE.test(ch); }
     at += ch.length;
   }
   return null;
@@ -118,6 +128,9 @@ const HIDDEN_NAMES: Readonly<Record<number, string>> = Object.freeze({
 /** "U+00A0 (no-break space)". The common ones have a name; any other is "an invisible character". */
 const pointWords = (point: number): string => `U+${point.toString(16).toUpperCase().padStart(4, '0')} (${HIDDEN_NAMES[point] ?? 'an invisible character'})`;
 
+/** "U+10D40 (this app cannot check it)". An unassigned code point is not known to be invisible, so it is not called that. */
+const unassignedWords = (point: number): string => `U+${point.toString(16).toUpperCase().padStart(4, '0')} (this app cannot check it)`;
+
 const problem = (code: StartRefusalCode, message?: string): InstructionProblem => ({ code, message: message ?? START_MAIN_WORDS[code as keyof typeof START_MAIN_WORDS] });
 
 /**
@@ -130,7 +143,11 @@ export function checkInstruction(value: unknown): InstructionProblem | null {
   if (hasBrokenCharacter(value)) return problem('START_INSTRUCTION_BROKEN');
   if (CONTROL.test(value)) return problem('START_INSTRUCTION_CHARACTERS');
   const hidden = firstHidden(value);
-  if (hidden !== null) return problem('START_INSTRUCTION_HIDDEN', `The instruction has a hidden character: ${hidden.stack === true ? 'a stack of marks' : pointWords(hidden.point)} at position ${hidden.position}. Remove it and try again.`);
+  if (hidden !== null) {
+    if (hidden.kind === 'unassigned') return problem('START_INSTRUCTION_HIDDEN', `The instruction has an unassigned character: ${unassignedWords(hidden.point)} at position ${hidden.position}. Remove it and try again.`);
+    const what = hidden.stack === true ? 'a stack of marks' : hidden.kind === 'orphan' ? 'a combining mark with no letter to sit on' : pointWords(hidden.point);
+    return problem('START_INSTRUCTION_HIDDEN', `The instruction has a hidden character: ${what} at position ${hidden.position}. Remove it and try again.`);
+  }
   if (value.startsWith('-')) return problem('START_INSTRUCTION_DASH');
   return null;
 }
