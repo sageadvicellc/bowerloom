@@ -3,10 +3,10 @@
   "product": "Bowerloom",
   "release": "v0.8-beta",
   "version": "0.8.0-beta.1",
-  "state": "unreleased",
+  "state": "published",
   "audience": "public-beta-stream",
   "launch": "soft",
-  "statusLabel": "Public beta stream \u00b7 unreleased",
+  "statusLabel": "Public beta stream \u00b7 published",
   "distribution": {
     "kind": "npm-beta-stream",
     "distTag": "beta"
@@ -16,13 +16,13 @@
     "registry": "https://registry.npmjs.org",
     "distTag": "beta",
     "installCommand": "npm install -g bowerloom@beta",
-    "published": false,
+    "published": true,
     "ownershipVerified": true,
     "publishingIdentityVerified": true,
-    "availabilityNote": "Install it from npm under the beta dist-tag with npm install -g bowerloom@beta.",
+    "availabilityNote": "Published on npm on 2026-11-06 under the beta dist-tag. There is no stable release yet, so the latest tag also points at this beta. Install it with npm install -g bowerloom@beta.",
     "authenticatedIdentity": "hannasage",
     "identityEvidence": "Authenticated npm whoami observation on 2026-10-06. Package ownership and publication authorization remain separate.",
-    "ownershipEvidence": "Public registry read on 2026-10-31: hannasage is the only maintainer of bowerloom. The listed versions are 0.0.0-stage, 0.7.0-beta.1 and 0.7.0-beta.2. Version 0.8.0-beta.1 is not listed."
+    "ownershipEvidence": "Public registry read on 2026-11-06: hannasage is the only maintainer of bowerloom, and the 0.8.0-beta.1 tarball SHA-256 equals the prepared release candidate."
   },
   "urls": {
     "site": "https://bowerloom.ai",
@@ -43,7 +43,15 @@
         "scope": "The build, the repository test suites, and the built command line, run from a source checkout"
       }
     ],
-    "releaseQualified": [],
+    "releaseQualified": [
+      {
+        "os": "macOS",
+        "architecture": "arm64",
+        "node": "24.11.0",
+        "npm": "11.21.2",
+        "scope": "Registry installation of bowerloom@beta into an empty prefix and cache on 2026-11-06, then bowerloom --version and bowerloom --help, all exit 0"
+      }
+    ],
     "desktop": {
       "os": "macOS",
       "architectures": [

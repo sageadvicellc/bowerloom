@@ -99,7 +99,15 @@ Limits of this beta:
 ## Install Bowerloom
 
 <!-- release:install:start -->
-Bowerloom needs Node `>=24.11.0 <25` and npm `11`. The npm package `bowerloom` is not published yet. The install command arrives when the beta publishes, under the `beta` dist-tag.
+Install the beta CLI with Node `>=24.11.0 <25` and npm `11`.
+
+```sh
+npm install -g bowerloom@beta
+bowerloom --version
+bowerloom --help
+```
+
+The `beta` dist-tag follows the beta stream, so the command keeps you on it.
 
 Harness commands and first-team setup do not need Docker. The separate local backend requires Docker Desktop and its own plan and approval.
 
@@ -122,7 +130,7 @@ From a source checkout, `npm run desktop` opens the app on your own folders. `np
 
 The desktop app is open source. Apple did not sign or notarize it. The first time you open it, macOS blocks it and shows a warning. You can read the source in this repository before you open it.
 
-1. Download the app from the GitHub release page of Bowerloom 0.8.0-beta.1. Check the download against its SHA-256 hash, which is listed with it. Move `Bowerloom.app` to your Applications folder.
+1. Download the app from the [GitHub release page of Bowerloom 0.8.0-beta.1](https://github.com/sageadvicellc/bowerloom/releases/tag/v0.8.0-beta.1). Check the download against its SHA-256 hash, which is listed with it. Move `Bowerloom.app` to your Applications folder.
 2. Open the app once. macOS shows a warning. Close the warning.
 3. Open the Apple menu, then System Settings.
 4. Click Privacy & Security, then scroll down to Security.

@@ -1,6 +1,6 @@
 ---
 title: "Install Bowerloom"
-description: "Read the requirements, learn when the CLI arrives, and adopt your first harness."
+description: "Read the requirements, install the CLI from npm, and adopt your first harness."
 section: "Start here"
 order: 1
 ---
@@ -16,7 +16,7 @@ Keep your project out of iCloud Drive folders. Project commands such as `bowerlo
 ## Ask your agent
 
 ```text
-Read the Bowerloom installation guide for 0.8.0-beta.1. Review the requirements with me. Tell me whether the CLI is published yet. When it is installed, read the version and help. Then run bowerloom harness status in my project, and show me each plan before you write anything. Wait for my exact approval of each step. Do not start an engine, and do not edit AGENTS.md or CLAUDE.md by hand.
+Read the Bowerloom installation guide for 0.8.0-beta.1. Review the requirements with me. Install the CLI from npm under the beta dist-tag. Then read the version and help. Then run bowerloom harness status in my project, and show me each plan before you write anything. Wait for my exact approval of each step. Do not start an engine, and do not edit AGENTS.md or CLAUDE.md by hand.
 ```
 
 ## Agent procedure

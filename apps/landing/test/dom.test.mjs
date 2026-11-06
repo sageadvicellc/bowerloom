@@ -9,6 +9,10 @@ import { existsSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
+import { installAvailable } from '../src/release.ts';
+import { pendingNote } from '../src/content.ts';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 
 const require = createRequire(import.meta.url);
 function loadChromium() {
@@ -135,16 +139,41 @@ dom('the Enlarge buttons have different names that start with their visible text
   await context.close();
 });
 
-dom('the npm note is plain text outside the live region, and Copied takes the same slot at the same height', async () => {
+// The browser tests follow the live record, so this server render covers both states whatever the record says.
+test('the install card renders the npm note outside the live region only while unpublished', async () => {
+  const vite = await createServer({ root: fileURLToPath(new URL('..', import.meta.url)), logLevel: 'silent', appType: 'custom', server: { middlewareMode: true, hmr: false, watch: null } });
+  try {
+    const { InstallSection } = await vite.ssrLoadModule('/src/Sections.tsx');
+    const status = '<p class="copy-status" role="status" aria-live="polite"></p>';
+    const unpublished = renderToStaticMarkup(createElement(InstallSection, { available: false }));
+    assert.match(unpublished, /data-command="unpublished"/);
+    assert.match(unpublished, /class="copy-slot" data-note="yes"/);
+    const note = `<p class="copy-note">${pendingNote}</p>`;
+    assert.ok(unpublished.includes(note + status), 'the note sits before the empty live region, outside it');
+    const published = renderToStaticMarkup(createElement(InstallSection, { available: true }));
+    assert.match(published, /data-command="published"/);
+    assert.match(published, /class="copy-slot" data-note="no"/);
+    assert.ok(!published.includes('copy-note'), 'a published command has no npm note');
+    assert.ok(published.includes(status), 'the live region is empty at idle');
+  } finally { await vite.close(); }
+});
+
+// While the package is unpublished the slot holds the npm note. Once it is published the slot is empty at idle.
+const idleSlot = page => page.waitForFunction(text => (document.querySelector('.copy-note')?.innerText.trim() ?? '') === text && document.querySelector('.copy-status').innerText.trim() === '', idleNote, { timeout: 5000 });
+const idleNote = installAvailable ? '' : pendingNote;
+
+dom('the npm note is plain text outside the live region while unpublished, and Copied takes the same slot at the same height', async () => {
   const { page, context } = await open({ permissions: ['clipboard-read', 'clipboard-write'] });
   await settleInstall(page);
   const button = page.locator('.copy-button');
   const status = page.locator('.copy-status');
   const noteEl = page.locator('.copy-note');
   assert.equal(await status.getAttribute('role'), 'status');
-  const note = (await noteEl.innerText()).trim();
-  assert.match(note, /not on npm yet/);
-  assert.equal(await noteEl.evaluate(el => el.closest('[role="status"], [aria-live]') === null), true, 'the note is not in a live region, so it is never read out again');
+  if (installAvailable) assert.equal(await noteEl.count(), 0, 'a published command has no npm note');
+  else {
+    assert.match((await noteEl.innerText()).trim(), /not on npm yet/);
+    assert.equal(await noteEl.evaluate(el => el.closest('[role="status"], [aria-live]') === null), true, 'the note is not in a live region, so it is never read out again');
+  }
   assert.equal((await status.innerText()).trim(), '', 'the live region is empty while idle');
   const slot = await page.locator('.copy-slot').boundingBox();
   const card = await page.locator('.install-card-cli').boundingBox();
@@ -152,22 +181,21 @@ dom('the npm note is plain text outside the live region, and Copied takes the sa
   assert.ok(slot.y - (terminal.y + terminal.height) < 20, 'no dead gap between the terminal and the note');
   await button.click();
   await page.waitForFunction(() => document.querySelector('.copy-status').innerText.trim() === 'Copied');
-  assert.equal(await noteEl.count(), 0, 'Copied replaces the note in the slot');
+  if (!installAvailable) assert.equal(await noteEl.count(), 0, 'Copied replaces the note in the slot');
   assert.equal((await button.innerText()).split('\n')[0].trim(), 'Copied');
   assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'npm install -g bowerloom@beta');
   assert.equal((await page.locator('.copy-slot').boundingBox()).height, slot.height, 'the slot keeps its height');
   assert.equal((await page.locator('.install-card-cli').boundingBox()).height, card.height, 'the card does not move');
-  await page.waitForFunction(text => document.querySelector('.copy-note')?.innerText.trim() === text, note, { timeout: 5000 });
+  await idleSlot(page);
   assert.equal((await status.innerText()).trim(), '', 'back at idle the live region is empty, so nothing is announced');
   assert.equal((await button.innerText()).split('\n')[0].trim(), 'Copy');
   await context.close();
 });
 
-dom('a clipboard that refuses shows the failure words in the same slot, then the note comes back', async () => {
+dom('a clipboard that refuses shows the failure words in the same slot, then the slot goes back to idle', async () => {
   const { page, context } = await open();
   await settleInstall(page);
   await page.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new Error('denied')) } }); });
-  const note = (await page.locator('.copy-note').innerText()).trim();
   const before = await page.locator('.install-card-cli').boundingBox();
   const slot = await page.locator('.copy-slot').boundingBox();
   await page.locator('.copy-button').click();
@@ -175,7 +203,7 @@ dom('a clipboard that refuses shows the failure words in the same slot, then the
   assert.match(await page.locator('.copy-status').innerText(), /Copy failed\. Select the command\./);
   assert.equal((await page.locator('.copy-slot').boundingBox()).height, slot.height);
   assert.equal((await page.locator('.install-card-cli').boundingBox()).height, before.height, 'the failure text takes the same slot');
-  await page.waitForFunction(text => document.querySelector('.copy-note')?.innerText.trim() === text, note, { timeout: 5000 });
+  await idleSlot(page);
   await context.close();
 });
 
