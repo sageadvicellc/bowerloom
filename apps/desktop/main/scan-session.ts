@@ -52,6 +52,8 @@ export const CHECK_BUDGET_MS = 5000;
 
 /** The one fixed line told when a read could not be kept. It holds no path and no message of the error. */
 const NOT_KEPT = 'Bowerloom could not keep its last read.';
+/** The one fixed line told when the older read could not be removed, so a later launch may show it as the last one. */
+const NOT_REMOVED = 'Bowerloom could not remove its older saved read.';
 
 export function createScanSession(deps: ScanSessionDeps): ScanSession {
   const now = deps.now ?? (() => Date.now()), cache = deps.cache ?? createScanCache({ stateRoot: deps.stateRoot }), fingerprint = deps.fingerprint ?? fingerprintOf;
@@ -72,13 +74,16 @@ export function createScanSession(deps: ScanSessionDeps): ScanSession {
         else {
           // Not kept: the older read must not stay on disk to be called "last time" at the next launch.
           held = null;
-          cache.forget();
+          const gone = cache.forget();
           if (before !== null && chosen.length > 0) console.error(NOT_KEPT);
+          if (!gone) console.error(NOT_REMOVED);
         }
       } catch (error) {
         held = null;
-        try { cache.forget(); } catch { /* nothing more to do */ }
+        let gone = false;
+        try { gone = cache.forget(); } catch { gone = false; }
         console.error(`Bowerloom could not keep its last read (${error instanceof Error ? error.constructor.name : typeof error}).`);
+        if (!gone) console.error(NOT_REMOVED);
       }
       return result;
     },

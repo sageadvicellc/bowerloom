@@ -6,7 +6,7 @@
 import type { ReactElement } from 'react';
 import { HButton } from '../parts/controls.js';
 import { useSavedScan } from './saved-scan.js';
-import { REAL, savedAtLine } from './words-real.js';
+import { REAL, damagedWords, savedAtLine } from './words-real.js';
 import './real.css';
 
 export function LastRead(): ReactElement | null {
@@ -24,5 +24,5 @@ export function LastRead(): ReactElement | null {
 
 export function SavedDamagedNote(): ReactElement | null {
   const saved = useSavedScan();
-  return saved.damaged ? <p className="hxf-plain" role="status" data-saved-damaged="">{REAL.hint.savedDamaged}</p> : null;
+  return saved.damaged ? <p className="hxf-plain" role="status" data-saved-damaged="">{damagedWords(saved.damagedWhy)}</p> : null;
 }

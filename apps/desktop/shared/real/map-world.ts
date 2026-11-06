@@ -43,7 +43,7 @@ const EXTRA_ORDER: readonly InterfaceId[] = ['hermes', 'bowerloom'];
 const ALL_ORDER: readonly InterfaceId[] = [...INTERFACE_ORDER, ...EXTRA_ORDER];
 const ENFORCEMENT: Readonly<Record<InterfaceId, InterfaceInfo['enforcement']>> = { 'claude-code': 'blocks reads', codex: 'advisory only', opencode: 'advisory only', hermes: 'advisory only', bowerloom: 'advisory only' };
 const DAY_MS = 86_400_000;
-const TOPIC_SLICES = 12;
+export const TOPIC_SLICES = 12;
 const TOPIC_MIN_PAGES = 3;
 
 export const GLOBAL_SCOPE: Scope = Object.freeze({ id: 'global', kind: 'global', name: 'Your home folder', parentId: null, path: '~' });

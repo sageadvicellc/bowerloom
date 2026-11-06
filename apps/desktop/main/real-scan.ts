@@ -5,7 +5,7 @@
  * It knows nothing about any one person's folders. Where to look comes from the adapter table (shared/real/adapters.ts); where to start comes from the home folder it is
  * given and from the folders the person picks. The place ids it hands out are the only ones `read` accepts.
  */
-import { basename, dirname, isAbsolute, join } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { ADAPTERS, adapterOf, appLabel, classify, recordsOfFile, walkEnter, walkPrune } from '../shared/real/adapters.js';
 import type { ConfigKind } from '../shared/real/adapters.js';
 import { firstHeading, firstSentence, parseFrontmatter } from '../shared/real/frontmatter.js';
@@ -360,32 +360,82 @@ function folderOfShown(path: string, home: string): string | null {
   return isAbsolute(path) && !path.includes('\u0000') ? path : null;
 }
 
-/** The place a work or picked folder is, built from its path alone (its tool folders and config files, not the work folders below it). Null when the folder is not there. */
-function placeAt(dir: string, home: string, kind: RealPlaceKind): PlaceInternal | null {
+/**
+ * The place a work or picked folder is, built from its path alone (its tool folders and config files, not the work folders below it). Null when the folder is not there. `unresolved` is
+ * true when something the first read could take could not be taken from here: a tool folder that is a link (the first read allowed one that stays inside the picked folder, but only
+ * the project is known here), or a folder that would not list.
+ */
+function placeAt(dir: string, home: string, kind: RealPlaceKind): { readonly place: PlaceInternal; readonly unresolved: boolean } | null {
   const real = realFolderFollowing(dir);
   if (real === null) return null;
   const tally = newTally();
   const homeReal = realFolderFollowing(home);
   const { folders, files } = homeReal !== null && real === homeReal ? { folders: [], files: [] } : partsIn(real, listDir(real, tally, REAL_LIMITS.discoveryEntries + 1, real), real, tally);
-  return { id: placeId(kind, dir, [...folders, ...files].map(p => p.app)), kind, label: labelOfFolder(dir), root: dir, realRoot: real, folders, files };
+  const place: PlaceInternal = { id: placeId(kind, dir, [...folders, ...files].map(p => p.app)), kind, label: labelOfFolder(dir), root: dir, realRoot: real, folders, files };
+  return { place, unresolved: tally.linksOutside + tally.brokenLinks + tally.unreadable > 0 };
 }
+
+/**
+ * Whether another entry beside any part of this path is shown with the same name. The window's path is cleaned (spaces collapsed or trimmed, a long part cut, a key-like part hidden),
+ * so `trailing ` and `trailing` are both shown as `trailing`: a path rebuilt from it may name the neighbour, and the neighbour's files would be taken for the folder's own. The parts are
+ * checked from the home folder down (from the root for a path outside it). `listed` keeps what a folder showed, for the other places of one walk.
+ */
+function pathIsAmbiguous(dir: string, home: string, listed: Map<string, Map<string, number>>): boolean {
+  const base = dir.startsWith(home + sep) ? home : sep, parts = relative(base, dir).split(sep).filter(x => x !== '');
+  let at = base;
+  for (const part of parts) {
+    let shownCounts = listed.get(at);
+    if (shownCounts === undefined) {
+      const list = listDir(at, newTally(), AMBIGUITY_ENTRIES + 1);
+      // A folder too big to list whole cannot be told apart from its neighbours.
+      if (list.length > AMBIGUITY_ENTRIES) return true;
+      shownCounts = new Map<string, number>();
+      for (const e of list) { const shown = shortPath(join(at, e.name), home); shownCounts.set(shown, (shownCounts.get(shown) ?? 0) + 1); }
+      listed.set(at, shownCounts);
+    }
+    if ((shownCounts.get(shortPath(join(at, part), home)) ?? 0) > 1) return true;
+    at = join(at, part);
+  }
+  return false;
+}
+/** The most entries of one folder that are listed to tell a name from its neighbours. */
+const AMBIGUITY_ENTRIES = 20000;
 
 /** The files of a `.bowerloom` folder that the harness loader opens (`harnessOf`). The reader lists no part for them, so the walk does not see them: the fingerprint names them. */
 const HARNESS_FILES: readonly string[] = ['harness.json', 'mcp.json', 'hooks.json', 'knowledge.json'];
 
+/** What the reader keeps from a config file, as text: the kinds, names and facts of its entries, and nothing else. Null when the file cannot be read or understood. */
+function keptOf(app: RealApp, config: ConfigKind, name: string, abs: string, containReal: string, budget: Budget, tally: Tally): string | null {
+  const text = readText(abs, containReal, tally, budget);
+  if (text === null) return null;
+  const found = recordsOfFile(app, { what: 'config', config }, name, name, text);
+  return found.unreadable ? null : found.records.map(r => JSON.stringify([r.kind, r.name, r.slug, r.description, r.meta])).sort().join(';');
+}
+
 /**
- * One line for each file the reader would list in a place, with its size and change time, and one for each tool folder or config file that is gone. No file is opened.
- * A config file directly in the home folder (`~/.claude.json`) is one that a program rewrites during any session, so it counts only by being there: its size and change time would
- * say "changed" at nearly every launch. The four files of a `.bowerloom` folder count by size and change time.
+ * One line for each file the reader would list in a place, with its size and change time, and one for each tool folder or config file that is gone. `flags.unresolved` is set when a file
+ * that must be read could not be. A config file that a program rewrites during any session (`~/.claude.json`, and `settings.local.json`, which holds the permissions a person approves)
+ * counts by what the reader keeps from it, so a new connection or hook shows and the rest does not. The four files of a `.bowerloom` folder count by size and change time.
  */
-function watchLines(place: PlaceInternal, budget: Budget, tally: Tally): string[] {
+function watchLines(place: PlaceInternal, budget: Budget, tally: Tally, flags: { unresolved: boolean }): string[] {
   const out: string[] = [];
+  const kept = (app: RealApp, config: ConfigKind, name: string, abs: string, contain: string): string => {
+    const text = keptOf(app, config, name, abs, contain, budget, tally);
+    if (text === null) { flags.unresolved = true; return 'unreadable'; }
+    return text;
+  };
   for (const folder of place.folders) {
     if (realFolderFollowing(folder.abs) !== folder.abs) { out.push(`gone|${folder.name}`); continue; }
-    for (const f of walkFiles(folder.abs, folder.abs, folderWalk(folder, REAL_LIMITS.filesPerPlace), budget, tally)) out.push(`f|${folder.name}/${f.rel}|${f.size}|${f.mtimeMs}`);
+    for (const f of walkFiles(folder.abs, folder.abs, folderWalk(folder, REAL_LIMITS.filesPerPlace), budget, tally)) {
+      const role = f.rel === 'settings.local.json' ? classify(folder.app, f.rel) : null;
+      out.push(role !== null && role.what === 'config' ? `k|${folder.name}/${f.rel}|${kept(folder.app, role.config, f.rel, f.abs, folder.abs)}` : `f|${folder.name}/${f.rel}|${f.size}|${f.mtimeMs}`);
+    }
     if (folder.app === 'bowerloom') for (const name of HARNESS_FILES) out.push(`b|${name}|${statLine(join(folder.abs, name)) ?? 'gone'}`);
   }
-  for (const file of place.files) out.push(`h|${file.name}|${statLine(file.abs) === null ? 'gone' : place.kind === 'home' ? 'there' : statLine(file.abs)}`);
+  for (const file of place.files) {
+    const stat = statLine(file.abs);
+    out.push(stat === null ? `h|${file.name}|gone` : place.kind === 'home' ? `h|${file.name}|${kept(file.app, file.config, file.name, file.abs, place.realRoot)}` : `h|${file.name}|${stat}`);
+  }
   if (place.kind !== 'home') {
     if (realFolderFollowing(place.realRoot) !== place.realRoot) out.push('gone|root');
     else for (const f of walkFiles(place.realRoot, place.realRoot, notesWalk(), budget, tally)) out.push(`n|${f.rel}|${f.size}|${f.mtimeMs}`);
@@ -407,19 +457,25 @@ let unfinishedCount = 0;
 export async function watchTextOf(home: string, watched: readonly WatchedPlace[], now: () => number = () => Date.now(), budgetMs: number = REAL_LIMITS.budgetMs): Promise<{ readonly text: string; readonly complete: boolean }> {
   const budget = makeBudget(now, budgetMs), tally = newTally();
   let unresolved = false;
+  const ambiguity = new Map<string, Map<string, number>>();
   const homePlaces = findHomePlaces(home);
   const lines: string[] = ['bowerloom-read-fingerprint-1', ...homePlaces.map(p => `roster|${p.id}`).sort()];
   for (const w of [...watched].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
     if (mustStop(budget, tally)) break;
     const dir = folderOfShown(w.path, home);
-    const place = w.kind === 'home' ? homePlaces.find(p => p.id === w.id) ?? null : dir === null ? null : placeAt(dir, home, w.kind);
+    const rebuilt = w.kind === 'home' ? (homePlaces.find(p => p.id === w.id) ?? null) : dir === null ? null : placeAt(dir, home, w.kind);
     lines.push(`place|${w.id}`);
-    if (place === null) {
+    if (rebuilt === null) {
       // A home place that is not in the list has lost its folder. A work or picked folder that cannot be rebuilt may be gone or may only have a name the window's path does not hold: either way it cannot be checked.
       if (w.kind === 'home') lines.push('gone'); else unresolved = true;
       continue;
     }
-    lines.push(...watchLines(place, budget, tally));
+    const place = 'place' in rebuilt ? rebuilt.place : rebuilt;
+    // A path that a neighbour shares, or that holds a link the walk cannot take, may name another folder than the one read: it cannot be checked.
+    if ('place' in rebuilt && (rebuilt.unresolved || (dir !== null && pathIsAmbiguous(dir, home, ambiguity)))) unresolved = true;
+    const flags = { unresolved: false };
+    lines.push(...watchLines(place, budget, tally, flags));
+    if (flags.unresolved) unresolved = true;
     await yieldToLoop();
   }
   // A cap that cuts a folder short (`truncated`) cuts it at the same place every time, so it does not make the walk incomplete; only the clock or the count of files does.

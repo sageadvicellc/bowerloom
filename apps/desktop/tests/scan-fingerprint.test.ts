@@ -3,7 +3,7 @@
 // the folders the reader never lists (a session log, a file next to the tool folders). Every folder here is a made-up temporary one.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createScanner } from '../main/real-scan.js';
 import type { WatchedPlace } from '../main/real-scan.js';
@@ -114,15 +114,70 @@ for (const name of MANGLED) {
   });
 }
 
-test('a config file at the home folder that a program rewrites all the time does not change it, but its absence does', async t => {
+test('~/.claude.json counts by the connections the reader keeps from it, not by its size or change time: adding a server changes it, a rewrite that keeps them does not', async t => {
   const f = fixture(t), { all } = await places(f), base = await print(f, all), config = join(f.home, '.claude.json');
+  const first = JSON.parse(readFileSync(config, 'utf8')) as { mcpServers: Record<string, unknown> };
   const old = new Date(1_700_000_000_000);
   utimesSync(config, old, old);
   assert.equal(await print(f, all), base, 'only the change time moved');
-  writeFileSync(config, JSON.stringify({ mcpServers: {}, numStartups: 99, a: 'a much longer rewrite than the first one was' }));
-  assert.equal(await print(f, all), base, 'rewritten with another size');
+  writeFileSync(config, JSON.stringify({ ...first, numStartups: 99, a: 'a much longer rewrite than the first one was', projects: { x: { history: ['a', 'b', 'c'] } } }));
+  assert.equal(await print(f, all), base, 'rewritten with another size and other keys, the same servers');
+  writeFileSync(config, JSON.stringify({ ...first, mcpServers: { ...first.mcpServers, extra_one: { command: 'one' }, extra_two: { command: 'two' } } }));
+  const more = await print(f, all);
+  assert.notEqual(more, base, 'two servers added');
+  writeFileSync(config, JSON.stringify({ ...first, mcpServers: { ...first.mcpServers, extra_one: { command: 'one' }, extra_two: { command: 'two-changed' } } }));
+  assert.notEqual(await print(f, all), more, 'a server whose command changed');
   rmSync(config);
   assert.notEqual(await print(f, all), base, 'gone');
+});
+
+test('a ~/.claude.json that cannot be read or understood makes the walk not complete, never "same"', async t => {
+  const f = fixture(t), { all } = await places(f), config = join(f.home, '.claude.json');
+  writeFileSync(config, '{ this is not json');
+  const broken = await fingerprintOf(f.home, all);
+  assert.equal(broken.complete, false);
+  writeFileSync(config, Buffer.alloc(3 * 1024 * 1024, 32));
+  assert.equal((await fingerprintOf(f.home, all)).complete, false, 'over the size the reader opens');
+});
+
+test('settings.local.json counts by the hooks the reader keeps from it, not by the permissions a program adds to it', async t => {
+  const f = fixture(t), dir = join(f.home, 'proj-settings'), file = join(dir, '.claude', 'settings.local.json');
+  const hooks = { PostToolUse: [{ matcher: 'Edit', hooks: [{ type: 'command', command: './fmt.sh' }] }] };
+  put(file, JSON.stringify({ permissions: { allow: ['Bash(ls)'] }, hooks }));
+  const found = (await createScanner({ home: f.home }).addFolder(dir)).places, watched = watchOf(found.filter(p => p.kind === 'picked'));
+  const base = await print(f, watched);
+  writeFileSync(file, JSON.stringify({ permissions: { allow: ['Bash(ls)', 'Bash(git status)', 'Read(./src/**)'] }, hooks }));
+  assert.equal(await print(f, watched), base, 'a permission was approved');
+  writeFileSync(file, JSON.stringify({ permissions: { allow: [] }, hooks: { PostToolUse: [{ matcher: 'Write', hooks: [{ type: 'command', command: './fmt.sh' }] }] } }));
+  assert.notEqual(await print(f, watched), base, 'a hook changed: it runs for other tools now');
+});
+
+test('a project whose tool folder is a link the first read allowed cannot be rebuilt, so it is never "same"', async t => {
+  const f = fixture(t), mono = join(f.home, 'mono');
+  put(join(mono, '_shared', '.claude', 'skills', 'shared-one', 'SKILL.md'), '---\nname: Shared one\n---\n');
+  mkdirSync(join(mono, 'app'), { recursive: true });
+  symlinkSync(join('..', '_shared', '.claude'), join(mono, 'app', '.claude'));
+  const found = (await createScanner({ home: f.home }).addFolder(mono)).places;
+  const app = found.find(p => p.label === 'app');
+  assert.ok(app && app.counts.skills === 1, `the first read counts the skill through the link: ${JSON.stringify(found.map(p => [p.label, p.counts.skills]))}`);
+  const r = await fingerprintOf(f.home, watchOf([app!]));
+  assert.equal(r.complete, false);
+});
+
+test('a folder whose shown name is also the name of its neighbour is never "same": the two cannot be told apart', async t => {
+  const f = fixture(t);
+  for (const [odd, clean] of [['trailing ', 'trailing'], ['two  spaces', 'two spaces']] as const) {
+    put(join(f.home, odd, '.claude', 'skills', 'odd-skill', 'SKILL.md'), '---\nname: Odd\n---\n');
+    put(join(f.home, clean, '.claude', 'skills', 'clean-skill', 'SKILL.md'), '---\nname: Clean\n---\n');
+    const found = (await createScanner({ home: f.home }).addFolder(join(f.home, odd))).places.filter(p => p.kind === 'picked');
+    const r = await fingerprintOf(f.home, watchOf(found));
+    assert.equal(r.complete, false, `"${odd}" beside "${clean}"`);
+  }
+});
+
+test('a folder whose name is its own shown name, with ordinary neighbours, is still checked', async t => {
+  const f = fixture(t), { all } = await places(f);
+  assert.equal((await fingerprintOf(f.home, all)).complete, true);
 });
 
 test('the four files of a .bowerloom folder count, though the reader lists no part for them', async t => {

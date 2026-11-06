@@ -3,6 +3,7 @@
  * already received (the places of step one and the result of step two, with `~` paths and hidden keys), a version, the time of the read, and a fingerprint of the watched folders.
  * The file is untrusted when it is loaded: `parseSavedScan` checks its size, its version and its shape, and gives a plain reason when it cannot be believed. Pure: no file, no clock.
  */
+import { TOPIC_SLICES } from './map-world.js';
 import { REAL_LIMITS } from './types.js';
 import type { RealPlace, RealResult } from './types.js';
 
@@ -50,20 +51,34 @@ const WORLD_KEYS = ['interfaces', 'items', 'scopes', 'overrides', 'wikiPages', '
 const KINDS: readonly string[] = ['home', 'project', 'picked'];
 
 /**
- * The most each list may hold: what the reader can hand over in one read. A file past a cap cannot have been made by the reader, and the window does work for each entry (some of it
- * for each pair of lists), so it is refused before anything walks it. Items and pages are held to the reader's per-call cap, scopes and slices to its place cap.
+ * The most each list may hold: what the reader can hand over in one read, taken from its own limits and its own sets of notes (`TOPIC_SLICES` topic sets and one set of the whole place, for each
+ * place, each one also an item). A read the reader can make must never pass a cap in the wrong direction, because a file refused here is not shown. A file past a cap cannot have been made
+ * by the reader, and the window does work for each entry, so it is refused before anything walks it. Items are the files read (skills, agents, prompts: at most `itemsPerCall`), the
+ * connections and hooks (a file of settings may hold up to `recordsPerFile`, so a further `itemsPerCall`), and one item for each set of notes.
  */
+const PLACES = REAL_LIMITS.places, SETS_PER_PLACE = TOPIC_SLICES + 1;
 export const SAVED_SCAN_CAPS = Object.freeze({
-  items: REAL_LIMITS.itemsPerCall, wikiPages: REAL_LIMITS.itemsPerCall, overrides: REAL_LIMITS.itemsPerCall, others: REAL_LIMITS.itemsPerCall, ages: REAL_LIMITS.itemsPerCall,
-  scopes: REAL_LIMITS.places, slices: REAL_LIMITS.places, harnessPlaces: REAL_LIMITS.places, interfaces: 20, versions: 1000, libraries: 1000,
+  places: PLACES,
+  scopes: PLACES + 1,
+  slices: PLACES * SETS_PER_PLACE,
+  setsPerPlace: SETS_PER_PLACE,
+  items: 2 * REAL_LIMITS.itemsPerCall + PLACES * SETS_PER_PLACE,
+  wikiPages: REAL_LIMITS.itemsPerCall, overrides: REAL_LIMITS.itemsPerCall, others: REAL_LIMITS.itemsPerCall, ages: REAL_LIMITS.itemsPerCall,
+  harnessPlaces: PLACES, interfaces: 20, versions: 1000, libraries: 1000,
+  /** An agent's lists (skills it names, connections it uses): a front matter line, so a few hundred at most. */
+  agentList: REAL_LIMITS.recordsPerFile,
+  /** What a set's rule may hold: the reader makes one folder for each set; a little room is left. */
+  ruleFolders: 5, ruleFolderChars: 600, ruleWords: 20,
 });
 /** The last moment a date can hold, in milliseconds since 1970. */
 const LAST_DATE_MS = 8.64e15;
+/** The id of a set of notes the reader makes: the place's key, and for a topic set the topic's key (shared/real/map-world.ts). */
+const SET_ID = /^real-notes-([0-9a-f]{16})(?:-[0-9a-f]{16})?$/;
 
 const countsOk = (v: unknown): boolean => isObject(v) && COUNT_KEYS.every(k => isCount(v[k]));
 const hasId = (v: unknown): boolean => isObject(v) && typeof v.id === 'string';
 const foundAtOk = (v: unknown): boolean => isArray(v) && v.length <= 100 && v.every(f => isObject(f) && typeof f.interface === 'string' && typeof f.path === 'string');
-const itemOk = (v: unknown): boolean => isObject(v) && typeof v.id === 'string' && typeof v.kind === 'string' && typeof v.scopeId === 'string' && foundAtOk(v.foundAt);
+const baseItemOk = (v: unknown): v is Record<string, unknown> => isObject(v) && typeof v.id === 'string' && typeof v.kind === 'string' && typeof v.scopeId === 'string' && foundAtOk(v.foundAt);
 
 function placeOk(v: unknown): boolean {
   if (!isObject(v)) return false;
@@ -73,18 +88,61 @@ function placeOk(v: unknown): boolean {
     && isObject(d) && isText(d.path, 4096) && isTexts(d.folders) && isTexts(d.notes) && isArray(d.topics) && d.topics.every(t => isObject(t) && isText(t.name, 400) && isCount(t.count));
 }
 
-function resultOk(v: unknown): boolean {
-  if (!isObject(v)) return false;
+/** A slice's rule: the folders it takes pages from (one for each set the reader makes), and the page types and tags (the reader leaves both empty). */
+function ruleOk(rule: unknown): boolean {
+  if (!isObject(rule) || !isArray(rule.folders) || rule.folders.length < 1 || rule.folders.length > SAVED_SCAN_CAPS.ruleFolders) return false;
+  if (!rule.folders.every(f => isText(f, SAVED_SCAN_CAPS.ruleFolderChars))) return false;
+  const types = rule.pageTypesAndTags;
+  return isObject(types) && isTexts(types.types, SAVED_SCAN_CAPS.ruleWords) && isTexts(types.tags, SAVED_SCAN_CAPS.ruleWords);
+}
+
+/**
+ * `null` when the result is believed; `too-big` when a list is longer than the reader can make (the file is left as it is: a wrong guess about a cap must never destroy a read);
+ * `bad-shape` for anything else. The sizes are checked first, so a list of a hundred thousand entries is never walked, and the sets of notes are held to the reader's own structure:
+ * ids it makes, each place's sets with the set of the whole place among them, so the window's work to list their pages stays in step with the pages.
+ */
+function resultWhy(v: unknown): DamageWhy | null {
+  if (!isObject(v)) return 'bad-shape';
   const w = v.world, C = SAVED_SCAN_CAPS;
-  if (!isObject(w) || !WORLD_KEYS.every(k => isArray(w[k]))) return false;
-  // The sizes are checked first, so a list of a hundred thousand entries is never walked.
+  if (!isObject(w) || !WORLD_KEYS.every(k => isArray(w[k])) || !isArray(v.others) || !isObject(v.ages)) return 'bad-shape';
   const lists = w as Record<(typeof WORLD_KEYS)[number], unknown[]>;
   if (lists.items.length > C.items || lists.wikiPages.length > C.wikiPages || lists.scopes.length > C.scopes || lists.slices.length > C.slices || lists.overrides.length > C.overrides
-    || lists.interfaces.length > C.interfaces || lists.versions.length > C.versions || lists.libraries.length > C.libraries) return false;
-  if (!isArray(v.others) || v.others.length > C.others || !isObject(v.ages) || Object.keys(v.ages).length > C.ages) return false;
-  if (v.harnessPlaces !== undefined && (!isArray(v.harnessPlaces) || v.harnessPlaces.length > C.harnessPlaces)) return false;
-  return lists.items.every(itemOk) && lists.scopes.every(hasId) && lists.slices.every(hasId) && lists.wikiPages.every(hasId) && countsOk(v.counts)
-    && typeof v.stoppedEarly === 'boolean' && isCount(v.couldNotRead) && isCount(v.partlyRead) && isCount(v.textsCut) && isTexts(v.notes) && v.readOnly === true;
+    || lists.interfaces.length > C.interfaces || lists.versions.length > C.versions || lists.libraries.length > C.libraries || v.others.length > C.others || Object.keys(v.ages).length > C.ages
+    || (isArray(v.harnessPlaces) && v.harnessPlaces.length > C.harnessPlaces)) return 'too-big';
+  if (v.harnessPlaces !== undefined && !isArray(v.harnessPlaces)) return 'bad-shape';
+  if (!lists.scopes.every(hasId) || !lists.wikiPages.every(hasId)) return 'bad-shape';
+  // The sets of notes.
+  const ids = new Set<string>(), perPlace = new Map<string, number>();
+  for (const s of lists.slices) {
+    const id = isObject(s) && typeof s.id === 'string' ? s.id : '', key = SET_ID.exec(id)?.[1];
+    if (key === undefined || ids.has(id) || !isObject(s) || !ruleOk(s.rule)) return 'bad-shape';
+    ids.add(id);
+    perPlace.set(key, (perPlace.get(key) ?? 0) + 1);
+  }
+  for (const [key, n] of perPlace) {
+    if (!ids.has(`real-notes-${key}`)) return 'bad-shape';
+    if (n > C.setsPerPlace) return 'too-big';
+  }
+  if (perPlace.size > C.places) return 'too-big';
+  // The items.
+  let sets = 0;
+  for (const item of lists.items) {
+    if (!baseItemOk(item)) return 'bad-shape';
+    if (item.kind === 'context-slice') {
+      sets += 1;
+      if (typeof item.sliceId !== 'string' || !ids.has(item.sliceId)) return 'bad-shape';
+    } else if (item.kind === 'agent') {
+      const d = item.definition;
+      if (!isObject(d)) return 'bad-shape';
+      if (!isArray(d.skillIds) || !isArray(d.toolAttachments)) return 'bad-shape';
+      if (d.skillIds.length > C.agentList || d.toolAttachments.length > C.agentList) return 'too-big';
+      if (!d.skillIds.every(x => typeof x === 'string') || !d.toolAttachments.every(t => isObject(t) && typeof t.toolId === 'string')) return 'bad-shape';
+      if (d.sliceId !== undefined && typeof d.sliceId !== 'string') return 'bad-shape';
+    }
+  }
+  if (sets > C.slices) return 'too-big';
+  if (!countsOk(v.counts) || typeof v.stoppedEarly !== 'boolean' || !isCount(v.couldNotRead) || !isCount(v.partlyRead) || !isCount(v.textsCut) || !isTexts(v.notes) || v.readOnly !== true) return 'bad-shape';
+  return null;
 }
 
 /** Believes a text only when it is a saved read of this version, of a sane size, with every part in the shape the window expects. Never throws. */
@@ -97,6 +155,7 @@ export function parseSavedScan(text: string): ParsedSavedScan {
   if (v.version !== SAVED_SCAN_VERSION) return { ok: false, why: 'bad-shape' };
   if (!isCount(v.savedAtMs) || v.savedAtMs > LAST_DATE_MS || typeof v.fingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(v.fingerprint)) return { ok: false, why: 'bad-shape' };
   if (!isArray(v.chosen) || v.chosen.length === 0 || v.chosen.length > REAL_LIMITS.places || !v.chosen.every(placeOk)) return { ok: false, why: 'bad-shape' };
-  if (!resultOk(v.result)) return { ok: false, why: 'bad-shape' };
+  const why = resultWhy(v.result);
+  if (why !== null) return { ok: false, why };
   return { ok: true, scan: v as unknown as SavedScan };
 }

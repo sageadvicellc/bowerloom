@@ -78,6 +78,8 @@ export const REAL = deepFreeze({
     chooseLine: 'To count what each folder holds, Bowerloom opened settings files and read names and structure. It reads text only in folders you keep ticked.',
     consentNotes: 'It looks through the whole folder for notes pages. It reads the first lines of up to 2000 of them.',
     readLine: 'A harness is a saved list of agents and skills. Bowerloom stores it as one small file in the project you install it to.',
+    savedNotPrivate: 'The saved read sat in a folder others can change, so Bowerloom did not use it. A new read starts a private one.',
+    savedLinked: 'A link stood where the saved read belongs, so Bowerloom did not use it. A new read starts a private one.',
     betaAbout: 'Bowerloom is in beta. It reads your own folders and writes only after you approve what it will write.',
   },
   /**
@@ -125,3 +127,6 @@ export const savedAtLine = (atMs: number, timeZone?: string): string => {
   const when = clockText(atMs, timeZone);
   return when === null ? 'Last read: time not known.' : `Last read: ${when}.`;
 };
+
+/** What is told when the kept read could not be used: one plain sentence, and for a folder that is not private or a link, what happens next. */
+export const damagedWords = (why: string | null): string => (why === 'not-private' ? REAL.paragraph.savedNotPrivate : why === 'linked' ? REAL.paragraph.savedLinked : REAL.hint.savedDamaged);

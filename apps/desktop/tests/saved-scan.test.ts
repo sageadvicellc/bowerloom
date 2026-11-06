@@ -2,19 +2,19 @@
 // so every wrong shape gives a plain reason and never a half-loaded read. Nothing here reads a real folder.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SAVED_SCAN_VERSION, SAVED_SCAN_MAX_BYTES, parseSavedScan } from '../shared/real/saved-scan.js';
+import { SAVED_SCAN_CAPS, SAVED_SCAN_VERSION, SAVED_SCAN_MAX_BYTES, parseSavedScan } from '../shared/real/saved-scan.js';
 import { savedAtLine } from '../renderer/harness/real/words-real.js';
 import type { SavedScan } from '../shared/real/saved-scan.js';
 import { REAL_LIMITS } from '../shared/real/types.js';
 import type { RealPlace, RealResult } from '../shared/real/types.js';
-import { generateWorld } from '../shared/world/sample.js';
+import { smallResult } from './fixtures-real/small-result.js';
 
 const place = (id: string): RealPlace => ({
   id, label: 'Claude Code at home', kind: 'home', apps: ['Claude Code'], appLabel: 'Claude Code', counts: { agents: 1, skills: 2, tools: 0, hooks: 0, notes: 0 }, empty: false,
   details: { path: '~', folders: ['.claude'], topics: [{ name: 'Notes', count: 2 }], notes: [] },
 });
 const result = (): RealResult => ({
-  world: generateWorld(1), others: [], counts: { agents: 1, skills: 2, tools: 0, hooks: 0, notes: 0 }, ages: {}, stoppedEarly: false, couldNotRead: 0, partlyRead: 0, textsCut: 0, notes: [], readOnly: true,
+  ...smallResult(),
 });
 const scan = (): SavedScan => ({ version: SAVED_SCAN_VERSION, savedAtMs: Date.UTC(2026, 10, 5, 15, 12), fingerprint: 'a'.repeat(64), chosen: [place('place-0123456789ab')], result: result() });
 const text = (change: (s: Record<string, unknown>) => void = () => undefined): string => { const s = JSON.parse(JSON.stringify(scan())) as Record<string, unknown>; change(s); return JSON.stringify(s); };
@@ -82,19 +82,20 @@ const withWorld = (change: (world: Record<string, unknown>) => void): string => 
 test('a file with 100,000 items is refused at once, before anything walks them', () => {
   const big = withWorld(w => { w.items = Array.from({ length: 100_000 }, (_, i) => item(i)); });
   const started = Date.now();
-  assert.deepEqual(parseSavedScan(big), { ok: false, why: 'bad-shape' });
+  assert.deepEqual(parseSavedScan(big), { ok: false, why: 'too-big' });
   assert.ok(Date.now() - started < 2_000, 'refused fast');
 });
 
-test('each list is held to what the reader can make: items and pages to its per-call cap, scopes and slices to its place cap', () => {
-  const over = REAL_LIMITS.itemsPerCall + 1, places = REAL_LIMITS.places + 1;
-  assert.equal(parseSavedScan(withWorld(w => { w.items = Array.from({ length: REAL_LIMITS.itemsPerCall }, (_, i) => item(i)); })).ok, true, 'at the cap');
-  assert.equal(parseSavedScan(withWorld(w => { w.items = Array.from({ length: over }, (_, i) => item(i)); })).ok, false);
+test('each list is held to what the reader can make, and a list past its cap is told as too big (never as a wrong shape)', () => {
+  const over = REAL_LIMITS.itemsPerCall + 1, places = SAVED_SCAN_CAPS.scopes + 1;
+  assert.equal(parseSavedScan(withWorld(w => { w.items = Array.from({ length: SAVED_SCAN_CAPS.items }, (_, i) => item(i)); })).ok, true, 'at the cap');
+  assert.deepEqual(parseSavedScan(withWorld(w => { w.items = Array.from({ length: SAVED_SCAN_CAPS.items + 1 }, (_, i) => item(i)); })), { ok: false, why: 'too-big' });
+  assert.deepEqual(parseSavedScan(withWorld(w => { w.scopes = Array.from({ length: places }, (_, i) => ({ id: `s${i}`, kind: 'project', name: 'n', parentId: null, path: '~' })); })), { ok: false, why: 'too-big' });
   assert.equal(parseSavedScan(withWorld(w => { w.wikiPages = Array.from({ length: over }, (_, i) => ({ id: `p${i}` })); })).ok, false);
   assert.equal(parseSavedScan(withWorld(w => { w.scopes = Array.from({ length: places }, (_, i) => ({ id: `s${i}`, kind: 'project', name: 'n', parentId: null, path: '~' })); })).ok, false);
-  assert.equal(parseSavedScan(withWorld(w => { w.slices = Array.from({ length: places }, (_, i) => ({ id: `l${i}` })); })).ok, false);
+  assert.equal(parseSavedScan(withWorld(w => { w.slices = Array.from({ length: SAVED_SCAN_CAPS.slices + 1 }, (_, i) => ({ id: `l${i}` })); })).ok, false);
   assert.equal(parseSavedScan(text(s => { (s.result as Record<string, unknown>).others = Array.from({ length: over }, () => ({})); })).ok, false);
-  assert.equal(parseSavedScan(text(s => { (s.result as Record<string, unknown>).harnessPlaces = Array.from({ length: places }, () => ({})); })).ok, false);
+  assert.equal(parseSavedScan(text(s => { (s.result as Record<string, unknown>).harnessPlaces = Array.from({ length: REAL_LIMITS.places + 1 }, () => ({})); })).ok, false);
 });
 
 test('an item, a scope, a slice and a page must have the fields the window reads', () => {

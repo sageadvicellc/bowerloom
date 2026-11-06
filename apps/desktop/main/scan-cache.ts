@@ -27,8 +27,8 @@ export interface ScanCache {
   /** Keeps the read. False when it was not kept (too big, a write that failed, or a folder that is not ours). A read that is too big removes the old one; any other failure leaves the old one whole, and the caller decides (`forget`). */
   save(scan: SavedScan): boolean;
   load(): LoadResult;
-  /** Removes the saved read, when it is a plain file of ours. Anything else there is left alone. Never throws. */
-  forget(): void;
+  /** Removes the saved read, when it is a plain file of ours. True when none is left. Never throws. */
+  forget(): boolean;
 }
 
 export interface ScanCacheDeps {
@@ -54,12 +54,33 @@ export function createScanCache(deps: ScanCacheDeps): ScanCache {
   /** Whether this folder or file is ours alone: owned by this user (where the system has users) and not writable by the group or by others. */
   const isPrivate = (stat: { uid: number; mode: number }): boolean => (uid === undefined || stat.uid === uid) && (stat.mode & 0o022) === 0;
 
-  /** Removes the file of an older read when it is a plain file of ours there. Anything else is left alone. */
-  const forget = (): void => {
+  /**
+   * Removes the file of an older read when it is a plain file of ours there. True when no older read is left (it was removed, or there was none); false when one may be left (the folder is not
+   * ours, a link, or the removal failed). Anything that is not a plain file in a private folder is left alone.
+   */
+  const forget = (): boolean => {
     try {
-      const folder = lstatSync(dir), file = lstatSync(path);
-      if (folder.isDirectory() && !folder.isSymbolicLink() && isPrivate(folder) && file.isFile() && !file.isSymbolicLink()) unlinkSync(path);
-    } catch { /* nothing there */ }
+      const folder = lstatSync(dir);
+      if (folder.isSymbolicLink() || !folder.isDirectory() || !isPrivate(folder)) return false;
+      let file;
+      try { file = lstatSync(path); } catch (error) { return isAbsent(error); }
+      if (file.isSymbolicLink() || !file.isFile()) return false;
+      unlinkSync(path);
+      return true;
+    } catch (error) { return isAbsent(error); }
+  };
+
+  /**
+   * Moves a folder that is not ours (a link, something that is not a folder, or a folder of another user) out of the way, so a save can make its own. It is done only when the state
+   * folder above it is ours: a folder of ours is never made to give way for one we do not own. The folder is renamed, never opened, followed or removed.
+   */
+  const moveAside = (): boolean => {
+    try {
+      const root = lstatSync(deps.stateRoot);
+      if (root.isSymbolicLink() || !root.isDirectory() || (uid !== undefined && root.uid !== uid)) return false;
+      renameSync(dir, join(deps.stateRoot, `last-read.bad.${randomBytes(6).toString('hex')}`));
+      return true;
+    } catch { return false; }
   };
 
   /** Removes the temporary files of a save that a crash cut short. A young one may belong to a save that is running now, and a file with another name is not ours. */
@@ -78,8 +99,12 @@ export function createScanCache(deps: ScanCacheDeps): ScanCache {
     try {
       const text = JSON.stringify(scan);
       if (Buffer.byteLength(text) > max) { forget(); return false; }
+      // A folder that is a link, is not a folder or is another user's is never written in. When the state folder above is ours it is moved aside and ours is made in its place.
+      try {
+        const old = lstatSync(dir);
+        if (old.isSymbolicLink() || !old.isDirectory() || (uid !== undefined && old.uid !== uid)) moveAside();
+      } catch { /* nothing there yet */ }
       mkdirSync(dir, { recursive: true, mode: 0o700 });
-      // A folder that is a link is refused before anything is written in it.
       const folder = lstatSync(dir);
       if (folder.isSymbolicLink() || !folder.isDirectory() || (uid !== undefined && folder.uid !== uid)) return false;
       chmodSync(dir, 0o700);
@@ -115,7 +140,7 @@ export function createScanCache(deps: ScanCacheDeps): ScanCache {
       try { file = lstatSync(path); } catch (error) { return isAbsent(error) ? { status: 'none' } : { status: 'damaged', why: 'unreadable' }; }
       if (file.isSymbolicLink() || !file.isFile()) return { status: 'damaged', why: 'linked' };
       if (!isPrivate(file)) return { status: 'damaged', why: 'not-private' };
-      if (file.size > max) { forget(); return { status: 'damaged', why: 'too-big' }; }
+      if (file.size > max) return { status: 'damaged', why: 'too-big' };
       let fd: number;
       try { fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW); } catch (error) { return { status: 'damaged', why: codeOf(error) === 'ELOOP' ? 'linked' : 'unreadable' }; }
       let text: string;
@@ -123,6 +148,7 @@ export function createScanCache(deps: ScanCacheDeps): ScanCache {
         // The size is asked of the open handle, not the name: a file swapped after the check above is checked again.
         const handle = fstatSync(fd);
         if (!handle.isFile()) return { status: 'damaged', why: 'linked' };
+        if (!isPrivate(handle)) return { status: 'damaged', why: 'not-private' };
         if (handle.size > max) return { status: 'damaged', why: 'too-big' };
         const bytes = Buffer.allocUnsafe(handle.size);
         let got = 0;
@@ -130,9 +156,9 @@ export function createScanCache(deps: ScanCacheDeps): ScanCache {
         text = bytes.subarray(0, got).toString('utf8');
       } finally { closeSync(fd); }
       const parsed = parseSavedScan(text);
-      // A file that is broken, too big or in a shape the reader could never have made is removed, so the next launch does not do this work again. A file of another version is left:
-      // a newer app may have written it.
-      if (!parsed.ok) { if (parsed.why !== 'wrong-version') forget(); return { status: 'damaged', why: parsed.why }; }
+      // A file that is broken or in a shape the reader could never have made is removed, so the next launch does not do this work again. A file that is only past a cap, a file of another
+      // version and a file of the wrong kind are left: a guess about a cap, or a newer app, must never destroy a read, and the next save replaces the file.
+      if (!parsed.ok) { if (parsed.why === 'bad-shape') forget(); return { status: 'damaged', why: parsed.why }; }
       // The window turns the read into its screens with this call. A read it cannot turn is damaged, so the window never meets it half-loaded.
       try { realToHarnessState(parsed.scan.result, parsed.scan.chosen); } catch { forget(); return { status: 'damaged', why: 'bad-shape' }; }
       return { status: 'ok', scan: parsed.scan };

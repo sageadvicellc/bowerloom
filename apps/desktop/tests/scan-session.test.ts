@@ -150,7 +150,7 @@ test('a save that fails removes the older read, and tells it on the console in o
   await createScanSession({ home: f.home, stateRoot: state }).keepRead(chosen, async () => result);
   const real = createScanCache({ stateRoot: state }), told: unknown[][] = [];
   let forgot = 0;
-  const failing = { load: () => real.load(), save: () => false, forget: () => { forgot += 1; real.forget(); } };
+  const failing = { load: () => real.load(), save: () => false, forget: () => { forgot += 1; return real.forget(); } };
   const log = mock.method(console, 'error', (...args: unknown[]) => { told.push(args); });
   try { await createScanSession({ home: f.home, stateRoot: state, cache: failing }).keepRead(chosen, async () => result); } finally { log.mock.restore(); }
   assert.equal(forgot, 1);
@@ -161,7 +161,7 @@ test('a save that fails removes the older read, and tells it on the console in o
 test('a save that throws is told by its class name only, never its message', async t => {
   const f = fixture(t), state = tempDir(t), { chosen, result } = await readOf(f), told: unknown[][] = [];
   let forgot = 0;
-  const throwing = { load: () => ({ status: 'none' as const }), save: (): boolean => { throw new RangeError('/private/path/in/the/message'); }, forget: () => { forgot += 1; } };
+  const throwing = { load: () => ({ status: 'none' as const }), save: (): boolean => { throw new RangeError('/private/path/in/the/message'); }, forget: () => { forgot += 1; return true; } };
   const log = mock.method(console, 'error', (...args: unknown[]) => { told.push(args); });
   try { assert.equal(await createScanSession({ home: f.home, stateRoot: state, cache: throwing }).keepRead(chosen, async () => result), result); } finally { log.mock.restore(); }
   assert.deepEqual(told, [['Bowerloom could not keep its last read (RangeError).']]);

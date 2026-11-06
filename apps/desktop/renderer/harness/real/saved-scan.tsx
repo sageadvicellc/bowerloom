@@ -10,12 +10,12 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useReducer,
 import type { ReactElement, ReactNode } from 'react';
 import { realToHarnessState } from '../../../shared/harness/real-map.js';
 import type { EngineBridge } from '../../../shared/engine/types.js';
-import type { SavedScanAnswer, SavedScanCheck } from '../../../shared/real/saved-scan.js';
+import type { DamageWhy, SavedScanAnswer, SavedScanCheck } from '../../../shared/real/saved-scan.js';
 import type { HarnessState } from '../../../shared/harness/types.js';
 import { parseRoute } from '../../../shared/harness/route.js';
 import { go } from '../router.js';
 import { useUi } from '../ui.js';
-import { REAL } from './words-real.js';
+import { damagedWords } from './words-real.js';
 
 export interface SavedScanState {
   /** When the read on the screen ended, or null when no read has been made or kept. */
@@ -30,28 +30,31 @@ export interface SavedScanState {
   readonly unchecked: boolean;
   /** A kept read was there but could not be used. */
   readonly damaged: boolean;
+  /** Why, for the words (`damagedWords`). Null when nothing is damaged. */
+  readonly damagedWhy: DamageWhy | null;
 }
 
 export type SavedAction =
   | { readonly type: 'saved'; readonly atMs: number }
-  | { readonly type: 'damaged' }
+  | { readonly type: 'damaged'; readonly why: DamageWhy }
   | { readonly type: 'unusable' }
   | { readonly type: 'none' }
   | { readonly type: 'checked'; readonly forAtMs: number; readonly verdict: SavedScanCheck }
   | { readonly type: 'read'; readonly atMs: number };
 
-export const firstSaved = (): SavedScanState => ({ readAtMs: null, fromSaved: false, checking: false, changed: false, unchecked: false, damaged: false });
+export const firstSaved = (): SavedScanState => ({ readAtMs: null, fromSaved: false, checking: false, changed: false, unchecked: false, damaged: false, damagedWhy: null });
 
 /** The action for what main answered at launch. */
-export const startFromAnswer = (answer: SavedScanAnswer): SavedAction => (answer.status === 'saved' ? { type: 'saved', atMs: answer.savedAtMs } : answer.status === 'damaged' ? { type: 'damaged' } : { type: 'none' });
+export const startFromAnswer = (answer: SavedScanAnswer): SavedAction => (answer.status === 'saved' ? { type: 'saved', atMs: answer.savedAtMs } : answer.status === 'damaged' ? { type: 'damaged', why: answer.why } : { type: 'none' });
 
 export function savedReduce(state: SavedScanState, action: SavedAction): SavedScanState {
   switch (action.type) {
-    case 'saved': return { readAtMs: action.atMs, fromSaved: true, checking: true, changed: false, unchecked: false, damaged: false };
-    case 'damaged': case 'unusable': return { ...firstSaved(), damaged: true };
+    case 'saved': return { readAtMs: action.atMs, fromSaved: true, checking: true, changed: false, unchecked: false, damaged: false, damagedWhy: null };
+    case 'damaged': return { ...firstSaved(), damaged: true, damagedWhy: action.why };
+    case 'unusable': return { ...firstSaved(), damaged: true, damagedWhy: 'bad-shape' };
     case 'none': return firstSaved();
     case 'checked': return state.readAtMs === action.forAtMs && state.fromSaved ? { ...state, checking: false, changed: action.verdict === 'changed', unchecked: action.verdict === 'unchecked' } : state;
-    case 'read': return { readAtMs: action.atMs, fromSaved: false, checking: false, changed: false, unchecked: false, damaged: false };
+    case 'read': return { readAtMs: action.atMs, fromSaved: false, checking: false, changed: false, unchecked: false, damaged: false, damagedWhy: null };
   }
 }
 
@@ -93,13 +96,13 @@ export async function loadSaved(engine: EngineBridge, h: LoadHooks): Promise<voi
     if (!h.isLive()) return;
     h.dispatch(action);
     const here = h.route();
-    if (here !== null && here !== 'welcome') h.toast(REAL.hint.savedDamaged);
+    if (here !== null && here !== 'welcome') h.toast(damagedWords(action.type === 'damaged' ? action.why : 'bad-shape'));
     h.ready();
   };
   let answer: SavedScanAnswer;
-  try { answer = await engine.savedScan(); } catch (error) { console.error('The saved read could not be asked for.', error); damaged({ type: 'damaged' }); return; }
+  try { answer = await engine.savedScan(); } catch (error) { console.error('The saved read could not be asked for.', error); damaged({ type: 'damaged', why: 'unreadable' }); return; }
   if (!h.isLive()) return;
-  if (answer.status === 'damaged') { damaged({ type: 'damaged' }); return; }
+  if (answer.status === 'damaged') { damaged({ type: 'damaged', why: answer.why }); return; }
   if (answer.status === 'none') { h.dispatch({ type: 'none' }); h.ready(); return; }
   let next: HarnessState;
   // The same mapping a live read goes through. A kept read it cannot map is dropped as damaged, and nothing is loaded.

@@ -8,7 +8,7 @@ import { cacheDir, cachePath, createScanCache } from '../main/scan-cache.js';
 import { SAVED_SCAN_VERSION } from '../shared/real/saved-scan.js';
 import type { SavedScan } from '../shared/real/saved-scan.js';
 import type { RealPlace, RealResult } from '../shared/real/types.js';
-import { generateWorld } from '../shared/world/sample.js';
+import { smallResult } from './fixtures-real/small-result.js';
 import { writeSync as writeSyncReal } from 'node:fs';
 import { tempDir } from './support.js';
 
@@ -16,7 +16,7 @@ const place: RealPlace = {
   id: 'place-0123456789ab', label: 'Claude Code at home', kind: 'home', apps: ['Claude Code'], appLabel: 'Claude Code', counts: { agents: 1, skills: 2, tools: 0, hooks: 0, notes: 0 }, empty: false,
   details: { path: '~', folders: ['.claude'], topics: [], notes: [] },
 };
-const result: RealResult = { world: generateWorld(1), others: [], counts: place.counts, ages: {}, stoppedEarly: false, couldNotRead: 0, partlyRead: 0, textsCut: 0, notes: [], readOnly: true };
+const result: RealResult = smallResult();
 const scan = (at = 1_000): SavedScan => ({ version: SAVED_SCAN_VERSION, savedAtMs: at, fingerprint: 'b'.repeat(64), chosen: [place], result });
 
 test('a saved read goes to the state folder and comes back the same', t => {
@@ -104,12 +104,12 @@ test('a file that is a link is refused, and a save does not write through it', t
   assert.equal(lstatSync(cachePath(root)).isSymbolicLink(), false);
 });
 
-test('a folder that is a link is refused for a load and for a save', t => {
+test('a folder that is a link is refused for a load, and a save moves it aside and writes nothing through it', t => {
   const root = tempDir(t), cache = createScanCache({ stateRoot: root }), elsewhere = tempDir(t);
   writeFileSync(join(elsewhere, 'last-read.json'), JSON.stringify(scan()), { mode: 0o600 });
   symlinkSync(elsewhere, cacheDir(root));
   assert.deepEqual(cache.load(), { status: 'damaged', why: 'linked' });
-  assert.equal(cache.save(scan(7_000)), false);
+  assert.equal(cache.save(scan(7_000)), true);
   assert.deepEqual(readdirSync(elsewhere), ['last-read.json'], 'nothing was written through the link');
 });
 
@@ -129,7 +129,7 @@ test('a file that is a folder, or cannot be opened, is damaged and never throws'
 
 test('a save writes every byte even when the disk takes a few at a time', t => {
   const root = tempDir(t), seen: number[] = [];
-  const slow = (fd: number, buffer: Buffer, offset: number, length: number): number => { const n = Math.min(length, 4_096); seen.push(n); return writeSyncReal(fd, buffer, offset, n); };
+  const slow = (fd: number, buffer: Buffer, offset: number, length: number): number => { const n = Math.min(length, 256); seen.push(n); return writeSyncReal(fd, buffer, offset, n); };
   const cache = createScanCache({ stateRoot: root, write: slow });
   assert.equal(cache.save(scan()), true);
   assert.ok(seen.length > 1, 'more than one write');
@@ -197,13 +197,55 @@ test('a file that is not believed is removed, so the next launch does not repeat
   assert.equal(existsSync(cachePath(root)), true, 'a file a newer app may have written is not ours to remove');
 });
 
-test('a file with 100,000 items is refused fast, told as damaged, and removed', t => {
+test('a file past a cap is refused fast and told as damaged, but is left where it is: a wrong guess about a cap must never destroy a read', t => {
   const root = tempDir(t), cache = createScanCache({ stateRoot: root });
   mkdirSync(cacheDir(root), { mode: 0o700 });
   const items = Array.from({ length: 100_000 }, (_, i) => ({ id: `i${i}`, kind: 'skill', name: 'n', scopeId: 's', foundAt: [], library: null, description: '' }));
   writeFileSync(cachePath(root), JSON.stringify({ ...scan(), result: { ...result, world: { ...result.world, items } } }), { mode: 0o600 });
   const started = Date.now();
-  assert.deepEqual(cache.load(), { status: 'damaged', why: 'bad-shape' });
+  assert.deepEqual(cache.load(), { status: 'damaged', why: 'too-big' });
   assert.ok(Date.now() - started < 2_000);
+  assert.equal(existsSync(cachePath(root)), true, 'the file stays until the next save replaces it');
+  assert.equal(cache.save(scan(9)), true);
+  assert.equal(cache.load().status, 'ok');
+});
+
+// ---- a folder that is not ours gives way, and a removal that fails says so
+
+test('a folder that is a link, or not a folder, is moved aside by a save, and a folder of ours is made; what the link led to is untouched', t => {
+  for (const kind of ['link', 'file'] as const) {
+    const root = tempDir(t), elsewhere = tempDir(t);
+    writeFileSync(join(elsewhere, 'last-read.json'), 'target', { mode: 0o600 });
+    if (kind === 'link') symlinkSync(elsewhere, cacheDir(root)); else writeFileSync(cacheDir(root), 'in the way');
+    const cache = createScanCache({ stateRoot: root });
+    assert.equal(cache.save(scan()), true, kind);
+    assert.equal(lstatSync(cacheDir(root)).isDirectory() && !lstatSync(cacheDir(root)).isSymbolicLink(), true, kind);
+    assert.equal(cache.load().status, 'ok', kind);
+    assert.ok(readdirSync(root).some(name => /^last-read\.bad\.[0-9a-f]{12}$/.test(name)), `${kind}: the old one is kept aside`);
+    assert.equal(readFileSync(join(elsewhere, 'last-read.json'), 'utf8'), 'target', `${kind}: the other folder is untouched`);
+  }
+});
+
+test('when the state folder is not ours either, nothing is moved and nothing is written', t => {
+  const root = tempDir(t), elsewhere = tempDir(t);
+  symlinkSync(elsewhere, cacheDir(root));
+  const cache = createScanCache({ stateRoot: root, uid: (process.getuid?.() ?? 0) + 1 });
+  assert.equal(cache.save(scan()), false);
+  assert.equal(lstatSync(cacheDir(root)).isSymbolicLink(), true);
+  assert.deepEqual(readdirSync(elsewhere), []);
+});
+
+test('forget says whether an older read is left: true when removed or never there, false when a link or a folder that is not private stands in the way', t => {
+  const root = tempDir(t), cache = createScanCache({ stateRoot: root });
+  assert.equal(cache.forget(), true, 'nothing there');
+  cache.save(scan());
+  assert.equal(cache.forget(), true);
   assert.equal(existsSync(cachePath(root)), false);
+  cache.save(scan());
+  chmodSync(cacheDir(root), 0o777);
+  assert.equal(cache.forget(), false, 'a folder others can write to');
+  chmodSync(cacheDir(root), 0o700);
+  const elsewhere = tempDir(t), other = tempDir(t);
+  symlinkSync(elsewhere, cacheDir(other));
+  assert.equal(createScanCache({ stateRoot: other }).forget(), false, 'a link');
 });

@@ -9,10 +9,10 @@ import { SavedScanContext, firstSaved, loadSaved, savedReduce, startFromAnswer }
 import type { LoadHooks, SavedAction, SavedScanValue } from '../renderer/harness/real/saved-scan.js';
 import type { EngineBridge } from '../shared/engine/types.js';
 import type { SavedScanAnswer, SavedScanCheck } from '../shared/real/saved-scan.js';
-import { REAL, savedAtLine } from '../renderer/harness/real/words-real.js';
+import { REAL, damagedWords, savedAtLine } from '../renderer/harness/real/words-real.js';
 import { LIMITS, bannedHere, countWords } from '../shared/harness/words.js';
 import type { RealPlace, RealResult } from '../shared/real/types.js';
-import { generateWorld } from '../shared/world/sample.js';
+import { smallResult } from './fixtures-real/small-result.js'; // the reader's own builder makes the world
 
 const noop = (): void => undefined;
 const value = (patch: Partial<SavedScanValue> = {}): SavedScanValue => ({ ...firstSaved(), readAgain: noop, markRead: noop, ...patch });
@@ -23,7 +23,7 @@ const place: RealPlace = {
   id: 'place-0123456789ab', label: 'Claude Code at home', kind: 'home', apps: ['Claude Code'], appLabel: 'Claude Code', counts: { agents: 0, skills: 0, tools: 0, hooks: 0, notes: 0 }, empty: true,
   details: { path: '~', folders: [], topics: [], notes: [] },
 };
-const result: RealResult = { world: generateWorld(1), others: [], counts: place.counts, ages: {}, stoppedEarly: false, couldNotRead: 0, partlyRead: 0, textsCut: 0, notes: [], readOnly: true };
+const result: RealResult = smallResult();
 
 // ---- the state
 
@@ -100,8 +100,22 @@ test('nothing is drawn when no read is kept or made', () => {
   assert.equal(draw(value(), createElement(SavedDamagedNote)), '');
 });
 
+test('a kept read in a folder that is not private, or behind a link, says what happens next', async () => {
+  for (const [why, line] of [['not-private', REAL.paragraph.savedNotPrivate], ['linked', REAL.paragraph.savedLinked]] as const) {
+    assert.ok(draw(value({ damaged: true, damagedWhy: why }), createElement(SavedDamagedNote)).includes(line), why);
+    assert.equal(damagedWords(why), line);
+    assert.equal(bannedHere(line), null, line);
+    assert.ok(countWords(line) <= LIMITS.paragraph, line);
+    const run = launch('overview');
+    await loadSaved(bridge(async () => ({ status: 'damaged', why })), run.hooks);
+    assert.deepEqual(run.toasts, [line]);
+  }
+  assert.equal(damagedWords('too-big'), REAL.hint.savedDamaged);
+  assert.equal(damagedWords(null), REAL.hint.savedDamaged);
+});
+
 test('a kept read that could not be used is told in plain words on the first screen', () => {
-  const html = draw(value({ damaged: true }), createElement(SavedDamagedNote));
+  const html = draw(value({ damaged: true, damagedWhy: 'bad-shape' }), createElement(SavedDamagedNote));
   assert.ok(html.includes(REAL.hint.savedDamaged));
   assert.match(html, /role="status"/);
   assert.match(html, /data-saved-damaged=""/);
@@ -154,11 +168,11 @@ test('a call that fails is told as a damaged read, on Welcome as a note and anyw
   try {
     const onWelcome = launch('welcome');
     await loadSaved(bridge(async () => { throw new Error('FAILED'); }), onWelcome.hooks);
-    assert.deepEqual(onWelcome.actions, [{ type: 'damaged' }]);
+    assert.deepEqual(onWelcome.actions, [{ type: 'damaged', why: 'unreadable' }]);
     assert.deepEqual([onWelcome.toasts, onWelcome.readied], [[], 1], 'the Welcome screen draws the note');
     const elsewhere = launch('harnesses');
     await loadSaved(bridge(async () => { throw new Error('FAILED'); }), elsewhere.hooks);
-    assert.deepEqual(elsewhere.actions, [{ type: 'damaged' }]);
+    assert.deepEqual(elsewhere.actions, [{ type: 'damaged', why: 'unreadable' }]);
     assert.deepEqual(elsewhere.toasts, [REAL.hint.savedDamaged]);
   } finally { console.error = quiet; }
 });
@@ -169,7 +183,7 @@ test('a damaged answer shows the note where the person is, and a read the window
   try {
     const elsewhere = launch('overview');
     await loadSaved(bridge(async () => ({ status: 'damaged', why: 'bad-shape' })), elsewhere.hooks);
-    assert.deepEqual([elsewhere.actions, elsewhere.toasts, elsewhere.worlds], [[{ type: 'damaged' }], [REAL.hint.savedDamaged], 0]);
+    assert.deepEqual([elsewhere.actions, elsewhere.toasts, elsewhere.worlds], [[{ type: 'damaged', why: 'bad-shape' }], [REAL.hint.savedDamaged], 0]);
     const odd = launch('welcome');
     await loadSaved(bridge(async () => ({ ...saved, result: { ...result, world: { ...result.world, items: [5 as never] } } })), odd.hooks);
     assert.deepEqual([odd.actions, odd.worlds, odd.wentToRead], [[{ type: 'unusable' }], 0, 0]);
