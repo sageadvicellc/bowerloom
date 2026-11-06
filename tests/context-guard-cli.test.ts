@@ -287,7 +287,7 @@ test('B10. a registered folder that became unsafe, or whose record points into a
   mkdirSync(join(p.home, 'Library/CloudStorage/y/wiki'), { recursive: true, mode: 0o755 }); for (const d of ['Library', 'Library/CloudStorage', 'Library/CloudStorage/y', 'Library/CloudStorage/y/wiki']) chmodSync(join(p.home, d), 0o755);
   writeFileSync(join(p.home, 'Library/CloudStorage/y/wiki/a.md'), '# Alpha\n');
   writeFileSync(record, `{"format":"bowerloom/store-folder/v1beta1","path":"Library/CloudStorage/y","id":"${'c'.repeat(32)}"}\n`, { mode: 0o644 });
-  const sha = createHash('sha256').update(readFileSync(record)).digest('hex'); writeFileSync(join(p.home, '.bowerloom/folders/kb.grants', projectIdOf(p)), `{"format":"bowerloom/store-folder-grant/v1beta1","record":"${sha}","birth":"${statSync(p.dir, { bigint: true }).birthtimeNs}"}\n`, { mode: 0o644 });
+  const sha = createHash('sha256').update(readFileSync(record)).digest('hex'); writeFileSync(join(p.home, '.bowerloom/folders/kb.grants', projectIdOf(p)), `{"format":"bowerloom/store-folder-grant/v1beta1","record":"${sha}","birth":"${statSync(p.dir, { bigint: true }).birthtimeNs}","summary":"heading"}\n`, { mode: 0o644 });
   assert.match(guard(p, args, read(join(p.home, 'Library/CloudStorage/y/wiki/a.md'), p.dir)).stdout, ROOT, 'a record into a cloud folder, with a grant that matches it');
 });
 test('N-G1. a project without a grant: the guard denies every call with its own reason, and --explain says the same', t => {
@@ -296,6 +296,14 @@ test('N-G1. a project without a grant: the guard denies every call with its own 
   assert.equal(guard(p, args, read(outside(p, 'wiki/a.md'), p.dir)).stdout, denyJson(reason));
   assert.equal(guard(p, args, read('/etc/hosts', p.dir)).stdout, denyJson(reason), 'whatever the target');
   const ex = run(p.dir, ['context', 'guard', '--agent', 'lead', '--explain', outside(p, 'wiki/a.md')], p.home); assert.equal(ex.status, 0, ex.stderr); assert.equal(ex.stdout, `denied (GUARD_ROOT_MISSING): ${reason}\n`);
+  approve(p.dir, ['folder', 'allow', 'kb'], p.home); assert.equal(guard(p, args, read(outside(p, 'wiki/a.md'), p.dir)).stdout, '');
+});
+test('N-G2. a grant made before the kind was recorded denies every call like a missing grant, and folder allow again lets it in', t => {
+  const p = registered(t), args = guardArgs(p), grant = join(p.home, '.bowerloom/folders/kb.grants', projectIdOf(p));
+  assert.match(readFileSync(grant, 'utf8'), /,"summary":"heading"\}\n$/);
+  writeFileSync(grant, readFileSync(grant, 'utf8').replace(',"summary":"heading"', ''), { mode: 0o644 });
+  const reason = `Bowerloom guard: this project is not allowed to read registered folder kb, which slice wiki of agent lead names, so every read, search, and file listing of this agent is blocked. Run bowerloom folder allow kb in ${p.dir}.`;
+  assert.equal(guard(p, args, read(outside(p, 'wiki/a.md'), p.dir)).stdout, denyJson(reason));
   approve(p.dir, ['folder', 'allow', 'kb'], p.home); assert.equal(guard(p, args, read(outside(p, 'wiki/a.md'), p.dir)).stdout, '');
 });
 test('T2. a record or a store that cannot be read is an internal-error deny with its own cause, not a mismatch, and --explain shows it', { skip: process.getuid?.() === 0 && 'root can read a mode 000 file' }, t => {

@@ -1,0 +1,192 @@
+/* The 0.8 page sections. Colors, type, and the companion panels come from the existing visual system. */
+
+/* What it does */
+.product-section > div:first-child { align-self: start; }
+@media (min-width: 901px) { .product-section > div:first-child { position: sticky; top: 32px; } }
+.section-body { min-width: 0; }
+.section-body > p:first-child { margin-top: 0; }
+.install-card h3, .app-grid h3 { margin: 0 0 8px; font-size: 24px; line-height: 1.3; letter-spacing: -.02em; }
+.app-grid p, .install-card p { margin: 0; }
+.section-body .screenshot-slot { margin-top: 32px; }
+
+/* How it works */
+.recipe-section h2, .band h2, .faq-section h2 { margin: 0 0 24px; font-size: 36px; line-height: 1.15; letter-spacing: -1.2px; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; counter-reset: none; }
+.steps li { position: relative; padding-top: 20px; border-top: 1px solid var(--ui-border); }
+.steps h3 { margin: 12px 0 8px; font-size: 24px; line-height: 1.3; }
+.steps p { margin: 0; font-size: 18px; line-height: 1.65; color: var(--ui-muted); }
+.step-number { display: inline-grid; place-items: center; width: 32px; height: 32px; border: 1.5px solid var(--ui-primary); border-radius: 50%; color: var(--ui-primary); font: 600 14px/1 var(--ui-font); }
+.boundary-note { margin: 32px 0 0; padding: 14px 18px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md, 4px); background: var(--ui-bg); font-size: 18px; line-height: 1.6; color: var(--ui-text); }
+
+/* Full-width bands: app, command line, engines, install */
+.band { border-top: 1px solid var(--ui-border); }
+.band:last-of-type { border-bottom: 1px solid var(--ui-border); }
+#command-line, #install { background: var(--ui-surface); }
+.band-inner { max-width: 1440px; margin: auto; padding: 64px 5.55%; }
+.band-lede { max-width: 72ch; margin: 0 0 32px; font-size: 18px; line-height: 1.65; color: var(--ui-muted); }
+.band p { font-size: 18px; line-height: 1.65; color: var(--ui-muted); }
+.band p code, .section-body p code, .steps p code, .install-card code { color: var(--ui-text); }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 56px; align-items: start; }
+
+.app-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; }
+.app-grid article { min-width: 0; }
+.app-grid .screenshot-slot { margin-bottom: 20px; }
+/* The article text below each slot says the same thing, so the caption text hides there. The Enlarge button stays. */
+.app-grid .screenshot-caption-text { display: none; }
+
+.command-block { margin: 0 0 18px; padding: 18px 20px; overflow-x: auto; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm, 6px); background: var(--ui-bg); font: 15px/1.9 var(--ui-code-font, monospace); color: var(--ui-text); }
+.command-block code { font: inherit; white-space: pre; }
+.command-block .no-break { white-space: nowrap; }
+.command-block:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 3px; }
+
+/* Engines */
+.engine-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 12px; }
+.engine-list li { display: inline-flex; align-items: center; gap: 12px; min-height: 48px; padding: 8px 8px 8px 18px; border: 1px solid var(--ui-border); border-radius: var(--control-radius); background: var(--ui-surface); }
+.engine-list [data-support="supported"] { border-color: var(--ui-primary); }
+.engine-name { font: 500 20px/1.3 var(--trellis-reading-font, Georgia, serif); color: var(--ui-text); }
+.engine-status { padding: 4px 12px; border-radius: var(--control-radius); font: 13px/1.5 var(--ui-font); color: var(--ui-muted); background: var(--ui-bg); }
+.engine-list [data-support="supported"] .engine-status { color: var(--ui-primary-fg); background: var(--ui-primary); }
+
+/* Install */
+.install-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; align-items: stretch; }
+/* While the command is unpublished the second card is only a note, so it keeps its own height instead of stretching to an empty box. */
+.install-grid[data-command="unpublished"] { align-items: start; }
+.install-card { min-width: 0; padding: 28px; border: 1px solid var(--ui-border); border-radius: 14px; background: var(--ui-bg); }
+.install-card > p + p, .install-card > ol + p, .install-card > p + ol { margin-top: 14px; }
+.install-card .command-block { background: var(--ui-surface); }
+.install-steps { margin: 14px 0 0; padding-left: 1.4em; font-size: 18px; line-height: 1.65; color: var(--ui-muted); }
+.install-steps li { padding-left: 4px; }
+.install-steps li + li { margin-top: 6px; }
+.install-card .button { margin-top: 24px; }
+
+/* Screenshots: the light and the dark file are both in the page, and the one that matches the theme shows. */
+.screenshot-slot { margin: 0; }
+.screenshot-image { display: block; width: 100%; height: auto; border: 1px solid var(--ui-border); border-radius: 12px; background: var(--ui-surface); }
+.screenshot-image[data-shot-theme='dark'], [data-theme='dark'] .screenshot-image[data-shot-theme='light'] { display: none; }
+[data-theme='dark'] .screenshot-image[data-shot-theme='dark'] { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .screenshot-image[data-shot-theme='light'] { display: none; }
+  :root:not([data-theme]) .screenshot-image[data-shot-theme='dark'] { display: block; }
+}
+.screenshot-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; font: 14px/1.6 var(--ui-font); color: var(--ui-muted); }
+.screenshot-caption-text { min-width: 0; }
+
+/* Enlarge a screenshot. The picture is a pointer target that keeps the size of the image, so nothing moves. */
+.screenshot-open { display: block; width: 100%; margin: 0; padding: 0; border: 0; border-radius: 12px; background: none; color: inherit; font: inherit; text-align: left; cursor: zoom-in; }
+.screenshot-open:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 3px; }
+.screenshot-open .screenshot-image { transition: border-color 160ms cubic-bezier(.23, 1, .32, 1); }
+.screenshot-open:hover .screenshot-image { border-color: var(--ui-primary); }
+/* Enlarge sits in the caption row, right-aligned, a 44 px target. */
+/* A secondary button: outlined, the same height, type, and corner as every other button. */
+.screenshot-enlarge { display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 8px; min-height: 44px; margin-left: auto; padding: 0 20px; border: 1px solid var(--ui-border); border-radius: var(--control-radius); background: var(--ui-surface); color: var(--ui-text); font: 600 14px/1.2 var(--ui-font); cursor: pointer; }
+.screenshot-enlarge:hover { border-color: var(--ui-primary); color: var(--ui-primary); }
+.screenshot-enlarge:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 3px; }
+
+/* The enlarged view: a native modal dialog that holds a small solarpunk device. The dialog itself is clear. A header bar with the X sits above the device, and the
+   device is a painted metal frame around the picture, with ivy and a flower that scale with it. --s is the scale: large windows 0.5, windows up to 1000 px wide 0.4,
+   phones 0.3. The dialog's side padding holds the plants that reach past the frame, so nothing makes the page wider.
+   Each theme has its own frame image. Its numbers are in image pixels: --hole-* is the screen opening the picture fills, and --cut-* is the nine-slice cut, which
+   reaches past the corner hardware so that the corners never stretch. */
+.screenshot-dialog { --s: .5; --frame: url(/frame/frame-light.webp); --hole-t: 112; --hole-r: 114; --hole-b: 114; --hole-l: 114; --cut-t: 176; --cut-r: 177; --cut-b: 174; --cut-l: 176; box-sizing: border-box; width: min(1300px, calc(100vw - 16px)); max-width: none; max-height: calc(100dvh - 32px); margin: auto; padding: 0 calc(84px * var(--s)); overflow: auto; overscroll-behavior: contain; border: 0; border-radius: 0; background: transparent; color: var(--ui-text); box-shadow: none; }
+[data-theme='dark'] .screenshot-dialog { --frame: url(/frame/frame-dark.webp); --hole-t: 115; --hole-r: 132; --hole-b: 115; --hole-l: 131; --cut-t: 191; --cut-r: 203; --cut-b: 189; --cut-l: 202; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .screenshot-dialog { --frame: url(/frame/frame-dark.webp); --hole-t: 115; --hole-r: 132; --hole-b: 115; --hole-l: 131; --cut-t: 191; --cut-r: 203; --cut-b: 189; --cut-l: 202; }
+}
+.screenshot-dialog[open] { display: block; }
+/* A soft blur and a dim tone behind the dialog. A browser that cannot blur the backdrop still gets the dim tone. */
+.screenshot-dialog::backdrop { background: rgb(24 20 28 / .5); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+/* The column is as wide as the device, and as wide as the window height allows: the picture is 16:10, so its width follows the height that is left. */
+.screenshot-column { margin-inline: auto; width: min(1100px, 100%, calc((100dvh - ((var(--hole-t) + var(--hole-b) + 96) * var(--s) * 1px + 104px)) * 1.6 + (var(--hole-l) + var(--hole-r)) * var(--s) * 1px)); }
+.screenshot-dialog-bar { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 12px 10px 20px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-surface); box-shadow: 0 12px 32px -16px rgb(20 16 24 / .5); }
+.screenshot-dialog-bar form { margin: 0; }
+.screenshot-dialog-text { min-width: 0; }
+.screenshot-pinch { display: none; }
+.screenshot-dialog-caption { display: -webkit-box; min-width: 0; margin: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font: 14px/1.5 var(--ui-font); color: var(--ui-muted); }
+.screenshot-close { display: inline-grid; place-items: center; flex: none; width: 44px; height: 44px; min-width: 44px; min-height: 44px; padding: 0; border: 0; border-radius: var(--control-radius); background: transparent; color: var(--ui-text); cursor: pointer; }
+.screenshot-close:hover { color: var(--ui-primary); background: color-mix(in srgb, var(--ui-primary) 8%, transparent); }
+.screenshot-close:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 2px; }
+/* The scroll area stays inside the dialog. A picture wider than a phone is 960 px wide, so the words in it can be read, and the area scrolls sideways. */
+/* The device. The picture fills the frame's screen opening: the padding is the opening's inset. The frame is a nine-slice overlay on top of the picture, so the
+   corners keep their size, the straight edges stretch, and any size works. The overlay never takes a click. The picture sits inside at 16:10. */
+.screenshot-device { position: relative; box-sizing: border-box; margin-block: calc(40px * var(--s) + 8px) calc(56px * var(--s)); padding: calc(var(--hole-t) * var(--s) * 1px) calc(var(--hole-r) * var(--s) * 1px) calc(var(--hole-b) * var(--s) * 1px) calc(var(--hole-l) * var(--s) * 1px); }
+.screenshot-device::after { content: ''; position: absolute; inset: 0; z-index: 1; box-sizing: border-box; pointer-events: none; border-style: solid; border-color: transparent; border-width: calc(var(--cut-t) * var(--s) * 1px) calc(var(--cut-r) * var(--s) * 1px) calc(var(--cut-b) * var(--s) * 1px) calc(var(--cut-l) * var(--s) * 1px); border-image: var(--frame) var(--cut-t) var(--cut-r) var(--cut-b) var(--cut-l) / calc(var(--cut-t) * var(--s) * 1px) calc(var(--cut-r) * var(--s) * 1px) calc(var(--cut-b) * var(--s) * 1px) calc(var(--cut-l) * var(--s) * 1px) stretch; }
+.screenshot-scroll { position: relative; min-height: 0; overflow: hidden; background: var(--ui-surface); }
+/* The ivy hangs from the top left corner over the left edge, and the flower sits on the bottom right corner. Both are above the frame. */
+.deco { position: absolute; z-index: 2; height: auto; max-width: none; pointer-events: none; user-select: none; }
+.deco.ivy { width: calc(170px * var(--s)); left: calc(-78px * var(--s)); top: calc(-40px * var(--s)); }
+.deco.bloom { width: calc(170px * var(--s)); right: calc(-74px * var(--s)); bottom: calc(-50px * var(--s)); }
+/* At night the plants are a little darker, so they sit in the dim frame instead of glowing on it. */
+[data-theme='dark'] .deco { filter: brightness(.82) saturate(.9); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme]) .deco { filter: brightness(.82) saturate(.9); } }
+.screenshot-scroll, .screenshot-full { touch-action: pan-x pan-y pinch-zoom; }
+.screenshot-full { display: block; width: 100%; aspect-ratio: 16 / 10; height: auto; object-fit: cover; }
+.screenshot-full[data-shot-theme='dark'], [data-theme='dark'] .screenshot-full[data-shot-theme='light'] { display: none; }
+[data-theme='dark'] .screenshot-full[data-shot-theme='dark'] { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .screenshot-full[data-shot-theme='light'] { display: none; }
+  :root:not([data-theme]) .screenshot-full[data-shot-theme='dark'] { display: block; }
+}
+/* The page behind does not scroll while the dialog is open. The gutter stays, so the page does not change width. */
+html:has(.screenshot-dialog[open]) { overflow: hidden; scrollbar-gutter: stable; }
+/* Motion (decision: marketing page, so polish first). Opening happens a few times a visit: 220 ms, fade and a short rise, ease-out. Closing is shorter and only fades.
+   Only opacity and transform move. A browser that cannot animate display drops the whole line and shows the dialog at once. */
+@media (prefers-reduced-motion: no-preference) {
+  .screenshot-dialog, .screenshot-dialog::backdrop { opacity: 0; transition: opacity 140ms cubic-bezier(.23, 1, .32, 1), display 140ms allow-discrete, overlay 140ms allow-discrete; }
+  .screenshot-dialog { transform: translateY(0); transition: opacity 140ms cubic-bezier(.23, 1, .32, 1), transform 140ms cubic-bezier(.23, 1, .32, 1), display 140ms allow-discrete, overlay 140ms allow-discrete; }
+  .screenshot-dialog[open], .screenshot-dialog[open]::backdrop { opacity: 1; transition-duration: 220ms; }
+  .screenshot-dialog[open] { transform: none; }
+  @starting-style {
+    .screenshot-dialog[open] { opacity: 0; transform: translateY(8px); }
+    .screenshot-dialog[open]::backdrop { opacity: 0; }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .screenshot-open .screenshot-image { transition: none; }
+}
+
+/* Hero spacing on desktop. The banner is 70svh tall (homepage-banner.css), and the tag and the headline follow it. */
+@media (min-width: 761px) {
+  .normal-site .normal-hero .hero-copy { padding-top: 20px; }
+  .normal-site .normal-hero h1 { margin: 20px 0 16px; }
+  .normal-site .normal-hero .button.primary { margin-top: 24px; }
+}
+.hero-copy .button.primary { display: inline-flex; align-items: center; }
+.normal-site .normal-hero .hero-note { margin-top: 12px; }
+
+/* FAQ: the chevron shows the open state. It changes at once, because a key press can also toggle it and keyboard actions stay instant. */
+.faq-list summary { display: flex; align-items: center; justify-content: space-between; gap: 20px; list-style: none; }
+.faq-list summary::-webkit-details-marker { display: none; }
+.faq-list summary::after { content: ''; flex: 0 0 auto; width: 8px; height: 8px; margin-right: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); }
+.faq-list details[open] > summary::after { transform: rotate(225deg); }
+.faq-list summary:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 3px; }
+
+/* Link color changes on hover get one short, fast curve. Pointer only; keyboard focus shows the outline at once. */
+.install-card a, .band a, .hero-secondary { transition: color 160ms cubic-bezier(.23, 1, .32, 1), background-color 160ms cubic-bezier(.23, 1, .32, 1); }
+
+@media (max-width: 1100px) {
+  .app-grid { grid-template-columns: minmax(0, 1fr); gap: 40px; }
+}
+@media (max-width: 900px) {
+  .steps { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .split, .install-grid { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+  .split > div { min-width: 0; }
+}
+@media (max-width: 1000px) {
+  .screenshot-dialog { --s: .4; }
+}
+@media (max-width: 760px) {
+  /* On a phone the frame is small. */
+  .screenshot-dialog { --s: .3; }
+  /* The picture fits the width here, so the hint tells a phone visitor that two fingers zoom in. */
+  .screenshot-pinch { display: flex; align-items: center; gap: 6px; margin: 4px 0 0; font: 500 13px/1.4 var(--ui-font); color: var(--ui-primary); }
+  .band-inner { padding: 44px 6%; }
+  .recipe-section h2, .band h2, .faq-section h2 { font-size: 30px; }
+  .install-card { padding: 22px; }
+  /* Wrapping is only visual: a selection of the command still copies as the one line that was written. */
+  .command-block code { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .install-card h3, .app-grid h3, .steps h3 { font-size: 22px; }
+  .engine-name { font-size: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .install-card a, .band a, .hero-secondary { transition: none; }
+}

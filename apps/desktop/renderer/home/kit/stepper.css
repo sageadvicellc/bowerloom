@@ -1,0 +1,33 @@
+/*
+ * The stepper (kit/Stepper.tsx): a row of numbered circles with their words, scoped to [data-home]. No pill, no box: a circle and a label. Text is 14 px or more.
+ * Done: a filled circle with a check, muted words. Now: a larger circle, accent colour and words. Next: dim. The check pops once when a step is done; timing comes from the
+ * motion tokens, which are 0 under reduce motion, so a change is then instant.
+ */
+[data-home] .kit-stepper { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--hm-space-3) var(--hm-space-2); }
+[data-home] .kit-step { display: inline-flex; align-items: center; gap: var(--hm-space-2); font-size: var(--hm-text-base); line-height: 1.2; color: var(--text); opacity: 1; transition: opacity var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease); }
+[data-home] .kit-step[data-state="next"] { opacity: 0.55; }
+/* A short rule joins a step to the next one; it takes the accent when its step is done. */
+[data-home] .kit-step:not(:last-child)::after { content: ""; flex: none; width: var(--hm-space-6); height: 1px; margin-left: var(--hm-space-2); background: var(--border); transition: background-color var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease); }
+[data-home] .kit-step[data-state="done"]:not(:last-child)::after { background: var(--accent-strong); }
+[data-home] .kit-step-dot {
+  display: inline-flex; align-items: center; justify-content: center; flex: none; box-sizing: border-box; width: 1.5rem; height: 1.5rem; border-radius: 50%;
+  font-size: var(--hm-text-base); font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums;
+  color: var(--text-muted); background: transparent; border: 1.5px solid var(--hm-border);
+  transition: width var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease), height var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease), background-color var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease), border-color var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease), color var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease);
+}
+[data-home] .kit-step-label { color: var(--text-muted); font-weight: 400; transition: color var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease); }
+[data-home] .kit-step[data-state="done"] .kit-step-dot { background: var(--accent-strong); border-color: var(--accent-strong); color: var(--accent-contrast); }
+[data-home] .kit-step[data-state="done"] .kit-step-dot .kit-icon { animation: kit-step-pop var(--motion-home-arrive-ms, 0ms) var(--motion-home-arrive-ease, ease) both; }
+[data-home] .kit-step[data-state="now"] .kit-step-dot { width: 1.875rem; height: 1.875rem; background: var(--accent); border-color: var(--accent-strong); color: var(--accent-contrast); }
+[data-home] .kit-step[data-state="now"] .kit-step-label { color: var(--accent-strong); font-weight: 600; }
+@keyframes kit-step-pop { from { transform: scale(0.4); opacity: 0; animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1); } to { transform: scale(1); opacity: 1; } }
+/* Compact: for a small card. Circles only, a little smaller; only the step you are on shows its words. */
+[data-home] .kit-stepper[data-compact] { flex-wrap: nowrap; gap: var(--hm-space-1); }
+[data-home] .kit-stepper[data-compact] .kit-step { gap: var(--hm-space-2); }
+[data-home] .kit-stepper[data-compact] .kit-step::after { display: none; }
+[data-home] .kit-stepper[data-compact] .kit-step-dot { width: 1.375rem; height: 1.375rem; }
+[data-home] .kit-stepper[data-compact] .kit-step[data-state="now"] .kit-step-dot { width: 1.625rem; height: 1.625rem; }
+@media (prefers-reduced-motion: reduce) {
+  [data-home] .kit-step, [data-home] .kit-step::after, [data-home] .kit-step-dot, [data-home] .kit-step-label { transition: none !important; }
+  [data-home] .kit-step[data-state="done"] .kit-step-dot .kit-icon { animation: none !important; }
+}

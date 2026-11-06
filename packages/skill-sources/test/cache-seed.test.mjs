@@ -1,4 +1,4 @@
-// seedSkillCache: `skills add` keeps the bytes it verified (Hanna, global skill cache, phase 2). It opens, stages and
+// seedSkillCache: `skills add` keeps the bytes it verified (the maintainer, global skill cache, phase 2). It opens, stages and
 // completes one cache operation from memory, through the same checks an acquisition runs, and reads no network.
 import '../../../dist/tests/support/isolate-home.js';
 import test from 'node:test';

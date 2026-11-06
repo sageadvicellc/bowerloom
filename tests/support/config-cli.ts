@@ -15,17 +15,22 @@ export const preload = pathToFileURL(fileURLToPath(new URL('./fake-network.js', 
 export const STORE_COMMIT = '0123456789abcdef0123456789abcdef01234567';
 export interface World { base: string; home: string; work: string; store: string; state: string; env: Record<string, string> }
 /**
- * Round 4 of the reviews of PR 101: removes a sandbox even when a test stopped part way and left a folder it had made
- * read only, such as the `locked` folder of a cache prune test. Each folder gets u+rwx, then the whole tree goes.
+ * Removes a sandbox even when a test stopped part way and left a part of it without owner rights, such as the `locked` folder of a
+ * cache prune test or the read-only record folders of a harness test. Every folder gets owner read, write and search rights (u+rwx)
+ * and every file owner read and write (u+rw), then the whole tree goes. A link is never followed. Safe to call on a missing path.
  */
 export function removeAll(base: string): void {
-  try { rmSync(base, { recursive: true, force: true }); return; } catch { /* A folder without write access: open it, then retry. */ }
-  const open = (dir: string): void => {
-    try { chmodSync(dir, 0o700); } catch { return; }
-    let names: string[] = []; try { names = readdirSync(dir); } catch { return; }
-    for (const n of names) { const p = join(dir, n); try { if (lstatSync(p).isDirectory()) open(p); } catch { /* gone */ } }
+  try { rmSync(base, { recursive: true, force: true }); return; } catch { /* a part without owner rights: open it, then try again */ }
+  const open = (at: string): void => {
+    let stat; try { stat = lstatSync(at); } catch { return; }
+    if (stat.isSymbolicLink()) return;
+    if (!stat.isDirectory()) { try { chmodSync(at, stat.mode | 0o600); } catch { /* gone */ } return; }
+    try { chmodSync(at, stat.mode | 0o700); } catch { return; }
+    let names: string[] = []; try { names = readdirSync(at); } catch { return; }
+    for (const n of names) open(join(at, n));
   };
-  open(base); rmSync(base, { recursive: true, force: true });
+  open(base);
+  rmSync(base, { recursive: true, force: true });
 }
 export function world(t: TestContext, prefix = 'bowerloom-config-cli-'): World {
   const base = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
@@ -36,7 +41,8 @@ export function world(t: TestContext, prefix = 'bowerloom-config-cli-'): World {
 }
 /** The environment of this test process without the GitHub token variables (spec 07). A test passes a canary in `env`. */
 export function baseEnv(): Record<string, string | undefined> {
-  const { BOWERLOOM_GITHUB_TOKEN: _b, GH_TOKEN: _h, GITHUB_TOKEN: _g, ...rest } = process.env; return rest;
+  // The preview switch is cleared too: a test that installs to a preview engine sets it in its own `env`.
+  const { BOWERLOOM_GITHUB_TOKEN: _b, GH_TOKEN: _h, GITHUB_TOKEN: _g, BOWERLOOM_PREVIEW_ENGINES: _p, ...rest } = process.env; return rest;
 }
 export function run(cwd: string, args: string[], env: Record<string, string>, node: string[] = []) {
   const r = spawnSync(process.execPath, [...node, cli, ...args], { cwd, encoding: 'utf8', timeout: 120000, env: { ...baseEnv(), ...env } });

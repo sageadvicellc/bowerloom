@@ -13,7 +13,7 @@ import type { AuthoringReceipt, CreatePlan } from '../../project-authoring/src/i
 import { readAuthoringState } from '../../project-authoring/src/state.js';
 import { lstatOrNull, readTree } from '../../project-authoring/src/files.js';
 import { authoringRefusal } from '../../project-authoring/src/refusal.js';
-import { readConfig } from '../../project-config/src/config.js';
+import { invalidConfigRefusal, readConfig } from '../../project-config/src/config.js';
 import { configRefusal, refusalWithNext, teamListedFromProject } from '../../project-config/src/refusal.js';
 import { lockItem, readLock } from '../../project-config/src/lock.js';
 import { applyConfigChange, initialConfig, planConfigChange } from './change.js';
@@ -140,7 +140,7 @@ export async function planAdopt(input: AdoptInput): Promise<AdoptPlan> {
   const { project, id } = input;
   if (id === 'first-team') throw authoringRefusal('TEAM_ID_RESERVED');
   const read = readConfig(project);
-  if (read.state === 'invalid') throw configRefusal(read.code);
+  if (read.state === 'invalid') throw invalidConfigRefusal(read);
   const entry = read.state === 'valid' ? read.config.teams.find(t => t.id === id) ?? null : null;
   // A team the project already lists from the project: the same code, with words of its own (review C2).
   if (entry !== null && entry.source !== 'store') throw teamListedFromProject(id);

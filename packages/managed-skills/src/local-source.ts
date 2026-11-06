@@ -119,6 +119,12 @@ export function readLocalAgent(projectDir: string, team: string, role: string, l
   } catch (e) { return boundary(e); }
 }
 
+/**
+ * A reason that a slice cannot be applied. For FOLDER_NOT_ALLOWED, `detail` is the folder name alone, `kind` is the summary kind
+ * the slice needs (`heading` or `frontmatter:<key>`), `granted` is the kind of the grant the project holds when it is another
+ * one, and `legacy` is true when the grant was made without a kind.
+ */
+export type SliceHold = { code: string; detail: string; errno?: string; inside?: boolean; kind?: string; granted?: string; legacy?: boolean };
 /** What `readSliceTree` found. A hold is a reason that the slice cannot be applied; it is never thrown. */
 export interface SliceTreeResult {
   definition: SliceDefinition | null;
@@ -126,7 +132,7 @@ export interface SliceTreeResult {
   file: { sha256: string; bytes: number } | null;
   resolution: SliceResolution;
   index: string | null;
-  hold: { code: string; detail: string; errno?: string; inside?: boolean } | null;
+  hold: SliceHold | null;
   /** The absolute path of the root folder once it passed the folder checks, else null. */
   rootDir: string | null;
   /** For a registered root found through the store: the sha256 of its record. Null otherwise. */
@@ -198,7 +204,7 @@ export function readSliceTree(projectDir: string, name: string, root: SliceReque
     const parsed = parseSlice(got.text, name);
     if (!parsed.ok) { closingStale(pins, live); return { definition: null, file: info, resolution: EMPTY, index: null, hold: { code: parsed.code, detail: parsed.detail }, rootDir: null, recordSha256: null, rootId: null }; }
     const def = parsed.slice;
-    const held = (hold: { code: string; detail: string; errno?: string; inside?: boolean }, recordSha256: string | null = null): SliceTreeResult => { closingStale(pins, live); return { definition: def, file: info, resolution: EMPTY, index: null, hold, rootDir: null, recordSha256, rootId: null }; };
+    const held = (hold: SliceHold, recordSha256: string | null = null): SliceTreeResult => { closingStale(pins, live); return { definition: def, file: info, resolution: EMPTY, index: null, hold, rootDir: null, recordSha256, rootId: null }; };
     let at: string, prefix: string, source: string, recordSha256: string | null = null, rootId: string | null = null;
     const rootPath = def.root.path;
     if (def.root.kind === 'project') {
@@ -220,8 +226,10 @@ export function readSliceTree(projectDir: string, name: string, root: SliceReque
         if (root.name !== folderName) return staleFile();
         at = root.dir; identityWanted = root.identity;
       } else if (registered !== undefined) {
-        const found = registered(folderName, rootPath);
-        if (!found.ok) return held({ code: found.code, detail: found.detail, ...(found.cause !== undefined ? { errno: found.cause } : {}) });
+        const kind = def.summary.kind === 'frontmatter' ? `frontmatter:${def.summary.key}` : def.summary.kind;
+        const found = registered(folderName, rootPath, kind);
+        // A slice that is not allowed carries the kind it asks for, in its own field, so the next step names the grant that lets it in. `none` copies no text, so a grant for `heading` is the one to ask for.
+        if (!found.ok) return held({ code: found.code, detail: found.detail, ...(found.code === 'FOLDER_NOT_ALLOWED' ? { kind: kind === 'none' ? 'heading' : kind, ...(found.granted !== undefined ? { granted: found.granted } : {}), ...(found.legacy === true ? { legacy: true } : {}) } : {}), ...(found.cause !== undefined ? { errno: found.cause } : {}) });
         at = found.dir; recordSha256 = found.recordSha256;
       } else return held({ code: 'SLICE_ROOT_MISSING', detail: folderName });
       let s: fs.BigIntStats;

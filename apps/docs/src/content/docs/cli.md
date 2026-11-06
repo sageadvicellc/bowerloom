@@ -5,10 +5,10 @@ section: "Reference"
 order: 22
 ---
 
-Use the documentation for the installed version. This reference describes the `0.7.0-beta` line.
+Use the documentation for the installed version. This reference describes the `0.8.0-beta` line.
 
 <!-- release:status:start -->
-Open beta · 0.7.0-beta.3
+Open beta · 0.8.0-beta.1
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
 <!-- release:status:end -->
@@ -28,11 +28,13 @@ bowerloom help <command>
 bowerloom help advanced
 ```
 
-`bowerloom --help` lists the commands you use first. `bowerloom help <command>` shows the full help of one command. These commands have it: `up`, `ls`, `status`, `store`, `use`, `unuse`, `lock`, and `receipt`. So do `cache`, `skills`, `apply`, `context`, `team`, `skill`, `prompt`, and `init`. `bowerloom help slice` and `bowerloom help folder` show the help of `context`. `bowerloom help advanced` lists every form, including the request-file forms and the plumbing commands below. A command followed by `--help` shows the same text as `help <command>`.
+`bowerloom --help` lists the commands you use first. `bowerloom help <command>` shows the full help of one command. These commands have it: `up`, `ls`, `status`, `store`, `use`, `unuse`, `lock`, and `receipt`. So do `cache`, `skills`, `apply`, `context`, `team`, `skill`, `prompt`, `init`, `report`, and `events`. `bowerloom help harness` shows the harness commands, which the short help leaves out. `bowerloom help slice` and `bowerloom help folder` show the help of `context`. `bowerloom help advanced` lists every form, including the request-file forms and the plumbing commands below. A command followed by `--help` shows the same text as `help <command>`.
+
+::visual{id="cli-help"}
 
 Bare `bowerloom` prints the short help. An unknown command prints `Unknown command <word>. Run bowerloom help.` The help heading reads `open beta`.
 
-The version output reads `Bowerloom 0.7.0-beta.3`. Command syntax does not grant execution permission.
+The version output reads `Bowerloom 0.8.0-beta.1`. Command syntax does not grant execution permission.
 
 ## Approvals and exit codes
 
@@ -91,7 +93,7 @@ In plan output each item line ends with its source tag: `[project]`, `[store]`, 
 
 With `--json`, `ls` prints one object in the format `bowerloom/ls/v1beta2`. The fields are `scope` (`project` or `store`), `listedBy` (`folders`), `teams`, `skills`, and `prompts`, `pinsReadable`, `unselected`, `unlisted`, and, for the store, `storeState` (`ready` or `absent`). Each item is an object with `id`, `source`, `via`, `locked`, `resolvedFrom`, and `state`. A team adds `displayName`. A skill adds `kind` (`local`, `npm`, or `git`) and `pin`, which is null for a local skill. `pinsReadable` is false when `skills.json` cannot be read. Then `pinsError` holds the refusal code, every skill has the state `pins-unreadable`, and you run `bowerloom skills check` (or `skills check --global`). A local skill that `skills.json` lists but whose folder is gone has the state `missing`; every other item has the state `ok`. `ls teams`, `ls skills`, and `ls prompts` print only that array, with the fixed fields. A script that reads `bowerloom/ls/v1beta1` must accept `bowerloom/ls/v1beta2`: each item is an object now, and the old `pinned` list is gone.
 
-`status` shows the project folder, the setup state, any drift, and any skill you edited by hand. It reads only. It prints `Workers: none started (this beta starts none)`. With `--json` it prints one object, format `bowerloom/project-status/v1beta2`, with `markers`, `setup`, `status`, `revision`, `drift`, `owned`, `config`, `runtimeReady`, and `executionAuthorized`. `markers` says whether the project has a `.bowerloom` folder and a `bowerloom.json` file. `setup` is `startup` when the project has a startup receipt and `none` when it does not. `config` is null for a project with no `bowerloom.json`. Otherwise it holds the file hash and size, whether the file is valid, and the item counts. A `bowerloom.json` that does not match its format shows as the drift kind `config-invalid`. `status` names each held or missing skill, prompt, agent, or team with its next step. A deleted prompt or team is held. Run `bowerloom prompt create <id>` to restore a registered prompt that was deleted. Restore a deleted team from version control. A skill installed by an earlier Bowerloom shows as `Legacy managed skill: .bowerloom-skills`, with the migrate command.
+`status` shows the project folder, the setup state, any drift, and any skill you edited by hand. It reads only. It prints `Workers: none started (this beta starts none)`. With `--json` it prints one object, format `bowerloom/project-status/v1beta3`, with `markers`, `setup`, `status`, `revision`, `drift`, `owned`, `config`, `runtimeReady`, and `executionAuthorized`. `markers` says whether the project has a `.bowerloom` folder and a `bowerloom.json` file. `setup` is `startup` when the project has a startup receipt and `none` when it does not. `config` is null for a project with no `bowerloom.json`. Otherwise it holds the file hash and size, whether the file is valid, and the item counts. A `bowerloom.json` that does not match its format shows as the drift kind `config-invalid`. `status` names each held or missing skill, prompt, agent, or team with its next step. A deleted prompt or team is held. Run `bowerloom prompt create <id>` to restore a registered prompt that was deleted. Restore a deleted team from version control. A skill installed by an earlier Bowerloom shows as `Legacy managed skill: .bowerloom-skills`, with the migrate command.
 
 `store status` shows your store, the folder `~/.bowerloom`. The store holds definitions of skills, prompts, and teams, and it holds no cache and no installed copy. The store is always at `~/.bowerloom`, where `~` is your `$HOME` folder, and no setting moves it. `store status` reads only. It prints `Store: none yet` when there is no store, `Store: ready` with the counts of skill folders, pinned skills, prompts, and teams when there is one, and `Store: refused (<code>)` when the folder is a link, sits in an iCloud folder, or can be changed by other users. It shows how many entries it ignored in each folder (a stray file, a link, or a name that is not a plain id), and says `or more` when a count stops at 256. A `skills`, `prompts`, or `teams` entry that is a link or not a folder refuses with `STORE_UNSAFE`. It exits 0 in each case, refusals included. A project can be marked by a file named `bowerloom.json`, with or without a `.bowerloom` folder. A folder inside the store is never a project. In a shared home folder with the sticky bit, another local user can create `~/.bowerloom` first and block store setup. Bowerloom fails closed and does not use that folder.
 
@@ -104,6 +106,12 @@ The store keeps a `.gitignore` that leaves out `folders/` and the other files of
 `receipt clean` removes entries from the record of created items when the files of those items are gone. Run it after you delete old files, for example after `store migrate`. Then `bowerloom status` no longer names them as missing. `--global` cleans the record of your store, `~/.bowerloom`, and works from any folder. It also removes the local entry of a gone skill from `skills.json`, and the project entry from `bowerloom.json`. It deletes no file and no installed copy, and it never changes `bowerloom.lock.json`. Copies that sync or apply made stay where they are. It shows the plan first, and prints `Nothing to clean.` when no file is gone.
 
 `bowerloom status --installation <private.json>` still reads a prepared session. See [Historical demo and session](#historical-demo).
+
+::visual{id="cli-up"}
+
+::visual{id="cli-ls"}
+
+::visual{id="cli-status"}
 
 ## Store and lock
 
@@ -146,6 +154,8 @@ bowerloom slice create <name> [--root <folder>] [--registered <folder-name>] [--
 
 `team adopt` copies a team from your store into this project, at `.bowerloom/teams/<id>`, and lists it in `bowerloom.json` as a project item. A team that `bowerloom.json` lists from the store switches to the project copy. A team it does not list yet is added, and store skills and prompts tagged to the team stay store items. The project then owns the copy; later store changes do not reach it. In a project with `bowerloom.json`, the create commands also add the new skill, prompt, or team to it. A context slice is a project item only: `bowerloom.json`, the store, and the lock never hold it.
 
+::visual{id="cli-skill-create"}
+
 Agents use these commands most. They write inside `.bowerloom` only, or inside your store with `--global`. You and your agents own the files they make.
 
 `--global` creates the item in your store, `~/.bowerloom`, and not in a project. It works from any folder and never looks for a project. The first `--global` write makes the store, and the plan says so first. The store holds definitions only, and a project picks store items with `bowerloom use`. With `--global`, `--team` names a team in the store. A team made with `--global` is built from a fixed store brief and the profile you choose, and it does not read a project brief. A store that Bowerloom did not make refuses with `STORE_INVALID`, and Bowerloom never takes it over. [Create teams, skills, and prompts](/docs/guides/create-items/) explains each one.
@@ -162,17 +172,29 @@ bowerloom context guard --agent <role> --explain <path> [--tool Read|Grep|Glob] 
 
 `context show` prints the files a slice selects and the index skill that `apply` writes for it. `context measure` compares what each agent loads at start with the same agent loaded with every `.md` file of a baseline folder. Bytes are exact and tokens are an estimate. Both read only and use no network. `context guard` is the read guard that `apply` adds to an agent with slices. Claude Code runs it as `bowerloom-guard`, a second command of the package, before each Read, Grep, and Glob of that agent. The hook form reads the hook input on standard input and prints a deny line or nothing. With `--explain` it prints what the guard decides for one path. See [Context slices for agents](/docs/guides/context-slices/#the-read-guard).
 
+## Report a problem and the usage log
+
+```text
+bowerloom report [--template bug|fidelity-gap|engine-change] [--json]
+bowerloom events [--json]
+bowerloom events summary [--with-notes] [--out <absolute-file>] [--json]
+```
+
+`report` prints a bundle you can read in full: the Bowerloom version, your system, the Claude Code and Codex versions, the newest error code, and the newest 20 lines of the usage log. Then it prints a link that opens a GitHub issue with the bundle filled in. Bowerloom sends nothing. You choose whether to open the link. A home folder path or a token that shows up in the bundle is replaced before it is printed.
+
+Bowerloom keeps a usage log on this computer, at `events/events.jsonl` in its state folder. A line records which scenario ran, whether it finished or was refused, and an error code. It holds no names, paths, or file contents. `events` shows the newest 50 lines. `events summary` counts the last 7 days. `--out` writes the summary to a new file that only you can read, and it never replaces a file: an existing file is refused with `TARGET_EXISTS`. Notes you typed in an after-apply check stay in the log, and join a summary only with `--with-notes`. Set `BOWERLOOM_EVENT_LOG=off` to stop all writing. A log that cannot be written prints one line on stderr and never changes a command's result.
+
 ## Registered folders
 
 ```text
 bowerloom folder add <folder-name> <path> [--approve <revision>] [--json]
-bowerloom folder allow <folder-name> [--approve <revision>] [--json]
+bowerloom folder allow <folder-name> [heading|frontmatter:<key>] [--approve <revision>] [--json]
 bowerloom folder deny <folder-name> [--approve <revision>] [--json]
 bowerloom folder list [--json]
 bowerloom folder remove <folder-name> [--approve <revision>] [--json]
 ```
 
-A registered folder is a folder outside the project, such as a knowledge base, that a slice can select from. The record lives in your store, at `~/.bowerloom/folders/<folder-name>.json`, and names the folder as a path below your home folder. `add`, `list`, and `remove` work from any folder and never look for a project. `allow` and `deny` run inside a project: `allow` shows a plan that prints the project and the absolute folder, then records a grant for that project only, and a slice in a project without a grant is held with `FOLDER_NOT_ALLOWED`. `add`, `allow`, `deny`, and `remove` show a plan first and write only the store. `folder list` reads only and prints `ready`, `missing`, or `refused (<code>)` for each folder; with `--json` it prints the format `bowerloom/folder-list/v1beta1`. Bowerloom reads a registered folder and never writes it. [Context slices for agents](/docs/guides/context-slices/#registered-folders) lists the rules a folder must meet.
+A registered folder is a folder outside the project, such as a knowledge base, that a slice can select from. The record lives in your store, at `~/.bowerloom/folders/<folder-name>.json`, and names the folder as a path below your home folder. `add`, `list`, and `remove` work from any folder and never look for a project. `allow` and `deny` run inside a project: `allow` shows a plan that prints the project and the absolute folder, then records a grant for that project only. The grant also records the summary kind that a slice may copy, `heading` unless you name `frontmatter:<key>`. A slice in a project without a grant, or with another summary kind than the grant records, is held with `FOLDER_NOT_ALLOWED` until you run `allow` again with that kind. A grant made before the kind was recorded has no kind, so it holds every slice, and makes the read guard refuse already installed slices, until you run `allow` again. One grant holds one kind per folder per project, so two slices on one folder that ask for different kinds cannot both be live. A grant file with a kind has the same format name as before, and an older beta.3 build reports `FOLDER_INVALID` for it. `add`, `allow`, `deny`, and `remove` show a plan first and write only the store. `folder list` reads only and prints `ready`, `missing`, or `refused (<code>)` for each folder; with `--json` it prints the format `bowerloom/folder-list/v1beta1`. Bowerloom reads a registered folder and never writes it. [Context slices for agents](/docs/guides/context-slices/#registered-folders) lists the rules a folder must meet.
 
 ## Apply
 
@@ -181,6 +203,8 @@ bowerloom apply [--harness claude|codex|both] [--allow-agent <role>:<hash>]... [
 ```
 
 `--frozen` installs only what `bowerloom.lock.json` records, as `npm ci` does. It refuses if the lock file and `bowerloom.json` disagree. It ignores your store. It fetches what this machine does not hold yet, from the hosts the plan names. Plain apply never fetches. A store skill or prompt fetched from the lock that sets `allowed-tools`, registers hooks, or runs `!` shell lines is held with `ITEM_REVIEW_REQUIRED`, unless the approved plan showed it. Run `bowerloom apply --frozen` again to review it. `--max-github-requests <n>` lets one run make up to n GitHub requests, at most 5000. The default is 1000.
+
+::visual{id="cli-apply"}
 
 A store in a private GitHub repository needs `BOWERLOOM_GITHUB_TOKEN`. Six commands read it: `apply --frozen`, `skills sync`, the sync step of `up`, `use`, `lock update`, and `store migrate`. Each reads it only for a store item that needs the store repository. Then the plan shows a `Credentials:` line that names each repository that gets the token, and its `Network:` line says that store items use your GitHub token. The token goes only to `api.github.com`, for those repositories. Pinned skills are fetched without credentials. A plain `apply` never reads the variable. If the variable is set or removed between the plan and `--approve`, the run refuses `STALE_APPROVAL`. See [Trust and security boundaries](/docs/security/#the-github-token-for-a-private-store).
 
@@ -246,9 +270,59 @@ Links disclose one selected definition between reviewed installed local roots. A
 
 A link grants no execution authority. Changed source, recipient, expiry, or file binding requires inspection and renewed approval. Do not share raw receipts.
 
-<a id="harness"></a>
+## Harness
 
-## Synthetic harness configuration
+These commands adopt the engine files of a folder into one harness, and install it for each engine. [Adopt and install a harness](/docs/guides/adopt-and-install/) walks through them. `bowerloom help harness` prints the same forms. They are not in the short help.
+
+```text
+bowerloom harness status [--dir <absolute-folder>] [--json]
+bowerloom harness adopt [--engine <id>[@<version>]]... [--pick <conflict>=<variant>]... [--rename <conflict>:<variant>=<id>]... [--acknowledge <id>]... [--every-engine guardrails|hooks|mcp]... [--confirm <part/id>]... [--approve <revision>] [--json]
+bowerloom harness install [--engine <id>]... [--reconcile accept-agents|merge|keep-both] [--write-claude-md] [--pi-trust-saved] [--approve <revision>] [--json]
+bowerloom harness accept <line-key> [--json]
+bowerloom harness merge [--approve <revision>] [--json]
+bowerloom harness drift [--check] [--json]
+bowerloom harness remove [--approve <revision>] [--json]
+bowerloom harness export --output <file> [--replace] [--acknowledge <hash>] [--approve <revision>] [--json]
+bowerloom harness import <file> [--link <name>=<folder>]... [--leave <name>]... [--acknowledge <hash>] [--approve <revision>] [--json]
+bowerloom harness recover [--adoption] [--keep <path>]... [--restore-mode <path>]... [--record-mode <path>]... [--approve <revision>] [--json]
+```
+
+Every command takes `--dir <absolute-folder>`. The default is the working folder. A flag that takes a value reads the next word, and `--flag=value` is not accepted.
+
+| Command | What it does |
+| --- | --- |
+| `status` | Reads the folder and the install record, and changes nothing. It reports the harness, the engines, the install, preview engines, saved approvals, and any run that stopped part way. |
+| `adopt` | Reads the engine files of the folder and writes only `.bowerloom`. It changes no engine file. |
+| `install` | Writes the engine files from `.bowerloom`. A rule that an engine carries more weakly than the harness says is refused, and each refused line has a key. |
+| `accept` | Saves your approval of one refused line, named by its key `<part>/<entry>[.<field>]@<engine>:<hash12>`. Install again afterward. |
+| `merge` | Moves the text of `CLAUDE.md` into `.bowerloom/instructions/AGENTS.md`. `CLAUDE.md` does not change until the next install, which makes it the one line `@AGENTS.md`. |
+| `drift` | Lists the files that Bowerloom wrote and that changed since. With `--check` it fails when a file changed, when `CLAUDE.md` does not follow `AGENTS.md`, or when nothing is installed. |
+| `remove` | Puts back every file that install replaced, and deletes the files that install created. |
+| `export` | Writes the harness to one new bundle file, named by `--output`. It replaces a file only with `--replace`. The file holds no secret value that Bowerloom can find and no notes folder path. |
+| `import` | Reads a bundle file and writes it into a folder whose harness is missing or empty. It installs nothing, and the command line keeps no save point for it. A file from another person is data: read the plan first. |
+| `recover` | Finishes or takes back a run that stopped part way. `--keep`, `--restore-mode`, and `--record-mode` settle changed files and modes. `--adoption` settles an adoption or a merge. |
+
+Flags:
+
+- `--json` prints the plan or the result as JSON. A write with `--json` and no `--approve` prints its plan and exits 3. In a terminal without `--json`, a write asks `Apply plan <short revision>? [y/N]`.
+- `--approve <revision>` applies the plan with that revision. `status`, `accept`, and `drift` take no `--approve`.
+- `--engine <id>` names an engine: `claude-code`, `codex`, `opencode`, `pi`, or `deepseek-harness`. `adopt` also takes `@<version>`. Name each engine once.
+- `--pick`, `--rename`, and `--acknowledge` answer the conflicts and the entries that adoption does not read. `--confirm <part/id>` confirms an item that needs it. `--every-engine` takes `guardrails`, `hooks`, or `mcp`, and each part once.
+- `--reconcile`, `--write-claude-md`, and `--pi-trust-saved` settle `AGENTS.md` and `CLAUDE.md`, and one Pi setting, during `install`. `--reconcile merge` is refused with `PORTABLE_MERGE_NOT_BUILT`. To merge, run `harness merge --approve <revision>`, then `harness install` with the default `accept-agents`.
+- `--check` belongs to `drift`.
+- `--output` and `--replace` belong to `export`. `--link <name>=<folder>` and `--leave <name>` belong to `import`, and each repeats. `--acknowledge <hash>` says that you read the paths, tools, and files the plan lists, and export and import take it too. [Share a harness](/docs/guides/share-a-harness/) explains them.
+
+This beta supports Claude Code and Codex. OpenCode, Pi, and DeepSeek Harness are preview engines. An install to one needs `BOWERLOOM_PREVIEW_ENGINES=1`. An install with no `--engine` skips them. Adopt, drift, status, and remove work for all five.
+
+An adoption or a merge that stopped blocks install, remove, and accept until `harness recover --adoption` settles it. A save of the harness that stopped part way in the desktop app blocks install, remove, accept, adopt, and merge until the app finishes it.
+
+Any harness command first moves the install record of an older Bowerloom app to the shared record. The command line and the desktop app share that record. It sits in the private state folder, `$XDG_STATE_HOME/bowerloom` when `XDG_STATE_HOME` is set, else `~/.local/state/bowerloom`.
+
+No harness command runs an engine or a model. [Errors](/docs/reference/errors/#harness-refusals) lists the refusal codes.
+
+### Synthetic forms from 0.7
+
+The 0.7 forms of `harness` all take `--synthetic`. They process selected fixture files and are not the 0.8 path. `bowerloom help advanced` lists them.
 
 ```text
 bowerloom harness import --harness codex|claude --file <absolute-fixture-file> --synthetic
@@ -262,7 +336,7 @@ bowerloom harness recover --state <private-directory> --synthetic --approve <rec
 
 Import and plan read separately reviewed synthetic inputs. Approved projection and removal change the selected fixture. Projection writes the selected files into that fixture configuration. Recovery requires its recorded operation approval.
 
-The --synthetic flag is an assertion. If a file is live or unreviewed, stop. Read [Codex and Claude Code](/docs/harnesses/).
+The `--synthetic` flag is an assertion. It cannot prove that a file is synthetic. If a file is live or unreviewed, stop. Read [Codex and Claude Code](/docs/harnesses/).
 
 <a id="mcp"></a>
 
@@ -309,7 +383,7 @@ bowerloom skills migrate plan|apply --state <earlier-state-folder> [--approve <r
 
 `--global` pins the skill in `~/.bowerloom/skills.json`, your store, and keeps the checked bytes in this machine's skills cache, which is never inside the store. It works from any folder. The store holds up to 256 skills and 4 MiB in `skills.json`. A project holds up to 128 skills and 1 MiB. If the private state folder and the store lie inside one another, the command refuses with `STORE_STATE_NESTED`.
 
-`skills check` reads `.bowerloom/skills.json` and checks every pin offline. It writes nothing. `skills check --global` checks the store `skills.json`. Its JSON format is `bowerloom/skills-manifest-check/v1beta2`, with the new fields `scope` and, on each skill, `source`.
+`skills check` reads `.bowerloom/skills.json` and checks every pin offline. It writes nothing. `skills check --global` checks the store `skills.json`. Its JSON format is `bowerloom/skills-manifest-check/v1beta3`, with the new fields `scope` and, on each skill, `source`.
 
 `skills sync` installs the skills that the project selects into `.bowerloom/managed`, `.claude/skills`, and `.agents/skills`. It installs them for Claude Code and Codex. In a project without `bowerloom.json`, that is every skill in `.bowerloom/skills.json`. In a project with it, that is the skills it lists. It fetches only what this machine lacks. That is a pin that the skills cache does not hold. It is also a lock item that the store cache does not hold. It checks every byte against its pin or the lock first. `--frozen` installs only what `bowerloom.lock.json` records and ignores your store, as `apply --frozen` does. `--max-github-requests <n>` lets one run make up to n GitHub requests, at most 5000. The default is 1000. If a pin still needs fetching, `--offline` refuses before any change. `--team` syncs only that team's skills. A skill whose copy you changed is held and shown with its next step, and the others apply. Sync removes nothing. Ctrl-C stops it between two skills, never inside one.
 

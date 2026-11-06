@@ -1,8 +1,8 @@
 # Bowerloom identity and portable parts
 
-Hanna selected Bowerloom on October 2, 2026. Bowerloom replaces Trellis as the current product name.
+The maintainer selected Bowerloom on October 2, 2026. Bowerloom replaces Trellis as the current product name.
 
-Hanna reports ownership of `bowerloom.ai` and `bowerloom.dev`. The primary identity uses `bowerloom.ai`. This decision does not establish live hosting or DNS.
+The maintainer reports ownership of `bowerloom.ai` and `bowerloom.dev`. The primary identity uses `bowerloom.ai`. This decision does not establish live hosting or DNS.
 
 The hero reads “Grow your abilities with Bowerloom”. The primary action reads “Build with your agent”.
 
@@ -66,7 +66,7 @@ Other harness names fail explicitly. Codex skill discovery and task execution ne
 
 ## Later cutover
 
-Hanna retains the main-merge and publication decisions. The protected preview remains separate from production.
+The maintainer retains the main-merge and publication decisions. The protected preview remains separate from production.
 
 The founder renamed the repositories. Current links and the local Git remote use the new canonical name.
 

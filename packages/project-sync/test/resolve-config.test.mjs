@@ -39,7 +39,7 @@ test('1. legacy mode returns the beta.2 sets: every skills.json entry, every reg
   assert.deepEqual(ids(r.prompts), ['weekly-update']);
   assert.deepEqual(ids(r.teams), ['first-team']);
   assert.deepEqual(r.manifest.skills.map(s => s.id), ['house-style', 'tanstack-db']);
-  assert.deepEqual(r.harnesses, ['claude', 'codex']);
+  assert.deepEqual(r.engines, ['claude-code', 'codex']);
   assert.match(r.projectManifest.sha256, /^[a-f0-9]{64}$/);
   // Legacy mode never reads the store: an unsafe store has no effect.
   fs.mkdirSync(w.store, { mode: 0o777 }); fs.chmodSync(w.store, 0o777);
@@ -179,16 +179,16 @@ test('7 and 8. a refused store throws its STORE_* code in a normal run; a config
   assert.equal(r.store.state, 'not-needed');
 });
 
-test('9 and 10. unselected lists the project definitions the config lacks; the effective manifest holds only the selected skills, sorted, with the config harnesses', async t => {
+test('9 and 10. unselected lists the project definitions the config lacks; the effective manifest holds only the selected skills, sorted, with the config engines', async t => {
   const w = configWorld(t, { folder: true }), npm = npmPackage('zeta-skill');
   localSkill(proj(w), 'house-style'); localSkill(proj(w), 'unused-skill');
   writeManifest(proj(w), [npm.entry, { id: 'house-style', source: { kind: 'local', path: 'skills/house-style' } }, { id: 'unused-skill', source: { kind: 'local', path: 'skills/unused-skill' } }]);
   await projectPrompt(w, 'weekly-update');
   fs.mkdirSync(path.join(w.projectDir, '.bowerloom/teams/first-team'), { recursive: true, mode: 0o755 });
-  writeConfig(w, { harnesses: ['codex'], skills: [{ id: 'house-style', source: 'project' }, { id: 'zeta-skill', source: 'project' }] });
+  writeConfig(w, { engines: ['codex'], skills: [{ id: 'house-style', source: 'project' }, { id: 'zeta-skill', source: 'project' }] });
   const r = resolveProject({ project: w.project(), home: w.home, frozen: false });
   assert.deepEqual(r.unselected, { skills: ['unused-skill'], prompts: ['weekly-update'], teams: ['first-team'] });
-  assert.deepEqual(r.manifest.harnesses, ['codex']); assert.deepEqual(r.harnesses, ['codex']);
+  assert.deepEqual(r.manifest.engines, ['codex']); assert.deepEqual(r.engines, ['codex']);
   assert.deepEqual(r.manifest.skills.map(s => s.id), ['house-style', 'zeta-skill']);
 });
 

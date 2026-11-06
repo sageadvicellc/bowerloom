@@ -17,7 +17,8 @@ const FORWARDED = ['SIGINT', 'SIGTERM', 'SIGHUP'];
 const say = line => process.stderr.write(`run-node-tests: ${line}\n`);
 // Spec 07: no test process sees a GitHub token of this machine. A test that needs one sets its own canary.
 const TOKEN_VARS = ['BOWERLOOM_GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN'];
-const testEnv = () => Object.fromEntries(Object.entries(process.env).filter(([name]) => !TOKEN_VARS.includes(name)));
+// The local usage log is off for every test process. A test of the log sets BOWERLOOM_EVENT_LOG to something else in its own environment.
+const testEnv = () => ({ ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !TOKEN_VARS.includes(name))), BOWERLOOM_EVENT_LOG: 'off' });
 
 /** The limit in seconds, or a refusal: the variable must be a whole number of seconds above zero. */
 function limitSeconds(value) {

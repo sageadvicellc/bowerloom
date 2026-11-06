@@ -5,7 +5,7 @@
  * through the approval wrapper, under the store lock. `list` reads only.
  */
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
-import { discoverProject, privateStateRoot } from '../../../packages/project-context/src/index.js';
+import { discoverProject, isGrantSummary, privateStateRoot } from '../../../packages/project-context/src/index.js';
 import {
   applyFolderAdd, applyFolderAllow, applyFolderDeny, applyFolderRemove, listFolders, planFolderAdd, planFolderAllow, planFolderDeny, planFolderRemove, renderFolderAddReview, renderFolderAllowReview, renderFolderDenyReview, renderFolderRemoveReview,
 } from '../../../packages/project-context/src/index.js';
@@ -16,7 +16,7 @@ import { newCommandJson, plainText } from './human.js';
 import { terminalIo } from './manifest.js';
 
 export const FOLDER_LIST_FORMAT = 'bowerloom/folder-list/v1beta1';
-const USAGE = 'Use bowerloom folder add <folder-name> <path>, bowerloom folder allow <folder-name>, bowerloom folder deny <folder-name>, bowerloom folder list, or bowerloom folder remove <folder-name>, with optional --approve <revision> and --json.';
+const USAGE = 'Use bowerloom folder add <folder-name> <path>, bowerloom folder allow <folder-name> [heading|frontmatter:<key>], bowerloom folder deny <folder-name>, bowerloom folder list, or bowerloom folder remove <folder-name>, with optional --approve <revision> and --json.';
 const usage = (): never => { throw new DefinitionError('USAGE', USAGE); };
 
 /** The flags of a command line, and its words. A word that starts with `-` is no name and no path. */
@@ -62,13 +62,17 @@ export async function runFolderCommand(args: readonly string[], cwd: string, hom
   if (sub === 'allow' || sub === 'deny') {
     // A grant is for the project that runs the command, found from the working folder.
     const { flags, positional } = words(args.slice(2));
-    if (positional.length !== 1) usage();
+    // `folder allow` takes the summary kind the grant records after the name. It is `heading` when left out, the default of a slice.
+    if (positional.length !== 1 && !(sub === 'allow' && positional.length === 2)) usage();
+    const summary = positional[1] ?? 'heading';
+    // The kind is checked before the project is looked for, so a bad kind is a usage error from any folder.
+    if (sub === 'allow' && !isGrantSummary(summary)) usage();
     const name = positional[0]!, controller = new AbortController(), stateRoot = privateStateRoot(env, home), found = discoverProject(cwd, home), project = { dir: found.dir, projectId: found.projectId, birthtimeNs: found.identity.birthtimeNs };
     if (sub === 'allow') {
       const change: PlannedChange<FolderAllowPlan> = {
-        async plan() { return planFolderAllow(home, project, name, stateRoot); },
+        async plan() { return planFolderAllow(home, project, name, stateRoot, summary); },
         revision: plan => plan.revision, review: renderFolderAllowReview,
-        async apply(revision: string) { return applyFolderAllow(home, project, name, revision, controller.signal, stateRoot); },
+        async apply(revision: string) { return applyFolderAllow(home, project, name, revision, controller.signal, stateRoot, summary); },
       };
       return runApprovalCommand(flags, change, io, write);
     }

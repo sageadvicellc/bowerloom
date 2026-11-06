@@ -62,7 +62,7 @@ The method preserves observations, usage history, aliases, reservations, and hel
 
 An uncertain commit causes `COMMIT_UNKNOWN`. Read the current policy before another operation. The library does not retry automatically.
 
-The schema permits an explicit 5 percent reserve. The example retains 25 percent. Hanna authorized 5 percent for this alpha campaign on October 1, 2026.
+The schema permits an explicit 5 percent reserve. The example retains 25 percent. The maintainer authorized 5 percent for this alpha campaign on October 1, 2026.
 
 ## Trusted reconciliation and launcher fencing
 

@@ -3,7 +3,7 @@
 ## 1. Header
 
 - Source: sageadvicellc/bowerloom#80, phase 9 and decision 20. Issue body: https://github.com/sageadvicellc/bowerloom/issues/80. Decision 20: https://github.com/sageadvicellc/bowerloom/issues/80#issuecomment-6333018480. The settled variants and the token: https://github.com/sageadvicellc/bowerloom/issues/80#issuecomment-6333364163.
-- Lane: 2. Hanna calls this a release requirement, not a footnote. Beta.3 does not ship without it.
+- Lane: 2. The maintainer calls this a release requirement, not a footnote. Beta.3 does not ship without it.
 - Branch: `beta3/10-docs-item-sources`.
 - Depends on: specs 01a, 02, and 03 to 09, merged at cc8187e. It also depends on the code track `beta3/10a-sharing-fixes` (section 1.2). The build starts after that track merges into `release/0.7.0-beta.3`.
 - Line numbers below are from commit cc8187e, the head of `release/0.7.0-beta.3` with every beta.3 spec merged. If a line moved, find the place by its text.
@@ -28,7 +28,7 @@ A parallel code track builds three fixes. The docs describe them. Each fact belo
 
 ## 2. Problem
 
-Hanna called the idea "an embedded nuance". A person must understand four things before they share a project that uses the store. They must know where each item's bytes come from. They must know what the lock file records. They must know what a teammate needs. They must know the result for a store with no remote.
+The maintainer called the idea "an embedded nuance". A person must understand four things before they share a project that uses the store. They must know where each item's bytes come from. They must know what the lock file records. They must know what a teammate needs. They must know the result for a store with no remote.
 
 The code answers each question, but only a page can explain it. Without the page, a person finds the answer by hitting a refusal. The page also gives a reader one place to learn the whole model: the store, the config, the lock, the caches, and the commands that connect them.
 
@@ -70,7 +70,7 @@ Writing rules for the whole page. They are the repository's simple-English rules
 5. Define each term at first use, in the sentence that introduces it.
 6. Use none of the words in the list of test D10. Say what Bowerloom does and what the reader does.
 7. No semicolons. No dashes as punctuation.
-8. Do not name Fearless or Advanced Metrics (repository rule 9).
+8. Do not name a client of the practice (repository rule 9).
 9. No private paths. The build throws on `/Users/` or `file://` (`apps/docs/src/lib/content.mjs:84`). Use `~` or a placeholder.
 10. Use `bowerloom` commands exactly as they print.
 11. A string from the code that holds a modal verb or a semicolon goes in inline code or a fence. Examples: the shared-project note `could not read <x>; treating this project as shared`, and the plan tag `(not on this machine yet; Bowerloom shows what it can do after the fetch)`.
@@ -223,7 +223,7 @@ Required facts:
 9. If `bowerloom.json` lists the team, `bowerloom up --team <name>` also installs on a fresh clone, through its sync step. It is not strict. If the machine's store defines the same id, plain `apply`, `skills sync`, and `up` use the live store. A differing lock only produces a note (`resolve.ts:200-210`, `:227`). That holds for a teammate's own store too: their store wins over your lock. Use `bowerloom apply --frozen` to get exactly the locked bytes.
 10. The refusal for a missing lock: `LOCK_MISSING`, with the next step. Link to the refusals section.
 11. The fetched store items are kept in the store cache. A second run needs no network. After `bowerloom cache prune`, plain `apply` holds such an item with `SKILLS_OFFLINE`. Its next step is `Run bowerloom apply --frozen, or bowerloom skills sync.` (`plan.ts:521`, `plan.ts:573-576`, `apply-project.ts:230`).
-12. A slice whose root is a registered folder needs two steps on each machine. First `bowerloom folder add <folder-name> <path>`, with the same name. Then `bowerloom folder allow <folder-name>`, run in the project. Without the record, apply holds the slice with `SLICE_ROOT_MISSING`. Without the grant, it holds it with `FOLDER_NOT_ALLOWED` (`packages/project-context/src/registered-folders.ts:599-604`, `packages/project-sync/src/slices.ts:100-102`). The folder must be yours, below your home folder, outside iCloud folders, and closed to other users.
+12. A slice whose root is a registered folder needs two steps on each machine. First `bowerloom folder add <folder-name> <path>`, with the same name. Then `bowerloom folder allow <folder-name>`, run in the project, with `frontmatter:<key>` after the name when the slice uses that summary kind. Without the record, apply holds the slice with `SLICE_ROOT_MISSING`. Without the grant, or with a grant for another summary kind, it holds it with `FOLDER_NOT_ALLOWED` (`resolveRoot` and `resolveRegisteredRootWith` in `packages/project-context/src/registered-folders.ts`, and `holdWords` in `packages/project-sync/src/slices.ts`). The folder must be yours, below your home folder, outside iCloud folders, and closed to other users.
 13. An agent copy with the read guard names your machine's project folder. If the project commits `.claude/agents`, apply on a teammate's machine holds that agent with `AGENT_TARGET_OCCUPIED`. Keep `.claude/agents` out of git. (This follows decision 2 of #86. Variant B is the default.)
 
 #### Section 7. When the store has no remote
@@ -761,7 +761,7 @@ This spec is the docs track. Sections 3.1 to 3.8 list every change.
 - D8. Every format string in `packages/*/src` and `apps/cli/src` that is not in `beta2-formats.json` appears in the `## 0.7.0-beta.3` section of `releases.md`.
 - D9. The `private-store` section of the page holds these phrases: `api.github.com`, `never stores`, `never prints`, `refuses redirects`, `Credentials:`, `--approve`. It names each of `apply --frozen`, `skills sync`, `use`, `lock update`, and `store migrate`, and holds the phrase "sync step of `up`".
 - D10. Outside fenced blocks, inline code spans, and the lines between the `item-source-refusals` anchor and the next anchor, the page has no semicolon. It uses none of the words `can`, `could`, `may`, `might`, `should`, `would` (whole words, any case).
-- D11. The page does not contain `Fearless` or `Advanced Metrics`.
+- D11. The page names no client of the practice. The test holds the sha256 of each lowercased client name, never the name itself.
 - D12. The line of `cli.md` that starts "These commands work in a project folder." holds `bowerloom.json`.
 - D13. `add-skills.md` holds "without credentials" and "/docs/guides/item-sources/#private-store", and links `/docs/guides/item-sources/` in its `## Share a project` section. It no longer holds "Private registries and private repositories are not supported in this beta." or "Private registries and private repositories are not supported."
 - D14. `guides/index.md` links to `/docs/guides/item-sources/`.

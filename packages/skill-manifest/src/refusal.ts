@@ -62,6 +62,10 @@ export function githubRequestFailed(status: number): DefinitionError {
   const shown = Number.isInteger(status) && status >= 100 && status <= 599 ? status : 0;
   const error = new DefinitionError('GITHUB_REQUEST_FAILED', `${MESSAGES.GITHUB_REQUEST_FAILED} HTTP status ${shown}.`); own.add(error); return error;
 }
+/** MANIFEST_INVALID for an engine list that is wrong, with the sentence that says which id (engineListProblem). */
+export function engineListRefusal(problem: string): DefinitionError {
+  const error = new DefinitionError('MANIFEST_INVALID', `${MESSAGES.MANIFEST_INVALID} ${problem}`); own.add(error); return error;
+}
 /** Refuses with the scope-aware MANIFEST_LIMIT unless `ok`. */
 export function requireLimit(ok: unknown, limits: { readonly skills: number }): asserts ok { if (!ok) throw limitRefusal(limits); }
 export function refuse(code: ManifestRefusalCode): never { throw manifestRefusal(code); }

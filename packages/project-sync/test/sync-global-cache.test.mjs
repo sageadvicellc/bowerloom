@@ -1,4 +1,4 @@
-// One skills cache for every project on the machine (Hanna, global skill cache, phase 1). The cache sits in the private
+// One skills cache for every project on the machine (the maintainer, global skill cache, phase 1). The cache sits in the private
 // state root, is keyed on content and not on the skills.json entry id, and is filled under one cache lock. Old
 // per-project caches are read, never moved or changed.
 import test from '../../../dist/tests/support/lock-slot-retry.js';

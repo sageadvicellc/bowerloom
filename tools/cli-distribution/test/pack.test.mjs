@@ -11,7 +11,7 @@ import {collect,stage,pack,imports,lockedDependencies,verifyBundleFiles,flatDepe
 import {tarBytes,putInCache,integrityOf,cachePath,syntheticClosure,lockOf,registryUrl,entryFor,manifestEntry} from './bundle-fixture.mjs';
 import childProcess from 'node:child_process';
 import {statSync} from 'node:fs';
-const TAGLINE='Set up the skills, prompts, and teams your agents use, and approve every change.';
+const TAGLINE='Define your skills, agents, tools, rules, and context once. Bowerloom installs them into Claude Code and Codex.';
 const repo=resolve(dirname(fileURLToPath(import.meta.url)),'../../..');
 function area(t) {const path=realpathSync(mkdtempSync(join(tmpdir(),'bowerloom-pack-proof-')));chmodSync(path,0o700);t.after(()=>rmSync(path,{recursive:true,force:true}));return path;}
 function fixture(t) {
@@ -215,6 +215,62 @@ test('internal routine and skills manifests are exact exceptions and present man
  }finally{Object.assign(fs,original);syncBuiltinESMExports();}
 });
 
+// Bowerloom 0.8, step 2: skill-manifest takes its engine ids from the harness definition core, so the core is a runtime
+// module of the CLI. It has no package.json of its own.
+test('0.8 harness-definition is an allowlisted runtime module with an optional manifest',()=>{
+ assert.ok(MODULES.includes('harness-definition'));
+ const record=collect({repoDir:repo}).record;
+ assert.equal(record.sourceManifests.some(m=>m.path==='packages/harness-definition/package.json'),false);
+});
+
+// Bowerloom 0.8, step 3: the locked-in writers of project-sync take their translations from the fidelity package, so
+// fidelity is a runtime module of the CLI too. It has no package.json of its own.
+test('0.8 fidelity is an allowlisted runtime module with an optional manifest',()=>{
+ assert.ok(MODULES.includes('fidelity'));
+ const record=collect({repoDir:repo}).record;
+ assert.equal(record.sourceManifests.some(m=>m.path==='packages/fidelity/package.json'),false);
+ assert.ok(record.sourceFiles.some(f=>f.path==='packages/fidelity/src/locked-hooks.ts'));
+});
+
+// Bowerloom 0.8, step 5: `bowerloom harness adopt` and `harness merge` run the adoption package, so adoption is a runtime
+// module of the CLI too. It has no package.json of its own. Every package the CLI imports, at any depth, stays inside the allowlist.
+test('0.8 adoption is an allowlisted runtime module with an optional manifest',()=>{
+ assert.ok(MODULES.includes('adoption'));
+ const record=collect({repoDir:repo}).record;
+ assert.equal(record.sourceManifests.some(m=>m.path==='packages/adoption/package.json'),false);
+ for(const file of ['packages/adoption/src/merge.ts','apps/cli/src/harness-def.ts'])assert.ok(record.sourceFiles.some(f=>f.path===file),file);
+ const reached=new Set(record.sourceFiles.map(f=>/^packages\/([^/]+)\//.exec(f.path)?.[1]).filter(Boolean));
+ for(const name of reached)assert.ok(MODULES.includes(name),name);
+ for(const name of ['project-sync','harness-definition','fidelity','adoption'])assert.ok(reached.has(name),name);
+});
+
+// Bowerloom 0.8: `bowerloom report` and `bowerloom events` run the diagnostics package, and every command that records a usage event
+// imports it, so it is a runtime module with no manifest of its own.
+test('0.8 diagnostics is an allowlisted runtime module with an optional manifest',()=>{
+ assert.ok(MODULES.includes('diagnostics'));
+ const record=collect({repoDir:repo}).record;
+ assert.equal(record.sourceManifests.some(m=>m.path==='packages/diagnostics/package.json'),false);
+ for(const file of ['packages/diagnostics/src/report.ts','apps/cli/src/diagnostics.ts','apps/cli/src/events.ts'])assert.ok(record.sourceFiles.some(f=>f.path===file),file);
+});
+
+// Bowerloom 0.8.0-beta.1: `bowerloom harness export` and `harness import` run the harness-bundle package, and project-sync re-exports its encoder, so it is a
+// runtime module of the CLI with no manifest of its own. The packed CLI reaches it through harness-def, and every package it reaches stays inside the allowlist.
+test('0.8 harness-bundle is an allowlisted runtime module that the packed CLI imports',()=>{
+ assert.ok(MODULES.includes('harness-bundle'));
+ assert.ok(Object.isFrozen(MODULES));assert.equal(new Set(MODULES).size,MODULES.length);
+ const record=collect({repoDir:repo}).record;
+ assert.equal(record.sourceManifests.some(m=>m.path==='packages/harness-bundle/package.json'),false);
+ for(const file of ['packages/harness-bundle/src/index.ts','packages/harness-bundle/src/codec.ts','packages/harness-bundle/src/file-io.ts','apps/cli/src/harness-bundle.ts','apps/cli/src/harness-def.ts'])assert.ok(record.sourceFiles.some(f=>f.path===file),file);
+ assert.equal(record.sourceFiles.some(f=>/^packages\/harness-bundle\/(test|README)/.test(f.path)),false,'no test and no README of the package travels');
+ const reached=new Set(record.sourceFiles.map(f=>/^packages\/([^/]+)\//.exec(f.path)?.[1]).filter(Boolean));
+ for(const name of reached)assert.ok(MODULES.includes(name),name);
+ assert.ok(reached.has('harness-bundle'));
+ // The CLI source itself imports the package: this is what makes it a runtime module of the packed CLI, not only a build input.
+ const cli=fs.readFileSync(join(repo,'apps/cli/src/harness-bundle.ts'),'utf8');
+ assert.match(cli,/packages\/harness-bundle\/src\/index\.js/);
+ assert.match(fs.readFileSync(join(repo,'apps/cli/src/harness-def.ts'),'utf8'),/from '\.\/harness-bundle\.js'/);
+});
+
 // Beta 0.7.0 Day 0: the project-layer packages are runtime modules with optional internal manifests.
 test('beta 0.7.0 project packages are allowlisted modules whose manifests are optional but validated when present',()=>{
  const added=['project-context','project-config','project-authoring','skill-manifest','project-sync','context-slices'];
@@ -249,7 +305,7 @@ test('routine packaging missing compiled/source loader cannot become a partial a
 test('skills CLI reaches exact source/cache/manager closure with locked tar runtime and no proof material',()=>{
  const result=collect({repoDir:repo});
  for(const path of ['dist/apps/cli/src/skills.js','dist/packages/skill-sources/src/npm.js','dist/packages/skill-sources/src/cache.js','dist/packages/skill-sources/src/validation.js','dist/packages/managed-skills/src/observed.js','dist/packages/managed-skills/src/transaction.js']){assert.ok(result.files.has(path),path);assert.ok(result.record.sourceFiles.some(row=>row.path===path.replace(/^dist\//,'').replace(/\.js$/,'.ts')),path);}
- assert.equal(result.manifest.dependencies.tar,'7.5.20');const lock=JSON.parse(result.files.get('npm-shrinkwrap.json'));assert.equal(lock.packages['node_modules/tar'].version,'7.5.20');
+ assert.equal(result.manifest.dependencies.tar,'7.5.22');const lock=JSON.parse(result.files.get('npm-shrinkwrap.json'));assert.equal(lock.packages['node_modules/tar'].version,'7.5.22');
  for(const path of result.files.keys())assert.ok(!/(?:^|\/)(?:work|test|tests|fixtures)(?:\/)|\.bowerloom-skills|owner\.lock/.test(path),path);
 });
 test('skills collection refuses missing reachable source or compiled modules',()=>{
@@ -275,7 +331,7 @@ test('an unreleased npm-beta-stream record packs as a public release candidate w
  const candidate=collect({repoDir:root,releaseCandidate:true}),manifest=JSON.parse(candidate.files.get('package.json'));
  assert.deepEqual(manifest,candidate.manifest);
  assert.equal(manifest.private,false);assert.equal(manifest.version,pkg.version);assert.equal(manifest.version,r.version);
- assert.equal(manifest.description,'An agent environment manager. Set up the skills, prompts, and teams your agents use, and approve every change.');
+ assert.equal(manifest.description,TAGLINE);
  assert.deepEqual(manifest.repository,{type:'git',url:'git+'+r.urls.repository+'.git'});
  assert.equal(manifest.homepage,r.urls.site);
  assert.deepEqual(manifest.bugs,{url:r.urls.repository+'/issues'});
@@ -722,9 +778,11 @@ test('collect with a bundle names the first bundled license that fails, and with
  assert.throws(()=>collect({repoDir:root,bundle:true}),/^Error: Bundled license not allowed: ajv GPL-3.0-only$/);
  assert.doesNotThrow(()=>collect({repoDir:root}));
 });
-test('the release candidate description ends with the approved tagline',t=>{
+test('the release candidate description is the approved hero sentence',t=>{
  const {root}=betaStreamRecord(t,'unreleased');
- assert.ok(collect({repoDir:root,releaseCandidate:true}).manifest.description.endsWith(TAGLINE));
+ assert.equal(collect({repoDir:root,releaseCandidate:true}).manifest.description,TAGLINE);
+ // The landing hero, the social preview record, and the package description say one sentence.
+ assert.equal(JSON.parse(readFileSync(join(repo,'release/social-preview.json'),'utf8')).description,TAGLINE);
 });
 
 // Offline proofs: pack needs the cache, the install does not.

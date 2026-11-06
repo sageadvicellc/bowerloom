@@ -9,6 +9,7 @@ import { readAcquiredSkillCache } from '../../skill-sources/src/cache.js';
 import { projectionFor } from '../../portable/src/harness-projection.js';
 import type { AcquiredSkillClosure } from '../../skill-sources/src/cache.js';
 import type { Identity, FilePin, Surface, Material, ObservedSkillRequest, PlanCore, ObservedSkillPlan, ObservedSkillReceipt, SkillInspection, UpToDate } from './observed-types.js';
+import type { OldEngineId } from '../../skill-manifest/src/engine.js';
 /** A fixed code. Only MANAGED_SKILL_LOCK_SLOT_COLLISION also carries a value, the local port, which its message names. */
 export class ManagedSkillError extends Error { constructor(readonly code: string, readonly port?: number) { super(port === undefined ? code : `${code} (local port ${port})`); this.name = 'ManagedSkillError'; } }
 export const LIMITS = Object.freeze({ bytes: 32 * 1024 * 1024, file: 65536, record: 8 * 1024 * 1024, names: 1024, history: 64, duration: 30000 });
@@ -120,7 +121,7 @@ export function surface(kind: Surface['kind'], p: string, live: () => void = () 
 // Renames change ctime. Ownership still requires the same inode, birthtime, bytes and modes.
 export function stablePins(pins: FilePin[] | null): unknown { return pins?.map(({ ctimeNs: _c, ...pin }) => pin) ?? null; }
 export function matches(actual: Surface[], wanted: Surface[]): boolean { return same(actual.map(s => ({ ...s, pins: stablePins(s.pins) })), wanted.map(s => ({ ...s, pins: stablePins(s.pins) }))); }
-export function locate(project: string, closure: AcquiredSkillClosure, harness: 'codex' | 'claude'): { kind: Surface['kind']; path: string }[] {
+export function locate(project: string, closure: AcquiredSkillClosure, harness: OldEngineId): { kind: Surface['kind']; path: string }[] {
   const skill = closure.receipt.skill; check(/^[a-z0-9][a-z0-9-]{0,63}$/.test(skill.id) && /^[a-z0-9][a-z0-9-]{0,63}$/.test(skill.name));
   return [{ kind: 'canonical', path: join(project, '.bowerloom-skills/skills', skill.id) }, { kind: 'projection', path: join(project, projectionFor(harness)!.skillRoot, skill.name) }, { kind: 'catalog', path: join(project, '.bowerloom-skills/catalog.json') }];
 }

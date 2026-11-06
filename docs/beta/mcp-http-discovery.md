@@ -53,4 +53,4 @@ The redirect destination receives no request.
 
 No external endpoint, customer record, or real employee account is part of this proof.
 Both harness boundaries, production stdio containment, and denial of alternate native routes remain open.
-Only Hanna merges main or approves a public release.
+Only the maintainer merges main or approves a public release.

@@ -8,10 +8,30 @@ order: 27
 Release notes describe user-visible changes by version. [Current support](/docs/status/) describes supported tasks and limits.
 
 <!-- release:status:start -->
-Open beta · 0.7.0-beta.3
+Open beta · 0.8.0-beta.1
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
 <!-- release:status:end -->
+
+## 0.8.0-beta.1
+
+This release brings one setup for two engines. You keep one harness definition in a `.bowerloom` folder, and Bowerloom writes the files of Claude Code and Codex from it.
+
+- `bowerloom harness adopt` reads the Claude Code and Codex files of a project and writes only `.bowerloom`.
+- `bowerloom harness install` writes the engine files from `.bowerloom`, after a preview. Bowerloom writes nothing until you approve the exact plan.
+- `bowerloom harness drift` lists the files that Bowerloom wrote and that changed since. `harness drift --check` fails if a file changed.
+- `bowerloom harness remove` puts back every file that install replaced, and deletes the files that install created.
+- The preview reports each part of a harness as `exact`, `translated`, `weakened`, or `absent`, per engine. A weaker rule needs your approval, line by line.
+- `bowerloom report` makes a diagnostic bundle that you can read before you open an issue. `bowerloom events` shows the newest events of the local event log.
+- The event log lives on your computer and makes no network calls.
+- Beta.1 supports Claude Code and Codex. OpenCode, Pi, and DeepSeek Harness are preview engines. They install only with `BOWERLOOM_PREVIEW_ENGINES=1`.
+- Install writes a Codex permission profile for the path rules and sandbox rules of a harness. [Codex and Claude Code](/docs/harnesses/#the-codex-permission-profile) explains it.
+- The desktop app is a main part of this release, next to the command line, and it is a beta. It has the Builder, the save step, Save points, Go back, and Set aside. Apple did not sign or notarize it, and each download has a SHA-256 hash that you can check before you open it. [Desktop app (beta)](/docs/app/) gives the steps to open it.
+- Notes and the Notes keeper kit let agents read a folder of notes, and add a ready-made agent that looks after it. [Notes and the Notes keeper](/docs/guides/notes/) explains them.
+- Export and Import move a harness in one file, in the app and with `bowerloom harness export` and `bowerloom harness import`. The file holds no secret value that Bowerloom can find and no notes folder path. Import writes only into a folder whose harness is missing or empty. [Share a harness](/docs/guides/share-a-harness/) explains them.
+- The Overview in the app shows every place Bowerloom found in one read-only graph. [Desktop app (beta)](/docs/app/#see-everything-in-one-graph) describes it.
+- The npm package is not published yet. The install command arrives when the beta publishes.
+- Two steps of the release check are manual. They need a person, because a script cannot run them. Step 1.1 of the first journey is the install from the terminal. Step 5.6 of the notes journey asks the Notes keeper to add a source and write a report, and it needs a live engine and model.
 
 ## 0.7.0-beta.3
 
@@ -65,7 +85,7 @@ This release adds a store for items that you share across projects, a lock file 
 - An agent whose copy names a guarded slice gets the read guard, `bowerloom context guard`, as a `PreToolUse` hook. It checks Read, Grep, and Glob. It does not check shell, MCP, or LSP tools, nested agents, or claude -p runs. The copy names this machine's project folder.
 - `bowerloom context measure` compares each agent's context at start with a full load of the knowledge base. Bytes are exact. Tokens are an estimate.
 - `bowerloom context show` previews a slice.
-- `bowerloom folder add` registers a folder outside the project for slices. A slice names it with `root: { registered: <folder-name> }`, and `slice create --registered` writes that. `folder list` and `folder remove` list and remove the records. Bowerloom reads a registered folder and never writes it. A registered folder is shared with a project only after `bowerloom folder allow <name>` runs in it. `folder deny` takes the grant back.
+- `bowerloom folder add` registers a folder outside the project for slices. A slice names it with `root: { registered: <folder-name> }`, and `slice create --registered` writes that. `folder list` and `folder remove` list and remove the records. Bowerloom reads a registered folder and never writes it. A registered folder is shared with a project only after `bowerloom folder allow <name>` runs in it. The grant also records the summary kind, `heading` or `frontmatter:<key>`. A slice that asks for another kind is held with `FOLDER_NOT_ALLOWED` until you run `folder allow` again with that kind. A grant made before the kind was recorded counts as no grant, so run `folder allow <name>` again in that project. `folder deny` takes the grant back.
 - Ids that start with `slice-` are reserved for new skills and prompts.
 - In a project with `bowerloom.json`, a context slice stays a project item. `bowerloom.json`, the store, and the lock never hold it.
 - `apply` copies the agents of a team, first-team included, to `.claude/agents` for Claude Code.
@@ -89,6 +109,7 @@ This release adds a store for items that you share across projects, a lock file 
 - Plans and results of adopt and migrate: `bowerloom/team-adopt-plan/v1beta1`, `bowerloom/team-adopt-result/v1beta1`, `bowerloom/store-migrate-plan/v1beta1`, and `bowerloom/store-migrate-result/v1beta1`.
 - Plans and results of clean and prune: `bowerloom/receipt-clean-plan/v1beta1`, `bowerloom/receipt-clean-result/v1beta1`, `bowerloom/cache-prune-plan/v1beta1`, and `bowerloom/cache-prune-result/v1beta1`.
 - Plans of registered folders: `bowerloom/folder-add-plan/v1beta1`, `bowerloom/folder-allow-plan/v1beta1`, `bowerloom/folder-deny-plan/v1beta1`, and `bowerloom/folder-remove-plan/v1beta1`.
+- A grant file of `bowerloom/store-folder-grant/v1beta1` holds a `summary` key, and `bowerloom/folder-allow-plan/v1beta1` holds a `summary` field. A grant file without `summary` counts as no grant.
 - Scripts that read `format` must accept the new names.
 - A project that holds slices cannot be read by a 0.7.0-beta.2 CLI.
 - A project that holds agent catalogs cannot be read by a 0.7.0-beta.2 CLI. The old CLI refuses it.
@@ -97,6 +118,11 @@ This release adds a store for items that you share across projects, a lock file 
 
 - The read guard needs Claude Code 2.1.295 or later. Before 2.1.295, a guard that cannot start, crashes, or runs longer than 10 seconds lets the call through. It runs only in a folder that you trusted, so an untrusted folder skips it.
 - Codex gets neither agents nor context slices in this beta.
+- One folder grant holds one summary kind per folder per project. Two slices on one folder with different kinds cannot both be live, and `folder allow` for one kind holds the slices of the other.
+- The read guard checks that a grant with a kind exists, not which kind. A grant made before the kind was recorded makes the guard refuse already installed slices until you run `folder allow` again.
+- Narrowing a grant deletes no text that `apply` already copied. The next `apply` holds the slice.
+- The kind grant does not cover a `where` filter, which can confirm guessed frontmatter values one at a time.
+- A grant file with a kind keeps the format name `bowerloom/store-folder-grant/v1beta1`, and an older beta.3 build reports `FOLDER_INVALID` for it.
 - `bowerloom revise` refuses while `.bowerloom/teams/first-team/agents` exists. Move the folder out, revise, then move it back.
 - The store must be on github.com in this beta.
 - A store team projects no agents. Moving a team with agents to the store stops the projection of its agents.

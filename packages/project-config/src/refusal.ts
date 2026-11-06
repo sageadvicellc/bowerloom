@@ -65,7 +65,10 @@ const KIND_ID = /^(?:skill|prompt|team) [a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** The refusal for `code`. `message` replaces the fixed one only for CONFIG_DUPLICATE_ID, which names the item. */
 export function configRefusal(code: ConfigRefusalCode, message?: string): DefinitionError {
   if (!Object.hasOwn(MESSAGES, code)) throw new TypeError('configRefusal takes a listed code only.');
-  const error = new DefinitionError(code, code === 'CONFIG_DUPLICATE_ID' && message !== undefined ? message : MESSAGES[code]); own.add(error); return error;
+  const error = new DefinitionError(code, code === 'CONFIG_DUPLICATE_ID' && message !== undefined ? message : code === 'CONFIG_INVALID' && message !== undefined ? `${MESSAGES[code]} ${message}` : MESSAGES[code]); own.add(error);
+  // The sentence a CONFIG_INVALID adds (which engine id is wrong) travels with the error, so a reader can pass it on.
+  if (code === 'CONFIG_INVALID' && message !== undefined) Object.defineProperty(error, 'detail', { value: message, enumerable: false });
+  return error;
 }
 /**
  * Second review M2: a refusal that a shared state caused, when that state is only unknown, says so: "Bowerloom could not

@@ -67,7 +67,7 @@ test('apply: exit 3 shows the plan and the AGENTS.md pointer and writes nothing;
   assert.ok(shown.stdout.endsWith(`Approval required. Run the same command again with --approve ${revision}\n`), shown.stdout);
   assert.equal(tree(p.home), before);
   const json = run(p.dir, ['apply', '--json'], p.deny); assert.equal(json.status, 3);
-  const body = JSON.parse(json.stdout); assert.equal(body.revision, revision); assert.equal(body.plan.format, 'bowerloom/project-apply-plan/v1beta2'); assert.match(body.plan.pointer, /AGENTS\.md and CLAUDE\.md/);
+  const body = JSON.parse(json.stdout); assert.equal(body.revision, revision); assert.equal(body.plan.format, 'bowerloom/project-apply-plan/v1beta3'); assert.match(body.plan.pointer, /AGENTS\.md and CLAUDE\.md/);
   const applied = run(p.dir, ['apply', '--approve', revision], p.deny);
   assert.equal(applied.status, 0, applied.stderr); if (OUTPUT_DIR) writeFileSync(join(OUTPUT_DIR, 'apply-exit0.txt'), applied.stdout);
   assert.match(applied.stdout, new RegExp(`^Applied plan ${revision}\\.$`, 'm'));
@@ -117,14 +117,14 @@ test('apply refusals: a collision, an uncached pin, and usage errors; nothing is
 
 // Spec 01a, section 10.8: the exact words of the apply review for agents.
 const agentItem = (id: string, extra: Partial<AgentItem>): AgentItem => ({
-  id, team: 'first-team', itemId: `agent_${id}`, state: 'new', action: 'install', harnesses: ['claude'],
+  id, team: 'first-team', itemId: `agent_${id}`, state: 'new', action: 'install', engines: ['claude-code'],
   expected: { files: [], surfaces: [{ id: 'agent-claude', path: `.claude/agents/${id}.md` }, { id: 'catalog', path: `.bowerloom/managed/catalog/agent_${id}.json` }], source: { kind: 'agent', path: `teams/first-team/agents/${id}.md`, guard: null } },
   before: [], previousReceiptRevision: null, history: 0, hold: null, notices: [], newNotices: [], installed: null, sourceSha256: null, builtin: false, userCopy: false, capabilities: null, enforcement: [],
   context: { slices: [], guard: null, guardRoots: [], unknown: [], beyondPreloadLimit: [], plainSkills: [], heldNeverInstalled: [], heldAfterInstalled: [], omitClaudeMd: false, beyondPreloadPositions: [], tools: null, mcpServers: false }, ...extra,
 });
-const planOf = (agents: AgentItem[], harnesses: ('claude' | 'codex')[], extra: Partial<ApplyPlan> = {}): ApplyPlan => ({
-  format: 'bowerloom/project-apply-plan/v1beta2', harnesses, team: null, skills: null, prompts: [], slices: [], agents, codexSlicesSkipped: false, unregisteredSlices: [], agentsMayBeTracked: false, codexAgentsSkipped: false, actionable: true,
-  pointer: applyPointer(harnesses), ...extra,
+const planOf = (agents: AgentItem[], engines: ('claude-code' | 'codex')[], extra: Partial<ApplyPlan> = {}): ApplyPlan => ({
+  format: 'bowerloom/project-apply-plan/v1beta3', engines, team: null, skills: null, prompts: [], slices: [], agents, codexSlicesSkipped: false, unregisteredSlices: [], agentsMayBeTracked: false, codexAgentsSkipped: false, actionable: true,
+  pointer: applyPointer(engines), ...extra,
 } as unknown as ApplyPlan);
 
 test('apply review: the agent lines, warning, notice and Codex line are exact', () => {
@@ -136,7 +136,7 @@ test('apply review: the agent lines, warning, notice and Codex line are exact', 
     agentItem('writer', { state: 'adopt' }),
     agentItem('archive', { team: null, state: 'orphaned', action: 'none', expected: { files: [], surfaces: [], source: null } }),
   ];
-  const text = renderApplyReview(planOf(agents, ['claude', 'codex'], { codexAgentsSkipped: true })).split('\n');
+  const text = renderApplyReview(planOf(agents, ['claude-code', 'codex'], { codexAgentsSkipped: true })).split('\n');
   const head = text.slice(0, text.findIndex(l => l.startsWith('Network:')));
   assert.deepEqual(head, [
     'Apply skills, prompts, and agents for Claude Code and Codex, and context slices for Claude Code',
@@ -155,16 +155,16 @@ test('apply review: the agent lines, warning, notice and Codex line are exact', 
 });
 
 test('apply review: title, empty plan and pointer for each harness list', () => {
-  const claude = renderApplyReview(planOf([], ['claude'], { team: 'desk', actionable: false })).split('\n');
+  const claude = renderApplyReview(planOf([], ['claude-code'], { team: 'desk', actionable: false })).split('\n');
   assert.equal(claude[0], 'Apply skills, prompts, agents, and context slices for Claude Code, team desk');
   assert.equal(claude[1], '  Nothing in .bowerloom/skills.json, .bowerloom/prompts, .bowerloom/teams/*/agents, or .bowerloom/slices to apply yet.');
   const codex = renderApplyReview(planOf([], ['codex'], { actionable: false })).split('\n');
   assert.equal(codex[0], 'Apply skills and prompts for Codex'); assert.equal(codex[1], '  Nothing in .bowerloom/skills.json or .bowerloom/prompts to apply yet.');
   assert.ok(!codex.some(l => l.startsWith('Codex agents')));
-  const both = renderApplyReview(planOf([], ['claude', 'codex'], { actionable: false })).split('\n');
+  const both = renderApplyReview(planOf([], ['claude-code', 'codex'], { actionable: false })).split('\n');
   assert.equal(both[0], 'Apply skills, prompts, and agents for Claude Code and Codex, and context slices for Claude Code');
-  assert.equal(applyPointer(['claude']), 'Bowerloom never edits AGENTS.md or CLAUDE.md. To point Claude Code at these copies, add a line like this to CLAUDE.md yourself:\n  Project skills are in .claude/skills. Prompts are Claude Code commands in .claude/commands. Agents are in .claude/agents. Context slices are skills named slice-<name> in .claude/skills.');
-  assert.equal(applyPointer(['claude', 'codex']), 'Bowerloom never edits AGENTS.md or CLAUDE.md. To point your agents at these copies, add a line like this to AGENTS.md and CLAUDE.md yourself:\n  Project skills are in .claude/skills and .agents/skills. Prompts are Claude Code commands in .claude/commands, and Codex skills named prompt-<name>. Agents are in .claude/agents. Context slices are skills named slice-<name> in .claude/skills.');
+  assert.equal(applyPointer(['claude-code']), 'Bowerloom never edits AGENTS.md or CLAUDE.md. To point Claude Code at these copies, add a line like this to CLAUDE.md yourself:\n  Project skills are in .claude/skills. Prompts are Claude Code commands in .claude/commands. Agents are in .claude/agents. Context slices are skills named slice-<name> in .claude/skills.');
+  assert.equal(applyPointer(['claude-code', 'codex']), 'Bowerloom never edits AGENTS.md or CLAUDE.md. To point your agents at these copies, add a line like this to AGENTS.md and CLAUDE.md yourself:\n  Project skills are in .claude/skills and .agents/skills. Prompts are Claude Code commands in .claude/commands, and Codex skills named prompt-<name>. Agents are in .claude/agents. Context slices are skills named slice-<name> in .claude/skills.');
   assert.equal(applyPointer(['codex']), 'Bowerloom never edits AGENTS.md or CLAUDE.md. To point Codex at these copies, add a line like this to AGENTS.md yourself:\n  Project skills are in .agents/skills. Prompts are Codex skills named prompt-<name>.');
 });
 

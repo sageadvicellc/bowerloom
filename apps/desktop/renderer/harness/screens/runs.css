@@ -1,0 +1,9 @@
+/* The list of runs (S9). Every rule starts at [data-home]. The rows are the harness list's own (.hx-row); these rules add the group around the runs of one instruction. */
+[data-home] .hr-list { gap: var(--hm-space-3); }
+[data-home] .hr-group { list-style: none; display: flex; flex-direction: column; gap: var(--hm-space-3); box-sizing: border-box; padding: var(--hm-space-3) var(--hm-space-4) var(--hm-space-4) calc(var(--hm-space-4) - 2px); background: var(--surface-2); border-radius: var(--hm-radius); }
+[data-home] .hr-group-head { display: flex; align-items: center; gap: var(--hm-space-3); min-width: 0; }
+[data-home] .hr-group-icon { flex: none; display: inline-flex; color: var(--accent-strong); }
+[data-home] .hr-group-title { flex: 1 1 auto; min-width: 0; margin: 0; font-size: var(--hm-text-name); font-weight: 600; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-home] .hr-group-head .kit-button { flex: none; }
+[data-home] .hr-group-rows { gap: var(--hm-space-2); }
+[data-home] .hr-dstate { margin-top: 2px; }

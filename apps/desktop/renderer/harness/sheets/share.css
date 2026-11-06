@@ -1,0 +1,44 @@
+/*
+ * The Export and Import sheets (renderer/harness/sheets/ExportSheet.tsx, ImportSheet.tsx, share-parts.tsx). Every rule starts at [data-home] and uses the preview's
+ * tokens only: the brand's version 2 is in progress, so no colour or size here is new. Text is 14 px or more and every control is 32 px or more.
+ * What a person reads under a tick (a command, an argument, a host, a path, a sink) is never cut: it wraps anywhere, so it never widens the sheet. Only a name is cut, to two
+ * lines, with a button that opens it. No motion of its own: the sheets keep the sheet motion of
+ * Sheet.tsx, and ticking, hovering and picking change colour only, as in engine.css.
+ */
+[data-home] .hx-sheet[data-slot="export"], [data-home] .hx-sheet[data-slot="import"] { margin-top: 1.375rem; max-height: calc(100% - 1.375rem); }
+[data-home] .hx-sheet[data-slot="export"][data-tall], [data-home] .hx-sheet[data-slot="import"][data-tall] { height: min(46rem, calc(100% - 1.375rem)); }
+/* A text a person must read in full (a command, an argument, a host, a path, a sink): wrapped, never cut. */
+[data-home] .hxsh-full { display: inline; min-width: 0; max-width: 100%; overflow-wrap: anywhere; white-space: pre-wrap; unicode-bidi: isolate; }
+/* A name: cut to two lines when it is long, with a button that opens it. */
+[data-home] .hxsh-name-wrap { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--hm-space-2); min-width: 0; max-width: 100%; }
+[data-home] .hxsh-name { min-width: 0; overflow-wrap: anywhere; unicode-bidi: isolate; }
+[data-home] .hxsh-name[data-cut] { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+[data-home] .hxsh-stack, [data-home] [data-export-review], [data-home] [data-import-review], [data-home] [data-bundle] { display: flex; flex-direction: column; gap: var(--hm-space-3); }
+[data-home] .hxsh-summary { color: var(--text-muted); }
+[data-home] .hxsh-check { display: flex; flex-direction: column; gap: var(--hm-space-2); box-sizing: border-box; padding: var(--hm-space-3); background: var(--surface-2); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); }
+[data-home] .hxsh-check-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--hm-space-2); }
+[data-home] .hxsh-args { margin: 0; padding: var(--hm-space-1) 0 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+[data-home] .hxsh-args > li { padding-left: var(--hm-space-3); border-left: 2px solid var(--hm-border); min-width: 0; }
+[data-home] .hxsh-stale { opacity: 0.7; }
+[data-home] .hxsh-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+[data-home] .hxsh-target { margin: 0; }
+[data-home] .hxsh-notes > summary { min-height: 2rem; display: flex; align-items: center; cursor: pointer; font-weight: 600; }
+[data-home] .hxsh-notes > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+[data-home] .hxsh-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--hm-space-2); }
+[data-home] .hxsh-row { display: flex; flex-direction: column; gap: 2px; box-sizing: border-box; min-width: 0; padding: var(--hm-space-2) var(--hm-space-3); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); font-size: var(--hm-text-base); line-height: 1.45; }
+[data-home] .hxsh-row[data-runs-code] { border-left-width: 3px; border-left-color: var(--hm-amber); }
+[data-home] .hxsh-row-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px var(--hm-space-3); min-width: 0; font-weight: 600; }
+[data-home] .hxsh-row-head > .hxe-muted { font-weight: 400; }
+[data-home] .hxsh-line { display: block; min-width: 0; font-size: var(--hm-text-base); line-height: 1.45; }
+[data-home] .hxsh-row > .hxsh-list { margin-top: var(--hm-space-1); gap: 2px; }
+[data-home] .hxsh-more { font-size: var(--hm-text-base); padding: 0 var(--hm-space-1); }
+[data-home] .hxsh-choice { display: flex; flex-wrap: wrap; gap: var(--hm-space-2); margin-top: var(--hm-space-1); }
+/* A choice that is on: a tint with an accent edge, as a picked card is. The word is the signal, so colour is never the only one. */
+[data-home] .hxsh-choice .kit-button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-strong); box-shadow: inset 0 0 0 1px var(--accent-strong); }
+/* The marks of a file row (New, Can run as a program) stay together at the end of the row. */
+[data-home] .hxsh-marks { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--hm-space-1) var(--hm-space-3); flex: none; margin-left: auto; }
+/* A held primary button (Next, Import, Export) keeps its dashed, muted look under the pointer: the kit's primary hover colour would otherwise paint it dark with muted text. */
+[data-home] .hx-sheet[data-slot="export"] .kit-button[data-variant="primary"][aria-disabled="true"]:hover, [data-home] .hx-sheet[data-slot="import"] .kit-button[data-variant="primary"][aria-disabled="true"]:hover { background: transparent; border-color: var(--hm-border); }
+/* The rows of a tool's environment or headers: name, sign and value on one wrapped line; every part isolates its own direction so a value cannot reorder the name. */
+[data-home] .hxsh-pairs { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+[data-home] .hxsh-pair { display: inline; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }

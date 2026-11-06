@@ -1,0 +1,142 @@
+// Packaging and the one-command launch.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { builtinModules } from 'node:module';
+import { existsSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { DESKTOP } from './support.js';
+import { importsOf, tokenize } from './fixtures-real/static-check.js';
+
+const pkg = JSON.parse(readFileSync(join(DESKTOP, 'package.json'), 'utf8')) as Record<string, unknown> & { dependencies?: Record<string, string>; devDependencies: Record<string, string>; build: Record<string, unknown>; scripts: Record<string, string> };
+const root = JSON.parse(readFileSync(join(DESKTOP, '..', '..', 'package.json'), 'utf8')) as { scripts: Record<string, string>; workspaces: string[] };
+
+test('every dependency is pinned to an exact version', () => {
+  for (const [name, version] of Object.entries({ ...pkg.dependencies, ...pkg.devDependencies })) assert.match(version, /^\d+\.\d+\.\d+$/, `${name}@${version}`);
+  for (const name of ['electron', 'electron-builder']) assert.ok(name in (pkg.dependencies ?? {}) || name in pkg.devDependencies, name);
+  assert.equal('electron-updater' in (pkg.dependencies ?? {}) || 'electron-updater' in pkg.devDependencies, false, 'the app has no updater: updates are not part of this build');
+});
+
+test('the viewer is its own package: the command line package and the root workspaces do not include it', () => {
+  assert.ok(!root.workspaces.some(w => w.includes('desktop')), 'not a workspace');
+  assert.ok(!JSON.stringify(root).includes('electron'), 'the root package holds no Electron dependency');
+  assert.equal(existsSync(join(DESKTOP, 'package-lock.json')), true);
+});
+
+test('the package carries the 0.8 identity: version 0.8.0-beta.1, the product name Bowerloom, and the app id com.sageadvice.bowerloom', () => {
+  const b = pkg.build as { productName: string; appId: string };
+  assert.equal(pkg.version, '0.8.0-beta.1');
+  assert.equal(b.productName, 'Bowerloom');
+  assert.equal(b.appId, 'com.sageadvice.bowerloom');
+  assert.doesNotMatch(String(pkg.description), /Viewer|read-only/);
+  const lock = JSON.parse(readFileSync(join(DESKTOP, 'package-lock.json'), 'utf8')) as { version: string; packages: Record<string, { version?: string }> };
+  assert.equal(lock.version, '0.8.0-beta.1'); assert.equal(lock.packages['']!.version, '0.8.0-beta.1');
+});
+
+test('the build targets are macOS (dmg and zip), Windows (nsis), and Linux (AppImage), with no update feed and no publishing', () => {
+  const b = pkg.build as { mac: { target: { target: string }[] }; win: { target: string[] }; linux: { target: string[] }; publish?: unknown; appId: string; extraResources: { from: string; to: string }[] };
+  assert.deepEqual(b.mac.target.map(x => x.target).sort(), ['dmg', 'zip']); assert.deepEqual(b.win.target, ['nsis']); assert.deepEqual(b.linux.target, ['AppImage']);
+  assert.equal(b.publish, undefined, 'no publish provider: the build writes no update feed and the app checks none');
+  assert.deepEqual(b.extraResources, [{ from: '../../kits', to: 'kits' }], 'the kits ship; the old viewer\'s sample data does not');
+  assert.equal(existsSync(join(DESKTOP, 'sample-data')), false, 'the viewer\'s sample world is gone');
+  assert.match(pkg.scripts.build!, /--publish never/);
+  for (const script of Object.values(pkg.scripts)) assert.doesNotMatch(script, /--publish always|publish onTag|npm publish/);
+});
+
+test('the commands: one to open the app, one for the sample, one for development, all from the repository root, and no prototype command', () => {
+  assert.equal(root.scripts.desktop, 'node apps/desktop/tools/run.mjs'); assert.equal(root.scripts['desktop:sample'], 'node apps/desktop/tools/run.mjs --sample'); assert.equal(root.scripts['desktop:dev'], 'node apps/desktop/tools/run.mjs --sample');
+  for (const name of ['desktop:build', 'desktop:test']) assert.ok(root.scripts[name], name);
+  assert.deepEqual(Object.keys(root.scripts).filter(name => /prototype/.test(name)), []);
+  assert.equal(pkg.scripts.dev, 'npm run bundle && electron . --sample'); assert.equal('sample:make' in pkg.scripts, false);
+});
+
+test('the one-command launcher works from another folder: it installs what is missing, builds, and stops before the window with --build-only', () => {
+  const r = spawnSync(process.execPath, [join(DESKTOP, 'tools', 'run.mjs'), '--build-only'], { cwd: tmpdir(), encoding: 'utf8', timeout: 240000 });
+  assert.equal(r.status, 0, r.stderr + r.stdout); assert.match(r.stdout, /Building the app/);
+  for (const f of ['dist/main.mjs', 'dist/bundle-worker.mjs', 'dist/preload-real.cjs', 'dist/renderer/app.js', 'dist/renderer/index.html', 'dist/renderer/tokens.css', 'dist/renderer/styles.css']) assert.equal(existsSync(join(DESKTOP, f)), true, f);
+});
+
+test('the colors and sizes live in one tokens file', () => {
+  const css = readFileSync(join(DESKTOP, 'renderer', 'styles.css'), 'utf8');
+  assert.doesNotMatch(css, /#[0-9a-fA-F]{3,8}\b|rgb\(\s*\d/, 'styles use tokens, not colors');
+  assert.match(readFileSync(join(DESKTOP, 'renderer', 'tokens.css'), 'utf8'), /prefers|\[data-theme="dark"\]/);
+  assert.match(css, /prefers-reduced-motion: reduce/); assert.match(css, /:focus-visible/);
+});
+
+test('the build turns on the safe fuses: no run-as-node, no NODE_OPTIONS, no inspect arguments, asar integrity and asar-only on', () => {
+  const f = (pkg.build as { electronFuses: Record<string, boolean> }).electronFuses;
+  assert.equal(f.runAsNode, false); assert.equal(f.enableNodeOptionsEnvironmentVariable, false); assert.equal(f.enableNodeCliInspectArguments, false);
+  assert.equal(f.enableEmbeddedAsarIntegrityValidation, true); assert.equal(f.onlyLoadAppFromAsar, true); assert.equal(f.grantFileProtocolExtraPrivileges, false);
+  assert.match(pkg.devDependencies['@electron/fuses']!, /^\d+\.\d+\.\d+$/);
+});
+
+test('the fuse check expects every fuse that the build sets, with the same on or off state, and Cookie Encryption is one of them', async () => {
+  const { EXPECTED_BY_NAME } = await import(`${join(DESKTOP, 'tools', 'check-fuses.mjs')}`) as { EXPECTED_BY_NAME: Record<string, boolean> };
+  const config = (pkg.build as { electronFuses: Record<string, boolean> }).electronFuses;
+  const asName = (key: string): string => key[0]!.toUpperCase() + key.slice(1);
+  assert.deepEqual(EXPECTED_BY_NAME, Object.fromEntries(Object.entries(config).map(([key, on]) => [asName(key), on])), 'a fuse set in package.json and missing from the check passes unchecked');
+  assert.equal(EXPECTED_BY_NAME.EnableCookieEncryption, true);
+});
+
+test('the built binary has those fuses (checked when a macOS build is present)', { skip: !existsSync(join(DESKTOP, 'release', 'mac-arm64', 'Bowerloom.app')) ? 'no macOS build in release/' : false }, () => {
+  const r = spawnSync(process.execPath, [join(DESKTOP, 'tools', 'check-fuses.mjs')], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const x64 = join(DESKTOP, 'release', 'mac', 'Bowerloom.app', 'Contents', 'MacOS', 'Bowerloom');
+  if (existsSync(x64)) assert.equal(spawnSync(process.execPath, [join(DESKTOP, 'tools', 'check-fuses.mjs'), x64], { encoding: 'utf8' }).status, 0);
+});
+
+test('the launcher gives install scripts a minimal environment: no token reaches them, names match whatever the case', async () => {
+  const { installEnv, marker } = await import(`${join(DESKTOP, 'tools', 'run.mjs')}`) as { installEnv(s: Record<string, string | undefined>): Record<string, string>; marker(d: string): string };
+  const env = installEnv({ PATH: '/bin', HOME: '/h', TMPDIR: '/t', BOWERLOOM_GITHUB_TOKEN: 'ghp_secret', NPM_TOKEN: 'npm_secret', GH_TOKEN: 'x', AWS_SECRET_ACCESS_KEY: 'y', npm_config_registry: 'https://registry.example/', npm_config_proxy: 'http://p:1', 'npm_config__authToken': 'z', npm_config_cafile: '/ca.pem', npm_config__password: 'w', HTTPS_PROXY: 'http://p:2', SYSTEMROOT: 'C:\\Windows', ANTHROPIC_API_KEY: 'k',
+    NODE_EXTRA_CA_CERTS: '/extra.pem', SSL_CERT_FILE: '/ssl.pem', ALL_PROXY: 'http://p:3', XDG_CONFIG_HOME: '/xdg', ELECTRON_SKIP_BINARY_DOWNLOAD: '1', ELECTRON_GET_USE_PROXY: '1', GLOBAL_AGENT_HTTPS_PROXY: 'http://p:4', GLOBAL_AGENT_NO_PROXY: 'x', GLOBAL_AGENT_TOKEN: 'secret-agent' });
+  assert.deepEqual(Object.keys(env).sort(), ['ALL_PROXY', 'ELECTRON_GET_USE_PROXY', 'ELECTRON_SKIP_BINARY_DOWNLOAD', 'GLOBAL_AGENT_HTTPS_PROXY', 'GLOBAL_AGENT_NO_PROXY', 'HOME', 'HTTPS_PROXY', 'NODE_EXTRA_CA_CERTS', 'PATH', 'SSL_CERT_FILE', 'SYSTEMROOT', 'TMPDIR', 'XDG_CONFIG_HOME', 'npm_config_cafile', 'npm_config_proxy', 'npm_config_registry'].sort());
+  for (const value of Object.values(env)) assert.doesNotMatch(value, /secret|^z$|^w$|^k$/);
+  // Windows spells names with mixed case: Path, SystemRoot, ComSpec, PathExt. They are kept, under the name they have.
+  const win = installEnv({ Path: 'C:\\bin', SystemRoot: 'C:\\Windows', ComSpec: 'cmd.exe', PathExt: '.EXE', Temp: 'C:\\t', UserProfile: 'C:\\u', AppData: 'C:\\a', Https_Proxy: 'http://p', Bowerloom_Github_Token: 'ghp_x', NPM_TOKEN: 'n', Npm_Config__AuthToken: 'z', Global_Agent_Token: 'g' });
+  assert.deepEqual(Object.keys(win).sort(), ['AppData', 'ComSpec', 'Https_Proxy', 'Path', 'PathExt', 'SystemRoot', 'Temp', 'UserProfile']);
+  assert.equal(marker('/x'), '/x/node_modules/.bowerloom-install-ok');
+});
+
+test('the launcher refuses an unknown flag with a plain message, and two modes at once, without installing or building anything', () => {
+  for (const [args, re] of [[['--prototype-v3'], /do not know "--prototype-v3"/], [['--sample', '--home-sample'], /do not know "--home-sample"/], [['--build-only', '--nope', '-x'], /"--nope", "-x"/]] as const) {
+    const r = spawnSync(process.execPath, [join(DESKTOP, 'tools', 'run.mjs'), ...args], { cwd: tmpdir(), encoding: 'utf8', timeout: 30000 });
+    assert.equal(r.status, 2, args.join(' ')); assert.match(r.stderr, re); assert.doesNotMatch(r.stdout, /Installing|Building/);
+  }
+});
+
+test('the launcher source: a failed or signalled step exits non-zero, spawn errors are printed, no shell is used, and a marker proves an install finished', () => {
+  const src = readFileSync(join(DESKTOP, 'tools', 'run.mjs'), 'utf8');
+  for (const needle of ['r.error', 'r.signal', 'npm_execpath', 'npm-cli.js', 'path.txt', 'bowerloom-install-ok', "child.on('error'", "child.on('exit', (code, signal)"]) assert.ok(src.includes(needle), needle);
+  assert.doesNotMatch(src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, ''), /shell\s*:\s*true|\.cmd\b|\.bin/, 'no shell, no .cmd shim');
+  assert.match(src, /step\('Installing the app[^\n]*clean\)/); assert.match(src, /step\('Downloading the app window[^\n]*clean\)/); assert.match(src, /step\('Installing Bowerloom[^\n]*clean\)/);
+});
+
+test('the launcher finds npm and the app binary without a shell', async () => {
+  const { npmCommand, electronBinary } = await import(`${join(DESKTOP, 'tools', 'run.mjs')}`) as { npmCommand(env: Record<string, string | undefined>, node: string): { command: string; prefix: string[] }; electronBinary(desktop: string, platform: string): string | null };
+  const viaNpm = npmCommand({ npm_execpath: '/usr/lib/npm/bin/npm-cli.js' }, '/usr/bin/node'); assert.deepEqual(viaNpm, { command: '/usr/bin/node', prefix: ['/usr/lib/npm/bin/npm-cli.js'] });
+  const beside = npmCommand({}, '/opt/node/bin/node'); assert.equal(beside.command, '/opt/node/bin/node'); assert.match(beside.prefix[0]!, /node_modules\/npm\/bin\/npm-cli\.js$/);
+  const bin = electronBinary(DESKTOP, process.platform); assert.ok(bin === null || bin.includes(`${join('node_modules', 'electron', 'dist')}`), String(bin));
+  assert.equal(electronBinary('/nowhere', 'darwin'), null);
+});
+
+
+/** The bare module names that a built file loads at run time, read from its tokens (so a name inside a string or a comment does not count): static imports, `require("x")` and `import("x")`. Node's own modules and relative paths are left out. */
+function runtimeModules(file: string): string[] {
+  const tokens = tokenize(readFileSync(file, 'utf8'));
+  const named = importsOf(tokens).map(i => i.from);
+  for (let i = 0; i + 2 < tokens.length; i += 1) if (tokens[i]!.type === 'id' && (tokens[i]!.text === 'require' || tokens[i]!.text === 'import') && tokens[i + 1]!.text === '(' && tokens[i + 2]!.type === 'str') named.push(tokens[i + 2]!.text);
+  const builtin = new Set([...builtinModules, ...builtinModules.map(name => `node:${name}`)]);
+  return [...new Set(named.filter(name => !name.startsWith('.') && !name.startsWith('/') && !builtin.has(name) && !name.startsWith('node:')))].sort();
+}
+
+test('the runtime dependencies are exactly what the built main process and bridge load: Electron itself, and nothing from node_modules', () => {
+  // Bowerloom\'s own code, React and every package are bundled by tools/bundle.mjs, so only Electron is left to load. Electron comes with the app, not from dependencies.
+  // `npm test` builds dist first; this test reads it and never rebuilds it, because other test files read dist at the same time.
+  for (const file of ['main.mjs', 'preload-real.cjs']) assert.equal(existsSync(join(DESKTOP, 'dist', file)), true, `dist/${file} is missing: run npm run bundle`);
+  const loaded = [...new Set([...runtimeModules(join(DESKTOP, 'dist', 'main.mjs')), ...runtimeModules(join(DESKTOP, 'dist', 'preload-real.cjs'))])].sort();
+  assert.deepEqual(loaded, ['electron'], 'a module that is not bundled would have to ship in dependencies');
+  assert.deepEqual(Object.keys(pkg.dependencies ?? {}).sort(), loaded.filter(name => name !== 'electron'), 'dependencies lists what main loads at run time, and nothing else');
+  // React and React DOM are in the page script, so they are build tools of this package.
+  assert.ok('react' in pkg.devDependencies && 'react-dom' in pkg.devDependencies);
+});

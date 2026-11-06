@@ -4,7 +4,8 @@
 .mobile-drawer-content { min-height: 100%; padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) 24px; }
 .mobile-drawer-heading { display: flex; align-items: center; gap: 12px; justify-content: space-between; margin-bottom: 32px; }
 .mobile-drawer-heading h2 { margin: 0; font: 500 24px/1.3 var(--trellis-reading-font, Georgia, serif); }
-.mobile-drawer-heading button, .mobile-menu-toggle { align-items: center; justify-content: center; flex: 0 0 auto; width: 44px; height: 44px; padding: 10px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); color: var(--ui-text); background: var(--ui-surface); cursor: pointer; }
+.mobile-drawer-heading button, .mobile-menu-toggle { align-items: center; justify-content: center; flex: 0 0 auto; width: 44px; height: 44px; padding: 10px; border: 0; border-radius: var(--control-radius); color: var(--ui-text); background: transparent; cursor: pointer; }
+.mobile-drawer-heading button:hover, .mobile-menu-toggle:hover { color: var(--ui-primary); background: color-mix(in srgb, var(--ui-primary) 8%, transparent); }
 .mobile-drawer-heading button { display: inline-flex; }
 .mobile-menu-toggle svg, .mobile-drawer-heading svg { width: 24px; height: 24px; }
 .cinematic-theme .mobile-drawer nav, .mobile-drawer nav { display: flex; flex-direction: column; align-items: stretch; flex-wrap: nowrap; width: 100%; gap: 0; margin: 0; color: var(--ui-text); font: 500 23px/1.5 var(--trellis-reading-font, Georgia, serif); }
@@ -13,12 +14,57 @@
 .mobile-drawer nav a:hover { color: var(--ui-primary); }
 .mobile-drawer :is(a, button):focus-visible, .mobile-menu-toggle:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 4px; }
 .drawer-version { margin: 32px 0 0; font: 14px/1.6 var(--ui-font); color: var(--ui-muted); }
-@media (max-width: 1280px) {
-  .site-header .desktop-navigation { display: none; }
+@media (max-width: 1023px) {
+  .site-header .desktop-navigation, .site-header .nav-cta-bar { display: none; }
   .site-header .mobile-menu-toggle { display: inline-flex; margin-left: auto; order: 3; }
-  .site-header .release-label { margin-left: auto; }
   .cinematic-theme .site-header, .site-header { flex-wrap: nowrap; height: 76px; min-height: 76px; padding-block: 0; gap: 16px; }
 }
-@media (max-width: 760px) {
-  .site-header .release-label { display: none; }
+
+/* Desktop bar, 1024 px and up: wordmark, four text links, the GitHub icon, the theme toggle, and the Get the app button. */
+.site-header .desktop-navigation { gap: 26px; margin-left: auto; }
+.site-header .nav-link { position: relative; display: inline-flex; align-items: center; min-height: 44px; color: var(--ui-text); }
+.site-header .nav-link:hover { color: var(--ui-text); }
+/* The stitch: short 2 px dashes in the brand accent, drawn under the link text on hover, on keyboard focus, and on the current section.
+   It is a gradient, so the dashes stay crisp. Reduced motion shows it at once. */
+.site-header .nav-link::after { content: ''; position: absolute; left: 0; right: 0; bottom: 6px; height: 2px; background: repeating-linear-gradient(90deg, var(--ui-primary) 0 5px, transparent 5px 9px); clip-path: inset(0 100% 0 0); }
+.site-header .nav-link:is(:hover, :focus-visible, [aria-current])::after { clip-path: inset(0 0 0 0); }
+.site-header .nav-link:focus-visible, .site-header .nav-github:focus-visible, .site-header .nav-cta:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 3px; }
+.site-header .nav-github { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; color: var(--ui-text); background: transparent; border: 0; border-radius: var(--control-radius); }
+.site-header .nav-github:hover { color: var(--ui-primary); background: color-mix(in srgb, var(--ui-primary) 8%, transparent); }
+/* The compact Get the app button uses the primary button's colors. */
+.site-header .nav-cta { flex: none; margin: 0; white-space: nowrap; }
+.site-header .nav-cta:hover { transform: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .site-header .nav-link::after { transition: clip-path 200ms cubic-bezier(.23, 1, .32, 1); }
 }
+/* The drawer marks the current section with the accent color, and its button is a full-width primary button. */
+.mobile-drawer nav a[aria-current] { color: var(--ui-primary); }
+.mobile-drawer nav > a.nav-cta { margin-top: 24px; border: 1px solid var(--ui-primary); color: var(--ui-primary-fg); }
+.mobile-drawer nav > a.nav-cta:hover { color: var(--ui-primary-fg); }
+
+/* Sticky header. The shell is always the full header height and sits in the page, so nothing below it ever moves, and it passes clicks through to the page.
+   The bar inside it keeps one size and follows the scroll. --header-p goes from 0 at the top to 1 at the compact distance (the full height minus the thin strip), written by
+   header-progress.ts on every frame of a scroll. At p the bar has moved up by p of half the extra height, so at 1 its centered content sits in the middle of a thin 48 px
+   strip (above the 44 px touch floor); the brand has shrunk by p of 40%; and the glass layer, which is that strip, has faded in to p. Only transform and opacity change, so no layout is
+   recalculated, and there is no time-based easing: the scroll is the clock.
+   The page's first picture scrolls up with the page, and its top edge meets the bottom of the strip exactly when p reaches 1. Until then the edge is below the glass and
+   the brand, so the photo never cuts through the wordmark or the controls. At scroll 0 the bar is the full bar over the page color: no border, no shadow, no glass. */
+:root { --header-p: 0; --header-h: 100px; --header-compact-h: 48px; --header-shift: calc((var(--header-h) - var(--header-compact-h)) / -2); }
+@media (max-width: 1100px) { :root { --header-h: 84px; } }
+@media (max-width: 1023px) { :root { --header-h: 76px; } }
+.skip-link { z-index: 40; }
+.site-header-shell { position: sticky; top: 0; z-index: 30; height: var(--header-h); pointer-events: none; contain: layout; }
+.site-header-shell > .site-header { position: relative; isolation: isolate; pointer-events: auto; height: var(--header-h); min-height: 0; max-width: none; box-sizing: border-box; border-bottom: 0; transform-origin: left top; transform: translateY(calc(var(--header-shift) * var(--header-p))); }
+.site-header-shell > .site-header .brand { transform-origin: left center; transform: scale(calc(1 - .4 * var(--header-p))); }
+/* The glass layer: the regular variant, a brand surface at 75% with a soft blur and a lift in color, a hairline, and a very soft shadow. Its opacity is p, so the hairline and the shadow arrive with it.
+   A rendered test in dom.test.mjs samples the real pixels under the bar over the hero photo and checks link text at 4.5:1. */
+.site-header-shell > .site-header::before { content: ''; position: absolute; inset: calc((var(--header-h) - var(--header-compact-h)) / 2) 0; z-index: -1; pointer-events: none; opacity: var(--header-p); background: color-mix(in srgb, var(--ui-surface) 75%, transparent); -webkit-backdrop-filter: blur(18px) saturate(1.5); backdrop-filter: blur(18px) saturate(1.5); border-bottom: 1px solid color-mix(in srgb, var(--ui-border) 80%, transparent); box-shadow: 0 8px 24px -14px rgb(30 24 28 / .35); }
+.site-header .nav-link { min-height: 44px; }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .site-header-shell > .site-header::before { background: var(--ui-surface); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .site-header-shell > .site-header::before { background: var(--ui-surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+/* A jump to a section, and keyboard focus moving to a control, land below the thin bar (WCAG 2.4.11). This one rule covers both. */
+html { scroll-padding-top: calc(var(--header-compact-h) + 16px); }

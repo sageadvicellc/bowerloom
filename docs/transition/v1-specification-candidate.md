@@ -5,7 +5,7 @@ created: 2026-10-01
 updated: 2026-10-01
 brief: evidence-index.md
 check: evidence-index.md
-audience: Hanna
+audience: the maintainer
 ---
 
 # Trellis specification candidate
@@ -14,7 +14,7 @@ audience: Hanna
 
 The founder selected Codex-first `v0.7-alpha` for personal testing, baseline measurements, and marketing preparation before beta. Trellis v0.7-beta follows, then a separate Sagespec product team. This candidate proposes contracts, acceptance gates, and implementation order. The research does not yet establish a working release or settle every architecture choice.
 
-Hanna approved the [alpha build packet](alpha-build-approval.md). The October 1 approval opens bounded alpha implementation with the recorded defaults. Later release gates remain separate.
+The maintainer approved the [alpha build packet](alpha-build-approval.md). The October 1 approval opens bounded alpha implementation with the recorded defaults. Later release gates remain separate.
 
 ## Findings and proposed specification
 
@@ -22,9 +22,9 @@ Hanna approved the [alpha build packet](alpha-build-approval.md). The October 1 
 
 The canonical release sequence is `v0.7-alpha`, `v0.7-beta`, `v1-beta`, and `v1-rc`. A release candidate is a build proposed for final acceptance. Legacy names such as `Sagespec v3` remain historical references. Current plans use the canonical release names.
 
-Trellis is the MIT-licensed, self-hosted framework for owners who direct automation through personal agents. Sagespec is Hanna's flagship product built on Trellis to automate her entire business. Generic examples belong in Trellis. Sagespec's product brief, business rules, knowledge, and assets belong in its own project.
+Trellis is the MIT-licensed, self-hosted framework for owners who direct automation through personal agents. Sagespec is the maintainer's flagship product built on Trellis to automate the maintainer's entire business. Generic examples belong in Trellis. Sagespec's product brief, business rules, knowledge, and assets belong in its own project.
 
-Codex-first `v0.7-alpha` precedes `v0.7-beta`, which supports Codex and Claude Code. Sagespec development starts on the accepted beta and targets automation of Hanna's entire business. Alpha gives Hanna a working test release and a measured baseline for beta. It also enables a marketing and social team to prepare the campaign before beta.
+Codex-first `v0.7-alpha` precedes `v0.7-beta`, which supports Codex and Claude Code. Sagespec development starts on the accepted beta and targets automation of the maintainer's entire business. Alpha gives the maintainer a working test release and a measured baseline for beta. It also enables a marketing and social team to prepare the campaign before beta.
 
 The marketing team is separate from the later Sagespec product team. Each crew needs its own scope, permissions, writable state, and shared-account capacity accounting. Trellis `v1-beta` and `v1-rc` work continues alongside downstream product development. This specification appoints neither lead and starts neither team.
 
@@ -221,22 +221,22 @@ The complete portability suite also covers clean clone/start, mandatory-capabili
 
 ### 10. Implementation queue and preservation
 
-The remaining implementation queue begins after specification approval. Hanna selected `sageadvicellc/trellis` as the monorepo on October 1, 2026. The integration branch remains `feature/trellis-v1`. Sagespec stays in a separate repository.
+The remaining implementation queue begins after specification approval. The maintainer selected `sageadvicellc/trellis` as the monorepo on October 1, 2026. The integration branch remains `feature/trellis-v1`. Sagespec stays in a separate repository.
 
 This queue covers the full roadmap. The current approval packet authorizes work only through alpha acceptance. Later milestones retain their stated gates.
 
-Workers branch from the integration branch and open task pull requests against it. Another agent reviews each change against its acceptance criteria. The integration lead merges accepted work into the feature branch and runs relevant integration tests. Changed code needs renewed review and tests. Hanna receives the assembled feature for review and merge into `main`.
+Workers branch from the integration branch and open task pull requests against it. Another agent reviews each change against its acceptance criteria. The integration lead merges accepted work into the feature branch and runs relevant integration tests. Changed code needs renewed review and tests. The maintainer receives the assembled feature for review and merge into `main`.
 
 | Gate | Work and owner | Exit evidence |
 |---|---|---|
-| 0. Founder specification | Passed on October 1, 2026 | Hanna approved the alpha scope and defaults at candidate `4c8ae90f98964aa1325185adc51ffa1c22b9738e`. Later gates remain separate. |
+| 0. Founder specification | Passed on October 1, 2026 | The maintainer approved the alpha scope and defaults at candidate `4c8ae90f98964aa1325185adc51ffa1c22b9738e`. Later gates remain separate. |
 | 1. Preservation and import | Integration ownership maps retained files and PRs into the monorepo | Reviewed disposition map, license reconciliation, private-content boundary, retained history and recovery sources. Archive old repositories after cutover gates pass. |
 | 2. Contracts and source | Coordinator and module owners implement shared contracts, YAML validation, versioning, graph compiler, simulation | Actual schema engine. Invalid graph/path/version cases. Generation, drift, migration and rollback tests |
 | 3. Control state | Coordinator implements ownership, approval, admission, cancellation, and recovery | Actual runtime failure matrix, authenticated scope, persistent reservations, ambiguous-effect holds |
 | 4. First harness | Crew implements Codex and the platform runner for alpha | Effective-policy denial tests, subscription route, measured admission, startup and complete teardown |
 | 5. Module integration | Module owners bind Relay, Roots, Vines, and Crew. The integration owner freezes the synthetic application brief and measurable pass/fail behavior. | Request/event compatibility, approved retrieval boundary, trace evidence, two-team access and state tests. The application brief is ready before demo acceptance. |
 | 6. Alpha acceptance | Integration owner delivers the usable Codex-first release | Local workflow, live control tests, founder test instructions, known limits, baseline records, exact-revision founder review |
-| 7. Early use | Hanna tests alpha. A separate marketing and social crew prepares campaign drafts when started. | Repeatable measurements, actionable defects, separate crew state and permissions, shared-account admission. No beta dependency. |
+| 7. Early use | The maintainer tests alpha. A separate marketing and social crew prepares campaign drafts when started. | Repeatable measurements, actionable defects, separate crew state and permissions, shared-account admission. No beta dependency. |
 | 8. Beta acceptance | Integration owner assembles both demos on Codex and Claude Code | Both harnesses, independent personal use, simultaneous company participation, autonomy tests, alpha comparison, and exact-revision founder approval |
 | 9. Sagespec handoff | Separate product lead and team, once appointed | Approved product brief, pinned beta, own definitions/state/credentials/approvals, shared-account admission |
 | 10. v1-beta | Trellis owners harden the full framework scope. Workbench supplies independent evidence. | All portability cases, calibrated profiles, broader retrieval/recovery evidence, reviewed promotion |
@@ -250,15 +250,15 @@ Before release, reconcile MIT and package metadata. The snapshot found conflicti
 
 Prepare the founder review at 9 a.m. America/New_York. Include outcomes, acceptance instructions, tests, usage, gaps, risks, and decisions. Measure task success, founder intervention, usage per accepted result, completion time, recovery reliability, and retrieval accuracy.
 
-No release date or daily output rate is supported yet. Agents coordinate implementation, peer review, and feature merges within approved scope. Hanna reviews the assembled feature and merges its exact approved revision into `main`. [Founder requirements]
+No release date or daily output rate is supported yet. Agents coordinate implementation, peer review, and feature merges within approved scope. The maintainer reviews the assembled feature and merges its exact approved revision into `main`. [Founder requirements]
 
-## Decision for Hanna
+## Decision for the maintainer
 
-Hanna approved the linked alpha build packet and its defaults on October 1, 2026. The Codex-first implementation campaign is active. Release, main merge, repository retirement, and customer-data collection retain separate gates.
+The maintainer approved the linked alpha build packet and its defaults on October 1, 2026. The Codex-first implementation campaign is active. Release, main merge, repository retirement, and customer-data collection retain separate gates.
 
 For the approved alpha build, the team uses Supabase/PostgreSQL, the MIT DBOS library without Conductor, one supervised coordinator, and a controlled action broker. Workers propose bounded workspace changes and test commands. The broker authorizes and dispatches them. Mandatory controls require live evidence before alpha acceptance.
 
-Alpha uses authorized keyword retrieval over synthetic sources and keeps optional telemetry disabled. The team owns compatible version selection, package layout, and implementation details within these limits. Supabase suitability must pass before adoption. A material failure returns a concrete finding and alternatives to Hanna without silently weakening the requirement.
+Alpha uses authorized keyword retrieval over synthetic sources and keeps optional telemetry disabled. The team owns compatible version selection, package layout, and implementation details within these limits. Supabase suitability must pass before adoption. A material failure returns a concrete finding and alternatives to the maintainer without silently weakening the requirement.
 
 The following choices remain gated later:
 
@@ -291,4 +291,4 @@ All reviewed observations and retrieved documentation below are dated October 1,
 - Capacity, `capacity-F1` to `F5`, `F7` to `F9`: [capacity notes](evidence-index.md#review-records). Primary sources include [Claude status-line fields](https://code.claude.com/docs/en/statusline), [shared subscription usage](https://support.claude.com/en/articles/11145838-use-claude-code-with-your-pro-or-max-plan), and [cached usage](https://code.claude.com/docs/en/costs).
 - Retrieval, `qmd-F1`, `F3`, `F4`, `F6` to `F8`, `F11`, `F12`: [QMD notes](evidence-index.md#review-records). The notes identify corrected scores and original raw outputs. Primary sources include the [QMD v2.8.3 README](https://github.com/tobi/qmd/blob/v2.8.3/README.md) and [package manifest](https://github.com/tobi/qmd/blob/v2.8.3/package.json).
 
-Hanna approved the alpha build packet on October 1, 2026, with this candidate as its supporting specification. The bounded implementation campaign is active, and the team owns routine engineering choices. Releases, repository retirement, and merges into `main` retain their separate gates.
+The maintainer approved the alpha build packet on October 1, 2026, with this candidate as its supporting specification. The bounded implementation campaign is active, and the team owns routine engineering choices. Releases, repository retirement, and merges into `main` retain their separate gates.

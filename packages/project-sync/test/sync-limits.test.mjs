@@ -1,4 +1,4 @@
-// The sync item limit (Hanna, global skill cache, phase 3): 256 items, room for 128 skills.json entries and as many
+// The sync item limit (the maintainer, global skill cache, phase 3): 256 items, room for 128 skills.json entries and as many
 // skills that skills.json no longer names.
 import test from '../../../dist/tests/support/lock-slot-retry.js';
 import { after } from 'node:test';

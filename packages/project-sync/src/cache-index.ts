@@ -1,5 +1,5 @@
 /**
- * Where a pin lives in the machine's skills cache (Hanna, global skill cache). The cache sits in the private state
+ * Where a pin lives in the machine's skills cache (the maintainer, global skill cache). The cache sits in the private state
  * root, `<stateRoot>/cache`, and serves every project on the machine, for npm and GitHub content alike.
  *
  * A pin's content key is sha256 over its normalized acquisition request with the skills.json entry id left out: the

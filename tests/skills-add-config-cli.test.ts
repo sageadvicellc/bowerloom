@@ -47,3 +47,15 @@ test('rule 9: a config at its skill limit refuses CONFIG_LIMIT and writes nothin
   const r = run(dir, ['skills', 'add', SPEC, '--json'], npm(w), NETWORK);
   assert.equal(errorCode(r.stderr), 'CONFIG_LIMIT'); assert.equal(existsSync(join(dir, '.bowerloom')), false);
 });
+
+// Review of e1bbce9, CR2: skills add writes bowerloom.json back in the form it was read in.
+for (const oldForm of [true, false]) test(`CR2. skills add keeps the ${oldForm ? 'old' : 'current'} form of bowerloom.json`, t => {
+  const w = world(t), start = oldForm ? EMPTY_CONFIG : { format: 'bowerloom/project/v1beta1', engines: ['claude-code', 'codex'], skills: [], prompts: [], teams: [] };
+  const dir = project(w, 'app', start), env = npm(w);
+  const { applied } = approve(dir, ['skills', 'add', SPEC], env, NETWORK);
+  assert.equal(applied.status, 0, applied.stderr + applied.stdout);
+  const raw = JSON.parse(readFileSync(join(dir, 'bowerloom.json'), 'utf8')) as { engines?: string[]; harnesses?: string[]; skills: unknown[] };
+  assert.deepEqual(oldForm ? raw.harnesses : raw.engines, oldForm ? ['claude', 'codex'] : ['claude-code', 'codex']);
+  assert.equal(oldForm ? raw.engines : raw.harnesses, undefined);
+  assert.deepEqual(raw.skills, [{ id: ID, source: 'project' }]);
+});

@@ -1,9 +1,11 @@
 ---
 title: "Read and review your setup"
-description: "Read the local guides, roles, agreement, and actual status before the next decision."
-section: "Learn"
+description: "Legacy 0.7. Read the local guides, roles, agreement, and actual status before the next decision."
+section: "Legacy 0.7 team setup"
 order: 4
 ---
+
+> **Legacy (0.7).** This page describes the team setup flow of Bowerloom 0.7. Its commands are still in the CLI help of 0.8.0-beta.1. The current path is [Adopt and install a harness](/docs/guides/adopt-and-install/).
 
 The installed specification connects the proposed roles and handoffs with your project. Read it with your existing personal agent and compare it with the workflow you described. Inspect the working agreement, role prompts, team definition, and handoff map for mismatches. Record any gap before approving later project work. File readiness grants no worker, backend, or connected-action authority.
 

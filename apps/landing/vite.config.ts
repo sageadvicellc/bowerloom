@@ -1,14 +1,18 @@
 import { defineConfig } from "vite";
+import {fileURLToPath} from "node:url";
 import react from "@vitejs/plugin-react";
-import {release, readerRelease} from "./src/release.ts";
+import {readerRelease} from "./src/release.ts";
+import {releaseFieldsPlugin} from "./build/release-fields.ts";
+import release from "../../release/beta.json" with {type: "json"};
+import {articlesPlugin} from "./build/articles.ts";
 import social from "../../release/social-preview.json" with {type: "json"};
 
 const escapeHtml = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 const metadata: Record<string, string> = {
   RELEASE_TITLE: `${release.product} · ${readerRelease.label}`,
-  RELEASE_DESCRIPTION: `${readerRelease.capabilities.setup} ${readerRelease.capabilities.execution}`,
+  RELEASE_DESCRIPTION: `${readerRelease.description} ${readerRelease.availability}`,
   RELEASE_STATUS: readerRelease.label,
-  RELEASE_AVAILABILITY: readerRelease.capabilities.execution,
+  RELEASE_AVAILABILITY: readerRelease.availability,
   DOCS_PATH: new URL(release.urls.docs).pathname,
   SOCIAL_TITLE: social.title,
   SOCIAL_DESCRIPTION: social.description,
@@ -27,9 +31,11 @@ export const renderMetadata = (html: string, values: Record<string, string> = me
     Object.hasOwn(values, key) ? escapeHtml(values[key]) : match);
 
 export default defineConfig({
-  plugins: [react(), {
+  plugins: [releaseFieldsPlugin(), react(), {
     name: "shared-release-metadata",
     transformIndexHtml: html => renderMetadata(html),
-  }],
+  }, articlesPlugin({
+    site: release.urls.site, docs: release.urls.docs, repository: release.urls.repository, image: social.image,
+  }, fileURLToPath(new URL("./content/articles", import.meta.url)))],
   build: { chunkSizeWarningLimit: 700 },
 });

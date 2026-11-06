@@ -1,0 +1,39 @@
+/*
+ * The screens of the preview on the person's own folders (renderer/harness/real). Every rule starts at [data-home]. Text is 14 px or more and a button is 32 px (the kit's).
+ * The lists can be long (every work folder under a folder the person picks is a source), so a list scrolls inside its own box and the buttons stay in view.
+ */
+[data-home] .hxr-scroll { max-height: max(16rem, calc(100vh - 22rem)); overflow-y: auto; overscroll-behavior: contain; padding-right: var(--hm-space-1); }
+[data-home] .hxr-fill[data-moving] { animation: hxr-move 1.4s ease-in-out infinite; transform: scaleX(0.35); }
+[data-home] .hxr-fill[data-full] { transform: scaleX(1); }
+@keyframes hxr-move { 0% { transform: translateX(-35%) scaleX(0.35); } 100% { transform: translateX(100%) scaleX(0.35); } }
+
+/* Show details */
+[data-home] .hxr-details { list-style: none; margin: 0; padding: 0 var(--hm-space-4) var(--hm-space-3) calc(var(--hm-space-4) * 2 + 1.25rem); display: flex; flex-direction: column; gap: var(--hm-space-1); font-size: var(--hm-text-base); line-height: 1.45; color: var(--text-muted); overflow-wrap: anywhere; }
+[data-home] .hxr-details code { font-family: var(--hm-mono, ui-monospace, monospace); font-size: var(--hm-text-base); }
+
+/* The second question */
+[data-home] .hxr-consent { display: flex; flex-direction: column; align-items: center; gap: var(--hm-space-4); width: min(100%, 40rem); }
+[data-home] .hxr-folders { list-style: none; margin: 0; padding: 0; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: var(--hm-space-2); text-align: left; }
+[data-home] .hxr-folders li { display: flex; flex-direction: column; gap: 2px; padding: var(--hm-space-2) var(--hm-space-4); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); }
+[data-home] .hxr-folder-name { font-size: var(--hm-text-name); font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+[data-home] .hxr-folder-path { font-family: var(--hm-mono, ui-monospace, monospace); font-size: var(--hm-text-base); line-height: 1.4; color: var(--text-muted); overflow-wrap: anywhere; }
+[data-home] .hxr-promises { margin: 0; padding-left: var(--hm-space-5); text-align: left; font-size: var(--hm-text-base); line-height: 1.5; color: var(--text-muted); }
+
+/* Nothing found, and a failure */
+[data-home] .hxr-nothing { display: flex; flex-direction: column; align-items: center; gap: var(--hm-space-4); }
+[data-home] .hxr-notes-row { display: flex; flex-direction: column; align-items: center; gap: var(--hm-space-1); }
+[data-home] .hxr-notes-row .hxf-status:empty { display: none; }
+
+/* What the reader says about the read, over the Read list */
+[data-home] .hxr-notes { width: min(100%, 40rem); box-sizing: border-box; padding: var(--hm-space-3) var(--hm-space-4); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); background: var(--surface-2); text-align: left; }
+[data-home] .hxr-notes ul { margin: 0; padding-left: var(--hm-space-5); font-size: var(--hm-text-base); line-height: 1.5; color: var(--text); overflow-wrap: anywhere; }
+[data-home] .hxr-notes .hxr-notes-more { list-style: none; margin-left: calc(-1 * var(--hm-space-5)); padding-top: var(--hm-space-2); }
+[data-home] .hxr-place-notes { padding-top: var(--hm-space-2); font-size: var(--hm-text-base); line-height: 1.5; color: var(--text); overflow-wrap: anywhere; }
+[data-home] .hxr-place-notes p { margin: 0 0 var(--hm-space-2); color: var(--text-muted); }
+[data-home] .hxr-place-notes ul { margin: 0; padding-left: var(--hm-space-5); }
+[data-home] .hxr-place-name { font-weight: 600; }
+[data-home] .hxr-count { margin: 0; font-size: var(--hm-text-base); line-height: 1.4; color: var(--text-muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-home] .hxr-fill[data-moving] { animation: none !important; transform: scaleX(0.5); }
+}

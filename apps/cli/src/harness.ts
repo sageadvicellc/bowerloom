@@ -3,8 +3,10 @@ import {
   importHarnessConfig, planHarnessProjection, HarnessPortabilityError,
   planManagedProjection, applyManagedProjection, planProjectionRemoval,
   removeManagedProjection, recoverManagedProjection,
-  type Harness, type NeutralConfig,
+  type NeutralConfig,
 } from '../../../packages/harness-portability/src/index.js';
+import { EngineWriterRefusal, isWriterEngine, oldIdOfWriter, parseEngineId } from '../../../packages/skill-manifest/src/engine.js';
+import type { WriterEngine } from '../../../packages/skill-manifest/src/engine.js';
 import { privateJson } from './controller.js';
 
 function usage(): never {
@@ -41,9 +43,11 @@ export async function runHarnessCommand(args: string[]): Promise<unknown> {
       if (command === 'remove') return await removeManagedProjection({ stateDir }, values.get('--approve')!);
       return await recoverManagedProjection({ stateDir }, values.get('--approve')!);
     }
-    const harness = values.get('--harness'), file = values.get('--file');
-    if (!synthetic || !file || (harness !== 'codex' && harness !== 'claude')) usage();
-    const input = { harness: harness as Harness, file, synthetic: true as const };
+    const named = parseEngineId(values.get('--harness')), file = values.get('--file');
+    // An engine with no writer is refused by name. `claude-code` and the old `claude` both name Claude Code.
+    if (named !== undefined && !isWriterEngine(named)) throw new EngineWriterRefusal(named);
+    if (!synthetic || !file || named === undefined) usage();
+    const input = { harness: oldIdOfWriter(named as WriterEngine), file, synthetic: true as const };
     if (command === 'import') return await importHarnessConfig(input);
     const neutralFile = values.get('--neutral');
     if (!neutralFile) usage();

@@ -36,9 +36,9 @@ test('commands rebuilt from a run print validated values only; any other value p
   assert.equal(syncRerun({ offline: false, team: 'x;id' }), 'the same bowerloom skills sync command');
   for (const n of [0, 5001, 1.5, Number.NaN]) assert.equal(syncRerun({ offline: false, team: null, maxGithubRequests: n }), 'the same bowerloom skills sync command', String(n));
   assert.equal(syncRerun({ offline: false, team: null, maxGithubRequests: 5000 }), 'bowerloom skills sync --max-github-requests 5000');
-  assert.equal(applyRerun({ harnesses: ['claude; id'] }), 'the same bowerloom apply command');
-  assert.equal(applyRerun({ harnesses: ['claude', 'codex'], allow: ['x;id'] }), 'the same bowerloom apply command');
-  assert.equal(applyRerun({ harnesses: ['claude', 'codex'], team: 'a b' }), 'the same bowerloom up command');
+  assert.equal(applyRerun({ engines: ['claude; id'] }), 'the same bowerloom apply command');
+  assert.equal(applyRerun({ engines: ['claude-code', 'codex'], allow: ['x;id'] }), 'the same bowerloom apply command');
+  assert.equal(applyRerun({ engines: ['claude-code', 'codex'], team: 'a b' }), 'the same bowerloom up command');
 });
 
 test('skills migrate: a state path that no command can carry names the plan command in words, never with a placeholder', () => {
@@ -59,7 +59,7 @@ test('the other notes: a slice file name, an --add-dir folder, and an ls -led fo
   }
   assert.match(notFoundNote('/a', "/p/it's"), /pass --add-dir '\/p\/it'\\''s'\.$/);
   assert.match(notFoundNote('/a', '/p/x\\y'), /pass --add-dir with that folder\.$/);
-  const review = dir => renderFolderAllowReview({ name: 'kb', project: '/p', folderDir: dir, path: 'kb', gitignore: { state: 'present' } });
+  const review = dir => renderFolderAllowReview({ name: 'kb', project: '/p', folderDir: dir, path: 'kb', summary: 'heading', gitignore: { state: 'present' } });
   assert.match(review('/k b'), /run ls -led '\/k b'\./);
   assert.match(review('/k\\b'), /run ls -led on that folder\./);
 });
@@ -67,8 +67,8 @@ test('the other notes: a slice file name, an --add-dir folder, and an ls -led fo
 // Round 11 of the reviews of PR 101, item 4: the full commands, exact, so a test fails when a flag goes missing.
 test('commands rebuilt from a run, exact: every flag that changes the plan is in the command', () => {
   const role = `reviewer:${'a'.repeat(64)}`;
-  assert.equal(applyRerun({ harnesses: ['claude'], frozen: true, allow: [role], maxGithubRequests: 5 }), `bowerloom apply --harness claude --allow-agent ${role} --frozen --max-github-requests 5`);
-  assert.equal(applyRerun({ harnesses: ['claude', 'codex'], team: 'research' }), 'bowerloom up --team research');
+  assert.equal(applyRerun({ engines: ['claude-code'], frozen: true, allow: [role], maxGithubRequests: 5 }), `bowerloom apply --harness claude-code --allow-agent ${role} --frozen --max-github-requests 5`);
+  assert.equal(applyRerun({ engines: ['claude-code', 'codex'], team: 'research' }), 'bowerloom up --team research');
   assert.equal(changeCommand({ op: 'use', kind: 'skill', id: 'house-style', commit: 'c'.repeat(40), maxGithubRequests: 7 }), `bowerloom use skill house-style --commit ${'c'.repeat(40)} --max-github-requests 7`);
   assert.equal(syncRerun({ offline: true, team: 'research', frozen: true }), 'bowerloom skills sync --offline --team research --frozen');
   assert.equal(rerunOf({ skills: [], prompts: [], teams: [], all: true, commit: 'd'.repeat(40) }), `bowerloom store migrate --all --commit ${'d'.repeat(40)}`);

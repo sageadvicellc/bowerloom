@@ -18,7 +18,7 @@ const lead = r => r.agents.find(a => a.role === 'lead');
 async function fixture(t, { agentExtra = '', skills = ['slice-wiki', 'house'], install = true } = {}) {
   const f = await wikiProject(t);
   put(f, 'CLAUDE.md', 'Project rules.\n'); put(f, '.claude/skills/house/SKILL.md', 'House skill.\n');
-  sliceAgent(f, 'lead', skills, agentExtra); if (install) await applied(f, ['claude']);
+  sliceAgent(f, 'lead', skills, agentExtra); if (install) await applied(f, ['claude-code']);
   return f;
 }
 
@@ -36,7 +36,7 @@ test('1. the fixture gives the exact byte counts of each column', async t => {
 });
 test('2. omitClaudeMd makes Instructions zero and leaves Baseline unchanged', async t => {
   const f = await fixture(t), keep = lead(await measureContext(measureInput(f)));
-  sliceAgent(f, 'lead', ['slice-wiki', 'house'], 'omitClaudeMd: true'); await applied(f, ['claude']);
+  sliceAgent(f, 'lead', ['slice-wiki', 'house'], 'omitClaudeMd: true'); await applied(f, ['claude-code']);
   const a = lead(await measureContext(measureInput(f)));
   assert.equal(a.omitClaudeMd, true); assert.equal(a.start.instructions.bytes, 0); assert.deepEqual(a.start.instructions.files, []);
   assert.equal(a.baseline.bytes, keep.baseline.bytes); assert.equal(a.start.bytes, keep.start.bytes - 15);
@@ -51,7 +51,7 @@ test('4. a missing skill is listed and not counted', async t => {
   assert.deepEqual(a.start.skills.unresolved, ['ghost']); assert.equal(a.start.skills.files.length, 1); assert.ok(a.notes.includes('skills not found, so not counted: ghost.'));
 });
 test('5. the baseline folder default is the deepest common folder of the measured agents slice roots, and chosenBy says so', async t => {
-  const f = await fixture(t); await createSlice(f, 'inner', { root: 'wiki/sub' }); sliceAgent(f, 'second', ['slice-inner']); await applied(f, ['claude']);
+  const f = await fixture(t); await createSlice(f, 'inner', { root: 'wiki/sub' }); sliceAgent(f, 'second', ['slice-inner']); await applied(f, ['claude-code']);
   const both = await measureContext(measureInput(f)); assert.deepEqual([both.baseline.folder, both.baseline.chosenBy], ['wiki', 'slice-roots']);
   const only = await measureContext(measureInput(f, { agents: ['second'] })); assert.deepEqual([only.baseline.folder, only.baseline.chosenBy, only.baseline.files], ['wiki/sub', 'slice-roots', 1]);
   const flag = await measureContext(measureInput(f, { baseline: f.projectDir })); assert.equal(flag.baseline.chosenBy, 'flag'); assert.equal(flag.baseline.folder, '.');
@@ -76,7 +76,7 @@ test('8. reference.unslicedStartBytes equals the start without slice indexes', a
 });
 test('9. mentioned lists backtick paths that exist and adds them to no sum', async t => {
   const f = await fixture(t); put(f, 'docs/guide.md', 'x'.repeat(100));
-  fs.writeFileSync(path.join(f.bowerloom, 'teams/first-team/agents/lead.md'), agentText('lead', 'skills: [slice-wiki, house]', 'Read `docs/guide.md` and `missing.md` and `a b` first.\n')); await applied(f, ['claude']);
+  fs.writeFileSync(path.join(f.bowerloom, 'teams/first-team/agents/lead.md'), agentText('lead', 'skills: [slice-wiki, house]', 'Read `docs/guide.md` and `missing.md` and `a b` first.\n')); await applied(f, ['claude-code']);
   const before = lead(await measureContext(measureInput(f)));
   assert.deepEqual(before.mentioned, [{ path: 'docs/guide.md', bytes: 100 }]); assert.ok(before.notes.includes('names docs/guide.md in its prompt (100 bytes). An agent that follows that line reads it on demand.'));
   assert.equal(before.start.bytes, before.start.prompt + 15 + 13 + before.start.slices[0].indexBytes); assert.equal(before.onDemand.bytes, 29);
@@ -103,7 +103,7 @@ test('14. a hard link reached twice counts once', async t => {
   const f = await fixture(t); fs.mkdirSync(path.join(f.projectDir, '.claude'), { recursive: true }); fs.linkSync(path.join(f.projectDir, 'CLAUDE.md'), path.join(f.projectDir, '.claude/CLAUDE.md'));
   const a = lead(await measureContext(measureInput(f))); assert.equal(a.start.instructions.files.length, 1); assert.equal(a.start.instructions.bytes, 15);
   // Two slices over the same files count each member once on demand.
-  await createSlice(f, 'twin', { root: 'wiki' }); sliceAgent(f, 'lead', ['slice-wiki', 'slice-twin', 'house']); await applied(f, ['claude']);
+  await createSlice(f, 'twin', { root: 'wiki' }); sliceAgent(f, 'lead', ['slice-wiki', 'slice-twin', 'house']); await applied(f, ['claude-code']);
   assert.deepEqual(lead(await measureContext(measureInput(f))).onDemand.members, { files: 2, bytes: 29 });
 });
 test('15. assumptions holds the eight strings of section 4.10', async t => {
@@ -122,7 +122,7 @@ test('--bytes-per-token calibrates the estimate; --user counts the user files; o
   const plain = lead(await measureContext(measureInput(f))), user = lead(await measureContext(measureInput(f, { user: true })));
   assert.equal(user.start.instructions.bytes, plain.start.instructions.bytes + 40); assert.equal(plain.start.instructions.bytes, 15);
   const cal = await measureContext(measureInput(f, { bytesPerTokenMilli: 3500 })); assert.equal(cal.estimator.calibrated, 'user'); assert.equal(cal.estimator.bytesPerToken, '3.5'); assert.equal(lead(cal).start.tokens, estimateTokens(lead(cal).start.bytes, 3500));
-  sliceAgent(f, 'lead', ['slice-wiki', 'house'], 'omitClaudeMd: true'); await applied(f, ['claude']); assert.equal(lead(await measureContext(measureInput(f, { user: true }))).start.instructions.bytes, 0);
+  sliceAgent(f, 'lead', ['slice-wiki', 'house'], 'omitClaudeMd: true'); await applied(f, ['claude-code']); assert.equal(lead(await measureContext(measureInput(f, { user: true }))).start.instructions.bytes, 0);
 });
 test('a skill that lives in a plugin is listed as not found', async t => {
   const f = await fixture(t, { skills: ['slice-wiki', 'plugin-skill'] }); const a = lead(await measureContext(measureInput(f))); assert.deepEqual(a.start.skills.unresolved, ['plugin-skill']);

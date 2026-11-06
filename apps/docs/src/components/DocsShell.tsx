@@ -7,6 +7,7 @@ import Search from './Search';
 import {useSidebar} from 'fumadocs-ui/components/sidebar/base';
 import {attachDrawerFocus} from '../lib/drawer-focus.mjs';
 import {copyFeedback} from '../lib/copy-feedback.mjs';
+import {mountVisuals} from '../lib/visuals-client.mjs';
 
 type Heading = {depth:number;slug:string;text:string};
 type Document = {title:string;description:string;url:string;markdownUrl:string|null;markdown:string;html:string;headings:Heading[];aliases:string[];contentHash:string;copy:{prompt:string|null;procedure:string|null};release:{version:string;statusLabel:string}};
@@ -31,7 +32,7 @@ export default function DocsShell({tree,page}:{tree:Root;page:Document}) {
   useEffect(()=>{
     const controls:HTMLButtonElement[]=[];
     for(const pre of article.current?.querySelectorAll('pre')??[]) {
-      const code=pre.querySelector('code');if(!code)continue;
+      const code=pre.querySelector('code');if(!code||pre.closest('.visual'))continue;
       const button=document.createElement('button');button.type='button';button.className='code-copy';button.textContent='Copy code';button.setAttribute('aria-live','polite');
       button.setAttribute('aria-label','Copy code example');
       button.onclick=async()=>{try{await navigator.clipboard.writeText(code.textContent??'');button.textContent='Code copied';}catch{button.textContent='Select code to copy';}};
@@ -39,6 +40,7 @@ export default function DocsShell({tree,page}:{tree:Root;page:Document}) {
     }
     return ()=>{for(const button of controls){const wrapper=button.parentElement;const pre=wrapper?.querySelector('pre');if(pre&&wrapper)wrapper.replaceWith(pre);}};
   },[page.html]);
+  useEffect(()=>article.current?mountVisuals(article.current,document):undefined,[page.html]);
   return <RootProvider pathname={page.url} theme={{enabled:false}} search={{SearchDialog:Search}}>
     <DocsLayout tree={tree} nav={{title:'Bowerloom docs',url:'/docs/'}} themeSwitch={{enabled:false}}>
       <DrawerKeyboard/>

@@ -15,8 +15,8 @@ import { denyNetwork, npmPackage, localEntry, syncProject, writeManifest, localS
 const network = denyNetwork();
 after(() => assert.deepEqual(network, []));
 
-const BOTH = ['claude', 'codex'];
-const input = (f, harnesses = BOTH, extra = {}) => ({ project: f.project(), stateRoot: f.stateRoot, harnesses, team: null, ...extra });
+const BOTH = ['claude-code', 'codex'];
+const input = (f, engines = BOTH, extra = {}) => ({ project: f.project(), stateRoot: f.stateRoot, engines, team: null, ...extra });
 const signal = () => new AbortController().signal;
 /** Creates a registered prompt through the product's own `prompt create`, under the project lock. */
 async function createPrompt(f, name, text) {
@@ -26,9 +26,9 @@ async function createPrompt(f, name, text) {
   if (text !== undefined) { fs.writeFileSync(file, text); }
   return file;
 }
-async function applied(f, harnesses = BOTH, extra = {}) {
-  const plan = await planProjectApply(input(f, harnesses, extra));
-  return { plan, result: await applyProjectApply(input(f, harnesses, extra), plan.revision, signal()) };
+async function applied(f, engines = BOTH, extra = {}) {
+  const plan = await planProjectApply(input(f, engines, extra));
+  return { plan, result: await applyProjectApply(input(f, engines, extra), plan.revision, signal()) };
 }
 const byId = list => Object.fromEntries(list.map(i => [i.id, i]));
 
@@ -36,7 +36,7 @@ test('a prompt lands at .claude/commands/<name>.md and in the Codex wrapper; cac
   const f = syncProject(t), a = npmPackage('alpha'); await createPrompt(f, 'weekly-update', 'Summarize the week.\n'); localSkill(f, 'house-style');
   writeManifest(f, [a.entry, localEntry('house-style')]); await prefill(f, a);
   const plan = await planProjectApply(input(f));
-  assert.equal(plan.format, APPLY_PLAN_FORMAT); assert.deepEqual(plan.harnesses, BOTH);
+  assert.equal(plan.format, APPLY_PLAN_FORMAT); assert.deepEqual(plan.engines, BOTH);
   assert.equal(plan.writesAuthorized, false); assert.equal(plan.executionAuthorized, false); assert.match(plan.revision, /^[a-f0-9]{64}$/);
   assert.deepEqual(plan.prompts.map(p => [p.id, p.state, p.action]), [['weekly-update', 'new', 'install']]);
   assert.deepEqual(plan.skills.items.map(i => [i.id, i.state, i.action]), [['alpha', 'cached', 'install'], ['house-style', 'local', 'install']]);
@@ -67,19 +67,19 @@ test('AGENTS.md and CLAUDE.md stay byte for byte; the plan carries a pointer ins
 
 test('--harness claude adds Claude Code copies only; a later codex apply adds and removes nothing', async t => {
   const f = syncProject(t); await createPrompt(f, 'review', 'Review it.\n'); localSkill(f, 'house-style'); writeManifest(f, [localEntry('house-style')]);
-  const first = await applied(f, ['claude']);
-  assert.deepEqual(first.plan.harnesses, ['claude']);
-  assert.deepEqual(first.plan.prompts[0].harnesses, ['claude']); assert.deepEqual(first.plan.skills.items[0].harnesses, ['claude']);
+  const first = await applied(f, ['claude-code']);
+  assert.deepEqual(first.plan.engines, ['claude-code']);
+  assert.deepEqual(first.plan.prompts[0].engines, ['claude-code']); assert.deepEqual(first.plan.skills.items[0].engines, ['claude-code']);
   assert.ok(exists(f, '.claude/commands/review.md')); assert.ok(exists(f, '.claude/skills/house-style/SKILL.md'));
   assert.equal(exists(f, '.agents'), false);
   const claudeFiles = contentTree(path.join(f.projectDir, '.claude'));
   const second = await applied(f, ['codex']);
-  assert.deepEqual(byId(second.plan.prompts).review.state, 'harnesses-changed'); assert.deepEqual(byId(second.plan.prompts).review.harnesses, BOTH);
-  assert.deepEqual(second.plan.skills.items[0].harnesses, BOTH);
+  assert.deepEqual(byId(second.plan.prompts).review.state, 'engines-changed'); assert.deepEqual(byId(second.plan.prompts).review.engines, BOTH);
+  assert.deepEqual(second.plan.skills.items[0].engines, BOTH);
   assert.ok(exists(f, '.agents/skills/prompt-review/SKILL.md')); assert.ok(exists(f, '.agents/skills/house-style/SKILL.md'));
   assert.equal(read(f, '.claude/commands/review.md'), 'Review it.\n'); assert.ok(exists(f, '.claude/skills/house-style/SKILL.md'));
   // A Claude-only apply now has nothing to do: it never drops the Codex copies.
-  const third = await planProjectApply(input(f, ['claude']));
+  const third = await planProjectApply(input(f, ['claude-code']));
   assert.ok(third.prompts.every(p => p.action === 'none') && third.skills.items.every(i => i.action === 'none'), JSON.stringify(third));
   assert.ok(exists(f, '.agents/skills/prompt-review/SKILL.md'));
   assert.equal(contentTree(path.join(f.projectDir, '.claude')), claudeFiles);
@@ -171,7 +171,7 @@ test('with no skills.json and no prompts there is nothing to apply, and the plan
   const before = exactTree(f.base), result = await applyProjectApply(input(f), plan.revision, signal());
   assert.deepEqual(result.applied, []); assert.equal(exactTree(f.base), before);
   await assert.rejects(planProjectApply(input(f, [])), code('USAGE'));
-  await assert.rejects(planProjectApply(input(f, ['codex', 'claude'])), code('USAGE'));
+  await assert.rejects(planProjectApply(input(f, ['codex', 'claude-code'])), code('USAGE'));
 });
 
 // Review M6 finding 6: an interrupt while a prompt's child plan runs (phase B) is an interrupt, as it is for a skill,

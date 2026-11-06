@@ -7,9 +7,9 @@ const css = await readFile(new URL('../src/homepage-banner.css', import.meta.url
 const app = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8');
 test('decorations wrap their panels instead of occupying standalone section gaps', () => {
   assert.match(source, /companion-surface">\{children\}/);
-  assert.match(app, /<SectionCompanion unit="h4n" side="left"><LabsWorkflow \/><\/SectionCompanion>/);
-  assert.match(app, /<SectionCompanion unit="s4" side="right"><section className="product-section"/);
-  assert.match(app, /<SectionCompanion unit="s4-slate" side="right"><section className="faq-section"/);
+  assert.match(app, /<SectionCompanion unit="h4n" side="left"><HowItWorks \/><\/SectionCompanion>/);
+  assert.match(app, /<SectionCompanion unit="s4" side="right"><WhatItDoes \/><\/SectionCompanion>/);
+  assert.match(app, /<SectionCompanion unit="s4-slate" side="right"><FaqSection \/><\/SectionCompanion>/);
   assert.doesNotMatch(app, /<SectionCompanion[^>]+\/>/);
 });
 test('robot layers use one unchanged source and shared position; only visibility changes', async () => {
@@ -69,4 +69,14 @@ test('mobile S4 foreground contains both grips but excludes the central chest st
   assert.match(css,/--pink-rim-source-y: 420; --pink-source-width: 640/);
   for(const width of [140,180]){const offset=width*420/640;assert.equal(offset/(width*960/640)*960,420);assert.ok(offset-(width*960/640)*.37>0);}
   assert.match(css,/\.companion-s4 \.companion-robot-front \{ clip-path: var\(--companion-grip\)/);
+});
+test('panel units contain exactly the two current Brand derivatives with retained provenance', async () => {
+  const manifest = JSON.parse(await readFile(new URL('../public/panel-units/manifest.json', import.meta.url)));
+  assert.equal(manifest.assets.length, 2); assert.equal(manifest.higgsfieldCredits, 0);
+  assert.equal(manifest.sourcePng.length, 2);
+  assert.deepEqual(manifest.assets.map(a => a.path).sort(), ['/panel-units/h4n-ochre-wave.webp', '/panel-units/s4-rose-peek.webp']);
+  for (const asset of manifest.assets) {
+    const data = await readFile(new URL('../public' + asset.path, import.meta.url));
+    assert.equal(data.length, asset.bytes); assert.equal(createHash('sha256').update(data).digest('hex'), asset.sha256);
+  }
 });

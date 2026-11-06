@@ -36,6 +36,8 @@
   --trellis-mono-control-size: 15px;
   --trellis-mono-prompt-size: 16px;
   --warm: var(--brand-action);
+  /* The one corner style for every button, tag, and chip on the page: the sharpest radius the site already used on a button (the hero Get the app button). */
+  --control-radius: 2px;
   font-family: var(--ui-font);
   background: var(--ui-bg);
   color: var(--ui-text);
@@ -55,10 +57,10 @@
   --brand-action-ink: #27262B;
 }
 :root body { font-family: var(--ui-font); font-size: 17px; line-height: 1.65; }
-:root :is(h1, h2, h3, .propernoun) { font-family: var(--trellis-reading-font); font-optical-sizing: auto; }
+:root :is(h1, h2, h3) { font-family: var(--trellis-reading-font); font-optical-sizing: auto; }
 :root :is(h1, h2, h3) { text-wrap: balance; letter-spacing: -.035em; }
 :root :is(button, select, input, textarea) { font-family: var(--ui-font); }
-:root :is(code, pre, kbd, samp), :root .labs-role .labs-yaml { font-family: var(--ui-code-font); font-size: max(14px, .9em); line-height: 1.7; }
+:root :is(code, pre, kbd, samp) { font-family: var(--ui-code-font); font-size: max(14px, .9em); line-height: 1.7; }
 :root pre code { font: inherit; }
 :root :is(pre, code, kbd, samp) { font-variant-numeric: tabular-nums; }
 :root :is(input, textarea) { caret-color: var(--brand-action); }
@@ -71,11 +73,11 @@
 .brand-mascot .brand-dark, .brand-wordmark .brand-dark { display: none; }
 [data-theme='dark'] .brand-mascot .brand-light, [data-theme='dark'] .brand-wordmark .brand-light { display: none; }
 [data-theme='dark'] .brand-mascot .brand-dark, [data-theme='dark'] .brand-wordmark .brand-dark { display: block; }
-:root .site-header .release-label { margin-left: 0; white-space: nowrap; color: var(--brand-ink); background: var(--brand-surface); border-color: var(--brand-line); font: 500 13px/1.5 var(--ui-font); }
-:root .desktop-navigation { gap: 22px; font: 500 14px/1.6 var(--ui-font); white-space: nowrap; color: var(--ui-muted); }
+:root .desktop-navigation { gap: 26px; font: 500 15px/1.6 var(--ui-font); white-space: nowrap; color: var(--ui-text); }
 /* The icon reflects the saved preference; system stays distinct from resolved color. */
-.theme-control.theme-toggle { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 44px; width: 44px; height: 44px; padding: 10px; color: var(--ui-text); background: var(--ui-surface); border: 1px solid var(--trellis-control-border); border-radius: var(--ui-radius-sm); cursor: pointer; }
-.theme-toggle:hover { color: var(--ui-primary); border-color: var(--ui-primary); }
+.theme-control.theme-toggle { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 44px; width: 44px; height: 44px; padding: 10px; color: var(--ui-text); background: transparent; border: 0; border-radius: var(--control-radius); cursor: pointer; }
+.theme-toggle:hover { color: var(--ui-primary); background: color-mix(in srgb, var(--ui-primary) 8%, transparent); }
+.theme-toggle:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 2px; }
 .theme-icon { width: 22px; height: 22px; animation: theme-icon-enter 200ms cubic-bezier(.16, 1, .3, 1); }
 @keyframes theme-icon-enter { from { opacity: .65; transform: rotate(-18deg) scale(.85); } to { opacity: 1; transform: rotate(0) scale(1); } }
 @media (prefers-reduced-motion: reduce) { .theme-icon { animation: none; } }
@@ -83,25 +85,7 @@
 :root .mobile-drawer nav { font-family: var(--ui-font); font-size: 20px; }
 :root .mobile-drawer, :root .mobile-drawer::backdrop { box-shadow: none; }
 :root .mobile-drawer::backdrop { background: rgb(0 0 0 / 48%); }
-:root .tutorial-builder {
-  --tutorial-bg: var(--brand-surface);
-  --tutorial-accent: var(--brand-action);
-  --tutorial-soft: var(--brand-rose);
-  --tutorial-ink: var(--brand-ink);
-  --tutorial-surface: var(--brand-ground);
-  font: 17px/1.65 var(--ui-font);
-  color-scheme: inherit;
-  border: 1px solid var(--brand-line);
-}
-:root .tutorial-choice-group legend, :root .tutorial-goal-label { font-family: var(--trellis-reading-font); font-size: 24px; }
-:root .tutorial-builder textarea { font: 16px/1.65 var(--ui-font); }
-:root .tutorial-option strong, :root .tutorial-milestones strong { font-weight: 650; }
-:root .tutorial-builder .tutorial-primary { background: var(--brand-action); color: var(--brand-action-ink); font-size: 15px; }
-:root .tutorial-builder .tutorial-primary:hover { background: var(--brand-ink); color: var(--brand-ground); }
 :root .button.primary:hover { background: var(--brand-ink); border-color: var(--brand-ink); color: var(--brand-ground); }
-:root .tutorial-builder ::selection { background: var(--brand-action); color: var(--brand-action-ink); }
-:root .yaml-key { color: var(--brand-action); }
-:root .yaml-value { color: var(--brand-muted); }
 :root .site-footer {
   color-scheme: dark;
   --brand-ground: #27262B; --brand-surface: #343238; --brand-ink: #F6EEE8;
@@ -112,24 +96,14 @@
   background: var(--brand-ground); color: var(--brand-ink); border-color: var(--brand-line);
 }
 :root .site-footer :is(p, .footer-note), :root .site-footer > div { font: 14px/1.65 var(--ui-font); color: var(--ui-muted); }
+:root .site-footer > div { color: var(--ui-text); }
 :root .site-footer .brand-wordmark { width: 204px; }
-:root .render-diagnostics { background: var(--ui-surface); color: var(--ui-text); font: 14px/1.7 var(--ui-code-font); }
-:root .hero-description, :root .hero-note, :root .hero-footer, :root .scene-caption, :root .scene-bottom { color: var(--ui-muted); }
-:root .hero-copy h1, :root .section-heading h2 { color: var(--ui-text); }
-:root .scene-caption, :root .scene-bottom, :root .hero-footer, :root .hero-note { font-family: var(--ui-font); font-size: 14px; }
-:root .release-label > span, :root .status-dot { box-shadow: none; }
-:root .offer-controls button { color: var(--ui-primary); }
-:root .offer-controls button[aria-pressed='true'] { color: var(--ui-primary-fg); }
-@media (max-width: 1280px) and (min-width: 1101px) {
-  :root .site-header { gap: 14px; padding-inline: 3%; }
-  :root .site-header .brand-mascot { display: none; }
-  :root .site-header .brand-wordmark { width: 184px; }
-  :root .desktop-navigation { gap: 16px; }
-}
-@media (max-width: 1100px) {
+:root .hero-description, :root .hero-note { color: var(--ui-muted); }
+:root .hero-copy h1 { color: var(--ui-text); }
+:root .hero-note { font-family: var(--ui-font); font-size: 14px; }
+@media (max-width: 1023px) {
   :root .site-header .theme-control { margin-left: auto; }
   :root .site-header .mobile-menu-toggle { margin-left: 0; }
-  :root .site-header .release-label { margin-left: 0; }
 }
 @media (max-width: 600px) {
   :root .site-header { padding-inline: 16px; gap: 10px; }

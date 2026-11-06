@@ -1,9 +1,11 @@
 ---
 title: "Teams, agreements, and files"
-description: "Understand the fixed profiles and the documents that guide their review."
-section: "Concepts"
+description: "Legacy 0.7. Understand the fixed profiles and the documents that guide their review."
+section: "Legacy 0.7 team setup"
 order: 18
 ---
+
+> **Legacy (0.7).** This page describes the team setup flow of Bowerloom 0.7. Its commands are still in the CLI help of 0.8.0-beta.1. The current path is [Adopt and install a harness](/docs/guides/adopt-and-install/).
 
 Your existing personal agent helps turn a workflow into defined roles, handoffs, and review points. Bowerloom stores the resulting specification in files that follow you, alongside your project. The fixed profile provides a starting structure for comparison with your actual process. Setup governs the approved file write and records its result. It does not grant runtime permissions or execute the proposed team.
 
