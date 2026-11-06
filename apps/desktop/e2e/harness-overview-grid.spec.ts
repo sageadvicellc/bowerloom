@@ -124,6 +124,30 @@ test('the keyboard focus ring shows on a part', async () => {
   await shot(p, 'overview-grid2-focus-1440x900-light');
 });
 
+for (const scheme of ['light', 'dark'] as const) {
+  test(`a selected part and the copies of a shared skill look different in the Grid, ${scheme}`, async () => {
+    const p = page();
+    await p.setViewportSize({ width: 1440, height: 900 });
+    await p.emulateMedia({ reducedMotion: 'reduce', colorScheme: scheme });
+    await fresh(p, '#sample/overview');
+    await openAll(p);
+    await p.locator('.hxo-cell-item', { hasText: 'Check facts' }).first().locator('.hxo-cell-pick').click();
+    const selected = p.locator('.hxo-cell-item[data-selected]'), copies = p.locator('.hxo-cell-item[data-lit]');
+    await expect(selected).toHaveCount(1);
+    expect(await copies.count(), 'the copies of the shared skill').toBeGreaterThan(0);
+    const look = (l: ReturnType<Page['locator']>) => l.first().evaluate(el => { const c = getComputedStyle(el); return { bg: c.backgroundColor, outline: c.outlineStyle, shadow: c.boxShadow }; });
+    const a = await look(selected), b = await look(copies);
+    expect(a.bg, 'the selected part is filled').not.toBe('rgba(0, 0, 0, 0)');
+    expect(b.bg, 'a copy has no fill').toBe('rgba(0, 0, 0, 0)');
+    expect(b.outline, 'a copy has a dashed outline').toBe('dashed');
+    expect(a.outline, 'the selected part has no dashed outline').not.toBe('dashed');
+    // A tall window for the picture, so the selected part and its copies are on the page together.
+    await p.setViewportSize({ width: 1440, height: 1900 });
+    await framesPainted(p);
+    await shot(p, `overview-grid3-shared-1440x1900-${scheme}`);
+  });
+}
+
 test('the Grid, the Graph and the List switch with the radio buttons and the arrow keys, and keep the selection', async () => {
   const p = page();
   await p.setViewportSize({ width: 1440, height: 900 });
@@ -150,6 +174,17 @@ test('the Grid, the Graph and the List switch with the radio buttons and the arr
 });
 
 /** The animations that move a tile of the Grid right now. */
+/** Counts every call of `animate` on a tile or a place from now on, so a short glide is never missed between two reads. Install it after the page loads. */
+const watchGlides = (p: Page): Promise<void> => p.evaluate(() => {
+  const w = window as unknown as { __glides: number };
+  w.__glides = 0;
+  const original = Element.prototype.animate;
+  Element.prototype.animate = function (this: Element, ...args: Parameters<Element['animate']>) {
+    if (this.classList.contains('hxo-cell') || this.classList.contains('hxo-place')) w.__glides += 1;
+    return original.apply(this, args);
+  };
+});
+const glides = (p: Page): Promise<number> => p.evaluate(() => (window as unknown as { __glides: number }).__glides);
 const tileAnimations = (p: Page): Promise<number> => p.evaluate(() => document.getAnimations().filter(a => {
   const target = (a.effect as KeyframeEffect | null)?.target;
   return target instanceof HTMLElement && (target.classList.contains('hxo-cell') || target.classList.contains('hxo-place'));
@@ -161,6 +196,7 @@ test('a place that closes makes the places below it glide, a change of columns g
   for (const reduced of [false, true]) {
     await p.emulateMedia({ reducedMotion: reduced ? 'reduce' : 'no-preference', colorScheme: 'light' });
     await fresh(p, '#sample/overview');
+    await watchGlides(p);
     await openAll(p);
     // "Expand all" opens places, so the places below glide; the page is still once they have.
     await expect.poll(() => tileAnimations(p), { timeout: 5000 }).toBe(0);
@@ -170,19 +206,25 @@ test('a place that closes makes the places below it glide, a change of columns g
     await p.locator('.hxo-cell-pick').nth(1).click();
     await expect(p.locator('.hxo-cell-item[data-selected]')).toHaveCount(1);
     await framesPainted(p);
+    const before = await glides(p);
+    await p.locator('.hxo-cell-pick').nth(2).click();
+    await framesPainted(p);
     expect(await tileAnimations(p), 'selecting a part glides nothing').toBe(0);
+    expect(await glides(p), 'selecting a part asks for no glide').toBe(before);
     await p.locator('[data-place-toggle]').first().click();
     await expect(p.locator('[data-place-toggle]').first()).toHaveAttribute('aria-expanded', 'false');
     if (reduced) {
       await framesPainted(p);
       expect(await tileAnimations(p), 'reduced motion: no tile animates').toBe(0);
+      expect(await glides(p), 'reduced motion: no glide is even asked for').toBe(0);
     } else {
-      expect(await tileAnimations(p), 'the places below the closed place glide').toBeGreaterThan(0);
+      await expect.poll(() => glides(p), { message: 'the places below the closed place glide' }).toBeGreaterThan(before);
       await expect.poll(() => tileAnimations(p), { timeout: 5000 }).toBe(0);
       // A change of columns (a narrower window) glides too.
+      const beforeColumns = await glides(p);
       await p.setViewportSize({ width: 1000, height: 900 });
       await expect.poll(async () => p.locator('.hxo-grid').getAttribute('data-columns')).not.toBe('4');
-      expect(await tileAnimations(p), 'the columns changed, so the frames glide').toBeGreaterThan(0);
+      await expect.poll(() => glides(p), { message: 'the columns changed, so the frames glide' }).toBeGreaterThan(beforeColumns);
       await expect.poll(() => tileAnimations(p), { timeout: 5000 }).toBe(0);
       await p.setViewportSize({ width: 1440, height: 900 });
       await expect.poll(async () => p.locator('.hxo-grid').getAttribute('data-columns')).toBe('4');

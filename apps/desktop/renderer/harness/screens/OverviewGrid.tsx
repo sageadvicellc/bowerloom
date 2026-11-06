@@ -8,7 +8,7 @@
  * that kept their size. The glide is made by overview-motion.ts (the one seam, which also decides what glides) and is none under "reduce motion". A press that selects a part, and a
  * resize that does not change the columns, move nothing by animation.
  */
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import type { PartKind } from '../../../shared/harness/types.js';
 import { BENTO, bentoColumns, bentoOf, countsOfNodes, itemsShown } from '../../../shared/harness/overview-bento.js';
@@ -19,7 +19,7 @@ import { KIND_PLURAL } from '../words.js';
 import { OVERVIEW, countsWords, moreWords, nodeName, tileMoreName, tileName, toggleName, usesLineWords } from '../words-overview.js';
 import { brightOf, litPlaces, usesCounts } from './OverviewModel.js';
 import type { OverviewIndex } from './OverviewModel.js';
-import { applyGlides, glidePlanOf, stopGlides } from './overview-motion.js';
+import { NO_GLIDES, applyGlides, glidePlanOf, guarded, stopGlides } from './overview-motion.js';
 import type { GlideSnapshot, Rect } from './overview-motion.js';
 
 export interface OverviewGridProps {
@@ -108,18 +108,19 @@ function contentWidth(el: HTMLElement): number {
  * The columns for the width of an element, kept up to date while it is on the page. Only the number of columns is state, so a resize that keeps the columns draws nothing.
  * `initial` is the width used until the element is measured (tests, and a window with no observer). A measured width of 0 is 0, not `initial`.
  */
-function useColumns(ref: { current: HTMLElement | null }, initial: number): number {
+function useColumns(ref: { current: HTMLElement | null }, initial: number, onLayout: () => void): number {
   const [columns, setColumns] = useState(() => bentoColumns(initial));
   useLayoutEffect(() => {
     const el = ref.current;
     if (el === null) return;
-    const read = (): void => setColumns(bentoColumns(contentWidth(el)));
+    // The layout is noted first, while the page still shows the old columns, so the next glide starts from what the person saw.
+    const read = (): void => { onLayout(); setColumns(bentoColumns(contentWidth(el))); };
     read();
     if (typeof ResizeObserver !== 'function') return;
     const watch = new ResizeObserver(read);
     watch.observe(el);
     return () => watch.disconnect();
-  }, [ref]);
+  }, [ref, onLayout]);
   return columns;
 }
 
@@ -134,7 +135,6 @@ function snapshot(root: HTMLElement, columns: number, open: string): GlideSnapsh
 
 export function OverviewGrid({ overview, expanded, index, selectedId, onSelect, onToggle, onShowList, place, initialWidth = 1000 }: OverviewGridProps): ReactElement {
   const root = useRef<HTMLDivElement>(null);
-  const columns = useColumns(root, initialWidth);
   const bright = useMemo(() => brightOf(overview, index, selectedId), [overview, index, selectedId]);
   const lit = useMemo(() => litPlaces(overview, index, selectedId), [overview, index, selectedId]);
   const copies = useMemo(() => {
@@ -142,21 +142,29 @@ export function OverviewGrid({ overview, expanded, index, selectedId, onSelect, 
     return found === undefined || found.node.shareKey === undefined ? null : new Set(overview.sharedKeys.get(found.node.shareKey) ?? []);
   }, [overview, index, selectedId]);
 
-  // What glides is decided by glidePlanOf (a pure function, tested): the first layout and a press that only selects move nothing. The layout is read again only when the parts, the open
-  // places or the columns changed. The first frames after the page opens are not glided: the width is measured at once, and the columns may settle in the same frame.
+  // What glides is decided by glidePlanOf (a pure function, tested): the first layout and a press that only selects move nothing. The layout is read after every commit, and when the
+  // observer sees the width change, so the next glide starts from where things were and not from an old read. The first frames after the page opens are not glided: the width is
+  // measured at once, and the columns may settle in the same frame. Every step is guarded: a failure of movement is reported once and the Overview goes on.
   const last = useRef<GlideSnapshot | null>(null), armed = useRef(false);
   useLayoutEffect(() => {
     const frame = requestAnimationFrame(() => { armed.current = true; });
     return () => cancelAnimationFrame(frame);
   }, []);
+  const note = useCallback((): void => {
+    const el = root.current, before = last.current;
+    if (el === null || before === null) return;
+    last.current = guarded('snapshot', null, () => snapshot(el, before.columns, before.open));
+  }, []);
+  const columns = useColumns(root, initialWidth, note);
   useLayoutEffect(() => {
     const el = root.current;
     if (el === null) return;
-    const open = overview.groups.filter(g => expanded.has(g.id)).map(g => g.id).join(','), next = snapshot(el, columns, open);
-    const plan = armed.current ? glidePlanOf(last.current, next) : glidePlanOf(null, next);
+    const open = overview.groups.filter(g => expanded.has(g.id)).map(g => g.id).join(','), next = guarded('snapshot', null, () => snapshot(el, columns, open));
+    if (next === null) { last.current = null; return; }
+    const plan = guarded('plan', NO_GLIDES, () => glidePlanOf(armed.current ? last.current : null, next));
     last.current = next;
     applyGlides(plan, (layer, key) => el.querySelector<HTMLElement>(`[${layer === 'place' ? 'data-place' : 'data-tile'}="${CSS.escape(key)}"]`));
-  }, [overview, expanded, columns]);
+  });
   // When the Overview goes, every movement stops, so an engine that keeps running cannot move an element that is gone.
   useEffect(() => {
     const el = root.current;

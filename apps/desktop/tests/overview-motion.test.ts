@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MOTION } from '../renderer/motion-tokens.js';
-import { applyGlides, glideKeyframes, glidePlanOf, movesOf, overviewMotion, resetOverviewMotionReport, setOverviewMotion, softMotion, stopGlides } from '../renderer/harness/screens/overview-motion.js';
+import { applyGlides, glideKeyframes, glidePlanOf, guarded, movesOf, overviewMotion, resetOverviewMotionReport, setOverviewMotion, softMotion, stopGlides, translateOf } from '../renderer/harness/screens/overview-motion.js';
 import type { GlidePlan, GlideSnapshot, OverviewMotion, Rect } from '../renderer/harness/screens/overview-motion.js';
 
 interface Call { keyframes: Keyframe[]; options: KeyframeAnimationOptions }
@@ -110,7 +110,7 @@ test('an element whose animate throws is caught: one console line naming the cla
     assert.doesNotThrow(() => applyGlides(plan(), find), 'a second failure is silent');
   }));
   assert.equal(lines.length, 1, 'one diagnostic in all');
-  assert.match(lines[0]!, /TypeError/);
+  assert.match(lines[0]!, /glide \(TypeError\)/);
   assert.doesNotMatch(lines[0]!, /secret|private|\//, 'no message or path from the error');
   assert.equal(good.calls.length, 2, 'the tiles still glided');
 });
@@ -124,8 +124,9 @@ test('a swapped engine that throws, in glide or in stop, cannot reach the screen
       assert.doesNotThrow(() => applyGlides(plan(), () => asEl({})));
       assert.doesNotThrow(() => stopGlides([asEl({})]));
     });
-    assert.equal(lines.length, 1);
-    assert.match(lines[0]!, /RangeError/);
+    assert.equal(lines.length, 2, 'one line for each step that failed: glide and stop');
+    assert.match(lines[0]!, /glide \(RangeError\)/);
+    assert.match(lines[1]!, /stop \(RangeError\)/);
   } finally { setOverviewMotion(first); resetOverviewMotionReport(); }
 });
 
@@ -176,4 +177,59 @@ test('a place that opens while the columns change glides its frames quickly and 
   const p = glidePlanOf(before, after);
   assert.equal(p.framesHow, 'toggle');
   assert.equal(p.tiles.size, 1);
+});
+
+test('a swapped engine is not asked to move anything under reduced motion', () => {
+  const first = overviewMotion(), asked: string[] = [];
+  setOverviewMotion({ glide: () => { asked.push('glide'); }, stop: () => undefined });
+  try {
+    withReducedMotion(true, () => applyGlides(plan(), () => asEl({})));
+    assert.deepEqual(asked, []);
+    withReducedMotion(false, () => applyGlides(plan(), () => asEl({})));
+    assert.equal(asked.length, 2, 'with motion on, the same plan reaches the engine');
+  } finally { setOverviewMotion(first); }
+});
+
+test('guarded gives its fallback and reports once for each step, naming only the class of the error', () => {
+  resetOverviewMotionReport();
+  const lines = recordingConsole(() => {
+    assert.equal(guarded('snapshot', 'none', () => { throw new Error('/home/someone/file'); }), 'none');
+    assert.equal(guarded('snapshot', 'none', () => { throw new Error('again'); }), 'none');
+    assert.equal(guarded('plan', 7, () => { throw 'text'; }), 7);
+    assert.equal(guarded('plan', 7, () => 3), 3, 'a step that works gives its own value');
+  });
+  assert.equal(lines.length, 2);
+  assert.match(lines[0]!, /snapshot \(Error\)/);
+  assert.match(lines[1]!, /plan \(string\)/);
+  assert.ok(lines.every(l => !/someone|again|\/home/.test(l)));
+  resetOverviewMotionReport();
+});
+
+test('translateOf reads the offset of a computed transform, and nothing from anything else', () => {
+  assert.deepEqual(translateOf('matrix(1, 0, 0, 1, 12, -5)'), { x: 12, y: -5 });
+  assert.deepEqual(translateOf('matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 7,9,0,1)'), { x: 7, y: 9 });
+  assert.deepEqual(translateOf('none'), { x: 0, y: 0 });
+  assert.deepEqual(translateOf(undefined), { x: 0, y: 0 });
+  assert.deepEqual(translateOf('matrix(1, 0, 0, 1, x, y)'), { x: 0, y: 0 });
+});
+
+test('a glide taken over while another still runs starts where the first has the element, so it does not jump', () => {
+  const s = standIn();
+  let reads = 0;
+  const had = Object.getOwnPropertyDescriptor(globalThis, 'getComputedStyle');
+  Object.defineProperty(globalThis, 'getComputedStyle', { configurable: true, value: () => { reads += 1; return { transform: 'matrix(1, 0, 0, 1, 12, -5)' }; } });
+  try {
+    withReducedMotion(false, () => {
+      softMotion.glide(asEl(s.el), { dx: 0, dy: 40 }, 'toggle');
+      assert.equal(reads, 0, 'nothing was running, so nothing is read');
+      softMotion.glide(asEl(s.el), { dx: 10, dy: 20 }, 'toggle');
+    });
+    assert.equal(reads, 1);
+    assert.equal(s.calls[0]!.keyframes[0]!.transform, 'translate(0px, 40px)');
+    assert.equal(s.calls[1]!.keyframes[0]!.transform, 'translate(22px, 15px)', 'the new offset plus where the running glide had the element');
+    assert.equal(s.cancelled, 1);
+    softMotion.stop(asEl(s.el));
+    withReducedMotion(false, () => softMotion.glide(asEl(s.el), { dx: 3, dy: 3 }, 'toggle'));
+    assert.equal(s.calls[2]!.keyframes[0]!.transform, 'translate(3px, 3px)', 'after a stop nothing is running');
+  } finally { if (had) Object.defineProperty(globalThis, 'getComputedStyle', had); else Reflect.deleteProperty(globalThis, 'getComputedStyle'); }
 });

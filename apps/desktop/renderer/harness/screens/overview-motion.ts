@@ -68,7 +68,9 @@ export interface GlidePlan {
   /** The tiles that moved inside their place and kept their size. */
   readonly tiles: ReadonlyMap<string, GlideMove>;
 }
-const NONE: GlidePlan = { frames: new Map(), framesHow: 'toggle', tiles: new Map() };
+/** A plan that moves nothing. */
+export const NO_GLIDES: GlidePlan = { frames: new Map(), framesHow: 'toggle', tiles: new Map() };
+const NONE = NO_GLIDES;
 const sameSize = (a: Rect, b: Rect): boolean => Math.abs(a.w - b.w) < MIN_MOVE && Math.abs(a.h - b.h) < MIN_MOVE;
 
 /**
@@ -93,13 +95,29 @@ export function glidePlanOf(before: GlideSnapshot | null, after: GlideSnapshot):
 
 const running = new WeakMap<object, { cancel(): void }>();
 
+/** The translate of a computed transform (`matrix(a, b, c, d, tx, ty)` or `matrix3d(...)`), or none. Read with no DOM class, so it also runs where there is no DOM. */
+export function translateOf(transform: string | undefined): { x: number; y: number } {
+  const found = /^matrix(3d)?\(([^)]*)\)$/.exec((transform ?? '').trim());
+  if (found === null) return { x: 0, y: 0 };
+  const n = found[2]!.split(',').map(v => Number.parseFloat(v));
+  const [x, y] = found[1] === undefined ? [n[4], n[5]] : [n[12], n[13]];
+  return { x: Number.isFinite(x) ? x! : 0, y: Number.isFinite(y) ? y! : 0 };
+}
+/** Where a glide still running has the element now, as an offset from its resting place. Nothing running, or nothing readable: no offset. */
+function currentOffset(el: HTMLElement): { x: number; y: number } {
+  if (!running.has(el) || typeof getComputedStyle !== 'function') return { x: 0, y: 0 };
+  try { return translateOf(getComputedStyle(el).transform); } catch { return { x: 0, y: 0 }; }
+}
+
 /** The soft default. Nothing under reduced motion; nothing on an element that cannot animate. */
 export const softMotion: OverviewMotion = {
   glide(el, move, how) {
     if (prefersReducedMotion() || typeof el.animate !== 'function') return;
     if (Math.abs(move.dx) < MIN_MOVE && Math.abs(move.dy) < MIN_MOVE) return;
+    // A glide still running is taken over from where it is, so a second change within its time does not jump.
+    const at = currentOffset(el);
     running.get(el)?.cancel();
-    running.set(el, el.animate(glideKeyframes(move), { duration: TIMING[how].ms, easing: TIMING[how].ease, fill: 'none' }));
+    running.set(el, el.animate(glideKeyframes({ dx: move.dx + at.x, dy: move.dy + at.y }), { duration: TIMING[how].ms, easing: TIMING[how].ease, fill: 'none' }));
   },
   stop(el) { running.get(el)?.cancel(); running.delete(el); },
 };
@@ -112,23 +130,32 @@ export function setOverviewMotion(next: OverviewMotion): void { current = next; 
 
 // ---- Running a plan, safely ----------------------------------------------------------------------------------------------------------------------------------
 
-let reported = false;
-/** Forgets that a failure was reported. For tests. */
-export function resetOverviewMotionReport(): void { reported = false; }
-/** One line on the console the first time movement fails, naming only the kind of error (never a path or a message from a file). Then silence. */
-function report(error: unknown): void {
-  if (reported) return;
-  reported = true;
+/** The steps that can fail: reading the layout, deciding the plan, a glide, and a stop. */
+export type MotionStep = 'snapshot' | 'plan' | 'glide' | 'stop';
+const reported = new Set<MotionStep>();
+/** Forgets what was reported. For tests. */
+export function resetOverviewMotionReport(): void { reported.clear(); }
+/** One line on the console the first time a step fails, naming the step and only the class of the error (never a path or a message from a file). Then silence for that step. */
+function report(step: MotionStep, error: unknown): void {
+  if (reported.has(step)) return;
+  reported.add(step);
   const name = error instanceof Error ? error.constructor.name : typeof error;
-  console.error(`Overview motion failed (${name}). The Overview goes on without it.`);
+  console.error(`Overview motion failed at ${step} (${name}). The Overview goes on without it.`);
 }
 
-/** Runs a plan: each element is found by `find` (`place` or `tile`, then its key) and glides. A failure of one glide is reported once and never reaches the screen. */
+/** Runs one step of the movement. A failure is reported once for the step and gives `fallback`: movement is cosmetic and must never take the Overview down. */
+export function guarded<T>(step: MotionStep, fallback: T, run: () => T): T {
+  try { return run(); } catch (error) { report(step, error); return fallback; }
+}
+
+/**
+ * Runs a plan: each element is found by `find` (`place` or `tile`, then its key) and glides. Under "reduce motion" no engine is asked to move anything, whichever engine is set.
+ * A failure of one glide is reported once and never reaches the screen.
+ */
 export function applyGlides(plan: GlidePlan, find: (layer: 'place' | 'tile', key: string) => HTMLElement | null): void {
+  if (prefersReducedMotion()) return;
   const run = (layer: 'place' | 'tile', moves: ReadonlyMap<string, GlideMove>, how: GlideKind): void => {
-    for (const [key, move] of moves) {
-      try { const el = find(layer, key); if (el !== null) overviewMotion().glide(el, move, how); } catch (error) { report(error); }
-    }
+    for (const [key, move] of moves) guarded('glide', undefined, () => { const el = find(layer, key); if (el !== null) overviewMotion().glide(el, move, how); });
   };
   run('place', plan.frames, plan.framesHow);
   run('tile', plan.tiles, 'columns');
@@ -136,5 +163,5 @@ export function applyGlides(plan: GlidePlan, find: (layer: 'place' | 'tile', key
 
 /** Ends the movement of each element, for when the Overview goes. A failure is reported once. */
 export function stopGlides(elements: Iterable<HTMLElement>): void {
-  for (const el of elements) { try { overviewMotion().stop(el); } catch (error) { report(error); } }
+  for (const el of elements) guarded('stop', undefined, () => overviewMotion().stop(el));
 }

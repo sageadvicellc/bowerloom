@@ -90,7 +90,8 @@
 [data-home] .hxo-cell-list[data-inner="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 [data-home] .hxo-cell-item { min-width: 0; border-radius: var(--hm-radius-small); }
 [data-home] .hxo-cell-item[data-selected] { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-strong); }
-[data-home] .hxo-cell-item[data-lit] { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-strong); }
+/* A copy of the selected shared skill: a dashed outline and no fill, so it is not mistaken for the selected part (filled, solid edge). */
+[data-home] .hxo-cell-item[data-lit] { background: transparent; box-shadow: none; outline: 1px dashed var(--accent-strong); outline-offset: -1px; }
 [data-home] .hxo-cell-item[data-faded] { opacity: 0.5; }
 [data-home] .hxo-cell-pick { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: var(--hm-space-2); width: 100%; height: var(--hxo-item, 1.875rem); padding: 0 var(--hm-space-2); border-radius: var(--hm-radius-small); font-size: var(--hm-text-name); line-height: 1.3; color: var(--text); cursor: pointer; touch-action: manipulation; }
 [data-home] .hxo-cell-pick:hover { background: var(--accent-soft); }

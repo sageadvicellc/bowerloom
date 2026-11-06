@@ -90,6 +90,27 @@ test('a tile lists only what fits, ends with "and N more" that opens the list, a
   assert.ok(!grid(overviewWith([{ skill: 3 }])).includes('data-more='));
 });
 
+test('at 1 and 2 columns the tiles stay inside the columns and list what the plan says, at 9 and 13 parts and with the selection far down', () => {
+  for (const [width, columns] of [[300, 1], [600, 2]] as const) {
+    for (const n of [9, 13]) {
+      const o = overviewWith([{ skill: n }]);
+      const tile = bentoOf(o.groups[0]!.counts, columns).tiles[0]!;
+      const html = grid(o, { initialWidth: width });
+      assert.ok(html.includes(`data-columns="${columns}"`), `${columns} columns`);
+      assert.ok(html.includes(`grid-column:${tile.col} / span ${tile.colSpan}`) && tile.col + tile.colSpan - 1 <= columns, `${n} parts in ${columns}: the tile is inside the columns`);
+      assert.equal(attr(html, 'data-node').length, tile.show, `${n} parts in ${columns}: the parts listed`);
+      assert.equal(html.includes('data-more='), tile.show < n, `${n} parts in ${columns}: "and N more" only when some are left`);
+      if (tile.show < n) assert.ok(html.includes(`and ${n - tile.show} more`));
+      // A selection past the limit takes the last place; the number of parts listed does not change.
+      const far = o.groups[0]!.nodes.at(-1)!;
+      const picked = grid(o, { initialWidth: width, selectedId: far.id });
+      assert.ok(attr(picked, 'data-node').includes(far.id), `${n} parts in ${columns}: the selected part is listed`);
+      assert.equal(attr(picked, 'data-node').length, tile.show);
+      assert.equal((picked.match(/data-selected=""/g) ?? []).length, 1);
+    }
+  }
+});
+
 test('a closed place draws its header and no tile', () => {
   const o = sample();
   const open = new Set([o.groups[0]!.id]);
