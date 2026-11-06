@@ -167,7 +167,7 @@ export function StartRealSheet({ open, folderId, fromHarness, onClose }: StartRe
                     );
                   })}
                 </ul>
-                {offered.length === 0 ? null : <p className="hxe-text hxe-muted" data-start-notchecked="">{START.hint.notChecked}</p>}
+                {!offered.some(id => engineStateOf(current, id) === 'ready') ? null : <p className="hxe-text hxe-muted" data-start-notchecked="">{START.hint.notChecked}</p>}
               </div>
               )}
               <div className="hs-field">
