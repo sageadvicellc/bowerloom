@@ -57,6 +57,14 @@ test('chooseWanted: the right folder goes on; the wrong one is the note, not a f
   assert.ok(!passed.ok && passed.refusal.code === 'NOT_A_FOLDER');
 });
 
+test('chooseFolderCall: when the folder was added but the list cannot be read again, the answer says so in words and never claims nothing happened', async () => {
+  const engine = { mode: 'real', chooseFolder: async () => ({ ok: true, value: info('~/Projects/a') }), folders: async () => { throw new Error('FAILED'); } } as unknown as EngineBridge;
+  const answer = await chooseFolderCall(engine);
+  assert.ok(!answer.ok);
+  assert.match(answer.refusal.message, /was added/);
+  assert.match(answer.refusal.message, /could not be read again/);
+});
+
 test('the refusal and the screen\'s note have words', () => {
   assert.equal(OVERVIEW.hint.wrongFolder, 'That is not the folder shown.');
   assert.ok(NOTES_REFUSAL_WORDS.NOT_THE_FOLDER_SHOWN?.length);

@@ -35,8 +35,8 @@ const BUTTON: Readonly<Record<NonNullable<RealRow['action']>, string>> = Object.
 /** The name of a row's button: "Install harness in alpha". Assign keeps its own words. */
 const buttonName = (row: RealRow): string | undefined => (row.action === null || row.action === 'assign' ? undefined : actionName(BUTTON[row.action], 'harness', row.name));
 
-/** The reason a row needs a look, in words: why the harness does not load, or which run stopped. */
-const reasonOf = (row: RealRow): string | null => row.problem ?? (row.stopped === 'install' ? ENGINE_WORDS.hint.stopped : row.stopped === 'make' ? ENGINE_WORDS.hint.stoppedChange : null);
+/** The reason a row needs a look, in words: why the harness does not load, which run stopped, or that its check could not be done. */
+const reasonOf = (row: RealRow): string | null => row.problem ?? (row.stopped === 'install' ? ENGINE_WORDS.hint.stopped : row.stopped === 'make' ? ENGINE_WORDS.hint.stoppedChange : row.checkFailed ? FLOW.hint.checkFailed : null);
 
 /** The dots of a row: one for each engine, or "Checking" / "Not checked" while nothing is known, and the reason when the row needs a look. */
 function RowState({ row }: { row: RealRow }): ReactElement | null {
@@ -161,11 +161,13 @@ export function RealProjects({ id }: { id: string | null }): ReactElement {
       }
     })();
     return () => { stop = true; };
-  }, [engine, folders]);
+  }, [engine, folders, sheetOpen]);
   // Leaving the screen drops a call still in flight, so a chooser that closes later does not move a person who has gone elsewhere.
   useEffect(() => () => { list.clear(); choosing.clear(); }, [list.clear, choosing.clear]);
 
-  const rows = useMemo(() => projectRows(state, folders, plans), [state, folders, plans]);
+  // While the list could not be read again, what it holds may be old: no row claims a state.
+  const stale = list.refusal !== null;
+  const rows = useMemo(() => projectRows(state, folders, plans, stale), [state, folders, plans, stale]);
   const selected = rows.find(r => r.id === id) ?? (id === null ? rows[0] : undefined);
 
   /** Runs `then` with the id main gave a row's folder. A folder main does not know yet is chosen first, and only the folder shown is taken. */
@@ -198,7 +200,7 @@ export function RealProjects({ id }: { id: string | null }): ReactElement {
     void choosing.plan(ENGINE_WORDS.label.chooseFolder, () => chooseFolderCall(engine), got => {
       if (got === null) return;
       // The row the folder now belongs to: a project's row when the folder is that project, else a row of its own.
-      const hit = projectRows(state, got.list, plans).find(r => r.folderId === got.info.id);
+      const hit = projectRows(state, got.list, plans, false).find(r => r.folderId === got.info.id);
       const listed = folders.some(f => f.id === got.info.id) || (hit !== undefined && state.projects.some(p => p.id === hit.id));
       setFolders(got.list);
       ui.showToast(listed ? FLOW.hint.alreadyListed : addedFolderWords(got.info.name));

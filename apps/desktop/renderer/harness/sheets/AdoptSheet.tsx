@@ -57,7 +57,8 @@ export function AdoptSheet({ open, folderId, onClose }: { open: boolean; folderI
     void call.plan(W.label.planning, () => foldersCall(engine), list => {
       setFolders(list);
       const usable = list.filter(f => !folderLine(f, 'make').off);
-      setPicked(folderId !== null && usable.some(f => f.id === folderId) ? folderId : usable[0]?.id ?? null);
+      // A folder that was asked for stays picked, even when it cannot be used (it may have gained a harness since): the sheet says why, and never swaps in another folder.
+      setPicked(folderId !== null ? (list.some(f => f.id === folderId) ? folderId : null) : usable[0]?.id ?? null);
     });
     // The sheet starts again only when it opens.
   }, [open, engine]);
@@ -93,7 +94,7 @@ export function AdoptSheet({ open, folderId, onClose }: { open: boolean; folderI
     });
   };
   const next = (): void => {
-    if (engine === null || folder === undefined || held) return;
+    if (engine === null || folder === undefined || held || (folderLine(folder, 'make').off)) return;
     setDone(null);
     if (folder.unfinished.adoption) {
       setStep('recover');
@@ -126,7 +127,7 @@ export function AdoptSheet({ open, folderId, onClose }: { open: boolean; folderI
   const head = <div className="hxi-steps"><Stepper steps={[W.label.stepFolder, W.label.stepReview, W.label.stepConfirm, W.label.stepResult]} current={stepIndex} label={W.label.steps} doneWord="done" /></div>;
   const busy = call.busy !== null;
   let actions: ReactElement;
-  if (step === 'folder') actions = <><HButton onClick={onClose}>{W.label.cancel}</HButton><HButton variant="primary" disabled={folder === undefined || busy} onClick={next}>{W.label.next}</HButton></>;
+  if (step === 'folder') actions = <><HButton onClick={onClose}>{W.label.cancel}</HButton><HButton variant="primary" disabled={folder === undefined || busy || folderLine(folder, 'make').off} onClick={next}>{W.label.next}</HButton></>;
   else if (step === 'review') actions = <><HButton disabled={held} onClick={() => back('folder')}>{W.label.back}</HButton><HButton variant="primary" disabled={view === null || busy} onClick={() => setStep('confirm')}>{W.label.next}</HButton></>;
   else if (step === 'confirm') actions = <><HButton disabled={held} onClick={() => back('review')}>{W.label.back}</HButton><HButton variant="primary" data-write="" disabled={view === null || busy || !adoptCanWrite(view, ticked)} onClick={write}>{writeFilesWords(view?.files.length ?? 0)}</HButton></>;
   else if (step === 'recover') actions = <><HButton disabled={held} onClick={() => back('folder')}>{W.label.back}</HButton><HButton variant="primary" data-write="" disabled={recovery === null || recoveryOk !== recovery.revision || busy} onClick={recover}>{W.label.finish}</HButton></>;

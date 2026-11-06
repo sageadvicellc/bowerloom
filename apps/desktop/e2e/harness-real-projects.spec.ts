@@ -382,3 +382,84 @@ test('two folders outside home with one name are never taken for each other: ano
   await expect(p.locator('.hxp-row')).toHaveCount(2);
   await expect(p.locator('.hxp-row').filter({ has: p.getByRole('button', { name: 'shared', exact: true }) })).toHaveCount(2);
 });
+
+/** Makes one engine call of main fail (a refusal on the page's side), or answer late, from now on. */
+async function breakCall(channel: string, how: 'throw' | 'keep'): Promise<void> {
+  await h.app.evaluate(({ ipcMain }, [name, mode]) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, (...a: unknown[]) => Promise<unknown>> })._invokeHandlers;
+    const original = handlers.get(name as string)!;
+    (globalThis as unknown as Record<string, unknown>)[`__orig_${name}`] ??= original;
+    const kept = (globalThis as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[`__orig_${name}`]!;
+    handlers.set(name as string, mode === 'throw' ? async () => { throw new Error('FAILED'); } : kept);
+  }, [channel, how]);
+}
+/** Installs a folder through its row, for the tests that need an installed row. */
+async function installRow(dir: string, name: string): Promise<void> {
+  const p = page();
+  await add(dir);
+  await row(name).getByRole('button', { name: `Install harness in ${name}`, exact: true }).click();
+  const s = p.getByRole('dialog', { name: 'Install a folder\'s harness' });
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  await s.locator('[data-approve-plan] input').check();
+  await s.getByRole('button', { name: /^Write \d+ files?$/ }).click();
+  await expect(s.locator('[data-done]')).toBeVisible();
+  await s.getByRole('contentinfo').getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(row(name)).toContainText('Claude Code installed');
+}
+const away = async (): Promise<void> => {
+  await page().evaluate(() => { location.hash = '#app/history'; });
+  await page().evaluate(() => { location.hash = '#app/projects'; });
+};
+
+test('a list that cannot be read again makes every row say "Not checked", and says the list may be old; the next good read brings the states back', async () => {
+  const p = page();
+  await installRow(teamFolder(home), 'team');
+  // A sheet opens and closes while main cannot list its folders: the screen reads the list again, is refused, and keeps the rows it had.
+  await breakCall(ENGINE_CHANNELS.folders, 'throw');
+  await p.getByRole('button', { name: 'From a folder', exact: true }).click();
+  await p.getByRole('dialog', { name: 'New harness from a folder' }).getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(p.locator('[data-list-stale]')).toContainText('This list may not be current.');
+  await expect(row('team')).toContainText('Not checked');
+  await expect(row('team')).not.toContainText('installed');
+  await breakCall(ENGINE_CHANNELS.folders, 'keep');
+  await p.getByRole('button', { name: 'From a folder', exact: true }).click();
+  await p.getByRole('dialog', { name: 'New harness from a folder' }).getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(p.locator('[data-list-stale]')).toHaveCount(0);
+  await expect(row('team')).toContainText('Claude Code installed');
+});
+
+test('a status check that cannot be done is a Review that says so, never a bare conflict', async () => {
+  const p = page();
+  await installRow(teamFolder(home), 'team');
+  await breakCall(ENGINE_CHANNELS.planProjection, 'throw');
+  await away();
+  await expect(row('team')).toContainText('Could not check this install. Press Review.');
+  await expect(row('team').getByRole('button', { name: 'Review harness in team', exact: true })).toBeVisible();
+  await breakCall(ENGINE_CHANNELS.planProjection, 'keep');
+  await away();
+  await expect(row('team')).toContainText('Claude Code installed');
+  await expect(p.locator('[data-reason]')).toHaveCount(0);
+});
+
+test('Assign harness, from this folder: a folder that gained a harness since the row was drawn stays picked and cannot be taken, and no other folder is swapped in', async () => {
+  const p = page(), a = engineFolder(home, 'plain-a'), b = engineFolder(home, 'plain-b');
+  await add(a);
+  await idle();
+  await add(b);
+  await idle();
+  await expect(row('plain-a')).toContainText('No harness yet');
+  // The folder gains a harness outside the app, after its row was drawn.
+  mkdirSync(join(a, '.bowerloom'), { recursive: true });
+  writeFileSync(join(a, '.bowerloom', 'harness.json'), JSON.stringify({ format: 'bowerloom/harness/v1beta1', id: 'plain-a', description: 'Made by hand.', engines: [{ id: 'claude-code' }], parts: {} }));
+  const before = filesOf(a), beforeB = filesOf(b);
+  await row('plain-a').getByRole('button', { name: 'Assign harness', exact: true }).click();
+  await p.getByRole('dialog', { name: 'Assign a harness' }).getByRole('button', { name: 'From this folder', exact: true }).click();
+  const s = p.getByRole('dialog', { name: 'New harness from a folder' });
+  await expect(s.locator('.hxi-card', { hasText: 'plain-a' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(s.locator('.hxi-card', { hasText: 'plain-a' })).toContainText('Holds a harness already.');
+  await expect(s.locator('.hxi-card', { hasText: 'plain-b' })).toHaveAttribute('aria-pressed', 'false');
+  await expect(s.getByRole('button', { name: 'Next', exact: true })).toBeDisabled();
+  expect(filesOf(a), 'nothing is written').toEqual(before);
+  expect(filesOf(b), 'the other folder is not touched').toEqual(beforeB);
+});

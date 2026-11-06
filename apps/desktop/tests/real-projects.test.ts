@@ -19,6 +19,7 @@ const view = (over: Partial<ProjectView> = {}): ProjectView => ({
 const planOf = (v: ProjectView): Answer<ProjectAnswer> => ({ ok: true, value: { kind: 'plan', plan: v } });
 const place = (label: string): HarnessPlace => ({ id: 'h1', name: 'alpha', label, readable: true, engines: ['Claude Code'], parts: [], links: [] });
 const none = new Map<string, PlanStatus>();
+const none_ = (): Map<string, PlanStatus> => new Map();
 
 test('sameFolder: a path under home matches only the same label; a cut label matches a folder outside home by its last name', () => {
   assert.equal(sameFolder('~/Projects/alpha', '~/Projects/alpha'), true);
@@ -50,11 +51,33 @@ test('an installed folder with no engine to plan for reads Not checked, never in
   assert.deepEqual([row?.status, row?.state, row?.action], ['not-checked', null, null]);
 });
 
-test('checkStatus: an answer is its status; a plan that never answers, or throws, is a review', async () => {
+test('checkStatus: an answer is its status; a plan that never answers, throws (at once or later) or answers badly is a failed check, never a thrown error', async () => {
   assert.equal(await checkStatus(async () => planOf(view({ noop: true })), 1000), 'current');
-  assert.equal(await checkStatus(() => new Promise<never>(() => undefined), 20), 'review');
-  assert.equal(await checkStatus(async () => { throw new Error('FAILED'); }, 1000), 'review');
+  assert.equal(await checkStatus(() => new Promise<never>(() => undefined), 20), 'failed');
+  assert.equal(await checkStatus(async () => { throw new Error('FAILED'); }, 1000), 'failed');
+  assert.equal(await checkStatus((() => { throw new Error('at once'); }) as () => Promise<Answer<ProjectAnswer>>, 1000), 'failed');
+  assert.equal(await checkStatus(async () => ({ ok: true, value: undefined }) as unknown as Answer<ProjectAnswer>, 1000), 'failed');
+  assert.equal(await checkStatus(async () => undefined as unknown as Answer<ProjectAnswer>, 1000), 'failed');
 });
+
+test('a refusal other than changed files is a failed check; changed files are a review', () => {
+  assert.equal(planStatus({ ok: false, refusal: { code: 'FAILED', message: 'x', paths: [] } }), 'failed');
+  assert.equal(planStatus({ ok: false, refusal: { code: 'PORTABLE_DRIFT', message: 'x', paths: [] } }), 'review');
+});
+
+test('a failed check is a Review that says it could not check; a stale folder list claims nothing about an install', () => {
+  const installed = folder({ projected: true, installedEngines: ['claude-code', 'codex'] });
+  const [failed] = projectRows({ projects: [project('~/Projects/alpha')] }, [installed], new Map([['folder-1', 'failed' as const]]));
+  assert.deepEqual([failed?.state, failed?.action, failed?.checkFailed], ['conflict', 'review', true]);
+  const [ok] = projectRows({ projects: [project('~/Projects/alpha')] }, [installed], new Map([['folder-1', 'review' as const]]));
+  assert.equal(ok?.checkFailed, false);
+  // The list could not be read again: what it held may be old, so the row says "Not checked" and keeps its way into the sheet, which reads the folder itself.
+  const [stale] = projectRows({ projects: [project('~/Projects/alpha')] }, [installed], new Map([['folder-1', 'current' as const]]), true);
+  assert.deepEqual([stale?.status, stale?.state, stale?.engines.length, stale?.action, stale?.folderId], ['not-checked', null, 0, 'install', 'folder-1']);
+  const [bare] = projectRows({ projects: [project('~/Projects/alpha')] }, [folder({ hasDefinition: false })], none_(), true);
+  assert.deepEqual([bare?.status, bare?.action], ['not-checked', 'assign']);
+});
+
 
 test('a harness that does not load, or a stopped run, carries its reason for the row to say', () => {
   const [broken] = projectRows({ projects: [project('~/Projects/alpha')] }, [folder({ problem: 'The harness file is not valid.' })], none);

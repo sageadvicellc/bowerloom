@@ -51,6 +51,7 @@ import { checkProjectPath } from '../../../packages/project-context/src/index.js
 import { ANSWERS, NOTE_LIMIT } from '../../../packages/diagnostics/src/index.js';
 import type { Answer as CheckAnswer } from '../../../packages/diagnostics/src/index.js';
 import { labelOf, makeScrub, visible } from '../shared/engine/scrub.js';
+import { cleanPath, safeText } from '../shared/real/redact.js';
 import { KIT_IDS, KIT_INVALID, KIT_MAIN_WORDS, NOTES_MAIN_WORDS, NOTES_NOT_CHOSEN, NOTES_PLAN_LIST_LIMIT, NOTES_PURPOSES } from '../shared/engine/types.js';
 import type { KitId, NotesHistoryPlanView, NotesPurpose, NotesStarterView, NotesView, NotesWritten } from '../shared/engine/types.js';
 import { loadKit } from './kit.js';
@@ -442,12 +443,16 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
   };
 
   /**
-   * True when the folder picked is the one the window shows. A folder under home must have the same `~` label. A folder outside home is shown cut down to `…/name` (the window
-   * holds no full path), so the pick must be outside home and have that last name: another name, or any folder under home, is not it.
+   * True when the folder picked is the one the window shows. The window's own labels come from the reader, which writes a hidden character as a space (`cleanPath`), while
+   * main's label writes it out as a mark (`visible`), so a name is accepted in either form. A folder under home must have the same `~` label. A folder outside home is shown
+   * cut down to `…/name` (the window holds no full path), so the pick must be outside home and have that last name: another name, or any folder under home, is not it.
    */
   const isTheFolderShown = (dir: string, want: string): boolean => {
-    if (!want.startsWith('…')) return labelFor(dir) === want;
-    return !labelFor(dir).startsWith('~') && `…/${basename(dir)}` === want;
+    const home = homes.find(h => dir === h || dir.startsWith(`${h}/`)) ?? deps.home, raw = labelOf(dir, home);
+    if (!want.startsWith('…')) return labelFor(dir) === want || cleanPath(raw) === want;
+    if (raw.startsWith('~')) return false;
+    const name = basename(dir);
+    return [name, visible(name), safeText(name, 120)].some(n => `…/${n}` === want);
   };
   /** The label of a folder as the window gets it: `~` for the home folder and below it, with hidden characters written out. */
   const labelFor = (dir: string): string => visible(labelOf(dir, homes.find(h => dir === h || dir.startsWith(`${h}/`)) ?? deps.home));

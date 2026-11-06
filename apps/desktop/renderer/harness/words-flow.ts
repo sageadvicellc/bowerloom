@@ -45,7 +45,7 @@ export const FLOW = deepFreeze({
     lookedAgain: 'Looked again. Nothing changed.', noneOffered: 'No engine is switched on. Turn one on in Engines.',
     nothingMade: 'Nothing was made.',
     assignFolderHint: 'Make the harness from the files this folder already has.', assignFileHint: 'Copy a harness in from a bundle file.',
-    listStale: 'This list may not be current.',
+    listStale: 'This list may not be current.', checkFailed: 'Could not check this install. Press Review.',
     alreadyListed: 'Already in the list.', notCheckedYet: 'Not checked yet. Press Install to choose the folder.',
     pickInterface: 'Pick at least one engine.', undoFirst: 'Undo the newer change first', noProject: 'That project is not here.',
   },

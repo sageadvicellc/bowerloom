@@ -422,6 +422,26 @@ test('chooseFolder with a cut label (a folder outside home shown as …/name): o
   assert.equal((await a.service.folders()).length, 1);
 });
 
+test('chooseFolder compares the label the window shows after the window cleaned it: a name with a hidden character is the folder shown, under home and outside it', async t => {
+  const a = shareSetup(t, 'choose-hidden');
+  const hidden = 'wan\u200Bted';
+  const atHome = plainFolder(a.home, hidden);
+  const outside = join(a.base, 'elsewhere', hidden);
+  mkdirSync(outside, { recursive: true });
+  writeFileSync(join(outside, 'README.md'), '# x\n');
+  // The window's own labels come from the reader, which writes a hidden character as a space.
+  a.folder = atHome;
+  assert.equal(value(await a.service.chooseFolder('~/Projects/wan ted')).name.includes('wan'), true);
+  a.folder = outside;
+  assert.equal(value(await a.service.chooseFolder('…/wan ted')).name.includes('wan'), true);
+  const full = outside.replace(/\u200B/g, ' ');
+  a.folder = outside;
+  assert.equal(value(await a.service.chooseFolder(full)).label.includes('wan'), true);
+  // A different name is still refused.
+  a.folder = atHome;
+  assert.equal(refused(await a.service.chooseFolder('…/other')).code, 'NOT_THE_FOLDER_SHOWN');
+});
+
 test('the channel of chooseFolder takes the one optional argument and no more; every other call keeps its count', async () => {
   const handlers = new Map<string, (event: RealEvent, ...args: unknown[]) => unknown>();
   registerEngineIpc({ ipc: { handle: (c, l) => { handlers.set(c, l); } }, appIndexUrl: APP_INDEX, home: '/nonexistent-home', stateRoot: '/nonexistent-home/.local/state/bowerloom', chooseFolder: async () => null, confirm: async () => false, who: 't' });

@@ -52,7 +52,10 @@ export async function chooseFolderCall(engine: EngineBridge, expect?: string): P
   const answer = expect === undefined ? await engine.chooseFolder() : await engine.chooseFolder(expect);
   if (answer === null) return { ok: true, value: null };
   if (!answer.ok) return answer;
-  return { ok: true, value: { info: answer.value, list: await engine.folders() } };
+  // Main has the folder from here on. A list that cannot be read again is said in words, so the person is never told that nothing happened.
+  try { return { ok: true, value: { info: answer.value, list: await engine.folders() } }; } catch {
+    return { ok: false, refusal: { code: 'FAILED', message: 'The folder was added, but the list of folders could not be read again. Open the screen again.', paths: [] } };
+  }
 }
 
 /**

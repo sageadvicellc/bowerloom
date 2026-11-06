@@ -16,8 +16,8 @@ import { ENGINE_NAMES } from '../engine/types.js';
 import { isPreviewEngine } from '../engine/engines.js';
 import type { HarnessPlace, InstallState, Project } from './types.js';
 
-/** What one read-only plan of an install says: nothing to change, a change to make, or something to look at first. */
-export type PlanStatus = 'current' | 'update' | 'review';
+/** What one read-only plan of an install says: nothing to change, a change to make, something to look at first, or `failed`: the check itself could not be done. */
+export type PlanStatus = 'current' | 'update' | 'review' | 'failed';
 export type RowAction = 'assign' | 'install' | 'update' | 'review';
 /** The sheet a button opens: the install sheet, its recovery plan, or the sheet that makes the folder's harness (it also settles a stopped one). */
 export type RowOpens = 'install' | 'recover' | 'make';
@@ -44,6 +44,8 @@ export interface RealRow {
   readonly problem: string | null;
   /** The run that stopped part way: an install or removal, or the making of the harness. */
   readonly stopped: 'install' | 'make' | null;
+  /** True when the check of this install could not be done (it was refused, took too long or broke). The row is a Review and says so. */
+  readonly checkFailed: boolean;
 }
 
 const lastName = (text: string): string => text.split(/[\\/]/).filter(x => x !== '' && x !== '…').at(-1) ?? '';
@@ -58,10 +60,14 @@ export function sameFolder(path: string, label: string): boolean {
   return path === label;
 }
 
-/** The plan answer as a status. A refusal is a review: the sheet shows the refusal in its own words. Lines to approve mean the harness moved on, so they are an update. */
+/**
+ * The plan answer as a status. Changed or missing files Bowerloom wrote (PORTABLE_DRIFT) are a review. Any other refusal means the check could not be done (`failed`).
+ * Lines to approve mean the harness moved on, so they are an update.
+ */
 export function planStatus(answer: Answer<ProjectAnswer>): PlanStatus {
-  if (!answer.ok) return 'review';
+  if (!answer.ok) return answer.refusal.code === 'PORTABLE_DRIFT' ? 'review' : 'failed';
   const value = answer.value;
+  if (value === undefined || value === null || (value.kind !== 'approve' && value.kind !== 'plan')) throw new Error('The plan answer is not one Bowerloom knows.');
   if (value.kind === 'approve') return 'update';
   if (value.plan.driftLines.length > 0) return 'review';
   return value.plan.noop ? 'current' : 'update';
@@ -82,12 +88,18 @@ export function planInput(folder: FolderInfo): ProjectInput | null {
 
 const NO_ENGINES: readonly RowEngine[] = [];
 
-function rowOf(id: string, name: string, path: string, folder: FolderInfo | undefined, found: boolean, plans: ReadonlyMap<string, PlanStatus>): RealRow {
-  const base = { id, name, path, folderId: folder?.id ?? null, problem: null, stopped: null, status: 'known' as RowStatus };
+function rowOf(id: string, name: string, path: string, folder: FolderInfo | undefined, found: boolean, plans: ReadonlyMap<string, PlanStatus>, stale = false): RealRow {
+  const base = { id, name, path, folderId: folder?.id ?? null, problem: null, stopped: null, checkFailed: false, status: 'known' as RowStatus };
   if (folder === undefined) {
     return found
       ? { ...base, hasHarness: true, state: null, engines: NO_ENGINES, action: 'install', opens: 'install', status: 'not-checked' }
       : { ...base, hasHarness: false, state: null, engines: NO_ENGINES, action: 'assign', opens: 'make' };
+  }
+  // The list of folders could not be read again, so what it holds may be old: the row claims nothing, and the sheet it opens reads the folder itself.
+  if (stale) {
+    return folder.hasDefinition
+      ? { ...base, hasHarness: true, state: null, engines: NO_ENGINES, action: 'install', opens: 'install', status: 'not-checked' }
+      : { ...base, hasHarness: false, state: null, engines: NO_ENGINES, action: 'assign', opens: 'make', status: 'not-checked' };
   }
   // A harness that was begun and stopped is settled in the sheet that made it.
   if (folder.unfinished.adoption) return { ...base, hasHarness: folder.hasDefinition, state: 'conflict', engines: NO_ENGINES, action: 'review', opens: 'make', stopped: 'make', problem: folder.problem };
@@ -99,24 +111,27 @@ function rowOf(id: string, name: string, path: string, folder: FolderInfo | unde
   if (folder.projected && plan === undefined && !stopped && !broken) {
     return { ...withReason, hasHarness: true, state: null, engines: NO_ENGINES, action: null, opens: 'install', status: planInput(folder) === null ? 'not-checked' : 'checking' };
   }
-  const overall: InstallState = stopped || broken || plan === 'review' ? 'conflict' : plan === 'update' ? 'out-of-date' : folder.projected ? 'installed' : 'not-installed';
+  const overall: InstallState = stopped || broken || plan === 'review' || plan === 'failed' ? 'conflict' : plan === 'update' ? 'out-of-date' : folder.projected ? 'installed' : 'not-installed';
   const listed = folder.engines, extra = folder.installedEngines.filter(e => !listed.includes(e));
   const engines: RowEngine[] = [...listed, ...extra]
     .filter(e => folder.installedEngines.includes(e) || folder.previewEngines || !isPreviewEngine(e))
     .map(e => ({ id: e, name: ENGINE_NAMES[e], state: folder.installedEngines.includes(e) ? overall : 'not-installed' }));
   // An engine the harness lists and the install never covered does not count against the install: the person may have left it out on purpose.
   const action: RowAction | null = overall === 'conflict' ? 'review' : overall === 'out-of-date' ? 'update' : overall === 'not-installed' ? 'install' : null;
-  return { ...withReason, hasHarness: true, state: overall, engines, action, opens: stopped ? 'recover' : 'install' };
+  return { ...withReason, checkFailed: plan === 'failed', hasHarness: true, state: overall, engines, action, opens: stopped ? 'recover' : 'install' };
 }
 
 /** The most a status plan may take before the row says "Review" instead of waiting for ever. */
 export const STATUS_PLAN_MS = 15_000;
 
-/** The status of an installed folder from one read-only plan. A plan that throws, or that does not answer in `ms`, is a review: the sheet then shows what it can. */
+/**
+ * The status of an installed folder from one read-only plan. A plan that throws (at once or later), does not answer in `ms`, or answers with something that is not a plan answer
+ * is `failed`: the row then says it could not check. It never throws, so one bad folder cannot stop the checks of the rest.
+ */
 export async function checkStatus(plan: () => Promise<Answer<ProjectAnswer>>, ms: number = STATUS_PLAN_MS): Promise<PlanStatus> {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const late = new Promise<PlanStatus>(resolve => { timer = setTimeout(() => resolve('review'), ms); });
-  try { return await Promise.race([plan().then(planStatus, (): PlanStatus => 'review'), late]); } finally { if (timer !== undefined) clearTimeout(timer); }
+  const late = new Promise<PlanStatus>(resolve => { timer = setTimeout(() => resolve('failed'), ms); });
+  try { return await Promise.race([(async () => planStatus(await plan()))().catch((): PlanStatus => 'failed'), late]); } catch { return 'failed'; } finally { if (timer !== undefined) clearTimeout(timer); }
 }
 
 const isCut = (path: string): boolean => path.startsWith('…');
@@ -138,14 +153,15 @@ function pairFolders(projects: readonly Project[], folders: readonly FolderInfo[
 
 /**
  * The rows: one for each project, in the read's order, then one for each folder main knows that no project shows, in main's order. `harnessPlaces` are the folders the read
- * found a harness in; `plans` holds the status of each installed folder's plan, by folder id, once it has answered.
+ * found a harness in; `plans` holds the status of each installed folder's plan, by folder id, once it has answered. `stale` is true while the list of folders could not be read
+ * again: no row claims a state then.
  */
-export function projectRows(state: { readonly projects: readonly Project[]; readonly harnessPlaces?: readonly HarnessPlace[] }, folders: readonly FolderInfo[], plans: ReadonlyMap<string, PlanStatus>): RealRow[] {
+export function projectRows(state: { readonly projects: readonly Project[]; readonly harnessPlaces?: readonly HarnessPlace[] }, folders: readonly FolderInfo[], plans: ReadonlyMap<string, PlanStatus>, stale = false): RealRow[] {
   const paired = pairFolders(state.projects, folders), used = new Set([...paired.values()].map(f => f.id));
   const rows = state.projects.map(p => {
     const found = (state.harnessPlaces ?? []).some(h => h.label === p.path) && (!isCut(p.path) || state.projects.filter(q => q.path === p.path).length === 1);
-    return rowOf(p.id, p.name, p.path, paired.get(p.id), found, plans);
+    return rowOf(p.id, p.name, p.path, paired.get(p.id), found, plans, stale);
   });
-  for (const f of folders) if (!used.has(f.id)) rows.push(rowOf(f.id, f.name, f.label, f, false, plans));
+  for (const f of folders) if (!used.has(f.id)) rows.push(rowOf(f.id, f.name, f.label, f, false, plans, stale));
   return rows;
 }
