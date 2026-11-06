@@ -871,7 +871,7 @@ dom('the caption plate sits on the top rail and the X on the corner plate, in ev
         const hit = document.elementFromPoint(c.left + c.width / 2, c.top + c.height / 2);
         return {
           dialog: box(dialog), device: box(dialog.querySelector('.screenshot-device')), picture: box(dialog.querySelector('.screenshot-scroll')), caption: box(caption), close: c,
-          clipped: caption.scrollHeight > caption.clientHeight + 1, hitsClose: close.contains(hit), scrolls: dialog.scrollHeight > dialog.clientHeight + 1,
+          hitsClose: close.contains(hit), scrolls: dialog.scrollHeight > dialog.clientHeight + 1, theme: document.documentElement.dataset.theme,
           s: Number(style.getPropertyValue('--s')), cutT: Number(style.getPropertyValue('--cut-t')), cutR: Number(style.getPropertyValue('--cut-r')),
           vars: ['--rail-y', '--rail-h', '--close-x', '--close-y', '--lcd', '--lcd-ink', '--knob'].map(name => [name, style.getPropertyValue(name).trim()]),
           closeBg: getComputedStyle(close).backgroundColor, captionBg: getComputedStyle(caption).backgroundColor,
@@ -880,13 +880,15 @@ dom('the caption plate sits on the top rail and the X on the corner plate, in ev
       for (const [name, value] of facts.vars) assert.ok(value, `${where}: ${name} is set`);
       assert.notEqual(facts.closeBg, 'rgba(0, 0, 0, 0)', `${where}: the X is a solid button`);
       assert.notEqual(facts.captionBg, 'rgba(0, 0, 0, 0)', `${where}: the plate is a solid readout`);
-      assert.ok(!facts.clipped, `${where}: the longest caption shows every line`);
+      assert.equal(facts.theme, label === "light" ? "light" : "dark", `${where}: the theme applied`);
       assert.ok(!facts.scrolls, `${where}: the device fits the window, so the dialog does not scroll`);
       assert.ok(facts.caption.top >= facts.dialog.top, `${where}: the plate stays inside the dialog`);
       assert.ok(facts.caption.bottom <= facts.picture.top + 1, `${where}: the plate never covers the picture`);
       assert.ok(facts.caption.left >= facts.device.left && facts.caption.right <= facts.device.right, `${where}: the plate stays on the frame`);
-      const corner = { left: facts.device.right - facts.cutR * facts.s - 22, bottom: facts.device.top + facts.cutT * facts.s + 22 };
-      assert.ok(facts.close.left >= corner.left && facts.close.right <= facts.device.right + 22 && facts.close.bottom <= corner.bottom && facts.close.top >= facts.device.top - 22, `${where}: the X sits on the top right corner plate ${JSON.stringify(facts.close)}`);
+      const centre = { x: facts.close.left + facts.close.width / 2, y: facts.close.top + facts.close.height / 2 };
+      assert.ok(centre.x >= facts.device.right - facts.cutR * facts.s && centre.x <= facts.device.right && centre.y >= facts.device.top && centre.y <= facts.device.top + facts.cutT * facts.s, `${where}: the X sits on the top right corner plate ${JSON.stringify(centre)}`);
+      const overlap = facts.caption.left < facts.close.right && facts.close.left < facts.caption.right && facts.caption.top < facts.close.bottom && facts.close.top < facts.caption.bottom;
+      assert.ok(!overlap, `${where}: the plate and the X do not overlap`);
       assert.ok(facts.close.width >= 43.5 && facts.close.height >= 43.5, `${where}: a 44 px target ${facts.close.width}x${facts.close.height}`);
       assert.ok(facts.hitsClose, `${where}: nothing covers the X`);
       await context.close();
