@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LIMITS, bannedHere, countWords } from '../shared/harness/words.js';
 import { START, commandFor, copyName, installFirstWords, limitWords, whyWords } from '../renderer/harness/words-start.js';
-import { START_INSTRUCTION_LIMIT } from '../shared/engine/start-command.js';
+import { START_INSTRUCTION_LIMIT, START_MAIN_WORDS } from '../shared/engine/start-command.js';
 import type { StartStatus } from '../shared/harness/start-real.js';
 
 test('the table is frozen; a label has at most 5 words, a hint 12, a paragraph 25, and none holds a banned word', () => {
@@ -47,9 +47,10 @@ test('whyWords gives a line for each state that blocks the button, the install l
   assert.equal(lines({ kind: 'no-engine' }), START.hint.needEngine);
   assert.equal(lines({ kind: 'no-instruction' }), START.hint.needInstruction);
   assert.equal(lines({ kind: 'too-long' }), START.hint.tooLong);
-  assert.equal(lines({ kind: 'bad-text', code: 'START_INSTRUCTION_DASH' }), START.hint.dash);
-  assert.equal(lines({ kind: 'bad-text', code: 'START_INSTRUCTION_CHARACTERS' }), START.hint.chars);
-  assert.equal(lines({ kind: 'bad-text', code: 'START_INSTRUCTION_HIDDEN' }), START.hint.hidden);
+  assert.equal(lines({ kind: 'bad-text', code: 'START_INSTRUCTION_DASH', message: 'x' }), START.hint.dash);
+  assert.equal(lines({ kind: 'bad-text', code: 'START_INSTRUCTION_CHARACTERS', message: 'x' }), START.hint.chars);
+  assert.equal(lines({ kind: 'bad-text', code: 'START_INSTRUCTION_HIDDEN', message: 'The instruction has a hidden character: U+00A0 (no-break space) at position 3. Remove it and try again.' }), 'The instruction has a hidden character: U+00A0 (no-break space) at position 3. Remove it and try again.', 'the words name the character');
+  assert.equal(lines({ kind: 'bad-text', code: 'START_INSTRUCTION_BROKEN', message: START_MAIN_WORDS.START_INSTRUCTION_BROKEN }), START_MAIN_WORDS.START_INSTRUCTION_BROKEN);
   assert.equal(lines({ kind: 'subcommand', engine: 'codex', word: 'login' }), "'login' is also a command of Codex. Add more words to your instruction.");
   assert.equal(lines({ kind: 'needs-install', engines: ['codex'] }), installFirstWords(['codex']));
   assert.equal(lines({ kind: 'ready', engines: ['codex'] }), null);

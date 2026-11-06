@@ -138,6 +138,8 @@ export interface EngineServiceDeps {
    * Puts text on the clipboard (Electron `clipboard.writeText`). Only startCommandToClipboard reaches it, with one line of text it built itself. Default: none, and a copy is refused in words.
    */
   readonly writeClipboard?: (text: string) => void | Promise<void>;
+  /** The longest the clipboard write may take, in milliseconds (default 3 seconds). A write that takes longer is a refusal, so it never holds the other calls. */
+  readonly clipboardTimeoutMs?: number;
 }
 
 /** A call the service refuses before it reaches a package: the window gets only the short code. */
@@ -850,7 +852,16 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     const built = buildStart({ dir: f.dir, label: f.label, homes, engine, instruction });
     if (!built.ok || !copy) return built.ok ? { ok: true, value: built.value.view } : built;
     // The reason the clipboard failed is not passed on: it could name a path or a program.
-    try { if (deps.writeClipboard === undefined) return startRefused('START_COPY_FAILED'); await deps.writeClipboard(built.value.real); } catch { return startRefused('START_COPY_FAILED'); }
+    const write = deps.writeClipboard;
+    if (write === undefined) return startRefused('START_COPY_FAILED');
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      // The write is raced against a timer, so a clipboard that never answers cannot hold every later call behind it in the serial queue.
+      await Promise.race([
+        Promise.resolve().then(() => write(built.value.real)),
+        new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error('The clipboard took too long.')), deps.clipboardTimeoutMs ?? 3000); }),
+      ]);
+    } catch { return startRefused('START_COPY_FAILED'); } finally { if (timer !== undefined) clearTimeout(timer); }
     return { ok: true, value: { ...built.value.view, copied: true } };
   };
 

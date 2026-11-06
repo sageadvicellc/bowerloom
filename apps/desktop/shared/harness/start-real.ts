@@ -54,7 +54,7 @@ export function startFolderLine(f: FolderInfo): { words: string; off: boolean } 
 
 export type StartStatus =
   | { readonly kind: 'no-project' } | { readonly kind: 'no-harness' } | { readonly kind: 'no-engine' } | { readonly kind: 'no-instruction' } | { readonly kind: 'too-long' }
-  | { readonly kind: 'bad-text'; readonly code: StartRefusalCode }
+  | { readonly kind: 'bad-text'; readonly code: StartRefusalCode; readonly message: string }
   | { readonly kind: 'subcommand'; readonly engine: StartEngineId; readonly word: string }
   | { readonly kind: 'needs-install'; readonly engines: readonly EngineId[] }
   | { readonly kind: 'ready'; readonly engines: readonly EngineId[] };
@@ -72,7 +72,7 @@ export function startStatus(f: StartFolder | undefined, ticked: readonly EngineI
   if (problem !== null) {
     if (problem.code === 'START_INSTRUCTION_EMPTY') return { kind: 'no-instruction' };
     if (problem.code === 'START_INSTRUCTION_TOO_LONG') return { kind: 'too-long' };
-    return { kind: 'bad-text', code: problem.code };
+    return { kind: 'bad-text', code: problem.code, message: problem.message };
   }
   for (const e of engines) {
     const word = isStartEngine(e) ? subcommandOf(e, instruction) : null;

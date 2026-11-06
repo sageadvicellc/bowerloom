@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  START_ENGINES, START_INSTRUCTION_LIMIT, START_MAIN_WORDS, START_PROGRAMS, START_SUBCOMMANDS, checkInstruction, folderWord, isStartEngine, shQuote, shWord, startCommand, subcommandOf, subcommandWords,
+  START_ENGINES, START_INSTRUCTION_LIMIT, START_MAIN_WORDS, START_PROGRAMS, START_SUBCOMMANDS, checkInstruction, folderWord, isStartEngine, shQuote, shWord, startCommand, subcommandOf, subcommandWords, hiddenPath,
 } from '../shared/engine/start-command.js';
 import { LIMITS, bannedHere, countWords } from '../shared/harness/words.js';
 import { tempDir } from './support.js';
@@ -135,7 +135,7 @@ test('the limit is 4,000 characters and the words say so', () => {
 
 test('the words of every refusal are plain: inside the paragraph limit, free of banned words, and each ends the matter', () => {
   const codes = Object.keys(START_MAIN_WORDS);
-  assert.deepEqual(codes.sort(), ['START_COPY_FAILED', 'START_FOLDER_HIDDEN', 'START_FOLDER_NAME', 'START_INSTRUCTION_CHARACTERS', 'START_INSTRUCTION_DASH', 'START_INSTRUCTION_EMPTY', 'START_INSTRUCTION_HIDDEN', 'START_INSTRUCTION_TOO_LONG']);
+  assert.deepEqual(codes.sort(), ['START_COPY_FAILED', 'START_FOLDER_HIDDEN', 'START_FOLDER_NAME', 'START_INSTRUCTION_BROKEN', 'START_INSTRUCTION_CHARACTERS', 'START_INSTRUCTION_DASH', 'START_INSTRUCTION_EMPTY', 'START_INSTRUCTION_HIDDEN', 'START_INSTRUCTION_TOO_LONG']);
   for (const [code, text] of Object.entries(START_MAIN_WORDS)) {
     assert.ok(countWords(text) <= LIMITS.paragraph, `${code}: ${text}`);
     assert.equal(bannedHere(text), null, code);
@@ -154,8 +154,8 @@ test('emoji still pass: a ZWJ sequence, a heart with its variation selector, a f
 });
 
 test('the subcommand lists are the names the vendors document (read 2026-11-06), and a one-word instruction equal to one is found for that engine only', () => {
-  assert.deepEqual([...START_SUBCOMMANDS['claude-code']], ['agents', 'attach', 'auth', 'auto-mode', 'daemon', 'doctor', 'gateway', 'import', 'install', 'logs', 'mcp', 'plugin', 'purge', 'remote-control', 'respawn', 'rm', 'self-hosted-runner', 'setup-token', 'stop', 'ultrareview', 'update']);
-  assert.deepEqual([...START_SUBCOMMANDS.codex], ['a', 'agents', 'app', 'app-server', 'apply', 'archive', 'cloud', 'cloud-tasks', 'completion', 'debug', 'delete', 'doctor', 'e', 'exec', 'execpolicy', 'features', 'fork', 'login', 'logout', 'mcp', 'plugin', 'queue', 'remote-control', 'resume', 'review', 'sandbox', 'unarchive', 'update']);
+  assert.deepEqual([...START_SUBCOMMANDS['claude-code']], ['agents', 'attach', 'auth', 'auto-mode', 'daemon', 'doctor', 'gateway', 'help', 'import', 'install', 'logs', 'mcp', 'plugin', 'purge', 'remote-control', 'respawn', 'rm', 'self-hosted-runner', 'setup-token', 'stop', 'ultrareview', 'update']);
+  assert.deepEqual([...START_SUBCOMMANDS.codex], ['a', 'agents', 'app', 'app-server', 'apply', 'archive', 'cloud', 'cloud-tasks', 'completion', 'debug', 'delete', 'doctor', 'e', 'exec', 'execpolicy', 'features', 'fork', 'help', 'login', 'logout', 'mcp', 'plugin', 'queue', 'remote-control', 'resume', 'review', 'sandbox', 'unarchive', 'update']);
   for (const engine of START_ENGINES) for (const word of START_SUBCOMMANDS[engine]) assert.equal(subcommandOf(engine, word), word, `${engine} ${word}`);
   assert.equal(subcommandOf('codex', 'login'), 'login'); assert.equal(subcommandOf('claude-code', 'login'), null, 'login is a Codex command, not a Claude Code one');
   assert.equal(subcommandOf('claude-code', 'review'), null); assert.equal(subcommandOf('codex', 'review'), 'review');
@@ -174,4 +174,75 @@ test('the words for a subcommand name the word and the engine, and ask for more 
 
 test('no refusal of the instruction or the folder says "Nothing was copied", since a show copies nothing', () => {
   for (const [code, text] of Object.entries(START_MAIN_WORDS)) if (code !== 'START_COPY_FAILED') assert.doesNotMatch(text, /copied/i, code);
+});
+
+const hiddenCode = (text: string): string | undefined => checkInstruction(text)?.code;
+
+test('a joiner or a variation selector is allowed only inside a real emoji sequence: alone, in a run, or between letters it is refused', () => {
+  for (const text of ['a\u200db', 'a\ufe0fb', 'a\ufe0f\ufe0f\ufe0fb', '\u2764\ufe0f\ufe0f', '\u{1F468}\u200d\u200d\u{1F4BB}', 'x \u200d', 'ok\ufe0f']) assert.equal(hiddenCode(text), 'START_INSTRUCTION_HIDDEN', JSON.stringify(text));
+  // The bit-coded payload: 8 hidden characters for each byte of "hello" (joiner is 1, selector is 0).
+  const payload = [...'hello'].map(c => [...c.charCodeAt(0).toString(2).padStart(8, '0')].map(b => (b === '1' ? '\u200d' : '\ufe0f')).join('')).join('');
+  assert.equal(payload.length, 40);
+  assert.equal(hiddenCode(`fix the login${payload}`), 'START_INSTRUCTION_HIDDEN');
+  assert.equal(hiddenCode(`fix ${payload} the login`), 'START_INSTRUCTION_HIDDEN');
+});
+
+test('real emoji sequences still pass: a family, a heart with its selector, a keycap, a flag, a skin tone, a profession, a rainbow flag', () => {
+  for (const text of ['\u{1F468}\u200d\u{1F469}\u200d\u{1F467}\u200d\u{1F466} home', 'love \u2764\ufe0f it', 'press 1\ufe0f\u20e3 now', '\u{1F1E9}\u{1F1EA} flag', 'wave \u{1F44B}\u{1F3FD}', '\u{1F469}\u{1F3FD}\u200d\u{1F4BB} codes', '\u{1F3F3}\ufe0f\u200d\u{1F308} pride', 'tab\tand\nlines']) assert.equal(checkInstruction(text), null, JSON.stringify(text));
+});
+
+test('every default-ignorable code point is refused when it stands alone, so a future Unicode version is covered too', () => {
+  let count = 0;
+  for (let cp = 0; cp <= 0x10ffff; cp += 1) {
+    if (cp >= 0xd800 && cp <= 0xdfff) continue;
+    const ch = String.fromCodePoint(cp);
+    if (!/\p{Default_Ignorable_Code_Point}/u.test(ch)) continue;
+    count += 1;
+    assert.notEqual(checkInstruction(`a${ch}b`), null, `U+${cp.toString(16).toUpperCase()}`);
+  }
+  assert.ok(count > 4000, `${count} code points`);
+});
+
+test('the gaps of the older list are refused: U+180F, U+2065, U+FFF0-FFF8, U+E0080-E00FF, U+E01F0-E0FFF, format marks, and private use', () => {
+  const cps = [0x180f, 0x2065, 0xfff0, 0xfff8, 0x1bca0, 0x1bca3, 0x1d173, 0x1d17a, 0xe0080, 0xe00ff, 0xe01f0, 0xe0fff, 0x600, 0x605, 0x6dd, 0x70f, 0x890, 0x891, 0x8e2, 0x110bd, 0x110cd, 0x13430, 0x1343f, 0xe000, 0xf8ff, 0xf0000, 0x10fffd];
+  for (const cp of cps) assert.notEqual(checkInstruction(`a${String.fromCodePoint(cp)}b`), null, `U+${cp.toString(16).toUpperCase()}`);
+});
+
+test('spaces that are not a plain space are refused: no-break space, ideographic space, thin space, narrow no-break space', () => {
+  for (const cp of [0xa0, 0x3000, 0x2009, 0x202f, 0x2003, 0x1680, 0x205f]) assert.equal(hiddenCode(`a${String.fromCodePoint(cp)}b`), 'START_INSTRUCTION_HIDDEN', `U+${cp.toString(16)}`);
+  assert.equal(checkInstruction('a b\tc\nd'), null, 'a plain space, a tab and a line feed are fine');
+});
+
+test('the refusal names the first hidden character and its position, in plain words, and never changes the text', () => {
+  const text = 'fix the\u00a0login';
+  assert.equal(checkInstruction(text)?.message, 'The instruction has a hidden character: U+00A0 (no-break space) at position 8. Remove it and try again.');
+  assert.equal(text, 'fix the\u00a0login');
+  assert.equal(checkInstruction('ab\u200bc')?.message, 'The instruction has a hidden character: U+200B (zero-width space) at position 3. Remove it and try again.');
+  assert.equal(checkInstruction('\u200cx')?.message, 'The instruction has a hidden character: U+200C (zero-width non-joiner) at position 1. Remove it and try again.');
+  assert.equal(checkInstruction('x\ufeff')?.message, 'The instruction has a hidden character: U+FEFF (byte order mark) at position 2. Remove it and try again.');
+  assert.equal(checkInstruction('x\u00ady')?.message, 'The instruction has a hidden character: U+00AD (soft hyphen) at position 2. Remove it and try again.');
+  assert.equal(checkInstruction('x\u3000y')?.message, 'The instruction has a hidden character: U+3000 (ideographic space) at position 2. Remove it and try again.');
+  assert.equal(checkInstruction('x\u2060y')?.message, 'The instruction has a hidden character: U+2060 (an invisible character) at position 2. Remove it and try again.');
+  // A position counts characters, so an emoji before it counts once, and a real emoji sequence does not hide the character after it.
+  assert.equal(checkInstruction('\u{1F468}\u200d\u{1F4BB}\u200bx')?.message, 'The instruction has a hidden character: U+200B (zero-width space) at position 2. Remove it and try again.');
+  assert.equal(checkInstruction('a\u{e0041}')?.message, 'The instruction has a hidden character: U+E0041 (an invisible character) at position 2. Remove it and try again.');
+});
+
+test('a lone surrogate, from text cut in the middle of an emoji, is refused with its own words', () => {
+  for (const text of ['fix \ud800 this', 'fix \udc00 this', 'cut \u{1F468}'.slice(0, -1)]) {
+    const problem = checkInstruction(text);
+    assert.equal(problem?.code, 'START_INSTRUCTION_BROKEN', JSON.stringify(text));
+    assert.equal(problem?.message, 'The instruction has a broken character. Remove the last character you pasted and try again.');
+  }
+  assert.equal(checkInstruction('whole \u{1F468} pair'), null);
+});
+
+test('a folder path is held to the same rules: a hidden character or a broken one is found, an emoji sequence in a name is not', () => {
+  assert.equal(hiddenPath('/Users/a/x\u200by'), true); assert.equal(hiddenPath('/Users/a/x\u00a0y'), true); assert.equal(hiddenPath('/Users/a/x\ud800y'), true);
+  assert.equal(hiddenPath('/Users/a/\u{1F468}\u200d\u{1F4BB} work'), false); assert.equal(hiddenPath('/Users/a/plain name'), false);
+});
+
+test('help is refused for both engines, since both parsers add it', () => {
+  for (const engine of START_ENGINES) assert.equal(subcommandOf(engine, 'help'), 'help', engine);
+  assert.equal(subcommandWords('help', 'codex'), "'help' is also a command of Codex. Add more words to your instruction.");
 });

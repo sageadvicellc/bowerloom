@@ -15,6 +15,7 @@ import { APP_INDEX } from '../main/security.js';
 import { ENGINE_ARITY, ENGINE_CALLS, ENGINE_CHANNELS } from '../shared/engine/types.js';
 import type { Answer, FolderInfo, StartCommandView } from '../shared/engine/types.js';
 import { START_INSTRUCTION_LIMIT, START_MAIN_WORDS } from '../shared/engine/start-command.js';
+import { buildStart } from '../shared/engine/start-answer.js';
 import { createSampleEngine } from '../shared/engine/sample.js';
 import { DESKTOP, tempDir } from './support.js';
 import { filesOf, homeFolder, teamFolder } from './helpers-engine/folders.js';
@@ -23,7 +24,7 @@ const value = <T>(a: Answer<T> | null): T => { assert.ok(a !== null, 'an answer'
 const refusal = <T>(a: Answer<T>): { code: string; message: string; paths: readonly string[] } => { assert.equal(a.ok, false, 'a refusal'); return (a as Extract<Answer<T>, { ok: false }>).refusal; };
 
 interface Setup { home: string; base: string; service: EngineService; clipboard: string[]; pick(dir: string | null): void }
-function setup(t: test.TestContext, { clipboard = 'works' }: { clipboard?: 'works' | 'missing' | 'throws' } = {}): Setup {
+function setup(t: test.TestContext, { clipboard = 'works', timeout }: { clipboard?: 'works' | 'missing' | 'throws' | 'never'; timeout?: number } = {}): Setup {
   const base = realpathSync(tempDir(t, 'bowerloom-start-'));
   const home = homeFolder(base);
   const written: string[] = [];
@@ -31,7 +32,8 @@ function setup(t: test.TestContext, { clipboard = 'works' }: { clipboard?: 'work
   const service = createEngineService({
     home, stateRoot: join(home, '.local', 'state', 'bowerloom'), who: 'tester', now: () => new Date('2026-11-06T12:00:00Z'),
     chooseFolder: async () => next, confirm: async (): Promise<boolean> => assert.fail('Start never asks a dialog'),
-    ...(clipboard === 'missing' ? {} : { writeClipboard: (text: string) => { if (clipboard === 'throws') throw new Error('the clipboard is locked'); written.push(text); } }),
+    ...(timeout === undefined ? {} : { clipboardTimeoutMs: timeout }),
+    ...(clipboard === 'missing' ? {} : { writeClipboard: (text: string): void | Promise<void> => { if (clipboard === 'never') return new Promise<void>(() => undefined); if (clipboard === 'throws') throw new Error('the clipboard is locked'); written.push(text); } }),
   });
   return { home, base, service, clipboard: written, pick: d => { next = d; } };
 }
@@ -131,13 +133,14 @@ test('an instruction that cannot be sent is refused in words, and nothing is cop
     ['', 'START_INSTRUCTION_EMPTY'], ['  \n', 'START_INSTRUCTION_EMPTY'], ['x'.repeat(START_INSTRUCTION_LIMIT + 1), 'START_INSTRUCTION_TOO_LONG'],
     ['a\u0000b', 'START_INSTRUCTION_CHARACTERS'], ['a\rb', 'START_INSTRUCTION_CHARACTERS'], ['a\u001bb', 'START_INSTRUCTION_CHARACTERS'], ['a\u202eb', 'START_INSTRUCTION_CHARACTERS'],
     ['-n', 'START_INSTRUCTION_DASH'], ['--help', 'START_INSTRUCTION_DASH'],
-    ['a\u{e0041}b', 'START_INSTRUCTION_HIDDEN'], ['a\u200bb', 'START_INSTRUCTION_HIDDEN'], ['a\ufeffb', 'START_INSTRUCTION_HIDDEN'],
+    ['a\u{e0041}b', 'START_INSTRUCTION_HIDDEN'], ['a\u00a0b', 'START_INSTRUCTION_HIDDEN'], ['fix \ud800 this', 'START_INSTRUCTION_BROKEN'], ['a\u200bb', 'START_INSTRUCTION_HIDDEN'], ['a\ufeffb', 'START_INSTRUCTION_HIDDEN'],
   ];
   for (const call of ['showStartCommand', 'startCommandToClipboard'] as const) {
     for (const [text, code] of cases) {
       const r = refusal(await s.service[call](f.id, 'claude-code', text));
       assert.equal(r.code, code, `${call} ${JSON.stringify(text.slice(0, 12))}`);
-      assert.equal(r.message, START_MAIN_WORDS[code as keyof typeof START_MAIN_WORDS]);
+      if (code === 'START_INSTRUCTION_HIDDEN') assert.match(r.message, /^The instruction has a hidden character: U\+[0-9A-F]{4,5} \(.+\) at position \d+\. Remove it and try again\.$/);
+      else assert.equal(r.message, START_MAIN_WORDS[code as keyof typeof START_MAIN_WORDS]);
       assert.doesNotMatch(r.message, /copied/i, 'a show copies nothing, so no refusal says it was not copied');
       assert.deepEqual(r.paths, []);
     }
@@ -273,4 +276,27 @@ test('a folder whose name holds a tab or a line feed gets no command, so the com
     }
   }
   assert.deepEqual(s.clipboard, []);
+});
+
+test('a lone surrogate in the folder path gets no command: the clipboard would change it, and every copy would fail with no cause', () => {
+  const built = buildStart({ dir: '/Users/a/cut-\ud800', label: '~/cut', homes: ['/Users/a'], engine: 'codex', instruction: 'go' });
+  assert.equal(refusal(built).code, 'START_FOLDER_HIDDEN');
+  assert.equal(buildStart({ dir: '/Users/a/whole-\u{1F468}', label: '~/whole', homes: ['/Users/a'], engine: 'codex', instruction: 'go' }).ok, true);
+});
+
+test('help is refused for both engines in the calls', async t => {
+  const s = setup(t);
+  const f = await choose(s, teamFolder(s.home));
+  for (const engine of ['claude-code', 'codex'] as const) assert.equal(refusal(await s.service.showStartCommand(f.id, engine, 'help')).code, 'START_INSTRUCTION_SUBCOMMAND');
+});
+
+test('a clipboard that never answers is a refusal after the time limit, and the next call is not held behind it', async t => {
+  const s = setup(t, { clipboard: 'never', timeout: 60 });
+  const f = await choose(s, teamFolder(s.home));
+  const started = Date.now();
+  const r = refusal(await s.service.startCommandToClipboard(f.id, 'codex', 'go'));
+  assert.equal(r.code, 'START_COPY_FAILED');
+  assert.ok(Date.now() - started < 3000, 'it gave up at the limit');
+  assert.equal(value(await s.service.showStartCommand(f.id, 'codex', 'go')).copied, false, 'a later call still runs');
+  assert.equal(s.service.busy(), false);
 });

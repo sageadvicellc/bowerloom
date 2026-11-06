@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { FolderInfo } from '../shared/engine/types.js';
-import { START_INSTRUCTION_LIMIT } from '../shared/engine/start-command.js';
+import { START_INSTRUCTION_LIMIT, START_MAIN_WORDS } from '../shared/engine/start-command.js';
 import { engineStateOf, firstStartEngines, firstStartFolder, offeredEngines, startFolderLine, startStatus } from '../shared/harness/start-real.js';
 
 const folder = (over: Partial<FolderInfo> = {}): FolderInfo => ({
@@ -61,8 +61,8 @@ test('startStatus walks the states in order: no project, no harness, no engine, 
   assert.deepEqual(startStatus(folder(), ['codex'], ''), { kind: 'no-instruction' });
   assert.deepEqual(startStatus(folder(), ['codex'], '  \n '), { kind: 'no-instruction' });
   assert.deepEqual(startStatus(folder(), ['codex'], 'x'.repeat(START_INSTRUCTION_LIMIT + 1)), { kind: 'too-long' });
-  assert.deepEqual(startStatus(folder(), ['codex'], 'a\u0000b'), { kind: 'bad-text', code: 'START_INSTRUCTION_CHARACTERS' });
-  assert.deepEqual(startStatus(folder(), ['codex'], '-n'), { kind: 'bad-text', code: 'START_INSTRUCTION_DASH' });
+  assert.deepEqual(startStatus(folder(), ['codex'], 'a\u0000b'), { kind: 'bad-text', code: 'START_INSTRUCTION_CHARACTERS', message: START_MAIN_WORDS.START_INSTRUCTION_CHARACTERS });
+  assert.deepEqual(startStatus(folder(), ['codex'], '-n'), { kind: 'bad-text', code: 'START_INSTRUCTION_DASH', message: START_MAIN_WORDS.START_INSTRUCTION_DASH });
   assert.deepEqual(startStatus(folder(), ['claude-code', 'codex'], ok), { kind: 'ready', engines: ['claude-code', 'codex'] });
 });
 
@@ -70,7 +70,7 @@ test('an instruction that is a command of a ticked engine is a state of its own,
   assert.deepEqual(startStatus(folder(), ['claude-code', 'codex'], 'login'), { kind: 'subcommand', engine: 'codex', word: 'login' });
   assert.deepEqual(startStatus(folder(), ['claude-code'], 'login'), { kind: 'ready', engines: ['claude-code'] });
   assert.deepEqual(startStatus(folder(), ['claude-code', 'codex'], 'update'), { kind: 'subcommand', engine: 'claude-code', word: 'update' });
-  assert.deepEqual(startStatus(folder(), ['codex'], 'a\u200bb'), { kind: 'bad-text', code: 'START_INSTRUCTION_HIDDEN' });
+  assert.deepEqual(startStatus(folder(), ['codex'], 'a\u200bb'), { kind: 'bad-text', code: 'START_INSTRUCTION_HIDDEN', message: 'The instruction has a hidden character: U+200B (zero-width space) at position 2. Remove it and try again.' });
 });
 
 test('an engine that is not installed, out of the record, or stopped sends the person to the install review first, listing exactly those engines', () => {

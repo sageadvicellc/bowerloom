@@ -5,8 +5,7 @@
  */
 import { ENGINE_NAMES } from './types.js';
 import type { Answer, StartCommandView } from './types.js';
-import { hasHiddenChar } from './scrub.js';
-import { START_MAIN_WORDS, checkInstruction, folderWord, startCommand, subcommandOf, subcommandWords } from './start-command.js';
+import { START_MAIN_WORDS, checkInstruction, folderWord, hiddenPath, startCommand, subcommandOf, subcommandWords } from './start-command.js';
 import type { StartEngineId, StartRefusalCode } from './start-command.js';
 
 export interface StartInput {
@@ -30,12 +29,12 @@ export const startRefused = (code: StartRefusalCode, message?: string): Answer<n
 /** Builds the command for the window (`view`, nothing copied yet) and the one for the clipboard (`real`). It touches nothing. */
 export function buildStart(input: StartInput): Answer<StartBuilt> {
   const problem = checkInstruction(input.instruction);
-  if (problem !== null) return startRefused(problem.code);
+  if (problem !== null) return startRefused(problem.code, problem.message);
   // An engine reads a one-word instruction that equals one of its own commands as that command, even when it is quoted.
   const word = subcommandOf(input.engine, input.instruction);
   if (word !== null) return startRefused('START_INSTRUCTION_SUBCOMMAND', subcommandWords(word, input.engine));
   // A hidden character in the folder name could make the shown line read differently from the copied one, so no line is built for that folder.
-  if (hasHiddenChar(input.dir)) return startRefused('START_FOLDER_HIDDEN');
+  if (hiddenPath(input.dir)) return startRefused('START_FOLDER_HIDDEN');
   // A line break or a tab in the folder name would break the one-line command.
   if (/[\n\t]/.test(input.dir)) return startRefused('START_FOLDER_NAME');
   const home = input.homes.find(h => h.length > 1 && (input.dir === h || input.dir.startsWith(`${h}/`))) ?? null;
