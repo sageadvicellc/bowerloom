@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { validateReleaseIdentity } from '../apps/cli/src/release.js';
 
-// The release record is packed while unreleased and flips to published after the owner publishes on npm under the
-// beta dist-tag. A private colleague beta, installed from an archive and never an npm publication, stays a valid
+// The release record was packed while unreleased and flipped to published after the owner published on npm under
+// the beta dist-tag. A private colleague beta, installed from an archive and never an npm publication, stays a valid
 // record form and is built here as a fixture.
 const root = new URL('../../', import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, root), 'utf8');
@@ -21,14 +21,14 @@ const privateArchive: Record = {
 };
 const refuses = (record: unknown, label: string) => assert.throws(() => validateReleaseIdentity(record, pkg), /installed release record/, label);
 
-test('the release record and package.json name one version, unreleased, for npm under the beta dist-tag', () => {
+test('the release record and package.json name one version, published on npm under the beta dist-tag', () => {
   assert.match(VERSION, /^0\.8\.0-beta\.\d+$/); assert.equal(release.version, VERSION);
   assert.deepEqual(release.distribution, { kind: 'npm-beta-stream', distTag: 'beta' });
   assert.equal(release.npm.distTag, 'beta'); assert.equal(release.npm.installCommand, BETA_INSTALL);
-  assert.equal(release.state, 'unreleased'); assert.equal(release.npm.published, false);
+  assert.equal(release.state, 'published'); assert.equal(release.npm.published, true);
   assert.equal(release.audience, 'public-beta-stream');
-  assert.equal(release.npm.availabilityNote, 'Install it from npm under the beta dist-tag with npm install -g bowerloom@beta.');
-  assert.deepEqual((release as unknown as { systems: { releaseQualified: unknown[] } }).systems.releaseQualified, [], 'no registry install is claimed before publication');
+  assert.match(release.npm.availabilityNote, /under the beta dist-tag/);
+  assert.ok((release as unknown as { systems: { releaseQualified: unknown[] } }).systems.releaseQualified.length > 0, 'a published record names its registry install');
   assert.doesNotMatch(release.npm.availabilityNote, /private|proof|unreleased|unpublished|candidate/i);
   assert.equal(validateReleaseIdentity(release, pkg).version, VERSION);
 });
@@ -62,7 +62,7 @@ test('the install block shows the command only after npm publishes, in the READM
   const command = release.npm.installCommand;
   const commandBlock = `\`\`\`sh\n${command}\nbowerloom --version\nbowerloom --help\n\`\`\``;
   assert.ok(releaseSections(published).install.includes(commandBlock), 'a published record shows the command block');
-  assert.ok(!releaseSections(release).install.includes(command), 'an unpublished record shows no command');
+  assert.ok(!releaseSections({ ...release, state: 'unreleased', npm: { ...release.npm, published: false } }).install.includes(command), 'an unpublished record shows no command');
   for (const path of ['README.md', 'apps/docs/src/content/docs/start.md', 'apps/docs/src/content/docs/beta-guide.md']) {
     const raw = read(path);
     assert.equal(raw.split('<!-- release:install:start -->').length - 1, 1, path);
@@ -94,11 +94,11 @@ test('the release identity binds the install command to the distribution: an arc
 });
 
 test('an npm-beta-stream record installs by its dist-tag only, in one canonical form', () => {
-  const unpublished = release;
+  const unpublished = { ...release, state: 'unreleased', npm: { ...release.npm, published: false } };
   assert.equal(validateReleaseIdentity(unpublished, pkg).state, 'unreleased', 'an unpublished beta stream is governed by the state rule');
   const flipped = { ...release, state: 'published', npm: { ...release.npm, published: true } };
   assert.equal(validateReleaseIdentity(flipped, pkg).state, 'published', 'the flipped record stays valid');
-  refuses({ ...release, state: 'published' }, 'marked published but not on npm');
+  refuses({ ...unpublished, state: 'published' }, 'marked published but not on npm');
   refuses({ ...unpublished, npm: { ...unpublished.npm, published: true } }, 'unreleased but published on npm');
   for (const installCommand of ['npm install --global bowerloom@beta', `npm install -g bowerloom@${VERSION}`, 'npm install -g bowerloom@next', 'npm install -g bowerloom@latest', 'npm install -g bowerloom', `npm install -g ./bowerloom-${VERSION}.tgz`, 'npm install -g bowerloom@beta ']) {
     refuses({ ...release, npm: { ...release.npm, installCommand } }, installCommand);

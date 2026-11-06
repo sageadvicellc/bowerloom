@@ -19,7 +19,7 @@ The app opens with no flag, on your own folders. It reads the folders you tick, 
 
 Apple did not sign or notarize this app. The first time you open it, macOS blocks it and shows a warning. The source is in the repository, so you can read it first.
 
-1. Download the app from the GitHub release page of Bowerloom 0.8.0-beta.1. The release must be approved and published first. This page does not link a file.
+1. Download the app from the [GitHub release page of Bowerloom 0.8.0-beta.1](https://github.com/sageadvicellc/bowerloom/releases/tag/v0.8.0-beta.1). Pick the `arm64` file for a Mac with Apple silicon. Check the download against its SHA-256 hash, which is listed with it.
 2. Move `Bowerloom.app` to your Applications folder.
 3. Open the app once. macOS shows a warning. Close the warning.
 4. Open the Apple menu, then System Settings.

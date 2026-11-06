@@ -12,11 +12,12 @@ import {unsupportedPublicInstalls} from './install-guard.mjs';
 import {pairedCopy,normalizeNotices,markdownSections,getDocuments,indexMarkdown,searchIndexes,pageTree} from '../src/lib/content.mjs';
 
 const publishedRecord=r=>({...r,state:'published',npm:{...r.npm,published:true}});
+const unpublishedRecord=r=>({...r,state:'unreleased',npm:{...r.npm,published:false}});
 test('the install block shows the command only when the record is published, and refuses unknown markers',async()=>{
   const release=await readRelease();
   const stub='Before\n<!-- release:install:start -->STALE<!-- release:install:end -->\nAfter';
-  assert.equal(release.npm.published,false,'the packed record is unpublished');
-  const unpublished=expandRelease(stub,release);
+  assert.equal(release.npm.published,true,'the record is published');
+  const unpublished=expandRelease(stub,unpublishedRecord(release));
   assert(!unpublished.includes('STALE'));
   assert(!unpublished.includes(release.npm.installCommand),'no install command before npm publishes');
   assert.doesNotMatch(unpublished,/npm install/);
@@ -36,7 +37,7 @@ test('README, the install page, and the beta guide each carry an install block t
   for(const path of ['README.md','apps/docs/src/content/docs/start.md','apps/docs/src/content/docs/beta-guide.md']){
     const raw=await read(path);
     assert.equal(raw.split('<!-- release:install:start -->').length-1,1,path);
-    for(const [label,record,shows] of [['unpublished',release,false],['published',publishedRecord(release),true]]){
+    for(const [label,record,shows] of [['unpublished',unpublishedRecord(release),false],['published',publishedRecord(release),true]]){
       const text=expandRelease(raw,record);
       assert.equal(text.includes(`\`\`\`sh\n${record.npm.installCommand}\nbowerloom --version\nbowerloom --help\n\`\`\``),shows,`${path} ${label}`);
       assert.equal(/arrives when the beta publishes/.test(text),!shows,`${path} ${label}`);
@@ -124,7 +125,7 @@ test('reader projection preserves raw operational state and presents bounded set
   assert.doesNotMatch(Object.values(sections).join('\n'),/unpublished|unreleased|candidate|ownership|founder acceptance|publication approval|release-qualified/i);
   assert.equal(JSON.stringify(release),before);
   const next={...release,version:'0.8.0-beta.99',distribution:{...release.distribution,archive:'bowerloom-0.8.0-beta.99.tgz'},npm:{...release.npm,installCommand:'npm install -g ./bowerloom-0.8.0-beta.99.tgz'}};
-  assert(!releaseSections(next).install.includes(next.npm.installCommand),'an unpublished record shows no command');
+  assert(!releaseSections(unpublishedRecord(next)).install.includes(next.npm.installCommand),'an unpublished record shows no command');
   assert(releaseSections(publishedRecord(next)).install.includes(next.npm.installCommand),'a published record shows its command');assert(releaseReference(next).includes(next.version));
   assert.equal(next.state,release.state);assert.equal(next.npm.published,release.npm.published);
 });
