@@ -100,6 +100,34 @@ test('a closed place draws its header and no tile', () => {
   assert.equal(grid(o, {}, new Set()).includes('data-tile='), false);
 });
 
+test('an open place does not repeat its counts in its header (the tile heads carry them); a closed place and the List still say them', () => {
+  const o = overviewWith([{ agent: 4, skill: 14 }]);
+  assert.ok(!grid(o).includes('hxo-counts'), 'open: no counts line');
+  assert.ok(grid(o, {}, new Set()).includes('4 agents, 14 skills'), 'closed: the counts');
+  assert.ok(grid(o).includes('aria-label="Collapse Place 0, ~, 4 agents, 14 skills"'), 'the toggle still names what the place holds');
+});
+
+test('a place whose counts are wrong still shows every part it holds, and never says nothing was found', () => {
+  const o = overviewWith([{ skill: 5, tool: 2 }]);
+  const wrong = { ...o, groups: [{ ...o.groups[0]!, counts: { agent: 0, skill: 0, tool: 0, context: 0 } }] };
+  const html = grid(wrong);
+  assert.ok(!html.includes('Nothing was found'), 'no "nothing found" while the place holds parts');
+  assert.ok(!html.includes('data-empty-place'));
+  assert.equal(attr(html, 'data-node').length, 7, 'every part is listed');
+  assert.deepEqual(attr(html, 'data-tile'), ['s0/skill', 's0/tool']);
+  // The other way: counts that claim parts the place does not hold draw no tile.
+  const none = { ...o, groups: [{ ...o.groups[0]!, nodes: [] }] };
+  assert.ok(grid(none).includes('data-empty-place'));
+});
+
+test('a long name has a title, and a tile is a labelled group, not a landmark', () => {
+  const html = grid(overviewWith([{ skill: 2 }]));
+  assert.match(html, /class="hxo-cell-name" title="skill 000"/);
+  assert.match(html, /role="group" aria-labelledby="hxo-t-s0-skill"/);
+  assert.ok(!html.includes('<section'), 'no section element: it would be a landmark for each tile');
+  assert.match(html, /<h3 class="hxo-cell-head" id="hxo-t-s0-skill" aria-label="Skills, Place 0, 2">/);
+});
+
 test('a place that holds nothing says so, with no tile', () => {
   const o = overviewWith([{ skill: 2 }, {}]);
   const html = grid(o);
