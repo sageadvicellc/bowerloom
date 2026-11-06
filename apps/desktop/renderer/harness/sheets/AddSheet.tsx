@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Stepper } from '../../home/kit/Stepper.js';
 import type { Answer, DefinitionView, FolderInfo, SaveEdit, SaveWritten } from '../../../shared/engine/types.js';
-import { KEEPER_EDITS, NOTES_START, copySources, keeperHeld, notesDone, notesEdits, notesRestart, skillEdits, skillHeld, targetsFor } from '../../../shared/harness/library-add.js';
+import { KEEPER_EDITS, NOTES_START, folderStepLines, showSkillsHeading, copySources, keeperHeld, notesDone, notesEdits, notesRestart, skillEdits, skillHeld, targetsFor } from '../../../shared/harness/library-add.js';
 import type { NotesChoice } from '../../../shared/harness/library-add.js';
 import type { PartKind } from '../../../shared/harness/types.js';
 import { Sheet } from '../parts/Sheet.js';
@@ -49,6 +49,8 @@ export function AddSheet({ open, kind, onClose }: AddSheetProps): ReactElement |
   const call = useCall(), targetCall = useCall(), sourceCall = useCall();
   const [step, setStep] = useState<Step>('folder');
   const [folders, setFolders] = useState<readonly FolderInfo[]>([]);
+  // True once the folder list was read. A list that could not be read is not an empty list.
+  const [listed, setListed] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
   const [target, setTarget] = useState<DefinitionView | null>(null);
   const [source, setSource] = useState<string | null>(null);
@@ -66,6 +68,7 @@ export function AddSheet({ open, kind, onClose }: AddSheetProps): ReactElement |
   const held = call.writing;
   const busyWords = call.busy ?? targetCall.busy ?? sourceCall.busy, busy = busyWords !== null;
   const { usable, left } = targetsFor(folders);
+  const lines = folderStepLines({ listed, refused: call.refusal !== null, usable: usable.length, busy, bridge: engine !== null });
   const folder = usable.find(f => f.id === picked);
 
   const reset = (): void => {
@@ -75,9 +78,8 @@ export function AddSheet({ open, kind, onClose }: AddSheetProps): ReactElement |
   // Opened, or opened for another tab: everything starts again, and the folders are listed anew.
   useEffect(() => {
     if (!open) return;
-    setStep('folder'); setFolders([]); setPicked(null); reset();
-    if (engine === null) return;
-    void call.plan(W.label.planning, () => foldersCall(engine), list => { setFolders(list); const ready = targetsFor(list).usable; if (ready.length === 1) setPicked(ready[0]!.id); });
+    setStep('folder'); setFolders([]); setListed(false); setPicked(null); reset();
+    readFolders();
   }, [open, kind, engine]);
   useEffect(() => {
     if (!open) { first.current = true; return; }
@@ -86,6 +88,11 @@ export function AddSheet({ open, kind, onClose }: AddSheetProps): ReactElement |
   }, [step, open]);
   useHeldFocus(busy, body);
 
+  /** Reads the list of folders. The folder is picked for the person only when exactly one can take the part; the form still shows it and asks. */
+  function readFolders(): void {
+    if (engine === null) return;
+    void call.plan(W.label.planning, () => foldersCall(engine), list => { setFolders(list); setListed(true); const ready = targetsFor(list).usable; if (ready.length === 1) setPicked(ready[0]!.id); });
+  }
   const pick = (id: string): void => { if (busy || id === picked) return; setPicked(id); reset(); };
   const choose = (): void => {
     if (engine === null || busy) return;
@@ -132,7 +139,7 @@ export function AddSheet({ open, kind, onClose }: AddSheetProps): ReactElement |
     const run = (): Promise<Answer<SaveWritten>> => engine.runSave(id, s.view.revision, s.view.acknowledge === null ? s.edits : { edits: s.edits, acknowledged: acked });
     void call.write(W.label.writing, run, r => { setDone(r); setStep('done'); if (r.written.length > 0) scan.markWrote(); });
   };
-  const back = (to: Step): void => { if (held) return; setChoice(notesRestart); call.clear(); setShown(null); setApproved(null); setAcked(null); setStep(to); };
+  const back = (to: Step): void => { if (held) return; setChoice(notesRestart); call.clear(); targetCall.clear(); sourceCall.clear(); setShown(null); setApproved(null); setAcked(null); setStep(to); };
 
   const keeperIn = target !== null && keeperHeld(target), skillIn = target !== null && skill !== null && skillHeld(target, skill);
   const canReview = !busy && (kind === 'agent' ? !keeperIn : kind === 'skill' ? skill !== null && !skillIn : notes !== null);
@@ -177,7 +184,7 @@ export function AddSheet({ open, kind, onClose }: AddSheetProps): ReactElement |
             <p className="hxi-intro" tabIndex={-1} ref={intro}>{INTRO[kind]}</p>
             <p className="hxi-intro" data-add-rule="">{engine === null ? W.hint.noBridge : `${WORDS.hint.harnessMeans} ${WORDS.hint.onlyWithHarness}`}</p>
             <h3 className="hxe-head">{WORDS.label.whichFolder}</h3>
-            {usable.length === 0 ? (busy || engine === null ? null : <p className="hxe-text" data-add-no-targets="">{WORDS.hint.noTargets}</p>) : (
+            {usable.length === 0 ? (lines.noTargets ? <p className="hxe-text" data-add-no-targets="">{WORDS.hint.noTargets}</p> : null) : (
               <ul className="hxi-list hxe-folders" aria-label={W.label.folders}>
                 {usable.map(f => (
                   <li key={f.id}>
@@ -189,6 +196,7 @@ export function AddSheet({ open, kind, onClose }: AddSheetProps): ReactElement |
                 ))}
               </ul>
             )}
+            {lines.tryAgain ? <HButton data-try-again="" onClick={readFolders}>{W.label.tryAgain}</HButton> : null}
             <HButton icon="plus" disabled={busy || engine === null} onClick={choose}>{W.label.chooseFolder}</HButton>
             {left.length === 0 ? null : (
               <section className="hxe-section" aria-label={WORDS.label.leftOut} data-section="add-left-out">
@@ -219,8 +227,8 @@ export function AddSheet({ open, kind, onClose }: AddSheetProps): ReactElement |
                   </ul>
                 )}
                 {source === null ? null : (
-                  <section className="hxe-section" aria-label={WORDS.label.whichSkill} data-section="add-skills">
-                    <h3 className="hxe-head">{WORDS.label.whichSkill}</h3>
+                  <section className="hxe-section" aria-label={WORDS.label.whichSkill} data-section="add-skills" hidden={!showSkillsHeading(skills)}>
+                    {showSkillsHeading(skills) ? <h3 className="hxe-head">{WORDS.label.whichSkill}</h3> : null}
                     {skills === null ? null : skills.length === 0 ? <p className="hxe-text hxe-muted">{W.hint.copyNoSkills}</p> : (
                       <>
                         <p className="hxe-text hxe-muted">{WORDS.hint.pickSkill}</p>

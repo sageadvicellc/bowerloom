@@ -1,7 +1,7 @@
 // Library Add (issue 148), variant C: the pure rules of the small Add form in each Library tab. No screen, no engine.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { NOTES_READY, addState, canAttach, copySources, notesDone, notesRestart, NOTES_START, keeperHeld, notesEdits, skillEdits, skillHeld, targetsFor, KEEPER_EDITS } from '../shared/harness/library-add.js';
+import { NOTES_READY, folderStepLines, showSkillsHeading, addState, canAttach, copySources, notesDone, notesRestart, NOTES_START, keeperHeld, notesEdits, skillEdits, skillHeld, targetsFor, KEEPER_EDITS } from '../shared/harness/library-add.js';
 import { SavedScanContext, firstSaved, savedReduce } from '../renderer/harness/real/saved-scan.js';
 import { WORDS } from '../renderer/harness/words.js';
 import { LIMITS, bannedHere, countWords } from '../shared/harness/words.js';
@@ -109,4 +109,19 @@ test('a write marks the read on the screen as changed, and only when there is a 
 
 test('the new Library lines are short plain words', () => {
   for (const line of [WORDS.hint.noFileRead, WORDS.hint.libraryStale]) { assert.ok(countWords(line) <= LIMITS.hint, line); assert.equal(bannedHere(line), null, line); }
+});
+
+test('the folder step says "no folder has a harness" only when the list was read and is empty, and offers Try again when the read was refused', () => {
+  assert.deepEqual(folderStepLines({ listed: true, refused: false, usable: 0, busy: false, bridge: true }), { noTargets: true, tryAgain: false });
+  assert.deepEqual(folderStepLines({ listed: false, refused: true, usable: 0, busy: false, bridge: true }), { noTargets: false, tryAgain: true });
+  assert.deepEqual(folderStepLines({ listed: false, refused: false, usable: 0, busy: true, bridge: true }), { noTargets: false, tryAgain: false }, 'still reading');
+  assert.deepEqual(folderStepLines({ listed: true, refused: false, usable: 2, busy: false, bridge: true }), { noTargets: false, tryAgain: false });
+  assert.deepEqual(folderStepLines({ listed: false, refused: false, usable: 0, busy: false, bridge: false }), { noTargets: false, tryAgain: false }, 'no bridge: its own line');
+  // A refusal of a later read never turns a list that was read into a failed one.
+  assert.deepEqual(folderStepLines({ listed: true, refused: true, usable: 0, busy: false, bridge: true }), { noTargets: true, tryAgain: false });
+});
+
+test('the "Which skill?" heading shows only once the skills are read', () => {
+  assert.equal(showSkillsHeading(null), false);
+  assert.equal(showSkillsHeading([]), true);
 });

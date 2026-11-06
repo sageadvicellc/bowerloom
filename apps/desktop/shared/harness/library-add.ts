@@ -73,3 +73,15 @@ export const NOTES_READY = (choice: NotesChoice): boolean => choice.view !== nul
 /** The folders whose harness the reader could not read, each with the reason. They add no part to the Library, so the Library names them instead of saying nothing. */
 export const unreadableHarnesses = (state: HarnessState): { name: string; label: string; why: string }[] =>
   (state.harnessPlaces ?? []).filter(h => !h.readable).map(h => ({ name: h.name.replace(/ \(Bowerloom\)$/, ''), label: h.label, why: HARNESS_UNREADABLE }));
+
+// ---- what the folder step and the skill list say
+
+/**
+ * Two lines of the folder step. "No folder has a harness yet" is true only when the list was read and holds no folder that can take a part: a list that could not be read
+ * says nothing of the kind, and offers Try again. A refusal of a later read does not undo a list that was read.
+ */
+export function folderStepLines(a: { listed: boolean; refused: boolean; usable: number; busy: boolean; bridge: boolean }): { noTargets: boolean; tryAgain: boolean } {
+  return { noTargets: a.bridge && a.listed && a.usable === 0 && !a.busy, tryAgain: a.bridge && !a.listed && a.refused && !a.busy };
+}
+/** The "Which skill?" heading shows when the skills of the folder were read, even if there are none to show. */
+export const showSkillsHeading = (skills: readonly unknown[] | null): boolean => skills !== null;
