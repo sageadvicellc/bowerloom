@@ -30,5 +30,8 @@ test('an icon that does not load is reported and leaves the Dock alone, and no D
   followAppearance({ dock: { setIcon: image => { set.push(image); } }, theme: { shouldUseDarkColors: true, on: () => undefined }, folder: '/d', load: () => ({ isEmpty: () => true }), tell: message => { told.push(message); } });
   assert.deepEqual(set, []);
   assert.deepEqual(told, ['Bowerloom could not load its Dock icon: /d/icon-dark.png']);
+  const errors: string[] = [];
+  assert.doesNotThrow(() => followAppearance({ dock: { setIcon: () => { throw new Error('dock gone'); } }, theme: { shouldUseDarkColors: false, on: () => { throw new Error('no events'); } }, folder: '/d', load: () => ({ isEmpty: () => false }), tell: message => { errors.push(message); } }), 'a Dock or theme error never stops the start');
+  assert.deepEqual(errors, ['Bowerloom could not set its Dock icon: dock gone', 'Bowerloom could not follow the appearance for its Dock icon: no events']);
   assert.doesNotThrow(() => followAppearance({ dock: undefined, theme: { shouldUseDarkColors: false, on: () => { throw new Error('not called'); } }, folder: '/d', load: () => { throw new Error('not called'); } }));
 });

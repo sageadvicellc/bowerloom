@@ -15,17 +15,20 @@ type Dock = { setIcon(image: never): void };
 type Theme = { readonly shouldUseDarkColors: boolean; on(event: 'updated', listener: () => void): unknown };
 type Image = { isEmpty(): boolean };
 
-/** Sets the Dock icon now and again on every appearance change. An icon that does not load is reported and the Dock keeps the bundle icon: never a throw. */
+/** Sets the Dock icon now and again on every appearance change. An icon that does not load, or any error from the Dock or the theme, is reported and the Dock
+ * keeps the bundle icon: it never throws, so it can never stop the app from starting. */
 export function followAppearance<I extends Image>(o: { readonly dock: Dock | undefined; readonly theme: Theme; readonly folder: string; readonly load: (path: string) => I; readonly tell?: (message: string) => void }): void {
   const dock = o.dock;
   if (dock === undefined) return;
   const tell = o.tell ?? (message => console.error(message));
   const apply = (): void => {
-    const file = dockIconFile(o.folder, o.theme.shouldUseDarkColors);
-    const image = o.load(file);
-    if (image.isEmpty()) { tell(`Bowerloom could not load its Dock icon: ${file}`); return; }
-    dock.setIcon(image as never);
+    try {
+      const file = dockIconFile(o.folder, o.theme.shouldUseDarkColors);
+      const image = o.load(file);
+      if (image.isEmpty()) { tell(`Bowerloom could not load its Dock icon: ${file}`); return; }
+      dock.setIcon(image as never);
+    } catch (error) { tell(`Bowerloom could not set its Dock icon: ${error instanceof Error ? error.message : String(error)}`); }
   };
   apply();
-  o.theme.on('updated', apply);
+  try { o.theme.on('updated', apply); } catch (error) { tell(`Bowerloom could not follow the appearance for its Dock icon: ${error instanceof Error ? error.message : String(error)}`); }
 }
