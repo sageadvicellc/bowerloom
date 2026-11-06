@@ -206,9 +206,14 @@ export function ImportReview({ view, approved, acknowledged, held, stale = false
   );
 }
 
-export interface ImportSheetProps { open: boolean; onClose(): void }
+export interface ImportSheetProps {
+  open: boolean;
+  /** The folder to pick when the sheet opens (Projects: Assign harness), if main knows it and Import accepts it. */
+  folderId?: string | null;
+  onClose(): void;
+}
 
-export function ImportSheet({ open, onClose }: ImportSheetProps): ReactElement | null {
+export function ImportSheet({ open, folderId: preferred = null, onClose }: ImportSheetProps): ReactElement | null {
   const engine = useEngine(), ui = useUi(), call = useCall(), list = useCall(), blockId = useId(), fileId = useId(), folderId = useId();
   const [step, setStep] = useState<Step>('file');
   const [bundle, setBundle] = useState<BundleView | null>(null);
@@ -236,7 +241,14 @@ export function ImportSheet({ open, onClose }: ImportSheetProps): ReactElement |
     heldId.current = null;
     if (id !== null && engineRef.current !== null) void Promise.resolve(engineRef.current.discardBundle(id)).catch(noop);
   };
-  const readFolders = (): void => { if (engine !== null) void list.plan(W.label.planning, () => foldersCall(engine), setFolders); };
+  const readFolders = (): void => {
+    if (engine === null) return;
+    void list.plan(W.label.planning, () => foldersCall(engine), got => {
+      setFolders(got);
+      const asked = preferred === null ? undefined : got.find(f => f.id === preferred);
+      if (asked !== undefined && !importFolderLine(asked).off) setPicked(asked.id);
+    });
+  };
   const resetPlan = (): void => { setShown(null); setStale(false); setApproved(null); setAcked(null); setLastPlan(null); setAnnounce(''); };
   /** Moves to a step and, once it is drawn, puts the focus on its start. */
   const go = (to: Step): void => { focusStep.current = true; setStep(to); };
@@ -461,7 +473,7 @@ export function ShareSheets(): ReactElement {
   return (
     <>
       <ExportSheet open={ui.exportSheet.open} folderId={ui.exportSheet.folderId} unsaved={ui.exportSheet.unsaved} onClose={ui.closeExport} />
-      <ImportSheet open={ui.importSheet.open} onClose={ui.closeImport} />
+      <ImportSheet open={ui.importSheet.open} folderId={ui.importSheet.folderId} onClose={ui.closeImport} />
     </>
   );
 }

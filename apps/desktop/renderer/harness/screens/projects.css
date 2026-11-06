@@ -25,3 +25,9 @@
 [data-home] .hxp-iface-name { font-weight: 600; font-size: var(--hm-text-base); line-height: 1.35; }
 [data-home] .hxp-wide .kit-button { width: 100%; }
 [data-home] .hxp-wide { display: flex; flex-direction: column; gap: var(--hm-space-3); }
+
+/* The two ways to assign a harness: each is a wide button with its one line under it, with room between the two. */
+[data-home] .hxp-assign { display: flex; flex-direction: column; gap: var(--hm-space-6); padding-top: var(--hm-space-3); }
+[data-home] .hxp-assign .hx-block { display: flex; flex-direction: column; gap: var(--hm-space-3); }
+[data-home] .hxp-assign .kit-button { width: 100%; }
+[data-home] .hxp-assign .hx-text { margin: 0; }

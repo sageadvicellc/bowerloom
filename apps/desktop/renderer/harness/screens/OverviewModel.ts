@@ -12,10 +12,10 @@ import { OVERVIEW_LIMITS } from '../../../shared/harness/overview.js';
 import type { Overview, OverviewGroup, OverviewNode } from '../../../shared/harness/overview.js';
 import { defaultExpanded } from '../../../shared/harness/overview-layout.js';
 
-export type OverviewView = 'graph' | 'list';
+export type OverviewView = 'grid' | 'graph' | 'list';
 
-/** The view that shows: the one the person chose, else the List in a window under OVERVIEW_LIMITS.smallScreen wide, else the Graph. */
-export const viewFor = (chosen: OverviewView | null, width: number): OverviewView => chosen ?? (width < OVERVIEW_LIMITS.smallScreen ? 'list' : 'graph');
+/** The view that shows: the one the person chose, else the List in a window under OVERVIEW_LIMITS.smallScreen wide, else the Grid. */
+export const viewFor = (chosen: OverviewView | null, width: number): OverviewView => chosen ?? (width < OVERVIEW_LIMITS.smallScreen ? 'list' : 'grid');
 
 /** A node with its place, found by node id. */
 export interface Located { readonly node: OverviewNode; readonly group: OverviewGroup }

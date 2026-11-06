@@ -64,7 +64,7 @@ test('real mode words: Welcome, Runs, Help, Projects, Library, Install history a
   await test.step('Install history: with nothing installed, the list says nothing is listed and how to undo a folder install', async () => {
     await go('#app/history');
     await expect(p.getByRole('heading', { level: 1, name: 'Install history', exact: true })).toBeVisible();
-    await expect(p.getByText('Nothing is listed yet. Installs from Projects are not in beta.1.')).toBeVisible();
+    await expect(p.getByText('Nothing is listed yet. Folder installs are not listed here.')).toBeVisible();
     await expect(p.getByText('To undo a folder install, press Undo, then approve the removal.')).toBeVisible();
     await noFalseClaim('history');
   });
@@ -82,19 +82,23 @@ test('real mode words: Welcome, Runs, Help, Projects, Library, Install history a
     await p.locator('[data-nav-key="harnesses"]').click();
     await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
   });
-  await test.step('Projects: "Add a folder" and "Assign harness" say "Not in beta.1", and Install from a folder is still there', async () => {
+  await test.step('Projects: "Add a folder" and "Assign harness" work, and nothing in Projects says "Not in beta.1"', async () => {
     await go('#app/projects');
     await expect(p.getByRole('heading', { level: 1, name: 'Projects', exact: true })).toBeVisible();
     await expect(p.locator('.hxp-row').filter({ hasText: 'apple-row' })).toHaveCount(1);
     const add = p.getByRole('button', { name: 'Add a folder', exact: true });
-    await expect(add).toHaveAccessibleDescription('Not in beta.1.');
-    // The button is aria-disabled (so a screen reader says it is off) but still takes a press that shows the note; Playwright counts aria-disabled as not enabled.
-    await add.click({ force: true });
-    await expect(p.locator('[data-toast]')).toContainText('Not in beta.1.');
+    await expect(add).toBeEnabled();
+    await expect(add).not.toHaveAccessibleDescription('Not in beta.1.');
+    // With no folder picked, the chooser closes and nothing is added.
+    await h.pick(null);
+    await add.click();
     await expect(p.locator('[aria-modal="true"]')).toHaveCount(0);
+    await expect(p.locator('.hxp-row')).toHaveCount(1);
     await p.locator('.hxp-row').filter({ hasText: 'apple-row' }).getByRole('button', { name: 'Assign harness', exact: true }).click();
-    await expect(p.locator('[data-toast]')).toContainText('Not in beta.1.');
+    await expect(p.getByRole('dialog', { name: 'Assign a harness' })).toBeVisible();
+    await p.getByRole('dialog', { name: 'Assign a harness' }).getByRole('button', { name: 'Cancel', exact: true }).click();
     await expect(p.locator('[aria-modal="true"]')).toHaveCount(0);
+    expect(await text()).not.toContain('Not in beta.1');
     await expect(p.getByRole('button', { name: 'Install from a folder', exact: true })).toBeVisible();
     await noFalseClaim('projects');
   });
@@ -119,7 +123,7 @@ test('real mode words: Welcome, Runs, Help, Projects, Library, Install history a
     await go('#app/harnesses');
     await p.getByRole('button', { name: 'About this beta', exact: true }).click();
     const lines = await p.locator('.hx-preview-pop li').allInnerTexts();
-    expect(lines).toEqual(['Start', 'Compare', 'Runs', 'Assign to project, in the Harnesses details', 'Assign harness, Install, Update and Review, in Projects', 'Add (the plus button), in the Library', 'Add a folder, in Projects']);
+    expect(lines).toEqual(['Start', 'Compare', 'Runs', 'Add (the plus button), in the Library']);
     for (const line of lines) expect(line).not.toMatch(/from a folder/i);
     await p.keyboard.press('Escape');
   });

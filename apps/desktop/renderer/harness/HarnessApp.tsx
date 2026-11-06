@@ -82,7 +82,7 @@ function Overlays(): ReactElement {
       <InstallSheet open={ui.install.open} projectId={ui.install.projectId} harnessId={ui.install.harnessId} step={ui.install.step} interfaceIds={ui.install.interfaceIds} onStep={ui.setInstallStep} onClose={ui.closeInstall} />
       <StartSheet open={ui.start.open} harnessId={ui.start.harnessId} projectId={ui.start.projectId} onClose={ui.closeStart} />
       <AdoptSheet open={ui.adopt.open} folderId={ui.adopt.folderId} onClose={ui.closeAdopt} />
-      <ProjectSheet open={ui.projectSheet.open} folderId={ui.projectSheet.folderId} mode={ui.projectSheet.mode} keep={ui.projectSheet.keep} onClose={ui.closeProject} />
+      <ProjectSheet open={ui.projectSheet.open} folderId={ui.projectSheet.folderId} mode={ui.projectSheet.mode} keep={ui.projectSheet.keep} start={ui.projectSheet.start} onClose={ui.closeProject} />
       <SaveSheet open={ui.saveSheet.open} folderId={ui.saveSheet.folderId} tour={ui.saveSheet.tour} start={ui.saveSheet.start} restore={ui.saveSheet.restore} onClose={ui.closeSave} />
       <ShareSheets />
       <Toast />

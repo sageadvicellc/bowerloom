@@ -216,12 +216,15 @@ test('the file view draws the file as text: markup and an order stay words, the 
   await shot(p, 'real-5-file');
 });
 
-test('Install and Start are not in beta.1: a note says so and no sheet opens; the Beta mark says what Bowerloom does and what is not in beta.1', async () => {
+test('Start is not in beta.1, and Assign to project says the harness is not on disk: a note says so and no sheet opens; the Beta mark says what Bowerloom does and what is not in beta.1', async () => {
   const p = page();
   await p.evaluate(() => { location.hash = '#sample/harnesses'; });
   await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
+  // Assign to project says the harness is not on disk and opens "From a folder", which makes one. It writes nothing.
   await p.getByRole('button', { name: 'Assign to project', exact: true }).first().click();
-  await expect(p.locator('[data-toast]')).toContainText('Not in beta.1.');
+  await expect(p.locator('[data-toast]')).toContainText('This harness is not on disk. Make one from a folder.');
+  await expect(p.getByRole('dialog', { name: 'New harness from a folder' })).toBeVisible();
+  await p.keyboard.press('Escape');
   await expect(p.locator('[aria-modal="true"]')).toHaveCount(0);
   const start = p.getByRole('button', { name: 'Start', exact: true });
   await expect(start, 'the details column of the selected harness has a Start button').toHaveCount(1);
@@ -238,7 +241,7 @@ test('Install and Start are not in beta.1: a note says so and no sheet opens; th
   await expect(pop).toContainText('Bowerloom is in beta. It reads your own folders and writes only after you approve what it will write.');
   await expect(pop).toContainText('Not in beta.1');
   await expect(pop).not.toContainText(/preview|full app/i);
-  await expect(pop.locator('li')).toHaveText(['Start', 'Compare', 'Runs', 'Assign to project, in the Harnesses details', 'Assign harness, Install, Update and Review, in Projects', 'Add (the plus button), in the Library', 'Add a folder, in Projects']);
+  await expect(pop.locator('li')).toHaveText(['Start', 'Compare', 'Runs', 'Add (the plus button), in the Library']);
   await everyStep('preview', false);
   await shot(p, 'real-6-preview');
   await p.keyboard.press('Escape');
@@ -303,7 +306,7 @@ test('a second read asks first: "Cancel" keeps every harness, "Yes, read them" s
   // One harness from the scan: New harness makes none (it opens "From a folder").
   expect(before).toBe(1);
   // A note with an old "Undo" is on its way when the read starts: it must not outlive the old world.
-  await p.getByRole('button', { name: 'Assign to project', exact: true }).first().click();
+  await p.getByRole('button', { name: 'Start', exact: true }).first().click();
   await expect(p.locator('[data-toast]')).toContainText('Not in beta.1.');
   await p.evaluate(() => { location.hash = '#sample/choose'; });
   await expect(p.getByRole('heading', { level: 1, name: /^Found \d+ places?$/ })).toBeVisible();

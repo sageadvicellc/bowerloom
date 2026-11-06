@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Stepper } from '../../home/kit/Stepper.js';
 import { projectCanWrite, untickedLines } from '../../../shared/engine/gates.js';
+import { planInput } from '../../../shared/harness/real-projects.js';
 import { isPreviewEngine } from '../../../shared/engine/engines.js';
 import { ENGINE_NAMES, writesFile } from '../../../shared/engine/types.js';
 import type { EngineId, FolderInfo, MergeView, ModeChoice, ProjectAnswer, ProjectInput, ProjectView, Reconcile, RecoveryChoices, RecoveryView, RemovalView } from '../../../shared/engine/types.js';
@@ -31,6 +32,7 @@ import type { AfterApplyCheckProps } from './after-apply-check.js';
 import { Busy, FolderStep, RefusalNote, ResultStep, folderLine } from './engine-parts.js';
 import { ApproveLines, DriftReport, MergeReview, PlanReview, RecoveryReview, RemovalReview } from './project-review.js';
 import { chooseFolderCall, foldersCall, useCall } from './use-call.js';
+import { goneAfterChoose, goneRefusal, pickRequested } from './picked-folder.js';
 import { useHeldFocus } from './use-held-focus.js';
 
 const W = ENGINE_WORDS;
@@ -46,12 +48,19 @@ const BODY_NAME: Readonly<Record<Step, string>> = { folder: W.label.bodyFolder, 
 /** The interfaces a folder's install starts with: the ones its harness lists, without the preview ones unless the app may install to them. */
 const installable = (f: FolderInfo | undefined): readonly EngineId[] => (f === undefined ? [] : f.engines.filter(e => f.previewEngines || !isPreviewEngine(e)));
 
-export interface ProjectSheetProps { open: boolean; folderId: string | null; mode: EngineSheetMode; keep: readonly string[]; onClose(): void }
+export interface ProjectSheetProps {
+  open: boolean; folderId: string | null; mode: EngineSheetMode; keep: readonly string[];
+  /** `review`: an install for the folder opened with goes to its plan at once, for the engines its harness lists (Projects: Update and Review). */
+  start?: 'folder' | 'review';
+  onClose(): void;
+}
 
-export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKeep, onClose }: ProjectSheetProps): ReactElement | null {
+export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKeep, start = 'folder', onClose }: ProjectSheetProps): ReactElement | null {
   const engine = useEngine(), call = useCall();
   const [folders, setFolders] = useState<readonly FolderInfo[]>([]);
   const [picked, setPicked] = useState<string | null>(null);
+  /** True when the folder the sheet was opened for is no longer one main knows. */
+  const [gone, setGone] = useState(false);
   const [mode, setMode] = useState<EngineSheetMode>(openedMode);
   const [choices, setChoices] = useState<RecoveryChoices>(keepOnly(openedKeep));
   const [step, setStep] = useState<Step>('folder');
@@ -71,6 +80,8 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
   const [merged, setMerged] = useState(false);
   const [done, setDone] = useState<Done | null>(null);
   const [lastPlan, setLastPlan] = useState<(() => void) | null>(null);
+  /** True from the moment the folders are read until the plan of an install that opens on its review has been asked for. */
+  const [toReview, setToReview] = useState(false);
   const intro = useRef<HTMLParagraphElement>(null), body = useRef<HTMLDivElement>(null), first = useRef(true);
   const held = call.writing;
 
@@ -78,16 +89,18 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
   const resetPlans = (): void => { setAnswer(null); setDriftOf(null); setApproved(null); setRemoval(null); setRecovery(null); setMerge(null); setMerged(false); setTicked([]); setSent([]); setDone(null); setLastPlan(null); call.clear(); };
   useEffect(() => {
     if (!open) return;
-    setStep('folder'); setMode(openedMode); setChoices(keepOnly(openedKeep)); setReconcile('accept-agents'); setWriteClaudeMd(false); setFolders([]); setPicked(null); resetPlans();
+    setToReview(false); setGone(false); setStep('folder'); setMode(openedMode); setChoices(keepOnly(openedKeep)); setReconcile('accept-agents'); setWriteClaudeMd(false); setFolders([]); setPicked(null); resetPlans();
     if (engine === null) return;
     void call.plan(W.label.planning, () => foldersCall(engine), list => {
       setFolders(list);
-      const usable = list.filter(f => !folderLine(f, 'install').off);
-      const id = folderId !== null && usable.some(f => f.id === folderId) ? folderId : usable[0]?.id ?? null;
-      setPicked(id);
+      // A folder that was asked for stays picked, even when it cannot be used: the sheet then says why in its own words. It is never swapped for another folder, and one that
+      // main no longer lists is said in words.
+      const got = pickRequested(list, folderId, f => !folderLine(f, 'install').off), id = got.id;
+      setPicked(id); setGone(got.gone);
       setEngines(installable(list.find(f => f.id === id)));
       // Opened for one folder's removal or recovery (from Done, or from "Keep my versions"): the plan shows at once.
-      if (id !== null && folderId === id && openedMode !== 'install') { setStep('review'); planOther(id, openedMode, keepOnly(openedKeep)); }
+      if (id !== null && folderId === id && openedMode !== 'install' && !folderLine(list.find(f => f.id === id)!, 'install').off) { setStep('review'); planOther(id, openedMode, keepOnly(openedKeep)); }
+      else if (id !== null && folderId === id && start === 'review' && !folderLine(list.find(f => f.id === id)!, 'install').off) setToReview(true);
     });
   }, [open, engine]);
   useEffect(() => {
@@ -100,6 +113,17 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
   const folder = folders.find(f => f.id === picked);
   // Merge is never sent to the install plan: it is its own plan, and the install after it accepts AGENTS.md (D4A).
   const input = (approve: readonly string[], r = reconcile, claude = writeClaudeMd): ProjectInput => ({ engines, reconcile: r === 'merge' ? 'accept-agents' : r, writeClaudeMd: claude, approve });
+
+  // An install that opens on its review plans as soon as the folder and its engines are set, with the same steps as Next on the interfaces step.
+  useEffect(() => {
+    if (!toReview || folder === undefined || held) return;
+    setToReview(false);
+    // The plan is for the engines the folder was installed for, and keeps the person's CLAUDE.md as it is: the same plan the row measured. Engines it never covered stay out.
+    const seed = planInput(folder);
+    if (seed === null) { setStep('interfaces'); return; }
+    setEngines(seed.engines); setReconcile(seed.reconcile);
+    resetPlans(); setStep('review'); planInstall(seed);
+  }, [toReview, folder, engines]);
 
   function planInstall(next: ProjectInput): void {
     if (engine === null || folder === undefined) return;
@@ -145,17 +169,18 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
   const settleMode = (path: string, choice: ModeChoice): void => switchTo('recover', { ...NO_CHOICES, [choice]: [path] });
   /** The choices of one folder: its drift action and its CLAUDE.md offer go with it (W3). */
   const resetChoices = (): void => { setReconcile('accept-agents'); setWriteClaudeMd(false); };
-  const pick = (id: string): void => { if (held || id === picked) return; setPicked(id); setEngines(installable(folders.find(f => f.id === id))); resetChoices(); resetPlans(); };
+  const pick = (id: string): void => { if (held || id === picked) return; setGone(false); setPicked(id); setEngines(installable(folders.find(f => f.id === id))); resetChoices(); resetPlans(); };
   const choose = (): void => {
     if (engine === null || held) return;
     void call.plan(W.label.chooseFolder, () => chooseFolderCall(engine), got => {
+      setGone(g => goneAfterChoose(g, got, f => !folderLine(f, 'install').off));
       if (got === null) return;
       setFolders(got.list);
       if (!folderLine(got.info, 'install').off) { setPicked(got.info.id); setEngines(installable(got.info)); resetChoices(); resetPlans(); }
     });
   };
   const next = (): void => {
-    if (folder === undefined || held) return;
+    if (folder === undefined || held || (step === 'folder' && folderLine(folder, 'install').off)) return;
     if (step === 'folder') { resetPlans(); setMode('install'); setStep('interfaces'); return; }
     // New interfaces start a new plan: no old answer, ticks or approvals are sent (U2, M8).
     resetPlans(); setStep('review'); planInstall(input([]));
@@ -196,7 +221,7 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
   const busy = call.busy !== null;
   const plan = answer?.kind === 'plan' ? answer.plan : null;
   let actions: ReactElement;
-  if (step === 'folder') actions = <><HButton onClick={onClose}>{W.label.cancel}</HButton><HButton variant="primary" disabled={folder === undefined || busy} onClick={next}>{W.label.next}</HButton></>;
+  if (step === 'folder') actions = <><HButton onClick={onClose}>{W.label.cancel}</HButton><HButton variant="primary" disabled={folder === undefined || busy || folderLine(folder, 'install').off} onClick={next}>{W.label.next}</HButton></>;
   else if (step === 'interfaces') actions = <><HButton onClick={() => back('folder')}>{W.label.back}</HButton><HButton variant="primary" disabled={engines.length === 0 || busy} onClick={next}>{W.label.next}</HButton></>;
   else if (step === 'done') {
     actions = <>{done?.kind === 'install' && !done.noop ? <HButton onClick={() => switchTo('remove')}>{W.label.undo}</HButton> : null}<HButton variant="primary" onClick={onClose}>{W.label.close}</HButton></>;
@@ -213,7 +238,7 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
     actions = <><HButton disabled={held} onClick={() => { back('folder'); setMode('install'); }}>{W.label.back}</HButton><HButton variant="primary" data-write="" disabled={busy || rev === undefined || approved !== rev || empty} onClick={write}>{mode === 'remove' ? (empty ? W.label.nothingToChange : removeFilesWords(removal?.changes.length ?? 0)) : W.label.finish}</HButton></>;
   }
 
-  const refusal = call.refusal === null ? null : (
+  const refusal = call.refusal === null ? (gone && step === 'folder' ? <RefusalNote refusal={goneRefusal()} focusId={0}>{null}</RefusalNote> : null) : (
     <RefusalNote refusal={call.refusal} focusId={call.refusalId} onMode={folder === undefined ? undefined : settleMode}>
       {lastPlan !== null && step === 'review' ? <HButton onClick={lastPlan}>{W.label.planAgain}</HButton> : null}
       {folder !== undefined && call.refusal.code === 'PORTABLE_RECOVERY_REQUIRED' ? <HButton onClick={() => switchTo('recover')}>{W.label.planRecovery}</HButton> : null}
