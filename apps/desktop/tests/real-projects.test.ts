@@ -220,6 +220,14 @@ test('a folder whose clean label lost something is never paired with a row, so a
   assert.deepEqual(pairs('…/wanted', [marked('f1', '/Volumes/d/[U+200B]wanted', '/Volumes/d/wanted')]), [['p1', null], ['f1', 'f1']]);
 });
 
+test('a folder whose clean label only collapsed whitespace is not paired either: the clean text could be another folder, so both rows stay', () => {
+  // `~/My  Notes` (two spaces) reads as `~/My Notes` once cleaned, which is also the name of a different folder.
+  assert.deepEqual(pairs('~/My Notes', [marked('f1', '~/My  Notes', '~/My Notes')]), [['p1', null], ['f1', 'f1']], 'a collapsed run of spaces');
+  assert.deepEqual(pairs('~/My Notes', [marked('f1', '~/My Notes ', '~/My Notes')]), [['p1', null], ['f1', 'f1']], 'a trailing space');
+  const real = marked('real', '~/My Notes', '~/My Notes'), spaced = marked('spaced', '~/My  Notes', '~/My Notes');
+  assert.deepEqual(pairs('~/My Notes', [spaced, real]), [['p1', 'real'], ['spaced', 'spaced']], 'the real folder still pairs');
+});
+
 test('a lookalike folder is never taken for the project, in either order; the real one still pairs, and a typed mark is a name like any other', () => {
   const real = marked('real', '~/Projects/proj', '~/Projects/proj'), evil = marked('evil', '~/Projects/proj[U+200B]', '~/Projects/proj');
   assert.deepEqual(pairs('~/Projects/proj', [evil, real]), [['p1', 'real'], ['evil', 'evil']]);

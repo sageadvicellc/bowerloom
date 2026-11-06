@@ -272,3 +272,32 @@ test('a save keeps only the newest of the folders it moved aside, and leaves eve
   assert.equal(readFileSync(join(elsewhere, 'keep'), 'utf8'), 'keep', 'a link is removed as a link, and its target is untouched');
   assert.ok(existsSync(join(root, 'other')));
 });
+
+test('an aside entry that vanishes between the listing and the look does not stop the sweep of the others', t => {
+  const root = tempDir(t), warnings: string[] = [];
+  for (const name of ['last-read.bad.aaaaaaaaaaaa', 'last-read.bad.bbbbbbbbbbbb', 'last-read.bad.cccccccccccc']) { mkdirSync(join(root, name)); writeFileSync(join(root, name, 'x'), 'x'); }
+  // The listing names a folder that was removed after it was made: it is in the list and not on the disk.
+  const cache = createScanCache({ stateRoot: root, readdir: p => [...readdirSync(p), 'last-read.bad.eeeeeeeeeeee'], warn: m => warnings.push(m) });
+  cache.save(scan());
+  const left = readdirSync(root).filter(n => n.startsWith('last-read.bad.')).sort();
+  assert.deepEqual(left, ['last-read.bad.cccccccccccc'], 'the others were still swept');
+  assert.ok(warnings.every(m => !m.includes(root) && !m.includes('eeeeeeeeeeee')), 'a report names no path');
+});
+
+test('an aside entry that cannot be removed does not stop the sweep of the older ones, and is reported without a path', t => {
+  const root = tempDir(t), warnings: string[] = [];
+  // Made in this order, so aaa is the oldest, bbb the one that cannot be removed, ccc the newest (kept). The locked child is made before ccc, so it does not make bbb the newest.
+  const locked = join(root, 'last-read.bad.bbbbbbbbbbbb', 'locked');
+  for (const name of ['last-read.bad.aaaaaaaaaaaa', 'last-read.bad.bbbbbbbbbbbb']) { mkdirSync(join(root, name)); writeFileSync(join(root, name, 'x'), 'x'); }
+  mkdirSync(locked); writeFileSync(join(locked, 'y'), 'y'); chmodSync(locked, 0o500);
+  t.after(() => { try { chmodSync(locked, 0o700); } catch { /* gone */ } });
+  mkdirSync(join(root, 'last-read.bad.cccccccccccc')); writeFileSync(join(root, 'last-read.bad.cccccccccccc', 'x'), 'x');
+  const cache = createScanCache({ stateRoot: root, warn: m => warnings.push(m) });
+  assert.equal(cache.save(scan()), true, 'a stuck folder never fails a save');
+  const left = readdirSync(root).filter(n => n.startsWith('last-read.bad.')).sort();
+  assert.deepEqual(left, ['last-read.bad.bbbbbbbbbbbb', 'last-read.bad.cccccccccccc'], 'the older one went; the stuck one stays');
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0]!, /EACCES|EPERM|ENOTEMPTY/);
+  assert.match(warnings[0]!, /folder/);
+  assert.ok(!warnings[0]!.includes(root) && !warnings[0]!.includes('bbbbbbbbbbbb'), 'a report names no path');
+});

@@ -9,6 +9,7 @@
  * Loading: the file is untrusted. A folder or file that is a link, a file that is not a plain file, a file over the cap, text that is not JSON, a version that is not ours and
  * a shape the window cannot draw each give a plain reason (`DamageWhy`) and never a crash. Nothing from the file is used unless every check passed.
  */
+import type { Stats } from 'node:fs';
 import { closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, chmodSync, openSync, readSync, readdirSync, renameSync, rmSync, unlinkSync, writeSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
@@ -38,11 +39,15 @@ export interface ScanCacheDeps {
   /** For a test: the call that writes bytes to the open file (it may take fewer than asked), and the user id the folder and file must belong to. */
   readonly write?: (fd: number, bytes: Buffer, offset: number, length: number) => number;
   readonly uid?: number;
+  /** For a test: the call that lists a folder's names (for the sweep of moved-aside folders), so a test can list a name that is gone by the time it is looked at. */
+  readonly readdir?: (path: string) => string[];
+  /** Where a report of an entry the sweep could not remove goes. It names the kind of error and of entry, never a path or a message. Defaults to `console.warn`. */
+  readonly warn?: (message: string) => void;
 }
 
-/** A temporary file of ours that a crash left, and how old it must be before a save removes it (a younger one may belong to a save in progress). */
 /** A folder of ours that a save moved aside, and how many are kept (the newest). */
 const ASIDE_NAME = /^last-read\.bad\.[0-9a-f]{12}$/, ASIDE_KEPT = 1;
+/** A temporary file of ours that a crash left, and how old it must be before a save removes it (a younger one may belong to a save in progress). */
 const TEMP_NAME = /^last-read\.\d+\.[0-9a-f]{12}\.tmp$/, TEMP_STALE_MS = 10 * 60 * 1000;
 
 const codeOf = (error: unknown): string => String((error as { code?: unknown } | null)?.code ?? '');
@@ -87,17 +92,31 @@ export function createScanCache(deps: ScanCacheDeps): ScanCache {
 
   /**
    * Removes all but the newest of the folders a save moved aside (by the time they were moved), inside the state folder, when it is ours. A name must be exactly one of ours; each is
-   * looked at with `lstat` and removed as itself: a link is removed as a link and what it leads to is never touched.
+   * looked at with `lstat` and removed as itself: a link is removed as a link and what it leads to is never touched. Each entry stands alone: one that is gone, or cannot be looked at or
+   * removed, is reported (error class and kind of entry only) and the others are still swept.
    */
   const sweepAside = (): void => {
+    const listNames = deps.readdir ?? ((p: string): string[] => readdirSync(p)), warn = deps.warn ?? ((m: string): void => console.warn(m));
+    const report = (error: unknown, kind: string): void => {
+      try { warn(`scan-cache: the sweep of moved-aside folders skipped one entry (${codeOf(error) || (error as { name?: unknown } | null)?.name || 'error'}, ${kind})`); } catch { /* a report must not stop a save */ }
+    };
+    let names: string[];
     try {
       const root = lstatSync(deps.stateRoot);
       if (root.isSymbolicLink() || !root.isDirectory() || (uid !== undefined && root.uid !== uid)) return;
-      const aside = readdirSync(deps.stateRoot).filter(n => ASIDE_NAME.test(n)).map(n => ({ n, at: lstatSync(join(deps.stateRoot, n)) })).sort((a, b) => b.at.ctimeMs - a.at.ctimeMs);
-      for (const { n, at } of aside.slice(ASIDE_KEPT)) {
-        if (at.isSymbolicLink() || !at.isDirectory()) unlinkSync(join(deps.stateRoot, n)); else rmSync(join(deps.stateRoot, n), { recursive: true, force: true });
-      }
-    } catch { /* the sweep is a courtesy */ }
+      names = listNames(deps.stateRoot).filter(n => ASIDE_NAME.test(n));
+    } catch (error) { report(error, 'state folder'); return; }
+    const aside: { n: string; at: Stats }[] = [];
+    for (const n of names) {
+      try { aside.push({ n, at: lstatSync(join(deps.stateRoot, n)) }); } catch (error) { if (!isAbsent(error)) report(error, 'unknown'); }
+    }
+    aside.sort((a, b) => b.at.ctimeMs - a.at.ctimeMs);
+    for (const { n, at } of aside.slice(ASIDE_KEPT)) {
+      const isLink = at.isSymbolicLink(), isFolder = !isLink && at.isDirectory();
+      try {
+        if (!isFolder) unlinkSync(join(deps.stateRoot, n)); else rmSync(join(deps.stateRoot, n), { recursive: true, force: true });
+      } catch (error) { if (!isAbsent(error)) report(error, isLink ? 'link' : isFolder ? 'folder' : 'file'); }
+    }
   };
 
   /** Removes the temporary files of a save that a crash cut short. A young one may belong to a save that is running now, and a file with another name is not ours. */
