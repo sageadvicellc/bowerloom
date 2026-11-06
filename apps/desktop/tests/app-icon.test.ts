@@ -1,4 +1,4 @@
-// The app ships its own icon: the S4-G3 mascot on a cream tile. electron-builder reads build/icon.icns for macOS and build/icon.png for the other systems.
+// The app ships its own icon: the S4-G3 mascot on a cream tile with an embossed burgundy stroke, and a dark twin, slate with a pink stroke, for the Dock. electron-builder reads build/icon.icns for macOS and build/icon.png for the other systems.
 // tools/render-app-icon.mjs draws both from design/app-icon.html, so these tests check that the drawn files are there and well formed.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -46,10 +46,19 @@ test('the icns file holds every macOS size, up to 1024 px', () => {
   for (const [type, px] of [['ic07', 128], ['ic08', 256], ['ic09', 512], ['ic10', 1024], ['ic11', 32], ['ic12', 64], ['ic13', 256], ['ic14', 512]] as const) assert.equal(widths.get(type), px, type);
 });
 
-test('the icon is drawn from the website mascot on a cream tile', () => {
+test('the icons are drawn from the website mascots: cream with a burgundy stroke, and slate with a pink stroke', () => {
   const design = readFileSync(join(DESKTOP, 'design', 'app-icon.html'), 'utf8');
   const tool = readFileSync(join(DESKTOP, 'tools', 'render-app-icon.mjs'), 'utf8');
-  assert.match(tool, /landing\/public\/brand\/rose-conservatory\/s4-g3-icon\.svg/, 'the mascot is the website copy');
-  assert.match(design, /\.tile \{[^}]*background: radial-gradient\(circle at 30% 20%, #FFF9F4, #F6EEE8 55%, #EFD9D6\)/, 'a cream tile');
-  assert.match(design, /\.leaf \{[^}]*background: #B9C6A0/, 'a sage strip');
+  assert.match(tool, /landing\/public\/brand\/rose-conservatory/, 'the mascots are the website copies');
+  assert.match(tool, /'s4-g3-icon\.svg'/); assert.match(tool, /'s4-g3-icon-dark\.svg'/);
+  assert.match(design, /:root \{ --face: radial-gradient\(circle at 30% 22%, #FFFCF8, #F6EEE8 55%, #EDDCD6\); --stroke-hi: #A9707C; --stroke: #80515B;/, 'light: cream face, burgundy stroke');
+  assert.match(design, /:root\.dark \{ --face: radial-gradient\(circle at 30% 22%, #3F3A43, #2B292F 58%, #1F1E23\); --stroke-hi: #F7D3DC; --stroke: #E8B3BF;/, 'dark: slate face, pink stroke');
+  assert.doesNotMatch(design, /\.leaf/, 'the stroke replaced the bottom strip');
+});
+
+test('the Dock pair are 1024 px with clear corners, and differ', () => {
+  const light = build('dock/icon-light.png'), dark = build('dock/icon-dark.png');
+  for (const png of [light, dark]) { assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [1024, 1024]); assert.equal(png[25], 6); }
+  assert.ok(!light.equals(dark), 'the dark icon is its own picture');
+  assert.ok(light.equals(build('icon.png')), 'the bundle icon is the light one');
 });
