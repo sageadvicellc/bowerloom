@@ -58,6 +58,11 @@ export interface Part {
    * skills shared. The real reader fills it (real-map.ts), and so does the Overview sample; the plain sample world has none.
    */
   readonly contentHash?: string;
+  /**
+   * Real mode: the name of the folder whose own `.bowerloom` harness holds this part, for an agent or a notes folder that the reader knows only from that harness's settings.
+   * Its file was not read (`fileText` is empty), and that harness counts as one that holds it. Absent for every other part.
+   */
+  readonly fromHarness?: string;
 }
 
 /** An agent uses a skill, a tool or a piece of context. The link is kept in the harness manifest, never in the agent's file. */

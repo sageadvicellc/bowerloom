@@ -177,7 +177,7 @@ test('a bad instruction blocks the button and says why: over 4,000 characters, o
 test('the Beta mark no longer lists Start, and still lists the controls that are not in beta.1', async () => {
   const p = page();
   await p.getByRole('button', { name: 'About this beta', exact: true }).click();
-  await expect(p.locator('.hx-preview-pop li')).toHaveText(['Compare', 'Runs', 'Add (the plus button), in the Library']);
+  await expect(p.locator('.hx-preview-pop li')).toHaveText(['Compare', 'Runs']);
   await p.keyboard.press('Escape');
 });
 

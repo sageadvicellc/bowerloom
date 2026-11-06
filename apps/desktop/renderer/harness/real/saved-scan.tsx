@@ -40,7 +40,9 @@ export type SavedAction =
   | { readonly type: 'unusable' }
   | { readonly type: 'none' }
   | { readonly type: 'checked'; readonly forAtMs: number; readonly verdict: SavedScanCheck }
-  | { readonly type: 'read'; readonly atMs: number };
+  | { readonly type: 'read'; readonly atMs: number }
+  /** Bowerloom wrote into a folder after this read (the Library's Add): the read on the screen is old. */
+  | { readonly type: 'wrote' };
 
 export const firstSaved = (): SavedScanState => ({ readAtMs: null, fromSaved: false, checking: false, changed: false, unchecked: false, damaged: false, damagedWhy: null });
 
@@ -53,7 +55,8 @@ export function savedReduce(state: SavedScanState, action: SavedAction): SavedSc
     case 'damaged': return { ...firstSaved(), damaged: true, damagedWhy: action.why };
     case 'unusable': return { ...firstSaved(), damaged: true, damagedWhy: 'bad-shape' };
     case 'none': return firstSaved();
-    case 'checked': return state.readAtMs === action.forAtMs && state.fromSaved ? { ...state, checking: false, changed: action.verdict === 'changed', unchecked: action.verdict === 'unchecked' } : state;
+    case 'checked': return state.readAtMs === action.forAtMs && state.fromSaved ? { ...state, checking: false, changed: state.changed || action.verdict === 'changed', unchecked: action.verdict === 'unchecked' } : state;
+    case 'wrote': return state.readAtMs === null ? state : { ...state, changed: true };
     case 'read': return { readAtMs: action.atMs, fromSaved: false, checking: false, changed: false, unchecked: false, damaged: false, damagedWhy: null };
   }
 }
@@ -63,9 +66,11 @@ export interface SavedScanValue extends SavedScanState {
   readAgain(): void;
   /** A read ended in this window at this time. */
   markRead(atMs: number): void;
+  /** Something was written into a folder after the read: the read on the screen is old. */
+  markWrote(): void;
 }
 
-const NOTHING: SavedScanValue = { ...firstSaved(), readAgain: () => undefined, markRead: () => undefined };
+const NOTHING: SavedScanValue = { ...firstSaved(), readAgain: () => undefined, markRead: () => undefined, markWrote: () => undefined };
 export const SavedScanContext = createContext<SavedScanValue>(NOTHING);
 export const useSavedScan = (): SavedScanValue => useContext(SavedScanContext);
 
@@ -136,6 +141,7 @@ export function SavedScanProvider({ engine, children }: { engine: EngineBridge |
   }, [engine]);
   const readAgain = useCallback((): void => go({ name: 'choose' }), []);
   const markRead = useCallback((atMs: number): void => dispatch({ type: 'read', atMs }), []);
-  const value = useMemo<SavedScanValue>(() => ({ ...state, readAgain, markRead }), [state, readAgain, markRead]);
+  const markWrote = useCallback((): void => dispatch({ type: 'wrote' }), []);
+  const value = useMemo<SavedScanValue>(() => ({ ...state, readAgain, markRead, markWrote }), [state, readAgain, markRead, markWrote]);
   return <SavedScanContext value={value}>{ready ? children : null}</SavedScanContext>;
 }

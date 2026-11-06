@@ -15,7 +15,7 @@ import type { RealPlace, RealResult } from '../shared/real/types.js';
 import { smallResult } from './fixtures-real/small-result.js'; // the reader's own builder makes the world
 
 const noop = (): void => undefined;
-const value = (patch: Partial<SavedScanValue> = {}): SavedScanValue => ({ ...firstSaved(), readAgain: noop, markRead: noop, ...patch });
+const value = (patch: Partial<SavedScanValue> = {}): SavedScanValue => ({ ...firstSaved(), readAgain: noop, markRead: noop, markWrote: noop, ...patch });
 const draw = (v: SavedScanValue, element: ReturnType<typeof createElement>): string => renderToStaticMarkup(createElement(SavedScanContext, { value: v }, element));
 const AT = Date.UTC(2026, 10, 5, 15, 12);
 

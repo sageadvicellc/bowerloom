@@ -397,6 +397,30 @@ test('a source read from knowledge.json gets a read-only id: its summary reads, 
   assert.notEqual(plan.ok ? 'ok' : plan.refusal.code, 'NOTES_NOT_CHOSEN');
 });
 
+test('a crafted set-source that names a recorded (not chosen) notes id is refused until the folder is chosen here', async t => {
+  const s = setup(t);
+  const dir = teamFolder(s.home);
+  await savedWiki(s, dir);
+  const w = createEngineService({
+    home: s.home, stateRoot: join(s.home, '.local', 'state', 'bowerloom'), who: 'tester', now: () => WHEN, chooseFolder: async () => dir, confirm: async () => true, kitsDir: () => KITS,
+    chooseNotesFolder: async () => join(dir, 'wiki'),
+  });
+  const f = value(await w.chooseFolder());
+  const src = value(await w.planSave(f.id, [])).definition.sources[0]!;
+  const before = filesOf(dir);
+  const crafted: SaveEdit[] = [{ kind: 'set-source', name: 'second', notesId: src.notesId }];
+  const r = refusal(await w.planSave(f.id, crafted));
+  assert.equal(r.code, 'NOTES_NOT_CHOSEN');
+  noPath(s, r);
+  const written = await w.runSave(f.id, 'a'.repeat(64), crafted);
+  assert.equal(written.ok, false, 'no write runs for it either');
+  assert.deepEqual(filesOf(dir), before);
+  // Chosen with main's own chooser in this window, the same id plans as any chosen folder does.
+  const chosen = value(await w.chooseNotesFolder('use'));
+  assert.equal(chosen.id, src.notesId);
+  assert.equal(value(await w.planSave(f.id, [{ kind: 'set-source', name: src.name, notesId: chosen.id }])).noop, true, 'the same name for the same folder is no change');
+});
+
 test('refusalOf passes the step that stopped a notes write part way through to the window', () => {
   const same = (p: string): string => p;
   const r = refusalOf(new NotesRefusal('NOTES_PARTIAL', ['.git'], 'NOTES_GIT_TIMEOUT'), same);

@@ -30,6 +30,10 @@ export const WORDS = deepFreeze({
     linkTo: 'Link to...', undo: 'Undo', installed: 'Installed.', toast: 'Notice', harness: 'Harness',
     // The Builder of one folder's harness.
     redo: 'Redo', unlink: 'Unlink', save: 'Save', discard: 'Discard', keepEditing: 'Keep editing', builderTools: 'Changes', linksHere: 'Links',
+    // Library Add: the small form of each Library tab, on the person's own folders.
+    addSkillTitle: 'Add a skill', addAgentTitle: 'Add an agent', addNotesTitle: 'Add notes', whichFolder: 'Which folder gets it?', copyFromWhich: 'Copy it from which folder?',
+    whichSkill: 'Which skill?', stepChoose: 'Choose', reviewChange: 'Review the change', leftOut: 'Folders left out', openSavePoints: 'Open save points', notesChosen: 'Your notes',
+    theKeeper: 'The Notes keeper',
   },
   /** Short lines: at most 12 words each. */
   hint: {
@@ -48,6 +52,13 @@ export const WORDS = deepFreeze({
     fileHidden: 'Secrets in this file are hidden here.',
     noHarness: 'That harness is not here.', notOnDisk: 'This harness is not on disk. Make one from a folder.', noFolder: 'That folder is not open. Choose it again.',
     dropToLink: 'Drag a skill onto an agent to link them.', noLinks: 'Nothing linked yet.', discardNote: 'Your unsaved changes to this folder go.', stillWorking: 'Bowerloom is still working. Try again in a moment.', draftDropped: 'This harness changed on disk. Your unsaved changes were dropped.', noPart: 'That part is not here.', noFile: 'That file is not in the sample.', alreadyIn: 'Already in it.', notInstalledYet: 'Not installed in a project yet.',
+    // Library Add.
+    harnessMeans: 'A harness is a saved list of agents and skills.', onlyWithHarness: 'Only a folder with a harness can take it.',
+    noTargets: 'No folder has a harness yet. Make one first.', noSources: 'No other folder has a skill to copy.',
+    skillHeld: 'This harness has the skill already.', keeperHeld: 'This harness has the Notes keeper already.', pickSkill: 'Pick the skill to copy.',
+    pickNotes: 'Pick your notes folder, or start a new one.', notesReady: 'Ready. Review the change next.', readAgainNote: 'Read your folders again to see it in the Library.',
+    undoNote: 'To undo, open Save points and press Go back.', noFileRead: 'This part comes from the folder\'s settings. The file was not read.',
+    libraryStale: 'Folders changed since the last read.', listFailed: 'Bowerloom could not read your folders. Try again.', notesReportOnly: 'Chosen. With no history, the keeper only reports.', heldByFolder: 'Held by the harness of',
   },
   /** A short paragraph or a popover: at most 25 words each. */
   paragraph: {
@@ -64,6 +75,10 @@ export const WORDS = deepFreeze({
     helpThreeReal: 'Open a harness in the builder to change what it holds.',
     helpFourReal: 'Bowerloom only reads until you approve a write. To undo a folder install, press Undo, then approve the removal.',
     welcomeLineReal: 'Bowerloom only reads. It writes only after you approve what it will write.',
+    // Library Add.
+    addSkillIntro: 'Pick the folder that gets the skill. Then pick a skill from another folder. Bowerloom copies it into this folder\'s harness.',
+    addAgentIntro: 'The Notes keeper is a ready-made agent that looks after a notes folder. Bowerloom adds it and its skills to the folder you pick.',
+    addNotesIntro: 'Attach a notes folder to a harness. Pick your notes, or start a new folder. Bowerloom saves its name in the harness.',
   },
   /** The list of the Preview mark's popover: each line at most 25 words. */
   notInPreview: ['The confirm sheet for a community skill', 'Real files', 'Real runs'],

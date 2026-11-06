@@ -118,14 +118,19 @@ export function NotesStepView({ phase, busy, refusal, refusalId, held, onUse, on
 export interface NotesStepProps {
   /** Called with the folder when the step ends: ready, created, or left as it is. */
   onDone?(view: NotesView, how: NotesEnd): void;
+  /** Called when the person starts the step again ("Choose another folder"): the folder it ended with no longer counts. */
+  onReset?(): void;
+  /** Called when a write of the step's own starts or ends (a history, a starter): the owner holds Back and Close while it runs. */
+  onBusy?(writing: boolean): void;
   /** Opens straight on one of the two ways, as the Notes panel's buttons do. */
   start?: 'use' | 'start';
 }
 
 /** The step with its calls: main's notes chooser, the two plans and the two writes. */
-export function NotesStep({ onDone, start }: NotesStepProps): ReactElement {
+export function NotesStep({ onDone, onReset, onBusy, start }: NotesStepProps): ReactElement {
   const engine = useEngine(), call = useCall(), session = useNotesSession();
   const [phase, setPhase] = useState<NotesPhase>({ kind: 'ask' });
+  useEffect(() => { onBusy?.(call.writing); return () => onBusy?.(false); }, [call.writing]);
   const began = useRef(false), box = useRef<HTMLDivElement>(null);
   // Each new phase is brought into view: in the Notes panel the step opens below the map, so its files and its button stay in sight.
   useEffect(() => { if (phase.kind !== 'ask') box.current?.scrollIntoView({ block: 'start' }); }, [phase.kind]);
@@ -173,7 +178,7 @@ export function NotesStep({ onDone, start }: NotesStepProps): ReactElement {
     void call.write(NOTES.label.writing, () => written(before, () => engine.runCreateNotes(before.id, rev)), v => finish(v.view, 'created', v.clean));
   };
   const decline = (): void => { if (phase.kind === 'offer') finish(phase.view, 'report-only'); };
-  const again = (): void => { if (call.writing) return; call.clear(); setPhase({ kind: 'ask' }); };
+  const again = (): void => { if (call.writing) return; call.clear(); setPhase({ kind: 'ask' }); onReset?.(); };
   useEffect(() => {
     if (began.current || start === undefined) return;
     began.current = true;

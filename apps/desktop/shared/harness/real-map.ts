@@ -309,6 +309,30 @@ function harnessPlacesOf(result: RealResult): HarnessPlace[] {
 }
 
 /**
+ * The agents and the notes folders that a folder's `.bowerloom` holds. The reader finds no agent there and no notes folder that is only named in `knowledge.json`, so the Library would not list
+ * what "Add" put there (the Notes keeper, an attached notes folder). They are parts of no source: the Overview already draws them from the harness place. A skill is not added here, because the
+ * reader finds it as an item. The id is made from the place, so two folders never share one.
+ */
+function harnessPartsInLibrary(result: RealResult): Part[] {
+  const out: Part[] = [];
+  for (const place of result.harnessPlaces ?? []) {
+    if (!place.harness.readable) continue;
+    // The folder as the window may show it: `~` form, and only its last name for a folder outside the home folder.
+    const where = folderLabelOf(place.path), root = `${where}/.bowerloom`, folderName = cut(plain(place.name), NAME_CHARS);
+    for (const part of place.harness.parts) {
+      if (part.kind !== 'agent' && part.kind !== 'context') continue;
+      const agent = part.kind === 'agent', fallback = FALLBACK[agent ? 'agent' : 'context']!;
+      out.push({
+        id: `${place.id}-${part.id}`, kind: part.kind, name: cut(plain(part.name), NAME_CHARS), summary: agent ? part.summary : fallback.summary,
+        description: agent ? `${part.summary} In the harness of ${where}.` : `A notes folder the harness of ${where} uses.`,
+        path: `${root}/${agent ? 'agents' : 'knowledge.json'}`.split('/').map(plain).join('/'), source: `${folderName} (Bowerloom)`, origin: place.id, fileText: '', cannotUse: [], inLibrary: true, fromHarness: folderName,
+      });
+    }
+  }
+  return out;
+}
+
+/**
  * The state of the preview for one read of the person's folders. `places` are the places that were read (the ones the person ticked): their work folders and picked folders become the projects,
  * and their home places say where each program was found. The sample's interface table gives the files each program would be written to.
  */
@@ -343,6 +367,7 @@ export function realToHarnessState(result: RealResult, places: readonly RealPlac
   for (const kind of ['agent', 'skill', 'tool', 'context'] as const) {
     for (const { item, where } of keep) if (KIND_OF[item.kind] === kind) parts.push(partOfItem(item, sourceIds.get(where.key)!, where.label, world, titles));
   }
+  parts.push(...harnessPartsInLibrary(result));
   const held = new Set(parts.map(p => p.id));
   const sources: ScanSource[] = ordered.map(w => {
     const members = keep.filter(p => p.where.key === w.key), links = members.flatMap(p => linksOf(p.item, held, world));

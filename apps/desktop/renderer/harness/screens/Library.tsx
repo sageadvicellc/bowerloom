@@ -1,12 +1,13 @@
 /**
  * S5, the Library: every agent, skill, tool and piece of context that was found, one kind at a time, with the count of each kind in its tab. A search box and a sort menu narrow and order the list.
  * Picking a row fills the details column: its file, "View file", "Add to a harness" (pick a harness), and the harnesses that use it. "Add to a harness" asks which harness, then adds the part to it.
+ * The plus button, "Add", works on the person's own folders (sheets/AddSheet.tsx): a skill copied from another folder, the Notes keeper, or a notes folder. In Tools it is off and says why.
  */
 import { useState } from 'react';
 import type { ReactElement } from 'react';
 import { PART_KINDS } from '../../../shared/harness/types.js';
 import type { HarnessState, Part, PartKind } from '../../../shared/harness/types.js';
-import { harnessesHolding, libraryCounts, usedInWords } from '../../../shared/harness/status.js';
+import { harnessesHolding, libraryCounts, usedCount, usedInWords } from '../../../shared/harness/status.js';
 import { DetailsHead, Screen } from '../Screen.js';
 import { go } from '../router.js';
 import { useHarnessState, useHarnessStore } from '../session.js';
@@ -21,18 +22,22 @@ import { PathDisclosure } from '../parts/PathDisclosure.js';
 import { fileNameOf } from '../../../shared/harness/frontmatter.js';
 import { nothingChanged } from '../words-flow.js';
 import { undoNow } from '../undo-note.js';
+import { addState, unreadableHarnesses } from '../../../shared/harness/library-add.js';
+import { AddSheet } from '../sheets/AddSheet.js';
+import { useSavedScan } from '../real/saved-scan.js';
+import { REAL } from '../real/words-real.js';
 
 type SortMode = 'name' | 'used' | 'source';
 const SORTS = [{ mode: 'name', label: 'Name' }, { mode: 'used', label: 'Most used' }, { mode: 'source', label: 'Source' }] as const satisfies readonly { mode: SortMode; label: string }[];
 
 function sorted(state: HarnessState, parts: readonly Part[], mode: SortMode): Part[] {
-  const used = (p: Part): number => harnessesHolding(state, p.id).length;
+  const used = (p: Part): number => usedCount(state, p);
   const byName = (a: Part, b: Part): number => a.name.localeCompare(b.name);
   return [...parts].sort((a, b) => (mode === 'used' ? used(b) - used(a) || byName(a, b) : mode === 'source' ? a.source.localeCompare(b.source) || byName(a, b) : byName(a, b)));
 }
 
 function Row({ state, part, selected, onPick }: { state: HarnessState; part: Part; selected: boolean; onPick(): void }): ReactElement {
-  const n = harnessesHolding(state, part.id).length;
+  const n = usedCount(state, part);
   return (
     <li className="hx-row hx-row-part" data-selected={selected ? '' : undefined} data-part={part.id}>
       <Tile name={KIND_ICON[part.kind]} />
@@ -54,19 +59,22 @@ function Details({ state, part, onAdd }: { state: HarnessState; part: Part; onAd
     <>
       <DetailsHead tile={<Tile name={KIND_ICON[part.kind]} size="large" />} title={part.name} subtitle={fromWords(part.kind, part.source, part.version)} />
       <p className="hx-text">{part.description}</p>
-      <section className="hx-block" aria-labelledby="hx-lib-file">
-        <h3 className="hx-h3" id="hx-lib-file">{WORDS.label.file}</h3>
-        <p className="hx-text hx-muted">{fileNameOf(part.path)}</p>
-        <PathDisclosure path={part.path} subject={part.name} key={part.id} />
-      </section>
+      {part.fromHarness === undefined ? (
+        <section className="hx-block" aria-labelledby="hx-lib-file">
+          <h3 className="hx-h3" id="hx-lib-file">{WORDS.label.file}</h3>
+          <p className="hx-text hx-muted">{fileNameOf(part.path)}</p>
+          <PathDisclosure path={part.path} subject={part.name} key={part.id} />
+        </section>
+      ) : <p className="hx-text hx-muted" data-no-file="">{WORDS.hint.noFileRead}</p>}
       <div className="hx-actions">
-        <HButton icon="eye" onClick={() => go({ name: 'file', partId: part.id })}>{WORDS.label.viewFile}</HButton>
+        {part.fromHarness === undefined ? <HButton icon="eye" onClick={() => go({ name: 'file', partId: part.id })}>{WORDS.label.viewFile}</HButton> : null}
         <HButton icon="harness" variant="primary" onClick={onAdd}>{WORDS.label.addToHarness}</HButton>
       </div>
       <section className="hx-block" aria-labelledby="hx-lib-used">
         <h3 className="hx-h3" id="hx-lib-used">{WORDS.label.usedIn}</h3>
-        {held.length === 0 ? <p className="hx-text hx-muted">{WORDS.hint.noneUsed}</p> : (
+        {held.length === 0 && part.fromHarness === undefined ? <p className="hx-text hx-muted">{WORDS.hint.noneUsed}</p> : (
           <ul className="hx-box-list">
+            {part.fromHarness === undefined ? null : <li className="hx-box" data-held-by-folder=""><Tile name="harness" size="small" /><span className="hx-box-main">{WORDS.hint.heldByFolder} {part.fromHarness}</span></li>}
             {held.map(h => <li key={h.id} className="hx-box hx-box-press"><Tile name="harness" size="small" /><button type="button" className="hx-box-main" onClick={() => go({ name: 'harnesses', id: h.id })}>{h.name}</button></li>)}
           </ul>
         )}
@@ -107,7 +115,11 @@ function PickHarnessSheet({ open, part, onClose }: { open: boolean; part: Part |
 
 export function Library({ kind, partId }: { kind: PartKind; partId: string | null }): ReactElement {
   const state = useHarnessState(), ui = useUi();
-  const notYet = notYetWords(state.real !== undefined);
+  // On the person's own folders Add opens the small form of the tab, except in Tools, where it is off and says why. The sample keeps its "Not in this preview" note.
+  const real = state.real !== undefined, add = addState(kind);
+  const notYet = real ? add.reason : notYetWords(false);
+  const [adding, setAdding] = useState(false);
+  const saved = useSavedScan(), unreadable = real ? unreadableHarnesses(state) : [];
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<SortMode>('name');
   const [picking, setPicking] = useState<{ open: boolean; part: Part | null }>({ open: false, part: null });
@@ -126,7 +138,9 @@ export function Library({ kind, partId }: { kind: PartKind; partId: string | nul
   }
   return (
     <Screen slot="library" title={WORDS.label.library}
-      tools={<HIconButton icon="plus" label={WORDS.label.add} tip={notYet} side="below-end" aria-disabled="true" onClick={e => { e.preventDefault(); ui.showToast(notYet); }} />}
+      tools={notYet === null
+        ? <HIconButton icon="plus" label={WORDS.label.add} tip={WORDS.label.add} side="below-end" data-library-add="" onClick={() => setAdding(true)} />
+        : <HIconButton icon="plus" label={WORDS.label.add} tip={notYet} side="below-end" aria-disabled="true" data-library-add="" onClick={e => { e.preventDefault(); ui.showToast(notYet); }} />}
       details={selected === undefined ? undefined : <Details state={state} part={selected} onAdd={() => setPicking({ open: true, part: selected })} />}>
       <div className="hx-tabs" role="group" aria-label={WORDS.label.libraryPages}>
         {PART_KINDS.map(k => <button key={k} type="button" className="hx-tab" aria-pressed={k === kind} onClick={() => open(k)}>{KIND_PLURAL[k]} <span className="hx-tab-count">{counts[k]}</span></button>)}
@@ -142,6 +156,9 @@ export function Library({ kind, partId }: { kind: PartKind; partId: string | nul
         {rows.map(p => <Row key={p.id} state={state} part={p} selected={selected?.id === p.id} onPick={() => go({ name: 'library', kind, partId: p.id })} />)}
       </ul>
       {rows.length === 0 ? <p className="kit-hint hx-hint">{WORDS.hint.libraryEmpty}</p> : null}
+      {real && saved.changed ? <div className="hx-actions" data-library-stale=""><p className="kit-hint hx-hint" role="status">{WORDS.hint.libraryStale}</p><HButton icon="search" onClick={saved.readAgain}>{REAL.label.readAgain}</HButton></div> : null}
+      {unreadable.map(u => <p key={`${u.label}|${u.name}`} className="kit-hint hx-hint" data-unreadable-harness="">{u.label}: {u.why}</p>)}
+      {real ? <AddSheet open={adding} kind={kind} onClose={() => setAdding(false)} /> : null}
       <PickHarnessSheet open={picking.open} part={picking.part} onClose={() => setPicking(current => ({ ...current, open: false }))} />
     </Screen>
   );
