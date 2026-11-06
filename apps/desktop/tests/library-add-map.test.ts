@@ -88,6 +88,7 @@ test('a part from a folder\'s settings says so, was not read, and counts the fol
     const dir = join(home, 'work', 'proj', '.bowerloom');
     put(join(dir, 'harness.json'), harness('proj'));
     put(join(dir, 'agents', 'wiki-keeper.md'), agent('wiki-keeper'));
+    put(join(dir, 'skills', 'summarize', 'SKILL.md'), skill('summarize'));
     put(join(dir, 'knowledge.json'), json({ sources: [{ name: 'journal', kind: 'wiki-folder', path: '~/journal' }] }));
   });
   for (const name of ['wiki-keeper', 'journal']) {
@@ -98,6 +99,7 @@ test('a part from a folder\'s settings says so, was not read, and counts the fol
     assert.equal(usedCount(state, part), 1, 'the folder\'s own harness holds it');
   }
   const skillOnly = state.parts.filter(p => p.fromHarness === undefined);
+  assert.ok(skillOnly.some(p => p.kind === 'skill' && p.name === 'summarize'), 'the fixture holds a skill the reader found itself');
   for (const p of skillOnly) assert.equal(usedCount(state, p), harnessesHolding(state, p.id).length);
 });
 
@@ -120,6 +122,11 @@ test('a harness that cannot be read is named in the Library with a reason, and a
     ['a source name used twice', dir => put(join(dir, 'knowledge.json'), json({ sources: [{ name: 'a', kind: 'wiki-folder', path: '~/a' }, { name: 'a', kind: 'wiki-folder', path: '~/b' }] }))],
     ['a source with an empty name', dir => put(join(dir, 'knowledge.json'), json({ sources: [{ name: '', kind: 'wiki-folder', path: '~/a' }] }))],
     ['a source whose name is not text', dir => put(join(dir, 'knowledge.json'), json({ sources: [{ name: 7, kind: 'wiki-folder', path: '~/a' }] }))],
+    ['a source whose name is only a zero-width space', dir => put(join(dir, 'knowledge.json'), json({ sources: [{ name: '\u200b', kind: 'wiki-folder', path: '~/a' }] }))],
+    ['a source whose name is only a bidi mark', dir => put(join(dir, 'knowledge.json'), json({ sources: [{ name: '\u202e\u202c', kind: 'wiki-folder', path: '~/a' }] }))],
+    ['a connection whose name is only a zero-width space', dir => put(join(dir, 'mcp.json'), json({ servers: [{ name: '\u200b', transport: 'stdio', command: 'x' }] }))],
+    ['a hook whose id is only a zero-width space', dir => put(join(dir, 'hooks.json'), json({ hooks: [{ id: '\u200b', event: 'PreToolUse', command: 'x' }] }))],
+    ['an engine with an empty id', dir => put(join(dir, 'harness.json'), json({ format: 'bowerloom/harness/v1beta1', id: 'broken', description: 'x', engines: [{ id: 'claude-code' }, { id: '' }], parts: {} }))],
     ['a source list that is not a list', dir => put(join(dir, 'knowledge.json'), json({ sources: 'journal' }))],
   ];
   for (const [label, make] of cases) {
@@ -128,8 +135,21 @@ test('a harness that cannot be read is named in the Library with a reason, and a
     const notes = unreadableHarnesses(state);
     assert.equal(notes.length, 1, label);
     assert.equal(notes[0]!.name, 'broken', label);
+    assert.equal(notes[0]!.label, '~/work/broken', `${label}: the folder is named in full, so two folders with one name differ`);
     assert.match(notes[0]!.why, /could not read/i, label);
   }
   const fine = await stateOf(t, home => { const dir = join(home, 'work', 'fine', '.bowerloom'); put(join(dir, 'harness.json'), harness('fine')); });
   assert.deepEqual(unreadableHarnesses(fine), []);
+});
+
+test('two unreadable harnesses with one folder name are told apart by their folder', async t => {
+  const state = await stateOf(t, home => {
+    for (const parent of ['one', 'two']) {
+      const dir = join(home, 'work', parent, 'app', '.bowerloom');
+      put(join(dir, 'harness.json'), harness('app')); put(join(dir, 'knowledge.json'), '{ not json');
+    }
+  });
+  const notes = unreadableHarnesses(state);
+  assert.equal(notes.length, 2);
+  assert.deepEqual(notes.map(n => n.label).sort(), ['~/work/one/app', '~/work/two/app']);
 });

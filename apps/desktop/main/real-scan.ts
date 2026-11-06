@@ -202,12 +202,14 @@ export function harnessOf(dir: string, records: readonly StampedRecord[], tally:
   const named = (items: readonly unknown[], key: string): string[] => {
     const seen = new Set<string>(), out: string[] = [];
     // An entry with no name, or a name that is not text, makes the file unreadable: the Library says so for the folder, and never drops the entry without a word.
-    for (const item of items) { const raw = text(object(item)[key]); if (raw === '') throw new Error('shape'); if (seen.has(raw)) throw new Error('twice'); seen.add(raw); out.push(raw); }
+    // A name that shows as nothing once its invisible characters are taken out counts as no name.
+    for (const item of items) { const raw = text(object(item)[key]); if (raw === '' || safeText(raw, 80) === '') throw new Error('shape'); if (seen.has(raw)) throw new Error('twice'); seen.add(raw); out.push(raw); }
     return out;
   };
   try {
     const head = object(json('harness.json', true));
-    const engines = list(head.engines).map(e => safeText(text(object(e).id), 40)).filter(id => id !== '').map(id => ADAPTERS.find(a => a.id === id)?.label ?? id);
+    // An engine with no id (or one that shows as nothing) makes the file unreadable: the Library says so for the folder, and the entry is never dropped without a word.
+    const engines = list(head.engines).map(e => safeText(text(object(e).id), 40)).map(id => { if (id === '') throw new Error('shape'); return ADAPTERS.find(a => a.id === id)?.label ?? id; });
     const parts: RealHarnessPart[] = [], links: { from: string; to: string }[] = [];
     const count: Record<string, number> = {};
     const idOf = (kind: string): string => { count[kind] = (count[kind] ?? 0) + 1; return `harness-${kind}-${count[kind]}`; };
