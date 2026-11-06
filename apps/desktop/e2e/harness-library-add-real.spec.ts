@@ -6,7 +6,7 @@
  */
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
-import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { engineFolder, filesOf, sourceFolder, teamFolder } from '../tests/helpers-engine/folders.js';
 import { bundleOnce, launchReal } from './harness-real-page.js';
@@ -126,6 +126,95 @@ test('Skills: the form lists only folders with a harness and says why the others
   await save2.getByRole('button', { name: 'Go back to v1', exact: true }).click();
   await expect(save2.locator('[data-version-kept]')).toBeVisible();
   expect(readTree(team), 'Go back puts the folder as it was').toEqual(before);
+});
+
+/** Opens the Skills form on the team folder with the source folder listed, and goes as far as the skill picked. */
+async function openSkillForm(): Promise<{ p: Page; s: Locator; team: string; source: string }> {
+  await start('skill');
+  const p = page(), team = teamFolder(home), source = sourceFolder(home);
+  await p.getByRole('button', { name: 'Add', exact: true }).click();
+  const s = addSheet(p, 'Add a skill');
+  await choose(s, team);
+  await choose(s, source);
+  await s.locator('[data-folder]', { hasText: 'team' }).click();
+  await s.getByRole('button', { name: 'Next', exact: true }).click();
+  return { p, s, team, source };
+}
+async function toReview(s: Locator): Promise<Locator> {
+  await s.locator('[data-source]').click();
+  await s.getByRole('radio', { name: 'summarize', exact: true }).check();
+  await s.getByRole('button', { name: 'Review the change', exact: true }).click();
+  const review = s.locator('[data-save-review="save"]');
+  await expect(review).toBeVisible();
+  return review;
+}
+const approveAll = async (review: Locator): Promise<void> => {
+  await review.locator('[data-approve-plan] input').check();
+  await review.locator('[data-acknowledge-executables] input').check();
+};
+
+test('Skills: when main\'s own question is cancelled, nothing is written and the sheet stays on the review', async () => {
+  test.setTimeout(120_000);
+  const { s, team } = await openSkillForm();
+  const before = readTree(team);
+  const review = await toReview(s);
+  await approveAll(review);
+  await h.confirm(false);
+  await s.getByRole('button', { name: /^Save \d+ files?$/ }).click();
+  await expect(s.locator('[data-refusal="CANCELLED"]')).toBeVisible();
+  await expect(s.locator('[data-done]')).toHaveCount(0);
+  await expect(s.locator('[data-version-kept]')).toHaveCount(0);
+  await expect(s.locator('[data-save-review="save"]')).toBeVisible();
+  expect((await h.asked()).length, 'main asked once').toBe(1);
+  expect(readTree(team), 'the folder is as it was').toEqual(before);
+  // Answering yes this time writes, so the refusal was the cancel and not a stuck sheet.
+  await h.confirm(true);
+  await s.getByRole('button', { name: /^Save \d+ files?$/ }).click();
+  await expect(s.locator('[data-version-kept]')).toBeVisible();
+});
+
+test('Skills: a plan main refuses is shown as a refusal, never as a review or a success', async () => {
+  test.setTimeout(120_000);
+  const { s, team, source } = await openSkillForm();
+  const before = readTree(team);
+  await s.locator('[data-source]').click();
+  await s.getByRole('radio', { name: 'summarize', exact: true }).check();
+  // The skill goes from the folder it would be copied from after the form listed it.
+  rmSync(join(source, '.bowerloom/skills/summarize'), { recursive: true });
+  await s.getByRole('button', { name: 'Review the change', exact: true }).click();
+  await expect(s.locator('[data-refusal]')).toBeVisible();
+  await expect(s.locator('[data-save-review]')).toHaveCount(0);
+  await expect(s.locator('[data-done]')).toHaveCount(0);
+  await expect(s.getByRole('button', { name: /^Save \d+ files?$/ })).toHaveCount(0);
+  expect(await h.asked(), 'main asked nothing').toEqual([]);
+  expect(readTree(team)).toEqual(before);
+});
+
+test('Skills: a write main refuses because the folder changed after the plan never reaches Done', async () => {
+  test.setTimeout(120_000);
+  const { s, team } = await openSkillForm();
+  const review = await toReview(s);
+  await approveAll(review);
+  // The folder changes between the plan and the write.
+  writeFileSync(join(team, '.bowerloom/agents/reader.md'), '---\nname: reader\ndescription: Reads the sources, differently.\n---\n\nRead them.\n');
+  const changed = readTree(team);
+  await s.getByRole('button', { name: /^Save \d+ files?$/ }).click();
+  await expect(s.locator('[data-refusal]')).toBeVisible();
+  await expect(s.locator('[data-done]')).toHaveCount(0);
+  await expect(s.locator('[data-version-kept]')).toHaveCount(0);
+  await expect(s.locator('[data-save-review="save"]')).toBeVisible();
+  expect(readTree(team), 'nothing of the plan was written').toEqual(changed);
+});
+
+test('Skills: a source folder that stops loading shows its refusal, no empty "Which skill?", and Back clears the refusal', async () => {
+  test.setTimeout(120_000);
+  const { s, source } = await openSkillForm();
+  writeFileSync(join(source, '.bowerloom/harness.json'), '{ not json');
+  await s.locator('[data-source]').click();
+  await expect(s.locator('[data-refusal]')).toBeVisible();
+  await expect(s.getByRole('heading', { name: 'Which skill?' })).toHaveCount(0);
+  await s.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(s.locator('[data-refusal]')).toHaveCount(0);
 });
 
 test('Agents: the Notes keeper only, from the ready-made kit; a harness that holds it says so', async () => {
