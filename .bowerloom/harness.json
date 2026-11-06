@@ -1,0 +1,19 @@
+{
+  "format": "bowerloom/harness/v1beta1",
+  "id": "bowerloom",
+  "description": "Repository factory skills and restricted Claude agents. Native repository instructions and permissions remain authoritative.",
+  "engines": [
+    {
+      "id": "claude-code",
+      "version": "2.1.314"
+    },
+    {
+      "id": "codex",
+      "version": "0.166.0"
+    }
+  ],
+  "parts": {
+    "skills": "skills/",
+    "subagents": "agents/"
+  }
+}
