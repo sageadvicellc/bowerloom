@@ -12,7 +12,7 @@ import { engineFolder, filesOf, sourceFolder, teamFolder } from '../tests/helper
 import { bundleOnce, launchReal } from './harness-real-page.js';
 import type { RealHarness } from './harness-real-page.js';
 import { removeTempDirs, tempDir } from './temp-dirs.js';
-import { GIT, NO_GIT_REASON, kitSkillIds } from './harness-notes-support.js';
+import { GIT, NO_GIT_REASON, commitAll, git, kitSkillIds } from './harness-notes-support.js';
 
 let h: RealHarness, home: string;
 const page = (): Page => h.page;
@@ -208,6 +208,59 @@ test.describe('Context', () => {
     await expect(p.locator('[data-part]', { hasText: 'field-notes' })).toHaveCount(1);
     await p.evaluate(() => { location.hash = '#app/library/skill'; });
     await expect(p.getByRole('heading', { level: 1, name: 'Library', exact: true })).toBeVisible();
+  });
+});
+
+test.describe('Context, the notes the form would attach', () => {
+  test.skip(GIT === null, NO_GIT_REASON);
+  const withHistory = (dir: string, day: string): string => { put(join(dir, 'index.md'), '# Notes\n'); git(dir, ['init']); commitAll(dir, 'start', day); return dir; };
+  test('choosing another folder replaces the first; a history that cannot be used is not ready; Back clears the choice', async () => {
+    test.setTimeout(180_000);
+    await start('context');
+    const p = page(), team = teamFolder(home);
+    const one = withHistory(join(home, 'Documents', 'notes-one'), '2026-01-01'), two = withHistory(join(home, 'Documents', 'notes-two'), '2026-01-02');
+    const stuck = join(home, 'Documents', 'notes-stuck');
+    put(join(stuck, 'index.md'), '# Stuck\n'); git(stuck, ['init']);
+    await p.getByRole('button', { name: 'Add', exact: true }).click();
+    const s = addSheet(p, 'Add notes');
+    await choose(s, team);
+    await s.locator('[data-folder]', { hasText: 'team' }).click();
+    await s.getByRole('button', { name: 'Next', exact: true }).click();
+    const review = s.getByRole('button', { name: 'Review the change', exact: true });
+    // The first folder is ready. Choosing another folder clears it at once.
+    await h.pick(one);
+    await s.getByRole('button', { name: 'Use my notes', exact: true }).click();
+    await expect(s.locator('[data-notes-chosen]')).toContainText('notes-one');
+    await expect(review).toBeEnabled();
+    await s.getByRole('button', { name: 'Choose another folder', exact: true }).click();
+    await expect(s.locator('[data-notes-chosen]')).toHaveCount(0);
+    await expect(review).toBeDisabled();
+    // A history with no first commit is not ready, and says so in the step's own words.
+    await h.pick(stuck);
+    await s.getByRole('button', { name: 'Use my notes', exact: true }).click();
+    await expect(s.locator('[data-notes-done="no-commit"]')).toBeVisible();
+    await expect(s.locator('[data-notes-chosen]')).toHaveCount(0);
+    await expect(review).toBeDisabled();
+    // The second folder replaces it, and Review attaches the second folder, not the first.
+    await s.getByRole('button', { name: 'Choose another folder', exact: true }).click();
+    await h.pick(two);
+    await s.getByRole('button', { name: 'Use my notes', exact: true }).click();
+    await expect(s.locator('[data-notes-chosen]')).toContainText('notes-two');
+    await review.click();
+    const plan = s.locator('[data-save-review="save"]');
+    await plan.locator('[data-approve-plan] input').check();
+    // Back clears the choice: the step starts again and Review is off until a folder is chosen.
+    await s.getByRole('button', { name: 'Back', exact: true }).click();
+    await expect(s.locator('[data-notes-chosen]')).toHaveCount(0);
+    await expect(review).toBeDisabled();
+    await h.pick(two);
+    await s.getByRole('button', { name: 'Use my notes', exact: true }).click();
+    await review.click();
+    await s.locator('[data-save-review="save"] [data-approve-plan] input').check();
+    await s.getByRole('button', { name: /^Save \d+ files?$/ }).click();
+    await expect(s.locator('[data-version-kept]')).toBeVisible();
+    const k = JSON.parse(readFileSync(join(team, '.bowerloom/knowledge.json'), 'utf8')) as { sources: { name: string }[] };
+    expect(k.sources.map(x => x.name)).toEqual(['notes-two']);
   });
 });
 

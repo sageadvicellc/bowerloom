@@ -1,7 +1,7 @@
 // Library Add (issue 148), variant C: the pure rules of the small Add form in each Library tab. No screen, no engine.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addState, copySources, keeperHeld, notesEdits, skillEdits, skillHeld, targetsFor, KEEPER_EDITS } from '../shared/harness/library-add.js';
+import { NOTES_READY, addState, canAttach, copySources, notesDone, notesRestart, NOTES_START, keeperHeld, notesEdits, skillEdits, skillHeld, targetsFor, KEEPER_EDITS } from '../shared/harness/library-add.js';
 import { LIMITS, bannedHere, countWords } from '../shared/harness/words.js';
 import { PART_KINDS } from '../shared/harness/types.js';
 import type { DefinitionView, FolderInfo, NotesView } from '../shared/engine/types.js';
@@ -59,4 +59,37 @@ test('the form knows when a harness holds the skill or the keeper already', () =
 test('the reasons a folder is left out, and why tools are off, are short plain lines', () => {
   const reasons = [addState('tool').reason!, ...targetsFor([folder('a', { hasDefinition: false }), folder('b', { unfinished: { projection: false, adoption: true } })]).left.map(l => l.why)];
   for (const line of reasons) { assert.ok(countWords(line) <= LIMITS.hint, line); assert.equal(bannedHere(line), null, line); }
+});
+
+test('only a notes state that can really be attached counts as ready', () => {
+  for (const how of ['ready', 'parent', 'created', 'report-only', 'git-missing']) assert.equal(canAttach(how), true, how);
+  for (const how of ['no-commit', 'refused', 'unreadable', 'anything-else']) assert.equal(canAttach(how), false, how);
+});
+
+test('trace 1: choosing notes again clears the earlier folder, so Review never attaches the old one', () => {
+  let c = notesDone(NOTES_START, 0, notes({ id: 'notes-1' }), 'ready');
+  assert.equal(c.view?.id, 'notes-1');
+  c = notesRestart(c);
+  assert.equal(c.view, null);
+  assert.equal(NOTES_READY(c), false);
+  c = notesDone(c, c.gen, notes({ id: 'notes-2' }), 'ready');
+  assert.equal(c.view?.id, 'notes-2');
+});
+
+test('trace 2: a folder that cannot be attached is not ready, and an earlier ready folder does not stay', () => {
+  let c = notesDone(NOTES_START, 0, notes({ id: 'notes-1' }), 'ready');
+  for (const how of ['no-commit', 'refused', 'unreadable']) {
+    const next = notesDone(c, c.gen, notes({ id: 'notes-9', history: 'refused' }), how);
+    assert.equal(next.view, null, how);
+    assert.equal(NOTES_READY(next), false, how);
+  }
+  c = notesDone(c, c.gen, notes({ id: 'notes-3' }), 'report-only');
+  assert.equal(c.view?.id, 'notes-3');
+});
+
+test('trace 3: a late answer from a step that was left is ignored', () => {
+  const first = notesRestart(NOTES_START);
+  const late = notesDone(first, NOTES_START.gen, notes({ id: 'late' }), 'ready');
+  assert.equal(late.view, null);
+  assert.equal(late, first, 'the choice is the same object: nothing changed');
 });

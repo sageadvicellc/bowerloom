@@ -10,8 +10,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Stepper } from '../../home/kit/Stepper.js';
-import type { Answer, DefinitionView, FolderInfo, NotesView, SaveEdit, SaveWritten } from '../../../shared/engine/types.js';
-import { KEEPER_EDITS, copySources, keeperHeld, notesEdits, skillEdits, skillHeld, targetsFor } from '../../../shared/harness/library-add.js';
+import type { Answer, DefinitionView, FolderInfo, SaveEdit, SaveWritten } from '../../../shared/engine/types.js';
+import { KEEPER_EDITS, NOTES_START, copySources, keeperHeld, notesDone, notesEdits, notesRestart, skillEdits, skillHeld, targetsFor } from '../../../shared/harness/library-add.js';
+import type { NotesChoice } from '../../../shared/harness/library-add.js';
 import type { PartKind } from '../../../shared/harness/types.js';
 import { Sheet } from '../parts/Sheet.js';
 import { HButton, StateDot } from '../parts/controls.js';
@@ -53,7 +54,9 @@ export function AddSheet({ open, kind, onClose }: AddSheetProps): ReactElement |
   const [source, setSource] = useState<string | null>(null);
   const [skills, setSkills] = useState<Skills | null>(null);
   const [skill, setSkill] = useState<string | null>(null);
-  const [notes, setNotes] = useState<NotesView | null>(null);
+  // The notes the form would attach, and the number of the notes step they came from (see `notesDone`).
+  const [choice, setChoice] = useState<NotesChoice>(NOTES_START);
+  const notes = choice.view;
   const [shown, setShown] = useState<Shown | null>(null);
   const [approved, setApproved] = useState<string | null>(null);
   const [acked, setAcked] = useState<string | null>(null);
@@ -66,7 +69,7 @@ export function AddSheet({ open, kind, onClose }: AddSheetProps): ReactElement |
   const folder = usable.find(f => f.id === picked);
 
   const reset = (): void => {
-    setTarget(null); setSource(null); setSkills(null); setSkill(null); setNotes(null); setShown(null); setApproved(null); setAcked(null); setDone(null); setLastPlan(null);
+    setTarget(null); setSource(null); setSkills(null); setSkill(null); setChoice(notesRestart); setShown(null); setApproved(null); setAcked(null); setDone(null); setLastPlan(null);
     call.clear(); targetCall.clear(); sourceCall.clear();
   };
   // Opened, or opened for another tab: everything starts again, and the folders are listed anew.
@@ -129,7 +132,7 @@ export function AddSheet({ open, kind, onClose }: AddSheetProps): ReactElement |
     const run = (): Promise<Answer<SaveWritten>> => engine.runSave(id, s.view.revision, s.view.acknowledge === null ? s.edits : { edits: s.edits, acknowledged: acked });
     void call.write(W.label.writing, run, r => { setDone(r); setStep('done'); });
   };
-  const back = (to: Step): void => { if (held) return; call.clear(); setShown(null); setApproved(null); setAcked(null); setStep(to); };
+  const back = (to: Step): void => { if (held) return; setChoice(notesRestart); call.clear(); setShown(null); setApproved(null); setAcked(null); setStep(to); };
 
   const keeperIn = target !== null && keeperHeld(target), skillIn = target !== null && skill !== null && skillHeld(target, skill);
   const canReview = !busy && (kind === 'agent' ? !keeperIn : kind === 'skill' ? skill !== null && !skillIn : notes !== null);
@@ -250,7 +253,7 @@ export function AddSheet({ open, kind, onClose }: AddSheetProps): ReactElement |
             {kind === 'context' ? (
               <section className="hxe-section" aria-label={WORDS.label.notesChosen} data-section="add-notes">
                 <h3 className="hxe-head">{WORDS.label.notesChosen}</h3>
-                <NotesStep onDone={view => setNotes(view)} />
+                <NotesStep key={choice.gen} onDone={(view, how) => setChoice(c => notesDone(c, choice.gen, view, how))} onReset={() => setChoice(c => ({ ...c, view: null }))} />
                 {notes === null ? <p className="hxe-text hxe-muted">{WORDS.hint.pickNotes}</p> : (
                   <p className="hxe-text" data-notes-chosen={notes.id}><StateDot tone="good">{WORDS.hint.notesReady}</StateDot> <span className="hxe-mono">{notes.name}</span> <span className="hxe-muted">{NOTES.label.notes}</span></p>
                 )}

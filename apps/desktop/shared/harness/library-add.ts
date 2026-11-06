@@ -47,3 +47,24 @@ export const notesEdits = (view: NotesView): SaveEdit[] => [{ kind: 'set-source'
 export const skillHeld = (harness: DefinitionView, skillId: string): boolean => harness.skills.some(s => s.id === skillId);
 /** True when the harness holds the Notes keeper already. */
 export const keeperHeld = (harness: DefinitionView): boolean => harness.agents.some(a => a.id === KEEPER_AGENT);
+
+// ---- the notes the person chose in the form
+
+/** How a finished notes step can end (renderer/harness/notes/NotesStep.tsx), and which endings leave notes that can be attached. */
+const ATTACHABLE: readonly string[] = ['ready', 'parent', 'created', 'report-only', 'git-missing'];
+/** True when notes that ended the step this way can be attached. A history that is refused, unreadable or without a first commit cannot. */
+export const canAttach = (how: string): boolean => ATTACHABLE.includes(how);
+
+/**
+ * The notes folder the form would attach, and the number of the notes step it came from. A step that is left (Back, a restart) takes a new number, so a late answer of
+ * the old step is ignored and an earlier folder never stays.
+ */
+export interface NotesChoice { readonly gen: number; readonly view: NotesView | null }
+export const NOTES_START: NotesChoice = Object.freeze({ gen: 0, view: null });
+/** The step ended with notes. Only the current step counts, and only an ending that can be attached keeps the folder. */
+export const notesDone = (choice: NotesChoice, gen: number, view: NotesView, how: string): NotesChoice =>
+  (gen !== choice.gen ? choice : { gen: choice.gen, view: canAttach(how) ? view : null });
+/** The step starts again, or the person went back: nothing is chosen, and the old step's answers no longer count. */
+export const notesRestart = (choice: NotesChoice): NotesChoice => ({ gen: choice.gen + 1, view: null });
+/** True when the form has notes it can attach. */
+export const NOTES_READY = (choice: NotesChoice): boolean => choice.view !== null;
