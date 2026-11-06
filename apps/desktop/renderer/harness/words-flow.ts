@@ -18,7 +18,7 @@ export const FLOW = deepFreeze({
     looksRight: 'Looks right', showDetails: 'Show details', hideDetails: 'Hide details', addFolder: 'Add a folder', notNow: 'Not now', makeFromThis: 'Make a harness from this', sources: 'Sources',
     partsInSource: 'What Bowerloom reads', foundAt: 'Found in',
     // Projects
-    update: 'Update', install: 'Install', review: 'Review', assignHarness: 'Assign harness', assignAnother: 'Assign another harness', removeFromProject: 'Remove from project', project: 'Project', noHarnessYet: 'No harness yet',
+    update: 'Update', install: 'Install', review: 'Review', assignHarness: 'Assign harness', assignAnother: 'Assign another harness', removeFromProject: 'Remove from project', project: 'Project', noHarnessYet: 'No harness yet', hasHarness: 'Has a harness', notChecked: 'Not checked',
     projectRows: 'Projects', interfacesOfInstall: 'Engines',
     // Install sheet
     stepProject: 'Project', stepHarness: 'Harness', stepInterfaces: 'Engines', stepReview: 'Review', installSteps: 'Install steps', next: 'Next', installAHarness: 'Install a harness', folders: 'Folders', harnessChoices: 'Harnesses',
@@ -40,9 +40,10 @@ export const FLOW = deepFreeze({
     pickToContinue: 'Pick one to continue.',
     removeNote: 'This does not delete your files. It removes only what Bowerloom wrote.',
     yourFileNone: 'Not in this preview.', historyHint: 'Newest first. Undo puts back what the change replaced.',
-    historyEmptyReal: 'Nothing is listed yet. Installs from Projects are not in beta.1.', historyUndoReal: 'To undo a folder install, press Undo, then approve the removal.',
+    historyEmptyReal: 'Nothing is listed yet. Folder installs are not listed here.', historyUndoReal: 'To undo a folder install, press Undo, then approve the removal.',
     lookedAgain: 'Looked again. Nothing changed.', noneOffered: 'No engine is switched on. Turn one on in Engines.',
     nothingMade: 'Nothing was made.',
+    alreadyListed: 'Already in the list.', notCheckedYet: 'Not checked yet. Press Install to choose the folder.',
     pickInterface: 'Pick at least one engine.', undoFirst: 'Undo the newer change first', noProject: 'That project is not here.',
   },
   /** A short paragraph: at most 25 words each. */
@@ -71,6 +72,8 @@ export const makeAll = (n: number): string => `Make all ${n}`;
 export const makeFrom = (name: string): string => `Make a harness from ${name}`;
 /** "Nothing changed: that link is there already.": the note when a change did nothing. The reason is a few lowercase words from the store. */
 export const nothingChanged = (reason: string): string => `Nothing changed: ${reason}.`;
+/** "Added alpha to Projects.": the note after a folder joins the list. */
+export const addedFolderWords = (name: string): string => `Added ${name} to Projects.`;
 /** "Removed Weekly report crew.": the note after a harness leaves a project. */
 export const removedWords = (harness: string): string => `Removed ${harness}.`;
 /** "Update Weekly report crew in bowerloom": the name of a project button. */

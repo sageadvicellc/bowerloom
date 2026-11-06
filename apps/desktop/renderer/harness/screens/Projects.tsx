@@ -1,5 +1,5 @@
 /**
- * S6, Projects. One row for each project: its name, the harness it holds, its folder, and a dot and words for each interface (computed from the install data, so the Harness list says the same).
+ * S6, Projects, in the sample (ProjectsReal.tsx draws the person's own folders). One row for each project: its name, the harness it holds, its folder, and a dot and words for each interface (computed from the install data, so the Harness list says the same).
  * The button at the right of a row follows the worst state: "Update" for out of date, "Review" for a conflict, "Install" when nothing is installed yet, "Assign harness" when the project has no harness.
  * Each opens the install sheet at the right step. Picking a row fills the details column: the harness, the state of each interface with its own button, "Assign another harness" and "Remove from project".
  */
@@ -20,6 +20,7 @@ import { PathDisclosure } from '../parts/PathDisclosure.js';
 import { FLOW, actionFor, actionName, rowSubject, installFor, nothingChanged, removedWords, reviewFor, savedAs, updateFor } from '../words-flow.js';
 import { undoNow } from '../undo-note.js';
 import { ENGINE_WORDS } from '../words-engine.js';
+import { RealProjects } from './ProjectsReal.js';
 import './projects.css';
 
 /** The install of a project with the worst state, or undefined when the project has none. */
@@ -128,9 +129,10 @@ function Details({ state, project }: { state: HarnessState; project: Project }):
   );
 }
 
-export function Projects({ id }: { id: string | null }): ReactElement {
+/** The sample's Projects: the install data is in memory, and Add a folder is not in this preview. */
+function SampleProjects({ id }: { id: string | null }): ReactElement {
   const state = useHarnessState(), ui = useUi();
-  const notYet = notYetWords(state.real !== undefined);
+  const notYet = notYetWords(false);
   const selected = state.projects.find(p => p.id === id) ?? (id === null ? state.projects[0] : undefined);
   if (id !== null && selected === undefined) {
     return (
@@ -155,4 +157,10 @@ export function Projects({ id }: { id: string | null }): ReactElement {
       </ul>
     </Screen>
   );
+}
+
+/** Projects. On the person's own folders each row follows the folder's real install; the sample draws its made-up install data. */
+export function Projects({ id }: { id: string | null }): ReactElement {
+  const state = useHarnessState();
+  return state.real !== undefined ? <RealProjects id={id} /> : <SampleProjects id={id} />;
 }

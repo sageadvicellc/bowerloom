@@ -79,7 +79,7 @@ test('the words the logic builds (statuses, counts, install lines, notices) obey
 const times = (piece: string, n: number): string[] => Array.from({ length: n }, () => piece);
 const CODE_NAMES: Readonly<Record<string, readonly string[]>> = Object.freeze({
   'renderer/harness/HarnessApp.tsx': times('interfaces', 1), 'renderer/harness/Navigation.tsx': times('interfaces', 3), 'renderer/harness/Shell.tsx': times('interfaces', 1), 'renderer/harness/ui.tsx': times('interfaces', 2),
-  'renderer/harness/screens/Interfaces.tsx': times('interfaces', 2), 'renderer/harness/screens/Projects.tsx': times('interfaces', 1), 'renderer/harness/sheets/InstallSheet.tsx': times('interfaces', 5), 'renderer/harness/sheets/ProjectSheet.tsx': times('interfaces', 8),
+  'renderer/harness/screens/Interfaces.tsx': times('interfaces', 2), 'renderer/harness/screens/Projects.tsx': times('interfaces', 1), 'renderer/harness/sheets/InstallSheet.tsx': times('interfaces', 5), 'renderer/harness/sheets/ProjectSheet.tsx': times('interfaces', 9),
   'shared/harness/builder-draft.ts': times('last-interface', 2), 'shared/harness/route.ts': times('interfaces', 8), 'shared/harness/status.ts': times('interfaces', 1),
   'shared/harness/store.ts': [...times('set-interface', 4), ...times('interface', 4)], 'shared/harness/types.ts': ['set-interface', 'mcp', 'mcp'], 'shared/harness/overview.ts': ['mcp'],
   'shared/engine/types.ts': [...times('mcp', 4), 'apply'], 'main/engine-consent.ts': ['mcp', 'mcp.json'],
@@ -143,7 +143,9 @@ test('the real words (the preview on the person\'s own folders) are frozen, with
     for (const [key, text] of entries) { assert.ok(countWords(text) <= limit, `${group}.${key}: ${text}`); assert.equal(bannedHere(text), null, `${group}.${key}`); assert.equal(text, text.trim(), `${group}.${key}`); }
   }
   for (const line of REAL.notInBeta) { assert.ok(countWords(line) <= LIMITS.popover, line); assert.equal(bannedHere(line), null, line); }
-  assert.deepEqual(REAL.notInBeta, ['Start', 'Compare', 'Runs', 'Assign to project, in the Harnesses details', 'Assign harness, Install, Update and Review, in Projects', 'Add (the plus button), in the Library', 'Add a folder, in Projects']);
+  assert.deepEqual(REAL.notInBeta, ['Start', 'Compare', 'Runs', 'Assign to project, in the Harnesses details', 'Assign harness, in Projects', 'Add (the plus button), in the Library']);
+  // Add a folder, Install, Update and Review work on the person's own folders, so no line names them.
+  assert.ok(!REAL.notInBeta.some(line => /Add a folder|Install|Update|Review/.test(line)), 'a working Projects control is not on the list');
   assert.ok(!REAL.notInBeta.some(line => /^Install from a folder$|^From a folder$/.test(line)), 'Install from a folder works, so it is not on the list');
   assert.deepEqual([REAL.label.beta, REAL.label.aboutBeta, REAL.label.notInBeta, WORDS.hint.notInBeta], ['Beta', 'About this beta', 'Not in beta.1', 'Not in beta.1.']);
   assert.equal(notYetWords(true), 'Not in beta.1.'); assert.equal(notYetWords(false), 'Not in this preview.');
@@ -183,7 +185,7 @@ test('the words that depend on the mode never say that a blocked feature works i
   assert.equal(welcomeLines(true)[1], 'Running one is not in beta.1.');
   assert.equal(helpLines(true)[1], 'Build one from your agents and skills. Running one is not in beta.1.');
   assert.equal(helpLines(true)[3], 'Bowerloom only reads until you approve a write. To undo a folder install, press Undo, then approve the removal.');
-  assert.deepEqual(historyLines(true, 0), ['Nothing is listed yet. Installs from Projects are not in beta.1.', 'To undo a folder install, press Undo, then approve the removal.']);
+  assert.deepEqual(historyLines(true, 0), ['Nothing is listed yet. Folder installs are not listed here.', 'To undo a folder install, press Undo, then approve the removal.']);
   assert.equal(bringToastWords(true), 'Not in beta.1.'); assert.equal(bringTipWords(true), 'Brings the engine window forward. Not in beta.1.');
   // The sample keeps the words of the pictures.
   assert.deepEqual(helpLines(false), [WORDS.paragraph.helpOne, WORDS.paragraph.helpTwo, WORDS.paragraph.helpThree, WORDS.paragraph.helpFour]);

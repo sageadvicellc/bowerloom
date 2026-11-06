@@ -216,7 +216,7 @@ test('the file view draws the file as text: markup and an order stay words, the 
   await shot(p, 'real-5-file');
 });
 
-test('Install and Start are not in beta.1: a note says so and no sheet opens; the Beta mark says what Bowerloom does and what is not in beta.1', async () => {
+test('Assign to project and Start are not in beta.1: a note says so and no sheet opens; the Beta mark says what Bowerloom does and what is not in beta.1', async () => {
   const p = page();
   await p.evaluate(() => { location.hash = '#sample/harnesses'; });
   await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
@@ -238,7 +238,7 @@ test('Install and Start are not in beta.1: a note says so and no sheet opens; th
   await expect(pop).toContainText('Bowerloom is in beta. It reads your own folders and writes only after you approve what it will write.');
   await expect(pop).toContainText('Not in beta.1');
   await expect(pop).not.toContainText(/preview|full app/i);
-  await expect(pop.locator('li')).toHaveText(['Start', 'Compare', 'Runs', 'Assign to project, in the Harnesses details', 'Assign harness, Install, Update and Review, in Projects', 'Add (the plus button), in the Library', 'Add a folder, in Projects']);
+  await expect(pop.locator('li')).toHaveText(['Start', 'Compare', 'Runs', 'Assign to project, in the Harnesses details', 'Assign harness, in Projects', 'Add (the plus button), in the Library']);
   await everyStep('preview', false);
   await shot(p, 'real-6-preview');
   await p.keyboard.press('Escape');

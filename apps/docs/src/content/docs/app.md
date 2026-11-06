@@ -43,7 +43,7 @@ The left menu then holds Harnesses, Library, Projects, and Runs. At its foot are
 
 ::visual{id="app-engines"}
 
-Install history is the install undo list. Each row is one change, newest first, with an **Undo** that puts back what the change replaced. Only the newest change of one install can be undone. On your own folders the list starts empty in beta.1, because an install from Projects is not in beta.1. To undo a folder install, press **Undo** in the install sheet, then approve the removal.
+Install history is the install undo list. Each row is one change, newest first, with an **Undo** that puts back what the change replaced. Only the newest change of one install can be undone. On your own folders the list starts empty, and a folder install is not listed here. To undo a folder install, press **Undo** in the install sheet, then approve the removal.
 
 ::visual{id="app-install-history"}
 
@@ -55,11 +55,10 @@ Under the menu, a **Beta** mark opens a short note about this beta. It lists the
 - Compare
 - Runs
 - Assign to project, in the details of a harness
-- Install, Update, Review, and Assign harness, in Projects
+- Assign harness, in Projects
 - Add, the plus button in the Library
-- Add a folder, in Projects
 
-**From a folder** and **Install from a folder** in Projects work, and so does the save step in the Builder. This page covers them below.
+**From a folder** and **Install from a folder** in Projects work, and so does the save step in the Builder. So do **Add a folder**, **Install**, **Update**, and **Review** in Projects. This page covers them below.
 
 ## Make a harness from a folder
 
@@ -87,6 +86,18 @@ On Projects, **From a folder** opens New harness from a folder. It has four step
 - When only the mode of a file changed after Bowerloom wrote it, the file shows **Restore mode** and **Keep new mode**.
 
 ::visual{id="app-install-review"}
+
+## Projects: Add a folder, Install, Update, and Review
+
+Projects lists the folders the read found and the folders you add. Press the plus button, **Add a folder**, and choose a folder in the system chooser. The folder joins the list. Nothing is written.
+
+Each row shows whether the folder holds a harness, and a dot for each engine. These dots come from the install record of the folder and from a plan that only reads. The button follows the state:
+
+- **Install** when the folder has a harness and no install. It opens Install a folder's harness with that folder picked.
+- **Update** when the harness has moved past what Bowerloom wrote. It opens the plan at once.
+- **Review** when a file that Bowerloom wrote was changed or removed, when a run stopped part way, or when the harness does not load. It opens the plan, or the recovery plan, and says what it found.
+
+A folder that the read found but that Bowerloom has not opened yet shows **Not checked**. Its button opens the system chooser first. Bowerloom takes only the folder shown, and refuses any other. These buttons write only after you approve the plan and say yes in the second question. **Undo** in the sheet removes the install the same way.
 
 Beta.1 supports Claude Code and Codex. OpenCode, Pi, and DeepSeek Harness show a Preview tag. You can install to them only when the app starts with `BOWERLOOM_PREVIEW_ENGINES=1`. Reading and removing work for all five.
 
