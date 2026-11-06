@@ -13,6 +13,7 @@ import { realToHarnessState } from '../shared/harness/real-map.js';
 import { HARNESS_UNREADABLE, overviewOf } from '../shared/harness/overview.js';
 import { defaultExpanded, layoutOf } from '../shared/harness/overview-layout.js';
 import { createSampleWorld } from '../shared/harness/sample.js';
+import { cut } from '../shared/real/redact.js';
 import type { HarnessState } from '../shared/harness/types.js';
 import type { FolderInfo } from '../shared/engine/types.js';
 import { tempDir } from './support.js';
@@ -43,12 +44,12 @@ test('rope-yard, which holds a harness and was never opened, is a place with its
   const idOf = (name: string): string => rope.nodes.find(n => n.name === name)!.id;
   assert.deepEqual(rope.edges.map(e => e.id), [`${idOf('foreman')}>${idOf('splice')}`]);
   assert.ok(rope.nodes.every(n => /^[^/]+\/harness-(?:agent|skill|notes|mcp|hook)-\d+$/.test(n.id)), 'an id is a kind and a number, never a name');
-  // A folder main knows gets no place of this kind: its own place already reads In Bowerloom, and it lists the folder's skills once.
+  // A folder main knows gets the same place, marked In Bowerloom with its folder id.
   const known = overviewOf(state, [folder('f1', '~/Projects/rope-yard')]);
-  assert.equal(known.groups.some(g => g.id === rope.id), false);
   assert.equal(known.groups.length, o.groups.length);
   const knownRope = known.groups.find(g => g.label === '~/Projects/rope-yard')!;
-  assert.equal(knownRope.inBowerloom, true); assert.deepEqual(knownRope.nodes.map(n => n.name).sort(), ['coil-count', 'knot-guide', 'splice']);
+  assert.equal(knownRope.inBowerloom, true); assert.equal(knownRope.folderId, 'f1');
+  assert.deepEqual(knownRope.counts, { agent: 2, skill: 3, tool: 0, context: 0 }, 'a known folder shows the agents of its harness too');
   // No full path anywhere.
   assert.ok(!JSON.stringify(o).includes(made.home));
 });
@@ -232,4 +233,89 @@ test('a folder that main already knows shows the skill of its harness exactly on
   const known = overviewOf(state, [folder('f1', '~/work/known')]);
   assert.equal(count(known), 1, 'known: once');
   assert.equal(known.groups.filter(g => g.label === '~/work/known').length, 1);
+});
+
+const skillDoc = (name: string): string => `---\nname: ${name}\ndescription: Does ${name}.\n---\n\nBody.\n`;
+const nodesOf = (o: ReturnType<typeof overviewOf>, label: string): string[] => o.groups.filter(g => g.label === label).flatMap(g => g.nodes.map(n => n.name)).sort();
+
+test('a known folder shows the agents, connections and hooks of its harness, and each part once', async t => {
+  const { home, work } = homeWith(t, {
+    'k/.bowerloom/harness.json': harnessJson(), 'k/.bowerloom/skills/s1/SKILL.md': skillDoc('Alpha'),
+    'k/.bowerloom/agents/ha.md': skillDoc('hagent'), 'k/.bowerloom/teams/crew/agents/ta.md': skillDoc('tagent'), 'k/.bowerloom/prompts/p.md': skillDoc('pr'),
+    'k/.bowerloom/mcp.json': JSON.stringify({ servers: [{ name: 'conn', transport: 'stdio', command: 'x' }] }), 'k/.bowerloom/hooks.json': JSON.stringify({ hooks: [{ id: 'hk', event: 'PostToolUse', command: 'x', strength: 'advisory' }] }),
+  });
+  mkdirSync(join(home, '.claude'), { recursive: true });
+  const state = await read(home, [work]);
+  const all = ['Alpha', 'conn', 'hagent', 'hk', 'pr', 'tagent'];
+  assert.deepEqual(nodesOf(overviewOf(state, []), '~/work/k'), all, 'not known');
+  const known = overviewOf(state, [folder('f1', '~/work/k')]);
+  assert.deepEqual(nodesOf(known, '~/work/k'), all, 'known');
+  const groups = known.groups.filter(g => g.label === '~/work/k');
+  assert.equal(groups.length, 1); assert.equal(groups[0]!.inBowerloom, true); assert.equal(groups[0]!.folderId, 'f1');
+});
+
+test('a known folder whose layer holds only a harness is still a group', async t => {
+  const { home, work } = homeWith(t, {
+    'k/.bowerloom/harness.json': harnessJson(), 'k/.bowerloom/agents/ha.md': skillDoc('hagent'),
+    'k/.bowerloom/mcp.json': JSON.stringify({ servers: [{ name: 'conn', transport: 'stdio', command: 'x' }] }),
+  });
+  mkdirSync(join(home, '.claude'), { recursive: true });
+  const state = await read(home, [work]);
+  const known = overviewOf(state, [folder('f1', '~/work/k')]);
+  assert.deepEqual(nodesOf(known, '~/work/k'), ['conn', 'hagent']);
+  assert.equal(known.groups.find(g => g.label === '~/work/k')!.inBowerloom, true);
+});
+
+test('a known folder with a harness that cannot be read keeps the unreadable note and its own items', async t => {
+  const { home, work } = homeWith(t, { 'k/.bowerloom/harness.json': '{ no', 'k/.bowerloom/skills/s1/SKILL.md': skillDoc('Alpha'), 'k/.bowerloom/prompts/p.md': skillDoc('pr') });
+  mkdirSync(join(home, '.claude'), { recursive: true });
+  const state = await read(home, [work]);
+  const groups = overviewOf(state, [folder('f1', '~/work/k')]).groups.filter(g => g.label === '~/work/k');
+  assert.equal(groups.length, 1); assert.equal(groups[0]!.note, HARNESS_UNREADABLE);
+  assert.deepEqual(groups[0]!.nodes.map(n => n.name).sort(), ['Alpha', 'pr']);
+});
+
+test('a known folder with no harness is listed as before', async t => {
+  const { home, work } = homeWith(t, { 'k/.bowerloom/skills/s1/SKILL.md': skillDoc('Alpha') });
+  mkdirSync(join(home, '.claude'), { recursive: true });
+  const state = await read(home, [work]);
+  const plain = overviewOf(state, []), known = overviewOf(state, [folder('f1', '~/work/k')]);
+  assert.equal(known.groups.length, plain.groups.length);
+  const g = known.groups.find(x => x.label === '~/work/k')!;
+  assert.deepEqual(g.nodes.map(n => n.name), ['Alpha']); assert.equal(g.inBowerloom, true); assert.equal(g.folderId, 'f1');
+});
+
+// ---- twin pairing
+
+const hpart = (id: string, name: string, hash: string) => ({ id, kind: 'skill' as const, name, summary: '', contentHash: hash });
+const spart = (id: string, name: string, hash: string): HarnessState['parts'][number] => ({ id, kind: 'skill', name, summary: '', description: '', path: '', source: 'x', origin: 'src', fileText: '', cannotUse: [], inLibrary: true, contentHash: hash });
+
+test('two skills with one text and names that share their first 60 characters each pair with their own twin, and links follow', () => {
+  const stem = 'a shared stem of sixty characters, long enough to cover the slice';
+  assert.ok(stem.length >= 60);
+  const state: HarnessState = {
+    ...createSampleWorld(),
+    parts: [spart('p1', `${stem} first`, 'h'), spart('p2', `${stem} second`, 'h'), { ...spart('pa', 'boss', ''), kind: 'agent' }],
+    sources: [{ id: 'src', name: 'x (Bowerloom)', interfaceName: 'Bowerloom', harnessName: 'x', partIds: ['p2', 'p1', 'pa'], links: [{ from: 'pa', to: 'p2' }], scope: 'project', label: '~/x', harnessPlaceId: 'harness-x' }],
+    harnessPlaces: [{ id: 'harness-x', name: 'x (Bowerloom)', label: '~/x', readable: true, engines: [], parts: [hpart('harness-skill-1', `${stem} first`, 'h'), hpart('harness-skill-2', `${stem} second`, 'h')], links: [] }],
+  };
+  const g = overviewOf(state, []).groups.find(x => x.label === '~/x')!;
+  assert.deepEqual(g.nodes.filter(n => n.kind === 'skill').map(n => n.name).sort(), [`${stem} first`, `${stem} second`]);
+  const idOf = (name: string): string => g.nodes.find(n => n.name === name)!.id;
+  assert.deepEqual(g.edges.map(e => e.id), [`${idOf('boss')}>${idOf(`${stem} second`)}`], 'the agent links to the skill it named');
+});
+
+test('a long skill name whose last word is long is listed once', () => {
+  // The reader cuts a name to 80 characters on both sides, and the part cuts it again at the last space past the middle, so the source name is shorter than the harness name.
+  const front = 'the quick brown fox jumps over the lazy dog today ', word = 'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrs';
+  assert.ok(front.length >= 49 && word.length === 45);
+  const harnessName = `${(front + word).slice(0, 80)}…`, sourceName = cut(harnessName, 80);
+  assert.ok(sourceName.length < harnessName.length - 20, `${sourceName.length} ${harnessName.length}`);
+  const state: HarnessState = {
+    ...createSampleWorld(),
+    parts: [spart('p1', sourceName, 'h')],
+    sources: [{ id: 'src', name: 'x (Bowerloom)', interfaceName: 'Bowerloom', harnessName: 'x', partIds: ['p1'], links: [], scope: 'project', label: '~/x', harnessPlaceId: 'harness-x' }],
+    harnessPlaces: [{ id: 'harness-x', name: 'x (Bowerloom)', label: '~/x', readable: true, engines: [], parts: [hpart('harness-skill-1', harnessName, 'h')], links: [] }],
+  };
+  assert.equal(overviewOf(state, []).groups.flatMap(g => g.nodes).filter(n => n.kind === 'skill').length, 1);
 });

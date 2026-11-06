@@ -105,17 +105,16 @@ export function overviewOf(state: HarnessState, folders: readonly FolderInfo[]):
   const parts = new Map<string, Part>();
   for (const p of state.parts) if (!parts.has(p.id)) parts.set(p.id, p);
   const known = [...folders].filter(f => f.hasDefinition).sort((a, b) => compare(a.id, b.id));
-  // A folder main knows has its own place, which reads In Bowerloom, so its harness place is not drawn. Any other harness place is drawn; when the folder's `.bowerloom` also has items the harness
-  // does not hold (it names the harness place), the two are one group, and a skill both hold is listed once.
-  const places = state.harnessPlaces ?? [], isKnown = (h: HarnessPlace): boolean => known.some(f => f.label === labelOf(h.label)), byId = new Map(places.map(h => [h.id, h] as const)), joined = new Set<string>();
+  // Every harness place is drawn. When the folder's `.bowerloom` also has items the harness does not hold (the source names the harness place), the two are one group, and a skill both hold is listed
+  // once. A folder main knows is marked In Bowerloom by its label (see `groupOf`), as any other group.
+  const places = state.harnessPlaces ?? [], byId = new Map(places.map(h => [h.id, h] as const)), joined = new Set<string>();
   const made = state.sources.map((source, index) => {
     const place = source.harnessPlaceId === undefined ? undefined : byId.get(source.harnessPlaceId);
-    if (place === undefined || isKnown(place)) return { index, ...groupOf(source, parts, known) };
+    if (place === undefined) return { index, ...groupOf(source, parts, known) };
     joined.add(place.id);
     return { index, ...joinedGroupOf(place, source, parts, known) };
   });
-  // The folders that hold a harness and that main does not know: a place each (a folder main knows has its own place, which reads In Bowerloom).
-  const harnesses = places.filter(h => !isKnown(h) && !joined.has(h.id)).map((h, i) => harnessGroupOf(h, made.length + i, known));
+  const harnesses = places.filter(h => !joined.has(h.id)).map((h, i) => harnessGroupOf(h, made.length + i, known));
   const built = [...made, ...harnesses];
   const home = built.filter(b => b.group.scope === 'home');
   const projects = built.filter(b => b.group.scope !== 'home')
@@ -136,24 +135,40 @@ function harnessGroupOf(place: HarnessPlace, index: number, folders: readonly Fo
   return { index, group, hashes: built.hashes };
 }
 
-/** The key two copies of one skill share: its text (when the reader hashed it) and its name, cut the same way on both sides. */
-const skillKey = (part: Part): string => `${part.contentHash ?? ''}\u0000${shown(part.name).replace(/…$/, '').slice(0, 60).toLowerCase()}`;
+/** The name of a part as the Overview draws it, without the mark of a cut. */
+const nameOf = (part: Part): string => shown(part.name).replace(/…$/, '');
+const sameText = (a: Part, b: Part): boolean => (a.contentHash ?? '') === (b.contentHash ?? '');
+/** How much of a name two copies must share in the second pass: the part cuts a long name at the last space past its middle (40 characters), so only that much is certain to be the same. */
+const NAME_STEM = 40;
+
+/**
+ * Pairs each skill of a source with the skill of the harness place that is its copy. Pass 1: the same text and the full name. Pass 2, for the ones left: the same text and the first 40
+ * characters of the name. A skill of the place is used once. Returns the id of its twin in the place for each source skill that has one.
+ */
+function pairSkills(own: readonly Part[], source: readonly Part[]): Map<string, string> {
+  const twins = new Map<string, string>(), taken = new Set<string>();
+  const pass = (same: (a: Part, b: Part) => boolean): void => {
+    for (const part of source) {
+      if (part.kind !== 'skill' || twins.has(part.id)) continue;
+      const twin = own.find(o => o.kind === 'skill' && !taken.has(o.id) && sameText(o, part) && same(o, part));
+      if (twin !== undefined) { twins.set(part.id, twin.id); taken.add(twin.id); }
+    }
+  };
+  pass((o, p) => shown(o.name) === shown(p.name));
+  pass((o, p) => nameOf(o).slice(0, NAME_STEM) === nameOf(p).slice(0, NAME_STEM));
+  return twins;
+}
 
 /**
  * One group for a folder that holds a harness and also has items of its own in its `.bowerloom`. It is the harness place with the items of the source added. A skill that both hold
  * (the same text and name) is the harness place's node, once: links the source makes to the skill go to that node. A harness that could not be read keeps its note and the source's items.
  */
 function joinedGroupOf(place: HarnessPlace, source: ScanSource, parts: ReadonlyMap<string, Part>, folders: readonly FolderInfo[]): { group: OverviewGroup; hashes: ReadonlyMap<string, string> } {
-  const own = harnessPartsOf(place), seen = new Map<string, string[]>();
-  for (const part of own) if (part.kind === 'skill') seen.set(skillKey(part), [...(seen.get(skillKey(part)) ?? []), part.id]);
-  const all = new Map(own.map(p => [p.id, p] as const)), ids = own.map(p => p.id), moved = new Map<string, string>();
-  for (const id of source.partIds) {
-    const part = parts.get(id);
-    if (part === undefined || all.has(id)) continue;
-    const twin = part.kind === 'skill' ? seen.get(skillKey(part))?.shift() : undefined;
-    if (twin !== undefined) { moved.set(id, twin); continue; }
-    all.set(id, part); ids.push(id);
-  }
+  const own = harnessPartsOf(place), all = new Map(own.map(p => [p.id, p] as const)), ids = own.map(p => p.id);
+  const mine: Part[] = [];
+  for (const id of source.partIds) { const part = parts.get(id); if (part !== undefined && !all.has(id) && !mine.includes(part)) mine.push(part); }
+  const moved = pairSkills(own, mine);
+  for (const part of mine) if (!moved.has(part.id)) { all.set(part.id, part); ids.push(part.id); }
   const links = [...place.links, ...(source.links ?? []).map(l => ({ from: moved.get(l.from) ?? l.from, to: moved.get(l.to) ?? l.to }))];
   const joined: ScanSource = { id: place.id, name: place.name, interfaceName: '', harnessName: place.name, partIds: ids, links, scope: 'project', label: place.label };
   const built = groupOf(joined, all, folders);
