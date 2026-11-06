@@ -5,7 +5,7 @@
  * It knows nothing about any one person's folders. Where to look comes from the adapter table (shared/real/adapters.ts); where to start comes from the home folder it is
  * given and from the folders the person picks. The place ids it hands out are the only ones `read` accepts.
  */
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, isAbsolute, join } from 'node:path';
 import { ADAPTERS, adapterOf, appLabel, classify, recordsOfFile, walkEnter, walkPrune } from '../shared/real/adapters.js';
 import type { ConfigKind } from '../shared/real/adapters.js';
 import { firstHeading, firstSentence, parseFrontmatter } from '../shared/real/frontmatter.js';
@@ -15,8 +15,8 @@ import { cleanLine, cleanPath, cut, safeText } from '../shared/real/redact.js';
 import { hashText } from '../shared/world/sample.js';
 import { REAL_LIMITS } from '../shared/real/types.js';
 import type { RealApp, RealDiscovery, RealPlace, RealPlaceKind } from '../shared/real/types.js';
-import { addTally, couldNotRead, isThere, listDir, makeBudget, miss, mustStop, newTally, readHead, readText, realFolder, realFolderFollowing, resolveInside, shortPath, walkFiles } from './real-fs.js';
-import type { Budget, Tally } from './real-fs.js';
+import { addTally, couldNotRead, isThere, listDir, makeBudget, miss, mustStop, newTally, readHead, readText, realFolder, realFolderFollowing, resolveInside, shortPath, statLine, walkFiles } from './real-fs.js';
+import type { Budget, Tally, WalkOptions } from './real-fs.js';
 import { textOf, listOf } from '../shared/real/yaml.js';
 import { isPlainName } from './safe.js';
 import type { RealHarness, RealHarnessPart } from '../shared/real/types.js';
@@ -84,6 +84,22 @@ export function findHomePlaces(home: string): PlaceInternal[] {
   return out;
 }
 
+/** The tool folders and config files of a program that sit directly in a folder, named from `real` (where the folder really is). A shortcut is followed only when it stays inside `rootReal`. */
+function partsIn(real: string, list: ReturnType<typeof listDir>, rootReal: string, tally: Tally): { folders: FolderPart[]; files: FilePart[] } {
+  const folders: FolderPart[] = [], files: FilePart[] = [];
+  for (const e of list) {
+    const folderApp = ALL_PROJECT_FOLDERS.get(e.name), fileApp = ALL_PROJECT_FILES.get(e.name);
+    if (folderApp !== undefined) {
+      const child = join(real, e.name);
+      let found: string | null = null;
+      if (e.isDirectory()) found = child;
+      else if (e.isSymbolicLink()) { const r = resolveInside(child, rootReal, tally); found = r !== null && r.stat.isDirectory() ? r.real : null; }
+      if (found !== null) folders.push({ app: folderApp, name: e.name, abs: found });
+    } else if (fileApp !== undefined && (e.isFile() || e.isSymbolicLink())) files.push({ app: fileApp.app, name: e.name, abs: join(real, e.name), config: fileApp.config });
+  }
+  return { folders, files };
+}
+
 /**
  * The places in a folder the person picked: the folder itself, and every folder below it (to the depth cap) that holds a tool folder or a config file of a known
  * program. A shortcut is followed only when it stays inside the picked folder. The home folder's own tool folders belong to the home places, so they are not taken again.
@@ -95,28 +111,13 @@ export function findPlacesUnder(dir: string, home: string, budget: Budget, tally
   const found: PlaceInternal[] = [];
   const seen = new Set<string>([rootReal]);
   let entries = 0, stop = false;
-  // `real` is where the folder really is; the parts found in it are named from there.
-  const partsOf = (real: string, list: ReturnType<typeof listDir>): { folders: FolderPart[]; files: FilePart[] } => {
-    const folders: FolderPart[] = [], files: FilePart[] = [];
-    for (const e of list) {
-      const folderApp = ALL_PROJECT_FOLDERS.get(e.name), fileApp = ALL_PROJECT_FILES.get(e.name);
-      if (folderApp !== undefined) {
-        const child = join(real, e.name);
-        let found2: string | null = null;
-        if (e.isDirectory()) found2 = child;
-        else if (e.isSymbolicLink()) { const r = resolveInside(child, rootReal, tally); found2 = r !== null && r.stat.isDirectory() ? r.real : null; }
-        if (found2 !== null) folders.push({ app: folderApp, name: e.name, abs: found2 });
-      } else if (fileApp !== undefined && (e.isFile() || e.isSymbolicLink())) files.push({ app: fileApp.app, name: e.name, abs: join(real, e.name), config: fileApp.config });
-    }
-    return { folders, files };
-  };
   const visit = (real: string, display: string, depth: number): void => {
     if (stop) return;
     if (budget.expired()) { tally.stoppedEarly = true; stop = true; return; }
     const list = listDir(real, tally, REAL_LIMITS.discoveryEntries - entries + 1, rootReal);
     const isRoot = depth === 0;
     const atHome = homeReal !== null && real === homeReal;
-    const { folders, files } = atHome ? { folders: [], files: [] } : partsOf(real, list);
+    const { folders, files } = atHome ? { folders: [], files: [] } : partsIn(real, list, rootReal, tally);
     if (isRoot || folders.length > 0 || files.length > 0) {
       if (found.length >= REAL_LIMITS.places) { tally.truncated = true; stop = true; return; }
       const kind: RealPlaceKind = isRoot ? 'picked' : 'project';
@@ -250,6 +251,23 @@ const summaryOf = (description: string, fallback: string): string => {
   return one === '' ? fallback : one;
 };
 
+/** How the reader walks one tool folder. The fingerprint of a read (`fingerprintOf`) walks it the same way, so the two cannot disagree about which files count. */
+function folderWalk(folder: FolderPart, maxFiles: number): WalkOptions {
+  const adapter = adapterOf(folder.app);
+  // Only the top-level folders that can hold something are entered (`walkRoots`), and a skill folder is a leaf. What is left out on purpose never marks the place as partly read.
+  return {
+    maxDepth: REAL_LIMITS.depth, maxFiles, maxEntries: REAL_LIMITS.discoveryEntries, skipDirs: new Set(adapter.skipInside), skipHidden: false,
+    accept: rel => classify(folder.app, rel) !== null, enter: rel => walkEnter(folder.app, rel), prune: rel => walkPrune(folder.app, rel),
+    ...(adapter.walkRoots === undefined ? {} : { rootDirs: new Set(adapter.walkRoots) }), leafWhen: isSkillFolder, nestedWhen: holdsSkillFile,
+  };
+}
+
+/** How the reader walks a work or picked folder for notes pages. */
+const notesWalk = (): WalkOptions => ({
+  maxDepth: REAL_LIMITS.depth, maxFiles: REAL_LIMITS.filesPerPlace, maxEntries: REAL_LIMITS.discoveryEntries, skipDirs: new Set([...SKIP_DIRS, ...ALL_PROJECT_FOLDERS.keys()]), skipHidden: true,
+  accept: rel => MARKDOWN.test(rel), boundary: hasMarker,
+});
+
 /**
  * Reads one place. `withText` false is step one: skills, agents and prompts are found by their paths and their files are not opened; only config files are opened, and only
  * their structure is kept. `withText` true is step two, after the person confirmed: the text of skills, agents and prompts is read too, and the head of each notes page.
@@ -262,13 +280,8 @@ export function readPlace(place: PlaceInternal, home: string, withText: boolean,
   folders: for (const folder of place.folders) {
     if (mustStop(budget, tally)) break;
     if (realFolderFollowing(folder.abs) !== folder.abs) { tally.unreadable += 1; continue; }
-    const adapter = adapterOf(folder.app);
     // Only the top-level folders that can hold something are entered (`walkRoots`), and a skill folder is a leaf. What is left out on purpose never marks the place as partly read.
-    const files = walkFiles(folder.abs, folder.abs, {
-      maxDepth: REAL_LIMITS.depth, maxFiles: filesLeft, maxEntries: REAL_LIMITS.discoveryEntries, skipDirs: new Set(adapter.skipInside), skipHidden: false,
-      accept: rel => classify(folder.app, rel) !== null, enter: rel => walkEnter(folder.app, rel), prune: rel => walkPrune(folder.app, rel),
-      ...(adapter.walkRoots === undefined ? {} : { rootDirs: new Set(adapter.walkRoots) }), leafWhen: isSkillFolder, nestedWhen: holdsSkillFile,
-    }, budget, tally);
+    const files = walkFiles(folder.abs, folder.abs, folderWalk(folder, filesLeft), budget, tally);
     filesLeft -= files.length;
     for (const f of files) {
       if (mustStop(budget, tally)) break folders;
@@ -297,10 +310,7 @@ export function readPlace(place: PlaceInternal, home: string, withText: boolean,
     const rootReal = place.realRoot;
     if (realFolderFollowing(rootReal) !== rootReal) tally.unreadable += 1;
     else {
-      const walked = walkFiles(rootReal, rootReal, {
-        maxDepth: REAL_LIMITS.depth, maxFiles: REAL_LIMITS.filesPerPlace, maxEntries: REAL_LIMITS.discoveryEntries, skipDirs: new Set([...SKIP_DIRS, ...ALL_PROJECT_FOLDERS.keys()]), skipHidden: true,
-        accept: rel => MARKDOWN.test(rel), boundary: hasMarker,
-      }, budget, tally);
+      const walked = walkFiles(rootReal, rootReal, notesWalk(), budget, tally);
       const shown = withText ? walked.slice(0, REAL_LIMITS.pagesPerPlace) : walked;
       let added = 0;
       for (const f of shown) {
@@ -336,6 +346,68 @@ export function summarise(place: PlaceInternal, home: string, budget: Budget): {
       details: { path: read.place.path, folders: read.folders, topics: topicsOf(read.notes), notes: empty ? ['Nothing was found here.', ...words] : words },
     },
   };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------- the fingerprint of a read
+
+/** A place a person ticked, as the window holds it: only the three things the fingerprint needs. `path` is the one the window shows (`~` for the home folder). */
+export interface WatchedPlace { readonly id: string; readonly kind: RealPlaceKind; readonly path: string }
+
+/** The folder a shown path names: `~` and `~/..` are below the home folder, an absolute path is itself, anything else is nothing. */
+function folderOfShown(path: string, home: string): string | null {
+  if (path === '~') return home;
+  if (path.startsWith('~/')) return join(home, path.slice(2));
+  return isAbsolute(path) && !path.includes('\u0000') ? path : null;
+}
+
+/** The place a work or picked folder is, built from its path alone (its tool folders and config files, not the work folders below it). Null when the folder is not there. */
+function placeAt(dir: string, home: string, kind: RealPlaceKind): PlaceInternal | null {
+  const real = realFolderFollowing(dir);
+  if (real === null) return null;
+  const tally = newTally();
+  const homeReal = realFolderFollowing(home);
+  const { folders, files } = homeReal !== null && real === homeReal ? { folders: [], files: [] } : partsIn(real, listDir(real, tally, REAL_LIMITS.discoveryEntries + 1, real), real, tally);
+  return { id: placeId(kind, dir, [...folders, ...files].map(p => p.app)), kind, label: labelOfFolder(dir), root: dir, realRoot: real, folders, files };
+}
+
+/** One line for each file the reader would list in a place, with its size and change time, and one for each tool folder or config file that is gone. No file is opened. */
+function watchLines(place: PlaceInternal, budget: Budget, tally: Tally): string[] {
+  const out: string[] = [];
+  for (const folder of place.folders) {
+    if (realFolderFollowing(folder.abs) !== folder.abs) { out.push(`gone|${folder.name}`); continue; }
+    for (const f of walkFiles(folder.abs, folder.abs, folderWalk(folder, REAL_LIMITS.filesPerPlace), budget, tally)) out.push(`f|${folder.name}/${f.rel}|${f.size}|${f.mtimeMs}`);
+  }
+  for (const file of place.files) out.push(`h|${file.name}|${statLine(file.abs) ?? 'gone'}`);
+  if (place.kind !== 'home') {
+    if (realFolderFollowing(place.realRoot) !== place.realRoot) out.push('gone|root');
+    else for (const f of walkFiles(place.realRoot, place.realRoot, notesWalk(), budget, tally)) out.push(`n|${f.rel}|${f.size}|${f.mtimeMs}`);
+  }
+  return out;
+}
+
+/**
+ * What the watched places look like right now, as text: one line for each file the reader lists in them (its path below the place, its size and its change time), for each config
+ * file at the home folder (the same two facts), for each tool folder the home folder holds (whether or not it was ticked, so a new program shows), and for each place that is gone.
+ * It walks the folders exactly as a read does (`folderWalk`, `notesWalk`) but opens no file, so a change that keeps a file's size and change time is not seen. `complete` is false
+ * when the time or a count ran out before the walk ended: the text then holds the clock, so it matches nothing. Nothing is written. The caller hashes the text (main/scan-session.ts).
+ */
+export async function watchTextOf(home: string, watched: readonly WatchedPlace[], now: () => number = () => Date.now()): Promise<{ readonly text: string; readonly complete: boolean }> {
+  const budget = makeBudget(now), tally = newTally();
+  const homePlaces = findHomePlaces(home);
+  const lines: string[] = ['bowerloom-read-fingerprint-1', ...homePlaces.map(p => `roster|${p.id}`).sort()];
+  for (const w of [...watched].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
+    if (mustStop(budget, tally)) break;
+    const dir = folderOfShown(w.path, home);
+    const place = w.kind === 'home' ? homePlaces.find(p => p.id === w.id) ?? null : dir === null ? null : placeAt(dir, home, w.kind);
+    lines.push(`place|${w.id}`);
+    if (place === null) { lines.push('gone'); continue; }
+    lines.push(...watchLines(place, budget, tally));
+    await yieldToLoop();
+  }
+  // A cap that cuts a folder short (`truncated`) cuts it at the same place every time, so it does not make the walk incomplete; only the clock or the count of files does.
+  const complete = !tally.stoppedEarly;
+  if (!complete) lines.push(`unfinished|${now()}`);
+  return { text: lines.join('\n'), complete };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------- the scanner

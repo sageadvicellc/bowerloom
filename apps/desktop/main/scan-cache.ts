@@ -27,11 +27,15 @@ export interface ScanCache {
   /** Keeps the read. False when it was not kept (too big, or the folder could not be made safe), and the old read is gone or untouched as the comment above says. */
   save(scan: SavedScan): boolean;
   load(): LoadResult;
+  /** Removes the saved read, when it is a plain file of ours. Anything else there is left alone. Never throws. */
+  forget(): void;
 }
 
 export interface ScanCacheDeps { readonly stateRoot: string; /** For a test: a smaller cap than `SAVED_SCAN_MAX_BYTES`. */ readonly maxBytes?: number }
 
 const codeOf = (error: unknown): string => String((error as { code?: unknown } | null)?.code ?? '');
+/** Nothing is there: no file, or a path whose parent is not a folder. */
+const isAbsent = (error: unknown): boolean => codeOf(error) === 'ENOENT' || codeOf(error) === 'ENOTDIR';
 
 export function createScanCache(deps: ScanCacheDeps): ScanCache {
   const max = Math.min(deps.maxBytes ?? SAVED_SCAN_MAX_BYTES, SAVED_SCAN_MAX_BYTES), dir = cacheDir(deps.stateRoot), path = cachePath(deps.stateRoot);
@@ -66,10 +70,10 @@ export function createScanCache(deps: ScanCacheDeps): ScanCache {
   const load = (): LoadResult => {
     try {
       let folder;
-      try { folder = lstatSync(dir); } catch (error) { return codeOf(error) === 'ENOENT' ? { status: 'none' } : { status: 'damaged', why: 'unreadable' }; }
+      try { folder = lstatSync(dir); } catch (error) { return isAbsent(error) ? { status: 'none' } : { status: 'damaged', why: 'unreadable' }; }
       if (folder.isSymbolicLink() || !folder.isDirectory()) return { status: 'damaged', why: 'linked' };
       let file;
-      try { file = lstatSync(path); } catch (error) { return codeOf(error) === 'ENOENT' ? { status: 'none' } : { status: 'damaged', why: 'unreadable' }; }
+      try { file = lstatSync(path); } catch (error) { return isAbsent(error) ? { status: 'none' } : { status: 'damaged', why: 'unreadable' }; }
       if (file.isSymbolicLink() || !file.isFile()) return { status: 'damaged', why: 'linked' };
       if (file.size > max) return { status: 'damaged', why: 'too-big' };
       let fd: number;
@@ -95,5 +99,5 @@ export function createScanCache(deps: ScanCacheDeps): ScanCache {
     }
   };
 
-  return { save, load };
+  return { save, load, forget };
 }
