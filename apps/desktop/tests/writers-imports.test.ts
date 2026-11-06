@@ -50,7 +50,7 @@ const FS_ALLOWED: Readonly<Record<string, readonly string[]>> = {
   'main/main.ts': ['readFile'],
   'main/notes-report.ts': ['closeSync', 'constants', 'fchmodSync', 'fstatSync', 'lstatSync', 'mkdtempSync', 'openSync', 'readSync', 'realpathSync', 'rmSync', 'writeSync'],
   'main/real-fs.ts': ['closeSync', 'constants', 'fstatSync', 'lstatSync', 'opendirSync', 'openSync', 'readSync', 'realpathSync', 'statSync'],
-  'main/scan-cache.ts': ['chmodSync', 'closeSync', 'constants', 'fstatSync', 'fsyncSync', 'lstatSync', 'mkdirSync', 'openSync', 'readSync', 'readdirSync', 'renameSync', 'unlinkSync', 'writeSync'],
+  'main/scan-cache.ts': ['chmodSync', 'closeSync', 'constants', 'fstatSync', 'fsyncSync', 'lstatSync', 'mkdirSync', 'openSync', 'readSync', 'readdirSync', 'renameSync', 'rmSync', 'unlinkSync', 'writeSync'],
   'main/safe.ts': ['lstatSync', 'realpathSync'],
   'main/temp-data.mjs': ['chmodSync', 'existsSync', 'lstatSync', 'mkdtempSync', 'realpathSync', 'rmSync'],
 };
@@ -87,7 +87,7 @@ test('the files that can create, change or remove a file are the four listed, an
   assert.deepEqual(writers, [
     ['main/diagnostics-dialogs.ts', ['writeFileSync']],
     ['main/notes-report.ts', ['fchmodSync', 'mkdtempSync', 'rmSync', 'writeSync']],
-    ['main/scan-cache.ts', ['chmodSync', 'writeSync']],
+    ['main/scan-cache.ts', ['chmodSync', 'rmSync', 'writeSync']],
     ['main/temp-data.mjs', ['chmodSync', 'mkdtempSync', 'rmSync']],
   ]);
   // openSync can create a file when it is given the right flags: only the report copy and the saved read pass O_CREAT (tests/writers.test.ts holds their flags), and the reader passes read flags only (tests/real-static.test.ts holds the flags).

@@ -200,7 +200,7 @@ test('a file that is not believed is removed, so the next launch does not repeat
 test('a file past a cap is refused fast and told as damaged, but is left where it is: a wrong guess about a cap must never destroy a read', t => {
   const root = tempDir(t), cache = createScanCache({ stateRoot: root });
   mkdirSync(cacheDir(root), { mode: 0o700 });
-  const items = Array.from({ length: 100_000 }, (_, i) => ({ id: `i${i}`, kind: 'skill', name: 'n', scopeId: 's', foundAt: [], library: null, description: '' }));
+  const items = Array.from({ length: 100_000 }, (_, i) => ({ id: `i${i}`, kind: 'skill' as const, name: 'n', scopeId: 's', foundAt: [], library: null, description: '' }));
   writeFileSync(cachePath(root), JSON.stringify({ ...scan(), result: { ...result, world: { ...result.world, items } } }), { mode: 0o600 });
   const started = Date.now();
   assert.deepEqual(cache.load(), { status: 'damaged', why: 'too-big' });
@@ -248,4 +248,27 @@ test('forget says whether an older read is left: true when removed or never ther
   const elsewhere = tempDir(t), other = tempDir(t);
   symlinkSync(elsewhere, cacheDir(other));
   assert.equal(createScanCache({ stateRoot: other }).forget(), false, 'a link');
+});
+
+test('the saved read is checked again on its way out: a text the loader would refuse is not written, and an older read is not left to be shown', t => {
+  const root = tempDir(t), cache = createScanCache({ stateRoot: root });
+  cache.save(scan(1_000));
+  const items = Array.from({ length: 30_000 }, (_, i) => ({ id: `i${i}`, kind: 'skill' as const, name: 'n', scopeId: 's', foundAt: [], library: null, description: '' }));
+  assert.equal(cache.save({ ...scan(2_000), result: { ...result, world: { ...result.world, items } } }), false);
+  const back = cache.load();
+  assert.equal(back.status === 'ok' ? back.scan.savedAtMs : null, 1_000, 'the cache itself leaves the old file; the caller (keepRead) removes it');
+});
+
+test('a save keeps only the newest of the folders it moved aside, and leaves everything that is not one of them', t => {
+  const root = tempDir(t), cache = createScanCache({ stateRoot: root }), elsewhere = tempDir(t);
+  writeFileSync(join(elsewhere, 'keep'), 'keep');
+  // The oldest is a link, then three folders; the newest (by the time it was made) is the one that stays.
+  symlinkSync(elsewhere, join(root, 'last-read.bad.dddddddddddd'));
+  for (const name of ['last-read.bad.aaaaaaaaaaaa', 'last-read.bad.bbbbbbbbbbbb', 'last-read.bad.cccccccccccc']) { mkdirSync(join(root, name)); writeFileSync(join(root, name, 'x'), 'x'); }
+  mkdirSync(join(root, 'last-read.bad.NOTHEX')); mkdirSync(join(root, 'other'));
+  cache.save(scan());
+  const left = readdirSync(root).filter(n => n.startsWith('last-read.bad.')).sort();
+  assert.deepEqual(left, ['last-read.bad.NOTHEX', 'last-read.bad.cccccccccccc']);
+  assert.equal(readFileSync(join(elsewhere, 'keep'), 'utf8'), 'keep', 'a link is removed as a link, and its target is untouched');
+  assert.ok(existsSync(join(root, 'other')));
 });

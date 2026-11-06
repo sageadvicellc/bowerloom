@@ -9,7 +9,7 @@
  * Loading: the file is untrusted. A folder or file that is a link, a file that is not a plain file, a file over the cap, text that is not JSON, a version that is not ours and
  * a shape the window cannot draw each give a plain reason (`DamageWhy`) and never a crash. Nothing from the file is used unless every check passed.
  */
-import { closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, chmodSync, openSync, readSync, readdirSync, renameSync, unlinkSync, writeSync } from 'node:fs';
+import { closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, chmodSync, openSync, readSync, readdirSync, renameSync, rmSync, unlinkSync, writeSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { realToHarnessState } from '../shared/harness/real-map.js';
@@ -41,6 +41,8 @@ export interface ScanCacheDeps {
 }
 
 /** A temporary file of ours that a crash left, and how old it must be before a save removes it (a younger one may belong to a save in progress). */
+/** A folder of ours that a save moved aside, and how many are kept (the newest). */
+const ASIDE_NAME = /^last-read\.bad\.[0-9a-f]{12}$/, ASIDE_KEPT = 1;
 const TEMP_NAME = /^last-read\.\d+\.[0-9a-f]{12}\.tmp$/, TEMP_STALE_MS = 10 * 60 * 1000;
 
 const codeOf = (error: unknown): string => String((error as { code?: unknown } | null)?.code ?? '');
@@ -83,6 +85,21 @@ export function createScanCache(deps: ScanCacheDeps): ScanCache {
     } catch { return false; }
   };
 
+  /**
+   * Removes all but the newest of the folders a save moved aside (by the time they were moved), inside the state folder, when it is ours. A name must be exactly one of ours; each is
+   * looked at with `lstat` and removed as itself: a link is removed as a link and what it leads to is never touched.
+   */
+  const sweepAside = (): void => {
+    try {
+      const root = lstatSync(deps.stateRoot);
+      if (root.isSymbolicLink() || !root.isDirectory() || (uid !== undefined && root.uid !== uid)) return;
+      const aside = readdirSync(deps.stateRoot).filter(n => ASIDE_NAME.test(n)).map(n => ({ n, at: lstatSync(join(deps.stateRoot, n)) })).sort((a, b) => b.at.ctimeMs - a.at.ctimeMs);
+      for (const { n, at } of aside.slice(ASIDE_KEPT)) {
+        if (at.isSymbolicLink() || !at.isDirectory()) unlinkSync(join(deps.stateRoot, n)); else rmSync(join(deps.stateRoot, n), { recursive: true, force: true });
+      }
+    } catch { /* the sweep is a courtesy */ }
+  };
+
   /** Removes the temporary files of a save that a crash cut short. A young one may belong to a save that is running now, and a file with another name is not ours. */
   const sweep = (): void => {
     try {
@@ -99,6 +116,8 @@ export function createScanCache(deps: ScanCacheDeps): ScanCache {
     try {
       const text = JSON.stringify(scan);
       if (Buffer.byteLength(text) > max) { forget(); return false; }
+      // What is written must be what the loader will believe: a cap that does not fit shows now, as a save that was not kept, not at the next launch.
+      if (!parseSavedScan(text).ok) return false;
       // A folder that is a link, is not a folder or is another user's is never written in. When the state folder above is ours it is moved aside and ours is made in its place.
       try {
         const old = lstatSync(dir);
@@ -109,6 +128,7 @@ export function createScanCache(deps: ScanCacheDeps): ScanCache {
       if (folder.isSymbolicLink() || !folder.isDirectory() || (uid !== undefined && folder.uid !== uid)) return false;
       chmodSync(dir, 0o700);
       sweep();
+      sweepAside();
       temp = join(dir, `last-read.${process.pid}.${randomBytes(6).toString('hex')}.tmp`);
       const fd = openSync(temp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
       try {

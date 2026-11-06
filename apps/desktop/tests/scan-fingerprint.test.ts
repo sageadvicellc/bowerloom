@@ -3,7 +3,7 @@
 // the folders the reader never lists (a session log, a file next to the tool folders). Every folder here is a made-up temporary one.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createScanner } from '../main/real-scan.js';
 import type { WatchedPlace } from '../main/real-scan.js';
@@ -223,4 +223,13 @@ test('the fingerprint holds no name, no path and no text of the folders', async 
   put(join(other, '.claude', 'skills', 'secret-named-skill', 'SKILL.md'), '---\nname: x\n---\n');
   const found = (await createScanner({ home: other }).discover()).places;
   assert.doesNotMatch((await fingerprintOf(other, watchOf(found))).fingerprint, /secret/);
+});
+
+test('a parent folder that cannot be listed cannot be told apart from its neighbours, so the check says it is not complete', async t => {
+  const f = fixture(t), parent = join(f.home, 'pk', 'perm'), dir = join(parent, 'child');
+  put(join(dir, '.claude', 'skills', 'one', 'SKILL.md'), '---\nname: One\n---\n');
+  const found = (await createScanner({ home: f.home }).addFolder(dir)).places.filter(p => p.kind === 'picked');
+  assert.equal((await fingerprintOf(f.home, watchOf(found))).complete, true, 'listable: checked');
+  chmodSync(parent, 0o311);
+  try { assert.equal((await fingerprintOf(f.home, watchOf(found))).complete, false); } finally { chmodSync(parent, 0o755); }
 });

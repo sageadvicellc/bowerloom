@@ -386,9 +386,9 @@ function pathIsAmbiguous(dir: string, home: string, listed: Map<string, Map<stri
   for (const part of parts) {
     let shownCounts = listed.get(at);
     if (shownCounts === undefined) {
-      const list = listDir(at, newTally(), AMBIGUITY_ENTRIES + 1);
-      // A folder too big to list whole cannot be told apart from its neighbours.
-      if (list.length > AMBIGUITY_ENTRIES) return true;
+      const lost = newTally(), list = listDir(at, lost, AMBIGUITY_ENTRIES + 1);
+      // A folder too big to list whole, or one that will not list, cannot be told apart from its neighbours.
+      if (list.length > AMBIGUITY_ENTRIES || lost.unreadable > 0) return true;
       shownCounts = new Map<string, number>();
       for (const e of list) { const shown = shortPath(join(at, e.name), home); shownCounts.set(shown, (shownCounts.get(shown) ?? 0) + 1); }
       listed.set(at, shownCounts);

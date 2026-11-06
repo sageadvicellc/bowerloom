@@ -24,7 +24,8 @@ export interface SavedScan {
 }
 
 /** Why a saved read is not used. */
-export type DamageWhy = 'unreadable' | 'too-big' | 'linked' | 'wrong-version' | 'bad-shape' | 'not-private';
+/** `unsupported`: a shape this app does not make (a set of notes with an id another has, an agent that names a set of notes). The file is left where it is, as for `too-big` and `wrong-version`. */
+export type DamageWhy = 'unreadable' | 'too-big' | 'linked' | 'wrong-version' | 'bad-shape' | 'not-private' | 'unsupported';
 
 /** What main hands the window at launch. `saved` carries a read that passed every check. */
 export type SavedScanAnswer =
@@ -56,14 +57,15 @@ const KINDS: readonly string[] = ['home', 'project', 'picked'];
  * by the reader, and the window does work for each entry, so it is refused before anything walks it. Items are the files read (skills, agents, prompts: at most `itemsPerCall`), the
  * connections and hooks (a file of settings may hold up to `recordsPerFile`, so a further `itemsPerCall`), and one item for each set of notes.
  */
-const PLACES = REAL_LIMITS.places, SETS_PER_PLACE = TOPIC_SLICES + 1;
+const PLACES = REAL_LIMITS.places, SETS_PER_PLACE = TOPIC_SLICES + 1, PER_CALL = REAL_LIMITS.itemsPerCall + PLACES;
 export const SAVED_SCAN_CAPS = Object.freeze({
   places: PLACES,
   scopes: PLACES + 1,
   slices: PLACES * SETS_PER_PLACE,
   setsPerPlace: SETS_PER_PLACE,
   items: 2 * REAL_LIMITS.itemsPerCall + PLACES * SETS_PER_PLACE,
-  wikiPages: REAL_LIMITS.itemsPerCall, overrides: REAL_LIMITS.itemsPerCall, others: REAL_LIMITS.itemsPerCall, ages: REAL_LIMITS.itemsPerCall,
+  // The reader checks its budget after it has taken a page, so a read may hold a page or two past the per-call cap: a margin of one for each place.
+  wikiPages: PER_CALL, overrides: PER_CALL, others: PER_CALL, ages: PER_CALL,
   harnessPlaces: PLACES, interfaces: 20, versions: 1000, libraries: 1000,
   /** An agent's lists (skills it names, connections it uses): a front matter line, so a few hundred at most. */
   agentList: REAL_LIMITS.recordsPerFile,
@@ -115,7 +117,9 @@ function resultWhy(v: unknown): DamageWhy | null {
   const ids = new Set<string>(), perPlace = new Map<string, number>();
   for (const s of lists.slices) {
     const id = isObject(s) && typeof s.id === 'string' ? s.id : '', key = SET_ID.exec(id)?.[1];
-    if (key === undefined || ids.has(id) || !isObject(s) || !ruleOk(s.rule)) return 'bad-shape';
+    if (key === undefined || !isObject(s) || !ruleOk(s.rule)) return 'bad-shape';
+    // Two folder names can meet under the id's hash: the reader then makes two sets with one id. That is the reader's fault, not a broken file: it is refused and left.
+    if (ids.has(id)) return 'unsupported';
     ids.add(id);
     perPlace.set(key, (perPlace.get(key) ?? 0) + 1);
   }
@@ -137,7 +141,8 @@ function resultWhy(v: unknown): DamageWhy | null {
       if (!isArray(d.skillIds) || !isArray(d.toolAttachments)) return 'bad-shape';
       if (d.skillIds.length > C.agentList || d.toolAttachments.length > C.agentList) return 'too-big';
       if (!d.skillIds.every(x => typeof x === 'string') || !d.toolAttachments.every(t => isObject(t) && typeof t.toolId === 'string')) return 'bad-shape';
-      if (d.sliceId !== undefined && typeof d.sliceId !== 'string') return 'bad-shape';
+      // The reader never gives an agent a set of notes. The window looks the set up in the list of items for each agent, so a file full of them would make the window do heavy work.
+      if (d.sliceId !== undefined) return 'unsupported';
     }
   }
   if (sets > C.slices) return 'too-big';

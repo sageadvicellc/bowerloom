@@ -87,7 +87,7 @@ test('a file with 100,000 items is refused at once, before anything walks them',
 });
 
 test('each list is held to what the reader can make, and a list past its cap is told as too big (never as a wrong shape)', () => {
-  const over = REAL_LIMITS.itemsPerCall + 1, places = SAVED_SCAN_CAPS.scopes + 1;
+  const over = REAL_LIMITS.itemsPerCall + REAL_LIMITS.places + 1, places = SAVED_SCAN_CAPS.scopes + 1;
   assert.equal(parseSavedScan(withWorld(w => { w.items = Array.from({ length: SAVED_SCAN_CAPS.items }, (_, i) => item(i)); })).ok, true, 'at the cap');
   assert.deepEqual(parseSavedScan(withWorld(w => { w.items = Array.from({ length: SAVED_SCAN_CAPS.items + 1 }, (_, i) => item(i)); })), { ok: false, why: 'too-big' });
   assert.deepEqual(parseSavedScan(withWorld(w => { w.scopes = Array.from({ length: places }, (_, i) => ({ id: `s${i}`, kind: 'project', name: 'n', parentId: null, path: '~' })); })), { ok: false, why: 'too-big' });

@@ -122,11 +122,11 @@ test('a file past a cap is told as too big, and a wrong shape is told as a wrong
   assert.deepEqual(parseSavedScan(planted(w => { (w.items as unknown[])[0] = 5; })), { ok: false, why: 'bad-shape' });
 });
 
-test('agents at the edge of their list caps, all naming a set of notes, are mapped in a bounded time, or refused', () => {
+test('agents at the edge of their list caps are mapped in a bounded time, or refused', () => {
   const text = planted(w => {
-    const items = w.items as Record<string, unknown>[], sliceId = (w.slices as { id: string }[])[0]!.id;
+    const items = w.items as Record<string, unknown>[];
     for (let i = 0; i < 1_500; i += 1) {
-      items[i] = { id: `a${i}`, kind: 'agent', name: `agent ${i}`, scopeId: 's1', foundAt: [], library: null, extras: [], definition: { name: 'n', role: 'r', instructions: '', sliceId, skillIds: Array.from({ length: 200 }, (_, k) => `k${k}`), toolAttachments: Array.from({ length: 200 }, (_, k) => ({ toolId: `t${k}`, access: 'read-only' })) } };
+      items[i] = { id: `a${i}`, kind: 'agent', name: `agent ${i}`, scopeId: 's1', foundAt: [], library: null, extras: [], definition: { name: 'n', role: 'r', instructions: '', skillIds: Array.from({ length: 200 }, (_, k) => `k${k}`), toolAttachments: Array.from({ length: 200 }, (_, k) => ({ toolId: `t${k}`, access: 'read-only' })) } };
     }
   });
   const at = Date.now(), parsed = parseSavedScan(text), parseMs = ms(at);
@@ -136,4 +136,27 @@ test('agents at the edge of their list caps, all naming a set of notes, are mapp
   const mapMs = ms(mapAt);
   console.log(`planted agents file accepted (${Math.round(text.length / 1e6)} MB): parse ${parseMs} ms, map ${mapMs} ms`);
   assert.ok(mapMs < 2_000, `mapped in ${mapMs} ms`);
+});
+
+test('20,000 agents that each name a set of notes (the reader never does) are refused at once, and the file is not called a wrong shape', () => {
+  const text = planted(w => {
+    const items = w.items as Record<string, unknown>[], sliceId = (items.filter(x => x.kind === 'context-slice').pop() as { sliceId: string }).sliceId;
+    for (let i = 0; i < 20_000; i += 1) items[i] = { id: `a${i}`, kind: 'agent', name: `agent ${i}`, scopeId: 's1', foundAt: [], library: null, extras: [], definition: { name: 'n', role: 'r', instructions: '', sliceId, skillIds: [], toolAttachments: [] } };
+  });
+  const at = Date.now(), parsed = parseSavedScan(text), refusedMs = ms(at);
+  console.log(`20,000 agents with a set of notes: ${Math.round(text.length / 1e6)} MB, refused (${parsed.ok ? 'NOT refused' : parsed.why}) in ${refusedMs} ms`);
+  assert.deepEqual(parsed, { ok: false, why: 'unsupported' });
+  assert.ok(refusedMs < 1_000);
+});
+
+test('two sets of notes with one id (two folder names that meet under the id hash) are refused without being called a wrong shape, so the file is left', () => {
+  const text = planted(w => { const s = w.slices as { id: string }[]; s[1] = { ...s[1]!, id: s[0]!.id }; });
+  assert.deepEqual(parseSavedScan(text), { ok: false, why: 'unsupported' });
+});
+
+test('a read that has a few more pages or others than the per-call cap, as the reader can hand over, passes', () => {
+  const edge = REAL_LIMITS.itemsPerCall + 1;
+  const pages = (n: number): Record<string, unknown>[] => Array.from({ length: n }, (_, i) => ({ id: `p${i}`, title: 't', folder: 'f', type: 'note', tags: [], summary: '', bytes: 1, links: [], joinedSinceVisit: false }));
+  assert.equal(parseSavedScan(planted(w => { w.wikiPages = pages(edge); })).ok, true, 'one page past the cap');
+  assert.equal(parseSavedScan(planted(w => { w.wikiPages = pages(REAL_LIMITS.itemsPerCall + REAL_LIMITS.places + 1); })).ok, false, 'a margin, not a free-for-all');
 });

@@ -44,9 +44,12 @@ test('the app\'s source writes a file in only four modules of main: the usage su
   assert.match(kept, /openSync\(temp, constants\.O_WRONLY \| constants\.O_CREAT \| constants\.O_EXCL \| constants\.O_NOFOLLOW, 0o600\)/);
   assert.match(kept, /renameSync\(temp, path\)/);
   assert.equal((kept.match(/renameSync\(/g) ?? []).length, 2, 'the new file over the old, and a folder that is not ours moved aside in the state folder');
-  assert.equal((kept.match(/unlinkSync\(/g) ?? []).length, 3, 'the old read, the temporary file of a save that failed, and a temporary file of ours that a crash left (named by a strict pattern, and only when old)');
+  assert.equal((kept.match(/unlinkSync\(/g) ?? []).length, 4, 'the old read, the temporary file of a save that failed, a temporary file of ours that a crash left (named by a strict pattern, and only when old), and a link moved aside earlier');
+  assert.equal((kept.match(/\brmSync\(/g) ?? []).length, 1, 'one removal of a folder: an older folder this module moved aside, inside the state folder, by an exact name');
+  assert.match(kept, /const ASIDE_NAME = \/\^last-read\\\.bad\\\.\[0-9a-f\]\{12\}\$\//);
+  assert.match(kept, /rmSync\(join\(deps\.stateRoot, n\), \{ recursive: true, force: true \}\)/);
   assert.match(kept, /const TEMP_NAME = \/\^last-read\\\.\\d\+\\\.\[0-9a-f\]\{12\}\\\.tmp\$\//);
-  assert.doesNotMatch(kept, /\b(writeFileSync|rmSync|copyFileSync|cpSync|symlinkSync|appendFileSync|rmdirSync)\b/);
+  assert.doesNotMatch(kept, /\b(writeFileSync|copyFileSync|cpSync|symlinkSync|appendFileSync|rmdirSync)\b/);
   assert.doesNotMatch(kept, /homedir|process\.cwd|tmpdir/, 'no path outside the state root');
 });
 
