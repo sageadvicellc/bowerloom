@@ -61,8 +61,8 @@ test('a pin pruned after the fetch: fix for a real rerun, none for words', t => 
 
 // Round 14 of the reviews of PR 101: the up --team rerun is marked when applyRerun builds it; its words fallback is not.
 test('applyRerun marks the up --team command and the apply command, never their words', () => {
-  assert.equal(runnable(applyRerun({ team: 'research', harnesses: ['claude', 'codex'], frozen: false })), true);
-  assert.equal(interrupted([], ['a'], applyRerun({ team: 'research', harnesses: ['claude', 'codex'], frozen: false })).fix, 'bowerloom up --team research');
-  assert.equal(runnable(applyRerun({ harnesses: ['claude'], frozen: true })), true);
-  assert.equal(runnable(applyRerun({ team: 'a b', harnesses: ['claude', 'codex'] })), false);
+  assert.equal(runnable(applyRerun({ team: 'research', engines: ['claude-code', 'codex'], frozen: false })), true);
+  assert.equal(interrupted([], ['a'], applyRerun({ team: 'research', engines: ['claude-code', 'codex'], frozen: false })).fix, 'bowerloom up --team research');
+  assert.equal(runnable(applyRerun({ engines: ['claude-code'], frozen: true })), true);
+  assert.equal(runnable(applyRerun({ team: 'a b', engines: ['claude-code', 'codex'] })), false);
 });

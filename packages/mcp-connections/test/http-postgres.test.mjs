@@ -59,11 +59,11 @@ test('real HTTPS discovery uses durable PostgreSQL approval with synthetic accou
       currentScope={workspaceId:'synthetic',runId:id,taskId:'discovery'};catalogPage=0;
       const proposal=createDiscoveryProposal({scope:currentScope,requestId:id,ownerEpoch:1,input:source,timeoutMs:5000,
         effect:{kind:'streamable-http',endpoint,authBindingRevision:planMcpConnection(source).bindingRevision}});
-      const now=Date.now(),state=createDiscoveryAuthorityState(proposal,{scope:currentScope,ownerSubject:'hanna-dummy',ownerEpoch:1,approverSubjects:['hanna-dummy'],readyAtMs:now-100,leaseExpiresAtMs:now+60000,revoked:false});
+      const now=Date.now(),state=createDiscoveryAuthorityState(proposal,{scope:currentScope,ownerSubject:'owner-dummy',ownerEpoch:1,approverSubjects:['owner-dummy'],readyAtMs:now-100,leaseExpiresAtMs:now+60000,revoked:false});
       await store.seed(state);let credentialReads=0;
       const open=createMcpHttpDiscoveryFactory({loopbackTls:{endpoint,ca:trustedCa},requestTimeoutMs:2000,sessionTimeoutMs:5000,
         resolveCredential:async request=>{credentialReads++;assert.ok(Object.isFrozen(request));const value={...request,token:opaqueToken,expiresAtMs:Date.now()+30000,revoked:false};changeCredential(value,credentialReads);return value;}});
-      const controller=new DiscoveryAuthorityController({store,open,identity:{async authenticate(value){assert.equal(value,'synthetic-owner');return {subject:'hanna-dummy',proofRef:'synthetic:proof',expiresAtMs:Date.now()+60000};}}});
+      const controller=new DiscoveryAuthorityController({store,open,identity:{async authenticate(value){assert.equal(value,'synthetic-owner');return {subject:'owner-dummy',proofRef:'synthetic:proof',expiresAtMs:Date.now()+60000};}}});
       await controller.approve(currentScope,{revision:proposal.revision,expiresAtMs:now+30000},'synthetic-owner');
       return {controller,scope:currentScope,credentialReads:()=>credentialReads};
     }

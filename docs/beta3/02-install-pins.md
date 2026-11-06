@@ -4,8 +4,8 @@
 
 - Source: found in the 0.7.0-beta.2 install proof. It is Track B and Track C of the beta.3 plan. There is no GitHub issue yet. The builder opens one and links it in the pull request.
 - Decisions:
-  - Hanna's decision 5 is in https://github.com/sageadvicellc/bowerloom/issues/84#issuecomment-6332928335. It chose pins first and bundling only if nested packages still drift.
-  - Hanna's decision 7 is in https://github.com/sageadvicellc/bowerloom/issues/84#issuecomment-6333675636. It replaces the "only if" part of decision 5. The tarball bundles the whole runtime closure. Section 6.4 carries it out.
+  - The maintainer's decision 5 is in https://github.com/sageadvicellc/bowerloom/issues/84#issuecomment-6332928335. It chose pins first and bundling only if nested packages still drift.
+  - The maintainer's decision 7 is in https://github.com/sageadvicellc/bowerloom/issues/84#issuecomment-6333675636. It replaces the "only if" part of decision 5. The tarball bundles the whole runtime closure. Section 6.4 carries it out.
   - The owner's decision on the social preview text came with the beta.3 task brief. Section 2.2 repeats it so this spec stands alone.
 - Lane: 2. This is the first spec of lane 2. Specs 03, 04, 06, 07, 08, and 09 follow it.
 - Branch: `beta3/02-install-pins`, from `release/0.7.0-beta.3`.
@@ -214,11 +214,11 @@ The first rows are errors thrown by `pack.mjs`. They are not CLI refusal codes a
 | `Pinned dependency differs from the lock: <name>` | A direct dependency differs from the version of its lock entry, or has no entry. | Run `npm install` in the repository to refresh the lock, then pack again. |
 | `Bundle cache entry missing: <path>` | The npm cache has no content for the entry's integrity value. | Run `npm ci` in the repository to fill the npm cache, then pack again. |
 | `Bundle integrity mismatch: <path>` | The lock integrity value is not a single `sha512` value, or the cache content for an entry does not hash to it. | Run `npm cache verify`, then `npm ci`, then pack again. |
-| `Bundle tarball unsafe: <P>/<raw path>` | A bundled tarball holds an entry that is not a file or folder, a path that is absolute or has `..`, a tar warning, or more than 8192 entries. | Report the package to Hanna. Do not pack. |
-| `Bundle exceeds 1 GiB` | The extracted bundle is larger than `maxBundleBytes` (1 GiB by default). | Report the size to Hanna. |
-| `Bundled license not allowed: <name> <license>` | `collect` with `bundle` true found a lock entry whose license fails the rule of section 4.6. It names the first such entry in sorted path order. | Report the package and its license to Hanna. Do not widen the list. |
-| `Bundle packed files differ from the staged bundle` | The tarball holds a bundled file that the stage does not, or lacks the `package.json` of a lock entry. | Report to Hanna. Keep the stage folder for diagnosis. |
-| `npm pack output exceeds 64 MiB` | The tarball lists too many files for the reader. | Report the file count to Hanna. |
+| `Bundle tarball unsafe: <P>/<raw path>` | A bundled tarball holds an entry that is not a file or folder, a path that is absolute or has `..`, a tar warning, or more than 8192 entries. | Report the package to the maintainer. Do not pack. |
+| `Bundle exceeds 1 GiB` | The extracted bundle is larger than `maxBundleBytes` (1 GiB by default). | Report the size to the maintainer. |
+| `Bundled license not allowed: <name> <license>` | `collect` with `bundle` true found a lock entry whose license fails the rule of section 4.6. It names the first such entry in sorted path order. | Report the package and its license to the maintainer. Do not widen the list. |
+| `Bundle packed files differ from the staged bundle` | The tarball holds a bundled file that the stage does not, or lacks the `package.json` of a lock entry. | Report to the maintainer. Keep the stage folder for diagnosis. |
+| `npm pack output exceeds 64 MiB` | The tarball lists too many files for the reader. | Report the file count to the maintainer. |
 | `npmCache must be an absolute path` | `npmCache` or `--npm-cache` is a relative path. | Pass an absolute path. |
 | `12 GiB reserve plus <bound> GiB bound required` | The disk guard found too little free space at a parent folder. | Free space, or choose another parent. |
 | `Installed packages differ from the shrinkwrap: <list>` | Proof tests only. The message lists every `name@version` difference. | Read the list, then see section 12. |
@@ -291,9 +291,9 @@ Byte determinism. Repeated packing of the same input must give the same tarball 
 - The extraction input is fixed by the lock integrity values. A different cache gives either the same bytes or a failure.
 - The existing test (line 54) packs twice and compares hashes. It keeps doing that with the bundle.
 
-Disk guard. See section 6.1 (`requireFreeSpace`). The extraction cap and the disk bound both use `maxBundleBytes`, which is 1 GiB by default. The stage parent needs `12 GiB + 2 * (maxBundleBytes + 0.05 GiB)` free. The output parent needs `12 GiB + maxBundleBytes + 0.05 GiB`. I did not measure the real unpacked size. The builder measures `extractedBytes` and the tarball size, writes both in the pull request, and tells Hanna if the bundle is over 400 MiB.
+Disk guard. See section 6.1 (`requireFreeSpace`). The extraction cap and the disk bound both use `maxBundleBytes`, which is 1 GiB by default. The stage parent needs `12 GiB + 2 * (maxBundleBytes + 0.05 GiB)` free. The output parent needs `12 GiB + maxBundleBytes + 0.05 GiB`. I did not measure the real unpacked size. The builder measures `extractedBytes` and the tarball size, writes both in the pull request, and tells the maintainer if the bundle is over 400 MiB.
 
-No fallback is built. If `content-v2` is missing or an npm version changes the layout, pack throws `Bundle cache entry missing` for the first path. Stop and report the npm version and that path to Hanna.
+No fallback is built. If `content-v2` is missing or an npm version changes the layout, pack throws `Bundle cache entry missing` for the first path. Stop and report the npm version and that path to the maintainer.
 
 ### 6.5 Other consumers of the packed manifest and install
 
@@ -301,7 +301,7 @@ No fallback is built. If `content-v2` is missing or an npm version changes the l
 - `tools/cli-distribution/prepare-installed-container.mjs:25,31` runs a second offline tarball install, with `npm_config_offline=true` (line 25), into the proof folder. With the bundle it needs no cache.
 - Run `node --test tools/cli-distribution/test/installed-container.test.mjs` before and after the change. Record both results in the pull request. If it fails on a missing cache entry, stop and report the entry. Do not run it online.
 - The existing offline install proof (`pack.test.mjs:54-115`, gated by `BOWERLOOM_PACK_INSTALL_PROOF=1`) keeps `npm_config_offline`. Change it to call `pack` with `bundle: true` and `npmCache`. If it fails after this change, stop and report the missing cache entries. Never run it online. Change its timeout to 600000 ms (section 6.2).
-- `tools/cli-distribution/prepare-installed-container.mjs:12` and `tools/cli-distribution/installed-container-guard.mjs:40` refuse an artifact over 64 MiB. If the bundled tarball is larger than 64 MiB, stop and report the size to Hanna.
+- `tools/cli-distribution/prepare-installed-container.mjs:12` and `tools/cli-distribution/installed-container-guard.mjs:40` refuse an artifact over 64 MiB. If the bundled tarball is larger than 64 MiB, stop and report the size to the maintainer.
 - `tools/cli-distribution/installed-codex-guard.mjs:17` reads `DISTRIBUTION.json` up to 1 MiB. The bundle adds about 40 KB to it (148 entries of path, version, integrity, and license). Check the size of the new file against the limit.
 
 ## 7. Edge cases
@@ -447,24 +447,24 @@ Before any change to `pack.mjs`, record a baseline as evidence, not as a test. P
 
 ## 12. Unverified items
 
-1. **A tarball install ignores the packed shrinkwrap.** I read this from the npm source (section 2.1). I did not run an install. The online proofs settle it. After the change, a bundled tarball does not depend on this reading, because every package is inside it. Fallback: none needed if online test 1 passes. If a bundled tarball still fetches or drifts, stop and report the exact differences to Hanna.
-2. **A bundled tarball installs offline with an empty cache.** I did not run it. npm may still ask for metadata of bundled packages. The source skips the edges that a package lists in its own `bundleDependencies` (`build-ideal-tree.js:1137-1146`), which points to no fetch, but that was read, not run. Offline test 2 settles it. Fallback if it fails: keep the bundle, drop offline test 2, and make online test 4 the only no-fetch assertion. Tell Hanna that the tarball needs the network for metadata. Then remove the second sentence of the `releases.md` line (`The file carries its dependencies, so it installs with no network and no npm cache.`) and the words `so the tarball installs offline with an empty npm cache` from README line 35.
+1. **A tarball install ignores the packed shrinkwrap.** I read this from the npm source (section 2.1). I did not run an install. The online proofs settle it. After the change, a bundled tarball does not depend on this reading, because every package is inside it. Fallback: none needed if online test 1 passes. If a bundled tarball still fetches or drifts, stop and report the exact differences to the maintainer.
+2. **A bundled tarball installs offline with an empty cache.** I did not run it. npm may still ask for metadata of bundled packages. The source skips the edges that a package lists in its own `bundleDependencies` (`build-ideal-tree.js:1137-1146`), which points to no fetch, but that was read, not run. Offline test 2 settles it. Fallback if it fails: keep the bundle, drop offline test 2, and make online test 4 the only no-fetch assertion. Tell the maintainer that the tarball needs the network for metadata. Then remove the second sentence of the `releases.md` line (`The file carries its dependencies, so it installs with no network and no npm cache.`) and the words `so the tarball installs offline with an empty npm cache` from README line 35.
 3. **The `--loglevel=http` output.** I did not check what npm prints. If it does not name the registry host, replace online test 4 with a run through a local HTTP proxy that counts requests. Fallback: drop test 4 and rely on offline test 2.
 4. **Verified:** `npm-packlist` excludes the root `node_modules` (`lib/index.js:288`) and adds the bundle after the root walk (`lib/index.js:357-441`). No fallback.
 5. **`.package-lock.json` may omit bundled entries.** Online test 1 builds a second multiset from a directory walk for this reason. If the file omits them, the walk is the only source, and that is fine.
-6. **Registry install of a bundled package with a shrinkwrap.** I did not test it, because it needs a published package. Check after the first `beta` publication by installing `bowerloom@beta` into a fresh prefix and comparing versions as in online test 1. This is a release step for Hanna, because the builder never publishes.
+6. **Registry install of a bundled package with a shrinkwrap.** I did not test it, because it needs a published package. Check after the first `beta` publication by installing `bowerloom@beta` into a fresh prefix and comparing versions as in online test 1. This is a release step for the maintainer, because the builder never publishes.
 7. **The tarball size and `extractedBytes`.** Unmeasured. The 1 GiB cap and the README figures (section 9) are placeholders until the builder measures them.
 8. **Whether anything reads the ten-entry `DISTRIBUTION.json` dependency list.** Check with `grep -rn "DISTRIBUTION.json" --exclude-dir=node_modules .`. Fallback: update the reader to accept the longer list.
-9. **The `unverified` list in `DISTRIBUTION.json` (`pack.mjs:158`) names `global installation`.** Online test 2 covers it. Leave the list as it is until Hanna accepts a recorded proof run. Do not edit it in this pull request.
-10. **The container proof still passes.** `installed-container-guard.mjs:46-57` and `prepare-installed-container.mjs:25,31` were read, not run with a bundle. Section 6.5 and build step 7 settle it. Fallback: report the failing check to Hanna.
+9. **The `unverified` list in `DISTRIBUTION.json` (`pack.mjs:158`) names `global installation`.** Online test 2 covers it. Leave the list as it is until the maintainer accepts a recorded proof run. Do not edit it in this pull request.
+10. **The container proof still passes.** `installed-container-guard.mjs:46-57` and `prepare-installed-container.mjs:25,31` were read, not run with a bundle. Section 6.5 and build step 7 settle it. Fallback: report the failing check to the maintainer.
 
-## 13. New decision for Hanna
+## 13. New decision for the maintainer
 
 Decision 7 settled the bundle. One item is pending.
 
 ### 13.1 License gate for bundled packages (pending, default A)
 
-Hanna's decision on the license gate is posted at https://github.com/sageadvicellc/bowerloom/issues/84#issuecomment-6333898175, with default A. This spec builds A: the bundle carries only packages whose lock `license` passes the rule of section 4.6 against the list of seven ids, `bundle.entries` records each license, and the list is never widened in code or test. The pack tool enforces the rule in `collect`, and test 23 runs it on the real repository. The default applies 8 hours after posting if Hanna does not reply. It blocks build step 4 and tests 23 to 33.
+The maintainer's decision on the license gate is posted at https://github.com/sageadvicellc/bowerloom/issues/84#issuecomment-6333898175, with default A. This spec builds A: the bundle carries only packages whose lock `license` passes the rule of section 4.6 against the list of seven ids, `bundle.entries` records each license, and the list is never widened in code or test. The pack tool enforces the rule in `collect`, and test 23 runs it on the real repository. The default applies 8 hours after posting if the maintainer does not reply. It blocks build step 4 and tests 23 to 33.
 
 ### 13.2 Settled: `type-fest`
 

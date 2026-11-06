@@ -1,5 +1,5 @@
 /**
- * `skills add` keeps the bytes it verified in the machine's skills cache (Hanna, global skill cache, phase 2), so a
+ * `skills add` keeps the bytes it verified in the machine's skills cache (the maintainer, global skill cache, phase 2), so a
  * later `skills sync` of that pin needs no second download and works with --offline.
  *
  * It runs after skills.json is written, and only on bytes the resolver already verified against the new entry. It

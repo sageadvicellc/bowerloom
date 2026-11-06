@@ -2,7 +2,7 @@
 
 The founder approved the transition plan. This round turns the brief into a tested specification and a reviewable development queue.
 
-Trellis is the open-source framework. Sagespec is Hanna's flagship product built on Trellis to automate her entire business. The delivery order is Codex-first `v0.7-alpha`, then `v0.7-beta` with Codex and Claude Code. Sagespec product development follows accepted beta. Trellis continues through `v1-beta` and `v1-rc`. Alpha enables Hanna to test and establish a baseline. A marketing and social team can prepare its campaign without beta as a dependency. This round records the milestones and does not start either team.
+Trellis is the open-source framework. Sagespec is the maintainer's flagship product built on Trellis to automate the maintainer's entire business. The delivery order is Codex-first `v0.7-alpha`, then `v0.7-beta` with Codex and Claude Code. Sagespec product development follows accepted beta. Trellis continues through `v1-beta` and `v1-rc`. Alpha enables the maintainer to test and establish a baseline. A marketing and social team can prepare its campaign without beta as a dependency. This round records the milestones and does not start either team.
 
 ## Expected results
 
@@ -15,7 +15,7 @@ This round produces these results:
 5. Feasibility results for workflow execution, knowledge retrieval, and capacity control, with explicit gaps where tests cannot run.
 6. A draft v1 specification, bounded alpha and beta scopes, and an ordered implementation queue.
 
-Hanna selected `sageadvicellc/trellis` as the framework monorepo on October 1, 2026. The working branch remains `feature/trellis-v1`. The remaining specification choices stay open. The dispersed framework repositories retire after their replacements pass migration and cutover gates.
+The maintainer selected `sageadvicellc/trellis` as the framework monorepo on October 1, 2026. The working branch remains `feature/trellis-v1`. The remaining specification choices stay open. The dispersed framework repositories retire after their replacements pass migration and cutover gates.
 
 ## Operating boundaries
 

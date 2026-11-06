@@ -25,7 +25,7 @@ export interface NpmAcquisitionRequest {
   license: { spdx: SkillLicense; origin: 'included'; files: string[] };
 }
 export interface NpmAcquisitionPlan {
-  format: 'bowerloom/npm-acquisition-plan/v1beta1'; policy: typeof NPM_ACQUISITION_POLICY; parser: 'tar@7.5.20/Header';
+  format: 'bowerloom/npm-acquisition-plan/v1beta1'; policy: typeof NPM_ACQUISITION_POLICY; parser: 'tar@7.5.22/Header';
   request: NpmAcquisitionRequest; cache: SkillCacheBinding;
   metadataUrl: string; archiveUrl: string; limits: typeof NPM_LIMITS; revision: string;
 }
@@ -91,7 +91,7 @@ function planRequest(requestValue: unknown, bindingValue: unknown): Readonly<Npm
   request.license.files.sort(compare);
   const cache = validateCacheBinding(bindingValue);
   const base = request.package.split('/').at(-1)!;
-  const body: Omit<NpmAcquisitionPlan, 'revision'> = { format: 'bowerloom/npm-acquisition-plan/v1beta1' as const, policy: NPM_ACQUISITION_POLICY, parser: 'tar@7.5.20/Header' as const, request, cache, metadataUrl: `https://registry.npmjs.org/${request.package}/${request.version}`, archiveUrl: `https://registry.npmjs.org/${request.package}/-/${base}-${request.version}.tgz`, limits: NPM_LIMITS };
+  const body: Omit<NpmAcquisitionPlan, 'revision'> = { format: 'bowerloom/npm-acquisition-plan/v1beta1' as const, policy: NPM_ACQUISITION_POLICY, parser: 'tar@7.5.22/Header' as const, request, cache, metadataUrl: `https://registry.npmjs.org/${request.package}/${request.version}`, archiveUrl: `https://registry.npmjs.org/${request.package}/-/${base}-${request.version}.tgz`, limits: NPM_LIMITS };
   npmCheck(Buffer.byteLength(JSON.stringify(body)) <= NPM_LIMITS.planBytes, 'NPM_INPUT');
   return freezeSkillData({ ...body, revision: revisionOf(body) });
 }

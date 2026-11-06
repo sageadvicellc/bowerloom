@@ -50,7 +50,7 @@ const c=JSON.parse(readFileSync(process.argv[2],'utf8'));
 const secrets=JSON.parse(readFileSync(process.env.BOWERLOOM_PROOF_CREDENTIALS,'utf8'));
 const pool=new pg.Pool({...c.connection,password:secrets.POSTGRES_PASSWORD,max:2});pool.on('error',()=>{});
 const store=new PostgresDiscoveryAuthorityStore(pool,{schema:c.schema});
-const controller=new DiscoveryAuthorityController({store,identity:{async authenticate(){return {subject:'hanna-dummy',proofRef:'synthetic:proof',expiresAtMs:Date.now()+60000};}},
+const controller=new DiscoveryAuthorityController({store,identity:{async authenticate(){return {subject:'owner-dummy',proofRef:'synthetic:proof',expiresAtMs:Date.now()+60000};}},
 open:createMcpStdioDiscoveryFactory({trustedLocalServerOnly:true,requestTimeoutMs:10000,sessionTimeoutMs:c.sessionTimeoutMs,cleanupTimeoutMs:1000,
 resolveSecret:async ref=>{const state=await store.read(c.scope);if(state.status!=='IN_FLIGHT'||state.approval.revision!==c.revision)throw Error('SYNTHETIC_APPROVAL_MISSING');return c.log;}})});
 try {await controller.dispatch(c.scope,'synthetic-owner');writeFileSync(c.result,JSON.stringify({unexpectedSuccess:true}));}
@@ -68,8 +68,8 @@ finally {await pool.end();}
    const input={declaration:read('declaration'),binding:read('binding'),catalog:read('catalog'),synthetic:true};
    const refs=[{environmentVariable:'SYNTHETIC_LOG',reference:'secret-ref:synthetic/log'}];Object.assign(input.binding.transport,{executable,workingDirectory:directory,secretReferences:refs});input.catalog.bindingRevision=mcpBindingRevision(input.binding);
    const proposal=createDiscoveryProposal({scope,requestId:mode,ownerEpoch:1,input,timeoutMs:10000,effect:{kind:'stdio',executable:{path:executable,digest:exeDigest},entrypoints:[{path:server,digest:hash(server)}],args:[server],cwd:directory,environment:{inherit:false,secretReferences:refs}}});
-   const now=Date.now();await store.seed(createDiscoveryAuthorityState(proposal,{scope,ownerSubject:'hanna-dummy',ownerEpoch:1,approverSubjects:['hanna-dummy'],readyAtMs:now-100,leaseExpiresAtMs:now+60000,revoked:false}));
-   const observer=new DiscoveryAuthorityController({store,identity:{async authenticate(){return {subject:'hanna-dummy',proofRef:'synthetic:proof',expiresAtMs:Date.now()+60000};}},open:async()=>{opened++;throw Error('SYNTHETIC_REPLAY_FORBIDDEN');}});
+   const now=Date.now();await store.seed(createDiscoveryAuthorityState(proposal,{scope,ownerSubject:'owner-dummy',ownerEpoch:1,approverSubjects:['owner-dummy'],readyAtMs:now-100,leaseExpiresAtMs:now+60000,revoked:false}));
+   const observer=new DiscoveryAuthorityController({store,identity:{async authenticate(){return {subject:'owner-dummy',proofRef:'synthetic:proof',expiresAtMs:Date.now()+60000};}},open:async()=>{opened++;throw Error('SYNTHETIC_REPLAY_FORBIDDEN');}});
    await observer.approve(scope,{revision:proposal.revision,expiresAtMs:now+30000},'synthetic-owner');
    const settings=join(directory,mode+'.json');writeFileSync(settings,JSON.stringify({connection,schema,scope,revision:proposal.revision,log,result,sessionTimeoutMs:mode==='controller-suspended'?2000:10000}),{mode:0o600});
    const parent=spawn(executable,[parentFile,settings],{env:{BOWERLOOM_PROOF_CREDENTIALS:credentialsPath},stdio:'ignore'});

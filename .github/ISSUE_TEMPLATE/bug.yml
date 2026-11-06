@@ -1,0 +1,49 @@
+name: Bug
+description: Bowerloom did something wrong, stopped with an error, or closed.
+title: "[Bug]: "
+labels: ["bug", "needs:triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the report. Attach the diagnostic bundle so that we can reproduce the problem.
+
+        To make the bundle, run `bowerloom report` in a terminal, or choose Help > Report a problem in the app. Read the bundle before you paste it. It holds versions, error codes, and short log lines. It does not hold file contents, secrets, or your home folder path.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Tell us what you saw. Include the error code if Bowerloom showed one.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the commands or clicks, in order.
+      placeholder: |
+        1. Run `bowerloom ...`
+        2. ...
+    validations:
+      required: false
+  - type: textarea
+    id: bundle
+    attributes:
+      label: Diagnostic bundle
+      description: Paste the output of `bowerloom report`, or keep the bundle that the app filled in.
+      render: text
+    validations:
+      required: true
+  - type: checkboxes
+    id: review
+    attributes:
+      label: Privacy check
+      options:
+        - label: I read the bundle and the text above, and they hold nothing private.
+          required: true

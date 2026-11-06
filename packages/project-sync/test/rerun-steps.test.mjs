@@ -19,14 +19,14 @@ async function written(t) {
   const repo = pushStore(w); writeLock(w, { skills: [lockOfRepo(w, repo, 'skill', 'house-style')] }); dropStore(w);
   return { w, repo };
 }
-const applyInput = (w, extra = {}) => ({ project: w.project(), stateRoot: w.stateRoot, home: w.home, harnesses: ['claude', 'codex'], team: null, frozen: true, ...extra });
+const applyInput = (w, extra = {}) => ({ project: w.project(), stateRoot: w.stateRoot, home: w.home, engines: ['claude-code', 'codex'], team: null, frozen: true, ...extra });
 const syncInput = (w, extra = {}) => ({ project: w.project(), stateRoot: w.stateRoot, home: w.home, team: null, offline: false, ...extra });
 
 test('a stop during a store fetch under apply --frozen names bowerloom apply --frozen, with its flags', async t => {
   const { w, repo } = await written(t), controller = new AbortController();
-  const input = applyInput(w, { harnesses: ['claude'], maxGithubRequests: 50 }), plan = await planProjectApply(input);
+  const input = applyInput(w, { engines: ['claude-code'], maxGithubRequests: 50 }), plan = await planProjectApply(input);
   await assert.rejects(applyProjectApply(input, plan.revision, controller.signal, { acquirer: fakeAcquirer([]), storeTransport: storeTransport(repo), beforeStoreRead: () => controller.abort() }),
-    e => e.code === 'SKILLS_SYNC_INTERRUPTED' && e.next === 'Run bowerloom apply --harness claude --frozen --max-github-requests 50 again.' && e.fix === 'bowerloom apply --harness claude --frozen --max-github-requests 50' && e.message.endsWith('It stopped while fetching house-style, before any change to the project. Run bowerloom apply --harness claude --frozen --max-github-requests 50 again.'));
+    e => e.code === 'SKILLS_SYNC_INTERRUPTED' && e.next === 'Run bowerloom apply --harness claude-code --frozen --max-github-requests 50 again.' && e.fix === 'bowerloom apply --harness claude-code --frozen --max-github-requests 50' && e.message.endsWith('It stopped while fetching house-style, before any change to the project. Run bowerloom apply --harness claude-code --frozen --max-github-requests 50 again.'));
 });
 
 test('a stop during a store fetch under skills sync --frozen names bowerloom skills sync --frozen', async t => {
@@ -44,9 +44,9 @@ test('a stop before the first item under bowerloom apply names bowerloom apply t
 });
 
 test('the rerun of a run holds each flag that changes its plan', () => {
-  assert.equal(applyRerun({ harnesses: ['claude', 'codex'] }), 'bowerloom apply');
-  assert.equal(applyRerun({ harnesses: ['codex'], frozen: true, allow: [`reviewer:${'a'.repeat(64)}`], maxGithubRequests: 9 }), `bowerloom apply --harness codex --allow-agent reviewer:${'a'.repeat(64)} --frozen --max-github-requests 9`);
-  assert.equal(applyRerun({ harnesses: ['claude', 'codex'], team: 'research' }), 'bowerloom up --team research');
+  assert.equal(applyRerun({ engines: ['claude-code', 'codex'] }), 'bowerloom apply');
+  assert.equal(applyRerun({ engines: ['codex'], frozen: true, allow: [`reviewer:${'a'.repeat(64)}`], maxGithubRequests: 9 }), `bowerloom apply --harness codex --allow-agent reviewer:${'a'.repeat(64)} --frozen --max-github-requests 9`);
+  assert.equal(applyRerun({ engines: ['claude-code', 'codex'], team: 'research' }), 'bowerloom up --team research');
   assert.equal(syncRerun({ offline: false, team: null }), 'bowerloom skills sync');
   assert.equal(syncRerun({ offline: true, team: 'research', frozen: true, maxGithubRequests: 3 }), 'bowerloom skills sync --offline --team research --frozen --max-github-requests 3');
   const e = interrupted(['a'], ['b'], 'bowerloom skills sync --frozen');

@@ -1,0 +1,7 @@
+{
+  "format": "bowerloom/kit/v1beta1",
+  "id": "wiki-keeper",
+  "name": "Notes keeper",
+  "description": "An agent that looks after a folder of notes. It adds sources, files pages, answers questions with citations, checks the notes for problems, and writes a tidy-up report.",
+  "version": "0.1.0"
+}

@@ -9,6 +9,7 @@ import { createHash } from 'node:crypto';
 import { parseRoutineYaml, exportRoutineYaml, loadRoutineFiles, RoutineFilesError } from '../../../dist/packages/routines/src/files.js';
 import { planRoutine, validateRoutine } from '../../../dist/packages/routines/src/index.js';
 import { scaffold } from '../../../dist/packages/startup/src/scaffold.js';
+import { removeAll } from '../../../dist/tests/support/config-cli.js';
 
 const sha = x => 'sha256:' + createHash('sha256').update(x).digest('hex');
 const routinePath = 'routines/labs-to-blog.yaml';
@@ -27,8 +28,9 @@ function data() {
 async function fixture(t, d=data()) {
   const fixtureBase=process.env.BOWERLOOM_ROUTINE_TEST_FIXTURES ?? tmpdir();
   const parent=await fs.mkdtemp(join(await fs.realpath(fixtureBase),'bowerloom-routine-files-'));
+  // A person who names a fixture folder with BOWERLOOM_ROUTINE_TEST_FIXTURES asked to keep the evidence there. The system temp folder is always cleaned.
+  if(process.env.BOWERLOOM_ROUTINE_TEST_FIXTURES===undefined)t.after(()=>removeAll(parent));
   const root=join(parent,'.bowerloom'); await fs.mkdir(root,{mode:0o700});
-  // Retain synthetic fixture evidence; no cleanup of existing or newly created directories.
   const write=async(ref,content)=>{const p=join(root,ref);await fs.mkdir(dirname(p),{recursive:true,mode:0o755});await fs.writeFile(p,content,{mode:0o644});};
   await write(routinePath,exportRoutineYaml(d.routine));
   for(const f of d.dependencies)await write(f.ref,f.content);

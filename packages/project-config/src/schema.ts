@@ -5,9 +5,9 @@
 import { AdapterError, strictJson } from '../../codex-adapter/src/safe.js';
 import { SkillSourceError, captureSkillData } from '../../skill-sources/src/validation.js';
 import { strictUtf8 } from '../../skill-sources/src/cache.js';
-import { HARNESSES } from '../../skill-manifest/src/schema.js';
-import type { Harness } from '../../skill-manifest/src/schema.js';
-import { refuse } from './refusal.js';
+import { OLD_ENGINES_KEY, decodeEngines, engineField, engineKeyOf, engineListProblem, sameForm } from '../../skill-manifest/src/engine.js';
+import type { Engine } from '../../skill-manifest/src/engine.js';
+import { configRefusal, refuse } from './refusal.js';
 
 export const CONFIG_FILE = 'bowerloom.json' as const;
 export const CONFIG_FORMAT = 'bowerloom/project/v1beta1' as const;
@@ -15,7 +15,11 @@ export const CONFIG_LIMITS = Object.freeze({ bytes: 1048576, skills: 128, prompt
 export type ConfigKind = 'skill' | 'prompt' | 'team';
 export type ConfigSource = 'store' | 'project';
 export interface ConfigEntry { id: string; source: ConfigSource; via?: string[] }
-export interface ProjectConfig { format: typeof CONFIG_FORMAT; harnesses: Harness[]; skills: ConfigEntry[]; prompts: ConfigEntry[]; teams: ConfigEntry[] }
+/**
+ * `oldForm` is set on a config read from a file that names its engines the old way (`harnesses`, with `claude`).
+ * serializeConfig then writes the same form, so a write-back never changes the spelling of a file Bowerloom did not create.
+ */
+export interface ProjectConfig { format: typeof CONFIG_FORMAT; engines: Engine[]; skills: ConfigEntry[]; prompts: ConfigEntry[]; teams: ConfigEntry[]; oldForm?: true }
 
 const ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const FIRST_TEAM = 'first-team';
@@ -51,12 +55,16 @@ export function validateConfig(value: unknown): ProjectConfig {
   // 1. The top-level keys.
   invalid(isRecord(value));
   const keys = Object.keys(value);
-  invalid(keys.length === 5 && ['format', 'harnesses', 'skills', 'prompts', 'teams'].every(k => keys.includes(k)));
+  // The engine list is `engines` (current ids) or `harnesses` (the old name, with `claude`), never both and never neither.
+  const engineKey = engineKeyOf(value);
+  invalid(engineKey !== null && keys.length === 5 && ['format', engineKey, 'skills', 'prompts', 'teams'].every(k => keys.includes(k)));
+  const oldForm = engineKey === OLD_ENGINES_KEY;
   // 2. format.
   invalid(value.format === CONFIG_FORMAT);
-  // 3. harnesses: one or two values, sorted, no repeats.
-  const h = value.harnesses;
-  invalid(Array.isArray(h) && h.length >= 1 && h.length <= HARNESSES.length && h.every(x => (HARNESSES as readonly unknown[]).includes(x)) && h.every((x, i) => i === 0 || compare(h[i - 1] as string, x as string) < 0));
+  // 3. engines: at least one, sorted, no repeats. An old file takes claude and codex only.
+  const problem = engineListProblem(value[engineKey!], oldForm);
+  if (problem !== null) throw configRefusal('CONFIG_INVALID', problem);
+  const engines = decodeEngines(value[engineKey!], oldForm)!;
   // 4. The list lengths.
   for (const [name] of LISTS) invalid(Array.isArray(value[name]));
   for (const [name] of LISTS) if ((value[name] as unknown[]).length > CONFIG_LIMITS[name]) refuse('CONFIG_LIMIT');
@@ -81,7 +89,7 @@ export function validateConfig(value: unknown): ProjectConfig {
   // 8. Each `via` id names a store team.
   const storeTeams = new Set(lists.teams.filter(t => t.source === 'store').map(t => t.id));
   for (const [name] of LISTS) for (const entry of lists[name]) for (const via of entry.via ?? []) invalid(storeTeams.has(via));
-  return { format: CONFIG_FORMAT, harnesses: [...h] as Harness[], skills: lists.skills, prompts: lists.prompts, teams: lists.teams };
+  return { format: CONFIG_FORMAT, engines, skills: lists.skills, prompts: lists.prompts, teams: lists.teams, ...(oldForm ? { oldForm: true as const } : {}) };
 }
 
 /** Strict parse: at most 1 MiB of UTF-8 with no byte order mark and no duplicate or unknown keys. */
@@ -99,8 +107,18 @@ export function parseConfig(bytes: Buffer): ProjectConfig {
 const entryOut = (e: ConfigEntry): ConfigEntry => ({ id: e.id, source: e.source, ...(e.via ? { via: [...e.via] } : {}) });
 /** Canonical bytes: the key order of the format, two-space indent, and a final newline. The result is parsed back before it is returned. */
 export function serializeConfig(config: ProjectConfig): string {
-  invalid(isRecord(config) && Array.isArray(config.harnesses) && Array.isArray(config.skills) && Array.isArray(config.prompts) && Array.isArray(config.teams));
-  const text = `${JSON.stringify({ format: config.format, harnesses: [...config.harnesses], skills: config.skills.map(entryOut), prompts: config.prompts.map(entryOut), teams: config.teams.map(entryOut) }, null, 2)}\n`;
+  invalid(isRecord(config) && Array.isArray(config.engines) && Array.isArray(config.skills) && Array.isArray(config.prompts) && Array.isArray(config.teams));
+  const text = `${JSON.stringify({ format: config.format, ...engineField(config.engines, config), skills: config.skills.map(entryOut), prompts: config.prompts.map(entryOut), teams: config.teams.map(entryOut) }, null, 2)}\n`;
   parseConfig(Buffer.from(text));
   return text;
+}
+
+/**
+ * The bytes of a config that replaces `before` (null when the file does not exist yet). The form of the file is kept: a
+ * config rebuilt without the `oldForm` mark of an old file, or with a mark the file never had, is refused, so no write
+ * can change the spelling of a file that Bowerloom did not create.
+ */
+export function serializeConfigFrom(before: ProjectConfig | null, next: ProjectConfig): string {
+  if (!sameForm(before, next)) refuse('CONFIG_INVALID');
+  return serializeConfig(next);
 }

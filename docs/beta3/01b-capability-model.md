@@ -1,6 +1,6 @@
 # Design 01b: a capability model that no harness owns
 
-Status: design for Hanna's decision. Nothing here is built. Codex agents ship after she approves it.
+Status: design for the maintainer's decision. Nothing here is built. Codex agents ship after the maintainer approves it.
 
 Source: sageadvicellc/bowerloom#84, decision 6 (https://github.com/sageadvicellc/bowerloom/issues/84#issuecomment-6333531579). Decision 3 (a Codex copy never has more power than its source) moves here from spec 01. Spec 01a (`docs/beta3/01a-team-agents-claude.md`) is the base.
 

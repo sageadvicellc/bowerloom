@@ -1,7 +1,7 @@
 /**
  * `skills migrate plan|apply --state <v1-state-dir>` (build plan 01, section 6). One v1beta1 install becomes one
  * v1beta2 item through the M4 `migrate` operation, which moves `.bowerloom-skills/` into its operation folder as a
- * backup and publishes the v2 surfaces for the skills.json harnesses (plus the v1 harness: none is dropped).
+ * backup and publishes the v2 surfaces for the skills.json engines (plus the v1 engine: none is dropped).
  *
  * Plan requires a clean v1 inspection (committed, no marker, no drift) and a skills.json entry with the same source
  * pin and file hashes; without one it refuses and prints the exact `skills add` command. The pinned bytes come from
@@ -18,7 +18,7 @@ import type { AcquiredSkillCacheReceipt, AcquiredSkillCacheSelector } from '../.
 import { MARKER as V1_MARKER, exists, inspectObservedManagedSkill, parsed, path as managedPath, raw } from '../../managed-skills/src/observed.js';
 import { MARKER_V2 } from '../../managed-skills/src/v2-observed.js';
 import { LEGACY_NAMESPACE, legacyPresent } from '../../managed-skills/src/migrate.js';
-import type { Harness, ItemSource, ManagedItemReceipt, ManagedItemRequest } from '../../managed-skills/src/v2-types.js';
+import type { ItemSource, ManagedItemReceipt, ManagedItemRequest } from '../../managed-skills/src/v2-types.js';
 import { readManifestState } from '../../skill-manifest/src/add.js';
 import { MANIFEST_LIMITS, parseManifest } from '../../skill-manifest/src/schema.js';
 import { pinOf } from '../../skill-manifest/src/check.js';
@@ -28,6 +28,9 @@ import type { DirectoryIdentity, PinnedDirectory, ProjectContext } from '../../p
 import { entryRequest, lookupCache, receiptMatches } from './cache-index.js';
 import type { PinnedRequest } from './cache-index.js';
 import { managedPort } from './deps.js';
+import { writerEngines } from '../../skill-manifest/src/engine.js';
+import type { OldEngineId } from '../../skill-manifest/src/engine.js';
+import { fromWire, toWire } from './wire.js';
 import type { ManagedPort, SyncDeps } from './deps.js';
 import { MIN_FREE_BYTES, beforePins, byPath, checkProjectAncestry, itemSurfaces, pendingRefusal, stateLayout, union } from './plan.js';
 import type { SyncItem } from './plan.js';
@@ -36,13 +39,13 @@ import { oneLine } from '../../contracts/src/index.js';
 import { command, outward, shellPath, syncError, withStep } from './refusal.js';
 import type { FetchFlow } from './refusal.js';
 
-export const MIGRATE_PLAN_FORMAT = 'bowerloom/skills-migrate-plan/v1beta1' as const;
+export const MIGRATE_PLAN_FORMAT = 'bowerloom/skills-migrate-plan/v1beta2' as const;
 export interface MigrateInput { project: ProjectContext; stateRoot: string; legacyStateDir: string }
 export interface MigratePlan {
   format: typeof MIGRATE_PLAN_FORMAT;
   project: { dir: string; identity: DirectoryIdentity; ancestry: readonly PinnedDirectory[]; bowerloomIdentity: DirectoryIdentity | null };
   manifest: { sha256: string; bytes: number };
-  legacy: { stateDir: string; operationKey: string; receiptRevision: string; harness: Harness; catalogSha256: string };
+  legacy: { stateDir: string; operationKey: string; receiptRevision: string; harness: OldEngineId; catalogSha256: string };
   /** Where the pinned bytes come from: this machine's skills cache ('project-cache', its name from earlier betas), the cache the v1 install read, or a fetch in phase A. */
   bytesFrom: 'project-cache' | 'legacy-cache' | 'fetch';
   legacySelector: AcquiredSkillCacheSelector | null;
@@ -74,7 +77,7 @@ async function observeMigrate(input: MigrateInput): Promise<MigrateObserved> {
   try { seen = await inspectObservedManagedSkill({ projectDir: dir, stateDir: input.legacyStateDir }); } catch { throw syncError('SKILLS_MIGRATE_STATE_INVALID'); }
   if (seen.status !== 'committed' || seen.receipt === null || seen.operationKey === null) throw syncError('SKILLS_MIGRATE_STATE_INVALID');
   const catalogBytes = raw(join(dir, LEGACY_NAMESPACE, 'catalog.json'), 262144, false).bytes;
-  const catalog = strictJson(new TextDecoder('utf-8', { fatal: true }).decode(catalogBytes), 262144) as { source: Record<string, unknown>; skill: { id: string; name: string; sourceRoot: string }; inventory: unknown; license: unknown; references: unknown; harness: Harness };
+  const catalog = strictJson(new TextDecoder('utf-8', { fatal: true }).decode(catalogBytes), 262144) as { source: Record<string, unknown>; skill: { id: string; name: string; sourceRoot: string }; inventory: unknown; license: unknown; references: unknown; harness: OldEngineId };
   const state = readManifestState(dir), manifest = state.file ? parseManifest(state.file.bytes, MANIFEST_LIMITS) : null;
   const entry = manifest?.skills.find(e => e.id === catalog.skill.id && e.source.kind !== 'local') as PinnedEntry | undefined;
   const pinned = entry ? entryRequest(entry) : null;
@@ -95,9 +98,9 @@ async function observeMigrate(input: MigrateInput): Promise<MigrateObserved> {
       if (receiptMatches(pinned, closure.receipt)) { bytesFrom = 'legacy-cache'; legacySelector = { root: selector.root, operationId: selector.operationId, expectedSnapshotRevision: selector.expectedSnapshotRevision, expectedReceiptRevision: selector.expectedReceiptRevision }; }
     } catch { /* That cache is gone or changed: fetch instead. */ }
   }
-  const harnesses = union(manifest.harnesses, [catalog.harness]), surfaces = itemSurfaces(dir, id, entry.skill.name, harnesses);
+  const engines = union(writerEngines(manifest.engines), fromWire([catalog.harness], `The catalog of ${id} in .bowerloom-skills`, 'SKILLS_MIGRATE_STATE_INVALID')), surfaces = itemSurfaces(dir, id, entry.skill.name, engines);
   const item: SyncItem = {
-    id, kind: entry.source.kind, pin: pinOf(entry), state: bytesFrom === 'fetch' ? 'needs-fetch' : 'cached', action: 'install', harnesses, requestDigest: pinned.digest,
+    id, kind: entry.source.kind, pin: pinOf(entry), state: bytesFrom === 'fetch' ? 'needs-fetch' : 'cached', action: 'install', engines, requestDigest: pinned.digest,
     cacheOperationId: bytesFrom === 'legacy-cache' ? null : cache.operationId, cache: bytesFrom === 'legacy-cache' ? null : cache,
     expected: { files: byPath(pinned.request.files.map(f => ({ path: f.path, sha256: f.sha256, bytes: f.bytes }))), surfaces: surfaces.map(s => ({ id: s.id, path: s.path.slice(dir.length + 1) })) },
     before: beforePins(surfaces, dir), previousReceiptRevision: null, history: 0, hold: null,
@@ -165,7 +168,7 @@ export async function applyMigrate(input: MigrateInput, revision: string, deps: 
       }
       const req: ManagedItemRequest = {
         operation: 'migrate', projectDir: plan.project.dir, stateDir: join(plan.privateState.itemsRoot, item.id), item: { kind: 'skill', id: item.id },
-        harnesses: [...item.harnesses], source, expectedPreviousRevision: null, minFreeBytes: MIN_FREE_BYTES, legacy: { stateDir: plan.legacy.stateDir, operationKey: plan.legacy.operationKey },
+        harnesses: toWire(item.engines), source, expectedPreviousRevision: null, minFreeBytes: MIN_FREE_BYTES, legacy: { stateDir: plan.legacy.stateDir, operationKey: plan.legacy.operationKey },
       };
       const child = checkChild(plan.project.dir, item, pinned, req, await managed.plan(req, {}));
       if (child.core.legacy?.receiptRevision !== plan.legacy.receiptRevision) throw syncError('STALE_APPROVAL');

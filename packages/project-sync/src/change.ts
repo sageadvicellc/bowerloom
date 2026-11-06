@@ -9,8 +9,8 @@ import { createHash } from 'node:crypto';
 import { DefinitionError, PLAIN_ID, canonicalJson } from '../../contracts/src/index.js';
 import { inspectStore, isHeldProjectLock, projectRefusal, adoptCreatedMarker, verifyProjectPins } from '../../project-context/src/index.js';
 import type { HeldProjectLock, ProjectContext } from '../../project-context/src/types.js';
-import { readConfig } from '../../project-config/src/config.js';
-import { CONFIG_FORMAT, serializeConfig } from '../../project-config/src/schema.js';
+import { invalidConfigRefusal, readConfig } from '../../project-config/src/config.js';
+import { CONFIG_FORMAT, parseConfig, serializeConfigFrom } from '../../project-config/src/schema.js';
 import type { ConfigEntry, ProjectConfig } from '../../project-config/src/schema.js';
 import { atApproval, configRefusal, honestShared, notShareable, notSharedYet, refusalWithNext } from '../../project-config/src/refusal.js';
 import { LOCK_FILE, LOCK_FORMAT, LOCK_LISTS, lockItem, lockSourceLabel, readLock, serializeLock } from '../../project-config/src/lock.js';
@@ -19,8 +19,9 @@ import { isSharedProject } from '../../project-config/src/shared.js';
 import { readStoreRepo } from '../../project-config/src/git.js';
 import { scratchName, writeGuardedFile } from '../../project-config/src/write.js';
 import { readManifestState } from '../../skill-manifest/src/add.js';
-import { HARNESSES, MANIFEST_LIMITS, parseManifest } from '../../skill-manifest/src/schema.js';
-import type { Entry, Harness, PinnedEntry } from '../../skill-manifest/src/schema.js';
+import { MANIFEST_LIMITS, parseManifest } from '../../skill-manifest/src/schema.js';
+import type { Entry, PinnedEntry } from '../../skill-manifest/src/schema.js';
+import { DEFAULT_ENGINES } from '../../skill-manifest/src/engine.js';
 import { manifestRefusal } from '../../skill-manifest/src/refusal.js';
 import { createPublicTransport } from '../../skill-manifest/src/public-get.js';
 import { proveAuthored } from '../../skill-manifest/src/resolve-store-git.js';
@@ -113,7 +114,7 @@ function openStoreDefinitions(home: string): StoreDefinitions {
 }
 const storeRead = (defs: StoreDefinitions): StoreBindingRead => ({ dir: defs.view.context!.dir, identity: defs.view.context!.identity, skills: defs.view.skills ? { sha256: defs.view.skills.sha256, bytes: defs.view.skills.bytes } : null, authoring: defs.view.authoring?.sha256 && defs.view.authoring.bytes !== null ? { sha256: defs.view.authoring.sha256, bytes: defs.view.authoring.bytes } : null });
 
-/** The config a first `use` creates: the project's harnesses, and every item the project defines now, from the project. */
+/** The config a first `use` creates: the project's engines, and every item the project defines now, from the project. */
 export function initialConfig(project: ProjectContext): { config: ProjectConfig; manifest: Read | null; listed: number } {
   const state = readManifestState(project.dir, { allowAbsent: true });
   const manifest = state.file ? parseManifest(state.file.bytes, MANIFEST_LIMITS) : null;
@@ -121,7 +122,7 @@ export function initialConfig(project: ProjectContext): { config: ProjectConfig;
   const first = project.bowerloomIdentity !== null && (() => { try { const s = fs.lstatSync(join(project.dir, '.bowerloom', 'teams', 'first-team')); return s.isDirectory() && !s.isSymbolicLink(); } catch { return false; } })();
   const entry = (id: string): ConfigEntry => ({ id, source: 'project' });
   const config: ProjectConfig = {
-    format: CONFIG_FORMAT, harnesses: manifest ? [...manifest.harnesses] : [...HARNESSES] as Harness[],
+    format: CONFIG_FORMAT, engines: manifest ? [...manifest.engines] : [...DEFAULT_ENGINES],
     skills: (manifest?.skills ?? []).map(s => entry(s.id)).sort((a, b) => byteOrder(a.id, b.id)),
     prompts: items.filter(i => i.kind === 'prompt').map(i => entry(i.id)).sort((a, b) => byteOrder(a.id, b.id)),
     teams: [...items.filter(i => i.kind === 'team').map(i => entry(i.id)), ...(first ? [entry('first-team')] : [])].sort((a, b) => byteOrder(a.id, b.id)),
@@ -244,7 +245,7 @@ export async function planConfigChange(input: ChangeInput): Promise<ConfigChange
   const maxRequests = requestLimit(input.maxGithubRequests);
   verifyProjectPins(project);
   const read = readConfig(project);
-  if (read.state === 'invalid') throw configRefusal(read.code);
+  if (read.state === 'invalid') throw invalidConfigRefusal(read);
   if (read.state === 'absent' && project.configPresent) throw projectRefusal('PROJECT_UNSAFE');
   // Decision 1 on #80 (variant A): `team adopt` of a team that is not listed creates bowerloom.json too, as `use` does.
   if (read.state === 'absent' && op !== 'use' && op !== 'adopt') throw configRefusal('CONFIG_ITEM_NOT_SELECTED');
@@ -303,7 +304,8 @@ export async function planConfigChange(input: ChangeInput): Promise<ConfigChange
       if (!e.via.length) { delete e.via; direct.push({ kind: k, id: e.id, via: [id] }); }
     }
   }
-  const text = serializeConfig(next);
+  // `before` is the config as the file holds it (or a new one), so the form of the file is kept.
+  const text = serializeConfigFrom(read.state === 'valid' ? before : null, next);
   // The lock: kept up to date in a shared project and in a project with a lock (3.9, 3.13).
   const current = lockFor(project), sharedState = isSharedProject(project), shared = sharedState.shared;
   // Review C4: a lock is created only when the new config has a store entry; an existing lock is always kept up to date.
@@ -376,7 +378,7 @@ export function applyConfigChange(plan: ConfigChangePlan, revision: string, held
   if (typeof revision !== 'string' || revision !== plan.revision) throw stale();
   const { revision: _r, ...body } = plan;
   recheck(project, home, plan, plan.config.before, plan.lockBefore, body);
-  serializeConfig(JSON.parse(plan.config.text) as ProjectConfig);
+  parseConfig(Buffer.from(plan.config.text));
   if (plan.lock) serializeLock(JSON.parse(plan.lock.text) as ProjectLock);
   removeScratch(project.dir, plan.scratch);
   const config = writeGuardedFile(project.dir, 'bowerloom.json', plan.config.text, plan.config.before?.sha256 ?? null, held, '.bowerloom.json');
@@ -413,7 +415,7 @@ export async function planLockUpdate(input: LockUpdateInput): Promise<LockUpdate
   verifyProjectPins(project);
   const read = readConfig(project);
   if (read.state === 'absent') throw configRefusal('CONFIG_ITEM_NOT_SELECTED');
-  if (read.state === 'invalid') throw configRefusal(read.code);
+  if (read.state === 'invalid') throw invalidConfigRefusal(read);
   const config = read.config, wanted = storeEntries(config);
   let current: { lock: ProjectLock | null; read: Read | null }, rebuilt = false;
   try { current = lockFor(project); }

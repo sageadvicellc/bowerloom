@@ -12,7 +12,7 @@ import { manifestRefusal } from '../../../dist/packages/skill-manifest/src/refus
 
 const network = denyNetwork();
 after(() => assert.deepEqual(network, [], 'every fetch in this file goes to a fake'));
-const input = (w, extra = {}) => ({ project: w.project(), stateRoot: w.stateRoot, home: w.home, harnesses: ['claude', 'codex'], team: null, frozen: true, ...extra });
+const input = (w, extra = {}) => ({ project: w.project(), stateRoot: w.stateRoot, home: w.home, engines: ['claude-code', 'codex'], team: null, frozen: true, ...extra });
 const signal = () => new AbortController().signal;
 const exists = (w, rel) => fs.existsSync(path.join(w.projectDir, rel));
 const SKILL_WITH_TOOLS = '---\nname: house-style\ndescription: Uses git.\nallowed-tools: Bash(git status:*)\n---\nRun git status.\n';

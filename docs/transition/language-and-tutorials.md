@@ -1,6 +1,6 @@
 # Language and tutorials
 
-Hanna requested Endor and Star Wars references on October 1, 2026. The inspiration is a connected settlement among trees. Each installation can grow independently and connect through explicit bridges.
+The maintainer requested Endor and Star Wars references on October 1, 2026. The inspiration is a connected settlement among trees. Each installation can grow independently and connect through explicit bridges.
 
 Use this theme in tutorial titles, example workspaces, demo stories, and occasional success messages. Introduce the ordinary technical term beside each metaphor. Keep commands, schemas, permissions, errors, and approval text precise. The existing module names and Coda and Emery roles remain stable.
 

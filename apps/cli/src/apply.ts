@@ -12,7 +12,8 @@ import { discoverProject, privateStateRoot } from '../../../packages/project-con
 import type { PlannedChange } from '../../../packages/project-context/src/types.js';
 import { applyProjectApply, planProjectApply, syncError } from '../../../packages/project-sync/src/index.js';
 import type { AgentItem, ApplyInput, ApplyPlan, ApplyResult, PromptItem, SliceItem, SyncItem } from '../../../packages/project-sync/src/index.js';
-import type { Harness } from '../../../packages/managed-skills/src/v2-types.js';
+import { parseEngineId, writerEngines } from '../../../packages/skill-manifest/src/engine.js';
+import type { WriterEngine } from '../../../packages/skill-manifest/src/engine.js';
 import { revisionOf } from '../../../packages/skill-sources/src/validation.js';
 import { approvalFault, parseApprovalFlags, runApprovalCommand } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
@@ -23,16 +24,17 @@ import { TOKEN_STALE_NOTE } from '../../../packages/project-sync/src/store-git.j
 
 const APPLY_USAGE = 'Use bowerloom apply [--harness claude|codex|both] [--allow-agent <role>:<hash>]... [--frozen] [--max-github-requests <n>], with optional --approve <revision> and --json.';
 const usage = (): never => { throw new DefinitionError('USAGE', APPLY_USAGE); };
-const HARNESSES: Readonly<Record<string, Harness[]>> = { claude: ['claude'], codex: ['codex'], both: ['claude', 'codex'] };
+const BOTH: readonly WriterEngine[] = ['claude-code', 'codex'];
 const NULL_PINS = revisionOf(null);
-const SURFACE_HARNESS: Readonly<Record<string, Harness>> = { 'projection-claude': 'claude', 'command-claude': 'claude', 'agent-claude': 'claude', 'projection-codex': 'codex' };
+// The surface ids are stored in receipts and keep their names.
+const SURFACE_ENGINE: Readonly<Record<string, WriterEngine>> = { 'projection-claude': 'claude-code', 'command-claude': 'claude-code', 'agent-claude': 'claude-code', 'projection-codex': 'codex' };
 
-/** The harnesses an update adds: those whose copy is not there yet. */
-function added(before: readonly { id: string; stablePinsDigest: string | null }[]): Harness[] {
-  return (['claude', 'codex'] as Harness[]).filter(h => before.some(b => SURFACE_HARNESS[b.id] === h && b.stablePinsDigest === NULL_PINS));
+/** The engines an update adds: those whose copy is not there yet. */
+function added(before: readonly { id: string; stablePinsDigest: string | null }[]): WriterEngine[] {
+  return BOTH.filter(h => before.some(b => SURFACE_ENGINE[b.id] === h && b.stablePinsDigest === NULL_PINS));
 }
 function skillLine(item: SyncItem, width: number): string[] {
-  if (item.state === 'harnesses-changed' && item.action === 'update') return [`  ${item.id.padEnd(width)} add ${harnessWords(added(item.before))} copies`];
+  if (item.state === 'engines-changed' && item.action === 'update') return [`  ${item.id.padEnd(width)} add ${harnessWords(added(item.before))} copies`];
   return itemLine(item, width);
 }
 /** Review M6 finding 5: a prompt whose Claude Code command can grant tools or run shell lines is named, never quoted. */
@@ -57,7 +59,7 @@ function promptState(item: PromptItem, width: number): string[] {
   switch (item.state) {
     case 'new': return [`  ${id} install prompt: ${where}${item.notices === null ? ' (not on this machine yet; Bowerloom shows what it can do after the fetch)' : ''}`];
     case 'edited': return [`  ${id} update prompt: ${where}`];
-    case 'harnesses-changed': return [`  ${id} add ${harnessWords(added(item.before))} copies`];
+    case 'engines-changed': return [`  ${id} add ${harnessWords(added(item.before))} copies`];
     case 'orphaned': return [`  ${id} kept: no longer a prompt of this project, and apply removes nothing`];
     default: return [`  ${id} up to date${item.action === 'update' ? ' (puts back .bowerloom/managed/.gitignore)' : ''}`];
   }
@@ -176,9 +178,9 @@ export function unregisteredNote(name: string): string {
   return isSliceId(stem) && name === `${stem}.yaml` ? `  Note: .bowerloom/slices/${name} is not registered, so apply skips it. Run bowerloom slice create ${stem} to register it.`
     : `  Note: .bowerloom/slices/${plainText(name)} is not registered, so apply skips it. Its name is not a slice id, so rename it to <id>.yaml with a lowercase id before you register it with bowerloom slice create.`;
 }
-/** Where copies go, for the chosen harnesses only (review freeze finding 9). */
-function places(harnesses: readonly Harness[]): string {
-  const all = ['.bowerloom/managed', ...harnesses.map(h => h === 'claude' ? '.claude' : '.agents')];
+/** Where copies go, for the chosen engines only (review freeze finding 9). */
+function places(engines: readonly WriterEngine[]): string {
+  const all = ['.bowerloom/managed', ...engines.map(h => h === 'claude-code' ? '.claude' : '.agents')];
   return `${all.slice(0, -1).join(', ')} and ${all[all.length - 1]}`;
 }
 /** Review F5 of PR 97: a frozen apply that fetches an authored lock item names the token in its STALE_APPROVAL. */
@@ -191,7 +193,7 @@ export function applyStaleNote(plan: ApplyPlan): string | null {
 /** The apply plan in plain words. confirm.ts escapes control characters again before printing. */
 export function renderApplyReview(plan: ApplyPlan, terminal = false, maxSet = false): string {
   const skills = plan.skills?.items ?? [], width = Math.max(0, ...skills.map(i => i.id.length), ...plan.prompts.map(p => p.id.length), ...plan.slices.map(s => s.id.length), ...plan.agents.map(a => a.id.length)) + 1;
-  const claude = plan.harnesses.includes('claude'), codex = plan.harnesses.includes('codex');
+  const claude = plan.engines.includes('claude-code'), codex = plan.engines.includes('codex');
   const slicesBlock = [...plan.slices.flatMap(s => sliceLine(s, width, plan.project?.dir ?? '', plan.skillsMayBeTracked === true)), ...plan.unregisteredSlices.map(name => unregisteredNote(name))];
   const guarded = plan.agents.filter(a => (a.action === 'install' || a.action === 'update') && a.context.guard !== null).map(a => a.id);
   const lines = [...skills.flatMap(i => skillLine(i, width)), ...plan.prompts.flatMap(p => promptLine(p, width)), ...slicesBlock, ...plan.agents.flatMap(a => agentLine(a, width, terminal, plan.slices, plan.project?.dir ?? '')),
@@ -206,7 +208,7 @@ export function renderApplyReview(plan: ApplyPlan, terminal = false, maxSet = fa
   const title = !claude ? 'Apply skills and prompts for' : codex ? 'Apply skills, prompts, and agents for' : 'Apply skills, prompts, agents, and context slices for';
   return [
     ...(plan.bowerloomFolder === 'create' && plan.actionable ? [FOLDER_FOR_COPIES] : []),
-    `${title} ${harnessWords(plan.harnesses)}${codex && claude ? ', and context slices for Claude Code' : ''}${plan.team ? `, team ${plan.team}` : ''}`,
+    `${title} ${harnessWords(plan.engines)}${codex && claude ? ', and context slices for Claude Code' : ''}${plan.team ? `, team ${plan.team}` : ''}`,
     ...(lines.length ? lines : [plan.config != null ? '  Nothing is selected to apply yet.' : claude ? '  Nothing in .bowerloom/skills.json, .bowerloom/prompts, .bowerloom/teams/*/agents, or .bowerloom/slices to apply yet.' : '  Nothing in .bowerloom/skills.json or .bowerloom/prompts to apply yet.']),
     ...(plan.notes ?? []),
     ...(plan.agents.some(a => a.action !== 'hold' && a.notices.length && (a.action === 'install' || a.action === 'update')) ? ['  Hooks run shell commands, and Claude Code may use an agent without being asked, based on its description.'] : []),
@@ -214,7 +216,7 @@ export function renderApplyReview(plan: ApplyPlan, terminal = false, maxSet = fa
     ...credentialsLines(plan.network?.credentials),
     network,
     ...requestLine(plan.network, maxSet),
-    `Copies go to ${places(plan.harnesses)}, and stay on this machine. Apply adds copies and removes none.`,
+    `Copies go to ${places(plan.engines)}, and stay on this machine. Apply adds copies and removes none.`,
     plan.agents.some(a => (a.action === 'install' || a.action === 'update') && a.notices.length) ? 'This copies text files only. Bowerloom starts no workers and runs nothing itself.' : 'This copies text files only. It starts no workers and runs nothing.',
     plan.pointer,
   ].join('\n');
@@ -229,17 +231,27 @@ function resultWords(result: ApplyResult): string {
   ].join('\n'), true);
 }
 
-/** Takes `--harness <claude|codex|both>` out of the words; the rest goes to the approval wrapper. */
-export function parseHarness(words: readonly string[]): { harnesses: Harness[]; rest: string[]; frozen: boolean } {
-  let harnesses: Harness[] | null = null, frozen = false; const rest: string[] = [];
+/**
+ * Takes `--harness <claude-code|claude|codex|both>` out of the words; the rest goes to the approval wrapper. `claude` is
+ * the old spelling of `claude-code` and still works. An engine that has no writer yet (opencode, pi, deepseek-harness)
+ * is refused by name. Anything else is a usage error.
+ */
+export function parseHarness(words: readonly string[]): { engines: WriterEngine[]; rest: string[]; frozen: boolean } {
+  let engines: WriterEngine[] | null = null, frozen = false; const rest: string[] = [];
   for (let i = 0; i < words.length; i++) {
     const word = words[i]!;
     if (word === '--frozen') { if (frozen) usage(); frozen = true; }
-    else if (word === '--harness') { const value = words[++i]; if (harnesses !== null || value === undefined || !Object.hasOwn(HARNESSES, value)) usage(); harnesses = [...HARNESSES[value!]!]; }
+    else if (word === '--harness') {
+      const value = words[++i];
+      if (engines !== null || value === undefined) usage();
+      const engine = value === 'both' ? undefined : parseEngineId(value);
+      if (value !== 'both' && engine === undefined) usage();
+      engines = value === 'both' ? [...BOTH] : writerEngines([engine!]);
+    }
     else if (word.startsWith('--harness=')) usage();
     else rest.push(word);
   }
-  return { harnesses: harnesses ?? [...HARNESSES.both!], rest, frozen };
+  return { engines: engines ?? [...BOTH], rest, frozen };
 }
 
 /** Takes `--max-github-requests <n>` out of the words, once at most (second review L2). */
@@ -289,14 +301,14 @@ export async function confirmAllowances(plan: ApplyPlan, io: ApprovalIo, write: 
 
 /** `bowerloom apply`. Returns the exit code: 0 done or nothing to do, 3 approval required. A refusal throws. */
 export async function runApplyCommand(args: readonly string[], cwd: string, home: string, write: (text: string) => void, io: ApprovalIo = terminalIo(), env: NodeJS.ProcessEnv = process.env): Promise<number> {
-  const parsedHarness = parseHarness(args.slice(1)), { harnesses } = parsedHarness, { allow, rest: afterAllow } = takeAllow(parsedHarness.rest);
+  const parsedHarness = parseHarness(args.slice(1)), { engines } = parsedHarness, { allow, rest: afterAllow } = takeAllow(parsedHarness.rest);
   const { max, rest } = takeMaxRequests(afterAllow);
   const approval = parseApprovalFlags(rest); if (approval.rest.length) usage();
   const project = discoverProject(cwd, home), stateRoot = privateStateRoot(env, home);
   if (allow.length) requireTerminal(io, approval.json);
   // Spec 07: only a frozen apply reads the token, and only when an authored lock item needs its repository.
   const githubToken = parsedHarness.frozen ? githubTokenReader(env) : null;
-  const input = (): ApplyInput => ({ project, stateRoot, home, frozen: parsedHarness.frozen, harnesses, team: null, allow, githubToken, ...(max !== undefined ? { maxGithubRequests: max } : {}) });
+  const input = (): ApplyInput => ({ project, stateRoot, home, frozen: parsedHarness.frozen, engines, team: null, allow, githubToken, ...(max !== undefined ? { maxGithubRequests: max } : {}) });
   let first: ApplyPlan; try { first = await planProjectApply(input()); } catch (error) { throw approvalFault(error, approval.approve); }
   if (allow.length) await confirmAllowances(first, io, write);
   if (!first.actionable && approval.approve === undefined) {

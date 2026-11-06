@@ -11,7 +11,7 @@ import { planProjectApply, applyProjectApply } from '../../../dist/packages/proj
 
 const network = denyNetwork();
 after(() => assert.deepEqual(network, [], 'every fetch in this file goes to a fake'));
-const input = (w, extra = {}) => ({ project: w.project(), stateRoot: w.stateRoot, home: w.home, harnesses: ['claude', 'codex'], team: null, ...extra });
+const input = (w, extra = {}) => ({ project: w.project(), stateRoot: w.stateRoot, home: w.home, engines: ['claude-code', 'codex'], team: null, ...extra });
 const signal = () => new AbortController().signal;
 const read = (w, rel) => fs.readFileSync(path.join(w.projectDir, rel), 'utf8');
 const exists = (w, rel) => fs.existsSync(path.join(w.projectDir, rel));

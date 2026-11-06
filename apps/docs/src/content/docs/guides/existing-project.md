@@ -1,9 +1,11 @@
 ---
 title: "Add a setup to an existing project"
-description: "Add reviewed Bowerloom files without importing your project or agent configuration."
-section: "Guides"
+description: "Legacy 0.7. Add reviewed Bowerloom files without importing your project or agent configuration."
+section: "Legacy 0.7 team setup"
 order: 7
 ---
+
+> **Legacy (0.7).** This page describes the team setup flow of Bowerloom 0.7. Its commands are still in the CLI help of 0.8.0-beta.1. The current path is [Adopt and install a harness](/docs/guides/adopt-and-install/).
 
 Existing mode integrates Bowerloom definitions with your current project through a new `.bowerloom/` directory. Start by [mapping your workflow](/docs/guides/integrate-workflow/) and reviewing the proposed roles, handoffs, and access. The installer does not read project-file contents or import live agent configuration. If `.bowerloom/` already exists, use [revision](/docs/revision/) instead of fresh setup.
 

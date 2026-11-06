@@ -99,7 +99,7 @@ test('apply exit codes: 3 for approval required, 0 for done and for nothing to c
   assert.match(shown.stdout, /^ {2}Note: agent scribe lists shell tools in tools\. Claude Code applies them when the agent runs\. Review \.bowerloom\/teams\/desk\/agents\/scribe\.md\.$/m);
   assert.match(shown.stdout, /^ +Warning: plan is also the name of a built-in Claude Code agent\. Check which one Claude Code uses\.$/m);
   assert.match(shown.stdout, /^Copies go to \.bowerloom\/managed, \.claude and \.agents, and stay on this machine\./m);
-  const json = JSON.parse(run(p, ['apply', '--json']).stdout); assert.equal(json.plan.format, 'bowerloom/project-apply-plan/v1beta2'); assert.equal(json.plan.agents.length, 2); assert.equal(json.plan.codexAgentsSkipped, true);
+  const json = JSON.parse(run(p, ['apply', '--json']).stdout); assert.equal(json.plan.format, 'bowerloom/project-apply-plan/v1beta3'); assert.equal(json.plan.agents.length, 2); assert.equal(json.plan.codexAgentsSkipped, true);
   const done = run(p, ['apply', '--approve', revisionIn(shown.stdout)]); assert.equal(done.status, 0, done.stderr);
   assert.match(done.stdout, /^ {2}agent plan: installed$/m); assert.match(done.stdout, /^ {2}agent scribe: installed$/m);
   assert.match(done.stdout, /Project skills are in \.claude\/skills and \.agents\/skills\. Prompts are Claude Code commands in \.claude\/commands, and Codex skills named prompt-<name>\. Agents are in \.claude\/agents\./);

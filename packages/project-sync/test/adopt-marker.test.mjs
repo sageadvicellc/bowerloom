@@ -42,7 +42,7 @@ test('skills sync in a config-only project calls adoptCreatedMarker(folder) with
 
 test('apply in a config-only project calls adoptCreatedMarker(folder) with the new folder', async t => {
   const w = configWorld(t); await storeItem(w, 'prompt', 'weekly-update'); writeConfig(w, { prompts: [{ id: 'weekly-update', source: 'store' }] });
-  const input = { project: ctx(w), stateRoot: w.stateRoot, home: w.home, harnesses: ['claude', 'codex'], team: null };
+  const input = { project: ctx(w), stateRoot: w.stateRoot, home: w.home, engines: ['claude-code', 'codex'], team: null };
   const plan = await planProjectApply(input);
   expectFolder(w, await calls(() => applyProjectApply(input, plan.revision, new AbortController().signal)));
 });

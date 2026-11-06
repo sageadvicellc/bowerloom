@@ -4,7 +4,7 @@ import test from '../../../dist/tests/support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { configWorld, writeConfig, code } from '../../project-sync/test/config-fixture.mjs';
+import { configWorld, writeConfig, engineKeys, code } from '../../project-sync/test/config-fixture.mjs';
 import { planCreate, applyCreate } from '../../../dist/packages/project-authoring/src/index.js';
 import { withProjectLock, discoverProject } from '../../../dist/packages/project-context/src/index.js';
 
@@ -62,4 +62,15 @@ test('6. the finish path repeats the config step for a missing entry', async t =
   assert.equal(finish.finish.id, 'weekly-update');
   await withProjectLock(w.projectDir, new AbortController().signal, held => applyCreate({ kind: 'prompt', project: w.projectDir, name: 'other', teams: [] }, finish.revision, held, undefined, discoverProject(w.projectDir, w.home)));
   assert.deepEqual(readJson(w, 'bowerloom.json').prompts, [{ id: 'other', source: 'project' }, { id: 'weekly-update', source: 'project' }]);
+});
+
+// Review of e1bbce9, CR2: a create writes bowerloom.json back in the form it was read in; a skills.json it makes is new, so it is current.
+for (const oldForm of [true, false]) test(`CR2. a create keeps the ${oldForm ? 'old' : 'current'} form of bowerloom.json, and the skills.json it makes is current`, async t => {
+  const w = configWorld(t); writeConfig(w, { oldForm });
+  await create(w, { kind: 'skill', project: w.projectDir, name: 'house-style', teams: [] });
+  await create(w, { kind: 'prompt', project: w.projectDir, name: 'weekly-update', teams: [] });
+  const config = readJson(w, 'bowerloom.json');
+  for (const [key, value] of Object.entries(engineKeys(oldForm))) assert.deepEqual(config[key], value);
+  assert.equal(oldForm ? config.engines : config.harnesses, undefined);
+  assert.deepEqual(readJson(w, '.bowerloom/skills.json').engines, ['claude-code', 'codex']);
 });

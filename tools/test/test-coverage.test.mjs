@@ -12,6 +12,7 @@ const SKIP = new Set(['node_modules', 'dist', '.git']);
  * when its suite passes offline from the root; a failing suite is fixed, never trimmed to get in.
  */
 const NOT_IN_NPM_TEST = new Map([
+  ['apps/desktop/tests', 'separate app, not an npm workspace: its Electron dependencies come only from apps/desktop/package-lock.json, and apps/desktop runs its own tests with npm run desktop:test'],
   ['apps/docs/tools', 'separate app, not an npm workspace: its @astrojs dependencies come only from apps/docs/package-lock.json, and apps/docs runs its own npm test'],
   ['apps/landing/test', 'fails offline: readme-tags.test.mjs expects "### Install Bowerloom" and README.md now has "## Install Bowerloom"'],
   ['packages/claude-adapter/test', 'fails offline: controlled-exchange.test.mjs reads a fixture bundle outside the repository, ../campaign/sagespec/dual-harness-trial-01'],

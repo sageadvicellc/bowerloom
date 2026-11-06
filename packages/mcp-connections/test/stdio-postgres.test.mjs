@@ -57,7 +57,7 @@ createInterface({input:process.stdin}).on('line',line=>{
    Object.assign(input.binding.transport,{executable,workingDirectory:directory,secretReferences:refs});input.catalog.bindingRevision=mcpBindingRevision(input.binding);
    const scope={workspaceId:'synthetic',runId:id,taskId:'discovery'};
    const proposal=createDiscoveryProposal({scope,requestId:id,ownerEpoch:1,input,timeoutMs:5000,effect:{kind:'stdio',executable:{path:executable,digest:exeDigest},entrypoints:[{path:server,digest:hash(server)}],args:[server,mode],cwd:directory,environment:{inherit:false,secretReferences:refs}}});
-   const now=Date.now();await store.seed(createDiscoveryAuthorityState(proposal,{scope,ownerSubject:'hanna-dummy',ownerEpoch:1,approverSubjects:['hanna-dummy'],readyAtMs:now-100,leaseExpiresAtMs:now+60000,revoked:false}));
+   const now=Date.now();await store.seed(createDiscoveryAuthorityState(proposal,{scope,ownerSubject:'owner-dummy',ownerEpoch:1,approverSubjects:['owner-dummy'],readyAtMs:now-100,leaseExpiresAtMs:now+60000,revoked:false}));
    let reads=0;
    const open=createMcpStdioDiscoveryFactory({trustedLocalServerOnly:true,requestTimeoutMs:1500,sessionTimeoutMs:5000,cleanupTimeoutMs:500,
     resolveSecret:async ref=>{
@@ -65,7 +65,7 @@ createInterface({input:process.stdin}).on('line',line=>{
      if(gate)await gate.promise;
      return ref.environmentVariable==='SYNTHETIC_LOG'?log:secret;
     }});
-   const controller=new DiscoveryAuthorityController({store,open,identity:{async authenticate(value){assert.equal(value,'synthetic-owner');return {subject:'hanna-dummy',proofRef:'synthetic:proof',expiresAtMs:Date.now()+60000};}}});
+   const controller=new DiscoveryAuthorityController({store,open,identity:{async authenticate(value){assert.equal(value,'synthetic-owner');return {subject:'owner-dummy',proofRef:'synthetic:proof',expiresAtMs:Date.now()+60000};}}});
    const run={controller,scope,proposal,server,log,reads:()=>reads};runs.push(run);return run;
   }
   const approve=run=>run.controller.approve(run.scope,{revision:run.proposal.revision,expiresAtMs:Date.now()+30000},'synthetic-owner');

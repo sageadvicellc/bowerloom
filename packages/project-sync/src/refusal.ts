@@ -20,7 +20,7 @@ const MESSAGES = {
   SKILLS_STATE_UNSAFE: 'The private state folder is not safe to use. Each folder must be a real folder you own, with no write access for others, and Bowerloom\'s own folders must be mode 0700.',
   SKILLS_RECOVER_NOTHING: 'This item has no unfinished operation to recover.',
   SKILLS_MIGRATE_NOTHING: 'This project has no skill installed by an earlier Bowerloom (.bowerloom-skills), so there is nothing to migrate.',
-  SKILLS_MIGRATE_STATE_INVALID: 'The folder given with --state does not hold the committed earlier install of this project.',
+  SKILLS_MIGRATE_STATE_INVALID: 'The folder given with --state does not hold the committed earlier install of this project, or the earlier install in the project (.bowerloom-skills) is damaged or does not match it.',
   SKILLS_MIGRATE_NOT_IN_MANIFEST: '.bowerloom/skills.json does not pin the installed skill with the same source and file hashes.',
   // Beta.3 docs review, fix 2: a frozen fetch whose locked commit GitHub no longer has, in a repository it can read.
   LOCK_COMMIT_GONE: 'The locked commit is no longer on GitHub.',

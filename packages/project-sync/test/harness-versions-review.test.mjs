@@ -1,0 +1,232 @@
+// Bowerloom 0.8 save step, review fixes of the version store: limits that match the harness, an up-front check that a
+// save point can be kept, a missing index that is never read as empty, and the gated "set the old save points aside".
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { createHash } from 'node:crypto';
+import {
+  VERSION_LIMITS, checkVersionsFit, harnessStateDirs, listVersions, planSetAsideVersions, readVersion, recordVersion, setAsideVersions,
+  setAsideVersionsLocked,
+} from '../../../dist/packages/project-sync/src/index.js';
+import { recordVersionWith } from '../../../dist/packages/project-sync/src/versions.js';
+import { chmodTree, code } from './portable-fixture.mjs';
+
+const sha = b => createHash('sha256').update(b).digest('hex');
+const NOW = new Date('2026-10-30T12:00:00.900Z');
+const meta = (revision = 'rev-1', label = 'Saved', now = NOW) => ({ revision, label, now });
+const files = (n, size = 4, prefix = 'skills/big/references') => Array.from({ length: n }, (_, i) => ({ path: `${prefix}/${String(i).padStart(4, '0')}.md`, bytes: Buffer.alloc(size, 97 + (i % 26)) }));
+
+function world(t) {
+  const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'bowerloom-versions-review-'))); fs.chmodSync(base, 0o700);
+  t.after(() => { chmodTree(base); fs.rmSync(base, { recursive: true, force: true }); });
+  const dir = path.join(base, 'project'); fs.mkdirSync(dir, { mode: 0o755 });
+  const stateRoot = path.join(base, 'state', 'bowerloom'); fs.mkdirSync(stateRoot, { recursive: true, mode: 0o700 });
+  const dirs = harnessStateDirs(stateRoot, dir);
+  const store = path.join(dirs.base, 'versions');
+  return { base, dir, dirs, store, index: path.join(store, 'index.json'), blobs: path.join(store, 'blobs') };
+}
+const blobNames = w => fs.existsSync(w.blobs) ? fs.readdirSync(w.blobs).filter(n => /^[0-9a-f]{64}$/.test(n)).sort() : [];
+
+// ---- finding 2: the limits of a save point -------------------------------------------------------------------------------
+
+test('a save point of 201 files is kept, twice, and each reads back whole', t => {
+  const w = world(t);
+  const first = files(201), second = [...files(201), { path: 'harness.json', bytes: Buffer.from('{}\n') }];
+  assert.equal(recordVersion(w.dirs, 'definition', first, meta('r1')).files.length, 201);
+  assert.equal(recordVersion(w.dirs, 'definition', second, meta('r2')).files.length, 202);
+  assert.deepEqual(listVersions(w.dirs, 'definition').map(v => v.id), ['v2', 'v1']);
+  assert.equal(readVersion(w.dirs, 'definition', 'v1').files.length, 201);
+  assert.equal(readVersion(w.dirs, 'definition', 'v2').files.length, 202);
+});
+
+test('a save point over 8 MiB is kept, twice, and each reads back whole', t => {
+  const w = world(t);
+  // Nine files of 1 MiB less one byte: past the old 8 MiB cap, within the harness limit of 32 MiB.
+  const big = files(9, VERSION_LIMITS.fileBytes - 1);
+  assert.ok(big.reduce((n, f) => n + f.bytes.length, 0) > 8 * 1024 * 1024);
+  recordVersion(w.dirs, 'definition', big, meta('r1'));
+  recordVersion(w.dirs, 'definition', [...big, { path: 'harness.json', bytes: Buffer.from('{}\n') }], meta('r2'));
+  const back = readVersion(w.dirs, 'definition', 'v1');
+  assert.equal(back.files.length, 9);
+  for (const f of back.files) assert.equal(sha(f.bytes), sha(big.find(b => b.path === f.path).bytes));
+  assert.equal(readVersion(w.dirs, 'definition', 'v2').files.length, 10);
+});
+
+test('the store limits reach the harness limits; the index has its own bound of 16 MiB, past the 1 MiB the state layer reads', () => {
+  assert.equal(VERSION_LIMITS.files, 4096);
+  assert.equal(VERSION_LIMITS.bytes, 32 * 1024 * 1024);
+  assert.equal(VERSION_LIMITS.index, 16 * 1024 * 1024);
+});
+
+test('checkVersionsFit says up front whether the save points before and after a save can both be kept', () => {
+  assert.doesNotThrow(() => checkVersionsFit('definition', [files(201), files(250)]));
+  assert.doesNotThrow(() => checkVersionsFit('definition', [files(9, VERSION_LIMITS.fileBytes - 1), files(9, VERSION_LIMITS.fileBytes - 1)]));
+  // The longest paths at the file limit: two sets fit the index together, four do not.
+  const wide = files(VERSION_LIMITS.files, 1, `skills/${'d'.repeat(1000)}`);
+  assert.doesNotThrow(() => checkVersionsFit('definition', [wide, wide]));
+  assert.throws(() => checkVersionsFit('definition', [wide, wide, wide, wide]), code('VERSION_TOO_LARGE'));
+  assert.throws(() => checkVersionsFit('definition', [files(VERSION_LIMITS.files + 1)]), code('VERSION_TOO_LARGE'));
+  assert.throws(() => checkVersionsFit('a/b', [files(1)]), code('VERSION_USAGE'));
+});
+
+test('two save points that checkVersionsFit passes are both kept by recordVersion', t => {
+  const w = world(t);
+  const a = files(1200, 1, `skills/${'a'.repeat(200)}`), b = files(1200, 2, `skills/${'a'.repeat(200)}`);
+  checkVersionsFit('definition', [a, b]);
+  recordVersion(w.dirs, 'definition', a, meta('r1'));
+  recordVersion(w.dirs, 'definition', b, meta('r2'));
+  assert.deepEqual(listVersions(w.dirs, 'definition').map(v => v.id), ['v2', 'v1'], 'neither one was dropped to fit the index');
+});
+
+// ---- finding 7: a missing index with blobs left behind ------------------------------------------------------------------
+
+test('a deleted index with blobs left behind is VERSION_CORRUPT for list, read, and record, and the blobs stay', t => {
+  const w = world(t);
+  recordVersion(w.dirs, 'definition', files(3), meta('r1'));
+  const kept = blobNames(w);
+  assert.ok(kept.length > 0);
+  fs.unlinkSync(w.index);
+  assert.throws(() => listVersions(w.dirs, 'definition'), code('VERSION_CORRUPT'));
+  assert.throws(() => readVersion(w.dirs, 'definition', 'v1'), code('VERSION_CORRUPT'));
+  assert.throws(() => recordVersion(w.dirs, 'definition', files(2), meta('r2')), code('VERSION_CORRUPT'));
+  assert.deepEqual(blobNames(w), kept, 'no orphan blob was erased');
+  assert.equal(fs.existsSync(w.index), false);
+});
+
+test('a first record that stops after its blobs leaves an empty index, so the store still reads, and the next record cleans up', t => {
+  const w = world(t);
+  const stop = new Error('stop');
+  assert.throws(() => recordVersionWith(w.dirs, 'definition', files(2), meta('r1'), { afterBlobs: () => { throw stop; } }), e => e === stop);
+  assert.ok(fs.existsSync(w.index), 'the empty index came first');
+  assert.ok(blobNames(w).length > 0);
+  assert.deepEqual(listVersions(w.dirs, 'definition'), []);
+  recordVersion(w.dirs, 'definition', files(1, 9), meta('r2'));
+  assert.deepEqual(blobNames(w), [sha(Buffer.alloc(9, 97))]);
+});
+
+test('setting the old save points aside renames the store to a dated folder, deletes nothing, and a new record starts over', async t => {
+  const w = world(t);
+  recordVersion(w.dirs, 'definition', files(3), meta('r1'));
+  const kept = blobNames(w);
+  fs.unlinkSync(w.index);
+  const plan = planSetAsideVersions(w.dirs);
+  assert.equal(plan.damaged, true);
+  assert.match(plan.revision, /^[a-f0-9]{64}$/);
+  assert.deepEqual(planSetAsideVersions(w.dirs), plan, 'planning reads only');
+  assert.throws(() => setAsideVersions(w.dirs, 'f'.repeat(64), NOW), code('VERSION_STALE'));
+  const r = await setAsideVersionsLocked(w.dirs, w.dir, plan.revision, NOW);
+  assert.equal(r.name, 'versions-set-aside-20261030T120000Z');
+  const aside = path.join(w.dirs.base, r.name);
+  assert.deepEqual(fs.readdirSync(path.join(aside, 'blobs')).filter(n => /^[0-9a-f]{64}$/.test(n)).sort(), kept, 'every blob is kept, aside');
+  assert.equal(fs.lstatSync(aside).mode & 0o777, 0o700);
+  assert.equal(fs.existsSync(w.store), false);
+  assert.deepEqual(listVersions(w.dirs, 'definition'), []);
+  assert.equal(recordVersion(w.dirs, 'definition', files(1), meta('r2')).id, 'v1');
+  assert.throws(() => planSetAsideVersions({ ...w.dirs, base: path.join(w.base, 'nowhere', 'harness') }), code('VERSION_NOTHING'));
+});
+
+test('a corrupt index is set aside the same way; a second set-aside in the same second gets its own name', t => {
+  const w = world(t);
+  recordVersion(w.dirs, 'definition', files(1), meta('r1'));
+  fs.writeFileSync(w.index, 'not json', { mode: 0o600 });
+  assert.throws(() => listVersions(w.dirs, 'definition'), code('VERSION_CORRUPT'));
+  const first = setAsideVersions(w.dirs, planSetAsideVersions(w.dirs).revision, NOW);
+  recordVersion(w.dirs, 'definition', files(1), meta('r2'));
+  const plan = planSetAsideVersions(w.dirs);
+  assert.equal(plan.damaged, false, 'a whole store reads as whole');
+  const second = setAsideVersions(w.dirs, plan.revision, NOW);
+  assert.notEqual(second.name, first.name);
+  assert.match(second.name, /^versions-set-aside-20261030T120000Z-2$/);
+  assert.equal(fs.readFileSync(path.join(w.dirs.base, first.name, 'index.json'), 'utf8'), 'not json', 'the damaged index is kept as it was');
+});
+
+test('the set-aside plan changes when the store changes, so an old approval is refused', t => {
+  const w = world(t);
+  recordVersion(w.dirs, 'definition', files(1), meta('r1'));
+  const plan = planSetAsideVersions(w.dirs);
+  recordVersion(w.dirs, 'definition', files(2), meta('r2'));
+  assert.notEqual(planSetAsideVersions(w.dirs).revision, plan.revision);
+  assert.throws(() => setAsideVersions(w.dirs, plan.revision, NOW), code('VERSION_STALE'));
+  assert.ok(fs.existsSync(w.store));
+});
+
+// ---- verification review, finding 2: an index the state layer refuses is damaged too ---------------------------------------
+
+/**
+ * Each way the index reads as unsafe: open to others, a second hard link, and over the index bound. The store reads PORTABLE_STATE_UNSAFE; the set-aside
+ * plan calls it damaged, and the rename moves the index as it is: the same inode, the same mode, the same size, and the other link still names it.
+ */
+const UNSAFE_INDEX = [
+  ['an index open to others', w => { fs.chmodSync(w.index, 0o644); }],
+  ['a hard-linked index', w => { fs.linkSync(w.index, path.join(w.base, 'other-name.json')); }],
+  ['an index over the bound', w => { fs.writeFileSync(w.index, Buffer.alloc(VERSION_LIMITS.index + 1, 32), { mode: 0o600 }); }],
+];
+for (const [name, spoil] of UNSAFE_INDEX) {
+  test(`${name} is unsafe to read, and the set-aside plan treats it as damaged and renames it without opening it`, async t => {
+    const w = world(t);
+    recordVersion(w.dirs, 'definition', files(3), meta('r1'));
+    spoil(w);
+    const before = fs.lstatSync(w.index);
+    assert.throws(() => listVersions(w.dirs, 'definition'), code('PORTABLE_STATE_UNSAFE'));
+    const plan = planSetAsideVersions(w.dirs);
+    assert.equal(plan.damaged, true);
+    const r = await setAsideVersionsLocked(w.dirs, w.dir, plan.revision, NOW);
+    const moved = fs.lstatSync(path.join(w.dirs.base, r.name, 'index.json'));
+    assert.deepEqual([moved.ino, moved.mode, moved.size, moved.nlink], [before.ino, before.mode, before.size, before.nlink]);
+    assert.ok(moved.isFile(), 'a plain file, not followed or replaced');
+    assert.equal(fs.existsSync(w.store), false);
+    assert.deepEqual(listVersions(w.dirs, 'definition'), []);
+    assert.equal(recordVersion(w.dirs, 'definition', files(1), meta('r2')).id, 'v1');
+  });
+}
+
+test('a store folder that is unsafe is still refused by the set-aside plan, not read as damaged', t => {
+  const w = world(t);
+  recordVersion(w.dirs, 'definition', files(1), meta('r1'));
+  fs.chmodSync(w.store, 0o755);
+  assert.throws(() => planSetAsideVersions(w.dirs), code('PORTABLE_STATE_UNSAFE'));
+  fs.chmodSync(w.store, 0o700);
+});
+
+// ---- verification review, finding 3: the index bound is not the save limit -------------------------------------------------
+
+test('two save points of a harness at 4,096 files with paths of 100 characters are both kept, and each reads back whole', t => {
+  const w = world(t);
+  const at = (n, byte) => Array.from({ length: VERSION_LIMITS.files }, (_, i) => {
+    const tail = `/${String(i).padStart(4, '0')}.md`;
+    return { path: `skills/${'p'.repeat(100 - 'skills/'.length - tail.length)}${tail}`, bytes: Buffer.from([byte + (i === n ? 1 : 0)]) };
+  });
+  const a = at(-1, 97), b = at(7, 97);
+  assert.ok(a.every(f => f.path.length === 100));
+  assert.doesNotThrow(() => checkVersionsFit('definition', [a, b]));
+  recordVersion(w.dirs, 'definition', a, meta('r1'));
+  recordVersion(w.dirs, 'definition', b, meta('r2'));
+  assert.deepEqual(listVersions(w.dirs, 'definition').map(v => v.id), ['v2', 'v1'], 'neither one was dropped to fit the index');
+  assert.ok(fs.statSync(w.index).size > 1024 * 1024, 'the index is past the 1 MiB the state layer reads');
+  assert.ok(fs.statSync(w.index).size <= VERSION_LIMITS.index);
+  assert.equal(readVersion(w.dirs, 'definition', 'v1').files.length, VERSION_LIMITS.files);
+  assert.deepEqual(readVersion(w.dirs, 'definition', 'v2').files[7].bytes, Buffer.from([98]));
+  // More history fits beside them.
+  recordVersion(w.dirs, 'definition', at(8, 97), meta('r3'));
+  assert.deepEqual(listVersions(w.dirs, 'definition').map(v => v.id), ['v3', 'v2', 'v1']);
+});
+
+test('the index keeps the safety checks of a private state file: a link, a shared mode, a second link, and a size past the bound are refused before any read', t => {
+  const w = world(t);
+  recordVersion(w.dirs, 'definition', files(1), meta('r1'));
+  const good = fs.readFileSync(w.index);
+  fs.unlinkSync(w.index);
+  fs.writeFileSync(path.join(w.base, 'elsewhere.json'), good, { mode: 0o600 });
+  fs.symlinkSync(path.join(w.base, 'elsewhere.json'), w.index);
+  assert.throws(() => listVersions(w.dirs, 'definition'), code('PORTABLE_STATE_UNSAFE'), 'a link');
+  fs.unlinkSync(w.index);
+  fs.writeFileSync(w.index, good, { mode: 0o640 });
+  assert.throws(() => listVersions(w.dirs, 'definition'), code('PORTABLE_STATE_UNSAFE'), 'a shared mode');
+  fs.chmodSync(w.index, 0o600);
+  assert.equal(listVersions(w.dirs, 'definition').length, 1);
+  fs.renameSync(w.index, path.join(w.base, 'kept.json'));
+  fs.mkdirSync(w.index, { mode: 0o700 });
+  assert.throws(() => listVersions(w.dirs, 'definition'), code('PORTABLE_STATE_UNSAFE'), 'a folder');
+});

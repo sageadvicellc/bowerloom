@@ -1,0 +1,104 @@
+/*
+ * The shell of the home app: the left navigation (open, a rail, or a drawer over the page), the slim top row of the middle column, and the two places the navigation
+ * switches between. Scoped to [data-home]. Sizes come from home-tokens.css (an item is 32 px, text 14 px at the least) and timing from the motion tokens.
+ */
+/* ---- The navigation. A column of its own, the full height of the window. Nothing in it clips, so a popover or a tooltip can reach out of it; only the list of places scrolls. */
+[data-home] .hm-nav {
+  grid-column: 1; grid-row: 1 / -1; position: relative; z-index: 25; display: flex; flex-direction: column; min-width: 0; min-height: 0; box-sizing: border-box;
+  background: var(--surface); border-right: 1px solid var(--hm-border);
+}
+[data-home] .hm-nav-top { display: flex; align-items: center; gap: var(--hm-space-2); min-height: var(--hm-bar-h); box-sizing: border-box; padding: 0 var(--hm-space-3); flex: none; }
+[data-home] .hm-brand { display: flex; align-items: center; gap: var(--hm-space-3); min-width: 0; font-size: var(--hm-text-section); font-weight: 600; color: var(--text); }
+[data-home] .hm-brand .kit-icon { color: var(--accent-strong); }
+[data-home] .hm-nav-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--hm-space-2) var(--hm-space-3); display: flex; flex-direction: column; gap: var(--hm-space-3); }
+[data-home] .hm-nav-low { flex: none; padding: var(--hm-space-2) var(--hm-space-3) var(--hm-space-3); border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: var(--hm-space-2); }
+[data-home] .hm-nav-list, [data-home] .hm-nav-sub { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+[data-home] .hm-nav-pair { display: flex; flex-direction: column; gap: 2px; border-radius: var(--hm-radius-small); }
+[data-home] .hm-nav-list .kit-tip, [data-home] .hm-nav-list .kit-help { display: flex; width: 100%; }
+/* A group is a small muted header and the list under it. */
+[data-home] .hm-nav-group { display: flex; flex-direction: column; gap: 2px; }
+[data-home] .hm-nav-section {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--hm-space-2); width: 100%; min-height: var(--hm-control-h); box-sizing: border-box; padding: 0 var(--hm-space-3);
+  font: inherit; font-size: var(--hm-text-base); font-weight: 500; line-height: 1.2; text-align: left; color: var(--text-muted);
+  background: transparent; border: 0; border-radius: var(--hm-radius-small); cursor: pointer; touch-action: manipulation;
+}
+[data-home] .hm-nav-section:hover { color: var(--text); }
+[data-home] .hm-nav-section:focus-visible, [data-home] .hm-nav-item:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+/* The chevron of a header or a folder: down when open, turned to the right when closed. */
+[data-home] .hm-nav-chev { display: inline-flex; flex: none; margin-left: auto; transition: transform var(--motion-home-nav-ms, 0ms) var(--motion-home-nav-ease, ease); transform: rotate(-90deg); }
+[data-home] .hm-nav-chev[data-unfolded] { transform: none; }
+[data-home] .hm-nav-chev .kit-icon { color: var(--text-muted); }
+/* A part of the list that folds: its grid row goes from 0fr to 1fr, so it opens by its own height. Closed, it cannot be seen or reached. */
+[data-home] .hm-fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--motion-home-nav-ms, 0ms) var(--motion-home-nav-ease, ease); }
+[data-home] .hm-fold[data-unfolded] { grid-template-rows: 1fr; }
+[data-home] .hm-fold-inner { min-height: 0; overflow: hidden; visibility: hidden; transition: visibility var(--motion-home-nav-ms, 0ms) var(--motion-home-nav-ease, linear); }
+[data-home] .hm-fold[data-unfolded] > .hm-fold-inner { visibility: visible; }
+/* The hover highlight: one soft box, placed by the sidebar under the pointer, that glides from item to item. It sits behind the items. */
+[data-home] .hm-nav-glide {
+  position: absolute; left: 0; top: 0; z-index: 0; width: 0; height: 0; border-radius: var(--hm-radius-small); background: var(--surface-2); opacity: 0; pointer-events: none;
+  transition: transform var(--motion-home-nav-ms, 0ms) var(--motion-home-nav-ease, ease), width var(--motion-home-nav-ms, 0ms) var(--motion-home-nav-ease, ease), height var(--motion-home-nav-ms, 0ms) var(--motion-home-nav-ease, ease), opacity var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
+}
+[data-home] .hm-nav-glide[data-on] { opacity: 1; }
+[data-home] .hm-nav-item {
+  position: relative; z-index: 1; display: flex; align-items: center; gap: var(--hm-space-3); width: 100%; min-height: var(--hm-control-h); box-sizing: border-box; padding: 0 var(--hm-space-3);
+  font: inherit; font-size: var(--hm-text-base); font-weight: 400; line-height: 1.2; text-align: left; white-space: nowrap; color: var(--text);
+  background: transparent; border: 0; border-radius: var(--hm-radius-small); cursor: pointer; touch-action: manipulation;
+  transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), transform var(--motion-home-press-ms, 0ms) var(--motion-home-press-ease, ease-out);
+}
+/* A press answers at once, as a button's does: the item shrinks a little for 100 ms. Under reduce motion there is no press at all. */
+@media (prefers-reduced-motion: no-preference) {
+  [data-home] .hm-nav-item:not([aria-disabled]):active { transform: scale(var(--motion-home-press-scale, 1)); }
+}
+[data-home] .hm-nav-item .kit-icon { flex: none; color: var(--text-muted); }
+/* The place you are on: a soft fill and a medium weight, never a check mark. */
+[data-home] .hm-nav-item[aria-current="page"] { background: var(--accent-soft); font-weight: 500; }
+[data-home] .hm-nav-item[aria-current="page"] .kit-icon { color: var(--accent-strong); }
+[data-home] .hm-nav-item[aria-expanded="true"]:not([aria-current]):not([data-fold]) { background: var(--accent-soft); }
+/* Add is the one primary item. */
+[data-home] .hm-nav-item[data-primary] { background: var(--accent); color: var(--accent-contrast); border: 1px solid var(--accent-strong); font-weight: 600; }
+[data-home] .hm-nav-item[data-primary] .kit-icon { color: inherit; }
+[data-home] .hm-nav-item[data-primary]:hover { background: var(--accent-strong); }
+[data-home] .hm-nav-item[data-primary][aria-expanded="true"] { background: var(--accent-strong); }
+/* The children of a folder hang off a thin branch line under the folder's icon, 12 px wide, with an elbow into each child. */
+[data-home] .hm-nav-sub { position: relative; margin: 0 0 0 calc(var(--hm-space-3) + 10px - 0.5px); padding-left: 12px; }
+[data-home] .hm-branch { position: absolute; left: 0; top: 0; pointer-events: none; color: var(--border); }
+[data-home] .hm-preview { display: flex; align-items: center; }
+[data-home] .hm-preview .kit-help { width: auto; }
+
+/* ---- The rail: icons only, 48 px. The words stay in the page for a screen reader, and each icon has a tooltip. */
+[data-home] .hm-nav[data-mode="rail"] .hm-nav-top { padding: 0 var(--hm-space-2); justify-content: center; }
+[data-home] .hm-nav[data-mode="rail"] .hm-brand { display: none; }
+[data-home] .hm-nav[data-mode="rail"] .hm-nav-body { overflow: visible; padding: var(--hm-space-2); }
+[data-home] .hm-nav[data-mode="rail"] .hm-nav-low { padding: var(--hm-space-2); }
+[data-home] .hm-nav[data-mode="rail"] .hm-nav-section, [data-home] .hm-nav[data-mode="rail"] .hm-nav-chev, [data-home] .hm-nav[data-mode="rail"] .hm-branch { display: none; }
+[data-home] .hm-nav[data-mode="rail"] .hm-nav-sub { margin: 0; padding-left: 0; }
+[data-home] .hm-nav[data-mode="rail"] .hm-nav-group { gap: 0; }
+/* In a rail the fold must not clip the tooltips, so it clips nothing; a closed folder is still unseen. */
+[data-home] .hm-nav[data-mode="rail"] .hm-fold-inner { overflow: visible; }
+[data-home] .hm-nav[data-mode="rail"] .hm-nav-item { justify-content: center; padding: 0; }
+[data-home] .hm-nav[data-mode="rail"] .hm-nav-label, [data-home] .hm-nav[data-mode="rail"] .kit-help-text > span:not(.kit-dot) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+[data-home] .hm-nav[data-mode="rail"] .hm-preview { justify-content: center; }
+[data-home] .hm-nav[data-mode="rail"] button.kit-status.kit-help-text { padding: 0; width: var(--hm-control-h); justify-content: center; }
+/* The drawer is hidden under 900 px; the toggle in the top row brings it over the page. */
+[data-home] .hm-nav[data-mode="hidden"] { display: none; }
+[data-home] .hm-nav[data-mode="hidden"][data-overlay] {
+  display: flex; position: fixed; z-index: 60; left: 0; top: 0; bottom: 0; width: var(--hm-nav-w); box-shadow: var(--hm-shadow-drawer);
+  animation: hm-nav-in var(--motion-home-drawer-ms, 0ms) var(--motion-home-drawer-ease, ease-out) both;
+}
+[data-home] .hm-nav-scrim { position: fixed; inset: 0; z-index: 55; background: var(--hm-scrim); }
+@keyframes hm-nav-in { from { opacity: 0; transform: translateX(calc(-1 * var(--motion-home-drawer-travel, 0px))); } to { opacity: 1; transform: none; } }
+
+/* ---- The top row of the middle column: the page title at the left, the page's icon buttons at the right, the details toggle last of all (the top right of the window). */
+[data-home] .hm-topbar {
+  display: flex; align-items: center; gap: var(--hm-space-3); min-height: var(--hm-bar-h); box-sizing: border-box; padding: var(--hm-space-2) var(--hm-space-3) var(--hm-space-2) var(--hm-space-5);
+  background: var(--surface); border-bottom: 1px solid var(--hm-border); position: relative; z-index: 12;
+}
+[data-home] .hm-topbar h1 { margin: 0; font-size: var(--hm-text-title); outline-offset: 4px; width: fit-content; max-width: 100%; border-radius: var(--hm-radius-small); }
+[data-home] .hm-topbar-tools { margin-left: auto; display: flex; align-items: center; gap: var(--hm-space-2); }
+/* The navigation toggle in the top row shows only while the navigation is hidden. */
+[data-home] .hm-topbar-nav { margin-left: calc(-1 * var(--hm-space-3)); }
+/* A place of the app: it adds its stage and its panel to the body of the shell and takes no box of its own. Only the place that is shown is in the page. */
+[data-home] .hm-view { display: contents; }
+@media (prefers-reduced-motion: reduce) {
+  [data-home] .hm-nav-item, [data-home] .hm-nav-chev, [data-home] .hm-fold, [data-home] .hm-fold-inner, [data-home] .hm-nav-glide { transition: none !important; }
+}

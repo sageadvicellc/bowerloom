@@ -1,0 +1,11 @@
+{
+  "about": "A synthetic project set up the old way, for tests/harness-def-cli.test.ts (step 5 blueprint, section F item 1). No real rules, servers, or secrets. Each key is a path relative to the project folder.",
+  "files": {
+    "AGENTS.md": "# E2E\n\nUse npm.\n",
+    "CLAUDE.md": "# E2E for Claude\n\nUse pnpm.\n",
+    ".claude/settings.json": "{\n  \"permissions\": {\n    \"deny\": [\n      \"Bash(rm -rf:*)\"\n    ]\n  },\n  \"hooks\": {\n    \"PreToolUse\": [\n      {\n        \"matcher\": \"Bash\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"echo check\"\n          }\n        ]\n      }\n    ]\n  }\n}\n",
+    ".claude/skills/review/SKILL.md": "---\nname: review\ndescription: Reviews a change.\n---\n\nReview it.\n",
+    ".mcp.json": "{\n  \"mcpServers\": {\n    \"files\": {\n      \"command\": \"npx\",\n      \"args\": [\"-y\", \"files-server\"],\n      \"env\": { \"API_TOKEN\": \"${TOKEN}\" }\n    },\n    \"lint\": {\n      \"command\": \"lint-server\",\n      \"args\": [\"--fix\"]\n    }\n  }\n}\n",
+    ".codex/config.toml": "# A server this project keeps by hand. Its tool allow list has no neutral form, so adoption leaves it here.\n[mcp_servers.local-notes]\ncommand = \"notes-server\"\nargs = [\"--port\", \"4000\"]\nenabled_tools = [\"read\"]\n"
+  }
+}

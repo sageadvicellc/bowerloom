@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import config, * as metadataModule from '../vite.config.ts';
-import {hero} from '../src/content.ts';
+import { hero } from '../src/content.ts';
 
-const TAGLINE = 'Set up the skills, prompts, and teams your agents use, and approve every change.';
+const TAGLINE = 'Define your skills, agents, tools, rules, and context once. Bowerloom installs them into Claude Code and Codex.';
 const read = path => readFile(new URL(path, import.meta.url), 'utf8');
 const preview = async () => JSON.parse(await read('../../../release/social-preview.json'));
 const meta = html => new Map([...html.matchAll(/<meta\s+(?:property|name)="([^"]+)"\s+content="([^"]*)"\s*\/?>/g)].map(match => [match[1], match[2]]));

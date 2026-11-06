@@ -1,0 +1,24 @@
+/* Compare (S9). Every rule starts at [data-home]. The shared instruction on top, one column for each run, and the foot with the line that says where a rating saves. */
+[data-home] .hc-same { box-sizing: border-box; display: flex; flex-direction: column; gap: var(--hm-space-2); padding: var(--hm-space-4); background: var(--surface-2); border-radius: var(--hm-radius); }
+[data-home] .hc-same-label { margin: 0; font-size: var(--hm-text-base); color: var(--text-muted); }
+[data-home] .hc-same-text { margin: 0; font-size: var(--hm-text-name); font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+[data-home] .hc-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: var(--hm-space-4); align-items: start; }
+[data-home] .hc-col { display: flex; flex-direction: column; gap: var(--hm-space-3); box-sizing: border-box; min-width: 0; padding: var(--hm-space-4); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); }
+[data-home] .hc-col-head { display: flex; align-items: center; gap: var(--hm-space-3); }
+[data-home] .hc-col-title { flex: 1 1 auto; min-width: 0; margin: 0; font-size: var(--hm-text-title); font-weight: 600; line-height: 1.25; }
+[data-home] .hc-col .hx-text { margin: 0; }
+[data-home] .hc-muted { color: var(--text-muted); }
+[data-home] .hc-bring .kit-button { width: 100%; }
+[data-home] .hc-label, [data-home] .hc-ask { margin: var(--hm-space-2) 0 0; font-size: var(--hm-text-base); font-weight: 600; line-height: 1.4; }
+[data-home] .hc-notes { box-sizing: border-box; width: 100%; min-height: 6rem; resize: vertical; padding: var(--hm-space-3); font: inherit; font-size: var(--hm-text-base); line-height: 1.45; color: var(--text); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); }
+[data-home] .hc-notes:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
+[data-home] .hc-rating { display: flex; flex-wrap: wrap; gap: var(--hm-space-3); }
+[data-home] .hc-rate[aria-pressed="true"] { background: var(--accent-soft); border: 2px solid var(--accent-strong); font-weight: 600; }
+/* A locked rating is plain and faint, with a solid edge, and it still says why in the words above it. */
+[data-home] .hc-rate[aria-disabled="true"], [data-home] .hc-rate[aria-disabled="true"]:hover { background: transparent; border: 1px solid var(--border); border-style: solid; color: var(--text-muted); opacity: 0.6; cursor: not-allowed; }
+[data-home] .hc-foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--hm-space-3) var(--hm-space-4); padding-top: var(--hm-space-4); }
+[data-home] .hc-saved { margin: 0; flex: 1 1 18rem; min-width: 0; font-size: var(--hm-text-base); line-height: 1.4; color: var(--text-muted); }
+[data-home] .hc-foot-actions { display: flex; gap: var(--hm-space-3); margin-left: auto; }
+[data-home] .hc-saved[data-saved] { color: var(--text); }
+/* Goal 2: the picked rating still answers the pointer. */
+[data-home] .hc-rate[aria-pressed="true"]:not([aria-disabled="true"]):hover { box-shadow: inset 0 0 0 1px var(--accent-strong); }

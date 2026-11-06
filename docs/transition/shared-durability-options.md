@@ -5,14 +5,14 @@ created: 2026-10-01
 updated: 2026-10-01
 brief: evidence-index.md#shared-durability-follow-up
 check: evidence-index.md#shared-durability-follow-up
-audience: Hanna
+audience: the maintainer
 ---
 
 # Company and personal Trellis
 
 ## Summary
 
-Offer Supabase as an optional company deployment target, with portable PostgreSQL underneath and lightweight personal storage alongside it. This is a proposal for Hanna, not a technology selection. Keep the workflow engine, which coordinates execution and recovery, open until failure tests establish its fit.
+Offer Supabase as an optional company deployment target, with portable PostgreSQL underneath and lightweight personal storage alongside it. This is a proposal for the maintainer, not a technology selection. Keep the workflow engine, which coordinates execution and recovery, open until failure tests establish its fit.
 
 ## Proposed boundaries
 
@@ -40,7 +40,7 @@ Temporal offers an MIT self-hosted server and external workers. Operators manage
 
 DBOS distinguishes retryable attempts from recorded completed steps. It does not automatically interrupt an executing step on cancellation. Engineering inference: Trellis must reconcile uncertain external effects before retry and report effects that continue after cancellation. [sd-F7: workflows](https://docs.dbos.dev/typescript/tutorials/workflow-tutorial). [sd-F8: workflow management](https://docs.dbos.dev/typescript/tutorials/workflow-management).
 
-## Decisions for Hanna
+## Decisions for the maintainer
 
 1. Personal setup: retain the SQLite/journal target and fund Trellis recovery work, use Python DBOS, or accept PostgreSQL everywhere with TypeScript DBOS.
 2. Company recovery: accept a supervised coordinator with explicit downtime, or expand the Temporal evaluation for automatic replacement. Conductor adds proprietary production licensing.

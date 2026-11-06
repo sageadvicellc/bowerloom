@@ -1,0 +1,22 @@
+/*
+ * A small menu under an icon button (the sort menu). Scoped to [data-home]. Text is 14 px, an item is 32 px high, the chosen item is a tint with a 2 px accent edge (never a
+ * tick). It opens under the button, lined up with its right edge, and fades in with the overlay tokens (none under reduce motion).
+ */
+[data-home] .hm-menu { position: relative; display: inline-flex; }
+[data-home] .hm-menu-list {
+  position: absolute; z-index: 40; top: calc(100% + var(--hm-space-2)); right: 0; min-width: 11rem; box-sizing: border-box; padding: var(--hm-space-1); display: flex; flex-direction: column; gap: 2px;
+  background: var(--surface); color: var(--text); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow-lift);
+  animation: kit-overlay-in var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out) both;
+}
+[data-home] .hm-menu[data-align="start"] .hm-menu-list { right: auto; left: 0; }
+[data-home] .hm-menu-item {
+  display: flex; align-items: center; min-height: var(--hm-control-h); box-sizing: border-box; padding: 0 var(--hm-space-3); font: inherit; font-size: var(--hm-text-base); font-weight: 600; text-align: left;
+  color: var(--text); background: transparent; border: 0; border-radius: var(--hm-radius-small); cursor: pointer; touch-action: manipulation;
+  transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
+}
+[data-home] .hm-menu-item:hover { background: var(--accent-soft); }
+[data-home] .hm-menu-item[aria-checked="true"] { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent-strong); }
+[data-home] .hm-menu-item:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+@media (prefers-reduced-motion: reduce) {
+  [data-home] .hm-menu-list { animation: none !important; }
+}

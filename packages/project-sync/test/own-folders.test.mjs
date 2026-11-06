@@ -13,7 +13,7 @@ import { fetchedInto } from '../../../dist/packages/project-sync/src/apply.js';
 
 const network = denyNetwork();
 after(() => assert.deepEqual(network, [], 'every fetch in this file goes to a fake'));
-const input = w => ({ project: w.project(), stateRoot: w.stateRoot, home: w.home, harnesses: ['claude', 'codex'], team: null, frozen: true });
+const input = w => ({ project: w.project(), stateRoot: w.stateRoot, home: w.home, engines: ['claude-code', 'codex'], team: null, frozen: true });
 const signal = () => new AbortController().signal;
 
 /** A teammate's clone whose lock holds a written skill and a pin; the store is gone. */

@@ -2,7 +2,7 @@
 
 ## Founder direction
 
-Supabase is a conditional requirement for the supported backend. Its suitability must cover ease of use, shared knowledge, limited access, personal autonomy, and deletion. Hanna favors PostgreSQL throughout personal and company installations. That preference informs the proposed design, but it does not establish a tested deployment.
+Supabase is a conditional requirement for the supported backend. Its suitability must cover ease of use, shared knowledge, limited access, personal autonomy, and deletion. The maintainer favors PostgreSQL throughout personal and company installations. That preference informs the proposed design, but it does not establish a tested deployment.
 
 The v1 core must avoid proprietary coordination dependencies. Company knowledge can be central, while personal installations retain private work and independent execution. Optional telemetry sent to Sage Advice requires explicit consent and a deletion policy. Trellis supplies the controls. Sagespec supplies its own business policies and customer terms.
 

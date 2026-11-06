@@ -1,0 +1,254 @@
+[
+  {
+    "id": "app-welcome",
+    "kind": "shot",
+    "page": "app",
+    "section": "The first minute",
+    "what": "The welcome screen of the app on a first start, before any folder is read.",
+    "alt": "The Bowerloom welcome screen. It says that Bowerloom only reads, and shows a Find my files button.",
+    "caption": "The welcome screen says that Bowerloom only reads. Press Find my files to start."
+  },
+  {
+    "id": "app-find-files",
+    "kind": "shot",
+    "page": "app",
+    "section": "The first minute",
+    "what": "The list of engine files that the app found, each source ticked, with its count.",
+    "alt": "A list of the sources the app found, each with a tick box and a count of files, and a Looks right button.",
+    "caption": "The app lists what it found. Untick a source to skip it."
+  },
+  {
+    "id": "app-install-history",
+    "kind": "shot",
+    "page": "app",
+    "section": "The first minute",
+    "what": "The Install history screen with its Undo rows.",
+    "alt": "The Install history screen in the app, with the list of changes.",
+    "caption": "Install history lists each change, newest first."
+  },
+  {
+    "id": "app-adopt-sheet",
+    "kind": "shot",
+    "page": "app",
+    "section": "Make a harness from a folder",
+    "what": "The New harness from a folder sheet at its review step.",
+    "alt": "The New harness from a folder sheet, showing the files it read and the approvals to tick.",
+    "caption": "The review step shows what the app read before it writes anything."
+  },
+  {
+    "id": "app-install-review",
+    "kind": "shot",
+    "page": "app",
+    "section": "Install a folder's harness",
+    "what": "The install review for both engines, each part with its result.",
+    "alt": "The install review sheet. Each part shows a dot and one of the words Exact, Translated, Weakened, or Absent.",
+    "caption": "The install review marks each part as Exact, Translated, Weakened, or Absent."
+  },
+  {
+    "id": "app-builder",
+    "kind": "shot",
+    "page": "app",
+    "section": "The Builder",
+    "what": "The Builder graph with a skill linked to an agent and one unsaved change.",
+    "alt": "The Builder graph. Agents sit on the left, skills on the right, and a line joins a skill to an agent.",
+    "caption": "The Builder shows agents on the left and skills on the right."
+  },
+  {
+    "id": "app-save-review",
+    "kind": "shot",
+    "page": "app",
+    "section": "The save step",
+    "what": "The Save review sheet that lists each file the save changes.",
+    "alt": "The Save review sheet with two changed files listed and a Save 2 files button.",
+    "caption": "The save review lists each file that the save changes."
+  },
+  {
+    "id": "app-save-points",
+    "kind": "shot",
+    "page": "app",
+    "section": "Save points, Go back, and Set aside",
+    "what": "The Save points list with one row marked Now.",
+    "alt": "The Save points list. Each row shows its number, what changed, its time, and its file count.",
+    "caption": "Each save point is a copy of the harness as it was."
+  },
+  {
+    "id": "app-import-sheet",
+    "kind": "shot",
+    "page": "app",
+    "section": "Export and import",
+    "what": "The Import sheet after a file is chosen.",
+    "alt": "The Import sheet, showing what the chosen file holds and the boxes to tick.",
+    "caption": "The import sheet shows what the file holds before it writes."
+  },
+  {
+    "id": "app-overview",
+    "kind": "shot",
+    "page": "app",
+    "section": "See everything in one graph",
+    "what": "The Overview graph of every place the first read found.",
+    "alt": "The Overview screen, a graph of folders with their agents, skills, and tools.",
+    "caption": "The Overview shows every place the app found in one graph."
+  },
+  {
+    "id": "app-engines",
+    "kind": "shot",
+    "page": "app",
+    "section": "The first minute",
+    "what": "The Engines screen with the health and the switch of each engine.",
+    "alt": "The Engines screen, with one row for each engine and a switch on each row.",
+    "caption": "The Engines screen shows the health of each engine and its switch."
+  },
+  {
+    "id": "app-export-sheet",
+    "kind": "shot",
+    "page": "guides/share-a-harness",
+    "section": "Export",
+    "what": "The Export sheet of the Builder before the file is written.",
+    "alt": "The Export sheet, showing the files the harness file will hold.",
+    "caption": "The export sheet shows what the file will hold."
+  },
+  {
+    "id": "app-notes-tour",
+    "kind": "shot",
+    "page": "guides/notes",
+    "section": "In the desktop app",
+    "what": "The tour at the step that builds the Notes keeper.",
+    "alt": "The Notes keeper build sheet with the guided tour open at step 4 of 7.",
+    "caption": "The tour walks through the build of the Notes keeper."
+  },
+  {
+    "id": "app-help",
+    "kind": "shot",
+    "page": "app",
+    "section": "Help menu",
+    "what": "The Help screen of the app.",
+    "alt": "The Help screen of the app.",
+    "caption": "The Help screen has the report and usage log entries."
+  },
+  {
+    "id": "cli-help",
+    "kind": "terminal",
+    "page": "cli",
+    "section": "Discovery",
+    "what": "bowerloom --help",
+    "alt": "The short help of the command line.",
+    "caption": "The short help lists the commands you use first."
+  },
+  {
+    "id": "cli-up",
+    "kind": "terminal",
+    "page": "cli",
+    "section": "Project commands",
+    "what": "bowerloom up --team first --goal ... (plan only)",
+    "alt": "The plan that bowerloom up prints.",
+    "caption": "Up prints a plan and a revision, and writes nothing until you approve."
+  },
+  {
+    "id": "cli-ls",
+    "kind": "terminal",
+    "page": "cli",
+    "section": "Project commands",
+    "what": "bowerloom ls after up",
+    "alt": "What the project holds.",
+    "caption": "The list shows the teams, skills, prompts, and slices of the project."
+  },
+  {
+    "id": "cli-skill-create",
+    "kind": "terminal",
+    "page": "cli",
+    "section": "Create commands",
+    "what": "bowerloom skill create house-style (plan only)",
+    "alt": "The plan that skill create prints.",
+    "caption": "Each create command prints its plan first."
+  },
+  {
+    "id": "cli-status",
+    "kind": "terminal",
+    "page": "cli",
+    "section": "Project commands",
+    "what": "bowerloom status",
+    "alt": "The status of a project.",
+    "caption": "Status says whether the project is ready."
+  },
+  {
+    "id": "cli-init-plan",
+    "kind": "terminal",
+    "page": "guides/new-workspace",
+    "section": "Plan the files",
+    "what": "bowerloom init plan",
+    "alt": "The plan for a new project.",
+    "caption": "The plan lists the files before any is written."
+  },
+  {
+    "id": "cli-harness-status",
+    "kind": "terminal",
+    "page": "guides/adopt-and-install",
+    "section": "1. Read the state",
+    "what": "bowerloom harness status on a folder with no harness",
+    "alt": "The harness status of a folder with no harness.",
+    "caption": "Status changes nothing and names the next step."
+  },
+  {
+    "id": "cli-harness-adopt",
+    "kind": "terminal",
+    "page": "guides/adopt-and-install",
+    "section": "2. Adopt the files you have",
+    "what": "bowerloom harness adopt (plan only)",
+    "alt": "The adopt plan.",
+    "caption": "The adopt plan lists the files it writes into .bowerloom."
+  },
+  {
+    "id": "cli-harness-install",
+    "kind": "terminal",
+    "page": "guides/adopt-and-install",
+    "section": "3. Install the harness",
+    "what": "bowerloom harness install (plan only)",
+    "alt": "The install plan.",
+    "caption": "The install plan lists each file it changes."
+  },
+  {
+    "id": "cli-harness-drift",
+    "kind": "terminal",
+    "page": "guides/adopt-and-install",
+    "section": "5. Apply and check",
+    "what": "bowerloom harness drift after an install",
+    "alt": "The drift check after an install.",
+    "caption": "Drift confirms that every written file is as written."
+  },
+  {
+    "id": "cli-harness-remove",
+    "kind": "terminal",
+    "page": "guides/adopt-and-install",
+    "section": "6. Undo",
+    "what": "bowerloom harness remove (plan only)",
+    "alt": "The removal plan.",
+    "caption": "Remove prints its own plan before it undoes the install."
+  },
+  {
+    "id": "cli-harness-export",
+    "kind": "terminal",
+    "page": "guides/share-a-harness",
+    "section": "Export",
+    "what": "bowerloom harness export (plan only)",
+    "alt": "The export plan.",
+    "caption": "The export plan says what the file will hold."
+  },
+  {
+    "id": "cli-harness-import",
+    "kind": "terminal",
+    "page": "guides/share-a-harness",
+    "section": "Import",
+    "what": "bowerloom harness import (plan only)",
+    "alt": "The import plan.",
+    "caption": "The import plan says what the file would write."
+  },
+  {
+    "id": "cli-apply",
+    "kind": "terminal",
+    "page": "cli",
+    "section": "Apply",
+    "what": "bowerloom apply after a prompt is created (plan only)",
+    "alt": "The plan that bowerloom apply prints.",
+    "caption": "Apply prints a plan of the copies it will put in place."
+  }
+]

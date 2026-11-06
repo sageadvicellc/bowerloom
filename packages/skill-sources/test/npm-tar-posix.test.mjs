@@ -12,7 +12,7 @@ import { gzipSync } from 'node:zlib';
 import { Header } from 'tar/header';
 import { planNpmAcquisition, acquireNpmSkill, verifyNpmPayload, enumerateNpmTar, NpmAcquisitionError } from '../../../dist/packages/skill-sources/src/npm.js';
 
-// Lead decision, DECISIONS-01.md item 7, variant A. Real npm tarballs, and node-tar 7.5.20 which this repo pins, write
+// Lead decision, DECISIONS-01.md item 7, variant A. Real npm tarballs, and node-tar 7.5.22 which this repo pins, write
 // numeric fields as digits at full width, then a space and a NUL ("000644 \0"), and the checksum as six digits, a space
 // and a NUL ("012510 \0"). The fixtures here come from the pinned node-tar Header encoder, with the fields npm sets.
 const hash = b => createHash('sha256').update(b).digest('hex');
@@ -145,7 +145,7 @@ test('an absent uid must match the decoder, and a present one must still match i
   assert.throws(() => one(absent), code('NPM_TAR_DECODER'));
 });
 
-// Hanna's decision: the record cap is 8192, since real packages such as ecc-universal@2.2.1 hold 2615.
+// the maintainer's decision: the record cap is 8192, since real packages such as ecc-universal@2.2.1 hold 2615.
 const manyFiles = n => Buffer.concat([...Array.from({ length: n }, (_, i) => nodeTarHeader('package/f' + i + '.md', 0)), Buffer.alloc(1024)]);
 test('an archive of more than 1024 and at most 8192 records enumerates; 8193 refuses with NPM_TAR_BOUND', () => {
   assert.equal(enumerateNpmTar(manyFiles(2615), () => {}).recordCount, 2615);

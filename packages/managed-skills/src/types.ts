@@ -1,10 +1,11 @@
 import type { SkillSourceInput, SkillSourceValidation } from '../../skill-sources/src/types.js';
+import type { OldEngineId } from '../../skill-manifest/src/engine.js';
 export interface SyntheticDirectoryIdentity { device: string; inode: string; birthtimeNs: string; uid: number; mode: number }
 export interface ManagedSkillTarget {
   project: { path: string; identity: SyntheticDirectoryIdentity };
   state: { path: string; identity: SyntheticDirectoryIdentity };
   projectParentIdentity: SyntheticDirectoryIdentity; stateParentIdentity: SyntheticDirectoryIdentity;
-  harness: 'codex' | 'claude';
+  harness: OldEngineId;
 }
 export interface SkillInventoryEntry { path: string; kind: 'file' | 'directory'; sha256: string | null; bytes: number; mode: number }
 export interface ManagedSkillSnapshot {

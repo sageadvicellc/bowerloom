@@ -533,7 +533,7 @@ Update `tests/help-human.test.ts` (the help loops at lines 79 and 84 gain `'rece
 2. `changeOf` and the plan type in `add.ts` are read at lines 154-161 and 21-44. Hidden callers of `plan.change` (the CLI review at `apps/cli/src/manifest.ts:~105`) assume `add` or `replace`. Search for each use of `.change`. Make each handle `remove` by showing `Remove skill <id> from <manifest>`.
 3. Whether `status` shows one line per item after the old files are deleted and the `skills.json` local entry remains. The sync planner can hold the local skill first (`plan.ts:253`). Run case 4 of `store-migrate-cli.test.ts` early. `uniqueHolds` (`held.ts:50`) collapses lines by kind and id, so expect one line.
 
-## 13. New decisions for Hanna
+## 13. New decisions for the maintainer
 
 Decision 1: a tag that names a team missing from the store.
 

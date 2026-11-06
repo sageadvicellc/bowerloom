@@ -21,19 +21,21 @@ const RECORDER = fileURLToPath(new URL('./support/record-stdio-errors.js', impor
  * Runs the CLI with the read end of stdout (or stderr) closed before the child writes a byte. Node starts in tens of
  * milliseconds, and the pipe closes at once after the spawn, so every write of the child meets a reader that is gone.
  */
-function closedReader(cwd: string, args: string[], env: Record<string, string>, close: 'stdout' | 'stderr' = 'stdout'): Promise<Closed> {
-  return new Promise((resolve, reject) => {
-    // PR 102 round 2, item 5: the record goes in a folder of its own, removed once it is read.
-    const logDir = mkdtempSync(join(tmpdir(), 'bowerloom-stdio-errors-')), log = join(logDir, 'errors.log');
-    const child = spawn(process.execPath, ['--import', RECORDER, cli, ...args], { cwd, env: { ...baseEnv(), ...env, TEST_STDIO_LOG: log }, stdio: ['ignore', 'pipe', 'pipe'] });
-    let stderr = '', stdout = '';
-    child[close].destroy();
-    const other = close === 'stdout' ? child.stderr : child.stdout;
-    other.setEncoding('utf8'); other.on('data', (d: string) => { if (close === 'stdout') stderr += d; else stdout += d; });
-    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(`${args.join(' ')} did not exit`)); }, 60000);
-    child.on('error', reject);
-    child.on('close', (status, signal) => { clearTimeout(timer); let errors: string[] = []; try { errors = readFileSync(log, 'utf8').split('\n').filter(Boolean); } catch { /* no error was recorded */ } rmSync(logDir, { recursive: true, force: true }); resolve({ status, signal, stderr, stdout, errors }); });
-  });
+async function closedReader(cwd: string, args: string[], env: Record<string, string>, close: 'stdout' | 'stderr' = 'stdout'): Promise<Closed> {
+  // PR 102 round 2, item 5: the record goes in a folder of its own, removed once it is read, also when the child fails to start or does not exit.
+  const logDir = mkdtempSync(join(tmpdir(), 'bowerloom-stdio-errors-')), log = join(logDir, 'errors.log');
+  try {
+    return await new Promise<Closed>((resolve, reject) => {
+      const child = spawn(process.execPath, ['--import', RECORDER, cli, ...args], { cwd, env: { ...baseEnv(), ...env, TEST_STDIO_LOG: log }, stdio: ['ignore', 'pipe', 'pipe'] });
+      let stderr = '', stdout = '';
+      child[close].destroy();
+      const other = close === 'stdout' ? child.stderr : child.stdout;
+      other.setEncoding('utf8'); other.on('data', (d: string) => { if (close === 'stdout') stderr += d; else stdout += d; });
+      const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(`${args.join(' ')} did not exit`)); }, 60000);
+      child.on('error', reject);
+      child.on('close', (status, signal) => { clearTimeout(timer); let errors: string[] = []; try { errors = readFileSync(log, 'utf8').split('\n').filter(Boolean); } catch { /* no error was recorded */ } resolve({ status, signal, stderr, stdout, errors }); });
+    });
+  } finally { rmSync(logDir, { recursive: true, force: true }); }
 }
 const noCrash = (r: Closed, what: string, stream: 'stdout' | 'stderr' = 'stdout'): void => {
   assert.equal(r.signal, null, what);

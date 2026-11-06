@@ -5,6 +5,7 @@
  */
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import { discoverProject, privateStateRoot } from '../../../packages/project-context/src/index.js';
+import { engineNotes } from './engine-notes.js';
 import { measureContext, showSlice } from '../../../packages/project-sync/src/context-measure.js';
 import type { MeasureAgent, MeasureResult, ShowResult } from '../../../packages/project-sync/src/context-measure.js';
 import { ESTIMATE_BAND, formatPercent, formatThousands, parseBytesPerToken } from '../../../packages/context-slices/src/estimate.js';
@@ -77,7 +78,9 @@ export async function runContextCommand(args: readonly string[], cwd: string, ho
   if (sub === 'show') {
     const json = words.includes('--json'), rest = words.filter(w => w !== '--json');
     if (words.filter(w => w === '--json').length > 1 || rest.length !== 1 || rest[0]!.startsWith('-')) usage(SHOW_USAGE);
-    const project = discoverProject(cwd, home), result = await showSlice({ project, stateRoot: privateStateRoot(env, home), slice: rest[0]!, home });
+    const project = discoverProject(cwd, home);
+    for (const note of engineNotes(project)) stderr(note);
+    const result = await showSlice({ project, stateRoot: privateStateRoot(env, home), slice: rest[0]!, home });
     write(json ? newCommandJson(result) : `${plainText(renderShow(result), true)}\n`); return 0;
   }
   if (sub === 'measure') {
@@ -94,6 +97,7 @@ export async function runContextCommand(args: readonly string[], cwd: string, ho
       else usage(MEASURE_USAGE);
     }
     const project = discoverProject(cwd, home);
+    for (const note of engineNotes(project)) stderr(note);
     const result = await measureContext({ project, stateRoot: privateStateRoot(env, home), home, agents, team, from: from ?? cwd, baseline, bytesPerTokenMilli: bpt, user });
     write(json ? newCommandJson(stripNotes(result)) : `${plainText(renderMeasure(result), true)}\n`); return 0;
   }
