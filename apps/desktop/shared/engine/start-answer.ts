@@ -6,7 +6,7 @@
 import { ENGINE_NAMES } from './types.js';
 import type { Answer, StartCommandView } from './types.js';
 import { hasHiddenChar } from './scrub.js';
-import { START_MAIN_WORDS, checkInstruction, folderWord, startCommand } from './start-command.js';
+import { START_MAIN_WORDS, checkInstruction, folderWord, startCommand, subcommandOf, subcommandWords } from './start-command.js';
 import type { StartEngineId, StartRefusalCode } from './start-command.js';
 
 export interface StartInput {
@@ -18,24 +18,34 @@ export interface StartInput {
   readonly homes: readonly string[];
   readonly engine: StartEngineId;
   readonly instruction: string;
-  /** True for a copy: the real line goes to `writeClipboard`. False for a show, which touches nothing. */
-  readonly copy: boolean;
-  readonly writeClipboard: ((text: string) => void) | undefined;
 }
 
-const refused = (code: StartRefusalCode): Answer<never> => ({ ok: false, refusal: { code, message: START_MAIN_WORDS[code], paths: [] } });
+/** What the window may read, and the line for the clipboard, which stays in main. */
+export interface StartBuilt { readonly view: StartCommandView; readonly real: string }
 
-export function startAnswer(input: StartInput): Answer<StartCommandView> {
+export const startRefused = (code: StartRefusalCode, message?: string): Answer<never> => ({
+  ok: false, refusal: { code, message: message ?? START_MAIN_WORDS[code as keyof typeof START_MAIN_WORDS], paths: [] },
+});
+
+/** Builds the command for the window (`view`, nothing copied yet) and the one for the clipboard (`real`). It touches nothing. */
+export function buildStart(input: StartInput): Answer<StartBuilt> {
   const problem = checkInstruction(input.instruction);
-  if (problem !== null) return refused(problem.code);
+  if (problem !== null) return startRefused(problem.code);
+  // An engine reads a one-word instruction that equals one of its own commands as that command, even when it is quoted.
+  const word = subcommandOf(input.engine, input.instruction);
+  if (word !== null) return startRefused('START_INSTRUCTION_SUBCOMMAND', subcommandWords(word, input.engine));
   // A hidden character in the folder name could make the shown line read differently from the copied one, so no line is built for that folder.
-  if (hasHiddenChar(input.dir)) return refused('START_FOLDER_HIDDEN');
+  if (hasHiddenChar(input.dir)) return startRefused('START_FOLDER_HIDDEN');
+  // A line break or a tab in the folder name would break the one-line command.
+  if (/[\n\t]/.test(input.dir)) return startRefused('START_FOLDER_NAME');
   const home = input.homes.find(h => h.length > 1 && (input.dir === h || input.dir.startsWith(`${h}/`))) ?? null;
   const real = startCommand(input.engine, folderWord(input.dir, null), input.instruction);
   const shown = startCommand(input.engine, folderWord(input.dir, home), input.instruction);
-  if (input.copy) {
-    // The reason the clipboard failed is not passed on: it could name a path or a program.
-    try { if (input.writeClipboard === undefined) return refused('START_COPY_FAILED'); input.writeClipboard(real); } catch { return refused('START_COPY_FAILED'); }
-  }
-  return { ok: true, value: { engine: input.engine, engineName: ENGINE_NAMES[input.engine], folder: input.label, command: shown, copied: input.copy, differs: shown !== real } };
+  return { ok: true, value: { real, view: { engine: input.engine, engineName: ENGINE_NAMES[input.engine], folder: input.label, command: shown, copied: false, differs: shown !== real } } };
+}
+
+/** The sample's answer: the view, with nothing copied. */
+export function startAnswer(input: StartInput): Answer<StartCommandView> {
+  const built = buildStart(input);
+  return built.ok ? { ok: true, value: built.value.view } : built;
 }

@@ -27,14 +27,13 @@ test('an engine is ready when the install record lists it, not installed when it
   assert.equal(engineStateOf(folder({ unfinished: { projection: true, adoption: false } }), 'codex'), 'stopped');
 });
 
-test('the first folder is the one asked for if it can start, else the first that holds a harness, else none', () => {
+test('the sheet opens on the folder asked for, even if it cannot start (its own reason is shown), and on no folder when none is asked for', () => {
   const a = folder({ id: 'folder-1', hasDefinition: false, engines: [] }), b = folder({ id: 'folder-2' }), c = folder({ id: 'folder-3' });
-  assert.equal(firstStartFolder([a, b, c], null), 'folder-2');
+  assert.equal(firstStartFolder([a, b, c], null), '', 'a harness pressed in the list has no folder: nothing is chosen');
   assert.equal(firstStartFolder([a, b, c], 'folder-3'), 'folder-3');
-  assert.equal(firstStartFolder([a, b, c], 'folder-1'), 'folder-2', 'a folder with no harness cannot start');
-  assert.equal(firstStartFolder([a, b, c], 'folder-9'), 'folder-2');
-  assert.equal(firstStartFolder([a], null), '');
-  assert.equal(firstStartFolder([], null), '');
+  assert.equal(firstStartFolder([a, b, c], 'folder-1'), 'folder-1', 'no silent fall back to another folder');
+  assert.equal(firstStartFolder([a, b, c], 'folder-9'), '', 'an id the list does not hold chooses nothing');
+  assert.equal(firstStartFolder([], 'folder-1'), '');
 });
 
 test('the first ticks are the engines already installed, else the first one offered', () => {
@@ -65,6 +64,13 @@ test('startStatus walks the states in order: no project, no harness, no engine, 
   assert.deepEqual(startStatus(folder(), ['codex'], 'a\u0000b'), { kind: 'bad-text', code: 'START_INSTRUCTION_CHARACTERS' });
   assert.deepEqual(startStatus(folder(), ['codex'], '-n'), { kind: 'bad-text', code: 'START_INSTRUCTION_DASH' });
   assert.deepEqual(startStatus(folder(), ['claude-code', 'codex'], ok), { kind: 'ready', engines: ['claude-code', 'codex'] });
+});
+
+test('an instruction that is a command of a ticked engine is a state of its own, naming the first such engine and the word; hidden characters are a bad-text state', () => {
+  assert.deepEqual(startStatus(folder(), ['claude-code', 'codex'], 'login'), { kind: 'subcommand', engine: 'codex', word: 'login' });
+  assert.deepEqual(startStatus(folder(), ['claude-code'], 'login'), { kind: 'ready', engines: ['claude-code'] });
+  assert.deepEqual(startStatus(folder(), ['claude-code', 'codex'], 'update'), { kind: 'subcommand', engine: 'claude-code', word: 'update' });
+  assert.deepEqual(startStatus(folder(), ['codex'], 'a\u200bb'), { kind: 'bad-text', code: 'START_INSTRUCTION_HIDDEN' });
 });
 
 test('an engine that is not installed, out of the record, or stopped sends the person to the install review first, listing exactly those engines', () => {

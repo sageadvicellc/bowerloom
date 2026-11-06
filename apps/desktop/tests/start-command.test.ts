@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  START_ENGINES, START_INSTRUCTION_LIMIT, START_MAIN_WORDS, START_PROGRAMS, checkInstruction, folderWord, isStartEngine, shQuote, shWord, startCommand,
+  START_ENGINES, START_INSTRUCTION_LIMIT, START_MAIN_WORDS, START_PROGRAMS, START_SUBCOMMANDS, checkInstruction, folderWord, isStartEngine, shQuote, shWord, startCommand, subcommandOf, subcommandWords,
 } from '../shared/engine/start-command.js';
 import { LIMITS, bannedHere, countWords } from '../shared/harness/words.js';
 import { tempDir } from './support.js';
@@ -135,10 +135,43 @@ test('the limit is 4,000 characters and the words say so', () => {
 
 test('the words of every refusal are plain: inside the paragraph limit, free of banned words, and each ends the matter', () => {
   const codes = Object.keys(START_MAIN_WORDS);
-  assert.deepEqual(codes.sort(), ['START_COPY_FAILED', 'START_FOLDER_HIDDEN', 'START_INSTRUCTION_CHARACTERS', 'START_INSTRUCTION_DASH', 'START_INSTRUCTION_EMPTY', 'START_INSTRUCTION_TOO_LONG']);
+  assert.deepEqual(codes.sort(), ['START_COPY_FAILED', 'START_FOLDER_HIDDEN', 'START_FOLDER_NAME', 'START_INSTRUCTION_CHARACTERS', 'START_INSTRUCTION_DASH', 'START_INSTRUCTION_EMPTY', 'START_INSTRUCTION_HIDDEN', 'START_INSTRUCTION_TOO_LONG']);
   for (const [code, text] of Object.entries(START_MAIN_WORDS)) {
     assert.ok(countWords(text) <= LIMITS.paragraph, `${code}: ${text}`);
     assert.equal(bannedHere(text), null, code);
   }
   assert.equal(Object.isFrozen(START_MAIN_WORDS), true);
+});
+
+test('checkInstruction refuses invisible characters: tag characters, zero-width space, BOM, soft hyphen, word joiners, fillers, braille blank, variation selectors', () => {
+  const hidden = ['a\u{e0041}b', 'a\u{e007f}', 'a\u200bb', 'a\ufeffb', 'a\u00adb', 'a\u2060b', 'a\u2064b', 'a\u180eb', 'a\u3164b', 'a\u2800b', 'a\ufe00b', 'a\u200cb', 'a\u{e0100}b', 'a\u034fb', 'a\u115fb'];
+  for (const text of hidden) assert.equal(checkInstruction(text)?.code, 'START_INSTRUCTION_HIDDEN', JSON.stringify(text));
+  assert.equal(START_MAIN_WORDS.START_INSTRUCTION_HIDDEN, 'The instruction has hidden characters. Remove them and try again.');
+});
+
+test('emoji still pass: a ZWJ sequence, a heart with its variation selector, a flag, and a skin tone', () => {
+  for (const text of ['team \u{1F468}\u200d\u{1F4BB} ships', 'love \u2764\ufe0f it', '\u{1F1E9}\u{1F1EA} flag', 'wave \u{1F44B}\u{1F3FD}', 'tab\there\nand a line']) assert.equal(checkInstruction(text), null, JSON.stringify(text));
+});
+
+test('the subcommand lists are the names the vendors document (read 2026-11-06), and a one-word instruction equal to one is found for that engine only', () => {
+  assert.deepEqual([...START_SUBCOMMANDS['claude-code']], ['agents', 'attach', 'auth', 'auto-mode', 'daemon', 'doctor', 'gateway', 'import', 'install', 'logs', 'mcp', 'plugin', 'purge', 'remote-control', 'respawn', 'rm', 'self-hosted-runner', 'setup-token', 'stop', 'ultrareview', 'update']);
+  assert.deepEqual([...START_SUBCOMMANDS.codex], ['a', 'agents', 'app', 'app-server', 'apply', 'archive', 'cloud', 'cloud-tasks', 'completion', 'debug', 'delete', 'doctor', 'e', 'exec', 'execpolicy', 'features', 'fork', 'login', 'logout', 'mcp', 'plugin', 'queue', 'remote-control', 'resume', 'review', 'sandbox', 'unarchive', 'update']);
+  for (const engine of START_ENGINES) for (const word of START_SUBCOMMANDS[engine]) assert.equal(subcommandOf(engine, word), word, `${engine} ${word}`);
+  assert.equal(subcommandOf('codex', 'login'), 'login'); assert.equal(subcommandOf('claude-code', 'login'), null, 'login is a Codex command, not a Claude Code one');
+  assert.equal(subcommandOf('claude-code', 'review'), null); assert.equal(subcommandOf('codex', 'review'), 'review');
+});
+
+test('only an exact one-word instruction counts: more words, other case, or any space around it are fine', () => {
+  for (const text of ['update the docs', 'Update', ' update', 'update ', 'update\n', 'fix', '', 'mcp servers']) assert.equal(subcommandOf('claude-code', text), null, JSON.stringify(text));
+});
+
+test('the words for a subcommand name the word and the engine, and ask for more words', () => {
+  assert.equal(subcommandWords('update', 'claude-code'), "'update' is also a command of Claude Code. Add more words to your instruction.");
+  assert.equal(subcommandWords('login', 'codex'), "'login' is also a command of Codex. Add more words to your instruction.");
+  assert.ok(countWords(subcommandWords('self-hosted-runner', 'claude-code')) <= LIMITS.paragraph);
+  assert.equal(bannedHere(subcommandWords('update', 'claude-code')), null);
+});
+
+test('no refusal of the instruction or the folder says "Nothing was copied", since a show copies nothing', () => {
+  for (const [code, text] of Object.entries(START_MAIN_WORDS)) if (code !== 'START_COPY_FAILED') assert.doesNotMatch(text, /copied/i, code);
 });

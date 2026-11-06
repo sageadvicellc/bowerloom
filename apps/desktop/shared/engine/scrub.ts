@@ -34,6 +34,15 @@ export function hasHiddenChar(text: string): boolean {
   return new RegExp(HIDDEN_CHARS.source, 'u').test(text);
 }
 
+/**
+ * True when the text holds a hiding character (as `hasHiddenChar`) other than the ones in `allowed`. Start allows the joiner and the emoji variation selector, which emoji
+ * sequences need, so a pasted emoji passes and a tag character, a zero-width space or a byte order mark does not.
+ */
+export function hasHiddenCharExcept(text: string, allowed: readonly string[]): boolean {
+  for (const m of text.matchAll(new RegExp(HIDDEN_CHARS.source, 'gu'))) if (!allowed.includes(m[0])) return true;
+  return false;
+}
+
 /** True when the text holds a character that `visible` writes out, or a word that mixes scripts. */
 export function hasHidden(text: string): boolean {
   return visible(text) !== text;

@@ -49,6 +49,21 @@ test('whyWords gives a line for each state that blocks the button, the install l
   assert.equal(lines({ kind: 'too-long' }), START.hint.tooLong);
   assert.equal(lines({ kind: 'bad-text', code: 'START_INSTRUCTION_DASH' }), START.hint.dash);
   assert.equal(lines({ kind: 'bad-text', code: 'START_INSTRUCTION_CHARACTERS' }), START.hint.chars);
+  assert.equal(lines({ kind: 'bad-text', code: 'START_INSTRUCTION_HIDDEN' }), START.hint.hidden);
+  assert.equal(lines({ kind: 'subcommand', engine: 'codex', word: 'login' }), "'login' is also a command of Codex. Add more words to your instruction.");
   assert.equal(lines({ kind: 'needs-install', engines: ['codex'] }), installFirstWords(['codex']));
   assert.equal(lines({ kind: 'ready', engines: ['codex'] }), null);
+});
+
+test('the install state is honest: the receipt says an install was recorded, nothing says it is current, and the sheet says it was not checked', () => {
+  assert.equal(START.hint.ready, 'Install recorded');
+  assert.equal(START.hint.notChecked, 'Not checked for changes since the install.');
+  assert.doesNotMatch(START.hint.ready, /installed here/i);
+});
+
+test('a harness that has no folder says so in plain words, and the bridge line has no jargon', () => {
+  assert.equal(START.hint.chooseProject, 'Choose a project');
+  assert.equal(START.paragraph.noFolderForHarness, 'This harness is not in a project folder. Choose the project to start in.');
+  assert.equal(START.hint.noBridge, 'This window cannot reach Bowerloom. Close it and open the app again.');
+  assert.doesNotMatch(START.hint.noBridge, /launch command/);
 });

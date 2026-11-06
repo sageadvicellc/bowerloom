@@ -5,7 +5,8 @@
  */
 import { ENGINE_NAMES } from '../engine/types.js';
 import type { EngineId, FolderInfo } from '../engine/types.js';
-import { checkInstruction, isStartEngine } from '../engine/start-command.js';
+import { checkInstruction, isStartEngine, subcommandOf } from '../engine/start-command.js';
+import type { StartEngineId } from '../engine/start-command.js';
 import type { StartRefusalCode } from '../engine/start-command.js';
 
 /** The part of a folder the model reads. */
@@ -26,11 +27,12 @@ export function engineStateOf(f: StartFolder, engine: EngineId): EngineState {
   return f.installedEngines.includes(engine) ? 'ready' : 'not-installed';
 }
 
-/** The folder the sheet opens on: the one asked for if it can start, else the first that can, else none (an empty id). */
+/**
+ * The folder the sheet opens on: the one asked for, even if it cannot start (the sheet then shows that folder's own reason), or none (an empty id) when no folder is asked for or the
+ * id is not in the list. It never falls back to another folder.
+ */
 export function firstStartFolder(folders: readonly StartFolder[], asked: string | null): string {
-  const can = (f: StartFolder): boolean => offeredEngines(f).length > 0;
-  const wanted = asked === null ? undefined : folders.find(f => f.id === asked);
-  return (wanted !== undefined && can(wanted) ? wanted : folders.find(can))?.id ?? '';
+  return asked !== null && folders.some(f => f.id === asked) ? asked : '';
 }
 
 /** The engines ticked at the start: the ones already installed in the folder, or else the first one offered. */
@@ -53,6 +55,7 @@ export function startFolderLine(f: FolderInfo): { words: string; off: boolean } 
 export type StartStatus =
   | { readonly kind: 'no-project' } | { readonly kind: 'no-harness' } | { readonly kind: 'no-engine' } | { readonly kind: 'no-instruction' } | { readonly kind: 'too-long' }
   | { readonly kind: 'bad-text'; readonly code: StartRefusalCode }
+  | { readonly kind: 'subcommand'; readonly engine: StartEngineId; readonly word: string }
   | { readonly kind: 'needs-install'; readonly engines: readonly EngineId[] }
   | { readonly kind: 'ready'; readonly engines: readonly EngineId[] };
 
@@ -70,6 +73,10 @@ export function startStatus(f: StartFolder | undefined, ticked: readonly EngineI
     if (problem.code === 'START_INSTRUCTION_EMPTY') return { kind: 'no-instruction' };
     if (problem.code === 'START_INSTRUCTION_TOO_LONG') return { kind: 'too-long' };
     return { kind: 'bad-text', code: problem.code };
+  }
+  for (const e of engines) {
+    const word = isStartEngine(e) ? subcommandOf(e, instruction) : null;
+    if (word !== null && isStartEngine(e)) return { kind: 'subcommand', engine: e, word };
   }
   const needs = engines.filter(e => engineStateOf(f, e) !== 'ready');
   return needs.length > 0 ? { kind: 'needs-install', engines: needs } : { kind: 'ready', engines };

@@ -521,7 +521,7 @@ export function createSampleEngine({ previewEngines = false }: { previewEngines?
   const sampleStart = (id: string, engine: string, instruction: string): Answer<StartCommandView> => {
     const f = get(id);
     if (!isStartEngine(engine)) throw new Error('BAD_ARGUMENT');
-    return startAnswer({ dir: `/home/sample${f.info.label.slice(1)}`, label: f.info.label, homes: ['/home/sample'], engine, instruction, copy: false, writeClipboard: undefined });
+    return startAnswer({ dir: `/home/sample${f.info.label.slice(1)}`, label: f.info.label, homes: ['/home/sample'], engine, instruction });
   };
 
   function adoptPlan(choices: AdoptChoices): AdoptView {

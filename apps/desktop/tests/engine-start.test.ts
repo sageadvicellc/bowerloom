@@ -131,12 +131,14 @@ test('an instruction that cannot be sent is refused in words, and nothing is cop
     ['', 'START_INSTRUCTION_EMPTY'], ['  \n', 'START_INSTRUCTION_EMPTY'], ['x'.repeat(START_INSTRUCTION_LIMIT + 1), 'START_INSTRUCTION_TOO_LONG'],
     ['a\u0000b', 'START_INSTRUCTION_CHARACTERS'], ['a\rb', 'START_INSTRUCTION_CHARACTERS'], ['a\u001bb', 'START_INSTRUCTION_CHARACTERS'], ['a\u202eb', 'START_INSTRUCTION_CHARACTERS'],
     ['-n', 'START_INSTRUCTION_DASH'], ['--help', 'START_INSTRUCTION_DASH'],
+    ['a\u{e0041}b', 'START_INSTRUCTION_HIDDEN'], ['a\u200bb', 'START_INSTRUCTION_HIDDEN'], ['a\ufeffb', 'START_INSTRUCTION_HIDDEN'],
   ];
   for (const call of ['showStartCommand', 'startCommandToClipboard'] as const) {
     for (const [text, code] of cases) {
       const r = refusal(await s.service[call](f.id, 'claude-code', text));
       assert.equal(r.code, code, `${call} ${JSON.stringify(text.slice(0, 12))}`);
       assert.equal(r.message, START_MAIN_WORDS[code as keyof typeof START_MAIN_WORDS]);
+      assert.doesNotMatch(r.message, /copied/i, 'a show copies nothing, so no refusal says it was not copied');
       assert.deepEqual(r.paths, []);
     }
   }
@@ -243,4 +245,32 @@ test('the sample answers the same calls in memory: it builds the command, copies
   await assert.rejects(async () => engine.showStartCommand('folder-999', 'codex', 'go'), /UNKNOWN_FOLDER/);
   await assert.rejects(async () => engine.showStartCommand(folders[0]!.id, 'opencode', 'go'), /BAD_ARGUMENT/);
   assert.equal(refusal(await engine.showStartCommand(folders[0]!.id, 'codex', '')).code, 'START_INSTRUCTION_EMPTY');
+});
+
+test('an instruction that is also a command of the engine is refused for that engine, with the word and the engine named, and copied for the other', async t => {
+  const s = setup(t);
+  const f = await choose(s, teamFolder(s.home));
+  for (const call of ['showStartCommand', 'startCommandToClipboard'] as const) {
+    const r = refusal(await s.service[call](f.id, 'codex', 'login'));
+    assert.equal(r.code, 'START_INSTRUCTION_SUBCOMMAND'); assert.equal(r.message, "'login' is also a command of Codex. Add more words to your instruction.");
+    const c = refusal(await s.service[call](f.id, 'claude-code', 'update'));
+    assert.equal(c.message, "'update' is also a command of Claude Code. Add more words to your instruction.");
+  }
+  assert.deepEqual(s.clipboard, []);
+  value(await s.service.startCommandToClipboard(f.id, 'claude-code', 'login'));
+  assert.equal(s.clipboard.length, 1, 'login is not a Claude Code command');
+});
+
+test('a folder whose name holds a tab or a line feed gets no command, so the command stays one line', async t => {
+  const s = setup(t);
+  for (const name of ['x\ny', 'x\ty']) {
+    const dir = join(s.home, 'Projects', name);
+    mkdirSync(dir, { recursive: true });
+    const f = await choose(s, dir);
+    for (const call of ['showStartCommand', 'startCommandToClipboard'] as const) {
+      const r = refusal(await s.service[call](f.id, 'codex', 'go'));
+      assert.equal(r.code, 'START_FOLDER_NAME'); assert.equal(r.message, START_MAIN_WORDS.START_FOLDER_NAME);
+    }
+  }
+  assert.deepEqual(s.clipboard, []);
 });

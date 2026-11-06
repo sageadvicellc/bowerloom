@@ -69,7 +69,7 @@ import type {
 import { REPORT_MAIN_WORDS, REPORT_NONE, REPORT_NOT_SHOWN, REPORT_OPEN_FAILED, SAVE_EXECUTABLE_UNACKNOWLEDGED, SAVE_MAIN_WORDS } from '../shared/engine/types.js';
 import { checkedReport, createReportCopies, newestReport } from './notes-report.js';
 import { adoptRecoveryView, adoptionView, approveKey, approveLine, keepsFile, mergeRecoveryView, mergeView, projectView, recoveryView, removalView } from '../shared/engine/view.js';
-import { startAnswer } from '../shared/engine/start-answer.js';
+import { buildStart, startRefused } from '../shared/engine/start-answer.js';
 import { isStartEngine } from '../shared/engine/start-command.js';
 import { ASK, ShownPlans, approvalText, cancelled, canonical, hashOf, notTheShownPlan, openCancelled } from './engine-consent.js';
 import type { Ask, SaveMarks } from './engine-consent.js';
@@ -137,7 +137,7 @@ export interface EngineServiceDeps {
   /**
    * Puts text on the clipboard (Electron `clipboard.writeText`). Only startCommandToClipboard reaches it, with one line of text it built itself. Default: none, and a copy is refused in words.
    */
-  readonly writeClipboard?: (text: string) => void;
+  readonly writeClipboard?: (text: string) => void | Promise<void>;
 }
 
 /** A call the service refuses before it reaches a package: the window gets only the short code. */
@@ -843,11 +843,15 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
   /** The revision of the folder's harness now, or null when it does not load. */
   const revisionNow = (f: Folder): string | null => { const r = loadDefinition(join(f.dir, '.bowerloom')); return r.ok ? r.definition.revision : null; };
 
-  /** Start: checks the three arguments (a wrong shape is BAD_ARGUMENT), then builds the line for the folder main knows by this id. */
-  const startFor = (id: unknown, engine: unknown, instruction: unknown, copy: boolean): Answer<StartCommandView> => {
+  /** Start: checks the three arguments (a wrong shape is BAD_ARGUMENT), then builds the line for the folder main knows by this id. A copy hands the full line to the clipboard function. */
+  const startFor = async (id: unknown, engine: unknown, instruction: unknown, copy: boolean): Promise<Answer<StartCommandView>> => {
     const f = folderOf(id);
     if (!isStartEngine(engine) || typeof instruction !== 'string') return bad();
-    return startAnswer({ dir: f.dir, label: f.label, homes, engine, instruction, copy, writeClipboard: deps.writeClipboard });
+    const built = buildStart({ dir: f.dir, label: f.label, homes, engine, instruction });
+    if (!built.ok || !copy) return built.ok ? { ok: true, value: built.value.view } : built;
+    // The reason the clipboard failed is not passed on: it could name a path or a program.
+    try { if (deps.writeClipboard === undefined) return startRefused('START_COPY_FAILED'); await deps.writeClipboard(built.value.real); } catch { return startRefused('START_COPY_FAILED'); }
+    return { ok: true, value: { ...built.value.view, copied: true } };
   };
 
   // ---- export and import (journey 4): main/engine-bundle.ts. The heavy work runs in a worker thread.
@@ -1238,8 +1242,8 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
       });
     }),
     // Start runs nothing. These two calls build a line of text; the copy writes the clipboard and nothing else (shared/engine/start-answer.ts).
-    showStartCommand: (id, engine, instruction) => serial(async () => startFor(id, engine, instruction, false)),
-    startCommandToClipboard: (id, engine, instruction) => serial(async () => startFor(id, engine, instruction, true)),
+    showStartCommand: (id, engine, instruction) => serial(() => startFor(id, engine, instruction, false)),
+    startCommandToClipboard: (id, engine, instruction) => serial(() => startFor(id, engine, instruction, true)),
     planExport: id => serial(() => share.planExport(id)),
     // The three calls with a native dialog take the queue themselves, only for the steps outside the dialogs (main/engine-bundle.ts).
     runExport: (id, revision, acknowledged) => share.runExport(id, revision, acknowledged),
