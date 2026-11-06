@@ -76,6 +76,30 @@
 /* In a narrow window the summary takes its own line under the name, so no name is cut. */
 @media (max-width: 640px) { [data-home] .hxo-row .hx-lrow-sum { flex: 1 1 100%; margin-left: 0; white-space: normal; } }
 
+/* ---- The Grid view: a bento of tiles in each open place. The sizes below are the numbers of BENTO (shared/harness/overview-bento.ts): the row height, the gap and the part height
+   come from the grid's own style; a tile's head is 2.25rem and its foot 2rem, which BENTO.chromeRem counts with the padding. */
+[data-home] .hxo-bento { display: grid; min-width: 0; }
+[data-home] .hxo-cell { position: relative; box-sizing: border-box; display: flex; flex-direction: column; gap: var(--hm-space-1); min-width: 0; min-height: 0; overflow: hidden; padding: var(--hm-space-3); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); }
+[data-home] .hxo-cell[data-size="large"] { background: color-mix(in srgb, var(--accent-soft) 30%, var(--surface)); }
+[data-home] .hxo-cell-head { display: flex; align-items: center; gap: var(--hm-space-2); flex: none; height: 2.25rem; margin: 0; min-width: 0; font-size: var(--hm-text-section); font-weight: 600; }
+[data-home] .hxo-cell-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-home] .hxo-cell-list { list-style: none; margin: 0; padding: 0; flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 0 var(--hm-space-3); overflow: hidden; }
+[data-home] .hxo-cell-list[data-inner="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+[data-home] .hxo-cell-item { min-width: 0; border-radius: var(--hm-radius-small); }
+[data-home] .hxo-cell-item[data-selected] { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-strong); }
+[data-home] .hxo-cell-item[data-lit] { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-strong); }
+[data-home] .hxo-cell-item[data-faded] { opacity: 0.5; }
+[data-home] .hxo-cell-pick { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: var(--hm-space-2); width: 100%; height: var(--hxo-item, 1.875rem); padding: 0 var(--hm-space-2); border-radius: var(--hm-radius-small); font-size: var(--hm-text-name); line-height: 1.3; color: var(--text); cursor: pointer; touch-action: manipulation; }
+[data-home] .hxo-cell-pick:hover { background: var(--accent-soft); }
+[data-home] .hxo-cell-pick:focus-visible { outline: 3px solid var(--focus); outline-offset: -1px; }
+[data-home] .hxo-cell-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-home] .hxo-cell-pick .hxo-tag { flex: none; }
+[data-home] .hxo-cell-more { all: unset; box-sizing: border-box; flex: none; display: flex; align-items: center; height: 2rem; padding: 0 var(--hm-space-2); border-radius: var(--hm-radius-small); font-size: var(--hm-text-base); color: var(--text-muted); cursor: pointer; }
+[data-home] .hxo-cell-more:hover { background: var(--accent-soft); color: var(--text); }
+[data-home] .hxo-cell-more:focus-visible { outline: 3px solid var(--focus); outline-offset: -1px; }
+[data-home] .hxo-cell { transition: border-color var(--motion-hover-ms, 90ms) var(--motion-ease-out, ease-out); }
+[data-home] .hxo-cell:hover { border-color: var(--accent-strong); }
+
 @media (prefers-reduced-motion: reduce) {
-  [data-home] .hxo-box, [data-home] .hxo-node { transition: none !important; }
+  [data-home] .hxo-box, [data-home] .hxo-node, [data-home] .hxo-cell { transition: none !important; }
 }
