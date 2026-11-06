@@ -13,6 +13,18 @@
     "apps/landing",
     "apps/mcp"
   ],
+  "files": [
+    "dist/apps/cli/src/*.js",
+    "dist/apps/mcp/src/*.js",
+    "dist/packages/*/src/**/*.js",
+    "release/beta.json",
+    "packages/linux-browser/assets/",
+    "packages/linux-browser/PLAYWRIGHT-LICENSE.txt",
+    "packages/linux-browser/IMPORT-MANIFEST.json",
+    "packages/local-backend/THIRD_PARTY_NOTICES.md",
+    "packages/local-backend/licenses/",
+    "docs/beta/license-boundary.md"
+  ],
   "bin": {
     "bowerloom": "dist/apps/cli/src/main.js",
     "bowerloom-mcp": "dist/apps/mcp/src/main.js",
