@@ -146,7 +146,8 @@ test('a harness file that is not valid JSON, is over the list limit, or has the 
   const by = (n: string) => o.groups.find(g => g.label === `~/work/${n}`);
   assert.equal(by('good')?.note, undefined);
   for (const n of ['badmcp', 'bighooks', 'shape']) { assert.equal(by(n)?.note, HARNESS_UNREADABLE, n); assert.deepEqual(by(n)?.nodes, [], n); }
-  assert.equal(by('nofile'), undefined, 'a folder without harness.json is no harness place');
+  // A folder without harness.json is no harness place. Its layer is listed like any other folder, by its own skills, and carries no unreadable note.
+  assert.equal(by('nofile')?.name, 'nofile (Bowerloom)'); assert.deepEqual(by('nofile')?.nodes.map(n => n.name), ['one']); assert.equal(by('nofile')?.note, undefined);
   assert.equal(HARNESS_UNREADABLE, 'Bowerloom could not read this harness.');
 });
 
