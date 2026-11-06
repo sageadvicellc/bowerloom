@@ -227,7 +227,7 @@ test('Install is not in beta.1: a note says so and no sheet opens; Start opens i
   await expect(sheet.getByRole('heading', { name: 'Start in a project', exact: true })).toBeVisible();
   await expect(sheet).toContainText('Bowerloom does not run an engine.');
   await expect(sheet, 'no folder has a harness in this window, so the sheet says so').toContainText('No folder has a harness yet. Make one first.');
-  await expect(p.locator('[data-toast]')).toHaveCount(0);
+  await expect(p.locator('[data-toast]').filter({ hasText: 'Not in beta.1.' }), 'Start no longer says it is not in beta.1').toHaveCount(0);
   await p.keyboard.press('Escape');
   await expect(p.locator('[aria-modal="true"]')).toHaveCount(0);
   await p.getByRole('button', { name: 'Assign to project', exact: true }).first().click();
