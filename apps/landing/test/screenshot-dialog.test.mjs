@@ -136,7 +136,7 @@ test('the style sheet reserves the picture\'s size, and animates only opacity an
 test('the picture fits the frame at 16:10; on a phone a Pinch to zoom hint shows and pinch zoom stays allowed; on a wide screen the hint is hidden', async () => {
   const css = await read('src/page.css');
   assert.match(css, /\.screenshot-full \{[^}]*width: 100%; aspect-ratio: 16 \/ 10;[^}]*object-fit: cover;/, 'the picture fills the frame at 16:10');
-  assert.match(css, /\.screenshot-column \{[^}]*width: min\(1100px, 100%, calc\(\(100dvh/, 'the frame is as wide as the window height allows');
+  assert.match(css, /\.screenshot-column \{[^}]*width: min\(1600px, 100%, calc\(\(100dvh/, 'the frame is as wide as the window height allows');
   const phone = css.slice(css.indexOf('@media (max-width: 760px) {', css.indexOf('screenshot-full')));
   const block = phone.slice(0, phone.indexOf('\n}\n'));
   assert.match(block, /\.screenshot-pinch \{ display: flex;/, 'phone: the hint shows');

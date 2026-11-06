@@ -83,12 +83,12 @@
 .screenshot-enlarge:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 3px; }
 
 /* The enlarged view: a native modal dialog that holds a small solarpunk device. The dialog itself is clear. A header bar with the X sits above the device, and the
-   device is a painted metal frame around the picture, with ivy and a flower that scale with it. --s is the scale: large windows 0.5, windows up to 1000 px wide 0.4,
+   device is a painted metal frame around the picture, with ivy and a flower that scale with it. --s is the scale: windows at least 1600 by 1000 px 0.62, other large windows 0.5, windows up to 1000 px wide 0.4,
    phones 0.3. The dialog's side padding holds the plants that reach past the frame, so nothing makes the page wider.
    Each theme has its own frame image. Its numbers are in image pixels: --hole-* is the screen opening the picture fills, and --cut-* is the nine-slice cut, which
    reaches past the corner hardware so that the corners never stretch. --rail-y and --rail-h are the centre and height of the top rail, where the caption plate sits,
    and --close-x and --close-y are the centre of the X button on the top right corner plate, measured from the frame's right and top edges. */
-.screenshot-dialog { --s: .5; --frame: url(/frame/frame-light.webp); --hole-t: 112; --hole-r: 114; --hole-b: 114; --hole-l: 114; --cut-t: 176; --cut-r: 177; --cut-b: 174; --cut-l: 176; --rail-y: 60; --rail-h: 80; --close-x: 111; --close-y: 68; --lcd: #C9D4AC; --lcd-ink: #2E3A26; --lcd-bezel: #7A4656; --lcd-glow: transparent; --knob: #B36D4B; --knob-edge: #7E4630; --knob-ink: #FFF7EF; box-sizing: border-box; width: min(1300px, calc(100vw - 16px)); max-width: none; max-height: calc(100dvh - 32px); margin: auto; padding: 0 calc(84px * var(--s)); overflow: auto; overscroll-behavior: contain; border: 0; border-radius: 0; background: transparent; color: var(--ui-text); box-shadow: none; }
+.screenshot-dialog { --s: .5; --frame: url(/frame/frame-light.webp); --hole-t: 112; --hole-r: 114; --hole-b: 114; --hole-l: 114; --cut-t: 176; --cut-r: 177; --cut-b: 174; --cut-l: 176; --rail-y: 60; --rail-h: 80; --close-x: 111; --close-y: 68; --lcd: #C9D4AC; --lcd-ink: #2E3A26; --lcd-bezel: #7A4656; --lcd-glow: transparent; --knob: #B36D4B; --knob-edge: #7E4630; --knob-ink: #FFF7EF; box-sizing: border-box; width: min(1760px, calc(100vw - 16px)); max-width: none; max-height: calc(100dvh - 32px); margin: auto; padding: 0 calc(84px * var(--s)); overflow: auto; overscroll-behavior: contain; border: 0; border-radius: 0; background: transparent; color: var(--ui-text); box-shadow: none; }
 [data-theme='dark'] .screenshot-dialog { --frame: url(/frame/frame-dark.webp); --hole-t: 115; --hole-r: 132; --hole-b: 115; --hole-l: 131; --cut-t: 191; --cut-r: 203; --cut-b: 189; --cut-l: 202; --rail-y: 72; --rail-h: 66; --close-x: 114; --close-y: 85; --lcd: #A9DE87; --lcd-ink: #1C2914; --lcd-bezel: #4A3139; --lcd-glow: rgb(169 222 135 / .32); --knob: #E8894A; --knob-edge: #9A4F22; --knob-ink: #2A1A12; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) .screenshot-dialog { --frame: url(/frame/frame-dark.webp); --hole-t: 115; --hole-r: 132; --hole-b: 115; --hole-l: 131; --cut-t: 191; --cut-r: 203; --cut-b: 189; --cut-l: 202; --rail-y: 72; --rail-h: 66; --close-x: 114; --close-y: 85; --lcd: #A9DE87; --lcd-ink: #1C2914; --lcd-bezel: #4A3139; --lcd-glow: rgb(169 222 135 / .32); --knob: #E8894A; --knob-edge: #9A4F22; --knob-ink: #2A1A12; }
@@ -97,7 +97,7 @@
 /* A soft blur and a dim tone behind the dialog. A browser that cannot blur the backdrop still gets the dim tone. */
 .screenshot-dialog::backdrop { background: rgb(24 20 28 / .5); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
 /* The column is as wide as the device, and as wide as the window height allows: the picture is 16:10, so its width follows the height that is left. */
-.screenshot-column { margin-inline: auto; width: min(1100px, 100%, calc((100dvh - ((var(--hole-t) + var(--hole-b) + 96) * var(--s) * 1px + 48px)) * 1.6 + (var(--hole-l) + var(--hole-r)) * var(--s) * 1px)); }
+.screenshot-column { margin-inline: auto; width: min(1600px, 100%, calc((100dvh - ((var(--hole-t) + var(--hole-b) + 96) * var(--s) * 1px + 48px)) * 1.6 + (var(--hole-l) + var(--hole-r)) * var(--s) * 1px)); }
 .screenshot-dialog .screenshot-pinch { display: none; }
 /* The caption plate is set into the top rail, between the corner plates. One line sits inside the rail. A longer caption wraps upward, so it never covers the picture. */
 .screenshot-plate { position: absolute; z-index: 3; left: calc(var(--cut-l) * var(--s) * 1px + 6px); right: calc(var(--cut-r) * var(--s) * 1px + 6px); top: calc((var(--rail-y) + var(--rail-h) / 2 - 6) * var(--s) * 1px); display: flex; align-items: center; justify-content: center; min-height: calc((var(--rail-h) - 12) * var(--s) * 1px); transform: translateY(-100%); pointer-events: none; }
@@ -131,6 +131,11 @@
 }
 /* The page behind does not scroll while the dialog is open. The gutter stays, so the page does not change width. */
 html:has(.screenshot-dialog[open]) { overflow: hidden; scrollbar-gutter: stable; }
+/* A big window shows a big picture, so the frame and the caption grow with it and the device keeps its chunky look. */
+@media (min-width: 1600px) and (min-height: 1000px) {
+  .screenshot-dialog { --s: .62; }
+  .screenshot-dialog .screenshot-dialog-caption { font-size: 15px; }
+}
 /* Motion (decision: marketing page, so polish first). Opening happens a few times a visit: 220 ms, fade and a short rise, ease-out. Closing is shorter and only fades.
    Only opacity and transform move. A browser that cannot animate display drops the whole line and shows the dialog at once. */
 @media (prefers-reduced-motion: no-preference) {
