@@ -856,7 +856,8 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     if (write === undefined) return startRefused('START_COPY_FAILED');
     let timer: NodeJS.Timeout | undefined;
     try {
-      // The write is raced against a timer, so a clipboard that never answers cannot hold every later call behind it in the serial queue.
+      // The write is raced against a timer, so a clipboard that never answers cannot hold every later call behind it in the serial queue. The race cannot cancel the write itself: after a
+      // timeout, an async writer could still land later. In the app, Electron's `clipboard.writeText` is synchronous (main.ts), so the timer only guards a writer a test injects.
       await Promise.race([
         Promise.resolve().then(() => write(built.value.real)),
         new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error('The clipboard took too long.')), deps.clipboardTimeoutMs ?? 3000); }),

@@ -246,3 +246,27 @@ test('help is refused for both engines, since both parsers add it', () => {
   for (const engine of START_ENGINES) assert.equal(subcommandOf(engine, 'help'), 'help', engine);
   assert.equal(subcommandWords('help', 'codex'), "'help' is also a command of Codex. Add more words to your instruction.");
 });
+
+test('zero-ink marks and code points with no meaning are refused: unassigned code points, noncharacters, and the three named marks', () => {
+  let count = 0;
+  for (let cp = 0; cp <= 0x10ffff; cp += 1) {
+    if (cp >= 0xd800 && cp <= 0xdfff) continue;
+    const ch = String.fromCodePoint(cp);
+    if (!/\p{Cn}/u.test(ch)) continue;
+    count += 1;
+    if (count % 97 === 0) assert.notEqual(checkInstruction(`a${ch}b`), null, `U+${cp.toString(16).toUpperCase()}`);
+  }
+  assert.ok(count > 700000, `${count} unassigned code points`);
+  for (const cp of [0xfdd0, 0xfdef, 0xfffe, 0xffff, 0x1fffe, 0x10ffff, 0x378, 0x2d7f, 0x16fe4, 0x1d159]) assert.equal(hiddenCode(`a${String.fromCodePoint(cp)}b`), 'START_INSTRUCTION_HIDDEN', `U+${cp.toString(16).toUpperCase()}`);
+  assert.equal(checkInstruction('a\u2d7fb')?.message, 'The instruction has a hidden character: U+2D7F (an invisible character) at position 2. Remove it and try again.');
+});
+
+test('a stack of more than three combining marks is refused and named; one to three marks, NFD text, Thai and Hindi pass', () => {
+  const stack = 'a\u0301\u0302\u0303\u0304';
+  assert.equal(hiddenCode(stack), 'START_INSTRUCTION_HIDDEN');
+  assert.equal(checkInstruction(stack)?.message, 'The instruction has a hidden character: a stack of marks at position 2. Remove it and try again.');
+  assert.equal(checkInstruction(`fix ${stack} it`)?.message, 'The instruction has a hidden character: a stack of marks at position 6. Remove it and try again.');
+  assert.equal(hiddenCode('a\u0301\u0302\u0303\u0304\u0305\u0306'), 'START_INSTRUCTION_HIDDEN');
+  for (const text of ['a\u0301', 'a\u0301\u0302', 'a\u0301\u0302\u0303', 'caf\u0065\u0301 au lait', 'e\u0301 and o\u0308', '\u0e17\u0e35\u0e48 Thai', '\u0915\u093f\u0924\u093e\u092c Hindi', 'ab\u0301 cd\u0302 ef\u0303']) assert.equal(checkInstruction(text), null, JSON.stringify(text));
+  assert.equal(hiddenPath('/Users/a/a\u0301\u0302\u0303\u0304'), true);
+});
