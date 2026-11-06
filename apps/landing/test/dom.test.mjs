@@ -848,3 +848,48 @@ dom('reveal: print shows everything', async () => {
   assert.ok(facts.every(fact => fact === '1|none'));
   await context.close();
 });
+
+// The caption plate and the X are placed by numbers in each frame's CSS, so this checks where they really land: in each theme, at a wide and a phone width,
+// for the longest caption, and the device fits the window without a scroll. The plate stays inside the dialog and above the picture with no clipped line. The X sits in the top right corner area and takes
+// the click at its centre. The part colours resolve, so an unset variable cannot leave a clear button or plate.
+dom('the caption plate sits on the top rail and the X on the corner plate, in every theme and width', async () => {
+  const { screenshotSlots } = await import('../src/screenshots.ts');
+  const longest = [...screenshotSlots].sort((a, b) => b.caption.length - a.caption.length)[0];
+  for (const [label, colorScheme, saved] of [['light', 'light', null], ['system dark', 'dark', null], ['saved dark', 'light', 'dark']]) {
+    for (const viewport of [{ width: 1600, height: 1000 }, { width: 1280, height: 800 }, { width: 740, height: 360 }, { width: 390, height: 844 }]) {
+      const { page, context } = await open({ viewport, colorScheme });
+      if (saved) { await page.evaluate(theme => localStorage.setItem('bowerloom.theme', theme), saved); await page.reload({ waitUntil: 'networkidle' }); }
+      await page.locator(`[data-screenshot-slot="${longest.id}"] .screenshot-enlarge`).click();
+      await page.waitForFunction(() => { const d = document.querySelector('.screenshot-dialog[open]'); return d && getComputedStyle(d).opacity === '1'; });
+      const where = `${label} at ${viewport.width}`;
+      const facts = await page.evaluate(() => {
+        const dialog = document.querySelector('.screenshot-dialog[open]');
+        const box = el => el.getBoundingClientRect();
+        const caption = dialog.querySelector('.screenshot-dialog-caption'), close = dialog.querySelector('.screenshot-close');
+        const style = getComputedStyle(dialog);
+        const c = box(close);
+        const hit = document.elementFromPoint(c.left + c.width / 2, c.top + c.height / 2);
+        return {
+          dialog: box(dialog), device: box(dialog.querySelector('.screenshot-device')), picture: box(dialog.querySelector('.screenshot-scroll')), caption: box(caption), close: c,
+          clipped: caption.scrollHeight > caption.clientHeight + 1, hitsClose: close.contains(hit), scrolls: dialog.scrollHeight > dialog.clientHeight + 1,
+          s: Number(style.getPropertyValue('--s')), cutT: Number(style.getPropertyValue('--cut-t')), cutR: Number(style.getPropertyValue('--cut-r')),
+          vars: ['--rail-y', '--rail-h', '--close-x', '--close-y', '--lcd', '--lcd-ink', '--knob'].map(name => [name, style.getPropertyValue(name).trim()]),
+          closeBg: getComputedStyle(close).backgroundColor, captionBg: getComputedStyle(caption).backgroundColor,
+        };
+      });
+      for (const [name, value] of facts.vars) assert.ok(value, `${where}: ${name} is set`);
+      assert.notEqual(facts.closeBg, 'rgba(0, 0, 0, 0)', `${where}: the X is a solid button`);
+      assert.notEqual(facts.captionBg, 'rgba(0, 0, 0, 0)', `${where}: the plate is a solid readout`);
+      assert.ok(!facts.clipped, `${where}: the longest caption shows every line`);
+      assert.ok(!facts.scrolls, `${where}: the device fits the window, so the dialog does not scroll`);
+      assert.ok(facts.caption.top >= facts.dialog.top, `${where}: the plate stays inside the dialog`);
+      assert.ok(facts.caption.bottom <= facts.picture.top + 1, `${where}: the plate never covers the picture`);
+      assert.ok(facts.caption.left >= facts.device.left && facts.caption.right <= facts.device.right, `${where}: the plate stays on the frame`);
+      const corner = { left: facts.device.right - facts.cutR * facts.s - 22, bottom: facts.device.top + facts.cutT * facts.s + 22 };
+      assert.ok(facts.close.left >= corner.left && facts.close.right <= facts.device.right + 22 && facts.close.bottom <= corner.bottom && facts.close.top >= facts.device.top - 22, `${where}: the X sits on the top right corner plate ${JSON.stringify(facts.close)}`);
+      assert.ok(facts.close.width >= 43.5 && facts.close.height >= 43.5, `${where}: a 44 px target ${facts.close.width}x${facts.close.height}`);
+      assert.ok(facts.hitsClose, `${where}: nothing covers the X`);
+      await context.close();
+    }
+  }
+});

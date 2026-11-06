@@ -101,7 +101,7 @@
 .screenshot-dialog .screenshot-pinch { display: none; }
 /* The caption plate is set into the top rail, between the corner plates. One line sits inside the rail. A longer caption wraps upward, so it never covers the picture. */
 .screenshot-plate { position: absolute; z-index: 3; left: calc(var(--cut-l) * var(--s) * 1px + 6px); right: calc(var(--cut-r) * var(--s) * 1px + 6px); top: calc((var(--rail-y) + var(--rail-h) / 2 - 6) * var(--s) * 1px); display: flex; align-items: center; justify-content: center; min-height: calc((var(--rail-h) - 12) * var(--s) * 1px); transform: translateY(-100%); pointer-events: none; }
-.screenshot-dialog .screenshot-dialog-caption { display: -webkit-box; max-width: 100%; margin: 0; padding: 4px 14px; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; border: 2px solid var(--lcd-bezel); border-radius: 6px; background: var(--lcd); color: var(--lcd-ink); font: 600 13px/1.35 var(--ui-font); letter-spacing: .01em; text-align: center; box-shadow: inset 0 2px 4px rgb(20 16 24 / .28), inset 0 -1px 0 rgb(255 255 255 / .3), 0 0 12px var(--lcd-glow), 0 3px 6px -2px rgb(20 16 24 / .45); pointer-events: auto; }
+.screenshot-dialog .screenshot-dialog-caption { display: block; max-width: 100%; margin: 0; padding: 4px 14px; border: 2px solid var(--lcd-bezel); border-radius: 6px; background: var(--lcd); color: var(--lcd-ink); font: 600 13px/1.35 var(--ui-font); letter-spacing: .01em; text-align: center; box-shadow: inset 0 2px 4px rgb(20 16 24 / .28), inset 0 -1px 0 rgb(255 255 255 / .3), 0 0 12px var(--lcd-glow), 0 3px 6px -2px rgb(20 16 24 / .45); pointer-events: auto; }
 /* The X is a raised clay push button, bolted over the vent on the top right corner plate. Its target stays 44 px at every scale. */
 .screenshot-close-mount { position: absolute; z-index: 3; top: calc(var(--close-y) * var(--s) * 1px - 22px); right: calc(var(--close-x) * var(--s) * 1px - 22px); margin: 0; }
 .screenshot-close { display: inline-grid; place-items: center; flex: none; width: 44px; height: 44px; min-width: 44px; min-height: 44px; padding: 0; border: 2px solid var(--knob-edge); border-radius: var(--control-radius); background: radial-gradient(circle at 35% 28%, rgb(255 255 255 / .35), transparent 55%), var(--knob); color: var(--knob-ink); cursor: pointer; box-shadow: inset 0 -3px 0 rgb(20 16 24 / .22), 0 3px 0 var(--knob-edge), 0 6px 10px -4px rgb(20 16 24 / .55); }
@@ -192,6 +192,10 @@ html:has(.screenshot-dialog[open]) { overflow: hidden; scrollbar-gutter: stable;
   /* The rail is thin on a phone, so a caption wraps above it. The device leaves room for three lines. */
   .screenshot-device { margin-top: calc(40px * var(--s) + 40px); }
   .screenshot-dialog .screenshot-dialog-caption { padding: 3px 10px; font-size: 12px; }
+  /* The corner plates are small here, so the plate reaches over the top left one and stops short of the X. */
+  .screenshot-plate { left: 8px; right: calc(var(--close-x) * var(--s) * 1px + 28px); }
+  /* The phone device has a taller top margin and the pinch hint below it, so the height allowance is larger. */
+  .screenshot-column { width: min(1600px, 100%, calc((100dvh - ((var(--hole-t) + var(--hole-b) + 96) * var(--s) * 1px + 120px)) * 1.6 + (var(--hole-l) + var(--hole-r)) * var(--s) * 1px)); }
   .band-inner { padding: 44px 6%; }
   .recipe-section h2, .band h2, .faq-section h2 { font-size: 30px; }
   .install-card { padding: 22px; }
