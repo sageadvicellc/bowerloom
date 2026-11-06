@@ -319,3 +319,20 @@ test('a long skill name whose last word is long is listed once', () => {
   };
   assert.equal(overviewOf(state, []).groups.flatMap(g => g.nodes).filter(n => n.kind === 'skill').length, 1);
 });
+
+const placeWith = (source: HarnessState['parts'], places: ReturnType<typeof hpart>[]): HarnessState => ({
+  ...createSampleWorld(),
+  parts: source,
+  sources: [{ id: 'src', name: 'x (Bowerloom)', interfaceName: 'Bowerloom', harnessName: 'x', partIds: source.map(p => p.id), links: [], scope: 'project', label: '~/x', harnessPlaceId: 'harness-x' }],
+  harnessPlaces: [{ id: 'harness-x', name: 'x (Bowerloom)', label: '~/x', readable: true, engines: [], parts: places, links: [] }],
+});
+const skillNames = (state: HarnessState): string[] => overviewOf(state, []).groups.flatMap(g => g.nodes).filter(n => n.kind === 'skill').map(n => n.name).sort();
+
+test('with no text hash on either side, a harness skill and its own source skill with the same name are listed once', () => {
+  assert.deepEqual(skillNames(placeWith([spart('p1', 'tidy up', '')], [hpart('harness-skill-1', 'tidy up', '')])), ['tidy up']);
+});
+
+test('with no text hash, two different skills that only share the start of their names both stay listed', () => {
+  const stem = 'a long shared start of two different skill names, ';
+  assert.deepEqual(skillNames(placeWith([spart('p1', `${stem}first`, '')], [hpart('harness-skill-1', `${stem}second`, '')])), [`${stem}first`, `${stem}second`]);
+});

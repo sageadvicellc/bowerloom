@@ -55,7 +55,7 @@ export interface OverviewEdge {
 export interface OverviewCounts { readonly agent: number; readonly skill: number; readonly tool: number; readonly context: number }
 
 /**
- * One place: a scan source (`ScanSource`). The id is the source id.
+ * One place: a scan source (`ScanSource`), or a folder that holds a harness (`HarnessPlace`), or both joined. The id is the source id, except for a harness place, alone or joined: then it is the harness place id.
  *  - `name` is the source's name ("Your Claude Code folder"); `label` is the folder in `~` form (`~` for the home folder), never a full path.
  *  - `scope` is `home` or `project`. `programs` lists the programs found there, by name, in the preview's order.
  *  - `inBowerloom` is true when `folders()` has a folder with the same `~` label that holds a harness; `folderId` is then that folder's id, else null.
@@ -93,12 +93,13 @@ export const HARNESS_UNREADABLE = 'Bowerloom could not read this harness.';
  * Deterministic: the same inputs give an equal Overview. A scan with no parts gives groups with no nodes, or none. Throws nothing for any input of the right type.
  *
  * How it reads the scan:
- *  - A group is a source. A source with no `scope` is a project, and with no `label` it takes its name, because a source made before the Overview existed (the sample)
+ *  - A group is a source, or a harness place (alone, or joined with the source of the same folder: its id is then the harness place id). A source with no `scope` is a project, and with no `label` it takes its name, because a source made before the Overview existed (the sample)
  *    carries neither. The label goes through the same rule as every shown text: one plain line, and never a full path.
  *  - A source's part ids that no part answers to are skipped; one part listed twice is shown once.
  *  - The reader keeps a skill of the home folder and the same skill of a project as two parts (an item is one scope, one kind and one name), so sharing is not found in the
  *    reader. Here two skills are the same when their `contentHash` is equal and not empty, in two or more groups. Two skills in one group stay two nodes.
- *  - A folder that holds a harness (`HarnessState.harnessPlaces`) is a project place of its own, built from the parts the loader read. Its programs are the engines of the harness.
+ *  - A folder that holds a harness (`HarnessState.harnessPlaces`) is a project place of its own, built from the parts the loader read, also when main knows the folder (then it reads In Bowerloom).
+ *    Its programs are the engines of the harness. A source that names it (`ScanSource.harnessPlaceId`) is joined into the same group, and a skill both hold is listed once (see `pairSkills`).
  *  - Home groups keep the order of the scan (the reader lists the programs in a fixed order). Project groups follow: most nodes first, then name, then id.
  */
 export function overviewOf(state: HarnessState, folders: readonly FolderInfo[]): Overview {
@@ -138,12 +139,14 @@ function harnessGroupOf(place: HarnessPlace, index: number, folders: readonly Fo
 /** The name of a part as the Overview draws it, without the mark of a cut. */
 const nameOf = (part: Part): string => shown(part.name).replace(/…$/, '');
 const sameText = (a: Part, b: Part): boolean => (a.contentHash ?? '') === (b.contentHash ?? '');
+/** True when the part has a text hash. Two parts with no hash have no proof that they are one skill, except a full name; the harness side carries no path to tell them apart either. */
+const hashed = (part: Part): boolean => (part.contentHash ?? '') !== '';
 /** How much of a name two copies must share in the second pass: the part cuts a long name at the last space past its middle (40 characters), so only that much is certain to be the same. */
 const NAME_STEM = 40;
 
 /**
  * Pairs each skill of a source with the skill of the harness place that is its copy. Pass 1: the same text and the full name. Pass 2, for the ones left: the same text and the first 40
- * characters of the name. A skill of the place is used once. Returns the id of its twin in the place for each source skill that has one.
+ * characters of the name. Pass 2 needs a text hash: with no hash a shared start of a name proves nothing, so such skills pair only on the full name. A skill of the place is used once. Returns the id of its twin in the place for each source skill that has one.
  */
 function pairSkills(own: readonly Part[], source: readonly Part[]): Map<string, string> {
   const twins = new Map<string, string>(), taken = new Set<string>();
@@ -155,7 +158,7 @@ function pairSkills(own: readonly Part[], source: readonly Part[]): Map<string, 
     }
   };
   pass((o, p) => shown(o.name) === shown(p.name));
-  pass((o, p) => nameOf(o).slice(0, NAME_STEM) === nameOf(p).slice(0, NAME_STEM));
+  pass((o, p) => hashed(p) && nameOf(o).slice(0, NAME_STEM) === nameOf(p).slice(0, NAME_STEM));
   return twins;
 }
 
