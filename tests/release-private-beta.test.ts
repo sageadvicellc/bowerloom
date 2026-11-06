@@ -27,8 +27,9 @@ test('the release record and package.json name one version, published on npm und
   assert.equal(release.npm.distTag, 'beta'); assert.equal(release.npm.installCommand, BETA_INSTALL);
   assert.equal(release.state, 'published'); assert.equal(release.npm.published, true);
   assert.equal(release.audience, 'public-beta-stream');
-  assert.match(release.npm.availabilityNote, /under the beta dist-tag/);
-  assert.ok((release as unknown as { systems: { releaseQualified: unknown[] } }).systems.releaseQualified.length > 0, 'a published record names its registry install');
+  assert.equal(release.npm.availabilityNote, 'Published on npm on 2026-11-06 under the beta dist-tag. There is no stable release yet, so the latest tag also points at this beta. Install it with npm install -g bowerloom@beta.');
+  const qualified = (release as unknown as { systems: { releaseQualified: { scope: string }[] } }).systems.releaseQualified;
+  assert.ok(qualified.length > 0 && qualified.every(row => row.scope.includes('Registry installation of bowerloom@beta')), 'a published record names its registry install');
   assert.doesNotMatch(release.npm.availabilityNote, /private|proof|unreleased|unpublished|candidate/i);
   assert.equal(validateReleaseIdentity(release, pkg).version, VERSION);
 });

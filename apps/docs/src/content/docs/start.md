@@ -1,6 +1,6 @@
 ---
 title: "Install Bowerloom"
-description: "Read the requirements, learn when the CLI arrives, and adopt your first harness."
+description: "Read the requirements, install the CLI from npm, and adopt your first harness."
 section: "Start here"
 order: 1
 ---

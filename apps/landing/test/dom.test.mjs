@@ -11,6 +11,8 @@ import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
 import { installAvailable } from '../src/release.ts';
 import { pendingNote } from '../src/content.ts';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 
 const require = createRequire(import.meta.url);
 function loadChromium() {
@@ -137,6 +139,25 @@ dom('the Enlarge buttons have different names that start with their visible text
   await context.close();
 });
 
+// The browser tests follow the live record, so this server render covers both states whatever the record says.
+test('the install card renders the npm note outside the live region only while unpublished', async () => {
+  const vite = await createServer({ root: fileURLToPath(new URL('..', import.meta.url)), logLevel: 'silent', appType: 'custom', server: { middlewareMode: true, hmr: false, watch: null } });
+  try {
+    const { InstallSection } = await vite.ssrLoadModule('/src/Sections.tsx');
+    const status = '<p class="copy-status" role="status" aria-live="polite"></p>';
+    const unpublished = renderToStaticMarkup(createElement(InstallSection, { available: false }));
+    assert.match(unpublished, /data-command="unpublished"/);
+    assert.match(unpublished, /class="copy-slot" data-note="yes"/);
+    const note = `<p class="copy-note">${pendingNote}</p>`;
+    assert.ok(unpublished.includes(note + status), 'the note sits before the empty live region, outside it');
+    const published = renderToStaticMarkup(createElement(InstallSection, { available: true }));
+    assert.match(published, /data-command="published"/);
+    assert.match(published, /class="copy-slot" data-note="no"/);
+    assert.ok(!published.includes('copy-note'), 'a published command has no npm note');
+    assert.ok(published.includes(status), 'the live region is empty at idle');
+  } finally { await vite.close(); }
+});
+
 // While the package is unpublished the slot holds the npm note. Once it is published the slot is empty at idle.
 const idleSlot = page => page.waitForFunction(text => (document.querySelector('.copy-note')?.innerText.trim() ?? '') === text && document.querySelector('.copy-status').innerText.trim() === '', idleNote, { timeout: 5000 });
 const idleNote = installAvailable ? '' : pendingNote;
@@ -160,7 +181,7 @@ dom('the npm note is plain text outside the live region while unpublished, and C
   assert.ok(slot.y - (terminal.y + terminal.height) < 20, 'no dead gap between the terminal and the note');
   await button.click();
   await page.waitForFunction(() => document.querySelector('.copy-status').innerText.trim() === 'Copied');
-  assert.equal(await noteEl.count(), 0, 'Copied replaces the note in the slot');
+  if (!installAvailable) assert.equal(await noteEl.count(), 0, 'Copied replaces the note in the slot');
   assert.equal((await button.innerText()).split('\n')[0].trim(), 'Copied');
   assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'npm install -g bowerloom@beta');
   assert.equal((await page.locator('.copy-slot').boundingBox()).height, slot.height, 'the slot keeps its height');
