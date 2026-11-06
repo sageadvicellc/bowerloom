@@ -11,6 +11,7 @@ import { entryMeta, groupByDay } from '../shared/harness/time.js';
 import { CONFLICT_CHOICES } from '../shared/harness/types.js';
 import type { ConflictChoice } from '../shared/harness/types.js';
 import { LIMITS, bannedHere, countWords } from '../shared/harness/words.js';
+import { WORDS } from '../renderer/harness/words.js';
 import { FILE_WORDS, FLOW, actionFor, addedFolderWords, actionName, conflictTitle, foundSources, installAction, installFor, interfaceSwitch, interfacesHint, makeAll, makeFrom, nothingChanged, readTitle, removedWords, reviewFor, reviewLine, savedAs, settledWords, undoName, updateFor } from '../renderer/harness/words-flow.js';
 
 const { weekly, caveman, inbox, research, bowerloom, garden, archive, notes } = SAMPLE_IDS;
@@ -197,7 +198,7 @@ test('Start then Install: the interfaces ticked in Start are the ones the review
 test('the words built from a name, a path or a number obey the same rules', () => {
   const w = world(), h = harnessById(w, weekly)!, plan = buildInstallPlan(w, bowerloom, weekly, CC);
   const built = [makeFrom('Caveman (plug-in)'), actionName('Update', 'Weekly report crew', 'bowerloom'), installFor('Codex'), updateFor('Codex'), reviewFor('Codex'), savedAs(HARNESS_FILE), installAction('Weekly report crew', 'bowerloom'),
-    interfaceSwitch('Codex'), undoName('Installed Weekly report crew in bowerloom'), removedWords('Weekly report crew'), nothingChanged('that link is there already'), nothingChanged(UNDO_NEWER_FIRST), FLOW.hint.undoFirst, settledWords('Keep mine'), foundSources(1), readTitle(1), makeAll(2), interfacesHint(1), addedFolderWords('alpha'), FLOW.hint.alreadyListed, FLOW.hint.notCheckedYet];
+    interfaceSwitch('Codex'), undoName('Installed Weekly report crew in bowerloom'), removedWords('Weekly report crew'), nothingChanged('that link is there already'), nothingChanged(UNDO_NEWER_FIRST), FLOW.hint.undoFirst, settledWords('Keep mine'), foundSources(1), readTitle(1), makeAll(2), interfacesHint(1), addedFolderWords('alpha'), FLOW.hint.alreadyListed, FLOW.hint.notCheckedYet, FLOW.hint.listStale, FLOW.hint.assignFolderHint, FLOW.hint.assignFileHint, WORDS.hint.notOnDisk];
   for (const text of built) { assert.equal(bannedHere(text), null, text); assert.ok(countWords(text) <= LIMITS.hint, text); }
   assert.equal(addedFolderWords('alpha'), 'Added alpha to Projects.');
   for (const text of [savedAs(HARNESS_FILE), conflictTitle('.codex/agents/writer.toml'), reviewLine(planSummary(plan), '~/Workshop/code/bowerloom')]) { assert.ok(countWords(text) <= LIMITS.hint + 5, text); assert.equal(bannedHere(text), null, text); }

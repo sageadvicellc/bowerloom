@@ -18,7 +18,8 @@ export const FLOW = deepFreeze({
     looksRight: 'Looks right', showDetails: 'Show details', hideDetails: 'Hide details', addFolder: 'Add a folder', notNow: 'Not now', makeFromThis: 'Make a harness from this', sources: 'Sources',
     partsInSource: 'What Bowerloom reads', foundAt: 'Found in',
     // Projects
-    update: 'Update', install: 'Install', review: 'Review', assignHarness: 'Assign harness', assignAnother: 'Assign another harness', removeFromProject: 'Remove from project', project: 'Project', noHarnessYet: 'No harness yet', hasHarness: 'Has a harness', notChecked: 'Not checked',
+    update: 'Update', install: 'Install', review: 'Review', assignHarness: 'Assign harness', assignAnother: 'Assign another harness', removeFromProject: 'Remove from project', project: 'Project', noHarnessYet: 'No harness yet', hasHarness: 'Has a harness', notChecked: 'Not checked', checking: 'Checking',
+    assignTitle: 'Assign a harness', assignFromFolder: 'From this folder', assignFromFile: 'From a file',
     projectRows: 'Projects', interfacesOfInstall: 'Engines',
     // Install sheet
     stepProject: 'Project', stepHarness: 'Harness', stepInterfaces: 'Engines', stepReview: 'Review', installSteps: 'Install steps', next: 'Next', installAHarness: 'Install a harness', folders: 'Folders', harnessChoices: 'Harnesses',
@@ -43,6 +44,8 @@ export const FLOW = deepFreeze({
     historyEmptyReal: 'Nothing is listed yet. Folder installs are not listed here.', historyUndoReal: 'To undo a folder install, press Undo, then approve the removal.',
     lookedAgain: 'Looked again. Nothing changed.', noneOffered: 'No engine is switched on. Turn one on in Engines.',
     nothingMade: 'Nothing was made.',
+    assignFolderHint: 'Make the harness from the files this folder already has.', assignFileHint: 'Copy a harness in from a bundle file.',
+    listStale: 'This list may not be current.',
     alreadyListed: 'Already in the list.', notCheckedYet: 'Not checked yet. Press Install to choose the folder.',
     pickInterface: 'Pick at least one engine.', undoFirst: 'Undo the newer change first', noProject: 'That project is not here.',
   },
@@ -57,7 +60,7 @@ export const FLOW = deepFreeze({
 
 /** The two lines of Welcome. On the person's own folders the second says that running is not in beta.1. */
 export const welcomeLines = (real: boolean): readonly [string, string] => [FLOW.hint.welcomeLineOne, real ? FLOW.hint.welcomeLineTwoReal : FLOW.hint.welcomeLineTwo];
-/** The lines over the Install history list. With no entries on the person's own folders, nothing is listed and an install from Projects is not in beta.1; the second line says how to undo a folder install. */
+/** The lines over the Install history list. With no entries on the person's own folders, nothing is listed, because a folder install is undone in its own sheet; the second line says how to undo a folder install. */
 export const historyLines = (real: boolean, entries: number): readonly string[] => (real && entries === 0 ? [FLOW.hint.historyEmptyReal, FLOW.hint.historyUndoReal] : [FLOW.hint.historyHint]);
 
 // ---- Words built from a name or a number

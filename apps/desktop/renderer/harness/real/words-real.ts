@@ -75,9 +75,9 @@ export const REAL = deepFreeze({
   },
   /**
    * The list of the Beta mark's popover in this mode: every control that is not in beta.1. Install from a folder and Edit from a folder work, so no line is worded
-   * so that it could mean them (Add a folder, Install, Update and Review in Projects work too): the lines that share a name with a working control say where the blocked one is.
+   * so that it could mean them (everything in Projects works, and so does Assign to project): the lines that share a name with a working control say where the blocked one is.
    */
-  notInBeta: ['Start', 'Compare', 'Runs', 'Assign to project, in the Harnesses details', 'Assign harness, in Projects', 'Add (the plus button), in the Library'],
+  notInBeta: ['Start', 'Compare', 'Runs', 'Add (the plus button), in the Library'],
 } as const);
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;

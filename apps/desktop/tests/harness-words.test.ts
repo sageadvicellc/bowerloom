@@ -143,9 +143,9 @@ test('the real words (the preview on the person\'s own folders) are frozen, with
     for (const [key, text] of entries) { assert.ok(countWords(text) <= limit, `${group}.${key}: ${text}`); assert.equal(bannedHere(text), null, `${group}.${key}`); assert.equal(text, text.trim(), `${group}.${key}`); }
   }
   for (const line of REAL.notInBeta) { assert.ok(countWords(line) <= LIMITS.popover, line); assert.equal(bannedHere(line), null, line); }
-  assert.deepEqual(REAL.notInBeta, ['Start', 'Compare', 'Runs', 'Assign to project, in the Harnesses details', 'Assign harness, in Projects', 'Add (the plus button), in the Library']);
-  // Add a folder, Install, Update and Review work on the person's own folders, so no line names them.
-  assert.ok(!REAL.notInBeta.some(line => /Add a folder|Install|Update|Review/.test(line)), 'a working Projects control is not on the list');
+  assert.deepEqual(REAL.notInBeta, ['Start', 'Compare', 'Runs', 'Add (the plus button), in the Library']);
+  // Everything in Projects, and Assign to project, work on the person's own folders, so no line names them.
+  assert.ok(!REAL.notInBeta.some(line => /Projects|Assign|Add a folder|Install|Update|Review/.test(line)), 'a working Projects control is not on the list');
   assert.ok(!REAL.notInBeta.some(line => /^Install from a folder$|^From a folder$/.test(line)), 'Install from a folder works, so it is not on the list');
   assert.deepEqual([REAL.label.beta, REAL.label.aboutBeta, REAL.label.notInBeta, WORDS.hint.notInBeta], ['Beta', 'About this beta', 'Not in beta.1', 'Not in beta.1.']);
   assert.equal(notYetWords(true), 'Not in beta.1.'); assert.equal(notYetWords(false), 'Not in this preview.');

@@ -40,7 +40,7 @@ export interface SaveSheetState {
 /** The Export sheet: one folder's saved harness, to one file. */
 export interface ExportSheetState { readonly open: boolean; readonly folderId: string | null; /** True when the Builder holds changes that are not saved: the file does not hold them. */ readonly unsaved: boolean }
 /** The Import sheet: one file, into one folder with no harness or an empty one. The file and the folder are picked in the sheet. */
-export interface ImportSheetState { readonly open: boolean }
+export interface ImportSheetState { readonly open: boolean; readonly folderId: string | null }
 export interface ToastState { readonly id: number; readonly text: string; readonly action: { readonly label: string; readonly run: () => void } | null }
 
 export interface Ui {
@@ -73,7 +73,8 @@ export interface Ui {
   closeExport(): void;
   /** The Import sheet. It opens in either launch: main opens the file dialog, and asks before it writes. */
   readonly importSheet: ImportSheetState;
-  openImport(): void;
+  /** `folderId`: a folder to pick as the sheet opens (Projects: Assign harness). */
+  openImport(request?: { folderId?: string | null }): void;
   closeImport(): void;
   /** The harness the Harness list has selected, or null. */
   readonly pickedHarnessId: string | null;
@@ -107,7 +108,7 @@ export function UiProvider({ children }: { children?: ReactNode }): ReactElement
   const [projectSheet, setProjectSheet] = useState<ProjectSheetState>({ open: false, folderId: null, mode: 'install', keep: [], start: 'folder' });
   const [saveSheet, setSaveSheet] = useState<SaveSheetState>({ open: false, folderId: null, tour: false, start: 'folder', restore: null });
   const [exportSheet, setExportSheet] = useState<ExportSheetState>({ open: false, folderId: null, unsaved: false });
-  const [importSheet, setImportSheet] = useState<ImportSheetState>({ open: false });
+  const [importSheet, setImportSheet] = useState<ImportSheetState>({ open: false, folderId: null });
   const [toast, setToast] = useState<ToastState | null>(null);
   const [layers, setLayers] = useState(0);
   const counter = useRef(0), timer = useRef<number | null>(null), held = useRef(false), shown = useRef(false);
@@ -162,8 +163,8 @@ export function UiProvider({ children }: { children?: ReactNode }): ReactElement
     openExport: (request = {}) => setExportSheet({ open: true, folderId: request.folderId ?? null, unsaved: request.unsaved ?? false }),
     closeExport: () => setExportSheet(current => ({ ...current, open: false })),
     importSheet,
-    openImport: () => setImportSheet({ open: true }),
-    closeImport: () => setImportSheet({ open: false }),
+    openImport: (request = {}) => setImportSheet({ open: true, folderId: request.folderId ?? null }),
+    closeImport: () => setImportSheet(current => ({ ...current, open: false })),
     pickedHarnessId: picked, pickHarness: setPicked,
     replaceWorld: next => {
       harnessStore.loadWorld(next);

@@ -46,7 +46,7 @@ export const WORDS = deepFreeze({
     nothingToAdd: 'Every part of this kind is in the harness.', previewOnly: 'Not in this preview.',
     libraryAddHint: 'Pick the harness that gets this part.', helpOne: 'A harness is a saved bundle of your AI helpers.', libraryEmpty: 'Nothing in the Library matches.',
     fileHidden: 'Secrets in this file are hidden here.',
-    noHarness: 'That harness is not here.', noFolder: 'That folder is not open. Choose it again.',
+    noHarness: 'That harness is not here.', notOnDisk: 'This harness is not on disk. Make one from a folder.', noFolder: 'That folder is not open. Choose it again.',
     dropToLink: 'Drag a skill onto an agent to link them.', noLinks: 'Nothing linked yet.', discardNote: 'Your unsaved changes to this folder go.', stillWorking: 'Bowerloom is still working. Try again in a moment.', draftDropped: 'This harness changed on disk. Your unsaved changes were dropped.', noPart: 'That part is not here.', noFile: 'That file is not in the sample.', alreadyIn: 'Already in it.', notInstalledYet: 'Not installed in a project yet.',
   },
   /** A short paragraph or a popover: at most 25 words each. */
