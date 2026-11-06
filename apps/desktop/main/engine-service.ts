@@ -566,6 +566,8 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
   const notesEdits = (f: Folder): NotesEditDeps => ({
     sourcePath: notesId => {
       const n = notesOf(notesId);
+      // A source the harness records has an id that plans and writes nothing: only a folder the person chose here may be attached.
+      chosenOnly(n);
       if (n.unsafe) throw new NotesRefusal('NOTES_PATH_UNSAFE');
       const r = storedKnowledgePath(n.dir, { root: f.dir, home: realHome });
       if (!r.ok) throw new DefinitionError(r.code, r.message);
