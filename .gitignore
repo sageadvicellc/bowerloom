@@ -5,6 +5,8 @@ dist/
 .env.*
 *.tsbuildinfo
 .DS_Store
+# The impeccable design hook's cache, written in any folder it scans.
+**/.impeccable/hook.cache.json
 
 # Bowerloom projects these local copies from .bowerloom.
 /.agents/skills/factory-*/
