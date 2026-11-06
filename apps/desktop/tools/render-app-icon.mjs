@@ -78,6 +78,8 @@ try {
   for (const name of ['icon.png', 'icon.icns']) { await rename(resolve(desktop, 'build', `${name}.next`), resolve(desktop, 'build', name)); console.log(`Saved build/${name}`); }
 } catch (error) {
   failure = error;
+  // A failed run leaves no half-made file in build/.
+  for (const name of ['icon.png', 'icon.icns']) await rm(resolve(desktop, 'build', `${name}.next`), { force: true });
 } finally {
   // A failure to close the browser is reported, but it never hides the first failure.
   try { await browser?.close(); } catch (error) { console.error(`Could not close the browser: ${error.message}`); }
