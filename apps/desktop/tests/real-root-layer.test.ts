@@ -72,7 +72,8 @@ test('a layer that holds a harness shows its skill once, in the harness place, a
   assert.equal(shownTimes(state, 'Root skill'), 1, 'the skill is shown exactly once');
   assert.equal(shownTimes(state, 'Root agent'), 1, 'the team agent is shown');
   assert.equal(shownTimes(state, 'Root prompt'), 1, 'the prompt is shown');
-  assert.deepEqual(names(state, 'skill').sort(), ['Inner skill'], 'the skill the harness place shows is not listed a second time');
+  const source = state.sources.find(x => x.name === 'workspace (Bowerloom)');
+  assert.equal(source?.harnessPlaceId, state.harnessPlaces?.find(h => h.parts.some(p => p.name === 'Root skill'))?.id, 'the source names the harness place, and the Overview lists the skill once');
   assert.equal(state.real!.notes.some(n => /Bowerloom folder/.test(n)), false, state.real!.notes.join(' | '));
 });
 
@@ -94,4 +95,66 @@ test('two folders whose cleaned paths are equal are told apart: the one without 
   assert.equal(paths.length, 2); assert.equal(paths[0], paths[1], 'the two cleaned paths are equal');
   assert.equal(shownTimes(state, 'Held skill'), 1);
   assert.equal(shownTimes(state, 'Plain skill'), 1, names(state, 'skill').join(', '));
+});
+
+const harness = (): string => JSON.stringify({ engines: [{ id: 'claude-code' }] });
+
+test('a team agent that shares a name with an agent of the harness is shown as well', async t => {
+  const home = tempDir(t, 'bowerloom-root-layer-'), root = join(home, 'work');
+  put(join(root, '.bowerloom', 'harness.json'), harness());
+  put(join(root, '.bowerloom', 'agents', 'helper.md'), doc('helper', 'The harness agent.'));
+  put(join(root, '.bowerloom', 'teams', 'crew', 'agents', 'helper.md'), doc('helper', 'The team agent.'));
+  const { state } = await readState(home, root);
+  assert.equal(names(state, 'agent').includes('helper'), true, 'the team agent is a part');
+  assert.equal(shownTimes(state, 'helper'), 2, 'the harness agent and the team agent');
+});
+
+test('a prompt that shares a name with a connection or a hook of the harness is shown as well', async t => {
+  const home = tempDir(t, 'bowerloom-root-layer-'), root = join(home, 'work');
+  put(join(root, '.bowerloom', 'harness.json'), harness());
+  put(join(root, '.bowerloom', 'mcp.json'), JSON.stringify({ servers: [{ name: 'review', transport: 'stdio', command: 'x' }] }));
+  put(join(root, '.bowerloom', 'hooks.json'), JSON.stringify({ hooks: [{ id: 'review', event: 'PostToolUse', command: 'x', strength: 'advisory' }] }));
+  put(join(root, '.bowerloom', 'prompts', 'review.md'), doc('review', 'A saved prompt.'));
+  const { state } = await readState(home, root);
+  assert.equal(names(state, 'tool').includes('review'), true, 'the prompt is a part');
+  assert.equal(shownTimes(state, 'review'), 3, 'the connection, the hook and the prompt');
+});
+
+test('a set of notes that shares a name with a notes source of the harness is shown as well', async t => {
+  const home = tempDir(t, 'bowerloom-root-layer-'), root = join(home, 'work');
+  put(join(root, '.bowerloom', 'harness.json'), harness());
+  put(join(root, '.bowerloom', 'knowledge.json'), JSON.stringify({ sources: [{ kind: 'wiki', name: 'work notes', path: 'notes' }] }));
+  put(join(root, 'notes', 'one.md'), '# One\n\nA page of notes.\n');
+  const { state } = await readState(home, root);
+  assert.equal(state.parts.some(p => p.kind === 'context' && p.name === 'work notes'), true, state.parts.map(p => p.name).join(', '));
+  assert.equal(shownTimes(state, 'work notes'), 2, 'the harness notes source and the set of notes');
+});
+
+test('a folder with a harness and layer items of its own is one group in the Overview', async t => {
+  const { home, root } = workspace(t);
+  put(join(root, '.bowerloom', 'harness.json'), harness());
+  const { state } = await readState(home, root);
+  const groups = overviewOf(state, []).groups.filter(g => g.name === 'workspace (Bowerloom)');
+  assert.equal(groups.length, 1, 'one group');
+  assert.deepEqual(groups[0]!.nodes.map(n => n.name).sort(), ['Root agent', 'Root prompt', 'Root skill']);
+});
+
+test('a folder whose harness cannot be read is one group too, with the unreadable note and its own items', async t => {
+  const { home, root } = workspace(t);
+  put(join(root, '.bowerloom', 'harness.json'), '{ not json');
+  const { state } = await readState(home, root);
+  const groups = overviewOf(state, []).groups.filter(g => g.name === 'workspace (Bowerloom)');
+  assert.equal(groups.length, 1);
+  assert.notEqual(groups[0]!.note, undefined);
+  assert.deepEqual(groups[0]!.nodes.map(n => n.name).sort(), ['Root agent', 'Root prompt', 'Root skill']);
+});
+
+test('a skill with a name of 100 characters that a harness place shows is shown once', async t => {
+  const home = tempDir(t, 'bowerloom-root-layer-'), root = join(home, 'work'), long = `A long skill name ${'with many words '.repeat(6)}`.trim();
+  assert.ok(long.length > 100);
+  put(join(root, '.bowerloom', 'harness.json'), harness());
+  put(join(root, '.bowerloom', 'skills', 'long-one', 'SKILL.md'), doc(long, 'A skill with a long name.'));
+  const { state } = await readState(home, root);
+  const counts = overviewOf(state, []).groups.flatMap(g => g.nodes).filter(n => n.kind === 'skill').length;
+  assert.equal(counts, 1);
 });

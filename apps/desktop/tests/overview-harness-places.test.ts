@@ -43,10 +43,12 @@ test('rope-yard, which holds a harness and was never opened, is a place with its
   const idOf = (name: string): string => rope.nodes.find(n => n.name === name)!.id;
   assert.deepEqual(rope.edges.map(e => e.id), [`${idOf('foreman')}>${idOf('splice')}`]);
   assert.ok(rope.nodes.every(n => /^[^/]+\/harness-(?:agent|skill|notes|mcp|hook)-\d+$/.test(n.id)), 'an id is a kind and a number, never a name');
-  // A folder main knows gets no place of this kind: its own place already reads In Bowerloom.
+  // A folder main knows gets no place of this kind: its own place already reads In Bowerloom, and it lists the folder's skills once.
   const known = overviewOf(state, [folder('f1', '~/Projects/rope-yard')]);
   assert.equal(known.groups.some(g => g.id === rope.id), false);
-  assert.equal(known.groups.length, o.groups.length - 1);
+  assert.equal(known.groups.length, o.groups.length);
+  const knownRope = known.groups.find(g => g.label === '~/Projects/rope-yard')!;
+  assert.equal(knownRope.inBowerloom, true); assert.deepEqual(knownRope.nodes.map(n => n.name).sort(), ['coil-count', 'knot-guide', 'splice']);
   // No full path anywhere.
   assert.ok(!JSON.stringify(o).includes(made.home));
 });
@@ -58,11 +60,13 @@ test('the read is read only: no file of the made-up home changes', async t => {
   assert.deepEqual(digestTree(made.home), before);
 });
 
-test('the read screen lists no source for a folder whose harness place shows all its parts, and says nothing is left out', async t => {
+test('the read screen lists the skills of a folder with a harness as a source that names the harness place, and says nothing is left out', async t => {
   const made = buildMadeUpHome(tempDir(t));
   const state = await read(made.home, [made.projects]);
-  assert.ok(!state.sources.some(s => /rope-yard/.test(s.name)));
-  assert.ok(!state.real!.notes.some(n => /in a Bowerloom folder (?:is|are) not shown\.$/.test(n)), 'every skill is shown in the harness place, so none is left out');
+  const source = state.sources.find(s => /rope-yard/.test(s.name));
+  assert.ok(source, 'the skills are found');
+  assert.equal(source.harnessPlaceId, state.harnessPlaces?.find(h => /rope-yard/.test(h.name))?.id);
+  assert.ok(!state.real!.notes.some(n => /in a Bowerloom folder (?:is|are) not shown\.$/.test(n)), 'every skill is listed');
   assert.equal(state.chosenSourceIds.length, state.sources.length);
 });
 
@@ -106,17 +110,16 @@ test('connections and hooks are tools; a hook runs code; no command, argument or
   for (const n of g.nodes.filter(x => x.kind === 'tool')) assert.equal(n.runsCode === true, n.toolKind === 'hook');
 });
 
-test('a harness that could not be read is a place with its name, a plain line and no part', async t => {
+test('a harness that could not be read is a place with its name, a plain line and no part of its own', async t => {
   const { home, work } = homeWith(t, { 'broken/.bowerloom/harness.json': '{ not json', 'broken/.bowerloom/skills/one/SKILL.md': '---\nname: one\n---\n' });
   mkdirSync(join(home, '.claude'), { recursive: true });
   const state = await read(home, [work]);
   const here = overviewOf(state, []).groups.filter(x => x.label === '~/work/broken');
-  const g = here.find(x => x.note !== undefined)!;
-  assert.ok(g);
-  assert.equal(g.name, 'broken (Bowerloom)'); assert.equal(g.note, HARNESS_UNREADABLE);
-  assert.deepEqual(g.nodes, []); assert.deepEqual(g.counts, { agent: 0, skill: 0, tool: 0, context: 0 }); assert.deepEqual(g.programs, []);
-  // The harness could not be read, so it shows nothing: the folder's own skill is listed by its own source and is not hidden behind the unreadable place.
-  assert.deepEqual(here.filter(x => x !== g).flatMap(x => x.nodes.map(n => n.name)), ['one']);
+  assert.equal(here.length, 1, 'the unreadable place and the folder own listing are one group');
+  const g = here[0]!;
+  assert.equal(g.name, 'broken (Bowerloom)'); assert.equal(g.note, HARNESS_UNREADABLE); assert.deepEqual(g.programs, []);
+  // The harness could not be read, so it shows no part of its own: the folder's own skill is not hidden behind the unreadable place.
+  assert.deepEqual(g.nodes.map(n => n.name), ['one']); assert.deepEqual(g.counts, { agent: 0, skill: 1, tool: 0, context: 0 });
 });
 
 test('a folder with a .bowerloom and no harness.json is no harness place; a hand-made place keeps the privacy rules', () => {
@@ -206,8 +209,7 @@ test('an agents folder with many other files, too many agents, too many parts or
   const { home, work } = homeWith(t, files);
   mkdirSync(join(home, '.claude'), { recursive: true });
   const o = overviewOf(await read(home, [work]), []);
-  // A folder whose harness could not be read also has its own listing; the harness place is the group with the note.
-  const by = (n: string) => o.groups.filter(g => g.label === `~/work/${n}`).sort((a, b) => Number(b.note !== undefined) - Number(a.note !== undefined))[0];
+  const by = (n: string) => o.groups.find(g => g.label === `~/work/${n}`);
   for (const n of ['many', 'agents', 'parts', 'bytes']) assert.equal(by(n)?.note, HARNESS_UNREADABLE, n);
   assert.equal(by('ok')?.note, undefined); assert.equal(by('ok')?.counts.agent, 1);
 });
@@ -219,4 +221,15 @@ test('a harness skill with the same text as a skill elsewhere is shared with it'
   const coil = rope.nodes.find(n => n.name === 'coil-count')!;
   assert.ok(coil.sharedWith.length > 0 && coil.shareKey !== undefined, 'coil-count is also in the home folder with the same text');
   assert.equal(rope.nodes.find(n => n.name === 'splice')!.sharedWith.length, 0);
+});
+
+test('a folder that main already knows shows the skill of its harness exactly once', async t => {
+  const { home, work } = homeWith(t, { 'known/.bowerloom/harness.json': harnessJson(), 'known/.bowerloom/skills/one/SKILL.md': '---\nname: one\ndescription: Does one thing.\n---\n\nBody.\n' });
+  mkdirSync(join(home, '.claude'), { recursive: true });
+  const state = await read(home, [work]);
+  const count = (o: ReturnType<typeof overviewOf>): number => o.groups.flatMap(g => g.nodes).filter(n => n.name === 'one').length;
+  assert.equal(count(overviewOf(state, [])), 1, 'not known: once');
+  const known = overviewOf(state, [folder('f1', '~/work/known')]);
+  assert.equal(count(known), 1, 'known: once');
+  assert.equal(known.groups.filter(g => g.label === '~/work/known').length, 1);
 });

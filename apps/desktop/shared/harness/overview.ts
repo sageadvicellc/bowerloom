@@ -105,9 +105,17 @@ export function overviewOf(state: HarnessState, folders: readonly FolderInfo[]):
   const parts = new Map<string, Part>();
   for (const p of state.parts) if (!parts.has(p.id)) parts.set(p.id, p);
   const known = [...folders].filter(f => f.hasDefinition).sort((a, b) => compare(a.id, b.id));
-  const made = state.sources.map((source, index) => ({ index, ...groupOf(source, parts, known) }));
+  // A folder main knows has its own place, which reads In Bowerloom, so its harness place is not drawn. Any other harness place is drawn; when the folder's `.bowerloom` also has items the harness
+  // does not hold (it names the harness place), the two are one group, and a skill both hold is listed once.
+  const places = state.harnessPlaces ?? [], isKnown = (h: HarnessPlace): boolean => known.some(f => f.label === labelOf(h.label)), byId = new Map(places.map(h => [h.id, h] as const)), joined = new Set<string>();
+  const made = state.sources.map((source, index) => {
+    const place = source.harnessPlaceId === undefined ? undefined : byId.get(source.harnessPlaceId);
+    if (place === undefined || isKnown(place)) return { index, ...groupOf(source, parts, known) };
+    joined.add(place.id);
+    return { index, ...joinedGroupOf(place, source, parts, known) };
+  });
   // The folders that hold a harness and that main does not know: a place each (a folder main knows has its own place, which reads In Bowerloom).
-  const harnesses = (state.harnessPlaces ?? []).filter(h => !known.some(f => f.label === labelOf(h.label))).map((h, i) => harnessGroupOf(h, made.length + i, known));
+  const harnesses = places.filter(h => !isKnown(h) && !joined.has(h.id)).map((h, i) => harnessGroupOf(h, made.length + i, known));
   const built = [...made, ...harnesses];
   const home = built.filter(b => b.group.scope === 'home');
   const projects = built.filter(b => b.group.scope !== 'home')
@@ -115,14 +123,41 @@ export function overviewOf(state: HarnessState, folders: readonly FolderInfo[]):
   return markShared([...home, ...projects]);
 }
 
+/** The parts of a harness place, as the Overview draws them. */
+const harnessPartsOf = (place: HarnessPlace): Part[] => place.parts.map(p => ({
+  id: p.id, kind: p.kind, name: p.name, summary: p.summary, description: '', path: '', source: '', origin: place.id, fileText: '', cannotUse: [], inLibrary: true, ...(p.toolKind === undefined ? {} : { toolKind: p.toolKind }), ...(p.contentHash === undefined ? {} : { contentHash: p.contentHash }),
+}));
+
 function harnessGroupOf(place: HarnessPlace, index: number, folders: readonly FolderInfo[]): { index: number; group: OverviewGroup; hashes: ReadonlyMap<string, string> } {
-  const partList: Part[] = place.parts.map(p => ({
-    id: p.id, kind: p.kind, name: p.name, summary: p.summary, description: '', path: '', source: '', origin: place.id, fileText: '', cannotUse: [], inLibrary: true, ...(p.toolKind === undefined ? {} : { toolKind: p.toolKind }), ...(p.contentHash === undefined ? {} : { contentHash: p.contentHash }),
-  }));
+  const partList = harnessPartsOf(place);
   const source: ScanSource = { id: place.id, name: place.name, interfaceName: '', harnessName: place.name, partIds: partList.map(p => p.id), links: place.links, scope: 'project', label: place.label };
   const built = groupOf(source, new Map(partList.map(p => [p.id, p])), folders);
   const group: OverviewGroup = { ...built.group, programs: place.engines.map(shown), ...(place.readable ? {} : { note: HARNESS_UNREADABLE }) };
   return { index, group, hashes: built.hashes };
+}
+
+/** The key two copies of one skill share: its text (when the reader hashed it) and its name, cut the same way on both sides. */
+const skillKey = (part: Part): string => `${part.contentHash ?? ''}\u0000${shown(part.name).replace(/…$/, '').slice(0, 60).toLowerCase()}`;
+
+/**
+ * One group for a folder that holds a harness and also has items of its own in its `.bowerloom`. It is the harness place with the items of the source added. A skill that both hold
+ * (the same text and name) is the harness place's node, once: links the source makes to the skill go to that node. A harness that could not be read keeps its note and the source's items.
+ */
+function joinedGroupOf(place: HarnessPlace, source: ScanSource, parts: ReadonlyMap<string, Part>, folders: readonly FolderInfo[]): { group: OverviewGroup; hashes: ReadonlyMap<string, string> } {
+  const own = harnessPartsOf(place), seen = new Map<string, string[]>();
+  for (const part of own) if (part.kind === 'skill') seen.set(skillKey(part), [...(seen.get(skillKey(part)) ?? []), part.id]);
+  const all = new Map(own.map(p => [p.id, p] as const)), ids = own.map(p => p.id), moved = new Map<string, string>();
+  for (const id of source.partIds) {
+    const part = parts.get(id);
+    if (part === undefined || all.has(id)) continue;
+    const twin = part.kind === 'skill' ? seen.get(skillKey(part))?.shift() : undefined;
+    if (twin !== undefined) { moved.set(id, twin); continue; }
+    all.set(id, part); ids.push(id);
+  }
+  const links = [...place.links, ...(source.links ?? []).map(l => ({ from: moved.get(l.from) ?? l.from, to: moved.get(l.to) ?? l.to }))];
+  const joined: ScanSource = { id: place.id, name: place.name, interfaceName: '', harnessName: place.name, partIds: ids, links, scope: 'project', label: place.label };
+  const built = groupOf(joined, all, folders);
+  return { group: { ...built.group, programs: place.engines.map(shown), ...(place.readable ? {} : { note: HARNESS_UNREADABLE }) }, hashes: built.hashes };
 }
 
 const KIND_ORDER: readonly PartKind[] = ['agent', 'skill', 'tool', 'context'];
