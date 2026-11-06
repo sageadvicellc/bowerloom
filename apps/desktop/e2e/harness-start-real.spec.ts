@@ -1,7 +1,7 @@
 /**
  * Start on the person's own folders (beta.2), in the real window (Electron started with no flag, HOME and XDG_STATE_HOME pointed at a made-up folder, windows hidden).
  * Start shows the command for an engine in a folder and copies it. It runs nothing. These walks check that:
- *  - the sheet opens from a folder row, lists the folders main knows, and offers Claude Code and Codex with the state of each;
+ *  - the sheet opens from a folder row, lists the folders main knows, and offers Claude Code and Codex with the state of each (the install record, never "current");
  *  - an engine that is not installed opens the install review first, and shows no command;
  *  - once the engines are installed, "Show the command" shows one command for each ticked engine, with `~` and never the full path of the home folder;
  *  - Copy puts the same command on the clipboard with the full folder path (main's `clipboard.writeText` is replaced by a recorder, so the person's own clipboard is never touched);
@@ -11,7 +11,7 @@
  */
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
-import { chmodSync, realpathSync } from 'node:fs';
+import { chmodSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { filesOf, teamFolder } from '../tests/helpers-engine/folders.js';
 import { bundleOnce, launchReal } from './harness-real-page.js';
@@ -29,11 +29,12 @@ test.beforeEach(async () => {
   home = realpathSync(tempDir('bowerloom-start-home-'));
   chmodSync(home, 0o700);
   h = await launchReal(home, { XDG_STATE_HOME: join(home, '.local', 'state') }, false);
-  // Main's clipboard write is replaced by a recorder, so a run never overwrites the clipboard of the person who runs it.
+  // Main's clipboard is replaced by a recorder, so a run never overwrites the clipboard of the person who runs it. `__clipMode` makes a write work, throw, or be lost (the read back then differs).
   await h.app.evaluate(({ clipboard }) => {
-    const g = globalThis as unknown as { __clips: string[] };
-    g.__clips = [];
-    clipboard.writeText = ((text: string) => { g.__clips.push(text); }) as typeof clipboard.writeText;
+    const g = globalThis as unknown as { __clips: string[]; __clipMode: string; __clipText: string };
+    g.__clips = []; g.__clipMode = 'works'; g.__clipText = '';
+    clipboard.writeText = (async (text: string) => { if (g.__clipMode === 'throws') throw new Error('the clipboard is locked'); if (g.__clipMode === 'lost') return; g.__clips.push(text); g.__clipText = text; }) as typeof clipboard.writeText;
+    clipboard.readText = (async () => g.__clipText) as typeof clipboard.readText;
   });
   await page().emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });
   await page().evaluate(() => { location.hash = '#app/harnesses'; location.reload(); });
@@ -42,6 +43,7 @@ test.beforeEach(async () => {
 });
 test.afterEach(async () => { await h?.app.close(); });
 
+const clipMode = (mode: 'works' | 'throws' | 'lost'): Promise<void> => h.app.evaluate((_e, m) => { (globalThis as unknown as { __clipMode: string }).__clipMode = m; }, mode);
 const clips = (): Promise<string[]> => h.app.evaluate(() => (globalThis as unknown as { __clips: string[] }).__clips);
 
 /** Registers a folder through main's chooser (answered by the test) and opens the Start sheet from its row. */
@@ -107,8 +109,8 @@ test('once the engines are installed, Show the command shows one command for eac
   const p = page(), dir = teamFolder(home);
   const sheet = await openStart(dir);
   await installFromStart(sheet);
-  await expect(sheet.locator('[data-engine="claude-code"]')).toContainText('Installed here');
-  await expect(sheet.locator('[data-engine="codex"]')).toContainText('Installed here');
+  await expect(sheet.locator('[data-engine="claude-code"]')).toContainText('Install recorded');
+  await expect(sheet.locator('[data-engine="codex"]')).toContainText('Install recorded');
   // The tick the person had stays; the other engine is installed now, so it can be ticked.
   await expect(sheet.locator('[data-engine="claude-code"] input')).toBeChecked();
   await sheet.locator('[data-engine="codex"] input').check();
@@ -177,4 +179,76 @@ test('the Beta mark no longer lists Start, and still lists the controls that are
   await p.getByRole('button', { name: 'About this beta', exact: true }).click();
   await expect(p.locator('.hx-preview-pop li')).toHaveText(['Compare', 'Runs', 'Assign to project, in the Harnesses details', 'Assign harness, Install, Update and Review, in Projects', 'Add (the plus button), in the Library', 'Add a folder, in Projects']);
   await p.keyboard.press('Escape');
+});
+
+test('the engine lines say the install was recorded and was not checked for changes, and no dot is green', async () => {
+  const dir = teamFolder(home);
+  const sheet = await openStart(dir);
+  await installFromStart(sheet);
+  await expect(sheet.locator('[data-engine="claude-code"]')).toContainText('Install recorded');
+  await expect(sheet.locator('[data-engine="claude-code"]')).not.toContainText('Installed here');
+  await expect(sheet.locator('[data-engine="claude-code"] .hx-state')).toHaveAttribute('data-tone', 'quiet');
+  await expect(sheet.locator('[data-start-notchecked]')).toHaveText('Not checked for changes since the install.');
+});
+
+test('a copy that fails shows the refusal and never "Copied", and the refusal goes when the person changes a choice', async () => {
+  const p = page(), dir = teamFolder(home);
+  const sheet = await openStart(dir);
+  await installFromStart(sheet);
+  await sheet.locator('#hs-instruction').fill('fix the login');
+  await sheet.getByRole('button', { name: 'Show the command', exact: true }).click();
+  const results = sheet.locator('[data-start-results]');
+  await expect(results).toBeVisible();
+  for (const mode of ['throws', 'lost'] as const) {
+    await clipMode(mode);
+    await results.locator('[data-copy="claude-code"]').click();
+    await expect(sheet.getByRole('alert')).toContainText('Your computer would not copy it. Nothing was changed.');
+    await expect(results.locator('[data-copied]')).toHaveCount(0);
+    await expect(sheet.locator('[data-copy-live]')).toHaveText('');
+    expect(await clips(), mode).toEqual([]);
+    expect(await p.locator('body').innerText()).not.toContain('locked');
+    // A change of choice hides the old refusal.
+    await sheet.locator('[data-engine="codex"] input').check();
+    await sheet.locator('[data-engine="codex"] input').uncheck();
+    await expect(sheet.getByRole('alert')).toHaveCount(0);
+    await sheet.getByRole('button', { name: 'Show the command', exact: true }).click();
+    await expect(results).toBeVisible();
+  }
+  await clipMode('works');
+  await results.locator('[data-copy="claude-code"]').click();
+  await expect(results.locator('[data-copied]')).toBeVisible();
+  await expect(sheet.locator('[data-copy-live]')).toContainText('Copied: Command for Claude Code.');
+  await expect(sheet.getByRole('alert')).toHaveCount(0);
+  await expect(results.locator('[data-copy="claude-code"]')).toHaveText('Copy');
+  await expect(results.locator('[data-copy="claude-code"]')).toHaveAccessibleName('Copy the Claude Code command');
+});
+
+test('hidden characters and a command of the engine are refused in words before any command is built', async () => {
+  const dir = teamFolder(home);
+  const sheet = await openStart(dir);
+  await installFromStart(sheet);
+  const show = sheet.getByRole('button', { name: 'Show the command', exact: true });
+  await sheet.locator('#hs-instruction').fill('fix\u200b the login');
+  await expect(show).toBeDisabled();
+  await expect(sheet).toContainText('The instruction has hidden characters. Remove them and try again.');
+  await sheet.locator('#hs-instruction').fill('team \u{1F468}\u200d\u{1F4BB} ships');
+  await expect(show).toBeEnabled();
+  await sheet.locator('#hs-instruction').fill('update');
+  await expect(show).toBeDisabled();
+  await expect(sheet).toContainText("'update' is also a command of Claude Code. Add more words to your instruction.");
+  await sheet.locator('#hs-instruction').fill('update the docs');
+  await expect(show).toBeEnabled();
+  expect(await clips()).toEqual([]);
+});
+
+test('a folder whose harness lists only a preview engine has no Start button', async () => {
+  const p = page(), dir = teamFolder(home, 'previews');
+  const manifest = join(dir, '.bowerloom', 'harness.json');
+  writeFileSync(manifest, readFileSync(manifest, 'utf8').replace(/"engines": \[[\s\S]*?\],\s*"parts"/, '"engines": [{ "id": "opencode" }],\n  "parts"'));
+  await h.pick(dir);
+  await p.getByRole('button', { name: 'Choose a folder', exact: true }).click();
+  const row = p.locator('[data-folder-row]').first();
+  await expect(row).toBeVisible();
+  await expect(row.locator('[data-open-builder]')).toBeVisible();
+  await expect(row.locator('[data-start-folder]'), 'only a preview engine: Start has no command for it').toHaveCount(0);
 });

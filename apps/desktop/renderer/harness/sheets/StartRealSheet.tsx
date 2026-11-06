@@ -26,9 +26,8 @@ import './engine.css';
 import './start.css';
 import './start-real.css';
 
-export interface StartRealSheetProps { open: boolean; folderId: string | null; onClose(): void }
-
-const STATE_TONE: Readonly<Record<EngineState, 'good' | 'warn'>> = { ready: 'good', 'not-installed': 'warn', stopped: 'warn' };
+// A recorded install is neutral, not green: the record says Bowerloom wrote the files, not that they are current.
+const STATE_TONE: Readonly<Record<EngineState, 'quiet' | 'warn'>> = { ready: 'quiet', 'not-installed': 'warn', stopped: 'warn' };
 const STATE_WORDS: Readonly<Record<EngineState, string>> = { ready: START.hint.ready, 'not-installed': START.hint.notInstalled, stopped: START.hint.stopped };
 
 /** One command for each engine, in order. The first refusal stops the rest. */
@@ -42,7 +41,16 @@ async function showAll(engine: NonNullable<ReturnType<typeof useEngine>>, folder
   return { ok: true, value: out };
 }
 
-export function StartRealSheet({ open, folderId, onClose }: StartRealSheetProps): ReactElement | null {
+export interface StartRealSheetProps {
+  open: boolean;
+  /** The folder the sheet opens on (a folder row's Start), or null. */
+  folderId: string | null;
+  /** True when a harness's Start opened it. A harness of the list is made from a scan and has no folder, so no folder is chosen for the person. */
+  fromHarness: boolean;
+  onClose(): void;
+}
+
+export function StartRealSheet({ open, folderId, fromHarness, onClose }: StartRealSheetProps): ReactElement | null {
   const engine = useEngine(), ui = useUi(), call = useCall();
   const [folders, setFolders] = useState<readonly FolderInfo[] | null>(null);
   const [folder, setFolder] = useState('');
@@ -50,12 +58,16 @@ export function StartRealSheet({ open, folderId, onClose }: StartRealSheetProps)
   const [instruction, setInstruction] = useState('');
   const [shown, setShown] = useState<readonly StartCommandView[] | null>(null);
   const [copied, setCopied] = useState<EngineId | null>(null);
+  /** The refusal the person has already moved past: a change hides it, so an old refusal never lingers beside a good choice. */
+  const [passed, setPassed] = useState(0);
   const results = useRef<HTMLHeadingElement>(null);
   /** Counts the choices made, so an answer that comes back after the person changed one is dropped, never shown. */
   const stamp = useRef(0);
+  const folderRef = useRef('');
+  folderRef.current = folder;
   const reviewOpen = ui.projectSheet.open;
 
-  // Each time the sheet opens it starts again: the folder list is read, and the folder, the ticks and the instruction are the first ones.
+  // Each time the sheet opens it starts again: the folder list is read, and the folder is the one asked for, or none.
   useEffect(() => {
     if (!open) return;
     setFolders(null); setFolder(''); setTicks([]); setInstruction(''); setShown(null); setCopied(null); call.clear();
@@ -66,13 +78,18 @@ export function StartRealSheet({ open, folderId, onClose }: StartRealSheetProps)
     });
   }, [open, folderId, engine]);
 
-  // When the install review closes, the folder list is read again, so the engine lines show what the install did. The choices stay.
+  // When the install review closes, the folder list is read again, so the engine lines show what the install did. The choices stay, unless the folder can no longer start.
   const wasReview = useRef(false);
   useEffect(() => {
     const was = wasReview.current;
     wasReview.current = reviewOpen;
     if (!open || engine === null || !was || reviewOpen) return;
-    void call.plan(START.hint.loading, () => foldersCall(engine), list => { stamp.current += 1; setFolders(list); setShown(null); setCopied(null); });
+    void call.plan(START.hint.loading, () => foldersCall(engine), list => {
+      stamp.current += 1;
+      setFolders(list); setShown(null); setCopied(null);
+      const kept = list.find(f => f.id === folderRef.current);
+      if (kept === undefined || offeredEngines(kept).length === 0) { setFolder(''); setTicks([]); }
+    });
   }, [reviewOpen, open, engine]);
 
   // The commands come into view with the focus on their heading, so the person reads them first.
@@ -80,9 +97,10 @@ export function StartRealSheet({ open, folderId, onClose }: StartRealSheetProps)
 
   const current = folders?.find(f => f.id === folder);
   const status = startStatus(current, ticks, instruction);
-  const why = whyWords(status);
+  const why = status.kind === 'no-harness' && current !== undefined ? startFolderLine(current).words : whyWords(status);
   const offered = offeredEngines(current);
-  const changed = (): void => { stamp.current += 1; setShown(null); setCopied(null); };
+  const canStart = folders?.some(f => offeredEngines(f).length > 0) ?? false;
+  const changed = (): void => { stamp.current += 1; setShown(null); setCopied(null); setPassed(call.refusalId); };
   const pickFolder = (id: string): void => { setFolder(id); setTicks(firstStartEngines(folders?.find(f => f.id === id))); changed(); };
   const tick = (id: EngineId): void => { setTicks(now => (now.includes(id) ? now.filter(x => x !== id) : [...now, id])); changed(); };
   const press = (): void => {
@@ -95,24 +113,37 @@ export function StartRealSheet({ open, folderId, onClose }: StartRealSheetProps)
     void call.plan(START.label.working, () => showAll(engine, folder, engines, instruction), list => { if (stamp.current === mine) setShown(list); });
   };
   const copy = (id: EngineId): void => {
-    if (engine === null) return;
+    if (engine === null || call.writing) return;
+    setCopied(null);
     void call.write(START.label.copying, () => engine.startCommandToClipboard(folder, id, instruction), () => setCopied(id));
   };
+  const refusal = call.refusal !== null && call.refusalId !== passed ? call.refusal : null;
 
   return (
     <Sheet open={open} title={START.label.title} onClose={onClose} width={680} dataSlot="start" note={START.paragraph.note}
       actions={<><HButton onClick={onClose}>{WORDS.label.close}</HButton><HButton icon="play" variant="primary" disabled={status.kind !== 'ready' && status.kind !== 'needs-install'} aria-describedby={why === null ? undefined : 'hs-why'} onClick={press}>{START.label.show}</HButton></>}>
       {engine === null ? <p className="hxe-text hxe-muted">{START.hint.noBridge}</p> : (
         <>
-          {call.refusal === null ? null : <RefusalNote refusal={call.refusal} focusId={call.refusalId}>{null}</RefusalNote>}
-          {folders === null ? <p className="hxe-text hxe-muted" role="status">{START.hint.loading}</p> : folders.length === 0 || firstStartFolder(folders, null) === '' ? <p className="hxe-text hxe-muted" data-start-empty="">{START.hint.noFolders}</p> : (
+          {refusal === null ? null : <RefusalNote refusal={refusal} focusId={call.refusalId}>{null}</RefusalNote>}
+          {fromHarness && folder === '' ? <p className="hs-compare" role="status" data-start-harness=""><HIcon name="info" size={20} /><span>{START.paragraph.noFolderForHarness}</span></p> : null}
+          {folders === null ? <p className="hxe-text hxe-muted" role="status">{START.hint.loading}</p> : !canStart ? (
+            <div data-start-empty="">
+              {folders.some(f => f.hasDefinition) ? (
+                <>
+                  <p className="hxe-text hxe-muted">{START.hint.noneCanStart}</p>
+                  <ul className="hxe-rows" aria-label={START.label.project}>{folders.map(f => <li key={f.id} className="hxe-text" data-start-reason={f.id}><span className="hxe-name">{f.name}</span>{`: ${startFolderLine(f).words}`}</li>)}</ul>
+                </>
+              ) : <p className="hxe-text hxe-muted">{START.hint.noFolders}</p>}
+            </div>
+          ) : (
             <>
               <div className="hs-field">
                 <label className="hs-label" htmlFor="hs-project">{START.label.project}</label>
                 <div className="hs-select">
                   <span className="hs-select-icon" aria-hidden="true"><HIcon name="folder" size={18} /></span>
                   <select id="hs-project" value={folder} disabled={call.writing} onChange={e => pickFolder(e.target.value)}>
-                    {folders.map(f => { const line = startFolderLine(f); return <option key={f.id} value={f.id} disabled={line.off}>{line.off ? `${f.name} (${line.words})` : f.name}</option>; })}
+                    <option value="">{START.hint.chooseProject}</option>
+                    {folders.map(f => { const line = startFolderLine(f); return <option key={f.id} value={f.id} disabled={line.off && f.id !== folder}>{line.off ? `${f.name} (${line.words})` : f.name}</option>; })}
                   </select>
                   <span className="hs-select-icon" aria-hidden="true"><HIcon name="chevron" size={18} /></span>
                 </div>
@@ -133,6 +164,7 @@ export function StartRealSheet({ open, folderId, onClose }: StartRealSheetProps)
                     );
                   })}
                 </ul>
+                {offered.length === 0 ? null : <p className="hxe-text hxe-muted" data-start-notchecked="">{START.hint.notChecked}</p>}
               </div>
               <div className="hs-field">
                 <label className="hs-label" htmlFor="hs-instruction">{START.label.instruction}</label>
@@ -149,15 +181,16 @@ export function StartRealSheet({ open, folderId, onClose }: StartRealSheetProps)
                   {shown.map(view => (
                     <div key={view.engine} className="hxe-engine hs-result" data-command-for={view.engine}>
                       <p className="hxe-engine-head"><span>{view.engineName}</span>
-                        <HButton size="small" icon="copy" aria-label={copyName(view.engine)} disabled={call.writing} data-copy={view.engine} onClick={() => copy(view.engine)}>{copied === view.engine ? START.label.copied : START.label.copy}</HButton>
+                        <HButton size="small" icon="copy" aria-label={copyName(view.engine)} aria-disabled={call.writing ? true : undefined} data-copy={view.engine} onClick={() => copy(view.engine)}>{START.label.copy}</HButton>
                       </p>
                       <CodeText text={view.command} label={commandFor(view.engine)} />
-                      {copied === view.engine ? <p className="hxe-text hs-copied" role="status" data-copied="">{START.hint.copiedLine}</p> : null}
+                      {copied === view.engine ? <p className="hxe-text hs-copied" aria-hidden="true" data-copied="">{START.hint.copiedLine}</p> : null}
                     </div>
                   ))}
                   {shown.some(v => v.differs) ? <p className="hxe-text hxe-muted" data-start-differs="">{START.paragraph.differs}</p> : null}
                 </section>
               )}
+              <p className="hm-sr" role="status" aria-live="polite" data-copy-live="">{copied === null ? '' : `${START.label.copied}: ${commandFor(copied)}. ${START.hint.copiedLine}`}</p>
             </>
           )}
         </>

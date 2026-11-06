@@ -21,6 +21,7 @@ import { HIcon, Tile } from '../icons.js';
 import { WORDS, harnessListHint, startName } from '../words.js';
 import { NotChecked } from '../real/NotChecked.js';
 import { useEngine } from '../engine.js';
+import { startFolderLine } from '../../../shared/harness/start-real.js';
 import { BUILDER_REFUSALS } from '../../../shared/harness/builder-draft.js';
 import type { FolderInfo } from '../../../shared/engine/types.js';
 import { RefusalNote, folderLine } from '../sheets/engine-parts.js';
@@ -160,7 +161,7 @@ function Folders({ empty }: { empty: boolean }): ReactElement | null {
                 <span className="hx-row-meta">{folderLine(f, 'save').words}</span>
               </div>
               <span className="hx-row-action">
-                {real && f.hasDefinition && f.problem === null ? <HButton icon="play" size="small" aria-label={startName(f.name)} data-start-folder={f.id} onClick={() => ui.openStart({ harnessId: null, folderId: f.id })}>{WORDS.label.start}</HButton> : null}
+                {real && !startFolderLine(f).off ? <HButton icon="play" size="small" aria-label={startName(f.name)} data-start-folder={f.id} onClick={() => ui.openStart({ harnessId: null, folderId: f.id })}>{WORDS.label.start}</HButton> : null}
                 {f.hasDefinition
                   ? <HButton icon="harness" size="small" aria-label={openFolderName(f.name)} data-open-builder={f.id} onClick={() => go({ name: 'builder', id: f.id })}>{WORDS.label.openInBuilder}</HButton>
                   : <HButton icon="folder" size="small" data-from-folder={f.id} onClick={() => ui.openAdopt({ folderId: f.id })}>{ENGINE_WORDS.label.fromFolder}</HButton>}
