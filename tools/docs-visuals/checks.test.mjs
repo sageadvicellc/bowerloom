@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -16,13 +16,17 @@ test('requestedIds takes every shot, or the named ones, and refuses an id that i
 
 test('staleShots names a picture that is missing or older than the start, in both themes', () => {
   const dir = mkdtempSync(join(tmpdir(), 'docs-visuals-checks-'));
-  const since = Date.now();
-  for (const name of ['a-one-light.webp', 'a-one-dark.webp', 'b-two-light.webp']) writeFileSync(join(dir, name), 'x');
-  const old = new Date(since - 60_000);
-  utimesSync(join(dir, 'b-two-light.webp'), old, old);
-  assert.deepEqual(staleShots(['a-one'], dir, since - 1000), []);
-  assert.deepEqual(staleShots(['b-two'], dir, since - 1000), ['b-two-light.webp was not written by this run', 'b-two-dark.webp is missing']);
-  assert.deepEqual(staleShots([], dir, since), []);
+  try {
+    const since = Date.now();
+    for (const name of ['a-one-light.webp', 'a-one-dark.webp', 'b-two-light.webp']) writeFileSync(join(dir, name), 'x');
+    const old = new Date(since - 60_000);
+    utimesSync(join(dir, 'b-two-light.webp'), old, old);
+    assert.deepEqual(staleShots(['a-one'], dir, since - 1000), []);
+    assert.deepEqual(staleShots(['b-two'], dir, since - 1000), ['b-two-light.webp was not written by this run', 'b-two-dark.webp is missing']);
+    assert.deepEqual(staleShots([], dir, since), []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('assertStep accepts the expected exit and refuses a spawn error, a signal, another exit, and unexpected stderr', () => {

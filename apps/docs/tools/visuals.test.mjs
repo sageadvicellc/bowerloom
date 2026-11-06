@@ -10,7 +10,7 @@ import {createServer} from 'vite';
 import {applyVisuals, terminalCopyText, readVisualManifest, renderVisualHtml, renderVisualText, validateManifest, commandsFromPanel, themeFiles} from '../src/lib/visuals.mjs';
 import {prepareVisualSource, createDocsRenderer, searchIndexes, unsafeContent} from '../src/lib/content.mjs';
 import {createServer as createHttpServer} from 'node:http';
-import {readdir, mkdtemp, mkdir, writeFile, unlink, rmdir} from 'node:fs/promises';
+import {readdir, mkdtemp, mkdir, writeFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {pathToFileURL} from 'node:url';
 import {extname} from 'node:path';
@@ -460,9 +460,7 @@ test('the manifest reader checks the image files behind each shot', async () => 
     await writeFile(files[1], webp);
     assert.deepEqual(Object.keys((await read()).shots), ['one-shot']);
   } finally {
-    for (const file of files) await unlink(file).catch(() => {});
-    await unlink(manifestFile).catch(() => {});
-    await rmdir(pub).catch(() => {}); await rmdir(dir).catch(() => {});
+    await rm(dir, {recursive: true, force: true});
   }
 });
 test('a visual line inside a blockquote, a list, or a sentence fails instead of showing as text', () => {

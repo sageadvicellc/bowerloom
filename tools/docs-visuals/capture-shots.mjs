@@ -23,6 +23,7 @@ const run = (command, args, cwd, timeout, env = {}) => {
 const MINUTE = 60_000;
 const plan = JSON.parse(readFileSync(new URL('./plan.json', import.meta.url), 'utf8'));
 const pictures = fileURLToPath(new URL('../../apps/docs/public/visuals', import.meta.url));
+if (process.env.DOCS_SHOTS_DIR) { console.error('DOCS_SHOTS_DIR is for running the spec by hand. This script writes to apps/docs/public/visuals and checks that folder, so unset it.'); process.exit(1); }
 
 // This script is synchronous, so a signal ends it at once and leaves the lock folder; the next run's timeout message names it (see lock.mjs).
 let status = 0, ids = [];

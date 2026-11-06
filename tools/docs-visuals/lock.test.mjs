@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, rmdirSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import { withLock } from './lock.mjs';
 
-const lockPath = () => join(mkdtempSync(join(tmpdir(), 'docs-visuals-lock-')), 'lock');
+const roots = [];
+after(() => { for (const root of roots) rmSync(root, { recursive: true, force: true }); });
+const lockPath = () => { const root = mkdtempSync(join(tmpdir(), 'docs-visuals-lock-')); roots.push(root); return join(root, 'lock'); };
 
 test('the lock is held while the function runs and released after it', () => {
   const lock = lockPath();
