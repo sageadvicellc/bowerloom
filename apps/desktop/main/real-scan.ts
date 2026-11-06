@@ -201,7 +201,8 @@ export function harnessOf(dir: string, records: readonly StampedRecord[], tally:
   /** The names of a list, each used once (as the loader requires). */
   const named = (items: readonly unknown[], key: string): string[] => {
     const seen = new Set<string>(), out: string[] = [];
-    for (const item of items) { const raw = text(object(item)[key]); if (raw === '') continue; if (seen.has(raw)) throw new Error('twice'); seen.add(raw); out.push(raw); }
+    // An entry with no name, or a name that is not text, makes the file unreadable: the Library says so for the folder, and never drops the entry without a word.
+    for (const item of items) { const raw = text(object(item)[key]); if (raw === '') throw new Error('shape'); if (seen.has(raw)) throw new Error('twice'); seen.add(raw); out.push(raw); }
     return out;
   };
   try {

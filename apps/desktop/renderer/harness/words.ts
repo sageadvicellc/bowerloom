@@ -57,7 +57,8 @@ export const WORDS = deepFreeze({
     noTargets: 'No folder has a harness yet. Make one first.', noSources: 'No other folder has a skill to copy.',
     skillHeld: 'This harness has the skill already.', keeperHeld: 'This harness has the Notes keeper already.', pickSkill: 'Pick the skill to copy.',
     pickNotes: 'Pick your notes folder, or start a new one.', notesReady: 'Ready. Review the change next.', readAgainNote: 'Read your folders again to see it in the Library.',
-    undoNote: 'To undo, open Save points and press Go back.',
+    undoNote: 'To undo, open Save points and press Go back.', noFileRead: 'This part comes from the folder\'s settings. The file was not read.',
+    libraryStale: 'Folders changed since the last read. Read again to update this list.', heldByFolder: 'Held by the harness of',
   },
   /** A short paragraph or a popover: at most 25 words each. */
   paragraph: {

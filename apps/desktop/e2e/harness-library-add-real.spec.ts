@@ -39,11 +39,13 @@ async function choose(s: Locator, dir: string): Promise<void> {
   await s.getByRole('button', { name: 'Choose a folder', exact: true }).click();
 }
 /** The choose flow after "Read again": adds the folder, reads it, and lands on the Read screen. */
-async function readFolders(p: Page, dir: string): Promise<void> {
+async function readFolders(p: Page, dir: string, card = 'team', also: readonly string[] = []): Promise<void> {
   await expect(p.getByRole('button', { name: 'Add a folder', exact: true })).toBeVisible();
   await h.pick(dir);
   await p.getByRole('button', { name: 'Add a folder', exact: true }).click();
-  await expect(p.locator('.hxf-card').filter({ hasText: 'team' })).toHaveCount(1);
+  await expect(p.locator('.hxf-card').filter({ hasText: card }).first()).toBeVisible();
+  // A place with nothing in it comes unticked: tick the ones the test wants read.
+  for (const name of also) await p.locator('.hxf-card').filter({ hasText: name }).getByRole('checkbox').check();
   await p.getByRole('button', { name: 'Looks right', exact: true }).click();
   await p.getByRole('button', { name: 'Yes, read them', exact: true }).click();
   await expect(p.getByRole('heading', { level: 1, name: /^Read \d+ sources?\. Make a harness from each\.$/ })).toBeVisible({ timeout: 20_000 });
@@ -202,12 +204,38 @@ test.describe('Context', () => {
     expect(readTree(notes), 'the notes folder is as it was').toEqual(notesBefore);
 
     // Read again: the choose flow reads the folders, and the Library lists the notes.
+    // A second folder with a harness the reader cannot read is picked up in the same read.
+    put(join(home, 'Projects', 'broken', '.bowerloom', 'harness.json'), '{"format":"bowerloom/harness/v1beta1","id":"broken","description":"x","engines":[{"id":"claude-code"}],"parts":{}}\n');
+    put(join(home, 'Projects', 'broken', '.bowerloom', 'knowledge.json'), '{ not json');
     await s.locator('[data-add-read-again]').click();
-    await readFolders(p, team);
+    await readFolders(p, join(home, 'Projects'), 'team', ['broken']);
     await p.evaluate(() => { location.hash = '#app/library/context'; });
-    await expect(p.locator('[data-part]', { hasText: 'field-notes' })).toHaveCount(1);
-    await p.evaluate(() => { location.hash = '#app/library/skill'; });
-    await expect(p.getByRole('heading', { level: 1, name: 'Library', exact: true })).toBeVisible();
+    const row = p.locator('[data-part]', { hasText: 'field-notes' });
+    await expect(row).toHaveCount(1);
+    // Honest about a part known only from the folder's settings: one harness holds it, and no blank file is offered.
+    await expect(row).toContainText('Used in 1 harness');
+    await row.getByRole('button', { name: 'field-notes' }).click();
+    await expect(p.locator('[data-no-file]')).toHaveText('This part comes from the folder\'s settings. The file was not read.');
+    await expect(p.getByRole('button', { name: 'View file', exact: true })).toHaveCount(0);
+    await expect(p.locator('[data-held-by-folder]')).toContainText('team');
+    // A harness that cannot be read is named, with a reason, and adds no part.
+    await expect(p.locator('[data-unreadable-harness]')).toHaveText('broken: Bowerloom could not read this harness.');
+    await expect(p.locator('[data-library-stale]')).toHaveCount(0);
+
+    // A write after the read leaves an honest line in the Library until the next read.
+    await p.evaluate(() => { location.hash = '#app/library/agent'; });
+    await p.getByRole('button', { name: 'Add', exact: true }).click();
+    const more = addSheet(p, 'Add an agent');
+    await more.locator('[data-folder]', { hasText: 'team' }).click();
+    await more.getByRole('button', { name: 'Next', exact: true }).click();
+    await more.getByRole('button', { name: 'Review the change', exact: true }).click();
+    await more.locator('[data-save-review="save"] [data-approve-plan] input').check();
+    const moreAck = more.locator('[data-acknowledge-executables] input');
+    if (await moreAck.count() > 0) await moreAck.check();
+    await more.getByRole('button', { name: /^Save \d+ files?$/ }).click();
+    await expect(more.locator('[data-version-kept]')).toBeVisible();
+    await more.getByRole('contentinfo').getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(p.locator('[data-library-stale]')).toHaveText('Folders changed since the last read. Read again to update this list.');
   });
 });
 

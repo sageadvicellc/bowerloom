@@ -25,6 +25,13 @@ export function FileView({ partId }: { partId: string }): ReactElement {
       </Screen>
     );
   }
+  if (part.fromHarness !== undefined) {
+    return (
+      <Screen slot="file" title={part.name} tools={<HButton icon="back" variant="text" onClick={back}>{WORDS.label.back}</HButton>}>
+        <p className="hx-text hx-muted" data-no-file="">{WORDS.hint.noFileRead}</p>
+      </Screen>
+    );
+  }
   const parsed = parseFrontMatter(part.fileText);
   return (
     <Screen slot="file" title={fileNameOf(part.path)} titleExtra={<StateDot tone="quiet" className="hx-title-state">{WORDS.hint.readOnly}</StateDot>} tools={<HButton icon="back" variant="text" onClick={back}>{WORDS.label.back}</HButton>}>

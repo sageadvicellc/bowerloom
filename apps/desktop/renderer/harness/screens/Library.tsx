@@ -7,7 +7,7 @@ import { useState } from 'react';
 import type { ReactElement } from 'react';
 import { PART_KINDS } from '../../../shared/harness/types.js';
 import type { HarnessState, Part, PartKind } from '../../../shared/harness/types.js';
-import { harnessesHolding, libraryCounts, usedInWords } from '../../../shared/harness/status.js';
+import { harnessesHolding, libraryCounts, usedCount, usedInWords } from '../../../shared/harness/status.js';
 import { DetailsHead, Screen } from '../Screen.js';
 import { go } from '../router.js';
 import { useHarnessState, useHarnessStore } from '../session.js';
@@ -22,20 +22,21 @@ import { PathDisclosure } from '../parts/PathDisclosure.js';
 import { fileNameOf } from '../../../shared/harness/frontmatter.js';
 import { nothingChanged } from '../words-flow.js';
 import { undoNow } from '../undo-note.js';
-import { addState } from '../../../shared/harness/library-add.js';
+import { addState, unreadableHarnesses } from '../../../shared/harness/library-add.js';
 import { AddSheet } from '../sheets/AddSheet.js';
+import { useSavedScan } from '../real/saved-scan.js';
 
 type SortMode = 'name' | 'used' | 'source';
 const SORTS = [{ mode: 'name', label: 'Name' }, { mode: 'used', label: 'Most used' }, { mode: 'source', label: 'Source' }] as const satisfies readonly { mode: SortMode; label: string }[];
 
 function sorted(state: HarnessState, parts: readonly Part[], mode: SortMode): Part[] {
-  const used = (p: Part): number => harnessesHolding(state, p.id).length;
+  const used = (p: Part): number => usedCount(state, p);
   const byName = (a: Part, b: Part): number => a.name.localeCompare(b.name);
   return [...parts].sort((a, b) => (mode === 'used' ? used(b) - used(a) || byName(a, b) : mode === 'source' ? a.source.localeCompare(b.source) || byName(a, b) : byName(a, b)));
 }
 
 function Row({ state, part, selected, onPick }: { state: HarnessState; part: Part; selected: boolean; onPick(): void }): ReactElement {
-  const n = harnessesHolding(state, part.id).length;
+  const n = usedCount(state, part);
   return (
     <li className="hx-row hx-row-part" data-selected={selected ? '' : undefined} data-part={part.id}>
       <Tile name={KIND_ICON[part.kind]} />
@@ -57,19 +58,22 @@ function Details({ state, part, onAdd }: { state: HarnessState; part: Part; onAd
     <>
       <DetailsHead tile={<Tile name={KIND_ICON[part.kind]} size="large" />} title={part.name} subtitle={fromWords(part.kind, part.source, part.version)} />
       <p className="hx-text">{part.description}</p>
-      <section className="hx-block" aria-labelledby="hx-lib-file">
-        <h3 className="hx-h3" id="hx-lib-file">{WORDS.label.file}</h3>
-        <p className="hx-text hx-muted">{fileNameOf(part.path)}</p>
-        <PathDisclosure path={part.path} subject={part.name} key={part.id} />
-      </section>
+      {part.fromHarness === undefined ? (
+        <section className="hx-block" aria-labelledby="hx-lib-file">
+          <h3 className="hx-h3" id="hx-lib-file">{WORDS.label.file}</h3>
+          <p className="hx-text hx-muted">{fileNameOf(part.path)}</p>
+          <PathDisclosure path={part.path} subject={part.name} key={part.id} />
+        </section>
+      ) : <p className="hx-text hx-muted" data-no-file="">{WORDS.hint.noFileRead}</p>}
       <div className="hx-actions">
-        <HButton icon="eye" onClick={() => go({ name: 'file', partId: part.id })}>{WORDS.label.viewFile}</HButton>
+        {part.fromHarness === undefined ? <HButton icon="eye" onClick={() => go({ name: 'file', partId: part.id })}>{WORDS.label.viewFile}</HButton> : null}
         <HButton icon="harness" variant="primary" onClick={onAdd}>{WORDS.label.addToHarness}</HButton>
       </div>
       <section className="hx-block" aria-labelledby="hx-lib-used">
         <h3 className="hx-h3" id="hx-lib-used">{WORDS.label.usedIn}</h3>
-        {held.length === 0 ? <p className="hx-text hx-muted">{WORDS.hint.noneUsed}</p> : (
+        {held.length === 0 && part.fromHarness === undefined ? <p className="hx-text hx-muted">{WORDS.hint.noneUsed}</p> : (
           <ul className="hx-box-list">
+            {part.fromHarness === undefined ? null : <li className="hx-box" data-held-by-folder=""><Tile name="harness" size="small" /><span className="hx-box-main">{WORDS.hint.heldByFolder} {part.fromHarness}</span></li>}
             {held.map(h => <li key={h.id} className="hx-box hx-box-press"><Tile name="harness" size="small" /><button type="button" className="hx-box-main" onClick={() => go({ name: 'harnesses', id: h.id })}>{h.name}</button></li>)}
           </ul>
         )}
@@ -114,6 +118,7 @@ export function Library({ kind, partId }: { kind: PartKind; partId: string | nul
   const real = state.real !== undefined, add = addState(kind);
   const notYet = real ? add.reason : notYetWords(false);
   const [adding, setAdding] = useState(false);
+  const saved = useSavedScan(), unreadable = real ? unreadableHarnesses(state) : [];
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<SortMode>('name');
   const [picking, setPicking] = useState<{ open: boolean; part: Part | null }>({ open: false, part: null });
@@ -150,6 +155,8 @@ export function Library({ kind, partId }: { kind: PartKind; partId: string | nul
         {rows.map(p => <Row key={p.id} state={state} part={p} selected={selected?.id === p.id} onPick={() => go({ name: 'library', kind, partId: p.id })} />)}
       </ul>
       {rows.length === 0 ? <p className="kit-hint hx-hint">{WORDS.hint.libraryEmpty}</p> : null}
+      {real && saved.changed ? <p className="kit-hint hx-hint" role="status" data-library-stale="">{WORDS.hint.libraryStale}</p> : null}
+      {unreadable.map(u => <p key={`${u.label}|${u.name}`} className="kit-hint hx-hint" data-unreadable-harness="">{u.name}: {u.why}</p>)}
       {real ? <AddSheet open={adding} kind={kind} onClose={() => setAdding(false)} /> : null}
       <PickHarnessSheet open={picking.open} part={picking.part} onClose={() => setPicking(current => ({ ...current, open: false }))} />
     </Screen>

@@ -317,14 +317,15 @@ function harnessPartsInLibrary(result: RealResult): Part[] {
   const out: Part[] = [];
   for (const place of result.harnessPlaces ?? []) {
     if (!place.harness.readable) continue;
-    const where = folderLabelOf(place.path), root = `${place.path}/.bowerloom`;
+    // The folder as the window may show it: `~` form, and only its last name for a folder outside the home folder.
+    const where = folderLabelOf(place.path), root = `${where}/.bowerloom`, folderName = cut(plain(place.name), NAME_CHARS);
     for (const part of place.harness.parts) {
       if (part.kind !== 'agent' && part.kind !== 'context') continue;
       const agent = part.kind === 'agent', fallback = FALLBACK[agent ? 'agent' : 'context']!;
       out.push({
         id: `${place.id}-${part.id}`, kind: part.kind, name: cut(plain(part.name), NAME_CHARS), summary: agent ? part.summary : fallback.summary,
         description: agent ? `${part.summary} In the harness of ${where}.` : `A notes folder the harness of ${where} uses.`,
-        path: `${root}/${agent ? 'agents' : 'knowledge.json'}`.split('/').map(plain).join('/'), source: `${cut(plain(place.name), NAME_CHARS)} (Bowerloom)`, origin: place.id, fileText: '', cannotUse: [], inLibrary: true,
+        path: `${root}/${agent ? 'agents' : 'knowledge.json'}`.split('/').map(plain).join('/'), source: `${folderName} (Bowerloom)`, origin: place.id, fileText: '', cannotUse: [], inLibrary: true, fromHarness: folderName,
       });
     }
   }

@@ -54,6 +54,8 @@ export function usedByAgents(state: HarnessState, harness: Harness, partId: stri
 
 /** The harnesses that hold a part. */
 export const harnessesHolding = (state: HarnessState, partId: string): Harness[] => state.harnesses.filter(h => h.partIds.includes(partId));
+/** How many harnesses hold a part: the ones the person made, and the folder's own harness for a part that the reader knows from that harness's settings. */
+export const usedCount = (state: HarnessState, part: Part): number => harnessesHolding(state, part.id).length + (part.fromHarness === undefined ? 0 : 1);
 
 /**
  * True when an address names something this state does not hold: a harness, a part, a project, a run, a group of runs or an interface that is not there. The screens that name

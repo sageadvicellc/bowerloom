@@ -2,6 +2,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { NOTES_READY, addState, canAttach, copySources, notesDone, notesRestart, NOTES_START, keeperHeld, notesEdits, skillEdits, skillHeld, targetsFor, KEEPER_EDITS } from '../shared/harness/library-add.js';
+import { SavedScanContext, firstSaved, savedReduce } from '../renderer/harness/real/saved-scan.js';
+import { WORDS } from '../renderer/harness/words.js';
 import { LIMITS, bannedHere, countWords } from '../shared/harness/words.js';
 import { PART_KINDS } from '../shared/harness/types.js';
 import type { DefinitionView, FolderInfo, NotesView } from '../shared/engine/types.js';
@@ -92,4 +94,19 @@ test('trace 3: a late answer from a step that was left is ignored', () => {
   const late = notesDone(first, NOTES_START.gen, notes({ id: 'late' }), 'ready');
   assert.equal(late.view, null);
   assert.equal(late, first, 'the choice is the same object: nothing changed');
+});
+
+test('a write marks the read on the screen as changed, and only when there is a read', () => {
+  const none = savedReduce(firstSaved(), { type: 'wrote' });
+  assert.equal(none.changed, false, 'with no read there is nothing to call old');
+  const read = savedReduce(firstSaved(), { type: 'read', atMs: 5 });
+  const after = savedReduce(read, { type: 'wrote' });
+  assert.equal(after.changed, true);
+  assert.equal(after.readAtMs, 5);
+  assert.equal(savedReduce(after, { type: 'read', atMs: 9 }).changed, false, 'a new read clears it');
+  assert.equal(typeof SavedScanContext, 'object');
+});
+
+test('the new Library lines are short plain words', () => {
+  for (const line of [WORDS.hint.noFileRead, WORDS.hint.libraryStale]) { assert.ok(countWords(line) <= LIMITS.hint, line); assert.equal(bannedHere(line), null, line); }
 });

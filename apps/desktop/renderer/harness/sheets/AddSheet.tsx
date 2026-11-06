@@ -130,7 +130,7 @@ export function AddSheet({ open, kind, onClose }: AddSheetProps): ReactElement |
     if (engine === null || folder === undefined || shown === null || shown.kind !== 'save' || !writable) return;
     const id = folder.id, s = shown;
     const run = (): Promise<Answer<SaveWritten>> => engine.runSave(id, s.view.revision, s.view.acknowledge === null ? s.edits : { edits: s.edits, acknowledged: acked });
-    void call.write(W.label.writing, run, r => { setDone(r); setStep('done'); });
+    void call.write(W.label.writing, run, r => { setDone(r); setStep('done'); if (r.written.length > 0) scan.markWrote(); });
   };
   const back = (to: Step): void => { if (held) return; setChoice(notesRestart); call.clear(); setShown(null); setApproved(null); setAcked(null); setStep(to); };
 

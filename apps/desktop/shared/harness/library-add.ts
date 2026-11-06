@@ -8,7 +8,8 @@
  */
 import type { DefinitionView, FolderInfo, NotesView, SaveEdit } from '../engine/types.js';
 import { KEEPER_AGENT, KEEPER_KIT } from './save-draft.js';
-import type { PartKind } from './types.js';
+import { HARNESS_UNREADABLE } from './overview.js';
+import type { HarnessState, PartKind } from './types.js';
 
 /** Why Add is off for tools. */
 export const TOOLS_NOT_YET = 'Not yet: tools cannot be added from the app.';
@@ -68,3 +69,7 @@ export const notesDone = (choice: NotesChoice, gen: number, view: NotesView, how
 export const notesRestart = (choice: NotesChoice): NotesChoice => ({ gen: choice.gen + 1, view: null });
 /** True when the form has notes it can attach. */
 export const NOTES_READY = (choice: NotesChoice): boolean => choice.view !== null;
+
+/** The folders whose harness the reader could not read, each with the reason. They add no part to the Library, so the Library names them instead of saying nothing. */
+export const unreadableHarnesses = (state: HarnessState): { name: string; label: string; why: string }[] =>
+  (state.harnessPlaces ?? []).filter(h => !h.readable).map(h => ({ name: h.name.replace(/ \(Bowerloom\)$/, ''), label: h.label, why: HARNESS_UNREADABLE }));

@@ -10,6 +10,8 @@ import { buildRealResult } from '../shared/real/map-world.js';
 import type { RealPlace, RealResult } from '../shared/real/types.js';
 import { realToHarnessState } from '../shared/harness/real-map.js';
 import { overviewOf } from '../shared/harness/overview.js';
+import { harnessesHolding, usedCount } from '../shared/harness/status.js';
+import { unreadableHarnesses } from '../shared/harness/library-add.js';
 import { tempDir } from './support.js';
 
 const NOW_MS = Date.UTC(2026, 10, 6);
@@ -79,4 +81,55 @@ test('the Overview still lists a folder\'s notes and agent once', async t => {
 test('a folder with no harness adds nothing of this kind', async t => {
   const state = await stateOf(t, home => { put(join(home, 'work', 'plain', '.claude', 'skills', 'a', 'SKILL.md'), skill('a')); });
   assert.equal(state.parts.filter(p => p.kind === 'context').length, 0);
+});
+
+test('a part from a folder\'s settings says so, was not read, and counts the folder\'s harness as holding it', async t => {
+  const state = await stateOf(t, home => {
+    const dir = join(home, 'work', 'proj', '.bowerloom');
+    put(join(dir, 'harness.json'), harness('proj'));
+    put(join(dir, 'agents', 'wiki-keeper.md'), agent('wiki-keeper'));
+    put(join(dir, 'knowledge.json'), json({ sources: [{ name: 'journal', kind: 'wiki-folder', path: '~/journal' }] }));
+  });
+  for (const name of ['wiki-keeper', 'journal']) {
+    const part = state.parts.find(p => p.name === name)!;
+    assert.equal(part.fromHarness, 'proj', name);
+    assert.equal(part.fileText, '', 'its file was not read');
+    assert.equal(harnessesHolding(state, part.id).length, 0, 'no harness the person made holds it');
+    assert.equal(usedCount(state, part), 1, 'the folder\'s own harness holds it');
+  }
+  const skillOnly = state.parts.filter(p => p.fromHarness === undefined);
+  for (const p of skillOnly) assert.equal(usedCount(state, p), harnessesHolding(state, p.id).length);
+});
+
+test('a folder outside the home folder never shows as an absolute path', async t => {
+  const home = tempDir(t, 'bowerloom-add-map-'), far = tempDir(t, 'bowerloom-add-far-');
+  const dir = join(far, 'elsewhere', '.bowerloom');
+  put(join(dir, 'harness.json'), harness('far'));
+  put(join(dir, 'knowledge.json'), json({ sources: [{ name: 'journal', kind: 'wiki-folder', path: '~/journal' }] }));
+  const read = await readHome(home, [join(far, 'elsewhere')]);
+  const state = realToHarnessState(read.result, read.places);
+  const part = state.parts.find(p => p.name === 'journal')!;
+  assert.ok(part, 'the notes are listed');
+  assert.equal(part.path.includes(far), false, part.path);
+  assert.match(part.path, /^…\/elsewhere\/\.bowerloom\/knowledge\.json$/);
+});
+
+test('a harness that cannot be read is named in the Library with a reason, and adds no part', async t => {
+  const cases: [string, (dir: string) => void][] = [
+    ['malformed knowledge.json', dir => put(join(dir, 'knowledge.json'), '{ not json')],
+    ['a source name used twice', dir => put(join(dir, 'knowledge.json'), json({ sources: [{ name: 'a', kind: 'wiki-folder', path: '~/a' }, { name: 'a', kind: 'wiki-folder', path: '~/b' }] }))],
+    ['a source with an empty name', dir => put(join(dir, 'knowledge.json'), json({ sources: [{ name: '', kind: 'wiki-folder', path: '~/a' }] }))],
+    ['a source whose name is not text', dir => put(join(dir, 'knowledge.json'), json({ sources: [{ name: 7, kind: 'wiki-folder', path: '~/a' }] }))],
+    ['a source list that is not a list', dir => put(join(dir, 'knowledge.json'), json({ sources: 'journal' }))],
+  ];
+  for (const [label, make] of cases) {
+    const state = await stateOf(t, home => { const dir = join(home, 'work', 'broken', '.bowerloom'); put(join(dir, 'harness.json'), harness('broken')); make(dir); });
+    assert.equal(state.parts.some(p => p.kind === 'context'), false, label);
+    const notes = unreadableHarnesses(state);
+    assert.equal(notes.length, 1, label);
+    assert.equal(notes[0]!.name, 'broken', label);
+    assert.match(notes[0]!.why, /could not read/i, label);
+  }
+  const fine = await stateOf(t, home => { const dir = join(home, 'work', 'fine', '.bowerloom'); put(join(dir, 'harness.json'), harness('fine')); });
+  assert.deepEqual(unreadableHarnesses(fine), []);
 });
