@@ -120,14 +120,17 @@ export interface NotesStepProps {
   onDone?(view: NotesView, how: NotesEnd): void;
   /** Called when the person starts the step again ("Choose another folder"): the folder it ended with no longer counts. */
   onReset?(): void;
+  /** Called when a write of the step's own starts or ends (a history, a starter): the owner holds Back and Close while it runs. */
+  onBusy?(writing: boolean): void;
   /** Opens straight on one of the two ways, as the Notes panel's buttons do. */
   start?: 'use' | 'start';
 }
 
 /** The step with its calls: main's notes chooser, the two plans and the two writes. */
-export function NotesStep({ onDone, onReset, start }: NotesStepProps): ReactElement {
+export function NotesStep({ onDone, onReset, onBusy, start }: NotesStepProps): ReactElement {
   const engine = useEngine(), call = useCall(), session = useNotesSession();
   const [phase, setPhase] = useState<NotesPhase>({ kind: 'ask' });
+  useEffect(() => { onBusy?.(call.writing); return () => onBusy?.(false); }, [call.writing]);
   const began = useRef(false), box = useRef<HTMLDivElement>(null);
   // Each new phase is brought into view: in the Notes panel the step opens below the map, so its files and its button stay in sight.
   useEffect(() => { if (phase.kind !== 'ask') box.current?.scrollIntoView({ block: 'start' }); }, [phase.kind]);

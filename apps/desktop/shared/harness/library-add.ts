@@ -60,11 +60,11 @@ export const canAttach = (how: string): boolean => ATTACHABLE.includes(how);
  * The notes folder the form would attach, and the number of the notes step it came from. A step that is left (Back, a restart) takes a new number, so a late answer of
  * the old step is ignored and an earlier folder never stays.
  */
-export interface NotesChoice { readonly gen: number; readonly view: NotesView | null }
+export interface NotesChoice { readonly gen: number; readonly view: NotesView | null; /** How the notes step ended for `view`. */ readonly how?: string }
 export const NOTES_START: NotesChoice = Object.freeze({ gen: 0, view: null });
 /** The step ended with notes. Only the current step counts, and only an ending that can be attached keeps the folder. */
 export const notesDone = (choice: NotesChoice, gen: number, view: NotesView, how: string): NotesChoice =>
-  (gen !== choice.gen ? choice : { gen: choice.gen, view: canAttach(how) ? view : null });
+  (gen !== choice.gen ? choice : canAttach(how) ? { gen: choice.gen, view, how } : { gen: choice.gen, view: null });
 /** The step starts again, or the person went back: nothing is chosen, and the old step's answers no longer count. */
 export const notesRestart = (choice: NotesChoice): NotesChoice => ({ gen: choice.gen + 1, view: null });
 /** True when the form has notes it can attach. */
@@ -76,12 +76,21 @@ export const unreadableHarnesses = (state: HarnessState): { name: string; label:
 
 // ---- what the folder step and the skill list say
 
+/** Whether the list of folders was read: not yet, read, or the read failed. A failed read stays failed until a read works. */
+export type ListState = 'unread' | 'read' | 'failed';
+/** The list state after an event: a read that worked or failed, a pick that returned the whole list, or a chooser that closed (which changes nothing). */
+export const listAfter = (state: ListState, event: 'ok' | 'failed' | 'picked' | 'cancelled'): ListState =>
+  (event === 'cancelled' ? state : event === 'failed' ? 'failed' : 'read');
 /**
- * Two lines of the folder step. "No folder has a harness yet" is true only when the list was read and holds no folder that can take a part: a list that could not be read
- * says nothing of the kind, and offers Try again. A refusal of a later read does not undo a list that was read.
+ * Two lines of the folder step. "No folder has a harness yet" is true only when the list was read and holds no folder that can take a part. A list that could not be read says
+ * nothing of the kind: it says the read failed and offers Try again, for as long as it stays failed.
  */
-export function folderStepLines(a: { listed: boolean; refused: boolean; usable: number; busy: boolean; bridge: boolean }): { noTargets: boolean; tryAgain: boolean } {
-  return { noTargets: a.bridge && a.listed && a.usable === 0 && !a.busy, tryAgain: a.bridge && !a.listed && a.refused && !a.busy };
+export function folderStepLines(a: { list: ListState; usable: number; busy: boolean; bridge: boolean }): { noTargets: boolean; tryAgain: boolean } {
+  return { noTargets: a.bridge && a.list === 'read' && a.usable === 0 && !a.busy, tryAgain: a.bridge && a.list === 'failed' && !a.busy };
 }
-/** The "Which skill?" heading shows when the skills of the folder were read, even if there are none to show. */
-export const showSkillsHeading = (skills: readonly unknown[] | null): boolean => skills !== null;
+
+/**
+ * The tone of the line that says notes are chosen. Notes with a history are ready. Notes that can be attached but have none (or no git to read it) are chosen all the same,
+ * and the keeper then only reports, so the line is neutral and does not say "ready".
+ */
+export const notesTone = (how: string | undefined): 'good' | 'quiet' => (how === 'report-only' || how === 'git-missing' ? 'quiet' : 'good');

@@ -11,8 +11,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Stepper } from '../../home/kit/Stepper.js';
 import type { Answer, DefinitionView, FolderInfo, SaveEdit, SaveWritten } from '../../../shared/engine/types.js';
-import { KEEPER_EDITS, NOTES_START, folderStepLines, showSkillsHeading, copySources, keeperHeld, notesDone, notesEdits, notesRestart, skillEdits, skillHeld, targetsFor } from '../../../shared/harness/library-add.js';
-import type { NotesChoice } from '../../../shared/harness/library-add.js';
+import { KEEPER_EDITS, NOTES_START, folderStepLines, listAfter, notesTone, copySources, keeperHeld, notesDone, notesEdits, notesRestart, skillEdits, skillHeld, targetsFor } from '../../../shared/harness/library-add.js';
+import type { ListState, NotesChoice } from '../../../shared/harness/library-add.js';
 import type { PartKind } from '../../../shared/harness/types.js';
 import { Sheet } from '../parts/Sheet.js';
 import { HButton, StateDot } from '../parts/controls.js';
@@ -49,8 +49,10 @@ export function AddSheet({ open, kind, onClose }: AddSheetProps): ReactElement |
   const call = useCall(), targetCall = useCall(), sourceCall = useCall();
   const [step, setStep] = useState<Step>('folder');
   const [folders, setFolders] = useState<readonly FolderInfo[]>([]);
-  // True once the folder list was read. A list that could not be read is not an empty list.
-  const [listed, setListed] = useState(false);
+  // Whether the folder list was read. A list that could not be read is not an empty list, and stays failed until a read works.
+  const [list, setList] = useState<ListState>('unread');
+  // The notes step runs writes of its own (a history, a starter): while one runs, the sheet cannot be left.
+  const [notesWriting, setNotesWriting] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
   const [target, setTarget] = useState<DefinitionView | null>(null);
   const [source, setSource] = useState<string | null>(null);
@@ -65,10 +67,10 @@ export function AddSheet({ open, kind, onClose }: AddSheetProps): ReactElement |
   const [done, setDone] = useState<SaveWritten | null>(null);
   const [lastPlan, setLastPlan] = useState<(() => void) | null>(null);
   const intro = useRef<HTMLParagraphElement>(null), body = useRef<HTMLDivElement>(null), first = useRef(true);
-  const held = call.writing;
+  const held = call.writing || notesWriting;
   const busyWords = call.busy ?? targetCall.busy ?? sourceCall.busy, busy = busyWords !== null;
   const { usable, left } = targetsFor(folders);
-  const lines = folderStepLines({ listed, refused: call.refusal !== null, usable: usable.length, busy, bridge: engine !== null });
+  const lines = folderStepLines({ list, usable: usable.length, busy, bridge: engine !== null });
   const folder = usable.find(f => f.id === picked);
 
   const reset = (): void => {
@@ -78,7 +80,7 @@ export function AddSheet({ open, kind, onClose }: AddSheetProps): ReactElement |
   // Opened, or opened for another tab: everything starts again, and the folders are listed anew.
   useEffect(() => {
     if (!open) return;
-    setStep('folder'); setFolders([]); setListed(false); setPicked(null); reset();
+    setStep('folder'); setFolders([]); setList('unread'); setPicked(null); reset();
     readFolders();
   }, [open, kind, engine]);
   useEffect(() => {
@@ -91,14 +93,17 @@ export function AddSheet({ open, kind, onClose }: AddSheetProps): ReactElement |
   /** Reads the list of folders. The folder is picked for the person only when exactly one can take the part; the form still shows it and asks. */
   function readFolders(): void {
     if (engine === null) return;
-    void call.plan(W.label.planning, () => foldersCall(engine), list => { setFolders(list); setListed(true); const ready = targetsFor(list).usable; if (ready.length === 1) setPicked(ready[0]!.id); });
+    // A read that fails stays failed on screen even after its refusal goes (the next plan clears it), so Try again does not depend on the refusal.
+    const read = async (): ReturnType<typeof foldersCall> => { try { return await foldersCall(engine); } catch (error) { setList(l => listAfter(l, 'failed')); throw error; } };
+    void call.plan(W.label.planning, read, got => { setFolders(got); setList(l => listAfter(l, 'ok')); const ready = targetsFor(got).usable; if (ready.length === 1) setPicked(ready[0]!.id); });
   }
   const pick = (id: string): void => { if (busy || id === picked) return; setPicked(id); reset(); };
   const choose = (): void => {
     if (engine === null || busy) return;
     void call.plan(W.label.chooseFolder, () => chooseFolderCall(engine), got => {
+      // A closed chooser changes nothing: the earlier message and Try again stay. A pick returns the whole list, so it counts as a read.
       if (got === null) return;
-      setFolders(got.list);
+      setFolders(got.list); setList(l => listAfter(l, 'picked'));
       if (targetsFor(got.list).usable.some(f => f.id === got.info.id)) { setPicked(got.info.id); reset(); }
     });
   };
@@ -142,7 +147,7 @@ export function AddSheet({ open, kind, onClose }: AddSheetProps): ReactElement |
   const back = (to: Step): void => { if (held) return; setChoice(notesRestart); call.clear(); targetCall.clear(); sourceCall.clear(); setShown(null); setApproved(null); setAcked(null); setStep(to); };
 
   const keeperIn = target !== null && keeperHeld(target), skillIn = target !== null && skill !== null && skillHeld(target, skill);
-  const canReview = !busy && (kind === 'agent' ? !keeperIn : kind === 'skill' ? skill !== null && !skillIn : notes !== null);
+  const canReview = !busy && !held && (kind === 'agent' ? !keeperIn : kind === 'skill' ? skill !== null && !skillIn : notes !== null);
   const others = folder === undefined ? [] : copySources(folders, folder.id);
 
   const current = step === 'folder' ? 0 : step === 'choose' ? 1 : step === 'review' ? 2 : 3;
@@ -150,7 +155,7 @@ export function AddSheet({ open, kind, onClose }: AddSheetProps): ReactElement |
 
   let actions: ReactElement;
   if (step === 'folder') actions = <><HButton onClick={onClose}>{W.label.cancel}</HButton><HButton variant="primary" data-add-next="" disabled={folder === undefined || busy} onClick={next}>{W.label.next}</HButton></>;
-  else if (step === 'choose') actions = <><HButton disabled={busy} onClick={() => back('folder')}>{W.label.back}</HButton><HButton variant="primary" data-add-review="" disabled={!canReview} onClick={planReview}>{WORDS.label.reviewChange}</HButton></>;
+  else if (step === 'choose') actions = <><HButton disabled={busy || held} onClick={() => back('folder')}>{W.label.back}</HButton><HButton variant="primary" data-add-review="" disabled={!canReview} onClick={planReview}>{WORDS.label.reviewChange}</HButton></>;
   else if (step === 'review') {
     const n = shown?.view.changes.length ?? 0, noop = shown?.view.noop ?? true;
     const words = shown === null ? W.label.saved : noop ? W.label.nothingToChange : saveFilesWords(n);
@@ -196,6 +201,7 @@ export function AddSheet({ open, kind, onClose }: AddSheetProps): ReactElement |
                 ))}
               </ul>
             )}
+            {lines.tryAgain ? <p className="hxe-text" data-list-failed="">{WORDS.hint.listFailed}</p> : null}
             {lines.tryAgain ? <HButton data-try-again="" onClick={readFolders}>{W.label.tryAgain}</HButton> : null}
             <HButton icon="plus" disabled={busy || engine === null} onClick={choose}>{W.label.chooseFolder}</HButton>
             {left.length === 0 ? null : (
@@ -226,10 +232,10 @@ export function AddSheet({ open, kind, onClose }: AddSheetProps): ReactElement |
                     ))}
                   </ul>
                 )}
-                {source === null ? null : (
-                  <section className="hxe-section" aria-label={WORDS.label.whichSkill} data-section="add-skills" hidden={!showSkillsHeading(skills)}>
-                    {showSkillsHeading(skills) ? <h3 className="hxe-head">{WORDS.label.whichSkill}</h3> : null}
-                    {skills === null ? null : skills.length === 0 ? <p className="hxe-text hxe-muted">{W.hint.copyNoSkills}</p> : (
+                {source === null || skills === null ? null : (
+                  <section className="hxe-section" aria-label={WORDS.label.whichSkill} data-section="add-skills">
+                    <h3 className="hxe-head">{WORDS.label.whichSkill}</h3>
+                    { skills.length === 0 ? <p className="hxe-text hxe-muted">{W.hint.copyNoSkills}</p> : (
                       <>
                         <p className="hxe-text hxe-muted">{WORDS.hint.pickSkill}</p>
                         <ul className="hxs-ticks">
@@ -261,9 +267,9 @@ export function AddSheet({ open, kind, onClose }: AddSheetProps): ReactElement |
             {kind === 'context' ? (
               <section className="hxe-section" aria-label={WORDS.label.notesChosen} data-section="add-notes">
                 <h3 className="hxe-head">{WORDS.label.notesChosen}</h3>
-                <NotesStep key={choice.gen} onDone={(view, how) => setChoice(c => notesDone(c, choice.gen, view, how))} onReset={() => setChoice(c => ({ ...c, view: null }))} />
+                <NotesStep key={choice.gen} onBusy={setNotesWriting} onDone={(view, how) => setChoice(c => notesDone(c, choice.gen, view, how))} onReset={() => setChoice(c => ({ ...c, view: null }))} />
                 {notes === null ? <p className="hxe-text hxe-muted">{WORDS.hint.pickNotes}</p> : (
-                  <p className="hxe-text" data-notes-chosen={notes.id}><StateDot tone="good">{WORDS.hint.notesReady}</StateDot> <span className="hxe-mono">{notes.name}</span> <span className="hxe-muted">{NOTES.label.notes}</span></p>
+                  <p className="hxe-text" data-notes-chosen={notes.id}><StateDot tone={notesTone(choice.how)}>{notesTone(choice.how) === 'good' ? WORDS.hint.notesReady : WORDS.hint.notesReportOnly}</StateDot> <span className="hxe-mono">{notes.name}</span> <span className="hxe-muted">{NOTES.label.notes}</span></p>
                 )}
               </section>
             ) : null}

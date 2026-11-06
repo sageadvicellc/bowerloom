@@ -55,7 +55,7 @@ export function savedReduce(state: SavedScanState, action: SavedAction): SavedSc
     case 'damaged': return { ...firstSaved(), damaged: true, damagedWhy: action.why };
     case 'unusable': return { ...firstSaved(), damaged: true, damagedWhy: 'bad-shape' };
     case 'none': return firstSaved();
-    case 'checked': return state.readAtMs === action.forAtMs && state.fromSaved ? { ...state, checking: false, changed: action.verdict === 'changed', unchecked: action.verdict === 'unchecked' } : state;
+    case 'checked': return state.readAtMs === action.forAtMs && state.fromSaved ? { ...state, checking: false, changed: state.changed || action.verdict === 'changed', unchecked: action.verdict === 'unchecked' } : state;
     case 'wrote': return state.readAtMs === null ? state : { ...state, changed: true };
     case 'read': return { readAtMs: action.atMs, fromSaved: false, checking: false, changed: false, unchecked: false, damaged: false, damagedWhy: null };
   }

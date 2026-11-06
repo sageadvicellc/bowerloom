@@ -1,8 +1,8 @@
 // Library Add (issue 148), variant C: the pure rules of the small Add form in each Library tab. No screen, no engine.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { NOTES_READY, folderStepLines, showSkillsHeading, addState, canAttach, copySources, notesDone, notesRestart, NOTES_START, keeperHeld, notesEdits, skillEdits, skillHeld, targetsFor, KEEPER_EDITS } from '../shared/harness/library-add.js';
-import { SavedScanContext, firstSaved, savedReduce } from '../renderer/harness/real/saved-scan.js';
+import { NOTES_READY, folderStepLines, listAfter, notesTone, addState, canAttach, copySources, notesDone, notesRestart, NOTES_START, keeperHeld, notesEdits, skillEdits, skillHeld, targetsFor, KEEPER_EDITS } from '../shared/harness/library-add.js';
+import { firstSaved, savedReduce } from '../renderer/harness/real/saved-scan.js';
 import { WORDS } from '../renderer/harness/words.js';
 import { LIMITS, bannedHere, countWords } from '../shared/harness/words.js';
 import { PART_KINDS } from '../shared/harness/types.js';
@@ -96,6 +96,17 @@ test('trace 3: a late answer from a step that was left is ignored', () => {
   assert.equal(late, first, 'the choice is the same object: nothing changed');
 });
 
+test('a check that comes after a write never clears the changed mark', () => {
+  const saved = savedReduce(firstSaved(), { type: 'saved', atMs: 5 });
+  const wrote = savedReduce(saved, { type: 'wrote' });
+  assert.equal(wrote.changed, true);
+  const same = savedReduce(wrote, { type: 'checked', forAtMs: 5, verdict: 'same' });
+  assert.equal(same.changed, true, 'a later "same" must not clear it');
+  assert.equal(same.checking, false);
+  assert.equal(savedReduce(saved, { type: 'checked', forAtMs: 5, verdict: 'same' }).changed, false, 'with no write, same stays same');
+  assert.equal(savedReduce(saved, { type: 'checked', forAtMs: 5, verdict: 'changed' }).changed, true);
+});
+
 test('a write marks the read on the screen as changed, and only when there is a read', () => {
   const none = savedReduce(firstSaved(), { type: 'wrote' });
   assert.equal(none.changed, false, 'with no read there is nothing to call old');
@@ -104,24 +115,35 @@ test('a write marks the read on the screen as changed, and only when there is a 
   assert.equal(after.changed, true);
   assert.equal(after.readAtMs, 5);
   assert.equal(savedReduce(after, { type: 'read', atMs: 9 }).changed, false, 'a new read clears it');
-  assert.equal(typeof SavedScanContext, 'object');
 });
 
 test('the new Library lines are short plain words', () => {
-  for (const line of [WORDS.hint.noFileRead, WORDS.hint.libraryStale]) { assert.ok(countWords(line) <= LIMITS.hint, line); assert.equal(bannedHere(line), null, line); }
+  for (const line of [WORDS.hint.noFileRead, WORDS.hint.libraryStale, WORDS.hint.listFailed, WORDS.hint.notesReportOnly]) { assert.ok(countWords(line) <= LIMITS.hint, line); assert.equal(bannedHere(line), null, line); }
 });
 
-test('the folder step says "no folder has a harness" only when the list was read and is empty, and offers Try again when the read was refused', () => {
-  assert.deepEqual(folderStepLines({ listed: true, refused: false, usable: 0, busy: false, bridge: true }), { noTargets: true, tryAgain: false });
-  assert.deepEqual(folderStepLines({ listed: false, refused: true, usable: 0, busy: false, bridge: true }), { noTargets: false, tryAgain: true });
-  assert.deepEqual(folderStepLines({ listed: false, refused: false, usable: 0, busy: true, bridge: true }), { noTargets: false, tryAgain: false }, 'still reading');
-  assert.deepEqual(folderStepLines({ listed: true, refused: false, usable: 2, busy: false, bridge: true }), { noTargets: false, tryAgain: false });
-  assert.deepEqual(folderStepLines({ listed: false, refused: false, usable: 0, busy: false, bridge: false }), { noTargets: false, tryAgain: false }, 'no bridge: its own line');
-  // A refusal of a later read never turns a list that was read into a failed one.
-  assert.deepEqual(folderStepLines({ listed: true, refused: true, usable: 0, busy: false, bridge: true }), { noTargets: true, tryAgain: false });
+test('the folder step says "no folder has a harness" only when the list was read and is empty; a failed read keeps Try again until a read works', () => {
+  const base = { usable: 0, busy: false, bridge: true };
+  assert.deepEqual(folderStepLines({ ...base, list: 'read' }), { noTargets: true, tryAgain: false });
+  assert.deepEqual(folderStepLines({ ...base, list: 'failed' }), { noTargets: false, tryAgain: true });
+  assert.deepEqual(folderStepLines({ ...base, list: 'unread', busy: true }), { noTargets: false, tryAgain: false }, 'still reading');
+  assert.deepEqual(folderStepLines({ ...base, list: 'failed', busy: true }), { noTargets: false, tryAgain: false }, 'a retry is running');
+  assert.deepEqual(folderStepLines({ ...base, list: 'read', usable: 2 }), { noTargets: false, tryAgain: false });
+  assert.deepEqual(folderStepLines({ ...base, list: 'unread', bridge: false }), { noTargets: false, tryAgain: false }, 'no bridge: its own line');
 });
 
-test('the "Which skill?" heading shows only once the skills are read', () => {
-  assert.equal(showSkillsHeading(null), false);
-  assert.equal(showSkillsHeading([]), true);
+test('the list state: a failed read stays failed until a read works; a chooser that closes changes nothing; a pick that adds to the list counts as a read', () => {
+  assert.equal(listAfter('unread', 'failed'), 'failed');
+  assert.equal(listAfter('failed', 'cancelled'), 'failed', 'a closed chooser keeps the message and the retry');
+  assert.equal(listAfter('failed', 'failed'), 'failed');
+  assert.equal(listAfter('failed', 'ok'), 'read');
+  assert.equal(listAfter('failed', 'picked'), 'read', 'the pick returned the whole list');
+  assert.equal(listAfter('unread', 'picked'), 'read');
+  assert.equal(listAfter('read', 'cancelled'), 'read');
+  assert.equal(listAfter('read', 'failed'), 'failed');
 });
+
+test('notes that can be attached but leave the keeper reporting only are said in a neutral tone, not as ready', () => {
+  for (const how of ['ready', 'parent', 'created']) assert.equal(notesTone(how), 'good', how);
+  for (const how of ['report-only', 'git-missing']) assert.equal(notesTone(how), 'quiet', how);
+});
+

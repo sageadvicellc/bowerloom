@@ -213,6 +213,8 @@ test('Skills: a source folder that stops loading shows its refusal, no empty "Wh
   await s.locator('[data-source]').click();
   await expect(s.locator('[data-refusal]')).toBeVisible();
   await expect(s.getByRole('heading', { name: 'Which skill?' })).toHaveCount(0);
+  // Nothing of the skill list is drawn while the skills are not read: no region, no rule above an empty box.
+  await expect(s.locator('[data-section="add-skills"]')).toHaveCount(0);
   await s.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(s.locator('[data-refusal]')).toHaveCount(0);
 });
@@ -276,6 +278,10 @@ test.describe('Context', () => {
     await s.getByRole('button', { name: 'Use my notes', exact: true }).click();
     await s.getByRole('button', { name: 'No history for now', exact: true }).click();
     await expect(s.locator('[data-notes-chosen]')).toContainText('field-notes');
+    // No history: the notes can be attached, but the keeper only reports. The line is neutral and does not say "ready".
+    await expect(s.locator('[data-notes-chosen] [data-tone]')).toHaveAttribute('data-tone', 'quiet');
+    await expect(s.locator('[data-notes-chosen]')).toContainText('Chosen. With no history, the keeper only reports.');
+    await expect(s.locator('[data-notes-chosen]')).not.toContainText('Ready');
     expect(await h.asked(), 'no write was asked yet').toEqual([]);
     await s.getByRole('button', { name: 'Review the change', exact: true }).click();
     const review = s.locator('[data-save-review="save"]');
@@ -308,7 +314,7 @@ test.describe('Context', () => {
     await expect(p.getByRole('button', { name: 'View file', exact: true })).toHaveCount(0);
     await expect(p.locator('[data-held-by-folder]')).toContainText('team');
     // A harness that cannot be read is named, with a reason, and adds no part.
-    await expect(p.locator('[data-unreadable-harness]')).toHaveText('broken: Bowerloom could not read this harness.');
+    await expect(p.locator('[data-unreadable-harness]')).toHaveText('~/Projects/broken: Bowerloom could not read this harness.');
     await expect(p.locator('[data-library-stale]')).toHaveCount(0);
 
     // A write after the read leaves an honest line in the Library until the next read.
@@ -324,7 +330,10 @@ test.describe('Context', () => {
     await more.getByRole('button', { name: /^Save \d+ files?$/ }).click();
     await expect(more.locator('[data-version-kept]')).toBeVisible();
     await more.getByRole('contentinfo').getByRole('button', { name: 'Close', exact: true }).click();
-    await expect(p.locator('[data-library-stale]')).toHaveText('Folders changed since the last read. Read again to update this list.');
+    await expect(p.locator('[data-library-stale] p')).toHaveText('Folders changed since the last read.');
+    // The Library has the button the line points to.
+    await p.locator('[data-library-stale]').getByRole('button', { name: 'Read again', exact: true }).click();
+    await expect(p.getByRole('button', { name: 'Add a folder', exact: true })).toBeVisible();
   });
 });
 
@@ -348,6 +357,8 @@ test.describe('Context, the notes the form would attach', () => {
     await h.pick(one);
     await s.getByRole('button', { name: 'Use my notes', exact: true }).click();
     await expect(s.locator('[data-notes-chosen]')).toContainText('notes-one');
+    await expect(s.locator('[data-notes-chosen] [data-tone]')).toHaveAttribute('data-tone', 'good');
+    await expect(s.locator('[data-notes-chosen]')).toContainText('Ready. Review the change next.');
     await expect(review).toBeEnabled();
     await s.getByRole('button', { name: 'Choose another folder', exact: true }).click();
     await expect(s.locator('[data-notes-chosen]')).toHaveCount(0);
@@ -378,6 +389,42 @@ test.describe('Context, the notes the form would attach', () => {
     await expect(s.locator('[data-version-kept]')).toBeVisible();
     const k = JSON.parse(readFileSync(join(team, '.bowerloom/knowledge.json'), 'utf8')) as { sources: { name: string }[] };
     expect(k.sources.map(x => x.name)).toEqual(['notes-two']);
+  });
+});
+
+test.describe('Context, the notes step writes', () => {
+  test.skip(GIT === null, NO_GIT_REASON);
+  test('Back, Review and Escape are held while the notes step\'s own write waits for main\'s question', async () => {
+    test.setTimeout(120_000);
+    await start('context');
+    const p = page(), team = teamFolder(home), fresh = join(home, 'Documents', 'fresh-notes');
+    mkdirSync(fresh, { recursive: true });
+    await p.getByRole('button', { name: 'Add', exact: true }).click();
+    const s = addSheet(p, 'Add notes');
+    await choose(s, team);
+    await s.locator('[data-folder]', { hasText: 'team' }).click();
+    await s.getByRole('button', { name: 'Next', exact: true }).click();
+    await h.pick(fresh);
+    await s.getByRole('button', { name: 'Start fresh', exact: true }).click();
+    const create = s.locator('[data-notes-create]');
+    await expect(create).toBeEnabled();
+    // Main's question waits until the test lets it go.
+    await h.app.evaluate(({ dialog }) => {
+      const g = globalThis as unknown as { __release: () => void; __gate: Promise<void> };
+      g.__gate = new Promise<void>(resolve => { g.__release = resolve; });
+      const asked = dialog.showMessageBox;
+      dialog.showMessageBox = (async (...args: unknown[]) => { await g.__gate; return (asked as unknown as (...a: unknown[]) => Promise<unknown>)(...args); }) as unknown as typeof dialog.showMessageBox;
+    });
+    await create.click();
+    const footerBack = s.getByRole('contentinfo').getByRole('button', { name: 'Back', exact: true });
+    await expect(footerBack).toBeDisabled();
+    await expect(s.getByRole('button', { name: 'Review the change', exact: true })).toBeDisabled();
+    await p.keyboard.press('Escape');
+    await expect(s).toBeVisible();
+    await h.app.evaluate(() => { (globalThis as unknown as { __release: () => void }).__release(); });
+    await expect(s.locator('[data-notes-done="created"]')).toBeVisible();
+    await expect(footerBack).toBeEnabled();
+    await expect(s.getByRole('button', { name: 'Review the change', exact: true })).toBeEnabled();
   });
 });
 

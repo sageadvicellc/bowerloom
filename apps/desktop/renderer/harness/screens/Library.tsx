@@ -25,6 +25,7 @@ import { undoNow } from '../undo-note.js';
 import { addState, unreadableHarnesses } from '../../../shared/harness/library-add.js';
 import { AddSheet } from '../sheets/AddSheet.js';
 import { useSavedScan } from '../real/saved-scan.js';
+import { REAL } from '../real/words-real.js';
 
 type SortMode = 'name' | 'used' | 'source';
 const SORTS = [{ mode: 'name', label: 'Name' }, { mode: 'used', label: 'Most used' }, { mode: 'source', label: 'Source' }] as const satisfies readonly { mode: SortMode; label: string }[];
@@ -155,8 +156,8 @@ export function Library({ kind, partId }: { kind: PartKind; partId: string | nul
         {rows.map(p => <Row key={p.id} state={state} part={p} selected={selected?.id === p.id} onPick={() => go({ name: 'library', kind, partId: p.id })} />)}
       </ul>
       {rows.length === 0 ? <p className="kit-hint hx-hint">{WORDS.hint.libraryEmpty}</p> : null}
-      {real && saved.changed ? <p className="kit-hint hx-hint" role="status" data-library-stale="">{WORDS.hint.libraryStale}</p> : null}
-      {unreadable.map(u => <p key={`${u.label}|${u.name}`} className="kit-hint hx-hint" data-unreadable-harness="">{u.name}: {u.why}</p>)}
+      {real && saved.changed ? <div className="hx-actions" data-library-stale=""><p className="kit-hint hx-hint" role="status">{WORDS.hint.libraryStale}</p><HButton icon="search" onClick={saved.readAgain}>{REAL.label.readAgain}</HButton></div> : null}
+      {unreadable.map(u => <p key={`${u.label}|${u.name}`} className="kit-hint hx-hint" data-unreadable-harness="">{u.label}: {u.why}</p>)}
       {real ? <AddSheet open={adding} kind={kind} onClose={() => setAdding(false)} /> : null}
       <PickHarnessSheet open={picking.open} part={picking.part} onClose={() => setPicking(current => ({ ...current, open: false }))} />
     </Screen>
