@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { copyFile, mkdir, readFile, rm } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rename, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,17 +29,18 @@ function resolveRequest(pathname) {
 // Every request that the server cannot answer is recorded, so a missing stylesheet or picture fails the render.
 const failedRequests = [];
 const server = createServer(async (request, response) => {
-  const pathname = new URL(request.url, 'http://localhost').pathname;
-  // The browser asks for a favicon on its own. The cards do not use one.
-  if (pathname === '/favicon.ico') { response.writeHead(204).end(); return; }
+  let pathname = request.url;
   try {
+    pathname = new URL(request.url, 'http://localhost').pathname;
+    // The browser asks for a favicon on its own. The cards do not use one.
+    if (pathname === '/favicon.ico') { response.writeHead(204).end(); return; }
     const file = resolveRequest(pathname);
     if (!file) { failedRequests.push(`403 ${pathname}`); response.writeHead(403).end(); return; }
     const bytes = await readFile(file);
     response.setHeader('Content-Type', types[extname(file)] ?? 'application/octet-stream');
     response.end(bytes);
   } catch (error) {
-    failedRequests.push(`404 ${pathname} (${error.code ?? error.message})`);
+    failedRequests.push(`404 ${pathname} (${error.code ?? error.name})`);
     response.writeHead(404).end();
   }
 });
@@ -48,12 +49,15 @@ const server = createServer(async (request, response) => {
 const readyCheck = required => `async () => {
   await document.fonts.ready;
   await Promise.all([...document.images].map(image => image.decode()));
+  // fonts.check passes when no face is declared, so each family must also have a loaded face.
+  for (const family of ["Newsreader", "Manrope"]) if (![...document.fonts].some(face => face.family === family && face.status === "loaded")) throw new Error("Preview font did not load: " + family);
   for (const font of ["500 64px Newsreader", "600 19px Manrope", "400 25px Manrope"]) if (!document.fonts.check(font)) throw new Error("Preview font did not load: " + font);
   const boxes = {};
   for (const selector of ${JSON.stringify(required)}) {
     const node = document.querySelector(selector);
     if (!node) throw new Error("Preview is missing " + selector);
     const box = node.getBoundingClientRect();
+    if (box.width === 0 || box.height === 0) throw new Error("Preview element is hidden: " + selector);
     if (box.left < 0 || box.top < 0 || box.right > 1200 || box.bottom > 630) throw new Error("Preview content does not fit: " + selector);
     if (node.scrollWidth > node.clientWidth + 1) throw new Error("Preview text overflows its box: " + selector);
     boxes[selector] = box;
@@ -73,7 +77,8 @@ try {
   await cli('resize', '1200', '630');
   // Each card is drawn into the scratch folder first. The committed files change only after every card passes.
   for (const card of cards) {
-    const draft = resolve(scratch, card.output.replace('/', '-'));
+    // The process id keeps two runs at once from drawing over each other's drafts.
+    const draft = resolve(scratch, `${process.pid}-${card.output.replace('/', '-')}`);
     await rm(draft, { force: true });
     await cli('goto', `http://127.0.0.1:${server.address().port}${card.page}`);
     const ready = await cli('eval', readyCheck(card.required));
@@ -82,16 +87,21 @@ try {
     await cli('screenshot', `--filename=${draft}`);
     const bytes = await readFile(draft);
     assert.deepEqual(bytes.subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), `${card.page}: the screenshot is not a PNG`);
-    assert.equal(bytes.readUInt32BE(16), 1200);
-    assert.equal(bytes.readUInt32BE(20), 630);
+    assert.equal(bytes.readUInt32BE(16), 1200, `${card.page}: the screenshot is not 1200 wide`);
+    assert.equal(bytes.readUInt32BE(20), 630, `${card.page}: the screenshot is not 630 high`);
+    assert.deepEqual(failedRequests, [], `${card.page}: a request failed while the card was drawn`);
     rendered.push([draft, resolve(publicRoot, card.output)]);
   }
-  for (const [draft, output] of rendered) { await copyFile(draft, output); console.log(`Saved ${output}`); }
+  // The new files are copied beside the committed ones, then renamed, so a failed copy changes no committed card.
+  for (const [draft, output] of rendered) await copyFile(draft, output + '.next');
+  for (const [, output] of rendered) { await rename(output + '.next', output); console.log(`Saved ${output}`); }
 } catch (error) {
   failure = error;
 } finally {
   // A failure to close the browser is reported, but it never hides the first failure.
   try { await cli('close'); } catch (error) { console.error(`Could not close the browser session: ${error.message}`); }
+  // Open connections from a browser that did not close would keep the server waiting, so they are dropped first.
+  server.closeAllConnections();
   await new Promise(done => server.close(done));
 }
 if (failure) throw failure;
