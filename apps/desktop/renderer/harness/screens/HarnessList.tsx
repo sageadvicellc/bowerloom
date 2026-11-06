@@ -1,7 +1,8 @@
 /**
  * S2, the Harness list. Each harness is a row: its counts, its status (the worst state over its projects, computed from the install data), and a play button.
  * Picking a row goes to the address of that harness (`#harnesses/<id>`), so the address and the details column agree; the details show: where it runs, where it is installed, and three buttons.
- * "Start" and the play button open the start sheet for the harness of their row (sample only), "Assign to project" opens the install sheet at its first step.
+ * "Start" and the play button open the start sheet for the harness of their row (the sample's sheet: it starts runs in memory), "Assign to project" opens the install sheet at its first step.
+ * On the person's own folders, each folder row that holds a harness has its own "Start": it opens the real Start sheet, which shows a command to paste into a Terminal and runs nothing.
  * "Open in builder" on such a harness is refused in words: the Builder edits one folder's harness, so it opens "From a folder", which makes one.
  * Under the rows, "Folders": each folder main knows, with "Open in builder" for one that holds a harness and "From a folder" for one that does not, and
  * "Choose a folder". This is the folder list the Builder goes back to when its folder is not open (after a new start).
@@ -132,7 +133,7 @@ function ImportEntry(): ReactElement {
  * A folder that holds no harness opens "From a folder", which makes one. "Choose a folder" opens the system chooser.
  */
 function Folders({ empty }: { empty: boolean }): ReactElement | null {
-  const engine = useEngine(), ui = useUi(), call = useCall();
+  const engine = useEngine(), ui = useUi(), call = useCall(), real = useHarnessState().real !== undefined;
   const [folders, setFolders] = useState<readonly FolderInfo[]>([]);
   const sheetOpen = ui.adopt.open || ui.saveSheet.open || ui.projectSheet.open || ui.importSheet.open;
   useEffect(() => { if (engine !== null && !sheetOpen) void call.plan(ENGINE_WORDS.label.planning, () => foldersCall(engine), setFolders); }, [engine, sheetOpen]);
@@ -159,6 +160,7 @@ function Folders({ empty }: { empty: boolean }): ReactElement | null {
                 <span className="hx-row-meta">{folderLine(f, 'save').words}</span>
               </div>
               <span className="hx-row-action">
+                {real && f.hasDefinition && f.problem === null ? <HButton icon="play" size="small" aria-label={startName(f.name)} data-start-folder={f.id} onClick={() => ui.openStart({ harnessId: null, folderId: f.id })}>{WORDS.label.start}</HButton> : null}
                 {f.hasDefinition
                   ? <HButton icon="harness" size="small" aria-label={openFolderName(f.name)} data-open-builder={f.id} onClick={() => go({ name: 'builder', id: f.id })}>{WORDS.label.openInBuilder}</HButton>
                   : <HButton icon="folder" size="small" data-from-folder={f.id} onClick={() => ui.openAdopt({ folderId: f.id })}>{ENGINE_WORDS.label.fromFolder}</HButton>}
