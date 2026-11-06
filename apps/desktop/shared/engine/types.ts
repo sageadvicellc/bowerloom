@@ -800,12 +800,35 @@ export interface EngineBridge {
    */
   recordCheck(answer: CheckAnswer, note: string | null): Promise<boolean>;
   /**
+   * Start (beta.2) builds the command for one engine in one folder and shows it. It runs nothing and writes nothing. The folder is named by its id only; `instruction` is at
+   * most START_INSTRUCTION_LIMIT characters. The answer holds the command with `~` for the home folder, never a full path under home. A bad instruction is a refusal with words.
+   */
+  showStartCommand(folderId: string, engine: EngineId, instruction: string): Promise<Answer<StartCommandView>>;
+  /**
+   * The same command, written to the clipboard with the folder's full path. Main writes the clipboard and nothing else: no process, no file. The answer is the same view with
+   * `copied` true. The sample copies nothing.
+   */
+  startCommandToClipboard(folderId: string, engine: EngineId, instruction: string): Promise<Answer<StartCommandView>>;
+  /**
    * What a launch asks first: the last read, kept on this computer, as the window got it (the places and the result), or `none` (nothing kept), or `damaged` with a short reason when
    * the kept file cannot be used. It reads no folder. The sample has no kept read and answers `none`.
    */
   savedScan(): Promise<SavedScanAnswer>;
   /** The cheap, read-only check that follows: whether the folders of the kept read changed since it was made (or could not be checked to the end). No file is opened. The sample answers `same`. */
   checkSavedScan(): Promise<SavedScanCheck>;
+}
+
+/** The command Start shows. `command` is the line to paste; the copied line is the same with the folder's full path when `differs` is true. */
+export interface StartCommandView {
+  readonly engine: EngineId;
+  readonly engineName: string;
+  /** The folder, written with `~` for the home folder. */
+  readonly folder: string;
+  readonly command: string;
+  /** True once the clipboard holds the command. */
+  readonly copied: boolean;
+  /** True when the copied line has the folder's full path where `command` has `~`. */
+  readonly differs: boolean;
 }
 
 /** The three answers of the after-apply check. */
@@ -821,6 +844,7 @@ export const ENGINE_CALLS = Object.freeze([
   'planSave', 'runSave', 'listVersions', 'planRestore', 'runRestore', 'planSetAside', 'runSetAside',
   'chooseNotesFolder', 'notesSummary', 'planCreateNotes', 'runCreateNotes', 'planNotesHistory', 'runNotesHistory', 'openNotesReport',
   'planExport', 'runExport', 'chooseBundle', 'planImport', 'runImport', 'discardBundle', 'savedScan', 'checkSavedScan',
+  'showStartCommand', 'startCommandToClipboard',
 ] as const);
 export type EngineCall = (typeof ENGINE_CALLS)[number];
 /** How many arguments each call takes. A call with another count is refused before anything runs. */
@@ -830,6 +854,7 @@ export const ENGINE_ARITY: Readonly<Record<EngineCall, number>> = Object.freeze(
   planSave: 2, runSave: 3, listVersions: 1, planRestore: 2, runRestore: 3, planSetAside: 1, runSetAside: 2,
   chooseNotesFolder: 1, notesSummary: 1, planCreateNotes: 1, runCreateNotes: 2, planNotesHistory: 1, runNotesHistory: 2, openNotesReport: 1,
   planExport: 1, runExport: 3, chooseBundle: 0, planImport: 3, runImport: 5, discardBundle: 1, savedScan: 0, checkSavedScan: 0,
+  showStartCommand: 3, startCommandToClipboard: 3,
 });
 /** One channel per call, apart from every other channel of the app. */
 export const ENGINE_CHANNELS: Readonly<Record<EngineCall, string>> = Object.freeze(Object.fromEntries(ENGINE_CALLS.map(c => [c, `bowerloom-engine:${c}`])) as Record<EngineCall, string>);

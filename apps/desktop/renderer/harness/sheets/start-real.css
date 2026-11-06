@@ -1,0 +1,9 @@
+/* The Start sheet on the person's own folders (StartRealSheet.tsx). Every rule starts at [data-home] and uses the preview's tokens only. A copy changes a word and shows a line; nothing moves. */
+[data-home] .hs-where { margin: 0; font-family: var(--font-mono); font-size: var(--hm-text-base); }
+[data-home] .hs-results { gap: var(--hm-space-3); }
+[data-home] .hs-results .hxe-head:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; border-radius: var(--hm-radius-small); }
+[data-home] .hs-result .hxe-engine-head { align-items: center; }
+[data-home] .hs-copied { color: var(--text); font-weight: 600; }
+[data-home] #hs-limit[data-over] { color: var(--hm-ac-red); font-weight: 600; }
+/* A folder row on the Harnesses screen holds Start and Open in builder side by side. */
+[data-home] .hx-row-folder .hx-row-action { display: flex; gap: var(--hm-space-2); }

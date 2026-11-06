@@ -256,6 +256,9 @@ app.whenReady().then(async () => {
         // The tidy-up report of a notes folder, which main found and checked itself, opens in the app the computer uses for it. The window never names a path.
         // Main passes its own private copy of the report here, never the report itself (main/notes-report.ts).
         openPath: path => shell.openPath(path),
+        // Start's Copy puts the one line of text it built on the clipboard. That is all the two Start calls write: they start no program.
+        // It reads the clipboard back, so a copy that did not land is a refusal in words and never a silent "Copied".
+        writeClipboard: async text => { await clipboard.writeText(text); if ((await clipboard.readText()) !== text) throw new Error('The clipboard did not take the text.'); },
       });
       engineForExit = engine;
       // Main's private copies of tidy-up reports go when the app quits. A copy left by a hard kill stays in the person's own temporary folder.

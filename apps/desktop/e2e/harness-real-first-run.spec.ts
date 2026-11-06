@@ -1,7 +1,7 @@
 /**
  * The harness-first preview on the person's own folders, in the real window (Electron started with no flag and HOME pointed at a made-up folder, tests/fixtures-real/shell-home.ts).
  * Walk: Welcome, the folders found (with counts, details and "Add a folder"), "Read what is inside?" (nothing is read before "Yes, read them"), the read, the Read list with its count line,
- * "Make a harness from this", the builder graph with the links the files name, the file view, the Library, and the parts that are not in this preview (Install, Start) and the Preview mark.
+ * "Make a harness from this", the builder graph with the links the files name, the file view, the Library, and the parts that are not in this preview (Install) and the Preview mark.
  * The checks that hold at every step: the made-up key values are nowhere in the page, file text is drawn as text, text is 14 px or more, a button is 32 px, no alert is raised, the bridge has
  * exactly three calls, and the made-up folder is the same, byte for byte, before and after.
  * Then a second read: with a harness made, "Start from a scan" has a way out ("Not now"), a read asks before it starts the preview over ("Cancel" keeps everything), and the ids of new things keep climbing. Set HARNESS_SHOTS to a folder outside the repo to also save screenshots.
@@ -216,20 +216,26 @@ test('the file view draws the file as text: markup and an order stay words, the 
   await shot(p, 'real-5-file');
 });
 
-test('Start is not in beta.1, and Assign to project says the harness is not on disk: a note says so and no sheet opens; the Beta mark says what Bowerloom does and what is not in beta.1', async () => {
+test('Start opens its sheet, and Assign to project says the harness is not on disk: a note says so and no sheet opens; the Beta mark says what Bowerloom does and what is not in beta.1', async () => {
   const p = page();
   await p.evaluate(() => { location.hash = '#sample/harnesses'; });
   await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
+  const start = p.getByRole('button', { name: 'Start', exact: true });
+  await expect(start, 'the details column of the selected harness has a Start button').toHaveCount(1);
+  await start.click();
+  const sheet = p.locator('[data-slot="start"]');
+  await expect(sheet.getByRole('heading', { name: 'Start in a project', exact: true })).toBeVisible();
+  await expect(sheet).toContainText('Bowerloom does not run an engine.');
+  await expect(sheet.locator('[data-start-harness]'), 'a harness of the list has no folder, and the sheet says so').toHaveText('This harness is not in a project folder. Choose the project to start in.');
+  await expect(sheet, 'no folder is known in this window, so the sheet says so').toContainText('No folder has a harness yet. Make one first.');
+  await expect(p.locator('[data-toast]').filter({ hasText: 'Not in beta.1.' }), 'Start no longer says it is not in beta.1').toHaveCount(0);
+  await p.keyboard.press('Escape');
+  await expect(p.locator('[aria-modal="true"]')).toHaveCount(0);
   // Assign to project says the harness is not on disk and opens "From a folder", which makes one. It writes nothing.
   await p.getByRole('button', { name: 'Assign to project', exact: true }).first().click();
   await expect(p.locator('[data-toast]')).toContainText('This harness is not on disk. Make one from a folder.');
   await expect(p.getByRole('dialog', { name: 'New harness from a folder' })).toBeVisible();
   await p.keyboard.press('Escape');
-  await expect(p.locator('[aria-modal="true"]')).toHaveCount(0);
-  const start = p.getByRole('button', { name: 'Start', exact: true });
-  await expect(start, 'the details column of the selected harness has a Start button').toHaveCount(1);
-  await start.click();
-  await expect(p.locator('[data-toast]')).toContainText('Not in beta.1.');
   await expect(p.locator('[aria-modal="true"]')).toHaveCount(0);
   // The list says "Not checked" for where the harness runs, and names no program.
   const runsIn = p.locator('section', { has: p.locator('#hx-runs-in') });
@@ -241,7 +247,7 @@ test('Start is not in beta.1, and Assign to project says the harness is not on d
   await expect(pop).toContainText('Bowerloom is in beta. It reads your own folders and writes only after you approve what it will write.');
   await expect(pop).toContainText('Not in beta.1');
   await expect(pop).not.toContainText(/preview|full app/i);
-  await expect(pop.locator('li')).toHaveText(['Start', 'Compare', 'Runs', 'Add (the plus button), in the Library']);
+  await expect(pop.locator('li')).toHaveText(['Compare', 'Runs', 'Add (the plus button), in the Library']);
   await everyStep('preview', false);
   await shot(p, 'real-6-preview');
   await p.keyboard.press('Escape');
@@ -306,8 +312,9 @@ test('a second read asks first: "Cancel" keeps every harness, "Yes, read them" s
   // One harness from the scan: New harness makes none (it opens "From a folder").
   expect(before).toBe(1);
   // A note with an old "Undo" is on its way when the read starts: it must not outlive the old world.
-  await p.getByRole('button', { name: 'Start', exact: true }).first().click();
-  await expect(p.locator('[data-toast]')).toContainText('Not in beta.1.');
+  await p.getByRole('button', { name: 'Assign to project', exact: true }).first().click();
+  await expect(p.locator('[data-toast]')).toContainText('This harness is not on disk. Make one from a folder.');
+  await p.keyboard.press('Escape');
   await p.evaluate(() => { location.hash = '#sample/choose'; });
   await expect(p.getByRole('heading', { level: 1, name: /^Found \d+ places?$/ })).toBeVisible();
   await p.locator('.hxf-card', { hasText: 'Hermes at home' }).getByRole('checkbox').uncheck();

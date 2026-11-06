@@ -65,11 +65,13 @@ import { EVERY_ENGINE_PARTS, RECONCILE, SAVE_EDIT_LIMIT } from '../shared/engine
 import type {
   AdoptApproval, AdoptChoices, AdoptRecovered, AdoptRecoveryView, AdoptView, AdoptWritten, Answer, ApproveLineView, EngineId, EveryEnginePart, FolderInfo, MergeView, MergeWritten,
   DefinitionView, ProjectAnswer, ProjectInput, ProjectWritten, Recovered, RecoveryChoices, RecoveryView, Refusal, RemovalView, Removed, ReportOpened, RestoreView, SaveChangeView, SaveEdit,
-  SaveRequest, SaveView, SaveWritten, SetAsideView, SetAsideWritten, VersionView, BundleView, ExportView, ExportWritten, ImportView,
+  SaveRequest, SaveView, SaveWritten, SetAsideView, SetAsideWritten, VersionView, BundleView, ExportView, ExportWritten, ImportView, StartCommandView,
 } from '../shared/engine/types.js';
 import { REPORT_MAIN_WORDS, REPORT_NONE, REPORT_NOT_SHOWN, REPORT_OPEN_FAILED, SAVE_EXECUTABLE_UNACKNOWLEDGED, SAVE_MAIN_WORDS } from '../shared/engine/types.js';
 import { checkedReport, createReportCopies, newestReport } from './notes-report.js';
 import { adoptRecoveryView, adoptionView, approveKey, approveLine, keepsFile, mergeRecoveryView, mergeView, projectView, recoveryView, removalView } from '../shared/engine/view.js';
+import { buildStart, startRefused } from '../shared/engine/start-answer.js';
+import { isStartEngine } from '../shared/engine/start-command.js';
 import { ASK, ShownPlans, approvalText, cancelled, canonical, hashOf, notTheShownPlan, openCancelled } from './engine-consent.js';
 import type { Ask, SaveMarks } from './engine-consent.js';
 import {
@@ -133,6 +135,12 @@ export interface EngineServiceDeps {
   readonly bundleWriteTimeoutMs?: number;
   /** The longest the read of a bundle file may take (default 30 seconds), so a file on a stalled volume does not hold every engine call. */
   readonly bundleReadTimeoutMs?: number;
+  /**
+   * Puts text on the clipboard (Electron `clipboard.writeText`). Only startCommandToClipboard reaches it, with one line of text it built itself. Default: none, and a copy is refused in words.
+   */
+  readonly writeClipboard?: (text: string) => void | Promise<void>;
+  /** The longest the clipboard write may take, in milliseconds (default 3 seconds). A write that takes longer is a refusal, so it never holds the other calls. */
+  readonly clipboardTimeoutMs?: number;
 }
 
 /** A call the service refuses before it reaches a package: the window gets only the short code. */
@@ -335,6 +343,10 @@ export interface EngineService {
   planImport(folderId: unknown, bundleId: unknown, choices: unknown): Promise<Answer<ImportView>>;
   runImport(folderId: unknown, revision: unknown, bundleId: unknown, choices: unknown, acknowledged: unknown): Promise<Answer<SaveWritten>>;
   discardBundle(bundleId: unknown): Promise<boolean>;
+  /** Start: the command for one engine in one folder, shown with `~`. Builds text only. */
+  showStartCommand(folderId: unknown, engine: unknown, instruction: unknown): Promise<Answer<StartCommandView>>;
+  /** Start: the same command, with the folder's full path, on the clipboard. It writes the clipboard and nothing else. */
+  startCommandToClipboard(folderId: unknown, engine: unknown, instruction: unknown): Promise<Answer<StartCommandView>>;
   /** Removes main's private copies of tidy-up reports. Main calls it at quit. Not a call of the window. */
   clearReportCopies(): void;
   /** Stops the worker thread of export and import and resolves when it has ended. Main calls it at quit. Not a call of the window. */
@@ -846,6 +858,27 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
   /** The revision of the folder's harness now, or null when it does not load. */
   const revisionNow = (f: Folder): string | null => { const r = loadDefinition(join(f.dir, '.bowerloom')); return r.ok ? r.definition.revision : null; };
 
+  /** Start: checks the three arguments (a wrong shape is BAD_ARGUMENT), then builds the line for the folder main knows by this id. A copy hands the full line to the clipboard function. */
+  const startFor = async (id: unknown, engine: unknown, instruction: unknown, copy: boolean): Promise<Answer<StartCommandView>> => {
+    const f = folderOf(id);
+    if (!isStartEngine(engine) || typeof instruction !== 'string') return bad();
+    const built = buildStart({ dir: f.dir, label: f.label, homes, engine, instruction });
+    if (!built.ok || !copy) return built.ok ? { ok: true, value: built.value.view } : built;
+    // The reason the clipboard failed is not passed on: it could name a path or a program.
+    const write = deps.writeClipboard;
+    if (write === undefined) return startRefused('START_COPY_FAILED');
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      // The write is raced against a timer, so a clipboard that never answers cannot hold every later call behind it in the serial queue. The race cannot cancel the write itself: after a
+      // timeout, an async writer could still land later. In the app, Electron's `clipboard.writeText` is synchronous (main.ts), so the timer only guards a writer a test injects.
+      await Promise.race([
+        Promise.resolve().then(() => write(built.value.real)),
+        new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error('The clipboard took too long.')), deps.clipboardTimeoutMs ?? 3000); }),
+      ]);
+    } catch { return startRefused('START_COPY_FAILED'); } finally { if (timer !== undefined) clearTimeout(timer); }
+    return { ok: true, value: { ...built.value.view, copied: true } };
+  };
+
   // ---- export and import (journey 4): main/engine-bundle.ts. The heavy work runs in a worker thread.
   const share = createShare({
     host: createBundleHost({
@@ -1233,6 +1266,9 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
         return { path: n.scrub(place.rel) };
       });
     }),
+    // Start runs nothing. These two calls build a line of text; the copy writes the clipboard and nothing else (shared/engine/start-answer.ts).
+    showStartCommand: (id, engine, instruction) => serial(() => startFor(id, engine, instruction, false)),
+    startCommandToClipboard: (id, engine, instruction) => serial(() => startFor(id, engine, instruction, true)),
     planExport: id => serial(() => share.planExport(id)),
     // The three calls with a native dialog take the queue themselves, only for the steps outside the dialogs (main/engine-bundle.ts).
     runExport: (id, revision, acknowledged) => share.runExport(id, revision, acknowledged),

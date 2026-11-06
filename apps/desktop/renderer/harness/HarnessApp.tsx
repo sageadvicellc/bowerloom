@@ -13,7 +13,7 @@ import { isFirstRun } from '../../shared/harness/route.js';
 import type { Route } from '../../shared/harness/route.js';
 import { realNow } from './clock.js';
 import { useRoute } from './router.js';
-import { HarnessProvider } from './session.js';
+import { HarnessProvider, useHarnessState } from './session.js';
 import { Shell } from './Shell.js';
 import { UiProvider, useUi } from './ui.js';
 import { Toast } from './parts/Toast.js';
@@ -37,6 +37,7 @@ import { History } from './screens/History.js';
 import { Help } from './screens/Help.js';
 import { InstallSheet } from './sheets/InstallSheet.js';
 import { StartSheet } from './sheets/StartSheet.js';
+import { StartRealSheet } from './sheets/StartRealSheet.js';
 import { AdoptSheet } from './sheets/AdoptSheet.js';
 import { ProjectSheet } from './sheets/ProjectSheet.js';
 import { SaveSheet } from './sheets/SaveSheet.js';
@@ -76,11 +77,11 @@ function Screens({ route, bridge, realMode }: { route: Route; bridge: RealBridge
 }
 
 function Overlays(): ReactElement {
-  const ui = useUi();
+  const ui = useUi(), real = useHarnessState().real !== undefined;
   return (
     <>
       <InstallSheet open={ui.install.open} projectId={ui.install.projectId} harnessId={ui.install.harnessId} step={ui.install.step} interfaceIds={ui.install.interfaceIds} onStep={ui.setInstallStep} onClose={ui.closeInstall} />
-      <StartSheet open={ui.start.open} harnessId={ui.start.harnessId} projectId={ui.start.projectId} onClose={ui.closeStart} />
+      {real ? <StartRealSheet open={ui.start.open} folderId={ui.start.folderId} fromHarness={ui.start.harnessId !== null} onClose={ui.closeStart} /> : <StartSheet open={ui.start.open} harnessId={ui.start.harnessId} projectId={ui.start.projectId} onClose={ui.closeStart} />}
       <AdoptSheet open={ui.adopt.open} folderId={ui.adopt.folderId} onClose={ui.closeAdopt} />
       <ProjectSheet open={ui.projectSheet.open} folderId={ui.projectSheet.folderId} mode={ui.projectSheet.mode} keep={ui.projectSheet.keep} start={ui.projectSheet.start} onClose={ui.closeProject} />
       <SaveSheet open={ui.saveSheet.open} folderId={ui.saveSheet.folderId} tour={ui.saveSheet.tour} start={ui.saveSheet.start} restore={ui.saveSheet.restore} onClose={ui.closeSave} />

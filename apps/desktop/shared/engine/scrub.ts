@@ -29,6 +29,11 @@ export function visible(text: string): string {
   });
 }
 
+/** True when the text holds a character that would hide, fake or reorder text (the characters `visible` writes out), whether or not a word mixes scripts. */
+export function hasHiddenChar(text: string): boolean {
+  return new RegExp(HIDDEN_CHARS.source, 'u').test(text);
+}
+
 /** True when the text holds a character that `visible` writes out, or a word that mixes scripts. */
 export function hasHidden(text: string): boolean {
   return visible(text) !== text;

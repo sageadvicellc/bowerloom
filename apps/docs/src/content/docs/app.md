@@ -51,12 +51,35 @@ Install history is the install undo list. Each row is one change, newest first, 
 
 Under the menu, a **Beta** mark opens a short note about this beta. It lists the controls that are **Not in beta.1**. Those controls show the words "Not in beta.1" and do nothing yet:
 
-- Start, on a harness
 - Compare
 - Runs
 - Add, the plus button in the Library
 
 Every control in Projects works. So do **Assign to project** in the details of a harness, **From a folder**, **Install from a folder**, and the save step in the Builder. This page covers them below.
+
+## Start an engine in a folder
+
+**Start** shows the command that starts Claude Code or Codex in one of your folders, with your instruction already in it. Bowerloom never runs an engine. It builds the text of the command, and you paste it into your own Terminal. Start is for the macOS Terminal.
+
+Open it from **Harnesses**. In the Folders block, press **Start** on a folder that holds a harness with Claude Code or Codex in it. That opens the sheet on that folder. The **Start** button in the details of a harness, and the play button on its row, open the same sheet with no folder chosen: a harness made from a scan is not in a project folder, so the sheet says so and you choose the project. Then:
+
+1. Pick the project. Only a folder that holds a harness can start.
+2. Tick the engines. Start has a command for Claude Code and for Codex. Each line says if Bowerloom has an install record for that engine in the folder. It does not check that the files are still current.
+3. Write the instruction. It can hold up to 4,000 characters.
+4. Press **Show the command**.
+
+If an engine has no install record in the folder, or an install stopped part way, the install review opens first, and Start waits under it. When the review closes, the sheet shows the new state.
+
+Each command has the form `cd <folder> && claude '<instruction>'` or `cd <folder> && codex '<instruction>'`. The instruction is quoted as one argument, so quotes, `$(...)`, backticks, `;`, `&&`, and new lines stay plain text. That quoting is for bash and zsh, the shells of the macOS Terminal. Another shell, such as fish, may read the quotes differently. An instruction with a new line makes a command of more than one line. **Copy** puts the command on your clipboard. The window shows `~` for your home folder, and the copy holds the full path. Nothing else differs.
+
+Bowerloom refuses to build a command, and says why, when:
+
+- the instruction is empty, is over 4,000 characters, or starts with a dash, because the engine would read it as an option;
+- the instruction holds a control character, a broken character (text cut in the middle of an emoji), or a hidden one, such as a no-break space, a zero-width space, a zero-width non-joiner, or a tag character. The message names the character and where it is. Emoji are fine. Bowerloom never changes your text, so you remove the character yourself;
+- the instruction is one word that is also a command of the engine, such as `update` or `help`, because the engine would run that command;
+- the folder name holds a hidden character, a line break, or a tab.
+
+Start starts no program, calls no model, makes no network request, and keeps no run record. It writes only the clipboard. Runs and Compare stay **Not in beta.1**.
 
 ## Make a harness from a folder
 

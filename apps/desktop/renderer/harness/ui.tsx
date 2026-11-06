@@ -2,8 +2,8 @@
  * What the screens share besides the harness world: which sheets are open (the install sheet and the start sheet are opened from several screens), the harness picked in the list,
  * the toast ("Installed. Undo"), and the shell (the details column and the navigation). All of it lives in memory.
  *
- * On the person's own folders (the state holds `real`) `openInstall` and `openStart` show the note "Not in beta.1." and open nothing.
- * The next builders plug in here: `openInstall({ projectId, harnessId, step })` opens the install sheet at a step, `openStart({ harnessId, projectId })` opens the start sheet,
+ * On the person's own folders (the state holds `real`) `openInstall` shows the note "Not in beta.1." and opens nothing; `openStart` opens the real Start sheet, which shows a command and runs nothing.
+ * The next builders plug in here: `openInstall({ projectId, harnessId, step })` opens the install sheet at a step, `openStart({ harnessId, projectId, folderId })` opens the start sheet,
  * `showToast(text, action)` shows a note with one action, and `pickedHarnessId` is the harness the Harness list has selected.
  */
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
@@ -22,7 +22,7 @@ export interface InstallState {
   /** The interfaces the sheet opens with ticked, or null for the default ones. */
   readonly interfaceIds: readonly InterfaceId[] | null;
 }
-export interface StartState { readonly open: boolean; readonly harnessId: string | null; readonly projectId: string | null }
+export interface StartState { readonly open: boolean; readonly harnessId: string | null; readonly projectId: string | null; /** On the person's own folders: the folder (by the id main gave it) the sheet opens on. */ readonly folderId: string | null }
 /** The two sheets that reach the packages. `mode` says what the install sheet plans: an install, a removal, or the recovery of a stopped run. */
 export type EngineSheetMode = 'install' | 'remove' | 'recover';
 export interface AdoptState { readonly open: boolean; readonly folderId: string | null }
@@ -53,7 +53,7 @@ export interface Ui {
   setInstallStep(step: InstallStep): void;
   closeInstall(): void;
   readonly start: StartState;
-  openStart(request: { harnessId: string; projectId?: string | null }): void;
+  openStart(request: { harnessId: string | null; projectId?: string | null; folderId?: string | null }): void;
   closeStart(): void;
   /** The adopt sheet ("New harness from a folder"). It opens in either launch: on the person's own folders it plans read-only and writes only after approval. */
   readonly adopt: AdoptState;
@@ -102,7 +102,7 @@ export const TOAST_MS = 8000;
 export function UiProvider({ children }: { children?: ReactNode }): ReactElement {
   const harnessStore = useHarnessStore();
   const [install, setInstall] = useState<InstallState>({ open: false, projectId: null, harnessId: null, step: 'project', interfaceIds: null });
-  const [start, setStart] = useState<StartState>({ open: false, harnessId: null, projectId: null });
+  const [start, setStart] = useState<StartState>({ open: false, harnessId: null, projectId: null, folderId: null });
   const [picked, setPicked] = useState<string | null>(null);
   const [adopt, setAdopt] = useState<AdoptState>({ open: false, folderId: null });
   const [projectSheet, setProjectSheet] = useState<ProjectSheetState>({ open: false, folderId: null, mode: 'install', keep: [], start: 'folder' });
@@ -145,10 +145,7 @@ export function UiProvider({ children }: { children?: ReactNode }): ReactElement
     setInstallStep: step => setInstall(current => ({ ...current, step })),
     closeInstall: () => setInstall(current => ({ ...current, open: false })),
     start,
-    openStart: request => {
-      if (harnessStore.getState().real !== undefined) { showToast(WORDS.hint.notInBeta); return; }
-      setStart({ open: true, harnessId: request.harnessId, projectId: request.projectId ?? null });
-    },
+    openStart: request => setStart({ open: true, harnessId: request.harnessId, projectId: request.projectId ?? null, folderId: request.folderId ?? null }),
     closeStart: () => setStart(current => ({ ...current, open: false })),
     adopt,
     openAdopt: (request = {}) => setAdopt({ open: true, folderId: request.folderId ?? null }),
@@ -169,7 +166,7 @@ export function UiProvider({ children }: { children?: ReactNode }): ReactElement
     replaceWorld: next => {
       harnessStore.loadWorld(next);
       setPicked(null); hideToast();
-      setInstall(current => ({ ...current, open: false, projectId: null, harnessId: null })); setStart(current => ({ ...current, open: false, projectId: null, harnessId: null }));
+      setInstall(current => ({ ...current, open: false, projectId: null, harnessId: null })); setStart(current => ({ ...current, open: false, projectId: null, harnessId: null, folderId: null }));
       const route = parseRoute(location.hash);
       if (route !== null && routeGone(harnessStore.getState(), route)) go({ name: 'harnesses' });
     },

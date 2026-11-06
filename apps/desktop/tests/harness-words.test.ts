@@ -143,7 +143,7 @@ test('the real words (the preview on the person\'s own folders) are frozen, with
     for (const [key, text] of entries) { assert.ok(countWords(text) <= limit, `${group}.${key}: ${text}`); assert.equal(bannedHere(text), null, `${group}.${key}`); assert.equal(text, text.trim(), `${group}.${key}`); }
   }
   for (const line of REAL.notInBeta) { assert.ok(countWords(line) <= LIMITS.popover, line); assert.equal(bannedHere(line), null, line); }
-  assert.deepEqual(REAL.notInBeta, ['Start', 'Compare', 'Runs', 'Add (the plus button), in the Library']);
+  assert.deepEqual(REAL.notInBeta, ['Compare', 'Runs', 'Add (the plus button), in the Library']);
   // Everything in Projects, and Assign to project, work on the person's own folders, so no line names them.
   assert.ok(!REAL.notInBeta.some(line => /Projects|Assign|Add a folder|Install|Update|Review/.test(line)), 'a working Projects control is not on the list');
   assert.ok(!REAL.notInBeta.some(line => /^Install from a folder$|^From a folder$/.test(line)), 'Install from a folder works, so it is not on the list');
