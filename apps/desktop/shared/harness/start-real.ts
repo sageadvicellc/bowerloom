@@ -81,3 +81,15 @@ export function startStatus(f: StartFolder | undefined, ticked: readonly EngineI
   const needs = engines.filter(e => engineStateOf(f, e) !== 'ready');
   return needs.length > 0 ? { kind: 'needs-install', engines: needs } : { kind: 'ready', engines };
 }
+
+/**
+ * What the sheet body shows. `loading`: the folder read is pending, with no list and no refusal. `failed`: the read was refused and there is no list, so the sheet shows the refusal
+ * (with Try again) and never the loading line. A list that is empty, or has no folder that can start, is `none-can-start`. Otherwise the choices show (`ready`), even beside a refusal
+ * from a later re-read, because the list on screen is still true.
+ */
+export type StartSheetPhase = 'loading' | 'failed' | 'none-can-start' | 'ready';
+
+export function startSheetPhase(folders: readonly StartFolder[] | null, refused: boolean): StartSheetPhase {
+  if (folders === null) return refused ? 'failed' : 'loading';
+  return folders.some(f => offeredEngines(f).length > 0) ? 'ready' : 'none-can-start';
+}

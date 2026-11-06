@@ -11,7 +11,7 @@ import type { ReactElement } from 'react';
 import { ENGINE_NAMES } from '../../../shared/engine/types.js';
 import type { Answer, EngineId, FolderInfo, StartCommandView } from '../../../shared/engine/types.js';
 import { START_INSTRUCTION_LIMIT } from '../../../shared/engine/start-command.js';
-import { engineStateOf, firstStartEngines, firstStartFolder, offeredEngines, startFolderLine, startStatus } from '../../../shared/harness/start-real.js';
+import { engineStateOf, firstStartEngines, firstStartFolder, offeredEngines, startFolderLine, startSheetPhase, startStatus } from '../../../shared/harness/start-real.js';
 import type { EngineState } from '../../../shared/harness/start-real.js';
 import { Sheet } from '../parts/Sheet.js';
 import { HButton, StateDot } from '../parts/controls.js';
@@ -19,6 +19,7 @@ import { HIcon } from '../icons.js';
 import { useEngine } from '../engine.js';
 import { useUi } from '../ui.js';
 import { START, commandFor, copyName, whyWords } from '../words-start.js';
+import { ENGINE_WORDS } from '../words-engine.js';
 import { WORDS } from '../words.js';
 import { CodeText, RefusalNote } from './engine-parts.js';
 import { foldersCall, useCall } from './use-call.js';
@@ -71,12 +72,17 @@ export function StartRealSheet({ open, folderId, fromHarness, onClose }: StartRe
   useEffect(() => {
     if (!open) return;
     setFolders(null); setFolder(''); setTicks([]); setInstruction(''); setShown(null); setCopied(null); call.clear();
+    readFolders();
+  }, [open, folderId, engine]);
+
+  // The first read of the folder list. Try again runs it once more when it was refused.
+  const readFolders = (): void => {
     if (engine === null) return;
     void call.plan(START.hint.loading, () => foldersCall(engine), list => {
       const first = firstStartFolder(list, folderId);
       setFolders(list); setFolder(first); setTicks(firstStartEngines(list.find(f => f.id === first)));
     });
-  }, [open, folderId, engine]);
+  };
 
   // When the install review closes, the folder list is read again, so the engine lines show what the install did. The choices stay, unless the folder can no longer start.
   const wasReview = useRef(false);
@@ -99,7 +105,7 @@ export function StartRealSheet({ open, folderId, fromHarness, onClose }: StartRe
   const status = startStatus(current, ticks, instruction);
   const why = status.kind === 'no-harness' && current !== undefined ? startFolderLine(current).words : whyWords(status);
   const offered = offeredEngines(current);
-  const canStart = folders?.some(f => offeredEngines(f).length > 0) ?? false;
+  const phase = startSheetPhase(folders, call.refusal !== null);
   const changed = (): void => { stamp.current += 1; setShown(null); setCopied(null); setPassed(call.refusalId); };
   const pickFolder = (id: string): void => { setFolder(id); setTicks(firstStartEngines(folders?.find(f => f.id === id))); changed(); };
   const tick = (id: EngineId): void => { setTicks(now => (now.includes(id) ? now.filter(x => x !== id) : [...now, id])); changed(); };
@@ -123,12 +129,16 @@ export function StartRealSheet({ open, folderId, fromHarness, onClose }: StartRe
 
   return (
     <Sheet open={open} title={START.label.title} onClose={onClose} width={680} dataSlot="start" note={START.paragraph.note}
-      actions={<><HButton onClick={onClose}>{WORDS.label.close}</HButton><HButton icon="play" variant="primary" disabled={status.kind !== 'ready' && status.kind !== 'needs-install'} aria-describedby={why === null ? undefined : 'hs-why'} onClick={press}>{START.label.show}</HButton></>}>
+      actions={<><HButton onClick={onClose}>{WORDS.label.close}</HButton><HButton icon="play" variant="primary" disabled={status.kind !== 'ready' && status.kind !== 'needs-install'} aria-describedby={why === null || phase !== 'ready' ? undefined : 'hs-why'} onClick={press}>{START.label.show}</HButton></>}>
       {engine === null ? <p className="hxe-text hxe-muted">{START.hint.noBridge}</p> : (
         <>
-          {refusal === null ? null : <RefusalNote refusal={refusal} focusId={call.refusalId}>{null}</RefusalNote>}
+          {refusal === null ? null : (
+            <RefusalNote refusal={refusal} focusId={call.refusalId}>
+              {folders === null ? <HButton data-try-again="" onClick={readFolders}>{ENGINE_WORDS.label.tryAgain}</HButton> : null}
+            </RefusalNote>
+          )}
           {fromHarness && folder === '' ? <p className="hs-compare" role="status" data-start-harness=""><HIcon name="info" size={20} /><span>{START.paragraph.noFolderForHarness}</span></p> : null}
-          {folders === null ? <p className="hxe-text hxe-muted" role="status">{START.hint.loading}</p> : !canStart ? (
+          {phase === 'failed' ? null : folders === null ? <p className="hxe-text hxe-muted" role="status">{START.hint.loading}</p> : phase === 'none-can-start' ? (
             <div data-start-empty="">
               {folders.some(f => f.hasDefinition) ? (
                 <>

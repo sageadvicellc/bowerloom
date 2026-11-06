@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { FolderInfo } from '../shared/engine/types.js';
 import { START_INSTRUCTION_LIMIT, START_MAIN_WORDS } from '../shared/engine/start-command.js';
-import { engineStateOf, firstStartEngines, firstStartFolder, offeredEngines, startFolderLine, startStatus } from '../shared/harness/start-real.js';
+import { engineStateOf, firstStartEngines, firstStartFolder, offeredEngines, startFolderLine, startSheetPhase, startStatus } from '../shared/harness/start-real.js';
 
 const folder = (over: Partial<FolderInfo> = {}): FolderInfo => ({
   id: 'folder-1', label: '~/Projects/demo', name: 'demo', hasDefinition: true, engines: ['claude-code', 'codex'], previewEngines: false, installedEngines: ['claude-code', 'codex'],
@@ -83,4 +83,13 @@ test('an engine that is not installed, out of the record, or stopped sends the p
 
 test('the longest allowed instruction is ready', () => {
   assert.deepEqual(startStatus(folder(), ['codex'], 'x'.repeat(START_INSTRUCTION_LIMIT)), { kind: 'ready', engines: ['codex'] });
+});
+
+test('the sheet is loading only while the folder read is pending: a failed read is "failed", never "loading", and only a loaded list can start or explain', () => {
+  assert.equal(startSheetPhase(null, false), 'loading');
+  assert.equal(startSheetPhase(null, true), 'failed', 'a refusal with no list never shows the loading line');
+  assert.equal(startSheetPhase([], false), 'none-can-start');
+  assert.equal(startSheetPhase([folder({ hasDefinition: false, engines: [] })], false), 'none-can-start');
+  assert.equal(startSheetPhase([folder()], false), 'ready');
+  assert.equal(startSheetPhase([folder()], true), 'ready', 'a refusal beside a loaded list (an install review re-read) keeps the list');
 });
