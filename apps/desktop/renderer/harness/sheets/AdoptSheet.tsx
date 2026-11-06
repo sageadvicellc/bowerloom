@@ -22,6 +22,7 @@ import { AdoptConfirm, AdoptReview } from './adopt-review.js';
 import { AfterApplyCheck } from './after-apply-check.js';
 import { Busy, FolderStep, RefusalNote, ResultStep, Section, TickRow, folderLine } from './engine-parts.js';
 import { chooseFolderCall, foldersCall, useCall } from './use-call.js';
+import { goneRefusal, pickRequested } from './picked-folder.js';
 import { useHeldFocus } from './use-held-focus.js';
 
 const W = ENGINE_WORDS;
@@ -35,6 +36,8 @@ export function AdoptSheet({ open, folderId, onClose }: { open: boolean; folderI
   const engine = useEngine(), ui = useUi(), call = useCall();
   const [folders, setFolders] = useState<readonly FolderInfo[]>([]);
   const [picked, setPicked] = useState<string | null>(null);
+  /** True when the folder the sheet was opened for is no longer one main knows. */
+  const [gone, setGone] = useState(false);
   const [step, setStep] = useState<Step>('folder');
   const [choices, setChoices] = useState<AdoptChoices>(NO_CHOICES);
   const [ticked, setTicked] = useState<readonly string[]>([]);
@@ -52,13 +55,14 @@ export function AdoptSheet({ open, folderId, onClose }: { open: boolean; folderI
   // A sheet that opens starts again, with the folders Bowerloom knows now. A list that cannot be read is a refusal, never an empty list (U11).
   useEffect(() => {
     if (!open) return;
-    setStep('folder'); setFolders([]); setPicked(null); resetFolderState();
+    setStep('folder'); setFolders([]); setPicked(null); setGone(false); resetFolderState();
     if (engine === null) return;
     void call.plan(W.label.planning, () => foldersCall(engine), list => {
       setFolders(list);
-      const usable = list.filter(f => !folderLine(f, 'make').off);
       // A folder that was asked for stays picked, even when it cannot be used (it may have gained a harness since): the sheet says why, and never swaps in another folder.
-      setPicked(folderId !== null ? (list.some(f => f.id === folderId) ? folderId : null) : usable[0]?.id ?? null);
+      // One that main no longer lists is said in words.
+      const got = pickRequested(list, folderId, f => !folderLine(f, 'make').off);
+      setPicked(got.id); setGone(got.gone);
     });
     // The sheet starts again only when it opens.
   }, [open, engine]);
@@ -133,7 +137,7 @@ export function AdoptSheet({ open, folderId, onClose }: { open: boolean; folderI
   else if (step === 'recover') actions = <><HButton disabled={held} onClick={() => back('folder')}>{W.label.back}</HButton><HButton variant="primary" data-write="" disabled={recovery === null || recoveryOk !== recovery.revision || busy} onClick={recover}>{W.label.finish}</HButton></>;
   else actions = <>{done?.kind === 'made' && folder !== undefined ? <HButton onClick={() => { onClose(); ui.openProject({ folderId: folder.id }); }}>{W.label.installIt}</HButton> : null}<HButton variant="primary" onClick={onClose}>{W.label.close}</HButton></>;
 
-  const refusal = call.refusal === null ? null : (
+  const refusal = call.refusal === null ? (gone && step === 'folder' ? <RefusalNote refusal={goneRefusal()} focusId={0}>{null}</RefusalNote> : null) : (
     <RefusalNote refusal={call.refusal} focusId={call.refusalId}>
       {lastPlan !== null && step !== 'folder' && step !== 'done' ? <HButton onClick={lastPlan}>{W.label.planAgain}</HButton> : null}
     </RefusalNote>

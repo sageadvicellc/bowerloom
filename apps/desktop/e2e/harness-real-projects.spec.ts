@@ -384,13 +384,18 @@ test('two folders outside home with one name are never taken for each other: ano
 });
 
 /** Makes one engine call of main fail (a refusal on the page's side), or answer late, from now on. */
-async function breakCall(channel: string, how: 'throw' | 'keep'): Promise<void> {
+async function breakCall(channel: string, how: 'throw' | 'keep' | 'count' | 'refuse'): Promise<void> {
   await h.app.evaluate(({ ipcMain }, [name, mode]) => {
     const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, (...a: unknown[]) => Promise<unknown>> })._invokeHandlers;
     const original = handlers.get(name as string)!;
     (globalThis as unknown as Record<string, unknown>)[`__orig_${name}`] ??= original;
     const kept = (globalThis as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[`__orig_${name}`]!;
-    handlers.set(name as string, mode === 'throw' ? async () => { throw new Error('FAILED'); } : kept);
+    const g = globalThis as unknown as { __calls: Record<string, number> };
+    g.__calls ??= {};
+    g.__calls[name as string] = 0;
+    handlers.set(name as string, mode === 'throw' ? async () => { throw new Error('FAILED'); }
+      : mode === 'refuse' ? async () => ({ ok: false, refusal: { code: 'PORTABLE_PATH_OCCUPIED', message: 'A folder stands where a file should go.', paths: [] } })
+      : mode === 'count' ? async (...a: unknown[]) => { g.__calls[name as string]! += 1; return kept(...a); } : kept);
   }, [channel, how]);
 }
 /** Installs a folder through its row, for the tests that need an installed row. */
@@ -462,4 +467,54 @@ test('Assign harness, from this folder: a folder that gained a harness since the
   await expect(s.getByRole('button', { name: 'Next', exact: true })).toBeDisabled();
   expect(filesOf(a), 'nothing is written').toEqual(before);
   expect(filesOf(b), 'the other folder is not touched').toEqual(beforeB);
+});
+
+const callsOf = (channel: string): Promise<number> => h.app.evaluate((_e, name) => (globalThis as unknown as { __calls: Record<string, number> }).__calls[name] ?? 0, channel);
+
+test('a sheet that closes triggers one status pass, not two, and the rows never blank to "Checking" twice', async () => {
+  const p = page();
+  await installRow(teamFolder(home), 'team');
+  await breakCall(ENGINE_CHANNELS.planProjection, 'count');
+  await p.getByRole('button', { name: 'From a folder', exact: true }).click();
+  await p.getByRole('dialog', { name: 'New harness from a folder' }).getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(row('team')).toContainText('Claude Code installed');
+  await p.waitForTimeout(800);
+  expect(await callsOf(ENGINE_CHANNELS.planProjection), 'one installed folder, one plan').toBe(1);
+});
+
+test('a check main refuses keeps main\'s own plain words as the reason, and a Review button', async () => {
+  await installRow(teamFolder(home), 'team');
+  await breakCall(ENGINE_CHANNELS.planProjection, 'refuse');
+  await away();
+  await expect(row('team')).toContainText('A folder stands where a file should go.');
+  await expect(row('team')).not.toContainText('Could not check this install');
+  await expect(row('team').getByRole('button', { name: 'Review harness in team', exact: true })).toBeVisible();
+});
+
+test('a folder named with a hidden character is one row for the project and its folder, and Install opens its sheet', async () => {
+  const p = page(), dir = teamFolder(home, 'wan\u200Bted');
+  mkdirSync(join(dir, '.claude', 'agents'), { recursive: true });
+  writeFileSync(join(dir, '.claude', 'agents', 'helper.md'), '---\nname: Helper\ndescription: Helps with the work.\n---\nHelp.\n');
+  await p.evaluate(() => { location.hash = '#app'; });
+  await p.getByRole('button', { name: 'Find my files', exact: true }).click();
+  await expect(p.getByRole('heading', { level: 1, name: 'Nothing found yet' })).toBeVisible();
+  // The folder itself is picked as a place (the reader does not walk into a folder with such a name), so its path reaches the window cleaned.
+  await h.pick(dir);
+  await p.getByRole('button', { name: 'Add a folder', exact: true }).click();
+  await expect(p.getByRole('heading', { level: 1, name: /^Found \d+ places?$/ })).toBeVisible();
+  await p.getByRole('button', { name: 'Looks right', exact: true }).click();
+  await p.getByRole('button', { name: 'Yes, read them', exact: true }).click();
+  await expect(p.getByRole('heading', { level: 1, name: /^Read \d+ sources?\. Make a harness from each\.$/ })).toBeVisible({ timeout: 20_000 });
+  await p.getByRole('button', { name: 'Make a harness from this' }).first().click();
+  await p.locator('[data-nav-key="projects"]').click();
+  await expect(p.getByRole('heading', { level: 1, name: 'Projects', exact: true })).toBeVisible();
+  await expect(p.locator('.hxp-row')).toHaveCount(1);
+  const r = p.locator('.hxp-row').first();
+  await expect(r).toContainText('Has a harness');
+  await r.getByRole('button', { name: /^Install harness in/ }).click();
+  await idle();
+  const s = p.getByRole('dialog', { name: 'Install a folder\'s harness' });
+  await expect(s.locator('.hxi-card').first()).toHaveAttribute('aria-pressed', 'true');
+  await s.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(p.locator('.hxp-row'), 'the folder is the same row, not a second one').toHaveCount(1);
 });

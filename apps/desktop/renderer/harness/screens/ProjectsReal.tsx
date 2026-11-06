@@ -9,8 +9,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { HARNESS_FILE } from '../../../shared/harness/files.js';
-import { checkStatus, planInput, projectRows, sameFolder } from '../../../shared/harness/real-projects.js';
-import type { PlanStatus, RealRow } from '../../../shared/harness/real-projects.js';
+import { checkStatus, planInput, projectRows } from '../../../shared/harness/real-projects.js';
+import type { Check, RealRow } from '../../../shared/harness/real-projects.js';
 import { chipWords, stateTone, stateWords } from '../../../shared/harness/status.js';
 import type { FolderInfo } from '../../../shared/engine/types.js';
 import { DetailsHead, Screen } from '../Screen.js';
@@ -36,7 +36,7 @@ const BUTTON: Readonly<Record<NonNullable<RealRow['action']>, string>> = Object.
 const buttonName = (row: RealRow): string | undefined => (row.action === null || row.action === 'assign' ? undefined : actionName(BUTTON[row.action], 'harness', row.name));
 
 /** The reason a row needs a look, in words: why the harness does not load, which run stopped, or that its check could not be done. */
-const reasonOf = (row: RealRow): string | null => row.problem ?? (row.stopped === 'install' ? ENGINE_WORDS.hint.stopped : row.stopped === 'make' ? ENGINE_WORDS.hint.stoppedChange : row.checkFailed ? FLOW.hint.checkFailed : null);
+const reasonOf = (row: RealRow): string | null => row.problem ?? (row.stopped === 'install' ? ENGINE_WORDS.hint.stopped : row.stopped === 'make' ? ENGINE_WORDS.hint.stoppedChange : row.checkFailed ? row.checkReason ?? FLOW.hint.checkFailed : null);
 
 /** The dots of a row: one for each engine, or "Checking" / "Not checked" while nothing is known, and the reason when the row needs a look. */
 function RowState({ row }: { row: RealRow }): ReactElement | null {
@@ -135,18 +135,24 @@ function AssignSheet({ row, onClose, onFolder, onFile }: { row: RealRow | null; 
 export function RealProjects({ id }: { id: string | null }): ReactElement {
   const state = useHarnessState(), engine = useEngine(), ui = useUi();
   const [folders, setFolders] = useState<readonly FolderInfo[]>([]);
-  const [plans, setPlans] = useState<ReadonlyMap<string, PlanStatus>>(() => new Map());
+  const [plans, setPlans] = useState<ReadonlyMap<string, Check>>(() => new Map());
+  // True from a refused read of the folder list until a read succeeds: what the rows hold may be old, so they claim nothing.
+  const [stale, setStale] = useState(false);
   const [assigning, setAssigning] = useState<RealRow | null>(null);
   const list = useCall(), choosing = useCall();
   const sheetOpen = ui.adopt.open || ui.projectSheet.open || ui.saveSheet.open || ui.exportSheet.open || ui.importSheet.open;
   const sheetRef = useRef(sheetOpen);
   sheetRef.current = sheetOpen;
   // The folders main knows, read when the screen opens and when a sheet closes (a sheet may have written or removed an install).
-  useEffect(() => { if (engine !== null && !sheetOpen) void list.plan(ENGINE_WORDS.label.planning, () => foldersCall(engine), setFolders); }, [engine, sheetOpen, list.plan]);
-  // The status of each installed folder, from one read-only plan, set as each answer comes. A plan that fails or takes too long is a "Review": its sheet shows what it can.
-  // None starts while a sheet is open, so a status plan never replaces the plan the person is reading.
   useEffect(() => {
-    if (engine === null || sheetRef.current) return;
+    if (engine !== null && !sheetOpen) void list.plan(ENGINE_WORDS.label.planning, () => foldersCall(engine), got => { setFolders(got); setStale(false); });
+  }, [engine, sheetOpen, list.plan]);
+  useEffect(() => { if (list.refusalId > 0) setStale(true); }, [list.refusalId]);
+  // The status of each installed folder, from one read-only plan, set as each answer comes. A plan that fails or takes too long is a "Review": its sheet shows what it can.
+  // None starts while a sheet is open, so a status plan never replaces the plan the person is reading. The checks run once for each read of the list that ends (in new folders or in a
+  // refusal), not for each sheet that closes.
+  useEffect(() => {
+    if (engine === null || sheetRef.current || list.refusal !== null) return;
     let stop = false;
     // Statuses from before the folders were read again may be stale (a sheet may have just written), so each row says "Checking" until its new plan answers.
     setPlans(new Map());
@@ -155,18 +161,16 @@ export function RealProjects({ id }: { id: string | null }): ReactElement {
         const input = planInput(f);
         if (!f.projected || input === null || f.problem !== null || f.unfinished.projection || f.unfinished.adoption) continue;
         if (stop || sheetRef.current) return;
-        const status = await checkStatus(() => engine.planProjection(f.id, input));
+        const check = await checkStatus(() => engine.planProjection(f.id, input));
         if (stop) return;
-        setPlans(current => new Map(current).set(f.id, status));
+        setPlans(current => new Map(current).set(f.id, check));
       }
     })();
     return () => { stop = true; };
-  }, [engine, folders, sheetOpen]);
+  }, [engine, folders, list.refusalId]);
   // Leaving the screen drops a call still in flight, so a chooser that closes later does not move a person who has gone elsewhere.
   useEffect(() => () => { list.clear(); choosing.clear(); }, [list.clear, choosing.clear]);
 
-  // While the list could not be read again, what it holds may be old: no row claims a state.
-  const stale = list.refusal !== null;
   const rows = useMemo(() => projectRows(state, folders, plans, stale), [state, folders, plans, stale]);
   const selected = rows.find(r => r.id === id) ?? (id === null ? rows[0] : undefined);
 
@@ -177,8 +181,8 @@ export function RealProjects({ id }: { id: string | null }): ReactElement {
     // The window holds no path, so main's own chooser opens. Main refuses another folder before it registers it. A closed chooser is no answer.
     void choosing.plan(ENGINE_WORDS.label.chooseFolder, () => chooseWanted(engine, row.path, () => ui.showToast(OVERVIEW.hint.wrongFolder)), got => {
       if (got === null) return;
-      if (!sameFolder(row.path, got.info.label)) { ui.showToast(OVERVIEW.hint.wrongFolder); return; }
-      setFolders(got.list);
+      // Main already took only the folder shown (it was sent the label), so the window does not compare the two forms of a name again.
+      setFolders(got.list); setStale(false);
       then(got.info.id);
     });
   };
@@ -202,7 +206,7 @@ export function RealProjects({ id }: { id: string | null }): ReactElement {
       // The row the folder now belongs to: a project's row when the folder is that project, else a row of its own.
       const hit = projectRows(state, got.list, plans, false).find(r => r.folderId === got.info.id);
       const listed = folders.some(f => f.id === got.info.id) || (hit !== undefined && state.projects.some(p => p.id === hit.id));
-      setFolders(got.list);
+      setFolders(got.list); setStale(false);
       ui.showToast(listed ? FLOW.hint.alreadyListed : addedFolderWords(got.info.name));
       go({ name: 'projects', id: hit?.id ?? got.info.id });
     });
@@ -226,7 +230,7 @@ export function RealProjects({ id }: { id: string | null }): ReactElement {
       </>}
       details={selected === undefined ? undefined : <RealDetails row={selected} onAct={() => act(selected)} />}>
       <p className="kit-hint hx-hint">{projectsHint(rows.length)}</p>
-      {list.refusal === null ? null : <p className="kit-hint hx-hint" data-list-stale="">{FLOW.hint.listStale}</p>}
+      {!stale ? null : <p className="kit-hint hx-hint" data-list-stale="">{FLOW.hint.listStale}</p>}
       {list.refusal === null ? null : <RefusalNote refusal={list.refusal} focusId={list.refusalId}>{null}</RefusalNote>}
       {choosing.refusal === null ? null : <RefusalNote refusal={choosing.refusal} focusId={choosing.refusalId}>{null}</RefusalNote>}
       <ul className="hxp-rows" aria-label={FLOW.label.projectRows} aria-busy={choosing.busy !== null}>

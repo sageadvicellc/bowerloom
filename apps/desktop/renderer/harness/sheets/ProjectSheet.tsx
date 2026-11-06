@@ -32,6 +32,7 @@ import type { AfterApplyCheckProps } from './after-apply-check.js';
 import { Busy, FolderStep, RefusalNote, ResultStep, folderLine } from './engine-parts.js';
 import { ApproveLines, DriftReport, MergeReview, PlanReview, RecoveryReview, RemovalReview } from './project-review.js';
 import { chooseFolderCall, foldersCall, useCall } from './use-call.js';
+import { goneRefusal, pickRequested } from './picked-folder.js';
 import { useHeldFocus } from './use-held-focus.js';
 
 const W = ENGINE_WORDS;
@@ -58,6 +59,8 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
   const engine = useEngine(), call = useCall();
   const [folders, setFolders] = useState<readonly FolderInfo[]>([]);
   const [picked, setPicked] = useState<string | null>(null);
+  /** True when the folder the sheet was opened for is no longer one main knows. */
+  const [gone, setGone] = useState(false);
   const [mode, setMode] = useState<EngineSheetMode>(openedMode);
   const [choices, setChoices] = useState<RecoveryChoices>(keepOnly(openedKeep));
   const [step, setStep] = useState<Step>('folder');
@@ -86,14 +89,14 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
   const resetPlans = (): void => { setAnswer(null); setDriftOf(null); setApproved(null); setRemoval(null); setRecovery(null); setMerge(null); setMerged(false); setTicked([]); setSent([]); setDone(null); setLastPlan(null); call.clear(); };
   useEffect(() => {
     if (!open) return;
-    setToReview(false); setStep('folder'); setMode(openedMode); setChoices(keepOnly(openedKeep)); setReconcile('accept-agents'); setWriteClaudeMd(false); setFolders([]); setPicked(null); resetPlans();
+    setToReview(false); setGone(false); setStep('folder'); setMode(openedMode); setChoices(keepOnly(openedKeep)); setReconcile('accept-agents'); setWriteClaudeMd(false); setFolders([]); setPicked(null); resetPlans();
     if (engine === null) return;
     void call.plan(W.label.planning, () => foldersCall(engine), list => {
       setFolders(list);
-      const usable = list.filter(f => !folderLine(f, 'install').off);
-      // A folder that was asked for stays picked, even when it cannot be used: the sheet then says why in its own words. It is never swapped for another folder.
-      const id = folderId !== null ? (list.some(f => f.id === folderId) ? folderId : null) : usable[0]?.id ?? null;
-      setPicked(id);
+      // A folder that was asked for stays picked, even when it cannot be used: the sheet then says why in its own words. It is never swapped for another folder, and one that
+      // main no longer lists is said in words.
+      const got = pickRequested(list, folderId, f => !folderLine(f, 'install').off), id = got.id;
+      setPicked(id); setGone(got.gone);
       setEngines(installable(list.find(f => f.id === id)));
       // Opened for one folder's removal or recovery (from Done, or from "Keep my versions"): the plan shows at once.
       if (id !== null && folderId === id && openedMode !== 'install' && !folderLine(list.find(f => f.id === id)!, 'install').off) { setStep('review'); planOther(id, openedMode, keepOnly(openedKeep)); }
@@ -234,7 +237,7 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
     actions = <><HButton disabled={held} onClick={() => { back('folder'); setMode('install'); }}>{W.label.back}</HButton><HButton variant="primary" data-write="" disabled={busy || rev === undefined || approved !== rev || empty} onClick={write}>{mode === 'remove' ? (empty ? W.label.nothingToChange : removeFilesWords(removal?.changes.length ?? 0)) : W.label.finish}</HButton></>;
   }
 
-  const refusal = call.refusal === null ? null : (
+  const refusal = call.refusal === null ? (gone && step === 'folder' ? <RefusalNote refusal={goneRefusal()} focusId={0}>{null}</RefusalNote> : null) : (
     <RefusalNote refusal={call.refusal} focusId={call.refusalId} onMode={folder === undefined ? undefined : settleMode}>
       {lastPlan !== null && step === 'review' ? <HButton onClick={lastPlan}>{W.label.planAgain}</HButton> : null}
       {folder !== undefined && call.refusal.code === 'PORTABLE_RECOVERY_REQUIRED' ? <HButton onClick={() => switchTo('recover')}>{W.label.planRecovery}</HButton> : null}

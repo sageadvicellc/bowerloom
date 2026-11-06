@@ -2,7 +2,7 @@
 // These tests hold the rules apart from the screen: which rows exist, what each row says, which button it gets, and what the sheet it opens is told.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { checkStatus, planInput, planStatus, projectRows, sameFolder } from '../shared/harness/real-projects.js';
+import { checkOf, checkStatus, planInput, planStatus, projectRows, sameFolder } from '../shared/harness/real-projects.js';
 import type { PlanStatus } from '../shared/harness/real-projects.js';
 import type { Answer, FolderInfo, ProjectAnswer, ProjectView } from '../shared/engine/types.js';
 import type { HarnessPlace, Project } from '../shared/harness/types.js';
@@ -52,12 +52,13 @@ test('an installed folder with no engine to plan for reads Not checked, never in
 });
 
 test('checkStatus: an answer is its status; a plan that never answers, throws (at once or later) or answers badly is a failed check, never a thrown error', async () => {
-  assert.equal(await checkStatus(async () => planOf(view({ noop: true })), 1000), 'current');
-  assert.equal(await checkStatus(() => new Promise<never>(() => undefined), 20), 'failed');
-  assert.equal(await checkStatus(async () => { throw new Error('FAILED'); }, 1000), 'failed');
-  assert.equal(await checkStatus((() => { throw new Error('at once'); }) as () => Promise<Answer<ProjectAnswer>>, 1000), 'failed');
-  assert.equal(await checkStatus(async () => ({ ok: true, value: undefined }) as unknown as Answer<ProjectAnswer>, 1000), 'failed');
-  assert.equal(await checkStatus(async () => undefined as unknown as Answer<ProjectAnswer>, 1000), 'failed');
+  assert.deepEqual(await checkStatus(async () => planOf(view({ noop: true })), 1000), { status: 'current', reason: null });
+  const failed = { status: 'failed', reason: null };
+  assert.deepEqual(await checkStatus(() => new Promise<never>(() => undefined), 20), failed);
+  assert.deepEqual(await checkStatus(async () => { throw new Error('FAILED'); }, 1000), failed);
+  assert.deepEqual(await checkStatus((() => { throw new Error('at once'); }) as () => Promise<Answer<ProjectAnswer>>, 1000), failed);
+  assert.deepEqual(await checkStatus(async () => ({ ok: true, value: undefined }) as unknown as Answer<ProjectAnswer>, 1000), failed);
+  assert.deepEqual(await checkStatus(async () => undefined as unknown as Answer<ProjectAnswer>, 1000), failed);
 });
 
 test('a refusal other than changed files is a failed check; changed files are a review', () => {
@@ -173,4 +174,28 @@ test('a folder that holds a harness is found by the read or by main, never twice
   assert.deepEqual(projectRows({ projects: [] }, [], none), []);
   const rows = projectRows({ projects: [project('~/Projects/alpha')], harnessPlaces: [place('~/Projects/alpha')] }, [folder()], none);
   assert.equal(rows.length, 1);
+});
+
+test('a refusal of the check keeps its own plain words as the reason, and a timeout or a throw has none (the row then uses the generic words)', () => {
+  const conflict = checkOf({ ok: false, refusal: { code: 'PORTABLE_PATH_OCCUPIED', message: 'A folder stands where a file should go.', paths: [] } });
+  assert.deepEqual(conflict, { status: 'failed', reason: 'A folder stands where a file should go.' });
+  assert.deepEqual(checkOf({ ok: false, refusal: { code: 'PORTABLE_DRIFT', message: 'A file changed.', paths: [] } }), { status: 'review', reason: null });
+  const installed = folder({ projected: true, installedEngines: ['claude-code', 'codex'] });
+  const [row] = projectRows({ projects: [project('~/Projects/alpha')] }, [installed], new Map([['folder-1', conflict]]));
+  assert.deepEqual([row?.checkFailed, row?.checkReason, row?.action], [true, 'A folder stands where a file should go.', 'review']);
+  const [generic] = projectRows({ projects: [project('~/Projects/alpha')] }, [installed], new Map([['folder-1', { status: 'failed' as const, reason: null }]]));
+  assert.deepEqual([generic?.checkFailed, generic?.checkReason], [true, null]);
+});
+
+test('a folder name with a hidden character is one folder for the window and for main: its row pairs with it and is not added twice', () => {
+  // The window's path was cleaned by the reader (the character became a space); main's label writes the character out as a mark.
+  assert.equal(sameFolder('~/Projects/wan ted', '~/Projects/wan[U+200B]ted'), true);
+  assert.equal(sameFolder('~/Projects/wan ted', '~/Projects/wanted'), false);
+  assert.equal(sameFolder('/Volumes/d/wan ted', '/Volumes/d/wan[U+202E]ted'), true);
+  assert.equal(sameFolder('…/wan ted', '/Volumes/d/wan[U+200B]ted'), true);
+  const f = folder({ label: '~/Projects/wan[U+200B]ted', name: 'wan[U+200B]ted' });
+  const rows = projectRows({ projects: [project('~/Projects/wan ted', 'p1', 'wan ted')], harnessPlaces: [place('~/Projects/wan ted')] }, [f], none);
+  assert.deepEqual(rows.map(r => [r.id, r.folderId]), [['p1', 'folder-1']]);
+  const cut = projectRows({ projects: [project('…/wan ted', 'p1', 'wan ted')] }, [folder({ id: 'f9', label: '/Volumes/d/wan[U+200B]ted', name: 'wan[U+200B]ted' })], none);
+  assert.deepEqual(cut.map(r => [r.id, r.folderId]), [['p1', 'f9']]);
 });
