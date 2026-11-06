@@ -26,7 +26,11 @@ export interface StartState { readonly open: boolean; readonly harnessId: string
 /** The two sheets that reach the packages. `mode` says what the install sheet plans: an install, a removal, or the recovery of a stopped run. */
 export type EngineSheetMode = 'install' | 'remove' | 'recover';
 export interface AdoptState { readonly open: boolean; readonly folderId: string | null }
-export interface ProjectSheetState { readonly open: boolean; readonly folderId: string | null; readonly mode: EngineSheetMode; readonly keep: readonly string[] }
+export interface ProjectSheetState {
+  readonly open: boolean; readonly folderId: string | null; readonly mode: EngineSheetMode; readonly keep: readonly string[];
+  /** The step an install opens on: the folder step, or the review of the plan at once (Projects: Update and Review). */
+  readonly start: 'folder' | 'review';
+}
 /** The save sheet: one folder's own harness, edited as a draft until Save, with its save points (option C). */
 export interface SaveSheetState {
   readonly open: boolean; readonly folderId: string | null; /** True when the sheet starts the guided tour as the edit opens. */ readonly tour: boolean;
@@ -57,7 +61,7 @@ export interface Ui {
   closeAdopt(): void;
   /** The install sheet of a folder's own harness, with its removal and recovery. */
   readonly projectSheet: ProjectSheetState;
-  openProject(request?: { folderId?: string | null; mode?: EngineSheetMode; keep?: readonly string[] }): void;
+  openProject(request?: { folderId?: string | null; mode?: EngineSheetMode; keep?: readonly string[]; start?: 'folder' | 'review' }): void;
   closeProject(): void;
   /** The save sheet of a folder's own harness. It opens in either launch: on the person's own folders it plans read-only and writes only after approval. */
   readonly saveSheet: SaveSheetState;
@@ -100,7 +104,7 @@ export function UiProvider({ children }: { children?: ReactNode }): ReactElement
   const [start, setStart] = useState<StartState>({ open: false, harnessId: null, projectId: null });
   const [picked, setPicked] = useState<string | null>(null);
   const [adopt, setAdopt] = useState<AdoptState>({ open: false, folderId: null });
-  const [projectSheet, setProjectSheet] = useState<ProjectSheetState>({ open: false, folderId: null, mode: 'install', keep: [] });
+  const [projectSheet, setProjectSheet] = useState<ProjectSheetState>({ open: false, folderId: null, mode: 'install', keep: [], start: 'folder' });
   const [saveSheet, setSaveSheet] = useState<SaveSheetState>({ open: false, folderId: null, tour: false, start: 'folder', restore: null });
   const [exportSheet, setExportSheet] = useState<ExportSheetState>({ open: false, folderId: null, unsaved: false });
   const [importSheet, setImportSheet] = useState<ImportSheetState>({ open: false });
@@ -149,7 +153,7 @@ export function UiProvider({ children }: { children?: ReactNode }): ReactElement
     openAdopt: (request = {}) => setAdopt({ open: true, folderId: request.folderId ?? null }),
     closeAdopt: () => setAdopt(current => ({ ...current, open: false })),
     projectSheet,
-    openProject: (request = {}) => setProjectSheet({ open: true, folderId: request.folderId ?? null, mode: request.mode ?? 'install', keep: request.keep ?? [] }),
+    openProject: (request = {}) => setProjectSheet({ open: true, folderId: request.folderId ?? null, mode: request.mode ?? 'install', keep: request.keep ?? [], start: request.start ?? 'folder' }),
     closeProject: () => setProjectSheet(current => ({ ...current, open: false })),
     saveSheet,
     openSave: (request = {}) => setSaveSheet({ open: true, folderId: request.folderId ?? null, tour: request.tour ?? false, start: request.start ?? 'folder', restore: request.restore ?? null }),

@@ -46,9 +46,14 @@ const BODY_NAME: Readonly<Record<Step, string>> = { folder: W.label.bodyFolder, 
 /** The interfaces a folder's install starts with: the ones its harness lists, without the preview ones unless the app may install to them. */
 const installable = (f: FolderInfo | undefined): readonly EngineId[] => (f === undefined ? [] : f.engines.filter(e => f.previewEngines || !isPreviewEngine(e)));
 
-export interface ProjectSheetProps { open: boolean; folderId: string | null; mode: EngineSheetMode; keep: readonly string[]; onClose(): void }
+export interface ProjectSheetProps {
+  open: boolean; folderId: string | null; mode: EngineSheetMode; keep: readonly string[];
+  /** `review`: an install for the folder opened with goes to its plan at once, for the engines its harness lists (Projects: Update and Review). */
+  start?: 'folder' | 'review';
+  onClose(): void;
+}
 
-export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKeep, onClose }: ProjectSheetProps): ReactElement | null {
+export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKeep, start = 'folder', onClose }: ProjectSheetProps): ReactElement | null {
   const engine = useEngine(), call = useCall();
   const [folders, setFolders] = useState<readonly FolderInfo[]>([]);
   const [picked, setPicked] = useState<string | null>(null);
@@ -71,6 +76,8 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
   const [merged, setMerged] = useState(false);
   const [done, setDone] = useState<Done | null>(null);
   const [lastPlan, setLastPlan] = useState<(() => void) | null>(null);
+  /** True from the moment the folders are read until the plan of an install that opens on its review has been asked for. */
+  const [toReview, setToReview] = useState(false);
   const intro = useRef<HTMLParagraphElement>(null), body = useRef<HTMLDivElement>(null), first = useRef(true);
   const held = call.writing;
 
@@ -78,7 +85,7 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
   const resetPlans = (): void => { setAnswer(null); setDriftOf(null); setApproved(null); setRemoval(null); setRecovery(null); setMerge(null); setMerged(false); setTicked([]); setSent([]); setDone(null); setLastPlan(null); call.clear(); };
   useEffect(() => {
     if (!open) return;
-    setStep('folder'); setMode(openedMode); setChoices(keepOnly(openedKeep)); setReconcile('accept-agents'); setWriteClaudeMd(false); setFolders([]); setPicked(null); resetPlans();
+    setToReview(false); setStep('folder'); setMode(openedMode); setChoices(keepOnly(openedKeep)); setReconcile('accept-agents'); setWriteClaudeMd(false); setFolders([]); setPicked(null); resetPlans();
     if (engine === null) return;
     void call.plan(W.label.planning, () => foldersCall(engine), list => {
       setFolders(list);
@@ -88,6 +95,7 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
       setEngines(installable(list.find(f => f.id === id)));
       // Opened for one folder's removal or recovery (from Done, or from "Keep my versions"): the plan shows at once.
       if (id !== null && folderId === id && openedMode !== 'install') { setStep('review'); planOther(id, openedMode, keepOnly(openedKeep)); }
+      else if (id !== null && folderId === id && start === 'review') setToReview(true);
     });
   }, [open, engine]);
   useEffect(() => {
@@ -100,6 +108,14 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
   const folder = folders.find(f => f.id === picked);
   // Merge is never sent to the install plan: it is its own plan, and the install after it accepts AGENTS.md (D4A).
   const input = (approve: readonly string[], r = reconcile, claude = writeClaudeMd): ProjectInput => ({ engines, reconcile: r === 'merge' ? 'accept-agents' : r, writeClaudeMd: claude, approve });
+
+  // An install that opens on its review plans as soon as the folder and its engines are set, with the same steps as Next on the interfaces step.
+  useEffect(() => {
+    if (!toReview || folder === undefined || held) return;
+    setToReview(false);
+    if (engines.length === 0) { setStep('interfaces'); return; }
+    resetPlans(); setStep('review'); planInstall(input([]));
+  }, [toReview, folder, engines]);
 
   function planInstall(next: ProjectInput): void {
     if (engine === null || folder === undefined) return;
