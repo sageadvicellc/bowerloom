@@ -38,12 +38,22 @@ test('every button, tag, and chip uses the one radius token, and a round shape i
   assert.deepEqual([...new Set(circles)].sort(), [...ROUND_ICONS].sort());
 });
 
+test('the viewer X is a raised push button on the frame, on the one corner token, with a 44 px target and a focus ring', () => {
+  const base = rules.find(rule => rule.selector === '.screenshot-close');
+  assert.ok(base);
+  assert.deepEqual(declared(base.body, 'border-radius'), [TOKEN]);
+  assert.match(base.body, /background: [^;]*var\(--knob\)/, 'a clay cap');
+  assert.match(base.body, /box-shadow: [^;]*0 3px 0 var\(--knob-edge\)/, 'it stands up from the frame');
+  assert.match(base.body, /min-width: 44px;[^}]*min-height: 44px/);
+  assert.ok(rules.some(rule => rule.selector === '.screenshot-close:active' && /transform: translateY\(2px\)/.test(rule.body)), 'it presses down');
+  assert.ok(rules.some(rule => rule.selector === '.screenshot-close:focus-visible' && /outline: 2px solid var\(--ui-primary\)/.test(rule.body)), 'a focus ring');
+});
+
 test('icon buttons have a transparent background and no border or shadow at rest, a hover color shift, and a focus ring', () => {
   const icon = [
     ['.theme-control.theme-toggle', '.theme-toggle:hover', '.theme-toggle:focus-visible'],
     ['.mobile-drawer-heading button, .mobile-menu-toggle', '.mobile-drawer-heading button:hover, .mobile-menu-toggle:hover', '.mobile-drawer :is(a, button):focus-visible, .mobile-menu-toggle:focus-visible'],
     ['.site-header .nav-github', '.site-header .nav-github:hover', '.site-header .nav-link:focus-visible, .site-header .nav-github:focus-visible, .site-header .nav-cta:focus-visible'],
-    ['.screenshot-close', '.screenshot-close:hover', '.screenshot-close:focus-visible'],
   ];
   for (const [rest, hover, focus] of icon) {
     const base = rules.find(rule => rule.selector === rest);

@@ -586,7 +586,7 @@ dom('icon buttons have no box at rest and a 44 px target, and every button, tag,
   await phone.page.waitForFunction(() => document.querySelector('.screenshot-dialog[open]'));
   await phone.page.waitForFunction(() => getComputedStyle(document.querySelector('.screenshot-dialog[open]')).opacity === '1');
   const closeFacts = await iconFacts('.screenshot-dialog[open] .screenshot-close');
-  assert.equal(closeFacts.bg, 'rgba(0, 0, 0, 0)'); assert.equal(closeFacts.border, '0px'); assert.ok(closeFacts.w >= 44 && closeFacts.h >= 44);
+  assert.notEqual(closeFacts.bg, 'rgba(0, 0, 0, 0)', 'the viewer X is a solid push button on the frame'); assert.ok(closeFacts.w >= 44 && closeFacts.h >= 44);
   await phone.context.close();
   const wide = await open({ viewport: { width: 1280, height: 800 } });
   await settleReveals(wide.page);
@@ -847,4 +847,51 @@ dom('reveal: print shows everything', async () => {
   const facts = await page.evaluate(() => [...document.querySelectorAll('[data-reveal]')].map(el => { const s = getComputedStyle(el); return `${s.opacity}|${s.transform}`; }));
   assert.ok(facts.every(fact => fact === '1|none'));
   await context.close();
+});
+
+// The caption plate and the X are placed by numbers in each frame's CSS, so this checks where they really land: in each theme, at a wide and a phone width,
+// for the longest caption, and the device fits the window without a scroll. The plate stays inside the dialog and above the picture with no clipped line. The X sits in the top right corner area and takes
+// the click at its centre. The part colours resolve, so an unset variable cannot leave a clear button or plate.
+dom('the caption plate sits on the top rail and the X on the corner plate, in every theme and width', async () => {
+  const { screenshotSlots } = await import('../src/screenshots.ts');
+  const longest = [...screenshotSlots].sort((a, b) => b.caption.length - a.caption.length)[0];
+  for (const [label, colorScheme, saved] of [['light', 'light', null], ['system dark', 'dark', null], ['saved dark', 'light', 'dark']]) {
+    for (const viewport of [{ width: 1600, height: 1000 }, { width: 1280, height: 800 }, { width: 740, height: 360 }, { width: 390, height: 844 }]) {
+      const { page, context } = await open({ viewport, colorScheme });
+      if (saved) { await page.evaluate(theme => localStorage.setItem('bowerloom.theme', theme), saved); await page.reload({ waitUntil: 'networkidle' }); }
+      await page.locator(`[data-screenshot-slot="${longest.id}"] .screenshot-enlarge`).click();
+      await page.waitForFunction(() => { const d = document.querySelector('.screenshot-dialog[open]'); return d && getComputedStyle(d).opacity === '1'; });
+      const where = `${label} at ${viewport.width}`;
+      const facts = await page.evaluate(() => {
+        const dialog = document.querySelector('.screenshot-dialog[open]');
+        const box = el => el.getBoundingClientRect();
+        const caption = dialog.querySelector('.screenshot-dialog-caption'), close = dialog.querySelector('.screenshot-close');
+        const style = getComputedStyle(dialog);
+        const c = box(close);
+        const hit = document.elementFromPoint(c.left + c.width / 2, c.top + c.height / 2);
+        return {
+          dialog: box(dialog), device: box(dialog.querySelector('.screenshot-device')), picture: box(dialog.querySelector('.screenshot-scroll')), caption: box(caption), close: c,
+          hitsClose: close.contains(hit), scrolls: dialog.scrollHeight > dialog.clientHeight + 1, theme: document.documentElement.dataset.theme,
+          s: Number(style.getPropertyValue('--s')), cutT: Number(style.getPropertyValue('--cut-t')), cutR: Number(style.getPropertyValue('--cut-r')),
+          vars: ['--rail-y', '--rail-h', '--close-x', '--close-y', '--lcd', '--lcd-ink', '--knob'].map(name => [name, style.getPropertyValue(name).trim()]),
+          closeBg: getComputedStyle(close).backgroundColor, captionBg: getComputedStyle(caption).backgroundColor,
+        };
+      });
+      for (const [name, value] of facts.vars) assert.ok(value, `${where}: ${name} is set`);
+      assert.notEqual(facts.closeBg, 'rgba(0, 0, 0, 0)', `${where}: the X is a solid button`);
+      assert.notEqual(facts.captionBg, 'rgba(0, 0, 0, 0)', `${where}: the plate is a solid readout`);
+      assert.equal(facts.theme, label === "light" ? "light" : "dark", `${where}: the theme applied`);
+      assert.ok(!facts.scrolls, `${where}: the device fits the window, so the dialog does not scroll`);
+      assert.ok(facts.caption.top >= facts.dialog.top, `${where}: the plate stays inside the dialog`);
+      assert.ok(facts.caption.bottom <= facts.picture.top + 1, `${where}: the plate never covers the picture`);
+      assert.ok(facts.caption.left >= facts.device.left && facts.caption.right <= facts.device.right, `${where}: the plate stays on the frame`);
+      const centre = { x: facts.close.left + facts.close.width / 2, y: facts.close.top + facts.close.height / 2 };
+      assert.ok(centre.x >= facts.device.right - facts.cutR * facts.s && centre.x <= facts.device.right && centre.y >= facts.device.top && centre.y <= facts.device.top + facts.cutT * facts.s, `${where}: the X sits on the top right corner plate ${JSON.stringify(centre)}`);
+      const overlap = facts.caption.left < facts.close.right && facts.close.left < facts.caption.right && facts.caption.top < facts.close.bottom && facts.close.top < facts.caption.bottom;
+      assert.ok(!overlap, `${where}: the plate and the X do not overlap`);
+      assert.ok(facts.close.width >= 43.5 && facts.close.height >= 43.5, `${where}: a 44 px target ${facts.close.width}x${facts.close.height}`);
+      assert.ok(facts.hitsClose, `${where}: nothing covers the X`);
+      await context.close();
+    }
+  }
 });
