@@ -1,6 +1,6 @@
 # Alpha identity integration
 
-The wordmark uses ordinary letters throughout. The ink and cream SVG files are the exact round-07 plain exports from the brand team. They reuse the existing ordinary o in place of the superseded yarn glyph. These raster-backed SVGs retain the 2044:374 aspect ratio. They are not path-based vector masters. The S4-G3 bot icon remains part of the identity.
+The wordmark uses ordinary letters throughout. The ink and cream SVG files are the exact round-07 plain exports from the brand team. They reuse the existing ordinary o in place of the superseded yarn glyph. These raster-backed SVGs retain the 2044:374 aspect ratio. They are not path-based vector masters. The site and docs headers show transparent PNG renders of them, because Safari can paint a masked SVG as a solid block before its embedded picture decodes. The SVGs stay the approved masters. The S4-G3 bot icon remains part of the identity.
 
 The S4-G3 icons are the exact round-05 approved light and dark exports. Dark mode uses the version with light foliage ears. The icon also supplies the favicon. Earlier assets remain preserved.
 

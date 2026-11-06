@@ -44,6 +44,9 @@ test('wordmarks and mascot exports match exact approved bytes', () => {
   const expected = {
     'bowerloom-wordmark-plain-ink.svg': 'c31faca9b6d5efa64e901b678d7f7c5de241ebefb29abc41687dbba32c3830ea',
     'bowerloom-wordmark-plain-cream.svg': 'fb81538f88a75f359df89c65c6ddabbb43d365641fa7c609e10be974ece59e76',
+    // The header PNGs, drawn from the two SVGs above in Chromium.
+    'bowerloom-wordmark-plain-ink.png': '2cd639c5cc6f798403528aabfdbf4bff26d93bcee059f2a58128c1efc565c294',
+    'bowerloom-wordmark-plain-cream.png': '80fd76a66951295ab4b328c7c893e9fdeca7e40842760a74457fbe0e40b3d7d4',
     's4-g3-icon.svg': '0285c6f2b60f97bb6c2dccb00ad95a570a8e261a32e5c2d3c7cd39f26c5e6d9f',
     's4-g3-icon-dark.svg': 'e3ade54d45cc0a0f72839299411c01af15092ba5e5c94b32b26758a874ebee6f',
   };
@@ -53,6 +56,22 @@ test('wordmarks and mascot exports match exact approved bytes', () => {
     assert.ok(!file.toString().includes('/Users/'));
   }
   assert.match(publicFile('brand/rose-conservatory/s4-g3-icon-dark.svg').toString(), /<g fill="#C5D4AC"><rect x="24"/);
+});
+test('the headers show the wordmark as a transparent PNG, so no masked SVG can paint as a solid block', () => {
+  for (const tone of ['ink', 'cream']) {
+    const png = publicFile(`brand/rose-conservatory/bowerloom-wordmark-plain-${tone}.png`);
+    assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10], `${tone}: a PNG`);
+    assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [1022, 187], `${tone}: half the SVG's 2044 by 374, at the same ratio`);
+    assert.equal(png[25], 6, `${tone}: RGBA, so the space round the letters is clear`);
+  }
+  const identity = readFileSync(new URL('../src/BrandIdentity.tsx', import.meta.url), 'utf8');
+  assert.match(identity, /bowerloom-wordmark-plain-ink\.png" alt="" width="1022" height="187"/);
+  assert.match(identity, /bowerloom-wordmark-plain-cream\.png" alt="" width="1022" height="187"/);
+  assert.doesNotMatch(identity, /wordmark-plain-(?:ink|cream)\.svg/, 'no header wordmark uses the masked SVG');
+  const docsHeader = readFileSync(new URL('../../docs/src/components/Header.astro', import.meta.url), 'utf8');
+  assert.match(docsHeader, /\/docs\/brand\/bowerloom-wordmark-plain-ink\.png/);
+  assert.match(docsHeader, /\/docs\/brand\/bowerloom-wordmark-plain-cream\.png/);
+  assert.doesNotMatch(docsHeader, /wordmark-plain-(?:ink|cream)\.svg/, 'the docs header does not either');
 });
 test('local font licenses ship beside all three font faces', () => {
   for (const file of ['newsreader/roman.ttf', 'newsreader/italic.ttf', 'manrope/font.ttf']) assert.ok(publicFile('fonts/' + file).length > 10000);
