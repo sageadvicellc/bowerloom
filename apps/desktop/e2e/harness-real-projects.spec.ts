@@ -491,8 +491,8 @@ test('a check main refuses keeps main\'s own plain words as the reason, and a Re
   await expect(row('team').getByRole('button', { name: 'Review harness in team', exact: true })).toBeVisible();
 });
 
-test('a folder named with a hidden character is one row for the project and its folder, and Install opens its sheet', async () => {
-  const p = page(), dir = teamFolder(home, 'wan\u200Bted');
+for (const [kind, name] of [['hidden in the middle', 'wan\u200Bted'], ['hidden at the start', '\u200Bwanted'], ['hidden at the end', 'wanted\u200B'], ['mixed scripts', 'p\u0430ypal']] as const) test(`a folder named with ${kind} characters is one row for the project and its folder, and Install opens its sheet`, async () => {
+  const p = page(), dir = teamFolder(home, name);
   mkdirSync(join(dir, '.claude', 'agents'), { recursive: true });
   writeFileSync(join(dir, '.claude', 'agents', 'helper.md'), '---\nname: Helper\ndescription: Helps with the work.\n---\nHelp.\n');
   await p.evaluate(() => { location.hash = '#app'; });
@@ -517,4 +517,22 @@ test('a folder named with a hidden character is one row for the project and its 
   await expect(s.locator('.hxi-card').first()).toHaveAttribute('aria-pressed', 'true');
   await s.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(p.locator('.hxp-row'), 'the folder is the same row, not a second one').toHaveCount(1);
+});
+
+test('status checks recover once after a refused read: the next good read brings every state back, with one pass and no stray "Checking"', async () => {
+  const p = page();
+  await installRow(teamFolder(home), 'team');
+  await breakCall(ENGINE_CHANNELS.folders, 'throw');
+  await p.getByRole('button', { name: 'From a folder', exact: true }).click();
+  await p.getByRole('dialog', { name: 'New harness from a folder' }).getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(row('team')).toContainText('Not checked');
+  await breakCall(ENGINE_CHANNELS.folders, 'keep');
+  await breakCall(ENGINE_CHANNELS.planProjection, 'count');
+  // A good pick brings the list back without opening a sheet: the old row and the new one both read their real state.
+  await add(teamFolder(home, 'other'));
+  await expect(row('team')).toContainText('Claude Code installed');
+  await expect(row('other')).toContainText('Claude Code not installed');
+  await expect(p.locator('[data-row-state="checking"]')).toHaveCount(0);
+  await p.waitForTimeout(800);
+  expect(await callsOf(ENGINE_CHANNELS.planProjection), 'one pass: one plan for the one installed folder').toBe(1);
 });

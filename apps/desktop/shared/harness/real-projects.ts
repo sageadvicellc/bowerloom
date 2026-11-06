@@ -53,22 +53,18 @@ export interface RealRow {
 const lastName = (text: string): string => text.split(/[\\/]/).filter(x => x !== '' && x !== '…').at(-1) ?? '';
 const isHomeLabel = (label: string): boolean => label === '~' || label.startsWith('~/');
 
-/**
- * A folder's label in one form that both sides share. The window's paths come from the reader, which writes a hidden character as a space; main's labels write it out as a
- * mark such as `[U+200B]`. Both become a space here, so one folder is the same text on both sides.
- */
-export function canonFolder(text: string): string {
-  return text.replace(/\[mixed scripts: [^\]]*\]/g, ' ').replace(/\[U\+[0-9A-F]{4,6}\]/g, ' ').replace(/[\p{Cc}\p{Cf}\u2028\u2029]/gu, ' ').replace(/\s+/g, ' ').trim();
-}
+/** The folder's label in the encoding the window's paths have: main sends it as `cleanLabel`. */
+const cleanOf = (f: FolderInfo): string => f.cleanLabel ?? f.label;
+/** A folder outside home shown cut down to `…/name`, from its clean label. */
+const cutOf = (clean: string): string => `…/${lastName(clean)}`;
 
 /**
- * True when a folder main knows (`label`) is the folder a row shows (`path`), both read in the same canon. A folder under home has a `~` label and must match exactly. A folder
- * outside home may be shown cut down to `…/name`, so only the last name can be compared, and a folder under home is never it.
+ * True when a clean label (`cleanLabel` of a folder main knows) is the folder a row shows (`path`). Both are in one encoding, so the text is compared exactly and never translated.
+ * A folder outside home may be shown cut down to `…/name`: it then matches the cut form of a clean label outside home, and a folder under home never matches it.
  */
-export function sameFolder(path: string, label: string): boolean {
-  const shown = canonFolder(path), known = canonFolder(label);
-  if (shown.startsWith('…')) { if (isHomeLabel(known)) return false; const want = lastName(shown); return want !== '' && lastName(known) === want; }
-  return shown === known;
+export function sameFolder(path: string, cleanLabel: string): boolean {
+  if (path.startsWith('…')) return !isHomeLabel(cleanLabel) && path === cutOf(cleanLabel);
+  return path === cleanLabel;
 }
 
 /** One check of an install: its status, and for a `failed` check the refusal's own plain words (main scrubs them), or null when it timed out or broke. */
@@ -154,19 +150,17 @@ export async function checkStatus(plan: () => Promise<Answer<ProjectAnswer>>, ms
   try { return await Promise.race([(async () => checkOf(await plan()))().catch((): Check => failed), late]); } catch { return failed; } finally { if (timer !== undefined) clearTimeout(timer); }
 }
 
-const isCut = (path: string): boolean => path.startsWith('…');
 
 /**
- * The folder main knows for each project. A project under home is the folder with the same `~` label. A project outside home is shown cut down to `…/name`, so only the
- * last name can be compared: it is paired only when exactly one folder outside home has that name and no other project is cut to the same name. Otherwise it stays unpaired,
- * and each such folder is a row of its own. (Two folders outside home with one last name cannot be told apart from the window; the chooser's own check refuses the wrong one.)
+ * The folder main knows for each project, by the clean label (one encoding on both sides, compared exactly). A project is paired only when exactly one folder matches and no other
+ * project shares its path. Otherwise it stays unpaired, and each such folder is a row of its own, never the first of several.
  */
 function pairFolders(projects: readonly Project[], folders: readonly FolderInfo[]): Map<string, FolderInfo> {
   const paired = new Map<string, FolderInfo>();
   for (const p of projects) {
-    if (!isCut(p.path)) { const f = folders.find(x => sameFolder(p.path, x.label)); if (f !== undefined) paired.set(p.id, f); continue; }
-    const same = folders.filter(f => sameFolder(p.path, f.label));
-    if (same.length === 1 && projects.filter(q => isCut(q.path) && lastName(q.path) === lastName(p.path)).length === 1) paired.set(p.id, same[0]!);
+    // Exactly one folder, and no other project with the same path: a text that two folders (or two rows) share (the clean label is lossy) pairs with none of them.
+    const same = folders.filter(f => sameFolder(p.path, cleanOf(f)));
+    if (same.length === 1 && projects.filter(q => q.path === p.path).length === 1) paired.set(p.id, same[0]!);
   }
   return paired;
 }
@@ -179,7 +173,8 @@ function pairFolders(projects: readonly Project[], folders: readonly FolderInfo[
 export function projectRows(state: { readonly projects: readonly Project[]; readonly harnessPlaces?: readonly HarnessPlace[] }, folders: readonly FolderInfo[], plans: ReadonlyMap<string, PlanStatus | Check>, stale = false): RealRow[] {
   const paired = pairFolders(state.projects, folders), used = new Set([...paired.values()].map(f => f.id));
   const rows = state.projects.map(p => {
-    const found = (state.harnessPlaces ?? []).some(h => sameFolder(p.path, h.label)) && (!isCut(p.path) || state.projects.filter(q => q.path === p.path).length === 1);
+    // The harness a read found there: matched on the same text, and only when nothing else shares it.
+    const found = (state.harnessPlaces ?? []).filter(h => h.label === p.path).length === 1 && state.projects.filter(q => q.path === p.path).length === 1;
     return rowOf(p.id, p.name, p.path, paired.get(p.id), found, plans, stale);
   });
   for (const f of folders) if (!used.has(f.id)) rows.push(rowOf(f.id, f.name, f.label, f, false, plans, stale));

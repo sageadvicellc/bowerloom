@@ -39,6 +39,12 @@ export interface FolderInfo {
   readonly id: string;
   /** The folder, written with `~` for the home folder. */
   readonly label: string;
+  /**
+   * The same folder in the encoding the window's own paths have (the reader's `cleanPath`: a hidden character becomes a space, each part is trimmed). `label` is written out for a
+   * person (a hidden character is a mark such as `[U+200B]`), so the two never compare equal when a name hides something. The window pairs a row with a folder on this one text.
+   * Main fills it; left out, `label` is already clean (the sample).
+   */
+  readonly cleanLabel?: string;
   readonly name: string;
   /** True when the folder holds `.bowerloom/harness.json`. */
   readonly hasDefinition: boolean;

@@ -613,7 +613,7 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     try { projection = pendingExists(f.portableState); } catch { projection = false; }
     try { adoption = readJournal(f.adoptState, f.dir) !== null; } catch { adoption = false; }
     adoption ||= mergeIsStopped(f) || saveIsStopped(f);
-    return { id: f.id, label: f.label, name: visible(f.scrub(basename(f.dir))), hasDefinition, ...(holdsParts === undefined ? {} : { holdsParts }), engines, previewEngines, installedEngines, problem, projected, unfinished: { projection, adoption } };
+    return { id: f.id, label: f.label, cleanLabel: cleanPath(labelOf(f.dir, homes.find(h => f.dir === h || f.dir.startsWith(`${h}/`)) ?? deps.home)), name: visible(f.scrub(basename(f.dir))), hasDefinition, ...(holdsParts === undefined ? {} : { holdsParts }), engines, previewEngines, installedEngines, problem, projected, unfinished: { projection, adoption } };
   }
 
   const adoptInput = (f: Folder, picks: AdoptChoices['picks'], acknowledged: readonly string[], everyEngine: readonly EveryEnginePart[]): AdoptionInput => ({

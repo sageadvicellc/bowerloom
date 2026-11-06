@@ -149,10 +149,10 @@ export function RealProjects({ id }: { id: string | null }): ReactElement {
   }, [engine, sheetOpen, list.plan]);
   useEffect(() => { if (list.refusalId > 0) setStale(true); }, [list.refusalId]);
   // The status of each installed folder, from one read-only plan, set as each answer comes. A plan that fails or takes too long is a "Review": its sheet shows what it can.
-  // None starts while a sheet is open, so a status plan never replaces the plan the person is reading. The checks run once for each read of the list that ends (in new folders or in a
-  // refusal), not for each sheet that closes.
+  // None starts while a sheet is open, so a status plan never replaces the plan the person is reading. The checks run once for each read of the list that ends in new folders (or when a
+  // refused list is replaced by a good one), never while the list is stale, and not for each sheet that closes.
   useEffect(() => {
-    if (engine === null || sheetRef.current || list.refusal !== null) return;
+    if (engine === null || sheetRef.current || stale) return;
     let stop = false;
     // Statuses from before the folders were read again may be stale (a sheet may have just written), so each row says "Checking" until its new plan answers.
     setPlans(new Map());
@@ -167,7 +167,7 @@ export function RealProjects({ id }: { id: string | null }): ReactElement {
       }
     })();
     return () => { stop = true; };
-  }, [engine, folders, list.refusalId]);
+  }, [engine, folders, stale]);
   // Leaving the screen drops a call still in flight, so a chooser that closes later does not move a person who has gone elsewhere.
   useEffect(() => () => { list.clear(); choosing.clear(); }, [list.clear, choosing.clear]);
 

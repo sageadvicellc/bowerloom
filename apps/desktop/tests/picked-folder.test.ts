@@ -23,3 +23,16 @@ test('a folder asked for that main no longer lists is gone: nothing is picked, a
   assert.equal(r.code, 'UNKNOWN_FOLDER');
   assert.equal(r.message, 'Bowerloom no longer knows that folder. Choose it again.');
 });
+
+// The sheets keep the "gone" note only while it is true: choosing or picking a folder takes it away. The sheets are components, so this holds the two places in their source.
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+test('both sheets clear the "gone" note when a folder is picked or chosen', () => {
+  for (const file of ['AdoptSheet.tsx', 'ProjectSheet.tsx']) {
+    const text = readFileSync(join(process.cwd(), 'renderer', 'harness', 'sheets', file), 'utf8');
+    const pick = text.match(/const pick = [^\n]*/)?.[0] ?? '', choose = text.slice(text.indexOf('const choose = '), text.indexOf('const next = '));
+    assert.match(pick, /setGone\(false\)/, `${file}: pick`);
+    assert.match(choose, /setGone\(false\)/, `${file}: choose`);
+  }
+});

@@ -88,13 +88,13 @@ export function AdoptSheet({ open, folderId, onClose }: { open: boolean; folderI
     setLastPlan(() => run);
     run();
   };
-  const pick = (id: string): void => { if (held || id === picked) return; setPicked(id); resetFolderState(); };
+  const pick = (id: string): void => { if (held || id === picked) return; setGone(false); setPicked(id); resetFolderState(); };
   const choose = (): void => {
     if (engine === null || held) return;
     void call.plan(W.label.chooseFolder, () => chooseFolderCall(engine), got => {
       if (got === null) return;
       setFolders(got.list);
-      if (!folderLine(got.info, 'make').off) { setPicked(got.info.id); resetFolderState(); }
+      if (!folderLine(got.info, 'make').off) { setGone(false); setPicked(got.info.id); resetFolderState(); }
     });
   };
   const next = (): void => {

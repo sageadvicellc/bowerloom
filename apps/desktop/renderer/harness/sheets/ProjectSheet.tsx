@@ -169,13 +169,13 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
   const settleMode = (path: string, choice: ModeChoice): void => switchTo('recover', { ...NO_CHOICES, [choice]: [path] });
   /** The choices of one folder: its drift action and its CLAUDE.md offer go with it (W3). */
   const resetChoices = (): void => { setReconcile('accept-agents'); setWriteClaudeMd(false); };
-  const pick = (id: string): void => { if (held || id === picked) return; setPicked(id); setEngines(installable(folders.find(f => f.id === id))); resetChoices(); resetPlans(); };
+  const pick = (id: string): void => { if (held || id === picked) return; setGone(false); setPicked(id); setEngines(installable(folders.find(f => f.id === id))); resetChoices(); resetPlans(); };
   const choose = (): void => {
     if (engine === null || held) return;
     void call.plan(W.label.chooseFolder, () => chooseFolderCall(engine), got => {
       if (got === null) return;
       setFolders(got.list);
-      if (!folderLine(got.info, 'install').off) { setPicked(got.info.id); setEngines(installable(got.info)); resetChoices(); resetPlans(); }
+      if (!folderLine(got.info, 'install').off) { setGone(false); setPicked(got.info.id); setEngines(installable(got.info)); resetChoices(); resetPlans(); }
     });
   };
   const next = (): void => {
