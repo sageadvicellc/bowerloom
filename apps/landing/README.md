@@ -36,7 +36,7 @@ Motion follows the motion principles. The hero depth effect, the first-visit spl
 
 ## Social preview
 
-The landing page and documentation share `release/social-preview.json` and `/social/bowerloom.png`.
+The landing page and documentation read their social cards from `release/social-preview.json`. The landing page uses `/social/bowerloom-home.png`, and every docs page uses `/social/bowerloom-docs.png`. `node tools/render-social-preview.mjs` renders both from `apps/landing/design/`.
 Its fixed layout lives in `design/social-preview.html`.
 
 With `playwright-cli` and its Chromium browser installed, run these commands from the repository root:

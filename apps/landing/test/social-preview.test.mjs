@@ -9,17 +9,33 @@ const read = path => readFile(new URL(path, import.meta.url), 'utf8');
 const preview = async () => JSON.parse(await read('../../../release/social-preview.json'));
 const meta = html => new Map([...html.matchAll(/<meta\s+(?:property|name)="([^"]+)"\s+content="([^"]*)"\s*\/?>/g)].map(match => [match[1], match[2]]));
 
-test('one preview record uses the approved landing message and public image', async () => {
+test('the preview record uses the landing message and the home card', async () => {
   const social = await preview();
   assert.equal(social.title, `Bowerloom · ${hero.H1}`);
   assert.equal(social.description, TAGLINE);
   assert.equal(social.siteName, 'Bowerloom');
   assert.equal(social.type, 'website');
-  assert.equal(social.image.url, 'https://bowerloom.ai/social/bowerloom.png');
+  assert.equal(social.image.url, 'https://bowerloom.ai/social/bowerloom-home.png');
   assert.equal(social.image.width, 1200);
   assert.equal(social.image.height, 630);
   assert.equal(social.image.type, 'image/png');
-  assert.match(social.image.alt, /Bowerloom.*S4-G3.*plant chamber/i);
+  assert.ok(social.image.alt.includes(hero.H1), 'the home card alt text names the headline it shows');
+});
+
+test('the docs card has its own title, description, and image', async () => {
+  const { docs } = await preview();
+  assert.equal(docs.title, 'Bowerloom docs · Build with your agent');
+  assert.equal(docs.description, 'Guides for the command line and the desktop app.');
+  assert.equal(docs.image.url, 'https://bowerloom.ai/social/bowerloom-docs.png');
+  assert.deepEqual([docs.image.width, docs.image.height, docs.image.type], [1200, 630, 'image/png']);
+  assert.match(docs.image.alt, /^Bowerloom docs\. Build with your agent\./);
+  const design = await read('../design/social-preview-docs.html');
+  assert.ok(design.includes('<h1>Build with your agent</h1>') && design.includes(`<p class="description">${docs.description}</p>`), 'the docs card shows the words its record names');
+});
+
+test('the home card design shows the landing headline', async () => {
+  const design = await read('../design/social-preview.html');
+  assert.ok(design.includes(`<h1>${hero.H1}</h1>`));
 });
 
 test('the docs home page uses the same tagline as the preview', async () => {
@@ -53,7 +69,7 @@ test('metadata substitution escapes attribute content and leaves unknown tokens 
   }), '<meta content="A &quot;quote&quot; &amp; &lt;tag&gt; \'single\'">%SOCIAL_UNKNOWN% %OTHER_TITLE%');
 });
 
-test('docs uses the shared preview without changing its page identity or index policy', async () => {
+test('docs uses the docs card without changing its page identity or index policy', async () => {
   const layout = await read('../../docs/src/components/Layout.astro');
   assert.match(layout, /import social from ['"]\.\.\/\.\.\/\.\.\/\.\.\/release\/social-preview\.json['"]/);
   for (const [name, field] of Object.entries({
@@ -63,7 +79,8 @@ test('docs uses the shared preview without changing its page identity or index p
     'og:image:type': 'image.type', 'og:image:alt': 'image.alt',
     'twitter:title': 'title', 'twitter:description': 'description',
     'twitter:image': 'image.url', 'twitter:image:alt': 'image.alt',
-  })) assert.ok(layout.includes(`="${name}" content={social.${field}}`), name);
+  })) assert.ok(layout.includes(`="${name}" content={card.${field}}`), name);
+  assert.match(layout, /const card=\{\.\.\.social\.docs,siteName:social\.siteName,type:social\.type\};/);
   assert.match(layout, /name="twitter:card" content="summary_large_image"/);
   assert.match(layout, /<title>\{title\} · Bowerloom docs<\/title>/);
   assert.match(layout, /name="description" content=\{description\}/);
