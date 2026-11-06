@@ -51,13 +51,10 @@ test('a skill that is added, removed, resized or touched changes it', async t =>
   assert.notEqual(await print(f, all), base, 'removed');
 });
 
-test('a config file of the home folder and an agent file count too', async t => {
+test('an agent file counts', async t => {
   const f = fixture(t), { all } = await places(f), base = await print(f, all);
-  writeFileSync(join(f.home, '.claude.json'), JSON.stringify({ mcpServers: {} }));
-  const config = await print(f, all);
-  assert.notEqual(config, base);
   put(join(f.home, '.claude', 'agents', 'helper.md'), '---\nname: helper\n---\n');
-  assert.notEqual(await print(f, all), config);
+  assert.notEqual(await print(f, all), base);
 });
 
 test('a folder the reader never lists does not change it', async t => {
@@ -85,12 +82,71 @@ test('a tool folder that appears or goes under the home folder changes it, even 
   assert.notEqual(await print(f, watched), base, 'a tool folder went');
 });
 
-test('a ticked place that is gone changes it, and a place that cannot be placed does not crash', async t => {
+test('a ticked place that is gone cannot be checked, and a place that cannot be placed does not crash', async t => {
   const f = fixture(t), { all, picked } = await places(f), base = await print(f, all);
   rmSync(join(f.work, 'alpha'), { recursive: true });
-  assert.notEqual(await print(f, all), base, 'a project folder was removed');
+  const gone = await fingerprintOf(f.home, all);
+  assert.notEqual(gone.fingerprint, base, 'a project folder was removed');
+  assert.equal(gone.complete, false, 'a folder that is not there cannot be rebuilt, so the walk is not complete');
   const odd: WatchedPlace[] = [{ id: picked[0]!.id, kind: 'picked', path: 'relative/nowhere' }, { id: 'place-000000000000', kind: 'home', path: '~' }, { id: 'place-111111111111', kind: 'picked', path: '/nonexistent-folder-for-the-test' }];
-  assert.match(await print(f, odd), /^[0-9a-f]{64}$/);
+  const r = await fingerprintOf(f.home, odd);
+  assert.match(r.fingerprint, /^[0-9a-f]{64}$/);
+  assert.equal(r.complete, false);
+});
+
+/** Names that the window's path loses on the way (spaces collapsed or trimmed, a long part cut, a key-like part hidden): the folder cannot be found again from the shown path. */
+const MANGLED = ['two  spaces', 'trailing ', 'n'.repeat(130), 'proj-a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8', 'sk-abcdef0123456789abcdef'];
+
+for (const name of MANGLED) {
+  test(`a picked folder named "${name.length > 30 ? `${name.slice(0, 12)}...(${name.length})` : name}" is never reported as the same, because it cannot be found again from its shown path`, async t => {
+    const f = fixture(t), dir = join(f.home, name);
+    put(join(dir, '.claude', 'skills', 'first', 'SKILL.md'), '---\nname: First\n---\n');
+    const scanner = createScanner({ home: f.home }), found = (await scanner.addFolder(dir)).places;
+    assert.ok(found.length > 0, 'the folder is listed');
+    const watched = watchOf(found.filter(p => p.kind === 'picked'));
+    assert.notEqual(watched[0]!.path, dir.replace(f.home, '~'), 'the shown path is not the real one');
+    const base = await fingerprintOf(f.home, watched);
+    assert.equal(base.complete, false, 'the place could not be rebuilt, so the walk says it is not complete');
+    put(join(dir, '.claude', 'skills', 'second', 'SKILL.md'), '---\nname: Second\n---\n');
+    const after = await fingerprintOf(f.home, watched);
+    assert.equal(after.complete, false);
+    assert.notEqual(after.fingerprint, base.fingerprint, 'and the two never match');
+  });
+}
+
+test('a config file at the home folder that a program rewrites all the time does not change it, but its absence does', async t => {
+  const f = fixture(t), { all } = await places(f), base = await print(f, all), config = join(f.home, '.claude.json');
+  const old = new Date(1_700_000_000_000);
+  utimesSync(config, old, old);
+  assert.equal(await print(f, all), base, 'only the change time moved');
+  writeFileSync(config, JSON.stringify({ mcpServers: {}, numStartups: 99, a: 'a much longer rewrite than the first one was' }));
+  assert.equal(await print(f, all), base, 'rewritten with another size');
+  rmSync(config);
+  assert.notEqual(await print(f, all), base, 'gone');
+});
+
+test('the four files of a .bowerloom folder count, though the reader lists no part for them', async t => {
+  const f = fixture(t), dir = join(f.home, 'with-harness');
+  for (const name of ['harness.json', 'mcp.json', 'hooks.json', 'knowledge.json']) put(join(dir, '.bowerloom', name), '{}');
+  const found = (await createScanner({ home: f.home }).addFolder(dir)).places, watched = watchOf(found.filter(p => p.kind === 'picked'));
+  let before = await print(f, watched);
+  for (const name of ['harness.json', 'mcp.json', 'hooks.json', 'knowledge.json']) {
+    writeFileSync(join(dir, '.bowerloom', name), `{"changed":"${name}"}`);
+    const now = await print(f, watched);
+    assert.notEqual(now, before, name);
+    before = now;
+  }
+  put(join(dir, '.bowerloom', 'other.json'), '{}');
+  assert.equal(await print(f, watched), before, 'a file the harness loader does not open is left out');
+});
+
+test('a smaller time budget can be given, and running past it says the walk is not complete', async t => {
+  const f = fixture(t), { all } = await places(f);
+  let clock = 0;
+  const r = await fingerprintOf(f.home, all, () => { clock += 600; return clock; }, 1_000);
+  assert.equal(r.complete, false);
+  const calm = await fingerprintOf(f.home, all, () => 0, 1_000);
+  assert.equal(calm.complete, true);
 });
 
 test('a check that runs out of time says it is not complete, and its fingerprint never matches', async t => {

@@ -1,11 +1,11 @@
 // The saved read as the app uses it (main/scan-session.ts): a read is kept after it ends; a launch shows the kept read and reads no folder; a later, cheap check says whether the
 // watched folders changed; and a kept read never lets a folder be read without the look and the question that come first. Every folder here is a made-up temporary one.
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createScanner } from '../main/real-scan.js';
-import { cachePath } from '../main/scan-cache.js';
+import { cachePath, createScanCache } from '../main/scan-cache.js';
 import { createScanSession, fingerprintOf } from '../main/scan-session.js';
 import type { Fingerprinter } from '../main/scan-session.js';
 import { registerRealIpc } from '../main/real-ipc.js';
@@ -91,14 +91,81 @@ test('a change made while the read runs is seen at the next launch, because the 
   assert.equal(await session.checkSavedScan(), 'changed');
 });
 
-test('with nothing kept, or a damaged file, the check says changed and never throws', async t => {
+test('with nothing kept, or a damaged file, the check says it could not check and never throws', async t => {
   const f = fixture(t), state = tempDir(t), session = createScanSession({ home: f.home, stateRoot: state });
-  assert.equal(await session.checkSavedScan(), 'changed');
+  assert.equal(await session.checkSavedScan(), 'unchecked');
   const { chosen, result } = await readOf(f);
   await session.keepRead(chosen, async () => result);
   writeFileSync(cachePath(state), '{"version":1');
-  assert.equal(await session.checkSavedScan(), 'changed');
-  assert.deepEqual(await session.savedScan(), { status: 'damaged', why: 'bad-shape' });
+  const launch = createScanSession({ home: f.home, stateRoot: state });
+  assert.deepEqual(await launch.savedScan(), { status: 'damaged', why: 'bad-shape' });
+  assert.equal(await launch.checkSavedScan(), 'unchecked');
+});
+
+test('the check works on the read the launch already loaded and shown, and does not open the file again', async t => {
+  const f = fixture(t), state = tempDir(t), { chosen, result } = await readOf(f);
+  await createScanSession({ home: f.home, stateRoot: state }).keepRead(chosen, async () => result);
+  const launch = createScanSession({ home: f.home, stateRoot: state });
+  assert.equal(await launch.checkSavedScan(), 'unchecked', 'before a launch has loaded anything there is nothing to check');
+  assert.equal((await launch.savedScan()).status, 'saved');
+  // The file is replaced by another one after the launch loaded it: the check still answers for the read that is on the screen.
+  writeFileSync(cachePath(state), '{"version":1');
+  assert.equal(await launch.checkSavedScan(), 'same');
+});
+
+test('a check that runs past its small time budget says it could not check, and is given 5 seconds', async t => {
+  const f = fixture(t), state = tempDir(t), { chosen, result } = await readOf(f);
+  await createScanSession({ home: f.home, stateRoot: state }).keepRead(chosen, async () => result);
+  const budgets: (number | undefined)[] = [];
+  let clock = 0;
+  const slow: Fingerprinter = async (home, watched, now, budgetMs) => { budgets.push(budgetMs); return fingerprintOf(home, watched, () => { clock += 3_000; return clock; }, budgetMs); };
+  const launch = createScanSession({ home: f.home, stateRoot: state, fingerprint: slow });
+  await launch.savedScan();
+  assert.equal(await launch.checkSavedScan(), 'unchecked');
+  assert.deepEqual(budgets, [5_000]);
+});
+
+/** Names the window's path loses (see tests/scan-fingerprint.test.ts). */
+const MANGLED = ['two  spaces', 'trailing ', 'n'.repeat(130), 'proj-a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8', 'sk-abcdef0123456789abcdef'];
+
+for (const name of MANGLED) {
+  test(`a new skill in a picked folder named "${name.length > 30 ? `${name.slice(0, 12)}...(${name.length})` : name}" is never answered with same`, async t => {
+    const f = fixture(t), state = tempDir(t), dir = join(f.home, name);
+    mkdirSync(join(dir, '.claude', 'skills', 'first'), { recursive: true });
+    writeFileSync(join(dir, '.claude', 'skills', 'first', 'SKILL.md'), '---\nname: First\n---\n');
+    const scanner = createScanner({ home: f.home }), found = (await scanner.addFolder(dir)).places.filter(p => p.kind === 'picked');
+    const batch = await scanner.read(found.map(p => p.id)), result = buildRealResult(batch.reads, batch.tally, { nowMs: 1, foldExtraApps: true });
+    await createScanSession({ home: f.home, stateRoot: state }).keepRead(found, async () => result);
+    mkdirSync(join(dir, '.claude', 'skills', 'second'), { recursive: true });
+    writeFileSync(join(dir, '.claude', 'skills', 'second', 'SKILL.md'), '---\nname: Second\n---\n');
+    const launch = createScanSession({ home: f.home, stateRoot: state });
+    assert.equal((await launch.savedScan()).status, 'saved');
+    assert.notEqual(await launch.checkSavedScan(), 'same');
+    assert.equal(await launch.checkSavedScan(), 'unchecked');
+  });
+}
+
+test('a save that fails removes the older read, and tells it on the console in one fixed line with no path', async t => {
+  const f = fixture(t), state = tempDir(t), { chosen, result } = await readOf(f);
+  await createScanSession({ home: f.home, stateRoot: state }).keepRead(chosen, async () => result);
+  const real = createScanCache({ stateRoot: state }), told: unknown[][] = [];
+  let forgot = 0;
+  const failing = { load: () => real.load(), save: () => false, forget: () => { forgot += 1; real.forget(); } };
+  const log = mock.method(console, 'error', (...args: unknown[]) => { told.push(args); });
+  try { await createScanSession({ home: f.home, stateRoot: state, cache: failing }).keepRead(chosen, async () => result); } finally { log.mock.restore(); }
+  assert.equal(forgot, 1);
+  assert.deepEqual(told, [['Bowerloom could not keep its last read.']]);
+  assert.deepEqual(await createScanSession({ home: f.home, stateRoot: state }).savedScan(), { status: 'none' }, 'the next launch does not call an older read the last one');
+});
+
+test('a save that throws is told by its class name only, never its message', async t => {
+  const f = fixture(t), state = tempDir(t), { chosen, result } = await readOf(f), told: unknown[][] = [];
+  let forgot = 0;
+  const throwing = { load: () => ({ status: 'none' as const }), save: (): boolean => { throw new RangeError('/private/path/in/the/message'); }, forget: () => { forgot += 1; } };
+  const log = mock.method(console, 'error', (...args: unknown[]) => { told.push(args); });
+  try { assert.equal(await createScanSession({ home: f.home, stateRoot: state, cache: throwing }).keepRead(chosen, async () => result), result); } finally { log.mock.restore(); }
+  assert.deepEqual(told, [['Bowerloom could not keep its last read (RangeError).']]);
+  assert.equal(forgot, 1, 'and the older read is removed');
 });
 
 test('a read that fails passes its error on and leaves the older kept read as it was', async t => {

@@ -2,13 +2,14 @@
 // wrong-version, oversized or linked file gives a plain reason and never a crash or a half-loaded read. Every folder here is a temporary one made for the test.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, lstatSync, mkdirSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cacheDir, cachePath, createScanCache } from '../main/scan-cache.js';
 import { SAVED_SCAN_VERSION } from '../shared/real/saved-scan.js';
 import type { SavedScan } from '../shared/real/saved-scan.js';
 import type { RealPlace, RealResult } from '../shared/real/types.js';
 import { generateWorld } from '../shared/world/sample.js';
+import { writeSync as writeSyncReal } from 'node:fs';
 import { tempDir } from './support.js';
 
 const place: RealPlace = {
@@ -122,4 +123,87 @@ test('a file that is a folder, or cannot be opened, is damaged and never throws'
   const got = other.load();
   chmodSync(cachePath(second), 0o600);
   assert.deepEqual(got, { status: 'damaged', why: 'unreadable' });
+});
+
+// ---- a short write, a crash, a file that is not private, a file that is not believed
+
+test('a save writes every byte even when the disk takes a few at a time', t => {
+  const root = tempDir(t), seen: number[] = [];
+  const slow = (fd: number, buffer: Buffer, offset: number, length: number): number => { const n = Math.min(length, 4_096); seen.push(n); return writeSyncReal(fd, buffer, offset, n); };
+  const cache = createScanCache({ stateRoot: root, write: slow });
+  assert.equal(cache.save(scan()), true);
+  assert.ok(seen.length > 1, 'more than one write');
+  assert.deepEqual(cache.load().status === 'ok' ? (cache.load() as { scan: SavedScan }).scan : null, scan());
+});
+
+test('a write that takes nothing is a failed save: the old read stays whole, and no temporary file is left', t => {
+  const root = tempDir(t), good = createScanCache({ stateRoot: root });
+  good.save(scan(1_000));
+  const before = readFileSync(cachePath(root), 'utf8');
+  const full = createScanCache({ stateRoot: root, write: () => 0 });
+  assert.equal(full.save(scan(2_000)), false);
+  assert.equal(readFileSync(cachePath(root), 'utf8'), before);
+  assert.deepEqual(readdirSync(cacheDir(root)), ['last-read.json']);
+});
+
+test('a save that throws leaves the old read whole too; removing it is the caller\'s choice', t => {
+  const root = tempDir(t);
+  createScanCache({ stateRoot: root }).save(scan(1_000));
+  const broken = createScanCache({ stateRoot: root, write: () => { throw new Error('disk'); } });
+  assert.equal(broken.save(scan(2_000)), false);
+  const back = createScanCache({ stateRoot: root }).load();
+  assert.equal(back.status === 'ok' ? back.scan.savedAtMs : null, 1_000);
+  assert.deepEqual(readdirSync(cacheDir(root)), ['last-read.json']);
+});
+
+test('a save clears the old temporary files a crash left, and leaves a fresh one alone', t => {
+  const root = tempDir(t), cache = createScanCache({ stateRoot: root });
+  cache.save(scan());
+  const stale = join(cacheDir(root), 'last-read.123.abcdef012345.tmp'), fresh = join(cacheDir(root), 'last-read.456.fedcba987654.tmp'), other = join(cacheDir(root), 'notes.tmp');
+  for (const file of [stale, fresh, other]) writeFileSync(file, 'x', { mode: 0o600 });
+  const old = new Date(Date.now() - 3_600_000);
+  utimesSync(stale, old, old); utimesSync(other, old, old);
+  cache.save(scan(2_000));
+  assert.equal(existsSync(stale), false, 'an hour-old temporary file of ours goes');
+  assert.equal(existsSync(fresh), true, 'one that may belong to a save in progress stays');
+  assert.equal(existsSync(other), true, 'a file that is not ours stays');
+});
+
+test('a file or folder that others can write to, or that another user owns, is not believed', t => {
+  const root = tempDir(t), cache = createScanCache({ stateRoot: root });
+  cache.save(scan());
+  chmodSync(cachePath(root), 0o666);
+  assert.deepEqual(cache.load(), { status: 'damaged', why: 'not-private' });
+  chmodSync(cachePath(root), 0o620);
+  assert.deepEqual(cache.load(), { status: 'damaged', why: 'not-private' }, 'group can write');
+  chmodSync(cachePath(root), 0o600);
+  chmodSync(cacheDir(root), 0o777);
+  assert.deepEqual(cache.load(), { status: 'damaged', why: 'not-private' });
+  chmodSync(cacheDir(root), 0o700);
+  assert.equal(cache.load().status, 'ok');
+  const other = createScanCache({ stateRoot: root, uid: (process.getuid?.() ?? 0) + 1 });
+  assert.deepEqual(other.load(), { status: 'damaged', why: 'not-private' }, 'owned by someone else');
+  assert.equal(other.save(scan()), false, 'and nothing is written there');
+});
+
+test('a file that is not believed is removed, so the next launch does not repeat the work; a file of another version and a link are left alone', t => {
+  const root = tempDir(t), cache = createScanCache({ stateRoot: root, maxBytes: 5_000_000 });
+  mkdirSync(cacheDir(root), { mode: 0o700 });
+  writeFileSync(cachePath(root), '{"version":1', { mode: 0o600 });
+  assert.equal(cache.load().status, 'damaged');
+  assert.equal(existsSync(cachePath(root)), false, 'a broken file is removed');
+  writeFileSync(cachePath(root), JSON.stringify({ ...scan(), version: 2 }), { mode: 0o600 });
+  assert.equal(cache.load().status, 'damaged');
+  assert.equal(existsSync(cachePath(root)), true, 'a file a newer app may have written is not ours to remove');
+});
+
+test('a file with 100,000 items is refused fast, told as damaged, and removed', t => {
+  const root = tempDir(t), cache = createScanCache({ stateRoot: root });
+  mkdirSync(cacheDir(root), { mode: 0o700 });
+  const items = Array.from({ length: 100_000 }, (_, i) => ({ id: `i${i}`, kind: 'skill', name: 'n', scopeId: 's', foundAt: [], library: null, description: '' }));
+  writeFileSync(cachePath(root), JSON.stringify({ ...scan(), result: { ...result, world: { ...result.world, items } } }), { mode: 0o600 });
+  const started = Date.now();
+  assert.deepEqual(cache.load(), { status: 'damaged', why: 'bad-shape' });
+  assert.ok(Date.now() - started < 2_000);
+  assert.equal(existsSync(cachePath(root)), false);
 });

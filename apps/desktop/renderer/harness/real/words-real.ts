@@ -71,6 +71,7 @@ export const REAL = deepFreeze({
     savedShown: 'Showing what Bowerloom read last time. No folder was read just now.',
     checkingFolders: 'Checking your folders for changes.',
     folderChanged: 'Some folders changed since this read.',
+    folderUnchecked: 'Some folders could not be checked.',
     savedDamaged: 'The saved read could not be used, so Bowerloom starts fresh.',
   },
   paragraph: {

@@ -12,11 +12,11 @@ import './real.css';
 export function LastRead(): ReactElement | null {
   const saved = useSavedScan();
   if (saved.readAtMs === null) return null;
-  const status = saved.changed ? REAL.hint.folderChanged : saved.checking ? REAL.hint.checkingFolders : saved.fromSaved ? REAL.hint.savedShown : '';
+  const status = saved.changed ? REAL.hint.folderChanged : saved.unchecked ? REAL.hint.folderUnchecked : saved.checking ? REAL.hint.checkingFolders : saved.fromSaved ? REAL.hint.savedShown : '';
   return (
     <div className="hxr-lastread" data-last-read="">
       <p className="hxr-count" data-last-read-time="">{savedAtLine(saved.readAtMs)}</p>
-      {status === '' ? null : <p className="hxf-status hxr-lastread-status" role="status" {...(saved.changed ? { 'data-folder-changed': '' } : {})}>{status}</p>}
+      {status === '' ? null : <p className="hxf-status hxr-lastread-status" role="status" {...(saved.changed ? { 'data-folder-changed': '' } : saved.unchecked ? { 'data-folder-unchecked': '' } : {})}>{status}</p>}
       <HButton icon="search" onClick={saved.readAgain}>{REAL.label.readAgain}</HButton>
     </div>
   );

@@ -28,7 +28,7 @@ export interface EngineIpcDeps extends EngineServiceDeps {
 }
 
 /** What a launch gets when no read is kept. */
-const NOTHING_KEPT: SavedScanTools = { savedScan: async () => ({ status: 'none' }), checkSavedScan: async () => 'changed' };
+const NOTHING_KEPT: SavedScanTools = { savedScan: async () => ({ status: 'none' }), checkSavedScan: async () => 'unchecked' };
 
 export function registerEngineIpc(deps: EngineIpcDeps): EngineService {
   const service = createEngineService(deps), saved = deps.saved ?? NOTHING_KEPT;

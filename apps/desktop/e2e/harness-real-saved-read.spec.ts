@@ -6,7 +6,7 @@
  */
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { lstatSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fingerprint } from '../tests/fixtures-real/fingerprint.js';
 import { buildShellHome } from '../tests/fixtures-real/shell-home.js';
@@ -149,4 +149,26 @@ test('a kept read of another version, and an empty file, each start fresh and sa
     await expect(p.getByRole('button', { name: 'Find my files', exact: true })).toBeVisible();
     await stop();
   }
+});
+
+test('a picked folder whose name the window cannot hold is said to be unchecked, never "same", and a new skill in it is not hidden', async () => {
+  rmSync(dirname(saved()), { recursive: true, force: true });
+  // Two spaces in a row: the path the window shows has one, so the folder cannot be found again from it.
+  const odd = join(fixture.home, 'two  spaces');
+  put(join(odd, '.claude', 'skills', 'first-odd', 'SKILL.md'), '---\nname: First odd\ndescription: In a folder with a name the window cannot hold.\n---\n');
+  const p = await start();
+  await p.getByRole('button', { name: 'Find my files', exact: true }).click();
+  await expect(p.getByRole('heading', { level: 1, name: /^Found \d+ places?$/ })).toBeVisible({ timeout: 20_000 });
+  await h!.pick(odd);
+  await p.getByRole('button', { name: 'Add a folder', exact: true }).click();
+  await expect(p.locator('.hxf-card', { hasText: 'two spaces' })).toHaveCount(1);
+  await readFolders(p);
+  await stop();
+  put(join(odd, '.claude', 'skills', 'second-odd', 'SKILL.md'), '---\nname: Second odd\ndescription: Added after the read.\n---\n');
+  const again = await start();
+  await expect(again.getByRole('heading', { level: 1, name: /^Read \d+ sources?\. Make a harness from each\.$/ })).toBeVisible({ timeout: 20_000 });
+  await expect(again.locator('[data-folder-unchecked]')).toHaveText('Some folders could not be checked.', { timeout: 20_000 });
+  await expect(again.getByText('Showing what Bowerloom read last time. No folder was read just now.')).toHaveCount(0);
+  await expect(again.getByText('Second odd')).toHaveCount(0);
+  await shoot(again, 'folder-unchecked', 'light');
 });

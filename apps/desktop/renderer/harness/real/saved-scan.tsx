@@ -10,10 +10,12 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useReducer,
 import type { ReactElement, ReactNode } from 'react';
 import { realToHarnessState } from '../../../shared/harness/real-map.js';
 import type { EngineBridge } from '../../../shared/engine/types.js';
-import type { SavedScanAnswer } from '../../../shared/real/saved-scan.js';
+import type { SavedScanAnswer, SavedScanCheck } from '../../../shared/real/saved-scan.js';
+import type { HarnessState } from '../../../shared/harness/types.js';
 import { parseRoute } from '../../../shared/harness/route.js';
 import { go } from '../router.js';
 import { useUi } from '../ui.js';
+import { REAL } from './words-real.js';
 
 export interface SavedScanState {
   /** When the read on the screen ended, or null when no read has been made or kept. */
@@ -24,6 +26,8 @@ export interface SavedScanState {
   readonly checking: boolean;
   /** The check found that a folder changed since the read. */
   readonly changed: boolean;
+  /** The check could not be made to the end (a folder could not be found again, or it ran out of time). Never taken for "nothing changed". */
+  readonly unchecked: boolean;
   /** A kept read was there but could not be used. */
   readonly damaged: boolean;
 }
@@ -33,21 +37,21 @@ export type SavedAction =
   | { readonly type: 'damaged' }
   | { readonly type: 'unusable' }
   | { readonly type: 'none' }
-  | { readonly type: 'checked'; readonly forAtMs: number; readonly changed: boolean }
+  | { readonly type: 'checked'; readonly forAtMs: number; readonly verdict: SavedScanCheck }
   | { readonly type: 'read'; readonly atMs: number };
 
-export const firstSaved = (): SavedScanState => ({ readAtMs: null, fromSaved: false, checking: false, changed: false, damaged: false });
+export const firstSaved = (): SavedScanState => ({ readAtMs: null, fromSaved: false, checking: false, changed: false, unchecked: false, damaged: false });
 
 /** The action for what main answered at launch. */
 export const startFromAnswer = (answer: SavedScanAnswer): SavedAction => (answer.status === 'saved' ? { type: 'saved', atMs: answer.savedAtMs } : answer.status === 'damaged' ? { type: 'damaged' } : { type: 'none' });
 
 export function savedReduce(state: SavedScanState, action: SavedAction): SavedScanState {
   switch (action.type) {
-    case 'saved': return { readAtMs: action.atMs, fromSaved: true, checking: true, changed: false, damaged: false };
+    case 'saved': return { readAtMs: action.atMs, fromSaved: true, checking: true, changed: false, unchecked: false, damaged: false };
     case 'damaged': case 'unusable': return { ...firstSaved(), damaged: true };
     case 'none': return firstSaved();
-    case 'checked': return state.readAtMs === action.forAtMs && state.fromSaved ? { ...state, checking: false, changed: action.changed } : state;
-    case 'read': return { readAtMs: action.atMs, fromSaved: false, checking: false, changed: false, damaged: false };
+    case 'checked': return state.readAtMs === action.forAtMs && state.fromSaved ? { ...state, checking: false, changed: action.verdict === 'changed', unchecked: action.verdict === 'unchecked' } : state;
+    case 'read': return { readAtMs: action.atMs, fromSaved: false, checking: false, changed: false, unchecked: false, damaged: false };
   }
 }
 
@@ -65,6 +69,52 @@ export const useSavedScan = (): SavedScanValue => useContext(SavedScanContext);
 /** Whether the bridge has the two calls of the kept read (a bridge of an older build, or a test's, may not). */
 const canAsk = (engine: EngineBridge | null): engine is EngineBridge => engine !== null && typeof engine.savedScan === 'function' && typeof engine.checkSavedScan === 'function';
 
+/** What loading the kept read does to the window. A test gives made-up ones. */
+export interface LoadHooks {
+  dispatch(action: SavedAction): void;
+  replaceWorld(next: HarnessState): void;
+  /** The name of the screen the address names now, or null. */
+  route(): string | null;
+  goRead(): void;
+  /** A short note drawn over any screen (the Welcome screen draws its own). */
+  toast(text: string): void;
+  /** The window may draw its first screen now. */
+  ready(): void;
+  /** False once the window has gone: nothing is done then. */
+  isLive(): boolean;
+}
+
+/**
+ * Asks main for the kept read and does what the answer says. A kept read that passes is drawn as a live read would be. A kept read that cannot be used, or a call that fails, is told as
+ * damaged: on the Welcome screen as its note, on any other screen (an address the person came back to) as a short note over it, so it is never silent. The check follows a kept read.
+ */
+export async function loadSaved(engine: EngineBridge, h: LoadHooks): Promise<void> {
+  const damaged = (action: SavedAction): void => {
+    if (!h.isLive()) return;
+    h.dispatch(action);
+    const here = h.route();
+    if (here !== null && here !== 'welcome') h.toast(REAL.hint.savedDamaged);
+    h.ready();
+  };
+  let answer: SavedScanAnswer;
+  try { answer = await engine.savedScan(); } catch (error) { console.error('The saved read could not be asked for.', error); damaged({ type: 'damaged' }); return; }
+  if (!h.isLive()) return;
+  if (answer.status === 'damaged') { damaged({ type: 'damaged' }); return; }
+  if (answer.status === 'none') { h.dispatch({ type: 'none' }); h.ready(); return; }
+  let next: HarnessState;
+  // The same mapping a live read goes through. A kept read it cannot map is dropped as damaged, and nothing is loaded.
+  try { next = realToHarnessState(answer.result, answer.chosen); } catch (error) { console.error('The saved read could not be drawn.', error); damaged({ type: 'unusable' }); return; }
+  h.replaceWorld(next);
+  h.dispatch(startFromAnswer(answer));
+  h.ready();
+  // The first screen of a launch is the Welcome; with a read to show, the window opens on the Read screen. An address the person came back to is left where it is.
+  const here = h.route();
+  if (here === null || here === 'welcome') h.goRead();
+  let verdict: SavedScanCheck;
+  try { verdict = await engine.checkSavedScan(); } catch { verdict = 'unchecked'; }
+  if (h.isLive()) h.dispatch({ type: 'checked', forAtMs: answer.savedAtMs, verdict });
+}
+
 export function SavedScanProvider({ engine, children }: { engine: EngineBridge | null; children?: ReactNode }): ReactElement {
   const ui = useUi();
   const [state, dispatch] = useReducer(savedReduce, undefined, firstSaved);
@@ -76,23 +126,10 @@ export function SavedScanProvider({ engine, children }: { engine: EngineBridge |
   useEffect(() => {
     if (asked.current || !canAsk(engine)) return;
     asked.current = true;
-    const finish = (action: SavedAction): void => { if (live.current) { dispatch(action); setReady(true); } };
-    engine.savedScan().then(answer => {
-      if (answer.status !== 'saved') { finish(startFromAnswer(answer)); return; }
-      let next;
-      // The same mapping a live read goes through. A kept read it cannot map is dropped as damaged, and nothing is loaded.
-      try { next = realToHarnessState(answer.result, answer.chosen); } catch (error) { console.error('The saved read could not be drawn.', error); finish({ type: 'unusable' }); return; }
-      if (!live.current) return;
-      uiNow.current.replaceWorld(next);
-      finish(startFromAnswer(answer));
-      // The first screen of a launch is the Welcome; with a read to show, the window opens on the Read screen. An address the person came back to is left where it is.
-      const here = parseRoute(location.hash);
-      if (here === null || here.name === 'welcome') go({ name: 'read' });
-      engine.checkSavedScan().then(
-        verdict => { if (live.current) dispatch({ type: 'checked', forAtMs: answer.savedAtMs, changed: verdict === 'changed' }); },
-        () => { if (live.current) dispatch({ type: 'checked', forAtMs: answer.savedAtMs, changed: true }); },
-      );
-    }, (error: unknown) => { console.error('The saved read could not be asked for.', error); finish({ type: 'none' }); });
+    void loadSaved(engine, {
+      dispatch, replaceWorld: next => uiNow.current.replaceWorld(next), route: () => parseRoute(location.hash)?.name ?? null, goRead: () => go({ name: 'read' }),
+      toast: text => uiNow.current.showToast(text), ready: () => setReady(true), isLive: () => live.current,
+    });
   }, [engine]);
   const readAgain = useCallback((): void => go({ name: 'choose' }), []);
   const markRead = useCallback((atMs: number): void => dispatch({ type: 'read', atMs }), []);

@@ -50,7 +50,7 @@ test('a kept read that throws is a short FAILED, and with no kept read a launch 
   assert.equal(await reason(broken, 'checkSavedScan', page), 'FAILED');
   const none = make();
   assert.deepEqual(await none.get(ENGINE_CHANNELS.savedScan)!(page), { status: 'none' });
-  assert.equal(await none.get(ENGINE_CHANNELS.checkSavedScan)!(page), 'changed');
+  assert.equal(await none.get(ENGINE_CHANNELS.checkSavedScan)!(page), 'unchecked');
 });
 
 test('the sample keeps no read', async () => {

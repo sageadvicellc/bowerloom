@@ -20,11 +20,11 @@ import { createScanCache } from './scan-cache.js';
 import type { ScanCache } from './scan-cache.js';
 
 export interface Fingerprint { readonly fingerprint: string; readonly complete: boolean }
-export type Fingerprinter = (home: string, watched: readonly WatchedPlace[], now?: () => number) => Promise<Fingerprint>;
+export type Fingerprinter = (home: string, watched: readonly WatchedPlace[], now?: () => number, budgetMs?: number) => Promise<Fingerprint>;
 
 /** A SHA-256 of what the watched places look like (see `watchTextOf`). */
-export const fingerprintOf: Fingerprinter = async (home, watched, now) => {
-  const { text, complete } = await watchTextOf(home, watched, now);
+export const fingerprintOf: Fingerprinter = async (home, watched, now, budgetMs) => {
+  const { text, complete } = await watchTextOf(home, watched, now, budgetMs);
   return { fingerprint: createHash('sha256').update(text).digest('hex'), complete };
 };
 
@@ -38,6 +38,8 @@ export interface ScanSessionDeps {
   /** For a test: the file and the fingerprint, in place of the real ones. */
   readonly cache?: ScanCache;
   readonly fingerprint?: Fingerprinter;
+  /** The time the check of a launch may take. Past it the answer is `unchecked`, never `same`. Default 5 seconds: the check runs in the main process. */
+  readonly checkBudgetMs?: number;
 }
 
 export interface ScanSession {
@@ -46,32 +48,54 @@ export interface ScanSession {
   checkSavedScan(): Promise<SavedScanCheck>;
 }
 
+export const CHECK_BUDGET_MS = 5000;
+
+/** The one fixed line told when a read could not be kept. It holds no path and no message of the error. */
+const NOT_KEPT = 'Bowerloom could not keep its last read.';
+
 export function createScanSession(deps: ScanSessionDeps): ScanSession {
   const now = deps.now ?? (() => Date.now()), cache = deps.cache ?? createScanCache({ stateRoot: deps.stateRoot }), fingerprint = deps.fingerprint ?? fingerprintOf;
+  const checkBudget = deps.checkBudgetMs ?? CHECK_BUDGET_MS;
+  /**
+   * The read that is on the screen: its places and the fingerprint made before it. The launch sets it from the file it loaded and showed, and a read made in this window sets it too,
+   * so the check always answers for the read the window holds and never for another file.
+   */
+  let held: { readonly chosen: readonly RealPlace[]; readonly fingerprint: string } | null = null;
   return {
     keepRead: async (chosen, read) => {
       let before: Fingerprint | null = null;
       try { before = await fingerprint(deps.home, watchedOf(chosen), now); } catch { before = null; }
       const result = await read();
       try {
-        if (before === null || chosen.length === 0) cache.forget();
-        else cache.save({ version: SAVED_SCAN_VERSION, savedAtMs: now(), fingerprint: before.fingerprint, chosen, result });
-      } catch { /* the read is the person's; the file is a convenience */ }
+        const kept = before !== null && chosen.length > 0 && cache.save({ version: SAVED_SCAN_VERSION, savedAtMs: now(), fingerprint: before.fingerprint, chosen, result });
+        if (kept && before !== null) held = { chosen, fingerprint: before.fingerprint };
+        else {
+          // Not kept: the older read must not stay on disk to be called "last time" at the next launch.
+          held = null;
+          cache.forget();
+          if (before !== null && chosen.length > 0) console.error(NOT_KEPT);
+        }
+      } catch (error) {
+        held = null;
+        try { cache.forget(); } catch { /* nothing more to do */ }
+        console.error(`Bowerloom could not keep its last read (${error instanceof Error ? error.constructor.name : typeof error}).`);
+      }
       return result;
     },
     savedScan: async () => {
       const found = cache.load();
+      held = found.status === 'ok' ? { chosen: found.scan.chosen, fingerprint: found.scan.fingerprint } : null;
       if (found.status === 'none') return { status: 'none' };
       if (found.status === 'damaged') return { status: 'damaged', why: found.why };
       return { status: 'saved', savedAtMs: found.scan.savedAtMs, chosen: found.scan.chosen, result: found.scan.result };
     },
     checkSavedScan: async () => {
-      const found = cache.load();
-      if (found.status !== 'ok') return 'changed';
+      const read = held;
+      if (read === null) return 'unchecked';
       try {
-        const now2 = await fingerprint(deps.home, watchedOf(found.scan.chosen), now);
-        return now2.complete && now2.fingerprint === found.scan.fingerprint ? 'same' : 'changed';
-      } catch { return 'changed'; }
+        const current = await fingerprint(deps.home, watchedOf(read.chosen), now, checkBudget);
+        return !current.complete ? 'unchecked' : current.fingerprint === read.fingerprint ? 'same' : 'changed';
+      } catch { return 'unchecked'; }
     },
   };
 }

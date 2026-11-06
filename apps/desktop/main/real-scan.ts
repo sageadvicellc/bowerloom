@@ -370,14 +370,22 @@ function placeAt(dir: string, home: string, kind: RealPlaceKind): PlaceInternal 
   return { id: placeId(kind, dir, [...folders, ...files].map(p => p.app)), kind, label: labelOfFolder(dir), root: dir, realRoot: real, folders, files };
 }
 
-/** One line for each file the reader would list in a place, with its size and change time, and one for each tool folder or config file that is gone. No file is opened. */
+/** The files of a `.bowerloom` folder that the harness loader opens (`harnessOf`). The reader lists no part for them, so the walk does not see them: the fingerprint names them. */
+const HARNESS_FILES: readonly string[] = ['harness.json', 'mcp.json', 'hooks.json', 'knowledge.json'];
+
+/**
+ * One line for each file the reader would list in a place, with its size and change time, and one for each tool folder or config file that is gone. No file is opened.
+ * A config file directly in the home folder (`~/.claude.json`) is one that a program rewrites during any session, so it counts only by being there: its size and change time would
+ * say "changed" at nearly every launch. The four files of a `.bowerloom` folder count by size and change time.
+ */
 function watchLines(place: PlaceInternal, budget: Budget, tally: Tally): string[] {
   const out: string[] = [];
   for (const folder of place.folders) {
     if (realFolderFollowing(folder.abs) !== folder.abs) { out.push(`gone|${folder.name}`); continue; }
     for (const f of walkFiles(folder.abs, folder.abs, folderWalk(folder, REAL_LIMITS.filesPerPlace), budget, tally)) out.push(`f|${folder.name}/${f.rel}|${f.size}|${f.mtimeMs}`);
+    if (folder.app === 'bowerloom') for (const name of HARNESS_FILES) out.push(`b|${name}|${statLine(join(folder.abs, name)) ?? 'gone'}`);
   }
-  for (const file of place.files) out.push(`h|${file.name}|${statLine(file.abs) ?? 'gone'}`);
+  for (const file of place.files) out.push(`h|${file.name}|${statLine(file.abs) === null ? 'gone' : place.kind === 'home' ? 'there' : statLine(file.abs)}`);
   if (place.kind !== 'home') {
     if (realFolderFollowing(place.realRoot) !== place.realRoot) out.push('gone|root');
     else for (const f of walkFiles(place.realRoot, place.realRoot, notesWalk(), budget, tally)) out.push(`n|${f.rel}|${f.size}|${f.mtimeMs}`);
@@ -385,14 +393,20 @@ function watchLines(place: PlaceInternal, budget: Budget, tally: Tally): string[
   return out;
 }
 
+/** Makes every unfinished walk's text its own, even when two end in the same millisecond. */
+let unfinishedCount = 0;
+
 /**
  * What the watched places look like right now, as text: one line for each file the reader lists in them (its path below the place, its size and its change time), for each config
  * file at the home folder (the same two facts), for each tool folder the home folder holds (whether or not it was ticked, so a new program shows), and for each place that is gone.
  * It walks the folders exactly as a read does (`folderWalk`, `notesWalk`) but opens no file, so a change that keeps a file's size and change time is not seen. `complete` is false
- * when the time or a count ran out before the walk ended: the text then holds the clock, so it matches nothing. Nothing is written. The caller hashes the text (main/scan-session.ts).
+ * when the time or a count ran out before the walk ended, or when a work or picked folder could not be found again from the path the window shows (that path is cleaned for the
+ * screen: spaces are collapsed, a long part is cut, a key-like part is hidden). The text then holds the clock, so it matches nothing, and the check says it could not check, never
+ * "same". A `gone` line is written only for a place that was rebuilt and has lost a tool folder. Nothing is written. The caller hashes the text (main/scan-session.ts).
  */
-export async function watchTextOf(home: string, watched: readonly WatchedPlace[], now: () => number = () => Date.now()): Promise<{ readonly text: string; readonly complete: boolean }> {
-  const budget = makeBudget(now), tally = newTally();
+export async function watchTextOf(home: string, watched: readonly WatchedPlace[], now: () => number = () => Date.now(), budgetMs: number = REAL_LIMITS.budgetMs): Promise<{ readonly text: string; readonly complete: boolean }> {
+  const budget = makeBudget(now, budgetMs), tally = newTally();
+  let unresolved = false;
   const homePlaces = findHomePlaces(home);
   const lines: string[] = ['bowerloom-read-fingerprint-1', ...homePlaces.map(p => `roster|${p.id}`).sort()];
   for (const w of [...watched].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
@@ -400,13 +414,17 @@ export async function watchTextOf(home: string, watched: readonly WatchedPlace[]
     const dir = folderOfShown(w.path, home);
     const place = w.kind === 'home' ? homePlaces.find(p => p.id === w.id) ?? null : dir === null ? null : placeAt(dir, home, w.kind);
     lines.push(`place|${w.id}`);
-    if (place === null) { lines.push('gone'); continue; }
+    if (place === null) {
+      // A home place that is not in the list has lost its folder. A work or picked folder that cannot be rebuilt may be gone or may only have a name the window's path does not hold: either way it cannot be checked.
+      if (w.kind === 'home') lines.push('gone'); else unresolved = true;
+      continue;
+    }
     lines.push(...watchLines(place, budget, tally));
     await yieldToLoop();
   }
   // A cap that cuts a folder short (`truncated`) cuts it at the same place every time, so it does not make the walk incomplete; only the clock or the count of files does.
-  const complete = !tally.stoppedEarly;
-  if (!complete) lines.push(`unfinished|${now()}`);
+  const complete = !tally.stoppedEarly && !unresolved;
+  if (!complete) lines.push(`unfinished|${now()}|${(unfinishedCount += 1)}`);
   return { text: lines.join('\n'), complete };
 }
 

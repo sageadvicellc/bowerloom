@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { SAVED_SCAN_VERSION, SAVED_SCAN_MAX_BYTES, parseSavedScan } from '../shared/real/saved-scan.js';
 import { savedAtLine } from '../renderer/harness/real/words-real.js';
 import type { SavedScan } from '../shared/real/saved-scan.js';
+import { REAL_LIMITS } from '../shared/real/types.js';
 import type { RealPlace, RealResult } from '../shared/real/types.js';
 import { generateWorld } from '../shared/world/sample.js';
 
@@ -71,4 +72,54 @@ test('the time of the last read is one plain line, in the zone it is given', () 
   assert.equal(savedAtLine(at, 'UTC'), 'Last read: Nov 5, 2026, 3:12 PM.');
   assert.equal(savedAtLine(at, 'America/New_York'), 'Last read: Nov 5, 2026, 10:12 AM.');
   assert.equal(savedAtLine(Number.NaN, 'UTC'), 'Last read: time not known.');
+});
+
+// ---- the caps: a file cannot make the window, or main, do work the reader could never have made it do
+
+const item = (i: number): Record<string, unknown> => ({ id: `i${i}`, kind: 'skill', name: 'n', scopeId: 's', foundAt: [], library: null, description: '' });
+const withWorld = (change: (world: Record<string, unknown>) => void): string => text(s => { change((s.result as { world: Record<string, unknown> }).world); });
+
+test('a file with 100,000 items is refused at once, before anything walks them', () => {
+  const big = withWorld(w => { w.items = Array.from({ length: 100_000 }, (_, i) => item(i)); });
+  const started = Date.now();
+  assert.deepEqual(parseSavedScan(big), { ok: false, why: 'bad-shape' });
+  assert.ok(Date.now() - started < 2_000, 'refused fast');
+});
+
+test('each list is held to what the reader can make: items and pages to its per-call cap, scopes and slices to its place cap', () => {
+  const over = REAL_LIMITS.itemsPerCall + 1, places = REAL_LIMITS.places + 1;
+  assert.equal(parseSavedScan(withWorld(w => { w.items = Array.from({ length: REAL_LIMITS.itemsPerCall }, (_, i) => item(i)); })).ok, true, 'at the cap');
+  assert.equal(parseSavedScan(withWorld(w => { w.items = Array.from({ length: over }, (_, i) => item(i)); })).ok, false);
+  assert.equal(parseSavedScan(withWorld(w => { w.wikiPages = Array.from({ length: over }, (_, i) => ({ id: `p${i}` })); })).ok, false);
+  assert.equal(parseSavedScan(withWorld(w => { w.scopes = Array.from({ length: places }, (_, i) => ({ id: `s${i}`, kind: 'project', name: 'n', parentId: null, path: '~' })); })).ok, false);
+  assert.equal(parseSavedScan(withWorld(w => { w.slices = Array.from({ length: places }, (_, i) => ({ id: `l${i}` })); })).ok, false);
+  assert.equal(parseSavedScan(text(s => { (s.result as Record<string, unknown>).others = Array.from({ length: over }, () => ({})); })).ok, false);
+  assert.equal(parseSavedScan(text(s => { (s.result as Record<string, unknown>).harnessPlaces = Array.from({ length: places }, () => ({})); })).ok, false);
+});
+
+test('an item, a scope, a slice and a page must have the fields the window reads', () => {
+  const bad: [string, (w: Record<string, unknown>) => void][] = [
+    ['item is a number', w => { w.items = [5]; }],
+    ['item without an id', w => { w.items = [{ ...item(1), id: undefined }]; }],
+    ['item kind is a number', w => { w.items = [{ ...item(1), kind: 3 }]; }],
+    ['item scope id is a number', w => { w.items = [{ ...item(1), scopeId: 3 }]; }],
+    ['foundAt is not a list', w => { w.items = [{ ...item(1), foundAt: 'x' }]; }],
+    ['foundAt entry is not an object', w => { w.items = [{ ...item(1), foundAt: [4] }]; }],
+    ['foundAt interface is a number', w => { w.items = [{ ...item(1), foundAt: [{ interface: 4, path: 'p' }] }]; }],
+    ['scope is a text', w => { w.scopes = ['x']; }],
+    ['scope without an id', w => { w.scopes = [{ kind: 'global' }]; }],
+    ['slice without an id', w => { w.slices = [{}]; }],
+    ['page without an id', w => { w.wikiPages = [{}]; }],
+  ];
+  for (const [what, change] of bad) assert.deepEqual(parseSavedScan(withWorld(change)), { ok: false, why: 'bad-shape' }, what);
+  // The made-up world of the tests is a real one, so every shape it holds passes.
+  assert.equal(parseSavedScan(JSON.stringify(scan())).ok, true);
+});
+
+test('a time past the last moment a date can hold is refused, and a date that is not a date is told as "not known"', () => {
+  assert.equal(parseSavedScan(text(s => { s.savedAtMs = 8.64e15; })).ok, true);
+  assert.deepEqual(parseSavedScan(text(s => { s.savedAtMs = 8.64e15 + 1; })), { ok: false, why: 'bad-shape' });
+  assert.deepEqual(parseSavedScan(text(s => { s.savedAtMs = 1e300; })), { ok: false, why: 'bad-shape' });
+  assert.equal(savedAtLine(8.64e15 + 1, 'UTC'), 'Last read: time not known.');
+  assert.equal(savedAtLine(1e300), 'Last read: time not known.');
 });

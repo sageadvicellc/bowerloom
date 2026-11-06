@@ -23,7 +23,7 @@ export interface SavedScan {
 }
 
 /** Why a saved read is not used. */
-export type DamageWhy = 'unreadable' | 'too-big' | 'linked' | 'wrong-version' | 'bad-shape';
+export type DamageWhy = 'unreadable' | 'too-big' | 'linked' | 'wrong-version' | 'bad-shape' | 'not-private';
 
 /** What main hands the window at launch. `saved` carries a read that passed every check. */
 export type SavedScanAnswer =
@@ -31,8 +31,11 @@ export type SavedScanAnswer =
   | { readonly status: 'damaged'; readonly why: DamageWhy }
   | { readonly status: 'saved'; readonly savedAtMs: number; readonly chosen: readonly RealPlace[]; readonly result: RealResult };
 
-/** The answer of the folder check: the watched folders are as they were, or they changed (or could not be checked to the end). */
-export type SavedScanCheck = 'same' | 'changed';
+/**
+ * The answer of the folder check: the watched folders are as they were, they changed, or they could not be checked (a folder could not be found again from the path the window shows,
+ * or the check ran out of time). `unchecked` is never `same`: a note says so, and Read again is the way on.
+ */
+export type SavedScanCheck = 'same' | 'changed' | 'unchecked';
 
 export type ParsedSavedScan = { readonly ok: true; readonly scan: SavedScan } | { readonly ok: false; readonly why: DamageWhy };
 
@@ -46,7 +49,21 @@ const COUNT_KEYS = ['agents', 'skills', 'tools', 'hooks', 'notes'] as const;
 const WORLD_KEYS = ['interfaces', 'items', 'scopes', 'overrides', 'wikiPages', 'slices', 'versions', 'libraries'] as const;
 const KINDS: readonly string[] = ['home', 'project', 'picked'];
 
+/**
+ * The most each list may hold: what the reader can hand over in one read. A file past a cap cannot have been made by the reader, and the window does work for each entry (some of it
+ * for each pair of lists), so it is refused before anything walks it. Items and pages are held to the reader's per-call cap, scopes and slices to its place cap.
+ */
+export const SAVED_SCAN_CAPS = Object.freeze({
+  items: REAL_LIMITS.itemsPerCall, wikiPages: REAL_LIMITS.itemsPerCall, overrides: REAL_LIMITS.itemsPerCall, others: REAL_LIMITS.itemsPerCall, ages: REAL_LIMITS.itemsPerCall,
+  scopes: REAL_LIMITS.places, slices: REAL_LIMITS.places, harnessPlaces: REAL_LIMITS.places, interfaces: 20, versions: 1000, libraries: 1000,
+});
+/** The last moment a date can hold, in milliseconds since 1970. */
+const LAST_DATE_MS = 8.64e15;
+
 const countsOk = (v: unknown): boolean => isObject(v) && COUNT_KEYS.every(k => isCount(v[k]));
+const hasId = (v: unknown): boolean => isObject(v) && typeof v.id === 'string';
+const foundAtOk = (v: unknown): boolean => isArray(v) && v.length <= 100 && v.every(f => isObject(f) && typeof f.interface === 'string' && typeof f.path === 'string');
+const itemOk = (v: unknown): boolean => isObject(v) && typeof v.id === 'string' && typeof v.kind === 'string' && typeof v.scopeId === 'string' && foundAtOk(v.foundAt);
 
 function placeOk(v: unknown): boolean {
   if (!isObject(v)) return false;
@@ -58,10 +75,16 @@ function placeOk(v: unknown): boolean {
 
 function resultOk(v: unknown): boolean {
   if (!isObject(v)) return false;
-  const w = v.world;
-  return isObject(w) && WORLD_KEYS.every(k => isArray(w[k])) && isArray(v.others) && countsOk(v.counts) && isObject(v.ages)
-    && typeof v.stoppedEarly === 'boolean' && isCount(v.couldNotRead) && isCount(v.partlyRead) && isCount(v.textsCut) && isTexts(v.notes) && v.readOnly === true
-    && (v.harnessPlaces === undefined || isArray(v.harnessPlaces));
+  const w = v.world, C = SAVED_SCAN_CAPS;
+  if (!isObject(w) || !WORLD_KEYS.every(k => isArray(w[k]))) return false;
+  // The sizes are checked first, so a list of a hundred thousand entries is never walked.
+  const lists = w as Record<(typeof WORLD_KEYS)[number], unknown[]>;
+  if (lists.items.length > C.items || lists.wikiPages.length > C.wikiPages || lists.scopes.length > C.scopes || lists.slices.length > C.slices || lists.overrides.length > C.overrides
+    || lists.interfaces.length > C.interfaces || lists.versions.length > C.versions || lists.libraries.length > C.libraries) return false;
+  if (!isArray(v.others) || v.others.length > C.others || !isObject(v.ages) || Object.keys(v.ages).length > C.ages) return false;
+  if (v.harnessPlaces !== undefined && (!isArray(v.harnessPlaces) || v.harnessPlaces.length > C.harnessPlaces)) return false;
+  return lists.items.every(itemOk) && lists.scopes.every(hasId) && lists.slices.every(hasId) && lists.wikiPages.every(hasId) && countsOk(v.counts)
+    && typeof v.stoppedEarly === 'boolean' && isCount(v.couldNotRead) && isCount(v.partlyRead) && isCount(v.textsCut) && isTexts(v.notes) && v.readOnly === true;
 }
 
 /** Believes a text only when it is a saved read of this version, of a sane size, with every part in the shape the window expects. Never throws. */
@@ -72,7 +95,7 @@ export function parseSavedScan(text: string): ParsedSavedScan {
   if (!isObject(v)) return { ok: false, why: 'bad-shape' };
   if (typeof v.version === 'number' && v.version !== SAVED_SCAN_VERSION) return { ok: false, why: 'wrong-version' };
   if (v.version !== SAVED_SCAN_VERSION) return { ok: false, why: 'bad-shape' };
-  if (!isCount(v.savedAtMs) || typeof v.fingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(v.fingerprint)) return { ok: false, why: 'bad-shape' };
+  if (!isCount(v.savedAtMs) || v.savedAtMs > LAST_DATE_MS || typeof v.fingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(v.fingerprint)) return { ok: false, why: 'bad-shape' };
   if (!isArray(v.chosen) || v.chosen.length === 0 || v.chosen.length > REAL_LIMITS.places || !v.chosen.every(placeOk)) return { ok: false, why: 'bad-shape' };
   if (!resultOk(v.result)) return { ok: false, why: 'bad-shape' };
   return { ok: true, scan: v as unknown as SavedScan };
