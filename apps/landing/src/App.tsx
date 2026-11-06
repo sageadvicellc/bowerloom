@@ -15,7 +15,7 @@ import Hero from "./Hero";
 import SectionCompanion from "./SectionCompanion";
 import FooterCompanion from "./FooterCompanion";
 import { AppSection, CommandLineSection, EnginesSection, ExternalLink, FaqSection, HowItWorks, InstallSection, WhatItDoes } from "./Sections";
-import { watchCompact } from "./compact-header";
+import { compactDistance, watchHeaderProgress } from "./header-progress";
 import { INITIAL_ANCHOR_EVENT, scheduleInitialAnchor } from "./fullpage-anchor";
 
 function useReducedMotion() {
@@ -59,11 +59,15 @@ export default function App() {
   // Runs before the first paint, so what is on screen is marked as shown before the hiding class goes on.
   useLayoutEffect(() => initReveal(), []);
   const reduced = useReducedMotion();
-  // The header shrinks to a thin glass bar once the page has scrolled 48 px, and grows back below 16 px.
-  const enterSentinel = useRef<HTMLDivElement>(null);
-  const leaveSentinel = useRef<HTMLDivElement>(null);
-  const [compact, setCompact] = useState(false);
-  useEffect(() => (enterSentinel.current && leaveSentinel.current ? watchCompact(enterSentinel.current, leaveSentinel.current, setCompact) : undefined), []);
+  // The header follows the scroll position: --header-p goes from 0 at the top to 1 at the compact distance, and the style sheet draws every part of the change from it.
+  // It starts in a layout effect, before the first paint, and writes on the shell so a scroll frame restyles only the header.
+  const shell = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const element = shell.current;
+    if (!element) return undefined;
+    const root = document.documentElement;
+    return watchHeaderProgress({ win: window, distance: () => compactDistance(root, element), write: progress => element.style.setProperty("--header-p", String(progress)) });
+  }, []);
 
   useEffect(() => scheduleInitialAnchor(
     window.location.hash,
@@ -78,10 +82,8 @@ export default function App() {
       <a className="skip-link" href="#main">
         Skip to content
       </a>
-      <div className="header-sentinel header-sentinel-enter" ref={enterSentinel} aria-hidden="true" />
-      <div className="header-sentinel header-sentinel-leave" ref={leaveSentinel} aria-hidden="true" />
-      <div className="site-header-shell">
-        <header className={compact ? "site-header is-compact" : "site-header"}>
+      <div className="site-header-shell" ref={shell}>
+        <header className="site-header">
           <a className="brand" href="#" aria-label="Bowerloom home">
             <BrandIdentity />
           </a>

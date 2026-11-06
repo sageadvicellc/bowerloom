@@ -43,39 +43,28 @@
 .mobile-drawer nav > a.nav-cta:hover { color: var(--ui-primary-fg); }
 
 /* Sticky header. The shell is always the full header height and sits in the page, so nothing below it ever moves, and it passes clicks through to the page.
-   The bar inside it keeps one size, and only moves: past 48 px of scroll it slides up by half of the extra height, so its centered content lands in the middle of a thin
-   48 px strip (above the 44 px touch floor) and the glass layer, which is that strip, fades in. Only transform and opacity change, so no layout is recalculated. At scroll 0 it is the full bar over the page color: no border, no shadow, no glass. The glass, the hairline, and the shadow are one layer behind the bar that fades in with opacity,
-   so nothing is drawn over the top of the hero photo until the bar is compact. */
-:root { --header-h: 100px; --header-compact-h: 48px; --header-shift: calc((var(--header-h) - var(--header-compact-h)) / -2); }
+   The bar inside it keeps one size and follows the scroll. --header-p goes from 0 at the top to 1 at the compact distance (the full height minus the thin strip), written by
+   header-progress.ts on every frame of a scroll. At p the bar has moved up by p of half the extra height, so at 1 its centered content sits in the middle of a thin 48 px
+   strip (above the 44 px touch floor); the brand has shrunk by p of 40%; and the glass layer, which is that strip, has faded in to p. Only transform and opacity change, so no layout is
+   recalculated, and there is no time-based easing: the scroll is the clock.
+   The page's first picture scrolls up with the page, and its top edge meets the bottom of the strip exactly when p reaches 1. Until then the edge is below the glass and
+   the brand, so the photo never cuts through the wordmark or the controls. At scroll 0 the bar is the full bar over the page color: no border, no shadow, no glass. */
+:root { --header-p: 0; --header-h: 100px; --header-compact-h: 48px; --header-shift: calc((var(--header-h) - var(--header-compact-h)) / -2); }
 @media (max-width: 1100px) { :root { --header-h: 84px; } }
 @media (max-width: 1023px) { :root { --header-h: 76px; } }
-.header-sentinel { position: absolute; top: 0; left: 0; width: 1px; pointer-events: none; opacity: 0; }
-.header-sentinel-enter { height: 48px; }
-.header-sentinel-leave { height: 16px; }
 .skip-link { z-index: 40; }
 .site-header-shell { position: sticky; top: 0; z-index: 30; height: var(--header-h); pointer-events: none; contain: layout; }
-.site-header-shell > .site-header { position: relative; isolation: isolate; pointer-events: auto; height: var(--header-h); min-height: 0; max-width: none; box-sizing: border-box; border-bottom: 0; transform-origin: left top; }
-.site-header-shell > .site-header.is-compact { transform: translateY(var(--header-shift)); }
-.site-header-shell > .site-header .brand { transform-origin: left center; }
-.site-header.is-compact .brand { transform: scale(.6); }
-/* The glass layer: the regular variant, a brand surface at 75% with a soft blur and a lift in color, a hairline, and a very soft shadow.
+.site-header-shell > .site-header { position: relative; isolation: isolate; pointer-events: auto; height: var(--header-h); min-height: 0; max-width: none; box-sizing: border-box; border-bottom: 0; transform-origin: left top; transform: translateY(calc(var(--header-shift) * var(--header-p))); }
+.site-header-shell > .site-header .brand { transform-origin: left center; transform: scale(calc(1 - .4 * var(--header-p))); }
+/* The glass layer: the regular variant, a brand surface at 75% with a soft blur and a lift in color, a hairline, and a very soft shadow. Its opacity is p, so the hairline and the shadow arrive with it.
    A rendered test in dom.test.mjs samples the real pixels under the bar over the hero photo and checks link text at 4.5:1. */
-.site-header-shell > .site-header::before { content: ''; position: absolute; inset: calc((var(--header-h) - var(--header-compact-h)) / 2) 0; z-index: -1; pointer-events: none; opacity: 0; background: color-mix(in srgb, var(--ui-surface) 75%, transparent); -webkit-backdrop-filter: blur(18px) saturate(1.5); backdrop-filter: blur(18px) saturate(1.5); border-bottom: 1px solid color-mix(in srgb, var(--ui-border) 80%, transparent); box-shadow: 0 8px 24px -14px rgb(30 24 28 / .35); }
-.site-header-shell > .site-header.is-compact::before { opacity: 1; }
-.site-header.is-compact .nav-link { min-height: 44px; }
+.site-header-shell > .site-header::before { content: ''; position: absolute; inset: calc((var(--header-h) - var(--header-compact-h)) / 2) 0; z-index: -1; pointer-events: none; opacity: var(--header-p); background: color-mix(in srgb, var(--ui-surface) 75%, transparent); -webkit-backdrop-filter: blur(18px) saturate(1.5); backdrop-filter: blur(18px) saturate(1.5); border-bottom: 1px solid color-mix(in srgb, var(--ui-border) 80%, transparent); box-shadow: 0 8px 24px -14px rgb(30 24 28 / .35); }
+.site-header .nav-link { min-height: 44px; }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .site-header-shell > .site-header::before { background: var(--ui-surface); }
 }
 @media (prefers-reduced-transparency: reduce) {
   .site-header-shell > .site-header::before { background: var(--ui-surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
-}
-/* The bar moves 14 to 26 px and the glass fades in, once, when the class changes. The curve eases out but starts gently: the earlier curve (.23, 1, .32, 1) moved
-   31% of the way in the first frame, an 8 px jump on a desktop bar, which read as a snap. This one moves 3 px in the first frame and at most 4.5 px in any frame. */
-@media (prefers-reduced-motion: no-preference) {
-  :root { --header-ease: cubic-bezier(.3, .5, .2, 1); --header-time: 250ms; }
-  .site-header-shell > .site-header { transition: transform var(--header-time) var(--header-ease); }
-  .site-header-shell > .site-header::before { transition: opacity var(--header-time) var(--header-ease); }
-  .site-header-shell > .site-header .brand { transition: transform var(--header-time) var(--header-ease); }
 }
 /* A jump to a section, and keyboard focus moving to a control, land below the thin bar (WCAG 2.4.11). This one rule covers both. */
 html { scroll-padding-top: calc(var(--header-compact-h) + 16px); }
