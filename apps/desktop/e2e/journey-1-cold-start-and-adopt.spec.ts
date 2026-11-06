@@ -114,8 +114,10 @@ test('Journey 1, scan: Find my files, the two questions, the ticks, and the read
     const stated = /(\d+) sources?, (\d+) parts in all/.exec(await p.locator('[data-count]').innerText())!;
     expect(Number(stated[1])).toBe(cards.length);
     expect(Number(stated[2])).toBe(sum);
-    // rope-yard already holds a harness: its skills are counted as left out, by the files' own count.
-    await expect(p.locator('[data-read-notes]')).toContainText(`${skillDirs(join(home.rope, '.bowerloom', 'skills'))} things in a Bowerloom folder are not shown.`);
+    // rope-yard already holds a harness: its skills are listed as a source of their own, by the files' own count, and nothing is counted as left out.
+    const ropeSkills = skillDirs(join(home.rope, '.bowerloom', 'skills'));
+    expect(cards.filter(text => text.includes('rope-yard (Bowerloom)') && new RegExp(`\\b${ropeSkills} skills?\\b`).test(text)), 'the card of rope-yard lists its skills').toHaveLength(1);
+    await expect(p.locator('[data-read-notes]', { hasText: 'in a Bowerloom folder' })).toHaveCount(0);
   });
 
   await test.step('1.4 the scan changed no file of the home', async () => {
@@ -172,9 +174,8 @@ test('Journey 1, step 1.5: the first screen after the read is the Overview; ever
     const claudeOf = (name: string) => ({ agent: names(join(home.projects, name, '.claude', 'agents')).length, skill: skillDirs(join(home.projects, name, '.claude', 'skills')), tool: serverCount(join(home.projects, name, '.mcp.json')) + hookCount(join(home.projects, name, '.claude', 'settings.json')) });
     const words = (c: { agent: number; skill: number; tool: number }): string => [['agent', c.agent], ['skill', c.skill], ['tool', c.tool]].filter(([, n]) => (n as number) > 0).map(([w, n]) => plural(n as number, w as string)).join(', ');
     // The places the read finds, from the files: the two home folders, then for ferry-schedule and kite-workshop a place for each of Claude Code, Codex and notes that holds something.
-    const known = ['kite-workshop']; // the folders the app knows at the read: the one adopted in step 1.5a
-    // A folder that holds a harness and that Bowerloom does not know is a place of its own, "<folder> (Bowerloom)", counted from the files of its .bowerloom. rope-yard is one; kite-workshop,
-    // the adopted folder, is known to the app, so it has no such place: its own places are the ones In Bowerloom.
+    // A folder that holds a harness is a place of its own, "<folder> (Bowerloom)", counted from the files of its .bowerloom, whether or not the app knows the folder. rope-yard is one that the
+    // app does not know. kite-workshop, adopted in step 1.5a, is known to the app, so its places, this one too, are In Bowerloom.
     const harnessOf = (dir: string): { agent: number; skill: number; tool: number; context: number } => {
       const base = join(dir, '.bowerloom'), list = (file: string, key: string): number => (existsSync(join(base, file)) ? ((json(join(base, file))[key] as unknown[] | undefined) ?? []).length : 0);
       return { agent: names(join(base, 'agents'), n => n.endsWith('.md')).length, skill: skillDirs(join(base, 'skills')), tool: list('mcp.json', 'servers') + list('hooks.json', 'hooks'), context: list('knowledge.json', 'sources') };
@@ -182,9 +183,9 @@ test('Journey 1, step 1.5: the first screen after the read is the Overview; ever
     const holds = (c: { agent: number; skill: number; tool: number }): number => (c.agent + c.skill + c.tool > 0 ? 1 : 0);
     const codexOf = (name: string): number => names(join(home.projects, name, '.codex', 'agents')).length;
     const placesOf = (name: string): number => holds(claudeOf(name)) + (codexOf(name) > 0 ? 1 : 0) + (topNotes(join(home.projects, name)) > 0 ? 1 : 0);
-    const unknownHarness = (name: string): number => (known.includes(name) || !existsSync(join(home.projects, name, '.bowerloom', 'harness.json')) ? 0 : 1);
+    const harnessPlace = (name: string): number => (existsSync(join(home.projects, name, '.bowerloom', 'harness.json')) ? 1 : 0);
     const homePlaces = holds(claudeHome) + (names(join(root, '.codex', 'agents')).length > 0 ? 1 : 0);
-    const total = homePlaces + placesOf('ferry-schedule') + placesOf('kite-workshop') + unknownHarness('ferry-schedule') + unknownHarness('rope-yard'), inBowerloom = placesOf('kite-workshop');
+    const total = homePlaces + placesOf('ferry-schedule') + placesOf('kite-workshop') + harnessPlace('ferry-schedule') + harnessPlace('kite-workshop') + harnessPlace('rope-yard'), inBowerloom = placesOf('kite-workshop') + harnessPlace('kite-workshop');
     totals = { total, inBowerloom };
     await expect(p.getByText(`${total} places`, { exact: true }).first()).toBeVisible();
     await expect(p.locator('[data-place-toggle]')).toHaveCount(total);
@@ -196,6 +197,7 @@ test('Journey 1, step 1.5: the first screen after the read is the Overview; ever
       ['kite-workshop (Claude Code)', '~/Projects/kite-workshop', words(claudeOf('kite-workshop'))],
       ['ferry-schedule (notes)', '~/Projects/ferry-schedule', '1 set of notes'],
       ['rope-yard (Bowerloom)', '~/Projects/rope-yard', harnessWords(harnessOf(home.rope))],
+      ['kite-workshop (Bowerloom)', '~/Projects/kite-workshop', harnessWords(harnessOf(join(home.projects, 'kite-workshop')))],
     ];
     for (const [name, label, counts] of rows) {
       const aria = await toggle(name).first().getAttribute('aria-label');
@@ -208,7 +210,7 @@ test('Journey 1, step 1.5: the first screen after the read is the Overview; ever
 
   await test.step('1.5d the places in Bowerloom are told from the others, and the others offer a folder chooser', async () => {
     const marks = await p.locator('.hxo-mark').allInnerTexts();
-    expect(marks.filter(m => m === 'In Bowerloom'), 'the two places of the adopted folder').toHaveLength(totals.inBowerloom);
+    expect(marks.filter(m => m === 'In Bowerloom'), 'the places of the adopted folder').toHaveLength(totals.inBowerloom);
     expect(marks.filter(m => m === 'Not in Bowerloom yet')).toHaveLength(totals.total - totals.inBowerloom);
     await expect(p.getByRole('button', { name: 'Open in builder, kite-workshop (Claude Code)', exact: true })).toBeVisible();
     await expect(p.getByRole('button', { name: 'Open in builder, ferry-schedule (Claude Code)', exact: true })).toHaveCount(0);

@@ -162,6 +162,8 @@ export interface ScanSource {
   readonly scope?: 'home' | 'project';
   /** Real mode: the folder the source was found in, written with `~` for the home folder (`~`, `~/Projects/alpha`). Never a full path. Set by the real reader; a source without it reads as a project named by its name. */
   readonly label?: string;
+  /** Real mode: the id of the `HarnessPlace` of the same folder, on the source of a `.bowerloom` folder that also holds a harness. The Overview lists the two as one group. */
+  readonly harnessPlaceId?: string;
 }
 
 /** A folder that holds a harness, read through the harness loader (real mode). The Overview shows it as a place; no screen of the read lists it. `label` is the folder in `~` form. */

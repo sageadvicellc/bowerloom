@@ -55,7 +55,7 @@ export interface OverviewEdge {
 export interface OverviewCounts { readonly agent: number; readonly skill: number; readonly tool: number; readonly context: number }
 
 /**
- * One place: a scan source (`ScanSource`). The id is the source id.
+ * One place: a scan source (`ScanSource`), or a folder that holds a harness (`HarnessPlace`), or both joined. The id is the source id, except for a harness place, alone or joined: then it is the harness place id.
  *  - `name` is the source's name ("Your Claude Code folder"); `label` is the folder in `~` form (`~` for the home folder), never a full path.
  *  - `scope` is `home` or `project`. `programs` lists the programs found there, by name, in the preview's order.
  *  - `inBowerloom` is true when `folders()` has a folder with the same `~` label that holds a harness; `folderId` is then that folder's id, else null.
@@ -93,21 +93,29 @@ export const HARNESS_UNREADABLE = 'Bowerloom could not read this harness.';
  * Deterministic: the same inputs give an equal Overview. A scan with no parts gives groups with no nodes, or none. Throws nothing for any input of the right type.
  *
  * How it reads the scan:
- *  - A group is a source. A source with no `scope` is a project, and with no `label` it takes its name, because a source made before the Overview existed (the sample)
+ *  - A group is a source, or a harness place (alone, or joined with the source of the same folder: its id is then the harness place id). A source with no `scope` is a project, and with no `label` it takes its name, because a source made before the Overview existed (the sample)
  *    carries neither. The label goes through the same rule as every shown text: one plain line, and never a full path.
  *  - A source's part ids that no part answers to are skipped; one part listed twice is shown once.
  *  - The reader keeps a skill of the home folder and the same skill of a project as two parts (an item is one scope, one kind and one name), so sharing is not found in the
  *    reader. Here two skills are the same when their `contentHash` is equal and not empty, in two or more groups. Two skills in one group stay two nodes.
- *  - A folder that holds a harness (`HarnessState.harnessPlaces`) is a project place of its own, built from the parts the loader read. Its programs are the engines of the harness.
+ *  - A folder that holds a harness (`HarnessState.harnessPlaces`) is a project place of its own, built from the parts the loader read, also when main knows the folder (then it reads In Bowerloom).
+ *    Its programs are the engines of the harness. A source that names it (`ScanSource.harnessPlaceId`) is joined into the same group, and a skill both hold is listed once (see `pairSkills`).
  *  - Home groups keep the order of the scan (the reader lists the programs in a fixed order). Project groups follow: most nodes first, then name, then id.
  */
 export function overviewOf(state: HarnessState, folders: readonly FolderInfo[]): Overview {
   const parts = new Map<string, Part>();
   for (const p of state.parts) if (!parts.has(p.id)) parts.set(p.id, p);
   const known = [...folders].filter(f => f.hasDefinition).sort((a, b) => compare(a.id, b.id));
-  const made = state.sources.map((source, index) => ({ index, ...groupOf(source, parts, known) }));
-  // The folders that hold a harness and that main does not know: a place each (a folder main knows has its own place, which reads In Bowerloom).
-  const harnesses = (state.harnessPlaces ?? []).filter(h => !known.some(f => f.label === labelOf(h.label))).map((h, i) => harnessGroupOf(h, made.length + i, known));
+  // Every harness place is drawn. When the folder's `.bowerloom` also has items the harness does not hold (the source names the harness place), the two are one group, and a skill both hold is listed
+  // once. A folder main knows is marked In Bowerloom by its label (see `groupOf`), as any other group.
+  const places = state.harnessPlaces ?? [], byId = new Map(places.map(h => [h.id, h] as const)), joined = new Set<string>();
+  const made = state.sources.map((source, index) => {
+    const place = source.harnessPlaceId === undefined ? undefined : byId.get(source.harnessPlaceId);
+    if (place === undefined) return { index, ...groupOf(source, parts, known) };
+    joined.add(place.id);
+    return { index, ...joinedGroupOf(place, source, parts, known) };
+  });
+  const harnesses = places.filter(h => !joined.has(h.id)).map((h, i) => harnessGroupOf(h, made.length + i, known));
   const built = [...made, ...harnesses];
   const home = built.filter(b => b.group.scope === 'home');
   const projects = built.filter(b => b.group.scope !== 'home')
@@ -115,14 +123,59 @@ export function overviewOf(state: HarnessState, folders: readonly FolderInfo[]):
   return markShared([...home, ...projects]);
 }
 
+/** The parts of a harness place, as the Overview draws them. */
+const harnessPartsOf = (place: HarnessPlace): Part[] => place.parts.map(p => ({
+  id: p.id, kind: p.kind, name: p.name, summary: p.summary, description: '', path: '', source: '', origin: place.id, fileText: '', cannotUse: [], inLibrary: true, ...(p.toolKind === undefined ? {} : { toolKind: p.toolKind }), ...(p.contentHash === undefined ? {} : { contentHash: p.contentHash }),
+}));
+
 function harnessGroupOf(place: HarnessPlace, index: number, folders: readonly FolderInfo[]): { index: number; group: OverviewGroup; hashes: ReadonlyMap<string, string> } {
-  const partList: Part[] = place.parts.map(p => ({
-    id: p.id, kind: p.kind, name: p.name, summary: p.summary, description: '', path: '', source: '', origin: place.id, fileText: '', cannotUse: [], inLibrary: true, ...(p.toolKind === undefined ? {} : { toolKind: p.toolKind }), ...(p.contentHash === undefined ? {} : { contentHash: p.contentHash }),
-  }));
+  const partList = harnessPartsOf(place);
   const source: ScanSource = { id: place.id, name: place.name, interfaceName: '', harnessName: place.name, partIds: partList.map(p => p.id), links: place.links, scope: 'project', label: place.label };
   const built = groupOf(source, new Map(partList.map(p => [p.id, p])), folders);
   const group: OverviewGroup = { ...built.group, programs: place.engines.map(shown), ...(place.readable ? {} : { note: HARNESS_UNREADABLE }) };
   return { index, group, hashes: built.hashes };
+}
+
+/** The name of a part as the Overview draws it, without the mark of a cut. */
+const nameOf = (part: Part): string => shown(part.name).replace(/…$/, '');
+const sameText = (a: Part, b: Part): boolean => (a.contentHash ?? '') === (b.contentHash ?? '');
+/** True when the part has a text hash. Two parts with no hash have no proof that they are one skill, except a full name; the harness side carries no path to tell them apart either. */
+const hashed = (part: Part): boolean => (part.contentHash ?? '') !== '';
+/** How much of a name two copies must share in the second pass: the part cuts a long name at the last space past its middle (40 characters), so only that much is certain to be the same. */
+const NAME_STEM = 40;
+
+/**
+ * Pairs each skill of a source with the skill of the harness place that is its copy. Pass 1: the same text and the full name. Pass 2, for the ones left: the same text and the first 40
+ * characters of the name. Pass 2 needs a text hash: with no hash a shared start of a name proves nothing, so such skills pair only on the full name. A skill of the place is used once. Returns the id of its twin in the place for each source skill that has one.
+ */
+function pairSkills(own: readonly Part[], source: readonly Part[]): Map<string, string> {
+  const twins = new Map<string, string>(), taken = new Set<string>();
+  const pass = (same: (a: Part, b: Part) => boolean): void => {
+    for (const part of source) {
+      if (part.kind !== 'skill' || twins.has(part.id)) continue;
+      const twin = own.find(o => o.kind === 'skill' && !taken.has(o.id) && sameText(o, part) && same(o, part));
+      if (twin !== undefined) { twins.set(part.id, twin.id); taken.add(twin.id); }
+    }
+  };
+  pass((o, p) => shown(o.name) === shown(p.name));
+  pass((o, p) => hashed(p) && nameOf(o).slice(0, NAME_STEM) === nameOf(p).slice(0, NAME_STEM));
+  return twins;
+}
+
+/**
+ * One group for a folder that holds a harness and also has items of its own in its `.bowerloom`. It is the harness place with the items of the source added. A skill that both hold
+ * (the same text and name) is the harness place's node, once: links the source makes to the skill go to that node. A harness that could not be read keeps its note and the source's items.
+ */
+function joinedGroupOf(place: HarnessPlace, source: ScanSource, parts: ReadonlyMap<string, Part>, folders: readonly FolderInfo[]): { group: OverviewGroup; hashes: ReadonlyMap<string, string> } {
+  const own = harnessPartsOf(place), all = new Map(own.map(p => [p.id, p] as const)), ids = own.map(p => p.id);
+  const mine: Part[] = [];
+  for (const id of source.partIds) { const part = parts.get(id); if (part !== undefined && !all.has(id) && !mine.includes(part)) mine.push(part); }
+  const moved = pairSkills(own, mine);
+  for (const part of mine) if (!moved.has(part.id)) { all.set(part.id, part); ids.push(part.id); }
+  const links = [...place.links, ...(source.links ?? []).map(l => ({ from: moved.get(l.from) ?? l.from, to: moved.get(l.to) ?? l.to }))];
+  const joined: ScanSource = { id: place.id, name: place.name, interfaceName: '', harnessName: place.name, partIds: ids, links, scope: 'project', label: place.label };
+  const built = groupOf(joined, all, folders);
+  return { group: { ...built.group, programs: place.engines.map(shown), ...(place.readable ? {} : { note: HARNESS_UNREADABLE }) }, hashes: built.hashes };
 }
 
 const KIND_ORDER: readonly PartKind[] = ['agent', 'skill', 'tool', 'context'];
