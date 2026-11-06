@@ -53,7 +53,6 @@ Under the menu, a **Beta** mark opens a short note about this beta. It lists the
 
 - Compare
 - Runs
-- Add, the plus button in the Library
 
 Every control in Projects works. So do **Assign to project** in the details of a harness, **From a folder**, **Install from a folder**, and the save step in the Builder. This page covers them below.
 
@@ -147,6 +146,19 @@ On Harnesses, **Open <name> in the builder** opens one folder's harness as a gra
 A save changes only the `.bowerloom` harness of that folder. Installed engine files change only when you install. If a save stops part way, the app says so, and the command line refuses install, remove, accept, adopt, and merge until you finish the stopped save in the app.
 
 ::visual{id="app-save-review"}
+
+## Add to the Library
+
+The plus button in the Library, **Add**, opens a small form for the tab you are in. It works on your own folders. A harness is a saved list of agents and skills. A part goes into the harness of one folder, so the form always asks which folder gets it. It lists only folders that hold a harness, and it names each folder it leaves out and why. It does not remember your last folder.
+
+- **Skills**: pick the folder that gets the skill, then a folder to copy from, then the skill. A skill the harness holds already is marked and cannot be picked.
+- **Agents**: the Notes keeper, the ready-made agent that looks after a notes folder. Bowerloom adds it with its skills. A harness that holds it says so.
+- **Context**: attach a notes folder. Choose your notes, or start a new folder. Bowerloom saves its name in the harness.
+- **Tools**: **Add** is off and says "Not yet: tools cannot be added from the app."
+
+The write is the save step's. Bowerloom shows the plan and the list of files. You tick **I approve plan**, and the app asks once more in its own window. Only then does it write. The window sends names, never file text. A file that can run needs its own tick. Bowerloom keeps a save point before and after.
+
+After the write, **Add** has no Undo of its own. To undo, open **Save points** and press **Go back**. You approve that the same way. To see the new part in the Library, press **Read again**. The next read lists it.
 
 ## Save points, Go back, and Set aside
 

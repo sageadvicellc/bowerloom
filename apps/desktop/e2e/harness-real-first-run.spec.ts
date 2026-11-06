@@ -247,7 +247,7 @@ test('Start opens its sheet, and Assign to project says the harness is not on di
   await expect(pop).toContainText('Bowerloom is in beta. It reads your own folders and writes only after you approve what it will write.');
   await expect(pop).toContainText('Not in beta.1');
   await expect(pop).not.toContainText(/preview|full app/i);
-  await expect(pop.locator('li')).toHaveText(['Compare', 'Runs', 'Add (the plus button), in the Library']);
+  await expect(pop.locator('li')).toHaveText(['Compare', 'Runs']);
   await everyStep('preview', false);
   await shot(p, 'real-6-preview');
   await p.keyboard.press('Escape');

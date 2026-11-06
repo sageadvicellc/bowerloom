@@ -102,15 +102,23 @@ test('real mode words: Welcome, Runs, Help, Projects, Library, Install history a
     await expect(p.getByRole('button', { name: 'Install from a folder', exact: true })).toBeVisible();
     await noFalseClaim('projects');
   });
-  await test.step('Library: "Add" says "Not in beta.1"', async () => {
+  await test.step('Library: "Add" opens the small form of the tab and does not say "Not in beta.1"; in Tools it says "Not yet"', async () => {
     await go('#app/library/skill');
     await expect(p.getByRole('heading', { level: 1, name: 'Library', exact: true })).toBeVisible();
     const add = p.getByRole('button', { name: 'Add', exact: true });
-    await expect(add).toHaveAccessibleDescription('Not in beta.1.');
-    // The button is aria-disabled (so a screen reader says it is off) but still takes a press that shows the note; Playwright counts aria-disabled as not enabled.
-    await add.click({ force: true });
-    await expect(p.locator('[data-toast]')).toContainText('Not in beta.1.');
+    await expect(add).not.toHaveAccessibleDescription('Not in beta.1.');
+    await add.click();
+    const sheet = p.getByRole('dialog', { name: 'Add a skill', exact: true });
+    await expect(sheet).toBeVisible();
+    expect(await sheet.innerText()).not.toContain('Not in beta.1');
+    await sheet.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(p.locator('[aria-modal="true"]')).toHaveCount(0);
     await noFalseClaim('library');
+    await go('#app/library/tool');
+    await expect(add).toHaveAccessibleDescription('Not yet: tools cannot be added from the app.');
+    await add.click({ force: true });
+    await expect(p.locator('[data-toast]')).toContainText('Not yet: tools cannot be added from the app.');
+    await expect(p.locator('[data-toast]')).not.toContainText('Not in beta.1');
   });
   await test.step('Install history: after a harness is made from a scan, the list holds it with Undo, and says only what is true', async () => {
     await go('#app/history');
@@ -123,7 +131,7 @@ test('real mode words: Welcome, Runs, Help, Projects, Library, Install history a
     await go('#app/harnesses');
     await p.getByRole('button', { name: 'About this beta', exact: true }).click();
     const lines = await p.locator('.hx-preview-pop li').allInnerTexts();
-    expect(lines).toEqual(['Compare', 'Runs', 'Add (the plus button), in the Library']);
+    expect(lines).toEqual(['Compare', 'Runs']);
     for (const line of lines) expect(line).not.toMatch(/from a folder/i);
     await p.keyboard.press('Escape');
   });
