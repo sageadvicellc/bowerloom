@@ -1,0 +1,42 @@
+{
+  "shots": {
+    "app-builder": {
+      "alt": "The builder screen with a team of three agents.",
+      "caption": "Build a team in the app.",
+      "width": 2200,
+      "height": 1375
+    }
+  },
+  "terminals": {
+    "cli-plan": {
+      "title": "bowerloom plan",
+      "caption": "The plan lists each step before anything runs.",
+      "lines": [
+        {
+          "kind": "cmd",
+          "text": "bowerloom plan"
+        },
+        {
+          "kind": "out",
+          "text": "Plan: 2 steps <ready> & waiting"
+        },
+        {
+          "kind": "out",
+          "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        },
+        {
+          "kind": "out",
+          "text": ""
+        },
+        {
+          "kind": "err",
+          "text": "warning: no harness signed in"
+        },
+        {
+          "kind": "cmd",
+          "text": "bowerloom apply --dry-run"
+        }
+      ]
+    }
+  }
+}

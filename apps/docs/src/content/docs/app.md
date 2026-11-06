@@ -33,11 +33,19 @@ After this, the app opens like any other app. If you do not want to allow an uns
 
 The app opens on a welcome screen. It says that Bowerloom only reads, and that nothing changes until you press Install. Press **Find my files**.
 
+::visual{id="app-welcome"}
+
 The app then looks for the engine files of your folders and lists what it found, with counts. Each source is ticked. Untick a source to skip it. Bowerloom reads the names and the text of the files you keep, and the text stays on your computer. Press **Looks right**, and then **Make a harness from this** for each source, or **Make all** for every source. The notes step follows. [Notes and the Notes keeper](/docs/guides/notes/) covers it.
+
+::visual{id="app-find-files"}
 
 The left menu then holds Harnesses, Library, Projects, and Runs. At its foot are Engines, Install history, and Help. Harnesses lists the folders that have a harness. Projects lists your folders and the harnesses installed in them. Engines lists each engine with its health and a switch. The switch decides whether the install offers that engine.
 
+::visual{id="app-engines"}
+
 Install history is the install undo list. Each row is one change, newest first, with an **Undo** that puts back what the change replaced. Only the newest change of one install can be undone. On your own folders the list starts empty in beta.1, because an install from Projects is not in beta.1. To undo a folder install, press **Undo** in the install sheet, then approve the removal.
+
+::visual{id="app-install-history"}
 
 ## The Beta mark and the blocked controls
 
@@ -64,6 +72,8 @@ On Projects, **From a folder** opens New harness from a folder. It has four step
 - Before it writes, you tick each approval and each acknowledgement. A secret is replaced by a reference.
 - It writes only into the `.bowerloom` folder of that project. It changes no engine file.
 
+::visual{id="app-adopt-sheet"}
+
 ## Install a folder's harness
 
 **Install from a folder** opens Install a folder's harness. It has four steps: Folder, Engines, Review, and Done. It does what `bowerloom harness install` does.
@@ -76,6 +86,8 @@ On Projects, **From a folder** opens New harness from a folder. It has four step
 - **Undo** opens the removal plan, and you approve it the same way. A run that stopped part way gets a recovery plan.
 - When only the mode of a file changed after Bowerloom wrote it, the file shows **Restore mode** and **Keep new mode**.
 
+::visual{id="app-install-review"}
+
 Beta.1 supports Claude Code and Codex. OpenCode, Pi, and DeepSeek Harness show a Preview tag. You can install to them only when the app starts with `BOWERLOOM_PREVIEW_ENGINES=1`. Reading and removing work for all five.
 
 ## The Builder
@@ -87,6 +99,8 @@ On Harnesses, **Open <name> in the builder** opens one folder's harness as a gra
 - The count of changes shows at the top. Changes stay a draft until you save. Leaving with unsaved changes asks "Discard N changes?"
 - You can take a skill out, or copy a skill from another folder.
 
+::visual{id="app-builder"}
+
 ## The save step
 
 **Save** opens Edit a folder's harness. It has four steps: Folder, Edit, Review, and Done.
@@ -97,6 +111,8 @@ On Harnesses, **Open <name> in the builder** opens one folder's harness as a gra
 
 A save changes only the `.bowerloom` harness of that folder. Installed engine files change only when you install. If a save stops part way, the app says so, and the command line refuses install, remove, accept, adopt, and merge until you finish the stopped save in the app.
 
+::visual{id="app-save-review"}
+
 ## Save points, Go back, and Set aside
 
 Every save keeps a save point, which is a copy of the harness as it was. The first save also keeps the harness as it was found, so **Go back** always has somewhere to go.
@@ -105,9 +121,13 @@ Every save keeps a save point, which is a copy of the harness as it was. The fir
 - **Go back** on a row puts the harness as it was at that save point. Bowerloom also keeps the harness as it is now as a save point, so nothing is lost and the list only grows. Going back changes only `.bowerloom`, and you review and approve it first, as you do for a save.
 - **Set old save points aside** shows only when the app refuses the record of save points, because the record is not whole or is not safe to read. It starts a new record. It shows a review first. It deletes nothing, and **Go back** then starts again from the next save.
 
+::visual{id="app-save-points"}
+
 ## Export and import
 
 Press **Export** in the header of the Builder to write the saved harness to one file. Press **Import from a file** in the Folders block of Harnesses, or in the empty state when you have no harness, to read such a file. Each opens a sheet that shows what the file holds. Import writes nothing until you tick the boxes and approve. Export asks for a tick only when the files hold a path from this computer. Import goes only into a folder with no harness, or an empty one. [Share a harness](/docs/guides/share-a-harness/) covers what the file holds, what to read first, and the limits.
+
+::visual{id="app-import-sheet"}
 
 ## See everything in one graph
 
@@ -120,6 +140,8 @@ The Overview is the first screen after the read. It shows every place Bowerloom 
 - Use **Graph or list** to switch the view. The arrow keys move, Enter selects, and Escape clears.
 - The Overview is read-only. It changes no file. Open a place in the builder to change it.
 
+::visual{id="app-overview"}
+
 ## Notes
 
 The Notes panel and the Notes keeper kit are covered in [Notes and the Notes keeper](/docs/guides/notes/).
@@ -127,3 +149,5 @@ The Notes panel and the Notes keeper kit are covered in [Notes and the Notes kee
 ## Help menu
 
 **Help > Report a problem** builds a diagnostic bundle that you read before you send it. **Help > Usage log** shows the local event log. The app makes no network call by itself. [Report a problem](https://github.com/sageadvicellc/bowerloom#report-a-problem) in the README gives the details.
+
+::visual{id="app-help"}

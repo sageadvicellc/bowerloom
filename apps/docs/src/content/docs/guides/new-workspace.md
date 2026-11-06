@@ -37,6 +37,8 @@ bowerloom init plan --mode new --target /absolute/projects/clean-install-trial -
 
 Read `input`, `files`, `binding`, `installationIdentityPolicy`, and `revision` in the returned plan.
 
+::visual{id="cli-init-plan"}
+
 Review every proposed file, hash, role, access declaration, agreement, and milestone. The plan contains the full 20-file inventory.
 
 The plan reports `specReady: true`, `runtimeReady: false`, `executionAuthorized: false`, and `reviewRequired: true`. These fields describe a valid plan, not an installation.

@@ -1,0 +1,85 @@
+/* Visuals: screenshots and terminal samples in a page, and the framed viewer that enlarges them.
+   Markup: src/lib/visuals.mjs. Behavior: src/lib/visuals-client.mjs. Colors follow the docs theme (html[data-theme]). */
+.visual { margin: 1.6em 0; min-width: 0; max-width: 100%; }
+.visual-frame { display: block; }
+.visual-img { display: block; box-sizing: border-box; width: 100%; height: auto; border: 1px solid var(--brand-line); border-radius: 12px; background: var(--brand-surface); }
+.visual-img[data-shot-theme='dark'], [data-theme='dark'] .visual-img[data-shot-theme='light'] { display: none; }
+[data-theme='dark'] .visual-img[data-shot-theme='dark'] { display: block; }
+.visual[data-ready] .visual-frame { cursor: zoom-in; }
+.visual-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; font-size: 14px; line-height: 1.6; color: var(--brand-muted); }
+.visual-caption { min-width: 0; }
+.visual-enlarge { display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 8px; min-height: 44px; margin-left: auto; padding: 0 18px; border: 1px solid var(--brand-line); border-radius: 8px; background: var(--brand-surface); color: var(--brand-ink); font-size: 14px; font-weight: 650; line-height: 1.2; cursor: pointer; }
+.visual-enlarge[hidden], .vt-copy[hidden] { display: none; }
+.visual-enlarge:hover { border-color: var(--brand-action); color: var(--brand-action); }
+.visual-enlarge:focus-visible, .vt-copy:focus-visible, .visual-close:focus-visible { outline: 2px solid var(--brand-action); outline-offset: 3px; }
+
+/* Terminal panel. Own colors per theme; every text color passes 4.5:1 on its background (checked in tools/visuals.test.mjs). */
+.vt-panel { --vt-bg: #FFF9F4; --vt-bar: #EFE3DA; --vt-fg: #373A32; --vt-out: #554F53; --vt-err: #9A4521; --vt-prompt: #7A4A55; --vt-title: #4F484C; display: flex; flex-direction: column; min-width: 0; max-width: 100%; overflow: hidden; border: 1px solid var(--brand-line); border-radius: 12px; background: var(--vt-bg); color: var(--vt-fg); }
+[data-theme='dark'] .vt-panel { --vt-bg: #1F1E23; --vt-bar: #2E2C33; --vt-fg: #F6EEE8; --vt-out: #CDC1C7; --vt-err: #F0AE86; --vt-prompt: #E8B3BF; --vt-title: #D8CAD0; }
+.vt-bar { position: relative; display: flex; flex: none; align-items: center; gap: 12px; min-height: 44px; padding: 0 8px 0 14px; background: var(--vt-bar); border-bottom: 1px solid var(--brand-line); }
+.vt-dots { display: inline-flex; gap: 6px; }
+.vt-dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--brand-line); }
+.vt-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vt-title); font: 600 13px/1.2 var(--font-mono); }
+.vt-copy { flex: none; min-height: 36px; padding: 0 12px; border: 1px solid var(--brand-line); border-radius: 6px; background: var(--vt-bg); color: var(--vt-fg); font-size: 12px; font-weight: 650; }
+.vt-copy:hover { border-color: var(--brand-action); }
+@media (pointer: coarse) { .vt-copy { min-height: 44px; min-width: 44px; } }
+.docs-prose .visual .vt-body, .visual-dialog .vt-body { flex: 1; min-height: 0; margin: 0; max-width: 100%; padding: 14px 16px; overflow: auto; border: 0; border-radius: 0; background: transparent !important; color: var(--vt-fg) !important; font: 13.5px/1.65 var(--font-mono); white-space: pre; tab-size: 4; }
+.docs-prose .visual .vt-body { max-height: min(70vh, 36rem); }
+.docs-prose .visual .vt-body code, .visual-dialog .vt-body code { font: inherit; white-space: pre; overflow-wrap: normal; }
+.vt-body:focus-visible { outline: 2px solid var(--brand-action); outline-offset: -4px; }
+.vt-line { color: var(--vt-out); }
+.vt-line.vt-cmd { color: var(--vt-fg); }
+.vt-line.vt-err { color: var(--vt-err); }
+/* The prompt is a pseudo-element, so a selection and a copy leave it out. */
+.vt-cmd::before { content: '$ '; color: var(--vt-prompt); -webkit-user-select: none; user-select: none; }
+
+/* The viewer: a native modal dialog that holds the painted frame. --s is the scale: large windows 0.5, up to 1000 px 0.4, phones 0.3.
+   --hole-* is the screen opening in image pixels and --cut-* is the nine-slice cut. Same values as the main site. */
+.visual-dialog { --s: .5; --hole-t: 112; --hole-r: 114; --hole-b: 114; --hole-l: 114; --cut-t: 176; --cut-r: 177; --cut-b: 174; --cut-l: 176; --frame: url(/frame/frame-light.webp); box-sizing: border-box; width: min(1300px, calc(100vw - 16px)); max-width: none; max-height: calc(100dvh - 32px); margin: auto; padding: 0 calc(84px * var(--s)); overflow: auto; overscroll-behavior: contain; border: 0; border-radius: 0; background: transparent; color: var(--brand-ink); box-shadow: none; }
+[data-theme='dark'] .visual-dialog { --hole-t: 115; --hole-r: 132; --hole-b: 115; --hole-l: 131; --cut-t: 191; --cut-r: 203; --cut-b: 189; --cut-l: 202; --frame: url(/frame/frame-dark.webp); }
+.visual-dialog[open] { display: block; }
+.visual-dialog::backdrop { background: rgb(24 20 28 / .5); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.visual-column { margin-inline: auto; width: min(1100px, 100%, calc((100dvh - ((var(--hole-t) + var(--hole-b) + 96) * var(--s) * 1px + 104px)) * 1.6 + (var(--hole-l) + var(--hole-r)) * var(--s) * 1px)); }
+.visual-dialog-bar { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 12px 10px 20px; border: 1px solid var(--brand-line); border-radius: 8px; background: var(--brand-surface); box-shadow: 0 12px 32px -16px rgb(20 16 24 / .5); }
+.visual-dialog-bar form { margin: 0; }
+.visual-dialog-text { min-width: 0; }
+.visual-pinch { display: none; }
+.visual-dialog-caption { display: -webkit-box; min-width: 0; margin: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-size: 14px; line-height: 1.5; color: var(--brand-muted); }
+.visual-close { display: inline-grid; place-items: center; flex: none; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--brand-ink); cursor: pointer; }
+.visual-close:hover { color: var(--brand-action); background: color-mix(in srgb, var(--brand-action) 8%, transparent); }
+.visual-device { position: relative; box-sizing: border-box; margin-block: calc(40px * var(--s) + 8px) calc(56px * var(--s)); padding: calc(var(--hole-t) * var(--s) * 1px) calc(var(--hole-r) * var(--s) * 1px) calc(var(--hole-b) * var(--s) * 1px) calc(var(--hole-l) * var(--s) * 1px); }
+.visual-device::after { content: ''; position: absolute; inset: 0; z-index: 1; box-sizing: border-box; pointer-events: none; border-style: solid; border-width: calc(var(--cut-t) * var(--s) * 1px) calc(var(--cut-r) * var(--s) * 1px) calc(var(--cut-b) * var(--s) * 1px) calc(var(--cut-l) * var(--s) * 1px); border-image-source: url(/frame/frame-light.webp); border-image-slice: var(--cut-t) var(--cut-r) var(--cut-b) var(--cut-l); border-image-width: calc(var(--cut-t) * var(--s) * 1px) calc(var(--cut-r) * var(--s) * 1px) calc(var(--cut-b) * var(--s) * 1px) calc(var(--cut-l) * var(--s) * 1px); border-image-repeat: stretch; }
+[data-theme='dark'] .visual-device::after { border-image-source: url(/frame/frame-dark.webp); }
+/* The opening is 16:10. A shot fills it; a terminal panel fills it too, and its text scales with the opening (never below 12 px, then the panel scrolls). */
+.visual-scroll { position: relative; aspect-ratio: 16 / 10; min-height: 0; overflow: hidden; background: var(--brand-surface); container-type: inline-size; touch-action: pan-x pan-y pinch-zoom; }
+.visual-full { display: block; width: 100%; height: 100%; object-fit: cover; touch-action: pan-x pan-y pinch-zoom; }
+.visual-full[data-shot-theme='dark'], [data-theme='dark'] .visual-full[data-shot-theme='light'] { display: none; }
+[data-theme='dark'] .visual-full[data-shot-theme='dark'] { display: block; }
+.visual-scroll .vt-panel { position: absolute; inset: 0; border: 0; border-radius: 0; }
+.visual-dialog .vt-body { font-size: max(12px, 1.7cqw); }
+.visual-dialog .vt-title { font-size: max(12px, 1.5cqw); }
+.deco { position: absolute; z-index: 2; height: auto; max-width: none; pointer-events: none; user-select: none; }
+.deco.ivy { width: calc(170px * var(--s)); left: calc(-78px * var(--s)); top: calc(-40px * var(--s)); }
+.deco.bloom { width: calc(170px * var(--s)); right: calc(-74px * var(--s)); bottom: calc(-50px * var(--s)); }
+[data-theme='dark'] .deco { filter: brightness(.82) saturate(.9); }
+html:has(.visual-dialog[open]) { overflow: hidden; scrollbar-gutter: stable; }
+/* Motion, same values as the main site: a 220 ms fade and a short rise to open, a shorter fade to close. Only opacity and transform move. */
+@media (prefers-reduced-motion: no-preference) {
+  .visual-dialog, .visual-dialog::backdrop { opacity: 0; transition: opacity 140ms cubic-bezier(.23, 1, .32, 1), display 140ms allow-discrete, overlay 140ms allow-discrete; }
+  .visual-dialog { transform: translateY(0); transition: opacity 140ms cubic-bezier(.23, 1, .32, 1), transform 140ms cubic-bezier(.23, 1, .32, 1), display 140ms allow-discrete, overlay 140ms allow-discrete; }
+  .visual-dialog[open], .visual-dialog[open]::backdrop { opacity: 1; transition-duration: 220ms; }
+  .visual-dialog[open] { transform: none; }
+  @starting-style {
+    .visual-dialog[open] { opacity: 0; transform: translateY(8px); }
+    .visual-dialog[open]::backdrop { opacity: 0; }
+  }
+}
+@media (max-width: 1000px) { .visual-dialog { --s: .4; } }
+@media (max-width: 760px) {
+  .visual-dialog { --s: .3; }
+  .visual-pinch { display: block; margin: 4px 0 0; font-size: 13px; font-weight: 500; line-height: 1.4; color: var(--brand-action); }
+  .deco.hl, .deco.hr { display: none; }
+  .visual-meta { flex-wrap: wrap; }
+}
+
+.vt-status { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }

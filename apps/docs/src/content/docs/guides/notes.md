@@ -29,6 +29,8 @@ When you take a notes folder off a harness, the folder itself does not change.
 4. The Notes panel in the Builder shows each notes folder with its page count, the date of its last change, the agents that read it, and the latest tidy-up report. **Stop using these notes** takes the folder off the harness when you save. The folder itself stays.
 5. A notes folder must be inside your home folder or inside the harness folder. The app refuses any other folder, the home folder itself, and a hidden folder or a folder inside one.
 
+::visual{id="app-notes-tour"}
+
 ## The Notes keeper kit
 
 The kit is one agent and six skills, and a starter set of notes files. The agent is `notes-keeper`. It looks after one folder of notes. It keeps the notes in git, so every change can be compared and undone.
