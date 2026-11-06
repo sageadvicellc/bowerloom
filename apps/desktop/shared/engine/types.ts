@@ -4,6 +4,8 @@
  * The sample launch answers the same calls from synthetic fixtures in memory (shared/engine/sample.ts) and writes nothing.
  */
 
+import type { SavedScanAnswer, SavedScanCheck } from '../real/saved-scan.js';
+
 /** The engine ids are the harness definition core's own list (shared/engine/engines.ts). Only the type is named here, so this file, which the bridge imports, pulls in no package. */
 import type { EngineId } from '../../../../packages/harness-definition/src/words.js';
 export type { EngineId };
@@ -797,6 +799,13 @@ export interface EngineBridge {
    * null. True when it was recorded. Nothing leaves the computer. The sample records nothing and answers false.
    */
   recordCheck(answer: CheckAnswer, note: string | null): Promise<boolean>;
+  /**
+   * What a launch asks first: the last read, kept on this computer, as the window got it (the places and the result), or `none` (nothing kept), or `damaged` with a short reason when
+   * the kept file cannot be used. It reads no folder. The sample has no kept read and answers `none`.
+   */
+  savedScan(): Promise<SavedScanAnswer>;
+  /** The cheap, read-only check that follows: whether the folders of the kept read changed since it was made (or could not be checked to the end). No file is opened. The sample answers `same`. */
+  checkSavedScan(): Promise<SavedScanCheck>;
 }
 
 /** The three answers of the after-apply check. */
@@ -811,7 +820,7 @@ export const ENGINE_CALLS = Object.freeze([
   'planProjection', 'runProjection', 'planRemoval', 'runRemoval', 'planRecovery', 'runRecovery', 'planMerge', 'runMerge', 'recordCheck',
   'planSave', 'runSave', 'listVersions', 'planRestore', 'runRestore', 'planSetAside', 'runSetAside',
   'chooseNotesFolder', 'notesSummary', 'planCreateNotes', 'runCreateNotes', 'planNotesHistory', 'runNotesHistory', 'openNotesReport',
-  'planExport', 'runExport', 'chooseBundle', 'planImport', 'runImport', 'discardBundle',
+  'planExport', 'runExport', 'chooseBundle', 'planImport', 'runImport', 'discardBundle', 'savedScan', 'checkSavedScan',
 ] as const);
 export type EngineCall = (typeof ENGINE_CALLS)[number];
 /** How many arguments each call takes. A call with another count is refused before anything runs. */
@@ -820,7 +829,7 @@ export const ENGINE_ARITY: Readonly<Record<EngineCall, number>> = Object.freeze(
   planProjection: 2, runProjection: 3, planRemoval: 1, runRemoval: 2, planRecovery: 2, runRecovery: 3, planMerge: 1, runMerge: 2, recordCheck: 2,
   planSave: 2, runSave: 3, listVersions: 1, planRestore: 2, runRestore: 3, planSetAside: 1, runSetAside: 2,
   chooseNotesFolder: 1, notesSummary: 1, planCreateNotes: 1, runCreateNotes: 2, planNotesHistory: 1, runNotesHistory: 2, openNotesReport: 1,
-  planExport: 1, runExport: 3, chooseBundle: 0, planImport: 3, runImport: 5, discardBundle: 1,
+  planExport: 1, runExport: 3, chooseBundle: 0, planImport: 3, runImport: 5, discardBundle: 1, savedScan: 0, checkSavedScan: 0,
 });
 /** One channel per call, apart from every other channel of the app. */
 export const ENGINE_CHANNELS: Readonly<Record<EngineCall, string>> = Object.freeze(Object.fromEntries(ENGINE_CALLS.map(c => [c, `bowerloom-engine:${c}`])) as Record<EngineCall, string>);

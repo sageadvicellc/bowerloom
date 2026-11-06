@@ -148,6 +148,11 @@ export function isThere(abs: string): boolean {
   try { const s = lstatSync(abs); return s.isFile() || s.isSymbolicLink(); } catch { return false; }
 }
 
+/** The size and change time of the thing at this path (a shortcut is not followed), as one plain piece of text, or null when nothing is there. Nothing is opened. */
+export function statLine(abs: string): string | null {
+  try { const s = lstatSync(abs); return `${s.isSymbolicLink() ? 'l' : s.isDirectory() ? 'd' : 'f'}|${s.size}|${s.mtimeMs}`; } catch { return null; }
+}
+
 /** Whether a path is a real folder (not a shortcut), and its real location. */
 export function realFolder(abs: string): string | null {
   try { const s = lstatSync(abs); if (s.isSymbolicLink() || !s.isDirectory()) return null; return realpathSync(abs); } catch { return null; }

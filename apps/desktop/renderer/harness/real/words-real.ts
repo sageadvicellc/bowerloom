@@ -6,6 +6,7 @@
 import type { RealNotes } from '../../../shared/harness/types.js';
 import { REAL_LIMITS } from '../../../shared/real/types.js';
 import { PARTLY_READ_NOTE } from '../../../shared/harness/real-map.js';
+import { clockText } from '../clock.js';
 import { REAL_WORDS, countsLine, couldNotReadLine, foundPlaces, readSummary } from '../../home/real/words.js';
 
 const deepFreeze = <T extends object>(value: T): T => {
@@ -45,6 +46,7 @@ export const REAL = deepFreeze({
     notesFirstLines: 'first lines of notes pages',
     replaceTitle: 'Read your folders again?',
     notChecked: 'Not checked',
+    readAgain: 'Read again',
   },
   hint: {
     readOnly: REAL_WORDS.hint.readOnlyNote,
@@ -66,11 +68,18 @@ export const REAL = deepFreeze({
     nextStep: 'Pick a smaller folder to read all of it.',
     detailsFrom: 'These notes are from the first look at each folder.',
     replaceLine: 'Reading again starts over. It changes nothing on your computer.',
+    savedShown: 'Showing what Bowerloom read last time. No folder was read just now.',
+    checkingFolders: 'Checking your folders for changes.',
+    folderChanged: 'Some folders changed since this read.',
+    folderUnchecked: 'Some folders could not be checked.',
+    savedDamaged: 'The saved read could not be used, so Bowerloom starts fresh.',
   },
   paragraph: {
     chooseLine: 'To count what each folder holds, Bowerloom opened settings files and read names and structure. It reads text only in folders you keep ticked.',
     consentNotes: 'It looks through the whole folder for notes pages. It reads the first lines of up to 2000 of them.',
     readLine: 'A harness is a saved list of agents and skills. Bowerloom stores it as one small file in the project you install it to.',
+    savedNotPrivate: 'The saved read sat in a folder others can change, so Bowerloom did not use it. A new read starts a private one.',
+    savedLinked: 'A link stood where the saved read belongs, so Bowerloom did not use it. A new read starts a private one.',
     betaAbout: 'Bowerloom is in beta. It reads your own folders and writes only after you approve what it will write.',
   },
   /**
@@ -112,3 +121,12 @@ export const skippedLine = (n: number, whole: boolean): string => {
 export const limitsLine = (): string => `Bowerloom looks at up to ${REAL_LIMITS.filesPerPlace.toLocaleString('en-US')} files and ${REAL_LIMITS.depth} folders deep in each folder, so a very big folder is only partly read.`;
 /** Whether a note says a folder was only partly read: the reader's sentence for one place, or its sentence for a list of places. */
 export const isPartlyNote = (note: string): boolean => note === PARTLY_READ_NOTE || /^Some folders were big, so only part of them was looked at\.$/.test(note);
+
+/** "Last read: Nov 5, 2026, 3:12 PM.": when the read that is shown ended, in the zone of this computer (or the zone given, for a test). */
+export const savedAtLine = (atMs: number, timeZone?: string): string => {
+  const when = clockText(atMs, timeZone);
+  return when === null ? 'Last read: time not known.' : `Last read: ${when}.`;
+};
+
+/** What is told when the kept read could not be used: one plain sentence, and for a folder that is not private or a link, what happens next. */
+export const damagedWords = (why: string | null): string => (why === 'not-private' ? REAL.paragraph.savedNotPrivate : why === 'linked' ? REAL.paragraph.savedLinked : REAL.hint.savedDamaged);

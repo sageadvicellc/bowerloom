@@ -34,6 +34,10 @@
 [data-home] .hxr-place-name { font-weight: 600; }
 [data-home] .hxr-count { margin: 0; font-size: var(--hm-text-base); line-height: 1.4; color: var(--text-muted); }
 
+/* The time of the last read, one line about it, and Read again */
+[data-home] .hxr-lastread { display: flex; flex-direction: column; align-items: center; gap: var(--hm-space-2); }
+[data-home] .hxr-lastread .hxf-status { margin: 0; }
+
 @media (prefers-reduced-motion: reduce) {
   [data-home] .hxr-fill[data-moving] { animation: none !important; transform: scaleX(0.5); }
 }

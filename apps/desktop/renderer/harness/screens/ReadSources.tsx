@@ -16,6 +16,7 @@ import { FLOW, makeAll, readTitle } from '../words-flow.js';
 import { NOTES } from '../words-notes.js';
 import { FirstHead, SourceVia, sourceCountsWords } from './first-run-parts.js';
 import { makeOnce, makeSources } from './read-make.js';
+import { LastRead } from '../real/LastRead.js';
 import { ReadNotes } from '../real/ReadNotes.js';
 import { readCountLine } from '../real/words-real.js';
 import './first-run.css';
@@ -37,6 +38,7 @@ export function ReadSources(): ReactElement {
       <FirstHead current={2} />
       <h1 className="hxf-title" tabIndex={-1}>{readTitle(kept.length)}</h1>
       <p className="hxf-line">{FLOW.paragraph.readLine}</p>
+      <LastRead />
       {state.real === undefined ? null : <p className="hxr-count" data-count="">{readCountLine(kept.length, kept.reduce((n, s) => n + s.partIds.length, 0))}</p>}
       {state.real === undefined ? null : <ReadNotes real={state.real} />}
       <ul className={state.real === undefined ? 'hxf-cards' : 'hxf-cards hxr-scroll'} aria-label={FLOW.label.sources}>

@@ -10,6 +10,7 @@ import { realFolderFollowing } from './real-fs.js';
 import { registerRealIpc, usableHome } from './real-ipc.js';
 import { registerEngineIpc } from './engine-ipc.js';
 import { diagnosticsEnv, enginePreviewSwitch, engineStateRoot } from './engine-state.js';
+import { createScanSession } from './scan-session.js';
 import { createRecorder } from './engine-events.js';
 import { shippedKits } from './kit.js';
 import { NOTES_DIALOG } from './notes-dialog.js';
@@ -200,8 +201,10 @@ app.whenReady().then(async () => {
   if (launch.realReader) {
     const home = usableHome(homedir(), path => realFolderFollowing(path) !== null);
     if (home === null) throw new Error('Bowerloom needs a home folder to look in. HOME is not set to a folder that exists.');
+    // The last read is kept in the private state folder, so the next launch can show it without reading a folder (main/scan-session.ts).
+    const scan = createScanSession({ home, stateRoot: engineStateRoot(home) });
     registerRealIpc({
-      ipc: ipcMain, appIndexUrl: indexUrl, home,
+      ipc: ipcMain, appIndexUrl: indexUrl, home, keepRead: scan.keepRead,
       chooseFolder: async () => {
         const options: Electron.OpenDialogOptions = { title: 'Choose a folder to look in', buttonLabel: 'Look in this folder', properties: ['openDirectory'] };
         const result = window === null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(window, options);
@@ -211,7 +214,7 @@ app.whenReady().then(async () => {
     // The adopt and install sheets of the harness-first window. They plan read-only, and write only through the packages, with the revision of a plan the person approved.
     if (launch.engineCalls) {
       const engine = registerEngineIpc({
-        ipc: ipcMain, appIndexUrl: indexUrl, home, stateRoot: engineStateRoot(home), who: APPROVER_NAME,
+        ipc: ipcMain, appIndexUrl: indexUrl, home, stateRoot: engineStateRoot(home), who: APPROVER_NAME, saved: scan,
         // Beta.1: OpenCode, Pi, and DeepSeek Harness install only when the app starts with BOWERLOOM_PREVIEW_ENGINES=1. The window gets one yes or no, never the environment.
         previewEngines: enginePreviewSwitch(),
         // A share write that comes back from its dialog after a quit began is refused (main/engine-bundle.ts).

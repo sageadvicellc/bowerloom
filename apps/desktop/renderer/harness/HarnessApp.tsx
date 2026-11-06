@@ -1,7 +1,7 @@
 /**
  * The root of the harness-first preview. It holds the store and the shared state, reads the route from the page address, and draws the screen the route names:
  * the three first screens (Welcome, Choose sources, Read sources) on their own, and every other screen inside the shell. The install sheet, the start sheet and the note are drawn over the shell.
- * Nothing is saved: a new launch starts again from the sample, with no window and no file touched.
+ * The sample saves nothing: a new launch of it starts again from the made-up folders. On the person's own folders the last read is kept by main and shown at launch (real/saved-scan.tsx).
  */
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
@@ -21,6 +21,7 @@ import { Welcome } from './screens/Welcome.js';
 import { ChooseSources } from './screens/ChooseSources.js';
 import { ReadSources } from './screens/ReadSources.js';
 import { NoBridgeScreen, RealChoose } from './real/RealChoose.js';
+import { SavedScanProvider } from './real/saved-scan.js';
 import { chooseKind } from './real/mode.js';
 import { blankRealState } from './real/blank.js';
 import { HarnessList } from './screens/HarnessList.js';
@@ -108,5 +109,5 @@ export function HarnessApp({ store: given, real = null, realMode = real !== null
   useEffect(() => () => store.dispose(), [store]);
   // The adopt and install sheets: the sample answers in memory and writes nothing; real mode uses the window's engine bridge, or none (the sheets then say so).
   const [engine] = useState<EngineBridge | null>(() => (givenEngine !== undefined ? givenEngine : realMode ? null : createSampleEngine({ previewEngines: document.body.getAttribute(SAMPLE_PREVIEW_ATTRIBUTE) === '1' })));
-  return <HarnessProvider store={store}><EngineProvider engine={engine}><UiProvider><NotesProvider><FolderDraftProvider><Routes bridge={real} realMode={realMode} /></FolderDraftProvider></NotesProvider></UiProvider></EngineProvider></HarnessProvider>;
+  return <HarnessProvider store={store}><EngineProvider engine={engine}><UiProvider><SavedScanProvider engine={realMode ? engine : null}><NotesProvider><FolderDraftProvider><Routes bridge={real} realMode={realMode} /></FolderDraftProvider></NotesProvider></SavedScanProvider></UiProvider></EngineProvider></HarnessProvider>;
 }
