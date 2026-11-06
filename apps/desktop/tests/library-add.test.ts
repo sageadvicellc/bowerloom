@@ -1,0 +1,62 @@
+// Library Add (issue 148), variant C: the pure rules of the small Add form in each Library tab. No screen, no engine.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { addState, copySources, keeperHeld, notesEdits, skillEdits, skillHeld, targetsFor, KEEPER_EDITS } from '../shared/harness/library-add.js';
+import { LIMITS, bannedHere, countWords } from '../shared/harness/words.js';
+import { PART_KINDS } from '../shared/harness/types.js';
+import type { DefinitionView, FolderInfo, NotesView } from '../shared/engine/types.js';
+
+const folder = (id: string, over: Partial<FolderInfo> = {}): FolderInfo => ({
+  id, label: `~/Projects/${id}`, name: id, hasDefinition: true, engines: ['claude-code'], previewEngines: false, installedEngines: [], problem: null, projected: false,
+  unfinished: { projection: false, adoption: false }, ...over,
+});
+const definition = (over: Partial<DefinitionView> = {}): DefinitionView => ({ id: 'd', description: '', engines: ['claude-code'], skills: [], agents: [], instructions: true, sources: [], kits: [], ...over });
+const notes = (over: Partial<NotesView> = {}): NotesView => ({
+  id: 'notes-1', label: '~/journal', name: 'journal', suggestedName: 'journal', pages: 3, complete: true, history: 'git', lastCommitAt: null, latestReport: null, reportsComplete: true, ...over,
+});
+
+test('Add is on for skills, agents and context, and off for tools with a plain reason', () => {
+  assert.deepEqual(PART_KINDS.map(k => addState(k).enabled), PART_KINDS.map(k => k !== 'tool'));
+  assert.equal(addState('tool').reason, 'Not yet: tools cannot be added from the app.');
+  for (const k of ['skill', 'agent', 'context'] as const) assert.equal(addState(k).reason, null);
+});
+
+test('only a folder that already holds a harness can take a part, and each folder left out says why', () => {
+  const list = [
+    folder('ready'), folder('bare', { hasDefinition: false }), folder('broken', { problem: 'harness.json is not valid.' }),
+    folder('stopped', { unfinished: { projection: false, adoption: true } }), folder('installed', { projected: true, unfinished: { projection: true, adoption: false } }),
+  ];
+  const { usable, left } = targetsFor(list);
+  assert.deepEqual(usable.map(f => f.id), ['ready', 'installed']);
+  assert.deepEqual(left.map(l => l.folder.id), ['bare', 'broken', 'stopped']);
+  assert.ok(left.every(l => l.why.length > 0 && l.why.split(' ').length <= 12), 'each reason is a short line');
+  assert.match(left[0]!.why, /no harness/i);
+  assert.equal(left[1]!.why, 'harness.json is not valid.');
+});
+
+test('a skill is copied from another folder that holds a harness, never from the folder that gets it', () => {
+  const list = [folder('a'), folder('b'), folder('c', { hasDefinition: false }), folder('d', { problem: 'bad' })];
+  assert.deepEqual(copySources(list, 'a').map(f => f.id), ['b']);
+  assert.deepEqual(copySources(list, 'b').map(f => f.id), ['a']);
+});
+
+test('the edits are ids only', () => {
+  assert.deepEqual(skillEdits('summarize', 'folder-2'), [{ kind: 'add-skill', id: 'summarize', from: 'folder-2' }]);
+  assert.deepEqual(KEEPER_EDITS, [{ kind: 'add-from-kit', kit: 'wiki-keeper' }]);
+  assert.deepEqual(notesEdits(notes({ id: 'notes-9', suggestedName: 'my-notes' })), [{ kind: 'set-source', name: 'my-notes', notesId: 'notes-9' }]);
+  const text = JSON.stringify([skillEdits('x', 'y'), KEEPER_EDITS, notesEdits(notes())]);
+  assert.doesNotMatch(text, /\/Users|\.bowerloom|SKILL\.md|\/\//, "no path and no file text");
+});
+
+test('the form knows when a harness holds the skill or the keeper already', () => {
+  const held = definition({ skills: [{ id: 'summarize', name: 'summarize', description: '' }], agents: [{ id: 'notes-keeper', name: 'Notes keeper', description: '', skills: [], notes: [] }] });
+  assert.equal(skillHeld(held, 'summarize'), true);
+  assert.equal(skillHeld(held, 'other'), false);
+  assert.equal(keeperHeld(held), true);
+  assert.equal(keeperHeld(definition()), false);
+});
+
+test('the reasons a folder is left out, and why tools are off, are short plain lines', () => {
+  const reasons = [addState('tool').reason!, ...targetsFor([folder('a', { hasDefinition: false }), folder('b', { unfinished: { projection: false, adoption: true } })]).left.map(l => l.why)];
+  for (const line of reasons) { assert.ok(countWords(line) <= LIMITS.hint, line); assert.equal(bannedHere(line), null, line); }
+});
