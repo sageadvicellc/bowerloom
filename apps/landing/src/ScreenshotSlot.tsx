@@ -43,13 +43,10 @@ export default function ScreenshotSlot({ slot, priority = false }: { slot: Scree
   </>;
 }
 
-/** The decorations of the device frame, from `public/frame`. Each is drawn at its own place by `page.css`. The left handle is the right one, mirrored there. */
+/** The plants on the device frame, from `public/frame`. Each is drawn at its own place by `page.css`. The frame itself is a border image there, one per theme. */
 const frameParts = [
-  { name: 'tl', file: 'corner-tl.webp', width: 640, height: 633 },
-  { name: 'br', file: 'corner-br.webp', width: 640, height: 661 },
-  { name: 'hl', file: 'handle.webp', width: 220, height: 329 },
-  { name: 'hr', file: 'handle.webp', width: 220, height: 329 },
-  { name: 'ctl', file: 'controls.webp', width: 520, height: 333 },
+  { name: 'ivy', file: 'ivy.webp', width: 240, height: 653 },
+  { name: 'bloom', file: 'bloom.webp', width: 301, height: 281 },
 ] as const;
 
 /** The enlarged view of one shot. `loaded` is false until the first time it opens, and then it holds the files of both themes (the style sheet shows the current one). */
@@ -85,7 +82,7 @@ export function ShotDialog({ id, loaded, ref, onClose }: { id: ScreenshotSlotId;
         </div>
         <form method="dialog"><button type="submit" className="screenshot-close" aria-label="Close"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg></button></form>
       </div>
-      {/* The device: a nine-slice bezel (a border image) around the picture, and decorations that scale with it. Nothing here loads until the first open. */}
+      {/* The device: a painted frame (a nine-slice border image, one per theme) over the picture, and plants that scale with it. Nothing here loads until the first open. */}
       <div className="screenshot-device">
         <div className="screenshot-scroll">
           {loaded ? shotThemes.map(theme => <img

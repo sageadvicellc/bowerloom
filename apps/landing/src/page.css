@@ -82,16 +82,21 @@
 .screenshot-enlarge:hover { border-color: var(--ui-primary); color: var(--ui-primary); }
 .screenshot-enlarge:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 3px; }
 
-/* The enlarged view: a native modal dialog. It is as wide as the window allows and no taller than it. The bar stays; the picture scrolls under it. */
 /* The enlarged view: a native modal dialog that holds a small solarpunk device. The dialog itself is clear. A header bar with the X sits above the device, and the
-   device is a nine-slice bezel around the picture with vines, handles, and studs that scale with it. --s is the scale: large windows 0.5, windows up to 1000 px wide 0.4,
-   phones 0.3. The dialog's side padding holds the decorations that reach past the bezel, so nothing makes the page wider. */
-.screenshot-dialog { --s: .5; box-sizing: border-box; width: min(1300px, calc(100vw - 16px)); max-width: none; max-height: calc(100dvh - 32px); margin: auto; padding: 0 calc(150px * var(--s)); overflow: auto; overscroll-behavior: contain; border: 0; border-radius: 0; background: transparent; color: var(--ui-text); box-shadow: none; }
+   device is a painted metal frame around the picture, with ivy and a flower that scale with it. --s is the scale: large windows 0.5, windows up to 1000 px wide 0.4,
+   phones 0.3. The dialog's side padding holds the plants that reach past the frame, so nothing makes the page wider.
+   Each theme has its own frame image. Its numbers are in image pixels: --hole-* is the screen opening the picture fills, and --cut-* is the nine-slice cut, which
+   reaches past the corner hardware so that the corners never stretch. */
+.screenshot-dialog { --s: .5; --frame: url(/frame/frame-light.webp); --hole-t: 112; --hole-r: 114; --hole-b: 114; --hole-l: 114; --cut-t: 176; --cut-r: 177; --cut-b: 174; --cut-l: 176; box-sizing: border-box; width: min(1300px, calc(100vw - 16px)); max-width: none; max-height: calc(100dvh - 32px); margin: auto; padding: 0 calc(84px * var(--s)); overflow: auto; overscroll-behavior: contain; border: 0; border-radius: 0; background: transparent; color: var(--ui-text); box-shadow: none; }
+[data-theme='dark'] .screenshot-dialog { --frame: url(/frame/frame-dark.webp); --hole-t: 115; --hole-r: 132; --hole-b: 115; --hole-l: 131; --cut-t: 191; --cut-r: 203; --cut-b: 189; --cut-l: 202; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .screenshot-dialog { --frame: url(/frame/frame-dark.webp); --hole-t: 115; --hole-r: 132; --hole-b: 115; --hole-l: 131; --cut-t: 191; --cut-r: 203; --cut-b: 189; --cut-l: 202; }
+}
 .screenshot-dialog[open] { display: block; }
 /* A soft blur and a dim tone behind the dialog. A browser that cannot blur the backdrop still gets the dim tone. */
 .screenshot-dialog::backdrop { background: rgb(24 20 28 / .5); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
 /* The column is as wide as the device, and as wide as the window height allows: the picture is 16:10, so its width follows the height that is left. */
-.screenshot-column { margin-inline: auto; width: min(1100px, 100%, calc((100dvh - (414px * var(--s) + 104px)) * 1.6 + 158px * var(--s))); }
+.screenshot-column { margin-inline: auto; width: min(1100px, 100%, calc((100dvh - ((var(--hole-t) + var(--hole-b) + 96) * var(--s) * 1px + 104px)) * 1.6 + (var(--hole-l) + var(--hole-r)) * var(--s) * 1px)); }
 .screenshot-dialog-bar { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 12px 10px 20px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-surface); box-shadow: 0 12px 32px -16px rgb(20 16 24 / .5); }
 .screenshot-dialog-bar form { margin: 0; }
 .screenshot-dialog-text { min-width: 0; }
@@ -101,16 +106,18 @@
 .screenshot-close:hover { color: var(--ui-primary); background: color-mix(in srgb, var(--ui-primary) 8%, transparent); }
 .screenshot-close:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 2px; }
 /* The scroll area stays inside the dialog. A picture wider than a phone is 960 px wide, so the words in it can be read, and the area scrolls sideways. */
-/* The device. A nine-slice bezel: the corners keep their size and the straight edges stretch, so any size works. The picture sits inside it at 16:10. */
-.screenshot-device { position: relative; box-sizing: border-box; margin-block: calc(110px * var(--s) + 8px) calc(112px * var(--s)); border-style: solid; border-width: calc(92px * var(--s)) calc(78px * var(--s)) calc(100px * var(--s)) calc(80px * var(--s)); border-image: url(/frame/bezel.webp) 92 78 100 80 / calc(92px * var(--s)) calc(78px * var(--s)) calc(100px * var(--s)) calc(80px * var(--s)) stretch; }
-.screenshot-scroll { min-height: 0; overflow: hidden; border-radius: calc(14px * var(--s)); background: var(--ui-surface); }
-.deco { position: absolute; height: auto; max-width: none; pointer-events: none; user-select: none; }
-.deco.tl { width: calc(330px * var(--s)); left: calc(-104px * var(--s)); top: calc(-110px * var(--s)); }
-.deco.br { width: calc(330px * var(--s)); right: calc(-100px * var(--s)); bottom: calc(-112px * var(--s)); }
-.deco.hl, .deco.hr { width: calc(70px * var(--s)); top: 50%; translate: 0 -50%; }
-.deco.hl { left: calc(-148px * var(--s)); scale: -1 1; }
-.deco.hr { right: calc(-146px * var(--s)); }
-.deco.ctl { width: calc(150px * var(--s)); left: 50%; bottom: calc(-82px * var(--s)); translate: -50% 0; }
+/* The device. The picture fills the frame's screen opening: the padding is the opening's inset. The frame is a nine-slice overlay on top of the picture, so the
+   corners keep their size, the straight edges stretch, and any size works. The overlay never takes a click. The picture sits inside at 16:10. */
+.screenshot-device { position: relative; box-sizing: border-box; margin-block: calc(40px * var(--s) + 8px) calc(56px * var(--s)); padding: calc(var(--hole-t) * var(--s) * 1px) calc(var(--hole-r) * var(--s) * 1px) calc(var(--hole-b) * var(--s) * 1px) calc(var(--hole-l) * var(--s) * 1px); }
+.screenshot-device::after { content: ''; position: absolute; inset: 0; z-index: 1; box-sizing: border-box; pointer-events: none; border-style: solid; border-color: transparent; border-width: calc(var(--cut-t) * var(--s) * 1px) calc(var(--cut-r) * var(--s) * 1px) calc(var(--cut-b) * var(--s) * 1px) calc(var(--cut-l) * var(--s) * 1px); border-image: var(--frame) var(--cut-t) var(--cut-r) var(--cut-b) var(--cut-l) / calc(var(--cut-t) * var(--s) * 1px) calc(var(--cut-r) * var(--s) * 1px) calc(var(--cut-b) * var(--s) * 1px) calc(var(--cut-l) * var(--s) * 1px) stretch; }
+.screenshot-scroll { position: relative; min-height: 0; overflow: hidden; background: var(--ui-surface); }
+/* The ivy hangs from the top left corner over the left edge, and the flower sits on the bottom right corner. Both are above the frame. */
+.deco { position: absolute; z-index: 2; height: auto; max-width: none; pointer-events: none; user-select: none; }
+.deco.ivy { width: calc(170px * var(--s)); left: calc(-78px * var(--s)); top: calc(-40px * var(--s)); }
+.deco.bloom { width: calc(170px * var(--s)); right: calc(-74px * var(--s)); bottom: calc(-50px * var(--s)); }
+/* At night the plants are a little darker, so they sit in the dim frame instead of glowing on it. */
+[data-theme='dark'] .deco { filter: brightness(.82) saturate(.9); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme]) .deco { filter: brightness(.82) saturate(.9); } }
 .screenshot-scroll, .screenshot-full { touch-action: pan-x pan-y pinch-zoom; }
 .screenshot-full { display: block; width: 100%; aspect-ratio: 16 / 10; height: auto; object-fit: cover; }
 .screenshot-full[data-shot-theme='dark'], [data-theme='dark'] .screenshot-full[data-shot-theme='light'] { display: none; }
@@ -168,9 +175,8 @@ html:has(.screenshot-dialog[open]) { overflow: hidden; scrollbar-gutter: stable;
   .screenshot-dialog { --s: .4; }
 }
 @media (max-width: 760px) {
-  /* On a phone the frame is small and has no handles, and the hint tells a visitor that two fingers zoom in. */
-  .screenshot-dialog { --s: .3; padding-inline: calc(104px * var(--s)); }
-  .deco.hl, .deco.hr { display: none; }
+  /* On a phone the frame is small. */
+  .screenshot-dialog { --s: .3; }
   /* The picture fits the width here, so the hint tells a phone visitor that two fingers zoom in. */
   .screenshot-pinch { display: flex; align-items: center; gap: 6px; margin: 4px 0 0; font: 500 13px/1.4 var(--ui-font); color: var(--ui-primary); }
   .band-inner { padding: 44px 6%; }

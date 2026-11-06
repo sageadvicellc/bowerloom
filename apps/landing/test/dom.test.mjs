@@ -245,7 +245,7 @@ dom('the banner is 70% of the view height at phone, tablet, and desktop widths, 
 
 // Scroll so the middle of the section sits 42% down the screen, inside the 40% to 45% reading band. Late images move the page, so the aim is made twice.
 
-dom('the link of the section in view gets aria-current, and Docs, Articles, and GitHub never do', async () => {
+dom('the link of the section in view gets aria-current, and Docs and GitHub never do', async () => {
   const { page, context } = await open({ viewport: { width: 1280, height: 800 } });
   const current = () => page.evaluate(() => [...document.querySelectorAll('.desktop-navigation a[aria-current]')].map(a => a.textContent.trim()));
   const toSection = async id => {
@@ -266,7 +266,7 @@ dom('the link of the section in view gets aria-current, and Docs, Articles, and 
   await toSection('install');
   assert.equal(await page.locator('.mobile-drawer a[href="#install"]').getAttribute('aria-current'), 'true');
   assert.equal(await page.locator('.mobile-drawer a[href="#command-line"]').getAttribute('aria-current'), null, 'one at a time');
-  assert.equal(await page.locator('.desktop-navigation a:is([href="/docs/"], [href="/articles/"], .nav-github)[aria-current]').count(), 0);
+  assert.equal(await page.locator('.desktop-navigation a:is([href="/docs/"], .nav-github)[aria-current]').count(), 0);
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.waitForTimeout(400);
   assert.deepEqual(await current(), []);
@@ -281,11 +281,11 @@ dom('the stitch shows at once under reduced motion, on hover and on keyboard foc
   assert.match(await clip('Docs'), /inset\(0px\)/, 'drawn on hover with no delay');
   await page.mouse.move(2, 2);
   await page.keyboard.press('Tab');
-  await page.getByRole('link', { name: 'Articles', exact: true }).focus();
+  await page.getByRole('link', { name: 'The app', exact: true }).focus();
   await page.keyboard.press('Shift+Tab');
   await page.keyboard.press('Tab');
-  assert.match(await clip('Articles'), /inset\(0px\)/, 'drawn on keyboard focus');
-  assert.equal(await page.getByRole('link', { name: 'Articles', exact: true }).evaluate(el => getComputedStyle(el, '::after').transitionDuration), '0s', 'no transition under reduced motion');
+  assert.match(await clip('The app'), /inset\(0px\)/, 'drawn on keyboard focus');
+  assert.equal(await page.getByRole('link', { name: 'The app', exact: true }).evaluate(el => getComputedStyle(el, '::after').transitionDuration), '0s', 'no transition under reduced motion');
   await context.close();
 });
 
@@ -336,22 +336,121 @@ dom('the nav links, the nav button, and the stitch meet contrast rules in light 
 const scrollTo = async (page, y, wait = 450) => { await page.evaluate(top => window.scrollTo(0, top), y); await page.waitForTimeout(wait); };
 /** The thin strip the glass covers on screen: the glass layer's top and height, in the window. */
 const strip = page => page.evaluate(() => { const header = document.querySelector('.site-header'); const glass = getComputedStyle(header, '::before'); return { top: header.getBoundingClientRect().top + parseFloat(glass.top), height: parseFloat(glass.height), headerHeight: header.getBoundingClientRect().height }; });
-const isCompact = page => page.evaluate(() => document.querySelector('.site-header').classList.contains('is-compact'));
+/** What the header looks like at the current scroll: p, the bar's shift, the brand scale, the glass opacity, and the boxes of every part. */
+const headerState = page => page.evaluate(() => {
+  const header = document.querySelector('.site-header');
+  const box = element => { if (!element) return null; const r = element.getBoundingClientRect(); return r.width === 0 || r.height === 0 ? null : { left: r.left, right: r.right, top: r.top, bottom: r.bottom }; };
+  const matrix = new DOMMatrixReadOnly(getComputedStyle(header).transform);
+  const brand = new DOMMatrixReadOnly(getComputedStyle(document.querySelector('.site-header .brand')).transform);
+  const parts = ['.brand-mascot', '.brand-wordmark', '.desktop-navigation .nav-link', '.nav-github', '#site-theme', '.nav-cta-bar', '.mobile-menu-toggle'].flatMap(selector => [...document.querySelectorAll('.site-header ' + selector)].map(el => ({ selector, box: box(el) }))).filter(part => part.box);
+  return {
+    p: Number(getComputedStyle(document.querySelector('.site-header-shell')).getPropertyValue('--header-p')),
+    ty: matrix.f, scale: brand.a, glass: Number(getComputedStyle(header, '::before').opacity),
+    edge: document.querySelector('.homepage-banner').getBoundingClientRect().top,
+    parts,
+  };
+});
+const POSITIONS = [0, 12, 24, 36, 48, 96];
+const sweep = async (page, positions) => { const out = []; for (const y of positions) { await scrollTo(page, y, 120); out.push({ y, ...(await headerState(page)) }); } return out; };
 
-dom('the header turns compact after 48 px, stays compact down to 16 px, and grows back below 16 px', async () => {
+dom('the header follows the scroll: p, the bar shift, the brand scale, and the glass are monotonic from the full bar at 0 to the compact bar by 96 px, with values in between', async () => {
+  for (const [width, height] of [[1440, 900], [390, 844]]) {
+    const { page, context } = await open({ viewport: { width, height } });
+    await page.waitForSelector('.homepage-banner[data-artwork="ready"]');
+    const states = await sweep(page, POSITIONS);
+    const first = states[0], last = states.at(-1);
+    assert.equal(first.p, 0); assert.equal(first.ty, 0); assert.equal(first.scale, 1); assert.equal(first.glass, 0);
+    assert.equal(last.p, 1); assert.ok(last.ty < -10, `${width}: shift ${last.ty}`); assert.ok(Math.abs(last.scale - 0.6) < 0.001); assert.equal(last.glass, 1);
+    for (let i = 1; i < states.length; i++) {
+      assert.ok(states[i].p >= states[i - 1].p, `${width}: p rises at ${states[i].y}`);
+      assert.ok(states[i].ty <= states[i - 1].ty + 1e-6, `${width}: the bar rises at ${states[i].y}`);
+      assert.ok(states[i].scale <= states[i - 1].scale + 1e-6, `${width}: the brand shrinks at ${states[i].y}`);
+      assert.ok(states[i].glass >= states[i - 1].glass - 1e-6, `${width}: the glass fades in at ${states[i].y}`);
+    }
+    const middle = states.filter(state => state.y > 0 && state.p < 1);
+    assert.ok(middle.length >= 2, `${width}: at least two positions between the ends`);
+    for (const mid of middle) {
+      assert.ok(mid.p > 0 && mid.p < 1, `${width}: p ${mid.p} at ${mid.y}`);
+      assert.ok(mid.ty < 0 && mid.ty > last.ty, `${width}: shift ${mid.ty} at ${mid.y}`);
+      assert.ok(mid.scale < 1 && mid.scale > 0.6); assert.ok(mid.glass > 0 && mid.glass < 1);
+      assert.ok(Math.abs(mid.glass - mid.p) < 1e-3 && Math.abs(mid.ty - last.ty * mid.p) < 0.05, 'every part is the same fraction of its end value');
+    }
+    await context.close();
+  }
+});
+
+dom('at 0, 12, 24, 36, 48, and 96 px, at 1440 and 390 px wide, the wordmark never crosses the photo edge unless the glass is fully under it, and no header control overlaps another', async () => {
+  const overlap = (a, b) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+  for (const [width, height] of [[1440, 900], [1000, 700], [390, 844]]) {
+    const { page, context } = await open({ viewport: { width, height } });
+    await page.waitForSelector('.homepage-banner[data-artwork="ready"]');
+    for (const state of await sweep(page, [...POSITIONS, 20, 30, 40, 44])) {
+      const word = state.parts.find(part => part.selector === '.brand-wordmark')?.box;
+      assert.ok(word, `${width}: the wordmark is shown`);
+      const crosses = state.edge > 0.5 && state.edge > word.top + 0.5 && state.edge < word.bottom - 0.5;
+      assert.ok(!crosses || state.glass >= 0.999, `${width} at ${state.y}: the photo edge ${state.edge.toFixed(1)} cuts the wordmark ${word.top.toFixed(1)} to ${word.bottom.toFixed(1)}`);
+      for (let i = 0; i < state.parts.length; i++) for (let j = i + 1; j < state.parts.length; j++) assert.ok(!overlap(state.parts[i].box, state.parts[j].box), `${width} at ${state.y}: ${state.parts[i].selector} overlaps ${state.parts[j].selector}`);
+      for (const part of state.parts) assert.ok(!(state.edge > 0.5 && state.edge > part.box.top + 0.5 && state.edge < part.box.bottom - 0.5 && state.glass < 0.999), `${width} at ${state.y}: ${part.selector} is cut by the photo edge`);
+    }
+    await context.close();
+  }
+});
+
+dom('scrolling back up reverses exactly: the same scroll position gives the same header going up and going down', async () => {
   const { page, context } = await open({ viewport: { width: 1280, height: 800 } });
   await page.waitForSelector('.homepage-banner[data-artwork="ready"]');
-  assert.equal(await isCompact(page), false, 'full bar at scroll 0');
-  await scrollTo(page, 30);
-  assert.equal(await isCompact(page), false, '30 px is not past the threshold');
-  await scrollTo(page, 60);
-  assert.equal(await isCompact(page), true, 'compact past 48 px');
-  await scrollTo(page, 30);
-  assert.equal(await isCompact(page), true, 'still compact at 30 px: the gap stops flicker');
-  await scrollTo(page, 10);
-  assert.equal(await isCompact(page), false, 'full bar again below 16 px');
-  await scrollTo(page, 0);
-  assert.equal(await isCompact(page), false);
+  const down = await sweep(page, [0, 12, 24, 36, 48, 96]);
+  const up = (await sweep(page, [96, 48, 36, 24, 12, 0])).reverse();
+  for (let i = 0; i < down.length; i++) for (const key of ['p', 'ty', 'scale', 'glass']) assert.ok(Math.abs(down[i][key] - up[i][key]) < 1e-6, `${key} at ${down[i].y}: ${down[i][key]} down, ${up[i][key]} up`);
+  await context.close();
+});
+
+dom('the header changes with no time-based easing: the value is the scroll position at once, with no transition on the bar, the brand, or the glass', async () => {
+  for (const reducedMotion of ['no-preference', 'reduce']) {
+    const { page, context } = await open({ viewport: { width: 1280, height: 800 }, reducedMotion });
+    const durations = await page.evaluate(() => ['.site-header', '.site-header .brand'].map(s => getComputedStyle(document.querySelector(s)).transitionDuration).concat(getComputedStyle(document.querySelector('.site-header'), '::before').transitionDuration));
+    assert.deepEqual(durations, ['0s', '0s', '0s'], reducedMotion);
+    await page.evaluate(() => scrollTo(0, 26));
+    await page.waitForFunction(() => Number(document.querySelector('.site-header-shell').style.getPropertyValue('--header-p')) > 0.4);
+    const now = await headerState(page);
+    assert.ok(Math.abs(now.p - 0.5) < 0.01 && Math.abs(now.glass - now.p) < 1e-3, `${reducedMotion}: the frame after the scroll already shows p ${now.p}`);
+    await context.close();
+  }
+});
+
+dom('a page loaded already scrolled never paints the full bar: --header-p is at its scrolled value on every frame once the page has scrolled', async () => {
+  const { page, context } = await open({ viewport: { width: 1280, height: 800 } });
+  await page.waitForSelector('.homepage-banner[data-artwork="ready"]');
+  await scrollTo(page, 400, 300);
+  await page.addInitScript(() => {
+    window.__frames = [];
+    const tick = () => {
+      const shell = document.querySelector('.site-header-shell');
+      window.__frames.push({ y: scrollY, p: shell ? Number(getComputedStyle(shell).getPropertyValue('--header-p')) : null });
+      if (window.__frames.length < 120) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForTimeout(1500);
+  const frames = await page.evaluate(() => window.__frames);
+  assert.ok(frames.some(f => f.y > 100), 'the browser restored the scroll position');
+  const bad = frames.filter(f => f.y >= 60 && f.p !== null && f.p < 1);
+  assert.deepEqual(bad, [], 'no frame shows a scrolled page with a see-through bar');
+  await context.close();
+});
+
+dom('the progress is set again on resize: the compact distance follows the header height', async () => {
+  const { page, context } = await open({ viewport: { width: 1280, height: 800 } });
+  await scrollTo(page, 30, 120);
+  const wide = (await headerState(page)).p;
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.waitForTimeout(200);
+  await page.evaluate(() => scrollTo(0, 14));
+  await page.waitForTimeout(200);
+  const narrow = (await headerState(page)).p;
+  assert.ok(Math.abs(wide - 30 / 52) < 0.01, `wide ${wide}`);
+  assert.ok(Math.abs(narrow - 14 / 28) < 0.01, `narrow ${narrow}`);
   await context.close();
 });
 
@@ -457,6 +556,7 @@ dom('icon buttons have no box at rest and a 44 px target, and every button, tag,
   }
   await phone.page.locator('[data-screenshot-slot="builder-graph"] .screenshot-enlarge').click();
   await phone.page.waitForFunction(() => document.querySelector('.screenshot-dialog[open]'));
+  await phone.page.waitForFunction(() => getComputedStyle(document.querySelector('.screenshot-dialog[open]')).opacity === '1');
   const closeFacts = await iconFacts('.screenshot-dialog[open] .screenshot-close');
   assert.equal(closeFacts.bg, 'rgba(0, 0, 0, 0)'); assert.equal(closeFacts.border, '0px'); assert.ok(closeFacts.w >= 44 && closeFacts.h >= 44);
   await phone.context.close();
@@ -471,9 +571,9 @@ dom('icon buttons have no box at rest and a 44 px target, and every button, tag,
   await wide.context.close();
 });
 
-dom('with the modal open there is no horizontal overflow at 390, 834, and 1440 px, the picture stays 16:10 inside the bezel, and the decorations ignore the pointer', async () => {
-  for (const [width, height] of [[390, 844], [834, 1194], [1440, 900]]) {
-    const { page, context } = await open({ viewport: { width, height } });
+dom('with the modal open there is no overflow at 390, 834, and 1440 px in either theme, the picture fills the frame at 16:10, the frame is drawn, and the decorations ignore the pointer', async () => {
+  for (const theme of ['light', 'dark']) for (const [width, height] of [[390, 844], [834, 1194], [1440, 900]]) {
+    const { page, context } = await open({ viewport: { width, height }, colorScheme: theme });
     await page.locator('[data-screenshot-slot="builder-graph"] .screenshot-enlarge').click();
     await page.waitForFunction(() => document.querySelector('.screenshot-dialog[open]'));
     await page.waitForFunction(() => [...document.querySelectorAll('.screenshot-dialog[open] img')].filter(img => img.offsetParent !== null).every(img => img.complete && img.naturalWidth > 0), null, { timeout: 8000 });
@@ -488,22 +588,59 @@ dom('with the modal open there is no horizontal overflow at 390, 834, and 1440 p
         ratio: shown.width / shown.height,
         decorations: decorations.map(el => ({ name: el.className, events: getComputedStyle(el).pointerEvents, alt: el.getAttribute('alt'), hidden: el.getAttribute('aria-hidden'), left: el.getBoundingClientRect().left, right: el.getBoundingClientRect().right })),
         scrollWidth: dialog.scrollWidth, clientWidth: dialog.clientWidth,
-        borderImage: getComputedStyle(dialog.querySelector('.screenshot-device')).borderImageSource,
+        borderImage: getComputedStyle(dialog.querySelector('.screenshot-device'), '::after').borderImageSource,
+        overlay: (() => { const cs = getComputedStyle(dialog.querySelector('.screenshot-device'), '::after'); return { top: parseFloat(cs.borderTopWidth), slice: cs.borderImageSlice }; })(),
+        scrollHeight: dialog.scrollHeight, clientHeight: dialog.clientHeight,
+        // The picture fills the device's content box exactly, so the frame's hole is never empty.
+        fill: (() => { const device = dialog.querySelector('.screenshot-device'), cs = getComputedStyle(device), d = device.getBoundingClientRect();
+          return { left: shown.left - (d.left + parseFloat(cs.paddingLeft)), right: (d.right - parseFloat(cs.paddingRight)) - shown.right, top: shown.top - (d.top + parseFloat(cs.paddingTop)), bottom: (d.bottom - parseFloat(cs.paddingBottom)) - shown.bottom }; })(),
       };
     });
     assert.ok(facts.docWidth <= width, `${width}: page ${facts.docWidth} px wide`);
     assert.ok(facts.dialogLeft >= 0 && facts.dialogRight <= width, `${width}: the dialog is inside the window`);
     assert.ok(facts.scrollWidth <= facts.clientWidth + 1, `${width}: the dialog has no sideways scroll`);
     assert.ok(Math.abs(facts.ratio - 1.6) < 0.01, `${width}: the picture ratio is ${facts.ratio}`);
-    assert.match(facts.borderImage, /\/frame\/bezel\.webp/);
-    assert.ok(facts.decorations.length >= 3, `${width}: decorations are shown`);
+    assert.match(facts.borderImage, new RegExp(`/frame/frame-${theme}\\.webp`));
+    assert.ok(facts.overlay.top > 0 && /^\d+ \d+ \d+ \d+$/.test(facts.overlay.slice), `${theme} ${width}: the frame overlay is drawn (${JSON.stringify(facts.overlay)})`);
+    assert.ok(facts.scrollHeight <= facts.clientHeight + 1, `${theme} ${width}: no vertical scroll from the plants (${facts.scrollHeight} > ${facts.clientHeight})`);
+    for (const [side, gap] of Object.entries(facts.fill)) assert.ok(Math.abs(gap) < 1, `${theme} ${width}: the picture fills the hole (${side} ${gap})`);
+    assert.deepEqual(facts.decorations.map(d => d.name), ['deco ivy', 'deco bloom'], `${width}: both plants are shown`);
     for (const d of facts.decorations) {
       assert.equal(d.events, 'none', d.name); assert.equal(d.alt, ''); assert.equal(d.hidden, 'true');
       assert.ok(d.left >= -0.5 && d.right <= width + 0.5, `${width}: ${d.name} stays inside the window (${d.left} to ${d.right})`);
     }
-    assert.equal(facts.decorations.some(d => /\bh[lr]\b/.test(d.name)), width > 760, `${width}: handles only above 760 px`);
     await context.close();
   }
+});
+
+dom('the dark theme shows the dark painted frame, and the light one is never fetched', async () => {
+  const { page, context } = await open({ viewport: { width: 1280, height: 800 }, colorScheme: 'dark' });
+  const requests = [];
+  page.on('request', request => { if (request.url().includes('/frame/')) requests.push(request.url()); });
+  const frame = page.waitForResponse(response => response.url().includes('/frame/frame-dark.webp'));
+  await page.locator('[data-screenshot-slot="builder-graph"] .screenshot-enlarge').click();
+  await page.waitForFunction(() => document.querySelector('.screenshot-dialog[open]'));
+  assert.equal((await frame).status(), 200, 'the dark frame file loads');
+  await page.waitForTimeout(800);
+  const source = await page.evaluate(() => getComputedStyle(document.querySelector('.screenshot-dialog[open] .screenshot-device'), '::after').borderImageSource);
+  assert.match(source, /\/frame\/frame-dark\.webp/);
+  assert.ok(requests.some(url => url.includes('frame-dark.webp')) && !requests.some(url => url.includes('frame-light.webp')), requests.join(', '));
+  await context.close();
+});
+
+dom('a saved light theme on a dark system shows the light frame, and the dark one is never fetched', async () => {
+  const { page, context } = await open({ viewport: { width: 1280, height: 800 }, colorScheme: 'dark' });
+  await page.evaluate(() => localStorage.setItem('bowerloom.theme', 'light'));
+  const requests = [];
+  page.on('request', request => { if (request.url().includes('/frame/')) requests.push(request.url()); });
+  await page.reload({ waitUntil: 'networkidle' });
+  assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light');
+  const frame = page.waitForResponse(response => response.url().includes('/frame/frame-light.webp'));
+  await page.locator('[data-screenshot-slot="builder-graph"] .screenshot-enlarge').click();
+  assert.equal((await frame).status(), 200);
+  assert.match(await page.evaluate(() => getComputedStyle(document.querySelector('.screenshot-dialog[open] .screenshot-device'), '::after').borderImageSource), /\/frame\/frame-light\.webp/);
+  assert.ok(!requests.some(url => url.includes('frame-dark.webp')), requests.join(', '));
+  await context.close();
 });
 
 dom('nothing from the device frame loads until the modal first opens', async () => {
@@ -515,11 +652,11 @@ dom('nothing from the device frame loads until the modal first opens', async () 
   await page.locator('[data-screenshot-slot="builder-graph"] .screenshot-enlarge').click();
   await page.waitForFunction(() => document.querySelector('.screenshot-dialog[open]'));
   await page.waitForTimeout(800);
-  assert.ok(requests.some(url => url.includes('bezel.webp')) && requests.some(url => url.includes('corner-tl.webp')), 'the frame loads on first open');
+  assert.ok(requests.some(url => url.includes('frame-light.webp')) && requests.some(url => url.includes('ivy.webp')), 'the frame loads on first open');
   await context.close();
 });
 
-dom('link text on the real glass, sampled over the hero photo at scroll 60 and 300, meets 4.5:1 in light and dark', async () => {
+dom('link text on the real glass, sampled at scroll 14, 26, 38, 60, and 300, meets 4.5:1 in light and dark', async () => {
   const lum = rgb => { const [r, g, b] = rgb.map(v => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
   for (const theme of ['light', 'dark']) {
     const { page, context } = await open({ viewport: { width: 1280, height: 800 }, colorScheme: theme });
@@ -527,7 +664,7 @@ dom('link text on the real glass, sampled over the hero photo at scroll 60 and 3
     await page.waitForSelector('.homepage-banner[data-artwork="ready"]');
     const link = await page.evaluate(() => getComputedStyle(document.querySelector('.nav-link')).color.match(/[\d.]+/g).slice(0, 3).map(Number));
     await page.addStyleTag({ content: '.site-header > * { visibility: hidden !important; }' });
-    for (const y of [60, 300]) {
+    for (const y of [14, 26, 38, 60, 300]) {
       await scrollTo(page, y, 600);
       const png = (await page.screenshot({ clip: { x: 0, y: 0, width: 1280, height: 48 } })).toString('base64');
       // The strip as pixels: the glass over whatever is under it, with the bar's text hidden. The worst pixel decides.
