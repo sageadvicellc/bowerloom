@@ -149,10 +149,11 @@ export function StartRealSheet({ open, folderId, fromHarness, onClose }: StartRe
                 </div>
                 {current === undefined ? null : <p className="hxe-text hxe-muted hs-where" data-start-where="">{current.label}</p>}
               </div>
+              {current === undefined ? null : (
               <div className="hs-field">
                 <h3 className="hs-label" id="hs-ifaces">{START.label.engines}</h3>
                 <ul className="hs-ifaces" aria-labelledby="hs-ifaces">
-                  {current === undefined ? null : offered.map(id => {
+                  {offered.map(id => {
                     const state = engineStateOf(current, id);
                     return (
                       <li key={id} className="hs-iface-item" data-engine={id} data-state={state}>
@@ -166,6 +167,7 @@ export function StartRealSheet({ open, folderId, fromHarness, onClose }: StartRe
                 </ul>
                 {offered.length === 0 ? null : <p className="hxe-text hxe-muted" data-start-notchecked="">{START.hint.notChecked}</p>}
               </div>
+              )}
               <div className="hs-field">
                 <label className="hs-label" htmlFor="hs-instruction">{START.label.instruction}</label>
                 <textarea id="hs-instruction" className="hs-text" rows={4} value={instruction} placeholder={START.hint.placeholder} disabled={call.writing}
