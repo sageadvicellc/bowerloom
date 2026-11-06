@@ -1,7 +1,7 @@
 /**
  * The harness-first preview on the person's own folders, in the real window (Electron started with no flag and HOME pointed at a made-up folder, tests/fixtures-real/shell-home.ts).
  * Walk: Welcome, the folders found (with counts, details and "Add a folder"), "Read what is inside?" (nothing is read before "Yes, read them"), the read, the Read list with its count line,
- * "Make a harness from this", the builder graph with the links the files name, the file view, the Library, and the parts that are not in this preview (Install, Start) and the Preview mark.
+ * "Make a harness from this", the builder graph with the links the files name, the file view, the Library, and the parts that are not in this preview (Install) and the Preview mark.
  * The checks that hold at every step: the made-up key values are nowhere in the page, file text is drawn as text, text is 14 px or more, a button is 32 px, no alert is raised, the bridge has
  * exactly three calls, and the made-up folder is the same, byte for byte, before and after.
  * Then a second read: with a harness made, "Start from a scan" has a way out ("Not now"), a read asks before it starts the preview over ("Cancel" keeps everything), and the ids of new things keep climbing. Set HARNESS_SHOTS to a folder outside the repo to also save screenshots.
@@ -216,16 +216,21 @@ test('the file view draws the file as text: markup and an order stay words, the 
   await shot(p, 'real-5-file');
 });
 
-test('Install and Start are not in beta.1: a note says so and no sheet opens; the Beta mark says what Bowerloom does and what is not in beta.1', async () => {
+test('Install is not in beta.1: a note says so and no sheet opens; Start opens its sheet; the Beta mark says what Bowerloom does and what is not in beta.1', async () => {
   const p = page();
   await p.evaluate(() => { location.hash = '#sample/harnesses'; });
   await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
-  await p.getByRole('button', { name: 'Assign to project', exact: true }).first().click();
-  await expect(p.locator('[data-toast]')).toContainText('Not in beta.1.');
-  await expect(p.locator('[aria-modal="true"]')).toHaveCount(0);
   const start = p.getByRole('button', { name: 'Start', exact: true });
   await expect(start, 'the details column of the selected harness has a Start button').toHaveCount(1);
   await start.click();
+  const sheet = p.locator('[data-slot="start"]');
+  await expect(sheet.getByRole('heading', { name: 'Start in a project', exact: true })).toBeVisible();
+  await expect(sheet).toContainText('Bowerloom does not run an engine.');
+  await expect(sheet, 'no folder has a harness in this window, so the sheet says so').toContainText('No folder has a harness yet. Make one first.');
+  await expect(p.locator('[data-toast]')).toHaveCount(0);
+  await p.keyboard.press('Escape');
+  await expect(p.locator('[aria-modal="true"]')).toHaveCount(0);
+  await p.getByRole('button', { name: 'Assign to project', exact: true }).first().click();
   await expect(p.locator('[data-toast]')).toContainText('Not in beta.1.');
   await expect(p.locator('[aria-modal="true"]')).toHaveCount(0);
   // The list says "Not checked" for where the harness runs, and names no program.
@@ -238,7 +243,7 @@ test('Install and Start are not in beta.1: a note says so and no sheet opens; th
   await expect(pop).toContainText('Bowerloom is in beta. It reads your own folders and writes only after you approve what it will write.');
   await expect(pop).toContainText('Not in beta.1');
   await expect(pop).not.toContainText(/preview|full app/i);
-  await expect(pop.locator('li')).toHaveText(['Start', 'Compare', 'Runs', 'Assign to project, in the Harnesses details', 'Assign harness, Install, Update and Review, in Projects', 'Add (the plus button), in the Library', 'Add a folder, in Projects']);
+  await expect(pop.locator('li')).toHaveText(['Compare', 'Runs', 'Assign to project, in the Harnesses details', 'Assign harness, Install, Update and Review, in Projects', 'Add (the plus button), in the Library', 'Add a folder, in Projects']);
   await everyStep('preview', false);
   await shot(p, 'real-6-preview');
   await p.keyboard.press('Escape');

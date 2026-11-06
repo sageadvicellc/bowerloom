@@ -119,7 +119,7 @@ test('real mode words: Welcome, Runs, Help, Projects, Library, Install history a
     await go('#app/harnesses');
     await p.getByRole('button', { name: 'About this beta', exact: true }).click();
     const lines = await p.locator('.hx-preview-pop li').allInnerTexts();
-    expect(lines).toEqual(['Start', 'Compare', 'Runs', 'Assign to project, in the Harnesses details', 'Assign harness, Install, Update and Review, in Projects', 'Add (the plus button), in the Library', 'Add a folder, in Projects']);
+    expect(lines).toEqual(['Compare', 'Runs', 'Assign to project, in the Harnesses details', 'Assign harness, Install, Update and Review, in Projects', 'Add (the plus button), in the Library', 'Add a folder, in Projects']);
     for (const line of lines) expect(line).not.toMatch(/from a folder/i);
     await p.keyboard.press('Escape');
   });
