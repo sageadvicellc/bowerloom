@@ -1,0 +1,211 @@
+name: pr-preview
+
+# Gives each website pull request a stable preview address:
+# pr-<number>.preview.bowerloom.ai. This workflow never checks out code.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+permissions: {}
+
+# One group per pull request. A close cancels an alias run still in flight.
+concurrency:
+  group: pr-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  # Exact Vercel CLI version. Change it here only.
+  VERCEL_CLI_VERSION: "65.11.0"
+  VERCEL_SCOPE: sageadvicellc
+  VERCEL_PROJECT: bowerloom-preview
+  PREVIEW_DOMAIN: preview.bowerloom.ai
+  npm_config_ignore_scripts: "true"
+
+jobs:
+  alias:
+    name: Alias the preview
+    if: >-
+      github.event.action != 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      pull-requests: write
+    steps:
+      # No secret is in this step, so an install script could not read one.
+      - name: Install the Vercel CLI
+        run: npm install --prefix "${RUNNER_TEMP}/vercel-cli" --no-audit --no-fund "vercel@${VERCEL_CLI_VERSION}"
+
+      - name: Wait for the Vercel build, alias it, and comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "::notice::The VERCEL_TOKEN secret is not set. Skipping the preview alias."
+            exit 0
+          fi
+
+          if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "::error::The pull request number is not numeric."
+            exit 1
+          fi
+          if ! [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::The head sha is not a full commit sha."
+            exit 1
+          fi
+
+          # Act only when the pull request changes the website paths.
+          FILES="$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/files" --jq '.[].filename')"
+          if ! grep -qE '^(apps/landing/|release/)' <<<"$FILES"; then
+            echo "::notice::This pull request changes no website path. No preview."
+            exit 0
+          fi
+
+          VERCEL="${RUNNER_TEMP}/vercel-cli/node_modules/.bin/vercel"
+          ERR_FILE="${RUNNER_TEMP}/vercel-list.err"
+
+          # Poll Vercel for a READY deployment of this commit. Vercel skips a
+          # build when the latest commit does not touch apps/landing or release/.
+          # The CLI reads the token from VERCEL_TOKEN.
+          DEPLOY_HOST=""
+          FAILS=0
+          attempt=0
+          while [ "$SECONDS" -lt 600 ]; do
+            attempt=$((attempt + 1))
+            set +e
+            LIST_JSON="$(env -u GH_TOKEN "$VERCEL" list "$VERCEL_PROJECT" --scope "$VERCEL_SCOPE" \
+              --environment preview --meta "githubCommitSha=${HEAD_SHA}" --json 2>"$ERR_FILE")"
+            RC=$?
+            set -e
+
+            if [ "$RC" -ne 0 ] || ! jq -e '.deployments | type == "array"' >/dev/null 2>&1 <<<"$LIST_JSON"; then
+              FAILS=$((FAILS + 1))
+              cat "$ERR_FILE" >&2 || true
+              if grep -qiE 'unauthori[sz]ed|forbidden|invalid token|not valid|not authorized|not authenticated|\b40[13]\b|scope.*(not|denied|invalid)' "$ERR_FILE"; then
+                echo "::error::The Vercel CLI failed on authentication or scope (exit ${RC})."
+                exit 1
+              fi
+              if [ "$FAILS" -ge 3 ]; then
+                echo "::error::The Vercel CLI failed 3 times in a row (last exit ${RC})."
+                exit 1
+              fi
+              echo "Attempt ${attempt}: the Vercel CLI failed (exit ${RC}). Retrying."
+              sleep 15
+              continue
+            fi
+            FAILS=0
+
+            STATE="$(jq -r '.deployments | first | .state // empty' <<<"$LIST_JSON")"
+            case "$STATE" in
+              READY)
+                DEPLOY_HOST="$(jq -r '.deployments | first | .url // empty' <<<"$LIST_JSON")"
+                break
+                ;;
+              ERROR|CANCELED)
+                echo "::warning::The Vercel build for ${HEAD_SHA} ended as ${STATE}. No alias change."
+                exit 0
+                ;;
+              "")
+                echo "Attempt ${attempt}: no deployment for this commit yet."
+                ;;
+              *)
+                echo "Attempt ${attempt}: the deployment is ${STATE}."
+                ;;
+            esac
+            sleep 15
+          done
+
+          if [ -z "$DEPLOY_HOST" ]; then
+            echo "::notice::No ready Vercel deployment for ${HEAD_SHA} within about 10 minutes. Vercel may have skipped the build. The pull request keeps its last alias."
+            exit 0
+          fi
+
+          DEPLOY_URL="https://${DEPLOY_HOST}"
+          if ! [[ "$DEPLOY_URL" =~ ^https://bowerloom-preview-[a-z0-9]+-sageadvicellc\.vercel\.app$ ]]; then
+            echo "::error::The deployment URL is not a bowerloom-preview address."
+            exit 1
+          fi
+
+          ALIAS_HOST="pr-${PR_NUMBER}.${PREVIEW_DOMAIN}"
+          env -u GH_TOKEN "$VERCEL" alias set "$DEPLOY_URL" "$ALIAS_HOST" --scope "$VERCEL_SCOPE"
+
+          MARKER="<!-- bowerloom-pr-preview -->"
+          BODY="${MARKER}
+          Preview for this pull request: https://${ALIAS_HOST}
+
+          Latest build: ${DEPLOY_URL}
+          Commit: ${HEAD_SHA}
+
+          The preview needs a login to the Vercel team. Ask a team member if you cannot open it."
+
+          # Only a comment by github-actions[bot] that starts with the marker counts.
+          COMMENT_ID="$(gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments" \
+            | jq -rs --arg m "$MARKER" \
+              '[.[][] | select(.user.login == "github-actions[bot]" and (.body | startswith($m)))] | first | .id // empty')"
+
+          if [ -n "$COMMENT_ID" ]; then
+            gh api --method PATCH "repos/${REPO}/issues/comments/${COMMENT_ID}" -f body="$BODY" > /dev/null
+            echo "Updated comment ${COMMENT_ID}."
+          else
+            gh api --method POST "repos/${REPO}/issues/${PR_NUMBER}/comments" -f body="$BODY" > /dev/null
+            echo "Posted a new comment."
+          fi
+
+  cleanup:
+    name: Remove the preview alias
+    if: >-
+      github.event.action == 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: {}
+    steps:
+      # No secret is in this step, so an install script could not read one.
+      - name: Install the Vercel CLI
+        run: npm install --prefix "${RUNNER_TEMP}/vercel-cli" --no-audit --no-fund "vercel@${VERCEL_CLI_VERSION}"
+
+      - name: Remove the alias
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "::notice::The VERCEL_TOKEN secret is not set. Skipping the alias removal."
+            exit 0
+          fi
+
+          if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "::error::The pull request number is not numeric."
+            exit 1
+          fi
+
+          VERCEL="${RUNNER_TEMP}/vercel-cli/node_modules/.bin/vercel"
+          ALIAS_HOST="pr-${PR_NUMBER}.${PREVIEW_DOMAIN}"
+
+          set +e
+          OUT="$(env -u GH_TOKEN "$VERCEL" alias rm "$ALIAS_HOST" --yes --scope "$VERCEL_SCOPE" 2>&1)"
+          RC=$?
+          set -e
+
+          if [ "$RC" -eq 0 ]; then
+            echo "Removed ${ALIAS_HOST}."
+          elif grep -qiE 'scope|team|project|token|unauthori|forbidden|not valid' <<<"$OUT"; then
+            printf '%s\n' "$OUT" >&2
+            echo "::error::Removing ${ALIAS_HOST} failed on a scope, team, project or token error (exit ${RC})."
+            exit 1
+          elif grep -qiE 'not found|does not exist|no alias' <<<"$OUT" && grep -qF "$ALIAS_HOST" <<<"$OUT"; then
+            echo "::notice::${ALIAS_HOST} is already gone."
+          else
+            printf '%s\n' "$OUT" >&2
+            echo "::error::Removing ${ALIAS_HOST} failed (exit ${RC})."
+            exit 1
+          fi
