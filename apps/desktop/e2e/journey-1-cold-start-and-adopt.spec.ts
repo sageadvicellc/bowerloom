@@ -157,6 +157,9 @@ test('Journey 1, step 1.5: the first screen after the read is the Overview; ever
     await expect(p.locator('[data-count]')).toContainText('parts in all', { timeout: 20_000 });
     await p.getByRole('button', { name: 'Not now', exact: true }).click();
     await expect(p.getByRole('heading', { level: 1, name: 'Overview', exact: true })).toBeVisible();
+    // The Grid is the first view of a wide window. The steps below are about the Graph, so the Graph is chosen; the Grid has its own spec (harness-overview-grid.spec.ts).
+    await p.getByRole('radio', { name: 'Graph view' }).click();
+    await expect(p.locator('.hxo-canvas')).toBeVisible();
   });
 
   let totals = { total: 0, inBowerloom: 0 };
