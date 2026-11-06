@@ -55,6 +55,8 @@ const isHomeLabel = (label: string): boolean => label === '~' || label.startsWit
 
 /** The folder's label in the encoding the window's paths have: main sends it as `cleanLabel`. */
 const cleanOf = (f: FolderInfo): string => f.cleanLabel ?? f.label;
+/** True when cleaning kept everything in the folder's label. A hidden character, a mixed-script mark or a cut makes `label` and `cleanLabel` differ: the clean text then stands for more than one folder. */
+const lossless = (f: FolderInfo): boolean => f.cleanLabel === undefined || f.cleanLabel === f.label;
 /** A folder outside home shown cut down to `…/name`, from its clean label. */
 const cutOf = (clean: string): string => `…/${lastName(clean)}`;
 
@@ -152,14 +154,15 @@ export async function checkStatus(plan: () => Promise<Answer<ProjectAnswer>>, ms
 
 
 /**
- * The folder main knows for each project, by the clean label (one encoding on both sides, compared exactly). A project is paired only when exactly one folder matches and no other
- * project shares its path. Otherwise it stays unpaired, and each such folder is a row of its own, never the first of several.
+ * The folder main knows for each project, by the clean label (one encoding on both sides, compared exactly). A folder whose clean label lost something (a hidden character, a cut name)
+ * is never paired: it stays a row of its own with its marks shown. A project is paired only when exactly one folder matches and no other project shares its path. Otherwise it stays unpaired, and each such folder is a row of its own, never the first of several.
  */
 function pairFolders(projects: readonly Project[], folders: readonly FolderInfo[]): Map<string, FolderInfo> {
   const paired = new Map<string, FolderInfo>();
   for (const p of projects) {
-    // Exactly one folder, and no other project with the same path: a text that two folders (or two rows) share (the clean label is lossy) pairs with none of them.
-    const same = folders.filter(f => sameFolder(p.path, cleanOf(f)));
+    // Only a folder whose clean label lost nothing can be a row's folder: cleaning is lossy, so a lookalike (a hidden character, a cut name) would read as the same text. Exactly one such
+    // folder, and no other project with the same path: a text that two folders or two rows share pairs with none of them.
+    const same = folders.filter(f => lossless(f) && sameFolder(p.path, cleanOf(f)));
     if (same.length === 1 && projects.filter(q => q.path === p.path).length === 1) paired.set(p.id, same[0]!);
   }
   return paired;

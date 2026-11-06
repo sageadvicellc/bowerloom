@@ -2,7 +2,7 @@
 // knows is said in words, and no other folder takes its place.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { goneRefusal, pickRequested } from '../renderer/harness/sheets/picked-folder.js';
+import { goneAfterChoose, goneRefusal, pickRequested } from '../renderer/harness/sheets/picked-folder.js';
 import type { FolderInfo } from '../shared/engine/types.js';
 
 const f = (id: string, hasDefinition = false): FolderInfo => ({ id, label: `~/${id}`, name: id, hasDefinition, engines: [], previewEngines: false, installedEngines: [], problem: null, projected: false, unfinished: { projection: false, adoption: false } });
@@ -24,15 +24,10 @@ test('a folder asked for that main no longer lists is gone: nothing is picked, a
   assert.equal(r.message, 'Bowerloom no longer knows that folder. Choose it again.');
 });
 
-// The sheets keep the "gone" note only while it is true: choosing or picking a folder takes it away. The sheets are components, so this holds the two places in their source.
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-
-test('both sheets clear the "gone" note when a folder is picked or chosen', () => {
-  for (const file of ['AdoptSheet.tsx', 'ProjectSheet.tsx']) {
-    const text = readFileSync(join(process.cwd(), 'renderer', 'harness', 'sheets', file), 'utf8');
-    const pick = text.match(/const pick = [^\n]*/)?.[0] ?? '', choose = text.slice(text.indexOf('const choose = '), text.indexOf('const next = '));
-    assert.match(pick, /setGone\(false\)/, `${file}: pick`);
-    assert.match(choose, /setGone\(false\)/, `${file}: choose`);
-  }
+test('the "gone" note goes away only when a usable folder is chosen: a closed chooser and a folder the sheet cannot take leave it alone', () => {
+  const ok = f('a'), off = f('b', true);
+  assert.equal(goneAfterChoose(true, { info: ok }, usable), false, 'a valid pick clears it');
+  assert.equal(goneAfterChoose(true, null, usable), true, 'a closed chooser leaves it');
+  assert.equal(goneAfterChoose(true, { info: off }, usable), true, 'a folder the sheet cannot take leaves it');
+  assert.equal(goneAfterChoose(false, { info: off }, usable), false, 'nothing to clear stays clear');
 });

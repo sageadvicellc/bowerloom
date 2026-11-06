@@ -12,3 +12,6 @@ export function pickRequested(list: readonly FolderInfo[], wanted: string | null
 
 /** The refusal for a folder asked for that main no longer knows. */
 export const goneRefusal = (): Refusal => callRefusal(new Error('UNKNOWN_FOLDER'));
+
+/** The "gone" note after the chooser answers: a usable folder takes it away; a closed chooser, or a folder the sheet cannot take, leaves it as it was. */
+export const goneAfterChoose = (gone: boolean, got: { readonly info: FolderInfo } | null, usable: (folder: FolderInfo) => boolean): boolean => (got !== null && usable(got.info) ? false : gone);

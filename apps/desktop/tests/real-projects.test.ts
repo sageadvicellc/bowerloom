@@ -188,40 +188,49 @@ test('a refusal of the check keeps its own plain words as the reason, and a time
   assert.deepEqual([generic?.checkFailed, generic?.checkReason], [true, null]);
 });
 
-// ---- one encoding: main sends the window's own (`cleanLabel`), so a name is compared exactly and never translated ----------------------------------------------------------------
+// ---- one encoding: main sends the window's own (`cleanLabel`), so a name is compared exactly and never translated; a folder whose clean label lost something is never paired --------
 
 /** A folder as main sends it: `label` written out for a person (marks), `cleanLabel` in the encoding the reader gives the window's paths. */
 const marked = (id: string, label: string, cleanLabel: string): FolderInfo => folder({ id, label, name: id, cleanLabel });
 const pairs = (projectPath: string, folders: readonly FolderInfo[]): [string, string | null][] => projectRows({ projects: [project(projectPath, 'p1', 'p')] }, folders, none).map(r => [r.id, r.folderId]);
 
-test('hidden characters in a name: the row pairs with its folder by the clean label, for a middle, leading, trailing, per-part and mixed-script name', () => {
-  const cases: [string, string, string][] = [
-    ['~/Projects/wan ted', '~/Projects/wan[U+200B]ted', '~/Projects/wan ted'],
-    ['~/Projects/wanted', '~/Projects/[U+200B]wanted', '~/Projects/wanted'],
-    ['~/Projects/wanted', '~/Projects/wanted[U+200B]', '~/Projects/wanted'],
-    ['~/Projects/wan/x', '~/Projects/wan[U+200B]/x', '~/Projects/wan/x'],
-    ['~/Projects/pаypal', '~/Projects/[mixed scripts: Cyrillic+Latin]pаypal', '~/Projects/pаypal'],
-  ];
-  for (const [path, label, clean] of cases) assert.deepEqual(pairs(path, [marked('f1', label, clean)]), [['p1', 'f1']], label);
-  // The cut form pairs the same way, for a leading hidden character and a mixed-script name.
-  assert.deepEqual(pairs('…/wanted', [marked('f1', '/Volumes/d/[U+200B]wanted', '/Volumes/d/wanted')]), [['p1', 'f1']]);
-  assert.deepEqual(pairs('…/pаypal', [marked('f1', '/Volumes/d/[mixed scripts: Cyrillic+Latin]pаypal', '/Volumes/d/pаypal')]), [['p1', 'f1']]);
-  // A different name is not paired.
-  assert.deepEqual(pairs('~/Projects/wanted', [marked('f1', '~/Projects/wan[U+200B]ted', '~/Projects/wan ted')]), [['p1', null], ['f1', 'f1']]);
+test('a folder whose clean label kept everything pairs by exact text, under home and outside it; the sample, which sends no clean label, pairs too', () => {
+  assert.deepEqual(pairs('~/Projects/wanted', [marked('f1', '~/Projects/wanted', '~/Projects/wanted')]), [['p1', 'f1']]);
+  assert.deepEqual(pairs('~/Projects/pаypal', [marked('f1', '~/Projects/pаypal', '~/Projects/pаypal')]), [['p1', 'f1']], 'letters of another script are kept as they are');
+  assert.deepEqual(pairs('…/shared', [marked('f1', '/Volumes/d/shared', '/Volumes/d/shared')]), [['p1', 'f1']]);
+  assert.deepEqual(pairs('~/Projects/alpha', [folder()]), [['p1', 'folder-1']], 'no clean label: the label is already clean');
+  assert.deepEqual(pairs('~/Projects/wanted', [marked('f1', '~/Projects/other', '~/Projects/other')]), [['p1', null], ['f1', 'f1']]);
 });
 
-test('a lookalike folder is never taken for the project: when two folders clean to one string, the row is unpaired and each folder is a row of its own', () => {
+test('a folder whose clean label lost something is never paired with a row, so a lookalike is not taken for it: hidden characters, mixed scripts, a long name and a typed mark', () => {
+  const lossy: [string, string, string, string][] = [
+    ['hidden at the end', '~/proj', '~/proj[U+200B]', '~/proj'],
+    ['hidden at both ends', '~/x', '~/[U+200B]x[U+200B]', '~/x'],
+    ['hidden in the middle', '~/Projects/wan ted', '~/Projects/wan[U+200B]ted', '~/Projects/wan ted'],
+    ['hidden in a part', '~/Projects/wan/x', '~/Projects/wan[U+200B]/x', '~/Projects/wan/x'],
+    ['mixed scripts', '~/Projects/pаypal', '~/Projects/[mixed scripts: Cyrillic+Latin]pаypal', '~/Projects/pаypal'],
+  ];
+  for (const [what, path, label, clean] of lossy) assert.deepEqual(pairs(path, [marked('f1', label, clean)]), [['p1', null], ['f1', 'f1']], what);
+  // A long name: the clean label is cut, so a row for the cut text is not the folder with the longer name.
+  const cut = `~/${'a'.repeat(120)}`;
+  assert.deepEqual(pairs(cut, [marked('f1', `~/${'a'.repeat(130)}2`, cut)]), [['p1', null], ['f1', 'f1']]);
+  const two = projectRows({ projects: [project(cut, 'p1'), project(cut, 'p2')] }, [marked('f1', `~/${'a'.repeat(130)}1`, cut), marked('f2', `~/${'a'.repeat(130)}2`, cut)], none);
+  assert.deepEqual(two.map(r => [r.id, r.folderId]), [['p1', null], ['p2', null], ['f1', 'f1'], ['f2', 'f2']]);
+  // The cut form of a path outside home is held to the same rule.
+  assert.deepEqual(pairs('…/wanted', [marked('f1', '/Volumes/d/[U+200B]wanted', '/Volumes/d/wanted')]), [['p1', null], ['f1', 'f1']]);
+});
+
+test('a lookalike folder is never taken for the project, in either order; the real one still pairs, and a typed mark is a name like any other', () => {
   const real = marked('real', '~/Projects/proj', '~/Projects/proj'), evil = marked('evil', '~/Projects/proj[U+200B]', '~/Projects/proj');
-  assert.deepEqual(pairs('~/Projects/proj', [evil, real]), [['p1', null], ['evil', 'evil'], ['real', 'real']]);
-  assert.deepEqual(pairs('~/Projects/proj', [real, evil]), [['p1', null], ['real', 'real'], ['evil', 'evil']]);
-  // The same holds for a name that holds the mark as typed text.
+  assert.deepEqual(pairs('~/Projects/proj', [evil, real]), [['p1', 'real'], ['evil', 'evil']]);
+  assert.deepEqual(pairs('~/Projects/proj', [real, evil]), [['p1', 'real'], ['evil', 'evil']]);
+  assert.deepEqual(pairs('~/Projects/proj', [evil]), [['p1', null], ['evil', 'evil']], 'with only the lookalike known, the row stays alone');
   const typed = marked('typed', '~/Projects/a[U+200B]b', '~/Projects/a[U+200B]b'), hidden = marked('hidden', '~/Projects/a[U+200B]b', '~/Projects/a b');
   assert.deepEqual(pairs('~/Projects/a[U+200B]b', [hidden, typed]), [['p1', 'typed'], ['hidden', 'hidden']]);
-  assert.deepEqual(pairs('~/Projects/a b', [typed, hidden]), [['p1', 'hidden'], ['typed', 'typed']]);
   // Two projects with one path pair with nothing.
   const rows = projectRows({ projects: [project('~/Projects/proj', 'p1'), project('~/Projects/proj', 'p2')] }, [real], none);
   assert.deepEqual(rows.map(r => [r.id, r.folderId]), [['p1', null], ['p2', null], ['real', 'real']]);
-  // The harness a read found in a folder is matched the same way: exactly, and only when nothing else shares the path.
+  // The harness a read found in a folder is matched on the reader's text only, and only when nothing else shares it.
   const found = projectRows({ projects: [project('~/Projects/proj')], harnessPlaces: [place('~/Projects/proj'), place('~/Projects/proj')] }, [], none);
   assert.equal(found[0]?.hasHarness, false);
 });

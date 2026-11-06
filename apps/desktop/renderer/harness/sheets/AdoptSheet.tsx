@@ -22,7 +22,7 @@ import { AdoptConfirm, AdoptReview } from './adopt-review.js';
 import { AfterApplyCheck } from './after-apply-check.js';
 import { Busy, FolderStep, RefusalNote, ResultStep, Section, TickRow, folderLine } from './engine-parts.js';
 import { chooseFolderCall, foldersCall, useCall } from './use-call.js';
-import { goneRefusal, pickRequested } from './picked-folder.js';
+import { goneAfterChoose, goneRefusal, pickRequested } from './picked-folder.js';
 import { useHeldFocus } from './use-held-focus.js';
 
 const W = ENGINE_WORDS;
@@ -92,9 +92,10 @@ export function AdoptSheet({ open, folderId, onClose }: { open: boolean; folderI
   const choose = (): void => {
     if (engine === null || held) return;
     void call.plan(W.label.chooseFolder, () => chooseFolderCall(engine), got => {
+      setGone(g => goneAfterChoose(g, got, f => !folderLine(f, 'make').off));
       if (got === null) return;
       setFolders(got.list);
-      if (!folderLine(got.info, 'make').off) { setGone(false); setPicked(got.info.id); resetFolderState(); }
+      if (!folderLine(got.info, 'make').off) { setPicked(got.info.id); resetFolderState(); }
     });
   };
   const next = (): void => {

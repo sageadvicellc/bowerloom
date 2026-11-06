@@ -32,7 +32,7 @@ import type { AfterApplyCheckProps } from './after-apply-check.js';
 import { Busy, FolderStep, RefusalNote, ResultStep, folderLine } from './engine-parts.js';
 import { ApproveLines, DriftReport, MergeReview, PlanReview, RecoveryReview, RemovalReview } from './project-review.js';
 import { chooseFolderCall, foldersCall, useCall } from './use-call.js';
-import { goneRefusal, pickRequested } from './picked-folder.js';
+import { goneAfterChoose, goneRefusal, pickRequested } from './picked-folder.js';
 import { useHeldFocus } from './use-held-focus.js';
 
 const W = ENGINE_WORDS;
@@ -173,9 +173,10 @@ export function ProjectSheet({ open, folderId, mode: openedMode, keep: openedKee
   const choose = (): void => {
     if (engine === null || held) return;
     void call.plan(W.label.chooseFolder, () => chooseFolderCall(engine), got => {
+      setGone(g => goneAfterChoose(g, got, f => !folderLine(f, 'install').off));
       if (got === null) return;
       setFolders(got.list);
-      if (!folderLine(got.info, 'install').off) { setGone(false); setPicked(got.info.id); setEngines(installable(got.info)); resetChoices(); resetPlans(); }
+      if (!folderLine(got.info, 'install').off) { setPicked(got.info.id); setEngines(installable(got.info)); resetChoices(); resetPlans(); }
     });
   };
   const next = (): void => {

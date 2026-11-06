@@ -491,7 +491,7 @@ test('a check main refuses keeps main\'s own plain words as the reason, and a Re
   await expect(row('team').getByRole('button', { name: 'Review harness in team', exact: true })).toBeVisible();
 });
 
-for (const [kind, name] of [['hidden in the middle', 'wan\u200Bted'], ['hidden at the start', '\u200Bwanted'], ['hidden at the end', 'wanted\u200B'], ['mixed scripts', 'p\u0430ypal']] as const) test(`a folder named with ${kind} characters is one row for the project and its folder, and Install opens its sheet`, async () => {
+for (const [kind, name] of [['hidden in the middle', 'wan\u200Bted'], ['hidden at the start', '\u200Bwanted'], ['hidden at the end', 'wanted\u200B'], ['mixed scripts', 'p\u0430ypal']] as const) test(`a folder named with ${kind} characters: Install on the project's row opens that folder in the sheet, and the folder then has a row of its own with its marks shown, never taken for the project`, async () => {
   const p = page(), dir = teamFolder(home, name);
   mkdirSync(join(dir, '.claude', 'agents'), { recursive: true });
   writeFileSync(join(dir, '.claude', 'agents', 'helper.md'), '---\nname: Helper\ndescription: Helps with the work.\n---\nHelp.\n');
@@ -516,7 +516,9 @@ for (const [kind, name] of [['hidden in the middle', 'wan\u200Bted'], ['hidden a
   const s = p.getByRole('dialog', { name: 'Install a folder\'s harness' });
   await expect(s.locator('.hxi-card').first()).toHaveAttribute('aria-pressed', 'true');
   await s.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await expect(p.locator('.hxp-row'), 'the folder is the same row, not a second one').toHaveCount(1);
+  // Cleaning lost something in this name, so the folder is not paired with the project's row: it is a row of its own, and its marks are shown.
+  await expect(p.locator('.hxp-row')).toHaveCount(2);
+  await expect(p.locator('.hxp-row').filter({ hasText: /\[(U\+|mixed scripts)/ })).toHaveCount(1);
 });
 
 test('status checks recover once after a refused read: the next good read brings every state back, with one pass and no stray "Checking"', async () => {
