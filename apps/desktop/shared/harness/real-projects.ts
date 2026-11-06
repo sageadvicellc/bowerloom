@@ -55,7 +55,11 @@ const isHomeLabel = (label: string): boolean => label === '~' || label.startsWit
 
 /** The folder's label in the encoding the window's paths have: main sends it as `cleanLabel`. */
 const cleanOf = (f: FolderInfo): string => f.cleanLabel ?? f.label;
-/** True when cleaning kept everything in the folder's label. A hidden character, a mixed-script mark or a cut makes `label` and `cleanLabel` differ: the clean text then stands for more than one folder. */
+/**
+ * True when cleaning kept everything in the folder's label. A hidden character, a mixed-script mark, a scrubbed token-like name, a collapsed or trimmed run of whitespace (`~/My  Notes`
+ * reads as `~/My Notes`) or a cut at 120 characters makes `label` and `cleanLabel` differ: the clean text then stands for more than one folder, and the real `~/My Notes` may be another.
+ * A harmless difference fails closed too: the two rows stay apart rather than risk pairing a lookalike.
+ */
 const lossless = (f: FolderInfo): boolean => f.cleanLabel === undefined || f.cleanLabel === f.label;
 /** A folder outside home shown cut down to `…/name`, from its clean label. */
 const cutOf = (clean: string): string => `…/${lastName(clean)}`;

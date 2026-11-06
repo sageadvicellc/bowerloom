@@ -173,7 +173,6 @@ test('the Grid, the Graph and the List switch with the radio buttons and the arr
   await expect(p.locator('.hxo-cell-item[data-selected]')).toHaveCount(1);
 });
 
-/** The animations that move a tile of the Grid right now. */
 /** Counts every call of `animate` on a tile or a place from now on, so a short glide is never missed between two reads. Install it after the page loads. */
 const watchGlides = (p: Page): Promise<void> => p.evaluate(() => {
   const w = window as unknown as { __glides: number };
@@ -185,6 +184,7 @@ const watchGlides = (p: Page): Promise<void> => p.evaluate(() => {
   };
 });
 const glides = (p: Page): Promise<number> => p.evaluate(() => (window as unknown as { __glides: number }).__glides);
+/** The animations that move a tile of the Grid right now. */
 const tileAnimations = (p: Page): Promise<number> => p.evaluate(() => document.getAnimations().filter(a => {
   const target = (a.effect as KeyframeEffect | null)?.target;
   return target instanceof HTMLElement && (target.classList.contains('hxo-cell') || target.classList.contains('hxo-place'));
