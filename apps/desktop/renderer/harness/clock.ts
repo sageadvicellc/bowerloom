@@ -14,3 +14,10 @@ export function realNow(): Stamp {
 
 /** Now, in milliseconds since 1970: the time shown as "Last read" after a read ends in this window. */
 export const realNowMs = (): number => Date.now();
+
+/** A moment as one plain line, such as "Nov 5, 2026, 3:12 PM", in the zone of this computer (or the zone given, for a test). Null for a time that is not a number. */
+export function clockText(atMs: number, timeZone?: string): string | null {
+  if (!Number.isFinite(atMs)) return null;
+  // The time of day is written with a narrow space in some versions of the text library; one plain space keeps the line the same everywhere.
+  return new Date(atMs).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', ...(timeZone === undefined ? {} : { timeZone }) }).replace(/\s/g, ' ');
+}

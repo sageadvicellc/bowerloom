@@ -6,6 +6,7 @@
 import type { RealNotes } from '../../../shared/harness/types.js';
 import { REAL_LIMITS } from '../../../shared/real/types.js';
 import { PARTLY_READ_NOTE } from '../../../shared/harness/real-map.js';
+import { clockText } from '../clock.js';
 import { REAL_WORDS, countsLine, couldNotReadLine, foundPlaces, readSummary } from '../../home/real/words.js';
 
 const deepFreeze = <T extends object>(value: T): T => {
@@ -120,8 +121,6 @@ export const isPartlyNote = (note: string): boolean => note === PARTLY_READ_NOTE
 
 /** "Last read: Nov 5, 2026, 3:12 PM.": when the read that is shown ended, in the zone of this computer (or the zone given, for a test). */
 export const savedAtLine = (atMs: number, timeZone?: string): string => {
-  if (!Number.isFinite(atMs)) return 'Last read: time not known.';
-  // The time of day is written with a narrow space in some versions of the text library; one plain space keeps the line the same everywhere.
-  const when = new Date(atMs).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', ...(timeZone === undefined ? {} : { timeZone }) }).replace(/\s/g, ' ');
-  return `Last read: ${when}.`;
+  const when = clockText(atMs, timeZone);
+  return when === null ? 'Last read: time not known.' : `Last read: ${when}.`;
 };
