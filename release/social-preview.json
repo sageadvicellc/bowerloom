@@ -4,10 +4,21 @@
   "siteName": "Bowerloom",
   "type": "website",
   "image": {
-    "url": "https://bowerloom.ai/social/bowerloom.png",
+    "url": "https://bowerloom.ai/social/bowerloom-home.png",
     "width": 1200,
     "height": 630,
     "type": "image/png",
-    "alt": "Bowerloom and S4-G3 robot waving with its plant chamber on a cream, rose, and sage background."
+    "alt": "Bowerloom. Sew a harness that you can use anywhere. Two robots and a person work at a desk in a treehouse lab."
+  },
+  "docs": {
+    "title": "Bowerloom docs · Build with your agent",
+    "description": "Guides for the command line and the desktop app.",
+    "image": {
+      "url": "https://bowerloom.ai/social/bowerloom-docs.png",
+      "width": 1200,
+      "height": 630,
+      "type": "image/png",
+      "alt": "Bowerloom docs. Build with your agent. A robot and a person work at a desk in a treehouse lab."
+    }
   }
 }

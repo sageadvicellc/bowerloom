@@ -1,43 +1,107 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdir, readFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rename, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
-// Requires playwright-cli and its Chromium browser. No external assets are fetched.
+// Renders the home and docs social cards. Requires playwright-cli and its Chromium browser. No external assets are fetched.
 const run = promisify(execFile);
 const landing = fileURLToPath(new URL('../apps/landing/', import.meta.url));
 const publicRoot = resolve(landing, 'public');
-const output = resolve(publicRoot, 'social/bowerloom.png');
+const designRoot = resolve(landing, 'design');
+// Each card names the elements it must show. A missing element fails the render.
+const cards = [
+  { page: '/design/social-preview.html', output: 'social/bowerloom-home.png', required: ['.wordmark', '.chip', 'h1', '.address'] },
+  { page: '/design/social-preview-docs.html', output: 'social/bowerloom-docs.png', required: ['.wordmark', '.chip', 'h1', '.description', '.address'] },
+];
 const session = `bowerloom-social-${process.pid}`;
 const scratch = fileURLToPath(new URL('../.trellis/social-preview-browser/', import.meta.url));
+const types = { '.html': 'text/html', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.ttf': 'font/ttf' };
+// The server reads only the brand stylesheet, the design folder, and the public folder.
+function resolveRequest(pathname) {
+  if (pathname === '/src/brand.css') return resolve(landing, 'src/brand.css');
+  const [root, rest] = pathname.startsWith('/design/') ? [designRoot, pathname.slice('/design'.length)] : [publicRoot, pathname];
+  const file = resolve(root, '.' + decodeURIComponent(rest));
+  return file.startsWith(root + sep) ? file : null;
+}
+// Every request that the server cannot answer is recorded, so a missing stylesheet or picture fails the render.
+const failedRequests = [];
 const server = createServer(async (request, response) => {
+  let pathname = request.url;
   try {
-    const pathname = new URL(request.url, 'http://localhost').pathname;
-    const special = { '/': resolve(landing, 'design/social-preview.html'), '/src/brand.css': resolve(landing, 'src/brand.css') };
-    const file = special[pathname] ?? resolve(publicRoot, '.' + decodeURIComponent(pathname));
-    if (!special[pathname] && !file.startsWith(publicRoot + sep)) { response.writeHead(403).end(); return; }
+    pathname = new URL(request.url, 'http://localhost').pathname;
+    // The browser asks for a favicon on its own. The cards do not use one.
+    if (pathname === '/favicon.ico') { response.writeHead(204).end(); return; }
+    const file = resolveRequest(pathname);
+    if (!file) { failedRequests.push(`403 ${pathname}`); response.writeHead(403).end(); return; }
     const bytes = await readFile(file);
-    response.setHeader('Content-Type', { '.html': 'text/html', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.ttf': 'font/ttf' }[extname(file)] ?? 'application/octet-stream');
+    response.setHeader('Content-Type', types[extname(file)] ?? 'application/octet-stream');
     response.end(bytes);
-  } catch { response.writeHead(404).end(); }
+  } catch (error) {
+    failedRequests.push(`404 ${pathname} (${error.code ?? error.name})`);
+    response.writeHead(404).end();
+  }
 });
-await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+// The page must load its fonts and pictures, show every required element inside the card, and keep its words clear of the address.
+// The result token is built at run time, so the command echo of this source can never match it.
+const readyCheck = required => `async () => {
+  await document.fonts.ready;
+  await Promise.all([...document.images].map(image => image.decode()));
+  // fonts.check passes when no face is declared, so each family must also have a loaded face.
+  for (const family of ["Newsreader", "Manrope"]) if (![...document.fonts].some(face => face.family === family && face.status === "loaded")) throw new Error("Preview font did not load: " + family);
+  for (const font of ["500 64px Newsreader", "600 19px Manrope", "400 25px Manrope"]) if (!document.fonts.check(font)) throw new Error("Preview font did not load: " + font);
+  const boxes = {};
+  for (const selector of ${JSON.stringify(required)}) {
+    const node = document.querySelector(selector);
+    if (!node) throw new Error("Preview is missing " + selector);
+    const box = node.getBoundingClientRect();
+    if (box.width === 0 || box.height === 0) throw new Error("Preview element is hidden: " + selector);
+    if (box.left < 0 || box.top < 0 || box.right > 1200 || box.bottom > 630) throw new Error("Preview content does not fit: " + selector);
+    if (node.scrollWidth > node.clientWidth + 1) throw new Error("Preview text overflows its box: " + selector);
+    boxes[selector] = box;
+  }
+  const words = boxes[".description"] ?? boxes.h1;
+  if (words.bottom > boxes[".address"].top - 16) throw new Error("Preview text runs into the address");
+  return ["PREVIEW", "READY"].join("_");
+}`;
+await new Promise(done => server.listen(0, '127.0.0.1', done));
 const cli = (...args) => run('playwright-cli', [`-s=${session}`, ...args], { cwd: scratch, timeout: 30_000, maxBuffer: 1024 * 1024 });
+const rendered = [];
+let failure;
 try {
   await mkdir(scratch, { recursive: true });
   await mkdir(resolve(publicRoot, 'social'), { recursive: true });
-  await cli('open', `http://127.0.0.1:${server.address().port}`);
+  await cli('open', 'about:blank');
   await cli('resize', '1200', '630');
-  const ready = await cli('eval', 'async () => { await document.fonts.ready; await Promise.all([...document.images].map(image => image.decode())); if (!document.fonts.check("500 67px Newsreader") || !document.fonts.check("400 25px Manrope")) throw new Error("Preview fonts did not load"); for (const node of document.querySelectorAll("h1, .wordmark, .description, .address")) { const box = node.getBoundingClientRect(); if (box.left < 0 || box.top < 0 || box.right > 1200 || box.bottom > 630) throw new Error("Preview content does not fit"); } return "PREVIEW_READY"; }');
-  assert.ok(ready.stdout.includes('PREVIEW_READY'), 'Preview assets and fonts must load, and text must fit');
-  await cli('screenshot', `--filename=${output}`);
-  const bytes = await readFile(output);
-  assert.equal(bytes.readUInt32BE(16), 1200);
-  assert.equal(bytes.readUInt32BE(20), 630);
-  console.log(`Saved ${output}`);
+  // Each card is drawn into the scratch folder first. The committed files change only after every card passes.
+  for (const card of cards) {
+    // The process id keeps two runs at once from drawing over each other's drafts.
+    const draft = resolve(scratch, `${process.pid}-${card.output.replace('/', '-')}`);
+    await rm(draft, { force: true });
+    await cli('goto', `http://127.0.0.1:${server.address().port}${card.page}`);
+    const ready = await cli('eval', readyCheck(card.required));
+    assert.match(ready.stdout, /^### Result\n"PREVIEW_READY"$/m, `${card.page}: the readiness check failed\n${ready.stdout}`);
+    assert.deepEqual(failedRequests, [], `${card.page}: the server could not answer every request`);
+    await cli('screenshot', `--filename=${draft}`);
+    const bytes = await readFile(draft);
+    assert.deepEqual(bytes.subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), `${card.page}: the screenshot is not a PNG`);
+    assert.equal(bytes.readUInt32BE(16), 1200, `${card.page}: the screenshot is not 1200 wide`);
+    assert.equal(bytes.readUInt32BE(20), 630, `${card.page}: the screenshot is not 630 high`);
+    assert.deepEqual(failedRequests, [], `${card.page}: a request failed while the card was drawn`);
+    rendered.push([draft, resolve(publicRoot, card.output)]);
+  }
+  // The new files are copied beside the committed ones, then renamed, so a failed copy changes no committed card.
+  for (const [draft, output] of rendered) await copyFile(draft, output + '.next');
+  for (const [, output] of rendered) { await rename(output + '.next', output); console.log(`Saved ${output}`); }
+} catch (error) {
+  failure = error;
 } finally {
-  try { await cli('close'); } finally { await new Promise(resolve => server.close(resolve)); }
+  // A failure to close the browser is reported, but it never hides the first failure.
+  try { await cli('close'); } catch (error) { console.error(`Could not close the browser session: ${error.message}`); }
+  // Open connections from a browser that did not close would keep the server waiting, so they are dropped first.
+  server.closeAllConnections();
+  await new Promise(done => server.close(done));
 }
+if (failure) throw failure;

@@ -1,0 +1,17 @@
+/* Shared layout for the 1200 by 630 social cards. The illustration fills the card, and a cream panel holds the words. */
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; }
+body { background: var(--brand-ground); color: var(--brand-ink); }
+.card { position: relative; width: 1200px; height: 630px; overflow: hidden; isolation: isolate; }
+/* The frame clips the art, so a zoomed crop never spills over the panel. */
+.art-frame { position: absolute; top: 0; right: 0; width: 720px; height: 630px; overflow: hidden; z-index: -2; }
+.art { display: block; width: 100%; height: 100%; object-fit: cover; object-position: var(--focus-x, 50%) 50%; transform: scale(var(--zoom, 1)); transform-origin: var(--focus-x, 50%) 55%; }
+.card::after { content: ""; position: absolute; inset: 0 auto 0 480px; width: 140px; background: linear-gradient(90deg, var(--brand-ground), rgb(246 238 232 / 0)); z-index: -1; }
+.panel { position: absolute; inset: 0 auto 0 0; width: 560px; padding: 58px 0 0 64px; }
+.wordmark { display: block; width: 300px; height: auto; }
+.chip { display: inline-flex; gap: 10px; align-items: center; margin: 44px 0 0; padding: 9px 16px; border: 1.5px solid var(--brand-line); border-radius: 8px; background: var(--brand-surface); font: 600 19px Manrope, sans-serif; color: var(--brand-action); }
+.chip span { font-size: 16px; }
+h1 { margin: 26px 0 0; width: 440px; font: 500 64px/1.04 Newsreader, Georgia, serif; letter-spacing: -.03em; }
+.description { margin: 22px 0 0; width: 400px; font: 400 25px/1.4 Manrope, sans-serif; color: var(--brand-muted); }
+.address { position: absolute; left: 64px; bottom: 50px; margin: 0; font: 600 20px Manrope, sans-serif; color: var(--brand-action); }
+.card::before { content: ""; position: absolute; inset: auto 0 0; height: 14px; background: var(--brand-foliage); z-index: 2; }
