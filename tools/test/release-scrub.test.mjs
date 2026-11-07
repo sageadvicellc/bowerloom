@@ -21,3 +21,15 @@ test('scrubUrls still masks a URL that follows a long scheme-like run', () => {
   const out = scrubUrls('a.'.repeat(5000) + 'https://example.com/path');
   assert.ok(out.includes('[url]') && !out.includes('example.com'));
 });
+
+test('scrubUrls masks the credential of a URL whose scheme touches a long alphanumeric run', () => {
+  const user = ['bo', 'b'].join('');
+  const secret = ['sEcr3t', 'Tok'].join('');
+  for (const glued of [31, 32, 33, 40, 200]) {
+    for (const scheme of ['https', 'ssh']) {
+      const out = scrubUrls('a'.repeat(glued) + `${scheme}://${user}:${secret}@host.example/x`);
+      assert.ok(out.includes('[url]'), `glued ${glued} ${scheme}: ${out}`);
+      assert.ok(!out.includes(secret) && !out.includes(user) && !out.includes('host.example'), `glued ${glued} ${scheme}: ${out}`);
+    }
+  }
+});
