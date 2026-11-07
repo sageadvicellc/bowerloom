@@ -207,3 +207,11 @@ A file that it cannot read is a file that it did not check, so that is a failure
 ## Test settings
 
 Tests use three environment variables. `BOWERLOOM_RELEASE_NPM` replaces the npm program with a fake. `BOWERLOOM_RELEASE_PACK` replaces the pack script. `BOWERLOOM_RELEASE_FREE_GIB` replaces the measured free disk space. Do not set them in a real release. See "Test seams" above.
+
+## Decisions on record
+
+The owner settled these on 2026-11-07.
+
+- Tags: agents and scripts can push the release tag. `release tag` pushes only that tag. It never moves or force-pushes an existing tag, and it refuses unless the commit passed the gates. Only the npm steps need the owner: `publish`, `retire`, and the registry login.
+- Hashes: the desktop installer hashes live in the tracked file `release/desktop-sha256.json`. The release pull request commits it. That moves HEAD, so tag with `tag --commit` or run the gates again.
+- Dry run: the beta.2 release pull request first sets `release/beta.json` to the next unreleased version. Then one real `dry-run` runs and records `expectedFileCount`.
