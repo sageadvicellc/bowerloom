@@ -1,0 +1,40 @@
+{
+  "schema": "bowerloom/release-config/v1",
+  "package": "bowerloom",
+  "binName": "bowerloom",
+  "registry": "https://registry.npmjs.org",
+  "distTag": "beta",
+  "tagPrefix": "v",
+  "releaseRecord": "release/beta.json",
+  "branchPattern": "^release/",
+  "packScript": "tools/cli-distribution/pack.mjs",
+  "gates": [
+    { "name": "root: npm ci", "cwd": ".", "command": ["npm", "ci"], "timeoutSeconds": 1800 },
+    { "name": "root: npm run typecheck", "cwd": ".", "command": ["npm", "run", "typecheck"], "timeoutSeconds": 1800 },
+    { "name": "root: npm test", "cwd": ".", "command": ["npm", "test"], "timeoutSeconds": 3000 },
+    { "name": "desktop: npm ci", "cwd": "apps/desktop", "command": ["npm", "ci"], "timeoutSeconds": 1800 },
+    { "name": "desktop: npm run typecheck", "cwd": "apps/desktop", "command": ["npm", "run", "typecheck"], "timeoutSeconds": 1800 },
+    { "name": "desktop: npm test", "cwd": "apps/desktop", "command": ["npm", "test"], "timeoutSeconds": 3000 }
+  ],
+  "e2eGates": [
+    { "name": "desktop: npm run e2e", "cwd": "apps/desktop", "command": ["npm", "run", "e2e"], "timeoutSeconds": 3600 }
+  ],
+  "desktop": {
+    "packageJson": "apps/desktop/package.json",
+    "dir": "apps/desktop/release",
+    "patterns": ["*.dmg", "*.zip"],
+    "hashFile": "release/desktop-sha256.json"
+  },
+  "claims": {
+    "paths": ["README.md", "apps/docs/src/content", "apps/landing/content"],
+    "patterns": [
+      "is not published yet",
+      "is not on npm yet",
+      "is not yet on npm",
+      "has not been published",
+      "is not yet published",
+      "not yet available on npm"
+    ]
+  },
+  "retire": []
+}
