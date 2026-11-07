@@ -486,9 +486,9 @@ async function isAncestor(ctx, ancestor, descendant) {
 }
 /**
  * The newest receipt of one step and version that counts in this run (same seams), passes `accept`, and sits on `descendant` or an ancestor of it, or null.
- * A receipt on a commit outside that history is not evidence.
+ * A receipt on a commit outside that history is not evidence. With `raw`, a receipt written under other test seams is returned too (status shows it, marked).
  */
-async function newestReceipt(ctx, step, version, descendant, accept = () => true) {
+async function newestReceipt(ctx, step, version, descendant, accept = () => true, { raw = false } = {}) {
   const prefix = `${step}-${version}-`;
   let names;
   try { names = fs.readdirSync(path.join(ctx.repo, STATE_DIR, 'receipts')); } catch { return null; }
@@ -497,7 +497,7 @@ async function newestReceipt(ctx, step, version, descendant, accept = () => true
     if (!name.startsWith(prefix) || !name.endsWith('.json')) continue;
     const commit = name.slice(prefix.length, -'.json'.length);
     if (!FULL_HASH.test(commit)) continue;
-    const receipt = readReceipt(ctx, step, version, commit);
+    const receipt = readReceipt(ctx, step, version, commit, { raw });
     if (receipt && accept(receipt)) found.push(receipt);
   }
   found.sort((x, y) => (x.at < y.at ? 1 : x.at > y.at ? -1 : 0));
@@ -1232,10 +1232,11 @@ async function cmdStatus(ctx, o) {
     add('hashes', check.status === 'pass' ? 'done' : 'todo', check.reason);
   }
 
-  const verify = commit ? readReceipt(ctx, 'verify', version, commit, { raw: true }) : null;
-  const verifyPassed = verify !== null && Array.isArray(verify.checks) && verify.checks.length > 0 && verify.checks.every(c => c.status === 'pass');
-  if (verifyPassed) add('verify', receiptState(verify), `passed ${verify.at}`);
-  else add('verify', 'todo', verify ? 'the verify receipt for this commit holds a check that did not pass' : 'no passing verify receipt for this commit');
+  // The same lookup as `tag`: the newest passing verify receipt on HEAD or on an ancestor of HEAD, so status and `tag --commit C --branch B` agree.
+  const passingVerify = commit ? await newestReceipt(ctx, 'verify', version, 'HEAD', verifyPassed, { raw: true }) : null;
+  const verifyAtHead = commit ? readReceipt(ctx, 'verify', version, commit, { raw: true }) : null;
+  if (passingVerify) add('verify', receiptState(passingVerify), `passed ${passingVerify.at}${passingVerify.commit === commit ? '' : ` on ${short(passingVerify.commit)}, an ancestor of HEAD`}`);
+  else add('verify', 'todo', verifyAtHead ? 'the verify receipt for this commit holds a check that did not pass' : 'no passing verify receipt for this commit or an ancestor of it');
 
   const local = await localTag(ctx, tag);
   const localCommit = local.commit ?? null;

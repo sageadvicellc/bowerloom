@@ -641,6 +641,55 @@ test('scanLine allows a password value only when the WHOLE value is a placeholde
   }
 });
 
+test('scanLine does not flag ordinary code that names a password', () => {
+  const PW = 'pass' + 'word';
+  const code = [
+    PW + ': process.env.DB_PASSWORD', PW + ': z.string().min(8)', PW + ': undefined', PW + ': null', PW + ': Credentials', PW + ': Uint8Array', PW + ': opts.' + PW,
+    PW + '=${' + PW + '}', PW + '=$' + PW, PW + '=$DB_PASS;', PW + '=$DB_PASS)', PW + '=os.environ["X"]', PW + ': string', PW + ': string;', PW + ': string,',
+    'connect(host, ' + PW + '=$DB_PASS)', PW + '=None', PW + '=nil', PW + ': true', PW + '=getSecret(name)', PW + '=config[key]', PW + '=hunter',
+  ];
+  for (const line of code) assert.deepEqual(kinds(line), [], line);
+});
+
+test('scanLine still flags a literal password in every form', () => {
+  const PW = 'pass' + 'word';
+  const leaks = [
+    PW + '="hunter2hunter2"', 'const ' + PW + ' = "abc12345"', '_auth' + 'Token="abcdef123"', PW + '=Hunter2Hunter2', PW + ': hunter2hunter2', PW + '=$ecret99',
+    '"' + PW + '": "realvalue1"', PW + ': Hunter2Hunter2;', PW + '=hunter2hunter2)',
+  ];
+  for (const line of leaks) {
+    const found = scanLine(line);
+    assert.deepEqual(found.map(f => f.kind), ['secret'], line);
+    assert.equal(found[0].excerpt, '[redacted]', line);
+  }
+});
+
+test('scanLine: the allow marker skips structural findings on that line only, and never the private terms', () => {
+  const MARK = 'public-scan' + ': allow';
+  const leak = 'const pass' + 'word = "abc12345"';
+  assert.deepEqual(kinds(leak), ['secret']);
+  assert.deepEqual(kinds(leak + ' // ' + MARK), []);
+  assert.deepEqual(kinds('/* ' + MARK + ' */ ' + USERS + 'someone/x ' + EMAIL), []);
+  assert.deepEqual(kinds(leak + ' // ' + MARK.replace('allow', 'deny')), ['secret']);
+  const withTerm = scanLine(leak + ' // ' + MARK + ' ' + TERM, [{ term: TERM, line: 3 }]);
+  assert.deepEqual(withTerm.map(f => f.kind), ['term']);
+});
+
+test('scanLine finds a password inside a URL, and not a URL without one', () => {
+  const pw = 'hunter2';
+  for (const scheme of ['postgres', 'redis', 'https', 'amqp', 'mongodb']) {
+    const found = scanLine('url = ' + scheme + '://someone:' + pw + '@db.internal:5432/app');
+    assert.deepEqual(found.map(f => f.kind), ['secret'], scheme);
+    assert.equal(found[0].excerpt, '[redacted]', scheme);
+    assert.equal(JSON.stringify(found).includes(pw), false, scheme);
+  }
+  assert.deepEqual(kinds('redis://:' + pw + '@cache'), ['secret']);
+  for (const line of [
+    'https://' + 'someone@host', 'https://host/path', 'postgres://user:${DB_PASS}@db', 'postgres://user:$DB_PASS@db', 'postgres://user:<your password>@db',
+    'postgres://user:@db', 'postgres://user@db:5432/app', 'see host:8080 and a@b',
+  ]) assert.deepEqual(kinds(line), [], line);
+});
+
 test('scanLine finishes fast on very long lines', () => {
   const lines = ['a'.repeat(200000) + '@', 'a@'.repeat(100000), '.'.repeat(200000), USERS.repeat(30000), `${'a'.repeat(200000)}@x`, 'x'.repeat(WINDOW_CHARS * 5 + 1)];
   const started = performance.now();

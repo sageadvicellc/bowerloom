@@ -43,13 +43,13 @@ test('parseCounts does not take a stray "pass" line from the middle of a log', (
   assert.equal(parseCounts('this will pass 4 times\nnothing else'), null);
 });
 
-test('parseCounts takes the LAST summary block, so a nested run or a printed line cannot win', () => {
+test('parseCounts sums pass, skipped, and fail over every summary block; a node summary beats a Playwright-looking line', () => {
   const nested = ['ℹ tests 9', 'ℹ pass 9', 'ℹ fail 0', 'ℹ skipped 0', 'some other output', SPEC].join('\n');
-  assert.deepEqual(parseCounts(nested), { pass: 3, fail: 1, skipped: 1 });
+  assert.deepEqual(parseCounts(nested), { pass: 12, fail: 1, skipped: 1 });
   // A test printed "3 passed (1s)" and the real node summary follows: the node summary wins.
   assert.deepEqual(parseCounts(['  3 passed (1s)', 'ℹ pass 8', 'ℹ fail 0', 'ℹ skipped 0'].join('\n')), { pass: 8, fail: 0, skipped: 0 });
-  // Two Playwright-looking blocks: the last one wins.
-  assert.deepEqual(parseCounts(['  3 passed (1s)', 'later output', '  9 passed (4s)'].join('\n')), { pass: 9, fail: 0, skipped: 0 });
+  // Two Playwright blocks add up.
+  assert.deepEqual(parseCounts(['  3 passed (1s)', 'later output', '  9 passed (4s)'].join('\n')), { pass: 12, fail: 0, skipped: 0 });
   // A bare "3 passed" with no duration is not a Playwright summary.
   assert.equal(parseCounts('3 passed\n'), null);
 });
@@ -58,14 +58,28 @@ test('parseCounts reads every summary block: a failing block makes the result a 
   // (a) one failing block, then a passing one (two runners in one command).
   const failFirst = ['ℹ tests 3', 'ℹ pass 1', 'ℹ fail 2', 'ℹ cancelled 0', 'ℹ skipped 0', 'second runner starts', 'ℹ tests 5', 'ℹ pass 5', 'ℹ fail 0', 'ℹ cancelled 0', 'ℹ skipped 0'].join('\n');
   const mixed = parseCounts(failFirst);
-  assert.equal(mixed.pass, 5);
+  assert.equal(mixed.pass, 6);
   assert.equal(mixed.fail, 2);
   // (b) a cancelled test in the first block counts as a failure too.
   assert.equal(parseCounts('ℹ pass 4\nℹ fail 0\nℹ cancelled 1\nℹ skipped 0\nnext\nℹ pass 9\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0').fail, 1);
-  // (c) two passing blocks stay a pass.
-  assert.deepEqual(parseCounts('ℹ pass 4\nℹ fail 0\nmore\nℹ pass 9\nℹ fail 0\nℹ skipped 2'), { pass: 9, fail: 0, skipped: 2 });
+  // (c) two passing blocks stay a pass, with the totals added.
+  assert.deepEqual(parseCounts('ℹ pass 4\nℹ fail 0\nmore\nℹ pass 9\nℹ fail 0\nℹ skipped 2'), { pass: 13, fail: 0, skipped: 2 });
   // (d) the same holds for Playwright blocks.
   assert.equal(parseCounts(['  1 failed', '  2 passed (3s)', 'later', '  9 passed (4s)'].join('\n')).fail, 1);
+});
+
+test('parseCounts judges a step by the combined totals: a first runner that ran no tests does not hide a second that ran some', () => {
+  const none = ['ℹ tests 0', 'ℹ pass 0', 'ℹ fail 0', 'ℹ cancelled 0', 'ℹ skipped 0'];
+  const five = ['ℹ tests 5', 'ℹ pass 5', 'ℹ fail 0', 'ℹ cancelled 0', 'ℹ skipped 1'];
+  assert.deepEqual(parseCounts([...none, 'second runner', ...five].join('\n')), { pass: 5, fail: 0, skipped: 1 });
+  assert.deepEqual(parseCounts([...five, 'second runner', ...none].join('\n')), { pass: 5, fail: 0, skipped: 1 });
+  // A failure in any block fails the step, wherever it sits.
+  const failing = ['ℹ tests 2', 'ℹ pass 1', 'ℹ fail 1', 'ℹ cancelled 0', 'ℹ skipped 0'];
+  assert.equal(parseCounts([...failing, 'x', ...five].join('\n')).fail, 1);
+  assert.equal(parseCounts([...five, 'x', ...failing].join('\n')).fail, 1);
+  assert.deepEqual(parseCounts([...none, 'x', ...five].join('\n').replace(/ℹ/g, '#')), { pass: 5, fail: 0, skipped: 1 });
+  // The same holds for Playwright.
+  assert.deepEqual(parseCounts(['  1 skipped', 'x', '  5 passed (2s)'].join('\n')), { pass: 5, fail: 0, skipped: 1 });
 });
 
 test('parseCounts counts cancelled node tests as failures', () => {

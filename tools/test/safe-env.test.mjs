@@ -106,8 +106,8 @@ test('redact blanks the JSON form of a password key, with any prefix, in either 
 });
 
 test('redact blanks the password in URL userinfo and keeps the user name and host', () => {
-  assert.equal(redact('clone https://alice:hunter2pw@example.com/org/repo.git now', {}), `clone https://alice:${REDACTED}@example.com/org/repo.git now`);
-  assert.equal(redact('postgres://svc:pw1234@example.com:5432/app', {}), `postgres://svc:${REDACTED}@example.com:5432/app`);
-  assert.equal(redact('https://:onlypw@example.com/x', {}), `https://:${REDACTED}@example.com/x`);
+  assert.equal(redact('clone https://alice:hunter2pw@example.com/org/repo.git now', {}), `clone https://alice:${REDACTED}@example.com/org/repo.git now`); // public-scan: allow
+  assert.equal(redact('postgres://svc:pw1234@example.com:5432/app', {}), `postgres://svc:${REDACTED}@example.com:5432/app`); // public-scan: allow
+  assert.equal(redact('https://:onlypw@example.com/x', {}), `https://:${REDACTED}@example.com/x`); // public-scan: allow
   assert.equal(redact('https://example.com:8080/path and ssh://git@example.com/x', {}), 'https://example.com:8080/path and ssh://git@example.com/x');
 });

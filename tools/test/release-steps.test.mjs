@@ -1551,6 +1551,29 @@ test('the dry-run fallback of verify and the tag phase of status use only receip
   assert.equal(fx.run(['status', '--json']).json().phases.find(p => p.phase === 'tag').state, 'done');
 });
 
+test('status finds the verify phase the way tag does: the newest passing receipt on HEAD or an ancestor of HEAD', t => {
+  const fx = makeFixture(t);
+  const phase = () => fx.run(['status', '--json']).json().phases.find(p => p.phase === 'verify');
+  // A passing receipt on an ancestor counts, as it does for tag.
+  const first = fx.verified();
+  fx.commit('later.txt', 'l');
+  fx.git('push', 'origin', 'HEAD');
+  assert.match(phase().state, /^done/, phase().reason);
+  // A failing receipt on HEAD does not hide the passing one on the ancestor.
+  fx.verified(fx.git('rev-parse', 'HEAD'), { status: 'fail' });
+  assert.match(phase().state, /^done/, phase().reason);
+  assert.notEqual(first, fx.git('rev-parse', 'HEAD'));
+  // A passing receipt on a commit that HEAD does not contain is not evidence.
+  const other = makeFixture(t);
+  other.git('checkout', '-b', 'side');
+  const side = other.commit('side.txt', 's');
+  other.verified(side);
+  other.git('checkout', BRANCH);
+  other.commit('main.txt', 'm');
+  const todo = other.run(['status', '--json']).json().phases.find(p => p.phase === 'verify');
+  assert.equal(todo.state, 'todo', todo.reason);
+});
+
 test('status shows verify as todo when the stored receipt holds a skipped or failed check', t => {
   const fx = makeFixture(t);
   const head = fx.git('rev-parse', 'HEAD');

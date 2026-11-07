@@ -5,7 +5,10 @@
 // (a) The added lines of `git diff <base>...HEAD`, the added lines of EVERY commit patch in `<base>..HEAD` (so a secret added in one commit and removed in a later one
 //     is still found), the file paths the diff touches, every commit message in `<base>..HEAD`, and the author and committer name and address of each of those
 //     commits are scanned for structural leaks only: home paths, session links and ids, scratch folders, email addresses, and likely secrets (token shapes, JWTs,
-//     Slack and Google keys, _authToken and password assignments, private key headers).
+//     Slack and Google keys, _authToken and password assignments, passwords inside URLs, private key headers). A password assignment whose unquoted value is code
+//     (a call, a member access, an index, a template, a variable such as $NAME, or a keyword such as undefined) is not a secret. A bare word is flagged only when it
+//     has 8 or more characters (and, after a colon, a digit); a shorter bare word is a known limit. A quoted value is flagged unless it is a placeholder.
+//     A line that holds the text "public-scan: allow" is skipped by these structural patterns (the private terms of (b) still apply to it).
 // (b) --terms-file names a file OUTSIDE the repository with one private term per line (blank lines and lines starting with # are skipped; lines end in LF, CR LF, or
 //     CR; a file with no terms is an error). Each term is matched case-insensitively as a whole word (letters and digits make a word; an underscore does not) in the
 //     added lines, paths, commit messages and names, and the PR body. A finding shows the file, the line, and the line number in the terms file, and never the term.
@@ -45,7 +48,7 @@ export const WINDOW_OVERLAP = 200;
 /** A binary file over this size is reported as unscanned. */
 export const MAX_BINARY_BYTES = 5 * 1024 * 1024;
 /** Said in every result: what the binary scan can and cannot see. */
-export const BINARY_NOTE = 'binary files are read as raw bytes; compressed formats (zip, gz, dmg, docx, pdf streams) are not inspected, so a leak inside one is not found';
+export const BINARY_NOTE = 'binary files are read as raw bytes; compressed formats (zip, gz, dmg, docx, pdf streams) are not inspected, so a leak inside one is not found; a binary file changed A->B->C inside the range is scanned only at its final (HEAD) version, never at A or B';
 
 const USAGE = `Usage: node tools/public-scan.mjs [--base REF] [--pr-body FILE] [--terms-file ABS_FILE] [--allow-empty] [--json]
   --base REF           scan git diff REF...HEAD and the commits REF..HEAD (default ${DEFAULT_BASE})
@@ -71,6 +74,7 @@ const ALLOWED_EMAIL = /(?:@example\.com|@users\.noreply\.github\.com|^noreply@an
 // The environment forms are case-sensitive on purpose: `$ecret99` is a secret, `$DB_PASS` is a reference. The other forms ignore case.
 const ENV_REFERENCE = /^(?:\$\{?[A-Z][A-Z0-9_]*\}?|%[A-Z][A-Z0-9_]*%)$/;
 const OTHER_PLACEHOLDER = /^(?:<[^<>]*>|\$?\{\{[^{}]*\}\}|\*+|x+|\.+)$/i;
+const inUrlCredential = match => /:\/\/[^\s:@/'"]*:$/.test(match.input.slice(Math.max(0, match.index - 200), match.index));
 const isPlaceholderValue = value => ENV_REFERENCE.test(value) || OTHER_PLACEHOLDER.test(value);
 
 /**
@@ -80,12 +84,46 @@ const isPlaceholderValue = value => ENV_REFERENCE.test(value) || OTHER_PLACEHOLD
 function assignment(name) {
   return new RegExp(name + String.raw`["']?\s*([=:])\s*(["']?)((?:\$?\{\{[^{}\n]*\}\}|<[^<>\n]*>)(?![^\s'"])|[^\s'"]{3,})`, 'gi');
 }
-/** A match of `assignment` is allowed when its value is a placeholder, or when it is a short bare word after a colon (`password: string` in a type). */
-function allowedAssignment(match) {
-  const [, separator, quote, value] = match;
-  if (isPlaceholderValue(value)) return true;
-  return separator === ':' && quote === '' && value.length < 8;
+// Things that make an unquoted value code and not a secret: a call, a member access, an index, a template or a variable (`(`, `)`, `.`, `[`, `]`, `$`, `{`, `}`), or a keyword.
+const CODE_CHARACTERS = /[().[\]${}]/;
+const CODE_KEYWORDS = /^(?:undefined|null|true|false|none|nil)$/i;
+const TYPED_ARRAY = /^(?:Big)?(?:Int|Uint|Float)\d+(?:Clamped)?Array$/;
+// `$name` or `${name}`. In capitals it is an environment reference (ENV_REFERENCE). In any case it is a variable when the name holds no digit; `$ecret99` is a secret.
+const VARIABLE_REFERENCE = /^\$(?:\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)$/;
+const isVariableReference = value => VARIABLE_REFERENCE.test(value) && !/\d/.test(value);
+/** The value without the closing punctuation of the code around it: `;`, `,`, `)`, `]`, and a `}` that has no `{` of its own. */
+function trimClosers(value) {
+  let text = value;
+  while (text !== '') {
+    const last = text.at(-1);
+    const open = (text.match(/\{/g) ?? []).length, close = (text.match(/\}/g) ?? []).length;
+    if (';,)]'.includes(last) || (last === '}' && close > open)) text = text.slice(0, -1);
+    else break;
+  }
+  return text;
 }
+/**
+ * A match of `assignment` is allowed when its value is a placeholder, a variable reference, or (unquoted) code: it holds a call, a member access, an index, a template
+ * or a variable, or it is a keyword or a typed-array name. An unquoted bare word is a secret only when it is 8 or more characters long and, after a colon, holds a digit
+ * (after `=` any such word counts). A shorter bare word is not flagged: this is a known limit. A quoted value that is not a placeholder is always a secret.
+ */
+function allowedAssignment(match) {
+  const [, separator, quote, raw] = match;
+  const value = quote === '' ? trimClosers(raw) : raw;
+  if (value === '' || isPlaceholderValue(value) || isVariableReference(value)) return true;
+  if (quote !== '') return false;
+  if (CODE_KEYWORDS.test(value) || TYPED_ARRAY.test(value)) return true;
+  if (value.startsWith('$') && VARIABLE_REFERENCE.test(value)) return false;
+  if (CODE_CHARACTERS.test(value)) return true;
+  if (value.length < 8) return true;
+  return separator === ':' && !/\d/.test(value);
+}
+
+// A password inside a URL: a scheme, `://`, a user, a colon, the secret, `@`, a host. Group 1 is the password. A URL with only a user, or with an empty or placeholder password, is allowed.
+const URL_CREDENTIAL = /(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s:@/'"]*:([^\s@/'"]+)@[^\s/'"]+/g;
+const allowedUrlCredential = match => isPlaceholderValue(match[1]) || VARIABLE_REFERENCE.test(match[1]) && !/\d/.test(match[1]);
+// The line marker that skips the structural patterns on its line.
+const ALLOW_MARKER = 'public-scan' + ': allow';
 
 // Each pattern: a kind, an expression (global), an optional `allow(match)`, and how the excerpt is written. Excerpts of secrets never hold the match, and
 // the excerpt of a home path or an email is a constant, so a real name or address is never printed.
@@ -99,7 +137,7 @@ const PATTERNS = [
   { kind: 'tmp-path', re: /\/tmp\/claude-/g, excerpt: () => '/tmp/' + 'claude-…' },
   { kind: 'session-id', re: /(?<![A-Za-z0-9])local_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, excerpt: () => 'local_[id]' },
   // The local part is anchored (nothing local-looking before it) and capped at 64 characters, as in RFC 5321, so a long run cannot cost quadratic time.
-  { kind: 'email', re: /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g, needs: '@', allow: match => ALLOWED_EMAIL.test(match[0]), excerpt: () => '[redacted]@domain' },
+  { kind: 'email', re: /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g, needs: '@', allow: match => ALLOWED_EMAIL.test(match[0]) || inUrlCredential(match), excerpt: () => '[redacted]@domain' },
   { kind: 'secret', re: /(?<![A-Za-z0-9])gh[p]_[A-Za-z0-9]{20,}/g, secret: true },
   { kind: 'secret', re: /(?<![A-Za-z0-9])github_pa[t]_[A-Za-z0-9_]{20,}/g, secret: true },
   { kind: 'secret', re: /(?<![A-Za-z0-9])np[m]_[A-Za-z0-9]{30,}/g, secret: true },
@@ -110,6 +148,7 @@ const PATTERNS = [
   { kind: 'secret', re: /(?<![A-Za-z0-9_-])ey[J][A-Za-z0-9_-]{8,}\.ey[J][A-Za-z0-9_-]{8,}/g, needs: '.', secret: true },
   { kind: 'secret', re: /(?<![A-Za-z0-9])xo[x][baprs]-[A-Za-z0-9-]{10,}/g, secret: true },
   { kind: 'secret', re: /(?<![A-Za-z0-9])AI[z]a[A-Za-z0-9_-]{35}/g, secret: true },
+  { kind: 'secret', re: URL_CREDENTIAL, needs: '://', secret: true, allow: allowedUrlCredential },
   { kind: 'secret', re: assignment('_auth(?:T[o]ken)?'), secret: true, allow: allowedAssignment },
   { kind: 'secret', re: assignment('pass[w]ord'), secret: true, allow: allowedAssignment },
 ];
@@ -140,6 +179,8 @@ export function scanLine(text, terms = []) {
   const expressions = terms.map(entry => ({ entry, re: termExpression(entry.term) }));
   const mask = value => expressions.reduce((current, { re }) => current.replace(re, '[redacted]'), value);
   const seen = new Set();
+  // A line that holds the allow marker is skipped by every structural pattern. The private terms are still checked on it.
+  const allowed = text.includes(ALLOW_MARKER);
   const step = WINDOW_CHARS - WINDOW_OVERLAP;
   for (let start = 0; ; start += step) {
     const from = start === 0 ? 0 : start - 1;
@@ -149,6 +190,7 @@ export function scanLine(text, terms = []) {
     // Where the next window's slice begins (absolute); a match that starts after it and touches this window's end is found whole there.
     const nextFrom = start + step - 1;
     PATTERNS.forEach((pattern, index) => {
+      if (allowed) return;
       if (pattern.needs && !windowText.includes(pattern.needs)) return;
       for (const match of windowText.matchAll(pattern.re)) {
         if (from > 0 && match.index === 0) continue;

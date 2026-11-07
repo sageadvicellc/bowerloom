@@ -45,10 +45,16 @@ function allBlocks(lines, isMember, isGap = () => false) {
   return blocks;
 }
 
+const total = counts => ({
+  pass: counts.reduce((sum, one) => sum + one.pass, 0),
+  fail: counts.reduce((sum, one) => sum + one.fail, 0),
+  skipped: counts.reduce((sum, one) => sum + one.skipped, 0),
+});
+
 /**
  * Counts from the summaries in real tool output: node --test (spec `ℹ pass N`, tap `# pass N`) or Playwright (`N passed (Ts)`, `N failed`, `N skipped`).
- * Every summary block is read. `pass` and `skipped` come from the LAST block. `fail` is the total over all blocks, so a failing block is never hidden by a
- * later block that passes (two runners in one command). `cancelled` tests count as failures. A node summary wins over a Playwright-looking line.
+ * Every summary block is read, and `pass`, `skipped`, and `fail` are each the total over all blocks. A step with two runners (the first ran 0 tests, the second
+ * ran 5) is judged by the combined totals, and a failing block is never hidden by an earlier or later block that passes. `cancelled` tests count as failures. A node summary wins over a Playwright-looking line.
  * Null when no summary is found.
  */
 export function parseCounts(text) {
@@ -65,7 +71,7 @@ export function parseCounts(text) {
       }
       return one;
     });
-    return { ...counts.at(-1), fail: counts.reduce((sum, one) => sum + one.fail, 0) };
+    return total(counts);
   }
   const isSummary = line => PW_PASSED.test(line) || PW_OTHER.test(line);
   const pwBlocks = allBlocks(lines, isSummary, line => PW_DETAIL.test(line)).filter(block => block.some(isSummary));
@@ -82,5 +88,5 @@ export function parseCounts(text) {
     }
     return one;
   });
-  return { ...counts.at(-1), fail: counts.reduce((sum, one) => sum + one.fail, 0) };
+  return total(counts);
 }
