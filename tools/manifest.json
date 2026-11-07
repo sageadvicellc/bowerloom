@@ -161,7 +161,7 @@
       "safetyClass": "read-only",
       "destructive": false,
       "mcp_exposure": "expose",
-      "description": "Scans the added lines of the net diff and of every commit patch, the file paths, commit messages, author names, and the HEAD blob of each added binary file of a branch, and optionally its pull request text, for home paths, session links, emails, secrets (token shapes, passwords inside URLs, and password or auth-token assignments in plain, quoted, and colon forms; ordinary code in one of five strict shapes is not a secret, but a hardcoded fallback after it is; a marker public-scan: allow followed by a kind skips only that kind on its own added line), and private terms, and checks the pull request shape.",
+      "description": "Scans the added lines of the net diff and of every commit patch, the file paths, commit messages, author names, and the HEAD blob of each added binary file of a branch, and optionally its pull request text, for home paths, session links, emails, secrets (token shapes, passwords inside URLs, and password or auth-token assignments in plain, quoted, and colon forms; ordinary code in one of five strict shapes is not a secret, but a hardcoded fallback after it is, also chained, after an index or call, and after a cast; a marker public-scan: allow followed by a kind skips only that kind on its own added line), and private terms, and checks the pull request shape.",
       "args": [
         {
           "name": "--base REF",
@@ -258,7 +258,7 @@
           "phases": "array",
           "seams": "array"
         },
-        "note": "phases lists each release phase as { phase, state, reason }. The tag phase is done only when origin has the tag at the release commit; a tag only this clone holds is todo with (local only) in the reason, and an unreachable origin is unknown. seams (any result, present only when a test seam is active) lists the active test seams; a real run has no seams key.",
+        "note": "phases lists each release phase as { phase, state, reason }. The tag phase is done only when origin has the tag at the release commit; a tag only this clone holds is todo with (local only) in the reason, and an unreachable origin is unknown; a dry-run receipt that does not agree with the config does not name the release commit. Every URL in a failure reason is shown as [url]. seams (any result, present only when a test seam is active) lists the active test seams; a real run has no seams key.",
         "optional": [
           "command",
           "version",

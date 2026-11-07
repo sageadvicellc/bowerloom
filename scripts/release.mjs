@@ -96,8 +96,22 @@ function shellQuote(word) {
 }
 const shellLine = words => words.map(shellQuote).join(' ');
 
+/** The registry of the config and the origin URLs read so far. Their exact text is hidden from every failure line, whatever shape it has. */
+const KNOWN_URLS = new Set();
+const rememberUrl = url => { if (typeof url === 'string' && url.length >= 4) KNOWN_URLS.add(url); };
+/**
+ * Hides every URL in a text. A URL can hold a user and a token in front of the host, and an scp-style address (user, at sign, host, colon, path) holds a user.
+ * The whole address goes, not only the password: the mark stands where it was.
+ */
+export function scrubUrls(text) {
+  let out = String(text ?? '');
+  for (const known of KNOWN_URLS) out = out.split(known).join('[url]');
+  return out
+    .replace(/\b[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s'"<>]*/g, '[url]')
+    .replace(/(?<![\w.@-])[\w.-]+@[\w.-]+:[^\s'"<>]*/g, '[url]');
+}
 const failLine = text => {
-  const line = firstFailure(text);
+  const line = firstFailure(scrubUrls(text));
   return line === null ? 'no output' : line;
 };
 
@@ -171,6 +185,7 @@ export function validateConfig(config) {
   if (config.schema !== CONFIG_SCHEMA) throw new UsageError(`config: schema must be ${CONFIG_SCHEMA}`);
   str(config.package, 'package', /^(?:@[a-z0-9~-][a-z0-9._~-]*\/)?[a-z0-9~-][a-z0-9._~-]*$/);
   str(config.binName, 'binName', /^[A-Za-z0-9][A-Za-z0-9._-]*$/);
+  rememberUrl(config.registry);
   str(config.registry, 'registry', /^https:\/\/[A-Za-z0-9.-]+(?::\d+)?(?:\/[A-Za-z0-9._~/-]*)?$/);
   str(config.distTag, 'distTag', /^[a-z0-9][a-z0-9._-]*$/);
   if (typeof config.tagPrefix !== 'string' || !/^(?:[A-Za-z0-9][A-Za-z0-9._-]*)?$/.test(config.tagPrefix)) throw new UsageError('config: tagPrefix must be empty or start with a letter or digit, and hold only letters, digits, dot, underscore and hyphen');
@@ -513,7 +528,7 @@ async function newestReceipt(ctx, step, version, descendant, accept = () => true
  * The newest dry-run receipt for a version that counts in this run (same seams) and whose commit is HEAD or an ancestor of HEAD, or null.
  * The hash commit that follows a publish moves HEAD past the dry run, and a receipt on a commit outside this history is not evidence.
  */
-const newestDryRun = (ctx, version) => newestReceipt(ctx, 'dry-run', version, 'HEAD');
+const newestDryRun = (ctx, version, accept = () => true) => newestReceipt(ctx, 'dry-run', version, 'HEAD', accept);
 /** A verify receipt counts only when it holds checks and every one of them passed. */
 const verifyPassed = receipt => Array.isArray(receipt?.checks) && receipt.checks.length > 0 && receipt.checks.every(c => c.status === 'pass');
 
@@ -1031,6 +1046,7 @@ async function requireSafeRemote(ctx) {
   if (!pushUrls.ok) throw new StepFailure(`cannot read the push URL of origin: ${failureLine(pushUrls)}`);
   const lines = result => result.stdout.split('\n').map(line => line.trim()).filter(Boolean);
   const fetchList = lines(fetchUrls), pushList = lines(pushUrls);
+  for (const url of [...fetchList, ...pushList]) rememberUrl(url);
   // The URLs are never printed: a URL can hold a credential.
   if (fetchList.length !== 1) throw new StepFailure(`origin must have exactly one fetch URL (it has ${fetchList.length}); fix the remote before the tag is pushed`);
   if (pushList.length !== 1) throw new StepFailure(`origin must have exactly one push URL (it has ${pushList.length}); fix the remote before the tag is pushed`);
@@ -1296,6 +1312,8 @@ async function cmdStatus(ctx, o) {
   if (passingVerify) add('verify', receiptState(passingVerify), `passed ${passingVerify.at}${passingVerify.commit === commit ? '' : ` on ${short(passingVerify.commit)}, an ancestor of HEAD`}`);
   else add('verify', 'todo', verifyAtHead ? 'the verify receipt for this commit holds a check that did not pass' : 'no passing verify receipt for this commit or an ancestor of it');
 
+  // A dry-run receipt that no longer agrees with the config does not name a release commit.
+  const agreesWithConfig = receipt => dryRunConfigProblem(config, receipt) === null;
   const local = await localTag(ctx, tag);
   const localCommit = local.commit ?? null;
   const remote = await originTagCommit(ctx, tag);
@@ -1304,7 +1322,7 @@ async function cmdStatus(ctx, o) {
   else if (!localCommit) add('tag', 'todo', `${tag} does not exist locally`);
   else {
     // The release commit is HEAD, or the commit of the dry run that made the published tarball.
-    const dry = await newestDryRun(ctx, version);
+    const dry = await newestDryRun(ctx, version, agreesWithConfig);
     const releaseCommits = [commit, dry?.commit].filter(Boolean);
     const atRelease = releaseCommits.includes(localCommit);
     if (!atRelease) add('tag', 'todo', `${tag} is at ${short(localCommit)}, not at the release commit ${commit ? short(commit) : 'unknown'}${remote.ok && !remote.commit ? ' (local only)' : ''}`);
@@ -1321,7 +1339,7 @@ async function cmdStatus(ctx, o) {
       else add('tag-on-origin', 'todo', `origin has ${tag} at ${short(remote.commit)}, not at ${short(localCommit)}`);
     } else {
       // No local tag: compare origin with the release commit instead.
-      const dry = await newestDryRun(ctx, version);
+      const dry = await newestDryRun(ctx, version, agreesWithConfig);
       const releaseCommits = [commit, dry?.commit].filter(Boolean);
       if (releaseCommits.includes(remote.commit)) add('tag-on-origin', 'done', `${tag} exists on origin at ${short(remote.commit)}; this clone has no local tag, run git fetch origin tag ${tag}`);
       else add('tag-on-origin', 'todo', `origin has ${tag} at ${short(remote.commit)}, not at the release commit ${commit ? short(commit) : 'unknown'}; this clone has no local tag`);

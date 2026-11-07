@@ -133,29 +133,83 @@ function isCodeValue(raw, trimmed) {
 function assignment(name) {
   return new RegExp(name + String.raw`(?:\\?["'])?\s*([=:])\s*(\\?["']|)((?:\$?\{\{[^{}\n]*\}\}|<[^<>\n]*>)(?![^\s'"\\])|[^\s'"]{3,})`, 'gi');
 }
-// A fallback directly after the value: `?? "literal"`, `|| 'literal'`, `or "literal"`. Only the text right after the value is read, so a literal fallback of a later property
-// or statement on the same line is not this value's fallback. The literal is a secret unless it is a placeholder; fewer than 3 characters is not read.
-const FALLBACK = /^\s*(?:\?\?|\|\||or)\s*\\?(["'])([^"'\\\n]{3,})\\?\1/;
-/** The text after the value of `match`. A value that stops inside a call (`os.environ.get(`) is followed through the closing bracket of the call; a closing quote of the value is skipped. */
+// A fallback after the value: `?? "literal"`, `|| 'literal'`, `or "literal"`, also chained (`a ?? b ?? "literal"`), after a call or an index (`os.environ.get("X") or "literal"`,
+// `process.env["X"] ?? "literal"`), and after a cast (`process.env.X as string || "literal"`). Only the text that follows the value through such operands is read, so a literal
+// fallback of a later property or statement on the same line (after `,`, `;`, `}`, `//`, or `#`) is not this value's fallback. The literal is a secret unless it is a
+// placeholder; fewer than 3 characters is not read.
+const FALLBACK_OPERATOR = /^\s*(?:\?\?|\|\||or(?=[\s"'\\]))\s*/;
+const FALLBACK_LITERAL = /^\\?(["'])([^"'\\\n]{3,})\\?\1/;
+const SHORT_LITERAL = /^\\?(["'])[^"'\\\n]*\\?\1/;
+const FALLBACK_OPERAND = /^[A-Za-z_$][\w$]*(?:\??\.[A-Za-z_$][\w$]*)*/;
+const CAST = /^\s+as\s+[A-Za-z_$][\w$.]*(?:<[^<>\n]*>)?(?:\[\])*/;
+/** The index just past the bracket that closes the one at `at` (quotes inside are skipped), or -1. */
+function closingBracket(text, at) {
+  let depth = 0;
+  for (let i = at; i < text.length; i++) {
+    const character = text[i];
+    if (character === '"' || character === "'" || character === '`') {
+      const close = text.indexOf(character, i + 1);
+      if (close < 0) return -1;
+      i = close;
+    } else if ('([{'.includes(character)) depth++;
+    else if (')]}'.includes(character) && --depth === 0) return i + 1;
+  }
+  return -1;
+}
+/** The text after any calls, indexes, `!`, member steps, and `as <type>` casts that directly follow an operand. */
+function skipTrailers(text) {
+  let rest = text;
+  for (;;) {
+    if (rest[0] === '(' || rest[0] === '[') {
+      const end = closingBracket(rest, 0);
+      if (end < 0) return '';
+      rest = rest.slice(end);
+      continue;
+    }
+    const step = /^!|^\??\.[A-Za-z_$][\w$]*/.exec(rest) ?? CAST.exec(rest);
+    if (!step) return rest;
+    rest = rest.slice(step[0].length);
+  }
+}
+/** The text after the value of `match`. A value that stops inside a call or an index (`os.environ.get(`, `process.env[`) is followed through the closing bracket; a closing quote of the value is skipped. */
 function textAfterValue(match) {
   const input = match.input;
   let at = match.index + match[0].length;
-  let depth = (match[0].match(/\(/g) ?? []).length - (match[0].match(/\)/g) ?? []).length;
+  const count = (text, characters) => [...text].filter(character => characters.includes(character)).length;
+  let depth = count(match[0], '([') - count(match[0], ')]');
   for (; depth > 0 && at < input.length; at++) {
     const character = input[at];
     if (character === '"' || character === "'") {
       const close = input.indexOf(character, at + 1);
       if (close < 0) return '';
       at = close;
-    } else if (character === '(') depth++;
-    else if (character === ')') depth--;
+    } else if (character === '(' || character === '[') depth++;
+    else if (character === ')' || character === ']') depth--;
   }
   const rest = input.slice(at);
-  return match[2] !== '' && /^\\?["']/.test(rest) ? rest.replace(/^\\?["']/, '') : rest;
+  const after = match[2] !== '' && /^\\?["']/.test(rest) ? rest.replace(/^\\?["']/, '') : rest;
+  // A value that runs straight into its operator (`process.env.X??"literal"`) ends with that operator.
+  const glued = /(\?\?|\|\|)$/.exec(match[3]);
+  return glued ? glued[1] + after : after;
 }
 function hasHardcodedFallback(match) {
-  const fallback = FALLBACK.exec(textAfterValue(match));
-  return fallback !== null && !isPlaceholderValue(fallback[2]);
+  let rest = textAfterValue(match);
+  for (;;) {
+    rest = skipTrailers(rest);
+    const operator = FALLBACK_OPERATOR.exec(rest);
+    if (!operator) return false;
+    rest = rest.slice(operator[0].length);
+    const literal = FALLBACK_LITERAL.exec(rest);
+    if (literal) {
+      if (!isPlaceholderValue(literal[2])) return true;
+      rest = rest.slice(literal[0].length);
+      continue;
+    }
+    const short = SHORT_LITERAL.exec(rest);
+    const operand = short ?? FALLBACK_OPERAND.exec(rest);
+    if (!operand) return false;
+    rest = rest.slice(operand[0].length);
+  }
 }
 /**
  * A match of `assignment` is allowed when its value is a placeholder, a variable reference, or (unquoted) code in one of the five shapes above. An unquoted bare word is a secret

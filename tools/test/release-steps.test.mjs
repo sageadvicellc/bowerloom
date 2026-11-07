@@ -1842,3 +1842,78 @@ test('status shows verify as todo when the stored receipt holds a skipped or fai
     assert.match(verify.reason, /did not pass/);
   }
 });
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// stale dry-run receipts in status; URL userinfo in failure lines
+
+const OTHER_REGISTRY = 'https://registry.other.example';
+
+test('status: a stale dry-run receipt (another registry) does not make the tag or tag-on-origin phase done', t => {
+  const fx = makeFixture(t);
+  const first = fx.git('rev-parse', 'HEAD');
+  passGates(fx);
+  assert.equal(fx.run(['dry-run']).status, 0);
+  fx.verified(first);
+  assert.equal(fx.run(['tag']).status, 0);
+  fx.commit('later.txt', 'l');
+  fx.git('push', 'origin', 'HEAD');
+  const phase = name => fx.run(['status', '--json']).json().phases.find(p => p.phase === name);
+  assert.equal(phase('tag').state, 'done', 'the dry run on the tagged commit counts while it agrees with the config');
+  editDryReceipt(fx, { registry: OTHER_REGISTRY });
+  const tag = phase('tag');
+  assert.equal(tag.state, 'todo', tag.reason);
+  assert.match(tag.reason, /not at the release commit/);
+  // Without a local tag, origin is compared with the release commit, and the stale receipt does not provide one.
+  fx.git('tag', '-d', `v${VERSION}`);
+  const onOrigin = phase('tag-on-origin');
+  assert.equal(onOrigin.state, 'todo', onOrigin.reason);
+  assert.match(onOrigin.reason, /not at the release commit/);
+});
+
+test('a registry value that only a stale receipt holds never appears in the output of publish, verify, or status', t => {
+  const fx = makeFixture(t);
+  passGates(fx);
+  assert.equal(fx.run(['dry-run']).status, 0);
+  readyVerify(fx);
+  editDryReceipt(fx, { registry: OTHER_REGISTRY });
+  for (const args of [['publish', '--json'], ['verify', '--json'], ['status', '--json'], ['publish'], ['verify'], ['status']]) {
+    const r = fx.run(args);
+    assert.ok(!(r.stdout + r.stderr).includes('registry.other.example'), args.join(' '));
+  }
+  assert.equal(fx.run(['publish', '--json']).status, 1, 'the stale receipt is refused');
+});
+
+// A git in front of the real one: fetch and ls-remote fail, and their stderr holds addresses with a user and a token.
+const AT = String.fromCharCode(64);
+const URL_USER = 'user', URL_TOKEN = 'token' + 'value';
+const FAILURE_STDERR = {
+  https: `fatal: unable to access 'https://${URL_USER}:${URL_TOKEN}@host.example/x/': could not resolve host`,
+  ssh: `fatal: could not read from ssh://deploy${AT}git.example/repo.git`,
+  scp: `fatal: could not read from remote repository git${AT}host.example:org/repo.git`,
+  bare: `fatal: repository 'https://${URL_USER}@host.example/x' not found`,
+};
+function withFailingGit(fx, stderr) {
+  const real = spawnSync('which', ['git'], { encoding: 'utf8' }).stdout.trim();
+  const dir = path.join(fx.root, 'shim');
+  fs.mkdirSync(dir);
+  fs.writeFileSync(path.join(dir, 'err.txt'), stderr + '\n');
+  fs.writeFileSync(path.join(dir, 'git'), `#!/bin/sh\nfor a in "$@"; do case "$a" in fetch|ls-remote) cat "${dir}/err.txt" >&2; exit 128;; esac; done\nexec ${JSON.stringify(real)} "$@"\n`, { mode: 0o755 });
+  return { PATH: `${dir}${path.delimiter}${fx.baseEnv.PATH}` };
+}
+const NO_URL_PARTS = [URL_TOKEN, `${URL_USER}:`, `${URL_USER}${AT}`, 'host.example', 'git.example', 'deploy'];
+
+test('a failing fetch or ls-remote whose stderr holds a URL with a user and token prints no part of that URL', t => {
+  for (const [kind, stderr] of Object.entries(FAILURE_STDERR)) {
+    const fx = makeFixture(t);
+    const env = withFailingGit(fx, stderr);
+    fx.git('tag', '-a', '-m', 'x', `v${VERSION}`, 'HEAD');
+    for (const args of [['preflight', '--json'], ['preflight'], ['status', '--json'], ['status'], ['tag', '--json']]) {
+      const r = fx.run(args, { env });
+      const text = r.stdout + r.stderr;
+      for (const part of NO_URL_PARTS) assert.ok(!text.includes(part), `${kind}: ${args.join(' ')} shows "${part}": ${text}`);
+    }
+    const detail = fx.run(['preflight', '--json'], { env }).json().checks.find(c => c.name === 'fetch').detail;
+    assert.match(detail, /^git fetch origin failed: fatal: /, kind);
+    assert.match(fx.run(['status', '--json'], { env }).json().phases.find(p => p.phase === 'tag-on-origin').reason, /^cannot reach origin: fatal: /, kind);
+  }
+});

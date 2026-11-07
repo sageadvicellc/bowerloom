@@ -742,10 +742,41 @@ test('scanLine: a fallback counts only directly after the value, not a later pro
   assert.deepEqual(kinds(PW + ': process.env.X ?? "ab"'), []);
 });
 
+test('scanLine: chained, indexed, and cast fallbacks are secrets; a literal after a separator is not', () => {
+  const PW = 'pass' + 'word';
+  const LIT = '"hunter2' + 'hunter2"';
+  for (const line of [
+    PW + ' = process.env.X ?? process.env.Y ?? ' + LIT,
+    PW + ' = process.env.X || process.env.Y || ' + LIT,
+    PW + ' = os.environ.get("X") or os.environ.get("Y") or ' + LIT,
+    PW + ' = os.environ["X"] or ' + LIT,
+    PW + ' = process.env["X"] ?? ' + LIT,
+    PW + ' = process.env.X as string || ' + LIT,
+    PW + ' = process.env.X ?? "changeme123"',
+    PW + ' = process.env.X || ' + LIT,
+    PW + ' = os.environ.get("X") or ' + LIT,
+    PW + ' = process.env.X ?? getValue("Y") ?? ' + LIT,
+    PW + ' = process.env["X"]["Y"] ?? ' + LIT,
+    PW + ' = process.env.X??' + LIT,
+  ]) assert.deepEqual(kinds(line), ['secret'], line);
+  for (const line of [
+    '{ ' + PW + ': process.env.DB_PASSWORD, host: process.env.HOST ?? "localhost" }',
+    PW + ' = process.env.X; const y = a ?? "b"',
+    PW + ': process.env.PW // x ?? "y"',
+    PW + ' = process.env.X ?? process.env.Y; const z = a ?? "bbbbbb"',
+    PW + ' = process.env["X"] ?? process.env.Y // ?? "bbbbbb"',
+    PW + ' = os.environ["X"] # or "bbbbbb"',
+    PW + ' = process.env.X ?? process.env.Y',
+    PW + ' = process.env["X"]',
+    '{ ' + PW + ': process.env["X"], host: process.env.HOST ?? "localhost" }',
+  ]) assert.deepEqual(kinds(line), [], line);
+});
+
 test('scanLine: known misses stay documented (docs/releasing.md): annotated defaults, ternaries with a literal, Secret(1) and admin[0] shapes, dotted words with no digit', () => {
   const PW = 'pass' + 'word';
   for (const line of [
     PW + ': str = "hunter2hunter2"', PW + ' = cond ? "hunter2hunter2" : "other1234567"', PW + ' = Secret(1)', PW + ' = admin[0]', PW + ' = correct.horse.battery',
+    PW + ' = process.env.X ?? `hunter2hunter2`', PW + ' = getenv(\'X\') ?: "hunter2hunter2"',
   ]) assert.deepEqual(kinds(line), [], line);
 });
 
