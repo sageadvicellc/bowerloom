@@ -1,0 +1,898 @@
+{
+  "schema": "bowerloom/tools-manifest/v1",
+  "safetyClassNote": "read-only means: changes no tracked file, remote, or registry. It may update remote-tracking git refs and write logs and receipts under .trellis.",
+  "tools": [
+    {
+      "name": "gates",
+      "path": "tools/gates.mjs",
+      "help": true,
+      "safetyClass": "local-write",
+      "description": "Runs the root and desktop typecheck and unit tests (and optionally e2e and the desktop build), stops at the first failure, and reports counts and the first failing line instead of the log.",
+      "args": [
+        {
+          "name": "--only NAMES",
+          "required": false,
+          "description": "Comma list of steps to run: root-typecheck, root-test, desktop-typecheck, desktop-test, desktop-e2e, desktop-build. With --e2e or --build, the list must name the matching step."
+        },
+        {
+          "name": "--e2e",
+          "required": false,
+          "description": "Also run desktop-e2e under the machine-wide lock; refuses if the lock is held."
+        },
+        {
+          "name": "--build",
+          "required": false,
+          "description": "Also run desktop-build (electron-builder; heavy)."
+        },
+        {
+          "name": "--clean",
+          "required": false,
+          "description": "After the run, remove only the allowlisted build outputs (including the root dist; not the installers) and report the bytes freed. A path it refuses, such as a symlink, makes the run fail with exit 1."
+        },
+        {
+          "name": "--clean-installers",
+          "required": false,
+          "description": "After the run, also remove apps/desktop/release, the installers. Run it after release verify has passed: it refuses (exit 1) unless release/desktop-sha256.json exists, names the version in release/beta.json, and records the real SHA-256 of every installer."
+        },
+        {
+          "name": "--min-free-gib N",
+          "required": false,
+          "description": "Raise the free-disk floor above 12 GiB; it can never be lowered."
+        },
+        {
+          "name": "--json",
+          "required": false,
+          "description": "Print exactly one JSON object on stdout, also for a usage error."
+        }
+      ],
+      "output": {
+        "format": "json",
+        "keys": {
+          "ok": "boolean",
+          "freeGiB": "number",
+          "floorGiB": "number",
+          "steps": "array",
+          "failedStep": "string|null",
+          "notRun": "array",
+          "refused": "string|null",
+          "clean": "object|null",
+          "lockWarning": "string|null",
+          "logDir": "string"
+        },
+        "note": "Each step has name, command, cwd, exitCode, passed, reason, ms, rawBytes, counts, firstFailure, and log. A reason is null, TIME_LIMIT, LOG_LIMIT, START_FAILED, NO_SUMMARY, TEST_FAILURES, or NO_TESTS_RAN. clean has removed, refused, freedBytes, and error. Full logs, with secrets redacted, are in .trellis/gates/<step>.log. A usage error or crash prints {ok:false, exit:2, error} instead."
+      },
+      "example": "node tools/gates.mjs --e2e --clean --json"
+    },
+    {
+      "name": "lane-tree",
+      "path": "tools/lane-tree.mjs",
+      "help": true,
+      "safetyClass": "local-write",
+      "description": "Creates, lists, and safely removes the separate working copy for one lane of work; list only reads, and remove is a dry run unless --apply is given.",
+      "args": [
+        {
+          "name": "create|remove|list",
+          "required": true,
+          "description": "The subcommand."
+        },
+        {
+          "name": "--name SLUG",
+          "required": true,
+          "description": "create: the lane name, lower-case letters, digits, and dashes."
+        },
+        {
+          "name": "--base REF",
+          "required": true,
+          "description": "create: the base branch (origin/ and refs/heads/ prefixes allowed) or a 40-character commit id, such as origin/release/0.8.0-beta.2. HEAD is not allowed."
+        },
+        {
+          "name": "--dest ABS_PATH",
+          "required": true,
+          "description": "create and remove: the absolute folder of the lane tree."
+        },
+        {
+          "name": "--branch NAME",
+          "required": false,
+          "description": "create: the lane branch (default task/<slug>)."
+        },
+        {
+          "name": "--modules-from ABS_CHECKOUT",
+          "required": false,
+          "description": "create: copy node_modules and apps/desktop/node_modules from this checkout, copy-on-write, on macOS only."
+        },
+        {
+          "name": "--min-free-gib N",
+          "required": false,
+          "description": "create: raise the free-disk floor above 12 GiB; it can never be lowered."
+        },
+        {
+          "name": "--apply",
+          "required": false,
+          "description": "remove: delete the folder; without it the command only reports what it would delete. It reads the status, HEAD, and stash again just before it deletes and refuses if they changed. It refuses a lane whose branch was squash-merged and deleted on origin (its commits are not on origin); delete that one by hand."
+        },
+        {
+          "name": "--root ABS_DIR",
+          "required": false,
+          "description": "list: the folder to look in (default: the folder that holds this repository)."
+        },
+        {
+          "name": "--json",
+          "required": false,
+          "description": "Print exactly one JSON object on stdout, also for a usage error."
+        }
+      ],
+      "output": {
+        "format": "json",
+        "keys": {
+          "ok": "boolean",
+          "command": "string",
+          "name": "string (create)",
+          "dest": "string (create, remove)",
+          "base": "string (create)",
+          "branch": "string|null (create, remove)",
+          "baseCommit": "string|null (create)",
+          "modules": "object (create)",
+          "modulesCopied": "boolean (create)",
+          "modulesNote": "string|null (create)",
+          "freeGiB": "number|null (create)",
+          "floorGiB": "number (create)",
+          "refused": "string|null (create, list)",
+          "cleanedPartial": "boolean (create)",
+          "apply": "boolean (remove)",
+          "wouldRemove": "boolean (remove)",
+          "removed": "boolean (remove)",
+          "bytes": "number|null (remove)",
+          "refusals": "array (remove)",
+          "root": "string|null (list)",
+          "lanes": "array (list)"
+        },
+        "note": "Each subcommand puts only the keys marked for it in the result. When --modules-from copies nothing, ok stays true and modulesCopied is false with a modulesNote. A usage error or crash prints {ok:false, exit:2, error} instead."
+      },
+      "example": "node tools/lane-tree.mjs create --name my-lane --base origin/release/0.8.0-beta.2 --dest /abs/path/my-lane --json"
+    },
+    {
+      "name": "public-scan",
+      "path": "tools/public-scan.mjs",
+      "help": true,
+      "safetyClass": "read-only",
+      "description": "Scans the added lines of the net diff and of every commit patch, the file paths, commit messages, author names, and the HEAD blob of each added binary file of a branch, and optionally its pull request text, for home paths, session links, emails, secrets, and private terms, and checks the pull request shape.",
+      "args": [
+        {
+          "name": "--base REF",
+          "required": false,
+          "description": "The base to diff against (default origin/release/0.8.0-beta.2)."
+        },
+        {
+          "name": "--pr-body FILE",
+          "required": false,
+          "description": "Check the pull request text: alert opener first, at most 300 words, no leaks."
+        },
+        {
+          "name": "--terms-file ABS_FILE",
+          "required": false,
+          "description": "A file outside the repository with one private term per line; findings never print a term. A file with no terms is an error."
+        },
+        {
+          "name": "--allow-empty",
+          "required": false,
+          "description": "Accept a range with no commits or nothing added; without it an empty range exits 1. The output then says it was accepted, never clean."
+        },
+        {
+          "name": "--json",
+          "required": false,
+          "description": "Print exactly one JSON object on stdout, also for a usage error."
+        }
+      ],
+      "output": {
+        "format": "json",
+        "keys": {
+          "ok": "boolean",
+          "base": "string",
+          "commits": "number",
+          "files": "number",
+          "addedLines": "number",
+          "patchLines": "number",
+          "paths": "number",
+          "binaryFiles": "number",
+          "binaryScanned": "array",
+          "unscanned": "array",
+          "empty": "boolean",
+          "emptyNote": "string|null",
+          "termsChecked": "number|null",
+          "prBody": "object|null",
+          "counts": "object",
+          "findings": "array",
+          "truncated": "boolean",
+          "total": "number"
+        },
+        "note": "Each finding has kind, file, line, excerpt, and for a term the termLine in the terms file; a finding on a line that only an earlier commit patch added (it was removed again later) also has commit. A path finding has the file file-path and the position of the path in git diff --name-only as its line. A finding inside a binary file has that file and the line 0. addedLines counts the net diff and patchLines every commit patch. A line over 4000 characters is scanned in overlapping 4000-character windows, never skipped. binaryScanned names the binary files scanned from their HEAD blob (a name that matches a leak pattern is shown as [path withheld]); unscanned lists { file, reason } for a binary file over 5 MiB or unreadable, and makes the exit 1. termsChecked is null when no terms file was given. A usage error or crash prints {ok:false, exit:2, error} instead."
+      },
+      "example": "node tools/public-scan.mjs --pr-body /abs/path/body.md --terms-file /abs/path/terms.txt --json"
+    },
+    {
+      "name": "release:status",
+      "path": "scripts/release.mjs",
+      "help": true,
+      "safetyClass": "read-only",
+      "description": "Show each release phase as done, todo, or unknown, with a reason.",
+      "args": [
+        {
+          "name": "--json",
+          "required": false,
+          "description": "Print exactly one JSON object on stdout."
+        },
+        {
+          "name": "--repo",
+          "required": false,
+          "description": "DIR. Run against another repository root."
+        }
+      ],
+      "output": {
+        "format": "json",
+        "keys": {
+          "schema": "string",
+          "command": "string|null",
+          "ok": "boolean",
+          "outcome": "string",
+          "exit": "number",
+          "message": "string",
+          "version": "string",
+          "commit": "string|null",
+          "phases": "array"
+        },
+        "note": "phases lists each release phase as { phase, state, reason }.",
+        "optional": [
+          "command",
+          "version",
+          "commit"
+        ]
+      },
+      "example": "node scripts/release.mjs status --json"
+    },
+    {
+      "name": "release:preflight",
+      "path": "scripts/release.mjs",
+      "help": true,
+      "safetyClass": "read-only",
+      "description": "Fetch origin, then check branch, sync with origin, and a clean tree. Print the commit.",
+      "args": [
+        {
+          "name": "--json",
+          "required": false,
+          "description": "Print exactly one JSON object on stdout."
+        },
+        {
+          "name": "--repo",
+          "required": false,
+          "description": "DIR. Run against another repository root."
+        },
+        {
+          "name": "--branch",
+          "required": false,
+          "description": "NAME. The branch the release must be on."
+        }
+      ],
+      "output": {
+        "format": "json",
+        "keys": {
+          "schema": "string",
+          "command": "string|null",
+          "ok": "boolean",
+          "outcome": "string",
+          "exit": "number",
+          "message": "string",
+          "version": "string",
+          "branch": "string",
+          "commit": "string",
+          "ahead": "number|null",
+          "behind": "number|null",
+          "checks": "array"
+        },
+        "note": "checks lists { name, status, detail } for fetch, branch, commit, sync, and clean.",
+        "optional": [
+          "command",
+          "version"
+        ]
+      },
+      "example": "node scripts/release.mjs preflight --json"
+    },
+    {
+      "name": "release:gates",
+      "path": "scripts/release.mjs",
+      "help": true,
+      "safetyClass": "local-write",
+      "description": "Run the gate commands from the config in order. Stop at the first failure.",
+      "args": [
+        {
+          "name": "--json",
+          "required": false,
+          "description": "Print exactly one JSON object on stdout."
+        },
+        {
+          "name": "--force",
+          "required": false,
+          "description": "Run the gates again even if a passing receipt exists for this commit."
+        },
+        {
+          "name": "--repo",
+          "required": false,
+          "description": "DIR. Run against another repository root."
+        },
+        {
+          "name": "--e2e",
+          "required": false,
+          "description": "Also run the end-to-end gate."
+        },
+        {
+          "name": "--min-free-gib",
+          "required": false,
+          "description": "N. Raise the free-disk floor; it can never be lowered."
+        }
+      ],
+      "output": {
+        "format": "json",
+        "keys": {
+          "schema": "string",
+          "command": "string|null",
+          "ok": "boolean",
+          "outcome": "string",
+          "exit": "number",
+          "message": "string",
+          "version": "string",
+          "commit": "string",
+          "ran": "array",
+          "receipt": "object",
+          "gate": "string",
+          "log": "string",
+          "gates": "array",
+          "freeGiB": "number",
+          "floorGiB": "number"
+        },
+        "note": "receipt is the receipt written under .trellis (its seams key lists any test seams in use); ran names the gates run. gate, log, gates, freeGiB, and floorGiB appear only when the step fails, and commit, ran, and receipt only when it passes; the keys in output.optional can be absent.",
+        "optional": [
+          "command",
+          "version",
+          "commit",
+          "ran",
+          "receipt",
+          "gate",
+          "log",
+          "gates",
+          "freeGiB",
+          "floorGiB"
+        ]
+      },
+      "example": "node scripts/release.mjs gates --json"
+    },
+    {
+      "name": "release:dry-run",
+      "path": "scripts/release.mjs",
+      "help": true,
+      "safetyClass": "local-write",
+      "description": "Pack the tarball and run npm publish --dry-run on it. Report size, count, SHA-256, and integrity.",
+      "args": [
+        {
+          "name": "--json",
+          "required": false,
+          "description": "Print exactly one JSON object on stdout."
+        },
+        {
+          "name": "--force",
+          "required": false,
+          "description": "Run the dry run again even if a passing receipt exists for this commit."
+        },
+        {
+          "name": "--repo",
+          "required": false,
+          "description": "DIR. Run against another repository root."
+        },
+        {
+          "name": "--min-free-gib",
+          "required": false,
+          "description": "N. Raise the free-disk floor; it can never be lowered."
+        }
+      ],
+      "output": {
+        "format": "json",
+        "keys": {
+          "schema": "string",
+          "command": "string|null",
+          "ok": "boolean",
+          "outcome": "string",
+          "exit": "number",
+          "message": "string",
+          "version": "string",
+          "commit": "string",
+          "package": "string",
+          "tarball": "string",
+          "files": "number",
+          "entries": "number",
+          "bytes": "number",
+          "tag": "string",
+          "sha256": "string",
+          "integrity": "string",
+          "log": "string",
+          "entry": "string"
+        },
+        "note": "The tarball, sha256, and integrity are those of the packed file; entries counts every entry in the tarball, bundled files included. log and entry appear only when the step fails (entry names the tarball entry that must never ship).",
+        "optional": [
+          "command",
+          "version",
+          "commit",
+          "package",
+          "tarball",
+          "files",
+          "bytes",
+          "tag",
+          "sha256",
+          "integrity",
+          "log",
+          "entries",
+          "entry"
+        ]
+      },
+      "example": "node scripts/release.mjs dry-run --json"
+    },
+    {
+      "name": "release:publish",
+      "path": "scripts/release.mjs",
+      "help": true,
+      "safetyClass": "human-only",
+      "description": "Print the publish commands for a person to run. Never runs them.",
+      "args": [
+        {
+          "name": "--json",
+          "required": false,
+          "description": "Print exactly one JSON object on stdout."
+        },
+        {
+          "name": "--repo",
+          "required": false,
+          "description": "DIR. Run against another repository root."
+        }
+      ],
+      "output": {
+        "format": "json",
+        "keys": {
+          "schema": "string",
+          "command": "string|null",
+          "ok": "boolean",
+          "outcome": "string",
+          "exit": "number",
+          "message": "string",
+          "version": "string",
+          "commands": "array",
+          "notes": "array",
+          "commit": "string"
+        },
+        "note": "A human-only subcommand: it prints commands and runs nothing. Without a terminal the outcome is refused and the exit is 2. commit appears when a dry-run receipt is found.",
+        "optional": [
+          "command",
+          "version",
+          "commit",
+          "commands",
+          "notes"
+        ]
+      },
+      "example": "node scripts/release.mjs publish --json"
+    },
+    {
+      "name": "release:hashes",
+      "path": "scripts/release.mjs",
+      "help": true,
+      "safetyClass": "local-write",
+      "description": "Write the SHA-256 of each desktop artifact to the hash file.",
+      "args": [
+        {
+          "name": "--json",
+          "required": false,
+          "description": "Print exactly one JSON object on stdout."
+        },
+        {
+          "name": "--force",
+          "required": false,
+          "description": "Replace an existing hash file even when its version or a recorded hash differs."
+        },
+        {
+          "name": "--repo",
+          "required": false,
+          "description": "DIR. Run against another repository root."
+        }
+      ],
+      "output": {
+        "format": "json",
+        "keys": {
+          "schema": "string",
+          "command": "string|null",
+          "ok": "boolean",
+          "outcome": "string",
+          "exit": "number",
+          "message": "string",
+          "version": "string",
+          "files": "object",
+          "different": "array",
+          "found": "array"
+        },
+        "note": "files maps each desktop artifact name to its SHA-256. different and found appear only when the step fails (found lists the artifacts on disk).",
+        "optional": [
+          "command",
+          "version",
+          "files",
+          "different",
+          "found"
+        ]
+      },
+      "example": "node scripts/release.mjs hashes --json"
+    },
+    {
+      "name": "release:verify",
+      "path": "scripts/release.mjs",
+      "help": true,
+      "safetyClass": "read-only",
+      "description": "Check the registry tag and integrity, an install from the registry, and the desktop hashes.",
+      "args": [
+        {
+          "name": "--json",
+          "required": false,
+          "description": "Print exactly one JSON object on stdout."
+        },
+        {
+          "name": "--repo",
+          "required": false,
+          "description": "DIR. Run against another repository root."
+        },
+        {
+          "name": "--tarball",
+          "required": false,
+          "description": "PATH. A local tarball to compare with the registry."
+        }
+      ],
+      "output": {
+        "format": "json",
+        "keys": {
+          "schema": "string",
+          "command": "string|null",
+          "ok": "boolean",
+          "outcome": "string",
+          "exit": "number",
+          "message": "string",
+          "version": "string",
+          "checks": "array"
+        },
+        "note": "checks lists { name, status, reason } for dist-tag, integrity, install, and desktop-sha256.",
+        "optional": [
+          "command",
+          "version"
+        ]
+      },
+      "example": "node scripts/release.mjs verify --json"
+    },
+    {
+      "name": "release:tag",
+      "path": "scripts/release.mjs",
+      "help": true,
+      "safetyClass": "local-write",
+      "description": "Create the annotated git tag on the checked commit. Does not push.",
+      "args": [
+        {
+          "name": "--json",
+          "required": false,
+          "description": "Print exactly one JSON object on stdout."
+        },
+        {
+          "name": "--repo",
+          "required": false,
+          "description": "DIR. Run against another repository root."
+        },
+        {
+          "name": "--commit",
+          "required": false,
+          "description": "HASH. The full 40-character commit to tag."
+        },
+        {
+          "name": "--branch",
+          "required": false,
+          "description": "NAME. The branch the release must be on."
+        }
+      ],
+      "output": {
+        "format": "json",
+        "keys": {
+          "schema": "string",
+          "command": "string|null",
+          "ok": "boolean",
+          "outcome": "string",
+          "exit": "number",
+          "message": "string",
+          "version": "string",
+          "tag": "string",
+          "commit": "string",
+          "existing": "string"
+        },
+        "note": "The tag is created locally and never pushed. existing appears only when the tag already points at another commit.",
+        "optional": [
+          "command",
+          "version",
+          "tag",
+          "commit",
+          "existing"
+        ]
+      },
+      "example": "node scripts/release.mjs tag --json"
+    },
+    {
+      "name": "release:push-tag",
+      "path": "scripts/release.mjs",
+      "help": true,
+      "safetyClass": "human-only",
+      "description": "Print the git push command for the tag. Never runs it.",
+      "args": [
+        {
+          "name": "--json",
+          "required": false,
+          "description": "Print exactly one JSON object on stdout."
+        },
+        {
+          "name": "--repo",
+          "required": false,
+          "description": "DIR. Run against another repository root."
+        }
+      ],
+      "output": {
+        "format": "json",
+        "keys": {
+          "schema": "string",
+          "command": "string|null",
+          "ok": "boolean",
+          "outcome": "string",
+          "exit": "number",
+          "message": "string",
+          "version": "string",
+          "commands": "array",
+          "notes": "array",
+          "tag": "string"
+        },
+        "note": "A human-only subcommand: it prints the command and runs nothing.",
+        "optional": [
+          "command",
+          "version",
+          "commands",
+          "notes",
+          "tag"
+        ]
+      },
+      "example": "node scripts/release.mjs push-tag --json"
+    },
+    {
+      "name": "release:retire",
+      "path": "scripts/release.mjs",
+      "help": true,
+      "safetyClass": "human-only",
+      "description": "Print the npm deprecate and dist-tag commands from the config. Never runs them.",
+      "args": [
+        {
+          "name": "--json",
+          "required": false,
+          "description": "Print exactly one JSON object on stdout."
+        },
+        {
+          "name": "--repo",
+          "required": false,
+          "description": "DIR. Run against another repository root."
+        }
+      ],
+      "output": {
+        "format": "json",
+        "keys": {
+          "schema": "string",
+          "command": "string|null",
+          "ok": "boolean",
+          "outcome": "string",
+          "exit": "number",
+          "message": "string",
+          "version": "string",
+          "commands": "array",
+          "notes": "array"
+        },
+        "note": "A human-only subcommand: it prints the commands and runs nothing.",
+        "optional": [
+          "command",
+          "version"
+        ]
+      },
+      "example": "node scripts/release.mjs retire --json"
+    },
+    {
+      "name": "release:claims",
+      "path": "scripts/release.mjs",
+      "help": true,
+      "safetyClass": "read-only",
+      "description": "Scan the configured files for stale wording. Exit 1 on any hit.",
+      "args": [
+        {
+          "name": "--json",
+          "required": false,
+          "description": "Print exactly one JSON object on stdout."
+        },
+        {
+          "name": "--repo",
+          "required": false,
+          "description": "DIR. Run against another repository root."
+        }
+      ],
+      "output": {
+        "format": "json",
+        "keys": {
+          "schema": "string",
+          "command": "string|null",
+          "ok": "boolean",
+          "outcome": "string",
+          "exit": "number",
+          "message": "string",
+          "version": "string",
+          "hits": "array",
+          "scanned": "number",
+          "skipped": "array",
+          "missing": "array"
+        },
+        "note": "hits lists file:line positions of stale wording. missing appears only when a configured file is absent.",
+        "optional": [
+          "command",
+          "version",
+          "missing"
+        ]
+      },
+      "example": "node scripts/release.mjs claims --json"
+    },
+    {
+      "name": "check-test-patterns",
+      "path": "tools/check-test-patterns.mjs",
+      "description": "Fails when a test or test:* script of package.json lists a node --test pattern that matches no file.",
+      "args": [],
+      "output": {
+        "format": "text",
+        "keys": {},
+        "note": "Exit 1 and a list on stderr when a pattern matches nothing; run it after a build, because some patterns name dist/ files."
+      },
+      "safetyClass": "read-only",
+      "example": "node tools/check-test-patterns.mjs"
+    },
+    {
+      "name": "check-test-temp-cleanup",
+      "path": "tools/check-test-temp-cleanup.mjs",
+      "description": "Fails when a test file makes a temp folder with mkdtemp and has no removal that runs after the test.",
+      "args": [],
+      "output": {
+        "format": "text",
+        "keys": {}
+      },
+      "safetyClass": "read-only",
+      "example": "node tools/check-test-temp-cleanup.mjs"
+    },
+    {
+      "name": "check-not-built",
+      "path": "tools/check-not-built.mjs",
+      "description": "Fails while a contract stub that throws \"not built\" is left in a file that ships.",
+      "args": [],
+      "output": {
+        "format": "text",
+        "keys": {}
+      },
+      "safetyClass": "read-only",
+      "example": "node tools/check-not-built.mjs"
+    },
+    {
+      "name": "check-social-preview",
+      "path": "tools/check-social-preview.mjs",
+      "description": "Checks the social card tags in the built landing and documentation pages and the size of both card images; needs the built apps.",
+      "args": [],
+      "output": {
+        "format": "text",
+        "keys": {}
+      },
+      "safetyClass": "read-only",
+      "example": "node tools/check-social-preview.mjs"
+    },
+    {
+      "name": "render-social-preview",
+      "path": "tools/render-social-preview.mjs",
+      "description": "Redraws the home and documentation social card images with playwright-cli and replaces the committed PNG files only after both pass.",
+      "args": [],
+      "output": {
+        "format": "text",
+        "keys": {},
+        "note": "Writes apps/landing/public/social/*.png and a scratch folder under .trellis/; needs playwright-cli and its Chromium."
+      },
+      "safetyClass": "local-write",
+      "example": "node tools/render-social-preview.mjs"
+    },
+    {
+      "name": "docs-visuals:capture-shots",
+      "path": "tools/docs-visuals/capture-shots.mjs",
+      "description": "Takes the desktop documentation screenshots again under the machine-wide e2e lock and updates the shots half of the visuals manifest.",
+      "args": [
+        {
+          "name": "DOCS_SHOTS_ONLY",
+          "required": false,
+          "description": "Environment variable: a comma list of shot ids to take."
+        }
+      ],
+      "output": {
+        "format": "text",
+        "keys": {},
+        "note": "Builds the root packages first; writes WebP files to apps/docs/public/visuals."
+      },
+      "safetyClass": "local-write",
+      "example": "node tools/docs-visuals/capture-shots.mjs"
+    },
+    {
+      "name": "docs-visuals:capture-terminals",
+      "path": "tools/docs-visuals/capture-terminals.mjs",
+      "description": "Records the real output of each terminal entry of the plan against a sample project in a private temporary home and writes it to the visuals manifest.",
+      "args": [],
+      "output": {
+        "format": "text",
+        "keys": {},
+        "note": "Needs the CLI built first (npm run build at the root); writes apps/docs/src/visuals/manifest.json."
+      },
+      "safetyClass": "local-write",
+      "example": "node tools/docs-visuals/capture-terminals.mjs"
+    },
+    {
+      "name": "docs-visuals:manifest-shots",
+      "path": "tools/docs-visuals/manifest-shots.mjs",
+      "description": "Writes the shots half of the visuals manifest from the plan and the size of each light WebP file.",
+      "args": [],
+      "output": {
+        "format": "text",
+        "keys": {},
+        "note": "Writes apps/docs/src/visuals/manifest.json."
+      },
+      "safetyClass": "local-write",
+      "example": "node tools/docs-visuals/manifest-shots.mjs"
+    },
+    {
+      "name": "verify",
+      "path": "tools/verify.mjs",
+      "description": "Runs the typecheck, the regression tests, the landing build, and a production dependency audit in order, and writes a JSON record per check.",
+      "args": [
+        {
+          "name": "BOWERLOOM_RELEASE_GATE",
+          "required": false,
+          "description": "Environment variable: set to 1 to run the not-built check first."
+        }
+      ],
+      "output": {
+        "format": "text",
+        "keys": {},
+        "note": "Prints one JSON line per check and writes logs and report.json to .trellis/verification/; the audit reads the npm registry."
+      },
+      "safetyClass": "local-write",
+      "example": "node tools/verify.mjs"
+    },
+    {
+      "name": "run-node-tests",
+      "path": "tools/run-node-tests.mjs",
+      "description": "Runs node --test with the given arguments in its own process group under a wall-clock limit, and kills the group past the limit.",
+      "args": [
+        {
+          "name": "NODE_TEST_ARGUMENTS",
+          "required": true,
+          "description": "The node --test arguments, without --test."
+        },
+        {
+          "name": "BOWERLOOM_TEST_WALL_LIMIT_SECONDS",
+          "required": false,
+          "description": "Environment variable: lowers the 45 minute limit; it can never raise it."
+        }
+      ],
+      "output": {
+        "format": "text",
+        "keys": {},
+        "note": "Exit 124 on the time limit; the tests it runs may write temp files."
+      },
+      "safetyClass": "local-write",
+      "example": "node tools/run-node-tests.mjs --test-timeout=120000 tools/test/gates.test.mjs"
+    }
+  ]
+}
