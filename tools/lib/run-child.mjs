@@ -23,12 +23,12 @@ function killGroup(pid, signal) {
 
 /**
  * Runs `command` with `args` and resolves; it never rejects.
- * Options: `cwd`, `env` (overrides, scrubbed), `timeoutMs` (default 10 minutes), `maxBytes` (default 4 MiB; output past it stops the run), `stdin` (text), `encoding` (how output bytes are decoded; default 'utf8', 'latin1' keeps every byte).
+ * Options: `cwd`, `env` (overrides, scrubbed), `keepEnv` (names of the ssh agent variables, SSH_AUTH_SOCK and SSH_AGENT_PID, to pass on; pass it for git commands only, never for npm, node, a gate, or pack), `timeoutMs` (default 10 minutes), `maxBytes` (default 4 MiB; output past it stops the run), `stdin` (text), `encoding` (how output bytes are decoded; default 'utf8', 'latin1' keeps every byte).
  * The result has `code`, `signal`, `reason` (null, 'TIME_LIMIT', 'LOG_LIMIT', or 'START_FAILED'), `rawBytes` (all bytes seen), `output` (the first
  * `maxBytes` as text, stdout and stderr in arrival order), `stdout` and `stderr` (the same text, split), `ms`, and `message` (set when the reason is not null).
  * It resolves when the child exits and its pipes close, or 2 s after the exit if a grandchild still holds a pipe (the group is then killed).
  */
-export function runChild(command, args, { cwd, env, timeoutMs = 10 * 60 * 1000, maxBytes = 4 * 1024 * 1024, stdin = null, encoding = 'utf8' } = {}) {
+export function runChild(command, args, { cwd, env, timeoutMs = 10 * 60 * 1000, maxBytes = 4 * 1024 * 1024, stdin = null, encoding = 'utf8', keepEnv = [] } = {}) {
   return new Promise(resolve => {
     const started = performance.now();
     if (isStopping()) {
@@ -38,7 +38,7 @@ export function runChild(command, args, { cwd, env, timeoutMs = 10 * 60 * 1000, 
     const posix = process.platform !== 'win32';
     let child;
     try {
-      child = spawn(command, args, { cwd, env: scrubEnv({ ...process.env, ...(env ?? {}) }), stdio: [stdin === null ? 'ignore' : 'pipe', 'pipe', 'pipe'], detached: posix });
+      child = spawn(command, args, { cwd, env: scrubEnv({ ...process.env, ...(env ?? {}) }, { keep: keepEnv }), stdio: [stdin === null ? 'ignore' : 'pipe', 'pipe', 'pipe'], detached: posix });
     } catch (error) {
       resolve({ code: null, signal: null, reason: 'START_FAILED', rawBytes: 0, output: '', stdout: '', stderr: '', ms: 0, message: error.message });
       return;

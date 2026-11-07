@@ -27,7 +27,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runChild } from './lib/run-child.mjs';
-import { redact } from './lib/safe-env.mjs';
 import { splitFlag, jsonWanted, boolValueRefusal, flagLikeValueRefusal, reportUsage, guarded, entryState, mismatchMessage } from './lib/cli.mjs';
 import { installInterruptHandlers } from './lib/interrupt.mjs';
 
@@ -306,10 +305,10 @@ export async function scanRepository(args, cwd = process.cwd()) {
   for (const name of binaryNames) {
     const shown = safeName(name);
     const size = await git(['cat-file', '-s', `HEAD:${name}`], repoRoot);
-    if (!size.ok || !/^\d+$/.test(size.stdout.trim())) { unscanned.push({ file: shown, reason: `the blob could not be read: ${redactLine(failure(size) ?? '')}` }); continue; }
+    if (!size.ok || !/^\d+$/.test(size.stdout.trim())) { unscanned.push({ file: shown, reason: 'the blob could not be read' }); continue; }
     if (Number(size.stdout.trim()) > MAX_BINARY_BYTES) { unscanned.push({ file: shown, reason: `larger than the ${MAX_BINARY_BYTES / 1024 / 1024} MiB scan cap (${size.stdout.trim()} bytes)` }); continue; }
     const blob = await git(['cat-file', 'blob', `HEAD:${name}`], repoRoot, MAX_BINARY_BYTES + 1, { encoding: 'latin1' });
-    if (!blob.ok) { unscanned.push({ file: shown, reason: `the blob could not be read: ${redactLine(failure(blob) ?? '')}` }); continue; }
+    if (!blob.ok) { unscanned.push({ file: shown, reason: 'the blob could not be read' }); continue; }
     binaryScanned.push(shown);
     add(scanLine(blob.stdout, terms), shown, 0);
   }
@@ -353,7 +352,6 @@ export async function scanRepository(args, cwd = process.cwd()) {
   return { exitCode: result.ok ? 0 : 1, result };
 }
 
-const redactLine = text => redact(text).slice(0, 120);
 
 /** The short text a person reads: the totals, the terms line, any warnings, then the first findings. */
 export function formatResult(result) {

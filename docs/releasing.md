@@ -17,7 +17,7 @@ node scripts/release.mjs <subcommand> [flags]
 - A step that already finished for the same commit prints `already done` and exits 0. This holds for `gates`, `dry-run`, `hashes`, and `tag` only. Add `--force` to run `gates`, `dry-run`, or `hashes` again. `--force` works with those three only. Any other subcommand with `--force` is wrong use and exits 2.
 - A failed step prints the first failing line. The full log goes to `.trellis/release/logs/`. Log files are private (mode 0600).
 - A receipt is a small JSON file in `.trellis/release/receipts/`. It records that a step passed for one commit and one version. Git ignores the whole `.trellis` folder. Receipts have a schema version, now `v2`. A receipt of an older schema, or one without a `seams` list, counts as absent. Run the step again.
-- The script never stores, reads, or prints a token, a one-time code, or a password. Every child process starts with a clean environment. The clean environment drops `NPM_TOKEN`, `NODE_AUTH_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`, `VERCEL_TOKEN`, every name that ends in `_TOKEN`, `_KEY`, `_SECRET`, `_PASSWORD`, or `_OTP`, and every name that holds `authtoken`, `_auth` (not followed by a letter), or `_password`. The list lives in `tools/lib/safe-env.mjs`.
+- The script never stores, reads, or prints a token, a one-time code, or a password. Every child process starts with a clean environment. The clean environment drops `NPM_TOKEN`, `NODE_AUTH_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`, `VERCEL_TOKEN`, every name that ends in `_TOKEN`, `_KEY`, `_SECRET`, `_PASSWORD`, or `_OTP`, and every name that holds `authtoken`, `_auth` (not followed by a letter), or `_password`. It drops `SSH_AUTH_SOCK` and `SSH_AGENT_PID` too, because the ssh agent can sign with every key it holds. Only the `git` commands the script runs (`fetch`, `ls-remote`, `tag`, `log`, and the others) get those two names back, so git over ssh works. npm, node, the gates, and pack never see them. The list lives in `tools/lib/safe-env.mjs`.
 - Every npm child process gets an empty `userconfig` and an empty `globalconfig`. So npm never reads your `~/.npmrc`, which can hold a registry token.
 - The script blanks token-shaped text before it writes a log and before it prints a line, including the command line it echoes.
 - On Ctrl-C, `SIGTERM`, or `SIGHUP`, the script stops every child process group, removes the temporary folders it made, and exits 130.
@@ -99,7 +99,7 @@ The script then lists the tarball itself, with the `tar` package, and checks it:
 
 - The number of file entries must equal what the pack reported. The pack reports `files`, which counts the package's own files and leaves out the bundled `node_modules/` entries, and `bundle.files`, the bundled ones. The script counts both groups in the tarball and compares each with its report.
 - Every entry must be a plain file or a folder. A link or any other kind of entry fails the dry run.
-- No file of the package may match a never-ship pattern from `tools/cli-distribution/README.md`: `.env` (and `.env.*`), a `.git` folder, `*.map`, `*.d.ts` (and `.d.mts`, `.d.cts`), a `test` or `tests` folder, or a `.trellis` folder. Bundled third-party code under `node_modules/` is not held to this list, because those packages ship their own declarations and maps.
+- No file of the package may match a never-ship pattern from `tools/cli-distribution/README.md`: `.env` (and `.env.*`), a `.git` folder, `*.map`, `*.d.ts` (and `.d.mts`, `.d.cts`), a `test` or `tests` folder, or a `.trellis` folder. Bundled third-party code under `node_modules/` is held to the `.env`, `.git`, and `.trellis` patterns only. It is not held to `*.map`, `*.d.ts`, or the `test` folders, because those packages ship their own declarations, maps, and tests.
 
 The receipt records the real entry count as `entries`, and the pack's own-file count as `files`.
 
@@ -127,7 +127,7 @@ Before it prints, the script needs the dry-run receipt for the current commit. W
 
 Class: local-write.
 
-Computes the SHA-256 of each desktop download in `apps/desktop/release` that matches `*.dmg` or `*.zip`. At least one file name must contain the release version, such as `Bowerloom-0.8.0-beta.2-arm64.dmg`. If none does, the step fails and names the mismatch, even with `--force`. That catches installers left from an older build.
+Computes the SHA-256 of each desktop download in `apps/desktop/release` that matches `*.dmg` or `*.zip`. Every matched file name must contain the release version, such as `Bowerloom-0.8.0-beta.2-arm64.dmg`. The version must stand alone: the character before it is not a letter, digit, or dot, and the text after it does not go on with a letter, a digit, or a dot and a digit. So `0.8.0-beta.21` and `0.8.0-beta.2.1` do not match `0.8.0-beta.2`. If any name does not match, the step fails and lists those names, even with `--force`. That catches an installer left from an older build next to a new one. Delete the old installers and run `hashes` again.
 
 It writes the hash file fresh from the files on disk, with the names in plain code-point order. It never merges with the old file. An entry of an earlier run, for a file that is gone, is dropped. It refuses to replace a different hash for a name that is already recorded, and a hash file for another version. Use `--force` to replace them.
 

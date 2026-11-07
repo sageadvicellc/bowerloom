@@ -313,9 +313,9 @@ test('hashes is idempotent, adds a new artifact, refuses a different hash for a 
   assert.match(again.stdout, /already done/);
   assert.equal(fs.readFileSync(hashFile, 'utf8'), written);
 
-  fx.artifacts({ 'b.zip': 'two' });
+  fx.artifacts({ 'b-0.8.0-beta.2.zip': 'two' });
   assert.equal(fx.run(['hashes', '--json']).json().outcome, 'done');
-  assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(hashFile, 'utf8')).files), ['a-0.8.0-beta.2.dmg', 'b.zip']);
+  assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(hashFile, 'utf8')).files), ['a-0.8.0-beta.2.dmg', 'b-0.8.0-beta.2.zip']);
 
   const before = fs.readFileSync(hashFile, 'utf8');
   fx.artifacts({ 'a-0.8.0-beta.2.dmg': 'changed' });
@@ -330,10 +330,10 @@ test('hashes is idempotent, adds a new artifact, refuses a different hash for a 
 test('hashes writes the file fresh: an entry of an earlier run is dropped, also with --force, and a file from another run is not merged in', t => {
   const fx = makeFixture(t);
   const hashFile = path.join(fx.repo, 'release/desktop-sha256.json');
-  fx.artifacts({ 'a-0.8.0-beta.2.dmg': 'one', 'old-0.7.0.dmg': 'old' });
+  fx.artifacts({ 'a-0.8.0-beta.2.dmg': 'one', 'b-0.8.0-beta.2.dmg': 'old' });
   assert.equal(fx.run(['hashes']).status, 0);
-  assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(hashFile, 'utf8')).files), ['a-0.8.0-beta.2.dmg', 'old-0.7.0.dmg']);
-  fs.rmSync(path.join(fx.repo, fx.config.desktop.dir, 'old-0.7.0.dmg'));
+  assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(hashFile, 'utf8')).files), ['a-0.8.0-beta.2.dmg', 'b-0.8.0-beta.2.dmg']);
+  fs.rmSync(path.join(fx.repo, fx.config.desktop.dir, 'b-0.8.0-beta.2.dmg'));
   assert.equal(fx.run(['hashes', '--json']).json().outcome, 'done');
   assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(hashFile, 'utf8')).files), ['a-0.8.0-beta.2.dmg']);
   fs.writeFileSync(hashFile, JSON.stringify({ schema: 'bowerloom/desktop-hashes/v1', version: VERSION, files: { 'ghost.dmg': 'f'.repeat(64) } }));
@@ -347,9 +347,37 @@ test('hashes refuses, also with --force, when no artifact filename contains the 
   for (const args of [['hashes', '--json'], ['hashes', '--force', '--json']]) {
     const r = fx.run(args);
     assert.equal(r.status, 1);
-    assert.match(r.json().message, /no artifact filename contains the release version 0\.8\.0-beta\.2 \(found: Bowerloom-0\.7\.0-arm64\.dmg, Bowerloom-0\.7\.0-arm64\.zip\)/);
+    assert.match(r.json().message, /every artifact filename must contain the release version 0\.8\.0-beta\.2 \(not matching: Bowerloom-0\.7\.0-arm64\.dmg, Bowerloom-0\.7\.0-arm64\.zip\)/);
   }
   assert.ok(!fs.existsSync(path.join(fx.repo, 'release/desktop-sha256.json')));
+});
+
+test('hashes refuses a stale installer of an older version next to a new one, also with --force, and lists the stale names', t => {
+  const fx = makeFixture(t);
+  fx.artifacts({ 'Bowerloom-0.8.0-beta.2-arm64.dmg': 'new', 'Bowerloom-0.8.0-beta.1-arm64.dmg': 'old', 'Bowerloom-0.8.0-beta.1-arm64.zip': 'old' });
+  for (const args of [['hashes', '--json'], ['hashes', '--force', '--json']]) {
+    const r = fx.run(args);
+    assert.equal(r.status, 1);
+    assert.match(r.json().message, /not matching: Bowerloom-0\.8\.0-beta\.1-arm64\.dmg, Bowerloom-0\.8\.0-beta\.1-arm64\.zip\)/);
+    assert.doesNotMatch(r.json().message, /not matching:[^)]*beta\.2/);
+  }
+  assert.ok(!fs.existsSync(path.join(fx.repo, 'release/desktop-sha256.json')));
+});
+
+test('hashes needs the version at a boundary: beta.21, beta.2.1, 10.8.0-beta.2, and a letter glued to either side do not satisfy beta.2; real installer names do', t => {
+  const fx = makeFixture(t);
+  const only = name => { fs.rmSync(path.join(fx.repo, fx.config.desktop.dir), { recursive: true, force: true }); fx.artifacts({ [name]: 'x' }); };
+  for (const name of ['Bowerloom-0.8.0-beta.21-arm64.dmg', 'Bowerloom-0.8.0-beta.2.1-arm64.dmg', 'Bowerloom-10.8.0-beta.2-arm64.dmg', 'Bowerloom-x0.8.0-beta.2-arm64.dmg', 'Bowerloom-0.8.0-beta.2a.dmg', 'Bowerloom-0.8.0-beta.20.zip']) {
+    only(name);
+    const r = fx.run(['hashes', '--json']);
+    assert.equal(r.status, 1, name);
+    assert.match(r.json().message, /every artifact filename must contain the release version/, name);
+  }
+  for (const name of ['Bowerloom-0.8.0-beta.2.dmg', 'Bowerloom-0.8.0-beta.2-arm64.dmg', '0.8.0-beta.2_arm64.zip', 'Bowerloom_0.8.0-beta.2.zip', 'Bowerloom 0.8.0-beta.2.dmg', 'Bowerloom-0.8.0-beta.2.universal.dmg']) {
+    only(name);
+    const r = fx.run(['hashes', '--json', '--force']);
+    assert.equal(r.status, 0, `${name}: ${r.stdout}`);
+  }
 });
 
 test('hashes fails with no artifact folder, no matching file, a hash file of another version, or a damaged hash file', t => {
@@ -371,7 +399,7 @@ test('hashes fails with no artifact folder, no matching file, a hash file of ano
 
 const publish = (fx, { integrity = integrityOf(TARBALL_BODY), tag = VERSION } = {}) => fx.setNpm({ distTags: { beta: tag, latest: tag }, versions: { [VERSION]: { integrity } } });
 const tarballFile = fx => { const file = path.join(fx.root, 'release.tgz'); fs.writeFileSync(file, TARBALL_BODY); return file; };
-const readyVerify = fx => { fx.artifacts({ 'a-0.8.0-beta.2.dmg': 'one', 'b.zip': 'two' }); assert.equal(fx.run(['hashes']).status, 0); publish(fx); };
+const readyVerify = fx => { fx.artifacts({ 'a-0.8.0-beta.2.dmg': 'one', 'b-0.8.0-beta.2.zip': 'two' }); assert.equal(fx.run(['hashes']).status, 0); publish(fx); };
 const checkOf = (out, name) => out.checks.find(c => c.name === name);
 
 test('verify passes with the tag, the matching integrity, a clean install, and matching desktop hashes', t => {
@@ -505,7 +533,7 @@ test('verify fails with the reason "unrecorded" when the hash file is missing, a
 test('verify fails on a differing desktop hash, and reports the differing and the unrecorded lists together', t => {
   const fx = makeFixture(t);
   publish(fx);
-  fx.artifacts({ 'a-0.8.0-beta.2.dmg': 'one', 'b.zip': 'two' });
+  fx.artifacts({ 'a-0.8.0-beta.2.dmg': 'one', 'b-0.8.0-beta.2.zip': 'two' });
   assert.equal(fx.run(['hashes']).status, 0);
   fx.artifacts({ 'a-0.8.0-beta.2.dmg': 'tampered', 'c.dmg': 'new' });
   const r = fx.run(['verify', '--json']);
@@ -513,9 +541,9 @@ test('verify fails on a differing desktop hash, and reports the differing and th
   const check = checkOf(r.json(), 'desktop-sha256');
   assert.deepEqual(check.mismatched, ['a-0.8.0-beta.2.dmg']);
   assert.deepEqual(check.unrecorded, ['c.dmg']);
-  assert.deepEqual(check.matched, ['b.zip']);
-  fs.rmSync(path.join(fx.repo, fx.config.desktop.dir, 'b.zip'));
-  assert.deepEqual(checkOf(fx.run(['verify', '--json']).json(), 'desktop-sha256').missing, ['b.zip']);
+  assert.deepEqual(check.matched, ['b-0.8.0-beta.2.zip']);
+  fs.rmSync(path.join(fx.repo, fx.config.desktop.dir, 'b-0.8.0-beta.2.zip'));
+  assert.deepEqual(checkOf(fx.run(['verify', '--json']).json(), 'desktop-sha256').missing, ['b-0.8.0-beta.2.zip']);
 });
 
 test('verify fails when the hash file is for another version, even if every hash matches', t => {
@@ -980,6 +1008,18 @@ test('dry-run refuses an entry that must never ship, and does not hold bundled t
   const bundled = dryRunWith(fx, fx.tarballWith('bundled.tgz', { own: 7, bundled: 0, extra: ['node_modules/dep/index.d.ts', 'node_modules/dep/index.js.map', 'node_modules/dep/test/a.js'] }));
   assert.equal(bundled.status, 0, bundled.stderr + bundled.stdout);
   assert.equal(bundled.json().entries, 10);
+});
+
+test('dry-run applies the .env, .git, and .trellis never-ship rules to bundled node_modules entries too', t => {
+  const fx = makeFixture(t);
+  passGates(fx);
+  for (const bad of ['node_modules/dep/.env', 'node_modules/dep/.env.local', 'node_modules/dep/.git/config', 'node_modules/@scope/dep/.trellis/release/x.json']) {
+    const r = dryRunWith(fx, fx.tarballWith('bad-bundled.tgz', { own: 7, bundled: 0, extra: [bad] }));
+    assert.equal(r.status, 1, bad);
+    assert.match(r.json().message, new RegExp(`that must never ship: ${bad.replace(/[.]/g, '\\.')}$`), bad);
+  }
+  const lookalike = dryRunWith(fx, fx.tarballWith('ok-bundled.tgz', { own: 7, bundled: 0, extra: ['node_modules/dep/environment.js', 'node_modules/dep/.github/x.yml', 'node_modules/dep/lib/.envelope'] }));
+  assert.equal(lookalike.status, 0, lookalike.stderr + lookalike.stdout);
 });
 
 test('dry-run refuses a tarball that is not a readable archive', t => {

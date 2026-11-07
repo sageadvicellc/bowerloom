@@ -10,21 +10,25 @@ export const REDACTED = '[redacted]';
 const SECRET_SUFFIX = /_(?:TOKEN|KEY|SECRET|PASSWORD|PASSWD|APIKEY|CREDENTIALS|OTP)$/i;
 // Or when it holds one of these anywhere. `_auth` must not be followed by a letter, so GIT_AUTHOR_NAME is kept and npm_config__auth is dropped.
 const SECRET_INSIDE = /authtoken|_auth(?![a-z])|:_auth|_password/i;
-const SECRET_NAMES = new Set(['GH_TOKEN', 'GITHUB_TOKEN', 'NPM_TOKEN', 'NODE_AUTH_TOKEN', 'VERCEL_TOKEN', 'GH_PAT', 'GITHUB_PAT', 'DATABASE_URL']);
-// These match the patterns above ("_AUTH_") but hold no secret: they point at the ssh agent socket and process, which git over ssh needs.
-const NOT_SECRET_NAMES = new Set(['SSH_AUTH_SOCK', 'SSH_AGENT_PID']);
+const SECRET_NAMES = new Set(['GH_TOKEN', 'GITHUB_TOKEN', 'NPM_TOKEN', 'NODE_AUTH_TOKEN', 'VERCEL_TOKEN', 'GH_PAT', 'GITHUB_PAT', 'DATABASE_URL', 'SSH_AUTH_SOCK', 'SSH_AGENT_PID']);
+// These two match the patterns above ("_AUTH_"). They point at the ssh agent, which can sign for every key it holds, so a child does not get them
+// by default. A call that runs git over ssh names them in `keepEnv` (see scrubEnv); no other call gets them.
+export const KEEPABLE_ENV = Object.freeze(['SSH_AUTH_SOCK', 'SSH_AGENT_PID']);
 // A value shorter than this is not redacted from text: it would blank ordinary words.
 const MIN_SECRET_VALUE = 4;
 
 /** True when an environment variable name holds a token, key, password, or auth setting that a child must not see. */
 export function isSecretName(name) {
-  if (NOT_SECRET_NAMES.has(name.toUpperCase())) return false;
   return SECRET_SUFFIX.test(name) || SECRET_INSIDE.test(name) || SECRET_NAMES.has(name.toUpperCase());
 }
 
-/** A copy of `env` without secret-named variables and without undefined values. */
-export function scrubEnv(env = process.env) {
-  return Object.fromEntries(Object.entries(env).filter(([name, value]) => value !== undefined && !isSecretName(name)));
+/**
+ * A copy of `env` without secret-named variables and without undefined values.
+ * `keep` names variables to pass although they look secret; only the names in KEEPABLE_ENV (the ssh agent pair) are honoured, so a token can never be kept.
+ */
+export function scrubEnv(env = process.env, { keep = [] } = {}) {
+  const kept = new Set(keep.filter(name => KEEPABLE_ENV.includes(name)));
+  return Object.fromEntries(Object.entries(env).filter(([name, value]) => value !== undefined && (kept.has(name) || !isSecretName(name))));
 }
 
 // Token shapes: npm, GitHub (classic and fine-grained), and OpenAI-style keys; JWTs, Slack tokens, and Google API keys.

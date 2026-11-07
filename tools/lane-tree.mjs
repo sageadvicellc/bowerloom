@@ -10,7 +10,9 @@
 // `remove` deletes only a folder that carries a matching marker, has no uncommitted work, no ignored file outside a short allowlist, no stash, no
 // unpushed branch or tag, and a branch HEAD. It measures the folder with du first, then reads the status, HEAD, and stash list; immediately before
 // the delete it reads those three again and refuses if any changed. Every git command it runs against the lane carries
-// -c core.fsmonitor=false -c core.hooksPath=/dev/null -c protocol.ext.allow=never, so a hook or a helper named in the lane's own config does not run.
+// -c core.fsmonitor=false -c core.hooksPath=/dev/null -c protocol.ext.allow=never. That turns off the filesystem monitor, hooks, and the ext:: transport only.
+// A filter, uploadpack, sshCommand, or credential helper set in the lane's own .git/config could still run; the nonce check is the guard, and it
+// refuses a folder that lane-tree did not make.
 // It never deletes the folder that holds the source, the current folder, or the home folder. It never runs npm, and it never touches a git branch in
 // any other repository. It cannot tell that a branch was squash-merged: a lane whose branch was squash-merged and deleted on origin has commits that
 // origin lacks, so `remove` refuses it, and it is deleted by hand.
@@ -25,7 +27,7 @@ import { fileURLToPath } from 'node:url';
 import { GIB, freeBytes, runChild } from './lib/run-child.mjs';
 import { splitFlag, jsonWanted, seamRefusal, boolValueRefusal, flagLikeValueRefusal, reportUsage, guarded, entryState, mismatchMessage } from './lib/cli.mjs';
 import { installInterruptHandlers, onInterrupt } from './lib/interrupt.mjs';
-import { redact } from './lib/safe-env.mjs';
+import { KEEPABLE_ENV, redact } from './lib/safe-env.mjs';
 
 export const MARKER_SCHEMA = 'bowerloom/lane-tree/v2';
 export const MARKER_FILE = 'lane-tree.json';
@@ -33,6 +35,8 @@ export const NONCE_KEY = 'laneTree.nonce';
 export const DEFAULT_FLOOR_GIB = 12;
 const MODULE_FOLDERS = Object.freeze(['node_modules', 'apps/desktop/node_modules']);
 const GIT_TIMEOUT_MS = 10 * 60 * 1000;
+// Passed to the one git call that talks to origin, so it can use the ssh agent. No other child gets these.
+const SSH_AGENT_ENV = KEEPABLE_ENV;
 const SLUG = /^[a-z0-9][a-z0-9-]*$/;
 const SHA = /^[0-9a-f]{40}$/;
 const NONCE = /^[0-9a-f]{32}$/;
@@ -136,13 +140,17 @@ export function parseArgs(argv, env = process.env) {
   return out;
 }
 
-/** Options for every git command that targets a candidate lane: no filesystem monitor command, no hooks, and no ext:: transport, whatever the lane's own config says. */
+/**
+ * Options for every git command that targets a candidate lane. They turn off the filesystem monitor, hooks, and the ext:: transport, and nothing else.
+ * A filter, uploadpack, sshCommand, or credential helper set in the lane's own .git/config can still run. The nonce check is the guard: lane-tree
+ * runs nothing against a folder whose marker and stored nonce do not match.
+ */
 export const SAFE_GIT_OPTIONS = Object.freeze(['-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', '-c', 'protocol.ext.allow=never']);
 
 /** Runs git with a scrubbed environment (no tokens, no inherited GIT_* location variables, no prompts). `why` is the first line of stderr, redacted. */
-async function git(args, cwd, timeoutMs = GIT_TIMEOUT_MS) {
+async function git(args, cwd, timeoutMs = GIT_TIMEOUT_MS, keepEnv = []) {
   const result = await runChild('git', args, {
-    cwd, timeoutMs, maxBytes: 4 * 1024 * 1024,
+    cwd, timeoutMs, maxBytes: 4 * 1024 * 1024, keepEnv,
     env: { GIT_TERMINAL_PROMPT: '0', GIT_DIR: undefined, GIT_WORK_TREE: undefined, GIT_INDEX_FILE: undefined, GIT_OBJECT_DIRECTORY: undefined, GIT_COMMON_DIR: undefined },
   });
   return { ...result, ok: result.code === 0 && result.reason === null, out: result.stdout.trim(), why: redact(result.stderr.trim().split('\n').find(Boolean) ?? result.message ?? '').slice(0, 200) };
@@ -258,7 +266,7 @@ export async function createLane(args) {
       baseCommit = known.out;
     } else {
       // A fully qualified ref cannot be read as an option, whatever the branch name holds.
-      const fetched = await git(['fetch', 'origin', `refs/heads/${baseBranch}`], realDest);
+      const fetched = await git(['fetch', 'origin', `refs/heads/${baseBranch}`], realDest, GIT_TIMEOUT_MS, SSH_AGENT_ENV);
       if (!fetched.ok) return fail(`could not fetch ${baseBranch} from origin: ${fetched.why}`);
       const head = await git(['rev-parse', '--verify', 'FETCH_HEAD^{commit}'], realDest);
       if (!head.ok) return fail('could not read the fetched commit');
@@ -366,7 +374,7 @@ export async function inspectLane(destArg) {
     const { changed, ignored } = parseStatus(status.stdout);
     if (changed.length) out.refusals.push('the work tree has uncommitted or untracked changes (git status --porcelain is not empty)');
     const unlisted = ignored.filter(entry => !ignoredAllowed(entry));
-    if (unlisted.length) out.refusals.push(`${plural(unlisted.length, 'ignored path')} outside the allowlist (node_modules, .trellis, .DS_Store) would be deleted: ${unlisted.slice(0, 5).join(', ')}`);
+    if (unlisted.length) out.refusals.push(`${plural(unlisted.length, 'ignored path')} outside the allowlist (node_modules, .trellis at any depth, a root dist/, .DS_Store) would be deleted: ${unlisted.slice(0, 5).join(', ')}`);
   }
   const stash = await laneGit(['stash', 'list'], dest);
   const head = await laneGit(['rev-parse', 'HEAD'], dest);

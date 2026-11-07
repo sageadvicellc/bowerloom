@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { isSecretName, scrubEnv, redact, emptyNpmConfigEnv, REDACTED } from '../lib/safe-env.mjs';
+import { isSecretName, scrubEnv, redact, emptyNpmConfigEnv, REDACTED, KEEPABLE_ENV } from '../lib/safe-env.mjs';
 
 const made = [];
 test.after(() => { for (const dir of made) fs.rmSync(dir, { recursive: true, force: true }); });
@@ -77,13 +77,22 @@ test('emptyNpmConfigEnv writes two empty private files and returns the two npm v
   assert.deepEqual(scrubEnv(env), env);
 });
 
-test('scrubEnv keeps the ssh agent variables, so git over ssh still works, and drops the other names that hold credentials', () => {
+test('scrubEnv drops the ssh agent variables by default, and the names that hold credentials', () => {
   const env = scrubEnv({ SSH_AUTH_SOCK: '/tmp/agent.sock', SSH_AGENT_PID: '123', DB_PASSWD: 'a', OPENAI_APIKEY: 'b', STRIPE_API_KEY: 'c', GOOGLE_APPLICATION_CREDENTIALS: 'd', AWS_CREDENTIALS: 'e', GH_PAT: 'f', DATABASE_URL: 'g', gh_pat: 'h', KEEP: '1' });
-  assert.deepEqual(env, { SSH_AUTH_SOCK: '/tmp/agent.sock', SSH_AGENT_PID: '123', KEEP: '1' });
-  assert.equal(isSecretName('SSH_AUTH_SOCK'), false);
-  assert.equal(isSecretName('SSH_AGENT_PID'), false);
+  assert.deepEqual(env, { KEEP: '1' });
+  assert.equal(isSecretName('SSH_AUTH_SOCK'), true);
+  assert.equal(isSecretName('SSH_AGENT_PID'), true);
   for (const name of ['X_PASSWD', 'X_APIKEY', 'X_API_KEY', 'X_CREDENTIALS', 'GH_PAT', 'DATABASE_URL', 'database_url']) assert.equal(isSecretName(name), true, name);
   for (const name of ['DATABASE_URL_NOTE', 'PATH', 'PASSWD_FILE_NOTE']) assert.equal(isSecretName(name), false, name);
+});
+
+test('scrubEnv with keep passes the two ssh agent variables and nothing else that is secret', () => {
+  const source = { SSH_AUTH_SOCK: '/tmp/agent.sock', SSH_AGENT_PID: '123', GH_TOKEN: 'x', NPM_TOKEN: 'y', KEEP: '1' };
+  assert.deepEqual(scrubEnv(source, { keep: ['SSH_AUTH_SOCK', 'SSH_AGENT_PID'] }), { SSH_AUTH_SOCK: '/tmp/agent.sock', SSH_AGENT_PID: '123', KEEP: '1' });
+  assert.deepEqual(scrubEnv(source, { keep: ['SSH_AUTH_SOCK'] }), { SSH_AUTH_SOCK: '/tmp/agent.sock', KEEP: '1' });
+  assert.deepEqual(scrubEnv(source, { keep: ['GH_TOKEN', 'NPM_TOKEN'] }), { KEEP: '1' }, 'only the ssh agent names can be kept');
+  assert.deepEqual(scrubEnv(source, { keep: [] }), { KEEP: '1' });
+  assert.deepEqual(KEEPABLE_ENV, ['SSH_AUTH_SOCK', 'SSH_AGENT_PID']);
 });
 
 test('redact blanks the JSON form of a password key, with any prefix, in either quote style and inside escaped JSON', () => {

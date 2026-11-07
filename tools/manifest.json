@@ -481,7 +481,7 @@
       "path": "scripts/release.mjs",
       "help": true,
       "safetyClass": "local-write",
-      "description": "Write the SHA-256 of each desktop artifact to the hash file.",
+      "description": "Write the SHA-256 of each desktop artifact to the hash file. Every artifact name must contain the release version.",
       "args": [
         {
           "name": "--json",
@@ -511,15 +511,17 @@
           "version": "string",
           "files": "object",
           "different": "array",
-          "found": "array"
+          "found": "array",
+          "stale": "array"
         },
-        "note": "files maps each desktop artifact name to its SHA-256. different and found appear only when the step fails (found lists the artifacts on disk).",
+        "note": "files maps each desktop artifact name to its SHA-256. different, found, and stale appear only when the step fails (found lists the artifacts on disk; stale lists the ones whose name lacks the release version).",
         "optional": [
           "command",
           "version",
           "files",
           "different",
-          "found"
+          "found",
+          "stale"
         ]
       },
       "example": "node scripts/release.mjs hashes --json"

@@ -26,7 +26,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { jsonWanted } from '../tools/lib/cli.mjs';
 import { firstFailure, parseCounts } from '../tools/lib/output-parse.mjs';
-import { emptyNpmConfigEnv, redact, scrubEnv } from '../tools/lib/safe-env.mjs';
+import { emptyNpmConfigEnv, KEEPABLE_ENV, redact, scrubEnv } from '../tools/lib/safe-env.mjs';
 
 const SCRIPT = fs.realpathSync(fileURLToPath(import.meta.url));
 const DEFAULT_REPO = path.resolve(path.dirname(SCRIPT), '..');
@@ -347,13 +347,14 @@ export function installSignalHandlers(proc = process) {
  * Runs one child process in its own process group. Prints the exact command to stderr first.
  * Kills the whole group on timeout, when output passes the cap, and when the child has gone but left something holding its pipes.
  * Writes the full output to `logName` under the logs directory when given.
+ * `spec.keepEnv` names the ssh agent variables to pass on (SSH_AUTH_SOCK, SSH_AGENT_PID); only the git helper sets it.
  */
 async function runChild(ctx, spec) {
-  const { cmd, args = [], cwd, timeoutMs = GIT_TIMEOUT_MS, logName, env: extraEnv = {} } = spec;
+  const { cmd, args = [], cwd, timeoutMs = GIT_TIMEOUT_MS, logName, env: extraEnv = {}, keepEnv = [] } = spec;
   const where = cwd && path.resolve(cwd) !== path.resolve(ctx.repo) ? `   # in ${path.relative(ctx.repo, cwd) || '.'}` : '';
   ctx.stderr.write(`$ ${redact(shellLine([cmd, ...args]), ctx.env)}${where}\n`);
   const started = Date.now();
-  const env = { ...scrubEnv(ctx.env), GIT_TERMINAL_PROMPT: '0', ...extraEnv };
+  const env = { ...scrubEnv(ctx.env, { keep: keepEnv }), GIT_TERMINAL_PROMPT: '0', ...extraEnv };
   const result = shuttingDown ? { code: null, spawnError: 'stopped by a signal', stdout: '', all: '' } : await new Promise(resolve => {
     let child;
     try { child = spawn(cmd, args, { cwd, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] }); } catch (error) { resolve({ code: null, spawnError: error.message, stdout: '', all: '' }); return; }
@@ -415,7 +416,8 @@ function failureLine(result) {
   return failLine(result.all);
 }
 
-const git = (ctx, args, extra = {}) => runChild(ctx, { cmd: 'git', args, cwd: ctx.repo, timeoutMs: GIT_TIMEOUT_MS, ...extra });
+// Only git gets the ssh agent variables (for a fetch or ls-remote over ssh). npm, node, the gates, and pack never do.
+const git = (ctx, args, extra = {}) => runChild(ctx, { cmd: 'git', args, cwd: ctx.repo, timeoutMs: GIT_TIMEOUT_MS, keepEnv: KEEPABLE_ENV, ...extra });
 function spawnNpm(ctx, args, extra = {}) {
   assertSafeNpmArgs(args);
   return runChild(ctx, { cmd: npmBinary(ctx.env), args, cwd: ctx.repo, ...extra, env: { ...npmConfigEnv(ctx), ...extra.env } });
@@ -670,16 +672,18 @@ async function cmdGates(ctx, o) {
 
 /**
  * Why an entry of the tarball must not ship, or null. The list is the one in tools/cli-distribution/README.md: environment files, a git
- * folder, source maps, type declarations, test folders, and the release state folder. Bundled third-party code under node_modules/ is
- * not held to it, because the packages of the closure ship their own declarations and maps.
+ * folder, source maps, type declarations, test folders, and the release state folder. Bundled third-party code under node_modules/ is held
+ * to the first three (environment files, .git, .trellis) and not to the rest, because the packages of the closure ship their own
+ * declarations, maps, and test folders. Pass `bundled` for such an entry.
  */
-function neverShipReason(rel) {
+function neverShipReason(rel, { bundled = false } = {}) {
   const parts = rel.split('/');
   const name = parts[parts.length - 1];
   const folders = parts.slice(0, -1);
   if (name === '.env' || name.startsWith('.env.')) return 'an environment file';
   if (parts.includes('.git')) return 'a .git folder';
   if (parts.includes('.trellis')) return 'a .trellis folder';
+  if (bundled) return null;
   if (/\.map$/.test(name)) return 'a source map';
   if (/\.d\.[cm]?ts$/.test(name)) return 'a TypeScript declaration';
   if (folders.includes('test') || folders.includes('tests')) return 'a test folder';
@@ -704,10 +708,10 @@ async function inspectTarball(tarball) {
     if (entry.type !== 'File') throw new StepFailure(`the tarball holds an entry that is not a plain file: ${entry.path} (${entry.type})`);
     const rel = entry.path.startsWith('package/') ? entry.path.slice('package/'.length) : entry.path;
     if (rel === '' || rel.startsWith('/') || rel.split('/').includes('..')) throw new StepFailure(`the tarball holds an unsafe path: ${entry.path}`);
-    if (rel.startsWith('node_modules/')) { bundled += 1; continue; }
-    const reason = neverShipReason(rel);
+    const isBundled = rel.startsWith('node_modules/');
+    const reason = neverShipReason(rel, { bundled: isBundled });
     if (reason) throw new StepFailure(`the tarball holds ${reason} that must never ship: ${rel}`, { entry: rel });
-    own += 1;
+    if (isBundled) bundled += 1; else own += 1;
   }
   return { entries: own + bundled, own, bundled };
 }
@@ -815,11 +819,27 @@ async function cmdRetire(ctx, o) {
   return humanOnly(ctx, 'retire', lines, { version: o.version });
 }
 
+/**
+ * True when `name` holds `version` as a whole version: the character before it is not a letter, digit, or dot, and the character after it does
+ * not continue the version (no letter or digit, and no dot followed by a digit). A hyphen, underscore, space, a dot before a letter such as the
+ * file extension, or the end of the name all end a version. So 0.8.0-beta.21 and 0.8.0-beta.2.1 do not hold 0.8.0-beta.2.
+ */
+export function hasVersion(name, version) {
+  for (let at = name.indexOf(version); at !== -1; at = name.indexOf(version, at + 1)) {
+    const before = name[at - 1] ?? '', after = name.slice(at + version.length, at + version.length + 2);
+    if (/[0-9A-Za-z.]/.test(before)) continue;
+    if (/^[0-9A-Za-z]/.test(after) || /^\.[0-9]/.test(after)) continue;
+    return true;
+  }
+  return false;
+}
+
 async function cmdHashes(ctx, o) {
   const { found, dir, dirMissing } = desktopArtifacts(ctx, o.config);
   if (dirMissing) throw new StepFailure(`artifact folder ${o.config.desktop.dir} not found; build the desktop app first`);
   if (found.length === 0) throw new StepFailure(`no files matching ${o.config.desktop.patterns.join(', ')} in ${o.config.desktop.dir}`);
-  if (!found.some(name => name.includes(o.version))) throw new StepFailure(`no artifact filename contains the release version ${o.version} (found: ${found.join(', ')}); build the desktop app for this version first`, { found });
+  const stale = found.filter(name => !hasVersion(name, o.version));
+  if (stale.length) throw new StepFailure(`every artifact filename must contain the release version ${o.version} (not matching: ${stale.join(', ')}); remove the old installers or build the desktop app for this version first`, { found, stale });
   const files = sorted(Object.fromEntries(found.map(name => [name, hashFileOf(path.join(dir, name))])));
   const existing = readHashFile(ctx, o.config);
   const force = o.flags['--force'] === true;

@@ -566,9 +566,9 @@ test('a tag prefix must start with a letter or digit', () => {
 
 test('the hash file lists names in plain code-point order, not in locale order', t => {
   const fx = makeFixture(t);
-  fx.artifacts({ 'a-0.8.0-beta.2.dmg': '1', 'B.dmg': '2', 'c.zip': '3' });
+  fx.artifacts({ 'a-0.8.0-beta.2.dmg': '1', 'B-0.8.0-beta.2.dmg': '2', 'c-0.8.0-beta.2.zip': '3' });
   assert.equal(fx.run(['hashes']).status, 0);
-  assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(fx.repo, 'release/desktop-sha256.json'), 'utf8')).files), ['B.dmg', 'a-0.8.0-beta.2.dmg', 'c.zip']);
+  assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(fx.repo, 'release/desktop-sha256.json'), 'utf8')).files), ['B-0.8.0-beta.2.dmg', 'a-0.8.0-beta.2.dmg', 'c-0.8.0-beta.2.zip']);
 });
 
 test('entryState tells the main script, an importer, and a look-alike that must not exit silently', t => {
@@ -611,4 +611,32 @@ test('--help --json prints one JSON object with the subcommand table', t => {
   assert.equal(out.outcome, 'help');
   assert.deepEqual(out.commands.map(c => c.name), ['status', 'preflight', 'gates', 'dry-run', 'publish', 'hashes', 'verify', 'tag', 'push-tag', 'retire', 'claims']);
   assert.match(out.usage, /^Usage: /);
+});
+
+test('the ssh agent variables reach git but never npm, node, or the pack script', t => {
+  const fx = makeFixture(t);
+  const seen = path.join(fx.root, 'ssh-seen.txt');
+  const sshCommand = path.join(fx.root, 'fake-ssh.sh');
+  fs.writeFileSync(sshCommand, `#!/bin/sh\nprintf '%s|%s' "$SSH_AUTH_SOCK" "$SSH_AGENT_PID" > '${seen}'\nexit 1\n`, { mode: 0o755 });
+  fx.git('config', 'core.sshCommand', sshCommand);
+  fx.git('remote', 'set-url', 'origin', 'ssh://example.invalid/none.git');
+  const env = { SSH_AUTH_SOCK: '/canary/agent.sock', SSH_AGENT_PID: '4242' };
+  const pre = fx.run(['preflight', '--json'], { env });
+  assert.equal(pre.status, 1, 'the fake ssh refuses, so the fetch fails');
+  assert.equal(fs.readFileSync(seen, 'utf8'), '/canary/agent.sock|4242', 'git over ssh sees the agent');
+
+  const gates = fx.run(['gates', '--json'], { env });
+  assert.equal(gates.status, 0, gates.stderr);
+  const calls = fx.npmCalls();
+  assert.ok(calls.length > 0);
+  for (const call of calls) {
+    assert.equal(call.env.SSH_AUTH_SOCK, undefined, `npm ${call.args.join(' ')}`);
+    assert.equal(call.env.SSH_AGENT_PID, undefined, `npm ${call.args.join(' ')}`);
+  }
+  const dry = fx.run(['dry-run', '--json'], { env });
+  assert.equal(dry.status, 0, dry.stderr);
+  for (const call of fx.packCalls()) {
+    assert.equal(call.env.SSH_AUTH_SOCK, undefined, 'pack');
+    assert.equal(call.env.SSH_AGENT_PID, undefined, 'pack');
+  }
 });

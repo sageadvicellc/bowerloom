@@ -587,6 +587,7 @@ test('remove: refuses a lane that holds an ignored file outside the allowlist, a
   run = remove(dest, ['--apply']);
   assert.equal(run.status, 1);
   assert.ok(run.json.refusals.some(r => /ignored/.test(r) && /\.env/.test(r)), JSON.stringify(run.json));
+  assert.ok(run.json.refusals.some(r => r.includes('outside the allowlist (node_modules, .trellis at any depth, a root dist/, .DS_Store)')), `the refusal lists the real allowlist: ${JSON.stringify(run.json.refusals)}`);
   assert.equal(fs.existsSync(path.join(dest, '.env')), true, 'nothing was deleted');
   fs.rmSync(path.join(dest, '.env'));
   fs.mkdirSync(path.join(dest, 'keys'));
@@ -597,6 +598,22 @@ test('remove: refuses a lane that holds an ignored file outside the allowlist, a
   run = remove(dest, ['--apply']);
   assert.equal(run.status, 0, JSON.stringify(run.json));
   assert.equal(fs.existsSync(dest), false);
+});
+
+test('create: the ssh agent variables reach the fetch from origin and no other child', { skip }, () => {
+  const fx = fixture();
+  git(fx.source, 'remote', 'set-url', 'origin', 'ssh://example.invalid/none.git');
+  const seen = path.join(fx.home, 'ssh-seen.txt');
+  const fakeSsh = path.join(fx.home, 'fake-ssh.sh');
+  fs.writeFileSync(fakeSsh, `#!/bin/sh\nprintf '%s|%s' "$SSH_AUTH_SOCK" "$SSH_AGENT_PID" > '${seen}'\nexit 1\n`, { mode: 0o755 });
+  const run = create(fx, 'agent', [], { GIT_SSH_COMMAND: fakeSsh, SSH_AUTH_SOCK: '/canary/agent.sock', SSH_AGENT_PID: '4242' });
+  assert.equal(run.status, 1, 'the fake ssh refuses, so the fetch fails');
+  assert.match(run.json.refused, /fetch/);
+  assert.equal(fs.readFileSync(seen, 'utf8'), '/canary/agent.sock|4242');
+  fs.rmSync(seen);
+  const without = create(fx, 'noagent', [], { GIT_SSH_COMMAND: fakeSsh, SSH_AUTH_SOCK: undefined, SSH_AGENT_PID: undefined });
+  assert.equal(without.status, 1);
+  assert.equal(fs.readFileSync(seen, 'utf8'), '|', 'with no agent in the environment, none is invented');
 });
 
 test('ignoredAllowed and parseStatus read git status entries', () => {

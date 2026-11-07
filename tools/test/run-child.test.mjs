@@ -26,6 +26,22 @@ test('runChild returns output, exit code, and byte count', async () => {
   assert.equal(result.stderr, 'err\n');
 });
 
+test('runChild drops the ssh agent variables by default, and keeps them only for a call that names them in keepEnv', async () => {
+  const agent = { SSH_AUTH_SOCK: '/canary/agent.sock', SSH_AGENT_PID: '4242' };
+  Object.assign(process.env, agent, { GH_TOKEN: 'canary-value-3' });
+  const show = 'console.log(JSON.stringify([process.env.SSH_AUTH_SOCK ?? null, process.env.SSH_AGENT_PID ?? null, process.env.GH_TOKEN ?? null]))';
+  try {
+    const plain = await runChild(node, ['-e', show]);
+    assert.deepEqual(JSON.parse(plain.output), [null, null, null]);
+    const kept = await runChild(node, ['-e', show], { keepEnv: ['SSH_AUTH_SOCK', 'SSH_AGENT_PID'] });
+    assert.deepEqual(JSON.parse(kept.output), ['/canary/agent.sock', '4242', null]);
+    const only = await runChild(node, ['-e', show], { keepEnv: ['SSH_AUTH_SOCK', 'GH_TOKEN'] });
+    assert.deepEqual(JSON.parse(only.output), ['/canary/agent.sock', null, null], 'keepEnv cannot pass a token');
+  } finally {
+    for (const name of [...Object.keys(agent), 'GH_TOKEN']) delete process.env[name];
+  }
+});
+
 test('runChild never passes a secret variable to the child, in any form', async () => {
   const secret = { TEST_CANARY_TOKEN: 'canary-value-1', TEST_CANARY_KEY: 'canary-value-2', GH_TOKEN: 'canary-value-3', TEST_CANARY_SECRET: 'canary-value-5', TEST_CANARY_PASSWORD: 'canary-value-6',
     NPM_TOKEN: 'canary-value-7', NODE_AUTH_TOKEN: 'canary-value-8', npm_config__auth: 'canary-value-9', 'npm_config_//registry.npmjs.org/:_authToken': 'canary-value-10' };

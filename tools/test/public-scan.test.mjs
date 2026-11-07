@@ -429,6 +429,24 @@ test('scan: a binary file whose own name holds a leak is listed with the name wi
   assert.match(run.json.binaryScanned[0], /withheld/);
 });
 
+test('scan: an unreadable binary file with a leaking name is reported with a fixed reason, never git\'s own message', () => {
+  const dir = repo();
+  const name = `logos/${EMAIL}.bin`;
+  commit(dir, { [name]: Buffer.from([0, 1, 2, 0]) });
+  const bin = tmp();
+  const realGit = spawnSync('which', ['git'], { encoding: 'utf8' }).stdout.trim();
+  // This git fails to read a blob and puts the path in its message, as a real "path does not exist" error does.
+  fs.writeFileSync(path.join(bin, 'git'), `#!/bin/sh\ncase "$*" in *"cat-file blob"*) echo "fatal: path '$3' is unreadable" >&2; exit 128;; esac\nexec ${JSON.stringify(realGit)} "$@"\n`, { mode: 0o755 });
+  const run = spawnSync(process.execPath, [script, '--base', 'main', '--json'], { cwd: dir, encoding: 'utf8', env: { ...GIT_ENV, PATH: `${bin}${path.delimiter}${process.env.PATH}` } });
+  assert.equal(run.status, 1);
+  assert.equal(run.stdout.includes('corp-mail'), false, 'no part of the leaking name is printed');
+  assert.equal(run.stderr.includes('corp-mail'), false);
+  const out = JSON.parse(run.stdout);
+  assert.equal(out.unscanned.length, 1);
+  assert.equal(out.unscanned[0].file, '[path withheld]');
+  assert.equal(out.unscanned[0].reason, 'the blob could not be read');
+});
+
 test('scan: a binary file over the size cap is unscanned and makes the exit 1; a deleted binary file is not scanned', () => {
   assert.equal(MAX_BINARY_BYTES, 5 * 1024 * 1024);
   const dir = tmp();
