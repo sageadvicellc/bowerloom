@@ -725,6 +725,30 @@ test('scanLine: a hardcoded fallback after a code value is a secret', () => {
   }
 });
 
+test('scanLine: a fallback counts only directly after the value, not a later property or statement on the line', () => {
+  const PW = 'pass' + 'word';
+  for (const line of [
+    '{ ' + PW + ': process.env.DB_PASSWORD, host: process.env.HOST ?? "localhost" }',
+    PW + ' = process.env.X; const y = a ?? "b"',
+    PW + ': process.env.PW // x ?? "y"',
+    PW + ' = os.environ.get("X"); other = os.environ.get("Y") or "fallbackvalue"',
+    PW + ': process.env.X, port: process.env.PORT || "8080"',
+  ]) assert.deepEqual(kinds(line), [], line);
+  for (const line of [
+    PW + ': process.env.X ?? "changeme123"', PW + ': process.env.X || "hunter2hunter2"', PW + ' = os.environ.get("X") or "hunter2hunter2"',
+    PW + ' = os.environ.get("X", None) or \'hunter2hunter2\'', PW + ': process.env.X ?? \\"changeme123\\"',
+  ]) assert.deepEqual(kinds(line), ['secret'], line);
+  // A fallback of fewer than 3 characters is not read.
+  assert.deepEqual(kinds(PW + ': process.env.X ?? "ab"'), []);
+});
+
+test('scanLine: known misses stay documented (docs/releasing.md): annotated defaults, ternaries with a literal, Secret(1) and admin[0] shapes, dotted words with no digit', () => {
+  const PW = 'pass' + 'word';
+  for (const line of [
+    PW + ': str = "hunter2hunter2"', PW + ' = cond ? "hunter2hunter2" : "other1234567"', PW + ' = Secret(1)', PW + ' = admin[0]', PW + ' = correct.horse.battery',
+  ]) assert.deepEqual(kinds(line), [], line);
+});
+
 test('scanLine: an escaped quote, in a string inside a string, is read like a quote', () => {
   const PW = 'pass' + 'word';
   for (const line of [PW + '=\\"hunter2hunter2\\"', '{\\"' + PW + '\\":\\"hunter2hunter2\\"}', '{\\"' + PW + '\\": \\"x12345678\\"}']) {

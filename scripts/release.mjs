@@ -607,14 +607,21 @@ async function cmdPreflight(ctx, o) {
   try { commit = await headCommit(ctx); } catch (error) { add('commit', 'fail', error.message); }
 
   let ahead = null, behind = null;
-  if (branchOk) {
-    const counts = await git(ctx, ['rev-list', '--left-right', '--count', `HEAD...refs/remotes/origin/${branch}`]);
-    const parts = counts.stdout.trim().split(/\s+/).map(Number);
-    if (counts.ok && parts.length === 2 && parts.every(Number.isInteger)) {
-      [ahead, behind] = parts;
-      const same = ahead === 0 && behind === 0;
-      add('sync', same ? 'pass' : 'fail', same ? `HEAD equals origin/${branch}` : `HEAD is ${ahead} ahead and ${behind} behind origin/${branch}`);
-    } else add('sync', 'fail', `origin/${branch} not found; push the branch first`);
+  if (branchOk && !fetch.ok) add('sync', 'fail', 'not checked: the fetch failed');
+  else if (branchOk) {
+    // The tip of the branch on origin is confirmed first (see confirmBranchTip), so an old tracking ref cannot stand in for it.
+    let confirmed = null;
+    try { await confirmBranchTip(ctx, branch); } catch (error) { if (!(error instanceof StepFailure)) throw error; confirmed = error.message; }
+    if (confirmed !== null) add('sync', 'fail', confirmed);
+    else {
+      const counts = await git(ctx, ['rev-list', '--left-right', '--count', `HEAD...refs/remotes/origin/${branch}`]);
+      const parts = counts.stdout.trim().split(/\s+/).map(Number);
+      if (counts.ok && parts.length === 2 && parts.every(Number.isInteger)) {
+        [ahead, behind] = parts;
+        const same = ahead === 0 && behind === 0;
+        add('sync', same ? 'pass' : 'fail', same ? `HEAD equals origin/${branch}` : `HEAD is ${ahead} ahead and ${behind} behind origin/${branch}`);
+      } else add('sync', 'fail', `origin/${branch} not found; push the branch first`);
+    }
   } else add('sync', 'fail', 'not checked: wrong branch');
 
   const tree = await treeIsClean(ctx);
@@ -687,10 +694,23 @@ async function cmdGates(ctx, o) {
   return done(`gates passed for ${short(commit)} ${o.version}${existing ? ' (end-to-end added)' : ''}`, { commit, version: o.version, ran: ran.map(g => g.name), receipt });
 }
 
-/** Environment files that hold no value and may ship inside a bundled package. */
 /** Stored in every dry-run receipt. Raise it whenever neverShipReason changes, so a receipt made under the old rules is not "already done". */
 const NEVER_SHIP_RULES_VERSION = 1;
+/** Environment files that hold no value and may ship inside a bundled package. */
 const ENV_TEMPLATES = new Set(['.env.example', '.env.sample', '.env.template', '.env.dist']);
+
+/**
+ * Why a dry-run receipt no longer agrees with the config, or null: the package, the registry, the dist-tag, the expected file count, and the never-ship rules it was made under.
+ * A receipt that disagrees is treated as absent by every step that uses it (dry-run, publish, verify, status). It names the field, never the value (a registry URL can hold a credential).
+ */
+function dryRunConfigProblem(config, receipt) {
+  if (receipt.rulesVersion !== NEVER_SHIP_RULES_VERSION) return 'it was made under other never-ship rules';
+  if (receipt.package !== config.package) return 'it is for another package';
+  if (receipt.registry !== config.registry) return 'it is for another registry';
+  if (receipt.tag !== config.distTag) return 'it is for another dist-tag';
+  if (receipt.files !== config.expectedFileCount) return 'its file count is not the expected file count';
+  return null;
+}
 
 /**
  * Why an entry of the tarball must not ship, or null. The list is the one in tools/cli-distribution/README.md: environment files, a git
@@ -748,9 +768,7 @@ async function cmdDryRun(ctx, o) {
   if (!readReceipt(ctx, 'gates', o.version, commit)) throw new StepFailure(`no passing gates receipt for ${short(commit)} ${o.version}; run gates first`);
   const existing = o.flags['--force'] ? null : readReceipt(ctx, 'dry-run', o.version, commit);
   // The receipt counts only while it still agrees with the config (the file count, the dist-tag, the package, and the registry it was made for) and with the never-ship rules.
-  const sameConfig = existing && existing.files === o.config.expectedFileCount && existing.tag === o.config.distTag
-    && existing.package === o.config.package && existing.registry === o.config.registry && existing.rulesVersion === NEVER_SHIP_RULES_VERSION;
-  if (existing && sameConfig && typeof existing.tarball === 'string' && fs.existsSync(existing.tarball) && sha256Hex(fs.readFileSync(existing.tarball)) === existing.sha256) {
+  if (existing && dryRunConfigProblem(o.config, existing) === null && typeof existing.tarball === 'string' && fs.existsSync(existing.tarball) && sha256Hex(fs.readFileSync(existing.tarball)) === existing.sha256) {
     return alreadyDone(`dry run passed for ${short(commit)} ${o.version}`, { commit, version: o.version, ...summary(existing) });
   }
   requireFree(ctx, tmpRoot(ctx), floor + DRY_RUN_EXTRA_GIB);
@@ -817,6 +835,8 @@ async function cmdPublish(ctx, o) {
   const commit = await headCommit(ctx).catch(() => null);
   const receipt = commit ? readReceipt(ctx, 'dry-run', o.version, commit) : null;
   if (!receipt) throw new StepFailure(`no dry-run receipt for ${commit ? short(commit) : 'this commit'} ${o.version}; run dry-run first. No publish command was printed`);
+  const stale = dryRunConfigProblem(o.config, receipt);
+  if (stale) throw new StepFailure(`the dry-run receipt for ${short(commit)} ${o.version} does not match the config (${stale}); run dry-run again. No publish command was printed`);
   checkDryRunTarball(receipt);
   const tarball = receipt.tarball;
   const expected = typeof o.record.npm?.authenticatedIdentity === 'string' ? o.record.npm.authenticatedIdentity.replace(new RegExp(CONTROL_CHARS.source, 'g'), '') : null;
@@ -949,8 +969,11 @@ async function verifyIntegrity(ctx, o, registryDown) {
     source = 'the local tarball';
   } else {
     const commit = await headCommit(ctx).catch(() => null);
-    const receipt = (commit && readReceipt(ctx, 'dry-run', version, commit)) || await newestDryRun(ctx, version);
-    if (!receipt || typeof receipt.integrity !== 'string' || !INTEGRITY_FORM.test(receipt.integrity)) return { status: 'fail', reason: 'no --tarball given and no dry-run receipt found; run dry-run, or pass --tarball PATH' };
+    // A receipt that no longer agrees with the config counts as absent, on HEAD and on an ancestor alike.
+    const agrees = receipt => dryRunConfigProblem(config, receipt) === null;
+    const atHead = commit ? readReceipt(ctx, 'dry-run', version, commit) : null;
+    const receipt = (atHead && agrees(atHead) && atHead) || await newestReceipt(ctx, 'dry-run', version, 'HEAD', agrees);
+    if (!receipt || typeof receipt.integrity !== 'string' || !INTEGRITY_FORM.test(receipt.integrity)) return { status: 'fail', reason: 'no --tarball given and no dry-run receipt found that matches the config; run dry-run, or pass --tarball PATH' };
     local = receipt.integrity;
     source = 'the local tarball';
     if (typeof receipt.tarball === 'string' && fs.existsSync(receipt.tarball)) {
@@ -1022,15 +1045,14 @@ function checkTagBranch(config, name) {
 }
 
 /**
- * The --commit path skips preflight, so it must prove the commit is already public before the tag can carry it (and its history) to origin.
- * Fetches with --prune, then fetches the named branch on its own (`+refs/heads/<branch>:refs/remotes/origin/<branch>`, so a narrowed `remote.origin.fetch` cannot leave a
- * stale tracking ref), then asks origin for the tip of that branch with `git ls-remote --heads` and needs the tracking ref to equal it. A branch that origin does not have,
- * or a tip that differs, is a failure. The commit must then be an ancestor of exactly refs/remotes/origin/<branch>.
- * `git merge-base --is-ancestor` answers 0 (yes), 1 (no), or 128 (an error); an error is reported as an error, never as "no".
+ * Proves that the tracking ref of one branch of origin is the tip of that branch on origin, and returns the ref name. Used by `preflight` (for the checked-out branch) and by
+ * `tag --commit` (for the named branch), so a tag never carries history that origin does not hold. A plain `git fetch --prune origin` is not enough: with a narrowed
+ * `remote.origin.fetch` it leaves an old tracking ref in place, and it never prunes a ref its refspec does not cover. So this fetches the named branch on its own
+ * (`+refs/heads/<branch>:refs/remotes/origin/<branch>`, without hooks), then asks origin for the tip of that branch with `git ls-remote --heads` and needs the tracking ref to equal it.
+ * A branch that origin does not have, or a tip that differs, is a failure.
  */
-async function requirePublished(ctx, commit, branch) {
-  const fetched = await fetchOrigin(ctx);
-  if (!fetched.ok) throw new StepFailure(`git fetch origin failed: ${failureLine(fetched)}`);
+async function confirmBranchTip(ctx, branch) {
+  if (!/^[A-Za-z0-9._/-]+$/.test(branch)) throw new StepFailure('the branch name has an unusual form; no fetch was tried');
   const ref = `refs/remotes/origin/${branch}`;
   const explicit = await gitNoHooks(ctx, ['fetch', '--prune', 'origin', `+refs/heads/${branch}:${ref}`]);
   const heads = await git(ctx, ['ls-remote', '--heads', 'origin', `refs/heads/${branch}`]);
@@ -1044,6 +1066,18 @@ async function requirePublished(ctx, commit, branch) {
     throw new StepFailure(`git rev-parse failed: ${failureLine(known)}`);
   }
   if (known.stdout.trim() !== tips[0]) throw new StepFailure(`origin/${branch} in this clone (${short(known.stdout.trim())}) is not the tip of the branch on origin (${short(tips[0])}); the fetch did not update it`);
+  return ref;
+}
+
+/**
+ * The --commit path skips preflight, so it must prove the commit is already public before the tag can carry it (and its history) to origin.
+ * Fetches with --prune, confirms the tip of the named branch (confirmBranchTip), and needs the commit to be an ancestor of exactly refs/remotes/origin/<branch>.
+ * `git merge-base --is-ancestor` answers 0 (yes), 1 (no), or 128 (an error); an error is reported as an error, never as "no".
+ */
+async function requirePublished(ctx, commit, branch) {
+  const fetched = await fetchOrigin(ctx);
+  if (!fetched.ok) throw new StepFailure(`git fetch origin failed: ${failureLine(fetched)}`);
+  const ref = await confirmBranchTip(ctx, branch);
   const inside = await git(ctx, ['merge-base', '--is-ancestor', commit, ref]);
   if (inside.ok) return;
   if (inside.code === 1 && !inside.timedOut && !inside.capped && !inside.spawnError) throw new StepFailure(`commit ${commit} is not on origin/${branch}; push the branch first`);
@@ -1212,6 +1246,8 @@ async function cmdStatus(ctx, o) {
     if (!tree) { add(step, 'unknown', 'cannot read the working tree'); continue; }
     if (!tree.clean) { add(step, 'todo', `${label} receipt exists, but the working tree is not clean (${tree.first})`); continue; }
     if (step === 'dry-run') {
+      const stale = dryRunConfigProblem(config, receipt);
+      if (stale) { add(step, 'todo', `${label} receipt exists, but it does not match the config (${stale}); run dry-run again`); continue; }
       let intact = false;
       try { intact = typeof receipt.tarball === 'string' && sha256Hex(fs.readFileSync(receipt.tarball)) === receipt.sha256; } catch { /* the tarball is gone */ }
       if (!intact) { add(step, 'todo', `${label} receipt exists, but its tarball is gone or changed`); continue; }

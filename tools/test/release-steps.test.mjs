@@ -78,7 +78,7 @@ test('preflight fails on a branch that does not match, passes with --branch NAME
   fx.git('checkout', '-b', 'release/unpushed');
   r = fx.run(['preflight', '--json']);
   assert.equal(r.status, 1);
-  assert.match(r.json().message, /origin\/release\/unpushed not found/);
+  assert.match(r.json().message, /origin has no branch release\/unpushed; push the branch first/);
   assert.equal(fx.run(['preflight', '--branch', 'bad name']).status, 2);
 });
 
@@ -477,6 +477,47 @@ test('verify without --tarball takes the tarball from the dry-run receipt, and w
   const receipts = allFiles(path.join(fx.repo, '.trellis/release/receipts')).filter(f => path.basename(f).startsWith('verify-'));
   assert.equal(receipts.length, 1);
   assert.ok(JSON.parse(fs.readFileSync(receipts[0], 'utf8')).checks.every(c => c.status === 'pass'));
+});
+
+const dryReceiptPath = fx => allFiles(path.join(fx.repo, '.trellis/release/receipts')).find(f => path.basename(f).startsWith('dry-run-'));
+const editDryReceipt = (fx, patch) => { const f = dryReceiptPath(fx); fs.writeFileSync(f, JSON.stringify({ ...JSON.parse(fs.readFileSync(f, 'utf8')), ...patch })); };
+/** Receipt edits that make a dry-run receipt disagree with the config. An undefined value removes the key. */
+const STALE_RECEIPTS = [['no rulesVersion (older rules)', { rulesVersion: undefined }], ['another registry', { registry: 'https://registry.other.test' }], ['another package', { package: 'other-package' }], ['another dist-tag', { tag: 'next' }], ['another file count', { files: 6 }]];
+
+test('verify treats a dry-run receipt made under older rules or another config as absent: without --tarball it fails and writes no receipt', t => {
+  for (const [name, patch] of STALE_RECEIPTS) {
+    const fx = makeFixture(t);
+    passGates(fx);
+    assert.equal(fx.run(['dry-run']).status, 0);
+    readyVerify(fx);
+    editDryReceipt(fx, patch);
+    const r = fx.run(['verify', '--json']);
+    assert.equal(r.status, 1, name);
+    assert.match(checkOf(r.json(), 'integrity').reason, /no --tarball given and no dry-run receipt/, name);
+    assert.equal(allFiles(path.join(fx.repo, '.trellis/release/receipts')).filter(f => path.basename(f).startsWith('verify-')).length, 0, name);
+    // An explicit --tarball does not use the receipt, so it still works.
+    assert.equal(fx.run(['verify', '--tarball', tarballFile(fx), '--json']).status, 0, name);
+  }
+});
+
+test('verify falls back to the newest dry-run receipt on an ancestor when the one on HEAD no longer agrees with the config', t => {
+  const fx = makeFixture(t);
+  passGates(fx);
+  assert.equal(fx.run(['dry-run']).status, 0);
+  const first = dryReceiptPath(fx);
+  fx.commit('later.txt', 'l');
+  passGates(fx);
+  assert.equal(fx.run(['dry-run']).status, 0);
+  const second = allFiles(path.join(fx.repo, '.trellis/release/receipts')).find(f => path.basename(f).startsWith('dry-run-') && f !== first);
+  readyVerify(fx);
+  const stale = JSON.parse(fs.readFileSync(second, 'utf8'));
+  fs.writeFileSync(second, JSON.stringify({ ...stale, registry: 'https://registry.other.test', integrity: 'sha512-AAAA' }));
+  const r = fx.run(['verify', '--json']);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(checkOf(r.json(), 'integrity').reason, new RegExp(JSON.parse(fs.readFileSync(first, 'utf8')).integrity.replace(/[+/]/g, '\\$&')));
+  // When the ancestor receipt is stale too, nothing is left to use.
+  fs.writeFileSync(first, JSON.stringify({ ...JSON.parse(fs.readFileSync(first, 'utf8')), rulesVersion: undefined }));
+  assert.equal(fx.run(['verify', '--json']).status, 1);
 });
 
 test('verify fails when the dry-run tarball changed since the dry run, and compares the receipt integrity when the tarball is gone', t => {
@@ -1196,6 +1237,67 @@ test('tag --commit fails when the tracking ref still differs from the tip on ori
   assert.equal(fx.git('tag', '--list'), '');
 });
 
+/** Deletes the release branch on origin from a second clone. The clone under test keeps its tracking ref until a prune that its refspec allows. */
+function deleteBranchOnOrigin(fx) {
+  const other = path.join(fx.root, 'other-delete');
+  assert.equal(spawnSync('git', ['clone', fx.origin, other], { env: fx.baseEnv }).status, 0);
+  assert.equal(spawnSync('git', ['push', 'origin', '--delete', BRANCH], { cwd: other, env: fx.baseEnv }).status, 0);
+}
+
+test('preflight fetches the checked-out branch explicitly: a narrowed refspec and a stale tracking ref equal to HEAD do not hide a branch that origin deleted', t => {
+  const fx = makeFixture(t);
+  narrowFetch(fx);
+  deleteBranchOnOrigin(fx);
+  assert.equal(fx.git('rev-parse', `refs/remotes/origin/${BRANCH}`), fx.git('rev-parse', 'HEAD'), 'the stale tracking ref equals HEAD');
+  const r = fx.run(['preflight', '--json']);
+  assert.equal(r.status, 1, r.stdout);
+  assert.equal(r.json().message, `origin has no branch ${BRANCH}; push the branch first`);
+  assert.match(r.stderr, new RegExp(`^\\$ git -c core\\.fsmonitor=false -c core\\.hooksPath=/dev/null fetch --prune origin \\+refs/heads/${escapeRe(BRANCH)}:refs/remotes/origin/${escapeRe(BRANCH)}$`, 'm'));
+  assert.match(r.stderr, new RegExp(`^\\$ git -c core\\.fsmonitor=false ls-remote --heads origin refs/heads/${escapeRe(BRANCH)}$`, 'm'));
+});
+
+test('preflight fails when origin moved its branch and a narrowed refspec left a stale tracking ref equal to HEAD', t => {
+  const fx = makeFixture(t);
+  narrowFetch(fx);
+  const tip = pushFromOtherClone(fx);
+  assert.equal(fx.git('rev-parse', `refs/remotes/origin/${BRANCH}`), fx.git('rev-parse', 'HEAD'), 'the stale tracking ref equals HEAD');
+  const r = fx.run(['preflight', '--json']);
+  assert.equal(r.status, 1, r.stdout);
+  assert.match(r.json().message, /0 ahead and 1 behind/);
+  assert.equal(r.json().behind, 1);
+  assert.equal(fx.git('rev-parse', `refs/remotes/origin/${BRANCH}`), tip, 'the explicit fetch updated the tracking ref');
+});
+
+test('preflight fails when the tracking ref still differs from the tip on origin after the fetch', t => {
+  const fx = makeFixture(t);
+  const real = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
+  const bin = path.join(fx.root, 'shim');
+  fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(bin, 'git'), `#!/bin/sh\nfor a in "$@"; do case "$a" in +refs/heads/*) exit 0;; esac; done\nexec ${real} "$@"\n`, { mode: 0o755 });
+  pushFromOtherClone(fx);
+  narrowFetch(fx);
+  const r = fx.run(['preflight', '--json'], { env: { PATH: `${bin}:${fx.baseEnv.PATH}` } });
+  assert.equal(r.status, 1);
+  assert.match(r.json().message, /is not the tip of the branch on origin/);
+});
+
+test('plain tag pushes nothing when a narrowed refspec and a stale tracking ref equal to HEAD hide that origin deleted or moved the branch', t => {
+  for (const hide of ['deleted', 'moved']) {
+    const fx = makeFixture(t);
+    ready(fx);
+    narrowFetch(fx);
+    if (hide === 'deleted') deleteBranchOnOrigin(fx); else pushFromOtherClone(fx);
+    assert.equal(fx.git('rev-parse', `refs/remotes/origin/${BRANCH}`), fx.git('rev-parse', 'HEAD'), `${hide}: the stale tracking ref equals HEAD`);
+    const refsBefore = originRefs(fx);
+    const r = fx.run(['tag', '--json']);
+    assert.equal(r.status, 1, `${hide}: ${r.stdout}`);
+    assert.match(r.json().message, hide === 'deleted' ? /origin has no branch/ : /0 ahead and 1 behind/, hide);
+    assert.doesNotMatch(r.stderr, DID_PUSH_OR_TAG, hide);
+    assert.equal(fx.git('tag', '--list'), '', hide);
+    assert.equal(originRefs(fx), refsBefore, hide);
+  }
+});
+
 test('every JSON result lists the active test seams, and a run without seams has no seams key', t => {
   const fx = makeFixture(t);
   const r = fx.run(['status', '--json']);
@@ -1263,6 +1365,21 @@ test('status follows the steps: receipts, registry state, desktop version, hashe
   phases = phaseMap(fx.run(['status', '--json']).json());
   assert.equal(phases.publish, 'todo');
   assert.equal(phases['dist-tag'], 'todo');
+});
+
+test('status shows the dry run as todo when its receipt was made under older rules or another config', t => {
+  const fx = makeFixture(t);
+  passGates(fx);
+  assert.equal(fx.run(['dry-run']).status, 0);
+  const phase = () => fx.run(['status', '--json']).json().phases.find(p => p.phase === 'dry-run');
+  assert.equal(phase().state, 'done (with test seams)');
+  const good = fs.readFileSync(dryReceiptPath(fx), 'utf8');
+  for (const [name, patch] of STALE_RECEIPTS) {
+    fs.writeFileSync(dryReceiptPath(fx), good);
+    editDryReceipt(fx, patch);
+    assert.equal(phase().state, 'todo', name);
+    assert.match(phase().reason, /does not match the config/, name);
+  }
 });
 
 test('status counts a receipt written under test seams as "done (with test seams)", not as done', t => {

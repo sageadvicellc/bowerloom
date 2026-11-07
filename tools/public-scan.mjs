@@ -133,12 +133,29 @@ function isCodeValue(raw, trimmed) {
 function assignment(name) {
   return new RegExp(name + String.raw`(?:\\?["'])?\s*([=:])\s*(\\?["']|)((?:\$?\{\{[^{}\n]*\}\}|<[^<>\n]*>)(?![^\s'"\\])|[^\s'"]{3,})`, 'gi');
 }
-// A fallback after the value: `?? "literal"`, `|| 'literal'`, `or "literal"` on the same statement. The literal is a secret unless it is empty or a placeholder.
-const FALLBACK = /(?:\?\?|\|\||(?<![\w$])or(?![\w$]))\s*\\?(["'])([^"'\\\n]*)/g;
+// A fallback directly after the value: `?? "literal"`, `|| 'literal'`, `or "literal"`. Only the text right after the value is read, so a literal fallback of a later property
+// or statement on the same line is not this value's fallback. The literal is a secret unless it is a placeholder; fewer than 3 characters is not read.
+const FALLBACK = /^\s*(?:\?\?|\|\||or)\s*\\?(["'])([^"'\\\n]{3,})\\?\1/;
+/** The text after the value of `match`. A value that stops inside a call (`os.environ.get(`) is followed through the closing bracket of the call; a closing quote of the value is skipped. */
+function textAfterValue(match) {
+  const input = match.input;
+  let at = match.index + match[0].length;
+  let depth = (match[0].match(/\(/g) ?? []).length - (match[0].match(/\)/g) ?? []).length;
+  for (; depth > 0 && at < input.length; at++) {
+    const character = input[at];
+    if (character === '"' || character === "'") {
+      const close = input.indexOf(character, at + 1);
+      if (close < 0) return '';
+      at = close;
+    } else if (character === '(') depth++;
+    else if (character === ')') depth--;
+  }
+  const rest = input.slice(at);
+  return match[2] !== '' && /^\\?["']/.test(rest) ? rest.replace(/^\\?["']/, '') : rest;
+}
 function hasHardcodedFallback(match) {
-  const rest = match.input.slice(match.index + match[0].length).split(';')[0];
-  for (const fallback of rest.matchAll(FALLBACK)) if (fallback[2] !== '' && !isPlaceholderValue(fallback[2])) return true;
-  return false;
+  const fallback = FALLBACK.exec(textAfterValue(match));
+  return fallback !== null && !isPlaceholderValue(fallback[2]);
 }
 /**
  * A match of `assignment` is allowed when its value is a placeholder, a variable reference, or (unquoted) code in one of the five shapes above. An unquoted bare word is a secret

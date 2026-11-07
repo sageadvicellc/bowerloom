@@ -350,5 +350,10 @@ test('mcp_exposure follows the shared rules: expose only read-only tools that ar
   // release:preflight is read-only but runs git fetch --prune (it changes remote-tracking refs) and takes --repo, so it is held back too.
   assert.ok(manifest.tools.find(entry => entry.name === 'release:verify').mcp_exposure === 'hidden');
   assert.ok(manifest.tools.find(entry => entry.name === 'release:preflight').mcp_exposure === 'hidden');
-  assert.deepEqual(exposed.filter(name => name.startsWith('release:')).sort(), ['release:claims', 'release:status']);
+  // release:status runs git ls-remote origin with the ssh agent, and release:claims reads files below --repo; every release subcommand takes --repo, so none is exposed.
+  for (const entry of manifest.tools.filter(item => item.name.startsWith('release:'))) {
+    assert.ok(flagsOf(entry).has('--repo'), `${entry.name} takes --repo`);
+    assert.equal(entry.mcp_exposure, 'hidden', `${entry.name} takes --repo, so it is hidden`);
+  }
+  assert.deepEqual(exposed.filter(name => name.startsWith('release:')), []);
 });

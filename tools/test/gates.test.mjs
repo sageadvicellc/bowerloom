@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import crypto from 'node:crypto';
 import { parseArgs, selectSteps, cleanOutputs, checkInstallersRecorded, CLEAN_PATHS, INSTALLER_PATHS, HASH_SCHEMA, STEPS, DEFAULT_FLOOR_GIB, main } from '../gates.mjs';
 import { freeBytes, GIB } from '../lib/run-child.mjs';
@@ -658,15 +658,40 @@ test('gates: an interrupt skips the --clean clean-up, so the build outputs stay'
   fs.mkdirSync(path.join(root, 'test-results'), { recursive: true });
   fs.writeFileSync(path.join(root, 'test-results/keep.txt'), 'keep');
   const child = spawn(process.execPath, [script, '--root', root, '--json', '--clean', '--only', 'root-test'], { env: { ...process.env, ...MODE }, stdio: ['ignore', 'pipe', 'pipe'] });
-  let stdout = '';
-  child.stdout.on('data', chunk => { stdout += chunk; });
   const exited = new Promise(resolve => child.once('exit', (code, signal) => resolve({ code, signal })));
   assert.equal(await waitFor(ready), true, 'the step started');
   child.kill('SIGINT');
   assert.equal((await exited).code, 130);
   assert.equal(fs.existsSync(path.join(root, 'test-results/keep.txt')), true, 'an interrupted run does not delete build outputs');
-  // When the run still gets to print its summary, the summary says the clean-up was skipped because of the interrupt.
-  if (stdout.trim() !== '') assert.equal(JSON.parse(stdout).clean?.skipped, true, stdout);
+});
+
+test('gates: runGates reports clean.skipped when a signal arrived during the run, and deletes nothing', { skip }, async () => {
+  // A driver process runs runGates itself with the interrupt handlers installed and a no-op exit, so the summary is always returned and printed
+  // (the real handler exits 130 on a timer, which can beat the summary). The driver signals itself once the step has started.
+  const dir = tmp();
+  const ready = path.join(dir, 'ready');
+  const body = `fs.writeFileSync(${JSON.stringify(ready)}, 'x'); setInterval(() => {}, 1000);`;
+  const root = fakeRoot({ 'root-test': { hang: true, body } });
+  fs.mkdirSync(path.join(root, 'test-results'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'test-results/keep.txt'), 'keep');
+  const driver = path.join(dir, 'driver.mjs');
+  fs.writeFileSync(driver, [
+    "import fs from 'node:fs';",
+    `import { installInterruptHandlers } from ${JSON.stringify(pathToFileURL(fileURLToPath(new URL('../lib/interrupt.mjs', import.meta.url))).href)};`,
+    `import { parseArgs, runGates } from ${JSON.stringify(pathToFileURL(script).href)};`,
+    'installInterruptHandlers({ exit: () => {}, say: () => {} });',
+    'const [root, ready] = process.argv.slice(2);',
+    "const poll = setInterval(() => { if (fs.existsSync(ready)) { clearInterval(poll); process.kill(process.pid, 'SIGINT'); } }, 20);",
+    "const { summary } = await runGates(parseArgs(['--clean', '--only', 'root-test'], { BOWERLOOM_TOOLS_TEST_MODE: '1' }), root);",
+    'process.stdout.write(JSON.stringify(summary));',
+    'process.exit(0);',
+  ].join('\n'));
+  const run = spawnSync(process.execPath, [driver, root, ready], { env: { ...process.env, ...MODE }, encoding: 'utf8', timeout: 60_000 });
+  assert.equal(run.status, 0, run.stderr);
+  const summary = JSON.parse(run.stdout);
+  assert.equal(summary.clean.skipped, true, run.stdout);
+  assert.equal(summary.ok, false);
+  assert.equal(fs.existsSync(path.join(root, 'test-results/keep.txt')), true, 'an interrupted run does not delete build outputs');
 });
 
 test('gates: formatSummary says "cleanup skipped (interrupted)" for a skipped clean-up, and not for a normal one', async () => {

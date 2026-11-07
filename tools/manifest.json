@@ -230,7 +230,7 @@
       "help": true,
       "safetyClass": "read-only",
       "destructive": false,
-      "mcp_exposure": "expose",
+      "mcp_exposure": "hidden",
       "description": "Show each release phase as done, todo, or unknown, with a reason.",
       "args": [
         {
@@ -718,7 +718,7 @@
       "help": true,
       "safetyClass": "read-only",
       "destructive": false,
-      "mcp_exposure": "expose",
+      "mcp_exposure": "hidden",
       "description": "Scan the configured files for stale wording. Exit 1 on any hit.",
       "args": [
         {

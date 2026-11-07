@@ -553,6 +553,37 @@ test('publish refuses, prints nothing and exits 1, when the receipt is damaged o
   assert.equal(fx.npmCalls().filter(c => c.args[0] === 'publish' && !c.args.includes('--dry-run')).length, 0);
 });
 
+test('publish treats a dry-run receipt made under older rules or another config as absent: it fails with "run dry-run again" and prints no command', async t => {
+  const fx = makeFixture(t);
+  assert.equal(fx.run(['gates']).status, 0);
+  fx.run(['dry-run']);
+  const good = fs.readFileSync(dryReceiptFile(fx), 'utf8');
+  const cases = [
+    ['no rulesVersion (older rules)', { rulesVersion: undefined }, /never-ship rules/],
+    ['another rulesVersion', { rulesVersion: 0 }, /never-ship rules/],
+    ['another registry', { registry: 'https://registry.other.test' }, /registry/],
+    ['another package', { package: 'other-package' }, /package/],
+    ['another dist-tag', { tag: 'next' }, /dist-tag/],
+    ['another file count', { files: 6 }, /file count/],
+  ];
+  for (const [name, patch, reason] of cases) {
+    fs.writeFileSync(dryReceiptFile(fx), good);
+    editReceipt(fx, patch);
+    for (const tty of [true, false]) {
+      const r = await inProcess(fx, ['publish'], { tty });
+      assert.equal(r.code, 1, `${name}, tty ${tty}`);
+      assert.equal(r.out, '', `${name}: nothing is printed`);
+      assert.match(r.err, /does not match the config/, name);
+      assert.match(r.err, reason, name);
+      assert.match(r.err, /run dry-run again/, name);
+      assert.doesNotMatch(r.out + r.err, /npm publish \S|npm login|npm whoami/, name);
+    }
+  }
+  fs.writeFileSync(dryReceiptFile(fx), good);
+  assert.equal((await inProcess(fx, ['publish'], { tty: true })).code, 0, 'the unchanged receipt still prints the commands');
+  assert.equal(fx.npmCalls().filter(c => c.args[0] === 'publish' && !c.args.includes('--dry-run')).length, 0);
+});
+
 // ---------------------------------------------------------------------------------------------------------------------------------
 // config details, entry point, help
 
